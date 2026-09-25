@@ -156,8 +156,9 @@ export const methods = {
     params: z.object({ id: z.string(), until: z.array(AgentStatus).min(1), timeoutMs: z.number().default(600_000), term: Term }),
     result: z.object({ status: z.union([AgentStatus, z.enum(['timeout', 'gone'])]) }),
   },
-  // Enter takes the permission dialog's highlighted "Yes"; Esc is its "No"
-  'char.answer': { params: z.object({ id: z.string(), answer: z.enum(['approve', 'deny']) }), result: z.object({}) },
+  // Enter takes the permission dialog's highlighted "Yes"; Esc is its "No". promptId is the agent's promptId the answer was
+  // shown with; a newer question is not answered by it
+  'char.answer': { params: z.object({ id: z.string(), answer: z.enum(['approve', 'deny']), promptId: z.string().optional() }), result: z.object({}) },
   // names writes only names; islands runs only the island descriptions
   'scribe.sweep': {
     params: z.object({ names: z.boolean().optional(), islands: z.boolean().optional() }),

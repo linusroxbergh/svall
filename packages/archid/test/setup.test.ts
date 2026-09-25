@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { codexPaths } from '../src/codex/install.js';
+import { codexHookCommand, codexPaths, mergeCodexHooks } from '../src/codex/install.js';
 import { isOurs } from '../src/paths.js';
 import {
   HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hookCommand, hooksInstalled, installHomeTemplate, launchdPlist, mergeHooks, mergeStatusLine, nodeRun, readJsonSettings, runSetup, setupHome,
@@ -79,6 +79,14 @@ describe('claudeHooksCurrent', () => {
     expect(claudeHooksCurrent(written(other), '/h/.archipelago')).toBe(true);
     fs.rmSync(other);
     expect(claudeHooksCurrent(written(other), '/h/.archipelago')).toBe(false);
+  });
+  it('reads hooks that miss an event setup now subscribes as out of date, so an install sets them up again', () => {
+    const settings = written(process.execPath) as { hooks: Record<string, unknown> };
+    delete settings.hooks.StopFailure;
+    expect(claudeHooksCurrent(settings, '/h/.archipelago')).toBe(false);
+    const codex = mergeCodexHooks({}, codexHookCommand(script), script) as { hooks: Record<string, unknown> };
+    delete codex.hooks.Interrupt;
+    expect(codexHooksCurrent(codex, script)).toBe(false);
   });
 });
 

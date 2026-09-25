@@ -3,10 +3,11 @@ import net from 'node:net';
 import { AgentKind, isSessionId } from '@archipelago/protocol';
 import type { Logger } from '../log.js';
 
-export const CLAUDE_HOOKS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'Notification', 'Stop', 'SessionEnd'] as const;
+// Claude Code ends a turn an API error cut short with StopFailure, in place of Stop
+export const CLAUDE_HOOKS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'Notification', 'Stop', 'StopFailure', 'SessionEnd'] as const;
 // codex asks permission through an event of its own, where Claude Code sends a notification, and says
-// when the tool it asked about has run, which is the only word that the wait is over
-export const CODEX_HOOKS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'Stop', 'SessionEnd'] as const;
+// when the tool it asked about has run, which is the only word that the wait is over. An Esc ends its turn with Interrupt
+export const CODEX_HOOKS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'Stop', 'Interrupt', 'SessionEnd'] as const;
 export type HookName = (typeof CLAUDE_HOOKS)[number] | (typeof CODEX_HOOKS)[number];
 
 export const hooksFor = (backend: AgentKind): readonly HookName[] => (backend === 'codex' ? CODEX_HOOKS : CLAUDE_HOOKS);

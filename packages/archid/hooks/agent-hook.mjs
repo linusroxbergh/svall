@@ -2,7 +2,7 @@
 // Installed to $ARCHI_HOME/hooks/agent-hook.mjs by `archi setup`, and run by Claude Code and by Codex,
 // which names itself in the first argument; the second is the pid of the agent. Forwards a hook payload
 // to archid. On SessionStart and UserPromptSubmit it waits for one reply line and prints it as
-// additionalContext. Never blocks the agent: exits 0 within 1.5 s.
+// additionalContext. Never blocks the agent: exits 0 within 1.5 s of its last try at the socket.
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
@@ -32,6 +32,21 @@ const asked = (h) => {
   const text = Array.isArray(why) ? why.join(' ') : why;
   return typeof text === 'string' && text ? { ...h, message: text.slice(0, 500) } : h;
 };
+// Claude Code's StopFailure names the API error that ended the turn, and carries the text it showed for it
+const failed = (h) => {
+  if (h.hook_event_name !== 'StopFailure' || h.message) return h;
+  const text = h.last_assistant_message || h.error;
+  return typeof text === 'string' && text ? { ...h, message: text.slice(0, 500) } : h;
+};
+
+// a daemon restarting has no socket for a second or two, so a refused connect is tried again, for up to 2 s.
+// A tool call is not: the next one says the same, and a daemon that stays down would hold up every tool.
+// Nor is any event within a minute of one giving up, so a daemon that stays down holds up one hook a minute
+const RETRIES = 8;
+const RETRY_MS = 250;
+const ONCE = new Set(['PreToolUse', 'PostToolUse']);
+const DOWN = path.join(home, 'hooks.down');
+const gaveUpLately = () => { try { return Date.now() - fs.statSync(DOWN).mtimeMs < 60_000; } catch { return false; } };
 
 let input = '';
 process.stdin.setEncoding('utf8');
@@ -39,10 +54,18 @@ process.stdin.on('data', (d) => (input += d));
 process.stdin.on('end', () => {
   let hook = {};
   try { hook = JSON.parse(input); } catch {}
+  send(hook, 0);
+});
+
+function send(hook, tries) {
   const sock = net.createConnection(path.join(home, 'hooks.sock'));
-  sock.on('error', done);
+  sock.on('error', (e) => {
+    if (tries >= RETRIES) { try { fs.writeFileSync(DOWN, ''); } catch {} }
+    if (tries >= RETRIES || ONCE.has(hook.hook_event_name) || (e.code !== 'ENOENT' && e.code !== 'ECONNREFUSED') || gaveUpLately()) done();
+    else { safety.refresh(); setTimeout(() => send(hook, tries + 1), RETRY_MS); }
+  });
   sock.on('connect', () => {
-    sock.write(JSON.stringify({ charId, term, backend, pid, hook: fields(asked(hook)) }) + '\n');
+    sock.write(JSON.stringify({ charId, term, backend, pid, hook: fields(failed(asked(hook))) }) + '\n');
     // the exit waits for the write to drain, or a large payload is truncated mid-line and dropped
     if (!WAITS.has(hook.hook_event_name)) { sock.end(done); return; }
     let buf = '';
@@ -63,4 +86,4 @@ process.stdin.on('end', () => {
     });
     sock.on('end', done);
   });
-});
+}

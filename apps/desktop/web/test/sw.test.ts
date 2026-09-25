@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { describe, expect, it } from 'vitest';
 
-type Payload = { id: string; name: string; status: string; term?: 2; prompt?: string };
+type Payload = { id: string; name: string; status: string; term?: 2; prompt?: string; promptId?: string };
 type Shown = { title: string; options: { tag: string; actions: { action: string }[] } };
 
 // the worker is a static file the page registers, so it runs here against a stand-in for its global;
@@ -54,11 +54,17 @@ describe('service worker notifications', () => {
     expect(opened).toEqual([]);
   });
 
-  it('says so when the answer was refused, in the reply or by its status', async () => {
+  it('names the question the notification showed, so the daemon can refuse a stale answer', async () => {
+    const { click, posts } = load();
+    await click({ ...blocked(), promptId: 'q1' }, 'approve');
+    expect(posts).toEqual([{ url: '/rpc', body: { id: 1, method: 'char.answer', params: { id: 'c_a', answer: 'approve', promptId: 'q1' } } }]);
+  });
+
+  it('says so when the answer was refused, in the reply or by its status, beside any newer question', async () => {
     for (const reply of [{ status: 200, body: { id: 1, error: { code: 'invalid' } } }, { status: 401, body: {} }]) {
       const { click, shown } = load(reply);
       await click(blocked(), 'approve');
-      expect(shown.map((s) => [s.title, s.options.tag])).toEqual([['otter: answer didn\'t send', 'c_a']]);
+      expect(shown.map((s) => [s.title, s.options.tag])).toEqual([['otter: answer didn\'t send', 'c_a-failed']]);
     }
   });
 

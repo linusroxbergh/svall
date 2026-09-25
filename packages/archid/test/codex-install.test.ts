@@ -21,8 +21,10 @@ describe('mergeCodexHooks', () => {
     for (const groups of Object.values(out.hooks)) expect(groups[0].matcher).toBeUndefined();
   });
 
-  it('gives SessionEnd a timeout inside its own cap', () => {
-    expect((mergeCodexHooks({}, CMD, SCRIPT) as Hooks).hooks.SessionEnd[0].hooks[0].timeout).toBeLessThanOrEqual(3);
+  it('gives SessionEnd and Interrupt a timeout inside their own cap', () => {
+    const { hooks } = mergeCodexHooks({}, CMD, SCRIPT) as Hooks;
+    expect(hooks.SessionEnd[0].hooks[0].timeout).toBeLessThanOrEqual(3);
+    expect(hooks.Interrupt[0].hooks[0].timeout).toBeLessThanOrEqual(3);
   });
 
   it('lets the brief through whole on the two events the daemon answers', () => {

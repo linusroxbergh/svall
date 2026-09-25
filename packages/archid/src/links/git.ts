@@ -6,10 +6,16 @@ import type { Repo } from '@archipelago/protocol';
 const exec = promisify(execFile);
 
 export async function resolveRepo(cwd: string): Promise<Repo | undefined> {
+  const git = async (args: string[]) => (await exec('git', args, { cwd, timeout: 10_000, killSignal: 'SIGKILL' })).stdout.trim().split('\n');
   try {
-    // one rev-parse answers the paths and the branch together; every character in the fleet asks this
-    const { stdout } = await exec('git', ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir', '--git-dir', '--abbrev-ref', 'HEAD'], { cwd, timeout: 10_000, killSignal: 'SIGKILL' });
-    const [root, common, dir, branch] = stdout.trim().split('\n');
+    // one rev-parse answers the paths and the branch together; every character in the fleet asks this.
+    // Before its first commit HEAD resolves to nothing, though the paths are out by then and it names a branch already
+    const [root, common, dir, branch] = await git(['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir', '--git-dir', '--abbrev-ref', 'HEAD'])
+      .catch(async (e: { stdout?: string }) => {
+        const paths = e.stdout?.trim().split('\n') ?? [];
+        if (paths.length < 3) throw e;
+        return [...paths.slice(0, 3), ...await git(['symbolic-ref', '--short', 'HEAD'])];
+      });
     // only a linked worktree keeps its own git dir beside a shared common one; a submodule's two are the
     // same path inside .git/modules, where the checkout it belongs to is its own root
     const isWorktree = dir !== common;

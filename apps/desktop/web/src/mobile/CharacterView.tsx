@@ -109,9 +109,11 @@ export function CharacterView({ id, onBack }: { id: string; onBack(): void }): J
     return () => { left = true; };
   }, [id, online, attempt]);
 
-  // an answer stays in flight until the daemon reports the agent unblocked, so one tap answers once
+  // an answer stays in flight until the daemon reports the agent unblocked or on another question, so one tap answers once
   const blocked = character?.agent?.status === 'blocked';
-  useEffect(() => { if (!blocked) { setAnswering(false); setAnswerError(undefined); } }, [blocked]);
+  const promptId = character?.agent?.promptId;
+  const asking = useRef(promptId);
+  useEffect(() => { asking.current = promptId; setAnswering(false); setAnswerError(undefined); }, [blocked, promptId]);
 
   useEffect(() => {
     try { if (prompt) sessionStorage.setItem(DRAFT + id, prompt); else sessionStorage.removeItem(DRAFT + id); } catch { /* site data switched off */ }
@@ -136,8 +138,10 @@ export function CharacterView({ id, onBack }: { id: string; onBack(): void }): J
     setAnswering(true);
     setAnswerError(undefined);
     try {
-      await phone.api().call('char.answer', { id, answer: a });
+      await phone.api().call('char.answer', { id, answer: a, promptId });
     } catch (e) {
+      // a refusal that comes back after a newer question is up is not that question's
+      if (asking.current !== promptId) return;
       setAnswerError((e as Error).message);
       setAnswering(false);
     }

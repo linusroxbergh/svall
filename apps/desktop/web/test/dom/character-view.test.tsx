@@ -33,9 +33,9 @@ vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit(): void {} } }));
 
 const { CharacterView } = await import('../../src/mobile/CharacterView.js');
 
-const blockedFleet = (prompt = 'Run rm -rf?') => {
+const blockedFleet = (prompt = 'Run rm -rf?', promptId = 'q1') => {
   const f = fleet();
-  f.characters.c2 = chr('c2', 'i_a', { x: 1, y: 1 }, { agent: { kind: 'claude', sessionId: 's', status: 'blocked', prompt, lastActivityAt: 0 } });
+  f.characters.c2 = chr('c2', 'i_a', { x: 1, y: 1 }, { agent: { kind: 'claude', sessionId: 's', status: 'blocked', prompt, promptId, lastActivityAt: 0 } });
   return f;
 };
 
@@ -59,14 +59,14 @@ test('approve answers the daemon for that character', () => {
   store.getState().setFleet(blockedFleet());
   render(<CharacterView id="c2" onBack={() => {}} />);
   fireEvent.click(screen.getByRole('button', { name: 'approve' }));
-  expect(call).toHaveBeenCalledWith('char.answer', { id: 'c2', answer: 'approve' });
+  expect(call).toHaveBeenCalledWith('char.answer', { id: 'c2', answer: 'approve', promptId: 'q1' });
 });
 
 test('deny answers the daemon for that character', () => {
   store.getState().setFleet(blockedFleet());
   render(<CharacterView id="c2" onBack={() => {}} />);
   fireEvent.click(screen.getByRole('button', { name: 'deny' }));
-  expect(call).toHaveBeenCalledWith('char.answer', { id: 'c2', answer: 'deny' });
+  expect(call).toHaveBeenCalledWith('char.answer', { id: 'c2', answer: 'deny', promptId: 'q1' });
 });
 
 test('an answer in flight refuses a second tap', () => {
@@ -75,6 +75,16 @@ test('an answer in flight refuses a second tap', () => {
   fireEvent.click(screen.getByRole('button', { name: 'approve' }));
   fireEvent.click(screen.getByRole('button', { name: 'deny' }));
   expect(call).toHaveBeenCalledTimes(1);
+});
+
+test('a new question takes its own answer, even while one for the last is in flight', () => {
+  call.mockImplementationOnce(() => new Promise(() => {}));
+  store.getState().setFleet(blockedFleet());
+  render(<CharacterView id="c2" onBack={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'approve' }));
+  act(() => { store.getState().setFleet(blockedFleet('Run it again?', 'q2')); });
+  fireEvent.click(screen.getByRole('button', { name: 'approve' }));
+  expect(call).toHaveBeenLastCalledWith('char.answer', { id: 'c2', answer: 'approve', promptId: 'q2' });
 });
 
 test('a character that is not blocked is asked nothing', () => {

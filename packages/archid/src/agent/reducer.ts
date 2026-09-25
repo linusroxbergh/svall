@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import type { Agent } from '@archipelago/protocol';
 import type { HookEvent, StatusEvent } from '../hooks/receiver.js';
 
@@ -62,33 +63,54 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
   if (e.model && e.sessionId === next.agent.sessionId) next.agent.model = e.model;
   // the hook carries the prompt before the transcript holds it, so this is the newest one there is
   if (e.prompt && (!e.sessionId || e.sessionId === next.agent.sessionId)) next.agent.lastPrompt = { ...e.prompt, at: now };
+  const agent = next.agent;
+  const ask = () => {
+    agent.status = 'blocked';
+    agent.promptId = crypto.randomUUID();
+    if (e.message) agent.prompt = e.message; else delete agent.prompt;
+  };
+  const settle = (status: Agent['status']) => {
+    agent.status = status;
+    delete agent.prompt;
+    delete agent.promptId;
+    delete agent.background;
+  };
   switch (e.name) {
     case 'UserPromptSubmit':
     case 'PreToolUse':
     // codex asks to run a tool between the two, so the answer it waited for is the run itself
     case 'PostToolUse':
-      next.agent.status = 'working';
-      delete next.agent.prompt;
+      settle('working');
       next.unread = false;
       break;
     case 'Stop':
-      delete next.agent.prompt;
+    case 'StopFailure':
       // the turn ended but background agents are still going; their completion starts a new turn
       if (e.backgroundAgents) {
-        next.agent.status = 'working';
+        settle('working');
+        agent.background = true;
         break;
       }
-      next.agent.status = 'done';
+      settle('done');
+      // an API error ended the turn, and its message says which
+      if (e.name === 'StopFailure' && e.message) agent.prompt = e.message;
       next.unread = true;
       break;
+    // codex's word that an Esc ended the turn
+    case 'Interrupt':
+      settle('idle');
+      break;
     case 'PermissionRequest':
-      next.agent.status = 'blocked';
-      if (e.message) next.agent.prompt = e.message; else delete next.agent.prompt;
+      ask();
       break;
     case 'Notification':
-      if (e.notificationType && BLOCKING.has(e.notificationType)) {
-        next.agent.status = 'blocked';
-        if (e.message) next.agent.prompt = e.message; else delete next.agent.prompt;
+      if (e.notificationType && BLOCKING.has(e.notificationType)) ask();
+      // Claude Code fires nothing on an Esc; a minute on, it says it sits at its prompt, background agents or not.
+      // With background agents out, the question is gone but the work goes on
+      else if (e.notificationType === 'idle_prompt' && (agent.status === 'blocked' || agent.status === 'working')) {
+        const background = agent.background;
+        settle(background ? 'working' : 'idle');
+        if (background) agent.background = true;
       }
       break;
   }

@@ -25,6 +25,25 @@ describe('reconcile', () => {
     expect(renames).toEqual([]);
   });
 
+  it('keeps the cwd the hooks gave a character while its pane has not moved, or has no path to report', () => {
+    const s = emptyState();
+    s.characters.c_a = char({ cwd: '/repo/.claude/worktrees/x', panePath: '/repo' });
+    s.characters.c_b = char({ id: 'c_b', cwd: '/home' });
+    reconcile(s, [live('c_a'), { ...live('c_b', '@2', '%2'), path: '' }], 0).mutate(s);
+    expect(s.characters.c_a).toMatchObject({ cwd: '/repo/.claude/worktrees/x', panePath: '/repo' });
+    expect(s.characters.c_b.cwd).toBe('/home');
+    s.characters.c_a.panePath = '/elsewhere';
+    reconcile(s, [live('c_a')], 0).mutate(s);
+    expect(s.characters.c_a).toMatchObject({ cwd: '/repo', panePath: '/repo' });
+  });
+
+  it('takes a pane path for a character still on its pane that has none on record, and keeps its cwd', () => {
+    const s = emptyState();
+    s.characters.c_a = char({ cwd: '/repo/.codex/worktrees/x', tmux: { windowId: '@1', paneId: '%1' } });
+    reconcile(s, [live('c_a')], 0).mutate(s);
+    expect(s.characters.c_a).toMatchObject({ cwd: '/repo/.codex/worktrees/x', panePath: '/repo' });
+  });
+
   it('marks characters without a window dormant with a revive command', () => {
     const s = emptyState();
     s.characters.c_a = char({ tmux: { windowId: '@9', paneId: '%9' } });

@@ -41,7 +41,7 @@ final class ShellRouter {
 
         notifier.onPermission = { [weak self] state in self?.bridge.send(.notifyPermission(state)) }
         notifier.onOpen = { [weak self] key in self?.open(key) }
-        notifier.onAction = { [weak self] key, action in self?.sendNotify(.notifyAction(key: key, action: action)) }
+        notifier.onAction = { [weak self] key, action, promptId in self?.sendNotify(.notifyAction(key: key, action: action, promptId: promptId)) }
 
         bridge.onMessage = { [weak self] msg in self?.handle(msg) }
         keys.onChord = { [weak self] chord in
@@ -179,8 +179,8 @@ final class ShellRouter {
             cutout = rect
             surfaces.setCutout(rect)
             browsers.setCutout(rect)
-        case .notifyPost(let key, let title, let subtitle, let body, let sound, let actions):
-            notifier.post(key: key, title: title, subtitle: subtitle, body: body, sound: sound, actions: actions)
+        case .notifyPost(let key, let title, let subtitle, let body, let sound, let actions, let promptId):
+            notifier.post(key: key, title: title, subtitle: subtitle, body: body, sound: sound, actions: actions, promptId: promptId)
         case .notifyRemove(let key):
             notifier.remove(key: key)
         case .notifyEnable:

@@ -11,7 +11,7 @@ export type NoticeView = { fleet: FleetState; loaded: boolean; active: boolean; 
 // the status each banner still up announced, by session key
 export type Posted = Map<string, PushStatus>;
 
-type Session = { key: string; charId: string; second: boolean; status?: AgentStatus; unread: boolean; prompt?: string };
+type Session = { key: string; charId: string; second: boolean; status?: AgentStatus; unread: boolean; prompt?: string; promptId?: string };
 
 const isPushStatus = (s: AgentStatus | undefined): s is PushStatus => (PUSH_STATUSES as readonly string[]).includes(s ?? '');
 
@@ -21,21 +21,24 @@ const ANSWER_WAIT_MS = 5000;
 // a character's main terminal, and its second one when that runs an agent, as the pusher counts them
 const sessionsOf = (f: FleetState): Map<string, Session> =>
   new Map(Object.values(f.characters).flatMap((c): [string, Session][] => [
-    [c.id, { key: c.id, charId: c.id, second: false, status: c.agent?.status, unread: c.unread, prompt: c.agent?.prompt }],
-    ...(c.second ? [[secondKey(c.id), { key: secondKey(c.id), charId: c.id, second: true, status: c.second.agent?.status, unread: c.second.unread, prompt: c.second.agent?.prompt }] as [string, Session]] : []),
+    [c.id, { key: c.id, charId: c.id, second: false, status: c.agent?.status, unread: c.unread, prompt: c.agent?.prompt, promptId: c.agent?.promptId }],
+    ...(c.second ? [[secondKey(c.id), { key: secondKey(c.id), charId: c.id, second: true, status: c.second.agent?.status, unread: c.second.unread, prompt: c.second.agent?.prompt, promptId: c.second.agent?.promptId }] as [string, Session]] : []),
   ]));
 
 function noticeFor(v: NoticeView, s: Session, status: PushStatus): Notice {
   const c = v.fleet.characters[s.charId]!;
   const blocked = status === 'blocked';
+  // an answer reaches the main terminal only, as on the phone, and names the question the banner showed
+  const actions = blocked && !s.second;
   return {
     key: s.key,
     title: blocked ? `${c.name} needs you` : `${c.name} is done`,
     subtitle: v.fleet.islands[c.islandId]?.name ?? '',
-    body: blocked ? s.prompt ?? '' : '',
+    // a blocked agent's question, or the API error that ended a turn
+    body: s.prompt ?? '',
     sound: v.settings.sound,
-    // an answer reaches the main terminal only, as on the phone
-    actions: blocked && !s.second,
+    actions,
+    ...(actions && s.promptId ? { promptId: s.promptId } : {}),
   };
 }
 
@@ -57,7 +60,9 @@ export function decide(prev: NoticeView, next: NoticeView, posted: Posted): { po
   const before = sessionsOf(prev.fleet);
   for (const s of now.values()) {
     const status = s.status;
-    if (!isPushStatus(status) || status === before.get(s.key)?.status || !next.settings.statuses.includes(status)) continue;
+    const was = before.get(s.key);
+    // a new question while the agent stays blocked replaces the banner
+    if (!isPushStatus(status) || (status === was?.status && s.promptId === was?.promptId) || !next.settings.statuses.includes(status)) continue;
     if (inView(s.charId) || (status === 'done' && !s.unread)) continue;
     post.push(noticeFor(next, s, status));
     out.set(s.key, status);
@@ -102,14 +107,17 @@ export function followNotifications(o: { store: AppStore; bridge: Bridge; api():
     });
   };
   // only a main terminal's banner has buttons, so the key is the character's id
-  const answer = async (key: string, action: 'approve' | 'deny') => {
+  const answer = async (key: string, action: 'approve' | 'deny', promptId?: string) => {
     const c = o.store.getState().fleet.characters[key];
     if (!c) return;
     try {
       const api = await waitOnline();
       if (!api) throw new Error('archid not connected');
-      await api.call('char.answer', { id: key, answer: action });
+      await api.call('char.answer', { id: key, answer: action, promptId });
     } catch {
+      // a newer question's banner is up under the same key, and stays
+      const now = o.store.getState().fleet.characters[key]?.agent;
+      if (now?.status === 'blocked' && now.promptId !== promptId) return;
       o.bridge.send({ type: 'notify.post', ...answerFailed(c.name, key, o.store.getState().settings.notifications.sound) });
     }
   };
@@ -118,7 +126,7 @@ export function followNotifications(o: { store: AppStore; bridge: Bridge; api():
     else if (m.type === 'notify.open') {
       const id = charOfSurface(m.key);
       if (o.store.getState().fleet.characters[id]) o.store.getState().focus(id);
-    } else if (m.type === 'notify.action') void answer(m.key, m.action);
+    } else if (m.type === 'notify.action') void answer(m.key, m.action, m.promptId || undefined);
   });
   return () => { offStore(); offShell(); };
 }

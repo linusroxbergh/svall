@@ -125,6 +125,17 @@ describe('doctor', () => {
     }
   });
 
+  it('says the hooks of an install from before an event was added are out of date, not missing', async () => {
+    const before = JSON.parse(installed) as { hooks: Record<string, unknown> };
+    delete before.hooks.StopFailure;
+    const oldCodex = JSON.parse(codexHooks) as { hooks: Record<string, unknown> };
+    delete oldCodex.hooks.Interrupt;
+    const f = fake({ files: { '/u/.claude/settings.json': JSON.stringify(before), '/u/.codex': '', '/u/.codex/hooks.json': JSON.stringify(oldCodex) } });
+    const c = byName(await doctor(priv, f.deps));
+    expect(c.hooks).toMatchObject({ status: 'warn', detail: 'out of date in /u/.claude/settings.json: run archi setup' });
+    expect(c.codex).toMatchObject({ status: 'warn', detail: expect.stringMatching(/^hooks out of date in \/u\/\.codex\/hooks\.json: run archi setup, then trust them with \/hooks in Codex/) });
+  });
+
   it('warns when the node the daemon starts with is one version, or gone', async () => {
     const nvm = '/u/.nvm/versions/node/v22.12.0/bin';
     const pinned = byName(await doctor(priv, fake({ files: { [PLIST]: plist(nvm), [`${nvm}/node`]: '' } }).deps));

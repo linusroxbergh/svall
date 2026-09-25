@@ -15,7 +15,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     var onPermission: (String) -> Void = { _ in }
     var onOpen: (String) -> Void = { _ in }
-    var onAction: (_ key: String, _ action: String) -> Void = { _, _ in }
+    // the question the banner showed goes back with its answer, so a stale one is refused; empty when it named none
+    var onAction: (_ key: String, _ action: String, _ promptId: String) -> Void = { _, _, _ in }
 
     override init() {
         super.init()
@@ -26,7 +27,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         forwarded = DistributedNotificationCenter.default().addObserver(forName: Self.forward, object: home, queue: .main) { [weak self] note in
             guard let key = note.userInfo?["key"] as? String, let action = note.userInfo?["action"] as? String,
                   ["open", "approve", "deny"].contains(action) else { return }
-            self?.deliver(key: key, action: action)
+            self?.deliver(key: key, action: action, promptId: note.userInfo?["promptId"] as? String ?? "")
         }
     }
 
@@ -59,7 +60,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     // a key is a terminal surface key: a character's second terminal carries a -2 suffix
     private static func charId(_ key: String) -> String { key.hasSuffix("-2") ? String(key.dropLast(2)) : key }
 
-    func post(key: String, title: String, subtitle: String, body: String, sound: Bool, actions: Bool) {
+    func post(key: String, title: String, subtitle: String, body: String, sound: Bool, actions: Bool, promptId: String?) {
         let content = UNMutableNotificationContent()
         content.title = title
         content.subtitle = [subtitle, ArchiHome.fleetName ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
@@ -67,7 +68,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         content.sound = sound ? .default : nil
         if actions { content.categoryIdentifier = Self.blocked }
         content.threadIdentifier = prefix + Self.charId(key)
-        content.userInfo = ["home": home, "key": key]
+        content.userInfo = ["home": home, "key": key, "promptId": promptId ?? ""]
         let id = prefix + key
         posted.insert(id)
         center.add(UNNotificationRequest(identifier: id, content: content, trigger: nil)) { error in
@@ -104,6 +105,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         defer { completionHandler() }
         let info = response.notification.request.content.userInfo
         guard let owner = info["home"] as? String, let key = info["key"] as? String else { return }
+        let promptId = info["promptId"] as? String ?? ""
         let action: String
         switch response.actionIdentifier {
         case "approve", "deny": action = response.actionIdentifier
@@ -111,17 +113,17 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         default: return
         }
         DispatchQueue.main.async {
-            if owner == self.home { self.deliver(key: key, action: action); return }
+            if owner == self.home { self.deliver(key: key, action: action, promptId: promptId); return }
             // another fleet's banner: its instance takes the click, and the front with it, once it's really that fleet's app
             if action == "open", let pid = ArchiHome.appPid(of: owner), let app = NSRunningApplication(processIdentifier: pid),
                app.bundleIdentifier == Bundle.main.bundleIdentifier {
                 NSApp.yieldActivation(to: app)
             }
-            DistributedNotificationCenter.default().postNotificationName(Self.forward, object: owner, userInfo: ["key": key, "action": action], deliverImmediately: true)
+            DistributedNotificationCenter.default().postNotificationName(Self.forward, object: owner, userInfo: ["key": key, "action": action, "promptId": promptId], deliverImmediately: true)
         }
     }
 
-    private func deliver(key: String, action: String) {
-        if action == "open" { onOpen(key) } else { onAction(key, action) }
+    private func deliver(key: String, action: String, promptId: String) {
+        if action == "open" { onOpen(key) } else { onAction(key, action, promptId) }
     }
 }

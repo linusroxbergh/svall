@@ -43,8 +43,12 @@ export const Agent = z.object({
   contextPct: z.number().optional(),
   model: z.string().optional(),
   brief: z.string().optional(),
-  // what a blocked agent asked, from the notification that blocked it
+  // what a blocked agent asked, from the notification that blocked it, or why an API error ended its turn
   prompt: z.string().optional(),
+  // names the question a blocked agent is on, so an answer meant for an earlier one is refused
+  promptId: z.string().optional(),
+  // the turn ended with background agents still running; the agent works on until they report back
+  background: z.literal(true).optional(),
   // the newest prompt Claude Code accepted, as its UserPromptSubmit hook reported it. The transcript
   // is written after that hook, so this is what the last command reads until the entry lands.
   lastPrompt: z.object({ id: z.string(), text: z.string(), at: z.number() }).optional(),
@@ -123,6 +127,8 @@ export const Character = z.object({
   portrait: Portrait,
   instructions: z.string(),
   cwd: z.string(),
+  // the tmux pane's own path when last read; cwd moves with it only when it changes, so a restart keeps where the hooks put it
+  panePath: z.string().optional(),
   repo: Repo.optional(),
   context: z.array(ContextItem),
   tmux: z.object({ windowId: z.string(), paneId: z.string() }).optional(),

@@ -7,6 +7,7 @@ import { SPACING, isLand, landCells, sizeForCrew } from '@archipelago/protocol';
 import { Config } from '../src/config.js';
 import { docsDir } from '../src/docs.js';
 import { Dormant, Fleet, Invalid, NotFound } from '../src/fleet.js';
+import type { HookEvent } from '../src/hooks/receiver.js';
 import { aboveHome, crewGrid, placementOk } from '../src/layout.js';
 import type { Deps as LinkDeps } from '../src/links/refresh.js';
 import { silentLogger, type Logger } from '../src/log.js';
@@ -222,7 +223,7 @@ runIf('Fleet', () => {
     execFileSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'init']);
     fs.mkdirSync(path.join(repo, 'src'));
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    await waitFor(() => fleet['panePath'].has(c.id));
+    await waitFor(() => store.state.characters[c.id].panePath !== undefined);
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', cwd: path.join(repo, 'src') } });
     await waitFor(() => store.state.characters[c.id].cwd === repo);
     await waitForPolls(fleet, 2);
@@ -231,6 +232,19 @@ runIf('Fleet', () => {
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', cwd: repo } });
     await new Promise((r) => setTimeout(r, 300));
     expect(store.state.characters[c.id].cwd).toBe(repo);
+  });
+
+  it('keeps a character where it is while tmux reports no path for its pane, as under sudo', async () => {
+    const { fleet, store, tmux } = await boot();
+    fleet.stop();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    await fleet['tick']();
+    const cwd = store.state.characters[c.id].cwd;
+    expect(cwd).toBeTruthy();
+    const list = tmux.listWindows.bind(tmux);
+    vi.spyOn(tmux, 'listWindows').mockImplementation(async () => (await list()).map((w) => ({ ...w, path: '' })));
+    await fleet['tick']();
+    expect(store.state.characters[c.id].cwd).toBe(cwd);
   });
 
   it('follows a codex agent into the worktree its commands run in, and back once that worktree is gone', async () => {
@@ -242,9 +256,9 @@ runIf('Fleet', () => {
     const wt = path.join(repo, '.codex', 'worktrees', 'feat');
     git('worktree', 'add', '-q', '-b', 'feat', wt);
     fs.mkdirSync(path.join(wt, 'web'));
-    // an agent's pane runs something other than a shell, or the poll ends the agent
+    // a pane at a shell prompt loses its agent after two polls; this one must keep it
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: repo, command: 'sleep 600' });
-    await waitFor(() => fleet['panePath'].has(c.id) && store.state.characters[c.id].repo?.root === repo);
+    await waitFor(() => store.state.characters[c.id].panePath !== undefined && store.state.characters[c.id].repo?.root === repo);
     // codex tells its hooks where the session began; only the rollout says where each command ran
     const rollout = path.join(home, 'rollout.jsonl');
     const ran = (cwd: string) => fs.appendFileSync(rollout, JSON.stringify({ type: 'event_msg', payload: { type: 'item_completed', item: { type: 'CommandExecution', cwd: `file://${cwd}` } } }) + '\n');
@@ -302,8 +316,7 @@ runIf('Fleet', () => {
     expect(asked).toEqual([one]);
 
     // b moves while that sweep is still out
-    fleet['panePath'].set(b.id, '/nope');
-    store.update((d) => { d.characters[b.id].cwd = '/nope'; });
+    store.update((d) => { d.characters[b.id].cwd = '/nope'; d.characters[b.id].panePath = '/nope'; });
     await fleet['tick']();
     expect(asked).toEqual([one]);
 
@@ -564,6 +577,17 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id]).toMatchObject({ agent: { status: 'done' }, unread: true });
   });
 
+  it('leaves a question that came up while the line was sent', async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', sessionId: 'sess', ...h } });
+    hook({ name: 'SessionStart', transcriptPath: '/nope' });
+    hook({ notificationType: 'permission_prompt', message: 'may I' });
+    tmux.sendLine = async () => { hook({ notificationType: 'permission_prompt', message: 'and may I' }); };
+    await fleet.run(c.id, 'no', true);
+    expect(store.state.characters[c.id].agent).toMatchObject({ status: 'blocked', prompt: 'and may I' });
+  });
+
   it('answers a blocked agent with Enter to approve and Escape to deny', async () => {
     const { fleet, store, tmux } = await boot();
     // an agent's pane runs something other than a shell, or the poll ends the agent
@@ -577,8 +601,82 @@ runIf('Fleet', () => {
     await expect(fleet.answerPrompt(c.id, 'approve')).rejects.toThrow('not waiting');
     block();
     await fleet.answerPrompt(c.id, 'deny');
+    // Esc ends the turn, and no hook says so
+    expect(store.state.characters[c.id].agent!.status).toBe('idle');
     expect(sent.mock.calls.map(([paneId, bytes]) => [paneId, bytes.toString('utf8')]))
       .toEqual([[c.tmux!.paneId, '\r'], [c.tmux!.paneId, '\x1b']]);
+  });
+
+  it('answers only the question the answer was shown with, and leaves the agent blocked when the key does not reach it', async () => {
+    const { fleet, store, tmux } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', sessionId: 'sess', ...h } });
+    hook({ name: 'SessionStart', transcriptPath: '/nope' });
+    hook({ notificationType: 'permission_prompt', message: 'may I' });
+    const first = store.state.characters[c.id].agent!.promptId!;
+    hook({ notificationType: 'permission_prompt', message: 'and may I' });
+    const second = store.state.characters[c.id].agent!.promptId!;
+    expect(second).not.toBe(first);
+    const sent = vi.spyOn(tmux, 'sendBytes');
+    await expect(fleet.answerPrompt(c.id, 'approve', first)).rejects.toThrow('moved on');
+    expect(sent).not.toHaveBeenCalled();
+
+    sent.mockRejectedValueOnce(new Error('pane gone'));
+    await expect(fleet.answerPrompt(c.id, 'approve', second)).rejects.toThrow('pane gone');
+    expect(store.state.characters[c.id].agent).toMatchObject({ status: 'blocked', prompt: 'and may I', promptId: second });
+
+    // a second answer while the first is still being typed is refused rather than typed too
+    let typed = () => {};
+    sent.mockImplementationOnce(() => new Promise((r) => { typed = r; }));
+    const answering = fleet.answerPrompt(c.id, 'approve', second);
+    await expect(fleet.answerPrompt(c.id, 'deny', second)).rejects.toThrow('already in');
+    typed();
+    await answering;
+    expect(store.state.characters[c.id].agent).toMatchObject({ status: 'working' });
+    expect(store.state.characters[c.id].agent?.promptId).toBeUndefined();
+    expect(sent).toHaveBeenCalledTimes(2);
+  });
+
+  it('lets a hook that moved the agent on while the answer was typed stand', async () => {
+    const { fleet, store, tmux } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', sessionId: 'sess', ...h } });
+    hook({ name: 'SessionStart', transcriptPath: '/nope' });
+    hook({ notificationType: 'permission_prompt' });
+    let typed = () => {};
+    vi.spyOn(tmux, 'sendBytes').mockImplementationOnce(() => new Promise((r) => { typed = r; }));
+    const answering = fleet.answerPrompt(c.id, 'approve');
+    hook({ notificationType: 'permission_prompt', message: 'the next one' });
+    typed();
+    await answering;
+    expect(store.state.characters[c.id].agent).toMatchObject({ status: 'blocked', prompt: 'the next one' });
+  });
+
+  it('keeps an agent with background agents out working when its question is denied', async () => {
+    const { fleet, store } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', sessionId: 'sess', ...h } });
+    hook({ name: 'SessionStart', transcriptPath: '/nope' });
+    hook({ name: 'Stop', backgroundAgents: 1 });
+    hook({ notificationType: 'worker_permission_prompt' });
+    await fleet.answerPrompt(c.id, 'deny');
+    expect(store.state.characters[c.id].agent).toMatchObject({ status: 'working', background: true });
+  });
+
+  it('stands by a typed answer the fleet could not write down, and does not type it again', async () => {
+    const { fleet, store, tmux } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', sessionId: 'sess', ...h } });
+    hook({ name: 'SessionStart', transcriptPath: '/nope' });
+    hook({ notificationType: 'permission_prompt' });
+    // the write right after the key is the one that fails; the poll's and the links' go through
+    let typed = false;
+    const sent = vi.spyOn(tmux, 'sendBytes').mockImplementation(async () => { typed = true; });
+    const update = store.update.bind(store);
+    vi.spyOn(store, 'update').mockImplementation((m) => { if (!typed) return update(m); typed = false; throw new Error('disk full'); });
+    await fleet.answerPrompt(c.id, 'approve');
+    await expect(fleet.answerPrompt(c.id, 'approve')).rejects.toThrow('already in');
+    expect(sent).toHaveBeenCalledTimes(1);
   });
 
   it('recovers from a tmux server death', async () => {
@@ -892,12 +990,10 @@ runIf('Fleet', () => {
   it('forgets what it kept outside the state when a character closes', async () => {
     const { fleet } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    await waitFor(() => fleet['panePath'].has(c.id));
     fleet['hookCwd'].set(c.id, '/tmp');
     fleet['shellStreak'].set(`${c.id}-2`, 1);
     fleet['scribe']['seen'].set(c.id, { lastPassAt: 0, path: '', bytes: 0 });
     await fleet.closeCharacter(c.id);
-    expect(fleet['panePath'].has(c.id)).toBe(false);
     expect(fleet['hookCwd'].has(c.id)).toBe(false);
     expect(fleet['shellStreak'].has(`${c.id}-2`)).toBe(false);
     expect(fleet['scribe']['seen'].has(c.id)).toBe(false);

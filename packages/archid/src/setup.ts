@@ -64,12 +64,12 @@ export function unmergeHooks(settings: Record<string, unknown>, script: string):
   return out;
 }
 
-/** Whether the Claude settings run the hook and the statusline scripts of the fleet at `home`. */
+/** Whether the Claude settings run the statusline and the hook script of the fleet at `home`, for any of the events; an event added since is left to claudeHooksCurrent. */
 export function hooksInstalled(settings: Record<string, unknown>, events: readonly string[], home: string): boolean {
   const paths = resolvePaths(home);
   const hooks = (settings.hooks ?? {}) as Record<string, HookGroup[]>;
   const status = (settings.statusLine as StatusLine | undefined)?.command ?? '';
-  return status.includes(shq(paths.statusScript)) && events.every((ev) =>
+  return status.includes(shq(paths.statusScript)) && events.some((ev) =>
     (hooks[ev] ?? []).some((g) => (g.hooks ?? []).some((h) => isOurs(h.command, paths.hookScript))));
 }
 

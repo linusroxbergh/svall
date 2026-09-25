@@ -120,6 +120,19 @@ describe('pusher', () => {
     ]);
   });
 
+  it('names the question it tells of, tells of the next one too, and says why an API error ended a turn', async () => {
+    const { store, sent } = setup();
+    store.update((d) => { d.characters.c.agent = { ...agent('blocked', 'Bash?')!, promptId: 'q1' }; });
+    store.update((d) => { d.characters.c.agent = { ...agent('blocked', 'Write?')!, promptId: 'q2' }; });
+    store.update((d) => { d.characters.c.agent = agent('done', 'API Error: 529 Overloaded'); d.characters.c.unread = true; });
+    await tick();
+    expect(sent).toEqual([
+      { endpoint: 'https://push.example/a', payload: { id: 'c', name: 'otter', status: 'blocked', prompt: 'Bash?', promptId: 'q1' } },
+      { endpoint: 'https://push.example/a', payload: { id: 'c', name: 'otter', status: 'blocked', prompt: 'Write?', promptId: 'q2' } },
+      { endpoint: 'https://push.example/b', payload: { id: 'c', name: 'otter', status: 'done', prompt: 'API Error: 529 Overloaded' } },
+    ]);
+  });
+
   it('tells a device about the second terminal turning blocked, under the character and marked as its own session', async () => {
     const { store, sent } = setup();
     store.update((d) => { d.characters.c.second = { tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: agent('blocked', 'Write?') }; });

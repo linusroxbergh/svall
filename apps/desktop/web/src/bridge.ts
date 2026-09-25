@@ -36,7 +36,7 @@ export type ToShell =
   | { type: 'openConfig'; which: 'ghostty' | 'fleet' }
   | { type: 'zoom'; factor: number; fontDelta: number }
   // a banner in Notification Center; a new one for the same session key replaces the last
-  | { type: 'notify.post'; key: string; title: string; subtitle: string; body: string; sound: boolean; actions: boolean }
+  | { type: 'notify.post'; key: string; title: string; subtitle: string; body: string; sound: boolean; actions: boolean; promptId?: string }
   | { type: 'notify.remove'; key: string }
   | { type: 'notify.enable' }
   | { type: 'notify.settings' }
@@ -63,9 +63,9 @@ export type FromShell =
   | { type: 'drag.exit' }
   | { type: 'drag.drop'; paths: string[]; x: number; y: number }
   | { type: 'notify.permission'; state: NotifyPermission }
-  // a banner was clicked, or answered from its buttons
+  // a banner was clicked, or answered from its buttons; promptId is the question it showed, empty when it named none
   | { type: 'notify.open'; key: string }
-  | { type: 'notify.action'; key: string; action: 'approve' | 'deny' };
+  | { type: 'notify.action'; key: string; action: 'approve' | 'deny'; promptId?: string };
 
 type Handler = (msg: FromShell) => void;
 type Port = { postMessage(json: string): void };

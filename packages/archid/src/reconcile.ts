@@ -87,8 +87,14 @@ export function reconcile(
       else if (hadSecond.has(c.id)) delete c.second;
       const w = byName.get(c.id);
       if (w) {
+        const samePane = c.tmux?.paneId === w.paneId;
         c.tmux = { windowId: w.windowId, paneId: w.paneId };
-        c.cwd = w.path;
+        // as in the poll: only a pane that moved moves the character, and an empty path is tmux not knowing.
+        // A pane the character had all along with no path on record has not moved, so its cwd stays
+        if (w.path && c.panePath !== w.path) {
+          if (c.panePath !== undefined || !samePane) c.cwd = w.path;
+          c.panePath = w.path;
+        }
         c.shell.lastOutputAt = w.activity;
         delete c.revive;
       } else if (known.has(c.id)) {

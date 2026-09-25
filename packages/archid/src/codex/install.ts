@@ -18,10 +18,10 @@ type Group = { matcher?: string; hooks?: Entry[] };
 // codex trusts a hook by the hash of its definition, so the command names no node path that an upgrade would move
 export const codexHookCommand = (script: string): string => `[ -z "$ARCHI_CHAR_ID" ] || { node ${shq(script)} codex "$PPID"; }`;
 
-// SessionEnd is capped at 3 s. The two events the daemon answers carry the whole brief, which codex
+// SessionEnd and Interrupt are capped at 3 s. The two events the daemon answers carry the whole brief, which codex
 // would otherwise cut to a preview past its spill threshold
 const entryFor = (ev: string, command: string): Entry => ({
-  type: 'command', command, timeout: ev === 'SessionEnd' ? 3 : 10,
+  type: 'command', command, timeout: ev === 'SessionEnd' || ev === 'Interrupt' ? 3 : 10,
   ...(ev === 'SessionStart' || ev === 'UserPromptSubmit' ? { additionalContextLimit: 0 } : {}),
 });
 
@@ -38,7 +38,8 @@ export function mergeCodexHooks(current: Record<string, unknown>, command: strin
   return out;
 }
 
+// any of the events will do; an event added since is left to the out-of-date check
 export function codexInstalled(current: Record<string, unknown>, script: string): boolean {
   const hooks = (current.hooks ?? {}) as Record<string, Group[]>;
-  return CODEX_HOOKS.every((ev) => (hooks[ev] ?? []).some((g) => (g.hooks ?? []).some((h) => isOurs(h.command, script))));
+  return CODEX_HOOKS.some((ev) => (hooks[ev] ?? []).some((g) => (g.hooks ?? []).some((h) => isOurs(h.command, script))));
 }

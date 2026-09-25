@@ -50,6 +50,11 @@ describe('resolveRepo', () => {
   it('returns undefined outside a repo', async () => {
     expect(await resolveRepo('/')).toBeUndefined();
   });
+  it('reads a repo with no commits yet, on the branch it will make', async () => {
+    const dir = path.join(makeHome(), 'fresh');
+    execFileSync('git', ['init', '-q', '-b', 'trunk', dir]);
+    expect(await resolveRepo(dir)).toMatchObject({ branch: 'trunk', isWorktree: false });
+  });
 });
 
 describe('webUrl', () => {

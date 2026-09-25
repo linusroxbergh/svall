@@ -37,9 +37,11 @@ export async function isTop(root: string): Promise<boolean> {
   return r.code === 0 && fs.realpathSync(r.stdout.toString().trim()) === fs.realpathSync(root);
 }
 
+// HEAD names a branch before it has a commit, which rev-parse cannot resolve; a detached one names none
 export async function branchOf(root: string): Promise<string | undefined> {
-  const r = await git(['rev-parse', '--abbrev-ref', 'HEAD'], root);
-  return r.code === 0 ? r.stdout.toString().trim() : undefined;
+  const r = await git(['symbolic-ref', '-q', '--short', 'HEAD'], root);
+  if (r.code === 0) return r.stdout.toString().trim();
+  return r.code === 1 ? 'HEAD' : undefined;
 }
 
 // origin's HEAD when the clone knows it, else a local main or master

@@ -57,7 +57,6 @@ export class Fleet extends EventEmitter<Events> {
   private ticks = 0;
   private shellStreak = new Map<string, number>();
   private codexStreak = new Map<string, number>();
-  private panePath = new Map<string, string>();
   private hookCwd = new Map<string, string>();
   private rolloutMark = new Map<string, RolloutMark>();
   private reviving = new Map<string, Promise<Character>>();
@@ -66,6 +65,9 @@ export class Fleet extends EventEmitter<Events> {
   private sweeping = false;
   private pendingLinks = new Set<string>();
   private openingSecond = new Map<string, Promise<Character>>();
+  // the question each character's answer is being typed for, kept when the fleet could not be written after it,
+  // so a second answer to it is refused rather than typed too
+  private answering = new Map<string, string | undefined>();
   // tmux stops reading a pane's pty once every client has it off, which freezes the pane;
   // output is filtered here instead.
   private streaming = new Set<string>();
@@ -257,7 +259,6 @@ export class Fleet extends EventEmitter<Events> {
     const live = await this.deps.tmux.listWindows();
     const byName = new Map(live.map((w) => [w.name, w]));
     const cwdChanged: string[] = [];
-    const panePaths = new Map<string, string>();
     // an agent whose pane is back at a shell prompt for two polls has ended without a SessionEnd
     const settleAgent = (key: string, slot: { agent?: Agent }, command: string) => {
       if (slot.agent && isShellCommand(command)) {
@@ -284,9 +285,10 @@ export class Fleet extends EventEmitter<Events> {
         }
         // a live window for a dormant character means the dormancy was spurious: re-attach.
         if (!c.tmux) { c.tmux = { windowId: w.windowId, paneId: w.paneId }; delete c.revive; }
-        // the pane's path moves only when the agent process itself changes directory; between moves the hooks may have placed it
-        if (this.panePath.get(c.id) !== w.path) {
-          panePaths.set(c.id, w.path);
+        // the pane's path moves only when the agent process itself changes directory; between moves the hooks may have placed it.
+        // tmux reports no path while a setuid program such as sudo runs in the pane
+        if (w.path && c.panePath !== w.path) {
+          c.panePath = w.path;
           if (c.cwd !== w.path) { c.cwd = w.path; cwdChanged.push(c.id); }
         }
         c.shell.lastOutputAt = w.activity;
@@ -302,8 +304,6 @@ export class Fleet extends EventEmitter<Events> {
         }
       }
     });
-    // taken once the fleet is written, so a write that fails leaves the move for the next poll
-    for (const [id, p] of panePaths) this.panePath.set(id, p);
     this.ticks++;
     // the fleet's links are looked at a slice per tick, so the whole crew never spawns git and gh in the same breath
     const awake = Object.values(this.deps.store.state.characters).filter((c) => c.tmux).map((c) => c.id);
@@ -527,7 +527,7 @@ export class Fleet extends EventEmitter<Events> {
     if (c.tmux) await this.deps.tmux.killWindow(c.tmux.windowId);
     if (c.second) await this.deps.tmux.killWindow(c.second.tmux.windowId);
     // nothing the daemon keeps outside the state outlives the character
-    for (const m of [this.shellStreak, this.codexStreak, this.panePath, this.hookCwd, this.rolloutMark]) m.delete(id);
+    for (const m of [this.shellStreak, this.codexStreak, this.hookCwd, this.rolloutMark, this.answering]) m.delete(id);
     this.shellStreak.delete(secondName(id));
     this.scribe.forget(id);
     removeDocs(this.deps.paths.docs, 'character', id, this.deps.log);
@@ -566,7 +566,7 @@ export class Fleet extends EventEmitter<Events> {
       cur.tmux = { windowId: w.windowId, paneId: w.paneId };
       delete cur.revive;
       // a resumed session keeps its old agent record; its stale status must not answer the next wait.
-      if (cur.agent) { cur.agent.status = 'idle'; delete cur.agent.prompt; cur.unread = false; }
+      if (cur.agent) { cur.agent.status = 'idle'; delete cur.agent.prompt; delete cur.agent.promptId; delete cur.agent.background; cur.unread = false; }
     });
     if (command) await this.deps.tmux.sendLine(w.paneId, command, true);
     return this.char(id);
@@ -628,30 +628,50 @@ export class Fleet extends EventEmitter<Events> {
   async run(id: string, text: string, enter: boolean, term?: 2): Promise<void> {
     const t = this.terminal(id, term);
     const before = t.agent?.status;
+    const asked = t.agent?.promptId;
     await this.deps.tmux.sendLine(t.tmux.paneId, text, enter);
     // a submitted prompt makes the agent busy right away; the UserPromptSubmit hook only confirms it.
-    // If a hook already moved the status while the send was in flight, that transition wins, unread included.
+    // If a hook already moved the status, or put a new question, while the send was in flight, that wins, unread included.
     if (enter && t.agent) {
       this.deps.store.update((d) => {
         const slot = term === 2 ? d.characters[id]?.second : d.characters[id];
         const a = slot?.agent;
-        if (!slot || !a || a.status !== before) return;
+        if (!slot || !a || a.status !== before || a.promptId !== asked) return;
         a.status = 'working';
         delete a.prompt;
+        delete a.promptId;
+        delete a.background;
         slot.unread = false;
       });
     }
   }
 
-  async answerPrompt(id: string, answer: 'approve' | 'deny'): Promise<void> {
+  async answerPrompt(id: string, answer: 'approve' | 'deny', promptId?: string): Promise<void> {
     const c = this.live(id);
+    const asked = c.agent?.promptId;
     if (c.agent?.status !== 'blocked') throw new Invalid(`${c.name} is not waiting on an answer`);
-    // the answer counts as given before the byte lands, so a second one is refused rather than typed too
-    this.deps.store.update((d) => {
-      const a = d.characters[id]?.agent;
-      if (a?.status === 'blocked') { a.status = 'working'; delete a.prompt; }
-    });
-    await this.deps.tmux.sendBytes(c.tmux.paneId, Buffer.from(answer === 'approve' ? '\r' : '\x1b'));
+    if (promptId !== undefined && promptId !== asked) throw new Invalid(`${c.name} has moved on from that question`);
+    if (this.answering.has(id) && this.answering.get(id) === asked) throw new Invalid(`${c.name}'s answer is already in`);
+    this.answering.set(id, asked);
+    // an answer to a newer question may have been typed meanwhile; its hold stays
+    const release = () => { if (this.answering.get(id) === asked) this.answering.delete(id); };
+    try { await this.deps.tmux.sendBytes(c.tmux.paneId, Buffer.from(answer === 'approve' ? '\r' : '\x1b')); }
+    catch (e) { release(); throw e; }
+    // Claude Code fires no hook when Esc ends the turn, though Esc on a question asked while background agents
+    // run ends no turn; a hook that moved the agent on while the key was sent wins
+    try {
+      this.deps.store.update((d) => {
+        const a = d.characters[id]?.agent;
+        if (a?.status !== 'blocked' || a.promptId !== asked) return;
+        a.status = answer === 'approve' || a.background ? 'working' : 'idle';
+        delete a.prompt;
+        delete a.promptId;
+      });
+      release();
+    } catch (e) {
+      // the key is in, so the answer stands
+      this.deps.log.error(`answer for ${id} was typed, but not written down: ${String(e)}`);
+    }
   }
 
   async readScreen(id: string, lines: number, term?: 2): Promise<string> {

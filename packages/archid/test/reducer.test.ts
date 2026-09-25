@@ -52,7 +52,39 @@ describe('applyHook', () => {
     expect(applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'worker_permission_prompt' }, 1).agent?.status).toBe('blocked');
     expect(applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'elicitation_dialog' }, 1).agent?.status).toBe('blocked');
     expect(applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'elicitation_url_dialog' }, 1).agent?.status).toBe('blocked');
-    expect(applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'idle_prompt' }, 1).agent?.status).toBe('working');
+    expect(applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'auth_success' }, 1).agent?.status).toBe('working');
+  });
+  it('gives each blocking question an id of its own, and drops it once the agent moves on', () => {
+    const ask = (c: Character) => applyHook(c, { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'permission_prompt' }, 1);
+    const one = ask(withAgent('working'));
+    const two = ask(one);
+    expect(one.agent?.promptId).toEqual(expect.any(String));
+    expect(two.agent?.promptId).toEqual(expect.any(String));
+    expect(two.agent?.promptId).not.toBe(one.agent?.promptId);
+    expect(applyHook(two, { charId: 'c_a', backend: 'claude', name: 'PreToolUse' }, 2).agent?.promptId).toBeUndefined();
+  });
+  it('is done, saying why, when an API error ends the turn', () => {
+    const d = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'StopFailure', message: "You've hit your limit" }, 8);
+    expect(d.agent).toMatchObject({ status: 'done', prompt: "You've hit your limit" });
+    expect(d.unread).toBe(true);
+    expect(applyHook(d, { charId: 'c_a', backend: 'claude', name: 'UserPromptSubmit' }, 9).agent?.prompt).toBeUndefined();
+  });
+  it('goes idle when Claude Code says it sits at its prompt, as after an Esc, but keeps a done unseen', () => {
+    const idle = (c: Character) => applyHook(c, { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'idle_prompt' }, 1).agent?.status;
+    expect(idle(withAgent('working'))).toBe('idle');
+    expect(idle(withAgent('blocked'))).toBe('idle');
+    expect(idle(withAgent('done'))).toBe('done');
+    // the turn ended with background agents out; Claude Code's notice does not count them
+    const waiting = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Stop', backgroundAgents: 1 }, 2);
+    expect(idle(waiting)).toBe('working');
+    // a question put while they run and dismissed in the terminal is gone, and the work goes on
+    const asked = applyHook(waiting, { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'worker_permission_prompt', message: 'may I' }, 3);
+    const dismissed = applyHook(asked, { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'idle_prompt' }, 4);
+    expect(dismissed.agent).toMatchObject({ status: 'working', background: true });
+    expect(dismissed.agent?.prompt).toBeUndefined();
+    expect(dismissed.agent?.promptId).toBeUndefined();
+    const reported = applyHook(waiting, { charId: 'c_a', backend: 'claude', name: 'UserPromptSubmit' }, 3);
+    expect(idle(reported)).toBe('idle');
   });
   it('follows the transcript when the session moves it (entering a worktree)', () => {
     const moved = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'PreToolUse', sessionId: 's', transcriptPath: '/wt/t' }, 2);
@@ -107,6 +139,13 @@ describe('applyHook for codex', () => {
     const done = applyHook(working, ev({ name: 'Stop' }), 400);
     expect(done.agent?.status).toBe('done');
     expect(done.unread).toBe(true);
+  });
+  it('is idle once an Esc ends the turn', () => {
+    const blocked = applyHook(started(), ev({ name: 'PermissionRequest', message: 'remove the build folder' }), 200);
+    const c = applyHook(blocked, ev({ name: 'Interrupt' }), 300);
+    expect(c.agent).toMatchObject({ status: 'idle' });
+    expect(c.agent?.prompt).toBeUndefined();
+    expect(c.agent?.promptId).toBeUndefined();
   });
   it('is working again once the approved tool has run', () => {
     const blocked = applyHook(started(), ev({ name: 'PermissionRequest', message: 'remove the build folder' }), 200);

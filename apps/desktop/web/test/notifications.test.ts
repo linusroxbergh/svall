@@ -35,6 +35,11 @@ describe('decide', () => {
     expect(d.post).toEqual([{ key: 'c1', title: 'c1 is done', subtitle: 'beta', body: '', sound: true, actions: false }]);
   });
 
+  it('says in a done banner why an API error ended the turn', () => {
+    const failed = patch(fleet(), 'c1', { agent: agent('done', 'API Error: 529 Overloaded'), unread: true });
+    expect(decide(look(working), look(failed), new Map()).post[0]!.body).toBe('API Error: 529 Overloaded');
+  });
+
   it('carries the sound switch', () => {
     expect(decide(look(working), look(blocked, { settings: { ...ON, sound: false } }), new Map()).post[0]!.sound).toBe(false);
   });
@@ -127,7 +132,7 @@ describe('followNotifications', () => {
       emit: (m: FromShell) => { for (const h of handlers) h(m); },
     };
   };
-  const answering = (call: () => Promise<unknown>) => ({ call: vi.fn(call) }) as unknown as Api;
+  const answering = (call: (method: string, params: unknown) => Promise<unknown>) => ({ call: vi.fn(call) }) as unknown as Api;
   // no api is archid not connected yet
   const setup = (o: { api?: Api } = { api: answering(() => Promise.resolve({})) }) => {
     const store = createAppStore();
@@ -166,8 +171,26 @@ describe('followNotifications', () => {
   it('answers from the banner', async () => {
     const api = answering(() => Promise.resolve({}));
     const { bridge } = setup({ api });
-    bridge.emit({ type: 'notify.action', key: 'c1', action: 'approve' });
+    // the shell sends an empty promptId for a banner that named no question
+    bridge.emit({ type: 'notify.action', key: 'c1', action: 'approve', promptId: '' });
     await vi.waitFor(() => expect(api.call).toHaveBeenCalledWith('char.answer', { id: 'c1', answer: 'approve' }));
+  });
+
+  it('puts a new question up in place of the last, and answers each banner for the question it showed', async () => {
+    const api = answering((_m, p) => ((p as { promptId?: string }).promptId === 'q2' ? Promise.resolve({}) : Promise.reject(new Error('moved on'))));
+    const { store, bridge } = setup({ api });
+    const asking = (promptId: string, prompt: string) => patch(fleet(), 'c1', { agent: { ...agent('blocked', prompt), promptId } });
+    store.getState().setFleet(asking('q1', 'Bash: rm -rf dist'));
+    store.getState().setFleet(asking('q2', 'Write: .env'));
+    const posts = () => bridge.sent.filter((m) => m.type === 'notify.post') as Extract<ToShell, { type: 'notify.post' }>[];
+    expect(posts().map((m) => [m.body, m.promptId])).toEqual([['Bash: rm -rf dist', 'q1'], ['Write: .env', 'q2']]);
+    // the first banner's answer comes back refused, and the second question's banner stays up
+    bridge.emit({ type: 'notify.action', key: 'c1', action: 'approve', promptId: 'q1' });
+    bridge.emit({ type: 'notify.action', key: 'c1', action: 'approve', promptId: 'q2' });
+    await vi.waitFor(() => expect(api.call).toHaveBeenCalledWith('char.answer', { id: 'c1', answer: 'approve', promptId: 'q2' }));
+    expect(api.call).toHaveBeenCalledWith('char.answer', { id: 'c1', answer: 'approve', promptId: 'q1' });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(posts()).toHaveLength(2);
   });
 
   it('says so when the answer did not reach the daemon', async () => {

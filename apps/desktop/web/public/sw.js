@@ -5,7 +5,7 @@ self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 // a notification replaces only the one before it from the same session, so two terminals do not hide each other
 const tagOf = (p) => (p.term ? `${p.id}-${p.term}` : p.id);
 
-// the daemon sends { id, name, status, term?, prompt? }; iOS shows no action buttons, the page has its own
+// the daemon sends { id, name, status, term?, prompt?, promptId? }; iOS shows no action buttons, the page has its own
 self.addEventListener('push', (e) => {
   let p = {};
   try { p = e.data ? e.data.json() : {}; } catch { /* not ours */ }
@@ -30,14 +30,15 @@ self.addEventListener('notificationclick', (e) => {
     e.waitUntil(fetch('/rpc', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ id: 1, method: 'char.answer', params: { id, answer: e.action } }),
+      body: JSON.stringify({ id: 1, method: 'char.answer', params: { id, answer: e.action, promptId: e.notification.data.promptId } }),
     }).then((r) => r.json().catch(() => ({})).then((b) => {
       // the daemon reports a refused answer as a JSON-RPC error inside a 200
       if (!r.ok) throw new Error(String(r.status));
       if (b && b.error) throw new Error(b.error.code || 'error');
     })).catch(() => self.registration.showNotification(
       `${(e.notification.data && e.notification.data.name) || 'Agent'}: answer didn't send`,
-      { tag: tagOf(e.notification.data), data: e.notification.data },
+      // a tag of its own, so it never covers a newer question's notification
+      { tag: `${tagOf(e.notification.data)}-failed`, data: e.notification.data },
     )));
     return;
   }

@@ -43,10 +43,15 @@ describe('normalizeHook', () => {
   it('still drops every claude subagent event', () => {
     expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'PreToolUse', agent_id: 'a1' } })).toBeUndefined();
     expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Stop', agent_id: 'a1' } })).toBeUndefined();
+    expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'StopFailure', agent_id: 'a1' } })).toBeUndefined();
   });
   it('knows no event a backend does not send', () => {
     expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'Notification' } })).toBeUndefined();
     expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'PermissionRequest' } })).toBeUndefined();
+    expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Interrupt' } })).toBeUndefined();
+    expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'StopFailure' } })).toBeUndefined();
+    expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'StopFailure', message: 'x' } })).toMatchObject({ name: 'StopFailure', message: 'x' });
+    expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'Interrupt', session_id: SID } })).toMatchObject({ name: 'Interrupt', sessionId: SID });
   });
   it('drops a session id that is not a UUID', () => {
     expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'SessionStart', session_id: 'x; rm -rf ~' } })?.sessionId).toBeUndefined();
@@ -254,6 +259,39 @@ describe('hook receiver and script', () => {
     await r.close();
   });
 
+  it("says why an API error ended a claude turn, from the text Claude Code showed or else the error's name", async () => {
+    const home = makeHome();
+    const events: SocketEvent[] = [];
+    const r = await startHookReceiver(path.join(home, 'hooks.sock'), (e) => { events.push(e); }, silentLogger);
+    for (const hook of [
+      { hook_event_name: 'StopFailure', session_id: SID, error: 'rate_limit', last_assistant_message: "You've hit your limit · resets 5pm" },
+      { hook_event_name: 'StopFailure', session_id: SID, error: 'overloaded' },
+    ]) {
+      await new Promise<void>((resolve, reject) => {
+        const p = execFile('node', [script], { env: { ...process.env, ARCHI_HOME: home, ARCHI_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+        p.stdin!.end(JSON.stringify(hook));
+      });
+    }
+    await waitFor(() => events.length === 2);
+    expect(events.map((e) => ('hook' in e ? e.hook.message : undefined))).toEqual(["You've hit your limit · resets 5pm", 'overloaded']);
+    await r.close();
+  });
+
+  it('holds an event for a daemon that is restarting, and hands it over once the socket is back', async () => {
+    const home = makeHome();
+    const events: SocketEvent[] = [];
+    const ran = new Promise<void>((resolve, reject) => {
+      const p = execFile('node', [script], { env: { ...process.env, ARCHI_HOME: home, ARCHI_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+      p.stdin!.end(JSON.stringify({ hook_event_name: 'Stop', session_id: SID }));
+    });
+    await new Promise((res) => setTimeout(res, 600));
+    const r = await startHookReceiver(path.join(home, 'hooks.sock'), (e) => { events.push(e); }, silentLogger);
+    await ran;
+    await waitFor(() => events.length === 1);
+    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'claude', name: 'Stop', sessionId: SID } });
+    await r.close();
+  });
+
   // an unclipped paste would run past the receiver's line limit, which drops the whole event
   it('clips a huge pasted prompt to a line the receiver still takes', async () => {
     const home = makeHome();
@@ -268,16 +306,40 @@ describe('hook receiver and script', () => {
     await r.close();
   });
 
-  it('script exits 0 without a char id or without a socket', async () => {
+  it('script exits 0 without a char id or without a socket, giving up on the socket within a few seconds', async () => {
     const home = makeHome();
     for (const env of [{ ARCHI_HOME: home }, { ARCHI_HOME: home, ARCHI_CHAR_ID: 'c_1' }]) {
+      const t0 = Date.now();
       const code = await new Promise<number | null>((resolve) => {
         const p = execFile('node', [script], { env: { ...process.env, ...env } }, () => {});
         p.on('exit', resolve);
         p.stdin!.end('{}');
       });
       expect(code).toBe(0);
+      expect(Date.now() - t0).toBeLessThan(3500);
     }
+    expect(fs.existsSync(path.join(home, 'hooks.down'))).toBe(true);
+  });
+
+  it('gives up at once for a minute after an event gave up on the socket, so a daemon that stays down holds up one hook', async () => {
+    const home = makeHome();
+    fs.writeFileSync(path.join(home, 'hooks.down'), '');
+    const t0 = Date.now();
+    await new Promise<void>((resolve) => {
+      const p = execFile('node', [script], { env: { ...process.env, ARCHI_HOME: home, ARCHI_CHAR_ID: 'c_1' } }, () => resolve());
+      p.stdin!.end(JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: SID }));
+    });
+    expect(Date.now() - t0).toBeLessThan(1500);
+  });
+
+  it('gives a tool call up at once without a socket, as the next one says the same', async () => {
+    const home = makeHome();
+    const t0 = Date.now();
+    await new Promise<void>((resolve) => {
+      const p = execFile('node', [script], { env: { ...process.env, ARCHI_HOME: home, ARCHI_CHAR_ID: 'c_1' } }, () => resolve());
+      p.stdin!.end(JSON.stringify({ hook_event_name: 'PreToolUse', session_id: SID }));
+    });
+    expect(Date.now() - t0).toBeLessThan(1500);
   });
 
   it('reports the context window and passes the wrapped statusline through', async () => {

@@ -320,12 +320,18 @@ describe('Workspace git', () => {
     expect((await ws.status('c', 'main')).files).toEqual([{ path: 'x', status: 'M' }]);
   });
 
+  it('names a detached HEAD as HEAD', async () => {
+    const dir = branched();
+    sh(dir, 'checkout', '-q', '--detach');
+    expect((await workspace({ c: dir }).status('c', 'head')).branch).toBe('HEAD');
+  });
+
   it('shows everything as untracked before the first commit', async () => {
     const dir = makeHome();
     sh(dir, 'init', '-q', '-b', 'main');
     fs.writeFileSync(path.join(dir, 'x'), 'x\n');
     const ws = workspace({ c: dir });
-    expect((await ws.status('c', 'head')).files).toEqual([{ path: 'x', status: '?' }]);
+    expect(await ws.status('c', 'head')).toEqual({ branch: 'main', files: [{ path: 'x', status: '?' }] });
   });
 
   it('gives both sides of a file: modified, added, deleted, renamed, untracked, binary', async () => {
