@@ -48,6 +48,14 @@ now `ledger/`, and `docs/superpowers/{specs,plans}/…fleet-handover…` is now 
 - **The daemon lock on Linux.** Main's single-daemon lock uses a macOS-only flag, so on the Linux
   gateway it does not stop a second daemon for the same fleet. That is a fencing gap on exactly the
   machine handover targets.
+- **Entity docs do not travel.** Main's fleet, island, character and repo docs live under the fleet
+  home (`paths.ts`, from #108). The handover inventory treats the fleet home as machine-local, so a
+  moved fleet arrives without its docs, and no preflight warning says so. Repo docs are also keyed by
+  a hash of the absolute repo path (`docs.ts`), so the path-root mapping must re-key them. Carry and
+  re-key them, or at least warn at preflight, before the flag goes on.
+- **`agent.pid` travels with the snapshot.** It came in with main's live-pid session guard. On the
+  destination, a stale pid that happens to be alive can make the reducer ignore a new session. Strip
+  `agent.pid` and `second.agent.pid` in `exportSnapshot` (`portable-path.ts`).
 - **A smoke run on the rebased build.** The on-machine passes ran before the squash onto main, which
   ported the branch to zod 4, TS 7 and Node 24. Run one Mac→Linux→Mac round trip before building
   further.
