@@ -41,12 +41,13 @@ clients.
 
 ## Quickstart
 
-Archipelago builds from source on macOS 15 or newer. The first install is slow:
-Xcode is a large download, and the terminal engine takes several minutes to
-build the first time.
+Archipelago builds from source on macOS 15.6 or newer with Xcode 26 or newer.
+The first install is slow: Xcode is a large download, and the terminal engine
+takes several minutes to build the first time.
 
-1. Install Xcode from the App Store (the command line tools alone are not
-   enough). Open it once to accept its license, then run:
+1. Install Xcode from the App Store, or update it there to the latest version
+   (the command line tools alone are not enough). Open it once to accept its
+   license, then run:
 
        xcodebuild -downloadComponent MetalToolchain
 
