@@ -1,0 +1,68 @@
+#!/bin/sh
+# Apple libtool (cctools_ld-1267) silently drops archive members that are not
+# 8-byte aligned instead of erroring, so explode every input .a into loose
+# .o files first (libtool keeps everything given loose objects).
+set -eu
+
+REAL=""
+if command -v xcrun >/dev/null 2>&1; then
+  REAL="$(xcrun -f libtool 2>/dev/null || true)"
+fi
+if [ -z "$REAL" ]; then
+  SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+  OLD_IFS=$IFS; IFS=:
+  for d in $PATH; do
+    IFS=$OLD_IFS
+    [ "$d" = "$SELF_DIR" ] && continue
+    [ -x "$d/libtool" ] || continue
+    REAL="$d/libtool"
+    break
+  done
+  IFS=$OLD_IFS
+fi
+[ -n "$REAL" ] || { echo "ghostty-libtool-shim: real libtool not found" >&2; exit 1; }
+
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+ARGLIST="$WORK/args"
+: > "$ARGLIST"
+
+n=0
+prev_was_o=0
+for a in "$@"; do
+  if [ "$prev_was_o" = 1 ]; then
+    printf '%s\n' "$a" >> "$ARGLIST"
+    prev_was_o=0
+    continue
+  fi
+  case "$a" in
+    -o)
+      printf '%s\n' "$a" >> "$ARGLIST"
+      prev_was_o=1
+      ;;
+    *.a)
+      n=$((n+1))
+      d="$WORK/in$n"; mkdir -p "$d"
+      case "$a" in /*) abs="$a";; *) abs="$PWD/$a";; esac
+      (cd "$d" && ar x "$abs")
+      for o in "$d"/*.o; do
+        [ -e "$o" ] || continue
+        chmod 644 "$o"
+        printf '%s\n' "$o" >> "$ARGLIST"
+      done
+      ;;
+    *)
+      printf '%s\n' "$a" >> "$ARGLIST"
+      ;;
+  esac
+done
+
+OLD_IFS=$IFS
+IFS='
+'
+set -f
+set -- $(cat "$ARGLIST")
+set +f
+IFS=$OLD_IFS
+
+exec "$REAL" "$@"

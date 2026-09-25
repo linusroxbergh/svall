@@ -1,0 +1,64 @@
+import fs from 'node:fs';
+import jsonpatch, { type Operation } from 'fast-json-patch';
+import { FleetState, NewerStateVersion, OlderStateVersion, emptyState, migrateState } from '@archipelago/protocol';
+import { readJsonOrQuarantine, writeJsonAtomic } from './jsonfile.js';
+import { sinkHome } from './layout.js';
+
+type Listener = (ops: Operation[]) => void;
+
+export class Store {
+  private listeners = new Set<Listener>();
+
+  private constructor(private file: string, private current: FleetState, private log: (msg: string) => void) {}
+
+  static load(file: string, log: (msg: string) => void): Store {
+    const read = readJsonOrQuarantine(file, log,
+      (raw) => ({ raw, ...migrateState(raw) }),
+      (e) => e instanceof NewerStateVersion || e instanceof OlderStateVersion);
+    if (!read) return new Store(file, emptyState(), log);
+    const store = new Store(file, read.state, log);
+    if (read.dropped.length) {
+      const kept = `${file}.broken-${Date.now()}`;
+      fs.copyFileSync(file, kept);
+      log(`state.json: left out ${read.dropped.join('; ')}; the file as read is kept at ${kept}`);
+    }
+    if (read.migrated) {
+      // the file as it was read stays beside the migrated one, so a downgrade has something to go back to
+      const old = (read.raw as { version?: number } | null)?.version;
+      const kept = `${file}.v${old}-${Date.now()}`;
+      fs.copyFileSync(file, kept);
+      log(`state.json migrated to version ${read.state.version}; version ${old} kept at ${kept}`);
+    }
+    if (read.migrated || read.dropped.length) store.persist();
+    return store;
+  }
+
+  get state(): FleetState {
+    return this.current;
+  }
+
+  update(mutate: (draft: FleetState) => void): Operation[] {
+    const next = structuredClone(this.current);
+    mutate(next);
+    // the one shape rule the map depends on, kept wherever the fleet changes: mission control is its floor
+    sinkHome(next);
+    const ops = jsonpatch.compare(this.current, next);
+    if (ops.length === 0) return ops;
+    // written before it is taken: a write that fails leaves the fleet as every listener last saw it
+    writeJsonAtomic(this.file, next);
+    this.current = next;
+    for (const l of this.listeners) {
+      try { l(ops); } catch (err) { this.log(`store listener failed: ${String(err)}`); }
+    }
+    return ops;
+  }
+
+  subscribe(fn: Listener): () => void {
+    this.listeners.add(fn);
+    return () => { this.listeners.delete(fn); };
+  }
+
+  private persist(): void {
+    writeJsonAtomic(this.file, this.current);
+  }
+}

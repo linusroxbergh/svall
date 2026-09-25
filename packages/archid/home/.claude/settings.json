@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(archi status:*)",
+      "Bash(archi char list:*)",
+      "Bash(archi char read:*)",
+      "Bash(archi char show:*)",
+      "Bash(archi char wait:*)",
+      "Bash(archi char move:*)",
+      "Bash(archi char update:*)",
+      "Bash(archi island list:*)",
+      "Bash(archi island show:*)",
+      "Bash(archi island create:*)",
+      "Bash(archi island update:*)",
+      "Bash(archi island arrange:*)",
+      "Bash(archi scribe sweep:*)"
+    ]
+  }
+}

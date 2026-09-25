@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>com.archipelago.desktop</string>
+  <key>CFBundleName</key><string>Archipelago</string>
+  <key>CFBundleDisplayName</key><string>Archipelago</string>
+  <key>CFBundleExecutable</key><string>Archipelago</string>
+  <key>CFBundleIconFile</key><string>Archipelago</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>0.1.0</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>LSMinimumSystemVersion</key><string>15.0</string>
+  <key>NSPrincipalClass</key><string>NSApplication</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
+  <key>NSCameraUsageDescription</key><string>A site open in a character's browser is asking to use the camera.</string>
+  <key>NSMicrophoneUsageDescription</key><string>A site open in a character's browser is asking to use the microphone.</string>
+</dict>
+</plist>

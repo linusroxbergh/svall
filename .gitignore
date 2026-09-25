@@ -1,0 +1,15 @@
+.DS_Store
+node_modules/
+*.tsbuildinfo
+.superpowers/
+apps/desktop/web/dist/
+apps/desktop/web/dist-mobile/
+apps/desktop/web/test-results/
+apps/desktop/web/playwright-report/
+apps/desktop/mac/.build/
+apps/desktop/mac/build/
+apps/desktop/mac/GhosttyKit.xcframework
+__pycache__/
+
+docs/superpowers/
+docs/explorations/
