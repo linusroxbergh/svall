@@ -11,7 +11,7 @@ import { Store } from '../src/store.js';
 import { TerminalHub, type Viewer } from '../src/terminals.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { Tmux } from '../src/tmux/tmux.js';
-import { cleanHomes, ghosttyTermEnv, hasTmux, makeHome, waitFor } from './helpers.js';
+import { cleanHomes, ghosttyTermEnv, hasTmux, makeHome, waitFor, waitForPolls } from './helpers.js';
 
 const runIf = hasTmux() ? describe : describe.skip;
 const viewer = (): Viewer => ({ kind: 'app', send() {}, backlog: () => 0 });
@@ -50,8 +50,9 @@ runIf('desktop terminal attach', () => {
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
     const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 200, staleSessionMs });
-    await fleet.start();
-    cleanup.push(async () => { fleet.stop(); await tmux.killServer(); });
+    const started = fleet.start();
+    cleanup.push(async () => { await started.catch(() => {}); fleet.stop(); await tmux.killServer(); });
+    await started;
     const hub = new TerminalHub(fleet, tmux, store, silentLogger);
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     return { fleet, tmux, store, hub, c, paths };
@@ -95,7 +96,7 @@ runIf('desktop terminal attach', () => {
     // what the sweep does, and what destroy-unattached does when a desktop terminal closes
     await tmux.killSession(main.session);
     await tmux.killSession(second.session);
-    await new Promise((r) => setTimeout(r, 500));
+    await waitForPolls(fleet, 3);
     expect([...lost]).toEqual([]);
   });
 
@@ -139,7 +140,7 @@ runIf('desktop terminal attach', () => {
     // Ghostty encodes Shift+Enter as CSI 27;2;13~ whatever mode is active
     client.stdin.write('\x1b[27;2;13~');
     await waitFor(() => fs.existsSync(log) && fs.readFileSync(log, 'utf8').includes('1b5b31333b3275'));
-  }, 15_000);
+  });
 
   // codex marks a link with OSC 8 over text it wraps itself, often a label with no url in it; without the
   // marking Ghostty has nothing to open
@@ -157,7 +158,7 @@ runIf('desktop terminal attach', () => {
     client.stdout.on('data', (d: Buffer) => { seen += d.toString('latin1'); });
     await waitFor(() => seen.includes('PR 157'));
     expect(seen).toMatch(/\x1b\]8;[^;]*;https:\/\/example\.com\/pull\/157(\x07|\x1b\\)/);
-  }, 15_000);
+  });
 
   it('expands ~ in a new character cwd', async () => {
     const { fleet } = await boot();

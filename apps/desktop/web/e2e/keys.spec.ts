@@ -2,7 +2,8 @@ import { expect, test } from './fixtures.js';
 
 test('drives the app with the Cmd chords', async ({ page, archi }) => {
   const island = await archi.api.call('island.create', { name: archi.uniq('keys') });
-  const a = await archi.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'ka' });
+  // the path tmux reports for the pane, which the poll writes over the one a character was made with
+  const a = await archi.api.call('char.create', { islandId: island.id, cwd: '/private/tmp', name: 'ka' });
   await archi.open();
   await page.getByTestId(`sb-char-${a.id}`).click();
 
@@ -14,7 +15,7 @@ test('drives the app with the Cmd chords', async ({ page, archi }) => {
     Object.values((await archi.api.call('state.get', {})).characters).find((c) => c.islandId === island.id && c.id !== a.id);
   await expect.poll(async () => (await find())?.id).toBeTruthy();
   const created = (await find())!;
-  expect(created.cwd).toBe('/tmp');
+  expect(created.cwd).toBe('/private/tmp');
   // the new character is viewed on the board: no card, no view change
   await expect(page.getByTestId('board')).toBeVisible();
   await expect(surface).toHaveAttribute('data-char', created.id);

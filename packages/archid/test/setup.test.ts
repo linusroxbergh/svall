@@ -233,7 +233,7 @@ describe('runSetup', () => {
     fs.writeFileSync(path.join(other, 'protocol.ts'), "throw new Error('the other checkout');\n");
     fs.writeFileSync(path.join(other, 'tsconfig.json'), JSON.stringify({ compilerOptions: { paths: { '@archipelago/protocol': ['./protocol.ts'] } } }));
     expect(execFileSync(path.join(shimDir, 'archi'), ['--help'], { cwd: other, encoding: 'utf8' })).toContain('Usage: archi');
-  }, 20_000);
+  });
 
   it('calls the shims current only when they are what setup writes now, for whichever checkout they run', async () => {
     const home = makeHome();

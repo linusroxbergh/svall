@@ -373,7 +373,7 @@ describe('Workspace git', () => {
   });
 });
 
-describe('Workspace watch', { timeout: 20_000 }, () => {
+describe('Workspace watch', () => {
   afterEach(cleanHomes);
 
   const viewer = (): Viewer & { events: Event[] } => {

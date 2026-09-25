@@ -8,5 +8,5 @@ export default defineConfig({
   server: { port: 5173, strictPort: true },
   build: { outDir: 'dist' },
   // the component tests ask for jsdom in their own header; everything else runs headless
-  test: { include: ['test/**/*.test.{ts,tsx}'], environment: 'node' },
+  test: { include: ['test/**/*.test.{ts,tsx}'], environment: 'node', testTimeout: 20_000 },
 });

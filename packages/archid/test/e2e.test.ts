@@ -14,8 +14,11 @@ const fake = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'fixture
 runIf('fleet loop', () => {
   let daemon: Daemon | undefined;
   let home = '';
+  // a start still under way when its test ends is stopped once it lands, before its tmux server is killed
+  const starts: Promise<Daemon>[] = [];
+  const start = (o: Parameters<typeof startDaemon>[0]): Promise<Daemon> => { const d = startDaemon(o); starts.push(d); return d; };
   afterEach(async () => {
-    await daemon?.stop();
+    for (const d of starts.splice(0)) await d.then((x) => x.stop(), () => {});
     const p = resolvePaths(home);
     await new Tmux(p.tmuxSock, p.tmuxConf).killServer();
     cleanHomes();
@@ -24,7 +27,7 @@ runIf('fleet loop', () => {
   it('runs two turns against a fake claude and survives a tmux death', async () => {
     home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
-    daemon = await startDaemon({ home, port: 0, log: silentLogger });
+    daemon = await start({ home, port: 0, log: silentLogger });
     const fleet = daemon.fleet;
     const island = fleet.createIsland({ name: 'e2e' });
     const c = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp', command: `node ${fake}` });
@@ -58,7 +61,7 @@ runIf('fleet loop', () => {
   it('types the prompt only after the fake claude has started', async () => {
     home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
-    daemon = await startDaemon({ home, port: 0, log: silentLogger });
+    daemon = await start({ home, port: 0, log: silentLogger });
     const fleet = daemon.fleet;
     const c = await fleet.createCharacter({ islandId: 'home', cwd: '/tmp', name: 'organise', command: `node ${fake}`, run: '/archi-organise' });
     expect(c.runSent).toBe(true);

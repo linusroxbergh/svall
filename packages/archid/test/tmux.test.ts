@@ -42,8 +42,8 @@ describe('rawPasteArgs', () => {
 });
 
 runIf('Tmux', () => {
-  const started: Tmux[] = [];
-  afterEach(async () => { for (const t of started.splice(0)) await t.killServer(); cleanHomes(); });
+  const cleanup: (() => Promise<void>)[] = [];
+  afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 
   let lastHome = '';
 
@@ -52,8 +52,9 @@ runIf('Tmux', () => {
     lastHome = home;
     fs.writeFileSync(`${home}/tmux.conf`, tmuxConfText(Config.parse({ shell: '/bin/sh' })));
     const t = new Tmux(`${home}/tmux.sock`, `${home}/tmux.conf`);
-    await t.ensureServer();
-    started.push(t);
+    const ready = t.ensureServer();
+    cleanup.push(async () => { await ready.catch(() => {}); await t.killServer(); });
+    await ready;
     return t;
   }
 

@@ -82,7 +82,9 @@ runIf('API', () => {
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
     const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 200 });
-    await fleet.start();
+    const started = fleet.start();
+    cleanup.push(async () => { await started.catch(() => {}); fleet.stop(); await tmux.killServer(); });
+    await started;
     const terminals = new TerminalHub(fleet, tmux, store, silentLogger);
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
     const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, undefined, paths.docs), silentLogger, [claude.json], paths.docs);
@@ -91,7 +93,7 @@ runIf('API', () => {
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(),
       claude, docs: paths.docs, heartbeatMs,
     });
-    cleanup.push(async () => { await api.close(); workspace.close(); fleet.stop(); await tmux.killServer(); });
+    cleanup.unshift(async () => { await api.close(); workspace.close(); });
     return { api, store, fleet, terminals, claude, docs: paths.docs };
   }
 
@@ -194,7 +196,8 @@ runIf('API', () => {
     const { api, fleet } = await boot();
     const c = await TestClient.connect(api.port, 'secret');
     const island = (await c.call('island.create', { name: 'x' })) as { result: { id: string } };
-    const ch = (await c.call('char.create', { islandId: island.result.id, cwd: '/tmp' })) as { result: { id: string } };
+    // an agent's pane runs something other than a shell, or the poll ends the agent
+    const ch = (await c.call('char.create', { islandId: island.result.id, cwd: '/tmp', command: 'sleep 600' })) as { result: { id: string } };
     expect(await c.call('char.answer', { id: ch.result.id, answer: 'approve' })).toMatchObject({ error: { code: 'invalid' } });
     fleet.onSocketEvent({ hook: { charId: ch.result.id, backend: 'claude', name: 'SessionStart', sessionId: '11111111-1111-1111-1111-111111111111', transcriptPath: '/t.jsonl' } });
     fleet.onSocketEvent({ hook: { charId: ch.result.id, backend: 'claude', name: 'Notification', notificationType: 'permission_prompt', message: 'Bash?' } });
@@ -232,7 +235,8 @@ runIf('API', () => {
   it('serves a character\'s files and refuses a path outside its root', async () => {
     const { api } = await boot();
     const client = await TestClient.connect(api.port, 'secret');
-    const home = makeHome();
+    // the path tmux reports for the pane, which the poll writes over the one it was made with
+    const home = fs.realpathSync(makeHome());
     fs.writeFileSync(`${home}/hello.txt`, 'hi\n');
     const island = (await client.call('island.create', { name: 'ws' })) as { result: { id: string } };
     const c = (await client.call('char.create', { islandId: island.result.id, cwd: home })) as { result: { id: string } };
@@ -289,5 +293,5 @@ runIf('API', () => {
       return client.events.some((e) => e.event === 'repo.changed' && e.data.id === c.result.id);
     }, 10_000);
     client.ws.close();
-  }, 20_000);
+  });
 });

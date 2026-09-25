@@ -18,8 +18,9 @@ runIf('Tmux.listWindows', () => {
     const paths = resolvePaths(home);
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(Config.parse({ shell: '/bin/sh' })));
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
-    cleanup.push(() => tmux.killServer());
-    await tmux.ensureServer();
+    const ready = tmux.ensureServer();
+    cleanup.push(async () => { await ready.catch(() => {}); await tmux.killServer(); });
+    await ready;
     const dirs = ['tab\there', 'new\nline', 'unit\x1fsep', 'row\x1e\nend', 'forged\x1e\n@9\x1f%9\x1fc_0\x1fsh\x1f1\x1f0\x1fx'].map((n) => { const d = path.join(fs.realpathSync(home), n); fs.mkdirSync(d); return d; });
     for (const [i, cwd] of dirs.entries()) await tmux.newWindow(`c_${i}`, cwd, {});
     const listed = (await tmux.listWindows()).sort((a, b) => a.name.localeCompare(b.name));

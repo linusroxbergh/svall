@@ -3,7 +3,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import type { MobileStatus, UsageSnapshot } from '@archipelago/protocol';
+import type { Fleet } from '../src/fleet.js';
 import type { Mobile } from '../src/mobile.js';
+
+// the root config's test/isolate.ts moves HOME; a run without it would reach the real HOME and the live fleet
+if (!process.env.HOME?.startsWith('/tmp/archi-home-')) throw new Error('run these tests through the root vitest config (pnpm test)');
 
 const homes: string[] = [];
 
@@ -44,6 +48,14 @@ export async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs
     await new Promise((r) => setTimeout(r, 50));
   }
   throw new Error('waitFor: timed out');
+}
+
+// counts only polls begun after the call: a slow listing lets polls overlap, so an earlier one can end later
+export async function waitForPolls(fleet: Fleet, n: number): Promise<void> {
+  const tick = fleet['tick'];
+  let done = 0;
+  fleet['tick'] = async () => { await tick.call(fleet); done++; };
+  try { await waitFor(() => done >= n); } finally { fleet['tick'] = tick; }
 }
 
 // startApi needs a reading of the plan's limits; tests that are not about usage take this one

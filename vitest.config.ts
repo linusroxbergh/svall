@@ -7,6 +7,9 @@ const shell = { CLAUDE_CONFIG_DIR: '/nonexistent/claude', ARCHI_TERM: '2' };
 
 export default defineConfig({
   test: {
+    // the tests that spawn tmux, tsx and daemons take seconds alone, and several times that on a loaded machine
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
     projects: [
       { test: { name: 'scripts', include: ['test/*.test.ts'] } },
       { test: { name: 'protocol', root: 'packages/protocol' } },

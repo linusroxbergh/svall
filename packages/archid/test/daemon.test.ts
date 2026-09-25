@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { codexInstalled, codexPaths } from '../src/codex/install.js';
 import { silentLogger } from '../src/log.js';
-import { readOrCreateToken, startDaemon } from '../src/main.js';
+import { readOrCreateToken, startDaemon, type Daemon } from '../src/main.js';
 import { resolvePaths } from '../src/paths.js';
 import { Tmux } from '../src/tmux/tmux.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
@@ -15,7 +15,11 @@ const runIf = hasTmux() ? describe : describe.skip;
 
 runIf('startDaemon', () => {
   const homes: string[] = [];
+  // a start still under way when its test ends is stopped once it lands, before its tmux server is killed
+  const starts: Promise<Daemon>[] = [];
+  const start = (o: Parameters<typeof startDaemon>[0]): Promise<Daemon> => { const d = startDaemon(o); starts.push(d); return d; };
   afterEach(async () => {
+    for (const d of starts.splice(0)) await d.then((x) => x.stop(), () => {});
     for (const h of homes.splice(0)) { const p = resolvePaths(h); await new Tmux(p.tmuxSock, p.tmuxConf).killServer(); }
     cleanHomes();
   });
@@ -25,13 +29,13 @@ runIf('startDaemon', () => {
     fs.mkdirSync(codex.dir, { recursive: true });
     const other = makeHome();
     homes.push(other);
-    await (await startDaemon({ home: other, port: 0, log: silentLogger })).stop();
+    await (await start({ home: other, port: 0, log: silentLogger })).stop();
     expect(fs.existsSync(codex.hooks)).toBe(false);
 
     const home = path.join(os.homedir(), '.archipelago');
     fs.mkdirSync(home, { recursive: true });
     homes.push(home);
-    await (await startDaemon({ home, port: 0, log: silentLogger })).stop();
+    await (await start({ home, port: 0, log: silentLogger })).stop();
     const written = JSON.parse(fs.readFileSync(codex.hooks, 'utf8'));
     expect(codexInstalled(written, resolvePaths(home).hookScript)).toBe(true);
     expect(written.hooks.Stop[0].hooks[0].command).toContain(resolvePaths(home).hookScript);
@@ -46,7 +50,7 @@ runIf('startDaemon', () => {
     fs.mkdirSync(path.dirname(paths.hookScript), { recursive: true });
     fs.writeFileSync(paths.hookScript, '// stale\n');
 
-    const d1 = await startDaemon({ home, port: 0, log: silentLogger });
+    const d1 = await start({ home, port: 0, log: silentLogger });
     // a start refreshes the hook scripts, so an install that only pulled still speaks the reply protocol
     expect(fs.readFileSync(paths.hookScript, 'utf8')).toContain('additionalContext');
     expect(fs.readFileSync(paths.port, 'utf8')).toBe(String(d1.port));
@@ -61,7 +65,7 @@ runIf('startDaemon', () => {
     await d1.stop();
     expect(fs.existsSync(paths.port)).toBe(false);
 
-    const d2 = await startDaemon({ home, port: 0, log: silentLogger });
+    const d2 = await start({ home, port: 0, log: silentLogger });
     expect(d2.token).toBe(d1.token);
     const again = d2.store.state.characters[c.id];
     expect(again.tmux).toEqual(c.tmux);
@@ -70,7 +74,7 @@ runIf('startDaemon', () => {
     await d2.stop();
 
     await new Tmux(paths.tmuxSock, paths.tmuxConf).killServer();
-    const d3 = await startDaemon({ home, port: 0, log: silentLogger });
+    const d3 = await start({ home, port: 0, log: silentLogger });
     const dormant = d3.store.state.characters[c.id];
     expect(dormant.tmux).toBeUndefined();
     expect(dormant.revive).toEqual({ command: 'claude --resume 9d1e4c2a-7b3f-4a6e-8c5d-2f1a0b9c8d7e' });
@@ -89,7 +93,7 @@ runIf('startDaemon', () => {
     await new Promise<void>((r) => blocker.listen(0, '127.0.0.1', r));
     const port = (blocker.address() as net.AddressInfo).port;
     try {
-      await expect(startDaemon({ home, port, host: '127.0.0.1', log: silentLogger })).rejects.toThrow(/EADDRINUSE/);
+      await expect(start({ home, port, host: '127.0.0.1', log: silentLogger })).rejects.toThrow(/EADDRINUSE/);
       expect(fs.existsSync(paths.hooksSock)).toBe(false);
       expect(fs.existsSync(paths.port)).toBe(false);
       await waitFor(async () => (await new Tmux(paths.tmuxSock, paths.tmuxConf).run('list-clients')).trim() === '');
@@ -103,9 +107,9 @@ runIf('startDaemon', () => {
     homes.push(home);
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
     const paths = resolvePaths(home);
-    const first = await startDaemon({ home, port: 0, log: silentLogger });
+    const first = await start({ home, port: 0, log: silentLogger });
     try {
-      await expect(startDaemon({ home, port: first.port, host: '127.0.0.1', log: silentLogger })).rejects.toThrow(/already running/);
+      await expect(start({ home, port: first.port, host: '127.0.0.1', log: silentLogger })).rejects.toThrow(/already running/);
       expect(fs.existsSync(paths.hooksSock)).toBe(true);
       const c = await first.fleet.createCharacter({ islandId: first.fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
       await new Promise<void>((resolve, reject) => {
@@ -129,7 +133,7 @@ runIf('startDaemon', () => {
     homes.push(home);
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh', mobile: { logins: ['me@example.com'] } }));
     const paths = resolvePaths(home);
-    const d = await startDaemon({ home, port: 0, log: silentLogger });
+    const d = await start({ home, port: 0, log: silentLogger });
     const sockets: WebSocket[] = [];
     const open = (key?: string) => {
       const ws = new WebSocket(`ws://127.0.0.1:${d.port}/${key ?? ''}`, key ? { headers: { 'Tailscale-User-Login': 'me@example.com' } } : {});
@@ -170,7 +174,7 @@ runIf('startDaemon', () => {
     const saved = process.env.PATH;
     process.env.PATH = home;
     try {
-      await expect(startDaemon({ home, port: 0, log: silentLogger })).rejects.toThrow(/tmux not found.*brew install tmux/);
+      await expect(start({ home, port: 0, log: silentLogger })).rejects.toThrow(/tmux not found.*brew install tmux/);
     } finally {
       process.env.PATH = saved;
     }

@@ -20,7 +20,7 @@
     "./tmux/conf": "./src/tmux/conf.ts"
   },
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run --root ../.. --project archid"
   },
   "dependencies": {
     "@archipelago/protocol": "workspace:*",

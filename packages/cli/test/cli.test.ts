@@ -94,8 +94,11 @@ describe('archi argument parsing', () => {
 runIf('archi CLI', () => {
   let daemon: Daemon | undefined;
   let home = '';
+  // a start still under way when its test ends is stopped once it lands, before its tmux server is killed
+  const starts: Promise<Daemon>[] = [];
+  const start = (o: Parameters<typeof startDaemon>[0]): Promise<Daemon> => { const d = startDaemon(o); starts.push(d); return d; };
   afterEach(async () => {
-    await daemon?.stop();
+    for (const d of starts.splice(0)) await d.then((x) => x.stop(), () => {});
     const p = resolvePaths(home);
     await new Tmux(p.tmuxSock, p.tmuxConf).killServer();
     cleanHomes();
@@ -108,7 +111,7 @@ runIf('archi CLI', () => {
   it('drives the daemon end to end', async () => {
     home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
-    daemon = await startDaemon({ home, port: 0, log: silentLogger });
+    daemon = await start({ home, port: 0, log: silentLogger });
 
     const island = JSON.parse((await archi('island', 'create', 'feature', '--json')).stdout);
     expect(island.name).toBe('feature');
@@ -177,7 +180,7 @@ runIf('archi CLI', () => {
   it('lists the home island with its kind and refuses --run without a command', async () => {
     home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
-    daemon = await startDaemon({ home, port: 0, log: silentLogger });
+    daemon = await start({ home, port: 0, log: silentLogger });
     const list = (await archi('island', 'list')).stdout;
     expect(list).toMatch(/kind/);
     expect(list).toMatch(/home\s+mission control/);
@@ -192,7 +195,7 @@ runIf('archi CLI', () => {
   it('starts a character in a relative --cwd taken from where archi runs', async () => {
     home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
-    daemon = await startDaemon({ home, port: 0, log: silentLogger });
+    daemon = await start({ home, port: 0, log: silentLogger });
     const r = await archi('char', 'new', '--island', 'home', '--cwd', '.', '--json');
     expect(r.stderr).toBe('');
     expect(JSON.parse(r.stdout).cwd).toBe(process.cwd());
@@ -201,7 +204,7 @@ runIf('archi CLI', () => {
   it('archi browser opens, lists and closes tabs, defaulting to the character in ARCHI_CHAR_ID', async () => {
     home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
-    daemon = await startDaemon({ home, port: 0, log: silentLogger });
+    daemon = await start({ home, port: 0, log: silentLogger });
     const island = JSON.parse((await archi('island', 'create', 'web', '--json')).stdout);
     const c = JSON.parse((await archi('char', 'new', '--island', island.id, '--cwd', '/tmp', '--name', 'surfer', '--json')).stdout);
 

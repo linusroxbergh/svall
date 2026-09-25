@@ -15,7 +15,7 @@ export const freePort = (): Promise<number> => new Promise((resolve) => {
 
 export function newHome(port: number): string {
   const home = `/tmp/archi-e2e-${crypto.randomBytes(3).toString('hex')}`;
-  fs.mkdirSync(home, { recursive: true });
+  fs.mkdirSync(path.join(home, 'home'), { recursive: true });
   const fakeClaude = `node ${path.join(ROOT, 'packages/archid/test/fixtures/fake-claude.mjs')}`;
   fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({
     port, shell: '/bin/sh',
@@ -39,17 +39,20 @@ export async function startDaemon(home: string): Promise<DaemonInfo> {
   fs.rmSync(portFile, { force: true });
   const log = fs.openSync(path.join(home, 'e2e-archid.log'), 'a');
   const child = spawn(path.join(ROOT, 'node_modules/.bin/tsx'), [path.join(ROOT, 'packages/archid/src/bin.ts')], {
-    // a fake `claude` first on PATH: nothing archid spawns may reach the real account
+    // a fake `claude` first on PATH and a HOME of its own: nothing archid spawns may reach the real account or files
     env: {
-      ...process.env, ARCHI_HOME: home, CLAUDE_CONFIG_DIR: path.join(home, 'claude'), CODEX_HOME: path.join(home, 'codex'),
-      PATH: `${path.join(ROOT, 'packages/archid/test/fixtures/bin')}:${process.env.PATH}`,
+      ...process.env, HOME: path.join(home, 'home'), ARCHI_HOME: home, CLAUDE_CONFIG_DIR: path.join(home, 'claude'), CODEX_HOME: path.join(home, 'codex'),
+      // the node running this, which a version manager's shim could not find from the HOME above
+      PATH: `${path.join(ROOT, 'packages/archid/test/fixtures/bin')}:${path.dirname(process.execPath)}:${process.env.PATH}`,
     },
     stdio: ['ignore', log, log],
   });
+  // the teardown knows only a daemon that started, so a failed start leaves nothing running behind it
+  const fail = (why: string): never => { child.kill(); killTmux(home); throw new Error(why); };
   const end = Date.now() + 20_000;
   while (!fs.existsSync(portFile)) {
-    if (child.exitCode !== null) throw new Error(`archid exited with ${child.exitCode}; see ${home}/e2e-archid.log`);
-    if (Date.now() > end) throw new Error('archid did not write its port file');
+    if (child.exitCode !== null) fail(`archid exited with ${child.exitCode}; see ${home}/e2e-archid.log`);
+    if (Date.now() > end) fail('archid did not write its port file');
     await sleep(100);
   }
   const info: DaemonInfo = {

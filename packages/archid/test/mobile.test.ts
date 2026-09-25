@@ -18,7 +18,7 @@ import { TerminalHub } from '../src/terminals.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { Tmux } from '../src/tmux/tmux.js';
 import { Workspace } from '../src/workspace/workspace.js';
-import { cleanHomes, hasTmux, makeHome, stubMobile, stubUsage, waitFor } from './helpers.js';
+import { cleanHomes, hasTmux, makeHome, stubMobile, stubUsage, waitFor, waitForPolls } from './helpers.js';
 
 const req = (headers: Record<string, string>) => ({ headers }) as unknown as IncomingMessage;
 
@@ -109,7 +109,9 @@ runIf('phone sockets', () => {
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
     const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 200 });
-    await fleet.start();
+    const started = fleet.start();
+    cleanup.push(async () => { await started.catch(() => {}); fleet.stop(); await tmux.killServer(); });
+    await started;
     const terminals = new TerminalHub(fleet, tmux, store, silentLogger);
     const workspace = new Workspace((id) => { const c = store.state.characters[id]; if (!c) throw new Error(id); return c.repo?.root ?? c.cwd; }, silentLogger);
     const current = { key, logins: ['me@example.com'] };
@@ -119,7 +121,7 @@ runIf('phone sockets', () => {
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(),
       claude: { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') },
     });
-    cleanup.push(async () => { await api.close(); fleet.stop(); await tmux.killServer(); });
+    cleanup.unshift(async () => { await api.close(); });
     return { ...api, dist, fleet, store, current };
   }
 
@@ -342,7 +344,7 @@ runIf('phone sockets', () => {
     api.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', notificationType: 'permission_prompt', message: 'Bash?' } });
     expect(api.store.state.characters[c.id].agent?.status).toBe('blocked');
     // a tap comes seconds later, after the fleet has polled the pane several times
-    await new Promise((r) => setTimeout(r, 1000));
+    await waitForPolls(api.fleet, 3);
     const approve = () => new Promise<unknown>((resolve, reject) => {
       const body = JSON.stringify({ id: 1, method: 'char.answer', params: { id: c.id, answer: 'approve' } });
       const req = http.request({

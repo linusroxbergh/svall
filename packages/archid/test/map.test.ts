@@ -28,8 +28,9 @@ runIf('Fleet layout', () => {
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
     const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 150 });
-    await fleet.start();
-    cleanup.push(async () => { fleet.stop(); await tmux.killServer(); });
+    const started = fleet.start();
+    cleanup.push(async () => { await started.catch(() => {}); fleet.stop(); await tmux.killServer(); });
+    await started;
     return { fleet, store, tmux };
   }
 

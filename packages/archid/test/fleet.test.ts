@@ -15,7 +15,7 @@ import { Store } from '../src/store.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { ControlClient } from '../src/tmux/control.js';
 import { SESSION, Tmux } from '../src/tmux/tmux.js';
-import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
+import { cleanHomes, hasTmux, makeHome, waitFor, waitForPolls } from './helpers.js';
 
 const runIf = hasTmux() ? describe : describe.skip;
 
@@ -32,8 +32,9 @@ runIf('Fleet', () => {
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
     const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 150, ...deps });
-    await fleet.start();
-    cleanup.push(async () => { fleet.stop(); await tmux.killServer(); });
+    const started = fleet.start();
+    cleanup.push(async () => { await started.catch(() => {}); fleet.stop(); await tmux.killServer(); });
+    await started;
     return { fleet, store, tmux, home };
   }
 
@@ -83,7 +84,7 @@ runIf('Fleet', () => {
     await tmux.sendLine(paneId, 'echo term-$ARCHI_TERM-$ARCHI_CHAR_ID', true);
     await waitFor(async () => (await tmux.capture(paneId, 20)).toString().includes(`term-2-${c.id}`));
     // several polls pass and the record stays
-    await new Promise((r) => setTimeout(r, 500));
+    await waitForPolls(fleet, 3);
     expect(store.state.characters[c.id].second).toBeDefined();
     await tmux.sendLine(paneId, 'exit', true);
     await waitFor(() => store.state.characters[c.id].second === undefined);
@@ -224,7 +225,7 @@ runIf('Fleet', () => {
     await waitFor(() => fleet['panePath'].has(c.id));
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', cwd: path.join(repo, 'src') } });
     await waitFor(() => store.state.characters[c.id].cwd === repo);
-    await new Promise((r) => setTimeout(r, 500));
+    await waitForPolls(fleet, 2);
     expect(store.state.characters[c.id].cwd).toBe(repo);
     // a move within the same checkout keeps the path it has
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', cwd: repo } });
@@ -241,7 +242,8 @@ runIf('Fleet', () => {
     const wt = path.join(repo, '.codex', 'worktrees', 'feat');
     git('worktree', 'add', '-q', '-b', 'feat', wt);
     fs.mkdirSync(path.join(wt, 'web'));
-    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: repo });
+    // an agent's pane runs something other than a shell, or the poll ends the agent
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: repo, command: 'sleep 600' });
     await waitFor(() => fleet['panePath'].has(c.id) && store.state.characters[c.id].repo?.root === repo);
     // codex tells its hooks where the session began; only the rollout says where each command ran
     const rollout = path.join(home, 'rollout.jsonl');
@@ -316,7 +318,8 @@ runIf('Fleet', () => {
 
   it('marks a killed window dormant and revives it', async () => {
     const { fleet, store, tmux } = await boot();
-    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    // an agent's pane runs something other than a shell, or the poll ends the agent
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: '9d1e4c2a-7b3f-4a6e-8c5d-2f1a0b9c8d7e', transcriptPath: '/nope' } });
     await tmux.killWindow(c.tmux!.windowId);
     await waitFor(() => store.state.characters[c.id].tmux === undefined);
@@ -332,16 +335,26 @@ runIf('Fleet', () => {
 
   it('does not mark a character created during a poll snapshot dormant', async () => {
     const { fleet, store, tmux } = await boot();
+    // the next listing is handed back only after the create has landed
     const real = tmux.listWindows.bind(tmux);
+    let taken = false;
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
     vi.spyOn(tmux, 'listWindows').mockImplementation(async () => {
       const r = await real();
-      await new Promise((res) => setTimeout(res, 300));
+      if (taken) return r;
+      taken = true;
+      await held;
       return r;
     });
-    await new Promise((r) => setTimeout(r, 150));
+    await waitFor(() => taken);
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    await new Promise((r) => setTimeout(r, 600));
-    expect(store.state.characters[c.id].tmux).toBeDefined();
+    let dormant = false;
+    const unsub = store.subscribe(() => { if (!store.state.characters[c.id].tmux) dormant = true; });
+    cleanup.push(async () => unsub());
+    release();
+    await new Promise((r) => setTimeout(r, 500));
+    expect(dormant).toBe(false);
   });
 
   it('does not mark a character revived during a poll snapshot dormant', async () => {
@@ -352,11 +365,13 @@ runIf('Fleet', () => {
     // the next listing is handed back only after the revive has landed
     const real = tmux.listWindows.bind(tmux);
     let taken = false;
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
     vi.spyOn(tmux, 'listWindows').mockImplementation(async () => {
       const r = await real();
       if (taken) return r;
       taken = true;
-      await new Promise((res) => setTimeout(res, 300));
+      await held;
       return r;
     });
     await waitFor(() => taken);
@@ -364,6 +379,7 @@ runIf('Fleet', () => {
     let dormant = false;
     const unsub = store.subscribe(() => { if (!store.state.characters[c.id].tmux) dormant = true; });
     cleanup.push(async () => unsub());
+    release();
     await new Promise((r) => setTimeout(r, 500));
     expect(dormant).toBe(false);
   });
@@ -391,11 +407,13 @@ runIf('Fleet', () => {
     // the next listing is handed back only after the second terminal has opened
     const real = tmux.listWindows.bind(tmux);
     let taken = false;
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
     vi.spyOn(tmux, 'listWindows').mockImplementation(async () => {
       const r = await real();
       if (taken) return r;
       taken = true;
-      await new Promise((res) => setTimeout(res, 300));
+      await held;
       return r;
     });
     await waitFor(() => taken);
@@ -403,6 +421,7 @@ runIf('Fleet', () => {
     let dropped = false;
     const unsub = store.subscribe(() => { if (!store.state.characters[c.id].second) dropped = true; });
     cleanup.push(async () => unsub());
+    release();
     await new Promise((r) => setTimeout(r, 500));
     expect(dropped).toBe(false);
   });
@@ -505,7 +524,8 @@ runIf('Fleet', () => {
   });
 
   it('marks the agent working when a prompt is submitted', async () => {
-    const { fleet, store } = await boot();
+    // no poll runs: the pane sits at a shell prompt, where a poll drops the agent
+    const { fleet, store } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope' } });
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Stop' } });
@@ -517,7 +537,8 @@ runIf('Fleet', () => {
   });
 
   it('keeps a hook-driven status over the optimistic working', async () => {
-    const { fleet, store, tmux } = await boot();
+    // no poll runs: the pane sits at a shell prompt, where a poll drops the agent
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope' } });
     tmux.sendLine = async () => {
@@ -545,7 +566,8 @@ runIf('Fleet', () => {
 
   it('answers a blocked agent with Enter to approve and Escape to deny', async () => {
     const { fleet, store, tmux } = await boot();
-    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    // an agent's pane runs something other than a shell, or the poll ends the agent
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope' } });
     const sent = vi.spyOn(tmux, 'sendBytes');
     const block = () => store.update((d) => { d.characters[c.id].agent!.status = 'blocked'; });
@@ -674,7 +696,7 @@ runIf('Fleet', () => {
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionStart', sessionId: '019eefb3-8d5c-7b00-ad02-80c4930f7426' } });
     expect(fleet.char(c.id).hint).toBeUndefined();
     // with an agent on record the silence is over, however long the window keeps running codex
-    await new Promise((r) => setTimeout(r, 700));
+    await waitForPolls(fleet, 4);
     expect(fleet.char(c.id).hint).toBeUndefined();
   });
 
@@ -690,7 +712,7 @@ runIf('Fleet', () => {
     for (const name of ['SessionStart', 'Stop', 'SessionEnd'] as const) {
       fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name, sessionId: nested, pid: process.ppid } });
     }
-    await new Promise((r) => setTimeout(r, 700));
+    await waitForPolls(fleet, 4);
     expect(fleet.char(c.id)).toMatchObject({ agent: { kind: 'codex', sessionId: outer, status: 'idle' }, unread: false });
     expect(fleet.char(c.id).hint).toBeUndefined();
   });
@@ -793,7 +815,8 @@ runIf('Fleet', () => {
   });
 
   it('reports the prompt unsent when the send fails after the agent attached', async () => {
-    const { fleet, store, home } = await boot({ runTimeoutMs: 5000 });
+    // no poll runs: the pane sits at a shell prompt, where a poll drops the agent
+    const { fleet, store, home } = await boot({ runTimeoutMs: 5000, pollMs: 60_000 });
     const transcriptPath = `${home}/t.jsonl`;
     fs.writeFileSync(transcriptPath, '');
     const created = fleet.createCharacter({ islandId: 'home', cwd: '/tmp', command: 'true', run: 'hello' });

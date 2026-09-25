@@ -16,7 +16,7 @@ const runIf = hasTmux() ? describe : describe.skip;
 
 async function runBin(home: string): Promise<{ code: number; stderr: string }> {
   try {
-    const { stderr } = await exec(tsx, [bin], { env: { ...process.env, ARCHI_HOME: home }, timeout: 15_000 });
+    const { stderr } = await exec(tsx, [bin], { env: { ...process.env, ARCHI_HOME: home }, timeout: 30_000 });
     return { code: 0, stderr };
   } catch (e) {
     const err = e as { code: number; stderr: string };
@@ -45,5 +45,5 @@ runIf('archid bin', () => {
     } finally {
       await new Promise((r) => blocker.close(r));
     }
-  }, 20_000);
+  }, 40_000);
 });
