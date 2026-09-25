@@ -21,7 +21,7 @@ export const isFresh = (rootId: string, path: string): boolean => fresh.has(key(
 /** Writes <slug>.md under the root and opens it. A taken or empty name is said, and nothing is written. */
 export async function createDoc(d: ResourcesDeps, rootId: string, typed: string): Promise<boolean> {
   const slug = docSlug(typed);
-  if (!slug) return refuse(d, 'A doc needs a name');
+  if (!slug) return refuse(d, 'It needs a name');
   const path = `${slug}.md`;
   try { await d.api.call('docs.create', { id: rootId, path, text: skeleton() }); }
   catch (e) { return refuse(d, (e as Error).message); }
@@ -34,7 +34,7 @@ export async function createDoc(d: ResourcesDeps, rootId: string, typed: string)
 /** Renames the file; the editor follows a doc that was open. One with unsaved edits is left alone. */
 export async function renameDoc(d: ResourcesDeps, rootId: string, path: string, typed: string): Promise<boolean> {
   const slug = docSlug(typed);
-  if (!slug) return refuse(d, 'A doc needs a name');
+  if (!slug) return refuse(d, 'It needs a name');
   const to = `${slug}.md`;
   if (to === path) return true;
   await flushDoc(rootId, path);

@@ -20,7 +20,7 @@ import { serveBundle } from './static.js';
 type Opts = {
   host: string; port: number; token: string;
   store: Store; fleet: Fleet; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; mobileControl: Mobile; log: Logger;
-  push: PushStore; vapidPublicKey: string; phones: Phones; claude: ClaudePaths; codex?: CodexPaths; docs?: string;
+  push: PushStore; vapidPublicKey: string; phones: Phones; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string;
   origins?: string[]; logins?: () => string[]; dist?: string; key?: () => string; fleetName?: string; heartbeatMs?: number;
 };
 
@@ -74,7 +74,7 @@ export function identityOf(req: IncomingMessage, logins: string[] = []): string 
 }
 
 export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<void> }> {
-  const { host, port, token, store, fleet, terminals, workspace, usage, mobileControl, log, push, vapidPublicKey, phones, claude, codex, docs } = opts;
+  const { host, port, token, store, fleet, terminals, workspace, usage, mobileControl, log, push, vapidPublicKey, phones, claude, codex, docs, agentProfiles } = opts;
   const logins = opts.logins ?? (() => []);
   const origins = opts.origins ?? [];
   const dist = opts.dist ?? MOBILE_DIST;
@@ -138,7 +138,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
     const r = Request.safeParse(parsed);
     if (!r.success || !RPC_METHODS.has(r.data.method)) { res.writeHead(400).end(); return; }
     const viewer: Viewer = { kind: 'phone', login, send: () => {}, backlog: () => 0 };
-    const out = await dispatch(r.data, { store, fleet, terminals, workspace, usage, mobile, push, vapidPublicKey, viewer, claude, codex, docs });
+    const out = await dispatch(r.data, { store, fleet, terminals, workspace, usage, mobile, push, vapidPublicKey, viewer, claude, codex, docs, agentProfiles });
     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(out));
   }
   server.on('upgrade', (req, socket, head) => {
@@ -189,7 +189,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       }
       const req = Request.safeParse(msg);
       if (!req.success) { ws.close(4400, 'bad request'); return; }
-      const res = await dispatch(req.data, { store, fleet, terminals, workspace, usage, mobile, push, vapidPublicKey, viewer, claude, codex, docs, signal: aborter.signal });
+      const res = await dispatch(req.data, { store, fleet, terminals, workspace, usage, mobile, push, vapidPublicKey, viewer, claude, codex, docs, agentProfiles, signal: aborter.signal });
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(res));
     });
 

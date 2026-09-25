@@ -33,6 +33,7 @@ export function resolvePaths(home: string = archiHome()) {
     push: path.join(home, 'push.json'),
     vapid: path.join(home, 'vapid.json'),
     docs: path.join(home, 'docs'),
+    agentProfiles: path.join(home, 'agent-profiles'),
   };
 }
 export type Paths = ReturnType<typeof resolvePaths>;

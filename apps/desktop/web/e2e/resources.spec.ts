@@ -652,3 +652,47 @@ test('the fleet’s own docs stand in a tier of their own, named for the fleet, 
   await page.keyboard.type('Plain words, no filler.');
   await expect.poll(() => fs.readFileSync(path.join(dir, `${name}.md`), 'utf8')).toContain('description: Plain words, no filler.');
 });
+
+test('a new agent profile is written in the fleet’s shelf and offered to every character', async ({ page, archi }) => {
+  await page.setViewportSize(WIDE);
+  const file = path.join(archi.home, 'agent-profiles', 'critic.md');
+  fs.rmSync(file, { force: true });
+  const island = await archi.api.call('island.create', { name: archi.uniq('critic') });
+  const c = await archi.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'critiqued' });
+  await archi.open();
+  await page.getByTestId(`sb-char-${c.id}`).click();
+  const pick = page.getByTestId('side-card').getByTestId('side-agent-profile');
+  await pick.selectOption({ label: 'Manage profiles…' });
+  await expect(page.getByTestId('resources-what-agentProfiles')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('resources-item-agentProfiles-reviewer')).toBeVisible();
+
+  await expect(page.getByTestId('resources-new-doc')).toHaveText('+ new profile');
+  await page.getByTestId('resources-new-doc').click();
+  await page.getByTestId('resources-new-doc-name').fill('Critic');
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('resources-editor-crumb')).toContainText('critic.md');
+  await expect(page.getByText('What is this role for?')).toBeVisible();
+  await expect(page.getByTestId('resources-doc-description')).toBeFocused();
+  await page.keyboard.type('Argues against the plan.');
+  await page.keyboard.press('Enter');
+  await editorHasKeys(page);
+  await page.keyboard.type('You argue against every plan you are shown.');
+  await expect.poll(() => fs.existsSync(file) && fs.readFileSync(file, 'utf8'))
+    .toBe('---\ndescription: Argues against the plan.\n---\nYou argue against every plan you are shown.\n');
+
+  await page.getByTestId('resources-close').click();
+  await expect(pick.locator('option', { hasText: 'critic' })).toHaveCount(1);
+  await pick.selectOption('critic');
+  await expect(page.getByTestId('side-agent-profile-hint')).toHaveText('Argues against the plan.');
+  await expect.poll(async () => (await archi.api.call('char.show', { id: c.id })).text)
+    .toContain('Agent profile: critic — follow this role.\nYou argue against every plan you are shown.');
+
+  // written past the cap, it stops reaching the agent, and the card says so without a reload
+  await page.getByTestId('side-agent-profile-view').click();
+  await page.locator('.res-editor .cm-content').click();
+  await page.keyboard.press('ControlOrMeta+End');
+  await page.keyboard.insertText(` ${'x'.repeat(1600)}`);
+  await expect(page.getByTestId('side-agent-profile-hint')).toHaveText('critic is over 1500 characters');
+  expect((await archi.api.call('char.show', { id: c.id })).text).not.toContain('Agent profile');
+  fs.rmSync(file, { force: true });
+});

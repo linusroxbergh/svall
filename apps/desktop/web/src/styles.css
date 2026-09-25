@@ -221,6 +221,11 @@ textarea { overflow-x: hidden; }
 .side .addlink { display: flex; gap: var(--sp-md); align-items: center; }
 .side .addlink .fld { padding: var(--sp-sm) var(--sp-lg); }
 .side .addlink .btn { flex: none; }
+.side-profile { display: flex; gap: var(--sp-md); align-items: center; }
+.side .side-profile .fld { padding: var(--sp-sm) var(--sp-lg); }
+.side-profile .btn { flex: none; }
+.side-profile-hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); color: var(--ink-3); }
+.side-profile-hint[data-error="true"] { color: var(--pt-coral); }
 .side .pills { margin-top: 0; }
 .side .row { padding: var(--sp-xs) 0; align-items: center; }
 .side .row b.mono { font-size: var(--text-xs); }

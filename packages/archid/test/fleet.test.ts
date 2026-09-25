@@ -765,6 +765,28 @@ runIf('Fleet', () => {
     expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } })).toBeUndefined();
   });
 
+  it('gives a character its agent profile from its first SessionStart, and the whole new one when it changes', async () => {
+    const { fleet, home } = await boot();
+    const profiles = resolvePaths(home).agentProfiles;
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', agentProfile: 'reviewer' });
+    const start = fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionStart', sessionId: 's' } });
+    expect(start).toContain('Agent profile: reviewer — follow this role.\nYou are an independent code reviewer.');
+    fleet.updateCharacter(c.id, { agentProfile: 'verifier' });
+    const switched = fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'UserPromptSubmit' } });
+    expect(switched).toContain('Your agent profile changed; follow this one instead of any before:\nAgent profile: verifier');
+    expect(switched).toContain('Report:');
+    // an edit to the file reaches the session with its next prompt
+    fs.appendFileSync(path.join(profiles, 'verifier.md'), '\nNever trust a green check alone.\n');
+    expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'UserPromptSubmit' } })).toContain('Never trust a green check alone.\n(end of agent profile)');
+    // gone from disk, it leaves the brief, and the character keeps its name for the side card to say so
+    fs.rmSync(path.join(profiles, 'verifier.md'));
+    expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'UserPromptSubmit' } })).toContain('Your agent profile was removed');
+    expect(fleet.char(c.id).agentProfile).toBe('verifier');
+    expect(() => fleet.updateCharacter(c.id, { agentProfile: 'verifier' })).toThrow(/no agent profile verifier/);
+    expect(fleet.updateCharacter(c.id, { agentProfile: '' }).agentProfile).toBeUndefined();
+    await expect(fleet.createCharacter({ islandId: 'home', cwd: '/tmp', agentProfile: '../x' })).rejects.toThrow(/no agent profile/);
+  });
+
   it('keeps the brief and its changes for the agent, not for a claude -p run inside it', async () => {
     const { fleet } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x', instructions: 'ship small' }).id, cwd: '/tmp' });

@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import path from 'node:path';
 import { HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, homeSizeFor, isHomeSlot, isLand, randomPortrait, type Agent, type AgentStatus, type BrowserTab, type Cell, type Character, type ContextItem, type Island, type Portrait } from '@archipelago/protocol';
+import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
 import { lastTokenCount } from './agent/codex-transcript.js';
 import { followRollout, type RolloutMark } from './agent/codex-workdir.js';
 import { applyHook, applyStatus, markSeen as markSeenPure, type Slot } from './agent/reducer.js';
@@ -89,6 +90,8 @@ export class Fleet extends EventEmitter<Events> {
     await this.deps.tmux.ensureServer();
     await this.reconcileNow();
     this.ensureHome();
+    try { if (seedAgentProfiles(this.deps.paths.agentProfiles)) this.deps.log.info(`agent profiles -> ${this.deps.paths.agentProfiles}`); }
+    catch (e) { this.deps.log.error(`agent profiles: ${String(e)}`); }
     await this.attachControl();
     this.poll = setInterval(() => {
       this.tick().catch((e) => this.deps.log.error(`poll: ${String(e)}`));
@@ -115,8 +118,18 @@ export class Fleet extends EventEmitter<Events> {
     return i;
   }
 
+  // a profile that is missing or cannot be used is left out, and the side card says why
   private render(island: Island, c?: Character): string {
-    return renderBrief(island, c, docFolders(this.deps.paths.docs, island, c));
+    const p = c?.agentProfile ? readAgentProfile(this.deps.paths.agentProfiles, c.agentProfile) : undefined;
+    return renderBrief(island, c, docFolders(this.deps.paths.docs, island, c), p && !('error' in p) ? p : undefined);
+  }
+
+  // a profile given by name must be one that can be used now; one that goes later is shown as missing
+  private checkAgentProfile(name: string): void {
+    const found = listAgentProfiles(this.deps.paths.agentProfiles);
+    const p = found.find((x) => x.name === name);
+    if (!p) throw new Invalid(`no agent profile ${name}; there are: ${found.map((x) => x.name).join(', ') || 'none'}`);
+    if ('error' in p) throw new Invalid(`agent profile ${name} ${p.error}`);
   }
 
   brief(id: string): string {
@@ -357,9 +370,10 @@ export class Fleet extends EventEmitter<Events> {
 
   // ---- characters
 
-  async createCharacter(p: { islandId: string; cwd: string; name?: string; command?: string; cell?: Cell; run?: string }): Promise<Character & { runSent?: boolean }> {
+  async createCharacter(p: { islandId: string; cwd: string; name?: string; command?: string; cell?: Cell; run?: string; agentProfile?: string }): Promise<Character & { runSent?: boolean }> {
     if (p.run && !p.command) throw new Invalid('run needs a command to start the agent');
     this.island(p.islandId);
+    if (p.agentProfile) this.checkAgentProfile(p.agentProfile);
     if (p.cell) {
       if (this.deps.store.state.islands[p.islandId].kind === 'home' && !isHomeSlot(this.deps.store.state.islands[p.islandId], p.cell)) throw new Invalid(`cell ${cellKey(p.cell)} is not a home slot`);
       if (!isLand(this.deps.store.state.islands[p.islandId], p.cell)) throw new Invalid(`cell ${cellKey(p.cell)} is not land`);
@@ -390,7 +404,7 @@ export class Fleet extends EventEmitter<Events> {
           id, islandId: p.islandId, cell: p.cell ?? placeOnIsland(d, p.islandId),
           name,
           portrait: randomPortrait(new Set(Object.values(d.characters).map((c) => c.portrait))),
-          note: '', instructions: '', cwd, context: [],
+          note: '', instructions: '', ...(p.agentProfile && { agentProfile: p.agentProfile }), cwd, context: [],
           tmux: { windowId: w.windowId, paneId: w.paneId },
           shell: { lastOutputAt: Date.now() }, unread: false,
         };
@@ -440,11 +454,17 @@ export class Fleet extends EventEmitter<Events> {
     });
   }
 
+  /** A profile renamed in its folder takes the characters that use it along. */
+  renameAgentProfile(from: string, to: string): void {
+    this.deps.store.update((d) => { for (const c of Object.values(d.characters)) if (c.agentProfile === from) c.agentProfile = to; });
+  }
+
   updateCharacter(id: string, patch: {
-    name?: string; note?: string; instructions?: string; islandId?: string; context?: ContextItem[]; portrait?: Portrait;
+    name?: string; note?: string; instructions?: string; agentProfile?: string; islandId?: string; context?: ContextItem[]; portrait?: Portrait;
   }): Character {
     const current = this.char(id);
     if (patch.islandId) this.island(patch.islandId);
+    if (patch.agentProfile) this.checkAgentProfile(patch.agentProfile);
     // names resolve without regard to case, so a twin would leave both characters unreachable by name
     const clash = patch.name !== undefined && Object.values(this.deps.store.state.characters)
       .find((c) => c.id !== id && c.name.toLowerCase() === patch.name!.toLowerCase());
@@ -456,6 +476,8 @@ export class Fleet extends EventEmitter<Events> {
       if (patch.portrait !== undefined) c.portrait = patch.portrait;
       if (patch.note !== undefined) setNote(c, patch.note);
       if (patch.instructions !== undefined) c.instructions = patch.instructions;
+      if (patch.agentProfile) c.agentProfile = patch.agentProfile;
+      else if (patch.agentProfile === '') delete c.agentProfile;
       if (context) c.context = context;
       if (patch.islandId && patch.islandId !== c.islandId) {
         // compute the new cell before reassigning islandId, or the character's stale cell would count as occupied on the target island

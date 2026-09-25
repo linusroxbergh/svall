@@ -8,7 +8,7 @@ export type ResourcesDeps = { api: Pick<Api, 'call'>; store: AppStore };
 export const listingKey = (f: FleetState): string => [
   ...[...new Set(Object.values(f.characters).map((c) => c.repo?.mainRoot ?? c.cwd))].sort(),
   ...Object.values(f.islands).map((i) => `i:${i.id}:${i.name}`).sort(),
-  ...Object.values(f.characters).map((c) => `c:${c.id}:${c.name}:${c.islandId}`).sort(),
+  ...Object.values(f.characters).map((c) => `c:${c.id}:${c.name}:${c.islandId}:${c.agentProfile ?? ''}`).sort(),
 ].join('\n');
 
 export async function loadResources(d: ResourcesDeps): Promise<void> {

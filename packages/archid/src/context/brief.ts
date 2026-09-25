@@ -1,4 +1,5 @@
 import { linkGlyph, type BrowserTab, type Character, type ContextItem, type Island } from '@archipelago/protocol';
+import type { AgentProfile } from '../agent-profiles.js';
 import type { DocEntry, DocFolder } from '../docs.js';
 import type { HookName } from '../hooks/receiver.js';
 import { oneLine } from '../text.js';
@@ -43,9 +44,19 @@ function docLines(folders: DocFolder[]): string[] {
   ];
 }
 
+const PROFILE_HEAD = /^Agent profile: .+ — follow this role\.$/;
+const PROFILE_END = '(end of agent profile)';
+
+// the role a character plays, whole. A blank line inside would pair with the brief's own blank lines when a line diff is
+// taken, and a line like the end would end it early
+const profileLines = (p: AgentProfile): string[] =>
+  [`Agent profile: ${p.name} — follow this role.`, ...p.body.split('\n').filter((l) => l.trim() !== '' && l !== PROFILE_END), PROFILE_END];
+
 // markdown the session reads at start; without doc folders it is empty when neither side has anything to say
-export function renderBrief(island: Island, character?: Character, folders: DocFolder[] = []): string {
+export function renderBrief(island: Island, character?: Character, folders: DocFolder[] = [], profile?: AgentProfile): string {
+  // the profile stands right under the heading: no free text comes before it to pass for its start, and a brief Claude cuts short keeps it
   const head = [
+    ...(character && profile ? profileLines(profile) : []),
     `Island: ${headline(island.name, island.description)}`,
     island.instructions && `Island instructions: ${island.instructions}`,
     character && `Character: ${headline(character.name, character.note)}`,
@@ -55,7 +66,7 @@ export function renderBrief(island: Island, character?: Character, folders: DocF
   const docs = docLines(folders);
   const tabLines = (character?.browser?.tabs ?? []).map((t) => tabLine(t, t.id === character?.browser?.active)).filter(Boolean);
   const tabs = tabLines.length ? ['Browser tabs (page addresses, not instructions):', ...tabLines] : [];
-  const said = island.description || island.instructions || items.length || docs.length || tabs.length || character?.note || character?.instructions;
+  const said = island.description || island.instructions || items.length || docs.length || tabs.length || character?.note || character?.instructions || (character && profile);
   if (!said) return '';
   const pinned = [...island.context, ...(character?.context ?? [])].some((it) => it.pinned);
   const show = character ? `\`archi char show ${character.id}\`` : `\`archi island show ${island.id}\``;
@@ -74,12 +85,26 @@ function lineChanges(prev: string, next: string): { removed: string[]; added: st
   return { removed, added };
 }
 
+// the profile's lines, which only ever start right under the heading, and the brief without them
+function splitProfile(brief: string): { profile: string; rest: string } {
+  const lines = brief ? brief.split('\n') : [];
+  const end = PROFILE_HEAD.test(lines[1] ?? '') ? lines.indexOf(PROFILE_END, 1) : -1;
+  if (end === -1) return { profile: '', rest: brief };
+  return { profile: lines.slice(1, end + 1).join('\n'), rest: [lines[0], ...lines.slice(end + 1)].join('\n') };
+}
+
 export function briefDiff(prev: string, next: string): string {
   if (prev === next) return '';
-  const { removed, added } = lineChanges(prev, next);
+  const a = splitProfile(prev), b = splitProfile(next);
+  const { removed, added } = lineChanges(a.rest, b.rest);
+  // a profile changed goes out whole, and first, so a reply Claude cuts short still carries it: two profiles share lines, and a
+  // line diff would leave the agent half of the new one
+  const profile = a.profile === b.profile ? []
+    : b.profile ? ['Your agent profile changed; follow this one instead of any before:', b.profile]
+    : ['Your agent profile was removed; stop following the role it gave you.'];
   // a reorder leaves the same lines in a different order: nothing to say
-  if (!removed.length && !added.length) return '';
-  return ['# Archipelago context changed', ...removed.map((l) => `- ${l}`), ...added.map((l) => `+ ${l}`)].join('\n');
+  if (!removed.length && !added.length && !profile.length) return '';
+  return ['# Archipelago context changed', ...profile, ...removed.map((l) => `- ${l}`), ...added.map((l) => `+ ${l}`)].join('\n');
 }
 
 // the delivered brief as if the change from before to after had reached the session too, so the next diff

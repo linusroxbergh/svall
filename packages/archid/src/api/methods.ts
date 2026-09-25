@@ -4,13 +4,13 @@ import type { Fleet } from '../fleet.js';
 import type { Mobile } from '../mobile.js';
 import type { PushStore } from '../push/store.js';
 import type { CodexPaths } from '../codex/install.js';
-import { scanResources, type ClaudePaths } from '../resources/scan.js';
+import { rootIdOf, scanResources, type ClaudePaths } from '../resources/scan.js';
 import type { Store } from '../store.js';
 import type { TerminalHub, Viewer } from '../terminals.js';
 import type { FetchUsage } from '../usage/usage.js';
 import type { Workspace } from '../workspace/workspace.js';
 
-export type Ctx = { store: Store; fleet: Fleet; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; signal?: AbortSignal };
+export type Ctx = { store: Store; fleet: Fleet; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; signal?: AbortSignal };
 
 type Handlers = { [M in MethodName]: (p: ParsedParams<M>, ctx: Ctx) => Promise<Result<M>> | Result<M> };
 
@@ -47,12 +47,16 @@ export const handlers: Handlers = {
     if (!p.enabled) push.clear();
     return status;
   },
-  'resources.get': (_p, { store, claude, codex, docs }) => ({ sources: scanResources(store.state, claude, codex, docs) }),
+  'resources.get': (_p, { store, claude, codex, docs, agentProfiles }) => ({ sources: scanResources(store.state, claude, codex, docs, agentProfiles) }),
   'fs.list': async (p, { workspace }) => ({ entries: await workspace.list(p.id, p.path) }),
   'fs.read': (p, { workspace }) => workspace.read(p.id, p.path),
   'fs.write': (p, { workspace }) => workspace.write(p.id, p.path, p.text, p.mtimeMs, p.root),
   'docs.create': (p, { workspace }) => workspace.create(p.id, p.path, p.text),
-  'docs.rename': (p, { workspace }) => { workspace.rename(p.id, p.path, p.to); return {}; },
+  'docs.rename': (p, { workspace, fleet, agentProfiles }) => {
+    workspace.rename(p.id, p.path, p.to);
+    if (agentProfiles !== undefined && p.id === rootIdOf(agentProfiles)) fleet.renameAgentProfile(p.path.slice(0, -3), p.to.slice(0, -3));
+    return {};
+  },
   'docs.delete': (p, { workspace }) => { workspace.remove(p.id, p.path); return {}; },
   'repo.status': (p, { workspace }) => workspace.status(p.id, p.base),
   'repo.file': (p, { workspace }) => workspace.file(p.id, p.path, p.base, p.from),

@@ -87,14 +87,14 @@ runIf('API', () => {
     await started;
     const terminals = new TerminalHub(fleet, tmux, store, silentLogger);
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
-    const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, undefined, paths.docs), silentLogger, () => [claude.json], paths.docs);
+    const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, undefined, paths.docs, paths.agentProfiles), silentLogger, () => [claude.json], [paths.docs, paths.agentProfiles]);
     const api = await startApi({
       host: '127.0.0.1', port: 0, token: 'secret', store, fleet, terminals, workspace, usage: stubUsage, mobileControl: stubMobile, log: silentLogger,
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(),
-      claude, docs: paths.docs, heartbeatMs,
+      claude, docs: paths.docs, agentProfiles: paths.agentProfiles, heartbeatMs,
     });
     cleanup.unshift(async () => { await api.close(); workspace.close(); });
-    return { api, store, fleet, terminals, claude, docs: paths.docs };
+    return { api, store, fleet, terminals, claude, docs: paths.docs, agentProfiles: paths.agentProfiles };
   }
 
   it('rejects a bad token and accepts a good one', async () => {
@@ -277,6 +277,23 @@ runIf('API', () => {
     expect((await call('fs.read', { id, path: 'memo.md' })).result).toMatchObject({ text: 'hi' });
     expect((await call('docs.delete', { id, path: 'memo.md' })).result).toEqual({});
     expect((await call('fs.read', { id, path: 'memo.md' })).error).toMatchObject({ code: 'not_found' });
+    client.ws.close();
+  });
+
+  it('takes the characters on an agent profile along when its file is renamed, and leaves them when the name is taken', async () => {
+    const { api, store, fleet, agentProfiles } = await boot();
+    const client = await TestClient.connect(api.port, 'secret');
+    const call = (method: string, params: unknown) => client.call(method, params) as Promise<{ result?: unknown; error?: { code: string } }>;
+    const island = fleet.createIsland({ name: 'roles' });
+    const a = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp', agentProfile: 'reviewer' });
+    const b = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp', agentProfile: 'planner' });
+    const id = `r:${agentProfiles}`;
+    expect((await call('docs.rename', { id, path: 'reviewer.md', to: 'planner.md' })).error).toMatchObject({ code: 'exists' });
+    expect(store.state.characters[a.id].agentProfile).toBe('reviewer');
+    expect((await call('docs.rename', { id, path: 'reviewer.md', to: 'critic.md' })).result).toEqual({});
+    expect(store.state.characters[a.id].agentProfile).toBe('critic');
+    expect(store.state.characters[b.id].agentProfile).toBe('planner');
+    expect(fleet.brief(a.id)).toContain('Agent profile: critic — follow this role.');
     client.ws.close();
   });
 

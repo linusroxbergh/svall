@@ -259,6 +259,21 @@ describe('doc sources', () => {
     expect(scanResources(stateOf(), claude).some((s) => s.tier === 'fleet')).toBe(false);
   });
 
+  it('gives the fleet’s source its agent profiles, and their folder as the place a new one goes', () => {
+    const home = makeHome(), docs = path.join(home, 'docs'), profiles = path.join(home, 'agent-profiles');
+    const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
+    put(path.join(profiles, 'reviewer.md'), '---\ndescription: Reviews code\n---\n\nYou are a reviewer.');
+    put(path.join(profiles, 'blank.md'), '');
+    const fleet = scanResources(stateOf(), claude, undefined, docs, profiles).find((s) => s.tier === 'fleet')!;
+    expect(fleet.agentProfiles).toBe(rootIdOf(profiles));
+    expect(fleet.groups.find((g) => g.kind === 'agentProfiles')!.items).toMatchObject([
+      { name: 'blank', error: 'has no text', open: { rootId: rootIdOf(profiles), path: 'blank.md' } },
+      { name: 'reviewer', detail: 'Reviews code', open: { rootId: rootIdOf(profiles), path: 'reviewer.md' } },
+    ]);
+    expect(resourceRoot(rootIdOf(profiles), stateOf(), claude, undefined, docs, profiles)).toBe(profiles);
+    expect(resourceRoot(rootIdOf(profiles), stateOf(), claude, undefined, docs)).toBeUndefined();
+  });
+
   it('lists a repository the fleet works in even when it holds nothing yet', () => {
     const home = makeHome();
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };

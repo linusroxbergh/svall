@@ -126,6 +126,8 @@ export const Character = z.object({
   noteSource: z.literal('manual').optional(),
   portrait: Portrait,
   instructions: z.string(),
+  // a file's name, without .md, in the fleet's agent-profiles folder; its text rides in the brief
+  agentProfile: z.string().optional(),
   cwd: z.string(),
   // the tmux pane's own path when last read; cwd moves with it only when it changes, so a restart keeps where the hooks put it
   panePath: z.string().optional(),

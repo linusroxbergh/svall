@@ -84,7 +84,7 @@ export type FsEntry = z.infer<typeof FsEntry>;
 export const ChangedFile = z.object({ path: z.string(), status: z.enum(['A', 'M', 'D', 'R', '?']), from: z.string().optional() });
 export type ChangedFile = z.infer<typeof ChangedFile>;
 const RootPath = z.object({ id: z.string(), path: z.string() });
-export const ResourceKind = z.enum(['docs', 'instructions', 'skills', 'agents', 'commands', 'plugins', 'mcp', 'hooks', 'settings', 'autoMemory']);
+export const ResourceKind = z.enum(['docs', 'agentProfiles', 'instructions', 'skills', 'agents', 'commands', 'plugins', 'mcp', 'hooks', 'settings', 'autoMemory']);
 export type ResourceKind = z.infer<typeof ResourceKind>;
 // rootId and path are what fs.read takes; find is text to put the cursor on, folder what a skill's row unfolds to
 const ResourceOpen = z.object({ rootId: z.string(), path: z.string(), find: z.string().optional(), folder: z.string().optional() });
@@ -98,9 +98,9 @@ export type ResourceItem = z.infer<typeof ResourceItem>;
 export const ResourceGroup = z.object({ kind: ResourceKind, items: z.array(ResourceItem) });
 export type ResourceGroup = z.infer<typeof ResourceGroup>;
 const ResourceTier = z.enum(['global', 'fleet', 'repo', 'island', 'character']);
-// docs is the root id a new doc goes to; a global source has none
+// docs is the root id a new doc goes to, agentProfiles the one a new agent profile goes to; a global source has neither
 export const ResourceSource = z.object({
-  rootId: z.string(), root: z.string(), name: z.string(), tier: ResourceTier, docs: z.string().optional(),
+  rootId: z.string(), root: z.string(), name: z.string(), tier: ResourceTier, docs: z.string().optional(), agentProfiles: z.string().optional(),
   islandIds: z.array(z.string()), characterIds: z.array(z.string()), groups: z.array(ResourceGroup),
 });
 export type ResourceSource = z.infer<typeof ResourceSource>;
@@ -123,7 +123,7 @@ export const methods = {
     params: z.object({
       islandId: z.string(), cwd: z.string(), name: z.string().optional(),
       command: z.string().optional(), cell: Cell.optional(),
-      run: z.string().optional(),
+      run: z.string().optional(), agentProfile: z.string().optional(),
     }),
     result: Character.extend({ runSent: z.boolean().optional() }),
   },
@@ -131,7 +131,8 @@ export const methods = {
     params: z.object({
       id: z.string(), name: z.string().optional(), note: z.string().optional(),
       islandId: z.string().optional(), context: z.array(ContextItem).optional(), instructions: z.string().optional(),
-      portrait: Portrait.optional(),
+      // '' clears it
+      agentProfile: z.string().optional(), portrait: Portrait.optional(),
     }),
     result: Character,
   },
@@ -230,4 +231,4 @@ export type Event =
 export const Hello = z.object({ token: z.string() });
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 12;
+export const PROTOCOL_VERSION = 13;

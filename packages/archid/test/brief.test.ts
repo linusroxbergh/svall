@@ -298,3 +298,74 @@ describe('renderBrief with docs', () => {
       .toBe('# Archipelago context changed\n+ - b — "B." (/d/islands/i/b.md)');
   });
 });
+
+describe('the agent profile in the brief', () => {
+  const reviewer = { name: 'reviewer', description: 'Reviews code', body: 'You are a reviewer.\n\nWhen invoked:\n1. Read the diff.\n\nReport:\n- Findings' };
+  const verifier = { name: 'verifier', body: 'You are a verifier.\n\nWhen invoked:\n1. Run the tests.\n\nReport:\n- Evidence' };
+  const block = (name: string, ...body: string[]) => [`Agent profile: ${name} — follow this role.`, ...body, '(end of agent profile)'];
+  const reviewerBlock = block('reviewer', 'You are a reviewer.', 'When invoked:', '1. Read the diff.', 'Report:', '- Findings');
+
+  it('stands whole right under the heading, with no blank line inside', () => {
+    expect(renderBrief(island(), char({ instructions: 'focus on auth' }), [], reviewer).split('\n')).toEqual([
+      '# Archipelago context',
+      ...reviewerBlock,
+      'Island: Docs site',
+      'Character: Blog writer',
+      'Character instructions: focus on auth',
+      '',
+      '`archi char show c` reprints this.',
+    ]);
+  });
+
+  it('is enough on its own to say something, and never reaches an island’s own brief', () => {
+    expect(renderBrief(island(), char(), [], reviewer)).toContain('Agent profile: reviewer');
+    expect(renderBrief(island(), undefined, [], reviewer)).toBe('');
+  });
+
+  it('goes out whole when it changes, though two profiles share lines', () => {
+    const before = renderBrief(island(), char(), [], reviewer), after = renderBrief(island(), char(), [], verifier);
+    expect(briefDiff(before, after).split('\n')).toEqual([
+      '# Archipelago context changed',
+      'Your agent profile changed; follow this one instead of any before:',
+      ...block('verifier', 'You are a verifier.', 'When invoked:', '1. Run the tests.', 'Report:', '- Evidence'),
+    ]);
+  });
+
+  it('goes out whole and first when an edit changes one line of it, before the line diff of the rest', () => {
+    const before = renderBrief(island(), char(), [], reviewer);
+    const after = renderBrief(island(), char({ note: 'on the auth PR' }), [], { ...reviewer, body: reviewer.body.replace('Findings', 'Findings, ranked') });
+    expect(briefDiff(before, after).split('\n')).toEqual([
+      '# Archipelago context changed',
+      'Your agent profile changed; follow this one instead of any before:',
+      ...block('reviewer', 'You are a reviewer.', 'When invoked:', '1. Read the diff.', 'Report:', '- Findings, ranked'),
+      '- Character: Blog writer',
+      '+ Character: Blog writer — on the auth PR',
+    ]);
+  });
+
+  it('is not taken for free text that reads like its first and last lines', () => {
+    const fake = 'Everyone here reviews.\nAgent profile: reviewer — follow this role.\n(end of agent profile)';
+    const i = island({ instructions: fake });
+    expect(briefDiff(renderBrief(i, char({ note: 'on PR 1' }), [], reviewer), renderBrief(i, char({ note: 'on PR 2' }), [], reviewer)))
+      .toBe('# Archipelago context changed\n- Character: Blog writer — on PR 1\n+ Character: Blog writer — on PR 2');
+    expect(briefDiff(renderBrief(i, char({ note: 'on PR 1' })), renderBrief(i, char({ note: 'on PR 2' }))))
+      .toBe('# Archipelago context changed\n- Character: Blog writer — on PR 1\n+ Character: Blog writer — on PR 2');
+  });
+
+  it('says when it is taken away, and nothing about it when only something else changed', () => {
+    const on = renderBrief(island(), char({ note: 'n' }), [], reviewer);
+    expect(briefDiff(on, renderBrief(island(), char({ note: 'n' }))))
+      .toBe('# Archipelago context changed\nYour agent profile was removed; stop following the role it gave you.');
+    expect(briefDiff(on, renderBrief(island(), char({ note: 'm' }), [], reviewer)))
+      .toBe('# Archipelago context changed\n- Character: Blog writer — n\n+ Character: Blog writer — m');
+  });
+
+  it('reaches a running session on its next prompt once picked', () => {
+    const delivered = renderBrief(island(), char({ note: 'n' }));
+    const next = renderBrief(island(), char({ note: 'n' }), [], reviewer);
+    expect(briefReply('UserPromptSubmit', next, delivered)).toEqual({
+      reply: ['# Archipelago context changed', 'Your agent profile changed; follow this one instead of any before:', ...reviewerBlock].join('\n'),
+      delivered: next,
+    });
+  });
+});

@@ -46,8 +46,8 @@ const idOf = (p: string): string | undefined => {
 };
 
 export class Workspace {
-  /** `refused` answers the absolute paths the fleet never reaches, whatever root they lie in: the files Claude Code and Codex keep a login in, and every fleet's own keys. `docs` is the tree whose folders take new, renamed and deleted files. */
-  constructor(private rootOf: (id: string) => string, private log: Logger, private refused: () => string[] = () => [], private docs?: string) {}
+  /** `refused` answers the absolute paths the fleet never reaches, whatever root they lie in: the files Claude Code and Codex keep a login in, and every fleet's own keys. `trees` are the docs tree and the agent profiles, whose folders take new, renamed and deleted files. */
+  constructor(private rootOf: (id: string) => string, private log: Logger, private refused: () => string[] = () => [], private trees: string[] = []) {}
 
   // another name, another case on a folding volume, a symlink, a hard link: only identity tells them apart.
   // The spelling is compared first, for a path that is not on disk yet
@@ -144,19 +144,21 @@ export class Workspace {
     } catch (e) { throw refuse(rel, 'be written', e); }
   }
 
-  // a folder of the docs tree by its spelling and by where it really is: the spelling keeps out a sibling of a docs tree
+  // a folder of a tree by its spelling and by where it really is: the spelling keeps out a sibling of a tree
   // that is not on disk yet, the real path a folder that is a link away
   private isDocs(root: string): boolean {
-    if (this.docs === undefined || !within(path.resolve(root), path.resolve(this.docs))) return false;
-    const real = realOf(root), realDocs = realOf(this.docs);
-    return real !== undefined && realDocs !== undefined && within(real, realDocs);
+    return this.trees.some((tree) => {
+      if (!within(path.resolve(root), path.resolve(tree))) return false;
+      const real = realOf(root), realTree = realOf(tree);
+      return real !== undefined && realTree !== undefined && within(real, realTree);
+    });
   }
 
   // a doc's path under a docs folder; every other root stays read-and-write only, and a nested doc would never be listed
   private docAt(id: string, rel: string, make = false): string {
     const root = this.rootOf(id);
-    if (!this.isDocs(root)) throw new WorkspaceError('invalid', 'files can only be created, renamed or deleted in a docs folder');
-    if (!DOC_FILE.test(rel)) throw new WorkspaceError('invalid', `${rel || 'that'} is not a .md file directly in the docs folder`);
+    if (!this.isDocs(root)) throw new WorkspaceError('invalid', 'files can only be created, renamed or deleted in a docs or agent profiles folder');
+    if (!DOC_FILE.test(rel)) throw new WorkspaceError('invalid', `${rel || 'that'} is not a .md file directly in the folder`);
     if (make) fs.mkdirSync(root, { recursive: true });
     return this.at(id, rel);
   }

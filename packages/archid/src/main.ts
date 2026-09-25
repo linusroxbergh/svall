@@ -101,7 +101,7 @@ async function start(opts: Options): Promise<Daemon> {
   const homes = () => [paths.home, ...fs.readdirSync(os.homedir()).filter((f) => f.startsWith('.archipelago')).map((f) => path.join(os.homedir(), f))];
   const refused = () => [claude.json, path.join(claude.dir, '.credentials.json'), path.join(codex.dir, 'auth.json'),
     ...homes().flatMap((h) => fleetKeys(resolvePaths(h)))];
-  const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs), log, refused, paths.docs);
+  const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs, paths.agentProfiles), log, refused, [paths.docs, paths.agentProfiles]);
   const phones = new Phones();
   const mobile = mobileControl(realDeps(), { home: paths.home, profile, logins: config.mobile.logins, phones, httpsPort: config.mobile.httpsPort, rotateKey: key.rotate });
   const usage = fleetUsage({ state: () => store.state, claude: cachedUsage(usageFetcher({ cwd: path.join(paths.home, 'usage'), envFile: paths.env }), USAGE_TTL_MS) });
@@ -116,7 +116,7 @@ async function start(opts: Options): Promise<Daemon> {
     await tmux.sourceConf().catch((e: Error) => log.error(`tmux source-file: ${e.message}`));
     const api = await startApi({
       host: opts.host ?? config.host, port: opts.port ?? config.port, token, store, fleet, terminals, workspace, usage, mobileControl: mobile, log,
-      origins: config.mobile.origins, logins: mobile.logins, key: key.get, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs,
+      origins: config.mobile.origins, logins: mobile.logins, key: key.get, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles,
       fleetName: profile !== PRIVATE && isProfileName(profile) ? profile : undefined,
     });
     teardown.push(() => api.close());

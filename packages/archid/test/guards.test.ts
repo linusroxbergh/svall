@@ -174,7 +174,7 @@ describe('char.wait over a socket', () => {
       d.characters.c_a = char('c_a', 'i_1', { tmux: { windowId: '@1', paneId: '%1' } });
     });
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
-    const workspace = new Workspace(() => home, silentLogger, () => [claude.json], paths.docs);
+    const workspace = new Workspace(() => home, silentLogger, () => [claude.json], [paths.docs]);
     const api = await startApi({
       host: '127.0.0.1', port: 0, token: 'secret', store, fleet, terminals: new TerminalHub(fleet, new Tmux(paths.tmuxSock, paths.tmuxConf), store, silentLogger),
       workspace, usage: stubUsage, mobileControl: stubMobile, log: silentLogger,

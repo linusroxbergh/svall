@@ -8,7 +8,7 @@ import { asDoc } from './docEditor.js';
 import { isFresh, letGo } from './docs.js';
 import { DocHeader } from './DocHeader.js';
 import { takesKeys } from './keys.js';
-import { entityOf, fieldLabel, fieldValue, isDoc, kindOf, tierOf, type FieldRef } from './model.js';
+import { entityOf, fieldLabel, fieldValue, isAgentProfiles, isDoc, kindOf, tierOf, type FieldRef } from './model.js';
 
 /** An island's or a character's own field, written straight back to the fleet as the side card does. */
 function Field({ r }: { r: FieldRef }) {
@@ -61,7 +61,7 @@ export function EditorPane({ onClose }: { onClose(): void }) {
       </header>
       {field ? <Field r={field} /> : shown ? (
         <>
-          {doc && <DocHeader key={`desc:${shown.rootId}:${shown.path}`} id={shown.rootId} path={shown.path} focus={fresh} />}
+          {doc && <DocHeader key={`desc:${shown.rootId}:${shown.path}`} id={shown.rootId} path={shown.path} focus={fresh} profile={isAgentProfiles(sources, shown.rootId)} />}
           <Editor key={`${shown.rootId}:${shown.path}`} id={shown.rootId} path={shown.path} takes={() => takesKeys() && !document.activeElement?.closest('.res-desc')} />
         </>
       ) : <div className="ide-empty">Pick a resource</div>}

@@ -170,8 +170,9 @@ runIf('archi CLI', () => {
     expect(dupChar.code).toBe(1);
     expect(dupChar.stderr).toContain(c.id);
     // the move reshaped second around its one crew member, who now stands in the middle of it
-    const placed = JSON.parse((await archi('char', 'new', '--island', second.id, '--cwd', '/tmp', '--cell', '0,2', '--name', 'helper', '--json')).stdout);
+    const placed = JSON.parse((await archi('char', 'new', '--island', second.id, '--cwd', '/tmp', '--cell', '0,2', '--name', 'helper', '--agent-profile', 'planner', '--json')).stdout);
     expect(placed.cell).toEqual({ x: 0, y: 2 });
+    expect(placed.agentProfile).toBe('planner');
     expect((await archi('char', 'close', placed.id)).code).toBe(0);
 
     daemon.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 's', transcriptPath: '/nope' } });
@@ -184,6 +185,12 @@ runIf('archi CLI', () => {
 
     expect(JSON.parse((await archi('char', 'update', c.id, '--instructions', 'in Spanish', '--pin', 'https://x?a=b', '--json')).stdout)).toMatchObject({ instructions: 'in Spanish', context: [{ ref: 'https://x?a=b', pinned: true }] });
     expect((await archi('char', 'show', c.id)).stdout).toContain('Character instructions: in Spanish');
+    expect(JSON.parse((await archi('char', 'update', c.id, '--agent-profile', 'reviewer', '--json')).stdout).agentProfile).toBe('reviewer');
+    expect((await archi('char', 'show', c.id)).stdout).toContain('Agent profile: reviewer — follow this role.\nYou are an independent code reviewer.');
+    const unknown = await archi('char', 'update', c.id, '--agent-profile', 'nobody');
+    expect(unknown.code).toBe(1);
+    expect(unknown.stderr).toMatch(/no agent profile nobody; there are: architect, debugger, explorer, planner, reviewer, verifier/);
+    expect(JSON.parse((await archi('char', 'update', c.id, '--agent-profile', '', '--json')).stdout).agentProfile).toBeUndefined();
 
     const status = (await archi('status')).stdout;
     expect(status).toMatch(/1 character/);

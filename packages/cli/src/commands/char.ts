@@ -38,7 +38,8 @@ export function charCommands(connect: () => Promise<Client>, json: () => boolean
     .option('--name <name>').option('--agent <name>', 'start claude or codex in its terminal').option('--claude', 'the same as --agent claude')
     .option('--command <cmd>').option('--cell <x,y>')
     .option('--run <text>', 'type text and Enter once the agent has started (needs --agent or --command)')
-    .action(async (o: { island: string; cwd: string; name?: string; agent?: string; claude?: boolean; command?: string; cell?: string; run?: string }) => {
+    .option('--agent-profile <name>', 'a role from the fleet\'s agent-profiles folder, e.g. reviewer')
+    .action(async (o: { island: string; cwd: string; name?: string; agent?: string; claude?: boolean; command?: string; cell?: string; run?: string; agentProfile?: string }) => {
       const agent = o.agent ?? (o.claude ? 'claude' : undefined);
       if (agent !== undefined && !AgentKind.safeParse(agent).success) throw new Error(`unknown agent ${agent}; use claude or codex`);
       if (o.run && !agent && !o.command) throw new Error('--run needs --agent or --command');
@@ -51,7 +52,7 @@ export function charCommands(connect: () => Promise<Client>, json: () => boolean
       const ch = await c.call('char.create', {
         islandId: islandId(state, o.island), cwd: path.resolve(expandHome(o.cwd)), name: o.name, command: agent ?? o.command,
         cell: o.cell ? (([x, y]) => ({ x, y }))(parsePair(o.cell, '--cell')) : undefined,
-        run: o.run,
+        run: o.run, agentProfile: o.agentProfile,
       });
       printResult(ch, json(), () => (ch.runSent === false ? `${ch.id} (prompt not sent)` : ch.id));
       c.close();
@@ -105,10 +106,10 @@ export function charCommands(connect: () => Promise<Client>, json: () => boolean
       if (r.status === 'gone') process.exitCode = 3;
     });
 
-  contextOptions(cmd.command('update <id>').description("change a character's name, note, island, context or instructions")
+  contextOptions(cmd.command('update <id>').description("change a character's name, note, island, context, instructions or agent profile")
     .option('--name <n>').option('--note <n>').option('--note-file <path>', 'read the note from a file, for text a shell would mangle')
-    .option('--island <id>'))
-    .action(async (id: string, o: { name?: string; note?: string; noteFile?: string; island?: string } & ContextFlags & { instructions?: string }) => {
+    .option('--island <id>').option('--agent-profile <name>', 'a role from the fleet\'s agent-profiles folder; \'\' clears it'))
+    .action(async (id: string, o: { name?: string; note?: string; noteFile?: string; island?: string; agentProfile?: string } & ContextFlags & { instructions?: string }) => {
       if (o.note !== undefined && o.noteFile) throw new Error('use --note or --note-file, not both');
       const c = await connect();
       const state = await c.call('state.get', {});
@@ -117,7 +118,7 @@ export function charCommands(connect: () => Promise<Client>, json: () => boolean
       const ch = await c.call('char.update', {
         id: current.id, name: o.name,
         note: o.noteFile ? fs.readFileSync(expandHome(o.noteFile), 'utf8').trim() : o.note,
-        islandId: o.island && islandId(state, o.island), context, instructions: o.instructions,
+        islandId: o.island && islandId(state, o.island), context, instructions: o.instructions, agentProfile: o.agentProfile,
       });
       printResult(ch, json(), () => `${ch.id} ${ch.name}`);
       c.close();

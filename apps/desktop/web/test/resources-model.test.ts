@@ -141,6 +141,10 @@ describe('kindRows', () => {
     }
     for (const s of [claude, repoA]) expect(kindRows(s).map((r) => r.what).filter((w) => card.includes(w))).toEqual([]);
   });
+  it('offers agent profiles to the fleet alone', () => {
+    expect(kindRows(ours).map((r) => r.what).slice(0, 3)).toEqual(['all', 'docs', 'agentProfiles']);
+    for (const s of [claude, repoA, isle('i1', 'ARCHIPELAGO', []), chr('c1', 'deep robin', 'i1')]) expect(kindRows(s).some((r) => r.what === 'agentProfiles')).toBe(false);
+  });
   it('calls the note kind Description on an island, the way the row and the crumb do', () => {
     const label = (s: Parameters<typeof kindRows>[0]) => kindRows(s).find((r) => r.what === 'note')?.label;
     expect(label(isle('i1', 'ARCHIPELAGO', []))).toBe('Description');

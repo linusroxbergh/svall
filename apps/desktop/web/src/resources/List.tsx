@@ -24,13 +24,13 @@ function NameField({ testid, initial, onCommit, onDone }: { testid: string; init
 
 // stays until Enter makes the doc or Escape gives up, and a refused name keeps its text; it focuses in an
 // effect so it takes the keys after the shelf has taken them on opening
-function NewDocField({ onCommit, onDone }: { onCommit(v: string): Promise<boolean>; onDone(): void }) {
+function NewDocField({ label, onCommit, onDone }: { label: string; onCommit(v: string): Promise<boolean>; onDone(): void }) {
   const [v, setV] = useState('');
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { input.current?.focus(); input.current?.scrollIntoView({ block: 'nearest' }); }, []);
   return (
     <label className="res-newdoc">
-      <span>New doc</span>
+      <span>{label}</span>
       <input ref={input} data-testid="resources-new-doc-name" placeholder="name, then Enter" value={v}
         onChange={(e) => setV(e.target.value)}
         onKeyDown={(e) => {
@@ -72,7 +72,7 @@ function FileRow({ kind, item }: { kind: Kind; item: ResourceItem }) {
   const [renaming, setRenaming] = useState(false);
   const unsaved = o !== undefined && dirty.some((p) => p === o.path || (o.folder !== undefined && p.startsWith(`${o.folder}/`)));
   const badge = rowBadge(kind, item);
-  const isDoc = kind === 'docs' && o !== undefined;
+  const isDoc = (kind === 'docs' || kind === 'agentProfiles') && o !== undefined;
   return (
     <>
       <div className="res-row" data-doc={isDoc}>
@@ -104,9 +104,10 @@ function FileRow({ kind, item }: { kind: Kind; item: ResourceItem }) {
 const opensItself = (i: Item): boolean => (isCard(i) ? isField(i.card) : i.open !== undefined);
 
 /** The kinds a source holds, as chips that narrow the list. The chosen one stays even when this source has
- *  none of it, and Docs stays wherever a doc can be written, since that is where a new one is made. */
+ *  none of it, and Docs and Agent profiles stay wherever one can be written, since that is where a new one is made. */
 function Kinds({ source, what }: { source: Source; what: What }) {
-  const offered = (w: { what: What; zero: boolean }) => w.what === 'all' || !w.zero || w.what === what || (w.what === 'docs' && source.docs !== undefined);
+  const offered = (w: { what: What; zero: boolean }) => w.what === 'all' || !w.zero || w.what === what
+    || (w.what === 'docs' && source.docs !== undefined) || (w.what === 'agentProfiles' && source.agentProfiles !== undefined);
   return (
     <div className="res-kinds" role="group" aria-label="Kind">
       {kindRows(source).filter(offered).map((w) => (
@@ -153,7 +154,10 @@ export function List() {
   const tier = whereTier(resourcesWhere);
   const source = shelfSource({ resources: sources, resourcesWhere, fleet });
   const groups = visible(source, what, query);
-  const canAdd = source?.docs !== undefined && (what === 'all' || what === 'docs');
+  // a new agent profile is made where the list shows them; a new doc wherever else docs show
+  const profile = what === 'agentProfiles';
+  const addTo = profile ? source?.agentProfiles : what === 'all' || what === 'docs' ? source?.docs : undefined;
+  const noun = profile ? 'profile' : 'doc';
   // a filter that leaves one file needs no choosing — CLAUDE.md is the usual one — so the pane shows it
   const only = groups.length === 1 && groups[0].items.length === 1 ? groups[0].items[0] : undefined;
   useEffect(() => { if (only && opensItself(only)) void chooseResource(deps(), only); }, [source?.rootId, what, only?.id]);
@@ -164,7 +168,7 @@ export function List() {
       <div className="res-rows">
         {tier ? <TierRows tier={tier} query={query} /> : (
           <>
-            {canAdd && naming && <NewDocField onDone={() => setNaming(false)} onCommit={(v) => createDoc(deps(), source.docs!, v)} />}
+            {addTo && naming && <NewDocField label={`New ${noun}`} onDone={() => setNaming(false)} onCommit={(v) => createDoc(deps(), addTo, v)} />}
             {groups.length === 0 && <div className="res-none">Nothing here.</div>}
             {groups.map((g) => {
               const badge = g.kind === 'autoMemory' ? undefined : badgeOf(g.kind, { name: '' });
@@ -179,7 +183,7 @@ export function List() {
                 </section>
               );
             })}
-            {canAdd && !naming && <button className="res-new" data-testid="resources-new-doc" onClick={() => setNaming(true)}>+ new doc</button>}
+            {addTo && !naming && <button className="res-new" data-testid="resources-new-doc" onClick={() => setNaming(true)}>+ new {noun}</button>}
           </>
         )}
       </div>

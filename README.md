@@ -215,9 +215,9 @@ The first build takes several minutes and about 1.2 GB of disk.
 - **Board** (Cmd+M): islands as a folder tree, with the selected character's
   terminal beside it and its island's characters as tabs. Drag a character
   onto an island to move it, or onto another character to swap them.
-- **Side card** (Cmd+I): the character's note, instructions, context, docs,
-  last prompts, model, directory and context use. Links open in the
-  character's browser or your default one.
+- **Side card** (Cmd+I): the character's note, agent profile and
+  instructions, context, docs, last prompts, model, directory and context
+  use. Links open in the character's browser or your default one.
 - **Browser** (Cmd+2; Cmd+B puts it beside the terminal on the board): tabs
   survive a relaunch, and the agent can read them. You sign in once per fleet:
   import Chrome's cookies once (macOS asks first), or fill logins from
@@ -275,6 +275,10 @@ Ghostty `initial-command` and `input` are ignored.
   terminal.
 - `--instructions` on an island or character is for the agent only, such as
   "merge without asking".
+- `--agent-profile <name>` on a character gives its agent a role: one of the
+  `.md` files in the fleet's `agent-profiles` folder. Six ship with a new fleet
+  (architect, debugger, explorer, planner, reviewer, verifier); Resources lists
+  them under the fleet, where you edit them or write your own.
 - `--context "<url or path>[ label]"` attaches links, files or folders, and
   `--pin` marks one to read first.
 - `archi <command> --help` lists the rest.

@@ -117,7 +117,7 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 12 with the fleet a resource tier of its own', () => {
-    expect(PROTOCOL_VERSION).toBe(12);
+  it('is 13 with an agent profile on a character', () => {
+    expect(PROTOCOL_VERSION).toBe(13);
   });
 });

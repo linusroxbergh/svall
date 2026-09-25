@@ -10,6 +10,7 @@ export type What = Kind | 'all';
 // short is the islet's sign, singular; colour is a CSS custom property; card marks what comes off the card
 export const KINDS: { kind: Kind; label: string; short: string; colour: string; card?: true }[] = [
   { kind: 'docs', label: 'Docs', short: 'doc', colour: '--pt-earth' },
+  { kind: 'agentProfiles', label: 'Agent profiles', short: 'profile', colour: '--sand' },
   { kind: 'note', label: 'Note', short: 'note', colour: '--pt-slate', card: true },
   { kind: 'agentInstructions', label: 'Agent instructions', short: 'instructions', colour: '--sand', card: true },
   { kind: 'links', label: 'Links', short: 'link', colour: '--pt-sky', card: true },
@@ -156,9 +157,9 @@ export function kindRows(s: Source | undefined): { what: What; label: string; co
   return [row('all', 'All'), ...KINDS.filter((k) => offers(s?.tier, k.kind)).map((k) => row(k.kind, kindLabel(k.kind, s?.tier), k.colour))];
 }
 
-/** Whether a tier is offered a kind at all: only an island and a character have a card. */
+/** Whether a tier is offered a kind at all: only an island and a character have a card, and only the fleet has agent profiles. */
 export const offers = (tier: Tier | undefined, kind: Kind): boolean =>
-  !kindOf(kind).card || tier === 'island' || tier === 'character';
+  kind === 'agentProfiles' ? tier === 'fleet' : !kindOf(kind).card || tier === 'island' || tier === 'character';
 
 /** Whether a row's content rides in the prompt or is read when wanted; configuration is neither. */
 export const badgeOf = (kind: Kind, item: Pick<Item, 'name'>): 'attached' | 'lookup' | undefined =>
@@ -200,9 +201,12 @@ export function docSlug(typed: string): string | undefined {
   return slug || undefined;
 }
 
-/** A .md directly in a folder that takes docs; every other file the shelf opens keeps the plain editor. */
+/** A .md directly in a folder that takes docs or agent profiles; every other file the shelf opens keeps the plain editor. */
 export const isDoc = (sources: ResourceSource[], rootId: string, path: string): boolean =>
-  path.endsWith('.md') && !path.includes('/') && sources.some((s) => s.docs === rootId);
+  path.endsWith('.md') && !path.includes('/') && sources.some((s) => s.docs === rootId || s.agentProfiles === rootId);
+
+/** Whether a folder is the agent profiles', whose files are written and named like docs. */
+export const isAgentProfiles = (sources: ResourceSource[], rootId: string): boolean => sources.some((s) => s.agentProfiles === rootId);
 
 /** An island's or a character's source and the docs in it. */
 export function docsOf(sources: ResourceSource[], tier: 'island' | 'character', id: string): { source?: ResourceSource; items: ResourceItem[] } {

@@ -58,6 +58,7 @@ describe('followResources', () => {
     expect(listingKey({ ...f, characters: { ...f.characters, [cid]: { ...c, unread: !c.unread, note: 'changed' } } })).toBe(listingKey(f));
     expect(listingKey({ ...f, characters: { ...f.characters, [cid]: { ...c, name: 'renamed' } } })).not.toBe(listingKey(f));
     expect(listingKey({ ...f, characters: { ...f.characters, [cid]: { ...c, islandId: 'elsewhere' } } })).not.toBe(listingKey(f));
+    expect(listingKey({ ...f, characters: { ...f.characters, [cid]: { ...c, agentProfile: 'reviewer' } } })).not.toBe(listingKey(f));
     expect(listingKey({ ...f, islands: { ...f.islands, [iid]: { ...i, name: 'renamed' } } })).not.toBe(listingKey(f));
     expect(listingKey({ ...f, islands: { ...f.islands, extra: { ...i, id: 'extra' } } })).not.toBe(listingKey(f));
   });

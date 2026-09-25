@@ -3,6 +3,7 @@ import { getBuffer, isDirty, subscribeBuffer, type Buffer } from '../ide/buffers
 import { onSaved, saveFile } from '../ide/files.js';
 import { theme } from '../theme.js';
 import { loadResources, type ResourcesDeps } from './load.js';
+import { isAgentProfiles } from './model.js';
 
 const key = (id: string, path: string): string => `${id}\0${path}`;
 const watched = new WeakSet<Buffer>();
@@ -43,13 +44,14 @@ function schedule(d: ResourcesDeps, id: string, path: string): void {
   timers.set(k, setTimeout(() => { timers.delete(k); void startSave(d, id, path); }, theme.docSaveMs));
 }
 
-// runs after every successful write; only a watched doc's changed description sends the listing back for another read
+// runs after every successful write; a watched doc's changed description sends the listing back for another read, and so does
+// any agent profile's write, since its body decides whether it can be used
 function noticeSave(d: ResourcesDeps, id: string, path: string): void {
   const b = getBuffer(id, path);
   if (!b || !watched.has(b)) return;
   const k = key(id, path);
   const now = frontmatter(b.saved.toString()).description;
-  if (now === lastDescription.get(k)) return;
+  if (now === lastDescription.get(k) && !isAgentProfiles(d.store.getState().resources, id)) return;
   lastDescription.set(k, now);
   void loadResources(d);
 }

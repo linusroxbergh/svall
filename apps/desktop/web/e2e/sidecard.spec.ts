@@ -275,3 +275,43 @@ test('both sidebars are dragged wider and come back that wide', async ({ page, a
   expect(await widthOf(page, 'sidebar')).toBeCloseTo(islands + 60, -1);
   expect(await widthOf(page, 'fleet-summary')).toBeCloseTo(card + 70, -1);
 });
+
+test('a character takes an agent profile in the side card, and the shelf shows what it says', async ({ page, archi }) => {
+  const island = await archi.api.call('island.create', { name: archi.uniq('profile') });
+  const c = await archi.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'profiled' });
+  await archi.open();
+  await page.getByTestId(`sb-char-${c.id}`).click();
+  const card = page.getByTestId('side-card');
+  await expect(card.getByText('Agent instructions', { exact: true })).toBeVisible();
+
+  await card.getByTestId('side-agent-profile').selectOption('reviewer');
+  await expect.poll(async () => (await archi.api.call('state.get', {})).characters[c.id].agentProfile).toBe('reviewer');
+  await expect(card.getByTestId('side-agent-profile-hint')).toContainText('Independently reviews completed code');
+  expect((await archi.api.call('char.show', { id: c.id })).text).toContain('Agent profile: reviewer — follow this role.');
+
+  await card.getByTestId('side-agent-profile-view').click();
+  await expect(page.getByTestId('resources-editor-crumb')).toHaveText(/Fleet\s*\/\s*.+\s*\/\s*Agent profiles\s*\/\s*reviewer\.md/);
+  await expect(page.getByTestId('resources-doc-description')).toHaveValue(/Independently reviews completed code/);
+  await expect(page.locator('.res-editor .cm-content')).toContainText('You are an independent code reviewer.');
+  await page.getByTestId('resources-close').click();
+
+  await card.getByTestId('side-agent-profile').selectOption('');
+  await expect.poll(async () => (await archi.api.call('state.get', {})).characters[c.id].agentProfile).toBeUndefined();
+  await expect(card.getByTestId('side-agent-profile-hint')).toHaveCount(0);
+});
+
+test('a profile whose file is gone is named missing, and the brief goes without it', async ({ page, archi }) => {
+  const file = path.join(archi.home, 'agent-profiles', 'fleeting.md');
+  fs.writeFileSync(file, '---\ndescription: here for a moment\n---\n\nYou are fleeting.\n');
+  const island = await archi.api.call('island.create', { name: archi.uniq('gone') });
+  const c = await archi.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'bereft', agentProfile: 'fleeting' });
+  fs.rmSync(file);
+  await archi.open();
+  await page.getByTestId(`sb-char-${c.id}`).click();
+  const card = page.getByTestId('side-card');
+  await expect(card.getByTestId('side-agent-profile')).toHaveValue('fleeting');
+  await expect(card.getByTestId('side-agent-profile').locator('option:checked')).toHaveText('fleeting (missing)');
+  await expect(card.getByTestId('side-agent-profile-hint')).toHaveText('fleeting.md is not in the agent profiles folder');
+  await expect(card.getByTestId('side-agent-profile-view')).toHaveCount(0);
+  expect((await archi.api.call('char.show', { id: c.id })).text).not.toContain('Agent profile');
+});

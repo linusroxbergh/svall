@@ -1,5 +1,6 @@
 import { useEffect, useState, type KeyboardEvent } from 'react';
 import { contextKind, stepPortrait, type Character, type ContextItem, type Params, type Portrait } from '@archipelago/protocol';
+import { AgentProfilePick } from './AgentProfilePick.js';
 import { app, deps } from './boot.js';
 import { deleteCharacter, deleteIsland, newCharacterOn, reviveCharacter, saveCharacter, saveCharacterContext, saveIsland, saveIslandContext } from './actions.js';
 import { copyText, openFolder } from './bridge.js';
@@ -152,8 +153,9 @@ export function SideCard({ id }: { id: string }) {
           onSave={(v) => { if (v !== c.note) save({ note: v }); }} />
       </div>
       <div className="sec">
-        <div className="kicker">Instructions</div>
-        <FollowTextarea className="fld desc" rows={3} placeholder="How the agent should work" key={`instructions-${id}`} value={c.instructions} data-testid="side-instructions"
+        <div className="kicker">Agent instructions</div>
+        <AgentProfilePick id={id} />
+        <FollowTextarea className="fld desc" rows={3} placeholder="Anything else this agent should know" key={`instructions-${id}`} value={c.instructions} data-testid="side-instructions"
           onSave={(v) => { if (v !== c.instructions) save({ instructions: v }); }} />
       </div>
       <div className="sec">

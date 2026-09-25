@@ -642,7 +642,7 @@ describe('Workspace docs', () => {
     const home = makeHome();
     const docs = path.join(home, 'docs'), dir = path.join(docs, 'islands/i1'), repoDir = path.join(home, 'repo');
     fs.mkdirSync(repoDir);
-    const ws = new Workspace((id) => ({ 'r:docs': dir, 'r:repo': repoDir })[id] ?? (() => { throw new Error(`no ${id}`); })(), silentLogger, () => [], docs);
+    const ws = new Workspace((id) => ({ 'r:docs': dir, 'r:repo': repoDir })[id] ?? (() => { throw new Error(`no ${id}`); })(), silentLogger, () => [], [docs]);
     return { ws, dir, repoDir };
   }
 
@@ -682,6 +682,17 @@ describe('Workspace docs', () => {
     expect(fs.readdirSync(repoDir)).toEqual(['README.md']);
   });
 
+  it('answers for every tree it was given, the agent profiles as much as the docs', () => {
+    const home = makeHome();
+    const profiles = path.join(home, 'agent-profiles');
+    const ws = new Workspace(() => profiles, silentLogger, () => [], [path.join(home, 'docs'), profiles]);
+    ws.create('r:p', 'critic.md', 'You are a critic.');
+    expect(fs.readFileSync(path.join(profiles, 'critic.md'), 'utf8')).toBe('You are a critic.');
+    ws.rename('r:p', 'critic.md', 'judge.md');
+    ws.remove('r:p', 'judge.md');
+    expect(fs.readdirSync(profiles)).toEqual([]);
+  });
+
   it('refuses a nested path, a climb, a name that is not .md and one carrying a control character', async () => {
     const { ws } = setup();
     // a newline in a name would forge a line of its own in every brief that lists the doc
@@ -712,7 +723,7 @@ describe('Workspace docs', () => {
     fs.writeFileSync(path.join(outside, 'victim.md'), 'VICTIM');
     fs.mkdirSync(path.join(docs, 'islands'), { recursive: true });
     fs.symlinkSync(outside, path.join(docs, 'islands/link'));
-    const ws = new Workspace(() => path.join(docs, 'islands/link'), silentLogger, () => [], docs);
+    const ws = new Workspace(() => path.join(docs, 'islands/link'), silentLogger, () => [], [docs]);
     expect(await codeOf(() => ws.create('r:docs', 'new.md', 'x'))).toBe('invalid');
     expect(await codeOf(() => ws.rename('r:docs', 'victim.md', 'moved.md'))).toBe('invalid');
     expect(await codeOf(() => ws.remove('r:docs', 'victim.md'))).toBe('invalid');

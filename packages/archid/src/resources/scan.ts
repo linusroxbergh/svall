@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parse as parseToml } from 'smol-toml';
 import { frontmatter, type FleetState, type ResourceGroup, type ResourceItem, type ResourceKind, type ResourceSource } from '@archipelago/protocol';
+import { listAgentProfiles } from '../agent-profiles.js';
 import type { CodexPaths } from '../codex/install.js';
 import { docsDir, fleetDir, listDocs, repoRootOf, repoSlug } from '../docs.js';
 import { NotFound } from '../errors.js';
@@ -45,17 +46,17 @@ function isDocsRoot(root: string, state: FleetState, docs: string): boolean {
   return real !== undefined && realDocs !== undefined && within(real, realDocs);
 }
 
-/** The folder a resource root id names, when it is the Claude dir, the Codex dir, a folder the fleet works in now, or a docs folder. */
-export function resourceRoot(id: string, state: FleetState, claude: ClaudePaths, codex?: CodexPaths, docs?: string): string | undefined {
+/** The folder a resource root id names, when it is the Claude dir, the Codex dir, a folder the fleet works in now, a docs folder or the agent profiles. */
+export function resourceRoot(id: string, state: FleetState, claude: ClaudePaths, codex?: CodexPaths, docs?: string, agentProfiles?: string): string | undefined {
   if (!id.startsWith('r:')) return undefined;
   const root = id.slice(2);
-  if (root === claude.dir || root === codex?.dir || fleetRoots(state).some((r) => r.root === root)) return root;
+  if (root === claude.dir || root === codex?.dir || root === agentProfiles || fleetRoots(state).some((r) => r.root === root)) return root;
   return docs !== undefined && isDocsRoot(root, state, docs) ? root : undefined;
 }
 
 /** The folder a workspace id names: a resource root when the id is one, else the character's own folder. */
-export function workspaceRoot(id: string, state: FleetState, claude: ClaudePaths, codex?: CodexPaths, docs?: string): string {
-  const res = resourceRoot(id, state, claude, codex, docs);
+export function workspaceRoot(id: string, state: FleetState, claude: ClaudePaths, codex?: CodexPaths, docs?: string, agentProfiles?: string): string {
+  const res = resourceRoot(id, state, claude, codex, docs, agentProfiles);
   if (res) return res;
   if (!Object.hasOwn(state.characters, id)) throw new NotFound(`no character ${id}`);
   const c = state.characters[id];
@@ -135,6 +136,11 @@ function docRows(dir: string): Row[] {
   return listDocs(dir).map((d) => ({ ...fileItem(b, path.basename(d.path), { name: d.name, detail: d.description }), ...(d.error && { error: d.error }) }));
 }
 
+function agentProfileRows(dir: string): Row[] {
+  const b: Base = { rootId: rootIdOf(dir), root: dir };
+  return listAgentProfiles(dir).map((p) => ({ ...fileItem(b, `${p.name}.md`, { name: p.name, detail: 'description' in p ? p.description : undefined }), ...('error' in p && { error: p.error }) }));
+}
+
 function hookItems(b: Base, rels: string[]): Row[] {
   return rels.flatMap((rel) => {
     const json = readJson(path.join(b.root, rel));
@@ -193,7 +199,7 @@ const groupsOf = (pairs: [ResourceKind, Row[]][]): ResourceGroup[] =>
 
 const slugOf = (root: string): string => root.replace(/[^A-Za-z0-9]/g, '-');
 
-export function scanResources(state: FleetState, claude: ClaudePaths, codex?: CodexPaths, docs?: string): ResourceSource[] {
+export function scanResources(state: FleetState, claude: ClaudePaths, codex?: CodexPaths, docs?: string, agentProfiles?: string): ResourceSource[] {
   const user: Base = { rootId: rootIdOf(claude.dir), root: claude.dir };
   // the user's own ~/.claude.json keeps every project's history and outgrows the cap
   const cj = readJson(claude.json, Infinity);
@@ -233,10 +239,13 @@ export function scanResources(state: FleetState, claude: ClaudePaths, codex?: Co
     return { ...b, name: path.basename(r.root), tier: 'repo', ...(folder && { docs: rootIdOf(folder) }), islandIds: r.islandIds, characterIds: r.characterIds, groups };
   });
 
-  // the fleet's own docs, read by every character in this fleet and by no other; docs sits in the fleet's home
+  // the fleet's own docs, read by every character in this fleet and by no other, and the agent profiles its characters pick from;
+  // both sit in the fleet's home
   const fleet = docs === undefined ? [] : [((): ResourceSource => {
     const dir = fleetDir(docs);
-    return { rootId: rootIdOf(dir), root: dir, name: profileOf(path.dirname(docs)), tier: 'fleet', docs: rootIdOf(dir), islandIds: [], characterIds: [], groups: groupsOf([['docs', docRows(dir)]]) };
+    const profiles = agentProfiles === undefined ? {} : { agentProfiles: rootIdOf(agentProfiles) };
+    const groups = groupsOf([['docs', docRows(dir)], ['agentProfiles', agentProfiles === undefined ? [] : agentProfileRows(agentProfiles)]]);
+    return { rootId: rootIdOf(dir), root: dir, name: profileOf(path.dirname(docs)), tier: 'fleet', docs: rootIdOf(dir), ...profiles, islandIds: [], characterIds: [], groups };
   })()];
 
   const entity = (tier: 'island' | 'character', id: string, name: string, islandIds: string[], characterIds: string[]): ResourceSource[] => {
