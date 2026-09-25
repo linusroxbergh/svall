@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SPACING, isLand, landCells, sizeForCrew } from '@archipelago/protocol';
 import { Config } from '../src/config.js';
 import { docsDir } from '../src/docs.js';
+import type { Proc } from '../src/dormancy.js';
 import { Dormant, Fleet, Invalid, NotFound } from '../src/fleet.js';
 import type { HookEvent } from '../src/hooks/receiver.js';
 import { aboveHome, crewGrid, placementOk } from '../src/layout.js';
@@ -26,17 +27,19 @@ runIf('Fleet', () => {
 
   async function boot(extra: { pollMs?: number; runTimeoutMs?: number; homeCwd?: string; linkDeps?: Partial<LinkDeps>; log?: Logger } = {}) {
     const { homeCwd, ...deps } = extra;
+    // what ps shows the dormancy sweep
+    const procs: Proc[] = [];
     const home = makeHome();
     const paths = resolvePaths(home);
     const config = Config.parse({ shell: '/bin/sh', home: { cwd: homeCwd ?? path.join(home, 'mc') } });
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
-    const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 150, ...deps });
+    const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 150, processes: async () => procs, ...deps });
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); fleet.stop(); await tmux.killServer(); });
     await started;
-    return { fleet, store, tmux, home };
+    return { fleet, store, tmux, home, procs };
   }
 
   it('creates islands and characters backed by tmux windows', async () => {
@@ -338,14 +341,190 @@ runIf('Fleet', () => {
     await tmux.killWindow(c.tmux!.windowId);
     await waitFor(() => store.state.characters[c.id].tmux === undefined);
     expect(store.state.characters[c.id].revive).toEqual({ command: 'claude --resume 9d1e4c2a-7b3f-4a6e-8c5d-2f1a0b9c8d7e' });
-    await expect(fleet.run(c.id, 'x', true)).rejects.toBeInstanceOf(Dormant);
-    await expect(fleet.run(c.id, 'x', true)).rejects.toThrow(`${c.name} is dormant; revive it first`);
+    await expect(fleet.run(c.id, 'x', false)).rejects.toBeInstanceOf(Dormant);
+    await expect(fleet.run(c.id, 'x', false)).rejects.toThrow(`${c.name} is dormant; revive it first`);
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionEnd' } });
     store.update((d) => { d.characters[c.id].revive = { command: 'echo revived' }; });
     const r = await fleet.reviveCharacter(c.id);
     expect(r.tmux).toBeDefined();
     expect(r.revive).toBeUndefined();
     await waitFor(async () => (await fleet.readScreen(c.id, 20)).includes('revived'));
+  });
+
+  const SID = '9d1e4c2a-7b3f-4a6e-8c5d-2f1a0b9c8d7e';
+  const HOUR = 3_600_000;
+
+  // a character whose pane shell stands in for its agent: the sweep reads it as `args`, and it exits with its window
+  async function withAgent(b: Awaited<ReturnType<typeof boot>>, args = 'claude', command = 'sleep 600') {
+    const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command });
+    const pid = Number((await b.tmux.run('display', '-p', '-t', c.tmux!.paneId, '#{pane_pid}')).trim());
+    const transcriptPath = path.join(b.home, `${SID}.jsonl`);
+    fs.writeFileSync(transcriptPath, '');
+    b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, pid, transcriptPath } });
+    b.procs.push({ pid, ppid: 1, pgid: pid, args });
+    return { c, pid, transcriptPath };
+  }
+
+  it('ends an agent idle past the limit and resumes it with the flags it was started with', async () => {
+    const b = await boot();
+    const { fleet, store, tmux } = b;
+    // the stand-in lingers after the hang-up, as an agent running its SessionEnd hooks does
+    const { c, pid } = await withAgent(b, 'claude --model claude-opus-5-5[1m] --effort xhigh -- fix it', "trap 'sleep 1; exit' HUP; while :; do sleep 0.1; done");
+    const windowId = c.tmux!.windowId;
+    await fleet['endIdleAgents']();
+    expect(store.state.characters[c.id].tmux).toBeDefined();
+
+    store.update((d) => { d.characters[c.id].agent!.lastActivityAt = Date.now() - 13 * HOUR; });
+    await fleet['endIdleAgents']();
+    expect(store.state.characters[c.id].tmux).toBeUndefined();
+    expect(store.state.characters[c.id].revive).toEqual({ command: `claude --effort 'xhigh' --resume ${SID}` });
+    expect(await tmux.hasWindow(windowId)).toBe(false);
+    // the sweep returns once the agent itself has gone, so no revive runs beside it
+    expect(() => process.kill(pid, 0)).toThrow();
+    // the end the closing window sends leaves the agent the revive resumes
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionEnd', sessionId: SID } });
+    expect(store.state.characters[c.id].agent?.sessionId).toBe(SID);
+    // as does a daemon start's reconcile
+    await fleet.reconcileNow();
+    expect(store.state.characters[c.id].revive).toEqual({ command: `claude --effort 'xhigh' --resume ${SID}` });
+
+    store.update((d) => { d.characters[c.id].revive = { command: 'sleep 600' }; });
+    await fleet.reviveCharacter(c.id);
+    expect(Date.now() - store.state.characters[c.id].agent!.lastActivityAt).toBeLessThan(HOUR);
+  });
+
+  it('keeps every agent running while dormancy is off', async () => {
+    const b = await boot();
+    const { fleet, store } = b;
+    const { c } = await withAgent(b);
+    store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
+    fleet.setDormancy(0);
+    await fleet['endIdleAgents']();
+    expect(store.state.characters[c.id].tmux).toBeDefined();
+    fleet.setDormancy(1);
+    await fleet['endIdleAgents']();
+    expect(store.state.characters[c.id].tmux).toBeUndefined();
+  });
+
+  it('leaves an agent whose pid is gone or runs another program, or whose launch a resume would change', async () => {
+    const b = await boot();
+    const { fleet, store, procs } = b;
+    const { c, pid } = await withAgent(b);
+    store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
+    for (const args of [undefined, 'vim notes.md', 'claude --dangerously-skip-permissions --disallowedTools Bash']) {
+      procs.splice(0, procs.length, ...(args ? [{ pid, ppid: 1, pgid: pid, args }] : []));
+      await fleet['endIdleAgents']();
+      expect(store.state.characters[c.id].tmux).toBeDefined();
+    }
+    procs.splice(0, procs.length, { pid, ppid: 1, pgid: pid, args: 'claude' });
+    await fleet['endIdleAgents']();
+    expect(store.state.characters[c.id].tmux).toBeUndefined();
+  });
+
+  it('leaves an agent with work in the background, or no transcript to resume from', async () => {
+    const b = await boot();
+    const { fleet, store, procs } = b;
+    const { c, pid, transcriptPath } = await withAgent(b);
+    store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
+    // a dev server the Bash tool started, in a process group of its own
+    procs.push({ pid: 99_001, ppid: pid, pgid: 99_001, args: 'zsh -c pnpm dev' });
+    await fleet['endIdleAgents']();
+    expect(store.state.characters[c.id].tmux).toBeDefined();
+    procs.pop();
+    fs.rmSync(transcriptPath);
+    await fleet['endIdleAgents']();
+    expect(store.state.characters[c.id].tmux).toBeDefined();
+  });
+
+  it('gives a character the user has just looked at a whole rest before its agent is ended', async () => {
+    const b = await boot();
+    const { fleet, store } = b;
+    const { c } = await withAgent(b);
+    store.update((d) => { d.characters[c.id].unread = true; d.characters[c.id].agent!.status = 'done'; d.characters[c.id].agent!.lastActivityAt = 0; });
+    fleet.markSeen(c.id);
+    await fleet['endIdleAgents']();
+    expect(store.state.characters[c.id].tmux).toBeDefined();
+    // the look leaves the agent's own last activity as it was
+    expect(store.state.characters[c.id].agent!.lastActivityAt).toBe(0);
+  });
+
+  it('wakes a dormant claude with a prompt run into it, as its launch prompt', async () => {
+    const b = await boot();
+    const { fleet, store, tmux, home } = b;
+    const { c } = await withAgent(b);
+    store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
+    await fleet['endIdleAgents']();
+    await expect(fleet.run(c.id, 'run the tests again', false)).rejects.toThrow(Dormant);
+    // what would be typed is kept, so no real claude starts
+    const typed: string[] = [];
+    vi.spyOn(tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
+    await fleet.run(c.id, 'run the tests again', true);
+    expect(store.state.characters[c.id].tmux).toBeDefined();
+    const file = path.join(home, `${c.id}.prompt`);
+    expect(typed).toEqual([`claude --resume ${SID} -- "$(cat '${file}'; rm -f '${file}')"`]);
+    expect(fs.readFileSync(file, 'utf8')).toBe('run the tests again');
+  });
+
+  it('takes back no window still closing for idleness, from a poll, a reconcile or a revive', async () => {
+    const b = await boot();
+    const { fleet, store, tmux } = b;
+    const { c } = await withAgent(b);
+    store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
+    const windowId = c.tmux!.windowId;
+    // the window outlives its dormancy until released
+    const real = tmux.killWindow.bind(tmux);
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    vi.spyOn(tmux, 'killWindow').mockImplementation(async (id) => { await held; return real(id); });
+    const ending = fleet['endIdleAgents']();
+    await waitFor(() => !store.state.characters[c.id].tmux);
+    await fleet['tick']();
+    await fleet.reconcileNow();
+    expect(store.state.characters[c.id].tmux).toBeUndefined();
+    store.update((d) => { d.characters[c.id].revive = { command: 'sleep 600' }; });
+    const revived = fleet.reviveCharacter(c.id);
+    release();
+    await ending;
+    expect((await revived).tmux?.windowId).not.toBe(windowId);
+  });
+
+  it('goes back to a window whose kill failed, rather than start a second agent', async () => {
+    const b = await boot();
+    const { fleet, store, tmux } = b;
+    const { c } = await withAgent(b);
+    store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
+    const windowId = c.tmux!.windowId;
+    vi.spyOn(tmux, 'killWindow').mockRejectedValueOnce(new Error('tmux went away'));
+    await fleet['endIdleAgents']();
+    expect((await fleet.reviveCharacter(c.id)).tmux?.windowId).toBe(windowId);
+  });
+
+  it('does not take back a window a poll listed before its agent was ended', async () => {
+    const b = await boot();
+    const { fleet, store, tmux } = b;
+    const { c } = await withAgent(b);
+    store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
+    // the next listing, taken with the window alive, is handed back only after the agent has been ended
+    const real = tmux.listWindows.bind(tmux);
+    let taken = false;
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    vi.spyOn(tmux, 'listWindows').mockImplementation(async () => {
+      const r = await real();
+      if (taken) return r;
+      taken = true;
+      await held;
+      return r;
+    });
+    await waitFor(() => taken);
+    await fleet['endIdleAgents']();
+    let back = false;
+    const unsub = store.subscribe(() => { if (store.state.characters[c.id].tmux) back = true; });
+    cleanup.push(async () => unsub());
+    release();
+    await new Promise((r) => setTimeout(r, 500));
+    expect(back).toBe(false);
+    expect(store.state.characters[c.id].revive).toEqual({ command: `claude --resume ${SID}` });
   });
 
   it('does not mark a character created during a poll snapshot dormant', async () => {

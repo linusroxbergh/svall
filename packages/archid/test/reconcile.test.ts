@@ -57,6 +57,16 @@ describe('reconcile', () => {
     expect(s.characters.c_b.revive).toEqual({ command: `claude --resume ${SID}` });
   });
 
+  it('leaves a character already dormant with the revive it was given', () => {
+    const s = emptyState();
+    s.characters.c_a = char({
+      agent: { kind: 'claude', sessionId: SID, status: 'idle', lastActivityAt: 0 },
+      revive: { command: `claude --model 'opus' --resume ${SID}` },
+    });
+    reconcile(s, [], 0).mutate(s);
+    expect(s.characters.c_a.revive).toEqual({ command: `claude --model 'opus' --resume ${SID}` });
+  });
+
   it('recovers unknown windows as characters on the recovered island and renames them', () => {
     const s = emptyState();
     const { mutate, renames } = reconcile(s, [live('stray', '@4', '%4')], 0);
@@ -193,6 +203,15 @@ describe('reconcile', () => {
     markDormant(c);
     expect(c.hint).toBeUndefined();
     expect(c.tmux).toBeUndefined();
+  });
+
+  it('a character gone dormant leaves no question open, and keeps a finished result', () => {
+    const asking = char({ tmux: { windowId: '@1', paneId: '%1' }, agent: { kind: 'claude', sessionId: SID, status: 'blocked', prompt: 'Allow?', promptId: 'p1', lastActivityAt: 0 } });
+    markDormant(asking);
+    expect(asking.agent).toEqual({ kind: 'claude', sessionId: SID, status: 'idle', lastActivityAt: 0 });
+    const done = char({ tmux: { windowId: '@1', paneId: '%1' }, unread: true, agent: { kind: 'claude', sessionId: SID, status: 'done', prompt: 'API error', lastActivityAt: 0 } });
+    markDormant(done);
+    expect(done.agent).toMatchObject({ status: 'done', prompt: 'API error' });
   });
 
   it('reviveCommand reflects agent presence', () => {

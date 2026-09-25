@@ -157,7 +157,12 @@ export const FleetState = z.object({
   scribeAsk: z.literal(true).optional(),
   // the last automatic or swept pass that failed, cleared by the next one that succeeds
   scribeError: z.object({ message: z.string(), at: z.number() }).optional(),
+  // an agent idle this many hours is ended and its character left dormant, to be resumed on revive;
+  // 0 keeps every agent running, and absent is DORMANT_AFTER_HOURS
+  dormantAfterHours: z.number().int().min(0).optional(),
 });
 export type FleetState = z.infer<typeof FleetState>;
+
+export const DORMANT_AFTER_HOURS = 12;
 
 export const emptyState = (): FleetState => ({ version: 7, islands: {}, characters: {}, home: defaultHome(), defaultCwd: DEFAULT_CWD, scribeAsk: true });

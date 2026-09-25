@@ -235,6 +235,10 @@ export const setScribe = (d: ActionDeps, enabled: boolean): void => {
   d.api.call('scribe.set', { enabled }).catch(toast(d));
 };
 
+export const setDormancy = (d: ActionDeps, hours: number): void => {
+  d.api.call('dormancy.set', { hours }).catch(toast(d));
+};
+
 // the daemon holds the only answer, and `archi mobile` can change it while the app is open
 export const loadMobileStatus = (d: ActionDeps): void => {
   d.api.call('mobile.get', {}).then((m) => d.store.getState().setMobile(m)).catch(() => {});

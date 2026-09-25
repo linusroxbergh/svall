@@ -17,6 +17,17 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   const alpha = useRef(opacity);
   alpha.current = opacity;
 
+  // opening a dormant character wakes it once it has stayed in view a moment, so passing by wakes nothing;
+  // one that goes dormant while open waits for the button
+  useEffect(() => {
+    if (second || !c || c.tmux) return;
+    const t = setTimeout(() => {
+      const cur = app.store.getState().fleet.characters[id];
+      if (cur && !cur.tmux) reviveCharacter(deps(), id);
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [id, second]);
+
   useEffect(() => {
     if (dormant || error || veiled) return;
     const el = ref.current;

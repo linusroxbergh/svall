@@ -10,16 +10,25 @@ export const secondName = (id: string): string => `${id}-2`;
 
 class IslandFull extends Error { code = 'invalid'; }
 
-export function reviveCommand(c: Character): string {
+// flags are the launch flags to resume with, already quoted
+export function reviveCommand(c: Character, flags: string[] = []): string {
   if (!c.agent || !isSessionId(c.agent.sessionId)) return '';
   // a codex character's cwd follows its commands into worktrees; resumed from one, codex would stop to ask which directory
-  return c.agent.kind === 'codex' ? `codex resume -c tui.resume_cwd=session ${c.agent.sessionId}` : `claude --resume ${c.agent.sessionId}`;
+  const words = c.agent.kind === 'codex' ? ['codex', 'resume', '-c', 'tui.resume_cwd=session', ...flags] : ['claude', ...flags, '--resume'];
+  return [...words, c.agent.sessionId].join(' ');
 }
 
-export function markDormant(c: Character): void {
+export function markDormant(c: Character, flags?: string[]): void {
   delete c.tmux;
   delete c.hint;
-  c.revive = { command: reviveCommand(c) };
+  c.revive = { command: reviveCommand(c, flags) };
+  // nothing runs until the revive, so no question is left open and no turn goes on; a finished result stays
+  if (c.agent && (c.agent.status === 'blocked' || c.agent.status === 'working')) {
+    c.agent.status = 'idle';
+    delete c.agent.prompt;
+    delete c.agent.promptId;
+    delete c.agent.background;
+  }
 }
 
 // the island takes the ground a crew one larger needs and everyone lines up on it, as `arrange` lays out
@@ -97,7 +106,8 @@ export function reconcile(
         }
         c.shell.lastOutputAt = w.activity;
         delete c.revive;
-      } else if (known.has(c.id)) {
+      } else if (known.has(c.id) && (c.tmux || !c.revive)) {
+        // one already dormant keeps the revive it was given, flags and all
         markDormant(c);
       }
     }

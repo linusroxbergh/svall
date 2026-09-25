@@ -89,3 +89,15 @@ test('the zoom tip names the keys as bound, and leaves out one that is unbound',
   act(() => store.getState().setSettings({ bindings: { zoomOut: null } }));
   expect(tip()).toBe('Scales the map, the panels and the terminal\'s text together. ⌘0 is 100%.');
 });
+
+test('dormancy steps through the waits, from 12 hours by default out to never', () => {
+  render(<SettingsCard />);
+  expect(screen.getByTestId('dormancy-level').textContent).toBe('12 hours');
+  fireEvent.click(screen.getByTestId('dormancy-more'));
+  expect(call).toHaveBeenCalledWith('dormancy.set', { hours: 24 });
+  act(() => store.getState().setFleet({ ...fleet(), dormantAfterHours: 0 }));
+  expect(screen.getByTestId('dormancy-level').textContent).toBe('never');
+  expect((screen.getByTestId('dormancy-more') as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByTestId('dormancy-less'));
+  expect(call).toHaveBeenCalledWith('dormancy.set', { hours: 72 });
+});

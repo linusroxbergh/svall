@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import type { PushStatus } from '@archipelago/protocol';
-import { loadMobileStatus, setScribe } from './actions.js';
+import { DORMANT_AFTER_HOURS, type PushStatus } from '@archipelago/protocol';
+import { loadMobileStatus, setDormancy, setScribe } from './actions.js';
 import { app, deps } from './boot.js';
 import { openConfig, openUrl } from './bridge.js';
 import { useApp } from './hooks.js';
@@ -95,6 +95,26 @@ function Phone() {
   );
 }
 
+// 0 is never, the longest wait of all
+const DORMANCY = [4, 12, 24, 72, 0];
+const dormancyLabel = (h: number) => (h === 0 ? 'never' : h % 24 ? `${h} hours` : h === 24 ? '1 day' : `${h / 24} days`);
+
+function Dormancy() {
+  const hours = useApp((s) => s.fleet.dormantAfterHours ?? DORMANT_AFTER_HOURS);
+  const at = DORMANCY.indexOf(hours);
+  const step = (by: -1 | 1) => DORMANCY[at + by];
+  return (
+    <div className="row">
+      <span>dormant after<Info id="dormancy">An agent left idle this long is closed, freeing the memory it and its tools hold. Opening its terminal resumes the conversation where it stopped. One still running something in the background stays up.</Info></span>
+      <b className="set-zoom">
+        <button data-testid="dormancy-less" aria-label="Sooner" disabled={at <= 0} onClick={() => setDormancy(deps(), step(-1))}>−</button>
+        <span className="tnum" data-testid="dormancy-level">{dormancyLabel(hours)}</span>
+        <button data-testid="dormancy-more" aria-label="Later" disabled={at === DORMANCY.length - 1} onClick={() => setDormancy(deps(), step(1))}>+</button>
+      </b>
+    </div>
+  );
+}
+
 function Scribe() {
   const on = useApp((s) => !s.fleet.scribeOff && !s.fleet.scribeAsk);
   const error = useApp((s) => s.fleet.scribeError);
@@ -113,6 +133,7 @@ function Scribe() {
             <b title={new Date(error.at).toLocaleString()}>{error.message}</b>
           </div>
         )}
+        <Dormancy />
       </div>
     </>
   );

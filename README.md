@@ -192,7 +192,9 @@ The first build takes several minutes and about 1.2 GB of disk.
   bottom.
 - **Character**: one terminal. Type `claude` or `codex` in it and the map
   tracks the agent: `working`, `idle`, `blocked` (waiting on you), `done`, or
-  `dormant` (its tmux window is gone; reviving resumes it).
+  `dormant` (its tmux window is gone; opening it resumes it). An agent left
+  idle for 12 hours goes dormant on its own, to free the memory it holds;
+  Settings → dormant after changes the wait or turns it off.
 - **Scribe**: a minute after an agent stops with new work, a headless
   `claude -p` (or `codex exec`, if configured) writes the character's name,
   note and links, and the island's description. A name you gave only gains a

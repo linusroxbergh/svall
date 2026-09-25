@@ -166,6 +166,7 @@ export const methods = {
     result: z.object({ lines: z.array(z.string()) }),
   },
   'scribe.set': { params: z.object({ enabled: z.boolean() }), result: z.object({}) },
+  'dormancy.set': { params: z.object({ hours: z.number().int().min(0) }), result: z.object({}) },
   'usage.get': { params: z.object({}), result: UsageSnapshot },
   'mobile.get': { params: z.object({}), result: MobileStatus },
   'mobile.set': { params: z.object({ enabled: z.boolean() }), result: MobileStatus },
@@ -231,4 +232,4 @@ export type Event =
 export const Hello = z.object({ token: z.string() });
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 13;
+export const PROTOCOL_VERSION = 14;

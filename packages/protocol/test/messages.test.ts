@@ -117,7 +117,7 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 13 with an agent profile on a character', () => {
-    expect(PROTOCOL_VERSION).toBe(13);
+  it('is 14 with dormancy set from the app', () => {
+    expect(PROTOCOL_VERSION).toBe(14);
   });
 });

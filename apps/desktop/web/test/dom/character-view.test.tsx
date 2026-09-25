@@ -44,6 +44,7 @@ let store: AppStore;
 beforeEach(() => {
   call.mockClear();
   fire.mockClear();
+  open.mockClear();
   sessionStorage.clear();
   store = createAppStore();
   setAppStore(store);
@@ -128,19 +129,28 @@ test('a prompt the fleet does not take comes back to the field, with the reason'
   expect(screen.getByText('archid offline')).toBeTruthy();
 });
 
-test('a revive the fleet refuses says why beside the button', async () => {
+test('opening a dormant character wakes it before its terminal attaches', async () => {
   const f = fleet();
   f.characters.c2 = chr('c2', 'i_a', { x: 1, y: 1 }, { tmux: undefined });
   store.getState().setFleet(f);
   store.getState().setStatus('online');
-  open.mockImplementationOnce(() => Promise.reject(new Error('c2 is dormant; revive it first')));
+  render(<CharacterView id="c2" onBack={() => {}} />);
+  await act(async () => {});
+  expect(call).toHaveBeenCalledWith('char.revive', { id: 'c2' });
+  expect(open).toHaveBeenCalled();
+});
+
+test('a wake the fleet refuses says why beside the revive button', async () => {
+  const f = fleet();
+  f.characters.c2 = chr('c2', 'i_a', { x: 1, y: 1 }, { tmux: undefined });
+  store.getState().setFleet(f);
+  store.getState().setStatus('online');
   call.mockImplementationOnce(() => Promise.reject(new Error('its directory is gone')));
   render(<CharacterView id="c2" onBack={() => {}} />);
   await act(async () => {});
-  fireEvent.click(screen.getByRole('button', { name: 'revive' }));
-  await act(async () => {});
-  expect(call).toHaveBeenCalledWith('char.revive', { id: 'c2' });
+  expect(open).not.toHaveBeenCalled();
   expect(screen.getByText('its directory is gone')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'revive' })).toBeTruthy();
 });
 
 test('the header says the phone has lost archid rather than what the character is doing', () => {

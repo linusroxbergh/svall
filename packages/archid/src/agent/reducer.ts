@@ -8,7 +8,7 @@ export type Slot = { agent?: Agent; unread: boolean };
 const BLOCKING = new Set(['permission_prompt', 'worker_permission_prompt', 'elicitation_dialog', 'elicitation_url_dialog']);
 
 // a process of another user still counts as running
-const running = (pid: number): boolean => {
+export const running = (pid: number): boolean => {
   try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === 'EPERM'; }
 };
 

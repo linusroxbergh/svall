@@ -104,7 +104,9 @@ export function CharacterView({ id, onBack }: { id: string; onBack(): void }): J
     let left = false;
     setFailed(undefined);
     setSendError(undefined);
-    link.current?.open().catch((e: Error) => { if (!left) setFailed(e.message); });
+    // opening a dormant character wakes it, as on the desktop
+    const woken = character && !character.tmux ? phone.api().call('char.revive', { id }) : Promise.resolve();
+    woken.then(() => { if (!left) return link.current?.open(); }).catch((e: Error) => { if (!left) setFailed(e.message); });
     phone.api().fire('char.seen', { id });
     return () => { left = true; };
   }, [id, online, attempt]);
