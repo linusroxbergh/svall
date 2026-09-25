@@ -1,8 +1,7 @@
 # Archipelago
 
 > [!NOTE]
-> **Alpha 0.1**: early and changing fast. Expect rough edges, and please
-> [report what breaks](#reporting-a-problem).
+> **Alpha 0.1**: early and changing fast. Expect rough edges.
 
 A macOS map of your Claude Code and Codex agents. Every terminal is a character
 on an island, so you can see at a glance which agents are working, waiting on
@@ -148,11 +147,6 @@ If pnpm says it failed to switch versions, update pnpm to 12 or newer the way
 you installed it (`brew upgrade pnpm`, `npm i -g pnpm@latest`, or
 `pnpm self-update` run outside the clone) and try again. If it says the Node
 version is unsupported, run `brew upgrade node`.
-
-### Reporting a problem
-
-Open an issue with what you did and the output of `archi doctor`, which shows
-your commit, what the fleet needs and the end of its log.
 
 ## Concepts
 
