@@ -15,6 +15,9 @@
   --home-bank: #978660;
   --grass: #7B9376;
   --grass-hi: #98AD92;
+  /* the darker ground a card stands pressed into */
+  --grass-press: color-mix(in srgb, var(--grass) 45%, var(--ink-land));
+  --home-sand-press: color-mix(in srgb, var(--home-sand-deep) 55%, var(--home-bank));
   --shore: rgba(90,80,55,.42);
 
   /* surfaces: one blue-slate family, terminal ground to raised panel */
