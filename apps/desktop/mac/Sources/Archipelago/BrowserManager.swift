@@ -64,8 +64,8 @@ final class BrowserManager: NSObject, WKUIDelegate, WKNavigationDelegate {
         for v in overlay.views.values { v.pageZoom = factor }
     }
 
-    func setCutout(_ rect: WebRect?) {
-        overlay.setCutout(rect)
+    func setCutout(rects: [WebRect], passive: [WebRect]) {
+        overlay.setCutout(rects: rects, passive: passive)
     }
 
     func show(tab: String, rect: WebRect, url: String?, focus: Bool) {

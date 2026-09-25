@@ -19,8 +19,7 @@ export type KeyAction =
   | { type: 'focusAddress' }
   | { type: 'openLink' }
   | { type: 'fillLogin' }
-  | { type: 'none' }
-  | { type: 'quit' };
+  | { type: 'none' };
 
 export type ActionId =
   | 'newCharacter' | 'missionControl' | 'arrange' | 'closeCharacter'
@@ -61,7 +60,8 @@ export const ACTIONS: Record<ActionId, ActionSpec> = {
   zoomIn: { label: 'Zoom in', action: { type: 'zoom', steps: 1 }, chord: 'cmd+=', also: ['cmd++', 'cmd+shift++'] },
   zoomOut: { label: 'Zoom out', action: { type: 'zoom', steps: -1 }, chord: 'cmd+-' },
   zoomReset: { label: 'Actual size', action: { type: 'zoom', steps: 0 }, chord: 'cmd+0' },
-  quit: { label: 'Quit Archipelago', action: { type: 'quit' }, chord: 'cmd+q' },
+  // the shell takes this chord itself (quit.ts tells it which), so the page has nothing to run
+  quit: { label: 'Quit Archipelago', action: { type: 'none' }, chord: 'cmd+q' },
 };
 
 export const actionIds = (): ActionId[] => Object.keys(ACTIONS) as ActionId[];
@@ -132,4 +132,15 @@ export function chordLabel(chord: Chord | null): string {
   // a trailing '+' splits into an empty tail; the key it names is the plus sign itself
   const key = parts[parts.length - 1] === '' ? '+' : parts[parts.length - 1];
   return `⌘${parts.includes('shift') ? '⇧' : ''}${SYMBOL[key] ?? key.toUpperCase()}`;
+}
+
+// the key an action answers to now, as a hint names it; none once the action is unbound
+export function keyLabel(id: ActionId, b: Bindings = {}): string | undefined {
+  const chord = chordFor(id, b);
+  return chord ? chordLabel(chord) : undefined;
+}
+
+export function keyTip(text: string, id: ActionId, b: Bindings = {}): string {
+  const key = keyLabel(id, b);
+  return key ? `${text} (${key})` : text;
 }

@@ -128,6 +128,10 @@ test('edits an island from the side card on the map', async ({ page, archi }) =>
   await page.getByTestId(`island-label-${island.id}`).click();
   await expect(card.getByTestId('side-island-delete')).toBeVisible();
   await card.getByTestId('side-island-delete').click();
+  await card.getByTestId('side-island-delete-cancel').click();
+  await card.getByTestId('side-island-delete').click();
+  await expect(page.getByTestId(`island-label-${island.id}`)).toHaveCount(1);
+  await card.getByTestId('side-island-delete-confirm').click();
   await expect(page.getByTestId(`island-label-${island.id}`)).toHaveCount(0);
   await expect(card).toBeHidden();
   await page.keyboard.press('Escape');

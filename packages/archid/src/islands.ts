@@ -45,7 +45,7 @@ export function updateIsland({ store, log }: Deps, id: string, patch: IslandPatc
   // names resolve without regard to case, so a twin would leave both islands unreachable by name
   const clash = p.name !== undefined && Object.values(store.state.islands)
     .find((i) => i.id !== id && i.name.toLowerCase() === p.name!.toLowerCase());
-  if (clash) throw new Invalid(`island ${clash.id} is already called ${clash.name}`);
+  if (clash) throw new Invalid(`another island is already called ${clash.name}`);
   if ((p.position || p.size) && !placementOk(store.state, next)) throw new Invalid(`island ${current.name} would overlap another island`);
   // ground taken by a move or by growth stops at mission control's row
   if ((p.position || p.size) && !aboveHome(store.state, next)) throw new Invalid(`island ${current.name} would stand below mission control`);
@@ -83,7 +83,7 @@ export function arrangeIslands({ store }: Deps, aspect?: number): void {
 export function deleteIsland({ store, log, paths }: Deps, id: string): void {
   if (!Object.hasOwn(store.state.islands, id)) throw new NotFound(`no island ${id}`);
   if (store.state.islands[id].kind === 'home') throw new Invalid('mission control cannot be deleted');
-  if (Object.values(store.state.characters).some((c) => c.islandId === id)) throw new Invalid(`island ${id} is not empty`);
+  if (Object.values(store.state.characters).some((c) => c.islandId === id)) throw new Invalid(`island ${store.state.islands[id].name} is not empty`);
   store.update((d) => { delete d.islands[id]; settleHome(d); });
   removeDocs(paths.docs, 'island', id, log);
 }

@@ -44,6 +44,25 @@ test('the connect screen asks for archi setup while the daemon has never logged'
   await expect(page.getByTestId('connect-screen')).toContainText('run archi setup');
 });
 
+test('the connect screen says it is connecting at first, and shows the log once archid is slow to answer', async ({ page }) => {
+  // a daemon that took the socket and does not answer, as every launch sees for a moment
+  const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+  await new Promise((r) => wss.once('listening', r));
+  try {
+    await fakeShell(page, {
+      port: (wss.address() as { port: number }).port, token: 't',
+      info: { type: 'shell.info', home: '/tmp/fleet-x', log: ['2026-09-14T10:00:00Z error archid failed to start: listen EADDRINUSE'], op: false },
+    });
+    await page.goto('/');
+    const screen = page.getByTestId('connect-screen');
+    await expect(screen).toHaveText('Connecting to archid…');
+    await expect(screen.getByTestId('connect-log')).toContainText('EADDRINUSE');
+  } finally {
+    for (const c of wss.clients) c.terminate();
+    await new Promise((r) => wss.close(r));
+  }
+});
+
 test('a daemon on another protocol asks for a reinstall', async ({ page }) => {
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   wss.on('connection', (ws) => ws.once('message', () => ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION + 1 } }))));
@@ -54,7 +73,8 @@ test('a daemon on another protocol asks for a reinstall', async ({ page }) => {
       info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false },
     });
     await page.goto('/');
-    await expect(page.getByTestId('connect-screen')).toContainText('pnpm desktop:install');
+    // a daemon that answered needs no grace to say so: this is well inside the 2.5 s the connect screen waits
+    await expect(page.getByTestId('connect-screen')).toContainText('pnpm desktop:install', { timeout: 1500 });
     await expect(page.getByTestId('connect-screen')).not.toContainText('archi setup');
   } finally {
     for (const c of wss.clients) c.terminate();

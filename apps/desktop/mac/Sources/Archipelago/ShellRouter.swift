@@ -12,8 +12,8 @@ final class ShellRouter {
     private let keys = KeyMonitor()
     private let notifier = Notifier()
     private var sentConfigErrors = false
-    // the rect a page panel has taken out of the surfaces, in page pixels
-    private var cutout: WebRect?
+    // whether a page panel holds a rect of the surfaces
+    private var holding = false
     private var presses: Any?
     // whether the page has sent .connection since it last loaded, and what a banner click or answer sent before that
     private var listening = false
@@ -90,9 +90,9 @@ final class ShellRouter {
         surfaces.closeAll()
         browsers.closeAll()
         // the panel that asked for the hole is gone with the page, and a new one asks again
-        cutout = nil
-        surfaces.setCutout(nil)
-        browsers.setCutout(nil)
+        holding = false
+        surfaces.setCutout(rects: [], passive: [])
+        browsers.setCutout(rects: [], passive: [])
         keys.registered = []
         keys.capturing = false
         setQuit(KeyMonitor.defaultQuit)
@@ -242,10 +242,10 @@ final class ShellRouter {
             browsers.fillLogin(tab: tab)
         case .browserFocus(let tab):
             browsers.focus(tab: tab)
-        case .shellCutout(let rect):
-            cutout = rect
-            surfaces.setCutout(rect)
-            browsers.setCutout(rect)
+        case .shellCutout(let rects, let passive):
+            holding = !rects.isEmpty || !passive.isEmpty
+            surfaces.setCutout(rects: rects, passive: passive)
+            browsers.setCutout(rects: rects, passive: passive)
         case .notifyPost(let key, let title, let subtitle, let body, let sound, let actions, let promptId):
             notifier.post(key: key, title: title, subtitle: subtitle, body: body, sound: sound, actions: actions, promptId: promptId)
         case .notifyRemove(let key):
@@ -254,15 +254,13 @@ final class ShellRouter {
             notifier.enable()
         case .notifySettings:
             notifier.openSettings()
-        case .quit:
-            quit()
         }
     }
 
     // a press the page can see is answered by the page's own listener, which knows the panel's own tab from
     // the rest of it; only a press the surfaces above the page swallow is reported here
     private func pressed(_ event: NSEvent) {
-        guard cutout != nil, event.window === container.window else { return }
+        guard holding, event.window === container.window else { return }
         let hit = container.hitTest(container.convert(event.locationInWindow, from: nil))
         if hit == nil || !hit!.isDescendant(of: webView) { bridge.send(.pressedAway) }
     }

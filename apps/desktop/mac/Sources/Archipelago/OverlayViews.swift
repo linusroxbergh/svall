@@ -2,7 +2,7 @@ import AppKit
 
 /// A view a manager keeps above the webview: it takes a cutout for the page's panels and is freed when it goes.
 protocol OverlayView: NSView {
-    var cutout: NSRect? { get set }
+    var cutout: Cutout { get set }
     func destroy()
 }
 
@@ -18,8 +18,8 @@ final class OverlayViews<V: OverlayView> {
     private(set) var views: [String: V] = [:]
     // the page is zoomed, so its rects are in page pixels: this many window points each
     private(set) var zoom = 1.0
-    // the rect the page's corner panel is drawn into, which every view gives up while it is open
-    private var cutout: WebRect?
+    // the rects the page's panels are drawn into, which every view gives up while they stand
+    private var cutout: (rects: [WebRect], passive: [WebRect]) = ([], [])
 
     init(container: NSView, webView: NSView) {
         self.container = container
@@ -43,14 +43,15 @@ final class OverlayViews<V: OverlayView> {
         for view in views.values { mask(view) }
     }
 
-    func setCutout(_ rect: WebRect?) {
-        cutout = rect
+    func setCutout(rects: [WebRect], passive: [WebRect]) {
+        cutout = (rects, passive)
         for view in views.values { mask(view) }
     }
 
-    // the view is masked in its own coordinates, so it is given the rect after it has been placed
+    // the view is masked in its own coordinates, so it is given the rects after it has been placed
     func mask(_ view: V) {
-        view.cutout = cutout.map { view.convert(frame($0), from: container) }
+        let local = { (rect: WebRect) in view.convert(self.frame(rect), from: self.container) }
+        view.cutout = Cutout(rects: cutout.rects.map(local), passive: cutout.passive.map(local))
     }
 
     func place(_ view: V, _ rect: WebRect) {

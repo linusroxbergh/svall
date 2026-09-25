@@ -131,13 +131,9 @@ describe('dispatchKey', () => {
     expect(c.store.getState().sideCardOpen).toBe(false);
     await dispatchKey({ type: 'toggleSideCard' }, c);
     expect(c.store.getState().sideCardOpen).toBe(true);
-    await dispatchKey({ type: 'quit' }, c);
-    expect(c.sent).toEqual([]);
   });
-  it('quit and closing the side card reach the shell', async () => {
+  it('closing the side card hands the keys to the terminal', async () => {
     const c = ctx(true);
-    await dispatchKey({ type: 'quit' }, c);
-    expect(c.sent).toEqual([{ type: 'quit' }]);
     c.store.getState().focus('c0');
     await dispatchKey({ type: 'toggleSideCard' }, c);
     expect(c.store.getState().sideCardOpen).toBe(true);
@@ -530,6 +526,55 @@ describe('dispatchKey on the map', () => {
     expect(c.store.getState()).toMatchObject({ resourcesOpen: true, view: 'map' });
     await dispatchKey({ type: 'toggleResources' }, c);
     expect(c.store.getState().resourcesOpen).toBe(false);
+  });
+  it('Enter on the open resources shelf leaves the character behind it shut', () => {
+    const c = ctx(true);
+    const listeners: Record<string, (e: KeyboardEvent) => void> = {};
+    const win = { addEventListener: (t: string, h: (e: KeyboardEvent) => void) => { listeners[t] = h; }, removeEventListener() {} } as unknown as Window;
+    installKeyHandlers(c, win);
+    c.store.getState().select('c1', false);
+    c.store.getState().toggleResources(true);
+    listeners.keydown({ key: 'Enter', target: { tagName: 'DIV' }, preventDefault() {} } as unknown as KeyboardEvent);
+    expect(c.store.getState().card).toBeUndefined();
+    c.store.getState().toggleResources(false);
+    listeners.keydown({ key: 'Enter', target: { tagName: 'DIV' }, preventDefault() {} } as unknown as KeyboardEvent);
+    expect(c.store.getState().card).toBe('c1');
+  });
+  it('Enter under the link popup or a corner panel leaves the character behind it shut', () => {
+    const c = ctx(true);
+    const listeners: Record<string, (e: KeyboardEvent) => void> = {};
+    const win = { addEventListener: (t: string, h: (e: KeyboardEvent) => void) => { listeners[t] = h; }, removeEventListener() {} } as unknown as Window;
+    installKeyHandlers(c, win);
+    const enter = () => listeners.keydown({ key: 'Enter', target: { tagName: 'DIV' }, preventDefault() {} } as unknown as KeyboardEvent);
+    c.store.getState().select('c1', false);
+    c.store.getState().askLink({ item: { kind: 'link', ref: 'https://example.com' } as never, charId: 'c1', x: 0, y: 0 });
+    enter();
+    c.store.getState().closeLinkAsk();
+    c.store.getState().toggleUsage(true);
+    enter();
+    c.store.getState().toggleUsage(false);
+    c.store.getState().toggleMobile(true);
+    enter();
+    expect(c.store.getState().card).toBeUndefined();
+  });
+  it('Enter on the board behind an overlay leaves the keys with the overlay', () => {
+    const c = ctx(true);
+    const listeners: Record<string, (e: KeyboardEvent) => void> = {};
+    const win = { addEventListener: (t: string, h: (e: KeyboardEvent) => void) => { listeners[t] = h; }, removeEventListener() {} } as unknown as Window;
+    installKeyHandlers(c, win);
+    const enter = () => listeners.keydown({ key: 'Enter', target: { tagName: 'DIV' }, preventDefault() {} } as unknown as KeyboardEvent);
+    const focused = () => c.sent.filter((m) => m.type === 'term.focus');
+    c.store.getState().setView('board');
+    c.store.getState().select('c1');
+    c.store.getState().setMissionPrompt(true);
+    enter();
+    c.store.getState().setMissionPrompt(false);
+    c.store.getState().toggleUsage(true);
+    enter();
+    expect(focused()).toEqual([]);
+    c.store.getState().toggleUsage(false);
+    enter();
+    expect(focused()).toEqual([{ type: 'term.focus', id: 'c1' }]);
   });
   it('Escape closes the settings before anything under them', () => {
     const c = ctx(true);

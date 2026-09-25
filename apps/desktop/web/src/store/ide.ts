@@ -1,6 +1,6 @@
 import type { FleetState } from '@archipelago/protocol';
 import type { StateCreator } from 'zustand/vanilla';
-import { SINGLE, shows, type Panes } from '../panes.js';
+import { SINGLE, shows, withoutSecond, type Panes } from '../panes.js';
 import type { App } from './index.js';
 
 // the panes a character shows, how the two share the width, and the editor's open files; page state, per character.
@@ -17,8 +17,7 @@ const withSet = (list: string[], v: string, on: boolean): string[] =>
 export const pruneIde = (ide: Record<string, IdeState>, f: FleetState, prev: FleetState): Record<string, IdeState> =>
   Object.fromEntries(Object.entries(ide).filter(([id]) => id.startsWith('r:') || f.characters[id]).map(([id, s]) => {
     if (!prev.characters[id]?.second || f.characters[id]?.second || !shows(s.panes, 'terminal2')) return [id, s];
-    const left = s.panes.left === 'terminal2' ? s.panes.right ?? 'terminal' : s.panes.left;
-    return [id, { ...s, panes: { left } }];
+    return [id, { ...s, panes: withoutSecond(s.panes) }];
   }));
 
 export type IdeSliceState = { ide: Record<string, IdeState> };

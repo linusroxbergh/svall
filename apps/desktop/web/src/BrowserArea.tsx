@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { activateBrowserTab, closeBrowserTab } from './actions.js';
 import { app, deps } from './boot.js';
 import { useApp } from './hooks.js';
+import { keyTip } from './keys.js';
 import { canFill } from './settings.js';
 import { isVeiled } from './selectors.js';
 
@@ -14,6 +15,7 @@ export function BrowserArea({ id, aside }: { id: string; aside?: boolean }) {
   const veiled = useApp(isVeiled);
   // read as the veil lifts, from the render that lifted it
   const keepPageFocus = useApp((s) => s.keepPageFocus);
+  const bindings = useApp((s) => s.settings.bindings);
   const active = c?.browser?.active;
   const view = useApp((s) => (active ? s.webviews[active] : undefined));
   // the shell reports a navigation that failed with the rest of the tab's state
@@ -100,7 +102,7 @@ export function BrowserArea({ id, aside }: { id: string; aside?: boolean }) {
             if (e.key === 'Escape') { e.stopPropagation(); fresh.current = false; setDraft(undefined); e.currentTarget.blur(); }
           }} />
         {failure && <span className="baddr-err" data-testid="browser-error" title={failure}>{clip(failure, 40)}</span>}
-        {fills && <button data-testid="browser-fill" disabled={!active} title="Fill from 1Password (⌘⇧P)"
+        {fills && <button data-testid="browser-fill" disabled={!active} title={keyTip('Fill from 1Password', 'fillLogin', bindings)}
           onClick={() => active && app.bridge.send({ type: 'browser.fill', tab: active })}>⚿</button>}
       </div>
       {active ? (

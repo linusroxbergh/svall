@@ -11,8 +11,7 @@ final class BrowserView: WKWebView, OverlayView {
     var onState: ((BrowserState) -> Void)?
     /// What stopped the last navigation, until one gets somewhere.
     var error: String? { didSet { if error != oldValue { report() } } }
-    /// A rect of this view, in its own coordinates, that a page panel is drawn into.
-    var cutout: NSRect? { didSet { Cutout.apply(cutout, to: self) } }
+    var cutout = Cutout() { didSet { cutout.apply(to: self) } }
     /// When its web process last died and the page was loaded again.
     var crashedAt: Date?
     private var observers: [NSKeyValueObservation] = []
@@ -32,7 +31,7 @@ final class BrowserView: WKWebView, OverlayView {
     required init?(coder: NSCoder) { fatalError("not supported") }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        Cutout.hit(cutout, at: point, in: self, otherwise: super.hitTest(point))
+        cutout.hit(at: point, in: self, otherwise: super.hitTest(point))
     }
 
     /// Ends the observations and any navigation in flight. Call while the view is still alive: an observation's

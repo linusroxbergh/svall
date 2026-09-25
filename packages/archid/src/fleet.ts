@@ -131,16 +131,16 @@ export class Fleet extends EventEmitter<Events> {
 
   live(id: string): LiveCharacter {
     const c = this.char(id);
-    if (!c.tmux) throw new Dormant(`character ${id} is dormant; revive it first`);
+    if (!c.tmux) throw new Dormant(`${c.name} is dormant; revive it first`);
     return c as LiveCharacter;
   }
 
   // the terminal a call means: the main one, or the second when it says so
   terminal(id: string, term?: 2): { tmux: NonNullable<Character['tmux']>; agent?: Agent } {
     if (term !== 2) return this.live(id);
-    const second = this.char(id).second;
-    if (!second) throw new Invalid(`character ${id} has no second terminal`);
-    return second;
+    const c = this.char(id);
+    if (!c.second) throw new Invalid(`${c.name} has no second terminal`);
+    return c.second;
   }
 
   private charByPane(paneId: string): string | undefined {
@@ -448,7 +448,7 @@ export class Fleet extends EventEmitter<Events> {
     // names resolve without regard to case, so a twin would leave both characters unreachable by name
     const clash = patch.name !== undefined && Object.values(this.deps.store.state.characters)
       .find((c) => c.id !== id && c.name.toLowerCase() === patch.name!.toLowerCase());
-    if (clash) throw new Invalid(`character ${clash.id} is already called ${clash.name}`);
+    if (clash) throw new Invalid(`another character is already called ${clash.name}`);
     const context = patch.context && settleItems(patch.context, current.context);
     this.deps.store.update((d) => {
       const c = d.characters[id];
@@ -679,8 +679,9 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   readTranscript(id: string, turns: number, term?: 2): string {
-    const agent = term === 2 ? this.char(id).second?.agent : this.char(id).agent;
-    if (!agent) throw new Invalid(`character ${id} has no agent${term === 2 ? ' in its second terminal' : ''}`);
+    const c = this.char(id);
+    const agent = term === 2 ? c.second?.agent : c.agent;
+    if (!agent) throw new Invalid(`${c.name} has no agent${term === 2 ? ' in its second terminal' : ''}`);
     if (!agent.transcriptPath) return '';
     return condenseTurns(agent.kind, readTail(agent.transcriptPath, 4 * 1024 * 1024), turns);
   }

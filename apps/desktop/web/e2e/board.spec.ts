@@ -1,4 +1,5 @@
 import { FAKE_CLAUDE, expect, test } from './fixtures.js';
+import type { ToShell } from '../src/bridge.js';
 
 test('lists islands and characters in the sidebar, follows agent status, and shows the selected terminal', async ({ page, archi }) => {
   const island = await archi.api.call('island.create', { name: archi.uniq('board') });
@@ -55,7 +56,10 @@ test('renames and deletes an island from the sidebar', async ({ page, archi }) =
   await archi.api.call('char.close', { id: c.id });
   await expect(page.getByTestId(`sb-char-${c.id}`)).toHaveCount(0);
   await page.getByTestId(`sb-island-${islandId}`).click();
+  // the island's docs go with it, so the first press only asks
   await page.getByTestId('island-delete').click();
+  await expect(page.getByTestId('island-name').filter({ hasText: name })).toHaveCount(1);
+  await page.getByTestId('island-delete-confirm').click();
   await expect(page.getByTestId('island-name').filter({ hasText: name })).toHaveCount(0);
 });
 
@@ -103,4 +107,53 @@ test('the board brings the folded panel back from its own tab bar', async ({ pag
 test('shows the connect screen without a daemon address', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('connect-screen')).toBeVisible();
+});
+
+type Shell = { __sent: ToShell[]; __archi: { receive(json: string): void } };
+
+test('a toast takes a hole in the terminal under it, on the board and over a full card', async ({ page, archi }) => {
+  const island = await archi.api.call('island.create', { name: archi.uniq('toast') });
+  const c = await archi.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
+  // a stand-in for the native shell: it records what the page sends and answers the connection request
+  await page.addInitScript(({ port, token }) => {
+    const w = window as unknown as Shell & { webkit: unknown };
+    w.__sent = [];
+    w.webkit = { messageHandlers: { archi: { postMessage: (json: string) => {
+      const m = JSON.parse(json) as ToShell;
+      w.__sent.push(m);
+      if (m.type === 'connection') setTimeout(() => w.__archi.receive(JSON.stringify({ type: 'connection', host: '127.0.0.1', port, token })), 0);
+    } } } };
+  }, { port: archi.port, token: archi.token });
+  await archi.open();
+  const sent = () => page.evaluate(() => (window as unknown as Shell).__sent);
+  const cutout = async () => (await sent()).filter((m) => m.type === 'shell.cutout').at(-1) as Extract<ToShell, { type: 'shell.cutout' }> | undefined;
+  const toast = page.getByTestId('toast');
+  // the terminal is drawn above the page, and the hole it gives up is where the toast stands once it has eased in;
+  // a refusal has nothing to press, so the presses in it stay with the terminal
+  const holed = async () => {
+    const c = await cutout(), b = await toast.boundingBox();
+    return !!c && !!b && c.rects.length === 0 && c.passive.some((r) => Math.max(Math.abs(r.x - b.x), Math.abs(r.y - b.y), Math.abs(r.width - b.width), Math.abs(r.height - b.height)) < 1);
+  };
+  // a path that is not there, dropped on the character's row, is refused on a toast
+  const refused = async () => {
+    const row = (await page.getByTestId(`sb-char-${c.id}`).boundingBox())!;
+    await page.evaluate(([x, y]) => (window as unknown as Shell).__archi.receive(JSON.stringify({ type: 'drag.drop', paths: ['/no/such/path'], x, y })),
+      [row.x + row.width / 2, row.y + row.height / 2]);
+    await expect(toast).toContainText('no such file');
+  };
+
+  await page.getByTestId(`sb-char-${c.id}`).click();
+  await expect.poll(async () => (await sent()).some((m) => m.type === 'term.show' && m.id === c.id)).toBe(true);
+  await refused();
+  await expect.poll(holed).toBe(true);
+  await expect(toast).toHaveCount(0);
+  await expect.poll(async () => (await cutout())?.passive).toEqual([]);
+
+  // the full card leaves no corner free, so the toast stands on its terminal
+  await page.getByTestId('board-map').click();
+  await page.getByTestId('card-size').click();
+  await expect(page.getByTestId('terminal-card')).toHaveAttribute('data-size', 'full');
+  await refused();
+  await expect(toast).toHaveAttribute('data-corner', 'bottom-left');
+  await expect.poll(holed).toBe(true);
 });

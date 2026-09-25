@@ -9,13 +9,11 @@ export function MissionPrompt() {
   const [text, setText] = useState('');
   const field = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
-    if (!open) { setText(''); return; }
-    field.current?.focus();
-  }, [open]);
+  useEffect(() => { if (open) field.current?.focus(); }, [open]);
 
   if (!open) return null;
-  const close = () => app.store.getState().setMissionPrompt(false);
+  // a prompt sent or given up leaves the field empty; one the other dialog's key closed waits for the next open
+  const close = () => { setText(''); app.store.getState().setMissionPrompt(false); };
 
   // the fleet takes as long as the agent takes to boot, so the dialog is done the moment the prompt is in;
   // a refusal brings it back with what was typed, the reason already on a toast. by then the user may have

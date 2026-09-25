@@ -30,3 +30,10 @@ test('a press on the map closes the usage panel', async () => {
   act(() => { fireEvent.pointerDown(screen.getByTestId('map')); });
   expect(store.getState().usageOpen).toBe(false);
 });
+
+test('the settings button names the key the user bound, not the one it shipped with', () => {
+  render(<UtilityDock />);
+  expect(screen.getByTestId('settings-open').title).toBe('Settings (⌘,)');
+  act(() => store.getState().setSettings({ bindings: { toggleSettings: 'cmd+shift+o' } }));
+  expect(screen.getByTestId('settings-open').title).toBe('Settings (⌘⇧O)');
+});

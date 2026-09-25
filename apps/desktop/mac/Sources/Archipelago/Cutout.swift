@@ -1,23 +1,24 @@
 import AppKit
 
-/// A rect a native view gives up to the page drawn below it. Terminals and browser tabs sit above the webview,
-/// so a panel the page opens over one is seen, and reached, only where that view is masked away.
-enum Cutout {
-    /// `rect` is in `view`'s own coordinates; nil leaves the view whole.
-    static func apply(_ rect: NSRect?, to view: NSView) {
+/// The rects, in its own coordinates, a terminal or browser tab gives up so a panel the page draws below it shows through.
+/// A press in `rects` goes to the page; `passive` ones show a panel that takes no presses, so theirs stay with the view.
+struct Cutout {
+    var rects: [NSRect] = []
+    var passive: [NSRect] = []
+
+    func apply(to view: NSView) {
         guard let layer = view.layer else { return }
-        guard let rect, rect.intersects(view.bounds) else {
+        let kept = Cutout.around(rects + passive, in: view.bounds)
+        guard kept != [view.bounds] else {
             if layer.mask != nil { layer.mask = nil }
             return
         }
         let shape = layer.mask as? CAShapeLayer ?? CAShapeLayer()
         let path = CGMutablePath()
-        path.addRect(view.bounds)
-        path.addRect(rect)
-        // the two rects are one path with a hole in it, and the mask keeps only what the path fills
+        // the pieces left never overlap, so the mask keeps exactly them however the holes overlap each other
+        path.addRects(kept)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        shape.fillRule = .evenOdd
         shape.fillColor = NSColor.black.cgColor
         // a mask layer starts at 1x, which would rasterize the edge of the hole below the screen's grid
         shape.contentsScale = view.window?.backingScaleFactor ?? 2
@@ -27,15 +28,20 @@ enum Cutout {
         if layer.mask !== shape { layer.mask = shape }
     }
 
-    /// The hit test a masked view answers: a press inside the rect belongs to the page, not to this view.
-    static func hit(_ rect: NSRect?, at point: NSPoint, in view: NSView, otherwise hit: NSView?) -> NSView? {
-        guard let rect, hit != nil, rect.contains(view.convert(point, from: view.superview)) else { return hit }
-        return nil
+    /// The hit test a masked view answers: a press in a hole that takes presses belongs to the page, not to this view.
+    func hit(at point: NSPoint, in view: NSView, otherwise hit: NSView?) -> NSView? {
+        guard hit != nil else { return hit }
+        let local = view.convert(point, from: view.superview)
+        return rects.contains { $0.contains(local) } ? nil : hit
     }
 
-    /// `bounds` with `rect` taken out of it, as the rects left over. Cursor rects cannot be subtracted.
-    static func around(_ rect: NSRect?, in bounds: NSRect) -> [NSRect] {
-        let hole = (rect ?? .zero).intersection(bounds)
+    /// `bounds` with every hole taken out of it, as the rects left over. Cursor rects cannot be subtracted.
+    static func around(_ holes: [NSRect], in bounds: NSRect) -> [NSRect] {
+        holes.reduce([bounds]) { pieces, hole in pieces.flatMap { around(hole, in: $0) } }
+    }
+
+    private static func around(_ rect: NSRect, in bounds: NSRect) -> [NSRect] {
+        let hole = rect.intersection(bounds)
         guard !hole.isEmpty else { return [bounds] }
         return [
             NSRect(x: bounds.minX, y: hole.maxY, width: bounds.width, height: bounds.maxY - hole.maxY),

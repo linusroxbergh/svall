@@ -21,6 +21,7 @@ vi.mock('../../src/boot.js', () => ({
 vi.mock('../../src/resources/Shelf.js', () => ({ ResourcesLayer: () => null }));
 
 const { Map } = await import('../../src/map/Map.js');
+const { DBL_CLICK_MS } = await import('../../src/map/interactions.js');
 
 beforeEach(() => {
   call.mockClear();
@@ -81,6 +82,28 @@ test('the arrange key arranges the fleet once, to the shape of the map', async (
     expect(arranged).toHaveLength(1);
     expect((arranged[0][1] as { aspect: number }).aspect).toBeGreaterThan(1);
     expect(store.getState().arrangeAsk).toBe(false);
+  } finally {
+    delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+  }
+});
+
+test('a side panel opened inside a click sequence refits the map once the sequence is over', async () => {
+  let width = 1200;
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => width });
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 800 });
+  try {
+    render(<Map />);
+    await act(async () => {});
+    const world = () => document.querySelector<HTMLElement>('.map-world')!.style.transform;
+    const before = world();
+    press(document.querySelector('.map-sea')!);
+    width = 700;
+    act(() => store.getState().toggleSideCard(true));
+    // the world stands still under a press that may yet become a double click
+    expect(world()).toBe(before);
+    await act(async () => { await new Promise((r) => setTimeout(r, DBL_CLICK_MS + 50)); });
+    expect(world()).not.toBe(before);
   } finally {
     delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
     delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;

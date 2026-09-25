@@ -38,8 +38,8 @@ final class SurfaceManager {
         for view in overlay.views.values { view.setFontDelta(fontDelta) }
     }
 
-    func setCutout(_ rect: WebRect?) {
-        overlay.setCutout(rect)
+    func setCutout(rects: [WebRect], passive: [WebRect]) {
+        overlay.setCutout(rects: rects, passive: passive)
     }
 
     func show(id: String, rect: WebRect, attach: WebAttach?, opacity: Double?) {

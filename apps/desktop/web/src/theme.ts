@@ -16,6 +16,8 @@ export const theme = {
   // how long the window has to stand still before an auto arrange follows a resize
   autoArrangeMs: 320,
   toastMs: 2600,
+  // how long launch waits on archid before the connect screen shows the log
+  connectGraceMs: 2500,
   // a toast offering to take something back stands long enough to be read and acted on
   toastActionMs: 9000,
   docSaveMs: 800,                 // a doc is written this long after the last edit

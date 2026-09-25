@@ -79,3 +79,13 @@ test('outside the app there is no shell to post banners, so the section is absen
     bridge.present = true;
   }
 });
+
+test('the zoom tip names the keys as bound, and leaves out one that is unbound', () => {
+  render(<SettingsCard />);
+  const tip = () => document.getElementById('set-tip-zoom')!.textContent;
+  expect(tip()).toBe('⌘− and ⌘+ scale the map, the panels and the terminal\'s text together. ⌘0 is 100%.');
+  act(() => store.getState().setSettings({ bindings: { zoomIn: 'cmd+shift+i', zoomReset: null } }));
+  expect(tip()).toBe('⌘− and ⌘⇧I scale the map, the panels and the terminal\'s text together.');
+  act(() => store.getState().setSettings({ bindings: { zoomOut: null } }));
+  expect(tip()).toBe('Scales the map, the panels and the terminal\'s text together. ⌘0 is 100%.');
+});

@@ -4,6 +4,7 @@ import { loadMobileStatus, setScribe } from './actions.js';
 import { app, deps } from './boot.js';
 import { openConfig, openUrl } from './bridge.js';
 import { useApp } from './hooks.js';
+import { chordLabel, chordsOf, keyLabel, keyTip } from './keys.js';
 import { MobileSwitch } from './PhonePanel.js';
 import { NO_PAGE, phonesHere } from './phoneText.js';
 import { canFill, OPACITY, placeTip, zoomBy, type NotifySettings, type Settings } from './settings.js';
@@ -172,7 +173,11 @@ function Notifications() {
 }
 
 export function SettingsCard() {
-  const { cardOpacity, fullOpacity, zoom, onePassword, usageTab, autoArrange } = useApp((s) => s.settings);
+  const { cardOpacity, fullOpacity, zoom, onePassword, usageTab, autoArrange, bindings } = useApp((s) => s.settings);
+  const zoomOut = keyLabel('zoomOut', bindings), zoomReset = keyLabel('zoomReset', bindings);
+  // on its shipped chord zoom in also answers ⌘+, the name macOS gives the key
+  const zoomIn = chordsOf('zoomIn', bindings).includes('cmd++') ? chordLabel('cmd++') : keyLabel('zoomIn', bindings);
+  const fillKey = keyLabel('fillLogin', bindings);
   const op = useApp((s) => !!s.shell?.op);
   const fills = useApp(canFill);
   const shell = app.bridge.present;
@@ -182,13 +187,13 @@ export function SettingsCard() {
       <div className="kicker">
         This machine
         <span className="spacer" />
-        <button className="side-x" data-testid="settings-close" title="Close (⌘,)" aria-label="Close the settings"
+        <button className="side-x" data-testid="settings-close" title={keyTip('Close', 'toggleSettings', bindings)} aria-label="Close the settings"
           onClick={() => app.store.getState().toggleSettings(false)}>×</button>
       </div>
       <h2 className="h2">Settings</h2>
       <div className="rows">
         <div className="row">
-          <span>zoom<Info id="zoom">⌘- and ⌘+ scale the map, the panels and the terminal's text together. ⌘0 is 100%.</Info></span>
+          <span>zoom<Info id="zoom">{zoomOut && zoomIn ? `${zoomOut} and ${zoomIn} scale` : 'Scales'} the map, the panels and the terminal's text together.{zoomReset && ` ${zoomReset} is 100%.`}</Info></span>
           <b className="set-zoom">
             <button data-testid="zoom-out" aria-label="Smaller" onClick={() => set({ zoom: zoomBy(zoom, -1) })}>−</button>
             <span className="tnum" data-testid="zoom-level">{Math.round(zoom * 100)}%</span>
@@ -222,7 +227,7 @@ export function SettingsCard() {
       <div className="kicker">The browser</div>
       <div className="rows">
         <div className="row">
-          <span>1Password<Info id="1password">The key button beside the address bar, or ⌘⇧P, fills the page's sign-in with the login saved for its site, or the one-time code when the page asks for one. 1Password asks for Touch ID.</Info></span>
+          <span>1Password<Info id="1password">The key button beside the address bar{fillKey && `, or ${fillKey},`} fills the page's sign-in with the login saved for its site, or the one-time code when the page asks for one. 1Password asks for Touch ID.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={fills} data-testid="set-1password" disabled={!op}
             onClick={() => set({ onePassword: !onePassword })}>{fills ? 'on' : 'off'}</button></b>
         </div>

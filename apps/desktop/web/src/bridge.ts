@@ -25,8 +25,8 @@ export type ToShell =
   | { type: 'browser.importCookies' }
   | { type: 'browser.fill'; tab: string }
   | { type: 'browser.focus'; tab: string }
-  // the rect the page draws an overlay into, which the surfaces above it give up; no rect leaves them whole
-  | { type: 'shell.cutout'; rect?: Rect }
+  // the rects the page draws overlays into, which the surfaces above it give up; presses in a passive one stay with the surface
+  | { type: 'shell.cutout'; rects: Rect[]; passive: Rect[] }
   | { type: 'keys.register'; chords: string[] }
   | { type: 'keys.capture'; on: boolean }
   // the chord that quits, for the shell's menu and for a page too stuck to hear it; none leaves quitting unbound
@@ -42,7 +42,6 @@ export type ToShell =
   | { type: 'notify.remove'; key: string }
   | { type: 'notify.enable' }
   | { type: 'notify.settings' }
-  | { type: 'quit' }
   // the files a quit would drop, by name, once the docs waiting to be written are
   | { type: 'quit.answer'; unsaved: string[] };
 

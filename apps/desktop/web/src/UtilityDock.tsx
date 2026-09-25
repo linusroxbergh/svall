@@ -3,6 +3,7 @@ import { app } from './boot.js';
 import { holdCutout } from './cutout.js';
 import { useApp } from './hooks.js';
 import { refocusSurface } from './keyboard.js';
+import { keyTip } from './keys.js';
 import { MobilePanel } from './PhonePanel.js';
 import { UsagePanel } from './Usage.js';
 
@@ -35,11 +36,13 @@ export function UtilityDock() {
   const settingsOpen = useApp((s) => s.settingsOpen);
   const sidebarOpen = useApp((s) => s.sidebarOpen);
   const usageTab = useApp((s) => s.settings.usageTab);
+  const bindings = useApp((s) => s.settings.bindings);
   // the control stands whether or not the fleet is served, so it can be switched on from here
   const phoneTab = useApp((s) => !!s.mobile && !s.mobile.error);
   const serving = useApp((s) => !!s.mobile?.serving);
   const phoneLabel = serving ? 'Phone link on' : 'Phone link off';
   const box = useRef<HTMLDivElement>(null);
+  const tabs = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const open = usageOpen || mobileOpen;
 
@@ -66,16 +69,15 @@ export function UtilityDock() {
   }, [open]);
 
   useEffect(() => {
-    // A collapsed sidebar leaves the rail over a native terminal. Its containing rect includes
-    // the open panel; with the sidebar visible, only the panel needs a hole in that surface.
-    if (!open && sidebarOpen) return;
-    const target = sidebarOpen ? panel.current : box.current;
-    return target ? holdCutout(app.bridge, target) : undefined;
+    // a collapsed sidebar leaves the rail over a native terminal too, and each takes a hole of its own
+    const held = [!sidebarOpen && tabs.current, open && panel.current].filter((el) => el instanceof HTMLElement);
+    const releases = held.map((el) => holdCutout(app.bridge, el));
+    return () => { for (const release of releases) release(); };
   }, [open, sidebarOpen]);
 
   return (
     <div className="use" ref={box} data-testid="utility-dock" data-collapsed={!sidebarOpen} data-open={open}>
-      <div className="use-tabs">
+      <div className="use-tabs" ref={tabs}>
         {phoneTab && (
           <button className="use-tab" data-testid="mobile-tab" aria-expanded={mobileOpen} aria-controls="corner-panel"
             title={phoneLabel} aria-label={phoneLabel} data-off={!serving || undefined}
@@ -85,7 +87,7 @@ export function UtilityDock() {
           <button className="use-tab" data-testid="usage-tab" aria-expanded={usageOpen} aria-controls="corner-panel"
             title="Plan usage" aria-label="Plan usage" onClick={() => app.store.getState().toggleUsage()}><Meter /><span className="use-tab-label">Usage</span></button>
         )}
-        <button className="use-tab" data-testid="settings-open" aria-expanded={settingsOpen} title="Settings (⌘,)" aria-label="Settings"
+        <button className="use-tab" data-testid="settings-open" aria-expanded={settingsOpen} title={keyTip('Settings', 'toggleSettings', bindings)} aria-label="Settings"
           onClick={() => app.store.getState().toggleSettings()}><Gear /><span className="use-tab-label">Settings</span></button>
       </div>
       {open && (

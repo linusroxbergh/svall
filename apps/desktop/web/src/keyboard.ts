@@ -3,7 +3,7 @@ import { openBeside, opensInside, type BrowserManager } from './browser.js';
 import { commitFocused } from './Field.js';
 import { chordOf, resolve, type KeyAction } from './keys.js';
 import { isTerminal, mainLeft, showBrowser, shows, toggleBrowserRight } from './panes.js';
-import { boardViewed, firstOfNextIsland, neighbor, panesOf, selectedOf } from './selectors.js';
+import { boardViewed, firstOfNextIsland, isVeiled, neighbor, panesOf, selectedOf } from './selectors.js';
 import { canFill, zoomBy } from './settings.js';
 import { secondKey, viewedId } from './terminals.js';
 
@@ -126,7 +126,6 @@ export async function dispatchKey(action: KeyAction, ctx: KeyDeps): Promise<void
       return;
     }
     case 'none': return;
-    case 'quit': if (bridge.present) bridge.send({ type: 'quit' }); return;
   }
 }
 
@@ -170,8 +169,9 @@ export function installKeyHandlers(ctx: KeyDeps, win: Window = window): () => vo
       closeCard();
       return true;
     }
-    if (e.key === 'Enter' && !control(e) && !e.metaKey) {
-      const s = ctx.store.getState();
+    const s = ctx.store.getState();
+    // behind an overlay or a popup the selection is out of sight, so Enter is theirs
+    if (e.key === 'Enter' && !control(e) && !e.metaKey && !isVeiled(s) && !s.linkAsk && !s.usageOpen && !s.mobileOpen) {
       // the key is spent here: a control still holding the focus must not activate on it as well
       if (s.view === 'board') { e.preventDefault(); refocusSurface(ctx); return true; }
       if (s.view === 'map' && s.selectedId) { e.preventDefault(); s.focus(s.selectedId); return true; }

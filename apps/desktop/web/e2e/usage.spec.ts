@@ -61,7 +61,7 @@ test('the panel takes a hole in the terminal rather than the whole of it', async
   const since = async (from: number) => (await sent()).slice(from).filter((m) => !('id' in m) || m.id === c.id).map((m) => m.type);
   const cutout = async () => {
     const all = await sent();
-    return all.filter((m) => m.type === 'shell.cutout').at(-1) as { rect?: { x: number; y: number; width: number; height: number } } | undefined;
+    return all.filter((m) => m.type === 'shell.cutout').at(-1) as Extract<ToShell, { type: 'shell.cutout' }> | undefined;
   };
   await expect.poll(async () => (await sent()).some((m) => m.type === 'term.show' && m.id === c.id)).toBe(true);
 
@@ -71,9 +71,9 @@ test('the panel takes a hole in the terminal rather than the whole of it', async
   const panel = page.getByTestId('usage-panel');
   await expect(panel).toBeVisible();
   // the shell draws the terminal above the page: the panel is on top of the rect the terminal gives up
-  await expect.poll(async () => (await cutout())?.rect).toBeDefined();
+  await expect.poll(async () => (await cutout())?.rects.length).toBe(1);
   const box = (await panel.boundingBox())!;
-  const rect = (await cutout())!.rect!;
+  const [rect] = (await cutout())!.rects;
   expect(rect.width).toBeCloseTo(box.width, 0);
   expect(rect.height).toBeCloseTo(box.height, 0);
   expect(rect.x).toBeCloseTo(box.x, 0);
@@ -87,7 +87,7 @@ test('the panel takes a hole in the terminal rather than the whole of it', async
   await page.keyboard.press('Escape');
   await expect(panel).toHaveCount(0);
   // the hole is handed back, and Esc is a close of its own: the keyboard goes with it
-  await expect.poll(async () => (await cutout())?.rect).toBeUndefined();
+  await expect.poll(async () => (await cutout())?.rects).toEqual([]);
   expect(await since(escaped)).not.toContain('term.hide');
   expect(await since(escaped)).toContain('term.focus');
 
@@ -98,7 +98,7 @@ test('the panel takes a hole in the terminal rather than the whole of it', async
   const clicked = await mark();
   await note.click();
   await expect(panel).toHaveCount(0);
-  await expect.poll(async () => (await cutout())?.rect).toBeUndefined();
+  await expect.poll(async () => (await cutout())?.rects).toEqual([]);
   // the click that closed the panel is also the one that chose where the keys go
   expect(await since(clicked)).not.toContain('term.focus');
   await expect(note).toBeFocused();
@@ -109,7 +109,7 @@ test('the panel takes a hole in the terminal rather than the whole of it', async
   const touched = await mark();
   await page.evaluate(() => (window as unknown as Shell).__archi.receive(JSON.stringify({ type: 'shell.pressedAway' })));
   await expect(panel).toHaveCount(0);
-  await expect.poll(async () => (await cutout())?.rect).toBeUndefined();
+  await expect.poll(async () => (await cutout())?.rects).toEqual([]);
   expect(await since(touched)).not.toContain('term.focus');
 
   // a browser tab is drawn above the page the same way, and is left standing the same way
@@ -118,17 +118,27 @@ test('the panel takes a hole in the terminal rather than the whole of it', async
   const paned = await mark();
   await tab.click();
   await expect(panel).toBeVisible();
-  await expect.poll(async () => (await cutout())?.rect).toBeDefined();
+  await expect.poll(async () => (await cutout())?.rects.length).toBe(1);
   expect((await sent()).slice(paned).map((m) => m.type)).not.toContain('browser.hide');
 
   await page.keyboard.press('Escape');
   await page.getByTestId('sidebar-hide').click();
   // With the sidebar folded away, the compact rail itself needs a hole in a native surface.
   const rail = (await page.getByTestId('utility-dock').boundingBox())!;
-  await expect.poll(async () => (await cutout())?.rect).toBeDefined();
-  const railCutout = (await cutout())!.rect!;
+  await expect.poll(async () => (await cutout())?.rects.length).toBe(1);
+  const [railCutout] = (await cutout())!.rects;
   expect(railCutout.x).toBeCloseTo(rail.x, 0);
   expect(railCutout.y).toBeCloseTo(rail.y, 0);
   expect(railCutout.width).toBeCloseTo(rail.width, 0);
   expect(railCutout.height).toBeCloseTo(rail.height, 0);
+
+  // the panel beside the rail takes a hole of its own, and the terminal above the rail stays
+  await tab.click();
+  await expect(panel).toBeVisible();
+  await expect.poll(async () => (await cutout())?.rects.length).toBe(2);
+  const beside = (await panel.boundingBox())!;
+  const [railHole, panelHole] = (await cutout())!.rects;
+  expect(railHole.height).toBeCloseTo(rail.height, 0);
+  expect(panelHole.x).toBeCloseTo(beside.x, 0);
+  expect(panelHole.height).toBeCloseTo(beside.height, 0);
 });

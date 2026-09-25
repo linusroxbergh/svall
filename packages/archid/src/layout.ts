@@ -309,7 +309,7 @@ export function relocateDrowned(draft: FleetState, islandId: string): void {
     .sort((a, b) => a.cell.y - b.cell.y || a.cell.x - b.cell.x);
   for (const c of drowned) {
     const cell = nearestFreeLand(island, c.cell, blockedCells(draft, islandId, c.id));
-    if (!cell) throw new NoFreeLand(`island ${island.name} has no free land to relocate character ${c.id}`);
+    if (!cell) throw new NoFreeLand(`island ${island.name} has no free land to relocate ${c.name}`);
     draft.characters[c.id].cell = cell;
   }
 }

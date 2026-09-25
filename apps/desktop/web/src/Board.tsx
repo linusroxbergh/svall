@@ -1,8 +1,11 @@
-import { deleteIsland, newCharacterOn } from './actions.js';
+import { newCharacterOn } from './actions.js';
 import { app, deps } from './boot.js';
 import { useApp } from './hooks.js';
 import { CharPanes } from './CharPanes.js';
+import { keyLabel, keyTip } from './keys.js';
 import { boardIsland, boardViewed, charactersOf, statusOf } from './selectors.js';
+import { DeleteIsland } from './SideCard.js';
+import { Toast } from './Toast.js';
 
 const view = (id: string) => app.store.getState().focus(id);
 
@@ -11,8 +14,10 @@ export function Board() {
   const viewed = useApp(boardViewed);
   const island = useApp(boardIsland);
   const sidebarOpen = useApp((s) => s.sidebarOpen);
-  const toast = useApp((s) => s.toast);
   const opacity = useApp((s) => s.settings.fullOpacity);
+  const bindings = useApp((s) => s.settings.bindings);
+  const mapKey = keyLabel('toggleView', bindings);
+  const newKey = keyLabel('newCharacter', bindings);
   const c = viewed ? fleet.characters[viewed] : undefined;
   const tabs = island ? charactersOf(fleet, island.id) : [];
 
@@ -31,9 +36,9 @@ export function Board() {
         ))}
         {island && <button className="tab tab-new" data-testid="island-new" title="New character here" onClick={() => newCharacterOn(deps(), island.id)}>+</button>}
         <span className="spacer" />
-        <button className="tab tab-map" data-testid="board-map" onClick={() => app.store.getState().setView('map')}>Map <span className="meta">⌘M</span></button>
+        <button className="tab tab-map" data-testid="board-map" onClick={() => app.store.getState().setView('map')}>Map {mapKey && <span className="meta">{mapKey}</span>}</button>
         {/* the board draws a native terminal over the card's edge, so its control lives here */}
-        <button className="tab tab-info" data-testid="board-side" title="Side card (⌘I)" aria-label="Toggle the side card"
+        <button className="tab tab-info" data-testid="board-side" title={keyTip('Side card', 'toggleSideCard', bindings)} aria-label="Toggle the side card"
           onClick={() => app.store.getState().toggleSideCard()}>ⓘ</button>
       </div>
       <div className="term-host">
@@ -42,21 +47,14 @@ export function Board() {
         ) : (
           <div className="board-empty" data-testid="board-empty">
             <div className="kicker">{island ? island.name : 'The fleet'}</div>
-            <div className="desc">{island ? 'No characters on this island yet.' : 'No islands yet. ⌘T creates a character and its island.'}</div>
+            <div className="desc">{island ? 'No characters on this island yet.' : `No islands yet.${newKey ? ` ${newKey} creates a character and its island.` : ''}`}</div>
             <div className="acts">
               {island && <button className="btn pri" data-testid="empty-new" onClick={() => newCharacterOn(deps(), island.id)}>New character</button>}
-              {island && island.kind !== 'home' && tabs.length === 0 && (
-                <button className="btn dan" data-testid="island-delete"
-                  onClick={() => deleteIsland(deps(), island.id)}>Delete island</button>
-              )}
+              {island && island.kind !== 'home' && tabs.length === 0 && <DeleteIsland id={island.id} testid="island-delete" label="Delete island" />}
             </div>
           </div>
         )}
-        {toast && (
-          <div className="toast" data-testid="toast" data-tone={toast.tone} data-corner="bottom-left">
-            {toast.text}{toast.action && <button className="toast-act" data-testid="toast-action" onClick={() => app.store.getState().runToastAction()}>{toast.action.label}</button>}
-          </div>
-        )}
+        <Toast />
       </div>
     </div>
   );

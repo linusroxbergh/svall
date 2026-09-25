@@ -5,7 +5,7 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import type { FromShell } from '../../src/bridge.js';
 import { setAppStore, useApp } from '../../src/hooks.js';
 import { createAppStore, type AppStore } from '../../src/store/index.js';
-import { fleet } from '../fixtures.js';
+import { chr, fleet, isl } from '../fixtures.js';
 
 window.matchMedia ??= ((q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} })) as never;
 Element.prototype.setPointerCapture ??= function () {};
@@ -29,6 +29,7 @@ vi.mock('../../src/resources/Shelf.js', () => ({ ResourcesLayer: () => null }));
 const { Map } = await import('../../src/map/Map.js');
 const { IslandCard, SideCard } = await import('../../src/SideCard.js');
 const { dispatchKey } = await import('../../src/keyboard.js');
+const { FleetSummary } = await import('../../src/FleetSummary.js');
 const { followQuit } = await import('../../src/quit.js');
 
 // the side card as App mounts it: no key, the id from the map's selection
@@ -143,14 +144,43 @@ test('a link half typed for one island is not offered to the next', () => {
   expect(updates()).toEqual([]);
 });
 
+test('the last command is read again for a new prompt, a turn\'s end and a new session, not for every hook event', async () => {
+  const f = fleet();
+  f.characters.c0.agent = { kind: 'claude', sessionId: 's', status: 'working', lastActivityAt: 1, transcriptPath: '/tmp/t.jsonl' };
+  store.getState().setFleet(f);
+  render(<Side />);
+  await act(async () => {});
+  const reads = () => calls.filter(([m]) => m === 'char.prompts').length;
+  expect(reads()).toBe(1);
+  act(() => store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/agent/lastActivityAt', value: 2 }]));
+  await act(async () => {});
+  expect(reads()).toBe(1);
+  act(() => store.getState().applyPatch([{ op: 'add', path: '/characters/c0/agent/lastPrompt', value: { id: 'p1', text: 'go', at: 3 } }]));
+  await act(async () => {});
+  expect(reads()).toBe(2);
+  // a permission ask and its answer leave the turn running
+  act(() => store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/agent/status', value: 'blocked' }]));
+  await act(async () => {});
+  act(() => store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/agent/status', value: 'working' }]));
+  await act(async () => {});
+  expect(reads()).toBe(2);
+  // a turn Claude Code opened by itself is known for what it was only once its entry is written
+  act(() => store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/agent/status', value: 'done' }]));
+  await act(async () => {});
+  expect(reads()).toBe(3);
+  act(() => store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/agent', value: { kind: 'codex', sessionId: 's2', status: 'done', lastActivityAt: 4 } }]));
+  await act(async () => {});
+  expect(reads()).toBe(4);
+});
+
 test('a refused rename is reported, stays in the field, and the next blur sends it again', async () => {
-  refuse = (m, p) => (m === 'char.update' && p.name ? `character c1 is already called ${String(p.name)}` : undefined);
+  refuse = (m, p) => (m === 'char.update' && p.name ? `another character is already called ${String(p.name)}` : undefined);
   render(<Side />);
   const name = field('side-name');
   type(name, 'C1');
   fireEvent.keyDown(name, { key: 'Enter' });
   await act(async () => {});
-  expect(store.getState().toast?.text).toBe('character c1 is already called C1');
+  expect(store.getState().toast?.text).toBe('another character is already called C1');
   expect(name.value).toBe('C1');
   name.focus();
   name.blur();
@@ -227,4 +257,52 @@ test('a note written while archid is away stays in the field, and the next blur 
   note.focus();
   note.blur();
   expect(updates()).toEqual([['char.update', { id: 'c0', note: 'a long note' }], ['char.update', { id: 'c0', note: 'a long note' }]]);
+});
+
+test('the fleet summary counts one character on one island in the singular', () => {
+  store.getState().setFleet({ ...fleet(), islands: { i_a: isl('i_a', 'alpha', 0) }, characters: { c2: chr('c2', 'i_a', { x: 1, y: 1 }) } });
+  render(<FleetSummary />);
+  expect(screen.getByRole('heading').textContent).toMatch(/^1 character\s*on 1 island$/);
+});
+
+test('an island delete asks once more, and Cancel keeps the island', () => {
+  store.getState().selectIsland('i_e');
+  render(<IslandSide />);
+  fireEvent.click(screen.getByTestId('side-island-delete'));
+  fireEvent.click(screen.getByTestId('side-island-delete-cancel'));
+  expect(calls.filter(([m]) => m === 'island.delete')).toEqual([]);
+  fireEvent.click(screen.getByTestId('side-island-delete'));
+  // the confirm stands where Delete was, so a double click's second press lands on it
+  fireEvent.click(screen.getByTestId('side-island-delete-confirm'), { detail: 2 });
+  expect(calls.filter(([m]) => m === 'island.delete')).toEqual([]);
+  fireEvent.click(screen.getByTestId('side-island-delete-confirm'));
+  expect(calls.filter(([m]) => m === 'island.delete')).toEqual([['island.delete', { id: 'i_e' }]]);
+});
+
+test('an island delete asked on one island is not carried to the next one selected', () => {
+  const f = fleet();
+  f.islands.i_f = isl('i_f', 'far', 24);
+  store.getState().setFleet(f);
+  store.getState().selectIsland('i_e');
+  render(<IslandSide />);
+  fireEvent.click(screen.getByTestId('side-island-delete'));
+  act(() => store.getState().selectIsland('i_f'));
+  expect(screen.queryByTestId('side-island-delete-confirm')).toBeNull();
+  expect(screen.getByTestId('side-island-delete')).toBeTruthy();
+});
+
+test('Enter on the island delete confirm stays with the button in focus', () => {
+  store.getState().selectIsland('i_e');
+  render(<IslandSide />);
+  const page = vi.fn();
+  window.addEventListener('keydown', page);
+  try {
+    fireEvent.click(screen.getByTestId('side-island-delete'));
+    expect(document.activeElement).toBe(screen.getByTestId('side-island-delete-cancel'));
+    fireEvent.keyDown(screen.getByTestId('side-island-delete-cancel'), { key: 'Enter' });
+    fireEvent.keyDown(screen.getByTestId('side-island-delete-confirm'), { key: 'Enter' });
+    expect(page).not.toHaveBeenCalled();
+  } finally {
+    window.removeEventListener('keydown', page);
+  }
 });

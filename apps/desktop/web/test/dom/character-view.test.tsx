@@ -133,7 +133,7 @@ test('a revive the fleet refuses says why beside the button', async () => {
   f.characters.c2 = chr('c2', 'i_a', { x: 1, y: 1 }, { tmux: undefined });
   store.getState().setFleet(f);
   store.getState().setStatus('online');
-  open.mockImplementationOnce(() => Promise.reject(new Error('character c2 is dormant; revive it first')));
+  open.mockImplementationOnce(() => Promise.reject(new Error('c2 is dormant; revive it first')));
   call.mockImplementationOnce(() => Promise.reject(new Error('its directory is gone')));
   render(<CharacterView id="c2" onBack={() => {}} />);
   await act(async () => {});

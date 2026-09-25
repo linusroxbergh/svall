@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CWD, emptyState } from '@archipelago/protocol';
-import { deleteCharacter, deleteIsland, moveCharacterTo, newCharacterOn, newCharacterTarget, newNamedCharacter, reviveCharacter, saveCharacter, saveIsland, serveFleet, startHomeAction, startHomeCharacter } from '../src/actions.js';
+import { deleteCharacter, deleteIsland, moveCharacterTo, newCharacterOn, newCharacterTarget, newNamedCharacter, openSecondTerminal, reviveCharacter, saveCharacter, saveIsland, serveFleet, startHomeAction, startHomeCharacter } from '../src/actions.js';
 import { ApiError, type Api } from '../src/api.js';
 import { createAppStore } from '../src/store/index.js';
 import { chr, fleet, isl } from './fixtures.js';
@@ -161,6 +161,18 @@ describe('a write the fleet refuses', () => {
   });
 });
 
+describe('openSecondTerminal', () => {
+  it('closes the pane that waited on a second terminal the fleet did not open', async () => {
+    const store = createAppStore(undefined);
+    store.getState().setFleet(fleet());
+    store.getState().setPanes('c0', { left: 'browser', right: 'terminal2' });
+    openSecondTerminal({ api: { call: () => Promise.reject(new Error('archid offline')) } as unknown as Api, store }, 'c0');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(store.getState().ide.c0.panes).toEqual({ left: 'browser' });
+    expect(store.getState().toast?.text).toBe('archid offline');
+  });
+});
+
 describe('an edit that never reached the fleet', () => {
   // the field that held it may be gone by the time the answer comes, so the toast keeps it to send again
   it('is kept on the toast to send again once archid is back', async () => {
@@ -183,11 +195,11 @@ describe('an edit that never reached the fleet', () => {
   });
 
   it('is not offered again when the fleet refused it', async () => {
-    const api = { call: () => Promise.reject(new ApiError('invalid', 'character c1 is already called x')) } as unknown as Api;
+    const api = { call: () => Promise.reject(new ApiError('invalid', 'another character is already called x')) } as unknown as Api;
     const store = createAppStore(undefined);
     saveCharacter({ api, store }, 'c0', { name: 'x' });
     await new Promise((r) => setTimeout(r, 0));
-    expect(store.getState().toast).toEqual({ text: 'character c1 is already called x', tone: 'error' });
+    expect(store.getState().toast).toEqual({ text: 'another character is already called x', tone: 'error' });
   });
 });
 
@@ -306,7 +318,7 @@ describe('home', () => {
       call: (method: string, params: unknown) => {
         if (method !== 'char.run') return Promise.resolve({ id: 'c_new', name: 'rename', runSent: false });
         sent.push({ method, params });
-        return Promise.reject(new Error('character c_new is dormant'));
+        return Promise.reject(new Error('c_new is dormant; revive it first'));
       },
       fire: () => {},
     } as unknown as Api;
@@ -320,7 +332,7 @@ describe('home', () => {
     expect(sent).toStrictEqual([{ method: 'char.run', params: { id: 'c_new', text: '/archi-rename', enter: true } }]);
     // a send refused this time is said so too
     await new Promise((r) => setTimeout(r, 0));
-    expect(store.getState().toast?.text).toBe('character c_new is dormant');
+    expect(store.getState().toast?.text).toBe('c_new is dormant; revive it first');
   });
 
   it('a free prompt starts an unnamed crew member and toasts with the name it got', async () => {

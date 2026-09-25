@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { app } from './boot.js';
 import { Board } from './Board.js';
 import { revealFile } from './bridge.js';
@@ -6,6 +6,7 @@ import { ConfirmClose } from './ConfirmClose.js';
 import { FleetSummary } from './FleetSummary.js';
 import { useApp } from './hooks.js';
 import { Keybindings } from './Keybindings.js';
+import { keyTip } from './keys.js';
 import { LinkAsk } from './LinkAsk.js';
 import { Map } from './map/Map.js';
 import { MissionPrompt } from './MissionPrompt.js';
@@ -35,6 +36,10 @@ export function App() {
   const selectedIslandId = useApp((s) => (s.selectedIslandId && s.fleet.islands[s.selectedIslandId] ? s.selectedIslandId : undefined));
   const toast = useApp((s) => s.toast);
   const sideWidths = useApp((s) => s.sideWidths);
+  const bindings = useApp((s) => s.settings.bindings);
+  // a launch finds archid in moments, even one still starting; the setup hint and the log wait out that grace
+  const [waiting, setWaiting] = useState(true);
+  useEffect(() => { const t = setTimeout(() => setWaiting(false), theme.connectGraceMs); return () => clearTimeout(t); }, []);
 
   useEffect(() => {
     if (!toast) return;
@@ -42,6 +47,7 @@ export function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  if (!loaded && waiting && status !== 'outdated') return <div className="connect" data-testid="connect-screen">Connecting to archid…</div>;
   if (!loaded) {
     const log = shell && `${shell.home}/archid.log`;
     return (
@@ -87,7 +93,7 @@ export function App() {
         {!settingsOpen && sideCardOpen && !selectedId && !selectedIslandId && <FleetSummary />}
         <UtilityDock />
         {!settingsOpen && !sideCardOpen && view === 'map' && (
-          <button className="side-show" data-testid="side-show" title="Show the side card (⌘I)"
+          <button className="side-show" data-testid="side-show" title={keyTip('Show the side card', 'toggleSideCard', bindings)}
             aria-label="Show the side card" onClick={() => app.store.getState().toggleSideCard(true)}>‹</button>
         )}
       </div>

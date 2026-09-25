@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACTIONS, chordFor, chordOf, declineTaken, holderOf, LEGACY_BINDINGS, resolve } from '../src/keys.js';
+import { ACTIONS, chordFor, chordOf, declineTaken, holderOf, keyTip, LEGACY_BINDINGS, resolve } from '../src/keys.js';
 
 const ev = (key: string, o: Partial<{ metaKey: boolean; shiftKey: boolean; ctrlKey: boolean; altKey: boolean }> = {}) =>
   ({ key, metaKey: true, shiftKey: false, ctrlKey: false, altKey: false, ...o });
@@ -14,7 +14,7 @@ describe('keys', () => {
     expect(b['cmd+m']).toEqual({ type: 'toggleView' });
     expect(b['cmd+i']).toEqual({ type: 'toggleSideCard' });
     expect(b['cmd+shift+j']).toEqual({ type: 'nextIsland' });
-    expect(b['cmd+q']).toEqual({ type: 'quit' });
+    expect(b['cmd+q']).toEqual({ type: 'none' });
     expect(b['cmd+1']).toEqual({ type: 'showPane', pane: 'terminal' });
     expect(b['cmd+2']).toEqual({ type: 'showPane', pane: 'browser' });
     expect(b['cmd+b']).toEqual({ type: 'toggleBrowser' });
@@ -71,7 +71,7 @@ describe('overrides', () => {
   });
   it('leaves an action unbound when its chord is declined', () => {
     const b = resolve({ quit: null });
-    expect(Object.values(b)).not.toContainEqual({ type: 'quit' });
+    expect(b['cmd+q']).toBeUndefined();
     expect(chordFor('quit', { quit: null })).toBeNull();
     // the rest keep theirs
     expect(b['cmd+t']).toEqual({ type: 'newCharacter' });
@@ -105,7 +105,7 @@ describe('overrides', () => {
     expect(resolve(b)['cmd+t']).toBeUndefined();
     // untouched actions are not written down at all, so they follow the shipped set as it changes
     expect('quit' in b).toBe(false);
-    expect(resolve(b)['cmd+q']).toEqual({ type: 'quit' });
+    expect(resolve(b)['cmd+q']).toEqual({ type: 'none' });
   });
   it('counts a chord an action only answers to as an alias as one the user spends', () => {
     const b = declineTaken({ 'cmd++': 'increase_font_size' });
@@ -122,8 +122,16 @@ describe('overrides', () => {
     expect(b['cmd+q']).toEqual({ type: 'prevCharacter' });
     expect(b['cmd+e']).toEqual({ type: 'nextCharacter' });
     expect(b['cmd+d']).toEqual({ type: 'nextIsland' });
-    expect(b['cmd+shift+q']).toEqual({ type: 'quit' });
+    expect(b['cmd+shift+q']).toEqual({ type: 'none' });
     expect(b['cmd+j']).toBeUndefined();
     expect(b['cmd+k']).toBeUndefined();
+  });
+});
+
+describe('keyTip', () => {
+  it('names the key an action answers to now, and none once it is unbound', () => {
+    expect(keyTip('Settings', 'toggleSettings')).toBe('Settings (⌘,)');
+    expect(keyTip('Settings', 'toggleSettings', { toggleSettings: 'cmd+shift+o' })).toBe('Settings (⌘⇧O)');
+    expect(keyTip('Settings', 'toggleSettings', { toggleSettings: null })).toBe('Settings');
   });
 });

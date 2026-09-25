@@ -11,7 +11,7 @@ export function FleetSummary() {
   return (
     <aside className="side" data-testid="fleet-summary">
       <div className="kicker">The fleet</div>
-      <h2 className="h2">{chars.length} characters<br />on {islands.length} islands</h2>
+      <h2 className="h2">{chars.length} {chars.length === 1 ? 'character' : 'characters'}<br />on {islands.length} {islands.length === 1 ? 'island' : 'islands'}</h2>
       <div className="desc">{blocked} blocked, {unread} unread. Pick a character or an island label to see its details.</div>
       <div className="rows">
         {DISPLAY_STATUSES.map((s) => (

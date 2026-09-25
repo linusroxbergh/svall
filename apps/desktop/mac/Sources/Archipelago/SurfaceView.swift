@@ -20,10 +20,9 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
     var cellSize = CGSize(width: 8, height: 16)
     private var cursor: NSCursor = .iBeam
 
-    /// A rect of this view, in its own coordinates, that a page panel is drawn into.
-    var cutout: NSRect? {
+    var cutout = Cutout() {
         didSet {
-            Cutout.apply(cutout, to: self)
+            cutout.apply(to: self)
             window?.invalidateCursorRects(for: self)
         }
     }
@@ -31,7 +30,7 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
     override var acceptsFirstResponder: Bool { true }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        Cutout.hit(cutout, at: point, in: self, otherwise: super.hitTest(point))
+        cutout.hit(at: point, in: self, otherwise: super.hitTest(point))
     }
 
     /// `command` is passed to libghostty as is; it runs it through a shell, so use absolute paths.
@@ -152,7 +151,7 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
     }
 
     override func resetCursorRects() {
-        for rect in Cutout.around(cutout, in: bounds) { addCursorRect(rect, cursor: cursor) }
+        for rect in Cutout.around(cutout.rects, in: bounds) { addCursorRect(rect, cursor: cursor) }
     }
 
     func setCursorShape(_ shape: ghostty_action_mouse_shape_e) {

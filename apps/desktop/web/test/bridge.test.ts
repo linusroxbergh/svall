@@ -6,7 +6,7 @@ describe('bridge', () => {
     const win = {} as unknown as Window;
     const b = createBridge(win);
     expect(b.present).toBe(false);
-    expect(() => b.send({ type: 'quit' })).not.toThrow();
+    expect(() => b.send({ type: 'notify.settings' })).not.toThrow();
   });
   it('posts JSON to the shell and dispatches shell messages', () => {
     const postMessage = vi.fn();

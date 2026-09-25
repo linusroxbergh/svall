@@ -5,6 +5,7 @@ import { BrowserArea } from './BrowserArea.js';
 import { useApp } from './hooks.js';
 import { Changes } from './ide/Changes.js';
 import { FilesArea } from './ide/FilesArea.js';
+import { keyTip, type ActionId } from './keys.js';
 import { closeSide, isTerminal, kindOf, pick, shows, snapRatio, split, type Kind, type Panes, type Side, type Surface } from './panes.js';
 import { panesOf, slotStatus } from './selectors.js';
 import { TerminalArea } from './TerminalArea.js';
@@ -17,11 +18,11 @@ const SplitGlyph = () => (
   </svg>
 );
 
-const KINDS: { kind: Kind; label: string; chord: string }[] = [
-  { kind: 'terminal', label: 'Terminal', chord: '⌘1' },
-  { kind: 'browser', label: 'Browser', chord: '⌘2' },
-  { kind: 'files', label: 'Files', chord: '⌘3' },
-  { kind: 'changes', label: 'Changes', chord: '⌘4' },
+const KINDS: { kind: Kind; label: string; action: ActionId }[] = [
+  { kind: 'terminal', label: 'Terminal', action: 'paneTerminal' },
+  { kind: 'browser', label: 'Browser', action: 'paneBrowser' },
+  { kind: 'files', label: 'Files', action: 'paneFiles' },
+  { kind: 'changes', label: 'Changes', action: 'paneChanges' },
 ];
 
 // the half a pane gives back, crossed out
@@ -44,6 +45,7 @@ export function CharPanes({ id, opacity, lead, trail }: Props) {
   const c = useApp((s) => s.fleet.characters[id]);
   const panes = useApp((s) => panesOf(s, id));
   const ratio = useApp((s) => s.ide[id]?.ratio ?? 0.5);
+  const bindings = useApp((s) => s.settings.bindings);
   const host = useRef<HTMLDivElement>(null);
   if (!c) return null;
   const two = panes.right !== undefined;
@@ -73,9 +75,9 @@ export function CharPanes({ id, opacity, lead, trail }: Props) {
       <div className="phead" onPointerDown={(e) => e.stopPropagation()}>
         {side === 'left' && lead}
         <span className="tseg" role="tablist">
-          {KINDS.map(({ kind, label, chord }) => (
+          {KINDS.map(({ kind, label, action }) => (
             <button key={kind} className="tbtn" role="tab" data-testid={`pane-${side}-${kind}`} data-active={kindOf(surface) === kind}
-              title={side === 'left' ? `${label} (${chord})` : label} onClick={() => set(pick(panes, side, kind))}>
+              title={side === 'left' ? keyTip(label, action, bindings) : label} onClick={() => set(pick(panes, side, kind))}>
               {kind === 'terminal' && c.second && isTerminal(surface) && <i className="sdot" data-status={slotStatus(c, surface === 'terminal2' ? 2 : 1)} />}
               {kind === 'terminal' && surface === 'terminal2' ? 'Terminal 2' : label}
             </button>

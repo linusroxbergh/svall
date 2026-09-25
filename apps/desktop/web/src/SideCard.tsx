@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type KeyboardEvent } from 'react';
 import { contextKind, stepPortrait, type Character, type ContextItem, type Params, type Portrait } from '@archipelago/protocol';
 import { app, deps } from './boot.js';
 import { deleteCharacter, deleteIsland, newCharacterOn, reviveCharacter, saveCharacter, saveCharacterContext, saveIsland, saveIslandContext } from './actions.js';
@@ -6,6 +6,7 @@ import { copyText, openFolder } from './bridge.js';
 import { followLink } from './LinkAsk.js';
 import { FollowLine, FollowTextarea } from './Field.js';
 import { useApp } from './hooks.js';
+import { keyTip } from './keys.js';
 import { LinkIcon } from './map/LinkIcon.js';
 import { ago, hintText, linkText } from './map/tokenText.js';
 import { portraitTint, portraitUrl } from './portraits.js';
@@ -35,8 +36,9 @@ function ContextPills({ items, ids, charId, onChange }: { items: ContextItem[]; 
 
 // collapsing is sticky: the card stays shut until the user opens it again.
 export function Collapse() {
+  const bindings = useApp((s) => s.settings.bindings);
   return (
-    <button className="side-collapse" data-testid="side-collapse" title="Hide the side card (⌘I)"
+    <button className="side-collapse" data-testid="side-collapse" title={keyTip('Hide the side card', 'toggleSideCard', bindings)}
       aria-label="Hide the side card" onClick={() => app.store.getState().toggleSideCard(false)}>›</button>
   );
 }
@@ -46,6 +48,7 @@ const PROMPT_HISTORY = 30;
 // the prompts sent to this agent, newest first; read from the transcript, so they survive a restart
 function LastCommand({ id, agent }: { id: string; agent: Character['agent'] }) {
   const [hist, setHist] = useState<{ list: string[]; at: number }>({ list: [], at: 0 });
+  const running = agent?.status === 'working' || agent?.status === 'blocked';
 
   useEffect(() => {
     if (!agent) return;
@@ -61,8 +64,9 @@ function LastCommand({ id, agent }: { id: string; agent: Character['agent'] }) {
       })
       .catch(() => { if (live) setHist({ list: [], at: 0 }); });
     return () => { live = false; };
-    // two hooks in the same millisecond share a lastActivityAt, so the prompt id speaks for itself
-  }, [id, agent?.lastActivityAt, agent?.lastPrompt?.id]);
+    // a new session or prompt changes the list, and a turn's end settles what its prompt left pending;
+    // the tool events and permission asks in between would re-read the tail for nothing
+  }, [id, agent?.sessionId, agent?.transcriptPath, agent?.lastPrompt?.id, running]);
 
   if (!agent) return null;
   const { list } = hist;
@@ -202,6 +206,22 @@ export function SideCard({ id }: { id: string }) {
   );
 }
 
+// an island's docs go with it, so its delete asks once more
+export function DeleteIsland({ id, testid, label }: { id: string; testid: string; label: string }) {
+  // the island asked about, so a confirm never carries over to the next one selected
+  const [asking, setAsking] = useState<string>();
+  if (asking !== id) return <button className="btn dan" data-testid={testid} onClick={() => setAsking(id)}>{label}</button>;
+  // the page's own Enter would hand the keys to a terminal instead of pressing the button in focus
+  const keep = (e: KeyboardEvent) => { if (e.key === 'Enter') e.stopPropagation(); };
+  return (
+    <>
+      {/* the confirm stands where Delete was, so the second click of a double click must not answer it */}
+      <button className="btn dan" data-testid={`${testid}-confirm`} onKeyDown={keep} onClick={(e) => { if (e.detail < 2) deleteIsland(deps(), id); }}>Delete with its docs</button>
+      <button className="btn" data-testid={`${testid}-cancel`} autoFocus onKeyDown={keep} onClick={() => setAsking(undefined)}>Cancel</button>
+    </>
+  );
+}
+
 // the repository most of the island's characters stand in
 const commonRoot = (chars: Character[]): string | undefined => {
   const n = new Map<string, number>();
@@ -254,7 +274,7 @@ export function IslandCard({ id }: { id: string }) {
       <DocsList tier="island" id={id} />
       <div className="opens"><ResourcesButton root={commonRoot(chars)} testid="side-island-resources" /></div>
       {chars.length === 0 && i.kind !== 'home' && <div className="acts">
-        <button className="btn dan" data-testid="side-island-delete" onClick={() => deleteIsland(deps(), id)}>Delete</button>
+        <DeleteIsland id={id} testid="side-island-delete" label="Delete" />
       </div>}
     </aside>
   );

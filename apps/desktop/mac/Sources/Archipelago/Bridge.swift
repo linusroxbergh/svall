@@ -31,15 +31,14 @@ enum ToShell: Decodable {
     case browserImportCookies
     case browserFill(tab: String)
     case browserFocus(tab: String)
-    case shellCutout(rect: WebRect?)
+    case shellCutout(rects: [WebRect], passive: [WebRect])
     case notifyPost(key: String, title: String, subtitle: String, body: String, sound: Bool, actions: Bool, promptId: String?)
     case notifyRemove(key: String)
     case notifyEnable
     case notifySettings
-    case quit
     case quitAnswer(unsaved: [String])
 
-    private enum Keys: String, CodingKey { case type, id, rect, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved }
+    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -68,12 +67,11 @@ enum ToShell: Decodable {
         case "browser.importCookies": self = .browserImportCookies
         case "browser.fill": self = .browserFill(tab: try c.decode(String.self, forKey: .tab))
         case "browser.focus": self = .browserFocus(tab: try c.decode(String.self, forKey: .tab))
-        case "shell.cutout": self = .shellCutout(rect: try c.decodeIfPresent(WebRect.self, forKey: .rect))
+        case "shell.cutout": self = .shellCutout(rects: try c.decode([WebRect].self, forKey: .rects), passive: try c.decode([WebRect].self, forKey: .passive))
         case "notify.post": self = .notifyPost(key: try c.decode(String.self, forKey: .key), title: try c.decode(String.self, forKey: .title), subtitle: try c.decode(String.self, forKey: .subtitle), body: try c.decode(String.self, forKey: .body), sound: try c.decode(Bool.self, forKey: .sound), actions: try c.decode(Bool.self, forKey: .actions), promptId: try c.decodeIfPresent(String.self, forKey: .promptId))
         case "notify.remove": self = .notifyRemove(key: try c.decode(String.self, forKey: .key))
         case "notify.enable": self = .notifyEnable
         case "notify.settings": self = .notifySettings
-        case "quit": self = .quit
         case "quit.answer": self = .quitAnswer(unsaved: try c.decode([String].self, forKey: .unsaved))
         case let other: throw ShellError("unknown bridge message \(other)")
         }

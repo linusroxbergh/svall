@@ -51,7 +51,7 @@ runIf('Fleet', () => {
     const first = store.state.characters[c.id].cell;
     expect(Math.max(Math.abs(c2.cell.x - first.x), Math.abs(c2.cell.y - first.y))).toBeGreaterThan(SPACING);
     await waitFor(async () => (await fleet.readScreen(c2.id, 50)).includes(`started-${c2.id}`));
-    expect(() => fleet.deleteIsland(island.id)).toThrow(/not empty/);
+    expect(() => fleet.deleteIsland(island.id)).toThrow(`island ${island.name} is not empty`);
     await fleet.closeCharacter(c.id);
     await fleet.closeCharacter(c2.id);
     expect(await tmux.listWindows()).toEqual([]);
@@ -99,7 +99,8 @@ runIf('Fleet', () => {
     const { fleet, store } = await boot();
     const island = fleet.createIsland({ name: 'reach' });
     const c = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
-    await expect(fleet.run(c.id, 'echo nope', true, 2)).rejects.toThrow(/no second terminal/);
+    await expect(fleet.run(c.id, 'echo nope', true, 2)).rejects.toThrow(`${c.name} has no second terminal`);
+    expect(() => fleet.readTranscript(c.id, 1, 2)).toThrow(`${c.name} has no agent in its second terminal`);
     await fleet.openSecond(c.id);
     await fleet.run(c.id, 'echo from-second', true, 2);
     await waitFor(async () => (await fleet.readScreen(c.id, 20, 2)).includes('from-second'));
@@ -338,6 +339,7 @@ runIf('Fleet', () => {
     await waitFor(() => store.state.characters[c.id].tmux === undefined);
     expect(store.state.characters[c.id].revive).toEqual({ command: 'claude --resume 9d1e4c2a-7b3f-4a6e-8c5d-2f1a0b9c8d7e' });
     await expect(fleet.run(c.id, 'x', true)).rejects.toBeInstanceOf(Dormant);
+    await expect(fleet.run(c.id, 'x', true)).rejects.toThrow(`${c.name} is dormant; revive it first`);
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionEnd' } });
     store.update((d) => { d.characters[c.id].revive = { command: 'echo revived' }; });
     const r = await fleet.reviveCharacter(c.id);
@@ -861,11 +863,11 @@ runIf('Fleet', () => {
     const { fleet } = await boot();
     const a = fleet.createIsland({ name: 'alpha' });
     const b = fleet.createIsland({ name: 'beta' });
-    expect(() => fleet.updateIsland(b.id, { name: 'ALPHA' })).toThrow(new RegExp(`island ${a.id} is already called alpha`));
+    expect(() => fleet.updateIsland(b.id, { name: 'ALPHA' })).toThrow('another island is already called alpha');
     expect(fleet.updateIsland(b.id, { name: 'BETA' }).name).toBe('BETA');
-    const c1 = await fleet.createCharacter({ islandId: a.id, cwd: '/tmp', name: 'robin' });
+    await fleet.createCharacter({ islandId: a.id, cwd: '/tmp', name: 'robin' });
     const c2 = await fleet.createCharacter({ islandId: a.id, cwd: '/tmp', name: 'wren' });
-    expect(() => fleet.updateCharacter(c2.id, { name: 'ROBIN' })).toThrow(new RegExp(`character ${c1.id} is already called robin`));
+    expect(() => fleet.updateCharacter(c2.id, { name: 'ROBIN' })).toThrow('another character is already called robin');
     expect(fleet.updateCharacter(c2.id, { name: 'WREN' }).name).toBe('WREN');
   });
 

@@ -35,6 +35,9 @@ export const split = (p: Panes): Panes => (p.right ? p : { left: p.left, right: 
 
 export const closeSide = (p: Panes, side: Side): Panes => (!p.right ? p : { left: side === 'left' ? p.right : p.left });
 
+// the pane that showed the second terminal closes, and the other takes the whole width
+export const withoutSecond = (p: Panes): Panes => (!shows(p, 'terminal2') ? p : { left: p.left === 'terminal2' ? p.right ?? 'terminal' : p.left });
+
 export function toggleBrowserRight(p: Panes): Panes {
   if (p.right === 'browser') return { left: p.left };
   if (p.left === 'browser') return p.right ? { left: p.right, right: 'browser' } : { left: 'terminal' };

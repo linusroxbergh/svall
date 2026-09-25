@@ -8,6 +8,7 @@ import { useApp } from '../hooks.js';
 import { ResourcesLayer } from '../resources/Shelf.js';
 import { charactersOf, homeIsland, mapIslandsSorted, statusOf } from '../selectors.js';
 import { theme, tokenPx } from '../theme.js';
+import { Toast } from '../Toast.js';
 import { cardRect } from './card.js';
 import { Wordmark } from './Furniture.js';
 import { homeBox, homeCellToScreen, homeCrew, homeReserve, homeSlotAt, inHomeBox } from './home.js';
@@ -32,7 +33,7 @@ const HOVER_LIFT = 6;
 // A map squeezed between the side panels is too narrow to choose a lasting fleet arrangement.
 const MIN_ARRANGE_ASPECT = 0.5;
 const CORNERS = ['bottom-left', 'bottom-right', 'top-left', 'top-right'] as const;
-type Corner = (typeof CORNERS)[number];
+export type Corner = (typeof CORNERS)[number];
 // the toast takes the first corner the open card leaves free
 function toastCorner(card: { x: number; y: number; width: number; height: number } | undefined, host: { w: number; h: number }): Corner {
   if (!card) return 'bottom-left';
@@ -58,7 +59,6 @@ export function Map() {
   const halfCard = useApp((s) => s.halfCard);
   const autoArrange = useApp((s) => s.settings.autoArrange);
   const arrangeAsk = useApp((s) => s.arrangeAsk);
-  const toast = useApp((s) => s.toast);
   const dropHover = useApp((s) => s.dropHover);
   const [layout, setLayout] = useState<Layout>({ scale: 1, tile: theme.cell, ox: 0, oy: 0 });
   const [drag, setDrag] = useState<Drag>();
@@ -137,7 +137,8 @@ export function Map() {
     const hi = homeIsland(st.fleet);
     const box = hi && !hi.collapsed ? homeBox(hi, hostSizeRef.current, placeRef.current.homeShift) : undefined;
     const home = hi && box && inHomeBox(box, ev.screen) ? homeSlotAt(hi, box, ev.screen) : undefined;
-    if (ev.type === 'down' || ev.type === 'up') lastPressAt.current = ev.time;
+    // the refit's hold is measured on performance.now(); an event's timeStamp need not share its clock
+    if (ev.type === 'down' || ev.type === 'up') lastPressAt.current = performance.now();
     if (ev.type === 'down' && (ev.target?.kind === 'label' || ev.target?.kind === 'handle') &&
       st.fleet.islands[ev.target.islandId]?.kind !== 'home') {
       // A second gesture may start while the last fit is still moving. Freeze the camera at the press.
@@ -568,11 +569,7 @@ export function Map() {
           );
         })()}
         {card && fleet.characters[card] && <TerminalCard key={card} id={card} host={hostSize} />}
-        {toast && (
-          <div className="toast" data-testid="toast" data-tone={toast.tone} data-corner={toastCorner(cardBox, hostSize)}>
-            {toast.text}{toast.action && <button className="toast-act" data-testid="toast-action" onClick={() => app.store.getState().runToastAction()}>{toast.action.label}</button>}
-          </div>
-        )}
+        <Toast corner={toastCorner(cardBox, hostSize)} />
         <ResourcesLayer tip={place.cx - ISLET.margin} />
       </div>
     </div>

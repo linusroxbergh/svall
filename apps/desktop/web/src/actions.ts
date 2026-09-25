@@ -2,8 +2,9 @@ import { contextKind, DEFAULT_SIZE, HOME_ISLAND, type Cell, type Character, type
 import { ApiError, type Api } from './api.js';
 import type { Bridge } from './bridge.js';
 import type { DropTarget } from './drop.js';
+import { withoutSecond } from './panes.js';
 import type { FieldRef } from './resources/model.js';
-import { boardViewed, charactersOf, mapIslandsSorted, selectedOf } from './selectors.js';
+import { boardViewed, charactersOf, mapIslandsSorted, panesOf, selectedOf } from './selectors.js';
 import type { AppStore } from './store/index.js';
 
 // what it takes to act on the fleet: the socket, the mirror, and the shell
@@ -195,9 +196,14 @@ export const reviveCharacter = (d: ActionDeps, id: string): void => { d.api.call
 
 export const deleteCharacter = (d: ActionDeps, id: string): void => { d.api.call('char.close', { id }).catch(toast(d)); };
 
-// the pane waits on the terminal it asked for, so a refusal has to reach the user
+// the pane waits on the terminal it asked for, so a refusal closes that pane again and says why
 export const openSecondTerminal = (d: ActionDeps, id: string): void => {
-  d.api.call('char.second', { id }).catch(toast(d));
+  d.api.call('char.second', { id }).catch((e: Error) => {
+    const s = d.store.getState();
+    const c = s.fleet.characters[id];
+    if (c && !c.second) s.setPanes(id, withoutSecond(panesOf(s, id)));
+    toast(d)(e);
+  });
 };
 
 export const saveIsland = (d: ActionDeps, id: string, patch: Omit<Params<'island.update'>, 'id'>): void => {
