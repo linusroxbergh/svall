@@ -8,6 +8,7 @@ const shell = { CLAUDE_CONFIG_DIR: '/nonexistent/claude', ARCHI_TERM: '2' };
 export default defineConfig({
   test: {
     projects: [
+      { test: { name: 'scripts', include: ['test/*.test.ts'] } },
       { test: { name: 'protocol', root: 'packages/protocol' } },
       ...['archid', 'cli'].map((name) => ({ test: { name, root: `packages/${name}`, setupFiles: [isolate], env: shell } })),
       'apps/desktop/web',

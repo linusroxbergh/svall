@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installs dependencies, builds Archipelago.app, installs it to /Applications and restarts
+# Installs dependencies, downloads or builds GhosttyKit, builds Archipelago.app, installs it to /Applications and restarts
 # the daemon. Checks first and runs `archi setup` after the build when setup is missing or its
 # hooks or shims are out of date, so a failed check or build leaves the machine untouched.
 set -eu
@@ -15,17 +15,40 @@ $*"; }
 
 MACOS="$(sw_vers -productVersion)"
 [ "${MACOS%%.*}" -ge 15 ] || missing "✗ macos  Archipelago needs macOS 15 or newer (this is $MACOS)"
-if ! xcodebuild -license check >/dev/null 2>&1; then
+# the app builds with the Command Line Tools; only building Ghostty from source needs Xcode
+SDK="$(xcrun --show-sdk-version 2>/dev/null || true)"
+if [ -z "$SDK" ]; then
   case "$(xcode-select -p 2>/dev/null)" in
     *.app/*) missing "✗ xcode  license not accepted: open Xcode once, or sudo xcodebuild -license accept" ;;
-    *) missing "✗ xcode  missing or not selected: install Xcode, then sudo xcode-select -s /Applications/Xcode.app" ;;
+    *) missing "✗ command line tools  missing: xcode-select --install" ;;
+  esac
+elif [ "${SDK%%.*}" -lt 26 ]; then
+  case "$(xcode-select -p 2>/dev/null)" in
+    *.app/*) missing "✗ xcode  the selected Xcode has the macOS $SDK SDK, older than 26: update it, or sudo xcode-select -s /Library/Developer/CommandLineTools" ;;
+    *) missing "✗ command line tools  the macOS $SDK SDK is older than 26: update them in System Settings → General → Software Update" ;;
   esac
 fi
 [ -w "$DEST" ] || missing "✗ app folder  $DEST is not writable: mkdir -p ~/Applications, then ARCHI_APP_DEST=\$HOME/Applications pnpm desktop:install"
 
-if [ ! -d vendor/ghostty/macos/GhosttyKit.xcframework ]; then
-  [ -f vendor/ghostty/build.zig ] || { echo "==> fetching Ghostty (first time only)"; git submodule update --init vendor/ghostty; }
-  GHOSTTY_CHECK="$(scripts/ghostty-build.sh --check 2>&1)" || missing "$GHOSTTY_CHECK"
+# GhosttyKit is downloaded for the Ghostty commit this checkout records, or built from source when none can be
+BUILD_GHOSTTY=
+if scripts/ghostty-kit.sh ahead; then
+  echo "==> keeping GhosttyKit built from vendor/ghostty, a Ghostty bump not yet committed"
+elif ! scripts/ghostty-kit.sh current; then
+  echo "==> downloading GhosttyKit"
+  if ! scripts/ghostty-kit.sh fetch; then
+    BUILD_GHOSTTY=1
+    NO_KIT="✗ ghostty  no GhosttyKit could be downloaded (the reason is above; gh auth login fixes a signed-out gh)"
+    if xcodebuild -license check >/dev/null 2>&1; then
+      echo "    building it from source instead (if gh is signed out, gh auth login and a rerun skip that)"
+      echo "==> fetching Ghostty"
+      git submodule update --init vendor/ghostty
+      GHOSTTY_CHECK="$(scripts/ghostty-build.sh --check 2>&1)" || missing "$NO_KIT, and building it needs:
+$GHOSTTY_CHECK"
+    else
+      missing "$NO_KIT, and building it needs Xcode 26 or newer, the Metal toolchain and zig: see Building Ghostty from source in the README"
+    fi
+  fi
 fi
 
 echo "==> pnpm install"
@@ -44,8 +67,8 @@ if [ ! -f "$HOME_DIR/config.json" ] || [ ! -f "$HOME/Library/LaunchAgents/com.ar
 fi
 case "$CHECK" in *"out of date: run archi setup"*) SETUP=1 ;; esac
 
-if [ ! -d vendor/ghostty/macos/GhosttyKit.xcframework ]; then
-  echo "==> building GhosttyKit (first time only, several minutes)"
+if [ -n "$BUILD_GHOSTTY" ]; then
+  echo "==> building GhosttyKit (several minutes)"
   scripts/ghostty-build.sh
 fi
 

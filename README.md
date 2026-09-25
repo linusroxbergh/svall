@@ -41,32 +41,30 @@ clients.
 
 ## Quickstart
 
-Archipelago builds from source on macOS 15.6 or newer with Xcode 26 or newer.
-The first install is slow: Xcode is a large download, and the terminal engine
-takes several minutes to build the first time.
+Archipelago builds on macOS 15.6 or newer with the Command Line Tools for
+Xcode 26 or newer, which Homebrew installs. On an Apple Silicon Mac the install
+downloads the terminal engine prebuilt. An Intel Mac also needs Xcode; see
+[Building Ghostty from source](#building-ghostty-from-source).
 
-1. Install Xcode from the App Store, or update it there to the latest version
-   (the command line tools alone are not enough). Open it once to accept its
-   license, then run:
-
-       xcodebuild -downloadComponent MetalToolchain
-
-2. Install the tools and the [Claude Code CLI](https://code.claude.com/docs/en/setup).
+1. Install the tools and the [Claude Code CLI](https://code.claude.com/docs/en/setup).
    Claude Code works with a Claude subscription or an Anthropic API key; see
    [Using API keys](#using-api-keys).
 
-       brew install node tmux pnpm zig@0.15 gh   # skip node if you have 24 or newer
-       gh auth login                              # optional: resolves PR links
+       brew install node tmux pnpm gh   # skip node if you have 24 or newer
+       gh auth login                    # clones the private repository, downloads the terminal engine and resolves PR links
 
-   If your pnpm came from somewhere other than Homebrew, `pnpm --version` must
-   show 12 or newer. Update it the way you installed it, such as
-   `npm i -g pnpm@latest` or `pnpm self-update`.
+   If `xcrun --show-sdk-version` prints a version below 26, update the Command
+   Line Tools in System Settings → General → Software Update, or Xcode if
+   `xcode-select -p` points into it. If your pnpm came
+   from somewhere other than Homebrew, `pnpm --version` must show 12 or newer.
+   Update it the way you installed it, such as `npm i -g pnpm@latest` or
+   `pnpm self-update`.
 
    For characters that run Codex, also install the
    [Codex CLI](https://learn.chatgpt.com/docs/codex/cli) 0.155 or newer. An
    OpenAI API key is enough; you don't need a ChatGPT subscription.
 
-3. Clone and install:
+2. Clone and install:
 
        git clone https://github.com/linusroxbergh/archipelago && cd archipelago
        pnpm desktop:install
@@ -77,7 +75,7 @@ takes several minutes to build the first time.
 
        echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc   # then open a new terminal
 
-4. Run `archi`, or open Archipelago from Spotlight. `+ New island` on the
+3. Run `archi`, or open Archipelago from Spotlight. `+ New island` on the
    sandbar at the bottom makes an island, and Cmd+T makes a character on it: a
    shell that becomes an agent when you type `claude` or `codex`. On first
    launch, the app asks before the scribe makes paid agent calls. The first
@@ -148,6 +146,21 @@ If pnpm says it failed to switch versions, update pnpm to 12 or newer the way
 you installed it (`brew upgrade pnpm`, `npm i -g pnpm@latest`, or
 `pnpm self-update` run outside the clone) and try again. If it says the Node
 version is unsupported, run `brew upgrade node`.
+
+### Building Ghostty from source
+
+The installer downloads GhosttyKit, the terminal engine, prebuilt for the
+Ghostty version this checkout pins. It builds GhosttyKit from source instead
+when the download fails: on an Intel Mac, when `gh` isn't signed in (run
+`gh auth login` and install again), or when no build of that version has been
+published. That needs Xcode 26 or newer from the App Store (the Command Line
+Tools alone are not enough). Open Xcode once to accept its license, then run:
+
+    sudo xcode-select -s /Applications/Xcode.app
+    xcodebuild -downloadComponent MetalToolchain
+    brew install zig@0.15
+
+The first build takes several minutes.
 
 ## Concepts
 
@@ -356,11 +369,21 @@ it, and launchd would otherwise restart the missing daemon every ten seconds.
     pnpm e2e             # Playwright against a temporary daemon
     pnpm desktop:dev     # Vite dev server plus a debug app; ARCHI_HOME picks the daemon
     pnpm desktop:build   # an unsigned apps/desktop/mac/build/Archipelago.app
-    pnpm ghostty:build   # GhosttyKit from vendor/ghostty (v1.3.1)
+    pnpm ghostty:build   # GhosttyKit from vendor/ghostty (v1.3.1) into vendor/ghostty-kit
+    pnpm ghostty:publish # build GhosttyKit and upload it for installs to download
     ARCHI_HOME=/tmp/archi-dev pnpm archid
 
 The first `pnpm e2e` needs
 `pnpm --filter @archipelago/desktop-web exec playwright install chromium`.
+
+`pnpm ghostty:publish` builds GhosttyKit for the Ghostty commit HEAD records
+and uploads it to the `ghostty-kit` release, where `pnpm desktop:install`
+downloads it. Publish after committing a `vendor/ghostty` bump, or installs of
+that commit need Xcode; until the bump is committed, `pnpm desktop:install`
+keeps the kit `pnpm ghostty:build` made from it. When a change to
+`scripts/ghostty-build.sh` changes what it builds, also bump `REV` in
+`scripts/ghostty-kit.sh` before publishing, so existing checkouts replace their
+kit. It needs the Metal toolchain and zig.
 
 - `packages/protocol`: state types and message schemas (zod).
 - `packages/archid`: the daemon (tmux, state, hooks, transcripts, API).

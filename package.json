@@ -10,6 +10,7 @@
     "archid": "tsx packages/archid/src/bin.ts",
     "archi": "tsx packages/cli/src/main.ts",
     "ghostty:build": "scripts/ghostty-build.sh",
+    "ghostty:publish": "scripts/ghostty-kit.sh publish",
     "web:dev": "pnpm --filter @archipelago/desktop-web dev",
     "e2e": "pnpm --filter @archipelago/desktop-web e2e",
     "desktop:dev": "scripts/desktop-dev.sh",

@@ -24,7 +24,7 @@ export function hasTmux(): boolean {
 
 // where Ghostty keeps the terminfo it ships: the vendored build the app bundles, then an installed Ghostty
 const GHOSTTY_TERMINFO = [
-  path.join(import.meta.dirname, '../../../vendor/ghostty/zig-out/share/terminfo'),
+  path.join(import.meta.dirname, '../../../vendor/ghostty-kit/share/terminfo'),
   '/Applications/Ghostty.app/Contents/Resources/terminfo',
 ];
 

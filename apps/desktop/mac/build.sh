@@ -4,15 +4,19 @@ set -eu
 MAC="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$MAC/../../.." && pwd)"
 CONFIG="${1:-debug}"
-XC="$ROOT/vendor/ghostty/macos/GhosttyKit.xcframework"
-SHARE="$ROOT/vendor/ghostty/zig-out/share"
-[ -d "$XC" ] || { echo "GhosttyKit missing: pnpm ghostty:build" >&2; exit 1; }
+XC="$ROOT/vendor/ghostty-kit/GhosttyKit.xcframework"
+SHARE="$ROOT/vendor/ghostty-kit/share"
+[ -d "$XC" ] || { echo "GhosttyKit missing: scripts/ghostty-kit.sh fetch, or pnpm ghostty:build" >&2; exit 1; }
+"$ROOT/scripts/ghostty-kit.sh" current 2>/dev/null || "$ROOT/scripts/ghostty-kit.sh" ahead 2>/dev/null ||
+  echo "warning: vendor/ghostty-kit is not for the Ghostty commit HEAD records: scripts/ghostty-kit.sh fetch, or pnpm ghostty:build" >&2
 ln -sfn "$XC" "$MAC/GhosttyKit.xcframework"
 
 cd "$MAC"
+# the Mac's own architecture, since swift in a Rosetta shell would build x86_64 against an arm64 GhosttyKit
+ARCH="$([ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = 1 ] && echo arm64 || echo x86_64)"
 # GhosttyKit ships headers its umbrella header does not import; the warning is upstream noise
-swift build -c "$CONFIG" -Xcc -Wno-incomplete-umbrella
-BIN="$(swift build -c "$CONFIG" --show-bin-path)/Archipelago"
+swift build -c "$CONFIG" --arch "$ARCH" -Xcc -Wno-incomplete-umbrella
+BIN="$(swift build -c "$CONFIG" --arch "$ARCH" --show-bin-path)/Archipelago"
 
 APP="$MAC/build/Archipelago.app"
 rm -rf "$APP"

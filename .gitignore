@@ -9,6 +9,7 @@ apps/desktop/web/playwright-report/
 apps/desktop/mac/.build/
 apps/desktop/mac/build/
 apps/desktop/mac/GhosttyKit.xcframework
+vendor/ghostty-kit/
 __pycache__/
 
 docs/superpowers/
