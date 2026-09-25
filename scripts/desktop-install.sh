@@ -62,10 +62,12 @@ echo "$CHECK"
 # uninstall keeps the fleet homes, so config.json alone would call a stripped machine set up;
 # hooks, shims or a plist setup now writes differently are set up again, as nothing else rewrites them
 SETUP=
-if [ ! -f "$HOME_DIR/config.json" ] || [ ! -f "$HOME/Library/LaunchAgents/com.archipelago.archid.plist" ] || [ ! -f "$HOME/.local/bin/archi" ]; then
+if [ ! -f "$HOME_DIR/config.json" ] || [ ! -f "$HOME/Library/LaunchAgents/io.github.linusroxbergh.archipelago.archid.plist" ] || [ ! -f "$HOME/.local/bin/archi" ]; then
   SETUP=1
 fi
 case "$CHECK" in *"out of date: run archi setup"*) SETUP=1 ;; esac
+# setup is what starts the private fleet's agent, so one a failed start left unloaded gets another
+launchctl print "gui/$(id -u)/io.github.linusroxbergh.archipelago.archid" >/dev/null 2>&1 || SETUP=1
 
 if [ -n "$BUILD_GHOSTTY" ]; then
   echo "==> building GhosttyKit (several minutes)"
@@ -78,10 +80,23 @@ pnpm --filter @archipelago/desktop-web build
 pnpm --filter @archipelago/desktop-web build:mobile
 apps/desktop/mac/build.sh release >/dev/null
 
-if [ -n "$SETUP" ]; then
-  echo "==> archi setup (Claude hooks, tmux.conf, launchd agent, ~/.local/bin/archi)"
-  pnpm archi -p private setup
-fi
+# app.pid outlives a crash, after which its pid can be another process's
+is_app() { case "$(ps -p "$1" -o comm= 2>/dev/null)" in Archipelago | */Archipelago) return 0 ;; esac; return 1; }
+
+# an open window stays the old bundle (archi only brings it to the front), and one under the old app id would write
+# back the sign-ins setup moves. Each is asked by its pid, as a quit sent to the bundle id can reach another window,
+# and once: a second quit while it asks about unsaved edits would answer for the user
+echo "==> closing open windows"
+for home in "$HOME"/.archipelago "$HOME"/.archipelago-*; do
+  [ -f "$home/app.pid" ] || continue
+  pid=$(cut -f1 "$home/app.pid")
+  case "$pid" in '' | *[!0-9]*) continue ;; esac
+  is_app "$pid" || continue
+  osascript -l JavaScript -e "ObjC.import('AppKit'); const a = \$.NSRunningApplication.runningApplicationWithProcessIdentifier($pid); if (!a.isNil() && !a.terminate) throw new Error('macOS did not pass the quit on')" >/dev/null \
+    || fail "could not ask Archipelago to quit, so nothing was installed; quit it, then run pnpm desktop:install again"
+  for _ in $(seq 60); do is_app "$pid" || break; sleep 1; done
+  ! is_app "$pid" || fail "Archipelago did not quit within 60 s, so nothing was installed; quit it, then run pnpm desktop:install again"
+done
 
 echo "==> installing to $DEST"
 rm -rf "$DEST/Archipelago.app"
@@ -89,27 +104,16 @@ cp -R apps/desktop/mac/build/Archipelago.app "$DEST/Archipelago.app"
 # Finder caches icons per bundle path; touching the bundle makes it re-read this build's
 touch "$DEST/Archipelago.app"
 
+# setup moves an older install's sign-ins only once the app installed reads them under the new id
+if [ -n "$SETUP" ]; then
+  echo "==> archi setup (Claude hooks, tmux.conf, launchd agent, ~/.local/bin/archi)"
+  pnpm archi -p private setup
+fi
+
 echo "==> restarting archid"
-launchctl list | awk '$3 ~ /^com\.archipelago\.archid/ { print $3 }' | while read -r label; do
+launchctl list | awk '$3 ~ /^io\.github\.linusroxbergh\.archipelago\.archid/ { print $3 }' | while read -r label; do
   echo "    $label"
   launchctl kickstart -k "gui/$(id -u)/$label" || echo "    (kickstart failed for $label)"
-done
-
-# a window left open is still the old bundle, and archi would only bring it to the front.
-# each quit event reaches one instance, so this asks again until every fleet's window is gone.
-echo "==> closing open windows"
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  live=
-  for home in "$HOME"/.archipelago "$HOME"/.archipelago-*; do
-    [ -f "$home/app.pid" ] || continue
-    pid=$(cut -f1 "$home/app.pid")
-    kill -0 "$pid" 2>/dev/null || continue
-    live=1
-    break
-  done
-  [ -n "$live" ] || break
-  osascript -e 'tell application id "com.archipelago.desktop" to quit' >/dev/null 2>&1 || true
-  sleep 1
 done
 
 echo "installed $DEST/Archipelago.app; run archi, or open it from Spotlight or Launchpad"

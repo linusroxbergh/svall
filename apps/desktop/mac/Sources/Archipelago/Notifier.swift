@@ -5,7 +5,7 @@ import UserNotifications
 /// Every fleet runs its own instance of this app, so a response handed to another fleet's is passed on.
 final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     private static let blocked = "blocked"
-    private static let forward = Notification.Name("com.archipelago.desktop.notice")
+    private static let forward = Notification.Name((Bundle.main.bundleIdentifier ?? "archipelago") + ".notice")
     private let center = UNUserNotificationCenter.current()
     private let home = ArchiHome.path
     private var prefix: String { home + "#" }

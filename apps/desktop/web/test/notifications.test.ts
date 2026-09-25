@@ -160,6 +160,20 @@ describe('followNotifications', () => {
     expect(bridge.sent.at(-1)).toEqual({ type: 'notify.remove', key: 'c1' });
   });
 
+  it('asks macOS once when notifications are on and it has not been asked, as under a new app id', () => {
+    const { store, bridge } = setup();
+    expect(bridge.sent).not.toContainEqual({ type: 'notify.enable' });
+    bridge.emit({ type: 'notify.permission', state: 'unknown' });
+    bridge.emit({ type: 'notify.permission', state: 'unknown' });
+    expect(bridge.sent.filter((m) => m.type === 'notify.enable')).toHaveLength(1);
+
+    const off = setup();
+    off.store.getState().setSettings({ notifications: { ...ON, on: false } });
+    off.bridge.emit({ type: 'notify.permission', state: 'unknown' });
+    expect(off.bridge.sent).not.toContainEqual({ type: 'notify.enable' });
+    expect(store.getState().notifyPermission).toBe('unknown');
+  });
+
   it('focuses the character a banner was clicked for, second terminal or not', () => {
     const { store, bridge } = setup();
     bridge.emit({ type: 'notify.open', key: 'c1-2' });

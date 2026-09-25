@@ -6,14 +6,13 @@ import { promisify } from 'node:util';
 import type { CodexPaths } from './codex/install.js';
 import { portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
 import { resolvePaths } from './paths.js';
-import { isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome } from './profile.js';
+import { BUNDLE_ID, isProfileName, LAUNCHD_LABEL, OLD_BUNDLE_ID, OLD_LAUNCHD_LABEL, PRIVATE, profileHome } from './profile.js';
 import { readJsonSettings, requireWritable, unmergeHooks, unmergeStatusLine, writeJsonSettings, type JsonSettings } from './setup.js';
 
 const exec = promisify(execFile);
 const SHIM_MARK = 'packages/cli/src/main.ts';
-const BUNDLE_ID = 'com.archipelago.desktop';
 
-const isAgentPlist = (f: string): boolean => f.startsWith(`${LAUNCHD_LABEL}.`) && f.endsWith('.plist');
+const isAgentPlist = (f: string): boolean => [LAUNCHD_LABEL, OLD_LAUNCHD_LABEL].some((l) => f.startsWith(`${l}.`)) && f.endsWith('.plist');
 
 const readOrUndefined = (file: string): string | undefined => {
   try { return fs.readFileSync(file, 'utf8'); } catch { return undefined; }
@@ -64,16 +63,16 @@ const appPid = (home: string, app: AppQuit): number | undefined => {
 
 const QUIT_WAIT_S = 60;
 
-// an open window could write its sign-ins, caches and defaults back after a purge. Each is asked once and waited for:
+// an open window could write its sign-ins, caches and defaults back after they move or are purged. Each is asked once and waited for:
 // a second quit while it asks about unsaved edits would answer for the user
-async function quitApp(homes: string[], app: AppQuit): Promise<string[]> {
+export async function quitApp(homes: string[], app: AppQuit, command: string): Promise<string[]> {
   const open = homes.map((h) => appPid(h, app)).filter((pid) => pid !== undefined);
   for (const pid of open) {
     await app.quit(pid).catch((e: Error) => {
-      throw new Error(`could not ask Archipelago to quit (${e.message.split('\n')[0]}), so nothing was changed; quit it, then run archi uninstall again`);
+      throw new Error(`could not ask Archipelago to quit (${e.message.split('\n')[0]}), so nothing was changed; quit it, then run ${command} again`);
     });
     for (let s = 0; s < QUIT_WAIT_S && app.isApp(pid); s++) await app.wait(1000);
-    if (app.isApp(pid)) throw new Error(`Archipelago did not quit within ${QUIT_WAIT_S} s, so nothing was changed; quit it, then run archi uninstall again`);
+    if (app.isApp(pid)) throw new Error(`Archipelago did not quit within ${QUIT_WAIT_S} s, so nothing was changed; quit it, then run ${command} again`);
   }
   return open.length ? ['quit Archipelago'] : [];
 }
@@ -93,7 +92,7 @@ export async function runUninstall(o: { home: string; homes: string[]; settingsP
   if (codex) edits.push([codex, unmergeHooks(codex.settings, paths.hookScript), 'codex hooks removed']);
   // a file that cannot take its change stops the run before anything is removed
   for (const [current, next] of edits) requireWritable(current, next);
-  const done = await quitApp(o.homes, o.app);
+  const done = await quitApp(o.homes, o.app, 'archi uninstall');
   for (const [current, next, what] of edits) {
     // Codex needs no hooks file, so one that held only Archipelago's goes, unless it links elsewhere
     const emptied = current === codex && !Object.keys(next).length && Object.keys(current.settings).length > 0;
@@ -148,7 +147,7 @@ export const fleetHomes = (homedir: string): string[] => fs.readdirSync(homedir)
 export function fleetData(o: { homedir: string; appDests: string[] }): string[] {
   const apps = [...new Set(o.appDests)].map((d) => path.join(d, 'Archipelago.app')).filter((p) => fs.existsSync(p));
   // what macOS keeps by the app's bundle id rather than in a fleet home: every fleet's browser sign-ins, the caches and the defaults
-  const library = [path.join('WebKit', BUNDLE_ID), path.join('Caches', BUNDLE_ID), path.join('Preferences', `${BUNDLE_ID}.plist`)]
+  const library = [BUNDLE_ID, OLD_BUNDLE_ID].flatMap((id) => [path.join('WebKit', id), path.join('Caches', id), path.join('Preferences', `${id}.plist`)])
     .map((p) => path.join(o.homedir, 'Library', p)).filter((p) => fs.existsSync(p));
   return [...fleetHomes(o.homedir), ...apps, ...library];
 }

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { repoRoot, userPaths } from '@archipelago/archid/paths';
-import { PRIVATE, profileLabel } from '@archipelago/archid/profile';
+import { OLD_LAUNCHD_LABEL, PRIVATE, profileLabel } from '@archipelago/archid/profile';
 import { setupHome, type HomeSetup } from '@archipelago/archid/setup';
 import { Client, ProtocolMismatch } from './client.js';
 import { ask } from './prompt.js';
@@ -47,6 +47,10 @@ export async function launch(t: Target, d: LaunchDeps): Promise<void> {
   if (t.managed) {
     const loaded = await d.exec('launchctl', ['print', `${domain}/${label}`]).then(() => true, () => false);
     if (!loaded) {
+      // setup moves an older install's agent; a second one beside it would lose the fleet's port and home to it
+      if (d.exists(path.join(d.launchAgentsDir, `${profileLabel(t.name, OLD_LAUNCHD_LABEL)}.plist`))) {
+        throw new Error('this fleet still runs under its old launchd label; run pnpm desktop:install to finish the update');
+      }
       if (!d.exists(plist)) await d.setupHome(home);
       await d.exec('launchctl', ['bootstrap', domain, plist]);
     }

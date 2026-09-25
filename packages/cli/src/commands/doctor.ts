@@ -8,7 +8,7 @@ import { Command } from 'commander';
 import { codexInstalled, codexPaths, type CodexPaths } from '@archipelago/archid/codex/install';
 import { parseConfig } from '@archipelago/archid/config';
 import { resolvePaths, userPaths } from '@archipelago/archid/paths';
-import { PRIVATE, profileHome, profileLabel } from '@archipelago/archid/profile';
+import { OLD_LAUNCHD_LABEL, PRIVATE, profileHome, profileLabel } from '@archipelago/archid/profile';
 import { HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hooksInstalled, launchdEnv, plistEnv, plistRun } from '@archipelago/archid/setup';
 import { tmuxTooOld } from '@archipelago/archid/tmux/conf';
 import { Client, restartHint } from '../client.js';
@@ -144,6 +144,8 @@ async function launchd(t: Target, d: DoctorDeps): Promise<Check> {
     const running = fields.includes('state = running');
     return { name: 'launchd', status: running ? 'ok' : 'fail', detail: `${label}: ${fields.join(', ') || 'loaded'}` };
   } catch {
+    const old = profileLabel(t.name, OLD_LAUNCHD_LABEL);
+    if (d.exists(path.join(d.launchAgentsDir, `${old}.plist`))) return { name: 'launchd', status: 'fail', detail: `${label} is not loaded, as the fleet's agent is still ${old}: pnpm desktop:install` };
     return { name: 'launchd', status: 'fail', detail: `${label} is not loaded: archi ${t.name === PRIVATE ? 'setup' : t.name}` };
   }
 }

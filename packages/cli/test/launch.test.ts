@@ -44,11 +44,11 @@ const adhoc = { name: 'archi-dev', home: '/tmp/archi-dev', managed: false };
 
 describe('launch', () => {
   it('opens an existing, loaded profile without touching launchd', async () => {
-    const f = fake({ homes: [priv.home], loaded: ['com.archipelago.archid'] });
+    const f = fake({ homes: [priv.home], loaded: ['io.github.linusroxbergh.archipelago.archid'] });
     await launch(priv, f.deps);
     expect(f.setups).toEqual([]);
     expect(f.calls).toEqual([
-      ['launchctl', ['print', 'gui/501/com.archipelago.archid']],
+      ['launchctl', ['print', 'gui/501/io.github.linusroxbergh.archipelago.archid']],
       ['open', ['-n', '--env', 'ARCHI_HOME=/u/.archipelago', '-a', 'Archipelago']],
     ]);
   });
@@ -57,8 +57,8 @@ describe('launch', () => {
     const f = fake({ answer: 'y' });
     await launch(work, f.deps);
     expect(f.prompts).toEqual(['create profile work at /u/.archipelago-work? [y/N] ']);
-    expect(f.setups).toEqual([{ home: work.home, label: 'com.archipelago.archid.work', repoRoot: '/r', launchAgentsDir: '/u/Library/LaunchAgents', launchctl: false, port: 0 }]);
-    expect(f.calls).toContainEqual(['launchctl', ['bootstrap', 'gui/501', '/u/Library/LaunchAgents/com.archipelago.archid.work.plist']]);
+    expect(f.setups).toEqual([{ home: work.home, label: 'io.github.linusroxbergh.archipelago.archid.work', repoRoot: '/r', launchAgentsDir: '/u/Library/LaunchAgents', launchctl: false, port: 0 }]);
+    expect(f.calls).toContainEqual(['launchctl', ['bootstrap', 'gui/501', '/u/Library/LaunchAgents/io.github.linusroxbergh.archipelago.archid.work.plist']]);
     expect(f.calls.at(-1)).toEqual(['open', ['-n', '--env', 'ARCHI_HOME=/u/.archipelago-work', '-a', 'Archipelago']]);
   });
 
@@ -74,18 +74,27 @@ describe('launch', () => {
   it('rewrites a missing plist for an existing home before bootstrapping', async () => {
     const f = fake({ homes: [priv.home] });
     await launch(priv, f.deps);
-    expect(f.setups.map((s) => [s.label, s.port])).toEqual([['com.archipelago.archid', undefined]]);
-    expect(f.calls).toContainEqual(['launchctl', ['bootstrap', 'gui/501', '/u/Library/LaunchAgents/com.archipelago.archid.plist']]);
+    expect(f.setups.map((s) => [s.label, s.port])).toEqual([['io.github.linusroxbergh.archipelago.archid', undefined]]);
+    expect(f.calls).toContainEqual(['launchctl', ['bootstrap', 'gui/501', '/u/Library/LaunchAgents/io.github.linusroxbergh.archipelago.archid.plist']]);
+  });
+
+  it('sends a fleet whose agent still runs under the old label to desktop:install rather than start a second one', async () => {
+    for (const [t, old] of [[priv, 'com.archipelago.archid'], [work, 'com.archipelago.archid.work']] as const) {
+      const f = fake({ homes: [t.home, `/u/Library/LaunchAgents/${old}.plist`] });
+      await expect(launch(t, f.deps)).rejects.toThrow('this fleet still runs under its old launchd label; run pnpm desktop:install to finish the update');
+      expect(f.setups).toEqual([]);
+      expect(f.calls.some(([, args]) => args[0] === 'bootstrap')).toBe(false);
+    }
   });
 
   it('gives up when the daemon never answers', async () => {
-    const f = fake({ homes: [work.home], loaded: ['com.archipelago.archid.work'], daemonUp: false });
+    const f = fake({ homes: [work.home], loaded: ['io.github.linusroxbergh.archipelago.archid.work'], daemonUp: false });
     await expect(launch(work, f.deps)).rejects.toThrow('archid did not start; see /u/.archipelago-work/archid.log');
     expect(f.calls.some(([c]) => c === 'open')).toBe(false);
   });
 
   it('names the install step when the app is missing', async () => {
-    const f = fake({ homes: [priv.home], loaded: ['com.archipelago.archid'], openFails: true });
+    const f = fake({ homes: [priv.home], loaded: ['io.github.linusroxbergh.archipelago.archid'], openFails: true });
     await expect(launch(priv, f.deps)).rejects.toThrow('Archipelago.app is not installed; run pnpm desktop:install');
   });
 
@@ -110,14 +119,14 @@ describe('launch', () => {
   });
 
   it('gives up on a protocol mismatch instead of waiting it out', async () => {
-    const f = fake({ homes: [work.home], loaded: ['com.archipelago.archid.work'], mismatch: true });
+    const f = fake({ homes: [work.home], loaded: ['io.github.linusroxbergh.archipelago.archid.work'], mismatch: true });
     await expect(launch(work, f.deps)).rejects.toThrow('the running archid speaks protocol 1 and this archi speaks 2');
     expect(f.connects).toHaveLength(1);
     expect(f.calls.some(([c]) => c === 'open')).toBe(false);
   });
 
   it('carries the underlying reason into the timeout', async () => {
-    const f = fake({ homes: [work.home], loaded: ['com.archipelago.archid.work'], daemonUp: false });
+    const f = fake({ homes: [work.home], loaded: ['io.github.linusroxbergh.archipelago.archid.work'], daemonUp: false });
     await expect(launch(work, f.deps)).rejects.toThrow('(down)');
   });
 });

@@ -89,15 +89,28 @@ describe('archi argument parsing', () => {
     fs.mkdirSync(path.dirname(settings), { recursive: true });
     const old = JSON.stringify(mergeHooks({}, `[ -z "$ARCHI_CHAR_ID" ] || { node '${script}' claude; }`, HOOK_EVENTS, script));
     fs.writeFileSync(settings, old);
+    // an agent from an install under the old ids, which desktop:install must run setup to move; only ever in isolate.ts's home
+    expect(os.homedir().startsWith('/tmp/archi-home-')).toBe(true);
+    const agent = path.join(os.homedir(), 'Library', 'LaunchAgents', 'com.archipelago.archid.plist');
+    fs.mkdirSync(path.dirname(agent), { recursive: true });
+    fs.writeFileSync(agent, '<plist/>');
+    // sign-ins under both ids, which setup never merges
+    const webkit = ['com.archipelago.desktop', 'io.github.linusroxbergh.archipelago'].map((id) => path.join(os.homedir(), 'Library', 'WebKit', id));
+    for (const d of webkit) fs.mkdirSync(d, { recursive: true });
     try {
       const r = await run({ PATH: `${bin}:${process.env.PATH}` }, 'setup', '--check');
       expect(r.code).toBe(0);
       expect(r.stdout).toContain('! hooks  missing or out of date: run archi setup');
       expect(r.stdout).toContain('! shims  missing or out of date: run archi setup');
       expect(r.stdout).toContain('! launchd  plist missing or out of date: run archi setup');
+      expect(r.stdout).toContain('! ids  launchd agents or app data under the old com.archipelago ids, out of date: run archi setup');
+      expect(r.stdout.split('\n')).toContain(`! sign-ins  ${webkit[0]} is left beside ${webkit[1]}, which the app reads: quit the app, then keep whichever holds your sign-ins at ${webkit[1]} and delete the other`);
       expect(fs.readFileSync(settings, 'utf8')).toBe(old);
+      expect(fs.readFileSync(agent, 'utf8')).toBe('<plist/>');
     } finally {
       fs.rmSync(path.dirname(settings), { recursive: true });
+      fs.rmSync(agent);
+      fs.rmSync(path.dirname(webkit[0]), { recursive: true });
     }
   });
 });

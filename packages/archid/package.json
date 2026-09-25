@@ -15,6 +15,7 @@
     "./codex/install": "./src/codex/install.ts",
     "./setup": "./src/setup.ts",
     "./uninstall": "./src/uninstall.ts",
+    "./legacy": "./src/legacy.ts",
     "./profile": "./src/profile.ts",
     "./mobile": "./src/mobile.ts",
     "./tmux/conf": "./src/tmux/conf.ts"

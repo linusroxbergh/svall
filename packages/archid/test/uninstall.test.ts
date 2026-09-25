@@ -107,7 +107,7 @@ describe('runUninstall', () => {
       fs.chmodSync(store, 0o555);
       fs.symlinkSync(path.join(store, 'hooks.json'), f.o.codex.hooks);
     };
-    const plist = path.join(f.launchAgentsDir, 'com.archipelago.archid.plist');
+    const plist = path.join(f.launchAgentsDir, 'io.github.linusroxbergh.archipelago.archid.plist');
     try {
       link(fs.readFileSync(f.o.codex.hooks, 'utf8'));
       await expect(runUninstall(f.o)).rejects.toThrow(`${f.o.codex.hooks} links to`);
@@ -207,7 +207,8 @@ describe('runUninstall', () => {
   it('undoes what setup added to the machine and keeps the fleet', async () => {
     const f = installed();
     await runSetup(f.o);
-    fs.writeFileSync(path.join(f.launchAgentsDir, 'com.archipelago.archid.work.plist'), '<plist/>');
+    fs.writeFileSync(path.join(f.launchAgentsDir, 'io.github.linusroxbergh.archipelago.archid.work.plist'), '<plist/>');
+    fs.writeFileSync(path.join(f.launchAgentsDir, 'com.archipelago.archid.old.plist'), '<plist/>');
     fs.writeFileSync(path.join(f.launchAgentsDir, 'com.other.plist'), '<plist/>');
     fs.writeFileSync(path.join(f.shimDir, 'other'), 'x');
 
@@ -216,7 +217,8 @@ describe('runUninstall', () => {
     expect(fs.readdirSync(f.launchAgentsDir)).toEqual(['com.other.plist']);
     expect(fs.readdirSync(f.shimDir)).toEqual(['other']);
     expect(fs.existsSync(path.join(f.home, 'config.json'))).toBe(true);
-    expect(lines).toContain(`removed ${path.join(f.launchAgentsDir, 'com.archipelago.archid.work.plist')}`);
+    expect(lines).toContain(`removed ${path.join(f.launchAgentsDir, 'io.github.linusroxbergh.archipelago.archid.work.plist')}`);
+    expect(lines).toContain(`removed ${path.join(f.launchAgentsDir, 'com.archipelago.archid.old.plist')}`);
 
     // a second run has nothing of ours left to take back, so it writes nothing and backs nothing up
     expect(await runUninstall(f.o)).toEqual([]);
@@ -289,7 +291,7 @@ describe('runUninstall', () => {
     const f = installed();
     await runSetup(f.o);
     await expect(runUninstall({ ...f.o, tmux: `${path.join(f.home, 'tmux.sock')},123,0` })).rejects.toThrow('run archi uninstall from a terminal outside Archipelago');
-    expect(fs.existsSync(path.join(f.launchAgentsDir, 'com.archipelago.archid.plist'))).toBe(true);
+    expect(fs.existsSync(path.join(f.launchAgentsDir, 'io.github.linusroxbergh.archipelago.archid.plist'))).toBe(true);
     expect(fs.existsSync(path.join(f.shimDir, 'archi'))).toBe(true);
     expect(await runUninstall({ ...f.o, tmux: '/private/tmp/tmux-501/default,123,0' })).toContain(`removed ${path.join(f.shimDir, 'archi')}`);
   });
@@ -300,28 +302,29 @@ describe('runUninstall', () => {
     fs.writeFileSync(f.settingsPath, '{ nope');
     fs.writeFileSync(path.join(f.home, 'app.pid'), `101\t${f.home}`);
     await expect(runUninstall({ ...f.o, app: { ...noApp, isApp: () => true } })).rejects.toThrow('is not valid JSON');
-    expect(fs.existsSync(path.join(f.launchAgentsDir, 'com.archipelago.archid.plist'))).toBe(true);
+    expect(fs.existsSync(path.join(f.launchAgentsDir, 'io.github.linusroxbergh.archipelago.archid.plist'))).toBe(true);
     expect(fs.existsSync(path.join(f.shimDir, 'archi'))).toBe(true);
   });
 });
 
 describe('purge', () => {
-  it('finds every fleet home and the app, and deletes only those', async () => {
+  it('finds every fleet home, the app and what macOS keeps under either app id, and deletes only those', async () => {
     const root = makeHome();
     for (const d of ['.archipelago', '.archipelago-work', '.archipelagos', 'other']) fs.mkdirSync(path.join(root, d));
     for (const d of ['.archipelago', '.archipelago-work']) fs.writeFileSync(path.join(root, d, 'config.json'), '{}');
     const appDest = path.join(root, 'Applications');
     fs.mkdirSync(path.join(appDest, 'Archipelago.app'), { recursive: true });
     const library = path.join(root, 'Library');
-    const webkit = path.join(library, 'WebKit', 'com.archipelago.desktop');
-    const caches = path.join(library, 'Caches', 'com.archipelago.desktop');
-    const prefs = path.join(library, 'Preferences', 'com.archipelago.desktop.plist');
-    for (const d of [webkit, caches, path.join(library, 'Caches', 'com.other')]) fs.mkdirSync(d, { recursive: true });
-    fs.mkdirSync(path.dirname(prefs));
-    for (const f of [prefs, path.join(library, 'Preferences', 'com.other.plist')]) fs.writeFileSync(f, '<plist/>');
+    const ids = ['io.github.linusroxbergh.archipelago', 'com.archipelago.desktop'];
+    const webkit = ids.map((id) => path.join(library, 'WebKit', id));
+    const caches = ids.map((id) => path.join(library, 'Caches', id));
+    const prefs = ids.map((id) => path.join(library, 'Preferences', `${id}.plist`));
+    for (const d of [...webkit, ...caches, path.join(library, 'Caches', 'com.other')]) fs.mkdirSync(d, { recursive: true });
+    fs.mkdirSync(path.join(library, 'Preferences'));
+    for (const f of [...prefs, path.join(library, 'Preferences', 'com.other.plist')]) fs.writeFileSync(f, '<plist/>');
 
     const data = fleetData({ homedir: root, appDests: [appDest] });
-    expect(data).toEqual([path.join(root, '.archipelago'), path.join(root, '.archipelago-work'), path.join(appDest, 'Archipelago.app'), webkit, caches, prefs]);
+    expect(data).toEqual([path.join(root, '.archipelago'), path.join(root, '.archipelago-work'), path.join(appDest, 'Archipelago.app'), webkit[0], caches[0], prefs[0], webkit[1], caches[1], prefs[1]]);
     await purge(data);
     expect(fs.readdirSync(root).sort()).toEqual(['.archipelagos', 'Applications', 'Library', 'other']);
     expect(fs.readdirSync(path.join(library, 'WebKit'))).toEqual([]);

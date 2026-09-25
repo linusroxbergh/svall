@@ -47,7 +47,7 @@ describe('Client', () => {
     const work = path.join(os.homedir(), '.archipelago-work');
     fs.mkdirSync(work);
     for (const f of ['port', 'token']) fs.copyFileSync(path.join(home, f), path.join(work, f));
-    await expect(Client.connect(work)).rejects.toThrow('restart it with `launchctl kickstart -k gui/$(id -u)/com.archipelago.archid.work`');
+    await expect(Client.connect(work)).rejects.toThrow('restart it with `launchctl kickstart -k gui/$(id -u)/io.github.linusroxbergh.archipelago.archid.work`');
     fs.rmSync(work, { recursive: true });
     await new Promise((r) => wss.close(r));
   });

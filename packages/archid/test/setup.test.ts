@@ -197,8 +197,8 @@ describe('hookCommand and nodeRun', () => {
 
 describe('launchdPlist', () => {
   it('renders label, program and environment', () => {
-    const p = launchdPlist({ label: 'com.archipelago.archid', tsx: '/r/node_modules/.bin/tsx', bin: '/r/packages/archid/src/bin.ts', home: '/h/.archipelago', log: '/h/.archipelago/archid.log', pathEnv: '/opt/homebrew/bin:/usr/bin:/bin' });
-    expect(p).toContain('<string>com.archipelago.archid</string>');
+    const p = launchdPlist({ label: 'io.github.linusroxbergh.archipelago.archid', tsx: '/r/node_modules/.bin/tsx', bin: '/r/packages/archid/src/bin.ts', home: '/h/.archipelago', log: '/h/.archipelago/archid.log', pathEnv: '/opt/homebrew/bin:/usr/bin:/bin' });
+    expect(p).toContain('<string>io.github.linusroxbergh.archipelago.archid</string>');
     expect(p).toContain('<string>/r/node_modules/.bin/tsx</string>');
     expect(p).toContain('<key>ARCHI_HOME</key>');
     expect(p).toContain('<key>KeepAlive</key>');
@@ -220,14 +220,14 @@ describe('runSetup', () => {
     expect(fs.existsSync(path.join(home, 'hooks/claude-status.mjs'))).toBe(true);
     expect(fs.existsSync(path.join(home, 'tmux.conf'))).toBe(true);
     expect(fs.readdirSync(home).some((f) => f.startsWith('claude-settings.json.bak-'))).toBe(true);
-    const plist = fs.readFileSync(path.join(launchAgentsDir, 'com.archipelago.archid.plist'), 'utf8');
+    const plist = fs.readFileSync(path.join(launchAgentsDir, 'io.github.linusroxbergh.archipelago.archid.plist'), 'utf8');
     expect(plist).toContain(path.join(os.homedir(), '.local', 'bin'));
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     expect(settings.hooks.Stop).toHaveLength(2);
     expect(settings.hooks.SessionStart[0].hooks[0].command).toContain('agent-hook.mjs');
     expect(settings.hooks.SessionStart[0].hooks[0].command).toBe(hookCommand(process.execPath, path.join(home, 'hooks/agent-hook.mjs'), 'claude'));
     expect(settings.statusLine.command).toContain('claude-status.mjs');
-    expect(fs.existsSync(path.join(launchAgentsDir, 'com.archipelago.archid.plist'))).toBe(true);
+    expect(fs.existsSync(path.join(launchAgentsDir, 'io.github.linusroxbergh.archipelago.archid.plist'))).toBe(true);
     const shim = fs.readFileSync(path.join(shimDir, 'archi'), 'utf8');
     expect(shim).toContain('packages/cli/src/main.ts');
     expect(fs.statSync(path.join(shimDir, 'archi')).mode & 0o111).not.toBe(0);
@@ -380,7 +380,7 @@ describe('runSetup', () => {
     const lines = await runSetup(o);
     expect(lines.some((l) => l.startsWith('home folder skipped:'))).toBe(true);
     expect(fs.existsSync(path.join(home, 'bin/archi'))).toBe(true);
-    expect(fs.existsSync(path.join(home, 'LaunchAgents/com.archipelago.archid.plist'))).toBe(true);
+    expect(fs.existsSync(path.join(home, 'LaunchAgents/io.github.linusroxbergh.archipelago.archid.plist'))).toBe(true);
   });
 
   it('writes the home CLAUDE.md once and leaves an edited one alone', async () => {
@@ -488,12 +488,12 @@ describe('setupHome', () => {
     const root = makeHome();
     const home = path.join(root, '.archipelago-work');
     const launchAgentsDir = path.join(root, 'LaunchAgents');
-    const lines = await setupHome({ home, label: 'com.archipelago.archid.work', repoRoot, launchAgentsDir, launchctl: false, port: 0 });
+    const lines = await setupHome({ home, label: 'io.github.linusroxbergh.archipelago.archid.work', repoRoot, launchAgentsDir, launchctl: false, port: 0 });
     expect(JSON.parse(fs.readFileSync(path.join(home, 'config.json'), 'utf8'))).toEqual({ port: 0 });
     expect(fs.existsSync(path.join(home, 'hooks/agent-hook.mjs'))).toBe(true);
     expect(fs.existsSync(path.join(home, 'tmux.conf'))).toBe(true);
-    const plist = fs.readFileSync(path.join(launchAgentsDir, 'com.archipelago.archid.work.plist'), 'utf8');
-    expect(plist).toContain('<string>com.archipelago.archid.work</string>');
+    const plist = fs.readFileSync(path.join(launchAgentsDir, 'io.github.linusroxbergh.archipelago.archid.work.plist'), 'utf8');
+    expect(plist).toContain('<string>io.github.linusroxbergh.archipelago.archid.work</string>');
     expect(plist).toContain(`<string>${home}</string>`);
     expect(lines.some((l) => l.startsWith('launchd plist ->'))).toBe(true);
     expect(fs.existsSync(path.join(root, 'bin'))).toBe(false);
@@ -502,14 +502,14 @@ describe('setupHome', () => {
   it('leaves an existing config alone', async () => {
     const home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), '{"port":47900}\n');
-    await setupHome({ home, label: 'com.archipelago.archid.x', repoRoot, launchAgentsDir: path.join(home, 'LaunchAgents'), launchctl: false, port: 0 });
+    await setupHome({ home, label: 'io.github.linusroxbergh.archipelago.archid.x', repoRoot, launchAgentsDir: path.join(home, 'LaunchAgents'), launchctl: false, port: 0 });
     expect(fs.readFileSync(path.join(home, 'config.json'), 'utf8')).toBe('{"port":47900}\n');
   });
 
   it('starts the daemon PATH at a Homebrew node folder that an upgrade keeps', async () => {
     const home = makeHome();
-    const o = { home, label: 'com.archipelago.archid.x', repoRoot, launchAgentsDir: path.join(home, 'LaunchAgents'), launchctl: false, port: 0 };
-    const pathEnv = () => /<key>PATH<\/key><string>([^<]*)/.exec(fs.readFileSync(path.join(o.launchAgentsDir, 'com.archipelago.archid.x.plist'), 'utf8'))?.[1];
+    const o = { home, label: 'io.github.linusroxbergh.archipelago.archid.x', repoRoot, launchAgentsDir: path.join(home, 'LaunchAgents'), launchctl: false, port: 0 };
+    const pathEnv = () => /<key>PATH<\/key><string>([^<]*)/.exec(fs.readFileSync(path.join(o.launchAgentsDir, 'io.github.linusroxbergh.archipelago.archid.x.plist'), 'utf8'))?.[1];
     const execPath = process.execPath;
     try {
       process.execPath = '/opt/homebrew/Cellar/node@22/22.12.0/bin/node';
@@ -600,8 +600,8 @@ describe('setupHome', () => {
 
   it('passes the Claude and Codex homes on to the daemon when they are set', async () => {
     const home = makeHome();
-    const o = { home, label: 'com.archipelago.archid.x', repoRoot, launchAgentsDir: path.join(home, 'LaunchAgents'), launchctl: false, port: 0 };
-    const plist = () => fs.readFileSync(path.join(o.launchAgentsDir, 'com.archipelago.archid.x.plist'), 'utf8');
+    const o = { home, label: 'io.github.linusroxbergh.archipelago.archid.x', repoRoot, launchAgentsDir: path.join(home, 'LaunchAgents'), launchctl: false, port: 0 };
+    const plist = () => fs.readFileSync(path.join(o.launchAgentsDir, 'io.github.linusroxbergh.archipelago.archid.x.plist'), 'utf8');
     await setupHome(o);
     expect(plist()).not.toMatch(/CLAUDE_CONFIG_DIR|CODEX_HOME/);
     vi.stubEnv('CLAUDE_CONFIG_DIR', '/x/claude');

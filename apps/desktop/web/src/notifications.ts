@@ -121,9 +121,16 @@ export function followNotifications(o: { store: AppStore; bridge: Bridge; api():
       o.bridge.send({ type: 'notify.post', ...answerFailed(c.name, key, o.store.getState().settings.notifications.sound) });
     }
   };
+  // on, but macOS has not been asked under this app id: ask once, as every answer comes back as notify.permission
+  let permissionAsked = false;
   const offShell = o.bridge.onMessage((m) => {
-    if (m.type === 'notify.permission') o.store.getState().setNotifyPermission(m.state);
-    else if (m.type === 'notify.open') {
+    if (m.type === 'notify.permission') {
+      o.store.getState().setNotifyPermission(m.state);
+      if (m.state === 'unknown' && o.store.getState().settings.notifications.on && !permissionAsked) {
+        permissionAsked = true;
+        o.bridge.send({ type: 'notify.enable' });
+      }
+    } else if (m.type === 'notify.open') {
       const id = charOfSurface(m.key);
       if (o.store.getState().fleet.characters[id]) o.store.getState().focus(id);
     } else if (m.type === 'notify.action') void answer(m.key, m.action, m.promptId || undefined);

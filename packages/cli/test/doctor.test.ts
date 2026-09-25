@@ -7,7 +7,7 @@ import { codexCheck, doctor, preflight, requireReady, type DoctorDeps } from '..
 const priv = { name: 'private', home: '/u/.archipelago', managed: true };
 const adhoc = { name: 'archi-dev', home: '/tmp/archi-dev', managed: false };
 
-const PLIST = '/u/Library/LaunchAgents/com.archipelago.archid.plist';
+const PLIST = '/u/Library/LaunchAgents/io.github.linusroxbergh.archipelago.archid.plist';
 const plist = (nodeDir: string) => `<dict>\n    <key>PATH</key><string>${nodeDir}:/u/.local/bin:/usr/bin</string>\n</dict>`;
 
 const SCRIPT = '/u/.archipelago/hooks/agent-hook.mjs';
@@ -21,7 +21,7 @@ function fake(o: { commands?: Record<string, string | Error>; files?: Record<str
     'tmux -V': 'tmux 3.5a\n',
     'claude --version': '2.1.0 (Claude Code)\n',
     'gh auth status': '',
-    'launchctl print gui/501/com.archipelago.archid': '\tstate = running\n\tlast exit code = (never exited)\n',
+    'launchctl print gui/501/io.github.linusroxbergh.archipelago.archid': '\tstate = running\n\tlast exit code = (never exited)\n',
     ...o.commands,
   };
   const files: Record<string, string> = {
@@ -85,7 +85,7 @@ describe('doctor', () => {
         'tmux -V': undefined as never,
         'claude --version': undefined as never,
         'gh auth status': new Error('You are not logged into any GitHub hosts'),
-        'launchctl print gui/501/com.archipelago.archid': new Error('Could not find service'),
+        'launchctl print gui/501/io.github.linusroxbergh.archipelago.archid': new Error('Could not find service'),
       },
       files: { '/u/.archipelago/port': undefined as never, '/u/.claude/settings.json': '{}', '/u/.archipelago/archid.log': undefined as never },
     });
@@ -111,9 +111,9 @@ describe('doctor', () => {
   it('reports a missing hook receiver even when the API is answering, and how to restart that fleet', async () => {
     const c = byName(await doctor(priv, fake({ hookUp: false }).deps));
     expect(c.archid.status).toBe('ok');
-    expect(c['hook receiver']).toMatchObject({ status: 'fail', detail: expect.stringMatching(/does not answer \(ENOENT\); restart it with `launchctl kickstart -k gui\/\$\(id -u\)\/com\.archipelago\.archid`$/) });
+    expect(c['hook receiver']).toMatchObject({ status: 'fail', detail: expect.stringMatching(/does not answer \(ENOENT\); restart it with `launchctl kickstart -k gui\/\$\(id -u\)\/io\.github\.linusroxbergh\.archipelago\.archid`$/) });
     const work = byName(await doctor({ name: 'work', home: '/u/.archipelago-work', managed: true }, fake({ hookUp: false }).deps));
-    expect(work['hook receiver'].detail).toMatch(/com\.archipelago\.archid\.work`$/);
+    expect(work['hook receiver'].detail).toMatch(/io\.github\.linusroxbergh\.archipelago\.archid\.work`$/);
     expect(byName(await doctor(adhoc, fake({ hookUp: false }).deps))['hook receiver'].detail).toMatch(/restart the archid serving \/tmp\/archi-dev$/);
   });
 
@@ -146,7 +146,7 @@ describe('doctor', () => {
     }
     const gone = byName(await doctor(priv, fake({ files: { [PLIST]: plist('/opt/homebrew/opt/node@22/bin') } }).deps));
     expect(gone['daemon node']).toMatchObject({ status: 'warn', detail: expect.stringMatching(/node@22\/bin\/node is gone.*archi setup/) });
-    const work = fake({ files: { '/u/Library/LaunchAgents/com.archipelago.archid.work.plist': plist('/gone') } });
+    const work = fake({ files: { '/u/Library/LaunchAgents/io.github.linusroxbergh.archipelago.archid.work.plist': plist('/gone') } });
     expect(byName(await doctor({ name: 'work', home: '/u/.archipelago-work', managed: true }, work.deps))['daemon node'].detail).toMatch(/archi work$/);
     expect(byName(await doctor(adhoc, fake().deps))['daemon node'].status).toBe('skip');
   });
@@ -173,7 +173,7 @@ describe('doctor', () => {
     expect(lacking['daemon env']).toMatchObject({ status: 'warn', detail: expect.stringMatching(/lacks CLAUDE_CONFIG_DIR and CODEX_HOME.*: archi setup$/) });
     const carried = `<dict>\n    <key>PATH</key><string>/opt/homebrew/opt/node/bin</string>\n    <key>CLAUDE_CONFIG_DIR</key><string>/x/claude</string>\n    <key>CODEX_HOME</key><string>/x/codex</string>\n</dict>`;
     expect(byName(await doctor(priv, fake({ daemonEnv: env, files: { [PLIST]: carried } }).deps))['daemon env'].status).toBe('ok');
-    const work = fake({ daemonEnv: env, files: { '/u/Library/LaunchAgents/com.archipelago.archid.work.plist': plist('/opt/homebrew/opt/node/bin') } });
+    const work = fake({ daemonEnv: env, files: { '/u/Library/LaunchAgents/io.github.linusroxbergh.archipelago.archid.work.plist': plist('/opt/homebrew/opt/node/bin') } });
     expect(byName(await doctor({ name: 'work', home: '/u/.archipelago-work', managed: true }, work.deps))['daemon env'].detail).toMatch(/archi work$/);
     expect(byName(await doctor(priv, fake().deps))['daemon env'].status).toBe('ok');
     expect(byName(await doctor(adhoc, fake({ daemonEnv: env }).deps))['daemon env'].status).toBe('skip');
@@ -202,9 +202,13 @@ describe('doctor', () => {
   });
 
   it('asks launchd about the profile it was pointed at, and not at all for an ad-hoc home', async () => {
-    const work = fake({ commands: { 'launchctl print gui/501/com.archipelago.archid.work': '\tstate = running\n' } });
+    const work = fake({ commands: { 'launchctl print gui/501/io.github.linusroxbergh.archipelago.archid.work': '\tstate = running\n' } });
     expect(byName(await doctor({ name: 'work', home: '/u/.archipelago-work', managed: true }, work.deps)).launchd.status).toBe('ok');
     expect(byName(await doctor({ name: 'work', home: '/u/.archipelago-work', managed: true }, fake().deps)).launchd.detail).toMatch(/not loaded: archi work$/);
+    // an older install's agent, which setup moves
+    const old = fake({ files: { '/u/Library/LaunchAgents/com.archipelago.archid.work.plist': '<plist/>' } });
+    expect(byName(await doctor({ name: 'work', home: '/u/.archipelago-work', managed: true }, old.deps)).launchd.detail)
+      .toBe("io.github.linusroxbergh.archipelago.archid.work is not loaded, as the fleet's agent is still com.archipelago.archid.work: pnpm desktop:install");
     const dev = fake();
     expect(byName(await doctor(adhoc, dev.deps)).launchd).toMatchObject({ status: 'ok', detail: expect.stringMatching(/not managed/) });
     expect(dev.calls.some((c) => c.startsWith('launchctl'))).toBe(false);

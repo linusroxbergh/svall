@@ -317,10 +317,11 @@ Its `config.json` takes:
 | `mobile` | `logins` to let in (only yours when empty), extra page `origins` allowed to open a socket, a `pushContact` (https: or mailto:) for push services, and `httpsPort`. |
 
 - The daemon reads `config.json` when it starts.
-  `launchctl kickstart -k gui/$(id -u)/com.archipelago.archid` restarts the
-  private fleet's daemon; use `com.archipelago.archid.<name>` for another
-  fleet. While the file doesn't parse, the daemon logs why and waits for it to
-  change; `archi doctor` shows the error too.
+  `launchctl kickstart -k gui/$(id -u)/io.github.linusroxbergh.archipelago.archid`
+  restarts the private fleet's daemon; use
+  `io.github.linusroxbergh.archipelago.archid.<name>` for another fleet. While
+  the file doesn't parse, the daemon logs why and waits for it to change;
+  `archi doctor` shows the error too.
 - Mission control's folder (default `~/.archipelago/home`, shared by every
   fleet) holds its instructions in `.claude/rules/archipelago.md` and the
   `archi-*` skills its buttons call. `archi-organise` and `archi-rename` have
@@ -360,13 +361,20 @@ needs is missing. It writes:
   that keeps your own statusline running inside it. Every change keeps a
   `.bak-<time>` copy.
 - `~/.codex/hooks.json`, when Codex is installed: the same hook and backup.
-- `~/Library/LaunchAgents/com.archipelago.archid*.plist`, one per fleet, which
-  keeps each daemon running.
+- `~/Library/LaunchAgents/io.github.linusroxbergh.archipelago.archid*.plist`,
+  one per fleet, which keeps each daemon running.
 - `~/.local/bin/archi` and `archipelago`: shims into the clone.
 - `~/.archipelago` and `~/.archipelago-<name>`: each fleet's state, config,
   log, hook scripts, tmux.conf and tmux server, plus, in `~/.archipelago/home`,
   the mission control folder they share.
 - `/Applications/Archipelago.app`, from `pnpm desktop:install`.
+
+On a Mac set up under the older `com.archipelago` ids, setup first quits the
+app and moves each fleet's launchd agent, and the app's sign-ins, caches and
+preferences, to the ids above. macOS then asks again before it shows
+notifications. Sign-ins the new id already has, from a build run before the
+update, are never merged: setup leaves both folders, and `archi setup --check`
+names them.
 
 ### Uninstall
 
