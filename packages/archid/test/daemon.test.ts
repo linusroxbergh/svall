@@ -127,13 +127,14 @@ runIf('startDaemon', () => {
     }
   });
 
-  // a key learned while the link was up opens nothing once the link has been turned off
+  // a key learned while the link was up opens nothing once the link has been turned off; the log never names the login
   it('turns the phone key over on a mobile off, shutting out the old key and letting in the one in mobile-key', async () => {
     const home = makeHome();
     homes.push(home);
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh', mobile: { logins: ['me@example.com'] } }));
     const paths = resolvePaths(home);
-    const d = await start({ home, port: 0, log: silentLogger });
+    const logged: string[] = [];
+    const d = await start({ home, port: 0, log: { info: (m) => logged.push(m), error: (m) => logged.push(m) } });
     const sockets: WebSocket[] = [];
     const open = (key?: string) => {
       const ws = new WebSocket(`ws://127.0.0.1:${d.port}/${key ?? ''}`, key ? { headers: { 'Tailscale-User-Login': 'me@example.com' } } : {});
@@ -163,8 +164,47 @@ runIf('startDaemon', () => {
       stale.send(JSON.stringify({ id: 1, method: 'state.get', params: {} }));
       await expect(refused).rejects.toThrow('closed 4401');
       expect(await reply(open(fresh), 0)).toMatchObject({ result: { ok: true } });
+      expect(logged).toContain('api: phone socket');
+      expect(logged.join('\n')).not.toContain('me@example.com');
     } finally {
       for (const s of sockets) s.close();
+      await d.stop();
+    }
+  });
+
+  it('keeps every fleet\'s keys and the Claude login out of Files, one made after the start and never set up among them', async () => {
+    const home = path.join(os.homedir(), '.archipelago-files');
+    fs.mkdirSync(home, { recursive: true });
+    homes.push(home);
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
+    fs.writeFileSync(path.join(home, '.env'), 'ANTHROPIC_API_KEY=secret');
+    const claudeDir = path.join(os.homedir(), '.claude');
+    fs.mkdirSync(claudeDir, { recursive: true });
+    fs.writeFileSync(path.join(claudeDir, '.credentials.json'), '{"secret":1}');
+    fs.writeFileSync(path.join(claudeDir, 'CLAUDE.md'), '# me\n');
+    const d = await start({ home, port: 0, log: silentLogger });
+    const later = path.join(os.homedir(), '.archipelago-later');
+    fs.mkdirSync(later, { recursive: true });
+    fs.writeFileSync(path.join(later, 'token'), 'secret');
+    const ws = new WebSocket(`ws://127.0.0.1:${d.port}`);
+    let next = 1;
+    const call = (method: string, params: unknown) => new Promise<{ result?: unknown; error?: { code: string } }>((resolve) => {
+      const id = next++;
+      ws.on('message', (raw) => { const m = JSON.parse(raw.toString()) as { id?: number }; if (m.id === id) resolve(m as never); });
+      ws.send(JSON.stringify({ id, method, params }));
+    });
+    try {
+      await new Promise((r) => ws.once('open', r));
+      ws.send(JSON.stringify({ token: d.token }));
+      const c = await d.fleet.createCharacter({ islandId: d.fleet.createIsland({ name: 'x' }).id, cwd: os.homedir() });
+      for (const p of ['.archipelago-files/token', '.archipelago-files/mobile-key', '.archipelago-files/vapid.json', '.archipelago-files/.env', '.archipelago-later/token']) {
+        expect(await call('fs.read', { id: c.id, path: p })).toMatchObject({ error: { code: 'invalid' } });
+      }
+      expect(await call('fs.read', { id: c.id, path: '.archipelago-files/config.json' })).toMatchObject({ result: { text: expect.any(String) } });
+      expect(await call('fs.read', { id: `r:${claudeDir}`, path: '.credentials.json' })).toMatchObject({ error: { code: 'invalid' } });
+      expect(await call('fs.read', { id: `r:${claudeDir}`, path: 'CLAUDE.md' })).toMatchObject({ result: { text: '# me\n' } });
+    } finally {
+      ws.close();
       await d.stop();
     }
   });

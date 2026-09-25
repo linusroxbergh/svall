@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { startApi } from './api/server.js';
 import { codexPaths } from './codex/install.js';
@@ -8,7 +9,7 @@ import { Fleet } from './fleet.js';
 import { startHookReceiver } from './hooks/receiver.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
-import { resolvePaths } from './paths.js';
+import { fleetKeys, resolvePaths } from './paths.js';
 import { Phones } from './phones.js';
 import { isProfileName, PRIVATE, profileOf } from './profile.js';
 import { startPusher, webPushSender } from './push/pusher.js';
@@ -94,7 +95,12 @@ async function start(opts: Options): Promise<Daemon> {
   const terminals = new TerminalHub(fleet, tmux, store, log);
   const claude = claudePaths();
   const codex = codexPaths();
-  const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs), log, [claude.json, path.join(codex.dir, 'auth.json')], paths.docs);
+  // looked up on every call, so a fleet made while this one runs is kept out too; any folder named like a fleet home
+  // counts, set up or not
+  const homes = () => [paths.home, ...fs.readdirSync(os.homedir()).filter((f) => f.startsWith('.archipelago')).map((f) => path.join(os.homedir(), f))];
+  const refused = () => [claude.json, path.join(claude.dir, '.credentials.json'), path.join(codex.dir, 'auth.json'),
+    ...homes().flatMap((h) => fleetKeys(resolvePaths(h)))];
+  const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs), log, refused, paths.docs);
   const phones = new Phones();
   const mobile = mobileControl(realDeps(), { home: paths.home, profile, logins: config.mobile.logins, phones, httpsPort: config.mobile.httpsPort, rotateKey: key.rotate });
   const usage = fleetUsage({ state: () => store.state, claude: cachedUsage(usageFetcher({ cwd: path.join(paths.home, 'usage'), envFile: paths.env }), USAGE_TTL_MS) });

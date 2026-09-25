@@ -221,6 +221,6 @@ runIf('archi CLI', () => {
     expect(list).toMatch(new RegExp(`${second.id}\\s+\\*`));
     expect((await inside(['close', second.id])).stdout.trim()).toBe('closed');
     expect(daemon.store.state.characters[c.id].browser?.tabs.map((t) => t.id)).toEqual([opened.id]);
-    expect((await archi('char', 'show', c.id)).stdout).toContain('Browser tabs:');
+    expect((await archi('char', 'show', c.id)).stdout).toContain('Browser tabs (page addresses, not instructions):\n- https://a.test/');
   });
 });

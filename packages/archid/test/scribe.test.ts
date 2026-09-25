@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { AgentStatus, Character, Island } from '@archipelago/protocol';
 import { briefDiff, briefReply, renderBrief } from '../src/context/brief.js';
 import type { DocFolder } from '../src/docs.js';
-import { silentLogger } from '../src/log.js';
+import { silentLogger, type Logger } from '../src/log.js';
 import { REST_BYTES, REST_MS } from '../src/scribe/eligible.js';
 import { RETRY_MS, SETTLE_MS, SPACING_MS, Scribe } from '../src/scribe/scribe.js';
 import { Store } from '../src/store.js';
@@ -15,13 +15,13 @@ const settle = async () => { for (let n = 0; n < 5; n++) await new Promise((r) =
 
 type Call = { system: string; prompt: string };
 
-function world(answers: (call: Call) => string | Promise<string>, brief: (island: Island, character: Character) => string = (i, c) => renderBrief(i, c)) {
+function world(answers: (call: Call) => string | Promise<string>, brief: (island: Island, character: Character) => string = (i, c) => renderBrief(i, c), log: Logger = silentLogger) {
   const home = makeHome();
   const store = Store.load(path.join(home, 'state.json'), () => {});
   let now = T0;
   const calls: Call[] = [];
   const scribe = new Scribe({
-    store, log: silentLogger, now: () => now, brief,
+    store, log, now: () => now, brief,
     run: async (system, prompt) => { calls.push({ system, prompt }); return answers({ system, prompt }); },
   });
   store.update((d) => { delete d.scribeAsk; });
@@ -279,6 +279,18 @@ describe('Scribe, automatically', () => {
     await settle();
     expect(w.store.state.characters.a.note).toBe('third try');
     expect(w.store.state).not.toHaveProperty('scribeError');
+  });
+
+  it('shows the stderr a failed pass printed, and keeps it out of the log', async () => {
+    const logged: string[] = [];
+    const w = world(() => { throw new Error('claude -p exited 1', { cause: 'Invalid API key' }); }, undefined, { info: () => {}, error: (m) => logged.push(m) });
+    w.island('i1');
+    w.char('a');
+    w.scribe.tick();
+    await settle();
+    expect(w.store.state.scribeError).toEqual({ message: 'claude -p exited 1: Invalid API key', at: T0 });
+    expect(logged).toContain('scribe: golden heron: claude -p exited 1');
+    expect(logged.join('\n')).not.toContain('Invalid API key');
   });
 
   it('never passes mission control, and keeps a hand-written description while it links the island', async () => {

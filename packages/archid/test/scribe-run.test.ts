@@ -12,6 +12,8 @@ case "$FAKE_CLAUDE" in
   env) echo "{\\"result\\":\\"key=\${ANTHROPIC_API_KEY:-none} other=\${OTHER:-none}\\"}" ;;
   error) echo '{"is_error":true,"result":"overloaded"}' ;;
   exit) echo 'no credentials' >&2; exit 3 ;;
+  said) echo 'the transcript said this'; exit 2 ;;
+  prose) echo 'the transcript said this' ;;
   login) echo '{"is_error":true,"result":"Invalid API key · Please run /login"}'; exit 1 ;;
   hang) exec sleep 5 ;;
 esac
@@ -56,8 +58,17 @@ describe('claudeRunner', () => {
     process.env.FAKE_CLAUDE = 'login';
     await expect(run('system', 'prompt')).rejects.toThrow(/^claude -p failed: Invalid API key · Please run \/login$/);
     process.env.FAKE_CLAUDE = 'exit';
-    await expect(run('system', 'prompt')).rejects.toThrow('claude -p exited 3: no credentials');
+    await expect(run('system', 'prompt')).rejects.toMatchObject({ message: 'claude -p exited 3', cause: 'no credentials' });
     process.env.FAKE_CLAUDE = 'hang';
     await expect(run('system', 'prompt')).rejects.toThrow('timed out after 2000ms');
+  });
+
+  // what it prints on stdout is the model's own text, from a transcript
+  it('keeps what claude printed on stdout out of the error', async () => {
+    process.env.FAKE_CLAUDE = 'said';
+    await expect(run('system', 'prompt')).rejects.toThrow(/^claude -p exited 2$/);
+    await expect(run('system', 'prompt')).rejects.not.toHaveProperty('cause');
+    process.env.FAKE_CLAUDE = 'prose';
+    await expect(run('system', 'prompt')).rejects.toThrow(/^claude -p printed no result$/);
   });
 });

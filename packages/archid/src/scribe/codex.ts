@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { runChild } from './child.js';
+import { runChild, stderrCause } from './child.js';
 import type { RunScribe } from './run.js';
 
 // the flags that keep a headless pass off the user's machine: nothing written, no session left behind,
@@ -41,8 +41,8 @@ export function codexRunner(o: { model?: string; cwd: string; bin?: string; time
       // a run that recovered from an error still ends with an answer, so only one that did not is read for its cause
       const cause = code !== 0 || !answer.trim() ? failure(out) : undefined;
       if (cause) throw new Error(`codex exec failed: ${cause.slice(0, 300)}`);
-      if (code !== 0) throw new Error(`codex exec exited ${code}: ${(err || out).trim().slice(0, 300)}`);
-      if (!answer.trim()) throw new Error(`codex exec wrote no answer: ${(err || out).trim().slice(0, 300)}`);
+      if (code !== 0) throw new Error(`codex exec exited ${code}`, stderrCause(err));
+      if (!answer.trim()) throw new Error('codex exec wrote no answer', stderrCause(err));
       return answer;
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });

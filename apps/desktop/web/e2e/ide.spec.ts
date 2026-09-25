@@ -1,5 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test } from './fixtures.js';
@@ -59,6 +61,31 @@ test('Markdown preview shows unsaved edits and returns to the editable text', as
   await editor.getByRole('button', { name: 'Preview' }).click();
   await expect(editor.getByTestId('markdown-preview').getByRole('heading', { name: 'Unsaved' })).toBeVisible();
   expect(fs.readFileSync(path.join(dir, 'README.md'), 'utf8')).not.toContain('Unsaved');
+});
+
+// the page holds the daemon's token, so a document it previews loads images from the app alone
+test('Markdown preview shows the app\'s own images and never asks another origin for one', async ({ page, archi }) => {
+  let asked = 0;
+  const remote = http.createServer((_req, res) => { asked++; res.end(); });
+  await new Promise<void>((r) => remote.listen(0, '127.0.0.1', r));
+  try {
+    const dir = repo();
+    fs.writeFileSync(path.join(dir, 'README.md'), `![bat](/animals/bat.svg)\n\n![tracker](http://127.0.0.1:${(remote.address() as AddressInfo).port}/pixel.png)\n`);
+    const island = await archi.api.call('island.create', { name: archi.uniq('markdown-images') });
+    await archi.api.call('char.create', { islandId: island.id, cwd: dir, name: 'reader' });
+    await archi.open();
+    await page.getByTestId('pane-left-files').click();
+    await page.getByTestId('tree-README.md').click();
+    const editor = page.getByTestId('editor');
+    await editor.getByRole('button', { name: 'Preview' }).click();
+    const preview = editor.getByTestId('markdown-preview');
+    await expect.poll(() => preview.getByRole('img', { name: 'bat' }).evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0);
+    await expect.poll(() => preview.getByRole('img', { name: 'tracker' }).evaluate((i: HTMLImageElement) => i.complete)).toBe(true);
+    expect(await preview.getByRole('img', { name: 'tracker' }).evaluate((i: HTMLImageElement) => i.naturalWidth)).toBe(0);
+    expect(asked).toBe(0);
+  } finally {
+    await new Promise((r) => remote.close(r));
+  }
 });
 
 test('Markdown preview follows disk changes and opens local files and sections', async ({ page, archi }) => {

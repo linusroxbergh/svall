@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Event } from '@archipelago/protocol';
 import { silentLogger } from '../src/log.js';
 import type { Viewer } from '../src/terminals.js';
@@ -28,7 +29,7 @@ function repo(): string {
 }
 
 const workspace = (roots: Record<string, string>, ...refused: string[]) =>
-  new Workspace((id) => { const r = roots[id]; if (!r) throw new Error(`no ${id}`); return r; }, silentLogger, refused);
+  new Workspace((id) => { const r = roots[id]; if (!r) throw new Error(`no ${id}`); return r; }, silentLogger, () => refused);
 
 const codeOf = async (p: () => unknown | Promise<unknown>): Promise<string | undefined> => {
   try { await p(); return undefined; } catch (e) { return (e as { code?: string }).code; }
@@ -85,6 +86,63 @@ describe('Workspace files', () => {
     expect(fs.readFileSync(path.join(dir, 'a.txt'), 'utf8')).toBe('five\n');
   });
 
+  it('writes by a rename from beside the file, keeping its mode and a link to it, and leaves nothing behind', () => {
+    const dir = repo();
+    const file = path.join(dir, 'a.txt');
+    fs.chmodSync(file, 0o640);
+    fs.symlinkSync('a.txt', path.join(dir, 'alias.txt'));
+    const ws = workspace({ c: dir });
+    ws.write('c', 'alias.txt', 'three\n', ws.read('c', 'alias.txt').mtimeMs);
+    expect(fs.lstatSync(path.join(dir, 'alias.txt')).isSymbolicLink()).toBe(true);
+    expect(fs.readFileSync(file, 'utf8')).toBe('three\n');
+    expect(fs.statSync(file).mode & 0o777).toBe(0o640);
+    expect(fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('refuses to write a read-only file', async () => {
+    const dir = repo();
+    const file = path.join(dir, 'a.txt');
+    fs.chmodSync(file, 0o444);
+    const ws = workspace({ c: dir });
+    expect(await codeOf(() => ws.write('c', 'a.txt', 'x', ws.read('c', 'a.txt').mtimeMs))).toBe('invalid');
+    expect(fs.readFileSync(file, 'utf8')).toBe('one\ntwo\n');
+    expect(fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('leaves the file whole and nothing beside it when the text cannot all be written', async () => {
+    const dir = repo();
+    const ws = workspace({ c: dir });
+    const mtimeMs = ws.read('c', 'a.txt').mtimeMs;
+    const full = vi.spyOn(fs, 'writeFileSync').mockImplementationOnce(() => { throw Object.assign(new Error('no space'), { code: 'ENOSPC' }); });
+    try { expect(await codeOf(() => ws.write('c', 'a.txt', 'three\n', mtimeMs))).toBe('invalid'); } finally { full.mockRestore(); }
+    expect(fs.readFileSync(path.join(dir, 'a.txt'), 'utf8')).toBe('one\ntwo\n');
+    expect(fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('writes a file in place when its folder takes no new file, and one whose name is as long as a name gets', () => {
+    const dir = repo();
+    const long = `${'n'.repeat(251)}.txt`;
+    fs.writeFileSync(path.join(dir, long), 'one\n');
+    const ws = workspace({ c: dir });
+    ws.write('c', long, 'two\n', ws.read('c', long).mtimeMs);
+    expect(fs.readFileSync(path.join(dir, long), 'utf8')).toBe('two\n');
+    fs.chmodSync(dir, 0o555);
+    try { ws.write('c', 'a.txt', 'three\n', ws.read('c', 'a.txt').mtimeMs); } finally { fs.chmodSync(dir, 0o755); }
+    expect(fs.readFileSync(path.join(dir, 'a.txt'), 'utf8')).toBe('three\n');
+  });
+
+  it('refuses to write over a socket', async () => {
+    const dir = repo();
+    const sock = path.join(dir, 'hooks.sock');
+    const server = net.createServer();
+    await new Promise<void>((r) => server.listen(sock, r));
+    try {
+      const ws = workspace({ c: dir });
+      expect(await codeOf(() => ws.write('c', 'hooks.sock', 'x', fs.statSync(sock).mtimeMs))).toBe('invalid');
+      expect(fs.statSync(sock).isSocket()).toBe(true);
+    } finally { await new Promise((r) => server.close(r)); }
+  });
+
   it('refuses a write into another root than the one the file was read from', async () => {
     const a = repo(), b = repo();
     fs.rmSync(path.join(b, 'a.txt'));
@@ -130,6 +188,7 @@ describe('Workspace files', () => {
     const mtimeMs = fs.statSync(path.join(dir, 'src')).mtimeMs;
     expect(await codeOf(() => ws.write('c', 'src', 'x', mtimeMs))).toBe('invalid');
     expect(await codeOf(() => ws.write('c', 'a.txt/under', 'x', 0))).toBe('not_found');
+    expect(fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'))).toEqual([]);
   });
 
   it('refuses .git, which a listing does not show either, however the path spells its way there', async () => {
@@ -247,6 +306,37 @@ describe('Workspace files', () => {
     expect(ws.read('c', 'config/auth.json.dist').text).toBe('{}');
     expect((await ws.list('c', '')).map((e) => e.name)).toContain('auth.json.example');
     expect((await ws.list('c', 'config')).map((e) => e.name)).toEqual(['auth.json.dist']);
+  });
+
+  it('refuses a fleet\'s .env alone, so a repository\'s .env and .env.local stay its own', async () => {
+    const fleet = makeHome(), dir = repo();
+    const env = path.join(fleet, '.env');
+    fs.writeFileSync(env, 'ANTHROPIC_API_KEY=secret');
+    fs.writeFileSync(path.join(dir, '.env'), 'PORT=1');
+    fs.writeFileSync(path.join(dir, '.env.local'), 'PORT=2');
+    const ws = workspace({ f: fleet, c: dir }, env);
+    expect(await codeOf(() => ws.read('f', '.env'))).toBe('invalid');
+    expect(ws.read('c', '.env').text).toBe('PORT=1');
+    expect(ws.read('c', '.env.local').text).toBe('PORT=2');
+    expect((await ws.list('c', '')).map((e) => e.name)).toEqual(expect.arrayContaining(['.env', '.env.local']));
+  });
+
+  it('refuses a fleet key not made yet under any case, which a folding volume would make it by', async () => {
+    const fleet = makeHome();
+    const ws = workspace({ f: fleet }, path.join(fleet, '.env'));
+    for (const name of ['.env', '.ENV']) expect(await codeOf(() => ws.write('f', name, 'KEY=1', 0))).toBe('invalid');
+    expect(fs.readdirSync(fleet)).toEqual([]);
+  });
+
+  it('asks for the refused paths on every call, so one refused after the start is kept out too', async () => {
+    const dir = makeHome();
+    fs.writeFileSync(path.join(dir, 'token'), 'secret');
+    const refused: string[] = [];
+    const ws = new Workspace(() => dir, silentLogger, () => refused);
+    expect(ws.read('c', 'token').text).toBe('secret');
+    refused.push(path.join(dir, 'token'));
+    expect(await codeOf(() => ws.read('c', 'token'))).toBe('invalid');
+    expect(await ws.list('c', '')).toEqual([]);
   });
 
   it('refuses the same file under another name, another case, and in the diff view', async () => {
@@ -552,7 +642,7 @@ describe('Workspace docs', () => {
     const home = makeHome();
     const docs = path.join(home, 'docs'), dir = path.join(docs, 'islands/i1'), repoDir = path.join(home, 'repo');
     fs.mkdirSync(repoDir);
-    const ws = new Workspace((id) => ({ 'r:docs': dir, 'r:repo': repoDir })[id] ?? (() => { throw new Error(`no ${id}`); })(), silentLogger, [], docs);
+    const ws = new Workspace((id) => ({ 'r:docs': dir, 'r:repo': repoDir })[id] ?? (() => { throw new Error(`no ${id}`); })(), silentLogger, () => [], docs);
     return { ws, dir, repoDir };
   }
 
@@ -622,7 +712,7 @@ describe('Workspace docs', () => {
     fs.writeFileSync(path.join(outside, 'victim.md'), 'VICTIM');
     fs.mkdirSync(path.join(docs, 'islands'), { recursive: true });
     fs.symlinkSync(outside, path.join(docs, 'islands/link'));
-    const ws = new Workspace(() => path.join(docs, 'islands/link'), silentLogger, [], docs);
+    const ws = new Workspace(() => path.join(docs, 'islands/link'), silentLogger, () => [], docs);
     expect(await codeOf(() => ws.create('r:docs', 'new.md', 'x'))).toBe('invalid');
     expect(await codeOf(() => ws.rename('r:docs', 'victim.md', 'moved.md'))).toBe('invalid');
     expect(await codeOf(() => ws.remove('r:docs', 'victim.md'))).toBe('invalid');

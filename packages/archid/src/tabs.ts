@@ -38,7 +38,7 @@ export function activateTab(store: Store, c: Character, tab: string): void {
   store.update((d) => { d.characters[c.id].browser!.active = tab; });
 }
 
-// what a page reports lands in the agent's brief, so it is kept to one line; a view between pages has no url yet
+// a page reports its own url and title, each kept to one line; a view between pages has no url yet
 export function updateTab(store: Store, c: Character, tab: string, patch: { url?: string; title?: string }): void {
   const i = tabIndex(c, tab);
   store.update((d) => {

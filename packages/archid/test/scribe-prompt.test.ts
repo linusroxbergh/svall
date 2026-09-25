@@ -101,8 +101,9 @@ describe('parseAnswer', () => {
     expect(parseAnswer(CharacterAnswer, '{"note": "x", "links": null}')).toEqual({ note: 'x', links: null });
   });
   it('throws on prose, bad JSON and a wrong shape', () => {
-    expect(() => parseAnswer(CharacterAnswer, 'I could not tell.')).toThrow();
-    expect(() => parseAnswer(CharacterAnswer, '{note: x}')).toThrow();
+    expect(() => parseAnswer(CharacterAnswer, 'I could not tell.')).toThrow(/^the scribe's answer has no JSON object$/);
+    // the parser's own message would quote the answer, which is text from a transcript
+    expect(() => parseAnswer(CharacterAnswer, '{"note": the transcript said hunter2}')).toThrow(/^the scribe's answer is not valid JSON$/);
     expect(() => parseAnswer(CharacterAnswer, '{"name": {"value": "x", "reason": "because"}}')).toThrow(/^the scribe's answer has the wrong shape: name\.reason Invalid option[^\n]*$/);
   });
 });

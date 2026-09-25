@@ -50,8 +50,11 @@ export type IslandAnswer = z.infer<typeof IslandAnswer>;
 // the model may wrap its object in prose or a code fence
 export function parseAnswer<T>(schema: ZodType<T>, text: string): T {
   const start = text.indexOf('{'), end = text.lastIndexOf('}');
-  if (start === -1 || end < start) throw new Error(`the scribe's answer has no JSON object: ${text.slice(0, 200)}`);
-  const r = schema.safeParse(JSON.parse(text.slice(start, end + 1)));
+  if (start === -1 || end < start) throw new Error("the scribe's answer has no JSON object");
+  let parsed: unknown;
+  // the parser's message quotes the text it choked on, and that text is the model's
+  try { parsed = JSON.parse(text.slice(start, end + 1)); } catch { throw new Error("the scribe's answer is not valid JSON"); }
+  const r = schema.safeParse(parsed);
   if (!r.success) throw new Error(`the scribe's answer has the wrong shape: ${r.error.issues.map((i) => `${i.path.join('.')} ${i.message}`).join('; ')}`);
   return r.data;
 }

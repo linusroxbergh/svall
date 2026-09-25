@@ -5,6 +5,9 @@ type Piped = ChildProcessByStdio<Writable, Readable, Readable>;
 
 export const TIMEOUT_MS = 90_000;
 
+/** The child's stderr as an error's cause, which the scribe shows but keeps out of the log; its stdout, the model's own text, goes in neither. */
+export const stderrCause = (err: string): ErrorOptions => (err.trim() ? { cause: err.trim().slice(0, 300) } : {});
+
 /** What the child printed and how it ended; a child still running at the deadline is killed and the
  *  call rejects. Its stdin takes `stdin`, and an agent that refuses at once never reads it. */
 export function runChild(

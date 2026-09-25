@@ -1038,7 +1038,7 @@ runIf('Fleet', () => {
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'native-surfaces.md'), '---\ndescription: Native surfaces sit above the webview.\n---\n');
     const brief = fleet.brief(c.id);
-    expect(brief).toContain(`- native-surfaces — Native surfaces sit above the webview. (${path.join(dir, 'native-surfaces.md')})`);
+    expect(brief).toContain(`- native-surfaces — "Native surfaces sit above the webview." (${path.join(dir, 'native-surfaces.md')})`);
     expect(brief).toContain(`- island: ${dir}`);
     expect(brief).toContain(`- fleet: ${path.join(docs, 'fleet')}`);
     expect(brief).toContain(`- character: ${docsDir(docs, 'character', c.id)}`);
@@ -1056,7 +1056,7 @@ runIf('Fleet', () => {
     const two = fleet.createIsland({ name: 'two' });
     const a = await fleet.createCharacter({ islandId: one.id, cwd: '/tmp' });
     const b = await fleet.createCharacter({ islandId: two.id, cwd: '/tmp' });
-    const line = `- tone — How we talk to each other. (${path.join(docs, 'fleet', 'tone.md')})`;
+    const line = `- tone — "How we talk to each other." (${path.join(docs, 'fleet', 'tone.md')})`;
     for (const id of [a.id, b.id]) expect(fleet.brief(id)).toContain(line);
     expect(fleet.islandBrief(one.id)).toContain('- tone');
     await fleet.closeCharacter(a.id);

@@ -87,7 +87,7 @@ runIf('API', () => {
     await started;
     const terminals = new TerminalHub(fleet, tmux, store, silentLogger);
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
-    const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, undefined, paths.docs), silentLogger, [claude.json], paths.docs);
+    const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, undefined, paths.docs), silentLogger, () => [claude.json], paths.docs);
     const api = await startApi({
       host: '127.0.0.1', port: 0, token: 'secret', store, fleet, terminals, workspace, usage: stubUsage, mobileControl: stubMobile, log: silentLogger,
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(),

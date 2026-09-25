@@ -37,6 +37,9 @@ export function resolvePaths(home: string = archiHome()) {
 }
 export type Paths = ReturnType<typeof resolvePaths>;
 
+/** The files that hold a fleet's keys, which Files never opens. */
+export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.env, p.vapid, p.push];
+
 export function expandHome(p: string): string {
   if (p === '~') return os.homedir();
   return p.startsWith('~/') ? path.join(os.homedir(), p.slice(2)) : p;

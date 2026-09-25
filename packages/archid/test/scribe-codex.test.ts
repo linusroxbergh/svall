@@ -41,8 +41,15 @@ describe('codexRunner', () => {
 
   it('falls back to stderr, and says so when a run that exits clean wrote no answer', async () => {
     const dir = makeHome();
-    await expect(codexRunner({ cwd: dir, bin: fakeCodex(dir, 'echo "not signed in" >&2; exit 1') })('s', 'p')).rejects.toThrow(/exited 1: not signed in/);
+    await expect(codexRunner({ cwd: dir, bin: fakeCodex(dir, 'echo "not signed in" >&2; exit 1') })('s', 'p')).rejects.toMatchObject({ message: 'codex exec exited 1', cause: 'not signed in' });
     await expect(codexRunner({ cwd: dir, bin: fakeCodex(dir, 'exit 0') })('s', 'p')).rejects.toThrow(/wrote no answer/);
+  });
+
+  it('keeps the event stream, the model\'s own text, out of the error', async () => {
+    const dir = makeHome();
+    const said = `echo '{"type":"item.completed","item":{"type":"agent_message","text":"the transcript said this"}}'`;
+    await expect(codexRunner({ cwd: dir, bin: fakeCodex(dir, `${said}; exit 1`) })('s', 'p')).rejects.toThrow(/^codex exec exited 1$/);
+    await expect(codexRunner({ cwd: dir, bin: fakeCodex(dir, said) })('s', 'p')).rejects.toThrow(/^codex exec wrote no answer$/);
   });
 
   it('gives up on a run that hangs', async () => {

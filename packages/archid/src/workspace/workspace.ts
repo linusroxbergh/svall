@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ChangedFile, DiffBase, Event, FsEntry } from '@archipelago/protocol';
@@ -39,9 +40,14 @@ const statOf = (rel: string, abs: string): fs.Stats | undefined => {
 
 const changed = (id: string): Event => ({ event: 'repo.changed', data: { id } });
 
+// what another name, case or link of a file shares with it
+const idOf = (p: string): string | undefined => {
+  try { const s = fs.statSync(p, { throwIfNoEntry: false }); return s && `${s.dev}:${s.ino}`; } catch { return undefined; }
+};
+
 export class Workspace {
-  /** `refused` are the absolute paths the fleet never reaches, whatever root they lie in: the files Claude Code and Codex keep a login in. `docs` is the tree whose folders take new, renamed and deleted files. */
-  constructor(private rootOf: (id: string) => string, private log: Logger, private refused: string[] = [], private docs?: string) {}
+  /** `refused` answers the absolute paths the fleet never reaches, whatever root they lie in: the files Claude Code and Codex keep a login in, and every fleet's own keys. `docs` is the tree whose folders take new, renamed and deleted files. */
+  constructor(private rootOf: (id: string) => string, private log: Logger, private refused: () => string[] = () => [], private docs?: string) {}
 
   // another name, another case on a folding volume, a symlink, a hard link: only identity tells them apart.
   // The spelling is compared first, for a path that is not on disk yet
@@ -51,30 +57,42 @@ export class Workspace {
   }
 
   // a copy of a refused dotfile keeps its name in front: .claude.json.backup, backups/.claude.json.backup.<ts>.
-  // A plain name like auth.json is too common for that: a repository's auth.json.example is its own
-  private isCopy(name: string): boolean {
+  // A plain name like auth.json or .env is too common for that: a repository's auth.json.example or .env.local is its own
+  private isCopy(name: string, refused: string[]): boolean {
     const n = name.toLowerCase();
-    return this.refused.some((r) => { const b = path.basename(r).toLowerCase(); return b.startsWith('.') && n.startsWith(`${b}.`); });
+    return refused.some((r) => { const b = path.basename(r).toLowerCase(); return b.startsWith('.') && path.extname(b) !== '' && n.startsWith(`${b}.`); });
   }
 
-  private isRefused(abs: string): boolean {
-    return [abs, realOf(abs) ?? abs].some((p) => this.isCopy(path.basename(p))) || this.refused.some((r) => this.sameFile(abs, r));
+  // the refused paths once a call, each on disk by its identity; one not on disk yet is matched by its folder and
+  // its name in any case, since a folding volume would create it under another spelling
+  private refusal(): { refused: string[]; is: (abs: string) => boolean } {
+    const refused = this.refused();
+    const ids = new Set(refused.map(idOf).filter((i) => i !== undefined));
+    const is = (abs: string): boolean => {
+      if ([abs, realOf(abs) ?? abs].some((p) => this.isCopy(path.basename(p), refused))) return true;
+      const own = idOf(abs);
+      if (own !== undefined) return ids.has(own);
+      const name = path.basename(abs).toLowerCase();
+      return refused.some((r) => path.basename(r).toLowerCase() === name && this.sameFile(path.dirname(abs), path.dirname(r)));
+    };
+    return { refused, is };
   }
 
-  private at(id: string, rel: string): string {
+  private at(id: string, rel: string, refusal = this.refusal()): string {
     const abs = inside(this.rootOf(id), rel);
-    if (this.isRefused(abs)) throw new WorkspaceError('invalid', `${rel} is not the fleet's to open`);
+    if (refusal.is(abs)) throw new WorkspaceError('invalid', `${rel} is not the fleet's to open`);
     return abs;
   }
 
   async list(id: string, rel: string): Promise<FsEntry[]> {
-    const abs = this.at(id, rel);
+    const refusal = this.refusal();
+    const abs = this.at(id, rel, refusal);
     let dirents: fs.Dirent[];
     try { dirents = fs.readdirSync(abs, { withFileTypes: true }); }
     catch { throw new WorkspaceError('not_found', `${rel || '.'} is not a folder`); }
     // only a folder that holds a refused file pays for the identity test, and only over its own entries
-    const holder = this.refused.some((r) => this.sameFile(abs, path.dirname(r)));
-    const named = dirents.filter((d) => d.name !== '.git' && !this.isCopy(d.name) && !(holder && this.isRefused(path.join(abs, d.name))));
+    const holder = refusal.refused.some((r) => this.sameFile(abs, path.dirname(r)));
+    const named = dirents.filter((d) => d.name !== '.git' && !this.isCopy(d.name, refusal.refused) && !(holder && refusal.is(path.join(abs, d.name))));
     const ignored = await ignoredNames(abs, named.map((d) => d.name));
     // a name git ignores is still the user's to open, so the listing marks it rather than dropping it
     return named
@@ -99,10 +117,29 @@ export class Workspace {
     if (root !== undefined && root !== now) throw new WorkspaceError('invalid', `${rel} was opened in ${root}, and the character has moved to ${now}`);
     const abs = this.at(id, rel);
     const st = statOf(rel, abs);
+    // a rename would put a file in place of a socket or a pipe
+    if (st && !st.isFile()) throw new WorkspaceError('invalid', `${rel} cannot be written`);
     // mtime 0 says there was no file to read, so one gone since it was read is a conflict too
     if (st ? st.mtimeMs !== mtimeMs : mtimeMs !== 0) return { conflict: true, mtimeMs: st?.mtimeMs ?? 0 };
     try {
-      fs.writeFileSync(abs, text);
+      // the text goes to a file beside the target and one rename swaps it in, so a write cut short leaves the old text whole;
+      // a link stays a link, the mode stays, and a read-only file stays refused
+      const dest = st ? fs.realpathSync(abs) : abs;
+      if (st) fs.accessSync(dest, fs.constants.W_OK);
+      const tmp = path.join(path.dirname(dest), `.archi-${crypto.randomBytes(6).toString('hex')}.tmp`);
+      let fd: number;
+      try { fd = fs.openSync(tmp, 'wx', st ? st.mode & 0o777 : 0o666); }
+      catch (e) {
+        // a folder the user cannot write can still hold a file they can, and that one is written in place
+        if (!st || !['EACCES', 'EPERM'].includes((e as NodeJS.ErrnoException).code ?? '')) throw e;
+        fs.writeFileSync(dest, text);
+        return { mtimeMs: fs.statSync(abs).mtimeMs };
+      }
+      try {
+        try { fs.writeFileSync(fd, text); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+        if (st) fs.chmodSync(tmp, st.mode & 0o7777);
+        fs.renameSync(tmp, dest);
+      } catch (e) { fs.rmSync(tmp, { force: true }); throw e; }
       return { mtimeMs: fs.statSync(abs).mtimeMs };
     } catch (e) { throw refuse(rel, 'be written', e); }
   }

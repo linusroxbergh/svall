@@ -174,7 +174,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
     // the proxy has already proved who this is; a socket without that identity still has to say the token
     let authed = Boolean(login);
     const authTimer = authed ? undefined : setTimeout(() => ws.close(4401, 'unauthorized'), AUTH_TIMEOUT);
-    if (login) { log.info(`api: phone socket for ${login}`); admit(); }
+    if (login) { log.info('api: phone socket'); admit(); }
 
     ws.on('message', async (raw) => {
       let msg: unknown;

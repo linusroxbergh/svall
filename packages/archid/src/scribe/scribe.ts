@@ -152,8 +152,10 @@ export class Scribe {
       return job.kind === 'char' ? await this.passCharacter(job.id, namesOnly) : await this.passIsland(job.id);
     } catch (e) {
       const what = job.kind === 'char' ? this.deps.store.state.characters[job.id]?.name : `island ${this.deps.store.state.islands[job.id]?.name}`;
-      const message = (e as Error).message.split('\n')[0];
-      this.deps.log.error(`scribe: ${what ?? job.id}: ${(e as Error).message}`);
+      const { message: head, cause } = e as Error;
+      // the child's stderr is shown, and kept out of the log a tester pastes into a bug report
+      const message = `${head}${typeof cause === 'string' ? `: ${cause}` : ''}`.split('\n')[0];
+      this.deps.log.error(`scribe: ${what ?? job.id}: ${head}`);
       this.deps.store.update((d) => { d.scribeError = { message, at: this.now() }; });
       return [`${what ?? job.id}  failed: ${message}`];
     } finally {
