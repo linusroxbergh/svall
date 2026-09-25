@@ -1,0 +1,164 @@
+9d271d4 archid refuses a handover phase the machine may not run
+442f131 archid exposes ownership without changing local fleets
+e692918 A freeze holds until the writes already running have landed
+3396abe Only the current unfrozen owner can change a fleet
+629338e A short write can no longer truncate a durable file, and an unreadable journal is never read as absent
+4399faf Fleet snapshots and handover journals survive process death
+a3dfa1f An error frame carries the structured half of a refusal
+a388127 The protocol names ownership and every handover phase
+a13d2ff Both terminals survive as resumable character state
+6541f9a The controller knows machines by stable identity and named roots
+a90f4fc The split is driven by the backup, so every interrupted state is unambiguous
+d2f4daa A config.json beside the split files is refused, never moved aside
+f32264c Every fleet and machine setting has a portable home
+
+ README.md                                          |  26 +-
+ .../mac/Sources/Archipelago/ArchiHome.swift        |   6 +-
+ apps/desktop/web/e2e/split.spec.ts                 |  22 +-
+ apps/desktop/web/src/CharPanes.tsx                 |   2 +-
+ apps/desktop/web/src/TerminalArea.tsx              |   7 +-
+ apps/desktop/web/src/selectors.ts                  |   9 +-
+ apps/desktop/web/src/store.ts                      |   2 +-
+ apps/desktop/web/src/terminals.ts                  |   2 +-
+ apps/desktop/web/test/fixtures.ts                  |   2 +-
+ apps/desktop/web/test/selectors.test.ts            |   8 +-
+ apps/desktop/web/test/store.test.ts                |  14 +-
+ apps/desktop/web/test/terminals.test.ts            |   8 +-
+ packages/archid/package.json                       |   2 +
+ packages/archid/src/api/methods.ts                 |  37 +-
+ packages/archid/src/api/server.ts                  |  28 +-
+ packages/archid/src/atomic.ts                      |   7 +
+ packages/archid/src/config.ts                      |  93 +++--
+ packages/archid/src/fleet.ts                       |  93 ++++-
+ packages/archid/src/handover/durable.ts            | 115 ++++++
+ packages/archid/src/handover/journal.ts            |  81 ++++
+ packages/archid/src/handover/service.ts            | 176 +++++++++
+ packages/archid/src/handover/startup.ts            |  44 +++
+ packages/archid/src/machine.ts                     |  30 ++
+ packages/archid/src/main.ts                        |  16 +-
+ packages/archid/src/ownership/guard.ts             |  69 ++++
+ packages/archid/src/ownership/state.ts             | 117 ++++++
+ packages/archid/src/paths.ts                       |  11 +-
+ packages/archid/src/reconcile.ts                   |  36 +-
+ packages/archid/src/release.ts                     |   4 +
+ packages/archid/src/scribe/scribe.ts               |   5 +
+ packages/archid/src/setup.ts                       |  11 +-
+ packages/archid/src/store.ts                       |  47 ++-
+ packages/archid/src/uninstall.ts                   |   7 +-
+ packages/archid/test/api.test.ts                   |  95 ++++-
+ packages/archid/test/attach.test.ts                |   5 +-
+ packages/archid/test/config-migration.test.ts      | 173 +++++++++
+ packages/archid/test/config.test.ts                |  19 +-
+ packages/archid/test/daemon.test.ts                |  66 ++++
+ packages/archid/test/fixtures/fake-claude.mjs      |   3 +-
+ packages/archid/test/fleet.test.ts                 |  38 +-
+ packages/archid/test/handover/durable.test.ts      | 179 +++++++++
+ packages/archid/test/handover/journal.test.ts      | 137 +++++++
+ packages/archid/test/handover/service.test.ts      | 233 ++++++++++++
+ packages/archid/test/helpers.ts                    |  10 +-
+ packages/archid/test/machine.test.ts               |  40 ++
+ packages/archid/test/map.test.ts                   |   5 +-
+ packages/archid/test/mobile.test.ts                |  10 +-
+ packages/archid/test/ownership.test.ts             | 415 +++++++++++++++++++++
+ packages/archid/test/push.test.ts                  |   2 +-
+ packages/archid/test/reconcile.test.ts             |  41 +-
+ packages/archid/test/setup.test.ts                 |   7 +-
+ packages/archid/test/store.test.ts                 | 114 +++++-
+ packages/archid/test/terminals.test.ts             |   5 +-
+ packages/archid/test/uninstall.test.ts             |   2 +-
+ packages/cli/src/client.ts                         |   2 +-
+ packages/cli/src/commands/char.ts                  |   8 +-
+ packages/cli/src/commands/mobile.ts                |   6 +-
+ packages/cli/src/controller/paths.ts               | 103 +++++
+ packages/cli/src/controller/registry.ts            | 127 +++++++
+ packages/cli/src/target.ts                         |   9 +-
+ packages/cli/test/char.test.ts                     |   9 +-
+ packages/cli/test/controller/paths.test.ts         | 110 ++++++
+ packages/cli/test/controller/registry.test.ts      | 142 +++++++
+ packages/cli/test/target.test.ts                   |  18 +-
+ packages/protocol/src/handover.ts                  | 237 ++++++++++++
+ packages/protocol/src/index.ts                     |   1 +
+ packages/protocol/src/messages.ts                  |  56 ++-
+ packages/protocol/src/migrate.ts                   |  30 +-
+ packages/protocol/src/state.ts                     |  20 +-
+ packages/protocol/test/handover.test.ts            | 182 +++++++++
+ packages/protocol/test/messages.test.ts            | 145 ++++++-
+ packages/protocol/test/migrate.test.ts             |  35 +-
+ packages/protocol/test/state.test.ts               |  17 +-
+ scripts/desktop-install.sh                         |   5 +-
+ 74 files changed, 3779 insertions(+), 219 deletions(-)
+
+README.md
+apps/desktop/mac/Sources/Archipelago/ArchiHome.swift
+apps/desktop/web/e2e/split.spec.ts
+apps/desktop/web/src/CharPanes.tsx
+apps/desktop/web/src/TerminalArea.tsx
+apps/desktop/web/src/selectors.ts
+apps/desktop/web/src/store.ts
+apps/desktop/web/src/terminals.ts
+apps/desktop/web/test/fixtures.ts
+apps/desktop/web/test/selectors.test.ts
+apps/desktop/web/test/store.test.ts
+apps/desktop/web/test/terminals.test.ts
+packages/archid/package.json
+packages/archid/src/api/methods.ts
+packages/archid/src/api/server.ts
+packages/archid/src/atomic.ts
+packages/archid/src/config.ts
+packages/archid/src/fleet.ts
+packages/archid/src/handover/durable.ts
+packages/archid/src/handover/journal.ts
+packages/archid/src/handover/service.ts
+packages/archid/src/handover/startup.ts
+packages/archid/src/machine.ts
+packages/archid/src/main.ts
+packages/archid/src/ownership/guard.ts
+packages/archid/src/ownership/state.ts
+packages/archid/src/paths.ts
+packages/archid/src/reconcile.ts
+packages/archid/src/release.ts
+packages/archid/src/scribe/scribe.ts
+packages/archid/src/setup.ts
+packages/archid/src/store.ts
+packages/archid/src/uninstall.ts
+packages/archid/test/api.test.ts
+packages/archid/test/attach.test.ts
+packages/archid/test/config-migration.test.ts
+packages/archid/test/config.test.ts
+packages/archid/test/daemon.test.ts
+packages/archid/test/fixtures/fake-claude.mjs
+packages/archid/test/fleet.test.ts
+packages/archid/test/handover/durable.test.ts
+packages/archid/test/handover/journal.test.ts
+packages/archid/test/handover/service.test.ts
+packages/archid/test/helpers.ts
+packages/archid/test/machine.test.ts
+packages/archid/test/map.test.ts
+packages/archid/test/mobile.test.ts
+packages/archid/test/ownership.test.ts
+packages/archid/test/push.test.ts
+packages/archid/test/reconcile.test.ts
+packages/archid/test/setup.test.ts
+packages/archid/test/store.test.ts
+packages/archid/test/terminals.test.ts
+packages/archid/test/uninstall.test.ts
+packages/cli/src/client.ts
+packages/cli/src/commands/char.ts
+packages/cli/src/commands/mobile.ts
+packages/cli/src/controller/paths.ts
+packages/cli/src/controller/registry.ts
+packages/cli/src/target.ts
+packages/cli/test/char.test.ts
+packages/cli/test/controller/paths.test.ts
+packages/cli/test/controller/registry.test.ts
+packages/cli/test/target.test.ts
+packages/protocol/src/handover.ts
+packages/protocol/src/index.ts
+packages/protocol/src/messages.ts
+packages/protocol/src/migrate.ts
+packages/protocol/src/state.ts
+packages/protocol/test/handover.test.ts
+packages/protocol/test/messages.test.ts
+packages/protocol/test/migrate.test.ts
+packages/protocol/test/state.test.ts
+scripts/desktop-install.sh

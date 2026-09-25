@@ -1,0 +1,45 @@
+9fc7bf6 fleet recover writes above any handover the gateway holds open, tells the machine it names last, and says recovered only once that machine has taken the record
+cad1b15 A daemon takes a recovery record only as its gateway gives it and never over a handover it cannot read, and a gated fleet with no record owns nothing until the gateway names its owner
+6fe757a archi fleet recover --force-owner shows every generation and the risks before it writes a new authority
+cbc202a A daemon takes a newer gateway record at start or when a recovery relays one, and lets go of any handover it supersedes
+cb05d9a The gateway writes a forced ownership record only over the record it was read holding, and audits it first
+9fe6e25 A lock left by a killed helper never blocks the next handover, and the launcher reports a lock it cannot take
+e776a77 A decision answered at prepare says again where the handover stands
+9343c35 A relaunch reads a finished handover back without touching its terminals, and a superseded journal can be forgotten
+e20def6 The app follows a detached handover helper and asks where the fleet runs once it has moved
+aa15a83 The handover sheet carries the fleet through every durable phase
+edd911e An upgrade that rolls back shows the rollback under the final probe it followed
+8db9b47 A handover helper holds its fleet's lock alone, and attach, --forget and bad arguments keep to the app's contract
+5007b3a Only the controller says where a handover stands, and says it again once a decision is answered
+9412878 A character can be kept on this machine from the CLI, and list and show say so
+a83c47d Removing a gateway names the handover that brings its stranded fleet back
+b9b77d2 The CLI can hand over, resume and abort a fleet, in the foreground or through a helper the app attaches to
+7ec3620 The controller relays the daemons' own rest and activation rows, and keeps every event for whoever records a run
+177a359 A cancelled handover sends no further step, and never asks the gateway to commit again
+3b0216d The controller advances one recoverable handover transaction
+8c8fce9 The controller sends a large call in parts and filters a Git directory carried on its own as its claim was proven
+3b2e642 The daemons answer a controller's claim, inspect and complete, and read a request too large for one message in parts
+127ac37 A phone socket closes once the fleet it is connected to no longer lists its login
+19ae985 An activated destination admits phones by the fleet it received and starts only the terminals its handover rested
+d9f16e1 A committed destination activates the prepared fleet exactly once
+06bf5d9 A handover file is not read through an .archipelago folder that is a link, which blocks instead
+e369bb3 A repository's handover file is read only as a regular file of at most 64 KiB, and a file named .archipelago holds none
+07b73a4 A repository under a path root declared through a link is placed by its real path and named through the declared root
+1d6a6b6 A freeze finds what stops it before a window closes, reopens what it closed when it cannot finish, and checks platforms, kept characters and Git graphs
+1ac6d5c A pass verifies against the pass before it, the far rsync and a lost master are told apart, and doctor flags a Mac without its bundled rsync
+09c7c11 The Mac mirrors a verified fleet replica in either direction
+9a06575 An unused worktree's changes are read the same whatever the repository configures git status to show
+0caf3f3 A fetch or status refresh on a replica reads as no change, a bare repository's checkout leaves its caches behind, and an unused worktree holding the only copy of some work blocks
+556c0e0 Git repository graphs arrive with every used worktree intact
+2b4f015 A source fleet freezes and aborts without losing its crew
+bdc2744 A carried Claude session is its transcript, subagents and saved tool output only, and placing a session writes nothing outside its layout
+97754de Supported agent conversations have versioned handover adapters
+af58572 A replica is proven against the excludes the transfer will use
+9c939f6 Resting matches only the hook and statusline setup installed, keeps a node-run Claude as the agent, and ends an agent's tool commands when its terminal is terminated
+6103f83 Resting looks past only a node launcher, ignores Archipelago's own hook processes, and leaves each closed terminal dormant as its window goes
+8dea85f Resting recognises Claude and Codex by the process holding the terminal, and gives every ps and tmux call a time limit
+9fc82c2 Handover rests agents and refuses unapproved shell processes
+5165430 Inactive replicas cannot be overwritten without proving their baseline
+e5a0efb A root is judged by its real path against the fleet home, and folds by what is on disk
+91f9941 A handover keeps every Git record whatever the excludes say, and never carries a fleet home
+58a3c46 A handover begins with one immutable transfer manifest

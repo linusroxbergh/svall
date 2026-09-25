@@ -1,0 +1,26 @@
+11f3f3d A run its master dropped or a signal cut short is a transport failure, and nothing but a refusal stops the helper asking the gateway
+2ae9465 A gateway that refused for good is not asked again, a silent authority and a dropped connection are retried
+76c6694 A refused gateway is reported once, a local daemon is retried, and a rebuild that lands elsewhere says the owner changed
+c774517 The helper announces every attempt, rebuilds a dead master, and leaves what no retry can fix
+350de5a archi connect holds the route to a fleet's owner and reports every step as one JSON line
+0d0cf47 The controller asks the gateway which machine owns a fleet, and caches the route it answered
+152afea A check with only skipped checks beside the passing ones is ready for handover
+e99a513 A host check lists what the machine answered, and a removal asks first
+22295e3 A published app can add and inspect its Linux machine
+dbf0062 A fleet with no known owner attaches nothing until the helper says where it is
+a4afd53 The Mac window follows a fleet to its remote owner
+15c5240 The gateway answers ownership over SSH and host enable seeds the first record
+8f75910 A quarantined fleet stays refused after the gateway restarts
+42027d5 The gateway is the durable authority for fleet ownership
+ea5df01 Every host action names the machine to run it on, and the user it is for
+1a1f7f7 A Linux machine without Claude Code is a warning, not a refusal
+e931b26 One command provisions and maintains a remote Archipelago host
+927ee33 One option terminator, before the destination, is what ssh reads
+ea98125 A remote path is quoted for the far shell, not cut down to fit it
+636b307 A registry field cannot become an ssh option or a remote command
+460db96 The controller reaches a remote daemon through one SSH master
+dc92c03 A Linux unit escapes what systemd reads, and only a started one is probed
+e3502a5 The companion installs as persistent Linux user services
+2af5f28 A release carries the signers and the root its own shims name
+4a40073 Published builds carry a versioned controller and companion
+8cfdb8a A release root replaces every repository climb

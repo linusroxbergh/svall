@@ -1,0 +1,7 @@
+# O-wave fix round 2 — findings (binding)
+
+3. (open from round 1) Tips are validated on the inspect path only. At claim the destination builds its own tips with `this.staying(graphsHere(m))` (destination.ts:231); `graphsHere` merges the manifest's checkout heads and stash into `tips` (git-repair.ts:58-59), and those fields are still plain strings: `GitCheckout.head: z.string().nullable()` (protocol handover.ts:218) and `GitGraph.stash: z.array(z.string())` (:246); manifestProblems checks only paths (validate.ts:75-76). A manifest head or stash entry such as `--output=/some/file` reaches `rev-list … --not <tips…> --` at git-repair.ts:70 — the reviewer ran `git rev-list --ignore-missing -n 1 <C> --not --output=<file> --` and it created the file. Fix: `GitCheckout.head` → `ObjectName.nullable()` and `GitGraph.stash` → `z.array(ObjectName)` (real values are already full hex: worktree list HEAD, stash list --format=%H); add a claim-side test with a hostile head/stash that is refused before git runs.
+
+Folded in by ruling (they sit in the lines this round touches):
+4. (Minor) provision.ts:74-76 doc comment says "one that holds this fleet is left as it is"; the held path now finishes the home and runs enable --now. Correct it.
+5. (Minor) cli controller/handover.ts:536 and :786: the claim-time `lostCommits` call runs through `retrying` without the stop signal and `cancellable` that the `handover.claim` call beside it has (:524-526), so a Cancel waits out every retry when the source is unreachable at claim. Give it the same.
