@@ -15,6 +15,7 @@ enum ToShell: Decodable {
     case termFocus(id: String?)
     case keysRegister(chords: [String])
     case keysCapture(on: Bool)
+    case keysQuit(chord: String?)
     case openUrl(url: String)
     case openFolder(path: String)
     case reveal(path: String)
@@ -36,8 +37,9 @@ enum ToShell: Decodable {
     case notifyEnable
     case notifySettings
     case quit
+    case quitAnswer(unsaved: [String])
 
-    private enum Keys: String, CodingKey { case type, id, rect, attach, opacity, chords, on, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId }
+    private enum Keys: String, CodingKey { case type, id, rect, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -50,6 +52,7 @@ enum ToShell: Decodable {
         case "term.focus": self = .termFocus(id: try c.decodeIfPresent(String.self, forKey: .id))
         case "keys.register": self = .keysRegister(chords: try c.decode([String].self, forKey: .chords))
         case "keys.capture": self = .keysCapture(on: try c.decode(Bool.self, forKey: .on))
+        case "keys.quit": self = .keysQuit(chord: try c.decodeIfPresent(String.self, forKey: .chord))
         case "openUrl": self = .openUrl(url: try c.decode(String.self, forKey: .url))
         case "openFolder": self = .openFolder(path: try c.decode(String.self, forKey: .path))
         case "reveal": self = .reveal(path: try c.decode(String.self, forKey: .path))
@@ -71,6 +74,7 @@ enum ToShell: Decodable {
         case "notify.enable": self = .notifyEnable
         case "notify.settings": self = .notifySettings
         case "quit": self = .quit
+        case "quit.answer": self = .quitAnswer(unsaved: try c.decode([String].self, forKey: .unsaved))
         case let other: throw ShellError("unknown bridge message \(other)")
         }
     }
@@ -97,6 +101,7 @@ enum FromShell {
     case notifyPermission(String)
     case notifyOpen(key: String)
     case notifyAction(key: String, action: String, promptId: String)
+    case quitAsk
 
     var json: [String: Any] {
         switch self {
@@ -119,6 +124,7 @@ enum FromShell {
         case .notifyPermission(let state): return ["type": "notify.permission", "state": state]
         case .notifyOpen(let key): return ["type": "notify.open", "key": key]
         case .notifyAction(let key, let action, let promptId): return ["type": "notify.action", "key": key, "action": action, "promptId": promptId]
+        case .quitAsk: return ["type": "quit.ask"]
         }
     }
 }
@@ -130,8 +136,11 @@ final class Bridge: NSObject, WKScriptMessageHandler {
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let text = message.body as? String, let data = text.data(using: .utf8) else { return }
-        do { onMessage(try JSONDecoder().decode(ToShell.self, from: data)) }
-        catch { NSLog("bridge: %@ in %@", "\(error)", text) }
+        do { onMessage(try JSONDecoder().decode(ToShell.self, from: data)) } catch {
+            // the type alone: a message can carry a url with a sign-in code, or a file's text
+            let type = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["type"] as? String ?? "?"
+            NSLog("bridge: %@ in a %@ message", "\(error)", type)
+        }
     }
 
     func send(_ message: FromShell) {

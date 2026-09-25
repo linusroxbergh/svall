@@ -241,6 +241,9 @@ binds stays with Ghostty until you claim it there.
 | Cmd+Shift+A | Arrange the fleet | Cmd+U | First link beside the terminal |
 
 Ctrl+click opens a link in the character's browser. Selecting text copies it.
+A browser tab you're typing in keeps Cmd+B, Cmd+I, Cmd+U, Cmd+K and Cmd+Enter
+for the site. Each terminal attaches to its character's tmux session, so your
+Ghostty `initial-command` and `input` are ignored.
 
 ## The `archi` CLI
 

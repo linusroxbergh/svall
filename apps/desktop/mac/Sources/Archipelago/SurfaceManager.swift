@@ -19,6 +19,8 @@ final class SurfaceManager {
     private let runtime: GhosttyRuntime
     private let overlay: OverlayViews<SurfaceView>
     private var fontDelta = 0.0
+    // false while the window is minimised, hidden or covered, when no surface need draw
+    private var windowVisible = true
     var onExited: (String) -> Void = { _ in }
     var onFailed: (_ id: String, _ reason: String) -> Void = { _, _ in }
     var onFocused: (String) -> Void = { _ in }
@@ -44,7 +46,7 @@ final class SurfaceManager {
         if let view = overlay[id] {
             overlay.place(view, rect)
             view.isHidden = false
-            view.setOccluded(false)
+            view.setOccluded(!windowVisible)
             view.alphaValue = opacity ?? 1
             return
         }
@@ -73,6 +75,7 @@ final class SurfaceManager {
         overlay.add(view, as: id)
         overlay.mask(view)
         view.alphaValue = opacity ?? 1
+        if !windowVisible { view.setOccluded(true) }
     }
 
     func move(id: String, rect: WebRect) {
@@ -87,6 +90,11 @@ final class SurfaceManager {
 
     func close(id: String) {
         overlay.close(id)
+    }
+
+    func setWindowVisible(_ visible: Bool) {
+        windowVisible = visible
+        for view in overlay.views.values where !view.isHidden { view.setOccluded(!visible) }
     }
 
     func focus(id: String?) {

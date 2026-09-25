@@ -13,6 +13,8 @@ final class BrowserView: WKWebView, OverlayView {
     var error: String? { didSet { if error != oldValue { report() } } }
     /// A rect of this view, in its own coordinates, that a page panel is drawn into.
     var cutout: NSRect? { didSet { Cutout.apply(cutout, to: self) } }
+    /// When its web process last died and the page was loaded again.
+    var crashedAt: Date?
     private var observers: [NSKeyValueObservation] = []
 
     init(tab: String, configuration: WKWebViewConfiguration) {
@@ -44,6 +46,9 @@ final class BrowserView: WKWebView, OverlayView {
     }
 
     private var dialogs: [BrowserDialog] { subviews.compactMap { $0 as? BrowserDialog } }
+
+    /// True while a dialog waits over this tab.
+    var asking: Bool { !dialogs.isEmpty }
 
     func takeKeys() {
         if let dialog = dialogs.last { dialog.takeKeys() } else { window?.makeFirstResponder(self) }

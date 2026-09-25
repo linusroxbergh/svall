@@ -2,6 +2,7 @@
 import './setup.js';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
+import type { FromShell } from '../../src/bridge.js';
 import { setAppStore, useApp } from '../../src/hooks.js';
 import { createAppStore, type AppStore } from '../../src/store/index.js';
 import { fleet } from '../fixtures.js';
@@ -28,6 +29,7 @@ vi.mock('../../src/resources/Shelf.js', () => ({ ResourcesLayer: () => null }));
 const { Map } = await import('../../src/map/Map.js');
 const { IslandCard, SideCard } = await import('../../src/SideCard.js');
 const { dispatchKey } = await import('../../src/keyboard.js');
+const { followQuit } = await import('../../src/quit.js');
 
 // the side card as App mounts it: no key, the id from the map's selection
 function Side() {
@@ -105,6 +107,22 @@ test.each(['toggleSideCard', 'toggleSettings', 'toggleView'] as const)('%s saves
   await act(() => dispatchKey({ type: chord }, { store, api: { call } as never, bridge }));
   expect(screen.queryByTestId('side-instructions')).toBeNull();
   expect(updates()).toEqual([['char.update', { id: 'c0', instructions: 'never push to main' }]]);
+});
+
+// the shell asks before it quits, and nothing blurs the field on the way out
+test('a quit saves the draft before it answers', async () => {
+  render(<Side />);
+  type(field('side-instructions'), 'never push to main');
+  let ask = (_: FromShell) => {};
+  let savedFirst: boolean | undefined;
+  const stop = followQuit({ store, bridge: {
+    send: (m) => { if (m.type === 'quit.answer') savedFirst = updates().length > 0; },
+    onMessage: (h) => { ask = h; return () => {}; },
+  } });
+  await act(async () => { ask({ type: 'quit.ask' }); });
+  expect(updates()).toEqual([['char.update', { id: 'c0', instructions: 'never push to main' }]]);
+  expect(savedFirst).toBe(true);
+  stop();
 });
 
 test('a link half typed for one character is not offered to the next', () => {

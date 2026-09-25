@@ -6,10 +6,16 @@ enum ExternalURL {
 
     static func open(_ text: String) {
         guard let url = URL(string: text), let scheme = url.scheme?.lowercased(), schemes.contains(scheme) else {
-            NSLog("refused to open url: %@", text)
+            NSLog("refused to open url: %@", redacted(URL(string: text)))
             return
         }
         NSWorkspace.shared.open(url)
+    }
+
+    /// A url fit for the log: its scheme and host, never the path or query that can carry a sign-in code.
+    static func redacted(_ url: URL?) -> String {
+        guard let url else { return "an unreadable url" }
+        return (url.scheme ?? "") + (url.host.map { "://" + $0 } ?? ":")
     }
 
     /// Opens a plain directory in Finder. A bundle such as an .app is not one.

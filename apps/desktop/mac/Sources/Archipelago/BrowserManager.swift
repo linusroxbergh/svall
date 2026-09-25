@@ -123,8 +123,8 @@ final class BrowserManager: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     // MARK: navigation
 
-    // a tab's main frame follows the web and its own blobs, and the blank page a popup starts on; a mailto goes
-    // to the user's mail app and anything else, javascript: among it, is refused. a subframe is the page's own
+    // a tab's main frame follows the web and its own blobs, and the blank page a popup starts on; a mailto is
+    // offered to the user's mail app and anything else, javascript: among it, is refused. a subframe is the page's own
     // business, srcdoc and data urls among it
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
@@ -137,11 +137,19 @@ final class BrowserManager: NSObject, WKUIDelegate, WKNavigationDelegate {
             return decisionHandler(.allow)
         }
         if scheme == "mailto", let url {
-            ExternalURL.open(url.absoluteString)
+            mail(url, from: webView)
         } else {
-            NSLog("browser: refused %@", url?.absoluteString ?? "nil")
+            NSLog("browser: refused %@", ExternalURL.redacted(url))
         }
         decisionHandler(.cancel)
+    }
+
+    // WebKit reports a script's click on a link as the user's, so every mail link is asked about over its tab, one at a time
+    private func mail(_ url: URL, from webView: WKWebView) {
+        guard let v = webView as? BrowserView, !v.asking else { return }
+        let to = URLComponents(url: url, resolvingAgainstBaseURL: false)?.path ?? ""
+        v.ask(to.isEmpty ? "Open a new email in your mail app?" : "Open a new email to \(to) in your mail app?",
+              origin: v.url?.host ?? "", cancellable: true) { ok, _ in if ok { ExternalURL.open(url.absoluteString) } }
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
@@ -150,6 +158,18 @@ final class BrowserManager: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         failed(webView, error)
+    }
+
+    // a tab whose page died is loaded again, unless it died again soon after, when it says so instead of looping
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        guard let v = webView as? BrowserView else { return }
+        v.dismissDialogs()
+        if let last = v.crashedAt, Date().timeIntervalSince(last) < 30 {
+            v.error = "The page keeps crashing"
+            return
+        }
+        v.crashedAt = Date()
+        v.reload()
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
@@ -173,11 +193,11 @@ final class BrowserManager: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     // window.open and target=_blank get a real view built on the given configuration, which is what keeps
     // window.opener alive for sign-in flows; the page adopts it as a tab of the same character. a mailto
-    // opened in a new window goes to the user's mail app, with no tab left behind
+    // opened in a new window is asked about over its tab, with no tab left behind
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if let url = navigationAction.request.url, url.scheme?.lowercased() == "mailto" {
-            ExternalURL.open(url.absoluteString)
+            mail(url, from: webView)
             return nil
         }
         guard let from = (webView as? BrowserView)?.tab else { return nil }

@@ -1,21 +1,31 @@
 import AppKit
 import WebKit
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate {
     private var window: NSWindow!
     private var webView: DropWebView!
     private var router: ShellRouter?
     private var assets: WebAssets?
+    private var pageCrashedAt: Date?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard ArchiHome.claim() else { NSApp.terminate(nil); return }
         let runtime: GhosttyRuntime
-        do { runtime = try GhosttyRuntime() } catch { fatalError("\(error)") }
+        do { runtime = try GhosttyRuntime() } catch {
+            let alert = NSAlert()
+            alert.messageText = "The terminal could not start"
+            alert.informativeText = "Ghostty failed to set up (\(error)), so Archipelago cannot open."
+            NSApp.activate()
+            alert.runModal()
+            NSApp.terminate(nil)
+            return
+        }
         for e in runtime.configErrors { NSLog("ghostty config: %@", e) }
 
-        buildMenu()
+        let quitItem = buildMenu()
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
                           styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
+        window.delegate = self
         window.title = ArchiHome.displayName
         // the titlebar carries the page's own panel colour instead of the system chrome
         window.titlebarAppearsTransparent = true
@@ -45,7 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         webView.navigationDelegate = self
         content.addSubview(webView)
 
-        router = ShellRouter(runtime: runtime, bridge: bridge, container: content, webView: webView)
+        router = ShellRouter(runtime: runtime, bridge: bridge, container: content, webView: webView, quitItem: quitItem)
 
         var missingBundle = false
         if let url = Self.devURL {
@@ -64,7 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         if missingBundle {
             let alert = NSAlert()
             alert.messageText = "The web bundle is missing"
-            alert.informativeText = "This build has no web/ folder in its Resources. Run pnpm desktop:build to add it."
+            alert.informativeText = "This build has no web/ folder in its Resources. Run pnpm desktop:install to add it."
             alert.runModal()
         }
     }
@@ -81,7 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         let url = navigationAction.request.url
         let own = url?.scheme == WebAssets.scheme && url?.host == WebAssets.start.host
         let dev = Self.devURL.map { url?.scheme == $0.scheme && url?.host == $0.host && url?.port == $0.port } ?? false
-        if !own && !dev { NSLog("blocked navigation to %@", url?.absoluteString ?? "nil") }
+        if !own && !dev { NSLog("blocked navigation to %@", ExternalURL.redacted(url)) }
         decisionHandler(own || dev ? .allow : .cancel)
     }
 
@@ -90,14 +100,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         router?.reset()
     }
 
+    // a page whose process died, to memory pressure, a crash or a WebKit update, is loaded again
+    // rather than leaving the terminals floating over a blank window; one that dies again soon after asks first
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        NSLog("the page's web process ended")
+        router?.reset()
+        if let last = pageCrashedAt, Date().timeIntervalSince(last) < 30 {
+            let alert = NSAlert()
+            alert.messageText = "The page keeps crashing"
+            alert.informativeText = "Its web process stopped again within 30 seconds of the last reload."
+            alert.addButton(withTitle: "Reload")
+            alert.addButton(withTitle: "Quit")
+            NSApp.activate()
+            if alert.runModal() != .alertFirstButtonReturn { return NSApp.terminate(nil) }
+        }
+        pageCrashedAt = Date()
+        webView.reload()
+    }
+
     // Edit menu key equivalents are what make copy/paste work in the webview's text fields.
-    private func buildMenu() {
+    // Quit carries the chord the page quits with, which the router keeps current.
+    private func buildMenu() -> NSMenuItem {
         let main = NSMenu()
         let appItem = NSMenuItem(); main.addItem(appItem)
         let appMenu = NSMenu()
-        let quit = NSMenuItem(title: "Quit Archipelago", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        quit.keyEquivalentModifierMask = [.command, .shift]
-        appMenu.addItem(quit)
+        appMenu.addItem(withTitle: "About Archipelago", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Hide Archipelago", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        let others = appMenu.addItem(withTitle: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
+        others.keyEquivalentModifierMask = [.command, .option]
+        appMenu.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
+        let quit = appMenu.addItem(withTitle: "Quit Archipelago", action: #selector(quit(_:)), keyEquivalent: "")
+        quit.target = self
         appItem.submenu = appMenu
 
         let editItem = NSMenuItem(); main.addItem(editItem)
@@ -111,10 +146,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editItem.submenu = edit
+
+        // no ⌘M: the page toggles map and board with it
+        let windowItem = NSMenuItem(); main.addItem(windowItem)
+        let windows = NSMenu(title: "Window")
+        windows.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "")
+        windows.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        windows.addItem(.separator())
+        windows.addItem(withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
+        windowItem.submenu = windows
+        NSApp.windowsMenu = windows
+
         NSApp.mainMenu = main
+        return quit
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    @objc private func quit(_ sender: Any?) {
+        if let router { router.quit() } else { NSApp.terminate(nil) }
+    }
+
+    // the one window is the app: closing it quits, through the same question as ⌘Q, so Cancel keeps it open
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        quit(sender)
+        return false
+    }
+
+    // the page saves what it can and names what a quit would drop; a page that is not up is not waited on
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let router, router.askToQuit({ NSApp.reply(toApplicationShouldTerminate: $0) }) else { return .terminateNow }
+        return .terminateLater
+    }
 
     func applicationWillTerminate(_ notification: Notification) {
         router?.closeAll()

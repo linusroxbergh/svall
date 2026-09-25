@@ -20,7 +20,8 @@ enum GhosttyKeybinds {
     static func userChords() -> [String: String] {
         if let cached { return cached }
         var out: [String: String] = [:]
-        if let path = GhosttyRuntime.configPath() {
+        // the files as Ghostty loaded them; asking Ghostty for its config path would create one
+        for path in GhosttyRuntime.defaultConfigFiles() {
             read(URL(fileURLWithPath: path), depth: 0, into: &out)
         }
         cached = out

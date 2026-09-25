@@ -29,6 +29,8 @@ export type ToShell =
   | { type: 'shell.cutout'; rect?: Rect }
   | { type: 'keys.register'; chords: string[] }
   | { type: 'keys.capture'; on: boolean }
+  // the chord that quits, for the shell's menu and for a page too stuck to hear it; none leaves quitting unbound
+  | { type: 'keys.quit'; chord?: string }
   | { type: 'openUrl'; url: string }
   | { type: 'openFolder'; path: string }
   | { type: 'reveal'; path: string }
@@ -40,7 +42,9 @@ export type ToShell =
   | { type: 'notify.remove'; key: string }
   | { type: 'notify.enable' }
   | { type: 'notify.settings' }
-  | { type: 'quit' };
+  | { type: 'quit' }
+  // the files a quit would drop, by name, once the docs waiting to be written are
+  | { type: 'quit.answer'; unsaved: string[] };
 
 export type FromShell =
   | { type: 'connection'; host: string; port: number; token: string }
@@ -65,7 +69,9 @@ export type FromShell =
   | { type: 'notify.permission'; state: NotifyPermission }
   // a banner was clicked, or answered from its buttons; promptId is the question it showed, empty when it named none
   | { type: 'notify.open'; key: string }
-  | { type: 'notify.action'; key: string; action: 'approve' | 'deny'; promptId?: string };
+  | { type: 'notify.action'; key: string; action: 'approve' | 'deny'; promptId?: string }
+  // the app is about to quit and waits for a quit.answer
+  | { type: 'quit.ask' };
 
 type Handler = (msg: FromShell) => void;
 type Port = { postMessage(json: string): void };

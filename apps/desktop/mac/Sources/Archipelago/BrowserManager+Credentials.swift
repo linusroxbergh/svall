@@ -8,7 +8,7 @@ extension BrowserManager {
         guard !profiles.isEmpty else { return tell("No Chrome profile found", "Chrome keeps its profiles in ~/Library/Application Support/Google/Chrome.") }
         let ask = NSAlert()
         ask.messageText = "Import cookies from Chrome"
-        ask.informativeText = "This copies the profile’s cookies, so the browser is signed in wherever the profile is. macOS asks for the “Chrome Safe Storage” key to decrypt them. Only ‘archi uninstall --purge’ removes them again."
+        ask.informativeText = "This copies the profile’s cookies, so the browser is signed in wherever the profile is. macOS asks for the “Chrome Safe Storage” key to decrypt them. They are kept in this fleet’s browser data under ~/Library, where any program you run, the fleet’s agents included, can read them. Only ‘archi uninstall --purge’ removes them again."
         let pick = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 260, height: 26))
         for p in profiles { pick.menu?.addItem(withTitle: p.name, action: nil, keyEquivalent: "") }
         ask.accessoryView = pick
@@ -26,7 +26,12 @@ extension BrowserManager {
             group.notify(queue: .main) {
                 // all of them stuck means the key does not belong to this profile, which a bare zero would hide
                 let stuck = haul.stuck > 0 ? " \(haul.stuck) could not be decrypted." : ""
-                self.tell("Imported \(haul.cookies.count) cookies from \(profile.name)", "Reload an open tab for it to pick them up.\(stuck)")
+                let cut = haul.cut.map { " Chrome’s cookie file could not be read to the end (\($0)); quit Chrome and import again for the rest." } ?? ""
+                // WebKit keeps a cookie without an expiry date in memory only, so it goes when the app quits
+                let session = haul.cookies.filter(\.isSessionOnly).count
+                let lasting = session > 0 ? " \(session) of them are session cookies, which last until Archipelago quits." : ""
+                self.tell("Imported \(haul.cookies.count) cookies from \(profile.name)\(haul.cut == nil ? "" : ", not all of them")",
+                          "Reload an open tab for it to pick them up.\(stuck)\(cut)\(lasting)")
             }
         }
     }

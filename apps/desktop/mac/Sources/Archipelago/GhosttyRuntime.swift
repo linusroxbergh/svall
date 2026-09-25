@@ -16,6 +16,17 @@ final class GhosttyRuntime {
         return String(decoding: UnsafeRawBufferPointer(start: ptr, count: Int(s.len)), as: UTF8.self)
     }
 
+    /// The config files Ghostty loads by default that exist, in the order it loads them: XDG, then Application Support.
+    static func defaultConfigFiles() -> [String] {
+        let env = ProcessInfo.processInfo.environment
+        let home = env["HOME"].flatMap { $0.isEmpty ? nil : $0 } ?? NSHomeDirectory()
+        let xdg = (env["XDG_CONFIG_HOME"].flatMap { $0.isEmpty ? nil : $0 } ?? home + "/.config") + "/ghostty"
+        let support = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.path
+            ?? home + "/Library/Application Support") + "/com.mitchellh.ghostty"
+        return [xdg + "/config", xdg + "/config.ghostty", support + "/config", support + "/config.ghostty"]
+            .filter { FileManager.default.fileExists(atPath: $0) }
+    }
+
     static func surfaceView(_ userdata: UnsafeMutableRawPointer?) -> SurfaceView? {
         guard let userdata else { return nil }
         return Unmanaged<SurfaceView>.fromOpaque(userdata).takeUnretainedValue()
@@ -23,7 +34,8 @@ final class GhosttyRuntime {
 
     init() throws {
         guard let cfg = ghostty_config_new() else { throw ShellError("ghostty_config_new failed") }
-        ghostty_config_load_default_files(cfg)
+        // with no config of the user's to load, Ghostty's loader would write a template one into their home
+        if !Self.defaultConfigFiles().isEmpty { ghostty_config_load_default_files(cfg) }
         ghostty_config_load_recursive_files(cfg)
         // the terminal is one of the page's surfaces: its ground and ink follow the page, the font and palette stay the user's
         if let theme = Bundle.main.path(forResource: "ghostty-theme", ofType: nil) { ghostty_config_load_file(cfg, theme) }

@@ -18,12 +18,18 @@ final class ShellRouter {
     // whether the page has sent .connection since it last loaded, and what a banner click or answer sent before that
     private var listening = false
     private var pendingNotify: [FromShell] = []
+    // the menu's Quit, which shows the chord the page quits with
+    private let quitItem: NSMenuItem
+    // where the page's answer goes while a quit waits on it, and what quits anyway if it never comes
+    private var quitAnswer: ((Bool) -> Void)?
+    private var quitTimeout: DispatchWorkItem?
 
-    init(runtime: GhosttyRuntime, bridge: Bridge, container: NSView, webView: DropWebView) {
+    init(runtime: GhosttyRuntime, bridge: Bridge, container: NSView, webView: DropWebView, quitItem: NSMenuItem) {
         self.runtime = runtime
         self.bridge = bridge
         self.container = container
         self.webView = webView
+        self.quitItem = quitItem
         surfaces = SurfaceManager(runtime: runtime, container: container, webView: webView)
         browsers = BrowserManager(container: container, webView: webView, storeFile: ArchiHome.path + "/browser-store")
 
@@ -45,11 +51,13 @@ final class ShellRouter {
 
         bridge.onMessage = { [weak self] msg in self?.handle(msg) }
         keys.onChord = { [weak self] chord in
-            // the hatch out of a wedged page, except while a settings row is waiting for that very chord
-            if chord == "cmd+shift+q", self?.keys.capturing != true { NSApp.terminate(nil); return }
-            self?.bridge.send(.key(chord: chord))
+            guard let self else { return }
+            // quitting is the shell's own, so it works on a wedged page, except while a settings row waits for that very chord
+            if chord == self.keys.quit, !self.keys.capturing { self.quit(); return }
+            self.bridge.send(.key(chord: chord))
         }
-        keys.install()
+        keys.install(in: container.window)
+        setQuit(KeyMonitor.defaultQuit)
         // a press that lands on a surface never reaches the page, so a panel drawn over one is told of it here
         presses = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             self?.pressed(event)
@@ -65,6 +73,11 @@ final class ShellRouter {
         center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.sendAppActive() }
         center.addObserver(forName: NSWindow.didMiniaturizeNotification, object: webView.window, queue: .main) { [weak self] _ in self?.sendAppActive() }
         center.addObserver(forName: NSWindow.didDeminiaturizeNotification, object: webView.window, queue: .main) { [weak self] _ in self?.sendAppActive() }
+        // a minimised, hidden or covered window's terminals stop drawing, as Ghostty's own do
+        center.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: webView.window, queue: .main) { [weak self] note in
+            guard let window = note.object as? NSWindow else { return }
+            self?.surfaces.setWindowVisible(window.occlusionState.contains(.visible))
+        }
     }
 
     // the app counts as in front only while its window isn't sitting minimised in the Dock
@@ -82,10 +95,60 @@ final class ShellRouter {
         browsers.setCutout(nil)
         keys.registered = []
         keys.capturing = false
+        setQuit(KeyMonitor.defaultQuit)
         // the page that posted the banners is gone, and the one loading has no record of them
         notifier.clearAll()
         listening = false
         pendingNotify = []
+        // the page a quit was waiting on is gone, and nothing of it is left to save
+        finishQuit(true)
+    }
+
+    /// Quits, unless a quit already waits on the page: AppKit takes a second terminate as a yes to the first.
+    func quit() {
+        if quitAnswer == nil { NSApp.terminate(nil) }
+    }
+
+    /// Asks the page to save its docs and name the files a quit would drop; false when no page is there to ask.
+    func askToQuit(_ answer: @escaping (Bool) -> Void) -> Bool {
+        guard listening, quitAnswer == nil else { return false }
+        quitAnswer = answer
+        // longer than the page gives its saves, so only a page that is stuck or gone runs it out
+        let timeout = DispatchWorkItem { [weak self] in self?.finishQuit(true) }
+        quitTimeout = timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6, execute: timeout)
+        bridge.send(.quitAsk)
+        return true
+    }
+
+    private func finishQuit(_ ok: Bool) {
+        guard let answer = quitAnswer else { return }
+        quitAnswer = nil
+        quitTimeout?.cancel()
+        quitTimeout = nil
+        answer(ok)
+    }
+
+    private func answerQuit(unsaved: [String]) {
+        guard quitAnswer != nil else { return }
+        quitTimeout?.cancel()
+        guard !unsaved.isEmpty else { return finishQuit(true) }
+        let alert = NSAlert()
+        alert.messageText = "Quit with unsaved changes?"
+        let names = unsaved.count > 4 ? unsaved.prefix(3).joined(separator: ", ") + " and \(unsaved.count - 3) more" : ListFormatter.localizedString(byJoining: unsaved)
+        alert.informativeText = "\(names) \(unsaved.count == 1 ? "has" : "have") changes that were not saved. Quitting drops them."
+        alert.addButton(withTitle: "Quit")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate()
+        finishQuit(alert.runModal() == .alertFirstButtonReturn)
+    }
+
+    // the page names the chord it quits with, for the menu and for the monitor that takes it on a stuck page
+    private func setQuit(_ chord: String?) {
+        keys.quit = chord
+        let (key, mods) = KeyMonitor.keyEquivalent(for: chord)
+        quitItem.keyEquivalent = key
+        quitItem.keyEquivalentModifierMask = mods
     }
 
     func closeAll() {
@@ -140,6 +203,10 @@ final class ShellRouter {
             keys.registered = Set(chords)
         case .keysCapture(let on):
             keys.capturing = on
+        case .keysQuit(let chord):
+            setQuit(chord)
+        case .quitAnswer(let unsaved):
+            answerQuit(unsaved: unsaved)
         case .openUrl(let url):
             ExternalURL.open(url)
         case .openFolder(let path):
@@ -188,7 +255,7 @@ final class ShellRouter {
         case .notifySettings:
             notifier.openSettings()
         case .quit:
-            NSApp.terminate(nil)
+            quit()
         }
     }
 

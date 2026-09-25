@@ -8,6 +8,7 @@ import { dropBuffers } from './ide/buffers.js';
 import { createRepoWatch, type RepoWatch } from './ide/watch.js';
 import { installKeyHandlers } from './keyboard.js';
 import { followNotifications } from './notifications.js';
+import { followQuit } from './quit.js';
 import { followResources } from './resources/load.js';
 import { applyZoom } from './settings.js';
 import { createAppStore, localAppStorage, type AppStore } from './store/index.js';
@@ -66,6 +67,7 @@ function createApp(): AppContext {
   store.subscribe((s, prev) => { for (const id of Object.keys(prev.ide)) if (!s.ide[id]) dropBuffers(id); });
   if (bridge.present) {
     followNotifications({ store, bridge, api: () => api });
+    followQuit({ store, bridge });
     bridge.onMessage((m) => {
       if (m.type === 'app.active') { store.getState().setActive(m.active); return; }
       if (m.type === 'ghostty.configErrors') { store.getState().setConfigErrors(m.errors); return; }

@@ -58,8 +58,9 @@ enum ChromeCookies {
         return String(data: value, encoding: .utf8)
     }
 
-    // the file is opened immutable, so a running Chrome neither blocks the read nor sees it
-    static func read(profile: Profile, key: [UInt8]) throws -> (cookies: [HTTPCookie], stuck: Int) {
+    // the file is opened immutable, so a running Chrome neither blocks the read nor sees it; cut says why a read
+    // stopped before the last row
+    static func read(profile: Profile, key: [UInt8]) throws -> (cookies: [HTTPCookie], stuck: Int, cut: String?) {
         let uri = URL(fileURLWithPath: "\(root)/\(profile.dir)/Cookies").absoluteString + "?mode=ro&immutable=1"
         var db: OpaquePointer?
         guard sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK else {
@@ -81,7 +82,9 @@ enum ChromeCookies {
         let text = { (i: Int32) in sqlite3_column_text(stmt, i).map { String(cString: $0) } ?? "" }
         var cookies: [HTTPCookie] = []
         var stuck = 0
-        while sqlite3_step(stmt) == SQLITE_ROW {
+        var step = sqlite3_step(stmt)
+        while step == SQLITE_ROW {
+            defer { step = sqlite3_step(stmt) }
             let host = text(0)
             var value = text(2)
             let size = Int(sqlite3_column_bytes(stmt, 3))
@@ -106,6 +109,6 @@ enum ChromeCookies {
             }
             if let cookie = HTTPCookie(properties: props) { cookies.append(cookie) }
         }
-        return (cookies, stuck)
+        return (cookies, stuck, step == SQLITE_DONE ? nil : String(cString: sqlite3_errmsg(db)))
     }
 }

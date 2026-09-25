@@ -16,5 +16,8 @@
   <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
   <key>NSCameraUsageDescription</key><string>A site open in a character's browser is asking to use the camera.</string>
   <key>NSMicrophoneUsageDescription</key><string>A site open in a character's browser is asking to use the microphone.</string>
+  <key>NSLocationUsageDescription</key><string>A site open in a character's browser is asking for your location.</string>
+  <key>NSLocalNetworkUsageDescription</key><string>Archipelago, or a site open in a character's browser, is reaching a device on your local network.</string>
+  <key>NSDownloadsFolderUsageDescription</key><string>A character's browser saves the files you download there.</string>
 </dict>
 </plist>
