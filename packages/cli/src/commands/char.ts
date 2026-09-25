@@ -20,7 +20,7 @@ export function termOf(v: string | undefined): 2 | undefined {
 export function charCommands(connect: () => Promise<Client>, json: () => boolean): Command {
   const cmd = new Command('char').description('manage characters');
 
-  cmd.command('list').option('--island <id>').action(async (o: { island?: string }) => {
+  cmd.command('list').description("list every character, or one island's").option('--island <id>').action(async (o: { island?: string }) => {
     const c = await connect();
     const state = await c.call('state.get', {});
     const island = o.island ? islandId(state, o.island) : undefined;
@@ -33,7 +33,7 @@ export function charCommands(connect: () => Promise<Client>, json: () => boolean
     c.close();
   });
 
-  cmd.command('new')
+  cmd.command('new').description('make a character: a terminal on an island')
     .requiredOption('--island <id>').requiredOption('--cwd <path>')
     .option('--name <name>').option('--agent <name>', 'start claude or codex in its terminal').option('--claude', 'the same as --agent claude')
     .option('--command <cmd>').option('--cell <x,y>')
@@ -57,7 +57,7 @@ export function charCommands(connect: () => Promise<Client>, json: () => boolean
       c.close();
     });
 
-  cmd.command('move <id>').requiredOption('--island <id>').option('--cell <x,y>', 'omit it and the daemon picks a free cell')
+  cmd.command('move <id>').description('move a character to another island or cell').requiredOption('--island <id>').option('--cell <x,y>', 'omit it and the daemon picks a free cell')
     .action(async (id: string, o: { island: string; cell?: string }) => {
       const c = await connect();
       const state = await c.call('state.get', {});
@@ -69,7 +69,7 @@ export function charCommands(connect: () => Promise<Client>, json: () => boolean
       c.close();
     });
 
-  cmd.command('run <id> <text...>').option('--no-enter').option('--term <n>', 'terminal to type into: 1 (default) or 2')
+  cmd.command('run <id> <text...>').description("type text into a character's terminal, then Enter").option('--no-enter').option('--term <n>', 'terminal to type into: 1 (default) or 2')
     .action(async (id: string, text: string[], o: { enter: boolean; term?: string }) => {
       const c = await connect();
       const state = await c.call('state.get', {});
@@ -78,7 +78,7 @@ export function charCommands(connect: () => Promise<Client>, json: () => boolean
       c.close();
     });
 
-  cmd.command('read <id>').option('--transcript').option('--lines <n>', 'screen lines, or turns with --transcript', '50').option('--term <n>', 'terminal to read: 1 (default) or 2')
+  cmd.command('read <id>').description("print the end of a character's screen, or of its transcript").option('--transcript').option('--lines <n>', 'screen lines, or turns with --transcript', '50').option('--term <n>', 'terminal to read: 1 (default) or 2')
     .action(async (id: string, o: { transcript?: boolean; lines: string; term?: string }) => {
       const c = await connect();
       const state = await c.call('state.get', {});
@@ -87,7 +87,7 @@ export function charCommands(connect: () => Promise<Client>, json: () => boolean
       c.close();
     });
 
-  cmd.command('wait <id>').requiredOption('--until <statuses>').option('--timeout <seconds>', '', '600').option('--term <n>', 'terminal to wait on: 1 (default) or 2')
+  cmd.command('wait <id>').description('wait for a status; exits 0 on a match, 2 on timeout, 3 when the character is gone').requiredOption('--until <statuses>').option('--timeout <seconds>', '', '600').option('--term <n>', 'terminal to wait on: 1 (default) or 2')
     .action(async (id: string, o: { until: string; timeout: string; term?: string }) => {
       const wait = { until: o.until.split(',') as AgentStatus[], timeoutMs: int(o.timeout, '--timeout') * 1000, term: termOf(o.term) };
       const c = await connect();
@@ -105,7 +105,7 @@ export function charCommands(connect: () => Promise<Client>, json: () => boolean
       if (r.status === 'gone') process.exitCode = 3;
     });
 
-  contextOptions(cmd.command('update <id>')
+  contextOptions(cmd.command('update <id>').description("change a character's name, note, island, context or instructions")
     .option('--name <n>').option('--note <n>').option('--note-file <path>', 'read the note from a file, for text a shell would mangle')
     .option('--island <id>'))
     .action(async (id: string, o: { name?: string; note?: string; noteFile?: string; island?: string } & ContextFlags & { instructions?: string }) => {
@@ -131,8 +131,11 @@ export function charCommands(connect: () => Promise<Client>, json: () => boolean
     c.close();
   });
 
-  for (const [name, method] of [['seen', 'char.seen'], ['revive', 'char.revive']] as const) {
-    cmd.command(`${name} <id>`).action(async (id: string) => {
+  for (const [name, method, what] of [
+    ['seen', 'char.seen', "mark a character's last turn seen: done turns idle"],
+    ['revive', 'char.revive', "resume a dormant character's session in a new terminal"],
+  ] as const) {
+    cmd.command(`${name} <id>`).description(what).action(async (id: string) => {
       const c = await connect();
       const state = await c.call('state.get', {});
       const ch = await c.call(method, { id: charId(state, id) });
@@ -141,7 +144,7 @@ export function charCommands(connect: () => Promise<Client>, json: () => boolean
     });
   }
 
-  cmd.command('close <id>').action(async (id: string) => {
+  cmd.command('close <id>').description('delete a character, its terminal and its docs').action(async (id: string) => {
     const c = await connect();
     const state = await c.call('state.get', {});
     await c.call('char.close', { id: charId(state, id) });

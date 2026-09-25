@@ -8,7 +8,7 @@ import { islandId } from './resolve.js';
 export function islandCommands(connect: () => Promise<Client>, json: () => boolean): Command {
   const cmd = new Command('island').description('manage islands');
 
-  cmd.command('list').action(async () => {
+  cmd.command('list').description('list every island').action(async () => {
     const c = await connect();
     const state = await c.call('state.get', {});
     const islands = Object.values(state.islands);
@@ -19,7 +19,7 @@ export function islandCommands(connect: () => Promise<Client>, json: () => boole
     c.close();
   });
 
-  contextOptions(cmd.command('create <name>')
+  contextOptions(cmd.command('create <name>').description('make an island')
     .option('--at <x,y>').option('--size <w,h>').option('--description <d>'))
     .action(async (name: string, o: { at?: string; size?: string; description?: string; instructions?: string } & ContextFlags) => {
       const c = await connect();
@@ -37,7 +37,7 @@ export function islandCommands(connect: () => Promise<Client>, json: () => boole
       c.close();
     });
 
-  cmd.command('rename <id> <name>').action(async (id: string, name: string) => {
+  cmd.command('rename <id> <name>').description('rename an island').action(async (id: string, name: string) => {
     const c = await connect();
     const state = await c.call('state.get', {});
     const island = await c.call('island.update', { id: islandId(state, id), name });
@@ -45,7 +45,7 @@ export function islandCommands(connect: () => Promise<Client>, json: () => boole
     c.close();
   });
 
-  contextOptions(cmd.command('update <id>')
+  contextOptions(cmd.command('update <id>').description("change an island's name, description, place, size, context or instructions")
     .option('--name <n>').option('--description <d>').option('--at <x,y>').option('--size <w,h>'))
     .action(async (id: string, o: { name?: string; description?: string; at?: string; size?: string; instructions?: string } & { context: string[]; pin: string[]; unpin: string[]; drop: string[] }) => {
       const c = await connect();
@@ -79,7 +79,7 @@ export function islandCommands(connect: () => Promise<Client>, json: () => boole
     c.close();
   });
 
-  cmd.command('delete <id>').action(async (id: string) => {
+  cmd.command('delete <id>').description('delete an empty island and its docs').action(async (id: string) => {
     const c = await connect();
     const state = await c.call('state.get', {});
     await c.call('island.delete', { id: islandId(state, id) });

@@ -23,6 +23,9 @@ export { LAUNCHD_LABEL };
 const xml = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+const unxml = (s: string): string =>
+  s.replace(/&quot;/g, '"').replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
+
 const unshq = (s: string): string =>
   (s.startsWith("'") && s.endsWith("'") ? s.slice(1, -1).replace(/'\\''/g, "'") : s);
 
@@ -194,6 +197,50 @@ export type HomeSetup = {
   home: string; label: string; repoRoot: string; launchAgentsDir: string; launchctl: boolean; port?: number;
 };
 
+const isExecutable = (file: string): boolean => {
+  try { fs.accessSync(file, fs.constants.X_OK); return fs.statSync(file).isFile(); } catch { return false; }
+};
+
+// a Homebrew keg's versioned folder goes with the next upgrade, while its opt link stays
+const nodeDirOf = (execPath: string): string => path.dirname(execPath).replace(/\/Cellar\/([^/]+)\/[^/]+\/bin$/, '/opt/$1/bin');
+
+const realDir = (dir: string): string => {
+  try { return fs.realpathSync(dir); } catch { return dir; }
+};
+
+// launchd gives the daemon no shell PATH, so the folder this shell finds claude or codex in is added after the usual
+// ones when it is none of them, as for a pnpm, bun or volta global. Its real path, as a node manager's can be per shell
+function daemonPath(nodeDir: string): string {
+  const usual = [nodeDir, path.join(os.homedir(), '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'];
+  const dirs = (process.env.PATH ?? '').split(':').filter((dir) => path.isAbsolute(dir));
+  const found = ['claude', 'codex'].map((bin) => dirs.find((dir) => isExecutable(path.join(dir, bin))))
+    .filter((dir) => dir !== undefined).map(realDir);
+  const known = new Set(usual.map(realDir));
+  return [...new Set([...usual, ...found.filter((dir) => !known.has(dir))])].join(':');
+}
+
+const plistFile = (o: Pick<HomeSetup, 'label' | 'launchAgentsDir'>): string => path.join(o.launchAgentsDir, `${o.label}.plist`);
+
+const plistText = (o: Pick<HomeSetup, 'home' | 'label' | 'repoRoot'>, nodeDir: string): string => launchdPlist({
+  label: o.label, tsx: path.join(o.repoRoot, 'node_modules/.bin/tsx'), bin: path.join(o.repoRoot, 'packages/archid/src/bin.ts'),
+  home: o.home, log: resolvePaths(o.home).log, pathEnv: daemonPath(nodeDir), env: launchdEnv(),
+});
+
+/** The tsx and the PATH folders that a plist setup wrote starts archid with. */
+export function plistRun(text: string): { tsx?: string; path: string[] } {
+  const tsx = /<string>([^<]*\/node_modules\/\.bin\/tsx)<\/string>/.exec(text)?.[1];
+  const pathEnv = /<key>PATH<\/key><string>([^<]*)<\/string>/.exec(text)?.[1];
+  return { tsx: tsx && unxml(tsx), path: pathEnv ? unxml(pathEnv).split(':') : [] };
+}
+
+/** Whether a fleet's plist holds what setup would write now to run `repoRoot`; the node it names stands while it is there. */
+export function plistCurrent(o: Pick<HomeSetup, 'home' | 'label' | 'launchAgentsDir' | 'repoRoot'>): boolean {
+  let text: string;
+  try { text = fs.readFileSync(plistFile(o), 'utf8'); } catch { return false; }
+  const named = plistRun(text).path[0];
+  return text === plistText(o, named && isExecutable(path.join(named, 'node')) ? named : nodeDirOf(process.execPath));
+}
+
 export async function setupHome(o: HomeSetup): Promise<string[]> {
   const done: string[] = [];
   const paths = resolvePaths(o.home);
@@ -207,14 +254,9 @@ export async function setupHome(o: HomeSetup): Promise<string[]> {
   }
   if (!fs.existsSync(paths.tmuxConf)) { fs.writeFileSync(paths.tmuxConf, tmuxConfText(loadConfig(paths.config))); done.push(`tmux.conf -> ${paths.tmuxConf}`); }
 
-  const tsx = path.join(o.repoRoot, 'node_modules/.bin/tsx');
-  const bin = path.join(o.repoRoot, 'packages/archid/src/bin.ts');
-  // a Homebrew keg's versioned folder goes with the next upgrade, while its opt link stays
-  const nodeDir = path.dirname(process.execPath).replace(/\/Cellar\/([^/]+)\/[^/]+\/bin$/, '/opt/$1/bin');
-  const pathEnv = [nodeDir, path.join(os.homedir(), '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'].join(':');
   fs.mkdirSync(o.launchAgentsDir, { recursive: true });
-  const plist = path.join(o.launchAgentsDir, `${o.label}.plist`);
-  fs.writeFileSync(plist, launchdPlist({ label: o.label, tsx, bin, home: o.home, log: paths.log, pathEnv, env: launchdEnv() }));
+  const plist = plistFile(o);
+  fs.writeFileSync(plist, plistText(o, nodeDirOf(process.execPath)));
   done.push(`launchd plist -> ${plist}`);
 
   if (o.launchctl) done.push(await bootstrapAgent(o.launchAgentsDir, o.label));
@@ -340,13 +382,9 @@ const SHIMS = ['archi', 'archipelago'];
 // tsx otherwise reads the tsconfig of the caller's cwd, whose paths can point @archipelago/* at another checkout
 const shimText = (root: string): string => `#!/bin/sh\nexec ${shq(path.join(root, 'node_modules/.bin/tsx'))} --tsconfig ${shq(path.join(root, 'tsconfig.json'))} ${shq(path.join(root, 'packages/cli/src/main.ts'))} "$@"\n`;
 
-/** Whether both shims hold what setup would write now, for whichever checkout they run. */
-export const shimsCurrent = (shimDir: string): boolean => SHIMS.every((name) => {
-  const file = path.join(shimDir, name);
-  const text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
-  const root = /^exec '(.+)\/node_modules\/\.bin\/tsx' /m.exec(text)?.[1];
-  return root !== undefined && text === shimText(root.replaceAll(`'\\''`, `'`));
-});
+/** Whether both shims hold what setup would write now to run `root`. */
+export const shimsCurrent = (shimDir: string, root: string): boolean =>
+  SHIMS.every((name) => fs.existsSync(path.join(shimDir, name)) && fs.readFileSync(path.join(shimDir, name), 'utf8') === shimText(root));
 
 /** Throws, before anything is written, when the Claude settings or Codex's hooks need a change setup cannot write. */
 export function requireWritableHooks(home: string, settings: JsonSettings, codexHooks: JsonSettings | undefined): void {

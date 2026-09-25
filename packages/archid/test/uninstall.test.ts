@@ -5,8 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { codexInstalled, codexPaths } from '../src/codex/install.js';
 import { realDeps } from '../src/mobile.js';
+import { LAUNCHD_LABEL } from '../src/profile.js';
 import { HOOK_EVENTS, hookCommand, mergeHooks, mergeStatusLine, runSetup, statusWrapper, unmergeHooks, unmergeStatusLine } from '../src/setup.js';
-import { fleetData, purge, runUninstall } from '../src/uninstall.js';
+import { appQuit, fleetData, purge, runUninstall, type AppQuit } from '../src/uninstall.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
 afterEach(cleanHomes);
@@ -16,6 +17,8 @@ const statusScript = '/h/.archipelago/hooks/claude-status.mjs';
 const hook = hookCommand('/n/node', script, 'claude');
 const status = statusWrapper('/n/node', statusScript);
 const noTailscale = realDeps(() => Promise.reject(new Error('no tailscale')));
+// no test has an app open to quit, so one that tries fails
+const noApp: AppQuit = { isApp: () => false, quit: () => Promise.reject(new Error('quit an app that is not open')), wait: async () => {} };
 
 describe('unmergeHooks', () => {
   it('removes only Archipelago entries and the groups and events they leave empty', () => {
@@ -54,7 +57,7 @@ function installed() {
   fs.writeFileSync(settingsPath, JSON.stringify(mine));
   const launchAgentsDir = path.join(root, 'LaunchAgents');
   const shimDir = path.join(root, 'bin');
-  return { root, home, settingsPath, mine, launchAgentsDir, shimDir, o: { home, homes: [home], settingsPath, settingsPaths: [settingsPath], launchAgentsDir, shimDir, repoRoot, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(root, '.codex') }), mobile: noTailscale } };
+  return { root, home, settingsPath, mine, launchAgentsDir, shimDir, o: { home, homes: [home], settingsPath, settingsPaths: [settingsPath], launchAgentsDir, shimDir, repoRoot, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(root, '.codex') }), mobile: noTailscale, app: noApp } };
 }
 
 describe('runUninstall', () => {
@@ -125,6 +128,80 @@ describe('runUninstall', () => {
     await runSetup(f.o);
     await runUninstall(f.o);
     expect(fs.existsSync(f.o.codex.dir)).toBe(false);
+  });
+
+  it('removes a codex hooks file that held only its hooks', async () => {
+    const f = installed();
+    fs.mkdirSync(f.o.codex.dir);
+    await runSetup(f.o);
+    expect(await runUninstall(f.o)).toContain(`removed ${f.o.codex.hooks}`);
+    expect(fs.readdirSync(f.o.codex.dir)).toEqual([]);
+  });
+
+  it('quits each open window once by its pid, waiting for it to go before the next, and before it takes anything back', async () => {
+    const f = installed();
+    await runSetup(f.o);
+    const work = path.join(f.root, '.archipelago-work');
+    fs.mkdirSync(work);
+    fs.writeFileSync(path.join(work, 'config.json'), '{}');
+    fs.writeFileSync(path.join(f.home, 'app.pid'), `101\t${f.home}`);
+    fs.writeFileSync(path.join(work, 'app.pid'), `102\t${work}`);
+    const plist = path.join(f.launchAgentsDir, `${LAUNCHD_LABEL}.plist`);
+    const open = new Set([101, 102]);
+    const asked: [number, boolean][] = [];
+    let waits = 0;
+    // each window takes a few seconds to answer, as one asking about unsaved edits would
+    const app: AppQuit = {
+      isApp: (pid) => open.has(pid),
+      quit: async (pid) => { asked.push([pid, fs.existsSync(plist)]); },
+      wait: async () => { if (++waits % 5 === 0) open.delete(asked[asked.length - 1][0]); },
+    };
+    const lines = await runUninstall({ ...f.o, homes: [f.home, work], app });
+    expect(asked).toEqual([[101, true], [102, true]]);
+    expect(waits).toBe(10);
+    expect(lines[0]).toBe('quit Archipelago');
+
+    // one that stays, as after Cancel, is asked once and stops the run before anything is taken back
+    const g = installed();
+    await runSetup(g.o);
+    fs.writeFileSync(path.join(g.home, 'app.pid'), `101\t${g.home}`);
+    let quits = 0;
+    let waited = 0;
+    const stays: AppQuit = { isApp: (pid) => pid === 101, quit: async () => { quits++; }, wait: async () => { waited++; } };
+    await expect(runUninstall({ ...g.o, app: stays })).rejects.toThrow('Archipelago did not quit within 60 s, so nothing was changed');
+    expect([quits, waited]).toEqual([1, 60]);
+    expect(fs.existsSync(path.join(g.launchAgentsDir, `${LAUNCHD_LABEL}.plist`))).toBe(true);
+
+    // a quit macOS will not pass on stops the run at once, with the reason
+    const refused: AppQuit = { ...stays, quit: () => Promise.reject(new Error('Not authorized to send Apple events to Archipelago. (-1743)')) };
+    await expect(runUninstall({ ...g.o, app: refused }))
+      .rejects.toThrow('could not ask Archipelago to quit (Not authorized to send Apple events to Archipelago. (-1743)), so nothing was changed');
+    expect(waited).toBe(60);
+
+    // a pid the file names for another home is some other fleet's
+    fs.writeFileSync(path.join(g.home, 'app.pid'), `101\t/elsewhere/.archipelago`);
+    expect(await runUninstall({ ...g.o, app: stays })).toContain(`removed ${path.join(g.launchAgentsDir, `${LAUNCHD_LABEL}.plist`)}`);
+    expect(quits).toBe(1);
+  });
+
+  it('takes a pid that app.pid names but is not Archipelago for a window that crashed', async () => {
+    const f = installed();
+    await runSetup(f.o);
+    fs.writeFileSync(path.join(f.home, 'app.pid'), `${process.pid}\t${f.home}`);
+    expect(await runUninstall({ ...f.o, app: { ...noApp, isApp: appQuit.isApp } })).toContain(`removed ${path.join(f.launchAgentsDir, `${LAUNCHD_LABEL}.plist`)}`);
+  });
+
+  it('writes a codex hooks file that links elsewhere, rather than removing the link', async () => {
+    const f = installed();
+    fs.mkdirSync(f.o.codex.dir);
+    await runSetup(f.o);
+    const target = path.join(f.root, 'dotfiles', 'hooks.json');
+    fs.mkdirSync(path.dirname(target));
+    fs.renameSync(f.o.codex.hooks, target);
+    fs.symlinkSync(target, f.o.codex.hooks);
+    await runUninstall(f.o);
+    expect(fs.lstatSync(f.o.codex.hooks).isSymbolicLink()).toBe(true);
+    expect(JSON.parse(fs.readFileSync(target, 'utf8'))).toEqual({});
   });
 
   it('undoes what setup added to the machine and keeps the fleet', async () => {
@@ -221,7 +298,8 @@ describe('runUninstall', () => {
     const f = installed();
     await runSetup(f.o);
     fs.writeFileSync(f.settingsPath, '{ nope');
-    await expect(runUninstall(f.o)).rejects.toThrow('is not valid JSON');
+    fs.writeFileSync(path.join(f.home, 'app.pid'), `101\t${f.home}`);
+    await expect(runUninstall({ ...f.o, app: { ...noApp, isApp: () => true } })).rejects.toThrow('is not valid JSON');
     expect(fs.existsSync(path.join(f.launchAgentsDir, 'com.archipelago.archid.plist'))).toBe(true);
     expect(fs.existsSync(path.join(f.shimDir, 'archi'))).toBe(true);
   });

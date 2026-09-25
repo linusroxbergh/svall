@@ -12,7 +12,7 @@ import { isProfileName } from '@archipelago/archid/profile';
 import { HOOK_EVENTS, mergeHooks } from '@archipelago/archid/setup';
 import { cleanHomes, hasTmux, makeHome, waitFor } from '@archipelago/archid/test-helpers';
 import { Tmux } from '@archipelago/archid/tmux';
-import { buildProgram } from '../src/program.js';
+import { buildProgram, typo } from '../src/program.js';
 
 const exec = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -57,6 +57,16 @@ describe('archi argument parsing', () => {
     expect(r.stderr).toContain('.archipelago-archi-probe');
   });
 
+  it('takes a mistyped command for a typo, not a fleet to create', async () => {
+    const r = await run({}, 'stauts');
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain('unknown command stauts; did you mean status?');
+    expect(fs.existsSync(path.join(os.homedir(), '.archipelago-stauts'))).toBe(false);
+    expect(['setp', 'stats', 'hlep', 'doctr', 'islands'].map((w) => buildProgram().commands.map((c) => c.name()).concat('help').find((c) => typo(w, c))))
+      .toEqual(['setup', 'status', 'help', 'doctor', 'island']);
+    expect(['work', 'dev', 'client'].some((w) => buildProgram().commands.some((c) => typo(w, c.name())))).toBe(false);
+  });
+
   it('keeps every command name out of the profile names', () => {
     for (const name of [...buildProgram().commands.map((c) => c.name()), 'help']) {
       expect(isProfileName(name)).toBe(false);
@@ -84,6 +94,7 @@ describe('archi argument parsing', () => {
       expect(r.code).toBe(0);
       expect(r.stdout).toContain('! hooks  missing or out of date: run archi setup');
       expect(r.stdout).toContain('! shims  missing or out of date: run archi setup');
+      expect(r.stdout).toContain('! launchd  plist missing or out of date: run archi setup');
       expect(fs.readFileSync(settings, 'utf8')).toBe(old);
     } finally {
       fs.rmSync(path.dirname(settings), { recursive: true });
@@ -175,6 +186,7 @@ runIf('archi CLI', () => {
     home = makeHome();
     const r = await archi('status');
     expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/archid is not running .*; `archi doctor` says why/);
   });
 
   it('lists the home island with its kind and refuses --run without a command', async () => {

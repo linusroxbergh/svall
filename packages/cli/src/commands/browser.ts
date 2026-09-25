@@ -14,14 +14,14 @@ function target(state: FleetState, ref: string | undefined): string {
 export function browserCommands(connect: () => Promise<Client>, json: () => boolean): Command {
   const cmd = new Command('browser').description("a character's browser tabs");
 
-  cmd.command('open').argument('<url>').option('--char <id>').action(async (url: string, o: { char?: string }) => {
+  cmd.command('open').description('open a url in a new tab').argument('<url>').option('--char <id>').action(async (url: string, o: { char?: string }) => {
     const c = await connect();
     const tab = await c.call('browser.open', { id: target(await c.call('state.get', {}), o.char), url });
     printResult(tab, json(), () => tab.id);
     c.close();
   });
 
-  cmd.command('list').option('--char <id>').action(async (o: { char?: string }) => {
+  cmd.command('list').description('list the tabs, the active one starred').option('--char <id>').action(async (o: { char?: string }) => {
     const c = await connect();
     const state = await c.call('state.get', {});
     const b = state.characters[target(state, o.char)].browser;
@@ -30,7 +30,7 @@ export function browserCommands(connect: () => Promise<Client>, json: () => bool
     c.close();
   });
 
-  cmd.command('close').argument('<tab>').option('--char <id>').action(async (tab: string, o: { char?: string }) => {
+  cmd.command('close').description('close a tab').argument('<tab>').option('--char <id>').action(async (tab: string, o: { char?: string }) => {
     const c = await connect();
     await c.call('browser.close', { id: target(await c.call('state.get', {}), o.char), tab });
     printResult({}, json(), () => 'closed');

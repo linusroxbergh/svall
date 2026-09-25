@@ -5,7 +5,7 @@ import { codexPaths } from '@archipelago/archid/codex/install';
 import { realDeps } from '@archipelago/archid/mobile';
 import { userPaths } from '@archipelago/archid/paths';
 import { PRIVATE, profileHome } from '@archipelago/archid/profile';
-import { fleetData, fleetHomes, purge, runUninstall } from '@archipelago/archid/uninstall';
+import { appQuit, fleetData, fleetHomes, purge, runUninstall } from '@archipelago/archid/uninstall';
 import { printResult } from '../format.js';
 import { ask } from '../prompt.js';
 
@@ -44,6 +44,7 @@ export function uninstallCommand(json: () => boolean): Command {
           shimDir: userPaths().shimDir,
           launchctl: o.launchctl && process.platform === 'darwin',
           mobile: realDeps(),
+          app: appQuit,
           tmux: process.env.TMUX,
         }),
         data: () => fleetData({

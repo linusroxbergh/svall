@@ -25,11 +25,21 @@ export const Config = z.object({
 });
 export type Config = z.infer<typeof Config>;
 
+export class InvalidConfig extends Error {}
+
 export function loadConfig(file: string): Config {
   if (!fs.existsSync(file)) return Config.parse({});
+  return parseConfig(fs.readFileSync(file, 'utf8'), file);
+}
+
+/** The config `text` holds; throws an InvalidConfig that says, on one line, what in `file` is wrong. */
+export function parseConfig(text: string, file: string): Config {
   try {
-    return Config.parse(JSON.parse(fs.readFileSync(file, 'utf8')));
+    return Config.parse(JSON.parse(text));
   } catch (err) {
-    throw new Error(`invalid config ${file}: ${String(err)}`);
+    const why = err instanceof z.ZodError
+      ? err.issues.map((i) => `${i.path.join('.') || 'the whole file'}: ${i.message}`).join('; ')
+      : (err as Error).message;
+    throw new InvalidConfig(`invalid config ${file}: ${why}`);
   }
 }

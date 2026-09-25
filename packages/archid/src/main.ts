@@ -71,6 +71,8 @@ async function start(opts: Options): Promise<Daemon> {
   rotateLog(paths.log);
   const log = opts.log ?? createLogger();
   const config = loadConfig(paths.config);
+  // a state.json this archid refuses stops it before the hooks, tmux.conf and Codex's trust are touched
+  const store = Store.load(paths.state, log.error);
   installHookScripts(paths);
   fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
   const token = readOrCreateToken(paths.token);
@@ -85,7 +87,6 @@ async function start(opts: Options): Promise<Daemon> {
     catch (e) { log.error(`codex hooks: ${(e as Error).message}`); }
   }
 
-  const store = Store.load(paths.state, log.error);
   const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
   const tmuxVersion = await tmux.version();
   if (tmuxTooOld(tmuxVersion)) log.error(`${tmuxVersion} is older than 3.5: Shift+Enter will not reach Claude Code; brew upgrade tmux`);

@@ -1,12 +1,14 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import { once } from 'node:events';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
+import { FleetState, emptyState } from '@archipelago/protocol';
 import { resolvePaths } from '../src/paths.js';
 import { Tmux } from '../src/tmux/tmux.js';
-import { cleanHomes, hasTmux, makeHome } from './helpers.js';
+import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
 const exec = promisify(execFile);
 const root = path.resolve(import.meta.dirname, '../../..');
@@ -46,4 +48,50 @@ runIf('archid bin', () => {
       await new Promise((r) => blocker.close(r));
     }
   }, 40_000);
+
+  it('waits on a newer state.json before writing anything, naming the copy to go back to on a terminal, and starts once it changes', async () => {
+    const home = makeHome();
+    homes.push(home);
+    const version = FleetState.shape.version.value;
+    const state = path.join(home, 'state.json');
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh', port: 0 }));
+    fs.writeFileSync(state, JSON.stringify({ version: version + 1, islands: {}, characters: {} }));
+    for (const at of [100, 200]) fs.writeFileSync(path.join(home, `state.json.v${version}-${at}`), '{}');
+    const log = () => (fs.existsSync(resolvePaths(home).log) ? fs.readFileSync(resolvePaths(home).log, 'utf8') : '');
+    const why = `move ${path.join(home, `state.json.v${version}-200`)} to ${state}; archid starts once it is fixed`;
+    let out = '';
+    const pty = spawn('python3', [path.join(import.meta.dirname, 'fixtures', 'on-pty.py'), tsx, bin], { env: { ...process.env, ARCHI_HOME: home } });
+    pty.stdout.on('data', (d: Buffer) => { out += d.toString(); });
+    try {
+      await waitFor(() => out.includes(why), 30_000);
+      expect(out).toContain(`state.json is version ${version + 1}`);
+      expect(log()).toContain(why);
+      for (const written of ['hooks', 'tmux.conf', 'token']) expect(fs.existsSync(path.join(home, written))).toBe(false);
+      fs.writeFileSync(state, JSON.stringify(emptyState()));
+      await waitFor(() => log().includes('archid started'), 30_000);
+    } finally {
+      pty.stdin.write('\x03');
+      if (pty.exitCode === null) await once(pty, 'exit');
+    }
+  }, 70_000);
+
+  it('waits for a config.json that does not parse to be fixed, rather than exiting for launchd to restart', async () => {
+    const home = makeHome();
+    homes.push(home);
+    const config = path.join(home, 'config.json');
+    const log = () => (fs.existsSync(resolvePaths(home).log) ? fs.readFileSync(resolvePaths(home).log, 'utf8') : '');
+    fs.writeFileSync(config, '{ "shell": "/bin/sh", }');
+    const daemon = spawn(tsx, [bin], { env: { ...process.env, ARCHI_HOME: home }, stdio: 'ignore' });
+    try {
+      await waitFor(() => log().includes('archid starts once it is fixed'), 30_000);
+      expect(log()).toMatch(/invalid config .*config\.json: .*JSON/);
+      fs.writeFileSync(config, JSON.stringify({ shell: '/bin/sh', port: 0 }));
+      await waitFor(() => log().includes('archid started'), 30_000);
+      expect(daemon.exitCode).toBeNull();
+      expect(log().match(/invalid config/g)).toHaveLength(1);
+    } finally {
+      daemon.kill('SIGTERM');
+      if (daemon.exitCode === null) await once(daemon, 'exit');
+    }
+  }, 70_000);
 });

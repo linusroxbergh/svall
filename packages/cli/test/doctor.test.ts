@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { codexHookCommand, mergeCodexHooks } from '@archipelago/archid/codex/install';
+import { LAUNCHD_LABEL } from '@archipelago/archid/profile';
 import { HOOK_EVENTS, hookCommand, mergeHooks, mergeStatusLine, nodeRun, statusWrapper } from '@archipelago/archid/setup';
 import { codexCheck, doctor, preflight, requireReady, type DoctorDeps } from '../src/commands/doctor.js';
 
@@ -42,7 +43,7 @@ function fake(o: { commands?: Record<string, string | Error>; files?: Record<str
     },
     read: (p) => files[p],
     connect: async () => { if (o.up === false) throw new Error('connect ECONNREFUSED 127.0.0.1:47800'); return { close() {} }; },
-    connectHook: async () => { if (o.hookUp === false) throw new Error('connect ENOENT /u/.archipelago/hooks.sock'); },
+    connectHook: async () => { if (o.hookUp === false) throw Object.assign(new Error('connect ENOENT /u/.archipelago/hooks.sock - Local (undefined:undefined)'), { code: 'ENOENT' }); },
     uid: 501,
     settingsPath: '/u/.claude/settings.json',
     hooksHome: '/u/.archipelago',
@@ -91,9 +92,9 @@ describe('doctor', () => {
     const r = await doctor(priv, f.deps);
     const c = byName(r);
     expect(c.tmux).toMatchObject({ status: 'fail', detail: expect.stringMatching(/brew install tmux/) });
-    expect(c.claude).toMatchObject({ status: 'fail', detail: expect.stringMatching(/not found/) });
+    expect(c.claude).toMatchObject({ status: 'fail', detail: expect.stringMatching(/not found on PATH: install Claude Code, https:/) });
     expect(c.gh).toMatchObject({ status: 'warn', detail: expect.stringMatching(/gh auth login/) });
-    expect(c.archid).toMatchObject({ status: 'fail', detail: expect.stringMatching(/not running/) });
+    expect(c.archid).toMatchObject({ status: 'fail', detail: expect.stringMatching(/not running .*: the log below says why$/) });
     expect(c.launchd).toMatchObject({ status: 'fail', detail: expect.stringMatching(/not loaded/) });
     expect(c.hooks).toMatchObject({ status: 'fail', detail: expect.stringMatching(/archi setup/) });
     expect(r.log.lines).toEqual([]);
@@ -110,7 +111,7 @@ describe('doctor', () => {
   it('reports a missing hook receiver even when the API is answering, and how to restart that fleet', async () => {
     const c = byName(await doctor(priv, fake({ hookUp: false }).deps));
     expect(c.archid.status).toBe('ok');
-    expect(c['hook receiver']).toMatchObject({ status: 'fail', detail: expect.stringMatching(/ENOENT.*launchctl kickstart -k gui\/\$\(id -u\)\/com\.archipelago\.archid`$/) });
+    expect(c['hook receiver']).toMatchObject({ status: 'fail', detail: expect.stringMatching(/does not answer \(ENOENT\); restart it with `launchctl kickstart -k gui\/\$\(id -u\)\/com\.archipelago\.archid`$/) });
     const work = byName(await doctor({ name: 'work', home: '/u/.archipelago-work', managed: true }, fake({ hookUp: false }).deps));
     expect(work['hook receiver'].detail).toMatch(/com\.archipelago\.archid\.work`$/);
     expect(byName(await doctor(adhoc, fake({ hookUp: false }).deps))['hook receiver'].detail).toMatch(/restart the archid serving \/tmp\/archi-dev$/);
@@ -150,6 +151,22 @@ describe('doctor', () => {
     expect(byName(await doctor(adhoc, fake().deps))['daemon node'].status).toBe('skip');
   });
 
+  it('fails a plist whose checkout is gone, and warns when its PATH lacks a claude or codex this shell finds', async () => {
+    const TSX = '/old/R&amp;D/archipelago/node_modules/.bin/tsx';
+    const running = (pathEnv: string) => `<dict>\n    <string>${TSX}</string>\n    <key>PATH</key><string>${pathEnv}</string>\n</dict>`;
+    const there = { '/old/R&D/archipelago/node_modules/.bin/tsx': '', '/opt/homebrew/opt/node/bin/node': '' };
+    expect(byName(await doctor(priv, fake({ files: { [PLIST]: running('/opt/homebrew/opt/node/bin:/usr/bin'), ...there } }).deps))['daemon path'].status).toBe('ok');
+    const gone = byName(await doctor(priv, fake({ files: { [PLIST]: running('/opt/homebrew/opt/node/bin:/usr/bin') } }).deps));
+    expect(gone['daemon path']).toMatchObject({ status: 'fail', detail: '/old/R&D/archipelago/node_modules/.bin/tsx is gone, so launchd cannot start archid: archi setup' });
+    const pnpm = { '/u/Library/pnpm/claude': '', '/u/Library/pnpm/codex': '' };
+    const lacking = fake({ files: { [PLIST]: running('/opt/homebrew/opt/node/bin:/usr/bin'), ...there, ...pnpm }, pathEnv: '/u/Library/pnpm:/usr/bin' });
+    expect(byName(await doctor(priv, lacking.deps))['daemon path'])
+      .toMatchObject({ status: 'warn', detail: `the PATH in ${PLIST} has no claude or codex, which this shell finds: archi setup` });
+    const carried = fake({ files: { [PLIST]: running('/opt/homebrew/opt/node/bin:/usr/bin:/u/Library/pnpm'), ...there, ...pnpm }, pathEnv: '/u/Library/pnpm:/usr/bin' });
+    expect(byName(await doctor(priv, carried.deps))['daemon path'].status).toBe('ok');
+    expect(byName(await doctor(adhoc, fake().deps))['daemon path'].status).toBe('skip');
+  });
+
   it('warns when the plist lacks where this shell keeps Claude and Codex files', async () => {
     const env = { CLAUDE_CONFIG_DIR: '/x/claude', CODEX_HOME: '/x/codex' };
     const lacking = byName(await doctor(priv, fake({ daemonEnv: env }).deps));
@@ -160,6 +177,28 @@ describe('doctor', () => {
     expect(byName(await doctor({ name: 'work', home: '/u/.archipelago-work', managed: true }, work.deps))['daemon env'].detail).toMatch(/archi work$/);
     expect(byName(await doctor(priv, fake().deps))['daemon env'].status).toBe('ok');
     expect(byName(await doctor(adhoc, fake({ daemonEnv: env }).deps))['daemon env'].status).toBe('skip');
+  });
+
+  it('fails a config.json that does not parse, saying where and what is wrong on one line', async () => {
+    expect(byName(await doctor(priv, fake().deps)).config).toMatchObject({ status: 'ok' });
+    for (const [text, why] of [['{}{}', /after JSON/], ['{ "port": "x", "mobile": { "httpsPort": 1 } }', /port: .*expected number.*; mobile\.httpsPort: /]] as const) {
+      const c = byName(await doctor(priv, fake({ files: { '/u/.archipelago/config.json': text } }).deps)).config;
+      expect(c).toMatchObject({ status: 'fail', detail: expect.stringMatching(/^invalid config \/u\/\.archipelago\/config\.json: .*; a stopped archid waits for it to be fixed$/) });
+      expect(c.detail).toMatch(why);
+      expect(c.detail).not.toContain('\n');
+    }
+  });
+
+  it('fails hooks that Claude Code settings turn off', async () => {
+    const off = JSON.stringify({ ...JSON.parse(installed), disableAllHooks: true });
+    expect(byName(await doctor(priv, fake({ files: { '/u/.claude/settings.json': off } }).deps)).hooks)
+      .toMatchObject({ status: 'fail', detail: expect.stringMatching(/sets disableAllHooks/) });
+  });
+
+  it('reads only the service\'s own state from launchd, not its triggers\'', async () => {
+    const out = '\tstate = running\n\truns = 4\n\tlast exit code = 0\n\tevent triggers = {\n\t\tstate = active\n\t}\n\t\tstate = active\n';
+    const c = byName(await doctor(priv, fake({ commands: { [`launchctl print gui/501/${LAUNCHD_LABEL}`]: out } }).deps));
+    expect(c.launchd.detail).toBe(`${LAUNCHD_LABEL}: state = running, runs = 4, last exit code = 0`);
   });
 
   it('asks launchd about the profile it was pointed at, and not at all for an ad-hoc home', async () => {
@@ -176,15 +215,15 @@ describe('preflight', () => {
   it('checks what setup needs without asking the daemon, launchd or gh', async () => {
     const f = fake({ up: false, files: { '/u/.claude/settings.json': undefined as never } });
     const checks = await preflight(f.deps);
-    expect(checks.map((c) => c.name)).toEqual(['tmux', 'node', 'claude', 'shims']);
+    expect(checks.map((c) => c.name)).toEqual(['tmux', 'node', 'claude', 'path']);
     expect(checks.every((c) => c.status === 'ok')).toBe(true);
     expect(f.calls).toEqual(['tmux -V', 'claude --version']);
   });
 
   it('warns when the shim directory is not on PATH', async () => {
-    const shims = (await preflight(fake({ pathEnv: '/usr/bin:/bin' }).deps)).find((c) => c.name === 'shims');
+    const shims = (await preflight(fake({ pathEnv: '/usr/bin:/bin' }).deps)).find((c) => c.name === 'path');
     expect(shims).toMatchObject({ status: 'warn', detail: expect.stringMatching(/\/u\/\.local\/bin is not on PATH/) });
-    expect(byName(await doctor(priv, fake({ pathEnv: '/usr/bin' }).deps)).shims.status).toBe('warn');
+    expect(byName(await doctor(priv, fake({ pathEnv: '/usr/bin' }).deps)).path.status).toBe('warn');
   });
 });
 

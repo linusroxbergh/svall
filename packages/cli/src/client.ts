@@ -22,6 +22,9 @@ export const restartHint = (t: Target): string => (t.managed
   ? `restart it with \`launchctl kickstart -k gui/$(id -u)/${profileLabel(t.name)}\``
   : `restart the archid serving ${t.home}`);
 
+/** The doctor that checks a fleet; an ad-hoc home is found again through the same $ARCHI_HOME. */
+const doctorHint = (t: Target): string => (t.managed ? `archi -p ${t.name} doctor` : 'archi doctor');
+
 const deadline = <T>(p: Promise<T>, ms: number, message: string): Promise<T> => {
   let timer: NodeJS.Timeout;
   return Promise.race([
@@ -57,7 +60,7 @@ export class Client {
   static async connect(home: string = archiHome()): Promise<Client> {
     const paths = resolvePaths(home);
     if (!fs.existsSync(paths.port) || !fs.existsSync(paths.token)) {
-      throw new Error(`archid is not running (no ${paths.port}). Start it with \`archi setup\` or \`pnpm archid\`.`);
+      throw new Error(`archid is not running (no ${paths.port}); \`${doctorHint(resolveTarget({ env: home }))}\` says why`);
     }
     const port = Number(fs.readFileSync(paths.port, 'utf8'));
     const token = fs.readFileSync(paths.token, 'utf8').trim();

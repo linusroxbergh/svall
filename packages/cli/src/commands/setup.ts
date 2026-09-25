@@ -1,8 +1,8 @@
 import { Command } from 'commander';
 import { codexPaths } from '@archipelago/archid/codex/install';
 import { repoRoot, resolvePaths, userPaths } from '@archipelago/archid/paths';
-import { PRIVATE } from '@archipelago/archid/profile';
-import { claudeHooksCurrent, codexHooksCurrent, readCodexHooks, readJsonSettings, requireWritableHooks, runSetup, shimsCurrent } from '@archipelago/archid/setup';
+import { LAUNCHD_LABEL, PRIVATE } from '@archipelago/archid/profile';
+import { claudeHooksCurrent, codexHooksCurrent, plistCurrent, readCodexHooks, readJsonSettings, requireWritableHooks, runSetup, shimsCurrent } from '@archipelago/archid/setup';
 import { printResult } from '../format.js';
 import { preflight, realPreflightDeps, requireReady } from './doctor.js';
 import type { Target } from '../target.js';
@@ -24,12 +24,16 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       const codexHooks = readCodexHooks(codex);
       requireWritableHooks(t.home, settings, codexHooks);
       if (o.check) {
-        // desktop:install runs setup when it sees one of these lines, as nothing else rewrites the Claude hooks or the shims
+        // desktop:install runs setup when it sees one of these lines, as nothing else rewrites the Claude hooks, the shims or the plist
         const script = resolvePaths(t.home).hookScript;
         if (!claudeHooksCurrent(settings.settings, t.home) || (codexHooks && !codexHooksCurrent(codexHooks.settings, script))) {
           warnings.push('! hooks  missing or out of date: run archi setup');
         }
-        if (!shimsCurrent(userPaths().shimDir)) warnings.push('! shims  missing or out of date: run archi setup');
+        // desktop:install puts this checkout's app in place, so shims or a plist that run another checkout, moved or not, are out of date
+        if (!shimsCurrent(userPaths().shimDir, repoRoot())) warnings.push('! shims  missing or out of date: run archi setup');
+        if (!plistCurrent({ home: t.home, label: LAUNCHD_LABEL, launchAgentsDir: userPaths().launchAgents, repoRoot: repoRoot() })) {
+          warnings.push('! launchd  plist missing or out of date: run archi setup');
+        }
         printResult({ done: [], warnings }, json(), () => [...warnings, 'ready for archi setup'].join('\n'));
         return;
       }

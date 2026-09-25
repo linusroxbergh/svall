@@ -6,8 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { codexHookCommand, codexPaths, mergeCodexHooks } from '../src/codex/install.js';
 import { isOurs } from '../src/paths.js';
+import { LAUNCHD_LABEL } from '../src/profile.js';
 import {
-  HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hookCommand, hooksInstalled, installHomeTemplate, launchdPlist, mergeHooks, mergeStatusLine, nodeRun, readJsonSettings, runSetup, setupHome,
+  HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hookCommand, hooksInstalled, installHomeTemplate, launchdPlist, mergeHooks, mergeStatusLine, nodeRun, plistCurrent, readJsonSettings, runSetup, setupHome,
   shimsCurrent, statusWrapper, unmergeHooks, unmergeStatusLine, writeJsonSettings,
 } from '../src/setup.js';
 import { shq } from '../src/text.js';
@@ -243,18 +244,21 @@ describe('runSetup', () => {
     expect(execFileSync(path.join(shimDir, 'archi'), ['--help'], { cwd: other, encoding: 'utf8' })).toContain('Usage: archi');
   });
 
-  it('calls the shims current only when they are what setup writes now, for whichever checkout they run', async () => {
+  it('calls the shims current while they are what setup writes now for this checkout', async () => {
     const home = makeHome();
     const shimDir = path.join(home, 'bin');
-    expect(shimsCurrent(shimDir)).toBe(false);
+    expect(shimsCurrent(shimDir, repoRoot)).toBe(false);
     await runSetup({ home, settingsPath: path.join(home, 'claude-settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir, repoRoot, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }) });
-    expect(shimsCurrent(shimDir)).toBe(true);
+    expect(shimsCurrent(shimDir, repoRoot)).toBe(true);
+    // the app desktop:install puts in place is this checkout's, so shims that run another one, moved or not, are out of date
     const shim = path.join(shimDir, 'archipelago');
-    fs.writeFileSync(shim, fs.readFileSync(shim, 'utf8').replaceAll(repoRoot, "/Users/o'\\''brien/archipelago"));
-    expect(shimsCurrent(shimDir)).toBe(true);
+    const written = fs.readFileSync(shim, 'utf8');
+    fs.writeFileSync(shim, written.replaceAll(repoRoot, path.join(home, 'other-clone')));
+    expect(shimsCurrent(shimDir, repoRoot)).toBe(false);
+    fs.writeFileSync(shim, written);
     // one without --tsconfig runs whatever the caller's cwd maps @archipelago/* to
-    fs.writeFileSync(shim, `#!/bin/sh\nexec ${shq(path.join(repoRoot, 'node_modules/.bin/tsx'))} ${shq(path.join(repoRoot, 'packages/cli/src/main.ts'))} "$@"\n`);
-    expect(shimsCurrent(shimDir)).toBe(false);
+    fs.writeFileSync(path.join(shimDir, 'archi'), `#!/bin/sh\nexec ${shq(path.join(repoRoot, 'node_modules/.bin/tsx'))} ${shq(path.join(repoRoot, 'packages/cli/src/main.ts'))} "$@"\n`);
+    expect(shimsCurrent(shimDir, repoRoot)).toBe(false);
   });
 
   it('runs the statusline you had without node outside a character, and once the script is gone', async () => {
@@ -520,6 +524,78 @@ describe('setupHome', () => {
     } finally {
       process.execPath = execPath;
     }
+  });
+
+  it('adds the folder this shell finds claude in to the daemon PATH when it is not a usual one', async () => {
+    const home = makeHome();
+    const o = { home, label: LAUNCHD_LABEL, repoRoot, launchAgentsDir: path.join(home, 'LaunchAgents'), launchctl: false };
+    const pathEnv = () => /<key>PATH<\/key><string>([^<]*)/.exec(fs.readFileSync(path.join(o.launchAgentsDir, `${LAUNCHD_LABEL}.plist`), 'utf8'))?.[1];
+    const pnpmHome = path.join(home, 'Library', 'pnpm');
+    fs.mkdirSync(pnpmHome, { recursive: true });
+    fs.writeFileSync(path.join(pnpmHome, 'claude'), '#!/bin/sh\n', { mode: 0o755 });
+    const usual = ['/n/bin', path.join(os.homedir(), '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'].join(':');
+    const execPath = process.execPath;
+    try {
+      process.execPath = '/n/bin/node';
+      vi.stubEnv('PATH', `/usr/bin:${pnpmHome}`);
+      await setupHome(o);
+      expect(pathEnv()).toBe(`${usual}:${fs.realpathSync(pnpmHome)}`);
+      vi.stubEnv('PATH', '/usr/bin:/bin');
+      await setupHome(o);
+      expect(pathEnv()).toBe(usual);
+
+      // a node manager's per-shell link to the node folder, as fnm's, is that folder in every shell
+      const nodeDir = path.join(home, 'node-24', 'bin');
+      fs.mkdirSync(nodeDir, { recursive: true });
+      for (const bin of ['node', 'claude']) fs.writeFileSync(path.join(nodeDir, bin), '#!/bin/sh\n', { mode: 0o755 });
+      process.execPath = path.join(nodeDir, 'node');
+      const shells = ['1', '2'].map((n) => path.join(home, 'multishells', n));
+      fs.mkdirSync(path.dirname(shells[0]));
+      for (const shell of shells) fs.symlinkSync(path.dirname(nodeDir), shell);
+      vi.stubEnv('PATH', `${path.join(shells[0], 'bin')}:/usr/bin`);
+      await setupHome(o);
+      expect(pathEnv()).toBe([nodeDir, ...usual.split(':').slice(1)].join(':'));
+      vi.stubEnv('PATH', `${path.join(shells[1], 'bin')}:/usr/bin`);
+      expect(plistCurrent(o)).toBe(true);
+    } finally {
+      process.execPath = execPath;
+    }
+  });
+
+  it('calls a plist current while it is what setup writes now for this checkout, and the node it names is still there', async () => {
+    const home = makeHome();
+    const o = { home, label: LAUNCHD_LABEL, repoRoot, launchAgentsDir: path.join(home, 'LaunchAgents'), launchctl: false };
+    const plist = path.join(o.launchAgentsDir, `${LAUNCHD_LABEL}.plist`);
+    expect(plistCurrent(o)).toBe(false);
+    await setupHome(o);
+    expect(plistCurrent(o)).toBe(true);
+    const written = fs.readFileSync(plist, 'utf8');
+    // a plist that runs another checkout, moved or not, is out of date for this one
+    fs.writeFileSync(plist, written.replaceAll(repoRoot, path.join(home, 'other-clone')));
+    expect(plistCurrent(o)).toBe(false);
+    fs.writeFileSync(plist, written.replace('<key>RunAtLoad</key>', '<key>ThrottleInterval</key><integer>5</integer>\n  <key>RunAtLoad</key>'));
+    expect(plistCurrent(o)).toBe(false);
+
+    // written under another node, which archi running under this one is no reason to replace, until it is gone;
+    // the plist holds the node's folder as XML, & and all
+    const node = path.join(home, 'R&D', 'node-22', 'bin');
+    fs.mkdirSync(node, { recursive: true });
+    fs.writeFileSync(path.join(node, 'node'), '#!/bin/sh\n', { mode: 0o755 });
+    const execPath = process.execPath;
+    try {
+      process.execPath = path.join(node, 'node');
+      await setupHome(o);
+    } finally {
+      process.execPath = execPath;
+    }
+    expect(fs.readFileSync(plist, 'utf8')).toContain('R&amp;D');
+    expect(plistCurrent(o)).toBe(true);
+    fs.rmSync(path.join(node, 'node'));
+    expect(plistCurrent(o)).toBe(false);
+    // and so does the checkout's
+    const amp = { ...o, repoRoot: path.join(home, 'R&D', 'archipelago') };
+    await setupHome(amp);
+    expect(plistCurrent(amp)).toBe(true);
   });
 
   it('passes the Claude and Codex homes on to the daemon when they are set', async () => {

@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { Command } from 'commander';
 import { Client } from './client.js';
 import { browserCommands } from './commands/browser.js';
@@ -12,6 +13,15 @@ import { uninstallCommand } from './commands/uninstall.js';
 import { launch, realDeps } from './launch.js';
 import { resolveTarget, targetFor } from './target.js';
 import { checkoutVersion } from './version.js';
+
+/** Whether `word` is `name` with one letter added, dropped, changed, or two neighbours swapped. */
+export function typo(word: string, name: string): boolean {
+  if (word === name || Math.abs(word.length - name.length) > 1) return false;
+  let i = 0;
+  while (word[i] === name[i]) i++;
+  const [a, b] = [word.slice(i), name.slice(i)];
+  return a.slice(1) === b.slice(1) || a.slice(1) === b || a === b.slice(1) || (a[0] === b[1] && a[1] === b[0] && a.slice(2) === b.slice(2));
+}
 
 export function buildProgram(): Command {
   const program = new Command('archi')
@@ -34,7 +44,12 @@ export function buildProgram(): Command {
   const connect = () => Client.connect(home());
 
   program.action(async (profile?: string) => {
-    await launch(profile === undefined ? target() : targetFor(profile), realDeps());
+    const t = profile === undefined ? target() : targetFor(profile);
+    // a mistyped command arrives as a profile name, and must not be offered as a new fleet
+    const meant = profile !== undefined && !fs.existsSync(t.home)
+      ? [...program.commands.map((c) => c.name()), 'help'].find((c) => typo(profile, c)) : undefined;
+    if (meant) throw new Error(`unknown command ${profile}; did you mean ${meant}? (archi -p ${profile} makes a fleet by that name)`);
+    await launch(t, realDeps());
   });
   program.addCommand(statusCommand(connect, json, home));
   program.addCommand(islandCommands(connect, json));

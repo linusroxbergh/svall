@@ -1,4 +1,4 @@
-// node design/app-icon/gen.mjs: draws the app icon and writes the macOS .icns and the web/phone icons.
+// node scripts/app-icon/gen.mjs: draws the app icon and writes the macOS .icns and the web/phone icons.
 // Rasterising needs the web app's Playwright chromium; the .icns needs macOS iconutil.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -61,7 +61,7 @@ const web = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" wid
 `;
 
 const icons = join(root, 'apps/desktop/web/public/icons');
-writeFileSync(join(root, 'design/app-icon/app-icon.svg'), mac);
+writeFileSync(join(root, 'scripts/app-icon/app-icon.svg'), mac);
 writeFileSync(join(icons, 'icon.svg'), web);
 
 const browser = await chromium.launch();

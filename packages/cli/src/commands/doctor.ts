@@ -6,9 +6,10 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { Command } from 'commander';
 import { codexInstalled, codexPaths, type CodexPaths } from '@archipelago/archid/codex/install';
+import { parseConfig } from '@archipelago/archid/config';
 import { resolvePaths, userPaths } from '@archipelago/archid/paths';
 import { PRIVATE, profileHome, profileLabel } from '@archipelago/archid/profile';
-import { HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hooksInstalled, launchdEnv, plistEnv } from '@archipelago/archid/setup';
+import { HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hooksInstalled, launchdEnv, plistEnv, plistRun } from '@archipelago/archid/setup';
 import { tmuxTooOld } from '@archipelago/archid/tmux/conf';
 import { Client, restartHint } from '../client.js';
 import { printResult } from '../format.js';
@@ -63,18 +64,18 @@ async function claude(d: PreflightDeps): Promise<Check> {
   try {
     return { name: 'claude', status: 'ok', detail: firstLine(await d.run('claude', ['--version'])) };
   } catch (e) {
-    return { name: 'claude', status: 'fail', detail: missing(e) ? 'not found on PATH' : firstLine((e as Error).message) };
+    return { name: 'claude', status: 'fail', detail: missing(e) ? 'not found on PATH: install Claude Code, https://code.claude.com/docs/en/setup' : firstLine((e as Error).message) };
   }
 }
 
-function shims(d: PreflightDeps): Check {
+function shimDirOnPath(d: PreflightDeps): Check {
   return d.pathEnv.split(':').includes(d.shimDir)
-    ? { name: 'shims', status: 'ok', detail: `${d.shimDir} is on PATH` }
-    : { name: 'shims', status: 'warn', detail: `${d.shimDir} is not on PATH, so your shell will not find archi; add it in your shell profile` };
+    ? { name: 'path', status: 'ok', detail: `${d.shimDir} is on PATH` }
+    : { name: 'path', status: 'warn', detail: `${d.shimDir} is not on PATH, so your shell will not find archi; add it in your shell profile` };
 }
 
 export async function preflight(d: PreflightDeps): Promise<Check[]> {
-  return [await tmux(d), node(d), await claude(d), shims(d)];
+  return [await tmux(d), node(d), await claude(d), shimDirOnPath(d)];
 }
 
 const MARK = { ok: '✓', warn: '!', fail: '✗', skip: '–' };
@@ -97,9 +98,22 @@ async function gh(d: DoctorDeps): Promise<Check> {
   }
 }
 
+// archid waits, without starting, while its config.json does not parse
+function config(t: Target, d: DoctorDeps): Check {
+  const file = resolvePaths(t.home).config;
+  const text = d.read(file);
+  if (text === undefined) return { name: 'config', status: 'ok', detail: `the defaults, as there is no ${file}` };
+  try {
+    parseConfig(text, file);
+    return { name: 'config', status: 'ok', detail: file };
+  } catch (e) {
+    return { name: 'config', status: 'fail', detail: `${(e as Error).message}; a stopped archid waits for it to be fixed` };
+  }
+}
+
 async function archid(t: Target, d: DoctorDeps): Promise<Check> {
   const port = d.read(resolvePaths(t.home).port)?.trim();
-  if (!port) return { name: 'archid', status: 'fail', detail: `not running (no port file in ${t.home})` };
+  if (!port) return { name: 'archid', status: 'fail', detail: `not running (no port file in ${t.home}): the log below says why` };
   try {
     (await d.connect(t.home)).close();
     return { name: 'archid', status: 'ok', detail: `running on port ${port}` };
@@ -114,7 +128,9 @@ async function hookReceiver(t: Target, d: DoctorDeps): Promise<Check> {
     await d.connectHook(path);
     return { name: 'hook receiver', status: 'ok', detail: `answering at ${path}` };
   } catch (e) {
-    return { name: 'hook receiver', status: 'fail', detail: `${path} does not answer: ${(e as Error).message}; ${restartHint(t)}` };
+    // node adds " - Local (undefined:undefined)" to a socket's error message, so the code stands for it
+    const why = (e as NodeJS.ErrnoException).code ?? (e as Error).message;
+    return { name: 'hook receiver', status: 'fail', detail: `${path} does not answer (${why}); ${restartHint(t)}` };
   }
 }
 
@@ -123,7 +139,8 @@ async function launchd(t: Target, d: DoctorDeps): Promise<Check> {
   const label = profileLabel(t.name);
   try {
     const out = await d.run('launchctl', ['print', `gui/${d.uid}/${label}`]);
-    const fields = out.split('\n').map((l) => l.trim()).filter((l) => /^(state|last exit code|runs) =/.test(l));
+    // the service's own fields sit one tab in; deeper ones belong to its endpoints and triggers
+    const fields = out.split('\n').filter((l) => /^\t(state|last exit code|runs) =/.test(l)).map((l) => l.trim());
     const running = fields.includes('state = running');
     return { name: 'launchd', status: running ? 'ok' : 'fail', detail: `${label}: ${fields.join(', ') || 'loaded'}` };
   } catch {
@@ -142,12 +159,28 @@ function plistOf(t: Target, d: DoctorDeps): { plist: string; fix: string } {
 function daemonNode(t: Target, d: DoctorDeps): Check {
   if (!t.managed) return { name: 'daemon node', status: 'skip', detail: 'not managed' };
   const { plist, fix } = plistOf(t, d);
-  const dir = /<key>PATH<\/key><string>([^:<]*)/.exec(d.read(plist) ?? '')?.[1];
+  const dir = plistRun(d.read(plist) ?? '').path[0];
   if (!dir) return { name: 'daemon node', status: 'skip', detail: `no PATH in ${plist}` };
   if (!d.exists(path.join(dir, 'node'))) return { name: 'daemon node', status: 'warn', detail: `${dir}/node is gone: ${fix}` };
   return /^\/nix\/store\/|\/Cellar\/|\/v?\d+\.\d+\.\d+[^/]*\//.test(`${dir}/`)
     ? { name: 'daemon node', status: 'warn', detail: `${dir} belongs to one node version, and archid will not start once that version is removed; after changing node: ${fix}` }
     : { name: 'daemon node', status: 'ok', detail: `${dir}/node` };
+}
+
+// launchd runs the plist's tsx with only the plist's PATH, and logs nothing to archid.log when it cannot:
+// a checkout moved or deleted since setup, or a claude or codex installed since outside that PATH
+function daemonPath(t: Target, d: DoctorDeps): Check {
+  if (!t.managed) return { name: 'daemon path', status: 'skip', detail: 'not managed' };
+  const { plist, fix } = plistOf(t, d);
+  const text = d.read(plist);
+  if (text === undefined) return { name: 'daemon path', status: 'skip', detail: `no ${plist}` };
+  const run = plistRun(text);
+  if (run.tsx && !d.exists(run.tsx)) return { name: 'daemon path', status: 'fail', detail: `${run.tsx} is gone, so launchd cannot start archid: ${fix}` };
+  const finds = (dirs: string[], bin: string) => dirs.some((dir) => d.exists(path.join(dir, bin)));
+  const lacks = ['claude', 'codex'].filter((bin) => finds(d.pathEnv.split(':'), bin) && !finds(run.path, bin));
+  return lacks.length
+    ? { name: 'daemon path', status: 'warn', detail: `the PATH in ${plist} has no ${lacks.join(' or ')}, which this shell finds: ${fix}` }
+    : { name: 'daemon path', status: 'ok', detail: 'its checkout is there, and it finds claude and codex as this shell does' };
 }
 
 // launchd gives archid only the plist's environment, which setup took from the shell it ran in
@@ -168,12 +201,15 @@ function hooks(d: DoctorDeps): Check {
   const text = d.read(d.settingsPath);
   let ok = false;
   let current = false;
+  let disabled = false;
   try {
     const settings = text === undefined ? undefined : JSON.parse(text);
     ok = settings !== undefined && hooksInstalled(settings, HOOK_EVENTS, d.hooksHome);
     current = ok && claudeHooksCurrent(settings, d.hooksHome);
+    disabled = settings?.disableAllHooks === true;
   } catch { /* unparseable counts as missing */ }
   if (!ok) return { name: 'hooks', status: 'fail', detail: `not installed in ${d.settingsPath}: archi setup` };
+  if (disabled) return { name: 'hooks', status: 'fail', detail: `${d.settingsPath} sets disableAllHooks, so no character gets a status; remove it` };
   return current
     ? { name: 'hooks', status: 'ok', detail: `installed in ${d.settingsPath}` }
     : { name: 'hooks', status: 'warn', detail: `out of date in ${d.settingsPath}: run archi setup` };
@@ -205,10 +241,12 @@ export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
   const checks = [
     ...await preflight(d),
     await gh(d),
+    config(t, d),
     await archid(t, d),
     await hookReceiver(t, d),
     await launchd(t, d),
     daemonNode(t, d),
+    daemonPath(t, d),
     daemonEnv(t, d),
     hooks(d),
     await codexCheck(d),

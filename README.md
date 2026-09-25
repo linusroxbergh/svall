@@ -43,7 +43,8 @@ clients.
 
 Archipelago builds on macOS 15.6 or newer with the Command Line Tools for
 Xcode 26 or newer, which Homebrew installs. On an Apple Silicon Mac the install
-downloads the terminal engine prebuilt. An Intel Mac also needs Xcode; see
+downloads the terminal engine prebuilt, and the clone, its dependencies and the
+build take about 750 MB of disk. An Intel Mac also needs Xcode; see
 [Building Ghostty from source](#building-ghostty-from-source).
 
 1. Install the tools and the [Claude Code CLI](https://code.claude.com/docs/en/setup).
@@ -83,7 +84,8 @@ downloads the terminal engine prebuilt. An Intel Mac also needs Xcode; see
    to trust `~/.archipelago/home`.
 
 Keep the clone where it is, because `archi` and the daemon run from it. If you
-move it, run `pnpm archi setup` in the new place. Setup's hooks do nothing
+move it or clone it again, `pnpm desktop:install` in the new place points them
+there. Setup's hooks do nothing
 outside Archipelago. [What setup changes](#what-setup-changes) lists every file
 setup writes, and `archi uninstall` removes them.
 
@@ -128,8 +130,9 @@ Codex keeps the login for later `codex` and `codex exec` runs. Then type
 the saved CLI login is the documented setup.
 
 The scribe is optional and uses Claude whatever CLI your characters run. For a
-Codex-only fleet, add this to `~/.archipelago/config.json` and restart the
-daemon (see [Configuration](#configuration)) before you turn the scribe on:
+Codex-only fleet, replace the `{}` that setup wrote in
+`~/.archipelago/config.json` with this, and restart the daemon (see
+[Configuration](#configuration)) before you turn the scribe on:
 
     { "scribe": { "agent": "codex" } }
 
@@ -146,6 +149,13 @@ If pnpm says it failed to switch versions, update pnpm to 12 or newer the way
 you installed it (`brew upgrade pnpm`, `npm i -g pnpm@latest`, or
 `pnpm self-update` run outside the clone) and try again. If it says the Node
 version is unsupported, run `brew upgrade node`.
+
+### When something breaks
+
+Run `archi doctor`. It checks what the fleet needs and prints the end of the
+daemon's log, `~/.archipelago/archid.log`. Send its output, and what you were
+doing, as an issue on
+[linusroxbergh/archipelago](https://github.com/linusroxbergh/archipelago/issues).
 
 ### Migrating from Herdr
 
@@ -170,13 +180,14 @@ Tools alone are not enough). Open Xcode once to accept its license, then run:
     xcodebuild -downloadComponent MetalToolchain
     brew install zig@0.15
 
-The first build takes several minutes.
+The first build takes several minutes and about 1.2 GB of disk.
 
 ## Concepts
 
 - **Fleet**: one daemon, one tmux server, one window. `archi` opens the
   private fleet; `archi work` creates a separate one (any lower-case name
-  works).
+  works; `archi -p <name>` makes one whose name reads like a mistyped
+  command).
 - **Island**: a group of characters. Mission control is the fixed one at the
   bottom.
 - **Character**: one terminal. Type `claude` or `codex` in it and the map
@@ -185,8 +196,11 @@ The first build takes several minutes.
 - **Scribe**: a minute after an agent stops with new work, a headless
   `claude -p` (or `codex exec`, if configured) writes the character's name,
   note and links, and the island's description. A name you gave only gains a
-  PR or ticket in front, and a note you wrote stays. Each pass uses the chosen CLI's login, which costs money on an API key. A
-  new fleet asks before turning it on, and you can turn it off in settings.
+  PR or ticket in front, and a note you wrote stays. An agent that keeps
+  working gets a pass about every ten minutes too. Passes start at most once a
+  minute, so a busy fleet can run up to 60 an hour. Each pass uses the chosen
+  CLI's login, which costs money on an API key. A new fleet asks before
+  turning it on, and you can turn it off in settings.
 
 ## The desktop app
 
@@ -276,6 +290,9 @@ Ghostty `initial-command` and `input` are ignored.
   above the keyboard.
 - `⚙` → *Notify this phone* sends a push when an agent is blocked or done. Tap
   a blocked one to approve or deny it.
+- The tailnet needs MagicDNS and HTTPS certificates, both turned on in
+  Tailscale's admin console. The certificate puts the Mac's tailnet name in a
+  public log.
 - Tailscale gives the page a trusted certificate and vouches for who connects,
   so no token reaches the phone. Only your own tailnet login gets in. To let
   others in, list their logins and yours in `mobile.logins` and restart the
@@ -302,10 +319,14 @@ Its `config.json` takes:
 - The daemon reads `config.json` when it starts.
   `launchctl kickstart -k gui/$(id -u)/com.archipelago.archid` restarts the
   private fleet's daemon; use `com.archipelago.archid.<name>` for another
-  fleet.
+  fleet. While the file doesn't parse, the daemon logs why and waits for it to
+  change; `archi doctor` shows the error too.
 - Mission control's folder (default `~/.archipelago/home`, shared by every
   fleet) holds its instructions in `.claude/rules/archipelago.md` and the
-  `archi-*` skills its buttons call. Every daemon start refreshes both. Its
+  `archi-*` skills its buttons call. `archi-organise` and `archi-rename` have
+  no button: list them in `home.actions` beside the two defaults
+  (`/archi-update-info` and `/archi-status`) to get one. Every daemon start
+  refreshes the instructions and skills. Its
   `CLAUDE.md`, for your own rules, and `.claude/settings.json` are yours to
   edit. Only `archi setup` replaces an edited settings file, and it keeps a
   `.bak-*` copy.
@@ -351,15 +372,39 @@ needs is missing. It writes:
 
     archi uninstall
 
-This removes the hooks (your own statusline stays), the launchd agents, the
-shims and each fleet's phone link, and stops the fleets' tmux servers so no
-agent keeps running out of sight. It then asks before deleting the fleet
-homes, the app, and its sign-ins, caches and preferences in `~/Library`;
+This quits the app, removes the hooks (your own statusline stays), the launchd
+agents, the shims and each fleet's phone link, and stops the fleets' tmux
+servers so no agent keeps running out of sight. It then asks before deleting
+the fleet homes, the app, and its sign-ins, caches and preferences in `~/Library`;
 `--purge` deletes them without asking. The clone and the settings backups
 stay.
 
 Run it before you delete the clone: the launchd agents and `archi` point into
 it, and launchd would otherwise restart the missing daemon every ten seconds.
+
+## What leaves your Mac
+
+Archipelago has no telemetry, analytics or crash reporting. The main ways data
+leaves the Mac, beyond what your agents send:
+
+- The scribe sends the end of each agent's transcript to Claude (or Codex) on
+  your login or API key, with what the map shows of the character and its
+  island: names, notes, links, directories and branches.
+- Mission control's buttons start Claude agents, and the Usage panel asks
+  Claude Code for your plan's limits. The Claude scribe and the Usage panel run
+  with every value in the fleet's `.env` in their environment.
+- For each character in a repository, the daemon runs `gh pr view` to find its
+  branch's PR on GitHub.
+- `archi mobile` serves the fleet to your tailnet with `tailscale serve`.
+- Push notifications go through your phone's push service: Apple's, Google's
+  or Mozilla's. The character's name and prompt are encrypted for your phone;
+  the service sees when a push is sent, and the page's address
+  (`https://<mac>.<tailnet>.ts.net`) unless `mobile.pushContact` names another
+  contact.
+
+Importing Chrome's cookies sends nothing anywhere, but it copies the profile's
+sign-ins into the fleet's browser on this Mac, so every site the profile is
+signed in to is signed in there too.
 
 ## How it works
 
@@ -385,7 +430,8 @@ it, and launchd would otherwise restart the missing daemon every ten seconds.
     pnpm desktop:build   # an unsigned apps/desktop/mac/build/Archipelago.app
     pnpm ghostty:build   # GhosttyKit from vendor/ghostty (v1.3.1) into vendor/ghostty-kit
     pnpm ghostty:publish # build GhosttyKit and upload it for installs to download
-    ARCHI_HOME=/tmp/archi-dev pnpm archid
+    mkdir -p /tmp/archi-dev && echo '{ "port": 0 }' > /tmp/archi-dev/config.json
+    ARCHI_HOME=/tmp/archi-dev pnpm archid   # port 0 keeps it off the private fleet's 47800
 
 The first `pnpm e2e` needs
 `pnpm --filter @archipelago/desktop-web exec playwright install chromium`.
@@ -411,6 +457,7 @@ kit. It needs the Metal toolchain and zig.
 The code is MIT (`LICENSE`). The animal portraits in
 `apps/desktop/web/public/animals` and the lighthouse in
 `apps/desktop/web/public/resources` are Flaticon icons by Magnific under a
-Flaticon Premium licence, not MIT. The fonts in
+Flaticon Premium licence, not MIT, and may not be redistributed: don't copy
+them out of this repository (see the `LICENSE` in each folder). The fonts in
 `apps/desktop/web/public/fonts` are SIL OFL 1.1 (`OFL.txt`), and Ghostty is
 MIT under its own notice (`apps/desktop/mac/LICENSE.ghostty`).

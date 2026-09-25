@@ -1,7 +1,7 @@
 #!/bin/sh
 # Installs dependencies, downloads or builds GhosttyKit, builds Archipelago.app, installs it to /Applications and restarts
 # the daemon. Checks first and runs `archi setup` after the build when setup is missing or its
-# hooks or shims are out of date, so a failed check or build leaves the machine untouched.
+# hooks, shims or launchd agent are out of date or run another checkout, so a failed check or build leaves the machine untouched.
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -60,7 +60,7 @@ CHECK="$(pnpm --silent archi -p private setup --check 2>&1)" || missing "$(echo 
 echo "$CHECK"
 
 # uninstall keeps the fleet homes, so config.json alone would call a stripped machine set up;
-# hooks or shims setup now writes differently are set up again, as nothing else rewrites them
+# hooks, shims or a plist setup now writes differently are set up again, as nothing else rewrites them
 SETUP=
 if [ ! -f "$HOME_DIR/config.json" ] || [ ! -f "$HOME/Library/LaunchAgents/com.archipelago.archid.plist" ] || [ ! -f "$HOME/.local/bin/archi" ]; then
   SETUP=1

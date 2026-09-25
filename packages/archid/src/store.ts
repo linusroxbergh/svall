@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import jsonpatch, { type Operation } from 'fast-json-patch';
 import { FleetState, NewerStateVersion, OlderStateVersion, emptyState, migrateState } from '@archipelago/protocol';
 import { readJsonOrQuarantine, writeJsonAtomic } from './jsonfile.js';
@@ -6,15 +7,30 @@ import { sinkHome } from './layout.js';
 
 type Listener = (ops: Operation[]) => void;
 
+// the newest copy a newer archid kept of `file` as this version wrote it, before migrating it
+function keptCopy(file: string): string | undefined {
+  const prefix = `${path.basename(file)}.v${FleetState.shape.version.value}-`;
+  const copies = fs.readdirSync(path.dirname(file)).filter((f) => f.startsWith(prefix))
+    .sort((a, b) => Number(a.slice(prefix.length)) - Number(b.slice(prefix.length)));
+  return copies.length ? path.join(path.dirname(file), copies[copies.length - 1]) : undefined;
+}
+
 export class Store {
   private listeners = new Set<Listener>();
 
   private constructor(private file: string, private current: FleetState, private log: (msg: string) => void) {}
 
   static load(file: string, log: (msg: string) => void): Store {
-    const read = readJsonOrQuarantine(file, log,
-      (raw) => ({ raw, ...migrateState(raw) }),
-      (e) => e instanceof NewerStateVersion || e instanceof OlderStateVersion);
+    let read;
+    try {
+      read = readJsonOrQuarantine(file, log,
+        (raw) => ({ raw, ...migrateState(raw) }),
+        (e) => e instanceof NewerStateVersion || e instanceof OlderStateVersion);
+    } catch (e) {
+      const kept = e instanceof NewerStateVersion ? keptCopy(file) : undefined;
+      if (kept) (e as Error).message += `; or, to go back to the fleet as this version last saw it, move ${kept} to ${file}`;
+      throw e;
+    }
     if (!read) return new Store(file, emptyState(), log);
     const store = new Store(file, read.state, log);
     if (read.dropped.length) {
