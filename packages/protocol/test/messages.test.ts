@@ -117,7 +117,7 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 10 with the docs of every island, character and repository', () => {
-    expect(PROTOCOL_VERSION).toBe(11);
+  it('is 12 with the fleet a resource tier of its own', () => {
+    expect(PROTOCOL_VERSION).toBe(12);
   });
 });

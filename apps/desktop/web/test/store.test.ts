@@ -540,25 +540,34 @@ describe('toast action', () => {
 });
 
 describe('resource groups', () => {
-  const source = (tier: 'global' | 'repo' | 'island' | 'character', rootId: string) => ({ rootId, root: rootId.slice(2), name: rootId, tier, islandIds: [], characterIds: [], groups: [] });
+  const source = (tier: 'global' | 'fleet' | 'repo' | 'island' | 'character', rootId: string) => ({ rootId, root: rootId.slice(2), name: rootId, tier, islandIds: [], characterIds: [], groups: [] });
   const memory = () => { let kept: unknown; return { get: () => kept, storage: { ...memStorage(), getResourceGroups: () => kept, setResourceGroups: (v: unknown) => { kept = v; } } }; };
 
-  it('opens with Global, toggles a group, and keeps the open set across a reload', () => {
+  it('opens with Global and Fleet, toggles a group, and keeps the open set across a reload', () => {
     const m = memory();
     const store = createAppStore(m.storage as never);
-    expect(store.getState().resourceGroups).toEqual(['global']);
+    expect(store.getState().resourceGroups).toEqual(['global', 'fleet']);
     store.getState().toggleResourceGroup('island');
     store.getState().toggleResourceGroup('global');
-    expect(store.getState().resourceGroups).toEqual(['island']);
-    expect(createAppStore(m.storage as never).getState().resourceGroups).toEqual(['island']);
+    expect(store.getState().resourceGroups).toEqual(['fleet', 'island']);
+    expect(createAppStore(m.storage as never).getState().resourceGroups).toEqual(['fleet', 'island']);
   });
   it('opens the group of a source it is sent to', () => {
     const store = createAppStore();
     store.getState().setResources([source('global', 'r:/c'), source('character', 'r:/d/characters/c1')]);
     store.getState().setResourcesFilter({ where: 'r:/d/characters/c1' });
-    expect(store.getState().resourceGroups).toEqual(['global', 'character']);
+    expect(store.getState().resourceGroups).toEqual(['global', 'fleet', 'character']);
     store.getState().toggleResourceGroup('global');
     store.getState().toggleResources(true, { where: 'r:/c' });
-    expect(store.getState().resourceGroups.sort()).toEqual(['character', 'global']);
+    expect(store.getState().resourceGroups.sort()).toEqual(['character', 'fleet', 'global']);
+  });
+  it('opens the fleet for a user whose saved groups predate it, once the shelf is sent there', () => {
+    const m = memory();
+    m.storage.setResourceGroups(['global']);
+    const store = createAppStore(m.storage as never);
+    expect(store.getState().resourceGroups).toEqual(['global']);
+    store.getState().setResources([source('global', 'r:/c'), source('fleet', 'r:/h/docs/fleet')]);
+    store.getState().toggleResources(true, { where: 'r:/h/docs/fleet' });
+    expect(store.getState().resourceGroups).toEqual(['global', 'fleet']);
   });
 });

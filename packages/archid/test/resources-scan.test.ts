@@ -228,7 +228,7 @@ describe('doc sources', () => {
     const state = withIslands(stateOf(char('c1', 'i1', path.join(home, 'app'), path.join(home, 'app'))), { id: 'i1', name: 'ARCHIPELAGO' });
 
     const sources = scanResources(state, claude, undefined, docs);
-    expect(sources.map((s) => [s.tier, s.name])).toEqual([['global', 'Claude'], ['global', 'Fleet'], ['repo', 'app'], ['island', 'ARCHIPELAGO'], ['character', 'c1']]);
+    expect(sources.map((s) => [s.tier, s.name])).toEqual([['global', 'Claude'], ['fleet', path.basename(home)], ['repo', 'app'], ['island', 'ARCHIPELAGO'], ['character', 'c1']]);
 
     const repo = sources[2];
     expect(repo.root).toBe(path.join(home, 'app'));
@@ -243,19 +243,20 @@ describe('doc sources', () => {
     expect(sources[4]).toMatchObject({ tier: 'character', islandIds: ['i1'], characterIds: ['c1'], groups: [] });
   });
 
-  it('carries the fleet’s own docs as a source of its own, beside Claude', () => {
-    const home = makeHome(), docs = path.join(home, 'docs');
+  it('carries the fleet’s own docs as a tier of their own, named for the fleet', () => {
+    const home = makeHome(), docs = path.join(home, '.archipelago-work', 'docs');
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
     put(path.join(docs, 'fleet', 'tone.md'), docText('How we talk to each other.'));
     const sources = scanResources(stateOf(), claude, undefined, docs);
-    const fleet = sources.find((s) => s.name === 'Fleet')!;
-    expect(fleet).toMatchObject({ tier: 'global', root: path.join(docs, 'fleet'), islandIds: [], characterIds: [] });
+    const fleet = sources.find((s) => s.tier === 'fleet')!;
+    expect(fleet).toMatchObject({ name: 'work', root: path.join(docs, 'fleet'), islandIds: [], characterIds: [] });
     expect(fleet.docs).toBe(rootIdOf(path.join(docs, 'fleet')));
     expect(kinds(fleet)).toEqual({ docs: ['tone'] });
+    expect(sources.filter((s) => s.tier === 'global').map((s) => s.name)).toEqual(['Claude']);
     // a new doc has somewhere to go before anything is written there
-    expect(scanResources(stateOf(), claude, undefined, path.join(home, 'empty')).find((s) => s.name === 'Fleet')).toMatchObject({ groups: [] });
+    expect(scanResources(stateOf(), claude, undefined, path.join(home, 'empty')).find((s) => s.tier === 'fleet')).toMatchObject({ groups: [] });
     // with nowhere to keep docs there is no such source at all
-    expect(scanResources(stateOf(), claude).some((s) => s.name === 'Fleet')).toBe(false);
+    expect(scanResources(stateOf(), claude).some((s) => s.tier === 'fleet')).toBe(false);
   });
 
   it('lists a repository the fleet works in even when it holds nothing yet', () => {

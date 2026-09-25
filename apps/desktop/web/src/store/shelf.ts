@@ -50,7 +50,7 @@ export const createShelfSlice = (storage?: AppStorage): StateCreator<App, [], []
   resourcesChosen: undefined,
   resourcesNaming: false,
   resourceCols: storage?.getResourceCols() ?? DEFAULT_RESOURCE_COLS,
-  resourceGroups: storage?.getResourceGroups() ?? ['global'],
+  resourceGroups: storage?.getResourceGroups() ?? ['global', 'fleet'],
   // the shelf stands on the map, in the corner panels' light: opening it takes the view there and closes them
   toggleResources: (open, opts) => {
     const next = open ?? !get().resourcesOpen;

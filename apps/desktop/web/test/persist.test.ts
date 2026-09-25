@@ -29,7 +29,7 @@ describe('localAppStorage', () => {
     s.setSidebarOpen(false);
     s.setHalfCard({ w: 0.4, h: 0.6 });
     s.setResourceCols({ rail: 200, list: 300 });
-    s.setResourceGroups(['global', 'repo']);
+    s.setResourceGroups(['global', 'fleet', 'repo']);
     s.setSideWidths({ sidebar: 200, card: 300 });
     s.setSettings(DEFAULT_SETTINGS);
     expect(mem.entries()).toEqual({
@@ -38,10 +38,11 @@ describe('localAppStorage', () => {
       'archi.sidebar.open': 'false',
       'archi.card.half': '{"w":0.4,"h":0.6}',
       'archi.resources.cols': '{"rail":200,"list":300}',
-      'archi.resources.groups': '["global","repo"]',
+      'archi.resources.tiers': '["global","fleet","repo"]',
       'archi.side.widths': '{"sidebar":200,"card":300}',
       [SETTINGS_KEY]: JSON.stringify(DEFAULT_SETTINGS),
     });
+    expect(store().getResourceGroups()).toEqual(['global', 'fleet', 'repo']);
   });
 
   it('reads back what it wrote', () => {
@@ -83,7 +84,7 @@ describe('localAppStorage', () => {
     mem.setItem('archi.view', 'sideways');
     mem.setItem('archi.card.half', 'not json');
     mem.setItem('archi.resources.cols', '{"rail":"wide"}');
-    mem.setItem('archi.resources.groups', '["global","nowhere"]');
+    mem.setItem('archi.resources.tiers', '["global","nowhere"]');
     mem.setItem('archi.side.widths', 'null');
     mem.setItem(SETTINGS_KEY, '{');
     const s = store();
@@ -93,6 +94,22 @@ describe('localAppStorage', () => {
     expect(s.getResourceGroups()).toBeUndefined();
     expect(s.getSideWidths()).toBeUndefined();
     expect(s.getSettings()).toBeUndefined();
+  });
+
+  it('opens Fleet on a set saved while the fleet stood under Global, and reads its own key first', () => {
+    mem.setItem('archi.resources.groups', '["global","repo"]');
+    expect(store().getResourceGroups()).toEqual(['global', 'repo', 'fleet']);
+    mem.setItem('archi.resources.groups', '["repo"]');
+    expect(store().getResourceGroups()).toEqual(['repo']);
+    mem.setItem('archi.resources.tiers', '["global"]');
+    expect(store().getResourceGroups()).toEqual(['global']);
+  });
+
+  it('reads the older set a fleet kept under its own key, and no other fleet’s', () => {
+    mem.setItem('archi.resources.groups@/Users/me/.archipelago', '["global"]');
+    mem.setItem('archi.resources.groups@/Users/me/.archipelago-work', '["repo"]');
+    expect(localAppStorage('/Users/me/.archipelago')!.getResourceGroups()).toEqual(['global', 'fleet']);
+    expect(localAppStorage('/Users/me/.archipelago-work')!.getResourceGroups()).toEqual(['repo']);
   });
 
   it('carries on when the store is full', () => {

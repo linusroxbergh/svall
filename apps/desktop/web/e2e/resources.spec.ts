@@ -40,6 +40,27 @@ test('the islet stands right of mission control and the lighthouse on it opens t
   await rowClearOfShelf(page);
 });
 
+test('the lighthouse wears the map’s grain, cut to its outline, and it rises with the tower', async ({ page, archi }) => {
+  await page.setViewportSize(WIDE);
+  await archi.open('map');
+  const tower = page.getByTestId('resources-lighthouse');
+  const grain = tower.locator('.res-tower-grain');
+  const img = tower.locator('img');
+  const apart = async () => {
+    const [g, i] = [(await grain.boundingBox())!, (await img.boundingBox())!];
+    return Math.max(...(['x', 'y', 'width', 'height'] as const).map((k) => Math.abs(g[k] - i[k])));
+  };
+  expect(await apart()).toBeLessThan(1);
+  await expect(grain).toHaveCSS('mask-image', /lighthouse2\.svg/);
+  await expect(grain).not.toHaveCSS('background-image', 'none');
+  await expect(grain).toHaveCSS('pointer-events', 'none');
+  // the tower lifts on hover; the grain lifts with it
+  await tower.hover();
+  await expect(img).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, -3)');
+  await expect(grain).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, -3)');
+  expect(await apart()).toBeLessThan(1);
+});
+
 test('a narrow map keeps the islet, drawn smaller and clear of the edge', async ({ page, archi }) => {
   await page.setViewportSize({ width: 900, height: 800 });
   await archi.open('map');
@@ -117,8 +138,9 @@ test('the tree folds a tier a folder, lists its sources when picked, and a chara
   await archi.open('map');
   await page.getByTestId('resources-lighthouse').click();
 
-  // Global stands open by default; the other three are one row each
+  // Global and Fleet stand open by default; the other three are one row each
   await expect(page.getByTestId('resources-group-global')).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByTestId('resources-group-fleet')).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByTestId('resources-group-character')).toHaveAttribute('aria-expanded', 'false');
 
   // a press on the folder picks the tier, and the list is its sources; the caret opens it
@@ -605,15 +627,19 @@ test('walking the list picks each row it passes, and leaves a link alone', async
   await expect(page.getByTestId('resources-editor-crumb')).toHaveText(/Island\s*\/\s*.+\s*\/\s*Instructions/);
 });
 
-test('the fleet’s own docs stand among the global sources, and a note is written there', async ({ page, archi }) => {
+test('the fleet’s own docs stand in a tier of their own, named for the fleet, and a note is written there', async ({ page, archi }) => {
   await page.setViewportSize(WIDE);
   const dir = path.join(archi.home, 'docs', 'fleet');
   await archi.open('map');
   await page.getByTestId('resources-lighthouse').click();
-  // Global stands open, so the fleet's row is there beside Claude's
-  await expect(page.getByTestId('resources-group-global')).toHaveAttribute('aria-expanded', 'true');
-  await page.getByTestId(`resources-where-r:${dir}`).click();
-  await expect(page.getByTestId(`resources-where-r:${dir}`)).toHaveAttribute('aria-pressed', 'true');
+  // Fleet stands open under Global, its one row named for this fleet and held to this window
+  await expect(page.getByTestId('resources-group-fleet')).toHaveAttribute('aria-expanded', 'true');
+  const row = page.getByTestId(`resources-where-r:${dir}`);
+  await expect(row).toContainText(path.basename(archi.home));
+  await expect(row).toHaveAttribute('title', /this window only/);
+  await row.click();
+  await expect(row).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('resources-chain')).toHaveCount(0);
 
   // nothing owns the fleet's folder, so it outlives the islands a spec clears away: each run writes its own note
   const name = archi.uniq('how-we-write');

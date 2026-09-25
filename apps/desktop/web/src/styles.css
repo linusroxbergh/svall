@@ -610,7 +610,12 @@ textarea { overflow-x: hidden; }
 .res-tower:focus-visible .res-tower-pill{outline:2px solid var(--sand-hi);outline-offset:3px}
 .res-tower img{position:relative;z-index:8;display:block;height:100%;width:auto;max-width:none;
   filter:saturate(.9) contrast(.96) drop-shadow(0 2px 2px var(--shade-1));transition:transform var(--dur) var(--ease)}
-.res-tower:hover img,.res-tower[data-selected="true"] img{transform:translateY(-3px)}
+.res-tower:hover img,.res-tower[data-selected="true"] img,
+.res-tower:hover .res-tower-grain,.res-tower[data-selected="true"] .res-tower-grain{transform:translateY(-3px)}
+/* the map's grain over the drawing alone, fainter than on land */
+.res-tower-grain{position:absolute;z-index:9;inset:0;pointer-events:none;opacity:.14;
+  background:url('./assets/map-grain.png') repeat;background-size:128px 128px;mask-size:100% 100%;mask-repeat:no-repeat;
+  transition:transform var(--dur) var(--ease)}
 /* a contact shadow where the tower meets the footing, tight enough to read as touching it */
 .res-tower-shadow{position:absolute;z-index:7;left:50%;bottom:calc(var(--lh)*.005);width:calc(var(--lh)*.42);height:calc(var(--lh)*.05);
   transform:translateX(-50%);border-radius:50%;background:var(--shade-2);filter:blur(2px);pointer-events:none}

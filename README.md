@@ -147,6 +147,16 @@ you installed it (`brew upgrade pnpm`, `npm i -g pnpm@latest`, or
 `pnpm self-update` run outside the clone) and try again. If it says the Node
 version is unsupported, run `brew upgrade node`.
 
+### Migrating from Herdr
+
+Ask your agent to move your Herdr workspaces into Archipelago. It reads them
+with `herdr workspace list` and `herdr agent list`, then makes each workspace
+an island (`archi island create`) and each agent pane a character in the same
+directory, running the same agent
+(`archi char new --island <island> --cwd <dir> --agent <claude|codex>`).
+Only Claude and Codex panes are supported; other agents are untested.
+`herdr --skill` and `archi <command> --help` cover the rest.
+
 ### Building Ghostty from source
 
 The installer downloads GhosttyKit, the terminal engine, prebuilt for the
@@ -204,7 +214,8 @@ The first build takes several minutes.
 - **Changes** (Cmd+4): each file's diff against HEAD, or against the point
   where the branch left main.
 - **Resources** (Cmd+Shift+R, or the lighthouse islet): what `~/.claude`,
-  `~/.codex` and each repository give your agents, each opening in an editor.
+  `~/.codex`, this fleet's docs and each repository give your agents, each
+  opening in an editor.
   `~/.claude.json` and `~/.codex/auth.json` hold tokens and are never opened.
 - **Settings** (Cmd+,): zoom, terminal opacity, scribe, notifications, phone,
   browser and keyboard. `Usage`, next to it, shows your Claude plan's session

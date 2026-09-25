@@ -6,6 +6,7 @@ import type { CodexPaths } from '../codex/install.js';
 import { docsDir, fleetDir, listDocs, repoRootOf, repoSlug } from '../docs.js';
 import { NotFound } from '../errors.js';
 import { claudePaths, type ClaudePaths } from '../paths.js';
+import { profileOf } from '../profile.js';
 import { realOf, within } from '../workspace/paths.js';
 import { hooks, mcpServers, plugins, type Parsed } from './parse.js';
 
@@ -232,10 +233,10 @@ export function scanResources(state: FleetState, claude: ClaudePaths, codex?: Co
     return { ...b, name: path.basename(r.root), tier: 'repo', ...(folder && { docs: rootIdOf(folder) }), islandIds: r.islandIds, characterIds: r.characterIds, groups };
   });
 
-  // the fleet's own docs stand with the other sources that hold everywhere
+  // the fleet's own docs, read by every character in this fleet and by no other; docs sits in the fleet's home
   const fleet = docs === undefined ? [] : [((): ResourceSource => {
     const dir = fleetDir(docs);
-    return { rootId: rootIdOf(dir), root: dir, name: 'Fleet', tier: 'global', docs: rootIdOf(dir), islandIds: [], characterIds: [], groups: groupsOf([['docs', docRows(dir)]]) };
+    return { rootId: rootIdOf(dir), root: dir, name: profileOf(path.dirname(docs)), tier: 'fleet', docs: rootIdOf(dir), islandIds: [], characterIds: [], groups: groupsOf([['docs', docRows(dir)]]) };
   })()];
 
   const entity = (tier: 'island' | 'character', id: string, name: string, islandIds: string[], characterIds: string[]): ResourceSource[] => {

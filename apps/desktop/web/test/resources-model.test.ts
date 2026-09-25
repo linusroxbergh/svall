@@ -66,29 +66,33 @@ const isle = (id: string, name: string, chars: string[]) => src('island', name, 
 const chr = (id: string, name: string, islandId: string) => src('character', name, `/d/characters/${id}`, { islandIds: [islandId], characterIds: [id] });
 const all = [claude, codex, repoA, repoP, orphan, isle('i1', 'ARCHIPELAGO', ['c1', 'c2']), isle('i2', 'mobile', ['c3', 'c4']), isle('i3', 'empty', []), isle('home', 'Mission control', ['h1']),
   chr('c1', 'deep robin', 'i1'), chr('c2', 'violet tern', 'i1'), chr('c3', 'calm otter', 'i2'), chr('c4', 'brisk vole', 'i2'), chr('h1', 'pilot', 'home')];
+const ours = src('fleet', 'private', '/Users/l/.archipelago/docs/fleet', { docs: 'r:/Users/l/.archipelago/docs/fleet' });
 
 describe('whereGroups', () => {
   it('groups sources by tier in ladder order, each with its count', () => {
-    expect(whereGroups(all, f, '').map((g) => [g.tier, g.count])).toEqual([['global', 2], ['repo', 3], ['island', 4], ['character', 5]]);
+    expect(whereGroups(all, f, '').map((g) => [g.tier, g.count])).toEqual([['global', 2], ['fleet', 0], ['repo', 3], ['island', 4], ['character', 5]]);
+  });
+  it('stands the fleet between global and the repositories', () => {
+    expect(whereGroups([...all, ours], f, '').map((g) => [g.tier, g.count])).toEqual([['global', 2], ['fleet', 1], ['repo', 3], ['island', 4], ['character', 5]]);
   });
   it('sub-groups characters by island and nothing else', () => {
     const groups = whereGroups(all, f, '');
-    expect(groups[3].sections.map((s) => [s.heading, s.sources.map((x) => x.name)])).toEqual([
+    expect(groups[4].sections.map((s) => [s.heading, s.sources.map((x) => x.name)])).toEqual([
       ['ARCHIPELAGO', ['deep robin', 'violet tern']], ['mobile', ['calm otter', 'brisk vole']], ['Mission control', ['pilot']],
     ]);
-    expect(groups[1].sections).toEqual([{ sources: [repoA, repoP, orphan] }]);
+    expect(groups[2].sections).toEqual([{ sources: [repoA, repoP, orphan] }]);
   });
   it('orders the islands as the fleet does, Mission control last', () => {
     const groups = whereGroups(all, f, '');
-    expect(groups[2].sections.map((s) => s.sources.map((x) => x.name))).toEqual([['ARCHIPELAGO', 'empty', 'mobile', 'Mission control']]);
+    expect(groups[3].sections.map((s) => s.sources.map((x) => x.name))).toEqual([['ARCHIPELAGO', 'empty', 'mobile', 'Mission control']]);
   });
   it('sorts an island the fleet does not have after the rest', () => {
     const groups = whereGroups([...all, isle('i9', 'stray', [])], f, '');
-    expect(groups[2].sections[0].sources.map((x) => x.name)).toEqual(['ARCHIPELAGO', 'empty', 'mobile', 'Mission control', 'stray']);
+    expect(groups[3].sections[0].sources.map((x) => x.name)).toEqual(['ARCHIPELAGO', 'empty', 'mobile', 'Mission control', 'stray']);
   });
   it('filters across every group by name and qualifier, keeping a group with no match at zero', () => {
     const groups = whereGroups(all, f, 'ARCHI');
-    expect(groups.map((g) => [g.tier, g.count])).toEqual([['global', 0], ['repo', 1], ['island', 1], ['character', 0]]);
+    expect(groups.map((g) => [g.tier, g.count])).toEqual([['global', 0], ['fleet', 0], ['repo', 1], ['island', 1], ['character', 0]]);
   });
 });
 
@@ -117,6 +121,9 @@ describe('qualifierOf', () => {
   });
   it('tells two sources apart when their names differ only by case', () => {
     expect(qualifierOf(repoA, f)).not.toBe(qualifierOf(all[5], f));
+  });
+  it('says the fleet holds for this window alone', () => {
+    expect(qualifierOf(ours, f)).toBe('this window only');
   });
 });
 
@@ -207,6 +214,11 @@ describe('chainOf', () => {
     expect(labels(two)).toEqual([['global', 'Claude'], ['repo', '2 repos'], ['island', 'mobile']]);
     expect(two?.chips[1].rootIds).toEqual([repoA.rootId, repoP.rootId]);
     expect(labels(chainOf(all, f, all[7]))).toEqual([['global', 'Claude'], ['island', 'empty']]);
+  });
+  it('puts the fleet between the agent’s global source and the repository', () => {
+    expect(labels(chainOf([...all, ours], f, all[9]))).toEqual([['global', 'Claude'], ['fleet', 'private'], ['repo', 'archipelago'], ['island', 'ARCHIPELAGO'], ['character', 'deep robin']]);
+    expect(labels(chainOf([...all, ours], f, all[13]))).toEqual([['global', 'Claude'], ['fleet', 'private'], ['island', 'Mission control'], ['character', 'pilot']]);
+    expect(chainOf([...all, ours], f, ours)).toBeUndefined();
   });
   it('is nothing for a global or a repository source', () => {
     expect(chainOf(all, f, claude)).toBeUndefined();

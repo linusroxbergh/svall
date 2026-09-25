@@ -108,6 +108,7 @@ export const sourceOfRoot = (sources: ResourceSource[], root: string | undefined
 // the ladder, broad to narrow; one is the label of a single source of the tier
 const TIERS: { tier: Tier; label: string; one: string; glyph: string; colour: string }[] = [
   { tier: 'global', label: 'Global', one: 'Global', glyph: '◎', colour: '--ink-cool' },
+  { tier: 'fleet', label: 'Fleet', one: 'Fleet', glyph: '◆', colour: '--pt-coral' },
   { tier: 'repo', label: 'Repos', one: 'Repo', glyph: '▣', colour: '--pt-sky' },
   { tier: 'island', label: 'Islands', one: 'Island', glyph: '▲', colour: '--pt-moss' },
   { tier: 'character', label: 'Characters', one: 'Character', glyph: '●', colour: '--pt-sun' },
@@ -120,6 +121,7 @@ const plural = (n: number, one: string): string => (n === 0 ? `no ${one}s` : n =
 
 /** The second line of a source's row: what tells it from another of the same name. */
 export function qualifierOf(s: ResourceSource, f: FleetState): string {
+  if (s.tier === 'fleet') return 'this window only';
   if (s.tier === 'island') return plural(s.characterIds.length, 'character');
   if (s.tier === 'character') { const c = f.characters[s.characterIds[0]]; return c?.repo?.branch ?? shortPath(c?.cwd ?? s.root); }
   return s.tier === 'repo' && s.docs === s.rootId ? 'no characters here' : shortPath(s.root);
@@ -176,6 +178,7 @@ export function chainOf(sources: ResourceSource[], f: FleetState, s: Omit<Resour
   // a character reads the global source of the agent it runs; an island stands for crew that may differ
   const kind = s.tier === 'character' ? f.characters[s.characterIds[0]]?.agent?.kind : undefined;
   const global = globals.find((x) => x.name.toLowerCase() === kind) ?? globals[0];
+  const ours = sources.find((x) => x.tier === 'fleet');
   const island = f.islands[s.islandIds[0]];
   const crew = Object.values(f.characters).filter((c) => (s.tier === 'character' ? c.id === s.characterIds[0] : c.islandId === island?.id));
   const roots = island?.kind === 'home' ? [] : [...new Set(crew.map((c) => c.repo?.mainRoot ?? c.cwd))];
@@ -185,7 +188,7 @@ export function chainOf(sources: ResourceSource[], f: FleetState, s: Omit<Resour
   const islandSource = s.tier === 'island' ? s : sources.find((x) => x.tier === 'island' && x.islandIds[0] === island?.id);
   return {
     heading: s.tier === 'character' ? `${s.name} reads, in order` : 'a character here reads',
-    chips: [...(global ? [chip(global)] : []), ...repo, ...(islandSource ? [chip(islandSource)] : []), ...(s.tier === 'character' ? [chip(s)] : [])],
+    chips: [...(global ? [chip(global)] : []), ...(ours ? [chip(ours)] : []), ...repo, ...(islandSource ? [chip(islandSource)] : []), ...(s.tier === 'character' ? [chip(s)] : [])],
   };
 }
 

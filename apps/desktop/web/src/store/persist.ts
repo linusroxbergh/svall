@@ -39,7 +39,9 @@ const VIEW_KEY = 'archi.view';
 const SIDEBAR_KEY = 'archi.sidebar.open';
 const HALF_KEY = 'archi.card.half';
 const COLS_KEY = 'archi.resources.cols';
-const GROUPS_KEY = 'archi.resources.groups';
+const GROUPS_KEY = 'archi.resources.tiers';
+// read until GROUPS_KEY is written; Fleet opens with Global
+const OLD_GROUPS_KEY = 'archi.resources.groups';
 const SIDES_KEY = 'archi.side.widths';
 export const SETTINGS_KEY = 'archi.settings';
 
@@ -52,8 +54,9 @@ const isHalf = (v: unknown): v is HalfCard =>
   typeof v === 'object' && v !== null && typeof (v as HalfCard).w === 'number' && typeof (v as HalfCard).h === 'number';
 const isCols = (v: unknown): v is ResourceCols =>
   typeof v === 'object' && v !== null && typeof (v as ResourceCols).rail === 'number' && typeof (v as ResourceCols).list === 'number';
-const TIER_NAMES = ['global', 'repo', 'island', 'character'];
+const TIER_NAMES = ['global', 'fleet', 'repo', 'island', 'character'];
 const isTiers = (v: unknown): v is Tier[] => Array.isArray(v) && v.every((t) => TIER_NAMES.includes(t as string));
+const withFleet = (v: Tier[] | undefined): Tier[] | undefined => (v?.includes('global') ? [...v, 'fleet'] : v);
 const isSides = (v: unknown): v is SideWidths =>
   typeof v === 'object' && v !== null && typeof (v as SideWidths).sidebar === 'number' && typeof (v as SideWidths).card === 'number';
 
@@ -78,7 +81,7 @@ export function localAppStorage(fleet?: string): AppStorage | undefined {
       setHalfCard: (v) => write(HALF_KEY, JSON.stringify(v)),
       getResourceCols: () => { const c = readJson(read(COLS_KEY), isCols); return c && clampCols(c); },
       setResourceCols: (v) => write(COLS_KEY, JSON.stringify(v)),
-      getResourceGroups: () => readJson(read(GROUPS_KEY), isTiers),
+      getResourceGroups: () => readJson(read(GROUPS_KEY), isTiers) ?? withFleet(readJson(read(OLD_GROUPS_KEY), isTiers)),
       setResourceGroups: (v) => write(GROUPS_KEY, JSON.stringify(v)),
       getSideWidths: () => { const w = readJson(read(SIDES_KEY), isSides); return w && clampSides(w); },
       setSideWidths: (v) => write(SIDES_KEY, JSON.stringify(v)),

@@ -97,7 +97,7 @@ export const ResourceItem = z.object({
 export type ResourceItem = z.infer<typeof ResourceItem>;
 export const ResourceGroup = z.object({ kind: ResourceKind, items: z.array(ResourceItem) });
 export type ResourceGroup = z.infer<typeof ResourceGroup>;
-const ResourceTier = z.enum(['global', 'repo', 'island', 'character']);
+const ResourceTier = z.enum(['global', 'fleet', 'repo', 'island', 'character']);
 // docs is the root id a new doc goes to; a global source has none
 export const ResourceSource = z.object({
   rootId: z.string(), root: z.string(), name: z.string(), tier: ResourceTier, docs: z.string().optional(),
@@ -230,4 +230,4 @@ export type Event =
 export const Hello = z.object({ token: z.string() });
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 11;
+export const PROTOCOL_VERSION = 12;

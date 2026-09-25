@@ -8,6 +8,7 @@ import { Seabed, Waterline } from './Relief.js';
 import { ISLET, type Placement } from './resources.js';
 
 const SEED = 'resources';
+const TOWER = './resources/lighthouse2.svg';
 // a double-click that reached the map would make an island
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
@@ -87,7 +88,9 @@ export function ResourcesIsland({ place }: { place: Placement }) {
         <span className="res-tower-pill" data-testid="resources-pill">resources<i>{countOf(user, 'all')}</i></span>
         <span className="res-tower-glow" />
         <span className="res-tower-shadow" />
-        <img src="./resources/lighthouse2.svg" alt="" draggable={false} />
+        <img src={TOWER} alt="" draggable={false} />
+        {/* the mask is inline so its public path resolves as the img's does */}
+        <span className="res-tower-grain" style={{ maskImage: `url(${TOWER})` }} />
       </button>
     </div>
   );
