@@ -116,14 +116,27 @@ export const Home = z.object({
 export type Home = z.infer<typeof Home>;
 export const defaultHome = (): Home => Home.parse({});
 
-// a character's second terminal: a plain shell beside the main one. It is never dormant: when its
-// tmux window is gone, so is this record
-export const Second = z.object({
-  tmux: z.object({ windowId: z.string(), paneId: z.string() }),
+// the handover whose rest closed a terminal's window: its destination opens that terminal again, and no other
+const RestedBy = z.string().min(1).optional();
+// why a handover could not resume a terminal, kept while it lies dormant and cleared once it next comes up
+const ResumeError = z.string().optional();
+
+// one terminal of a character: its directory, its live tmux ids while it has a window, and the
+// command that brings its session back once it has none
+export const TerminalSlot = z.object({
+  cwd: z.string(),
+  tmux: z.object({ windowId: z.string(), paneId: z.string() }).optional(),
   agent: Agent.optional(),
   unread: z.boolean(),
+  revive: z.object({ command: z.string() }).optional(),
+  restedBy: RestedBy,
+  resumeError: ResumeError,
 });
-export type Second = z.infer<typeof Second>;
+export type TerminalSlot = z.infer<typeof TerminalSlot>;
+
+// a character's second terminal: a side shell beside the main one, dormant when its window is gone
+export const Second = TerminalSlot;
+export type Second = TerminalSlot;
 
 export const Character = z.object({
   id: z.string(),
@@ -149,13 +162,17 @@ export const Character = z.object({
   // the window runs codex and no hook has come from it: codex skips a hook until it is trusted, without a word
   hint: z.enum(['codex-silent']).optional(),
   revive: z.object({ command: z.string() }).optional(),
+  restedBy: RestedBy,
+  resumeError: ResumeError,
   browser: Browser.optional(),
   second: Second.optional(),
+  // "Keep on this machine": a handover of the fleet waits until it is lifted
+  keepHere: z.literal(true).optional(),
 });
 export type Character = z.infer<typeof Character>;
 
 export const FleetState = z.object({
-  version: z.literal(7),
+  version: z.literal(8),
   islands: z.record(z.string(), Island),
   characters: z.record(z.string(), Character),
   home: Home.prefault({}),
@@ -178,4 +195,4 @@ export type FleetState = z.infer<typeof FleetState>;
 
 export const DORMANT_AFTER_HOURS = 12;
 
-export const emptyState = (): FleetState => ({ version: 7, islands: {}, characters: {}, home: defaultHome(), defaultCwd: DEFAULT_CWD, scribeAsk: true });
+export const emptyState = (): FleetState => ({ version: 8, islands: {}, characters: {}, home: defaultHome(), defaultCwd: DEFAULT_CWD, scribeAsk: true });

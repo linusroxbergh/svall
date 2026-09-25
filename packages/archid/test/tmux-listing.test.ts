@@ -30,8 +30,9 @@ runIf('Tmux.listWindows', () => {
 
   it('gives an activity it cannot read as 0, never NaN', async () => {
     const tmux = new Tmux('/nowhere.sock', '/dev/null');
-    const row = ['@1', '%1', 'c_0', 'sh', 'soon', '0', '/tmp'];
-    vi.spyOn(tmux, 'run').mockImplementation(async (...args) => `${args.at(-1)!.replace(/#\{[a-z_]+\}/g, () => row.shift()!)}\n`);
+    const row = ['@1', '%1', '1', 'c_0', 'sh', 'soon', '0', '/tmp'];
+    const listing = tmux as unknown as { call(args: string[]): Promise<string> };
+    vi.spyOn(listing, 'call').mockImplementation(async (args) => `${args.at(-1)!.replace(/#\{[a-z_]+\}/g, () => row.shift()!)}\n`);
     expect((await tmux.listWindows())[0]).toMatchObject({ name: 'c_0', path: '/tmp', activity: 0 });
   });
 });

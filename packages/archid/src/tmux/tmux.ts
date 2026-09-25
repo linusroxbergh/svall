@@ -20,11 +20,20 @@ export function resolveTmux(): string {
   return 'tmux';
 }
 
+// the server takes the environment of the command that starts it, and hands it to every pane. The
+// release root the archid shim exports would make a checkout's `pnpm archi` in a pane act as that release
+function paneEnv(): NodeJS.ProcessEnv {
+  const { ARCHI_RELEASE_ROOT: _release, ...env } = process.env;
+  return env;
+}
+
 export type LiveSession = { name: string; attached: number; created: number };
 
 export type LiveWindow = {
   windowId: string;
   paneId: string;
+  // the process tmux started in the pane: the shell, unless it replaced itself
+  panePid: number;
   name: string;
   command: string;
   path: string;
@@ -42,6 +51,11 @@ export function rawPasteArgs(usage: string): string[] {
   return /\[-\w*S\w*\]/.test(usage) ? ['-S'] : [];
 }
 
+/** Whether a tmux call failed for want of a server: the one on its socket died, or none was ever started there. */
+export function noServer(e: unknown): boolean {
+  return /no server running on |error connecting to .* \(No such file or directory\)/.test(String(e));
+}
+
 export class Tmux {
   readonly binary = resolveTmux();
   private rawPaste?: Promise<string[]>;
@@ -49,8 +63,15 @@ export class Tmux {
   constructor(readonly socket: string, private conf: string) {}
 
   async run(...args: string[]): Promise<string> {
+    return this.call(args);
+  }
+
+  // a signal that aborts ends the tmux client this call started
+  private async call(args: string[], signal?: AbortSignal): Promise<string> {
     const { stdout } = await exec(this.binary, ['-S', this.socket, '-f', this.conf, ...args], {
       maxBuffer: 64 * 1024 * 1024,
+      env: paneEnv(),
+      signal,
     });
     return stdout;
   }
@@ -90,6 +111,11 @@ export class Tmux {
     await this.run('set-option', '-w', '-u', '-t', windowId, 'window-size');
   }
 
+  // every client attached to the session, which leaves the session and its windows running
+  async detachClients(session: string, signal?: AbortSignal): Promise<void> {
+    await this.call(['detach-client', '-s', `=${session}`], signal).catch(() => {});
+  }
+
   async killSession(name: string): Promise<void> {
     await this.run('kill-session', '-t', `=${name}`).catch(() => {});
   }
@@ -127,23 +153,24 @@ export class Tmux {
     return { windowId, paneId };
   }
 
-  // the bytes go in on stdin: as arguments tmux caps them at about 16 KB and reads a trailing ; as syntax
-  private async paste(paneId: string, data: Buffer | string): Promise<void> {
+  // the bytes go in on stdin: as arguments tmux caps them at about 16 KB and reads a trailing ; as syntax.
+  // a signal that aborts ends the tmux client
+  private async paste(paneId: string, data: Buffer | string, signal?: AbortSignal): Promise<void> {
     // an answer tmux failed to give is asked for again on the next paste
     this.rawPaste ??= this.run('list-commands', 'paste-buffer').then(rawPasteArgs)
       .catch((e: unknown) => { this.rawPaste = undefined; throw e; });
     const raw = await this.rawPaste;
     const name = `archi-${crypto.randomUUID()}`;
-    const p = exec(this.binary, ['-S', this.socket, '-f', this.conf, 'load-buffer', '-b', name, '-', ';', 'paste-buffer', '-d', '-r', ...raw, '-b', name, '-t', paneId]);
+    const p = exec(this.binary, ['-S', this.socket, '-f', this.conf, 'load-buffer', '-b', name, '-', ';', 'paste-buffer', '-d', '-r', ...raw, '-b', name, '-t', paneId], { env: paneEnv(), signal });
     // a tmux that fails before reading closes the pipe; its exit status carries the error
     p.child.stdin!.on('error', () => {}).end(data);
     // a pane gone before the paste leaves the buffer behind
     await p.catch(async (e) => { await this.run('delete-buffer', '-b', name).catch(() => {}); throw e; });
   }
 
-  async sendBytes(paneId: string, bytes: Buffer): Promise<void> {
+  async sendBytes(paneId: string, bytes: Buffer, signal?: AbortSignal): Promise<void> {
     if (bytes.length === 0) return;
-    await this.paste(paneId, bytes);
+    await this.paste(paneId, bytes, signal);
   }
 
   async sendLine(paneId: string, text: string, enter: boolean): Promise<void> {
@@ -163,26 +190,26 @@ export class Tmux {
     await this.run('set-option', '-w', '-u', '-t', windowId, 'window-size').catch(() => {});
   }
 
-  async capture(paneId: string, lines: number, escapes = false): Promise<Buffer> {
-    const out = await this.run('capture-pane', '-p', ...(escapes ? ['-e'] : []), '-t', paneId, '-S', `-${lines}`);
+  async capture(paneId: string, lines: number, escapes = false, signal?: AbortSignal): Promise<Buffer> {
+    const out = await this.call(['capture-pane', '-p', ...(escapes ? ['-e'] : []), '-t', paneId, '-S', `-${lines}`], signal);
     return Buffer.from(out.replace(/\n$/, '').replace(/\n/g, '\r\n'), 'utf8');
   }
 
-  async listWindows(): Promise<LiveWindow[]> {
+  async listWindows(signal?: AbortSignal): Promise<LiveWindow[]> {
     // tmux prints a path as it is, and a directory's name may hold any byte but NUL: fields and rows are
     // marked with a token made for this listing, which no name can hold except by guessing it
     const token = crypto.randomBytes(8).toString('hex');
     const [sep, end] = [`\x1f${token}`, `\x1e${token}`];
-    const fmt = ['#{window_id}', '#{pane_id}', '#{window_name}', '#{pane_current_command}', '#{window_activity}', '#{pane_dead}', '#{pane_current_path}'].join(sep) + end;
+    const fmt = ['#{window_id}', '#{pane_id}', '#{pane_pid}', '#{window_name}', '#{pane_current_command}', '#{window_activity}', '#{pane_dead}', '#{pane_current_path}'].join(sep) + end;
     // one row per window: a split window would otherwise yield several rows under the same name.
-    const out = await this.run('list-panes', '-s', '-t', SESSION, '-f', '#{pane_active}', '-F', fmt);
+    const out = await this.call(['list-panes', '-s', '-t', SESSION, '-f', '#{pane_active}', '-F', fmt], signal);
     return out
       .split(`${end}\n`)
       .filter(Boolean)
       .map((l) => {
-        const [windowId, paneId, name, command, activity, dead, path] = l.split(sep);
+        const [windowId, paneId, panePid, name, command, activity, dead, path] = l.split(sep);
         const seconds = Number(activity);
-        return { windowId, paneId, name, command, path, activity: Number.isFinite(seconds) ? seconds * 1000 : 0, dead: dead === '1' };
+        return { windowId, paneId, panePid: Number(panePid), name, command, path, activity: Number.isFinite(seconds) ? seconds * 1000 : 0, dead: dead === '1' };
       })
       .filter((w) => w.name !== KEEP_WINDOW);
   }
@@ -191,8 +218,8 @@ export class Tmux {
     await this.run('rename-window', '-t', windowId, name);
   }
 
-  async killWindow(windowId: string): Promise<void> {
-    await this.run('kill-window', '-t', windowId).catch(() => {});
+  async killWindow(windowId: string, signal?: AbortSignal): Promise<void> {
+    await this.call(['kill-window', '-t', windowId], signal).catch(() => {});
   }
 
   async killServer(): Promise<void> {

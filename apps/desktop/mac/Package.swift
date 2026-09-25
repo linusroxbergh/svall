@@ -22,5 +22,6 @@ let package = Package(
                 .linkedFramework("UserNotifications"),
             ]
         ),
+        .testTarget(name: "ArchipelagoTests", dependencies: ["Archipelago"], path: "Tests/ArchipelagoTests"),
     ]
 )

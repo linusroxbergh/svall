@@ -1,31 +1,23 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { z } from 'zod';
-import { AgentKind, DEFAULT_CWD, Home } from '@archipelago/protocol';
+import { FleetConfig, FleetId, NodeConfig, type AgentKind, type MachineId } from '@archipelago/protocol';
+import { writeJsonAtomic } from './atomic.js';
 import { writeAtomic } from './jsonfile.js';
+import type { Paths } from './paths.js';
 
-export const Config = z.object({
-  port: z.number().int().default(47800),
-  host: z.string().default('127.0.0.1'),
-  shell: z.string().optional(),
-  linear: z.object({ workspace: z.string(), teamKeys: z.array(z.string()) }).optional(),
-  // with no command, the crew starts the main agent's crewCommand
-  home: Home.extend({ command: z.string().optional() }).prefault({}),
-  defaultCwd: z.string().default(DEFAULT_CWD),
-  // the agent the scribe, mission control's crew and `archi char new --run` use by default; absent, the only one installed, else claude
-  mainAgent: AgentKind.optional(),
-  // which plan a scribe pass spends; absent, the main agent's. model names a model of scribe.agent's CLI, else of claude's
-  scribe: z.object({ agent: AgentKind.optional(), model: z.string().optional() }).prefault({}),
-  // phone clients: which tailnet logins may drive the fleet and get its pushes (empty lets in only the Mac's own login),
-  // extra page origins allowed to open a socket beyond the one archid itself served, who a push
-  // service may contact about this sender (Apple refuses a push without one; unset, it is the served page), and
-  // which of the three https ports tailscale serve offers this fleet is reached on
-  mobile: z.object({
-    logins: z.array(z.string()).default([]),
-    origins: z.array(z.string()).default([]),
-    pushContact: z.string().regex(/^(https:\/\/|mailto:)./, 'an https: url or mailto: address').optional(),
-    httpsPort: z.union([z.literal(443), z.literal(8443), z.literal(10000)]).optional(),
-  }).prefault({}),
-});
+const newFleetId = (): FleetId => FleetId.parse(crypto.randomUUID());
+
+/**
+ * Every setting a running fleet reads, portable and machine-local side by side. It is also the shape
+ * of the config.json the two files are split out of.
+ */
+export const Config = FleetConfig.omit({ mobile: true })
+  .merge(NodeConfig.omit({ mobile: true }))
+  .extend({
+    id: FleetId.default(newFleetId),
+    mobile: FleetConfig.shape.mobile.unwrap().merge(NodeConfig.shape.mobile.unwrap()).prefault({}),
+  });
 export type Config = z.infer<typeof Config>;
 
 export const scribeModel = (s: Config['scribe'], agent: AgentKind): string | undefined =>
@@ -33,15 +25,13 @@ export const scribeModel = (s: Config['scribe'], agent: AgentKind): string | und
 
 export class InvalidConfig extends Error {}
 
-export function loadConfig(file: string): Config {
-  if (!fs.existsSync(file)) return Config.parse({});
-  return parseConfig(fs.readFileSync(file, 'utf8'), file);
-}
+export const mergeConfig = (fleet: FleetConfig, node: NodeConfig): Config =>
+  ({ ...fleet, ...node, mobile: { ...fleet.mobile, ...node.mobile } });
 
-/** The config `text` holds; throws an InvalidConfig that says, on one line, what in `file` is wrong. */
-export function parseConfig(text: string, file: string): Config {
+/** What `text` holds under `schema`; throws an InvalidConfig that says, on one line, what in `file` is wrong. */
+export function parseConfig<T extends z.ZodTypeAny>(text: string, file: string, schema: T): z.infer<T> {
   try {
-    return Config.parse(JSON.parse(text));
+    return schema.parse(JSON.parse(text));
   } catch (err) {
     const why = err instanceof z.ZodError
       ? err.issues.map((i) => `${i.path.join('.') || 'the whole file'}: ${i.message}`).join('; ')
@@ -50,15 +40,83 @@ export function parseConfig(text: string, file: string): Config {
   }
 }
 
-/** Sets mainAgent in `file` and keeps every other key; a file that does not parse is refused, not replaced.
- *  A linked file (stow, home-manager) is written where it points, with the mode it had. */
-export function saveMainAgent(file: string, agent: AgentKind): void {
-  const there = fs.existsSync(file);
-  const text = there ? fs.readFileSync(file, 'utf8') : '{}';
-  parseConfig(text, file);
-  const real = there ? fs.realpathSync(file) : file;
-  const mode = there ? fs.statSync(real).mode & 0o777 : undefined;
+const read = <T extends z.ZodTypeAny>(file: string, schema: T): z.infer<T> => parseConfig(fs.readFileSync(file, 'utf8'), file, schema);
+
+function splitLegacy(file: string): { fleet: FleetConfig; node: NodeConfig } {
+  const { id, host, port, shell, mobile, ...portable } = read(file, Config);
+  return {
+    fleet: FleetConfig.parse({ ...portable, id, mobile }),
+    node: NodeConfig.parse({ host, port, shell, mobile }),
+  };
+}
+
+/**
+ * Writes whichever of the two config files this fleet is missing, out of its config.json when it
+ * still has one, and returns the files written. An unreadable config.json stops it before any write.
+ */
+export function initConfig(paths: Paths, seed: Partial<NodeConfig> = {}): string[] {
+  const has = (file: string): boolean => fs.existsSync(file);
+  const backup = `${paths.legacyConfig}.bak`;
+  // a config.json is put beside the new files byte-exact before anything is read out of it, so the
+  // only file the split ever reads is one nothing edits any more
+  if (has(paths.legacyConfig)) {
+    if (has(paths.fleetConfig)) {
+      throw new Error(`${paths.legacyConfig} is not read any more: this fleet's settings are in ${paths.fleetConfig} and ${paths.nodeConfig}. Move anything you still want from it into them and delete it.`);
+    }
+    if (has(backup)) {
+      throw new Error(`${backup} is in the way of putting ${paths.legacyConfig} beside the new files. Keep whichever of the two you want, delete the other, and start again.`);
+    }
+    read(paths.legacyConfig, Config); // one the schema rejects is left where its owner put it
+    fs.renameSync(paths.legacyConfig, backup);
+  }
+  const wrote: string[] = [];
+  const split = has(backup) && !has(paths.fleetConfig) ? splitLegacy(backup) : undefined;
+  if (split || !has(paths.nodeConfig)) {
+    writeJsonAtomic(paths.nodeConfig, split?.node ?? NodeConfig.parse(seed));
+    wrote.push(paths.nodeConfig);
+  }
+  // last, so a fleet.json is only ever there once the split behind it is whole
+  if (!has(paths.fleetConfig)) {
+    writeJsonAtomic(paths.fleetConfig, split?.fleet ?? FleetConfig.parse({ id: newFleetId() }));
+    wrote.push(paths.fleetConfig);
+  }
+  return wrote;
+}
+
+export function loadConfig(paths: Paths): Config {
+  if (!fs.existsSync(paths.home)) return Config.parse({});
+  initConfig(paths);
+  return mergeConfig(read(paths.fleetConfig, FleetConfig), read(paths.nodeConfig, NodeConfig));
+}
+
+/** The main agent fleet.json names, or the config.json it is still to be split out of; nothing is split or written. */
+export function configuredMainAgent(paths: Paths): AgentKind | undefined {
+  if (fs.existsSync(paths.fleetConfig)) return read(paths.fleetConfig, FleetConfig).mainAgent;
+  return fs.existsSync(paths.legacyConfig) ? read(paths.legacyConfig, Config).mainAgent : undefined;
+}
+
+/** Sets mainAgent in fleet.json, split out first if need be, and keeps every other key; a file that does not parse
+ *  is refused, not replaced. A linked file (stow, home-manager) is written where it points, with the mode it had. */
+export function saveMainAgent(paths: Paths, agent: AgentKind): void {
+  initConfig(paths);
+  const file = paths.fleetConfig;
+  const text = fs.readFileSync(file, 'utf8');
+  parseConfig(text, file, FleetConfig);
+  const real = fs.realpathSync(file);
+  const mode = fs.statSync(real).mode & 0o777;
   writeAtomic(real, JSON.stringify({ ...(JSON.parse(text) as object), mainAgent: agent }, null, 2) + '\n', { mode, perProcess: true });
   // the umask narrows the mode a file is created with
-  if (mode !== undefined) fs.chmodSync(real, mode);
+  fs.chmodSync(real, mode);
+}
+
+/** The gateway fleet.json names now: `archi host enable` names one, and `archi host remove` drops it, while the daemon runs. */
+export function namedGateway(paths: Paths): MachineId | undefined {
+  return read(paths.fleetConfig, FleetConfig).gatewayMachineId;
+}
+
+/** Names `id` this fleet's gateway in fleet.json and in the running config, which others hold by reference. */
+export function setGateway(paths: Paths, config: Config, id: MachineId): void {
+  if (config.gatewayMachineId === id) return;
+  writeJsonAtomic(paths.fleetConfig, { ...read(paths.fleetConfig, FleetConfig), gatewayMachineId: id });
+  config.gatewayMachineId = id;
 }

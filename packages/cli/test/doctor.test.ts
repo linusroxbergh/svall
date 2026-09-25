@@ -1,10 +1,14 @@
+import os from 'node:os';
 import { describe, expect, it } from 'vitest';
 import { codexHookCommand, mergeCodexHooks } from '@archipelago/archid/codex/install';
+import { archidUnit } from '@archipelago/archid/linux/setup';
 import { LAUNCHD_LABEL } from '@archipelago/archid/profile';
+import { repoRoot } from '@archipelago/archid/release';
 import { HOOK_EVENTS, hookCommand, mergeHooks, mergeStatusLine, nodeRun, statusWrapper } from '@archipelago/archid/setup';
 import type { AgentKind } from '@archipelago/protocol';
+import { DEFAULT_PREFIX } from '../../../scripts/install-release.mjs';
 import type { HookTrust } from '../src/codex-trust.js';
-import { codexCheck, doctor, preflight, requireReady, type DoctorDeps } from '../src/commands/doctor.js';
+import { codexCheck, doctor, preflight, realPreflightDeps, reportLines, requireReady, type DoctorDeps } from '../src/commands/doctor.js';
 
 const priv = { name: 'private', home: '/u/.archipelago', managed: true };
 const adhoc = { name: 'archi-dev', home: '/tmp/archi-dev', managed: false };
@@ -29,6 +33,8 @@ function fake(o: {
   mainAgent?: AgentKind;
   found?: AgentKind[];
   trust?: HookTrust;
+  platform?: NodeJS.Platform;
+  agentPath?: string;
 } = {}) {
   const calls: string[] = [];
   const envs: Record<string, Record<string, string> | undefined> = {};
@@ -38,6 +44,7 @@ function fake(o: {
     'claude auth status --json': '{"loggedIn":true}\n',
     'gh auth status': '',
     'launchctl print gui/501/io.github.linusroxbergh.archipelago.archid': '\tstate = running\n\tlast exit code = (never exited)\n',
+    [`${RSYNC} --version`]: 'rsync  version 3.4.4  protocol version 32\n',
     ...o.commands,
   };
   const mergedFiles: Record<string, string | undefined> = {
@@ -51,10 +58,10 @@ function fake(o: {
   };
   const files: Record<string, string> = Object.fromEntries(Object.entries(mergedFiles).filter(([, v]) => v !== undefined) as [string, string][]);
   const deps: DoctorDeps = {
-    run: async (cmd, args, env) => {
-      const key = [cmd, ...args].join(' ');
+    run: async (cmd, args, how) => {
+      const key = [...(how?.path ? [`PATH=${how.path}`] : []), cmd, ...args].join(' ');
       calls.push(key);
-      envs[key] = env;
+      envs[key] = how?.env;
       const out = commands[key];
       if (out === undefined) throw Object.assign(new Error(`spawn ${cmd} ENOENT`), { code: 'ENOENT' });
       if (out instanceof Error) throw out;
@@ -72,16 +79,21 @@ function fake(o: {
     exists: (p) => p in files,
     node: o.node ?? 'v24.13.0',
     pathEnv: o.pathEnv ?? '/opt/homebrew/bin:/u/.local/bin:/usr/bin',
+    ...(o.agentPath && { agentPath: o.agentPath }),
     shimDir: '/u/.local/bin',
     keys: o.keys ?? {},
     mainAgent: o.mainAgent,
     found: o.found ?? ['claude'],
     codexTrust: async () => o.trust,
+    platform: o.platform ?? 'darwin',
+    user: 'linus',
+    rsync: { bundled: RSYNC, fix: 'build it with node scripts/build-controller.mjs' },
   };
   return { deps, calls, envs };
 }
 
 const CODEX = { dir: '/u/.codex', config: '/u/.codex/config.toml', hooks: '/u/.codex/hooks.json' };
+const RSYNC = '/u/archipelago/vendor/rsync/3.4.4-arm64/rsync';
 const codexHooks = JSON.stringify(mergeCodexHooks({}, codexHookCommand(SCRIPT), SCRIPT));
 
 const byName = (r: Awaited<ReturnType<typeof doctor>>) => Object.fromEntries(r.checks.map((c) => [c.name, c]));
@@ -99,8 +111,11 @@ describe('doctor', () => {
     expect(c.archid.detail).toBe('running on port 47800');
     expect(c['hook receiver']).toMatchObject({ status: 'ok', detail: 'answering at /u/.archipelago/hooks.sock' });
     expect(c.launchd.detail).toMatch(/state = running/);
+    expect(c.rsync.detail).toBe(`3.4.4 at ${RSYNC}`);
     expect(r.log.path).toBe('/u/.archipelago/archid.log');
     expect(r.log.lines).toEqual(Array.from({ length: 20 }, (_, i) => `line ${i + 11}`));
+    expect(r.config).toEqual({ fleet: '/u/.archipelago/fleet.json', node: '/u/.archipelago/node.json' });
+    expect(reportLines(r)).toContain('config /u/.archipelago/fleet.json and /u/.archipelago/node.json');
   });
 
   it('names what is broken and how to fix it', async () => {
@@ -203,11 +218,16 @@ describe('doctor', () => {
     expect(byName(await doctor(adhoc, fake({ daemonEnv: env }).deps))['daemon env'].status).toBe('skip');
   });
 
-  it('fails a config.json that does not parse, saying where and what is wrong on one line', async () => {
+  it('fails a fleet.json, node.json or unsplit config.json that does not parse, saying where and what is wrong on one line', async () => {
     expect(byName(await doctor(priv, fake().deps)).config).toMatchObject({ status: 'ok' });
-    for (const [text, why] of [['{}{}', /after JSON/], ['{ "port": "x", "mobile": { "httpsPort": 1 } }', /port: .*expected number.*; mobile\.httpsPort: /]] as const) {
-      const c = byName(await doctor(priv, fake({ files: { '/u/.archipelago/config.json': text } }).deps)).config;
-      expect(c).toMatchObject({ status: 'fail', detail: expect.stringMatching(/^invalid config \/u\/\.archipelago\/config\.json: .*; a stopped archid waits for it to be fixed$/) });
+    const cases = [
+      ['fleet.json', '{}{}', /after JSON/],
+      ['node.json', '{ "port": "x", "mobile": { "httpsPort": 1 } }', /port: .*expected number.*; mobile\.httpsPort: /],
+      ['config.json', '{ "port": "x" }', /port: .*expected number/],
+    ] as const;
+    for (const [file, text, why] of cases) {
+      const c = byName(await doctor(priv, fake({ files: { [`/u/.archipelago/${file}`]: text } }).deps)).config;
+      expect(c).toMatchObject({ status: 'fail', detail: expect.stringMatching(new RegExp(`^invalid config /u/\\.archipelago/${file.replace('.', '\\.')}: .*; a stopped archid waits for it to be fixed$`)) });
       expect(c.detail).toMatch(why);
       expect(c.detail).not.toContain('\n');
     }
@@ -231,6 +251,17 @@ describe('doctor', () => {
     expect(c.launchd.detail).toBe(`${LAUNCHD_LABEL}: state = running, runs = 4, last exit code = 0`);
   });
 
+  it('flags a Mac left with only the system openrsync, or an rsync too old, and names the fix', async () => {
+    const openrsync = 'openrsync: protocol version 29\nrsync version 2.6.9 compatible\n';
+    const gone = byName(await doctor(priv, fake({ commands: { [`${RSYNC} --version`]: undefined as never, 'rsync --version': openrsync } }).deps));
+    expect(gone.rsync).toEqual({
+      name: 'rsync', status: 'warn',
+      detail: `${RSYNC} is not there, and the rsync on PATH is openrsync, which cannot protect remote arguments or report byte progress; handover needs the bundled rsync: build it with node scripts/build-controller.mjs`,
+    });
+    const old = byName(await doctor(priv, fake({ commands: { [`${RSYNC} --version`]: 'rsync  version 3.1.3  protocol version 31\n' } }).deps));
+    expect(old.rsync).toMatchObject({ status: 'warn', detail: expect.stringMatching(/is rsync 3\.1\.3; a handover needs 3\.2\.3 or newer.*build-controller/) });
+  });
+
   it('asks launchd about the profile it was pointed at, and not at all for an ad-hoc home', async () => {
     const work = fake({ commands: { 'launchctl print gui/501/io.github.linusroxbergh.archipelago.archid.work': '\tstate = running\n' } });
     expect(byName(await doctor({ name: 'work', home: '/u/.archipelago-work', managed: true }, work.deps)).launchd.status).toBe('ok');
@@ -242,6 +273,89 @@ describe('doctor', () => {
     const dev = fake();
     expect(byName(await doctor(adhoc, dev.deps)).launchd).toMatchObject({ status: 'ok', detail: expect.stringMatching(/not managed/) });
     expect(dev.calls.some((c) => c.startsWith('launchctl'))).toBe(false);
+  });
+});
+
+describe('doctor on Linux', () => {
+  const unit = 'archipelago-archid@private.service';
+  const showOf = (u: string) => `systemctl --user show ${u} --property=LoadState --property=ActiveState --property=SubState --property=UnitFileState`;
+  const show = showOf(unit);
+  const gateway = showOf('archipelago-gateway.service');
+  const running = 'LoadState=loaded\nActiveState=active\nSubState=running\nUnitFileState=enabled\n';
+  const linux = (commands: Record<string, string | Error> = {}) => fake({
+    platform: 'linux',
+    commands: {
+      [show]: running,
+      [gateway]: running,
+      'loginctl show-user linus --property=Linger': 'Linger=yes\n',
+      ...commands,
+    },
+  });
+
+  it('checks the machine\'s gateway unit beside the fleet\'s', async () => {
+    expect(byName(await doctor(priv, linux().deps)).gateway)
+      .toMatchObject({ status: 'ok', detail: expect.stringContaining('archipelago-gateway.service: loaded, active (running), enabled') });
+    const stopped = byName(await doctor(priv, linux({ [gateway]: 'LoadState=loaded\nActiveState=inactive\nSubState=dead\nUnitFileState=disabled\n' }).deps));
+    expect(stopped.gateway).toMatchObject({ status: 'fail', detail: expect.stringContaining('inactive') });
+  });
+
+  it('asks systemd and loginctl instead of launchd', async () => {
+    const f = linux();
+    const c = byName(await doctor(priv, f.deps));
+    expect(c.launchd).toBeUndefined();
+    // a companion sends with the system rsync, which the host doctor checks from the Mac
+    expect(c.rsync).toBeUndefined();
+    expect(c.systemd).toMatchObject({ status: 'ok', detail: expect.stringContaining(`${unit}: loaded, active (running), enabled`) });
+    expect(c.linger).toMatchObject({ status: 'ok', detail: expect.stringContaining('on for linus') });
+    expect(f.calls.some((call) => call.startsWith('launchctl'))).toBe(false);
+  });
+
+  it('fails a unit that is not installed or not running, and warns when lingering is off', async () => {
+    const stopped = linux({
+      [show]: 'LoadState=loaded\nActiveState=inactive\nSubState=dead\nUnitFileState=enabled\n',
+      'loginctl show-user linus --property=Linger': 'Linger=no\n',
+    });
+    const c = byName(await doctor(priv, stopped.deps));
+    expect(c.systemd.status).toBe('fail');
+    expect(c.linger).toMatchObject({ status: 'warn', detail: expect.stringContaining('loginctl enable-linger linus') });
+
+    const absent = byName(await doctor(priv, linux({ [show]: undefined as never }).deps));
+    expect(absent.systemd).toMatchObject({ status: 'fail', detail: expect.stringMatching(/no systemd user services/) });
+  });
+
+  it('names the apt package when tmux is missing', async () => {
+    const c = byName(await doctor(priv, linux({ 'tmux -V': undefined as never }).deps));
+    expect(c.tmux).toMatchObject({ status: 'fail', detail: 'not found on PATH: sudo apt install tmux' });
+  });
+
+  it('asks for the agents on the PATH the fleet\'s unit runs with, where the daemon finds them', async () => {
+    const agentPath = '/u/.local/share/archipelago/current/node/bin:/u/.local/bin:/usr/local/bin:/usr/bin:/bin';
+    const f = fake({
+      platform: 'linux', agentPath,
+      files: { '/u/.codex': '', '/u/.codex/hooks.json': codexHooks },
+      commands: {
+        [show]: running, [gateway]: running, 'loginctl show-user linus --property=Linger': 'Linger=yes\n',
+        // the login shell ssh hands a command to finds neither
+        'claude --version': undefined as never,
+        [`PATH=${agentPath} claude --version`]: '2.1.260 (Claude Code)\n',
+        [`PATH=${agentPath} codex --version`]: 'codex-cli 0.156.1\n',
+      },
+    });
+    const c = byName(await doctor(priv, f.deps));
+    expect(c.claude).toMatchObject({ status: 'ok', detail: '2.1.260 (Claude Code)' });
+    expect(c.codex).toMatchObject({ status: 'ok', detail: expect.stringContaining('codex-cli 0.156.1') });
+  });
+
+  it('looks for the agents on Linux where the unit it would install runs them', () => {
+    const unitPath = /^Environment="PATH=(.*)"$/m.exec(archidUnit({ repoRoot: repoRoot(), homedir: os.homedir(), prefix: DEFAULT_PREFIX, fleet: 'private', home: '/u/.archipelago' }).text)![1];
+    expect(realPreflightDeps('/u/.archipelago', 'linux').agentPath).toBe(unitPath);
+    expect(realPreflightDeps('/u/.archipelago', 'darwin').agentPath).toBeUndefined();
+  });
+
+  it('warns rather than fails when Claude Code is not installed, so setup runs on a fresh box', async () => {
+    const f = linux({ 'claude --version': undefined as never });
+    expect(byName(await doctor(priv, f.deps)).claude).toMatchObject({ status: 'warn', detail: expect.stringMatching(/not found/) });
+    expect(requireReady(await preflight(f.deps))).toEqual(expect.arrayContaining([expect.stringMatching(/^! claude/)]));
   });
 });
 

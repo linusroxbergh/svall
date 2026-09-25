@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
@@ -6,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { codexInstalled, codexPaths } from '../src/codex/install.js';
 import { silentLogger } from '../src/log.js';
+import { machineId } from '../src/machine.js';
 import { readOrCreateToken, startDaemon, type Daemon } from '../src/main.js';
 import { resolvePaths } from '../src/paths.js';
 import { Tmux } from '../src/tmux/tmux.js';
@@ -217,6 +219,74 @@ runIf('startDaemon', () => {
       await expect(start({ home, port: 0, log: silentLogger })).rejects.toThrow(/tmux not found.*brew install tmux/);
     } finally {
       process.env.PATH = saved;
+    }
+  });
+});
+
+runIf('a daemon that may not write its fleet', () => {
+  const homes: string[] = [];
+  afterEach(async () => {
+    for (const h of homes.splice(0)) { const p = resolvePaths(h); await new Tmux(p.tmuxSock, p.tmuxConf).killServer(); }
+    cleanHomes();
+  });
+
+  // a home with a fleet id we know, so the journal beside it names the same fleet
+  function seed(journal: object): { home: string; paths: ReturnType<typeof resolvePaths>; fleetId: string } {
+    const home = makeHome();
+    homes.push(home);
+    const fleetId = crypto.randomUUID();
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ id: fleetId, shell: '/bin/sh' }));
+    const paths = resolvePaths(home);
+    fs.mkdirSync(paths.handoverDir, { recursive: true });
+    const common = { transactionId: 'tx-1', generation: 0, fleetId, updatedAt: 1 };
+    fs.writeFileSync(paths.journal, JSON.stringify({ ...common, ...journal }));
+    return { home, paths, fleetId };
+  }
+
+  it('stays frozen on a source journal, adopting no window and writing no state', async () => {
+    const other = crypto.randomUUID();
+    const { home, paths } = seed({ role: 'source', fromMachineId: machineId(), toMachineId: other, phase: 'freeze', stoppedTerminals: [] });
+    const d = await startDaemon({ home, port: 0, log: silentLogger });
+    try {
+      expect(fs.existsSync(paths.state)).toBe(false);
+      // no window, because a daemon that may not write its fleet starts no tmux server
+      expect(fs.existsSync(paths.tmuxSock)).toBe(false);
+      await expect(new Tmux(paths.tmuxSock, paths.tmuxConf).run('list-windows')).rejects.toThrow();
+      // the journal outranks the record this fleet started with, and the surrender survives a restart
+      expect(JSON.parse(fs.readFileSync(paths.owner, 'utf8'))).toMatchObject({ surrendered: true });
+    } finally {
+      await d.stop();
+    }
+  });
+
+  it('waits for activation on a committed destination journal', async () => {
+    const other = crypto.randomUUID();
+    const { home, paths } = seed({ role: 'destination', fromMachineId: other, toMachineId: machineId(), phase: 'commit', manifestDigest: 'a'.repeat(64) });
+    const d = await startDaemon({ home, port: 0, log: silentLogger });
+    try {
+      expect(fs.existsSync(paths.state)).toBe(false);
+      // no window, because a daemon that may not write its fleet starts no tmux server
+      expect(fs.existsSync(paths.tmuxSock)).toBe(false);
+      await expect(new Tmux(paths.tmuxSock, paths.tmuxConf).run('list-windows')).rejects.toThrow();
+      // only the journal holds it back, so nothing durable says this machine gave the fleet up
+      expect(JSON.parse(fs.readFileSync(paths.owner, 'utf8')).surrendered).toBeUndefined();
+    } finally {
+      await d.stop();
+    }
+  });
+
+  it('takes a standalone fleet back when its owner record is corrupt', async () => {
+    const home = makeHome();
+    homes.push(home);
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
+    const paths = resolvePaths(home);
+    fs.writeFileSync(paths.owner, '{ not json');
+    const d = await startDaemon({ home, port: 0, log: silentLogger });
+    try {
+      expect(d.store.state.islands.home.kind).toBe('home');
+      expect(JSON.parse(fs.readFileSync(paths.owner, 'utf8'))).toMatchObject({ generation: 0, ownerMachineId: machineId() });
+    } finally {
+      await d.stop();
     }
   });
 });

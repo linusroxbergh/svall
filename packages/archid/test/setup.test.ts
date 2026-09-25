@@ -197,7 +197,7 @@ describe('hookCommand and nodeRun', () => {
 
 describe('launchdPlist', () => {
   it('renders label, program and environment', () => {
-    const p = launchdPlist({ label: 'io.github.linusroxbergh.archipelago.archid', tsx: '/r/node_modules/.bin/tsx', bin: '/r/packages/archid/src/bin.ts', home: '/h/.archipelago', log: '/h/.archipelago/archid.log', pathEnv: '/opt/homebrew/bin:/usr/bin:/bin' });
+    const p = launchdPlist({ label: 'io.github.linusroxbergh.archipelago.archid', program: ['/r/node_modules/.bin/tsx', '/r/packages/archid/src/bin.ts'], home: '/h/.archipelago', log: '/h/.archipelago/archid.log', pathEnv: '/opt/homebrew/bin:/usr/bin:/bin' });
     expect(p).toContain('<string>io.github.linusroxbergh.archipelago.archid</string>');
     expect(p).toContain('<string>/r/node_modules/.bin/tsx</string>');
     expect(p).toContain('<key>ARCHI_HOME</key>');
@@ -300,6 +300,38 @@ describe('runSetup', () => {
     expect(fs.existsSync(mark)).toBe(true);
     fs.rmSync(path.join(home, 'hooks'), { recursive: true });
     expect(run('c1')).toBe('mine\n');
+  });
+
+  it('points the hooks and statusline at the installed release\'s node when a staging copy runs setup', async () => {
+    const home = makeHome();
+    const settingsPath = path.join(home, 'claude-settings.json');
+    // this process's node stands in for the staging copy's, which is deleted once setup has run
+    const release = path.join(makeHome(), 'current');
+    await runSetup({ home, settingsPath, launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), release, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }) });
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    const node = path.join(release, 'node', 'bin', 'node');
+    expect(settings.hooks.SessionStart[0].hooks[0].command).toBe(hookCommand(node, path.join(home, 'hooks/agent-hook.mjs'), 'claude'));
+    expect(settings.statusLine.command).toBe(statusWrapper(node, path.join(home, 'hooks/claude-status.mjs')));
+    expect(JSON.stringify(settings)).not.toContain(process.execPath);
+    // the shims link into the release through current, which is what setup writes for one
+    expect(fs.readlinkSync(path.join(home, 'bin', 'archi'))).toBe(path.relative(path.join(home, 'bin'), path.join(release, 'bin', 'archi')));
+    expect(shimsCurrent(path.join(home, 'bin'))).toBe(true);
+  });
+
+  it('moves every named profile\'s agent onto the release it installs', async () => {
+    const root = makeHome();
+    const launchAgentsDir = path.join(root, 'LaunchAgents');
+    const work = path.join(root, '.archipelago-work');
+    // a profile opened before releases existed runs from the checkout through tsx
+    await setupHome({ home: work, label: 'com.archipelago.archid.work', repoRoot, launchAgentsDir, launchctl: false, port: 0 });
+    const home = path.join(root, '.archipelago');
+    const release = path.join(root, 'share', 'current');
+    await runSetup({ home, settingsPath: path.join(root, 'claude-settings.json'), launchAgentsDir, shimDir: path.join(root, 'bin'), release, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(root, 'codex') }) });
+    const plist = fs.readFileSync(path.join(launchAgentsDir, 'com.archipelago.archid.work.plist'), 'utf8');
+    expect(plist).toContain(`<string>${path.join(release, 'bin', 'archid')}</string>`);
+    expect(plist).not.toContain('tsx');
+    expect(plist).toContain(`<key>ARCHI_HOME</key><string>${work}</string>`);
+    expect(plist).toContain(`<string>${path.join(work, 'archid.log')}</string>`);
   });
 
   it('writes nothing when the Claude settings are not valid JSON', async () => {
@@ -455,10 +487,15 @@ describe('runSetup', () => {
     expect(fs.readFileSync(path.join(mc, '.codex/rules/archipelago.rules'), 'utf8')).toContain('prefix_rule(pattern = ["archi", "status"], decision = "allow")');
     // an edit to CLAUDE.md reaches codex with the next start
     fs.appendFileSync(path.join(mc, 'CLAUDE.md'), '- Launch every task in a fresh worktree.\n');
+    // an ordinary run refreshes the skills and leaves the settings the user edited alone
     fs.writeFileSync(settings, 'mine');
     const second = await runSetup(o);
+    expect(fs.readFileSync(settings, 'utf8')).toBe('mine');
+    expect(second.some((l) => l.startsWith('backup ->') && l.includes('.claude/settings.json'))).toBe(false);
+
+    const third = await runSetup({ ...o, replaceSettings: true });
     expect(JSON.parse(fs.readFileSync(settings, 'utf8')).permissions.allow).toContain('Bash(archi char update:*)');
-    const backup = second.find((l) => l.startsWith('backup ->') && l.includes('.claude/settings.json'));
+    const backup = third.find((l) => l.startsWith('backup ->') && l.includes('.claude/settings.json'));
     expect(backup).toBeDefined();
     expect(fs.readFileSync(backup!.split(' -> ')[1], 'utf8')).toBe('mine');
     expect(agentsMd()).toContain('Launch every task in a fresh worktree.');
@@ -556,7 +593,7 @@ describe('setupHome', () => {
     const home = path.join(root, '.archipelago-work');
     const launchAgentsDir = path.join(root, 'LaunchAgents');
     const lines = await setupHome({ home, label: 'io.github.linusroxbergh.archipelago.archid.work', repoRoot, launchAgentsDir, launchctl: false, port: 0 });
-    expect(JSON.parse(fs.readFileSync(path.join(home, 'config.json'), 'utf8'))).toEqual({ port: 0 });
+    expect(JSON.parse(fs.readFileSync(path.join(home, 'node.json'), 'utf8'))).toMatchObject({ port: 0 });
     expect(fs.existsSync(path.join(home, 'hooks/agent-hook.mjs'))).toBe(true);
     expect(fs.existsSync(path.join(home, 'tmux.conf'))).toBe(true);
     const plist = fs.readFileSync(path.join(launchAgentsDir, 'io.github.linusroxbergh.archipelago.archid.work.plist'), 'utf8');
@@ -566,11 +603,12 @@ describe('setupHome', () => {
     expect(fs.existsSync(path.join(root, 'bin'))).toBe(false);
   });
 
-  it('leaves an existing config alone', async () => {
+  it('keeps the settings an existing config already holds', async () => {
     const home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), '{"port":47900}\n');
     await setupHome({ home, label: 'io.github.linusroxbergh.archipelago.archid.x', repoRoot, launchAgentsDir: path.join(home, 'LaunchAgents'), launchctl: false, port: 0 });
-    expect(fs.readFileSync(path.join(home, 'config.json'), 'utf8')).toBe('{"port":47900}\n');
+    expect(JSON.parse(fs.readFileSync(path.join(home, 'node.json'), 'utf8')).port).toBe(47900);
+    expect(fs.readFileSync(path.join(home, 'config.json.bak'), 'utf8')).toBe('{"port":47900}\n');
   });
 
   it('starts the daemon PATH at a Homebrew node folder that an upgrade keeps', async () => {

@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { CODEX_HOOKS } from '../hooks/receiver.js';
-import { isOurs } from '../paths.js';
+import { HOOK_GUARD, isOurs } from '../paths.js';
 import { shq } from '../text.js';
 
 export type CodexPaths = { dir: string; config: string; hooks: string };
@@ -16,7 +16,7 @@ type Entry = { type: string; command?: string; timeout?: number; additionalConte
 type Group = { matcher?: string; hooks?: Entry[] };
 
 // codex trusts a hook by the hash of its definition, so the command names no node path that an upgrade would move
-export const codexHookCommand = (script: string): string => `[ -z "$ARCHI_CHAR_ID" ] || { node ${shq(script)} codex "$PPID"; }`;
+export const codexHookCommand = (script: string): string => `${HOOK_GUARD} { node ${shq(script)} codex "$PPID"; }`;
 
 // SessionEnd and Interrupt are capped at 3 s. The two events the daemon answers carry the whole brief, which codex
 // would otherwise cut to a preview past its spill threshold

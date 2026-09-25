@@ -1,12 +1,11 @@
 #!/bin/sh
-# Installs dependencies, downloads or builds GhosttyKit, builds Archipelago.app, installs it to /Applications and restarts
-# the daemon. Checks first and runs `archi setup` after the build when setup is missing or its
-# hooks, shims or launchd agent are out of date or run another checkout, so a failed check or build leaves the machine untouched.
+# Installs dependencies, downloads or builds GhosttyKit, builds Archipelago.app, installs the controller release it
+# carries, copies the app to /Applications and restarts the daemon. Checks first, so a failed check or build leaves the
+# machine untouched.
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 DEST="${ARCHI_APP_DEST:-/Applications}"
-HOME_DIR="$HOME/.archipelago"
 
 # one column, like the archi output it runs; colour only on a terminal that wants it
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
@@ -74,22 +73,12 @@ quiet pnpm install --silent
 # the setup checks need node_modules, so they come straight after the install and before any build
 CHECK_OUT="$(mktemp -t archipelago-check)"
 CHECK_OK=1
-pnpm --silent archi -p private setup --check >"$CHECK_OUT" 2>&1 || CHECK_OK=
+pnpm --silent archi -p private setup --check --release apps/desktop/mac/build/Archipelago.app/Contents/Resources/release >"$CHECK_OUT" 2>&1 || CHECK_OK=
 cat "$CHECK_OUT"; bar
 if [ -z "$CHECK_OK" ] || [ -n "$MISSING" ]; then
   [ -z "$MISSING" ] || printf '%s\n' "$MISSING" | sed '/^$/d' >&2
   fail "Nothing was changed. Fix the ✗ items above, then run pnpm desktop:install again."
 fi
-
-# uninstall keeps the fleet homes, so config.json alone would call a stripped machine set up;
-# hooks, shims or a plist setup now writes differently are set up again, as nothing else rewrites them
-SETUP=
-if [ ! -f "$HOME_DIR/config.json" ] || [ ! -f "$HOME/Library/LaunchAgents/io.github.linusroxbergh.archipelago.archid.plist" ] || [ ! -f "$HOME/.local/bin/archi" ]; then
-  SETUP=1
-fi
-grep -q 'run archi setup' "$CHECK_OUT" && SETUP=1
-# setup is what starts the private fleet's agent, so one a failed start left unloaded gets another
-launchctl print "gui/$(id -u)/io.github.linusroxbergh.archipelago.archid" >/dev/null 2>&1 || SETUP=1
 
 if [ -n "$BUILD_GHOSTTY" ]; then
   step "Building GhosttyKit (several minutes)"
@@ -127,16 +116,20 @@ cp -R apps/desktop/mac/build/Archipelago.app "$DEST/Archipelago.app"
 # Finder caches icons per bundle path; touching the bundle makes it re-read this build's
 touch "$DEST/Archipelago.app"
 
-# setup moves an older install's sign-ins only once the app installed reads them under the new id
-if [ -n "$SETUP" ]; then
-  step "Setting up hooks, the daemon and the archi command"
-  SETUP_OUT="$(mktemp -t archipelago-setup)"
-  pnpm --silent archi -p private setup >"$SETUP_OUT" 2>&1 || { cat "$SETUP_OUT" >&2; fail "archi setup failed"; }
-  cat "$SETUP_OUT" >>"$LOG"
-  # its ! lines are the user's to act on
-  grep '^! ' "$SETUP_OUT" | sed "s/^/${D}│${N}  /" || true
-fi
+# setup moves an older install's sign-ins only once the app installed reads them under the new id. The installed layout
+# is what a published release uses, so a developer install exercises it too: the release the build just made goes under
+# ~/.local/share/archipelago, and launchd, the Claude hooks and the shims are pointed at `current`. A workspace build
+# carries no release signature.
+step "Setting up the release, hooks, the daemon and the archi command"
+SETUP_OUT="$(mktemp -t archipelago-setup)"
+pnpm --silent archi -p private setup --allow-unsigned \
+  --release apps/desktop/mac/build/Archipelago.app/Contents/Resources/release >"$SETUP_OUT" 2>&1 || { cat "$SETUP_OUT" >&2; fail "archi setup failed"; }
+cat "$SETUP_OUT" >>"$LOG"
+# its ! lines are the user's to act on
+grep '^! ' "$SETUP_OUT" | sed "s/^/${D}│${N}  /" || true
 
+# setup moved every fleet's agent onto current and reloaded the ones it rewrote; a daemon already on
+# current still runs the release it started from until it is restarted
 step "Restarting archid"
 launchctl list | awk '$3 ~ /^io\.github\.linusroxbergh\.archipelago\.archid/ { print $3 }' | while read -r label; do
   echo "    $label" >>"$LOG"

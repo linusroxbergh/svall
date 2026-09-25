@@ -4,6 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { CodexPaths } from './codex/install.js';
+import { SystemdError, daemonReload, disableUnit, realRun, type Run } from './linux/service.js';
+import { GATEWAY_UNIT } from './linux/setup.js';
 import { portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
 import { resolvePaths } from './paths.js';
 import { BUNDLE_ID, isProfileName, LAUNCHD_LABEL, OLD_BUNDLE_ID, OLD_LAUNCHD_LABEL, PRIVATE, profileHome } from './profile.js';
@@ -11,6 +13,7 @@ import { readJsonSettings, requireWritable, unmergeHooks, unmergeStatusLine, wri
 
 const exec = promisify(execFile);
 const SHIM_MARK = 'packages/cli/src/main.ts';
+const RELEASE_DIR = path.join('share', 'archipelago');
 
 const isAgentPlist = (f: string): boolean => [LAUNCHD_LABEL, OLD_LAUNCHD_LABEL].some((l) => f.startsWith(`${l}.`)) && f.endsWith('.plist');
 
@@ -77,9 +80,55 @@ export async function quitApp(homes: string[], app: AppQuit, command: string): P
   return open.length ? ['quit Archipelago'] : [];
 }
 
+const isOurUnit = (f: string): boolean => f === GATEWAY_UNIT || /^archipelago-archid@[a-z][a-z0-9-]*\.service$/.test(f);
+
+// the units this machine's setup wrote, stopped before their files go
+export async function removeUnits(o: { unitDir: string; systemctl: boolean; run: Run }): Promise<string[]> {
+  const done: string[] = [];
+  const units = fs.existsSync(o.unitDir) ? fs.readdirSync(o.unitDir).filter(isOurUnit).sort() : [];
+  for (const unit of units) {
+    // a daemon that would not stop keeps running without its unit, so say so rather than claim it went
+    if (o.systemctl) await disableUnit(o.run, unit).catch((e: SystemdError) => { done.push(`could not stop ${unit}: ${e.message}`); });
+    fs.rmSync(path.join(o.unitDir, unit), { force: true });
+    done.push(`removed ${path.join(o.unitDir, unit)}`);
+  }
+  if (units.length && o.systemctl) await daemonReload(o.run).catch(() => {});
+  return done;
+}
+
+// the releases setup installed, the companions a controller fetched and the units' logs; the gateway's
+// ownership records under the same prefix stay, as fleet data does
+function removeReleases(prefix: string): string[] {
+  const done: string[] = [];
+  for (const name of ['releases', 'current', 'companions', 'log']) {
+    const p = path.join(prefix, name);
+    if (!fs.lstatSync(p, { throwIfNoEntry: false })) continue;
+    fs.rmSync(p, { recursive: true, force: true });
+    done.push(`removed ${p}`);
+  }
+  return done;
+}
+
+// only a shim of ours: one pointing into an installed release, or the one a checkout install wrote
+function removeShims(shimDir: string): string[] {
+  const done: string[] = [];
+  for (const name of ['archi', 'archipelago']) {
+    const shim = path.join(shimDir, name);
+    const link = fs.lstatSync(shim, { throwIfNoEntry: false })?.isSymbolicLink() ? fs.readlinkSync(shim) : undefined;
+    if (!(link?.includes(RELEASE_DIR) || readOrUndefined(shim)?.includes(SHIM_MARK))) continue;
+    fs.rmSync(shim, { force: true });
+    done.push(`removed ${shim}`);
+  }
+  return done;
+}
+
 // takes back what setup put outside the fleet homes: the Claude hooks and statusline and the Codex hooks that run
-// `home`'s scripts, every fleet's phone link, launchd agent and tmux server, and the shims. The fleets' own data stays for purge.
-export async function runUninstall(o: { home: string; homes: string[]; settingsPaths: string[]; codex: CodexPaths; launchAgentsDir: string; shimDir: string; launchctl: boolean; mobile: MobileDeps; app: AppQuit; tmux?: string }): Promise<string[]> {
+// `home`'s scripts, every fleet's phone link, service and tmux server, the installed releases and the shims. The
+// fleets' own data stays for purge.
+export async function runUninstall(o: {
+  home: string; homes: string[]; settingsPaths: string[]; codex: CodexPaths; launchAgentsDir: string; shimDir: string; launchctl: boolean;
+  mobile: MobileDeps; app: AppQuit; tmux?: string; platform?: NodeJS.Platform; unitDir?: string; prefix?: string; run?: Run;
+}): Promise<string[]> {
   // $TMUX names the server the caller's terminal runs in; stopping it would end this run before the shims and the report
   const inside = o.homes.find((h) => resolvePaths(h).tmuxSock === o.tmux?.split(',')[0]);
   if (inside) throw new Error(`this terminal runs inside the tmux server of ${inside}, which uninstall stops; run archi uninstall from a terminal outside Archipelago`);
@@ -103,7 +152,9 @@ export async function runUninstall(o: { home: string; homes: string[]; settingsP
   }
   done.push(...await unserveFleets(o.homes, o.mobile));
 
-  const agents = fs.existsSync(o.launchAgentsDir) ? fs.readdirSync(o.launchAgentsDir).filter(isAgentPlist).sort() : [];
+  const linux = (o.platform ?? process.platform) === 'linux' && o.unitDir;
+  if (linux) done.push(...await removeUnits({ unitDir: o.unitDir!, systemctl: o.launchctl, run: o.run ?? realRun }));
+  const agents = !linux && fs.existsSync(o.launchAgentsDir) ? fs.readdirSync(o.launchAgentsDir).filter(isAgentPlist).sort() : [];
   for (const name of agents) {
     const plist = path.join(o.launchAgentsDir, name);
     // a daemon that would not stop keeps running without its plist, so say so rather than claim it went
@@ -113,6 +164,7 @@ export async function runUninstall(o: { home: string; homes: string[]; settingsP
     fs.rmSync(plist, { force: true });
     done.push(`removed ${plist}`);
   }
+  if (o.prefix) done.push(...removeReleases(o.prefix));
 
   // a character's agent would run on in tmux, spending usage with no app left to show it
   for (const home of o.homes) {
@@ -123,20 +175,14 @@ export async function runUninstall(o: { home: string; homes: string[]; settingsP
       () => { done.push(`could not stop tmux server ${sock}`); },
     );
   }
-
-  for (const name of ['archi', 'archipelago']) {
-    const shim = path.join(o.shimDir, name);
-    if (!readOrUndefined(shim)?.includes(SHIM_MARK)) continue;
-    fs.rmSync(shim, { force: true });
-    done.push(`removed ${shim}`);
-  }
-  return done;
+  return [...done, ...removeShims(o.shimDir)];
 }
 
-// a fleet home is one that holds a config.json, so a folder of the user's that happens to be
-// named like one is never offered up for deletion
+// a fleet home is one that holds a fleet.json, or the config.json it is split out of, so a folder
+// of the user's that happens to be named like one is never offered up for deletion
 const isFleetHome = (p: string): boolean =>
-  fs.statSync(p, { throwIfNoEntry: false })?.isDirectory() === true && fs.existsSync(resolvePaths(p).config);
+  fs.statSync(p, { throwIfNoEntry: false })?.isDirectory() === true
+  && [resolvePaths(p).fleetConfig, resolvePaths(p).legacyConfig].some((f) => fs.existsSync(f));
 
 export const fleetHomes = (homedir: string): string[] => fs.readdirSync(homedir)
   .filter((f) => f === path.basename(profileHome(PRIVATE, homedir)) || (f.startsWith('.archipelago-') && isProfileName(f.slice('.archipelago-'.length))))

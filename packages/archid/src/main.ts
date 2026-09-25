@@ -2,15 +2,25 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import type { MachineId } from '@archipelago/protocol';
 import { startApi } from './api/server.js';
 import { findAgents } from './agents.js';
 import { codexPaths } from './codex/install.js';
-import { loadConfig } from './config.js';
+import { loadConfig, namedGateway, setGateway } from './config.js';
 import { Fleet } from './fleet.js';
+import { fleetAuthority } from './gateway/client.js';
+import { openJournal } from './handover/journal.js';
+import { ProcessTable } from './handover/processes.js';
+import { HandoverService } from './handover/service.js';
+import { agentProber, realProbeDeps } from './handover/sessions/registry.js';
+import type { Authority } from './handover/source.js';
+import { adoptAtStart, enterStartupMode, startupMode } from './handover/startup.js';
 import { startHookReceiver } from './hooks/receiver.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
+import { machineId } from './machine.js';
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
-import { fleetKeys, resolvePaths } from './paths.js';
+import { OwnershipState } from './ownership/state.js';
+import { fleetKeys, installedScripts, resolvePaths } from './paths.js';
 import { Phones } from './phones.js';
 import { isProfileName, PRIVATE, profileOf } from './profile.js';
 import { startPusher, webPushSender } from './push/pusher.js';
@@ -56,7 +66,8 @@ function lockHome(home: string): () => void {
   }
 }
 
-type Options = { home: string; port?: number; host?: string; log?: Logger };
+/** `authority` stands in for the fleet's gateway, which is otherwise asked over its socket or ssh. */
+type Options = { home: string; port?: number; host?: string; log?: Logger; authority?: Authority };
 
 // the lock comes before anything in the home is read or written, so a second start leaves the running one be
 export async function startDaemon(opts: Options): Promise<Daemon> {
@@ -71,11 +82,10 @@ async function start(opts: Options): Promise<Daemon> {
   fs.chmodSync(paths.home, 0o700);
   rotateLog(paths.log);
   const log = opts.log ?? createLogger();
-  const config = loadConfig(paths.config);
+  const config = loadConfig(paths);
   // a state.json this archid refuses stops it before the hooks, tmux.conf and Codex's trust are touched
   const store = Store.load(paths.state, log.error);
   installHookScripts(paths);
-  fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
   const token = readOrCreateToken(paths.token);
   const key = phoneKey(paths.mobileKey, readOrCreateToken(paths.mobileKey));
   const push = new PushStore(paths.push, log.error);
@@ -92,12 +102,36 @@ async function start(opts: Options): Promise<Daemon> {
   }
 
   const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
+  // the conf leaves out what this tmux would refuse, so the version is read before it is written
   const tmuxVersion = await tmux.version();
-  if (tmuxTooOld(tmuxVersion)) log.error(`${tmuxVersion} is older than 3.5: Shift+Enter will not reach Claude Code; brew upgrade tmux`);
+  fs.writeFileSync(paths.tmuxConf, tmuxConfText(config, { tmuxVersion }));
+  if (tmuxTooOld(tmuxVersion)) log.error(`${tmuxVersion} is older than 3.5: Shift+Enter will not reach Claude Code; ${process.platform === 'linux' ? 'Ubuntu 24.04 ships 3.4' : 'brew upgrade tmux'}`);
   // the app attaches its terminals with this tmux, which an app opened from Finder may not find on its own PATH
   fs.writeFileSync(path.join(paths.home, 'tmux-binary'), tmux.binary);
-  const fleet = new Fleet({ store, tmux, paths, config, log, agentsFound });
+  // without a gateway no other machine can hold this fleet, so a record this one cannot read is repaired
+  const me = machineId();
+  const ownership = OwnershipState.load({ paths, fleetId: config.id, machineId: me, log, standalone: !config.gatewayMachineId });
+  const fleet = new Fleet({ store, tmux, paths, config, log, ownership, agentsFound });
   const terminals = new TerminalHub(fleet, tmux, store, log);
+  // the gateway is the one fleet.json names at each call: `archi host enable` or a recovery can name another while the daemon runs
+  const authority = (): Authority | undefined => {
+    let named: MachineId | undefined;
+    try { named = namedGateway(paths); } catch { named = config.gatewayMachineId; }
+    return named ? opts.authority ?? { get: (id) => fleetAuthority({ gatewayMachineId: named, machineId: me }).get(id) } : undefined;
+  };
+  const handover = new HandoverService({
+    ownership, journal: openJournal(paths), agents: agentProber(realProbeDeps()), fleet, setGateway: (id) => setGateway(paths, config, id),
+    authorityFor: (id) => opts.authority ?? { get: (fleetId) => fleetAuthority({ gatewayMachineId: id, machineId: me }).get(fleetId) },
+    source: {
+      paths, store, fleet, tmux, viewers: terminals, log,
+      processes: (signal) => ProcessTable.read({ signal, scripts: installedScripts(paths.home) }),
+      authority,
+    },
+    destination: { paths, config, store, fleet, tmux, log, authority },
+  });
+  const journal = handover.journalState();
+  await enterStartupMode(startupMode({ ownership, journal, config }), { ownership, journal, log, standalone: !config.gatewayMachineId });
+  await adoptAtStart({ handover, authority: authority(), fleetId: config.id, log });
   const claude = claudePaths();
   const codex = codexPaths();
   // looked up on every call, so a fleet made while this one runs is kept out too; any folder named like a fleet home
@@ -107,7 +141,7 @@ async function start(opts: Options): Promise<Daemon> {
     ...homes().flatMap((h) => fleetKeys(resolvePaths(h)))];
   const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs, paths.agentProfiles), log, refused, [paths.docs, paths.agentProfiles]);
   const phones = new Phones();
-  const mobile = mobileControl(realDeps(), { home: paths.home, profile, logins: config.mobile.logins, phones, httpsPort: config.mobile.httpsPort, rotateKey: key.rotate });
+  const mobile = mobileControl(realDeps(), { home: paths.home, profile, logins: () => config.mobile.logins, phones, httpsPort: config.mobile.httpsPort, rotateKey: key.rotate });
   const usage = fleetUsage({ state: () => store.state, claude: cachedUsage(usageFetcher({ cwd: path.join(paths.home, 'usage'), envFile: paths.env }), USAGE_TTL_MS) });
 
   // run in reverse on stop, and on a failed start for whatever had already started
@@ -116,11 +150,12 @@ async function start(opts: Options): Promise<Daemon> {
   try {
     await fleet.start();
     teardown.push(startPusher({ store, push, send: webPushSender(vapid), log, logins: mobile.logins, served: mobile.served, contact: config.mobile.pushContact }));
-    // a running server keeps its old options if the new conf has a line this tmux rejects
-    await tmux.sourceConf().catch((e: Error) => log.error(`tmux source-file: ${e.message}`));
+    // a running server keeps its old options if the new conf has a line this tmux rejects; a replica
+    // has no server to source into
+    if (ownership.writable()) await tmux.sourceConf().catch((e: Error) => log.error(`tmux source-file: ${e.message}`));
     const api = await startApi({
       host: opts.host ?? config.host, port: opts.port ?? config.port, token, store, fleet, terminals, workspace, usage, mobileControl: mobile, log,
-      origins: config.mobile.origins, logins: mobile.logins, key: key.get, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles,
+      origins: () => config.mobile.origins, logins: mobile.logins, key: key.get, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles, ownership, handover,
       fleetName: profile !== PRIVATE && isProfileName(profile) ? profile : undefined,
     });
     teardown.push(() => api.close());

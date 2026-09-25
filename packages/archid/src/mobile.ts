@@ -4,10 +4,10 @@ import fs from 'node:fs';
 import { promisify } from 'node:util';
 import QRCode from 'qrcode';
 import type { MobileStatus } from '@archipelago/protocol';
-import { MOBILE_DIST } from './api/bundle.js';
-import { repoRoot, resolvePaths } from './paths.js';
+import { resolvePaths } from './paths.js';
 import type { Phones } from './phones.js';
 import { PRIVATE, profileLabel } from './profile.js';
+import { isRelease, mobileDistDir, repoRoot } from './release.js';
 
 export type MobileDeps = {
   run(cmd: string, args: string[], cwd?: string): Promise<string>;
@@ -64,8 +64,18 @@ export function phoneKey(file: string, initial: string): { get(): string; rotate
   };
 }
 
-export const buildBundle = (d: MobileDeps): Promise<string> =>
+const buildBundle = (d: MobileDeps): Promise<string> =>
   d.run('pnpm', ['--filter', '@archipelago/desktop-web', 'build:mobile'], repoRoot());
+
+/**
+ * Where the phone page is, built from the checkout first when it can be. A release ships it built
+ * and has no checkout or pnpm to reach for, so there it is only ever reported present or missing.
+ */
+export async function ensureBundle(d: MobileDeps, o: { rebuild?: boolean } = {}): Promise<{ dist: string; missing: boolean }> {
+  const dist = mobileDistDir();
+  if (!isRelease() && (o.rebuild || !d.exists(dist))) await buildBundle(d);
+  return { dist, missing: !d.exists(dist) };
+}
 
 // a port is part of the origin, so each fleet on its own port is its own app on the phone
 export const servePort = (profile: string, configured?: number): number => configured ?? (profile === PRIVATE ? 443 : 8443);
@@ -133,13 +143,14 @@ export function watchServed(mobile: Pick<Mobile, 'get'>, wanted: () => boolean, 
  * The phone link as a panel can drive it: every environment failure comes back as `error` rather than
  * a rejection, because the panel that shows the switch is also where the reason belongs.
  */
-export function mobileControl(d: MobileDeps, opts: { home: string; profile: string; logins: string[]; phones: Phones; httpsPort?: number; rotateKey: () => void }): Mobile & Served & { logins: () => string[] } {
+// `logins` is read at each look, since activating a handover replaces the configured list
+export function mobileControl(d: MobileDeps, opts: { home: string; profile: string; logins: () => string[]; phones: Phones; httpsPort?: number; rotateKey: () => void }): Mobile & Served & { logins: () => string[] } {
   const port = servePort(opts.profile, opts.httpsPort);
   const { mobileKey } = resolvePaths(opts.home);
 
   // who a phone socket and a push are let through for: the configured logins, else the Mac's own once tailscale named it
   let owner: string | undefined;
-  const logins = (): string[] => (opts.logins.length ? opts.logins : owner ? [owner] : []);
+  const logins = (): string[] => { const configured = opts.logins(); return configured.length ? configured : owner ? [owner] : []; };
 
   // the commands carry the phone key in their target, and a failed one repeats its whole command line
   const reason = (e: unknown): string => {
@@ -155,10 +166,11 @@ export function mobileControl(d: MobileDeps, opts: { home: string; profile: stri
     const self = await tailnetSelf(d, bin);
     const { host } = self;
     owner = self.owner;
-    if (enable === true && logins().length === 0) throw new Error(`tailscale reports no login for this Mac: set mobile.logins in config.json, then restart the daemon with launchctl kickstart -k gui/$(id -u)/${profileLabel(opts.profile)}`);
+    if (enable === true && logins().length === 0) throw new Error(`tailscale reports no login for this Mac: set mobile.logins in fleet.json, then restart the daemon with launchctl kickstart -k gui/$(id -u)/${profileLabel(opts.profile)}`);
+    const dist = mobileDistDir();
     // an on turns the key over only once tailscale and the page are ready, so one that fails leaves a working link alone
     if (enable === true) {
-      if (!d.exists(MOBILE_DIST)) await buildBundle(d);
+      await ensureBundle(d);
       opts.rotateKey();
     }
     const target = fleetTarget(d, opts.home);
@@ -171,7 +183,7 @@ export function mobileControl(d: MobileDeps, opts: { home: string; profile: stri
       qr: await QRCode.toDataURL(url, { margin: 1, width: 320 }),
     };
     // the mapping outlives the checkout it was made from: a page cleaned away leaves the switch on over nothing
-    if (serving && !d.exists(MOBILE_DIST)) status.pageMissing = true;
+    if (serving && !d.exists(dist)) status.pageMissing = true;
     return status;
   };
 

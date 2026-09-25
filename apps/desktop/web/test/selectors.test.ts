@@ -56,17 +56,19 @@ describe('selectors', () => {
     }
   });
   it('anything the page spreads over a surface hides it first', () => {
-    const base = { namingCharacter: false, missionPrompt: false, closingCharacter: undefined, keysOpen: false, resourcesOpen: false, fleet: fleet() };
+    const base = { namingCharacter: false, missionPrompt: false, closingCharacter: undefined, keysOpen: false, resourcesOpen: false, hostOpen: false, handoverOpen: false, fleet: fleet() };
     expect(isVeiled(base)).toBe(false);
     expect(isVeiled({ ...base, missionPrompt: true })).toBe(true);
     expect(isVeiled({ ...base, namingCharacter: true })).toBe(true);
     expect(isVeiled({ ...base, closingCharacter: 'c0' })).toBe(true);
     expect(isVeiled({ ...base, deletingIsland: 'i_e' })).toBe(true);
     expect(isVeiled({ ...base, keysOpen: true })).toBe(true);
+    expect(isVeiled({ ...base, hostOpen: true })).toBe(true);
+    expect(isVeiled({ ...base, handoverOpen: true })).toBe(true);
     expect(isVeiled({ ...base, fleet: { ...fleet(), scribeAsk: true } })).toBe(true);
   });
   it('veils while the resources shelf is open', () => {
-    expect(isVeiled({ namingCharacter: false, missionPrompt: false, keysOpen: false, resourcesOpen: true, fleet: fleet() })).toBe(true);
+    expect(isVeiled({ namingCharacter: false, missionPrompt: false, keysOpen: false, resourcesOpen: true, hostOpen: false, handoverOpen: false, fleet: fleet() })).toBe(true);
   });
 });
 
@@ -150,7 +152,7 @@ describe('home island', () => {
 describe('a character with two sessions', () => {
   const agent = (status: 'working' | 'idle' | 'blocked' | 'done', contextPct?: number) =>
     ({ kind: 'claude' as const, sessionId: 's', transcriptPath: '/t', status, contextPct, lastActivityAt: 1 });
-  const second = (a?: ReturnType<typeof agent>, unread = false) => ({ tmux: { windowId: '@2', paneId: '%2' }, agent: a, unread });
+  const second = (a?: ReturnType<typeof agent>, unread = false) => ({ cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, agent: a, unread });
   const at = { x: 0, y: 0 };
 
   it('shows the most urgent of the two: blocked, working, done, idle, shell', () => {
@@ -164,6 +166,12 @@ describe('a character with two sessions', () => {
     const c = chr('c', 'i', at, { agent: agent('idle'), second: second(agent('working')) });
     expect(slotStatus(c, 1)).toBe('idle');
     expect(slotStatus(c, 2)).toBe('working');
+  });
+  it('reads a second terminal without a window as dormant, as it does the main one', () => {
+    const dormant = { cwd: '/tmp', unread: false, revive: { command: 'codex resume s' } };
+    expect(slotStatus(chr('c', 'i', at, { second: dormant }), 2)).toBe('dormant');
+    expect(statusOf(chr('c', 'i', at, { tmux: undefined, second: dormant }))).toBe('dormant');
+    expect(statusOf(chr('c', 'i', at, { agent: agent('done'), second: dormant }))).toBe('done');
   });
   it('reads the fuller context and either unread flag', () => {
     const c = chr('c', 'i', at, { agent: agent('idle', 20), second: second(agent('done', 71), true) });

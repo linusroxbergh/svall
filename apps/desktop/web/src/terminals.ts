@@ -1,5 +1,6 @@
 import { ApiError, type Api } from './api.js';
 import type { Attach, Bridge, Rect } from './bridge.js';
+import { holdsTerminals } from './handover.js';
 import { boardViewed, panesOf, type BoardSelection } from './selectors.js';
 import type { AppStore, View } from './store/index.js';
 
@@ -35,7 +36,7 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
   };
   const focus = (id?: string) => bridge.send({ type: 'term.focus', id });
   const seen = (id: string, term?: 2) => { api.call('char.seen', { id, ...(term ? { term } : {}) }).catch(() => {}); };
-  const live = (key: string) => { const { id, term } = target(key); const c = state().fleet.characters[id]; return Boolean(term ? c?.second : c?.tmux); };
+  const live = (key: string) => { const { id, term } = target(key); const c = state().fleet.characters[id]; return Boolean(term ? c?.second?.tmux : c?.tmux); };
   const inView = (key: string) => viewedId(state()) === target(key).id;
   const lastOpacity = new Map<string, number | undefined>();
 
@@ -48,6 +49,8 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
       if (takeFocus) focus(id);
       return;
     }
+    // the fleet is between machines: nothing is attached until it runs again
+    if (holdsTerminals(state().handover)) return;
     let p = attaching.get(id);
     if (!p) {
       p = api.call('term.attach', target(id)).finally(() => attaching.delete(id));
@@ -59,8 +62,9 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
     } catch (e) {
       // the window died under the attach: the character is dormant, and Revive answers that better than a tmux error
       if (!live(id)) throw e;
-      // archid refused: the user decides when to try again; archid away: retried on its own
-      if (e instanceof ApiError) state().termFailed(id, e.message); else retry.set(id, { rect, opacity });
+      // archid refused: the user decides when to try again. archid away, or a daemon the fleet has left:
+      // retried once the connection is back, which for a moved fleet is its new owner
+      if (e instanceof ApiError && e.code !== 'not_owner') state().termFailed(id, e.message); else retry.set(id, { rect, opacity });
       throw e;
     }
     bridge.send({ type: 'term.show', id, rect, ...alpha, attach });
@@ -84,6 +88,11 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
   });
 
   store.subscribe((s, prev) => {
+    // the source rests every terminal at its freeze, so the surfaces on them go first
+    if (s.handover !== prev.handover && holdsTerminals(s.handover) && !holdsTerminals(prev.handover)) {
+      retry.clear();
+      for (const id of Object.keys(s.terminals)) close(id);
+    }
     if (s.status === 'online' && prev.status !== 'online') {
       for (const [id, r] of retry) {
         retry.delete(id);

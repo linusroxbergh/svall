@@ -3,16 +3,16 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import type { AgentKind } from '@archipelago/protocol';
 import { AGENTS, AGENT_KINDS, isExecutable, onPath } from './agents.js';
 import { codexHookCommand, codexPaths, mergeCodexHooks, type CodexPaths } from './codex/install.js';
-import { loadConfig } from './config.js';
+import { initConfig, loadConfig } from './config.js';
 import { CLAUDE_HOOKS, hooksFor } from './hooks/receiver.js';
 import { writeAtomic } from './jsonfile.js';
 import { LAUNCHD_LABEL } from './profile.js';
-import { HOOK_SCRIPT, claudePaths, expandHome, isOurs, resolvePaths, type Paths } from './paths.js';
+import { HOOK_GUARD, HOOK_SCRIPT, claudePaths, expandHome, isOurs, resolvePaths, type Paths } from './paths.js';
+import { hooksDir, homeTemplateDir } from './release.js';
 import { shq } from './text.js';
 import { tmuxConfText } from './tmux/conf.js';
 
@@ -116,7 +116,7 @@ export const launchdEnv = (): Record<string, string> => ({
   ...(process.env.CODEX_HOME ? { CODEX_HOME: codexPaths().dir } : {}),
 });
 
-export function launchdPlist(o: { label: string; tsx: string; bin: string; home: string; log: string; pathEnv: string; env?: Record<string, string> }): string {
+export function launchdPlist(o: { label: string; program: string[]; home: string; log: string; pathEnv: string; env?: Record<string, string> }): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -124,8 +124,7 @@ export function launchdPlist(o: { label: string; tsx: string; bin: string; home:
   <key>Label</key><string>${xml(o.label)}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${xml(o.tsx)}</string>
-    <string>${xml(o.bin)}</string>
+${o.program.map((a) => `    <string>${xml(a)}</string>`).join('\n')}
   </array>
   <key>EnvironmentVariables</key>
   <dict>
@@ -147,7 +146,7 @@ export function launchdPlist(o: { label: string; tsx: string; bin: string; home:
 // the scripts speak the daemon's socket protocol, so every daemon start refreshes them
 export function installHookScripts(paths: Paths): void {
   fs.mkdirSync(path.dirname(paths.hookScript), { recursive: true });
-  const hooksSrc = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../hooks');
+  const hooksSrc = hooksDir();
   fs.copyFileSync(path.join(hooksSrc, HOOK_SCRIPT), paths.hookScript);
   fs.copyFileSync(path.join(hooksSrc, 'claude-status.mjs'), paths.statusScript);
 }
@@ -162,10 +161,10 @@ const seeded = (text: string): boolean => SEEDED_CLAUDE_MD.has(crypto.createHash
 
 // Archipelago's instructions and the skills the mission control buttons call live in the crew's cwd,
 // so every daemon start refreshes them there. the CLAUDE.md and the settings are the user's to edit,
-// and are seeded once; `archi setup` is the explicit ask that replaces edited settings, keeping a copy
+// and are seeded once; only `archi setup --replace-settings` replaces edited settings, keeping a copy
 export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }): string[] {
   const done: string[] = [];
-  const template = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../home');
+  const template = homeTemplateDir();
   const dir = expandHome(cwd);
   fs.mkdirSync(dir, { recursive: true });
   const claudeMd = path.join(dir, 'CLAUDE.md');
@@ -214,9 +213,32 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }
   return done;
 }
 
-export type HomeSetup = {
-  home: string; label: string; repoRoot: string; launchAgentsDir: string; launchctl: boolean; port?: number;
-};
+/** An installed release root, or the checkout a development install runs the daemon out of. */
+export type RunFrom = { release: string } | { repoRoot: string };
+
+/** What launchd starts: the release's own daemon, or the checkout's entry point through tsx. */
+export function daemonProgram(o: RunFrom): string[] {
+  return 'release' in o
+    ? [path.join(o.release, 'bin', 'archid')]
+    : [path.join(o.repoRoot, 'node_modules/.bin/tsx'), path.join(o.repoRoot, 'packages/archid/src/bin.ts')];
+}
+
+export type FleetHome = RunFrom & { home: string; port?: number; tmuxVersion?: string };
+
+/** What a fleet home needs before its daemon starts: the hook scripts, the config and tmux.conf. */
+export function setupFleetHome(o: FleetHome): string[] {
+  const done: string[] = [];
+  const paths = resolvePaths(o.home);
+  installHookScripts(paths);
+  done.push(`hook script -> ${paths.hookScript}`);
+  done.push(`statusline script -> ${paths.statusScript}`);
+
+  for (const file of initConfig(paths, { port: o.port })) done.push(`config -> ${file}`);
+  if (!fs.existsSync(paths.tmuxConf)) { fs.writeFileSync(paths.tmuxConf, tmuxConfText(loadConfig(paths), { tmuxVersion: o.tmuxVersion })); done.push(`tmux.conf -> ${paths.tmuxConf}`); }
+  return done;
+}
+
+export type HomeSetup = FleetHome & { label: string; launchAgentsDir: string; launchctl: boolean };
 
 // a Homebrew keg's versioned folder goes with the next upgrade, while its opt link stays
 const nodeDirOf = (execPath: string): string => path.dirname(execPath).replace(/\/Cellar\/([^/]+)\/[^/]+\/bin$/, '/opt/$1/bin');
@@ -237,9 +259,8 @@ function daemonPath(nodeDir: string): string {
 
 const plistFile = (o: Pick<HomeSetup, 'label' | 'launchAgentsDir'>): string => path.join(o.launchAgentsDir, `${o.label}.plist`);
 
-const plistText = (o: Pick<HomeSetup, 'home' | 'label' | 'repoRoot'>, nodeDir: string): string => launchdPlist({
-  label: o.label, tsx: path.join(o.repoRoot, 'node_modules/.bin/tsx'), bin: path.join(o.repoRoot, 'packages/archid/src/bin.ts'),
-  home: o.home, log: resolvePaths(o.home).log, pathEnv: daemonPath(nodeDir), env: launchdEnv(),
+const plistText = (o: Pick<HomeSetup, 'home' | 'label'> & RunFrom, nodeDir: string): string => launchdPlist({
+  label: o.label, program: daemonProgram(o), home: o.home, log: resolvePaths(o.home).log, pathEnv: daemonPath(nodeDir), env: launchdEnv(),
 });
 
 /** The tsx and the PATH folders that a plist setup wrote starts archid with. */
@@ -249,8 +270,8 @@ export function plistRun(text: string): { tsx?: string; path: string[] } {
   return { tsx: tsx && unxml(tsx), path: pathEnv ? unxml(pathEnv).split(':') : [] };
 }
 
-/** Whether a fleet's plist holds what setup would write now to run `repoRoot`; the node it names stands while it is there. */
-export function plistCurrent(o: Pick<HomeSetup, 'home' | 'label' | 'launchAgentsDir' | 'repoRoot'>): boolean {
+/** Whether a fleet's plist holds what setup would write now to run the checkout or release `o` names; the node it names stands while it is there. */
+export function plistCurrent(o: Pick<HomeSetup, 'home' | 'label' | 'launchAgentsDir'> & RunFrom): boolean {
   let text: string;
   try { text = fs.readFileSync(plistFile(o), 'utf8'); } catch { return false; }
   const named = plistRun(text).path[0];
@@ -258,17 +279,7 @@ export function plistCurrent(o: Pick<HomeSetup, 'home' | 'label' | 'launchAgents
 }
 
 export async function setupHome(o: HomeSetup): Promise<string[]> {
-  const done: string[] = [];
-  const paths = resolvePaths(o.home);
-  installHookScripts(paths);
-  done.push(`hook script -> ${paths.hookScript}`);
-  done.push(`statusline script -> ${paths.statusScript}`);
-
-  if (!fs.existsSync(paths.config)) {
-    fs.writeFileSync(paths.config, JSON.stringify(o.port === undefined ? {} : { port: o.port }) + '\n');
-    done.push(`config -> ${paths.config}`);
-  }
-  if (!fs.existsSync(paths.tmuxConf)) { fs.writeFileSync(paths.tmuxConf, tmuxConfText(loadConfig(paths.config))); done.push(`tmux.conf -> ${paths.tmuxConf}`); }
+  const done = setupFleetHome(o);
 
   fs.mkdirSync(o.launchAgentsDir, { recursive: true });
   const plist = plistFile(o);
@@ -347,7 +358,7 @@ export const statusWrapper = (node: string, script: string): string =>
 // outside a character the shell exits before node starts, as every session on the machine runs this hook;
 // $PPID is the agent, which tells it apart from a `claude -p` or `codex exec` run inside it
 export const hookCommand = (node: string, script: string, backend: AgentKind): string =>
-  `[ -z "$ARCHI_CHAR_ID" ] || { ${nodeRun(node, script)} ${backend} "$PPID"; }`;
+  `${HOOK_GUARD} { ${nodeRun(node, script)} ${backend} "$PPID"; }`;
 
 /** Codex's hooks file when Codex is wanted here (on PATH, or its home exists); throws on one that is not JSON. */
 export const readCodexHooks = (codex: CodexPaths, wanted = fs.existsSync(codex.dir)): JsonSettings | undefined =>
@@ -373,13 +384,14 @@ function installedNode(settings: Record<string, unknown>): string | undefined {
   }
 }
 
-// the hooks and statusline setup writes into the Claude settings for the fleet at `home`
-function withClaudeHooks(settings: Record<string, unknown>, home: string): Record<string, unknown> {
+// the hooks and statusline setup writes into the Claude settings for the fleet at `home`, run by `node`
+// unless the installed ones name one that is still there
+function withClaudeHooks(settings: Record<string, unknown>, home: string, node: string = process.execPath): Record<string, unknown> {
   const paths = resolvePaths(home);
-  const node = installedNode(settings) ?? process.execPath;
+  const run = installedNode(settings) ?? node;
   return mergeStatusLine(
-    mergeHooks(settings, hookCommand(node, paths.hookScript, 'claude'), hooksFor('claude'), paths.hookScript),
-    statusWrapper(node, paths.statusScript),
+    mergeHooks(settings, hookCommand(run, paths.hookScript, 'claude'), hooksFor('claude'), paths.hookScript),
+    statusWrapper(run, paths.statusScript),
     paths.statusScript,
   );
 }
@@ -398,9 +410,15 @@ const SHIMS = ['archi', 'archipelago'];
 // tsx otherwise reads the tsconfig of the caller's cwd, whose paths can point @archipelago/* at another checkout
 const shimText = (root: string): string => `#!/bin/sh\nexec ${shq(path.join(root, 'node_modules/.bin/tsx'))} --tsconfig ${shq(path.join(root, 'tsconfig.json'))} ${shq(path.join(root, 'packages/cli/src/main.ts'))} "$@"\n`;
 
-/** Whether both shims hold what setup would write now to run `root`. */
-export const shimsCurrent = (shimDir: string, root: string): boolean =>
-  SHIMS.every((name) => fs.existsSync(path.join(shimDir, name)) && fs.readFileSync(path.join(shimDir, name), 'utf8') === shimText(root));
+// an installed release's shim is a relative link to its archi through `current`, which setup writes the same way every time
+const releaseLink = (shimDir: string, release: string): string => path.relative(shimDir, path.join(release, 'bin', 'archi'));
+
+/** Whether both shims hold what setup would write now to run the checkout or release `from` names. */
+export const shimsCurrent = (shimDir: string, from: RunFrom): boolean => SHIMS.every((name) => {
+  const file = path.join(shimDir, name);
+  if ('release' in from) return fs.lstatSync(file, { throwIfNoEntry: false })?.isSymbolicLink() === true && fs.readlinkSync(file) === releaseLink(shimDir, from.release);
+  return fs.existsSync(file) && fs.readFileSync(file, 'utf8') === shimText(from.repoRoot);
+});
 
 /** Throws, before anything is written, when the Claude settings or Codex's hooks need a change setup cannot write. */
 export function requireWritableHooks(home: string, settings: JsonSettings | undefined, codexHooks: JsonSettings | undefined): void {
@@ -408,30 +426,61 @@ export function requireWritableHooks(home: string, settings: JsonSettings | unde
   if (codexHooks) requireWritable(codexHooks, withCodexHooks(codexHooks.settings, resolvePaths(home).hookScript));
 }
 
-export function setupUser(o: { home: string; settings?: JsonSettings; codex: CodexPaths; codexHooks?: JsonSettings; shimDir: string; repoRoot: string }): string[] {
+// an installed release is reached through a relative link, so an upgrade that moves `current` needs no new shim
+function writeShims(shimDir: string, o: RunFrom): string[] {
+  fs.mkdirSync(shimDir, { recursive: true });
+  return SHIMS.map((name) => {
+    const shim = path.join(shimDir, name);
+    fs.rmSync(shim, { force: true });
+    if ('release' in o) fs.symlinkSync(releaseLink(shimDir, o.release), shim);
+    else fs.writeFileSync(shim, shimText(o.repoRoot), { mode: 0o755 });
+    return `shim -> ${shim}`;
+  });
+}
+
+export function setupUser(o: RunFrom & { home: string; settings?: JsonSettings; codex: CodexPaths; codexHooks?: JsonSettings; shimDir: string; replaceSettings?: boolean }): string[] {
   const paths = resolvePaths(o.home);
-  const done = o.settings ? writeJsonSettings(o.settings, withClaudeHooks(o.settings.settings, o.home), 'claude hooks and statusline') : [];
+  // a first install runs from a staging copy that is deleted after it, so the hooks name the installed node
+  const node = 'release' in o ? path.join(o.release, 'node', 'bin', 'node') : process.execPath;
+  const done = o.settings ? writeJsonSettings(o.settings, withClaudeHooks(o.settings.settings, o.home, node), 'claude hooks and statusline') : [];
   done.push(...installCodexHooks(o.codex, paths.hookScript, o.codexHooks));
 
-  fs.mkdirSync(o.shimDir, { recursive: true });
-  for (const name of SHIMS) {
-    const shim = path.join(o.shimDir, name);
-    fs.writeFileSync(shim, shimText(o.repoRoot), { mode: 0o755 });
-    done.push(`shim -> ${shim}`);
-  }
+  done.push(...writeShims(o.shimDir, o));
 
   // the home folder comes last and never fails the run: an unreadable config or an unwritable cwd
   // must not cost the user the hooks, the plist and the shim
   try {
-    done.push(...installHomeTemplate(loadConfig(paths.config).home.cwd, { replaceSettings: true }));
+    done.push(...installHomeTemplate(loadConfig(paths).home.cwd, { replaceSettings: o.replaceSettings === true }));
   } catch (e) {
     done.push(`home folder skipped: ${(e as Error).message}`);
   }
   return done;
 }
 
-export async function runSetup(o: {
-  home: string; settingsPath: string; codex: CodexPaths; launchAgentsDir: string; shimDir: string; repoRoot: string; launchctl: boolean; agents?: AgentKind[];
+/**
+ * Rewrites every named profile's agent to run the installed release through current, since whatever
+ * opened the profile first wrote it; returns the labels it rewrote.
+ */
+function moveProfileAgents(o: RunFrom & { launchAgentsDir: string }): string[] {
+  if (!('release' in o) || !fs.existsSync(o.launchAgentsDir)) return [];
+  const moved: string[] = [];
+  for (const name of fs.readdirSync(o.launchAgentsDir).sort()) {
+    if (!name.startsWith(`${LAUNCHD_LABEL}.`) || !name.endsWith('.plist')) continue;
+    const file = path.join(o.launchAgentsDir, name);
+    const text = fs.readFileSync(file, 'utf8');
+    const home = /<key>ARCHI_HOME<\/key><string>([^<]*)<\/string>/.exec(text)?.[1];
+    if (!home) continue;
+    const label = name.slice(0, -'.plist'.length);
+    const next = plistText({ ...o, label, home: unxml(home) }, nodeDirOf(process.execPath));
+    if (next === text) continue;
+    writeAtomic(file, next, { perProcess: true });
+    moved.push(label);
+  }
+  return moved;
+}
+
+export async function runSetup(o: RunFrom & {
+  home: string; settingsPath: string; codex: CodexPaths; launchAgentsDir: string; shimDir: string; launchctl: boolean; replaceSettings?: boolean; agents?: AgentKind[];
 }): Promise<string[]> {
   const claudeWanted = !o.agents || o.agents.includes('claude') || fs.existsSync(path.dirname(o.settingsPath));
   const codexWanted = !!o.agents?.includes('codex') || fs.existsSync(o.codex.dir);
@@ -441,8 +490,12 @@ export async function runSetup(o: {
   const codexHooks = readCodexHooks(o.codex, codexWanted);
   requireWritableHooks(o.home, settings, codexHooks);
   const home = await setupHome({ ...o, label: LAUNCHD_LABEL, launchctl: false });
+  const moved = moveProfileAgents(o);
+  home.push(...moved.map((label) => `launchd plist -> ${path.join(o.launchAgentsDir, `${label}.plist`)}`));
   const user = setupUser({ ...o, settings, codexHooks });
   if (!o.launchctl) return [...home, ...user];
-  return [...home, ...user, await bootstrapAgent(o.launchAgentsDir, LAUNCHD_LABEL)];
+  const loaded: string[] = [];
+  for (const label of [LAUNCHD_LABEL, ...moved]) loaded.push(await bootstrapAgent(o.launchAgentsDir, label));
+  return [...home, ...user, ...loaded];
 }
 

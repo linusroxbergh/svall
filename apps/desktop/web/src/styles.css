@@ -95,6 +95,7 @@ textarea { overflow-x: hidden; }
 .sb-caret:hover { background: var(--fill-3); color: var(--ink); }
 .sb-row .sdot[data-empty="true"] { background: none; box-shadow: inset 0 0 0 1.5px var(--ink-3); }
 .sb-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-sub { flex: none; display: flex; gap: var(--sp-sm); font-size: var(--text-xs); color: var(--ink-3); }
 .sb-ct { flex: none; font-size: var(--text-xs); color: var(--ink-3); }
 .sb-attn { flex: none; min-width: 9px; text-align: center; padding: var(--sp-2xs) var(--sp-sm); border-radius: var(--r-pill); background: var(--blocked); color: var(--surface-0); font-size: var(--text-2xs); font-weight: var(--w-bold); line-height: 1.3; }
 .sb-row input { flex: 1; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-sm); color: var(--fg); padding: var(--sp-2xs) var(--sp-sm); font: inherit; min-width: 0; }
@@ -791,9 +792,21 @@ em.res-bdg[data-kind="lookup"]{border:1px solid var(--line);color:var(--ink-3)}
 .use-tab[data-off] .use-glyph { opacity: .65; }
 .use-status { position: absolute; top: 5px; left: calc(50% + 7px); width: 5px; height: 5px; border-radius: var(--r-pill); background: var(--idle); }
 .use-status[data-on="true"] { background: var(--done); }
+/* the machine the fleet runs on, named in the dock beside the utilities; never for a local fleet */
+.use-owner { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; padding: var(--sp-xs) var(--sp-2xs);
+  border: 1px solid transparent; border-radius: var(--r-sm); background: none; color: var(--sand);
+  font-size: var(--text-sm); font-weight: var(--w-semibold); letter-spacing: var(--track-loose); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.use-owner[data-state="connecting"], .use-owner[data-state="owner-changed"] { color: var(--working); }
+.use-owner[data-state="error"] { color: var(--blocked); }
+/* the Handover control stands beside the owner's name, and says when a move waits on the user or stopped part way */
+.use-handover { cursor: pointer; }
+.use-handover:hover { background: var(--fill-1); }
+.use-handover:focus-visible { outline: 1px solid var(--sand); outline-offset: -2px; }
+.use-handover[data-state="live"] { color: var(--working); }
+.use-handover[data-state="waiting"], .use-handover[data-state="stopped"] { color: var(--blocked); }
 .use[data-collapsed="true"] .use-tabs { width: var(--cell); height: auto; flex-direction: column; gap: var(--sp-xs); padding: var(--sp-sm);
   border: 1px solid var(--line); border-left: 0; border-bottom: 0; border-radius: 0 var(--r-md) 0 0; background: var(--glass-hi); backdrop-filter: blur(7px); }
-.use[data-collapsed="true"] .use-tab { flex: none; width: 100%; height: 36px; }
+.use[data-collapsed="true"] .use-tab, .use[data-collapsed="true"] .use-owner { flex: none; width: 100%; height: 36px; }
 .use[data-collapsed="true"] .use-tab-label { display: none; }
 .use-panel { flex: none; box-sizing: border-box; width: 330px; max-height: calc(100vh - 24px); overflow: auto; margin: 0 0 var(--sp-md) var(--sp-lg);
   padding: var(--sp-2xl) var(--sp-3xl); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); backdrop-filter: blur(9px); box-shadow: var(--shadow-2); pointer-events: auto; }
@@ -899,3 +912,32 @@ em.res-bdg[data-kind="lookup"]{border:1px solid var(--line);color:var(--ink-3)}
 .diff { flex: 1; min-height: 0; }
 .diff .cm-editor { height: 100%; }
 .diff .cm-merge-b .cm-changedText { background: none; }
+
+/* setting a machine up: one long checklist, so the dialog is the tallest of them */
+.modal.host { width: 520px; max-height: min(82vh, 760px); overflow: hidden auto; }
+.host-form { display: flex; flex-direction: column; gap: var(--sp-md); }
+.host .acts { flex-wrap: wrap; }
+.host-note { font-size: var(--text-md); line-height: 1.45; color: var(--ink-2); display: flex; flex-direction: column; gap: var(--sp-md); }
+.host-note ul { margin: 0; padding-left: var(--sp-2xl); }
+.host-steps { display: flex; flex-direction: column; gap: var(--sp-xl); }
+.host-phase { display: flex; flex-direction: column; gap: var(--sp-xs); }
+.host-step { display: flex; gap: var(--sp-md); font-size: var(--text-sm); line-height: 1.45; color: var(--ink-2); }
+.host-mark { flex: none; width: 12px; text-align: center; color: var(--ink-3); }
+.host-step[data-status="ok"] .host-mark { color: var(--done); }
+.host-step[data-status="warn"] .host-mark { color: var(--working); }
+.host-step[data-status="fail"] .host-mark { color: var(--blocked); }
+.host-name { flex: none; width: 72px; color: var(--ink); font-family: var(--mono); font-size: var(--text-xs); }
+.host-said { min-width: 0; overflow-wrap: anywhere; }
+/* what the user has to go and do about this step, which the checklist never hides */
+.host-said em { display: block; font-style: normal; color: var(--sand); }
+.ho-section { display: flex; flex-direction: column; gap: var(--sp-xs); }
+.ho-section[data-state="pending"] { opacity: .55; }
+.ho-head { display: flex; gap: var(--sp-md); font-size: var(--text-md); font-weight: var(--w-semibold); color: var(--ink); }
+.ho-section[data-state="done"] > .ho-head .host-mark { color: var(--done); }
+.ho-section[data-state="active"] > .ho-head .host-mark { color: var(--working); }
+.ho-section[data-state="waiting"] > .ho-head .host-mark, .ho-section[data-state="stopped"] > .ho-head .host-mark { color: var(--blocked); }
+.ho-who { flex: none; width: 96px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn.ho-choice { display: block; margin-top: var(--sp-xs); padding: var(--sp-2xs) var(--sp-lg); font-size: var(--text-sm); font-weight: var(--w-medium); }
+.btn.ho-choice[aria-pressed="true"] { background: var(--sand-fill); color: var(--sand-hi); }
+.ho-bar { display: block; height: 4px; margin-top: var(--sp-xs); border-radius: var(--r-pill); background: var(--line); overflow: hidden; }
+.ho-bar > i { display: block; height: 100%; background: var(--done); }

@@ -5,26 +5,33 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { Command } from 'commander';
+import type { z } from 'zod';
+import { FleetConfig, NodeConfig, type AgentKind } from '@archipelago/protocol';
 import { AGENTS, AGENT_KINDS, findAgents, versionOk } from '@archipelago/archid/agents';
 import { characterKeyEnv } from '@archipelago/archid/claude';
 import { codexInstalled, codexPaths, type CodexPaths } from '@archipelago/archid/codex/install';
-import { loadConfig, parseConfig } from '@archipelago/archid/config';
+import { Config, configuredMainAgent, parseConfig } from '@archipelago/archid/config';
+import { lingerState, unitStatus, type Run } from '@archipelago/archid/linux/service';
+import { archidUnitName, GATEWAY_UNIT, unitPath } from '@archipelago/archid/linux/setup';
 import { resolvePaths, userPaths } from '@archipelago/archid/paths';
 import { OLD_LAUNCHD_LABEL, PRIVATE, profileHome, profileLabel } from '@archipelago/archid/profile';
+import { isRelease, repoRoot } from '@archipelago/archid/release';
 import { HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hooksInstalled, launchdEnv, plistEnv, plistRun } from '@archipelago/archid/setup';
 import { tmuxTooOld } from '@archipelago/archid/tmux/conf';
-import type { AgentKind } from '@archipelago/protocol';
+import { DEFAULT_PREFIX } from '../../../../scripts/install-release.mjs';
 import { Client, restartHint } from '../client.js';
 import { askCodexTrust, type HookTrust } from '../codex-trust.js';
+import { bundledRsync, rsyncVersion } from '../controller/rsync.js';
 import { printResult } from '../format.js';
 import type { Target } from '../target.js';
 import { checkoutVersion } from '../version.js';
 
 export type Check = { name: string; status: 'ok' | 'warn' | 'fail' | 'skip'; detail: string };
-export type Report = { home: string; checks: Check[]; log: { path: string; lines: string[] } };
+export type Report = { version?: string; home: string; config: { fleet: string; node: string }; checks: Check[]; log: { path: string; lines: string[] } };
 
 export type DoctorDeps = {
-  run(cmd: string, args: string[], env?: Record<string, string>): Promise<string>;
+  /** `path`: the PATH to find `cmd` on, when it is not this process's own; `env`: added to this process's environment */
+  run(cmd: string, args: string[], o?: { path?: string; env?: Record<string, string> }): Promise<string>;
   read(file: string): string | undefined;
   connect(home: string): Promise<{ close(): void }>;
   connectHook(path: string): Promise<void>;
@@ -39,6 +46,8 @@ export type DoctorDeps = {
   exists(path: string): boolean;
   node: string;
   pathEnv: string;
+  /** where the daemon finds the agent CLIs, when that is not this shell's PATH */
+  agentPath?: string;
   shimDir: string;
   // the fleet's .env API keys, as a character's shell gets them
   keys: Record<string, string>;
@@ -46,21 +55,27 @@ export type DoctorDeps = {
   // agent CLIs on PATH, as setup finds them
   found: AgentKind[];
   codexTrust(): Promise<HookTrust | undefined>;
+  platform: NodeJS.Platform;
+  user: string;
+  // the rsync this Mac hands over with, and how to get it back when it is missing
+  rsync: { bundled: string; fix: string };
 };
-export type PreflightDeps = Pick<DoctorDeps, 'run' | 'node' | 'pathEnv' | 'shimDir' | 'keys' | 'mainAgent'>;
+export type PreflightDeps = Pick<DoctorDeps, 'run' | 'node' | 'pathEnv' | 'agentPath' | 'shimDir' | 'keys' | 'mainAgent' | 'platform'>;
 
 const LOG_LINES = 20;
 const firstLine = (s: string): string => s.trim().split('\n')[0] ?? '';
 const missing = (e: unknown): boolean => (e as NodeJS.ErrnoException).code === 'ENOENT';
 
 async function tmux(d: PreflightDeps): Promise<Check> {
+  const linux = d.platform === 'linux';
   try {
     const v = firstLine(await d.run('tmux', ['-V']));
     return tmuxTooOld(v)
-      ? { name: 'tmux', status: 'warn', detail: `${v}: Shift+Enter needs tmux 3.5 or newer; brew upgrade tmux` }
+      ? { name: 'tmux', status: 'warn', detail: `${v}: Shift+Enter needs tmux 3.5 or newer; ${linux ? 'Ubuntu 24.04 ships 3.4' : 'brew upgrade tmux'}` }
       : { name: 'tmux', status: 'ok', detail: v };
   } catch (e) {
-    return { name: 'tmux', status: 'fail', detail: missing(e) ? 'not found on PATH: brew install tmux' : (e as Error).message };
+    const install = linux ? 'sudo apt install tmux' : 'brew install tmux';
+    return { name: 'tmux', status: 'fail', detail: missing(e) ? `not found on PATH: ${install}` : (e as Error).message };
   }
 }
 
@@ -94,7 +109,7 @@ async function agentCheck(d: PreflightDeps, kind: AgentKind, version: string | E
   }
   try {
     // the fleet's API keys ride along, as they do into a character's shell
-    return a.loggedIn(await d.run(a.bin, a.loginArgs, d.keys))
+    return a.loggedIn(await d.run(a.bin, a.loginArgs, { path: d.agentPath, env: d.keys }))
       ? { name: kind, status: 'ok', detail: `${version}, signed in` }
       : { name: kind, status: 'warn', detail: `${version}, not signed in: ${a.loginHint}` };
   } catch (e) {
@@ -108,12 +123,13 @@ async function agentChecks(d: PreflightDeps): Promise<Check[]> {
   // a CLI whose --version fails other than ENOENT is there but broken
   const versions = new Map<AgentKind, string | Error>();
   for (const k of AGENT_KINDS) {
-    try { versions.set(k, firstLine(await d.run(AGENTS[k].bin, ['--version']))); }
+    try { versions.set(k, firstLine(await d.run(AGENTS[k].bin, ['--version'], { path: d.agentPath }))); }
     catch (e) { if (!missing(e)) versions.set(k, e as Error); }
   }
   if (!versions.size) {
     const how = AGENT_KINDS.map((k) => `${AGENTS[k].label} (${AGENTS[k].installUrl})`).join(' or ');
-    return [{ name: 'agents', status: 'fail', detail: `neither claude nor codex is on PATH: install ${how}` }];
+    // a companion is provisioned before anyone logs an agent in on it, so Linux only warns
+    return [{ name: 'agents', status: d.platform === 'linux' ? 'warn' : 'fail', detail: `neither claude nor codex is on PATH: install ${how}` }];
   }
   const found = [...versions.keys()];
   return Promise.all(AGENT_KINDS.map((k) => agentCheck(d, k, versions.get(k), found)));
@@ -143,14 +159,18 @@ async function gh(d: DoctorDeps): Promise<Check> {
   }
 }
 
-// archid waits, without starting, while its config.json does not parse
+// archid waits, without starting, while its fleet.json or node.json does not parse, or the config.json they are
+// still to be split out of
 function config(t: Target, d: DoctorDeps): Check {
-  const file = resolvePaths(t.home).config;
-  const text = d.read(file);
-  if (text === undefined) return { name: 'config', status: 'ok', detail: `the defaults, as there is no ${file}` };
+  const p = resolvePaths(t.home);
+  const files: [string, z.ZodTypeAny][] = d.read(p.fleetConfig) === undefined && d.read(p.legacyConfig) !== undefined
+    ? [[p.legacyConfig, Config]]
+    : [[p.fleetConfig, FleetConfig], [p.nodeConfig, NodeConfig]];
+  const found = files.flatMap(([file, schema]) => { const text = d.read(file); return text === undefined ? [] : [{ file, text, schema }]; });
+  if (!found.length) return { name: 'config', status: 'ok', detail: `the defaults, as there is no ${p.fleetConfig}` };
   try {
-    parseConfig(text, file);
-    return { name: 'config', status: 'ok', detail: file };
+    for (const f of found) parseConfig(f.text, f.file, f.schema);
+    return { name: 'config', status: 'ok', detail: found.map((f) => f.file).join(' and ') };
   } catch (e) {
     return { name: 'config', status: 'fail', detail: `${(e as Error).message}; a stopped archid waits for it to be fixed` };
   }
@@ -244,6 +264,35 @@ function daemonEnv(t: Target, d: DoctorDeps): Check {
     : { name: 'daemon env', status: 'ok', detail: `same ${keys.join(' and ')} as this shell` };
 }
 
+// the wrappers take stdout and stderr; doctor's runner reports a failure by throwing
+const asRun = (d: DoctorDeps): Run => async (cmd, args) => ({ stdout: await d.run(cmd, args), stderr: '' });
+
+async function unitCheck(name: string, unit: string, d: DoctorDeps): Promise<Check> {
+  try {
+    const s = await unitStatus(asRun(d), unit);
+    const detail = `${unit}: ${s.load}, ${s.active} (${s.sub}), ${s.state}`;
+    return { name, status: s.active === 'active' ? 'ok' : 'fail', detail: s.load === 'not-found' ? `${unit} is not installed: archi setup` : detail };
+  } catch (e) {
+    return { name, status: 'fail', detail: (e as Error).message };
+  }
+}
+
+function systemd(t: Target, d: DoctorDeps): Promise<Check> {
+  if (!t.managed) return Promise.resolve({ name: 'systemd', status: 'ok', detail: `not managed: ${t.home} is not a profile home` });
+  return unitCheck('systemd', archidUnitName(t.name), d);
+}
+
+async function linger(d: DoctorDeps): Promise<Check> {
+  try {
+    const l = await lingerState(asRun(d), d.user);
+    return l.linger
+      ? { name: 'linger', status: 'ok', detail: `on for ${l.user}: the fleet keeps running after you log out` }
+      : { name: 'linger', status: 'warn', detail: `off for ${l.user}: the fleet stops when you log out; run ${l.action}` };
+  } catch (e) {
+    return { name: 'linger', status: 'warn', detail: (e as Error).message };
+  }
+}
+
 function hooks(d: DoctorDeps): Check {
   if (!d.found.includes('claude') && !d.exists(path.dirname(d.settingsPath))) return { name: 'hooks', status: 'skip', detail: 'Claude Code is not installed' };
   const text = d.read(d.settingsPath);
@@ -261,6 +310,23 @@ function hooks(d: DoctorDeps): Check {
   return current
     ? { name: 'hooks', status: 'ok', detail: `installed in ${d.settingsPath}` }
     : { name: 'hooks', status: 'warn', detail: `out of date in ${d.settingsPath}: run archi setup` };
+}
+
+async function rsyncAt(d: DoctorDeps, exe: string): Promise<{ version: string } | { reason: string }> {
+  try {
+    return rsyncVersion(await d.run(exe, ['--version']));
+  } catch (e) {
+    return { reason: missing(e) ? 'is not there' : `could not run: ${firstLine((e as Error).message)}` };
+  }
+}
+
+/** The rsync a handover runs on this Mac. macOS's own is openrsync, which cannot stand in for it. */
+async function rsync(d: DoctorDeps): Promise<Check> {
+  const bundled = await rsyncAt(d, d.rsync.bundled);
+  if ('version' in bundled) return { name: 'rsync', status: 'ok', detail: `${bundled.version} at ${d.rsync.bundled}` };
+  const system = await rsyncAt(d, 'rsync');
+  const fallback = 'version' in system ? `the rsync on PATH is ${system.version}, which handover does not use` : `the rsync on PATH ${system.reason}`;
+  return { name: 'rsync', status: 'warn', detail: `${d.rsync.bundled} ${bundled.reason}, and ${fallback}; handover needs the bundled rsync: ${d.rsync.fix}` };
 }
 
 // verifies the hook definition is installed and current, then asks Codex whether it is trusted.
@@ -284,22 +350,45 @@ export async function codexCheck(d: Pick<DoctorDeps, 'codex' | 'exists' | 'read'
 }
 
 export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
-  const log = resolvePaths(t.home).log;
+  const paths = resolvePaths(t.home);
   const checks = [
     ...await preflight(d),
     await gh(d),
     config(t, d),
     await archid(t, d),
     await hookReceiver(t, d),
-    await launchd(t, d),
-    daemonNode(t, d),
-    daemonPath(t, d),
-    daemonEnv(t, d),
+    ...(d.platform === 'linux'
+      ? [await systemd(t, d), await unitCheck('gateway', GATEWAY_UNIT, d), await linger(d)]
+      : [await launchd(t, d), daemonNode(t, d), daemonPath(t, d), daemonEnv(t, d), await rsync(d)]),
     hooks(d),
     await codexCheck(d),
   ];
-  const lines = (d.read(log) ?? '').split('\n').filter(Boolean).slice(-LOG_LINES);
-  return { home: t.home, checks, log: { path: log, lines } };
+  const lines = (d.read(paths.log) ?? '').split('\n').filter(Boolean).slice(-LOG_LINES);
+  return {
+    home: t.home,
+    config: { fleet: paths.fleetConfig, node: paths.nodeConfig },
+    checks,
+    log: { path: paths.log, lines },
+  };
+}
+
+/** One padded line per check, the shape every doctor in this CLI prints. */
+export function checkLines(checks: Check[]): string[] {
+  const width = Math.max(...checks.map((c) => c.name.length));
+  return checks.map((c) => `${MARK[c.status]} ${c.name.padEnd(width)}  ${c.detail}`);
+}
+
+/** What `archi doctor` prints when it is not asked for JSON. */
+export function reportLines(report: Report): string[] {
+  return [
+    ...(report.version ? [`archi ${report.version}`] : []),
+    `fleet ${report.home}`,
+    `config ${report.config.fleet} and ${report.config.node}`,
+    ...checkLines(report.checks),
+    '',
+    `last ${LOG_LINES} lines of ${report.log.path}:`,
+    ...(report.log.lines.length ? report.log.lines : ['(empty)']),
+  ];
 }
 
 const execFileP = promisify(execFile);
@@ -313,25 +402,35 @@ function connectHook(path: string): Promise<void> {
   });
 }
 
-export function realPreflightDeps(home: string): PreflightDeps {
+// a login over ssh sees less of the machine than the unit the daemon runs in
+const unitAgentPath = (): string =>
+  unitPath({ ...(isRelease() ? { release: path.join(DEFAULT_PREFIX, 'current') } : { repoRoot: repoRoot() }), homedir: os.homedir(), prefix: DEFAULT_PREFIX });
+
+export function realPreflightDeps(home: string, platform: NodeJS.Platform = process.platform): PreflightDeps {
   let mainAgent: AgentKind | undefined;
-  try { mainAgent = loadConfig(resolvePaths(home).config).mainAgent; } catch { /* doctor's config check reports it */ }
+  try { mainAgent = configuredMainAgent(resolvePaths(home)); } catch { /* doctor's config check reports it */ }
   return {
     // a login probe, the one call given the fleet's keys, must not hold up install when it hangs
-    run: async (cmd, args, env) => (await execFileP(cmd, args, { timeout: env ? 5_000 : 10_000, env: env && { ...process.env, ...env } })).stdout,
+    run: async (cmd, args, o) => (await execFileP(cmd, args, {
+      timeout: o?.env ? 5_000 : 10_000,
+      ...((o?.path || o?.env) && { env: { ...process.env, ...o.env, ...(o.path && { PATH: o.path }) } }),
+    })).stdout,
     node: process.version,
     pathEnv: process.env.PATH ?? '',
+    ...(platform === 'linux' && { agentPath: unitAgentPath() }),
     shimDir: userPaths().shimDir,
     keys: characterKeyEnv(resolvePaths(home).env),
     mainAgent,
+    platform,
   };
 }
 
 export function doctorCommand(target: () => Target, json: () => boolean): Command {
   return new Command('doctor').description('check what the fleet needs and show the end of its log; changes nothing').action(async () => {
     const t = target();
+    const pre = realPreflightDeps(t.home);
     const report = { version: checkoutVersion(), ...await doctor(t, {
-      ...realPreflightDeps(t.home),
+      ...pre,
       read: (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return undefined; } },
       connect: (home) => Client.connect(home),
       connectHook,
@@ -342,18 +441,15 @@ export function doctorCommand(target: () => Target, json: () => boolean): Comman
       daemonEnv: launchdEnv(),
       codex: codexPaths(),
       exists: fs.existsSync,
-      found: findAgents(process.env.PATH ?? ''),
+      found: findAgents(pre.agentPath ?? pre.pathEnv),
       codexTrust: () => askCodexTrust({ codexHome: codexPaths().dir, script: resolvePaths(profileHome(PRIVATE)).hookScript }),
+      user: os.userInfo().username,
+      rsync: {
+        bundled: bundledRsync(),
+        fix: isRelease() ? 'reinstall Archipelago; its release carries one in bin/' : 'build it with node scripts/build-controller.mjs',
+      },
     }) };
-    const width = Math.max(...report.checks.map((c) => c.name.length));
-    printResult(report, json(), () => [
-      `archi ${report.version}`,
-      `fleet ${report.home}`,
-      ...report.checks.map((c) => `${MARK[c.status]} ${c.name.padEnd(width)}  ${c.detail}`),
-      '',
-      `last ${LOG_LINES} lines of ${report.log.path}:`,
-      ...(report.log.lines.length ? report.log.lines : ['(empty)']),
-    ].join('\n'));
+    printResult(report, json(), () => reportLines(report).join('\n'));
     if (report.checks.some((c) => c.status === 'fail')) process.exitCode = 1;
   });
 }

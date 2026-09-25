@@ -20,6 +20,21 @@ describe('tmuxConfText', () => {
   it('leaves the copy to pbcopy alone', () => {
     expect(tmuxConfText(Config.parse({}))).toMatch(/^set -s set-clipboard off$/m);
   });
+
+  it('drops pbcopy on Linux and nothing else', () => {
+    const mac = tmuxConfText(Config.parse({}), { platform: 'darwin' }).split('\n');
+    const linux = tmuxConfText(Config.parse({}), { platform: 'linux' }).split('\n');
+    expect(mac.filter((l) => !linux.includes(l))).toEqual(['set -g copy-command "pbcopy"']);
+    expect(linux.filter((l) => !mac.includes(l))).toEqual([]);
+  });
+
+  it('drops the option a tmux before 3.5 fails source-file on, and nothing else', () => {
+    const current = tmuxConfText(Config.parse({}), { platform: 'linux', tmuxVersion: 'tmux 3.5a' }).split('\n');
+    const old = tmuxConfText(Config.parse({}), { platform: 'linux', tmuxVersion: 'tmux 3.4' }).split('\n');
+    expect(current.filter((l) => !old.includes(l))).toEqual(['set -s extended-keys-format csi-u']);
+    expect(old.filter((l) => !current.includes(l))).toEqual([]);
+    expect(old).toContain('set -s extended-keys on');
+  });
 });
 
 describe('tmuxTooOld', () => {
@@ -43,7 +58,7 @@ describe('rawPasteArgs', () => {
 
 runIf('Tmux', () => {
   const cleanup: (() => Promise<void>)[] = [];
-  afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
+  afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); delete process.env.ARCHI_RELEASE_ROOT; });
 
   let lastHome = '';
 
@@ -58,6 +73,13 @@ runIf('Tmux', () => {
     return t;
   }
 
+  it('keeps the release the daemon runs from out of every pane', async () => {
+    // the archid shim exports it; a checkout's `pnpm archi` in a pane would take itself for that release
+    process.env.ARCHI_RELEASE_ROOT = '/home/linus/.local/share/archipelago/releases/1.2.3';
+    const t = await boot();
+    await expect(t.run('show-environment', '-g', 'ARCHI_RELEASE_ROOT')).rejects.toThrow(/unknown variable/);
+    expect(await t.run('show-environment', '-g', 'HOME')).toContain('HOME=');
+  });
   it('creates windows named by id, lists them without _keep, and round-trips input', async () => {
     const t = await boot();
     const w = await t.newWindow('c_abc', '/tmp', { ARCHI_CHAR_ID: 'c_abc' });

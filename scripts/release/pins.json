@@ -1,0 +1,10 @@
+{
+  "node": {
+    "version": "v24.21.0",
+    "platforms": ["linux-x64", "linux-arm64", "darwin-arm64", "darwin-x64"]
+  },
+  "rsync": {
+    "version": "3.4.4",
+    "sha256": "bd88cf82fa653da32314fb229136407c5c90f80d1758d8f4b091767877d8fa96"
+  }
+}

@@ -1,0 +1,637 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { FleetConfig, FleetId, MachineId, MachineRecord } from '@archipelago/protocol';
+import { writeJsonAtomic } from '@archipelago/archid/atomic';
+import { isProfileName, PRIVATE, profileOf } from '@archipelago/archid/profile';
+import { resolvePaths } from '@archipelago/archid/paths';
+import { archiExe } from '@archipelago/archid/release';
+import { tmuxTooOld } from '@archipelago/archid/tmux/conf';
+import type { Verify } from '../../../../scripts/release-manifest.mjs';
+import { Client } from '../client.js';
+import type { Check } from '../commands/doctor.js';
+import { REFUSED } from '../commands/fleet-provision.js';
+import { remoteOwner } from './authority.js';
+import { remoteConnectionInfo } from './connection.js';
+import {
+  bootstrapSetup, companionAsset, companionCache, downloadCompanion, inspectCompanion, installedSetup,
+  remoteRollback, requireCompatible, uploadArchive, type CompanionArchive, type FetchLike,
+} from './install.js';
+import { redact } from './process.js';
+import { MachineRegistry, type MachineEntry } from './registry.js';
+import { fileStore } from './recovery.js';
+import { cachedOwner, readRoute } from './route.js';
+import { shellQuote, type SshMaster } from './ssh.js';
+
+const PROBE_TIMEOUT = 30_000;
+// a fleet made or taken over there waits on systemd to stop and start its daemon
+const PROVISION_TIMEOUT = 120_000;
+const FREE_FLOOR_KB = 5 * 1024 * 1024;
+
+export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
+export type StepEvent = { step: string; status: StepStatus; detail?: string; action?: string };
+export type HostOutcome = { result: 'ready' | 'actions'; actions: string[] };
+
+export type HostDeps = {
+  emit(event: StepEvent): void;
+  registry: MachineRegistry;
+  openMaster(destination: string): Promise<SshMaster>;
+  /** one ssh the user can answer: a new host key, a passphrase, a password */
+  interactiveSsh(destination: string): Promise<number>;
+  fetch: FetchLike;
+  controller: { release: string; protocol: number; releaseRoot: string };
+  /** this Mac's own id: the owner a fleet's first authority record names */
+  machineId(): MachineId;
+  homedir: string;
+  /** checks a release's signature against the signers this controller ships */
+  verify: Verify;
+};
+
+export type AddOptions = { name: string; ssh: string; release?: string; allowUnsigned?: boolean };
+
+/** A step that could not finish, with the one thing the user can do about it. */
+export class StepError extends Error {
+  constructor(readonly detail: string, readonly action?: string) { super(detail); }
+}
+
+type Outcome<T> = { value: T; status?: StepStatus; detail?: string; action?: string };
+
+/** The step events a host command emits, and the actions they leave the user with. */
+class Runner {
+  readonly actions: string[] = [];
+  private failed = false;
+
+  constructor(private readonly emit: (e: StepEvent) => void) {}
+
+  async step<T>(step: string, fn: () => Promise<Outcome<T>>): Promise<T> {
+    this.emit({ step, status: 'start' });
+    let r: Outcome<T>;
+    try {
+      r = await fn();
+    } catch (err) {
+      const e = err instanceof StepError ? err : new StepError((err as Error).message);
+      this.failed = true;
+      this.actions.push(e.action ?? e.detail);
+      this.emit({ step, status: 'fail', detail: e.detail, ...(e.action ? { action: e.action } : {}) });
+      throw e;
+    }
+    if (r.action) this.actions.push(r.action);
+    this.emit({
+      step, status: r.status ?? 'ok',
+      ...(r.detail ? { detail: r.detail } : {}), ...(r.action ? { action: r.action } : {}),
+    });
+    return r.value;
+  }
+
+  outcome(): HostOutcome {
+    return { result: this.failed || this.actions.length ? 'actions' : 'ready', actions: this.actions };
+  }
+}
+
+/** Runs a flow to its end or to its first blocker, and reports what the user is left holding. */
+async function flow(emit: (e: StepEvent) => void, fn: (run: Runner) => Promise<void>): Promise<HostOutcome> {
+  const run = new Runner(emit);
+  try {
+    await fn(run);
+  } catch (err) {
+    if (!(err instanceof StepError)) throw err;
+  }
+  return run.outcome();
+}
+
+// one line for the far side's login shell: the script is literal, and only `sh -c` names reach it
+const sh = (name: string, script: string, ...args: string[]): string[] =>
+  ['sh', '-c', shellQuote(script), shellQuote(name), ...args.map(shellQuote)];
+
+const WHICH = 'for c in "$@"; do if command -v "$c" >/dev/null 2>&1; then echo "$c yes"; else echo "$c no"; fi; done';
+const TOOLS = ['tailscale', 'tmux', 'git', 'rsync', 'systemctl', 'loginctl'];
+const APT: Record<string, string> = { tmux: 'tmux', git: 'git', rsync: 'rsync' };
+const ARCHES: Record<string, string> = { aarch64: 'arm64', arm64: 'arm64', x86_64: 'x64', amd64: 'x64' };
+
+async function probe(master: SshMaster, argv: string[], what: string): Promise<string> {
+  const r = await master.run(argv, { timeoutMs: PROBE_TIMEOUT });
+  if (r.code !== 0) throw new StepError(`${what} exited ${r.code}: ${r.stderr.trim().slice(0, 200) || 'no output'}`);
+  return r.stdout;
+}
+
+const field = (osRelease: string, key: string): string =>
+  (new RegExp(`^${key}=(.*)$`, 'm').exec(osRelease)?.[1] ?? '').replace(/^"|"$/g, '');
+
+// Canonical LTS releases come out in April of an even year
+const isLts = (versionId: string): boolean => /^\d\d\.04$/.test(versionId) && Number(versionId.slice(0, 2)) % 2 === 0;
+
+async function osProbe(master: SshMaster): Promise<Outcome<{ arch: string }>> {
+  const [kernel, machine] = (await probe(master, ['uname', '-sm'], 'uname -sm')).trim().split(/\s+/);
+  if (kernel !== 'Linux') throw new StepError(`${kernel} is not Linux; a companion runs on Ubuntu`);
+  const arch = ARCHES[machine];
+  if (!arch) throw new StepError(`${machine} is not an architecture Archipelago publishes a companion for`);
+  const osRelease = await probe(master, ['cat', '/etc/os-release'], 'cat /etc/os-release');
+  const id = field(osRelease, 'ID');
+  const versionId = field(osRelease, 'VERSION_ID');
+  if (id !== 'ubuntu') throw new StepError(`${field(osRelease, 'NAME') || id || 'this machine'} is not Ubuntu; the companion supports the Ubuntu LTS releases`);
+  const release = `Ubuntu ${versionId} ${arch}`;
+  return isLts(versionId)
+    ? { value: { arch }, detail: `${release} (LTS)` }
+    : { value: { arch }, status: 'warn', detail: `${release} is not an LTS release; the companion is tested on the LTS releases` };
+}
+
+// nothing here is ever run: an action names the machine to run it on, and the user runs it
+const onThere = (destination: string, how: string): string => `ssh ${destination}, then ${how}`;
+
+function toolsProbe(out: string, destination: string): Outcome<void> {
+  const found = new Map(out.split('\n').filter(Boolean).map((l) => l.trim().split(/\s+/) as [string, string]));
+  const missing = TOOLS.filter((t) => found.get(t) !== 'yes');
+  if (!missing.length) return { value: undefined, detail: TOOLS.join(', ') };
+  const packages = missing.filter((t) => APT[t]).map((t) => APT[t]);
+  if (missing.some((t) => t === 'systemctl' || t === 'loginctl')) {
+    throw new StepError(`${missing.join(', ')} missing: this machine has no systemd user services, which the companion needs`);
+  }
+  if (packages.length) throw new StepError(`${missing.join(', ')} missing`, onThere(destination, `sudo apt install ${packages.join(' ')}`));
+  throw new StepError(`${missing.join(', ')} missing`, onThere(destination, 'install Tailscale from https://tailscale.com/download/linux'));
+}
+
+function spaceProbe(df: string): Outcome<number> {
+  const row = df.trim().split('\n').at(-1)?.trim().split(/\s+/) ?? [];
+  const free = Number(row[3]);
+  if (!Number.isFinite(free)) throw new StepError(`df did not report the free space on the remote home: ${df.trim().slice(0, 120)}`);
+  const gib = (free / (1024 * 1024)).toFixed(1);
+  return free < FREE_FLOOR_KB
+    ? { value: free, status: 'warn', detail: `${gib} GiB free on the remote home; a release and its replicas want more room` }
+    : { value: free, detail: `${gib} GiB free on the remote home` };
+}
+
+function lingerProbe(out: string, user: string, destination: string): Outcome<boolean> {
+  const on = /^Linger=yes$/m.test(out.trim());
+  return on
+    ? { value: true, detail: `on for ${user}: the fleet keeps running after you log out` }
+    : {
+      value: false, status: 'warn', detail: `off for ${user}: the fleet stops when you log out`,
+      action: onThere(destination, `loginctl enable-linger ${user}`),
+    };
+}
+
+// the remote $HOME and $USER, in the one probe that reads them
+async function homeProbe(master: SshMaster): Promise<{ home: string; user: string }> {
+  const [home, user] = (await probe(master, sh('archi-home', 'printf "%s\\n%s\\n" "$HOME" "$USER"'), '$HOME')).split('\n');
+  return { home, user: user?.trim() ?? '' };
+}
+
+// the companion's doctor prints its report and then exits 1 for any failing check, so a report is
+// read whatever the exit code, and only a run that printed none is a failure
+async function remoteJson<T>(master: SshMaster, archiBase: string, argv: string[], what: string): Promise<T> {
+  const r = await master.run([shellQuote(archiExe(archiBase)), ...argv], { timeoutMs: PROBE_TIMEOUT });
+  try {
+    return JSON.parse(r.stdout) as T;
+  } catch {
+    throw new StepError(r.code === 0
+      ? `${what} did not answer JSON: ${r.stdout.trim().slice(0, 200)}`
+      : `${what} exited ${r.code}: ${r.stderr.trim().slice(0, 200) || 'no output'}`);
+  }
+}
+
+type RemoteDoctor = { checks: Check[] };
+type RemoteVersion = { release: string; protocol: number; machineId: string };
+
+function serviceOutcome(report: RemoteDoctor, destination: string): Outcome<RemoteDoctor> {
+  const named = (name: string) => report.checks.find((c) => c.name === name);
+  const units = ['systemd', 'gateway'].map((name) => {
+    const unit = named(name);
+    if (!unit) throw new StepError(`the companion's doctor reported no ${name} check`);
+    if (unit.status === 'fail') throw new StepError(unit.detail);
+    return unit.detail;
+  });
+  const linger = named('linger');
+  const command = linger?.status === 'warn' ? /loginctl enable-linger \S+/.exec(linger.detail)?.[0] : undefined;
+  const action = command ? onThere(destination, command) : undefined;
+  return { value: report, detail: units.join('; '), ...(action ? { status: 'warn' as const, action } : {}) };
+}
+
+/** The agent checks: every one of them is something to go and do, never something that stops setup. */
+async function agentChecks(master: SshMaster, destination: string, run: Runner): Promise<void> {
+  const found = new Map((await master.run(sh('archi-agents', WHICH, 'claude', 'codex'), { timeoutMs: PROBE_TIMEOUT }))
+    .stdout.split('\n').filter(Boolean).map((l) => l.trim().split(/\s+/) as [string, string]));
+  const there = (agent: string) => found.get(agent) === 'yes';
+  const away = (agent: string, how: string): Outcome<void> =>
+    ({ value: undefined, status: 'warn', detail: `${agent} is not installed on this machine`, action: `ssh ${destination}, then ${how}` });
+
+  await run.step('claude', async () => {
+    if (!there('claude')) return away('claude', 'install Claude Code');
+    const version = (await master.run(['claude', '--version'], { timeoutMs: PROBE_TIMEOUT })).stdout.trim();
+    const auth = await master.run(['claude', 'auth', 'status'], { timeoutMs: PROBE_TIMEOUT });
+    return auth.code === 0
+      ? { value: undefined, detail: `${version}, logged in` }
+      : { value: undefined, status: 'warn', detail: `${version}, not logged in`, action: `ssh ${destination}, then claude auth status and log in` };
+  });
+
+  await run.step('codex', async () => {
+    if (!there('codex')) return away('codex', 'install the Codex CLI');
+    const version = (await master.run(['codex', '--version'], { timeoutMs: PROBE_TIMEOUT })).stdout.trim();
+    const login = await master.run(['codex', 'login', 'status'], { timeoutMs: PROBE_TIMEOUT });
+    return login.code === 0
+      ? { value: undefined, detail: `${version}, logged in` }
+      : { value: undefined, status: 'warn', detail: `${version}, not logged in`, action: `ssh ${destination}, then codex login and trust the hooks once with /hooks` };
+  });
+}
+
+/**
+ * The end-to-end probe: the companion's own private fleet has to answer over a forwarded port
+ * before this machine counts as reachable.
+ */
+async function endToEnd(master: SshMaster, entry: MachineEntry): Promise<Outcome<void>> {
+  const info = await remoteConnectionInfo(master, entry, { profile: PRIVATE });
+  const forward = await master.forward(info.port);
+  let client: Client | undefined;
+  try {
+    client = await Client.connectEndpoint({ url: `ws://127.0.0.1:${forward.localPort}`, token: info.token });
+    await client.call('system.info', {});
+    return { value: undefined, detail: `${entry.record.name} answers on its own ${PRIVATE} fleet` };
+  } catch (err) {
+    throw new StepError(redact((err as Error).message, [info.token]));
+  } finally {
+    client?.close();
+    await forward.cancel().catch(() => undefined);
+  }
+}
+
+async function companionFor(o: AddOptions, d: HostDeps, arch: string): Promise<Outcome<CompanionArchive & { allowUnsigned: boolean }>> {
+  let archive = o.release;
+  let from = 'the archive you named';
+  let allowUnsigned = Boolean(o.allowUnsigned);
+  if (!archive) {
+    const asset = companionAsset(d.controller.releaseRoot, `linux-${arch}`);
+    if (!asset) throw new StepError(`this build publishes no companion for linux-${arch}; name one with --release <archive>`);
+    archive = await downloadCompanion({ ...asset, dir: companionCache(d.homedir), fetch: d.fetch });
+    from = asset.url;
+    // an unsigned development build pins the companion it was built with by digest, and that pin is
+    // as trustworthy as the build the user already chose to run
+    allowUnsigned ||= asset.unsignedBuild;
+  }
+  const companion = await inspectCompanion(archive, { verify: d.verify });
+  requireCompatible(companion, { ...d.controller, arch, allowUnsigned });
+  return { value: { ...companion, allowUnsigned }, detail: `${companion.version} for ${companion.platform} from ${from}${companion.signed ? '' : ' (unsigned)'}` };
+}
+
+const remotePaths = (home: string, version: string) => ({
+  archive: path.posix.join(home, '.cache', 'archipelago', `companion-${version}.tar.gz`),
+  staging: path.posix.join(home, '.cache', 'archipelago', `staging-${version}`),
+  archiBase: path.posix.join(home, '.local', 'share', 'archipelago'),
+});
+
+/** The one machine record this name may carry, and the ssh destination it is already reached at. */
+function claimName(registry: MachineRegistry, o: AddOptions): Outcome<MachineEntry | undefined> {
+  const name = MachineRecord.shape.name.safeParse(o.name);
+  if (!name.success) throw new StepError(`${o.name} is not a machine name: ${name.error.issues[0].message}`);
+  const destination = MachineRecord.shape.ssh.unwrap().safeParse(o.ssh);
+  if (!destination.success) throw new StepError(`${o.ssh} is not an ssh destination: ${destination.error.issues[0].message}`);
+  const held = registry.get(o.name);
+  if (held && held.record.ssh !== o.ssh) {
+    throw new StepError(`${o.name} is already the machine at ${held.record.ssh}; remove it first or add this one under another name`);
+  }
+  return { value: held, detail: held ? `${o.name} is already in the registry; its probes run again` : `${o.name} at ${o.ssh}` };
+}
+
+/** `archi host add`: the spec's Add Machine flow, from the first interactive ssh to the registry entry. */
+export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
+  return flow(d.emit, async (run) => {
+    const held = await run.step('name', () => Promise.resolve(claimName(d.registry, o)));
+
+    await run.step('ssh', async () => {
+      const code = await d.interactiveSsh(o.ssh);
+      if (code !== 0) throw new StepError(`ssh ${o.ssh} exited ${code}`, `ssh ${o.ssh} and complete the host key and authentication`);
+      return { value: undefined, detail: `${o.ssh} accepted an interactive login` };
+    });
+
+    const master = await run.step('master', async () => {
+      try {
+        return { value: await d.openMaster(o.ssh), detail: `one control master to ${o.ssh}` };
+      } catch (err) {
+        throw new StepError((err as Error).message, `ssh ${o.ssh} and see what it answers`);
+      }
+    });
+
+    try {
+      const { arch } = await run.step('os', () => osProbe(master));
+      const { home, user } = await run.step('home', async () => {
+        const remote = await homeProbe(master);
+        if (!MachineRecord.shape.home.safeParse(remote.home).success) throw new StepError(`the remote $HOME is not an absolute path: ${JSON.stringify(remote.home)}`);
+        return { value: remote, detail: `${remote.home} for ${remote.user}` };
+      });
+
+      await run.step('tools', async () => toolsProbe(await probe(master, sh('archi-tools', WHICH, ...TOOLS), 'command -v'), o.ssh));
+      await run.step('tmux', async () => {
+        const version = (await probe(master, ['tmux', '-V'], 'tmux -V')).trim();
+        return tmuxTooOld(version)
+          ? { value: undefined, status: 'warn' as const, detail: `${version}: Shift+Enter needs tmux 3.5 or newer; Ubuntu 24.04 ships 3.4` }
+          : { value: undefined, detail: version };
+      });
+      await run.step('rsync', async () => ({ value: undefined, detail: (await probe(master, sh('archi-rsync', 'rsync --version | head -1'), 'rsync --version')).trim() }));
+      await run.step('space', async () => spaceProbe(await probe(master, sh('archi-space', 'df -Pk "$HOME"'), 'df -Pk $HOME')));
+      await run.step('linger', async () => lingerProbe(await probe(master, sh('archi-linger', 'loginctl show-user "$USER" -p Linger'), 'loginctl show-user'), user, o.ssh));
+
+      const companion = await run.step('release', () => companionFor(o, d, arch));
+      const remote = remotePaths(home, companion.version);
+
+      await run.step('upload', async () => {
+        await uploadArchive(master, { archive: companion.archive, remote: remote.archive });
+        return { value: undefined, detail: `${path.basename(companion.archive)} -> ${remote.archive}` };
+      });
+      await run.step('install', async () => {
+        const out = await bootstrapSetup(master, {
+          staging: remote.staging, archive: remote.archive, version: companion.version,
+          allowUnsigned: !companion.signed && companion.allowUnsigned,
+        });
+        return { value: undefined, detail: out.trim().split('\n').at(-1) ?? `release ${companion.version} installed` };
+      });
+
+      await run.step('service', async () => serviceOutcome(await remoteJson<RemoteDoctor>(master, remote.archiBase, ['doctor', '--json'], 'archi doctor --json'), o.ssh));
+      const machine = await run.step('identity', async () => {
+        const v = await remoteJson<RemoteVersion>(master, remote.archiBase, ['version', '--json'], 'archi version --json');
+        const id = MachineId.safeParse(v.machineId);
+        if (!id.success) throw new StepError('archi version --json did not report a machine id');
+        if (v.protocol !== d.controller.protocol) throw new StepError(`the companion speaks protocol ${v.protocol}, not this controller's ${d.controller.protocol}`);
+        return { value: id.data, detail: `${v.release}, machine ${id.data}` };
+      });
+
+      await agentChecks(master, o.ssh, run);
+
+      const record: MachineRecord = {
+        name: o.name, ssh: o.ssh, platform: 'linux', arch, home,
+        archiBase: remote.archiBase, pathRoots: { home }, gateway: false,
+      };
+      await run.step('probe', () => endToEnd(master, { id: machine, record }));
+      await run.step('registry', () => {
+        if (held) d.registry.remove(held.id);
+        const entry = d.registry.add(record, machine);
+        d.registry.save();
+        return Promise.resolve({ value: entry, detail: `${o.name} is machine ${entry.id}` });
+      });
+    } finally {
+      await master.close().catch(() => undefined);
+    }
+  });
+}
+
+export type HostReport = { machine: string; checks: Check[] };
+
+function need(registry: MachineRegistry, name: string): Registered {
+  const entry = registry.get(name);
+  if (!entry) throw new StepError(`no machine ${name} in the registry`);
+  if (!entry.record.ssh) throw new StepError(`the machine ${name} has no ssh destination in the registry`);
+  return entry as Registered;
+}
+
+type Registered = MachineEntry & { record: MachineRecord & { ssh: string } };
+
+const machineOutcome = (registry: MachineRegistry, name: string): Outcome<Registered> => {
+  const entry = need(registry, name);
+  return { value: entry, detail: `${name} at ${entry.record.ssh}` };
+};
+
+const failed = (name: string, err: unknown): Check => ({ name, status: 'fail', detail: (err as Error).message });
+
+/** `archi host doctor`: what the companion's own doctor says, plus what only the controller can check. */
+export async function doctorHost(name: string, d: HostDeps): Promise<HostReport> {
+  const entry = need(d.registry, name);
+  const master = await d.openMaster(entry.record.ssh);
+  const checks: Check[] = [];
+  try {
+    const base = entry.record.archiBase;
+    try {
+      const report = await remoteJson<RemoteDoctor>(master, base, ['doctor', '--json'], 'archi doctor --json');
+      checks.push(...report.checks);
+    } catch (err) { checks.push(failed('doctor', err)); }
+    try {
+      const v = await remoteJson<RemoteVersion>(master, base, ['version', '--json'], 'archi version --json');
+      const same = d.controller.release === 'dev' || v.release === d.controller.release;
+      checks.push({
+        name: 'release', status: same && v.protocol === d.controller.protocol ? 'ok' : 'fail',
+        detail: `${v.release}, protocol ${v.protocol}; this controller runs ${d.controller.release}, protocol ${d.controller.protocol}`,
+      });
+    } catch (err) { checks.push(failed('release', err)); }
+    try {
+      checks.push({ name: 'space', ...pick(spaceProbe(await probe(master, sh('archi-space', 'df -Pk "$HOME"'), 'df -Pk $HOME'))) });
+    } catch (err) { checks.push(failed('space', err)); }
+    if (!checks.some((c) => c.name === 'linger')) {
+      try {
+        const { user } = await homeProbe(master);
+        const out = await probe(master, sh('archi-linger', 'loginctl show-user "$USER" -p Linger'), 'loginctl show-user');
+        checks.push({ name: 'linger', ...pick(lingerProbe(out, user, entry.record.ssh)) });
+      } catch (err) { checks.push(failed('linger', err)); }
+    }
+  } finally {
+    await master.close().catch(() => undefined);
+  }
+  return { machine: entry.record.name, checks };
+}
+
+const pick = (o: Outcome<unknown>): { status: Check['status']; detail: string } =>
+  ({ status: (o.status ?? 'ok') as Check['status'], detail: [o.detail, o.action].filter(Boolean).join('; ') });
+
+/** `archi host upgrade`: a new release, then a probe that puts the old one back if it does not answer. */
+export function upgradeHost(name: string, o: { release?: string; allowUnsigned?: boolean }, d: HostDeps): Promise<HostOutcome> {
+  return flow(d.emit, async (run) => {
+    const entry = await run.step('machine', () => Promise.resolve(machineOutcome(d.registry, name)));
+    const master = await run.step('master', async () => ({ value: await d.openMaster(entry.record.ssh), detail: `one control master to ${entry.record.ssh}` }));
+    try {
+      const companion = await run.step('release', () => companionFor({ name, ssh: entry.record.ssh, ...o }, d, entry.record.arch));
+      const remote = remotePaths(entry.record.home, companion.version);
+      await run.step('upload', async () => {
+        await uploadArchive(master, { archive: companion.archive, remote: remote.archive });
+        return { value: undefined, detail: `${path.basename(companion.archive)} -> ${remote.archive}` };
+      });
+      await run.step('install', async () => {
+        const out = await installedSetup(master, {
+          archiBase: entry.record.archiBase, archive: remote.archive,
+          allowUnsigned: !companion.signed && companion.allowUnsigned,
+        });
+        return { value: undefined, detail: out.trim().split('\n').at(-1) ?? `release ${companion.version} installed` };
+      });
+
+      const probed = await run.step('probe', async () => {
+        try {
+          await remoteJson<RemoteDoctor>(master, entry.record.archiBase, ['doctor', '--json'], 'archi doctor --json');
+          await endToEnd(master, entry);
+          return { value: true, detail: `${entry.record.name} answers on release ${companion.version}` };
+        } catch (err) {
+          return { value: false, status: 'warn' as const, detail: (err as Error).message };
+        }
+      });
+      if (probed) return;
+      await run.step('rollback', async () => {
+        const out = await remoteRollback(master, entry.record.archiBase);
+        return {
+          value: undefined, status: 'warn' as const,
+          detail: out.trim().split('\n').at(-1) ?? 'the release before this one is back',
+          action: `ssh ${entry.record.ssh} and read the daemon log; the machine is back on the release it ran before`,
+        };
+      });
+    } finally {
+      await master.close().catch(() => undefined);
+    }
+  });
+}
+
+/** The fleet homes on this Mac, the private one and every named profile's. */
+function fleetHomes(homedir: string): string[] {
+  let names: string[];
+  try {
+    names = fs.readdirSync(homedir);
+  } catch {
+    return [];
+  }
+  return names
+    .filter((f) => f === '.archipelago' || (f.startsWith('.archipelago-') && isProfileName(f.slice('.archipelago-'.length))))
+    .map((f) => path.join(homedir, f))
+    .filter((home) => fs.existsSync(resolvePaths(home).fleetConfig));
+}
+
+/**
+ * The fleets that name this machine as their gateway: a fleet this Mac owns can drop it, and one
+ * that another machine owns, or that a handover holds open, would be stranded, since only its gateway
+ * knows where it is.
+ */
+function gatewayFleets(entry: MachineEntry, d: HostDeps): Outcome<string[]> {
+  const me = d.machineId();
+  const named = fleetHomes(d.homedir).filter((home) => readFleet(resolvePaths(home).fleetConfig).gatewayMachineId === entry.id);
+  const archi = (home: string, args: string): string => {
+    const profile = profileOf(home, d.homedir);
+    return `\`archi ${profile === PRIVATE ? '' : `-p ${profile} `}${args}\``;
+  };
+  // the gateway may hold a handover open while this Mac's daemon or controller keeps a journal of it
+  const open = named.filter((home) => fs.existsSync(resolvePaths(home).journal) || fileStore(path.join(home, 'controller')).read() !== undefined);
+  if (open.length) {
+    const settle = (home: string): string =>
+      `${archi(home, 'handover --resume')} finishes the handover of ${home} and ${archi(home, 'handover --abort')} takes it back, as ${archi(home, 'handover status')} says is safe`;
+    throw new StepError(`${entry.record.name} is the gateway for ${open.join(', ')}, which a handover holds open`,
+      `${open.map(settle).join('; ')}; then \`archi host remove ${entry.record.name}\``);
+  }
+  const away = named.filter((home) => [cachedOwner(home)?.ownerMachineId, readRoute(home)?.ownerMachineId].some((id) => id !== undefined && id !== me));
+  if (away.length) {
+    throw new StepError(`${entry.record.name} is the gateway for ${away.join(', ')}, which another machine owns`,
+      `bring ${away.length > 1 ? 'each fleet' : 'it'} back to this Mac with ${away.map((home) => archi(home, 'handover local')).join(' and ')}, then \`archi host remove ${entry.record.name}\``);
+  }
+  return {
+    value: named,
+    detail: named.length ? `${named.join(', ')} stop naming ${entry.record.name} as their gateway` : `no fleet here names ${entry.record.name} as its gateway`,
+  };
+}
+
+/** `archi host remove`: the remote uninstall first, and the route only after it, or only on --forget. */
+export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): Promise<HostOutcome> {
+  return flow(d.emit, async (run) => {
+    const entry = await run.step('machine', () => Promise.resolve(machineOutcome(d.registry, name)));
+    const fleets = await run.step('fleet', () => Promise.resolve(gatewayFleets(entry, d)));
+    // never --purge from here: the fleets and their tmux servers are the far machine's to delete
+    const uninstalled = await run.step('uninstall', async () => {
+      const untouched = `${entry.record.ssh} still has Archipelago installed; run archi uninstall there to remove it`;
+      if (o.forget) return { value: false, status: 'skip' as const, detail: `${name} is left untouched`, action: untouched };
+      let master: SshMaster | undefined;
+      try {
+        master = await d.openMaster(entry.record.ssh);
+        const out = await probe(master, [shellQuote(archiExe(entry.record.archiBase)), 'uninstall'], 'archi uninstall');
+        return { value: true, detail: out.trim().split('\n').at(-1) ?? 'archi uninstall' };
+      } catch (err) {
+        throw new StepError(`${entry.record.ssh} could not be reached: ${(err as Error).message}`,
+          `archi host remove ${name} --forget drops the route and leaves the machine untouched`);
+      } finally {
+        await master?.close().catch(() => undefined);
+      }
+    });
+    await run.step('registry', () => {
+      for (const home of fleets) {
+        const file = resolvePaths(home).fleetConfig;
+        const { gatewayMachineId: _gone, ...rest } = readFleet(file);
+        writeJsonAtomic(file, rest);
+      }
+      d.registry.remove(entry.id);
+      d.registry.save();
+      return Promise.resolve({ value: undefined, detail: uninstalled ? `${name} is no longer in the registry` : `${name} is forgotten; the machine was left untouched` });
+    });
+  });
+}
+
+function readFleet(file: string): FleetConfig {
+  try {
+    return FleetConfig.parse(JSON.parse(fs.readFileSync(file, 'utf8')));
+  } catch (err) {
+    throw new StepError(`${file} is not a fleet config: ${(err as Error).message}`);
+  }
+}
+
+/**
+ * The record that says this fleet is this Mac's: the gateway's own, asked for over ssh and created
+ * where there is none. A record another machine holds is not this Mac's to take.
+ */
+async function seedAuthority(entry: Registered, fleetId: FleetId, name: string, d: HostDeps): Promise<Outcome<void>> {
+  const owner = d.machineId();
+  const master = await d.openMaster(entry.record.ssh);
+  const exe = archiExe(entry.record.archiBase);
+  try {
+    let frame = await remoteOwner({ master, exe, op: 'get', fleetId });
+    if ('error' in frame && frame.error.code === 'not_found') {
+      frame = await remoteOwner({ master, exe, op: 'create', fleetId, params: { initialOwnerMachineId: owner } });
+    }
+    if ('error' in frame) {
+      const repair = frame.error.code === 'authority_corrupt'
+        ? onThere(entry.record.ssh, `put a readable record back where the gateway looks for it, then run archi host enable ${name} again`)
+        : undefined;
+      throw new StepError(frame.error.message, repair);
+    }
+    const record = frame.record;
+    if (record.fleetId !== fleetId || record.ownerMachineId !== owner) {
+      throw new StepError(`${name} holds fleet ${record.fleetId} for ${record.ownerMachineId} at generation ${record.generation}, not for this machine`);
+    }
+    return { value: undefined, detail: `${name} holds fleet ${fleetId} for ${owner} at generation ${record.generation}` };
+  } finally {
+    await master.close().catch(() => undefined);
+  }
+}
+
+type FarCopy = { outcome: 'created' | 'held' | 'rekeyed'; home: string; unit: string };
+
+/**
+ * The gateway machine's own copy of the fleet, under the profile a handover reaches it by: the companion makes
+ * one where there is none, and takes over one only `host add` has made, which it refuses for one in use.
+ */
+async function provisionCopy(entry: Registered, fleetId: FleetId, profile: string, d: HostDeps): Promise<string> {
+  const name = entry.record.name;
+  const master = await d.openMaster(entry.record.ssh);
+  try {
+    const r = await master.run([
+      shellQuote(archiExe(entry.record.archiBase)), '-p', shellQuote(profile),
+      'fleet', 'provision', '--id', shellQuote(fleetId), '--gateway', shellQuote(entry.id), '--json',
+    ], { timeoutMs: PROVISION_TIMEOUT });
+    if (r.code !== 0) {
+      const said = r.stderr.trim().replace(/^archi: /, '').slice(0, 400) || `archi fleet provision exited ${r.code ?? `on ${r.signal}`}`;
+      // only a refusal is a fleet home in the way; anything else is the run failing, which running enable again goes on from
+      if (r.code === REFUSED) {
+        throw new StepError(`${name} cannot take a copy of this fleet: ${said}`,
+          `ssh ${entry.record.ssh} and move that fleet home aside, then run archi host enable ${name} --fleet ${profile} again`);
+      }
+      throw new StepError(`${name} did not finish making its copy of this fleet: ${said}`);
+    }
+    let copy: FarCopy;
+    try { copy = JSON.parse(r.stdout) as FarCopy; } catch { throw new StepError(`archi fleet provision did not answer JSON: ${r.stdout.trim().slice(0, 200)}`); }
+    return copy.outcome === 'held' ? `${name} already holds this fleet in ${copy.home}`
+      : copy.outcome === 'created' ? `${name} holds this fleet in ${copy.home}, made for it, under ${copy.unit}`
+        : `${name}'s unused fleet in ${copy.home} is now this fleet, under ${copy.unit}`;
+  } finally {
+    await master.close().catch(() => undefined);
+  }
+}
+
+/** `archi host enable`: which machine is to be this fleet's gateway, the record that says so, and its copy of the fleet. */
+export function enableHost(name: string, o: { fleetHome: string }, d: HostDeps): Promise<HostOutcome> {
+  return flow(d.emit, async (run) => {
+    const entry = await run.step('machine', () => Promise.resolve(machineOutcome(d.registry, name)));
+    const file = resolvePaths(o.fleetHome).fleetConfig;
+    // fleet.json names the gateway only once the gateway itself holds the record for this fleet, and a copy of it
+    await run.step('authority', () => seedAuthority(entry, readFleet(file).id, name, d));
+    await run.step('fleet', async () => {
+      const copy = await provisionCopy(entry, readFleet(file).id, profileOf(o.fleetHome, d.homedir), d);
+      writeJsonAtomic(file, { ...readFleet(file), gatewayMachineId: entry.id });
+      d.registry.markGateway(entry.id);
+      d.registry.save();
+      return { value: undefined, detail: `${copy}; ${file} names ${name} as the gateway` };
+    });
+  });
+}

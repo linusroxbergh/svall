@@ -2,10 +2,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { Command } from 'commander';
 import { codexPaths } from '@archipelago/archid/codex/install';
+import { unitDirOf } from '@archipelago/archid/linux/setup';
 import { realDeps } from '@archipelago/archid/mobile';
 import { userPaths } from '@archipelago/archid/paths';
 import { PRIVATE, profileHome } from '@archipelago/archid/profile';
 import { appQuit, fleetData, fleetHomes, purge, runUninstall } from '@archipelago/archid/uninstall';
+import { DEFAULT_PREFIX } from '../../../../scripts/install-release.mjs';
 import { printResult } from '../format.js';
 import { ask } from '../prompt.js';
 
@@ -32,7 +34,7 @@ export function uninstallCommand(json: () => boolean): Command {
   return new Command('uninstall')
     .description('remove what archi setup added and stop every fleet; asks before deleting the fleets and the app')
     .option('--purge', 'also delete every fleet and the app, without asking')
-    .option('--no-launchctl', 'leave the launchd agents running, only delete their plists')
+    .option('--no-launchctl', 'leave the daemons running, only delete the files that start them')
     .action(async (o: { purge?: boolean; launchctl: boolean }) => {
       const r = await uninstall({ purge: Boolean(o.purge) }, {
         uninstall: () => runUninstall({
@@ -42,10 +44,12 @@ export function uninstallCommand(json: () => boolean): Command {
           codex: codexPaths(),
           launchAgentsDir: userPaths().launchAgents,
           shimDir: userPaths().shimDir,
-          launchctl: o.launchctl && process.platform === 'darwin',
+          launchctl: o.launchctl,
           mobile: realDeps(),
           app: appQuit,
           tmux: process.env.TMUX,
+          unitDir: unitDirOf(os.homedir()),
+          prefix: DEFAULT_PREFIX,
         }),
         data: () => fleetData({
           homedir: os.homedir(),

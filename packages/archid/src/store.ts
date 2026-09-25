@@ -2,8 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import jsonpatch, { type Operation } from 'fast-json-patch';
 import { FleetState, NewerStateVersion, OlderStateVersion, emptyState, migrateState } from '@archipelago/protocol';
-import { readJsonOrQuarantine, writeJsonAtomic } from './jsonfile.js';
+import { readJsonOrQuarantine } from './jsonfile.js';
 import { sinkHome } from './layout.js';
+import { cleanupDurableTemps, syncDir, writeDurable } from './handover/durable.js';
 
 type Listener = (ops: Operation[]) => void;
 
@@ -21,6 +22,7 @@ export class Store {
   private constructor(private file: string, private current: FleetState, private log: (msg: string) => void) {}
 
   static load(file: string, log: (msg: string) => void): Store {
+    cleanupDurableTemps(path.dirname(file));
     let read;
     try {
       read = readJsonOrQuarantine(file, log,
@@ -45,7 +47,7 @@ export class Store {
       fs.copyFileSync(file, kept);
       log(`state.json migrated to version ${read.state.version}; version ${old} kept at ${kept}`);
     }
-    if (read.migrated || read.dropped.length) store.persist();
+    if (read.migrated || read.dropped.length) store.persist(read.state);
     return store;
   }
 
@@ -60,13 +62,38 @@ export class Store {
     sinkHome(next);
     const ops = jsonpatch.compare(this.current, next);
     if (ops.length === 0) return ops;
-    // written before it is taken: a write that fails leaves the fleet as every listener last saw it
-    writeJsonAtomic(this.file, next);
-    this.current = next;
-    for (const l of this.listeners) {
-      try { l(ops); } catch (err) { this.log(`store listener failed: ${String(err)}`); }
-    }
+    this.commit(next, ops);
     return ops;
+  }
+
+  /** Swaps the whole fleet for a validated snapshot: what a snapshot leaves out, the patch removes. */
+  replace(snapshot: unknown): Operation[] {
+    const next = FleetState.parse(snapshot);
+    const ops = jsonpatch.compare(this.current, next);
+    this.commit(next, ops);
+    return ops;
+  }
+
+  /** Validates a prepared snapshot without making it the active state. */
+  static readSnapshot(file: string): FleetState {
+    return FleetState.parse(JSON.parse(fs.readFileSync(file, 'utf8')));
+  }
+
+  /**
+   * Makes a prepared file the active state once the gateway has committed the transaction: renamed into
+   * place, both directories synced, then published as it is on disk rather than written again.
+   */
+  promote(preparedFile: string): Operation[] {
+    const next = Store.readSnapshot(preparedFile);
+    fs.renameSync(preparedFile, this.file);
+    syncDir(path.dirname(this.file));
+    syncDir(path.dirname(preparedFile));
+    return this.publish(next);
+  }
+
+  /** Publishes what state.json holds, for a promotion whose rename landed before this process published it. */
+  reload(): Operation[] {
+    return this.publish(Store.readSnapshot(this.file));
   }
 
   subscribe(fn: Listener): () => void {
@@ -74,7 +101,27 @@ export class Store {
     return () => { this.listeners.delete(fn); };
   }
 
-  private persist(): void {
-    writeJsonAtomic(this.file, this.current);
+  // on disk before any listener runs, so a viewer never sees a patch the next start would disagree with,
+  // and a write that fails leaves the fleet as every listener last saw it
+  private commit(next: FleetState, ops: Operation[]): void {
+    this.persist(next);
+    this.notify(next, ops);
+  }
+
+  private publish(next: FleetState): Operation[] {
+    const ops = jsonpatch.compare(this.current, next);
+    this.notify(next, ops);
+    return ops;
+  }
+
+  private notify(next: FleetState, ops: Operation[]): void {
+    this.current = next;
+    for (const l of this.listeners) {
+      try { l(ops); } catch (err) { this.log(`store listener failed: ${String(err)}`); }
+    }
+  }
+
+  private persist(state: FleetState): void {
+    writeDurable(this.file, state, { mode: 0o600 });
   }
 }

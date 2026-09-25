@@ -2,9 +2,13 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import type { MobileStatus, UsageSnapshot } from '@archipelago/protocol';
+import type { FleetId, MobileStatus, UsageSnapshot } from '@archipelago/protocol';
 import type { Fleet } from '../src/fleet.js';
+import { silentLogger } from '../src/log.js';
+import { machineId } from '../src/machine.js';
 import type { Mobile } from '../src/mobile.js';
+import { OwnershipState } from '../src/ownership/state.js';
+import { resolvePaths } from '../src/paths.js';
 
 // the root config's test/isolate.ts moves HOME; a run without it would reach the real HOME and the live fleet
 if (!process.env.HOME?.startsWith('/tmp/archi-home-')) throw new Error('run these tests through the root vitest config (pnpm test)');
@@ -65,3 +69,7 @@ export const stubUsage = (): Promise<UsageSnapshot> =>
 // and a phone link it can report; tests that are not about serving take this one
 const OFF: MobileStatus = { serving: false, url: '', port: 443, logins: [], phones: [], error: 'no tailscale in tests' };
 export const stubMobile: Mobile = { get: () => Promise.resolve(OFF), set: () => Promise.resolve(OFF) };
+
+// a home with no gateway and no owner.json owns its fleet at generation zero, which is what every test but the fence wants
+export const ownerOf = (home: string, fleetId: FleetId): OwnershipState =>
+  OwnershipState.load({ paths: resolvePaths(home), fleetId, machineId: machineId(), log: silentLogger, standalone: true });

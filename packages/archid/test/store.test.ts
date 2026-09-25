@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { Operation } from 'fast-json-patch';
 import { Store } from '../src/store.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -25,15 +26,19 @@ describe('Store', () => {
   });
 
   it('leaves the state as it was when the write fails, so every listener still agrees with it', () => {
-    const file = path.join(makeHome(), 'state.json');
+    const home = makeHome();
+    const file = path.join(home, 'state.json');
     const s = Store.load(file, () => {});
     const seen: unknown[] = [];
     s.subscribe((ops) => seen.push(...ops));
     // stands in for a full disk or a permission error
-    fs.mkdirSync(`${file}.tmp`);
-    expect(() => s.update((d) => { d.defaultCwd = '/elsewhere'; })).toThrow();
+    fs.chmodSync(home, 0o500);
+    try {
+      expect(() => s.update((d) => { d.defaultCwd = '/elsewhere'; })).toThrow();
+    } finally {
+      fs.chmodSync(home, 0o700);
+    }
     expect(s.state.defaultCwd).not.toBe('/elsewhere');
-    fs.rmdirSync(`${file}.tmp`);
     s.update((d) => { d.scribeOff = true; });
     expect(seen).toEqual([{ op: 'add', path: '/scribeOff', value: true }]);
   });
@@ -68,9 +73,9 @@ describe('Store', () => {
   it('refuses a file from a newer archid and leaves it in place', () => {
     const home = makeHome();
     const file = path.join(home, 'state.json');
-    const newer = JSON.stringify({ version: 8, islands: {}, characters: {} });
+    const newer = JSON.stringify({ version: 9, islands: {}, characters: {} });
     fs.writeFileSync(file, newer);
-    expect(() => Store.load(file, () => {})).toThrow(/version 8.*newer.*update archipelago/);
+    expect(() => Store.load(file, () => {})).toThrow(/version 9.*newer.*update archipelago/);
     expect(fs.readdirSync(home)).toEqual(['state.json']);
     expect(fs.readFileSync(file, 'utf8')).toBe(newer);
   });
@@ -92,7 +97,7 @@ describe('Store', () => {
     fs.writeFileSync(file, before);
     const logs: string[] = [];
     Store.load(file, (m) => logs.push(m));
-    expect(JSON.parse(fs.readFileSync(file, 'utf8')).version).toBe(7);
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).version).toBe(8);
     expect(logs[0]).toMatch(/migrated/);
     const kept = fs.readdirSync(home).find((f) => f.startsWith('state.json.v6-'));
     expect(kept).toBeDefined();
@@ -104,7 +109,7 @@ describe('Store', () => {
     const file = path.join(home, 'state.json');
     const island = { id: 'i_1', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
     const char = (id: string) => ({ id, islandId: 'i_1', cell: { x: 1, y: 1 }, name: id, portrait: 'owl', note: '', instructions: '', cwd: '/tmp', context: [], shell: { lastOutputAt: 0 }, unread: false });
-    const before = JSON.stringify({ version: 7, islands: { i_1: island }, characters: { c_good: char('c_good'), c_bad: { ...char('c_bad'), agent: { kind: 'gemini' } } } });
+    const before = JSON.stringify({ version: 8, islands: { i_1: island }, characters: { c_good: char('c_good'), c_bad: { ...char('c_bad'), agent: { kind: 'gemini' } } } });
     fs.writeFileSync(file, before);
     const logs: string[] = [];
     const s = Store.load(file, (m) => logs.push(m));
@@ -114,5 +119,112 @@ describe('Store', () => {
     expect(kept).toBeDefined();
     expect(fs.readFileSync(path.join(home, kept!), 'utf8')).toBe(before);
     expect(logs.join('\n')).toMatch(/character c_bad: agent/);
+  });
+});
+
+const island = (id: string) => ({ id, name: id, description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 });
+
+describe('Store.replace', () => {
+  it('validates the snapshot and leaves the state alone when it is rejected', () => {
+    const s = Store.load(path.join(makeHome(), 'state.json'), () => {});
+    expect(() => s.replace({ version: 8, islands: { bad: { id: 'bad' } }, characters: {} })).toThrow();
+    expect(s.state.islands).toEqual({});
+  });
+
+  it('emits one patch and drops entities the snapshot does not have', () => {
+    const file = path.join(makeHome(), 'state.json');
+    const s = Store.load(file, () => {});
+    s.update((d) => { d.islands.i_1 = island('i_1'); d.islands.i_2 = island('i_2'); });
+    const seen: Operation[][] = [];
+    s.subscribe((ops) => seen.push(ops));
+    const ops = s.replace({ ...s.state, islands: { i_2: island('i_2'), i_3: island('i_3') } });
+    expect(seen).toEqual([ops]);
+    expect(ops.filter((o) => o.op === 'remove').map((o) => o.path)).toEqual(['/islands/i_1']);
+    expect(Object.keys(s.state.islands).sort()).toEqual(['i_2', 'i_3']);
+    expect(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).islands).sort()).toEqual(['i_2', 'i_3']);
+  });
+
+  it('persists before a listener can throw', () => {
+    const file = path.join(makeHome(), 'state.json');
+    const s = Store.load(file, () => {});
+    s.subscribe(() => { throw new Error('boom'); });
+    s.replace({ ...s.state, islands: { i_1: island('i_1') } });
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).islands.i_1.name).toBe('i_1');
+  });
+
+  it('rethrows a failed persist with the state unchanged and no listener told', () => {
+    const home = makeHome();
+    const s = Store.load(path.join(home, 'state.json'), () => {});
+    const seen: Operation[][] = [];
+    s.subscribe((ops) => seen.push(ops));
+    fs.chmodSync(home, 0o500);
+    try {
+      expect(() => s.replace({ ...s.state, islands: { i_1: island('i_1') } })).toThrow();
+    } finally {
+      fs.chmodSync(home, 0o700);
+    }
+    expect(s.state.islands).toEqual({});
+    expect(seen).toEqual([]);
+  });
+});
+
+describe('prepared state', () => {
+  it('reads a prepared snapshot without making it active', () => {
+    const home = makeHome();
+    const s = Store.load(path.join(home, 'state.json'), () => {});
+    const prepared = path.join(home, 'handover', 'prepared-tx-1.json');
+    fs.mkdirSync(path.dirname(prepared), { recursive: true });
+    fs.writeFileSync(prepared, JSON.stringify({ ...s.state, islands: { i_1: island('i_1') } }));
+    expect(Object.keys(Store.readSnapshot(prepared).islands)).toEqual(['i_1']);
+    expect(s.state.islands).toEqual({});
+  });
+
+  it('refuses a prepared file that is not a valid snapshot', () => {
+    const home = makeHome();
+    const prepared = path.join(home, 'prepared-tx-1.json');
+    fs.writeFileSync(prepared, '{"version":7,"islands":{"bad":{}},"characters":{}}');
+    expect(() => Store.readSnapshot(prepared)).toThrow();
+  });
+
+  it('promotes a prepared file onto state.json and replaces the live state', () => {
+    const home = makeHome();
+    const file = path.join(home, 'state.json');
+    const s = Store.load(file, () => {});
+    s.update((d) => { d.islands.i_1 = island('i_1'); });
+    const prepared = path.join(home, 'handover', 'prepared-tx-1.json');
+    fs.mkdirSync(path.dirname(prepared), { recursive: true });
+    fs.writeFileSync(prepared, JSON.stringify({ ...s.state, islands: { i_9: island('i_9') } }));
+    const seen: Operation[][] = [];
+    s.subscribe((ops) => seen.push(ops));
+    const ops = s.promote(prepared);
+    expect(seen).toEqual([ops]);
+    expect(Object.keys(s.state.islands)).toEqual(['i_9']);
+    expect(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).islands)).toEqual(['i_9']);
+    expect(fs.existsSync(prepared)).toBe(false);
+  });
+
+  it('leaves the prepared file in place when it does not validate', () => {
+    const home = makeHome();
+    const s = Store.load(path.join(home, 'state.json'), () => {});
+    const prepared = path.join(home, 'prepared-tx-1.json');
+    fs.writeFileSync(prepared, '{"version":7,"islands":{"bad":{}},"characters":{}}');
+    expect(() => s.promote(prepared)).toThrow();
+    expect(fs.existsSync(prepared)).toBe(true);
+    expect(s.state.islands).toEqual({});
+  });
+});
+
+describe('Store.load', () => {
+  it('collects a stale write temp that a finished write left behind', () => {
+    const home = makeHome();
+    const file = path.join(home, 'state.json');
+    const s = Store.load(file, () => {});
+    s.update((d) => { d.islands.i_1 = island('i_1'); });
+    const stale = `${file}.durable-1-deadbeef.tmp`;
+    fs.writeFileSync(stale, '{}');
+    const old = new Date(Date.now() - 86_400_000);
+    fs.utimesSync(stale, old, old);
+    Store.load(file, () => {});
+    expect(fs.existsSync(stale)).toBe(false);
   });
 });

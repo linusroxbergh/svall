@@ -29,6 +29,20 @@ rsync -a --delete "$SHARE/ghostty" "$SHARE/terminfo" "$APP/Contents/Resources/"
 if [ -d "$ROOT/apps/desktop/web/dist" ]; then
   rsync -a --delete "$ROOT/apps/desktop/web/dist/" "$APP/Contents/Resources/web/"
 fi
+
+# a release build carries the controller it installs: production archi and archid, the pinned Node
+# runtime, the phone page and the rsync 3.x macOS does not have. A workspace build also pins the
+# linux-x64 companion it built beside it, by file: URL and digest, so Add Machine has one to install
+if [ "$CONFIG" = release ]; then
+  RELEASE="$MAC/build/release"
+  COMPANIONS="$MAC/build/companions"
+  VERSION="$(git -C "$ROOT" describe --tags --always --dirty)"
+  rm -rf "$RELEASE" "$COMPANIONS"
+  node "$ROOT/scripts/build-companion.mjs" --out "$COMPANIONS" --arch x64 --version "$VERSION" >"$MAC/build/companions.json"
+  node "$ROOT/scripts/build-controller.mjs" --out "$RELEASE" --version "$VERSION" \
+    --companion-url-base "file://$COMPANIONS" --companions "$COMPANIONS" >"$MAC/build/release.json"
+  rsync -a --delete "$RELEASE/releases/"*/ "$APP/Contents/Resources/release/"
+fi
 # the build the bundle came from, for a bug report to name
 BUILD="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" "$APP/Contents/Info.plist"

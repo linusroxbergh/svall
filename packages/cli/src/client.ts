@@ -3,15 +3,16 @@ import WebSocket from 'ws';
 import { loadConfig } from '@archipelago/archid/config';
 import { archiHome, resolvePaths } from '@archipelago/archid/paths';
 import { profileLabel } from '@archipelago/archid/profile';
-import { PROTOCOL_VERSION, serverWait, type Event, type MethodName, type Params, type Response, type Result } from '@archipelago/protocol';
+import { MAX_REQUEST_BYTES, PART_BYTES, PROTOCOL_VERSION, serverWait, type Event, type MethodName, type Params, type Response, type Result } from '@archipelago/protocol';
 import { resolveTarget, type Target } from './target.js';
 
 // a wedged daemon must not hang the control loop, which shells out to archi and expects it to return.
 const CALL_TIMEOUT = 30_000;
 const CONNECT_TIMEOUT = 10_000;
 
-class ApiError extends Error {
-  constructor(public code: string, message: string) { super(message); }
+/** The daemon's refusal: its code, and the structured rest of it, such as the blockers of a refused handover. */
+export class ApiError extends Error {
+  constructor(public code: string, message: string, public data?: Record<string, unknown>) { super(message); }
 }
 
 // the daemon and this archi disagree on the protocol: waiting will not fix it
@@ -36,25 +37,39 @@ const deadline = <T>(p: Promise<T>, ms: number, message: string): Promise<T> => 
 export class Client {
   private next = 1;
   private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
+  private listeners = new Set<(e: Event) => void>();
+  /** the machine this client reached another machine's daemon on, when it is not this one's */
+  via?: string;
 
   private constructor(private ws: WebSocket) {
     ws.on('message', (raw) => {
       let msg: Response | Event;
       try { msg = JSON.parse(raw.toString()) as Response | Event; } catch { return; }
-      if ('event' in msg) return;
+      if ('event' in msg) {
+        for (const fn of this.listeners) fn(msg);
+        return;
+      }
       const p = this.pending.get(msg.id);
       if (!p) return;
       this.pending.delete(msg.id);
       clearTimeout(p.timer);
-      if ('error' in msg) p.reject(new ApiError(msg.error.code, msg.error.message));
+      if ('error' in msg) p.reject(new ApiError(msg.error.code, msg.error.message, msg.error.data));
       else p.resolve(msg.result);
     });
-    const fail = () => {
-      for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error('archid connection closed')); }
+    const fail = (err: Error) => {
+      for (const p of this.pending.values()) {
+        clearTimeout(p.timer);
+        p.reject(err);
+      }
       this.pending.clear();
     };
-    ws.on('close', fail);
-    ws.on('error', fail);
+    // a request larger than archid reads, or an answer larger than this client reads, is an answer too large to ask for again
+    ws.on('close', (code, reason) => fail(code === 1009
+      ? new ApiError('too_large', `archid closed the connection on a request larger than it reads (${reason.toString() || code})`)
+      : new Error('archid connection closed')));
+    ws.on('error', (e) => fail((e as { code?: string }).code === 'WS_ERR_UNSUPPORTED_MESSAGE_LENGTH'
+      ? new ApiError('too_large', `archid answered with more than this client reads: ${e.message}`)
+      : new Error('archid connection closed')));
   }
 
   static async connect(home: string = archiHome()): Promise<Client> {
@@ -63,14 +78,23 @@ export class Client {
       throw new Error(`archid is not running (no ${paths.port}); \`${doctorHint(resolveTarget({ env: home }))}\` says why`);
     }
     const port = Number(fs.readFileSync(paths.port, 'utf8'));
-    const token = fs.readFileSync(paths.token, 'utf8').trim();
-    const host = loadConfig(paths.config).host;
-    const ws = new WebSocket(`ws://${host}:${port}`);
+    return Client.connectEndpoint({
+      url: `ws://${loadConfig(paths).host}:${port}`, token: fs.readFileSync(paths.token, 'utf8').trim(),
+      restart: () => restartHint(resolveTarget({ env: home })),
+    });
+  }
+
+  /**
+   * A daemon at an endpoint this process was handed: the one here, or the near end of a tunnel. Given
+   * `restart`, one that speaks another protocol is refused, with how to restart it.
+   */
+  static async connectEndpoint({ url, token, maxPayload = MAX_REQUEST_BYTES, restart }: { url: string; token: string; maxPayload?: number; restart?: () => string }): Promise<Client> {
+    const ws = new WebSocket(url, { maxPayload });
     try {
       await deadline(new Promise<void>((resolve, reject) => {
         ws.once('open', () => resolve());
-        ws.once('error', (e) => reject(new Error(`archid not reachable on ${host}:${port}: ${e.message}`)));
-      }), CONNECT_TIMEOUT, `archid did not accept a connection on ${host}:${port} within ${CONNECT_TIMEOUT}ms`);
+        ws.once('error', (e) => reject(new Error(`archid not reachable on ${url}: ${e.message}`)));
+      }), CONNECT_TIMEOUT, `archid did not accept a connection on ${url} within ${CONNECT_TIMEOUT}ms`);
       ws.send(JSON.stringify({ token }));
       await deadline(new Promise<void>((resolve, reject) => {
         ws.once('message', (raw) => {
@@ -78,10 +102,10 @@ export class Client {
           try { msg = JSON.parse(raw.toString()); } catch { msg = {}; }
           if (!msg.result?.ok) { reject(new Error('archid rejected the token')); return; }
           const theirs = msg.result.protocol;
-          if (theirs !== PROTOCOL_VERSION) {
+          if (restart && theirs !== PROTOCOL_VERSION) {
             // a daemon from before the handshake carried a version sends none
             const speaks = theirs === undefined ? 'predates the protocol check' : `speaks protocol ${theirs}`;
-            reject(new ProtocolMismatch(`the running archid ${speaks} and this archi speaks ${PROTOCOL_VERSION}: run \`pnpm desktop:install\`, or ${restartHint(resolveTarget({ env: home }))}`));
+            reject(new ProtocolMismatch(`the running archid ${speaks} and this archi speaks ${PROTOCOL_VERSION}: run \`pnpm desktop:install\`, or ${restart()}`));
             return;
           }
           resolve();
@@ -96,7 +120,14 @@ export class Client {
     return new Client(ws);
   }
 
+  /** Whether the socket has closed or is closing, so that nothing sent on it is answered. */
+  get closed(): boolean {
+    return this.ws.readyState !== WebSocket.OPEN;
+  }
+
   call<M extends MethodName>(method: M, params: Params<M>): Promise<Result<M>> {
+    // ws drops a send on a closed socket without a word, so the call fails here as one cut off in flight does
+    if (this.closed) return Promise.reject(new Error('archid connection closed'));
     const id = this.next++;
     const ms = serverWait(method, params) + CALL_TIMEOUT;
     return new Promise((resolve, reject) => {
@@ -104,12 +135,36 @@ export class Client {
         this.pending.delete(id);
         reject(new Error(`archid did not answer ${method} within ${ms}ms`));
       }, ms);
+      // the socket holds the process while the call can still be answered; the wait alone does not
+      timer.unref();
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject, timer });
-      this.ws.send(JSON.stringify({ id, method, params }));
+      this.send(id, JSON.stringify({ id, method, params }));
     });
+  }
+
+  // a request larger than one part goes as its parts, in order, which the daemon joins before it answers
+  private send(id: number, frame: string): void {
+    const bytes = Buffer.from(frame);
+    if (bytes.length <= PART_BYTES) { this.ws.send(frame); return; }
+    const count = Math.ceil(bytes.length / PART_BYTES);
+    for (let index = 0; index < count; index++) {
+      const data = bytes.subarray(index * PART_BYTES, (index + 1) * PART_BYTES).toString('base64');
+      this.ws.send(JSON.stringify({ part: { id, index, count, data } }));
+    }
   }
 
   close(): void {
     this.ws.close();
+  }
+
+  /** Hands each event the daemon pushes to `fn`, until the returned function is called. */
+  onEvent(fn: (e: Event) => void): () => void {
+    this.listeners.add(fn);
+    return () => { this.listeners.delete(fn); };
+  }
+
+  /** Runs once the connection is gone, whichever side closed it. */
+  onClose(fn: () => void): void {
+    this.ws.once('close', fn);
   }
 }

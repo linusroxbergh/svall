@@ -1,6 +1,6 @@
 import AppKit
 
-struct ArchiConnection: Encodable {
+struct ArchiConnection: Encodable, Equatable {
     let host: String
     let port: Int
     let token: String
@@ -18,14 +18,32 @@ enum ArchiHome {
     /// The tmux the daemon runs, as it names it in the home.
     static var tmux: String? { read("tmux-binary") }
 
-    /// The fleet's config.json, created empty when the fleet has none so there is something to edit.
+    /// The fleet's portable settings, if the daemon has written them; an empty one it would refuse.
     static func configPath() -> String? {
-        let file = path + "/config.json"
-        if !FileManager.default.fileExists(atPath: file), !FileManager.default.createFile(atPath: file, contents: Data("{}\n".utf8)) {
-            NSLog("archi: could not create %@", file)
-            return nil
-        }
-        return file
+        let file = path + "/fleet.json"
+        return FileManager.default.fileExists(atPath: file) ? file : nil
+    }
+
+    /// Whether this fleet's config asks for handover: what every control for another machine waits on.
+    static func handoverEnabled(at home: String = path) -> Bool {
+        guard let data = FileManager.default.contents(atPath: home + "/fleet.json"),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let handover = json["handover"] as? [String: Any] else { return false }
+        return handover["enabled"] as? Bool ?? false
+    }
+
+    /// Where this Mac keeps its machine id and the registry of the machines it reaches.
+    static var configDir: String {
+        ProcessInfo.processInfo.environment["ARCHI_CONFIG_DIR"] ?? NSHomeDirectory() + "/.config/archipelago"
+    }
+
+    /// The registry name of the machine fleet.json names as its gateway, which a handover can move the fleet to.
+    static func gatewayName(home: String = path, configDir: String = configDir) -> String? {
+        let json = { (file: String) in FileManager.default.contents(atPath: file).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } }
+        guard let id = json(home + "/fleet.json")?["gatewayMachineId"] as? String,
+              let machines = json(configDir + "/machines.json")?["machines"] as? [String: Any],
+              let record = machines[id] as? [String: Any] else { return nil }
+        return record["name"] as? String
     }
 
     /// The last lines of the daemon log, read from its end so a large log costs no more than a small one.
@@ -41,12 +59,29 @@ enum ArchiHome {
     static func connection() -> ArchiConnection? {
         guard let port = read("port").flatMap(Int.init), let token = read("token"), !token.isEmpty else { return nil }
         var host = "127.0.0.1"
-        if let data = FileManager.default.contents(atPath: path + "/config.json"),
+        if let data = FileManager.default.contents(atPath: path + "/node.json"),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let h = json["host"] as? String {
             host = h
         }
         return ArchiConnection(host: host, port: port, token: token)
+    }
+
+    /// The profile whose home this is, or nil for the private one and for an ad-hoc $ARCHI_HOME.
+    static func profileName(of path: String, in homeDirectory: String) -> String? {
+        let home = (path as NSString).standardizingPath
+        guard (home as NSString).deletingLastPathComponent == homeDirectory else { return nil }
+        let prefix = ".archipelago-"
+        let base = (home as NSString).lastPathComponent
+        guard base.hasPrefix(prefix), base.count > prefix.count else { return nil }
+        return String(base.dropFirst(prefix.count))
+    }
+
+    static var profile: String? { profileName(of: path, in: NSHomeDirectory()) }
+
+    /// The profile `archi` names this home by, the private one included; nil for an ad-hoc $ARCHI_HOME.
+    static func fleetProfile(of path: String, in homeDirectory: String) -> String? {
+        (path as NSString).standardizingPath == homeDirectory + "/.archipelago" ? "private" : profileName(of: path, in: homeDirectory)
     }
 
     private static var isPrivate: Bool {

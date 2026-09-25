@@ -1,4 +1,4 @@
-import { DEFAULT_SIZE, HOME_ROW, cellKey, homeSizeFor, homeSlots, isSessionId, randomPortrait, type Cell, type Character, type FleetState, type Island } from '@archipelago/protocol';
+import { DEFAULT_SIZE, HOME_ROW, cellKey, homeSizeFor, homeSlots, isSessionId, randomPortrait, type Cell, type Character, type FleetState, type Island, type TerminalSlot } from '@archipelago/protocol';
 import { isCharId, newId } from './ids.js';
 import { clearOf, crewGrid, crewOf, defaultPosition, freePosition, occupiedCells, placementOk, worldIslands } from './layout.js';
 import type { LiveWindow } from './tmux/tmux.js';
@@ -11,24 +11,43 @@ export const secondName = (id: string): string => `${id}-2`;
 class IslandFull extends Error { code = 'invalid'; }
 
 // flags are the launch flags to resume with, already quoted
-export function reviveCommand(c: Character, flags: string[] = []): string {
-  if (!c.agent || !isSessionId(c.agent.sessionId)) return '';
+export function reviveCommand(t: TerminalSlot, flags: string[] = []): string {
+  if (!t.agent || !isSessionId(t.agent.sessionId)) return '';
   // a codex character's cwd follows its commands into worktrees; resumed from one, codex would stop to ask which directory
-  const words = c.agent.kind === 'codex' ? ['codex', 'resume', '-c', 'tui.resume_cwd=session', ...flags] : ['claude', ...flags, '--resume'];
-  return [...words, c.agent.sessionId].join(' ');
+  const words = t.agent.kind === 'codex' ? ['codex', 'resume', '-c', 'tui.resume_cwd=session', ...flags] : ['claude', ...flags, '--resume'];
+  return [...words, t.agent.sessionId].join(' ');
+}
+
+// a terminal without a window keeps its directory and the command that brings its session back
+export function markSlotDormant(t: TerminalSlot, flags?: string[]): void {
+  delete t.tmux;
+  t.revive = { command: reviveCommand(t, flags) };
+  // nothing runs until the revive, so no question is left open and no turn goes on; a finished result stays
+  if (t.agent && (t.agent.status === 'blocked' || t.agent.status === 'working')) {
+    t.agent.status = 'idle';
+    delete t.agent.prompt;
+    delete t.agent.promptId;
+    delete t.agent.background;
+  }
 }
 
 export function markDormant(c: Character, flags?: string[]): void {
-  delete c.tmux;
   delete c.hint;
-  c.revive = { command: reviveCommand(c, flags) };
-  // nothing runs until the revive, so no question is left open and no turn goes on; a finished result stays
-  if (c.agent && (c.agent.status === 'blocked' || c.agent.status === 'working')) {
-    c.agent.status = 'idle';
-    delete c.agent.prompt;
-    delete c.agent.promptId;
-    delete c.agent.background;
-  }
+  markSlotDormant(c, flags);
+}
+
+// a plain side shell goes with its window; a second that ran an agent stays behind to be revived
+export function loseSecond(c: Character): void {
+  if (c.second?.agent) markSlotDormant(c.second);
+  else delete c.second;
+}
+
+// the slot a live window leaves behind: at the window's own path, with nothing left to revive unless it is `carried`
+export function attachSlot(slot: TerminalSlot | undefined, w: LiveWindow, carried = false): TerminalSlot {
+  const next = { unread: false, ...slot, cwd: w.path, tmux: { windowId: w.windowId, paneId: w.paneId } };
+  delete next.resumeError;
+  if (!carried) delete next.revive;
+  return next;
 }
 
 // the island takes the ground a crew one larger needs and everyone lines up on it, as `arrange` lays out
@@ -61,13 +80,15 @@ function placeOnHome(draft: FleetState, island: Island): Cell {
 
 // `known` is the characters still on the window they had when the live window list was taken; one created
 // or revived since is absent from that list and must not be marked dormant. `hadSecond` is the same for second
-// terminals: one opened since is absent from the listing and must not be dropped.
+// terminals: one opened since is absent from the listing and must not be lost. A terminal a handover
+// has yet to start is `carried`, and keeps the command that resumes it.
 export function reconcile(
   state: FleetState,
   live: LiveWindow[],
   now: number,
   known = new Set(Object.keys(state.characters)),
   hadSecond = new Set(Object.values(state.characters).filter((c) => c.second).map((c) => c.id)),
+  carried: (id: string, term?: 2) => boolean = () => false,
 ) {
   const byName = new Map(live.map((w) => [w.name, w]));
   const knownIds = new Set(Object.keys(state.characters));
@@ -92,8 +113,8 @@ export function reconcile(
   const mutate = (draft: FleetState) => {
     for (const c of Object.values(draft.characters)) {
       const w2 = byName.get(secondName(c.id));
-      if (w2 && !w2.dead) c.second = { unread: false, ...c.second, tmux: { windowId: w2.windowId, paneId: w2.paneId } };
-      else if (hadSecond.has(c.id)) delete c.second;
+      if (w2 && !w2.dead) c.second = attachSlot(c.second, w2, carried(c.id, 2));
+      else if (c.second?.tmux && hadSecond.has(c.id)) loseSecond(c);
       const w = byName.get(c.id);
       if (w) {
         const samePane = c.tmux?.paneId === w.paneId;
@@ -105,7 +126,8 @@ export function reconcile(
           c.panePath = w.path;
         }
         c.shell.lastOutputAt = w.activity;
-        delete c.revive;
+        delete c.resumeError;
+        if (!carried(c.id)) delete c.revive;
       } else if (known.has(c.id) && (c.tmux || !c.revive)) {
         // one already dormant keeps the revive it was given, flags and all
         markDormant(c);
@@ -135,7 +157,7 @@ export function reconcile(
     }
     for (const [name, id] of seconds) {
       const w2 = byName.get(name);
-      if (draft.characters[id] && w2 && !w2.dead) draft.characters[id].second = { tmux: { windowId: w2.windowId, paneId: w2.paneId }, unread: false };
+      if (draft.characters[id] && w2 && !w2.dead) draft.characters[id].second = attachSlot(undefined, w2);
     }
     for (const c of orphans) {
       try { c.cell = placeOnIsland(draft, RECOVERED_ISLAND, c.id); c.islandId = RECOVERED_ISLAND; }

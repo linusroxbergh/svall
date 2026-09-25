@@ -167,6 +167,7 @@ test('the shell is told the opacity, the zoom and which config to open', async (
   await expect.poll(async () => (await sent()).filter((m) => m.type === 'zoom').at(-1)).toEqual({ type: 'zoom', factor: 1.1, fontDelta: 1.5 });
 
   await page.getByTestId('settings-ghostty').click();
+  await expect(page.getByTestId('settings-fleet')).toHaveAttribute('title', /^(?!.*[Pp]ort).*$/);
   await page.getByTestId('settings-fleet').click();
   expect((await sent()).filter((m) => m.type === 'openConfig')).toEqual([{ type: 'openConfig', which: 'ghostty' }, { type: 'openConfig', which: 'fleet' }]);
 

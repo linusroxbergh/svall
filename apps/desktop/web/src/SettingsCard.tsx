@@ -85,7 +85,7 @@ function MainAgent() {
   const found = useApp((s) => s.fleet.agentsFound ?? NO_AGENTS);
   return (
     <div className="row">
-      <span>main agent<Info id="main-agent">What mission control, the scribe and <code>archi char new --run</code> start. A <code>home.command</code> in config.json overrides it for the crew.</Info></span>
+      <span>main agent<Info id="main-agent">What mission control, the scribe and <code>archi char new --run</code> start. A <code>home.command</code> in fleet.json overrides it for the crew.</Info></span>
       <b><select className="fld inline" aria-label="Main agent" value={main} data-testid="set-main-agent"
         onChange={(e) => setMainAgent(deps(), e.target.value as AgentKind)}>
         {AgentKind.options.map((k) => (
@@ -95,6 +95,23 @@ function MainAgent() {
         ))}
       </select></b>
     </div>
+  );
+}
+
+// every control for another machine waits on fleet.json's handover.enabled; the CLI is always there
+function Machines() {
+  const enabled = useApp((s) => !!s.shell?.handoverEnabled);
+  if (!enabled) return null;
+  return (
+    <>
+      <div className="kicker">Machines</div>
+      <div className="rows">
+        <div className="row">
+          <span>another machine<Info id="hosts">Set a Linux machine up to run this fleet: Archipelago installs itself there over ssh, checks what it needs, and reports what is still to do. <code>archi host</code> does the same from a terminal.</Info></span>
+          <b><button className="btn set-open" data-testid="settings-hosts" onClick={() => app.store.getState().toggleHost(true)}>Set up</button></b>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -227,7 +244,7 @@ export function SettingsCard() {
       <div className="opens">
         <button className="btn" data-testid="settings-ghostty" disabled={!shell} title="Terminal font, colours and cursor"
           onClick={() => openConfig(app.bridge, 'ghostty')}>Ghostty config</button>
-        <button className="btn" data-testid="settings-fleet" disabled={!shell} title="Port, mission control and fleet defaults"
+        <button className="btn" data-testid="settings-fleet" disabled={!shell} title="Mission control, fleet defaults, scribe, phone logins and handover"
           onClick={() => openConfig(app.bridge, 'fleet')}>Fleet config</button>
       </div>
       <div className="kicker">The browser</div>
@@ -254,6 +271,7 @@ export function SettingsCard() {
       {shell && <Notifications />}
       <Phone />
       <Scribe />
+      <Machines />
     </aside>
   );
 }

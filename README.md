@@ -310,24 +310,26 @@ Ghostty `initial-command` and `input` are ignored.
 
 A fleet keeps everything in its home: `~/.archipelago` for the private fleet
 and `~/.archipelago-<name>` for the others, unless `ARCHI_HOME` says otherwise.
-Its `config.json` takes:
+Its `fleet.json` holds what travels with the fleet wherever it runs, and
+`node.json` what belongs to this machine alone:
 
-| Key | What it does |
-| --- | --- |
-| `port`, `host` | Where the daemon listens, `47800` on `127.0.0.1` by default. Any address off loopback sends the API token in plain text. |
-| `defaultCwd` | Where a new character starts when no character beside it gives it a directory (default `~`). |
-| `shell` | The shell a terminal runs, if not your login shell. |
-| `linear` | `{ "workspace": "acme", "teamKeys": ["ENG"] }` links a branch named after a Linear issue to that issue. |
-| `mainAgent` | `claude` or `codex`: what the scribe, mission control's crew and `archi char new --run` run by default. Absent, the only CLI installed, else `claude`. Set from the app or with `archi agent <name>`. |
-| `home` | Mission control: `cwd` for its crew, the `command` that starts an agent (default the main agent's: `claude --model sonnet`, or `codex`), and `actions`, one `{ "label", "prompt" }` per button. A button's `/name` prompt reaches a Codex crew as `$name`. |
-| `scribe` | `agent` (default the main agent) and `model`, a model of `agent`'s CLI, or of Claude's when `agent` is unset (default `sonnet`). |
-| `mobile` | `logins` to let in (only yours when empty), extra page `origins` allowed to open a socket, a `pushContact` (https: or mailto:) for push services, and `httpsPort`. |
+| Key | File | What it does |
+| --- | --- | --- |
+| `port`, `host` | `node.json` | Where the daemon listens, `47800` on `127.0.0.1` by default. Any address off loopback sends the API token in plain text. |
+| `defaultCwd` | `fleet.json` | Where a new character starts when no character beside it gives it a directory (default `~`). |
+| `shell` | `node.json` | The shell a terminal runs, if not your login shell. |
+| `linear` | `fleet.json` | `{ "workspace": "acme", "teamKeys": ["ENG"] }` links a branch named after a Linear issue to that issue. |
+| `mainAgent` | `fleet.json` | `claude` or `codex`: what the scribe, mission control's crew and `archi char new --run` run by default. Absent, the only CLI installed, else `claude`. Set from the app or with `archi agent <name>`. |
+| `home` | `fleet.json` | Mission control: `cwd` for its crew, the `command` that starts an agent (default the main agent's: `claude --model sonnet`, or `codex`), and `actions`, one `{ "label", "prompt" }` per button. A button's `/name` prompt reaches a Codex crew as `$name`. |
+| `scribe` | `fleet.json` | `agent` (default the main agent) and `model`, a model of `agent`'s CLI, or of Claude's when `agent` is unset (default `sonnet`). |
+| `mobile` | `fleet.json` | `logins` to let in (only yours when empty), extra page `origins` allowed to open a socket, and a `pushContact` (https: or mailto:) for push services. |
+| `mobile.httpsPort` | `node.json` | The tailscale serve port this fleet is reached on. |
 
-- The daemon reads `config.json` when it starts.
+- The daemon reads both files when it starts.
   `launchctl kickstart -k gui/$(id -u)/io.github.linusroxbergh.archipelago.archid`
   restarts the private fleet's daemon; use
   `io.github.linusroxbergh.archipelago.archid.<name>` for another fleet. While
-  the file doesn't parse, the daemon logs why and waits for it to change;
+  either file doesn't parse, the daemon logs why and waits for it to change;
   `archi doctor` shows the error too.
 - Mission control's folder (default `~/.archipelago/home`, shared by every
   fleet) holds files for both CLIs, rewritten on every daemon start. For
@@ -339,8 +341,9 @@ Its `config.json` takes:
   `archi` commands a Claude crew may, without asking. `archi-organise` and
   `archi-rename` have no button: list them in `home.actions` beside the two
   defaults (`/archi-update-info` and `/archi-status`) to get one. Only
-  `archi setup` replaces an edited settings file, and it keeps a `.bak-*`
-  copy. Codex and Claude Code each ask once whether to trust the folder.
+  `archi setup --replace-settings` replaces an edited settings file, and it
+  keeps a `.bak-*` copy. Codex and Claude Code each ask once whether to trust
+  the folder.
 - The daemon runs under launchd, without your shell's environment. The
   fleet's `.env` gives the Claude scribe every value in it, and gives **new**
   character shells only `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`. Keep the
@@ -376,7 +379,10 @@ needs is missing. It writes:
   (creating `~/.codex`): the same hook and backup.
 - `~/Library/LaunchAgents/io.github.linusroxbergh.archipelago.archid*.plist`,
   one per fleet, which keeps each daemon running.
-- `~/.local/bin/archi` and `archipelago`: shims into the clone.
+- `~/.local/share/archipelago`: the release `pnpm desktop:install` builds, which
+  launchd, the hooks and the shims run through its `current` link.
+- `~/.local/bin/archi` and `archipelago`: shims into that release, or into the
+  clone when setup runs without one.
 - `~/.archipelago` and `~/.archipelago-<name>`: each fleet's state, config,
   log, hook scripts, tmux.conf and tmux server, plus, in `~/.archipelago/home`,
   the mission control folder they share.

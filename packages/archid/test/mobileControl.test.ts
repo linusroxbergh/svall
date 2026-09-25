@@ -2,9 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MobileStatus } from '@archipelago/protocol';
-import { MOBILE_DIST } from '../src/api/bundle.js';
-import { fleetTarget, mobileControl, phoneKey, phoneUrl, resolveTailscale, serve, servePort, servesTarget, tailnetSelf, unserve, watchServed, type MobileDeps } from '../src/mobile.js';
+import { ensureBundle, fleetTarget, mobileControl, phoneKey, phoneUrl, resolveTailscale, serve, servePort, servesTarget, tailnetSelf, unserve, watchServed, type MobileDeps } from '../src/mobile.js';
 import { Phones } from '../src/phones.js';
+import { mobileDistDir } from '../src/release.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 type Call = { cmd: string; args: string[] };
@@ -21,7 +21,7 @@ const SIGNED_IN = {
 const TAGGED = { ...SIGNED_IN, Self: { ...SIGNED_IN.Self, UserID: 9, Tags: ['tag:server'] }, User: { 9: { ID: 9, LoginName: 'tagged-devices' } } };
 
 function deps(opts: { served?: string; files?: Record<string, string>; status?: object } = {}): MobileDeps & { calls: Call[] } {
-  const files = opts.files ?? { [path.join(HOME, 'port')]: '47812\n', [path.join(HOME, 'mobile-key')]: 'abcdef\n', [MOBILE_DIST]: 'built' };
+  const files = opts.files ?? { [path.join(HOME, 'port')]: '47812\n', [path.join(HOME, 'mobile-key')]: 'abcdef\n', [mobileDistDir()]: 'built' };
   const calls: Call[] = [];
   let served = opts.served;
   return {
@@ -41,7 +41,7 @@ function deps(opts: { served?: string; files?: Record<string, string>; status?: 
 }
 
 const control = (d: MobileDeps, phones = new Phones()) =>
-  mobileControl(d, { home: HOME, profile: 'work', logins: ['me@example.com'], phones, rotateKey: () => {} });
+  mobileControl(d, { home: HOME, profile: 'work', logins: () => ['me@example.com'], phones, rotateKey: () => {} });
 
 describe('resolveTailscale', () => {
   const onlyAt = (bins: string[]): MobileDeps => ({
@@ -138,7 +138,7 @@ describe('mobileControl', () => {
 
   it('lets in no one with an empty config until tailscale names the Mac\'s login, then only that one, and keeps it through a failed look', async () => {
     const d = deps();
-    const control_ = mobileControl(d, { home: HOME, profile: 'work', logins: [], phones: new Phones(), rotateKey: () => {} });
+    const control_ = mobileControl(d, { home: HOME, profile: 'work', logins: () => [], phones: new Phones(), rotateKey: () => {} });
     expect(control_.logins()).toEqual([]);
     expect((await control_.get()).logins).toEqual(['owner@example.com']);
     expect(control_.logins()).toEqual(['owner@example.com']);
@@ -150,9 +150,9 @@ describe('mobileControl', () => {
   it('will not serve a tagged Mac whose config names no login, and leaves the key alone', async () => {
     const d = deps({ status: TAGGED });
     let made = 0;
-    const control_ = mobileControl(d, { home: HOME, profile: 'work', logins: [], phones: new Phones(), rotateKey: () => { made++; } });
+    const control_ = mobileControl(d, { home: HOME, profile: 'work', logins: () => [], phones: new Phones(), rotateKey: () => { made++; } });
     const status = await control_.set(true);
-    expect(status).toMatchObject({ serving: false, logins: [], error: expect.stringContaining('set mobile.logins in config.json') });
+    expect(status).toMatchObject({ serving: false, logins: [], error: expect.stringContaining('set mobile.logins in fleet.json') });
     expect(d.calls.some((c) => c.args.includes('--bg'))).toBe(false);
     expect(made).toBe(0);
     expect(control_.logins()).toEqual([]);
@@ -184,10 +184,10 @@ describe('mobileControl', () => {
   });
 
   it('serves the fleet behind a fresh key on every on and off, and leaves the key alone on a look', async () => {
-    const files = { [path.join(HOME, 'port')]: '47812', [path.join(HOME, 'mobile-key')]: 'abcdef', [MOBILE_DIST]: 'built' };
+    const files = { [path.join(HOME, 'port')]: '47812', [path.join(HOME, 'mobile-key')]: 'abcdef', [mobileDistDir()]: 'built' };
     const d = deps({ files });
     let made = 0;
-    const control_ = mobileControl(d, { home: HOME, profile: 'work', logins: [], phones: new Phones(), rotateKey: () => { files[path.join(HOME, 'mobile-key')] = `key${++made}`; } });
+    const control_ = mobileControl(d, { home: HOME, profile: 'work', logins: () => [], phones: new Phones(), rotateKey: () => { files[path.join(HOME, 'mobile-key')] = `key${++made}`; } });
     await control_.get();
     expect(made).toBe(0);
     expect((await control_.set(true)).serving).toBe(true);
@@ -197,18 +197,18 @@ describe('mobileControl', () => {
   });
 
   it('leaves the key a served link carries alone when an on cannot reach tailscale or build the page', async () => {
-    const files: Record<string, string> = { [path.join(HOME, 'port')]: '47812', [path.join(HOME, 'mobile-key')]: 'abcdef', [MOBILE_DIST]: 'built' };
+    const files: Record<string, string> = { [path.join(HOME, 'port')]: '47812', [path.join(HOME, 'mobile-key')]: 'abcdef', [mobileDistDir()]: 'built' };
     const d = deps({ files });
     let made = 0;
-    const control_ = mobileControl(d, { home: HOME, profile: 'work', logins: [], phones: new Phones(), rotateKey: () => { files[path.join(HOME, 'mobile-key')] = `key${++made}`; } });
+    const control_ = mobileControl(d, { home: HOME, profile: 'work', logins: () => [], phones: new Phones(), rotateKey: () => { files[path.join(HOME, 'mobile-key')] = `key${++made}`; } });
     await control_.set(true);
     const run = d.run;
     d.run = (cmd, args, cwd) => (args[0] === 'status' ? Promise.resolve(JSON.stringify({ BackendState: 'Stopped' })) : run(cmd, args, cwd));
     expect((await control_.set(true)).error).toMatch(/Stopped/);
     d.run = (cmd, args, cwd) => (cmd === 'pnpm' ? Promise.reject(new Error('build failed')) : run(cmd, args, cwd));
-    delete files[MOBILE_DIST];
+    delete files[mobileDistDir()];
     expect((await control_.set(true)).error).toMatch(/build failed/);
-    files[MOBILE_DIST] = 'built';
+    files[mobileDistDir()] = 'built';
     d.run = run;
     expect(made).toBe(1);
     expect((await control_.get()).serving).toBe(true);
@@ -324,5 +324,30 @@ describe('watchServed', () => {
     stop();
     await vi.advanceTimersByTimeAsync(10_000);
     expect(stopped.seen).toHaveLength(2);
+  });
+});
+
+describe('ensureBundle', () => {
+  afterEach(() => { delete process.env.ARCHI_RELEASE_ROOT; });
+
+  it('builds the page from the checkout when it is missing, and on request', async () => {
+    const d = deps({ files: {} });
+    expect((await ensureBundle(d)).missing).toBe(true);
+    expect(d.calls.map((c) => c.cmd)).toEqual(['pnpm']);
+    const there = deps({ files: { [mobileDistDir()]: 'built' } });
+    expect(await ensureBundle(there)).toEqual({ dist: mobileDistDir(), missing: false });
+    expect(there.calls).toEqual([]);
+    await ensureBundle(there, { rebuild: true });
+    expect(there.calls.map((c) => c.cmd)).toEqual(['pnpm']);
+  });
+
+  it('never reaches for pnpm on a release, and reports a page the release does not carry', async () => {
+    process.env.ARCHI_RELEASE_ROOT = '/opt/archi';
+    const missing = deps({ files: {} });
+    expect(await ensureBundle(missing, { rebuild: true })).toEqual({ dist: '/opt/archi/web-mobile', missing: true });
+    expect(missing.calls).toEqual([]);
+    const shipped = deps({ files: { '/opt/archi/web-mobile': 'built' } });
+    expect(await ensureBundle(shipped, { rebuild: true })).toEqual({ dist: '/opt/archi/web-mobile', missing: false });
+    expect(shipped.calls).toEqual([]);
   });
 });

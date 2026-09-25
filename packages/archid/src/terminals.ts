@@ -14,6 +14,9 @@ class Gone extends Error {
   constructor(id: string) { super(`terminal ${id} was closed while opening`); }
 }
 
+// the tmux session a desktop terminal attaches through, one per terminal
+const viewerSession = (id: string, term?: 2): string => (term === 2 ? `v-${id}-2` : `v-${id}`);
+
 const SCROLLBACK = 2000;
 const DRAIN_LIMIT = 1_000_000;
 const DRAIN_TIMEOUT = 30_000;
@@ -83,9 +86,15 @@ export class TerminalHub {
 
   async attach(id: string, term?: 2): Promise<{ socket: string; session: string }> {
     const { windowId } = this.fleet.terminal(id, term).tmux;
-    const session = term === 2 ? `v-${id}-2` : `v-${id}`;
+    const session = viewerSession(id, term);
     await this.tmux.attachSession(session, windowId);
     return { socket: this.tmux.socket, session };
+  }
+
+  /** Lets go of every desktop terminal attached to either of a character's terminals. */
+  async detach(id: string, signal?: AbortSignal): Promise<void> {
+    await this.tmux.detachClients(viewerSession(id), signal);
+    await this.tmux.detachClients(viewerSession(id, 2), signal);
   }
 
   // resize-window forces manual sizing, which would override an attached desktop terminal. The phone

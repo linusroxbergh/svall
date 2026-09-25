@@ -12,6 +12,6 @@ fs.writeFileSync(path.join(bin, 'tailscale'), fs.readFileSync(path.join(import.m
 
 process.env.HOME = home;
 process.env.PATH = `${bin}:${process.env.PATH}`;
-for (const k of ['ARCHI_HOME', 'ARCHI_CHAR_ID', 'ARCHI_TERM', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'TMUX', 'TMUX_PANE']) delete process.env[k];
+for (const k of ['ARCHI_HOME', 'ARCHI_RELEASE_ROOT', 'ARCHI_CHAR_ID', 'ARCHI_TERM', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'TMUX', 'TMUX_PANE']) delete process.env[k];
 
 afterAll(() => fs.rmSync(home, { recursive: true, force: true }));

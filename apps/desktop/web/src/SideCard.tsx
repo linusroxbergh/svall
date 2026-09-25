@@ -15,7 +15,7 @@ import { portraitTint, portraitUrl } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
 import { sourceOfRoot } from './resources/model.js';
-import { charactersOf, contextPctOf, islandsSorted, isUnread, statusOf } from './selectors.js';
+import { charactersOf, contextPctOf, islandsSorted, isUnread, resumeErrorOf, statusOf } from './selectors.js';
 
 type Patch = Omit<Params<'char.update'>, 'id'>;
 
@@ -91,6 +91,8 @@ export function SideCard({ id }: { id: string }) {
   const fleet = useApp((s) => s.fleet);
   const onBoard = useApp((s) => s.view === 'board');
   const hover = useApp((s) => s.dropHover?.kind === 'char' && s.dropHover.id === id);
+  const handover = useApp((s) => !!s.shell?.handoverEnabled);
+  const failed = useApp((s) => resumeErrorOf(s, s.fleet.characters[id]));
   const [ref, setRef] = useState('');
   // the card stays mounted as the selection moves, so a half typed link would be offered to the next character
   useEffect(() => setRef(''), [id]);
@@ -167,6 +169,13 @@ export function SideCard({ id }: { id: string }) {
             </div>
           )}
           <div className="row"><span>last activity</span><b className="tnum">{ago(c.agent?.lastActivityAt ?? c.shell.lastOutputAt)} ago</b></div>
+          {failed && <div className="row" data-testid="side-resume-error"><span>resume failed</span><b>{failed}</b></div>}
+          {handover && (
+            <label className="row" title="A handover of this fleet waits until this is off">
+              <span>keep on this machine</span>
+              <b><input type="checkbox" data-testid="side-keep-here" checked={!!c.keepHere} onChange={(e) => save({ keepHere: e.target.checked })} /></b>
+            </label>
+          )}
         </div>
         <div className="opens">
           <button className="btn" data-testid="side-finder" title={`Reveal ${c.cwd} in Finder`}

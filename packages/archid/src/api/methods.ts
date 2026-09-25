@@ -1,18 +1,27 @@
 import type { ZodTypeAny } from 'zod';
-import { methods, type MethodName, type ParsedParams, type Request, type Response, type Result } from '@archipelago/protocol';
+import { PROTOCOL_VERSION, TRANSFER_SCHEMA_VERSION, emptyState, methods, type MethodName, type ParsedParams, type Request, type Response, type Result } from '@archipelago/protocol';
 import type { Fleet } from '../fleet.js';
+import { gitVersion } from '../handover/git-extensions.js';
+import type { HandoverService } from '../handover/service.js';
 import type { Mobile } from '../mobile.js';
 import type { PushStore } from '../push/store.js';
 import type { CodexPaths } from '../codex/install.js';
 import { rootIdOf, scanResources, type ClaudePaths } from '../resources/scan.js';
+import type { OwnershipState } from '../ownership/state.js';
+import { guardMethod } from '../ownership/guard.js';
+import { releaseVersion } from '../release.js';
 import type { Store } from '../store.js';
 import type { TerminalHub, Viewer } from '../terminals.js';
 import type { FetchUsage } from '../usage/usage.js';
 import type { Workspace } from '../workspace/workspace.js';
 
-export type Ctx = { store: Store; fleet: Fleet; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; signal?: AbortSignal };
+export type Ctx = { store: Store; fleet: Fleet; handover: HandoverService; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; signal?: AbortSignal };
 
 type Handlers = { [M in MethodName]: (p: ParsedParams<M>, ctx: Ctx) => Promise<Result<M>> | Result<M> };
+
+const STATE_SCHEMA = emptyState().version;
+// archid runs on the two platforms a handover can compare; nothing else gets this far
+const platform = (): 'darwin' | 'linux' => (process.platform === 'linux' ? 'linux' : 'darwin');
 
 export const handlers: Handlers = {
   'state.get': (_p, { store }) => store.state,
@@ -78,18 +87,40 @@ export const handlers: Handlers = {
   'term.resize': async (p, { terminals, viewer }) => { await terminals.resize(p.id, p.cols, p.rows, viewer); return {}; },
   'term.close': (p, { terminals, viewer }) => { terminals.close(p.id, viewer); return {}; },
   'term.attach': (p, { terminals }) => terminals.attach(p.id, p.term),
+  'system.info': async (_p, { ownership, handover }) => {
+    const git = await gitVersion();
+    return {
+      machineId: ownership.machineId, release: releaseVersion(), protocol: PROTOCOL_VERSION, stateSchema: STATE_SCHEMA,
+      transferSchema: TRANSFER_SCHEMA_VERSION, platform: platform(), arch: process.arch, agentAdapters: await handover.agentAdapters(), ...(git && { git }),
+    };
+  },
+  'ownership.get': (_p, { handover }) => handover.ownershipInfo(),
+  'ownership.adopt': (p, { handover }) => handover.relay(p),
+  'handover.preflight': (p, { handover }) => handover.preflight(p),
+  'handover.inspect': (p, { handover }) => handover.inspect(p),
+  'handover.freeze': (p, { handover }) => handover.freeze(p),
+  'handover.claim': (p, { handover }) => handover.claim(p),
+  'handover.prepare': (p, { handover }) => handover.prepare(p),
+  'handover.activate': (p, { handover }) => handover.activate(p),
+  'handover.complete': (p, { handover }) => handover.complete(p),
+  'handover.abort': (p, { handover }) => handover.abort(p),
+  'handover.status': (_p, { handover }) => handover.status(),
+  'handover.reaches': (p, { handover }) => handover.reaches(p),
 };
 
 export async function dispatch(req: Request, ctx: Ctx): Promise<Response> {
   const def = Object.hasOwn(methods, req.method) ? (methods as Record<string, { params: ZodTypeAny }>)[req.method] : undefined;
   if (!def) return { id: req.id, error: { code: 'unknown_method', message: `unknown method ${req.method}` } };
-  const parsed = def.params.safeParse(req.params ?? {});
-  if (!parsed.success) return { id: req.id, error: { code: 'invalid_params', message: parsed.error.message } };
   try {
+    // ahead of parsing: what this machine may not do, it may not do with any parameters
+    guardMethod(ctx.ownership, req.method as MethodName, ctx.viewer?.kind);
+    const parsed = def.params.safeParse(req.params ?? {});
+    if (!parsed.success) return { id: req.id, error: { code: 'invalid_params', message: parsed.error.message } };
     const handler = handlers[req.method as MethodName] as (p: unknown, ctx: Ctx) => unknown;
     return { id: req.id, result: await handler(parsed.data, ctx) };
   } catch (e) {
-    const err = e as Error & { code?: string };
-    return { id: req.id, error: { code: err.code ?? 'internal', message: err.message } };
+    const err = e as Error & { code?: string; data?: unknown };
+    const data = err.data && typeof err.data === 'object' && !Array.isArray(err.data) ? err.data as Record<string, unknown> : undefined;
+    return { id: req.id, error: { code: err.code ?? 'internal', message: err.message, ...(data ? { data } : {}) } };
   }
 }

@@ -1,0 +1,357 @@
+import type { Agent, Blocker, FleetState, HandoverChoices, HandoverIssueCode, TerminalSlot } from '@archipelago/protocol';
+import { installedScripts } from '../paths.js';
+import { markDormant, markSlotDormant } from '../reconcile.js';
+import type { Store } from '../store.js';
+import type { TerminalHub } from '../terminals.js';
+import { noServer, type LiveWindow, type Tmux } from '../tmux/tmux.js';
+import { ProcessTable, killGroup, type PaneProcesses } from './processes.js';
+import type { SourceJournal } from './journal.js';
+import type { HandoverService } from './service.js';
+
+export type TerminalRef = { characterId: string; term?: 2 };
+
+/** A live terminal as its agent's hooks and its process tree show it together. */
+export type TerminalClass = 'agent-ready' | 'agent-working' | 'agent-blocked' | 'shell-ready' | 'foreground';
+
+export type Classified = TerminalRef & { class: TerminalClass; window: LiveWindow; processes: PaneProcesses; agent?: Agent };
+
+/**
+ * What the user chose for terminals that are not at rest. Without `interruptAfterMs` no agent is sent
+ * Escape; without `terminate` no foreground job is ended.
+ */
+export type RestChoices = { interruptAfterMs?: number; terminate?: boolean | TerminalRef[] };
+
+/** Every terminal at rest and its window closed, or why none was closed. */
+export type SettleResult =
+  | { ok: true; terminals: RestedTerminal[] }
+  | { ok: false; blockers: Blocker[] };
+
+/** A terminal the handover closed: its class when resting began, and what it took to bring it to rest. */
+export type RestedTerminal = TerminalRef & {
+  class: TerminalClass; interrupted?: true; terminated?: true; scrollback?: string; scrollbackError?: string;
+};
+
+/** `sleep` clears its timer when `signal` aborts, and then never resolves. */
+export type Clock = { now(): number; sleep(ms: number, signal?: AbortSignal): Promise<void> };
+const realClock: Clock = {
+  now: Date.now,
+  sleep: (ms, signal) => new Promise((r) => {
+    const timer = setTimeout(r, ms);
+    signal?.addEventListener('abort', () => clearTimeout(timer), { once: true });
+  }),
+};
+
+export type RestDeps = {
+  store: Pick<Store, 'state' | 'update' | 'subscribe'>;
+  tmux: Pick<Tmux, 'listWindows' | 'sendBytes' | 'capture' | 'killWindow'>;
+  viewers: Pick<TerminalHub, 'detach'>;
+  journal: Pick<HandoverService, 'journalState' | 'write'>;
+  processes?: (signal?: AbortSignal) => Promise<ProcessTable>;
+  kill?: (group: number, signal: NodeJS.Signals) => void;
+  clock?: Clock;
+};
+
+export type RestOptions = {
+  choices: RestChoices;
+  /** How long a working agent nobody chose to interrupt is waited on. */
+  waitMs?: number;
+  /** How long an interrupted agent or a terminated job has to come to rest. */
+  settleMs?: number;
+  /** How often the process tree is read; a hook event in between is judged from state alone. */
+  pollMs?: number;
+  /** How long one ps or tmux call may take before resting gives up. */
+  callTimeoutMs?: number;
+  scrollbackLines?: number;
+  /** Stops the wait. Once windows start closing, resting runs to the end. */
+  cancel?: AbortSignal;
+};
+
+// inside the freeze call's budget, with room for the settling that follows an interrupt
+const WAIT_MS = 3 * 60_000;
+const SETTLE_MS = 10_000;
+const POLL_MS = 500;
+const CALL_TIMEOUT_MS = 10_000;
+const ESCAPE = Buffer.from('\x1b');
+
+/** A protocol choice that names a character covers both of its terminals. */
+export function restChoices(c: HandoverChoices): RestChoices {
+  const terminate = Array.isArray(c.terminateShells)
+    ? c.terminateShells.flatMap((characterId) => [{ characterId }, { characterId, term: 2 as const }])
+    : c.terminateShells;
+  return { ...(c.interruptAfterMs !== undefined && { interruptAfterMs: c.interruptAfterMs }), ...(terminate !== undefined && { terminate }) };
+}
+
+const slotOf = (state: FleetState, t: TerminalRef): TerminalSlot | undefined => {
+  const c = state.characters[t.characterId];
+  return t.term === 2 ? c?.second : c;
+};
+
+const keyOf = (t: TerminalRef): string => (t.term === 2 ? `${t.characterId}-2` : t.characterId);
+const refOf = (t: TerminalRef): TerminalRef => ({ characterId: t.characterId, ...(t.term && { term: t.term }) });
+
+function classOf(agent: Agent | undefined, p: PaneProcesses): TerminalClass {
+  // an agent whose shell is back at its prompt has exited, whatever its last hook said
+  if (!p.foreground.length) return 'shell-ready';
+  // the hooks speak for the terminal only while their agent is what holds it
+  if (!agent || p.agent?.kind !== agent.kind) return 'foreground';
+  if (agent.status === 'working') return 'agent-working';
+  if (agent.status === 'blocked') return 'agent-blocked';
+  return 'agent-ready';
+}
+
+/** Both terminals of every character that still has a window and a process in it. */
+export function classifyTerminals(state: FleetState, live: LiveWindow[], table: ProcessTable): Classified[] {
+  const byWindow = new Map(live.map((w) => [w.windowId, w]));
+  const out: Classified[] = [];
+  for (const characterId of Object.keys(state.characters)) {
+    for (const t of [{ characterId }, { characterId, term: 2 as const }]) {
+      const slot = slotOf(state, t);
+      const window = slot?.tmux && byWindow.get(slot.tmux.windowId);
+      const processes = window && !window.dead ? table.pane(window.panePid) : undefined;
+      if (!slot || !window || !processes) continue;
+      out.push({ ...t, class: classOf(slot.agent, processes), window, processes, ...(slot.agent && { agent: slot.agent }) });
+    }
+  }
+  return out;
+}
+
+// `groups` are what terminating it signalled: the job holding the terminal, and the groups of its agent's tool commands
+type Track = TerminalRef & {
+  key: string; recheck: TerminalClass; agent?: Agent; interruptedAt?: number; terminatedAt?: number; killedAt?: number; groups?: number[];
+};
+type Step = 'rest' | 'wait' | 'interrupt' | 'terminate' | 'kill' | { blocker: Blocker };
+type Moment = {
+  choices: RestChoices; start: number; now: number; waitMs: number; settleMs: number; pollMs: number; state: FleetState;
+  alive: (group: number) => boolean;
+};
+
+const terminates = (t: TerminalRef, choices: RestChoices): boolean =>
+  choices.terminate === true || (Array.isArray(choices.terminate) && choices.terminate.some((r) => keyOf(r) === keyOf(t)));
+
+function blocker(code: HandoverIssueCode, c: TerminalRef, state: FleetState, what: string): { blocker: Blocker } {
+  const name = state.characters[c.characterId]?.name ?? c.characterId;
+  const where = c.term === 2 ? `${name}'s second terminal` : `${name}'s terminal`;
+  return { blocker: { code, message: `${where} ${what}`, entity: { kind: 'character', id: c.characterId } } };
+}
+
+const job = (c: Classified): string =>
+  (c.processes.foreground.find((p) => p.pid === c.processes.group) ?? c.processes.foreground[0]).args;
+
+// what an agent that will not settle still runs, for whoever decides whether to terminate it
+const lingering = (c: Classified | undefined): string => {
+  const commands = c?.processes.agent?.commands ?? [];
+  return commands.length ? `: ${commands.map((p) => p.args).join(', ')} still runs` : '';
+};
+
+// what one terminal needs next; decided for every terminal before any of them is touched
+function step(t: Track, c: Classified | undefined, x: Moment): Step {
+  if (t.terminatedAt !== undefined) {
+    // at rest once nothing holds the terminal and none of what was signalled with it still runs
+    if ((!c || c.class === 'shell-ready') && !(t.groups ?? []).some(x.alive)) return 'rest';
+    if (t.killedAt === undefined) return x.now >= t.terminatedAt + x.settleMs ? 'kill' : 'wait';
+    if (x.now < t.killedAt + x.settleMs) return 'wait';
+    return c?.class === 'foreground'
+      ? blocker('shell_busy', t, x.state, `is still running ${job(c)} after it was terminated`)
+      : blocker('agent_unsettled', t, x.state, `did not come to rest after it was terminated${lingering(c)}`);
+  }
+  if (!c) return 'rest';
+  if (c.class === 'agent-ready' || c.class === 'shell-ready') return 'rest';
+  if (c.class === 'foreground') return terminates(t, x.choices) ? 'terminate' : blocker('shell_busy', c, x.state, `is running ${job(c)}`);
+  if (t.interruptedAt !== undefined) {
+    // Claude Code sends no hook for an interrupted turn, so rest shows as its tool commands having ended
+    if (x.now - t.interruptedAt >= x.pollMs && !c.processes.agent?.commands.length) return 'rest';
+    if (x.now < t.interruptedAt + x.settleMs) return 'wait';
+    return terminates(t, x.choices) ? 'terminate' : blocker('agent_unsettled', c, x.state, `did not come to rest after it was interrupted${lingering(c)}`);
+  }
+  const { interruptAfterMs } = x.choices;
+  if (interruptAfterMs !== undefined && x.now >= x.start + interruptAfterMs) return 'interrupt';
+  const blocked = blocker('agent_blocked', c, x.state, `is waiting on an answer${c.agent?.prompt ? `: ${c.agent.prompt}` : ''}`);
+  if (c.class === 'agent-blocked' && interruptAfterMs === undefined) return blocked;
+  if (x.now < x.start + x.waitMs) return 'wait';
+  return c.class === 'agent-blocked' ? blocked : blocker('agent_working', c, x.state, 'is still working');
+}
+
+/** What would stop resting before any terminal is touched, for a check that must not change anything. */
+export function unapproved(state: FleetState, terminals: Classified[], choices: RestChoices): Blocker[] {
+  const x: Moment = { choices, start: 0, now: 0, waitMs: Infinity, settleMs: SETTLE_MS, pollMs: POLL_MS, state, alive: () => false };
+  return terminals.flatMap((c) => {
+    const s = step({ ...refOf(c), key: keyOf(c), recheck: c.class }, c, x);
+    return typeof s === 'object' ? [s.blocker] : [];
+  });
+}
+
+function sourceJournal(journal: RestDeps['journal']): SourceJournal {
+  const s = journal.journalState();
+  if (s.kind !== 'open' || s.journal.role !== 'source') throw new Error('resting terminals needs the source journal of an open handover');
+  return s.journal;
+}
+
+function recordJournal(journal: RestDeps['journal'], now: number, change: (j: SourceJournal) => Partial<SourceJournal>): void {
+  const j = sourceJournal(journal);
+  journal.write({ ...j, ...change(j), updatedAt: now });
+}
+
+/**
+ * Brings every live terminal of a frozen fleet to rest and closes its window, leaving both slots of
+ * every character dormant. It rechecks each terminal before touching any, and returns blockers
+ * without closing a window when one is not at rest and the choices do not cover it.
+ */
+export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<SettleResult> {
+  const clock = deps.clock ?? realClock;
+  const processes = deps.processes ?? ((signal?: AbortSignal) => ProcessTable.read({ signal, scripts: installedScripts() }));
+  const kill = deps.kill ?? killGroup;
+  const bounded = boundBy(clock, o.callTimeoutMs ?? CALL_TIMEOUT_MS);
+  sourceJournal(deps.journal);
+  const waitMs = o.waitMs ?? WAIT_MS;
+  // an interrupt chosen for later than the wait lasts comes at its end instead of never
+  const choices = (o.choices.interruptAfterMs ?? 0) > waitMs ? { ...o.choices, interruptAfterMs: waitMs } : o.choices;
+  const x: Moment = {
+    choices, start: clock.now(), now: clock.now(), state: deps.store.state,
+    waitMs, settleMs: o.settleMs ?? SETTLE_MS, pollMs: o.pollMs ?? POLL_MS, alive: () => false,
+  };
+  let tracks: Track[] | undefined;
+  let seen: { live: LiveWindow[]; table: ProcessTable } | undefined;
+  let nextRead = -Infinity;
+  let reread = false;
+  for (;;) {
+    o.cancel?.throwIfAborted();
+    let fresh = false;
+    if (!seen || reread || clock.now() >= nextRead) {
+      const [live, table] = await Promise.all([
+        // a server that died took every window with it, so there is none left to rest
+        bounded('tmux list-panes', (signal) => deps.tmux.listWindows(signal).catch((e: unknown) => { if (noServer(e)) return []; throw e; })),
+        bounded('ps', processes),
+      ]);
+      seen = { live, table };
+      nextRead = clock.now() + x.pollMs;
+      fresh = true;
+    }
+    reread = false;
+    x.now = clock.now();
+    x.state = deps.store.state;
+    const { table } = seen;
+    x.alive = (group) => table.alive(group);
+    const current = new Map(classifyTerminals(x.state, seen.live, seen.table).map((c) => [keyOf(c), c]));
+    // a frozen fleet opens no window, so the terminals live at the recheck are all there are
+    tracks ??= [...current.entries()].map(([key, c]) => ({ ...refOf(c), key, recheck: c.class }));
+    const steps = tracks.map((t) => ({ t, c: current.get(t.key), s: step(t, current.get(t.key), x) }));
+    const blockers = steps.flatMap(({ s }) => (typeof s === 'object' ? [s.blocker] : []));
+    const settled = steps.every(({ s }) => s === 'rest');
+    const acts = steps.some(({ s }) => s === 'interrupt' || s === 'terminate' || s === 'kill');
+    // a hook event is judged from state; whatever it would lead to is decided again on a fresh process tree
+    if (!fresh && (blockers.length || settled || acts)) {
+      reread = true;
+      continue;
+    }
+    if (blockers.length) return { ok: false, blockers };
+    for (const { t, c } of steps) if (c && t.terminatedAt === undefined) t.agent = c.agent;
+    if (settled) return layToRest(deps, o, bounded, tracks, current, clock.now());
+    for (const { t, c, s } of steps) {
+      if (s === 'interrupt' && c) {
+        await bounded('tmux send-keys', (signal) => deps.tmux.sendBytes(c.window.paneId, ESCAPE, signal));
+        t.interruptedAt = x.now;
+      } else if (s === 'terminate' && c) {
+        // an agent's tool commands and helpers run in groups and sessions of their own, so the job's group alone would leave them running
+        const tree = table.tree(c.processes.foreground);
+        t.groups = [...new Set(tree.map((p) => p.pgid))];
+        const processes = tree.map((p) => p.args);
+        recordJournal(deps.journal, x.now, (j) => ({ terminated: [...j.terminated, { ...refOf(t), processes }] }));
+        for (const g of t.groups) kill(g, 'SIGTERM');
+        t.terminatedAt = x.now;
+      } else if (s === 'kill') {
+        for (const g of (t.groups ?? []).filter(x.alive)) kill(g, 'SIGKILL');
+        t.killedAt = x.now;
+      }
+    }
+    await wake(deps.store, clock, nextRead - clock.now(), o.cancel);
+  }
+}
+
+type Bounded = <T>(what: string, work: (signal: AbortSignal) => Promise<T>) => Promise<T>;
+
+// a hung ps or tmux must fail the rest rather than hold the freeze open, and is told to go
+function boundBy(clock: Clock, ms: number): Bounded {
+  return async (what, work) => {
+    const call = new AbortController();
+    const timer = new AbortController();
+    const late = Symbol('late');
+    try {
+      const r = await Promise.race([work(call.signal), clock.sleep(ms, timer.signal).then(() => late)]);
+      if (r !== late) return r as Awaited<ReturnType<typeof work>>;
+      call.abort();
+      throw new Error(`${what} did not answer within ${ms} ms`);
+    } finally {
+      timer.abort();
+    }
+  };
+}
+
+// the next hook event, the next read of the process tree, or a cancel, whichever comes first
+function wake(store: RestDeps['store'], clock: Clock, ms: number, cancel?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = new AbortController();
+    const done = () => { unsubscribe(); cancel?.removeEventListener('abort', done); timer.abort(); resolve(); };
+    const unsubscribe = store.subscribe(done);
+    cancel?.addEventListener('abort', done);
+    void clock.sleep(ms, timer.signal).then(done);
+  });
+}
+
+async function layToRest(
+  deps: RestDeps, o: RestOptions, bounded: Bounded, tracks: Track[], current: Map<string, Classified>, now: number,
+): Promise<SettleResult> {
+  o.cancel?.throwIfAborted();
+  const open = tracks.flatMap((t) => { const c = current.get(t.key); return c ? [{ t, c }] : []; });
+  // diagnosis only: a screen that cannot be read is noted, and the terminal rests all the same
+  const scrollback = new Map<string, { scrollback: string } | { scrollbackError: string }>();
+  const lines = o.scrollbackLines;
+  if (lines) {
+    for (const { t, c } of open) {
+      try {
+        const screen = await bounded('tmux capture-pane', (signal) => deps.tmux.capture(c.window.paneId, lines, false, signal));
+        scrollback.set(t.key, { scrollback: screen.toString('utf8').replace(/\r\n/g, '\n') });
+      } catch (e) {
+        scrollback.set(t.key, { scrollbackError: (e as Error).message });
+      }
+    }
+  }
+  // before any window closes, so an abort knows which terminals the handover stopped
+  recordJournal(deps.journal, now, (j) => {
+    const known = new Set(j.stoppedTerminals.map(keyOf));
+    return { stoppedTerminals: [...j.stoppedTerminals, ...open.filter(({ t }) => !known.has(t.key)).map(({ t }) => refOf(t))] };
+  });
+  for (const id of new Set(open.map(({ t }) => t.characterId))) await bounded('tmux detach-client', (signal) => deps.viewers.detach(id, signal));
+  const byKey = new Map(tracks.map((t) => [t.key, t]));
+  const { transactionId } = sourceJournal(deps.journal);
+  // the agent each terminal carried before the handover stopped it: its exit hook may have taken it since
+  const lay = (d: FleetState, t: TerminalRef, closed = false) => {
+    const c = d.characters[t.characterId];
+    const slot = c && (t.term === 2 ? c.second : c);
+    if (!c || !slot?.tmux) return;
+    const agent = byKey.get(keyOf(t))?.agent;
+    if (agent) slot.agent = agent;
+    if (closed) slot.restedBy = transactionId;
+    if (t.term !== 2) { markDormant(c); return; }
+    const path = current.get(keyOf(t))?.window.path;
+    if (path) slot.cwd = path;
+    markSlotDormant(slot);
+  };
+  // each slot goes dormant as its own window closes, so a later window that will not close strands none of them
+  for (const { t, c } of open) {
+    await bounded('tmux kill-window', (signal) => deps.tmux.killWindow(c.window.windowId, signal));
+    deps.store.update((d) => lay(d, t, true));
+  }
+  // and the terminals whose window had already gone
+  deps.store.update((d) => {
+    for (const id of Object.keys(d.characters)) for (const t of [{ characterId: id }, { characterId: id, term: 2 as const }]) lay(d, t);
+  });
+  return {
+    ok: true,
+    terminals: open.map(({ t }) => ({
+      ...refOf(t), class: t.recheck,
+      ...(t.interruptedAt !== undefined && { interrupted: true as const }),
+      ...(t.terminatedAt !== undefined && { terminated: true as const }),
+      ...scrollback.get(t.key),
+    })),
+  };
+}

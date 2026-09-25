@@ -24,8 +24,9 @@ import { resolveRepo } from './links/git.js';
 import { refreshLinks, refreshMany, slice, type Deps as LinkDeps } from './links/refresh.js';
 import type { Logger } from './log.js';
 import { randomName } from './names.js';
+import type { OwnershipState } from './ownership/state.js';
 import { expandHome, type Paths } from './paths.js';
-import { markDormant, placeOnIsland, reconcile, secondName } from './reconcile.js';
+import { attachSlot, loseSecond, markDormant, placeOnIsland, reconcile, secondName } from './reconcile.js';
 import { codexRunner } from './scribe/codex.js';
 import { claudeRunner, perPass, type RunScribe } from './scribe/run.js';
 import { Scribe, type SweepOptions } from './scribe/scribe.js';
@@ -40,6 +41,7 @@ type Events = {
   pause: [charId: string];
   continue: [charId: string];
   'control-reset': [];
+  'session-start': [charId: string, term: 2 | undefined, sessionId: string];
 };
 
 // text a person writes stays theirs until they clear it; cleared, the scribe may write it again
@@ -50,7 +52,11 @@ function setNote(c: Character, note: string): void {
 
 export { Dormant, Invalid, NotFound };
 
-type Deps = { store: Store; tmux: Tmux; paths: Paths; config: Config; log: Logger; pollMs?: number; staleSessionMs?: number; runTimeoutMs?: number; runScribe?: RunScribe; linkDeps?: Partial<LinkDeps>; processes?: () => Promise<Proc[]>; agentsFound?: AgentKind[] };
+export type RefreshLinks = (store: Store, config: Config, charId: string) => Promise<void>;
+type Deps = {
+  store: Store; tmux: Tmux; paths: Paths; config: Config; log: Logger; ownership: OwnershipState; pollMs?: number; staleSessionMs?: number; runTimeoutMs?: number;
+  runScribe?: RunScribe; linkDeps?: Partial<LinkDeps>; refreshLinks?: RefreshLinks; processes?: () => Promise<Proc[]>; agentsFound?: AgentKind[];
+};
 type LiveCharacter = Character & { tmux: NonNullable<Character['tmux']> };
 export type WaitResult = AgentStatus | 'timeout' | 'gone';
 
@@ -82,6 +88,10 @@ export class Fleet extends EventEmitter<Events> {
   // output is filtered here instead.
   private streaming = new Set<string>();
   private stopped = false;
+  private activated?: Promise<void>;
+  // the background writes in flight, so a freeze can wait for the last of them to land
+  private background = new Set<Promise<unknown>>();
+  private carried: (id: string, term?: 2) => boolean = () => false;
 
   private scribe: Scribe;
 
@@ -96,7 +106,37 @@ export class Fleet extends EventEmitter<Events> {
     this.scribe = new Scribe({ store, log, run, brief: (island, c) => this.render(island, c) });
   }
 
+  /** Whether this daemon may write the fleet: the unfrozen owner, and nobody else. */
+  private writable(): boolean {
+    return this.deps.ownership.writable();
+  }
+
   async start(): Promise<void> {
+    // an inactive replica and a frozen source adopt no window and write nothing: they hold their
+    // snapshot for reading, and start no tmux server to hold a window in
+    if (this.writable()) await this.activate();
+  }
+
+  /** Reconciles, adopts the tmux windows and starts the poll. Calling it again changes nothing, unless the last attempt failed. */
+  activate(): Promise<void> {
+    this.activated ??= this.begin().catch((e) => { this.activated = undefined; throw e; });
+    return this.activated;
+  }
+
+  /** Ends every window and the poll: a fleet another machine now runs keeps no terminal running here. */
+  async deactivate(): Promise<void> {
+    const was = this.activated;
+    this.activated = undefined;
+    await was?.catch(() => {});
+    if (this.poll) clearInterval(this.poll);
+    this.poll = undefined;
+    const control = this.control;
+    this.control = undefined;
+    control?.stop();
+    await this.deps.tmux.killServer();
+  }
+
+  private async begin(): Promise<void> {
     await this.deps.tmux.ensureServer();
     await this.reconcileNow();
     this.ensureHome();
@@ -104,9 +144,24 @@ export class Fleet extends EventEmitter<Events> {
     try { if (seedAgentProfiles(this.deps.paths.agentProfiles)) this.deps.log.info(`agent profiles -> ${this.deps.paths.agentProfiles}`); }
     catch (e) { this.deps.log.error(`agent profiles: ${String(e)}`); }
     await this.attachControl();
-    this.poll = setInterval(() => {
-      this.tick().catch((e) => this.deps.log.error(`poll: ${String(e)}`));
-    }, this.deps.pollMs ?? 3000);
+    this.poll = setInterval(() => this.track(this.tick(), 'poll'), this.deps.pollMs ?? 3000);
+  }
+
+  private track(work: Promise<unknown>, what: string): void {
+    const done = work.catch((e) => this.deps.log.error(`${what}: ${String(e)}`));
+    this.background.add(done);
+    void done.then(() => this.background.delete(done));
+  }
+
+  /** Resolves once the background writes in flight have landed: after a freeze, none follows it. */
+  async settle(): Promise<void> {
+    while (this.background.size) await Promise.all([...this.background]);
+    await this.scribe.settled();
+  }
+
+  // the links a character's cwd implies, rebuilt off the critical path
+  private refresh(charId: string): void {
+    this.track((this.deps.refreshLinks ?? refreshLinks)(this.deps.store, this.deps.config, charId), `links ${charId}`);
   }
 
   stop(): void {
@@ -164,7 +219,8 @@ export class Fleet extends EventEmitter<Events> {
     if (term !== 2) return this.live(id);
     const c = this.char(id);
     if (!c.second) throw new Invalid(`${c.name} has no second terminal`);
-    return c.second;
+    if (!c.second.tmux) throw new Dormant(`the second terminal of ${c.name} is dormant; revive it first`);
+    return { tmux: c.second.tmux, agent: c.second.agent };
   }
 
   private charByPane(paneId: string): string | undefined {
@@ -182,7 +238,7 @@ export class Fleet extends EventEmitter<Events> {
     c.on('output', (paneId, data) => { const id = this.charByPane(paneId); if (id && this.streaming.has(id)) this.emit('output', id, data); });
     c.on('pause', (paneId) => { const id = this.charByPane(paneId); if (id) this.emit('pause', id); });
     c.on('continue', (paneId) => { const id = this.charByPane(paneId); if (id) this.emit('continue', id); });
-    c.on('window-close', (windowId) => { void this.windowClosed(windowId); });
+    c.on('window-close', (windowId) => { if (this.writable()) this.track(this.windowClosed(windowId), 'window close'); });
     // a client that exits before it is ready fails start, and the caller's retry is the one recovery
     let ready = false;
     c.once('ready', () => { ready = true; });
@@ -198,15 +254,15 @@ export class Fleet extends EventEmitter<Events> {
 
   // tmux also reports a close when a viewer session holding a linked window goes away
   private async windowClosed(windowId: string): Promise<void> {
-    if (await this.deps.tmux.hasWindow(windowId)) return;
+    if (await this.deps.tmux.hasWindow(windowId) || !this.writable()) return;
     const id = this.charByWindow(windowId);
     if (id) { this.deps.store.update((d) => { const ch = d.characters[id]; if (ch) markDormant(ch); }); return; }
-    const owner = Object.values(this.deps.store.state.characters).find((ch) => ch.second?.tmux.windowId === windowId)?.id;
-    if (owner) this.deps.store.update((d) => { delete d.characters[owner]?.second; });
+    const owner = Object.values(this.deps.store.state.characters).find((ch) => ch.second?.tmux?.windowId === windowId)?.id;
+    if (owner) this.deps.store.update((d) => { const ch = d.characters[owner]; if (ch) loseSecond(ch); });
   }
 
   private async recover(delayMs = 1000): Promise<void> {
-    if (this.stopped) return;
+    if (this.stopped || !this.activated) return;
     try {
       await this.deps.tmux.ensureServer();
       await this.reconcileNow();
@@ -216,6 +272,11 @@ export class Fleet extends EventEmitter<Events> {
       this.deps.log.error(`recover failed: ${String(e)}`);
       setTimeout(() => this.recover(Math.min(delayMs * 2, 30_000)), delayMs);
     }
+  }
+
+  /** Names the terminals a handover has yet to start: reconciling leaves the agent and resume command each carries to it. */
+  carries(fn: (id: string, term?: 2) => boolean): void {
+    this.carried = fn;
   }
 
   setPaneOutput(id: string, on: boolean): void {
@@ -230,6 +291,7 @@ export class Fleet extends EventEmitter<Events> {
   // ---- reconciliation and polling
 
   async reconcileNow(): Promise<void> {
+    if (!this.writable()) return;
     const windowOf = new Map(Object.values(this.deps.store.state.characters).map((c) => [c.id, c.tmux?.windowId]));
     const hadSecond = new Set(Object.values(this.deps.store.state.characters).filter((c) => c.second).map((c) => c.id));
     const ending = new Set(this.ending.keys());
@@ -237,7 +299,7 @@ export class Fleet extends EventEmitter<Events> {
     const live = (await this.deps.tmux.listWindows()).filter((w) => !ending.has(w.name) && !this.ending.has(w.name));
     // as in the poll, a character created or revived during the await is not known to the listing
     const known = new Set(Object.values(this.deps.store.state.characters).filter((c) => windowOf.get(c.id) === c.tmux?.windowId).map((c) => c.id));
-    const { mutate, renames, unplaced } = reconcile(this.deps.store.state, live, Date.now(), known, hadSecond);
+    const { mutate, renames, unplaced } = reconcile(this.deps.store.state, live, Date.now(), known, hadSecond, this.carried);
     this.deps.store.update(mutate);
     for (const line of unplaced) this.deps.log.error(line);
     for (const r of renames) {
@@ -277,6 +339,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   private async tick(): Promise<void> {
+    if (!this.writable()) return;
     // a create or revive during the await makes a window the listing lacks: only a character still on the
     // window it had before is marked dormant
     const windowOf = new Map(Object.values(this.deps.store.state.characters).map((c) => [c.id, c.tmux?.windowId]));
@@ -286,9 +349,10 @@ export class Fleet extends EventEmitter<Events> {
     const live = await this.deps.tmux.listWindows();
     const byName = new Map(live.map((w) => [w.name, w]));
     const cwdChanged: string[] = [];
-    // an agent whose pane is back at a shell prompt for two polls has ended without a SessionEnd
-    const settleAgent = (key: string, slot: { agent?: Agent }, command: string) => {
-      if (slot.agent && isShellCommand(command)) {
+    // an agent whose pane is back at a shell prompt for two polls has ended without a SessionEnd; one a handover
+    // has yet to start is still to be resumed there
+    const settleAgent = (key: string, slot: { agent?: Agent }, command: string, carried: boolean) => {
+      if (slot.agent && isShellCommand(command) && !carried) {
         const n = (this.shellStreak.get(key) ?? 0) + 1;
         this.shellStreak.set(key, n);
         if (n >= 2) { delete slot.agent; this.shellStreak.delete(key); }
@@ -300,22 +364,27 @@ export class Fleet extends EventEmitter<Events> {
       for (const c of Object.values(d.characters)) {
         const w2 = byName.get(secondName(c.id));
         if (w2 && !w2.dead) {
-          c.second = { unread: false, ...c.second, tmux: { windowId: w2.windowId, paneId: w2.paneId } };
-          settleAgent(secondName(c.id), c.second, w2.command);
-        } else if (hadSecond.has(c.id)) {
-          delete c.second;
+          // a dormant terminal a handover has yet to start is the handover's to open, whatever window it finds
+          if (c.second?.tmux || !this.carried(c.id, 2)) {
+            c.second = attachSlot(c.second, w2, this.carried(c.id, 2));
+            settleAgent(secondName(c.id), c.second, w2.command, this.carried(c.id, 2));
+          }
+        } else if (c.second?.tmux && hadSecond.has(c.id)) {
+          loseSecond(c);
         }
         const w = byName.get(c.id);
         if (!w || w.dead) {
           if (c.tmux && windowOf.get(c.id) === c.tmux.windowId) markDormant(c);
           continue;
         }
+        if (!c.tmux && this.carried(c.id)) continue;
         // a live window for a dormant character means the dormancy was spurious: re-attach. One made dormant
         // during the listing, or ended while it was taken, is still closing the window the listing saw
         if (!c.tmux) {
           if (windowOf.get(c.id) || ending.has(c.id) || this.ending.has(c.id)) continue;
           c.tmux = { windowId: w.windowId, paneId: w.paneId };
           delete c.revive;
+          delete c.resumeError;
         }
         // the pane's path moves only when the agent process itself changes directory; between moves the hooks may have placed it.
         // tmux reports no path while a setuid program such as sudo runs in the pane
@@ -324,7 +393,7 @@ export class Fleet extends EventEmitter<Events> {
           if (c.cwd !== w.path) { c.cwd = w.path; cwdChanged.push(c.id); }
         }
         c.shell.lastOutputAt = w.activity;
-        settleAgent(c.id, c, w.command);
+        settleAgent(c.id, c, w.command, this.carried(c.id));
         // Codex should report promptly; three polls without an event means delivery needs attention.
         if (!c.agent && w.command === 'codex') {
           const n = (this.codexStreak.get(c.id) ?? 0) + 1;
@@ -344,9 +413,7 @@ export class Fleet extends EventEmitter<Events> {
       const toRefresh = [...new Set([...this.pendingLinks, ...slice(awake, this.ticks)])];
       this.pendingLinks.clear();
       this.sweeping = true;
-      void refreshMany(this.deps.store, this.deps.config, toRefresh, this.deps.linkDeps)
-        .catch((e) => this.deps.log.error(`links: ${String(e)}`))
-        .finally(() => { this.sweeping = false; });
+      this.track(refreshMany(this.deps.store, this.deps.config, toRefresh, this.deps.linkDeps).finally(() => { this.sweeping = false; }), 'links');
     }
     this.scribe.tick();
     if (this.ticks % 10 === 0) await this.sweepViewerSessions();
@@ -409,7 +476,7 @@ export class Fleet extends EventEmitter<Events> {
     if (!(this.deps.agentsFound ?? []).includes(agent)) {
       throw new Invalid(`archid doesn't find ${AGENTS[agent].bin}; install ${AGENTS[agent].label}, then run archi setup`);
     }
-    saveMainAgent(this.deps.paths.config, agent);
+    saveMainAgent(this.deps.paths, agent);
     this.deps.config.mainAgent = agent;
     this.syncAgents();
   }
@@ -507,7 +574,7 @@ export class Fleet extends EventEmitter<Events> {
       await this.deps.tmux.killWindow(w.windowId);
       throw e;
     }
-    void refreshLinks(this.deps.store, this.deps.config, id);
+    this.refresh(id);
     if (!p.run) return this.char(id);
     const timeoutMs = this.deps.runTimeoutMs ?? RUN_TIMEOUT_MS;
     let runSent = await this.waitForAgent(id, timeoutMs);
@@ -545,7 +612,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   updateCharacter(id: string, patch: {
-    name?: string; note?: string; instructions?: string; agentProfile?: string; islandId?: string; context?: ContextItem[]; portrait?: Portrait;
+    name?: string; note?: string; instructions?: string; agentProfile?: string; islandId?: string; context?: ContextItem[]; portrait?: Portrait; keepHere?: boolean;
   }): Character {
     const current = this.char(id);
     if (patch.islandId) this.island(patch.islandId);
@@ -563,6 +630,8 @@ export class Fleet extends EventEmitter<Events> {
       if (patch.instructions !== undefined) c.instructions = patch.instructions;
       if (patch.agentProfile) c.agentProfile = patch.agentProfile;
       else if (patch.agentProfile === '') delete c.agentProfile;
+      if (patch.keepHere) c.keepHere = true;
+      else if (patch.keepHere === false) delete c.keepHere;
       if (context) c.context = context;
       if (patch.islandId && patch.islandId !== c.islandId) {
         // compute the new cell before reassigning islandId, or the character's stale cell would count as occupied on the target island
@@ -632,7 +701,7 @@ export class Fleet extends EventEmitter<Events> {
     const c = this.char(id);
     this.deps.store.update((d) => { delete d.characters[id]; });
     if (c.tmux) await this.deps.tmux.killWindow(c.tmux.windowId);
-    if (c.second) await this.deps.tmux.killWindow(c.second.tmux.windowId);
+    if (c.second?.tmux) await this.deps.tmux.killWindow(c.second.tmux.windowId);
     // nothing the daemon keeps outside the state outlives the character
     for (const m of [this.shellStreak, this.codexStreak, this.hookCwd, this.rolloutMark, this.answering]) m.delete(id);
     this.shellStreak.delete(secondName(id));
@@ -659,7 +728,7 @@ export class Fleet extends EventEmitter<Events> {
     if (alive) {
       this.deps.store.update((d) => {
         const cur = d.characters[id];
-        if (cur) { cur.tmux = { windowId: alive.windowId, paneId: alive.paneId }; delete cur.revive; }
+        if (cur) { cur.tmux = { windowId: alive.windowId, paneId: alive.paneId }; delete cur.revive; delete cur.resumeError; }
       });
       if (prompt) await this.run(id, prompt, true);
       return this.char(id);
@@ -679,6 +748,7 @@ export class Fleet extends EventEmitter<Events> {
       const cur = d.characters[id];
       cur.tmux = { windowId: w.windowId, paneId: w.paneId };
       delete cur.revive;
+      delete cur.resumeError;
       // a resumed session keeps its old agent record; its stale status must not answer the next wait,
       // nor its old activity have it ended again as idle before it is up
       if (cur.agent) { cur.agent.status = 'idle'; cur.agent.lastActivityAt = Date.now(); delete cur.agent.prompt; delete cur.agent.promptId; delete cur.agent.background; cur.unread = false; }
@@ -687,7 +757,7 @@ export class Fleet extends EventEmitter<Events> {
     return this.char(id);
   }
 
-  // concurrent opens would each spawn a window and orphan all but the last.
+  // concurrent opens would each spawn a window and orphan all but the last; a dormant second is revived here too.
   openSecond(id: string): Promise<Character> {
     const inFlight = this.openingSecond.get(id);
     if (inFlight) return inFlight;
@@ -698,13 +768,25 @@ export class Fleet extends EventEmitter<Events> {
 
   private async doOpenSecond(id: string): Promise<Character> {
     const c = this.char(id);
-    if (c.second) return c;
-    const w = await this.deps.tmux.newWindow(secondName(id), c.cwd, { ...characterKeyEnv(this.deps.paths.env), ARCHI_CHAR_ID: id, ARCHI_HOME: this.deps.paths.home, ARCHI_TERM: '2' });
+    if (c.second?.tmux) return c;
+    const cwd = c.second?.cwd ?? c.cwd;
+    const island = this.deps.store.state.islands[c.islandId];
+    const command = withAddDirs(c.second?.revive?.command ?? '', [...(island?.context ?? []), ...c.context]);
+    const w = await this.deps.tmux.newWindow(secondName(id), cwd, { ...characterKeyEnv(this.deps.paths.env), ARCHI_CHAR_ID: id, ARCHI_HOME: this.deps.paths.home, ARCHI_TERM: '2' });
     if (!this.deps.store.state.characters[id]) {
       await this.deps.tmux.killWindow(w.windowId);
       throw new NotFound(`no character ${id}`);
     }
-    this.deps.store.update((d) => { d.characters[id].second = { tmux: { windowId: w.windowId, paneId: w.paneId }, unread: false }; });
+    this.deps.store.update((d) => {
+      const cur = d.characters[id];
+      const second = { unread: false, ...cur.second, cwd, tmux: { windowId: w.windowId, paneId: w.paneId } };
+      delete second.revive;
+      delete second.resumeError;
+      // a resumed session keeps its old agent record; its stale status must not answer the next wait.
+      if (second.agent) { second.agent.status = 'idle'; delete second.agent.prompt; second.unread = false; }
+      cur.second = second;
+    });
+    if (command) await this.deps.tmux.sendLine(w.paneId, command, true);
     return this.char(id);
   }
 
@@ -847,12 +929,23 @@ export class Fleet extends EventEmitter<Events> {
     });
   }
 
+  /** Hears each session that starts in a terminal, once its SessionStart has landed there. */
+  onSessionStart(fn: (charId: string, term: 2 | undefined, sessionId: string) => void): () => void {
+    this.on('session-start', fn);
+    return () => { this.off('session-start', fn); };
+  }
+
   onSocketEvent(e: SocketEvent): string | undefined {
+    // a frozen source still watches its agents settle; a replica's agents belong to the owner
+    if (!this.deps.ownership.isOwner()) return undefined;
     const ev = 'hook' in e ? e.hook : e.status;
+    const frozen = this.deps.ownership.isFrozen();
     let reply: string | undefined;
     this.deps.store.update((d) => {
       const c = d.characters[ev.charId];
       if (!Object.hasOwn(d.characters, ev.charId)) return;
+      // a terminal the handover has closed carries its agent to the next machine; a late SessionEnd must not take it
+      if (frozen && !(ev.term === 2 ? c.second : c)?.tmux) return;
       const apply = <T extends Slot>(slot: T): T => {
         let next = 'hook' in e ? applyHook(slot, e.hook, Date.now()) : applyStatus(slot, e.status);
         // codex has no statusline to push its context reading, so each hook reads it off the tail of the rollout
@@ -880,11 +973,15 @@ export class Fleet extends EventEmitter<Events> {
         d.characters[ev.charId] = next;
       }
     });
+    if ('hook' in e && e.hook.name === 'SessionStart' && e.hook.sessionId) {
+      const c = this.deps.store.state.characters[ev.charId];
+      if ((e.hook.term === 2 ? c?.second : c)?.agent?.sessionId === e.hook.sessionId) this.emit('session-start', ev.charId, e.hook.term, e.hook.sessionId);
+    }
     // the second terminal is a side shell, and a run nested inside the agent works where it likes; neither moves the character
     const agent = this.deps.store.state.characters[ev.charId]?.agent;
     const nested = 'hook' in e && !!agent && !!e.hook.sessionId && e.hook.sessionId !== agent.sessionId;
-    if ('hook' in e && e.hook.cwd && e.hook.term !== 2 && !nested) {
-      void this.followCwd(ev.charId, agent?.kind === 'codex' ? this.codexCwd(ev.charId, agent.transcriptPath, e.hook.cwd) : e.hook.cwd);
+    if ('hook' in e && e.hook.cwd && e.hook.term !== 2 && !nested && this.writable()) {
+      this.track(this.followCwd(ev.charId, agent?.kind === 'codex' ? this.codexCwd(ev.charId, agent.transcriptPath, e.hook.cwd) : e.hook.cwd), 'cwd follow');
     }
     return reply;
   }
@@ -909,6 +1006,6 @@ export class Fleet extends EventEmitter<Events> {
     try { this.deps.store.update((d) => { if (d.characters[charId]) d.characters[charId].cwd = to.root; }); }
     // a write that fails leaves the directory for the next hook that reports it
     catch (e) { this.hookCwd.delete(charId); throw e; }
-    await refreshLinks(this.deps.store, this.deps.config, charId);
+    await (this.deps.refreshLinks ?? refreshLinks)(this.deps.store, this.deps.config, charId);
   }
 }

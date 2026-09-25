@@ -1,11 +1,13 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
+import { AUTHORITY_SCHEMA_VERSION, emptyState, PROTOCOL_VERSION, TRANSFER_SCHEMA_VERSION } from '@archipelago/protocol';
 import { startDaemon, type Daemon } from '@archipelago/archid';
+import { startAuthorityServer } from '@archipelago/archid/gateway/server';
 import { silentLogger } from '@archipelago/archid/log';
 import { resolvePaths } from '@archipelago/archid/paths';
 import { isProfileName } from '@archipelago/archid/profile';
@@ -123,7 +125,85 @@ describe('archi argument parsing', () => {
       fs.rmSync(path.dirname(webkit[0]), { recursive: true });
     }
   });
+
+  it('reports its versions rather than reading `version` as a profile', async () => {
+    const r = await run({}, 'version', '--json');
+    expect(r.code).toBe(0);
+    const v = JSON.parse(r.stdout);
+    expect(v).toMatchObject({
+      release: 'dev',
+      protocol: PROTOCOL_VERSION,
+      stateSchema: emptyState().version,
+      transferSchema: TRANSFER_SCHEMA_VERSION,
+      authoritySchema: AUTHORITY_SCHEMA_VERSION,
+      runtime: { node: process.version, platform: process.platform, arch: process.arch },
+    });
+    expect((await run({}, 'version')).stdout).toContain('protocol');
+  });
+
+  it('puts current back on the release before it without asking anything else of the machine', async () => {
+    const home = makeHome();
+    const prefix = path.join(home, '.local', 'share', 'archipelago');
+    for (const v of ['1.0.0', '1.1.0']) fs.mkdirSync(path.join(prefix, 'releases', v), { recursive: true });
+    fs.symlinkSync(path.join(prefix, 'releases', '1.1.0'), path.join(prefix, 'current'));
+
+    const r = await run({ HOME: home }, 'setup', '--rollback');
+    expect(r.code).toBe(0);
+    expect(fs.readlinkSync(path.join(prefix, 'current'))).toBe(path.join(prefix, 'releases', '1.0.0'));
+    expect(r.stdout).toContain('1.0.0');
+  });
+
+  it('answers an ownership question on the gateway socket under the prefix it was given', async () => {
+    const prefix = makeHome();
+    const server = await startAuthorityServer({ prefix });
+    const env = { ARCHI_GATEWAY_PREFIX: prefix };
+    const fleet = '3f1a0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
+    const owner = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
+    try {
+      const created = await run(env, 'gateway', 'owner', 'create', '--fleet', fleet, '--params', JSON.stringify({ initialOwnerMachineId: owner }));
+      expect(created.code).toBe(0);
+      expect(JSON.parse(created.stdout)).toEqual({ result: { record: { fleetId: fleet, generation: 0, ownerMachineId: owner } } });
+      const missing = await run(env, 'gateway', 'owner', 'get', '--fleet', '7c2b0b1c-2d3e-4f50-8617-9a0b1c2d3e4f');
+      expect(missing.code).not.toBe(0);
+      expect(JSON.parse(missing.stdout)).toMatchObject({ error: { code: 'not_found' } });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('mints the machine id a controller registers this installation under', async () => {
+    const dir = makeHome();
+    const first = JSON.parse((await run({ ARCHI_CONFIG_DIR: dir }, 'version', '--json')).stdout);
+    expect(first.machineId).toMatch(/^[0-9a-f-]{36}$/);
+    const second = JSON.parse((await run({ ARCHI_CONFIG_DIR: dir }, 'version', '--json')).stdout);
+    expect(second.machineId).toBe(first.machineId);
+  });
 });
+
+describe('archi connect', () => {
+  afterEach(() => cleanHomes());
+
+  it('streams the local connection as NDJSON and lets go when its input ends', async () => {
+    const home = makeHome();
+    fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: '11111111-2222-3333-4444-555555555555' }));
+    fs.writeFileSync(path.join(home, 'node.json'), JSON.stringify({}));
+    fs.writeFileSync(path.join(home, 'port'), '4711');
+    fs.writeFileSync(path.join(home, 'token'), 'local-token\n');
+
+    const child = spawn(tsx, [main, 'connect', '--json'], { env: { ...process.env, ARCHI_HOME: home } });
+    let out = '';
+    child.stdout.on('data', (chunk: Buffer) => { out += chunk.toString(); });
+    child.stdin.end();
+    const code = await new Promise((resolve) => child.on('close', resolve));
+
+    expect(code).toBe(0);
+    expect(out.trim().split('\n').map((line) => JSON.parse(line))).toEqual([
+      { type: 'connecting', owner: 'local' },
+      { type: 'online', host: '127.0.0.1', port: 4711, token: 'local-token' },
+    ]);
+  });
+});
+
 
 runIf('archi CLI', () => {
   let daemon: Daemon | undefined;

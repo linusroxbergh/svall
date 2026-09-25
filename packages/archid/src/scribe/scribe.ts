@@ -107,6 +107,11 @@ export class Scribe {
     this.current = this.safe(job).finally(() => { this.current = undefined; });
   }
 
+  /** Resolves once the automatic pass and the sweep in flight have finished. */
+  async settled(): Promise<void> {
+    while (this.current || this.sweeping) await Promise.allSettled([this.current, this.sweeping?.done]);
+  }
+
   // a sweep asked for while the same one is waiting or running joins it; a different one runs after it
   sweep(o: SweepOptions = {}): Promise<string[]> {
     if (this.off()) return Promise.reject(new Invalid(SCRIBE_OFF));

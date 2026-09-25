@@ -3,9 +3,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { repoRoot, userPaths } from '@archipelago/archid/paths';
+import { userPaths } from '@archipelago/archid/paths';
 import { OLD_LAUNCHD_LABEL, PRIVATE, profileLabel } from '@archipelago/archid/profile';
-import { setupHome, type HomeSetup } from '@archipelago/archid/setup';
+import { isRelease, repoRoot } from '@archipelago/archid/release';
+import { setupHome, type HomeSetup, type RunFrom } from '@archipelago/archid/setup';
+import { DEFAULT_PREFIX } from '../../../scripts/install-release.mjs';
 import { Client, ProtocolMismatch } from './client.js';
 import { ask } from './prompt.js';
 import type { Target } from './target.js';
@@ -19,7 +21,7 @@ export type LaunchDeps = {
   setupHome(o: HomeSetup): Promise<string[]>;
   uid: number;
   launchAgentsDir: string;
-  repoRoot: string;
+  runFrom: RunFrom;
   timeoutMs: number;
   intervalMs: number;
 };
@@ -31,7 +33,7 @@ export async function launch(t: Target, d: LaunchDeps): Promise<void> {
   const domain = `gui/${d.uid}`;
   const plist = path.join(d.launchAgentsDir, `${label}.plist`);
   const home: HomeSetup = {
-    home: t.home, label, repoRoot: d.repoRoot, launchAgentsDir: d.launchAgentsDir, launchctl: false,
+    ...d.runFrom, home: t.home, label, launchAgentsDir: d.launchAgentsDir, launchctl: false,
     port: t.name === PRIVATE ? undefined : 0,
   };
 
@@ -83,7 +85,8 @@ export function realDeps(): LaunchDeps {
     setupHome,
     uid: os.userInfo().uid,
     launchAgentsDir: userPaths().launchAgents,
-    repoRoot: repoRoot(),
+    // through current, so the agent follows every later install instead of pinning the release that wrote it
+    runFrom: isRelease() ? { release: path.join(DEFAULT_PREFIX, 'current') } : { repoRoot: repoRoot() },
     timeoutMs: 15_000,
     intervalMs: 200,
   };

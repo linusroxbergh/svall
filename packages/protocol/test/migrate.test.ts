@@ -8,18 +8,46 @@ const char = (id: string, islandId: string) => ({
 });
 
 describe('migrateState', () => {
-  it('passes a version 7 file through', () => {
+  it('passes a version 8 file through', () => {
     const { state, migrated, dropped } = migrateState(emptyState());
     expect(migrated).toBe(false);
     expect(dropped).toEqual([]);
-    expect(state.version).toBe(7);
+    expect(state.version).toBe(8);
   });
 
-  it('lifts a version 6 file to 7 and changes nothing else', () => {
+  it('lifts a version 6 file to 8 and changes nothing else', () => {
     const raw = { ...emptyState(), version: 6, islands: { i_a: island('i_a') }, characters: { c_a: char('c_a', 'i_a') } };
     const { state, migrated } = migrateState(raw);
     expect(migrated).toBe(true);
-    expect(state).toEqual({ ...raw, version: 7 });
+    expect(state).toEqual({ ...raw, version: 8 });
+  });
+
+  const agent = { kind: 'claude', sessionId: 's', transcriptPath: '/t', status: 'idle', lastActivityAt: 3 };
+  const withSecond = (version: number) => ({
+    ...emptyState(),
+    version,
+    islands: { i_a: island('i_a') },
+    characters: {
+      c0: { ...char('c0', 'i_a'), cwd: '/work', second: { tmux: { windowId: '@2', paneId: '%2' }, unread: true, agent } },
+      c1: char('c1', 'i_a'),
+    },
+  });
+
+  it('lifts a version 7 file to 8: a second terminal gets its character\'s cwd, and an absent one stays absent', () => {
+    const { state, migrated, dropped } = migrateState(withSecond(7));
+    expect(migrated).toBe(true);
+    expect(dropped).toEqual([]);
+    expect(state.version).toBe(8);
+    expect(state.characters.c0.second).toEqual({ cwd: '/work', tmux: { windowId: '@2', paneId: '%2' }, unread: true, agent });
+    expect(state.characters.c1.second).toBeUndefined();
+  });
+
+  it('lifts a version 6 file with a second terminal through to 8', () => {
+    const { state, migrated, dropped } = migrateState(withSecond(6));
+    expect(migrated).toBe(true);
+    expect(dropped).toEqual([]);
+    const { c0, c1 } = withSecond(8).characters;
+    expect(state).toEqual({ ...withSecond(8), characters: { c0: { ...c0, second: { cwd: '/work', ...c0.second } }, c1 } });
   });
 
   it('refuses a file older than version 6 and says so', () => {
@@ -30,7 +58,8 @@ describe('migrateState', () => {
   });
 
   it('refuses a file from a newer archid', () => {
-    expect(() => migrateState({ version: 8, islands: {}, characters: {} })).toThrow(NewerStateVersion);
+    expect(() => migrateState({ version: 9, islands: {}, characters: {} })).toThrow(NewerStateVersion);
+    expect(() => migrateState({ version: 9, islands: {}, characters: {} })).toThrow(/newer than this archid reads \(8\)/);
   });
 
   it('rejects garbage', () => {

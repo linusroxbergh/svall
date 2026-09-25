@@ -11,11 +11,17 @@ final class ShellRouter {
     private let browsers: BrowserManager
     private let keys = KeyMonitor()
     private let notifier = Notifier()
+    private var remote: RemoteConnection!
+    // one host operation at a time: the page watches this one until it ends or is cancelled
+    private var hostRun: HostProcess?
+    // the handover helper the page follows; absent in a build with no archi beside it
+    private var handover: HandoverSession?
     private var sentConfigErrors = false
     // whether a page panel holds a rect of the surfaces
     private var holding = false
     private var presses: Any?
-    // whether the page has sent .connection since it last loaded, and what a banner click or answer sent before that
+    // whether the page has sent .connection since it last loaded, and what a banner click or answer sent before that;
+    // before it has, a token would be sent into nothing
     private var listening = false
     private var pendingNotify: [FromShell] = []
     // the menu's Quit, which shows the chord the page quits with
@@ -44,6 +50,35 @@ final class ShellRouter {
         browsers.onState = { [weak self] s in self?.bridge.send(.browserState(s)) }
         browsers.onOpened = { [weak self] from, tab, url in self?.bridge.send(.browserOpened(from: from, tab: tab, url: url)) }
         browsers.onClosed = { [weak self] tab in self?.bridge.send(.browserClosed(tab: tab)) }
+
+        let helper = ControllerProcess.locate().map {
+            ControllerProcess(executable: $0, arguments: ControllerProcess.connectArguments(profile: ArchiHome.profile))
+        }
+        remote = RemoteConnection(helper: helper, local: { ArchiHome.connection() })
+        remote.onConnection = { [weak self] connection in
+            guard self?.listening == true else { return }
+            self?.bridge.send(.connection(connection))
+        }
+        remote.onState = { [weak self] state in
+            self?.webView.window?.title = RemoteConnection.windowTitle(base: ArchiHome.displayName, owner: state.owner)
+            guard self?.listening == true else { return }
+            self?.bridge.send(.connectionState(state: state.state, owner: state.owner, kind: state.kind, message: state.message))
+        }
+        remote.onSurfaces = { [weak self] in self?.surfaces.rebuild() }
+        surfaces.route = { [weak self] in self?.remote.route ?? .local }
+        remote.start()
+
+        handover = ControllerProcess.locate().map {
+            HandoverSession(executable: $0, profile: ArchiHome.profile, eventsFile: ArchiHome.path + "/controller/events.ndjson")
+        }
+        handover?.onLine = { [weak self] line in self?.bridge.send(.handoverEvent(line.json)) }
+        handover?.onReplay = { [weak self] lines in self?.bridge.send(.handoverReplay(lines.map(\.json))) }
+        handover?.onExit = { [weak self] code, error in self?.bridge.send(.handoverExit(code: code, error: error)) }
+        // the move is done: where the fleet runs now is asked afresh, rather than on the old helper's next tick
+        handover?.onMoved = { [weak self] in
+            guard let helper = ControllerProcess.locate() else { return }
+            self?.remote.reconnect(with: ControllerProcess(executable: helper, arguments: ControllerProcess.connectArguments(profile: ArchiHome.profile)))
+        }
 
         notifier.onPermission = { [weak self] state in self?.bridge.send(.notifyPermission(state)) }
         notifier.onOpen = { [weak self] key in self?.open(key) }
@@ -152,6 +187,10 @@ final class ShellRouter {
     }
 
     func closeAll() {
+        hostRun?.cancel()
+        // the helper goes on without the app: only the attach following it ends
+        handover?.stop()
+        remote.stop()
         surfaces.closeAll()
         browsers.closeAll()
         browsers.dropDownloads()
@@ -177,8 +216,13 @@ final class ShellRouter {
     private func handle(_ msg: ToShell) {
         switch msg {
         case .connection:
-            bridge.send(.shellInfo(home: ArchiHome.path, log: ArchiHome.logTail(), op: OnePassword.path != nil, ghosttyKeys: GhosttyKeybinds.userChords()))
-            bridge.send(.connection(ArchiHome.connection()))
+            bridge.send(.shellInfo(home: ArchiHome.path, log: ArchiHome.logTail(), op: OnePassword.path != nil,
+                                   ghosttyKeys: GhosttyKeybinds.userChords(), handoverEnabled: ArchiHome.handoverEnabled(),
+                                   gateway: ArchiHome.gatewayName()))
+            bridge.send(.connection(remote.connection))
+            if let state = remote.state {
+                bridge.send(.connectionState(state: state.state, owner: state.owner, kind: state.kind, message: state.message))
+            }
             sendAppActive()
             notifier.refreshPermission()
             if !sentConfigErrors, !runtime.configErrors.isEmpty {
@@ -210,14 +254,19 @@ final class ShellRouter {
         case .openUrl(let url):
             ExternalURL.open(url)
         case .openFolder(let path):
+            guard isHere(path) else { return }
             ExternalURL.openFolder(path)
         case .reveal(let path):
+            guard isHere(path) else { return }
             ExternalURL.reveal(path)
         case .copy(let text):
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
         case .openConfig(let which):
-            guard let path = which == "ghostty" ? GhosttyRuntime.configPath() : ArchiHome.configPath() else { return }
+            guard let path = which == "ghostty" ? GhosttyRuntime.configPath() : ArchiHome.configPath() else {
+                NSLog("archi: no %@ config to open", which)
+                return
+            }
             ExternalURL.openText(path)
         case .zoom(let factor, let fontDelta):
             // the page lays itself out again at the new size and restates every terminal's rect from there
@@ -242,6 +291,27 @@ final class ShellRouter {
             browsers.fillLogin(tab: tab)
         case .browserFocus(let tab):
             browsers.focus(tab: tab)
+        case .hostStart(let op, let args):
+            startHost(op: op, args: args)
+        case .hostCancel:
+            hostRun?.cancel()
+        case .handoverStart(let to, let choices):
+            guard let argv = HandoverCommand.start(to: to, choices: choices, gateway: ArchiHome.gatewayName(), profile: ArchiHome.profile) else {
+                return bridge.send(.handoverExit(code: 1, error: "\(to) is not this Mac or this fleet's gateway, or these are not choices archi handover takes"))
+            }
+            followHandover { try $0.launch(argv) }
+        case .handoverResume:
+            followHandover { try $0.launch(HandoverCommand.resume(profile: ArchiHome.profile)) }
+        case .handoverAbort:
+            followHandover { try $0.launch(HandoverCommand.abort(profile: ArchiHome.profile)) }
+        case .handoverAttach:
+            followHandover { try $0.observe() }
+        case .handoverForget:
+            followHandover { try $0.forget() }
+        case .handoverChoose(let choices):
+            handover?.send(.choose(choices))
+        case .handoverCancel:
+            handover?.send(.cancel)
         case .shellCutout(let rects, let passive):
             holding = !rects.isEmpty || !passive.isEmpty
             surfaces.setCutout(rects: rects, passive: passive)
@@ -255,6 +325,46 @@ final class ShellRouter {
         case .notifySettings:
             notifier.openSettings()
         }
+    }
+
+    /// The page names an operation and its arguments; the argv, and the binary, are the shell's own.
+    private func startHost(op: HostOp, args: HostArgs) {
+        guard hostRun == nil else { return }
+        let archi = ControllerProcess.locate()
+        let fleet = ArchiHome.fleetProfile(of: ArchiHome.path, in: NSHomeDirectory())
+        guard let executable = archi, let argv = HostCommand.arguments(op: op, args: args, fleet: fleet) else {
+            let detail = archi == nil ? "this build has no archi beside it to set a machine up with"
+                : op == .enable && fleet == nil ? "\(ArchiHome.path) is not a profile's home, so archi host enable cannot name it"
+                : "these are not arguments archi host \(op.rawValue) takes"
+            bridge.send(.hostStep(op: op.rawValue, step: HostProcess.Step(step: "archi", status: "fail", detail: detail, action: nil)))
+            bridge.send(.hostDone(op: op.rawValue, code: 1))
+            return
+        }
+        let child = HostProcess(executable: executable, arguments: argv, report: op.printsReport)
+        hostRun = child
+        child.onStep = { [weak self] step in self?.bridge.send(.hostStep(op: op.rawValue, step: step)) }
+        child.onExit = { [weak self] code in
+            self?.hostRun = nil
+            self?.bridge.send(.hostDone(op: op.rawValue, code: code))
+        }
+        do { try child.start() } catch {
+            hostRun = nil
+            bridge.send(.hostStep(op: op.rawValue, step: HostProcess.Step(step: "archi", status: "fail", detail: "\(error)", action: nil)))
+            bridge.send(.hostDone(op: op.rawValue, code: 1))
+        }
+    }
+
+    private func followHandover(_ run: (HandoverSession) throws -> Void) {
+        guard let handover else {
+            return bridge.send(.handoverExit(code: 1, error: "this build has no archi beside it to hand the fleet over with"))
+        }
+        do { try run(handover) } catch { bridge.send(.handoverExit(code: 1, error: "\(error)")) }
+    }
+
+    private func isHere(_ path: String) -> Bool {
+        guard let notice = remote.notice(forOpening: path) else { return true }
+        bridge.send(.notice(text: notice))
+        return false
     }
 
     // a press the page can see is answered by the page's own listener, which knows the panel's own tab from

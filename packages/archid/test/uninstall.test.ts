@@ -7,6 +7,7 @@ import { codexInstalled, codexPaths } from '../src/codex/install.js';
 import { realDeps } from '../src/mobile.js';
 import { LAUNCHD_LABEL } from '../src/profile.js';
 import { HOOK_EVENTS, hookCommand, mergeHooks, mergeStatusLine, runSetup, statusWrapper, unmergeHooks, unmergeStatusLine } from '../src/setup.js';
+import type { Run } from '../src/linux/service.js';
 import { appQuit, fleetData, purge, runUninstall, type AppQuit } from '../src/uninstall.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
@@ -217,7 +218,7 @@ describe('runUninstall', () => {
     expect(JSON.parse(fs.readFileSync(f.settingsPath, 'utf8'))).toEqual(f.mine);
     expect(fs.readdirSync(f.launchAgentsDir)).toEqual(['com.other.plist']);
     expect(fs.readdirSync(f.shimDir)).toEqual(['other']);
-    expect(fs.existsSync(path.join(f.home, 'config.json'))).toBe(true);
+    expect(fs.existsSync(path.join(f.home, 'fleet.json'))).toBe(true);
     expect(lines).toContain(`removed ${path.join(f.launchAgentsDir, 'io.github.linusroxbergh.archipelago.archid.work.plist')}`);
     expect(lines).toContain(`removed ${path.join(f.launchAgentsDir, 'com.archipelago.archid.old.plist')}`);
 
@@ -235,6 +236,50 @@ describe('runUninstall', () => {
     await runUninstall({ ...f.o, settingsPaths: [other, f.settingsPath] });
     expect(JSON.parse(fs.readFileSync(other, 'utf8'))).toEqual(f.mine);
     expect(JSON.parse(fs.readFileSync(f.settingsPath, 'utf8'))).toEqual(f.mine);
+  });
+
+  it('on Linux removes only Archipelago units and the releases, and keeps the fleet', async () => {
+    const f = installed();
+    await runSetup(f.o);
+    const unitDir = path.join(f.root, '.config', 'systemd', 'user');
+    fs.mkdirSync(unitDir, { recursive: true });
+    for (const name of ['archipelago-archid@private.service', 'archipelago-archid@work.service', 'archipelago-gateway.service', 'someone-else.service']) {
+      fs.writeFileSync(path.join(unitDir, name), '[Service]\n');
+    }
+    const prefix = path.join(f.root, '.local', 'share', 'archipelago');
+    fs.mkdirSync(path.join(prefix, 'releases', '1.0.0'), { recursive: true });
+    fs.mkdirSync(path.join(prefix, 'log'), { recursive: true });
+    fs.symlinkSync(path.join(prefix, 'releases', '1.0.0'), path.join(prefix, 'current'));
+    const calls: string[][] = [];
+    const run: Run = async (cmd, args) => { calls.push([cmd, ...args]); return { stdout: '', stderr: '' }; };
+
+    const lines = await runUninstall({ ...f.o, platform: 'linux', unitDir, prefix, run, launchctl: true });
+    expect(fs.readdirSync(unitDir)).toEqual(['someone-else.service']);
+    expect(calls).toEqual([
+      ['systemctl', '--user', 'disable', '--now', 'archipelago-archid@private.service'],
+      ['systemctl', '--user', 'disable', '--now', 'archipelago-archid@work.service'],
+      ['systemctl', '--user', 'disable', '--now', 'archipelago-gateway.service'],
+      ['systemctl', '--user', 'daemon-reload'],
+    ]);
+    expect(fs.existsSync(path.join(prefix, 'releases'))).toBe(false);
+    expect(fs.existsSync(path.join(prefix, 'log'))).toBe(false);
+    expect(fs.lstatSync(path.join(prefix, 'current'), { throwIfNoEntry: false })).toBeUndefined();
+    expect(fs.existsSync(path.join(f.home, 'fleet.json'))).toBe(true);
+    expect(fs.existsSync(path.join(f.shimDir, 'archi'))).toBe(false);
+    expect(lines.some((l) => l.includes('someone-else'))).toBe(false);
+  });
+
+  it('on a Mac removes the releases it installed too, and keeps the gateway records', async () => {
+    const f = installed();
+    await runSetup(f.o);
+    const prefix = path.join(f.root, '.local', 'share', 'archipelago');
+    fs.mkdirSync(path.join(prefix, 'releases', '1.0.0'), { recursive: true });
+    fs.mkdirSync(path.join(prefix, 'companions'), { recursive: true });
+    fs.mkdirSync(path.join(prefix, 'gateway', 'fleets'), { recursive: true });
+    fs.symlinkSync(path.join(prefix, 'releases', '1.0.0'), path.join(prefix, 'current'));
+
+    await runUninstall({ ...f.o, platform: 'darwin', unitDir: path.join(f.root, 'units'), prefix });
+    expect(fs.readdirSync(prefix)).toEqual(['gateway']);
   });
 
   it('writes nothing on a machine where setup never ran', async () => {

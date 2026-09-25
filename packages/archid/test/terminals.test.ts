@@ -9,7 +9,7 @@ import { Store } from '../src/store.js';
 import { TerminalHub, type Viewer } from '../src/terminals.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { Tmux } from '../src/tmux/tmux.js';
-import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
+import { cleanHomes, hasTmux, makeHome, ownerOf, waitFor } from './helpers.js';
 
 const runIf = hasTmux() ? describe : describe.skip;
 
@@ -31,7 +31,8 @@ runIf('TerminalHub', () => {
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
-    const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 200 });
+    const ownership = ownerOf(home, config.id);
+    const fleet = new Fleet({ store, tmux, paths, config, ownership, log: silentLogger, pollMs: 200 });
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); fleet.stop(); await tmux.killServer(); });
     await started;

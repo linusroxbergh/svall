@@ -1,19 +1,21 @@
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { Status } from '../api.js';
 import { createFleetSlice, type FleetActions, type FleetSliceState } from './fleet.js';
+import { createHandoverSlice, type HandoverActions, type HandoverState } from './handover.js';
 import { createIdeSlice, type IdeActions, type IdeSliceState } from './ide.js';
 import { type AppStorage } from './persist.js';
 import { createShelfSlice, type ShelfActions, type ShelfState } from './shelf.js';
 import { createUiSlice, type UiActions, type UiState, type View } from './ui.js';
 
 export type { Status };
+export type { HostConfirm } from './handover.js';
 export type { IdeState } from './ide.js';
 export type { AppStorage, HalfCard, ResourceCols, SideWidths } from './persist.js';
 export { DEFAULT_HALF_CARD, HALF_CARD_RANGE, RESOURCE_COL_RANGE, SETTINGS_KEY, SIDE_WIDTH_RANGE, localAppStorage } from './persist.js';
 export type { CardSize, LinkAsk, Terminal, Toast, View, Webview } from './ui.js';
 
-export type AppState = FleetSliceState & UiState & ShelfState & IdeSliceState;
-export type AppActions = FleetActions & UiActions & ShelfActions & IdeActions;
+export type AppState = FleetSliceState & UiState & ShelfState & IdeSliceState & HandoverState;
+export type AppActions = FleetActions & UiActions & ShelfActions & IdeActions & HandoverActions;
 export type App = AppState & AppActions;
 export type AppStore = StoreApi<App>;
 
@@ -24,5 +26,6 @@ export function createAppStore(storage?: AppStorage, initialView?: View): AppSto
     ...createUiSlice(storage, view)(...a),
     ...createShelfSlice(storage)(...a),
     ...createIdeSlice(...a),
+    ...createHandoverSlice(...a),
   }));
 }

@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,13 +11,13 @@ import { cleanHomes, makeHome } from './helpers.js';
 afterEach(() => { cleanHomes(); vi.unstubAllEnvs(); });
 
 describe('config and paths', () => {
-  it('defaults when the file is missing', () => {
-    expect(loadConfig('/nonexistent/config.json')).toMatchObject({ port: 47800, host: '127.0.0.1' });
+  it('defaults when the fleet has no home', () => {
+    expect(loadConfig(resolvePaths('/nonexistent'))).toMatchObject({ port: 47800, host: '127.0.0.1' });
   });
   it('merges a partial file', () => {
     const home = makeHome();
-    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ port: 1234 }));
-    expect(loadConfig(path.join(home, 'config.json')).port).toBe(1234);
+    fs.writeFileSync(path.join(home, 'node.json'), JSON.stringify({ port: 1234 }));
+    expect(loadConfig(resolvePaths(home)).port).toBe(1234);
   });
   it('derives all paths from home', () => {
     const p = resolvePaths('/x');
@@ -25,6 +26,10 @@ describe('config and paths', () => {
     expect(p.statusScript).toBe('/x/hooks/claude-status.mjs');
     expect(p.push).toBe(path.join('/x', 'push.json'));
     expect(p.vapid).toBe(path.join('/x', 'vapid.json'));
+    expect([p.fleetConfig, p.nodeConfig, p.legacyConfig]).toEqual(['/x/fleet.json', '/x/node.json', '/x/config.json']);
+    expect([p.owner, p.handoverDir, p.journal, p.replicas]).toEqual(['/x/owner.json', '/x/handover', '/x/handover/journal.json', '/x/replicas']);
+    expect(p.preparedState('tx-1')).toBe('/x/handover/prepared-tx-1.json');
+    expect(p.preparedState('../escape')).toBe('/x/handover/prepared-..%2Fescape.json');
   });
   it('finds the Claude settings in CLAUDE_CONFIG_DIR when it is set', () => {
     const home = path.join(os.homedir(), '.claude', 'settings.json');
@@ -41,15 +46,15 @@ describe('config and paths', () => {
     expect(Config.parse({}).mobile.httpsPort).toBeUndefined();
     expect(Config.parse({ mobile: { httpsPort: 10000 } }).mobile.httpsPort).toBe(10000);
     expect(() => Config.parse({ mobile: { httpsPort: 8080 } })).toThrow();
-    expect(loadConfig('/nonexistent/config.json').home).toEqual({
+    expect(loadConfig(resolvePaths('/nonexistent')).home).toEqual({
       cwd: '~/.archipelago/home',
       actions: [
         { label: 'update info', prompt: '/archi-update-info' }, { label: 'status', prompt: '/archi-status' },
       ],
     });
     const home = makeHome();
-    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ home: { cwd: '/mc', actions: [{ label: 'x', prompt: '/x' }] } }));
-    expect(loadConfig(path.join(home, 'config.json')).home).toEqual({ cwd: '/mc', actions: [{ label: 'x', prompt: '/x' }] });
+    fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: crypto.randomUUID(), home: { cwd: '/mc', actions: [{ label: 'x', prompt: '/x' }] } }));
+    expect(loadConfig(resolvePaths(home)).home).toEqual({ cwd: '/mc', actions: [{ label: 'x', prompt: '/x' }] });
     expect(Config.parse({ home: { command: 'my-agent' } }).home.command).toBe('my-agent');
   });
   it('makes prefixed ids', () => {

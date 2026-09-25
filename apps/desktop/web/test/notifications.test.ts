@@ -45,7 +45,7 @@ describe('decide', () => {
   });
 
   it('posts a second terminal under its own key, with no buttons', () => {
-    const second = (status: AgentStatus) => patch(working, 'c1', { second: { tmux: { windowId: '@2', paneId: '%2' }, agent: agent(status), unread: false } });
+    const second = (status: AgentStatus) => patch(working, 'c1', { second: { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, agent: agent(status), unread: false } });
     const d = decide(look(second('working')), look(second('blocked')), new Map());
     expect(d.post).toEqual([{ key: 'c1-2', title: 'c1 needs you', subtitle: 'beta', body: '', sound: true, actions: false }]);
   });

@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { HomeSetup } from '@archipelago/archid/setup';
+import { DEFAULT_PREFIX } from '../../../scripts/install-release.mjs';
 import { ProtocolMismatch } from '../src/client.js';
-import { launch, type LaunchDeps } from '../src/launch.js';
+import { launch, realDeps, type LaunchDeps } from '../src/launch.js';
 
 type Call = [string, string[]];
 
@@ -31,7 +33,7 @@ function fake(o: {
     setupHome: async (s) => { setups.push(s); files.add(s.home); files.add(`${s.launchAgentsDir}/${s.label}.plist`); return []; },
     uid: 501,
     launchAgentsDir: '/u/Library/LaunchAgents',
-    repoRoot: '/r',
+    runFrom: { repoRoot: '/r' },
     timeoutMs: 30,
     intervalMs: 5,
   };
@@ -128,5 +130,14 @@ describe('launch', () => {
   it('carries the underlying reason into the timeout', async () => {
     const f = fake({ homes: [work.home], loaded: ['io.github.linusroxbergh.archipelago.archid.work'], daemonUp: false });
     await expect(launch(work, f.deps)).rejects.toThrow('(down)');
+  });
+});
+
+describe('a profile opened from an installed release', () => {
+  afterEach(() => { delete process.env.ARCHI_RELEASE_ROOT; });
+
+  it('runs its daemon from current, so a later install moves it along', () => {
+    process.env.ARCHI_RELEASE_ROOT = path.join(DEFAULT_PREFIX, 'releases', '1.2.3');
+    expect(realDeps().runFrom).toEqual({ release: path.join(DEFAULT_PREFIX, 'current') });
   });
 });

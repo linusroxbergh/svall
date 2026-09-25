@@ -1,0 +1,190 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import type { CodexPaths } from '../codex/install.js';
+import { systemdDir } from '../release.js';
+import { writeAtomic } from '../jsonfile.js';
+import { daemonProgram, readCodexHooks, readJsonSettings, requireWritableHooks, setupFleetHome, setupUser, type RunFrom } from '../setup.js';
+import { SystemdError, daemonReload, enableUnit, lingerState, restartUnit, type Run } from './service.js';
+
+export const GATEWAY_UNIT = 'archipelago-gateway.service';
+
+export const archidUnitName = (fleet: string): string => `archipelago-archid@${fleet}.service`;
+
+/** Where systemd reads a user's own units. */
+export const unitDirOf = (homedir: string): string => path.join(homedir, '.config', 'systemd', 'user');
+
+// systemd resolves % specifiers in these values, and a value holding a space needs its quotes
+const esc = (s: string): string => s.replace(/[\\"]/g, (c) => `\\${c}`).replace(/%/g, '%%');
+
+// it takes the command name literally but reads a $ in an argument, where "$$" is the one that survives
+const execLine = (argv: string[]): string =>
+  argv.map((a, i) => `"${esc(i === 0 ? a : a.replace(/\$/g, '$$$$'))}"`).join(' ');
+
+function render(name: string, values: Record<string, string>): string {
+  const text = fs.readFileSync(path.join(systemdDir(), name), 'utf8');
+  return text.replace(/@([A-Z_]+)@/g, (_, key: string) => {
+    const value = values[key];
+    if (value === undefined) throw new Error(`${name} has no value for @${key}@`);
+    return value;
+  });
+}
+
+export type UnitOptions = RunFrom & { homedir: string; prefix: string };
+
+// the release's own runtime first, so the daemon starts the node it was built against
+export const unitPath = (o: UnitOptions): string => [
+  'release' in o ? path.join(o.release, 'node', 'bin') : path.dirname(process.execPath),
+  path.join(o.homedir, '.local', 'bin'), '/usr/local/bin', '/usr/bin', '/bin',
+].join(':');
+
+const logFile = (o: UnitOptions, unit: string): string =>
+  path.join(o.prefix, 'log', `${unit.replace(/\.service$/, '')}.log`);
+
+const archiProgram = (o: RunFrom, ...args: string[]): string[] => ('release' in o
+  ? [path.join(o.release, 'bin', 'archi')]
+  : [path.join(o.repoRoot, 'node_modules/.bin/tsx'), path.join(o.repoRoot, 'packages/cli/src/main.ts')]).concat(args);
+
+export type Unit = { name: string; text: string };
+
+export function archidUnit(o: UnitOptions & { fleet: string; home: string }): Unit {
+  const name = archidUnitName(o.fleet);
+  return {
+    name,
+    text: render('archipelago-archid@.service.in', {
+      FLEET: o.fleet,
+      EXEC_START: execLine(daemonProgram(o)),
+      ARCHI_HOME: esc(o.home),
+      HOME: esc(o.homedir),
+      PATH: esc(unitPath(o)),
+      LOG: logFile(o, name).replace(/%/g, '%%'),
+    }),
+  };
+}
+
+export function gatewayUnit(o: UnitOptions): Unit {
+  return {
+    name: GATEWAY_UNIT,
+    text: render('archipelago-gateway.service.in', {
+      EXEC_START: execLine(archiProgram(o, 'gateway', 'serve')),
+      HOME: esc(o.homedir),
+      PATH: esc(unitPath(o)),
+      LOG: logFile(o, GATEWAY_UNIT).replace(/%/g, '%%'),
+    }),
+  };
+}
+
+export type LinuxSetup = UnitOptions & {
+  home: string; fleet: string; unitDir: string; settingsPath: string; codex: CodexPaths; shimDir: string;
+  user: string; run: Run; systemctl: boolean; replaceSettings?: boolean; port?: number; tmuxVersion?: string;
+};
+
+const readOrUndefined = (file: string): string | undefined => {
+  try { return fs.readFileSync(file, 'utf8'); } catch { return undefined; }
+};
+
+/** The units for this machine, written only when they are not already what they should be. */
+export function writeUnits(o: LinuxSetup): string[] {
+  fs.mkdirSync(o.unitDir, { recursive: true });
+  fs.mkdirSync(path.join(o.prefix, 'log'), { recursive: true });
+  const done: string[] = [];
+  for (const unit of [archidUnit(o), gatewayUnit(o)]) {
+    const file = path.join(o.unitDir, unit.name);
+    if (readOrUndefined(file) === unit.text) continue;
+    writeAtomic(file, unit.text, { perProcess: true });
+    done.push(`systemd unit -> ${file}`);
+  }
+  return done;
+}
+
+type UnitStart = { started: true; done: string[] } | { started: false; reason: string };
+
+async function startUnit(o: LinuxSetup): Promise<UnitStart> {
+  const units = [archidUnitName(o.fleet), GATEWAY_UNIT];
+  let unit = units[0];
+  try {
+    await daemonReload(o.run);
+    for (unit of units) await enableUnit(o.run, unit);
+  } catch (e) {
+    if (!(e instanceof SystemdError)) throw e;
+    return { started: false, reason: `${unit} was not started: ${e.message}` };
+  }
+  const done = units.map((u) => `systemctl --user enable --now ${u}`);
+  try {
+    const linger = await lingerState(o.run, o.user);
+    if (!linger.linger) done.push(`the fleet stops when you log out until you run: ${linger.action}`);
+  } catch (e) {
+    done.push(`lingering could not be read: ${(e as Error).message}`);
+  }
+  return { started: true, done };
+}
+
+export type LinuxSetupResult = { done: string[]; started: boolean };
+
+/** `archi setup` on Linux: the fleet home, the per-user files and this machine's systemd units. */
+export async function setupLinux(o: LinuxSetup): Promise<LinuxSetupResult> {
+  // both files are read and checked before anything is written, so one that is not JSON, or cannot take
+  // the change, stops a setup that has changed nothing
+  const settings = readJsonSettings(o.settingsPath);
+  const codexHooks = readCodexHooks(o.codex);
+  requireWritableHooks(o.home, settings, codexHooks);
+  const done = setupFleetHome(o);
+  done.push(...setupUser({ ...o, settings, codexHooks }));
+  done.push(...writeUnits(o));
+  if (!o.systemctl) return { done, started: false };
+  const start = await startUnit(o);
+  if (!start.started) return { done: [...done, start.reason], started: false };
+  return { done: [...done, ...start.done], started: true };
+}
+
+/**
+ * Setup, and for a release that replaced another the probe that can put it back. Only a daemon
+ * this run really started says anything about the release: a machine with no systemd would
+ * otherwise roll back a release that installed perfectly well.
+ */
+export async function setupLinuxRelease(o: LinuxSetup & {
+  rollbackTo?: string;
+  probe: () => Promise<boolean>;
+  rollback: (prefix: string) => Rollback;
+}): Promise<string[]> {
+  const { done, started } = await setupLinux(o);
+  if (!started || !o.rollbackTo) return done;
+  // `enable --now` leaves a running unit alone, so the old release would keep answering the probe
+  for (const unit of [archidUnitName(o.fleet), GATEWAY_UNIT]) {
+    try {
+      await restartUnit(o.run, unit);
+      done.push(`systemctl --user restart ${unit}`);
+    } catch (e) {
+      done.push(`${unit} did not restart: ${(e as Error).message}`);
+    }
+  }
+  return [...done, ...await probeOrRollback({
+    prefix: o.prefix, unit: archidUnitName(o.fleet), run: o.run, probe: o.probe, rollback: o.rollback,
+  })];
+}
+
+export type Rollback = { prefix: string; current: string; release: string; version: string };
+
+/**
+ * A release whose daemon does not answer goes back where it came from, so an upgrade cannot leave
+ * the machine without a daemon.
+ */
+export async function probeOrRollback(o: {
+  prefix: string; unit: string; run: Run;
+  probe: () => Promise<boolean>;
+  rollback: (prefix: string) => Rollback;
+}): Promise<string[]> {
+  if (await o.probe()) return [];
+  let back: Rollback;
+  try {
+    back = o.rollback(o.prefix);
+  } catch (e) {
+    return [`the daemon did not answer and there is no release to go back to: ${(e as Error).message}`];
+  }
+  const done = [`the daemon did not answer: current -> ${back.release}`];
+  try {
+    await restartUnit(o.run, o.unit);
+    return [...done, `systemctl --user restart ${o.unit}`];
+  } catch (e) {
+    return [...done, `${o.unit} did not restart: ${(e as Error).message}`];
+  }
+}
