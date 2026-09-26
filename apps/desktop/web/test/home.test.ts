@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Cell, FleetState, Island } from '@archipelago/protocol';
-import { homeBox, homeCellToScreen, homeCrew, homeReserve, homeSlotAt, inHomeBox } from '../src/map/home.js';
+import { homeBlocks, homeBox, homeCellToScreen, homeCrew, homeReserve, homeSlotAt, inHomeBox } from '../src/map/home.js';
+import { placeIslet } from '../src/map/resources.js';
 import type { Drag } from '../src/map/types.js';
 import { theme } from '../src/theme.js';
 import { chr, fleet, isl } from './fixtures.js';
@@ -31,6 +32,15 @@ describe('home geometry', () => {
   it('maps a home cell to screen px at scale 1', () => {
     const b = homeBox(home, host);
     expect(homeCellToScreen(b, { x: 1, y: 1 })).toEqual({ x: b.x + 44, y: b.y + 44 });
+  });
+  it('blocks the row, the land and the islet, each padded by the water the fleet keeps', () => {
+    const w = theme.home.water, place = placeIslet(host.w, 8 * 44, false);
+    const land = homeBox(home, host, place.homeShift);
+    const [row, ground, islet] = homeBlocks(home, host, place, 300);
+    expect(row).toEqual({ x: host.w / 2 + place.homeShift - 150 - w, w: 300 + 2 * w, top: host.h - homeReserve(false), bottom: host.h - 132 - 28 + w });
+    expect(ground).toEqual({ x: land.x - w, w: land.w + 2 * w, top: land.y - w });
+    expect(islet.x).toBeGreaterThan(ground.x + ground.w - 2 * w);
+    expect(homeBlocks({ ...home, collapsed: true }, host, placeIslet(host.w, 8 * 44, true), 300)).toEqual([{ x: 640 - 150 - w, w: 300 + 2 * w, top: host.h - homeReserve(true), bottom: host.h - 16 + w }]);
   });
   it('reserves the row plus half a cell of water, open or collapsed', () => {
     expect(theme.home.water).toBe(theme.cell / 2);

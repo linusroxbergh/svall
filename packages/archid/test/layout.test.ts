@@ -323,10 +323,10 @@ describe('crewGrid', () => {
 describe('makeRoom', () => {
   const home = (y: number): Island => ({ ...island('home', 0, y), kind: 'home', name: 'mission control' });
 
-  it('lifts an island whose ground would cross mission control off the floor', () => {
+  it('leaves an island put past mission control\'s row where it was put', () => {
     const st = withIslands(island('a', 0, 14), home(16));
     makeRoom(st, 'a');
-    expect(aboveHome(st, st.islands.a)).toBe(true);
+    expect(st.islands.a.position).toEqual({ x: 0, y: 14 });
   });
 
   it('pushes the neighbours an unfolded island now stands on', () => {

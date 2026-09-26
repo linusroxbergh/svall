@@ -11,12 +11,12 @@ import { theme, tokenPx } from '../theme.js';
 import { Toast } from '../Toast.js';
 import { cardRect } from './card.js';
 import { Wordmark } from './Furniture.js';
-import { homeBox, homeCellToScreen, homeCrew, homeReserve, homeSlotAt, inHomeBox } from './home.js';
+import { homeBlocks, homeBox, homeCellToScreen, homeCrew, homeReserve, homeSlotAt, inHomeBox } from './home.js';
 import { Home } from './HomeIsland.js';
 import { HoverCard } from './HoverCard.js';
 import { DBL_CLICK_MS, createInteractions, type Intent } from './interactions.js';
 import { Island } from './Island.js';
-import { cardScale, cellSize, clampPan, fitAll, islandNear, labelScale, mapIslands, screenToCell, worldBounds, worldCell, worldToScreen, type Layout } from './layout.js';
+import { cardScale, cellSize, clampPan, fitAll, islandNear, labelScale, limitAt, mapIslands, onBlocks, roomOf, screenToCell, worldBounds, worldCell, worldToScreen, type Below, type Layout } from './layout.js';
 import { ISLET, placeIslet } from './resources.js';
 import { ResourcesIsland, ResourcesPill } from './ResourcesIsland.js';
 import { TerminalCard } from './TerminalCard.js';
@@ -74,6 +74,7 @@ export function Map() {
   const [hostSize, setHostSize] = useState({ w: 0, h: 0 });
   // mission control's row wraps to as many lines as it needs; the shelf's bottom edge follows its real height
   const [rowH, setRowH] = useState(theme.home.row);
+  const rowW = useRef(0);
   const hostSizeRef = useRef(hostSize);
   hostSizeRef.current = hostSize;
   const [hover, setHover] = useState<string>();
@@ -164,7 +165,16 @@ export function Map() {
     // A release may arrive without a final move event; use its exact pointer position for the grid target.
     if (ev.type === 'up' && interactions.current.drag()) interactions.current.handle({ ...event, type: 'move' }, st.fleet, st.selectedId);
     const before = ev.type === 'up' ? interactions.current.drag() : undefined;
-    const intent = interactions.current.handle(event, st.fleet, st.selectedId);
+    let intent = interactions.current.handle(event, st.fleet, st.selectedId);
+    // mission control is drawn over the world, so land put down on it would vanish under it: the island goes back
+    if (intent?.type === 'moveIsland' || intent?.type === 'resize') {
+      const island = st.fleet.islands[intent.id], below = host.current && belowOf(host.current);
+      const next = island && (intent.type === 'moveIsland' ? { ...island, position: intent.position } : { ...island, size: intent.size });
+      if (next && below && onBlocks(next, l, below)) {
+        st.showToast(`${island.name} would stand on mission control`);
+        intent = undefined;
+      }
+    }
     if (ev.type === 'up' && before && before.kind !== 'figure' && intent && (intent.type === 'moveIsland' || intent.type === 'resize')) {
       const island = st.fleet.islands[before.id];
       if (island) {
@@ -249,6 +259,12 @@ export function Map() {
   const holdTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => { cancelAnimationFrame(anim.current ?? 0); cancelAnimationFrame(dragFrame.current ?? 0);
     clearTimeout(holdTimer.current); clearTimeout(hoverTimer.current); clearTimeout(settleTimer.current); }, []);
+  // the map under the room kept over mission control, and what mission control stands in it with
+  const belowOf = (el: HTMLElement): Below | undefined => {
+    const hi = homeIsland(app.store.getState().fleet);
+    const host = { w: el.clientWidth, h: el.clientHeight };
+    return hi && { h: host.h, blocks: homeBlocks(hi, host, placeIslet(host.w, hi.size.w * theme.cell, Boolean(hi.collapsed)), rowW.current) };
+  };
   const refit = (immediate?: boolean, anchor?: PendingIsland['anchor']) => {
     if (cameraHold.current && !immediate) return;
     const el = host.current;
@@ -259,7 +275,9 @@ export function Map() {
     const islands = mapIslands(app.store.getState().fleet);
     const home = homeIsland(app.store.getState().fleet);
     const win = { w: el.clientWidth, h: el.clientHeight - homeReserve(Boolean(home?.collapsed)) };
-    const fit = fitAll(islands, win, home?.position.y);
+    const below = belowOf(el);
+    const fit = fitAll(islands, win, home?.position.y, below);
+    const room = roomOf(islands, fit, win, below);
     let next: Layout;
     if (anchor) {
       // Keep the released grip still while zooming, as far as the fitted world can remain in view.
@@ -273,12 +291,13 @@ export function Map() {
         const panHi = theme.panMargin - start * s;
         return panLo <= panHi ? Math.max(panLo, Math.min(panHi, wanted)) : fallback;
       };
+      // a world resting on mission control is held down by it, so only the room over it leaves the anchor a say in y
       next = { ...fit,
         ox: axis(anchor.screen.x - anchor.world.x * fit.scale, b.x * theme.cell, b.w * theme.cell, win.w, theme.fit.x, theme.fit.x, fit.ox),
-        oy: axis(anchor.screen.y - anchor.world.y * fit.scale, b.y * theme.cell, b.h * theme.cell, win.h, theme.fit.top, theme.fit.bottom, fit.oy) };
+        oy: room === win ? axis(anchor.screen.y - anchor.world.y * fit.scale, b.y * theme.cell, b.h * theme.cell, win.h, theme.fit.top, theme.fit.bottom, fit.oy) : fit.oy };
       pan.current = { x: next.ox - fit.ox, y: next.oy - fit.oy };
     } else {
-      pan.current = clampPan(islands, fit, win, pan.current, home?.position.y);
+      pan.current = clampPan(islands, fit, room, pan.current, home?.position.y);
       next = { ...fit, ox: fit.ox + pan.current.x, oy: fit.oy + pan.current.y };
     }
     const cur = layoutRef.current;
@@ -302,8 +321,9 @@ export function Map() {
     const island = app.store.getState().fleet.islands[id], el = host.current;
     if (!island || !el) return false;
     const l = layoutRef.current, s = cellSize(l);
-    const h = el.clientHeight - homeReserve(Boolean(homeIsland(app.store.getState().fleet)?.collapsed));
     const x = l.ox + island.position.x * s, y = l.oy + island.position.y * s;
+    const below = belowOf(el);
+    const h = below ? limitAt(below, x, x + island.size.w * s) : el.clientHeight - homeReserve(false);
     // A release only moves the camera when the land or label would be clipped. The larger fit
     // bounds include spare card room; using them here needlessly recentres ordinary moves.
     return x >= 8 && x + island.size.w * s <= el.clientWidth - 8 &&
@@ -419,7 +439,10 @@ export function Map() {
   useEffect(() => {
     const row = host.current?.querySelector<HTMLElement>('.hrow');
     if (!row) return;
-    const read = () => setRowH(row.offsetHeight);
+    const read = () => {
+      setRowH(row.offsetHeight);
+      if (row.offsetWidth !== rowW.current) { rowW.current = row.offsetWidth; refit(); }
+    };
     read();
     const ro = new ResizeObserver(read);
     ro.observe(row);

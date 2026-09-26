@@ -253,6 +253,60 @@ test('a folded island gives up its ground, and takes it back on unfolding', asyn
   expect(await at(left.id)).toEqual({ x: 0, y: 200 });
 });
 
+// the land of mission control and of an island, as drawn
+const landOf = async (page: Page, testid: string) => (await page.getByTestId(testid).locator('.land').first().boundingBox())!;
+const overlaps = (a: { x: number; width: number }, b: { x: number; width: number }) => a.x < b.x + b.width && b.x < a.x + a.width;
+
+test('an island dragged into the water beside mission control stays beside it', async ({ page, archi }) => {
+  const small = { w: 6, h: 3 };
+  // the pair spans the map, so the left one stands well clear of mission control
+  const left = await archi.api.call('island.create', { name: archi.uniq('bl'), seed: 1, position: { x: 0, y: 0 }, size: small });
+  await archi.api.call('island.create', { name: archi.uniq('br'), seed: 1, position: { x: 40, y: 0 }, size: small });
+  // wide enough that water runs beside mission control's label row as well as its land
+  await page.setViewportSize({ width: 1700, height: 800 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await archi.open('map');
+  await settle(page);
+
+  const home = await landOf(page, 'island-home');
+  const label = (await page.getByTestId(`island-label-${left.id}`).boundingBox())!;
+  const land = await landOf(page, `island-${left.id}`);
+  expect(land.x + land.width).toBeLessThan(home.x);
+  // down until the land sits beside the sandbar, level with it
+  const by = home.y + 20 - land.y;
+  await page.mouse.move(label.x + label.width / 2, label.y + label.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(label.x + label.width / 2, label.y + label.height / 2 + by / 2, { steps: 4 });
+  await page.mouse.move(label.x + label.width / 2, label.y + label.height / 2 + by, { steps: 4 });
+  await page.mouse.up();
+
+  await expect.poll(async () => (await archi.api.call('state.get', {})).islands[left.id].position.y).toBeGreaterThan(3);
+  await settle(page);
+  const after = await landOf(page, `island-${left.id}`), sand = await landOf(page, 'island-home');
+  expect(after.y + after.height).toBeGreaterThan(sand.y);
+  expect(overlaps(after, sand)).toBe(false);
+  await expect(page.getByTestId('toast')).toHaveCount(0);
+});
+
+test('an island put down on mission control goes back where it stood', async ({ page, archi }) => {
+  const small = { w: 6, h: 3 };
+  for (const x of [0, 16]) await archi.api.call('island.create', { name: archi.uniq('ol'), seed: 1, position: { x, y: 0 }, size: small });
+  const mid = await archi.api.call('island.create', { name: archi.uniq('om'), seed: 1, position: { x: 8, y: 0 }, size: small });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await archi.open('map');
+  await settle(page);
+
+  const home = await landOf(page, 'island-home');
+  const label = (await page.getByTestId(`island-label-${mid.id}`).boundingBox())!;
+  await page.mouse.move(label.x + label.width / 2, label.y + label.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(home.x + home.width / 2, home.y + 30, { steps: 8 });
+  await page.mouse.up();
+
+  await expect(page.getByTestId('toast')).toContainText('would stand on mission control');
+  expect((await archi.api.call('state.get', {})).islands[mid.id].position).toEqual({ x: 8, y: 0 });
+});
+
 test('an island moved towards mission control closes the gap instead of refitting the map', async ({ page, archi }) => {
   const small = { w: 6, h: 3 };
   await archi.api.call('island.create', { name: archi.uniq('mt'), seed: 1, position: { x: 0, y: 0 }, size: small });
@@ -271,8 +325,9 @@ test('an island moved towards mission control closes the gap instead of refittin
   expect(await layoutOf()).toBe(before);
   expect((await page.getByTestId('island-home').boundingBox())!.y).toBeCloseTo(homeTop, 0);
 
-  const refused = await archi.api.call('island.update', { id: mid.id, position: { x: 0, y: 20 } }).catch((e: Error) => e.message);
-  expect(refused).toMatch(/below mission control/);
+  // past mission control's row too: the floor goes down with it
+  await archi.api.call('island.update', { id: mid.id, position: { x: 0, y: 20 } });
+  await expect.poll(async () => (await drawnAt(page, mid.id))?.y).toBe(20);
 });
 
 test('the sidebar moves a character to another island, then reorders its new crew', async ({ page, archi }) => {

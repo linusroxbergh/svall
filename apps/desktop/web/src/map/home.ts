@@ -1,6 +1,8 @@
 import { HOME_ISLAND, HOME_ROW, homeSlots, type Cell, type Character, type FleetState, type Island } from '@archipelago/protocol';
 import { charactersOf, homeIsland } from '../selectors.js';
 import { theme } from '../theme.js';
+import type { Block } from './layout.js';
+import { ISLET, type Placement } from './resources.js';
 import type { Drag } from './types.js';
 
 // the visible strip of home land, in map px: centred, theme.home.visible tall, flush with the bottom edge
@@ -29,6 +31,19 @@ export const homeCellToScreen = (b: HomeBox, cell: Cell): { x: number; y: number
 // the map height mission control keeps: its row, where that row hangs, and the water above the pill
 export const homeReserve = (collapsed: boolean): number =>
   (collapsed ? theme.home.bar : theme.home.visible + theme.home.rowGap) + theme.home.row + theme.home.water;
+
+// what mission control stands on the map's foot with, each grown by the water the fleet keeps from it: its label row,
+// the land under the row and the resources islet, taken as tall as the row
+export function homeBlocks(island: Island, host: { w: number; h: number }, place: Placement, rowW: number): Block[] {
+  const pad = theme.home.water, top = host.h - homeReserve(Boolean(island.collapsed));
+  const rowFoot = host.h - (island.collapsed ? theme.home.bar : theme.home.visible + theme.home.rowGap);
+  const row = { x: host.w / 2 + place.homeShift - rowW / 2 - pad, w: rowW + 2 * pad, top, bottom: rowFoot + pad };
+  if (island.collapsed) return [row];
+  const land = homeBox(island, host, place.homeShift);
+  const blocks = [row, { x: land.x - pad, w: land.w + 2 * pad, top: land.y - pad }];
+  if (place.mode === 'pair') blocks.push({ x: place.cx - (ISLET.w * place.scale) / 2 - pad, w: ISLET.w * place.scale + 2 * pad, top });
+  return blocks;
+}
 
 // home's crew, minus one being dragged away, plus a visitor while it hovers over home
 export function homeCrew(f: FleetState, drag: Drag | undefined): Character[] {

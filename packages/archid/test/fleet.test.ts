@@ -134,19 +134,18 @@ runIf('Fleet', () => {
     await fleet.closeCharacter(c.id);
   });
 
-  it('unfolds an island against mission control by making room, not by refusing', async () => {
+  it('unfolds an island against mission control where it stands, the floor giving way', async () => {
     const { fleet, store } = await boot();
     const a = fleet.createIsland({ name: 'one', position: { x: 0, y: 0 }, size: { w: 6, h: 4 } });
     const b = fleet.createIsland({ name: 'two', position: { x: 10, y: 0 }, size: { w: 6, h: 12 } });
     fleet.updateIsland(a.id, { collapsed: true });
     fleet.updateIsland(a.id, { position: { x: 0, y: 10 } });
-    const homeY = store.state.islands.home.position.y;
 
     fleet.updateIsland(a.id, { collapsed: false });
 
     const state = store.state;
     expect(state.islands[a.id].collapsed).toBeUndefined();
-    expect(state.islands.home.position.y).toBe(homeY);
+    expect(state.islands[a.id].position).toEqual({ x: 0, y: 10 });
     for (const id of [a.id, b.id]) {
       expect(placementOk(state, state.islands[id])).toBe(true);
       expect(aboveHome(state, state.islands[id])).toBe(true);
