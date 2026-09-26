@@ -1,6 +1,8 @@
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Command } from 'commander';
+import { findAgents } from '@archipelago/archid/agents';
 import { codexPaths } from '@archipelago/archid/codex/install';
 import { defaultsPrefs, moveOldIds, oldIdsLeft, runLaunchctl, signInsLeft } from '@archipelago/archid/legacy';
 import { repoRoot, resolvePaths, userPaths } from '@archipelago/archid/paths';
@@ -25,15 +27,18 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       const library = path.join(os.homedir(), 'Library');
       const signIns = signInsLeft(library);
       if (signIns) warnings.push(`! sign-ins  ${signIns}`);
-      // these throw on a file setup could not write back, so --check covers it too
-      const settings = readJsonSettings(settingsPath);
+      const agents = findAgents(process.env.PATH ?? '');
       const codex = codexPaths();
-      const codexHooks = readCodexHooks(codex);
+      const claudeWanted = agents.includes('claude') || fs.existsSync(path.dirname(settingsPath));
+      const codexWanted = agents.includes('codex') || fs.existsSync(codex.dir);
+      // these throw on a file setup could not write back, so --check covers it too
+      const settings = claudeWanted ? readJsonSettings(settingsPath) : undefined;
+      const codexHooks = readCodexHooks(codex, codexWanted);
       requireWritableHooks(t.home, settings, codexHooks);
       if (o.check) {
         // desktop:install runs setup when it sees one of these lines, as nothing else rewrites the Claude hooks, the shims or the plist
         const script = resolvePaths(t.home).hookScript;
-        if (!claudeHooksCurrent(settings.settings, t.home) || (codexHooks && !codexHooksCurrent(codexHooks.settings, script))) {
+        if ((settings && !claudeHooksCurrent(settings.settings, t.home)) || (codexHooks && !codexHooksCurrent(codexHooks.settings, script))) {
           warnings.push('! hooks  missing or out of date: run archi setup');
         }
         // desktop:install puts this checkout's app in place, so shims or a plist that run another checkout, moved or not, are out of date
@@ -69,6 +74,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
         shimDir: userPaths().shimDir,
         repoRoot: repoRoot(),
         launchctl: system,
+        agents,
       }).catch((e: Error) => {
         // what moved stays moved, and a second run finds nothing left to say it
         if (moved.length) e.message = [...moved, e.message].join('\n');

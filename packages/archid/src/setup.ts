@@ -330,15 +330,15 @@ export const statusWrapper = (node: string, script: string): string =>
 export const hookCommand = (node: string, script: string, backend: AgentKind): string =>
   `[ -z "$ARCHI_CHAR_ID" ] || { ${nodeRun(node, script)} ${backend} "$PPID"; }`;
 
-/** Codex's hooks file, when Codex has a home on this machine; throws on one that is not JSON. */
-export const readCodexHooks = (codex: CodexPaths): JsonSettings | undefined =>
-  (fs.existsSync(codex.dir) ? readJsonSettings(codex.hooks) : undefined);
+/** Codex's hooks file when Codex is wanted here (on PATH, or its home exists); throws on one that is not JSON. */
+export const readCodexHooks = (codex: CodexPaths, wanted = fs.existsSync(codex.dir)): JsonSettings | undefined =>
+  (wanted ? readJsonSettings(codex.hooks) : undefined);
 
-/** Writes the hooks into Codex's own file, when Codex has a home on this machine. */
+/** Writes the hooks into Codex's own file, when Codex is wanted here. */
 export function installCodexHooks(codex: CodexPaths, script: string, before: JsonSettings | undefined = readCodexHooks(codex)): string[] {
   if (!before) return [];
   const wrote = writeJsonSettings(before, withCodexHooks(before.settings, script), 'codex hooks');
-  return wrote.length ? [...wrote, 'run /hooks in Codex once to trust the Archipelago hook, or it will not fire'] : [];
+  return wrote.length ? [...wrote, 'Codex asks once to trust these hooks: start codex and choose "Trust all and continue", or trust them in /hooks'] : [];
 }
 
 // the node the installed statusline names, while it is there: the commands fall back to the node on PATH,
@@ -384,14 +384,14 @@ export const shimsCurrent = (shimDir: string, root: string): boolean =>
   SHIMS.every((name) => fs.existsSync(path.join(shimDir, name)) && fs.readFileSync(path.join(shimDir, name), 'utf8') === shimText(root));
 
 /** Throws, before anything is written, when the Claude settings or Codex's hooks need a change setup cannot write. */
-export function requireWritableHooks(home: string, settings: JsonSettings, codexHooks: JsonSettings | undefined): void {
-  requireWritable(settings, withClaudeHooks(settings.settings, home));
+export function requireWritableHooks(home: string, settings: JsonSettings | undefined, codexHooks: JsonSettings | undefined): void {
+  if (settings) requireWritable(settings, withClaudeHooks(settings.settings, home));
   if (codexHooks) requireWritable(codexHooks, withCodexHooks(codexHooks.settings, resolvePaths(home).hookScript));
 }
 
-export function setupUser(o: { home: string; settings: JsonSettings; codex: CodexPaths; codexHooks?: JsonSettings; shimDir: string; repoRoot: string }): string[] {
+export function setupUser(o: { home: string; settings?: JsonSettings; codex: CodexPaths; codexHooks?: JsonSettings; shimDir: string; repoRoot: string }): string[] {
   const paths = resolvePaths(o.home);
-  const done = writeJsonSettings(o.settings, withClaudeHooks(o.settings.settings, o.home), 'claude hooks and statusline');
+  const done = o.settings ? writeJsonSettings(o.settings, withClaudeHooks(o.settings.settings, o.home), 'claude hooks and statusline') : [];
   done.push(...installCodexHooks(o.codex, paths.hookScript, o.codexHooks));
 
   fs.mkdirSync(o.shimDir, { recursive: true });
@@ -412,12 +412,14 @@ export function setupUser(o: { home: string; settings: JsonSettings; codex: Code
 }
 
 export async function runSetup(o: {
-  home: string; settingsPath: string; codex: CodexPaths; launchAgentsDir: string; shimDir: string; repoRoot: string; launchctl: boolean;
+  home: string; settingsPath: string; codex: CodexPaths; launchAgentsDir: string; shimDir: string; repoRoot: string; launchctl: boolean; agents?: AgentKind[];
 }): Promise<string[]> {
+  const claudeWanted = !o.agents || o.agents.includes('claude') || fs.existsSync(path.dirname(o.settingsPath));
+  const codexWanted = o.agents ? o.agents.includes('codex') || fs.existsSync(o.codex.dir) : fs.existsSync(o.codex.dir);
   // both files are read and checked before anything is written, so one that is not JSON, or cannot take
   // the change, stops a setup that has changed nothing
-  const settings = readJsonSettings(o.settingsPath);
-  const codexHooks = readCodexHooks(o.codex);
+  const settings = claudeWanted ? readJsonSettings(o.settingsPath) : undefined;
+  const codexHooks = readCodexHooks(o.codex, codexWanted);
   requireWritableHooks(o.home, settings, codexHooks);
   const home = await setupHome({ ...o, label: LAUNCHD_LABEL, launchctl: false });
   const user = setupUser({ ...o, settings, codexHooks });

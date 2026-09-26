@@ -207,6 +207,24 @@ describe('launchdPlist', () => {
 });
 
 describe('runSetup', () => {
+  it('writes no Claude settings for a Codex-only machine, and makes CODEX_HOME for its hooks', async () => {
+    const home = makeHome();
+    const settingsPath = path.join(home, 'claude', 'settings.json'); // its folder does not exist
+    const codex = codexPaths({ CODEX_HOME: path.join(home, 'codex') }); // nor does this one
+    const lines = await runSetup({ home, settingsPath, launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), repoRoot, launchctl: false, codex, agents: ['codex'] });
+    expect(fs.existsSync(settingsPath)).toBe(false);
+    expect(JSON.parse(fs.readFileSync(codex.hooks, 'utf8')).hooks.SessionStart).toBeDefined();
+    expect(lines.join('\n')).toContain('Trust all and continue');
+  });
+
+  it('keeps writing Claude settings when its folder exists without the CLI', async () => {
+    const home = makeHome();
+    const settingsPath = path.join(home, 'claude', 'settings.json');
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    await runSetup({ home, settingsPath, launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), repoRoot, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), agents: ['codex'] });
+    expect(fs.existsSync(settingsPath)).toBe(true);
+  });
+
   it('writes hooks, conf, settings backup, plist and shim', async () => {
     const home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ home: { cwd: path.join(home, 'mc') } }));
