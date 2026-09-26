@@ -172,8 +172,8 @@ export function crewGrid(n: number, seed: number, abreast = 3): { size: Size; ce
 // label pills stand a cell apart in rows stacked one on the next, and the band keeps a row of water above the labels below it
 const PILL_GAP = 1;
 const BAND_GAP = 3;
-// the water the map keeps around the fleet: a coast either side, the cards under the last row, the label above the first
-const FRAME = { w: 3, h: 2, label: 2 };
+// the water the map keeps around the fleet, as its world bounds do: a coast either side, the cards under the last row, the label above the first
+const FRAME = { w: 2.8, h: 1.3, label: 1.3 };
 
 type Box = { id: string; size: Size };
 type Plan = { band: Box[][]; rows: Box[][]; width: number; height: number; scale: number };

@@ -24,16 +24,16 @@ describe('world layout', () => {
   it('fits continuously and centres the world both ways', () => {
     const islands = mapIslands(fleet());
     const l = fitAll(islands, { w: 1400, h: 900 });
-    // min((1400 - 2*56)/1091.2, (900 - 2*66)/290.4) = min(1.180351…, 2.644628…)
+    // min((1400 - 2*24)/1091.2, (900 - 56 - 0)/290.4) = min(1.239002…, 2.906336…)
     expect(l.tile).toBe(theme.cell);
-    expect(l.scale).toBeCloseTo(1.1803519061583576, 10);
-    expect(l.ox).toBeCloseTo(128.70967741935493, 6);    // (1400 - 1288)/2 + 1.4*44*scale
-    expect(l.oy).toBeCloseTo(346.1290322580645, 6);     // (900 - 290.4*scale)/2 + 1.3*44*scale
+    expect(l.scale).toBeCloseTo(1.2390029325513197, 10);
+    expect(l.ox).toBeCloseTo(100.3225806451613, 6);     // (1400 - 1352)/2 + 1.4*44*scale
+    expect(l.oy).toBeCloseTo(368.9677419354839, 6);     // 56 + (844 - 290.4*scale)/2 + 1.3*44*scale
     // the water left over is shared evenly either side, across and down
     const b = worldBounds(islands);
-    expect(l.ox + b.x * theme.cell * l.scale).toBeCloseTo(56, 6);
+    expect(l.ox + b.x * theme.cell * l.scale).toBeCloseTo(24, 6);
     const top = l.oy + b.y * theme.cell * l.scale;
-    expect(top).toBeCloseTo(900 - (top + b.h * theme.cell * l.scale), 6);
+    expect(top - theme.fit.top).toBeCloseTo(900 - theme.fit.bottom - (top + b.h * theme.cell * l.scale), 6);
   });
 
   it('holds the ceiling and the floor', () => {
@@ -42,7 +42,7 @@ describe('world layout', () => {
     const tiny = fitAll(islands, { w: 400, h: 300 });
     expect(tiny.scale).toBe(theme.scale.min);                                    // raw 0.2639 → 0.42
     expect(tiny.ox).toBeCloseTo(-3.28, 6);                                       // (400 - 458.304)/2 + 25.872
-    expect(tiny.oy).toBeCloseTo(113.04, 6);                                      // (300 - 121.968)/2 + 1.3*44*0.42
+    expect(tiny.oy).toBeCloseTo(141.04, 6);                                      // 56 + (244 - 121.968)/2 + 1.3*44*0.42
   });
 
   it('reaches down to mission control, so the water above it is the fleet to spend', () => {
