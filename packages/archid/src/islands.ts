@@ -3,7 +3,7 @@ import { settleItems } from './context/items.js';
 import { removeDocs } from './docs.js';
 import { Invalid, NotFound } from './errors.js';
 import { newId } from './ids.js';
-import { aboveHome, arrangeFleet, defaultPosition, freePosition, makeRoom, placementOk, randomSeed, relocateDrowned, settleHome, uniqueName } from './layout.js';
+import { arrangeFleet, defaultPosition, freePosition, makeRoom, placementOk, randomSeed, relocateDrowned, settleHome, uniqueName } from './layout.js';
 import type { Logger } from './log.js';
 import type { Paths } from './paths.js';
 import type { Store } from './store.js';
@@ -47,8 +47,6 @@ export function updateIsland({ store, log }: Deps, id: string, patch: IslandPatc
     .find((i) => i.id !== id && i.name.toLowerCase() === p.name!.toLowerCase());
   if (clash) throw new Invalid(`another island is already called ${clash.name}`);
   if ((p.position || p.size) && !placementOk(store.state, next)) throw new Invalid(`island ${current.name} would overlap another island`);
-  // ground taken by a move or by growth stops at mission control's row
-  if ((p.position || p.size) && !aboveHome(store.state, next)) throw new Invalid(`island ${current.name} would stand below mission control`);
   const members = Object.values(store.state.characters).filter((c) => c.islandId === id);
   if (p.size && landCells(next.size, next.seed).length < members.length) throw new Invalid(`island ${current.name} would have fewer cells than characters`);
   const context = p.context && settleItems(p.context, current.context);

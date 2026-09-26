@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ground } from '@archipelago/protocol';
-import { cardScale, cellOwner, characterAt, clampPan, fitAll, labelScale, mapIslands, screenToCell, worldBounds, worldCell, worldToScreen } from '../src/map/layout.js';
+import { ground, type Island } from '@archipelago/protocol';
+import { cardScale, cellOwner, characterAt, clampPan, fitAll, fitFloor, labelScale, limitAt, mapIslands, onBlocks, roomOf, screenToCell, worldBounds, worldCell, worldToScreen, type Below, type Layout } from '../src/map/layout.js';
 import { theme } from '../src/theme.js';
 import { fleet } from './fixtures.js';
 
@@ -123,5 +123,84 @@ describe('world layout', () => {
     expect(characterAt(f, 'i_b', c0.cell)?.id).toBe('c0');
     expect(cellOwner(f, { x: 0, y: 0 })).toMatchObject({ island: f.islands.i_b, land: false }); // corner cut
     expect(cellOwner(f, { x: 7, y: 0 })).toBeUndefined();                                       // gap
+  });
+});
+
+// mission control on a 1400 x 900 map: its row 210px up the foot, the land under it wider and lower
+describe('fitting around mission control', () => {
+  const win = { w: 1400, h: 690 };
+  const below: Below = { h: 900, blocks: [{ x: 550, w: 300, top: 690 }, { x: 520, w: 360, top: 746 }] };
+  const cs = (l: Layout) => theme.cell * l.scale;
+  const foot = (i: Island) => ground(i).position.y + ground(i).size.h + theme.bounds.bottom;
+  const span = (i: Island, l: Layout): [number, number] => [l.ox + ground(i).position.x * cs(l), l.ox + (ground(i).position.x + ground(i).size.w) * cs(l)];
+  // every island's cards above the limit under them, and the labels under the top inset
+  const clear = (islands: Island[], l: Layout, b: Below) => {
+    for (const i of islands) expect(l.oy + foot(i) * cs(l)).toBeLessThanOrEqual(limitAt(b, ...span(i, l)) + 1e-6);
+    expect(l.oy + worldBounds(islands).y * cs(l)).toBeGreaterThanOrEqual(theme.fit.top - 1e-6);
+  };
+  const dropped = (id: string, by: number) => mapIslands(fleet()).map((i) => (i.id === id ? { ...i, position: { x: i.position.x, y: i.position.y + by } } : i));
+  const find = (islands: Island[], id: string) => islands.find((i) => i.id === id)!;
+
+  it('fits a fleet that stands over mission control as the room above it would', () => {
+    const islands = mapIslands(fleet());
+    expect(fitAll(islands, win, undefined, below)).toEqual(fitAll(islands, win));
+    expect(fitAll(islands, win, undefined, { h: 900, blocks: [{ x: 0, w: 1400, top: 690 }] })).toEqual(fitAll(islands, win));
+  });
+
+  it('rests the fleet on mission control when an island clear of it can hang down beside it', () => {
+    const islands = dropped('i_e', 3);
+    const l = fitAll(islands, win, undefined, below);
+    clear(islands, l, below);
+    expect(span(find(islands, 'i_e'), l)[0]).toBeGreaterThan(880);
+    expect(l.oy).toBeGreaterThan(fitAll(islands, win).oy);
+    expect(l.oy + foot(find(islands, 'i_e')) * cs(l)).toBeGreaterThan(win.h);
+    expect(roomOf(islands, l, win, undefined, below)).toEqual({ w: 1400, h: 900 });
+    const level = mapIslands(fleet());
+    expect(roomOf(level, fitAll(level, win, undefined, below), win, undefined, below)).toEqual(win);
+  });
+
+  it('keeps a level fleet centred over mission control, even one standing clear of it', () => {
+    const level = mapIslands(fleet()).map((i) => ({ ...i, position: { x: i.id === 'i_e' ? 40 : i.position.x - 40, y: 0 } }));
+    const l = fitAll(level, win, undefined, below);
+    expect(level.every((i) => limitAt(below, ...span(i, l)) === 900 - theme.home.water)).toBe(true);
+    expect(l).toEqual(fitAll(level, win));
+    // the room over mission control short of their height makes no difference
+    const tall = [0, 20].map((x, n) => ({ ...mapIslands(fleet())[n], position: { x, y: 0 }, size: { w: 6, h: 14 } }));
+    expect(fitAll(tall, win, undefined, below)).toEqual(fitAll(tall, win));
+  });
+
+  it('takes a floor left far under the fleet no lower than a row under its ground', () => {
+    const islands = mapIslands(fleet());                  // ground ends at y = 4
+    expect(fitFloor(islands, 30)).toBe(5);
+    expect(fitFloor(islands, 3)).toBe(3);
+    expect(fitFloor([], 30)).toBe(30);
+    expect(fitFloor(islands, undefined)).toBeUndefined();
+  });
+
+  it('keeps the room over mission control for a fleet too big for the map, so it pans up to its last row', () => {
+    const big = Array.from({ length: 25 }, (_, n) => ({ ...mapIslands(fleet())[0], id: `b${n}`, position: { x: (n % 5) * 12, y: Math.floor(n / 5) * 10 }, size: { w: 10, h: 7 } }));
+    const l = fitAll(big, win, undefined, below);
+    expect(l.scale).toBe(theme.scale.min);
+    expect(roomOf(big, l, win, undefined, below)).toBe(win);
+  });
+
+  it('grows the world into the water beside mission control when the room above it is short', () => {
+    const short = { w: 1400, h: 290 }, low: Below = { h: 500, blocks: [{ x: 620, w: 160, top: 290 }, { x: 600, w: 200, top: 346 }] };
+    const islands = dropped('i_e', 3);
+    const l = fitAll(islands, short, undefined, low);
+    clear(islands, l, low);
+    expect(l.scale).toBeGreaterThan(fitAll(islands, short).scale * 1.1);
+  });
+
+  it('knows land put down on mission control from land beside it', () => {
+    const l = fitAll(mapIslands(fleet()), win, undefined, below);
+    const [, a, c] = mapIslands(fleet());
+    expect(onBlocks({ ...a, position: { x: a.position.x, y: 8 } }, l, below)).toBe(true);
+    expect(onBlocks({ ...c, position: { x: c.position.x, y: 8 } }, l, below)).toBe(false);
+    expect(onBlocks(a, l, below)).toBe(false);
+    // under a row that ends above the foot, the water is open
+    const row: Below = { h: 900, blocks: [{ x: 0, w: 1400, top: 690, bottom: 740 }] };
+    expect(onBlocks({ ...a, position: { x: a.position.x, y: 8 } }, l, row)).toBe(true);
+    expect(onBlocks({ ...a, position: { x: a.position.x, y: 9 } }, l, row)).toBe(false);
   });
 });

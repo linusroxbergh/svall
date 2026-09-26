@@ -129,8 +129,8 @@ runIf('Fleet layout', () => {
     const link = { kind: 'other' as const, ref: 'https://x', label: 'x', source: 'manual' as const };
     expect(fleet.updateIsland(a.id, { description: 'd', context: [link] })).toMatchObject({ description: 'd', context: [link] });
     expect(() => fleet.updateIsland(b.id, { position: { x: 5, y: 0 } })).toThrow(/overlap/);
-    // mission control settled a gap under the pair, and holds that row
-    expect(() => fleet.updateIsland(b.id, { position: { x: 0, y: 10 } })).toThrow(/below mission control/);
+    // past the row mission control settled under the pair, into the water beside it
+    expect(fleet.updateIsland(b.id, { position: { x: 0, y: 10 } }).position).toEqual({ x: 0, y: 10 });
     expect(fleet.updateIsland(b.id, { position: { x: 0, y: -10 } }).position).toEqual({ x: 0, y: -10 });
     expect(fleet.updateIsland(a.id, { instructions: 'ship small' }).instructions).toBe('ship small');
     expect(() => fleet.updateIsland(a.id, { context: [{ kind: 'file', ref: '/nope/x', label: '', source: 'manual' }] })).toThrow(/no such file/);
@@ -145,16 +145,17 @@ runIf('Fleet layout', () => {
     const b = fleet.createIsland({ name: 'b', position: { x: 20, y: 20 }, size: { w: 6, h: 4 } });
     expect(floor()).toBe(25);
 
-    // an island travels all the way down onto the floor's own row and no further, and the floor stays where it is
+    // an island put onto the floor's own row leaves it be; one put past it takes the floor down with it
     expect(fleet.updateIsland(a.id, { position: { x: 0, y: 21 } }).position.y).toBe(21);
-    expect(() => fleet.updateIsland(a.id, { position: { x: 0, y: 22 } })).toThrow(/below mission control/);
     expect(floor()).toBe(25);
+    expect(fleet.updateIsland(a.id, { position: { x: 0, y: 22 } }).position.y).toBe(22);
+    expect(floor()).toBe(26);
 
+    // and the floor holds its row when the island goes back up; growing past it is the same as moving past it
     fleet.updateIsland(a.id, { position: { x: 0, y: 0 } });
-    // growing into the row is the same trespass as moving into it, so the row never has to give way
-    expect(fleet.updateIsland(a.id, { size: { w: 6, h: 25 } }).size.h).toBe(25);
-    expect(() => fleet.updateIsland(a.id, { size: { w: 6, h: 26 } })).toThrow(/below mission control/);
-    expect(floor()).toBe(25);
+    expect(floor()).toBe(26);
+    expect(fleet.updateIsland(a.id, { size: { w: 6, h: 30 } }).size.h).toBe(30);
+    expect(floor()).toBe(30);
     fleet.updateIsland(a.id, { size: { w: 6, h: 4 } });
 
     fleet.deleteIsland(b.id);

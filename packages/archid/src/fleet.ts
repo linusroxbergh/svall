@@ -779,21 +779,33 @@ export class Fleet extends EventEmitter<Events> {
     const release = () => { if (this.answering.get(id) === asked) this.answering.delete(id); };
     try { await this.deps.tmux.sendBytes(c.tmux.paneId, Buffer.from(answer === 'approve' ? '\r' : '\x1b')); }
     catch (e) { release(); throw e; }
-    // Claude Code fires no hook when Esc ends the turn, though Esc on a question asked while background agents
-    // run ends no turn; a hook that moved the agent on while the key was sent wins
     try {
-      this.deps.store.update((d) => {
-        const a = d.characters[id]?.agent;
-        if (a?.status !== 'blocked' || a.promptId !== asked) return;
-        a.status = answer === 'approve' || a.background ? 'working' : 'idle';
-        delete a.prompt;
-        delete a.promptId;
-      });
+      this.settleAnswer(id, asked, answer);
       release();
     } catch (e) {
       // the key is in, so the answer stands
       this.deps.log.error(`answer for ${id} was typed, but not written down: ${String(e)}`);
     }
+  }
+
+  // Enter typed into the terminal takes the question's highlighted option and Esc or ^C turns it down, as the
+  // keys answerPrompt sends do; only the keys a viewer sends through the daemon are seen here
+  typedAnswer(id: string, data: Buffer, asked: string | undefined): void {
+    const key = data.toString('latin1');
+    const answer = key === '\r' ? 'approve' : key === '\x1b' || key === '\x03' ? 'deny' : undefined;
+    if (answer && asked) this.settleAnswer(id, asked, answer);
+  }
+
+  // Claude Code fires no hook when Esc ends the turn, though Esc on a question asked while background agents
+  // run ends no turn; a hook that moved the agent on while the key was sent wins
+  private settleAnswer(id: string, asked: string | undefined, answer: 'approve' | 'deny'): void {
+    this.deps.store.update((d) => {
+      const a = d.characters[id]?.agent;
+      if (a?.status !== 'blocked' || a.promptId !== asked) return;
+      a.status = answer === 'approve' || a.background ? 'working' : 'idle';
+      delete a.prompt;
+      delete a.promptId;
+    });
   }
 
   async readScreen(id: string, lines: number, term?: 2): Promise<string> {

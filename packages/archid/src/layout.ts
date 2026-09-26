@@ -8,8 +8,7 @@ export const ROW_GAP = 3;
 // mission control draws as a fixed strip at the foot of the screen and the view already keeps the fleet
 // out from under it, so the floor only has to read as water: one row, not the gap between two islands
 export const HOME_GAP = 1;
-// the row an island may be put on by hand: mission control's own. the gap above is where arrange leaves
-// the fleet, not a wall a drag has to stop at
+// the row mission control's floor keeps under the lowest island: its own. the gap above is where arrange leaves the fleet
 export const HOME_REACH = 0;
 const ROW_LENGTH = 4;
 
@@ -73,14 +72,12 @@ const PASSES = 16;
 // an island stands legally when it clears every other island and keeps off mission control's row
 const settled = (state: FleetState, island: Island): boolean => fits(state, island, 1, true);
 
-// the island that changed keeps the ground it asked for; the fleet around it yields, one round after
-// another, until every island is clear again. only mission control's row can move the island itself.
-// a round that moves nothing has nowhere left to go, and the islands it could not settle are the
-// caller's sign that the search ran out
+// the island that changed keeps the ground it asked for, past mission control's row too; the fleet around it yields,
+// one round after another, until every island is clear again. a round that moves nothing has nowhere left to go,
+// and the islands it could not settle are the caller's sign that the search ran out
 export function makeRoom(draft: FleetState, islandId: string): number {
   const island = draft.islands[islandId];
   if (!island || island.kind === 'home') return 0;
-  if (!aboveHome(draft, island)) island.position = freePosition(draft, island, true);
   for (let pass = 0; pass < PASSES; pass++) {
     const crowded = worldIslands(draft).filter((o) => o.id !== islandId && !settled(draft, o));
     if (crowded.length === 0) break;
@@ -92,10 +89,10 @@ export function makeRoom(draft: FleetState, islandId: string): number {
     }
     if (moved === 0) break;
   }
-  return worldIslands(draft).filter((o) => !settled(draft, o)).length;
+  return worldIslands(draft).filter((o) => o.id !== islandId && !settled(draft, o)).length;
 }
 
-// the lowest row an island may hold: mission control's row is the floor of the world, and an island may come to rest on it
+// the lowest row the fleet puts an island on of its own accord: mission control's row is the floor of the world
 export function aboveHome(state: FleetState, island: Island): boolean {
   const home = state.islands[HOME_ISLAND];
   if (!home || island.id === home.id) return true;
@@ -169,6 +166,11 @@ export function crewGrid(n: number, seed: number, abreast = 3): { size: Size; ce
   }
 }
 
+// however wide the window, a crew stands at most about twice as many abreast as deep, so a long crew wraps
+// into a rounder island instead of running out into a single row
+const widest = (n: number): number => Math.max(3, Math.ceil(Math.sqrt(2 * n)));
+const roundGrid = (n: number, seed: number, abreast: number) => crewGrid(n, seed, Math.min(abreast, widest(n)));
+
 // label pills stand a cell apart in rows stacked one on the next, and the band keeps a row of water above the labels below it
 const PILL_GAP = 1;
 const BAND_GAP = 3;
@@ -237,8 +239,8 @@ export function arrangeFleet(draft: FleetState, aspect = 4 / 3): void {
   const most = Math.max(1, ...[...crews.values()].map((c) => c.length));
   let best: (Plan & { abreast: number }) | undefined;
   // three abreast first, so it stands whenever another count only matches it
-  for (const abreast of [3, ...Array.from({ length: most }, (_, i) => i + 1).filter((k) => k !== 3)]) {
-    for (const { id, seed } of islands) draft.islands[id].size = crewGrid(crews.get(id)!.length, seed, abreast).size;
+  for (const abreast of [3, ...Array.from({ length: Math.min(most, widest(most)) }, (_, i) => i + 1).filter((k) => k !== 3)]) {
+    for (const { id, seed } of islands) draft.islands[id].size = roundGrid(crews.get(id)!.length, seed, abreast).size;
     // the unfolded pack tallest first, so each row wastes the least water under its shorter islands
     const next = plan(islands.filter((i) => i.collapsed).map(box), islands.filter((i) => !i.collapsed).map(box).sort((a, b) => b.size.h - a.size.h), aspect);
     if (!best || next.scale > best.scale) best = { ...next, abreast };
@@ -248,7 +250,7 @@ export function arrangeFleet(draft: FleetState, aspect = 4 / 3): void {
   const gaps = rows.length - 1 + (band.length > 0 && rows.length > 0 ? 1 : 0);
   const extra = gaps > 0 ? Math.floor(Math.max(0, (width + FRAME.w) / aspect - height) / gaps) : 0;
   for (const { id, seed } of islands) {
-    const { size, cells } = crewGrid(crews.get(id)!.length, seed, abreast);
+    const { size, cells } = roundGrid(crews.get(id)!.length, seed, abreast);
     draft.islands[id].size = size;
     crews.get(id)!.forEach((c, i) => { draft.characters[c].cell = cells[i]; });
   }

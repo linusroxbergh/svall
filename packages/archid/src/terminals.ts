@@ -68,10 +68,12 @@ export class TerminalHub {
   // one message per keystroke, each spawning its own tmux paste: without a queue the letters race and land
   // out of order. The desktop never saw this because it attaches its terminal to tmux directly.
   async input(id: string, data: Buffer): Promise<void> {
-    const { paneId } = this.fleet.live(id).tmux;
-    const next = (this.writes.get(id) ?? Promise.resolve()).catch(() => {}).then(() => this.tmux.sendBytes(paneId, data));
+    const c = this.fleet.live(id);
+    const asked = c.agent?.status === 'blocked' ? c.agent.promptId : undefined;
+    const next = (this.writes.get(id) ?? Promise.resolve()).catch(() => {}).then(() => this.tmux.sendBytes(c.tmux.paneId, data));
     this.writes.set(id, next);
     try { await next; } finally { if (this.writes.get(id) === next) this.writes.delete(id); }
+    this.fleet.typedAnswer(id, data, asked);
   }
 
   async resize(id: string, cols: number, rows: number, viewer: Viewer): Promise<void> {
