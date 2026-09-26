@@ -247,4 +247,10 @@ describe('what each blocker and warning is explained with', () => {
     expect(diff).not.toMatch(/MCP|skill/i);
     expect(blockerHint({ code: 'codex_trust', message: 'Codex asks…' }, ctx)).toMatch(/trust.*each moved folder/);
   });
+
+  it('warns of the trust question Claude asks, whose preselected answer quits it', () => {
+    const hint = blockerHint({ code: 'claude_trust', message: 'Claude asks…' }, ctx);
+    expect(hint).toMatch(/trust.*each moved folder.*studio/);
+    expect(hint).toMatch(/"No, exit".*"Yes, I trust this folder"/);
+  });
 });

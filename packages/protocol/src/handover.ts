@@ -128,7 +128,7 @@ export const HandoverIssueCode = z.enum([
   'home_mismatch', 'parent_missing', 'character_pinned', 'shell_busy', 'agent_working', 'agent_blocked', 'agent_unsettled',
   'worktree_unresolved', 'destination_diverged', 'destination_occupied', 'destination_no_space', 'path_collision', 'path_unsupported', 'path_symlinked',
   'transcript_missing', 'ssh_interactive', 'platform_unsupported', 'platform_heuristic', 'env_file', 'external_writer', 'rsync_unsupported',
-  'git_mismatch', 'worktree_unused', 'remote_local', 'git_extension', 'codex_trust', 'config_difference', 'symlink_dangling', 'manifest_too_large',
+  'git_mismatch', 'worktree_unused', 'remote_local', 'git_extension', 'codex_trust', 'claude_trust', 'config_difference', 'symlink_dangling', 'manifest_too_large',
 ]);
 export type HandoverIssueCode = z.infer<typeof HandoverIssueCode>;
 
@@ -268,8 +268,8 @@ export type TransferManifestV1 = z.infer<typeof TransferManifestV1>;
 export const ReceivedGraph = z.object({ id: z.string().min(1), commonDir: MachinePath, carried: z.array(z.string()), tips: z.array(ObjectName) });
 export type ReceivedGraph = z.infer<typeof ReceivedGraph>;
 
-/** The folder a carried session's agent resumes in on the destination, and the main checkout of the repository holding it. */
-export const ResumeFolder = z.object({ kind: AgentKind, cwd: z.string(), repo: z.string().optional() });
+/** The folder a carried session's agent resumes in on the destination, the main checkout of the repository holding it, and the top of the checkout it is in. */
+export const ResumeFolder = z.object({ kind: AgentKind, cwd: z.string(), repo: z.string().optional(), root: z.string().optional() });
 export type ResumeFolder = z.infer<typeof ResumeFolder>;
 
 /** A worktree that stays on the destination, at a commit that machine cannot prove the copy coming back holds. */

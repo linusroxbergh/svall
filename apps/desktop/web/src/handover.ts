@@ -296,6 +296,8 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
       return 'The agent CLI versions differ between the two machines.';
     case 'codex_trust':
       return `Codex asks you to trust each moved folder the first time it resumes on ${ctx.destination}.`;
+    case 'claude_trust':
+      return `Claude asks you to trust each moved folder the first time it resumes on ${ctx.destination}, with "No, exit" preselected: choose "Yes, I trust this folder".`;
     default:
       return undefined;
   }

@@ -39,4 +39,6 @@ export interface SessionAdapter {
   carries(file: string, transcript: string, sessionId: string): boolean;
   /** Whether the CLI, keeping its files in `home`, resumes in `folder` without first asking whether to trust it; absent for one that never asks. */
   trusts?(home: string, folder: Omit<ResumeFolder, 'kind'>): boolean;
+  /** The choice at that question that goes on, when it is not the one the CLI preselects. */
+  readonly trustAnswer?: string;
 }

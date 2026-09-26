@@ -234,13 +234,13 @@ class FakeDestination {
       const j = this.journal;
       return j ? { transaction: { id: j.tx, fromMachineId: this.w.other(this.id), toMachineId: this.id, phase: j.phase, startedAt: 1 }, characters: [], roots: [] } : { characters: [], roots: [] };
     },
-    'handover.inspect': (p: { roots: { id: string; path: string }[]; folders: string[]; resumes?: { cwd: string }[] }) => ({
+    'handover.inspect': (p: { roots: { id: string; path: string }[]; folders: string[]; resumes?: { kind: string; cwd: string }[] }) => ({
       roots: p.roots.map((r) => ({
         id: r.id,
         check: this.diverged.has(r.id) ? { ok: false, path: r.path, blocker: this.divergedBlocker(r.id, r.path) } : { ok: true, path: r.path, kind: this.replicas.has(r.id) ? 'replica' : 'absent' },
       })),
       folders: Object.fromEntries(p.folders.map((f) => [f, this.folders[f] ?? this.probe])),
-      untrusted: (p.resumes ?? []).map((f) => f.cwd).filter((cwd) => !this.trusted.has(cwd)),
+      untrusted: (p.resumes ?? []).filter((f) => !this.trusted.has(`${f.kind} ${f.cwd}`)).map(({ kind, cwd }) => ({ kind, cwd })),
     }),
     'handover.claim': (p: { transactionId: string; generation: number; manifest: FrozenManifest; manifestDigest: string; archive?: string[] }) => this.claim(p),
     'handover.prepare': (p: { transactionId: string; generation: number; manifest: FrozenManifest; manifestDigest: string; landed: LandedRoot[] }) => this.prepare(p),
@@ -781,9 +781,37 @@ describe('preflight', () => {
     const trust = async () => (await controller(w).preflight(trift, {})).warnings.filter((x) => x.code === 'codex_trust');
 
     expect(await trust()).toEqual([expect.objectContaining({ entity: { kind: 'character', id: 'c_bo' }, message: expect.stringContaining('bo resumes on trift') })]);
-    expect(asked).toEqual([{ kind: 'codex', cwd: '/Users/ada/app/.claude/worktrees/x', repo: '/Users/ada/app' }]);
-    w.destination.trusted.add('/Users/ada/app/.claude/worktrees/x');
+    expect(asked).toEqual([
+      { kind: 'claude', cwd: '/Users/ada/app' },
+      { kind: 'codex', cwd: '/Users/ada/app/.claude/worktrees/x', repo: '/Users/ada/app', root: '/Users/ada/app/.claude/worktrees/x' },
+    ]);
+    w.destination.trusted.add('codex /Users/ada/app/.claude/worktrees/x');
     expect(await trust()).toEqual([]);
+  });
+
+  it('warns that Claude asks to trust a carried folder with "No, exit" preselected, only where the destination\'s Claude does not trust it, apart from Codex in the same folder', async () => {
+    const w = new World();
+    const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
+    w.source.answers['handover.preflight'] = ((p: unknown) => {
+      const r = preflight(p);
+      r.manifest.snapshot.characters.c_ada.repo = { root: '/Users/ada/app', mainRoot: '/Users/ada/app', branch: 'main', isWorktree: false };
+      return r;
+    }) as never;
+    let asked: unknown;
+    const inspect = w.destination.answers['handover.inspect'] as (p: unknown) => object;
+    w.destination.answers['handover.inspect'] = ((p: { resumes?: unknown }) => { asked = p.resumes; return inspect(p); }) as never;
+    const trust = async () => (await controller(w).preflight(trift, {})).warnings.filter((x) => x.code === 'claude_trust' || x.code === 'codex_trust');
+
+    expect(await trust()).toEqual([
+      {
+        code: 'claude_trust', entity: { kind: 'character', id: 'c_ada' },
+        message: 'Claude asks whether to trust its folder the first time ada resumes on trift, with "No, exit" preselected; choose "Yes, I trust this folder" in that terminal',
+      },
+      expect.objectContaining({ code: 'codex_trust', entity: { kind: 'character', id: 'c_bo' } }),
+    ]);
+    expect(asked).toEqual(expect.arrayContaining([{ kind: 'claude', cwd: '/Users/ada/app', repo: '/Users/ada/app', root: '/Users/ada/app' }]));
+    w.destination.trusted.add('claude /Users/ada/app');
+    expect((await trust()).map((x) => x.code)).toEqual(['codex_trust']);
   });
 
   it('blocks a destination that holds a handover journal of its own, before anything is rested', async () => {

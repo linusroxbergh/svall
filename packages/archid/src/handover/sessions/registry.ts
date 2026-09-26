@@ -87,11 +87,11 @@ export function installSession(session: TransferSession, staged: string, io: Ins
   return { transcriptPath: destinationPath };
 }
 
-/** Where a terminal's agent resumes and, when its character's repository holds that, the repository's main checkout; `at` makes each absolute. */
+/** Where a terminal's agent resumes and, when its character's repository holds that, the repository's main checkout and the top of its own; `at` makes each absolute. */
 export function resumeFolder(c: Character, term: 2 | undefined, at: (p: string) => string): Omit<ResumeFolder, 'kind'> {
   const cwd = at(term === 2 ? c.second?.cwd ?? c.cwd : c.cwd);
-  const repo = c.repo && holds(at(c.repo.root), cwd) ? at(c.repo.mainRoot) : undefined;
-  return { cwd, ...(repo && { repo }) };
+  if (!c.repo || !holds(at(c.repo.root), cwd)) return { cwd };
+  return { cwd, repo: at(c.repo.mainRoot), root: at(c.repo.root) };
 }
 
 /** Where each session the manifest carries resumes on the destination, which is where it ran on the source. */

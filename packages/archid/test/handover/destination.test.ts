@@ -309,6 +309,8 @@ async function scene(o: { tamper?: Tamper; before?: (s: { src: string; dst: stri
   // the fleet leaves the Mac: this disk is trift's now, whose agents have their homes and nothing else yet
   fs.renameSync(dst, src);
   for (const d of Object.values(agentHomes)) fs.mkdirSync(d, { recursive: true });
+  // this machine's Claude, whose config folder is not ~/.claude, trusts bo's folder in the .claude.json inside it
+  fs.writeFileSync(path.join(agentHomes.claude, '.claude.json'), JSON.stringify({ projects: { [path.join(dst, 'work/bo')]: { hasTrustDialogAccepted: true } } }));
   o.before?.({ src, dst, base });
   const manifest = built.manifest;
   // a snapshot that still names live tmux ids, as a careless source could send
@@ -492,7 +494,8 @@ describe('destination prepare', () => {
     s.probes[0] = { ...s.probes[0], home: path.join(s.dst, '.claude-other') };
     const r = await refusal(daemon(s).handover.prepare(params(s)));
     expect(blockersOf(r)).toContainEqual(expect.objectContaining({ code: 'agent_cli_missing', entity: { kind: 'character', id: 'c_bo' } }));
-    expect(fs.readdirSync(path.join(s.dst, '.claude'))).toEqual([]);
+    // nothing beside the config that folder held
+    expect(fs.readdirSync(path.join(s.dst, '.claude'))).toEqual(['.claude.json']);
   });
 
   // a graph whose Git directory lies at `elsewhere`, a link this machine can point into a carried root or leave out
@@ -831,7 +834,7 @@ describe('destination activate', () => {
     const r = await run;
     const byId = Object.fromEntries(r.characters.map((c) => [c.id, c]));
     expect(byId.c_bo).toMatchObject({ ok: false, error: expect.stringMatching(/SessionStart/) });
-    // nothing Claude does waits on a folder's trust in Codex
+    // this machine's Claude trusts bo's folder, so no trust prompt is named
     expect(byId.c_bo.error).not.toMatch(/trust/i);
     expect(byId.c_ada.ok).toBe(true);
     expect(d.ownership.writable()).toBe(true);
@@ -917,6 +920,43 @@ describe('destination activate', () => {
     expect(d.crew.log).not.toContain('kill c_dee');
     expect(s.store.state.characters.c_dee.tmux).toBeDefined();
     expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_dee')).toMatchObject({ ok: true, notice: dee.notice });
+  });
+
+  it("counts a resumed Claude up at its trust prompt where this machine's Claude does not trust its folder, keeps its window without the SessionStart wait, and says which answer goes on", async () => {
+    const { s, d, preparedDigest } = await prepared();
+    d.gateway.commit(preparedDigest);
+    fs.rmSync(path.join(s.dst, '.claude/.claude.json'));
+    // Claude sends no SessionStart until its trust prompt is answered
+    d.crew.silent.add('c_bo');
+
+    const { r, at } = await activateBy(d);
+
+    expect(at).toBeLessThanOrEqual(5000);
+    const bo = r.characters.find((c) => c.id === 'c_bo')!;
+    expect(bo).toMatchObject({ ok: true, notice: 'claude waits at its "Trust this folder?" prompt in bo\'s terminal; choose "Yes, I trust this folder" there' });
+    expect(bo.error).toBeUndefined();
+    expect(d.crew.log).not.toContain('kill c_bo');
+    expect(s.store.state.characters.c_bo.tmux?.paneId).toBe(d.crew.window('c_bo')!.paneId);
+    expect(s.store.state.characters.c_bo.resumeError).toBeUndefined();
+    const row = journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo');
+    expect(row).toMatchObject({ ok: true, sessionId: SID, notice: bo.notice });
+
+    // answered, Claude starts the carried session, which leaves the terminal the fleet's as any other
+    d.crew.started('c_bo', undefined, SID);
+    expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo')).toEqual(row);
+    expect(d.crew.carried('c_bo')).toBe(false);
+    expect(d.handover.status().characters.find((c) => c.id === 'c_bo')!.error).toBeUndefined();
+  });
+
+  it('counts a resumed Claude up by its SessionStart, with no notice, when it comes before the settle in a folder this machine does not trust', async () => {
+    const { s, d, preparedDigest } = await prepared();
+    d.gateway.commit(preparedDigest);
+    fs.rmSync(path.join(s.dst, '.claude/.claude.json'));
+
+    const { r } = await activateBy(d);
+
+    expect(r.characters.find((c) => c.id === 'c_bo')).toEqual({ id: 'c_bo', ok: true });
+    expect(d.crew.log).not.toContain('kill c_bo');
   });
 
   it('names what a resumed Codex did when it exits back to its shell, and leaves it dormant with its session', async () => {
@@ -1261,7 +1301,7 @@ withTmux('destination activate on real terminals', () => {
    * and goes no further, or enters it and starts a program named for the agent, whose SessionStart dies with it; the
    * other runs a stand-in that reports its SessionStart a moment later.
    */
-  function boot(c: { s: Scene; d: ReturnType<typeof daemon>; bin: string }, store: Store, o: { concurrency: number; dies?: 'typed' | 'entered'; startAfterMs?: number; codex?: 'silent' | 'exits' }) {
+  function boot(c: { s: Scene; d: ReturnType<typeof daemon>; bin: string }, store: Store, o: { concurrency: number; dies?: 'typed' | 'entered'; startAfterMs?: number; codex?: 'silent' | 'exits'; claude?: 'prompt' }) {
     const { s, d, bin } = c;
     const ownership = OwnershipState.load({ paths: s.paths, fleetId, machineId: trift, log: silentLogger });
     const tmux = new Tmux(s.paths.tmuxSock, s.paths.tmuxConf);
@@ -1279,6 +1319,8 @@ withTmux('destination activate on real terminals', () => {
       if (o.dies) return new Promise(() => {});
       // Codex runs its SessionStart hook with the first turn, not as it resumes; one that exits is back at the shell a second later
       if (kind === 'codex' && o.codex) return send(paneId, o.codex === 'silent' ? `exec ${path.join(bin, kind)} 600` : `${path.join(bin, kind)} 1`, true);
+      // Claude at its trust prompt holds its pane and runs no hook until the prompt is answered
+      if (kind === 'claude' && o.claude) return send(paneId, `exec ${path.join(bin, kind)} 600`, true);
       await send(paneId, 'exec sleep 600', true);
       const ch = Object.values(store.state.characters).find((x) => x.tmux?.paneId === paneId || x.second?.tmux?.paneId === paneId)!;
       const term = ch.second?.tmux?.paneId === paneId ? 2 as const : undefined;
@@ -1378,6 +1420,28 @@ withTmux('destination activate on real terminals', () => {
     const w = (await first.tmux.listWindows()).find((x) => x.windowId === dee.windowId)!;
     expect((await ProcessTable.read()).pane(w.panePid)?.agent?.kind).toBe('codex');
     expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_dee')).toMatchObject({ ok: true, sessionId: CODEX_ID });
+  }, 30_000);
+
+  it("keeps a resumed Claude at its trust prompt up in its window, and takes the carried session's SessionStart there once the prompt is answered", async () => {
+    const c = await committed();
+    const { s } = c;
+    fs.rmSync(path.join(s.dst, '.claude/.claude.json'));
+    const first = boot(c, s.store, { concurrency: 2, claude: 'prompt' });
+    await first.fleet.start();
+    const r = await first.handover.activate({ transactionId: TX, generation: 5 });
+
+    expect(r.characters.find((x) => x.id === 'c_bo')).toMatchObject({ ok: true, notice: expect.stringMatching(/Yes, I trust this folder/) });
+    const bo = s.store.state.characters.c_bo;
+    const w = (await first.tmux.listWindows()).find((x) => x.windowId === bo.tmux!.windowId)!;
+    const claude = (await ProcessTable.read()).pane(w.panePid)?.agent;
+    expect(claude?.kind).toBe('claude');
+
+    // answered, Claude resumes the carried session in that window and reports it as any resume does
+    const transcriptPath = bo.agent!.transcriptPath!;
+    first.fleet.onSocketEvent({ hook: { charId: 'c_bo', backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath, pid: claude!.pid } });
+    expect(s.store.state.characters.c_bo).toMatchObject({ tmux: bo.tmux, agent: { kind: 'claude', sessionId: SID, transcriptPath, pid: claude!.pid } });
+    expect(s.store.state.characters.c_bo.resumeError).toBeUndefined();
+    expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo')).toMatchObject({ ok: true, sessionId: SID });
   }, 30_000);
 
   it("keeps why a resume failed on its character's record past Complete, until a revive brings that terminal up", async () => {
@@ -1636,13 +1700,37 @@ describe('destination inspect', () => {
 
     const r = await inspect([
       { kind: 'codex', cwd: bo }, { kind: 'codex', cwd: linked }, { kind: 'codex', cwd: wt, repo: bo },
-      { kind: 'codex', cwd: demo }, { kind: 'codex', cwd: fresh }, { kind: 'claude', cwd: fresh },
+      { kind: 'codex', cwd: demo }, { kind: 'codex', cwd: fresh }, { kind: 'claude', cwd: bo },
     ]);
-    expect(r.untrusted).toEqual([demo, fresh]);
+    expect(r.untrusted).toEqual([{ kind: 'codex', cwd: demo }, { kind: 'codex', cwd: fresh }]);
     // a Codex home with no config trusts nothing
     fs.rmSync(path.join(s.dst, '.codex/config.toml'));
-    expect((await inspect([{ kind: 'codex', cwd: bo }])).untrusted).toEqual([bo]);
+    expect((await inspect([{ kind: 'codex', cwd: bo }])).untrusted).toEqual([{ kind: 'codex', cwd: bo }]);
     expect((await inspect(undefined)).untrusted).toBeUndefined();
+  });
+
+  it("names each carried folder this machine's Claude would ask to trust, by the config in its own Claude home, apart from Codex's in the same folder", async () => {
+    const s = await scene({ land: false });
+    const [app, sub, wt, plain] = ['work/app', 'work/app/sub', 'work/app/.claude/worktrees/x', 'work/plain/a'].map((p) => path.join(s.dst, p));
+    fs.mkdirSync(sub, { recursive: true });
+    fs.mkdirSync(wt, { recursive: true });
+    fs.mkdirSync(plain, { recursive: true });
+    // Claude trusts a repository's main checkout for every folder in it, and outside a repository any folder above
+    fs.writeFileSync(path.join(s.dst, '.claude/.claude.json'), JSON.stringify({
+      projects: { [app]: { hasTrustDialogAccepted: true }, [path.join(s.dst, 'work/plain')]: { hasTrustDialogAccepted: true } },
+    }));
+    const inspect = (resumes: ParsedParams<'handover.inspect'>['resumes']) =>
+      daemon(s).handover.inspect({ roots: [], excludes: [], folders: [], resumes });
+
+    const r = await inspect([
+      { kind: 'claude', cwd: sub, repo: app, root: app }, { kind: 'claude', cwd: wt, repo: app, root: wt }, { kind: 'claude', cwd: plain },
+      { kind: 'codex', cwd: sub, repo: app, root: app },
+      // a repository under the trusted folder is not trusted by it
+      { kind: 'claude', cwd: path.join(plain, 'repo'), repo: path.join(plain, 'repo'), root: path.join(plain, 'repo') },
+    ]);
+    expect(r.untrusted).toEqual([{ kind: 'codex', cwd: sub }, { kind: 'claude', cwd: path.join(plain, 'repo') }]);
+    fs.rmSync(path.join(s.dst, '.claude/.claude.json'));
+    expect((await inspect([{ kind: 'claude', cwd: sub, repo: app, root: app }])).untrusted).toEqual([{ kind: 'claude', cwd: sub }]);
   });
 });
 

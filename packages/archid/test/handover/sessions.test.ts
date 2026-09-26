@@ -1,8 +1,9 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { emptyState, FleetConfig, type AgentKind, type Character, type MachineId, type TransferSession } from '@archipelago/protocol';
+import { emptyState, FleetConfig, type AgentKind, type Character, type MachineId, type ResumeFolder, type TransferSession } from '@archipelago/protocol';
 import { applyHook } from '../../src/agent/reducer.js';
 import { buildInventory, type MachineMaps } from '../../src/handover/inventory.js';
 import { realStages } from '../../src/handover/durable.js';
@@ -137,6 +138,82 @@ describe('Claude Code sessions', () => {
     const sealed = path.join(h, 'projects', slug, id, 'subagents');
     fs.chmodSync(sealed, 0o000);
     try { expect(await refusal(transcript)).toBe('path_unsupported'); } finally { fs.chmodSync(sealed, 0o755); }
+  });
+});
+
+describe('Claude Code folder trust', () => {
+  const T = { hasTrustDialogAccepted: true };
+  // a folder with no repository, a repository with a folder in it, a worktree of it inside it, and a link to the plain folder
+  function layout() {
+    const base = tmp();
+    const at = (p: string) => path.join(base, p);
+    for (const d of ['plain/a/b', 'repo/sub/deep', 'repo/.claude/worktrees/x/inner']) fs.mkdirSync(at(d), { recursive: true });
+    fs.symlinkSync(at('plain/a'), at('link'));
+    return { base, at, repo: at('repo'), wt: at('repo/.claude/worktrees/x') };
+  }
+  const write = (file: string, projects: Record<string, object>) => fs.writeFileSync(file, JSON.stringify({ hasCompletedOnboarding: true, projects }));
+
+  it('trusts a folder where Claude 2.1.283 resumes without asking, by the projects its config marks trusted', () => {
+    const { base, at, repo, wt } = layout();
+    // a config folder other than ~/.claude keeps .claude.json inside it, as CLAUDE_CONFIG_DIR does
+    const home = at('cfg');
+    fs.mkdirSync(home);
+    const inRepo = (cwd: string) => ({ cwd, repo, root: repo });
+    const inWt = (cwd: string) => ({ cwd, repo, root: wt });
+    // each as the real binary answered it in a scratch HOME: false where it opened on its "Yes, I trust this folder" prompt
+    const cases: [string, Omit<ResumeFolder, 'kind'>, string[], boolean][] = [
+      ['nothing trusted', { cwd: at('plain/a/b') }, [], false],
+      ['the folder itself', { cwd: at('plain/a/b') }, [at('plain/a/b')], true],
+      ['a folder above, outside any repository', { cwd: at('plain/a/b') }, [at('plain')], true],
+      ['any folder further up', { cwd: at('plain/a/b') }, [base], true],
+      ['/ itself', { cwd: at('plain/a/b') }, ['/'], true],
+      ['only a folder below', { cwd: at('plain/a') }, [at('plain/a/b')], false],
+      ['the folder with a slash after it', { cwd: at('plain/a/b') }, [`${at('plain/a/b')}/`], false],
+      ['the repository, for a folder in it', inRepo(at('repo/sub/deep')), [repo], true],
+      ['a folder between it and the top of its checkout', inRepo(at('repo/sub/deep')), [at('repo/sub')], true],
+      ['only a folder above the repository', inRepo(at('repo/sub')), [base], false],
+      ['the main checkout, for a worktree', inWt(wt), [repo], true],
+      ['the main checkout, for a folder in a worktree', inWt(at('repo/.claude/worktrees/x/inner')), [repo], true],
+      ['the worktree, for a folder in it', inWt(at('repo/.claude/worktrees/x/inner')), [wt], true],
+      ['a folder between the worktree and the main checkout', inWt(wt), [at('repo/.claude')], false],
+      ['only a worktree, for the main checkout', inRepo(repo), [wt], false],
+      ['the real path, for a folder reached through a link', { cwd: at('link/b') }, [at('plain/a')], true],
+      ['only the link', { cwd: at('link/b') }, [at('link')], false],
+    ];
+    for (const [name, folder, trusted, expected] of cases) {
+      write(path.join(home, '.claude.json'), Object.fromEntries(trusted.map((p) => [p, T])));
+      expect(claudeAdapter.trusts!(home, folder), name).toBe(expected);
+    }
+    write(path.join(home, '.claude.json'), { [at('plain/a/b')]: { hasTrustDialogAccepted: false } });
+    expect(claudeAdapter.trusts!(home, { cwd: at('plain/a/b') }), 'marked untrusted').toBe(false);
+    fs.writeFileSync(path.join(home, '.claude.json'), '{not json');
+    expect(claudeAdapter.trusts!(home, { cwd: at('plain/a/b') }), 'a config that does not parse').toBe(false);
+    fs.rmSync(path.join(home, '.claude.json'));
+    expect(claudeAdapter.trusts!(home, { cwd: at('plain/a/b') }), 'no config').toBe(false);
+  });
+
+  it('reads ~/.claude.json for the ~/.claude config folder, and a legacy .config.json in a config folder before anything else', () => {
+    const { at } = layout();
+    const cwd = at('plain/a/b');
+    const home = path.join(os.homedir(), '.claude');
+    fs.mkdirSync(home, { recursive: true });
+    const beside = path.join(os.homedir(), '.claude.json');
+    try {
+      write(path.join(home, '.claude.json'), { [cwd]: T });
+      expect(claudeAdapter.trusts!(home, { cwd })).toBe(false);
+      write(beside, { [cwd]: T });
+      expect(claudeAdapter.trusts!(home, { cwd })).toBe(true);
+      write(path.join(home, '.config.json'), {});
+      expect(claudeAdapter.trusts!(home, { cwd })).toBe(false);
+      const elsewhere = at('cfg');
+      fs.mkdirSync(elsewhere);
+      write(path.join(elsewhere, '.claude.json'), { [cwd]: T });
+      write(path.join(elsewhere, '.config.json'), {});
+      expect(claudeAdapter.trusts!(elsewhere, { cwd })).toBe(false);
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+      fs.rmSync(beside, { force: true });
+    }
   });
 });
 

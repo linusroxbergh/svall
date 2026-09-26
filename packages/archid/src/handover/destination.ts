@@ -176,8 +176,8 @@ export class DestinationHandover {
         roots.push({ id: r.id, check });
       }
       const missing = (p.links ?? []).filter((l) => { try { fs.lstatSync(l); return false; } catch { return true; } });
-      const untrusted: string[] = [];
-      for (const f of p.resumes ?? []) if (!(await this.trusted(f))) untrusted.push(f.cwd);
+      const untrusted: Pick<ResumeFolder, 'kind' | 'cwd'>[] = [];
+      for (const f of p.resumes ?? []) if (!(await this.trusted(f))) untrusted.push({ kind: f.kind, cwd: f.cwd });
       return {
         roots, folders: probeFolders(p.folders, this.d.probeFs), ...(p.links && { missing }), ...(stays.unproven.length && { unproven: stays.unproven }),
         ...(p.resumes && { untrusted }),
@@ -556,28 +556,30 @@ export class DestinationHandover {
         entry = { ...s, ok: true };
       } else {
         const { adapter } = await this.cli(agent.kind);
+        // an agent asks whether to trust its folder before any hook runs, so one that asks reports nothing until answered
+        const trusted = await this.trusted({ kind: agent.kind, ...resumeFolder(c, s.term, expandHome) });
+        const reports = adapter.sessionStartOnResume && trusted;
         let up: Up = 'running';
         if (held !== 'agent') {
           // only a window left open can have started before this wait
           if (!held) this.heard.delete(keyOf(s));
           // one that reports nothing as it resumes is waited on by its pane, which keeps the time
-          started = this.waitStart(s, agent.sessionId, adapter.sessionStartOnResume);
+          started = this.waitStart(s, agent.sessionId, reports);
           if (!held) await this.openSlot(s);
           const seconds = Math.round((this.d.sessionStartMs ?? SESSION_START_MS) / 1000);
-          up = !adapter.sessionStartOnResume ? await this.settles(s, agent.kind, started)
+          up = !reports ? await this.settles(s, agent.kind, started)
             : (await started.done) ? 'started' : { failed: `which did not report its SessionStart within ${seconds} s` };
           started.cancel();
         }
         if (typeof up === 'object') {
           await this.lay(s, carried);
-          const see = adapter.sessionStartOnResume ? 'it may have stopped at a prompt; revive it to see' : 'revive it to see';
+          const see = reports ? 'it may have stopped at a prompt; revive it to see' : 'revive it to see';
           entry = { ...s, ok: false, sessionId: agent.sessionId, error: `${which} resumed ${agent.kind} session ${agent.sessionId}, ${up.failed}, so it is dormant again with that session; ${see}` };
         } else {
-          // an agent up with no SessionStart may be waiting on whether to trust its folder, which it asks before any hook runs
-          const asks = up === 'running' && !(await this.trusted({ kind: agent.kind, ...resumeFolder(c, s.term, expandHome) }));
+          const answer = adapter.trustAnswer ? `choose "${adapter.trustAnswer}" there` : 'answer it there';
           entry = {
             ...s, ok: true, sessionId: agent.sessionId,
-            ...(asks && { notice: `${agent.kind} waits at its "Trust this folder?" prompt in ${which}; answer it there` }),
+            ...(up === 'running' && !trusted && { notice: `${agent.kind} waits at its "Trust this folder?" prompt in ${which}; ${answer}` }),
           };
         }
       }

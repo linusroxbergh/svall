@@ -259,8 +259,8 @@ export const methods = {
       roots: z.array(z.object({ id: z.string(), check: ReplicaCheck })), folders: z.record(z.string(), RootProbe), missing: z.array(z.string()).optional(),
       // the worktrees of the graphs `git` names that stay here, at commits only the source can say it holds
       unproven: z.array(KeptCommit).optional(),
-      // the cwds of `resumes` whose agent here asks whether to trust the folder before it resumes there
-      untrusted: z.array(z.string()).optional(),
+      // the folders of `resumes` whose agent here asks whether to trust them before it resumes there
+      untrusted: z.array(ResumeFolder.pick({ kind: true, cwd: true })).optional(),
     }),
   },
   'handover.freeze': {

@@ -1,5 +1,9 @@
+import fs from 'node:fs';
 import path from 'node:path';
+import type { ResumeFolder } from '@archipelago/protocol';
 import type { Version } from '../../agents.js';
+import { claudePaths } from '../../paths.js';
+import { holds, realPath } from '../portable-path.js';
 import { filesUnder, transcriptFile } from './records.js';
 import { SessionError, type SessionAdapter, type SessionFs } from './types.js';
 
@@ -12,6 +16,33 @@ const TRANSCRIPT = /^projects\/[^/]+\/([^/]+)\.jsonl$/;
 function carries(file: string, transcript: string, sessionId: string): boolean {
   if (!UUID.test(sessionId) || TRANSCRIPT.exec(transcript)?.[1] !== sessionId) return false;
   return file === transcript || file.startsWith(`${transcript.slice(0, -'.jsonl'.length)}/`);
+}
+
+// Claude reads a legacy .config.json in its config folder first, else .claude.json in CLAUDE_CONFIG_DIR, or beside ~/.claude
+function configOf(home: string): string {
+  const legacy = path.join(home, '.config.json');
+  if (fs.existsSync(legacy)) return legacy;
+  const byDefault = claudePaths();
+  return path.resolve(home) === byDefault.dir ? byDefault.json : path.join(home, '.claude.json');
+}
+
+/**
+ * As Claude 2.1.283 decides, by real paths: a folder is trusted through its repository's main checkout, or through
+ * itself or a folder above it, up to the top of its checkout or, outside one, up to /.
+ */
+function trusts(home: string, folder: Omit<ResumeFolder, 'kind'>): boolean {
+  let projects: unknown;
+  try { projects = (JSON.parse(fs.readFileSync(configOf(home), 'utf8')) as { projects?: unknown }).projects; } catch { return false; }
+  if (!projects || typeof projects !== 'object') return false;
+  const entries = projects as Record<string, { hasTrustDialogAccepted?: unknown } | undefined>;
+  const trusted = (p: string) => Object.hasOwn(entries, p) && entries[p]?.hasTrustDialogAccepted === true;
+  if (folder.repo && trusted(realPath(folder.repo))) return true;
+  const top = folder.root && realPath(folder.root);
+  for (let p = realPath(folder.cwd); !top || holds(top, p); p = path.dirname(p)) {
+    if (trusted(p)) return true;
+    if (p === top || p === path.dirname(p)) return false;
+  }
+  return false;
 }
 
 export const claudeAdapter: SessionAdapter = {
@@ -42,4 +73,8 @@ export const claudeAdapter: SessionAdapter = {
   },
 
   carries,
+
+  trusts,
+  // its prompt preselects "No, exit"
+  trustAnswer: 'Yes, I trust this folder',
 };

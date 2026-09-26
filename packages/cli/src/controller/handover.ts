@@ -1,7 +1,7 @@
 import path from 'node:path';
 import {
-  type Blocker, type FleetId, type HandoverChoices, type HandoverPhase, type KeptCommit, type LandedRoot, type MachineId, type ManifestSummary, type MethodName, type OwnerRecord,
-  type Params, type Result, type RootClaim, type SystemInfo, type TransferManifestV1, type TransferRoot, type Warning,
+  type AgentKind, type Blocker, type FleetId, type HandoverChoices, type HandoverPhase, type KeptCommit, type LandedRoot, type MachineId, type ManifestSummary, type MethodName, type OwnerRecord,
+  type Params, type Result, type ResumeFolder, type RootClaim, type SystemInfo, type TransferManifestV1, type TransferRoot, type Warning,
 } from '@archipelago/protocol';
 import { graphsHere } from '@archipelago/archid/handover/git-import';
 import { canonicalDigest } from '@archipelago/archid/handover/hash';
@@ -156,11 +156,17 @@ function danglingLinks(links: CarriedLink[], missing: Set<string>, where: string
   }));
 }
 
-/** Archipelago never writes the destination's Codex settings, so Codex asks to trust each of these folders the first time it resumes there. */
-function codexTrust(m: TransferManifestV1, untrusted: { characterId: string }[], where: string): Warning[] {
+// the question each agent asks of a folder it has not trusted, and how the user answers it
+const TRUST = {
+  claude: { code: 'claude_trust', agent: 'Claude', answer: ', with "No, exit" preselected; choose "Yes, I trust this folder" in that terminal' },
+  codex: { code: 'codex_trust', agent: 'Codex', answer: '; answer it in that terminal' },
+} as const;
+
+/** Archipelago never writes the destination's agent settings, so each agent asks to trust these folders the first time it resumes there. */
+function trustWarnings(m: TransferManifestV1, untrusted: { characterId: string; kind: AgentKind }[], where: string): Warning[] {
   return untrusted.map((f) => ({
-    code: 'codex_trust',
-    message: `Codex asks whether to trust its folder the first time ${m.snapshot.characters[f.characterId]?.name ?? f.characterId} resumes on ${where}; answer it in that terminal`,
+    code: TRUST[f.kind].code,
+    message: `${TRUST[f.kind].agent} asks whether to trust its folder the first time ${m.snapshot.characters[f.characterId]?.name ?? f.characterId} resumes on ${where}${TRUST[f.kind].answer}`,
     entity: { kind: 'character', id: f.characterId },
   }));
 }
@@ -821,12 +827,12 @@ export class Handover {
     const where = destination.route.name;
     const links = carriedLinks(m);
     const ask = [...new Set(links.flatMap((l) => (l.carried === undefined ? [l.at] : [])))];
-    const codex = resumeFolders(m).filter((f) => f.kind === 'codex');
+    const resuming = resumeFolders(m);
     let r: Result<'handover.inspect'>;
     try {
       const roots = carried.map((c) => ({ ...c, content: contentDigest(m.roots.find((x) => x.id === c.id)!.files) }));
       const git = graphsHere(m);
-      const resumes = codex.map(({ kind, cwd, repo }) => ({ kind, cwd, ...(repo && { repo }) }));
+      const resumes = resuming.map(({ kind, cwd, repo, root }) => ({ kind, cwd, ...(repo && { repo }), ...(root && { root }) }));
       r = await this.retrying('begin', () => destination.daemon.call('handover.inspect', {
         roots, excludes: m.excludes, folders, ...(ask.length && { links: ask }), ...(git.length && { git }), ...(resumes.length && { resumes }),
       }));
@@ -879,8 +885,8 @@ export class Handover {
         });
       }
     }
-    const untrusted = new Set(r.untrusted ?? []);
-    return { blockers, warnings: [...notices, ...danglingLinks(links, new Set(r.missing ?? []), where), ...codexTrust(m, codex.filter((f) => untrusted.has(f.cwd)), where)] };
+    const asks = (f: ResumeFolder) => (r.untrusted ?? []).some((u) => u.kind === f.kind && u.cwd === f.cwd);
+    return { blockers, warnings: [...notices, ...danglingLinks(links, new Set(r.missing ?? []), where), ...trustWarnings(m, resuming.filter(asks), where)] };
   }
 
   /** The four journals: this controller's, the gateway's record, and what each daemon holds. `aside` moves a journal that cannot be read out of the way. */
