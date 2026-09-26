@@ -25,7 +25,7 @@ describe('acceptName', () => {
     expect(acceptName('golden heron', { value: '#542 golden heron', reason: 'identifier' }, none)).toBeUndefined();
   });
   it('drops words from the end of a name too long to fit', () => {
-    expect(acceptName('golden heron', { value: 'find settings session', reason: 'generated' }, none)).toBe('find settings');
+    expect(acceptName('golden heron', { value: 'find settings session bug', reason: 'generated' }, none)).toBe('find settings session');
     expect(acceptName('golden heron', { value: 'internationalisation-work', reason: 'generated' }, none)).toBeUndefined();
     expect(acceptName('quite long given name', { value: '#542 quite long given name', reason: 'identifier' }, none)).toBeUndefined();
   });

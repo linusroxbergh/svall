@@ -34,7 +34,7 @@ control buttons; each finishes its task and stays `done` until closed.
 | --- | --- |
 | move a character | `archi char move bob --island review` |
 | refresh names, notes and links, and island descriptions and links | `archi scribe sweep` |
-| rename one | `archi char update bob --name "#472 review"` |
+| rename one | `archi char update bob --name "#472 review login"` |
 | close one | `archi char close bob` |
 | note what it is doing | `archi char update bob --note "rewriting the auth helpers"` |
 | add links | `archi char update bob --context "https://github.com/x/y/pull/472 PR 472"` |
@@ -78,8 +78,9 @@ character's agent gets at SessionStart; `archi char show <name>` prints it.
   pass its path as `--cwd`.
 - Starting a character to continue, review or take over work ends your part. Do
   not wait on or watch it unless the user asked you to report back.
-- Names are at most 20 characters, lower case, any PR or ticket first, and say
-  what a character is doing, not what it is: `#1907 review`, not `claude-2`.
+- Names are at most 24 characters, lower case, any PR or ticket first, then what
+  a character is doing and what on: `#1907 review auth tests`, not `#1907 review`
+  or `claude-2`.
 - Leave notes and descriptions to `archi scribe sweep` unless the user asks. One
   you write counts as hand-written, and the scribe stops updating it.
 - `archi scribe sweep` refuses while the scribe is off. Pass on what it says and
