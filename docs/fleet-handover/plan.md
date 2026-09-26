@@ -1109,12 +1109,12 @@ after an unchanged copy; a session written by a CLI newer than every fixture is 
 
 **Steps:**
 
-- [ ] Add the fleet's entity docs (fleet, island, character and repo docs under the fleet home) to the
+- [x] Add the fleet's entity docs (fleet, island, character and repo docs under the fleet home) to the
   inventory. Repo-doc keys hash the repo's absolute path, which no longer changes.
-- [ ] Strip `agent.pid` and `second.agent.pid` from the exported snapshot.
-- [ ] Extend the path-field classification test to process-bound fields such as pids and tmux ids,
+- [x] Strip `agent.pid` and `second.agent.pid` from the exported snapshot.
+- [x] Extend the path-field classification test to process-bound fields such as pids and tmux ids,
   and to every entry in the fleet home, so an unclassified one fails CI.
-- [ ] Make the single-daemon lock hold on Linux: `lockHome` in `packages/archid/src/main.ts` passes
+- [x] Make the single-daemon lock hold on Linux: `lockHome` in `packages/archid/src/main.ts` passes
   macOS's `O_EXLOCK`, which Linux ignores.
 
 **Tests:** a moved fleet's entity docs are found by the same keys on the destination; a live stale
