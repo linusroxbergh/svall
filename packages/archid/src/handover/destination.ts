@@ -186,9 +186,12 @@ export class DestinationHandover {
       const missing = (p.links ?? []).filter((l) => { try { fs.lstatSync(l); return false; } catch { return true; } });
       const untrusted: Pick<ResumeFolder, 'kind' | 'cwd'>[] = [];
       for (const f of p.resumes ?? []) if (!(await this.trusted(f))) untrusted.push({ kind: f.kind, cwd: f.cwd });
+      const bypassing = (p.resumes ?? []).filter((f) => f.bypass);
+      const bypassWarned: Pick<ResumeFolder, 'kind' | 'cwd'>[] = [];
+      for (const f of bypassing) if (!(await this.bypassAccepted(f))) bypassWarned.push({ kind: f.kind, cwd: f.cwd });
       return {
         roots, folders: probeFolders(p.folders, this.d.probeFs), ...(p.links && { missing }), ...(stays.unproven.length && { unproven: stays.unproven }),
-        ...(p.resumes && { untrusted }),
+        ...(p.resumes && { untrusted }), ...(bypassing.length && { bypassWarned }),
       };
     });
   }
@@ -197,6 +200,12 @@ export class DestinationHandover {
   private async trusted(folder: ResumeFolder): Promise<boolean> {
     const { adapter, home } = await this.cli(folder.kind);
     return !adapter.trusts || (!!home && adapter.trusts(home, folder));
+  }
+
+  /** Whether this machine's agent CLI of `folder`'s kind starts in bypass mode there without first warning about it. */
+  private async bypassAccepted(folder: ResumeFolder): Promise<boolean> {
+    const { adapter, home } = await this.cli(folder.kind);
+    return !adapter.acceptsBypass || (!!home && adapter.acceptsBypass(home, folder));
   }
 
   // this machine's CLI of a kind: the adapter that reads its release, and the home it keeps its files in

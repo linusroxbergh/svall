@@ -261,6 +261,8 @@ export const methods = {
       unproven: z.array(KeptCommit).optional(),
       // the folders of `resumes` whose agent here asks whether to trust them before it resumes there
       untrusted: z.array(ResumeFolder.pick({ kind: true, cwd: true })).optional(),
+      // the folders of `resumes` asking for bypass mode whose agent here warns about that mode before it resumes there
+      bypassWarned: z.array(ResumeFolder.pick({ kind: true, cwd: true })).optional(),
     }),
   },
   'handover.freeze': {

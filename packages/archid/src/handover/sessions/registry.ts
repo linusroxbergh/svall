@@ -94,12 +94,14 @@ export function resumeFolder(c: Character, term: 2 | undefined, at: (p: string) 
   return { cwd, repo: at(c.repo.mainRoot), root: at(c.repo.root) };
 }
 
-/** Where each session the manifest carries resumes on the destination, which is where it ran on the source. */
+/** Where each session the manifest carries resumes on the destination, which is where it ran on the source, and whether its revive asks for bypass mode. */
 export function resumeFolders(m: TransferManifestV1): (ResumeFolder & { characterId: string })[] {
   const at = (p: string) => (p === '~' || p.startsWith('~/') ? path.posix.join(m.home, p.slice(1)) : p);
   return m.sessions.flatMap((s) => {
     const c = m.snapshot.characters[s.characterId];
-    return c ? [{ characterId: s.characterId, kind: s.agent, ...resumeFolder(c, s.term, at) }] : [];
+    if (!c) return [];
+    const bypass = sessionAdapter(s.agent).asksBypass?.((s.term === 2 ? c.second : c)?.revive?.command ?? '');
+    return [{ characterId: s.characterId, kind: s.agent, ...resumeFolder(c, s.term, at), ...(bypass && { bypass }) }];
   });
 }
 

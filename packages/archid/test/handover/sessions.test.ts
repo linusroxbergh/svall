@@ -219,6 +219,66 @@ describe('Claude Code folder trust', () => {
   });
 });
 
+describe('Claude Code bypass mode', () => {
+  const skip = { skipDangerousModePermissionPrompt: true };
+  const write = (file: string, o: object) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(o)); };
+
+  it('knows a resume that starts Claude in bypass mode by the launch flags a revive keeps', () => {
+    const id = CLAUDE[0].id;
+    for (const flags of ['--dangerously-skip-permissions', "--allow-dangerously-skip-permissions --effort 'high'", "--permission-mode 'bypassPermissions'"]) {
+      expect(claudeAdapter.asksBypass!(`claude ${flags} --resume ${id}`), flags).toBe(true);
+    }
+    for (const flags of ['', "--effort 'high'", "--effort 'dangerously-skip-permissions'"]) expect(claudeAdapter.asksBypass!(`claude ${flags} --resume ${id}`), flags).toBe(false);
+    expect(codexAdapter.asksBypass).toBeUndefined();
+  });
+
+  it('counts bypass mode accepted where Claude 2.1.283 starts in it without its warning, by its settings and config', () => {
+    const base = tmp();
+    const at = (p: string) => path.join(base, p);
+    // a config folder other than ~/.claude, as CLAUDE_CONFIG_DIR names one
+    const home = at('cfg');
+    const plain = { cwd: at('plain/a/b') };
+    const inRepo = { cwd: at('repo/sub/deep'), repo: at('repo'), root: at('repo') };
+    const inWt = { cwd: at('repo/.claude/worktrees/x/inner'), repo: at('repo'), root: at('repo/.claude/worktrees/x') };
+    // each as the real binary answered it in a scratch HOME: false where it opened on its Bypass Permissions warning
+    const cases: [string, Omit<ResumeFolder, 'kind'>, [string, object][], boolean][] = [
+      ['nothing accepted', plain, [], false],
+      ['its settings skip the warning', plain, [['cfg/settings.json', skip]], true],
+      ['its settings do not', plain, [['cfg/settings.json', { skipDangerousModePermissionPrompt: false }]], false],
+      ['its config accepted bypass mode', plain, [['cfg/.claude.json', { bypassPermissionsModeAccepted: true }]], true],
+      ['its config did not', plain, [['cfg/.claude.json', { bypassPermissionsModeAccepted: false }]], false],
+      ["the folder's local settings skip it", plain, [['plain/a/b/.claude/settings.local.json', skip]], true],
+      ["the folder's shared settings", plain, [['plain/a/b/.claude/settings.json', skip]], false],
+      ["a folder above's local settings, outside any repository", plain, [['plain/a/.claude/settings.local.json', skip]], false],
+      ["the repository's local settings, for a folder in it", inRepo, [['repo/.claude/settings.local.json', skip]], true],
+      ['those of a folder between it and the top of its checkout', inRepo, [['repo/sub/.claude/settings.local.json', skip]], false],
+      ["the main checkout's, for a folder in a worktree", inWt, [['repo/.claude/settings.local.json', skip]], true],
+      ["the worktree's own, for a folder in it", inWt, [['repo/.claude/worktrees/x/.claude/settings.local.json', skip]], false],
+    ];
+    for (const [name, folder, files, expected] of cases) {
+      for (const f of ['cfg', 'plain', 'repo']) fs.rmSync(at(f), { recursive: true, force: true });
+      fs.mkdirSync(home);
+      for (const [file, o] of files) write(at(file), o);
+      expect(claudeAdapter.acceptsBypass!(home, folder), name).toBe(expected);
+    }
+  });
+
+  it('reads ~/.claude.json for the ~/.claude config folder', () => {
+    const base = tmp();
+    vi.stubEnv('HOME', base);
+    vi.stubEnv('CLAUDE_CONFIG_DIR', undefined);
+    try {
+      const home = path.join(os.homedir(), '.claude');
+      write(path.join(home, '.claude.json'), { bypassPermissionsModeAccepted: true });
+      expect(claudeAdapter.acceptsBypass!(home, { cwd: base })).toBe(false);
+      write(path.join(os.homedir(), '.claude.json'), { bypassPermissionsModeAccepted: true });
+      expect(claudeAdapter.acceptsBypass!(home, { cwd: base })).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
 describe('Codex sessions', () => {
   it('finds a rollout from the exact path it recorded, in whatever CODEX_HOME it ran with', async () => {
     const h = home('codex/0.156.1', 'codex-elsewhere');

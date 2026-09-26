@@ -253,4 +253,10 @@ describe('what each blocker and warning is explained with', () => {
     expect(hint).toMatch(/trust.*each moved folder.*studio/);
     expect(hint).toMatch(/"No, exit".*"Yes, I trust this folder"/);
   });
+
+  it('warns of the Bypass Permissions warning Claude shows, whose preselected answer quits it', () => {
+    const hint = blockerHint({ code: 'claude_bypass', message: 'Claude warns…' }, ctx);
+    expect(hint).toMatch(/Bypass Permissions mode.*studio/);
+    expect(hint).toMatch(/"No, exit".*"Yes, I accept"/);
+  });
 });

@@ -171,6 +171,15 @@ function trustWarnings(m: TransferManifestV1, untrusted: { characterId: string; 
   }));
 }
 
+/** Only Claude has a bypass mode to warn about, which it does until the destination's Claude has accepted it once. */
+function bypassWarnings(m: TransferManifestV1, warned: { characterId: string }[], where: string): Warning[] {
+  return warned.map((f) => ({
+    code: 'claude_bypass',
+    message: `Claude warns that ${m.snapshot.characters[f.characterId]?.name ?? f.characterId} resumes in Bypass Permissions mode on ${where}, with "No, exit" preselected; choose "Yes, I accept" in that terminal`,
+    entity: { kind: 'character', id: f.characterId },
+  }));
+}
+
 /**
  * One handover of one fleet, driven from this controller: preflight, then Begin, Freeze, Transfer, Verify,
  * Prepare, Ready, Commit, Activate and Complete, each checked against what it answers and journaled before the
@@ -832,7 +841,7 @@ export class Handover {
     try {
       const roots = carried.map((c) => ({ ...c, content: contentDigest(m.roots.find((x) => x.id === c.id)!.files) }));
       const git = graphsHere(m);
-      const resumes = resuming.map(({ kind, cwd, repo, root }) => ({ kind, cwd, ...(repo && { repo }), ...(root && { root }) }));
+      const resumes = resuming.map(({ kind, cwd, repo, root, bypass }) => ({ kind, cwd, ...(repo && { repo }), ...(root && { root }), ...(bypass && { bypass }) }));
       r = await this.retrying('begin', () => destination.daemon.call('handover.inspect', {
         roots, excludes: m.excludes, folders, ...(ask.length && { links: ask }), ...(git.length && { git }), ...(resumes.length && { resumes }),
       }));
@@ -886,7 +895,13 @@ export class Handover {
       }
     }
     const asks = (f: ResumeFolder) => (r.untrusted ?? []).some((u) => u.kind === f.kind && u.cwd === f.cwd);
-    return { blockers, warnings: [...notices, ...danglingLinks(links, new Set(r.missing ?? []), where), ...trustWarnings(m, resuming.filter(asks), where)] };
+    const warns = (f: ResumeFolder) => !!f.bypass && (r.bypassWarned ?? []).some((u) => u.kind === f.kind && u.cwd === f.cwd);
+    return {
+      blockers,
+      warnings: [
+        ...notices, ...danglingLinks(links, new Set(r.missing ?? []), where), ...trustWarnings(m, resuming.filter(asks), where), ...bypassWarnings(m, resuming.filter(warns), where),
+      ],
+    };
   }
 
   /** The four journals: this controller's, the gateway's record, and what each daemon holds. `aside` moves a journal that cannot be read out of the way. */

@@ -1819,6 +1819,29 @@ describe('destination inspect', () => {
     fs.rmSync(path.join(s.dst, '.claude/.claude.json'));
     expect((await inspect([{ kind: 'claude', cwd: sub, repo: app, root: app }])).untrusted).toEqual([{ kind: 'claude', cwd: sub }]);
   });
+
+  it("names each carried folder whose resume asks for bypass mode where this machine's Claude has not accepted it", async () => {
+    const s = await scene({ land: false });
+    const [app, sub, plain] = ['work/app', 'work/app/sub', 'work/plain'].map((p) => path.join(s.dst, p));
+    fs.mkdirSync(sub, { recursive: true });
+    fs.mkdirSync(plain, { recursive: true });
+    const inspect = (resumes: ParsedParams<'handover.inspect'>['resumes']) =>
+      daemon(s).handover.inspect({ roots: [], excludes: [], folders: [], resumes });
+    const resumes = [
+      { kind: 'claude' as const, cwd: sub, repo: app, root: app, bypass: true }, { kind: 'claude' as const, cwd: plain, bypass: true },
+      { kind: 'claude' as const, cwd: plain },
+    ];
+
+    expect((await inspect(resumes)).bypassWarned).toEqual([{ kind: 'claude', cwd: sub }, { kind: 'claude', cwd: plain }]);
+    // the repository's own local settings accept it for every folder in it
+    fs.mkdirSync(path.join(app, '.claude'));
+    fs.writeFileSync(path.join(app, '.claude/settings.local.json'), JSON.stringify({ skipDangerousModePermissionPrompt: true }));
+    expect((await inspect(resumes)).bypassWarned).toEqual([{ kind: 'claude', cwd: plain }]);
+    // accepted once on this machine, in its Claude's own settings, it is accepted everywhere
+    fs.writeFileSync(path.join(s.dst, '.claude/settings.json'), JSON.stringify({ skipDangerousModePermissionPrompt: true }));
+    expect((await inspect(resumes)).bypassWarned).toEqual([]);
+    expect((await inspect([{ kind: 'claude', cwd: plain }])).bypassWarned).toBeUndefined();
+  });
 });
 
 describe('a destination root that already holds what the handover brings', () => {

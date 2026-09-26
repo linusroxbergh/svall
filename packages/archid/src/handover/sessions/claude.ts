@@ -45,6 +45,23 @@ function trusts(home: string, folder: Omit<ResumeFolder, 'kind'>): boolean {
   return false;
 }
 
+// the launch flags a revive keeps that start Claude in bypass mode
+const BYPASS = /(?:^| )(?:--dangerously-skip-permissions|--allow-dangerously-skip-permissions|--permission-mode 'bypassPermissions')(?= |$)/;
+
+const readJson = (file: string): Record<string, unknown> | undefined => {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return undefined; }
+};
+
+/**
+ * As Claude 2.1.283 decides: bypass mode is accepted by its config, which a start moves into its settings, by its
+ * settings, or by the local settings of the folder or of its repository's main checkout.
+ */
+function acceptsBypass(home: string, folder: Omit<ResumeFolder, 'kind'>): boolean {
+  const skips = (file: string) => readJson(file)?.skipDangerousModePermissionPrompt === true;
+  if (readJson(configOf(home))?.bypassPermissionsModeAccepted === true || skips(path.join(home, 'settings.json'))) return true;
+  return [folder.cwd, folder.repo].some((d) => d !== undefined && skips(path.join(d, '.claude', 'settings.local.json')));
+}
+
 export const claudeAdapter: SessionAdapter = {
   kind: 'claude',
   adapter: 1,
@@ -77,4 +94,7 @@ export const claudeAdapter: SessionAdapter = {
   trusts,
   // its prompt preselects "No, exit"
   trustAnswer: 'Yes, I trust this folder',
+
+  asksBypass: (command) => BYPASS.test(command),
+  acceptsBypass,
 };

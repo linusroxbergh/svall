@@ -222,6 +222,8 @@ class FakeDestination {
   landedSeen?: LandedRoot[];
   /** the folders its Codex already trusts */
   trusted = new Set<string>();
+  /** the folders where its Claude starts in bypass mode without warning first */
+  accepted = new Set<string>();
 
   constructor(private w: World, readonly id: MachineId) {}
 
@@ -234,13 +236,14 @@ class FakeDestination {
       const j = this.journal;
       return j ? { transaction: { id: j.tx, fromMachineId: this.w.other(this.id), toMachineId: this.id, phase: j.phase, startedAt: 1 }, characters: [], roots: [] } : { characters: [], roots: [] };
     },
-    'handover.inspect': (p: { roots: { id: string; path: string }[]; folders: string[]; resumes?: { kind: string; cwd: string }[] }) => ({
+    'handover.inspect': (p: { roots: { id: string; path: string }[]; folders: string[]; resumes?: { kind: string; cwd: string; bypass?: boolean }[] }) => ({
       roots: p.roots.map((r) => ({
         id: r.id,
         check: this.diverged.has(r.id) ? { ok: false, path: r.path, blocker: this.divergedBlocker(r.id, r.path) } : { ok: true, path: r.path, kind: this.replicas.has(r.id) ? 'replica' : 'absent' },
       })),
       folders: Object.fromEntries(p.folders.map((f) => [f, this.folders[f] ?? this.probe])),
       untrusted: (p.resumes ?? []).filter((f) => !this.trusted.has(`${f.kind} ${f.cwd}`)).map(({ kind, cwd }) => ({ kind, cwd })),
+      bypassWarned: (p.resumes ?? []).filter((f) => f.bypass && !this.accepted.has(`${f.kind} ${f.cwd}`)).map(({ kind, cwd }) => ({ kind, cwd })),
     }),
     'handover.claim': (p: { transactionId: string; generation: number; manifest: FrozenManifest; manifestDigest: string; archive?: string[] }) => this.claim(p),
     'handover.prepare': (p: { transactionId: string; generation: number; manifest: FrozenManifest; manifestDigest: string; landed: LandedRoot[] }) => this.prepare(p),
@@ -812,6 +815,28 @@ describe('preflight', () => {
     expect(asked).toEqual(expect.arrayContaining([{ kind: 'claude', cwd: '/Users/ada/app', repo: '/Users/ada/app', root: '/Users/ada/app' }]));
     w.destination.trusted.add('claude /Users/ada/app');
     expect((await trust()).map((x) => x.code)).toEqual(['codex_trust']);
+  });
+
+  it('warns that Claude warns about bypass mode with "No, exit" preselected where a carried resume asks for it and the destination\'s Claude has not accepted it', async () => {
+    const w = new World();
+    const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
+    w.source.answers['handover.preflight'] = ((p: unknown) => {
+      const r = preflight(p);
+      r.manifest.snapshot.characters.c_ada.revive = { command: `claude --dangerously-skip-permissions --resume ${SID}` };
+      return r;
+    }) as never;
+    let asked: unknown;
+    const inspect = w.destination.answers['handover.inspect'] as (p: unknown) => object;
+    w.destination.answers['handover.inspect'] = ((p: { resumes?: unknown }) => { asked = p.resumes; return inspect(p); }) as never;
+    const bypass = async () => (await controller(w).preflight(trift, {})).warnings.filter((x) => x.code === 'claude_bypass');
+
+    expect(await bypass()).toEqual([{
+      code: 'claude_bypass', entity: { kind: 'character', id: 'c_ada' },
+      message: 'Claude warns that ada resumes in Bypass Permissions mode on trift, with "No, exit" preselected; choose "Yes, I accept" in that terminal',
+    }]);
+    expect(asked).toEqual(expect.arrayContaining([{ kind: 'claude', cwd: '/Users/ada/app', bypass: true }, expect.not.objectContaining({ bypass: true })]));
+    w.destination.accepted.add('claude /Users/ada/app');
+    expect(await bypass()).toEqual([]);
   });
 
   it('blocks a destination that holds a handover journal of its own, before anything is rested', async () => {

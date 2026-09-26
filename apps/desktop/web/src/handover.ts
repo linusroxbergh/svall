@@ -298,6 +298,8 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
       return `Codex asks you to trust each moved folder the first time it resumes on ${ctx.destination}.`;
     case 'claude_trust':
       return `Claude asks you to trust each moved folder the first time it resumes on ${ctx.destination}, with "No, exit" preselected: choose "Yes, I trust this folder".`;
+    case 'claude_bypass':
+      return `Claude warns about Bypass Permissions mode when a moved character resumes in it on ${ctx.destination}, with "No, exit" preselected: choose "Yes, I accept", once for that machine.`;
     default:
       return undefined;
   }
