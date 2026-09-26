@@ -1,4 +1,4 @@
-import { contextKind, DEFAULT_SIZE, HOME_ISLAND, type Cell, type Character, type ContextItem, type HomeAction, type Params, type Result, type Size } from '@archipelago/protocol';
+import { AgentKind, contextKind, DEFAULT_SIZE, HOME_ISLAND, type Cell, type Character, type ContextItem, type HomeAction, type Params, type Result, type Size } from '@archipelago/protocol';
 import { ApiError, type Api } from './api.js';
 import type { Bridge } from './bridge.js';
 import type { DropTarget } from './drop.js';
@@ -152,6 +152,12 @@ export async function startHomeCharacter(d: ActionDeps, p: { prompt: string; lab
   const { home } = d.store.getState().fleet;
   const before = d.store.getState().selectedId;
   const stop = selectOnArrival(d, before);
+  // a crew member whose CLI archid doesn't find only prints command not found; the toast says why, and a
+  // login shell that finds it still gets its chance
+  const cli = home.command.trim().split(/\s+/)[0];
+  const found = d.store.getState().fleet.agentsFound;
+  const unfound = AgentKind.safeParse(cli).success && found !== undefined && !found.includes(cli as AgentKind);
+  if (unfound) d.store.getState().showToast(`Mission control runs ${cli}, which archid doesn't find. Install it, then run archi setup.`);
   try {
     const c = await d.api.call('char.create', { islandId: HOME_ISLAND, cwd: home.cwd, ...(p.label ? { name: p.label } : {}), command: home.command, run: p.prompt });
     // a crew member the mirror already has was chosen for, or yielded, on arrival
@@ -159,11 +165,13 @@ export async function startHomeCharacter(d: ActionDeps, p: { prompt: string; lab
     if (s.selectedId === before && !s.fleet.characters[c.id]) s.select(c.id);
     // an agent that never reported in was booting slowly or is waiting on a question of its own; either
     // way the crew member is there and the prompt is still the user's to send, so it is not thrown away
-    if (c.runSent === false) {
-      d.store.getState().showToast(`${c.name} started, prompt not sent`, 'ok',
-        { label: 'Send it', run: () => { d.api.call('char.run', { id: c.id, text: p.prompt, enter: true }).catch(toast(d)); } });
-    } else {
-      d.store.getState().showToast(`${c.name} started`, 'ok');
+    if (!unfound) {
+      if (c.runSent === false) {
+        d.store.getState().showToast(`${c.name} started, prompt not sent`, 'ok',
+          { label: 'Send it', run: () => { d.api.call('char.run', { id: c.id, text: p.prompt, enter: true }).catch(toast(d)); } });
+      } else {
+        d.store.getState().showToast(`${c.name} started`, 'ok');
+      }
     }
     return true;
   } catch (e) {
@@ -238,6 +246,10 @@ export const closeBrowserTab = (d: ActionDeps, id: string, tab: string): void =>
 
 export const setScribe = (d: ActionDeps, enabled: boolean): void => {
   d.api.call('scribe.set', { enabled }).catch(toast(d));
+};
+
+export const setMainAgent = (d: ActionDeps, agent: AgentKind): void => {
+  d.api.call('mainAgent.set', { agent }).catch(toast(d));
 };
 
 export const setDormancy = (d: ActionDeps, hours: number): void => {

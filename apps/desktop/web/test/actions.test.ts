@@ -364,6 +364,16 @@ describe('home', () => {
     expect(store.getState().toast).toEqual({ text: 'bright otter started', tone: 'ok' });
   });
 
+  it('says so when archid does not find the CLI mission control runs, and still starts the crew member', async () => {
+    const calls: { method: string; params: unknown }[] = [];
+    const api = { call: (method: string, params: unknown) => { calls.push({ method, params }); return Promise.resolve({ id: 'c_new', name: 'bright otter', runSent: true }); } } as unknown as Api;
+    const store = createAppStore(undefined);
+    store.getState().setFleet({ ...fleet(), agentsFound: ['codex'] });
+    expect(await startHomeCharacter({ api, store }, { prompt: 'regroup the fleet' })).toBe(true);
+    expect(calls.map((c) => c.method)).toEqual(['char.create']);
+    expect(store.getState().toast).toEqual({ text: "Mission control runs claude, which archid doesn't find. Install it, then run archi setup.", tone: 'error' });
+  });
+
   it('reports failure and toasts when the fleet refuses', async () => {
     const api = { call: () => Promise.reject(new Error('no such island')) } as unknown as Api;
     const store = createAppStore(undefined);

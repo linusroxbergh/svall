@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { DORMANT_AFTER_HOURS, type PushStatus } from '@archipelago/protocol';
-import { loadMobileStatus, setDormancy, setScribe } from './actions.js';
+import { AGENT_LABEL, AgentKind, DORMANT_AFTER_HOURS, type PushStatus } from '@archipelago/protocol';
+import { loadMobileStatus, setDormancy, setMainAgent, setScribe } from './actions.js';
 import { app, deps } from './boot.js';
 import { openConfig, openUrl } from './bridge.js';
 import { useApp } from './hooks.js';
@@ -115,16 +115,39 @@ function Dormancy() {
   );
 }
 
+// a stable identity, so a selector defaulting to "no CLIs found" does not retrigger on every render
+const NO_AGENTS: AgentKind[] = [];
+
+function MainAgent() {
+  const main = useApp((s) => s.fleet.mainAgent ?? 'claude');
+  const found = useApp((s) => s.fleet.agentsFound ?? NO_AGENTS);
+  return (
+    <div className="row">
+      <span>main agent<Info id="main-agent">What the scribe and mission control's crew run, and what <code>archi char new --run</code> starts, unless you name another. Any character can still run either: type claude or codex in it. A <code>home.command</code> in config.json keeps the crew on that command.</Info></span>
+      <b><select className="fld inline" aria-label="Main agent" value={main} data-testid="set-main-agent"
+        onChange={(e) => setMainAgent(deps(), e.target.value as AgentKind)}>
+        {AgentKind.options.map((k) => (
+          <option key={k} value={k} disabled={!found.includes(k) && k !== main}>
+            {found.includes(k) ? AGENT_LABEL[k] : `${AGENT_LABEL[k]} (not found: install it, then archi setup)`}
+          </option>
+        ))}
+      </select></b>
+    </div>
+  );
+}
+
 function Scribe() {
   const on = useApp((s) => !s.fleet.scribeOff && !s.fleet.scribeAsk);
   const error = useApp((s) => s.fleet.scribeError);
+  const scribeAgent = useApp((s) => s.fleet.scribeAgent ?? 'claude');
   const flip = () => setScribe(deps(), !on);
   return (
     <>
       <div className="kicker">The fleet</div>
       <div className="rows">
+        <MainAgent />
         <div className="row">
-          <span>scribe<Info id="scribe">About a minute after an agent stops, the scribe updates the character's name, note and links, and its island's description. Each pass is one headless call to Claude, or to Codex when <code>scribe.agent</code> is <code>codex</code>. API keys may incur charges.</Info></span>
+          <span>scribe<Info id="scribe">About a minute after an agent stops, the scribe updates the character's name, note and links, and its island's description. Each pass is one headless call to {AGENT_LABEL[scribeAgent]}. API keys may incur charges.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={on} data-testid="set-scribe" onClick={flip}>{on ? 'on' : 'off'}</button></b>
         </div>
         {error && (
