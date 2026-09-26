@@ -22,7 +22,8 @@ function failure(events: string): string | undefined {
 }
 
 // `codex exec` takes one prompt and has no system prompt of its own, so the system text leads it. Without a
-// model codex picks its own default. cwd is an empty folder, so no project instructions load
+// model codex picks its own default. cwd is an empty folder, so no project instructions load. A pass runs
+// at low reasoning effort.
 export function codexRunner(o: { model?: string; cwd: string; bin?: string; timeoutMs?: number }): RunScribe {
   return async (system, prompt) => {
     fs.mkdirSync(o.cwd, { recursive: true });
@@ -32,7 +33,7 @@ export function codexRunner(o: { model?: string; cwd: string; bin?: string; time
     const { ARCHI_CHAR_ID: _id, ...env } = process.env;
     try {
       const { code, out, err } = await runChild(
-        () => spawn(o.bin ?? 'codex', ['exec', '--json', ...(o.model ? ['-m', o.model] : []), ...ISOLATION, '-o', last, '-'],
+        () => spawn(o.bin ?? 'codex', ['exec', '--json', ...(o.model ? ['-m', o.model] : []), '-c', 'model_reasoning_effort="low"', ...ISOLATION, '-o', last, '-'],
           { cwd: o.cwd, env, stdio: ['pipe', 'pipe', 'pipe'] }),
         { label: 'codex exec', stdin: `${system}\n\n---\n\n${prompt}`, timeoutMs: o.timeoutMs },
       );

@@ -9,7 +9,7 @@ import { followRollout, type RolloutMark } from './agent/codex-workdir.js';
 import { applyHook, applyStatus, markSeen as markSeenPure, type Slot } from './agent/reducer.js';
 import { condenseTurns, readTail, userPrompts } from './agent/transcript.js';
 import { characterKeyEnv } from './claude.js';
-import { saveMainAgent, type Config } from './config.js';
+import { saveMainAgent, scribeModel, type Config } from './config.js';
 import { briefReply, renderBrief } from './context/brief.js';
 import { takesPrompt, withAddDirs, withPromptFile } from './context/launch.js';
 import { settleItems } from './context/items.js';
@@ -27,7 +27,7 @@ import { randomName } from './names.js';
 import { expandHome, type Paths } from './paths.js';
 import { markDormant, placeOnIsland, reconcile, secondName } from './reconcile.js';
 import { codexRunner } from './scribe/codex.js';
-import { claudeRunner, type RunScribe } from './scribe/run.js';
+import { claudeRunner, perPass, type RunScribe } from './scribe/run.js';
 import { Scribe, type SweepOptions } from './scribe/scribe.js';
 import { installHomeTemplate } from './setup.js';
 import type { Store } from './store.js';
@@ -89,9 +89,10 @@ export class Fleet extends EventEmitter<Events> {
     super();
     const { store, log, config, paths } = deps;
     const cwd = path.join(paths.home, 'scribe');
-    const run = deps.runScribe ?? (config.scribe.agent === 'codex'
-      ? codexRunner({ model: config.scribe.model, cwd })
-      : claudeRunner({ model: config.scribe.model ?? 'sonnet', cwd, envFile: paths.env }));
+    const run = deps.runScribe ?? perPass({
+      claude: claudeRunner({ model: scribeModel(config.scribe, 'claude') ?? 'sonnet', cwd, envFile: paths.env }),
+      codex: codexRunner({ model: scribeModel(config.scribe, 'codex'), cwd }),
+    }, () => store.state.scribeAgent ?? 'claude');
     this.scribe = new Scribe({ store, log, run, brief: (island, c) => this.render(island, c) });
   }
 

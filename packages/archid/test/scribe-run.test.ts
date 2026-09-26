@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { claudeRunner } from '../src/scribe/run.js';
+import { claudeRunner, perPass } from '../src/scribe/run.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 // a stand-in for `claude -p`, found first on PATH; FAKE_CLAUDE picks how it answers
@@ -70,5 +70,15 @@ describe('claudeRunner', () => {
     await expect(run('system', 'prompt')).rejects.not.toHaveProperty('cause');
     process.env.FAKE_CLAUDE = 'prose';
     await expect(run('system', 'prompt')).rejects.toThrow(/^claude -p printed no result$/);
+  });
+});
+
+describe('perPass', () => {
+  it('runs each pass on the CLI named at that moment', async () => {
+    let agent: 'claude' | 'codex' = 'claude';
+    const run = perPass({ claude: async () => 'from claude', codex: async () => 'from codex' }, () => agent);
+    expect(await run('s', 'p')).toBe('from claude');
+    agent = 'codex';
+    expect(await run('s', 'p')).toBe('from codex');
   });
 });

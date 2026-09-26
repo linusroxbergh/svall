@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { Config } from '../src/config.js';
+import { Config, scribeModel } from '../src/config.js';
 import { codexRunner } from '../src/scribe/codex.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -56,6 +56,14 @@ describe('codexRunner', () => {
     const dir = makeHome();
     await expect(codexRunner({ cwd: dir, bin: fakeCodex(dir, 'exec sleep 30'), timeoutMs: 200 })('s', 'p')).rejects.toThrow(/timed out after 200ms/);
   });
+
+  it('asks codex for low reasoning effort, and a model only when one is set', async () => {
+    const dir = makeHome();
+    await codexRunner({ cwd: dir, bin: fakeCodex(dir, writeAnswer) })('s', 'p');
+    const args = fs.readFileSync(path.join(dir, 'args'), 'utf8');
+    expect(args).toContain('-c model_reasoning_effort="low"');
+    expect(args).not.toContain('-m ');
+  });
 });
 
 describe('scribe config', () => {
@@ -63,5 +71,12 @@ describe('scribe config', () => {
     expect(Config.parse({}).scribe).toEqual({});
     expect(Config.parse({ scribe: { agent: 'codex' } }).scribe).toEqual({ agent: 'codex' });
     expect(() => Config.parse({ scribe: { agent: 'cursor' } })).toThrow();
+  });
+
+  it('gives scribe.model to the CLI it was set for', () => {
+    expect(scribeModel({ model: 'haiku' }, 'claude')).toBe('haiku');
+    expect(scribeModel({ model: 'haiku' }, 'codex')).toBeUndefined();
+    expect(scribeModel({ agent: 'codex', model: 'gpt-6-luna' }, 'codex')).toBe('gpt-6-luna');
+    expect(scribeModel({ agent: 'codex', model: 'gpt-6-luna' }, 'claude')).toBeUndefined();
   });
 });

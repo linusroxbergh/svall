@@ -27,6 +27,9 @@ export const Config = z.object({
 });
 export type Config = z.infer<typeof Config>;
 
+export const scribeModel = (s: Config['scribe'], agent: AgentKind): string | undefined =>
+  ((s.agent ?? 'claude') === agent ? s.model : undefined);
+
 export class InvalidConfig extends Error {}
 
 export function loadConfig(file: string): Config {
