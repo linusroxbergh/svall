@@ -56,13 +56,23 @@ export function noServer(e: unknown): boolean {
   return /no server running on |error connecting to .* \(No such file or directory\)/.test(String(e));
 }
 
-// a name or path may hold any byte but NUL, and tmux 3.4 prints a control character as its octal escape where 3.7
-// prints the byte: fields and rows are marked with printable text made for each listing, which no name can hold
-// except by guessing it
+// what tmux 3.4 escapes as it prints, where 3.7 prints the byte: one that is not text as \ooo, a control character
+// that has a C escape as that, and a $ before a letter, _ or { as \$
+const ESCAPED: Record<string, number> = { a: 7, b: 8, f: 12, r: 13, v: 11, $: 36 };
+const unescape = (v: string): string => (v.includes('\\')
+  ? Buffer.concat(v.split(/\\([0-7]{3}|[abfrv$])/).map((part, i) => (i % 2 ? Buffer.of(part.length === 3 ? parseInt(part, 8) : ESCAPED[part]) : Buffer.from(part)))).toString('utf8')
+  : v);
+
+// a name or path may hold any byte but NUL: fields and rows are marked with printable text made for each listing,
+// which no name can hold except by guessing it. 3.4 prints a backslash as it is, so tmux swaps each for more such text
+// first, and every backslash left in what it prints is one of its escapes
 function listing(fields: string[]): { format: string; rows(out: string): string[][] } {
   const token = crypto.randomBytes(8).toString('hex');
-  const [sep, end] = [`<${token}>`, `</${token}>`];
-  return { format: fields.join(sep) + end, rows: (out) => out.split(`${end}\n`).filter(Boolean).map((row) => row.split(sep)) };
+  const [sep, end, slash] = [`<${token}>`, `</${token}>`, `(${token})`];
+  return {
+    format: fields.map((f) => `#{s/\\\\/${slash}/:${f}}`).join(sep) + end,
+    rows: (out) => out.split(`${end}\n`).filter(Boolean).map((row) => row.split(sep).map((v) => unescape(v).replaceAll(slash, '\\'))),
+  };
 }
 
 export class Tmux {
@@ -131,7 +141,7 @@ export class Tmux {
   }
 
   async listSessions(): Promise<LiveSession[]> {
-    const list = listing(['#{session_name}', '#{session_attached}', '#{session_created}']);
+    const list = listing(['session_name', 'session_attached', 'session_created']);
     const out = await this.run('list-sessions', '-F', list.format).catch(() => '');
     return list.rows(out).map(([name, attached, created]) => ({ name, attached: Number(attached), created: Number(created) * 1000 }));
   }
@@ -204,7 +214,7 @@ export class Tmux {
   }
 
   async listWindows(signal?: AbortSignal): Promise<LiveWindow[]> {
-    const list = listing(['#{window_id}', '#{pane_id}', '#{pane_pid}', '#{window_name}', '#{pane_current_command}', '#{window_activity}', '#{pane_dead}', '#{pane_current_path}']);
+    const list = listing(['window_id', 'pane_id', 'pane_pid', 'window_name', 'pane_current_command', 'window_activity', 'pane_dead', 'pane_current_path']);
     // one row per window: a split window would otherwise yield several rows under the same name.
     const out = await this.call(['list-panes', '-s', '-t', SESSION, '-f', '#{pane_active}', '-F', list.format], signal);
     return list.rows(out)
