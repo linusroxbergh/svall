@@ -942,10 +942,42 @@ describe('destination activate', () => {
     expect(row).toMatchObject({ ok: true, sessionId: SID, notice: bo.notice });
 
     // answered, Claude starts the carried session, which leaves the terminal the fleet's as any other
+    expect(d.crew.carried('c_bo')).toBe(true);
     d.crew.started('c_bo', undefined, SID);
+    await settle();
     expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo')).toEqual(row);
     expect(d.crew.carried('c_bo')).toBe(false);
     expect(d.handover.status().characters.find((c) => c.id === 'c_bo')!.error).toBeUndefined();
+  });
+
+  it("keeps watching a Claude counted up at its trust prompt, and lays it dormant again with its carried resume and an error once it exits there", async () => {
+    const bo = `claude --effort 'high' --resume ${SID}`;
+    const s = await scene({ tamper: (m) => { m.snapshot.characters.c_bo.revive = { command: bo }; } });
+    const d = daemon(s);
+    d.gateway.commit((await d.handover.prepare(params(s))).preparedDigest);
+    fs.rmSync(path.join(s.dst, '.claude/.claude.json'));
+    d.crew.silent.add('c_bo');
+
+    const { r } = await activateBy(d);
+    expect(r.characters.find((c) => c.id === 'c_bo')).toMatchObject({ ok: true, notice: expect.stringMatching(/Yes, I trust this folder/) });
+    // until its session starts, the fleet leaves the agent and resume command the terminal carries alone
+    await d.clock.advance(10_000);
+    expect(d.crew.carried('c_bo')).toBe(true);
+    expect(d.crew.log).not.toContain('kill c_bo');
+
+    // "No, exit", which the prompt preselects
+    d.crew.window('c_bo')!.command = 'bash';
+    await d.clock.advance(5000);
+
+    expect(d.crew.log).toContain('kill c_bo');
+    const c = s.store.state.characters.c_bo;
+    expect(c.tmux).toBeUndefined();
+    expect(c).toMatchObject({
+      agent: { sessionId: SID }, revive: { command: bo },
+      resumeError: expect.stringMatching(/^bo's terminal resumed claude session \S+, but claude exited back to its shell before that session started, .*; revive it and choose "Yes, I trust this folder"/),
+    });
+    expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo')).toMatchObject({ ok: false, error: c.resumeError });
+    expect(d.crew.carried('c_bo')).toBe(false);
   });
 
   it('counts a resumed Claude up by its SessionStart, with no notice, when it comes before the settle in a folder this machine does not trust', async () => {
@@ -1301,7 +1333,7 @@ withTmux('destination activate on real terminals', () => {
    * and goes no further, or enters it and starts a program named for the agent, whose SessionStart dies with it; the
    * other runs a stand-in that reports its SessionStart a moment later.
    */
-  function boot(c: { s: Scene; d: ReturnType<typeof daemon>; bin: string }, store: Store, o: { concurrency: number; dies?: 'typed' | 'entered'; startAfterMs?: number; codex?: 'silent' | 'exits'; claude?: 'prompt' }) {
+  function boot(c: { s: Scene; d: ReturnType<typeof daemon>; bin: string }, store: Store, o: { concurrency: number; dies?: 'typed' | 'entered'; startAfterMs?: number; codex?: 'silent' | 'exits'; claude?: 'prompt' | 'exits' }) {
     const { s, d, bin } = c;
     const ownership = OwnershipState.load({ paths: s.paths, fleetId, machineId: trift, log: silentLogger });
     const tmux = new Tmux(s.paths.tmuxSock, s.paths.tmuxConf);
@@ -1319,8 +1351,8 @@ withTmux('destination activate on real terminals', () => {
       if (o.dies) return new Promise(() => {});
       // Codex runs its SessionStart hook with the first turn, not as it resumes; one that exits is back at the shell a second later
       if (kind === 'codex' && o.codex) return send(paneId, o.codex === 'silent' ? `exec ${path.join(bin, kind)} 600` : `${path.join(bin, kind)} 1`, true);
-      // Claude at its trust prompt holds its pane and runs no hook until the prompt is answered
-      if (kind === 'claude' && o.claude) return send(paneId, `exec ${path.join(bin, kind)} 600`, true);
+      // Claude at its trust prompt holds its pane and runs no hook until the prompt is answered; one told "No, exit" is back at the shell
+      if (kind === 'claude' && o.claude) return send(paneId, o.claude === 'prompt' ? `exec ${path.join(bin, kind)} 600` : `${path.join(bin, kind)} 6`, true);
       await send(paneId, 'exec sleep 600', true);
       const ch = Object.values(store.state.characters).find((x) => x.tmux?.paneId === paneId || x.second?.tmux?.paneId === paneId)!;
       const term = ch.second?.tmux?.paneId === paneId ? 2 as const : undefined;
@@ -1442,6 +1474,27 @@ withTmux('destination activate on real terminals', () => {
     expect(s.store.state.characters.c_bo).toMatchObject({ tmux: bo.tmux, agent: { kind: 'claude', sessionId: SID, transcriptPath, pid: claude!.pid } });
     expect(s.store.state.characters.c_bo.resumeError).toBeUndefined();
     expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo')).toMatchObject({ ok: true, sessionId: SID });
+  }, 30_000);
+
+  it('leaves a Claude that exits at its trust prompt after Complete dormant again with its carried session and an error, which the fleet does not take from it first', async () => {
+    const c = await committed();
+    const { s } = c;
+    fs.rmSync(path.join(s.dst, '.claude/.claude.json'));
+    const first = boot(c, s.store, { concurrency: 2, claude: 'exits' });
+    await first.fleet.start();
+    const lost: string[] = [];
+    s.store.subscribe(() => { if (s.store.state.characters.c_bo?.agent?.sessionId !== SID) lost.push('c_bo'); });
+    const r = await first.handover.activate({ transactionId: TX, generation: 5 });
+    expect(r.characters.find((x) => x.id === 'c_bo')).toMatchObject({ ok: true, notice: expect.stringMatching(/Yes, I trust this folder/) });
+    await first.handover.complete({ transactionId: TX, generation: 5 });
+
+    // claude, told "No, exit", is back at the shell six seconds on, and the fleet polls every 100 ms meanwhile
+    await waitFor(() => !!s.store.state.characters.c_bo.resumeError, 15_000);
+    expect(s.store.state.characters.c_bo.tmux).toBeUndefined();
+    expect(s.store.state.characters.c_bo).toMatchObject({
+      agent: { sessionId: SID }, revive: { command: `claude --resume ${SID}` }, resumeError: expect.stringMatching(/claude exited back to its shell/),
+    });
+    expect(lost).toEqual([]);
   }, 30_000);
 
   it("keeps why a resume failed on its character's record past Complete, until a revive brings that terminal up", async () => {

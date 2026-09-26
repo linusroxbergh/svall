@@ -77,6 +77,8 @@ type CharacterResult = Result<'handover.activate'>['characters'][number];
 type Look = { held: 'gone' | 'shell' | 'agent' } | { held: 'other'; job: string };
 /** How a resumed agent came up: its SessionStart came, it has run in its pane without one, or why neither happened. */
 type Up = 'started' | 'running' | { failed: string };
+/** The session a terminal resumes, and the command that resumes it again. */
+type Carried = { revive: { command: string }; sessionId: string };
 
 const SESSION_START_MS = 60_000;
 const CONCURRENCY = 4;
@@ -85,6 +87,8 @@ const LOOK_MS = 10_000;
 // how long an agent that reports nothing as it resumes must hold its pane to count as up, and how often the pane is looked at
 const SETTLE_MS = 3000;
 const LOOK_EVERY_MS = 500;
+// how often a terminal counted up at a prompt is looked at until its session starts
+const WATCH_EVERY_MS = 2000;
 // typed into a plain shell that came back empty, so whoever opens it knows its old job did not come along
 const NOTICE = 'Archipelago restarted this shell after a handover; whatever ran here before did not move.';
 const RESTARTED = `echo '${NOTICE}'`;
@@ -150,6 +154,8 @@ export class DestinationHandover {
   private waiters = new Map<string, { sessionId: string; done: (ok: boolean) => void }>();
   // SessionStarts heard for terminals this handover has yet to answer for, before anything waited on them
   private heard = new Map<string, string>();
+  // terminals counted up at a prompt whose session has yet to start
+  private watched = new Set<string>();
   private replicas: ReplicaStore;
   private clock: Clock;
 
@@ -537,7 +543,7 @@ export class DestinationHandover {
     const which = s.term === 2 ? `${c.name}'s second terminal` : `${c.name}'s terminal`;
     const agent = reviveCommand(slot) ? slot.agent : undefined;
     // opening the terminal clears its resume, which laying it dormant again puts back
-    const carried = agent && slot.revive ? { revive: slot.revive, sessionId: agent.sessionId } : undefined;
+    const carried: Carried | undefined = agent && slot.revive ? { revive: slot.revive, sessionId: agent.sessionId } : undefined;
     let held = slot.tmux ? (await this.holding(slot)).held : undefined;
     if (held === 'gone' || (held === 'shell' && agent)) {
       await this.lay(s, carried);
@@ -545,6 +551,8 @@ export class DestinationHandover {
     }
     let started: { done: Promise<boolean>; cancel(): void } | undefined;
     let entry: Activation;
+    // what to do again, should an agent counted up at a prompt leave it before its session starts
+    let unanswered: string | undefined;
     try {
       if (!agent) {
         const opened = held ? undefined : await this.openSlot(s);
@@ -576,10 +584,12 @@ export class DestinationHandover {
           const see = reports ? 'it may have stopped at a prompt; revive it to see' : 'revive it to see';
           entry = { ...s, ok: false, sessionId: agent.sessionId, error: `${which} resumed ${agent.kind} session ${agent.sessionId}, ${up.failed}, so it is dormant again with that session; ${see}` };
         } else {
-          const answer = adapter.trustAnswer ? `choose "${adapter.trustAnswer}" there` : 'answer it there';
+          const answer = adapter.trustAnswer ? `choose "${adapter.trustAnswer}"` : 'answer it';
+          const prompt = up === 'running' && !trusted;
+          if (prompt) unanswered = `revive it and ${adapter.trustAnswer ? answer : 'trust its folder'} at its "Trust this folder?" prompt`;
           entry = {
             ...s, ok: true, sessionId: agent.sessionId,
-            ...(up === 'running' && !trusted && { notice: `${agent.kind} waits at its "Trust this folder?" prompt in ${which}; ${answer}` }),
+            ...(prompt && { notice: `${agent.kind} waits at its "Trust this folder?" prompt in ${which}; ${answer} there` }),
           };
         }
       }
@@ -589,7 +599,47 @@ export class DestinationHandover {
       entry = { ...s, ok: false, error: `${which} did not open: ${(e as Error).message}` };
     }
     if (entry.error) this.d.log.error(`handover ${tx}: ${entry.error}`);
+    // watched before its row is written, which forgets a SessionStart already heard for it
+    if (unanswered && agent) {
+      this.watch(tx, s, which, agent, carried, unanswered).catch((e: Error) => this.d.log.error(`handover ${tx}: ${which} is no longer watched: ${e.message}`));
+    }
     this.recordSlot(tx, entry);
+  }
+
+  /**
+   * Watches a terminal counted up at a prompt until its session starts, the fleet leaving what it carries alone
+   * meanwhile. One whose agent leaves the pane first is left dormant with that session and an error saying `then`.
+   */
+  private async watch(tx: string, s: Slot, which: string, agent: { kind: AgentKind; sessionId: string }, carried: Carried | undefined, then: string): Promise<void> {
+    const key = keyOf(s);
+    const started = this.waitStart(s, agent.sessionId, false);
+    this.watched.add(key);
+    let heard = false;
+    const start = started.done.then((ok) => { heard = ok; });
+    try {
+      for (;;) {
+        const nap = new AbortController();
+        await Promise.race([this.clock.sleep(WATCH_EVERY_MS, nap.signal), start]);
+        nap.abort();
+        const c = this.d.store.state.characters[s.characterId];
+        const slot = s.term === 2 ? c?.second : c;
+        // a later handover's rest answers for it from then on
+        if (heard || slot?.restedBy !== tx) return;
+        let look: Look;
+        try { look = slot.tmux ? await this.holding(slot) : { held: 'gone' }; } catch { continue; }
+        if (heard) return;
+        if (look.held !== 'shell' && look.held !== 'gone') continue;
+        const left = look.held === 'gone' ? 'its window closed' : `${agent.kind} exited back to its shell`;
+        await this.lay(s, carried);
+        const error = `${which} resumed ${agent.kind} session ${agent.sessionId}, but ${left} before that session started, so it is dormant again with that session; ${then}`;
+        this.d.log.error(`handover ${tx}: ${error}`);
+        this.recordSlot(tx, { ...s, ok: false, sessionId: agent.sessionId, error });
+        return;
+      }
+    } finally {
+      started.cancel();
+      this.watched.delete(key);
+    }
   }
 
   private openSlot(s: Slot): Promise<Character> {
@@ -647,7 +697,7 @@ export class DestinationHandover {
   }
 
   /** Leaves a terminal dormant with the agent and resume command it carries, its window closed. */
-  private async lay(s: Slot, carried?: { revive: { command: string }; sessionId: string }): Promise<void> {
+  private async lay(s: Slot, carried?: Carried): Promise<void> {
     this.heard.delete(keyOf(s));
     const c = this.d.store.state.characters[s.characterId];
     const windowId = (s.term === 2 ? c?.second : c)?.tmux?.windowId;
@@ -669,8 +719,9 @@ export class DestinationHandover {
   private processes = (signal?: AbortSignal): Promise<ProcessTable> =>
     this.d.processes ? this.d.processes(signal) : ProcessTable.read({ signal, scripts: installedScripts(this.d.paths.home) });
 
-  /** A terminal this handover rested and has not answered for: the fleet leaves the agent and resume command it carries alone. */
+  /** A terminal this handover rested and has not answered for, or one watched at a prompt: the fleet leaves the agent and resume command it carries alone. */
   private carrying(s: Slot): boolean {
+    if (this.watched.has(keyOf(s))) return true;
     const state = this.journal.journalState();
     const j = state.kind === 'open' && state.journal.role === 'destination' ? state.journal : undefined;
     const c = this.d.store.state.characters[s.characterId];
@@ -719,8 +770,6 @@ export class DestinationHandover {
 
   private recordSlot(tx: string, entry: Activation): void {
     this.heard.delete(keyOf(entry));
-    const j = this.open(tx);
-    if (!j) return;
     // why a terminal did not come up stays on its record, which outlives this journal
     this.d.store.update((d) => {
       const c = d.characters[entry.characterId];
@@ -728,6 +777,8 @@ export class DestinationHandover {
       if (!slot) return;
       if (entry.error) slot.resumeError = entry.error; else delete slot.resumeError;
     });
+    const j = this.open(tx);
+    if (!j) return;
     const activation = [...(j.activation ?? []).filter((a) => keyOf(a) !== keyOf(entry)), entry];
     this.journal.write({ ...j, activation, updatedAt: this.clock.now() });
     const result = characterResults(activation).find((r) => r.id === entry.characterId)!;
