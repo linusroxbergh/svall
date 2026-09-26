@@ -355,12 +355,12 @@ runIf('Fleet', () => {
   const HOUR = 3_600_000;
 
   // a character whose pane shell stands in for its agent: the sweep reads it as `args`, and it exits with its window
-  async function withAgent(b: Awaited<ReturnType<typeof boot>>, args = 'claude', command = 'sleep 600') {
+  async function withAgent(b: Awaited<ReturnType<typeof boot>>, args = 'claude', command = 'sleep 600', backend: AgentKind = 'claude') {
     const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command });
     const pid = Number((await b.tmux.run('display', '-p', '-t', c.tmux!.paneId, '#{pane_pid}')).trim());
     const transcriptPath = path.join(b.home, `${SID}.jsonl`);
     fs.writeFileSync(transcriptPath, '');
-    b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, pid, transcriptPath } });
+    b.fleet.onSocketEvent({ hook: { charId: c.id, backend, name: 'SessionStart', sessionId: SID, pid, transcriptPath } });
     b.procs.push({ pid, ppid: 1, pgid: pid, args });
     return { c, pid, transcriptPath };
   }
@@ -463,6 +463,19 @@ runIf('Fleet', () => {
     const file = path.join(home, `${c.id}.prompt`);
     expect(typed).toEqual([`claude --resume ${SID} -- "$(cat '${file}'; rm -f '${file}')"`]);
     expect(fs.readFileSync(file, 'utf8')).toBe('run the tests again');
+  });
+
+  it('wakes a dormant codex with a prompt run into it, as its launch prompt', async () => {
+    const b = await boot();
+    const { fleet, store, tmux, home } = b;
+    const { c } = await withAgent(b, 'codex', 'sleep 600', 'codex');
+    store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
+    await fleet['endIdleAgents']();
+    const typed: string[] = [];
+    vi.spyOn(tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
+    await fleet.run(c.id, 'run the tests again', true);
+    const file = path.join(home, `${c.id}.prompt`);
+    expect(typed).toEqual([`codex resume -c tui.resume_cwd=session ${SID} -- "$(cat '${file}'; rm -f '${file}')"`]);
   });
 
   it('takes back no window still closing for idleness, from a poll, a reconcile or a revive', async () => {

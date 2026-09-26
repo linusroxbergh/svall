@@ -22,11 +22,14 @@ describe('withAddDirs', () => {
 });
 
 describe('withPromptFile', () => {
-  it('is for claude alone', () => {
+  it('is for claude and codex', () => {
     expect(takesPrompt('claude')).toBe(true);
     expect(takesPrompt('claude --model sonnet')).toBe(true);
+    expect(takesPrompt('codex')).toBe(true);
+    expect(takesPrompt('codex -m gpt-6-luna')).toBe(true);
+    expect(takesPrompt('codex resume -c tui.resume_cwd=session s1')).toBe(true);
     expect(takesPrompt('claudette')).toBe(false);
-    expect(takesPrompt('codex')).toBe(false);
+    expect(takesPrompt('codexx')).toBe(false);
     expect(takesPrompt('node fake.mjs')).toBe(false);
   });
   it('passes the file as the last argument, after the options, and removes it once read', () => {

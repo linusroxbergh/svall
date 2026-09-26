@@ -13,7 +13,7 @@ export function withAddDirs(command: string, items: ContextItem[]): string {
   return dirs.reduce((cmd, d) => `${cmd} --add-dir ${shq(d)}`, command);
 }
 
-// claude submits a prompt given as its argument once it is up. The shell reads it from a file: typed
+// claude and codex submit a prompt given as their argument once they are up. The shell reads it from a file: typed
 // in before the shell is reading, a line past 1024 bytes is cut
-export const takesPrompt = (command: string): boolean => command === 'claude' || command.startsWith('claude ');
+export const takesPrompt = (command: string): boolean => /^(claude|codex)(\s|$)/.test(command);
 export const withPromptFile = (command: string, file: string): string => `${command} -- "$(cat ${shq(file)}; rm -f ${shq(file)})"`;

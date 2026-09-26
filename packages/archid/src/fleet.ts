@@ -501,7 +501,7 @@ export class Fleet extends EventEmitter<Events> {
     if (!p.run) return this.char(id);
     const timeoutMs = this.deps.runTimeoutMs ?? RUN_TIMEOUT_MS;
     let runSent = await this.waitForAgent(id, timeoutMs);
-    // claude has its prompt already, and submits it whenever it comes up
+    // claude and codex have their prompt already, and submit it once they are up
     if (prompt) return { ...this.char(id), runSent: true };
     if (runSent) {
       // the window can die between the agent attaching and the send; the character stays, without its prompt
@@ -733,7 +733,7 @@ export class Fleet extends EventEmitter<Events> {
 
   async run(id: string, text: string, enter: boolean, term?: 2): Promise<void> {
     const c = this.char(id);
-    // a dormant claude wakes with the text as its launch prompt; typed while it boots, a prompt can lose its Enter
+    // a dormant claude or codex wakes with the text as its launch prompt; typed while it boots, a prompt can lose its Enter
     if (!term && enter && !c.tmux && !this.reviving.has(id) && takesPrompt(c.revive?.command ?? '')) {
       await this.reviveCharacter(id, text);
       return;

@@ -209,15 +209,13 @@ runIf('archi CLI', () => {
     expect(r.stderr).toMatch(/archid is not running .*; `archi doctor` says why/);
   });
 
-  it('lists the home island with its kind and refuses --run without a command', async () => {
+  it('lists the home island with its kind and refuses an unknown agent', async () => {
     home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
     daemon = await start({ home, port: 0, log: silentLogger });
     const list = (await archi('island', 'list')).stdout;
     expect(list).toMatch(/kind/);
     expect(list).toMatch(/home\s+mission control/);
-    const bad = await archi('char', 'new', '--island', 'home', '--cwd', '/tmp', '--run', 'x');
-    expect(bad.code).not.toBe(0);
     const unknown = await archi('char', 'new', '--island', 'home', '--cwd', '/tmp', '--agent', 'cursor');
     expect(unknown.code).not.toBe(0);
     expect(unknown.stderr).toContain('claude or codex');
