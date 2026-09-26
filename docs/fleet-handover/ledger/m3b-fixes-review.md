@@ -311,3 +311,90 @@ The copy was confirmed equal to the worktree afterwards.
     - `cli.test.ts --version` (the copy has no `.git`);
     - `ssh.test.ts` spawn count, a known load flake that passes alone (24 passed, 1 skipped).
   - That makes 2978, as reported.
+
+## Fix round 2
+
+Commits `6773202b..039b2130`: I1 `57cf032a`, I2 `b242977e`, m1 `95721d4d`, m2 `039b2130`. Findings
+`m3b-fix2-findings.md`, report `m3b-fix2-report.md`.
+
+**Verdict: Approved.** Findings: 0 Critical, 0 Important, 2 Minor.
+- All four items are addressed.
+- Each fails without its change.
+- Each commit stays within its item.
+- No test ran a claude or codex other than isolate's doubles, and the guard test passes with no agent variables.
+
+About my runs:
+- Every run had my own logging `claude`/`codex` stubs (exit 97) first on PATH, with `~/.local/bin` left off PATH. The real CLIs were never run.
+- The runs are in `$SP/rv-m3b`: `runs/r2-*.json`, `runs/r2-reverts.txt` and `stub2-*.log`.
+- The worktree is unchanged apart from this section.
+
+### Minor
+
+**n1. Inside tmux panes, isolate's doubles come after the system paths.**
+- Tests' tmux servers start their shell as a login `-sh`. Its `/etc/profile` runs `path_helper`, which moves `/usr/local/bin`, `/usr/bin`, … `/pkg/env/global/bin` and `/Library/Apple/usr/bin` in front of the inherited PATH.
+- In a scratch tmux, a pane given `PATH=/tmp/isolatebin:…` got `/tmp/isolatebin` 12th.
+- On this Mac this is harmless. `/usr/local/bin/claude` is a dangling link (→ `~/.claude/local/claude`), so `fleet.test.ts`'s typed resume still reaches the double, and the full run below logged no stub call.
+- On a machine with a live `claude` or `codex` in `/usr/local/bin` (Intel Homebrew, an npm prefix of `/usr/local`), that typed `claude --resume …` would run the real CLI.
+- Fix: `isolate.ts` writes `<home>/.profile` with `PATH="<bin>:$PATH"; export PATH`. The login `sh` reads it after `/etc/profile`. Checked in a scratch tmux: the bin comes first again.
+
+**n2. The `watch` JSDoc is 4 lines** (`destination.ts:625-630`), against the delivery rule of 1–2. Trim it to what the code can't show: the watch ends at SessionStart, or at trust for an agent that starts no session until its first turn.
+
+### Items: verified
+
+**I1.**
+- The child gets `NO_COLOR: '1'`.
+- The plain-environment full run below passes all three `isolate.test.ts` tests. That run had no `CLAUDECODE`, `AI_AGENT` or `CLAUDE_CODE*`, with `TERM=xterm-256color TERM_PROGRAM=ghostty COLORTERM=truecolor`.
+
+**I2.**
+- `test/isolate.ts` puts `claude` and `codex` doubles in its bin. They answer:
+  - a supported release;
+  - logged in;
+  - a failed resume with the real CLIs' texts.
+- The new test checks by reading PATH, before anything runs, that both resolve into the isolate home. Run without the root config, it fails at its HOME assertion before spawning anything.
+- `sessions-live.test.ts` stays behind `ARCHI_LIVE_REMOTE`, with isolate's bin filtered out of its PATH. I checked this by reading only; I did not run it.
+
+**Proof that the full suite calls no claude or codex outside isolate's doubles.** My logging stubs were first on PATH, with no agent variables:
+
+| Run | Result | Stub calls |
+| --- | --- | --- |
+| root config, all 193 files | 3006 passed, 1 failed, 5 skipped | none |
+| archid and cli run from their package folders, no root config | 492 and 247 passed; the new isolate test fails at its HOME assertion | none |
+
+- The one failure in the root-config run is `cli.test.ts --version`: the copy has no `.git`.
+- The sentinel HOME was unchanged after both runs.
+- With `test/isolate.ts` reverted, the same stubs caught 6 calls from `ownership.test.ts` and `fleet.test.ts`: `claude --version`, `claude auth status`, `codex --version`, `codex login status`, and two typed `claude --resume 3f2b8c1e-…`.
+
+**m1: agree with ending the watch at trust for Codex only.**
+- The split follows the adapter's `sessionStartOnResume`, not a kind name, which is the right discriminator.
+- **Claude:** its SessionStart comes ~0.5 s after the answer. Keeping the watch until then is what covers a later prompt that preselects "No, exit" (the bypass warning), which is why R1 exists. It costs a few looks.
+- **Codex:** it starts no session until its first turn, so without an end at trust the watch runs indefinitely.
+- **What is left for Codex:**
+  - A Codex that quits after trusting and before its first prompt goes back to the fleet's two-poll shell streak. The result is a bare shell with the transcript intact. That quit is deliberate, and none of Codex's own prompts preselects an exit.
+  - A Codex whose user answers its trust prompt "No" never becomes trusted, so it is still watched until its first turn, as in round 1. That is rare and acceptable.
+- The re-read of trust on each look goes through the probe cache (`agents()`, 60 s TTL).
+
+**m2.**
+- Once `trusted(asked)` holds, the error ends `revive it and answer the prompt it waits at`.
+- "No, exit" at the trust prompt itself writes no trust, so it keeps the trust wording.
+- R2's quiet watch keeps `revive it to see`.
+
+**Failing first.** Each commit's tests ran on that commit's tree with its change reverted to its parent, in the plain environment with the stubs (`revert3.py`):
+
+| Item | Failures | Stub calls |
+| --- | --- | --- |
+| I1 | the guard test: ANSI `RUN` for `Test Files +1 passed` | none |
+| I2 | the doubles test, and the six real-CLI calls above landed in my stubs | 6 |
+| m1 | 1: still carried after trust | none |
+| m2 | 1: the `resumeError` named the trust prompt | none |
+
+The copy was confirmed equal to the worktree afterwards.
+
+**Scope.**
+- One commit per item, with plain subjects and no attribution.
+- The I2 commit's `sessions-live.test.ts` change is the PATH filter the doubles make necessary.
+- Other than n2, the comments stay within 2 lines.
+
+**Suites** (scratch copy at HEAD, plain environment, stubs first).
+- `pnpm typecheck`: exit 0.
+- Four projects: protocol 137, archid 1582 (2 skipped), cli 544 (3 skipped, one of them the no-`.git` `--version` test), web 718. That makes 2981, as reported.
+- The scripts project passes 26.
