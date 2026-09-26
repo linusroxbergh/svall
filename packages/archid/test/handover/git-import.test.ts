@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { FleetConfig, type GitCheckout, type MachineId, type TransferManifestV1 } from '@archipelago/protocol';
+import { emptyState, FleetConfig, type GitCheckout, type MachineId, type TransferManifestV1 } from '@archipelago/protocol';
 import { discoverGit, graphId, readWorktrees } from '../../src/handover/git-graph.js';
 import { graphsHere, importGraphs, keptWorktrees, unreached, validateGraph } from '../../src/handover/git-import.js';
 import { buildInventory, DEFAULT_EXCLUDES } from '../../src/handover/inventory.js';
@@ -173,6 +173,53 @@ real(`a real repository graph moved to another machine with the same home${hasGi
     await importGraphs(manifest, { probe: () => ({ ignoreCase: false }) });
     expect(fs.lstatSync(config).isSymbolicLink()).toBe(true);
     expect(read(outside)).toBe(before);
+  });
+
+  it('refuses a worktrees folder carried as a link, and leaves what it leads to as it was', async () => {
+    const l = seedHere(made);
+    const solo = path.join(l.source.work, 'solo');
+    git(l.base, l.source.work, 'init', '-q', 'solo');
+    fs.writeFileSync(path.join(solo, 'a.txt'), 'a\n');
+    git(l.base, solo, 'add', 'a.txt');
+    git(l.base, solo, 'commit', '-qm', 'a');
+    const state = emptyState();
+    state.characters.solo = char('solo', { cwd: solo });
+    const { manifest } = await handed(l, state);
+    const worktrees = path.join(solo, '.git/worktrees');
+    const outside = path.join(l.base, 'outside-worktrees');
+    fs.mkdirSync(path.join(outside, 'victim'), { recursive: true });
+    fs.writeFileSync(path.join(outside, 'victim/data'), 'not the import\'s to remove\n');
+    fs.symlinkSync(outside, worktrees);
+    expect(await importGraphs(manifest)).toEqual([
+      { code: 'worktree_unresolved', message: expect.stringContaining(worktrees), entity: { kind: 'git', id: manifest.git![0].id } },
+    ]);
+    expect(read(path.join(outside, 'victim/data'))).toBe('not the import\'s to remove\n');
+  });
+
+  it('turns a git that refuses into a blocker for its graph, and removes no registration', async () => {
+    const l = seedHere(made);
+    const { manifest } = await handed(l);
+    const registrations = path.join(l.source.main, '.git/worktrees');
+    const before = fs.readdirSync(registrations).sort();
+    const refusing: GitRunner = async (args, cwd) => (args[0] === 'config' && args.includes('--get')
+      ? { code: 128, stdout: '', stderr: 'fatal: bad config line 1\n' } : runGit(args, cwd));
+    const blockers = await importGraphs(manifest, { git: refusing, probe: () => ({ ignoreCase: false }) });
+    expect(blockers).toEqual(manifest.git!.map((g) => ({
+      code: 'worktree_unresolved', message: `${path.join(g.commonDir, 'config')}: git config --get core.ignorecase failed: fatal: bad config line 1`, entity: { kind: 'git', id: g.id },
+    })));
+    expect(fs.readdirSync(registrations).sort()).toEqual(before);
+  });
+
+  it.skipIf(process.getuid?.() === 0)('turns a registrations folder it cannot read into a blocker for its graph', async () => {
+    const l = seedHere(made);
+    const { manifest } = await handed(l);
+    const registrations = path.join(l.source.main, '.git/worktrees');
+    fs.chmodSync(registrations, 0o000);
+    try {
+      expect(await importGraphs(manifest, { probe: () => ({ ignoreCase: false }) })).toContainEqual(
+        { code: 'worktree_unresolved', message: expect.stringContaining('EACCES'), entity: { kind: 'git', id: manifest.git![0].id } },
+      );
+    } finally { fs.chmodSync(registrations, 0o755); }
   });
 
   it('keeps a worktree no character uses registered on the machine it stays on, through a handover away and back', async () => {

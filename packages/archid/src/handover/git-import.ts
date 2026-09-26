@@ -125,9 +125,11 @@ async function importGraph(graph: GitGraph, deps: ImportDeps & { kept?: readonly
     // a config carried as a link would be written through to wherever it leads
     if (fs.lstatSync(path.join(common, 'config'), { throwIfNoEntry: false })?.isFile()) await adaptRules(common, (deps.probe ?? probeFsRules)(common), git);
     const registrations = path.join(common, 'worktrees');
+    // a registrations folder carried as a link would have its removals made wherever it leads
+    const held = fs.lstatSync(registrations, { throwIfNoEntry: false });
+    if (held && !held.isDirectory()) throw new GitFailure(`${registrations} is not a folder of its own, so the import removes nothing through it`);
     const keep = new Set([...graph.worktrees.map((w) => path.basename(w.gitDir)), ...(deps.kept ?? [])]);
-    let ids: string[] = [];
-    try { ids = fs.readdirSync(registrations); } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
+    const ids = held ? fs.readdirSync(registrations) : [];
     for (const id of ids.filter((x) => !keep.has(x))) fs.rmSync(path.join(registrations, id), { recursive: true, force: true });
   } catch (e) {
     if (!refusal(e)) throw e;
