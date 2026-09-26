@@ -9,7 +9,7 @@ import {
 } from '@archipelago/protocol';
 import { discoverGit } from '../../src/handover/git-graph.js';
 import { buildInventory, DEFAULT_EXCLUDES, excludeMatcher, expandExcludes, homeCommands, rootMatcher, type MachineMaps } from '../../src/handover/inventory.js';
-import { exportSnapshot, NOT_PATHS, PATH_FIELDS, portablePathValues } from '../../src/handover/portable-path.js';
+import { exportSnapshot, NOT_BOUND, NOT_PATHS, PATH_FIELDS, portablePathValues } from '../../src/handover/portable-path.js';
 import { git, hasGit } from './git-fixture.js';
 
 const made: string[] = [];
@@ -23,32 +23,44 @@ const FLEET = FleetConfig.parse({ id: '5e1f0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' });
 // the schemas a handover reads, writes or carries: the fleet's state and configs, and the manifest itself
 const CLASSIFIED: Record<string, ZodTypeAny> = { FleetState, FleetConfig, NodeConfig, MachineRecord, TransferManifestV1 };
 
-// every free string a schema holds, named the way the registry names it: `*` a record's values, `[]` an array's items.
-// a refine and a brand keep the schema they are on, so neither needs a case of its own
-function stringFields(schema: z.core.$ZodType, name: string, out: string[] = []): string[] {
+// the records whose values travel: every number, flag and choice in them is bound to its machine or not
+const TRAVELLING: Record<string, ZodTypeAny> = { FleetState, FleetConfig };
+
+// every leaf a schema holds, named the way the registry names it: `*` a record's values, `[]` an array's items, and
+// whether it is a free string. A refine and a brand keep the schema they are on, so neither needs a case of its own
+function leaves(schema: z.core.$ZodType, name: string, out: [string, boolean][] = []): [string, boolean][] {
   const d = (schema as z.core.$ZodTypes)._zod.def;
   switch (d.type) {
-    case 'string': out.push(name); break;
+    case 'string': out.push([name, true]); break;
     case 'object':
       for (const [k, v] of Object.entries(d.shape)) {
         // a schema classified on its own is walked under its own name
-        if (!Object.values(CLASSIFIED).includes(v as ZodTypeAny)) stringFields(v, `${name}.${k}`, out);
+        if (!Object.values(CLASSIFIED).includes(v as ZodTypeAny)) leaves(v, `${name}.${k}`, out);
       }
       break;
-    case 'record': stringFields(d.valueType, `${name}.*`, out); break;
-    case 'array': stringFields(d.element, `${name}[]`, out); break;
-    case 'optional': case 'nullable': case 'default': case 'prefault': stringFields(d.innerType, name, out); break;
-    case 'union': for (const o of d.options) stringFields(o, name, out); break;
-    case 'literal': case 'enum': case 'number': case 'boolean': break;
+    case 'record': leaves(d.valueType, `${name}.*`, out); break;
+    case 'array': leaves(d.element, `${name}[]`, out); break;
+    case 'optional': case 'nullable': case 'default': case 'prefault': leaves(d.innerType, name, out); break;
+    case 'union': for (const o of d.options) leaves(o, name, out); break;
+    case 'literal': case 'enum': case 'number': case 'boolean': out.push([name, false]); break;
     default: throw new Error(`${name}: the walk does not know ${d.type}`);
   }
   return out;
 }
+const stringFields = (schema: ZodTypeAny, name: string): string[] => leaves(schema, name).filter(([, s]) => s).map(([f]) => f);
+const valueFields = (schema: ZodTypeAny, name: string): string[] => leaves(schema, name).filter(([, s]) => !s).map(([f]) => f);
 
-const prefixes = (field: string): string[] => field.split('.').map((_, i, all) => all.slice(0, i + 1).join('.'));
+// a name and every name above it; an array's items lie under the array
+const prefixes = (field: string): string[] => field.split('.').flatMap((s, i, all) => {
+  const p = all.slice(0, i + 1).join('.');
+  return s.endsWith('[]') ? [p.slice(0, -2), p] : [p];
+});
 const classified = (field: string): boolean => prefixes(field).some((p) => p in PATH_FIELDS || NOT_PATHS.includes(p));
 const unclassified = (schemas: Record<string, ZodTypeAny>): string[] =>
   [...new Set(Object.entries(schemas).flatMap(([n, s]) => stringFields(s, n)))].filter((f) => !classified(f));
+const valueClassified = (field: string): boolean => prefixes(field).some((p) => p in PATH_FIELDS || NOT_BOUND.includes(p));
+const unclassifiedValues = (schemas: Record<string, ZodTypeAny>): string[] =>
+  [...new Set(Object.entries(schemas).flatMap(([n, s]) => valueFields(s, n)))].filter((f) => !valueClassified(f));
 
 describe('path classification', () => {
   it('classifies every string field a handover reads, writes or carries', () => {
@@ -60,9 +72,18 @@ describe('path classification', () => {
     expect(unclassified({ ...CLASSIFIED, FleetState: Future })).toEqual(['FleetState.characters.*.scratchDir']);
   });
 
+  it('classifies every number, flag and choice the state and fleet.json carry as bound to a machine or process, or not', () => {
+    expect(unclassifiedValues(TRAVELLING)).toEqual([]);
+  });
+
+  it('fails on a pid or any other value nobody classified', () => {
+    const Future = FleetState.extend({ characters: z.record(z.string(), Character.extend({ shellPid: z.number().int().optional() })) });
+    expect(unclassifiedValues({ ...TRAVELLING, FleetState: Future })).toEqual(['FleetState.characters.*.shellPid']);
+  });
+
   it('names no field the schemas no longer have', () => {
-    const fields = Object.entries(CLASSIFIED).flatMap(([n, s]) => stringFields(s, n));
-    const stale = [...Object.keys(PATH_FIELDS), ...NOT_PATHS].filter((k) => !fields.some((f) => prefixes(f).includes(k)));
+    const fields = Object.entries(CLASSIFIED).flatMap(([n, s]) => leaves(s, n).map(([f]) => f));
+    const stale = [...Object.keys(PATH_FIELDS), ...NOT_PATHS, ...NOT_BOUND].filter((k) => !fields.some((f) => prefixes(f).includes(k)));
     expect(stale).toEqual([]);
   });
 
@@ -88,19 +109,27 @@ describe('path classification', () => {
     ]);
   });
 
-  it('strips every forbidden field from the state that leaves the machine, and nothing else', () => {
+  it('strips every field bound to this machine or its processes from the state that leaves it, and nothing else', () => {
     const state = emptyState();
+    state.agentsFound = ['claude', 'codex'];
     const tmux = { windowId: '@1', paneId: '%1' };
     const agent = { kind: 'claude' as const, sessionId: 's', transcriptPath: '/t.jsonl', status: 'idle' as const, lastActivityAt: 1 };
-    state.characters.c1 = char('c1', { tmux, panePath: '/Users/linus/p', agent: { ...agent, pid: 41 }, second: { cwd: '/x', tmux, unread: false, agent: { ...agent, pid: 42 } } });
+    state.characters.c1 = char('c1', {
+      tmux, panePath: '/Users/linus/p', hint: 'codex-silent', agent: { ...agent, pid: 41 }, second: { cwd: '/x', tmux, unread: false, agent: { ...agent, pid: 42 } },
+    });
     const exported = exportSnapshot(state);
     expect(exported.characters.c1.tmux).toBeUndefined();
     expect(exported.characters.c1.panePath).toBeUndefined();
-    // a pid names a process on this machine only
+    expect(exported.characters.c1.hint).toBeUndefined();
+    // a pid names a process on this machine only, and the destination finds its own agents
     expect(exported.characters.c1.agent).toEqual(agent);
     expect(exported.characters.c1.second).toEqual({ cwd: '/x', unread: false, agent });
+    expect(exported.agentsFound).toBeUndefined();
+    const { tmux: _t, panePath: _p, hint: _h, agent: _a, second: _s, ...rest } = state.characters.c1;
+    expect(exported.characters.c1).toEqual({ ...rest, agent, second: { cwd: '/x', unread: false, agent } });
     expect(state.characters.c1.tmux).toEqual(tmux);
     expect(state.characters.c1.agent?.pid).toBe(41);
+    expect(state.agentsFound).toEqual(['claude', 'codex']);
     expect(FleetState.parse(exported)).toEqual(exported);
   });
 });

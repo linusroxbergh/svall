@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { emptyState, FleetConfig, type AgentKind, type Character, type MachineId, type TransferSession } from '@archipelago/protocol';
+import { applyHook } from '../../src/agent/reducer.js';
 import { buildInventory, type MachineMaps } from '../../src/handover/inventory.js';
 import { realStages } from '../../src/handover/durable.js';
 import { buildManifest } from '../../src/handover/manifest.js';
@@ -472,6 +473,31 @@ describe('the resume a carried terminal keeps', () => {
     expect(await imported('t1')).toEqual([{ command: closed(SID) }, { command: closed(SID2) }]);
     // a second terminal whose agent is gone carries no session, so it opens as a plain shell
     expect(await imported(undefined, false)).toEqual([{ command: closed(SID) }, { command: '' }]);
+  });
+
+  it('takes the new session a resumed agent starts, whatever process on the destination holds the pid its source recorded', async () => {
+    const home = path.join(tmp(), 'home');
+    const claude = path.join(home, '.claude');
+    const cwd = path.join(home, 'code/gamma');
+    const transcriptPath = path.join(claude, 'projects', '-home-code-gamma', `${SID}.jsonl`);
+    fs.mkdirSync(path.dirname(transcriptPath), { recursive: true });
+    fs.mkdirSync(cwd, { recursive: true });
+    fs.writeFileSync(transcriptPath, record(cwd, 'one'));
+    // the source's agents ran as pids that name a live process here, this test's own
+    const agent = { kind: 'claude' as const, sessionId: SID, transcriptPath, status: 'idle' as const, lastActivityAt: 0, pid: process.pid };
+    const state = emptyState();
+    state.characters.c1 = char('c1', { cwd, agent, revive: { command: `claude --resume ${SID}` }, second: { cwd, unread: false, agent, revive: { command: `claude --resume ${SID}` } } });
+    const inventory = buildInventory(state, { fleet: FLEET }, {
+      source: { machineId: MAC, home, fleetHome: path.join(home, '.archipelago') },
+      destination: { machineId: TRIFT, home, fleetHome: path.join(home, '.archipelago'), agentHomes: { claude } },
+    });
+    const { manifest } = await buildManifest(inventory, { generation: 1 });
+    const c = importState({ ...manifest, transactionId: 't1' }).state.characters.c1;
+    const NEW = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
+    for (const [slot, term] of [[c, undefined], [c.second!, 2]] as const) {
+      const next = applyHook(slot, { charId: 'c1', backend: 'claude', name: 'SessionStart', sessionId: NEW, pid: 999_999, ...(term && { term }) }, 5);
+      expect(next.agent).toMatchObject({ sessionId: NEW, pid: 999_999 });
+    }
   });
 
   it('leaves behind the codex flags that name the source machine\'s own config: a profile and a local provider', () => {

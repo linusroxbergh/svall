@@ -23,8 +23,9 @@ export function realPath(p: string, realpath: (p: string) => string = (q) => fs.
 
 /**
  * What a handover does with a field that holds a path: `portable` names a place the fleet uses, which travels as it
- * is and whose folder the handover carries, `machine-local` names a place on one machine only, `forbidden` is a
- * machine-bound handle removed before a record leaves its machine.
+ * is and whose folder the handover carries, `machine-local` names a place on one machine only or what that machine
+ * found there, `forbidden` is a handle on a process, a pid, a tmux id or what a pane shows, removed before a record
+ * leaves its machine.
  */
 export type PathClassification = 'portable' | 'machine-local' | 'forbidden';
 
@@ -42,8 +43,9 @@ const LOCAL: PathField = { classification: 'machine-local' };
 const FORBIDDEN: PathField = { classification: 'forbidden' };
 
 /**
- * Every path field of the schemas a handover reads, writes or carries. A name is the schema, then `*`
- * for a record's values and `[]` for an array's items; an entry covers every field beneath it.
+ * Every path field of the schemas a handover reads, writes or carries, and every field bound to one machine or
+ * process. A name is the schema, then `*` for a record's values and `[]` for an array's items; an entry covers
+ * every field beneath it.
  */
 export const PATH_FIELDS: Record<string, PathField> = {
   'FleetState.characters.*.cwd': portable('path'),
@@ -60,6 +62,12 @@ export const PATH_FIELDS: Record<string, PathField> = {
   'FleetState.characters.*.tmux': FORBIDDEN,
   'FleetState.characters.*.panePath': FORBIDDEN,
   'FleetState.characters.*.second.tmux': FORBIDDEN,
+  'FleetState.characters.*.agent.pid': FORBIDDEN,
+  'FleetState.characters.*.second.agent.pid': FORBIDDEN,
+  // what a live window shows: codex running there without a hook
+  'FleetState.characters.*.hint': FORBIDDEN,
+  // the agent CLIs this machine's archid finds; the destination finds its own when it activates
+  'FleetState.agentsFound': LOCAL,
   'FleetConfig.home.cwd': portable('home'),
   'FleetConfig.defaultCwd': portable('home'),
   'NodeConfig.shell': LOCAL,
@@ -114,6 +122,26 @@ export const NOT_PATHS: readonly string[] = [
   'TransferManifestV1.git[].worktrees[].head', 'TransferManifestV1.git[].worktrees[].branch', 'TransferManifestV1.git[].worktrees[].locked',
   'TransferManifestV1.git[].worktrees[].status[]', 'TransferManifestV1.git[].worktrees[].index', 'TransferManifestV1.git[].worktrees[].characters[]',
   'TransferManifestV1.git[].unused[].head', 'TransferManifestV1.git[].unused[].branch', 'TransferManifestV1.git[].unused[].locked',
+];
+
+/**
+ * The numbers, flags and choices of the state and fleet.json that name nothing bound to one machine or process:
+ * layout, times, statuses and settings. Those that do are in PATH_FIELDS, and leave with the state stripped of them.
+ */
+export const NOT_BOUND: readonly string[] = [
+  'FleetState.version', 'FleetState.islands.*.position', 'FleetState.islands.*.size', 'FleetState.islands.*.seed',
+  'FleetState.islands.*.collapsed', 'FleetState.islands.*.kind', 'FleetState.islands.*.descriptionSource', 'FleetState.islands.*.order',
+  'FleetState.islands.*.context[].kind', 'FleetState.islands.*.context[].source', 'FleetState.islands.*.context[].pinned', 'FleetState.islands.*.context[].prState',
+  'FleetState.characters.*.cell', 'FleetState.characters.*.noteSource', 'FleetState.characters.*.portrait', 'FleetState.characters.*.repo.isWorktree',
+  'FleetState.characters.*.context[].kind', 'FleetState.characters.*.context[].source', 'FleetState.characters.*.context[].pinned', 'FleetState.characters.*.context[].prState',
+  'FleetState.characters.*.shell.lastOutputAt', 'FleetState.characters.*.unread', 'FleetState.characters.*.keepHere',
+  'FleetState.characters.*.agent.kind', 'FleetState.characters.*.agent.status', 'FleetState.characters.*.agent.contextPct', 'FleetState.characters.*.agent.background',
+  'FleetState.characters.*.agent.lastPrompt.at', 'FleetState.characters.*.agent.lastActivityAt',
+  'FleetState.characters.*.second.unread', 'FleetState.characters.*.second.agent.kind', 'FleetState.characters.*.second.agent.status',
+  'FleetState.characters.*.second.agent.contextPct', 'FleetState.characters.*.second.agent.background', 'FleetState.characters.*.second.agent.lastPrompt.at',
+  'FleetState.characters.*.second.agent.lastActivityAt',
+  'FleetState.scribeOff', 'FleetState.scribeAsk', 'FleetState.scribeError.at', 'FleetState.dormantAfterHours', 'FleetState.mainAgent', 'FleetState.scribeAgent',
+  'FleetConfig.mainAgent', 'FleetConfig.scribe.agent', 'FleetConfig.handover.enabled', 'FleetConfig.handover.excludeDefaults', 'FleetConfig.handover.transferFleetEnv',
 ];
 
 type Found = { pointer: (string | number)[]; value: unknown; parent: Record<string | number, unknown>; key: string | number };
@@ -176,13 +204,12 @@ export function portablePathValues(docs: { FleetState?: FleetState; FleetConfig?
   return out;
 }
 
-/** The state as it may leave this machine: a copy with every forbidden field and every agent pid removed. */
+/** The state as it may leave this machine: a copy with every forbidden and machine-local field removed. */
 export function exportSnapshot(state: FleetState): FleetState {
   const copy = structuredClone(state);
   for (const [field, spec] of Object.entries(PATH_FIELDS)) {
-    if (spec.classification !== 'forbidden' || !field.startsWith('FleetState.')) continue;
+    if (spec.classification === 'portable' || !field.startsWith('FleetState.')) continue;
     for (const { parent, key } of fieldValues(copy, field)) delete parent[key];
   }
-  for (const c of Object.values(copy.characters)) { delete c.agent?.pid; delete c.second?.agent?.pid; }
   return copy;
 }
