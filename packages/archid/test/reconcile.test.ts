@@ -152,6 +152,13 @@ describe('reconcile', () => {
     expect(s.characters.c_a.second).toEqual({ cwd: '/repo', tmux: { windowId: '@2', paneId: '%2' }, unread: true });
   });
 
+  it('a live second terminal whose pane reports no path, as while sudo runs there, keeps the cwd it had', () => {
+    const s = emptyState();
+    s.characters.c_a = char({ second: { cwd: '/side', unread: false, tmux: { windowId: '@2', paneId: '%2' } } });
+    reconcile(s, [live('c_a'), { ...live('c_a-2', '@2', '%2'), path: '' }], 1).mutate(s);
+    expect(s.characters.c_a.second).toEqual({ cwd: '/side', tmux: { windowId: '@2', paneId: '%2' }, unread: false });
+  });
+
   it('a plain second terminal whose window is gone goes with it', () => {
     const s = emptyState();
     s.characters.c_a = char({ second: { cwd: '/side', tmux: { windowId: '@2', paneId: '%2' }, unread: true } });
