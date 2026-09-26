@@ -85,7 +85,7 @@ export function manifestProblems(m: TransferManifestV1, landed: readonly LandedR
   return blockers;
 }
 
-/** Every place a Git repair writes, by its real path inside a root this handover carried here. */
+/** Every place of a carried Git graph, by its real path inside a root this handover carried here. */
 export function gitProblems(m: TransferManifestV1, carried: readonly string[]): Blocker[] {
   const blockers: Blocker[] = [];
   for (const g of m.git ?? []) {

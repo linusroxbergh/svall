@@ -39,7 +39,7 @@ export function resolvePaths(home: string = archiHome()) {
     manifest: (transactionId: string) => path.join(home, 'handover', `manifest-${encodeURIComponent(transactionId)}.json`),
     // where the controller copies the files of the manifest's session at `index` for prepare to place
     sessionStage: (transactionId: string, index: number) => path.join(home, 'handover', `sessions-${encodeURIComponent(transactionId)}`, String(index)),
-    // each root a destination carried, as Git repair left it: what Complete seals, and what an abort leaves claimable
+    // each root a destination carried, as the Git import left it: what Complete seals, and what an abort leaves claimable
     replicaSeal: (transactionId: string) => path.join(home, 'handover', `seal-${encodeURIComponent(transactionId)}.json`),
     replicas: path.join(home, 'replicas'),
     // one record per fleet and root, named by the sha256 of the root's real path, never kept inside the root

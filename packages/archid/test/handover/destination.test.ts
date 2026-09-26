@@ -14,7 +14,7 @@ import { Fleet } from '../../src/fleet.js';
 import { DestinationJournal, openJournal, type HandoverJournal } from '../../src/handover/journal.js';
 import { SealRecord, type DestinationDeps } from '../../src/handover/destination.js';
 import { discoverGit } from '../../src/handover/git-graph.js';
-import { graphsHere } from '../../src/handover/git-repair.js';
+import { graphsHere } from '../../src/handover/git-import.js';
 import { canonicalDigest } from '../../src/handover/hash.js';
 import { DEFAULT_EXCLUDES, buildInventory, rootMatcher } from '../../src/handover/inventory.js';
 import { buildManifest, manifestDigest, scanPath } from '../../src/handover/manifest.js';
@@ -498,10 +498,10 @@ describe('destination prepare', () => {
     m.git = [{ id: 'g_stray', commonDir: path.join(m.home, 'elsewhere'), worktrees: [], unused: [], stash: [] }];
   };
 
-  it('compares what landed again on a retry after it stopped short of the Git repair, so an edit made in between is never sealed', async () => {
+  it('compares what landed again on a retry after it stopped short of the Git import, so an edit made in between is never sealed', async () => {
     const s = await scene({ tamper: strayGraph });
     const d = daemon(s);
-    // the stray Git directory lies outside every carried root: prepare stops before the repair
+    // the stray Git directory lies outside every carried root: prepare stops before the import
     expect(blockersOf(await refusal(d.handover.prepare(params(s))))).toContainEqual(expect.objectContaining({ code: 'path_unsupported', message: expect.stringContaining('elsewhere') }));
     fs.symlinkSync(path.join(s.dst, 'work/ada'), path.join(s.dst, 'elsewhere'));
     fs.appendFileSync(path.join(s.dst, 'work/bo/index.ts'), '// edited here between the attempts\n');
@@ -520,7 +520,7 @@ describe('destination prepare', () => {
     expect(fs.existsSync(s.paths.journal)).toBe(false);
   });
 
-  it('records the roots for an abort to seal even when the Git repair throws part way', async () => {
+  it('records the roots for an abort to seal even when the Git import throws part way', async () => {
     const s = await scene({ tamper: strayGraph, before: ({ dst }) => { fs.symlinkSync(path.join(dst, 'work/ada'), path.join(dst, 'elsewhere')); } });
     const d = daemon(s, { git: async () => { throw new TypeError('git crashed'); } });
     await expect(d.handover.prepare(params(s))).rejects.toThrow('git crashed');
@@ -590,7 +590,7 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     return { home, paths, store, manifest: built.manifest, digest: built.digest, landed, probes: [] as AgentProbe[] };
   }
 
-  it('rebuilds every graph, and records for Complete each root as the repair left it', async () => {
+  it('imports every graph, and records for Complete each root as the import left it', async () => {
     const l = seedHere(made);
     const s = await gitScene(l);
     const d = daemon(s);
@@ -601,7 +601,7 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     const prepared = FleetState.parse(JSON.parse(fs.readFileSync(s.paths.preparedState(TX), 'utf8')));
     expect(prepared.characters.nested.cwd).toBe(dd.nested);
 
-    // the seal holds the gitfile as the repair left it, which at the same path is the one the source sent
+    // the seal holds the gitfile the source sent
     const seal = SealRecord.parse(JSON.parse(fs.readFileSync(s.paths.replicaSeal(TX), 'utf8')));
     const nested = s.manifest.roots.find((x) => x.path === dd.main)!;
     const gitfile = (files: { path: string; sha256?: string }[]) => files.find((f) => f.path === '.claude/worktrees/nested/.git')?.sha256;
@@ -609,7 +609,7 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     expect(gitfile(sealed.files)).toBe(crypto.createHash('sha256').update(fs.readFileSync(path.join(dd.nested, '.git'))).digest('hex'));
     expect(gitfile(sealed.files)).toBe(gitfile(nested.files));
 
-    // a prepare cut short after the repair, retried, trusts the verification it already made
+    // a prepare cut short after the import, retried, trusts the verification it already made
     const journal = journalOf(s.paths);
     const { preparedDigest: _p, fleet: _f, ...cut } = journal;
     fs.writeFileSync(s.paths.journal, JSON.stringify({ ...cut, phase: 'verify' }));
@@ -716,7 +716,7 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     }
   });
 
-  it('leaves what an aborted handover repaired claimable by the next one', async () => {
+  it('leaves what an aborted handover imported claimable by the next one', async () => {
     const l = seedHere(made);
     const s = await gitScene(l);
     const d = daemon(s);
@@ -1556,7 +1556,7 @@ describe('destination claim', () => {
     expect(taken.check).toEqual({ ok: true, path: tool(s.manifest), kind: 'absent' });
   });
 
-  it('will not take a root again once it has prepared from it, since a second copy would undo its Git repair', async () => {
+  it('will not take a root again once it has prepared from it, since a second copy would undo its Git import', async () => {
     const s = await scene();
     const d = daemon(s);
     await d.handover.prepare(params(s));
@@ -1698,7 +1698,7 @@ describe('destination inspect, of what could not land', () => {
 });
 
 describe('destination complete', () => {
-  it('seals every root it received at its generation as the repair left it, and closes its journal, once it has activated', async () => {
+  it('seals every root it received at its generation as the import left it, and closes its journal, once it has activated', async () => {
     const s = await scene();
     const d = daemon(s);
     const { preparedDigest } = await d.handover.prepare(params(s));

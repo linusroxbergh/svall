@@ -174,7 +174,7 @@ export type TransferFile = z.infer<typeof TransferFile>;
 
 /**
  * One filesystem root of the transfer, at the path it has on both machines. A folded root lies inside a root
- * that carries its files, and stays listed so a Git worktree among them still gets its own repair.
+ * that carries its files, and stays listed so the Git import still checks a worktree among them.
  */
 export const TransferRoot = z.object({
   id: z.string().min(1),

@@ -104,7 +104,7 @@ describe('buildManifest', () => {
     });
     expect(repo.files.find((f) => f.path === 'entry')).toEqual({ type: 'symlink', path: 'entry', target: 'src/index.ts' });
     expect(repo.files.find((f) => f.path === 'dangling')).toEqual({ type: 'symlink', path: 'dangling', target: '/nowhere/at/all' });
-    // the nested worktree is carried inside its main checkout and still listed for its own repair
+    // the nested worktree is carried inside its main checkout and still listed for the Git import to check
     expect(manifest.roots.find((r) => r.path === s.nested)).toEqual({
       id: expect.any(String), kind: 'worktree', entry: 'dir', path: s.nested, foldedInto: repo.id, files: [],
     });

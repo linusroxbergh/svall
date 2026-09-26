@@ -3,7 +3,7 @@ import {
   type Blocker, type FleetId, type HandoverChoices, type HandoverPhase, type KeptCommit, type LandedRoot, type MachineId, type ManifestSummary, type MethodName, type OwnerRecord,
   type Params, type Result, type RootClaim, type SystemInfo, type TransferManifestV1, type TransferRoot, type Warning,
 } from '@archipelago/protocol';
-import { graphsHere } from '@archipelago/archid/handover/git-repair';
+import { graphsHere } from '@archipelago/archid/handover/git-import';
 import { canonicalDigest } from '@archipelago/archid/handover/hash';
 import { settle } from '@archipelago/archid/handover/inventory';
 import { landingFolder, manifestDigest, spaceNeed } from '@archipelago/archid/handover/manifest';
@@ -457,7 +457,7 @@ export class Handover {
 
   /**
    * What the transfer verified in each root: kept from an earlier run, or copied now. Once a prepare may have
-   * run, a destination that prepared answers without it, since copying again would undo its Git repair.
+   * run, a destination that prepared answers without it, since copying again would undo its Git import.
    */
   private async landed(destination: Side, manifest: FrozenManifest): Promise<LandedRoot[] | string> {
     const { transactionId: tx } = this.tx;
@@ -560,7 +560,7 @@ export class Handover {
     return { transactionId, generation: generation + 1, manifest, manifestDigest: this.journal.manifestDigest!, landed };
   }
 
-  /** Prepare: the destination proves what landed, repairs Git, places the sessions and writes the state it would run. */
+  /** Prepare: the destination proves what landed, imports Git, places the sessions and writes the state it would run. */
   private async prepare(destination: Side, manifest: FrozenManifest, landed: LandedRoot[]): Promise<string> {
     this.phase('prepare');
     const r = await this.retrying('prepare', () => this.cancellable(() => destination.daemon.call('handover.prepare', this.prepareParams(manifest, landed))), this.cancel$.signal);

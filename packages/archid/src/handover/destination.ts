@@ -17,7 +17,7 @@ import { markDormant, markSlotDormant, reviveCommand } from '../reconcile.js';
 import { Store } from '../store.js';
 import type { Tmux } from '../tmux/tmux.js';
 import { writeDurable } from './durable.js';
-import { graphsHere, keptWorktrees, repairGraphs, type KeptWorktree } from './git-repair.js';
+import { graphsHere, importGraphs, keptWorktrees, type KeptWorktree } from './git-import.js';
 import { canonicalDigest } from './hash.js';
 import { rootMatcher, settle } from './inventory.js';
 import { DestinationJournal } from './journal.js';
@@ -58,7 +58,7 @@ export type DestinationDeps = {
   log: Logger;
 };
 
-/** What Complete seals: each carried root as the Git repair left it, at the generation this machine prepared. */
+/** What Complete seals: each carried root as the Git import left it, at the generation this machine prepared. */
 export const SealRecord = z.object({
   transactionId: TransactionId,
   generation: Generation,
@@ -254,7 +254,7 @@ export class DestinationHandover {
   /**
    * Takes each root the manifest carries for the handover the gateway holds open for this machine, before anything
    * is written into it: rsync writes a root only at the path its claim answers, under the excludes it was proven with.
-   * A root this machine has prepared from is not taken again, since a second copy would undo its Git repair.
+   * A root this machine has prepared from is not taken again, since a second copy would undo its Git import.
    */
   private async runClaim(p: Claim): Promise<Result<'handover.claim'>> {
     const m = p.manifest;
@@ -310,7 +310,7 @@ export class DestinationHandover {
     if (tx.phase !== 'preparing') throw notReady(`the gateway holds handover ${id} ${tx.phase}, so its roots are no longer copied`);
   }
 
-  /** Once this machine runs the fleet it received, seals each root as the Git repair left it at its generation, and closes the journal. */
+  /** Once this machine runs the fleet it received, seals each root as the Git import left it at its generation, and closes the journal. */
   private async runComplete(p: ParsedParams<'handover.complete'>): Promise<Result<'handover.complete'>> {
     const j = this.open(p.transactionId);
     if (!j) return {};
@@ -327,8 +327,8 @@ export class DestinationHandover {
 
   /**
    * Checks everything it can before its first write, journals, proves each root holds what the transfer
-   * verified under this handover's claim, repairs the Git graphs, places the sessions, and only then writes
-   * the prepared state. A root verified once is not verified again: the repair has since changed it.
+   * verified under this handover's claim, imports the Git graphs, places the sessions, and only then writes
+   * the prepared state. A root verified once is not verified again: the import has since changed it.
    */
   private async runPrepare(p: Prepare): Promise<Result<'handover.prepare'>> {
     const m = p.manifest;
@@ -384,16 +384,16 @@ export class DestinationHandover {
 
     const git = gitProblems(m, [...at.values()]);
     if (git.length) throw blocked(git);
-    // verified once the repair may have changed the roots, and not before: a retry until then compares what landed again
+    // verified once the import may have changed the roots, and not before: a retry until then compares what landed again
     if (!verified) this.journal.write({ ...this.open(tx)!, landedDigest, updatedAt: this.clock.now() });
-    let repaired: Awaited<ReturnType<typeof repairGraphs>>;
+    let graphs: Blocker[];
     try {
       const registrations = carried.flatMap((r) => (stays.get(r.id) ?? []).map((rel) => path.posix.join(r.path, rel)));
       const keptNames = Object.fromEntries(graphsHere(m).map((g) => [g.id, registrations
         .filter((reg) => path.posix.dirname(reg) === path.posix.join(g.commonDir, 'worktrees')).map((reg) => path.posix.basename(reg))]));
-      repaired = await repairGraphs(m, { ...(this.d.git && { git: this.d.git }), kept: keptNames });
+      graphs = await importGraphs(m, { ...(this.d.git && { git: this.d.git }), kept: keptNames });
     } finally {
-      // what Complete seals, or an abort leaves claimable: the roots as the repair left them, however far it got
+      // what Complete seals, or an abort leaves claimable: the roots as the import left them, however far it got
       const roots: SealRecord['roots'] = [];
       for (const r of carried) {
         const scan = await scanPath(at.get(r.id)!, rootMatcher(r.kind, m.excludes), this.d.scanFs);
@@ -401,7 +401,7 @@ export class DestinationHandover {
       }
       writeDurable(this.d.paths.replicaSeal(tx), SealRecord.parse({ transactionId: tx, generation: p.generation, manifestDigest: p.manifestDigest, roots }), { mode: 0o600 });
     }
-    if (repaired.blockers.length) throw blocked(repaired.blockers);
+    if (graphs.length) throw blocked(graphs);
 
     const placed: Blocker[] = [];
     m.sessions.forEach((s, i) => {
@@ -736,7 +736,7 @@ export class DestinationHandover {
 
   /**
    * Lets a prepared handover go once the gateway can no longer commit it: the prepared files go, each root
-   * the repair touched is sealed as it now stands so the next handover can claim it, and the hold lifts.
+   * the import touched is sealed as it now stands so the next handover can claim it, and the hold lifts.
    */
   private async runAbort(p: ParsedParams<'handover.abort'>): Promise<Result<'handover.abort'>> {
     const j = this.open(p.transactionId);
@@ -762,7 +762,7 @@ export class DestinationHandover {
     this.ownership.unhold();
   }
 
-  // seals each root prepare recorded, as the repair left it, and answers the ones it could not; without that record nothing is sealed
+  // seals each root prepare recorded, as the import left it, and answers the ones it could not; without that record nothing is sealed
   private sealAs(j: DestinationJournal, generation: number): string[] {
     let seal: SealRecord;
     try { seal = SealRecord.parse(JSON.parse(fs.readFileSync(this.d.paths.replicaSeal(j.transactionId), 'utf8'))); } catch { return []; }

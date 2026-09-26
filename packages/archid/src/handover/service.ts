@@ -7,7 +7,7 @@ import { AuthorityFailure } from '../gateway/authority.js';
 import type { OwnershipState } from '../ownership/state.js';
 import { runGit } from '../links/git.js';
 import { DestinationHandover, characterResults, type DestinationDeps } from './destination.js';
-import { unreached } from './git-repair.js';
+import { unreached } from './git-import.js';
 import { handoverGeneration, type HandoverJournal, type JournalFile, type JournalState } from './journal.js';
 import { agentAdapters, type AgentProbe } from './sessions/registry.js';
 import { SourceHandover, type Authority, type SourceDeps } from './source.js';
