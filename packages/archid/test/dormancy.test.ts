@@ -85,6 +85,9 @@ describe('startFlags', () => {
   it('keeps the flags of an agent already resumed, so they last through every sleep', () => {
     expect(startFlags(`codex resume -c tui.resume_cwd=session -m gpt-5.5 ${SID}`, 'codex')).toEqual(['-m', "'gpt-5.5'"]);
     expect(startFlags(`claude --effort high --resume ${SID} --add-dir /x`, 'claude')).toEqual(['--effort', "'high'"]);
+    // woken with a prompt, or with the island's folders
+    expect(startFlags(`codex resume -c tui.resume_cwd=session -m gpt-5.5 ${SID} -- look at --model haiku`, 'codex')).toEqual(['-m', "'gpt-5.5'"]);
+    expect(startFlags(`codex resume -c tui.resume_cwd=session ${SID} --add-dir /x`, 'codex')).toEqual([]);
   });
 
   it('reads an agent run by node, and nothing from a process that is not the agent', () => {
