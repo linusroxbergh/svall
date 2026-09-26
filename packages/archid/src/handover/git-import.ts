@@ -14,10 +14,10 @@ export function probeFsRules(dir: string, platform: NodeJS.Platform = process.pl
   const ignoreCase = fs.existsSync(path.join(dir, 'CoNfIg'));
   if (platform !== 'darwin') return { ignoreCase };
   const mark = `.archi-probe-${process.pid}-${crypto.randomBytes(4).toString('hex')}-`;
-  const composed = path.join(dir, `${mark}ä`);
+  const composed = path.join(dir, `${mark}\u00e4`);
   fs.writeFileSync(composed, '', { flag: 'wx', mode: 0o600 });
   try {
-    return { ignoreCase, precomposeUnicode: fs.existsSync(path.join(dir, `${mark}ä`)) };
+    return { ignoreCase, precomposeUnicode: fs.existsSync(path.join(dir, `${mark}a\u0308`)) };
   } finally {
     fs.rmSync(composed, { force: true });
   }
