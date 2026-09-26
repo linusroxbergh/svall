@@ -9,8 +9,9 @@ import { repoRoot, resolvePaths, userPaths } from '@archipelago/archid/paths';
 import { LAUNCHD_LABEL, PRIVATE } from '@archipelago/archid/profile';
 import { claudeHooksCurrent, codexHooksCurrent, plistCurrent, readCodexHooks, readJsonSettings, requireWritableHooks, runSetup, shimsCurrent } from '@archipelago/archid/setup';
 import { appQuit, fleetHomes } from '@archipelago/archid/uninstall';
+import { renderGroups, useColor } from '../checks-view.js';
 import { printResult } from '../format.js';
-import { preflight, realPreflightDeps, requireReady } from './doctor.js';
+import { checkLine, preflight, realPreflightDeps, requireReady, type Check } from './doctor.js';
 import type { Target } from '../target.js';
 
 export function setupCommand(target: () => Target, json: () => boolean): Command {
@@ -22,11 +23,12 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       // setup owns the per-user half — the Claude hooks and the shims — so it only ever means private
       const t = target();
       if (t.name !== PRIVATE) throw new Error(`archi setup configures the private fleet; run archi ${t.name} to open that one`);
-      const warnings = requireReady(await preflight(realPreflightDeps(t.home)));
+      const checks = await preflight(realPreflightDeps(t.home));
       const settingsPath = userPaths().claudeSettings;
       const library = path.join(os.homedir(), 'Library');
+      const notes: Check[] = [];
       const signIns = signInsLeft(library);
-      if (signIns) warnings.push(`! sign-ins  ${signIns}`);
+      if (signIns) notes.push({ name: 'sign-ins', status: 'warn', detail: signIns });
       const agents = findAgents(process.env.PATH ?? '');
       const codex = codexPaths();
       const claudeWanted = agents.includes('claude') || fs.existsSync(path.dirname(settingsPath));
@@ -39,17 +41,24 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
         // desktop:install runs setup when it sees one of these lines, as nothing else rewrites the Claude hooks, the shims or the plist
         const script = resolvePaths(t.home).hookScript;
         if ((settings && !claudeHooksCurrent(settings.settings, t.home)) || (codexHooks && !codexHooksCurrent(codexHooks.settings, script))) {
-          warnings.push('! hooks  missing or out of date: run archi setup');
+          notes.push({ name: 'hooks', status: 'warn', detail: 'missing or out of date: run archi setup' });
         }
         // desktop:install puts this checkout's app in place, so shims or a plist that run another checkout, moved or not, are out of date
-        if (!shimsCurrent(userPaths().shimDir, repoRoot())) warnings.push('! shims  missing or out of date: run archi setup');
+        if (!shimsCurrent(userPaths().shimDir, repoRoot())) notes.push({ name: 'shims', status: 'warn', detail: 'missing or out of date: run archi setup' });
         if (!plistCurrent({ home: t.home, label: LAUNCHD_LABEL, launchAgentsDir: userPaths().launchAgents, repoRoot: repoRoot() })) {
-          warnings.push('! launchd  plist missing or out of date: run archi setup');
+          notes.push({ name: 'launchd', status: 'warn', detail: 'plist missing or out of date: run archi setup' });
         }
-        if (oldIdsLeft(userPaths().launchAgents, library)) warnings.push('! ids  launchd agents or app data under the old com.archipelago ids, out of date: run archi setup');
-        printResult({ done: [], warnings }, json(), () => [...warnings, 'ready for archi setup'].join('\n'));
+        if (oldIdsLeft(userPaths().launchAgents, library)) notes.push({ name: 'ids', status: 'warn', detail: 'launchd agents or app data under the old com.archipelago ids, out of date: run archi setup' });
+        const warnings = [...checks.filter((c) => c.status === 'warn').map(checkLine), ...notes.map(checkLine)];
+        printResult({ done: [], warnings }, json(), () => renderGroups([
+          { title: 'Tools', checks: checks.filter((c) => c.name === 'tmux' || c.name === 'node' || c.name === 'path') },
+          { title: 'Agents', checks: checks.filter((c) => c.name === 'claude' || c.name === 'codex' || c.name === 'agents') },
+          { title: 'Setup', checks: notes },
+        ], useColor()));
+        if (checks.some((c) => c.status === 'fail')) process.exitCode = 1;
         return;
       }
+      const warnings = [...requireReady(checks), ...notes.map(checkLine)];
       const system = o.launchctl && process.platform === 'darwin';
       if (!system && oldIdsLeft(userPaths().launchAgents, library)) {
         // an old agent left beside the plist setup writes would start with it at login

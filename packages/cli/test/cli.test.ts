@@ -83,6 +83,7 @@ describe('archi argument parsing', () => {
     // what the check asks of the machine, answered without the real tools
     const bin = makeHome();
     fs.writeFileSync(path.join(bin, 'claude'), "#!/bin/sh\ncase \"$1\" in --version) echo '2.1.0 (Claude Code)';; auth) echo '{\"loggedIn\":true}';; esac\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'codex'), "#!/bin/sh\ncase \"$1\" in --version) echo 'codex-cli 0.156.1';; *) echo 'Not logged in'; exit 1;; esac\n", { mode: 0o755 });
     fs.writeFileSync(path.join(bin, 'tmux'), "#!/bin/sh\necho 'tmux 3.5a'\n", { mode: 0o755 });
     const script = path.join(os.homedir(), '.archipelago', 'hooks', 'agent-hook.mjs');
     const settings = path.join(os.homedir(), '.claude', 'settings.json');
@@ -97,16 +98,25 @@ describe('archi argument parsing', () => {
     // sign-ins under both ids, which setup never merges
     const webkit = ['com.archipelago.desktop', 'io.github.linusroxbergh.archipelago'].map((id) => path.join(os.homedir(), 'Library', 'WebKit', id));
     for (const d of webkit) fs.mkdirSync(d, { recursive: true });
+    const PATH = `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`;
     try {
-      const r = await run({ PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin` }, 'setup', '--check');
+      const r = await run({ PATH, FORCE_COLOR: '0' }, '--json', 'setup', '--check');
       expect(r.code).toBe(0);
-      expect(r.stdout).toContain('! hooks  missing or out of date: run archi setup');
-      expect(r.stdout).toContain('! shims  missing or out of date: run archi setup');
-      expect(r.stdout).toContain('! launchd  plist missing or out of date: run archi setup');
-      expect(r.stdout).toContain('! ids  launchd agents or app data under the old com.archipelago ids, out of date: run archi setup');
-      expect(r.stdout.split('\n')).toContain(`! sign-ins  ${webkit[0]} is left beside ${webkit[1]}, which the app reads: quit the app, then keep whichever holds your sign-ins at ${webkit[1]} and delete the other`);
+      const { warnings } = JSON.parse(r.stdout);
+      expect(warnings).toContain('! hooks  missing or out of date: run archi setup');
+      expect(warnings).toContain('! shims  missing or out of date: run archi setup');
+      expect(warnings).toContain('! launchd  plist missing or out of date: run archi setup');
+      expect(warnings).toContain('! ids  launchd agents or app data under the old com.archipelago ids, out of date: run archi setup');
+      expect(warnings).toContain(`! sign-ins  ${webkit[0]} is left beside ${webkit[1]}, which the app reads: quit the app, then keep whichever holds your sign-ins at ${webkit[1]} and delete the other`);
+      expect(warnings).toContain('! codex  codex-cli 0.156.1, not signed in: codex login');
       expect(fs.readFileSync(settings, 'utf8')).toBe(old);
       expect(fs.readFileSync(agent, 'utf8')).toBe('<plist/>');
+
+      const plain = await run({ PATH, FORCE_COLOR: '0' }, 'setup', '--check');
+      expect(plain.code).toBe(0);
+      expect(plain.stdout).toContain('◇  Agents');
+      expect(plain.stdout).toMatch(/codex +codex-cli 0\.156\.1, not signed in/);
+      expect(plain.stdout).not.toContain('ready for archi setup');
     } finally {
       fs.rmSync(path.dirname(settings), { recursive: true });
       fs.rmSync(agent);
