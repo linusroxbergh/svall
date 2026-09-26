@@ -94,7 +94,8 @@ export function reconcile(
   const byName = new Map(live.map((w) => [w.name, w]));
   const knownIds = new Set(Object.keys(state.characters));
   const secondNames = new Set(Object.keys(state.characters).map(secondName));
-  const strays = live.filter((w) => !knownIds.has(w.name) && !secondNames.has(w.name));
+  // a row with no name, or one the listing could not split into its fields, is no window to adopt
+  const strays = live.filter((w) => w.name && w.paneId && typeof w.path === 'string' && !knownIds.has(w.name) && !secondNames.has(w.name));
   // a stray named like a character id keeps that id, so the ARCHI_CHAR_ID its agent carries still reaches it
   const taken = new Set(knownIds);
   const strayIds = strays.map((w) => {

@@ -81,6 +81,17 @@ describe('reconcile', () => {
     expect(renames).toEqual([{ windowId: '@4', name: c.id }]);
   });
 
+  it('adopts no window whose listing row has no name, or did not parse', () => {
+    const s = emptyState();
+    // a row whose separators tmux printed as text: one field, holding the whole row
+    const unread = { windowId: '@0\\037ab%0\\037ab21\\037ab_keep', panePid: NaN, activity: 0, dead: false } as unknown as LiveWindow;
+    const { mutate, renames } = reconcile(s, [live('', '@4', '%4'), unread], 0);
+    mutate(s);
+    expect(s.characters).toEqual({});
+    expect(s.islands[RECOVERED_ISLAND]).toBeUndefined();
+    expect(renames).toEqual([]);
+  });
+
   it('adopts a stray named like a character id under that id, which a second window of that name cannot share', () => {
     const s = emptyState();
     const { mutate, renames } = reconcile(s, [live('c_ab12cd', '@4', '%4'), live('c_ab12cd', '@5', '%5')], 0);

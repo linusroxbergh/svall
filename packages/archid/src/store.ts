@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import jsonpatch, { type Operation } from 'fast-json-patch';
-import { FleetState, NewerStateVersion, OlderStateVersion, emptyState, migrateState } from '@archipelago/protocol';
+import { Character, FleetState, NewerStateVersion, OlderStateVersion, emptyState, migrateState } from '@archipelago/protocol';
 import { readJsonOrQuarantine } from './jsonfile.js';
 import { sinkHome } from './layout.js';
 import { cleanupDurableTemps, syncDir, writeDurable } from './handover/durable.js';
@@ -62,6 +62,12 @@ export class Store {
     sinkHome(next);
     const ops = jsonpatch.compare(this.current, next);
     if (ops.length === 0) return ops;
+    // a character without what the schema requires breaks whatever reads the fleet, so none is written
+    const touched = new Set(ops.filter((o) => o.path.startsWith('/characters/')).map((o) => jsonpatch.unescapePathComponent(o.path.split('/')[2])));
+    for (const id of touched) {
+      const bad = next.characters[id] && Character.safeParse(next.characters[id]).error;
+      if (bad) throw new Error(`character ${id} would not be valid: ${bad.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`);
+    }
     this.commit(next, ops);
     return ops;
   }

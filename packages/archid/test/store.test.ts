@@ -125,6 +125,25 @@ describe('Store', () => {
 const island = (id: string) => ({ id, name: id, description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 });
 
 describe('Store.replace', () => {
+  it('writes no character the schema would refuse, and leaves the fleet as every listener last saw it', () => {
+    const file = path.join(makeHome(), 'state.json');
+    const s = Store.load(file, () => {});
+    s.update((d) => {
+      d.characters.c_1 = {
+        id: 'c_1', islandId: 'i_1', cell: { x: 0, y: 0 }, name: 'ada', note: '', portrait: 'fox', instructions: '', cwd: '/w', context: [],
+        shell: { lastOutputAt: 0 }, unread: false,
+      };
+    });
+    const written = fs.readFileSync(file, 'utf8');
+    const seen: unknown[] = [];
+    s.subscribe((ops) => seen.push(...ops));
+    expect(() => s.update((d) => { d.characters.c_2 = { ...d.characters.c_1, id: 'c_2', name: undefined as never, cwd: undefined as never }; })).toThrow(/c_2/);
+    expect(() => s.update((d) => { delete (d.characters.c_1 as { cwd?: string }).cwd; })).toThrow(/c_1/);
+    expect(fs.readFileSync(file, 'utf8')).toBe(written);
+    expect(Object.keys(s.state.characters)).toEqual(['c_1']);
+    expect(seen).toEqual([]);
+  });
+
   it('validates the snapshot and leaves the state alone when it is rejected', () => {
     const s = Store.load(path.join(makeHome(), 'state.json'), () => {});
     expect(() => s.replace({ version: 8, islands: { bad: { id: 'bad' } }, characters: {} })).toThrow();
