@@ -104,7 +104,7 @@ async function agentCheck(d: PreflightDeps, kind: AgentKind, version: string | E
   }
 }
 
-export async function agentChecks(d: PreflightDeps): Promise<Check[]> {
+async function agentChecks(d: PreflightDeps): Promise<Check[]> {
   // a CLI whose --version fails other than ENOENT is there but broken
   const versions = new Map<AgentKind, string | Error>();
   for (const k of AGENT_KINDS) {
@@ -123,7 +123,7 @@ export async function preflight(d: PreflightDeps): Promise<Check[]> {
   return [await tmux(d), node(d), ...await agentChecks(d), shimDirOnPath(d)];
 }
 
-const MARK = { ok: '✓', warn: '!', fail: '✗', skip: '–' };
+export const MARK = { ok: '✓', warn: '!', fail: '✗', skip: '–' };
 export const checkLine = (c: Check): string => `${MARK[c.status]} ${c.name}  ${c.detail}`;
 
 // the lines to show for warnings; any failure stops the caller before it changes anything
@@ -317,8 +317,8 @@ export function realPreflightDeps(home: string): PreflightDeps {
   let mainAgent: AgentKind | undefined;
   try { mainAgent = loadConfig(resolvePaths(home).config).mainAgent; } catch { /* doctor's config check reports it */ }
   return {
-    // a login probe that hangs must not hold up install
-    run: async (cmd, args, env) => (await execFileP(cmd, args, { timeout: args.includes('status') ? 5_000 : 10_000, env: env && { ...process.env, ...env } })).stdout,
+    // a login probe, the one call given the fleet's keys, must not hold up install when it hangs
+    run: async (cmd, args, env) => (await execFileP(cmd, args, { timeout: env ? 5_000 : 10_000, env: env && { ...process.env, ...env } })).stdout,
     node: process.version,
     pathEnv: process.env.PATH ?? '',
     shimDir: userPaths().shimDir,

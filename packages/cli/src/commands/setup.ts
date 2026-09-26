@@ -49,7 +49,8 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
           notes.push({ name: 'launchd', status: 'warn', detail: 'plist missing or out of date: run archi setup' });
         }
         if (oldIdsLeft(userPaths().launchAgents, library)) notes.push({ name: 'ids', status: 'warn', detail: 'launchd agents or app data under the old com.archipelago ids, out of date: run archi setup' });
-        const warnings = [...checks.filter((c) => c.status === 'warn').map(checkLine), ...notes.map(checkLine)];
+        // a failed check is listed too, as --json has no other way to say why it exits 1
+        const warnings = [...checks.filter((c) => c.status === 'warn' || c.status === 'fail').map(checkLine), ...notes.map(checkLine)];
         printResult({ done: [], warnings }, json(), () => renderGroups([
           { title: 'Tools', checks: checks.filter((c) => c.name === 'tmux' || c.name === 'node' || c.name === 'path') },
           { title: 'Agents', checks: checks.filter((c) => c.name === 'claude' || c.name === 'codex' || c.name === 'agents') },

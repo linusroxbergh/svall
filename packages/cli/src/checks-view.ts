@@ -1,7 +1,7 @@
 import { styleText } from 'node:util';
-import type { Check } from './commands/doctor.js';
+import { MARK, type Check } from './commands/doctor.js';
 
-const MARK = { ok: ['✓', 'green'], warn: ['!', 'yellow'], fail: ['✗', 'red'], skip: ['–', 'dim'] } as const;
+const COLOR = { ok: 'green', warn: 'yellow', fail: 'red', skip: 'dim' } as const;
 
 // the installer reads this through a file, so it passes its own terminal's answer in FORCE_COLOR
 export const useColor = (): boolean =>
@@ -14,6 +14,6 @@ export function renderGroups(groups: { title: string; checks: Check[] }[], color
   const bar = paint('dim', '│');
   return shown.map((g) => [
     `${paint('cyan', '◇')}  ${g.title}`,
-    ...g.checks.map((c) => `${bar}  ${paint(MARK[c.status][1], MARK[c.status][0])} ${c.name.padEnd(width)}  ${c.detail}`),
+    ...g.checks.map((c) => `${bar}  ${paint(COLOR[c.status], MARK[c.status])} ${c.name.padEnd(width)}  ${c.detail}`),
   ].join('\n')).join(`\n${bar}\n`);
 }
