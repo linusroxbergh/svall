@@ -3,14 +3,15 @@ import { isOurs } from '@archipelago/archid/paths';
 
 export type HookTrust = { trusted: number; untrusted: number };
 
-type Listed = { data?: { hooks?: { command?: unknown; trustStatus?: string }[] }[] };
+type Hook = { command?: unknown; trustStatus?: string } | null;
+type Listed = { data?: ({ hooks?: Hook[] } | null)[] };
 
 export function ourTrust(result: unknown, script: string): HookTrust | undefined {
   const data = (result as Listed | undefined)?.data;
   if (!Array.isArray(data)) return undefined;
-  const hooks = data.flatMap((d) => d.hooks ?? []).filter((h) => isOurs(h.command, script));
+  const hooks = data.flatMap((d) => d?.hooks ?? []).filter((h) => isOurs(h?.command, script));
   if (!hooks.length) return undefined;
-  const trusted = hooks.filter((h) => h.trustStatus === 'trusted').length;
+  const trusted = hooks.filter((h) => h?.trustStatus === 'trusted').length;
   return { trusted, untrusted: hooks.length - trusted };
 }
 
@@ -28,13 +29,13 @@ export function askCodexTrust(o: { codexHome: string; script: string; bin?: stri
       for (let i = buf.indexOf('\n'); i !== -1; i = buf.indexOf('\n')) {
         const line = buf.slice(0, i);
         buf = buf.slice(i + 1);
-        let msg: { id?: number; result?: unknown };
+        let msg: { id?: number; result?: unknown } | null;
         try { msg = JSON.parse(line); } catch { continue; }
-        if (msg.id === 1) {
+        if (msg?.id === 1) {
           child.stdin.write('{"method":"initialized"}\n');
           child.stdin.write(`${JSON.stringify({ id: 2, method: 'hooks/list', params: { cwds: [o.codexHome] } })}\n`);
         }
-        if (msg.id === 2) done(ourTrust(msg.result, o.script));
+        if (msg?.id === 2) done(ourTrust(msg.result, o.script));
       }
     });
     child.stdin.write(`${JSON.stringify({ id: 1, method: 'initialize', params: { clientInfo: { name: 'archi', version: '0' } } })}\n`);
