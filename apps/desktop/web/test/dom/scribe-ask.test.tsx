@@ -43,3 +43,19 @@ test('asks for the main agent when archid finds both CLIs, and only then', () =>
   render(<ScribeAsk />);
   expect(screen.queryByTestId('scribe-ask-agent')).toBeNull();
 });
+
+// the dialog's Escape means Keep off wherever focus sits, including the agent select
+test('Escape on the agent select keeps the scribe off, same as elsewhere in the dialog', () => {
+  act(() => store.getState().setFleet({ ...fleet(), scribeAsk: true, mainAgent: 'claude', agentsFound: ['claude', 'codex'] }));
+  render(<ScribeAsk />);
+  fireEvent.keyDown(screen.getByTestId('scribe-ask-agent'), { key: 'Escape' });
+  expect(call).toHaveBeenCalledWith('scribe.set', { enabled: false });
+});
+
+// Enter on the select is left to the browser's own popup, not answered as a dialog press
+test('Enter on the agent select answers nothing', () => {
+  act(() => store.getState().setFleet({ ...fleet(), scribeAsk: true, mainAgent: 'claude', agentsFound: ['claude', 'codex'] }));
+  render(<ScribeAsk />);
+  fireEvent.keyDown(screen.getByTestId('scribe-ask-agent'), { key: 'Enter' });
+  expect(call).not.toHaveBeenCalled();
+});
