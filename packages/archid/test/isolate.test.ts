@@ -23,7 +23,7 @@ describe('test isolation', () => {
       // the package on its own, as `pnpm --filter @archipelago/archid exec vitest` runs it, without the root config's isolate.ts
       const vitest = path.join(import.meta.dirname, '../../../node_modules/.bin/vitest');
       const { stdout } = await promisify(execFile)(vitest, ['run', 'test/handover/sessions.test.ts'], {
-        cwd: path.join(import.meta.dirname, '..'), env: { ...process.env, HOME: home, CI: '1' },
+        cwd: path.join(import.meta.dirname, '..'), env: { ...process.env, HOME: home, CI: '1', NO_COLOR: '1' },
       });
       expect(stdout).toMatch(/Test Files +1 passed \(1\)/);
       expect(claude()).toEqual(before);
