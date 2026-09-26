@@ -9,17 +9,20 @@ Version 1 deliberately supports one Mac and one Linux gateway per fleet. The dat
 ownership protocol use stable machine ids and can add more machines later, but remote-to-remote
 handover is not part of the first release.
 
+Version 1 requires both machines to use the same home path, so every path a fleet records means the
+same thing on either machine and nothing is rewritten. The stable phone gateway and remote port
+forwarding are designed under [Later versions](#later-versions) and come after version 1.
+
 ## Product contract
 
 A handover checkpoints a fleet, transfers its durable state, and resumes it on another machine.
 It preserves:
 
-- islands, characters, placement, notes, instructions, links and browser tab URLs;
+- islands, characters, placement, notes, instructions, links, browser tab URLs and entity docs;
 - tracked, untracked, ignored and staged working-tree changes, subject to configured excludes;
 - linked Git worktrees and their indexes;
 - supported Claude Code and Codex conversations;
-- the selected character and open card in the Mac that initiated the handover;
-- a stable phone URL and push subscription through the Linux gateway.
+- the selected character and open card in the Mac that initiated the handover.
 
 A handover does **not** migrate a running Unix process. A build, REPL, server, foreground shell
 command or in-flight agent tool is allowed to finish, explicitly interrupted, or reported as a
@@ -45,9 +48,7 @@ validates the destination, commits ownership, and resumes the characters on `tri
 reconnects through SSH and redraws the same map with the same character selected. A failed
 character resume stays dormant with a Retry action; it does not roll ownership back.
 
-The phone continues to use the URL it was given when `trift` was added. The gateway relays the
-phone to whichever machine owns the fleet, so push subscriptions and the installed home-screen app
-do not change. When the Mac sleeps, the fleet continues on `trift`.
+When the Mac sleeps, the fleet continues on `trift`.
 
 In the morning, running `archi handover local` on the Mac or choosing **This Mac** in the app pulls
 the fleet back. Here `local` means the stable id of the machine running the command, never “the
@@ -62,13 +63,16 @@ The first published release supports:
   and remote owner; the initial manifest covers x86-64 and arm64;
 - Tailscale on both machines;
 - OpenSSH access from the Mac to the Linux account, including Tailscale SSH;
+- the same home path on both machines: the Linux account's home is the Mac's, such as
+  `/Users/linus`, set with `useradd -m -d` or `usermod -d`. A symlink is not enough, because the
+  working directory a process reports is the resolved path, and Git and the agents record that;
 - systemd user services on Linux;
 - tmux 3.x and Git on both machines; tmux 3.5 or newer is recommended, because Shift+Enter needs
   its `extended-keys-format`, and Ubuntu 24.04 ships 3.4;
 - rsync 3.x on both machines. Linux distributions ship it; macOS ships openrsync, which cannot
   protect remote arguments or report byte progress, so the desktop release bundles its own rsync
   and the system binary is only a fallback the doctor flags;
-- explicitly tested Claude Code and Codex CLI versions.
+- Claude Code and Codex CLI at or above each session adapter's minimum version.
 
 The Mac app is distributed as a signed and notarized direct download. Mac App Store distribution,
 whose sandbox is incompatible with the required SSH, subprocess and filesystem integration, is not
@@ -89,9 +93,8 @@ does not require the Linux machine to SSH back into the Mac.
 
 **Owner** — the machine whose archid may run tmux windows and accept fleet mutations.
 
-**Gateway** — the always-on Linux companion. It is the authority for ownership generations, the
-stable phone endpoint and the store for phone push subscriptions. A handover cannot commit while
-the gateway is unavailable; the current owner may continue working.
+**Gateway** — the always-on Linux companion. It is the authority for ownership generations. A
+handover cannot commit while the gateway is unavailable; the current owner may continue working.
 
 The gateway is not a cloud service. It runs only on the user's machine and is reachable only over
 their tailnet and SSH.
@@ -119,9 +122,8 @@ fleet API tokens:
       "ssh": "trift",
       "platform": "linux",
       "arch": "arm64",
-      "home": "/home/linus",
-      "archiBase": "/home/linus/.local/share/archipelago",
-      "pathRoots": { "home": "/home/linus" },
+      "home": "/Users/linus",
+      "archiBase": "/Users/linus/.local/share/archipelago",
       "gateway": true
     }
   }
@@ -306,7 +308,9 @@ successful upgrade.
 
 1. Open an interactive SSH connection so the user can verify a new host key and complete any SSH
    authentication.
-2. Read the remote home, OS and architecture; require a supported Ubuntu release.
+2. Read the remote home, OS and architecture; require a supported Ubuntu release and a home path
+   equal to the Mac's. A different home stops setup with the commands that create an account whose
+   home matches.
 3. Check Tailscale, tmux, Git, rsync and systemd user services. A tmux older than 3.5 is a warning
    naming the Shift+Enter limitation, not a blocker. Missing system packages are shown with a
    copyable apt command. Archipelago runs it only in an interactive terminal after the user
@@ -321,8 +325,8 @@ successful upgrade.
 8. Check Claude Code and Codex installation, supported versions, login and Archipelago hooks. The
    user completes agent login and Codex hook trust in an offered SSH terminal; credentials are
    never copied from the Mac.
-9. Run an end-to-end probe: gateway authority, API tunnel, temporary tmux window, path mapping,
-   free space and phone relay.
+9. Run an end-to-end probe: gateway authority, API tunnel, temporary tmux window, home path and
+   free space.
 10. For each existing local fleet the user enables for this machine, create the gateway's initial
     authority record with the local machine as generation-zero owner. Creation is allowed only when
     no record for that fleet id exists.
@@ -340,7 +344,7 @@ Connection and handover negotiate:
 - fleet state schema version;
 - transfer-manifest version;
 - gateway authority version;
-- installed Claude Code and Codex versions and their session-adapter versions.
+- installed Claude Code and Codex versions against each session adapter's minimum.
 
 Ordinary remote viewing may allow a documented compatible version range. A handover requires an
 exact companion release match and a supported agent-session adapter. The app offers to upgrade the
@@ -350,38 +354,21 @@ companion before preflight; it never starts a transfer across an incompatible pa
 
 # Transfer model
 
-## Path roots
+## Same paths
 
-Paths are mapped through named roots, not string replacement on an arbitrary prefix. Every machine
-automatically defines `home`; users may add matching roots such as `work` for an external disk:
+Paths are never rewritten. Both machines have the same home path, and a transfer root outside the
+home, such as `/Volumes/work/repo`, arrives at the same absolute path, so its parent must exist on
+the destination. State paths, context refs, `file:` browser URLs, worktree gitfiles, transcript
+paths and repo-doc keys therefore mean the same thing on either machine.
 
-```json
-// Mac
-{ "pathRoots": { "home": "/Users/linus", "work": "/Volumes/work" } }
+Each transfer root is recorded and copied at its real path. A character cwd whose real path differs
+from the recorded one blocks, because Git and the agents record the resolved path. Preflight also
+detects case-folding collisions, unsupported file names, broken destination symlinks and
+insufficient space.
 
-// trift
-{ "pathRoots": { "home": "/home/linus", "work": "/srv/work" } }
-```
-
-The longest matching source root produces `{ root: "work", relative: "repo/src" }`, which resolves
-under the destination's `work` root. Matches require a path-component boundary. Both the lexical
-path and its real path must stay inside a declared root; a symlink that escapes is copied as a
-symlink but cannot be used as a character cwd or transfer root.
-
-A missing destination root blocks preflight. Preflight also detects case-folding collisions,
-unsupported file names, broken destination symlinks and insufficient space.
-
-The state path rewrite includes:
-
-- character and second-terminal cwd;
-- `repo.root` and `repo.mainRoot`;
-- `home.cwd` and `defaultCwd`;
-- file and folder context refs, including `file:` browser URLs;
-- `agent.transcriptPath` and second-agent transcript paths;
-- any future protocol field registered with the central path-field table.
-
-Tests require every absolute path field in the protocol schema to be registered as portable,
-machine-local or forbidden. Adding an unclassified path fails CI.
+Tests require every absolute path field in the protocol schema, every process-bound field such as a
+pid or tmux id, and every entry in the fleet home to be classified as travelling or machine-local.
+Machine-local ones are stripped or left behind at export. Adding an unclassified one fails CI.
 
 ## Transfer inventory
 
@@ -389,16 +376,16 @@ Preflight creates an immutable, versioned manifest containing:
 
 - the source fleet generation and complete state snapshot;
 - the portable `fleet.json`;
+- the fleet's entity docs: fleet, island, character and repo docs under the fleet home;
 - repository graphs described below;
 - non-repository character cwd roots;
 - `home.cwd`;
 - file or folder context refs not already covered by another root;
 - exact agent-session files and required sidecars;
-- excludes, modes, sizes and destination paths;
-- source and destination machine ids and path-root mappings.
+- excludes, modes and sizes;
+- source and destination machine ids and their shared home path.
 
-Nested filesystem roots are folded so a file is sent once. A context item outside a declared path
-root blocks rather than becoming a rewritten reference to a file that was never transferred.
+Nested filesystem roots are folded so a file is sent once.
 
 The fleet's own `.env`, used for scribe credentials, transfers only when
 `handover.transferFleetEnv` is true. Repository `.env` files are working-tree data and transfer by
@@ -430,26 +417,19 @@ git worktree list --porcelain
 ```
 
 The repository graph contains the common directory/main checkout and every worktree used by a fleet
-character. A used worktree outside the main checkout is a separate transfer root and must still be
-inside a declared path root. Registered worktrees unused by the fleet retain refs but are not made
-live on the destination.
+character. A used worktree outside the main checkout is a separate transfer root. Registered
+worktrees unused by the fleet retain refs but are not made live on the destination.
 
 Transfer carries the common Git directory, per-worktree index and metadata, and every used working
 directory. On the destination the importer:
 
 1. removes worktree registrations not present in the manifest from the destination copy without
-   removing their branch refs, before anything else touches the graph;
-2. rewrites each worktree's `.git` file to its mapped git dir and rewrites `.git/worktrees/*/gitdir`
-   entries for transferred worktrees, as a belt-and-braces step;
-3. runs `git worktree repair` for the mapped paths, which must report nothing left to fix given
-   step 2 already ran;
-4. verifies `git worktree list`, `git status` and staged changes against the manifest.
+   removing their branch refs;
+2. verifies `git worktree list`, `git status` and staged changes against the manifest.
 
-The importer never runs `git worktree prune` to drop unlisted registrations: at import time no
-registration resolves yet, so prune removes the whole `.git/worktrees` directory instead of the
-entries the manifest omits. Step 1 must run before step 3, because `git worktree repair` rewrites
-any registration it can still reach, including one still live on the source machine, and pointing
-that rewrite at the destination corrupts the machine being migrated from.
+The importer never runs `git worktree prune` or `git worktree repair`. With the same paths every
+gitfile and registration already names the right place, and prune would drop registrations whose
+worktrees have not arrived yet.
 
 Submodules remain their own repository graph when a character works inside one. Otherwise their
 working directories and gitlink state travel with the containing graph. A submodule's `origin`
@@ -468,8 +448,7 @@ pre-existing folder.
 Before updating a replica, Archipelago compares it with the last received manifest. Changes made
 while that machine did not own the fleet block the handover. The user may:
 
-- cancel and recover the changes manually;
-- choose another path mapping; or
+- cancel and recover the changes manually; or
 - explicitly archive the divergent destination root and continue.
 
 Archiving renames the root to a timestamped sibling and reports the recovery path. Handover never
@@ -489,20 +468,19 @@ to close the external writer.
 The manifest uses the recorded `agent.transcriptPath`; it does not derive a directory by replacing
 characters in cwd. It honors `CLAUDE_CONFIG_DIR` and `CODEX_HOME` on both machines.
 
-For Claude Code, the versioned adapter transfers the session JSONL plus session-specific sidecars
-and subagent data, places them under the destination project slug, and rewrites the path-bearing
-fields known for that supported Claude release. It does not copy every unrelated session from the
-project directory.
+For Claude Code, the adapter copies the session JSONL plus session-specific sidecars and subagent
+data into the same project folder under the destination's config directory. It does not copy every
+unrelated session from the project directory.
 
-For Codex, the adapter transfers the rollout file, which is all the destination needs: it finds the
+For Codex, the adapter copies the rollout file, which is all the destination needs: it finds the
 session by scanning `sessions/` for the id and rebuilds its own thread index from the rollout.
-Session ids remain unchanged, but path-bearing session metadata is rewritten and validated for the
-supported Codex release.
 
+Session files are copied byte for byte. An adapter therefore depends only on where its CLI keeps a
+session's files, not on the record format, and has a minimum supported version but no maximum.
 The imported `agent.transcriptPath` always points at the destination file before activation.
-Preflight blocks unsupported agent versions or a session whose required file is missing. A separate
-repair action may start a fresh agent with a generated transcript summary, but this is visibly a new
-session and is never the automatic handover path.
+Preflight blocks an agent below its adapter's minimum or a session whose required file is missing.
+A separate repair action may start a fresh agent with a generated transcript summary, but this is
+visibly a new session and is never the automatic handover path.
 
 Global agent credentials, user-wide skills, MCP configuration and shell dotfiles are machine-local.
 Host doctor checks installation, login and hooks, and preflight reports material configuration
@@ -514,10 +492,10 @@ Protocol schema v7 makes both terminal slots explicitly resumable. A terminal re
 optional live tmux ids, optional agent, and optional revive command. A second terminal no longer
 disappears merely because its tmux window is absent.
 
-Before export, all `tmux.windowId` and `paneId` fields are removed. For a supported agent,
-`revive.command` is `claude --resume <id>` or `codex resume <id>`. A plain shell has no command and
-reopens at its mapped cwd. Archipelago may save terminal scrollback for diagnosis, but it is not
-replayed as process state.
+Before export, all `tmux.windowId`, `paneId` and agent pid fields are removed. For a supported
+agent, `revive.command` is `claude --resume <id>` or `codex resume <id>`. A plain shell has no
+command and reopens at its cwd. Archipelago may save terminal scrollback for diagnosis, but it is
+not replayed as process state.
 
 ---
 
@@ -531,7 +509,8 @@ Preflight is read-only and runs before any terminal is interrupted. It blocks wh
 - another transaction is open;
 - release, protocol, schema or agent adapters are incompatible;
 - a required agent CLI is absent, logged out or missing hooks;
-- a transfer root or cwd has no destination path root;
+- the destination's home path differs from the source's, or a transfer root's parent is missing
+  there;
 - a character is marked **Keep on this machine**;
 - a foreground shell process is still running;
 - a worktree graph cannot be reconstructed and validated;
@@ -582,7 +561,7 @@ The controller executes these durable steps:
 3. **Transfer.** Controller rsyncs roots and exact session files. Progress is recorded per root.
 4. **Verify.** Controller performs the final source pass; destination validates paths, Git,
    transcripts and state schema without starting a window.
-5. **Prepare.** Destination writes the rewritten state to a transaction-specific prepared file,
+5. **Prepare.** Destination writes the imported state to a transaction-specific prepared file,
    validates it again, writes its prepared journal for generation `g + 1`, and the gateway records
    the transaction as `ready-to-commit`. The active `state.json` is not replaced yet.
 6. **Commit.** Gateway compare-and-swaps owner from source at `g` to destination at `g + 1`. This is
@@ -626,7 +605,13 @@ separate, deliberately alarming disaster-recovery command and never part of ordi
 
 ---
 
-# Stable phone gateway
+# Later versions
+
+These are designed but come after version 1. Until then the phone reaches a fleet through the
+owning machine's own mobile setup, so an installed Home Screen app works only while its machine
+owns the fleet.
+
+## Stable phone gateway
 
 The gateway serves a fleet at a stable path on its Tailscale HTTPS origin:
 
@@ -659,9 +644,7 @@ shows the same fleet URL as offline and reconnects there later.
 `archi mobile on` enables the fleet route and prints its stable URL. `mobile off` disables that
 route but does not remove the gateway or other fleets. Phone-initiated handover is not in version 1.
 
----
-
-# Port forwarding
+## Port forwarding
 
 Port discovery is useful but not part of the ownership transaction. A resumed dev server is a new
 process and is discovered after it starts.
@@ -681,7 +664,8 @@ no promise that every literal `localhost` URL remains unchanged.
 
 `archi forward <char> <port>` creates a manual forward and `archi forward --list` reports mappings.
 Forwards reconnect with the SSH master and close when the fleet connection closes. Multiple
-characters reporting the same remote listener share one tunnel.
+characters reporting the same remote listener share one tunnel. Listener changes reach the app as
+`event ports.changed { characterId, ports }`.
 
 ---
 
@@ -763,7 +747,6 @@ Events:
 event ownership.changed  { generation, ownerMachineId }
 event handover.changed   { transactionId, phase }
 event handover.entity    { transactionId, kind, id, phase, done?, total?, error? }
-event ports.changed      { characterId, ports }
 ```
 
 ---
@@ -779,10 +762,10 @@ Implementation follows these ownership boundaries:
 - `packages/archid/src/config.ts` and `paths.ts`: `fleet.json`/`node.json` migration and new durable
   paths;
 - `packages/archid/src/ownership/`: owner guards, cached generation and freeze state;
-- `packages/archid/src/handover/`: manifests, path mapping, Git graphs, replica records, journals,
+- `packages/archid/src/handover/`: manifests, Git graphs, replica records, journals,
   prepare/activate and agent-session adapters;
-- `packages/archid/src/gateway/`: authority compare-and-swap, mobile relay, stable PWA routes and
-  push store;
+- `packages/archid/src/gateway/`: authority compare-and-swap, and later the mobile relay, stable PWA
+  routes and push store;
 - `packages/cli/src/controller/`: SSH master, companion install, rsync orchestration and transaction
   recovery shared by host and handover commands;
 - `packages/cli/src/commands/host.ts` and `handover.ts`: human and NDJSON command surfaces;
@@ -821,16 +804,16 @@ without cloning Archipelago or installing a JavaScript toolchain.
 ## Phase 2 — gateway authority and handover
 
 1. Implement gateway ownership compare-and-swap and recovery inspection.
-2. Implement preflight inventory, named path roots and destination replica markers.
-3. Implement Git graph transfer/repair and source/destination verification.
-4. Implement versioned Claude/Codex session adapters.
+2. Implement preflight inventory, same-path checks and destination replica markers.
+3. Implement Git graph transfer and source/destination verification.
+4. Implement Claude/Codex session adapters.
 5. Implement freeze/rest choices, durable transfer progress, prepare, commit and activation.
 6. Implement handover CLI and sheet, including crash reconstruction.
 
 Exit criterion: fault injection at every await and process boundary cannot produce two active
 owners or silently lose source/destination work.
 
-## Phase 3 — stable phone relay
+## Phase 3 — stable phone relay (later version)
 
 1. Move mobile assets, VAPID keys and subscriptions to the gateway service.
 2. Add per-fleet path-scoped PWAs and authenticated owner relay.
@@ -840,7 +823,7 @@ owners or silently lose source/destination work.
 Exit criterion: the same phone URL controls the fleet before and after both directions of handover,
 and shows an offline state when the owner is unreachable.
 
-## Phase 4 — port discovery and forwarding
+## Phase 4 — port discovery and forwarding (later version)
 
 1. Add Linux listener/process-tree discovery.
 2. Add SSH control-master forward lifecycle and collision mapping.
@@ -864,14 +847,14 @@ honest remapped URL when its preferred local port is occupied.
 - Transfer Git fixtures containing staged changes, untracked files, ignored files, stashes,
   submodules and linked worktrees inside and outside the main checkout.
 - Verify destination divergence blocks and explicit archive preserves a recovery path.
-- Test case-colliding paths and escaping symlinks.
-- Keep versioned real-session fixtures for every supported Claude Code and Codex release; import and
-  run their resume command in an isolated account.
+- Test case-colliding paths, symlinked cwds and a destination whose home path differs.
+- Keep real-session fixtures for Claude Code and Codex plus a live probe against the installed
+  release; copy each unchanged and run its resume command in an isolated account with the same home
+  path.
 - Test source changes during rsync and bounded stabilization retry.
 - Test protocol/release/adapter mismatch before freeze.
 - Integration-test local-to-Linux and Linux-to-local with two disposable machines or containers,
   mocked agents and real tmux/SSH/rsync.
-- Test gateway phone routing and pushes across owner changes and relay loss.
 - Test fresh Ubuntu x86-64 and arm64 provisioning from the published Mac artifact.
 
 ## Manual acceptance
@@ -884,19 +867,21 @@ honest remapped URL when its preferred local port is occupied.
 - Killing the controller before and after commit reconstructs the correct sheet on relaunch.
 - A failed destination agent login before freeze blocks; a resume failure after commit leaves one
   dormant, retryable character without reactivating the source.
-- The phone's installed app and push subscription work before and after both owner changes.
 - A destination file edited while inactive is never overwritten without explicit archive approval.
 
 ## Release gate
 
 The feature is ready to ship only when the fault-injection suite demonstrates the single-owner
-invariant, every supported agent fixture resumes on both platforms, and fresh-machine provisioning
-passes on both supported Linux architectures.
+invariant, every agent fixture and live probe resumes on both platforms, and fresh-machine
+provisioning passes on both supported Linux architectures.
 
 ---
 
 # Not in version 1
 
+- a stable phone URL and push subscription across owners, and remote port forwarding (see
+  [Later versions](#later-versions));
+- machines whose home paths differ;
 - arbitrary process or memory migration;
 - unattended or phone-initiated handover;
 - remote-to-remote transfer or more than one gateway per fleet;

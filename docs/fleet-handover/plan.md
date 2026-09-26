@@ -4,16 +4,17 @@
 > begin a task whose `Depends on` tasks are incomplete. Keep each task's tests green and use the
 > suggested commit boundary before moving on.
 
-**Goal:** A published Archipelago app can provision a user-owned Ubuntu machine, view a fleet there,
-transactionally hand the complete fleet between the Mac and that machine, keep one writable owner,
-resume supported Claude/Codex conversations, preserve a stable phone URL, and forward remote dev
-ports.
+**Goal:** A published Archipelago app can provision a user-owned Ubuntu machine whose account has the
+Mac's home path, view a fleet there, transactionally hand the complete fleet between the Mac and that
+machine, keep one writable owner, and resume Claude/Codex conversations. A stable phone URL (Phase E)
+and remote port forwarding (Phase F) come after version 1.
 
 **Architecture:** The Mac app/CLI is the attended controller; archid on either machine is the current
 owner; the Linux companion is also a permanent gateway and ownership authority. The controller uses
 SSH tunnels for desktop API and tmux access, rsync for verified replicas, and a generation-based
-prepare/commit/activate transaction for handover. The gateway hosts a stable phone relay. Durable
-journals make every pre-commit operation abortable and every post-commit operation destination-only.
+prepare/commit/activate transaction for handover. Paths are identical on both machines, so nothing
+the fleet records is rewritten. Durable journals make every pre-commit operation abortable and every
+post-commit operation destination-only.
 
 **Tech stack:** TypeScript, Node 22, zod, vitest, React, Zustand, Swift/AppKit/WebKit, GhosttyKit,
 tmux 3.5+, Git, rsync, OpenSSH, systemd user services, Tailscale Serve, Playwright, GitHub Actions.
@@ -70,11 +71,19 @@ must skip with a named reason when their prerequisite is absent. They must not s
   the Mac app can use its API and terminals without a source checkout.
 - **M3 — Tasks 19–29: transactional handover.** Both directions preserve repositories, worktrees,
   sessions and state, with safe abort/resume at every boundary.
+- **M3b — Tasks 40–42: same paths and main's newer data.** The rebased branch hands a fleet over
+  with nothing rewritten, carries entity docs, and holds one daemon per fleet on Linux; real Claude
+  and Codex resume both ways.
+- **M6 — Tasks 36–39: hardening and release.** Fault injection, fresh-machine CI, docs and feature
+  rollout meet the release gate.
+
+After version 1:
+
 - **M4 — Tasks 30–33: stable phone.** The installed phone app and push subscription survive both
   ownership changes.
 - **M5 — Tasks 34–35: ports.** Remote listeners appear and forward through the desktop SSH master.
-- **M6 — Tasks 36–39: hardening and release.** Fault injection, fresh-machine CI, docs and feature
-  rollout meet the release gate.
+
+Order: M0–M3, M3b, M6, then M4 and M5.
 
 ## Planned file map
 
@@ -1035,7 +1044,100 @@ Then repeat with one supported real Claude session and one supported real Codex 
 
 ---
 
-# Phase E — stable phone gateway
+# Phase D2 — same paths and main's newer data
+
+### Task 40: Rebase the branch and smoke the rebased build
+
+**Depends on:** M3
+
+**Steps:**
+
+- [ ] Rebase `experimental-remote-sessions` onto main. Keep `handover.enabled` off by default and set
+  `PROTOCOL_VERSION` above main's.
+- [ ] Check whether the M3 environment is still up: the `archi-m3` user on linus-vault, and the Mac
+  temp HOME `/private/tmp/claude-502/m3h2`, which holds a copied Codex `auth.json`. Reuse or remove
+  it; anything on linus-vault needs the owner's yes.
+- [ ] Run one Mac→Linux→Mac round trip with mocked agents and one real Codex session on the rebased
+  build, following `ledger/m3-onmachine-brief.md`.
+
+**Verify:** the verification commands above, then the round trip's report in the ledger.
+
+**Commit:** `The fleet handover branch runs on current main`
+
+### Task 41: Require the same home path and copy what the fleet records unchanged
+
+**Depends on:** Task 40
+
+**Files:**
+
+- Modify: `packages/cli/src/controller/registry.ts`, `paths.ts`, `host.ts`, `handover.ts`, `reach.ts`
+- Modify: `packages/archid/src/handover/inventory.ts`, `portable-path.ts`, `source.ts`,
+  `destination.ts`, `validate.ts`, `probe.ts`, `git-graph.ts`
+- Modify: `packages/archid/src/handover/sessions/claude.ts`, `codex.ts`, `records.ts`, `registry.ts`
+- Modify: `packages/protocol/src/handover.ts`, `messages.ts`
+- Delete: `packages/archid/src/handover/git-repair.ts` and its test
+
+**Steps:**
+
+- [ ] Probe first: copy one real Claude session and one real Codex rollout unchanged into a
+  linus-vault throwaway account whose home is the Mac's home path, and resume each there. The
+  account needs the owner's yes. If either resume fails, stop and amend the spec.
+- [ ] Block Add Machine and preflight when the destination's home differs from the source's, naming
+  the commands that create an account with a matching home. A root outside home needs its parent
+  present on the destination.
+- [ ] Remove named path roots: `pathRoots` in the registry and machine records, `{ root, relative }`
+  portable paths, and the state path rewrite. State paths travel as they are.
+- [ ] Record and copy each transfer root at its real path; block a cwd whose real path differs from
+  the recorded one.
+- [ ] Git import prunes unlisted registrations, then validates. Remove the gitfile rewrite and the
+  `git worktree repair` step.
+- [ ] Session adapters copy files byte for byte: remove path rewriting, the record and attachment type
+  lists, and the version maximum. Keep file discovery, a minimum version and the missing-file
+  blocker.
+
+**Tests:** a destination with a different home blocks at Add Machine and at preflight; a symlinked cwd
+blocks; the Task 3 worktree fixture validates without repair; the Claude and Codex fixtures resume
+after an unchanged copy; a session written by a CLI newer than every fixture is accepted.
+
+**Verify:** `pnpm vitest run --project protocol --project archid --project cli`, `pnpm typecheck`.
+
+**Commit:** `A fleet moves between machines with the same home path, and nothing it records is rewritten`
+
+### Task 42: Carry main's newer fleet data and fence the Linux daemon
+
+**Depends on:** Task 41
+
+**Steps:**
+
+- [ ] Add the fleet's entity docs (fleet, island, character and repo docs under the fleet home) to the
+  inventory. Repo-doc keys hash the repo's absolute path, which no longer changes.
+- [ ] Strip `agent.pid` and `second.agent.pid` from the exported snapshot.
+- [ ] Extend the path-field classification test to process-bound fields such as pids and tmux ids,
+  and to every entry in the fleet home, so an unclassified one fails CI.
+- [ ] Make the single-daemon lock hold on Linux: `lockHome` in `packages/archid/src/main.ts` passes
+  macOS's `O_EXLOCK`, which Linux ignores.
+
+**Tests:** a moved fleet's entity docs are found by the same keys on the destination; a live stale
+pid on the destination cannot make the reducer ignore a new session; a second daemon for the same
+fleet refuses to start on macOS and on Linux (linus-vault or an `ubuntu:24.04` container).
+
+**Verify:** `pnpm vitest run --project archid`, then the Linux lock test.
+
+**Commit:** `A moved fleet brings its docs and leaves its pids, and one daemon holds it on Linux`
+
+**M3b gate:** On the rebased build, with a linus-vault account whose home is the Mac's, hand a fleet
+with mocked agents, one real Claude session and one real Codex session Mac→Linux→Mac. Both
+conversations resume under their original session ids, entity docs arrive, and a second daemon on
+Linux refuses to start. The real-Claude run needs the owner for the Mac keychain. Then the owner's
+by-eye pass in the built app: Add Machine, the handover sheet, and terminal re-attach after an SSH
+drop.
+
+---
+
+# Phase E — stable phone gateway (after version 1)
+
+Phases E and F start after the M6 release gate. When they do, Task 37 gains a CI job for the relay
+through a TLS/Tailscale-header test proxy, and Tasks 38 and 39 gain their phone and port items.
 
 ### Task 30: Serve path-scoped fleet PWAs from the gateway
 
@@ -1163,7 +1265,7 @@ verify the same URL shows offline; restart it and verify automatic recovery.
 
 ---
 
-# Phase F — remote port discovery and forwarding
+# Phase F — remote port discovery and forwarding (after version 1)
 
 ### Task 34: Discover and attribute remote listening ports
 
@@ -1228,7 +1330,7 @@ handover clears obsolete ports rather than forwarding dead processes.
 
 ### Task 36: Add systematic fault injection and single-owner model tests
 
-**Depends on:** M3
+**Depends on:** M3b
 
 **Files:**
 
@@ -1254,7 +1356,7 @@ handover clears obsolete ports rather than forwarding dead processes.
 
 ### Task 37: Add real two-machine integration and fresh-install CI
 
-**Depends on:** Tasks 33, 35, 36
+**Depends on:** Task 36
 
 **Files:**
 
@@ -1270,8 +1372,6 @@ handover clears obsolete ports rather than forwarding dead processes.
 - [ ] Run controller-kill/network-drop scenarios at representative pre/post-commit boundaries.
 - [ ] Build and install companion archives into clean x86-64 and arm64 environments with no Node or
   checkout; verify systemd units and upgrade/rollback.
-- [ ] Exercise gateway relay through a local TLS/Tailscale-header test proxy in CI; retain one manual
-  real-Tailscale release checklist.
 - [ ] Cache no user credentials in artifacts/logs and scan release archives for secrets/source paths.
 - [ ] Upload signed manifests/artifacts only after all architecture and integration jobs pass.
 
@@ -1291,14 +1391,14 @@ handover clears obsolete ports rather than forwarding dead processes.
 
 **Steps:**
 
-- [ ] Threat-model SSH aliases, remote argv, malicious repository file names, symlinks, compromised
-  phone headers, stolen relay secrets, stale authority and destination-path confusion.
+- [ ] Threat-model SSH aliases, remote argv, malicious repository file names, symlinks, stale
+  authority and destination-path confusion.
 - [ ] Verify tokens/secrets never enter argv, logs, NDJSON, state, manifests or repository roots.
 - [ ] Audit every delete/rename/archive target back to a validated registry/manifest record and add a
   regression test for each destructive path.
 - [ ] Benchmark first and incremental transfer on small, large-file and many-file repositories;
   bound hashing memory and event volume.
-- [ ] Verify terminal/relay backpressure and API payload limits under large output.
+- [ ] Verify terminal backpressure and API payload limits under large output.
 - [ ] Confirm licenses/notices for bundled Node, rsync/bundler outputs and other release contents.
 - [ ] Review service permissions, file modes, Tailscale exposure and uninstall retention.
 
@@ -1308,7 +1408,7 @@ handover clears obsolete ports rather than forwarding dead processes.
 
 ### Task 39: Documentation, migration, smoke test and feature rollout
 
-**Depends on:** Tasks 33, 35, 38
+**Depends on:** Task 38
 
 **Files:**
 
@@ -1319,17 +1419,17 @@ handover clears obsolete ports rather than forwarding dead processes.
 
 **Steps:**
 
-- [ ] Document supported hosts, Add Machine prerequisites, data/secrets transferred, agent-version
-  support, process restart semantics, phone gateway and port collision behavior.
+- [ ] Document supported hosts, Add Machine prerequisites including the same home path,
+  data/secrets transferred, agent-version support and process restart semantics.
 - [ ] Document every blocker/error code with safe recovery, including destination divergence,
   pre-commit abort, post-commit activation retry and force-owner disaster recovery.
-- [ ] Add migration notes for `config.json`, old mobile URLs, source-checkout CLI shims and named
-  fleets; prove downgrade behavior or state clearly when downgrade requires restoring backup.
+- [ ] Add migration notes for `config.json`, source-checkout CLI shims and named fleets; prove
+  downgrade behavior or state clearly when downgrade requires restoring backup.
 - [ ] Expand SMOKE with provisioning, both handover directions, worktrees, agent resume, foreground
-  blocker, network failure, phone/push and port mapping.
+  blocker and network failure.
 - [ ] Run the complete manual acceptance from the spec on release artifacts, not the source checkout.
-- [ ] Remove `handover.enabled` only after M0–M6 evidence is attached to the release; keep a remote
-  kill switch only if it does not make an owner dependent on a cloud service.
+- [ ] Remove `handover.enabled` only after M0–M3b and M6 evidence is attached to the release; keep a
+  remote kill switch only if it does not make an owner dependent on a cloud service.
 
 **Verify:** `pnpm test && pnpm typecheck && pnpm --filter @archipelago/desktop-web exec playwright test`,
 Swift tests/build, release workflow, full manual smoke.
@@ -1340,11 +1440,10 @@ Swift tests/build, release workflow, full manual smoke.
 
 - fault injection has no path to two writable owners;
 - source/destination divergence cannot be silently overwritten;
-- all supported Claude/Codex fixtures and manual sessions resume in both directions;
+- all Claude/Codex fixtures, live probes and manual sessions resume in both directions;
 - linked worktrees retain HEAD, branch, index, stash and working changes;
 - fresh companion provisioning passes on every advertised Ubuntu architecture;
-- the stable PWA URL and push subscription survive both handovers;
-- remote terminal and port reconnect behavior passes smoke;
+- remote terminal reconnect behavior passes smoke;
 - release archives contain no checkout dependency, credential or developer path;
 - the direct local-only app remains green and requires no gateway until the user enables handover.
 
@@ -1361,16 +1460,18 @@ not that it has already passed:
 | Inactive/frozen mutation fence | ✓ | ✓ | ✓ | 10, 11 |
 | Clean Ubuntu provisioning | ✓ | ✓ | ✓ | 12–15, 37 |
 | Remote API/tmux reconnect | ✓ | ✓ | ✓ | 14, 17 |
-| Path roots/symlink/case safety | ✓ | ✓ |  | 6, 19 |
+| Same home path/symlink/case safety | ✓ | ✓ |  | 19, 41 |
+| Entity docs travel, pids stay | ✓ | ✓ | ✓ | 42 |
+| One daemon per fleet on Linux | ✓ | ✓ |  | 42 |
 | Destination divergence/archive | ✓ | ✓ | ✓ | 20 |
 | Linked worktrees/submodules | ✓ | ✓ | ✓ | 3, 21 |
-| Claude/Codex exact resume | ✓ | optional real | ✓ | 1, 2, 22 |
+| Claude/Codex exact resume | ✓ | optional real | ✓ | 1, 2, 22, 41 |
 | Foreground process blocker | ✓ | ✓ | ✓ | 24, 25 |
 | Abort before Commit | ✓ | ✓ | ✓ | 25, 27 |
 | Crash/unknown response after Commit | ✓ | ✓ | ✓ | 26–28, 36 |
 | App closes/reopens mid-move | ✓ | ✓ | ✓ | 27–29 |
-| Stable phone URL and push | ✓ | ✓ | ✓ | 30–33 |
-| Port collision/reconnect | ✓ | ✓ | ✓ | 34, 35 |
+| Stable phone URL and push (after v1) | ✓ | ✓ | ✓ | 30–33 |
+| Port collision/reconnect (after v1) | ✓ | ✓ | ✓ | 34, 35 |
 | Signed upgrade and rollback | ✓ | ✓ | ✓ | 12, 15, 37 |
 | Force-owner disaster recovery | ✓ | ✓ | ✓ | 16, 28 |
 

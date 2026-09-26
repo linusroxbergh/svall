@@ -1,17 +1,22 @@
 # Fleet handover — pick-up guide
 
 Fleet handover moves a whole fleet from one machine to another: its characters, terminals, repos,
-worktrees and Claude/Codex sessions. It runs between a Mac and a Linux gateway machine over SSH. One
-machine owns the fleet at a time, and a small gateway service on the Linux machine keeps the ownership
-record. Everything sits behind `handover.enabled` in fleet.json, which is off by default.
+worktrees and Claude/Codex sessions. It runs between a Mac and a Linux gateway machine over SSH, and
+the Linux account has the Mac's home path, so nothing the fleet records is rewritten. One machine owns
+the fleet at a time, and a small gateway service on the Linux machine keeps the ownership record.
+Everything sits behind `handover.enabled` in fleet.json, which is off by default.
 
 ## Status
 
 - **Done:** plan Tasks 1–29, milestones M0–M3. Every task was reviewed; M1, M2 and M3 each got a deep
   review, one fix wave and an on-machine pass. The M3 on-machine pass is done, apart from one real-Claude
   check (below).
-- **Next:** Phase E, Tasks 30–33 (stable phone gateway). Then Phase F, Tasks 34–35 (remote ports), and
-  Phase G, Tasks 36–39 (hardening, CI, audit, docs, rollout). A final whole-branch review comes last.
+- **Next:** Phase D2, Tasks 40–42 and the M3b gate: rebase and smoke, the same home path on both
+  machines, and main's newer fleet data. Then Phase G, Tasks 36–39 (hardening, CI, audit, docs,
+  rollout), which ends version 1. A final whole-branch review comes last.
+- **After version 1:** Phase E, Tasks 30–33 (stable phone gateway), and Phase F, Tasks 34–35 (remote
+  ports). Phase E needs a machine-wide `tailscale serve` path mapping on the gateway machine and a
+  real phone for its gate, so ask the owner first.
 - **Code:** one squashed commit on main. The full 139-commit history is on branch
   `fleet-handover-history`, and its commit messages are the best per-change record.
 
@@ -20,7 +25,7 @@ record. Everything sits behind `handover.enabled` in fleet.json, which is off by
 | File | What it is |
 | --- | --- |
 | `spec.md` | The design. It is binding: when the plan and the spec disagree, the spec wins. |
-| `plan.md` | Tasks 1–39 with milestone gates. Boxes are ticked through Task 29. |
+| `plan.md` | Tasks 1–42 with milestone gates. Boxes are ticked through Task 29. |
 | `spike-results.md`, `readiness.md` | What the M0 spikes proved and what they changed in the spec. |
 | `ledger/progress.md` | **Read this before continuing.** Every dispatch, every `Ruling:` (a decision taken on the owner's behalf, with its cost if wrong), every deferred minor and parked finding, and every milestone gate. Grep it for `Ruling:`, `parked`, `minor (deferred)` and `carried`. |
 | `ledger/task-N-brief.md`, `task-N-report.md` | Each task's requirements and its implementer's report, with test evidence. |
@@ -34,35 +39,26 @@ now `ledger/`, and `docs/superpowers/{specs,plans}/…fleet-handover…` is now 
 
 ## Owed before this can ship
 
-- **Real Claude, both directions.** Real Codex was handed Mac→Linux→Mac with nothing done by hand.
-  Real Claude 2.1.280 was checked to report the carried session id on `claude --resume`. The full
-  handover of a real Claude session has not run: the test's copied credentials had expired, and the
-  Mac keychain read needs the owner's own hands.
-- **The by-eye pass in the built app:** Add Machine, the handover sheet, and terminal re-attach after
-  an SSH drop.
+- **Tasks 40–42** (`plan.md`, Phase D2):
+  - a smoke run on the rebased build, since the on-machine passes ran before the squash onto zod 4,
+    TS 7 and Node 24;
+  - the same home path on both machines, which ends the Claude and Codex version pins. The Claude
+    adapter accepts only 2.1.251–2.1.280, so the Mac's newer Claude blocks preflight with
+    `incompatible_adapter` today;
+  - entity docs, which live under the fleet home and do not travel yet;
+  - `agent.pid`, which travels and must not;
+  - the daemon lock on Linux, whose macOS-only flag leaves the gateway machine open to a second daemon
+    for the same fleet.
+- **Real Claude, both directions** (M3b gate). Real Codex was handed Mac→Linux→Mac with nothing done
+  by hand. Real Claude 2.1.280 was checked to report the carried session id on `claude --resume`. The
+  full handover of a real Claude session has not run: the test's copied credentials had expired, and
+  the Mac keychain read needs the owner's own hands.
+- **The by-eye pass in the built app** (M3b gate): Add Machine, the handover sheet, and terminal
+  re-attach after an SSH drop.
 - **A release signing key.** `allowed_signers` holds only a comment until one exists, so every install
   needs `--allow-unsigned`.
-- **Supported Claude range.** It is 2.1.251–2.1.280, and a newer Claude blocks preflight with
-  `incompatible_adapter`. The Mac has already auto-updated to 2.1.281. Tasks 38/39 own keeping the range
-  current: a fixture plus a live probe for each release.
-- **The daemon lock on Linux.** Main's single-daemon lock uses a macOS-only flag, so on the Linux
-  gateway it does not stop a second daemon for the same fleet. That is a fencing gap on exactly the
-  machine handover targets.
-- **Entity docs do not travel.** Main's fleet, island, character and repo docs live under the fleet
-  home (`paths.ts`, from #108). The handover inventory treats the fleet home as machine-local, so a
-  moved fleet arrives without its docs, and no preflight warning says so. Repo docs are also keyed by
-  a hash of the absolute repo path (`docs.ts`), so the path-root mapping must re-key them. Carry and
-  re-key them, or at least warn at preflight, before the flag goes on.
-- **`agent.pid` travels with the snapshot.** It came in with main's live-pid session guard. On the
-  destination, a stale pid that happens to be alive can make the reducer ignore a new session. Strip
-  `agent.pid` and `second.agent.pid` in `exportSnapshot` (`portable-path.ts`).
-- **A smoke run on the rebased build.** The on-machine passes ran before the squash onto main, which
-  ported the branch to zod 4, TS 7 and Node 24. Run one Mac→Linux→Mac round trip before building
-  further.
 - **CI.** Actions jobs do not start on this repo because of billing. Task 37's fresh-install CI needs
   that sorted first.
-- **Phase E.** The phone gateway needs a `tailscale serve` path mapping on the gateway machine, which is
-  a machine-wide change, plus a real phone for the M4 gate. Ask the owner first.
 
 ## How the work was run
 
