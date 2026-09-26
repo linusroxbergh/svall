@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import type { MachineId } from '@archipelago/protocol';
@@ -53,17 +54,37 @@ export function readOrCreateToken(file: string): string {
 // macOS's O_EXLOCK, which node names no constant for
 const O_EXLOCK = 0x20;
 
-// a kernel lock: it holds until the file is closed or the daemon dies, however it dies
-function lockHome(home: string): () => void {
+const alreadyRunning = (home: string): Error => new Error(`archid is already running for ${home}`);
+
+// a kernel lock: it holds until it is let go or the daemon dies, however it dies
+function lockHome(home: string): Promise<() => void> {
+  return process.platform === 'linux' ? lockSocket(home) : Promise.resolve(lockFile(home));
+}
+
+function lockFile(home: string): () => void {
   const { O_RDWR, O_CREAT, O_NONBLOCK } = fs.constants;
   try {
     let fd = fs.openSync(path.join(home, 'daemon.lock'), O_RDWR | O_CREAT | O_NONBLOCK | O_EXLOCK, 0o600);
     // once only: by a second close the number may name another open file
     return () => { if (fd >= 0) fs.closeSync(fd); fd = -1; };
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'EAGAIN') throw new Error(`archid is already running for ${home}`);
+    if ((e as NodeJS.ErrnoException).code === 'EAGAIN') throw alreadyRunning(home);
     throw e;
   }
+}
+
+// Linux ignores O_EXLOCK; there the lock is an abstract unix socket named after the home's real path, whose name the
+// kernel keeps only while the socket is open
+function lockSocket(home: string): Promise<() => void> {
+  const name = `\0archipelago-archid-${crypto.createHash('sha256').update(fs.realpathSync(home)).digest('hex')}`;
+  const server = net.createServer((s) => s.destroy());
+  return new Promise((resolve, reject) => {
+    server.once('error', (e: NodeJS.ErrnoException) => reject(e.code === 'EADDRINUSE' ? alreadyRunning(home) : e));
+    server.listen(name, () => {
+      server.unref();
+      resolve(() => { if (server.listening) server.close(); });
+    });
+  });
 }
 
 /** `authority` stands in for the fleet's gateway, which is otherwise asked over its socket or ssh. */
@@ -72,7 +93,7 @@ type Options = { home: string; port?: number; host?: string; log?: Logger; autho
 // the lock comes before anything in the home is read or written, so a second start leaves the running one be
 export async function startDaemon(opts: Options): Promise<Daemon> {
   fs.mkdirSync(opts.home, { recursive: true, mode: 0o700 });
-  const unlock = lockHome(opts.home);
+  const unlock = await lockHome(opts.home);
   const daemon = await start(opts).catch((e: unknown) => { unlock(); throw e; });
   return { ...daemon, stop: async () => { await daemon.stop(); unlock(); } };
 }
