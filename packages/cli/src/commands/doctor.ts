@@ -15,6 +15,7 @@ import { HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hooksInstalled, lau
 import { tmuxTooOld } from '@archipelago/archid/tmux/conf';
 import type { AgentKind } from '@archipelago/protocol';
 import { Client, restartHint } from '../client.js';
+import { askCodexTrust, type HookTrust } from '../codex-trust.js';
 import { printResult } from '../format.js';
 import type { Target } from '../target.js';
 import { checkoutVersion } from '../version.js';
@@ -44,7 +45,7 @@ export type DoctorDeps = {
   mainAgent?: AgentKind;
   // agent CLIs on PATH, as setup finds them
   found: AgentKind[];
-  codexTrust(): Promise<unknown>;
+  codexTrust(): Promise<HookTrust | undefined>;
 };
 export type PreflightDeps = Pick<DoctorDeps, 'run' | 'node' | 'pathEnv' | 'shimDir' | 'keys' | 'mainAgent'>;
 
@@ -275,7 +276,11 @@ export async function codexCheck(d: Pick<DoctorDeps, 'codex' | 'exists' | 'read'
   } catch { /* unparseable counts as missing */ }
   if (!written) return { name: 'codex hooks', status: 'warn', detail: `not installed in ${d.codex.hooks}: archi setup` };
   if (!current) return { name: 'codex hooks', status: 'warn', detail: `out of date in ${d.codex.hooks}: run archi setup, then trust them in Codex` };
-  return { name: 'codex hooks', status: 'ok', detail: `installed in ${d.codex.hooks}` };
+  const trust = await d.codexTrust();
+  if (!trust) return { name: 'codex hooks', status: 'ok', detail: `installed in ${d.codex.hooks}; couldn't ask Codex about trust, check /hooks in Codex` };
+  return trust.untrusted
+    ? { name: 'codex hooks', status: 'warn', detail: 'not trusted yet: start codex and choose "Trust all and continue", or trust them in /hooks' }
+    : { name: 'codex hooks', status: 'ok', detail: `installed in ${d.codex.hooks}; trusted` };
 }
 
 export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
@@ -338,7 +343,7 @@ export function doctorCommand(target: () => Target, json: () => boolean): Comman
       codex: codexPaths(),
       exists: fs.existsSync,
       found: findAgents(process.env.PATH ?? ''),
-      codexTrust: async () => undefined,
+      codexTrust: () => askCodexTrust({ codexHome: codexPaths().dir, script: resolvePaths(profileHome(PRIVATE)).hookScript }),
     }) };
     const width = Math.max(...report.checks.map((c) => c.name.length));
     printResult(report, json(), () => [

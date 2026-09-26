@@ -346,7 +346,16 @@ describe('codexCheck', () => {
   });
 
   it('says the hooks are installed once they are current', async () => {
-    const c = await codexCheck(fake({ files: { '/u/.codex': '', '/u/.codex/hooks.json': codexHooks } }).deps);
-    expect(c).toEqual({ name: 'codex hooks', status: 'ok', detail: `installed in ${CODEX.hooks}` });
+    const c = await codexCheck(fake({ files: { '/u/.codex': '', '/u/.codex/hooks.json': codexHooks }, trust: { trusted: 1, untrusted: 0 } }).deps);
+    expect(c).toEqual({ name: 'codex hooks', status: 'ok', detail: `installed in ${CODEX.hooks}; trusted` });
+  });
+
+  it('reports hook trust when Codex can say, and never fails on it', async () => {
+    const hooks = JSON.stringify(mergeCodexHooks({}, codexHookCommand(SCRIPT), SCRIPT));
+    const base = { files: { [CODEX.dir]: '', [CODEX.hooks]: hooks }, found: ['claude', 'codex'] as AgentKind[] };
+    const check = async (trust?: { trusted: number; untrusted: number }) => codexCheck(fake({ ...base, trust }).deps);
+    expect((await check({ trusted: 5, untrusted: 0 })).detail).toBe(`installed in ${CODEX.hooks}; trusted`);
+    expect(await check({ trusted: 0, untrusted: 5 })).toEqual({ name: 'codex hooks', status: 'warn', detail: 'not trusted yet: start codex and choose "Trust all and continue", or trust them in /hooks' });
+    expect(await check(undefined)).toEqual({ name: 'codex hooks', status: 'ok', detail: `installed in ${CODEX.hooks}; couldn't ask Codex about trust, check /hooks in Codex` });
   });
 });
