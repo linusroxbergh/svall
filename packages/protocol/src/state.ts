@@ -162,7 +162,7 @@ export const FleetState = z.object({
   // an agent idle this many hours is ended and its character left dormant, to be resumed on revive;
   // 0 keeps every agent running, and absent is DORMANT_AFTER_HOURS
   dormantAfterHours: z.number().int().min(0).optional(),
-  // the agent the scribe and `archi char new --run` use by default, the CLIs archid finds, and the one the scribe uses
+  // the agent the scribe, mission control's crew and `archi char new --run` use by default, the CLIs archid finds, and the one the scribe uses
   mainAgent: AgentKind.optional(),
   agentsFound: z.array(AgentKind).optional(),
   scribeAgent: AgentKind.optional(),

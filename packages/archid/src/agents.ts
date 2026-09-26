@@ -15,6 +15,8 @@ export type AgentAdapter = {
   loginArgs: string[];
   loggedIn(stdout: string): boolean;
   loginHint: string;
+  // what mission control's crew starts with, unless config.json's home.command names a command
+  crewCommand: string;
 };
 
 export const AGENTS: Record<AgentKind, AgentAdapter> = {
@@ -23,11 +25,13 @@ export const AGENTS: Record<AgentKind, AgentAdapter> = {
     loginArgs: ['auth', 'status', '--json'],
     loggedIn: (out) => { try { return (JSON.parse(out) as { loggedIn?: boolean }).loggedIn === true; } catch { return false; } },
     loginHint: 'claude auth login',
+    crewCommand: 'claude --model sonnet',
   },
   codex: {
     kind: 'codex', label: AGENT_LABEL.codex, bin: 'codex', installUrl: 'https://learn.chatgpt.com/docs/codex/cli', minVersion: [0, 155, 0],
     loginArgs: ['login', 'status'], loggedIn: () => true,
     loginHint: 'codex login',
+    crewCommand: 'codex',
   },
 };
 export const AGENT_KINDS = Object.keys(AGENTS) as AgentKind[];

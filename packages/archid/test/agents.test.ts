@@ -42,6 +42,13 @@ describe('login probes', () => {
   });
 });
 
+describe('crewCommand', () => {
+  it("names the command mission control's crew starts", () => {
+    expect(AGENTS.claude.crewCommand).toBe('claude --model sonnet');
+    expect(AGENTS.codex.crewCommand).toBe('codex');
+  });
+});
+
 describe('mainAgent', () => {
   it('is the configured one, else the only one found, else claude', () => {
     expect(mainAgent('codex', ['claude', 'codex'])).toBe('codex');

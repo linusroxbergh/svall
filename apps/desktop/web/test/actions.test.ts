@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CWD, emptyState } from '@archipelago/protocol';
-import { deleteCharacter, deleteIsland, moveCharacterTo, newCharacterOn, newCharacterTarget, newNamedCharacter, openSecondTerminal, reviveCharacter, saveCharacter, saveIsland, serveFleet, startHomeAction, startHomeCharacter } from '../src/actions.js';
+import { deleteCharacter, deleteIsland, moveCharacterTo, newCharacterOn, newCharacterTarget, newNamedCharacter, openSecondTerminal, reviveCharacter, saveCharacter, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeCharacter } from '../src/actions.js';
 import { ApiError, type Api } from '../src/api.js';
 import { createAppStore } from '../src/store/index.js';
 import { chr, fleet, isl } from './fixtures.js';
@@ -286,6 +286,16 @@ describe('serveFleet', () => {
   });
 });
 
+describe('skillPrompt', () => {
+  it("sends a button's skill to a codex crew as $name, and anything else as it is", () => {
+    expect(skillPrompt('codex', '/archi-status')).toBe('$archi-status');
+    expect(skillPrompt('codex -m gpt-6-luna', '/archi-organise now')).toBe('$archi-organise now');
+    expect(skillPrompt('claude --model sonnet', '/archi-status')).toBe('/archi-status');
+    expect(skillPrompt('codex', '/tmp/x is full')).toBe('/tmp/x is full');
+    expect(skillPrompt('codex', 'regroup')).toBe('regroup');
+  });
+});
+
 describe('home', () => {
   it('a new character on home takes the home cwd', async () => {
     const c = ctx();
@@ -302,6 +312,15 @@ describe('home', () => {
     expect(calls).toEqual([{ method: 'char.create', params: { islandId: 'home', cwd: '/mc', name: 'organise', command: 'claude --model sonnet', run: '/archi-organise' } }]);
     expect(store.getState().selectedId).toBe('c_new');
     expect(store.getState().toast).toEqual({ text: 'organise started', tone: 'ok' });
+  });
+
+  it("starts a codex crew member on the button's skill as $name", async () => {
+    const calls: { method: string; params: unknown }[] = [];
+    const api = { call: (method: string, params: unknown) => { calls.push({ method, params }); return Promise.resolve({ id: 'c_new', name: 'organise', runSent: true }); } } as unknown as Api;
+    const store = createAppStore(undefined);
+    store.getState().setFleet({ ...fleet(), home: { ...fleet().home, command: 'codex' } });
+    await startHomeAction({ api, store }, { label: 'organise', prompt: '/archi-organise' });
+    expect(calls[0].params).toMatchObject({ command: 'codex', run: '$archi-organise', name: 'organise' });
   });
 
   it('names the crew member as the fleet named it, when the label was already taken', async () => {

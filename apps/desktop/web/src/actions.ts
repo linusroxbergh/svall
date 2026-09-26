@@ -174,9 +174,13 @@ export async function startHomeCharacter(d: ActionDeps, p: { prompt: string; lab
   }
 }
 
+// a button names its skill as a slash command, Claude's form; codex takes the same skill as $name
+export const skillPrompt = (command: string, prompt: string): string =>
+  (/^codex(\s|$)/.test(command.trim()) ? prompt.replace(/^\/(?=[\w-]+(\s|$))/, '$') : prompt);
+
 // a button on the home island carries its own label and prompt
 export const startHomeAction = async (d: ActionDeps, action: HomeAction): Promise<void> => {
-  await startHomeCharacter(d, { prompt: action.prompt, label: action.label });
+  await startHomeCharacter(d, { prompt: skillPrompt(d.store.getState().fleet.home.command, action.prompt), label: action.label });
 };
 
 // an edit that never reached the fleet may have left with its field, so the toast keeps it to send again

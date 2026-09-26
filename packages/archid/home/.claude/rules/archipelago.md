@@ -22,7 +22,7 @@ A character is one tmux window: a plain shell, or a Claude Code or Codex
 session. States: `working`, `idle`, `blocked` (waiting on a permission or a
 question), `done` (`*` means nobody has looked at it yet), `shell`, `dormant`
 (its window is gone, most often because its agent sat idle past the wait set in
-Settings; `archi char run` wakes a Claude one with the prompt, and
+Settings; `archi char run` wakes a Claude or Codex one with the prompt, and
 `archi char revive <name>` brings any back).
 
 This island has kind `home`. Its crew are agents started from the mission
@@ -45,9 +45,9 @@ control buttons; each finishes its task and stays `done` until closed.
 | new island (the scribe describes and links it) | `archi island create review` |
 | describe an island | `archi island update review --description "PRs waiting on a human"` |
 | tidy the map | `archi island arrange` |
-| start an agent on an island | `archi char new --island review --cwd ~/repo --claude --run "review PR 472"` |
+| start an agent on an island (the main agent; `--agent claude` or `--agent codex` picks one) | `archi char new --island review --cwd ~/repo --run "review PR 472"` |
 | start one in a role (a file in the fleet's agent-profiles folder) | `archi char new --island review --cwd ~/repo --claude --agent-profile reviewer --run "review PR 472"` |
-| start one in a fresh worktree, on another model | `archi char new --island review --cwd ~/repo --command "claude -w pr-472 --model opus" --run "review PR 472"` |
+| start a Claude one in a fresh worktree, on another model | `archi char new --island review --cwd ~/repo --command "claude -w pr-472 --model opus" --run "review PR 472"` |
 
 `archi char wait` exits 0 on a matched state, 2 on timeout and 3 when the
 character is gone, so a loop can branch on the exit code.
@@ -55,7 +55,7 @@ character is gone, so a loop can branch on the exit code.
 A new agent that stays `shell`, or whose id comes back with `(prompt not sent)`,
 is most often asking whether to trust a folder it has not seen.
 `archi char read <id>` shows the question, which is the user's to answer. A
-claude takes its `--run` prompt once it is answered; only an id that came back
+claude or codex takes its `--run` prompt once it is answered; only an id that came back
 with `(prompt not sent)` needs `archi char run <id> "<prompt>"` after that.
 
 `--instructions` is text only the agent reads. `--context` takes a url, a file

@@ -42,14 +42,15 @@ describe('config and paths', () => {
     expect(Config.parse({ mobile: { httpsPort: 10000 } }).mobile.httpsPort).toBe(10000);
     expect(() => Config.parse({ mobile: { httpsPort: 8080 } })).toThrow();
     expect(loadConfig('/nonexistent/config.json').home).toEqual({
-      cwd: '~/.archipelago/home', command: 'claude --model sonnet',
+      cwd: '~/.archipelago/home',
       actions: [
         { label: 'update info', prompt: '/archi-update-info' }, { label: 'status', prompt: '/archi-status' },
       ],
     });
     const home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ home: { cwd: '/mc', actions: [{ label: 'x', prompt: '/x' }] } }));
-    expect(loadConfig(path.join(home, 'config.json')).home).toEqual({ cwd: '/mc', command: 'claude --model sonnet', actions: [{ label: 'x', prompt: '/x' }] });
+    expect(loadConfig(path.join(home, 'config.json')).home).toEqual({ cwd: '/mc', actions: [{ label: 'x', prompt: '/x' }] });
+    expect(Config.parse({ home: { command: 'my-agent' } }).home.command).toBe('my-agent');
   });
   it('makes prefixed ids', () => {
     expect(newId('c')).toMatch(/^c_[a-z0-9]{6}$/);

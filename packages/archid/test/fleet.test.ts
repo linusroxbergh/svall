@@ -25,13 +25,13 @@ runIf('Fleet', () => {
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 
-  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; homeCwd?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind } = {}) {
-    const { homeCwd, mainAgent, ...deps } = extra;
+  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind } = {}) {
+    const { homeCwd, homeCommand, mainAgent, ...deps } = extra;
     // what ps shows the dormancy sweep
     const procs: Proc[] = [];
     const home = makeHome();
     const paths = resolvePaths(home);
-    const config = Config.parse({ shell: '/bin/sh', home: { cwd: homeCwd ?? path.join(home, 'mc') }, ...(mainAgent ? { mainAgent } : {}) });
+    const config = Config.parse({ shell: '/bin/sh', home: { cwd: homeCwd ?? path.join(home, 'mc'), ...(homeCommand ? { command: homeCommand } : {}) }, ...(mainAgent ? { mainAgent } : {}) });
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
@@ -899,6 +899,7 @@ runIf('Fleet', () => {
     expect(fs.existsSync(path.join(archiHome, 'mc'))).toBe(true);
     // the buttons send /archi-… , which is a command only where the skills are
     expect(fs.readFileSync(path.join(archiHome, 'mc/.claude/skills/archi-rename/SKILL.md'), 'utf8')).toContain('name: archi-rename');
+    expect(fs.readFileSync(path.join(archiHome, 'mc/.agents/skills/archi-rename/SKILL.md'), 'utf8')).toContain('name: archi-rename');
     expect(fs.existsSync(path.join(archiHome, 'mc/CLAUDE.md'))).toBe(true);
     const home = store.state.islands.home;
     expect(home).toMatchObject({ id: 'home', kind: 'home', name: 'mission control', size: { w: 8, h: 4 }, seed: 7 });
@@ -910,6 +911,15 @@ runIf('Fleet', () => {
     expect(updated.size).toEqual(home.size);
     await fleet.reconcileNow();
     expect(Object.values(store.state.islands).filter((i) => i.kind === 'home')).toHaveLength(1);
+  });
+
+  it("starts mission control's crew on the main agent unless config.json names a command", async () => {
+    const both = await boot({ agentsFound: ['claude', 'codex'] });
+    expect(both.store.state.home.command).toBe('claude --model sonnet');
+    both.fleet.setMainAgent('codex');
+    expect(both.store.state.home.command).toBe('codex');
+    expect((await boot({ agentsFound: ['codex'] })).store.state.home.command).toBe('codex');
+    expect((await boot({ agentsFound: ['codex'], homeCommand: 'my-agent --flag' })).store.state.home.command).toBe('my-agent --flag');
   });
 
   it('places crew on home slots and refuses other cells', async () => {

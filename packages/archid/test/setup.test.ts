@@ -445,12 +445,23 @@ describe('runSetup', () => {
     for (const skill of ['archi-organise', 'archi-rename', 'archi-update-info', 'archi-status']) {
       expect(fs.readFileSync(path.join(mc, '.claude/skills', skill, 'SKILL.md'), 'utf8')).toContain(`name: ${skill}`);
     }
+    const agentsMd = () => fs.readFileSync(path.join(mc, 'AGENTS.md'), 'utf8');
+    // the crew rules, then the user's CLAUDE.md
+    expect(agentsMd()).toContain('You are a crew member on the mission control island');
+    expect(agentsMd()).toContain('Add your own rules for mission control here.');
+    for (const skill of ['archi-organise', 'archi-rename', 'archi-update-info', 'archi-status']) {
+      expect(fs.readFileSync(path.join(mc, '.agents/skills', skill, 'SKILL.md'), 'utf8')).toContain(`name: ${skill}`);
+    }
+    expect(fs.readFileSync(path.join(mc, '.codex/rules/archipelago.rules'), 'utf8')).toContain('prefix_rule(pattern = ["archi", "status"], decision = "allow")');
+    // an edit to CLAUDE.md reaches codex with the next start
+    fs.appendFileSync(path.join(mc, 'CLAUDE.md'), '- Launch every task in a fresh worktree.\n');
     fs.writeFileSync(settings, 'mine');
     const second = await runSetup(o);
     expect(JSON.parse(fs.readFileSync(settings, 'utf8')).permissions.allow).toContain('Bash(archi char update:*)');
     const backup = second.find((l) => l.startsWith('backup ->') && l.includes('.claude/settings.json'));
     expect(backup).toBeDefined();
     expect(fs.readFileSync(backup!.split(' -> ')[1], 'utf8')).toBe('mine');
+    expect(agentsMd()).toContain('Launch every task in a fresh worktree.');
   });
 
   it('a daemon start refreshes the skills but leaves edited settings alone', () => {

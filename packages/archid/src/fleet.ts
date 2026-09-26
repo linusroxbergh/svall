@@ -260,7 +260,7 @@ export class Fleet extends EventEmitter<Events> {
       this.deps.log.error(`default cwd ${cwd} is not a directory: characters cannot start there`);
     }
     this.deps.store.update((d) => {
-      d.home = home;
+      d.home = { ...home, command: this.crewCommand() };
       d.defaultCwd = this.deps.config.defaultCwd;
       if (!d.islands[HOME_ISLAND]) {
         const size = homeSizeFor(2);
@@ -389,6 +389,11 @@ export class Fleet extends EventEmitter<Events> {
     this.deps.store.update((d) => { d.dormantAfterHours = hours; });
   }
 
+  // config.json's home.command, else the main agent's
+  private crewCommand(): string {
+    return this.deps.config.home.command ?? AGENTS[mainAgent(this.deps.config.mainAgent, this.deps.agentsFound ?? [])].crewCommand;
+  }
+
   // config.json holds the choice; the fleet carries it, and what archid finds, to the app
   private syncAgents(): void {
     const found = this.deps.agentsFound ?? [];
@@ -396,6 +401,7 @@ export class Fleet extends EventEmitter<Events> {
       d.mainAgent = mainAgent(this.deps.config.mainAgent, found);
       d.agentsFound = found;
       d.scribeAgent = this.deps.config.scribe.agent ?? d.mainAgent;
+      d.home.command = this.crewCommand();
     });
   }
 

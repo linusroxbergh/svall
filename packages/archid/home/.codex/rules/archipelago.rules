@@ -1,0 +1,6 @@
+# The archi commands .claude/settings.json allows the Claude crew, allowed here outside Codex's sandbox for a Codex
+# crew. archid rewrites this file on every start
+prefix_rule(pattern = ["archi", "status"], decision = "allow")
+prefix_rule(pattern = ["archi", "char", ["list", "read", "show", "wait", "move", "update"]], decision = "allow")
+prefix_rule(pattern = ["archi", "island", ["list", "show", "create", "update", "arrange"]], decision = "allow")
+prefix_rule(pattern = ["archi", "scribe", "sweep"], decision = "allow")

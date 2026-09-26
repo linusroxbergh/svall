@@ -179,6 +179,15 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }
   done.push(`home rules -> ${dotClaude}/rules`);
   fs.cpSync(path.join(template, '.claude/skills'), path.join(dotClaude, 'skills'), { recursive: true, force: true });
   done.push(`home skills -> ${dotClaude}/skills`);
+  // codex reads AGENTS.md, .agents/skills and .codex/rules instead; each start writes them from the same template
+  const agentsMd = path.join(dir, 'AGENTS.md');
+  const rules = fs.readFileSync(path.join(template, '.claude/rules/archipelago.md'), 'utf8');
+  writeAtomic(agentsMd, `<!-- archid rewrites this file on every start from .claude/rules/archipelago.md and CLAUDE.md; add your own rules to CLAUDE.md -->\n\n${rules}\n${fs.readFileSync(claudeMd, 'utf8')}`, { perProcess: true });
+  done.push(`home AGENTS.md -> ${agentsMd}`);
+  fs.cpSync(path.join(template, '.claude/skills'), path.join(dir, '.agents/skills'), { recursive: true, force: true });
+  done.push(`home codex skills -> ${dir}/.agents/skills`);
+  fs.cpSync(path.join(template, '.codex/rules'), path.join(dir, '.codex/rules'), { recursive: true, force: true });
+  done.push(`home codex rules -> ${dir}/.codex/rules`);
   const settings = path.join(dotClaude, 'settings.json');
   const shipped = fs.readFileSync(path.join(template, '.claude/settings.json'), 'utf8');
   const current = fs.existsSync(settings) ? fs.readFileSync(settings, 'utf8') : undefined;

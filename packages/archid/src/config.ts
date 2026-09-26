@@ -8,9 +8,10 @@ export const Config = z.object({
   host: z.string().default('127.0.0.1'),
   shell: z.string().optional(),
   linear: z.object({ workspace: z.string(), teamKeys: z.array(z.string()) }).optional(),
-  home: Home.prefault({}),
+  // with no command, the crew starts the main agent's crewCommand
+  home: Home.extend({ command: z.string().optional() }).prefault({}),
   defaultCwd: z.string().default(DEFAULT_CWD),
-  // the agent the scribe and `archi char new --run` use by default; absent, the only one installed, else claude
+  // the agent the scribe, mission control's crew and `archi char new --run` use by default; absent, the only one installed, else claude
   mainAgent: AgentKind.optional(),
   // which plan a scribe pass spends; absent, the main agent's. model names a model of scribe.agent's CLI, else of claude's
   scribe: z.object({ agent: AgentKind.optional(), model: z.string().optional() }).prefault({}),
