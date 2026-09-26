@@ -3,6 +3,7 @@ import { codexHookCommand, mergeCodexHooks } from '@archipelago/archid/codex/ins
 import { LAUNCHD_LABEL } from '@archipelago/archid/profile';
 import { HOOK_EVENTS, hookCommand, mergeHooks, mergeStatusLine, nodeRun, statusWrapper } from '@archipelago/archid/setup';
 import type { AgentKind } from '@archipelago/protocol';
+import type { HookTrust } from '../src/codex-trust.js';
 import { codexCheck, doctor, preflight, requireReady, type DoctorDeps } from '../src/commands/doctor.js';
 
 const priv = { name: 'private', home: '/u/.archipelago', managed: true };
@@ -27,7 +28,7 @@ function fake(o: {
   keys?: Record<string, string>;
   mainAgent?: AgentKind;
   found?: AgentKind[];
-  trust?: unknown;
+  trust?: HookTrust;
 } = {}) {
   const calls: string[] = [];
   const envs: Record<string, Record<string, string> | undefined> = {};
