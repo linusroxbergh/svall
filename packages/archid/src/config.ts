@@ -50,6 +50,17 @@ function splitLegacy(file: string): { fleet: FleetConfig; node: NodeConfig } {
   };
 }
 
+/** Why the config files that `has` finds are no layout a fleet can start on, before any of them is read. */
+export function configRefusal(paths: Pick<Paths, 'legacyConfig' | 'fleetConfig' | 'nodeConfig'>, has: (file: string) => boolean): string | undefined {
+  if (!has(paths.legacyConfig)) return undefined;
+  if (has(paths.fleetConfig)) {
+    return `${paths.legacyConfig} is not read any more: this fleet's settings are in ${paths.fleetConfig} and ${paths.nodeConfig}. Move anything you still want from it into them and delete it.`;
+  }
+  const backup = `${paths.legacyConfig}.bak`;
+  if (has(backup)) return `${backup} is in the way of putting ${paths.legacyConfig} beside the new files. Keep whichever of the two you want, delete the other, and start again.`;
+  return undefined;
+}
+
 /**
  * Writes whichever of the two config files this fleet is missing, out of its config.json when it
  * still has one, and returns the files written. An unreadable config.json stops it before any write.
@@ -60,12 +71,8 @@ export function initConfig(paths: Paths, seed: Partial<NodeConfig> = {}): string
   // a config.json is put beside the new files byte-exact before anything is read out of it, so the
   // only file the split ever reads is one nothing edits any more
   if (has(paths.legacyConfig)) {
-    if (has(paths.fleetConfig)) {
-      throw new InvalidConfig(`${paths.legacyConfig} is not read any more: this fleet's settings are in ${paths.fleetConfig} and ${paths.nodeConfig}. Move anything you still want from it into them and delete it.`);
-    }
-    if (has(backup)) {
-      throw new InvalidConfig(`${backup} is in the way of putting ${paths.legacyConfig} beside the new files. Keep whichever of the two you want, delete the other, and start again.`);
-    }
+    const refused = configRefusal(paths, has);
+    if (refused) throw new InvalidConfig(refused);
     read(paths.legacyConfig, Config); // one the schema rejects is left where its owner put it
     fs.renameSync(paths.legacyConfig, backup);
   }

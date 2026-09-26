@@ -233,6 +233,15 @@ describe('doctor', () => {
     }
   });
 
+  it('fails the two layouts archid refuses to start on: a config.json beside fleet.json, and one whose backup is in the way', async () => {
+    const at = (file: string) => `/u/.archipelago/${file}`;
+    const fleet = '{ "id": "11111111-2222-3333-4444-555555555555" }';
+    const beside = byName(await doctor(priv, fake({ files: { [at('fleet.json')]: fleet, [at('node.json')]: '{}', [at('config.json')]: '{}' } }).deps)).config;
+    expect(beside).toMatchObject({ status: 'fail', detail: expect.stringMatching(/^\/u\/\.archipelago\/config\.json is not read any more: .*; a stopped archid waits for it to be fixed$/) });
+    const blocked = byName(await doctor(priv, fake({ files: { [at('config.json')]: '{}', [at('config.json.bak')]: '{}' } }).deps)).config;
+    expect(blocked).toMatchObject({ status: 'fail', detail: expect.stringMatching(/^\/u\/\.archipelago\/config\.json\.bak is in the way .*; a stopped archid waits for it to be fixed$/) });
+  });
+
   it('skips the Claude hooks check when Claude Code is not installed', async () => {
     const f = fake({ found: ['codex'], files: { '/u/.claude': undefined as unknown as string, '/u/.claude/settings.json': undefined as unknown as string } });
     const report = await doctor(priv, f.deps);

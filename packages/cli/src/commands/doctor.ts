@@ -10,7 +10,7 @@ import { FleetConfig, NodeConfig, type AgentKind } from '@archipelago/protocol';
 import { AGENTS, AGENT_KINDS, findAgents, versionOk } from '@archipelago/archid/agents';
 import { characterKeyEnv } from '@archipelago/archid/claude';
 import { codexInstalled, codexPaths, type CodexPaths } from '@archipelago/archid/codex/install';
-import { Config, configuredMainAgent, parseConfig } from '@archipelago/archid/config';
+import { Config, configRefusal, configuredMainAgent, parseConfig } from '@archipelago/archid/config';
 import { lingerState, unitStatus, type Run } from '@archipelago/archid/linux/service';
 import { archidUnitName, GATEWAY_UNIT, unitPath } from '@archipelago/archid/linux/setup';
 import { resolvePaths, userPaths } from '@archipelago/archid/paths';
@@ -160,9 +160,11 @@ async function gh(d: DoctorDeps): Promise<Check> {
 }
 
 // archid waits, without starting, while its fleet.json or node.json does not parse, or the config.json they are
-// still to be split out of
+// still to be split out of, or its config files lie in a layout it refuses
 function config(t: Target, d: DoctorDeps): Check {
   const p = resolvePaths(t.home);
+  const refused = configRefusal(p, (file) => d.exists(file));
+  if (refused) return { name: 'config', status: 'fail', detail: `${refused}; a stopped archid waits for it to be fixed` };
   const files: [string, z.ZodTypeAny][] = d.read(p.fleetConfig) === undefined && d.read(p.legacyConfig) !== undefined
     ? [[p.legacyConfig, Config]]
     : [[p.fleetConfig, FleetConfig], [p.nodeConfig, NodeConfig]];

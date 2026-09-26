@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FleetConfig, NodeConfig } from '@archipelago/protocol';
-import { initConfig, loadConfig } from '../src/config.js';
+import { InvalidConfig, initConfig, loadConfig } from '../src/config.js';
 import { resolvePaths } from '../src/paths.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -130,6 +130,8 @@ describe('finishing an interrupted split', () => {
     const fleet = FleetConfig.parse({ id: '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', defaultCwd: '/kept' });
     fs.writeFileSync(p.fleetConfig, JSON.stringify(fleet));
 
+    // the class that has a stopped archid wait for the fix instead of restarting
+    expect(() => loadConfig(p)).toThrow(InvalidConfig);
     expect(() => loadConfig(p)).toThrow(`${p.legacyConfig} is not read any more`);
     expect(() => loadConfig(p)).toThrow(p.nodeConfig);
     expect(fs.readFileSync(p.legacyConfig, 'utf8')).toBe(LEGACY);
@@ -140,6 +142,7 @@ describe('finishing an interrupted split', () => {
     const p = resolvePaths(legacyHome());
     fs.writeFileSync(`${p.legacyConfig}.bak`, '{"port":1}\n');
 
+    expect(() => loadConfig(p)).toThrow(InvalidConfig);
     expect(() => loadConfig(p)).toThrow(`${p.legacyConfig}.bak is in the way`);
     expect(fs.readFileSync(`${p.legacyConfig}.bak`, 'utf8')).toBe('{"port":1}\n');
     expect(fs.readFileSync(p.legacyConfig, 'utf8')).toBe(LEGACY);
