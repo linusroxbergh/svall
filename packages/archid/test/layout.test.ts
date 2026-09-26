@@ -263,6 +263,17 @@ describe('arrangeFleet', () => {
     expect(cut(4).w).toBeGreaterThan(cut(0.25).w);
   });
 
+  it('wraps a long crew into a rounder island however wide the window', () => {
+    for (const n of [4, 6, 8, 12]) {
+      const st = withIslands(island('a', 0, 0), home(99));
+      crew(st, 'a', n);
+      arrangeFleet(st, 8);
+      const rows = new Set(Object.values(st.characters).map((c) => c.cell.y)).size;
+      expect(rows).toBeGreaterThan(1);
+      expect(Math.ceil(n / rows)).toBeLessThanOrEqual(2 * rows);
+    }
+  });
+
   it('leaves room between rows for the cards below one island and the label above the next', () => {
     const st = withIslands(...['a', 'b', 'c', 'd'].map((id, n) => island(id, n * 20, 0)), home(99));
     arrangeFleet(st, 0.3);

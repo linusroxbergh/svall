@@ -169,6 +169,10 @@ export function crewGrid(n: number, seed: number, abreast = 3): { size: Size; ce
   }
 }
 
+// however wide the window, a crew stands at most about twice as many abreast as deep, so a long crew wraps
+// into a rounder island instead of running out into a single row
+const roundGrid = (n: number, seed: number, abreast: number) => crewGrid(n, seed, Math.min(abreast, Math.max(3, Math.ceil(Math.sqrt(2 * n)))));
+
 // label pills stand a cell apart in rows stacked one on the next, and the band keeps a row of water above the labels below it
 const PILL_GAP = 1;
 const BAND_GAP = 3;
@@ -238,7 +242,7 @@ export function arrangeFleet(draft: FleetState, aspect = 4 / 3): void {
   let best: (Plan & { abreast: number }) | undefined;
   // three abreast first, so it stands whenever another count only matches it
   for (const abreast of [3, ...Array.from({ length: most }, (_, i) => i + 1).filter((k) => k !== 3)]) {
-    for (const { id, seed } of islands) draft.islands[id].size = crewGrid(crews.get(id)!.length, seed, abreast).size;
+    for (const { id, seed } of islands) draft.islands[id].size = roundGrid(crews.get(id)!.length, seed, abreast).size;
     // the unfolded pack tallest first, so each row wastes the least water under its shorter islands
     const next = plan(islands.filter((i) => i.collapsed).map(box), islands.filter((i) => !i.collapsed).map(box).sort((a, b) => b.size.h - a.size.h), aspect);
     if (!best || next.scale > best.scale) best = { ...next, abreast };
@@ -248,7 +252,7 @@ export function arrangeFleet(draft: FleetState, aspect = 4 / 3): void {
   const gaps = rows.length - 1 + (band.length > 0 && rows.length > 0 ? 1 : 0);
   const extra = gaps > 0 ? Math.floor(Math.max(0, (width + FRAME.w) / aspect - height) / gaps) : 0;
   for (const { id, seed } of islands) {
-    const { size, cells } = crewGrid(crews.get(id)!.length, seed, abreast);
+    const { size, cells } = roundGrid(crews.get(id)!.length, seed, abreast);
     draft.islands[id].size = size;
     crews.get(id)!.forEach((c, i) => { draft.characters[c].cell = cells[i]; });
   }
