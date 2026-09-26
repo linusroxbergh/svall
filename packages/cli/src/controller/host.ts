@@ -15,7 +15,7 @@ import { REFUSED } from '../commands/fleet-provision.js';
 import { remoteOwner } from './authority.js';
 import { remoteConnectionInfo } from './connection.js';
 import {
-  bootstrapSetup, companionAsset, companionCache, downloadCompanion, inspectCompanion, installedSetup,
+  bootstrapSetup, companionAsset, companionCache, currentRelease, downloadCompanion, inspectCompanion,
   remoteRollback, requireCompatible, uploadArchive, type CompanionArchive, type FetchLike,
 } from './install.js';
 import { redact } from './process.js';
@@ -232,16 +232,17 @@ async function agentChecks(master: SshMaster, o: { destination: string; home: st
 }
 
 /**
- * The end-to-end probe: the companion's own private fleet has to answer over a forwarded port
- * before this machine counts as reachable.
+ * The end-to-end probe: the companion's own private fleet has to answer over a forwarded port, from `release` when one
+ * is named, before this machine counts as reachable.
  */
-async function endToEnd(master: SshMaster, entry: MachineEntry): Promise<Outcome<void>> {
+async function endToEnd(master: SshMaster, entry: MachineEntry, release?: string): Promise<Outcome<void>> {
   const info = await remoteConnectionInfo(master, entry, { profile: PRIVATE });
   const forward = await master.forward(info.port);
   let client: Client | undefined;
   try {
     client = await Client.connectEndpoint({ url: `ws://127.0.0.1:${forward.localPort}`, token: info.token });
-    await client.call('system.info', {});
+    const running = (await client.call('system.info', {})).release;
+    if (release && running !== release) throw new Error(`${entry.record.name} answers from release ${running}, not ${release}`);
     return { value: undefined, detail: `${entry.record.name} answers on its own ${PRIVATE} fleet` };
   } catch (err) {
     throw new StepError(redact((err as Error).message, [info.token]));
@@ -425,7 +426,10 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
 const pick = (o: Outcome<unknown>): { status: Check['status']; detail: string } =>
   ({ status: (o.status ?? 'ok') as Check['status'], detail: [o.detail, o.action].filter(Boolean).join('; ') });
 
-/** `archi host upgrade`: a new release, then a probe that puts the old one back if it does not answer. */
+/**
+ * `archi host upgrade`: a new release installed by its own setup, as the setup of the release it replaces may not speak
+ * its protocol, then a probe that puts the old one back if it does not answer.
+ */
 export function upgradeHost(name: string, o: { release?: string; allowUnsigned?: boolean }, d: HostDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
     const entry = await run.step('machine', () => Promise.resolve(machineOutcome(d.registry, name)));
@@ -437,18 +441,19 @@ export function upgradeHost(name: string, o: { release?: string; allowUnsigned?:
         await uploadArchive(master, { archive: companion.archive, remote: remote.archive });
         return { value: undefined, detail: `${path.basename(companion.archive)} -> ${remote.archive}` };
       });
-      await run.step('install', async () => {
-        const out = await installedSetup(master, {
-          archiBase: entry.record.archiBase, archive: remote.archive,
+      const before = await run.step('install', async () => {
+        const was = await currentRelease(master, entry.record.archiBase);
+        const out = await bootstrapSetup(master, {
+          staging: remote.staging, archive: remote.archive, version: companion.version,
           allowUnsigned: !companion.signed && companion.allowUnsigned,
         });
-        return { value: undefined, detail: out.trim().split('\n').at(-1) ?? `release ${companion.version} installed` };
+        return { value: was, detail: out.trim().split('\n').at(-1) ?? `release ${companion.version} installed` };
       });
 
       const probed = await run.step('probe', async () => {
         try {
           await remoteJson<RemoteDoctor>(master, entry.record.archiBase, ['doctor', '--json'], 'archi doctor --json');
-          await endToEnd(master, entry);
+          await endToEnd(master, entry, companion.version);
           return { value: true, detail: `${entry.record.name} answers on release ${companion.version}` };
         } catch (err) {
           return { value: false, status: 'warn' as const, detail: (err as Error).message };
@@ -456,12 +461,11 @@ export function upgradeHost(name: string, o: { release?: string; allowUnsigned?:
       });
       if (probed) return;
       await run.step('rollback', async () => {
-        const out = await remoteRollback(master, entry.record.archiBase);
-        return {
-          value: undefined, status: 'warn' as const,
-          detail: out.trim().split('\n').at(-1) ?? 'the release before this one is back',
-          action: `ssh ${entry.record.ssh} and read the daemon log; the machine is back on the release it ran before`,
-        };
+        const out = await remoteRollback(master, { archiBase: entry.record.archiBase, from: companion.version, to: before }).catch((err: Error) => err);
+        const now = await currentRelease(master, entry.record.archiBase);
+        const action = `ssh ${entry.record.ssh} and read the daemon log; ${name} runs release ${now}${now === before ? ', the one it ran before' : `, not ${before}, the one it ran before`}`;
+        if (out instanceof Error) throw new StepError(out.message, action);
+        return { value: undefined, status: 'warn' as const, detail: out.trim().split('\n').at(-1) ?? `current -> ${before}`, action };
       });
     } finally {
       await master.close().catch(() => undefined);

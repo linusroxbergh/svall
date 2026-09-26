@@ -145,18 +145,17 @@ export async function bootstrapSetup(master: SshMaster, o: { staging: string; ar
   }
 }
 
-/** The installed release's own `archi setup`, which an upgrade runs instead of bootstrapping. */
-export async function installedSetup(master: SshMaster, o: { archiBase: string; archive: string; allowUnsigned: boolean }): Promise<string> {
-  const exe = path.posix.join(o.archiBase, 'current', 'bin', 'archi');
-  try {
-    return await remote(master, [shellQuote(exe), 'setup', '--release', shellQuote(o.archive), ...(o.allowUnsigned ? ['--allow-unsigned'] : [])], 'archi setup', SETUP_TIMEOUT);
-  } finally {
-    await master.run(['rm', '-f', shellQuote(o.archive)], { timeoutMs: TAR_TIMEOUT }).catch(() => undefined);
-  }
+/** The release the far machine's `current` names. */
+export async function currentRelease(master: SshMaster, archiBase: string): Promise<string> {
+  const link = path.posix.join(archiBase, 'current');
+  return path.posix.basename((await remote(master, ['readlink', shellQuote(link)], `readlink ${link}`, TAR_TIMEOUT)).trim());
 }
 
-/** Puts the far machine back on the release it ran before an upgrade that did not answer. */
-export function remoteRollback(master: SshMaster, archiBase: string): Promise<string> {
-  const exe = path.posix.join(archiBase, 'current', 'bin', 'archi');
-  return remote(master, [shellQuote(exe), 'setup', '--rollback'], 'archi setup --rollback', SETUP_TIMEOUT);
+/**
+ * Puts the far machine back on the release `to`, with the `archi` of the release `from` that an upgrade installed:
+ * the one it replaced may predate naming a release to go back to.
+ */
+export function remoteRollback(master: SshMaster, o: { archiBase: string; from: string; to: string }): Promise<string> {
+  const exe = path.posix.join(o.archiBase, 'releases', o.from, 'bin', 'archi');
+  return remote(master, [shellQuote(exe), 'setup', '--rollback', shellQuote(o.to)], `archi setup --rollback ${o.to}`, SETUP_TIMEOUT);
 }

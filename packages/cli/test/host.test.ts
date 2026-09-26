@@ -86,15 +86,15 @@ function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doc
   ssh.reply([UNIT_PATH, 'codex', 'login', 'status'], { stdout: 'Logged in using ChatGPT\n' });
 }
 
-/** A daemon on the far side of the forward, so the end-to-end probe has something to answer it. */
-async function daemon(): Promise<{ port: number; close: () => Promise<void> }> {
+/** A daemon on the far side of the forward, so the end-to-end probe has something to answer it: from `release`, while it `accepts`. */
+async function daemon(o: { release?: () => string; accepts?: () => boolean } = {}): Promise<{ port: number; close: () => Promise<void> }> {
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   await new Promise((r) => wss.once('listening', r));
   wss.on('connection', (ws) => ws.on('message', (raw) => {
     const msg = JSON.parse(raw.toString()) as { id?: number; token?: string };
     ws.send(JSON.stringify(msg.token !== undefined
-      ? { id: 0, result: { ok: msg.token === TOKEN } }
-      : { id: msg.id, result: { version: 1, fleet: 'private' } }));
+      ? { id: 0, result: { ok: msg.token === TOKEN && (o.accepts?.() ?? true) } }
+      : { id: msg.id, result: { version: 1, fleet: 'private', release: o.release?.() ?? '1.2.3' } }));
   }));
   return { port: (wss.address() as { port: number }).port, close: () => new Promise<void>((r) => wss.close(() => r())) };
 }
@@ -483,26 +483,87 @@ describe('host upgrade', () => {
     return registry;
   };
 
-  it('installs with the release already on the machine and probes it', async () => {
-    ssh.reply(['cat > "$1"'], {});
-    ssh.reply(['mkdir'], {});
-    ssh.reply(['setup', '--release'], { stdout: 'release 1.2.3 installed\n' });
-    ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
-    const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
-    const out = await upgradeHost('trift', { release: archive() }, deps({ registry: registered() }));
-    await d.close();
-    expect(out.result).toBe('ready');
-    const setup = ssh.remoteCalls().find((w) => w.includes('setup')) as string[];
-    expect(setup[0]).toBe(ARCHI);
+  /**
+   * A companion on this machine: every far command runs here, `current` is a real link, and each release's archi is a
+   * script that answers as that release. Its setup installs an archive and keeps it only while the new release's daemon
+   * comes up (no `down-<release>` file beside the releases) and speaks the protocol this archi's client does.
+   */
+  async function farMachine(o: { releases: [string, number][]; accepts?: (release: string) => boolean }) {
+    const home = path.join(work, 'far');
+    const base = `${home}/.local/share/archipelago`;
+    const now = () => path.basename(fs.readlinkSync(`${base}/current`));
+    const d = await daemon({ release: now, accepts: () => o.accepts?.(now()) ?? true });
+    const archi = (version: string, protocol: number) => `#!/bin/sh
+base='${base}'
+now() { basename "$(readlink "$base/current")"; }
+case "$1" in
+  connection-info) printf '%s\\n' '${JSON.stringify({ fleetId: FLEET, machineId: REMOTE, release: version, protocol, host: '127.0.0.1', port: d.port, token: TOKEN })}' ;;
+  doctor) printf '%s\\n' '${DOCTOR}' ;;
+  setup)
+    if [ "$2" = --rollback ]; then
+      to=\${3:-$(ls -t "$base/releases" | grep -vx "$(now)" | head -1)}
+      ln -sfn "$base/releases/$to" "$base/current" && echo "current -> $base/releases/$to"
+      exit
+    fi
+    was=$(now)
+    new=$(tar -tzf "$3" | sed -n 's|^releases/\\([^/]*\\)/.*|\\1|p' | head -1)
+    tar -xzf "$3" -C "$base" && ln -sfn "$base/releases/$new" "$base/current" && echo "release $new -> $base/releases/$new"
+    if [ -e "$base/down-$new" ] || ! grep -q '"protocol": ${protocol},' "$base/releases/$new/release.json"; then
+      ln -sfn "$base/releases/$was" "$base/current" && echo "the daemon did not answer: current -> $base/releases/$was"
+    fi ;;
+esac
+`;
+    for (const [version, protocol] of o.releases) {
+      fs.mkdirSync(`${base}/releases/${version}/bin`, { recursive: true });
+      fs.writeFileSync(`${base}/releases/${version}/bin/archi`, archi(version, protocol), { mode: 0o755 });
+    }
+    fs.symlinkSync(`${base}/releases/${o.releases.at(-1)![0]}`, `${base}/current`);
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, archiBase: base, pathRoots: { home }, gateway: false }, REMOTE);
+    ssh.execute({ rsync: '/usr/bin/rsync' });
+    return { base, now, registry, close: d.close, archive: companionArchive(work, { signedBy: signer.key, archi: archi('1.2.3', PROTOCOL_VERSION) }) };
+  }
+
+  it('installs a release that speaks a newer protocol with its own setup, and keeps it', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION - 1]] });
+    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(out).toEqual({ result: 'ready', actions: [] });
+    expect(far.now()).toBe('1.2.3');
+    const setup = ssh.remoteCalls().find((w) => w.includes('setup'))!;
+    expect(setup[0]).toBe(`${work}/far/.cache/archipelago/staging-1.2.3/releases/1.2.3/bin/archi`);
     expect(ssh.remoteCalls().some((w) => w.includes('--rollback'))).toBe(false);
+  });
+
+  it('puts a new release that does not answer back on the release the machine ran before, and says which it runs', async () => {
+    // an older release is the newest by mtime, which is where a rollback that names nothing would go
+    const far = await farMachine({ releases: [['1.2.1', PROTOCOL_VERSION], ['1.2.2', PROTOCOL_VERSION]], accepts: (r) => r !== '1.2.3' });
+    fs.utimesSync(`${far.base}/releases/1.2.1`, new Date(), new Date(Date.now() + 60_000));
+    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(out.result).toBe('actions');
+    expect(far.now()).toBe('1.2.2');
+    expect(ssh.remoteCalls()).toContainEqual([`${far.base}/releases/1.2.3/bin/archi`, 'setup', '--rollback', '1.2.2']);
+    expect(step('rollback').at(-1)).toMatchObject({ status: 'warn', action: expect.stringMatching(/trift runs release 1\.2\.2, the one it ran before$/) });
+  });
+
+  it('counts a new release whose own setup put the old one back as not answering, and says which the machine runs', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
+    fs.writeFileSync(`${far.base}/down-1.2.3`, '');
+    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(out.result).toBe('actions');
+    expect(step('probe').at(-1)).toMatchObject({ status: 'warn', detail: expect.stringContaining('1.2.2') });
+    expect(far.now()).toBe('1.2.2');
+    expect(step('rollback').at(-1)).toMatchObject({ status: 'warn', action: expect.stringMatching(/trift runs release 1\.2\.2, the one it ran before$/) });
   });
 
   it('keeps a new release whose companion doctor exits 1 over a check unrelated to the daemon', async () => {
     ssh.reply(['cat > "$1"'], {});
     ssh.reply(['mkdir'], {});
+    ssh.reply(['tar'], {});
     ssh.reply(['rm'], {});
+    ssh.reply(['readlink'], { stdout: `${BASE}/releases/1.2.2\n` });
     ssh.reply(['setup', '--release'], { stdout: 'release 1.2.3 installed\n' });
     ssh.reply(['doctor', '--json'], { stdout: doctorJson({ status: 'warn', detail: 'off' }).replace('"tmux 3.4"}', '"tmux 3.4"},{"name":"hooks","status":"fail","detail":"not installed"}'), code: 1 });
     const d = await daemon();
@@ -514,30 +575,19 @@ describe('host upgrade', () => {
     expect(out.result).toBe('ready');
   });
 
-  it('deletes the archive it uploaded once the release is installed', async () => {
+  it('deletes the archive it uploaded and the release it unpacked once the release is installed', async () => {
     ssh.reply(['cat > "$1"'], {});
     ssh.reply(['mkdir'], {});
+    ssh.reply(['tar'], {});
     ssh.reply(['rm'], {});
+    ssh.reply(['readlink'], { stdout: `${BASE}/releases/1.2.2\n` });
     ssh.reply(['setup', '--release'], { stdout: 'release 1.2.3 installed\n' });
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
     await upgradeHost('trift', { release: archive() }, deps({ registry: registered() }));
     await d.close();
-    expect(ssh.remoteCalls()).toContainEqual(['rm', '-f', `${HOME}/.cache/archipelago/companion-1.2.3.tar.gz`]);
-  });
-
-  it('puts the machine back on its old release when the new one does not answer', async () => {
-    ssh.reply(['cat > "$1"'], {});
-    ssh.reply(['mkdir'], {});
-    ssh.reply(['--rollback'], { stdout: 'current -> releases/1.2.2\n' });
-    ssh.reply(['setup', '--release'], { stdout: 'release 1.2.3 installed\n' });
-    ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
-    const out = await upgradeHost('trift', { release: archive() }, deps({ registry: registered() }));
-    expect(out.result).toBe('actions');
-    expect(ssh.remoteCalls().some((w) => w.includes('--rollback'))).toBe(true);
-    expect(step('rollback').at(-1)).toMatchObject({ status: 'warn' });
+    expect(ssh.remoteCalls()).toContainEqual(['rm', '-rf', `${HOME}/.cache/archipelago/staging-1.2.3`, `${HOME}/.cache/archipelago/companion-1.2.3.tar.gz`]);
   });
 });
 

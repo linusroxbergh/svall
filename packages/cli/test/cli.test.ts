@@ -175,6 +175,21 @@ describe('archi argument parsing', () => {
     expect(r.stdout).toContain('1.0.0');
   });
 
+  it('puts current back on the release it names, whichever release is newest', async () => {
+    const home = makeHome();
+    const prefix = path.join(home, '.local', 'share', 'archipelago');
+    for (const v of ['1.0.0', '1.1.0', '1.2.0']) fs.mkdirSync(path.join(prefix, 'releases', v), { recursive: true });
+    fs.symlinkSync(path.join(prefix, 'releases', '1.2.0'), path.join(prefix, 'current'));
+
+    const r = await run({ HOME: home }, 'setup', '--rollback', '1.0.0');
+    expect(r.code).toBe(0);
+    expect(fs.readlinkSync(path.join(prefix, 'current'))).toBe(path.join(prefix, 'releases', '1.0.0'));
+    const out = await run({ HOME: home }, 'setup', '--rollback', '../releases');
+    expect(out.code).not.toBe(0);
+    expect(out.stderr).toContain('names no release');
+    expect(fs.readlinkSync(path.join(prefix, 'current'))).toBe(path.join(prefix, 'releases', '1.0.0'));
+  });
+
   it('answers an ownership question on the gateway socket under the prefix it was given', async () => {
     const prefix = makeHome();
     const server = await startAuthorityServer({ prefix });

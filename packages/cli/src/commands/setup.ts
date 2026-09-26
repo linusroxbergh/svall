@@ -21,7 +21,7 @@ import { printResult } from '../format.js';
 import { checkLine, preflight, realPreflightDeps, requireReady, type Check } from './doctor.js';
 import type { Target } from '../target.js';
 
-type Options = { launchctl: boolean; check?: boolean; release?: string; allowUnsigned?: boolean; replaceSettings?: boolean; rollback?: boolean };
+type Options = { launchctl: boolean; check?: boolean; release?: string; allowUnsigned?: boolean; replaceSettings?: boolean; rollback?: boolean | string };
 
 type From = RunFrom & { rollbackTo?: string; version?: string };
 
@@ -37,9 +37,11 @@ function runFrom(o: Options, done: string[]): From {
   return { release: installed.current, rollbackTo: installed.rollbackTo ?? undefined, version: installed.version };
 }
 
-/** Recovery, so it asks nothing of the machine but the release it is going back to. */
-async function rollback(t: Target, systemd: boolean): Promise<string[]> {
-  const back = rollbackRelease(DEFAULT_PREFIX);
+/** Recovery, so it asks nothing of the machine but the release it is going back to: the one named, or the one before. */
+async function rollback(t: Target, systemd: boolean, to?: string): Promise<string[]> {
+  const releases = path.join(DEFAULT_PREFIX, 'releases');
+  if (to !== undefined && path.dirname(path.resolve(releases, to)) !== releases) throw new Error(`${to} names no release under ${releases}`);
+  const back = rollbackRelease(DEFAULT_PREFIX, to === undefined ? undefined : path.join(releases, to));
   const done = [`current -> ${back.release}`];
   if (!systemd) return done;
   const unit = archidUnitName(t.name);
@@ -111,12 +113,12 @@ export function setupCommand(target: () => Target, json: () => boolean, platform
     .option('--release <path>', 'install this release tree or archive and run the daemon from it')
     .option('--allow-unsigned', 'install a --release that carries no signature')
     .option('--replace-settings', 'replace the mission-control .claude/settings.json you have edited, keeping a copy')
-    .option('--rollback', 'put current back on the release before this one and restart the daemon')
+    .option('--rollback [release]', 'put current back on this release, or on the one before, and restart the daemon')
     .action(async (o: Options) => {
       // setup owns the per-user half — the Claude hooks and the shims — so it only ever means private
       const t = target();
       if (o.rollback) {
-        const done = await rollback(t, systemd);
+        const done = await rollback(t, systemd, typeof o.rollback === 'string' ? o.rollback : undefined);
         printResult({ done, warnings: [] }, json(), () => done.join('\n'));
         return;
       }
