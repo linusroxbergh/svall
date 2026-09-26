@@ -6,7 +6,7 @@ import { afterEach, expect, test } from 'vitest';
 
 // the step that closes every open window before the app is replaced, run on its own
 const SCRIPT = fs.readFileSync(path.join(import.meta.dirname, '../scripts/desktop-install.sh'), 'utf8');
-const STEP = SCRIPT.slice(SCRIPT.indexOf("# app.pid outlives a crash"), SCRIPT.indexOf('echo "==> installing to'));
+const STEP = SCRIPT.slice(SCRIPT.indexOf("# app.pid outlives a crash"), SCRIPT.indexOf('step "Installing to'));
 
 const dirs: string[] = [];
 const procs: ChildProcess[] = [];
@@ -39,7 +39,7 @@ echo "$pid $open" >> ${log}
     fs.writeFileSync(path.join(root, home, 'app.pid'), `${p.pid}\t${path.join(root, home)}\n`);
     return p.pid!;
   };
-  const run = (env: Record<string, string> = {}) => spawnSync('sh', ['-c', `set -eu\nfail() { echo "$*" >&2; exit 1; }\n${STEP}\necho installed`], {
+  const run = (env: Record<string, string> = {}) => spawnSync('sh', ['-c', `set -eu\nC= D= R= N=\nfail() { echo "$*" >&2; exit 1; }\nstep() { printf '%s◇%s  %s\\n' "$C" "$N" "$*"; }\nbar() { printf '%s│%s\\n' "$D" "$N"; }\n${STEP}\necho installed`], {
     env: { ...process.env, HOME: root, PATH: `${bin}:${process.env.PATH}`, ...env }, encoding: 'utf8', timeout: 30_000,
   });
   const quits = (): string[] => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n') : []);
@@ -54,7 +54,7 @@ test('asks each open window to quit by its pid, once, and the next only after it
   m.window('.archipelago-old', 'sleep');
   const r = m.run();
   expect(r.stderr).toBe('');
-  expect(r.stdout).toBe('==> closing open windows\ninstalled\n');
+  expect(r.stdout).toBe('◇  Closing open windows\ninstalled\n');
   expect(m.quits()).toEqual([`${first} no`, `${second} no`]);
 });
 
