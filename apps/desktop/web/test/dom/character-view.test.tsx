@@ -32,6 +32,7 @@ vi.mock('@xterm/xterm', () => ({
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit(): void {} } }));
 
 const { CharacterView } = await import('../../src/mobile/CharacterView.js');
+const { App } = await import('../../src/mobile/App.js');
 
 const blockedFleet = (prompt = 'Run rm -rf?', promptId = 'q1') => {
   const f = fleet();
@@ -202,4 +203,25 @@ test('the reason a prompt was not sent goes once archid is back', async () => {
   expect(screen.getByText('archid offline')).toBeTruthy();
   act(() => store.getState().setStatus('online'));
   expect(screen.queryByText('archid offline')).toBeNull();
+});
+
+test('the context button opens the character\'s card', () => {
+  store.getState().setFleet(fleet());
+  render(<CharacterView id="c0" onBack={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'context ›' }));
+  expect(screen.getByRole('dialog', { name: 'c0' })).toBeTruthy();
+});
+
+test('a note being typed is saved when the back gesture takes the view away', () => {
+  history.replaceState(null, '', '/char/c0');
+  store.getState().setFleet(fleet());
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: 'context ›' }));
+  const note = screen.getByLabelText('Note');
+  note.focus();
+  fireEvent.change(note, { target: { value: 'new note' } });
+  history.replaceState(null, '', '/');
+  act(() => { dispatchEvent(new PopStateEvent('popstate')); });
+  expect(screen.queryByLabelText('Note')).toBeNull();
+  expect(call).toHaveBeenCalledWith('char.update', { id: 'c0', note: 'new note' });
 });

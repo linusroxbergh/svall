@@ -1,5 +1,6 @@
-import { useState, type JSX } from 'react';
+import { useRef, useState, type JSX, type RefObject } from 'react';
 import { contextKind, type Character, type ContextItem, type Params } from '@archipelago/protocol';
+import { webUrl } from '../bridge.js';
 import { commitFocused, FollowTextarea } from '../Field.js';
 import { useApp } from '../hooks.js';
 import { LinkIcon } from '../map/LinkIcon.js';
@@ -13,14 +14,12 @@ import { Sheet } from './Sheet.js';
 // a refusal is told beside the edit it refused
 function useSave(id: string) {
   const [error, setError] = useState<string>();
-  const save = (patch: Omit<Params<'char.update'>, 'id'>) => {
+  const save = (patch: Omit<Params<'char.update'>, 'id'>): Promise<boolean> => {
     setError(undefined);
-    phone.api().call('char.update', { id, ...patch }).catch((e: Error) => setError(e.message));
+    return phone.api().call('char.update', { id, ...patch }).then(() => true, (e: Error) => { setError(e.message); return false; });
   };
   return [error, save] as const;
 }
-
-const isUrl = (ref: string) => /^(https?|mailto):/i.test(ref);
 
 // a pinned item is read before the agent starts; only one added by hand can be taken off
 function Context({ c }: { c: Character }) {
@@ -31,8 +30,9 @@ function Context({ c }: { c: Character }) {
   const add = () => {
     const r = ref.trim();
     if (!r) return;
-    set([...c.context, { kind: contextKind(r), ref: r, label: '', source: 'manual' }]);
     setRef('');
+    // a refused ref goes back in the field, unless another is being typed
+    void set([...c.context, { kind: contextKind(r), ref: r, label: '', source: 'manual' }]).then((ok) => { if (!ok) setRef((now) => now || r); });
   };
   return (
     <div className="m-sec">
@@ -40,11 +40,12 @@ function Context({ c }: { c: Character }) {
       {c.context.map((it, i) => {
         const name = linkText(it);
         const text = <><b>{name}</b><span>{it.ref.replace(/^https?:\/\//, '')}</span></>;
+        // the phone opens only links; a path names a file on the Mac
+        const href = it.kind === 'file' || it.kind === 'folder' ? undefined : webUrl(it.ref);
         return (
           <div key={`${it.ref}-${i}`} className="m-link">
             <i className="lg"><LinkIcon item={it} /></i>
-            {/* the phone opens only links; a path names a file on the Mac */}
-            {isUrl(it.ref) ? <a className="m-link-text" href={it.ref} target="_blank" rel="noreferrer">{text}</a> : <span className="m-link-text">{text}</span>}
+            {href ? <a className="m-link-text" href={href} target="_blank" rel="noreferrer">{text}</a> : <span className="m-link-text">{text}</span>}
             <button type="button" aria-pressed={Boolean(it.pinned)} aria-label={`Pin ${name}`} onClick={() => pin(i)}>{it.pinned ? '●' : '○'}</button>
             {it.source === 'manual' && <button type="button" aria-label={`Remove ${name}`} onClick={() => set(c.context.filter((_, j) => j !== i))}>×</button>}
           </div>
@@ -60,13 +61,13 @@ function Context({ c }: { c: Character }) {
   );
 }
 
-function Note({ c }: { c: Character }) {
+function Note({ c, saving }: { c: Character; saving: RefObject<Promise<boolean> | undefined> }) {
   const [error, save] = useSave(c.id);
   return (
     <div className="m-sec">
       <h4>Note</h4>
       <FollowTextarea className="m-field" rows={3} aria-label="Note" placeholder="What this character is doing" value={c.note}
-        onSave={(v) => { if (v !== c.note) save({ note: v }); }} />
+        onSave={(v) => { if (v !== c.note) saving.current = save({ note: v }); }} />
       {error && <p className="sheet-error">{error}</p>}
     </div>
   );
@@ -127,10 +128,16 @@ export function CharacterMenu({ id, onClose, onClosed }: { id: string; onClose()
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const saving = useRef<Promise<boolean>>(undefined);
   if (!c) return null;
 
-  // a field saves on blur, which a sheet taken away never sends
-  const close = () => { commitFocused(); onClose(); };
+  // a field saves on blur, which a sheet taken away never sends; a note the fleet refused keeps the sheet up beside its error
+  const close = async () => {
+    commitFocused();
+    const note = saving.current;
+    saving.current = undefined;
+    if (!note || await note) onClose();
+  };
   const run = async (call: () => Promise<unknown>, after: () => void = close) => {
     if (busy) return;
     setBusy(true);
@@ -143,7 +150,7 @@ export function CharacterMenu({ id, onClose, onClosed }: { id: string; onClose()
     <Sheet title={c.name} onClose={close}>
       {hint && <p className="sheet-note">{hint}</p>}
       <Context c={c} />
-      <Note c={c} />
+      <Note c={c} saving={saving} />
       <DocsList tier="character" id={id} />
       <LastCommand c={c} />
       <Agent c={c} />

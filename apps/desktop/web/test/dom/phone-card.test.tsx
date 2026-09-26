@@ -40,8 +40,9 @@ beforeEach(() => {
 });
 
 test('a link opens in the browser, and a path on the Mac is only named', () => {
-  open();
+  open({ context: [pr, plan, { kind: 'other', ref: 'herdr.dev/docs', label: 'herdr', source: 'manual' }] });
   expect(screen.getByText('the PR').closest('a')!.getAttribute('href')).toBe(pr.ref);
+  expect(screen.getByText('herdr').closest('a')!.getAttribute('href')).toBe('https://herdr.dev/docs');
   expect(screen.getByText('plan.md').closest('a')).toBeNull();
 });
 
@@ -60,21 +61,54 @@ test('pins, removes and adds context as the whole list', () => {
   expect(updates().at(-1)).toEqual({ id: 'c0', context: [pr, plan, { kind: 'other', ref: 'https://herdr.dev/docs', label: '', source: 'manual' }] });
 });
 
-test('a note being typed is saved when the sheet is dismissed', () => {
-  const onClose = open();
-  const note = screen.getByLabelText('Note');
+const typeNote = (value: string) => {
+  const note = screen.getByLabelText('Note') as HTMLTextAreaElement;
   note.focus();
-  fireEvent.change(note, { target: { value: 'new note' } });
-  fireEvent.pointerDown(document.querySelector('.sheet-back')!);
+  fireEvent.change(note, { target: { value } });
+  return note;
+};
+const dismiss = () => act(async () => { fireEvent.pointerDown(document.querySelector('.sheet-back')!); });
+
+test('a note being typed is saved when the sheet is dismissed', async () => {
+  const onClose = open();
+  typeNote('new note');
+  await dismiss();
   expect(updates()).toEqual([{ id: 'c0', note: 'new note' }]);
   expect(onClose).toHaveBeenCalled();
 });
 
-test('a refused edit says why beside it', async () => {
+test('a note the fleet refuses keeps the sheet up beside its error, and a second dismiss lets it go', async () => {
+  refuse = 'archid offline';
+  const onClose = open();
+  const note = typeNote('new note');
+  await dismiss();
+  expect(onClose).not.toHaveBeenCalled();
+  expect(note.value).toBe('new note');
+  expect(screen.getByText('archid offline').closest('.m-sec')!.querySelector('h4')!.textContent).toBe('Note');
+  await dismiss();
+  expect(onClose).toHaveBeenCalled();
+});
+
+test('a note being typed is saved before a move closes the sheet', async () => {
+  const onClose = open();
+  typeNote('new note');
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'alpha' })); });
+  expect(calls.filter(([m]) => m === 'char.move' || m === 'char.update')).toEqual([
+    ['char.move', { id: 'c0', islandId: 'i_a' }],
+    ['char.update', { id: 'c0', note: 'new note' }],
+  ]);
+  expect(onClose).toHaveBeenCalled();
+});
+
+test('a refused edit says why beside it, and a refused ref goes back in the field', async () => {
   refuse = 'fleet is read-only';
   open();
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Pin the PR' })); });
-  expect(screen.getByText('fleet is read-only')).toBeTruthy();
+  expect(screen.getByText('fleet is read-only').closest('.m-sec')!.querySelector('h4')!.textContent).toBe('Context');
+  const field = screen.getByLabelText('Add a url or path') as HTMLInputElement;
+  fireEvent.change(field, { target: { value: 'herdr.dev' } });
+  await act(async () => { fireEvent.submit(field.closest('form')!); });
+  expect(field.value).toBe('herdr.dev');
 });
 
 test('reads the prompts sent, newest first, and steps back through them', async () => {

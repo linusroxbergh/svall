@@ -1,4 +1,5 @@
 import { useEffect, useState, type JSX } from 'react';
+import { commitFocused } from '../Field.js';
 import { useApp } from '../hooks.js';
 import { CharacterView } from './CharacterView.js';
 import { Fleet } from './Fleet.js';
@@ -11,7 +12,8 @@ export function App(): JSX.Element {
   const gone = useApp((s) => Boolean(openId && s.loaded && !s.fleet.characters[openId]));
 
   useEffect(() => {
-    const onPop = () => setRoute(parseRoute(location.pathname));
+    // a field saves on blur, which a view taken away by the back gesture never sends
+    const onPop = () => { commitFocused(); setRoute(parseRoute(location.pathname)); };
     addEventListener('popstate', onPop);
     return () => removeEventListener('popstate', onPop);
   }, []);

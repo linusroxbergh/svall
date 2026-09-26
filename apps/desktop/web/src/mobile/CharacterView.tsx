@@ -176,7 +176,7 @@ export function CharacterView({ id, onBack }: { id: string; onBack(): void }): J
         <span className="conn" data-status={!online ? status : character ? statusOf(character) : 'gone'}>
           {!online ? status : character ? statusOf(character) : 'gone'}
         </span>
-        <button type="button" className="ahead" onClick={() => setMenu(true)}>context ›</button>
+        <button type="button" className="ahead" aria-haspopup="dialog" onClick={() => setMenu(true)}>context ›</button>
       </header>
       <div className="stage">
         <div className="screen" ref={host} />
