@@ -86,7 +86,7 @@ build take about 750 MB of disk. An Intel Mac also needs Xcode; see
    mission control run — Claude Code unless you pick Codex; change it later
    in Settings or with `archi agent codex`. On first launch, the app asks
    before the scribe makes paid agent calls. The first mission control button
-   you press opens a terminal where Claude Code asks you to trust
+   you press opens a terminal where Claude Code or Codex asks you to trust
    `~/.archipelago/home`.
 
 Keep the clone where it is, because `archi` and the daemon run from it. If you
@@ -351,11 +351,12 @@ A character running `codex`, typed in or started with
 `archi char new --agent codex`, gets the same status, context gauge, revive,
 brief and scribe as Claude Code.
 
-- Setup writes Archipelago's hook into `~/.codex/hooks.json` whenever
-  `~/.codex` exists, but Codex runs only hooks you trust: choose "Trust all
-  and continue" on its startup dialog, or trust it later with `/hooks`, and do
-  so again whenever the hook changes. `archi doctor` says whether it's
-  trusted. Until then the character stays a plain shell with a warning.
+- Setup writes Archipelago's hook into `~/.codex/hooks.json` when Codex is
+  installed or `~/.codex` exists, but Codex runs only hooks you trust: choose
+  "Trust all and continue" on its startup dialog, or trust it later with
+  `/hooks`, and do so again whenever the hook changes. `archi doctor` says
+  whether it's trusted. Until then the character stays a plain shell with a
+  warning.
 - Codex needs its CLI on PATH; the Codex desktop app alone doesn't put it
   there.
 
