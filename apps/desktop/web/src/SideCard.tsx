@@ -11,6 +11,7 @@ import { keyTip } from './keys.js';
 import { LinkIcon } from './map/LinkIcon.js';
 import { ago, hintText, linkText } from './map/tokenText.js';
 import { portraitTint, portraitUrl } from './portraits.js';
+import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
 import { sourceOfRoot } from './resources/model.js';
 import { charactersOf, contextPctOf, islandsSorted, isUnread, statusOf } from './selectors.js';
@@ -44,35 +45,9 @@ export function Collapse() {
   );
 }
 
-const PROMPT_HISTORY = 30;
-
-// the prompts sent to this agent, newest first; read from the transcript, so they survive a restart
 function LastCommand({ id, agent }: { id: string; agent: Character['agent'] }) {
-  const [hist, setHist] = useState<{ list: string[]; at: number }>({ list: [], at: 0 });
-  const running = agent?.status === 'working' || agent?.status === 'blocked';
-
-  useEffect(() => {
-    if (!agent) return;
-    let live = true;
-    app.api().call('char.prompts', { id, limit: PROMPT_HISTORY })
-      .then((r) => {
-        if (!live) return;
-        // a new prompt pushes the one being read down the list; follow the prompt, not the index
-        setHist((h) => {
-          const reading = h.list[h.at];
-          return { list: r.prompts, at: h.at === 0 ? 0 : Math.max(0, r.prompts.indexOf(reading)) };
-        });
-      })
-      .catch(() => { if (live) setHist({ list: [], at: 0 }); });
-    return () => { live = false; };
-    // a new session or prompt changes the list, and a turn's end settles what its prompt left pending;
-    // the tool events and permission asks in between would re-read the tail for nothing
-  }, [id, agent?.sessionId, agent?.transcriptPath, agent?.lastPrompt?.id, running]);
-
+  const { list, at, step } = usePromptHistory(app.api, id, agent);
   if (!agent) return null;
-  const { list } = hist;
-  const at = Math.min(hist.at, Math.max(0, list.length - 1));
-  const step = (by: 1 | -1) => setHist({ list, at: at + by });
   return (
     <div className="sec cmd" data-testid="side-prompt">
       <div className="kicker cmd-head">
