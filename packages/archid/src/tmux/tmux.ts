@@ -56,6 +56,15 @@ export function noServer(e: unknown): boolean {
   return /no server running on |error connecting to .* \(No such file or directory\)/.test(String(e));
 }
 
+// a name or path may hold any byte but NUL, and tmux 3.4 prints a control character as its octal escape where 3.7
+// prints the byte: fields and rows are marked with printable text made for each listing, which no name can hold
+// except by guessing it
+function listing(fields: string[]): { format: string; rows(out: string): string[][] } {
+  const token = crypto.randomBytes(8).toString('hex');
+  const [sep, end] = [`<${token}>`, `</${token}>`];
+  return { format: fields.join(sep) + end, rows: (out) => out.split(`${end}\n`).filter(Boolean).map((row) => row.split(sep)) };
+}
+
 export class Tmux {
   readonly binary = resolveTmux();
   private rawPaste?: Promise<string[]>;
@@ -66,9 +75,10 @@ export class Tmux {
     return this.call(args);
   }
 
-  // a signal that aborts ends the tmux client this call started
+  // a signal that aborts ends the tmux client this call started. Without -u, a client outside a UTF-8 locale is
+  // sent a tab or a letter outside ASCII as _
   private async call(args: string[], signal?: AbortSignal): Promise<string> {
-    const { stdout } = await exec(this.binary, ['-S', this.socket, '-f', this.conf, ...args], {
+    const { stdout } = await exec(this.binary, ['-u', '-S', this.socket, '-f', this.conf, ...args], {
       maxBuffer: 64 * 1024 * 1024,
       env: paneEnv(),
       signal,
@@ -121,11 +131,9 @@ export class Tmux {
   }
 
   async listSessions(): Promise<LiveSession[]> {
-    const out = await this.run('list-sessions', '-F', '#{session_name}\t#{session_attached}\t#{session_created}').catch(() => '');
-    return out.split('\n').filter(Boolean).map((l) => {
-      const [name, attached, created] = l.split('\t');
-      return { name, attached: Number(attached), created: Number(created) * 1000 };
-    });
+    const list = listing(['#{session_name}', '#{session_attached}', '#{session_created}']);
+    const out = await this.run('list-sessions', '-F', list.format).catch(() => '');
+    return list.rows(out).map(([name, attached, created]) => ({ name, attached: Number(attached), created: Number(created) * 1000 }));
   }
 
   async ensureServer(): Promise<void> {
@@ -196,18 +204,11 @@ export class Tmux {
   }
 
   async listWindows(signal?: AbortSignal): Promise<LiveWindow[]> {
-    // tmux prints a path as it is, and a directory's name may hold any byte but NUL: fields and rows are
-    // marked with a token made for this listing, which no name can hold except by guessing it
-    const token = crypto.randomBytes(8).toString('hex');
-    const [sep, end] = [`\x1f${token}`, `\x1e${token}`];
-    const fmt = ['#{window_id}', '#{pane_id}', '#{pane_pid}', '#{window_name}', '#{pane_current_command}', '#{window_activity}', '#{pane_dead}', '#{pane_current_path}'].join(sep) + end;
+    const list = listing(['#{window_id}', '#{pane_id}', '#{pane_pid}', '#{window_name}', '#{pane_current_command}', '#{window_activity}', '#{pane_dead}', '#{pane_current_path}']);
     // one row per window: a split window would otherwise yield several rows under the same name.
-    const out = await this.call(['list-panes', '-s', '-t', SESSION, '-f', '#{pane_active}', '-F', fmt], signal);
-    return out
-      .split(`${end}\n`)
-      .filter(Boolean)
-      .map((l) => {
-        const [windowId, paneId, panePid, name, command, activity, dead, path] = l.split(sep);
+    const out = await this.call(['list-panes', '-s', '-t', SESSION, '-f', '#{pane_active}', '-F', list.format], signal);
+    return list.rows(out)
+      .map(([windowId, paneId, panePid, name, command, activity, dead, path]) => {
         const seconds = Number(activity);
         return { windowId, paneId, panePid: Number(panePid), name, command, path, activity: Number.isFinite(seconds) ? seconds * 1000 : 0, dead: dead === '1' };
       })
