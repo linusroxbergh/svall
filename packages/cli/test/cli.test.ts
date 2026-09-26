@@ -126,6 +126,28 @@ describe('archi argument parsing', () => {
     }
   });
 
+  it('setup --check --release judges the shims and plist against the installed release, not this checkout', async () => {
+    const bin = makeHome();
+    fs.writeFileSync(path.join(bin, 'claude'), "#!/bin/sh\ncase \"$1\" in --version) echo '2.1.0 (Claude Code)';; auth) echo '{\"loggedIn\":true}';; esac\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'tmux'), "#!/bin/sh\necho 'tmux 3.5a'\n", { mode: 0o755 });
+    const PATH = `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`;
+    // the links setup makes for a release, into it through `current`
+    expect(os.homedir().startsWith('/tmp/archi-home-')).toBe(true);
+    const shimDir = path.join(os.homedir(), '.local', 'bin');
+    const current = path.join(os.homedir(), '.local', 'share', 'archipelago', 'current');
+    fs.mkdirSync(shimDir, { recursive: true });
+    for (const name of ['archi', 'archipelago']) fs.symlinkSync(path.relative(shimDir, path.join(current, 'bin', 'archi')), path.join(shimDir, name));
+    try {
+      const release = JSON.parse((await run({ PATH, FORCE_COLOR: '0' }, '--json', 'setup', '--check', '--release', '/nowhere')).stdout).warnings;
+      expect(release).not.toContain('! shims  missing or out of date: run archi setup');
+      expect(release).toContain('! launchd  plist missing or out of date: run archi setup');
+      const checkout = JSON.parse((await run({ PATH, FORCE_COLOR: '0' }, '--json', 'setup', '--check')).stdout).warnings;
+      expect(checkout).toContain('! shims  missing or out of date: run archi setup');
+    } finally {
+      for (const name of ['archi', 'archipelago']) fs.rmSync(path.join(shimDir, name));
+    }
+  });
+
   it('reports its versions rather than reading `version` as a profile', async () => {
     const r = await run({}, 'version', '--json');
     expect(r.code).toBe(0);

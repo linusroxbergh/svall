@@ -317,6 +317,12 @@ describe('runSetup', () => {
     // the shims link into the release through current, which is what setup writes for one
     expect(fs.readlinkSync(path.join(home, 'bin', 'archi'))).toBe(path.relative(path.join(home, 'bin'), path.join(release, 'bin', 'archi')));
     expect(shimsCurrent(path.join(home, 'bin'), { release })).toBe(true);
+    expect(shimsCurrent(path.join(home, 'bin'), { repoRoot })).toBe(false);
+    // a shim that links into another release is out of date for this one
+    const shim = path.join(home, 'bin', 'archipelago');
+    fs.rmSync(shim);
+    fs.symlinkSync(path.relative(path.join(home, 'bin'), path.join(makeHome(), 'current', 'bin', 'archi')), shim);
+    expect(shimsCurrent(path.join(home, 'bin'), { release })).toBe(false);
   });
 
   it('moves every named profile\'s agent onto the release it installs', async () => {
@@ -702,6 +708,17 @@ describe('setupHome', () => {
     const amp = { ...o, repoRoot: path.join(home, 'R&D', 'archipelago') };
     await setupHome(amp);
     expect(plistCurrent(amp)).toBe(true);
+  });
+
+  it('calls a release plist current while it runs that release, and not once it runs another one or the checkout', async () => {
+    const home = makeHome();
+    const release = path.join(makeHome(), 'current');
+    const o = { home, label: LAUNCHD_LABEL, release, launchAgentsDir: path.join(home, 'LaunchAgents'), launchctl: false };
+    expect(plistCurrent(o)).toBe(false);
+    await setupHome(o);
+    expect(plistCurrent(o)).toBe(true);
+    expect(plistCurrent({ ...o, release: path.join(makeHome(), 'current') })).toBe(false);
+    expect(plistCurrent({ home, label: LAUNCHD_LABEL, repoRoot, launchAgentsDir: o.launchAgentsDir })).toBe(false);
   });
 
   it('passes the Claude and Codex homes on to the daemon when they are set', async () => {

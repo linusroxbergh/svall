@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyState } from '@archipelago/protocol';
-import { boardIsland, boardViewed, charactersByPriority, charactersOf, contextPctOf, countsByStatus, DISPLAY_STATUSES, firstOfNextIsland, homeIsland, islandStatus, islandsSorted, isUnread, isVeiled, neighbor, selectedOf, slotStatus, statusOf, stripOrder, tabsOf, wantsUser } from '../src/selectors.js';
+import { boardIsland, boardViewed, charactersByPriority, charactersOf, contextPctOf, countsByStatus, DISPLAY_STATUSES, firstOfNextIsland, homeIsland, islandStatus, islandsSorted, isUnread, isVeiled, neighbor, resumeErrorOf, selectedOf, slotStatus, statusOf, stripOrder, tabsOf, wantsUser } from '../src/selectors.js';
 import { chr, fleet } from './fixtures.js';
 
 describe('selectors', () => {
@@ -179,5 +179,21 @@ describe('a character with two sessions', () => {
     expect(contextPctOf(chr('c', 'i', at))).toBeUndefined();
     expect(isUnread(c)).toBe(true);
     expect(wantsUser(c)).toBe(true);
+  });
+});
+
+describe('resumeErrorOf', () => {
+  const failed = 'ada\'s terminal resumed claude session s, but its window closed, so it is dormant again with that session; revive it to see';
+  const dormant = { resumeError: failed };
+  const on = { shell: { handoverEnabled: true } };
+
+  it('shows why a handover could not resume a dormant terminal only while the fleet asks for handover', () => {
+    expect(resumeErrorOf(on, dormant)).toBe(failed);
+    expect(resumeErrorOf({ shell: { handoverEnabled: false } }, dormant)).toBeUndefined();
+    expect(resumeErrorOf({}, dormant)).toBeUndefined();
+  });
+  it('shows nothing for a terminal whose window is open, or one there is not', () => {
+    expect(resumeErrorOf(on, { ...dormant, tmux: { windowId: '@1', paneId: '%1' } })).toBeUndefined();
+    expect(resumeErrorOf(on, undefined)).toBeUndefined();
   });
 });
