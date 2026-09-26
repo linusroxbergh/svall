@@ -4,11 +4,11 @@ import path from 'node:path';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { FleetConfig, type GitCheckout, type GitGraph, type MachineId, type TransferManifestV1 } from '@archipelago/protocol';
 import { discoverGit, graphId, readWorktrees } from '../../src/handover/git-graph.js';
-import { graphsHere, keptWorktrees, mapThroughRoots, repairGraph, repairGraphs, unreached, validateGraph, type RepairFs } from '../../src/handover/git-repair.js';
+import { graphsHere, keptWorktrees, repairGraph, repairGraphs, unreached, validateGraph, type RepairFs } from '../../src/handover/git-repair.js';
 import { buildInventory, DEFAULT_EXCLUDES } from '../../src/handover/inventory.js';
 import { buildManifest } from '../../src/handover/manifest.js';
 import { runGit, type GitResult, type GitRunner } from '../../src/links/git.js';
-import { char, crew, git, hasGit, layout, SEED, seedHere, type Layout } from './git-fixture.js';
+import { char, crew, git, hasGit, layout, park, parkedAt, SEED, seedHere, unpark, type Layout } from './git-fixture.js';
 
 const made: string[] = [];
 afterEach(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
@@ -18,7 +18,7 @@ const TRIFT = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId;
 const FLEET = FleetConfig.parse({ id: '5e1f0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' });
 const read = (file: string): string => fs.readFileSync(file, 'utf8');
 
-type Repairable = Pick<TransferManifestV1, 'sourceRoots' | 'destinationRoots' | 'roots' | 'git'>;
+type Repairable = Pick<TransferManifestV1, 'roots' | 'git'>;
 
 const checkout = (p: string, gitDir: string): GitCheckout =>
   ({ path: p, gitDir, head: 'a'.repeat(40), branch: 'refs/heads/main', status: [], index: 'b'.repeat(64), characters: [] });
@@ -40,7 +40,7 @@ function copied() {
     worktrees: [checkout('/Users/me/wt', '/Users/me/app/.git/worktrees/wt')],
     unused: [{ path: '/Users/me/old', head: null, branch: 'refs/heads/old', prunable: false }], stash: [],
   };
-  const map = mapThroughRoots({ sourceRoots: { home: '/Users/me' }, destinationRoots: { home: base } });
+  const map = (p: string): string => path.join(base, path.relative('/Users/me', p));
   return { base, common, wt, graph, map };
 }
 
@@ -132,22 +132,12 @@ describe('repairGraph, step by step', () => {
       { code: 'worktree_unresolved', message: `${main}: git worktree repair ${c.wt} failed: fatal: not a git repository`, entity: { kind: 'git', id: 'g_app' } },
     ]);
   });
-
-  it('blocks a path the named roots do not map, before it touches anything', async () => {
-    const c = copied();
-    c.graph.worktrees[0].path = '/Volumes/elsewhere/wt';
-    const r = await repairGraph(c.graph, c.map, { git: fakeGit(opens(c.common)) });
-    expect(r.blockers).toEqual([{ code: 'worktree_unresolved', message: 'no path root holds /Volumes/elsewhere/wt', entity: { kind: 'git', id: 'g_app' } }]);
-    expect(fs.readdirSync(path.join(c.common, 'worktrees')).sort()).toEqual(['old', 'wt']);
-  });
 });
 
 describe('repairGraphs', () => {
   it('blocks every Git root of the manifest that no graph describes', async () => {
-    const root = (id: string, kind: 'repo' | 'worktree' | 'gitdir' | 'cwd', p: string) =>
-      ({ id, kind, entry: 'dir' as const, sourcePath: p, destinationPath: p.replace('/Users/me', '/home/me'), files: [] });
+    const root = (id: string, kind: 'repo' | 'worktree' | 'gitdir' | 'cwd', p: string) => ({ id, kind, entry: 'dir' as const, path: p, files: [] });
     const manifest: Repairable = {
-      sourceRoots: { home: '/Users/me' }, destinationRoots: { home: '/home/me' },
       roots: [root('r_app', 'repo', '/Users/me/app'), root('r_wt', 'worktree', '/Users/me/wt'), root('r_x', 'cwd', '/Users/me/x')],
       git: [{ id: 'g_app', commonDir: '/Users/me/app/.git', main: checkout('/Users/me/app', '/Users/me/app/.git'), worktrees: [], unused: [], stash: [] }],
     };
@@ -157,54 +147,55 @@ describe('repairGraphs', () => {
   });
 });
 
-// what a handover moves: every carried root of the manifest, copied whole to its destination
-function transfer(manifest: TransferManifestV1): void {
-  for (const r of manifest.roots.filter((x) => !x.foldedInto)) fs.cpSync(r.sourcePath, r.destinationPath, { recursive: true, verbatimSymlinks: true });
+// what a handover moves: every carried root of the manifest, from the source machine's tree parked at `from`, to the same path here
+function transfer(l: Layout, manifest: TransferManifestV1, from: string): void {
+  for (const r of manifest.roots.filter((x) => !x.foldedInto)) fs.cpSync(parkedAt(l, from, r.path), r.path, { recursive: true, verbatimSymlinks: true });
 }
-const unplug = (l: Layout): void => fs.rmSync(path.join(l.base, 'Users'), { recursive: true, force: true });
 
-/** The same two machines the other way round: the fleet coming back from the destination to the source. */
-const returning = (l: Layout): Layout =>
-  ({ ...l, source: l.destination, destination: l.source, sourceRoots: l.destinationRoots, destinationRoots: l.sourceRoots });
-
-/** What rsync --delete leaves of each carried root: the source's copy, and each kept registration as it was. */
-function mirror(manifest: TransferManifestV1, kept: { registration: string }[]): void {
+/** What rsync --delete leaves of each carried root: the parked source's copy, and each kept registration as it was. */
+function mirror(l: Layout, manifest: TransferManifestV1, from: string, kept: { registration: string }[]): void {
   const aside = fs.mkdtempSync('/tmp/archi-kept-');
   made.push(aside);
   const held = kept.map((k, i) => ({ at: k.registration, to: path.join(aside, String(i)) }));
   for (const h of held) fs.renameSync(h.at, h.to);
   for (const r of manifest.roots.filter((x) => !x.foldedInto)) {
-    fs.rmSync(r.destinationPath, { recursive: true, force: true });
-    fs.cpSync(r.sourcePath, r.destinationPath, { recursive: true, verbatimSymlinks: true });
+    fs.rmSync(r.path, { recursive: true, force: true });
+    fs.cpSync(parkedAt(l, from, r.path), r.path, { recursive: true, verbatimSymlinks: true });
   }
   for (const h of held) { fs.rmSync(h.at, { recursive: true, force: true }); fs.renameSync(h.to, h.at); }
 }
 
 async function manifestOf(l: Layout, state = crew(l)): Promise<TransferManifestV1> {
-  const at = (roots: Record<string, string>) => ({ pathRoots: roots, fleetHome: path.join(roots.home, '.archipelago') });
+  const at = { home: l.home, fleetHome: path.join(l.home, '.archipelago') };
   const discovery = await discoverGit(state, { excludes: DEFAULT_EXCLUDES });
   expect(discovery.blockers).toEqual([]);
-  const inventory = buildInventory(state, { fleet: FLEET }, { source: { machineId: MAC, ...at(l.sourceRoots) }, destination: { machineId: TRIFT, ...at(l.destinationRoots) } }, discovery);
+  const inventory = buildInventory(state, { fleet: FLEET }, { source: { machineId: MAC, ...at }, destination: { machineId: TRIFT, ...at } }, discovery);
   const built = await buildManifest(inventory, { generation: 1 });
   expect(built.blockers).toEqual([]);
   return built.manifest;
 }
 
+/** The fixture handed from the Mac, whose tree is parked, to trift, which receives each carried root at the same path. */
+async function handed(l: Layout, state = crew(l)): Promise<{ manifest: TransferManifestV1; mac: string }> {
+  const manifest = await manifestOf(l, state);
+  const mac = park(l, 'mac');
+  transfer(l, manifest, mac);
+  return { manifest, mac };
+}
+
 const real = hasGit ? describe : describe.skip;
 
 // each seeds a real fixture with dozens of git commands, which a loaded machine takes its time over
-real(`a real repository graph moved to a new home prefix${hasGit ? '' : ' (skipped: git is not on PATH)'}`, { timeout: 180_000 }, () => {
+real(`a real repository graph moved to another machine with the same home${hasGit ? '' : ' (skipped: git is not on PATH)'}`, { timeout: 180_000 }, () => {
   it('arrives with every used worktree, its HEAD, branch, lock, status, staged entries and stash, and nothing unused registered', async () => {
     const l = seedHere(made);
-    const manifest = await manifestOf(l);
-    transfer(manifest);
-    unplug(l);
-    const d = l.destination;
+    const { manifest } = await handed(l);
+    const d = l.source;
     const r = await repairGraphs(manifest);
     expect(r.blockers).toEqual([]);
     expect(r.repairs).toEqual([
-      { id: graphId(path.join(l.source.main, '.git')), pruned: ['gone', 'unused'], rewritten: [d.nested, d.detached, d.locked, d.sibling], repairReport: '' },
-      { id: graphId(path.join(l.source.main, '.git/modules/sub')), pruned: [], rewritten: [d.sub], repairReport: '' },
+      { id: graphId(path.join(d.main, '.git')), pruned: ['gone', 'unused'], rewritten: [d.nested, d.detached, d.locked, d.sibling], repairReport: '' },
+      { id: graphId(path.join(d.main, '.git/modules/sub')), pruned: [], rewritten: [d.sub], repairReport: '' },
     ]);
     const byPath = (a: unknown[], b: unknown[]): number => String(a[0]).localeCompare(String(b[0]));
     const list = (await readWorktrees(d.main, runGit)).map((e) => [e.path, e.branch, e.locked, e.prunable]);
@@ -220,22 +211,9 @@ real(`a real repository graph moved to a new home prefix${hasGit ? '' : ' (skipp
     expect(read(path.join(d.sub, '.git')).trim()).toBe('gitdir: ../.git/modules/sub');
   });
 
-  it('leaves a still-reachable source exactly as it was', async () => {
-    const l = seedHere(made);
-    const s = l.source;
-    const files = [path.join(s.unused, '.git'), path.join(s.nested, '.git'), path.join(s.main, '.git/worktrees/nested/gitdir'), path.join(s.main, '.git/worktrees/unused/gitdir')];
-    const before = { files: files.map(read), list: git(l.base, s.main, 'worktree', 'list', '--porcelain'), status: git(l.base, s.main, 'status', '--porcelain=v2') };
-    const manifest = await manifestOf(l);
-    transfer(manifest);
-    expect((await repairGraphs(manifest)).blockers).toEqual([]);
-    expect({ files: files.map(read), list: git(l.base, s.main, 'worktree', 'list', '--porcelain'), status: git(l.base, s.main, 'status', '--porcelain=v2') }).toEqual(before);
-  });
-
   it('finds nothing left to do the second time', async () => {
     const l = seedHere(made);
-    const manifest = await manifestOf(l);
-    transfer(manifest);
-    unplug(l);
+    const { manifest } = await handed(l);
     await repairGraphs(manifest);
     const again = await repairGraphs(manifest);
     expect(again.blockers).toEqual([]);
@@ -244,18 +222,16 @@ real(`a real repository graph moved to a new home prefix${hasGit ? '' : ' (skipp
 
   it('names each real change the destination copy holds that the source did not', async () => {
     const l = seedHere(made);
-    const manifest = await manifestOf(l);
-    transfer(manifest);
-    unplug(l);
+    const { manifest } = await handed(l);
     expect((await repairGraphs(manifest)).blockers).toEqual([]);
-    const d = l.destination;
+    const d = l.source;
     git(l.base, d.nested, 'add', 'untracked.txt');
     git(l.base, d.detached, 'switch', '-q', '-c', 'moved');
     git(l.base, d.main, 'worktree', 'unlock', d.locked);
     git(l.base, d.main, 'stash', 'drop', '-q');
     fs.appendFileSync(path.join(d.sibling, 'staged.txt'), 'more\n');
     const demo = manifest.git![0];
-    const blockers = await validateGraph(demo, mapThroughRoots(manifest));
+    const blockers = await validateGraph(demo, (p) => p);
     expect(blockers.every((b) => b.code === 'git_mismatch' && b.entity?.id === demo.id)).toBe(true);
     const said = blockers.map((b) => b.message).join('\n');
     expect(said).toContain(`${d.nested}: the staged entries differ from the source's`);
@@ -271,10 +247,8 @@ real(`a real repository graph moved to a new home prefix${hasGit ? '' : ' (skipp
     const l = seedHere(made);
     const s = l.source;
     for (const key of ['core.ignorecase', 'core.precomposeunicode']) git(l.base, s.main, 'config', key, 'true');
-    const manifest = await manifestOf(l);
-    transfer(manifest);
-    unplug(l);
-    const configs = [path.join(l.destination.main, '.git/config'), path.join(l.destination.main, '.git/modules/sub/config')];
+    const { manifest } = await handed(l);
+    const configs = [path.join(s.main, '.git/config'), path.join(s.main, '.git/modules/sub/config')];
     const before = configs.map(read);
     // a case-sensitive filesystem where git probes no Unicode composition, as on Linux
     expect((await repairGraphs(manifest, { probe: () => ({ ignoreCase: false }) })).blockers).toEqual([]);
@@ -291,41 +265,43 @@ real(`a real repository graph moved to a new home prefix${hasGit ? '' : ' (skipp
     const l = seedHere(made);
     const s = l.source;
     const before = { status: git(l.base, s.unused, 'status', '--porcelain=v2', '--branch'), head: git(l.base, s.unused, 'rev-parse', 'HEAD') };
-    const there = await manifestOf(l);
-    transfer(there);
+    const { manifest: there } = await handed(l);
     expect((await repairGraphs(there)).blockers).toEqual([]);
 
-    // back again: the copy that returns never held the registration of the worktree that stayed here
-    const back = await manifestOf(returning(l), crew(returning(l)));
+    // back again: the copy that returns never held the registration of the worktree that stayed on the Mac
+    const back = await manifestOf(l);
+    const trift = park(l, 'trift');
+    unpark(l, 'mac');
     const [here] = graphsHere(back);
     const { kept, unproven } = await keptWorktrees(here);
     expect(unproven).toEqual([]);
     expect(kept).toEqual([{ name: 'unused', registration: path.join(s.main, '.git/worktrees/unused'), path: s.unused }]);
-    mirror(back, kept);
+    mirror(l, back, trift, kept);
     expect((await repairGraphs(back, { kept: { [here.id]: kept.map((k) => k.name) } })).blockers).toEqual([]);
     expect({ status: git(l.base, s.unused, 'status', '--porcelain=v2', '--branch'), head: git(l.base, s.unused, 'rev-parse', 'HEAD') }).toEqual(before);
     expect(git(l.base, s.main, 'worktree', 'list', '--porcelain')).toContain(`worktree ${s.unused}\n`);
   });
 
-  /** The fixture with a commit only `unused-branch` reaches, handed over once; `there` runs on the other machine after. */
+  /** The fixture with a commit only `unused-branch` reaches, handed over once; `there` runs on the other machine after, and the Mac takes its tree back. */
   async function withOwnCommit(there: (l: Layout) => void) {
     const l = seedHere(made);
     const s = l.source;
     fs.writeFileSync(path.join(s.unused, 'only-here.txt'), 'only here\n');
     git(l.base, s.unused, 'add', 'only-here.txt');
     git(l.base, s.unused, 'commit', '-qm', 'only on unused-branch');
-    const away = await manifestOf(l);
-    transfer(away);
+    const { manifest: away } = await handed(l);
     expect((await repairGraphs(away)).blockers).toEqual([]);
     there(l);
-    const back = await manifestOf(returning(l), crew(returning(l)));
-    return { l, back, commit: git(l.base, s.unused, 'rev-parse', 'HEAD'), sourceCommon: path.join(l.destination.main, '.git') };
+    const back = await manifestOf(l);
+    const trift = park(l, 'trift');
+    unpark(l, 'mac');
+    return { l, back, trift, commit: git(l.base, s.unused, 'rev-parse', 'HEAD'), sourceCommon: parkedAt(l, trift, path.join(s.main, '.git')) };
   }
 
   it('leaves to the source a kept commit this machine cannot prove comes back, which the source reaches through the branch that moved on there', async () => {
-    const { l, back, commit, sourceCommon } = await withOwnCommit((x) => {
+    const { l, back, trift, commit, sourceCommon } = await withOwnCommit((x) => {
       // the branch the worktree stands on moved on where the fleet went, to a commit this machine has never seen
-      const d = x.destination.main;
+      const d = x.source.main;
       const child = git(x.base, d, 'commit-tree', '-p', 'unused-branch', '-m', 'moved on there', 'unused-branch^{tree}');
       git(x.base, d, 'update-ref', 'refs/heads/unused-branch', child);
     });
@@ -333,13 +309,13 @@ real(`a real repository graph moved to a new home prefix${hasGit ? '' : ' (skipp
     const { kept, unproven } = await keptWorktrees(here);
     expect(unproven).toEqual([{ graph: here.id, path: l.source.unused, commit }]);
     expect(await unreached(sourceCommon, [commit])).toEqual([]);
-    mirror(back, kept);
+    mirror(l, back, trift, kept);
     expect((await repairGraphs(back, { kept: { [here.id]: kept.map((k) => k.name) } })).blockers).toEqual([]);
     expect(git(l.base, l.source.unused, 'status', '--porcelain=v2', '--untracked-files=no')).toBe('');
   });
 
   it('names what the source truly cannot reach: a commit whose only branch it dropped, and one it never had', async () => {
-    const { back, commit, sourceCommon } = await withOwnCommit((x) => { git(x.base, x.destination.main, 'branch', '-D', 'unused-branch'); });
+    const { back, commit, sourceCommon } = await withOwnCommit((x) => { git(x.base, x.source.main, 'branch', '-D', 'unused-branch'); });
     const [here] = graphsHere(back);
     expect((await keptWorktrees(here)).unproven.map((u) => u.commit)).toEqual([commit]);
     const never = 'a'.repeat(40);
@@ -354,38 +330,12 @@ real(`a real repository graph moved to a new home prefix${hasGit ? '' : ' (skipp
     git(l.base, bare, 'worktree', 'add', '-q', path.join(s.work, 'tool'), '-b', 'feature');
     const state = crew(l);
     state.characters.tool = char('tool', { cwd: path.join(s.work, 'tool') });
-    const manifest = await manifestOf(l, state);
-    expect(manifest.roots.find((r) => r.sourcePath === bare)).toMatchObject({ kind: 'gitdir' });
-    transfer(manifest);
-    unplug(l);
+    const { manifest } = await handed(l, state);
+    expect(manifest.roots.find((r) => r.path === bare)).toMatchObject({ kind: 'gitdir' });
     const r = await repairGraphs(manifest);
     expect(r.blockers).toEqual([]);
-    const moved = path.join(l.destination.work, 'tool.git');
-    expect(r.repairs.find((x) => x.id === graphId(bare))).toEqual({ id: graphId(bare), pruned: [], rewritten: [path.join(l.destination.work, 'tool')], repairReport: '' });
-    expect(read(path.join(l.destination.work, 'tool/.git'))).toBe(`gitdir: ${path.join(moved, 'worktrees/tool')}\n`);
-  });
-
-  it('rebuilds a graph whose path root is declared through a link, from the paths the manifest names through that root', async () => {
-    const l = seedHere(made);
-    const d = l.destination;
-    // git names every checkout by its real path, which only the link's target holds
-    const home = path.join(l.base, 'linked-home');
-    fs.symlinkSync(l.sourceRoots.home, home);
-    const through = (p: string): string => path.join(home, path.relative(l.sourceRoots.home, p));
-    const state = crew(l);
-    for (const c of Object.values(state.characters)) {
-      c.cwd = through(c.cwd);
-      if (c.second) c.second.cwd = through(c.second.cwd);
-    }
-    const manifest = await manifestOf({ ...l, sourceRoots: { home } }, state);
-    const checkouts = manifest.git!.flatMap((g) => [...(g.main ? [g.main] : []), ...g.worktrees]);
-    const named = [...manifest.roots.map((r) => r.sourcePath), ...manifest.git!.map((g) => g.commonDir), ...checkouts.flatMap((c) => [c.path, c.gitDir])];
-    expect(named.filter((p) => !p.startsWith(`${home}/`))).toEqual([]);
-    transfer(manifest);
-    unplug(l);
-    const r = await repairGraphs(manifest);
-    expect(r.blockers).toEqual([]);
-    expect(r.repairs.map((x) => x.rewritten)).toEqual([[d.nested, d.detached, d.locked, d.sibling], [d.sub]]);
+    expect(r.repairs.find((x) => x.id === graphId(bare))).toEqual({ id: graphId(bare), pruned: [], rewritten: [path.join(s.work, 'tool')], repairReport: '' });
+    expect(read(path.join(s.work, 'tool/.git'))).toBe(`gitdir: ${path.join(bare, 'worktrees/tool')}\n`);
   });
 });
 
@@ -434,7 +384,7 @@ describe.skipIf(!REMOTE)(`the same graph on ${REMOTE ?? 'a remote machine'}'s gi
     spawnSync('ssh', ['-o', `ControlPath=${CONTROL}`, '-O', 'exit', REMOTE!], { stdio: 'ignore' });
   });
 
-  it('discovers it, and rebuilds it under a new home prefix after the source is gone', async () => {
+  it('discovers it, and rebuilds it at the same paths after the source is gone', async () => {
     console.log(`remote git: ${remote(['git', '--version']).stdout.trim()}`);
     base = remote(['sh', '-c', 'cd "$(mktemp -d /tmp/archi-git-XXXXXX)" && pwd -P']).stdout.trim();
     expect(base).toMatch(/^\/tmp\/archi-git-/);
@@ -453,9 +403,14 @@ describe.skipIf(!REMOTE)(`the same graph on ${REMOTE ?? 'a remote machine'}'s gi
       ], [[l.source.gone, true], [l.source.unused, false]], 1],
       [path.join(l.source.main, '.git/modules/sub'), l.source.sub, [], [], 0],
     ]);
-    for (const at of ['main', 'sibling', 'detached', 'locked'] as const) expect(remote(['cp', '-a', l.source[at], l.destination[at]]).code).toBe(0);
-    expect(remote(['rm', '-rf', path.join(base, 'Users')]).code).toBe(0);
-    const r = await repairGraphs({ sourceRoots: l.sourceRoots, destinationRoots: l.destinationRoots, roots: [], git: discovery.graphs }, { git: side.git, fs: side.fs });
+    const parked = path.join(base, 'parked-source');
+    expect(remote(['mv', l.home, parked]).code).toBe(0);
+    for (const at of ['main', 'sibling', 'detached', 'locked'] as const) {
+      expect(remote(['mkdir', '-p', path.dirname(l.source[at])]).code).toBe(0);
+      expect(remote(['cp', '-a', parkedAt(l, parked, l.source[at]), l.source[at]]).code).toBe(0);
+    }
+    expect(remote(['rm', '-rf', parked]).code).toBe(0);
+    const r = await repairGraphs({ roots: [], git: discovery.graphs }, { git: side.git, fs: side.fs });
     expect(r.blockers).toEqual([]);
     expect(r.repairs.map((x) => [x.pruned, x.repairReport])).toEqual([[['gone', 'unused'], ''], [[], '']]);
   });

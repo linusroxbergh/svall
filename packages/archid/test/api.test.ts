@@ -29,10 +29,10 @@ const PHONE_KEY = 'k'.repeat(48);
 const other = MachineId.parse('9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f');
 // the two machines a controller describes to a source
 const machines = {
-  source: { pathRoots: { home: '/Users/linus' } },
+  source: { home: '/Users/linus' },
   destination: {
     info: { machineId: other, release: 'dev', protocol: PROTOCOL_VERSION, stateSchema: 8, transferSchema: 1, platform: 'linux', arch: 'x64', agentAdapters: [] },
-    pathRoots: { home: '/home/linus' }, fleetHome: '/home/linus/.archipelago',
+    home: '/Users/linus', fleetHome: '/Users/linus/.archipelago',
   },
 };
 

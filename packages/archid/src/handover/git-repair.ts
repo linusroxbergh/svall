@@ -5,7 +5,6 @@ import type { Blocker, GitGraph, HandoverEntity, KeptCommit, ReceivedGraph, Tran
 import { DIRS_ARGS, parseDirs, runGit, type GitRunner } from '../links/git.js';
 import { GitFailure, listedMain, must, readCheckout, readStash, readWorktrees, said, type WorktreeEntry } from './git-graph.js';
 import { byCodeUnit, sha256Hex } from './hash.js';
-import { holdingRoot, mapPortablePath, PathRootError } from './portable-path.js';
 
 /** The filesystem calls a repair makes, so a test can make any of them fail, or run them on another machine. */
 export type RepairFs = {
@@ -49,14 +48,11 @@ export type RepairDeps = { git?: GitRunner; fs?: Partial<RepairFs>; probe?: (dir
 export type KeptWorktree = { name: string; registration: string; path: string };
 
 /** Each graph a manifest carries, as the machine it goes to reads it. */
-export function graphsHere(m: Pick<TransferManifestV1, 'sourceRoots' | 'destinationRoots' | 'git'>): ReceivedGraph[] {
-  const map = mapThroughRoots(m);
-  return (m.git ?? []).flatMap((g): ReceivedGraph[] => {
-    let commonDir: string;
-    try { commonDir = map(g.commonDir); } catch { return []; }
+export function graphsHere(m: Pick<TransferManifestV1, 'git'>): ReceivedGraph[] {
+  return (m.git ?? []).map((g): ReceivedGraph => {
     const checkouts = [...(g.main ? [g.main] : []), ...g.worktrees];
     const heads = checkouts.flatMap((c) => (c.head ? [c.head] : []));
-    return [{ id: g.id, commonDir, carried: g.worktrees.map((w) => path.basename(w.gitDir)), tips: [...new Set([...(g.tips ?? []), ...heads, ...g.stash])] }];
+    return { id: g.id, commonDir: g.commonDir, carried: g.worktrees.map((w) => path.basename(w.gitDir)), tips: [...new Set([...(g.tips ?? []), ...heads, ...g.stash])] };
   });
 }
 
@@ -137,17 +133,8 @@ async function adaptRules(common: string, rules: FsRules, git: GitRunner): Promi
 /** What rebuilding one graph did: the registrations it dropped, the checkouts it relinked, and what repair still fixed. */
 export type GraphRepair = { id: string; pruned: string[]; rewritten: string[]; repairReport: string };
 
-/** Where a source path lands on the destination, through the manifest's named path roots. */
-export function mapThroughRoots(m: Pick<TransferManifestV1, 'sourceRoots' | 'destinationRoots'>): (p: string) => string {
-  return (p) => {
-    const portable = holdingRoot(p, m.sourceRoots);
-    if (!portable) throw new PathRootError(`no path root holds ${p}`);
-    return mapPortablePath(portable, m.destinationRoots);
-  };
-}
-
 // a refusal that leaves a graph unrepaired, as against a bug
-const refusal = (e: unknown): e is Error => e instanceof GitFailure || e instanceof PathRootError || typeof (e as NodeJS.ErrnoException).code === 'string';
+const refusal = (e: unknown): e is Error => e instanceof GitFailure || typeof (e as NodeJS.ErrnoException).code === 'string';
 
 const unresolved = (e: Error, entity: HandoverEntity): Blocker => ({ code: 'worktree_unresolved', message: e.message, entity });
 
@@ -291,14 +278,15 @@ export async function validateGraph(graph: GitGraph, map: (p: string) => string,
  * describes blocks: it would arrive without the graph its worktrees need.
  */
 export async function repairGraphs(
-  manifest: Pick<TransferManifestV1, 'sourceRoots' | 'destinationRoots' | 'roots' | 'git'>, deps: RepairDeps & { kept?: Record<string, readonly string[]> } = {},
+  manifest: Pick<TransferManifestV1, 'roots' | 'git'>, deps: RepairDeps & { kept?: Record<string, readonly string[]> } = {},
 ): Promise<{ repairs: GraphRepair[]; blockers: Blocker[] }> {
   const graphs = manifest.git ?? [];
   const described = new Set(graphs.flatMap((g) => [g.commonDir, ...(g.main ? [g.main.path] : []), ...g.worktrees.map((w) => w.path)]));
   const blockers: Blocker[] = manifest.roots
-    .filter((r) => (r.kind === 'repo' || r.kind === 'worktree' || r.kind === 'gitdir') && !described.has(r.sourcePath))
-    .map((r) => ({ code: 'worktree_unresolved', message: `${r.sourcePath}: no Git graph in the manifest describes it`, entity: { kind: 'root', id: r.id } }));
-  const map = mapThroughRoots(manifest);
+    .filter((r) => (r.kind === 'repo' || r.kind === 'worktree' || r.kind === 'gitdir') && !described.has(r.path))
+    .map((r) => ({ code: 'worktree_unresolved', message: `${r.path}: no Git graph in the manifest describes it`, entity: { kind: 'root', id: r.id } }));
+  // every path arrives where the source had it
+  const map = (p: string): string => p;
   const repairs: GraphRepair[] = [];
   for (const g of graphs) {
     const graphDeps = { ...deps, kept: deps.kept?.[g.id] ?? [] };

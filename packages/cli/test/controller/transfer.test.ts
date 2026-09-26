@@ -45,10 +45,10 @@ const scan = async (at: string, excludes: readonly string[] = EXCLUDES): Promise
 const content = (files: readonly TransferFile[]) => files.map((f) => (f.type === 'file' ? { path: f.path, sha256: f.sha256, mode: f.mode } : f));
 
 /** A root as Task 27 hands it over: the manifest's scan of `scanned`, and an ok claim at `claimed`. */
-async function root(o: { id?: string; source: string; claimed: string; scanned?: string; mapped?: string; excludes?: string[] }): Promise<RootEntry> {
+async function root(o: { id?: string; source: string; claimed: string; scanned?: string; excludes?: string[] }): Promise<RootEntry> {
   const excludes = o.excludes ?? EXCLUDES;
   return {
-    kind: 'root', id: o.id ?? 'r_app', rootKind: 'repo', entry: 'dir', sourcePath: o.source, destinationPath: o.mapped ?? o.claimed,
+    kind: 'root', id: o.id ?? 'r_app', rootKind: 'repo', entry: 'dir', path: o.source,
     claim: { excludes, check: { ok: true, path: o.claimed, kind: 'replica' } },
     files: await scan(o.scanned ?? o.source, excludes),
   };
@@ -118,7 +118,7 @@ describe('transfer with a scripted rsync', () => {
     const excludes = [...EXCLUDES, '*.log'];
     const rsync = fakeRsync();
     const master = fakeMaster();
-    const app = await root({ source: src, claimed: '/far/claimed/app', mapped: '/far/mapped/app', excludes });
+    const app = await root({ source: src, claimed: '/far/claimed/app', excludes });
     const s0 = await session({ home, stage: '/far/stage/0', files: ['projects/-app/s.jsonl', 'projects/-app/s/subagents/a.jsonl'] });
     const r = await transfer(options({ entries: [app, s0], master, stateDir: state, deps: { run: rsync.run } }));
 
@@ -146,7 +146,6 @@ describe('transfer with a scripted rsync', () => {
     expect(sessionCopy.some((a) => a.startsWith('--delete') || a.startsWith('--exclude'))).toBe(false);
     for (const call of rsync.calls) {
       expect(call).not.toContain('--delete-excluded');
-      expect(call.join(' ')).not.toContain('/far/mapped');
     }
     // each copy is verified with the same arguments, as a checksum dry run
     expect(rsync.dry().map((c) => c.filter((a) => a !== '--dry-run' && a !== '--checksum'))).toEqual(rsync.real().map((c) => c.filter((a) => a !== '--info=progress2')));
@@ -160,7 +159,7 @@ describe('transfer with a scripted rsync', () => {
     const files = (await scanPath(gitdir, rootMatcher('gitdir', excludes)))!.files;
     expect(files.map((f) => f.path).sort()).toEqual(['HEAD', 'logs/HEAD', 'objects/ab/cd']);
     const entry: RootEntry = {
-      kind: 'root', id: 'r_git', rootKind: 'gitdir', entry: 'dir', sourcePath: gitdir, destinationPath: '/far/app.git',
+      kind: 'root', id: 'r_git', rootKind: 'gitdir', entry: 'dir', path: gitdir,
       claim: { excludes, check: { ok: true, path: '/far/app.git', kind: 'absent' } }, files,
     };
     const r = await transfer(options({ entries: [entry], stateDir: state, deps: { run: rsync.run } }));
@@ -576,7 +575,7 @@ describe.skipIf(noRsync)('transfer with rsync 3 over the ssh master', { timeout:
     const claimed = path.join(tmp(), 'app.git');
     const files = (await scanPath(gitdir, rootMatcher('gitdir', excludes)))!.files;
     const entry: RootEntry = {
-      kind: 'root', id: 'r_git', rootKind: 'gitdir', entry: 'dir', sourcePath: gitdir, destinationPath: claimed,
+      kind: 'root', id: 'r_git', rootKind: 'gitdir', entry: 'dir', path: gitdir,
       claim: { excludes, check: { ok: true, path: claimed, kind: 'absent' } }, files,
     };
     const r = await transfer({ transactionId: 'tx-g', roles: PUSH, master, rsync: RSYNC, stateDir: tmp(), entries: [entry] });

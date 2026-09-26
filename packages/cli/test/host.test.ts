@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,7 +19,8 @@ const MAC = MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f');
 const OTHER_MAC = MachineId.parse('9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f');
 const FLEET = FleetId.parse('11111111-2222-3333-4444-555555555555');
 const TOKEN = 'remote-token-never-printed';
-const HOME = '/home/linus';
+// the far account's home is the Mac's, as the registry's own record names it
+const HOME = os.homedir();
 const BASE = `${HOME}/.local/share/archipelago`;
 const ARCHI = `${BASE}/current/bin/archi`;
 // the PATH the companion's units run with, and so the one its daemon finds the agent CLIs on
@@ -176,7 +178,7 @@ describe('host add', () => {
     expect(entry?.id).toBe(REMOTE);
     expect(entry?.record).toEqual({
       name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64',
-      home: HOME, archiBase: BASE, pathRoots: { home: HOME }, gateway: false,
+      home: HOME, archiBase: BASE, gateway: false,
     });
   });
 
@@ -196,6 +198,21 @@ describe('host add', () => {
       interactiveSsh: (destination) => { seen.push(destination); return Promise.resolve(0); },
     }));
     expect(seen).toEqual(['trift.test']);
+  });
+
+  it('stops at a far home other than this Mac\'s, naming the commands that make an account whose home is this one', async () => {
+    ssh.reply(['archi-home'], { stdout: '/home/linus\nlinus\n' });
+    healthy();
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
+    expect(out.result).toBe('actions');
+    expect(step('home').at(-1)).toEqual({
+      step: 'home', status: 'fail',
+      detail: `/home/linus is linus's home there and ${HOME} is this Mac's; a fleet moves only between accounts with the same home path`,
+      action: `ssh trift.test, then make an account whose home is ${HOME}: sudo mkdir -p ${path.dirname(HOME)}, then sudo useradd -m -d ${HOME} <user> for a new account, or sudo usermod -d ${HOME} -m <user> for an existing one you are not logged in as; then add the machine again at that account`,
+    });
+    expect(ssh.remoteCalls().some((w) => w.includes('setup') || w.includes('cat > "$1"'))).toBe(false);
+    expect(registry.get('trift')).toBeUndefined();
   });
 
   it('stops on a machine that is not Ubuntu', async () => {
@@ -368,7 +385,7 @@ describe('host add', () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.add({
       name: 'trift', ssh: 'other.test', platform: 'linux', arch: 'arm64',
-      home: HOME, archiBase: BASE, pathRoots: { home: HOME }, gateway: false,
+      home: HOME, archiBase: BASE, gateway: false,
     }, REMOTE);
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
     expect(step('name').at(-1)).toMatchObject({ status: 'fail' });
@@ -383,7 +400,7 @@ describe('host doctor', () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.add({
       name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64',
-      home: HOME, archiBase: BASE, pathRoots: { home: HOME }, gateway: false,
+      home: HOME, archiBase: BASE, gateway: false,
     }, REMOTE);
     return registry;
   };
@@ -450,7 +467,7 @@ describe('a host command told to stop', () => {
     const registry = MachineRegistry.load(config);
     registry.add({
       name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64',
-      home: HOME, archiBase: BASE, pathRoots: { home: HOME }, gateway: false,
+      home: HOME, archiBase: BASE, gateway: false,
     }, REMOTE);
     registry.save();
     // the far doctor is still running when the app's Stop arrives
@@ -478,7 +495,7 @@ describe('host upgrade', () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.add({
       name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64',
-      home: HOME, archiBase: BASE, pathRoots: { home: HOME }, gateway: false,
+      home: HOME, archiBase: BASE, gateway: false,
     }, REMOTE);
     return registry;
   };
@@ -519,7 +536,7 @@ esac
     }
     fs.symlinkSync(`${base}/releases/${o.releases.at(-1)![0]}`, `${base}/current`);
     const registry = MachineRegistry.load(path.join(work, 'config'));
-    registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, archiBase: base, pathRoots: { home }, gateway: false }, REMOTE);
+    registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, archiBase: base, gateway: false }, REMOTE);
     ssh.execute({ rsync: '/usr/bin/rsync' });
     return { base, now, registry, close: d.close, archive: companionArchive(work, { signedBy: signer.key, archi: archi('1.2.3', PROTOCOL_VERSION) }) };
   }
@@ -596,7 +613,7 @@ describe('host remove', () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.add({
       name: 'trift', ssh: destination, platform: 'linux', arch: 'arm64',
-      home: HOME, archiBase: BASE, pathRoots: { home: HOME }, gateway: false,
+      home: HOME, archiBase: BASE, gateway: false,
     }, REMOTE);
     return registry;
   };
@@ -735,7 +752,7 @@ describe('host enable', () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.add({
       name: 'trift', ssh: destination, platform: 'linux', arch: 'arm64',
-      home: HOME, archiBase: BASE, pathRoots: { home: HOME }, gateway: false,
+      home: HOME, archiBase: BASE, gateway: false,
     }, REMOTE);
     return registry;
   };

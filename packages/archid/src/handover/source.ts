@@ -120,7 +120,7 @@ async function readHandoverFile(file: string, sfs: FileReads): Promise<{ text?: 
 async function platformBlockers(roots: InventoryRoot[], platform: string, sfs: FileReads): Promise<Blocker[]> {
   const out: Blocker[] = [];
   for (const root of roots.filter((r) => r.kind === 'repo' || r.kind === 'worktree')) {
-    const file = path.join(root.sourcePath, '.archipelago', 'handover.json');
+    const file = path.join(root.path, '.archipelago', 'handover.json');
     const blocked = (message: string) => out.push({ code: 'platform_unsupported', message, entity: { kind: 'root', id: root.id } });
     const { text, problem } = await readHandoverFile(file, sfs);
     if (problem) blocked(problem);
@@ -146,7 +146,7 @@ function platformWarnings(manifest: TransferManifestV1, platform: string): Warni
     }))].sort();
     if (!projects.length) return [];
     const named = `${projects.length === 1 ? 'an Xcode project' : 'Xcode projects'}, ${projects.join(', ')}`;
-    return [{ code: 'platform_heuristic', message: `${r.sourcePath} holds ${named}, which does not build on ${platform}`, entity: { kind: 'root', id: r.id } }];
+    return [{ code: 'platform_heuristic', message: `${r.path} holds ${named}, which does not build on ${platform}`, entity: { kind: 'root', id: r.id } }];
   });
 }
 
@@ -343,7 +343,7 @@ export class SourceHandover {
       return;
     }
     const replicas = new ReplicaStore({ fleetId: manifest.fleet.id, paths: this.d.paths, scanFs: this.d.scanFs });
-    for (const root of replicaRoots(manifest, 'source')) {
+    for (const root of replicaRoots(manifest)) {
       const files = landed.find((x) => x.id === root.id)?.files ?? manifest.roots.find((r) => r.id === root.id)!.files;
       try {
         replicas.seal(root, { transactionId: j.transactionId, generation: j.generation + 1, manifestDigest: j.manifestDigest!, files }, 'source');
@@ -485,11 +485,11 @@ export class SourceHandover {
   }
 
   private maps(p: HandoverMachines): MachineMaps {
-    const { info, pathRoots, fleetHome } = p.destination;
+    const { info, home, fleetHome } = p.destination;
     return {
-      source: { machineId: this.ownership.machineId, pathRoots: p.source.pathRoots, fleetHome: this.d.paths.home },
+      source: { machineId: this.ownership.machineId, home: p.source.home, fleetHome: this.d.paths.home },
       destination: {
-        machineId: info.machineId, pathRoots, fleetHome,
+        machineId: info.machineId, home, fleetHome,
         agentHomes: Object.fromEntries(info.agentAdapters.flatMap((a) => (a.home ? [[a.kind, a.home]] : []))),
       },
     };

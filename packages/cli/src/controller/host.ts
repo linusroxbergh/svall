@@ -3,6 +3,7 @@ import path from 'node:path';
 import { FleetConfig, FleetId, MachineId, MachineRecord } from '@archipelago/protocol';
 import { AGENTS, AGENT_KINDS, versionOk } from '@archipelago/archid/agents';
 import { writeJsonAtomic } from '@archipelago/archid/atomic';
+import { homeCommands } from '@archipelago/archid/handover/inventory';
 import { unitPath } from '@archipelago/archid/linux/setup';
 import { isProfileName, PRIVATE, profileOf } from '@archipelago/archid/profile';
 import { resolvePaths } from '@archipelago/archid/paths';
@@ -313,6 +314,14 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
       const { home, user } = await run.step('home', async () => {
         const remote = await homeProbe(master);
         if (!MachineRecord.shape.home.safeParse(remote.home).success) throw new StepError(`the remote $HOME is not an absolute path: ${JSON.stringify(remote.home)}`);
+        // a fleet's paths travel as they are, so the far account has to live where this Mac's does
+        const mine = d.registry.localMachine().home;
+        if (remote.home !== mine) {
+          throw new StepError(
+            `${remote.home} is ${remote.user}'s home there and ${mine} is this Mac's; a fleet moves only between accounts with the same home path`,
+            onThere(o.ssh, `make an account whose home is ${mine}: ${homeCommands(mine)}; then add the machine again at that account`),
+          );
+        }
         return { value: remote, detail: `${remote.home} for ${remote.user}` };
       });
 
@@ -355,7 +364,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
 
       const record: MachineRecord = {
         name: o.name, ssh: o.ssh, platform: 'linux', arch, home,
-        archiBase: remote.archiBase, pathRoots: { home }, gateway: false,
+        archiBase: remote.archiBase, gateway: false,
       };
       await run.step('probe', () => endToEnd(master, { id: machine, record }));
       await run.step('registry', () => {

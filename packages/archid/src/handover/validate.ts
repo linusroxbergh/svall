@@ -6,12 +6,10 @@ import {
 import { portableRevive } from '../dormancy.js';
 import { markDormant, markSlotDormant } from '../reconcile.js';
 import { diverged, proveReplica, type Divergence } from './divergence.js';
-import { mapThroughRoots } from './git-repair.js';
 import { CONTROL } from './inventory.js';
 import type { ScanFs } from './manifest.js';
-import { exportSnapshot, holdingRoot, holds, mapPortablePath, portablePathValues, realPath, rewrite } from './portable-path.js';
+import { exportSnapshot, holds, realPath } from './portable-path.js';
 import { relativeProblem } from './replicas.js';
-import { placeFile } from './sessions/registry.js';
 
 /** Whether `p` lies inside one of `dirs`, each side read by its real path. */
 export function within(p: string, dirs: readonly string[]): boolean {
@@ -34,40 +32,36 @@ function filesProblem(files: readonly TransferFile[], entry: TransferRoot['entry
   return undefined;
 }
 
-/** The destination path root a manifest maps `sourcePath` through, by name and folder. */
-function mappedRoot(m: TransferManifestV1, sourcePath: string): { name: string; dir: string } | undefined {
-  const name = holdingRoot(sourcePath, m.sourceRoots)?.root;
-  return name !== undefined && Object.hasOwn(m.destinationRoots, name) ? { name, dir: m.destinationRoots[name] } : undefined;
+/** Why a root cannot land at its own path on this machine: a symbolic link on the way leads it elsewhere. */
+export function linkProblem(p: string, entity: HandoverEntity): Blocker | undefined {
+  const at = realPath(p);
+  return at === p ? undefined : {
+    code: 'path_symlinked', entity,
+    message: `${p} leads to ${at} on this machine through a symbolic link; a folder lands at the path it has on the source, the one Git and the agents record, so that link has to go first`,
+  };
 }
 
 /**
  * Every path the manifest and the transfer name, read again here: absolute ones plain, the rest plain relative
- * paths under their root, no control character anywhere, each root where the path roots put it and, by its
- * real path, inside the destination root it is mapped through.
+ * paths under their root, no control character anywhere, and each root at its own path here.
  */
 export function manifestProblems(m: TransferManifestV1, landed: readonly LandedRoot[]): Blocker[] {
   const blockers: Blocker[] = [];
   const bad = (entity: HandoverEntity, message: string) => blockers.push({ code: 'path_unsupported', message, entity });
-  const map = mapThroughRoots(m);
   const ids = new Set<string>();
   for (const r of m.roots) {
     const entity: HandoverEntity = { kind: 'root', id: r.id };
     if (ids.has(r.id)) bad(entity, `the manifest names root ${r.id} twice`);
     ids.add(r.id);
-    const problem = absoluteProblem(r.sourcePath) ?? absoluteProblem(r.destinationPath) ?? filesProblem(r.files, r.entry);
-    if (problem) { bad(entity, `${r.destinationPath}: ${problem}`); continue; }
-    let mapped: string;
-    try { mapped = map(r.sourcePath); } catch (e) { bad(entity, (e as Error).message); continue; }
-    if (mapped !== r.destinationPath) { bad(entity, `${r.destinationPath} is not where the path roots put ${r.sourcePath}, which is ${mapped}`); continue; }
-    const root = mappedRoot(m, r.sourcePath)!;
-    if (!r.foldedInto && !within(r.destinationPath, [root.dir])) {
-      bad(entity, `${r.destinationPath} leads to ${realPath(r.destinationPath)}, outside the path root ${root.name} (${root.dir})`);
-    }
+    const problem = absoluteProblem(r.path) ?? filesProblem(r.files, r.entry);
+    if (problem) { bad(entity, `${r.path}: ${problem}`); continue; }
+    const linked = r.foldedInto ? undefined : linkProblem(r.path, entity);
+    if (linked) blockers.push(linked);
   }
   for (const x of landed) {
     const root = m.roots.find((r) => r.id === x.id);
     const problem = root ? filesProblem(x.files, root.entry) : 'is no root the manifest carries';
-    if (problem) bad({ kind: 'root', id: x.id }, `what the transfer verified in ${root?.destinationPath ?? x.id}: ${problem}`);
+    if (problem) bad({ kind: 'root', id: x.id }, `what the transfer verified in ${root?.path ?? x.id}: ${problem}`);
   }
   for (const s of m.sessions) {
     const problem = absoluteProblem(s.destinationHome) ?? absoluteProblem(s.destinationPath) ?? filesProblem(s.files, 'dir');
@@ -83,14 +77,11 @@ export function manifestProblems(m: TransferManifestV1, landed: readonly LandedR
 
 /** Every place a Git repair writes, by its real path inside a root this handover carried here. */
 export function gitProblems(m: TransferManifestV1, carried: readonly string[]): Blocker[] {
-  const map = mapThroughRoots(m);
   const blockers: Blocker[] = [];
   for (const g of m.git ?? []) {
     const entity: HandoverEntity = { kind: 'git', id: g.id };
     for (const p of [g.commonDir, ...(g.main ? [g.main.path, g.main.gitDir] : []), ...g.worktrees.flatMap((w) => [w.path, w.gitDir])]) {
-      let at: string;
-      try { at = map(p); } catch (e) { blockers.push({ code: 'worktree_unresolved', message: (e as Error).message, entity }); continue; }
-      if (!within(at, carried)) blockers.push({ code: 'path_unsupported', message: `${at} lies outside every root this handover carried here`, entity });
+      if (!within(p, carried)) blockers.push({ code: 'path_unsupported', message: `${p} lies outside every root this handover carried here`, entity });
     }
   }
   return blockers;
@@ -113,8 +104,7 @@ export function sessionProblems(m: TransferManifestV1, homes: Partial<Record<Age
       blockers.push({ code: 'incompatible_adapter', message: `session ${s.sessionId} has no place on this machine`, entity });
       continue;
     }
-    const [from, to] = [path.posix.relative(s.sourceHome, s.sourcePath), path.posix.relative(home, s.destinationPath)];
-    const out = [s.destinationPath, ...s.files.map((f) => path.posix.join(home, placeFile(f.path, from, to)))].find((p) => !within(p, [home]));
+    const out = [s.destinationPath, ...s.files.map((f) => path.posix.join(home, f.path))].find((p) => !within(p, [home]));
     if (out) blockers.push({ code: 'path_unsupported', message: `${out} leaves ${home}`, entity });
   }
   return blockers;
@@ -134,15 +124,14 @@ export async function landedProblem(
   return { code: 'destination_diverged', message: `${at} no longer holds what the transfer verified: ${counted(divergence)}`, entity: { kind: 'root', id: root.id } };
 }
 
-export type Imported = { state: FleetState; fleet: FleetConfig; blockers: Blocker[] };
+export type Imported = { state: FleetState; fleet: FleetConfig };
 
 /**
- * The manifest's snapshot and fleet.json as this machine runs them, at the current schema: every registered
- * path rewritten through the named roots and held inside its root by real path, and every terminal dormant
- * with no tmux ids and the command that resumes its agent. Transcripts are placed by the sessions carrying them.
+ * The manifest's snapshot and fleet.json as this machine runs them, at the current schema: every path as the
+ * source recorded it, and every terminal dormant with no tmux ids and the command that resumes its agent.
+ * Transcripts are placed by the sessions carrying them.
  */
 export function importState(m: TransferManifestV1): Imported {
-  const blockers: Blocker[] = [];
   const state = exportSnapshot(FleetState.parse(m.snapshot));
   for (const c of Object.values(state.characters)) {
     // a terminal keeps the resume it went dormant with, launch flags and all, while it still has the agent whose session travels
@@ -152,27 +141,6 @@ export function importState(m: TransferManifestV1): Imported {
     if (c.second) markSlotDormant(c.second);
     if (c.second && keptSecond) c.second.revive = keptSecond;
   }
-  const fleet = FleetConfig.parse(structuredClone(m.fleet));
-  const docs = { FleetState: state, FleetConfig: fleet };
-  for (const v of portablePathValues(docs, m.sourceRoots.home)) {
-    if (v.form === 'transcript') continue;
-    const entity: HandoverEntity | undefined = v.field.startsWith('FleetState.characters.') ? { kind: 'character', id: String(v.pointer[1]) } : undefined;
-    const root = mappedRoot(m, v.path);
-    if (!root) {
-      blockers.push({ code: 'path_root_missing', message: `no path root of this machine holds ${v.path}`, ...(entity && { entity }) });
-      continue;
-    }
-    let mapped: string;
-    try { mapped = mapPortablePath(holdingRoot(v.path, m.sourceRoots)!, m.destinationRoots); } catch (e) {
-      blockers.push({ code: 'path_unsupported', message: (e as Error).message, ...(entity && { entity }) });
-      continue;
-    }
-    if (!within(mapped, [root.dir])) {
-      blockers.push({ code: 'path_unsupported', message: `${mapped} leads to ${realPath(mapped)}, outside the path root ${root.name} (${root.dir})`, ...(entity && { entity }) });
-      continue;
-    }
-    rewrite(docs, v, mapped, m.destinationRoots.home);
-  }
-  return { state: FleetState.parse(state), fleet: FleetConfig.parse(fleet), blockers };
+  return { state: FleetState.parse(state), fleet: FleetConfig.parse(structuredClone(m.fleet)) };
 }
 

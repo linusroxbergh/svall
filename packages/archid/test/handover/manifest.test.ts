@@ -7,10 +7,10 @@ import { emptyState, FleetConfig, type Character, type FleetState, type GitCheck
 import { gitIndexDigest } from '../../src/handover/git-graph.js';
 import { canonicalDigest, canonicalJson, hashStream } from '../../src/handover/hash.js';
 import { buildInventory, DEFAULT_EXCLUDES, GIT_DIR_KEEP_RULES, GIT_KEEP_RULES, type Inventory, type MachineMaps } from '../../src/handover/inventory.js';
-import { buildManifest, manifestDigest, readManifest, realScanFs, spaceNeed, summarize, writeManifest, type ScanFs } from '../../src/handover/manifest.js';
+import { buildManifest, landingFolder, manifestDigest, readManifest, realScanFs, spaceNeed, summarize, writeManifest, type ScanFs } from '../../src/handover/manifest.js';
 
 const made: string[] = [];
-const tmp = (): string => { const d = fs.mkdtempSync('/tmp/archi-t-'); made.push(d); return d; };
+const tmp = (): string => { const d = fs.realpathSync(fs.mkdtempSync('/tmp/archi-t-')); made.push(d); return d; };
 afterEach(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
 
 const MAC = '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId;
@@ -73,8 +73,8 @@ function seed() {
   fs.symlinkSync('/nowhere/at/all', path.join(repo, 'dangling'));
   fs.writeFileSync(path.join(mac, '.archipelago/.env'), 'ANTHROPIC_API_KEY=x\n');
   const maps: MachineMaps = {
-    source: { machineId: MAC, pathRoots: { home: mac }, fleetHome: path.join(mac, '.archipelago') },
-    destination: { machineId: TRIFT, pathRoots: { home: '/home/linus' }, fleetHome: '/home/linus/.archipelago', agentHomes: { claude: '/home/linus/.claude', codex: '/home/linus/.codex' } },
+    source: { machineId: MAC, home: mac, fleetHome: path.join(mac, '.archipelago') },
+    destination: { machineId: TRIFT, home: mac, fleetHome: path.join(mac, '.archipelago'), agentHomes: { claude: path.join(mac, '.claude'), codex: path.join(mac, '.codex') } },
   };
   const state = emptyState();
   state.characters = {
@@ -95,8 +95,8 @@ describe('buildManifest', () => {
     const s = seed();
     const { manifest, blockers } = await buildManifest(inventory(s), HEADER);
     expect(blockers).toEqual([]);
-    const repo = manifest.roots.find((r) => r.sourcePath === s.repo)!;
-    expect(repo).toMatchObject({ kind: 'repo', entry: 'dir', destinationPath: '/home/linus/app' });
+    const repo = manifest.roots.find((r) => r.path === s.repo)!;
+    expect(repo).toMatchObject({ kind: 'repo', entry: 'dir' });
     expect(repo.files.map((f) => f.path)).toEqual(['.claude/worktrees/w1/wt.txt', '.env', 'dangling', 'entry', 'run.sh', 'src/index.ts']);
     const run = fs.statSync(path.join(s.repo, 'run.sh'));
     expect(repo.files.find((f) => f.path === 'run.sh')).toEqual({
@@ -105,16 +105,16 @@ describe('buildManifest', () => {
     expect(repo.files.find((f) => f.path === 'entry')).toEqual({ type: 'symlink', path: 'entry', target: 'src/index.ts' });
     expect(repo.files.find((f) => f.path === 'dangling')).toEqual({ type: 'symlink', path: 'dangling', target: '/nowhere/at/all' });
     // the nested worktree is carried inside its main checkout and still listed for its own repair
-    expect(manifest.roots.find((r) => r.sourcePath === s.nested)).toEqual({
-      id: expect.any(String), kind: 'worktree', entry: 'dir', sourcePath: s.nested, destinationPath: '/home/linus/app/.claude/worktrees/w1', foldedInto: repo.id, files: [],
+    expect(manifest.roots.find((r) => r.path === s.nested)).toEqual({
+      id: expect.any(String), kind: 'worktree', entry: 'dir', path: s.nested, foldedInto: repo.id, files: [],
     });
+    // the transcript lands where it was, under the same agent home
     expect(manifest.sessions).toEqual([{
       characterId: 'w1', agent: 'claude', sessionId: SESSION, sourcePath: s.transcript, adapter: 1,
-      sourceHome: path.join(s.mac, '.claude'), destinationHome: '/home/linus/.claude',
-      destinationPath: `/home/linus/.claude/projects/-home-linus-app--claude-worktrees-w1/${SESSION}.jsonl`,
+      sourceHome: path.join(s.mac, '.claude'), destinationHome: path.join(s.mac, '.claude'), destinationPath: s.transcript,
       files: [expect.objectContaining({ type: 'file', path: `projects/app/${SESSION}.jsonl`, sha256: sha(LINE(s.nested)) })],
     }]);
-    expect(manifest).toMatchObject({ version: 1, transactionId: 't1', generation: 4, fromMachineId: MAC, toMachineId: TRIFT, fleet: FLEET });
+    expect(manifest).toMatchObject({ version: 1, transactionId: 't1', generation: 4, fromMachineId: MAC, toMachineId: TRIFT, home: s.mac, fleet: FLEET });
   });
 
   it('warns that repository and fleet .env files travel, and carries the fleet one only when asked', async () => {
@@ -126,7 +126,7 @@ describe('buildManifest', () => {
     const withEnv = await buildManifest(inventory(s, fleet), HEADER);
     expect(withEnv.warnings.map((w) => w.code)).toEqual(['env_file', 'env_file']);
     expect(withEnv.manifest.roots.find((r) => r.kind === 'env')).toMatchObject({
-      entry: 'file', destinationPath: '/home/linus/.archipelago/.env', files: [expect.objectContaining({ path: '', sha256: sha('ANTHROPIC_API_KEY=x\n') })],
+      entry: 'file', path: path.join(s.mac, '.archipelago/.env'), files: [expect.objectContaining({ path: '', sha256: sha('ANTHROPIC_API_KEY=x\n') })],
     });
   });
 
@@ -214,8 +214,8 @@ function seedGit() {
   git(repo, 'branch', 'build/x');
   git(repo, 'worktree', 'add', '-q', worktree, '-b', 'wt');
   const maps: MachineMaps = {
-    source: { machineId: MAC, pathRoots: { home: mac }, fleetHome: path.join(mac, '.archipelago') },
-    destination: { machineId: TRIFT, pathRoots: { home: '/home/linus' }, fleetHome: '/home/linus/.archipelago' },
+    source: { machineId: MAC, home: mac, fleetHome: path.join(mac, '.archipelago') },
+    destination: { machineId: TRIFT, home: mac, fleetHome: path.join(mac, '.archipelago') },
   };
   const state = emptyState();
   state.characters = {
@@ -230,11 +230,11 @@ describe('a Git repository', () => {
     const g = seedGit();
     const { manifest, blockers } = await buildManifest(buildInventory(g.state, { fleet: FLEET }, g.maps), HEADER);
     expect(blockers).toEqual([]);
-    const paths = manifest.roots.find((r) => r.sourcePath === g.repo)!.files.map((f) => f.path);
+    const paths = manifest.roots.find((r) => r.path === g.repo)!.files.map((f) => f.path);
     expect(paths).toEqual(expect.arrayContaining(['.git/refs/heads/build/x', '.git/worktrees/build/HEAD', '.git/worktrees/build/index', '.git/worktrees/build/gitdir']));
     // the working tree's own build output is still a cache
     expect(paths).not.toContain('build/out.js');
-    expect(manifest.roots.find((r) => r.sourcePath === g.worktree)!.files.map((f) => f.path)).toContain('.git');
+    expect(manifest.roots.find((r) => r.path === g.worktree)!.files.map((f) => f.path)).toContain('.git');
   });
 
   it.skipIf(!hasGit || !hasRsync)('lists exactly what rsync copies with the git keep rules ahead of the excludes (needs git and rsync)', async () => {
@@ -244,7 +244,7 @@ describe('a Git repository', () => {
     fs.writeFileSync(rules, [...GIT_KEEP_RULES, ...DEFAULT_EXCLUDES].join('\n') + '\n');
     const copied = execFileSync('rsync', ['-a', '--dry-run', '--out-format=%n', `--exclude-from=${rules}`, `${g.repo}/`, path.join(g.base, 'dst/')], { encoding: 'utf8' })
       .split('\n').filter((l) => l && !l.endsWith('/'));
-    expect(copied.sort()).toEqual(manifest.roots.find((r) => r.sourcePath === g.repo)!.files.map((f) => f.path).sort());
+    expect(copied.sort()).toEqual(manifest.roots.find((r) => r.path === g.repo)!.files.map((f) => f.path).sort());
   });
 });
 
@@ -274,8 +274,8 @@ describe('the discovered Git graphs', () => {
     const { manifest, warnings } = await buildManifest(buildInventory(s.state, { fleet: FLEET }, s.maps, b.discovery), HEADER);
     expect(manifest.git).toEqual(b.discovery.graphs);
     expect(warnings).toContainEqual(b.discovery.warnings[0]);
-    const root = manifest.roots.find((r) => r.sourcePath === b.dir)!;
-    expect(root).toMatchObject({ kind: 'gitdir', destinationPath: '/home/linus/tool.git' });
+    const root = manifest.roots.find((r) => r.path === b.dir)!;
+    expect(root).toMatchObject({ kind: 'gitdir', path: b.dir });
     expect(root.files.map((f) => f.path)).toEqual(['HEAD', 'objects/node_modules/ab', 'refs/heads/build/x', 'worktrees/dist/HEAD']);
   });
 
@@ -299,8 +299,8 @@ describe('the discovered Git graphs', () => {
     const h = holding(s);
     const { manifest, blockers } = await buildManifest(buildInventory(s.state, { fleet: FLEET }, s.maps, h.discovery), HEADER);
     expect(blockers).toEqual([]);
-    const root = manifest.roots.find((r) => r.sourcePath === h.dir)!;
-    expect(manifest.roots.find((r) => r.sourcePath === h.main)).toMatchObject({ kind: 'worktree', foldedInto: root.id, files: [] });
+    const root = manifest.roots.find((r) => r.path === h.dir)!;
+    expect(manifest.roots.find((r) => r.path === h.main)).toMatchObject({ kind: 'worktree', foldedInto: root.id, files: [] });
     expect(root.files.map((f) => f.path)).toEqual([
       'HEAD', 'config', 'logs/refs/heads/build/x', 'main/.git', 'main/src.ts', 'refs/heads/build/x', 'worktrees/main/HEAD', 'worktrees/main/index',
     ]);
@@ -314,7 +314,7 @@ describe('the discovered Git graphs', () => {
     fs.writeFileSync(rules, [...GIT_KEEP_RULES, ...GIT_DIR_KEEP_RULES, ...DEFAULT_EXCLUDES].join('\n') + '\n');
     const copied = execFileSync('rsync', ['-a', '--dry-run', '--out-format=%n', `--exclude-from=${rules}`, `${h.dir}/`, path.join(s.base, 'dst/')], { encoding: 'utf8' })
       .split('\n').filter((l) => l && !l.endsWith('/'));
-    expect(copied.sort()).toEqual(manifest.roots.find((r) => r.sourcePath === h.dir)!.files.map((f) => f.path).sort());
+    expect(copied.sort()).toEqual(manifest.roots.find((r) => r.path === h.dir)!.files.map((f) => f.path).sort());
   });
 
   it('blocks a Git directory carried on its own that is gone', async () => {
@@ -329,7 +329,7 @@ describe('the discovered Git graphs', () => {
   it.skipIf(!hasGit)('names a Git index by its staged entries as well as its bytes (needs git)', async () => {
     const g = seedGit();
     const { manifest } = await buildManifest(buildInventory(g.state, { fleet: FLEET }, g.maps), HEADER);
-    const files = manifest.roots.find((r) => r.sourcePath === g.repo)!.files;
+    const files = manifest.roots.find((r) => r.path === g.repo)!.files;
     const index = files.find((f) => f.path === '.git/index');
     expect(index).toMatchObject({ gitIndex: gitIndexDigest(fs.readFileSync(path.join(g.repo, '.git/index'))) });
     expect(files.find((f) => f.path === '.git/worktrees/build/index')).toHaveProperty('gitIndex');
@@ -346,7 +346,18 @@ describe('what a manifest adds up to', () => {
     const bytes = files.reduce((n, f) => n + (f.type === 'file' ? f.size : 0), 0);
     expect(summarize(manifest)).toEqual({ digest, roots: carried.length, files: files.length, bytes, sessions: 1 });
     const blocks = files.filter((f) => f.type === 'file' && f.size > 0).length;
-    expect(spaceNeed(manifest)).toEqual({ home: blocks * 4096 });
+    expect(spaceNeed(manifest)).toEqual({ [s.mac]: blocks * 4096 });
+  });
+
+  it('counts a root outside the home against the folder it lands in, and a session against its agent home\'s', async () => {
+    const s = seed();
+    const { manifest } = await buildManifest(inventory(s), HEADER);
+    const block = (n: number) => ({ type: 'file' as const, path: `f${n}`, mode: 0o644, size: 1, mtimeMs: 0, sha256: 'a'.repeat(64) });
+    const outside = { ...manifest, roots: [{ id: 'r_x', kind: 'cwd' as const, entry: 'dir' as const, path: '/Volumes/work/x', files: [block(1), block(2)] }],
+      sessions: manifest.sessions.map((x) => ({ ...x, destinationHome: '/opt/claude' })) };
+    expect(landingFolder('/Volumes/work/x', s.mac)).toBe('/Volumes/work');
+    expect(landingFolder(path.join(s.mac, 'deep/down/x'), s.mac)).toBe(s.mac);
+    expect(spaceNeed(outside)).toEqual({ '/Volumes/work': 2 * 4096, '/opt': 4096 });
   });
 });
 

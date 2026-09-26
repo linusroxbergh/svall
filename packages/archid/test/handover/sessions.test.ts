@@ -7,10 +7,11 @@ import { buildInventory, type MachineMaps } from '../../src/handover/inventory.j
 import { realStages } from '../../src/handover/durable.js';
 import { buildManifest } from '../../src/handover/manifest.js';
 import { importState } from '../../src/handover/validate.js';
-import { claudeAdapter, claudeProjectSlug } from '../../src/handover/sessions/claude.js';
+import { claudeAdapter } from '../../src/handover/sessions/claude.js';
 import { codexAdapter } from '../../src/handover/sessions/codex.js';
+import { pathMap } from '../../src/handover/sessions/records.js';
 import {
-  adapterFor, agentAdapters, agentBlockers, installSession, placeFile, placeSessions, placeTranscripts, probeAgent, realInstallFs, sessionPathMap,
+  adapterFor, agentAdapters, agentBlockers, installSession, placeTranscripts, probeAgent, realInstallFs, sessionPathMap,
   type AgentProbe, type AgentRun, type InstallFs,
 } from '../../src/handover/sessions/registry.js';
 import { repairBrief } from '../../src/handover/sessions/repair.js';
@@ -50,8 +51,8 @@ const CODEX = [
   { version: '0.156.1', file: 'sessions/2026/09/23/rollout-2026-09-23T08-44-52-01a0cd02-8ea0-75c1-89b3-89718ecbd91f.jsonl', id: '01a0cd02-8ea0-75c1-89b3-89718ecbd91f', from: '/home/source', to: '/Users/target' },
 ] as const;
 
-const mapFor = (from: string, to: string, agentHome: string): PathMap =>
-  sessionPathMap({ sourceRoots: { home: from }, destinationRoots: { home: to }, sourceHome: `${from}/${agentHome}`, destinationHome: `${to}/${agentHome}` });
+// what an adapter's rewrite does with a map that moves the home and the agent home in it
+const mapFor = (from: string, to: string, agentHome: string): PathMap => pathMap([[from, to], [`${from}/${agentHome}`, `${to}/${agentHome}`]]);
 
 describe('the adapter registry', () => {
   it('knows every Claude Code and Codex release in use, and no other', () => {
@@ -61,18 +62,12 @@ describe('the adapter registry', () => {
     for (const v of ['0.142.0-alpha.6', '0.142.0', '0.155.0', '0.157.0']) expect(adapterFor('codex', v)).toBeUndefined();
   });
 
-  it('maps a path through the agent homes before the path roots, and leaves one no root holds', () => {
-    const map = sessionPathMap({
-      sourceRoots: { home: '/Users/s', work: '/Volumes/w' }, destinationRoots: { home: '/home/t' },
-      sourceHome: '/Users/s/.claude-work', destinationHome: '/home/t/.claude',
-    });
-    expect(map('/Users/s/.claude-work/plans/p.md')).toBe('/home/t/.claude/plans/p.md');
-    expect(map('/Users/s/code/app/')).toBe('/home/t/code/app/');
-    expect(map('/Users/s')).toBe('/home/t');
-    expect(map('/Users/sx/app')).toBeUndefined();
-    // a root the destination does not declare maps nothing, and inventory has already blocked what lives there
-    expect(map('/Volumes/w/app')).toBeUndefined();
-    expect(map('/private/tmp/x')).toBeUndefined();
+  it('moves a path under the source agent home to the destination\'s, and no other path', () => {
+    const map = sessionPathMap({ sourceHome: '/Users/s/.claude-work', destinationHome: '/Users/s/.claude' });
+    expect(map('/Users/s/.claude-work/plans/p.md')).toBe('/Users/s/.claude/plans/p.md');
+    expect(map('/Users/s/code/app')).toBeUndefined();
+    expect(map('/Users/s/.claude-workbench/x')).toBeUndefined();
+    expect(sessionPathMap({ sourceHome: '/Users/s/.claude' })('/Users/s/.claude/x')).toBeUndefined();
   });
 
   it('reports each installed CLI with the adapter that reads its sessions, 0 for none, and its login and hooks', () => {
@@ -152,21 +147,6 @@ describe('Claude Code sessions', () => {
     const sealed = path.join(h, 'projects', slug, id, 'subagents');
     fs.chmodSync(sealed, 0o000);
     try { expect(await refusal(transcript)).toBe('path_unsupported'); } finally { fs.chmodSync(sealed, 0o755); }
-  });
-
-  it('places the transcript under the project folder Claude Code derives from the cwd it resumes in', () => {
-    expect(claudeAdapter.destination('projects/-Users-source-work-demo/x.jsonl', 'x', '/home/target/work/demo')).toBe('projects/-home-target-work-demo/x.jsonl');
-    expect(claudeProjectSlug('/home/t/.archi-probe/my_dir')).toBe('-home-t--archi-probe-my-dir');
-    // past 200 characters Claude Code cuts the name and adds a hash of the whole path
-    const long = `/home/t/${'deep/'.repeat(45)}end`;
-    expect(claudeProjectSlug(long)).toBe(`${long.replace(/[^A-Za-z0-9]/g, '-').slice(0, 200)}-8y1vbo`);
-  });
-
-  it('carries sidecars beside the transcript into the new project folder', () => {
-    const from = 'projects/-Users-source-work-demo/s1.jsonl';
-    const to = 'projects/-home-target-work-demo/s1.jsonl';
-    expect(placeFile(from, from, to)).toBe(to);
-    expect(placeFile('projects/-Users-source-work-demo/s1/subagents/a.jsonl', from, to)).toBe('projects/-home-target-work-demo/s1/subagents/a.jsonl');
   });
 
   describe.each(CLAUDE)('as Claude Code $version wrote it', ({ version, id, slug, from, to, agent }) => {
@@ -289,7 +269,6 @@ describe('Codex sessions', () => {
     fs.writeFileSync(path.join(h, 'session_index.jsonl'), `{"id":"${id}","thread_name":"x"}\n`);
     fs.writeFileSync(path.join(h, 'auth.json'), '{}');
     expect(await codexAdapter.discover(path.join(h, file), id, fsOf)).toEqual({ home: h, transcript: file, files: [file] });
-    expect(codexAdapter.destination(file, id, '/anywhere')).toBe(file);
   });
 
   it('refuses a rollout that is missing, another session, archived, loose, or a link', async () => {
@@ -392,7 +371,7 @@ function char(id: string, o: Partial<Character>): Character {
  * A source machine whose home is a temp folder: one character running the real 2.1.280 Claude session in its
  * first terminal and the real 0.155.1 Codex rollout in its second, both made under a home of `/Users/source`.
  */
-function machines(agentHomes: MachineMaps['destination']['agentHomes'] = { claude: '/home/target/.claude-alt', codex: '/home/target/.codex' }) {
+function machines(homes?: MachineMaps['destination']['agentHomes']) {
   const base = tmp();
   const mac = path.join(base, 'Users/source');
   const work = path.join(mac, 'work/demo');
@@ -404,9 +383,10 @@ function machines(agentHomes: MachineMaps['destination']['agentHomes'] = { claud
     const p = path.join(mac, f);
     fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replaceAll('/Users/source', mac));
   }
+  const agentHomes = homes ?? { claude: path.join(mac, '.claude'), codex: path.join(mac, '.codex') };
   const maps: MachineMaps = {
-    source: { machineId: MAC, pathRoots: { home: mac }, fleetHome: path.join(mac, '.archipelago') },
-    destination: { machineId: TRIFT, pathRoots: { home: '/home/target' }, fleetHome: '/home/target/.archipelago', agentHomes },
+    source: { machineId: MAC, home: mac, fleetHome: path.join(mac, '.archipelago') },
+    destination: { machineId: TRIFT, home: mac, fleetHome: path.join(mac, '.archipelago'), agentHomes },
   };
   const state = emptyState();
   state.characters.c1 = char('c1', {
@@ -418,7 +398,7 @@ function machines(agentHomes: MachineMaps['destination']['agentHomes'] = { claud
 }
 
 describe('sessions in the transfer manifest', () => {
-  it('lists every file of each session apart from the roots, and where each transcript will land', async () => {
+  it('lists every file of each session apart from the roots, and lands each transcript where it was', async () => {
     const m = machines();
     const { manifest, blockers } = await buildManifest(buildInventory(m.state, { fleet: FLEET }, m.maps), { generation: 1 });
     expect(blockers).toEqual([]);
@@ -426,8 +406,7 @@ describe('sessions in the transfer manifest', () => {
     const { id, slug, agent } = CLAUDE[0];
     expect(claude).toMatchObject({
       characterId: 'c1', agent: 'claude', sessionId: id, adapter: 1,
-      sourceHome: path.join(m.mac, '.claude'), destinationHome: '/home/target/.claude-alt',
-      destinationPath: `/home/target/.claude-alt/projects/-home-target-work-demo/${id}.jsonl`,
+      sourceHome: path.join(m.mac, '.claude'), destinationHome: path.join(m.mac, '.claude'), destinationPath: claude.sourcePath,
     });
     expect(claude.files.map((f) => f.path)).toEqual([
       `projects/${slug}/${id}.jsonl`, `projects/${slug}/${id}/subagents/${agent}.jsonl`, `projects/${slug}/${id}/subagents/${agent}.meta.json`,
@@ -436,14 +415,14 @@ describe('sessions in the transfer manifest', () => {
     expect(claude.files[0]).toMatchObject({ type: 'file', size: transcript.length, sha256: sha(transcript) });
     expect(codex).toMatchObject({
       characterId: 'c1', term: 2, agent: 'codex', adapter: 1, sourceHome: path.join(m.mac, '.codex'),
-      destinationPath: `/home/target/.codex/${CODEX[0].file}`, files: [expect.objectContaining({ path: CODEX[0].file })],
+      destinationPath: path.join(m.mac, '.codex', CODEX[0].file), files: [expect.objectContaining({ path: CODEX[0].file })],
     });
     // no session file becomes a root, and nothing under an agent home is mirrored
-    expect(manifest.roots.map((r) => r.sourcePath)).toEqual([m.work]);
+    expect(manifest.roots.map((r) => r.path)).toEqual([m.work]);
   });
 
   it('blocks a session a supported release did not write, and one the destination has no home for', async () => {
-    const m = machines({ codex: '/home/target/.codex' });
+    const m = machines({ codex: '/Users/target/.codex' });
     const transcript = m.state.characters.c1.agent!.transcriptPath!;
     fs.writeFileSync(transcript, fs.readFileSync(transcript, 'utf8').replaceAll('"version":"2.1.280"', '"version":"2.1.290"'));
     const { manifest, blockers } = await buildManifest(buildInventory(m.state, { fleet: FLEET }, m.maps), { generation: 1 });
@@ -483,70 +462,70 @@ describe('a session arriving on the destination', () => {
       for (const f of s.files) fs.cpSync(path.join(s.sourceHome!, f.path), path.join(dir, f.path));
       return dir;
     };
-    const roots = { sourceRoots: manifest.sourceRoots, destinationRoots: manifest.destinationRoots };
-    return { m, manifest, stage, roots, claude: manifest.sessions[0], codex: manifest.sessions[1] };
+    return { m, manifest, stage, claude: manifest.sessions[0], codex: manifest.sessions[1] };
   }
 
-  it('lands under the destination agent home in its lookup layout, rewritten for that machine', async () => {
-    const { claude, codex, stage, roots } = await arrival();
-    const { id, agent } = CLAUDE[0];
-    expect(installSession(claude, stage(claude), roots)).toEqual({ transcriptPath: claude.destinationPath });
-    const project = path.join(claude.destinationHome!, 'projects/-home-target-work-demo');
-    expect(rows(fs.readFileSync(path.join(project, `${id}.jsonl`))).filter((r) => r.cwd).every((r) => r.cwd === '/home/target/work/demo')).toBe(true);
+  it('lands under the destination agent home at the place it had under the source\'s, every record naming the folders it named', async () => {
+    const { m, claude, codex, stage } = await arrival();
+    const { id, slug, agent } = CLAUDE[0];
+    expect(installSession(claude, stage(claude))).toEqual({ transcriptPath: claude.destinationPath });
+    const project = path.join(claude.destinationHome!, 'projects', slug);
+    expect(claude.destinationPath).toBe(path.join(project, `${id}.jsonl`));
+    expect(rows(fs.readFileSync(path.join(project, `${id}.jsonl`))).filter((r) => r.cwd).every((r) => r.cwd === m.work)).toBe(true);
     expect(fs.existsSync(path.join(project, id, 'subagents', `${agent}.meta.json`))).toBe(true);
     expect(fs.statSync(path.join(project, `${id}.jsonl`)).mode & 0o777).toBe(0o600);
-    expect(installSession(codex, stage(codex), roots)).toEqual({ transcriptPath: `${codex.destinationHome}/${CODEX[0].file}` });
-    expect(rows(fs.readFileSync(codex.destinationPath!))[0].payload.cwd).toBe('/home/target/work/demo');
+    expect(installSession(codex, stage(codex))).toEqual({ transcriptPath: `${codex.destinationHome}/${CODEX[0].file}` });
+    expect(rows(fs.readFileSync(codex.destinationPath!))[0].payload.cwd).toBe(m.work);
   });
 
   it('keeps a copy already there when it is the same, and replaces one the incoming session only adds to', async () => {
-    const { claude, stage, roots } = await arrival();
+    const { claude, stage } = await arrival();
     const staged = stage(claude);
-    installSession(claude, staged, roots);
+    installSession(claude, staged);
     const placed = claude.destinationPath!;
     const full = fs.readFileSync(placed);
-    installSession(claude, staged, roots);
+    installSession(claude, staged);
     expect(fs.readFileSync(placed)).toEqual(full);
     // a round trip: the destination still holds the older copy it handed away, which the session has since grown past
     fs.writeFileSync(placed, full.subarray(0, full.indexOf('\n', full.length / 2) + 1));
-    installSession(claude, staged, roots);
+    installSession(claude, staged);
     expect(fs.readFileSync(placed)).toEqual(full);
   });
 
   it('refuses a copy the destination continued on its own, and writes nothing', async () => {
-    const { claude, stage, roots } = await arrival();
+    const { claude, stage } = await arrival();
     const staged = stage(claude);
-    installSession(claude, staged, roots);
+    installSession(claude, staged);
     const placed = claude.destinationPath!;
     fs.appendFileSync(placed, '{"type":"user","version":"2.1.280","message":{"content":"a turn taken here"}}\n');
     const meta = path.join(path.dirname(placed), CLAUDE[0].id, 'subagents', `${CLAUDE[0].agent}.meta.json`);
     fs.rmSync(meta);
     const before = fs.readFileSync(placed);
-    expect(() => installSession(claude, staged, roots)).toThrow(expect.objectContaining({ code: 'destination_diverged' }));
+    expect(() => installSession(claude, staged)).toThrow(expect.objectContaining({ code: 'destination_diverged' }));
     expect(fs.readFileSync(placed)).toEqual(before);
     expect(fs.existsSync(meta)).toBe(false);
   });
 
   it('refuses staged bytes that are not the ones the manifest names', async () => {
-    const { codex, stage, roots } = await arrival();
+    const { codex, stage } = await arrival();
     const staged = stage(codex);
     fs.appendFileSync(path.join(staged, codex.files[0].path), '\n');
-    expect(() => installSession(codex, staged, roots)).toThrow(/manifest/);
+    expect(() => installSession(codex, staged)).toThrow(/manifest/);
     expect(fs.existsSync(codex.destinationPath!)).toBe(false);
   });
 
   it('refuses a manifest that names a file outside the agent home', async () => {
-    const { codex, stage, roots } = await arrival();
+    const { codex, stage } = await arrival();
     const staged = stage(codex);
-    expect(() => installSession({ ...codex, files: [{ ...codex.files[0], path: '../../escape.jsonl' }] }, staged, roots))
+    expect(() => installSession({ ...codex, files: [{ ...codex.files[0], path: '../../escape.jsonl' }] }, staged))
       .toThrow(expect.objectContaining({ code: 'path_unsupported' }));
-    expect(() => installSession({ ...codex, destinationPath: '/elsewhere/rollout.jsonl' }, staged, roots))
+    expect(() => installSession({ ...codex, destinationPath: '/elsewhere/rollout.jsonl' }, staged))
       .toThrow(expect.objectContaining({ code: 'path_unsupported' }));
     expect(fs.existsSync(codex.destinationPath!)).toBe(false);
   });
 
   it("writes nothing when a manifest names a file outside its session's own layout", async () => {
-    const { claude, codex, stage, roots } = await arrival();
+    const { claude, codex, stage } = await arrival();
     const { id, slug } = CLAUDE[0];
     // a file of the manifest's choosing, staged with the bytes its entry names
     const naming = (s: TransferSession, staged: string, rel: string): TransferSession => {
@@ -555,14 +534,15 @@ describe('a session arriving on the destination', () => {
       fs.writeFileSync(path.join(staged, rel), data);
       return { ...s, files: [...s.files, { type: 'file', path: rel, mode: 0o600, size: data.length, mtimeMs: 0, sha256: sha(data) }] };
     };
-    const refused = (s: TransferSession, staged: string) => expect(() => installSession(s, staged, roots)).toThrow(expect.objectContaining({ code: 'path_unsupported' }));
+    const refused = (s: TransferSession, staged: string) => expect(() => installSession(s, staged)).toThrow(expect.objectContaining({ code: 'path_unsupported' }));
     const claudeStaged = stage(claude);
     for (const rel of [
       'CLAUDE.md', 'skills/x/SKILL.md', 'settings.json', `file-history/${id}/abc@v1`, `projects/${slug}/99999999-2222-4333-8444-555555555555.jsonl`,
       `projects/${slug}/${id}/notes.md`, `projects/-elsewhere/${id}/tool-results/b1.txt`,
     ]) refused(naming(claude, claudeStaged, rel), claudeStaged);
     refused({ ...claude, destinationPath: path.join(claude.destinationHome!, 'CLAUDE.md') }, claudeStaged);
-    refused({ ...claude, destinationPath: path.join(claude.destinationHome!, 'projects/-home-target-work-demo/99999999-2222-4333-8444-555555555555.jsonl') }, claudeStaged);
+    refused({ ...claude, destinationPath: path.join(claude.destinationHome!, `projects/${slug}/99999999-2222-4333-8444-555555555555.jsonl`) }, claudeStaged);
+    refused({ ...claude, destinationPath: path.join(claude.destinationHome!, `projects/-elsewhere/${id}.jsonl`) }, claudeStaged);
     const codexStaged = stage(codex);
     const another = 'sessions/2026/09/23/rollout-2026-09-23T08-44-38-99999999-2222-4333-8444-555555555555.jsonl';
     for (const rel of ['hooks.json', 'config.toml', another]) refused(naming(codex, codexStaged, rel), codexStaged);
@@ -572,7 +552,7 @@ describe('a session arriving on the destination', () => {
   });
 
   it('places the transcript last, so a retry after its write failed finishes the job', async () => {
-    const { claude, stage, roots } = await arrival();
+    const { claude, stage } = await arrival();
     const staged = stage(claude);
     const placed = claude.destinationPath!;
     const { id, agent } = CLAUDE[0];
@@ -582,18 +562,18 @@ describe('a session arriving on the destination', () => {
       ...realInstallFs,
       stages: { open: (file, mode) => { if (file.startsWith(`${placed}.durable-`)) throw full; return realStages.open(file, mode); } },
     };
-    expect(() => installSession(claude, staged, roots, failing)).toThrow(full);
+    expect(() => installSession(claude, staged, failing)).toThrow(full);
     expect(sidecars.every((f) => fs.existsSync(f))).toBe(true);
     expect(fs.readdirSync(path.dirname(placed))).toEqual([id]);
 
     const written: string[] = [];
     const retry: InstallFs = { ...realInstallFs, stages: { rename: (from, to) => { written.push(to); fs.renameSync(from, to); } } };
-    expect(installSession(claude, staged, roots, retry)).toEqual({ transcriptPath: placed });
+    expect(installSession(claude, staged, retry)).toEqual({ transcriptPath: placed });
     // the sidecars already there were the same, so only the transcript was written
     expect(written).toEqual([placed]);
-    const map = sessionPathMap({ ...roots, sourceHome: claude.sourceHome!, destinationHome: claude.destinationHome! });
+    const map = sessionPathMap({ sourceHome: claude.sourceHome!, destinationHome: claude.destinationHome! });
     for (const f of claude.files) {
-      const at = path.join(claude.destinationHome!, placeFile(f.path, path.relative(claude.sourceHome!, claude.sourcePath), path.relative(claude.destinationHome!, placed)));
+      const at = path.join(claude.destinationHome!, f.path);
       expect(fs.readFileSync(at), f.path).toEqual(claudeAdapter.rewrite(f.path, fs.readFileSync(path.join(staged, f.path)), map));
     }
     expect(fs.readdirSync(path.dirname(placed)).sort()).toEqual([`${id}.jsonl`, id].sort());
@@ -609,82 +589,33 @@ describe('a session arriving on the destination', () => {
   });
 });
 
-describe('a session under a path root declared through a link', () => {
+describe('the resume a carried terminal keeps', () => {
   const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
   const record = (cwd: string, text: string): string =>
     `${JSON.stringify({ type: 'user', cwd, sessionId: SID, version: '2.1.280', message: { role: 'user', content: text } })}\n`;
 
-  /** One machine's side: its declared roots, its Claude home, and a character in `code/gamma` under its `work` root. */
-  function side(root: string, work: string) {
-    const home = path.join(root, 'home');
-    fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
-    fs.mkdirSync(path.join(work, 'gamma'), { recursive: true });
-    if (work !== path.join(home, 'code')) fs.symlinkSync(work, path.join(home, 'code'));
-    return { home, claude: path.join(home, '.claude'), cwd: path.join(home, 'code/gamma'), roots: { home, work: path.join(home, 'code') } };
-  }
-
-  /** Carries the one session from `from` to `to` as the handover does: the source's manifest, then the destination's placement. */
-  async function carry(from: ReturnType<typeof side>, to: ReturnType<typeof side>, transcriptPath: string, ids: [MachineId, MachineId]): Promise<{ placed: string; realRoots?: Record<string, string> }> {
-    const state = emptyState();
-    state.characters.c1 = char('c1', { cwd: from.cwd, agent: { kind: 'claude', sessionId: SID, transcriptPath, status: 'idle', lastActivityAt: 0 } });
-    const inventory = buildInventory(state, { fleet: FLEET }, {
-      source: { machineId: ids[0], pathRoots: from.roots, fleetHome: path.join(from.home, '.archipelago') },
-      destination: { machineId: ids[1], pathRoots: to.roots, fleetHome: path.join(to.home, '.archipelago'), agentHomes: { claude: to.claude } },
-    });
-    const { manifest, blockers } = await buildManifest(inventory, { generation: 1 });
-    expect(blockers).toEqual([]);
-    const [session] = placeSessions(manifest.sessions, importState(manifest).state);
-    const staged = path.join(tmp(), 'staged');
-    for (const f of session.files) fs.cpSync(path.join(session.sourceHome!, f.path), path.join(staged, f.path));
-    return { placed: installSession(session, staged, manifest).transcriptPath, realRoots: manifest.sourceRealRoots };
-  }
-
-  it('lands where Claude Code looks on each machine, with every record at the real path, and comes back with every turn', async () => {
-    const base = tmp();
-    // the Mac declares `work` through a link to a folder elsewhere; Claude Code slugs and records the real path
-    const mac = side(path.join(base, 'mac'), path.join(base, 'm3w'));
-    const linux = side(path.join(base, 'linux'), path.join(base, 'linux/home/code'));
-    const real = path.join(base, 'm3w/gamma');
-    const original = path.join(mac.claude, 'projects', claudeProjectSlug(real), `${SID}.jsonl`);
-    fs.mkdirSync(path.dirname(original), { recursive: true });
-    const before = record(real, 'one') + record(real, 'two');
-    fs.writeFileSync(original, before);
-
-    const there = await carry(mac, linux, original, [MAC, TRIFT]);
-    expect(there.realRoots).toEqual({ work: path.join(base, 'm3w') });
-    expect(there.placed).toBe(path.join(linux.claude, 'projects', claudeProjectSlug(linux.cwd), `${SID}.jsonl`));
-    expect(rows(fs.readFileSync(there.placed)).map((r) => r.cwd)).toEqual([linux.cwd, linux.cwd]);
-
-    fs.appendFileSync(there.placed, record(linux.cwd, 'three') + record(linux.cwd, 'four'));
-    const back = await carry(linux, mac, there.placed, [TRIFT, MAC]);
-    // the copy the Mac kept is the start of the one that comes back, which takes its place
-    expect(back.placed).toBe(original);
-    const text = fs.readFileSync(original, 'utf8');
-    expect(text.startsWith(before)).toBe(true);
-    expect(rows(text).map((r) => [r.cwd, r.message.content])).toEqual([[real, 'one'], [real, 'two'], [real, 'three'], [real, 'four']]);
-  });
-
   it('keeps the resume a terminal went dormant with, flags and all, in either terminal, whether this handover rested it or not', async () => {
-    const base = tmp();
-    const mac = side(path.join(base, 'mac'), path.join(base, 'mac/home/code'));
-    const linux = side(path.join(base, 'linux'), path.join(base, 'linux/home/code'));
+    const home = path.join(tmp(), 'home');
+    const claude = path.join(home, '.claude');
+    const cwd = path.join(home, 'code/gamma');
+    fs.mkdirSync(cwd, { recursive: true });
     const SID2 = '7c1d9e2f-3a4b-4c5d-8e6f-0a1b2c3d4e5f';
     const agent = (sessionId: string): Character['agent'] => {
-      const transcriptPath = path.join(mac.claude, 'projects', claudeProjectSlug(mac.cwd), `${sessionId}.jsonl`);
+      const transcriptPath = path.join(claude, 'projects', '-home-code-gamma', `${sessionId}.jsonl`);
       fs.mkdirSync(path.dirname(transcriptPath), { recursive: true });
-      fs.writeFileSync(transcriptPath, record(mac.cwd, 'one'));
+      fs.writeFileSync(transcriptPath, record(cwd, 'one'));
       return { kind: 'claude', sessionId, transcriptPath, status: 'idle', lastActivityAt: 0 };
     };
     const closed = (sessionId: string) => `claude --dangerously-skip-permissions --effort high --resume ${sessionId}`;
     const imported = async (restedBy?: string, secondAgent = true) => {
       const state = emptyState();
       state.characters.c1 = char('c1', {
-        cwd: mac.cwd, agent: agent(SID), revive: { command: closed(SID) }, restedBy,
-        second: { cwd: mac.cwd, unread: false, ...(secondAgent && { agent: agent(SID2) }), revive: { command: closed(SID2) }, restedBy },
+        cwd, agent: agent(SID), revive: { command: closed(SID) }, restedBy,
+        second: { cwd, unread: false, ...(secondAgent && { agent: agent(SID2) }), revive: { command: closed(SID2) }, restedBy },
       });
       const inventory = buildInventory(state, { fleet: FLEET }, {
-        source: { machineId: MAC, pathRoots: mac.roots, fleetHome: path.join(mac.home, '.archipelago') },
-        destination: { machineId: TRIFT, pathRoots: linux.roots, fleetHome: path.join(linux.home, '.archipelago'), agentHomes: { claude: linux.claude } },
+        source: { machineId: MAC, home, fleetHome: path.join(home, '.archipelago') },
+        destination: { machineId: TRIFT, home, fleetHome: path.join(home, '.archipelago'), agentHomes: { claude } },
       });
       const { manifest } = await buildManifest(inventory, { generation: 1 });
       const c = importState({ ...manifest, transactionId: 't1' }).state.characters.c1;
@@ -704,25 +635,13 @@ describe('a session under a path root declared through a link', () => {
     state.characters.c1 = char('c1', { cwd: '/h', ...codex(`codex resume -c tui.resume_cwd=session --yolo -m 'gpt-6-astra' -p 'work' --local-provider 'ollama' -s 'workspace-write' ${SID}`) });
     state.characters.c2 = char('c2', { cwd: '/h', ...codex(`codex resume -c tui.resume_cwd=session --profile 'work' ${SID}`) });
     state.characters.c3 = char('c3', { cwd: '/h', agent: { kind: 'claude', sessionId: SID, transcriptPath: '/h/.claude/r.jsonl', status: 'idle', lastActivityAt: 0 }, revive: { command: `claude --effort 'high' --resume ${SID}` } });
-    const roots = { home: '/h' };
     const { characters } = importState({
-      version: 1, transactionId: 't1', generation: 1, fromMachineId: MAC, toMachineId: TRIFT, sourceRoots: roots, destinationRoots: roots,
+      version: 1, transactionId: 't1', generation: 1, fromMachineId: MAC, toMachineId: TRIFT, home: '/h',
       fleet: FLEET, snapshot: state, excludes: [], roots: [], sessions: [],
     }).state;
     expect(characters.c1.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session --yolo -m 'gpt-6-astra' -s 'workspace-write' ${SID}` });
     expect(characters.c2.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session ${SID}` });
     expect(characters.c3.revive).toEqual({ command: `claude --effort 'high' --resume ${SID}` });
-  });
-
-  it('maps a record under either spelling of a source root, onto the real spelling of the destination\'s', () => {
-    const map = sessionPathMap({
-      sourceRoots: { home: '/Users/s', work: '/Users/s/code' }, sourceRealRoots: { work: '/Volumes/w' },
-      destinationRoots: { home: '/home/t', work: '/home/t/code' }, destinationRealRoots: { work: '/data/code' },
-      sourceHome: '/Users/s/.claude', destinationHome: '/home/t/.claude',
-    });
-    expect(map('/Users/s/code/app')).toBe('/data/code/app');
-    expect(map('/Volumes/w/app')).toBe('/data/code/app');
-    expect(map('/Users/s/notes')).toBe('/home/t/notes');
   });
 });
 

@@ -8,7 +8,7 @@ import { writeDurable } from './durable.js';
 import { gitIndexDigest } from './git-graph.js';
 import { byCodeUnit, canonicalDigest, canonicalJson, hashStream, sha256Hex } from './hash.js';
 import { CONTROL, rootMatcher, settle, type Inventory, type InventorySession } from './inventory.js';
-import { holdingRoot } from './portable-path.js';
+import { holds } from './portable-path.js';
 import { sessionAdapter, sessionPathMap } from './sessions/registry.js';
 import { SessionError, type FoundSession } from './sessions/types.js';
 
@@ -108,7 +108,7 @@ export async function buildManifest(inventory: Inventory, header: ManifestHeader
   const { roots, blockers, warnings } = await scanRoots(inventory, sfs, true);
   const sessions: TransferSession[] = [];
   for (const session of inventory.sessions) {
-    const carried = await scanSession(session, inventory, sfs, true);
+    const carried = await scanSession(session, sfs, true);
     blockers.push(...carried.blockers);
     if (carried.session) sessions.push(carried.session);
   }
@@ -119,9 +119,7 @@ export async function buildManifest(inventory: Inventory, header: ManifestHeader
     generation: header.generation,
     fromMachineId: inventory.fromMachineId,
     toMachineId: inventory.toMachineId,
-    sourceRoots: inventory.sourceRoots,
-    ...(inventory.sourceRealRoots && { sourceRealRoots: inventory.sourceRealRoots }),
-    destinationRoots: inventory.destinationRoots,
+    home: inventory.home,
     fleet: inventory.fleet,
     snapshot: inventory.snapshot,
     excludes: inventory.excludes,
@@ -138,7 +136,7 @@ export async function buildManifest(inventory: Inventory, header: ManifestHeader
  */
 export async function manifestBlockers(inventory: Inventory, sfs: ScanFs = realScanFs): Promise<Blocker[]> {
   const { blockers } = await scanRoots(inventory, sfs, false);
-  for (const session of inventory.sessions) blockers.push(...(await scanSession(session, inventory, sfs, false)).blockers);
+  for (const session of inventory.sessions) blockers.push(...(await scanSession(session, sfs, false)).blockers);
   return settle(blockers);
 }
 
@@ -148,20 +146,20 @@ async function scanRoots(inventory: Inventory, sfs: ScanFs, hash: boolean): Prom
   const roots: TransferRoot[] = [];
   for (const root of inventory.roots) {
     const entity: HandoverEntity = { kind: 'root', id: root.id };
-    const scanned = await scanPath(root.sourcePath, rootMatcher(root.kind, inventory.excludes), sfs, !root.foldedInto, hash);
+    const scanned = await scanPath(root.path, rootMatcher(root.kind, inventory.excludes), sfs, !root.foldedInto, hash);
     if (!scanned) {
       // a working directory or a context file that is gone has nothing to carry; a repository has to be rebuilt
-      if (root.kind === 'repo' || root.kind === 'worktree' || root.kind === 'gitdir') blockers.push({ code: 'worktree_unresolved', message: `${root.sourcePath} no longer exists`, entity });
+      if (root.kind === 'repo' || root.kind === 'worktree' || root.kind === 'gitdir') blockers.push({ code: 'worktree_unresolved', message: `${root.path} no longer exists`, entity });
       continue;
     }
     const { entry, files, problems, envFiles } = scanned;
     if (problems.length) {
-      blockers.push({ code: 'path_unsupported', message: `${root.sourcePath}: ${problems.length} ${problems.length === 1 ? 'path' : 'paths'} cannot be carried: ${listed(problems, 5)}`, entity });
+      blockers.push({ code: 'path_unsupported', message: `${root.path}: ${problems.length} ${problems.length === 1 ? 'path' : 'paths'} cannot be carried: ${listed(problems, 5)}`, entity });
     }
     if (root.kind === 'env') {
       warnings.push({ code: 'env_file', message: "the fleet's .env, which holds its scribe credentials, is copied to the destination", entity });
     } else if (envFiles.length) {
-      warnings.push({ code: 'env_file', message: `${root.sourcePath} holds ${listed(envFiles, 3)}, copied to the destination with the rest of the tree; they may hold secrets`, entity });
+      warnings.push({ code: 'env_file', message: `${root.path} holds ${listed(envFiles, 3)}, copied to the destination with the rest of the tree; they may hold secrets`, entity });
     }
     roots.push({ ...root, entry, files: files.sort((a, b) => byCodeUnit(a.path, b.path)) });
   }
@@ -170,11 +168,10 @@ async function scanRoots(inventory: Inventory, sfs: ScanFs, hash: boolean): Prom
 
 /**
  * One agent session as its adapter finds it from the recorded transcript: every file hashed under the
- * source's agent home, each checked for anything the adapter does not know, and where the transcript lands.
- * Without `read` its files are only found to be there.
+ * source's agent home, each checked for anything the adapter does not know, and where the transcript lands:
+ * at the same place under the destination's agent home. Without `read` its files are only found to be there.
  */
-async function scanSession(session: InventorySession, inventory: Inventory, sfs: ScanFs, read: boolean): Promise<{ session?: TransferSession; blockers: Blocker[] }> {
-  const { destinationCwd, ...entry } = session;
+async function scanSession(session: InventorySession, sfs: ScanFs, read: boolean): Promise<{ session?: TransferSession; blockers: Blocker[] }> {
   const entity: HandoverEntity = { kind: 'character', id: session.characterId };
   const adapter = sessionAdapter(session.agent);
   let found: FoundSession;
@@ -182,10 +179,7 @@ async function scanSession(session: InventorySession, inventory: Inventory, sfs:
     if (e instanceof SessionError) return { blockers: [{ code: e.code, message: e.message, entity }] };
     throw e;
   }
-  const map = sessionPathMap({
-    sourceRoots: inventory.sourceRoots, sourceRealRoots: inventory.sourceRealRoots, destinationRoots: inventory.destinationRoots,
-    sourceHome: found.home, destinationHome: session.destinationHome,
-  });
+  const map = sessionPathMap({ sourceHome: found.home, destinationHome: session.destinationHome });
   const files: TransferFile[] = [];
   const problems: string[] = [];
   const unreadable: string[] = [];
@@ -211,10 +205,8 @@ async function scanSession(session: InventorySession, inventory: Inventory, sfs:
   if (problems.length) {
     blockers.push({ code: 'incompatible_adapter', message: `${session.sourcePath} holds what ${session.agent} session adapter ${adapter.adapter} does not know: ${listed(problems, 5)}`, entity });
   }
-  const placed = session.destinationHome && destinationCwd
-    ? { destinationPath: path.posix.join(session.destinationHome, adapter.destination(found.transcript, session.sessionId, destinationCwd)) }
-    : {};
-  return { session: { ...entry, ...placed, sourceHome: found.home, adapter: adapter.adapter, files }, blockers };
+  const placed = session.destinationHome ? { destinationPath: path.posix.join(session.destinationHome, found.transcript) } : {};
+  return { session: { ...session, ...placed, sourceHome: found.home, adapter: adapter.adapter, files }, blockers };
 }
 
 /**
@@ -253,18 +245,21 @@ export function summarize(manifest: TransferManifestV1): ManifestSummary {
   };
 }
 
+/** The folder the destination writes a path into: the home for what lies in it, else the folder that already holds it there. */
+export const landingFolder = (p: string, home: string): string => (holds(home, p) ? home : path.posix.dirname(p));
+
 /**
- * Bytes each destination path root needs for a first transfer, every file rounded up to a whole block.
- * What no declared root holds, an unplaced session or the fleet's own home, is counted against home.
+ * Bytes a first transfer needs in each folder the destination writes into, every file rounded up to a whole
+ * block: a root counts against its landing folder, a session against its agent home's.
  */
 export function spaceNeed(manifest: TransferManifestV1): Record<string, number> {
   const need: Record<string, number> = {};
-  const add = (destination: string | undefined, files: TransferFile[]): void => {
-    const root = (destination && holdingRoot(destination, manifest.destinationRoots)?.root) || 'home';
-    need[root] = (need[root] ?? 0) + files.reduce((n, f) => n + (f.type === 'file' ? Math.ceil(f.size / BLOCK) * BLOCK : 0), 0);
+  const add = (at: string, files: TransferFile[]): void => {
+    const folder = landingFolder(at, manifest.home);
+    need[folder] = (need[folder] ?? 0) + files.reduce((n, f) => n + (f.type === 'file' ? Math.ceil(f.size / BLOCK) * BLOCK : 0), 0);
   };
-  for (const r of manifest.roots) if (!r.foldedInto) add(r.destinationPath, r.files);
-  for (const s of manifest.sessions) add(s.destinationPath, s.files);
+  for (const r of manifest.roots) if (!r.foldedInto) add(r.path, r.files);
+  for (const s of manifest.sessions) add(s.destinationHome ?? manifest.home, s.files);
   return need;
 }
 

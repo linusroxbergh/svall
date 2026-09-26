@@ -20,7 +20,6 @@ const trift: MachineRecord = {
   arch: 'arm64',
   home: '/home/linus',
   archiBase: '/home/linus/.local/share/archipelago',
-  pathRoots: { home: '/home/linus' },
   gateway: true,
 };
 
@@ -34,7 +33,6 @@ describe('machine registry', () => {
       arch: process.arch,
       home: os.homedir(),
       archiBase: archiHome(),
-      pathRoots: { home: os.homedir() },
       gateway: false,
     });
     expect(registry.localId).toBe(JSON.parse(fs.readFileSync(path.join(dir, 'machine.json'), 'utf8')).id);
@@ -62,6 +60,24 @@ describe('machine registry', () => {
     } finally {
       if (before === undefined) delete process.env.HOME; else process.env.HOME = before;
     }
+  });
+
+  it('loads a registry an earlier build wrote with named path roots, and saves it without them', () => {
+    const dir = path.join(tmp(), 'archipelago');
+    const first = MachineRegistry.load(dir, { hostname: 'kolvik' });
+    const remote = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
+    fs.writeFileSync(path.join(dir, 'machines.json'), JSON.stringify({
+      machines: {
+        [first.localId]: { ...first.localMachine(), pathRoots: { home: os.homedir() } },
+        [remote]: { ...trift, pathRoots: { home: '/home/linus', work: '/srv/work' } },
+      },
+    }));
+    const again = MachineRegistry.load(dir);
+    expect(again.recovered).toBeUndefined();
+    expect(again.get('trift')?.record).toEqual(trift);
+    expect(again.localMachine()).toEqual(first.localMachine());
+    again.save();
+    expect(JSON.stringify(read(dir))).not.toContain('pathRoots');
   });
 
   it('falls back to the platform when the hostname gives no usable name', () => {

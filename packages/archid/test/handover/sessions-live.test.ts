@@ -8,7 +8,7 @@ import { emptyState, FleetConfig, type AgentKind, type MachineId, type TransferS
 import { sha256Hex } from '../../src/handover/hash.js';
 import { buildInventory } from '../../src/handover/inventory.js';
 import { buildManifest } from '../../src/handover/manifest.js';
-import { installSession, placeFile, probeAgent, sessionAdapter, sessionPathMap, type AgentProbe } from '../../src/handover/sessions/registry.js';
+import { installSession, probeAgent, sessionAdapter, sessionPathMap, type AgentProbe } from '../../src/handover/sessions/registry.js';
 import type { SessionFs } from '../../src/handover/sessions/types.js';
 
 // Real agents on two machines, as a handover would move them: a session started on one resumes on the other
@@ -16,7 +16,7 @@ import type { SessionFs } from '../../src/handover/sessions/types.js';
 // in; each run costs a few tiny turns and removes every folder and session file it made on both.
 const REMOTE = process.env.ARCHI_LIVE_REMOTE;
 const AGENTS = (process.env.ARCHI_LIVE_AGENTS ?? 'claude,codex').split(',') as AgentKind[];
-const REASON = 'needs ARCHI_LIVE_REMOTE: an ssh destination with Claude Code and Codex logged in, as they are here';
+const REASON = 'needs ARCHI_LIVE_REMOTE: an ssh destination with this machine\'s home path and Claude Code and Codex logged in, as they are here';
 // a remote CLI other than the one on its PATH, such as an older release still installed there
 const REMOTE_BIN: Partial<Record<AgentKind, string>> = { claude: process.env.ARCHI_LIVE_REMOTE_CLAUDE, codex: process.env.ARCHI_LIVE_REMOTE_CODEX };
 
@@ -140,7 +140,7 @@ async function start(kind: AgentKind, side: Side, sides: Side[]): Promise<Trip> 
 
 /**
  * A session carried from `source` to `destination` as a handover carries it: found from its transcript,
- * checked and rewritten by its adapter, placed in the destination CLI's lookup layout, and resumed there under
+ * checked by its adapter, placed at the same place under the destination's agent home, and resumed there under
  * the same id, remembering what it was told.
  */
 async function carry(trip: Trip, source: Side, destination: Side): Promise<void> {
@@ -154,7 +154,6 @@ async function carry(trip: Trip, source: Side, destination: Side): Promise<void>
   await text(destination, ['mkdir', '-p', placedWork]);
   const sourceTranscript = await transcriptOf(source, kind, before.home, id);
 
-  const roots = { sourceRoots: { home: source.home }, destinationRoots: { home: destination.home } };
   let session: TransferSession;
   let staged: string;
   if (source === here) {
@@ -166,8 +165,8 @@ async function carry(trip: Trip, source: Side, destination: Side): Promise<void>
     };
     const fleet = FleetConfig.parse({ id: '5e1f0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', home: { cwd: work } });
     const maps = {
-      source: { machineId: MAC, pathRoots: roots.sourceRoots, fleetHome: path.posix.join(work, '../fleet') },
-      destination: { machineId: TRIFT, pathRoots: roots.destinationRoots, fleetHome: path.posix.join(placedWork, '../fleet'), agentHomes: { [kind]: after.home } },
+      source: { machineId: MAC, home: source.home, fleetHome: path.posix.join(work, '../fleet') },
+      destination: { machineId: TRIFT, home: destination.home, fleetHome: path.posix.join(placedWork, '../fleet'), agentHomes: { [kind]: after.home } },
     };
     const built = await buildManifest(buildInventory(state, { fleet }, maps), { generation: 1 });
     expect(built.blockers).toEqual([]);
@@ -185,7 +184,7 @@ async function carry(trip: Trip, source: Side, destination: Side): Promise<void>
     const found = await adapter.discover(path.join(staged, rel), id, localFs);
     session = {
       characterId: 'c1', agent: kind, sessionId: id, sourcePath: sourceTranscript, sourceHome: before.home, destinationHome: after.home, adapter: adapter.adapter,
-      destinationPath: path.posix.join(after.home, adapter.destination(found.transcript, id, placedWork)),
+      destinationPath: path.posix.join(after.home, found.transcript),
       files: found.files.map((f) => {
         const data = fs.readFileSync(path.join(staged, f));
         return { type: 'file' as const, path: f, mode: 0o600, size: data.length, mtimeMs: 0, sha256: sha256Hex(data) };
@@ -193,17 +192,16 @@ async function carry(trip: Trip, source: Side, destination: Side): Promise<void>
     };
   }
   const adapter = sessionAdapter(kind);
-  const map = sessionPathMap({ ...roots, sourceHome: session.sourceHome!, destinationHome: after.home });
+  const map = sessionPathMap({ sourceHome: session.sourceHome!, destinationHome: after.home });
   for (const f of session.files) expect(adapter.validate(f.path, fs.readFileSync(path.join(staged, f.path)), map), f.path).toEqual([]);
   forget(destination, kind, after.home, id, kind === 'claude' ? path.posix.dirname(session.destinationPath!) : session.destinationPath!);
 
   if (destination === here) {
-    expect(installSession(session, staged, roots)).toEqual({ transcriptPath: session.destinationPath });
+    expect(installSession(session, staged)).toEqual({ transcriptPath: session.destinationPath });
   } else {
     // one file at a time, private and never over one already there
-    const [a, b] = [session.sourcePath, session.destinationPath!].map((p, i) => path.posix.relative(i ? after.home : session.sourceHome!, p));
     for (const f of session.files) {
-      const file = path.posix.join(after.home, placeFile(f.path, a, b));
+      const file = path.posix.join(after.home, f.path);
       const data = adapter.rewrite(f.path, fs.readFileSync(path.join(staged, f.path)), map);
       const r = await destination.run(['sh', '-c', 'umask 077; mkdir -p "$(dirname "$1")" && set -C && cat > "$1"', 'sh', file], { input: data });
       if (r.code !== 0) throw new Error(`${destination.name}: could not place ${file}: ${r.stderr}`);

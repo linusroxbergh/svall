@@ -447,10 +447,10 @@ runIf('a daemon starting with a gateway', () => {
         machineId: other, release: releaseVersion(), protocol: PROTOCOL_VERSION, stateSchema: emptyState().version, transferSchema: TRANSFER_SCHEMA_VERSION,
         platform: 'linux', arch: 'x64', agentAdapters: [], git: '2.43.0',
       },
-      pathRoots: { home: '/home/linus' }, fleetHome: '/home/linus/.archipelago',
+      home, fleetHome: path.join(home, '.archipelago'),
     };
     const unnamed = async (): Promise<boolean> => {
-      const r = await client.call('handover.preflight', { toMachineId: other, choices: {}, source: { pathRoots: { home } }, destination }) as { result: { blockers: { message: string }[] } };
+      const r = await client.call('handover.preflight', { toMachineId: other, choices: {}, source: { home }, destination }) as { result: { blockers: { message: string }[] } };
       return r.result.blockers.some((b) => b.message.includes('names no gateway'));
     };
     try {

@@ -22,7 +22,6 @@ import { ProcessTable, type Proc } from '../../src/handover/processes.js';
 import { contentDigest, ReplicaStore, replicaRoots } from '../../src/handover/replicas.js';
 import type { Clock } from '../../src/handover/rest.js';
 import { HandoverService } from '../../src/handover/service.js';
-import { claudeProjectSlug } from '../../src/handover/sessions/claude.js';
 import type { AgentProbe } from '../../src/handover/sessions/registry.js';
 import type { Authority } from '../../src/handover/source.js';
 import { adoptAtStart, enterStartupMode, startupMode } from '../../src/handover/startup.js';
@@ -35,7 +34,7 @@ import { runGit, type GitRunner } from '../../src/links/git.js';
 import { tmuxConfText } from '../../src/tmux/conf.js';
 import { Tmux } from '../../src/tmux/tmux.js';
 import { cleanHomes, hasTmux, makeHome, stubMobile, stubUsage, waitFor } from '../helpers.js';
-import { crew as gitCrew, git, hasGit, seedHere, type Layout } from './git-fixture.js';
+import { crew as gitCrew, git, hasGit, park, parkedAt, seedHere, unpark, type Layout } from './git-fixture.js';
 
 const made: string[] = [];
 afterEach(() => {
@@ -218,22 +217,25 @@ class Crew {
   }
 }
 
-/** Copies what the manifest carries the way the controller's transfer would: each root under its claim, each session into its stage. */
-async function transfer(paths: Paths, manifest: TransferManifestV1): Promise<LandedRoot[]> {
+/**
+ * Copies what the manifest carries the way the controller's transfer would: each root under its claim, each session
+ * into its stage, from where `from` says the source machine keeps a path.
+ */
+async function transfer(paths: Paths, manifest: TransferManifestV1, from: (p: string) => string): Promise<LandedRoot[]> {
   const replicas = new ReplicaStore({ fleetId, paths });
   const landed: LandedRoot[] = [];
-  for (const r of replicaRoots(manifest, 'destination')) {
+  for (const r of replicaRoots(manifest)) {
     const root = manifest.roots.find((x) => x.id === r.id)!;
     const check = await replicas.claim(r, { transactionId: TX, excludes: manifest.excludes, incoming: root.files });
     if (!check.ok) throw new Error(`claim refused: ${check.blocker.message}`);
-    fs.cpSync(root.sourcePath, check.path, { recursive: true, verbatimSymlinks: true });
+    fs.cpSync(from(root.path), check.path, { recursive: true, verbatimSymlinks: true });
     landed.push({ id: r.id, files: (await scanPath(check.path, rootMatcher(r.kind, manifest.excludes)))!.files });
   }
   manifest.sessions.forEach((s, i) => {
     for (const f of s.files) {
       const to = path.join(paths.sessionStage(TX, i), f.path);
       fs.mkdirSync(path.dirname(to), { recursive: true });
-      fs.copyFileSync(path.join(s.sourceHome!, f.path), to);
+      fs.copyFileSync(path.join(from(s.sourceHome!), f.path), to);
     }
   });
   return landed;
@@ -242,34 +244,29 @@ async function transfer(paths: Paths, manifest: TransferManifestV1): Promise<Lan
 type Tamper = (m: TransferManifestV1) => void;
 
 /**
- * Mac to trift under one temp folder: the source's home root `src`, the destination's `dst` and this
- * daemon's own home. Four characters: one with a second terminal, file context and a file: tab, a Claude
- * session, a Codex session, and a shell standing at the home root itself.
+ * Mac to trift under one temp folder, where as on two real machines both keep the fleet under one home `dst`: the
+ * Mac's tree is made there and the manifest read from it, then the tree is set aside at `src`, the Mac the fleet
+ * leaves, and the transfer copies from it. `home` is this daemon's own fleet home. Four characters: one with a
+ * second terminal, file context and a file: tab, a Claude session, a Codex session, and a shell standing at the
+ * home itself. `before` sets this machine up before anything lands.
  */
-async function scene(o: { tamper?: Tamper; before?: (s: { src: string; dst: string; base: string }) => void; land?: false; linkedWork?: true } = {}) {
+async function scene(o: { tamper?: Tamper; before?: (s: { src: string; dst: string; base: string }) => void; land?: false } = {}) {
   const base = fs.realpathSync(makeHome());
-  const src = path.join(base, 'src');
-  const dst = path.join(base, 'dst');
+  const src = path.join(base, 'mac');
+  const dst = path.join(base, 'home');
   const home = path.join(base, 'archi');
-  for (const d of ['work/ada/sub', 'work/bo', 'work/demo', 'mc', `.claude/projects/-bo`, path.dirname(`.codex/${ROLLOUT}`)]) fs.mkdirSync(path.join(src, d), { recursive: true });
-  for (const d of ['.claude', '.codex']) fs.mkdirSync(path.join(dst, d), { recursive: true });
+  for (const d of ['work/ada/sub', 'work/bo', 'work/demo', 'mc', `.claude/projects/-bo`, path.dirname(`.codex/${ROLLOUT}`)]) fs.mkdirSync(path.join(dst, d), { recursive: true });
   fs.mkdirSync(home, { recursive: true });
-  fs.writeFileSync(path.join(src, 'work/ada/notes.md'), 'ada\n');
-  fs.writeFileSync(path.join(src, 'work/ada/index.html'), '<p>ada</p>\n');
-  fs.writeFileSync(path.join(src, 'work/bo/index.ts'), 'export {};\n');
-  fs.writeFileSync(path.join(src, 'work/demo/notes.txt'), 'demo\n');
-  fs.writeFileSync(path.join(src, 'mc/README.md'), 'mission control\n');
-  const transcript = path.join(src, `.claude/projects/-bo/${SID}.jsonl`);
-  fs.writeFileSync(transcript, `${JSON.stringify({ type: 'user', cwd: path.join(src, 'work/bo'), sessionId: SID, version: '2.1.280', message: { role: 'user', content: 'hi' } })}\n`);
-  const rollout = path.join(src, '.codex', ROLLOUT);
+  fs.writeFileSync(path.join(dst, 'work/ada/notes.md'), 'ada\n');
+  fs.writeFileSync(path.join(dst, 'work/ada/index.html'), '<p>ada</p>\n');
+  fs.writeFileSync(path.join(dst, 'work/bo/index.ts'), 'export {};\n');
+  fs.writeFileSync(path.join(dst, 'work/demo/notes.txt'), 'demo\n');
+  fs.writeFileSync(path.join(dst, 'mc/README.md'), 'mission control\n');
+  const transcript = path.join(dst, `.claude/projects/-bo/${SID}.jsonl`);
+  fs.writeFileSync(transcript, `${JSON.stringify({ type: 'user', cwd: path.join(dst, 'work/bo'), sessionId: SID, version: '2.1.280', message: { role: 'user', content: 'hi' } })}\n`);
+  const rollout = path.join(dst, '.codex', ROLLOUT);
   const fixture = fs.readFileSync(path.join(import.meta.dirname, '../fixtures/handover/codex/0.156.1', ROLLOUT), 'utf8');
-  fs.writeFileSync(rollout, fixture.replaceAll('/home/source', src));
-  // the destination declares `work` through a link to a folder elsewhere, whose real path its agents record
-  if (o.linkedWork) {
-    fs.mkdirSync(path.join(base, 'dwork'));
-    fs.symlinkSync(path.join(base, 'dwork'), path.join(dst, 'work'));
-  }
-  o.before?.({ src, dst, base });
+  fs.writeFileSync(rollout, fixture.replaceAll('/home/source', dst));
 
   const paths = resolvePaths(home);
   // what this machine held of the fleet before: its own fleet.json and the replica state it last had
@@ -282,38 +279,40 @@ async function scene(o: { tamper?: Tamper; before?: (s: { src: string; dst: stri
   const fleet = FleetConfig.parse({ id: fleetId, gatewayMachineId: trift, home: { cwd: '~/mc' }, mobile: { logins: ['me@example.com'], origins: ['https://phone.example'] } });
   const state = emptyState();
   state.home = Home.parse(fleet.home);
-  const tab = `${pathToFileURL(path.join(src, 'work/ada/index.html')).href}?x=1#top`;
+  const tab = `${pathToFileURL(path.join(dst, 'work/ada/index.html')).href}?x=1#top`;
   for (const c of [
-    rested(char('c_ada', path.join(src, 'work/ada'), {
-      second: { cwd: path.join(src, 'work/ada/sub'), unread: false, revive: { command: '' } },
-      context: [{ kind: 'file', ref: path.join(src, 'work/ada/notes.md'), label: 'notes', source: 'manual' }],
+    rested(char('c_ada', path.join(dst, 'work/ada'), {
+      second: { cwd: path.join(dst, 'work/ada/sub'), unread: false, revive: { command: '' } },
+      context: [{ kind: 'file', ref: path.join(dst, 'work/ada/notes.md'), label: 'notes', source: 'manual' }],
       browser: { tabs: [{ id: 't_1', url: tab, title: 'ada' }], active: 't_1' },
     })),
-    rested(char('c_bo', path.join(src, 'work/bo'), {
+    rested(char('c_bo', path.join(dst, 'work/bo'), {
       agent: { kind: 'claude', sessionId: SID, transcriptPath: transcript, status: 'idle', lastActivityAt: 0 }, revive: { command: `claude --resume ${SID}` },
     })),
-    rested(char('c_cy', src)),
-    rested(char('c_dee', path.join(src, 'work/demo'), {
+    rested(char('c_cy', dst)),
+    rested(char('c_dee', path.join(dst, 'work/demo'), {
       agent: { kind: 'codex', sessionId: CODEX_ID, transcriptPath: rollout, status: 'idle', lastActivityAt: 0 }, revive: { command: `codex resume -c tui.resume_cwd=session ${CODEX_ID}` },
     })),
     // dormant before the freeze, last closed by an earlier handover: this one carries it and leaves it as it was
-    char('c_old', src, { restedBy: 'tx-0', second: { cwd: src, unread: false, revive: { command: '' } } }),
+    char('c_old', dst, { restedBy: 'tx-0', second: { cwd: dst, unread: false, revive: { command: '' } } }),
   ]) state.characters[c.id] = c;
 
-  const sourceRoots = { home: src, ...(o.linkedWork && { work: path.join(src, 'work') }) };
-  const destinationRoots = { home: dst, ...(o.linkedWork && { work: path.join(dst, 'work') }) };
   const agentHomes = { claude: path.join(dst, '.claude'), codex: path.join(dst, '.codex') };
   const inventory = buildInventory(state, { fleet }, {
-    source: { machineId: mac, pathRoots: sourceRoots, fleetHome: path.join(base, 'mac-archi') },
-    destination: { machineId: trift, pathRoots: destinationRoots, fleetHome: home, agentHomes },
+    source: { machineId: mac, home: dst, fleetHome: path.join(base, 'mac-archi') },
+    destination: { machineId: trift, home: dst, fleetHome: home, agentHomes },
   });
   const built = await buildManifest(inventory, { transactionId: TX, generation: 4 });
   expect(built.blockers).toEqual([]);
+  // the fleet leaves the Mac: this disk is trift's now, whose agents have their homes and nothing else yet
+  fs.renameSync(dst, src);
+  for (const d of Object.values(agentHomes)) fs.mkdirSync(d, { recursive: true });
+  o.before?.({ src, dst, base });
   const manifest = built.manifest;
   // a snapshot that still names live tmux ids, as a careless source could send
   manifest.snapshot.characters.c_ada.tmux = win(1);
   o.tamper?.(manifest);
-  const landed = o.land === false ? [] : await transfer(paths, manifest);
+  const landed = o.land === false ? [] : await transfer(paths, manifest, (p) => path.join(src, path.relative(dst, p)));
   const probes: AgentProbe[] = [
     { kind: 'claude', version: '2.1.280', home: agentHomes.claude, loggedIn: true, hooks: true },
     { kind: 'codex', version: '0.156.1', home: agentHomes.codex, loggedIn: true, hooks: true },
@@ -354,7 +353,7 @@ function daemon(s: { paths: Paths; store: Store; probes: AgentProbe[] }, o: { co
 const journalOf = (paths: Paths): DestinationJournal => DestinationJournal.parse(JSON.parse(fs.readFileSync(paths.journal, 'utf8')));
 
 describe('destination prepare', () => {
-  it('rewrites the fleet for this machine beside the active state, and leaves state.json and tmux alone', async () => {
+  it('prepares the fleet beside the active state with every path as the source recorded it, and leaves state.json and tmux alone', async () => {
     const s = await scene();
     const d = daemon(s);
     const before = fs.readFileSync(s.paths.state);
@@ -369,15 +368,15 @@ describe('destination prepare', () => {
     expect(ada.browser!.tabs[0].url).toBe(`${pathToFileURL(path.join(s.dst, 'work/ada/index.html')).href}?x=1#top`);
     expect(ada.tmux).toBeUndefined();
     expect(ada.revive).toEqual({ command: '' });
-    const placed = path.join(s.dst, '.claude/projects', claudeProjectSlug(path.join(s.dst, 'work/bo')), `${SID}.jsonl`);
+    const placed = path.join(s.dst, '.claude/projects/-bo', `${SID}.jsonl`);
     expect(bo).toMatchObject({ cwd: path.join(s.dst, 'work/bo'), revive: { command: `claude --resume ${SID}` }, agent: { transcriptPath: placed } });
     expect(dee.agent!.transcriptPath).toBe(path.join(s.dst, '.codex', ROLLOUT));
     expect(cy.cwd).toBe(s.dst);
     expect(prepared.home.cwd).toBe('~/mc');
     expect(prepared.defaultCwd).toBe('~');
 
-    // each session placed under this machine's agent home, rewritten for it, and its stage cleared
-    expect(JSON.parse(fs.readFileSync(placed, 'utf8')).cwd).toBe(path.join(s.dst, 'work/bo'));
+    // each session placed under this machine's agent home where the source kept it, and its stage cleared
+    expect(fs.readFileSync(placed)).toEqual(fs.readFileSync(path.join(s.src, '.claude/projects/-bo', `${SID}.jsonl`)));
     expect(JSON.parse(fs.readFileSync(path.join(s.dst, '.codex', ROLLOUT), 'utf8').split('\n')[0]).payload.cwd).toBe(path.join(s.dst, 'work/demo'));
     expect(fs.existsSync(path.dirname(s.paths.sessionStage(TX, 0)))).toBe(false);
 
@@ -388,7 +387,7 @@ describe('destination prepare', () => {
     });
     const seal = SealRecord.parse(JSON.parse(fs.readFileSync(s.paths.replicaSeal(TX), 'utf8')));
     expect(seal).toMatchObject({ transactionId: TX, generation: 5, manifestDigest: s.digest });
-    expect(seal.roots.map((x) => x.id).sort()).toEqual(replicaRoots(s.manifest, 'destination').map((x) => x.id).sort());
+    expect(seal.roots.map((x) => x.id).sort()).toEqual(replicaRoots(s.manifest).map((x) => x.id).sort());
     expect(fs.readFileSync(s.paths.relaySecret, 'utf8')).toBe('relay-s3cret');
     for (const f of [s.paths.preparedState(TX), s.paths.journal, s.paths.replicaSeal(TX), s.paths.relaySecret]) expect(mode(f)).toBe('600');
 
@@ -444,31 +443,28 @@ describe('destination prepare', () => {
     expect(tree(s.home)).toEqual(written);
   });
 
-  it('blocks a carried root, a rewritten path and a session whose real path leaves where it belongs', async () => {
-    // on this machine `work`, `scratch` and Claude's projects are links that lead out of their roots
+  it('blocks a carried root and a session a link on this machine leads away from where it belongs', async () => {
+    // on this machine `work` and Claude's projects are links that lead elsewhere
     const s = await scene({
       before: ({ dst, base }) => {
-        for (const d of ['outside/work', 'outside/scratch', 'outside/projects']) fs.mkdirSync(path.join(base, d), { recursive: true });
+        for (const d of ['outside/work', 'outside/projects']) fs.mkdirSync(path.join(base, d), { recursive: true });
         fs.symlinkSync(path.join(base, 'outside/work'), path.join(dst, 'work'));
-        fs.symlinkSync(path.join(base, 'outside/scratch'), path.join(dst, 'scratch'));
         fs.symlinkSync(path.join(base, 'outside/projects'), path.join(dst, '.claude/projects'));
       },
-      tamper: (m) => { m.snapshot.defaultCwd = path.join(m.sourceRoots.home, 'scratch/tmp'); },
     });
     const r = await refusal(daemon(s).handover.prepare(params(s)));
     expect(r.code).toBe('blocked');
-    const said = blockersOf(r).filter((b) => b.code === 'path_unsupported').map((b) => b.message).join('\n');
-    expect(said).toContain(path.join(s.base, 'outside/work/ada'));
-    expect(said).toContain(path.join(s.dst, 'scratch/tmp'));
-    expect(said).toContain(`${path.join(s.dst, '.claude/projects')}/`);
+    const said = (code: string) => blockersOf(r).filter((b) => b.code === code).map((b) => b.message).join('\n');
+    expect(said('path_symlinked')).toContain(`${path.join(s.dst, 'work/ada')} leads to ${path.join(s.base, 'outside/work/ada')} on this machine`);
+    expect(said('path_unsupported')).toContain(`${path.join(s.dst, '.claude/projects')}/`);
     expect(fs.readdirSync(path.join(s.base, 'outside/projects'))).toEqual([]);
     expect(fs.existsSync(s.paths.preparedState(TX))).toBe(false);
   });
 
   it('blocks a root this handover did not claim, and one that no longer holds what the transfer verified', async () => {
     const s = await scene();
-    const [ada, bo] = ['work/ada', 'work/bo'].map((p) => s.manifest.roots.find((r) => r.destinationPath === path.join(s.dst, p))!);
-    fs.rmSync(resolvePaths(s.home).replicaRecord(fleetId, ada.destinationPath));
+    const [ada, bo] = ['work/ada', 'work/bo'].map((p) => s.manifest.roots.find((r) => r.path === path.join(s.dst, p))!);
+    fs.rmSync(resolvePaths(s.home).replicaRecord(fleetId, ada.path));
     fs.appendFileSync(path.join(s.dst, 'work/bo/index.ts'), '// edited here\n');
     const r = await refusal(daemon(s).handover.prepare(params(s)));
     expect(r.code).toBe('blocked');
@@ -496,7 +492,7 @@ describe('destination prepare', () => {
 
   // a graph whose Git directory lies at `elsewhere`, a link this machine can point into a carried root or leave out
   const strayGraph = (m: TransferManifestV1): void => {
-    m.git = [{ id: 'g_stray', commonDir: path.join(m.sourceRoots.home, 'elsewhere'), worktrees: [], unused: [], stash: [] }];
+    m.git = [{ id: 'g_stray', commonDir: path.join(m.home, 'elsewhere'), worktrees: [], unused: [], stash: [] }];
   };
 
   it('compares what landed again on a retry after it stopped short of the Git repair, so an edit made in between is never sealed', async () => {
@@ -521,17 +517,6 @@ describe('destination prepare', () => {
     expect(fs.existsSync(s.paths.journal)).toBe(false);
   });
 
-  it('places a transcript under the real path of its cwd when this machine declares the root through a link, with every record at that path', async () => {
-    const s = await scene({ linkedWork: true });
-    const r = await daemon(s).handover.prepare(params(s));
-    const prepared = FleetState.parse(JSON.parse(fs.readFileSync(s.paths.preparedState(TX), 'utf8')));
-    const real = path.join(s.base, 'dwork/bo');
-    const placed = path.join(s.dst, '.claude/projects', claudeProjectSlug(real), `${SID}.jsonl`);
-    expect(r.preparedDigest).toBe(canonicalDigest(prepared));
-    expect(prepared.characters.c_bo).toMatchObject({ cwd: path.join(s.dst, 'work/bo'), agent: { transcriptPath: placed } });
-    expect(JSON.parse(fs.readFileSync(placed, 'utf8')).cwd).toBe(real);
-  });
-
   it('records the roots for an abort to seal even when the Git repair throws part way', async () => {
     const s = await scene({ tamper: strayGraph, before: ({ dst }) => { fs.symlinkSync(path.join(dst, 'work/ada'), path.join(dst, 'elsewhere')); } });
     const d = daemon(s, { git: async () => { throw new TypeError('git crashed'); } });
@@ -539,7 +524,7 @@ describe('destination prepare', () => {
     expect(fs.existsSync(s.paths.replicaSeal(TX))).toBe(true);
     d.gateway.record = { fleetId, generation: 4, ownerMachineId: mac };
     expect(await d.handover.abort({ transactionId: TX, generation: 5 })).toEqual({});
-    for (const r of replicaRoots(s.manifest, 'destination')) {
+    for (const r of replicaRoots(s.manifest)) {
       expect(JSON.parse(fs.readFileSync(s.paths.replicaRecord(fleetId, r.path), 'utf8')), r.path).toMatchObject({ state: 'sealed', generation: 4 });
     }
   });
@@ -550,7 +535,7 @@ describe('destination prepare', () => {
     const stage = path.dirname(s.paths.sessionStage(TX, 0));
     const other = path.dirname(s.paths.sessionStage('tx-0', 0));
     fs.mkdirSync(other, { recursive: true });
-    const roots = replicaRoots(s.manifest, 'destination');
+    const roots = replicaRoots(s.manifest);
     const before = roots.map((r) => [tree(r.path), fs.readFileSync(s.paths.replicaRecord(fleetId, r.path), 'utf8')]);
     expect(fs.existsSync(stage)).toBe(true);
 
@@ -580,7 +565,8 @@ describe('destination prepare', () => {
 const realGit = hasGit ? describe : describe.skip;
 
 realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skipped: git is not on PATH)'}`, { timeout: 180_000 }, () => {
-  async function gitScene(l: Layout, o: { unplug?: false } = {}) {
+  /** The fixture handed from the Mac, whose tree is parked at `mac`, to this machine, which has none of it yet. */
+  async function gitScene(l: Layout) {
     const home = makeHome();
     const paths = resolvePaths(home);
     fs.writeFileSync(paths.fleetConfig, JSON.stringify(FleetConfig.parse({ id: fleetId, gatewayMachineId: trift })));
@@ -590,14 +576,13 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     const state = gitCrew(l);
     const discovery = await discoverGit(state, { excludes: DEFAULT_EXCLUDES });
     expect(discovery.blockers).toEqual([]);
-    const at = (roots: Record<string, string>, fleetHome: string) => ({ pathRoots: roots, fleetHome });
     const inventory = buildInventory(state, { fleet }, {
-      source: { machineId: mac, ...at(l.sourceRoots, path.join(l.base, 'mac-archi')) }, destination: { machineId: trift, ...at(l.destinationRoots, home) },
+      source: { machineId: mac, home: l.home, fleetHome: path.join(l.base, 'mac-archi') }, destination: { machineId: trift, home: l.home, fleetHome: home },
     }, discovery);
     const built = await buildManifest(inventory, { transactionId: TX, generation: 4 });
     expect(built.blockers).toEqual([]);
-    const landed = await transfer(paths, built.manifest);
-    if (o.unplug !== false) fs.rmSync(path.join(l.base, 'Users'), { recursive: true, force: true });
+    const macTree = park(l, 'mac');
+    const landed = await transfer(paths, built.manifest, (p) => parkedAt(l, macTree, p));
     const store = Store.load(paths.state, () => {});
     return { home, paths, store, manifest: built.manifest, digest: built.digest, landed, probes: [] as AgentProbe[] };
   }
@@ -607,19 +592,19 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     const s = await gitScene(l);
     const d = daemon(s);
     const r = await d.handover.prepare({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest, landed: s.landed });
-    const dd = l.destination;
+    const dd = l.source;
     expect(git(l.base, dd.main, 'worktree', 'list', '--porcelain')).toContain(`worktree ${dd.nested}`);
-    expect(git(l.base, dd.main, 'worktree', 'list', '--porcelain')).not.toContain(l.source.work);
+    expect(git(l.base, dd.main, 'worktree', 'list', '--porcelain')).not.toContain(dd.unused);
     const prepared = FleetState.parse(JSON.parse(fs.readFileSync(s.paths.preparedState(TX), 'utf8')));
     expect(prepared.characters.nested.cwd).toBe(dd.nested);
 
-    // the seal holds the gitfile the repair wrote, not the one the source sent
+    // the seal holds the gitfile as the repair left it, which at the same path is the one the source sent
     const seal = SealRecord.parse(JSON.parse(fs.readFileSync(s.paths.replicaSeal(TX), 'utf8')));
-    const nested = s.manifest.roots.find((x) => x.destinationPath === dd.main)!;
+    const nested = s.manifest.roots.find((x) => x.path === dd.main)!;
     const gitfile = (files: { path: string; sha256?: string }[]) => files.find((f) => f.path === '.claude/worktrees/nested/.git')?.sha256;
     const sealed = seal.roots.find((x) => x.id === nested.id)!;
     expect(gitfile(sealed.files)).toBe(crypto.createHash('sha256').update(fs.readFileSync(path.join(dd.nested, '.git'))).digest('hex'));
-    expect(gitfile(sealed.files)).not.toBe(gitfile(nested.files));
+    expect(gitfile(sealed.files)).toBe(gitfile(nested.files));
 
     // a prepare cut short after the repair, retried, trusts the verification it already made
     const journal = journalOf(s.paths);
@@ -631,11 +616,11 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
   });
 
   /**
-   * The fleet came from the fixture's source to its destination once, and the source sealed its roots as the copy it
-   * left behind. Now it comes back: the source is this daemon's machine, and the manifest is the destination's.
+   * The fleet went from the Mac to trift once, and the Mac sealed its roots as the copy it left behind. Now it comes
+   * back: the manifest is trift's, whose tree is then parked at `from`, and this daemon is the Mac's, with its tree back.
    */
   async function comingBack(l: Layout, meanwhile?: () => void) {
-    const there = await gitScene(l, { unplug: false });
+    const there = await gitScene(l);
     await daemon(there).handover.prepare({ transactionId: TX, generation: 5, manifest: { ...there.manifest, transactionId: TX }, manifestDigest: there.digest, landed: there.landed });
     meanwhile?.();
     const home = makeHome();
@@ -643,21 +628,22 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     fs.writeFileSync(paths.fleetConfig, JSON.stringify(FleetConfig.parse({ id: fleetId, gatewayMachineId: trift })));
     fs.writeFileSync(paths.owner, JSON.stringify({ fleetId, generation: 4, ownerMachineId: mac }));
     loadConfig(paths);
-    const sealed = new ReplicaStore({ fleetId, paths });
-    for (const r of replicaRoots(there.manifest, 'source')) {
-      sealed.seal(r, { transactionId: 'tx-0', generation: 4, manifestDigest: there.digest, files: there.manifest.roots.find((x) => x.id === r.id)!.files }, 'source');
-    }
-    const back = { ...l, source: l.destination, destination: l.source, sourceRoots: l.destinationRoots, destinationRoots: l.sourceRoots };
-    const state = gitCrew(back);
+    const state = gitCrew(l);
     const discovery = await discoverGit(state, { excludes: DEFAULT_EXCLUDES });
     expect(discovery.blockers).toEqual([]);
     const inventory = buildInventory(state, { fleet: FleetConfig.parse({ id: fleetId, gatewayMachineId: trift }) }, {
-      source: { machineId: mac, pathRoots: back.sourceRoots, fleetHome: path.join(l.base, 'far-archi') },
-      destination: { machineId: trift, pathRoots: back.destinationRoots, fleetHome: home },
+      source: { machineId: mac, home: l.home, fleetHome: path.join(l.base, 'far-archi') },
+      destination: { machineId: trift, home: l.home, fleetHome: home },
     }, discovery);
     const built = await buildManifest(inventory, { transactionId: TX, generation: 4 });
     expect(built.blockers).toEqual([]);
-    return { home, paths, store: Store.load(paths.state, () => {}), manifest: built.manifest, digest: built.digest, probes: [] as AgentProbe[] };
+    const from = park(l, 'trift');
+    unpark(l, 'mac');
+    const sealed = new ReplicaStore({ fleetId, paths });
+    for (const r of replicaRoots(there.manifest)) {
+      sealed.seal(r, { transactionId: 'tx-0', generation: 4, manifestDigest: there.digest, files: there.manifest.roots.find((x) => x.id === r.id)!.files }, 'source');
+    }
+    return { home, paths, store: Store.load(paths.state, () => {}), manifest: built.manifest, digest: built.digest, probes: [] as AgentProbe[], from };
   }
 
   it('keeps a worktree no character uses registered on the machine the fleet comes back to, and git reads it as it was', async () => {
@@ -666,8 +652,8 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     const before = { status: git(l.base, s.unused, 'status', '--porcelain=v2', '--branch'), head: git(l.base, s.unused, 'rev-parse', 'HEAD') };
     const b = await comingBack(l);
     const d = daemon(b);
-    const main = replicaRoots(b.manifest, 'destination').find((r) => r.path === s.main)!;
-    const pre = await d.handover.inspect({ roots: replicaRoots(b.manifest, 'destination'), excludes: b.manifest.excludes, pathRoots: b.manifest.destinationRoots, git: graphsHere(b.manifest) });
+    const main = replicaRoots(b.manifest).find((r) => r.path === s.main)!;
+    const pre = await d.handover.inspect({ roots: replicaRoots(b.manifest), excludes: b.manifest.excludes, folders: [l.home], git: graphsHere(b.manifest) });
     expect(pre.unproven ?? []).toEqual([]);
     expect(pre.roots.find((x) => x.id === main.id)!.check).toMatchObject({ ok: true, kind: 'replica' });
 
@@ -675,11 +661,11 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     expect(claimed.roots.find((x) => x.id === main.id)).toMatchObject({ check: { ok: true }, keep: ['.git/worktrees/unused'] });
     // what rsync does with --delete and that root's claim
     const landed: LandedRoot[] = [];
-    for (const r of replicaRoots(b.manifest, 'destination')) {
+    for (const r of replicaRoots(b.manifest)) {
       const keep = claimed.roots.find((x) => x.id === r.id)!.keep ?? [];
       const aside = keep.map((k) => { const to = fs.mkdtempSync('/tmp/archi-kept-'); made.push(to); fs.renameSync(path.join(r.path, k), path.join(to, 'k')); return { k, to }; });
       fs.rmSync(r.path, { recursive: true, force: true });
-      fs.cpSync(b.manifest.roots.find((x) => x.id === r.id)!.sourcePath, r.path, { recursive: true, verbatimSymlinks: true });
+      fs.cpSync(parkedAt(l, b.from, r.path), r.path, { recursive: true, verbatimSymlinks: true });
       for (const a of aside) { fs.rmSync(path.join(r.path, a.k), { recursive: true, force: true }); fs.renameSync(path.join(a.to, 'k'), path.join(r.path, a.k)); }
       const scanned = (await scanPath(r.path, rootMatcher(r.kind, b.manifest.excludes)))!.files;
       landed.push({ id: r.id, files: scanned.filter((f) => !keep.some((k) => f.path === k || f.path.startsWith(`${k}/`))) });
@@ -697,12 +683,12 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     git(l.base, s.unused, 'commit', '-qm', 'only on unused-branch');
     const commit = git(l.base, s.unused, 'rev-parse', 'HEAD');
     // the branch is dropped where the fleet went, and nothing this machine knows of reaches the commit
-    const b = await comingBack(l, () => { git(l.base, l.destination.main, 'branch', '-D', 'unused-branch'); });
+    const b = await comingBack(l, () => { git(l.base, s.main, 'branch', '-D', 'unused-branch'); });
     const d = daemon(b);
-    const main = replicaRoots(b.manifest, 'destination').find((r) => r.path === s.main)!;
+    const main = replicaRoots(b.manifest).find((r) => r.path === s.main)!;
     const [graph] = graphsHere(b.manifest);
     const named = [{ graph: graph.id, path: s.unused, commit }];
-    const pre = await d.handover.inspect({ roots: replicaRoots(b.manifest, 'destination'), excludes: b.manifest.excludes, pathRoots: b.manifest.destinationRoots, git: graphsHere(b.manifest) });
+    const pre = await d.handover.inspect({ roots: replicaRoots(b.manifest), excludes: b.manifest.excludes, folders: [l.home], git: graphsHere(b.manifest) });
     expect(pre.unproven).toEqual(named);
     expect(pre.roots.find((x) => x.id === main.id)!.check).toMatchObject({ ok: true });
     const claimed = await d.handover.claim({ transactionId: TX, generation: 5, manifest: { ...b.manifest, transactionId: TX }, manifestDigest: b.digest });
@@ -735,7 +721,7 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     d.gateway.record = { fleetId, generation: 4, ownerMachineId: mac };
     await d.handover.abort({ transactionId: TX, generation: 5 });
     const replicas = new ReplicaStore({ fleetId, paths: s.paths });
-    for (const r of replicaRoots(s.manifest, 'destination')) {
+    for (const r of replicaRoots(s.manifest)) {
       const check = await replicas.inspect(r, { transactionId: 'tx-2', excludes: s.manifest.excludes });
       expect(check, r.path).toMatchObject({ ok: true, kind: 'replica' });
     }
@@ -745,13 +731,13 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     const l = seedHere(made);
     const s = await gitScene(l);
     // a change made here after the transfer verified it, and verified again so only Git can tell
-    git(l.base, l.destination.main, 'stash', 'drop', '-q');
+    git(l.base, l.source.main, 'stash', 'drop', '-q');
     const landed = await Promise.all(s.landed.map(async (x) => {
       const root = s.manifest.roots.find((r) => r.id === x.id)!;
-      return { id: x.id, files: (await scanPath(root.destinationPath, rootMatcher(root.kind, s.manifest.excludes)))!.files };
+      return { id: x.id, files: (await scanPath(root.path, rootMatcher(root.kind, s.manifest.excludes)))!.files };
     }));
     const r = await refusal(daemon(s).handover.prepare({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest, landed }));
-    expect(blockersOf(r)).toContainEqual(expect.objectContaining({ code: 'git_mismatch', message: expect.stringContaining(`${path.join(l.destination.main, '.git')}: the stash is not the one the source left`) }));
+    expect(blockersOf(r)).toContainEqual(expect.objectContaining({ code: 'git_mismatch', message: expect.stringContaining(`${path.join(l.source.main, '.git')}: the stash is not the one the source left`) }));
     expect(fs.existsSync(s.paths.preparedState(TX))).toBe(false);
   });
 });
@@ -1484,7 +1470,7 @@ describe('destination claim', () => {
     const s = await scene({ land: false });
     const d = daemon(s);
     const r = await d.handover.claim(claimParams(s));
-    const carried = replicaRoots(s.manifest, 'destination');
+    const carried = replicaRoots(s.manifest);
     expect(r.roots.map((x) => x.id).sort()).toEqual(carried.map((x) => x.id).sort());
     for (const root of carried) {
       const claim = r.roots.find((x) => x.id === root.id)!;
@@ -1521,7 +1507,7 @@ describe('destination claim', () => {
     expect(tree(s.base)).toEqual(before);
   });
 
-  it('refuses a claim whose roots lead out of their path root on this machine, before it reserves or creates anything', async () => {
+  it('refuses a claim whose roots a link on this machine leads elsewhere, before it reserves or creates anything', async () => {
     const s = await scene({
       land: false,
       before: ({ dst, base }) => { fs.mkdirSync(path.join(base, 'outside/work'), { recursive: true }); fs.symlinkSync(path.join(base, 'outside/work'), path.join(dst, 'work')); },
@@ -1529,7 +1515,7 @@ describe('destination claim', () => {
     const before = tree(s.base);
     const r = await refusal(daemon(s).handover.claim(claimParams(s)));
     expect(r.code).toBe('blocked');
-    expect(blockersOf(r)).toContainEqual(expect.objectContaining({ code: 'path_unsupported', message: expect.stringContaining(path.join(s.base, 'outside/work/ada')) }));
+    expect(blockersOf(r)).toContainEqual(expect.objectContaining({ code: 'path_symlinked', message: expect.stringContaining(path.join(s.base, 'outside/work/ada')) }));
     expect(tree(s.base)).toEqual(before);
     expect(fs.readdirSync(path.join(s.base, 'outside/work'))).toEqual([]);
   });
@@ -1547,7 +1533,7 @@ describe('destination claim', () => {
 
   it('reports a root that holds work it cannot vouch for, and archives it aside only when asked to', async () => {
     const s = await scene({ land: false });
-    const ada = replicaRoots(s.manifest, 'destination').find((x) => x.path === path.join(s.dst, 'work/ada'))!;
+    const ada = replicaRoots(s.manifest).find((x) => x.path === path.join(s.dst, 'work/ada'))!;
     fs.mkdirSync(ada.path, { recursive: true });
     fs.writeFileSync(path.join(ada.path, 'mine.txt'), 'written here\n');
 
@@ -1564,21 +1550,22 @@ describe('destination claim', () => {
 });
 
 describe('destination inspect', () => {
-  it('says whether each root could be taken and what each path root has room for, and writes no record', async () => {
+  it('says whether each root could be taken and what each folder it is asked about is good for, and writes no record', async () => {
     const s = await scene({ land: false });
     const d = daemon(s);
-    const carried = replicaRoots(s.manifest, 'destination');
+    const carried = replicaRoots(s.manifest);
     const ada = carried.find((x) => x.path === path.join(s.dst, 'work/ada'))!;
     fs.mkdirSync(ada.path, { recursive: true });
     fs.writeFileSync(path.join(ada.path, 'mine.txt'), 'written here\n');
     const before = tree(s.home);
+    const nowhere = path.join(s.base, 'nowhere');
 
-    const r = await d.handover.inspect({ roots: carried, excludes: s.manifest.excludes, pathRoots: { home: s.dst, work: path.join(s.base, 'nowhere') } });
+    const r = await d.handover.inspect({ roots: carried, excludes: s.manifest.excludes, folders: [s.dst, nowhere] });
     expect(r.roots.find((x) => x.id === ada.id)!.check).toMatchObject({ ok: false, blocker: { code: 'destination_occupied' } });
     expect(r.roots.filter((x) => x.id !== ada.id).every((x) => x.check.ok && x.check.kind === 'absent')).toBe(true);
-    expect(r.pathRoots.home).toMatchObject({ exists: true, writable: true });
-    expect(r.pathRoots.home.freeBytes).toBeGreaterThan(0);
-    expect(r.pathRoots.work).toMatchObject({ exists: false });
+    expect(r.folders[s.dst]).toMatchObject({ exists: true, writable: true });
+    expect(r.folders[s.dst].freeBytes).toBeGreaterThan(0);
+    expect(r.folders[nowhere]).toEqual({ exists: false, writable: false, caseInsensitive: false, freeBytes: 0 });
     expect(tree(s.home)).toEqual(before);
     expect(fs.existsSync(path.join(s.dst, 'work/bo'))).toBe(false);
   });
@@ -1593,7 +1580,7 @@ describe('destination inspect', () => {
       'model = "gpt-5"', '', `[projects."${bo}"]`, 'trust_level = "trusted"', '', `[projects."${demo}"]`, 'trust_level = "untrusted"', '',
     ].join('\n'));
     const inspect = (resumes: ParsedParams<'handover.inspect'>['resumes']) =>
-      daemon(s).handover.inspect({ roots: [], excludes: [], pathRoots: { home: s.dst }, resumes });
+      daemon(s).handover.inspect({ roots: [], excludes: [], folders: [], resumes });
 
     const r = await inspect([
       { kind: 'codex', cwd: bo }, { kind: 'codex', cwd: linked }, { kind: 'codex', cwd: wt, repo: bo },
@@ -1612,10 +1599,10 @@ describe('a destination root that already holds what the handover brings', () =>
     ({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest });
   // mission control's folder, as setup made it on this machine too
   const copyMc = ({ src, dst }: { src: string; dst: string }): void => { fs.cpSync(path.join(src, 'mc'), path.join(dst, 'mc'), { recursive: true }); };
-  const mcOf = (s: Scene) => replicaRoots(s.manifest, 'destination').find((x) => x.path === path.join(s.dst, 'mc'))!;
+  const mcOf = (s: Scene) => replicaRoots(s.manifest).find((x) => x.path === path.join(s.dst, 'mc'))!;
   const inspected = (s: Scene) => daemon(s).handover.inspect({
-    roots: replicaRoots(s.manifest, 'destination').map((r) => ({ ...r, content: contentDigest(s.manifest.roots.find((x) => x.id === r.id)!.files) })),
-    excludes: s.manifest.excludes, pathRoots: { home: s.dst },
+    roots: replicaRoots(s.manifest).map((r) => ({ ...r, content: contentDigest(s.manifest.roots.find((x) => x.id === r.id)!.files) })),
+    excludes: s.manifest.excludes, folders: [s.dst],
   });
 
   it('passes preflight and is claimed as a replica of that content', async () => {
@@ -1640,7 +1627,7 @@ describe('a destination root that already holds what the handover brings', () =>
 });
 
 describe('destination inspect, of what could not land', () => {
-  it('reports a root that leads out of its path root on this machine, and the link targets that are not here', async () => {
+  it('reports a root a link on this machine leads elsewhere, and the link targets that are not here', async () => {
     const s = await scene({
       land: false,
       before: ({ dst, base }) => {
@@ -1649,12 +1636,12 @@ describe('destination inspect, of what could not land', () => {
         fs.writeFileSync(path.join(dst, 'here.txt'), 'here');
       },
     });
-    const carried = replicaRoots(s.manifest, 'destination');
+    const carried = replicaRoots(s.manifest);
     const r = await daemon(s).handover.inspect({
-      roots: carried, excludes: s.manifest.excludes, pathRoots: { home: s.dst }, links: [path.join(s.dst, 'here.txt'), path.join(s.dst, 'gone.txt')],
+      roots: carried, excludes: s.manifest.excludes, folders: [s.dst], links: [path.join(s.dst, 'here.txt'), path.join(s.dst, 'gone.txt')],
     });
     const ada = carried.find((x) => x.path === path.join(s.dst, 'work/ada'))!;
-    expect(r.roots.find((x) => x.id === ada.id)!.check).toMatchObject({ ok: false, blocker: { code: 'path_unsupported', entity: { kind: 'root', id: ada.id } } });
+    expect(r.roots.find((x) => x.id === ada.id)!.check).toMatchObject({ ok: false, blocker: { code: 'path_symlinked', entity: { kind: 'root', id: ada.id } } });
     expect(r.missing).toEqual([path.join(s.dst, 'gone.txt')]);
     expect(fs.readdirSync(path.join(s.base, 'outside/work'))).toEqual([]);
   });
@@ -1684,7 +1671,7 @@ describe('destination complete', () => {
     expect(await d.handover.complete({ transactionId: TX, generation: 5 })).toEqual({});
     // the next handover here finds each root holding only what this one left
     const replicas = new ReplicaStore({ fleetId, paths: s.paths });
-    for (const r of replicaRoots(s.manifest, 'destination')) {
+    for (const r of replicaRoots(s.manifest)) {
       expect(await replicas.inspect(r, { transactionId: 'tx-2', excludes: s.manifest.excludes }), r.path).toMatchObject({ ok: true, kind: 'replica' });
     }
   });
@@ -1697,7 +1684,7 @@ describe('destination complete, when a root cannot be sealed', () => {
     const { preparedDigest } = await d.handover.prepare(params(s));
     d.gateway.commit(preparedDigest);
     await d.handover.activate({ transactionId: TX, generation: 5 });
-    const [first] = replicaRoots(s.manifest, 'destination');
+    const [first] = replicaRoots(s.manifest);
     const record = s.paths.replicaRecord(fleetId, first.path);
     const held = fs.readFileSync(record);
     fs.rmSync(record);

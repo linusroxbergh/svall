@@ -45,9 +45,7 @@ export type RootEntry = {
   // the manifest's kind of root: a Git directory carried on its own keeps Git's entries whatever the excludes say
   rootKind: TransferRoot['kind'];
   entry: 'dir' | 'file';
-  sourcePath: string;
-  // where the manifest maps it: shown, never written
-  destinationPath: string;
+  path: string;
   claim: RootClaim;
   files: readonly TransferFile[];
 };
@@ -274,11 +272,11 @@ class Mirror {
       const { check } = entry.claim;
       if (!check.ok) return { id: entry.id, status: 'blocked', blocker: check.blocker };
       // the claim's path is the one the destination checked by real path: the only place this root is written
-      const problem = pathProblem(entry.sourcePath) ?? pathProblem(check.path);
+      const problem = pathProblem(entry.path) ?? pathProblem(check.path);
       if (problem) return refused(entry, problem);
       const dir = entry.entry === 'dir';
       const end = (p: string) => (dir ? `${p}/` : p);
-      [source, target] = [end(entry.sourcePath), end(check.path)];
+      [source, target] = [end(entry.path), end(check.path)];
       excludes = entry.claim.excludes;
       keep = entry.claim.keep ?? [];
       rootKind = entry.rootKind;
@@ -387,7 +385,7 @@ class Mirror {
 
   private externalWriter(last: Unstable): Blocker {
     const plan = this.plan as Plan;
-    const where = last.side === 'source' ? `the source ${this.entry.kind === 'root' ? this.entry.sourcePath : this.entry.sourceHome}` : `the ${plan.push ? 'far' : 'local'} copy ${plan.copy}`;
+    const where = last.side === 'source' ? `the source ${this.entry.kind === 'root' ? this.entry.path : this.entry.sourceHome}` : `the ${plan.push ? 'far' : 'local'} copy ${plan.copy}`;
     const shown = [...new Set(last.names)].slice(0, PREVIEW);
     return {
       code: 'external_writer',

@@ -43,38 +43,38 @@ const char = (id: string, name: string, cwd: string, over: Partial<Character> = 
   shell: { lastOutputAt: 0 }, unread: false, revive: { command: '' }, ...over,
 });
 
-const HOMES = { mac: { home: '/Users/ada' }, trift: { home: '/home/ada', work: '/srv/work' } };
-const FLEET_HOMES = { mac: '/Users/ada/.archipelago', trift: '/home/ada/.archipelago' };
+// both machines have the same home, and so the same fleet home
+const HOME = '/Users/ada';
+const FLEET_HOME = '/Users/ada/.archipelago';
+const at = (p: string): string => path.posix.join(HOME, p);
 
 /** The manifest a source freezes: a repository with a folded worktree, a Git directory of its own, and one Claude session. */
 function manifestFor(tx: string | undefined, from = mac, to = trift): FrozenManifest {
-  const [src, dst] = from === mac ? [HOMES.mac, HOMES.trift] : [HOMES.trift, HOMES.mac];
-  const at = (roots: { home: string }, p: string) => path.posix.join(roots.home, p);
   const snapshot = emptyState();
-  snapshot.characters.c_ada = char('c_ada', 'ada', at(src, 'app'), {
-    agent: { kind: 'claude', sessionId: SID, transcriptPath: at(src, `.claude/projects/-app/${SID}.jsonl`), status: 'idle', lastActivityAt: 0 },
+  snapshot.characters.c_ada = char('c_ada', 'ada', at('app'), {
+    agent: { kind: 'claude', sessionId: SID, transcriptPath: at(`.claude/projects/-app/${SID}.jsonl`), status: 'idle', lastActivityAt: 0 },
   });
-  snapshot.characters.c_bo = char('c_bo', 'bo', at(src, 'app'), {
-    agent: { kind: 'codex', sessionId: CODEX, transcriptPath: at(src, `.codex/sessions/rollout-${CODEX}.jsonl`), status: 'idle', lastActivityAt: 0 },
+  snapshot.characters.c_bo = char('c_bo', 'bo', at('app'), {
+    agent: { kind: 'codex', sessionId: CODEX, transcriptPath: at(`.codex/sessions/rollout-${CODEX}.jsonl`), status: 'idle', lastActivityAt: 0 },
   });
   return {
     version: TRANSFER_SCHEMA_VERSION, transactionId: tx as string, generation: G, fromMachineId: from, toMachineId: to,
-    sourceRoots: src, destinationRoots: dst, fleet: FleetConfig.parse({ id: fleetId, gatewayMachineId: trift }),
+    home: HOME, fleet: FleetConfig.parse({ id: fleetId, gatewayMachineId: trift }),
     snapshot: FleetState.parse(snapshot), excludes: ['node_modules/', 'logs/'],
     roots: [
-      { id: 'r_app', kind: 'repo', entry: 'dir', sourcePath: at(src, 'app'), destinationPath: at(dst, 'app'), files: [file('a.txt'), file('Readme.md'), file('README.md')] },
-      { id: 'r_wt', kind: 'worktree', entry: 'dir', sourcePath: at(src, 'app/.claude/worktrees/x'), destinationPath: at(dst, 'app/.claude/worktrees/x'), foldedInto: 'r_app', files: [] },
-      { id: 'r_git', kind: 'gitdir', entry: 'dir', sourcePath: at(src, 'app.git'), destinationPath: at(dst, 'app.git'), files: [file('HEAD'), file('logs/HEAD')] },
+      { id: 'r_app', kind: 'repo', entry: 'dir', path: at('app'), files: [file('a.txt'), file('Readme.md'), file('README.md')] },
+      { id: 'r_wt', kind: 'worktree', entry: 'dir', path: at('app/.claude/worktrees/x'), foldedInto: 'r_app', files: [] },
+      { id: 'r_git', kind: 'gitdir', entry: 'dir', path: at('app.git'), files: [file('HEAD'), file('logs/HEAD')] },
     ],
     sessions: [
       {
-        characterId: 'c_ada', agent: 'claude', sessionId: SID, sourcePath: at(src, `.claude/projects/-app/${SID}.jsonl`),
-        sourceHome: at(src, '.claude'), destinationHome: at(dst, '.claude'), destinationPath: at(dst, `.claude/projects/-app/${SID}.jsonl`), adapter: 1,
+        characterId: 'c_ada', agent: 'claude', sessionId: SID, sourcePath: at(`.claude/projects/-app/${SID}.jsonl`),
+        sourceHome: at('.claude'), destinationHome: at('.claude'), destinationPath: at(`.claude/projects/-app/${SID}.jsonl`), adapter: 1,
         files: [file(`projects/-app/${SID}.jsonl`), file(`projects/-app/${SID}/subagents/a.jsonl`)],
       },
       {
-        characterId: 'c_bo', agent: 'codex', sessionId: CODEX, sourcePath: at(src, `.codex/sessions/rollout-${CODEX}.jsonl`),
-        sourceHome: at(src, '.codex'), destinationHome: at(dst, '.codex'), destinationPath: at(dst, `.codex/sessions/rollout-${CODEX}.jsonl`), adapter: 1,
+        characterId: 'c_bo', agent: 'codex', sessionId: CODEX, sourcePath: at(`.codex/sessions/rollout-${CODEX}.jsonl`),
+        sourceHome: at('.codex'), destinationHome: at('.codex'), destinationPath: at(`.codex/sessions/rollout-${CODEX}.jsonl`), adapter: 1,
         files: [file(`sessions/rollout-${CODEX}.jsonl`)],
       },
     ],
@@ -85,8 +85,8 @@ const info = (machineId: MachineId, over: Partial<SystemInfo> = {}): SystemInfo 
   machineId, release: 'dev', protocol: PROTOCOL_VERSION, stateSchema: emptyState().version, transferSchema: TRANSFER_SCHEMA_VERSION,
   platform: machineId === mac ? 'darwin' : 'linux', arch: 'arm64', git: '2.43.0',
   agentAdapters: [
-    { kind: 'claude', version: '2.1.280', adapter: 1, home: machineId === mac ? '/Users/ada/.claude' : '/home/ada/.claude', loggedIn: true, hooks: true },
-    { kind: 'codex', version: '0.156.1', adapter: 1, home: machineId === mac ? '/Users/ada/.codex' : '/home/ada/.codex', loggedIn: true, hooks: true },
+    { kind: 'claude', version: '2.1.280', adapter: 1, home: at('.claude'), loggedIn: true, hooks: true },
+    { kind: 'codex', version: '0.156.1', adapter: 1, home: at('.codex'), loggedIn: true, hooks: true },
   ],
   ...over,
 });
@@ -96,6 +96,9 @@ type Fault = { at: number; kind: 'death' | 'lost' | 'dropped' | 'partition' };
 
 /** A daemon's answers, keyed by method, as the real service gives them. */
 type Answers = Record<string, (p: never) => unknown>;
+/** What the controller told the source of the two machines. */
+type Sent = { source: { home: string }; destination: { home: string; fleetHome: string } };
+type Probe = { exists: boolean; writable: boolean; caseInsensitive: boolean; freeBytes: number };
 
 class FakeSource {
   frozen = false;
@@ -121,13 +124,16 @@ class FakeSource {
     'system.info': () => info(this.id, this.w.infos[this.id]),
     'ownership.get': () => ({ fleetId, generation: this.owner.generation, ownerMachineId: this.owner.machine, frozen: this.frozen }),
     'handover.status': () => this.status(),
-    'handover.preflight': (p: { destination: { fleetHome: string } }) => {
+    'handover.preflight': (p: Sent) => {
       if (this.frozen) throw new Refused('frozen', 'this fleet is frozen for a handover');
       const manifest = manifestFor(undefined, this.id, this.other);
-      this.w.preflightDestinationHome = p.destination.fleetHome;
+      this.w.sent.push({ method: 'handover.preflight', source: p.source, destination: { home: p.destination.home, fleetHome: p.destination.fleetHome } });
       return { manifestSummary: { digest: manifestDigest(manifest), roots: 2, files: 5, bytes: 100, sessions: 2 }, blockers: this.preflightBlockers, warnings: [], manifest };
     },
-    'handover.freeze': (p: { transactionId: string; generation: number; choices: HandoverChoices }) => this.freeze(p),
+    'handover.freeze': (p: { transactionId: string; generation: number; choices: HandoverChoices } & Sent) => {
+      this.w.sent.push({ method: 'handover.freeze', source: p.source, destination: { home: p.destination.home, fleetHome: p.destination.fleetHome } });
+      return this.freeze(p);
+    },
     'handover.abort': (p: { transactionId: string; generation: number }) => this.abort(p),
     'handover.complete': (p: { transactionId: string; generation: number; landed?: LandedRoot[] }) => this.complete(p),
   };
@@ -192,7 +198,7 @@ class FakeSource {
       throw new Refused('not_ready', 'not committed');
     }
     // without what the transfer verified, the source seals the roots of the manifest it froze
-    this.sealed = p.landed ?? replicaRoots(this.kept!, 'source').map((x) => ({ id: x.id, files: this.kept!.roots.find((y) => y.id === x.id)!.files }));
+    this.sealed = p.landed ?? replicaRoots(this.kept!).map((x) => ({ id: x.id, files: this.kept!.roots.find((y) => y.id === x.id)!.files }));
     this.owner = { generation: r.generation, machine: r.ownerMachineId };
     this.journal = undefined;
     return {};
@@ -208,7 +214,9 @@ class FakeDestination {
   /** roots holding work no handover left, until a claim archives them */
   diverged = new Set<string>();
   archived: string[] = [];
-  probe = { exists: true, writable: true, caseInsensitive: false, freeBytes: 1e12, collisions: [] as string[] };
+  probe: Probe = { exists: true, writable: true, caseInsensitive: false, freeBytes: 1e12 };
+  /** what a folder reads as when it is not `probe` */
+  folders: Record<string, Probe> = {};
   landedSeen?: LandedRoot[];
   /** the folders its Codex already trusts */
   trusted = new Set<string>();
@@ -224,9 +232,9 @@ class FakeDestination {
       const j = this.journal;
       return j ? { transaction: { id: j.tx, fromMachineId: this.w.other(this.id), toMachineId: this.id, phase: j.phase, startedAt: 1 }, characters: [], roots: [] } : { characters: [], roots: [] };
     },
-    'handover.inspect': (p: { roots: { id: string; path: string }[]; pathRoots: Record<string, string>; resumes?: { cwd: string }[] }) => ({
+    'handover.inspect': (p: { roots: { id: string; path: string }[]; folders: string[]; resumes?: { cwd: string }[] }) => ({
       roots: p.roots.map((r) => ({ id: r.id, check: this.diverged.has(r.id) ? { ok: false, path: r.path, blocker: this.divergedBlocker(r.id, r.path) } : { ok: true, path: r.path, kind: 'absent' } })),
-      pathRoots: Object.fromEntries(Object.keys(p.pathRoots).map((k) => [k, this.probe])),
+      folders: Object.fromEntries(p.folders.map((f) => [f, this.folders[f] ?? this.probe])),
       untrusted: (p.resumes ?? []).map((f) => f.cwd).filter((cwd) => !this.trusted.has(cwd)),
     }),
     'handover.claim': (p: { transactionId: string; generation: number; manifest: FrozenManifest; manifestDigest: string; archive?: string[] }) => this.claim(p),
@@ -257,7 +265,7 @@ class FakeDestination {
     if (r.generation !== p.generation - 1) throw new Refused('generation_mismatch', 'another generation');
     if (tx.phase !== 'preparing') throw new Refused('not_ready', `the gateway holds it ${tx.phase}`);
     return {
-      roots: replicaRoots(p.manifest, 'destination').map((root) => {
+      roots: replicaRoots(p.manifest).map((root) => {
         let archivedTo: string | undefined;
         if (this.diverged.has(root.id) && p.archive?.includes(root.id)) {
           this.diverged.delete(root.id);
@@ -277,7 +285,7 @@ class FakeDestination {
   prepare(p: { transactionId: string; generation: number; manifest: FrozenManifest; manifestDigest: string; landed: LandedRoot[] }) {
     this.identify(p);
     if (this.journal?.preparedDigest) return { preparedDigest: this.journal.preparedDigest };
-    const carried = replicaRoots(p.manifest, 'destination');
+    const carried = replicaRoots(p.manifest);
     const unverified = carried.find((r) => !p.landed.some((x) => x.id === r.id));
     if (unverified) throw new Refused('not_ready', `the transfer verified nothing in root ${unverified.id}`);
     if (carried.some((r) => this.claims.get(r.id) !== p.transactionId)) throw new Refused('blocked', 'not claimed', { blockers: [{ code: 'destination_occupied', message: 'not claimed' }] });
@@ -374,7 +382,7 @@ class World {
   n = 0;
   now = 1000;
   txn = 0;
-  preflightDestinationHome?: string;
+  sent: (Sent & { method: string })[] = [];
   farRsync = 'rsync  version 3.2.7  protocol version 31\n';
   masters = {
     trift: {
@@ -464,8 +472,8 @@ class World {
     return {
       route: { machineId: id, name, ...(id === trift && { ssh: 'trift' }) },
       daemon: this.daemon(name),
-      pathRoots: id === mac ? HOMES.mac : HOMES.trift,
-      fleetHome: id === mac ? FLEET_HOMES.mac : FLEET_HOMES.trift,
+      home: HOME,
+      fleetHome: FLEET_HOME,
       ...(id === trift && { master: async () => { if (this.masterFails) throw this.masterFails; return this.masters.trift; } }),
     };
   }
@@ -587,10 +595,10 @@ describe('the controller transaction', () => {
     const roots = run.entries.filter((e): e is RootEntry => e.kind === 'root');
     // a folded worktree travels inside the repository that holds it
     expect(roots.map((r) => [r.id, r.rootKind, r.claim.check.path, r.claim.excludes])).toEqual([
-      ['r_app', 'repo', '/real/home/ada/app', ['node_modules/', 'logs/']],
-      ['r_git', 'gitdir', '/real/home/ada/app.git', ['node_modules/', 'logs/']],
+      ['r_app', 'repo', '/real/Users/ada/app', ['node_modules/', 'logs/']],
+      ['r_git', 'gitdir', '/real/Users/ada/app.git', ['node_modules/', 'logs/']],
     ]);
-    const stage = (i: number) => resolvePaths(FLEET_HOMES.trift).sessionStage('tx-1', i);
+    const stage = (i: number) => resolvePaths(FLEET_HOME).sessionStage('tx-1', i);
     expect(run.entries.filter((e) => e.kind === 'session').map((e) => [e.id, e.sourceHome, e.stage, e.files.map((f) => f.path)])).toEqual([
       ['s0', '/Users/ada/.claude', stage(0), [`projects/-app/${SID}.jsonl`, `projects/-app/${SID}/subagents/a.jsonl`]],
       ['s1', '/Users/ada/.codex', stage(1), [`sessions/rollout-${CODEX}.jsonl`]],
@@ -686,19 +694,37 @@ describe('the controller transaction', () => {
   });
 });
 
-describe('a manifest over other path roots', () => {
-  it('stops before any root is claimed when the source froze over path roots other than the ones it was sent', async () => {
+describe('one home on both machines', () => {
+  it('carries every path as the source recorded it, both ways, and tells the source both machines share the home', async () => {
+    for (const pull of [false, true]) {
+      const w = new World({ pull });
+      const out = await controller(w).start(w.destination.id, {});
+      expect(out.status, `pull ${pull}`).toBe('complete');
+      expect(w.sent.map((x) => x.method)).toEqual(['handover.preflight', 'handover.freeze']);
+      for (const x of w.sent) expect(x).toMatchObject({ source: { home: HOME }, destination: { home: HOME, fleetHome: FLEET_HOME } });
+      const m = w.source.kept!;
+      const [run] = w.transfers;
+      const roots = run.entries.filter((e): e is RootEntry => e.kind === 'root');
+      expect(roots.map((r) => r.path)).toEqual(replicaRoots(m).map((r) => r.path));
+      expect(roots.map((r) => r.path)).toEqual([at('app'), at('app.git')]);
+      expect(run.entries.flatMap((e) => (e.kind === 'session' ? [e.sourceHome] : []))).toEqual([at('.claude'), at('.codex')]);
+      expect(m.sessions.map((x) => x.destinationPath)).toEqual(m.sessions.map((x) => x.sourcePath));
+      expect(settledOn(w)).toBe('destination');
+    }
+  });
+
+  it('stops before any root is claimed when the source froze over a home other than the one it was sent', async () => {
     const w = new World();
     const freeze = w.source.answers['handover.freeze'];
     w.source.answers['handover.freeze'] = (async (p: never) => {
       const r = await (freeze as (x: never) => Promise<{ manifest: FrozenManifest }>)(p);
-      const manifest = { ...r.manifest, destinationRoots: { home: '/' } };
+      const manifest = { ...r.manifest, home: '/home/ada' };
       w.source.kept = manifest;
       w.source.journal!.digest = manifestDigest(manifest);
       return { manifest };
     }) as never;
     const out = await controller(w).start(trift, {});
-    expect(out).toMatchObject({ status: 'interrupted', phase: 'freeze', error: expect.stringContaining('path roots') });
+    expect(out).toMatchObject({ status: 'interrupted', phase: 'freeze', error: expect.stringContaining('a home other than the one it was sent') });
     expect(w.ops).not.toContain('trift:handover.claim');
   });
 });
@@ -717,7 +743,7 @@ describe('preflight', () => {
   it('adds the destination\'s roots and room, the destination\'s git, and what differs between the machines', async () => {
     const w = new World();
     w.destination.diverged.add('r_git');
-    w.destination.probe = { exists: true, writable: true, caseInsensitive: true, freeBytes: 10, collisions: [] };
+    w.destination.probe = { exists: true, writable: true, caseInsensitive: true, freeBytes: 10 };
     w.infos[trift] = { agentAdapters: [...info(trift).agentAdapters.map((a) => (a.kind === 'claude' ? { ...a, version: '2.1.290' } : a))] };
     const r = await controller(w).preflight(trift, {});
     const codes = (list: Blocker[]) => list.map((b) => [b.code, b.entity?.id]);
@@ -730,7 +756,7 @@ describe('preflight', () => {
     expect(codes(r.warnings)).toEqual(expect.arrayContaining([['codex_trust', 'c_bo'], ['config_difference', undefined]]));
     expect(r.warnings.find((x) => x.code === 'config_difference')!.message).toMatch(/2\.1\.280.*2\.1\.290/);
     // the source is told where the destination keeps its fleet
-    expect(w.preflightDestinationHome).toBe(FLEET_HOMES.trift);
+    expect(w.sent[0].destination.fleetHome).toBe(FLEET_HOME);
     expect(w.store.j).toBeUndefined();
   });
 
@@ -750,8 +776,8 @@ describe('preflight', () => {
     const trust = async () => (await controller(w).preflight(trift, {})).warnings.filter((x) => x.code === 'codex_trust');
 
     expect(await trust()).toEqual([expect.objectContaining({ entity: { kind: 'character', id: 'c_bo' }, message: expect.stringContaining('bo resumes on trift') })]);
-    expect(asked).toEqual([{ kind: 'codex', cwd: '/home/ada/app/.claude/worktrees/x', repo: '/home/ada/app' }]);
-    w.destination.trusted.add('/home/ada/app/.claude/worktrees/x');
+    expect(asked).toEqual([{ kind: 'codex', cwd: '/Users/ada/app/.claude/worktrees/x', repo: '/Users/ada/app' }]);
+    w.destination.trusted.add('/Users/ada/app/.claude/worktrees/x');
     expect(await trust()).toEqual([]);
   });
 
@@ -781,13 +807,13 @@ describe('preflight', () => {
     }) as never;
     let asked: string[] | undefined;
     const inspect = w.destination.answers['handover.inspect'];
-    w.destination.answers['handover.inspect'] = ((p: { links?: string[] }) => ({ ...(inspect as (x: unknown) => object)(p), missing: (asked = p.links ?? []).filter((l) => l !== '/home/elsewhere') })) as never;
+    w.destination.answers['handover.inspect'] = ((p: { links?: string[] }) => ({ ...(inspect as (x: unknown) => object)(p), missing: (asked = p.links ?? []).filter((l) => l !== '/Users/elsewhere') })) as never;
     const pre = await controller(w).preflight(trift, {});
-    expect(asked).toEqual(['/Users/ada/shared/x', '/home/elsewhere']);
+    expect(asked).toEqual(['/Users/ada/shared/x', '/Users/elsewhere']);
     expect(pre.blockers).toEqual([]);
     expect(pre.warnings).toContainEqual({
       code: 'symlink_dangling', entity: { kind: 'root', id: 'r_app' },
-      message: expect.stringMatching(/^2 links in \/home\/ada\/app will point at nothing on trift: lib\/gone, shared/),
+      message: expect.stringMatching(/^2 links in \/Users\/ada\/app will point at nothing on trift: lib\/gone, shared/),
     });
   });
 
@@ -832,7 +858,7 @@ describe('preflight', () => {
     const inspect = w.destination.answers['handover.inspect'];
     w.destination.answers['handover.inspect'] = ((p: { roots: { id: string; content?: string }[] }) => { asked = p.roots; return (inspect as (x: unknown) => object)(p); }) as never;
     const pre = await controller(w).preflight(trift, {});
-    expect(asked.map((r) => [r.id, r.content])).toEqual(replicaRoots(pre.manifest, 'destination')
+    expect(asked.map((r) => [r.id, r.content])).toEqual(replicaRoots(pre.manifest)
       .map((r) => [r.id, contentDigest(pre.manifest.roots.find((x) => x.id === r.id)!.files)]));
   });
 
@@ -853,7 +879,7 @@ describe('preflight', () => {
         return r;
       }) as never;
     }
-    const unproven = [{ graph: 'g_app', path: '/home/ada/stay', commit }];
+    const unproven = [{ graph: 'g_app', path: '/Users/ada/stay', commit }];
     const asked: { git?: unknown; reaches: unknown[] } = { reaches: [] };
     const inspect = w.destination.answers['handover.inspect'];
     w.destination.answers['handover.inspect'] = ((p: { git?: unknown }) => {
@@ -872,12 +898,11 @@ describe('preflight', () => {
   it('asks the source about a kept commit the destination cannot prove comes back, and blocks only on one the source cannot reach', async () => {
     const lost = keptCommit({ reached: false, at: 'inspect' });
     const out = await controller(lost.w).start(trift, {});
-    expect(lost.asked.git).toEqual([{ id: 'g_app', commonDir: '/home/ada/app/.git', carried: [], tips: ['e'.repeat(40), 'c'.repeat(40)] }]);
-    // the source is asked by its own path to the repository
+    expect(lost.asked.git).toEqual([{ id: 'g_app', commonDir: '/Users/ada/app/.git', carried: [], tips: ['e'.repeat(40), 'c'.repeat(40)] }]);
     expect(lost.asked.reaches).toEqual([{ commits: [{ commonDir: '/Users/ada/app/.git', commit: lost.commit }] }]);
     expect(out).toEqual({
       status: 'blocked', phase: 'begin',
-      blockers: [{ code: 'worktree_unused', entity: { kind: 'git', id: 'g_app' }, message: expect.stringMatching(/^\/home\/ada\/stay is a worktree no character uses that stays on trift, at ffffffffffff, which nothing mac sends back reaches/) }],
+      blockers: [{ code: 'worktree_unused', entity: { kind: 'git', id: 'g_app' }, message: expect.stringMatching(/^\/Users\/ada\/stay is a worktree no character uses that stays on trift, at ffffffffffff, which nothing mac sends back reaches/) }],
     });
     expect(lost.w.ops).not.toContain('gateway:begin');
 
@@ -889,7 +914,7 @@ describe('preflight', () => {
     const lost = keptCommit({ reached: false, at: 'claim' });
     const decided: Blocker[][] = [];
     const out = await controller(lost.w, { decide: async (b) => { decided.push(b); return 'cancel'; } }).start(trift, {});
-    expect(decided).toEqual([[expect.objectContaining({ code: 'worktree_unused', message: expect.stringContaining('/home/ada/stay') })]]);
+    expect(decided).toEqual([[expect.objectContaining({ code: 'worktree_unused', message: expect.stringContaining('/Users/ada/stay') })]]);
     expect(out).toMatchObject({ status: 'blocked', phase: 'transfer' });
     expect(lost.w.transfers).toEqual([]);
     expect(settledOn(lost.w)).toBe('source');
@@ -939,7 +964,7 @@ describe('preflight', () => {
     expect(pre?.data).toMatchObject({
       names: {
         characters: { c_ada: 'ada', c_bo: 'bo' },
-        roots: { r_app: '/home/ada/app', r_wt: '/home/ada/app/.claude/worktrees/x', r_git: '/home/ada/app.git' },
+        roots: { r_app: '/Users/ada/app', r_wt: '/Users/ada/app/.claude/worktrees/x', r_git: '/Users/ada/app.git' },
         // a session row is named by the character whose session it carries
         sessions: { s0: 'ada', s1: 'bo' },
       },
@@ -951,13 +976,13 @@ describe('preflight', () => {
     w.destination.diverged.add('r_app');
     const plain = await controller(w).preflight(trift, {});
     // room for everything but the root that stays blocked
-    w.destination.probe = { ...w.destination.probe, freeBytes: spaceNeed({ ...plain.manifest, roots: plain.manifest.roots.filter((r) => r.id !== 'r_app') }).home };
+    w.destination.probe = { ...w.destination.probe, freeBytes: spaceNeed({ ...plain.manifest, roots: plain.manifest.roots.filter((r) => r.id !== 'r_app') })[HOME] };
     expect((await controller(w).preflight(trift, {})).blockers.map((b) => b.code)).toEqual(['destination_diverged']);
 
     const pre = await controller(w).preflight(trift, { archiveRoots: ['r_app'] });
     expect(pre.blockers.map((b) => b.code)).toEqual(['destination_no_space']);
     expect(pre.warnings).toContainEqual({
-      code: 'destination_diverged', entity: { kind: 'root', id: 'r_app' }, message: expect.stringMatching(/^\/home\/ada\/app is archived when the handover claims it: /),
+      code: 'destination_diverged', entity: { kind: 'root', id: 'r_app' }, message: expect.stringMatching(/^\/Users\/ada\/app is archived when the handover claims it: /),
     });
 
     w.destination.probe = { ...w.destination.probe, freeBytes: 1e12 };
@@ -965,10 +990,32 @@ describe('preflight', () => {
     expect(w.destination.archived).toEqual(['r_app']);
   });
 
-  it('blocks a missing destination root, a fleet already in a handover, and a destination that is the owner', async () => {
+  it('blocks a root outside the home whose folder the destination lacks, naming that folder, and takes one whose folder is there', async () => {
+    const w = new World();
+    const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
+    w.source.answers['handover.preflight'] = ((p: unknown) => {
+      const r = preflight(p);
+      r.manifest.roots.push({ id: 'r_tool', kind: 'cwd', entry: 'dir', path: '/Volumes/work/tool', files: [file('tool.txt')] });
+      return r;
+    }) as never;
+    let asked: string[] = [];
+    const inspect = w.destination.answers['handover.inspect'] as (p: { folders: string[] }) => object;
+    w.destination.answers['handover.inspect'] = ((p: { folders: string[] }) => { asked = p.folders; return inspect(p); }) as never;
+    w.destination.folders['/Volumes/work'] = { exists: false, writable: false, caseInsensitive: false, freeBytes: 0 };
+    const missing = await controller(w).preflight(trift, {});
+    expect(asked).toEqual([HOME, '/Volumes/work']);
+    expect(missing.blockers).toEqual([{
+      code: 'parent_missing', entity: { kind: 'root', id: 'r_tool' },
+      message: 'trift has no /Volumes/work, which /Volumes/work/tool lands in; a folder outside the home arrives at the same path there, so make /Volumes/work on trift first',
+    }]);
+    delete w.destination.folders['/Volumes/work'];
+    expect((await controller(w).preflight(trift, {})).blockers).toEqual([]);
+  });
+
+  it('blocks a missing destination home, a fleet already in a handover, and a destination that is the owner', async () => {
     const missing = new World();
     missing.destination.probe = { ...missing.destination.probe, exists: false };
-    expect((await controller(missing).preflight(trift, {})).blockers.map((b) => b.code)).toContain('path_root_missing');
+    expect((await controller(missing).preflight(trift, {})).blockers.map((b) => b.code)).toContain('parent_missing');
 
     const open = new World();
     open.record.transaction = { id: 'tx-0', fromMachineId: mac, toMachineId: trift, phase: 'preparing', startedAt: 1 };
@@ -1541,7 +1588,7 @@ describe('the real adapters', () => {
       const registry = MachineRegistry.load(makeHome());
       registry.add({
         name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64',
-        home: '/home/ada', archiBase: '/home/ada/.local/share/archipelago', pathRoots: { home: '/home/ada' }, gateway: false,
+        home: '/home/ada', archiBase: '/home/ada/.local/share/archipelago', gateway: false,
       }, trift);
       const fleet = FleetId.parse(crypto.randomUUID());
       const local = registry.localId;
@@ -1616,7 +1663,7 @@ describe('the real adapters', () => {
       const registry = MachineRegistry.load(makeHome());
       registry.add({
         name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64',
-        home: '/home/ada', archiBase: '/home/ada/.local/share/archipelago', pathRoots: { home: '/home/ada' }, gateway: false,
+        home: '/home/ada', archiBase: '/home/ada/.local/share/archipelago', gateway: false,
       }, trift);
       const local = registry.localId;
       const client = await AuthorityClient.connect(prefix);
@@ -1639,7 +1686,7 @@ describe('the real adapters', () => {
         port: await daemon({
           'system.info': () => info(trift),
           'ownership.get': () => ({ fleetId, generation: 0, ownerMachineId: local, frozen: false }),
-          'handover.inspect': (p) => ({ roots: (p.roots as { id: string; path: string }[]).map((r) => ({ id: r.id, check: { ok: true, path: r.path, kind: 'absent' } })), pathRoots: {} }),
+          'handover.inspect': (p) => ({ roots: (p.roots as { id: string; path: string }[]).map((r) => ({ id: r.id, check: { ok: true, path: r.path, kind: 'absent' } })), folders: {} }),
         }),
       });
       ssh.reply(['rsync', '--version'], { stdout: 'rsync  version 3.2.7  protocol version 31\n' });
@@ -1650,7 +1697,10 @@ describe('the real adapters', () => {
       } finally {
         await c.close();
       }
-      expect(asked).toEqual([expect.objectContaining({ destination: expect.objectContaining({ fleetHome: '/srv/fleets/ada' }) })]);
+      // and each machine's home as the registry records it
+      expect(asked).toEqual([expect.objectContaining({
+        source: { home: registry.localMachine().home }, destination: expect.objectContaining({ home: '/home/ada', fleetHome: '/srv/fleets/ada' }),
+      })]);
     } finally {
       process.env.ARCHI_GATEWAY_PREFIX = saved;
       if (saved === undefined) delete process.env.ARCHI_GATEWAY_PREFIX;

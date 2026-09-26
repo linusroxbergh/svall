@@ -189,9 +189,9 @@ export function connectHandover(o: {
       return relaying(opened.client);
     });
     daemons.push(daemon);
-    if (entry.id === registry.localId) return { route, daemon, pathRoots: entry.record.pathRoots, fleetHome: o.fleetHome };
+    if (entry.id === registry.localId) return { route, daemon, home: entry.record.home, fleetHome: o.fleetHome };
     return {
-      route, daemon, pathRoots: entry.record.pathRoots, master: () => masters.for(entry),
+      route, daemon, home: entry.record.home, master: () => masters.for(entry),
       // where its companion said the fleet lies, known once its daemon has been reached
       get fleetHome(): string {
         if (!home) throw new Error(`${entry.record.name} has not said where this fleet lies there`);

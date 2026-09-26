@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  AgentKind, type AgentAdapter, type Blocker, type Character, type FleetState, type PathRootMap, type ResumeFolder, type TransferManifestV1, type TransferSession,
+  AgentKind, type AgentAdapter, type Blocker, type Character, type FleetState, type ResumeFolder, type TransferManifestV1, type TransferSession,
 } from '@archipelago/protocol';
 import { codexInstalled, codexPaths } from '../../codex/install.js';
 import { resolvePaths } from '../../paths.js';
@@ -12,8 +12,7 @@ import { PRIVATE, profileHome } from '../../profile.js';
 import { claudePaths } from '../../resources/scan.js';
 import { HOOK_EVENTS, hooksInstalled } from '../../setup.js';
 import { writeDurable, type DurableStages } from '../durable.js';
-import { mapThroughRoots } from '../git-repair.js';
-import { holds, realPath, realRoots } from '../portable-path.js';
+import { holds } from '../portable-path.js';
 import { claudeAdapter } from './claude.js';
 import { codexAdapter } from './codex.js';
 import { pathMap, versionOf } from './records.js';
@@ -33,35 +32,9 @@ export function sessionAdapter(kind: AgentKind, adapter?: number): SessionAdapte
   return found;
 }
 
-export type SessionRoots = {
-  sourceRoots: PathRootMap;
-  destinationRoots: PathRootMap;
-  /** the source roots declared through a link, by their real paths, which the agent recorded */
-  sourceRealRoots?: PathRootMap;
-  /** the destination roots declared through a link, by the real paths the agent there will record */
-  destinationRealRoots?: PathRootMap;
-};
-
-/**
- * How one session's paths move: from either spelling of each named path root onto the spelling the agent on the
- * destination records, and from one machine's agent home to the other's.
- */
-export function sessionPathMap(o: SessionRoots & { sourceHome: string; destinationHome?: string }): PathMap {
-  const shared = Object.keys(o.sourceRoots).filter((name) => Object.hasOwn(o.destinationRoots, name));
-  const pairs = (to: PathRootMap): [string, string][] => [
-    ...shared.flatMap((name): [string, string][] => [o.sourceRoots[name], o.sourceRealRoots?.[name]]
-      .filter((from): from is string => from !== undefined).map((from) => [from, to[name] ?? o.destinationRoots[name]])),
-    ...(o.destinationHome ? [[o.sourceHome, o.destinationHome] as [string, string]] : []),
-  ];
-  return Object.assign(pathMap(pairs(o.destinationRealRoots ?? {})), { declared: pathMap(pairs({})) });
-}
-
-/** Where a session file lands, relative to the destination home, once its transcript moves from `from` to `to`. */
-export function placeFile(file: string, from: string, to: string): string {
-  if (file === from) return to;
-  const [dir, next] = [from, to].map((t) => t.replace(/\.jsonl$/, ''));
-  return holds(dir, file) ? `${next}${file.slice(dir.length)}` : file;
-}
+/** How one session's paths move: from one machine's agent home to the other's. Every other path stays as it is. */
+export const sessionPathMap = (o: { sourceHome: string; destinationHome?: string }): PathMap =>
+  pathMap(o.destinationHome ? [[o.sourceHome, o.destinationHome]] : []);
 
 /** The reads and writes placing a session makes, so a test can fail one. */
 export type InstallFs = { read(file: string): Buffer | undefined; mkdir(dir: string): void; stages?: Partial<DurableStages> };
@@ -72,27 +45,26 @@ export const realInstallFs: InstallFs = {
 };
 
 /**
- * Puts one carried session in place under this machine's agent home, rewritten for it. `staged` holds the
- * source's bytes at their manifest paths. A file already here is kept when it is the same, and replaced when
- * the incoming one only adds to it, as a session that went away and grew does; anything else means the
+ * Puts one carried session in place under this machine's agent home, where the source's agent home had it. `staged`
+ * holds the source's bytes at their manifest paths. A file already here is kept when it is the same, and replaced
+ * when the incoming one only adds to it, as a session that went away and grew does; anything else means the
  * session was continued here, and nothing is written.
  */
-export function installSession(
-  session: TransferSession, staged: string, roots: Omit<SessionRoots, 'destinationRealRoots'>, io: InstallFs = realInstallFs,
-): { transcriptPath: string } {
+export function installSession(session: TransferSession, staged: string, io: InstallFs = realInstallFs): { transcriptPath: string } {
   const { sourceHome, destinationHome, destinationPath } = session;
   if (!sourceHome || !destinationHome || !destinationPath) throw new SessionError('incompatible_adapter', `session ${session.sessionId} has no place on this machine`);
   const adapter = sessionAdapter(session.agent, session.adapter);
-  const map = sessionPathMap({ ...roots, destinationRealRoots: realRoots(roots.destinationRoots), sourceHome, destinationHome });
-  const from = path.posix.relative(sourceHome, session.sourcePath);
+  const map = sessionPathMap({ sourceHome, destinationHome });
+  const transcript = path.posix.relative(sourceHome, session.sourcePath);
   const to = path.posix.relative(destinationHome, destinationPath);
   // every file stays under the agent home the manifest names for it
-  const outside = [from, to, ...session.files.map((f) => f.path)].find((p) => p.startsWith('/') || p.split('/').includes('..'));
+  const outside = [transcript, to, ...session.files.map((f) => f.path)].find((p) => p.startsWith('/') || p.split('/').includes('..'));
   if (outside !== undefined) throw new SessionError('path_unsupported', `session ${session.sessionId} names ${outside}, outside its agent home`);
+  if (to !== transcript) throw new SessionError('path_unsupported', `session ${session.sessionId} lands at ${to}, not ${transcript}, under ${destinationHome}`);
   // and is one of this session's own files, where its CLI keeps them
   const foreign = [
-    ...(adapter.carries(to, to, session.sessionId) ? [] : [to]),
-    ...session.files.map((f) => f.path).filter((p) => !adapter.carries(p, from, session.sessionId)),
+    ...(adapter.carries(transcript, transcript, session.sessionId) ? [] : [transcript]),
+    ...session.files.map((f) => f.path).filter((p) => !adapter.carries(p, transcript, session.sessionId)),
   ];
   if (foreign.length) throw new SessionError('path_unsupported', `session ${session.sessionId} names ${foreign.join(', ')}, which is no file of that session`);
 
@@ -105,7 +77,7 @@ export function installSession(
       throw new Error(`the staged ${f.path} is not the file the manifest names`);
     }
     const next = adapter.rewrite(f.path, data, map);
-    const file = path.posix.join(destinationHome, placeFile(f.path, from, to));
+    const file = path.posix.join(destinationHome, f.path);
     const held = io.read(file);
     if (held?.equals(next)) continue;
     if (held && !(held.length < next.length && next.subarray(0, held.length).equals(held))) { diverged.push(file); continue; }
@@ -120,40 +92,19 @@ export function installSession(
   return { transcriptPath: destinationPath };
 }
 
-/**
- * Each session placed where its agent on this machine will look for it: under the project folder of the real path
- * of the cwd it resumes in, which is read here once the roots have landed.
- */
-export function placeSessions(sessions: readonly TransferSession[], state: FleetState): TransferSession[] {
-  return sessions.map((s) => {
-    const c = state.characters[s.characterId];
-    const cwd = s.term === 2 ? c?.second?.cwd ?? c?.cwd : c?.cwd;
-    if (!cwd || !s.sourceHome || !s.destinationHome) return s;
-    let adapter: SessionAdapter;
-    // one no adapter here reads keeps the manifest's place, and installing it says why
-    try { adapter = sessionAdapter(s.agent, s.adapter); } catch { return s; }
-    const transcript = path.posix.relative(s.sourceHome, s.sourcePath);
-    return { ...s, destinationPath: path.posix.join(s.destinationHome, adapter.destination(transcript, s.sessionId, realPath(cwd))) };
-  });
-}
-
 /** Where a terminal's agent resumes and, when its character's repository holds that, the repository's main checkout; `at` makes each absolute. */
 export function resumeFolder(c: Character, term: 2 | undefined, at: (p: string) => string): Omit<ResumeFolder, 'kind'> {
   const cwd = at(term === 2 ? c.second?.cwd ?? c.cwd : c.cwd);
-  let repo: string | undefined;
-  try { repo = c.repo && holds(at(c.repo.root), cwd) ? at(c.repo.mainRoot) : undefined; } catch { /* a checkout no path root maps lends no trust */ }
+  const repo = c.repo && holds(at(c.repo.root), cwd) ? at(c.repo.mainRoot) : undefined;
   return { cwd, ...(repo && { repo }) };
 }
 
-/** Where each session the manifest carries resumes on the destination; one whose folder no path root maps is left out. */
+/** Where each session the manifest carries resumes on the destination, which is where it ran on the source. */
 export function resumeFolders(m: TransferManifestV1): (ResumeFolder & { characterId: string })[] {
-  const map = mapThroughRoots(m);
-  const home = m.sourceRoots.home;
-  const at = (p: string) => map(home !== undefined && (p === '~' || p.startsWith('~/')) ? path.posix.join(home, p.slice(1)) : p);
+  const at = (p: string) => (p === '~' || p.startsWith('~/') ? path.posix.join(m.home, p.slice(1)) : p);
   return m.sessions.flatMap((s) => {
     const c = m.snapshot.characters[s.characterId];
-    if (!c) return [];
-    try { return [{ characterId: s.characterId, kind: s.agent, ...resumeFolder(c, s.term, at) }]; } catch { return []; }
+    return c ? [{ characterId: s.characterId, kind: s.agent, ...resumeFolder(c, s.term, at) }] : [];
   });
 }
 

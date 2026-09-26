@@ -22,15 +22,15 @@ import { rootMatcher, settle } from './inventory.js';
 import { DestinationJournal } from './journal.js';
 import { manifestDigest, scanPath, type ScanFs } from './manifest.js';
 import { ProcessTable } from './processes.js';
-import { probeRoots, type ProbeFs } from './probe.js';
+import { probeFolders, type ProbeFs } from './probe.js';
 import { ARCHIVABLE, kept, ReplicaError, ReplicaStore, replicaRoots, type ReplicaCheck } from './replicas.js';
 import type { Clock } from './rest.js';
 import type { HandoverService } from './service.js';
-import { adapterFor, installSession, placeSessions, placeTranscripts, resumeFolder, sessionAdapter, type AgentProbe, type InstallFs } from './sessions/registry.js';
+import { adapterFor, installSession, placeTranscripts, resumeFolder, sessionAdapter, type AgentProbe, type InstallFs } from './sessions/registry.js';
 import { SessionError, type SessionAdapter } from './sessions/types.js';
 import type { Authority } from './source.js';
-import { holdingRoot, holds, realPath } from './portable-path.js';
-import { gitProblems, importState, landedProblem, manifestProblems, sessionProblems, within } from './validate.js';
+import { holds } from './portable-path.js';
+import { gitProblems, importState, landedProblem, linkProblem, manifestProblems, sessionProblems } from './validate.js';
 
 export type DestinationDeps = {
   paths: Paths;
@@ -158,19 +158,17 @@ export class DestinationHandover {
   }
 
   /**
-   * Read-only, for preflight: whether this machine could take each root, which lies by its real path inside the path root
-   * that holds it, what each path root has room for, and which of `links` is not here.
+   * Read-only, for preflight: whether this machine could take each root, which lands at its own path here, what each
+   * of `folders` is good for, and which of `links` is not here.
    */
   inspect(p: ParsedParams<'handover.inspect'>): Promise<Result<'handover.inspect'>> {
     return this.serial(async () => {
       const stays = await this.staying(p.git ?? []);
       const roots: Result<'handover.inspect'>['roots'] = [];
       for (const r of p.roots) {
-        const held = holdingRoot(r.path, p.pathRoots);
-        const out = !held ? `${r.path} lies under no path root of this machine`
-          : !within(r.path, [p.pathRoots[held.root]]) ? `${r.path} leads to ${realPath(r.path)}, outside the path root ${held.root} (${p.pathRoots[held.root]})` : undefined;
-        const check: WireCheck = out
-          ? { ok: false, path: r.path, blocker: { code: 'path_unsupported', message: out, entity: { kind: 'root', id: r.id } } }
+        const linked = linkProblem(r.path, { kind: 'root', id: r.id });
+        const check: WireCheck = linked
+          ? { ok: false, path: r.path, blocker: linked }
           : wire(await this.replicas.inspect(r, { excludes: p.excludes, ...(r.content && { content: r.content }), keep: stays.keep(r.path) }));
         roots.push({ id: r.id, check });
       }
@@ -178,7 +176,7 @@ export class DestinationHandover {
       const untrusted: string[] = [];
       for (const f of p.resumes ?? []) if (!(await this.trusted(f))) untrusted.push(f.cwd);
       return {
-        roots, pathRoots: probeRoots(p.pathRoots, [], this.d.probeFs), ...(p.links && { missing }), ...(stays.unproven.length && { unproven: stays.unproven }),
+        roots, folders: probeFolders(p.folders, this.d.probeFs), ...(p.links && { missing }), ...(stays.unproven.length && { unproven: stays.unproven }),
         ...(p.resumes && { untrusted }),
       };
     });
@@ -260,13 +258,13 @@ export class DestinationHandover {
     const tx = p.transactionId;
     this.identify(p);
     if (this.open(tx)?.preparedDigest) throw notReady(`handover ${tx} is prepared on this machine, so nothing more is copied into its roots`);
-    // each root where the path roots put it and, by its real path, inside the one it is mapped through, before any is reserved
+    // each root at its own path here, before any is reserved
     const unsafe = manifestProblems(m, []);
     if (unsafe.length) throw blocked(unsafe);
     await this.receiving(p);
     const stays = await this.staying(graphsHere(m));
     const roots: Result<'handover.claim'>['roots'] = [];
-    for (const r of replicaRoots(m, 'destination')) {
+    for (const r of replicaRoots(m)) {
       const claim = { transactionId: tx, excludes: m.excludes, incoming: m.roots.find((x) => x.id === r.id)!.files, keep: stays.keep(r.path) };
       let check = await this.replicas.claim(r, claim);
       let archivedTo: string | undefined;
@@ -334,15 +332,13 @@ export class DestinationHandover {
     }
     const carried = m.roots.filter((r) => !r.foldedInto);
     const unverified = carried.find((r) => !p.landed.some((x) => x.id === r.id));
-    if (unverified) throw notReady(`the transfer verified nothing in root ${unverified.id} (${unverified.destinationPath})`);
+    if (unverified) throw notReady(`the transfer verified nothing in root ${unverified.id} (${unverified.path})`);
     const imported = importState(m);
-    // where each agent here looks for its session, which the roots that landed now say
-    const sessions = placeSessions(m.sessions, imported.state);
     const homes = Object.fromEntries((await this.agents()).map((a) => [a.kind, a.home]));
-    const found = [...manifestProblems(m, p.landed), ...imported.blockers, ...sessionProblems({ ...m, sessions }, homes)];
+    const found = [...manifestProblems(m, p.landed), ...sessionProblems(m, homes)];
     if (found.length) throw blocked(found);
     let state: FleetState;
-    try { state = FleetState.parse(placeTranscripts(imported.state, sessions)); } catch (e) {
+    try { state = FleetState.parse(placeTranscripts(imported.state, m.sessions)); } catch (e) {
       throw blocked([{ code: 'transcript_missing', message: (e as Error).message }]);
     }
 
@@ -361,7 +357,7 @@ export class DestinationHandover {
     const stays = new Map<string, string[]>();
     const blockers: Blocker[] = [];
     for (const r of carried) {
-      const spec = { id: r.id, kind: r.kind, entry: r.entry, path: r.destinationPath };
+      const spec = { id: r.id, kind: r.kind, entry: r.entry, path: r.path };
       const check = await this.replicas.inspect(spec, { transactionId: tx, excludes: m.excludes });
       if (!check.ok || check.kind !== 'resume') {
         blockers.push({ code: 'destination_occupied', message: `${check.path} was not claimed by handover ${tx}`, entity: { kind: 'root', id: r.id } });
@@ -380,7 +376,7 @@ export class DestinationHandover {
     if (!verified) this.journal.write({ ...this.open(tx)!, landedDigest, updatedAt: this.clock.now() });
     let repaired: Awaited<ReturnType<typeof repairGraphs>>;
     try {
-      const registrations = carried.flatMap((r) => (stays.get(r.id) ?? []).map((rel) => path.posix.join(r.destinationPath, rel)));
+      const registrations = carried.flatMap((r) => (stays.get(r.id) ?? []).map((rel) => path.posix.join(r.path, rel)));
       const keptNames = Object.fromEntries(graphsHere(m).map((g) => [g.id, registrations
         .filter((reg) => path.posix.dirname(reg) === path.posix.join(g.commonDir, 'worktrees')).map((reg) => path.posix.basename(reg))]));
       repaired = await repairGraphs(m, { ...(this.d.git && { git: this.d.git }), kept: keptNames });
@@ -389,15 +385,15 @@ export class DestinationHandover {
       const roots: SealRecord['roots'] = [];
       for (const r of carried) {
         const scan = await scanPath(at.get(r.id)!, rootMatcher(r.kind, m.excludes), this.d.scanFs);
-        roots.push({ id: r.id, kind: r.kind, entry: r.entry, path: r.destinationPath, files: scan?.files ?? [] });
+        roots.push({ id: r.id, kind: r.kind, entry: r.entry, path: r.path, files: scan?.files ?? [] });
       }
       writeDurable(this.d.paths.replicaSeal(tx), SealRecord.parse({ transactionId: tx, generation: p.generation, manifestDigest: p.manifestDigest, roots }), { mode: 0o600 });
     }
     if (repaired.blockers.length) throw blocked(repaired.blockers);
 
     const placed: Blocker[] = [];
-    sessions.forEach((s, i) => {
-      try { installSession(s, this.d.paths.sessionStage(tx, i), m, this.d.install); } catch (e) {
+    m.sessions.forEach((s, i) => {
+      try { installSession(s, this.d.paths.sessionStage(tx, i), this.d.install); } catch (e) {
         placed.push({ code: e instanceof SessionError ? e.code : 'transcript_missing', message: (e as Error).message, entity: { kind: 'character', id: s.characterId } });
       }
     });

@@ -30,7 +30,7 @@ export function namesOf(m: TransferManifestV1): Names {
   const characters: Record<string, string> = Object.fromEntries(Object.values(m.snapshot.characters).map((c) => [c.id, c.name]));
   return {
     characters,
-    roots: Object.fromEntries(m.roots.map((r) => [r.id, r.destinationPath])),
+    roots: Object.fromEntries(m.roots.map((r) => [r.id, r.path])),
     sessions: Object.fromEntries(m.sessions.map((s, i) => [`s${i}`, characters[s.characterId] ?? s.characterId])),
   };
 }

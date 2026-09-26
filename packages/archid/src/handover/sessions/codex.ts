@@ -91,8 +91,6 @@ export const codexAdapter: SessionAdapter = {
   carries: (file, transcript, sessionId) =>
     file === transcript && /^sessions\/\d{4}\/\d{2}\/\d{2}\/[^/]+$/.test(file) && ROLLOUT.exec(path.posix.basename(file))?.[1] === sessionId,
 
-  destination: (transcript) => transcript,
-
   rewrite(file, data, map) {
     const out = transform(file, data, map);
     if (out.issues.length) throw new SessionError('incompatible_adapter', `${file}: ${out.issues.join('; ')}`);

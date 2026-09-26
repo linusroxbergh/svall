@@ -151,7 +151,7 @@ describe('forgettable', () => {
 describe('fileStore', () => {
   const manifest: FrozenManifest = {
     version: TRANSFER_SCHEMA_VERSION, transactionId: TX, generation: 4, fromMachineId: mac, toMachineId: trift,
-    sourceRoots: { home: '/Users/linus' }, destinationRoots: { home: '/home/linus' }, fleet: FleetConfig.parse({ id: fleetId }),
+    home: '/Users/linus', fleet: FleetConfig.parse({ id: fleetId }),
     snapshot: emptyState(), excludes: [], roots: [], sessions: [],
   };
 

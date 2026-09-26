@@ -253,7 +253,7 @@ function harness(o: { json?: boolean; tty?: boolean; profile?: string; gateway?:
   const registry = MachineRegistry.load(path.join(tmp, 'config'));
   registry.add({
     name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64',
-    home: '/home/ada', archiBase: '/home/ada/.local/share/archipelago', pathRoots: { home: '/home/ada' }, gateway: true,
+    home: '/home/ada', archiBase: '/home/ada/.local/share/archipelago', gateway: true,
   }, TRIFT);
   const stdin = Object.assign(new PassThrough(), { isTTY: o.tty });
   const out: string[] = [];
@@ -1175,7 +1175,7 @@ describe('a fleet handed to another machine, from this one', () => {
       fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: GATE }));
       const registry = MachineRegistry.load(config);
       const machine = (name: string, ssh: string, gateway: boolean) => ({
-        name, ssh, platform: 'linux' as const, arch: 'arm64', home: '/home/ada', archiBase: '/home/ada/.local/share/archipelago', pathRoots: { home: '/home/ada' }, gateway,
+        name, ssh, platform: 'linux' as const, arch: 'arm64', home: '/home/ada', archiBase: '/home/ada/.local/share/archipelago', gateway,
       });
       registry.add(machine('trift', 'trift.test', false), TRIFT);
       registry.add(machine('gate', 'gate.test', true), GATE);
@@ -1267,7 +1267,7 @@ describe('archi handover through the real CLI', () => {
       fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: GATE }));
       const registry = MachineRegistry.load(config);
       const machine = (name: string, destination: string) => ({
-        name, ssh: destination, platform: 'linux' as const, arch: 'arm64', home: '/home/ada', archiBase: '/home/ada/.local/share/archipelago', pathRoots: { home: '/home/ada' }, gateway: false,
+        name, ssh: destination, platform: 'linux' as const, arch: 'arm64', home: '/home/ada', archiBase: '/home/ada/.local/share/archipelago', gateway: false,
       });
       registry.add(machine('trift', 'trift.test'), TRIFT);
       // a gateway ssh cannot reach, so the helper's first question fails and the run ends there

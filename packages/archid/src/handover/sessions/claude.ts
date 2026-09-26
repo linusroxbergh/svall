@@ -61,15 +61,6 @@ function carries(file: string, transcript: string, sessionId: string): boolean {
   return file === transcript || (file.startsWith(folder) && kindOf(file) !== undefined);
 }
 
-/** The project folder Claude Code keeps a cwd's sessions in: every other character a dash, a long one cut and hashed. */
-export function claudeProjectSlug(cwd: string): string {
-  const slug = cwd.replace(/[^a-zA-Z0-9]/g, '-');
-  if (slug.length <= 200) return slug;
-  let hash = 0;
-  for (let i = 0; i < cwd.length; i++) hash = ((hash << 5) - hash + cwd.charCodeAt(i)) | 0;
-  return `${slug.slice(0, 200)}-${Math.abs(hash).toString(36)}`;
-}
-
 function transcriptRecords(): { check: (r: Record<string, unknown>) => RecordCheck; versions: Set<string> } {
   const versions = new Set<string>();
   const range = `Claude Code ${VERSIONS.min} to ${VERSIONS.max}`;
@@ -134,8 +125,6 @@ export const claudeAdapter: SessionAdapter = {
   },
 
   carries,
-
-  destination: (_transcript, sessionId, cwd) => `projects/${claudeProjectSlug(cwd)}/${sessionId}.jsonl`,
 
   rewrite(file, data, map) {
     const out = transform(file, data, map);

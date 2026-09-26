@@ -1,13 +1,13 @@
 import path from 'node:path';
 import {
   type Blocker, type FleetId, type HandoverChoices, type HandoverPhase, type KeptCommit, type LandedRoot, type MachineId, type ManifestSummary, type MethodName, type OwnerRecord,
-  type Params, type PathRootMap, type Result, type RootClaim, type SystemInfo, type TransferManifestV1, type TransferRoot, type Warning,
+  type Params, type Result, type RootClaim, type SystemInfo, type TransferManifestV1, type TransferRoot, type Warning,
 } from '@archipelago/protocol';
 import { graphsHere } from '@archipelago/archid/handover/git-repair';
-import { canonicalDigest, canonicalJson } from '@archipelago/archid/handover/hash';
+import { canonicalDigest } from '@archipelago/archid/handover/hash';
 import { settle } from '@archipelago/archid/handover/inventory';
-import { manifestDigest, spaceNeed } from '@archipelago/archid/handover/manifest';
-import { holdingRoot, holds } from '@archipelago/archid/handover/portable-path';
+import { landingFolder, manifestDigest, spaceNeed } from '@archipelago/archid/handover/manifest';
+import { holds } from '@archipelago/archid/handover/portable-path';
 import { caseCollisions } from '@archipelago/archid/handover/probe';
 import { ARCHIVABLE, contentDigest, replicaRoots } from '@archipelago/archid/handover/replicas';
 import { resumeFolders } from '@archipelago/archid/handover/sessions/registry';
@@ -57,8 +57,8 @@ export type Gateway = {
   complete(p: { transactionId: string; generation: number }): Promise<OwnerRecord>;
 };
 
-/** One machine as the controller reaches it: its daemon, its path roots and fleet home, and the master rsync rides to a far one. */
-export type Side = { route: Route; daemon: Daemon; pathRoots: PathRootMap; fleetHome: string; master?: () => Promise<Master> };
+/** One machine as the controller reaches it: its daemon, its home and fleet home, and the master rsync rides to a far one. */
+export type Side = { route: Route; daemon: Daemon; home: string; fleetHome: string; master?: () => Promise<Master> };
 
 export type HandoverClock = { now(): number; sleep(ms: number): Promise<void> };
 
@@ -125,18 +125,18 @@ function differences(source: Side, a: SystemInfo, destination: Side, b: SystemIn
   });
 }
 
-/** A link a carried root holds, where its target lies on the destination, and whether what a carried root copies there holds it; undefined when none does. */
+/** A link a carried root holds, where its target lies, and whether what a carried root copies there holds it; undefined when none does. */
 type CarriedLink = { root: TransferRoot; path: string; at: string; carried?: boolean };
 
 function carriedLinks(m: TransferManifestV1): CarriedLink[] {
   const carried = m.roots.filter((r) => !r.foldedInto);
-  const innermostFirst = [...carried].sort((a, b) => b.destinationPath.length - a.destinationPath.length);
+  const innermostFirst = [...carried].sort((a, b) => b.path.length - a.path.length);
   return carried.flatMap((r) => r.files.flatMap((f): CarriedLink[] => {
     if (f.type !== 'symlink') return [];
-    const from = f.path === '' ? path.posix.dirname(r.destinationPath) : path.posix.join(r.destinationPath, path.posix.dirname(f.path));
+    const from = f.path === '' ? path.posix.dirname(r.path) : path.posix.join(r.path, path.posix.dirname(f.path));
     const at = path.posix.resolve(from, f.target);
-    const holder = innermostFirst.find((x) => holds(x.destinationPath, at));
-    const rel = holder && path.posix.relative(holder.destinationPath, at);
+    const holder = innermostFirst.find((x) => holds(x.path, at));
+    const rel = holder && path.posix.relative(holder.path, at);
     return [{ root: r, path: f.path, at, ...(holder && { carried: rel === '' || holder.files.some((g) => g.path === rel || g.path.startsWith(`${rel}/`)) }) }];
   }));
 }
@@ -147,12 +147,12 @@ function danglingLinks(links: CarriedLink[], missing: Set<string>, where: string
   for (const l of links) {
     if (l.carried ?? !missing.has(l.at)) continue;
     const held = byRoot.get(l.root.id) ?? { root: l.root, names: [] };
-    held.names.push(l.path || path.posix.basename(l.root.destinationPath));
+    held.names.push(l.path || path.posix.basename(l.root.path));
     byRoot.set(l.root.id, held);
   }
   return [...byRoot.values()].map(({ root, names }) => ({
     code: 'symlink_dangling', entity: { kind: 'root', id: root.id },
-    message: `${names.length} ${names.length === 1 ? 'link' : 'links'} in ${root.destinationPath} will point at nothing on ${where}: ${names.slice(0, 5).join(', ')}${names.length > 5 ? ', …' : ''}; each is carried as it is`,
+    message: `${names.length} ${names.length === 1 ? 'link' : 'links'} in ${root.path} will point at nothing on ${where}: ${names.slice(0, 5).join(', ')}${names.length > 5 ? ', …' : ''}; each is carried as it is`,
   }));
 }
 
@@ -218,7 +218,7 @@ export class Handover {
       blockers.push({ code: 'transaction_open', message: `${destination.route.name} holds handover ${held.transactionId} open as its ${held.role} (${held.phase}); resume or abort it first` });
     }
     const pre = await this.retrying('begin', () => source.daemon.call('handover.preflight', {
-      toMachineId: to, choices, source: { pathRoots: source.pathRoots }, destination: { info: b, pathRoots: destination.pathRoots, fleetHome: destination.fleetHome },
+      toMachineId: to, choices, source: { home: source.home }, destination: { info: b, home: destination.home, fleetHome: destination.fleetHome },
     }));
     const there = await this.destinationChecks(source, destination, pre.manifest, choices);
     blockers.push(...pre.blockers, ...there.blockers);
@@ -425,7 +425,7 @@ export class Handover {
       if (this.chosen) this.save({ choices: { ...this.journal.choices, ...this.take() } });
       const params: Params<'handover.freeze'> = {
         transactionId: tx, generation, choices: this.journal.choices,
-        source: { pathRoots: source.pathRoots }, destination: { info, pathRoots: destination.pathRoots, fleetHome: destination.fleetHome },
+        source: { home: source.home }, destination: { info, home: destination.home, fleetHome: destination.fleetHome },
       };
       let answer: Result<'handover.freeze'> | 'chosen';
       try {
@@ -443,8 +443,7 @@ export class Handover {
       const wrong = m.transactionId !== tx ? `handover ${m.transactionId}` : m.generation !== generation ? `generation ${m.generation}`
         : m.fromMachineId !== source.route.machineId || m.toMachineId !== destination.route.machineId ? `a move from ${m.fromMachineId} to ${m.toMachineId}`
           : m.fleet.id !== this.d.fleetId ? `fleet ${m.fleet.id}`
-            : canonicalJson(m.sourceRoots) !== canonicalJson(source.pathRoots) || canonicalJson(m.destinationRoots) !== canonicalJson(destination.pathRoots)
-              ? 'path roots other than the ones it was sent' : undefined;
+            : m.home !== source.home ? 'a home other than the one it was sent' : undefined;
       if (wrong) throw new Stopped('freeze', `${source.route.name} froze with a manifest for ${wrong}`, PRE_COMMIT);
       const digest = manifestDigest(m);
       if (this.journal.manifestDigest && digest !== this.journal.manifestDigest) {
@@ -504,7 +503,7 @@ export class Handover {
         throw new Stopped('transfer', failed?.status === 'failed' ? `${failed.id}: ${failed.error}` : `the transfer ended ${result.status}`, PRE_COMMIT);
       }
       const landed: LandedRoot[] = [];
-      for (const r of replicaRoots(manifest, 'destination')) {
+      for (const r of replicaRoots(manifest)) {
         const done = result.entries.find((e) => e.id === r.id);
         if (done?.status !== 'verified') throw new Stopped('transfer', `the transfer verified nothing in root ${r.id} (${r.path})`, PRE_COMMIT);
         landed.push({ id: r.id, files: done.files });
@@ -519,7 +518,7 @@ export class Handover {
   /** The destination's claim on each carried root, exactly one each; a root it will not take goes to the user. */
   private async claim(destination: Side, manifest: FrozenManifest): Promise<RootClaim[]> {
     const { transactionId: tx, generation } = this.tx;
-    const carried = replicaRoots(manifest, 'destination').map((r) => r.id).sort();
+    const carried = replicaRoots(manifest).map((r) => r.id).sort();
     for (;;) {
       const archive = this.journal.choices.archiveRoots;
       const r = await this.retrying('transfer', () => this.cancellable(() => destination.daemon.call('handover.claim', {
@@ -543,11 +542,11 @@ export class Handover {
 
   /** Each carried root, written only where and as its claim says; each session's files into the stage prepare places them from. */
   private entries(manifest: FrozenManifest, claims: RootClaim[], destination: Side): (RootEntry | SessionEntry)[] {
-    const roots = replicaRoots(manifest, 'destination').map((r): RootEntry => {
+    const roots = replicaRoots(manifest).map((r): RootEntry => {
       const root = manifest.roots.find((x) => x.id === r.id)!;
       const c = claims.find((x) => x.id === r.id)!;
       return {
-        kind: 'root', id: r.id, rootKind: root.kind, entry: root.entry, sourcePath: root.sourcePath, destinationPath: root.destinationPath,
+        kind: 'root', id: r.id, rootKind: root.kind, entry: root.entry, path: root.path,
         claim: { excludes: c.excludes, check: c.check, ...(c.keep?.length && { keep: c.keep }) }, files: root.files,
       };
     });
@@ -812,9 +811,11 @@ export class Handover {
     return out;
   }
 
-  /** The destination's own read of the roots it would receive, of the room and case rules of its path roots, and of where carried links lead there. */
+  /** The destination's own read of the roots it would receive, of the folders they land in, and of where carried links lead there. */
   private async destinationChecks(source: Side, destination: Side, m: TransferManifestV1, choices: HandoverChoices): Promise<{ blockers: Blocker[]; warnings: Warning[] }> {
-    const carried = replicaRoots(m, 'destination');
+    const carried = replicaRoots(m);
+    const folderOf = (p: string): string => landingFolder(p, m.home);
+    const folders = [...new Set([...carried.map((c) => folderOf(c.path)), ...m.sessions.map((s) => folderOf(s.destinationHome ?? m.home))])];
     const where = destination.route.name;
     const links = carriedLinks(m);
     const ask = [...new Set(links.flatMap((l) => (l.carried === undefined ? [l.at] : [])))];
@@ -825,7 +826,7 @@ export class Handover {
       const git = graphsHere(m);
       const resumes = codex.map(({ kind, cwd, repo }) => ({ kind, cwd, ...(repo && { repo }) }));
       r = await this.retrying('begin', () => destination.daemon.call('handover.inspect', {
-        roots, excludes: m.excludes, pathRoots: destination.pathRoots, ...(ask.length && { links: ask }), ...(git.length && { git }), ...(resumes.length && { resumes }),
+        roots, excludes: m.excludes, folders, ...(ask.length && { links: ask }), ...(git.length && { git }), ...(resumes.length && { resumes }),
       }));
     } catch (e) {
       if (!(e instanceof Refused)) throw e;
@@ -840,28 +841,33 @@ export class Handover {
     ];
     const notices: Warning[] = r.roots.flatMap((x) => (!x.check.ok && archived.has(x.id)
       ? [{ ...x.check.blocker, message: `${x.check.path} is archived when the handover claims it: ${x.check.blocker.message}` }] : []));
-    const rootOf = (p: string | undefined) => (p ? holdingRoot(p, m.destinationRoots)?.root : undefined) ?? 'home';
-    const used = new Set([...carried.map((x) => rootOf(x.path)), ...m.sessions.map((s) => rootOf(s.destinationPath))]);
-    for (const name of used) {
-      const probe = r.pathRoots[name];
-      const dir = destination.pathRoots[name] ?? name;
-      if (!probe?.exists) blockers.push({ code: 'path_root_missing', message: `${where} has no ${dir} for its path root ${name}` });
-      else if (!probe.writable) blockers.push({ code: 'path_unsupported', message: `${dir} on ${where} cannot be written` });
+    // a root lands at the path it has here, so what holds it outside the home has to be there already
+    for (const root of carried) {
+      const folder = folderOf(root.path);
+      if (r.folders[folder]?.exists) continue;
+      blockers.push({
+        code: 'parent_missing', entity: { kind: 'root', id: root.id },
+        message: folder === m.home ? `${where} has no ${folder}, the home ${root.path} lands in`
+          : `${where} has no ${folder}, which ${root.path} lands in; a folder outside the home arrives at the same path there, so make ${folder} on ${where} first`,
+      });
+    }
+    for (const folder of folders) {
+      if (r.folders[folder]?.exists && !r.folders[folder].writable) blockers.push({ code: 'path_unsupported', message: `${folder} on ${where} cannot be written` });
     }
     // a first copy needs every byte; a root already holding a replica needs only what changed
     const absent = new Set(r.roots.filter((x) => (x.check.ok && x.check.kind === 'absent') || archived.has(x.id)).map((x) => x.id));
-    for (const [name, bytes] of Object.entries(spaceNeed({ ...m, roots: m.roots.filter((x) => absent.has(x.id)) }))) {
-      const probe = r.pathRoots[name];
+    for (const [folder, bytes] of Object.entries(spaceNeed({ ...m, roots: m.roots.filter((x) => absent.has(x.id)) }))) {
+      const probe = r.folders[folder];
       if (probe?.exists && probe.freeBytes < bytes) {
-        blockers.push({ code: 'destination_no_space', message: `${where} has ${probe.freeBytes} bytes free under ${destination.pathRoots[name] ?? name}, and the handover needs ${bytes}` });
+        blockers.push({ code: 'destination_no_space', message: `${where} has ${probe.freeBytes} bytes free under ${folder}, and the handover needs ${bytes}` });
       }
     }
-    for (const root of m.roots.filter((x) => !x.foldedInto && r.pathRoots[rootOf(x.destinationPath)]?.caseInsensitive)) {
+    for (const root of m.roots.filter((x) => !x.foldedInto && r.folders[folderOf(x.path)]?.caseInsensitive)) {
       const clash = caseCollisions(root.files.map((f) => f.path));
       if (clash.length) {
         blockers.push({
           code: 'path_collision', entity: { kind: 'root', id: root.id },
-          message: `${root.destinationPath} would hold ${clash.join(', ')}, whose names differ only by case, and ${where} does not tell them apart`,
+          message: `${root.path} would hold ${clash.join(', ')}, whose names differ only by case, and ${where} does not tell them apart`,
         });
       }
     }

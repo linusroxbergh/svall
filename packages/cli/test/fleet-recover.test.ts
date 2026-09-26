@@ -23,7 +23,7 @@ const TRIFT = MachineId.parse(crypto.randomUUID());
 const VAULT = MachineId.parse(crypto.randomUUID());
 
 const linux = (name: string): MachineRecord => ({
-  name, ssh: name, platform: 'linux', arch: 'x64', home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', pathRoots: { home: '/home/linus' }, gateway: true,
+  name, ssh: name, platform: 'linux', arch: 'x64', home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', gateway: true,
 });
 
 type Daemon = { ownership: OwnershipInfo; adopted: unknown[]; fails?: string; declines?: boolean };

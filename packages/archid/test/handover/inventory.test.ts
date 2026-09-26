@@ -8,12 +8,12 @@ import {
   type Blocker, type FleetState as State, type GitCheckout, type GitGraph, type MachineId, type Warning,
 } from '@archipelago/protocol';
 import { discoverGit } from '../../src/handover/git-graph.js';
-import { buildInventory, DEFAULT_EXCLUDES, excludeMatcher, expandExcludes, rootMatcher, type MachineMaps } from '../../src/handover/inventory.js';
+import { buildInventory, DEFAULT_EXCLUDES, excludeMatcher, expandExcludes, homeCommands, rootMatcher, type MachineMaps } from '../../src/handover/inventory.js';
 import { exportSnapshot, NOT_PATHS, PATH_FIELDS, portablePathValues } from '../../src/handover/portable-path.js';
 import { git, hasGit } from './git-fixture.js';
 
 const made: string[] = [];
-const tmp = (): string => { const d = fs.mkdtempSync('/tmp/archi-t-'); made.push(d); return d; };
+const tmp = (): string => { const d = fs.realpathSync(fs.mkdtempSync('/tmp/archi-t-')); made.push(d); return d; };
 afterEach(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
 
 const MAC = '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId;
@@ -166,8 +166,8 @@ function seed() {
   for (const d of [nested, sibling, plain, path.join(mac, '.archipelago/home'), path.join(base, 'outside')]) fs.mkdirSync(d, { recursive: true });
   fs.writeFileSync(notes, 'notes');
   const maps: MachineMaps = {
-    source: { machineId: MAC, pathRoots: { home: mac }, fleetHome: path.join(mac, '.archipelago') },
-    destination: { machineId: TRIFT, pathRoots: { home: '/home/linus' }, fleetHome: '/home/linus/.archipelago' },
+    source: { machineId: MAC, home: mac, fleetHome: path.join(mac, '.archipelago') },
+    destination: { machineId: TRIFT, home: mac, fleetHome: path.join(mac, '.archipelago') },
   };
   const state = emptyState();
   state.characters = {
@@ -191,25 +191,26 @@ function seed() {
 }
 
 describe('buildInventory', () => {
-  it('carries every working root once, mapped through the destination path roots', () => {
+  it('carries every working root once, at the path it has on both machines', () => {
     const s = seed();
     const inv = buildInventory(s.state, { fleet: { ...FLEET, home: { ...FLEET.home, cwd: '~/.archipelago/home' } } }, s.maps);
     expect(inv.blockers).toEqual([]);
     const rel = (p: string): string => path.relative(s.mac, p);
-    expect(inv.roots.map((r) => [r.kind, rel(r.sourcePath), r.destinationPath, r.foldedInto && rel(inv.roots.find((o) => o.id === r.foldedInto)!.sourcePath)])).toEqual([
-      ['home', '.archipelago/home', '/home/linus/.archipelago/home', undefined],
-      ['repo', 'code/app', '/home/linus/code/app', undefined],
-      ['worktree', 'code/app-w2', '/home/linus/code/app-w2', undefined],
-      ['worktree', 'code/app/.claude/worktrees/w1', '/home/linus/code/app/.claude/worktrees/w1', 'code/app'],
-      ['context', 'notes.md', '/home/linus/notes.md', undefined],
-      ['cwd', 'scratch', '/home/linus/scratch', undefined],
+    expect(inv.roots.map((r) => [r.kind, rel(r.path), r.foldedInto && rel(inv.roots.find((o) => o.id === r.foldedInto)!.path)])).toEqual([
+      ['home', '.archipelago/home', undefined],
+      ['repo', 'code/app', undefined],
+      ['worktree', 'code/app-w2', undefined],
+      ['worktree', 'code/app/.claude/worktrees/w1', 'code/app'],
+      ['context', 'notes.md', undefined],
+      ['cwd', 'scratch', undefined],
     ]);
     expect(new Set(inv.roots.map((r) => r.id)).size).toBe(inv.roots.length);
     expect(inv.excludes).toEqual([...DEFAULT_EXCLUDES]);
     expect(inv.fromMachineId).toBe(MAC);
     expect(inv.toMachineId).toBe(TRIFT);
-    expect(inv.sourceRoots).toEqual({ home: s.mac });
-    expect(inv.destinationRoots).toEqual({ home: '/home/linus' });
+    expect(inv.home).toBe(s.mac);
+    // nothing it records is rewritten
+    expect(inv.snapshot.characters).toEqual(exportSnapshot(s.state).characters);
   });
 
   it('lists the transcript each agent recorded, in either terminal, and blocks an agent that recorded none', () => {
@@ -217,68 +218,80 @@ describe('buildInventory', () => {
     s.state.characters.w2.agent = { kind: 'codex', sessionId: '22222222-2222-4222-8222-222222222222', status: 'idle', lastActivityAt: 0 };
     const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
     expect(inv.sessions).toEqual([
-      { characterId: 'w1', agent: 'claude', sessionId: '11111111-1111-4111-8111-111111111111', sourcePath: s.state.characters.w1.agent!.transcriptPath, destinationCwd: '/home/linus/code/app/.claude/worktrees/w1' },
-      { characterId: 'w1', term: 2, agent: 'codex', sessionId: '11111111-1111-4111-8111-111111111111', sourcePath: path.join(s.mac, '.codex/sessions/r.jsonl'), destinationCwd: '/home/linus/scratch' },
+      { characterId: 'w1', agent: 'claude', sessionId: '11111111-1111-4111-8111-111111111111', sourcePath: s.state.characters.w1.agent!.transcriptPath },
+      { characterId: 'w1', term: 2, agent: 'codex', sessionId: '11111111-1111-4111-8111-111111111111', sourcePath: path.join(s.mac, '.codex/sessions/r.jsonl') },
     ]);
     expect(inv.blockers).toEqual([expect.objectContaining({ code: 'transcript_missing', entity: { kind: 'character', id: 'w2' } })]);
   });
 
-  it('blocks a path no declared root holds, and one whose root the destination lacks', () => {
+  it('blocks a destination whose home is not this machine\'s, naming the commands that make one that is', () => {
     const s = seed();
-    s.state.characters.w2.context.push({ kind: 'file', ref: path.join(s.base, 'outside'), label: '', source: 'manual' });
-    s.maps.source.pathRoots.work = path.join(s.mac, 'code');
-    const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
-    // one blocker per character and missing root, however many of its paths live there
-    const missing = (id: string, message: string) => ({ code: 'path_root_missing', message, entity: { kind: 'character', id } });
-    expect(inv.blockers).toEqual([
-      missing('main', 'the destination has no path root work'),
-      missing('w1', 'the destination has no path root work'),
-      missing('w2', `no path root holds ${path.join(s.base, 'outside')}`),
-      missing('w2', 'the destination has no path root work'),
-    ]);
-    // nothing lands anywhere from a root the destination cannot map
-    expect(inv.roots.some((r) => r.sourcePath.startsWith(path.join(s.mac, 'code')))).toBe(false);
+    s.maps.destination.home = '/home/linus';
+    expect(buildInventory(s.state, { fleet: FLEET }, s.maps).blockers).toEqual([{
+      code: 'home_mismatch',
+      message: `the destination's home is /home/linus and this machine's ${s.mac}; a fleet moves only between accounts with the same home path. On the destination, ${homeCommands(s.mac)}`,
+    }]);
+    expect(homeCommands("/Users/Linus's")).toBe("sudo mkdir -p /Users, then sudo useradd -m -d '/Users/Linus'\\''s' <user> for a new account, or sudo usermod -d '/Users/Linus'\\''s' -m <user> for an existing one you are not logged in as");
   });
 
-  it('blocks a working directory whose real path leaves its root, and one holding a control character', () => {
+  it('carries a root outside the home at its own path, leaving the destination to say whether the folder it lands in is there', () => {
     const s = seed();
-    fs.symlinkSync(path.join(s.base, 'outside'), path.join(s.mac, 'escape'));
-    s.state.characters.idle.cwd = path.join(s.mac, 'escape');
-    s.state.characters.main.second = { cwd: path.join(s.mac, 'a\tb'), unread: false };
+    const outside = path.join(s.base, 'outside');
+    s.state.characters.w2.context.push({ kind: 'folder', ref: outside, label: '', source: 'manual' });
     const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
-    expect(inv.blockers).toEqual([
-      { code: 'path_root_missing', message: `${path.join(s.mac, 'escape')} leaves the path root home`, entity: { kind: 'character', id: 'idle' } },
+    expect(inv.blockers).toEqual([]);
+    expect(inv.roots.find((r) => r.path === outside)).toMatchObject({ kind: 'context', entry: 'dir' });
+  });
+
+  it('blocks a working directory holding a control character', () => {
+    const s = seed();
+    s.state.characters.main.second = { cwd: path.join(s.mac, 'a\tb'), unread: false };
+    expect(buildInventory(s.state, { fleet: FLEET }, s.maps).blockers).toEqual([
       { code: 'path_unsupported', message: `${JSON.stringify(path.join(s.mac, 'a\tb'))} holds a control character`, entity: { kind: 'character', id: 'main' } },
     ]);
   });
 
-  it('carries a root on its own when the root around it excludes it or maps it elsewhere', () => {
+  it('blocks a working directory, mission control\'s folder and a context ref reached through a link, naming where each leads', () => {
     const s = seed();
-    const built = path.join(s.plain, 'build/site');
-    const disk = path.join(s.plain, 'disk');
-    fs.mkdirSync(built, { recursive: true });
-    fs.mkdirSync(disk);
-    s.maps.source.pathRoots.work = disk;
-    s.maps.destination.pathRoots.work = '/srv/work';
-    s.state.characters.site = char('site', { cwd: built });
-    s.state.characters.disk = char('disk', { cwd: path.join(disk, 'x') });
-    fs.mkdirSync(path.join(disk, 'x'));
-    const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
-    expect(inv.blockers).toEqual([]);
-    const byPath = new Map(inv.roots.map((r) => [r.sourcePath, r]));
-    expect(byPath.get(built)).toMatchObject({ kind: 'cwd', destinationPath: '/home/linus/scratch/build/site' });
-    expect(byPath.get(built)!.foldedInto).toBeUndefined();
-    expect(byPath.get(path.join(disk, 'x'))).toMatchObject({ kind: 'cwd', destinationPath: '/srv/work/x' });
-    expect(byPath.get(path.join(disk, 'x'))!.foldedInto).toBeUndefined();
+    const linked = path.join(s.mac, 'linked');
+    fs.symlinkSync(s.plain, linked);
+    fs.writeFileSync(path.join(s.plain, 'todo.md'), 'todo');
+    s.state.characters.idle.cwd = linked;
+    s.state.characters.w2.context.push({ kind: 'file', ref: path.join(linked, 'todo.md'), label: '', source: 'manual' });
+    const inv = buildInventory(s.state, { fleet: { ...FLEET, home: { ...FLEET.home, cwd: '~/linked' } } }, s.maps);
+    const said = (p: string, real: string) =>
+      `${p} leads to ${real} through a symbolic link; a handover carries each folder at its real path, the one Git and the agents record, so use ${real} instead`;
+    expect(inv.blockers).toEqual([
+      { code: 'path_symlinked', message: said(linked, s.plain), entity: { kind: 'character', id: 'idle' } },
+      { code: 'path_symlinked', message: said(path.join(linked, 'todo.md'), path.join(s.plain, 'todo.md')), entity: { kind: 'character', id: 'w2' } },
+      { code: 'path_symlinked', message: said(linked, s.plain) },
+    ]);
+    expect(inv.roots.some((r) => r.path.startsWith(linked))).toBe(false);
   });
 
-  it('carries the fleet .env only when fleet.json says so, into the destination fleet home', () => {
+  it('carries a root on its own when the root around it excludes it', () => {
+    const s = seed();
+    const built = path.join(s.plain, 'build/site');
+    fs.mkdirSync(built, { recursive: true });
+    s.state.characters.site = char('site', { cwd: built });
+    const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
+    expect(inv.blockers).toEqual([]);
+    const root = inv.roots.find((r) => r.path === built);
+    expect(root).toMatchObject({ kind: 'cwd' });
+    expect(root!.foldedInto).toBeUndefined();
+  });
+
+  it('carries the fleet .env only when fleet.json says so, and only to the same path in the destination fleet home', () => {
     const s = seed();
     expect(buildInventory(s.state, { fleet: FLEET }, s.maps).roots.some((r) => r.kind === 'env')).toBe(false);
     const fleet = { ...FLEET, handover: { ...FLEET.handover, transferFleetEnv: true } };
-    expect(buildInventory(s.state, { fleet }, s.maps).roots.find((r) => r.kind === 'env')).toMatchObject({
-      sourcePath: path.join(s.mac, '.archipelago/.env'), destinationPath: '/home/linus/.archipelago/.env',
-    });
+    expect(buildInventory(s.state, { fleet }, s.maps).roots.find((r) => r.kind === 'env')).toMatchObject({ path: path.join(s.mac, '.archipelago/.env') });
+    s.maps.destination.fleetHome = path.join(s.mac, '.archipelago-work');
+    const elsewhere = buildInventory(s.state, { fleet }, s.maps);
+    expect(elsewhere.roots.some((r) => r.kind === 'env')).toBe(false);
+    expect(elsewhere.blockers).toEqual([{
+      code: 'path_unsupported', message: `the destination keeps this fleet's .env at ${path.join(s.mac, '.archipelago-work/.env')}, not ${path.join(s.mac, '.archipelago/.env')}, so it cannot arrive at the same path`,
+    }]);
   });
 
   it('comes out the same whatever order the characters were added in', () => {
@@ -287,7 +300,7 @@ describe('buildInventory', () => {
     expect(buildInventory(reversed, { fleet: FLEET }, s.maps)).toEqual(buildInventory(s.state, { fleet: FLEET }, s.maps));
   });
 
-  it('blocks a root that holds or lies in either fleet home, but not mission control or the fleet .env', () => {
+  it('blocks a root that holds or lies in either fleet home, but not mission control', () => {
     const s = seed();
     const fleetHome = path.join(s.mac, '.archipelago');
     fs.mkdirSync(path.join(fleetHome, 'hooks'));
@@ -295,26 +308,26 @@ describe('buildInventory', () => {
     s.state.characters.inside = char('inside', { cwd: fleetHome });
     s.state.characters.hooks = char('hooks', { cwd: path.join(fleetHome, 'hooks') });
     // lands on the destination's fleet home, though it is not this machine's
-    s.maps.destination.fleetHome = '/home/linus/.archipelago-dest';
+    s.maps.destination.fleetHome = path.join(s.mac, '.archipelago-dest');
     s.state.characters.lands = char('lands', { cwd: path.join(s.mac, '.archipelago-dest') });
-    const fleet = { ...FLEET, handover: { ...FLEET.handover, transferFleetEnv: true } };
-    const inv = buildInventory(s.state, { fleet }, s.maps);
+    const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
     const blocked = [fleetHome, path.join(fleetHome, 'hooks'), path.join(s.mac, '.archipelago-dest')];
     expect(inv.blockers.map((b) => [b.code, b.entity?.kind])).toEqual(blocked.map(() => ['path_unsupported', 'root']));
     expect(inv.blockers.map((b) => b.message).join('\n')).toContain(fleetHome);
-    expect(inv.roots.filter((r) => blocked.includes(r.sourcePath))).toEqual([]);
-    expect(inv.roots.map((r) => r.kind)).toEqual(expect.arrayContaining(['home', 'env']));
+    expect(inv.roots.filter((r) => blocked.includes(r.path))).toEqual([]);
+    expect(inv.roots.map((r) => r.kind)).toContain('home');
   });
 
-  it('follows a working directory to its real path before deciding it is clear of the fleet home', () => {
+  it('follows the fleet home to its real path before deciding a root is clear of it', () => {
     const s = seed();
     const fleetHome = path.join(s.mac, '.archipelago');
-    fs.writeFileSync(path.join(fleetHome, 'token'), 'secret');
+    fs.mkdirSync(path.join(fleetHome, 'hooks'));
     fs.symlinkSync(fleetHome, path.join(s.mac, 'archi-link'));
-    s.state.characters.idle.cwd = path.join(s.mac, 'archi-link');
+    s.maps.source.fleetHome = path.join(s.mac, 'archi-link');
+    s.state.characters.idle.cwd = path.join(fleetHome, 'hooks');
     const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
-    expect(inv.blockers).toEqual([expect.objectContaining({ code: 'path_unsupported', message: expect.stringContaining(`overlaps the fleet home ${fleetHome}`) })]);
-    expect(inv.roots.some((r) => r.sourcePath === path.join(s.mac, 'archi-link'))).toBe(false);
+    expect(inv.blockers).toEqual([expect.objectContaining({ code: 'path_unsupported', message: expect.stringContaining(`overlaps the fleet home ${path.join(s.mac, 'archi-link')}`) })]);
+    expect(inv.roots.some((r) => r.path === path.join(fleetHome, 'hooks'))).toBe(false);
   });
 
   it('carries a path inside mission control with mission control, not as an overlap of the fleet home', () => {
@@ -324,15 +337,15 @@ describe('buildInventory', () => {
     s.state.characters.w2.context.push({ kind: 'file', ref: notes, label: '', source: 'manual' });
     const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
     expect(inv.blockers).toEqual([]);
-    expect(inv.roots.some((r) => r.sourcePath === notes)).toBe(false);
-    expect(inv.roots.find((r) => r.kind === 'home')?.sourcePath).toBe(path.join(s.mac, '.archipelago/home'));
+    expect(inv.roots.some((r) => r.path === notes)).toBe(false);
+    expect(inv.roots.find((r) => r.kind === 'home')?.path).toBe(path.join(s.mac, '.archipelago/home'));
     // mission control set to the fleet home itself exempts nothing, itself included
     const whole = buildInventory(s.state, { fleet: { ...FLEET, home: { ...FLEET.home, cwd: '~/.archipelago' } } }, s.maps);
     expect(whole.blockers.map((b) => b.message).sort()).toEqual([
       `${path.join(s.mac, '.archipelago')} overlaps the fleet home ${path.join(s.mac, '.archipelago')}, whose token, keys and node.json stay on their machine`,
       `${notes} overlaps the fleet home ${path.join(s.mac, '.archipelago')}, whose token, keys and node.json stay on their machine`,
     ].sort());
-    expect(whole.roots.some((r) => r.kind === 'home' || r.sourcePath === notes)).toBe(false);
+    expect(whole.roots.some((r) => r.kind === 'home' || r.path === notes)).toBe(false);
   });
 
   it('folds a root by what is on disk, whatever its ref calls it', () => {
@@ -346,9 +359,9 @@ describe('buildInventory', () => {
     fs.writeFileSync(path.join(site, 'index.html'), '<p>');
     s.state.characters.w2.browser = { tabs: [{ id: 't1', url: pathToFileURL(site).href, title: '' }] };
     const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
-    expect(inv.roots.some((r) => r.sourcePath === path.join(s.plain, 'build'))).toBe(false);
-    expect(inv.roots.find((r) => r.sourcePath === site)).toMatchObject({ kind: 'context', entry: 'dir' });
-    expect(inv.roots.find((r) => r.sourcePath === site)!.foldedInto).toBeUndefined();
+    expect(inv.roots.some((r) => r.path === path.join(s.plain, 'build'))).toBe(false);
+    expect(inv.roots.find((r) => r.path === site)).toMatchObject({ kind: 'context', entry: 'dir' });
+    expect(inv.roots.find((r) => r.path === site)!.foldedInto).toBeUndefined();
   });
 
   it('keeps a snapshot with no tmux ids', () => {
@@ -382,7 +395,7 @@ describe('buildInventory with the discovered Git graphs', () => {
       { id: 'g_tool', commonDir: bare, worktrees: [checkout(bw, path.join(bare, 'worktrees/tool-wt'), ['tool'])], unused: [], stash: [] },
     ];
     const warnings: Warning[] = [{ code: 'worktree_unused', message: 'an unused worktree', entity: { kind: 'git', id: 'g_app' } }];
-    return { bare, discovery: { graphs, blockers: [] as Blocker[], warnings } };
+    return { bare, bw, discovery: { graphs, blockers: [] as Blocker[], warnings } };
   }
 
   it('carries each graph: its main checkout, a common directory outside any checkout, and each used worktree, each once', () => {
@@ -392,31 +405,32 @@ describe('buildInventory with the discovered Git graphs', () => {
     expect(inv.blockers).toEqual([]);
     const rel = (p: string): string => path.relative(s.mac, p);
     const git = inv.roots.filter((r) => ['repo', 'worktree', 'gitdir'].includes(r.kind));
-    expect(git.map((r) => [r.kind, rel(r.sourcePath), r.destinationPath, r.foldedInto && rel(inv.roots.find((o) => o.id === r.foldedInto)!.sourcePath)])).toEqual([
-      ['repo', 'code/app', '/home/linus/code/app', undefined],
-      ['worktree', 'code/app-w2', '/home/linus/code/app-w2', undefined],
-      ['worktree', 'code/app/.claude/worktrees/w1', '/home/linus/code/app/.claude/worktrees/w1', 'code/app'],
-      ['gitdir', 'code/app/.git/modules/sub', '/home/linus/code/app/.git/modules/sub', 'code/app'],
-      ['repo', 'code/app/sub', '/home/linus/code/app/sub', 'code/app'],
-      ['worktree', 'code/tool-wt', '/home/linus/code/tool-wt', undefined],
-      ['gitdir', 'code/tool.git', '/home/linus/code/tool.git', undefined],
+    expect(git.map((r) => [r.kind, rel(r.path), r.foldedInto && rel(inv.roots.find((o) => o.id === r.foldedInto)!.path)])).toEqual([
+      ['repo', 'code/app', undefined],
+      ['worktree', 'code/app-w2', undefined],
+      ['worktree', 'code/app/.claude/worktrees/w1', 'code/app'],
+      ['gitdir', 'code/app/.git/modules/sub', 'code/app'],
+      ['repo', 'code/app/sub', 'code/app'],
+      ['worktree', 'code/tool-wt', undefined],
+      ['gitdir', 'code/tool.git', undefined],
     ]);
     // the parent a recorded bare repository names is no root: the graph says where its common directory is
-    expect(inv.roots.some((r) => r.sourcePath === path.join(s.mac, 'code'))).toBe(false);
+    expect(inv.roots.some((r) => r.path === path.join(s.mac, 'code'))).toBe(false);
     expect(inv.git).toEqual(d.discovery.graphs);
     expect(inv.warnings).toEqual(d.discovery.warnings);
   });
 
-  it('blocks a graph root no declared root holds, as the graph\'s, and keeps what discovery blocked', () => {
+  it('blocks a graph root reached through a link, as the graph\'s, and keeps what discovery blocked', () => {
     const s = seed();
     const d = discovered(s);
-    const outside = path.join(s.base, 'outside');
-    d.discovery.graphs[2].worktrees[0].path = outside;
+    const linked = path.join(s.base, 'tool-link');
+    fs.symlinkSync(d.bw, linked);
+    d.discovery.graphs[2].worktrees[0].path = linked;
     const found: Blocker = { code: 'worktree_unresolved', message: 'git refused', entity: { kind: 'character', id: 'w1' } };
     d.discovery.blockers.push(found);
     const inv = buildInventory(s.state, { fleet: FLEET }, s.maps, d.discovery);
     expect(inv.blockers).toEqual([
-      { code: 'path_root_missing', message: `no path root holds ${outside}`, entity: { kind: 'git', id: 'g_tool' } },
+      { code: 'path_symlinked', message: expect.stringMatching(`^${linked} leads to ${d.bw} through a symbolic link`), entity: { kind: 'git', id: 'g_tool' } },
       found,
     ]);
   });
@@ -433,9 +447,9 @@ describe('buildInventory with the discovered Git graphs', () => {
       s.state.characters.w2.context.push({ kind: 'file', ref: note, label: '', source: 'manual' });
     }
     const inv = buildInventory(s.state, { fleet: FLEET }, s.maps, d.discovery);
-    expect(inv.roots.some((r) => r.sourcePath === kept)).toBe(false);
-    expect(inv.roots.find((r) => r.sourcePath === cached)).toMatchObject({ kind: 'context' });
-    expect(inv.roots.find((r) => r.sourcePath === cached)!.foldedInto).toBeUndefined();
+    expect(inv.roots.some((r) => r.path === kept)).toBe(false);
+    expect(inv.roots.find((r) => r.path === cached)).toMatchObject({ kind: 'context' });
+    expect(inv.roots.find((r) => r.path === cached)!.foldedInto).toBeUndefined();
     const inGitDir = rootMatcher('gitdir', DEFAULT_EXCLUDES);
     expect(['refs/heads/build', 'logs/refs/heads/dist', 'worktrees/node_modules', 'modules/target'].some((p) => inGitDir(p, true))).toBe(false);
     // a checkout kept inside it is read like any other
@@ -444,92 +458,36 @@ describe('buildInventory with the discovered Git graphs', () => {
     expect(rootMatcher('repo', DEFAULT_EXCLUDES)('refs/heads/build', true)).toBe(true);
   });
 
-  // a tmux pane reports its cwd by its real path; the path root here is declared through a link, as ~/code to /Volumes/work/code
-  it('spells a path given by its real path under the declared root that holds it, in the snapshot as in the roots it carries', () => {
-    const base = tmp();
-    const disk = path.join(base, 'disk/code');
-    const declared = path.join(base, 'code');
-    for (const d of [path.join(disk, 'app/sub'), path.join(base, 'home')]) fs.mkdirSync(d, { recursive: true });
-    fs.writeFileSync(path.join(disk, 'app/notes.md'), 'notes');
-    fs.symlinkSync(disk, declared);
-    const state = emptyState();
-    state.characters = {
-      app: char('app', {
-        cwd: path.join(disk, 'app'),
-        second: { cwd: path.join(disk, 'app/sub'), unread: false },
-        context: [{ kind: 'file', ref: path.join(disk, 'app/notes.md'), label: '', source: 'manual' }],
-        browser: { tabs: [{ id: 't1', url: `${pathToFileURL(path.join(disk, 'app/notes.md')).href}#top`, title: '' }] },
-      }),
-    };
-    const maps: MachineMaps = {
-      source: { machineId: MAC, pathRoots: { home: path.join(base, 'home'), work: declared }, fleetHome: path.join(base, 'home/.archipelago') },
-      destination: { machineId: TRIFT, pathRoots: { home: '/home/linus', work: '/srv/work' }, fleetHome: '/home/linus/.archipelago' },
-    };
-    const inv = buildInventory(state, { fleet: FLEET }, maps);
-    expect(inv.blockers).toEqual([]);
-    expect(inv.roots.filter((r) => r.kind === 'cwd').map((r) => [r.sourcePath, r.destinationPath])).toEqual([[path.join(declared, 'app'), '/srv/work/app']]);
-    const app = inv.snapshot.characters.app;
-    expect([app.cwd, app.second?.cwd, app.context[0].ref]).toEqual([path.join(declared, 'app'), path.join(declared, 'app/sub'), path.join(declared, 'app/notes.md')]);
-    expect(app.browser?.tabs[0].url).toBe(`${pathToFileURL(path.join(declared, 'app/notes.md')).href}#top`);
-    // the state this machine runs keeps what it had
-    expect(state.characters.app.cwd).toBe(path.join(disk, 'app'));
-  });
-
-  it('places a path reached through a link into another declared root under that root, as it places a repository', () => {
-    const base = tmp();
-    const home = path.join(base, 'home');
-    const data = path.join(base, 'data');
-    fs.mkdirSync(path.join(data, 'proj'), { recursive: true });
-    fs.mkdirSync(home);
-    fs.symlinkSync(data, path.join(home, 'data'));
-    const state = emptyState();
-    state.characters = { p: char('p', { cwd: path.join(home, 'data/proj') }) };
-    const maps: MachineMaps = {
-      source: { machineId: MAC, pathRoots: { home, data }, fleetHome: path.join(home, '.archipelago') },
-      destination: { machineId: TRIFT, pathRoots: { home: '/home/linus', data: '/srv/data' }, fleetHome: '/home/linus/.archipelago' },
-    };
-    const inv = buildInventory(state, { fleet: FLEET }, maps);
-    expect(inv.blockers).toEqual([]);
-    expect(inv.roots.filter((r) => r.kind === 'cwd').map((r) => [r.sourcePath, r.destinationPath])).toEqual([[path.join(data, 'proj'), '/srv/data/proj']]);
-    expect(inv.snapshot.characters.p.cwd).toBe(path.join(data, 'proj'));
-  });
-
-  // git names each checkout by its real path; the path root here is declared through a link, as ~/code to /Volumes/work/code
-  it.skipIf(!hasGit)('places a repository under the root whose real path holds it, and names it through that root (needs git)', async () => {
+  // git names each checkout by its real path, as ~/code to /Volumes/work/code resolves
+  it.skipIf(!hasGit)('carries a repository by the real path git names it by, and blocks the character that reached it through a link (needs git)', async () => {
     const base = tmp();
     fs.writeFileSync(path.join(base, 'gitconfig'), '');
+    const home = path.join(base, 'home');
     const disk = path.join(base, 'disk/code');
-    const declared = path.join(base, 'code');
+    const declared = path.join(home, 'code');
     const outside = path.join(base, 'elsewhere/lone');
     for (const repo of [path.join(disk, 'app'), outside]) {
       fs.mkdirSync(repo, { recursive: true });
       git(base, repo, 'init', '-q');
       git(base, repo, 'commit', '-q', '--allow-empty', '-m', 'first');
     }
-    fs.mkdirSync(path.join(base, 'home'));
+    fs.mkdirSync(home);
     fs.symlinkSync(disk, declared);
     const state = emptyState();
     state.characters = { app: char('app', { cwd: path.join(declared, 'app') }), lone: char('lone', { cwd: outside }) };
     const maps: MachineMaps = {
-      source: { machineId: MAC, pathRoots: { home: path.join(base, 'home'), work: declared }, fleetHome: path.join(base, 'home/.archipelago') },
-      destination: { machineId: TRIFT, pathRoots: { home: '/home/linus', work: '/srv/work' }, fleetHome: '/home/linus/.archipelago' },
+      source: { machineId: MAC, home, fleetHome: path.join(home, '.archipelago') },
+      destination: { machineId: TRIFT, home, fleetHome: path.join(home, '.archipelago') },
     };
     const discovery = await discoverGit(state, { excludes: DEFAULT_EXCLUDES });
     expect(discovery.blockers).toEqual([]);
-    const lone = discovery.graphs.find((g) => g.main?.path === fs.realpathSync(outside))!;
-
     const inv = buildInventory(state, { fleet: FLEET }, maps, discovery);
-    expect(inv.roots.map((r) => [r.kind, r.sourcePath, r.destinationPath])).toEqual([
-      ['repo', path.join(declared, 'app'), '/srv/work/app'],
-      ['home', path.join(base, 'home/.archipelago/home'), '/home/linus/.archipelago/home'],
+    expect(inv.roots.map((r) => [r.kind, r.path])).toEqual([
+      ['repo', path.join(disk, 'app')],
+      ['repo', outside],
+      ['home', path.join(home, '.archipelago/home')],
     ]);
-    const app = inv.git.find((g) => g.id !== lone.id)!;
-    expect([app.commonDir, app.main?.path, app.main?.gitDir]).toEqual([path.join(declared, 'app/.git'), path.join(declared, 'app'), path.join(declared, 'app/.git')]);
-    // a repository no root holds by its real path still blocks, named as git names it
-    expect(inv.blockers).toEqual([
-      { code: 'path_root_missing', message: `no path root holds ${fs.realpathSync(outside)}`, entity: { kind: 'git', id: lone.id } },
-      { code: 'path_root_missing', message: `no path root holds ${outside}`, entity: { kind: 'character', id: 'lone' } },
-    ]);
+    expect(inv.blockers).toEqual([expect.objectContaining({ code: 'path_symlinked', entity: { kind: 'character', id: 'app' } })]);
   });
 });
 

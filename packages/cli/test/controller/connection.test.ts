@@ -33,7 +33,7 @@ describe('remote connections', () => {
     registry = MachineRegistry.load(path.join(ssh.dir, 'config'));
     remote = registry.add({
       name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64',
-      home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', pathRoots: { home: '/home/linus' }, gateway: false,
+      home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', gateway: false,
     }, REMOTE);
   });
 
@@ -177,7 +177,7 @@ describe('remote connections', () => {
   it('refuses a machine the registry has no ssh destination for', async () => {
     registry.add({
       name: 'mac', platform: 'darwin', arch: 'arm64', home: '/Users/linus',
-      archiBase: '/Users/linus/.local/share/archipelago', pathRoots: { home: '/Users/linus' }, gateway: false,
+      archiBase: '/Users/linus/.local/share/archipelago', gateway: false,
     });
     await expect(connectRemote({ registry, machine: 'mac', fleetHome: home })).rejects.toThrow(/no ssh destination/);
   });
@@ -300,7 +300,7 @@ describe('resolveOwner', () => {
     registry = MachineRegistry.load(path.join(ssh.dir, 'config'));
     registry.add({
       name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64',
-      home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', pathRoots: { home: '/home/linus' }, gateway: false,
+      home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', gateway: false,
     }, REMOTE);
     deps = {
       registry,
@@ -314,7 +314,7 @@ describe('resolveOwner', () => {
   const gateway = (destination: string): void => {
     registry.add({
       name: 'gate', ssh: destination, platform: 'linux', arch: 'arm64',
-      home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', pathRoots: { home: '/home/linus' }, gateway: true,
+      home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', gateway: true,
     }, GATEWAY);
     fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: GATEWAY }));
   };
@@ -505,7 +505,7 @@ describe('resolveOwner', () => {
   it('refuses a gateway the registry has no ssh destination for as a fault to fix', async () => {
     registry.add({
       name: 'gate', platform: 'linux', arch: 'arm64',
-      home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', pathRoots: { home: '/home/linus' }, gateway: true,
+      home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', gateway: true,
     }, GATEWAY);
     fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: GATEWAY }));
     const err = await resolveOwner(home, { deps }).catch((e: SshError) => e);

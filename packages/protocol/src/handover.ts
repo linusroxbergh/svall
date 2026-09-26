@@ -38,12 +38,8 @@ export const OwnerRecord = z.object({
 });
 export type OwnerRecord = z.infer<typeof OwnerRecord>;
 
-/** Where a fleet's paths land on a given machine: root name to absolute path. */
-export const PathRootMap = z.record(z.string(), z.string().regex(/^\//, 'an absolute path'));
-export type PathRootMap = z.infer<typeof PathRootMap>;
-
-// a path a command can be built from: an absolute one, naming itself and nothing else
-const MachinePath = z.string()
+/** A path a command can be built from: an absolute one, naming itself and nothing else. */
+export const MachinePath = z.string()
   .regex(/^\/[^\0\n]*$/, 'an absolute path with no NUL or newline')
   .refine((p) => !p.split('/').includes('..'), 'an absolute path that climbs nowhere');
 
@@ -64,7 +60,6 @@ export const MachineRecord = z.object({
   arch: z.string(),
   home: MachinePath,
   archiBase: MachinePath,
-  pathRoots: PathRootMap,
   gateway: z.boolean(),
 });
 export type MachineRecord = z.infer<typeof MachineRecord>;
@@ -130,8 +125,8 @@ export const HandoverIssueCode = z.enum([
   'identity_mismatch', 'generation_mismatch', 'transaction_open',
   'incompatible_release', 'incompatible_protocol', 'incompatible_schema', 'incompatible_adapter',
   'agent_cli_missing', 'agent_logged_out', 'agent_hooks_missing',
-  'path_root_missing', 'character_pinned', 'shell_busy', 'agent_working', 'agent_blocked', 'agent_unsettled',
-  'worktree_unresolved', 'destination_diverged', 'destination_occupied', 'destination_no_space', 'path_collision', 'path_unsupported',
+  'home_mismatch', 'parent_missing', 'character_pinned', 'shell_busy', 'agent_working', 'agent_blocked', 'agent_unsettled',
+  'worktree_unresolved', 'destination_diverged', 'destination_occupied', 'destination_no_space', 'path_collision', 'path_unsupported', 'path_symlinked',
   'transcript_missing', 'ssh_interactive', 'platform_unsupported', 'platform_heuristic', 'env_file', 'external_writer', 'rsync_unsupported',
   'git_mismatch', 'worktree_unused', 'remote_local', 'git_extension', 'codex_trust', 'config_difference', 'symlink_dangling', 'manifest_too_large',
 ]);
@@ -178,16 +173,15 @@ export const TransferFile = z.discriminatedUnion('type', [
 export type TransferFile = z.infer<typeof TransferFile>;
 
 /**
- * One filesystem root of the transfer, mapped to its destination. A folded root lies inside a root that
- * carries its files, and stays listed so a Git worktree among them still gets its own repair.
+ * One filesystem root of the transfer, at the path it has on both machines. A folded root lies inside a root
+ * that carries its files, and stays listed so a Git worktree among them still gets its own repair.
  */
 export const TransferRoot = z.object({
   id: z.string().min(1),
   // `gitdir` is a common Git directory outside any checkout it serves, which no exclude reaches into
   kind: z.enum(['repo', 'worktree', 'gitdir', 'cwd', 'home', 'context', 'env']),
   entry: z.enum(['dir', 'file']),
-  sourcePath: z.string(),
-  destinationPath: z.string(),
+  path: z.string(),
   foldedInto: z.string().min(1).optional(),
   files: z.array(TransferFile),
 });
@@ -200,7 +194,7 @@ export const TransferSession = z.object({
   agent: AgentKind,
   sessionId: z.string().min(1),
   sourcePath: z.string(),
-  // where a session adapter places the transcript on the destination
+  // the transcript on the destination: the same path under that machine's agent home
   destinationPath: z.string().optional(),
   // the agent home each machine keeps the session under, and the adapter that reads it; `files` are named under the source home
   sourceHome: z.string().optional(),
@@ -258,10 +252,8 @@ export const TransferManifestV1 = z.object({
   generation: Generation,
   fromMachineId: MachineId,
   toMachineId: MachineId,
-  sourceRoots: PathRootMap,
-  // the real path of each source root declared through a link, which an agent names its own files by
-  sourceRealRoots: PathRootMap.optional(),
-  destinationRoots: PathRootMap,
+  // the home path both machines share
+  home: MachinePath,
   fleet: FleetConfig,
   snapshot: FleetState,
   excludes: z.array(z.string()),
@@ -307,9 +299,9 @@ export const RootClaim = z.object({
 });
 export type RootClaim = z.infer<typeof RootClaim>;
 
-/** What one destination path root is good for: somewhere to write, how much room, and whether names that differ by case fold together. */
+/** What one destination folder is good for: somewhere to write, how much room, and whether names that differ by case fold together. */
 export const RootProbe = z.object({
-  exists: z.boolean(), writable: z.boolean(), caseInsensitive: z.boolean(), freeBytes: z.number().nonnegative(), collisions: z.array(z.string()),
+  exists: z.boolean(), writable: z.boolean(), caseInsensitive: z.boolean(), freeBytes: z.number().nonnegative(),
 });
 export type RootProbe = z.infer<typeof RootProbe>;
 
@@ -377,15 +369,13 @@ export const SystemInfo = z.object({
 });
 export type SystemInfo = z.infer<typeof SystemInfo>;
 
-const WithHome = PathRootMap.refine((roots) => Object.hasOwn(roots, 'home'), 'every machine has a home root');
-
 /**
- * What the controller knows of a handover's two machines and a source daemon cannot: each machine's path
- * roots from its registry, the destination's fleet home, and what the destination said of itself.
+ * What the controller knows of a handover's two machines and a source daemon cannot: each machine's home from
+ * its registry, the destination's fleet home, and what the destination said of itself.
  */
 export const HandoverMachines = z.object({
-  source: z.object({ pathRoots: WithHome }),
-  destination: z.object({ info: SystemInfo, pathRoots: WithHome, fleetHome: MachinePath }),
+  source: z.object({ home: MachinePath }),
+  destination: z.object({ info: SystemInfo, home: MachinePath, fleetHome: MachinePath }),
 });
 export type HandoverMachines = z.infer<typeof HandoverMachines>;
 

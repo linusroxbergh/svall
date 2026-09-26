@@ -31,14 +31,12 @@ function localName(hostname: string, taken: string[]): string {
 }
 
 function localRecord(hostname: string, taken: string[]): MachineRecord {
-  const home = os.homedir();
   return {
     name: localName(hostname, taken),
     platform: process.platform === 'linux' ? 'linux' : 'darwin',
     arch: process.arch,
-    home,
+    home: os.homedir(),
     archiBase: archiHome(),
-    pathRoots: { home },
     gateway: false,
   };
 }

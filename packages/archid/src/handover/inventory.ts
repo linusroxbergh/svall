@@ -1,28 +1,26 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { AgentKind, Blocker, FleetConfig, FleetState, GitCheckout, GitGraph, HandoverEntity, MachineId, PathRootMap, TransferRoot, TransferSession, Warning } from '@archipelago/protocol';
+import type { AgentKind, Blocker, FleetConfig, FleetState, GitGraph, HandoverEntity, MachineId, TransferRoot, TransferSession, Warning } from '@archipelago/protocol';
 import { resolvePaths } from '../paths.js';
+import { shq } from '../text.js';
 import type { GitDiscovery } from './git-graph.js';
 import { byCodeUnit, canonicalJson, sha256Hex } from './hash.js';
-import { exportSnapshot, holds, locatePath, mapPortablePath, portablePathValues, realHoldingRoot, realPath, realRoots, rewrite, type PathValue } from './portable-path.js';
+import { exportSnapshot, holds, portablePathValues, realPath, type PathValue } from './portable-path.js';
 
-/** Where one machine keeps what a handover moves: its path roots, this fleet's own home, and where each agent CLI keeps its sessions. */
-export type MachineMap = { machineId: MachineId; pathRoots: PathRootMap; fleetHome: string; agentHomes?: Partial<Record<AgentKind, string>> };
+/** Where one machine keeps what a handover moves: its home, this fleet's own home, and where each agent CLI keeps its sessions. */
+export type MachineMap = { machineId: MachineId; home: string; fleetHome: string; agentHomes?: Partial<Record<AgentKind, string>> };
 export type MachineMaps = { source: MachineMap; destination: MachineMap };
 export type InventoryConfigs = { fleet: FleetConfig };
 
-export type InventoryRoot = Pick<TransferRoot, 'id' | 'kind' | 'entry' | 'sourcePath' | 'destinationPath' | 'foldedInto'>;
-// the cwd the agent resumes in on the destination, which a Claude Code project folder is named for
-export type InventorySession = Pick<TransferSession, 'characterId' | 'term' | 'agent' | 'sessionId' | 'sourcePath' | 'destinationHome'> & { destinationCwd?: string };
+export type InventoryRoot = Pick<TransferRoot, 'id' | 'kind' | 'entry' | 'path' | 'foldedInto'>;
+export type InventorySession = Pick<TransferSession, 'characterId' | 'term' | 'agent' | 'sessionId' | 'sourcePath' | 'destinationHome'>;
 
 /** What a handover would carry and from where to where, before a byte of it is read. */
 export type Inventory = {
   fromMachineId: MachineId;
   toMachineId: MachineId;
-  sourceRoots: PathRootMap;
-  /** the real path of each source root declared through a link */
-  sourceRealRoots?: PathRootMap;
-  destinationRoots: PathRootMap;
+  /** the home path both machines share */
+  home: string;
   fleet: FleetConfig;
   snapshot: FleetState;
   excludes: string[];
@@ -121,118 +119,113 @@ const ROOT_OF: Record<string, Kind> = {
   'FleetConfig.home.cwd': 'home',
 };
 
-const rootId = (sourcePath: string): string => `r_${sha256Hex(sourcePath).slice(0, 16)}`;
+const rootId = (p: string): string => `r_${sha256Hex(p).slice(0, 16)}`;
 const isGit = (kind: Kind): boolean => kind === 'repo' || kind === 'worktree' || kind === 'gitdir';
 
-// a root and the real path its copy reads from on this machine
-type Candidate = { root: InventoryRoot; real: string };
 type FleetHomes = { source: string; sourceReal: string; destination: string };
 
 /**
  * The fleet home a root would carry or overwrite, if any: a fleet home holds its machine's token, keys,
  * journal and node.json. Mission control's cwd lies inside it by design, and so may anything inside that.
  */
-function fleetHomeClash(c: Candidate, mission: Candidate | undefined, homes: FleetHomes): string | undefined {
-  const { root, real } = c;
-  const places: [at: string, home: string, named: string][] = [
-    [root.sourcePath, homes.source, homes.source],
-    [real, homes.sourceReal, homes.source],
-    [root.destinationPath, homes.destination, homes.destination],
-  ];
-  const held = places.find(([at, home]) => holds(at, home));
-  if (held) return held[2];
-  const inMission = mission !== undefined && holds(mission.root.sourcePath, root.sourcePath) && holds(mission.real, real)
-    && holds(mission.root.destinationPath, root.destinationPath);
-  return inMission ? undefined : places.find(([at, home]) => holds(home, at))?.[2];
+function fleetHomeClash(root: InventoryRoot, mission: InventoryRoot | undefined, homes: FleetHomes): string | undefined {
+  const places: [home: string, named: string][] = [[homes.source, homes.source], [homes.sourceReal, homes.source], [homes.destination, homes.destination]];
+  const held = places.find(([home]) => holds(root.path, home));
+  if (held) return held[1];
+  const inMission = mission !== undefined && holds(mission.path, root.path);
+  return inMission ? undefined : places.find(([home]) => holds(home, root.path))?.[1];
 }
 
 // what is on disk decides how a root folds; a path that is not there folds as a folder
-function entryOf(real: string): InventoryRoot['entry'] {
-  try { return fs.statSync(real).isDirectory() ? 'dir' : 'file'; } catch { return 'dir'; }
+function entryOf(p: string): InventoryRoot['entry'] {
+  try { return fs.statSync(p).isDirectory() ? 'dir' : 'file'; } catch { return 'dir'; }
 }
 
 const characterOf = (v: PathValue): HandoverEntity | undefined =>
   (v.field.startsWith('FleetState.characters.') ? { kind: 'character', id: String(v.pointer[1]) } : undefined);
 
+// a home path as a shell reads it, quoted only when it has to be
+const word = (p: string): string => (/^[A-Za-z0-9_./-]+$/.test(p) ? p : shq(p));
+
+/** The commands that give an account the home path `home`, for a message asking for one. */
+export const homeCommands = (home: string): string =>
+  `sudo mkdir -p ${word(path.posix.dirname(home))}, then sudo useradd -m -d ${word(home)} <user> for a new account, `
+  + `or sudo usermod -d ${word(home)} -m <user> for an existing one you are not logged in as`;
+
 /**
- * Everything a handover carries from `source` to `destination`: each working root once, mapped through
- * the destination's path roots, the transcript each agent recorded, and what stops the move. With the
- * discovered Git graphs, those graphs name every Git root; without them, the recorded repo fields do.
+ * Everything a handover carries from `source` to `destination`, which share one home path: each working root
+ * once, at the path it has on both machines, the transcript each agent recorded, and what stops the move. With
+ * the discovered Git graphs, those graphs name every Git root; without them, the recorded repo fields do.
  */
 export function buildInventory(state: FleetState, configs: InventoryConfigs, machineMaps: MachineMaps, git?: GitDiscovery): Inventory {
   const { source, destination } = machineMaps;
-  const sourceReal = realRoots(source.pathRoots);
-  // what leaves this machine names each path as a declared root spells it, whatever spelling this machine recorded it by
+  const { home } = source;
   const snapshot = exportSnapshot(state);
   const fleet = structuredClone(configs.fleet);
-  const spell = declared(source.pathRoots);
-  for (const v of portablePathValues({ FleetState: snapshot, FleetConfig: fleet }, source.pathRoots.home)) {
-    const spelled = v.form === 'transcript' ? v.path : spell(v.path);
-    if (spelled !== v.path) rewrite({ FleetState: snapshot, FleetConfig: fleet }, v, spelled, source.pathRoots.home);
-  }
   const { excludes, blockers } = expandExcludes(fleet.handover);
+  if (destination.home !== home) {
+    blockers.push({
+      code: 'home_mismatch',
+      message: `the destination's home is ${destination.home} and this machine's ${home}; a fleet moves only between accounts with the same home path. On the destination, ${homeCommands(home)}`,
+    });
+  }
   blockers.push(...(git?.blockers ?? []));
 
-  const locate = (p: string, entity: HandoverEntity | undefined): ReturnType<typeof locatePath> | undefined => {
+  // a root travels at the path it was recorded by, so that path has to be the real one Git and the agents record
+  const real = (p: string, entity: HandoverEntity | undefined): boolean => {
     if (CONTROL.test(p) || !p.startsWith('/')) {
       blockers.push({ code: 'path_unsupported', message: `${JSON.stringify(p)} ${p.startsWith('/') ? 'holds a control character' : 'is not absolute'}`, entity });
-      return undefined;
+      return false;
     }
-    let located;
-    try { located = locatePath(p, source.pathRoots); } catch (e) {
-      blockers.push({ code: 'path_root_missing', message: (e as Error).message, entity });
-      return undefined;
-    }
-    if (Object.hasOwn(destination.pathRoots, located.portable.root)) return located;
-    blockers.push({ code: 'path_root_missing', message: `the destination has no path root ${located.portable.root}`, entity });
-    return undefined;
+    const at = realPath(p);
+    if (at === p) return true;
+    blockers.push({
+      code: 'path_symlinked', entity,
+      message: `${p} leads to ${at} through a symbolic link; a handover carries each folder at its real path, the one Git and the agents record, so use ${at} instead`,
+    });
+    return false;
   };
-  const graphs = (git?.graphs ?? []).map((g) => declaredGraph(g, spell));
-  const candidates = new Map<string, Candidate>();
-  const offer = (p: string, kind: Kind, { portable, real }: NonNullable<ReturnType<typeof locate>>): void => {
-    // a declared root is on both machines already: standing in it, as a shell at ~ does, copies nothing
-    if (portable.relative === '' && !isGit(kind)) return;
+  const graphs = git?.graphs ?? [];
+  const candidates = new Map<string, InventoryRoot>();
+  const offer = (p: string, kind: Kind): void => {
+    // the home is on both machines already: standing in it, as a shell at ~ does, copies nothing
+    if (p === home && !isGit(kind)) return;
     const had = candidates.get(p);
-    if (had && RANK.indexOf(had.root.kind) <= RANK.indexOf(kind)) return;
-    const root = { id: rootId(p), kind, entry: entryOf(real), sourcePath: p, destinationPath: mapPortablePath(portable, destination.pathRoots) };
-    candidates.set(p, { root, real });
+    if (had && RANK.indexOf(had.kind) <= RANK.indexOf(kind)) return;
+    candidates.set(p, { id: rootId(p), kind, entry: entryOf(p), path: p });
   };
 
-  // every portable path has to land somewhere on the destination, whether or not anything is copied from it
-  for (const v of portablePathValues({ FleetState: snapshot, FleetConfig: fleet }, source.pathRoots.home)) {
+  for (const v of portablePathValues({ FleetState: snapshot, FleetConfig: fleet }, home)) {
     if (v.form === 'transcript') continue;
-    const located = locate(v.path, characterOf(v));
-    if (!located) continue;
     let kind: Kind | undefined = ROOT_OF[v.field];
     if (kind === 'worktree' && !snapshot.characters[String(v.pointer[1])].repo?.isWorktree) kind = undefined;
     if (git && (kind === 'repo' || kind === 'worktree')) kind = undefined;
-    if (kind) offer(v.path, kind, located);
+    if (kind && real(v.path, characterOf(v))) offer(v.path, kind);
   }
   for (const g of graphs) {
     const entity: HandoverEntity = { kind: 'git', id: g.id };
     const roots = g.worktrees.map((w): [string, Kind] => [w.path, 'worktree']);
     if (g.main) roots.push([g.main.path, 'repo']);
     if (!g.main || !holds(g.main.path, g.commonDir)) roots.push([g.commonDir, 'gitdir']);
-    for (const [p, kind] of roots) {
-      const located = locate(p, entity);
-      if (located) offer(p, kind, located);
-    }
+    for (const [p, kind] of roots) if (real(p, entity)) offer(p, kind);
   }
 
   // the fleet .env is the one file of a fleet home that may move, and it is added below only when asked for
   const homes: FleetHomes = { source: path.posix.resolve(source.fleetHome), sourceReal: realPath(path.posix.resolve(source.fleetHome)), destination: path.posix.resolve(destination.fleetHome) };
   const placed = [...candidates.values()];
-  const mission = placed.find((c) => c.root.kind === 'home' && !fleetHomeClash(c, c, homes));
-  const allowed = placed.filter((c) => {
-    const fleetHome = fleetHomeClash(c, mission, homes);
-    if (fleetHome) blockers.push({ code: 'path_unsupported', message: `${c.root.sourcePath} overlaps the fleet home ${fleetHome}, whose token, keys and node.json stay on their machine`, entity: { kind: 'root', id: c.root.id } });
+  const mission = placed.find((r) => r.kind === 'home' && !fleetHomeClash(r, r, homes));
+  const allowed = placed.filter((r) => {
+    const fleetHome = fleetHomeClash(r, mission, homes);
+    if (fleetHome) blockers.push({ code: 'path_unsupported', message: `${r.path} overlaps the fleet home ${fleetHome}, whose token, keys and node.json stay on their machine`, entity: { kind: 'root', id: r.id } });
     return !fleetHome;
-  }).map((c) => c.root);
+  });
 
   const roots = fold(allowed, excludes);
   if (fleet.handover.transferFleetEnv) {
     const env = resolvePaths(source.fleetHome).env;
-    roots.push({ id: rootId(env), kind: 'env', entry: 'file', sourcePath: env, destinationPath: resolvePaths(destination.fleetHome).env });
+    const there = resolvePaths(destination.fleetHome).env;
+    if (there === env) roots.push({ id: rootId(env), kind: 'env', entry: 'file', path: env });
+    else blockers.push({ code: 'path_unsupported', message: `the destination keeps this fleet's .env at ${there}, not ${env}, so it cannot arrive at the same path` });
   }
 
   const sessions: InventorySession[] = [];
@@ -247,8 +240,7 @@ export function buildInventory(state: FleetState, configs: InventoryConfigs, mac
         blockers.push({ code: 'path_unsupported', message: `the transcript ${JSON.stringify(transcriptPath)} cannot be carried`, entity });
       } else {
         const destinationHome = destination.agentHomes?.[agent];
-        const destinationCwd = mapped(term ? c.second?.cwd ?? c.cwd : c.cwd, source.pathRoots, destination.pathRoots);
-        sessions.push({ characterId: c.id, ...(term && { term }), agent, sessionId, sourcePath: transcriptPath, ...(destinationHome && { destinationHome }), ...(destinationCwd && { destinationCwd }) });
+        sessions.push({ characterId: c.id, ...(term && { term }), agent, sessionId, sourcePath: transcriptPath, ...(destinationHome && { destinationHome }) });
       }
     }
   }
@@ -256,13 +248,11 @@ export function buildInventory(state: FleetState, configs: InventoryConfigs, mac
   return {
     fromMachineId: source.machineId,
     toMachineId: destination.machineId,
-    sourceRoots: source.pathRoots,
-    ...(Object.keys(sourceReal).length && { sourceRealRoots: sourceReal }),
-    destinationRoots: destination.pathRoots,
+    home,
     fleet,
     snapshot,
     excludes,
-    roots: roots.sort((a, b) => byCodeUnit(a.sourcePath, b.sourcePath)),
+    roots: roots.sort((a, b) => byCodeUnit(a.path, b.path)),
     sessions: sessions.sort((a, b) => byCodeUnit(a.characterId, b.characterId) || (a.term ?? 1) - (b.term ?? 1)),
     git: graphs,
     blockers: settle(blockers),
@@ -270,44 +260,20 @@ export function buildInventory(state: FleetState, configs: InventoryConfigs, mac
   };
 }
 
-/** A path spelled under the declared root whose real path holds it, the longest there is; a path no root holds that way keeps its spelling. */
-const declared = (roots: PathRootMap) => (p: string): string => {
-  try {
-    const placed = realHoldingRoot(p, roots);
-    return placed ? mapPortablePath(placed, roots) : p;
-  } catch { return p; }
-};
-
-/** A graph named as the manifest keeps it: git names each place by its real path, spelled under a declared root. */
-function declaredGraph(g: GitGraph, spell: (p: string) => string): GitGraph {
-  const checkout = (c: GitCheckout): GitCheckout => ({ ...c, path: spell(c.path), gitDir: spell(c.gitDir) });
-  return {
-    ...g, commonDir: spell(g.commonDir), ...(g.main && { main: checkout(g.main) }),
-    worktrees: g.worktrees.map(checkout), unused: g.unused.map((u) => ({ ...u, path: spell(u.path) })),
-  };
-}
-
-// the cwd's own blocker already says why one does not map
-function mapped(cwd: string, from: PathRootMap, to: PathRootMap): string | undefined {
-  try { return mapPortablePath(locatePath(cwd, from).portable, to); } catch { return undefined; }
-}
-
 /**
- * Folds each root into the outermost carried root that copies its files to the same place, so a file is
- * sent once. A folded Git root stays listed for its own repair; any other folded root has nothing left to do.
+ * Folds each root into the outermost carried root that copies its files, so a file is sent once. A folded Git
+ * root stays listed for its own repair; any other folded root has nothing left to do.
  */
 function fold(candidates: InventoryRoot[], excludes: readonly string[]): InventoryRoot[] {
   const carried: InventoryRoot[] = [];
   const out: InventoryRoot[] = [];
-  const outerFirst = candidates.sort((a, b) => a.sourcePath.length - b.sourcePath.length || byCodeUnit(a.sourcePath, b.sourcePath));
+  const outerFirst = candidates.sort((a, b) => a.path.length - b.path.length || byCodeUnit(a.path, b.path));
   for (const root of outerFirst) {
     const outer = carried.find((o) => {
-      if (!holds(o.sourcePath, root.sourcePath)) return false;
-      const relative = path.posix.relative(o.sourcePath, root.sourcePath);
-      const parts = relative.split('/');
+      if (!holds(o.path, root.path)) return false;
+      const parts = path.posix.relative(o.path, root.path).split('/');
       const excluded = rootMatcher(o.kind, excludes);
-      if (parts.some((_, i) => excluded(parts.slice(0, i + 1).join('/'), i < parts.length - 1 || root.entry === 'dir'))) return false;
-      return root.destinationPath === path.posix.join(o.destinationPath, relative);
+      return !parts.some((_, i) => excluded(parts.slice(0, i + 1).join('/'), i < parts.length - 1 || root.entry === 'dir'));
     });
     if (!outer) { carried.push(root); out.push(root); }
     else if (isGit(root.kind)) out.push({ ...root, foldedInto: outer.id });

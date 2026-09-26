@@ -177,7 +177,7 @@ type Boot = { standalone?: boolean; probes?: AgentProbe[]; record?: object; char
 
 function boot(o: Boot = {}) {
   const home = makeHome();
-  // git answers in real paths, and the source's path roots must hold them
+  // git answers in real paths, and a root travels by its real path
   const work = fs.realpathSync(makeHome());
   const paths = resolvePaths(home);
   fs.writeFileSync(paths.fleetConfig, JSON.stringify(FleetConfig.parse({ id: fleetId, ...(!o.standalone && { gatewayMachineId: trift }) })));
@@ -239,8 +239,8 @@ function boot(o: Boot = {}) {
     return s;
   };
   const machines = (over: Partial<ParsedParams<'handover.freeze'>['destination']> = {}) => ({
-    source: { pathRoots: { home: work } },
-    destination: { info: destinationInfo(), pathRoots: { home: '/home/linus' }, fleetHome: '/home/linus/.archipelago', ...over },
+    source: { home: work },
+    destination: { info: destinationInfo(), home: work, fleetHome: path.join(work, '.archipelago'), ...over },
   });
   const freezeParams = (over: Partial<ParsedParams<'handover.freeze'>> = {}): ParsedParams<'handover.freeze'> =>
     ({ transactionId: TX, generation: 4, choices: {}, ...machines(), ...over });
@@ -256,11 +256,14 @@ const ownerFile = (paths: Paths): Record<string, unknown> => JSON.parse(fs.readF
 describe('source preflight', () => {
   it('reports what would stop the move without writing, fencing or signalling, and only reads who the gateway says owns it', async () => {
     const b = boot({
-      characters: (work) => [
-        char('c_ada', path.join(work, 'ada'), { tmux: win(1) }),
-        char('c_bo', path.join(work, 'bo'), { tmux: win(3) }),
-        char('c_cy', '/Volumes/scratch/cy'),
-      ],
+      characters: (work) => {
+        fs.symlinkSync(path.join(work, 'cy'), path.join(work, 'linked'));
+        return [
+          char('c_ada', path.join(work, 'ada'), { tmux: win(1) }),
+          char('c_bo', path.join(work, 'bo'), { tmux: win(3) }),
+          char('c_cy', path.join(work, 'linked')),
+        ];
+      },
     });
     b.world.panes.get('@3')!.job = ['npm run dev'];
     const before = { home: tree(b.home), work: tree(b.work), state: structuredClone(b.store.state) };
@@ -268,14 +271,14 @@ describe('source preflight', () => {
     const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() });
 
     expect(r.blockers.map((x) => [x.code, x.entity?.id])).toEqual([
-      ['path_root_missing', 'c_cy'],
+      ['path_symlinked', 'c_cy'],
       ['shell_busy', 'c_bo'],
     ]);
     expect(r.manifestSummary).toMatchObject({ roots: 2, files: 2, sessions: 0 });
     // the manifest it counted, for the controller to check the destination's roots against
     expect(r.manifest.transactionId).toBeUndefined();
     expect(manifestDigest(r.manifest)).toBe(r.manifestSummary.digest);
-    expect(r.manifest.roots.map((x) => x.sourcePath).sort()).toEqual([path.join(b.work, 'ada'), path.join(b.work, 'bo')]);
+    expect(r.manifest.roots.map((x) => x.path).sort()).toEqual([path.join(b.work, 'ada'), path.join(b.work, 'bo')]);
     expect(tree(b.home)).toEqual(before.home);
     expect(tree(b.work)).toEqual(before.work);
     expect(b.store.state).toEqual(before.state);
@@ -303,6 +306,20 @@ describe('source preflight', () => {
     expect(await codes({ toMachineId: me, destination: { ...b.machines().destination, info: destinationInfo({ machineId: me }) } })).toEqual(['identity_mismatch']);
     const alone = boot({ standalone: true });
     expect(await codes({}, alone)).toEqual(['identity_mismatch']);
+  });
+
+  it('blocks a destination whose home is not this machine\'s, at preflight and at freeze, naming the commands that make one that is', async () => {
+    const b = boot();
+    const elsewhere = { home: '/home/linus' };
+    const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines(elsewhere) });
+    expect(r.blockers).toEqual([{
+      code: 'home_mismatch',
+      message: `the destination's home is /home/linus and this machine's ${b.work}; a fleet moves only between accounts with the same home path. On the destination, sudo mkdir -p ${path.dirname(b.work)}, then sudo useradd -m -d ${b.work} <user> for a new account, or sudo usermod -d ${b.work} -m <user> for an existing one you are not logged in as`,
+    }]);
+    b.gateway.begin();
+    const refused = await refusal(b.handover.freeze(b.freezeParams(b.machines(elsewhere))));
+    expect((refused.data.blockers as { code: string }[]).map((x) => x.code)).toEqual(['home_mismatch']);
+    expect(b.world.log).toEqual(['settle', 'activate', 'reconcile']);
   });
 
   it('asks the gateway who owns the fleet, as Freeze will, and blocks when it cannot be asked without a prompt', async () => {
@@ -568,7 +585,7 @@ describe('source freeze', () => {
     const again = await b.restart();
     const r = await again.handover.freeze(b.freezeParams());
 
-    expect(r.manifest.roots.find((x) => x.sourcePath.endsWith('/ada'))?.files[0]).toMatchObject({ path: 'notes.md', size: 9 });
+    expect(r.manifest.roots.find((x) => x.path.endsWith('/ada'))?.files[0]).toMatchObject({ path: 'notes.md', size: 9 });
     expect(journalOf(b.paths)?.manifestDigest).toBe(manifestDigest(r.manifest));
     expect(readManifest(b.paths.manifest(TX)).digest).toBe(manifestDigest(r.manifest));
     expect(journalOf(b.paths)?.stoppedTerminals).toEqual(j.stoppedTerminals);
@@ -639,7 +656,7 @@ describe('source freeze', () => {
     repo(bo, { 'index.ts': 'export {};\n' });
     const { manifest } = await b.handover.freeze(b.freezeParams());
     expect(manifest.git?.map((g) => ({ main: g.main?.path, characters: g.main?.characters }))).toEqual([{ main: bo, characters: ['c_bo'] }]);
-    expect(manifest.roots.find((r) => r.sourcePath === bo)?.kind).toBe('repo');
+    expect(manifest.roots.find((r) => r.path === bo)?.kind).toBe('repo');
   });
 
   it('finds a name it cannot carry, a transcript that is gone or a character kept here before it touches a terminal', async () => {
@@ -656,13 +673,14 @@ describe('source freeze', () => {
     expect(fs.existsSync(b.paths.journal)).toBe(false);
   });
 
-  it('refuses a path the fence finds outside the path roots before it touches a terminal, and lets the fleet run again', async () => {
+  it('refuses a cwd the fence finds reached through a link before it touches a terminal, and lets the fleet run again', async () => {
     const b = boot();
     b.gateway.begin();
-    b.store.update((d) => { d.characters.c_cy.cwd = '/Volumes/scratch/cy'; });
+    fs.symlinkSync(path.join(b.work, 'cy'), path.join(b.work, 'linked'));
+    b.store.update((d) => { d.characters.c_cy.cwd = path.join(b.work, 'linked'); });
     const r = await refusal(b.handover.freeze(b.freezeParams()));
     expect(r.code).toBe('blocked');
-    expect((r.data.blockers as { code: string }[]).map((x) => x.code)).toEqual(['path_root_missing']);
+    expect((r.data.blockers as { code: string }[]).map((x) => x.code)).toEqual(['path_symlinked']);
     expect(b.world.log).toEqual(['settle', 'activate', 'reconcile']);
     expect(b.ownership.writable()).toBe(true);
   });
@@ -918,7 +936,7 @@ describe('source complete', () => {
     const { manifest } = await b.handover.freeze(b.freezeParams());
     b.world.log.length = 0;
     // what the transfer verified: here one file changed after the freeze and before the last pass
-    const landed = replicaRoots(manifest, 'source').map((r) => ({ id: r.id, files: manifest.roots.find((x) => x.id === r.id)!.files.map((f) => (f.type === 'file' ? { ...f, mtimeMs: f.mtimeMs + 1 } : f)) }));
+    const landed = replicaRoots(manifest).map((r) => ({ id: r.id, files: manifest.roots.find((x) => x.id === r.id)!.files.map((f) => (f.type === 'file' ? { ...f, mtimeMs: f.mtimeMs + 1 } : f)) }));
     const committed = (): OwnerRecord => ({ fleetId, generation: 5, ownerMachineId: trift, transaction: { ...b.gateway.record.transaction!, phase: 'committed' } });
     return { b, manifest, landed, committed };
   }
@@ -929,7 +947,7 @@ describe('source complete', () => {
 
     expect(await b.handover.complete({ transactionId: TX, generation: 4, landed })).toEqual({});
 
-    for (const r of replicaRoots(manifest, 'source')) {
+    for (const r of replicaRoots(manifest)) {
       expect(JSON.parse(fs.readFileSync(b.paths.replicaRecord(fleetId, r.path), 'utf8')), r.path).toMatchObject({
         state: 'sealed', sealedBy: TX, generation: 5, manifestDigest: manifestDigest(manifest), baseline: landed.find((x) => x.id === r.id)!.files,
       });
@@ -943,7 +961,7 @@ describe('source complete', () => {
     expect(await b.handover.complete({ transactionId: TX, generation: 4, landed })).toEqual({});
     // the fleet's way back finds each root holding only what this handover left
     const replicas = new ReplicaStore({ fleetId, paths: b.paths });
-    for (const r of replicaRoots(manifest, 'source')) {
+    for (const r of replicaRoots(manifest)) {
       expect(await replicas.inspect(r, { transactionId: 'tx-2', excludes: manifest.excludes }), r.path).toMatchObject({ ok: true, kind: 'replica' });
     }
     const again = await b.restart();

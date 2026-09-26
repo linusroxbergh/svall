@@ -61,9 +61,9 @@ export const realReplicaFs: ReplicaFs = {
 /** A carried root as one machine sees it: `path` is where it lies there. */
 export type ReplicaRoot = Pick<TransferRoot, 'id' | 'kind' | 'entry'> & { path: string };
 
-/** The roots a manifest writes on one side, at their paths there. A folded root's files travel in its outer root. */
-export const replicaRoots = (manifest: Pick<TransferManifestV1, 'roots'>, side: 'source' | 'destination'): ReplicaRoot[] =>
-  manifest.roots.filter((r) => !r.foldedInto).map((r) => ({ id: r.id, kind: r.kind, entry: r.entry, path: side === 'source' ? r.sourcePath : r.destinationPath }));
+/** The roots a manifest writes, at the path each has on both machines. A folded root's files travel in its outer root. */
+export const replicaRoots = (manifest: Pick<TransferManifestV1, 'roots'>): ReplicaRoot[] =>
+  manifest.roots.filter((r) => !r.foldedInto).map((r) => ({ id: r.id, kind: r.kind, entry: r.entry, path: r.path }));
 
 /**
  * Whether a transaction may write a root, by its real path on this machine. `absent`: nothing is there,

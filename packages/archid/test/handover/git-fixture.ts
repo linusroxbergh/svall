@@ -20,7 +20,7 @@ export GIT_CONFIG_GLOBAL="$T/gitconfig" GIT_CONFIG_NOSYSTEM=1 LC_ALL=C
 g() { git -c user.name=Probe -c user.email=probe@example.com -c commit.gpgsign=false -c init.defaultBranch=main -c protocol.file.allow=always "$@"; }
 S="$T/Users/source/work"
 M="$S/demo"
-mkdir -p "$S" "$T/home/dest/work"
+mkdir -p "$S"
 g init -q "$S/lib"
 echo lib > "$S/lib/lib.txt"
 g -C "$S/lib" add lib.txt
@@ -52,10 +52,9 @@ done
 echo 'sub edit' >> "$M/sub/lib.txt"
 `;
 
-/** Where the fixture puts each checkout under a base, on the source and on the destination. */
+/** Where the fixture puts each checkout under a base, at the same path on both machines, and the home they share. */
 export function layout(base: string) {
-  const source = path.join(base, 'Users/source/work');
-  const destination = path.join(base, 'home/dest/work');
+  const home = path.join(base, 'Users/source');
   const at = (work: string) => ({
     work,
     main: path.join(work, 'demo'),
@@ -68,15 +67,25 @@ export function layout(base: string) {
     gone: path.join(work, 'gone'),
     lib: path.join(work, 'lib'),
   });
-  return {
-    base,
-    sourceRoots: { home: path.join(base, 'Users/source') },
-    destinationRoots: { home: path.join(base, 'home/dest') },
-    source: at(source),
-    destination: at(destination),
-  };
+  return { base, home, source: at(path.join(home, 'work')) };
 }
 export type Layout = ReturnType<typeof layout>;
+
+/**
+ * Two machines share the fixture's home, and this disk holds one of them at a time: `park` sets the tree there
+ * aside under a machine's name and answers where, `unpark` puts that machine's tree back at the home.
+ */
+export function park(l: Layout, machine: string): string {
+  const to = path.join(l.base, `parked-${machine}`);
+  fs.renameSync(l.home, to);
+  return to;
+}
+export function unpark(l: Layout, machine: string): void {
+  fs.renameSync(path.join(l.base, `parked-${machine}`), l.home);
+}
+
+/** Where `p`, a path under the home, lies in the tree parked at `at`. */
+export const parkedAt = (l: Layout, at: string, p: string): string => path.join(at, path.relative(l.home, p));
 
 /** Seeds the fixture under a fresh real folder here. */
 export function seedHere(made: string[]): Layout {

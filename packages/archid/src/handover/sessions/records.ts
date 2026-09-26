@@ -86,9 +86,9 @@ class Walk {
     return out;
   }
 
-  // a path the source names, read the same way on both machines whatever spelling the destination moves it to
+  // a path the source names that reads the same on both machines
   private stays(v: string): boolean {
-    return relocate(v, this.map.declared ?? this.map) === v;
+    return relocate(v, this.map) === v;
   }
 
   value(v: unknown, pos: string[]): unknown {

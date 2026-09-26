@@ -3,11 +3,8 @@ import type { AgentKind, HandoverIssueCode, ResumeFolder } from '@archipelago/pr
 /** The CLI releases an adapter was tested against, both ends included. */
 export type VersionRange = { min: string; max: string };
 
-/**
- * Where a source path lands on the destination; undefined when no path root or agent home holds it. `declared`
- * lands it on the destination's declared spelling, which is what tells a stale source path from one that stays put.
- */
-export type PathMap = ((absolute: string) => string | undefined) & { declared?: (absolute: string) => string | undefined };
+/** Where a source path lands on the destination; undefined when no agent home holds it. */
+export type PathMap = (absolute: string) => string | undefined;
 
 /** One session as its source keeps it: the agent home, and each file under it with the transcript first. */
 export type FoundSession = { home: string; transcript: string; files: string[] };
@@ -31,7 +28,7 @@ export class SessionError extends Error {
 
 /**
  * What one agent's session files look like for a range of its CLI releases: which files make a session,
- * where they sit on the destination, and which of their fields name a path on the machine that wrote them.
+ * and which of their fields name a path on the machine that wrote them.
  */
 export interface SessionAdapter {
   readonly kind: AgentKind;
@@ -46,8 +43,6 @@ export interface SessionAdapter {
   discover(transcriptPath: string, sessionId: string, fs: SessionFs): Promise<FoundSession>;
   /** Whether `file`, relative to the agent home, is one of session `sessionId`'s files when its transcript is `transcript`. */
   carries(file: string, transcript: string, sessionId: string): boolean;
-  /** Where the transcript sits under the destination's agent home, for an agent resumed in `cwd`. */
-  destination(transcript: string, sessionId: string, cwd: string): string;
   /** A carried file with its known path fields mapped and every other byte kept. Throws on what it does not know. */
   rewrite(file: string, data: Buffer, map: PathMap): Buffer;
   /** What in a carried file this adapter does not know; empty when `rewrite` can take it. */

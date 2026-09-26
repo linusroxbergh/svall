@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Blocker, emptyState, FleetConfig, FleetId, GitGraph, HANDOVER_PHASES, HandoverChoices, HandoverEntity, HandoverEntityStatus, HandoverError, HandoverPhase, handoverError, MachineId, MachineRecord, ManifestSummary, NodeConfig, OwnerRecord, PathRootMap, ReceivedGraph, TRANSFER_SCHEMA_VERSION, TransactionRecord, TransferFile, TransferManifestV1, Warning } from '../src/index.js';
+import { Blocker, emptyState, FleetConfig, FleetId, GitGraph, HANDOVER_PHASES, HandoverChoices, HandoverEntity, HandoverEntityStatus, HandoverError, HandoverPhase, handoverError, MachineId, MachineRecord, ManifestSummary, NodeConfig, OwnerRecord, ReceivedGraph, TRANSFER_SCHEMA_VERSION, TransactionRecord, TransferFile, TransferManifestV1, Warning } from '../src/index.js';
 
 const UUID_A = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
 const UUID_B = '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
@@ -12,14 +12,13 @@ const MANIFEST = {
   generation: 4,
   fromMachineId: UUID_B,
   toMachineId: UUID_A,
-  sourceRoots: { home: '/Users/linus' },
-  destinationRoots: { home: '/home/linus' },
+  home: '/Users/linus',
   fleet: FleetConfig.parse({ id: UUID_A }),
   snapshot: emptyState(),
   excludes: ['node_modules/'],
   roots: [
-    { id: 'r_1', kind: 'repo', entry: 'dir', sourcePath: '/Users/linus/p', destinationPath: '/home/linus/p', files: [FILE, { type: 'symlink', path: 'docs', target: 'README.md' }] },
-    { id: 'r_2', kind: 'worktree', entry: 'dir', sourcePath: '/Users/linus/p/.claude/worktrees/w', destinationPath: '/home/linus/p/.claude/worktrees/w', foldedInto: 'r_1', files: [] },
+    { id: 'r_1', kind: 'repo', entry: 'dir', path: '/Users/linus/p', files: [FILE, { type: 'symlink', path: 'docs', target: 'README.md' }] },
+    { id: 'r_2', kind: 'worktree', entry: 'dir', path: '/Users/linus/p/.claude/worktrees/w', foldedInto: 'r_1', files: [] },
   ],
   sessions: [{ characterId: 'c_1', agent: 'claude', sessionId: 's1', sourcePath: '/Users/linus/.claude/projects/p/s1.jsonl', files: [{ ...FILE, path: 's1.jsonl' }] }],
 };
@@ -59,11 +58,13 @@ describe('ownership records', () => {
 describe('machine records', () => {
   const record = {
     name: 'trift', ssh: 'trift', platform: 'linux', arch: 'arm64',
-    home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago',
-    pathRoots: { home: '/home/linus' }, gateway: true,
+    home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', gateway: true,
   };
   it('reads the registry shape from the spec', () => {
     expect(MachineRecord.parse(record)).toEqual(record);
+  });
+  it('reads a record an earlier build wrote with named path roots, and leaves them out', () => {
+    expect(MachineRecord.parse({ ...record, pathRoots: { home: '/home/linus', work: '/srv/work' } })).toEqual(record);
   });
   it('takes a local machine with no ssh route', () => {
     const { ssh: _ssh, ...local } = record;
@@ -89,10 +90,6 @@ describe('machine records', () => {
     for (const held of ['/Users/José Núñez/Library/Application Support', "/home/linus/it's here/archi; touch x", '/home/$USER']) {
       expect(MachineRecord.parse({ ...record, archiBase: held, home: held }).archiBase).toBe(held);
     }
-  });
-  it('takes absolute path roots only', () => {
-    expect(PathRootMap.parse({ home: '/home/linus', work: '/srv/work' }).work).toBe('/srv/work');
-    expect(() => PathRootMap.parse({ home: '~/linus' })).toThrow();
   });
 });
 
@@ -136,7 +133,7 @@ describe('handover vocabulary', () => {
     expect(HandoverEntity.parse({ kind: 'git', id: 'r_1' }).kind).toBe('git');
   });
   it('keeps a blocker code for each way preflight refuses', () => {
-    for (const code of ['identity_mismatch', 'generation_mismatch', 'transaction_open', 'incompatible_release', 'incompatible_protocol', 'incompatible_schema', 'incompatible_adapter', 'agent_cli_missing', 'agent_logged_out', 'agent_hooks_missing', 'path_root_missing', 'character_pinned', 'shell_busy', 'worktree_unresolved', 'destination_diverged', 'destination_occupied', 'destination_no_space', 'path_collision', 'transcript_missing', 'ssh_interactive', 'external_writer', 'rsync_unsupported']) {
+    for (const code of ['identity_mismatch', 'generation_mismatch', 'transaction_open', 'incompatible_release', 'incompatible_protocol', 'incompatible_schema', 'incompatible_adapter', 'agent_cli_missing', 'agent_logged_out', 'agent_hooks_missing', 'home_mismatch', 'parent_missing', 'character_pinned', 'shell_busy', 'worktree_unresolved', 'destination_diverged', 'destination_occupied', 'destination_no_space', 'path_collision', 'path_symlinked', 'transcript_missing', 'ssh_interactive', 'external_writer', 'rsync_unsupported']) {
       expect(Blocker.parse({ code, message: code }).code).toBe(code);
     }
   });
@@ -183,8 +180,9 @@ describe('handover errors', () => {
 });
 
 describe('transfer manifest', () => {
-  it('carries every root and session with the content of each file', () => {
+  it('carries every root and session with the content of each file, and the home both machines share', () => {
     expect(TransferManifestV1.parse(MANIFEST)).toEqual(MANIFEST);
+    expect(() => TransferManifestV1.parse({ ...MANIFEST, home: '~' })).toThrow();
     expect(() => TransferManifestV1.parse({ ...MANIFEST, version: 99 })).toThrow();
     expect(() => TransferManifestV1.parse({ ...MANIFEST, generation: -1 })).toThrow();
     expect(() => TransferManifestV1.parse({ ...MANIFEST, fromMachineId: 'trift' })).toThrow();
@@ -206,7 +204,7 @@ describe('transfer manifest', () => {
     const bare = { id: 'g_2', commonDir: '/Users/linus/b.git', worktrees: [], unused: [], stash: [] };
     const withGit = {
       ...MANIFEST,
-      roots: [...MANIFEST.roots, { id: 'r_3', kind: 'gitdir', entry: 'dir', sourcePath: '/Users/linus/b.git', destinationPath: '/home/linus/b.git', files: [] }],
+      roots: [...MANIFEST.roots, { id: 'r_3', kind: 'gitdir', entry: 'dir', path: '/Users/linus/b.git', files: [] }],
       git: [graph, bare],
     };
     expect(TransferManifestV1.parse(withGit)).toEqual(withGit);

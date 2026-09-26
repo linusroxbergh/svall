@@ -26,16 +26,16 @@ const config = Config.parse({ id: fleetId });
 // a manifest these calls are refused before they read
 const manifest = {
   version: 1 as const, transactionId: 'tx-1', generation: 4, fromMachineId: other, toMachineId: me,
-  sourceRoots: { home: '/Users/linus' }, destinationRoots: { home: '/home/linus' },
+  home: '/Users/linus',
   fleet: FleetConfig.parse({ id: fleetId }), snapshot: emptyState(), excludes: [], roots: [], sessions: [],
 };
 
 // the two machines a controller describes; these calls are refused before anything reads them
 const machines = {
-  source: { pathRoots: { home: '/Users/linus' } },
+  source: { home: '/Users/linus' },
   destination: {
     info: { machineId: other, release: 'dev', protocol: PROTOCOL_VERSION, stateSchema: emptyState().version, transferSchema: 1, platform: 'linux' as const, arch: 'x64', agentAdapters: [] },
-    pathRoots: { home: '/home/linus' }, fleetHome: '/home/linus/.archipelago',
+    home: '/Users/linus', fleetHome: '/Users/linus/.archipelago',
   },
 };
 
@@ -221,7 +221,7 @@ describe('HandoverService', () => {
     for (const call of [
       handover.prepare({ transactionId: 'tx-1', generation: 5, manifest, manifestDigest: digest, landed: [] }),
       handover.claim({ transactionId: 'tx-1', generation: 5, manifest, manifestDigest: digest }),
-      handover.inspect({ roots: [], excludes: [], pathRoots: { home: '/home/linus' } }),
+      handover.inspect({ roots: [], excludes: [], folders: ['/Users/linus'] }),
       handover.activate({ transactionId: 'tx-1', generation: 4 }),
     ]) await expect(call).rejects.toMatchObject({ code: 'not_owner' });
   });

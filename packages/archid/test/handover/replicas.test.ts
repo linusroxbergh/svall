@@ -25,7 +25,7 @@ const sha = (s: string): string => crypto.createHash('sha256').update(s).digest(
 const real = (p: string): string => fs.realpathSync.native(p);
 const hasGit = (() => { try { execFileSync('git', ['--version'], { stdio: 'ignore' }); return true; } catch { return false; } })();
 
-// a fleet home and a path root under /tmp, which macOS reaches through the /private/tmp symlink
+// a fleet home and a folder for roots under /tmp, which macOS reaches through the /private/tmp symlink
 function world() {
   const base = tmp();
   const home = path.join(base, 'fleet');
@@ -68,14 +68,13 @@ describe('replica records', () => {
     expect(fs.readdirSync(app)).toEqual([]);
   });
 
-  it('are kept for the roots a manifest carries, at their path on each side', () => {
+  it('are kept for the roots a manifest carries, at the path each has on both machines', () => {
     const root = { kind: 'repo' as const, entry: 'dir' as const, files: [] };
     const roots = [
-      { ...root, id: 'r_app', sourcePath: '/Users/linus/app', destinationPath: '/home/linus/app' },
-      { ...root, kind: 'worktree' as const, id: 'r_wt', sourcePath: '/Users/linus/app/wt', destinationPath: '/home/linus/app/wt', foldedInto: 'r_app' },
+      { ...root, id: 'r_app', path: '/Users/linus/app' },
+      { ...root, kind: 'worktree' as const, id: 'r_wt', path: '/Users/linus/app/wt', foldedInto: 'r_app' },
     ];
-    expect(replicaRoots({ roots }, 'destination')).toEqual([{ id: 'r_app', kind: 'repo', entry: 'dir', path: '/home/linus/app' }]);
-    expect(replicaRoots({ roots }, 'source')).toEqual([{ id: 'r_app', kind: 'repo', entry: 'dir', path: '/Users/linus/app' }]);
+    expect(replicaRoots({ roots })).toEqual([{ id: 'r_app', kind: 'repo', entry: 'dir', path: '/Users/linus/app' }]);
   });
 
   it('refuses a record this machine cannot read', async () => {

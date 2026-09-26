@@ -142,21 +142,20 @@ const UUID_A = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
 const UUID_B = '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
 const DIGEST = 'b'.repeat(64);
 const MACHINES = {
-  source: { pathRoots: { home: '/Users/linus' } },
+  source: { home: '/Users/linus' },
   destination: {
     info: {
       machineId: UUID_B, release: '0.9.0', protocol: PROTOCOL_VERSION, stateSchema: 8, transferSchema: TRANSFER_SCHEMA_VERSION,
-      platform: 'linux', arch: 'x64', agentAdapters: [{ kind: 'claude', version: '2.1.280', adapter: 1, home: '/home/linus/.claude', loggedIn: true, hooks: true }],
+      platform: 'linux', arch: 'x64', agentAdapters: [{ kind: 'claude', version: '2.1.280', adapter: 1, home: '/Users/linus/.claude', loggedIn: true, hooks: true }],
     },
-    pathRoots: { home: '/home/linus' },
-    fleetHome: '/home/linus/.archipelago',
+    home: '/Users/linus',
+    fleetHome: '/Users/linus/.archipelago',
   },
 };
 const MANIFEST = {
-  version: TRANSFER_SCHEMA_VERSION, transactionId: 't1', generation: 4, fromMachineId: UUID_A, toMachineId: UUID_B,
-  sourceRoots: { home: '/Users/linus' }, destinationRoots: { home: '/home/linus' },
+  version: TRANSFER_SCHEMA_VERSION, transactionId: 't1', generation: 4, fromMachineId: UUID_A, toMachineId: UUID_B, home: '/Users/linus',
   fleet: FleetConfig.parse({ id: UUID_A }), snapshot: emptyState(), excludes: [],
-  roots: [{ id: 'r_1', kind: 'cwd', entry: 'dir', sourcePath: '/Users/linus/p', destinationPath: '/home/linus/p', files: [] }],
+  roots: [{ id: 'r_1', kind: 'cwd', entry: 'dir', path: '/Users/linus/p', files: [] }],
   sessions: [],
 };
 
@@ -203,9 +202,10 @@ describe('ownership and handover methods', () => {
     expect(methods['handover.preflight'].params.parse({ toMachineId: UUID_B, ...MACHINES })).toEqual({ toMachineId: UUID_B, choices: {}, ...MACHINES });
     expect(methods['handover.preflight'].params.parse({ toMachineId: UUID_B, choices: { terminateShells: true }, ...MACHINES }).choices).toEqual({ terminateShells: true });
     expect(() => methods['handover.preflight'].params.parse({ toMachineId: 'trift', ...MACHINES })).toThrow();
-    // a daemon knows neither machine's path roots, nor the far machine's fleet home and agents
+    // a daemon knows neither machine's home from the registry, nor the far machine's fleet home and agents
     expect(() => methods['handover.preflight'].params.parse({ toMachineId: UUID_B })).toThrow();
     expect(() => methods['handover.preflight'].params.parse({ toMachineId: UUID_B, ...MACHINES, destination: { ...MACHINES.destination, fleetHome: 'archipelago' } })).toThrow();
+    expect(() => methods['handover.preflight'].params.parse({ toMachineId: UUID_B, ...MACHINES, source: { home: '~' } })).toThrow();
     const result = {
       manifestSummary: { digest: DIGEST, roots: 2, files: 10, bytes: 2048, sessions: 1 },
       blockers: [{ code: 'shell_busy', message: 'vite is still running', entity: { kind: 'character', id: 'c_1' } }],
@@ -219,17 +219,18 @@ describe('ownership and handover methods', () => {
   });
 
   it('reads the destination\'s roots before a handover, claims them for one, and completes it on each side', () => {
-    const roots = [{ id: 'r_1', kind: 'gitdir', entry: 'dir', path: '/home/linus/p.git' }];
-    const inspect = { roots, excludes: ['node_modules/'], pathRoots: { home: '/home/linus' } };
+    const roots = [{ id: 'r_1', kind: 'gitdir', entry: 'dir', path: '/Users/linus/p.git' }];
+    const inspect = { roots, excludes: ['node_modules/'], folders: ['/Users/linus', '/Volumes/work'] };
     expect(methods['handover.inspect'].params.parse(inspect)).toEqual(inspect);
     expect(() => methods['handover.inspect'].params.parse({ ...inspect, roots: [{ ...roots[0], kind: 'folder' }] })).toThrow();
-    const probe = { exists: true, writable: true, caseInsensitive: false, freeBytes: 4096, collisions: [] };
+    expect(() => methods['handover.inspect'].params.parse({ ...inspect, folders: ['work'] })).toThrow();
+    const probe = { exists: true, writable: true, caseInsensitive: false, freeBytes: 4096 };
     const inspected = {
       roots: [
-        { id: 'r_1', check: { ok: true, path: '/home/linus/p.git', kind: 'replica' } },
-        { id: 'r_2', check: { ok: false, path: '/home/linus/q', blocker: { code: 'destination_diverged', message: 'q changed', entity: { kind: 'root', id: 'r_2' } } } },
+        { id: 'r_1', check: { ok: true, path: '/Users/linus/p.git', kind: 'replica' } },
+        { id: 'r_2', check: { ok: false, path: '/Users/linus/q', blocker: { code: 'destination_diverged', message: 'q changed', entity: { kind: 'root', id: 'r_2' } } } },
       ],
-      pathRoots: { home: probe },
+      folders: { '/Users/linus': probe },
     };
     expect(methods['handover.inspect'].result.parse(inspected)).toEqual(inspected);
 

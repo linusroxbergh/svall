@@ -2,7 +2,7 @@ import type { Operation } from 'fast-json-patch';
 import { z } from 'zod';
 import {
   Blocker, Generation, HandoverChoices, HandoverEntityKind, HandoverEntityStatus, HandoverMachines, HandoverPhase, HandoverTransactionStatus, LandedRoot, MachineId,
-  CommitAt, KeptCommit, ManifestSummary, OwnerRecord, OwnershipInfo, PathRootMap, ReceivedGraph, ReplicaCheck, ReplicaRootSpec, ResumeFolder, RootClaim, RootProbe, Sha256, SystemInfo, TransactionId, TransferManifestV1,
+  CommitAt, KeptCommit, ManifestSummary, OwnerRecord, OwnershipInfo, MachinePath, ReceivedGraph, ReplicaCheck, ReplicaRootSpec, ResumeFolder, RootClaim, RootProbe, Sha256, SystemInfo, TransactionId, TransferManifestV1,
   Warning,
 } from './handover.js';
 import { Portrait } from './portraits.js';
@@ -248,15 +248,15 @@ export const methods = {
     params: z.object({ toMachineId: MachineId, choices: HandoverChoices.default({}) }).merge(HandoverMachines),
     result: z.object({ manifestSummary: ManifestSummary, blockers: z.array(Blocker), warnings: z.array(Warning), manifest: TransferManifestV1 }),
   },
-  // read-only, on the destination: whether each root could be claimed there, what each path root has room for, and which of `links` is not there.
+  // read-only, on the destination: whether each root could be claimed there, what each of `folders` is good for, and which of `links` is not there.
   // A root's `content` is the digest of what the handover brings to it, which a root no handover left may already hold exactly
   'handover.inspect': {
     params: z.object({
-      roots: z.array(ReplicaRootSpec.extend({ content: Sha256.optional() })), excludes: z.array(z.string()), pathRoots: PathRootMap, links: z.array(z.string()).optional(),
+      roots: z.array(ReplicaRootSpec.extend({ content: Sha256.optional() })), excludes: z.array(z.string()), folders: z.array(MachinePath), links: z.array(z.string()).optional(),
       git: z.array(ReceivedGraph).optional(), resumes: z.array(ResumeFolder).optional(),
     }),
     result: z.object({
-      roots: z.array(z.object({ id: z.string(), check: ReplicaCheck })), pathRoots: z.record(z.string(), RootProbe), missing: z.array(z.string()).optional(),
+      roots: z.array(z.object({ id: z.string(), check: ReplicaCheck })), folders: z.record(z.string(), RootProbe), missing: z.array(z.string()).optional(),
       // the worktrees of the graphs `git` names that stay here, at commits only the source can say it holds
       unproven: z.array(KeptCommit).optional(),
       // the cwds of `resumes` whose agent here asks whether to trust the folder before it resumes there
@@ -277,7 +277,7 @@ export const methods = {
     result: z.object({ roots: z.array(RootClaim), unproven: z.array(KeptCommit).optional() }),
   },
   // the destination names the generation it prepares for, g + 1, here, in activate, in complete and in its abort. It
-  // rewrites the manifest's snapshot for itself; `preparedDigest` is what owner.ready is granted on
+  // prepares the state it would run from the manifest's snapshot; `preparedDigest` is what owner.ready is granted on
   'handover.prepare': {
     params: z.object({
       transactionId: TransactionId, generation: Generation,

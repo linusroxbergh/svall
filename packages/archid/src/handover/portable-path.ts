@@ -1,14 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { FleetState, PathRootMap } from '@archipelago/protocol';
+import { fileURLToPath } from 'node:url';
+import type { FleetState } from '@archipelago/protocol';
 
-/** A path as it travels between machines: a root name every machine defines, and what sits under it. */
-export type PortablePath = { root: string; relative: string };
-
-export class PathRootError extends Error { code = 'invalid'; }
-
-const unsafe = (p: string): boolean => p.includes('\0') || p.includes('\n');
 const trim = (p: string): string => (p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p);
 
 /** Whether `p` is `root` or lies under it, on a component boundary. */
@@ -27,81 +21,17 @@ export function realPath(p: string, realpath: (p: string) => string = (q) => fs.
   }
 }
 
-/** The real path of each root declared through a link; a root that is its own real path, or is not there, is left out. */
-export function realRoots(roots: PathRootMap, realpath: (p: string) => string = (q) => fs.realpathSync(q)): PathRootMap {
-  return Object.fromEntries(Object.entries(roots).flatMap(([name, dir]): [string, string][] => {
-    const lexical = trim(path.posix.normalize(dir));
-    let at: string;
-    try { at = realpath(lexical); } catch { return []; }
-    return at === lexical ? [] : [[name, at]];
-  }));
-}
-
-/** Which declared root holds this path as written, and where under it. The longest match on a component boundary wins. */
-export function holdingRoot(absolute: string, roots: PathRootMap): PortablePath | undefined {
-  return longestHolding(trim(path.posix.normalize(absolute)), Object.entries(roots).map(([name, dir]) => [name, trim(path.posix.normalize(dir))]));
-}
-
-/** Which declared root holds this path by real path, and where under it: the longest real path of a root that holds its real path. */
-export function realHoldingRoot(absolute: string, roots: PathRootMap, realpath: (p: string) => string = (q) => fs.realpathSync(q)): PortablePath | undefined {
-  const dirs = Object.entries(roots).flatMap(([name, dir]): [string, string][] => {
-    try { return [[name, trim(realpath(trim(path.posix.normalize(dir))))]]; } catch { return []; }
-  });
-  return longestHolding(realPath(trim(path.posix.normalize(absolute)), realpath), dirs);
-}
-
-function longestHolding(p: string, dirs: [name: string, dir: string][]): PortablePath | undefined {
-  const match = dirs.sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0])).find(([, dir]) => holds(dir, p));
-  if (!match) return undefined;
-  const [name, dir] = match;
-  return { root: name, relative: p === dir ? '' : p.slice(dir === '/' ? 1 : dir.length + 1) };
-}
-
-/** Which root holds this absolute path, and where under it, with its real path held inside that root too. */
-export function resolvePortablePath(absolute: string, roots: PathRootMap): PortablePath {
-  return locatePath(absolute, roots).portable;
-}
-
-/** What `resolvePortablePath` answers, with the real path it held inside the root. */
-export function locatePath(absolute: string, roots: PathRootMap): { portable: PortablePath; real: string } {
-  if (unsafe(absolute)) throw new PathRootError('a path may not contain a NUL or newline');
-  if (!absolute.startsWith('/')) throw new PathRootError(`${absolute} is not absolute`);
-  const lexical = trim(path.posix.normalize(absolute));
-  if (lexical.split('/').includes('..')) throw new PathRootError(`${absolute} climbs out of its own path`);
-
-  const portable = holdingRoot(lexical, roots);
-  if (!portable) throw new PathRootError(`no path root holds ${absolute}`);
-  const dir = trim(path.posix.normalize(roots[portable.root]));
-  let real: string;
-  try { real = fs.realpathSync(dir); } catch { throw new PathRootError(`the path root ${portable.root} (${dir}) does not exist`); }
-  const target = realPath(lexical);
-  if (!holds(real, target)) throw new PathRootError(`${absolute} leaves the path root ${portable.root}`);
-  return { portable, real: target };
-}
-
-/** Where a portable path lands on the machine that declares these roots. */
-export function mapPortablePath(portable: PortablePath, roots: PathRootMap): string {
-  const dir = roots[portable.root];
-  if (dir === undefined) throw new PathRootError(`no path root named ${portable.root}`);
-  const { relative } = portable;
-  if (unsafe(relative)) throw new PathRootError('a path may not contain a NUL or newline');
-  if (relative.startsWith('/')) throw new PathRootError(`${relative} is not relative to a root`);
-  const lexical = relative === '' ? '' : path.posix.normalize(relative);
-  if (lexical.split('/').includes('..')) throw new PathRootError(`${relative} climbs out of the root ${portable.root}`);
-  return trim(path.posix.join(trim(path.posix.normalize(dir)), lexical));
-}
-
 /**
- * What a handover does with a field that holds a path: `portable` is rewritten through the path roots,
- * `machine-local` names a place on one machine and is never rewritten, `forbidden` is a machine-bound
- * handle removed before a record leaves its machine.
+ * What a handover does with a field that holds a path: `portable` names a place the fleet uses, which travels as it
+ * is and whose folder the handover carries, `machine-local` names a place on one machine only, `forbidden` is a
+ * machine-bound handle removed before a record leaves its machine.
  */
 export type PathClassification = 'portable' | 'machine-local' | 'forbidden';
 
 /**
  * How a portable field holds its path: `path` absolute, `home` absolute or `~`-relative, `context` a
  * ref that is a path only for a file or folder item, `file-url` a URL that is a path only when file:,
- * `transcript` an agent session file its adapter places.
+ * `transcript` an agent session file its session carries.
  */
 export type PortableForm = 'path' | 'home' | 'context' | 'file-url' | 'transcript';
 
@@ -135,18 +65,14 @@ export const PATH_FIELDS: Record<string, PathField> = {
   'NodeConfig.shell': LOCAL,
   'MachineRecord.home': LOCAL,
   'MachineRecord.archiBase': LOCAL,
-  'MachineRecord.pathRoots.*': LOCAL,
-  'TransferManifestV1.sourceRoots.*': LOCAL,
-  'TransferManifestV1.sourceRealRoots.*': LOCAL,
-  'TransferManifestV1.destinationRoots.*': LOCAL,
+  'TransferManifestV1.home': LOCAL,
   'TransferManifestV1.git[].commonDir': LOCAL,
   'TransferManifestV1.git[].main.path': LOCAL,
   'TransferManifestV1.git[].main.gitDir': LOCAL,
   'TransferManifestV1.git[].worktrees[].path': LOCAL,
   'TransferManifestV1.git[].worktrees[].gitDir': LOCAL,
   'TransferManifestV1.git[].unused[].path': LOCAL,
-  'TransferManifestV1.roots[].sourcePath': LOCAL,
-  'TransferManifestV1.roots[].destinationPath': LOCAL,
+  'TransferManifestV1.roots[].path': LOCAL,
   'TransferManifestV1.roots[].files[].target': LOCAL,
   'TransferManifestV1.sessions[].sourcePath': LOCAL,
   'TransferManifestV1.sessions[].destinationPath': LOCAL,
@@ -259,23 +185,4 @@ export function exportSnapshot(state: FleetState): FleetState {
   }
   for (const c of Object.values(copy.characters)) { delete c.agent?.pid; delete c.second?.agent?.pid; }
   return copy;
-}
-
-/**
- * Writes `mapped` where a path value sits in the records it was read from, in the form it was written in: `~` stays `~`
- * while it lands under the home root, a file: URL keeps its query and fragment.
- */
-export function rewrite(docs: Record<string, unknown>, v: PathValue, mapped: string, home: string): void {
-  let at = docs[v.field.slice(0, v.field.indexOf('.'))] as Record<string | number, unknown>;
-  for (const k of v.pointer.slice(0, -1)) at = at[k] as Record<string | number, unknown>;
-  const key = v.pointer[v.pointer.length - 1];
-  const original = at[key] as string;
-  if (v.form === 'file-url') {
-    const url = new URL(original);
-    url.pathname = pathToFileURL(mapped).pathname;
-    at[key] = url.href;
-    return;
-  }
-  const root = path.posix.normalize(home);
-  at[key] = (original === '~' || original.startsWith('~/')) && holds(root, mapped) ? path.posix.join('~', path.posix.relative(root, mapped)) : mapped;
 }

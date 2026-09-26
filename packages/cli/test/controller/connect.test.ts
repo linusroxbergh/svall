@@ -36,15 +36,15 @@ describe('archi connect', { timeout: 20_000 }, () => {
     loadRegistry = () => registry;
     registry.add({
       name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64',
-      home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', pathRoots: { home: '/home/linus' }, gateway: false,
+      home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', gateway: false,
     }, REMOTE);
     registry.add({
       name: 'gate', ssh: 'gate.test', platform: 'linux', arch: 'arm64',
-      home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', pathRoots: { home: '/home/linus' }, gateway: true,
+      home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', gateway: true,
     }, GATEWAY);
     registry.add({
       name: 'denied', ssh: 'denied.test', platform: 'linux', arch: 'arm64',
-      home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', pathRoots: { home: '/home/linus' }, gateway: false,
+      home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', gateway: false,
     }, DENIED);
   });
 
@@ -64,7 +64,7 @@ describe('archi connect', { timeout: 20_000 }, () => {
     registry.remove(GATEWAY);
     registry.add({
       name: 'gate', ssh: destination, platform: 'linux', arch: 'arm64',
-      home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', pathRoots: { home: '/home/linus' }, gateway: true,
+      home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', gateway: true,
     }, GATEWAY);
   };
   const localDaemon = (): void => {
@@ -237,7 +237,7 @@ describe('archi connect', { timeout: 20_000 }, () => {
       const later = MachineRegistry.load(dir);
       later.add({
         name: 'gate', ssh: 'gate.test', platform: 'linux', arch: 'arm64',
-        home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', pathRoots: { home: '/home/linus' }, gateway: true,
+        home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', gateway: true,
       }, GATEWAY);
       later.save();
       holds(later.localId);
