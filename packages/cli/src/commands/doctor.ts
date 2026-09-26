@@ -5,12 +5,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { Command } from 'commander';
+import { AGENTS, AGENT_KINDS, findAgents, versionOk } from '@archipelago/archid/agents';
+import { characterKeyEnv } from '@archipelago/archid/claude';
 import { codexInstalled, codexPaths, type CodexPaths } from '@archipelago/archid/codex/install';
-import { parseConfig } from '@archipelago/archid/config';
+import { loadConfig, parseConfig } from '@archipelago/archid/config';
 import { resolvePaths, userPaths } from '@archipelago/archid/paths';
 import { OLD_LAUNCHD_LABEL, PRIVATE, profileHome, profileLabel } from '@archipelago/archid/profile';
 import { HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hooksInstalled, launchdEnv, plistEnv, plistRun } from '@archipelago/archid/setup';
 import { tmuxTooOld } from '@archipelago/archid/tmux/conf';
+import type { AgentKind } from '@archipelago/protocol';
 import { Client, restartHint } from '../client.js';
 import { printResult } from '../format.js';
 import type { Target } from '../target.js';
@@ -20,7 +23,7 @@ export type Check = { name: string; status: 'ok' | 'warn' | 'fail' | 'skip'; det
 export type Report = { home: string; checks: Check[]; log: { path: string; lines: string[] } };
 
 export type DoctorDeps = {
-  run(cmd: string, args: string[]): Promise<string>;
+  run(cmd: string, args: string[], env?: Record<string, string>): Promise<string>;
   read(file: string): string | undefined;
   connect(home: string): Promise<{ close(): void }>;
   connectHook(path: string): Promise<void>;
@@ -36,8 +39,14 @@ export type DoctorDeps = {
   node: string;
   pathEnv: string;
   shimDir: string;
+  // the fleet's .env API keys, as a character's shell gets them
+  keys: Record<string, string>;
+  mainAgent?: AgentKind;
+  // agent CLIs on PATH, as setup finds them
+  found: AgentKind[];
+  codexTrust(): Promise<unknown>;
 };
-export type PreflightDeps = Pick<DoctorDeps, 'run' | 'node' | 'pathEnv' | 'shimDir'>;
+export type PreflightDeps = Pick<DoctorDeps, 'run' | 'node' | 'pathEnv' | 'shimDir' | 'keys' | 'mainAgent'>;
 
 const LOG_LINES = 20;
 const firstLine = (s: string): string => s.trim().split('\n')[0] ?? '';
@@ -60,26 +69,61 @@ function node(d: PreflightDeps): Check {
     : { name: 'node', status: 'fail', detail: `${d.node}: archipelago needs node 24 or newer` };
 }
 
-async function claude(d: PreflightDeps): Promise<Check> {
-  try {
-    return { name: 'claude', status: 'ok', detail: firstLine(await d.run('claude', ['--version'])) };
-  } catch (e) {
-    return { name: 'claude', status: 'fail', detail: missing(e) ? 'not found on PATH: install Claude Code, https://code.claude.com/docs/en/setup' : firstLine((e as Error).message) };
-  }
-}
-
 function shimDirOnPath(d: PreflightDeps): Check {
   return d.pathEnv.split(':').includes(d.shimDir)
     ? { name: 'path', status: 'ok', detail: `${d.shimDir} is on PATH` }
     : { name: 'path', status: 'warn', detail: `${d.shimDir} is not on PATH, so your shell will not find archi; add it in your shell profile` };
 }
 
+// 1 is the CLI's own "not signed in"; anything else (a timeout, an unknown subcommand) leaves it unknown
+const exitCode = (e: unknown): unknown => (e as { code?: unknown }).code;
+
+async function agentCheck(d: PreflightDeps, kind: AgentKind, version: string | Error | undefined, found: AgentKind[]): Promise<Check> {
+  const a = AGENTS[kind];
+  if (version === undefined) {
+    const other = AGENT_KINDS.find((k) => k !== kind && found.includes(k));
+    return d.mainAgent === kind && other
+      ? { name: kind, status: 'warn', detail: `not installed, but it is the main agent: archi agent ${other}` }
+      : { name: kind, status: 'skip', detail: 'not installed' };
+  }
+  if (version instanceof Error) return { name: kind, status: 'warn', detail: firstLine(version.message) };
+  if (!versionOk(a, version)) {
+    const [x, y] = a.minVersion!;
+    return { name: kind, status: 'warn', detail: `${version}: Archipelago needs ${x}.${y} or newer; update ${a.label}` };
+  }
+  try {
+    // the fleet's API keys ride along, as they do into a character's shell
+    return a.loggedIn(await d.run(a.bin, a.loginArgs, d.keys))
+      ? { name: kind, status: 'ok', detail: `${version}, signed in` }
+      : { name: kind, status: 'warn', detail: `${version}, not signed in: ${a.loginHint}` };
+  } catch (e) {
+    return exitCode(e) === 1
+      ? { name: kind, status: 'warn', detail: `${version}, not signed in: ${a.loginHint}` }
+      : { name: kind, status: 'warn', detail: `${version}; couldn't tell whether it is signed in` };
+  }
+}
+
+export async function agentChecks(d: PreflightDeps): Promise<Check[]> {
+  // a CLI whose --version fails other than ENOENT is there but broken
+  const versions = new Map<AgentKind, string | Error>();
+  for (const k of AGENT_KINDS) {
+    try { versions.set(k, firstLine(await d.run(AGENTS[k].bin, ['--version']))); }
+    catch (e) { if (!missing(e)) versions.set(k, e as Error); }
+  }
+  if (!versions.size) {
+    const how = AGENT_KINDS.map((k) => `${AGENTS[k].label} (${AGENTS[k].installUrl})`).join(' or ');
+    return [{ name: 'agents', status: 'fail', detail: `neither claude nor codex is on PATH: install ${how}` }];
+  }
+  const found = [...versions.keys()];
+  return Promise.all(AGENT_KINDS.map((k) => agentCheck(d, k, versions.get(k), found)));
+}
+
 export async function preflight(d: PreflightDeps): Promise<Check[]> {
-  return [await tmux(d), node(d), await claude(d), shimDirOnPath(d)];
+  return [await tmux(d), node(d), ...await agentChecks(d), shimDirOnPath(d)];
 }
 
 const MARK = { ok: '✓', warn: '!', fail: '✗', skip: '–' };
-const checkLine = (c: Check): string => `${MARK[c.status]} ${c.name}  ${c.detail}`;
+export const checkLine = (c: Check): string => `${MARK[c.status]} ${c.name}  ${c.detail}`;
 
 // the lines to show for warnings; any failure stops the caller before it changes anything
 export function requireReady(checks: Check[]): string[] {
@@ -200,6 +244,7 @@ function daemonEnv(t: Target, d: DoctorDeps): Check {
 }
 
 function hooks(d: DoctorDeps): Check {
+  if (!d.found.includes('claude') && !d.exists(path.dirname(d.settingsPath))) return { name: 'hooks', status: 'skip', detail: 'Claude Code is not installed' };
   const text = d.read(d.settingsPath);
   let ok = false;
   let current = false;
@@ -218,8 +263,8 @@ function hooks(d: DoctorDeps): Check {
 }
 
 // Codex keeps hook trust in its own state; this only verifies the hook definition is installed.
-export async function codexCheck(d: Pick<DoctorDeps, 'codex' | 'exists' | 'read' | 'run' | 'hooksHome'>): Promise<Check> {
-  if (!d.exists(d.codex.dir)) return { name: 'codex', status: 'skip', detail: 'not installed' };
+export async function codexCheck(d: Pick<DoctorDeps, 'codex' | 'exists' | 'read' | 'hooksHome' | 'found' | 'codexTrust'>): Promise<Check> {
+  if (!d.found.includes('codex') && !d.exists(d.codex.dir)) return { name: 'codex hooks', status: 'skip', detail: 'not installed' };
   const script = resolvePaths(d.hooksHome).hookScript;
   let written = false;
   let current = false;
@@ -228,14 +273,9 @@ export async function codexCheck(d: Pick<DoctorDeps, 'codex' | 'exists' | 'read'
     written = codexInstalled(hooks, script);
     current = written && codexHooksCurrent(hooks, script);
   } catch { /* unparseable counts as missing */ }
-  if (!written) return { name: 'codex', status: 'warn', detail: `hooks not installed in ${d.codex.hooks}: archi setup` };
-  if (!current) return { name: 'codex', status: 'warn', detail: `hooks out of date in ${d.codex.hooks}: run archi setup, then trust them with /hooks in Codex` };
-  try {
-    const v = firstLine(await d.run('codex', ['--version']));
-    return { name: 'codex', status: 'ok', detail: `${v}; hooks installed (review trust with /hooks in Codex)` };
-  } catch (e) {
-    return { name: 'codex', status: 'warn', detail: missing(e) ? 'hooks installed, but codex is not found on PATH' : firstLine((e as Error).message) };
-  }
+  if (!written) return { name: 'codex hooks', status: 'warn', detail: `not installed in ${d.codex.hooks}: archi setup` };
+  if (!current) return { name: 'codex hooks', status: 'warn', detail: `out of date in ${d.codex.hooks}: run archi setup, then trust them in Codex` };
+  return { name: 'codex hooks', status: 'ok', detail: `installed in ${d.codex.hooks}` };
 }
 
 export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
@@ -268,19 +308,25 @@ function connectHook(path: string): Promise<void> {
   });
 }
 
-export function realPreflightDeps(): PreflightDeps {
+export function realPreflightDeps(home: string): PreflightDeps {
+  let mainAgent: AgentKind | undefined;
+  try { mainAgent = loadConfig(resolvePaths(home).config).mainAgent; } catch { /* doctor's config check reports it */ }
   return {
-    run: async (cmd, args) => (await execFileP(cmd, args, { timeout: 10_000 })).stdout,
+    // a login probe that hangs must not hold up install
+    run: async (cmd, args, env) => (await execFileP(cmd, args, { timeout: args.includes('status') ? 5_000 : 10_000, env: env && { ...process.env, ...env } })).stdout,
     node: process.version,
     pathEnv: process.env.PATH ?? '',
     shimDir: userPaths().shimDir,
+    keys: characterKeyEnv(resolvePaths(home).env),
+    mainAgent,
   };
 }
 
 export function doctorCommand(target: () => Target, json: () => boolean): Command {
   return new Command('doctor').description('check what the fleet needs and show the end of its log; changes nothing').action(async () => {
-    const report = { version: checkoutVersion(), ...await doctor(target(), {
-      ...realPreflightDeps(),
+    const t = target();
+    const report = { version: checkoutVersion(), ...await doctor(t, {
+      ...realPreflightDeps(t.home),
       read: (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return undefined; } },
       connect: (home) => Client.connect(home),
       connectHook,
@@ -291,6 +337,8 @@ export function doctorCommand(target: () => Target, json: () => boolean): Comman
       daemonEnv: launchdEnv(),
       codex: codexPaths(),
       exists: fs.existsSync,
+      found: findAgents(process.env.PATH ?? ''),
+      codexTrust: async () => undefined,
     }) };
     const width = Math.max(...report.checks.map((c) => c.name.length));
     printResult(report, json(), () => [

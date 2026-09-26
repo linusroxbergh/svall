@@ -20,7 +20,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       // setup owns the per-user half — the Claude hooks and the shims — so it only ever means private
       const t = target();
       if (t.name !== PRIVATE) throw new Error(`archi setup configures the private fleet; run archi ${t.name} to open that one`);
-      const warnings = requireReady(await preflight(realPreflightDeps()));
+      const warnings = requireReady(await preflight(realPreflightDeps(t.home)));
       const settingsPath = userPaths().claudeSettings;
       const library = path.join(os.homedir(), 'Library');
       const signIns = signInsLeft(library);

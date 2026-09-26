@@ -82,7 +82,7 @@ describe('archi argument parsing', () => {
   it('setup --check says when the hooks or the shims are not what setup writes now, and changes nothing', async () => {
     // what the check asks of the machine, answered without the real tools
     const bin = makeHome();
-    fs.writeFileSync(path.join(bin, 'claude'), "#!/bin/sh\necho '2.1.0 (Claude Code)'\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'claude'), "#!/bin/sh\ncase \"$1\" in --version) echo '2.1.0 (Claude Code)';; auth) echo '{\"loggedIn\":true}';; esac\n", { mode: 0o755 });
     fs.writeFileSync(path.join(bin, 'tmux'), "#!/bin/sh\necho 'tmux 3.5a'\n", { mode: 0o755 });
     const script = path.join(os.homedir(), '.archipelago', 'hooks', 'agent-hook.mjs');
     const settings = path.join(os.homedir(), '.claude', 'settings.json');
@@ -98,7 +98,7 @@ describe('archi argument parsing', () => {
     const webkit = ['com.archipelago.desktop', 'io.github.linusroxbergh.archipelago'].map((id) => path.join(os.homedir(), 'Library', 'WebKit', id));
     for (const d of webkit) fs.mkdirSync(d, { recursive: true });
     try {
-      const r = await run({ PATH: `${bin}:${process.env.PATH}` }, 'setup', '--check');
+      const r = await run({ PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin` }, 'setup', '--check');
       expect(r.code).toBe(0);
       expect(r.stdout).toContain('! hooks  missing or out of date: run archi setup');
       expect(r.stdout).toContain('! shims  missing or out of date: run archi setup');
