@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import {
   FleetConfig, FleetState,
@@ -43,7 +44,8 @@ export function linkProblem(p: string, entity: HandoverEntity): Blocker | undefi
 
 /**
  * Every path the manifest and the transfer name, read again here: absolute ones plain, the rest plain relative
- * paths under their root, no control character anywhere, and each root at its own path here.
+ * paths under their root, no control character anywhere, each root at its own path here, and one outside the
+ * home in a folder already here.
  */
 export function manifestProblems(m: TransferManifestV1, landed: readonly LandedRoot[]): Blocker[] {
   const blockers: Blocker[] = [];
@@ -55,8 +57,16 @@ export function manifestProblems(m: TransferManifestV1, landed: readonly LandedR
     ids.add(r.id);
     const problem = absoluteProblem(r.path) ?? filesProblem(r.files, r.entry);
     if (problem) { bad(entity, `${r.path}: ${problem}`); continue; }
-    const linked = r.foldedInto ? undefined : linkProblem(r.path, entity);
+    if (r.foldedInto) continue;
+    const linked = linkProblem(r.path, entity);
+    const parent = path.posix.dirname(r.path);
     if (linked) blockers.push(linked);
+    else if (!holds(m.home, r.path) && !fs.existsSync(parent)) {
+      blockers.push({
+        code: 'parent_missing', entity,
+        message: `this machine has no ${parent}, which ${r.path} lands in; a folder outside the home arrives at the same path here, so make ${parent} first`,
+      });
+    }
   }
   for (const x of landed) {
     const root = m.roots.find((r) => r.id === x.id);

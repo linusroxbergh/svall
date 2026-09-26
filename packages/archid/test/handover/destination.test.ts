@@ -1538,6 +1538,24 @@ describe('destination claim', () => {
     expect(tree(s.base)).toEqual(before);
   });
 
+  it('refuses a claim of a root outside the home whose folder is not here, and takes it once that folder is', async () => {
+    const tool = (m: { home: string }) => path.join(path.dirname(m.home), 'volumes/tool');
+    const s = await scene({ land: false, tamper: (m) => { m.roots.push({ id: 'r_tool', kind: 'cwd', entry: 'dir', path: tool(m), files: [] }); } });
+    const volumes = path.dirname(tool(s.manifest));
+    const before = tree(s.base);
+    const r = await refusal(daemon(s).handover.claim(claimParams(s)));
+    expect(r.code).toBe('blocked');
+    expect(blockersOf(r)).toEqual([{
+      code: 'parent_missing', entity: { kind: 'root', id: 'r_tool' },
+      message: `this machine has no ${volumes}, which ${tool(s.manifest)} lands in; a folder outside the home arrives at the same path here, so make ${volumes} first`,
+    }]);
+    expect(tree(s.base)).toEqual(before);
+
+    fs.mkdirSync(volumes);
+    const taken = (await daemon(s).handover.claim(claimParams(s))).roots.find((x) => x.id === 'r_tool')!;
+    expect(taken.check).toEqual({ ok: true, path: tool(s.manifest), kind: 'absent' });
+  });
+
   it('will not take a root again once it has prepared from it, since a second copy would undo its Git repair', async () => {
     const s = await scene();
     const d = daemon(s);
