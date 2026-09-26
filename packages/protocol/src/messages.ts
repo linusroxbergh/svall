@@ -1,7 +1,7 @@
 import type { Operation } from 'fast-json-patch';
 import { z } from 'zod';
 import { Portrait } from './portraits.js';
-import { AgentStatus, BrowserTab, Cell, Character, ContextItem, FleetState, Island, Size } from './state.js';
+import { AgentKind, AgentStatus, BrowserTab, Cell, Character, ContextItem, FleetState, Island, Size } from './state.js';
 
 const Id = z.object({ id: z.string() });
 const TermSize = z.object({ cols: z.number().int().min(2), rows: z.number().int().min(1) });
@@ -167,6 +167,7 @@ export const methods = {
   },
   'scribe.set': { params: z.object({ enabled: z.boolean() }), result: z.object({}) },
   'dormancy.set': { params: z.object({ hours: z.number().int().min(0) }), result: z.object({}) },
+  'mainAgent.set': { params: z.object({ agent: AgentKind }), result: z.object({}) },
   'usage.get': { params: z.object({}), result: UsageSnapshot },
   'mobile.get': { params: z.object({}), result: MobileStatus },
   'mobile.set': { params: z.object({ enabled: z.boolean() }), result: MobileStatus },
@@ -232,4 +233,4 @@ export type Event =
 export const Hello = z.object({ token: z.string() });
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 14;
+export const PROTOCOL_VERSION = 15;

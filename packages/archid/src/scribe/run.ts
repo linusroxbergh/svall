@@ -1,7 +1,12 @@
+import type { AgentKind } from '@archipelago/protocol';
 import { spawnClaude } from '../claude.js';
 import { runChild, stderrCause } from './child.js';
 
 export type RunScribe = (system: string, prompt: string) => Promise<string>;
+
+/** A runner that takes each pass's CLI from `agent()`, so a new main agent applies from the next pass. */
+export const perPass = (runners: Record<AgentKind, RunScribe>, agent: () => AgentKind): RunScribe =>
+  (system, prompt) => runners[agent()](system, prompt);
 
 export function claudeRunner(o: { model: string; cwd: string; envFile: string; timeoutMs?: number }): RunScribe {
   return async (system, prompt) => {

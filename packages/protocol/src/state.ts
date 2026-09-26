@@ -34,6 +34,8 @@ export const isSessionId = (v: string): boolean => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-
 export const AgentKind = z.enum(['claude', 'codex']);
 export type AgentKind = z.infer<typeof AgentKind>;
 
+export const AGENT_LABEL: Record<AgentKind, string> = { claude: 'Claude Code', codex: 'Codex' };
+
 export const Agent = z.object({
   kind: AgentKind,
   sessionId: z.string(),
@@ -160,6 +162,10 @@ export const FleetState = z.object({
   // an agent idle this many hours is ended and its character left dormant, to be resumed on revive;
   // 0 keeps every agent running, and absent is DORMANT_AFTER_HOURS
   dormantAfterHours: z.number().int().min(0).optional(),
+  // the agent the scribe, mission control's crew and `archi char new --run` use by default, the CLIs archid finds, and the one the scribe uses
+  mainAgent: AgentKind.optional(),
+  agentsFound: z.array(AgentKind).optional(),
+  scribeAgent: AgentKind.optional(),
 });
 export type FleetState = z.infer<typeof FleetState>;
 

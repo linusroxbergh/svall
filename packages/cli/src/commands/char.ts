@@ -10,6 +10,12 @@ import { contextOf, stateOf } from '../render.js';
 import { int, parsePair } from './parse.js';
 import { charId, islandId, NoMatch } from './resolve.js';
 
+/** The agent `archi char new` starts: a named one, or the main agent for a bare --agent or a --run with no --command. */
+export function agentFor(o: { agent?: string | true; claude?: boolean; codex?: boolean; command?: string; run?: string }, main: AgentKind): string | undefined {
+  const named = o.agent === true ? main : o.agent ?? (o.claude ? 'claude' : o.codex ? 'codex' : undefined);
+  return named ?? (o.run && !o.command ? main : undefined);
+}
+
 // the protocol takes no term for the main terminal, so --term 1 becomes an absent one
 export function termOf(v: string | undefined): 2 | undefined {
   if (v === undefined || v === '1') return undefined;
@@ -35,16 +41,16 @@ export function charCommands(connect: () => Promise<Client>, json: () => boolean
 
   cmd.command('new').description('make a character: a terminal on an island')
     .requiredOption('--island <id>').requiredOption('--cwd <path>')
-    .option('--name <name>').option('--agent <name>', 'start claude or codex in its terminal').option('--claude', 'the same as --agent claude')
+    .option('--name <name>').option('--agent [name]', 'start claude or codex in its terminal; without a name, the main agent')
+    .option('--claude', 'the same as --agent claude').option('--codex', 'the same as --agent codex')
     .option('--command <cmd>').option('--cell <x,y>')
-    .option('--run <text>', 'type text and Enter once the agent has started (needs --agent or --command)')
+    .option('--run <text>', 'type text and Enter once the agent has started; starts the main agent unless --agent or --command says otherwise')
     .option('--agent-profile <name>', 'a role from the fleet\'s agent-profiles folder, e.g. reviewer')
-    .action(async (o: { island: string; cwd: string; name?: string; agent?: string; claude?: boolean; command?: string; cell?: string; run?: string; agentProfile?: string }) => {
-      const agent = o.agent ?? (o.claude ? 'claude' : undefined);
-      if (agent !== undefined && !AgentKind.safeParse(agent).success) throw new Error(`unknown agent ${agent}; use claude or codex`);
-      if (o.run && !agent && !o.command) throw new Error('--run needs --agent or --command');
+    .action(async (o: { island: string; cwd: string; name?: string; agent?: string | true; claude?: boolean; codex?: boolean; command?: string; cell?: string; run?: string; agentProfile?: string }) => {
+      if (typeof o.agent === 'string' && !AgentKind.safeParse(o.agent).success) throw new Error(`unknown agent ${o.agent}; use claude or codex`);
       const c = await connect();
       const state = await c.call('state.get', {});
+      const agent = agentFor(o, state.mainAgent ?? 'claude');
       // the daemon would give a taken name a number, and the name would go on reaching the character that has it
       const name = o.name?.toLowerCase();
       const taken = name !== undefined && Object.values(state.characters).find((ch) => ch.name.toLowerCase() === name);

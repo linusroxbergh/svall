@@ -46,13 +46,16 @@ export function startFlags(args: string, kind: AgentKind): string[] | undefined 
   const script = kind === 'claude' && path.basename(words[0]) === 'node' && (!!words[1]?.endsWith('/claude-code/cli.js') || path.basename(words[1] ?? '') === 'claude');
   if (path.basename(words[0]) !== kind && !script) return undefined;
   let i = script ? 2 : 1;
-  if (kind === 'codex' && words[i] === 'resume') i++;
+  const resume = kind === 'codex' && words[i] === 'resume';
+  if (resume) i++;
   const out: string[] = [];
   // ps joins argv with spaces, so a prompt's words can pass for flags and one value can pass for several words: the
   // options end at `--` or the first bare word, past which no word may look like a flag
   for (; i < words.length; i++) {
     const w = words[i];
     if (w === '--') return out;
+    // codex resume takes its session as a word among the options
+    if (resume && isSessionId(w)) continue;
     if (!w.startsWith('-')) return words.slice(i).some((x) => x.startsWith('-')) ? undefined : out;
     if (keptSwitches.includes(w)) { out.push(w); continue; }
     if (droppedSwitches.includes(w)) continue;

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Character } from '@archipelago/protocol';
 import type { Client } from '../src/client.js';
-import { charCommands, termOf } from '../src/commands/char.js';
+import { agentFor, charCommands, termOf } from '../src/commands/char.js';
 import { contextOf, stateOf } from '../src/render.js';
 
 const base: Character = {
@@ -39,6 +39,18 @@ describe('termOf', () => {
     expect(termOf('1')).toBeUndefined();
     expect(termOf('2')).toBe(2);
     expect(() => termOf('3')).toThrow(/--term/);
+  });
+});
+
+describe('agentFor', () => {
+  it('starts the main agent for --run alone and a bare --agent, and a named one otherwise', () => {
+    expect(agentFor({ run: 'hi' }, 'codex')).toBe('codex');
+    expect(agentFor({ agent: true }, 'codex')).toBe('codex');
+    expect(agentFor({ agent: 'claude', run: 'hi' }, 'codex')).toBe('claude');
+    expect(agentFor({ codex: true }, 'claude')).toBe('codex');
+    expect(agentFor({ claude: true }, 'codex')).toBe('claude');
+    expect(agentFor({ run: 'hi', command: 'node x.mjs' }, 'codex')).toBeUndefined();
+    expect(agentFor({}, 'codex')).toBeUndefined();
   });
 });
 

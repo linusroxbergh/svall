@@ -117,7 +117,9 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 14 with dormancy set from the app', () => {
-    expect(PROTOCOL_VERSION).toBe(14);
+  it('is 15 with the main agent set from the app', () => {
+    expect(PROTOCOL_VERSION).toBe(15);
+    expect(methods['mainAgent.set'].params.safeParse({ agent: 'codex' }).success).toBe(true);
+    expect(methods['mainAgent.set'].params.safeParse({ agent: 'gemini' }).success).toBe(false);
   });
 });

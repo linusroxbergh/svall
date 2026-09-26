@@ -3,12 +3,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SPACING, isLand, landCells, sizeForCrew } from '@archipelago/protocol';
+import { SPACING, isLand, landCells, sizeForCrew, type AgentKind } from '@archipelago/protocol';
 import { Config } from '../src/config.js';
 import { docsDir } from '../src/docs.js';
 import type { Proc } from '../src/dormancy.js';
 import { Dormant, Fleet, Invalid, NotFound } from '../src/fleet.js';
-import type { HookEvent } from '../src/hooks/receiver.js';
+import { startHookReceiver, type HookEvent } from '../src/hooks/receiver.js';
 import { aboveHome, crewGrid, placementOk } from '../src/layout.js';
 import type { Deps as LinkDeps } from '../src/links/refresh.js';
 import { silentLogger, type Logger } from '../src/log.js';
@@ -25,13 +25,13 @@ runIf('Fleet', () => {
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 
-  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; homeCwd?: string; linkDeps?: Partial<LinkDeps>; log?: Logger } = {}) {
-    const { homeCwd, ...deps } = extra;
+  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind } = {}) {
+    const { homeCwd, homeCommand, mainAgent, ...deps } = extra;
     // what ps shows the dormancy sweep
     const procs: Proc[] = [];
     const home = makeHome();
     const paths = resolvePaths(home);
-    const config = Config.parse({ shell: '/bin/sh', home: { cwd: homeCwd ?? path.join(home, 'mc') } });
+    const config = Config.parse({ shell: '/bin/sh', home: { cwd: homeCwd ?? path.join(home, 'mc'), ...(homeCommand ? { command: homeCommand } : {}) }, ...(mainAgent ? { mainAgent } : {}) });
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
@@ -39,6 +39,9 @@ runIf('Fleet', () => {
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); fleet.stop(); await tmux.killServer(); });
     await started;
+    // a spawned stand-in agent reaches the fleet the way a real one does: over the hooks socket
+    const hooks = await startHookReceiver(paths.hooksSock, (e) => fleet.onSocketEvent(e), silentLogger);
+    cleanup.push(() => hooks.close());
     return { fleet, store, tmux, home, procs };
   }
 
@@ -355,12 +358,12 @@ runIf('Fleet', () => {
   const HOUR = 3_600_000;
 
   // a character whose pane shell stands in for its agent: the sweep reads it as `args`, and it exits with its window
-  async function withAgent(b: Awaited<ReturnType<typeof boot>>, args = 'claude', command = 'sleep 600') {
+  async function withAgent(b: Awaited<ReturnType<typeof boot>>, args = 'claude', command = 'sleep 600', backend: AgentKind = 'claude') {
     const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command });
     const pid = Number((await b.tmux.run('display', '-p', '-t', c.tmux!.paneId, '#{pane_pid}')).trim());
     const transcriptPath = path.join(b.home, `${SID}.jsonl`);
     fs.writeFileSync(transcriptPath, '');
-    b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, pid, transcriptPath } });
+    b.fleet.onSocketEvent({ hook: { charId: c.id, backend, name: 'SessionStart', sessionId: SID, pid, transcriptPath } });
     b.procs.push({ pid, ppid: 1, pgid: pid, args });
     return { c, pid, transcriptPath };
   }
@@ -463,6 +466,19 @@ runIf('Fleet', () => {
     const file = path.join(home, `${c.id}.prompt`);
     expect(typed).toEqual([`claude --resume ${SID} -- "$(cat '${file}'; rm -f '${file}')"`]);
     expect(fs.readFileSync(file, 'utf8')).toBe('run the tests again');
+  });
+
+  it('wakes a dormant codex with a prompt run into it, as its launch prompt', async () => {
+    const b = await boot();
+    const { fleet, store, tmux, home } = b;
+    const { c } = await withAgent(b, 'codex', 'sleep 600', 'codex');
+    store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
+    await fleet['endIdleAgents']();
+    const typed: string[] = [];
+    vi.spyOn(tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
+    await fleet.run(c.id, 'run the tests again', true);
+    const file = path.join(home, `${c.id}.prompt`);
+    expect(typed).toEqual([`codex resume -c tui.resume_cwd=session ${SID} -- "$(cat '${file}'; rm -f '${file}')"`]);
   });
 
   it('takes back no window still closing for idleness, from a poll, a reconcile or a revive', async () => {
@@ -883,6 +899,7 @@ runIf('Fleet', () => {
     expect(fs.existsSync(path.join(archiHome, 'mc'))).toBe(true);
     // the buttons send /archi-… , which is a command only where the skills are
     expect(fs.readFileSync(path.join(archiHome, 'mc/.claude/skills/archi-rename/SKILL.md'), 'utf8')).toContain('name: archi-rename');
+    expect(fs.readFileSync(path.join(archiHome, 'mc/.agents/skills/archi-rename/SKILL.md'), 'utf8')).toContain('name: archi-rename');
     expect(fs.existsSync(path.join(archiHome, 'mc/CLAUDE.md'))).toBe(true);
     const home = store.state.islands.home;
     expect(home).toMatchObject({ id: 'home', kind: 'home', name: 'mission control', size: { w: 8, h: 4 }, seed: 7 });
@@ -894,6 +911,15 @@ runIf('Fleet', () => {
     expect(updated.size).toEqual(home.size);
     await fleet.reconcileNow();
     expect(Object.values(store.state.islands).filter((i) => i.kind === 'home')).toHaveLength(1);
+  });
+
+  it("starts mission control's crew on the main agent unless config.json names a command", async () => {
+    const both = await boot({ agentsFound: ['claude', 'codex'] });
+    expect(both.store.state.home.command).toBe('claude --model sonnet');
+    both.fleet.setMainAgent('codex');
+    expect(both.store.state.home.command).toBe('codex');
+    expect((await boot({ agentsFound: ['codex'] })).store.state.home.command).toBe('codex');
+    expect((await boot({ agentsFound: ['codex'], homeCommand: 'my-agent --flag' })).store.state.home.command).toBe('my-agent --flag');
   });
 
   it('places crew on home slots and refuses other cells', async () => {
@@ -1161,6 +1187,19 @@ runIf('Fleet', () => {
     expect(run).not.toHaveBeenCalled();
   });
 
+  it('hands codex its first prompt as an argument and follows its hooks', async () => {
+    // the fake codex, for this test's own tmux server and the shell in its pane
+    vi.stubEnv('PATH', `${path.join(import.meta.dirname, 'fixtures/bin')}:${process.env.PATH}`);
+    cleanup.push(async () => { vi.unstubAllEnvs(); });
+    const b = await boot();
+    const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'codex' }).id, cwd: '/tmp', command: 'codex', run: 'fix the flaky test' });
+    expect(c.runSent).toBe(true);
+    await waitFor(() => b.store.state.characters[c.id].agent?.status === 'done');
+    expect(b.store.state.characters[c.id].agent).toMatchObject({ kind: 'codex', model: 'gpt-fake' });
+    expect(b.fleet.readPrompts(c.id, 5)).toEqual(['fix the flaky test']);
+    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-codex', `${c.id}.argv`), 'utf8'))).toEqual(['--', 'fix the flaky test']);
+  });
+
   it('refuses a cwd that is relative or not a directory before any window opens', async () => {
     const { fleet, store, tmux, home } = await boot();
     const islandId = fleet.createIsland({ name: 'x' }).id;
@@ -1297,5 +1336,24 @@ runIf('Fleet', () => {
     fleet.deleteIsland(island.id);
     fs.chmodSync(path.dirname(dir), 0o700);
     expect(store.state.islands[island.id]).toBeUndefined();
+  });
+
+  it('mirrors the main agent into the fleet, and sets it in config.json', async () => {
+    const { fleet, store, home } = await boot({ agentsFound: ['claude', 'codex'] });
+    expect(store.state.mainAgent).toBe('claude');
+    expect(store.state.agentsFound).toEqual(['claude', 'codex']);
+    expect(store.state.scribeAgent).toBe('claude');
+    fleet.setMainAgent('codex');
+    expect(store.state.mainAgent).toBe('codex');
+    expect(store.state.scribeAgent).toBe('codex');
+    expect(JSON.parse(fs.readFileSync(resolvePaths(home).config, 'utf8')).mainAgent).toBe('codex');
+  });
+
+  it('takes the only agent found as the main one, and refuses one archid cannot find', async () => {
+    const { fleet, store, home } = await boot({ agentsFound: ['codex'] });
+    expect(store.state.mainAgent).toBe('codex');
+    expect(() => fleet.setMainAgent('claude')).toThrow("archid doesn't find claude; install Claude Code, then run archi setup");
+    expect(store.state.mainAgent).toBe('codex');
+    expect(fs.existsSync(resolvePaths(home).config)).toBe(false);
   });
 });

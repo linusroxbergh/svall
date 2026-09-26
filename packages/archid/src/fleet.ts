@@ -1,14 +1,15 @@
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import path from 'node:path';
-import { DORMANT_AFTER_HOURS, HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, homeSizeFor, isHomeSlot, isLand, randomPortrait, type Agent, type AgentStatus, type BrowserTab, type Cell, type Character, type ContextItem, type Island, type Portrait } from '@archipelago/protocol';
+import { DORMANT_AFTER_HOURS, HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, homeSizeFor, isHomeSlot, isLand, randomPortrait, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Character, type ContextItem, type Island, type Portrait } from '@archipelago/protocol';
+import { AGENTS, mainAgent } from './agents.js';
 import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
 import { lastTokenCount } from './agent/codex-transcript.js';
 import { followRollout, type RolloutMark } from './agent/codex-workdir.js';
 import { applyHook, applyStatus, markSeen as markSeenPure, type Slot } from './agent/reducer.js';
 import { condenseTurns, readTail, userPrompts } from './agent/transcript.js';
 import { characterKeyEnv } from './claude.js';
-import type { Config } from './config.js';
+import { saveMainAgent, scribeModel, type Config } from './config.js';
 import { briefReply, renderBrief } from './context/brief.js';
 import { takesPrompt, withAddDirs, withPromptFile } from './context/launch.js';
 import { settleItems } from './context/items.js';
@@ -26,7 +27,7 @@ import { randomName } from './names.js';
 import { expandHome, type Paths } from './paths.js';
 import { markDormant, placeOnIsland, reconcile, secondName } from './reconcile.js';
 import { codexRunner } from './scribe/codex.js';
-import { claudeRunner, type RunScribe } from './scribe/run.js';
+import { claudeRunner, perPass, type RunScribe } from './scribe/run.js';
 import { Scribe, type SweepOptions } from './scribe/scribe.js';
 import { installHomeTemplate } from './setup.js';
 import type { Store } from './store.js';
@@ -49,7 +50,7 @@ function setNote(c: Character, note: string): void {
 
 export { Dormant, Invalid, NotFound };
 
-type Deps = { store: Store; tmux: Tmux; paths: Paths; config: Config; log: Logger; pollMs?: number; staleSessionMs?: number; runTimeoutMs?: number; runScribe?: RunScribe; linkDeps?: Partial<LinkDeps>; processes?: () => Promise<Proc[]> };
+type Deps = { store: Store; tmux: Tmux; paths: Paths; config: Config; log: Logger; pollMs?: number; staleSessionMs?: number; runTimeoutMs?: number; runScribe?: RunScribe; linkDeps?: Partial<LinkDeps>; processes?: () => Promise<Proc[]>; agentsFound?: AgentKind[] };
 type LiveCharacter = Character & { tmux: NonNullable<Character['tmux']> };
 export type WaitResult = AgentStatus | 'timeout' | 'gone';
 
@@ -88,9 +89,10 @@ export class Fleet extends EventEmitter<Events> {
     super();
     const { store, log, config, paths } = deps;
     const cwd = path.join(paths.home, 'scribe');
-    const run = deps.runScribe ?? (config.scribe.agent === 'codex'
-      ? codexRunner({ model: config.scribe.model, cwd })
-      : claudeRunner({ model: config.scribe.model ?? 'sonnet', cwd, envFile: paths.env }));
+    const run = deps.runScribe ?? perPass({
+      claude: claudeRunner({ model: scribeModel(config.scribe, 'claude') ?? 'sonnet', cwd, envFile: paths.env }),
+      codex: codexRunner({ model: scribeModel(config.scribe, 'codex'), cwd }),
+    }, () => store.state.scribeAgent ?? 'claude');
     this.scribe = new Scribe({ store, log, run, brief: (island, c) => this.render(island, c) });
   }
 
@@ -98,6 +100,7 @@ export class Fleet extends EventEmitter<Events> {
     await this.deps.tmux.ensureServer();
     await this.reconcileNow();
     this.ensureHome();
+    this.syncAgents();
     try { if (seedAgentProfiles(this.deps.paths.agentProfiles)) this.deps.log.info(`agent profiles -> ${this.deps.paths.agentProfiles}`); }
     catch (e) { this.deps.log.error(`agent profiles: ${String(e)}`); }
     await this.attachControl();
@@ -257,7 +260,7 @@ export class Fleet extends EventEmitter<Events> {
       this.deps.log.error(`default cwd ${cwd} is not a directory: characters cannot start there`);
     }
     this.deps.store.update((d) => {
-      d.home = home;
+      d.home = { ...home, command: this.crewCommand() };
       d.defaultCwd = this.deps.config.defaultCwd;
       if (!d.islands[HOME_ISLAND]) {
         const size = homeSizeFor(2);
@@ -386,6 +389,31 @@ export class Fleet extends EventEmitter<Events> {
     this.deps.store.update((d) => { d.dormantAfterHours = hours; });
   }
 
+  // config.json's home.command, else the main agent's
+  private crewCommand(): string {
+    return this.deps.config.home.command ?? AGENTS[mainAgent(this.deps.config.mainAgent, this.deps.agentsFound ?? [])].crewCommand;
+  }
+
+  // config.json holds the choice; the fleet carries it, and what archid finds, to the app
+  private syncAgents(): void {
+    const found = this.deps.agentsFound ?? [];
+    this.deps.store.update((d) => {
+      d.mainAgent = mainAgent(this.deps.config.mainAgent, found);
+      d.agentsFound = found;
+      d.scribeAgent = this.deps.config.scribe.agent ?? d.mainAgent;
+      d.home.command = this.crewCommand();
+    });
+  }
+
+  setMainAgent(agent: AgentKind): void {
+    if (!(this.deps.agentsFound ?? []).includes(agent)) {
+      throw new Invalid(`archid doesn't find ${AGENTS[agent].bin}; install ${AGENTS[agent].label}, then run archi setup`);
+    }
+    saveMainAgent(this.deps.paths.config, agent);
+    this.deps.config.mainAgent = agent;
+    this.syncAgents();
+  }
+
   // names, notes, links and island descriptions for the whole fleet, now; one line per change
   sweep(o: SweepOptions): Promise<string[]> {
     return this.scribe.sweep(o);
@@ -479,7 +507,7 @@ export class Fleet extends EventEmitter<Events> {
     if (!p.run) return this.char(id);
     const timeoutMs = this.deps.runTimeoutMs ?? RUN_TIMEOUT_MS;
     let runSent = await this.waitForAgent(id, timeoutMs);
-    // claude has its prompt already, and submits it whenever it comes up
+    // claude and codex have their prompt already, and submit it once they are up
     if (prompt) return { ...this.char(id), runSent: true };
     if (runSent) {
       // the window can die between the agent attaching and the send; the character stays, without its prompt
@@ -711,7 +739,7 @@ export class Fleet extends EventEmitter<Events> {
 
   async run(id: string, text: string, enter: boolean, term?: 2): Promise<void> {
     const c = this.char(id);
-    // a dormant claude wakes with the text as its launch prompt; typed while it boots, a prompt can lose its Enter
+    // a dormant claude or codex wakes with the text as its launch prompt; typed while it boots, a prompt can lose its Enter
     if (!term && enter && !c.tmux && !this.reviving.has(id) && takesPrompt(c.revive?.command ?? '')) {
       await this.reviveCharacter(id, text);
       return;

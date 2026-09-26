@@ -82,7 +82,8 @@ describe('archi argument parsing', () => {
   it('setup --check says when the hooks or the shims are not what setup writes now, and changes nothing', async () => {
     // what the check asks of the machine, answered without the real tools
     const bin = makeHome();
-    fs.writeFileSync(path.join(bin, 'claude'), "#!/bin/sh\necho '2.1.0 (Claude Code)'\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'claude'), "#!/bin/sh\ncase \"$1\" in --version) echo '2.1.0 (Claude Code)';; auth) echo '{\"loggedIn\":true}';; esac\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'codex'), "#!/bin/sh\ncase \"$1\" in --version) echo 'codex-cli 0.156.1';; *) echo 'Not logged in'; exit 1;; esac\n", { mode: 0o755 });
     fs.writeFileSync(path.join(bin, 'tmux'), "#!/bin/sh\necho 'tmux 3.5a'\n", { mode: 0o755 });
     const script = path.join(os.homedir(), '.archipelago', 'hooks', 'agent-hook.mjs');
     const settings = path.join(os.homedir(), '.claude', 'settings.json');
@@ -97,16 +98,25 @@ describe('archi argument parsing', () => {
     // sign-ins under both ids, which setup never merges
     const webkit = ['com.archipelago.desktop', 'io.github.linusroxbergh.archipelago'].map((id) => path.join(os.homedir(), 'Library', 'WebKit', id));
     for (const d of webkit) fs.mkdirSync(d, { recursive: true });
+    const PATH = `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`;
     try {
-      const r = await run({ PATH: `${bin}:${process.env.PATH}` }, 'setup', '--check');
+      const r = await run({ PATH, FORCE_COLOR: '0' }, '--json', 'setup', '--check');
       expect(r.code).toBe(0);
-      expect(r.stdout).toContain('! hooks  missing or out of date: run archi setup');
-      expect(r.stdout).toContain('! shims  missing or out of date: run archi setup');
-      expect(r.stdout).toContain('! launchd  plist missing or out of date: run archi setup');
-      expect(r.stdout).toContain('! ids  launchd agents or app data under the old com.archipelago ids, out of date: run archi setup');
-      expect(r.stdout.split('\n')).toContain(`! sign-ins  ${webkit[0]} is left beside ${webkit[1]}, which the app reads: quit the app, then keep whichever holds your sign-ins at ${webkit[1]} and delete the other`);
+      const { warnings } = JSON.parse(r.stdout);
+      expect(warnings).toContain('! hooks  missing or out of date: run archi setup');
+      expect(warnings).toContain('! shims  missing or out of date: run archi setup');
+      expect(warnings).toContain('! launchd  plist missing or out of date: run archi setup');
+      expect(warnings).toContain('! ids  launchd agents or app data under the old com.archipelago ids, out of date: run archi setup');
+      expect(warnings).toContain(`! sign-ins  ${webkit[0]} is left beside ${webkit[1]}, which the app reads: quit the app, then keep whichever holds your sign-ins at ${webkit[1]} and delete the other`);
+      expect(warnings).toContain('! codex  codex-cli 0.156.1, not signed in: codex login');
       expect(fs.readFileSync(settings, 'utf8')).toBe(old);
       expect(fs.readFileSync(agent, 'utf8')).toBe('<plist/>');
+
+      const plain = await run({ PATH, FORCE_COLOR: '0' }, 'setup', '--check');
+      expect(plain.code).toBe(0);
+      expect(plain.stdout).toContain('◇  Agents');
+      expect(plain.stdout).toMatch(/codex +codex-cli 0\.156\.1, not signed in/);
+      expect(plain.stdout).not.toContain('ready for archi setup');
     } finally {
       fs.rmSync(path.dirname(settings), { recursive: true });
       fs.rmSync(agent);
@@ -134,8 +144,13 @@ runIf('archi CLI', () => {
 
   it('drives the daemon end to end', async () => {
     home = makeHome();
-    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
+    const config = { shell: '/bin/sh', mainAgent: 'claude' };
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify(config));
     daemon = await start({ home, port: 0, log: silentLogger });
+    // archi agent tells what the running fleet uses, not a config.json edited since it started
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ ...config, mainAgent: 'codex' }));
+    expect(JSON.parse((await archi('agent', '--json')).stdout).agent).toBe('claude');
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify(config));
 
     const island = JSON.parse((await archi('island', 'create', 'feature', '--json')).stdout);
     expect(island.name).toBe('feature');
@@ -209,15 +224,13 @@ runIf('archi CLI', () => {
     expect(r.stderr).toMatch(/archid is not running .*; `archi doctor` says why/);
   });
 
-  it('lists the home island with its kind and refuses --run without a command', async () => {
+  it('lists the home island with its kind and refuses an unknown agent', async () => {
     home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
     daemon = await start({ home, port: 0, log: silentLogger });
     const list = (await archi('island', 'list')).stdout;
     expect(list).toMatch(/kind/);
     expect(list).toMatch(/home\s+mission control/);
-    const bad = await archi('char', 'new', '--island', 'home', '--cwd', '/tmp', '--run', 'x');
-    expect(bad.code).not.toBe(0);
     const unknown = await archi('char', 'new', '--island', 'home', '--cwd', '/tmp', '--agent', 'cursor');
     expect(unknown.code).not.toBe(0);
     expect(unknown.stderr).toContain('claude or codex');

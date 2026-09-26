@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { startApi } from './api/server.js';
+import { findAgents } from './agents.js';
 import { codexPaths } from './codex/install.js';
 import { loadConfig } from './config.js';
 import { Fleet } from './fleet.js';
@@ -16,7 +17,7 @@ import { startPusher, webPushSender } from './push/pusher.js';
 import { PushStore } from './push/store.js';
 import { readOrCreateVapid } from './push/vapid.js';
 import { claudePaths, workspaceRoot } from './resources/scan.js';
-import { installCodexHooks, installHookScripts } from './setup.js';
+import { installCodexHooks, installHookScripts, readCodexHooks } from './setup.js';
 import { Store } from './store.js';
 import { TerminalHub } from './terminals.js';
 import { tmuxConfText, tmuxTooOld } from './tmux/conf.js';
@@ -80,10 +81,13 @@ async function start(opts: Options): Promise<Daemon> {
   const push = new PushStore(paths.push, log.error);
   const vapid = readOrCreateVapid(paths.vapid);
   const profile = profileOf(paths.home);
+  // launchd's PATH, which setup built to include where the shell found claude and codex
+  const agentsFound = findAgents(process.env.PATH ?? '');
   // a Codex installed after `archi setup` still gets its hooks. Only the private fleet writes them:
   // the command names this fleet's script, and a second fleet rewriting it would reset its trust
   if (profile === PRIVATE) {
-    try { for (const line of installCodexHooks(codexPaths(), paths.hookScript)) log.info(line); }
+    const codex = codexPaths();
+    try { for (const line of installCodexHooks(codex, paths.hookScript, readCodexHooks(codex, agentsFound.includes('codex') || fs.existsSync(codex.dir)))) log.info(line); }
     catch (e) { log.error(`codex hooks: ${(e as Error).message}`); }
   }
 
@@ -92,7 +96,7 @@ async function start(opts: Options): Promise<Daemon> {
   if (tmuxTooOld(tmuxVersion)) log.error(`${tmuxVersion} is older than 3.5: Shift+Enter will not reach Claude Code; brew upgrade tmux`);
   // the app attaches its terminals with this tmux, which an app opened from Finder may not find on its own PATH
   fs.writeFileSync(path.join(paths.home, 'tmux-binary'), tmux.binary);
-  const fleet = new Fleet({ store, tmux, paths, config, log });
+  const fleet = new Fleet({ store, tmux, paths, config, log, agentsFound });
   const terminals = new TerminalHub(fleet, tmux, store, log);
   const claude = claudePaths();
   const codex = codexPaths();

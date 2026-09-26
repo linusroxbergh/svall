@@ -71,7 +71,8 @@ describe('runUninstall', () => {
     const first = await runSetup(f.o);
     expect(first.some((l) => l.includes('/hooks'))).toBe(true);
     expect(codexInstalled(JSON.parse(fs.readFileSync(hooksFile, 'utf8')), path.join(f.home, 'hooks/agent-hook.mjs'))).toBe(true);
-    expect((await runSetup(f.o)).some((l) => l.includes('codex'))).toBe(false);
+    // codex skills and rules are rewritten every run; only the hooks write is once
+    expect((await runSetup(f.o)).some((l) => l.includes('codex') && !l.startsWith('home codex'))).toBe(false);
 
     await runUninstall(f.o);
     expect(JSON.parse(fs.readFileSync(hooksFile, 'utf8'))).toEqual(mine);

@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import type { AgentKind } from '@archipelago/protocol';
+import { AGENTS, AGENT_KINDS, isExecutable, onPath } from './agents.js';
 import { codexHookCommand, codexPaths, mergeCodexHooks, type CodexPaths } from './codex/install.js';
 import { loadConfig } from './config.js';
 import { CLAUDE_HOOKS, hooksFor } from './hooks/receiver.js';
@@ -178,6 +179,26 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }
   done.push(`home rules -> ${dotClaude}/rules`);
   fs.cpSync(path.join(template, '.claude/skills'), path.join(dotClaude, 'skills'), { recursive: true, force: true });
   done.push(`home skills -> ${dotClaude}/skills`);
+  // codex reads AGENTS.md, .agents/skills and .codex/rules instead; each start writes them from the same template
+  const agentsMd = path.join(dir, 'AGENTS.md');
+  const agentsHeader = '<!-- archid rewrites this file on every start from .claude/rules/archipelago.md and CLAUDE.md; add your own rules to CLAUDE.md -->';
+  // CLAUDE.md -> AGENTS.md (a common convention) would otherwise make AGENTS.md read, then append, itself
+  if (fs.existsSync(agentsMd) && fs.existsSync(claudeMd) && realDir(agentsMd) === realDir(claudeMd)) {
+    done.push(`home AGENTS.md left alone, as it is CLAUDE.md, so a Codex crew misses Archipelago's rules -> ${agentsMd}`);
+  } else {
+    if (fs.existsSync(agentsMd) && !fs.readFileSync(agentsMd, 'utf8').startsWith(agentsHeader)) {
+      const backup = `${agentsMd}.bak-${Date.now()}`;
+      fs.copyFileSync(agentsMd, backup);
+      done.push(`backup -> ${backup}`);
+    }
+    const rules = fs.readFileSync(path.join(template, '.claude/rules/archipelago.md'), 'utf8');
+    writeAtomic(agentsMd, `${agentsHeader}\n\n${rules}\n${fs.readFileSync(claudeMd, 'utf8')}`, { perProcess: true });
+    done.push(`home AGENTS.md -> ${agentsMd}`);
+  }
+  fs.cpSync(path.join(template, '.claude/skills'), path.join(dir, '.agents/skills'), { recursive: true, force: true });
+  done.push(`home codex skills -> ${dir}/.agents/skills`);
+  fs.cpSync(path.join(template, '.codex/rules'), path.join(dir, '.codex/rules'), { recursive: true, force: true });
+  done.push(`home codex rules -> ${dir}/.codex/rules`);
   const settings = path.join(dotClaude, 'settings.json');
   const shipped = fs.readFileSync(path.join(template, '.claude/settings.json'), 'utf8');
   const current = fs.existsSync(settings) ? fs.readFileSync(settings, 'utf8') : undefined;
@@ -197,10 +218,6 @@ export type HomeSetup = {
   home: string; label: string; repoRoot: string; launchAgentsDir: string; launchctl: boolean; port?: number;
 };
 
-const isExecutable = (file: string): boolean => {
-  try { fs.accessSync(file, fs.constants.X_OK); return fs.statSync(file).isFile(); } catch { return false; }
-};
-
 // a Homebrew keg's versioned folder goes with the next upgrade, while its opt link stays
 const nodeDirOf = (execPath: string): string => path.dirname(execPath).replace(/\/Cellar\/([^/]+)\/[^/]+\/bin$/, '/opt/$1/bin');
 
@@ -212,8 +229,7 @@ const realDir = (dir: string): string => {
 // ones when it is none of them, as for a pnpm, bun or volta global. Its real path, as a node manager's can be per shell
 function daemonPath(nodeDir: string): string {
   const usual = [nodeDir, path.join(os.homedir(), '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'];
-  const dirs = (process.env.PATH ?? '').split(':').filter((dir) => path.isAbsolute(dir));
-  const found = ['claude', 'codex'].map((bin) => dirs.find((dir) => isExecutable(path.join(dir, bin))))
+  const found = AGENT_KINDS.map((k) => onPath(AGENTS[k].bin, process.env.PATH ?? ''))
     .filter((dir) => dir !== undefined).map(realDir);
   const known = new Set(usual.map(realDir));
   return [...new Set([...usual, ...found.filter((dir) => !known.has(dir))])].join(':');
@@ -333,15 +349,15 @@ export const statusWrapper = (node: string, script: string): string =>
 export const hookCommand = (node: string, script: string, backend: AgentKind): string =>
   `[ -z "$ARCHI_CHAR_ID" ] || { ${nodeRun(node, script)} ${backend} "$PPID"; }`;
 
-/** Codex's hooks file, when Codex has a home on this machine; throws on one that is not JSON. */
-export const readCodexHooks = (codex: CodexPaths): JsonSettings | undefined =>
-  (fs.existsSync(codex.dir) ? readJsonSettings(codex.hooks) : undefined);
+/** Codex's hooks file when Codex is wanted here (on PATH, or its home exists); throws on one that is not JSON. */
+export const readCodexHooks = (codex: CodexPaths, wanted = fs.existsSync(codex.dir)): JsonSettings | undefined =>
+  (wanted ? readJsonSettings(codex.hooks) : undefined);
 
-/** Writes the hooks into Codex's own file, when Codex has a home on this machine. */
+/** Writes the hooks into Codex's own file, when Codex is wanted here. */
 export function installCodexHooks(codex: CodexPaths, script: string, before: JsonSettings | undefined = readCodexHooks(codex)): string[] {
   if (!before) return [];
   const wrote = writeJsonSettings(before, withCodexHooks(before.settings, script), 'codex hooks');
-  return wrote.length ? [...wrote, 'run /hooks in Codex once to trust the Archipelago hook, or it will not fire'] : [];
+  return wrote.length ? [...wrote, 'Codex asks once to trust these hooks: start codex and choose "Trust all and continue", or trust them in /hooks'] : [];
 }
 
 // the node the installed statusline names, while it is there: the commands fall back to the node on PATH,
@@ -387,14 +403,14 @@ export const shimsCurrent = (shimDir: string, root: string): boolean =>
   SHIMS.every((name) => fs.existsSync(path.join(shimDir, name)) && fs.readFileSync(path.join(shimDir, name), 'utf8') === shimText(root));
 
 /** Throws, before anything is written, when the Claude settings or Codex's hooks need a change setup cannot write. */
-export function requireWritableHooks(home: string, settings: JsonSettings, codexHooks: JsonSettings | undefined): void {
-  requireWritable(settings, withClaudeHooks(settings.settings, home));
+export function requireWritableHooks(home: string, settings: JsonSettings | undefined, codexHooks: JsonSettings | undefined): void {
+  if (settings) requireWritable(settings, withClaudeHooks(settings.settings, home));
   if (codexHooks) requireWritable(codexHooks, withCodexHooks(codexHooks.settings, resolvePaths(home).hookScript));
 }
 
-export function setupUser(o: { home: string; settings: JsonSettings; codex: CodexPaths; codexHooks?: JsonSettings; shimDir: string; repoRoot: string }): string[] {
+export function setupUser(o: { home: string; settings?: JsonSettings; codex: CodexPaths; codexHooks?: JsonSettings; shimDir: string; repoRoot: string }): string[] {
   const paths = resolvePaths(o.home);
-  const done = writeJsonSettings(o.settings, withClaudeHooks(o.settings.settings, o.home), 'claude hooks and statusline');
+  const done = o.settings ? writeJsonSettings(o.settings, withClaudeHooks(o.settings.settings, o.home), 'claude hooks and statusline') : [];
   done.push(...installCodexHooks(o.codex, paths.hookScript, o.codexHooks));
 
   fs.mkdirSync(o.shimDir, { recursive: true });
@@ -415,12 +431,14 @@ export function setupUser(o: { home: string; settings: JsonSettings; codex: Code
 }
 
 export async function runSetup(o: {
-  home: string; settingsPath: string; codex: CodexPaths; launchAgentsDir: string; shimDir: string; repoRoot: string; launchctl: boolean;
+  home: string; settingsPath: string; codex: CodexPaths; launchAgentsDir: string; shimDir: string; repoRoot: string; launchctl: boolean; agents?: AgentKind[];
 }): Promise<string[]> {
+  const claudeWanted = !o.agents || o.agents.includes('claude') || fs.existsSync(path.dirname(o.settingsPath));
+  const codexWanted = !!o.agents?.includes('codex') || fs.existsSync(o.codex.dir);
   // both files are read and checked before anything is written, so one that is not JSON, or cannot take
   // the change, stops a setup that has changed nothing
-  const settings = readJsonSettings(o.settingsPath);
-  const codexHooks = readCodexHooks(o.codex);
+  const settings = claudeWanted ? readJsonSettings(o.settingsPath) : undefined;
+  const codexHooks = readCodexHooks(o.codex, codexWanted);
   requireWritableHooks(o.home, settings, codexHooks);
   const home = await setupHome({ ...o, label: LAUNCHD_LABEL, launchctl: false });
   const user = setupUser({ ...o, settings, codexHooks });

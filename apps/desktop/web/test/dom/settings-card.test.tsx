@@ -101,3 +101,20 @@ test('dormancy steps through the waits, from 12 hours by default out to never', 
   fireEvent.click(screen.getByTestId('dormancy-less'));
   expect(call).toHaveBeenCalledWith('dormancy.set', { hours: 72 });
 });
+
+test('main agent picks between the CLIs archid finds', () => {
+  act(() => store.getState().setFleet({ ...fleet(), mainAgent: 'claude', agentsFound: ['claude', 'codex'] }));
+  render(<SettingsCard />);
+  const pick = screen.getByTestId('set-main-agent') as HTMLSelectElement;
+  expect(pick.value).toBe('claude');
+  fireEvent.change(pick, { target: { value: 'codex' } });
+  expect(call).toHaveBeenCalledWith('mainAgent.set', { agent: 'codex' });
+});
+
+test('main agent disables a CLI archid does not find', () => {
+  act(() => store.getState().setFleet({ ...fleet(), mainAgent: 'claude', agentsFound: ['claude'] }));
+  render(<SettingsCard />);
+  const codex = screen.getByRole('option', { name: /^Codex/ }) as HTMLOptionElement;
+  expect(codex.disabled).toBe(true);
+  expect(codex.textContent).toBe('Codex (not found: install it, then archi setup)');
+});

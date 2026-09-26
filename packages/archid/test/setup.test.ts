@@ -207,6 +207,24 @@ describe('launchdPlist', () => {
 });
 
 describe('runSetup', () => {
+  it('writes no Claude settings for a Codex-only machine, and makes CODEX_HOME for its hooks', async () => {
+    const home = makeHome();
+    const settingsPath = path.join(home, 'claude', 'settings.json'); // its folder does not exist
+    const codex = codexPaths({ CODEX_HOME: path.join(home, 'codex') }); // nor does this one
+    const lines = await runSetup({ home, settingsPath, launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), repoRoot, launchctl: false, codex, agents: ['codex'] });
+    expect(fs.existsSync(settingsPath)).toBe(false);
+    expect(JSON.parse(fs.readFileSync(codex.hooks, 'utf8')).hooks.SessionStart).toBeDefined();
+    expect(lines.join('\n')).toContain('Trust all and continue');
+  });
+
+  it('keeps writing Claude settings when its folder exists without the CLI', async () => {
+    const home = makeHome();
+    const settingsPath = path.join(home, 'claude', 'settings.json');
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    await runSetup({ home, settingsPath, launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), repoRoot, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), agents: ['codex'] });
+    expect(fs.existsSync(settingsPath)).toBe(true);
+  });
+
   it('writes hooks, conf, settings backup, plist and shim', async () => {
     const home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ home: { cwd: path.join(home, 'mc') } }));
@@ -427,12 +445,50 @@ describe('runSetup', () => {
     for (const skill of ['archi-organise', 'archi-rename', 'archi-update-info', 'archi-status']) {
       expect(fs.readFileSync(path.join(mc, '.claude/skills', skill, 'SKILL.md'), 'utf8')).toContain(`name: ${skill}`);
     }
+    const agentsMd = () => fs.readFileSync(path.join(mc, 'AGENTS.md'), 'utf8');
+    // the crew rules, then the user's CLAUDE.md
+    expect(agentsMd()).toContain('You are a crew member on the mission control island');
+    expect(agentsMd()).toContain('Add your own rules for mission control here.');
+    for (const skill of ['archi-organise', 'archi-rename', 'archi-update-info', 'archi-status']) {
+      expect(fs.readFileSync(path.join(mc, '.agents/skills', skill, 'SKILL.md'), 'utf8')).toContain(`name: ${skill}`);
+    }
+    expect(fs.readFileSync(path.join(mc, '.codex/rules/archipelago.rules'), 'utf8')).toContain('prefix_rule(pattern = ["archi", "status"], decision = "allow")');
+    // an edit to CLAUDE.md reaches codex with the next start
+    fs.appendFileSync(path.join(mc, 'CLAUDE.md'), '- Launch every task in a fresh worktree.\n');
     fs.writeFileSync(settings, 'mine');
     const second = await runSetup(o);
     expect(JSON.parse(fs.readFileSync(settings, 'utf8')).permissions.allow).toContain('Bash(archi char update:*)');
     const backup = second.find((l) => l.startsWith('backup ->') && l.includes('.claude/settings.json'));
     expect(backup).toBeDefined();
     expect(fs.readFileSync(backup!.split(' -> ')[1], 'utf8')).toBe('mine');
+    expect(agentsMd()).toContain('Launch every task in a fresh worktree.');
+  });
+
+  it('backs up a hand-written AGENTS.md instead of overwriting it', () => {
+    const mc = path.join(makeHome(), 'mc');
+    fs.mkdirSync(mc, { recursive: true });
+    const agentsMd = path.join(mc, 'AGENTS.md');
+    fs.writeFileSync(agentsMd, 'my own codex crew rules');
+    const done = installHomeTemplate(mc, { replaceSettings: false });
+    const backup = done.find((l) => l.startsWith('backup ->') && l.includes('AGENTS.md.bak-'));
+    expect(backup).toBeDefined();
+    expect(fs.readFileSync(backup!.split(' -> ')[1], 'utf8')).toBe('my own codex crew rules');
+    expect(fs.readFileSync(agentsMd, 'utf8')).toContain('archid rewrites this file');
+  });
+
+  it('leaves AGENTS.md alone across runs when CLAUDE.md is a symlink to it, instead of growing it', () => {
+    const mc = path.join(makeHome(), 'mc');
+    fs.mkdirSync(mc, { recursive: true });
+    const agentsMd = path.join(mc, 'AGENTS.md');
+    const claudeMd = path.join(mc, 'CLAUDE.md');
+    fs.writeFileSync(agentsMd, 'shared crew rules');
+    fs.symlinkSync(agentsMd, claudeMd);
+    installHomeTemplate(mc, { replaceSettings: false });
+    const size1 = fs.statSync(agentsMd).size;
+    installHomeTemplate(mc, { replaceSettings: false });
+    const size2 = fs.statSync(agentsMd).size;
+    expect(size2).toBe(size1);
+    expect(fs.readFileSync(agentsMd, 'utf8')).toBe('shared crew rules');
   });
 
   it('a daemon start refreshes the skills but leaves edited settings alone', () => {
@@ -471,6 +527,17 @@ describe('runSetup', () => {
         expect(prefixes.some((p) => c.startsWith(p)), `${skill}: ${c}`).toBe(true);
       }
     }
+  });
+
+  it('allows a Codex crew exactly the archi commands a Claude crew is allowed', () => {
+    const template = path.join(repoRoot, 'packages/archid/home');
+    const allow: string[] = JSON.parse(fs.readFileSync(path.join(template, '.claude/settings.json'), 'utf8')).permissions.allow;
+    // ["archi", "char", ["list", "read"]] allows archi char list and archi char read
+    const expand = (pattern: (string | string[])[]): string[] =>
+      pattern.reduce<string[]>((heads, word) => heads.flatMap((h) => [word].flat().map((w) => `${h} ${w}`.trim())), ['']);
+    const rules = fs.readFileSync(path.join(template, '.codex/rules/archipelago.rules'), 'utf8');
+    const codex = [...rules.matchAll(/^prefix_rule\(pattern = (\[.*\]), decision = "allow"\)$/gm)].flatMap((m) => expand(JSON.parse(m[1])));
+    expect(codex.sort()).toEqual(allow.map((a) => /^Bash\((.+):\*\)$/.exec(a)![1]).sort());
   });
 
   it('writes an archipelago shim next to archi', async () => {
