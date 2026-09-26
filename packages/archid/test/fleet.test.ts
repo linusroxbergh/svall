@@ -8,7 +8,7 @@ import { Config } from '../src/config.js';
 import { docsDir } from '../src/docs.js';
 import type { Proc } from '../src/dormancy.js';
 import { Dormant, Fleet, Invalid, NotFound } from '../src/fleet.js';
-import type { HookEvent } from '../src/hooks/receiver.js';
+import { startHookReceiver, type HookEvent } from '../src/hooks/receiver.js';
 import { aboveHome, crewGrid, placementOk } from '../src/layout.js';
 import type { Deps as LinkDeps } from '../src/links/refresh.js';
 import { silentLogger, type Logger } from '../src/log.js';
@@ -39,6 +39,9 @@ runIf('Fleet', () => {
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); fleet.stop(); await tmux.killServer(); });
     await started;
+    // a spawned stand-in agent reaches the fleet the way a real one does: over the hooks socket
+    const hooks = await startHookReceiver(paths.hooksSock, (e) => fleet.onSocketEvent(e), silentLogger);
+    cleanup.push(() => hooks.close());
     return { fleet, store, tmux, home, procs };
   }
 
@@ -1172,6 +1175,19 @@ runIf('Fleet', () => {
     expect(fs.readFileSync(`${home}/got`, 'utf8')).toBe(prompt);
     expect(fs.existsSync(`${home}/${c.id}.prompt`)).toBe(false);
     expect(run).not.toHaveBeenCalled();
+  });
+
+  it('hands codex its first prompt as an argument and follows its hooks', async () => {
+    // the fake codex, for this test's own tmux server and the shell in its pane
+    vi.stubEnv('PATH', `${path.join(import.meta.dirname, 'fixtures/bin')}:${process.env.PATH}`);
+    cleanup.push(async () => { vi.unstubAllEnvs(); });
+    const b = await boot();
+    const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'codex' }).id, cwd: '/tmp', command: 'codex', run: 'fix the flaky test' });
+    expect(c.runSent).toBe(true);
+    await waitFor(() => b.store.state.characters[c.id].agent?.status === 'done');
+    expect(b.store.state.characters[c.id].agent).toMatchObject({ kind: 'codex', model: 'gpt-fake' });
+    expect(b.fleet.readPrompts(c.id, 5)).toEqual(['fix the flaky test']);
+    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-codex', `${c.id}.argv`), 'utf8'))).toEqual(['--', 'fix the flaky test']);
   });
 
   it('refuses a cwd that is relative or not a directory before any window opens', async () => {
