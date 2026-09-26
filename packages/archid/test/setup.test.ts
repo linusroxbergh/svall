@@ -529,6 +529,17 @@ describe('runSetup', () => {
     }
   });
 
+  it('allows a Codex crew exactly the archi commands a Claude crew is allowed', () => {
+    const template = path.join(repoRoot, 'packages/archid/home');
+    const allow: string[] = JSON.parse(fs.readFileSync(path.join(template, '.claude/settings.json'), 'utf8')).permissions.allow;
+    // ["archi", "char", ["list", "read"]] allows archi char list and archi char read
+    const expand = (pattern: (string | string[])[]): string[] =>
+      pattern.reduce<string[]>((heads, word) => heads.flatMap((h) => [word].flat().map((w) => `${h} ${w}`.trim())), ['']);
+    const rules = fs.readFileSync(path.join(template, '.codex/rules/archipelago.rules'), 'utf8');
+    const codex = [...rules.matchAll(/^prefix_rule\(pattern = (\[.*\]), decision = "allow"\)$/gm)].flatMap((m) => expand(JSON.parse(m[1])));
+    expect(codex.sort()).toEqual(allow.map((a) => /^Bash\((.+):\*\)$/.exec(a)![1]).sort());
+  });
+
   it('writes an archipelago shim next to archi', async () => {
     const home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ home: { cwd: path.join(home, 'mc') } }));

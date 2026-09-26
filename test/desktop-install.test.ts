@@ -75,3 +75,61 @@ test('stops before anything is installed when a window stays open or macOS will 
   expect(refused.status).toBe(1);
   expect(refused.stderr).toContain('could not ask Archipelago to quit, so nothing was installed');
 });
+
+// the script's own step, quiet and fail, then everything from GhosttyKit to the setup checks, run with stubbed tools
+const PRELUDE = SCRIPT.slice(SCRIPT.indexOf('# one column'), SCRIPT.indexOf('step "Checking your Mac"'));
+const CHECKS = SCRIPT.slice(SCRIPT.indexOf('# GhosttyKit is downloaded'), SCRIPT.indexOf('if [ -n "$BUILD_GHOSTTY" ]'));
+const CHECK_OK = 'case "$*" in *"setup --check"*) echo "│  ✓ tmux  tmux 3.5a" ;; esac';
+
+function checks(stubs: Record<string, string>, setUp = false) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'archi-desktop-install-'));
+  dirs.push(root);
+  const files = {
+    'bin/pnpm': CHECK_OK, 'bin/git': '', 'bin/xcodebuild': '', 'bin/launchctl': '',
+    'scripts/ghostty-kit.sh': '[ "$1" = current ]', 'scripts/ghostty-build.sh': '',
+    ...(setUp ? { '.archipelago/config.json': '', 'Library/LaunchAgents/io.github.linusroxbergh.archipelago.archid.plist': '', '.local/bin/archi': '' } : {}),
+    ...stubs,
+  };
+  for (const [file, body] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+  }
+  fs.mkdirSync(path.join(root, 'tmp'));
+  return spawnSync('sh', ['-c', `set -eu\nHOME_DIR="$HOME/.archipelago"\n${PRELUDE}\n${CHECKS}\necho "build ghostty: $BUILD_GHOSTTY, setup: $SETUP"`], {
+    cwd: root, env: { ...process.env, HOME: root, TMPDIR: path.join(root, 'tmp'), PATH: `${path.join(root, 'bin')}:${process.env.PATH}` }, encoding: 'utf8', timeout: 30_000,
+  });
+}
+
+test('builds GhosttyKit from source when the download fails, and says why it failed', () => {
+  const r = checks({ 'scripts/ghostty-kit.sh': '[ "$1" = fetch ] && echo "gh: not signed in" >&2; exit 1' });
+  expect(r.status).toBe(0);
+  expect(r.stderr).toContain('gh: not signed in');
+  expect(r.stdout).toContain('◇  Terminal engine: building it from source instead');
+  expect(r.stdout).toMatch(/build ghostty: 1, setup: 1\n$/);
+});
+
+test('stops before any build on a failed check or a missing tool, showing each', () => {
+  const failed = checks({ 'bin/pnpm': 'case "$*" in *"setup --check"*) echo "│  ✗ agents  neither claude nor codex is on PATH"; exit 1 ;; esac' });
+  expect(failed.status).toBe(1);
+  expect(failed.stdout).toContain('✗ agents  neither claude nor codex is on PATH');
+  expect(failed.stderr).toContain('Nothing was changed. Fix the ✗ items above');
+  expect(failed.stdout).not.toContain('build ghostty:');
+
+  const noKit = checks({ 'scripts/ghostty-kit.sh': 'exit 1', 'bin/xcodebuild': 'exit 1' });
+  expect(noKit.status).toBe(1);
+  expect(noKit.stderr).toContain('✗ ghostty  no GhosttyKit could be downloaded');
+  expect(noKit.stderr).toContain('Nothing was changed.');
+});
+
+test("shows the end of a quiet step's log when the step fails", () => {
+  const r = checks({ 'bin/pnpm': '[ "$1" = install ] && { echo "ERR_PNPM_FETCH_404 left-pad"; exit 1; }; exit 0' });
+  expect(r.status).toBe(1);
+  expect(r.stderr).toContain('ERR_PNPM_FETCH_404 left-pad');
+  expect(r.stderr).toContain('pnpm install --silent failed; the whole log is');
+});
+
+test('sets up again only when a check asks for archi setup', () => {
+  expect(checks({}, true).stdout).toMatch(/build ghostty: , setup: \n$/);
+  const asked = checks({ 'bin/pnpm': 'case "$*" in *"setup --check"*) echo "│  ! hooks  missing or out of date: run archi setup" ;; esac' }, true);
+  expect(asked.stdout).toMatch(/build ghostty: , setup: 1\n$/);
+});
