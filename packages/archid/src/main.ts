@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { startApi } from './api/server.js';
+import { findAgents } from './agents.js';
 import { codexPaths } from './codex/install.js';
 import { loadConfig } from './config.js';
 import { Fleet } from './fleet.js';
@@ -92,7 +93,9 @@ async function start(opts: Options): Promise<Daemon> {
   if (tmuxTooOld(tmuxVersion)) log.error(`${tmuxVersion} is older than 3.5: Shift+Enter will not reach Claude Code; brew upgrade tmux`);
   // the app attaches its terminals with this tmux, which an app opened from Finder may not find on its own PATH
   fs.writeFileSync(path.join(paths.home, 'tmux-binary'), tmux.binary);
-  const fleet = new Fleet({ store, tmux, paths, config, log });
+  // launchd's PATH, which setup built to include where the shell found claude and codex
+  const agentsFound = findAgents(process.env.PATH ?? '');
+  const fleet = new Fleet({ store, tmux, paths, config, log, agentsFound });
   const terminals = new TerminalHub(fleet, tmux, store, log);
   const claude = claudePaths();
   const codex = codexPaths();

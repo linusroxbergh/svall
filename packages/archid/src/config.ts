@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { z } from 'zod';
 import { AgentKind, DEFAULT_CWD, Home } from '@archipelago/protocol';
+import { writeAtomic } from './jsonfile.js';
 
 export const Config = z.object({
   port: z.number().int().default(47800),
@@ -9,9 +10,10 @@ export const Config = z.object({
   linear: z.object({ workspace: z.string(), teamKeys: z.array(z.string()) }).optional(),
   home: Home.prefault({}),
   defaultCwd: z.string().default(DEFAULT_CWD),
-  // which plan a scribe pass spends, whatever agent the character it describes runs. Without a model,
-  // claude runs sonnet and codex its own default
-  scribe: z.object({ agent: AgentKind.default('claude'), model: z.string().optional() }).prefault({}),
+  // the agent the scribe and `archi char new --run` use by default; absent, the only one installed, else claude
+  mainAgent: AgentKind.optional(),
+  // which plan a scribe pass spends; absent, the main agent's. model names a model of scribe.agent's CLI, else of claude's
+  scribe: z.object({ agent: AgentKind.optional(), model: z.string().optional() }).prefault({}),
   // phone clients: which tailnet logins may drive the fleet and get its pushes (empty lets in only the Mac's own login),
   // extra page origins allowed to open a socket beyond the one archid itself served, who a push
   // service may contact about this sender (Apple refuses a push without one; unset, it is the served page), and
@@ -42,4 +44,17 @@ export function parseConfig(text: string, file: string): Config {
       : (err as Error).message;
     throw new InvalidConfig(`invalid config ${file}: ${why}`);
   }
+}
+
+/** Sets mainAgent in `file` and keeps every other key; a file that does not parse is refused, not replaced.
+ *  A linked file (stow, home-manager) is written where it points, with the mode it had. */
+export function saveMainAgent(file: string, agent: AgentKind): void {
+  const there = fs.existsSync(file);
+  const text = there ? fs.readFileSync(file, 'utf8') : '{}';
+  parseConfig(text, file);
+  const real = there ? fs.realpathSync(file) : file;
+  const mode = there ? fs.statSync(real).mode & 0o777 : undefined;
+  writeAtomic(real, JSON.stringify({ ...(JSON.parse(text) as object), mainAgent: agent }, null, 2) + '\n', { mode, perProcess: true });
+  // the umask narrows the mode a file is created with
+  if (mode !== undefined) fs.chmodSync(real, mode);
 }

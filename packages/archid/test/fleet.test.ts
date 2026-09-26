@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SPACING, isLand, landCells, sizeForCrew } from '@archipelago/protocol';
+import { SPACING, isLand, landCells, sizeForCrew, type AgentKind } from '@archipelago/protocol';
 import { Config } from '../src/config.js';
 import { docsDir } from '../src/docs.js';
 import type { Proc } from '../src/dormancy.js';
@@ -25,13 +25,13 @@ runIf('Fleet', () => {
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 
-  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; homeCwd?: string; linkDeps?: Partial<LinkDeps>; log?: Logger } = {}) {
-    const { homeCwd, ...deps } = extra;
+  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; homeCwd?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind } = {}) {
+    const { homeCwd, mainAgent, ...deps } = extra;
     // what ps shows the dormancy sweep
     const procs: Proc[] = [];
     const home = makeHome();
     const paths = resolvePaths(home);
-    const config = Config.parse({ shell: '/bin/sh', home: { cwd: homeCwd ?? path.join(home, 'mc') } });
+    const config = Config.parse({ shell: '/bin/sh', home: { cwd: homeCwd ?? path.join(home, 'mc') }, ...(mainAgent ? { mainAgent } : {}) });
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
@@ -1297,5 +1297,24 @@ runIf('Fleet', () => {
     fleet.deleteIsland(island.id);
     fs.chmodSync(path.dirname(dir), 0o700);
     expect(store.state.islands[island.id]).toBeUndefined();
+  });
+
+  it('mirrors the main agent into the fleet, and sets it in config.json', async () => {
+    const { fleet, store, home } = await boot({ agentsFound: ['claude', 'codex'] });
+    expect(store.state.mainAgent).toBe('claude');
+    expect(store.state.agentsFound).toEqual(['claude', 'codex']);
+    expect(store.state.scribeAgent).toBe('claude');
+    fleet.setMainAgent('codex');
+    expect(store.state.mainAgent).toBe('codex');
+    expect(store.state.scribeAgent).toBe('codex');
+    expect(JSON.parse(fs.readFileSync(resolvePaths(home).config, 'utf8')).mainAgent).toBe('codex');
+  });
+
+  it('takes the only agent found as the main one, and refuses one archid cannot find', async () => {
+    const { fleet, store, home } = await boot({ agentsFound: ['codex'] });
+    expect(store.state.mainAgent).toBe('codex');
+    expect(() => fleet.setMainAgent('claude')).toThrow("archid doesn't find claude; install Claude Code, then run archi setup");
+    expect(store.state.mainAgent).toBe('codex');
+    expect(fs.existsSync(resolvePaths(home).config)).toBe(false);
   });
 });

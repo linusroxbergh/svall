@@ -40,6 +40,7 @@ export const handlers: Handlers = {
   'scribe.sweep': async (p, { fleet }) => ({ lines: await fleet.sweep(p) }),
   'scribe.set': (p, { fleet }) => { fleet.setScribe(p.enabled); return {}; },
   'dormancy.set': (p, { fleet }) => { fleet.setDormancy(p.hours); return {}; },
+  'mainAgent.set': (p, { fleet }) => { fleet.setMainAgent(p.agent); return {}; },
   'usage.get': (_p, { usage }) => usage(),
   'mobile.get': (_p, { mobile }) => mobile.get(),
   // an off revokes every device, even one tailscale refused, since the key has turned over: one that asks again has to reach the page first

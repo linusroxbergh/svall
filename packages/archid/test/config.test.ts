@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Config, loadConfig } from '../src/config.js';
+import { Config, loadConfig, saveMainAgent } from '../src/config.js';
 import { newId } from '../src/ids.js';
 import { resolvePaths, userPaths } from '../src/paths.js';
 import { cleanHomes, makeHome } from './helpers.js';
@@ -54,5 +54,41 @@ describe('config and paths', () => {
   it('makes prefixed ids', () => {
     expect(newId('c')).toMatch(/^c_[a-z0-9]{6}$/);
     expect(newId('i')).not.toBe(newId('i'));
+  });
+});
+
+describe('saveMainAgent', () => {
+  const file = () => path.join(makeHome(), 'config.json');
+  it('sets the key and keeps every other one', () => {
+    const f = file();
+    fs.writeFileSync(f, JSON.stringify({ port: 47801, scribe: { model: 'haiku' } }));
+    saveMainAgent(f, 'codex');
+    expect(JSON.parse(fs.readFileSync(f, 'utf8'))).toEqual({ port: 47801, scribe: { model: 'haiku' }, mainAgent: 'codex' });
+    expect(loadConfig(f).mainAgent).toBe('codex');
+  });
+  it('creates the file when there is none', () => {
+    const f = file();
+    saveMainAgent(f, 'claude');
+    expect(loadConfig(f).mainAgent).toBe('claude');
+  });
+  it('refuses a file that does not parse, and leaves it as it was', () => {
+    const f = file();
+    fs.writeFileSync(f, '{ "port": 1,');
+    expect(() => saveMainAgent(f, 'codex')).toThrow(/invalid config/);
+    expect(fs.readFileSync(f, 'utf8')).toBe('{ "port": 1,');
+  });
+  it('writes a linked config.json where it points, keeping its mode', () => {
+    const dir = makeHome();
+    const real = path.join(dir, 'dotfiles.json');
+    const f = path.join(dir, 'config.json');
+    fs.writeFileSync(real, '{}', { mode: 0o600 });
+    fs.symlinkSync(real, f);
+    saveMainAgent(f, 'codex');
+    expect(fs.lstatSync(f).isSymbolicLink()).toBe(true);
+    expect(JSON.parse(fs.readFileSync(real, 'utf8')).mainAgent).toBe('codex');
+    expect(fs.statSync(real).mode & 0o777).toBe(0o600);
+  });
+  it('leaves the scribe agent unset unless it is named', () => {
+    expect(loadConfig(file()).scribe.agent).toBeUndefined();
   });
 });

@@ -59,8 +59,8 @@ describe('codexRunner', () => {
 });
 
 describe('scribe config', () => {
-  it('runs on claude with sonnet unless told otherwise, and leaves the codex model to codex', () => {
-    expect(Config.parse({}).scribe).toEqual({ agent: 'claude' });
+  it('runs on the main agent unless told otherwise, and leaves the codex model to codex', () => {
+    expect(Config.parse({}).scribe).toEqual({});
     expect(Config.parse({ scribe: { agent: 'codex' } }).scribe).toEqual({ agent: 'codex' });
     expect(() => Config.parse({ scribe: { agent: 'cursor' } })).toThrow();
   });
