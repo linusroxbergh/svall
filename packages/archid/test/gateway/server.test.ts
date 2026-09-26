@@ -200,7 +200,7 @@ describe('a fleet authority as its daemon reaches it', () => {
 
   it("asks another machine's gateway over ssh by the route the registry names, and reads its answer or its refusal", async () => {
     const registry = path.join(prefix(), 'machines.json');
-    // as an earlier build wrote it, with the named path roots this one no longer reads
+    // as an earlier build wrote it, with named path roots
     fs.writeFileSync(registry, JSON.stringify({
       machines: {
         [TRIFT]: {

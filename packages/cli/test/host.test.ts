@@ -203,14 +203,14 @@ describe('host add', () => {
   });
 
   it('stops at a far home other than this Mac\'s, naming the commands that make an account whose home is this one', async () => {
-    ssh.reply(['archi-home'], { stdout: '/home/linus\nlinus\n' });
+    ssh.reply(['archi-home'], { stdout: `${ELSEWHERE}\nlinus\n` });
     healthy();
     const registry = MachineRegistry.load(path.join(work, 'config'));
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
     expect(out.result).toBe('actions');
     expect(step('home').at(-1)).toEqual({
       step: 'home', status: 'fail',
-      detail: `/home/linus is linus's home there and ${HOME} is this Mac's; a fleet moves only between accounts with the same home path`,
+      detail: `${ELSEWHERE} is linus's home there and ${HOME} is this Mac's; a fleet moves only between accounts with the same home path`,
       action: `ssh trift.test, then make an account whose home is ${HOME}: sudo mkdir -p ${path.dirname(HOME)}, then sudo useradd -m -d ${HOME} <user> for a new account, or sudo usermod -d ${HOME} -m <user> for an existing one you are not logged in as; then add the machine again at that account`,
     });
     expect(ssh.remoteCalls().some((w) => w.includes('setup') || w.includes('cat > "$1"'))).toBe(false);
