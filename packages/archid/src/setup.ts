@@ -181,9 +181,20 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }
   done.push(`home skills -> ${dotClaude}/skills`);
   // codex reads AGENTS.md, .agents/skills and .codex/rules instead; each start writes them from the same template
   const agentsMd = path.join(dir, 'AGENTS.md');
-  const rules = fs.readFileSync(path.join(template, '.claude/rules/archipelago.md'), 'utf8');
-  writeAtomic(agentsMd, `<!-- archid rewrites this file on every start from .claude/rules/archipelago.md and CLAUDE.md; add your own rules to CLAUDE.md -->\n\n${rules}\n${fs.readFileSync(claudeMd, 'utf8')}`, { perProcess: true });
-  done.push(`home AGENTS.md -> ${agentsMd}`);
+  const agentsHeader = '<!-- archid rewrites this file on every start from .claude/rules/archipelago.md and CLAUDE.md; add your own rules to CLAUDE.md -->';
+  // CLAUDE.md -> AGENTS.md (a common convention) would otherwise make AGENTS.md read, then append, itself
+  if (fs.existsSync(agentsMd) && fs.existsSync(claudeMd) && realDir(agentsMd) === realDir(claudeMd)) {
+    done.push(`home AGENTS.md left alone (same file as CLAUDE.md) -> ${agentsMd}`);
+  } else {
+    if (fs.existsSync(agentsMd) && !fs.readFileSync(agentsMd, 'utf8').startsWith(agentsHeader)) {
+      const backup = `${agentsMd}.bak-${Date.now()}`;
+      fs.copyFileSync(agentsMd, backup);
+      done.push(`backup -> ${backup}`);
+    }
+    const rules = fs.readFileSync(path.join(template, '.claude/rules/archipelago.md'), 'utf8');
+    writeAtomic(agentsMd, `${agentsHeader}\n\n${rules}\n${fs.readFileSync(claudeMd, 'utf8')}`, { perProcess: true });
+    done.push(`home AGENTS.md -> ${agentsMd}`);
+  }
   fs.cpSync(path.join(template, '.claude/skills'), path.join(dir, '.agents/skills'), { recursive: true, force: true });
   done.push(`home codex skills -> ${dir}/.agents/skills`);
   fs.cpSync(path.join(template, '.codex/rules'), path.join(dir, '.codex/rules'), { recursive: true, force: true });

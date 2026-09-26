@@ -464,6 +464,33 @@ describe('runSetup', () => {
     expect(agentsMd()).toContain('Launch every task in a fresh worktree.');
   });
 
+  it('backs up a hand-written AGENTS.md instead of overwriting it', () => {
+    const mc = path.join(makeHome(), 'mc');
+    fs.mkdirSync(mc, { recursive: true });
+    const agentsMd = path.join(mc, 'AGENTS.md');
+    fs.writeFileSync(agentsMd, 'my own codex crew rules');
+    const done = installHomeTemplate(mc, { replaceSettings: false });
+    const backup = done.find((l) => l.startsWith('backup ->') && l.includes('AGENTS.md.bak-'));
+    expect(backup).toBeDefined();
+    expect(fs.readFileSync(backup!.split(' -> ')[1], 'utf8')).toBe('my own codex crew rules');
+    expect(fs.readFileSync(agentsMd, 'utf8')).toContain('archid rewrites this file');
+  });
+
+  it('leaves AGENTS.md alone across runs when CLAUDE.md is a symlink to it, instead of growing it', () => {
+    const mc = path.join(makeHome(), 'mc');
+    fs.mkdirSync(mc, { recursive: true });
+    const agentsMd = path.join(mc, 'AGENTS.md');
+    const claudeMd = path.join(mc, 'CLAUDE.md');
+    fs.writeFileSync(agentsMd, 'shared crew rules');
+    fs.symlinkSync(agentsMd, claudeMd);
+    installHomeTemplate(mc, { replaceSettings: false });
+    const size1 = fs.statSync(agentsMd).size;
+    installHomeTemplate(mc, { replaceSettings: false });
+    const size2 = fs.statSync(agentsMd).size;
+    expect(size2).toBe(size1);
+    expect(fs.readFileSync(agentsMd, 'utf8')).toBe('shared crew rules');
+  });
+
   it('a daemon start refreshes the skills but leaves edited settings alone', () => {
     const home = makeHome();
     const mc = path.join(home, 'mc');
