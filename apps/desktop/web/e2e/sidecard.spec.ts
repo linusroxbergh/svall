@@ -284,7 +284,10 @@ test('a character takes an agent profile in the side card, and the shelf shows w
   const card = page.getByTestId('side-card');
   await expect(card.getByText('Agent instructions', { exact: true })).toBeVisible();
 
-  await card.getByTestId('side-agent-profile').selectOption('reviewer');
+  const pick = card.getByTestId('side-agent-profile');
+  await pick.click();
+  await card.getByTestId('side-agent-profile-opt-reviewer').click();
+  await expect(pick).toHaveText('reviewer');
   await expect.poll(async () => (await archi.api.call('state.get', {})).characters[c.id].agentProfile).toBe('reviewer');
   await expect(card.getByTestId('side-agent-profile-hint')).toContainText('Independently reviews completed code');
   expect((await archi.api.call('char.show', { id: c.id })).text).toContain('Agent profile: reviewer — follow this role.');
@@ -295,7 +298,17 @@ test('a character takes an agent profile in the side card, and the shelf shows w
   await expect(page.locator('.res-editor .cm-content')).toContainText('You are an independent code reviewer.');
   await page.getByTestId('resources-close').click();
 
-  await card.getByTestId('side-agent-profile').selectOption('');
+  // the menu's keys stay out of the page's: Escape shuts the menu and leaves the card open
+  await pick.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(card.getByRole('listbox')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(card.getByRole('listbox')).toHaveCount(0);
+  await expect(card).toBeVisible();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Home');
+  await page.keyboard.press('Enter');
+  await expect(pick).toHaveText('No profile');
   await expect.poll(async () => (await archi.api.call('state.get', {})).characters[c.id].agentProfile).toBeUndefined();
   await expect(card.getByTestId('side-agent-profile-hint')).toHaveCount(0);
 });
@@ -309,8 +322,7 @@ test('a profile whose file is gone is named missing, and the brief goes without 
   await archi.open();
   await page.getByTestId(`sb-char-${c.id}`).click();
   const card = page.getByTestId('side-card');
-  await expect(card.getByTestId('side-agent-profile')).toHaveValue('fleeting');
-  await expect(card.getByTestId('side-agent-profile').locator('option:checked')).toHaveText('fleeting (missing)');
+  await expect(card.getByTestId('side-agent-profile')).toHaveText('fleeting (missing)');
   await expect(card.getByTestId('side-agent-profile-hint')).toHaveText('fleeting.md is not in the agent profiles folder');
   await expect(card.getByTestId('side-agent-profile-view')).toHaveCount(0);
   expect((await archi.api.call('char.show', { id: c.id })).text).not.toContain('Agent profile');

@@ -662,7 +662,8 @@ test('a new agent profile is written in the fleet’s shelf and offered to every
   await archi.open();
   await page.getByTestId(`sb-char-${c.id}`).click();
   const pick = page.getByTestId('side-card').getByTestId('side-agent-profile');
-  await pick.selectOption({ label: 'Manage profiles…' });
+  await pick.click();
+  await page.getByTestId('side-agent-profile-opt-manage').click();
   await expect(page.getByTestId('resources-what-agentProfiles')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('resources-item-agentProfiles-reviewer')).toBeVisible();
 
@@ -681,8 +682,8 @@ test('a new agent profile is written in the fleet’s shelf and offered to every
     .toBe('---\ndescription: Argues against the plan.\n---\nYou argue against every plan you are shown.\n');
 
   await page.getByTestId('resources-close').click();
-  await expect(pick.locator('option', { hasText: 'critic' })).toHaveCount(1);
-  await pick.selectOption('critic');
+  await pick.click();
+  await page.getByTestId('side-agent-profile-opt-critic').click();
   await expect(page.getByTestId('side-agent-profile-hint')).toHaveText('Argues against the plan.');
   await expect.poll(async () => (await archi.api.call('char.show', { id: c.id })).text)
     .toContain('Agent profile: critic — follow this role.\nYou argue against every plan you are shown.');
