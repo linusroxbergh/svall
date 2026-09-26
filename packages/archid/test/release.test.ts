@@ -314,6 +314,10 @@ describe('a release built by the build scripts', () => {
 
     // the signers a signed release is checked against travel with it
     expect(fs.existsSync(path.join(installed.release, 'release/allowed_signers'))).toBe(true);
+    // as do the assets the daemon reads at runtime, the agent profiles a fleet is seeded with among them
+    for (const dir of ['hooks', 'home', 'systemd', 'agent-profiles']) {
+      expect(fs.readdirSync(path.join(installed.release, dir)).sort(), dir).toEqual(fs.readdirSync(path.join(checkout, 'packages/archid', dir)).sort());
+    }
     // and so does the dialog the app's first ssh to a new machine asks through
     expect(fs.statSync(path.join(installed.release, 'bin/archi-askpass')).mode & 0o111).not.toBe(0);
     // and nothing in the release names the machine it was built on

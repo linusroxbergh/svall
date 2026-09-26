@@ -11,7 +11,7 @@ import { build } from 'esbuild';
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const PINS = JSON.parse(fs.readFileSync(path.join(REPO, 'scripts/release/pins.json'), 'utf8'));
 export const VENDOR = path.join(REPO, 'vendor');
-const DIRS = ['bin', 'lib', 'node', 'hooks', 'home', 'systemd', 'web-mobile', 'licenses', 'release'];
+const DIRS = ['bin', 'lib', 'node', 'hooks', 'home', 'systemd', 'agent-profiles', 'web-mobile', 'licenses', 'release'];
 
 const ENTRIES = [
   { name: 'archi', entry: 'packages/cli/src/main.ts' },
@@ -184,6 +184,7 @@ function stageAssets(stage) {
   fs.cpSync(path.join(REPO, 'packages/archid/hooks'), path.join(stage, 'hooks'), { recursive: true });
   fs.cpSync(path.join(REPO, 'packages/archid/home'), path.join(stage, 'home'), { recursive: true });
   fs.cpSync(path.join(REPO, 'packages/archid/systemd'), path.join(stage, 'systemd'), { recursive: true });
+  fs.cpSync(path.join(REPO, 'packages/archid/agent-profiles'), path.join(stage, 'agent-profiles'), { recursive: true });
   fs.copyFileSync(path.join(REPO, 'scripts/release/allowed_signers'), path.join(stage, 'release', 'allowed_signers'));
   const mobile = path.join(REPO, 'apps/desktop/web/dist-mobile');
   if (!fs.existsSync(mobile)) throw new Error(`${mobile} is missing: run pnpm --filter @archipelago/desktop-web build:mobile`);
