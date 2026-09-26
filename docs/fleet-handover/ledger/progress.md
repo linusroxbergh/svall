@@ -718,3 +718,4 @@ Task 42: minor (deferred): m1 no test of two fleets side by side, simultaneous s
 Task 42: complete (commits dff49798..8db67a32, review clean). Plan boxes ticked.
 Rebase checkpoint before the M3b gate (orchestrator): `git rebase origin/main` onto 4067bfea (#24, #25; 9 commits) replayed all 67 branch commits with no conflict. PROTOCOL_VERSION stays 17 (main 16), state v8 (main v7). Verification on the rebased tree: pnpm install --frozen-lockfile ok; typecheck clean; vitest protocol+archid+cli+web+scripts 192 files, 2983 passed, 5 skipped; swift 65, 0 failures; Playwright 155 passed.
 README refreshed: status through Task 42, the M3b gate next, the live environment (m3b-env.md), the Owed list without Tasks 40–42 and with Task 38's must-fix signer check.
+M3b gate: on-machine pass dispatched (opus, brief ledger/m3b-gate-brief.md, HEAD = the commit recording this line; report ledger/m3b-gate-report.md).
