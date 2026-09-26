@@ -92,6 +92,22 @@ runIf('TerminalHub', () => {
     expect(outputText(v)).toContain('echo in-order');
   });
 
+  it('takes Enter or Esc typed into a blocked agent as its answer, and arrows as no answer', async () => {
+    const { hub, store, c } = await boot();
+    const block = (id: string) => store.update((d) => {
+      d.characters[c.id].agent = { kind: 'claude', sessionId: 's', status: 'blocked', promptId: id, prompt: 'may I', lastActivityAt: 1 };
+    });
+    block('q1');
+    await hub.input(c.id, Buffer.from('\x1b[B'));
+    expect(store.state.characters[c.id].agent).toMatchObject({ status: 'blocked', promptId: 'q1' });
+    await hub.input(c.id, Buffer.from('\r'));
+    expect(store.state.characters[c.id].agent?.status).toBe('working');
+    expect(store.state.characters[c.id].agent?.promptId).toBeUndefined();
+    block('q2');
+    await hub.input(c.id, Buffer.from('\x1b'));
+    expect(store.state.characters[c.id].agent?.status).toBe('idle');
+  });
+
   it('seeds the scrollback the caller asked for', async () => {
     const { hub, tmux, c } = await boot();
     const capture = vi.spyOn(tmux, 'capture');
