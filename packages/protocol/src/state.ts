@@ -34,6 +34,8 @@ export const isSessionId = (v: string): boolean => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-
 export const AgentKind = z.enum(['claude', 'codex']);
 export type AgentKind = z.infer<typeof AgentKind>;
 
+export const AGENT_LABEL: Record<AgentKind, string> = { claude: 'Claude Code', codex: 'Codex' };
+
 export const Agent = z.object({
   kind: AgentKind,
   sessionId: z.string(),

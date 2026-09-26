@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import type { AgentKind } from '@archipelago/protocol';
+import { AGENTS, AGENT_KINDS, isExecutable } from './agents.js';
 import { codexHookCommand, codexPaths, mergeCodexHooks, type CodexPaths } from './codex/install.js';
 import { loadConfig } from './config.js';
 import { CLAUDE_HOOKS, hooksFor } from './hooks/receiver.js';
@@ -197,10 +198,6 @@ export type HomeSetup = {
   home: string; label: string; repoRoot: string; launchAgentsDir: string; launchctl: boolean; port?: number;
 };
 
-const isExecutable = (file: string): boolean => {
-  try { fs.accessSync(file, fs.constants.X_OK); return fs.statSync(file).isFile(); } catch { return false; }
-};
-
 // a Homebrew keg's versioned folder goes with the next upgrade, while its opt link stays
 const nodeDirOf = (execPath: string): string => path.dirname(execPath).replace(/\/Cellar\/([^/]+)\/[^/]+\/bin$/, '/opt/$1/bin');
 
@@ -213,7 +210,7 @@ const realDir = (dir: string): string => {
 function daemonPath(nodeDir: string): string {
   const usual = [nodeDir, path.join(os.homedir(), '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'];
   const dirs = (process.env.PATH ?? '').split(':').filter((dir) => path.isAbsolute(dir));
-  const found = ['claude', 'codex'].map((bin) => dirs.find((dir) => isExecutable(path.join(dir, bin))))
+  const found = AGENT_KINDS.map((k) => dirs.find((dir) => isExecutable(path.join(dir, AGENTS[k].bin))))
     .filter((dir) => dir !== undefined).map(realDir);
   const known = new Set(usual.map(realDir));
   return [...new Set([...usual, ...found.filter((dir) => !known.has(dir))])].join(':');

@@ -5,6 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/main.ts",
+    "./agents": "./src/agents.ts",
+    "./claude": "./src/claude.ts",
     "./bundle": "./src/api/bundle.ts",
     "./bin": "./src/bin.ts",
     "./paths": "./src/paths.ts",
