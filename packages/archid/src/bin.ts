@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { NewerStateVersion, OlderStateVersion } from '@archipelago/protocol';
 import { InvalidConfig } from './config.js';
 import { createLogger } from './log.js';
-import { startDaemon, type Daemon } from './main.js';
+import { AlreadyRunning, startDaemon, type Daemon } from './main.js';
 import { archiHome, resolvePaths } from './paths.js';
 
 const home = archiHome();
@@ -40,7 +40,9 @@ async function start(): Promise<Daemon> {
 }
 
 const daemon = await start().catch((e: Error) => {
-  report(`archid failed to start: ${e.message}`, `archid failed to start: ${e.stack ?? String(e)}`);
+  // the log is the running daemon's, so a refused second one says why only where it was started
+  if (e instanceof AlreadyRunning) process.stderr.write(`${e.message}\n`);
+  else report(`archid failed to start: ${e.message}`, `archid failed to start: ${e.stack ?? String(e)}`);
   process.exit(1);
 });
 const shutdown = async (sig: string) => { log.info(`received ${sig}`); await daemon.stop(); process.exit(0); };

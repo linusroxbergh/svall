@@ -101,7 +101,7 @@ runIf('one daemon per home', () => {
     await (await start({ home, port: 0, log: silentLogger })).stop();
   });
 
-  it('leaves the running daemon\'s log unrotated when archid is started again for its home', async () => {
+  it('leaves the running daemon\'s log as it was, unrotated and with nothing added, when archid is started again for its home', async () => {
     const home = fleetHome();
     const paths = resolvePaths(home);
     const first = await start({ home, port: 0, log: silentLogger });
@@ -112,8 +112,7 @@ runIf('one daemon per home', () => {
         .then(() => 0, (e: { code: number }) => e.code);
       expect(r).toBe(1);
       expect(fs.existsSync(`${paths.log}.1`)).toBe(false);
-      expect(fs.readFileSync(paths.log, 'utf8').slice(0, big)).toBe('x'.repeat(big));
-      expect(fs.readFileSync(paths.log, 'utf8')).toMatch(/archid is already running for/);
+      expect(fs.readFileSync(paths.log, 'utf8')).toBe('x'.repeat(big));
     } finally {
       await first.stop();
     }

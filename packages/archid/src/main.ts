@@ -54,7 +54,8 @@ export function readOrCreateToken(file: string): string {
 // macOS's O_EXLOCK, which node names no constant for
 const O_EXLOCK = 0x20;
 
-const alreadyRunning = (home: string): Error => new Error(`archid is already running for ${home}`);
+export class AlreadyRunning extends Error {}
+const alreadyRunning = (home: string): Error => new AlreadyRunning(`archid is already running for ${home}`);
 
 // a kernel lock: it holds until it is let go or the daemon dies, however it dies
 function lockHome(home: string): Promise<() => void> {
