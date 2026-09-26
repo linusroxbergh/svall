@@ -27,15 +27,15 @@ export function worldBounds(islands: Island[], floor?: number): Bounds {
 }
 
 // the largest scale in [theme.scale.min, theme.scale.max] at which the world fits inside the fit insets,
-// centred both ways in the window
+// centred both ways in the room they leave
 export function fitAll(islands: Island[], win: { w: number; h: number }, floor?: number): Layout {
   const b = worldBounds(islands, floor);
-  const cell = theme.cell;
+  const cell = theme.cell, { x, top, bottom } = theme.fit;
   const ww = b.w * cell, wh = b.h * cell;
-  const raw = Math.min((win.w - 2 * theme.fit.insetX) / ww, (win.h - 2 * theme.fit.insetY) / wh);
+  const raw = Math.min((win.w - 2 * x) / ww, (win.h - top - bottom) / wh);
   const scale = Math.min(theme.scale.max, Math.max(theme.scale.min, raw));
   const ox = (win.w - ww * scale) / 2 - b.x * cell * scale;
-  const oy = (win.h - wh * scale) / 2 - b.y * cell * scale;
+  const oy = top + (win.h - top - bottom - wh * scale) / 2 - b.y * cell * scale;
   return { scale, tile: cell, ox, oy };
 }
 

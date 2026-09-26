@@ -264,8 +264,8 @@ export function Map() {
     if (anchor) {
       // Keep the released grip still while zooming, as far as the fitted world can remain in view.
       const b = worldBounds(islands, home?.position.y), s = fit.scale;
-      const axis = (wanted: number, start: number, length: number, size: number, inset: number, fallback: number) => {
-        const lo = size - inset - (start + length) * s, hi = inset - start * s;
+      const axis = (wanted: number, start: number, length: number, size: number, near: number, far: number, fallback: number) => {
+        const lo = size - far - (start + length) * s, hi = near - start * s;
         if (lo <= hi) return Math.max(lo, Math.min(hi, wanted));
         // At the minimum zoom a large fleet may still exceed the room; retain the release anchor
         // while keeping at least the map's normal panning margin in reach.
@@ -274,8 +274,8 @@ export function Map() {
         return panLo <= panHi ? Math.max(panLo, Math.min(panHi, wanted)) : fallback;
       };
       next = { ...fit,
-        ox: axis(anchor.screen.x - anchor.world.x * fit.scale, b.x * theme.cell, b.w * theme.cell, win.w, theme.fit.insetX, fit.ox),
-        oy: axis(anchor.screen.y - anchor.world.y * fit.scale, b.y * theme.cell, b.h * theme.cell, win.h, theme.fit.insetY, fit.oy) };
+        ox: axis(anchor.screen.x - anchor.world.x * fit.scale, b.x * theme.cell, b.w * theme.cell, win.w, theme.fit.x, theme.fit.x, fit.ox),
+        oy: axis(anchor.screen.y - anchor.world.y * fit.scale, b.y * theme.cell, b.h * theme.cell, win.h, theme.fit.top, theme.fit.bottom, fit.oy) };
       pan.current = { x: next.ox - fit.ox, y: next.oy - fit.oy };
     } else {
       pan.current = clampPan(islands, fit, win, pan.current, home?.position.y);
@@ -339,8 +339,8 @@ export function Map() {
   const arrange = (automatic = false) => {
     const el = host.current;
     if (!el || (automatic && app.store.getState().status !== 'online')) return;
-    const w = el.clientWidth - 2 * theme.fit.insetX;
-    const h = el.clientHeight - homeReserve(Boolean(homeIsland(app.store.getState().fleet)?.collapsed)) - 2 * theme.fit.insetY;
+    const w = el.clientWidth - 2 * theme.fit.x;
+    const h = el.clientHeight - homeReserve(Boolean(homeIsland(app.store.getState().fleet)?.collapsed)) - theme.fit.top - theme.fit.bottom;
     if (w <= 0 || h <= 0) return;
     const aspect = w / h;
     if (automatic && aspect < MIN_ARRANGE_ASPECT) return;

@@ -4,7 +4,8 @@ export const theme = {
   coast: { n: 4.5, wobble: 0.08 },
   pad: 132,                       // 3 * cell, drawing room around an island
   scale: { min: 0.42, max: 1.5 },
-  fit: { insetX: 56, insetY: 66 },
+  // screen px the fit keeps clear of the world: the top clears the wordmark, mission control keeps its own water below
+  fit: { x: 24, top: 56, bottom: 0 },
   bounds: { left: 1.4, right: 1.4, top: 1.3, bottom: 1.3 },  // cells; top reserves the island label
   panMargin: 40,
   fitEaseMs: 200,
