@@ -422,11 +422,12 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
     let far: { home: string; user: string } | undefined;
     try {
       far = await homeProbe(master);
-      checks.push(far.home === entry.record.home ? { name: 'home', status: 'ok', detail: `${far.home} for ${far.user}` } : {
-        name: 'home', status: 'fail',
-        detail: `${far.home} is ${far.user}'s home on ${entry.record.name}, and the registry records ${entry.record.home}; `
-          + `archi host remove ${entry.record.name}, then archi host add again at an account whose home is ${d.registry.localMachine().home}`,
-      });
+      const [n, mine] = [entry.record.name, d.registry.localMachine().home];
+      const wrong = far.home !== entry.record.home ? `${far.home} is ${far.user}'s home on ${n}, and the registry records ${entry.record.home}`
+        : far.home !== mine ? `${far.home} is ${far.user}'s home on ${n} and ${mine} is this Mac's; a fleet moves only between accounts with the same home path`
+          : undefined;
+      checks.push(wrong ? { name: 'home', status: 'fail', detail: `${wrong}; archi host remove ${n}, then archi host add again at an account whose home is ${mine}` }
+        : { name: 'home', status: 'ok', detail: `${far.home} for ${far.user}` });
     } catch (err) { checks.push(failed('home', err)); }
     if (far && !checks.some((c) => c.name === 'linger')) {
       try {

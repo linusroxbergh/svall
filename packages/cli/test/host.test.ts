@@ -398,11 +398,11 @@ describe('host add', () => {
 });
 
 describe('host doctor', () => {
-  const registered = (): MachineRegistry => {
+  const registered = (home = HOME): MachineRegistry => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.add({
       name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64',
-      home: HOME, archiBase: BASE, gateway: false,
+      home, archiBase: BASE, gateway: false,
     }, REMOTE);
     return registry;
   };
@@ -466,6 +466,19 @@ describe('host doctor', () => {
     expect(await home()).toEqual({
       name: 'home', status: 'fail',
       detail: `${ELSEWHERE} is linus's home on trift, and the registry records ${HOME}; archi host remove trift, then archi host add again at an account whose home is ${HOME}`,
+    });
+  });
+
+  it('fails the home of a machine an earlier build registered at a home other than this Mac\'s', async () => {
+    ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
+    ssh.reply(['archi-space'], { stdout: DF });
+    ssh.reply(['archi-home'], { stdout: `${ELSEWHERE}\nlinus\n` });
+    const report = await doctorHost('trift', deps({ registry: registered(ELSEWHERE) }));
+    expect(report.checks.find((c) => c.name === 'home')).toEqual({
+      name: 'home', status: 'fail',
+      detail: `${ELSEWHERE} is linus's home on trift and ${HOME} is this Mac's; a fleet moves only between accounts with the same home path; `
+        + `archi host remove trift, then archi host add again at an account whose home is ${HOME}`,
     });
   });
 
