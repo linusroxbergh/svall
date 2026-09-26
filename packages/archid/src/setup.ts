@@ -4,12 +4,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import type { AgentKind } from '@archipelago/protocol';
+import { OwnerRecord, type AgentKind, type MachineId } from '@archipelago/protocol';
 import { AGENTS, AGENT_KINDS, isExecutable, onPath } from './agents.js';
 import { codexHookCommand, codexPaths, mergeCodexHooks, type CodexPaths } from './codex/install.js';
 import { initConfig, loadConfig } from './config.js';
 import { CLAUDE_HOOKS, hooksFor } from './hooks/receiver.js';
 import { writeAtomic } from './jsonfile.js';
+import { machineId } from './machine.js';
 import { LAUNCHD_LABEL } from './profile.js';
 import { HOOK_GUARD, HOOK_SCRIPT, claudePaths, expandHome, isOurs, resolvePaths, type Paths } from './paths.js';
 import { hooksDir, homeTemplateDir } from './release.js';
@@ -438,6 +439,13 @@ function writeShims(shimDir: string, o: RunFrom): string[] {
   });
 }
 
+// the machine this fleet's ownership record names, when it is not this one
+function ownedElsewhere(paths: Paths): MachineId | undefined {
+  let owner: MachineId;
+  try { owner = OwnerRecord.parse(JSON.parse(fs.readFileSync(paths.owner, 'utf8'))).ownerMachineId; } catch { return undefined; }
+  return owner === machineId() ? undefined : owner;
+}
+
 export function setupUser(o: RunFrom & { home: string; settings?: JsonSettings; codex: CodexPaths; codexHooks?: JsonSettings; shimDir: string; replaceSettings?: boolean }): string[] {
   const paths = resolvePaths(o.home);
   // a first install runs from a staging copy that is deleted after it, so the hooks name the installed node
@@ -450,7 +458,10 @@ export function setupUser(o: RunFrom & { home: string; settings?: JsonSettings; 
   // the home folder comes last and never fails the run: an unreadable config or an unwritable cwd
   // must not cost the user the hooks, the plist and the shim
   try {
-    done.push(...installHomeTemplate(loadConfig(paths).home.cwd, { replaceSettings: o.replaceSettings === true }));
+    // mission control's folder travels with the fleet, so only the machine that owns it writes there
+    const owner = ownedElsewhere(paths);
+    if (owner) done.push(`home folder left as it is, as ${owner} owns this fleet`);
+    else done.push(...installHomeTemplate(loadConfig(paths).home.cwd, { replaceSettings: o.replaceSettings === true }));
   } catch (e) {
     done.push(`home folder skipped: ${(e as Error).message}`);
   }

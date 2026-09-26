@@ -1,11 +1,18 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { FleetId, MachineId } from '@archipelago/protocol';
 import { rollbackRelease } from '../../../scripts/install-release.mjs';
 import { codexPaths } from '../src/codex/install.js';
+import { DEFAULT_EXCLUDES, rootMatcher } from '../src/handover/inventory.js';
+import { scanPath } from '../src/handover/manifest.js';
+import { ReplicaStore } from '../src/handover/replicas.js';
 import { archidUnit, gatewayUnit, probeOrRollback, setupLinux, setupLinuxRelease, unitDirOf } from '../src/linux/setup.js';
 import { SystemdError, daemonReload, enableUnit, lingerState, unitStatus, type Run } from '../src/linux/service.js';
+import { machineId } from '../src/machine.js';
+import { resolvePaths } from '../src/paths.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 afterEach(cleanHomes);
@@ -206,6 +213,39 @@ describe('setupLinux', () => {
       ['loginctl', 'show-user', 'linus', '--property=Linger'],
     ]);
     expect(done.some((l) => l.includes('loginctl enable-linger linus'))).toBe(true);
+  });
+
+  it('leaves mission control\'s folder as it is where the fleet is owned elsewhere, so the next handover takes it as it stands', async () => {
+    const f = installed();
+    const mc = path.join(f.root, 'mc');
+    // an older release's folder, the same as the owner's
+    for (const [file, text] of [['CLAUDE.md', 'mission control\n'], ['.claude/rules/archipelago.md', 'older rules\n']]) {
+      fs.mkdirSync(path.dirname(path.join(mc, file)), { recursive: true });
+      fs.writeFileSync(path.join(mc, file), text);
+    }
+    const snapshot = (): Record<string, string> => Object.fromEntries((fs.readdirSync(mc, { recursive: true }) as string[]).sort().map((file) => {
+      const at = path.join(mc, file);
+      const st = fs.statSync(at);
+      return [file, st.isDirectory() ? 'dir' : `${crypto.createHash('sha256').update(fs.readFileSync(at)).digest('hex').slice(0, 16)}:${st.mtimeMs}`];
+    }));
+    const before = snapshot();
+    const incoming = (await scanPath(mc, rootMatcher('home', [...DEFAULT_EXCLUDES])))!.files;
+    const paths = resolvePaths(f.home);
+    const fleetId = FleetId.parse('11111111-2222-3333-4444-555555555555');
+    fs.writeFileSync(paths.owner, JSON.stringify({ fleetId, generation: 2, ownerMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f') }));
+
+    const { done } = await setupLinux(f.o);
+    expect(snapshot()).toEqual(before);
+    expect(done).toContain('home folder left as it is, as 42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f owns this fleet');
+    const root = { id: 'r_home', kind: 'home' as const, entry: 'dir' as const, path: mc };
+    expect(await new ReplicaStore({ fleetId, paths }).claim(root, { transactionId: 'tx-3', excludes: [...DEFAULT_EXCLUDES], incoming }))
+      .toMatchObject({ ok: true, kind: 'replica' });
+
+    // the owner's own setup brings the folder up to date
+    fs.writeFileSync(paths.owner, JSON.stringify({ fleetId, generation: 3, ownerMachineId: machineId() }));
+    await setupLinux(f.o);
+    expect(fs.readFileSync(path.join(mc, '.claude/rules/archipelago.md'), 'utf8')).not.toBe('older rules\n');
+    expect(fs.existsSync(path.join(mc, 'AGENTS.md'))).toBe(true);
   });
 
   it('keeps the files it wrote when the machine has no systemd, and says so', async () => {
