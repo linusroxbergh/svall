@@ -6,10 +6,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import {
   FleetConfig, FleetId, FleetState, Home, MachineId, emptyState,
-  type Character, type Event, type LandedRoot, type OwnerRecord, type ParsedParams, type TransferManifestV1,
+  type Character, type Event, type Island, type LandedRoot, type OwnerRecord, type ParsedParams, type TransferManifestV1,
 } from '@archipelago/protocol';
+import { readAgentProfile } from '../../src/agent-profiles.js';
 import { startApi } from '../../src/api/server.js';
 import { Config, loadConfig } from '../../src/config.js';
+import { docFolders, docsDir, fleetDir, repoSlug } from '../../src/docs.js';
 import { Fleet } from '../../src/fleet.js';
 import { DestinationJournal, openJournal, type HandoverJournal } from '../../src/handover/journal.js';
 import { SealRecord, type DestinationDeps } from '../../src/handover/destination.js';
@@ -1724,6 +1726,63 @@ describe('destination complete', () => {
     for (const r of replicaRoots(s.manifest)) {
       expect(await replicas.inspect(r, { transactionId: 'tx-2', excludes: s.manifest.excludes }), r.path).toMatchObject({ ok: true, kind: 'replica' });
     }
+  });
+});
+
+describe("a moved fleet's docs and agent profiles", () => {
+  it('are found on the destination by the same keys and names as on the source, and sealed for the way back', async () => {
+    const base = fs.realpathSync(makeHome());
+    // the home path both machines share, the fleet home in it, and where the Mac's tree is set aside once the fleet has left it
+    const dst = path.join(base, 'home');
+    const home = path.join(dst, '.archipelago');
+    const aside = path.join(base, 'mac');
+    const repo = path.join(dst, 'work/app');
+    for (const d of [repo, path.join(dst, 'mc'), home]) fs.mkdirSync(d, { recursive: true });
+    const paths = resolvePaths(home);
+    const island: Island = { id: 'i_work', name: 'work', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
+    // a folder with no Git in it keys its repository docs as a main checkout would: by its absolute path
+    const ada = char('c_ada', repo, { islandId: island.id, agentProfile: 'reviewer' });
+    // the Mac's docs at every tier, each keyed as docs.ts keys it, and the profile ada names
+    const tiers = { fleet: fleetDir(paths.docs), repo: docsDir(paths.docs, 'repo', repoSlug(repo)), island: docsDir(paths.docs, 'island', island.id), character: docsDir(paths.docs, 'character', ada.id) };
+    for (const [tier, dir] of Object.entries(tiers)) {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, `${tier}.md`), `---\ndescription: the ${tier} doc\n---\n${tier} notes\n`);
+    }
+    fs.mkdirSync(paths.agentProfiles);
+    fs.writeFileSync(path.join(paths.agentProfiles, 'reviewer.md'), '---\ndescription: reviews\n---\nReview every change.\n');
+    const state = emptyState();
+    state.islands[island.id] = island;
+    state.characters[ada.id] = rested(ada);
+    const fleet = FleetConfig.parse({ id: fleetId, gatewayMachineId: trift, home: { cwd: '~/mc' } });
+    const inventory = buildInventory(state, { fleet }, { source: { machineId: mac, home: dst, fleetHome: home }, destination: { machineId: trift, home: dst, fleetHome: home } });
+    const built = await buildManifest(inventory, { transactionId: TX, generation: 4 });
+    expect(built.blockers).toEqual([]);
+
+    // the fleet leaves the Mac, fleet home and all: this disk is trift's, whose fleet home holds only its own records
+    fs.renameSync(dst, aside);
+    fs.mkdirSync(home, { recursive: true });
+    fs.writeFileSync(paths.fleetConfig, JSON.stringify(FleetConfig.parse({ id: fleetId, gatewayMachineId: trift })));
+    fs.writeFileSync(paths.owner, JSON.stringify({ fleetId, generation: 4, ownerMachineId: mac }));
+    const store = Store.load(paths.state, () => {});
+    const landed = await transfer(paths, built.manifest, (p) => path.join(aside, path.relative(dst, p)));
+    const s = { paths, store, probes: [], manifest: built.manifest };
+    const d = daemon(s);
+    const { preparedDigest } = await d.handover.prepare({ transactionId: TX, generation: 5, manifest: { ...built.manifest, transactionId: TX }, manifestDigest: manifestDigest(built.manifest), landed });
+    d.gateway.commit(preparedDigest);
+    await d.handover.activate({ transactionId: TX, generation: 5 });
+    await d.handover.complete({ transactionId: TX, generation: 5 });
+
+    const moved = store.state.characters[ada.id];
+    expect(moved.agentProfile).toBe('reviewer');
+    expect(readAgentProfile(paths.agentProfiles, 'reviewer')).toEqual({ name: 'reviewer', description: 'reviews', body: 'Review every change.' });
+    expect(docFolders(paths.docs, store.state.islands[island.id], moved).map((f) => [f.tier, f.dir, f.docs.map((x) => x.description)])).toEqual([
+      ['fleet', tiers.fleet, ['the fleet doc']], ['repo', tiers.repo, ['the repo doc']], ['island', tiers.island, ['the island doc']], ['character', tiers.character, ['the character doc']],
+    ]);
+    const replicas = new ReplicaStore({ fleetId, paths });
+    for (const r of replicaRoots(built.manifest).filter((x) => x.kind === 'docs' || x.kind === 'profiles')) {
+      expect(await replicas.inspect(r, { transactionId: 'tx-2', excludes: built.manifest.excludes }), r.path).toMatchObject({ ok: true, kind: 'replica' });
+    }
+    expect(replicaRoots(built.manifest).map((r) => r.kind).sort()).toEqual(['cwd', 'docs', 'home', 'profiles']);
   });
 });
 

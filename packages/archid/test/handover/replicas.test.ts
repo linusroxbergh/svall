@@ -501,19 +501,37 @@ describe('real paths', () => {
     expect(fs.existsSync(path.join(w.home, 'keys'))).toBe(false);
   });
 
-  it("refuses mission control's folder or the fleet .env when a link leads them elsewhere in the fleet home", async () => {
+  it("refuses mission control's folder, the fleet .env, docs or agent profiles when a link leads them elsewhere in the fleet home", async () => {
     const w = world();
     fs.mkdirSync(path.join(w.home, 'keys'));
     fs.writeFileSync(path.join(w.home, 'token'), 'secret');
     fs.symlinkSync(path.join(w.home, 'keys'), path.join(w.home, 'home'));
     fs.symlinkSync(path.join(w.home, 'token'), path.join(w.home, '.env'));
+    fs.symlinkSync(path.join(w.home, 'keys'), w.paths.docs);
+    fs.symlinkSync(path.join(w.home, 'keys'), w.paths.agentProfiles);
     const store = w.store();
     const mission: ReplicaRoot = { id: 'r_home', kind: 'home', entry: 'dir', path: path.join(w.home, 'home') };
     const env: ReplicaRoot = { id: 'r_env', kind: 'env', entry: 'file', path: path.join(w.home, '.env') };
-    for (const root of [mission, env]) {
+    const docs: ReplicaRoot = { id: 'r_docs', kind: 'docs', entry: 'dir', path: w.paths.docs };
+    const profiles: ReplicaRoot = { id: 'r_profiles', kind: 'profiles', entry: 'dir', path: w.paths.agentProfiles };
+    for (const root of [mission, env, docs, profiles]) {
       expect(await store.claim(root, claimFor(TX))).toMatchObject({ ok: false, blocker: { code: 'path_unsupported' } });
     }
     expect(fs.readFileSync(path.join(w.home, 'token'), 'utf8')).toBe('secret');
+  });
+
+  it('claims the fleet\'s docs and agent profiles at their own paths in the fleet home, and nowhere else in it', async () => {
+    const w = world();
+    const store = w.store();
+    const docs: ReplicaRoot = { id: 'r_docs', kind: 'docs', entry: 'dir', path: w.paths.docs };
+    const profiles: ReplicaRoot = { id: 'r_profiles', kind: 'profiles', entry: 'dir', path: w.paths.agentProfiles };
+    for (const root of [{ ...docs, path: w.paths.handoverDir }, { ...docs, path: w.paths.agentProfiles }, { ...profiles, path: w.paths.docs }, { ...profiles, path: path.join(w.home, 'hooks') }]) {
+      expect(await store.claim(root, claimFor(TX))).toMatchObject({ ok: false, blocker: { code: 'path_unsupported' } });
+    }
+    expect(fs.readdirSync(w.home)).toEqual([]);
+    expect(await store.claim(docs, claimFor(TX))).toMatchObject({ ok: true, kind: 'absent' });
+    expect(await store.claim(profiles, claimFor(TX))).toMatchObject({ ok: true, kind: 'absent' });
+    expect(fs.statSync(w.paths.docs).isDirectory() && fs.statSync(w.paths.agentProfiles).isDirectory()).toBe(true);
   });
 });
 

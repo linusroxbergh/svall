@@ -178,8 +178,9 @@ export type TransferFile = z.infer<typeof TransferFile>;
  */
 export const TransferRoot = z.object({
   id: z.string().min(1),
-  // `gitdir` is a common Git directory outside any checkout it serves, which no exclude reaches into
-  kind: z.enum(['repo', 'worktree', 'gitdir', 'cwd', 'home', 'context', 'env']),
+  // `gitdir` is a common Git directory outside any checkout it serves, which no exclude reaches into; `docs` and
+  // `profiles` are the entity docs and agent profiles in the fleet home
+  kind: z.enum(['repo', 'worktree', 'gitdir', 'cwd', 'home', 'context', 'env', 'docs', 'profiles']),
   entry: z.enum(['dir', 'file']),
   path: z.string(),
   foldedInto: z.string().min(1).optional(),

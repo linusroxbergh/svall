@@ -105,7 +105,7 @@ export function excludeMatcher(patterns: readonly string[], kept?: ReadonlySet<s
 
 type Kind = TransferRoot['kind'];
 // the kind a path takes when fields of more than one kind name it
-const RANK: Kind[] = ['repo', 'worktree', 'gitdir', 'home', 'cwd', 'context'];
+const RANK: Kind[] = ['repo', 'worktree', 'gitdir', 'docs', 'profiles', 'home', 'cwd', 'context'];
 
 // what each field makes of the path it names; `repo.root` is a root of its own only in a linked worktree
 const ROOT_OF: Record<string, Kind> = {
@@ -126,14 +126,14 @@ type FleetHomes = { source: string; sourceReal: string; destination: string };
 
 /**
  * The fleet home a root would carry or overwrite, if any: a fleet home holds its machine's token, keys,
- * journal and node.json. Mission control's cwd lies inside it by design, and so may anything inside that.
+ * journal and node.json. What of it travels, `travels`, lies inside it by design, and so may anything inside that.
  */
-function fleetHomeClash(root: InventoryRoot, mission: InventoryRoot | undefined, homes: FleetHomes): string | undefined {
+function fleetHomeClash(root: InventoryRoot, travels: readonly InventoryRoot[], homes: FleetHomes): string | undefined {
   const places: [home: string, named: string][] = [[homes.source, homes.source], [homes.sourceReal, homes.source], [homes.destination, homes.destination]];
   const held = places.find(([home]) => holds(root.path, home));
   if (held) return held[1];
-  const inMission = mission !== undefined && holds(mission.path, root.path);
-  return inMission ? undefined : places.find(([home]) => holds(home, root.path))?.[1];
+  const inside = travels.some((t) => holds(t.path, root.path));
+  return inside ? undefined : places.find(([home]) => holds(home, root.path))?.[1];
 }
 
 // what is on disk decides how a root folds; a path that is not there folds as a folder
@@ -209,13 +209,22 @@ export function buildInventory(state: FleetState, configs: InventoryConfigs, mac
     if (!g.main || !holds(g.main.path, g.commonDir)) roots.push([g.commonDir, 'gitdir']);
     for (const [p, kind] of roots) if (real(p, entity)) offer(p, kind);
   }
+  // the fleet's docs and agent profiles lie in its fleet home, and arrive at the same path in the destination's
+  const own = resolvePaths(source.fleetHome);
+  const theirs = resolvePaths(destination.fleetHome);
+  for (const [kind, p, there, what] of [['docs', own.docs, theirs.docs, 'docs'], ['profiles', own.agentProfiles, theirs.agentProfiles, 'agent profiles']] as const) {
+    if (!fs.existsSync(p)) continue;
+    if (there !== p) blockers.push({ code: 'path_unsupported', message: `the destination keeps this fleet's ${what} at ${there}, not ${p}, so they cannot arrive at the same path` });
+    else if (real(p, undefined)) offer(p, kind);
+  }
 
-  // the fleet .env is the one file of a fleet home that may move, and it is added below only when asked for
+  // of a fleet home, mission control's folder, the docs and the agent profiles travel, and the fleet .env below only when asked for
   const homes: FleetHomes = { source: path.posix.resolve(source.fleetHome), sourceReal: realPath(path.posix.resolve(source.fleetHome)), destination: path.posix.resolve(destination.fleetHome) };
   const placed = [...candidates.values()];
-  const mission = placed.find((r) => r.kind === 'home' && !fleetHomeClash(r, r, homes));
+  const mission = placed.find((r) => r.kind === 'home' && !fleetHomeClash(r, [r], homes));
+  const travels = placed.filter((r) => r === mission || r.kind === 'docs' || r.kind === 'profiles');
   const allowed = placed.filter((r) => {
-    const fleetHome = fleetHomeClash(r, mission, homes);
+    const fleetHome = fleetHomeClash(r, travels, homes);
     if (fleetHome) blockers.push({ code: 'path_unsupported', message: `${r.path} overlaps the fleet home ${fleetHome}, whose token, keys and node.json stay on their machine`, entity: { kind: 'root', id: r.id } });
     return !fleetHome;
   });

@@ -304,8 +304,8 @@ export class ReplicaStore {
   }
 
   /**
-   * The fleet home a root would hold or lie in, by real path. The fleet's .env and mission control's folder
-   * may lie in it, reached through no link that leads elsewhere in it.
+   * The fleet home a root would hold or lie in, by real path. Mission control's folder, and the fleet's .env, docs
+   * and agent profiles at their own paths, may lie in it, reached through no link that leads elsewhere in it.
    */
   private clash(root: ReplicaRoot, at: string): string | undefined {
     const home = this.canonical(this.opts.paths.home);
@@ -314,7 +314,9 @@ export class ReplicaStore {
     const lexicalHome = path.posix.resolve(this.opts.paths.home);
     const lexical = path.posix.resolve(root.path);
     const direct = holds(lexicalHome, lexical) && at === path.posix.join(home, path.posix.relative(lexicalHome, lexical));
-    const allowed = root.kind === 'home' || (root.kind === 'env' && lexical === path.posix.resolve(this.opts.paths.env));
+    const { env, docs, agentProfiles } = this.opts.paths;
+    const place = ({ env, docs, profiles: agentProfiles } as Partial<Record<ReplicaRoot['kind'], string>>)[root.kind];
+    const allowed = root.kind === 'home' || (place !== undefined && lexical === path.posix.resolve(place));
     return direct && allowed ? undefined : home;
   }
 

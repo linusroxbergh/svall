@@ -376,7 +376,8 @@ Preflight creates an immutable, versioned manifest containing:
 
 - the source fleet generation and complete state snapshot;
 - the portable `fleet.json`;
-- the fleet's entity docs: fleet, island, character and repo docs under the fleet home;
+- the fleet's entity docs and agent profiles: fleet, island, character and repo docs, and the
+  `agent-profiles` folder, under the fleet home;
 - repository graphs described below;
 - non-repository character cwd roots;
 - `home.cwd`;

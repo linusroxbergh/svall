@@ -323,6 +323,37 @@ describe('buildInventory', () => {
     }]);
   });
 
+  it('carries the fleet\'s docs and agent profiles from its fleet home, only to the same path in the destination\'s', () => {
+    const s = seed();
+    const fleetHome = path.join(s.mac, '.archipelago');
+    const doc = path.join(fleetHome, 'docs/fleet/conventions.md');
+    fs.mkdirSync(path.dirname(doc), { recursive: true });
+    fs.writeFileSync(doc, 'conventions\n');
+    fs.mkdirSync(path.join(fleetHome, 'agent-profiles'));
+    fs.writeFileSync(path.join(fleetHome, 'agent-profiles/reviewer.md'), 'Review.\n');
+    // a doc a character keeps as context rides in the docs, as no overlap of the fleet home
+    s.state.characters.w2.context.push({ kind: 'file', ref: doc, label: '', source: 'manual' });
+    const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
+    expect(inv.blockers).toEqual([]);
+    expect(inv.roots.filter((r) => r.path.startsWith(`${fleetHome}/`)).map((r) => [r.kind, path.relative(fleetHome, r.path), r.entry])).toEqual([
+      ['profiles', 'agent-profiles', 'dir'], ['docs', 'docs', 'dir'], ['home', 'home', 'dir'],
+    ]);
+
+    s.maps.destination.fleetHome = path.join(s.mac, '.archipelago-work');
+    const elsewhere = buildInventory(s.state, { fleet: FLEET }, s.maps);
+    expect(elsewhere.roots.filter((r) => r.kind === 'docs' || r.kind === 'profiles')).toEqual([]);
+    const there = path.join(s.mac, '.archipelago-work');
+    expect(elsewhere.blockers.map((b) => b.message)).toEqual(expect.arrayContaining([
+      `the destination keeps this fleet's docs at ${there}/docs, not ${fleetHome}/docs, so they cannot arrive at the same path`,
+      `the destination keeps this fleet's agent profiles at ${there}/agent-profiles, not ${fleetHome}/agent-profiles, so they cannot arrive at the same path`,
+    ]));
+  });
+
+  it('carries no docs or agent profiles a fleet home does not hold', () => {
+    const s = seed();
+    expect(buildInventory(s.state, { fleet: FLEET }, s.maps).roots.filter((r) => r.kind === 'docs' || r.kind === 'profiles')).toEqual([]);
+  });
+
   it('comes out the same whatever order the characters were added in', () => {
     const s = seed();
     const reversed: State = { ...s.state, characters: Object.fromEntries(Object.entries(s.state.characters).reverse()) };
