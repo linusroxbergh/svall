@@ -188,7 +188,7 @@ describe('dispatchKey', () => {
   it('Cmd+Shift+A asks the map for an arrange, and on the board leaves the fleet be', async () => {
     const c = ctx();
     await dispatchKey({ type: 'arrange' }, c);
-    expect(c.store.getState().arrangeAsk).toBe(true);
+    expect(c.store.getState().arrangeAsk).toBe('key');
     c.store.getState().arranged();
     c.store.getState().setView('board');
     await dispatchKey({ type: 'arrange' }, c);

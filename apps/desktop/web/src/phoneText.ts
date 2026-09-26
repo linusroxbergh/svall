@@ -12,6 +12,6 @@ export function phonesHere(phones: PhoneSession[] = [], none = 'nobody has this 
   }).join(' · ');
 }
 
-export const NO_PAGE = 'This checkout has no phone page built. Turn the switch off and on to build one, then turn notifications on again on each phone.';
+export const NO_PAGE = 'No phone page built. Turn the switch off and on to build it, then re-enable notifications on each phone.';
 
-export const OFF = 'Turn this on to reach this fleet from your phone, over your tailnet only. After you turn it off, turn notifications on again on each phone (⚙ → Notify this phone). If this checkout has no phone page built yet, the first start takes a few minutes.';
+export const OFF = 'Reach this fleet from your phone, over your tailnet only. The first start can take a few minutes. After turning it off, re-enable notifications on each phone.';

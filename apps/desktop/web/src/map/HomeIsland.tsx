@@ -98,15 +98,14 @@ export function Home({
           <b>{island.name}</b>
           <span className="ct">{count || 'empty'}</span>
         </div>
-        <button className="hact" data-testid="home-arrange" title="Fit every island to its crew and pack the fleet together"
+        <button className="hact" data-testid="home-arrange" title="Fit islands to their crews and pack them together"
           onPointerDown={stop} onClick={onArrange}>arrange</button>
         {config.actions.map((a, i) => (
           <button key={`${a.label}-${i}`} className="hact" data-testid={`home-action-${a.label}`} disabled={busy !== undefined}
             onPointerDown={stop} onClick={() => press(a)}>{a.label}</button>
         ))}
         <div className="home-create">
-          <button className="hact dim" data-testid="home-new-island" title="A new island, laid out with the rest of the fleet"
-            onPointerDown={stop} onClick={onNewIsland}>+ New island</button>
+          <button className="hact dim" data-testid="home-new-island" onPointerDown={stop} onClick={onNewIsland}>+ New island</button>
           <button className="hact dim" data-testid="home-new" onPointerDown={stop} onClick={onNew}>+ New character</button>
         </div>
         {extra}

@@ -79,6 +79,10 @@ export const resizeIsland = (d: ActionDeps, id: string, size: Size, onRefused?: 
   d.api.call('island.update', { id, size }).catch((e: Error) => { onRefused?.(); toast(d)(e); });
 };
 
+export function reorderIsland(d: ActionDeps, id: string, targetId: string, after: boolean): void {
+  if (id !== targetId) d.api.call('island.reorder', { id, targetId, after }).catch(toast(d));
+}
+
 // folding is the island's own state, so the map and the sidebar read the same flag on every client
 export function toggleIsland(d: ActionDeps, id: string): void {
   const island = d.store.getState().fleet.islands[id];

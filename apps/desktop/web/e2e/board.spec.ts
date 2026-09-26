@@ -59,7 +59,7 @@ test('renames and deletes an island from the sidebar', async ({ page, archi }) =
   // the island's docs go with it, so the first press only asks
   await page.getByTestId('island-delete').click();
   await expect(page.getByTestId('island-name').filter({ hasText: name })).toHaveCount(1);
-  await page.getByTestId('island-delete-confirm').click();
+  await page.getByTestId('confirm-delete-island-delete').click();
   await expect(page.getByTestId('island-name').filter({ hasText: name })).toHaveCount(0);
 });
 

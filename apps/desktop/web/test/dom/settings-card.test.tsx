@@ -83,11 +83,11 @@ test('outside the app there is no shell to post banners, so the section is absen
 test('the zoom tip names the keys as bound, and leaves out one that is unbound', () => {
   render(<SettingsCard />);
   const tip = () => document.getElementById('set-tip-zoom')!.textContent;
-  expect(tip()).toBe('⌘− and ⌘+ scale the map, the panels and the terminal\'s text together. ⌘0 is 100%.');
+  expect(tip()).toBe('⌘− and ⌘+ scale the map, panels and terminal text. ⌘0 resets.');
   act(() => store.getState().setSettings({ bindings: { zoomIn: 'cmd+shift+i', zoomReset: null } }));
-  expect(tip()).toBe('⌘− and ⌘⇧I scale the map, the panels and the terminal\'s text together.');
+  expect(tip()).toBe('⌘− and ⌘⇧I scale the map, panels and terminal text.');
   act(() => store.getState().setSettings({ bindings: { zoomOut: null } }));
-  expect(tip()).toBe('Scales the map, the panels and the terminal\'s text together. ⌘0 is 100%.');
+  expect(tip()).toBe('Scales the map, panels and terminal text. ⌘0 resets.');
 });
 
 test('dormancy steps through the waits, from 12 hours by default out to never', () => {

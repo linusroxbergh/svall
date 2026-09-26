@@ -61,7 +61,7 @@ export function MobilePanel() {
       <div className="use-note">
         {status.serving ? <>
           {status.pageMissing && <><b data-testid="mobile-nopage">{NO_PAGE}</b>{' '}</>}
-          {status.logins.length ? `Only ${status.logins.join(', ')} may drive the fleet. To let others in, list them and yourself in mobile.logins in config.json and restart the daemon.` : 'No login may drive the fleet yet. Name one in mobile.logins in config.json, then restart the daemon.'}
+          {status.logins.length ? `Only ${status.logins.join(', ')} can connect. To add others, list everyone in mobile.logins in config.json and restart the daemon.` : 'No login can connect yet. Add one to mobile.logins in config.json and restart the daemon.'}
           {' '}On the phone: open the link, then Share → Add to Home Screen.
         </> : OFF}
       </div>

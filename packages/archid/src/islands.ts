@@ -1,4 +1,4 @@
-import { DEFAULT_SIZE, landCells, type Cell, type ContextItem, type Island, type Size } from '@archipelago/protocol';
+import { DEFAULT_SIZE, byIslandOrder, landCells, type Cell, type ContextItem, type Island, type Size } from '@archipelago/protocol';
 import { settleItems } from './context/items.js';
 import { removeDocs } from './docs.js';
 import { Invalid, NotFound } from './errors.js';
@@ -78,6 +78,18 @@ export function updateIsland({ store, log }: Deps, id: string, patch: IslandPatc
 // one update for the whole fleet: islands moved one at a time would collide with the ones still to move
 export function arrangeIslands({ store }: Deps, aspect?: number): void {
   store.update((d) => arrangeFleet(d, aspect));
+}
+
+// a sidebar drop numbers every island in the new order, so islands made later follow them
+export function reorderIsland({ store }: Deps, id: string, targetId: string, after: boolean): Island {
+  for (const x of [id, targetId]) if (!Object.hasOwn(store.state.islands, x)) throw new NotFound(`no island ${x}`);
+  if (store.state.islands[id].kind === 'home' || store.state.islands[targetId].kind === 'home') throw new Invalid('mission control stays last');
+  if (id === targetId) return store.state.islands[id];
+  const order = Object.values(store.state.islands).filter((i) => i.kind !== 'home').sort(byIslandOrder)
+    .map((i) => i.id).filter((x) => x !== id);
+  order.splice(order.indexOf(targetId) + Number(after), 0, id);
+  store.update((d) => { order.forEach((x, n) => { d.islands[x].order = n; }); });
+  return store.state.islands[id];
 }
 
 export function deleteIsland({ store, log, paths }: Deps, id: string): void {

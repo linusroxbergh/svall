@@ -117,8 +117,10 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 15 with the main agent set from the app', () => {
-    expect(PROTOCOL_VERSION).toBe(15);
+  it('is 16 with islands reordered from the sidebar', () => {
+    expect(PROTOCOL_VERSION).toBe(16);
+    expect(methods['island.reorder'].params.safeParse({ id: 'i_a', targetId: 'i_b', after: true }).success).toBe(true);
+    expect(methods['island.reorder'].params.safeParse({ id: 'i_a', targetId: 'i_b' }).success).toBe(false);
     expect(methods['mainAgent.set'].params.safeParse({ agent: 'codex' }).success).toBe(true);
     expect(methods['mainAgent.set'].params.safeParse({ agent: 'gemini' }).success).toBe(false);
   });

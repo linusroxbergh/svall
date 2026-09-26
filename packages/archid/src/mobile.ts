@@ -155,7 +155,7 @@ export function mobileControl(d: MobileDeps, opts: { home: string; profile: stri
     const self = await tailnetSelf(d, bin);
     const { host } = self;
     owner = self.owner;
-    if (enable === true && logins().length === 0) throw new Error(`tailscale reports no login for this Mac: set mobile.logins in config.json to the logins that may drive the fleet, then restart the daemon with launchctl kickstart -k gui/$(id -u)/${profileLabel(opts.profile)}`);
+    if (enable === true && logins().length === 0) throw new Error(`tailscale reports no login for this Mac: set mobile.logins in config.json, then restart the daemon with launchctl kickstart -k gui/$(id -u)/${profileLabel(opts.profile)}`);
     // an on turns the key over only once tailscale and the page are ready, so one that fails leaves a working link alone
     if (enable === true) {
       if (!d.exists(MOBILE_DIST)) await buildBundle(d);

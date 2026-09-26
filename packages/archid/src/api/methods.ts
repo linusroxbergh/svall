@@ -21,6 +21,7 @@ export const handlers: Handlers = {
   'island.delete': (p, { fleet }) => { fleet.deleteIsland(p.id); return {}; },
   'island.arrange': (p, { fleet }) => { fleet.arrangeIslands(p.aspect); return {}; },
   'island.show': (p, { fleet }) => ({ text: fleet.islandBrief(p.id) }),
+  'island.reorder': (p, { fleet }) => fleet.reorderIsland(p.id, p.targetId, p.after),
   'char.create': (p, { fleet }) => fleet.createCharacter(p),
   'char.update': (p, { fleet }) => fleet.updateCharacter(p.id, p),
   'char.move': (p, { fleet }) => fleet.moveCharacter(p.id, p.islandId, p.cell),

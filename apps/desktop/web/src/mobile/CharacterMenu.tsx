@@ -155,7 +155,7 @@ export function CharacterMenu({ id, onClose, onClosed }: { id: string; onClose()
       <Details c={c} />
       <div className="sheet-form m-acts">
         {!confirm && <button type="button" className="dan" disabled={busy} onClick={() => setConfirm(true)}>Close character</button>}
-        {confirm && <button type="button" className="dan" disabled={busy} onClick={() => void closeCharacter()}>Really close {c.name}? This kills its terminal and deletes its docs.</button>}
+        {confirm && <button type="button" className="dan" disabled={busy} onClick={() => void closeCharacter()}>Close {c.name}? Its terminal and docs go with it.</button>}
         {error && <p className="sheet-error">{error}</p>}
       </div>
     </Sheet>

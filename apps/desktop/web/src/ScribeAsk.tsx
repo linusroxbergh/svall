@@ -31,11 +31,7 @@ export function ScribeAsk() {
         }}>
         <div className="kicker">Scribe</div>
         <div className="modal-name">Keep names and notes up to date?</div>
-        <div className="modal-note">
-          About a minute after an agent stops, the scribe reads the end of its transcript and updates the character's
-          name, note and links, and its island's description. Each pass is one headless call to {AGENT_LABEL[scribeAgent]} on
-          its login, and may incur API charges. You can change this later with the scribe switch in Settings.
-        </div>
+        <div className="modal-note">Runs a headless {AGENT_LABEL[scribeAgent]} call after an agent stops, which may cost API credits.</div>
         {found.length > 1 && (
           <>
             <div className="modal-note">{found.map((k) => AGENT_LABEL[k]).join(' and ')} are both installed. Mission control and the scribe run:</div>

@@ -18,7 +18,7 @@ import { drowsy, exited, processes, runsInBackground, startFlags, type Proc } fr
 import { Dormant, Invalid, NotFound } from './errors.js';
 import type { SocketEvent } from './hooks/receiver.js';
 import { newId } from './ids.js';
-import { arrangeIslands, createIsland, deleteIsland, updateIsland, type IslandPatch, type NewIsland } from './islands.js';
+import { arrangeIslands, createIsland, deleteIsland, reorderIsland, updateIsland, type IslandPatch, type NewIsland } from './islands.js';
 import { blockedCells, defaultPosition, freePosition, occupiedCells, settleHome } from './layout.js';
 import { resolveRepo } from './links/git.js';
 import { refreshLinks, refreshMany, slice, type Deps as LinkDeps } from './links/refresh.js';
@@ -443,6 +443,10 @@ export class Fleet extends EventEmitter<Events> {
 
   arrangeIslands(aspect?: number): void {
     arrangeIslands(this.deps, aspect);
+  }
+
+  reorderIsland(id: string, targetId: string, after: boolean): Island {
+    return reorderIsland(this.deps, id, targetId, after);
   }
 
   deleteIsland(id: string): void {

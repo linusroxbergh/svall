@@ -47,7 +47,7 @@ export async function dispatchKey(action: KeyAction, ctx: KeyDeps): Promise<void
   const f = s.fleet;
   const current = s.view === 'map' ? (s.selectedId ?? s.card ?? selectedOf(s)) : boardViewed(s);
   const go = (id?: string) => goTo(ctx, id);
-  const closeModals = () => { store.getState().setNamingCharacter(false); store.getState().setMissionPrompt(false); store.getState().setClosingCharacter(undefined); store.getState().toggleKeys(false); };
+  const closeModals = () => { store.getState().setNamingCharacter(false); store.getState().setMissionPrompt(false); store.getState().setClosingCharacter(undefined); store.getState().setDeletingIsland(undefined); store.getState().toggleKeys(false); };
 
   switch (action.type) {
     // one modal at a time: the backdrops share a layer, so a second would mount unseen and take the keys

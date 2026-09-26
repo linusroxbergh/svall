@@ -39,7 +39,7 @@ test('each control keeps its explanation behind the mark until it is hovered', a
   await expect(tip).toBeHidden();
   await page.getByTestId('set-info-scribe').hover();
   await expect(tip).toBeVisible();
-  await expect(tip).toContainText('API keys may incur charges');
+  await expect(tip).toContainText('may cost API credits');
   // the last row has no room under it, so its tip stands over the row instead
   await expect(tip).toHaveAttribute('data-place', 'up');
   const panel = (await page.getByTestId('settings').boundingBox())!;

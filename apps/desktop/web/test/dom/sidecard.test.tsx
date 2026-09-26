@@ -5,6 +5,7 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import type { FromShell } from '../../src/bridge.js';
 import { setAppStore, useApp } from '../../src/hooks.js';
 import { createAppStore, type AppStore } from '../../src/store/index.js';
+import { isVeiled } from '../../src/selectors.js';
 import { chr, fleet, isl } from '../fixtures.js';
 
 window.matchMedia ??= ((q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} })) as never;
@@ -28,6 +29,7 @@ vi.mock('../../src/resources/Shelf.js', () => ({ ResourcesLayer: () => null }));
 
 const { Map } = await import('../../src/map/Map.js');
 const { IslandCard, SideCard } = await import('../../src/SideCard.js');
+const { ConfirmDeleteIsland } = await import('../../src/ConfirmDeleteIsland.js');
 const { dispatchKey } = await import('../../src/keyboard.js');
 const { FleetSummary } = await import('../../src/FleetSummary.js');
 const { followQuit } = await import('../../src/quit.js');
@@ -265,42 +267,57 @@ test('the fleet summary counts one character on one island in the singular', () 
   expect(screen.getByRole('heading').textContent).toMatch(/^1 character\s*on 1 island$/);
 });
 
-test('an island delete asks once more, and Cancel keeps the island', () => {
+const deletes = () => calls.filter(([m]) => m === 'island.delete');
+
+test('an island delete asks in a dialog, and Cancel, Esc or a press outside keep the island', () => {
   store.getState().selectIsland('i_e');
-  render(<IslandSide />);
+  render(<><IslandSide /><ConfirmDeleteIsland /></>);
+  expect(screen.queryByTestId('confirm-delete-island')).toBeNull();
   fireEvent.click(screen.getByTestId('side-island-delete'));
-  fireEvent.click(screen.getByTestId('side-island-delete-cancel'));
-  expect(calls.filter(([m]) => m === 'island.delete')).toEqual([]);
+  expect(screen.getByTestId('confirm-delete-island').textContent).toContain('empty');
+  fireEvent.click(screen.getByTestId('confirm-delete-island-cancel'));
   fireEvent.click(screen.getByTestId('side-island-delete'));
-  // the confirm stands where Delete was, so a double click's second press lands on it
-  fireEvent.click(screen.getByTestId('side-island-delete-confirm'), { detail: 2 });
-  expect(calls.filter(([m]) => m === 'island.delete')).toEqual([]);
-  fireEvent.click(screen.getByTestId('side-island-delete-confirm'));
-  expect(calls.filter(([m]) => m === 'island.delete')).toEqual([['island.delete', { id: 'i_e' }]]);
+  fireEvent.keyDown(screen.getByTestId('confirm-delete-island-cancel'), { key: 'Escape' });
+  fireEvent.click(screen.getByTestId('side-island-delete'));
+  fireEvent.pointerDown(screen.getByTestId('confirm-delete-island'));
+  expect(screen.queryByTestId('confirm-delete-island')).toBeNull();
+  expect(deletes()).toEqual([]);
+  fireEvent.click(screen.getByTestId('side-island-delete'));
+  // the second press of a double click on an opener beneath does not answer it
+  fireEvent.click(screen.getByTestId('confirm-delete-island-delete'), { detail: 2 });
+  expect(deletes()).toEqual([]);
+  fireEvent.click(screen.getByTestId('confirm-delete-island-delete'));
+  expect(screen.queryByTestId('confirm-delete-island')).toBeNull();
+  expect(deletes()).toEqual([['island.delete', { id: 'i_e' }]]);
 });
 
-test('an island delete asked on one island is not carried to the next one selected', () => {
+test('the island delete dialog veils the terminals and closes when the island goes or gains a crew', () => {
+  store.getState().selectIsland('i_e');
+  render(<><IslandSide /><ConfirmDeleteIsland /></>);
+  fireEvent.click(screen.getByTestId('side-island-delete'));
+  expect(isVeiled(store.getState())).toBe(true);
+  act(() => store.getState().applyPatch([{ op: 'add', path: '/characters/c9', value: chr('c9', 'i_e', { x: 1, y: 1 }) }]));
+  expect(screen.queryByTestId('confirm-delete-island')).toBeNull();
+  act(() => store.getState().setFleet(fleet()));
+  fireEvent.click(screen.getByTestId('side-island-delete'));
+  expect(screen.getByTestId('confirm-delete-island')).toBeTruthy();
   const f = fleet();
-  f.islands.i_f = isl('i_f', 'far', 24);
-  store.getState().setFleet(f);
-  store.getState().selectIsland('i_e');
-  render(<IslandSide />);
-  fireEvent.click(screen.getByTestId('side-island-delete'));
-  act(() => store.getState().selectIsland('i_f'));
-  expect(screen.queryByTestId('side-island-delete-confirm')).toBeNull();
-  expect(screen.getByTestId('side-island-delete')).toBeTruthy();
+  delete f.islands.i_e;
+  act(() => store.getState().setFleet(f));
+  expect(screen.queryByTestId('confirm-delete-island')).toBeNull();
+  expect(isVeiled(store.getState())).toBe(false);
 });
 
-test('Enter on the island delete confirm stays with the button in focus', () => {
+test('Enter in the island delete dialog stays with the button in focus, Cancel first', () => {
   store.getState().selectIsland('i_e');
-  render(<IslandSide />);
+  render(<><IslandSide /><ConfirmDeleteIsland /></>);
   const page = vi.fn();
   window.addEventListener('keydown', page);
   try {
     fireEvent.click(screen.getByTestId('side-island-delete'));
-    expect(document.activeElement).toBe(screen.getByTestId('side-island-delete-cancel'));
-    fireEvent.keyDown(screen.getByTestId('side-island-delete-cancel'), { key: 'Enter' });
-    fireEvent.keyDown(screen.getByTestId('side-island-delete-confirm'), { key: 'Enter' });
+    expect(document.activeElement).toBe(screen.getByTestId('confirm-delete-island-cancel'));
+    fireEvent.keyDown(screen.getByTestId('confirm-delete-island-cancel'), { key: 'Enter' });
+    fireEvent.keyDown(screen.getByTestId('confirm-delete-island-delete'), { key: 'Enter' });
     expect(page).not.toHaveBeenCalled();
   } finally {
     window.removeEventListener('keydown', page);
