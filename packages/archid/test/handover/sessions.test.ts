@@ -102,16 +102,17 @@ describe('Claude Code sessions', () => {
     });
   });
 
-  it('refuses a session folder holding a kind of file the tested releases were not shown to need', async () => {
+  it('finds every file of the session\'s own folder, whatever kind a release writes there', async () => {
+    const h = home('claude/2.1.280');
     const { id, slug } = CLAUDE[0];
-    for (const stray of ['auto-mode-classifier-error.txt', 'subagents/agent-a1.json', 'tool-results/p1/page-1.jpg', 'notes/plan.md']) {
-      const h = home('claude/2.1.280');
+    const strays = ['auto-mode-classifier-error.txt', 'notes/plan.md', 'subagents/agent-a1.json', 'tool-results/p1/page-1.jpg'];
+    for (const stray of strays) {
       const file = path.join(h, 'projects', slug, id, stray);
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, 'x');
-      const refused = await claudeAdapter.discover(path.join(h, 'projects', slug, `${id}.jsonl`), id, fsOf).then(() => undefined, (e: SessionError) => e);
-      expect(refused, stray).toMatchObject({ code: 'incompatible_adapter', message: expect.stringContaining(stray) });
     }
+    const { files } = await claudeAdapter.discover(path.join(h, 'projects', slug, `${id}.jsonl`), id, fsOf);
+    for (const stray of strays) expect(files, stray).toContain(`projects/${slug}/${id}/${stray}`);
   });
 
   it('refuses a transcript that is missing, another session, outside a projects folder, or a link', async () => {
@@ -251,17 +252,6 @@ describe('sessions in the transfer manifest', () => {
     const { blockers } = await buildManifest(buildInventory(m.state, { fleet: FLEET }, m.maps), { generation: 1 });
     expect(blockers).toEqual([expect.objectContaining({ code: 'transcript_missing', entity: { kind: 'character', id: 'c1' } })]);
   });
-
-  it('blocks a session whose folder holds a file its adapter does not carry, naming the file', async () => {
-    const m = machines();
-    const { id, slug } = CLAUDE[0];
-    fs.writeFileSync(path.join(m.mac, '.claude/projects', slug, id, 'auto-mode-classifier-error.txt'), 'classifier said no');
-    const { manifest, blockers } = await buildManifest(buildInventory(m.state, { fleet: FLEET }, m.maps), { generation: 1 });
-    expect(blockers).toEqual([
-      expect.objectContaining({ code: 'incompatible_adapter', message: expect.stringContaining('auto-mode-classifier-error.txt'), entity: { kind: 'character', id: 'c1' } }),
-    ]);
-    expect(manifest.sessions.map((s) => s.agent)).toEqual(['codex']);
-  });
 });
 
 // each fixture session, where its CLI keeps it under the agent home
@@ -330,6 +320,15 @@ describe('a session arriving on the destination', () => {
     expect(fs.readFileSync(codex.destinationPath!)).toEqual(fs.readFileSync(codex.sourcePath));
   });
 
+  it('carries a file of a kind no release so far wrote in the session\'s folder, byte for byte', async () => {
+    const { id, slug } = CLAUDE[0];
+    const stray = `projects/${slug}/${id}/auto-mode-classifier-error.txt`;
+    const { claude, stage } = await arrival((m) => { fs.writeFileSync(path.join(m.mac, '.claude', stray), 'classifier said no'); });
+    expect(claude.files.map((f) => f.path)).toContain(stray);
+    installSession(claude, stage(claude));
+    expect(fs.readFileSync(path.join(claude.destinationHome!, stray), 'utf8')).toBe('classifier said no');
+  });
+
   it('keeps a copy already there when it is the same, and replaces one the incoming session only adds to', async () => {
     const { claude, stage } = await arrival();
     const staged = stage(claude);
@@ -390,7 +389,7 @@ describe('a session arriving on the destination', () => {
     const claudeStaged = stage(claude);
     for (const rel of [
       'CLAUDE.md', 'skills/x/SKILL.md', 'settings.json', `file-history/${id}/abc@v1`, `projects/${slug}/99999999-2222-4333-8444-555555555555.jsonl`,
-      `projects/${slug}/${id}/notes.md`, `projects/-elsewhere/${id}/tool-results/b1.txt`,
+      `projects/-elsewhere/${id}/tool-results/b1.txt`,
     ]) refused(naming(claude, claudeStaged, rel), claudeStaged);
     refused({ ...claude, destinationPath: path.join(claude.destinationHome!, 'CLAUDE.md') }, claudeStaged);
     refused({ ...claude, destinationPath: path.join(claude.destinationHome!, `projects/${slug}/99999999-2222-4333-8444-555555555555.jsonl`) }, claudeStaged);

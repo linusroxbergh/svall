@@ -6,18 +6,12 @@ import { SessionError, type SessionAdapter, type SessionFs } from './types.js';
 // the oldest release a fixture holds; Archipelago asks no floor of Claude Code itself
 const MIN: Version = [2, 1, 251];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
-// what a session keeps in its own folder beside the transcript: its subagents, and tool output too long to show inline
-const SIDECARS = [/^subagents\/[^/]+\.meta\.json$/, /^subagents\/[^/]+\.jsonl$/, /^tool-results\/[^/]+$/];
 const TRANSCRIPT = /^projects\/[^/]+\/([^/]+)\.jsonl$/;
-const SIDECAR = /^projects\/[^/]+\/[^/]+\/(.+)$/;
 
-/** Whether `file` is session `sessionId`'s, whose transcript sits at `transcript`: that transcript, or a sidecar in its folder. */
+/** Whether `file` is session `sessionId`'s, whose transcript sits at `transcript`: that transcript, or a file in the session's own folder beside it. */
 function carries(file: string, transcript: string, sessionId: string): boolean {
   if (!UUID.test(sessionId) || TRANSCRIPT.exec(transcript)?.[1] !== sessionId) return false;
-  if (file === transcript) return true;
-  const inner = SIDECAR.exec(file)?.[1];
-  return file.startsWith(`${transcript.slice(0, -'.jsonl'.length)}/`) && inner !== undefined && SIDECARS.some((re) => re.test(inner));
+  return file === transcript || file.startsWith(`${transcript.slice(0, -'.jsonl'.length)}/`);
 }
 
 export const claudeAdapter: SessionAdapter = {
@@ -40,14 +34,10 @@ export const claudeAdapter: SessionAdapter = {
     await transcriptFile(fs, file);
     const home = path.posix.dirname(projects);
     const transcript = path.posix.relative(home, file);
-    // file history stays, since its backups name machine-local files, and so does session-env, which can hold secrets
+    // the session's own folder travels whole; file history stays, since its backups name machine-local files, and so
+    // does session-env, which can hold secrets
     const folder = path.posix.join(path.posix.dirname(transcript), sessionId);
     const sidecars = (await filesUnder(fs, home, folder)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-    const unknown = sidecars.filter((f) => !carries(f, transcript, sessionId)).map((f) => f.slice(folder.length + 1));
-    if (unknown.length) {
-      const named = `${unknown.slice(0, 5).join(', ')}${unknown.length > 5 ? ` and ${unknown.length - 5} more` : ''}`;
-      throw new SessionError('incompatible_adapter', `${path.posix.join(home, folder)} holds ${named}, which Claude Code session adapter 1 does not carry`);
-    }
     return { home, transcript, files: [transcript, ...sidecars] };
   },
 

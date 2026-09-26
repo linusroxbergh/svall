@@ -375,7 +375,7 @@ describe('archi handover', () => {
       const h = harness(o);
       const blockers: Blocker[] = [
         { code: 'transcript_missing', message: '/Users/ada/.claude/projects/-app/3f2b.jsonl is not there', entity: { kind: 'character', id: 'c_ada' } },
-        { code: 'incompatible_adapter', message: '/Users/ada/.claude/projects/-app holds notes.bin, which Claude Code session adapter 1 does not carry', entity: { kind: 'character', id: 'c_bo' } },
+        { code: 'incompatible_adapter', message: "a handover carries claude sessions from 2.1.251 on; update the destination's claude 2.1.200", entity: { kind: 'character', id: 'c_bo' } },
         { code: 'destination_diverged', message: 'the destination changed while this machine did not own the fleet', entity: { kind: 'root', id: 'r_app' } },
         { code: 'shell_busy', message: "bo's terminal is running npm run dev", entity: { kind: 'character', id: 'c_bo' } },
       ];
@@ -393,7 +393,7 @@ describe('archi handover', () => {
       }
       const text = h.out();
       expect(text).toContain('ada: /Users/ada/.claude/projects/-app/3f2b.jsonl is not there');
-      expect(text).toContain('bo: /Users/ada/.claude/projects/-app holds notes.bin');
+      expect(text).toContain("bo: a handover carries claude sessions from 2.1.251 on; update the destination's claude 2.1.200");
       expect(text).toContain('/home/ada/app: the destination changed');
       expect(text).toContain("bo's terminal is running npm run dev");
       expect(text).not.toContain('bo: bo');
