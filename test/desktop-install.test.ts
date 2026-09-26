@@ -81,13 +81,12 @@ const PRELUDE = SCRIPT.slice(SCRIPT.indexOf('# one column'), SCRIPT.indexOf('ste
 const CHECKS = SCRIPT.slice(SCRIPT.indexOf('# GhosttyKit is downloaded'), SCRIPT.indexOf('if [ -n "$BUILD_GHOSTTY" ]'));
 const CHECK_OK = 'case "$*" in *"setup --check"*) echo "│  ✓ tmux  tmux 3.5a" ;; esac';
 
-function checks(stubs: Record<string, string>, setUp = false) {
+function checks(stubs: Record<string, string>) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'archi-desktop-install-'));
   dirs.push(root);
   const files = {
     'bin/pnpm': CHECK_OK, 'bin/git': '', 'bin/xcodebuild': '', 'bin/launchctl': '',
     'scripts/ghostty-kit.sh': '[ "$1" = current ]', 'scripts/ghostty-build.sh': '',
-    ...(setUp ? { '.archipelago/config.json': '', 'Library/LaunchAgents/io.github.linusroxbergh.archipelago.archid.plist': '', '.local/bin/archi': '' } : {}),
     ...stubs,
   };
   for (const [file, body] of Object.entries(files)) {
@@ -95,7 +94,7 @@ function checks(stubs: Record<string, string>, setUp = false) {
     fs.writeFileSync(path.join(root, file), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
   }
   fs.mkdirSync(path.join(root, 'tmp'));
-  return spawnSync('sh', ['-c', `set -eu\nHOME_DIR="$HOME/.archipelago"\n${PRELUDE}\n${CHECKS}\necho "build ghostty: $BUILD_GHOSTTY, setup: $SETUP"`], {
+  return spawnSync('sh', ['-c', `set -eu\n${PRELUDE}\n${CHECKS}\necho "build ghostty: $BUILD_GHOSTTY"`], {
     cwd: root, env: { ...process.env, HOME: root, TMPDIR: path.join(root, 'tmp'), PATH: `${path.join(root, 'bin')}:${process.env.PATH}` }, encoding: 'utf8', timeout: 30_000,
   });
 }
@@ -105,7 +104,7 @@ test('builds GhosttyKit from source when the download fails, and says why it fai
   expect(r.status).toBe(0);
   expect(r.stderr).toContain('gh: not signed in');
   expect(r.stdout).toContain('◇  Terminal engine: building it from source instead');
-  expect(r.stdout).toMatch(/build ghostty: 1, setup: 1\n$/);
+  expect(r.stdout).toMatch(/build ghostty: 1\n$/);
 });
 
 test('stops before any build on a failed check or a missing tool, showing each', () => {
@@ -128,8 +127,8 @@ test("shows the end of a quiet step's log when the step fails", () => {
   expect(r.stderr).toContain('pnpm install --silent failed; the whole log is');
 });
 
-test('sets up again only when a check asks for archi setup', () => {
-  expect(checks({}, true).stdout).toMatch(/build ghostty: , setup: \n$/);
-  const asked = checks({ 'bin/pnpm': 'case "$*" in *"setup --check"*) echo "│  ! hooks  missing or out of date: run archi setup" ;; esac' }, true);
-  expect(asked.stdout).toMatch(/build ghostty: , setup: 1\n$/);
+test('checks the release install that setup puts in place on every run', () => {
+  const r = checks({ 'bin/pnpm': 'case "$*" in *"setup --check"*) echo "$*" ;; esac' });
+  expect(r.status).toBe(0);
+  expect(r.stdout).toContain('archi -p private setup --check --release apps/desktop/mac/build/Archipelago.app/Contents/Resources/release');
 });

@@ -227,10 +227,12 @@ runIf('archi CLI', () => {
     const config = { shell: '/bin/sh', mainAgent: 'claude' };
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify(config));
     daemon = await start({ home, port: 0, log: silentLogger });
-    // archi agent tells what the running fleet uses, not a config.json edited since it started
-    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ ...config, mainAgent: 'codex' }));
+    // archi agent tells what the running fleet uses, not a fleet.json edited since it started
+    const fleetJson = resolvePaths(home).fleetConfig;
+    const split = fs.readFileSync(fleetJson, 'utf8');
+    fs.writeFileSync(fleetJson, JSON.stringify({ ...JSON.parse(split), mainAgent: 'codex' }));
     expect(JSON.parse((await archi('agent', '--json')).stdout).agent).toBe('claude');
-    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify(config));
+    fs.writeFileSync(fleetJson, split);
 
     const island = JSON.parse((await archi('island', 'create', 'feature', '--json')).stdout);
     expect(island.name).toBe('feature');

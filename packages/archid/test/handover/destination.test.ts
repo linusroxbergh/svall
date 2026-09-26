@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import {
-  FleetConfig, FleetId, FleetState, MachineId, emptyState,
+  FleetConfig, FleetId, FleetState, Home, MachineId, emptyState,
   type Character, type Event, type LandedRoot, type OwnerRecord, type ParsedParams, type TransferManifestV1,
 } from '@archipelago/protocol';
 import { startApi } from '../../src/api/server.js';
@@ -281,7 +281,7 @@ async function scene(o: { tamper?: Tamper; before?: (s: { src: string; dst: stri
 
   const fleet = FleetConfig.parse({ id: fleetId, gatewayMachineId: trift, home: { cwd: '~/mc' }, mobile: { logins: ['me@example.com'], origins: ['https://phone.example'] } });
   const state = emptyState();
-  state.home = fleet.home;
+  state.home = Home.parse(fleet.home);
   const tab = `${pathToFileURL(path.join(src, 'work/ada/index.html')).href}?x=1#top`;
   for (const c of [
     rested(char('c_ada', path.join(src, 'work/ada'), {

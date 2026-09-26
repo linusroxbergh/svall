@@ -338,12 +338,14 @@ describe('doctor on Linux', () => {
         // the login shell ssh hands a command to finds neither
         'claude --version': undefined as never,
         [`PATH=${agentPath} claude --version`]: '2.1.260 (Claude Code)\n',
+        [`PATH=${agentPath} claude auth status --json`]: '{"loggedIn":true}\n',
         [`PATH=${agentPath} codex --version`]: 'codex-cli 0.156.1\n',
+        [`PATH=${agentPath} codex login status`]: 'Logged in using ChatGPT\n',
       },
     });
     const c = byName(await doctor(priv, f.deps));
-    expect(c.claude).toMatchObject({ status: 'ok', detail: '2.1.260 (Claude Code)' });
-    expect(c.codex).toMatchObject({ status: 'ok', detail: expect.stringContaining('codex-cli 0.156.1') });
+    expect(c.claude).toMatchObject({ status: 'ok', detail: '2.1.260 (Claude Code), signed in' });
+    expect(c.codex).toMatchObject({ status: 'ok', detail: 'codex-cli 0.156.1, signed in' });
   });
 
   it('looks for the agents on Linux where the unit it would install runs them', () => {
@@ -352,10 +354,10 @@ describe('doctor on Linux', () => {
     expect(realPreflightDeps('/u/.archipelago', 'darwin').agentPath).toBeUndefined();
   });
 
-  it('warns rather than fails when Claude Code is not installed, so setup runs on a fresh box', async () => {
+  it('warns rather than fails when no agent CLI is installed, so setup runs on a fresh box', async () => {
     const f = linux({ 'claude --version': undefined as never });
-    expect(byName(await doctor(priv, f.deps)).claude).toMatchObject({ status: 'warn', detail: expect.stringMatching(/not found/) });
-    expect(requireReady(await preflight(f.deps))).toEqual(expect.arrayContaining([expect.stringMatching(/^! claude/)]));
+    expect(byName(await doctor(priv, f.deps)).agents).toMatchObject({ status: 'warn', detail: expect.stringMatching(/neither claude nor codex/) });
+    expect(requireReady(await preflight(f.deps))).toEqual(expect.arrayContaining([expect.stringMatching(/^! agents/)]));
   });
 });
 

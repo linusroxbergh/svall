@@ -14,7 +14,7 @@ type AgentAdapter = {
   loginArgs: string[];
   loggedIn(stdout: string): boolean;
   loginHint: string;
-  // what mission control's crew starts with, unless config.json's home.command names a command
+  // what mission control's crew starts with, unless fleet.json's home.command names a command
   crewCommand: string;
 };
 

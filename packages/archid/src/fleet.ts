@@ -458,12 +458,12 @@ export class Fleet extends EventEmitter<Events> {
     this.deps.store.update((d) => { d.dormantAfterHours = hours; });
   }
 
-  // config.json's home.command, else the main agent's
+  // fleet.json's home.command, else the main agent's
   private crewCommand(): string {
     return this.deps.config.home.command ?? AGENTS[mainAgent(this.deps.config.mainAgent, this.deps.agentsFound ?? [])].crewCommand;
   }
 
-  // config.json holds the choice; the fleet carries it, and what archid finds, to the app
+  // fleet.json holds the choice; the fleet carries it, and what archid finds, to the app
   private syncAgents(): void {
     const found = this.deps.agentsFound ?? [];
     this.deps.store.update((d) => {

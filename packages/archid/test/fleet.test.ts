@@ -1482,7 +1482,7 @@ runIf('Fleet', () => {
     expect(store.state.islands[island.id]).toBeUndefined();
   });
 
-  it('mirrors the main agent into the fleet, and sets it in config.json', async () => {
+  it('mirrors the main agent into the fleet, and sets it in fleet.json', async () => {
     const { fleet, store, home } = await boot({ agentsFound: ['claude', 'codex'] });
     expect(store.state.mainAgent).toBe('claude');
     expect(store.state.agentsFound).toEqual(['claude', 'codex']);
@@ -1490,7 +1490,7 @@ runIf('Fleet', () => {
     fleet.setMainAgent('codex');
     expect(store.state.mainAgent).toBe('codex');
     expect(store.state.scribeAgent).toBe('codex');
-    expect(JSON.parse(fs.readFileSync(resolvePaths(home).config, 'utf8')).mainAgent).toBe('codex');
+    expect(JSON.parse(fs.readFileSync(resolvePaths(home).fleetConfig, 'utf8')).mainAgent).toBe('codex');
   });
 
   it('takes the only agent found as the main one, and refuses one archid cannot find', async () => {
@@ -1498,6 +1498,6 @@ runIf('Fleet', () => {
     expect(store.state.mainAgent).toBe('codex');
     expect(() => fleet.setMainAgent('claude')).toThrow("archid doesn't find claude; install Claude Code, then run archi setup");
     expect(store.state.mainAgent).toBe('codex');
-    expect(fs.existsSync(resolvePaths(home).config)).toBe(false);
+    expect(fs.existsSync(resolvePaths(home).fleetConfig)).toBe(false);
   });
 });

@@ -174,6 +174,13 @@ describe('setupLinux', () => {
     expect(walk(f.root).some((name) => name.endsWith('.plist'))).toBe(false);
   });
 
+  it('writes no Claude settings for a Codex-only machine, and makes CODEX_HOME for its hooks', async () => {
+    const f = installed();
+    await setupLinux({ ...f.o, agents: ['codex'] });
+    expect(fs.existsSync(f.o.settingsPath)).toBe(false);
+    expect(JSON.parse(fs.readFileSync(f.o.codex.hooks, 'utf8')).hooks.SessionStart).toBeDefined();
+  });
+
   it('rewrites nothing on a repeat run', async () => {
     const f = installed();
     await setupLinux(f.o);

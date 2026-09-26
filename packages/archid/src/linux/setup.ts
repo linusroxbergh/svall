@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import type { AgentKind } from '@archipelago/protocol';
 import type { CodexPaths } from '../codex/install.js';
 import { systemdDir } from '../release.js';
 import { writeAtomic } from '../jsonfile.js';
@@ -75,7 +76,7 @@ export function gatewayUnit(o: UnitOptions): Unit {
 
 export type LinuxSetup = UnitOptions & {
   home: string; fleet: string; unitDir: string; settingsPath: string; codex: CodexPaths; shimDir: string;
-  user: string; run: Run; systemctl: boolean; replaceSettings?: boolean; port?: number; tmuxVersion?: string;
+  user: string; run: Run; systemctl: boolean; replaceSettings?: boolean; port?: number; tmuxVersion?: string; agents?: AgentKind[];
 };
 
 const readOrUndefined = (file: string): string | undefined => {
@@ -124,8 +125,10 @@ export type LinuxSetupResult = { done: string[]; started: boolean };
 export async function setupLinux(o: LinuxSetup): Promise<LinuxSetupResult> {
   // both files are read and checked before anything is written, so one that is not JSON, or cannot take
   // the change, stops a setup that has changed nothing
-  const settings = readJsonSettings(o.settingsPath);
-  const codexHooks = readCodexHooks(o.codex);
+  const claudeWanted = !o.agents || o.agents.includes('claude') || fs.existsSync(path.dirname(o.settingsPath));
+  const codexWanted = !!o.agents?.includes('codex') || fs.existsSync(o.codex.dir);
+  const settings = claudeWanted ? readJsonSettings(o.settingsPath) : undefined;
+  const codexHooks = readCodexHooks(o.codex, codexWanted);
   requireWritableHooks(o.home, settings, codexHooks);
   const done = setupFleetHome(o);
   done.push(...setupUser({ ...o, settings, codexHooks }));

@@ -10,7 +10,7 @@ afterEach(cleanHomes);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-const LEGACY = '{\n  "port": 47900,\n  "host": "0.0.0.0",\n  "shell": "/bin/sh",\n  "defaultCwd": "/w",\n  "mobile": { "logins": ["you@example.com"], "httpsPort": 10000 },\n  "somethingOld": true\n}\n';
+const LEGACY = '{\n  "port": 47900,\n  "host": "0.0.0.0",\n  "shell": "/bin/sh",\n  "defaultCwd": "/w",\n  "mainAgent": "codex",\n  "mobile": { "logins": ["you@example.com"], "httpsPort": 10000 },\n  "somethingOld": true\n}\n';
 
 const mode = (file: string): string => (fs.statSync(file).mode & 0o777).toString(8);
 const read = (file: string): Record<string, unknown> => JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -34,10 +34,11 @@ describe('splitting config.json', () => {
     expect(config.host).toBe('0.0.0.0');
     expect(config.shell).toBe('/bin/sh');
     expect(config.defaultCwd).toBe('/w');
+    expect(config.mainAgent).toBe('codex');
     expect(config.mobile).toMatchObject({ logins: ['you@example.com'], httpsPort: 10000 });
     expect(config.id).toMatch(UUID);
 
-    expect(read(p.fleetConfig)).toMatchObject({ defaultCwd: '/w', mobile: { logins: ['you@example.com'] } });
+    expect(read(p.fleetConfig)).toMatchObject({ defaultCwd: '/w', mainAgent: 'codex', mobile: { logins: ['you@example.com'] } });
     expect(read(p.fleetConfig)).not.toHaveProperty('port');
     expect(read(p.nodeConfig)).toEqual({ port: 47900, host: '0.0.0.0', shell: '/bin/sh', mobile: { httpsPort: 10000 } });
     expect(read(p.nodeConfig)).not.toHaveProperty('defaultCwd');

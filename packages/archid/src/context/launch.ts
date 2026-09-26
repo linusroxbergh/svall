@@ -2,7 +2,7 @@ import path from 'node:path';
 import type { ContextItem } from '@archipelago/protocol';
 import { shq } from '../text.js';
 
-// a command config.json may carry with a stray leading space
+// a command fleet.json may carry with a stray leading space
 const AGENT_COMMAND = /^\s*(claude|codex)(\s|$)/;
 
 // both agents take --add-dir, on a fresh start and on a resume alike

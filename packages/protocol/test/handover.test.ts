@@ -101,7 +101,8 @@ describe('split configuration', () => {
     const fleet = FleetConfig.parse({ id: UUID_A });
     expect(fleet.defaultCwd).toBe('~');
     expect(fleet.home.cwd).toBe('~/.archipelago/home');
-    expect(fleet.scribe.agent).toBe('claude');
+    // the main agent, the crew's command and the scribe's agent fall back to what each machine finds installed
+    expect([fleet.mainAgent, fleet.home.command, fleet.scribe.agent]).toEqual([undefined, undefined, undefined]);
     expect(fleet.mobile).toEqual({ logins: [], origins: [] });
     expect(fleet.handover).toEqual({ enabled: false, exclude: [], excludeDefaults: true, transferFleetEnv: false });
     expect(fleet.gatewayMachineId).toBeUndefined();
@@ -115,6 +116,8 @@ describe('split configuration', () => {
   it('ignores keys it does not know', () => {
     expect(FleetConfig.parse({ id: UUID_A, port: 1234 })).not.toHaveProperty('port');
     expect(NodeConfig.parse({ defaultCwd: '/x' })).not.toHaveProperty('defaultCwd');
+    expect(NodeConfig.parse({ mainAgent: 'codex' })).not.toHaveProperty('mainAgent');
+    expect(FleetConfig.parse({ id: UUID_A, mainAgent: 'codex' }).mainAgent).toBe('codex');
   });
 });
 

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Config, loadConfig, saveMainAgent } from '../src/config.js';
+import { Config, configuredMainAgent, loadConfig, saveMainAgent } from '../src/config.js';
 import { newId } from '../src/ids.js';
 import { resolvePaths, userPaths } from '../src/paths.js';
 import { cleanHomes, makeHome } from './helpers.js';
@@ -64,37 +64,54 @@ describe('config and paths', () => {
 });
 
 describe('saveMainAgent', () => {
-  const file = () => path.join(makeHome(), 'config.json');
-  it('sets the key and keeps every other one', () => {
-    const f = file();
-    fs.writeFileSync(f, JSON.stringify({ port: 47801, scribe: { model: 'haiku' } }));
-    saveMainAgent(f, 'codex');
-    expect(JSON.parse(fs.readFileSync(f, 'utf8'))).toEqual({ port: 47801, scribe: { model: 'haiku' }, mainAgent: 'codex' });
-    expect(loadConfig(f).mainAgent).toBe('codex');
+  const paths = () => resolvePaths(makeHome());
+  it('sets the key in fleet.json and keeps every other one', () => {
+    const p = paths();
+    const id = crypto.randomUUID();
+    fs.writeFileSync(p.fleetConfig, JSON.stringify({ id, scribe: { model: 'haiku' } }));
+    saveMainAgent(p, 'codex');
+    expect(JSON.parse(fs.readFileSync(p.fleetConfig, 'utf8'))).toEqual({ id, scribe: { model: 'haiku' }, mainAgent: 'codex' });
+    expect(loadConfig(p).mainAgent).toBe('codex');
   });
-  it('creates the file when there is none', () => {
-    const f = file();
-    saveMainAgent(f, 'claude');
-    expect(loadConfig(f).mainAgent).toBe('claude');
+  it('creates fleet.json when there is none', () => {
+    const p = paths();
+    saveMainAgent(p, 'claude');
+    expect(loadConfig(p).mainAgent).toBe('claude');
+  });
+  it('splits a config.json out first, so the choice lands beside what it held', () => {
+    const p = paths();
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ port: 47801, scribe: { model: 'haiku' } }));
+    saveMainAgent(p, 'codex');
+    expect(fs.existsSync(p.legacyConfig)).toBe(false);
+    expect(loadConfig(p)).toMatchObject({ port: 47801, scribe: { model: 'haiku' }, mainAgent: 'codex' });
   });
   it('refuses a file that does not parse, and leaves it as it was', () => {
-    const f = file();
-    fs.writeFileSync(f, '{ "port": 1,');
-    expect(() => saveMainAgent(f, 'codex')).toThrow(/invalid config/);
-    expect(fs.readFileSync(f, 'utf8')).toBe('{ "port": 1,');
+    const p = paths();
+    fs.writeFileSync(p.nodeConfig, '{}');
+    fs.writeFileSync(p.fleetConfig, '{ "id": 1,');
+    expect(() => saveMainAgent(p, 'codex')).toThrow(/invalid config/);
+    expect(fs.readFileSync(p.fleetConfig, 'utf8')).toBe('{ "id": 1,');
   });
-  it('writes a linked config.json where it points, keeping its mode', () => {
-    const dir = makeHome();
-    const real = path.join(dir, 'dotfiles.json');
-    const f = path.join(dir, 'config.json');
-    fs.writeFileSync(real, '{}', { mode: 0o600 });
-    fs.symlinkSync(real, f);
-    saveMainAgent(f, 'codex');
-    expect(fs.lstatSync(f).isSymbolicLink()).toBe(true);
+  it('writes a linked fleet.json where it points, keeping its mode', () => {
+    const p = paths();
+    const real = path.join(p.home, 'dotfiles.json');
+    fs.writeFileSync(real, JSON.stringify({ id: crypto.randomUUID() }), { mode: 0o640 });
+    fs.symlinkSync(real, p.fleetConfig);
+    saveMainAgent(p, 'codex');
+    expect(fs.lstatSync(p.fleetConfig).isSymbolicLink()).toBe(true);
     expect(JSON.parse(fs.readFileSync(real, 'utf8')).mainAgent).toBe('codex');
-    expect(fs.statSync(real).mode & 0o777).toBe(0o600);
+    expect(fs.statSync(real).mode & 0o777).toBe(0o640);
   });
   it('leaves the scribe agent unset unless it is named', () => {
-    expect(loadConfig(file()).scribe.agent).toBeUndefined();
+    expect(loadConfig(paths()).scribe.agent).toBeUndefined();
+  });
+  it('is read from fleet.json, or from a config.json not yet split, without splitting it', () => {
+    const p = paths();
+    expect(configuredMainAgent(p)).toBeUndefined();
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ mainAgent: 'codex' }));
+    expect(configuredMainAgent(p)).toBe('codex');
+    expect(fs.existsSync(p.fleetConfig)).toBe(false);
+    saveMainAgent(p, 'claude');
+    expect(configuredMainAgent(p)).toBe('claude');
   });
 });
