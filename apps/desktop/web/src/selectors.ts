@@ -1,7 +1,7 @@
 import type { Character, FleetState, Island } from '@archipelago/protocol';
 import { SINGLE, type Panes } from './panes.js';
 
-export type DisplayStatus = 'working' | 'idle' | 'blocked' | 'done' | 'shell' | 'dormant';
+export type DisplayStatus = 'working' | 'idle' | 'blocked' | 'done' | 'shell';
 
 // home sorts last so the next-island key reaches it after every other island
 const byName = (a: Island, b: Island) => Number(a.kind === 'home') - Number(b.kind === 'home') || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
@@ -53,14 +53,16 @@ export function firstOfNextIsland(f: FleetState, id: string | undefined): Charac
   return undefined;
 }
 
-export const isDormant = (c: Character): boolean => !c.tmux;
-
 // one terminal's status: 1 is the main terminal, 2 the second
-export const slotStatus = (c: Character, term: 1 | 2): DisplayStatus =>
-  term === 2 ? c.second?.agent?.status ?? 'shell' : isDormant(c) ? 'dormant' : c.agent?.status ?? 'shell';
+export const slotStatus = (c: Character, term: 1 | 2): DisplayStatus => {
+  if (term === 2) return c.second?.agent?.status ?? 'shell';
+  const s = c.agent?.status ?? 'shell';
+  // with its window gone nothing runs and nothing waits on the user, whatever the agent last reported
+  return !c.tmux && (s === 'working' || s === 'blocked') ? 'idle' : s;
+};
 
 // what the character shows when its sessions differ: the one that needs the user soonest
-const URGENCY: DisplayStatus[] = ['blocked', 'working', 'done', 'idle', 'shell', 'dormant'];
+const URGENCY: DisplayStatus[] = ['blocked', 'working', 'done', 'idle', 'shell'];
 
 export const statusOf = (c: Character): DisplayStatus => {
   const all = c.second ? [slotStatus(c, 1), slotStatus(c, 2)] : [slotStatus(c, 1)];
@@ -75,10 +77,10 @@ export const contextPctOf = (c: Character): number | undefined => {
   return all.length ? Math.max(...all) : undefined;
 };
 
-export const DISPLAY_STATUSES: DisplayStatus[] = ['working', 'idle', 'blocked', 'done', 'shell', 'dormant'];
+export const DISPLAY_STATUSES: DisplayStatus[] = ['working', 'idle', 'blocked', 'done', 'shell'];
 
 // what needs the user first: blocked, then finished and unread, then the rest by how alive they are
-const PRIORITY: DisplayStatus[] = ['blocked', 'done', 'working', 'idle', 'shell', 'dormant'];
+const PRIORITY: DisplayStatus[] = ['blocked', 'done', 'working', 'idle', 'shell'];
 const priorityOf = (c: Character): number => {
   const s = statusOf(c);
   return s === 'done' && !isUnread(c) ? PRIORITY.indexOf('idle') + 0.5 : PRIORITY.indexOf(s);
@@ -99,7 +101,7 @@ export function islandStatus(f: FleetState, islandId: string): DisplayStatus | u
 }
 
 export function countsByStatus(f: FleetState): Record<DisplayStatus, number> {
-  const out = { working: 0, idle: 0, blocked: 0, done: 0, shell: 0, dormant: 0 };
+  const out = { working: 0, idle: 0, blocked: 0, done: 0, shell: 0 };
   for (const c of Object.values(f.characters)) out[statusOf(c)] += 1;
   return out;
 }

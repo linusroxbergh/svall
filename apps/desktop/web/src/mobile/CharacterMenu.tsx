@@ -1,6 +1,6 @@
 import { useState, type JSX } from 'react';
 import { useApp } from '../hooks.js';
-import { isDormant, islandsSorted } from '../selectors.js';
+import { islandsSorted } from '../selectors.js';
 import { phone } from './boot.js';
 import { DocsList } from './DocsList.js';
 import { Sheet } from './Sheet.js';
@@ -23,7 +23,6 @@ export function CharacterMenu({ id, onClose, onClosed }: { id: string; onClose()
   return (
     <Sheet title={c.name} onClose={onClose}>
       <div className="sheet-form">
-        {isDormant(c) && <button type="button" disabled={busy} onClick={() => void run(() => phone.api().call('char.revive', { id }))}>Revive</button>}
         {others.length > 0 && (
           <div className="choices" role="group" aria-label="Move to">
             <p className="sheet-note">Move to</p>

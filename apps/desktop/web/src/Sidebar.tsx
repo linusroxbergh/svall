@@ -4,7 +4,7 @@ import { moveCharacterTo, newCharacterOn, newIsland, saveIsland, toggleIsland } 
 import { app, deps } from './boot.js';
 import type { DropTarget } from './drop.js';
 import { useApp } from './hooks.js';
-import { boardIsland, boardViewed, charactersOf, isDormant, islandStatus, islandsSorted, isUnread, statusOf, wantsUser } from './selectors.js';
+import { boardIsland, boardViewed, charactersOf, islandStatus, islandsSorted, isUnread, statusOf, wantsUser } from './selectors.js';
 
 // what a folded island would hide: the characters that want the user
 const attentionIn = (chars: Character[]): number => chars.filter(wantsUser).length;
@@ -106,7 +106,7 @@ function CharacterRow({ c }: { c: Character }) {
   return (
     <div
       className="sb-row sb-child" data-testid={`sb-char-${c.id}`} data-status={status} data-unread={isUnread(c)}
-      data-attention={wantsUser(c)} data-selected={selected} data-dormant={isDormant(c)}
+      data-attention={wantsUser(c)} data-selected={selected}
       data-drop={`char:${c.id}`} data-drop-hover={hover} data-drop-reorder={reorderHover} data-drop-after={hoverAfter} {...dropZone({ kind: 'char', id: c.id })}
       draggable data-dragging={dragging}
       onDragStart={(e) => { e.dataTransfer.setData(CHAR_DRAG, c.id); e.dataTransfer.effectAllowed = 'move'; setDragging(true); }}
@@ -115,7 +115,6 @@ function CharacterRow({ c }: { c: Character }) {
     >
       <i className="sdot" data-status={status} />
       <span className="sb-name">{c.name}</span>
-      {isDormant(c) && <span className="sb-sub mono">dormant</span>}
     </div>
   );
 }

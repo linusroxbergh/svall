@@ -34,7 +34,6 @@ test('shows the selected terminal on the board, switches with Cmd+J, marks seen,
   const state = await archi.api.call('state.get', {});
   execFileSync('tmux', ['-S', path.join(archi.home, 'tmux.sock'), 'kill-window', '-t', state.characters[b.id].tmux!.windowId]);
   await expect(page.getByTestId('revive')).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByTestId(`sb-char-${b.id}`)).toHaveAttribute('data-status', 'dormant');
   await page.getByTestId('revive').click();
   await expect(surface).toHaveAttribute('data-char', b.id, { timeout: 10_000 });
 });

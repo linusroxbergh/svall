@@ -44,7 +44,6 @@ describe('statusWord', () => {
   it('names only the loud statuses', () => {
     expect(statusWord('blocked')).toBe('blocked');
     expect(statusWord('done')).toBe('done');
-    expect(statusWord('dormant')).toBe('dormant');
     expect(statusWord('working')).toBeUndefined();
     expect(statusWord('idle')).toBeUndefined();
     expect(statusWord('shell')).toBeUndefined();

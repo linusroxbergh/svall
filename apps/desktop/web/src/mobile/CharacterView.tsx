@@ -111,6 +111,10 @@ export function CharacterView({ id, onBack }: { id: string; onBack(): void }): J
     return () => { left = true; };
   }, [id, online, attempt]);
 
+  // a window lost while the view is open waits for revive, as on the desktop
+  const windowId = character?.tmux?.windowId;
+  useEffect(() => { if (windowId) return () => setFailed('The terminal closed.'); }, [windowId]);
+
   // an answer stays in flight until the daemon reports the agent unblocked or on another question, so one tap answers once
   const blocked = character?.agent?.status === 'blocked';
   const promptId = character?.agent?.promptId;
@@ -170,7 +174,7 @@ export function CharacterView({ id, onBack }: { id: string; onBack(): void }): J
         </span>
         <button type="button" className="icon" aria-label="Character options" onClick={() => setMenu(true)}>…</button>
         {/* without archid the character's status is stale, so the header says so instead */}
-        <span className="conn" data-status={!online ? status : character ? statusOf(character) : 'dormant'}>
+        <span className="conn" data-status={!online ? status : character ? statusOf(character) : 'gone'}>
           {!online ? status : character ? statusOf(character) : 'gone'}
         </span>
       </header>

@@ -40,8 +40,13 @@ describe('selectors', () => {
   });
   it('derives a display status', () => {
     expect(statusOf(chr('x', 'i', { x: 0, y: 0 }))).toBe('shell');
-    expect(statusOf(chr('x', 'i', { x: 0, y: 0 }, { tmux: undefined }))).toBe('dormant');
+    expect(statusOf(chr('x', 'i', { x: 0, y: 0 }, { tmux: undefined, agent: { kind: 'claude', sessionId: 's', transcriptPath: 't', status: 'done', lastActivityAt: 0 } }))).toBe('done');
     expect(statusOf(chr('x', 'i', { x: 0, y: 0 }, { agent: { kind: 'claude', sessionId: 's', transcriptPath: 't', status: 'blocked', lastActivityAt: 0 } }))).toBe('blocked');
+  });
+  it('shows a character with no window as idle, whatever turn or question its agent was left on', () => {
+    for (const status of ['working', 'blocked'] as const) {
+      expect(statusOf(chr('x', 'i', { x: 0, y: 0 }, { tmux: undefined, agent: { kind: 'claude', sessionId: 's', transcriptPath: 't', status, lastActivityAt: 0 } }))).toBe('idle');
+    }
   });
   it('anything the page spreads over a surface hides it first', () => {
     const base = { namingCharacter: false, missionPrompt: false, closingCharacter: undefined, keysOpen: false, resourcesOpen: false, fleet: fleet() };
@@ -78,7 +83,7 @@ describe('board', () => {
     f.characters.c5 = chr('c5', 'i_a', { x: 3, y: 1 }, { tmux: undefined });
     return f;
   };
-  it('orders characters by priority: blocked, done unread, working, idle, done seen, shell, dormant; ties in strip order', () => {
+  it('orders characters by priority: blocked, done unread, working, idle, done seen, shell; ties in strip order', () => {
     expect(charactersByPriority(busy()).map((c) => c.id)).toEqual(['c4', 'c1', 'c0', 'c3', 'c2', 'c5']);
   });
   it('gives an island the status of its most pressing character', () => {
@@ -103,20 +108,20 @@ describe('board', () => {
 
 describe('countsByStatus', () => {
   it('lists every display status in a fixed order', () => {
-    expect(DISPLAY_STATUSES).toEqual(['working', 'idle', 'blocked', 'done', 'shell', 'dormant']);
+    expect(DISPLAY_STATUSES).toEqual(['working', 'idle', 'blocked', 'done', 'shell']);
   });
 
   it('counts the fixture fleet as three shells', () => {
-    expect(countsByStatus(fleet())).toEqual({ working: 0, idle: 0, blocked: 0, done: 0, shell: 3, dormant: 0 });
+    expect(countsByStatus(fleet())).toEqual({ working: 0, idle: 0, blocked: 0, done: 0, shell: 3 });
   });
 
-  it('counts agents by agent status and tmux-less characters as dormant', () => {
+  it('counts agents by agent status, a dormant one\'s too', () => {
     const agent = { kind: 'claude' as const, sessionId: 's', transcriptPath: '/t', status: 'working' as const, lastActivityAt: 0 };
     const f = fleet();
     f.characters.c0 = chr('c0', 'i_b', { x: 1, y: 1 }, { agent });
     f.characters.c1 = chr('c1', 'i_b', { x: 2, y: 1 }, { agent: { ...agent, status: 'blocked' } });
-    f.characters.c2 = chr('c2', 'i_a', { x: 1, y: 1 }, { tmux: undefined });
-    expect(countsByStatus(f)).toEqual({ working: 1, idle: 0, blocked: 1, done: 0, shell: 0, dormant: 1 });
+    f.characters.c2 = chr('c2', 'i_a', { x: 1, y: 1 }, { tmux: undefined, agent: { ...agent, status: 'idle' } });
+    expect(countsByStatus(f)).toEqual({ working: 1, idle: 1, blocked: 1, done: 0, shell: 0 });
   });
 });
 
@@ -140,13 +145,12 @@ describe('a character with two sessions', () => {
   const second = (a?: ReturnType<typeof agent>, unread = false) => ({ tmux: { windowId: '@2', paneId: '%2' }, agent: a, unread });
   const at = { x: 0, y: 0 };
 
-  it('shows the most urgent of the two: blocked, working, done, idle, shell, dormant', () => {
+  it('shows the most urgent of the two: blocked, working, done, idle, shell', () => {
     expect(statusOf(chr('c', 'i', at, { agent: agent('idle'), second: second(agent('working')) }))).toBe('working');
     expect(statusOf(chr('c', 'i', at, { agent: agent('working'), second: second(agent('blocked')) }))).toBe('blocked');
     expect(statusOf(chr('c', 'i', at, { agent: agent('done'), second: second(agent('working')) }))).toBe('working');
     expect(statusOf(chr('c', 'i', at, { agent: agent('idle'), second: second() }))).toBe('idle');
     expect(statusOf(chr('c', 'i', at, { tmux: undefined, second: second() }))).toBe('shell');
-    expect(statusOf(chr('c', 'i', at, { tmux: undefined }))).toBe('dormant');
   });
   it('still tells the two apart', () => {
     const c = chr('c', 'i', at, { agent: agent('idle'), second: second(agent('working')) });
