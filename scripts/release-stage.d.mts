@@ -4,7 +4,7 @@ export const PINS: {
   rsync: { version: string; sha256: string };
 };
 
-export function describeVersion(): string;
+export function describeVersion(repo?: string): string;
 export function shimText(name: string): string;
 export function companionAssets(o: { dir: string; version: string; urlBase: string }): Record<string, { url: string; sha256: string }>;
 export function stageRelease(o: { out: string; version: string; platform: string; shasums?: string; companionUrlBase?: string; companionDir?: string }): Promise<{ stage: string; meta: Record<string, unknown> }>;

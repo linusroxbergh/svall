@@ -41,9 +41,12 @@ export function companionAssets(o) {
   return companions;
 }
 
-/** The release name, from the tree being built; never a path or anything a directory cannot be called. */
-export function describeVersion() {
-  const version = run('git', ['describe', '--tags', '--always', '--dirty'], { cwd: REPO, encoding: 'utf8' }).trim();
+/**
+ * The release name, from the tree being built: its release tag, or its commit when none is there, as another tag such
+ * as ghostty-kit names no release; never a path or anything a directory cannot be called.
+ */
+export function describeVersion(repo = REPO) {
+  const version = run('git', ['describe', '--tags', '--match', 'v[0-9]*', '--always', '--dirty'], { cwd: repo, encoding: 'utf8' }).trim();
   if (!/^[A-Za-z0-9._+-]+$/.test(version)) throw new Error(`git describe gave an unusable release name: ${JSON.stringify(version)}`);
   return version;
 }

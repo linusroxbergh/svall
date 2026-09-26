@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { entriesOf, manifestDigest, signManifest, sshVerify, verifyRelease, writeManifest, type Entry } from '../../../scripts/release-manifest.mjs';
 import { allowedSigners, installRelease } from '../../../scripts/install-release.mjs';
-import { companionAssets, shimText, stageRelease } from '../../../scripts/release-stage.mjs';
+import { companionAssets, describeVersion, shimText, stageRelease } from '../../../scripts/release-stage.mjs';
 import { hooksDir, homeTemplateDir, isRelease, mobileDistDir, releaseRoot, releaseVersion, repoRoot } from '../src/release.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -118,6 +118,26 @@ describe('the signers a release trusts', () => {
     const stage = fixture();
     signManifest(stage, ephemeralSigner().key);
     expect(() => verifyRelease(stage, { verify: sshVerify({ allowedSigners: committed }) })).toThrow(/not signed by archipelago-release/);
+  });
+});
+
+describe('the release name', () => {
+  const git = (repo: string, ...args: string[]) => execFileSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { encoding: 'utf8' }).trim();
+
+  it('comes from a release tag, and from the commit when only another tag, such as the GhosttyKit one, is there', () => {
+    const repo = makeHome();
+    git(repo, 'init', '-q');
+    git(repo, 'commit', '-q', '--allow-empty', '-m', 'one');
+    git(repo, 'tag', 'ghostty-kit');
+    git(repo, 'commit', '-q', '--allow-empty', '-m', 'two');
+    const commit = git(repo, 'rev-parse', '--short', 'HEAD');
+    expect(describeVersion(repo)).toBe(commit);
+    fs.writeFileSync(path.join(repo, 'f'), '');
+    git(repo, 'add', 'f');
+    expect(describeVersion(repo)).toBe(`${commit}-dirty`);
+    git(repo, 'commit', '-q', '-m', 'three');
+    git(repo, 'tag', 'v1.2.3');
+    expect(describeVersion(repo)).toBe('v1.2.3');
   });
 });
 

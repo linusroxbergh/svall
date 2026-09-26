@@ -36,7 +36,7 @@ fi
 if [ "$CONFIG" = release ]; then
   RELEASE="$MAC/build/release"
   COMPANIONS="$MAC/build/companions"
-  VERSION="$(git -C "$ROOT" describe --tags --always --dirty)"
+  VERSION="$(node -e 'import(process.argv[1]).then((m) => console.log(m.describeVersion()))' "$ROOT/scripts/release-stage.mjs")"
   rm -rf "$RELEASE" "$COMPANIONS"
   node "$ROOT/scripts/build-companion.mjs" --out "$COMPANIONS" --arch x64 --version "$VERSION" >"$MAC/build/companions.json"
   node "$ROOT/scripts/build-controller.mjs" --out "$RELEASE" --version "$VERSION" \
