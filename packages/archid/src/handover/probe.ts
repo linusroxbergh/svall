@@ -4,9 +4,10 @@ import type { RootProbe } from '@archipelago/protocol';
 
 export type ProbeFs = {
   existsSync(p: string): boolean;
-  writeFileSync(p: string, data: string, options: { mode: number }): void;
-  statSync(p: string): unknown;
-  rmSync(p: string, options: { force: boolean }): void;
+  accessSync(p: string, mode: number): void;
+  lstatSync(p: string): { dev: number; ino: number };
+  statSync(p: string): { dev: number };
+  readdirSync(p: string): string[];
   statfsSync(p: string): { bavail: number; bsize: number };
 };
 
@@ -23,24 +24,37 @@ export function caseCollisions(relatives: string[]): string[] {
   return [...byFold.values()].filter((s) => s.size > 1).flatMap((s) => [...s]).sort();
 }
 
+const swapCase = (name: string): string => name.replace(/[A-Za-z]/g, (c) => (c === c.toLowerCase() ? c.toUpperCase() : c.toLowerCase()));
+
+/**
+ * Whether the filesystem holding `dir` folds case, read without writing: a name looked up with its case swapped finds
+ * the same file. A folder's own name is looked up in its parent's filesystem, so a mount point is read by a name inside it.
+ */
+function foldsCase(dir: string, dep: ProbeFs): boolean {
+  const same = (a: string, b: string): boolean => {
+    try {
+      const [x, y] = [dep.lstatSync(a), dep.lstatSync(b)];
+      return x.dev === y.dev && x.ino === y.ino;
+    } catch { return false; }
+  };
+  try {
+    const [parent, name] = [path.posix.dirname(dir), path.posix.basename(dir)];
+    if (swapCase(name) !== name && dep.statSync(parent).dev === dep.lstatSync(dir).dev) return same(dir, path.posix.join(parent, swapCase(name)));
+    const inside = dep.readdirSync(dir).find((n) => swapCase(n) !== n);
+    return inside !== undefined && same(path.posix.join(dir, inside), path.posix.join(dir, swapCase(inside)));
+  } catch { return false; }
+}
+
 /** What each folder a destination writes into is good for: somewhere to write, how much room, and whether it folds case. */
 export function probeFolders(folders: readonly string[], dep: ProbeFs = fs): Record<string, RootProbe> {
   const probes: Record<string, RootProbe> = {};
   for (const dir of folders) {
     if (!dep.existsSync(dir)) { probes[dir] = { ...ABSENT }; continue; }
-    const probe = `.archi-probe-${process.pid}-a`;
-    const mark = path.posix.join(dir, probe);
-    let writable = false;
-    let caseInsensitive = false;
-    try {
-      dep.writeFileSync(mark, '', { mode: 0o600 });
-      writable = true;
-      try { dep.statSync(path.posix.join(dir, probe.toUpperCase())); caseInsensitive = true; } catch { /* case is kept apart */ }
-    } catch { /* not ours to write */ }
-    try { dep.rmSync(mark, { force: true }); } catch { /* nothing to take back */ }
+    let writable = true;
+    try { dep.accessSync(dir, fs.constants.W_OK); } catch { writable = false; }
     let freeBytes = 0;
     try { const s = dep.statfsSync(dir); freeBytes = s.bavail * s.bsize; } catch { /* no reading of the free space */ }
-    probes[dir] = { exists: true, writable, caseInsensitive, freeBytes };
+    probes[dir] = { exists: true, writable, caseInsensitive: foldsCase(dir, dep), freeBytes };
   }
   return probes;
 }

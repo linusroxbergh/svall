@@ -7,37 +7,59 @@ const made: string[] = [];
 const tmp = (): string => { const d = fs.mkdtempSync('/tmp/archi-t-'); made.push(d); return d; };
 afterEach(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
 
-// a folder that answers the way the flags say, wherever it is asked
-function fakeFs(o: { writable?: boolean; caseInsensitive?: boolean; free?: number } = {}): ProbeFs {
-  const files = new Set<string>();
-  return {
-    existsSync: () => true,
-    writeFileSync: (p) => { if (!(o.writable ?? true)) throw new Error('EACCES'); files.add(p); },
-    statSync: (p) => {
-      const hit = files.has(p) || ((o.caseInsensitive ?? false) && [...files].some((f) => f.toLowerCase() === p.toLowerCase()));
-      if (!hit) throw new Error('ENOENT');
-      return {};
-    },
-    rmSync: (p) => { files.delete(p); },
-    statfsSync: () => ({ bavail: (o.free ?? 4096) / 4096, bsize: 4096 }),
+// every entry under a folder and the folder itself, with its mtime and, for a file, its bytes
+function snapshot(dir: string): string[] {
+  const at = (p: string, name: string) => {
+    const st = fs.lstatSync(p, { bigint: true });
+    return `${name}:${st.mtimeNs}:${st.isFile() ? fs.readFileSync(p, 'base64') : ''}`;
   };
+  return [at(dir, '.'), ...(fs.readdirSync(dir, { recursive: true }) as string[]).sort().map((n) => at(path.join(dir, n), n))];
+}
+
+/** Whether the volume under `dir` folds case, as a file written there and asked for by its other case shows. */
+function foldsHere(dir: string): boolean {
+  fs.writeFileSync(path.join(dir, 'mark'), '');
+  return fs.existsSync(path.join(dir, 'MARK'));
 }
 
 describe('the folders a destination writes into', () => {
-  it('probes a real folder for room, leaving nothing behind, and a missing one as absent', () => {
+  it('reads a real folder for room without writing anything there, and a missing one as absent', () => {
     const base = tmp();
     const here = path.join(base, 'home');
     fs.mkdirSync(here);
+    fs.writeFileSync(path.join(here, 'notes.md'), 'mine\n');
+    const before = snapshot(here);
     const probes = probeFolders([here, path.join(base, 'gone')]);
     expect(probes[here]).toMatchObject({ exists: true, writable: true });
     expect(probes[here].freeBytes).toBeGreaterThan(0);
-    expect(fs.readdirSync(here)).toEqual([]);
+    expect(snapshot(here)).toEqual(before);
     expect(probes[path.join(base, 'gone')]).toEqual({ exists: false, writable: false, caseInsensitive: false, freeBytes: 0 });
   });
 
-  it('says which fold case and which cannot be written', () => {
-    expect(probeFolders(['/h'], fakeFs({ caseInsensitive: true, free: 8192 }))['/h']).toEqual({ exists: true, writable: true, caseInsensitive: true, freeBytes: 8192 });
-    expect(probeFolders(['/h'], fakeFs({ writable: false }))['/h']).toMatchObject({ exists: true, writable: false, caseInsensitive: false });
+  it.skipIf(process.getuid?.() === 0)('reads a folder it cannot write, and whether its volume folds case, all the same', () => {
+    const base = tmp();
+    const locked = path.join(base, 'Locked');
+    fs.mkdirSync(locked);
+    fs.chmodSync(locked, 0o555);
+    const folds = foldsHere(base);
+    expect(probeFolders([locked])[locked]).toMatchObject({ exists: true, writable: false, caseInsensitive: folds });
+    expect(probeFolders([base])[base]).toMatchObject({ exists: true, writable: true, caseInsensitive: folds });
+  });
+
+  it('reads the case of a folder that is a volume of its own by a name inside it', () => {
+    // /Volumes/work folds case, and the volume above it does not
+    const inodes: Record<string, { dev: number; ino: number }> = { '/Volumes': { dev: 1, ino: 1 }, '/Volumes/work': { dev: 2, ino: 1 }, '/Volumes/work/notes': { dev: 2, ino: 5 } };
+    const inside = '/Volumes/work/';
+    const lstatSync = (p: string) => {
+      const found = inodes[p.startsWith(inside) ? inside + p.slice(inside.length).toLowerCase() : p];
+      if (!found) throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' });
+      return found;
+    };
+    const volumes: ProbeFs = {
+      existsSync: (p) => p in inodes, accessSync: () => undefined, lstatSync, statSync: lstatSync,
+      readdirSync: (p) => (p === '/Volumes/work' ? ['Notes'] : []), statfsSync: () => ({ bavail: 1, bsize: 4096 }),
+    };
+    expect(probeFolders(['/Volumes/work'], volumes)['/Volumes/work']).toEqual({ exists: true, writable: true, caseInsensitive: true, freeBytes: 4096 });
   });
 
   it('names the paths that differ only by case', () => {

@@ -1606,6 +1606,20 @@ describe('destination inspect', () => {
     expect(fs.existsSync(path.join(s.dst, 'work/bo'))).toBe(false);
   });
 
+  it('reads each carried folder it is asked about without writing in it, whatever the root holds', async () => {
+    const s = await scene();
+    const carried = replicaRoots(s.manifest);
+    // one root holds work written here since it landed
+    fs.writeFileSync(path.join(s.dst, 'work/ada/mine.txt'), 'written here\n');
+    const snapshot = () => carried.map((r) => [r.path, ...[r.path, ...(fs.statSync(r.path).isDirectory() ? (fs.readdirSync(r.path, { recursive: true }) as string[]).sort().map((n) => path.join(r.path, n)) : [])]
+      .map((p) => { const st = fs.lstatSync(p, { bigint: true }); return `${p}:${st.mtimeNs}:${st.isFile() ? fs.readFileSync(p, 'base64') : ''}`; })]);
+    const before = snapshot();
+    const r = await daemon(s).handover.inspect({ roots: carried, excludes: s.manifest.excludes, folders: [s.dst, ...carried.filter((x) => x.entry === 'dir').map((x) => x.path)] });
+    expect(r.roots.map((x) => x.check.ok ? x.check.kind : x.check.blocker.code)).toContain('destination_diverged');
+    for (const root of carried.filter((x) => x.entry === 'dir')) expect(r.folders[root.path]).toMatchObject({ exists: true, writable: true });
+    expect(snapshot()).toEqual(before);
+  });
+
   it("names each carried folder this machine's Codex would ask to trust, by the config in its own Codex home", async () => {
     const s = await scene({ land: false });
     const [bo, demo, wt, linked, fresh] = ['work/bo', 'work/demo', 'work/bo/.claude/worktrees/x', 'bo-link', 'work/new'].map((p) => path.join(s.dst, p));
