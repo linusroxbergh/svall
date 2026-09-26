@@ -72,7 +72,7 @@ function Phone() {
       <div className="kicker">Your phone</div>
       <div className="rows">
         <div className="row">
-          <span>serve this fleet<Info id="phone">Serves this fleet's own page on your tailnet only, never the open internet. Needs <a href="https://tailscale.com/download" target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); openUrl(app.bridge, e.currentTarget.href); }}>Tailscale</a> signed in on this Mac and on the phone. On the phone, use Share → Add to Home Screen. The Phone button at the bottom of the island sidebar shows the link and a QR code.</Info></span>
+          <span>serve this fleet<Info id="phone">Reachable only on your tailnet. Needs <a href="https://tailscale.com/download" target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); openUrl(app.bridge, e.currentTarget.href); }}>Tailscale</a> on this Mac and the phone.</Info></span>
           <b>{blocked ? <span data-testid="set-mobile-blocked">unavailable</span> : <MobileSwitch testId="set-mobile" />}</b>
         </div>
         {status?.serving && (
@@ -105,7 +105,7 @@ function Dormancy() {
   const step = (by: -1 | 1) => DORMANCY[at + by];
   return (
     <div className="row">
-      <span>close idle agents after<Info id="dormancy">An agent left idle this long is closed, freeing the memory it and its tools hold. Opening its terminal resumes the conversation where it stopped. One still running something in the background stays up.</Info></span>
+      <span>close idle agents after<Info id="dormancy">Frees memory. Opening the terminal resumes the conversation, and agents with background work stay up.</Info></span>
       <b className="set-zoom">
         <button data-testid="dormancy-less" aria-label="Sooner" disabled={at <= 0} onClick={() => setDormancy(deps(), step(-1))}>−</button>
         <span className="tnum" data-testid="dormancy-level">{dormancyLabel(hours)}</span>
@@ -123,7 +123,7 @@ function MainAgent() {
   const found = useApp((s) => s.fleet.agentsFound ?? NO_AGENTS);
   return (
     <div className="row">
-      <span>main agent<Info id="main-agent">What the scribe and mission control's crew run, and what <code>archi char new --run</code> starts, unless you name another. Any character can still run either: type claude or codex in it. A <code>home.command</code> in config.json keeps the crew on that command.</Info></span>
+      <span>main agent<Info id="main-agent">What mission control, the scribe and <code>archi char new --run</code> start. A <code>home.command</code> in config.json overrides it for the crew.</Info></span>
       <b><select className="fld inline" aria-label="Main agent" value={main} data-testid="set-main-agent"
         onChange={(e) => setMainAgent(deps(), e.target.value as AgentKind)}>
         {AgentKind.options.map((k) => (
@@ -147,7 +147,7 @@ function Scribe() {
       <div className="rows">
         <MainAgent />
         <div className="row">
-          <span>scribe<Info id="scribe">About a minute after an agent stops, the scribe updates the character's name, note and links, and its island's description. Each pass is one headless call to {AGENT_LABEL[scribeAgent]}. API keys may incur charges.</Info></span>
+          <span>scribe<Info id="scribe">Updates names, notes and links after an agent stops. Each pass is a headless {AGENT_LABEL[scribeAgent]} call and may cost API credits.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={on} data-testid="set-scribe" onClick={flip}>{on ? 'on' : 'off'}</button></b>
         </div>
         {error && (
@@ -190,7 +190,7 @@ function Notifications() {
       <div className="kicker">Notifications</div>
       <div className="rows">
         <div className="row">
-          <span>notifications<Info id="notify">A macOS banner when a character needs you or is done, unless it's the one you're looking at. When it needs you, the banner's Approve and Deny answer without opening the app.</Info></span>
+          <span>notifications<Info id="notify">macOS banners when a character needs you or is done. Approve and Deny work from the banner.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={shown} data-testid="set-notify" disabled={permission === 'denied'} onClick={flip}>{shown ? 'on' : 'off'}</button></b>
         </div>
         {shown && (
@@ -237,7 +237,7 @@ export function SettingsCard() {
       <h2 className="h2">Settings</h2>
       <div className="rows">
         <div className="row">
-          <span>zoom<Info id="zoom">{zoomOut && zoomIn ? `${zoomOut} and ${zoomIn} scale` : 'Scales'} the map, the panels and the terminal's text together.{zoomReset && ` ${zoomReset} is 100%.`}</Info></span>
+          <span>zoom<Info id="zoom">{zoomOut && zoomIn ? `${zoomOut} and ${zoomIn} scale` : 'Scales'} the map, panels and terminal text.{zoomReset && ` ${zoomReset} resets.`}</Info></span>
           <b className="set-zoom">
             <button data-testid="zoom-out" aria-label="Smaller" onClick={() => set({ zoom: zoomBy(zoom, -1) })}>−</button>
             <span className="tnum" data-testid="zoom-level">{Math.round(zoom * 100)}%</span>
@@ -247,45 +247,45 @@ export function SettingsCard() {
       </div>
       <div className="rows">
         <Opacity label="terminal card" name="cardOpacity" value={cardOpacity}
-          info={<Info id="opacity">How much of the map shows through a terminal, whether it floats as a card or fills the view.</Info>} />
+          info={<Info id="opacity">How much of the map shows through a terminal.</Info>} />
         <Opacity label="full screen" name="fullOpacity" value={fullOpacity} />
       </div>
       <div className="rows">
         <div className="row">
-          <span>arrange on its own<Info id="auto-arrange">Runs mission control's arrange for you, refitting the fleet to the map after you leave a full-screen card or resize the window.</Info></span>
+          <span>arrange on its own<Info id="auto-arrange">Arranges the fleet after you resize the window or leave full screen.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={autoArrange} data-testid="set-auto-arrange"
             onClick={() => set({ autoArrange: !autoArrange })}>{autoArrange ? 'on' : 'off'}</button></b>
         </div>
         <div className="row">
-          <span>usage meter<Info id="usage">Shows a Usage button at the bottom of the island sidebar, with how much of each plan limit the running agents have used and when it resets.</Info></span>
+          <span>usage meter<Info id="usage">A sidebar button showing plan limits and when they reset.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={usageTab} data-testid="set-usage-tab"
             onClick={() => { if (usageTab) app.store.getState().toggleUsage(false); set({ usageTab: !usageTab }); }}>{usageTab ? 'on' : 'off'}</button></b>
         </div>
       </div>
       <div className="opens">
-        <button className="btn" data-testid="settings-ghostty" disabled={!shell} title="Font, colours and cursor for every terminal"
+        <button className="btn" data-testid="settings-ghostty" disabled={!shell} title="Terminal font, colours and cursor"
           onClick={() => openConfig(app.bridge, 'ghostty')}>Ghostty config</button>
-        <button className="btn" data-testid="settings-fleet" disabled={!shell} title="Port, mission control and the fleet's defaults"
+        <button className="btn" data-testid="settings-fleet" disabled={!shell} title="Port, mission control and fleet defaults"
           onClick={() => openConfig(app.bridge, 'fleet')}>Fleet config</button>
       </div>
       <div className="kicker">The browser</div>
       <div className="rows">
         <div className="row">
-          <span>1Password<Info id="1password">The key button beside the address bar{fillKey && `, or ${fillKey},`} fills the page's sign-in with the login saved for its site, or the one-time code when the page asks for one. 1Password asks for Touch ID.</Info></span>
+          <span>1Password<Info id="1password">The key button by the address bar{fillKey && `, or ${fillKey},`} fills the saved login or one-time code.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={fills} data-testid="set-1password" disabled={!op}
             onClick={() => set({ onePassword: !onePassword })}>{fills ? 'on' : 'off'}</button></b>
         </div>
       </div>
-      {!op && <div className="desc">Needs the 1Password CLI: run <code>brew install 1password-cli</code>, then turn on Integrate with 1Password CLI in 1Password's Developer settings.</div>}
+      {!op && <div className="desc">Run <code>brew install 1password-cli</code>, then turn on Integrate with 1Password CLI in 1Password's Developer settings.</div>}
       <div className="opens">
         <button className="btn" data-testid="settings-cookies" disabled={!shell} title="Pick a Chrome profile to copy from"
           onClick={() => app.bridge.send({ type: 'browser.importCookies' })}>Import Chrome cookies</button>
-        <Info id="cookies">Copies a Chrome profile's cookies into the fleet's browser once, so the sites you're signed in to in Chrome are signed in here too. macOS asks before handing over the key that decrypts them.</Info>
+        <Info id="cookies">A one-time copy, so your Chrome sign-ins work here too.</Info>
       </div>
       <div className="kicker">The keyboard</div>
       <div className="rows">
         <div className="row">
-          <span>keyboard shortcuts<Info id="keys">Lists every shortcut Archipelago handles. Only the chords listed there reach the app; every other ⌘ chord goes straight to the terminal.</Info></span>
+          <span>keyboard shortcuts<Info id="keys">Unlisted ⌘ chords go to the terminal.</Info></span>
           <b><button className="btn set-open" data-testid="settings-keys" onClick={() => app.store.getState().toggleKeys(true)}>Edit</button></b>
         </div>
       </div>

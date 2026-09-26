@@ -27,7 +27,7 @@ function ContextPills({ items, ids, charId, onChange }: { items: ContextItem[]; 
           <i className="lg"><LinkIcon item={it} /></i>
           <a className="clip-head" href={/^(https?|mailto):/i.test(it.ref) ? it.ref : undefined} title={it.ref}
             onClick={(e) => { e.preventDefault(); followLink(it, charId, { x: e.clientX, y: e.clientY }); }}>{linkText(it)}</a>
-          <button data-testid={ids.pin} title={it.pinned ? 'Unpin' : 'Pin so the agent reads it before starting'} onClick={() => toggle(i)}>{it.pinned ? '●' : '○'}</button>
+          <button data-testid={ids.pin} title={it.pinned ? 'Unpin' : 'Pin: the agent reads it first'} onClick={() => toggle(i)}>{it.pinned ? '●' : '○'}</button>
           {it.source === 'manual' && <button data-testid={ids.remove} onClick={() => onChange(items.filter((_, j) => j !== i))}>×</button>}
         </span>
       ))}

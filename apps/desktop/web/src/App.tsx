@@ -21,7 +21,7 @@ import { Sidebar } from './Sidebar.js';
 import { UtilityDock } from './UtilityDock.js';
 import { theme } from './theme.js';
 
-const OUTDATED = 'This app and archid are different versions: run pnpm desktop:install, then reopen the app';
+const OUTDATED = 'App and archid versions differ: run pnpm desktop:install, then reopen the app';
 
 export function App() {
   const loaded = useApp((s) => s.loaded);

@@ -31,7 +31,7 @@ export function AgentProfilePick({ id }: { id: string }) {
     if (v === MANAGE) { shelf(); return; }
     const toast = app.store.getState().showToast;
     void deps().api.call('char.update', { id, agentProfile: v }).then(
-      () => { if (v && running) toast(`${v} applies from the agent’s next prompt`, 'ok'); },
+      () => { if (v && running) toast(`${v} applies from the next prompt`, 'ok'); },
       (e: Error) => toast(e.message, 'error'));
     void loadResources(deps());
   };
