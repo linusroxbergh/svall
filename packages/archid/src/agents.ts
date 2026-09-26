@@ -2,16 +2,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { AGENT_LABEL, type AgentKind } from '@archipelago/protocol';
 
-export type Version = [number, number, number];
+type Version = [number, number, number];
 
-// what Archipelago needs to know about each agent CLI; later PRs add hooks, transcripts, launch and usage here
-export type AgentAdapter = {
-  kind: AgentKind;
+// what Archipelago needs to know about each agent CLI
+type AgentAdapter = {
   label: string;
   bin: string;
   installUrl: string;
   minVersion?: Version;
-  // argv that reports the login; a non-zero exit means not logged in
+  // argv that reports the login; exit 1 means not logged in
   loginArgs: string[];
   loggedIn(stdout: string): boolean;
   loginHint: string;
@@ -21,14 +20,14 @@ export type AgentAdapter = {
 
 export const AGENTS: Record<AgentKind, AgentAdapter> = {
   claude: {
-    kind: 'claude', label: AGENT_LABEL.claude, bin: 'claude', installUrl: 'https://code.claude.com/docs/en/setup',
+    label: AGENT_LABEL.claude, bin: 'claude', installUrl: 'https://code.claude.com/docs/en/setup',
     loginArgs: ['auth', 'status', '--json'],
     loggedIn: (out) => { try { return (JSON.parse(out) as { loggedIn?: boolean }).loggedIn === true; } catch { return false; } },
     loginHint: 'claude auth login',
     crewCommand: 'claude --model sonnet',
   },
   codex: {
-    kind: 'codex', label: AGENT_LABEL.codex, bin: 'codex', installUrl: 'https://learn.chatgpt.com/docs/codex/cli', minVersion: [0, 155, 0],
+    label: AGENT_LABEL.codex, bin: 'codex', installUrl: 'https://learn.chatgpt.com/docs/codex/cli', minVersion: [0, 155, 0],
     loginArgs: ['login', 'status'], loggedIn: () => true,
     loginHint: 'codex login',
     crewCommand: 'codex',
@@ -57,7 +56,8 @@ export function versionOk(a: AgentAdapter, text: string): boolean {
   const v = parseVersion(text);
   if (!a.minVersion || !v) return true;
   for (let i = 0; i < 3; i++) if (v[i] !== a.minVersion[i]) return v[i] > a.minVersion[i];
-  return true;
+  // 0.155.0-alpha.3 comes before 0.155.0
+  return !text.includes(`${v.join('.')}-`);
 }
 
 export const mainAgent = (configured: AgentKind | undefined, found: AgentKind[]): AgentKind =>
