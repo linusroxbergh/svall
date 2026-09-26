@@ -1,5 +1,5 @@
 import type { Cell, Character, ContextItem } from '@archipelago/protocol';
-import { contextPctOf, isDormant, isUnread, slotStatus, type DisplayStatus } from '../selectors.js';
+import { contextPctOf, isUnread, slotStatus, type DisplayStatus } from '../selectors.js';
 import { LinkIcon } from './LinkIcon.js';
 import { portraitTint, portraitUrl } from '../portraits.js';
 import { theme, tokenPx } from '../theme.js';
@@ -88,25 +88,21 @@ export function Token({
           </div>
         </div>
         <div className="nm"><span>{c.name}</span></div>
-        {isDormant(c) ? (
-          <div className="foot">{footInner(c, status, word)}</div>
-        ) : (
-          <button
-            type="button"
-            className="foot"
-            data-testid={`token-term-${c.id}`}
-            title="Open terminal"
-            aria-label={`Open ${c.name}'s terminal`}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); onOpen(); }}
-          >
-            {footInner(c, status, word)}
-            <svg className="tg" viewBox="0 0 10 9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M1.4 1.6 4 4.4 1.4 7.2" />
-              <path d="M5.8 7.2h2.8" />
-            </svg>
-          </button>
-        )}
+        <button
+          type="button"
+          className="foot"
+          data-testid={`token-term-${c.id}`}
+          title="Open terminal"
+          aria-label={`Open ${c.name}'s terminal`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); onOpen(); }}
+        >
+          {footInner(c, status, word)}
+          <svg className="tg" viewBox="0 0 10 9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1.4 1.6 4 4.4 1.4 7.2" />
+            <path d="M5.8 7.2h2.8" />
+          </svg>
+        </button>
       </div>
       {c.context.length > 0 && (
         <div className="rail">

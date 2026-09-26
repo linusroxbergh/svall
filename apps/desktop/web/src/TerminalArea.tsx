@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { reviveCharacter } from './actions.js';
 import { app, deps } from './boot.js';
 import { useApp } from './hooks.js';
@@ -18,12 +18,16 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   alpha.current = opacity;
 
   // opening a dormant character wakes it once it has stayed in view a moment, so passing by wakes nothing;
-  // one that goes dormant while open waits for the button
+  // one that goes dormant while open, or fails to wake, waits for the button
+  const [held, setHeld] = useState(false);
+  const windowId = c?.tmux?.windowId;
+  useEffect(() => { if (windowId) return () => setHeld(true); }, [windowId]);
   useEffect(() => {
+    setHeld(false);
     if (second || !c || c.tmux) return;
     const t = setTimeout(() => {
       const cur = app.store.getState().fleet.characters[id];
-      if (cur && !cur.tmux) reviveCharacter(deps(), id);
+      if (cur && !cur.tmux) void reviveCharacter(deps(), id).then((ok) => { if (!ok) setHeld(true); });
     }, 1000);
     return () => clearTimeout(t);
   }, [id, second]);
@@ -60,13 +64,14 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
     );
   }
   if (dormant) {
-    return second
-      ? <div className="revive" data-testid="second-starting">Starting the terminal…</div>
-      : (
+    if (second) return <div className="revive" data-testid="second-starting">Starting the terminal…</div>;
+    return held
+      ? (
         <div className="revive">
-          <button data-testid="revive" onClick={() => reviveCharacter(deps(), id)}>Revive {c.name}</button>
+          <button data-testid="revive" onClick={() => void reviveCharacter(deps(), id)}>Revive {c.name}</button>
         </div>
-      );
+      )
+      : <div className="revive" data-testid="resuming">Resuming the session…</div>;
   }
   return (
     <div ref={ref} className="surface" data-testid="surface" data-char={id} data-term={key}>

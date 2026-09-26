@@ -80,7 +80,6 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 .row[data-status='blocked'] .row-status { color: var(--blocked); }
 .row[data-status='done'] .row-status { color: var(--done); }
 .row[data-status='shell'] .row-status { color: var(--shell); }
-.row[data-status='dormant'] .row-status { color: var(--dormant); }
 
 /* ---- one character */
 

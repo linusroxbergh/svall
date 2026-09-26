@@ -30,6 +30,8 @@ afterEach(() => { vi.useRealTimers(); });
 
 test('opening a dormant character wakes it once it has stayed in view a moment', () => {
   render(<TerminalArea id="c1" />);
+  expect(screen.getByTestId('resuming')).toBeTruthy();
+  expect(screen.queryByTestId('revive')).toBeNull();
   expect(call).not.toHaveBeenCalled();
   act(() => { vi.advanceTimersByTime(1000); });
   expect(call).toHaveBeenCalledWith('char.revive', { id: 'c1' });
@@ -51,4 +53,12 @@ test('a character that goes dormant while open waits for the button', () => {
   act(() => { vi.advanceTimersByTime(1000); });
   expect(screen.getByTestId('revive')).toBeTruthy();
   expect(call).not.toHaveBeenCalled();
+});
+
+test('a wake the fleet refuses says why and leaves the button', async () => {
+  call.mockRejectedValueOnce(new Error('no session to resume'));
+  render(<TerminalArea id="c1" />);
+  await act(async () => { vi.advanceTimersByTime(1000); });
+  expect(screen.getByTestId('revive')).toBeTruthy();
+  expect(store.getState().toast?.text).toBe('no session to resume');
 });

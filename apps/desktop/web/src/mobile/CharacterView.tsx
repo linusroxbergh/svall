@@ -170,7 +170,7 @@ export function CharacterView({ id, onBack }: { id: string; onBack(): void }): J
         </span>
         <button type="button" className="icon" aria-label="Character options" onClick={() => setMenu(true)}>…</button>
         {/* without archid the character's status is stale, so the header says so instead */}
-        <span className="conn" data-status={!online ? status : character ? statusOf(character) : 'dormant'}>
+        <span className="conn" data-status={!online ? status : character ? statusOf(character) : 'gone'}>
           {!online ? status : character ? statusOf(character) : 'gone'}
         </span>
       </header>

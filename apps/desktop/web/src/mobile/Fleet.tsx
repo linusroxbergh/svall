@@ -15,7 +15,7 @@ import { NewIsland } from './NewIsland.js';
 import { Settings } from './Settings.js';
 
 const LABEL: Record<DisplayStatus, string> = {
-  working: 'working', idle: 'idle', blocked: 'needs you', done: 'done', shell: 'shell', dormant: 'asleep',
+  working: 'working', idle: 'idle', blocked: 'needs you', done: 'done', shell: 'shell',
 };
 
 type RowProps = { c: Character; revealed: boolean; onOpen(id: string): void; onReveal(id?: string): void; onClose(id: string): void };

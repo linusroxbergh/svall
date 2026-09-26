@@ -2,7 +2,7 @@ import { useEffect, useState, type KeyboardEvent } from 'react';
 import { contextKind, stepPortrait, type Character, type ContextItem, type Params, type Portrait } from '@archipelago/protocol';
 import { AgentProfilePick } from './AgentProfilePick.js';
 import { app, deps } from './boot.js';
-import { deleteCharacter, deleteIsland, newCharacterOn, reviveCharacter, saveCharacter, saveCharacterContext, saveIsland, saveIslandContext } from './actions.js';
+import { deleteCharacter, deleteIsland, newCharacterOn, saveCharacter, saveCharacterContext, saveIsland, saveIslandContext } from './actions.js';
 import { copyText, openFolder } from './bridge.js';
 import { followLink } from './LinkAsk.js';
 import { FollowLine, FollowTextarea } from './Field.js';
@@ -199,8 +199,7 @@ export function SideCard({ id }: { id: string }) {
         </div>
       </div>
       <div className="acts">
-        {c.tmux && !onBoard && <button className="btn pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>}
-        {!c.tmux && <button className="btn pri" data-testid="side-revive" onClick={() => reviveCharacter(deps(), id)}>Revive</button>}
+        {!onBoard && <button className="btn pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>}
         <button className="btn dan" data-testid="side-close" title="Deletes the character and kills its terminal"
           onClick={() => deleteCharacter(deps(), id)}>Delete character</button>
       </div>

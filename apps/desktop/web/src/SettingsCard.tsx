@@ -105,7 +105,7 @@ function Dormancy() {
   const step = (by: -1 | 1) => DORMANCY[at + by];
   return (
     <div className="row">
-      <span>dormant after<Info id="dormancy">An agent left idle this long is closed, freeing the memory it and its tools hold. Opening its terminal resumes the conversation where it stopped. One still running something in the background stays up.</Info></span>
+      <span>close idle agents after<Info id="dormancy">An agent left idle this long is closed, freeing the memory it and its tools hold. Opening its terminal resumes the conversation where it stopped. One still running something in the background stays up.</Info></span>
       <b className="set-zoom">
         <button data-testid="dormancy-less" aria-label="Sooner" disabled={at <= 0} onClick={() => setDormancy(deps(), step(-1))}>−</button>
         <span className="tnum" data-testid="dormancy-level">{dormancyLabel(hours)}</span>

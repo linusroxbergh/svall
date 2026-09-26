@@ -192,7 +192,8 @@ export const saveCharacterContext = (d: ActionDeps, id: string, context: Context
   d.api.call('char.update', { id, context }).catch(toast(d));
 };
 
-export const reviveCharacter = (d: ActionDeps, id: string): void => { d.api.call('char.revive', { id }).catch(toast(d)); };
+export const reviveCharacter = (d: ActionDeps, id: string): Promise<boolean> =>
+  d.api.call('char.revive', { id }).then(() => true, (e: Error) => { toast(d)(e); return false; });
 
 export const deleteCharacter = (d: ActionDeps, id: string): void => { d.api.call('char.close', { id }).catch(toast(d)); };
 
