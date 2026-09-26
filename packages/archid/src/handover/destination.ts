@@ -528,9 +528,11 @@ export class DestinationHandover {
     if (!c || !slot) return;
     const which = s.term === 2 ? `${c.name}'s second terminal` : `${c.name}'s terminal`;
     const agent = reviveCommand(slot) ? slot.agent : undefined;
+    // opening the terminal clears its resume, which laying it dormant again puts back
+    const carried = agent && slot.revive ? { revive: slot.revive, sessionId: agent.sessionId } : undefined;
     let held = slot.tmux ? (await this.holding(slot)).held : undefined;
     if (held === 'gone' || (held === 'shell' && agent)) {
-      await this.lay(s);
+      await this.lay(s, carried);
       held = undefined;
     }
     let started: { done: Promise<boolean>; cancel(): void } | undefined;
@@ -559,7 +561,7 @@ export class DestinationHandover {
           started.cancel();
         }
         if (typeof up === 'object') {
-          await this.lay(s);
+          await this.lay(s, carried);
           const see = adapter.sessionStartOnResume ? 'it may have stopped at a prompt; revive it to see' : 'revive it to see';
           entry = { ...s, ok: false, sessionId: agent.sessionId, error: `${which} resumed ${agent.kind} session ${agent.sessionId}, ${up.failed}, so it is dormant again with that session; ${see}` };
         } else {
@@ -573,7 +575,7 @@ export class DestinationHandover {
       }
     } catch (e) {
       started?.cancel();
-      await this.lay(s);
+      await this.lay(s, carried);
       entry = { ...s, ok: false, error: `${which} did not open: ${(e as Error).message}` };
     }
     if (entry.error) this.d.log.error(`handover ${tx}: ${entry.error}`);
@@ -635,7 +637,7 @@ export class DestinationHandover {
   }
 
   /** Leaves a terminal dormant with the agent and resume command it carries, its window closed. */
-  private async lay(s: Slot): Promise<void> {
+  private async lay(s: Slot, carried?: { revive: { command: string }; sessionId: string }): Promise<void> {
     this.heard.delete(keyOf(s));
     const c = this.d.store.state.characters[s.characterId];
     const windowId = (s.term === 2 ? c?.second : c)?.tmux?.windowId;
@@ -643,6 +645,8 @@ export class DestinationHandover {
     this.d.store.update((d) => {
       const cur = d.characters[s.characterId];
       if (s.term !== 2) { if (cur) markDormant(cur); } else if (cur?.second) markSlotDormant(cur.second);
+      const slot = s.term === 2 ? cur?.second : cur;
+      if (slot && carried && slot.agent?.sessionId === carried.sessionId) slot.revive = { ...carried.revive };
     });
     if (windowId) await this.d.tmux.killWindow(windowId);
   }

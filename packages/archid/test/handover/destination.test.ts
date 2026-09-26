@@ -294,7 +294,7 @@ async function scene(o: { tamper?: Tamper; before?: (s: { src: string; dst: stri
     })),
     rested(char('c_cy', src)),
     rested(char('c_dee', path.join(src, 'work/demo'), {
-      agent: { kind: 'codex', sessionId: CODEX_ID, transcriptPath: rollout, status: 'idle', lastActivityAt: 0 }, revive: { command: `codex resume ${CODEX_ID}` },
+      agent: { kind: 'codex', sessionId: CODEX_ID, transcriptPath: rollout, status: 'idle', lastActivityAt: 0 }, revive: { command: `codex resume -c tui.resume_cwd=session ${CODEX_ID}` },
     })),
     // dormant before the freeze, last closed by an earlier handover: this one carries it and leaves it as it was
     char('c_old', src, { restedBy: 'tx-0', second: { cwd: src, unread: false, revive: { command: '' } } }),
@@ -859,6 +859,25 @@ describe('destination activate', () => {
     d.crew.started('c_bo', undefined, SID);
     expect(d.handover.status().characters).toEqual(expect.arrayContaining([{ id: 'c_bo', phase: 'activate' }]));
     expect(s.store.state.characters.c_bo.resumeError).toBeUndefined();
+  });
+
+  it('leaves a terminal whose wake fails dormant with the launch flags its carried resume had', async () => {
+    const bo = `claude --dangerously-skip-permissions --effort 'high' --resume ${SID}`;
+    const dee = `codex resume -c tui.resume_cwd=session -m 'gpt-6' ${CODEX_ID}`;
+    const s = await scene({ tamper: (m) => { m.snapshot.characters.c_bo.revive = { command: bo }; m.snapshot.characters.c_dee.revive = { command: dee }; } });
+    const d = daemon(s);
+    d.gateway.commit((await d.handover.prepare(params(s))).preparedDigest);
+    // bo's resume never reports back, and dee's window never opens
+    d.crew.silent.add('c_bo');
+    d.crew.failing.add('c_dee');
+    const run = d.handover.activate({ transactionId: TX, generation: 5 });
+    let done = false;
+    void run.finally(() => { done = true; });
+    for (let i = 0; i < 10 && !done; i++) await d.clock.advance(60_000);
+    const r = await run;
+    expect(r.characters.filter((c) => !c.ok).map((c) => c.id).sort()).toEqual(['c_bo', 'c_dee']);
+    expect(s.store.state.characters.c_bo).toMatchObject({ revive: { command: bo }, agent: { sessionId: SID } });
+    expect(s.store.state.characters.c_dee).toMatchObject({ revive: { command: dee }, agent: { sessionId: CODEX_ID } });
   });
 
   /** Activates with the clock moving half a second at a time for ten seconds, a minute at a time after that, and says how far it had moved when the activation answered. */
