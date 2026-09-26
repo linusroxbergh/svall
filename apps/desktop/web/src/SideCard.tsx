@@ -124,18 +124,18 @@ export function SideCard({ id }: { id: string }) {
       )}
       {c.hint && <div className="side-hint" data-testid="side-hint">{hintText(c)}</div>}
       <div className="sec">
-        <div className="kicker"><span>Note</span><Info id="char-note">Sent to the agent when it starts; a change mid-session reaches it with your next prompt. The scribe fills it in until you write one.</Info></div>
+        <div className="kicker"><span>Note</span><Info id="char-note">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. The scribe fills it in until you write one.</Info></div>
         <FollowTextarea className="fld desc" rows={4} placeholder="What this character is doing" key={`note-${id}`} value={c.note} data-testid="side-note"
           onSave={(v) => { if (v !== c.note) save({ note: v }); }} />
       </div>
       <div className="sec">
-        <div className="kicker"><span>Agent instructions</span><Info id="char-instructions">Sent to the agent when it starts; a change mid-session reaches it with your next prompt. A new profile is sent whole.</Info></div>
+        <div className="kicker"><span>Agent instructions</span><Info id="char-instructions">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. A new profile is sent whole.</Info></div>
         <AgentProfilePick id={id} />
         <FollowTextarea className="fld desc" rows={3} placeholder="Anything else this agent should know" key={`instructions-${id}`} value={c.instructions} data-testid="side-instructions"
           onSave={(v) => { if (v !== c.instructions) save({ instructions: v }); }} />
       </div>
       <div className="sec">
-        <div className="kicker"><span>Context</span><Info id="char-context">Listed for the agent when it starts, pinned items to read first; a change mid-session reaches it with your next prompt.</Info></div>
+        <div className="kicker"><span>Context</span><Info id="char-context">Listed for the agent when it starts, pinned items to read first; your change mid-session reaches it with your next prompt.</Info></div>
         <ContextPills items={c.context} ids={{ list: 'side-context', remove: 'context-remove', pin: 'context-pin' }}
           charId={id} onChange={saveContext} />
         <div className="addlink">

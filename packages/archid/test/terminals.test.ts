@@ -106,6 +106,9 @@ runIf('TerminalHub', () => {
     block('q2');
     await hub.input(c.id, Buffer.from('\x1b'));
     expect(store.state.characters[c.id].agent?.status).toBe('idle');
+    block('q3');
+    await hub.input(c.id, Buffer.from('\x03'));
+    expect(store.state.characters[c.id].agent?.status).toBe('idle');
   });
 
   it('seeds the scrollback the caller asked for', async () => {

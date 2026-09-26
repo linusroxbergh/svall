@@ -91,7 +91,7 @@ test('islands move by label and resize by handle', async ({ page, archi }) => {
   const cs = await cellPx(page);
   await page.mouse.move(box.x + 4, box.y + box.height / 2);
   await page.mouse.down();
-  // up, not down: the pair sits on mission control's row, which no island may cross
+  // up, not down: the pair sits on mission control's row, and land put down on mission control goes back
   await page.mouse.move(box.x + 4 + cs * 4, box.y + box.height / 2 - cs * 8, { steps: 6 });
   await page.mouse.up();
   await expect.poll(async () => (await archi.api.call('state.get', {})).islands[right.id].position).toEqual({ x: 15, y: 52 });

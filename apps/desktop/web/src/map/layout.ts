@@ -39,19 +39,27 @@ export type Below = { h: number; blocks: Block[] };
 export const limitAt = (below: Below, l: number, r: number): number =>
   Math.min(below.h - theme.home.water, ...below.blocks.filter((k) => l < k.x + k.w && r > k.x).map((k) => k.top));
 
-// the lowest the world may stand at a layout's scale and x: the cards under every island's land above the limit
-// under that land. the land alone counts, not the shoal glow around it
-function lowest(islands: Island[], below: Below, l: Layout): number {
-  const s = cellSize(l);
-  return Math.min(...islands.map((i) => {
-    const g = ground(i);
-    return limitAt(below, l.ox + g.position.x * s, l.ox + (g.position.x + g.size.w) * s) - foot(i) * s;
-  }));
+// the screen x an island's land spans at a layout; the shoal glow around it counts for nothing
+export const landSpan = (i: Island, l: Layout): [number, number] => {
+  const g = ground(i), s = cellSize(l);
+  return [l.ox + g.position.x * s, l.ox + (g.position.x + g.size.w) * s];
+};
+
+// the lowest the world may stand at a layout's scale and x: the cards under every island's land above the limit under it
+const lowest = (islands: Island[], below: Below, l: Layout): number =>
+  Math.min(...islands.map((i) => limitAt(below, ...landSpan(i, l)) - foot(i) * cellSize(l)));
+
+// mission control's row never rises on its own, so a floor an island once took past it can lie far under the fleet;
+// the fit takes it no lower than the row of water arrange leaves under the fleet's lowest ground
+export function fitFloor(islands: Island[], floor?: number): number | undefined {
+  if (floor === undefined || islands.length === 0) return floor;
+  return Math.min(floor, Math.max(...islands.map((i) => ground(i).position.y + ground(i).size.h)) + 1);
 }
 
 // the largest scale in [theme.scale.min, theme.scale.max] at which the world fits inside the fit insets, centred both
-// ways in the room they leave over mission control. With `below`, an island clear of mission control's blocks may hang
-// down into the water beside them: the fleet then rests on mission control, at whatever larger scale that allows
+// ways in the room they leave over mission control. With `below`, a step down beside mission control (the lowest
+// islands all clear of its blocks, another standing higher) lets the fleet rest on mission control instead, at
+// whatever larger scale the water beside it allows
 export function fitAll(islands: Island[], win: { w: number; h: number }, floor?: number, below?: Below): Layout {
   const b = worldBounds(islands, floor);
   const cell = theme.cell, { x, top, bottom } = theme.fit;
@@ -60,8 +68,15 @@ export function fitAll(islands: Island[], win: { w: number; h: number }, floor?:
   const scale = clampScale(Math.min((win.w - 2 * x) / ww, (win.h - top - bottom) / wh));
   const centred = at(scale, top + (win.h - top - bottom - wh * scale) / 2 - b.y * cell * scale);
   if (!below || islands.length === 0) return centred;
+  const feet = islands.map(foot), deepest = Math.max(...feet);
+  if (Math.min(...feet) === deepest) return centred;
   const rest = (s: number): number => lowest(islands, below, at(s));
-  const fits = (s: number): boolean => rest(s) >= top - b.y * cell * s;
+  // at a scale the lowest islands all stand clear of mission control, and the fleet rests on it inside the fit insets
+  const fits = (s: number): boolean => {
+    const l = at(s);
+    return islands.every((i, n) => feet[n] < deepest || limitAt(below, ...landSpan(i, l)) >= below.h - theme.home.water) &&
+      rest(s) >= top - b.y * cell * s;
+  };
   // the room over mission control already holds the world at `scale`, so only the water beside it can offer more
   const most = clampScale(Math.min((win.w - 2 * x) / ww, (below.h - top - theme.home.water) / wh));
   for (let s = most, prev = most; s > scale; prev = s, s = Math.max(scale, s * 0.99)) {
@@ -70,24 +85,20 @@ export function fitAll(islands: Island[], win: { w: number; h: number }, floor?:
     if (ok < over) for (let n = 0; n < 12; n++) { const mid = (ok + over) / 2; if (fits(mid)) ok = mid; else over = mid; }
     return at(ok, rest(ok));
   }
-  // at that scale it rests only for a step down beside mission control: the lowest islands all clear of it, another higher
-  const l = at(scale), s = cellSize(l), feet = islands.map(foot), deepest = Math.max(...feet);
-  const clear = (i: Island) => { const g = ground(i); return limitAt(below, l.ox + g.position.x * s, l.ox + (g.position.x + g.size.w) * s) >= below.h - theme.home.water; };
-  const steps = Math.min(...feet) < deepest && islands.every((i, n) => feet[n] < deepest || clear(i));
-  return steps ? at(scale, rest(scale)) : centred;
+  return fits(scale) ? at(scale, rest(scale)) : centred;
 }
 
-// the room a fitted world stands in: the map over mission control, or all of it once an island hangs down beside mission control
-export function roomOf(islands: Island[], l: Layout, win: { w: number; h: number }, below?: Below): { w: number; h: number } {
-  const s = cellSize(l);
-  return below && islands.some((i) => l.oy + foot(i) * s > win.h + 0.5) ? { w: win.w, h: below.h } : win;
+// the room a fitted world stands in: the map over mission control, or all of it when the fit rested on mission control
+export function roomOf(islands: Island[], l: Layout, win: { w: number; h: number }, floor?: number, below?: Below): { w: number; h: number } {
+  const plain = fitAll(islands, win, floor);
+  return below && (l.scale !== plain.scale || l.oy !== plain.oy) ? { w: win.w, h: below.h } : win;
 }
 
 // an island's land at a layout, on mission control itself rather than in the water it keeps: a drop there has nowhere
 // to go, where one in the water only has the map make room
 export function onBlocks(island: Island, l: Layout, below: Below): boolean {
-  const g = ground(island), s = cellSize(l), pad = theme.home.water;
-  const left = l.ox + g.position.x * s, right = left + g.size.w * s, top = l.oy + g.position.y * s, bottom = top + g.size.h * s;
+  const g = ground(island), s = cellSize(l), pad = theme.home.water, [left, right] = landSpan(island, l);
+  const top = l.oy + g.position.y * s, bottom = top + g.size.h * s;
   return below.blocks.some((k) => left < k.x + k.w - pad && right > k.x + pad && bottom > k.top + pad && (k.bottom === undefined || top < k.bottom - pad));
 }
 

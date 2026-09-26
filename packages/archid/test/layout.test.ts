@@ -323,9 +323,9 @@ describe('crewGrid', () => {
 describe('makeRoom', () => {
   const home = (y: number): Island => ({ ...island('home', 0, y), kind: 'home', name: 'mission control' });
 
-  it('leaves an island put past mission control\'s row where it was put', () => {
+  it('leaves an island put past mission control\'s row where it was put, as settled', () => {
     const st = withIslands(island('a', 0, 14), home(16));
-    makeRoom(st, 'a');
+    expect(makeRoom(st, 'a')).toBe(0);
     expect(st.islands.a.position).toEqual({ x: 0, y: 14 });
   });
 

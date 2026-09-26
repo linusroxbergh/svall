@@ -36,16 +36,19 @@ describe('home geometry', () => {
   it('blocks the row, the land and the islet, each padded by the water the fleet keeps', () => {
     const w = theme.home.water, place = placeIslet(host.w, 8 * 44, false);
     const land = homeBox(home, host, place.homeShift);
-    const [row, ground, islet] = homeBlocks(home, host, place, 300);
+    const [row, ground, islet] = homeBlocks(home, host, { w: 300, h: 28 });
     expect(row).toEqual({ x: host.w / 2 + place.homeShift - 150 - w, w: 300 + 2 * w, top: host.h - homeReserve(false), bottom: host.h - 132 - 28 + w });
     expect(ground).toEqual({ x: land.x - w, w: land.w + 2 * w, top: land.y - w });
     expect(islet.x).toBeGreaterThan(ground.x + ground.w - 2 * w);
-    expect(homeBlocks({ ...home, collapsed: true }, host, placeIslet(host.w, 8 * 44, true), 300)).toEqual([{ x: 640 - 150 - w, w: 300 + 2 * w, top: host.h - homeReserve(true), bottom: host.h - 16 + w }]);
+    expect(homeBlocks({ ...home, collapsed: true }, host, { w: 300, h: 28 })).toEqual([{ x: 640 - 150 - w, w: 300 + 2 * w, top: host.h - homeReserve(true), bottom: host.h - 16 + w }]);
+    // a row wrapped to two lines grows upward, and the block with it
+    expect(homeBlocks(home, host, { w: 300, h: 60 })[0].top).toBe(host.h - homeReserve(false, 60));
   });
   it('reserves the row plus half a cell of water, open or collapsed', () => {
     expect(theme.home.water).toBe(theme.cell / 2);
     expect(homeReserve(false)).toBe(132 + 28 + 28 + theme.home.water);
     expect(homeReserve(true)).toBe(16 + 28 + theme.home.water);
+    expect(homeReserve(false, 60)).toBe(132 + 28 + 60 + theme.home.water);
   });
 });
 
