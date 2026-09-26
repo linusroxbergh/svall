@@ -171,3 +171,143 @@ Scope:
 - `pnpm vitest run --project protocol --project archid --project cli --project @archipelago/desktop-web`, run in the scratch copy: 2965 passed, 5 skipped and 1 failed.
   - The failure is `cli.test.ts` "prints the commit it runs from for --version" (`expected 'unknown\n'`), because the copy has no `.git`.
   - That test passes in the worktree. That makes 2966 passed and 5 skipped, as reported.
+
+## Fix round 1
+
+Commits `a519b7e7..30b8e445`: C1 `f78bd73d`, R1 `75098fca`, R2 `beee7781`, R3 `b3fa3ada`, R4 `30b8e445`. Findings
+`m3b-fix1-findings.md`, report `m3b-fix1-report.md`.
+
+**Verdict: Needs fixes.** Findings: 0 Critical, 2 Important (one pre-existing, outside the round), 2 Minor.
+- All five items are addressed.
+- Each fails without its change.
+- Each commit stays within its item.
+- No test file writes under the home, however it is run.
+- The blocker is C1's own guard test. It fails whenever the suite runs outside an AI-agent shell.
+
+The runs are in `$SP/rv-m3b`: `runs/fix1-reverts.txt`, `runs/rootcfg-all.json`, `runs/nocfg-*.json`, `perfile/`, and `sent-*.txt`. The worktree is unchanged apart from this section.
+
+### Important
+
+**I1. C1's guard test fails in a plain terminal and in CI** (`packages/archid/test/isolate.test.ts:26-28`).
+- The child vitest gets `CI: '1'`. std-env then turns colour on, so its summary reads `Test Files \x1b[22m \x1b[1m\x1b[32m1 passed…`, and `/Test Files +1 passed \(1\)/` fails.
+- It passes only where vitest detects an AI agent (`CLAUDECODE` or `AI_AGENT`), whose reporter prints no colour. That is why it passed for the implementer and in my agent shell.
+- Evidence (scratch copy, `vitest run packages/archid/test/isolate.test.ts` under `env -i`):
+
+  | Environment | Result |
+  | --- | --- |
+  | `TERM=xterm-256color TERM_PROGRAM=ghostty` | 1 failed |
+  | minimal | 1 failed |
+  | `+ CLAUDECODE=1` | 2 passed |
+  | `+ AI_AGENT=…` | 2 passed |
+  | `+ NO_COLOR=1` | 2 passed |
+
+  So the owner's own `pnpm test` in Ghostty goes red on this test.
+- Fix: `NO_COLOR: '1'` in the child env. Or drop the stdout match, and check the exit code with `--reporter=json`.
+
+**I2 (pre-existing, not from this round). The suite runs whatever `claude` and `codex` are on PATH.** On this Mac, those are the real `~/.local/bin/claude` → 2.1.283 and `~/.local/bin/codex`. `test/isolate.ts:9-11` gives doubles only for `gh` and `tailscale`.
+
+I ran every archid and cli test file alone, with logging `claude`/`codex` doubles first on PATH. Two files called them:
+- **`ownership.test.ts`** starts real daemons (`main.ts:145` `agentProber(realProbeDeps())`). They run `claude --version`, `claude auth status`, `codex --version` and `codex login status`.
+- **`fleet.test.ts:143-167`** spies on `tmux.sendLine` but calls through. So `claude --resume 3f2b8c1e-… --add-dir '/tmp'` is typed into a real tmux pane.
+  - On this Mac that starts Claude Code under isolate's temp HOME, but with the user's login keychain, which is not under HOME.
+  - A plain `claude --resume …` pane also comes up.
+
+This breaks the standing "never run the real claude or codex" rule for every suite run, mine included:
+- My first-review full run used the normal PATH.
+- The implementer's runs did the same.
+- This round's runs used the doubles.
+
+Fix: `isolate.ts` puts `claude` and `codex` doubles in its `bin`, as it does for `gh`, answering `--version` with a supported release.
+
+### Minor
+
+**m1. For Codex, R1's watch lasts until the first turn** (`destination.ts` `watch`). Codex sends its SessionStart with the session's first turn, not on resume (Part C Q1). An untrusted Codex counted up at its trust prompt is therefore watched until the user's first prompt in that terminal. That has two effects:
+- A user who answers the prompt and then quits codex before prompting gets:
+  - the window closed;
+  - the character laid dormant;
+  - an error telling them to trust the folder they just trusted.
+- Every such terminal gets a tmux listing and a full `ps` every 2 s, for as long as it stays unprompted.
+
+Fix: in the loop, end a trust-prompt watch once `this.trusted(folder)` holds, since the prompt was answered "Yes".
+
+**m2. The watch's error always names the trust prompt, even when a later prompt was the one exited.** An untrusted Claude that resumes with `--dangerously-skip-permissions` has two prompts before its SessionStart: the trust prompt and the bypass warning (I inferred this from the code and the probes; I did not run it). If "No, exit" is taken at the bypass warning, the error still says `revive it and choose "Yes, I trust this folder" at its "Trust this folder?" prompt`. The recovery (revive) is right; only the guidance is wrong.
+
+Fix: word the error generically once trust holds (`revive it and answer its prompt`), or name the bypass warning when `bypass` is set.
+
+### The implementer's concerns
+
+1. **Watch in memory: accept for now.**
+   - The gap needs an archid restart while tmux lives, between activation and the user's answer, followed by "No, exit". It is the pre-round outcome: a bare shell, with the transcript intact.
+   - A reboot is fine: tmux dies too, and the restart lays the slot dormant with its revive.
+   - A durable fix needs a persisted marker on the slot, e.g. an optional `resumePending: <sessionId>`. SessionStart would clear it, and the fleet's two-poll shell streak would lay the slot dormant with its revive instead of dropping the agent. That is an additive state field, worth doing only if restarts mid-handover prove common.
+2. **Managed settings unread: accept.** It only over-warns: preflight shows a false `claude_bypass`, and activation still gets the SessionStart with no notice. Reading `/Library/Application Support/ClaudeCode/managed-settings.json` (or `/etc/claude-code/managed-settings.json`) would be two lines, but it can't be checked against the binary without root.
+3. **Slow trusted Claude gets the quiet notice: accept.** The text is hedged ("may be waiting at a prompt"), the window stays, and the SessionStart ends the watch. The owner's machine is often loaded, so expect the notice on the occasional slow start.
+
+### Items: verified
+
+**C1.**
+- `sessions.test.ts` stubs `HOME` and clears `CLAUDE_CONFIG_DIR`, then unstubs. Its `finally` removes nothing under the home. R3's bypass test does the same.
+- `test/helpers.ts:14` has thrown at import off an isolate home since `93acd830`. That covers `daemon.test.ts`, `cli.test.ts` and `client.test.ts`, so my first-review note on `daemon.test.ts` does not hold.
+- Dynamic check. The sentinel HOME held `.claude/{settings.json,CLAUDE.md,.credentials.json,projects/…}`, `.claude.json`, `.codex/*`, `.archipelago*/*`, `Library/*`, `.local/*`, `.ssh/*`, `.config/archipelago/*` and dotfiles. It was compared by name, size, mtime and mode after each run:
+  - archid and cli run from their package folders with no root config (no isolate): 33 and 22 files ran, 491 and 247 passed;
+  - all 193 files of every project under the root config;
+  - each of the 117 archid and cli files alone.
+  - In all three, no test changed the sentinel.
+  - The only write was the vitest runner's own `Library/Application Support/vitest/.vitest-secret-token` (vitest's API token, `index.DzobfTyw.js`). That is the runner, not a test, and every `pnpm test` writes it into the real `~/Library`.
+- `sessions-live.test.ts` is the one deliberate exception. It uses `os.userInfo().homedir` and the real CLIs, but only with `ARCHI_LIVE_REMOTE` set.
+
+**R1.**
+- The watch starts before the row is written, with no `await` in between.
+- `carrying()` is true while watched, so the fleet's shell streak (`fleet.ts:352-358`) leaves the agent alone.
+- A carried SessionStart ends the watch, and the fleet still binds it (`onSocketEvent` applies hooks whatever `carried` says).
+- A shell or a closed window ends it with `lay(s, carried)`, which restores the flagged revive, and a `resumeError`. `recordSlot` writes the record even after Complete.
+- A later handover's `restedBy` ends it.
+- The error on the journal row flips to `ok: false`, so a retried activation would wake that slot again. That is acceptable.
+
+**R2.**
+- Every resume goes through `settles()`:
+  - a trusted Claude gets 10 s;
+  - an untrusted Claude and Codex get 3 s;
+  - "never came up" is still bounded by `sessionStartMs`.
+- A SessionStart inside the settle is `started`, with no notice, whatever the pane reads as. So a Claude that ProcessTable misreads still works.
+- Error texts now name what the pane showed.
+
+**R3.**
+- The rule matches the 21-case cross-check against the binary (`$SP/r3/logs-r3-crosscheck.txt`, `mismatches: 0`):
+  - the config's `bypassPermissionsModeAccepted`;
+  - the config folder's `settings.json`;
+  - `settings.local.json` of the cwd or of the main checkout.
+- `asksBypass` covers the switches `startFlags` keeps, plus `--permission-mode 'bypassPermissions'` (`shq` always quotes).
+- The controller warns only resumes that carry `bypass`.
+- `bypass` and `bypassWarned` are optional. An old daemon strips `bypass`, and the release check blocks that pairing anyway.
+- Nit, over-warn only: the local-settings half reads the destination's copy at preflight, before the carried root lands.
+
+**R4.**
+- `trusts` composes the cwd, each parent, the main checkout and the top to NFC.
+- The decomposed-name test fails without it.
+
+**Failing first.** Each commit's tests ran against that commit's tree, with its own source reverted to its parent (`revert2.py`):
+
+| Item | Fails | Failures |
+| --- | --- | --- |
+| C1 (sessions.test reverted) | 1 | `ENOENT … archi-sentinel-…/.claude` |
+| R1 | 3 | unit ×2, real tmux ×1 |
+| R2 | 3 | among them `expected 80000 to be less than or equal to 11000` |
+| R3 | 6 | sessions ×3, destination, controller, web |
+| R4 | 1 | `the folder itself: expected false to be true` |
+
+The copy was confirmed equal to the worktree afterwards.
+
+**Scope.**
+- One commit per item, with plain subjects and no attribution.
+- R3's `fleet-home.test.ts` entry (`settings.json`) follows from `acceptsBypass`.
+- Comments stay within 2 lines.
+
+**Suites** (scratch copy at HEAD, logging `claude`/`codex` doubles on PATH).
+- `pnpm typecheck`: exit 0.
+- Root config under the sentinel HOME, four projects: protocol 137, archid 1578, cli 542, web 718, so 2975 passed and 3 failed.
+  - The three failures:
+    - `isolate.test.ts` (I1; `env -i` has no agent variable);
+    - `cli.test.ts --version` (the copy has no `.git`);
+    - `ssh.test.ts` spawn count, a known load flake that passes alone (24 passed, 1 skipped).
+  - That makes 2978, as reported.
