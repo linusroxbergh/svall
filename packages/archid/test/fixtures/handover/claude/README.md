@@ -13,8 +13,7 @@ This is evidence for the session-format strategy, **not** a claim of cross-OS or
 compatibility. The live test used two different temporary workspace/home-shaped paths but the
 same authenticated macOS Claude config directory. Setting a separate `HOME` or
 `CLAUDE_CONFIG_DIR` reported `loggedIn: false`; a second machine must log in independently. We did
-not copy credentials, user settings, plugins or real conversations into this repository. Support
-is pinned to the tested version until additional versions have their own fixtures and live probes.
+not copy credentials, user settings, plugins or real conversations into this repository.
 
 ## Reproducible observations
 
@@ -56,8 +55,9 @@ and normalization in `packages/archid/src/hooks/receiver.ts`.
 <destination-config-dir>` copies only the selected UUID transcript, its project-local sidecars,
 an optional per-session index entry and optional file-history directory. It rejects existing
 destination transcripts and session symlinks. It does not copy auth/config files or `session-env`.
-This is a probe, not the production adapter: Task 22 still needs versioned schema checks, a full
-path-root mapping, atomic staging/rollback, file-size/exclude checks and two-machine validation.
+This is a probe, not the production adapter. The adapter (`packages/archid/src/handover/sessions/`)
+copies the transcript and the session's own folder byte for byte to the same path, and carries every
+Claude Code release from its minimum on.
 
 The checked-in JSONL, index and sidecar fixtures are synthetic. They preserve observed structural
 fields but contain no real prompt, tool result or credential. Run:

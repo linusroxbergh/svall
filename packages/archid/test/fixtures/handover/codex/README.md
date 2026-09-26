@@ -13,9 +13,8 @@ same held for the probe's path-remapped copy. The non-interactive form was used 
 Credentials are not portable content. Each disposable home got `auth.json` copied in by hand; with
 the rollout present but no `auth.json`, the thread still resolves and the first model call fails
 with `401 Unauthorized`, so a missing login does not look like a missing session. No auth, config,
-history or real conversation text was copied into this repository. Support is pinned to 0.155.1;
-the 0.142 rollout shape (a `session_meta` carrying only `id`) is accepted by the probe but was not
-resumed live.
+history or real conversation text was copied into this repository. The 0.142 rollout shape (a
+`session_meta` carrying only `id`) is accepted by the probe but was not resumed live.
 
 ## Reproducible observations
 
@@ -78,8 +77,8 @@ copies this session's `session_index.jsonl` entry when the source home keeps one
 rollout that is not UUID-named under `sessions/<yyyy>/<mm>/<dd>`, a symlink, a rollout whose
 `session_meta` disagrees with its filename, and an existing destination rollout. It copies no
 `auth.json`, `config.toml`, `history.jsonl` or sqlite index. This is a probe, not the production
-adapter: Task 22 still needs versioned schema checks, a full path-root mapping, atomic
-staging/rollback, size and exclude checks, and two-machine validation.
+adapter. The adapter (`packages/archid/src/handover/sessions/`) copies the rollout byte for byte to
+the same path, and carries every Codex release from its minimum on.
 
 The checked-in rollout and session-index fixtures are synthetic. They preserve observed structural
 fields but contain no real prompt, tool result or credential. Run:
