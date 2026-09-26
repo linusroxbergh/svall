@@ -31,7 +31,7 @@ export function ScribeAsk() {
         }}>
         <div className="kicker">Scribe</div>
         <div className="modal-name">Keep names and notes up to date?</div>
-        <div className="modal-note">Runs a headless {AGENT_LABEL[scribeAgent]} call after each turn, which may cost API credits.</div>
+        <div className="modal-note">Runs a headless {AGENT_LABEL[scribeAgent]} call after an agent stops, which may cost API credits.</div>
         {found.length > 1 && (
           <>
             <div className="modal-note">{found.map((k) => AGENT_LABEL[k]).join(' and ')} are both installed. Mission control and the scribe run:</div>
