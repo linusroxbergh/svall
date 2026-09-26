@@ -164,7 +164,7 @@ async function gh(d: DoctorDeps): Promise<Check> {
 function config(t: Target, d: DoctorDeps): Check {
   const p = resolvePaths(t.home);
   const refused = configRefusal(p, (file) => d.exists(file));
-  if (refused) return { name: 'config', status: 'fail', detail: `${refused}; a stopped archid waits for it to be fixed` };
+  if (refused) return { name: 'config', status: 'fail', detail: `${refused.replace(/\.$/, '')}; a stopped archid waits for it to be fixed` };
   const files: [string, z.ZodTypeAny][] = d.read(p.fleetConfig) === undefined && d.read(p.legacyConfig) !== undefined
     ? [[p.legacyConfig, Config]]
     : [[p.fleetConfig, FleetConfig], [p.nodeConfig, NodeConfig]];
