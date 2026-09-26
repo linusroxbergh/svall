@@ -241,3 +241,69 @@ two values recorded at setup. It catches a registry that disagrees with the daem
 - `pnpm vitest run --project protocol --project archid --project cli`: 125 files passed, 1 skipped; 2237 passed,
   6 skipped.
 - `pnpm typecheck`: clean.
+
+## Fix round 2
+
+Commits 6da5d341..ad9fc063, report `task-41a-fix2-report.md`.
+
+**Verdict: Approved** — 0 Critical, 0 Important, 2 Minor. Neither Minor blocks.
+
+### Each item
+
+Each check reverts one source change in a scratch copy and runs the item's tests.
+
+| Item | Addressed | Fails without its change | Scope |
+| --- | --- | --- | --- |
+| F1 | yes | 4 tests fail with the round-1 write probe restored: the probe's snapshot, its unwritable-folder and mount-point tests, and the destination inspect snapshot. The mount-point test also fails when the device comparison is dropped or when the look-up inside the folder is removed. | `probe.ts` and its tests only. The controller is unchanged and still reads case from the root's own probe. |
+| F2 | yes | The doctor test fails when the not-this-Mac's-home clause is removed. | `host.ts` doctor only |
+| F3 | yes, test only | Deleting `c.entry === 'file' \|\|` fails the new test, and only that test. | ok |
+| F4 | yes | Restoring the old wording fails the replica divergence assertion. | ok. Nothing else in `packages/` or `apps/` still says "map the root elsewhere". |
+
+### Preflight writes nothing on the destination
+
+- `probeFolders` now calls only `existsSync`, `accessSync`, `lstatSync`, `statSync`, `readdirSync` and `statfsSync`.
+- The rest of `inspect` only reads:
+  - `ReplicaStore.inspect`, which the inspect test asserts writes no record;
+  - `keptWorktrees`, which runs `git rev-parse` and `reaches`;
+  - the Codex trust read and the link `existsSync`.
+- The new destination test compares the byte-and-`mtimeNs` snapshot of every carried root, including a diverged one.
+- `probeFsRules` still writes on darwin, but it runs only at prepare (`git-repair.ts:171`), inside a root the transaction
+  has claimed. The report explains why `precomposeUnicode` has no read-only form. Accepted; it stays the known
+  deferred minor, and 41b reworks that file.
+
+### Minor
+
+**G1. A folder whose name has no letters reads as not folding case, even when it is not a volume of its own.**
+- **Where:** `probe.ts:33` looks up the folder's own name only when that name has letters. Otherwise it reads the first
+  entry inside that has letters, and with none it answers `false`.
+- **Evidence:** on this Mac, `probeFolders` reads `…/aoc/2024`, with entries `01` and `02`, as
+  `caseInsensitive: false`, while its parent `…/aoc` reads `true`. So the gap covers more than the report's "volume
+  of its own": any root with a numeric name and numeric top-level entries, which is a common layout.
+- **Coordinator's question:** a bounded search of entries is not worth it. Walking up is, because it costs a few
+  `lstat` calls and no `readdir`: go up to the nearest ancestor on the same device whose name has letters, and look
+  that name up with its case swapped. The only case left unread is then a volume of its own whose top-level entries
+  all lack letters. That is rare, so leave it.
+- **Why a miss is safe (read from the code, not run):** it costs no data. `compare` (`transfer.ts:339-345`) itemizes
+  the clashing name on every pass, so after three passes the root blocks before Commit. The blocker it shows is the
+  misleading `external_writer`.
+- **When clashes can happen at all:** only on a trip from a case-sensitive machine to a case-folding one, which means
+  back to the Mac.
+
+**G2. The branch that reads a folder as unwritable has no test when the suite runs as root.**
+- **Where:** `probe.test.ts:39` skips under uid 0, and so it should: root can write anywhere.
+- **The gap:** the fake-filesystem tests have no `accessSync` that throws. Removing the `accessSync` check fails only
+  the skipped test, so a root CI run would not notice.
+- **Suggested fix:** give the mount-point fake, or a second fake, an `accessSync` that throws, and expect
+  `writable: false`.
+
+### The implementer's concerns
+
+- **Case reading misses a letterless folder whose entries lack letters:** see G1. The gap is wider than the report
+  says, but the fix is the cheap walk-up, not a deeper search.
+- **The real unwritable-folder test skips under root:** the skip is right, and G2 covers the gap it leaves.
+
+### Verification
+
+- `pnpm vitest run --project protocol --project archid --project cli`: 125 files passed, 1 skipped; 2241 passed,
+  6 skipped.
+- `pnpm typecheck`: clean.
