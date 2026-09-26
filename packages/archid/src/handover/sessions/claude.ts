@@ -27,8 +27,8 @@ function configOf(home: string): string {
 }
 
 /**
- * As Claude 2.1.283 decides, by real paths: a folder is trusted through its repository's main checkout, or through
- * itself or a folder above it, up to the top of its checkout or, outside one, up to /.
+ * As Claude 2.1.283 decides, by real paths composed to NFC: a folder is trusted through its repository's main checkout,
+ * or through itself or a folder above it, up to the top of its checkout or, outside one, up to /.
  */
 function trusts(home: string, folder: Omit<ResumeFolder, 'kind'>): boolean {
   let projects: unknown;
@@ -36,9 +36,10 @@ function trusts(home: string, folder: Omit<ResumeFolder, 'kind'>): boolean {
   if (!projects || typeof projects !== 'object') return false;
   const entries = projects as Record<string, { hasTrustDialogAccepted?: unknown } | undefined>;
   const trusted = (p: string) => Object.hasOwn(entries, p) && entries[p]?.hasTrustDialogAccepted === true;
-  if (folder.repo && trusted(realPath(folder.repo))) return true;
-  const top = folder.root && realPath(folder.root);
-  for (let p = realPath(folder.cwd); !top || holds(top, p); p = path.dirname(p)) {
+  const key = (p: string) => realPath(p).normalize('NFC');
+  if (folder.repo && trusted(key(folder.repo))) return true;
+  const top = folder.root && key(folder.root);
+  for (let p = key(folder.cwd); !top || holds(top, p); p = path.dirname(p)) {
     if (trusted(p)) return true;
     if (p === top || p === path.dirname(p)) return false;
   }

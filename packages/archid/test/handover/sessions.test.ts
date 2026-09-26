@@ -192,6 +192,25 @@ describe('Claude Code folder trust', () => {
     expect(claudeAdapter.trusts!(home, { cwd: at('plain/a/b') }), 'no config').toBe(false);
   });
 
+  it('trusts a folder whose name is stored decomposed by the composed key Claude 2.1.283 looks it up by', () => {
+    const base = tmp();
+    const home = path.join(base, 'cfg');
+    fs.mkdirSync(home);
+    // "Skår/Bäck" as Finder and HFS+ store it, with the marks apart from their letters
+    const decomposed = path.join(base, 'Skår', 'Bäck');
+    const composed = decomposed.normalize('NFC');
+    fs.mkdirSync(decomposed, { recursive: true });
+    expect(composed).not.toBe(decomposed);
+    for (const [name, folder, key] of [
+      ['the folder itself', { cwd: decomposed }, composed],
+      ['a folder above it', { cwd: decomposed }, path.dirname(composed)],
+      ["its repository's main checkout", { cwd: decomposed, repo: path.dirname(decomposed), root: path.dirname(decomposed) }, path.dirname(composed)],
+    ] as const) {
+      write(path.join(home, '.claude.json'), { [key]: T });
+      expect(claudeAdapter.trusts!(home, folder), name).toBe(true);
+    }
+  });
+
   it('reads ~/.claude.json for the ~/.claude config folder, and a legacy .config.json in a config folder before anything else', () => {
     const { at } = layout();
     const cwd = at('plain/a/b');
