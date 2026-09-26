@@ -102,8 +102,8 @@ async function setupPlatform(t: Target, o: Options, from: From, systemd: boolean
   });
 }
 
-export function setupCommand(target: () => Target, json: () => boolean): Command {
-  const systemd = process.platform === 'linux';
+export function setupCommand(target: () => Target, json: () => boolean, platform: NodeJS.Platform = process.platform): Command {
+  const systemd = platform === 'linux';
   return new Command('setup')
     .description(`install hooks, tmux.conf, ${systemd ? 'systemd user units' : 'the launchd agent'} and the archi and archipelago shims`)
     .option('--no-launchctl', systemd ? 'write files only, do not (re)start the systemd unit' : 'write files only; leave launchd, the app and what an older install left alone')
@@ -121,13 +121,15 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
         return;
       }
       if (t.name !== PRIVATE) throw new Error(`archi setup configures the private fleet; run archi ${t.name} to open that one`);
-      const checks = await preflight(realPreflightDeps(t.home));
+      const pre = realPreflightDeps(t.home, platform);
+      const checks = await preflight(pre);
       const settingsPath = userPaths().claudeSettings;
       const library = path.join(os.homedir(), 'Library');
       const notes: Check[] = [];
       const signIns = systemd ? undefined : signInsLeft(library);
       if (signIns) notes.push({ name: 'sign-ins', status: 'warn', detail: signIns });
-      const agents = findAgents(process.env.PATH ?? '');
+      // the agent CLIs the daemon's unit finds, which an ssh login's PATH may not reach
+      const agents = findAgents(pre.agentPath ?? pre.pathEnv);
       const codex = codexPaths();
       const claudeWanted = agents.includes('claude') || fs.existsSync(path.dirname(settingsPath));
       const codexWanted = agents.includes('codex') || fs.existsSync(codex.dir);
@@ -159,7 +161,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
         return;
       }
       const warnings = [...requireReady(checks), ...notes.map(checkLine)];
-      const system = o.launchctl && process.platform === 'darwin';
+      const system = o.launchctl && platform === 'darwin';
       if (!system && !systemd && oldIdsLeft(userPaths().launchAgents, library)) {
         // an old agent left beside the plist setup writes would start with it at login
         warnings.push('! ids  what an older install left under the com.archipelago ids stays, as --no-launchctl moves nothing: run archi setup without it before you next log in');
