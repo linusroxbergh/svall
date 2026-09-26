@@ -6,6 +6,7 @@ import {
   type OwnerRecord, type OwnershipInfo, type Result,
 } from '@archipelago/protocol';
 import { writeDurable } from '@archipelago/archid/handover/durable';
+import { boundary } from '@archipelago/archid/handover/failpoints';
 import { canonicalDigest } from '@archipelago/archid/handover/hash';
 import { manifestDigest } from '@archipelago/archid/handover/manifest';
 import type { SafeAction } from './events.js';
@@ -86,7 +87,7 @@ export function fileStore(dir: string): ControllerStore {
         return undefined;
       }
     },
-    write: (j) => write(journal, ControllerJournal.parse(j)),
+    write: (j) => boundary('controller.journal', () => write(journal, ControllerJournal.parse(j))),
     saveManifest: (tx, m) => write(txFile(tx, 'manifest.json'), m),
     manifest: (tx, digest) => {
       const m = read(txFile(tx, 'manifest.json'), (v) => FrozenManifest.parse(v));
@@ -98,7 +99,7 @@ export function fileStore(dir: string): ControllerStore {
       return landed && canonicalDigest(landed) === digest ? landed : undefined;
     },
     clear(transactionId) {
-      fs.rmSync(journal, { force: true });
+      boundary('controller.journal', () => fs.rmSync(journal, { force: true }));
       if (transactionId) fs.rmSync(transactionDir(transactionId, dir), { recursive: true, force: true });
     },
   };

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { FleetId, Generation, MachineId, OwnerRecord, Sha256, TransactionId, type TransactionRecord } from '@archipelago/protocol';
 import { DurableJson, appendDurable, syncDir, writeDurable, type DurableOptions } from '../handover/durable.js';
+import { boundary, type Failpoint } from '../handover/failpoints.js';
 import { canonicalJson } from '../handover/hash.js';
 
 /** Everything the gateway owns lives under one prefix: the records, and the socket they are reached through. */
@@ -186,6 +187,12 @@ function force(record: OwnerRecord | undefined, p: OwnerParamsOf<'owner.force'>)
 
 export type AuthorityOptions = { durable?: DurableOptions; now?: () => number; newTransactionId?: () => string };
 
+// the writes a handover makes of the record; a create or a force is no step of one
+const STEPS: Partial<Record<OwnerOp, Failpoint>> = {
+  'owner.begin': 'gateway.begin.write', 'owner.ready': 'gateway.ready.write', 'owner.commit': 'gateway.commit.write',
+  'owner.abort': 'gateway.abort.write', 'owner.complete': 'gateway.complete.write',
+};
+
 type Loaded = { record?: OwnerRecord } | { error: AuthorityError };
 
 /**
@@ -218,7 +225,9 @@ export class FleetAuthority {
     if ('record' in result && !unchanged(loaded.record, result.record)) {
       // the audit line lands first, so no forced record stands without one
       if (op === 'owner.force') this.audit(loaded.record, result.record, params as OwnerParamsOf<'owner.force'>, now);
-      file.write(result.record);
+      const step = STEPS[op];
+      if (step) boundary(step, () => file.write(result.record));
+      else file.write(result.record);
     }
     return result;
   }

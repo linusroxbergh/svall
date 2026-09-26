@@ -5,6 +5,7 @@ import { markDormant, markSlotDormant } from '../reconcile.js';
 import type { Store } from '../store.js';
 import type { TerminalHub } from '../terminals.js';
 import { noServer, type LiveWindow, type Tmux } from '../tmux/tmux.js';
+import { boundary } from './failpoints.js';
 import { ProcessTable, killGroup, type PaneProcesses } from './processes.js';
 import type { SourceJournal } from './journal.js';
 import type { HandoverService } from './service.js';
@@ -261,10 +262,10 @@ export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<Set
       } else if (s === 'terminate' && c) {
         // an agent's tool commands and helpers run in groups and sessions of their own, so the job's group alone would leave them running
         const tree = table.tree(c.processes.foreground);
-        t.groups = [...new Set(tree.map((p) => p.pgid))];
+        const groups = (t.groups = [...new Set(tree.map((p) => p.pgid))]);
         const processes = tree.map((p) => p.args);
-        recordJournal(deps.journal, x.now, (j) => ({ terminated: [...j.terminated, { ...refOf(t), processes }] }));
-        for (const g of t.groups) kill(g, 'SIGTERM');
+        boundary('source.rest.terminated', () => recordJournal(deps.journal, x.now, (j) => ({ terminated: [...j.terminated, { ...refOf(t), processes }] })));
+        boundary('source.rest.terminate', () => { for (const g of groups) kill(g, 'SIGTERM'); });
         t.terminatedAt = x.now;
       } else if (s === 'kill') {
         for (const g of (t.groups ?? []).filter(x.alive)) kill(g, 'SIGKILL');
@@ -324,10 +325,10 @@ async function layToRest(
     }
   }
   // before any window closes, so an abort knows which terminals the handover stopped
-  recordJournal(deps.journal, now, (j) => {
+  boundary('source.rest.stopped', () => recordJournal(deps.journal, now, (j) => {
     const known = new Set(j.stoppedTerminals.map(keyOf));
     return { stoppedTerminals: [...j.stoppedTerminals, ...open.filter(({ t }) => !known.has(t.key)).map(({ t }) => refOf(t))] };
-  });
+  }));
   for (const id of new Set(open.map(({ t }) => t.characterId))) await bounded('tmux detach-client', (signal) => deps.viewers.detach(id, signal));
   const byKey = new Map(tracks.map((t) => [t.key, t]));
   const { transactionId } = sourceJournal(deps.journal);
@@ -346,7 +347,7 @@ async function layToRest(
   };
   // each slot goes dormant as its own window closes, so a later window that will not close strands none of them
   for (const { t, c } of open) {
-    await bounded('tmux kill-window', (signal) => deps.tmux.killWindow(c.window.windowId, signal));
+    await boundary('source.rest.kill', () => bounded('tmux kill-window', (signal) => deps.tmux.killWindow(c.window.windowId, signal)));
     deps.store.update((d) => lay(d, t, true));
   }
   // and the terminals whose window had already gone

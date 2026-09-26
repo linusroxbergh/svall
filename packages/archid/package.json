@@ -19,6 +19,7 @@
     "./handover/inventory": "./src/handover/inventory.ts",
     "./handover/divergence": "./src/handover/divergence.ts",
     "./handover/durable": "./src/handover/durable.ts",
+    "./handover/failpoints": "./src/handover/failpoints.ts",
     "./handover/git-import": "./src/handover/git-import.ts",
     "./handover/hash": "./src/handover/hash.ts",
     "./handover/journal": "./src/handover/journal.ts",

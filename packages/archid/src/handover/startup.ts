@@ -2,6 +2,7 @@ import type { FleetId, OwnerRecord } from '@archipelago/protocol';
 import type { Config } from '../config.js';
 import type { Logger } from '../log.js';
 import type { OwnershipState } from '../ownership/state.js';
+import { boundary } from './failpoints.js';
 import type { JournalState } from './journal.js';
 import type { HandoverService } from './service.js';
 import type { Authority } from './source.js';
@@ -44,7 +45,7 @@ export async function enterStartupMode(mode: StartupMode, { ownership, journal, 
   }
   if (mode === 'frozen-source' && open) {
     // a source that wrote a journal had already surrendered, whatever the cached record still says
-    if (!ownership.isFrozen()) await ownership.surrender();
+    if (!ownership.isFrozen()) await boundary('source.startup.surrender', () => ownership.surrender());
     log.info(`handover ${open.transactionId} froze this fleet at ${open.phase}; it is read-only until the controller resumes or aborts it`);
     return;
   }

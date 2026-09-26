@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import net from 'node:net';
 import type { OwnerRecord } from '@archipelago/protocol';
 import type { DurableOptions } from '../handover/durable.js';
+import { boundary } from '../handover/failpoints.js';
 import { silentLogger, type Logger } from '../log.js';
 import { FleetAuthority, OWNER_PARAMS, gatewayPaths, isOwnerOp, type AuthorityError } from './authority.js';
 
@@ -76,7 +77,9 @@ function serveConnection(socket: net.Socket, authority: FleetAuthority, log: Log
       }
       queue = queue.then(async () => {
         const response = await answer(authority, request, log);
-        if (!socket.destroyed) socket.write(`${JSON.stringify(response)}\n`);
+        const send = () => { if (!socket.destroyed) socket.write(`${JSON.stringify(response)}\n`); };
+        if (request.op === 'owner.commit') boundary('gateway.commit.respond', send);
+        else send();
       });
     }
     if (buffer.length > MAX_LINE) {

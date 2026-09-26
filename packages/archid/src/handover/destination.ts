@@ -17,6 +17,7 @@ import { markDormant, markSlotDormant, reviveCommand } from '../reconcile.js';
 import { Store } from '../store.js';
 import type { Tmux } from '../tmux/tmux.js';
 import { writeDurable } from './durable.js';
+import { boundary } from './failpoints.js';
 import { graphsHere, importGraphs, keptWorktrees, type KeptWorktree } from './git-import.js';
 import { canonicalDigest } from './hash.js';
 import { rootMatcher, settle } from './inventory.js';
@@ -286,7 +287,7 @@ export class DestinationHandover {
     const roots: Result<'handover.claim'>['roots'] = [];
     for (const r of replicaRoots(m)) {
       const claim = { transactionId: tx, excludes: m.excludes, incoming: m.roots.find((x) => x.id === r.id)!.files, keep: stays.keep(r.path) };
-      let check = await this.replicas.claim(r, claim);
+      let check = await boundary('destination.claim.root', () => this.replicas.claim(r, claim));
       let archivedTo: string | undefined;
       if (!check.ok && p.archive?.length && ARCHIVABLE.has(check.blocker.code)) {
         try {
@@ -333,12 +334,12 @@ export class DestinationHandover {
     if (!j) return {};
     if (j.phase !== 'activate') throw notReady(`handover ${j.transactionId} is at ${j.phase} on this machine, and completes only once it has activated`);
     // an unsealed root would find itself occupied on the way back, so what could not be sealed keeps the record for another try
-    const unsealed = this.sealAs(j, j.generation);
+    const unsealed = boundary('destination.complete.seal', () => this.sealAs(j, j.generation));
     if (unsealed.length) throw notReady(`handover ${j.transactionId} could not seal ${unsealed.join('; ')}; complete it again once that is put right`);
     for (const f of [this.d.paths.replicaSeal(j.transactionId), this.d.paths.preparedState(j.transactionId), path.dirname(this.d.paths.sessionStage(j.transactionId, 0))]) {
       fs.rmSync(f, { recursive: true, force: true });
     }
-    this.journal.close();
+    boundary('destination.complete.journal', () => this.journal.close());
     return {};
   }
 
@@ -372,10 +373,10 @@ export class DestinationHandover {
     }
 
     if (!held) {
-      this.journal.write(DestinationJournal.parse({
+      boundary('destination.verify.journal', () => this.journal.write(DestinationJournal.parse({
         role: 'destination', transactionId: tx, generation: p.generation, fleetId: this.d.config.id,
         fromMachineId: m.fromMachineId, toMachineId: m.toMachineId, phase: 'verify', manifestDigest: p.manifestDigest, updatedAt: this.clock.now(),
-      }));
+      })));
     }
     // a machine receiving a fleet runs nothing of it until activation
     this.ownership.hold(`handover ${tx} has not been activated on this machine`);
@@ -385,24 +386,26 @@ export class DestinationHandover {
     // the registrations of worktrees that stay here, which this handover's claim left as they were
     const stays = new Map<string, string[]>();
     const blockers: Blocker[] = [];
-    for (const r of carried) {
-      const spec = { id: r.id, kind: r.kind, entry: r.entry, path: r.path };
-      const check = await this.replicas.inspect(spec, { transactionId: tx, excludes: m.excludes });
-      if (!check.ok || check.kind !== 'resume') {
-        blockers.push({ code: 'destination_occupied', message: `${check.path} was not claimed by handover ${tx}`, entity: { kind: 'root', id: r.id } });
-        continue;
+    await boundary('destination.verify.landed', async () => {
+      for (const r of carried) {
+        const spec = { id: r.id, kind: r.kind, entry: r.entry, path: r.path };
+        const check = await this.replicas.inspect(spec, { transactionId: tx, excludes: m.excludes });
+        if (!check.ok || check.kind !== 'resume') {
+          blockers.push({ code: 'destination_occupied', message: `${check.path} was not claimed by handover ${tx}`, entity: { kind: 'root', id: r.id } });
+          continue;
+        }
+        at.set(r.id, check.path);
+        stays.set(r.id, this.replicas.keptBy(spec, tx));
+        const landed = verified ? undefined : await landedProblem(r, check.path, p.landed.find((x) => x.id === r.id)!.files, m.excludes, this.d.scanFs, kept(stays.get(r.id)!));
+        if (landed) blockers.push(landed);
       }
-      at.set(r.id, check.path);
-      stays.set(r.id, this.replicas.keptBy(spec, tx));
-      const landed = verified ? undefined : await landedProblem(r, check.path, p.landed.find((x) => x.id === r.id)!.files, m.excludes, this.d.scanFs, kept(stays.get(r.id)!));
-      if (landed) blockers.push(landed);
-    }
+    });
     if (blockers.length) throw blocked(blockers);
 
     const git = gitProblems(m, [...at.values()]);
     if (git.length) throw blocked(git);
     // verified once the import may have changed the roots, and not before: a retry until then compares what landed again
-    if (!verified) this.journal.write({ ...this.open(tx)!, landedDigest, updatedAt: this.clock.now() });
+    if (!verified) boundary('destination.verify.record', () => this.journal.write({ ...this.open(tx)!, landedDigest, updatedAt: this.clock.now() }));
     let graphs: Blocker[];
     try {
       const registrations = carried.flatMap((r) => (stays.get(r.id) ?? []).map((rel) => path.posix.join(r.path, rel)));
@@ -416,7 +419,8 @@ export class DestinationHandover {
         const scan = await scanPath(at.get(r.id)!, rootMatcher(r.kind, m.excludes), this.d.scanFs);
         roots.push({ id: r.id, kind: r.kind, entry: r.entry, path: r.path, files: scan?.files ?? [] });
       }
-      writeDurable(this.d.paths.replicaSeal(tx), SealRecord.parse({ transactionId: tx, generation: p.generation, manifestDigest: p.manifestDigest, roots }), { mode: 0o600 });
+      const seal = SealRecord.parse({ transactionId: tx, generation: p.generation, manifestDigest: p.manifestDigest, roots });
+      boundary('destination.prepare.seal', () => writeDurable(this.d.paths.replicaSeal(tx), seal, { mode: 0o600 }));
     }
     if (graphs.length) throw blocked(graphs);
 
@@ -430,9 +434,9 @@ export class DestinationHandover {
 
     const preparedDigest = canonicalDigest(state);
     const preparedPath = this.d.paths.preparedState(tx);
-    writeDurable(preparedPath, state, { mode: 0o600 });
+    boundary('destination.prepare.state', () => writeDurable(preparedPath, state, { mode: 0o600 }));
     if (p.relaySecret) writeDurable(this.d.paths.relaySecret, Buffer.from(p.relaySecret), { mode: 0o600 });
-    this.journal.write({ ...this.open(tx)!, phase: 'prepare', preparedPath, preparedDigest, fleet: imported.fleet, updatedAt: this.clock.now() });
+    boundary('destination.prepare.journal', () => this.journal.write({ ...this.open(tx)!, phase: 'prepare', preparedPath, preparedDigest, fleet: imported.fleet, updatedAt: this.clock.now() }));
     fs.rmSync(path.dirname(this.d.paths.sessionStage(tx, 0)), { recursive: true, force: true });
     return { preparedDigest };
   }
@@ -474,15 +478,18 @@ export class DestinationHandover {
     let j = this.open(tx);
     if (!j) throw handoverError({ code: 'transaction_mismatch', message: `this machine is not receiving handover ${tx}`, expected: tx });
     if (!j.preparedDigest || !j.fleet) throw notReady(`handover ${tx} is not prepared on this machine yet`);
-    await this.ownership.installCommitted(await this.committed(j));
+    const record = await this.committed(j);
+    await boundary('destination.activate.install', () => this.ownership.installCommitted(record));
     if (j.phase === 'prepare') j = this.advance(j, 'commit');
     if (j.phase === 'commit') {
       this.promote(j);
       j = this.advance(j, 'activate');
     }
-    this.ownership.unhold();
-    await this.d.fleet.activate();
-    await this.d.fleet.reconcileNow();
+    await boundary('destination.activate.fleet', async () => {
+      this.ownership.unhold();
+      await this.d.fleet.activate();
+      await this.d.fleet.reconcileNow();
+    });
     await this.wake(tx);
     return { characters: characterResults(this.open(tx)?.activation ?? []) };
   }
@@ -511,17 +518,19 @@ export class DestinationHandover {
 
   /** fleet.json, then the state: each step is safe to repeat, and a rename that landed before a crash is found by its digest. */
   private promote(j: DestinationJournal): void {
-    writeDurable(this.d.paths.fleetConfig, j.fleet!, { mode: 0o600 });
+    boundary('destination.promote.fleet', () => writeDurable(this.d.paths.fleetConfig, j.fleet!, { mode: 0o600 }));
     adopt(this.d.config, j.fleet!);
     const prepared = this.d.paths.preparedState(j.transactionId);
-    if (fs.existsSync(prepared)) {
-      if (canonicalDigest(Store.readSnapshot(prepared)) !== j.preparedDigest) throw new Error(`${prepared} is not the state handover ${j.transactionId} prepared`);
-      this.d.store.promote(prepared);
-    } else if (canonicalDigest(Store.readSnapshot(this.d.paths.state)) === j.preparedDigest) {
-      this.d.store.reload();
-    } else {
-      throw new Error(`the state handover ${j.transactionId} prepared is gone from ${prepared}`);
-    }
+    boundary('destination.promote.state', () => {
+      if (fs.existsSync(prepared)) {
+        if (canonicalDigest(Store.readSnapshot(prepared)) !== j.preparedDigest) throw new Error(`${prepared} is not the state handover ${j.transactionId} prepared`);
+        this.d.store.promote(prepared);
+      } else if (canonicalDigest(Store.readSnapshot(this.d.paths.state)) === j.preparedDigest) {
+        this.d.store.reload();
+      } else {
+        throw new Error(`the state handover ${j.transactionId} prepared is gone from ${prepared}`);
+      }
+    });
   }
 
   /**
@@ -665,7 +674,7 @@ export class DestinationHandover {
   }
 
   private openSlot(s: Slot): Promise<Character> {
-    return s.term === 2 ? this.d.fleet.openSecond(s.characterId) : this.d.fleet.reviveCharacter(s.characterId);
+    return boundary('destination.activate.open', () => (s.term === 2 ? this.d.fleet.openSecond(s.characterId) : this.d.fleet.reviveCharacter(s.characterId)));
   }
 
   /** What holds a terminal's pane now, read afresh through tmux and ps. */
@@ -796,7 +805,7 @@ export class DestinationHandover {
     const j = this.open(tx);
     if (!j) return;
     const activation = [...(j.activation ?? []).filter((a) => keyOf(a) !== keyOf(entry)), entry];
-    this.journal.write({ ...j, activation, updatedAt: this.clock.now() });
+    boundary('destination.activate.record', () => this.journal.write({ ...j, activation, updatedAt: this.clock.now() }));
     const result = characterResults(activation).find((r) => r.id === entry.characterId)!;
     this.journal.emitEntity({
       transactionId: tx, kind: 'character', id: entry.characterId, phase: 'activate', ...(result.error && { error: result.error }), ...(result.notice && { notice: result.notice }),
@@ -823,11 +832,11 @@ export class DestinationHandover {
 
   private discard(j: DestinationJournal): void {
     // the content is the source's at the generation it keeps; a root sealed or archived since is left alone
-    this.sealAs(j, j.generation - 1);
+    boundary('destination.abort.seal', () => this.sealAs(j, j.generation - 1));
     for (const f of [this.d.paths.preparedState(j.transactionId), this.d.paths.replicaSeal(j.transactionId), path.dirname(this.d.paths.sessionStage(j.transactionId, 0))]) {
       fs.rmSync(f, { recursive: true, force: true });
     }
-    this.journal.close();
+    boundary('destination.abort.journal', () => this.journal.close());
     this.ownership.unhold();
   }
 
@@ -849,7 +858,7 @@ export class DestinationHandover {
 
   private advance(j: DestinationJournal, phase: 'commit' | 'activate'): DestinationJournal {
     const next = { ...j, phase, updatedAt: this.clock.now() };
-    this.journal.write(next);
+    boundary(phase === 'commit' ? 'destination.commit.journal' : 'destination.activate.journal', () => this.journal.write(next));
     return next;
   }
 

@@ -3,6 +3,7 @@ import {
   type AgentKind, type Blocker, type FleetId, type HandoverChoices, type HandoverPhase, type KeptCommit, type LandedRoot, type MachineId, type ManifestSummary, type MethodName, type OwnerRecord,
   type Params, type Result, type ResumeFolder, type RootClaim, type SystemInfo, type TransferManifestV1, type TransferRoot, type Warning,
 } from '@archipelago/protocol';
+import { boundary } from '@archipelago/archid/handover/failpoints';
 import { graphsHere } from '@archipelago/archid/handover/git-import';
 import { canonicalDigest } from '@archipelago/archid/handover/hash';
 import { settle } from '@archipelago/archid/handover/inventory';
@@ -615,7 +616,7 @@ export class Handover {
     for (let n = 1; ; n++) {
       let asked: unknown;
       try {
-        const record = await this.d.gateway.commit({ transactionId, expectedGeneration: generation });
+        const record = await boundary('controller.commit', () => this.d.gateway.commit({ transactionId, expectedGeneration: generation }));
         if (!committed(record)) throw new Stopped('commit', `the gateway answered the commit with ${describe(record)}; ask it again before anything else`, []);
         break;
       } catch (e) {

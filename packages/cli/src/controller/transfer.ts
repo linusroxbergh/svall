@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Blocker, TransferFile, TransferRoot } from '@archipelago/protocol';
 import { compareReplica, diverged, proveReplica, type Divergence } from '@archipelago/archid/handover/divergence';
+import { boundary } from '@archipelago/archid/handover/failpoints';
 import { CONTROL } from '@archipelago/archid/handover/inventory';
 import { realScanFs, scanPath, type ScanFs } from '@archipelago/archid/handover/manifest';
 import { kept, relativeProblem, type ReplicaCheck } from '@archipelago/archid/handover/replicas';
@@ -175,7 +176,7 @@ export async function transfer(o: TransferOptions): Promise<TransferResult> {
   let stopped = false;
   for (const entry of o.entries) {
     if (stopped) { entries.push({ id: entry.id, status: 'pending' }); continue; }
-    const outcome = await new Mirror(entry, o, d, journal, rsh).run();
+    const outcome = await boundary('controller.rsync', () => new Mirror(entry, o, d, journal, rsh).run());
     entries.push(outcome);
     stopped = outcome.status === 'cancelled' || (outcome.status === 'failed' && outcome.reason !== 'refused');
   }
@@ -225,7 +226,7 @@ class Mirror {
       this.put({ state: 'verifying' });
       const now = await this.scan([]);
       if (now.readable && scanDigest(now.files) === this.progress.verifiedScan) {
-        const compared = await this.compare();
+        const compared = await boundary('controller.verify', () => this.compare());
         if (compared.kind === 'ok') return this.verified(0, now.files);
         if (compared.kind === 'stop') return compared.outcome;
       }
@@ -243,7 +244,7 @@ class Mirror {
         last = { kind: 'unstable', side: 'source', names: scanned.names };
         continue;
       }
-      const compared = await this.compare();
+      const compared = await boundary('controller.verify', () => this.compare());
       if (compared.kind === 'ok') return this.verified(pass, scanned.files);
       if (compared.kind === 'stop') return compared.outcome;
       // the two sides differ: if this Mac's side held still while they were compared, the far side is the one moving

@@ -13,6 +13,7 @@ import type { OwnershipState } from '../ownership/state.js';
 import { installedScripts, type Paths } from '../paths.js';
 import { releaseVersion } from '../release.js';
 import type { Tmux } from '../tmux/tmux.js';
+import { boundary } from './failpoints.js';
 import { extensionBlockers, gitVersion, readExtensions } from './git-extensions.js';
 import { discoverGit } from './git-graph.js';
 import { canonicalJson } from './hash.js';
@@ -254,13 +255,13 @@ export class SourceHandover {
     cancel.throwIfAborted();
     // the journal first: a start that finds it surrenders the fleet whatever owner.json says
     if (!held) {
-      this.journal.write(SourceJournal.parse({
+      boundary('source.freeze.journal', () => this.journal.write(SourceJournal.parse({
         role: 'source', transactionId: tx.id, generation: p.generation, fleetId: this.fleet().id,
         fromMachineId: tx.fromMachineId, toMachineId: tx.toMachineId, phase: 'freeze', updatedAt: this.now(),
-      }));
+      })));
     }
     const cache = this.ownership.record();
-    if (!(cache.frozen && cache.transaction?.id === tx.id)) await this.ownership.freeze(tx);
+    if (!(cache.frozen && cache.transaction?.id === tx.id)) await boundary('source.freeze.surrender', () => this.ownership.freeze(tx));
     await this.d.fleet.settle();
 
     const found = await this.check(tx.toMachineId, p, this.d.store.state);
@@ -284,8 +285,8 @@ export class SourceHandover {
     const file = this.d.paths.manifest(tx.id);
     // a manifest no journal names is left by an attempt that did not live to record it
     fs.rmSync(file, { force: true });
-    const manifestDigest = writeManifest(file, built.manifest);
-    this.journal.write({ ...this.open(tx.id)!, manifestDigest, updatedAt: this.now() });
+    const manifestDigest = boundary('source.freeze.manifest', () => writeManifest(file, built.manifest));
+    boundary('source.freeze.digest', () => this.journal.write({ ...this.open(tx.id)!, manifestDigest, updatedAt: this.now() }));
     for (const id of ids) {
       const n = rested.terminals.filter((t) => t.characterId === id).length;
       this.progress(tx.id, id, { done: n, total: n });
@@ -304,7 +305,7 @@ export class SourceHandover {
       });
     }
     await this.mayTakeBack(p);
-    if (held) this.journal.write({ ...held, phase: 'aborted', updatedAt: this.now() });
+    if (held) boundary('source.abort.journal', () => this.journal.write({ ...held, phase: 'aborted', updatedAt: this.now() }));
     await this.revive(p.transactionId, held?.stoppedTerminals ?? [], 'aborted');
     await this.release();
     fs.rmSync(this.d.paths.manifest(p.transactionId), { force: true });
@@ -328,9 +329,9 @@ export class SourceHandover {
         message: `the gateway holds this fleet for ${record.ownerMachineId} at generation ${record.generation}; handover ${held.transactionId} has not committed, so it can only be aborted`,
       });
     }
-    this.seal(held, p.landed ?? []);
-    await this.ownership.installCommitted(record);
-    this.journal.close();
+    boundary('source.complete.seal', () => this.seal(held, p.landed ?? []));
+    await boundary('source.complete.install', () => this.ownership.installCommitted(record));
+    boundary('source.complete.journal', () => this.journal.close());
     fs.rmSync(this.d.paths.manifest(held.transactionId), { force: true });
     return {};
   }
@@ -460,7 +461,7 @@ export class SourceHandover {
       const c = this.d.store.state.characters[t.characterId];
       if (!c || (t.term === 2 && !c.second)) continue;
       try {
-        await (t.term === 2 ? this.d.fleet.openSecond(c.id) : this.d.fleet.reviveCharacter(c.id));
+        await boundary('source.revive', () => (t.term === 2 ? this.d.fleet.openSecond(c.id) : this.d.fleet.reviveCharacter(c.id)));
         this.progress(transactionId, c.id, {}, phase);
       } catch (e) {
         this.d.log.error(`handover ${transactionId}: ${c.name}'s ${t.term === 2 ? 'second ' : ''}terminal did not reopen: ${(e as Error).message}`);
@@ -471,10 +472,12 @@ export class SourceHandover {
 
   /** Back to running the fleet: the journal closes while the surrender still stands, then the background work starts. */
   private async release(): Promise<void> {
-    if (this.journal.journalState().kind === 'open') this.journal.close();
-    await this.ownership.unfreeze();
-    await this.d.fleet.activate();
-    await this.d.fleet.reconcileNow();
+    if (this.journal.journalState().kind === 'open') boundary('source.release.journal', () => this.journal.close());
+    await boundary('source.release.unfreeze', () => this.ownership.unfreeze());
+    await boundary('source.release.activate', async () => {
+      await this.d.fleet.activate();
+      await this.d.fleet.reconcileNow();
+    });
   }
 
   /** The manifest a freeze answered before, which is what it answers again. */
