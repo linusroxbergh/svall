@@ -51,7 +51,7 @@ export type DestinationDeps = {
   /** This account's home, which a fleet it receives has to share. */
   homedir?: () => string;
   clock?: Clock;
-  /** How long a resumed agent has to report its SessionStart. */
+  /** How long a resumed agent has to come up in its pane. */
   sessionStartMs?: number;
   /** How many terminals start at once. */
   concurrency?: number;
@@ -84,8 +84,10 @@ const SESSION_START_MS = 60_000;
 const CONCURRENCY = 4;
 // how long one look at a pane, through tmux and ps, may take
 const LOOK_MS = 10_000;
-// how long an agent that reports nothing as it resumes must hold its pane to count as up, and how often the pane is looked at
+// how long an agent must hold its pane without a SessionStart to count as up, and how often the pane is looked at; one
+// that reports its SessionStart as it resumes, in a folder its CLI trusts, is given QUIET_MS, well past the ~2 s that takes
 const SETTLE_MS = 3000;
+const QUIET_MS = 10_000;
 const LOOK_EVERY_MS = 500;
 // how often a terminal counted up at a prompt is looked at until its session starts
 const WATCH_EVERY_MS = 2000;
@@ -566,31 +568,30 @@ export class DestinationHandover {
         const { adapter } = await this.cli(agent.kind);
         // an agent asks whether to trust its folder before any hook runs, so one that asks reports nothing until answered
         const trusted = await this.trusted({ kind: agent.kind, ...resumeFolder(c, s.term, expandHome) });
-        const reports = adapter.sessionStartOnResume && trusted;
         let up: Up = 'running';
+        // one that reports its SessionStart as it resumes, yet holds its pane silent well past that, is at some other prompt
+        let quiet = false;
         if (held !== 'agent') {
           // only a window left open can have started before this wait
           if (!held) this.heard.delete(keyOf(s));
-          // one that reports nothing as it resumes is waited on by its pane, which keeps the time
-          started = this.waitStart(s, agent.sessionId, reports);
+          started = this.waitStart(s, agent.sessionId);
           if (!held) await this.openSlot(s);
-          const seconds = Math.round((this.d.sessionStartMs ?? SESSION_START_MS) / 1000);
-          up = !reports ? await this.settles(s, agent.kind, started)
-            : (await started.done) ? 'started' : { failed: `which did not report its SessionStart within ${seconds} s` };
+          const reports = adapter.sessionStartOnResume && trusted;
+          up = await this.settles(s, agent.kind, started, reports ? QUIET_MS : SETTLE_MS);
           started.cancel();
+          quiet = reports && up === 'running';
         }
         if (typeof up === 'object') {
           await this.lay(s, carried);
-          const see = reports ? 'it may have stopped at a prompt; revive it to see' : 'revive it to see';
-          entry = { ...s, ok: false, sessionId: agent.sessionId, error: `${which} resumed ${agent.kind} session ${agent.sessionId}, ${up.failed}, so it is dormant again with that session; ${see}` };
+          entry = { ...s, ok: false, sessionId: agent.sessionId, error: `${which} resumed ${agent.kind} session ${agent.sessionId}, ${up.failed}, so it is dormant again with that session; revive it to see` };
         } else {
           const answer = adapter.trustAnswer ? `choose "${adapter.trustAnswer}"` : 'answer it';
           const prompt = up === 'running' && !trusted;
+          const notice = prompt ? `${agent.kind} waits at its "Trust this folder?" prompt in ${which}; ${answer} there`
+            : quiet ? `${agent.kind} has not started its session in ${which} and may be waiting at a prompt there; answer it there` : undefined;
           if (prompt) unanswered = `revive it and ${adapter.trustAnswer ? answer : 'trust its folder'} at its "Trust this folder?" prompt`;
-          entry = {
-            ...s, ok: true, sessionId: agent.sessionId,
-            ...(prompt && { notice: `${agent.kind} waits at its "Trust this folder?" prompt in ${which}; ${answer} there` }),
-          };
+          if (quiet) unanswered = 'revive it to see';
+          entry = { ...s, ok: true, sessionId: agent.sessionId, ...(notice && { notice }) };
         }
       }
     } catch (e) {
@@ -612,7 +613,7 @@ export class DestinationHandover {
    */
   private async watch(tx: string, s: Slot, which: string, agent: { kind: AgentKind; sessionId: string }, carried: Carried | undefined, then: string): Promise<void> {
     const key = keyOf(s);
-    const started = this.waitStart(s, agent.sessionId, false);
+    const started = this.waitStart(s, agent.sessionId);
     this.watched.add(key);
     let heard = false;
     const start = started.done.then((ok) => { heard = ok; });
@@ -659,10 +660,10 @@ export class DestinationHandover {
   }
 
   /**
-   * How a resumed agent whose CLI reports nothing as it resumes comes up: running once its pane has held that agent for
-   * SETTLE_MS on end, started once its SessionStart comes after all, and otherwise what its pane showed instead.
+   * How a resumed agent comes up: started once its SessionStart comes, running once its pane has held that agent for
+   * `settleMs` on end without one, and otherwise what its pane showed instead.
    */
-  private async settles(s: Slot, kind: AgentKind, started: { done: Promise<boolean> }): Promise<Up> {
+  private async settles(s: Slot, kind: AgentKind, started: { done: Promise<boolean> }, settleMs: number): Promise<Up> {
     const waitMs = this.d.sessionStartMs ?? SESSION_START_MS;
     const end = this.clock.now() + waitMs;
     let heard = false;
@@ -681,7 +682,7 @@ export class DestinationHandover {
       if (look?.held === 'agent') {
         since ??= now;
         ran = true;
-        if (now - since >= SETTLE_MS) return 'running';
+        if (now - since >= settleMs) return 'running';
       } else {
         since = undefined;
         if (look?.held === 'gone') return { failed: `but its window closed${ran ? '' : ` before ${kind} came up`}` };
@@ -729,27 +730,21 @@ export class DestinationHandover {
     return !!j && slot?.restedBy === j.transactionId && !j.activation?.some((a) => keyOf(a) === keyOf(s));
   }
 
-  /**
-   * Resolves true once the terminal's own session starts, or has been heard starting, and false when the wait runs out
-   * or is cancelled. An untimed wait runs until cancelled.
-   */
-  private waitStart(s: Slot, sessionId: string, timed = true): { done: Promise<boolean>; cancel(): void } {
+  /** Resolves true once the terminal's own session starts, or has been heard starting, and false once cancelled. */
+  private waitStart(s: Slot, sessionId: string): { done: Promise<boolean>; cancel(): void } {
     const key = keyOf(s);
     if (this.heard.get(key) === sessionId) {
       this.heard.delete(key);
       return { done: Promise.resolve(true), cancel: () => {} };
     }
-    const timer = new AbortController();
     let finish!: (ok: boolean) => void;
     const done = new Promise<boolean>((resolve) => {
       finish = (ok) => {
-        timer.abort();
         if (this.waiters.get(key)?.done === finish) this.waiters.delete(key);
         resolve(ok);
       };
     });
     this.waiters.set(key, { sessionId, done: finish });
-    if (timed) void this.clock.sleep(this.d.sessionStartMs ?? SESSION_START_MS, timer.signal).then(() => finish(false));
     return { done, cancel: () => finish(false) };
   }
 

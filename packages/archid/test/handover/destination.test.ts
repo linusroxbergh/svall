@@ -823,17 +823,17 @@ describe('destination activate', () => {
     expect(d.events).toContainEqual({ event: 'handover.entity', data: { transactionId: TX, kind: 'character', id: 'c_bo', phase: 'activate' } });
   });
 
-  it('names a resume that never reports back as its character error, keeps the fleet, and clears it when the session starts after all', async () => {
+  it('names a resume that never comes up as its character error, keeps the fleet, and clears it when the session starts after all', async () => {
     const { s, d, preparedDigest } = await prepared();
     d.gateway.commit(preparedDigest);
-    d.crew.silent.add('c_bo');
+    d.crew.exiting.add('c_bo');
     const run = d.handover.activate({ transactionId: TX, generation: 5 });
     let done = false;
     void run.finally(() => { done = true; });
     for (let i = 0; i < 10 && !done; i++) await d.clock.advance(60_000);
     const r = await run;
     const byId = Object.fromEntries(r.characters.map((c) => [c.id, c]));
-    expect(byId.c_bo).toMatchObject({ ok: false, error: expect.stringMatching(/SessionStart/) });
+    expect(byId.c_bo).toMatchObject({ ok: false, error: expect.stringMatching(/claude did not come up within 60 s: its pane stayed at the shell prompt/) });
     // this machine's Claude trusts bo's folder, so no trust prompt is named
     expect(byId.c_bo.error).not.toMatch(/trust/i);
     expect(byId.c_ada.ok).toBe(true);
@@ -847,7 +847,7 @@ describe('destination activate', () => {
 
     // another session starting there is not the one that was carried
     d.crew.started('c_bo', undefined, '99999999-9999-4999-8999-999999999999');
-    expect(d.handover.status().characters.find((c) => c.id === 'c_bo')!.error).toMatch(/SessionStart/);
+    expect(d.handover.status().characters.find((c) => c.id === 'c_bo')!.error).toBe(byId.c_bo.error);
     expect(s.store.state.characters.c_bo.resumeError).toBe(byId.c_bo.error);
     // the user revives bo, and the carried session starts
     d.crew.started('c_bo', undefined, SID);
@@ -861,8 +861,8 @@ describe('destination activate', () => {
     const s = await scene({ tamper: (m) => { m.snapshot.characters.c_bo.revive = { command: bo }; m.snapshot.characters.c_dee.revive = { command: dee }; } });
     const d = daemon(s);
     d.gateway.commit((await d.handover.prepare(params(s))).preparedDigest);
-    // bo's resume never reports back, and dee's window never opens
-    d.crew.silent.add('c_bo');
+    // bo's resume never comes up, and dee's window never opens
+    d.crew.exiting.add('c_bo');
     d.crew.failing.add('c_dee');
     const run = d.handover.activate({ transactionId: TX, generation: 5 });
     let done = false;
@@ -874,14 +874,14 @@ describe('destination activate', () => {
     expect(s.store.state.characters.c_dee).toMatchObject({ revive: { command: dee }, agent: { sessionId: CODEX_ID } });
   });
 
-  /** Activates with the clock moving half a second at a time for ten seconds, a minute at a time after that, and says how far it had moved when the activation answered. */
+  /** Activates with the clock moving half a second at a time for twenty seconds, a minute at a time after that, and says how far it had moved when the activation answered. */
   async function activateBy(d: Awaited<ReturnType<typeof prepared>>['d']) {
     const run = d.handover.activate({ transactionId: TX, generation: 5 });
     let done = false;
     void run.finally(() => { done = true; });
     let at = 0;
     await settle();
-    while (!done && at < 10_000) { await d.clock.advance(500); at += 500; }
+    while (!done && at < 20_000) { await d.clock.advance(500); at += 500; }
     for (let i = 0; i < 5 && !done; i++) { await d.clock.advance(60_000); at += 60_000; }
     return { r: await run, at };
   }
@@ -948,6 +948,40 @@ describe('destination activate', () => {
     expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo')).toEqual(row);
     expect(d.crew.carried('c_bo')).toBe(false);
     expect(d.handover.status().characters.find((c) => c.id === 'c_bo')!.error).toBeUndefined();
+  });
+
+  it('counts a resumed Claude in a folder this machine trusts up after ten silent seconds in its pane, with a notice that it may wait at a prompt, and watches it', async () => {
+    const { s, d, preparedDigest } = await prepared();
+    d.gateway.commit(preparedDigest);
+    // stopped at a prompt its folder's trust does not answer, as a project's MCP server or bypass mode asks, and silent until answered
+    d.crew.silent.add('c_bo');
+
+    const { r, at } = await activateBy(d);
+
+    // ten seconds of Claude in its pane, and not the minute a SessionStart had
+    expect(at).toBeGreaterThanOrEqual(10_000);
+    expect(at).toBeLessThanOrEqual(11_000);
+    const bo = r.characters.find((c) => c.id === 'c_bo')!;
+    expect(bo).toEqual({ id: 'c_bo', ok: true, notice: "claude has not started its session in bo's terminal and may be waiting at a prompt there; answer it there" });
+    expect(d.crew.log).not.toContain('kill c_bo');
+    expect(s.store.state.characters.c_bo.tmux?.paneId).toBe(d.crew.window('c_bo')!.paneId);
+    expect(d.crew.carried('c_bo')).toBe(true);
+    d.crew.started('c_bo', undefined, SID);
+    await settle();
+    expect(d.crew.carried('c_bo')).toBe(false);
+  });
+
+  it('counts a resumed Claude in a folder this machine trusts up by a SessionStart that comes inside those ten seconds, with no notice', async () => {
+    const { d, preparedDigest } = await prepared();
+    d.gateway.commit(preparedDigest);
+    d.crew.silent.add('c_bo');
+    const run = d.handover.activate({ transactionId: TX, generation: 5 });
+    await settle();
+    for (let i = 0; i < 12; i++) await d.clock.advance(500);
+    d.crew.started('c_bo', undefined, SID);
+    await d.clock.advance(500);
+    const r = await run;
+    expect(r.characters.find((c) => c.id === 'c_bo')).toEqual({ id: 'c_bo', ok: true });
   });
 
   it("keeps watching a Claude counted up at its trust prompt, and lays it dormant again with its carried resume and an error once it exits there", async () => {
@@ -1025,8 +1059,8 @@ describe('destination activate', () => {
     for (let i = 0; i < 10 && !done; i++) await d.clock.advance(60_000);
     const r = await run;
 
-    expect(r.characters.find((c) => c.id === 'c_bo')).toMatchObject({ ok: false, error: expect.stringMatching(/SessionStart/) });
-    // a Codex that never came up says what its pane showed instead
+    // an agent that never came up says what its pane showed instead
+    expect(r.characters.find((c) => c.id === 'c_bo')).toMatchObject({ ok: false, error: expect.stringMatching(/claude did not come up within 60 s: its pane stayed at the shell prompt/) });
     expect(r.characters.find((c) => c.id === 'c_dee')).toMatchObject({ ok: false, error: expect.stringMatching(/codex did not come up within 60 s: its pane stayed at the shell prompt/) });
     expect(d.crew.log).toEqual(expect.arrayContaining(['kill c_bo', 'kill c_dee']));
     for (const [id, command] of [['c_bo', `claude --resume ${SID}`], ['c_dee', `codex resume -c tui.resume_cwd=session ${CODEX_ID}`]]) {
