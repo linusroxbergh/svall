@@ -119,6 +119,7 @@ export const methods = {
   // aspect is the shape of the window the fleet should fill, width over height
   'island.arrange': { params: z.object({ aspect: z.number().min(0.01).max(100).optional() }), result: z.object({}) },
   'island.show': { params: Id, result: z.object({ text: z.string() }) },
+  'island.reorder': { params: z.object({ id: z.string(), targetId: z.string(), after: z.boolean() }), result: Island },
   'char.create': {
     params: z.object({
       islandId: z.string(), cwd: z.string(), name: z.string().optional(),
@@ -233,4 +234,4 @@ export type Event =
 export const Hello = z.object({ token: z.string() });
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 15;
+export const PROTOCOL_VERSION = 16;

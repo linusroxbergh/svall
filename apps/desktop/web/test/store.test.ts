@@ -57,6 +57,19 @@ describe('store', () => {
     store.getState().focus('c0');
     expect(store.getState()).toMatchObject({ view: 'map', card: 'c0', focusedId: 'c0' });
   });
+  it('a return from the board asks the map for an automatic arrange, unless auto-arrange is off', () => {
+    const store = createAppStore(memStorage(), 'board');
+    store.getState().setView('map');
+    expect(store.getState().arrangeAsk).toBe('auto');
+    store.getState().arranged();
+    store.getState().setView('map');
+    expect(store.getState().arrangeAsk).toBe(false);
+    store.getState().setView('board');
+    expect(store.getState().arrangeAsk).toBe(false);
+    store.getState().setSettings({ autoArrange: false });
+    store.getState().setView('map');
+    expect(store.getState().arrangeAsk).toBe(false);
+  });
   it('focus on the board selects and remembers, and stays on the board', () => {
     const storage = memStorage();
     const store = createAppStore(storage, 'board');

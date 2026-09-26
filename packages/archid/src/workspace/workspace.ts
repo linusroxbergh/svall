@@ -114,7 +114,7 @@ export class Workspace {
   // root is the one the file was read under: the text never lands in another checkout the character has moved to since
   write(id: string, rel: string, text: string, mtimeMs: number, root?: string): { mtimeMs: number; conflict?: true } {
     const now = this.rootOf(id);
-    if (root !== undefined && root !== now) throw new WorkspaceError('invalid', `${rel} was opened in ${root}, and the character has moved to ${now}`);
+    if (root !== undefined && root !== now) throw new WorkspaceError('invalid', `${rel} was opened in ${root}; the character is now in ${now}`);
     const abs = this.at(id, rel);
     const st = statOf(rel, abs);
     // a rename would put a file in place of a socket or a pipe

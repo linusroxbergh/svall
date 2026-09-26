@@ -47,7 +47,7 @@ export function Board() {
         ) : (
           <div className="board-empty" data-testid="board-empty">
             <div className="kicker">{island ? island.name : 'The fleet'}</div>
-            <div className="desc">{island ? 'No characters on this island yet.' : `No islands yet.${newKey ? ` ${newKey} creates a character and its island.` : ''}`}</div>
+            <div className="desc">{island ? 'No characters on this island yet.' : `No islands yet.${newKey ? ` Press ${newKey} to start.` : ''}`}</div>
             <div className="acts">
               {island && <button className="btn pri" data-testid="empty-new" onClick={() => newCharacterOn(deps(), island.id)}>New character</button>}
               {island && island.kind !== 'home' && tabs.length === 0 && <DeleteIsland id={island.id} testid="island-delete" label="Delete island" />}

@@ -29,7 +29,7 @@ export function HoverCard({ c, x, y, flip }: Props) {
         <div className="row">last activity<b className="tnum">{ago(at)} ago</b></div>
       </div>
       {c.context.length > 0 && <div className="pills">{c.context.map((l, i) => <span key={`${l.ref}-${i}`} className="lp"><span className="clip-head">{linkText(l)}</span></span>)}</div>}
-      <div className="hint">Double-click to open the terminal</div>
+      <div className="hint">Double-click to open</div>
     </div>
   );
 }

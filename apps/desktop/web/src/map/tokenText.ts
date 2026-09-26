@@ -34,7 +34,7 @@ export function linkText(l: ContextItem): string {
 
 // Silence can mean an untrusted hook, a missing receiver, or another delivery failure.
 export const hintText = (c: Character): string | undefined =>
-  c.hint === 'codex-silent' ? 'Codex is running, but Archipelago isn\'t getting its session updates. Run archi doctor and check /hooks in Codex.' : undefined;
+  c.hint === 'codex-silent' ? 'No updates from Codex. Run archi doctor and check /hooks in Codex.' : undefined;
 
 // only blocked and done spell the status out; working and idle read from the ring
 export function statusWord(status: DisplayStatus): string | undefined {

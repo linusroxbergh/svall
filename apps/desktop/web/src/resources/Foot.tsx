@@ -59,7 +59,7 @@ export function Foot({ onRefresh }: { onRefresh(): void }) {
       {file && doc && <span className="res-save-word" data-testid="resources-save-state">{!unsaved ? 'saved' : stuck ? 'not saved' : 'saving…'}</span>}
       {file && !doc && unsaved && <span className="res-unsaved-word">unsaved · ⌘S saves</span>}
       {file && <button className="res-link" onClick={() => revealFile(app.bridge, file)}>Show in Finder ›</button>}
-      <button className="res-link" data-testid="resources-refresh" title="Re-read the list and any open files from disk" onClick={onRefresh}>↻ Refresh</button>
+      <button className="res-link" data-testid="resources-refresh" title="Reload from disk" onClick={onRefresh}>↻ Refresh</button>
     </footer>
   );
 }

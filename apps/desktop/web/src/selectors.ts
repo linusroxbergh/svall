@@ -1,13 +1,11 @@
-import type { Character, FleetState, Island } from '@archipelago/protocol';
+import { byIslandOrder, type Character, type FleetState, type Island } from '@archipelago/protocol';
 import { SINGLE, type Panes } from './panes.js';
 
 export type DisplayStatus = 'working' | 'idle' | 'blocked' | 'done' | 'shell';
 
-// home sorts last so the next-island key reaches it after every other island
-const byName = (a: Island, b: Island) => Number(a.kind === 'home') - Number(b.kind === 'home') || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
 const byCell = (a: Character, b: Character) => a.cell.y - b.cell.y || a.cell.x - b.cell.x || a.id.localeCompare(b.id);
 
-export const islandsSorted = (f: FleetState): Island[] => Object.values(f.islands).sort(byName);
+export const islandsSorted = (f: FleetState): Island[] => Object.values(f.islands).sort(byIslandOrder);
 
 // the islands the map draws in the panned world, in the same order; home is drawn in screen space
 export const mapIslandsSorted = (f: FleetState): Island[] => islandsSorted(f).filter((i) => i.kind !== 'home');
@@ -132,5 +130,5 @@ export const panesOf = (s: { ide: Record<string, { panes: Panes }> }, id: string
 
 // the shell draws terminals and browser tabs above the page, so anything the page spreads over one
 // only reads as on top once that surface is hidden. An overlay that covers a rect takes a cutout instead
-export const isVeiled = (s: { namingCharacter: boolean; missionPrompt: boolean; closingCharacter?: string; keysOpen: boolean; resourcesOpen: boolean; fleet: FleetState }): boolean =>
-  s.namingCharacter || s.missionPrompt || s.closingCharacter !== undefined || s.keysOpen || s.resourcesOpen || !!s.fleet.scribeAsk;
+export const isVeiled = (s: { namingCharacter: boolean; missionPrompt: boolean; closingCharacter?: string; deletingIsland?: string; keysOpen: boolean; resourcesOpen: boolean; fleet: FleetState }): boolean =>
+  s.namingCharacter || s.missionPrompt || s.closingCharacter !== undefined || s.deletingIsland !== undefined || s.keysOpen || s.resourcesOpen || !!s.fleet.scribeAsk;

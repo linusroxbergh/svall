@@ -181,8 +181,8 @@ describe('the phones on the page', () => {
 
   // an off forgets every phone's notifications, so the switch and its remedy both say so
   it('tells whoever turns the link off that each phone turns notifications on again', () => {
-    expect(OFF).toMatch(/turn notifications on again on each phone/);
-    expect(NO_PAGE).toMatch(/turn notifications on again on each phone/);
+    expect(OFF).toMatch(/re-enable notifications on each phone/);
+    expect(NO_PAGE).toMatch(/re-enable notifications on each phone/);
   });
 });
 

@@ -28,7 +28,7 @@ test('the scribe question opens with Keep off focused', () => {
 test('names the CLI the scribe runs on', () => {
   act(() => store.getState().setFleet({ ...fleet(), scribeAsk: true, scribeAgent: 'codex' }));
   render(<ScribeAsk />);
-  expect(screen.getByTestId('scribe-ask').textContent).toContain('one headless call to Codex');
+  expect(screen.getByTestId('scribe-ask').textContent).toContain('headless Codex call');
 });
 
 test('asks for the main agent when archid finds both CLIs, and only then', () => {

@@ -136,8 +136,8 @@ export function Keybindings() {
           })}
         </div>
         <div className="desc">
-          Only the chords listed here reach Archipelago; every other ⌘ chord goes straight to the terminal.
-          {Object.keys(theirs).length > 0 && ` ${Object.keys(theirs).filter((c) => !bound[c]).length} of the chords in your Ghostty config stay with Ghostty.`}
+          Unlisted ⌘ chords go to the terminal.
+          {Object.keys(theirs).length > 0 && ` ${Object.keys(theirs).filter((c) => !bound[c]).length} of your Ghostty chords stay with Ghostty.`}
         </div>
       </div>
     </div>

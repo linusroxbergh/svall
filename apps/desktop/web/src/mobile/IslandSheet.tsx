@@ -37,7 +37,7 @@ export function IslandSheet({ islandId, onClose, onNewCharacter }: { islandId: s
         <div className="sheet-form">
           {!deletable && <p className="sheet-note">Move its crew away before deleting it.</p>}
           {!confirm && <button type="button" className="dan" disabled={!deletable || busy} onClick={() => setConfirm(true)}>Delete island</button>}
-          {confirm && <button type="button" className="dan" disabled={busy} onClick={() => void remove()}>Really delete {island.name}? Its docs go with it</button>}
+          {confirm && <button type="button" className="dan" disabled={busy} onClick={() => void remove()}>Delete {island.name} and its docs?</button>}
         </div>
       )}
       {error && <p className="sheet-error">{error}</p>}

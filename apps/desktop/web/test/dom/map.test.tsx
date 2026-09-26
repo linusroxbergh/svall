@@ -15,7 +15,7 @@ const call = vi.fn((method: string, _params?: unknown) => Promise.resolve(method
 const bridge = { present: false, send() {}, onMessage: () => () => {} };
 let store: AppStore;
 vi.mock('../../src/boot.js', () => ({
-  app: { get store() { return store; }, bridge, api: () => ({ call }), manager: () => ({ move() {} }), browser: () => ({ move() {} }) },
+  app: { get store() { return store; }, bridge, api: () => ({ call }), manager: () => ({ move() {}, show: () => Promise.resolve(), hide() {} }), browser: () => ({ move() {} }) },
   deps: () => ({ api: { call }, store, bridge }),
 }));
 vi.mock('../../src/resources/Shelf.js', () => ({ ResourcesLayer: () => null }));
@@ -82,6 +82,68 @@ test('the arrange key arranges the fleet once, to the shape of the map', async (
     expect(arranged).toHaveLength(1);
     expect((arranged[0][1] as { aspect: number }).aspect).toBeGreaterThan(1);
     expect(store.getState().arrangeAsk).toBe(false);
+  } finally {
+    delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+  }
+});
+
+test('the fleet arranges each time the map gets room back from its card, and on a return from the board', async () => {
+  let width = 1200;
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => width });
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 800 });
+  const arranges = () => methods().filter((m) => m === 'island.arrange').length;
+  store.getState().setStatus('online');
+  try {
+    const { unmount } = render(<Map />);
+    await act(async () => {});
+    expect(arranges()).toBe(0);
+    await act(async () => { store.getState().focus('c0'); });
+    await act(async () => { store.getState().toggleCardSize(); });
+    expect(arranges()).toBe(0);
+    await act(async () => { store.getState().toggleCardSize(); });
+    expect(arranges()).toBe(1);
+    await act(async () => { store.getState().closeCard(); });
+    expect(arranges()).toBe(2);
+
+    unmount();
+    await act(async () => { store.getState().setView('board'); store.getState().setView('map'); });
+    render(<Map />);
+    await act(async () => {});
+    expect(arranges()).toBe(3);
+    expect(store.getState().arrangeAsk).toBe(false);
+
+    // a map squeezed too narrow keeps the fleet where it stands
+    width = 300;
+    await act(async () => { store.getState().focus('c0'); });
+    await act(async () => { store.getState().closeCard(); });
+    expect(arranges()).toBe(3);
+  } finally {
+    delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+  }
+});
+
+test('a click on the sea that closes the card arranges once the click sequence is over, and never while archid is offline', async () => {
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 1200 });
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 800 });
+  const arranges = () => methods().filter((m) => m === 'island.arrange').length;
+  store.getState().setStatus('online');
+  try {
+    render(<Map />);
+    await act(async () => {});
+    await act(async () => { store.getState().focus('c0'); });
+    press(document.querySelector('.map-sea')!);
+    expect(store.getState().card).toBeUndefined();
+    // the fleet stands still under a press that may yet become a double click
+    expect(arranges()).toBe(0);
+    await act(async () => { await new Promise((r) => setTimeout(r, DBL_CLICK_MS + 50)); });
+    expect(arranges()).toBe(1);
+
+    act(() => store.getState().setStatus('offline'));
+    await act(async () => { store.getState().focus('c0'); });
+    await act(async () => { store.getState().closeCard(); });
+    expect(arranges()).toBe(1);
   } finally {
     delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
     delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;

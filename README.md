@@ -215,7 +215,8 @@ The first build takes several minutes and about 1.2 GB of disk.
   while the scribe is off, its agent says so and stops.
 - **Board** (Cmd+M): islands as a folder tree, with the selected character's
   terminal beside it and its island's characters as tabs. Drag a character
-  onto an island to move it, or onto another character to swap them.
+  onto an island to move it, or onto another character to swap them. Drag an
+  island to reorder the list; mission control stays last.
 - **Side card** (Cmd+I): the character's note, agent profile and
   instructions, context, docs, last prompts, model, directory and context
   use. Links open in the character's browser or your default one.
