@@ -106,7 +106,7 @@ export function divergenceBlocker(root: { id: string }, at: string, d: Divergenc
   });
   return {
     code: 'destination_diverged',
-    message: `${at} changed while this machine did not own the fleet: ${kinds.join('; ')}. Recover the changes by hand, map the root elsewhere, or archive it to continue`,
+    message: `${at} changed while this machine did not own the fleet: ${kinds.join('; ')}. Recover the changes by hand, or archive it to continue`,
     entity: { kind: 'root', id: root.id },
   };
 }

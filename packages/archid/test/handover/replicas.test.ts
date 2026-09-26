@@ -334,7 +334,10 @@ describe('a sealed replica', () => {
     for (const check of [await store.inspect(dir(app), { excludes: EXCLUDES }), await store.claim(dir(app), claimFor(TX))]) {
       expect(check).toMatchObject({
         ok: false,
-        blocker: { code: 'destination_diverged', entity: { kind: 'root', id: 'r_app' } },
+        blocker: {
+          code: 'destination_diverged', entity: { kind: 'root', id: 'r_app' },
+          message: expect.stringMatching(/: 1 added \(notes\.md\); 1 removed \(c\.txt\); 1 changed \(a\.txt\)\. Recover the changes by hand, or archive it to continue$/),
+        },
         divergence: { added: { preview: ['notes.md'] }, removed: { preview: ['c.txt'] }, changed: { preview: ['a.txt'] } },
       });
     }
