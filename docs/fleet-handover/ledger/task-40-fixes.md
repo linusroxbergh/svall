@@ -50,7 +50,7 @@ current main (ledger/task-40-rebase2-report.md) before this wave.
 
 ## Rules
 
-Test first for every behaviour change (F1–F6), each test failing before its fix. Every shell: `unset -f node npm npx
+Test first for every behaviour change (F1–F6, F8–F12), each test failing before its fix. Every shell: `unset -f node npm npx
 pnpm _load_nvm nvm 2>/dev/null; export PATH="$HOME/.nvm/versions/node/v24.18.0/bin:$PATH"; unset ARCHI_HOME
 ARCHI_CHAR_ID TMUX TMUX_PANE`; single files as `pnpm test <path>` from the root. Verify with `pnpm typecheck` and
 `pnpm vitest run --project protocol --project archid --project cli --project @archipelago/desktop-web`. No
