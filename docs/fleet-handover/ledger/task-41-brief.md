@@ -7,8 +7,11 @@ Plan: `docs/fleet-handover/plan.md` Task 41. Spec (`docs/fleet-handover/spec.md`
 `/Users/linusroxbergh/linus_laboratory/archipelago/.claude/worktrees/fleet-handover-impl`, branch
 `experimental-remote-sessions`.
 
-The probe (plan step 1) ran before this dispatch; its result is in `ledger/task-41-probe-report.md`. Do not
-re-run it.
+The probe (plan step 1) ran before this dispatch and passed both ways for Claude and Codex; its result is in
+`ledger/task-41-probe-report.md`. Do not re-run it. Since this brief was drafted the branch was rebased onto newer main
+and Task 40's fix wave landed (`ledger/task-40-rebase2-report.md`, `task-40-fixes.md`, `task-40-fix1-findings.md`): keep
+what they established, in particular F3 (a revive keeps the launch flags an idle close keeps, less Codex
+`-p`/`--profile`/`--local-provider`).
 
 Task 41 is split in two, each its own implementer and review. Your dispatch names which half is yours.
 
@@ -43,7 +46,9 @@ path unchanged.
 2. Session adapters copy files byte for byte: remove path rewriting, the record and attachment type lists, and the
    version maximum. Keep file discovery (session JSONL plus its session-specific sidecars and subagent data for
    Claude; the rollout for Codex), a minimum version and the missing-file blocker. `agent.transcriptPath` on the
-   destination is the same absolute path. The Mac's Claude 2.1.283 must pass preflight.
+   destination is the same absolute path. The Mac's Claude 2.1.283 must pass preflight. Main now has an adapter per
+   agent CLI with its binary, version floor and login probe (`eb849cb6`; the rebase2 report lists where the session
+   adapters could share it): take the minimum from there rather than keeping a second floor, if that fits.
 
 Tests (write each failing first): the Task 3 worktree fixture validates on the destination without repair; the
 Claude and Codex fixtures resume after an unchanged copy (the fixture checks that exist today, minus the rewrite); a

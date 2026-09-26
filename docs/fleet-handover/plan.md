@@ -1052,12 +1052,12 @@ Then repeat with one supported real Claude session and one supported real Codex 
 
 **Steps:**
 
-- [ ] Rebase `experimental-remote-sessions` onto main. Keep `handover.enabled` off by default and set
+- [x] Rebase `experimental-remote-sessions` onto main. Keep `handover.enabled` off by default and set
   `PROTOCOL_VERSION` above main's.
-- [ ] Check whether the M3 environment is still up: the `archi-m3` user on linus-vault, and the Mac
+- [x] Check whether the M3 environment is still up: the `archi-m3` user on linus-vault, and the Mac
   temp HOME `/private/tmp/claude-502/m3h2`, which holds a copied Codex `auth.json`. Reuse or remove
   it; anything on linus-vault needs the owner's yes.
-- [ ] Run one Mac→Linux→Mac round trip with mocked agents and one real Codex session on the rebased
+- [x] Run one Mac→Linux→Mac round trip with mocked agents and one real Codex session on the rebased
   build, following `ledger/m3-onmachine-brief.md`.
 
 **Verify:** the verification commands above, then the round trip's report in the ledger.

@@ -229,3 +229,117 @@ building from this worktree. colima was not started. The container evidence was 
   - preflight does not warn when the destination lacks the fleet's main agent;
   - the scribe model is read once, when the daemon starts.
 - This review wrote only this file. The worktree's `git status` was clean before and after.
+
+## Fix round 1
+
+**Verdict: Approved.** Critical 0, Important 0, Minor 2.
+
+Reviewed a30024da..4354a256 on c25a2f25 against `task-40-fix1-findings.md` (R1–R6), the report
+`task-40-fix1-report.md` and the smoke's N1/N2. Every R-item is addressed. Each commit touches only its item's files,
+and each new test fails with its commit's source reverted. m1–m5 are closed. The two new findings are both in R5, and
+neither blocks the next smoke.
+
+### Findings
+
+**m6 (R5, the implementer's concern 1). On an upgrade, the far machine now runs the uploaded archive's own `archi`
+before any check against a pinned signer, so its signature check vouches for itself.**
+`packages/cli/src/controller/host.ts:444-450`, `packages/cli/src/controller/install.ts:136-141`.
+- `bootstrapSetup` unpacks the upload and runs `<staging>/releases/<v>/bin/archi setup --release …`. That archi's
+  `allowedSigners()` is `$ARCHI_RELEASE_ROOT/release/allowed_signers`, which is the file inside the archive being
+  checked (`scripts/install-release.mjs:20-24`).
+- Before R5, the installed release's `archi` checked the upgrade against the signers it had pinned. That is the design
+  `install-release.mjs:20` states ("an installed release carries the signers its own upgrades are checked against").
+  It is also the spec's rule (`spec.md:284-286`): installers verify with `ssh-keygen -Y verify` against a pinned
+  allowed-signers entry before the archive is unpacked.
+- **Is it a real integrity regression?** Against that rule, yes: the far side's check is now circular, and code from
+  the archive runs before any pinned check. In practice nobody can exploit it who does not already hold the user's
+  account:
+  - the controller still refuses an archive its own pinned signers do not vouch for (`inspectCompanion` and
+    `requireCompatible`) before the upload;
+  - the upload goes over the authenticated ssh master;
+  - a compromised controller has a shell on the far machine anyway.
+
+  What is lost is the second, independent check, and a key rotation now rests on the controller's signers alone. That
+  makes it Minor, not Important.
+- **What it should be:** keep the new release's own setup, which fixes N1, but authenticate with system tools first.
+  Before running anything from staging, run on the far machine, in `<staging>/releases/<v>`:
+  - `ssh-keygen -Y verify -f <archiBase>/current/release/allowed_signers -I archipelago-release -n archipelago-release -s SHA256SUMS.sig < SHA256SUMS`;
+  - then `sha256sum -c --strict --quiet SHA256SUMS`.
+
+  An `--allow-unsigned` upgrade skips the signature step and keeps the digest check. An installed release with no
+  `release/allowed_signers` falls back to the controller's check and says so. Test it with the exec-mode far machine:
+  an archive signed by a key the installed release does not list is refused before any staged file runs.
+- If the controller's check is meant to be the only one, amend `spec.md:284-286` to say so for every companion
+  install, as `inspectCompanion`'s comment already does for `host add`.
+
+**m7 (R5, the implementer's concern 3). The install step still says `ok` with setup's last output line.**
+`packages/cli/src/controller/host.ts:450`, with `packages/cli/src/commands/setup.ts:190`.
+- Setup prints `done` first and its warnings after it, so the last line is usually an unrelated warning, as N1's
+  `! path … is not on PATH` was.
+- When the new release's own setup puts the old release back, its line `the daemon did not answer: current -> …` sits
+  above that warning, and the step still reports `ok`.
+- The probe and rollback steps now report the truth, so the result and actions are right. Only the first line the user
+  reads is wrong.
+- Fix: run setup with `--json`. Show its `release … -> …` line, and mark the step `warn` when `done` holds
+  `the daemon did not answer`.
+
+### The R-items, verified
+
+| Item | What was checked | Failed without the fix (re-run by me) |
+| --- | --- | --- |
+| R4 (m5) | `refused.replace(/\.$/, '')` before the suffix; the test pins both endings | 1 |
+| R1 (m1) | setup builds `realPreflightDeps(t.home, platform)` once and uses `findAgents(pre.agentPath ?? pre.pathEnv)`, as doctor does; macOS is unchanged (`agentPath` is undefined there) | 1 |
+| R2 (m2) | `wakeSlot` takes the carried revive before opening, and all three `lay()` calls put it back while the agent's session is unchanged; the `lay()` docstring is true again | 1 |
+| R3 (m3, m4) | each field is `#{s/\\\\/(<token>)/:f}`, then the decode of `\ooo`, `\a \b \f \r \v` and `\$`, then the placeholder goes back to `\`; the 3.4 shape now escapes `$` | 2; against `adcee29c^`'s `tmux.ts`, 4, the real-tmux session test under the empty locale included |
+| R6 (N2) | `setupUser` skips `installHomeTemplate` when `owner.json` names another machine; the test checks the tree is byte- and mtime-identical, that `ReplicaStore.claim` answers `replica`, and that the owner's own setup refreshes | 1 |
+| R5 (N1) | bootstrap install by the new release; the probe requires `system.info.release` to be the new one; the rollback runs the new `archi setup --rollback <before>`; `current` is read back into the action; `--rollback ../x` is refused | 5 (4 host, 1 cli) |
+
+- **R3's container evidence** (`t40x/tmux34`):
+  - `run-new.mjs` carries the committed `listing()` and `unescape`.
+  - On real tmux 3.4 with no LANG, 16 of 16 paths come back exact, where HEAD before R3 read 7 of 16. The 16 include
+    `a$b`, `$work`, `a${b}`, `a\b`, `back\slash\037\$x`, and bell/CR/DEL.
+  - The Mac's 3.7c reads 16 of 16 with both builds.
+  - The escape set agrees with what 3.4's vis prints: C escapes only for `\a \b \f \r \v`, tab and newline as they
+    are, octal for the rest.
+  - The decode is a no-op on 3.7c, because every backslash has been swapped out before tmux prints.
+- **R6's reach.** Mission control's folder is written only by setup and by the owner's `begin()` → `ensureHome()`, so
+  the rule covers every writer.
+  - `machineId()` runs only after `owner.json` parses, so setup mints no id on a fresh machine.
+  - Concern 5 (an all-zero owner counts as elsewhere) is right: that daemon owns nothing, and its `begin()` refreshes
+    the folder once the gateway names it.
+- **R5's tests** are at the controller level, as briefed:
+  - the exec-mode far machine has a real `current` link, and a per-release `archi` whose setup keeps an install only
+    while the new daemon speaks its protocol;
+  - the protocol-bump upgrade ends `ready` with no rollback;
+  - the no-answer case goes back to the named 1.2.2, not the mtime-newest 1.2.1;
+  - the setup-rolled-back case is caught by the release check.
+
+### The implementer's concerns, judged
+
+1. The far machine verifying against the archive's own signers: **m6**, above.
+2. The gateway is not restarted on rollback. This was so before R5, and it is outside R5. Leave it, and track it with
+   the Linux upgrade work.
+3. The install line: **m7**, above.
+4. **A daemon death mid-wake loses the flags.** Acceptable to leave:
+   - The unit's `KillMode=process` keeps tmux alive across a daemon death, so on restart the pane usually still holds
+     the agent and nothing is laid.
+   - The flags are lost only when the resumed agent also died meanwhile.
+   - The spec's rule for a failed resume (dormant, transcript, visible error) still holds.
+   - If it is to be closed, the cheap way needs no new state. `doRevive` and `doOpenSecond` (`fleet.ts:752`, `:785`)
+     could keep `revive` while the slot is carried, as reconcile already does through `carried()`, and the next
+     reconcile after activation records the slot clears it.
+5. and 6. Agreed, no action.
+
+### Tests run (HEAD c29e530a, in a scratch copy)
+
+| Command | Result |
+| --- | --- |
+| `pnpm typecheck` | clean |
+| `pnpm vitest run --project protocol --project archid --project cli --project @archipelago/desktop-web --project scripts` | 189 files passed, 2 failed, 1 skipped; 2973 passed, 2 failed, 6 skipped |
+
+- `cli.test` `--version` fails only because the scratch copy has no `.git`.
+- `fleet.test` "ends an agent idle past the limit and resumes it with the flags it was started with" failed once
+  under load average 9 (`agent` undefined after the revive). It then passed 3 of 3 alone. It sits in the known
+  fleet.test revive-flake family, and round 1 does not touch it.
+- The worktree holds an uncommitted edit to `ledger/task-41-brief.md` that is not this review's. This review
+  appended only this section.
