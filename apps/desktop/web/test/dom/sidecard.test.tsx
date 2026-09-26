@@ -283,16 +283,24 @@ test('an island delete asks in a dialog, and Cancel, Esc or a press outside keep
   expect(screen.queryByTestId('confirm-delete-island')).toBeNull();
   expect(deletes()).toEqual([]);
   fireEvent.click(screen.getByTestId('side-island-delete'));
+  // the second press of a double click on an opener beneath does not answer it
+  fireEvent.click(screen.getByTestId('confirm-delete-island-delete'), { detail: 2 });
+  expect(deletes()).toEqual([]);
   fireEvent.click(screen.getByTestId('confirm-delete-island-delete'));
   expect(screen.queryByTestId('confirm-delete-island')).toBeNull();
   expect(deletes()).toEqual([['island.delete', { id: 'i_e' }]]);
 });
 
-test('the island delete dialog veils the terminals and closes when the island goes', () => {
+test('the island delete dialog veils the terminals and closes when the island goes or gains a crew', () => {
   store.getState().selectIsland('i_e');
   render(<><IslandSide /><ConfirmDeleteIsland /></>);
   fireEvent.click(screen.getByTestId('side-island-delete'));
   expect(isVeiled(store.getState())).toBe(true);
+  act(() => store.getState().applyPatch([{ op: 'add', path: '/characters/c9', value: chr('c9', 'i_e', { x: 1, y: 1 }) }]));
+  expect(screen.queryByTestId('confirm-delete-island')).toBeNull();
+  act(() => store.getState().setFleet(fleet()));
+  fireEvent.click(screen.getByTestId('side-island-delete'));
+  expect(screen.getByTestId('confirm-delete-island')).toBeTruthy();
   const f = fleet();
   delete f.islands.i_e;
   act(() => store.getState().setFleet(f));

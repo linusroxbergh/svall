@@ -18,19 +18,21 @@ export type FleetActions = {
 
 // a character that vanishes takes its card and focus with it, before any effect can run
 const alive = (f: FleetState, id: string | undefined): string | undefined => (id && f.characters[id] ? id : undefined);
-const aliveIsland = (f: FleetState, id: string | undefined): string | undefined => (id && f.islands[id] ? id : undefined);
+// an island's delete is asked only while the island is there and empty
+const deletable = (f: FleetState, id: string | undefined): string | undefined =>
+  (id && f.islands[id] && !Object.values(f.characters).some((c) => c.islandId === id) ? id : undefined);
 
 export const createFleetSlice: StateCreator<App, [], [], FleetSliceState & FleetActions> = (set, get) => ({
   fleet: emptyState(),
   loaded: false,
   status: 'connecting',
   resources: [],
-  setFleet: (fleet) => set((s) => ({ fleet, loaded: true, focusedId: alive(fleet, s.focusedId), selectedId: alive(fleet, s.selectedId), card: alive(fleet, s.card), closingCharacter: alive(fleet, s.closingCharacter), deletingIsland: aliveIsland(fleet, s.deletingIsland), ide: pruneIde(s.ide, fleet, s.fleet) })),
+  setFleet: (fleet) => set((s) => ({ fleet, loaded: true, focusedId: alive(fleet, s.focusedId), selectedId: alive(fleet, s.selectedId), card: alive(fleet, s.card), closingCharacter: alive(fleet, s.closingCharacter), deletingIsland: deletable(fleet, s.deletingIsland), ide: pruneIde(s.ide, fleet, s.fleet) })),
   // patches sent before the snapshot arrives are already folded into it
   applyPatch: (ops) => {
     if (!get().loaded) return;
     const fleet = jsonpatch.applyPatch(get().fleet, ops, false, false).newDocument;
-    set((s) => ({ fleet, selectedId: alive(fleet, s.selectedId), card: alive(fleet, s.card), closingCharacter: alive(fleet, s.closingCharacter), deletingIsland: aliveIsland(fleet, s.deletingIsland), ide: pruneIde(s.ide, fleet, s.fleet) }));
+    set((s) => ({ fleet, selectedId: alive(fleet, s.selectedId), card: alive(fleet, s.card), closingCharacter: alive(fleet, s.closingCharacter), deletingIsland: deletable(fleet, s.deletingIsland), ide: pruneIde(s.ide, fleet, s.fleet) }));
   },
   setStatus: (status) => set({ status }),
   // a listing without the chosen source has nothing to show under it: the rail falls back to its first; a chosen tier is always there

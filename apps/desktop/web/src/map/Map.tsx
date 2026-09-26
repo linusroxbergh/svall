@@ -338,7 +338,7 @@ export function Map() {
   // the shape the arranged fleet should fill: the map minus the fit insets and the ground mission control keeps
   const arrange = (automatic = false) => {
     const el = host.current;
-    if (!el) return;
+    if (!el || (automatic && app.store.getState().status !== 'online')) return;
     const w = el.clientWidth - 2 * theme.fit.insetX;
     const h = el.clientHeight - homeReserve(Boolean(homeIsland(app.store.getState().fleet)?.collapsed)) - 2 * theme.fit.insetY;
     if (w <= 0 || h <= 0) return;
@@ -362,10 +362,18 @@ export function Map() {
   coveredRef.current = covered;
   const cover = card ? (covered ? 2 : 1) : 0;
   const lastCover = useRef(cover);
+  // a click on the sea closes the card, so the fleet holds still until that click sequence is over
+  const arrangeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const arrangeAfterClicks = () => {
+    const wait = lastPressAt.current + DBL_CLICK_MS - performance.now();
+    clearTimeout(arrangeTimer.current);
+    if (wait > 0) arrangeTimer.current = setTimeout(arrangeAfterClicks, wait); else arrangeRef.current();
+  };
+  useEffect(() => () => clearTimeout(arrangeTimer.current), []);
   useEffect(() => {
     const uncovered = cover < lastCover.current;
     lastCover.current = cover;
-    if (uncovered && autoArrange) arrangeRef.current();
+    if (uncovered && autoArrange) arrangeAfterClicks();
   }, [cover]);
 
   // a drag-resize arranges once, after the window stands still. a page zoom resizes the view without moving the

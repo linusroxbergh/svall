@@ -18,7 +18,7 @@ const ISLAND_DRAG = 'application/x-archi-island';
 const lowerHalf = (e: React.DragEvent) => { const r = e.currentTarget.getBoundingClientRect(); return e.clientY >= r.top + r.height / 2; };
 
 const targetAt = (e: React.DragEvent, target: DropTarget): DropTarget =>
-  target.kind === 'char' ? { ...target, after: e.clientY >= e.currentTarget.getBoundingClientRect().top + e.currentTarget.getBoundingClientRect().height / 2 } : target;
+  target.kind === 'char' ? { ...target, after: lowerHalf(e) } : target;
 
 // island rows accept a character; a character row inserts it before or after its midpoint
 const dropZone = (target: DropTarget) => ({
@@ -138,19 +138,22 @@ export function Sidebar() {
       if (!e.dataTransfer.types.includes(ISLAND_DRAG)) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
-      setIslandHover({ id: i.id, after: lowerHalf(e) });
+      const after = lowerHalf(e);
+      setIslandHover((h) => (h?.id === i.id && h.after === after ? h : { id: i.id, after }));
     },
     onDragLeave: (e: React.DragEvent) => {
       if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
       setIslandHover((h) => (h?.id === i.id ? undefined : h));
     },
     onDrop: (e: React.DragEvent) => {
+      const id = e.dataTransfer.getData(ISLAND_DRAG);
+      if (!id) return;
       e.preventDefault();
       setIslandHover(undefined);
-      reorderIsland(deps(), dragIsland, i.id, lowerHalf(e));
+      reorderIsland(deps(), id, i.id, lowerHalf(e));
     },
   });
-  const dragging = (id?: string) => { setDragIsland(id); if (!id) setIslandHover(undefined); };
+  const setDragging = (id?: string) => { setDragIsland(id); if (!id) setIslandHover(undefined); };
 
   return (
     <aside className="sb" data-testid="sidebar">
@@ -166,7 +169,7 @@ export function Sidebar() {
           return (
             <div key={i.id} className="sb-folder" data-testid={`sb-folder-${i.id}`} {...reorderZone(i)}
               data-drop-reorder={islandHover?.id === i.id} data-drop-after={islandHover?.id === i.id && islandHover.after}>
-              <IslandRow i={i} chars={chars} editing={editing === i.id} setEditing={setEditing} dragging={dragIsland === i.id} setDragging={dragging} />
+              <IslandRow i={i} chars={chars} editing={editing === i.id} setEditing={setEditing} dragging={dragIsland === i.id} setDragging={setDragging} />
               {!i.collapsed && chars.length === 0 && <div className="sb-kids"><button className="sb-row sb-char-empty" data-testid={`sb-island-new-${i.id}`}
                 aria-label={`New character on ${i.name}`} onClick={() => void newCharacterOn(deps(), i.id)}><i className="sb-plus" aria-hidden="true">+</i>New character</button></div>}
               {!i.collapsed && chars.length > 0 && (

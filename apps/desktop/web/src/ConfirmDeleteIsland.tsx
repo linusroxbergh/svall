@@ -27,7 +27,8 @@ export function ConfirmDeleteIsland() {
         <div className="modal-name">{name}</div>
         <div className="modal-note">Its docs go with it.</div>
         <div className="acts">
-          <button className="btn dan" data-testid="confirm-delete-island-delete" onClick={confirm}>Delete</button>
+          {/* the board's Delete island can stand under this one, so the second click of a double click must not answer it */}
+          <button className="btn dan" data-testid="confirm-delete-island-delete" onClick={(e) => { if (e.detail < 2) confirm(); }}>Delete</button>
           <button ref={keep} className="btn" data-testid="confirm-delete-island-cancel" onClick={cancel}>Cancel</button>
         </div>
       </div>

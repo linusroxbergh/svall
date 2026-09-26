@@ -207,7 +207,6 @@ export function SideCard({ id }: { id: string }) {
   );
 }
 
-// an island's docs go with it, so its delete asks once more
 export function DeleteIsland({ id, testid, label }: { id: string; testid: string; label: string }) {
   return <button className="btn dan" data-testid={testid} onClick={() => app.store.getState().setDeletingIsland(id)}>{label}</button>;
 }
