@@ -229,7 +229,7 @@ describe('buildInventory', () => {
     s.maps.destination.home = '/home/linus';
     expect(buildInventory(s.state, { fleet: FLEET }, s.maps).blockers).toEqual([{
       code: 'home_mismatch',
-      message: `the destination's home is /home/linus and this machine's ${s.mac}; a fleet moves only between accounts with the same home path. On the destination, ${homeCommands(s.mac)}`,
+      message: `the destination's home is /home/linus and this machine's ${s.mac}; a fleet moves only between accounts with the same home path. On the destination, ${homeCommands(s.mac)}; then archi host remove <name>, and archi host add at that account`,
     }]);
     expect(homeCommands("/Users/Linus's")).toBe("sudo mkdir -p /Users, then sudo useradd -m -d '/Users/Linus'\\''s' <user> for a new account, or sudo usermod -d '/Users/Linus'\\''s' -m <user> for an existing one you are not logged in as");
   });

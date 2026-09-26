@@ -166,7 +166,7 @@ export function buildInventory(state: FleetState, configs: InventoryConfigs, mac
   if (destination.home !== home) {
     blockers.push({
       code: 'home_mismatch',
-      message: `the destination's home is ${destination.home} and this machine's ${home}; a fleet moves only between accounts with the same home path. On the destination, ${homeCommands(home)}`,
+      message: `the destination's home is ${destination.home} and this machine's ${home}; a fleet moves only between accounts with the same home path. On the destination, ${homeCommands(home)}; then archi host remove <name>, and archi host add at that account`,
     });
   }
   blockers.push(...(git?.blockers ?? []));
