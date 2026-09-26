@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { emptyState, FleetConfig, type AgentKind, type Character, type MachineId, type ResumeFolder, type TransferSession } from '@archipelago/protocol';
 import { applyHook } from '../../src/agent/reducer.js';
 import { buildInventory, type MachineMaps } from '../../src/handover/inventory.js';
@@ -195,6 +195,9 @@ describe('Claude Code folder trust', () => {
   it('reads ~/.claude.json for the ~/.claude config folder, and a legacy .config.json in a config folder before anything else', () => {
     const { at } = layout();
     const cwd = at('plain/a/b');
+    // a HOME of its own, whichever runner starts the test
+    vi.stubEnv('HOME', at('home'));
+    vi.stubEnv('CLAUDE_CONFIG_DIR', undefined);
     const home = path.join(os.homedir(), '.claude');
     fs.mkdirSync(home, { recursive: true });
     const beside = path.join(os.homedir(), '.claude.json');
@@ -211,8 +214,7 @@ describe('Claude Code folder trust', () => {
       write(path.join(elsewhere, '.config.json'), {});
       expect(claudeAdapter.trusts!(elsewhere, { cwd })).toBe(false);
     } finally {
-      fs.rmSync(home, { recursive: true, force: true });
-      fs.rmSync(beside, { force: true });
+      vi.unstubAllEnvs();
     }
   });
 });
