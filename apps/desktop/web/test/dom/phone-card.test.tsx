@@ -89,15 +89,11 @@ test('a note the fleet refuses keeps the sheet up beside its error, and a second
   expect(onClose).toHaveBeenCalled();
 });
 
-test('a note being typed is saved before a move closes the sheet', async () => {
-  const onClose = open();
-  typeNote('new note');
-  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'alpha' })); });
-  expect(calls.filter(([m]) => m === 'char.move' || m === 'char.update')).toEqual([
-    ['char.move', { id: 'c0', islandId: 'i_a' }],
-    ['char.update', { id: 'c0', note: 'new note' }],
-  ]);
-  expect(onClose).toHaveBeenCalled();
+test('the sheet shows where the character works, not where it could move', () => {
+  open({ agentProfile: 'reviewer', instructions: 'Keep replies short.' });
+  expect(screen.queryByRole('group', { name: 'Move to' })).toBeNull();
+  expect(screen.getByText('profile').nextSibling!.textContent).toBe('reviewer');
+  expect(screen.getByText('Keep replies short.')).toBeTruthy();
 });
 
 test('a refused edit says why beside it, and a refused ref goes back in the field', async () => {

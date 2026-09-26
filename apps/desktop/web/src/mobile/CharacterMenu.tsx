@@ -1,4 +1,4 @@
-import { useRef, useState, type JSX, type RefObject } from 'react';
+import { Fragment, useRef, useState, type JSX, type RefObject } from 'react';
 import { contextKind, type Character, type ContextItem, type Params } from '@archipelago/protocol';
 import { webUrl } from '../bridge.js';
 import { commitFocused, FollowTextarea } from '../Field.js';
@@ -6,7 +6,7 @@ import { useApp } from '../hooks.js';
 import { LinkIcon } from '../map/LinkIcon.js';
 import { ago, hintText, linkText } from '../map/tokenText.js';
 import { usePromptHistory } from '../promptHistory.js';
-import { contextPctOf, islandsSorted } from '../selectors.js';
+import { contextPctOf } from '../selectors.js';
 import { phone } from './boot.js';
 import { DocsList } from './DocsList.js';
 import { Sheet } from './Sheet.js';
@@ -39,13 +39,12 @@ function Context({ c }: { c: Character }) {
       <h4>Context</h4>
       {c.context.map((it, i) => {
         const name = linkText(it);
-        const text = <><b>{name}</b><span>{it.ref.replace(/^https?:\/\//, '')}</span></>;
         // the phone opens only links; a path names a file on the Mac
         const href = it.kind === 'file' || it.kind === 'folder' ? undefined : webUrl(it.ref);
         return (
           <div key={`${it.ref}-${i}`} className="m-link">
             <i className="lg"><LinkIcon item={it} /></i>
-            {href ? <a className="m-link-text" href={href} target="_blank" rel="noreferrer">{text}</a> : <span className="m-link-text">{text}</span>}
+            {href ? <a className="m-link-text" href={href} target="_blank" rel="noreferrer">{name}</a> : <span className="m-link-text">{name}</span>}
             <button type="button" aria-pressed={Boolean(it.pinned)} aria-label={`Pin ${name}`} onClick={() => pin(i)}>{it.pinned ? '●' : '○'}</button>
             {it.source === 'manual' && <button type="button" aria-label={`Remove ${name}`} onClick={() => set(c.context.filter((_, j) => j !== i))}>×</button>}
           </div>
@@ -94,13 +93,12 @@ function LastCommand({ c }: { c: Character }) {
 }
 
 // the phone reads the agent's instructions; they are written on the Mac
-function Agent({ c }: { c: Character }) {
-  if (!c.agentProfile && !c.instructions) return null;
+function Instructions({ c }: { c: Character }) {
+  if (!c.instructions) return null;
   return (
     <div className="m-sec">
-      <h4>Agent</h4>
-      {c.agentProfile && <div className="m-rows"><div><span>profile</span><b>{c.agentProfile}</b></div></div>}
-      {c.instructions && <p className="m-text">{c.instructions}</p>}
+      <h4>Instructions</h4>
+      <p className="m-text">{c.instructions}</p>
     </div>
   );
 }
@@ -113,18 +111,19 @@ function Details({ c }: { c: Character }) {
       <div className="m-rows">
         {c.repo && <div><span>branch</span><b className="mono">{c.repo.branch}{c.repo.isWorktree ? ' · worktree' : ''}</b></div>}
         <div><span>model</span><b className="mono">{c.agent?.model ?? 'no agent'}</b></div>
+        {c.agentProfile && <div><span>profile</span><b>{c.agentProfile}</b></div>}
         {pct !== undefined && <div><span>context</span><b>{Math.round(pct)}%</b></div>}
-        <div><span>cwd</span><b className="mono">{c.cwd}</b></div>
+        {/* a path wraps at its slashes */}
+        <div><span>cwd</span><b className="mono">{c.cwd.split(/(?<=\/)/).map((part, i) => <Fragment key={i}>{part}<wbr /></Fragment>)}</b></div>
         <div><span>last activity</span><b>{ago(c.agent?.lastActivityAt ?? c.shell.lastOutputAt)} ago</b></div>
       </div>
     </div>
   );
 }
 
-/** The side card of the Mac, as a sheet: what the character works from, then where it goes. */
+/** The side card of the Mac, as a sheet: what the character works from. */
 export function CharacterMenu({ id, onClose, onClosed }: { id: string; onClose(): void; onClosed(): void }): JSX.Element | null {
   const c = useApp((s) => s.fleet.characters[id]);
-  const fleet = useApp((s) => s.fleet);
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -138,12 +137,11 @@ export function CharacterMenu({ id, onClose, onClosed }: { id: string; onClose()
     saving.current = undefined;
     if (!note || await note) onClose();
   };
-  const run = async (call: () => Promise<unknown>, after: () => void = close) => {
+  const closeCharacter = async () => {
     if (busy) return;
     setBusy(true);
-    try { await call(); after(); } catch (e) { setError((e as Error).message); setBusy(false); }
+    try { await phone.api().call('char.close', { id }); onClosed(); } catch (e) { setError((e as Error).message); setBusy(false); }
   };
-  const others = islandsSorted(fleet).filter((i) => i.id !== c.islandId);
   const hint = hintText(c);
 
   return (
@@ -153,19 +151,11 @@ export function CharacterMenu({ id, onClose, onClosed }: { id: string; onClose()
       <Note c={c} saving={saving} />
       <DocsList tier="character" id={id} />
       <LastCommand c={c} />
-      <Agent c={c} />
+      <Instructions c={c} />
       <Details c={c} />
       <div className="sheet-form m-acts">
-        {others.length > 0 && (
-          <div className="choices" role="group" aria-label="Move to">
-            <p className="sheet-note">Move to</p>
-            {others.map((i) => (
-              <button key={i.id} type="button" disabled={busy} onClick={() => void run(() => phone.api().call('char.move', { id, islandId: i.id }))}>{i.name}</button>
-            ))}
-          </div>
-        )}
         {!confirm && <button type="button" className="dan" disabled={busy} onClick={() => setConfirm(true)}>Close character</button>}
-        {confirm && <button type="button" className="dan" disabled={busy} onClick={() => void run(() => phone.api().call('char.close', { id }), onClosed)}>Close {c.name}? Its terminal and docs go with it.</button>}
+        {confirm && <button type="button" className="dan" disabled={busy} onClick={() => void closeCharacter()}>Close {c.name}? Its terminal and docs go with it.</button>}
         {error && <p className="sheet-error">{error}</p>}
       </div>
     </Sheet>
