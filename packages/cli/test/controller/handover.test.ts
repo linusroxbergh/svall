@@ -1046,6 +1046,19 @@ describe('preflight', () => {
     expect(await blockers()).toEqual([{ code: 'path_unsupported', message: '/Volumes on mac cannot be written' }]);
   });
 
+  it('asks the folder above a file root to be writable even when the file holds its replica, since rsync writes the new copy beside it', async () => {
+    const w = new World({ pull: true });
+    const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
+    w.source.answers['handover.preflight'] = ((p: unknown) => {
+      const r = preflight(p);
+      r.manifest.roots.push({ id: 'r_note', kind: 'context', entry: 'file', path: '/Volumes/work/notes.md', files: [file('')] });
+      return r;
+    }) as never;
+    w.destination.folders['/Volumes/work'] = { exists: true, writable: false, caseInsensitive: false, freeBytes: 1e12 };
+    w.destination.replicas.add('r_note');
+    expect((await controller(w).preflight(mac, {})).blockers).toEqual([{ code: 'path_unsupported', message: '/Volumes/work on mac cannot be written' }]);
+  });
+
   it('blocks a missing destination home, a fleet already in a handover, and a destination that is the owner', async () => {
     const missing = new World();
     missing.destination.probe = { ...missing.destination.probe, exists: false };
