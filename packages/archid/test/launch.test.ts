@@ -28,6 +28,8 @@ describe('withPromptFile', () => {
     expect(takesPrompt('codex')).toBe(true);
     expect(takesPrompt('codex -m gpt-6-luna')).toBe(true);
     expect(takesPrompt('codex resume -c tui.resume_cwd=session s1')).toBe(true);
+    // as the app reads a home.command with a stray space
+    expect(takesPrompt(' codex')).toBe(true);
     expect(takesPrompt('claudette')).toBe(false);
     expect(takesPrompt('codexx')).toBe(false);
     expect(takesPrompt('node fake.mjs')).toBe(false);
