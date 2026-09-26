@@ -263,7 +263,7 @@ function hooks(d: DoctorDeps): Check {
     : { name: 'hooks', status: 'warn', detail: `out of date in ${d.settingsPath}: run archi setup` };
 }
 
-// Codex keeps hook trust in its own state; this only verifies the hook definition is installed.
+// verifies the hook definition is installed and current, then asks Codex whether it is trusted.
 export async function codexCheck(d: Pick<DoctorDeps, 'codex' | 'exists' | 'read' | 'hooksHome' | 'found' | 'codexTrust'>): Promise<Check> {
   if (!d.found.includes('codex') && !d.exists(d.codex.dir)) return { name: 'codex hooks', status: 'skip', detail: 'not installed' };
   const script = resolvePaths(d.hooksHome).hookScript;
