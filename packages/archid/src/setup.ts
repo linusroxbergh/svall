@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import type { AgentKind } from '@archipelago/protocol';
-import { AGENTS, AGENT_KINDS, isExecutable } from './agents.js';
+import { AGENTS, AGENT_KINDS, isExecutable, onPath } from './agents.js';
 import { codexHookCommand, codexPaths, mergeCodexHooks, type CodexPaths } from './codex/install.js';
 import { loadConfig } from './config.js';
 import { CLAUDE_HOOKS, hooksFor } from './hooks/receiver.js';
@@ -184,7 +184,7 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }
   const agentsHeader = '<!-- archid rewrites this file on every start from .claude/rules/archipelago.md and CLAUDE.md; add your own rules to CLAUDE.md -->';
   // CLAUDE.md -> AGENTS.md (a common convention) would otherwise make AGENTS.md read, then append, itself
   if (fs.existsSync(agentsMd) && fs.existsSync(claudeMd) && realDir(agentsMd) === realDir(claudeMd)) {
-    done.push(`home AGENTS.md left alone (same file as CLAUDE.md) -> ${agentsMd}`);
+    done.push(`home AGENTS.md left alone, as it is CLAUDE.md, so a Codex crew misses Archipelago's rules -> ${agentsMd}`);
   } else {
     if (fs.existsSync(agentsMd) && !fs.readFileSync(agentsMd, 'utf8').startsWith(agentsHeader)) {
       const backup = `${agentsMd}.bak-${Date.now()}`;
@@ -229,8 +229,7 @@ const realDir = (dir: string): string => {
 // ones when it is none of them, as for a pnpm, bun or volta global. Its real path, as a node manager's can be per shell
 function daemonPath(nodeDir: string): string {
   const usual = [nodeDir, path.join(os.homedir(), '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'];
-  const dirs = (process.env.PATH ?? '').split(':').filter((dir) => path.isAbsolute(dir));
-  const found = AGENT_KINDS.map((k) => dirs.find((dir) => isExecutable(path.join(dir, AGENTS[k].bin))))
+  const found = AGENT_KINDS.map((k) => onPath(AGENTS[k].bin, process.env.PATH ?? ''))
     .filter((dir) => dir !== undefined).map(realDir);
   const known = new Set(usual.map(realDir));
   return [...new Set([...usual, ...found.filter((dir) => !known.has(dir))])].join(':');
@@ -435,7 +434,7 @@ export async function runSetup(o: {
   home: string; settingsPath: string; codex: CodexPaths; launchAgentsDir: string; shimDir: string; repoRoot: string; launchctl: boolean; agents?: AgentKind[];
 }): Promise<string[]> {
   const claudeWanted = !o.agents || o.agents.includes('claude') || fs.existsSync(path.dirname(o.settingsPath));
-  const codexWanted = o.agents ? o.agents.includes('codex') || fs.existsSync(o.codex.dir) : fs.existsSync(o.codex.dir);
+  const codexWanted = !!o.agents?.includes('codex') || fs.existsSync(o.codex.dir);
   // both files are read and checked before anything is written, so one that is not JSON, or cannot take
   // the change, stops a setup that has changed nothing
   const settings = claudeWanted ? readJsonSettings(o.settingsPath) : undefined;

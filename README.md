@@ -195,7 +195,7 @@ The first build takes several minutes and about 1.2 GB of disk.
   holds, and opening its terminal resumes it; Settings → close idle agents
   after changes the wait or turns it off.
 - **Scribe**: a minute after an agent stops with new work, a headless
-  `claude -p` (or `codex exec`, if configured) writes the character's name,
+  `claude -p` or `codex exec`, on the main agent, writes the character's name,
   note and links, and the island's description. A name you gave only gains a
   PR or ticket in front, and a note you wrote stays. An agent that keeps
   working gets a pass about every ten minutes too. Passes start at most once a
@@ -210,9 +210,9 @@ The first build takes several minutes and about 1.2 GB of disk.
   a new island. Drag an island's label to move it and its corner to resize it.
   On mission control, `arrange` packs the fleet into the window,
   `+ New island` and `+ New character` add an island or a crew member, and the
-  other buttons start a helper agent with a prompt, which spends your Claude
-  usage. `update info` also runs the scribe over every character; while the
-  scribe is off, its agent says so and stops.
+  other buttons start a helper agent with a prompt, which spends the main
+  agent's usage. `update info` also runs the scribe over every character;
+  while the scribe is off, its agent says so and stops.
 - **Board** (Cmd+M): islands as a folder tree, with the selected character's
   terminal beside it and its island's characters as tabs. Drag a character
   onto an island to move it, or onto another character to swap them.
@@ -410,7 +410,7 @@ leaves the Mac, beyond what your agents send:
 - The scribe sends the end of each agent's transcript to Claude (or Codex) on
   your login or API key, with what the map shows of the character and its
   island: names, notes, links, directories and branches.
-- Mission control's buttons start Claude agents, and the Usage panel asks
+- Mission control's buttons start the main agent, and the Usage panel asks
   Claude Code for your plan's limits. The Claude scribe and the Usage panel run
   with every value in the fleet's `.env` in their environment.
 - For each character in a repository, the daemon runs `gh pr view` to find its

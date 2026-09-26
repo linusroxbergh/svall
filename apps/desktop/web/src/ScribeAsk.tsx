@@ -38,7 +38,7 @@ export function ScribeAsk() {
         </div>
         {found.length > 1 && (
           <>
-            <div className="modal-note">Claude Code and Codex are both installed. Mission control and the scribe run:</div>
+            <div className="modal-note">{found.map((k) => AGENT_LABEL[k]).join(' and ')} are both installed. Mission control and the scribe run:</div>
             <select className="fld" aria-label="Main agent" data-testid="scribe-ask-agent" value={main}
               onChange={(e) => setMainAgent(deps(), e.target.value as AgentKind)}>
               {found.map((k) => <option key={k} value={k}>{AGENT_LABEL[k]}</option>)}
