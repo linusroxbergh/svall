@@ -713,7 +713,7 @@ describe('one home on both machines', () => {
       expect(roots.map((r) => r.path)).toEqual(replicaRoots(m).map((r) => r.path));
       expect(roots.map((r) => r.path)).toEqual([at('app'), at('app.git')]);
       expect(run.entries.flatMap((e) => (e.kind === 'session' ? [e.sourceHome] : []))).toEqual([at('.claude'), at('.codex')]);
-      expect(m.sessions.map((x) => x.destinationPath)).toEqual(m.sessions.map((x) => x.sourcePath));
+      expect(run.entries.flatMap((e) => (e.kind === 'session' ? [e.files] : []))).toEqual(m.sessions.map((x) => x.files));
       expect(settledOn(w)).toBe('destination');
     }
   });
