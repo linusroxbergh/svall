@@ -351,19 +351,22 @@ export function Map() {
   useEffect(() => {
     if (!arrangeAsk) return;
     app.store.getState().arranged();
-    arrange();
+    // behind a full card the card's closing arranges
+    if (arrangeAsk === 'auto' && coveredRef.current) return;
+    arrange(arrangeAsk === 'auto');
   }, [arrangeAsk]);
 
-  // a full card hides the map; the fleet is arranged to the room it finds when the map comes back into view
+  // the fleet is arranged to the room the map finds each time its card shrinks from full or closes
   const covered = Boolean(card) && cardSize === 'full';
-  const wasCovered = useRef(covered);
   const coveredRef = useRef(covered);
   coveredRef.current = covered;
+  const cover = card ? (covered ? 2 : 1) : 0;
+  const lastCover = useRef(cover);
   useEffect(() => {
-    const uncovered = wasCovered.current && !covered;
-    wasCovered.current = covered;
+    const uncovered = cover < lastCover.current;
+    lastCover.current = cover;
     if (uncovered && autoArrange) arrangeRef.current();
-  }, [covered]);
+  }, [cover]);
 
   // a drag-resize arranges once, after the window stands still. a page zoom resizes the view without moving the
   // window, so the size is measured in pixels the zoom cannot change; behind a full card the uncovering arranges

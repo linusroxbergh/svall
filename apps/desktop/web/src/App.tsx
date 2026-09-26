@@ -3,6 +3,7 @@ import { app } from './boot.js';
 import { Board } from './Board.js';
 import { revealFile } from './bridge.js';
 import { ConfirmClose } from './ConfirmClose.js';
+import { ConfirmDeleteIsland } from './ConfirmDeleteIsland.js';
 import { FleetSummary } from './FleetSummary.js';
 import { useApp } from './hooks.js';
 import { Keybindings } from './Keybindings.js';
@@ -100,6 +101,7 @@ export function App() {
       <NewCharacter />
       <MissionPrompt />
       <ConfirmClose />
+      <ConfirmDeleteIsland />
       <Keybindings />
       <ScribeAsk />
       <LinkAsk />

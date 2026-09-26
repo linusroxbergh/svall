@@ -88,8 +88,15 @@ export const Island = z.object({
   kind: z.literal('home').optional(),
   // set by a person's edit; absent, the scribe may rewrite it
   descriptionSource: z.literal('manual').optional(),
+  // its place in the list, set by a sidebar drag; islands without one follow, by name
+  order: z.number().int().optional(),
 });
 export type Island = z.infer<typeof Island>;
+
+// the order islands are listed in; home sorts last so the next-island key reaches it after every other island
+export const byIslandOrder = (a: Island, b: Island): number =>
+  Number(a.kind === 'home') - Number(b.kind === 'home') || (a.order ?? Infinity) - (b.order ?? Infinity)
+  || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
 
 export const HomeAction = z.object({ label: z.string().min(1), prompt: z.string().min(1) });
 export type HomeAction = z.infer<typeof HomeAction>;

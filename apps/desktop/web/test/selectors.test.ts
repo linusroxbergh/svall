@@ -9,6 +9,13 @@ describe('selectors', () => {
     expect(charactersOf(fleet(), 'i_b').map((c) => c.id)).toEqual(['c0', 'c1']);
     expect(stripOrder(fleet()).map((c) => c.id)).toEqual(['c2', 'c0', 'c1']);
   });
+  it('puts islands a drag has ordered first, and the rest after them by name', () => {
+    const f = fleet();
+    f.islands.i_e.order = 0;
+    f.islands.i_b.order = 1;
+    expect(islandsSorted(f).map((i) => i.id)).toEqual(['i_e', 'i_b', 'i_a', 'home']);
+    expect(stripOrder(f).map((c) => c.id)).toEqual(['c0', 'c1', 'c2']);
+  });
   it('tabs are the characters of the same island', () => {
     expect(tabsOf(fleet(), 'c1').map((c) => c.id)).toEqual(['c0', 'c1']);
     expect(tabsOf(fleet(), 'c2').map((c) => c.id)).toEqual(['c2']);
@@ -54,6 +61,7 @@ describe('selectors', () => {
     expect(isVeiled({ ...base, missionPrompt: true })).toBe(true);
     expect(isVeiled({ ...base, namingCharacter: true })).toBe(true);
     expect(isVeiled({ ...base, closingCharacter: 'c0' })).toBe(true);
+    expect(isVeiled({ ...base, deletingIsland: 'i_e' })).toBe(true);
     expect(isVeiled({ ...base, keysOpen: true })).toBe(true);
     expect(isVeiled({ ...base, fleet: { ...fleet(), scribeAsk: true } })).toBe(true);
   });

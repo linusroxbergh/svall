@@ -1,8 +1,8 @@
-import { useEffect, useState, type KeyboardEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { contextKind, stepPortrait, type Character, type ContextItem, type Params, type Portrait } from '@archipelago/protocol';
 import { AgentProfilePick } from './AgentProfilePick.js';
 import { app, deps } from './boot.js';
-import { deleteCharacter, deleteIsland, newCharacterOn, saveCharacter, saveCharacterContext, saveIsland, saveIslandContext } from './actions.js';
+import { deleteCharacter, newCharacterOn, saveCharacter, saveCharacterContext, saveIsland, saveIslandContext } from './actions.js';
 import { copyText, openFolder } from './bridge.js';
 import { followLink } from './LinkAsk.js';
 import { FollowLine, FollowTextarea } from './Field.js';
@@ -209,18 +209,7 @@ export function SideCard({ id }: { id: string }) {
 
 // an island's docs go with it, so its delete asks once more
 export function DeleteIsland({ id, testid, label }: { id: string; testid: string; label: string }) {
-  // the island asked about, so a confirm never carries over to the next one selected
-  const [asking, setAsking] = useState<string>();
-  if (asking !== id) return <button className="btn dan" data-testid={testid} onClick={() => setAsking(id)}>{label}</button>;
-  // the page's own Enter would hand the keys to a terminal instead of pressing the button in focus
-  const keep = (e: KeyboardEvent) => { if (e.key === 'Enter') e.stopPropagation(); };
-  return (
-    <>
-      {/* the confirm stands where Delete was, so the second click of a double click must not answer it */}
-      <button className="btn dan" data-testid={`${testid}-confirm`} onKeyDown={keep} onClick={(e) => { if (e.detail < 2) deleteIsland(deps(), id); }}>Delete with its docs</button>
-      <button className="btn" data-testid={`${testid}-cancel`} autoFocus onKeyDown={keep} onClick={() => setAsking(undefined)}>Cancel</button>
-    </>
-  );
+  return <button className="btn dan" data-testid={testid} onClick={() => app.store.getState().setDeletingIsland(id)}>{label}</button>;
 }
 
 // the repository most of the island's characters stand in

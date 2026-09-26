@@ -28,6 +28,7 @@ export type UiState = {
   namingCharacter: boolean;
   missionPrompt: boolean;
   closingCharacter?: string;
+  deletingIsland?: string;
   card?: string;
   cardSize: CardSize;
   active: boolean;
@@ -36,8 +37,9 @@ export type UiState = {
   webviews: Record<string, Webview>;
   // ⌘L asks for the address bar; the pane that answers clears the request
   addressFocus: boolean;
-  // ⌘⇧A asks for an arrange; the map, which knows the room the fleet has, clears the request
-  arrangeAsk: boolean;
+  // ⌘⇧A asks for an arrange, and a return from the board for an automatic one; the map, which knows the room
+  // the fleet has, clears the request
+  arrangeAsk: 'key' | 'auto' | false;
   toast?: Toast;
   linkAsk?: LinkAsk;
   configErrors: string[];
@@ -74,6 +76,7 @@ export type UiActions = {
   setNamingCharacter(open: boolean): void;
   setMissionPrompt(open: boolean): void;
   setClosingCharacter(id?: string): void;
+  setDeletingIsland(id?: string): void;
   termOpened(id: string, rect: Rect): void;
   termMoved(id: string, rect: Rect): void;
   termGone(id: string): void;
@@ -127,6 +130,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     namingCharacter: false,
     missionPrompt: false,
     closingCharacter: undefined,
+    deletingIsland: undefined,
     card: undefined,
     cardSize: 'half',
     active: true,
@@ -158,7 +162,8 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
       const s = get();
       const carried = v === 'map' && s.view === 'board' ? boardViewed(s) : undefined;
       // the shelf lies on the map and is mounted with it, so a view that leaves takes it along
-      set({ view: v, card: v === 'map' ? s.card : undefined, sideCardOpen: v === 'board' ? !s.sideCardCollapsed : s.sideCardOpen, resourcesOpen: v === 'map' && s.resourcesOpen });
+      set({ view: v, card: v === 'map' ? s.card : undefined, sideCardOpen: v === 'board' ? !s.sideCardCollapsed : s.sideCardOpen, resourcesOpen: v === 'map' && s.resourcesOpen,
+        ...(v === 'map' && s.view === 'board' && s.settings.autoArrange && { arrangeAsk: 'auto' as const }) });
       if (!carried) return;
       get().focus(carried);
     },
@@ -176,6 +181,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     setNamingCharacter: (open) => set({ namingCharacter: open }),
     setMissionPrompt: (open) => set({ missionPrompt: open }),
     setClosingCharacter: (id) => set({ closingCharacter: id }),
+    setDeletingIsland: (id) => set({ deletingIsland: id }),
     toggleSideCard: (open) => set((s) => { const next = open ?? (s.settingsOpen || !s.sideCardOpen); return { sideCardOpen: next, sideCardCollapsed: !next, settingsOpen: false, keysOpen: false, capturingKey: undefined }; }),
     termOpened: (id, rect) => set((s) => ({ terminals: { ...s.terminals, [id]: { id, rect } } })),
     termMoved: (id, rect) => set((s) => (s.terminals[id] ? { terminals: { ...s.terminals, [id]: { ...s.terminals[id], rect } } } : {})),
@@ -188,7 +194,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     webviewGone: (tab) => set((s) => { const webviews = { ...s.webviews }; delete webviews[tab]; return { webviews }; }),
     focusAddress: () => set({ addressFocus: true }),
     addressFocused: () => set({ addressFocus: false }),
-    askArrange: () => set({ arrangeAsk: true }),
+    askArrange: () => set({ arrangeAsk: 'key' }),
     arranged: () => set({ arrangeAsk: false }),
     showToast: (message, tone = 'error', action) => set({ toast: { text: message, tone, ...(action && { action }) } }),
     runToastAction: () => { const a = get().toast?.action; if (!a) return; set({ toast: undefined }); a.run(); },

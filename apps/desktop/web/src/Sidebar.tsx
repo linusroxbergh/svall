@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Character, Island } from '@archipelago/protocol';
-import { moveCharacterTo, newCharacterOn, newIsland, saveIsland, toggleIsland } from './actions.js';
+import { moveCharacterTo, newCharacterOn, newIsland, reorderIsland, saveIsland, toggleIsland } from './actions.js';
 import { app, deps } from './boot.js';
 import type { DropTarget } from './drop.js';
 import { useApp } from './hooks.js';
@@ -13,6 +13,9 @@ const stop = (e: React.MouseEvent) => e.stopPropagation();
 
 // a character dragged out of the list; the type alone is readable while the drag is in flight, the id only on the drop
 const CHAR_DRAG = 'application/x-archi-character';
+const ISLAND_DRAG = 'application/x-archi-island';
+
+const lowerHalf = (e: React.DragEvent) => { const r = e.currentTarget.getBoundingClientRect(); return e.clientY >= r.top + r.height / 2; };
 
 const targetAt = (e: React.DragEvent, target: DropTarget): DropTarget =>
   target.kind === 'char' ? { ...target, after: e.clientY >= e.currentTarget.getBoundingClientRect().top + e.currentTarget.getBoundingClientRect().height / 2 } : target;
@@ -48,7 +51,9 @@ export function Caret({ open }: { open: boolean }) {
   );
 }
 
-function IslandRow({ i, chars, editing, setEditing }: { i: Island; chars: Character[]; editing: boolean; setEditing(id?: string): void }) {
+function IslandRow({ i, chars, editing, setEditing, dragging, setDragging }: {
+  i: Island; chars: Character[]; editing: boolean; setEditing(id?: string): void; dragging: boolean; setDragging(id?: string): void;
+}) {
   const fleet = useApp((s) => s.fleet);
   const onBoard = useApp((s) => s.view === 'board');
   const selected = useApp((s) => (s.view === 'board' ? boardIsland(s)?.id === i.id : s.selectedIslandId === i.id));
@@ -65,6 +70,9 @@ function IslandRow({ i, chars, editing, setEditing }: { i: Island; chars: Charac
   return (
     <div className="sb-row sb-isle" data-testid={`sb-island-${i.id}`} data-selected={selected} data-open={open}
       data-drop={`island:${i.id}`} data-drop-hover={hover} {...dropZone({ kind: 'island', id: i.id })}
+      draggable={i.kind !== 'home' && !editing} data-dragging={dragging}
+      onDragStart={(e) => { e.dataTransfer.setData(ISLAND_DRAG, i.id); e.dataTransfer.effectAllowed = 'move'; setDragging(i.id); }}
+      onDragEnd={() => setDragging(undefined)}
       onClick={select} onDoubleClick={() => setEditing(i.id)}>
       <button className="sb-caret" data-testid={`sb-island-toggle-${i.id}`} aria-expanded={open}
         aria-label={open ? `Collapse ${i.name}` : `Expand ${i.name}`}
@@ -122,6 +130,27 @@ function CharacterRow({ c }: { c: Character }) {
 export function Sidebar() {
   const fleet = useApp((s) => s.fleet);
   const [editing, setEditing] = useState<string>();
+  const [dragIsland, setDragIsland] = useState<string>();
+  const [islandHover, setIslandHover] = useState<{ id: string; after: boolean }>();
+  // a dragged island lands before or after the folder it is dropped on; mission control stays last
+  const reorderZone = (i: Island) => (!dragIsland || dragIsland === i.id || i.kind === 'home' ? {} : {
+    onDragOver: (e: React.DragEvent) => {
+      if (!e.dataTransfer.types.includes(ISLAND_DRAG)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setIslandHover({ id: i.id, after: lowerHalf(e) });
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+      setIslandHover((h) => (h?.id === i.id ? undefined : h));
+    },
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      setIslandHover(undefined);
+      reorderIsland(deps(), dragIsland, i.id, lowerHalf(e));
+    },
+  });
+  const dragging = (id?: string) => { setDragIsland(id); if (!id) setIslandHover(undefined); };
 
   return (
     <aside className="sb" data-testid="sidebar">
@@ -135,8 +164,9 @@ export function Sidebar() {
         {islandsSorted(fleet).map((i) => {
           const chars = charactersOf(fleet, i.id);
           return (
-            <div key={i.id} className="sb-folder" data-testid={`sb-folder-${i.id}`}>
-              <IslandRow i={i} chars={chars} editing={editing === i.id} setEditing={setEditing} />
+            <div key={i.id} className="sb-folder" data-testid={`sb-folder-${i.id}`} {...reorderZone(i)}
+              data-drop-reorder={islandHover?.id === i.id} data-drop-after={islandHover?.id === i.id && islandHover.after}>
+              <IslandRow i={i} chars={chars} editing={editing === i.id} setEditing={setEditing} dragging={dragIsland === i.id} setDragging={dragging} />
               {!i.collapsed && chars.length === 0 && <div className="sb-kids"><button className="sb-row sb-char-empty" data-testid={`sb-island-new-${i.id}`}
                 aria-label={`New character on ${i.name}`} onClick={() => void newCharacterOn(deps(), i.id)}><i className="sb-plus" aria-hidden="true">+</i>New character</button></div>}
               {!i.collapsed && chars.length > 0 && (

@@ -324,6 +324,18 @@ test('a sidebar drop on a character in another island moves without displacing t
     (state.characters[moving.id].cell.y === state.characters[target.id].cell.y && state.characters[moving.id].cell.x < state.characters[target.id].cell.x)).toBe(true);
 });
 
+test('the sidebar reorders islands by drag, and mission control stays last', async ({ page, archi }) => {
+  const a = await archi.api.call('island.create', { name: archi.uniq('order-a'), position: { x: 0, y: 300 } });
+  const b = await archi.api.call('island.create', { name: archi.uniq('order-b'), position: { x: 11, y: 300 } });
+  await archi.open('map');
+  const listed = () => page.locator('.sb-folder').evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')!.replace('sb-folder-', '')));
+  const pair = async () => (await listed()).filter((id) => id === a.id || id === b.id);
+  await expect.poll(pair).toEqual([a.id, b.id]);
+  await page.getByTestId(`sb-island-${b.id}`).dragTo(page.getByTestId(`sb-folder-${a.id}`), { targetPosition: { x: 20, y: 3 } });
+  await expect.poll(pair).toEqual([b.id, a.id]);
+  expect((await listed()).at(-1)).toBe('home');
+});
+
 test('a folded island lands as its pill, and two of them may stand side by side', async ({ page, archi }) => {
   const size = { w: 6, h: 3 };
   const at = { y: 400 };
