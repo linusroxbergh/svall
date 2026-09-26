@@ -493,7 +493,9 @@ optional live tmux ids, optional agent, and optional revive command. A second te
 disappears merely because its tmux window is absent.
 
 Before export, all `tmux.windowId`, `paneId` and agent pid fields are removed. For a supported
-agent, `revive.command` is `claude --resume <id>` or `codex resume <id>`. A plain shell has no
+agent, `revive.command` is `claude --resume <id>` or `codex resume <id>` with the launch flags an
+idle close keeps, whether the handover rested the terminal or it was already dormant, less the Codex
+flags whose values name the source's own config (`-p`/`--profile`, `--local-provider`). A plain shell has no
 command and reopens at its cwd. Archipelago may save terminal scrollback for diagnosis, but it is
 not replayed as process state.
 

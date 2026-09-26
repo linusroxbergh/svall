@@ -34,6 +34,8 @@ const FLAGS: Record<AgentKind, { kept: string[]; keptSwitches: string[]; dropped
 };
 // the flags whose value may be left out
 const OPTIONAL = ['-w', '--worktree', '-r', '--resume'];
+// kept codex flags whose values name entries in the launching machine's own config.toml
+const MACHINE_LOCAL = ['-p', '--profile', '--local-provider'];
 // a value is typed into a shell on revive, so only a plain word is carried
 const PLAIN = /^[\w.:@/[\]-]+$/;
 
@@ -73,6 +75,13 @@ export function startFlags(args: string, kind: AgentKind): string[] | undefined 
     out.push(flag, shq(value));
   }
   return out;
+}
+
+/** A revive command, as `reviveCommand` builds it, without the flags that mean something only on the machine it was made on. */
+export function portableRevive(command: string): string {
+  const words = command.split(' ');
+  if (words[0] !== 'codex') return command;
+  return words.filter((w, i) => !MACHINE_LOCAL.includes(w) && !MACHINE_LOCAL.includes(words[i - 1])).join(' ');
 }
 
 export type Proc = { pid: number; ppid: number; pgid: number; args: string };

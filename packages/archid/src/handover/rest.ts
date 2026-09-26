@@ -1,4 +1,5 @@
 import type { Agent, Blocker, FleetState, HandoverChoices, HandoverIssueCode, TerminalSlot } from '@archipelago/protocol';
+import { startFlags } from '../dormancy.js';
 import { installedScripts } from '../paths.js';
 import { markDormant, markSlotDormant } from '../reconcile.js';
 import type { Store } from '../store.js';
@@ -117,8 +118,15 @@ export function classifyTerminals(state: FleetState, live: LiveWindow[], table: 
 
 // `groups` are what terminating it signalled: the job holding the terminal, and the groups of its agent's tool commands
 type Track = TerminalRef & {
-  key: string; recheck: TerminalClass; agent?: Agent; interruptedAt?: number; terminatedAt?: number; killedAt?: number; groups?: number[];
+  key: string; recheck: TerminalClass; agent?: Agent; flags?: string[]; interruptedAt?: number; terminatedAt?: number; killedAt?: number; groups?: number[];
 };
+
+// the launch flags the idle close would resume this terminal's agent with; none when its launch cannot be repeated
+function launchFlags(c: Classified): string[] | undefined {
+  const p = c.processes.agent;
+  const args = p && p.kind === c.agent?.kind ? c.processes.foreground.find((x) => x.pid === p.pid)?.args : undefined;
+  return args === undefined ? undefined : startFlags(args, p!.kind);
+}
 type Step = 'rest' | 'wait' | 'interrupt' | 'terminate' | 'kill' | { blocker: Blocker };
 type Moment = {
   choices: RestChoices; start: number; now: number; waitMs: number; settleMs: number; pollMs: number; state: FleetState;
@@ -244,7 +252,7 @@ export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<Set
       continue;
     }
     if (blockers.length) return { ok: false, blockers };
-    for (const { t, c } of steps) if (c && t.terminatedAt === undefined) t.agent = c.agent;
+    for (const { t, c } of steps) if (c && t.terminatedAt === undefined) { t.agent = c.agent; t.flags = launchFlags(c); }
     if (settled) return layToRest(deps, o, bounded, tracks, current, clock.now());
     for (const { t, c, s } of steps) {
       if (s === 'interrupt' && c) {
@@ -328,13 +336,13 @@ async function layToRest(
     const c = d.characters[t.characterId];
     const slot = c && (t.term === 2 ? c.second : c);
     if (!c || !slot?.tmux) return;
-    const agent = byKey.get(keyOf(t))?.agent;
+    const { agent, flags } = byKey.get(keyOf(t)) ?? {};
     if (agent) slot.agent = agent;
     if (closed) slot.restedBy = transactionId;
-    if (t.term !== 2) { markDormant(c); return; }
+    if (t.term !== 2) { markDormant(c, flags); return; }
     const path = current.get(keyOf(t))?.window.path;
     if (path) slot.cwd = path;
-    markSlotDormant(slot);
+    markSlotDormant(slot, flags);
   };
   // each slot goes dormant as its own window closes, so a later window that will not close strands none of them
   for (const { t, c } of open) {

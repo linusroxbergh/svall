@@ -3,6 +3,7 @@ import {
   FleetConfig, FleetState,
   type AgentKind, type Blocker, type HandoverEntity, type LandedRoot, type TransferFile, type TransferManifestV1, type TransferRoot,
 } from '@archipelago/protocol';
+import { portableRevive } from '../dormancy.js';
 import { markDormant, markSlotDormant } from '../reconcile.js';
 import { diverged, proveReplica, type Divergence } from './divergence.js';
 import { mapThroughRoots } from './git-repair.js';
@@ -144,9 +145,8 @@ export function importState(m: TransferManifestV1): Imported {
   const blockers: Blocker[] = [];
   const state = exportSnapshot(FleetState.parse(m.snapshot));
   for (const c of Object.values(state.characters)) {
-    // a terminal this handover did not rest, such as one closed for idleness, keeps the resume it went dormant with, flags and all,
-    // while it still has the agent whose session travels
-    const [kept, keptSecond] = [c, c.second].map((t) => (t?.agent && t.restedBy !== m.transactionId && t.revive?.command ? t.revive : undefined));
+    // a terminal keeps the resume it went dormant with, launch flags and all, while it still has the agent whose session travels
+    const [kept, keptSecond] = [c, c.second].map((t) => (t?.agent && t.revive?.command ? { command: portableRevive(t.revive.command) } : undefined));
     markDormant(c);
     if (kept) c.revive = kept;
     if (c.second) markSlotDormant(c.second);

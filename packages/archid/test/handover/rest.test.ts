@@ -208,6 +208,24 @@ describe('restTerminals', () => {
     expect(world.timers()).toBe(0);
   });
 
+  it('resumes each rested agent with the launch flags an idle close would keep, and one whose launch cannot be repeated without any', async () => {
+    const SID3 = '5b6c7d8e-9f0a-4b1c-8d2e-3f4a5b6c7d8e';
+    const { store, world, deps } = boot([
+      char('c_ada', { tmux: win(1), agent: agent('claude', 'idle'), second: { cwd: '/side', unread: false, tmux: win(2), agent: agent('codex', 'idle', SID2) } }),
+      char('c_bo', { tmux: win(3), agent: agent('claude', 'done', SID3) }),
+    ]);
+    world.pane(1, { job: ['claude --dangerously-skip-permissions --model opus --effort high -- fix it'] });
+    world.pane(2, { job: ['codex --yolo -m gpt-6-astra -p work'] });
+    world.pane(3, { job: ['claude --settings /x/deny.json'] });
+
+    expect((await restTerminals(deps, { choices: {} })).ok).toBe(true);
+
+    const { c_ada: ada, c_bo: bo } = store.state.characters;
+    expect(ada.revive).toEqual({ command: `claude --dangerously-skip-permissions --effort 'high' --resume ${SID}` });
+    expect(ada.second?.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session --yolo -m 'gpt-6-astra' -p 'work' ${SID2}` });
+    expect(bo.revive).toEqual({ command: `claude --resume ${SID3}` });
+  });
+
   it('refuses a foreground job nobody chose to end at the recheck, before it interrupts, signals or closes anything', async () => {
     const { store, world, deps, paths } = boot([
       char('c_ada', { tmux: win(1) }),

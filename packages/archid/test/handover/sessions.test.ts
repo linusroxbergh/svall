@@ -664,7 +664,7 @@ describe('a session under a path root declared through a link', () => {
     expect(rows(text).map((r) => [r.cwd, r.message.content])).toEqual([[real, 'one'], [real, 'two'], [real, 'three'], [real, 'four']]);
   });
 
-  it('keeps the resume an agent closed for idleness went dormant with, flags and all, in either terminal, and gives one this handover rested its own', async () => {
+  it('keeps the resume a terminal went dormant with, flags and all, in either terminal, whether this handover rested it or not', async () => {
     const base = tmp();
     const mac = side(path.join(base, 'mac'), path.join(base, 'mac/home/code'));
     const linux = side(path.join(base, 'linux'), path.join(base, 'linux/home/code'));
@@ -691,9 +691,27 @@ describe('a session under a path root declared through a link', () => {
       return [c.revive, c.second?.revive];
     };
     expect(await imported()).toEqual([{ command: closed(SID) }, { command: closed(SID2) }]);
-    expect(await imported('t1')).toEqual([{ command: `claude --resume ${SID}` }, { command: `claude --resume ${SID2}` }]);
+    expect(await imported('t1')).toEqual([{ command: closed(SID) }, { command: closed(SID2) }]);
     // a second terminal whose agent is gone carries no session, so it opens as a plain shell
     expect(await imported(undefined, false)).toEqual([{ command: closed(SID) }, { command: '' }]);
+  });
+
+  it('leaves behind the codex flags that name the source machine\'s own config: a profile and a local provider', () => {
+    const state = emptyState();
+    const codex = (command: string): Partial<Character> => ({
+      agent: { kind: 'codex', sessionId: SID, transcriptPath: '/h/.codex/r.jsonl', status: 'idle', lastActivityAt: 0 }, revive: { command },
+    });
+    state.characters.c1 = char('c1', { cwd: '/h', ...codex(`codex resume -c tui.resume_cwd=session --yolo -m 'gpt-6-astra' -p 'work' --local-provider 'ollama' -s 'workspace-write' ${SID}`) });
+    state.characters.c2 = char('c2', { cwd: '/h', ...codex(`codex resume -c tui.resume_cwd=session --profile 'work' ${SID}`) });
+    state.characters.c3 = char('c3', { cwd: '/h', agent: { kind: 'claude', sessionId: SID, transcriptPath: '/h/.claude/r.jsonl', status: 'idle', lastActivityAt: 0 }, revive: { command: `claude --effort 'high' --resume ${SID}` } });
+    const roots = { home: '/h' };
+    const { characters } = importState({
+      version: 1, transactionId: 't1', generation: 1, fromMachineId: MAC, toMachineId: TRIFT, sourceRoots: roots, destinationRoots: roots,
+      fleet: FLEET, snapshot: state, excludes: [], roots: [], sessions: [],
+    }).state;
+    expect(characters.c1.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session --yolo -m 'gpt-6-astra' -s 'workspace-write' ${SID}` });
+    expect(characters.c2.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session ${SID}` });
+    expect(characters.c3.revive).toEqual({ command: `claude --effort 'high' --resume ${SID}` });
   });
 
   it('maps a record under either spelling of a source root, onto the real spelling of the destination\'s', () => {
