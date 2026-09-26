@@ -47,12 +47,17 @@ downloads the terminal engine prebuilt, and the clone, its dependencies and the
 build take about 750 MB of disk. An Intel Mac also needs Xcode; see
 [Building Ghostty from source](#building-ghostty-from-source).
 
-1. Install the tools and the [Claude Code CLI](https://code.claude.com/docs/en/setup).
-   Claude Code works with a Claude subscription or an Anthropic API key; see
-   [Using API keys](#using-api-keys).
+1. Install the tools, and Claude Code, Codex, or both:
 
        brew install node tmux pnpm gh   # skip node if you have 24 or newer
        gh auth login                    # clones the private repository, downloads the terminal engine and resolves PR links
+
+   Install [Claude Code](https://code.claude.com/docs/en/setup); it works with
+   a Claude subscription or an Anthropic API key, see
+   [Using API keys](#using-api-keys).
+
+   Install the [Codex CLI](https://learn.chatgpt.com/docs/codex/cli) 0.155 or
+   newer; an OpenAI API key is enough, you don't need a ChatGPT subscription.
 
    If `xcrun --show-sdk-version` prints a version below 26, update the Command
    Line Tools in System Settings → General → Software Update, or Xcode if
@@ -61,27 +66,28 @@ build take about 750 MB of disk. An Intel Mac also needs Xcode; see
    Update it the way you installed it, such as `npm i -g pnpm@latest` or
    `pnpm self-update`.
 
-   For characters that run Codex, also install the
-   [Codex CLI](https://learn.chatgpt.com/docs/codex/cli) 0.155 or newer. An
-   OpenAI API key is enough; you don't need a ChatGPT subscription.
-
 2. Clone and install:
 
        git clone https://github.com/linusroxbergh/archipelago && cd archipelago
        pnpm desktop:install
 
-   The installer lists anything missing before it builds. Without admin
-   rights, run `ARCHI_APP_DEST=~/Applications pnpm desktop:install` instead. If
-   your shell can't find `archi` afterwards, add `~/.local/bin` to your PATH:
+   The installer lists anything missing before it builds, asks nothing, and
+   ends with the main agent it will run: your only installed CLI, or Claude
+   Code with both installed. Without admin rights, run
+   `ARCHI_APP_DEST=~/Applications pnpm desktop:install` instead. If your shell
+   can't find `archi` afterwards, add `~/.local/bin` to your PATH:
 
        echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc   # then open a new terminal
 
 3. Run `archi`, or open Archipelago from Spotlight. `+ New island` on the
    sandbar at the bottom makes an island, and Cmd+T makes a character on it: a
-   shell that becomes an agent when you type `claude` or `codex`. On first
-   launch, the app asks before the scribe makes paid agent calls. The first
-   mission control button you press opens a terminal where Claude Code asks you
-   to trust `~/.archipelago/home`.
+   shell that becomes an agent when you type `claude` or `codex`. With both
+   CLIs installed, the app's first question is which one the scribe and
+   mission control run — Claude Code unless you pick Codex; change it later
+   in Settings or with `archi agent codex`. On first launch, the app asks
+   before the scribe makes paid agent calls. The first mission control button
+   you press opens a terminal where Claude Code asks you to trust
+   `~/.archipelago/home`.
 
 Keep the clone where it is, because `archi` and the daemon run from it. If you
 move it or clone it again, `pnpm desktop:install` in the new place points them
@@ -92,10 +98,7 @@ setup writes, and `archi uninstall` removes them.
 ### Using API keys
 
 Archipelago runs the Claude Code and Codex CLIs and has no AI account or
-billing of its own. The provider whose key you use bills the API calls. The
-installer checks that `claude` is installed but doesn't need a Claude
-subscription or login, so you can run Codex characters and leave the Claude
-scribe off.
+billing of its own. The provider whose key you use bills the API calls.
 
 For Claude Code, create an [Anthropic API key](https://console.anthropic.com/settings/keys)
 and put it in the private fleet's `.env` (another fleet's is
@@ -111,8 +114,9 @@ repository or in a shell command that history keeps. New character shells and th
 character and type `claude`, or run
 `archi char new --island <island> --cwd <path> --claude`. A shell that is
 already running keeps its old environment, so after changing the file, create
-a new character or revive a dormant one. Claude Code may ask once before it
-uses an API key in an interactive session; see its
+a new character or revive a dormant one. This also signs Claude Code itself in;
+`archi doctor` reports it. Claude Code may ask once before it uses an API key
+in an interactive session; see its
 [environment variable reference](https://code.claude.com/docs/en/env-vars).
 
 For Codex, sign the Codex CLI in with an
@@ -127,19 +131,14 @@ Codex keeps the login for later `codex` and `codex exec` runs. Then type
 `archi char new --island <island> --cwd <path> --agent codex`. See the
 [Codex authentication guide](https://learn.chatgpt.com/docs/auth). An
 `OPENAI_API_KEY` in the fleet's `.env` also reaches new character shells, but
-the saved CLI login is the documented setup.
+only `codex login --with-api-key` signs Codex itself in; Codex doesn't read
+the variable to log in on its own.
 
-The scribe is optional and uses Claude whatever CLI your characters run. For a
-Codex-only fleet, replace the `{}` that setup wrote in
-`~/.archipelago/config.json` with this, and restart the daemon (see
-[Configuration](#configuration)) before you turn the scribe on:
-
-    { "scribe": { "agent": "codex" } }
-
-Mission control's helper buttons start Claude and use its skills, so they need
-a Claude login or an Anthropic key. Codex characters work without them. Leave
-the scribe off to avoid its extra API calls. The Usage panel shows
-subscription limits, not API spending.
+The scribe and mission control's crew both run the main agent's CLI, unless
+`scribe.agent` names another (see [Configuration](#configuration)), so a
+Codex-only install needs no Claude login or Anthropic key. The scribe still
+costs money on whichever plan it runs on; leave it off in Settings to avoid
+that. The Usage panel shows Claude's subscription limits, not API spending.
 
 ### Updating
 
@@ -318,8 +317,9 @@ Its `config.json` takes:
 | `defaultCwd` | Where a new character starts when no character beside it gives it a directory (default `~`). |
 | `shell` | The shell a terminal runs, if not your login shell. |
 | `linear` | `{ "workspace": "acme", "teamKeys": ["ENG"] }` links a branch named after a Linear issue to that issue. |
-| `home` | Mission control: `cwd` for its crew, the `command` that starts an agent (default `claude --model sonnet`), and `actions`, one `{ "label", "prompt" }` per button. |
-| `scribe` | `model` (default `sonnet`), and `"agent": "codex"` to run the scribe on your Codex plan instead. |
+| `mainAgent` | `claude` or `codex`: what the scribe, mission control's crew and `archi char new --run` run by default. Absent, the only CLI installed, else `claude`. Set from the app or with `archi agent <name>`. |
+| `home` | Mission control: `cwd` for its crew, the `command` that starts an agent (default the main agent's: `claude --model sonnet`, or `codex`), and `actions`, one `{ "label", "prompt" }` per button. A button's `/name` prompt reaches a Codex crew as `$name`. |
+| `scribe` | `agent` (default the main agent) and `model`, a model of `agent`'s CLI, or of Claude's when `agent` is unset (default `sonnet`). |
 | `mobile` | `logins` to let in (only yours when empty), extra page `origins` allowed to open a socket, a `pushContact` (https: or mailto:) for push services, and `httpsPort`. |
 
 - The daemon reads `config.json` when it starts.
@@ -329,14 +329,17 @@ Its `config.json` takes:
   the file doesn't parse, the daemon logs why and waits for it to change;
   `archi doctor` shows the error too.
 - Mission control's folder (default `~/.archipelago/home`, shared by every
-  fleet) holds its instructions in `.claude/rules/archipelago.md` and the
-  `archi-*` skills its buttons call. `archi-organise` and `archi-rename` have
-  no button: list them in `home.actions` beside the two defaults
-  (`/archi-update-info` and `/archi-status`) to get one. Every daemon start
-  refreshes the instructions and skills. Its
-  `CLAUDE.md`, for your own rules, and `.claude/settings.json` are yours to
-  edit. Only `archi setup` replaces an edited settings file, and it keeps a
-  `.bak-*` copy.
+  fleet) holds files for both CLIs, rewritten on every daemon start. For
+  Claude Code: `CLAUDE.md`, yours to edit, and `.claude/`, with its
+  instructions in `.claude/rules/archipelago.md`, the `archi-*` skills its
+  buttons call, and `.claude/settings.json`. For Codex: `AGENTS.md`, built
+  from the rules and your `CLAUDE.md`, `.agents/skills`, and
+  `.codex/rules/archipelago.rules`, which lets a Codex crew run the same
+  `archi` commands a Claude crew may, without asking. `archi-organise` and
+  `archi-rename` have no button: list them in `home.actions` beside the two
+  defaults (`/archi-update-info` and `/archi-status`) to get one. Only
+  `archi setup` replaces an edited settings file, and it keeps a `.bak-*`
+  copy. Codex and Claude Code each ask once whether to trust the folder.
 - The daemon runs under launchd, without your shell's environment. The
   fleet's `.env` gives the Claude scribe every value in it, and gives **new**
   character shells only `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`. Keep the
@@ -349,9 +352,10 @@ A character running `codex`, typed in or started with
 brief and scribe as Claude Code.
 
 - Setup writes Archipelago's hook into `~/.codex/hooks.json` whenever
-  `~/.codex` exists, but Codex runs only hooks you trust. Start `codex`, type
-  `/hooks` and trust it, and do so again whenever it changes. Until then the
-  character stays a plain shell with a warning.
+  `~/.codex` exists, but Codex runs only hooks you trust: choose "Trust all
+  and continue" on its startup dialog, or trust it later with `/hooks`, and do
+  so again whenever the hook changes. `archi doctor` says whether it's
+  trusted. Until then the character stays a plain shell with a warning.
 - Codex needs its CLI on PATH; the Codex desktop app alone doesn't put it
   there.
 
@@ -361,12 +365,13 @@ brief and scribe as Claude Code.
 without the app (`--check` only checks). It changes nothing while something it
 needs is missing. It writes:
 
-- `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`): a hook on
-  Claude Code's session, prompt, tool, notification and stop events, which
-  exits before starting Node outside a character, and a statusline wrapper
-  that keeps your own statusline running inside it. Every change keeps a
-  `.bak-<time>` copy.
-- `~/.codex/hooks.json`, when Codex is installed: the same hook and backup.
+- `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`), when
+  Claude Code is installed or `~/.claude` exists: a hook on Claude Code's
+  session, prompt, tool, notification and stop events, which exits before
+  starting Node outside a character, and a statusline wrapper that keeps your
+  own statusline running inside it. Every change keeps a `.bak-<time>` copy.
+- `~/.codex/hooks.json`, when Codex is installed or `~/.codex` exists
+  (creating `~/.codex`): the same hook and backup.
 - `~/Library/LaunchAgents/io.github.linusroxbergh.archipelago.archid*.plist`,
   one per fleet, which keeps each daemon running.
 - `~/.local/bin/archi` and `archipelago`: shims into the clone.
