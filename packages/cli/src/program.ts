@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { Command } from 'commander';
 import { Client } from './client.js';
+import { agentCommand } from './commands/agent.js';
 import { browserCommands } from './commands/browser.js';
 import { charCommands } from './commands/char.js';
 import { doctorCommand } from './commands/doctor.js';
@@ -58,6 +59,7 @@ export function buildProgram(): Command {
   program.addCommand(browserCommands(connect, json));
   program.addCommand(mobileCommand(connect, json));
   program.addCommand(setupCommand(target, json));
+  program.addCommand(agentCommand(target, json));
   program.addCommand(doctorCommand(target, json));
   program.addCommand(uninstallCommand(json));
 
