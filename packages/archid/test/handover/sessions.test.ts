@@ -664,28 +664,36 @@ describe('a session under a path root declared through a link', () => {
     expect(rows(text).map((r) => [r.cwd, r.message.content])).toEqual([[real, 'one'], [real, 'two'], [real, 'three'], [real, 'four']]);
   });
 
-  it('keeps the resume an agent closed for idleness went dormant with, flags and all, and gives one this handover rested its own', async () => {
+  it('keeps the resume an agent closed for idleness went dormant with, flags and all, in either terminal, and gives one this handover rested its own', async () => {
     const base = tmp();
     const mac = side(path.join(base, 'mac'), path.join(base, 'mac/home/code'));
     const linux = side(path.join(base, 'linux'), path.join(base, 'linux/home/code'));
-    const transcript = path.join(mac.claude, 'projects', claudeProjectSlug(mac.cwd), `${SID}.jsonl`);
-    fs.mkdirSync(path.dirname(transcript), { recursive: true });
-    fs.writeFileSync(transcript, record(mac.cwd, 'one'));
-    const closed = `claude --dangerously-skip-permissions --effort high --resume ${SID}`;
-    const imported = async (restedBy?: string) => {
+    const SID2 = '7c1d9e2f-3a4b-4c5d-8e6f-0a1b2c3d4e5f';
+    const agent = (sessionId: string): Character['agent'] => {
+      const transcriptPath = path.join(mac.claude, 'projects', claudeProjectSlug(mac.cwd), `${sessionId}.jsonl`);
+      fs.mkdirSync(path.dirname(transcriptPath), { recursive: true });
+      fs.writeFileSync(transcriptPath, record(mac.cwd, 'one'));
+      return { kind: 'claude', sessionId, transcriptPath, status: 'idle', lastActivityAt: 0 };
+    };
+    const closed = (sessionId: string) => `claude --dangerously-skip-permissions --effort high --resume ${sessionId}`;
+    const imported = async (restedBy?: string, secondAgent = true) => {
       const state = emptyState();
       state.characters.c1 = char('c1', {
-        cwd: mac.cwd, agent: { kind: 'claude', sessionId: SID, transcriptPath: transcript, status: 'idle', lastActivityAt: 0 }, revive: { command: closed }, restedBy,
+        cwd: mac.cwd, agent: agent(SID), revive: { command: closed(SID) }, restedBy,
+        second: { cwd: mac.cwd, unread: false, ...(secondAgent && { agent: agent(SID2) }), revive: { command: closed(SID2) }, restedBy },
       });
       const inventory = buildInventory(state, { fleet: FLEET }, {
         source: { machineId: MAC, pathRoots: mac.roots, fleetHome: path.join(mac.home, '.archipelago') },
         destination: { machineId: TRIFT, pathRoots: linux.roots, fleetHome: path.join(linux.home, '.archipelago'), agentHomes: { claude: linux.claude } },
       });
       const { manifest } = await buildManifest(inventory, { generation: 1 });
-      return importState({ ...manifest, transactionId: 't1' }).state.characters.c1.revive;
+      const c = importState({ ...manifest, transactionId: 't1' }).state.characters.c1;
+      return [c.revive, c.second?.revive];
     };
-    expect(await imported()).toEqual({ command: closed });
-    expect(await imported('t1')).toEqual({ command: `claude --resume ${SID}` });
+    expect(await imported()).toEqual([{ command: closed(SID) }, { command: closed(SID2) }]);
+    expect(await imported('t1')).toEqual([{ command: `claude --resume ${SID}` }, { command: `claude --resume ${SID2}` }]);
+    // a second terminal whose agent is gone carries no session, so it opens as a plain shell
+    expect(await imported(undefined, false)).toEqual([{ command: closed(SID) }, { command: '' }]);
   });
 
   it('maps a record under either spelling of a source root, onto the real spelling of the destination\'s', () => {

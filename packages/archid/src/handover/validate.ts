@@ -144,8 +144,9 @@ export function importState(m: TransferManifestV1): Imported {
   const blockers: Blocker[] = [];
   const state = exportSnapshot(FleetState.parse(m.snapshot));
   for (const c of Object.values(state.characters)) {
-    // a terminal this handover did not rest, such as one closed for idleness, keeps the resume it went dormant with, flags and all
-    const [kept, keptSecond] = [c, c.second].map((t) => (t && t.restedBy !== m.transactionId && t.revive?.command ? t.revive : undefined));
+    // a terminal this handover did not rest, such as one closed for idleness, keeps the resume it went dormant with, flags and all,
+    // while it still has the agent whose session travels
+    const [kept, keptSecond] = [c, c.second].map((t) => (t?.agent && t.restedBy !== m.transactionId && t.revive?.command ? t.revive : undefined));
     markDormant(c);
     if (kept) c.revive = kept;
     if (c.second) markSlotDormant(c.second);

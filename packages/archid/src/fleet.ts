@@ -965,11 +965,12 @@ export class Fleet extends EventEmitter<Events> {
         }
         return next;
       };
+      // a dormant terminal keeps the agent its revive resumes; the end its closing window sends does not clear it
+      const slot = ev.term === 2 ? c.second : c;
+      if (slot && !slot.tmux && 'hook' in e && e.hook.name === 'SessionEnd') return;
       // an event from a second terminal that has already gone has nowhere to land
       if (ev.term === 2) { if (c.second) c.second = apply(c.second); }
       else {
-        // a dormant character keeps the agent its revive resumes; the end its closing window sends does not clear it
-        if (!c.tmux && 'hook' in e && e.hook.name === 'SessionEnd') return;
         const next = apply(c);
         if (next.agent) delete next.hint;
         d.characters[ev.charId] = next;

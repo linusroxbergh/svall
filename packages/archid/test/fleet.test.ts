@@ -152,6 +152,9 @@ runIf('Fleet', () => {
     await tmux.run('send-keys', '-t', paneId, 'exit', 'Enter');
     await waitFor(() => store.state.characters[c.id].second?.tmux === undefined);
     expect(store.state.characters[c.id].second?.revive).toEqual({ command: `claude --resume ${sessionId}` });
+    // the end its closing window sends leaves the agent the revive resumes
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', term: 2, name: 'SessionEnd', sessionId } });
+    expect(store.state.characters[c.id].second?.agent?.sessionId).toBe(sessionId);
     const dir = fs.realpathSync(home);
     store.update((d) => { d.characters[c.id].second!.cwd = dir; });
     const typed = vi.spyOn(tmux, 'sendLine');
