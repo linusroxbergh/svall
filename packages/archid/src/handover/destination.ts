@@ -625,7 +625,8 @@ export class DestinationHandover {
   /**
    * Watches a terminal counted up at a prompt until its session starts, or, for an agent that starts none until its
    * first turn, until the folder it was `asked` to trust is trusted, the fleet leaving what it carries alone meanwhile.
-   * One whose agent leaves the pane first is left dormant with that session and an error saying `then`.
+   * One whose agent leaves the pane first is left dormant with that session and an error saying `then`, or, once that
+   * folder is trusted and so the agent left at some later prompt, saying to answer that one.
    */
   private async watch(
     tx: string, s: Slot, which: string, agent: { kind: AgentKind; sessionId: string }, carried: Carried | undefined, then: string, asked?: ResumeFolder,
@@ -644,14 +645,15 @@ export class DestinationHandover {
         const slot = s.term === 2 ? c?.second : c;
         // a later handover's rest answers for it from then on
         if (heard || slot?.restedBy !== tx) return;
-        if (asked && !(await this.cli(agent.kind)).adapter.sessionStartOnResume && (await this.trusted(asked))) return;
+        const answered = !!asked && (await this.trusted(asked));
+        if (answered && !(await this.cli(agent.kind)).adapter.sessionStartOnResume) return;
         let look: Look;
         try { look = slot.tmux ? await this.holding(slot) : { held: 'gone' }; } catch { continue; }
         if (heard) return;
         if (look.held !== 'shell' && look.held !== 'gone') continue;
         const left = look.held === 'gone' ? 'its window closed' : `${agent.kind} exited back to its shell`;
         await this.lay(s, carried);
-        const error = `${which} resumed ${agent.kind} session ${agent.sessionId}, but ${left} before that session started, so it is dormant again with that session; ${then}`;
+        const error = `${which} resumed ${agent.kind} session ${agent.sessionId}, but ${left} before that session started, so it is dormant again with that session; ${answered ? 'revive it and answer the prompt it waits at' : then}`;
         this.d.log.error(`handover ${tx}: ${error}`);
         this.recordSlot(tx, { ...s, ok: false, sessionId: agent.sessionId, error });
         return;

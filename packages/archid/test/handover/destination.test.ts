@@ -1041,6 +1041,35 @@ describe('destination activate', () => {
     expect(d.crew.carried('c_bo')).toBe(false);
   });
 
+  it('keeps watching a Claude that answered its trust prompt, and names no trust prompt once it exits at a later one', async () => {
+    const bo = `claude --dangerously-skip-permissions --resume ${SID}`;
+    const s = await scene({ tamper: (m) => { m.snapshot.characters.c_bo.revive = { command: bo }; } });
+    const d = daemon(s);
+    d.gateway.commit((await d.handover.prepare(params(s))).preparedDigest);
+    const config = path.join(s.dst, '.claude/.claude.json');
+    const trust = fs.readFileSync(config);
+    fs.rmSync(config);
+    d.crew.silent.add('c_bo');
+
+    const { r } = await activateBy(d);
+    expect(r.characters.find((c) => c.id === 'c_bo')).toMatchObject({ ok: true, notice: expect.stringMatching(/Yes, I trust this folder/) });
+    // "Yes, I trust this folder", which Claude writes into its config, then its Bypass Permissions warning, which holds its SessionStart too
+    fs.writeFileSync(config, trust);
+    await d.clock.advance(10_000);
+    expect(d.crew.carried('c_bo')).toBe(true);
+
+    // "No, exit", which that warning preselects
+    d.crew.window('c_bo')!.command = 'bash';
+    await d.clock.advance(5000);
+
+    const c = s.store.state.characters.c_bo;
+    expect(c).toMatchObject({
+      agent: { sessionId: SID }, revive: { command: bo },
+      resumeError: expect.stringMatching(/^bo's terminal resumed claude session \S+, but claude exited back to its shell before that session started, .*; revive it and answer the prompt it waits at$/),
+    });
+    expect(c.resumeError).not.toMatch(/trust/i);
+  });
+
   it('counts a resumed Claude up by its SessionStart, with no notice, when it comes before the settle in a folder this machine does not trust', async () => {
     const { s, d, preparedDigest } = await prepared();
     d.gateway.commit(preparedDigest);
