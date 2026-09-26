@@ -46,7 +46,7 @@ control buttons; each finishes its task and stays `done` until closed.
 | describe an island | `archi island update review --description "PRs waiting on a human"` |
 | tidy the map | `archi island arrange` |
 | start an agent on an island (the main agent; `--agent claude` or `--agent codex` picks one) | `archi char new --island review --cwd ~/repo --run "review PR 472"` |
-| start one in a role (a file in the fleet's agent-profiles folder) | `archi char new --island review --cwd ~/repo --claude --agent-profile reviewer --run "review PR 472"` |
+| start one in a role (a file in the fleet's agent-profiles folder) | `archi char new --island review --cwd ~/repo --agent-profile reviewer --run "review PR 472"` |
 | start a Claude one in a fresh worktree, on another model | `archi char new --island review --cwd ~/repo --command "claude -w pr-472 --model opus" --run "review PR 472"` |
 
 `archi char wait` exits 0 on a matched state, 2 on timeout and 3 when the
