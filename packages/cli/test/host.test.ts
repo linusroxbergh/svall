@@ -21,6 +21,8 @@ const TOKEN = 'remote-token-never-printed';
 const HOME = '/home/linus';
 const BASE = `${HOME}/.local/share/archipelago`;
 const ARCHI = `${BASE}/current/bin/archi`;
+// the PATH the companion's units run with, and so the one its daemon finds the agent CLIs on
+const UNIT_PATH = `PATH=${BASE}/current/node/bin:${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin`;
 
 const OS_RELEASE = 'NAME="Ubuntu"\nID=ubuntu\nVERSION_ID="24.04"\nVERSION="24.04.1 LTS (Noble Numbat)"\n';
 const DF = 'Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/root 60000000 20000000 40000000 34% /\n';
@@ -61,7 +63,7 @@ function deps(o: Partial<HostDeps> = {}): HostDeps {
 }
 
 /** Everything a healthy Ubuntu companion answers, in the order `host add` asks for it. */
-function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doctor?: string } = {}): void {
+function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doctor?: string; agents?: boolean } = {}): void {
   ssh.reply(['uname', '-sm'], { stdout: 'Linux aarch64\n' });
   ssh.reply(['cat', '/etc/os-release'], { stdout: o.osRelease ?? OS_RELEASE });
   ssh.reply(['archi-home'], { stdout: `${HOME}\nlinus\n` });
@@ -77,11 +79,11 @@ function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doc
   ssh.reply(['setup'], { stdout: 'release 1.2.3 installed\n' });
   ssh.reply(['doctor', '--json'], { stdout: o.doctor ?? DOCTOR });
   ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
-  ssh.reply(['archi-agents'], { stdout: 'claude yes\ncodex yes\n' });
-  ssh.reply(['claude', '--version'], { stdout: '2.1.278 (Claude Code)\n' });
-  ssh.reply(['claude', 'auth', 'status'], { stdout: 'Logged in\n' });
-  ssh.reply(['codex', '--version'], { stdout: 'codex-cli 0.155.1\n' });
-  ssh.reply(['codex', 'login', 'status'], { stdout: 'Logged in using ChatGPT\n' });
+  if (o.agents === false) return;
+  ssh.reply([UNIT_PATH, 'claude', '--version'], { stdout: '2.1.278 (Claude Code)\n' });
+  ssh.reply([UNIT_PATH, 'claude', 'auth', 'status', '--json'], { stdout: '{"loggedIn":true}\n' });
+  ssh.reply([UNIT_PATH, 'codex', '--version'], { stdout: 'codex-cli 0.155.1\n' });
+  ssh.reply([UNIT_PATH, 'codex', 'login', 'status'], { stdout: 'Logged in using ChatGPT\n' });
 }
 
 /** A daemon on the far side of the forward, so the end-to-end probe has something to answer it. */
@@ -120,7 +122,7 @@ describe('host add', () => {
     await d.close();
 
     expect(out.result).toBe('ready');
-    const order = ssh.remoteCalls().map((w) => (w[0] === 'sh' ? w[2].slice(0, 20) : path.basename(w[0]) + (w[1] ? ` ${w[1]}` : '')));
+    const order = ssh.remoteCalls().map((w) => (w[0] === 'sh' ? w[2].slice(0, 20) : w[0] === 'env' ? `${w[2]} ${w[3]}` : path.basename(w[0]) + (w[1] ? ` ${w[1]}` : '')));
     expect(order.slice(0, 8)).toEqual([
       'uname -sm', 'cat /etc/os-release',
       'printf "%s\\n%s\\n" "$', 'for c in "$@"; do if',
@@ -128,10 +130,38 @@ describe('host add', () => {
     ]);
     expect(order.slice(8)).toEqual([
       'mkdir -p', 'cat > "$1"', 'mkdir -p', 'tar -xzf', 'archi setup', 'rm -rf',
-      'archi doctor', 'archi version', 'for c in "$@"; do if',
+      'archi doctor', 'archi version',
       'claude --version', 'claude auth', 'codex --version', 'codex login',
       'archi connection-info',
     ]);
+  });
+
+  it('finds claude and codex on the PATH the companion\'s unit runs with, and holds each to its version floor and login', async () => {
+    // over ssh the login shell finds neither CLI; their installers put them in ~/.local/bin
+    healthy({ agents: false });
+    ssh.reply([UNIT_PATH, 'claude', '--version'], { stdout: '2.1.278 (Claude Code)\n' });
+    ssh.reply([UNIT_PATH, 'claude', 'auth', 'status', '--json'], { stdout: '{"loggedIn":false}\n', code: 1 });
+    ssh.reply([UNIT_PATH, 'codex', '--version'], { stdout: 'codex-cli 0.154.2\n' });
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+    await d.close();
+    expect(step('claude').at(-1)).toMatchObject({ status: 'warn', detail: '2.1.278 (Claude Code), not logged in', action: 'ssh trift.test, then claude auth login' });
+    expect(step('codex').at(-1)).toMatchObject({ status: 'warn', detail: 'codex-cli 0.154.2: Archipelago needs 0.155 or newer', action: 'ssh trift.test, then update Codex' });
+    expect(out.actions).toEqual(['ssh trift.test, then claude auth login', 'ssh trift.test, then update Codex']);
+    const agentCalls = ssh.remoteCalls().filter((w) => w.includes('claude') || w.includes('codex'));
+    expect(agentCalls.length).toBe(3);
+    expect(agentCalls.every((w) => w[0] === 'env' && w[1] === UNIT_PATH)).toBe(true);
+  });
+
+  it('names an agent CLI the unit\'s PATH does not hold as one to install', async () => {
+    healthy({ agents: false });
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+    await d.close();
+    expect(step('claude').at(-1)).toMatchObject({ status: 'warn', detail: 'claude is not installed on this machine', action: 'ssh trift.test, then install Claude Code' });
+    expect(step('codex').at(-1)).toMatchObject({ status: 'warn', detail: 'codex is not installed on this machine', action: 'ssh trift.test, then install Codex' });
   });
 
   it('writes the registry record under the machine id the companion reports', async () => {

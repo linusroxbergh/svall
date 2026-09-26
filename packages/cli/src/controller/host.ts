@@ -1,7 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { FleetConfig, FleetId, MachineId, MachineRecord } from '@archipelago/protocol';
+import { AGENTS, AGENT_KINDS, versionOk } from '@archipelago/archid/agents';
 import { writeJsonAtomic } from '@archipelago/archid/atomic';
+import { unitPath } from '@archipelago/archid/linux/setup';
 import { isProfileName, PRIVATE, profileOf } from '@archipelago/archid/profile';
 import { resolvePaths } from '@archipelago/archid/paths';
 import { archiExe } from '@archipelago/archid/release';
@@ -205,31 +207,28 @@ function serviceOutcome(report: RemoteDoctor, destination: string): Outcome<Remo
   return { value: report, detail: units.join('; '), ...(action ? { status: 'warn' as const, action } : {}) };
 }
 
-/** The agent checks: every one of them is something to go and do, never something that stops setup. */
-async function agentChecks(master: SshMaster, destination: string, run: Runner): Promise<void> {
-  const found = new Map((await master.run(sh('archi-agents', WHICH, 'claude', 'codex'), { timeoutMs: PROBE_TIMEOUT }))
-    .stdout.split('\n').filter(Boolean).map((l) => l.trim().split(/\s+/) as [string, string]));
-  const there = (agent: string) => found.get(agent) === 'yes';
-  const away = (agent: string, how: string): Outcome<void> =>
-    ({ value: undefined, status: 'warn', detail: `${agent} is not installed on this machine`, action: `ssh ${destination}, then ${how}` });
-
-  await run.step('claude', async () => {
-    if (!there('claude')) return away('claude', 'install Claude Code');
-    const version = (await master.run(['claude', '--version'], { timeoutMs: PROBE_TIMEOUT })).stdout.trim();
-    const auth = await master.run(['claude', 'auth', 'status'], { timeoutMs: PROBE_TIMEOUT });
-    return auth.code === 0
-      ? { value: undefined, detail: `${version}, logged in` }
-      : { value: undefined, status: 'warn', detail: `${version}, not logged in`, action: `ssh ${destination}, then claude auth status and log in` };
-  });
-
-  await run.step('codex', async () => {
-    if (!there('codex')) return away('codex', 'install the Codex CLI');
-    const version = (await master.run(['codex', '--version'], { timeoutMs: PROBE_TIMEOUT })).stdout.trim();
-    const login = await master.run(['codex', 'login', 'status'], { timeoutMs: PROBE_TIMEOUT });
-    return login.code === 0
-      ? { value: undefined, detail: `${version}, logged in` }
-      : { value: undefined, status: 'warn', detail: `${version}, not logged in`, action: `ssh ${destination}, then codex login and trust the hooks once with /hooks` };
-  });
+/**
+ * The agent checks, on the PATH the companion's units run with, which a login over ssh does not see all of: every
+ * one of them is something to go and do, never something that stops setup.
+ */
+async function agentChecks(master: SshMaster, o: { destination: string; home: string; archiBase: string }, run: Runner): Promise<void> {
+  const PATH = unitPath({ release: path.posix.join(o.archiBase, 'current'), homedir: o.home, prefix: o.archiBase });
+  for (const kind of AGENT_KINDS) {
+    await run.step(kind, async () => {
+      const a = AGENTS[kind];
+      const call = (args: string[]) => master.run(['env', shellQuote(`PATH=${PATH}`), a.bin, ...args], { timeoutMs: PROBE_TIMEOUT });
+      const todo = (detail: string, how: string): Outcome<void> => ({ value: undefined, status: 'warn', detail, action: `ssh ${o.destination}, then ${how}` });
+      const v = await call(['--version']);
+      // env exits 127 for a program it finds nowhere on that PATH
+      if (v.code === 127) return todo(`${kind} is not installed on this machine`, `install ${a.label}`);
+      const version = v.stdout.trim().split('\n')[0];
+      if (v.code !== 0) return todo(`${a.bin} --version exited ${v.code}: ${v.stderr.trim().slice(0, 200) || 'no output'}`, `run ${a.bin} --version there and see what it answers`);
+      if (!versionOk(a, version)) return todo(`${version}: Archipelago needs ${a.minVersion!.slice(0, 2).join('.')} or newer`, `update ${a.label}`);
+      const login = await call(a.loginArgs);
+      if (login.code === 0 && a.loggedIn(login.stdout)) return { value: undefined, detail: `${version}, logged in` };
+      return todo(`${version}, not logged in`, kind === 'codex' ? `${a.loginHint}, and trust the hooks once with /hooks` : a.loginHint);
+    });
+  }
 }
 
 /**
@@ -351,7 +350,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         return { value: id.data, detail: `${v.release}, machine ${id.data}` };
       });
 
-      await agentChecks(master, o.ssh, run);
+      await agentChecks(master, { destination: o.ssh, home, archiBase: remote.archiBase }, run);
 
       const record: MachineRecord = {
         name: o.name, ssh: o.ssh, platform: 'linux', arch, home,
