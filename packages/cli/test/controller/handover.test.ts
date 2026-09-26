@@ -213,6 +213,8 @@ class FakeDestination {
   sealed = false;
   /** roots holding work no handover left, until a claim archives them */
   diverged = new Set<string>();
+  /** roots that already hold the replica an earlier handover left */
+  replicas = new Set<string>();
   archived: string[] = [];
   probe: Probe = { exists: true, writable: true, caseInsensitive: false, freeBytes: 1e12 };
   /** what a folder reads as when it is not `probe` */
@@ -233,7 +235,10 @@ class FakeDestination {
       return j ? { transaction: { id: j.tx, fromMachineId: this.w.other(this.id), toMachineId: this.id, phase: j.phase, startedAt: 1 }, characters: [], roots: [] } : { characters: [], roots: [] };
     },
     'handover.inspect': (p: { roots: { id: string; path: string }[]; folders: string[]; resumes?: { cwd: string }[] }) => ({
-      roots: p.roots.map((r) => ({ id: r.id, check: this.diverged.has(r.id) ? { ok: false, path: r.path, blocker: this.divergedBlocker(r.id, r.path) } : { ok: true, path: r.path, kind: 'absent' } })),
+      roots: p.roots.map((r) => ({
+        id: r.id,
+        check: this.diverged.has(r.id) ? { ok: false, path: r.path, blocker: this.divergedBlocker(r.id, r.path) } : { ok: true, path: r.path, kind: this.replicas.has(r.id) ? 'replica' : 'absent' },
+      })),
       folders: Object.fromEntries(p.folders.map((f) => [f, this.folders[f] ?? this.probe])),
       untrusted: (p.resumes ?? []).map((f) => f.cwd).filter((cwd) => !this.trusted.has(cwd)),
     }),
@@ -1003,13 +1008,42 @@ describe('preflight', () => {
     w.destination.answers['handover.inspect'] = ((p: { folders: string[] }) => { asked = p.folders; return inspect(p); }) as never;
     w.destination.folders['/Volumes/work'] = { exists: false, writable: false, caseInsensitive: false, freeBytes: 0 };
     const missing = await controller(w).preflight(trift, {});
-    expect(asked).toEqual([HOME, '/Volumes/work']);
+    expect(asked).toEqual([HOME, '/Volumes/work', at('app'), at('app.git'), '/Volumes/work/tool']);
     expect(missing.blockers).toEqual([{
       code: 'parent_missing', entity: { kind: 'root', id: 'r_tool' },
       message: 'trift has no /Volumes/work, which /Volumes/work/tool lands in; a folder outside the home arrives at the same path there, so make /Volumes/work on trift first',
     }]);
     delete w.destination.folders['/Volumes/work'];
     expect((await controller(w).preflight(trift, {})).blockers).toEqual([]);
+  });
+
+  it('asks the folder above a root to be writable only when the handover makes that root, so a root holding its replica comes back under a folder no one may write', async () => {
+    // the Mac takes back a folder that went out, straight under its /Volumes, which only root may write
+    const w = new World({ pull: true });
+    const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
+    w.source.answers['handover.preflight'] = ((p: unknown) => {
+      const r = preflight(p);
+      r.manifest.roots.push({ id: 'r_work', kind: 'cwd', entry: 'dir', path: '/Volumes/work', files: [file('a.txt'), file('A.txt')] });
+      return r;
+    }) as never;
+    const blockers = async () => (await controller(w).preflight(mac, {})).blockers;
+    const probe = (o: Partial<Probe>): Probe => ({ exists: true, writable: true, caseInsensitive: false, freeBytes: 1e12, ...o });
+    w.destination.folders['/Volumes'] = probe({ writable: false });
+    w.destination.replicas.add('r_work');
+    expect(await blockers()).toEqual([]);
+
+    // the root itself takes what changed, and folds case as it does
+    w.destination.folders['/Volumes/work'] = probe({ writable: false });
+    expect(await blockers()).toEqual([{ code: 'path_unsupported', message: '/Volumes/work on mac cannot be written' }]);
+    w.destination.folders['/Volumes/work'] = probe({ caseInsensitive: true });
+    expect(await blockers()).toEqual([{
+      code: 'path_collision', entity: { kind: 'root', id: 'r_work' }, message: '/Volumes/work would hold A.txt, a.txt, whose names differ only by case, and mac does not tell them apart',
+    }]);
+
+    // a first copy is made in /Volumes
+    w.destination.replicas.delete('r_work');
+    w.destination.folders['/Volumes/work'] = probe({ exists: false, writable: false, freeBytes: 0 });
+    expect(await blockers()).toEqual([{ code: 'path_unsupported', message: '/Volumes on mac cannot be written' }]);
   });
 
   it('blocks a missing destination home, a fleet already in a handover, and a destination that is the owner', async () => {

@@ -815,7 +815,9 @@ export class Handover {
   private async destinationChecks(source: Side, destination: Side, m: TransferManifestV1, choices: HandoverChoices): Promise<{ blockers: Blocker[]; warnings: Warning[] }> {
     const carried = replicaRoots(m);
     const folderOf = (p: string): string => landingFolder(p, m.home);
-    const folders = [...new Set([...carried.map((c) => folderOf(c.path)), ...m.sessions.map((s) => folderOf(s.destinationHome ?? m.home))])];
+    const sessionFolders = m.sessions.map((s) => folderOf(s.destinationHome ?? m.home));
+    const dirs = carried.filter((c) => c.entry === 'dir');
+    const folders = [...new Set([...carried.map((c) => folderOf(c.path)), ...sessionFolders, ...dirs.map((c) => c.path)])];
     const where = destination.route.name;
     const links = carriedLinks(m);
     const ask = [...new Set(links.flatMap((l) => (l.carried === undefined ? [l.at] : [])))];
@@ -851,18 +853,24 @@ export class Handover {
           : `${where} has no ${folder}, which ${root.path} lands in; a folder outside the home arrives at the same path there, so make ${folder} on ${where} first`,
       });
     }
-    for (const folder of folders) {
+    const absent = new Set(r.roots.filter((x) => (x.check.ok && x.check.kind === 'absent') || archived.has(x.id)).map((x) => x.id));
+    // rsync writes a folder already there from inside it, and a file or a new folder from the folder above it
+    const written = new Set([
+      ...carried.filter((c) => c.entry === 'file' || absent.has(c.id)).map((c) => folderOf(c.path)), ...sessionFolders,
+      ...dirs.filter((c) => !absent.has(c.id)).map((c) => c.path),
+    ]);
+    for (const folder of written) {
       if (r.folders[folder]?.exists && !r.folders[folder].writable) blockers.push({ code: 'path_unsupported', message: `${folder} on ${where} cannot be written` });
     }
     // a first copy needs every byte; a root already holding a replica needs only what changed
-    const absent = new Set(r.roots.filter((x) => (x.check.ok && x.check.kind === 'absent') || archived.has(x.id)).map((x) => x.id));
     for (const [folder, bytes] of Object.entries(spaceNeed({ ...m, roots: m.roots.filter((x) => absent.has(x.id)) }))) {
       const probe = r.folders[folder];
       if (probe?.exists && probe.freeBytes < bytes) {
         blockers.push({ code: 'destination_no_space', message: `${where} has ${probe.freeBytes} bytes free under ${folder}, and the handover needs ${bytes}` });
       }
     }
-    for (const root of m.roots.filter((x) => !x.foldedInto && r.folders[folderOf(x.path)]?.caseInsensitive)) {
+    const folding = (p: string): boolean => (r.folders[p]?.exists ? r.folders[p] : r.folders[folderOf(p)])?.caseInsensitive ?? false;
+    for (const root of m.roots.filter((x) => !x.foldedInto && folding(x.path))) {
       const clash = caseCollisions(root.files.map((f) => f.path));
       if (clash.length) {
         blockers.push({
