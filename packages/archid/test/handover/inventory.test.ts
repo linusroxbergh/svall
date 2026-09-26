@@ -91,12 +91,16 @@ describe('path classification', () => {
   it('strips every forbidden field from the state that leaves the machine, and nothing else', () => {
     const state = emptyState();
     const tmux = { windowId: '@1', paneId: '%1' };
-    state.characters.c1 = char('c1', { tmux, panePath: '/Users/linus/p', second: { cwd: '/x', tmux, unread: false } });
+    const agent = { kind: 'claude' as const, sessionId: 's', transcriptPath: '/t.jsonl', status: 'idle' as const, lastActivityAt: 1 };
+    state.characters.c1 = char('c1', { tmux, panePath: '/Users/linus/p', agent: { ...agent, pid: 41 }, second: { cwd: '/x', tmux, unread: false, agent: { ...agent, pid: 42 } } });
     const exported = exportSnapshot(state);
     expect(exported.characters.c1.tmux).toBeUndefined();
     expect(exported.characters.c1.panePath).toBeUndefined();
-    expect(exported.characters.c1.second).toEqual({ cwd: '/x', unread: false });
+    // a pid names a process on this machine only
+    expect(exported.characters.c1.agent).toEqual(agent);
+    expect(exported.characters.c1.second).toEqual({ cwd: '/x', unread: false, agent });
     expect(state.characters.c1.tmux).toEqual(tmux);
+    expect(state.characters.c1.agent?.pid).toBe(41);
     expect(FleetState.parse(exported)).toEqual(exported);
   });
 });

@@ -250,13 +250,14 @@ export function portablePathValues(docs: { FleetState?: FleetState; FleetConfig?
   return out;
 }
 
-/** The state as it may leave this machine: a copy with every forbidden field removed. */
+/** The state as it may leave this machine: a copy with every forbidden field and every agent pid removed. */
 export function exportSnapshot(state: FleetState): FleetState {
   const copy = structuredClone(state);
   for (const [field, spec] of Object.entries(PATH_FIELDS)) {
     if (spec.classification !== 'forbidden' || !field.startsWith('FleetState.')) continue;
     for (const { parent, key } of fieldValues(copy, field)) delete parent[key];
   }
+  for (const c of Object.values(copy.characters)) { delete c.agent?.pid; delete c.second?.agent?.pid; }
   return copy;
 }
 
