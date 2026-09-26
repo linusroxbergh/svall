@@ -922,6 +922,33 @@ describe('destination activate', () => {
     expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_dee')).toMatchObject({ ok: true, notice: dee.notice });
   });
 
+  it('stops watching a Codex counted up at its trust prompt once its folder is trusted, since Codex starts its session only with its first turn', async () => {
+    const { s, d, preparedDigest } = await prepared();
+    d.gateway.commit(preparedDigest);
+    d.crew.silent.add('c_dee');
+
+    const { r } = await activateBy(d);
+    expect(r.characters.find((c) => c.id === 'c_dee')).toMatchObject({ ok: true, notice: expect.stringMatching(/"Trust this folder\?" prompt/) });
+    await d.clock.advance(10_000);
+    expect(d.crew.carried('c_dee')).toBe(true);
+
+    // answered "Yes", which Codex writes into its config
+    fs.writeFileSync(path.join(s.dst, '.codex/config.toml'), `[projects."${path.join(s.dst, 'work/demo')}"]\ntrust_level = "trusted"\n`);
+    await d.clock.advance(2000);
+    expect(d.crew.carried('c_dee')).toBe(false);
+    let looks = 0;
+    const list = d.crew.tmux.listWindows;
+    d.crew.tmux.listWindows = (signal) => { looks++; return list(signal); };
+
+    // quit before any prompt, it is the fleet's to judge as any terminal, and not told to trust its folder again
+    d.crew.window('c_dee')!.command = 'bash';
+    await d.clock.advance(10_000);
+    expect(looks).toBe(0);
+    expect(d.crew.log).not.toContain('kill c_dee');
+    expect(s.store.state.characters.c_dee.resumeError).toBeUndefined();
+    expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_dee')).toMatchObject({ ok: true });
+  });
+
   it("counts a resumed Claude up at its trust prompt where this machine's Claude does not trust its folder, keeps its window without the SessionStart wait, and says which answer goes on", async () => {
     const { s, d, preparedDigest } = await prepared();
     d.gateway.commit(preparedDigest);

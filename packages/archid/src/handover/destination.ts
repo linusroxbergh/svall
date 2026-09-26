@@ -564,6 +564,8 @@ export class DestinationHandover {
     let entry: Activation;
     // what to do again, should an agent counted up at a prompt leave it before its session starts
     let unanswered: string | undefined;
+    // the folder whose trust prompt it was counted up at
+    let asked: ResumeFolder | undefined;
     try {
       if (!agent) {
         const opened = held ? undefined : await this.openSlot(s);
@@ -576,7 +578,8 @@ export class DestinationHandover {
       } else {
         const { adapter } = await this.cli(agent.kind);
         // an agent asks whether to trust its folder before any hook runs, so one that asks reports nothing until answered
-        const trusted = await this.trusted({ kind: agent.kind, ...resumeFolder(c, s.term, expandHome) });
+        const folder: ResumeFolder = { kind: agent.kind, ...resumeFolder(c, s.term, expandHome) };
+        const trusted = await this.trusted(folder);
         let up: Up = 'running';
         // one that reports its SessionStart as it resumes, yet holds its pane silent well past that, is at some other prompt
         let quiet = false;
@@ -598,7 +601,10 @@ export class DestinationHandover {
           const prompt = up === 'running' && !trusted;
           const notice = prompt ? `${agent.kind} waits at its "Trust this folder?" prompt in ${which}; ${answer} there`
             : quiet ? `${agent.kind} has not started its session in ${which} and may be waiting at a prompt there; answer it there` : undefined;
-          if (prompt) unanswered = `revive it and ${adapter.trustAnswer ? answer : 'trust its folder'} at its "Trust this folder?" prompt`;
+          if (prompt) {
+            unanswered = `revive it and ${adapter.trustAnswer ? answer : 'trust its folder'} at its "Trust this folder?" prompt`;
+            asked = folder;
+          }
           if (quiet) unanswered = 'revive it to see';
           entry = { ...s, ok: true, sessionId: agent.sessionId, ...(notice && { notice }) };
         }
@@ -611,16 +617,19 @@ export class DestinationHandover {
     if (entry.error) this.d.log.error(`handover ${tx}: ${entry.error}`);
     // watched before its row is written, which forgets a SessionStart already heard for it
     if (unanswered && agent) {
-      this.watch(tx, s, which, agent, carried, unanswered).catch((e: Error) => this.d.log.error(`handover ${tx}: ${which} is no longer watched: ${e.message}`));
+      this.watch(tx, s, which, agent, carried, unanswered, asked).catch((e: Error) => this.d.log.error(`handover ${tx}: ${which} is no longer watched: ${e.message}`));
     }
     this.recordSlot(tx, entry);
   }
 
   /**
-   * Watches a terminal counted up at a prompt until its session starts, the fleet leaving what it carries alone
-   * meanwhile. One whose agent leaves the pane first is left dormant with that session and an error saying `then`.
+   * Watches a terminal counted up at a prompt until its session starts, or, for an agent that starts none until its
+   * first turn, until the folder it was `asked` to trust is trusted, the fleet leaving what it carries alone meanwhile.
+   * One whose agent leaves the pane first is left dormant with that session and an error saying `then`.
    */
-  private async watch(tx: string, s: Slot, which: string, agent: { kind: AgentKind; sessionId: string }, carried: Carried | undefined, then: string): Promise<void> {
+  private async watch(
+    tx: string, s: Slot, which: string, agent: { kind: AgentKind; sessionId: string }, carried: Carried | undefined, then: string, asked?: ResumeFolder,
+  ): Promise<void> {
     const key = keyOf(s);
     const started = this.waitStart(s, agent.sessionId);
     this.watched.add(key);
@@ -635,6 +644,7 @@ export class DestinationHandover {
         const slot = s.term === 2 ? c?.second : c;
         // a later handover's rest answers for it from then on
         if (heard || slot?.restedBy !== tx) return;
+        if (asked && !(await this.cli(agent.kind)).adapter.sessionStartOnResume && (await this.trusted(asked))) return;
         let look: Look;
         try { look = slot.tmux ? await this.holding(slot) : { held: 'gone' }; } catch { continue; }
         if (heard) return;
