@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SPACING, isLand, landCells, sizeForCrew, type AgentKind } from '@archipelago/protocol';
+import { MachineId, SPACING, isLand, landCells, sizeForCrew, type AgentKind } from '@archipelago/protocol';
 import { Config } from '../src/config.js';
 import { docsDir } from '../src/docs.js';
 import type { Proc } from '../src/dormancy.js';
@@ -43,7 +43,7 @@ runIf('Fleet', () => {
     // a spawned stand-in agent reaches the fleet the way a real one does: over the hooks socket
     const hooks = await startHookReceiver(paths.hooksSock, (e) => fleet.onSocketEvent(e), silentLogger);
     cleanup.push(() => hooks.close());
-    return { fleet, store, tmux, home, procs };
+    return { fleet, store, tmux, home, procs, ownership };
   }
 
   it('creates islands and characters backed by tmux windows', async () => {
@@ -485,6 +485,22 @@ runIf('Fleet', () => {
     fleet.setDormancy(1);
     await fleet['endIdleAgents']();
     expect(store.state.characters[c.id].tmux).toBeUndefined();
+  });
+
+  it('ends no agent once a handover freezes the fleet, one found idle before ps answered included', async () => {
+    const b = await boot();
+    const { fleet, store, ownership } = b;
+    const { c } = await withAgent(b);
+    store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
+    let answer!: () => void;
+    const listed = new Promise<void>((r) => { answer = r; });
+    fleet['deps'].processes = async () => { await listed; return b.procs; };
+    const ending = fleet['endIdleAgents']();
+    await ownership.freeze({ id: 'tx-1', fromMachineId: ownership.machineId, toMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'), phase: 'preparing', startedAt: 1 });
+    answer();
+    await ending;
+    expect(store.state.characters[c.id].tmux).toBeDefined();
+    expect(store.state.characters[c.id].revive).toBeUndefined();
   });
 
   it('leaves an agent whose pid is gone or runs another program, or whose launch a resume would change', async () => {

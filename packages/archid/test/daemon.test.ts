@@ -180,6 +180,7 @@ runIf('startDaemon', () => {
     homes.push(home);
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
     fs.writeFileSync(path.join(home, '.env'), 'ANTHROPIC_API_KEY=secret');
+    fs.writeFileSync(path.join(home, 'relay-secret'), 'secret');
     const claudeDir = path.join(os.homedir(), '.claude');
     fs.mkdirSync(claudeDir, { recursive: true });
     fs.writeFileSync(path.join(claudeDir, '.credentials.json'), '{"secret":1}');
@@ -199,10 +200,12 @@ runIf('startDaemon', () => {
       await new Promise((r) => ws.once('open', r));
       ws.send(JSON.stringify({ token: d.token }));
       const c = await d.fleet.createCharacter({ islandId: d.fleet.createIsland({ name: 'x' }).id, cwd: os.homedir() });
-      for (const p of ['.archipelago-files/token', '.archipelago-files/mobile-key', '.archipelago-files/vapid.json', '.archipelago-files/.env', '.archipelago-later/token']) {
+      for (const p of ['.archipelago-files/token', '.archipelago-files/mobile-key', '.archipelago-files/vapid.json', '.archipelago-files/.env', '.archipelago-files/relay-secret', '.archipelago-later/token']) {
         expect(await call('fs.read', { id: c.id, path: p })).toMatchObject({ error: { code: 'invalid' } });
       }
-      expect(await call('fs.read', { id: c.id, path: '.archipelago-files/config.json' })).toMatchObject({ result: { text: expect.any(String) } });
+      for (const p of ['.archipelago-files/fleet.json', '.archipelago-files/node.json']) {
+        expect(await call('fs.read', { id: c.id, path: p })).toMatchObject({ result: { text: expect.any(String) } });
+      }
       expect(await call('fs.read', { id: `r:${claudeDir}`, path: '.credentials.json' })).toMatchObject({ error: { code: 'invalid' } });
       expect(await call('fs.read', { id: `r:${claudeDir}`, path: 'CLAUDE.md' })).toMatchObject({ result: { text: '# me\n' } });
     } finally {

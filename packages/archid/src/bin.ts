@@ -19,13 +19,13 @@ const report = (line: string, detail = line) => {
   if (process.stderr.isTTY) process.stderr.write(`${line}\n`);
 };
 
-// changes whenever config.json or state.json is written, the two files a start can be refused for
-const stamp = (): string => [paths.config, paths.state].map((file) => {
+// changes whenever a config file or state.json is written, the files a start can be refused for
+const stamp = (): string => [paths.fleetConfig, paths.nodeConfig, paths.legacyConfig, `${paths.legacyConfig}.bak`, paths.state].map((file) => {
   try { const s = fs.statSync(file); return `${s.ino}:${s.size}:${s.mtimeMs}`; } catch { return '-'; }
 }).join(' ');
 
-// launchd would restart an exiting daemon every ten seconds, so one refused for its config.json or state.json waits for
-// either to change. The stamp is taken before the start, so a fix written while it fails is not missed
+// launchd would restart an exiting daemon every ten seconds, so one refused for its config or state.json waits for
+// one of them to change. The stamp is taken before the start, so a fix written while it fails is not missed
 async function start(): Promise<Daemon> {
   for (;;) {
     const before = stamp();

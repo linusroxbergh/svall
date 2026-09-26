@@ -82,7 +82,7 @@ function manifestFor(tx: string | undefined, from = mac, to = trift): FrozenMani
 }
 
 const info = (machineId: MachineId, over: Partial<SystemInfo> = {}): SystemInfo => ({
-  machineId, release: 'dev', protocol: PROTOCOL_VERSION, stateSchema: 7, transferSchema: TRANSFER_SCHEMA_VERSION,
+  machineId, release: 'dev', protocol: PROTOCOL_VERSION, stateSchema: emptyState().version, transferSchema: TRANSFER_SCHEMA_VERSION,
   platform: machineId === mac ? 'darwin' : 'linux', arch: 'arm64', git: '2.43.0',
   agentAdapters: [
     { kind: 'claude', version: '2.1.280', adapter: 1, home: machineId === mac ? '/Users/ada/.claude' : '/home/ada/.claude', loggedIn: true, hooks: true },

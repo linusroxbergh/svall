@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { FleetConfig, FleetId, MachineId, emptyState, type Event } from '@archipelago/protocol';
+import { FleetConfig, FleetId, MachineId, PROTOCOL_VERSION, emptyState, type Event } from '@archipelago/protocol';
 import { Config } from '../../src/config.js';
 import { HandoverService } from '../../src/handover/service.js';
 import { DestinationJournal, SourceJournal, openJournal } from '../../src/handover/journal.js';
@@ -34,7 +34,7 @@ const manifest = {
 const machines = {
   source: { pathRoots: { home: '/Users/linus' } },
   destination: {
-    info: { machineId: other, release: 'dev', protocol: 10, stateSchema: 7, transferSchema: 1, platform: 'linux' as const, arch: 'x64', agentAdapters: [] },
+    info: { machineId: other, release: 'dev', protocol: PROTOCOL_VERSION, stateSchema: emptyState().version, transferSchema: 1, platform: 'linux' as const, arch: 'x64', agentAdapters: [] },
     pathRoots: { home: '/home/linus' }, fleetHome: '/home/linus/.archipelago',
   },
 };

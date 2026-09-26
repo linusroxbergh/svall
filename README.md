@@ -457,7 +457,7 @@ signed in to is signed in there too.
     pnpm desktop:build   # an unsigned apps/desktop/mac/build/Archipelago.app
     pnpm ghostty:build   # GhosttyKit from vendor/ghostty (v1.3.1) into vendor/ghostty-kit
     pnpm ghostty:publish # build GhosttyKit and upload it for installs to download
-    mkdir -p /tmp/archi-dev && echo '{ "port": 0 }' > /tmp/archi-dev/config.json
+    mkdir -p /tmp/archi-dev && echo '{ "port": 0 }' > /tmp/archi-dev/node.json
     ARCHI_HOME=/tmp/archi-dev pnpm archid   # port 0 keeps it off the private fleet's 47800
 
 The first `pnpm e2e` needs

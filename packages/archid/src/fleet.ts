@@ -437,6 +437,8 @@ export class Fleet extends EventEmitter<Events> {
       const proc = procs.find((p) => p.pid === a.pid);
       const flags = proc && startFlags(proc.args, a.kind);
       if (!proc || !flags || runsInBackground(proc.pid, procs) || !a.transcriptPath || !fs.existsSync(a.transcriptPath)) continue;
+      // a freeze, or the fleet moving to another machine, while ps ran or an earlier agent closed leaves every agent be
+      if (!this.writable()) return;
       // a prompt, a close or a revive while ps ran leaves it be
       const cur = this.deps.store.state.characters[c.id];
       if (!cur?.tmux || cur.tmux.windowId !== c.tmux?.windowId || !due(cur)) continue;
@@ -783,7 +785,7 @@ export class Fleet extends EventEmitter<Events> {
       delete second.revive;
       delete second.resumeError;
       // a resumed session keeps its old agent record; its stale status must not answer the next wait.
-      if (second.agent) { second.agent.status = 'idle'; delete second.agent.prompt; second.unread = false; }
+      if (second.agent) { second.agent.status = 'idle'; delete second.agent.prompt; delete second.agent.promptId; delete second.agent.background; second.unread = false; }
       cur.second = second;
     });
     if (command) await this.deps.tmux.sendLine(w.paneId, command, true);

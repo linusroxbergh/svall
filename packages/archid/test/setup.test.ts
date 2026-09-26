@@ -265,18 +265,18 @@ describe('runSetup', () => {
   it('calls the shims current while they are what setup writes now for this checkout', async () => {
     const home = makeHome();
     const shimDir = path.join(home, 'bin');
-    expect(shimsCurrent(shimDir, repoRoot)).toBe(false);
+    expect(shimsCurrent(shimDir, { repoRoot })).toBe(false);
     await runSetup({ home, settingsPath: path.join(home, 'claude-settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir, repoRoot, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }) });
-    expect(shimsCurrent(shimDir, repoRoot)).toBe(true);
+    expect(shimsCurrent(shimDir, { repoRoot })).toBe(true);
     // the app desktop:install puts in place is this checkout's, so shims that run another one, moved or not, are out of date
     const shim = path.join(shimDir, 'archipelago');
     const written = fs.readFileSync(shim, 'utf8');
     fs.writeFileSync(shim, written.replaceAll(repoRoot, path.join(home, 'other-clone')));
-    expect(shimsCurrent(shimDir, repoRoot)).toBe(false);
+    expect(shimsCurrent(shimDir, { repoRoot })).toBe(false);
     fs.writeFileSync(shim, written);
     // one without --tsconfig runs whatever the caller's cwd maps @archipelago/* to
     fs.writeFileSync(path.join(shimDir, 'archi'), `#!/bin/sh\nexec ${shq(path.join(repoRoot, 'node_modules/.bin/tsx'))} ${shq(path.join(repoRoot, 'packages/cli/src/main.ts'))} "$@"\n`);
-    expect(shimsCurrent(shimDir, repoRoot)).toBe(false);
+    expect(shimsCurrent(shimDir, { repoRoot })).toBe(false);
   });
 
   it('runs the statusline you had without node outside a character, and once the script is gone', async () => {
@@ -315,7 +315,7 @@ describe('runSetup', () => {
     expect(JSON.stringify(settings)).not.toContain(process.execPath);
     // the shims link into the release through current, which is what setup writes for one
     expect(fs.readlinkSync(path.join(home, 'bin', 'archi'))).toBe(path.relative(path.join(home, 'bin'), path.join(release, 'bin', 'archi')));
-    expect(shimsCurrent(path.join(home, 'bin'))).toBe(true);
+    expect(shimsCurrent(path.join(home, 'bin'), { release })).toBe(true);
   });
 
   it('moves every named profile\'s agent onto the release it installs', async () => {
@@ -323,11 +323,11 @@ describe('runSetup', () => {
     const launchAgentsDir = path.join(root, 'LaunchAgents');
     const work = path.join(root, '.archipelago-work');
     // a profile opened before releases existed runs from the checkout through tsx
-    await setupHome({ home: work, label: 'com.archipelago.archid.work', repoRoot, launchAgentsDir, launchctl: false, port: 0 });
+    await setupHome({ home: work, label: `${LAUNCHD_LABEL}.work`, repoRoot, launchAgentsDir, launchctl: false, port: 0 });
     const home = path.join(root, '.archipelago');
     const release = path.join(root, 'share', 'current');
     await runSetup({ home, settingsPath: path.join(root, 'claude-settings.json'), launchAgentsDir, shimDir: path.join(root, 'bin'), release, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(root, 'codex') }) });
-    const plist = fs.readFileSync(path.join(launchAgentsDir, 'com.archipelago.archid.work.plist'), 'utf8');
+    const plist = fs.readFileSync(path.join(launchAgentsDir, `${LAUNCHD_LABEL}.work.plist`), 'utf8');
     expect(plist).toContain(`<string>${path.join(release, 'bin', 'archid')}</string>`);
     expect(plist).not.toContain('tsx');
     expect(plist).toContain(`<key>ARCHI_HOME</key><string>${work}</string>`);

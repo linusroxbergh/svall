@@ -664,6 +664,30 @@ describe('a session under a path root declared through a link', () => {
     expect(rows(text).map((r) => [r.cwd, r.message.content])).toEqual([[real, 'one'], [real, 'two'], [real, 'three'], [real, 'four']]);
   });
 
+  it('keeps the resume an agent closed for idleness went dormant with, flags and all, and gives one this handover rested its own', async () => {
+    const base = tmp();
+    const mac = side(path.join(base, 'mac'), path.join(base, 'mac/home/code'));
+    const linux = side(path.join(base, 'linux'), path.join(base, 'linux/home/code'));
+    const transcript = path.join(mac.claude, 'projects', claudeProjectSlug(mac.cwd), `${SID}.jsonl`);
+    fs.mkdirSync(path.dirname(transcript), { recursive: true });
+    fs.writeFileSync(transcript, record(mac.cwd, 'one'));
+    const closed = `claude --dangerously-skip-permissions --effort high --resume ${SID}`;
+    const imported = async (restedBy?: string) => {
+      const state = emptyState();
+      state.characters.c1 = char('c1', {
+        cwd: mac.cwd, agent: { kind: 'claude', sessionId: SID, transcriptPath: transcript, status: 'idle', lastActivityAt: 0 }, revive: { command: closed }, restedBy,
+      });
+      const inventory = buildInventory(state, { fleet: FLEET }, {
+        source: { machineId: MAC, pathRoots: mac.roots, fleetHome: path.join(mac.home, '.archipelago') },
+        destination: { machineId: TRIFT, pathRoots: linux.roots, fleetHome: path.join(linux.home, '.archipelago'), agentHomes: { claude: linux.claude } },
+      });
+      const { manifest } = await buildManifest(inventory, { generation: 1 });
+      return importState({ ...manifest, transactionId: 't1' }).state.characters.c1.revive;
+    };
+    expect(await imported()).toEqual({ command: closed });
+    expect(await imported('t1')).toEqual({ command: `claude --resume ${SID}` });
+  });
+
   it('maps a record under either spelling of a source root, onto the real spelling of the destination\'s', () => {
     const map = sessionPathMap({
       sourceRoots: { home: '/Users/s', work: '/Users/s/code' }, sourceRealRoots: { work: '/Volumes/w' },

@@ -167,11 +167,11 @@ describe('a character with two sessions', () => {
     expect(slotStatus(c, 1)).toBe('idle');
     expect(slotStatus(c, 2)).toBe('working');
   });
-  it('reads a second terminal without a window as dormant, as it does the main one', () => {
+  it('reads a second terminal without a window as it does the main one, a turn or question left open as idle', () => {
     const dormant = { cwd: '/tmp', unread: false, revive: { command: 'codex resume s' } };
-    expect(slotStatus(chr('c', 'i', at, { second: dormant }), 2)).toBe('dormant');
-    expect(statusOf(chr('c', 'i', at, { tmux: undefined, second: dormant }))).toBe('dormant');
-    expect(statusOf(chr('c', 'i', at, { agent: agent('done'), second: dormant }))).toBe('done');
+    expect(slotStatus(chr('c', 'i', at, { second: dormant }), 2)).toBe('shell');
+    expect(slotStatus(chr('c', 'i', at, { second: { ...dormant, agent: agent('working') } }), 2)).toBe('idle');
+    expect(statusOf(chr('c', 'i', at, { agent: agent('done'), second: { ...dormant, agent: agent('blocked') } }))).toBe('done');
   });
   it('reads the fuller context and either unread flag', () => {
     const c = chr('c', 'i', at, { agent: agent('idle', 20), second: second(agent('done', 71), true) });

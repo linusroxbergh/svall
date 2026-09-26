@@ -91,9 +91,10 @@ describe('path classification', () => {
   it('strips every forbidden field from the state that leaves the machine, and nothing else', () => {
     const state = emptyState();
     const tmux = { windowId: '@1', paneId: '%1' };
-    state.characters.c1 = char('c1', { tmux, second: { cwd: '/x', tmux, unread: false } });
+    state.characters.c1 = char('c1', { tmux, panePath: '/Users/linus/p', second: { cwd: '/x', tmux, unread: false } });
     const exported = exportSnapshot(state);
     expect(exported.characters.c1.tmux).toBeUndefined();
+    expect(exported.characters.c1.panePath).toBeUndefined();
     expect(exported.characters.c1.second).toEqual({ cwd: '/x', unread: false });
     expect(state.characters.c1.tmux).toEqual(tmux);
     expect(FleetState.parse(exported)).toEqual(exported);

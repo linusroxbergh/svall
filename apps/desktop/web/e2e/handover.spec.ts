@@ -59,7 +59,7 @@ async function failedResume(archi: Archi, error: string): Promise<string> {
 
 const FAILED = "ada's terminal resumed codex session 01a0cd02-8ea0-75c1-89b3-89718ecbd91f, but codex exited back to its shell, so it is dormant again with that session; revive it to see";
 
-test('a character a handover could not resume says why where it shows as dormant, until a revive brings it up', async ({ page, archi }) => {
+test('a character a handover could not resume says why and waits for its Revive, which brings it up', async ({ page, archi }) => {
   const id = await failedResume(archi, FAILED);
   await fakeShell(page, archi.port, archi.token);
   await archi.open();
@@ -67,11 +67,12 @@ test('a character a handover could not resume says why where it shows as dormant
   await page.getByTestId(`sb-char-${id}`).click();
   await expect(page.getByTestId('resume-error')).toHaveText(FAILED);
   await expect(page.getByTestId('side-card').getByTestId('side-resume-error')).toContainText(FAILED);
-  await expect(page.getByTestId(`sb-char-${id}`).getByText('dormant')).toHaveAttribute('title', FAILED);
+  await expect(page.getByTestId(`sb-resume-error-${id}`)).toHaveAttribute('title', FAILED);
 
   await page.getByTestId('revive').click();
   await expect(page.getByTestId('surface')).toHaveAttribute('data-char', id, { timeout: 10_000 });
   await expect(page.getByTestId('side-resume-error')).toHaveCount(0);
+  await expect(page.getByTestId(`sb-resume-error-${id}`)).toHaveCount(0);
   expect((await archi.api.call('state.get', {})).characters[id].resumeError).toBeUndefined();
 });
 
@@ -79,20 +80,19 @@ test('the map says why a handover could not resume a dormant character on its to
   const id = await failedResume(archi, FAILED);
   await fakeShell(page, archi.port, archi.token);
   await archi.open('map');
-  await expect(page.getByTestId(`token-${id}`).getByText('dormant')).toHaveAttribute('title', FAILED);
+  await expect(page.getByTestId(`token-resume-error-${id}`)).toHaveAttribute('title', FAILED);
   await archi.api.call('char.revive', { id });
-  await expect(page.getByTestId(`token-${id}`)).not.toHaveAttribute('data-status', 'dormant', { timeout: 10_000 });
-  await expect(page.getByTestId(`token-${id}`).getByText(FAILED)).toHaveCount(0);
+  await expect(page.getByTestId(`token-resume-error-${id}`)).toHaveCount(0, { timeout: 10_000 });
 });
 
-test('a character a handover could not resume offers only its Revive while the fleet does not ask for handover', async ({ page, archi }) => {
+test('a character a handover could not resume wakes on open like any dormant one while the fleet does not ask for handover', async ({ page, archi }) => {
   const id = await failedResume(archi, FAILED);
   await fakeShell(page, archi.port, archi.token, false);
   await archi.open();
   await page.getByTestId(`sb-char-${id}`).click();
-  await expect(page.getByTestId('revive')).toBeVisible();
+  await expect(page.getByTestId('surface')).toHaveAttribute('data-char', id, { timeout: 10_000 });
   await expect(page.getByText(FAILED)).toHaveCount(0);
-  await expect(page.getByTestId(`sb-char-${id}`).getByText('dormant')).not.toHaveAttribute('title');
+  await expect(page.getByTestId(`sb-resume-error-${id}`)).toHaveCount(0);
 });
 
 test('the Handover control waits for the fleet to ask for handover', async ({ page, archi }) => {
@@ -181,7 +181,7 @@ test('the sheet carries a move to the gateway through all five sections, then th
   // a character that stayed dormant is retried where the fleet now runs
   const state = await archi.api.call('state.get', {});
   execFileSync('tmux', ['-S', path.join(archi.home, 'tmux.sock'), 'kill-window', '-t', state.characters[b.id].tmux!.windowId]);
-  await expect(page.getByTestId(`sb-char-${b.id}`)).toHaveAttribute('data-dormant', 'true', { timeout: 10_000 });
+  await expect.poll(async () => (await archi.api.call('state.get', {})).characters[b.id].tmux, { timeout: 10_000 }).toBeUndefined();
   await page.getByTestId('handover-tab').click();
   await page.getByTestId(`handover-retry-${b.id}`).click();
   await expect(page.getByTestId(`handover-row-resume-${b.id}`)).toContainText('resumed', { timeout: 10_000 });

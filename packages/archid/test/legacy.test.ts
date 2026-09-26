@@ -41,7 +41,7 @@ function oldInstall() {
     fs.mkdirSync(home);
     fs.writeFileSync(path.join(home, 'config.json'), '{}');
   }
-  const plist = (label: string, home: string) => launchdPlist({ label, tsx: '/r/node_modules/.bin/tsx', bin: '/r/packages/archid/src/bin.ts', home, log: path.join(home, 'archid.log'), pathEnv: '/usr/bin:/bin' });
+  const plist = (label: string, home: string) => launchdPlist({ label, program: ['/r/node_modules/.bin/tsx', '/r/packages/archid/src/bin.ts'], home, log: path.join(home, 'archid.log'), pathEnv: '/usr/bin:/bin' });
   fs.writeFileSync(path.join(launchAgentsDir, 'com.archipelago.archid.plist'), plist('com.archipelago.archid', homes[0]));
   fs.writeFileSync(path.join(launchAgentsDir, 'com.archipelago.archid.work.plist'), plist('com.archipelago.archid.work', homes[1]));
   fs.writeFileSync(path.join(launchAgentsDir, 'com.other.plist'), '<plist/>');

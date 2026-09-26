@@ -61,10 +61,10 @@ export function initConfig(paths: Paths, seed: Partial<NodeConfig> = {}): string
   // only file the split ever reads is one nothing edits any more
   if (has(paths.legacyConfig)) {
     if (has(paths.fleetConfig)) {
-      throw new Error(`${paths.legacyConfig} is not read any more: this fleet's settings are in ${paths.fleetConfig} and ${paths.nodeConfig}. Move anything you still want from it into them and delete it.`);
+      throw new InvalidConfig(`${paths.legacyConfig} is not read any more: this fleet's settings are in ${paths.fleetConfig} and ${paths.nodeConfig}. Move anything you still want from it into them and delete it.`);
     }
     if (has(backup)) {
-      throw new Error(`${backup} is in the way of putting ${paths.legacyConfig} beside the new files. Keep whichever of the two you want, delete the other, and start again.`);
+      throw new InvalidConfig(`${backup} is in the way of putting ${paths.legacyConfig} beside the new files. Keep whichever of the two you want, delete the other, and start again.`);
     }
     read(paths.legacyConfig, Config); // one the schema rejects is left where its owner put it
     fs.renameSync(paths.legacyConfig, backup);
