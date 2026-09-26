@@ -115,15 +115,15 @@ const refusal = (e: unknown): e is Error => e instanceof GitFailure || typeof (e
 const unresolved = (e: Error, entity: HandoverEntity): Blocker => ({ code: 'worktree_unresolved', message: e.message, entity });
 
 /**
- * Takes one copied graph as it came, at the paths it had on the source: the config keys `git init` probes follow
- * this filesystem, every registration the manifest does not carry and this machine does not keep goes, its branch
- * staying in the common directory, and then git has to read the graph as the source left it.
+ * Takes one copied graph as it came: the keys `git init` probes follow this filesystem, and each registration neither
+ * carried nor kept here goes while its branch stays. Then git has to read the graph as the source left it.
  */
 async function importGraph(graph: GitGraph, deps: ImportDeps & { kept?: readonly string[] } = {}): Promise<Blocker[]> {
   const git = deps.git ?? runGit;
   const common = graph.commonDir;
   try {
-    await adaptRules(common, (deps.probe ?? probeFsRules)(common), git);
+    // a config carried as a link would be written through to wherever it leads
+    if (fs.lstatSync(path.join(common, 'config'), { throwIfNoEntry: false })?.isFile()) await adaptRules(common, (deps.probe ?? probeFsRules)(common), git);
     const registrations = path.join(common, 'worktrees');
     const keep = new Set([...graph.worktrees.map((w) => path.basename(w.gitDir)), ...(deps.kept ?? [])]);
     let ids: string[] = [];

@@ -27,7 +27,7 @@ describe('importGraphs', () => {
       roots: [root('r_app', 'repo', '/Users/me/app'), root('r_wt', 'worktree', '/Users/me/wt'), root('r_x', 'cwd', '/Users/me/x')],
       git: [{ id: 'g_app', commonDir: '/Users/me/app/.git', main: checkout('/Users/me/app', '/Users/me/app/.git'), worktrees: [], unused: [], stash: [] }],
     };
-    const blockers = await importGraphs(manifest, { git: async () => ({ code: 1, stdout: '', stderr: '' }), probe: () => ({ ignoreCase: false }) });
+    const blockers = await importGraphs(manifest, { git: async () => ({ code: 1, stdout: '', stderr: '' }) });
     expect(blockers).toContainEqual({ code: 'worktree_unresolved', message: '/Users/me/wt: no Git graph in the manifest describes it', entity: { kind: 'root', id: 'r_wt' } });
     expect(blockers.filter((b) => b.entity?.kind === 'root')).toHaveLength(1);
   });
@@ -158,6 +158,21 @@ real(`a real repository graph moved to another machine with the same home${hasGi
     // a Mac's own filesystem, as git init probes it there
     await importGraphs(manifest, { probe: () => ({ ignoreCase: true, precomposeUnicode: true }) });
     expect(configs.map(read)).toEqual(before);
+  });
+
+  it('leaves a config carried as a link, and what it leads to, as they came', async () => {
+    const l = seedHere(made);
+    const s = l.source;
+    git(l.base, s.main, 'config', 'core.ignorecase', 'true');
+    const { manifest } = await handed(l);
+    const config = path.join(s.main, '.git/config');
+    const outside = path.join(l.base, 'outside-config');
+    fs.renameSync(config, outside);
+    fs.symlinkSync(outside, config);
+    const before = read(outside);
+    await importGraphs(manifest, { probe: () => ({ ignoreCase: false }) });
+    expect(fs.lstatSync(config).isSymbolicLink()).toBe(true);
+    expect(read(outside)).toBe(before);
   });
 
   it('keeps a worktree no character uses registered on the machine it stays on, through a handover away and back', async () => {
