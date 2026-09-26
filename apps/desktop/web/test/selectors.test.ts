@@ -43,6 +43,11 @@ describe('selectors', () => {
     expect(statusOf(chr('x', 'i', { x: 0, y: 0 }, { tmux: undefined, agent: { kind: 'claude', sessionId: 's', transcriptPath: 't', status: 'done', lastActivityAt: 0 } }))).toBe('done');
     expect(statusOf(chr('x', 'i', { x: 0, y: 0 }, { agent: { kind: 'claude', sessionId: 's', transcriptPath: 't', status: 'blocked', lastActivityAt: 0 } }))).toBe('blocked');
   });
+  it('shows a character with no window as idle, whatever turn or question its agent was left on', () => {
+    for (const status of ['working', 'blocked'] as const) {
+      expect(statusOf(chr('x', 'i', { x: 0, y: 0 }, { tmux: undefined, agent: { kind: 'claude', sessionId: 's', transcriptPath: 't', status, lastActivityAt: 0 } }))).toBe('idle');
+    }
+  });
   it('anything the page spreads over a surface hides it first', () => {
     const base = { namingCharacter: false, missionPrompt: false, closingCharacter: undefined, keysOpen: false, resourcesOpen: false, fleet: fleet() };
     expect(isVeiled(base)).toBe(false);

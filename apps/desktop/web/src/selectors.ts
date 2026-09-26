@@ -54,8 +54,12 @@ export function firstOfNextIsland(f: FleetState, id: string | undefined): Charac
 }
 
 // one terminal's status: 1 is the main terminal, 2 the second
-export const slotStatus = (c: Character, term: 1 | 2): DisplayStatus =>
-  term === 2 ? c.second?.agent?.status ?? 'shell' : c.agent?.status ?? 'shell';
+export const slotStatus = (c: Character, term: 1 | 2): DisplayStatus => {
+  if (term === 2) return c.second?.agent?.status ?? 'shell';
+  const s = c.agent?.status ?? 'shell';
+  // with its window gone nothing runs and nothing waits on the user, whatever the agent last reported
+  return !c.tmux && (s === 'working' || s === 'blocked') ? 'idle' : s;
+};
 
 // what the character shows when its sessions differ: the one that needs the user soonest
 const URGENCY: DisplayStatus[] = ['blocked', 'working', 'done', 'idle', 'shell'];

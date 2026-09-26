@@ -55,6 +55,37 @@ test('a character that goes dormant while open waits for the button', () => {
   expect(call).not.toHaveBeenCalled();
 });
 
+const closedForIdleness = () => {
+  const f = fleet();
+  f.characters.c0.agent = { kind: 'claude', sessionId: 's', status: 'idle', lastActivityAt: 0 };
+  render(<TerminalArea id="c0" />);
+  delete f.characters.c0.tmux;
+  f.characters.c0.revive = { command: 'claude --resume s' };
+  act(() => store.getState().setFleet(f));
+};
+
+test('a character closed for idleness while open resumes rather than asking', () => {
+  closedForIdleness();
+  expect(screen.getByTestId('resuming').textContent).toBe('Resuming the session…');
+  act(() => { vi.advanceTimersByTime(1000); });
+  expect(call).toHaveBeenCalledWith('char.revive', { id: 'c0' });
+});
+
+test('one closed for idleness while the app is away waits for it to come back', () => {
+  act(() => store.getState().setActive(false));
+  closedForIdleness();
+  act(() => { vi.advanceTimersByTime(5000); });
+  expect(call).not.toHaveBeenCalled();
+  act(() => store.getState().setActive(true));
+  act(() => { vi.advanceTimersByTime(1000); });
+  expect(call).toHaveBeenCalledWith('char.revive', { id: 'c0' });
+});
+
+test('a character with no session to resume says it is starting its terminal', () => {
+  render(<TerminalArea id="c1" />);
+  expect(screen.getByTestId('resuming').textContent).toBe('Starting the terminal…');
+});
+
 test('a wake the fleet refuses says why and leaves the button', async () => {
   call.mockRejectedValueOnce(new Error('no session to resume'));
   render(<TerminalArea id="c1" />);

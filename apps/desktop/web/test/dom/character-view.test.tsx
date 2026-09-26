@@ -153,6 +153,17 @@ test('a wake the fleet refuses says why beside the revive button', async () => {
   expect(screen.getByRole('button', { name: 'revive' })).toBeTruthy();
 });
 
+test('a terminal that closes while open offers the revive button', async () => {
+  store.getState().setFleet(fleet());
+  store.getState().setStatus('online');
+  render(<CharacterView id="c2" onBack={() => {}} />);
+  await act(async () => {});
+  const f = fleet();
+  delete f.characters.c2.tmux;
+  act(() => store.getState().setFleet(f));
+  expect(screen.getByRole('button', { name: 'revive' })).toBeTruthy();
+});
+
 test('the header says the phone has lost archid rather than what the character is doing', () => {
   store.getState().setFleet(fleet());
   store.getState().setStatus('offline');
