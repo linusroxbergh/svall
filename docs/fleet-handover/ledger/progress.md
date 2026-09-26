@@ -707,3 +707,7 @@ Ruling: M1 is promoted (the delivery rules require injected failure paths), M2�
 Task 41b fix round 1/5: dispatched (resumed implementer).
 Task 41b fix round 1: implementer DONE_WITH_CONCERNS at 5f62409e..b4442350 (5 commits; report ledger/task-41b-fix1-report.md). Typecheck clean; protocol+archid+cli 2227 passed, 5 skipped. I1: every regular file under the session's own folder travels byte for byte (links, non-regular and uncarriable names still refused); I2: a non-directory `<common>/worktrees` blocks worktree_unresolved; M1: injected git failure and a mode-000 `worktrees` both end as blockers (fail with the review's rethrow mutation); M2–M4 done. Concern: a session's whole folder travels unchecked for secrets (as tool-results/* already did; the space check counts it).
 Task 41b fix round 1: re-review dispatched (resumed the 41b reviewer).
+Task 41b fix round 1/5 (6 addressed, 0 open; commits 5f62409e..b4442350) — re-review Approved; M1 without a filesystem seam judged to meet the delivery rule (git is injected; the mode-000 test fails deterministically).
+Task 41b: minor (deferred): M5 a regular file where a session's folder should be passes preflight and is refused only at prepare with path_unsupported (theoretical; Claude never writes one) — `discover` could throw on a listed file it won't carry.
+Task 41: complete (41a ce7b6f1c..ad9fc063, 41b 5521fa2a..b4442350, reviews clean). Plan boxes ticked.
+Task 42: dispatched (opus, brief ledger/task-42-brief.md, BASE = the commit recording this line; report ledger/task-42-report.md).

@@ -171,3 +171,72 @@ spec ("Git repository graphs", "Agent sessions", "Terminal records", "Compatibil
   | `pnpm vitest run --project protocol --project archid --project cli` | 125 files passed, 1 skipped; 2224 passed, 5 skipped (matches the report) |
   | `pnpm vitest run --project @archipelago/desktop-web` | 708 passed |
   | `pnpm typecheck` | clean |
+
+## Fix round 1
+
+Commits 5f62409e..b4442350, checked against `task-41b-fix1-findings.md` and `task-41b-fix1-report.md`.
+
+**Verdict: Approved.** All six items are fixed, and each stays within its item. One new Minor, which does not block.
+
+### Each item
+
+- **I1 — fixed** (`sessions/claude.ts`):
+  - The whitelist is gone. `discover` carries every regular file under `projects/<slug>/<id>/`, and `carries`
+    accepts the transcript or any path under that folder.
+  - Links, non-regular entries and names `filesUnder` cannot carry are still refused. `..` and absolute paths are
+    still refused in `installSession`. `file-history/` and `session-env/` still stay behind.
+  - Fails first: with the old `claude.ts` put back in a scratch copy, "finds every file of the session's own folder"
+    and "carries a file of a kind no release so far wrote … byte for byte" both fail.
+  - The one change outside `sessions/` is `packages/cli/test/handover.test.ts:378,396`. That test printed a sample
+    blocker the adapter can no longer produce, and it now prints the floor blocker. This is in scope.
+- **I2 — fixed** (`git-import.ts:128-132`):
+  - `<common>/worktrees` gets an lstat first. If it is anything but a real folder, the graph gets
+    `worktree_unresolved`. If it is absent, nothing is removed.
+  - Fails first: with the guard taken out, the new test fails with `expected [] to deeply equal [ { …(3) } ]`. That
+    is what I reproduced before the fix: `victim/data` removed, then a clean validation.
+- **M1 — fixed.**
+  - The two new tests are "a git that refuses" (exit 128 on `config --get`) and "`worktrees` at mode 000". They fail
+    when the catch rethrows, as does the I2 test.
+  - They pass on the pre-fix import, as they should: the catch already existed and only lacked a test.
+  - **Judged against the delivery rule:** meets it. The rule asks for failure paths that are deterministic in unit
+    tests.
+    - The process side goes through the injected `GitRunner`.
+    - The filesystem side fails deterministically on a real fs through `chmod 000`, the same way
+      `sessions.test.ts:135-137` already tests an unreadable sidecar folder.
+    - A seam used by one test would be the kind of abstraction the house rules warn against.
+  - **What is not covered:** the mode-000 case is skipped as root, and an `rmSync` that fails part way is never
+    exercised. It goes through the same catch, so neither gap is worth a seam.
+- **M2 — fixed.** Both names are escapes again: `ä` and `ä`, byte for byte as in `git-repair.ts`.
+  `git-import.ts` now holds no non-ASCII byte.
+- **M3 — fixed.**
+  - Both fixture READMEs lose the pin. Their "Task 22 still needs … path-root mapping" line now describes the adapter
+    as it stands.
+  - The spike verdict prose ("remapped", "different path prefix") describes the M0 probe and is correctly left alone.
+    So are the spike scripts, the `*-portability` tests, `spike-results.md`, `readiness.md` and the pick-up guide.
+- **M4 — fixed.** `min: AGENTS.codex.minVersion ?? [0, 0, 0]`, with no `!`. A missing floor now means every release
+  counts.
+
+### New finding
+
+#### M5 (Minor). A file named like the session folder passes preflight and is refused only at prepare
+
+- **Where:** `sessions/claude.ts:37-41`, `:12-15`.
+- **Evidence:**
+  - `filesUnder(fs, home, folder)` answers `[folder]` when `projects/<slug>/<id>` is a regular file rather than a
+    folder. `discover` no longer filters its list through `carries`, so preflight lists that file.
+  - `carries` refuses it, because it is not under `<id>/`. `installSession` then throws `path_unsupported` at
+    prepare, after the transfer.
+  - Reproduced in the scratch copy: `discover` answered `[<id>.jsonl, <id>]`, and `carries` answered
+    `[true, false]`.
+  - Before the fix round, the whitelist filter in `discover` caught this at preflight. Claude never writes such a
+    file, so the case is theoretical. Prepare still refuses before anything activates, so nothing is lost.
+- **Fix:** in `discover`, refuse with `incompatible_adapter` when any listed file is one `carries` refuses. That is one
+  `filter` and a throw, and it makes preflight and prepare agree by construction. Otherwise, ledger it as deferred.
+
+### Runs (on e790eb83)
+
+| Command | Result |
+| --- | --- |
+| `pnpm vitest run --project protocol --project archid --project cli` | 125 files passed, 1 skipped; 2227 passed, 5 skipped (matches the report) |
+| `pnpm vitest run --project @archipelago/desktop-web` | 708 passed |
+| `pnpm typecheck` | clean |

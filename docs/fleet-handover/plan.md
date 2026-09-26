@@ -1079,19 +1079,19 @@ Then repeat with one supported real Claude session and one supported real Codex 
 
 **Steps:**
 
-- [ ] Probe first: copy one real Claude session and one real Codex rollout unchanged into a
+- [x] Probe first: copy one real Claude session and one real Codex rollout unchanged into a
   linus-vault throwaway account whose home is the Mac's home path, and resume each there. The
   account needs the owner's yes. If either resume fails, stop and amend the spec.
-- [ ] Block Add Machine and preflight when the destination's home differs from the source's, naming
+- [x] Block Add Machine and preflight when the destination's home differs from the source's, naming
   the commands that create an account with a matching home. A root outside home needs its parent
   present on the destination.
-- [ ] Remove named path roots: `pathRoots` in the registry and machine records, `{ root, relative }`
+- [x] Remove named path roots: `pathRoots` in the registry and machine records, `{ root, relative }`
   portable paths, and the state path rewrite. State paths travel as they are.
-- [ ] Record and copy each transfer root at its real path; block a cwd whose real path differs from
+- [x] Record and copy each transfer root at its real path; block a cwd whose real path differs from
   the recorded one.
-- [ ] Git import prunes unlisted registrations, then validates. Remove the gitfile rewrite and the
+- [x] Git import prunes unlisted registrations, then validates. Remove the gitfile rewrite and the
   `git worktree repair` step.
-- [ ] Session adapters copy files byte for byte: remove path rewriting, the record and attachment type
+- [x] Session adapters copy files byte for byte: remove path rewriting, the record and attachment type
   lists, and the version maximum. Keep file discovery, a minimum version and the missing-file
   blocker.
 
