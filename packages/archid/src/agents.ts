@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { AGENT_LABEL, type AgentKind } from '@archipelago/protocol';
 
-type Version = [number, number, number];
+export type Version = [number, number, number];
 
 // what Archipelago needs to know about each agent CLI
 type AgentAdapter = {
@@ -52,7 +52,7 @@ export function parseVersion(text: string): Version | undefined {
 }
 
 // a version line that can't be read passes, so a new format never blocks anyone
-export function versionOk(a: AgentAdapter, text: string): boolean {
+export function versionOk(a: Pick<AgentAdapter, 'minVersion'>, text: string): boolean {
   const v = parseVersion(text);
   if (!a.minVersion || !v) return true;
   for (let i = 0; i < 3; i++) if (v[i] !== a.minVersion[i]) return v[i] > a.minVersion[i];

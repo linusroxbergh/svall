@@ -9,7 +9,7 @@ import { gitIndexDigest } from './git-graph.js';
 import { byCodeUnit, canonicalDigest, canonicalJson, hashStream, sha256Hex } from './hash.js';
 import { CONTROL, rootMatcher, settle, type Inventory, type InventorySession } from './inventory.js';
 import { holds } from './portable-path.js';
-import { sessionAdapter, sessionPathMap } from './sessions/registry.js';
+import { sessionAdapter } from './sessions/registry.js';
 import { SessionError, type FoundSession } from './sessions/types.js';
 
 type Stat = Pick<fs.Stats, 'isFile' | 'isDirectory' | 'isSymbolicLink' | 'mode' | 'size' | 'mtimeMs'>;
@@ -168,8 +168,8 @@ async function scanRoots(inventory: Inventory, sfs: ScanFs, hash: boolean): Prom
 
 /**
  * One agent session as its adapter finds it from the recorded transcript: every file hashed under the
- * source's agent home, each checked for anything the adapter does not know, and where the transcript lands:
- * at the same place under the destination's agent home. Without `read` its files are only found to be there.
+ * source's agent home, and where the transcript lands: at the same place under the destination's agent home.
+ * Without `read` its files are only found to be there.
  */
 async function scanSession(session: InventorySession, sfs: ScanFs, read: boolean): Promise<{ session?: TransferSession; blockers: Blocker[] }> {
   const entity: HandoverEntity = { kind: 'character', id: session.characterId };
@@ -179,9 +179,7 @@ async function scanSession(session: InventorySession, sfs: ScanFs, read: boolean
     if (e instanceof SessionError) return { blockers: [{ code: e.code, message: e.message, entity }] };
     throw e;
   }
-  const map = sessionPathMap({ sourceHome: found.home, destinationHome: session.destinationHome });
   const files: TransferFile[] = [];
-  const problems: string[] = [];
   const unreadable: string[] = [];
   for (const rel of found.files) {
     const file = path.posix.join(found.home, rel);
@@ -192,7 +190,6 @@ async function scanSession(session: InventorySession, sfs: ScanFs, read: boolean
       for await (const chunk of sfs.read(file)) chunks.push(chunk);
       const data = Buffer.concat(chunks);
       files.push({ type: 'file', path: rel, mode: st.mode & 0o7777, size: data.length, mtimeMs: Math.trunc(st.mtimeMs), sha256: sha256Hex(data) });
-      problems.push(...adapter.validate(rel, data, map).map((p) => `${rel}: ${p}`));
     } catch (e) {
       if (rel === found.transcript && gone(e)) return { blockers: [{ code: 'transcript_missing', message: `${session.sourcePath} is not there`, entity }] };
       // a sidecar removed since the listing is simply not there; the verify pass catches the change
@@ -202,9 +199,6 @@ async function scanSession(session: InventorySession, sfs: ScanFs, read: boolean
   const blockers: Blocker[] = [];
   if (!session.destinationHome) blockers.push({ code: 'agent_cli_missing', message: `the destination reported no ${session.agent} home to place ${session.sessionId} in`, entity });
   if (unreadable.length) blockers.push({ code: 'path_unsupported', message: `${session.sourcePath}: ${listed(unreadable, 5)}`, entity });
-  if (problems.length) {
-    blockers.push({ code: 'incompatible_adapter', message: `${session.sourcePath} holds what ${session.agent} session adapter ${adapter.adapter} does not know: ${listed(problems, 5)}`, entity });
-  }
   const placed = session.destinationHome ? { destinationPath: path.posix.join(session.destinationHome, found.transcript) } : {};
   return { session: { ...session, ...placed, sourceHome: found.home, adapter: adapter.adapter, files }, blockers };
 }

@@ -8,7 +8,7 @@ import { emptyState, FleetConfig, type AgentKind, type MachineId, type TransferS
 import { sha256Hex } from '../../src/handover/hash.js';
 import { buildInventory } from '../../src/handover/inventory.js';
 import { buildManifest } from '../../src/handover/manifest.js';
-import { installSession, probeAgent, sessionAdapter, sessionPathMap, type AgentProbe } from '../../src/handover/sessions/registry.js';
+import { adapterFor, installSession, probeAgent, sessionAdapter, type AgentProbe } from '../../src/handover/sessions/registry.js';
 import type { SessionFs } from '../../src/handover/sessions/types.js';
 
 // Real agents on two machines, as a handover would move them: a session started on one resumes on the other
@@ -139,16 +139,16 @@ async function start(kind: AgentKind, side: Side, sides: Side[]): Promise<Trip> 
 }
 
 /**
- * A session carried from `source` to `destination` as a handover carries it: found from its transcript,
- * checked by its adapter, placed at the same place under the destination's agent home, and resumed there under
- * the same id, remembering what it was told.
+ * A session carried from `source` to `destination` as a handover carries it: found from its transcript by its
+ * adapter, placed byte for byte at the same place under the destination's agent home, and resumed there under the
+ * same id, remembering what it was told.
  */
 async function carry(trip: Trip, source: Side, destination: Side): Promise<void> {
   const { kind, id, marker } = trip;
   const [work, placedWork] = [workOf(source, trip), workOf(destination, trip)];
   const [before, after] = await Promise.all([probe(source, kind), probe(destination, kind)]);
   for (const p of [before, after]) {
-    expect(sessionAdapter(kind).supports(p.version ?? ''), `${kind} ${p.version}`).toBe(true);
+    expect(p.version && adapterFor(kind, p.version), `${kind} ${p.version}`).toBeTruthy();
     expect(p.loggedIn).toBe(true);
   }
   await text(destination, ['mkdir', '-p', placedWork]);
@@ -191,9 +191,6 @@ async function carry(trip: Trip, source: Side, destination: Side): Promise<void>
       }),
     };
   }
-  const adapter = sessionAdapter(kind);
-  const map = sessionPathMap({ sourceHome: session.sourceHome!, destinationHome: after.home });
-  for (const f of session.files) expect(adapter.validate(f.path, fs.readFileSync(path.join(staged, f.path)), map), f.path).toEqual([]);
   forget(destination, kind, after.home, id, kind === 'claude' ? path.posix.dirname(session.destinationPath!) : session.destinationPath!);
 
   if (destination === here) {
@@ -202,7 +199,7 @@ async function carry(trip: Trip, source: Side, destination: Side): Promise<void>
     // one file at a time, private and never over one already there
     for (const f of session.files) {
       const file = path.posix.join(after.home, f.path);
-      const data = adapter.rewrite(f.path, fs.readFileSync(path.join(staged, f.path)), map);
+      const data = fs.readFileSync(path.join(staged, f.path));
       const r = await destination.run(['sh', '-c', 'umask 077; mkdir -p "$(dirname "$1")" && set -C && cat > "$1"', 'sh', file], { input: data });
       if (r.code !== 0) throw new Error(`${destination.name}: could not place ${file}: ${r.stderr}`);
     }

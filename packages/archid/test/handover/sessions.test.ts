@@ -2,20 +2,19 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { emptyState, FleetConfig, type Character, type MachineId, type TransferSession } from '@archipelago/protocol';
+import { emptyState, FleetConfig, type AgentKind, type Character, type MachineId, type TransferSession } from '@archipelago/protocol';
 import { buildInventory, type MachineMaps } from '../../src/handover/inventory.js';
 import { realStages } from '../../src/handover/durable.js';
 import { buildManifest } from '../../src/handover/manifest.js';
 import { importState } from '../../src/handover/validate.js';
 import { claudeAdapter } from '../../src/handover/sessions/claude.js';
 import { codexAdapter } from '../../src/handover/sessions/codex.js';
-import { pathMap } from '../../src/handover/sessions/records.js';
 import {
-  adapterFor, agentAdapters, agentBlockers, installSession, placeTranscripts, probeAgent, realInstallFs, sessionPathMap,
+  adapterFor, agentAdapters, agentBlockers, installSession, placeTranscripts, probeAgent, realInstallFs,
   type AgentProbe, type AgentRun, type InstallFs,
 } from '../../src/handover/sessions/registry.js';
 import { repairBrief } from '../../src/handover/sessions/repair.js';
-import { SessionError, type PathMap, type SessionFs } from '../../src/handover/sessions/types.js';
+import { SessionError, type SessionFs } from '../../src/handover/sessions/types.js';
 import { HOOK_EVENTS, mergeHooks, mergeStatusLine, statusWrapper } from '../../src/setup.js';
 import { codexHookCommand, mergeCodexHooks } from '../../src/codex/install.js';
 import { resolvePaths } from '../../src/paths.js';
@@ -41,43 +40,32 @@ function home(fixture: string, name = '.claude'): string {
   return dir;
 }
 
-// the real sessions each supported release wrote, sanitized: where they were made and where they go
+// the real sessions each release wrote, sanitized
 const CLAUDE = [
-  { version: '2.1.280', id: 'bf480ea6-5572-4554-8016-2dc5590f5bba', slug: '-Users-source-work-demo', from: '/Users/source', to: '/home/target', agent: 'agent-a4906877eb9919cf5' },
-  { version: '2.1.251', id: '1fb0d1a7-29a9-4159-a932-5ffd2da8faba', slug: '-home-source-work-demo', from: '/home/source', to: '/Users/target', agent: 'agent-aec6de8cd1d2df280' },
+  { version: '2.1.280', id: 'bf480ea6-5572-4554-8016-2dc5590f5bba', slug: '-Users-source-work-demo', agent: 'agent-a4906877eb9919cf5' },
+  { version: '2.1.251', id: '1fb0d1a7-29a9-4159-a932-5ffd2da8faba', slug: '-home-source-work-demo', agent: 'agent-aec6de8cd1d2df280' },
 ] as const;
 const CODEX = [
-  { version: '0.155.1', file: 'sessions/2026/09/23/rollout-2026-09-23T08-44-38-01a0cd02-5930-73f0-ad55-add2b1effa04.jsonl', id: '01a0cd02-5930-73f0-ad55-add2b1effa04', from: '/Users/source', to: '/home/target' },
-  { version: '0.156.1', file: 'sessions/2026/09/23/rollout-2026-09-23T08-44-52-01a0cd02-8ea0-75c1-89b3-89718ecbd91f.jsonl', id: '01a0cd02-8ea0-75c1-89b3-89718ecbd91f', from: '/home/source', to: '/Users/target' },
+  { version: '0.155.1', file: 'sessions/2026/09/23/rollout-2026-09-23T08-44-38-01a0cd02-5930-73f0-ad55-add2b1effa04.jsonl', id: '01a0cd02-5930-73f0-ad55-add2b1effa04' },
+  { version: '0.156.1', file: 'sessions/2026/09/23/rollout-2026-09-23T08-44-52-01a0cd02-8ea0-75c1-89b3-89718ecbd91f.jsonl', id: '01a0cd02-8ea0-75c1-89b3-89718ecbd91f' },
 ] as const;
 
-// what an adapter's rewrite does with a map that moves the home and the agent home in it
-const mapFor = (from: string, to: string, agentHome: string): PathMap => pathMap([[from, to], [`${from}/${agentHome}`, `${to}/${agentHome}`]]);
-
 describe('the adapter registry', () => {
-  it('knows every Claude Code and Codex release in use, and no other', () => {
-    for (const v of ['2.1.251', '2.1.278', '2.1.280']) expect(adapterFor('claude', v)).toBe(claudeAdapter);
-    for (const v of ['0.155.1', '0.156.1']) expect(adapterFor('codex', v)).toBe(codexAdapter);
-    for (const v of ['2.1.250', '2.1.281', '2.2.0', '2.1.280-beta.1', 'latest', '']) expect(adapterFor('claude', v)).toBeUndefined();
-    for (const v of ['0.142.0-alpha.6', '0.142.0', '0.155.0', '0.157.0']) expect(adapterFor('codex', v)).toBeUndefined();
-  });
-
-  it('moves a path under the source agent home to the destination\'s, and no other path', () => {
-    const map = sessionPathMap({ sourceHome: '/Users/s/.claude-work', destinationHome: '/Users/s/.claude' });
-    expect(map('/Users/s/.claude-work/plans/p.md')).toBe('/Users/s/.claude/plans/p.md');
-    expect(map('/Users/s/code/app')).toBeUndefined();
-    expect(map('/Users/s/.claude-workbench/x')).toBeUndefined();
-    expect(sessionPathMap({ sourceHome: '/Users/s/.claude' })('/Users/s/.claude/x')).toBeUndefined();
+  it('reads every Claude Code and Codex release from its adapter\'s minimum on, and none before', () => {
+    for (const v of ['2.1.251', '2.1.280', '2.1.283', '2.2.0', '3.0.0', '2.1.300-beta.1']) expect(adapterFor('claude', v), v).toBe(claudeAdapter);
+    for (const v of ['0.155.0', '0.156.1', '0.157.0', '1.0.0', '0.160.0-alpha.1']) expect(adapterFor('codex', v), v).toBe(codexAdapter);
+    for (const v of ['2.1.250', '2.1.251-beta.1', '2.0.0']) expect(adapterFor('claude', v), v).toBeUndefined();
+    for (const v of ['0.142.0-alpha.6', '0.142.0', '0.155.0-alpha.3']) expect(adapterFor('codex', v), v).toBeUndefined();
   });
 
   it('reports each installed CLI with the adapter that reads its sessions, 0 for none, and its login and hooks', () => {
     const probes: AgentProbe[] = [
       { kind: 'claude', version: '2.1.280', home: '/h/.claude', loggedIn: true, hooks: true },
-      { kind: 'codex', version: '0.157.0', home: '/h/.codex', loggedIn: false, hooks: true },
+      { kind: 'codex', version: '0.142.0', home: '/h/.codex', loggedIn: false, hooks: true },
     ];
     expect(agentAdapters(probes)).toEqual([
       { kind: 'claude', version: '2.1.280', adapter: 1, home: '/h/.claude', loggedIn: true, hooks: true },
-      { kind: 'codex', version: '0.157.0', adapter: 0, home: '/h/.codex', loggedIn: false, hooks: true },
+      { kind: 'codex', version: '0.142.0', adapter: 0, home: '/h/.codex', loggedIn: false, hooks: true },
     ]);
   });
 });
@@ -148,117 +136,6 @@ describe('Claude Code sessions', () => {
     fs.chmodSync(sealed, 0o000);
     try { expect(await refusal(transcript)).toBe('path_unsupported'); } finally { fs.chmodSync(sealed, 0o755); }
   });
-
-  describe.each(CLAUDE)('as Claude Code $version wrote it', ({ version, id, slug, from, to, agent }) => {
-    const transcript = `projects/${slug}/${id}.jsonl`;
-    const read = (rel: string): Buffer => fs.readFileSync(path.join(FIXTURES, 'claude', version, rel));
-
-    it('holds nothing the adapter does not know', () => {
-      const map = mapFor(from, to, '.claude');
-      for (const rel of [transcript, `projects/${slug}/${id}/subagents/${agent}.jsonl`, `projects/${slug}/${id}/subagents/${agent}.meta.json`]) {
-        expect(claudeAdapter.validate(rel, read(rel), map)).toEqual([]);
-      }
-    });
-
-    it('moves every record cwd and keeps what the conversation said byte for byte', () => {
-      const before = read(transcript);
-      const after = claudeAdapter.rewrite(transcript, before, mapFor(from, to, '.claude'));
-      const [was, now] = [rows(before), rows(after)];
-      expect(now.filter((r) => r.cwd).every((r) => r.cwd === `${to}/work/demo`)).toBe(true);
-      expect(now.filter((r) => r.cwd)).toHaveLength(was.filter((r) => r.cwd).length);
-      now.forEach((r, i) => {
-        expect(r.message).toEqual(was[i].message);
-        expect(r.toolUseResult).toEqual(was[i].toolUseResult);
-        // an attachment is what the model was shown, so the environment it describes stays the source's
-        expect(r.attachment).toEqual(was[i].attachment);
-      });
-      expect(now.find((r) => r.attachment?.type === 'environment')!.attachment.snapshot.workingDirectory).toBe(`${from}/work/demo`);
-      // a line with nothing to move is the same bytes
-      const kept = lines(before).filter((l) => !JSON.parse(l).cwd);
-      expect(kept.every((l) => lines(after).includes(l))).toBe(true);
-      expect(after.toString().endsWith('\n')).toBe(before.toString().endsWith('\n'));
-    });
-
-    it('comes back to the same bytes when moved there and back', () => {
-      const there = claudeAdapter.rewrite(transcript, read(transcript), mapFor(from, to, '.claude'));
-      expect(claudeAdapter.validate(transcript, there, mapFor(to, from, '.claude'))).toEqual([]);
-      expect(claudeAdapter.rewrite(transcript, there, mapFor(to, from, '.claude'))).toEqual(read(transcript));
-    });
-  });
-
-  // the sanitized Task 1 fixture, whose synthetic records carry the rarer path fields
-  it('moves the worktree, relocation and frame paths it knows, and leaves file history naming the source files it backed up', () => {
-    const map = mapFor('/Users/source', '/home/target', '.claude');
-    const spike = fs.readFileSync(path.join(FIXTURES, 'claude/session.jsonl'));
-    const moved = rows(claudeAdapter.rewrite('projects/p/s.jsonl', spike, map));
-    expect(moved[3].worktreeSession).toEqual({ originalCwd: '/home/target/work/demo', worktreePath: '/home/target/work/demo/.worktree' });
-    expect(moved[0].message.content).toContain('/Users/source/work/demo');
-    expect(moved[1].message.content[0].input.file_path).toBe('/Users/source/work/demo/notes.txt');
-
-    const v = '"version":"2.1.280"';
-    const extra = [
-      `{"type":"user","cwd":"/Users/source/w",${v},"message":{"role":"user","content":"hi"}}`,
-      '{"type":"relocated","sessionId":"s","relocatedCwd":"/Users/source/w2"}',
-      '{"type":"worktree-state","sessionId":"s","worktreeSession":{"originalCwd":"/Users/source/w","preEnterOriginalCwd":"/Users/source/w","worktreePath":"/Users/source/w/.claude/worktrees/x"}}',
-      '{"type":"file-history-snapshot","messageId":"m","snapshot":{"trackedFileBackups":{"/Users/source/w/a.ts":{"backupFileName":"h@v1","realParentDir":"/Users/source/w"},"b.ts":{"backupFileName":"i@v1","realParentDir":"/Users/source/w"}}},"isSnapshotUpdate":false}',
-      '{"type":"file-history-delta","messageId":"m","snapshotMessageId":"m","trackingPath":"/Users/source/w/a.ts","backup":{"backupFileName":"h@v2","realParentDir":"/Users/source/w"},"timestamp":"t"}',
-      '{"type":"frame-link","sessionId":"s","path":"/Users/source/w/page.html","frameUrl":"https://x.test/f","title":"t","artifactCount":1,"timestamp":"t"}',
-      '{"type":"system","subtype":"stop_hook_summary","hookInfos":[{"command":"/Users/source/.claude/hooks/x.sh"}],"cwd":"/Users/source/w","version":"2.1.280"}',
-    ].join('\n') + '\n';
-    const rewritten = claudeAdapter.rewrite('projects/p/s.jsonl', Buffer.from(extra), map);
-    const out = rows(rewritten);
-    expect(out[1].relocatedCwd).toBe('/home/target/w2');
-    expect(out[2].worktreeSession).toEqual({ originalCwd: '/home/target/w', preEnterOriginalCwd: '/home/target/w', worktreePath: '/home/target/w/.claude/worktrees/x' });
-    // the backups stay on the source, so a rewind here finds none of this machine's files named
-    expect(lines(rewritten).slice(3, 5)).toEqual(lines(extra).slice(3, 5));
-    expect(out[5].path).toBe('/home/target/w/page.html');
-    expect(out[6].hookInfos).toEqual([{ command: '/Users/source/.claude/hooks/x.sh' }]);
-
-    const meta = Buffer.from('{"agentType":"general-purpose","description":"look in /Users/source/w","worktreePath":"/Users/source/w/.claude/worktrees/a","cwd":"/Users/source/w"}\n');
-    expect(JSON.parse(claudeAdapter.rewrite('projects/p/s/subagents/agent-a.meta.json', meta, map).toString())).toEqual({
-      agentType: 'general-purpose', description: 'look in /Users/source/w', worktreePath: '/home/target/w/.claude/worktrees/a', cwd: '/home/target/w',
-    });
-  });
-
-  it('refuses what a supported release does not write', () => {
-    const map = mapFor('/Users/source', '/home/target', '.claude');
-    const user = (extra: string) => `{"type":"user","cwd":"/Users/source/w","version":"2.1.280","message":{"role":"user","content":"hi"}${extra}}`;
-    const issues = (...l: string[]) => claudeAdapter.validate('projects/p/s.jsonl', Buffer.from(l.join('\n') + '\n'), map);
-    expect(issues(user(''))).toEqual([]);
-    expect(issues(user(''), '{"type":"holodeck","sessionId":"s"}')).toEqual([expect.stringContaining('"holodeck"')]);
-    expect(issues(user(''), '{"type":"attachment","attachment":{"type":"telepathy"},"version":"2.1.280"}')).toEqual([expect.stringContaining('"telepathy"')]);
-    expect(issues(user(''), '{"type":"user","version":"2.1.250","message":{}}')).toEqual([expect.stringContaining('2.1.250')]);
-    expect(issues(user(''), '{"type":"user","version":"2.1.281","message":{}}')).toEqual([expect.stringContaining('2.1.281')]);
-    // a new field holding a source path is a variant nobody taught the adapter to move
-    expect(issues(user(',"scratchDir":"/Users/source/w/.scratch"'))).toEqual([expect.stringContaining('scratchDir')]);
-    expect(issues(user(''), 'not json', user(''))).toEqual([expect.stringContaining('line 2')]);
-    expect(issues('{"type":"mode","mode":"normal","sessionId":"s"}')).toEqual([expect.stringContaining('release')]);
-    expect(() => claudeAdapter.rewrite('projects/p/s.jsonl', Buffer.from(user(',"scratchDir":"/Users/source/w"')), map))
-      .toThrow(expect.objectContaining({ code: 'incompatible_adapter' }));
-    // a path outside every root, such as a temp folder, is no path this handover could move
-    expect(issues(user(',"scratchDir":"/private/tmp/x"'))).toEqual([]);
-  });
-
-  it('leaves a last line that is still being written as it is', () => {
-    const map = mapFor('/Users/source', '/home/target', '.claude');
-    const text = '{"type":"user","cwd":"/Users/source/w","version":"2.1.280","message":{}}\n{"type":"assist';
-    expect(claudeAdapter.validate('projects/p/s.jsonl', Buffer.from(text), map)).toEqual([]);
-    expect(claudeAdapter.rewrite('projects/p/s.jsonl', Buffer.from(text), map).toString()).toBe(
-      '{"type":"user","cwd":"/home/target/w","version":"2.1.280","message":{}}\n{"type":"assist');
-  });
-
-  it('carries saved tool output as it is, and refuses a file that is no part of a session', () => {
-    const map = mapFor('/Users/source', '/home/target', '.claude');
-    const output = Buffer.from('{"cwd":"/Users/source/w","listing":["/Users/source/w/a.ts"]}');
-    for (const f of ['projects/p/s/tool-results/b1.txt', 'projects/p/s/tool-results/toolu_01AbC.json']) {
-      expect(claudeAdapter.validate(f, output, map), f).toEqual([]);
-      expect(claudeAdapter.rewrite(f, output, map)).toEqual(output);
-    }
-    for (const f of ['projects/p/s/auto-mode-classifier-error.txt', 'projects/p/s/subagents/agent-a.json', 'file-history/s/abc@v1', 'CLAUDE.md']) {
-      expect(claudeAdapter.validate(f, output, map), f).toEqual([expect.stringContaining('does not carry')]);
-      expect(() => claudeAdapter.rewrite(f, output, map), f).toThrow(expect.objectContaining({ code: 'incompatible_adapter' }));
-    }
-  });
 });
 
 describe('Codex sessions', () => {
@@ -288,72 +165,6 @@ describe('Codex sessions', () => {
     fs.symlinkSync(path.join(h, file), link);
     expect(await refusal(link)).toBe('incompatible_adapter');
   });
-
-  describe.each(CODEX)('as Codex $version wrote it', ({ version, file, from, to }) => {
-    const read = (): Buffer => fs.readFileSync(path.join(FIXTURES, 'codex', version, file));
-
-    it('holds nothing the adapter does not know', () => {
-      expect(codexAdapter.validate(file, read(), mapFor(from, to, '.codex'))).toEqual([]);
-    });
-
-    it('moves the live paths and keeps what the session said and ran byte for byte', () => {
-      const before = rows(read());
-      const after = rows(codexAdapter.rewrite(file, read(), mapFor(from, to, '.codex')));
-      const cwd = `${to}/work/demo`;
-      const meta = after.find((r) => r.type === 'session_meta')!.payload;
-      expect([meta.cwd, ...meta.runtime_workspace_roots]).toEqual([cwd, cwd]);
-      const turn = after.find((r) => r.type === 'turn_context')!.payload;
-      expect(turn.cwd).toBe(cwd);
-      expect(turn.workspace_roots).toEqual([cwd]);
-      const entries = [...turn.permission_profile.file_system.entries, ...turn.file_system_sandbox_policy.entries]
-        .filter((e: any) => e.path.type === 'path').map((e: any) => e.path.path);
-      expect(entries.length).toBeGreaterThan(0);
-      expect(entries.every((p: string) => p.startsWith(cwd))).toBe(true);
-      expect(after.find((r) => r.type === 'world_state')!.payload.state.environments.environments.local.cwd).toBe(cwd);
-      after.forEach((r, i) => {
-        if (r.type === 'response_item') expect(r).toEqual(before[i]);
-        if (r.type === 'world_state') expect(r.payload.state.environments.filesystem).toBe(before[i].payload.state.environments.filesystem);
-        if (r.payload?.item?.changes) expect(r.payload.item.changes).toEqual(before[i].payload.item.changes);
-      });
-    });
-
-    it('comes back to the same bytes when moved there and back', () => {
-      const there = codexAdapter.rewrite(file, read(), mapFor(from, to, '.codex'));
-      expect(codexAdapter.rewrite(file, there, mapFor(to, from, '.codex'))).toEqual(read());
-    });
-  });
-
-  // the sanitized Task 2 fixture: a command's cwd is a file: URL, and its output is evidence
-  it('moves a completed command cwd as a file: URL and leaves its output alone', () => {
-    const id = '01a0aaaa-bbbb-7ccc-8ddd-eeeeffff0000';
-    const file = `sessions/2026/09/21/rollout-2026-09-21T19-28-46-${id}.jsonl`;
-    const data = fs.readFileSync(path.join(FIXTURES, 'codex/rollout.jsonl'));
-    const map = mapFor('/Users/source', '/home/target', '.codex');
-    expect(codexAdapter.validate(file, data, map)).toEqual([]);
-    const out = rows(codexAdapter.rewrite(file, data, map));
-    expect(out[5].payload.item.cwd).toBe('file:///home/target/work/demo');
-    expect(out[5].payload.item.stdout).toBe('/Users/source/work/demo\n');
-    expect(out[1].payload.state.permissions.approved_command_prefixes[1][1]).toBe('/Users/source/work/demo/notes.txt');
-  });
-
-  it('refuses what a supported release does not write', () => {
-    const map = mapFor('/Users/source', '/home/target', '.codex');
-    const id = '01a0cd02-5930-73f0-ad55-add2b1effa04';
-    const file = `sessions/2026/09/23/rollout-2026-09-23T08-44-38-${id}.jsonl`;
-    const meta = (o: object = {}) => JSON.stringify({ timestamp: 't', type: 'session_meta', payload: { id, session_id: id, cwd: '/Users/source/w', cli_version: '0.155.1', ...o } });
-    const issues = (...l: string[]) => codexAdapter.validate(file, Buffer.from(l.join('\n') + '\n'), map);
-    expect(issues(meta())).toEqual([]);
-    expect(issues(meta({ cli_version: '0.142.0' }))).toEqual([expect.stringContaining('0.142.0')]);
-    expect(issues(meta({ id: '01a0cd02-0000-7000-8000-000000000000', session_id: undefined }))).toEqual([expect.stringContaining('session_meta')]);
-    expect(issues('{"timestamp":"t","type":"event_msg","payload":{"type":"task_started"}}', meta())).toEqual([expect.stringContaining('session_meta')]);
-    expect(issues(meta(), '{"timestamp":"t","type":"hologram","payload":{}}')).toEqual([expect.stringContaining('"hologram"')]);
-    expect(issues(meta(), '{"timestamp":"t","type":"turn_context","payload":{"cwd":"/Users/source/w","scratch_root":"/Users/source/w/.x"}}'))
-      .toEqual([expect.stringContaining('scratch_root')]);
-    // the rollout the Codex app's 0.142 CLI wrote
-    const old = fs.readFileSync(path.join(FIXTURES, '../rollout.jsonl'));
-    expect(codexAdapter.validate('sessions/2026/06/22/rollout-2026-06-22T16-19-47-019eefb3-8d5c-7b00-ad02-80c4930f7426.jsonl', old, map))
-      .toEqual([expect.stringContaining('0.142.0')]);
-  });
 });
 
 const MAC = '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId;
@@ -378,11 +189,6 @@ function machines(homes?: MachineMaps['destination']['agentHomes']) {
   fs.mkdirSync(work, { recursive: true });
   fs.cpSync(path.join(FIXTURES, 'claude/2.1.280'), path.join(mac, '.claude'), { recursive: true });
   fs.cpSync(path.join(FIXTURES, 'codex/0.155.1'), path.join(mac, '.codex'), { recursive: true });
-  // the fixtures were made with a home of /Users/source, which this machine's home stands in for
-  for (const f of [`.claude/projects/${CLAUDE[0].slug}/${CLAUDE[0].id}.jsonl`, `.claude/projects/${CLAUDE[0].slug}/${CLAUDE[0].id}/subagents/${CLAUDE[0].agent}.jsonl`, `.codex/${CODEX[0].file}`]) {
-    const p = path.join(mac, f);
-    fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replaceAll('/Users/source', mac));
-  }
   const agentHomes = homes ?? { claude: path.join(mac, '.claude'), codex: path.join(mac, '.codex') };
   const maps: MachineMaps = {
     source: { machineId: MAC, home: mac, fleetHome: path.join(mac, '.archipelago') },
@@ -421,15 +227,21 @@ describe('sessions in the transfer manifest', () => {
     expect(manifest.roots.map((r) => r.path)).toEqual([m.work]);
   });
 
-  it('blocks a session a supported release did not write, and one the destination has no home for', async () => {
-    const m = machines({ codex: '/Users/target/.codex' });
+  it('carries a session a CLI newer than every fixture wrote, whatever its records hold', async () => {
+    const m = machines();
     const transcript = m.state.characters.c1.agent!.transcriptPath!;
-    fs.writeFileSync(transcript, fs.readFileSync(transcript, 'utf8').replaceAll('"version":"2.1.280"', '"version":"2.1.290"'));
+    const rollout = m.state.characters.c1.second!.agent!.transcriptPath!;
+    fs.writeFileSync(transcript, `${fs.readFileSync(transcript, 'utf8').replaceAll('"version":"2.1.280"', '"version":"2.9.0"')}{"type":"holodeck","version":"2.9.0","attachment":{"type":"telepathy"},"scratchDir":"/Users/source/w"}\n`);
+    fs.writeFileSync(rollout, `${fs.readFileSync(rollout, 'utf8').replaceAll('"cli_version":"0.155.1"', '"cli_version":"0.170.0"')}{"timestamp":"t","type":"hologram","payload":{"scratch_root":"/Users/source/w/.x"}}\n`);
     const { manifest, blockers } = await buildManifest(buildInventory(m.state, { fleet: FLEET }, m.maps), { generation: 1 });
-    expect(blockers).toEqual([
-      expect.objectContaining({ code: 'agent_cli_missing', entity: { kind: 'character', id: 'c1' } }),
-      expect.objectContaining({ code: 'incompatible_adapter', message: expect.stringContaining('2.1.290'), entity: { kind: 'character', id: 'c1' } }),
-    ]);
+    expect(blockers).toEqual([]);
+    expect(manifest.sessions.map((s) => s.files[0])).toEqual([transcript, rollout].map((f) => expect.objectContaining({ sha256: sha(fs.readFileSync(f)) })));
+  });
+
+  it('blocks a session the destination has no agent home for', async () => {
+    const m = machines({ codex: '/Users/target/.codex' });
+    const { manifest, blockers } = await buildManifest(buildInventory(m.state, { fleet: FLEET }, m.maps), { generation: 1 });
+    expect(blockers).toEqual([expect.objectContaining({ code: 'agent_cli_missing', entity: { kind: 'character', id: 'c1' } })]);
     expect(manifest.sessions.find((s) => s.agent === 'claude')?.destinationPath).toBeUndefined();
   });
 
@@ -452,10 +264,45 @@ describe('sessions in the transfer manifest', () => {
   });
 });
 
+// each fixture session, where its CLI keeps it under the agent home
+const FIXTURE_SESSIONS = [
+  ...CLAUDE.map((c) => ({ kind: 'claude' as AgentKind, version: c.version, id: c.id, agentHome: '.claude', transcript: `projects/${c.slug}/${c.id}.jsonl`, newer: '2.1.283' })),
+  ...CODEX.map((c) => ({ kind: 'codex' as AgentKind, version: c.version, id: c.id, agentHome: '.codex', transcript: c.file, newer: '0.157.0' })),
+];
+
+describe.each(FIXTURE_SESSIONS)('a $kind session as $version wrote it', ({ kind, version, id, agentHome, transcript, newer }) => {
+  it('arrives byte for byte at the transcript path its terminal recorded, for a newer CLI there to resume', async () => {
+    const base = tmp();
+    const mac = path.join(base, 'Users/source');
+    const agents = path.join(mac, agentHome);
+    fs.cpSync(path.join(FIXTURES, kind, version), agents, { recursive: true });
+    const transcriptPath = path.join(agents, transcript);
+    const state = emptyState();
+    state.characters.c1 = char('c1', { cwd: mac, agent: { kind, sessionId: id, transcriptPath, status: 'idle', lastActivityAt: 0 } });
+    const at = { home: mac, fleetHome: path.join(mac, '.archipelago') };
+    const { manifest, blockers } = await buildManifest(buildInventory(state, { fleet: FLEET }, {
+      source: { machineId: MAC, ...at }, destination: { machineId: TRIFT, ...at, agentHomes: { [kind]: agents } },
+    }), { generation: 1 });
+    expect(blockers).toEqual([]);
+    const probe = (v: string): AgentProbe => ({ kind, version: v, home: agents, loggedIn: true, hooks: true });
+    expect(agentBlockers({ kinds: [kind], source: [probe(version)], destination: [probe(newer)] })).toEqual([]);
+
+    // the source's tree set aside, as the other machine never had it, and its session staged as rsync stages it
+    const parked = path.join(base, 'parked');
+    fs.renameSync(mac, parked);
+    const staged = path.join(parked, agentHome);
+    const [session] = manifest.sessions;
+    expect(installSession(session, staged)).toEqual({ transcriptPath });
+    for (const f of session.files) expect(fs.readFileSync(path.join(agents, f.path)), f.path).toEqual(fs.readFileSync(path.join(staged, f.path)));
+    expect(placeTranscripts(manifest.snapshot, manifest.sessions).characters.c1.agent!.transcriptPath).toBe(transcriptPath);
+  });
+});
+
 describe('a session arriving on the destination', () => {
   // the manifest the source built, the source's bytes staged at their manifest paths, and a destination home
-  async function arrival() {
+  async function arrival(before?: (m: ReturnType<typeof machines>) => void) {
     const m = machines({ claude: path.join(tmp(), 'dest/.claude'), codex: path.join(tmp(), 'dest/.codex') });
+    before?.(m);
     const { manifest } = await buildManifest(buildInventory(m.state, { fleet: FLEET }, m.maps), { generation: 1 });
     const stage = (s: TransferSession): string => {
       const dir = path.join(tmp(), 'staged');
@@ -465,17 +312,22 @@ describe('a session arriving on the destination', () => {
     return { m, manifest, stage, claude: manifest.sessions[0], codex: manifest.sessions[1] };
   }
 
-  it('lands under the destination agent home at the place it had under the source\'s, every record naming the folders it named', async () => {
-    const { m, claude, codex, stage } = await arrival();
-    const { id, slug, agent } = CLAUDE[0];
-    expect(installSession(claude, stage(claude))).toEqual({ transcriptPath: claude.destinationPath });
+  it('lands under the destination agent home at the place it had under the source\'s, byte for byte', async () => {
+    const { m, claude, codex, stage } = await arrival((source) => {
+      // a record naming a folder under the source's agent home, which the destination keeps elsewhere
+      const t = source.state.characters.c1.agent!.transcriptPath!;
+      fs.appendFileSync(t, `${JSON.stringify({ type: 'user', cwd: path.join(source.mac, '.claude/plans'), version: '2.1.280', message: {} })}\n`);
+    });
+    const { id, slug } = CLAUDE[0];
+    const staged = stage(claude);
+    expect(installSession(claude, staged)).toEqual({ transcriptPath: claude.destinationPath });
     const project = path.join(claude.destinationHome!, 'projects', slug);
     expect(claude.destinationPath).toBe(path.join(project, `${id}.jsonl`));
-    expect(rows(fs.readFileSync(path.join(project, `${id}.jsonl`))).filter((r) => r.cwd).every((r) => r.cwd === m.work)).toBe(true);
-    expect(fs.existsSync(path.join(project, id, 'subagents', `${agent}.meta.json`))).toBe(true);
+    for (const f of claude.files) expect(fs.readFileSync(path.join(claude.destinationHome!, f.path)), f.path).toEqual(fs.readFileSync(path.join(staged, f.path)));
+    expect(rows(fs.readFileSync(claude.destinationPath!)).at(-1)!.cwd).toBe(path.join(m.mac, '.claude/plans'));
     expect(fs.statSync(path.join(project, `${id}.jsonl`)).mode & 0o777).toBe(0o600);
     expect(installSession(codex, stage(codex))).toEqual({ transcriptPath: `${codex.destinationHome}/${CODEX[0].file}` });
-    expect(rows(fs.readFileSync(codex.destinationPath!))[0].payload.cwd).toBe(m.work);
+    expect(fs.readFileSync(codex.destinationPath!)).toEqual(fs.readFileSync(codex.sourcePath));
   });
 
   it('keeps a copy already there when it is the same, and replaces one the incoming session only adds to', async () => {
@@ -571,11 +423,7 @@ describe('a session arriving on the destination', () => {
     expect(installSession(claude, staged, retry)).toEqual({ transcriptPath: placed });
     // the sidecars already there were the same, so only the transcript was written
     expect(written).toEqual([placed]);
-    const map = sessionPathMap({ sourceHome: claude.sourceHome!, destinationHome: claude.destinationHome! });
-    for (const f of claude.files) {
-      const at = path.join(claude.destinationHome!, f.path);
-      expect(fs.readFileSync(at), f.path).toEqual(claudeAdapter.rewrite(f.path, fs.readFileSync(path.join(staged, f.path)), map));
-    }
+    for (const f of claude.files) expect(fs.readFileSync(path.join(claude.destinationHome!, f.path)), f.path).toEqual(fs.readFileSync(path.join(staged, f.path)));
     expect(fs.readdirSync(path.dirname(placed)).sort()).toEqual([`${id}.jsonl`, id].sort());
   });
 
@@ -695,8 +543,13 @@ describe('agent preflight', () => {
     expect(codes([ok('claude')], [ok('claude', { version: '2.1.251' })])).toEqual([]);
     expect(codes([ok('claude')], [])).toEqual(['agent_cli_missing']);
     expect(codes([ok('claude')], [ok('claude', { version: undefined })])).toEqual(['agent_cli_missing']);
-    expect(codes([ok('claude')], [ok('claude', { version: '2.1.281' })])).toEqual(['incompatible_adapter']);
+    // the Mac's own release, and one newer than any adapter has seen
+    expect(codes([ok('claude', { version: '2.1.283' })], [ok('claude', { version: '2.1.283' })])).toEqual([]);
+    expect(codes([ok('claude')], [ok('claude', { version: '2.4.0' })])).toEqual([]);
+    expect(codes([ok('claude')], [ok('claude', { version: '2.1.250' })])).toEqual(['incompatible_adapter']);
     expect(codes([ok('claude', { version: '2.1.200' })], [ok('claude')])).toEqual(['incompatible_adapter']);
+    expect(agentBlockers({ kinds: ['claude'], source: [ok('claude', { version: '2.1.200' })], destination: [ok('claude', { version: '2.1.250' })] })[0].message)
+      .toBe("a handover carries claude sessions from 2.1.251 on; update this machine's claude 2.1.200 and the destination's claude 2.1.250");
     expect(codes([ok('claude')], [ok('claude', { loggedIn: false })])).toEqual(['agent_logged_out']);
     expect(codes([ok('claude')], [ok('claude', { hooks: false })])).toEqual(['agent_hooks_missing']);
     // a fleet running no Codex does not care how Codex is on either machine

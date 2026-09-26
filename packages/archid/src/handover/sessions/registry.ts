@@ -6,6 +6,7 @@ import path from 'node:path';
 import {
   AgentKind, type AgentAdapter, type Blocker, type Character, type FleetState, type ResumeFolder, type TransferManifestV1, type TransferSession,
 } from '@archipelago/protocol';
+import { versionOk } from '../../agents.js';
 import { codexInstalled, codexPaths } from '../../codex/install.js';
 import { resolvePaths } from '../../paths.js';
 import { PRIVATE, profileHome } from '../../profile.js';
@@ -15,15 +16,15 @@ import { writeDurable, type DurableStages } from '../durable.js';
 import { holds } from '../portable-path.js';
 import { claudeAdapter } from './claude.js';
 import { codexAdapter } from './codex.js';
-import { pathMap, versionOf } from './records.js';
-import { SessionError, type PathMap, type SessionAdapter } from './types.js';
+import { versionOf } from './records.js';
+import { SessionError, type SessionAdapter } from './types.js';
 
-/** Every session adapter, each for one agent kind and the CLI releases it was tested against. */
+/** Every session adapter, each for one agent kind from its minimum release on. */
 export const SESSION_ADAPTERS: readonly SessionAdapter[] = [claudeAdapter, codexAdapter];
 
-/** The adapter that reads sessions of this CLI release, if any was tested against it. */
+/** The adapter that carries sessions of this CLI release: one whose minimum it has reached. */
 export const adapterFor = (kind: AgentKind, version: string): SessionAdapter | undefined =>
-  SESSION_ADAPTERS.find((a) => a.kind === kind && a.supports(version));
+  SESSION_ADAPTERS.find((a) => a.kind === kind && versionOk({ minVersion: a.min }, version));
 
 /** The adapter a manifest names for a session: the kind's current one when it names none. */
 export function sessionAdapter(kind: AgentKind, adapter?: number): SessionAdapter {
@@ -31,10 +32,6 @@ export function sessionAdapter(kind: AgentKind, adapter?: number): SessionAdapte
   if (!found) throw new SessionError('incompatible_adapter', `this machine has no ${kind} session adapter ${adapter ?? ''}`.trim());
   return found;
 }
-
-/** How one session's paths move: from one machine's agent home to the other's. Every other path stays as it is. */
-export const sessionPathMap = (o: { sourceHome: string; destinationHome?: string }): PathMap =>
-  pathMap(o.destinationHome ? [[o.sourceHome, o.destinationHome]] : []);
 
 /** The reads and writes placing a session makes, so a test can fail one. */
 export type InstallFs = { read(file: string): Buffer | undefined; mkdir(dir: string): void; stages?: Partial<DurableStages> };
@@ -45,16 +42,15 @@ export const realInstallFs: InstallFs = {
 };
 
 /**
- * Puts one carried session in place under this machine's agent home, where the source's agent home had it. `staged`
- * holds the source's bytes at their manifest paths. A file already here is kept when it is the same, and replaced
- * when the incoming one only adds to it, as a session that went away and grew does; anything else means the
- * session was continued here, and nothing is written.
+ * Puts one carried session in place under this machine's agent home, where the source's agent home had it, byte for
+ * byte. `staged` holds the source's bytes at their manifest paths. A file already here is kept when it is the same,
+ * and replaced when the incoming one only adds to it, as a session that went away and grew does; anything else means
+ * the session was continued here, and nothing is written.
  */
 export function installSession(session: TransferSession, staged: string, io: InstallFs = realInstallFs): { transcriptPath: string } {
   const { sourceHome, destinationHome, destinationPath } = session;
   if (!sourceHome || !destinationHome || !destinationPath) throw new SessionError('incompatible_adapter', `session ${session.sessionId} has no place on this machine`);
   const adapter = sessionAdapter(session.agent, session.adapter);
-  const map = sessionPathMap({ sourceHome, destinationHome });
   const transcript = path.posix.relative(sourceHome, session.sourcePath);
   const to = path.posix.relative(destinationHome, destinationPath);
   // every file stays under the agent home the manifest names for it
@@ -76,12 +72,11 @@ export function installSession(session: TransferSession, staged: string, io: Ins
     if (!data || data.length !== f.size || crypto.createHash('sha256').update(data).digest('hex') !== f.sha256) {
       throw new Error(`the staged ${f.path} is not the file the manifest names`);
     }
-    const next = adapter.rewrite(f.path, data, map);
     const file = path.posix.join(destinationHome, f.path);
     const held = io.read(file);
-    if (held?.equals(next)) continue;
-    if (held && !(held.length < next.length && next.subarray(0, held.length).equals(held))) { diverged.push(file); continue; }
-    writes.push({ file, data: next });
+    if (held?.equals(data)) continue;
+    if (held && !(held.length < data.length && data.subarray(0, held.length).equals(held))) { diverged.push(file); continue; }
+    writes.push({ file, data });
   }
   if (diverged.length) throw new SessionError('destination_diverged', `this machine continued session ${session.sessionId}: ${diverged.join(', ')}`);
   // the transcript goes last, so a CLI that finds it finds everything beside it too
@@ -187,7 +182,7 @@ export const agentAdapters = (probes: readonly AgentProbe[]): AgentAdapter[] => 
 
 /**
  * What stops the agents the fleet runs from resuming on the destination: a CLI that is not there, a release on
- * either machine no adapter was tested against or the two read by different adapters, a destination not logged
+ * either machine older than its adapter's minimum or the two read by different adapters, a destination not logged
  * in, or one without Archipelago's hooks, whose SessionStart is how a resumed agent reports back.
  */
 export function agentBlockers(o: { kinds: readonly AgentKind[]; source: readonly AgentProbe[]; destination: readonly AgentProbe[] }): Blocker[] {
@@ -199,8 +194,7 @@ export function agentBlockers(o: { kinds: readonly AgentKind[]; source: readonly
     const [a, b] = [here?.version && adapterFor(kind, here.version), adapterFor(kind, there.version)];
     const unsupported = [here?.version && !a && `this machine's ${kind} ${here.version}`, !b && `the destination's ${kind} ${there.version}`].filter(Boolean);
     if (unsupported.length) {
-      const { min, max } = sessionAdapter(kind).versions;
-      blockers.push({ code: 'incompatible_adapter', message: `no session adapter was tested with ${unsupported.join(' or ')}; ${kind} ${min} to ${max} are` });
+      blockers.push({ code: 'incompatible_adapter', message: `a handover carries ${kind} sessions from ${sessionAdapter(kind).min.join('.')} on; update ${unsupported.join(' and ')}` });
       continue;
     }
     if (a && b && a !== b) blockers.push({ code: 'incompatible_adapter', message: `${kind} sessions are read by adapter ${a.adapter} here and ${b.adapter} on the destination` });

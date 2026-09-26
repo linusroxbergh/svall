@@ -356,7 +356,7 @@ describe('source preflight', () => {
     expect(await codes({ agentAdapters: [] })).toEqual(['agent_cli_missing', 'agent_cli_missing']);
     expect(await codes({ agentAdapters: [{ ...claude, loggedIn: false }] })).toEqual(['agent_logged_out']);
     expect(await codes({ agentAdapters: [{ ...claude, hooks: undefined }] })).toEqual(['agent_hooks_missing']);
-    expect(await codes({ agentAdapters: [{ ...claude, version: '2.1.999' }] })).toEqual(['incompatible_adapter']);
+    expect(await codes({ agentAdapters: [{ ...claude, version: '2.1.200' }] })).toEqual(['incompatible_adapter']);
     // a fleet running no Codex does not care how Codex is there
     expect(await codes({ agentAdapters: [claude, { kind: 'codex', adapter: 0 }] })).toEqual([]);
   });
@@ -485,6 +485,15 @@ describe('source preflight', () => {
     const b = boot({ probes: [{ kind: 'claude', version: '2.1.200', home: '/x', loggedIn: true, hooks: true }] });
     const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() });
     expect(r.blockers.map((x) => x.code)).toEqual(['incompatible_adapter']);
+  });
+
+  it("passes the Mac's Claude Code 2.1.283 on both machines, and a destination release newer than any fixture", async () => {
+    const b = boot({ probes: [{ kind: 'claude', version: '2.1.283', home: '/x', loggedIn: true, hooks: true }] });
+    const claude = destinationInfo().agentAdapters[0];
+    for (const version of ['2.1.283', '2.4.0']) {
+      const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines({ info: destinationInfo({ agentAdapters: [{ ...claude, version }] }) }) });
+      expect(r.blockers, version).toEqual([]);
+    }
   });
 });
 
