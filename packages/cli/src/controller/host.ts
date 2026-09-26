@@ -419,11 +419,19 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
     try {
       checks.push({ name: 'space', ...pick(spaceProbe(await probe(master, sh('archi-space', 'df -Pk "$HOME"'), 'df -Pk $HOME'))) });
     } catch (err) { checks.push(failed('space', err)); }
-    if (!checks.some((c) => c.name === 'linger')) {
+    let far: { home: string; user: string } | undefined;
+    try {
+      far = await homeProbe(master);
+      checks.push(far.home === entry.record.home ? { name: 'home', status: 'ok', detail: `${far.home} for ${far.user}` } : {
+        name: 'home', status: 'fail',
+        detail: `${far.home} is ${far.user}'s home on ${entry.record.name}, and the registry records ${entry.record.home}; `
+          + `archi host remove ${entry.record.name}, then archi host add again at an account whose home is ${d.registry.localMachine().home}`,
+      });
+    } catch (err) { checks.push(failed('home', err)); }
+    if (far && !checks.some((c) => c.name === 'linger')) {
       try {
-        const { user } = await homeProbe(master);
         const out = await probe(master, sh('archi-linger', 'loginctl show-user "$USER" -p Linger'), 'loginctl show-user');
-        checks.push({ name: 'linger', ...pick(lingerProbe(out, user, entry.record.ssh)) });
+        checks.push({ name: 'linger', ...pick(lingerProbe(out, far.user, entry.record.ssh)) });
       } catch (err) { checks.push(failed('linger', err)); }
     }
   } finally {

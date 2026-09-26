@@ -1,10 +1,11 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
 import {
   FleetState, Generation, NodeConfig, Sha256, TransactionId, TransferFile, TransferRoot, handoverError,
   type AgentKind, type Blocker, type Character, type FleetConfig, type KeptCommit, type OwnerRecord, type ParsedParams, type ReceivedGraph, type ReplicaCheck as WireCheck,
-  type ResumeFolder, type Result, type TerminalSlot,
+  type ResumeFolder, type Result, type TerminalSlot, type TransferManifestV1,
 } from '@archipelago/protocol';
 import { mergeConfig, namedGateway, type Config } from '../config.js';
 import type { Fleet } from '../fleet.js';
@@ -47,6 +48,8 @@ export type DestinationDeps = {
   git?: GitRunner;
   install?: InstallFs;
   probeFs?: ProbeFs;
+  /** This account's home, which a fleet it receives has to share. */
+  homedir?: () => string;
   clock?: Clock;
   /** How long a resumed agent has to report its SessionStart. */
   sessionStartMs?: number;
@@ -259,7 +262,7 @@ export class DestinationHandover {
     this.identify(p);
     if (this.open(tx)?.preparedDigest) throw notReady(`handover ${tx} is prepared on this machine, so nothing more is copied into its roots`);
     // each root at its own path here, before any is reserved
-    const unsafe = manifestProblems(m, []);
+    const unsafe = [...this.homeProblem(m), ...manifestProblems(m, [])];
     if (unsafe.length) throw blocked(unsafe);
     await this.receiving(p);
     const stays = await this.staying(graphsHere(m));
@@ -279,6 +282,15 @@ export class DestinationHandover {
       roots.push({ id: r.id, excludes: [...m.excludes], check: wire(check), ...(archivedTo && { archivedTo }), ...(check.ok && check.keep?.length && { keep: check.keep }) });
     }
     return { roots, ...(stays.unproven.length && { unproven: stays.unproven }) };
+  }
+
+  /** A fleet over another home would put its roots and its `~` where this account does not keep them; a home it cannot read is not taken on trust. */
+  private homeProblem(m: TransferManifestV1): Blocker[] {
+    let home: string;
+    try { home = (this.d.homedir ?? os.homedir)(); } catch (e) {
+      return [{ code: 'home_mismatch', message: `this machine cannot read its own home, so it cannot tell that it is the fleet's ${m.home}: ${(e as Error).message}` }];
+    }
+    return home === m.home ? [] : [{ code: 'home_mismatch', message: `this account's home is ${home} and the fleet's ${m.home}; a fleet moves only between accounts with the same home path` }];
   }
 
   /** The gateway's Begin for this handover, still preparing, handing this fleet on from the generation before this one to this machine. */

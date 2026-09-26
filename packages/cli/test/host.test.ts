@@ -21,6 +21,8 @@ const FLEET = FleetId.parse('11111111-2222-3333-4444-555555555555');
 const TOKEN = 'remote-token-never-printed';
 // the far account's home is the Mac's, as the registry's own record names it
 const HOME = os.homedir();
+// a home no runner of these tests has
+const ELSEWHERE = `${HOME}-elsewhere`;
 const BASE = `${HOME}/.local/share/archipelago`;
 const ARCHI = `${BASE}/current/bin/archi`;
 // the PATH the companion's units run with, and so the one its daemon finds the agent CLIs on
@@ -447,6 +449,24 @@ describe('host doctor', () => {
     ssh.reply(['archi-linger'], { stdout: 'Linger=yes\n' });
     const report = await doctorHost('trift', deps({ registry: registered() }));
     expect(report.checks.find((c) => c.name === 'doctor')).toMatchObject({ status: 'fail', detail: expect.stringContaining('exited 9') });
+  });
+
+  it('checks the far account still has the home the registry records for it', async () => {
+    const answer = (home: string): void => {
+      ssh.clearReplies();
+      ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
+      ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
+      ssh.reply(['archi-space'], { stdout: DF });
+      ssh.reply(['archi-home'], { stdout: `${home}\nlinus\n` });
+    };
+    const home = async () => (await doctorHost('trift', deps({ registry: registered() }))).checks.find((c) => c.name === 'home');
+    answer(HOME);
+    expect(await home()).toEqual({ name: 'home', status: 'ok', detail: `${HOME} for linus` });
+    answer(ELSEWHERE);
+    expect(await home()).toEqual({
+      name: 'home', status: 'fail',
+      detail: `${ELSEWHERE} is linus's home on trift, and the registry records ${HOME}; archi host remove trift, then archi host add again at an account whose home is ${HOME}`,
+    });
   });
 
   it('reports a release the controller cannot hand over to as a failure', async () => {

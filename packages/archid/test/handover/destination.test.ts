@@ -325,8 +325,11 @@ type Prepare = ParsedParams<'handover.prepare'>;
 const params = (s: Scene, over: Partial<Prepare> = {}): Prepare =>
   ({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest, landed: s.landed, ...over });
 
-/** This destination's daemon, as main wires it, over the scene's home. */
-function daemon(s: { paths: Paths; store: Store; probes: AgentProbe[] }, o: { concurrency?: number; failWrite?: (j: HandoverJournal) => boolean; git?: GitRunner } = {}) {
+/** This destination's daemon, as main wires it, over the scene's home, in an account whose home is the fleet's unless `homedir` says otherwise. */
+function daemon(
+  s: { paths: Paths; store: Store; probes: AgentProbe[]; manifest: Pick<TransferManifestV1, 'home'> },
+  o: { concurrency?: number; failWrite?: (j: HandoverJournal) => boolean; git?: GitRunner; homedir?: () => string } = {},
+) {
   const gateway = new Gateway();
   const clock = new Hands();
   const crew = new Crew(s.store);
@@ -340,7 +343,7 @@ function daemon(s: { paths: Paths; store: Store; probes: AgentProbe[] }, o: { co
       ownership, journal, agents: async () => s.probes, fleet: { ...crew.fleet, deactivate: async () => { crew.log.push('deactivate'); } },
       destination: {
         paths: s.paths, config, store: s.store, fleet: crew.fleet, tmux: crew.tmux, processes: crew.processes, authority: () => gateway, clock, ...(o.git && { git: o.git }),
-        sessionStartMs: 60_000, concurrency: over.concurrency ?? o.concurrency ?? 2, log: silentLogger,
+        sessionStartMs: 60_000, concurrency: over.concurrency ?? o.concurrency ?? 2, homedir: o.homedir ?? (() => s.manifest.home), log: silentLogger,
       },
     });
     const events: Event[] = [];
@@ -1518,6 +1521,21 @@ describe('destination claim', () => {
     expect(blockersOf(r)).toContainEqual(expect.objectContaining({ code: 'path_symlinked', message: expect.stringContaining(path.join(s.base, 'outside/work/ada')) }));
     expect(tree(s.base)).toEqual(before);
     expect(fs.readdirSync(path.join(s.base, 'outside/work'))).toEqual([]);
+  });
+
+  it('refuses a claim over a home other than its own, or when it cannot read its own, before it reserves or creates anything', async () => {
+    const s = await scene({ land: false });
+    const before = tree(s.base);
+    const homes: [() => string, string][] = [
+      [() => '/home/elsewhere', `this account's home is /home/elsewhere and the fleet's ${s.dst}; a fleet moves only between accounts with the same home path`],
+      [() => { throw new Error('no HOME'); }, `this machine cannot read its own home, so it cannot tell that it is the fleet's ${s.dst}: no HOME`],
+    ];
+    for (const [homedir, message] of homes) {
+      const r = await refusal(daemon(s, { homedir }).handover.claim(claimParams(s)));
+      expect(r.code).toBe('blocked');
+      expect(blockersOf(r)).toEqual([{ code: 'home_mismatch', message }]);
+    }
+    expect(tree(s.base)).toEqual(before);
   });
 
   it('will not take a root again once it has prepared from it, since a second copy would undo its Git repair', async () => {
