@@ -8,30 +8,32 @@ Everything sits behind `handover.enabled` in fleet.json, which is off by default
 
 ## Status
 
-- **Done:** plan Tasks 1–29, milestones M0–M3. Every task was reviewed; M1, M2 and M3 each got a deep
-  review, one fix wave and an on-machine pass. The M3 on-machine pass is done, apart from one real-Claude
-  check (below).
-- **Next:** Phase D2, Tasks 40–42 and the M3b gate: rebase and smoke, the same home path on both
-  machines, and main's newer fleet data. Then Phase G, Tasks 36–39 (hardening, CI, audit, docs,
+- **Done:** plan Tasks 1–29 and 40–42, milestones M0–M3. Every task was reviewed; M1, M2 and M3 each
+  got a deep review, one fix wave and an on-machine pass. Task 40 rebased onto current main and ran a
+  Mac→Linux→Mac round trip with real Codex on the rebased build. Tasks 41–42 made both machines share one
+  home path, so nothing is rewritten, and carry entity docs and agent profiles.
+- **Next:** the M3b gate: an on-machine round trip with real Claude and real Codex, entity docs and the
+  Linux lock, then the owner's by-eye pass. Then Phase G, Tasks 36–39 (hardening, CI, audit, docs,
   rollout), which ends version 1. A final whole-branch review comes last.
 - **After version 1:** Phase E, Tasks 30–33 (stable phone gateway), and Phase F, Tasks 34–35 (remote
   ports). Phase E needs a machine-wide `tailscale serve` path mapping on the gateway machine and a
   real phone for its gate, so ask the owner first.
-- **Code:** one squashed commit on main. The full 139-commit history is on branch
-  `fleet-handover-history`, and its commit messages are the best per-change record.
+- **Code:** one squashed feature commit on main, then one commit per change since. The pre-squash
+  139-commit history is on branch `fleet-handover-history` in archipelago-dev.
 
 ## What is where
 
 | File | What it is |
 | --- | --- |
 | `spec.md` | The design. It is binding: when the plan and the spec disagree, the spec wins. |
-| `plan.md` | Tasks 1–42 with milestone gates. Boxes are ticked through Task 29. |
+| `plan.md` | Tasks 1–42 with milestone gates. Boxes are ticked through Task 29 and for Tasks 40–42. |
 | `spike-results.md`, `readiness.md` | What the M0 spikes proved and what they changed in the spec. |
 | `ledger/progress.md` | **Read this before continuing.** Every dispatch, every `Ruling:` (a decision taken on the owner's behalf, with its cost if wrong), every deferred minor and parked finding, and every milestone gate. Grep it for `Ruling:`, `parked`, `minor (deferred)` and `carried`. |
 | `ledger/task-N-brief.md`, `task-N-report.md` | Each task's requirements and its implementer's report, with test evidence. |
 | `ledger/task-28-29-contract.md` | The fixed contract between the handover helper and the app: NDJSON events and exit codes. |
 | `ledger/review-constraints.md` | The delivery rules every reviewer was given. |
 | `ledger/m2-*`, `ledger/m3-*` | Milestone deep reviews, fix waves, and on-machine briefs and reports. The M3 on-machine reports are `m3-onmachine-{A,A2,B,C}-report.md`. |
+| `ledger/m3b-env.md` | The live test environment: the `archi-m3b` account on linus-vault and the Mac test HOME, both at `/Users/Shared/archi-m3b`, with its harness and teardown recipe. |
 | `spikes-ledger/` | The ledger and reports for the M0 spikes (Tasks 1–4). |
 
 Paths inside the ledger point at the old locations. `.superpowers/sdd/2026-09-20-fleet-handover/` is
@@ -39,24 +41,16 @@ now `ledger/`, and `docs/superpowers/{specs,plans}/…fleet-handover…` is now 
 
 ## Owed before this can ship
 
-- **Tasks 40–42** (`plan.md`, Phase D2):
-  - a smoke run on the rebased build, since the on-machine passes ran before the squash onto zod 4,
-    TS 7 and Node 24;
-  - the same home path on both machines, which ends the Claude and Codex version pins. The Claude
-    adapter accepts only 2.1.251–2.1.280, so the Mac's newer Claude blocks preflight with
-    `incompatible_adapter` today;
-  - entity docs, which live under the fleet home and do not travel yet;
-  - `agent.pid`, which travels and must not;
-  - the daemon lock on Linux, whose macOS-only flag leaves the gateway machine open to a second daemon
-    for the same fleet.
-- **Real Claude, both directions** (M3b gate). Real Codex was handed Mac→Linux→Mac with nothing done
-  by hand. Real Claude 2.1.280 was checked to report the carried session id on `claude --resume`. The
-  full handover of a real Claude session has not run: the test's copied credentials had expired, and
-  the Mac keychain read needs the owner's own hands.
+- **Real Claude, both directions** (M3b gate). Real Codex was handed Mac→Linux→Mac on the rebased
+  build. Task 41's probe resumed a real Claude 2.1.283 session and a real Codex rollout, copied
+  unchanged, in both directions. The full handover of a real Claude character has not run yet. Real
+  Claude under a Mac temp HOME logs in from a copied `~/.claude/.credentials.json`, which the owner
+  approved.
 - **The by-eye pass in the built app** (M3b gate): Add Machine, the handover sheet, and terminal
   re-attach after an SSH drop.
 - **A release signing key.** `allowed_signers` holds only a comment until one exists, so every install
-  needs `--allow-unsigned`.
+  needs `--allow-unsigned`. Before release, Task 38 must also restore the far machine's own signer check
+  on `host upgrade` (see the ledger's Task 40 fix round 1).
 - **CI.** Actions jobs do not start on this repo because of billing. Task 37's fresh-install CI needs
   that sorted first.
 
