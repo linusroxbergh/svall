@@ -22,7 +22,8 @@ function trusts(home: string, folder: Omit<ResumeFolder, 'kind'>): boolean {
 export const codexAdapter: SessionAdapter = {
   kind: 'codex',
   adapter: 1,
-  min: AGENTS.codex.minVersion!,
+  // every release counts when Archipelago sets no floor for Codex
+  min: AGENTS.codex.minVersion ?? [0, 0, 0],
   sessionStartOnResume: false,
 
   // <CODEX_HOME>/sessions/<yyyy>/<mm>/<dd>/rollout-<time>-<id>.jsonl is the whole session: the destination
