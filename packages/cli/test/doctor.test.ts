@@ -190,13 +190,21 @@ describe('doctor', () => {
     expect(byName(await doctor(adhoc, fake().deps))['daemon node'].status).toBe('skip');
   });
 
-  it('fails a plist whose checkout is gone, and warns when its PATH lacks a claude or codex this shell finds', async () => {
+  it('fails a plist whose checkout or release is gone, and warns when its PATH lacks a claude or codex this shell finds', async () => {
     const TSX = '/old/R&amp;D/archipelago/node_modules/.bin/tsx';
-    const running = (pathEnv: string) => `<dict>\n    <string>${TSX}</string>\n    <key>PATH</key><string>${pathEnv}</string>\n</dict>`;
+    const runs = (program: string[], pathEnv: string) =>
+      `<dict>\n  <key>ProgramArguments</key>\n  <array>\n${program.map((a) => `    <string>${a}</string>\n`).join('')}  </array>\n  <key>PATH</key><string>${pathEnv}</string>\n</dict>`;
+    const running = (pathEnv: string) => runs([TSX, '/old/R&amp;D/archipelago/packages/archid/src/bin.ts'], pathEnv);
     const there = { '/old/R&D/archipelago/node_modules/.bin/tsx': '', '/opt/homebrew/opt/node/bin/node': '' };
-    expect(byName(await doctor(priv, fake({ files: { [PLIST]: running('/opt/homebrew/opt/node/bin:/usr/bin'), ...there } }).deps))['daemon path'].status).toBe('ok');
+    expect(byName(await doctor(priv, fake({ files: { [PLIST]: running('/opt/homebrew/opt/node/bin:/usr/bin'), ...there } }).deps))['daemon path'])
+      .toMatchObject({ status: 'ok', detail: 'its program is there, and it finds claude and codex as this shell does' });
     const gone = byName(await doctor(priv, fake({ files: { [PLIST]: running('/opt/homebrew/opt/node/bin:/usr/bin') } }).deps));
     expect(gone['daemon path']).toMatchObject({ status: 'fail', detail: '/old/R&D/archipelago/node_modules/.bin/tsx is gone, so launchd cannot start archid: archi setup' });
+    const ARCHID = '/u/.local/share/archipelago/current/bin/archid';
+    const release = runs([ARCHID], '/u/.local/share/archipelago/current/node/bin:/usr/bin');
+    expect(byName(await doctor(priv, fake({ files: { [PLIST]: release, [ARCHID]: '' } }).deps))['daemon path'].status).toBe('ok');
+    expect(byName(await doctor(priv, fake({ files: { [PLIST]: release } }).deps))['daemon path'])
+      .toMatchObject({ status: 'fail', detail: `${ARCHID} is gone, so launchd cannot start archid: archi setup` });
     const pnpm = { '/u/Library/pnpm/claude': '', '/u/Library/pnpm/codex': '' };
     const lacking = fake({ files: { [PLIST]: running('/opt/homebrew/opt/node/bin:/usr/bin'), ...there, ...pnpm }, pathEnv: '/u/Library/pnpm:/usr/bin' });
     expect(byName(await doctor(priv, lacking.deps))['daemon path'])

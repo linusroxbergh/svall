@@ -236,20 +236,20 @@ function daemonNode(t: Target, d: DoctorDeps): Check {
     : { name: 'daemon node', status: 'ok', detail: `${dir}/node` };
 }
 
-// launchd runs the plist's tsx with only the plist's PATH, and logs nothing to archid.log when it cannot:
-// a checkout moved or deleted since setup, or a claude or codex installed since outside that PATH
+// launchd runs the plist's program with only the plist's PATH, and logs nothing to archid.log when it cannot:
+// a checkout or release moved or deleted since setup, or a claude or codex installed since outside that PATH
 function daemonPath(t: Target, d: DoctorDeps): Check {
   if (!t.managed) return { name: 'daemon path', status: 'skip', detail: 'not managed' };
   const { plist, fix } = plistOf(t, d);
   const text = d.read(plist);
   if (text === undefined) return { name: 'daemon path', status: 'skip', detail: `no ${plist}` };
   const run = plistRun(text);
-  if (run.tsx && !d.exists(run.tsx)) return { name: 'daemon path', status: 'fail', detail: `${run.tsx} is gone, so launchd cannot start archid: ${fix}` };
+  if (run.program && !d.exists(run.program)) return { name: 'daemon path', status: 'fail', detail: `${run.program} is gone, so launchd cannot start archid: ${fix}` };
   const finds = (dirs: string[], bin: string) => dirs.some((dir) => d.exists(path.join(dir, bin)));
   const lacks = ['claude', 'codex'].filter((bin) => finds(d.pathEnv.split(':'), bin) && !finds(run.path, bin));
   return lacks.length
     ? { name: 'daemon path', status: 'warn', detail: `the PATH in ${plist} has no ${lacks.join(' or ')}, which this shell finds: ${fix}` }
-    : { name: 'daemon path', status: 'ok', detail: 'its checkout is there, and it finds claude and codex as this shell does' };
+    : { name: 'daemon path', status: 'ok', detail: 'its program is there, and it finds claude and codex as this shell does' };
 }
 
 // launchd gives archid only the plist's environment, which setup took from the shell it ran in

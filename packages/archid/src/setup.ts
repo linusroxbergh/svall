@@ -263,11 +263,11 @@ const plistText = (o: Pick<HomeSetup, 'home' | 'label'> & RunFrom, nodeDir: stri
   label: o.label, program: daemonProgram(o), home: o.home, log: resolvePaths(o.home).log, pathEnv: daemonPath(nodeDir), env: launchdEnv(),
 });
 
-/** The tsx and the PATH folders that a plist setup wrote starts archid with. */
-export function plistRun(text: string): { tsx?: string; path: string[] } {
-  const tsx = /<string>([^<]*\/node_modules\/\.bin\/tsx)<\/string>/.exec(text)?.[1];
+/** The program, a checkout's tsx or a release's archid, and the PATH folders that a plist setup wrote starts archid with. */
+export function plistRun(text: string): { program?: string; path: string[] } {
+  const program = /<key>ProgramArguments<\/key>\s*<array>\s*<string>([^<]*)<\/string>/.exec(text)?.[1];
   const pathEnv = /<key>PATH<\/key><string>([^<]*)<\/string>/.exec(text)?.[1];
-  return { tsx: tsx && unxml(tsx), path: pathEnv ? unxml(pathEnv).split(':') : [] };
+  return { program: program && unxml(program), path: pathEnv ? unxml(pathEnv).split(':') : [] };
 }
 
 /** Whether a fleet's plist holds what setup would write now to run the checkout or release `o` names; the node it names stands while it is there. */

@@ -8,7 +8,7 @@ import { codexHookCommand, codexPaths, mergeCodexHooks } from '../src/codex/inst
 import { isOurs } from '../src/paths.js';
 import { LAUNCHD_LABEL } from '../src/profile.js';
 import {
-  HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hookCommand, hooksInstalled, installHomeTemplate, launchdPlist, mergeHooks, mergeStatusLine, nodeRun, plistCurrent, readJsonSettings, runSetup, setupHome,
+  HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hookCommand, hooksInstalled, installHomeTemplate, launchdPlist, mergeHooks, mergeStatusLine, nodeRun, plistCurrent, plistRun, readJsonSettings, runSetup, setupHome,
   shimsCurrent, statusWrapper, unmergeHooks, unmergeStatusLine, writeJsonSettings,
 } from '../src/setup.js';
 import { shq } from '../src/text.js';
@@ -203,6 +203,7 @@ describe('launchdPlist', () => {
     expect(p).toContain('<key>ARCHI_HOME</key>');
     expect(p).toContain('<key>KeepAlive</key>');
     expect(p).toContain('<key>LANG</key>');
+    expect(plistRun(p)).toEqual({ program: '/r/node_modules/.bin/tsx', path: ['/opt/homebrew/bin', '/usr/bin', '/bin'] });
   });
 });
 
