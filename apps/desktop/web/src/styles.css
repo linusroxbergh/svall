@@ -268,14 +268,14 @@ textarea { overflow-x: hidden; }
 .side-x { padding: 0 var(--sp-sm); background: none; font-size: var(--text-xl); line-height: 1; color: var(--ink-3); border-radius: var(--r-xs); }
 .side-x:hover { color: var(--ink); background: var(--fill-2); }
 /* the explanation waits behind the mark, so the panel reads as a list of controls rather than a page of prose */
-.side .row:has(.set-info), .side .opens:has(.set-info) { position: relative; }
+.side .row:has(.set-info), .side .opens:has(.set-info), .side .kicker:has(.set-info) { position: relative; }
 .side .opens:has(.set-info) { align-items: center; }
 .set-info > button { padding: 0 0 0 var(--sp-sm); background: none; border-radius: 0; color: var(--ink-3); font-size: var(--text-sm); line-height: 1; }
 .set-info > button:hover { background: none; color: var(--ink); }
 /* the tip is opened and placed by the script: it flips over its row when the panel's floor is too near */
 .set-tip { display: none; position: absolute; left: 0; right: 0; top: calc(100% + 5px); z-index: var(--z-popover); overflow: hidden auto; box-sizing: border-box;
   padding: var(--sp-lg) var(--sp-lg); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--glass-hi); backdrop-filter: blur(7px);
-  color: var(--ink-2); font-size: var(--text-sm); font-weight: var(--w-regular); line-height: 1.45; text-align: left; }
+  color: var(--ink-2); font-size: var(--text-sm); font-weight: var(--w-regular); line-height: 1.45; text-align: left; text-transform: none; letter-spacing: normal; }
 .set-tip[data-open="true"] { display: block; }
 .set-tip[data-place="up"] { top: auto; bottom: calc(100% + 5px); }
 .side .row b.set-slider, .side .row b.set-zoom { display: flex; align-items: center; gap: var(--sp-lg); }
