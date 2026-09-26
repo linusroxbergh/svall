@@ -20,11 +20,13 @@ const REASON = 'needs ARCHI_LIVE_REMOTE: an ssh destination with this machine\'s
 // a remote CLI other than the one on its PATH, such as an older release still installed there
 const REMOTE_BIN: Partial<Record<AgentKind, string>> = { claude: process.env.ARCHI_LIVE_REMOTE_CLAUDE, codex: process.env.ARCHI_LIVE_REMOTE_CODEX };
 
-// the test process runs with a throwaway HOME; the agents need the real one, and none of a live fleet's variables
+// the test process runs with a throwaway HOME; the agents need the real one, none of a live fleet's variables, and
+// not the doubles of claude and codex isolate.ts puts first on PATH
 const REAL_HOME = os.userInfo().homedir;
 const ENV: NodeJS.ProcessEnv = {
   ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(ARCHI_|CLAUDE_CODE_|CLAUDECODE$|CLAUDE_PID$|CLAUDE_EFFORT$|TMUX)/.test(k))),
   HOME: REAL_HOME,
+  PATH: process.env.PATH?.split(':').filter((d) => d !== path.join(os.homedir(), 'bin')).join(':'),
 };
 const q = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
 
