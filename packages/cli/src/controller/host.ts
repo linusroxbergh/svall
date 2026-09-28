@@ -447,7 +447,7 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
       const wrong = far.home !== entry.record.home ? `${far.home} is ${far.user}'s home on ${n}, and the registry records ${entry.record.home}`
         : far.home !== mine ? `${far.home} is ${far.user}'s home on ${n} and ${mine} is this Mac's; a fleet moves only between accounts with the same home path`
           : undefined;
-      checks.push(wrong ? { name: 'home', status: 'fail', detail: `${wrong}; archi host remove ${n}, then archi host add again at an account whose home is ${mine}` }
+      checks.push(wrong ? { name: 'home', status: 'fail', detail: `${wrong}; archi host remove ${n}, then archi host add again at an account whose home is ${mine}, and archi host enable ${n} --fleet <fleet> for each fleet it is the gateway of` }
         : { name: 'home', status: 'ok', detail: `${far.home} for ${far.user}` });
     } catch (err) { checks.push(failed('home', err)); }
     if (far && !checks.some((c) => c.name === 'linger')) {

@@ -510,7 +510,7 @@ describe('host doctor', () => {
     answer(ELSEWHERE);
     expect(await home()).toEqual({
       name: 'home', status: 'fail',
-      detail: `${ELSEWHERE} is linus's home on trift, and the registry records ${HOME}; archi host remove trift, then archi host add again at an account whose home is ${HOME}`,
+      detail: `${ELSEWHERE} is linus's home on trift, and the registry records ${HOME}; archi host remove trift, then archi host add again at an account whose home is ${HOME}, and archi host enable trift --fleet <fleet> for each fleet it is the gateway of`,
     });
   });
 
@@ -523,7 +523,7 @@ describe('host doctor', () => {
     expect(report.checks.find((c) => c.name === 'home')).toEqual({
       name: 'home', status: 'fail',
       detail: `${ELSEWHERE} is linus's home on trift and ${HOME} is this Mac's; a fleet moves only between accounts with the same home path; `
-        + `archi host remove trift, then archi host add again at an account whose home is ${HOME}`,
+        + `archi host remove trift, then archi host add again at an account whose home is ${HOME}, and archi host enable trift --fleet <fleet> for each fleet it is the gateway of`,
     });
   });
 

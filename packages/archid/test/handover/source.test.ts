@@ -317,7 +317,7 @@ describe('source preflight', () => {
     const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines(elsewhere) });
     expect(r.blockers).toEqual([{
       code: 'home_mismatch',
-      message: `the destination's home is /home/linus and this machine's ${b.work}; a fleet moves only between accounts with the same home path. On the destination, sudo mkdir -p ${path.dirname(b.work)}, then sudo useradd -m -d ${b.work} <user> for a new account, or sudo usermod -d ${b.work} -m <user> for an existing one you are not logged in as; then archi host remove <name>, and archi host add at that account`,
+      message: `the destination's home is /home/linus and this machine's ${b.work}; a fleet moves only between accounts with the same home path. On the destination, sudo mkdir -p ${path.dirname(b.work)}, then sudo useradd -m -d ${b.work} <user> for a new account, or sudo usermod -d ${b.work} -m <user> for an existing one you are not logged in as; then archi host remove <name>, archi host add at that account, and archi host enable <name> --fleet <fleet>`,
     }]);
     b.gateway.begin();
     const refused = await refusal(b.handover.freeze(b.freezeParams(b.machines(elsewhere))));
