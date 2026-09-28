@@ -68,14 +68,13 @@ under which licences, and which risks are accepted. Tests are named by file unde
   is the one a first install rests on, and the step says so.
 
   (`cli/test/host.test.ts` "checks the new release against the signers the installed release pins…", "holds a repeat
-  host add over an installed release to the signers that release pins…", "says when a machine has no release
-  installed to pin a signer…", "refuses a
-  release the installed release's signers do not vouch for, before anything it carries runs", "checks the signature
-  over an upgrade's SHA256SUMS before it unpacks anything else the archive holds", "refuses a release the pinned key
-  signed that arrives under another release's name…", "checks with the system's own tools, whatever a relative entry
-  in the far PATH finds in the upload first", "refuses a release when the installed release has lost its signers
-  file…", "says when the installed release pins no signer…", "checks an unsigned release with --allow-unsigned by its
-  digests alone…")
+  host add over an installed release to the signers that release pins…", "says when a machine has no release installed
+  to pin a signer…", "refuses a release the installed release's signers do not vouch for, before anything it carries
+  runs", "checks the signature over an upgrade's SHA256SUMS before it unpacks anything else the archive holds",
+  "refuses a release the pinned key signed that arrives under another release's name…", "checks with the system's own
+  tools, whatever a relative entry in the far PATH finds in the upload first", "refuses a release when the installed
+  release has lost its signers file…", "says when the installed release pins no signer…", "checks an unsigned release
+  with --allow-unsigned by its digests alone…")
 - **`archi setup --release <archive>`**, the installer on each machine, checks the signature over the archive's
   `SHA256SUMS` before it unpacks the rest, then every digest and the tree. (`archid/test/release.test.ts` "checks the
   signature over an archive's SHA256SUMS before it unpacks anything else from it")
