@@ -155,3 +155,116 @@ did not offer instead of failing. Fix: fail there.
   - crash at every hit: 330 passed.
 - Every mutation and scratch case ran in a scratch copy outside the worktree. The worktree is unchanged apart from this
   file.
+
+## Fix round 1
+
+Commits `2a5a0f08..a676269e`.
+
+**Verdict: Needs fixes.** Critical 0, Important 1, Minor 1.
+
+I1–I2 and M1–M4 are addressed, and so is fix A: each fails when I revert it. Fix B also fails when reverted, but the
+defect it fixes comes from a gap in the fake fleet. The real code does not have it.
+
+### Important
+
+#### F1. Defect B does not happen with the real fleet, and fix B adds a race
+
+- **Why B cannot happen in production.** The fake fleet's `reconcileNow` does nothing and its `activate` does no
+  reconcile (`faults.test.ts:227, 240`). The real `Fleet.activate` → `begin` → `reconcileNow` (`fleet.ts:141, 293-303`)
+  runs before `wake` on every activation (`destination.ts:492-497`). It takes back any live window named for a
+  character, dormant and carried or not, and keeps the carried revive (`reconcile.ts:120-132`). I checked this with the
+  real `Fleet` on real tmux in a scratch case. A carried character was laid dormant while its window lived on. After
+  `reconcileNow` it had that window again, with its revive kept. So after the crash B describes, the retried activation
+  finds the slot holding its window. `wakeSlot` then reads it as `shell` and runs `lay`, which kills it, and opens the
+  terminal afresh. That is the path the other `activate.open` crash cases already cover.
+- **The suite passes without fix B.** Scratch: I gave the fake `reconcileNow` the real reconcile's re-attach (a window
+  named for a slot with no `tmux` is attached, and `revive` is kept while carried) and reverted `9680eca4`'s source
+  change. All 421 cases pass, among them `destination.activate.kill:before#1` in both variants, with c_di resumed with
+  its flags.
+- **What `closeLeft` does in production.** It runs only when a window named for the terminal appears after the
+  reconcile (`destination.ts:575-576, 752-757`). By then the destination is unheld (`destination.ts:493`), so a user can
+  open a terminal too. For example, the phone revives a dormant character as soon as its view opens
+  (`CharacterView.tsx:108`). If that happens while `wake` handles the slot, `closeLeft` kills the window the user just
+  opened. `openSlot` then returns a slot pointing at a window that is gone, and the terminal is left dormant with an
+  error. This is narrow and breaks no invariant, but it is a production change for a defect production does not have.
+
+Fix:
+
+- make the fake's `activate` and `reconcileNow` re-attach windows by name, as `reconcile` does;
+- drop `closeLeft` and the `else if (!held)` branch;
+- keep the `destination.activate.kill:before#1` cases, which then run the real path.
+
+### Minor
+
+#### F2. `settledOn` covers only `handover/` and `ctl/`
+
+`settledOn` checks `handover/` on each machine and all of `ctl/` (`faults.test.ts:688, 699`). A transaction file
+anywhere else under a fleet home is not checked. Scratch mutation:
+
+- `mac/stage-<tx>.json`, written inside `source.freeze.manifest` and removed only in complete, is left behind by every
+  abort. All 106 source and probe cases still pass, apart from the move probe's count, which fails only because I
+  reused a failpoint name.
+- The same file under `mac/handover/` fails more than 40 cases.
+
+Nothing leaks today, since every file a transaction writes lives in `handover/`.
+
+Fix: also assert that no path under the base names the transaction id. I ran that check after a settled move, abort
+and cancel, and it finds nothing, so it raises no false alarm.
+
+### Each item
+
+- **I1.**
+  - Dropping any one of the four new boundaries fails the suite:
+    - `source.rest.forcekill`: the move probe reports `mac signal 3001 … outside every failpoint`;
+    - the kill in `lay`: `destination.activate.kill:*#1` reports `trift kill @4 …`, in both variants;
+    - `destination.claim.archive`: the probe reports the removal of a `trift/replicas/…` record;
+    - the claim after the archive: the probe reports the link of a record.
+  - The claim after the archive now runs the reserve-and-create branch under crash, which 36a's one disk could not.
+- **I2.**
+  - Reverting `clear`'s order fails `controller.journal:after#15` and `controller.clear:before#1`, in both variants.
+  - Dropping `source.release.manifest` fails 16 abort cases and the refused-freeze case.
+  - Reverting supersede's order fails its `source.test.ts` case.
+  - I thought moving the folder's removal ahead of the journal's would leave a journal whose folder is gone. That does
+    no harm: `clear` runs only after both sides and the gateway finished or let go. A later finish reads `landed` as
+    absent, and no daemon still has a journal to complete. `controller.clear:after#1` settles in both variants.
+- **M1.** My mutation from 36a now fails. A `stage-<tx>.json` under `mac/`, written in freeze outside any failpoint and
+  removed in complete, fails the move, abort and cancel probes with `rename` and `removal of mac/stage-<tx>.json by the
+  source ran outside every failpoint`. The `threw` edge closes the count, and the guard test covers it.
+- **M2.** 421 cases in about 20 s, every hit of every step.
+- **M3.** Reverting the `rest.ts` half fails `source.rest.kill:after#4` resume, and reverting the `source.ts` half fails
+  the abort variant.
+- **M4.** An `open` verdict with `safe: []` fails `source.freeze.digest:after#1` with "status offers nothing to do".
+- **Fix A** (`ed25ada8`) is correct: the real `doRevive` and `doOpenSecond` dropped the carried revive.
+  - Reverting `fleet.ts` fails the new `fleet.test.ts` case.
+  - Reverting the fake's matching change fails the four `destination.activate.kill` cases.
+- **Fix B** (`9680eca4`): reverting it fails `destination.activate.kill:before#1` in both variants, in the world as
+  modelled. See F1.
+
+### The concerns
+
+- **A leftover revive on a live main terminal.** Accepted. Every reader acts only on a dormant slot:
+  - `run` and `doRevive` check `!c.tmux`, and the web's "Resuming" view is shown only for a dormant slot;
+  - the next rest's `markDormant` overwrites it before any manifest is built;
+  - the next start's reconcile clears it.
+
+  Clearing it in the poll's main-terminal branch, as `attachSlot` already does for a second terminal, would make the two
+  slots match, but it is not needed.
+- **Supersede without a failpoint.** Accepted. Force-owner recovery is not a step of a handover (spec, "Failure and
+  recovery"). Its new order is proven by the `source.test.ts` crash case.
+- **The cancel-during-transfer run.** A good addition. It is the only path to `dropStage` (`destination.abort.stage`).
+- **Restarting dead daemons before each recovery attempt.** Accepted. It models launchd, and a second crash can now fall
+  during recovery (`after` chains). A daemon that stays down while a controller recovers is 36b's to cover, with its
+  lost and partition faults.
+- **Call sites the matrix does not crash at, the one disk, agents, and the reverse import** (now with a type-only
+  `RunRsync`). Accepted as reported. The `closeLeft` call site goes away with F1.
+
+### Runs
+
+- `pnpm typecheck`: clean.
+- `pnpm vitest run --project archid --project cli --project @archipelago/desktop-web`: 181 files passed and 1 skipped;
+  3267 tests passed and 5 skipped.
+- `faults.test.ts`: 421 passed in 20 s (scratch copy).
+  - shuffle seeds 1, 99 and 4242: 421 passed each;
+  - two repeats in order: 421 passed each.
+- `fleet.test.ts` and `source.test.ts`: 134 passed.
+- Every mutation and scratch case ran in a scratch copy outside the worktree.
