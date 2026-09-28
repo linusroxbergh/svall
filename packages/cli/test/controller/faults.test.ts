@@ -181,6 +181,8 @@ describe('a message fault at every request of the controller', () => {
             const why = () => `${JSON.stringify(first)}\n${said.join(' ')}\n${w.violations.join('\n')}\n${w.trace.join(' | ')}`;
             expect(w.requests[k], why()).toBe(labels[i]);
             expect(w.violations, why()).toEqual([]);
+            // a request repeated or held back opens no second handover
+            expect(w.transactions.size, why()).toBeLessThanOrEqual(1);
             let where: string;
             try { where = real.settledOn(w); } catch (e) { throw new Error(`${(e as Error).message}\n${why()}`); }
             if (w.everMoved) expect(where, why()).toBe('destination');
