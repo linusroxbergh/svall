@@ -302,7 +302,7 @@ network as the link. All the runs below were on AC power at 100% charge with no 
 | An answer to the controller | 256 MiB a frame; the freeze answer, which carries the manifest whole, is the largest (8.7 MB at 50,000 files) | `client.test.ts` "reads an answer as large as a request may be…" |
 | Hashing | Eight files at once, each streamed a chunk at a time; a Git index is read whole, one at a time, up to 256 MiB | `manifest.test.ts` "hashes several files at once, never more than eight…", "reads a session file a chunk at a time…" |
 | Where carried links lead | One lookup per link in its root's paths | `handover.test.ts` "reads a root's file list a few times over to judge its links…" |
-| A terminal viewer on the daemon's socket | No more output once 1 MB waits unsent on its socket, then the screen afresh once it drains | `archid/test/terminals.test.ts` "sends a viewer no more output once a megabyte waits unsent…", "resumes a paused pane for the viewers that keep up…" |
+| A terminal viewer on the daemon's socket | No more output once 1 MB waits unsent on its socket, then the screen afresh once 250 kB or less waits | `archid/test/terminals.test.ts` "sends a viewer no more output once a megabyte waits unsent…", "lets a viewer that fell behind back in once a quarter of a megabyte or less waits…", "resumes a paused pane for the viewers that keep up…" |
 
 Other caps: a notification's POST body 64 KiB, a gateway line and a helper control line 1 MiB, a far command's output
 1 MiB, a far release listing 16 MiB.
@@ -313,9 +313,10 @@ Other caps: a notification's POST body 64 KiB, a gateway line and a helper contr
   which stops drawing to a client that falls behind and redraws it once it catches up. Nothing grows in the daemon,
   and tmux stayed at 8 MiB while a client read nothing for 21 s of a pane printing without end.
 - **A viewer on the daemon's socket**, such as the phone page, stops getting output once 1 MB waits unsent, and gets
-  the screen afresh once it drains. In the benchmark (`--flood`), a terminal printed about 24 MB a second to a viewer
-  that read nothing for 20 s, and the daemon grew by 1 MiB. Without the bound the daemon queued every byte printed,
-  base64-encoded, until the socket closed.
+  the screen afresh once 250 kB or less waits, so the resync (2,000 lines) fits under the mark with room to spare. In
+  the benchmark (`--flood`), a terminal printed about 24 MB a second to a viewer that read nothing for 20 s, and the
+  daemon grew by 1 MiB. Without the bound the daemon queued every byte printed, base64-encoded, until the socket
+  closed.
 - **tmux** pauses a pane whose output the daemon's own control client lags 3 s behind (`pause-after=3`). The daemon
   resumes it once every viewer that keeps up has drained; one that fell behind holds nothing up.
 

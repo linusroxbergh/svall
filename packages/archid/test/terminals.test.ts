@@ -107,6 +107,26 @@ runIf('TerminalHub', () => {
     const cont = vi.spyOn(fleet, 'continuePane');
     fleet.emit('pause', c.id);
     await waitFor(() => cont.mock.calls.length === 1, 1000);
+    hub.closeAll(v);
+  });
+
+  it('lets a viewer that fell behind back in once a quarter of a megabyte or less waits, not as soon as it dips under one', async () => {
+    const { hub, fleet, c } = await boot();
+    let backlog = 1_000_000;
+    const v: Viewer & { events: Event[] } = { kind: 'app', events: [], send: (ev) => { v.events.push(ev); }, backlog: () => backlog };
+    await hub.open(c.id, 80, 24, 100, v);
+    const seen = () => v.events.filter((e) => e.event === 'term.output' || e.event === 'term.resync').map((e) => e.event);
+    fleet.emit('output', c.id, Buffer.from('past the mark'));
+    backlog = 999_999;
+    await new Promise((r) => setTimeout(r, 300));
+    fleet.emit('output', c.id, Buffer.from('still behind'));
+    expect(seen()).toEqual([]);
+    backlog = 250_001;
+    await new Promise((r) => setTimeout(r, 300));
+    expect(seen()).toEqual([]);
+    backlog = 250_000;
+    await waitFor(() => seen().includes('term.resync'));
+    hub.closeAll(v);
   });
 
   it('resyncs open terminals after a control reset', async () => {

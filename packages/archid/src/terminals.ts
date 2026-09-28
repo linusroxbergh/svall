@@ -19,6 +19,8 @@ const viewerSession = (id: string, term?: 2): string => (term === 2 ? `v-${id}-2
 
 const SCROLLBACK = 2000;
 const DRAIN_LIMIT = 1_000_000;
+// a viewer that fell behind rejoins once no more than this waits, so its resync and what follows fit under the limit
+const REJOIN_AT = DRAIN_LIMIT / 4;
 const DRAIN_TIMEOUT = 30_000;
 
 export class TerminalHub {
@@ -28,7 +30,7 @@ export class TerminalHub {
   private pinned = new Set<string>();
   // viewers whose socket has closed: an open still under way for one must not add it
   private left = new WeakSet<Viewer>();
-  // viewers whose socket holds DRAIN_LIMIT unsent, and the terminals whose output they missed meanwhile
+  // viewers whose socket held DRAIN_LIMIT unsent and has not drained to REJOIN_AT, and the terminals they missed output of
   private behind = new Map<Viewer, Set<string>>();
 
   constructor(private fleet: Fleet, private tmux: Tmux, private store: Store, private log: Logger) {
@@ -140,7 +142,7 @@ export class TerminalHub {
     for (const v of this.viewers.get(id) ?? []) v.send(ev);
   }
 
-  /** Output goes to each viewer that keeps up; one whose socket is full misses it, and gets the screen afresh once it drains. */
+  /** Output goes to each viewer that keeps up; one whose socket is full misses it, and gets the screen afresh once it has mostly drained. */
   private stream(id: string, ev: Event): void {
     for (const v of this.viewers.get(id) ?? []) {
       const missed = this.behind.get(v);
@@ -155,7 +157,7 @@ export class TerminalHub {
     this.behind.set(v, missed);
     const attempt = () => {
       if (this.left.has(v)) { this.behind.delete(v); return; }
-      if (v.backlog() >= DRAIN_LIMIT) { setTimeout(attempt, 50); return; }
+      if (v.backlog() > REJOIN_AT) { setTimeout(attempt, 50); return; }
       this.behind.delete(v);
       for (const t of missed) if (this.viewers.get(t)?.has(v)) this.resync(t, v).catch((e) => this.log.error(`resync ${t}: ${String(e)}`));
     };
