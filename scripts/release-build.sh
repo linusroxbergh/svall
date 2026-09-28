@@ -10,7 +10,7 @@
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
-out= version= base=
+out='' version='' base=''
 while [ $# -gt 0 ]; do
   case $1 in
     --out) out=$2; shift 2 ;;

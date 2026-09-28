@@ -10,7 +10,7 @@
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/../.." && pwd)
-release= upgrade=
+release='' upgrade=''
 pass=()
 while [ $# -gt 0 ]; do
   case $1 in
