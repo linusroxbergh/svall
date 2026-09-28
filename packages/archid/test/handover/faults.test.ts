@@ -286,6 +286,8 @@ class World {
   struck: string[] = [];
   onHit?: (key: string) => void;
   everMoved = false;
+  /** every handover the gateway's record has named, as read at each step */
+  transactions = new Set<string>();
   /** the gateway is out of reach, as against dead: nothing restarts it until a test brings it back */
   away = false;
   now = 1000;
@@ -426,6 +428,7 @@ class World {
   record(): OwnerRecord {
     const r = new DurableJson(OwnerRecord, path.join(this.prefix, 'gateway', 'fleets', `${fleetId}.json`)).read();
     if (!r.ok) throw new Error(`the gateway's record cannot be read: ${r.reason}`);
+    if (r.value.transaction) this.transactions.add(r.value.transaction.id);
     return r.value;
   }
 
@@ -704,6 +707,7 @@ function settledOn(w: World): 'source' | 'destination' {
   expect(other.windows.size).toBe(0);
   // the folder that holds each transaction's own may stay, empty
   expect(entries(w.ctlDir).filter((e) => e !== 'handover')).toEqual([]);
+  expect(entries(w.base).filter((e) => [...w.transactions].some((tx) => e.includes(tx)))).toEqual([]);
   expect(w.errors).toEqual([]);
   return where;
 }
