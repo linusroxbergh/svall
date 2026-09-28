@@ -242,6 +242,21 @@ describe('preflight', () => {
     expect(w.store.j).toBeUndefined();
   });
 
+  it('names a few of a root\'s names that differ only by case, and counts the rest, however many there are', async () => {
+    const w = new World();
+    w.destination.probe = { exists: true, writable: true, caseInsensitive: true, freeBytes: 1e12 };
+    const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
+    w.source.answers['handover.preflight'] = ((p: unknown) => {
+      const r = preflight(p);
+      r.manifest.roots.find((x) => x.id === 'r_app')!.files.push(...Array.from({ length: 10_000 }, (_, i) => [file(`data/f${i}.csv`), file(`data/F${i}.csv`)]).flat());
+      return r;
+    }) as never;
+    const r = await controller(w).preflight(trift, {});
+    const message = r.blockers.find((b) => b.code === 'path_collision')!.message;
+    expect(message).toMatch(/ and \d+ more/);
+    expect(message.length).toBeLessThan(1000);
+  });
+
   it('warns that Codex asks to trust a carried folder only where the destination does not trust it yet', async () => {
     const w = new World();
     // bo's Codex works in a worktree of app, which Codex trusts through app itself

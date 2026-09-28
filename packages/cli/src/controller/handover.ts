@@ -916,7 +916,7 @@ export class Handover {
       if (clash.length) {
         blockers.push({
           code: 'path_collision', entity: { kind: 'root', id: root.id },
-          message: `${root.path} would hold ${clash.join(', ')}, whose names differ only by case or Unicode normalization, and ${where} does not tell them apart`,
+          message: `${root.path} would hold ${clash.slice(0, 6).join(', ')}${clash.length > 6 ? `, and ${clash.length - 6} more` : ''}, whose names differ only by case or Unicode normalization, and ${where} does not tell them apart`,
         });
       }
     }
