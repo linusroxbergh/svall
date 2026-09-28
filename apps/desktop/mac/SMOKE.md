@@ -24,8 +24,11 @@ describes.
    - Each step appears as it finishes, grouped Connect, Prerequisites, Companion, Service, Agent logins, Final probe
      and Registry. A new host key is asked in a dialog.
    - A fresh account ends with **still to do**: lingering, and any agent not logged in.
-2. Do what it lists over ssh, then choose **Check**: it ends with **ready for handover**.
-3. Choose **Make it this fleet's gateway**. Both steps are ok, and `archi host list` shows `studio` as a gateway.
+2. Do what it lists over ssh, then choose **Check**: no row is marked ×. On Ubuntu 24.04 `tmux` is marked ! (it ships
+   3.4), and so may `gh` and `path` be; none of them stops a handover. It ends with **Check: done**, or with **ready
+   for handover** when nothing is marked ! either.
+3. Choose **Make it this fleet's gateway**. Its `machine`, `authority` and `fleet` steps are ok, and `archi host list`
+   shows `studio` as a gateway.
 4. Choose **Add machine** again with the same name: every step runs again and nothing changes.
 
 ## 2. The fleet
@@ -102,7 +105,7 @@ The Linux machine is reached over Tailscale, so disconnecting Tailscale on the M
 
 1. Start a handover. While it transfers, quit the app with Cmd+Q and open it again (`archi smoke`).
    - The sheet shows the handover still running, and it completes.
-2. Start one more. While it transfers, find the helper with `archi -p smoke handover status` ("running here as pid N")
+2. Start one more. While it transfers, find the helper with `archi -p smoke handover status` ("runs here as pid N")
    and `kill -9` it, then quit and reopen the app.
    - The sheet shows the handover stopped part way with **Resume** and **Abort**. Resume completes it.
 3. Do the same once it is Resuming characters: the sheet offers only **Retry**, and Retry completes it.

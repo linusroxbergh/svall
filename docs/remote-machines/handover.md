@@ -6,8 +6,9 @@ transcripts and shells reopen in their folders. One machine runs the fleet at a 
 way leaves it either still on the machine it came from, or on the machine it went to with any character that could
 not resume waiting to be retried. It never leaves both running.
 
-Before the first one, [set the machine up](setup.md), make it the fleet's gateway, and check that `archi host doctor
-<name>` says **ready for handover**.
+Before the first one, [set the machine up](setup.md), make it the fleet's gateway, and run `archi host doctor <name>`
+(**Check** in the app): no check should fail (✗). A warning (!) about `tmux`, `gh` or `path` does not stop a handover;
+an agent your fleet runs that is missing or not logged in there does.
 
 ## From the app
 
@@ -62,7 +63,9 @@ archi handover --forget                       # drop this Mac's journal of a han
   its log is `controller/handover.log` in the fleet home.
 - Only one handover of a fleet runs on a Mac at a time; a second start names the one running.
 
-Without a person to answer, a handover stops at the first blocker and gives the fleet back. These flags answer ahead:
+A run in the foreground with no terminal to ask in (`--json`, or stdin not a terminal) stops at the first blocker and
+gives the fleet back. A `--detach` helper waits at a blocker found after Checks, with the fleet frozen, until someone
+answers it through `archi handover attach` or the app. These flags answer ahead:
 
 | Flag | What it answers |
 | --- | --- |
@@ -191,8 +194,9 @@ four to say what is safe:
 
 What else to know:
 
-- **A killed app or controller** stops nothing it had not already reached: the journals say where the handover
-  stands, the sheet rebuilds from them when the app opens, and `status` says what to do.
+- **Killing the app** stops nothing, since the helper runs on. **Killing the helper** (or a foreground `archi
+  handover`) leaves the handover where it stopped. The journals say where that is, the sheet rebuilds from them when
+  the app opens, and `status` says what to do.
 - **A dropped link** takes the controller between 49 and 108 seconds to give up: each gateway call waits 30 seconds
   and is asked again, and the ssh connection is closed after 45 seconds without an answer. The sheet shows the
   retries meanwhile, then stops with Resume and Abort, or Retry after the commit.
@@ -226,6 +230,27 @@ archi fleet recover --force-owner local --gateway spare       # and another regi
 Work done since the last handover on a machine that loses the fleet stays on that machine's disk; none of it is
 carried. `--gateway` needs a machine from the registry that holds no record of the fleet, and is refused while the
 current gateway still answers.
+
+### A gateway set up again
+
+A gateway machine that was reinstalled, or whose account was made again, has lost its record of the fleet and comes
+back with a new machine id: commands that reach it find no Archipelago there, or another machine than the registry
+names. Set it up again from this Mac, under the same name:
+
+```sh
+archi host add studio --ssh ada@studio        # installs the companion; the registry takes the new machine id
+archi host enable studio --fleet private      # a new record naming this Mac the owner, and the machine's copy
+```
+
+The new record starts at generation 0. If the fleet has moved before, this Mac holds a later generation, which a
+daemon never gives up for a lower one, so a handover stops at Checks with `generation_mismatch`. `archi fleet recover
+--force-owner local` then writes a record above both, and this Mac takes it.
+
+An account under another user name is another ssh destination: run `archi host remove studio` first, with `--forget`
+if the old account can no longer be reached, then add the machine at the new one.
+
+If the fleet was running on that machine, run the same three commands. Until the recovery, this Mac holds the fleet
+read-only as it was when it last left; what was done on the other machine since then is gone.
 
 ## Known limitations
 

@@ -8,7 +8,7 @@ machine needs, how to add it, and how to look after it.
 
 | | Mac | Linux machine |
 | --- | --- | --- |
-| System | macOS 15 or newer | Ubuntu LTS, x86-64 or arm64. Ubuntu 24.04 is the tested release; another Ubuntu release is a warning, and any other system is refused. |
+| System | macOS 15 or newer | Ubuntu LTS, x86-64 or arm64. Ubuntu 24.04 is the tested release; a release other than an LTS is a warning, and any other system is refused. |
 | Archipelago | The app, installed with `pnpm desktop:install` (see the [README](../../README.md#quickstart)) | Installed by `archi host add` from the Mac. It brings its own Node and needs no clone, pnpm or build tools. |
 | Services | launchd, as for any fleet | systemd user services, with lingering on so the fleet keeps running after you log out |
 | Tools | tmux, Git | tmux 3.x, Git, rsync 3.x (`sudo apt install tmux git rsync`) |
@@ -73,7 +73,8 @@ Both run the same steps and show each as it finishes:
 3. **Companion.** The Linux release matching this Mac's own release, checked against the digest this Mac's release
    pins and against its signature, copied over ssh and installed under `~/.local/share/archipelago` there.
 4. **Service.** `archipelago-gateway.service` and `archipelago-archid@private.service` as systemd user units, started.
-5. **Agent logins.** Claude Code and Codex on the machine: installed, recent enough and logged in.
+5. **Agent logins.** Claude Code and Codex on the machine: installed and logged in, and Codex 0.155.0 or newer. The
+   handover's own checks hold Claude Code to 2.1.251 or newer.
 6. **Final probe.** The machine's own fleet answers through a forwarded port.
 7. **Registry.** The machine is added to this Mac's list in `~/.config/archipelago/machines.json`.
 
@@ -123,7 +124,7 @@ once per fleet; `--fleet work` for a fleet named `work`. Then [hand the fleet ov
 | Command | In the app | What it does |
 | --- | --- | --- |
 | `archi host list` | | Every machine in the registry, with its id and whether it is a gateway. |
-| `archi host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, its free space and its home path. Ends with **ready for handover** when nothing fails or is left to do. |
+| `archi host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, its free space and its home path. A check marked ✗ fails and makes it exit 1; one marked ! is a warning. A fresh Ubuntu 24.04 warns on `tmux` (it ships 3.4), `gh` and `path`; none of these stops a handover. |
 | `archi host upgrade <name>` | Upgrade | Installs this Mac's release there, restarts the gateway and every fleet's daemon, and checks each answers from the new release. If one does not, it goes back to the release before. |
 | `archi host remove <name>` | Remove | Runs `archi uninstall` there and drops the machine from the registry. It refuses while the machine is the gateway of a fleet it owns or a handover holds open; bring each back with `archi handover local` first. Its fleets and their files stay on that machine. |
 | `archi host remove <name> --forget` | Forget | Drops the machine from the registry without reaching it, when it is gone. |

@@ -48,15 +48,17 @@ What `handover.changed` and `status` report, in order.
 
 A blocker stops the handover where it is found; a warning only informs. When a blocker turns up during Checks,
 nothing has started and the fleet stays where it is. One found later (while resting, transferring or verifying)
-opens a decision in the sheet: fix the cause and choose Try again, pick the choice it offers, or Abort. Without a
-person to ask (`--json`, `--detach` with nobody attached), the run stops with `blocked` and gives the fleet back.
+opens a decision in the sheet: fix the cause and choose Try again, pick the choice it offers, or Abort. A run in the
+foreground with no terminal to ask in (`--json`, or stdin not a terminal) stops with `blocked` and gives the fleet back.
+A `--detach` helper waits instead, with the fleet frozen, until someone answers or cancels through `archi handover
+attach` or the app; `archi handover status` names it while it runs.
 
 ### Identity, versions and reaching the machines
 
 | Code | Kind | What it means | What to do |
 | --- | --- | --- | --- |
-| `identity_mismatch` | blocks | A machine, fleet or gateway is not the one the handover expects: the fleet names no gateway, the destination already runs the fleet, a machine answered with another machine id, the destination's companion runs another fleet under this fleet's name, the gateway refused to begin, or the fleet the destination would prepare names another fleet id or gateway. | Follow the message. No gateway: `archi host enable <host> --fleet <fleet>`. Another fleet on the destination: the same command gives it a copy of this one. A machine id that changed (a reinstalled machine): `archi host remove <host> --forget`, then `archi host add` again. Run handovers from the Mac. |
-| `generation_mismatch` | blocks | The source's copy of the ownership record and the gateway's name different generations: another handover or a recovery moved the fleet since the source last heard. | `archi handover status`. With nothing open, restart the source's daemon: on start it takes the gateway's record. |
+| `identity_mismatch` | blocks | A machine, fleet or gateway is not the one the handover expects: the fleet names no gateway, the destination already runs the fleet, a machine answered with another machine id, the destination's companion runs another fleet under this fleet's name, the gateway refused to begin, or the fleet the destination would prepare names another fleet id or gateway. | Follow the message. No gateway: `archi host enable <host> --fleet <fleet>`. Another fleet on the destination: the same command gives it a copy of this one. A machine set up again, with a new machine id: [A gateway set up again](handover.md#a-gateway-set-up-again). Run handovers from the Mac. |
+| `generation_mismatch` | blocks | The source's copy of the ownership record and the gateway's name different generations: another handover or a recovery moved the fleet since the source last heard, or the gateway's record was made again. | `archi handover status`. With nothing open and the gateway ahead, restart the source's daemon: on start it takes a record with a higher generation, never a lower one. A gateway behind the source, as one [set up again](handover.md#a-gateway-set-up-again) is, needs `archi fleet recover --force-owner <machine>` naming the machine that runs the fleet (`local` for this Mac), which writes a record above both. |
 | `transaction_open` | blocks | A handover of this fleet is already open: at the gateway, as a journal on the destination, or as a source frozen for a handover the gateway no longer holds. | `archi handover status`, then `archi handover --resume` or `--abort`, whichever it says is safe. |
 | `incompatible_release` | blocks | The two machines run different Archipelago releases. A handover needs the same release on both. | `archi host upgrade <host>` installs this Mac's release there. If the host is newer, update the Mac first (`pnpm desktop:install`). |
 | `incompatible_protocol` | blocks | The two machines speak different RPC protocols. | As for `incompatible_release`. |
@@ -87,7 +89,7 @@ person to ask (`--json`, `--detach` with nobody attached), the run stops with `b
 
 | Code | Kind | What it means | What to do |
 | --- | --- | --- | --- |
-| `home_mismatch` | blocks | The destination account's home path is not the Mac's. Every path a fleet records travels unchanged, so both homes must be the same path. | Make an account there whose home is the Mac's path ([setup](setup.md#the-same-home-path)), `archi host remove <host>`, then `archi host add` at that account. |
+| `home_mismatch` | blocks | The destination account's home path is not the Mac's. Every path a fleet records travels unchanged, so both homes must be the same path. | Make an account there whose home is the Mac's path ([setup](setup.md#the-same-home-path)) and `archi host remove <host>`, then add it at that account and make it the gateway again, as [A gateway set up again](handover.md#a-gateway-set-up-again) describes. |
 | `parent_missing` | blocks | A folder outside the home lands at the same path on the destination, and the folder that holds it is missing there. | Create that folder on the destination, owned by the account, and try again. |
 | `path_symlinked` | blocks | A folder is reached through a symbolic link. A handover carries each folder at its real path, the one Git and the agents record; on the destination, a link on the way would send it elsewhere. | On the source, use the real path the message names: `cd` there in the character's terminal, or change the context item or `home.cwd` that names the link. On the destination, remove the link. |
 | `path_unsupported` | blocks | A path cannot travel as it is: it is not absolute or holds a control character, it overlaps a fleet home (whose token and keys stay on their machine), it holds an agent's login or config (`~/.claude.json`, Claude's `.credentials.json`, Codex's `auth.json`) or lies in or holds `~/.ssh` on either machine, a `handover.exclude` pattern is one rsync cannot read, an exclude would leave a tracked file behind, the destination keeps this fleet's docs, agent profiles or `.env` at another path, or a destination folder cannot be written. | Follow the message: rename the file, move the character's folder out of the fleet home, the agent's folder or `~/.ssh`, fix `handover.exclude` in `fleet.json`, or make the destination folder writable. |
@@ -271,9 +273,9 @@ do, and exits 1 unless it is ready.
 | `upload` | add, upgrade | Copies the companion archive to the machine. | Check free space and the link. |
 | `install` | add, upgrade | The machine checks the archive against its manifest and signers, then installs it under `~/.local/share/archipelago`. | Read the message; `archi host doctor <host>`. |
 | `service` | add | The daemon and gateway units run. | Read the units' logs under `~/.local/share/archipelago/log` there. |
-| `identity` | add | The machine's id and protocol. | `archi host upgrade <host>` when the protocol differs. |
+| `identity` | add | The machine's id, and that it speaks this Mac's protocol. | `ssh <destination>` and run `~/.local/bin/archi version --json` to see what it answers, then add the machine again. |
 | `claude` | add | Claude Code on the PATH the daemon uses, its version and its login. Each finding is a warning with an action. | Install or log in as the action says. |
-| `codex` | add | The same for Codex, including trusting its hooks. | As for `claude`. |
+| `codex` | add | The same for Codex. When it is not logged in, the action also says to trust Archipelago's hooks once with `/hooks`. | As for `claude`. |
 | `probe` | add, upgrade | The machine's own fleet answers through a forwarded port, from the release just installed. | An upgrade whose probe fails goes back to the release before (`rollback`). |
 | `rollback` | upgrade | Puts back the release the machine ran before. | Read the daemon log there; the action names the release it runs now. |
 | `registry` | add, remove | Writes or drops the machine in this Mac's registry. | Check `~/.config/archipelago` is writable. |
