@@ -356,7 +356,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
       await run.step('install', async () => {
         const out = await bootstrapSetup(master, {
           staging: remote.staging, archive: remote.archive, version: companion.version,
-          allowUnsigned: !companion.signed && companion.allowUnsigned,
+          allowUnsigned: !companion.signed && companion.allowUnsigned, installed: remote.archiBase,
         });
         return { value: undefined, detail: out.trim().split('\n').at(-1) ?? `release ${companion.version} installed` };
       });

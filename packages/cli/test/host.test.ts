@@ -670,6 +670,43 @@ esac
     expect(far.now()).toBe('1.2.2');
   });
 
+  it('holds a repeat host add over an installed release to the signers that release pins, as an upgrade is', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], pins: signer.signers });
+    // this Mac's home is the far one, so the paths host add builds from it land in the far machine's
+    const config = path.join(work, 'config');
+    const file = path.join(config, 'machines.json');
+    const saved = JSON.parse(fs.readFileSync(file, 'utf8')) as { machines: Record<string, { home: string }> };
+    saved.machines[far.registry.localId].home = path.join(work, 'far');
+    fs.writeFileSync(file, JSON.stringify(saved));
+    for (const [match, stdout] of [
+      [['uname', '-sm'], 'Linux aarch64\n'], [['cat', '/etc/os-release'], OS_RELEASE], [['archi-home'], `${work}/far\nlinus\n`],
+      [['archi-tools'], ['tailscale', 'tmux', 'git', 'rsync', 'systemctl', 'loginctl'].map((t) => `${t} yes\n`).join('')],
+      [['tmux', '-V'], 'tmux 3.4\n'], [['archi-rsync'], 'rsync  version 3.2.7  protocol version 31\n'], [['archi-space'], DF], [['archi-linger'], 'Linger=yes\n'],
+    ] as [string[], string][]) ssh.reply(match, { stdout });
+    const intruder = ephemeralSigner(work);
+    const ran = path.join(work, 'staged-archi-ran');
+    const archive = companionArchive(work, { signedBy: intruder.key, signersInside: intruder.signers, archi: `#!/bin/sh\ntouch '${ran}'\n` });
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive }, deps({ registry: MachineRegistry.load(config), verify: intruder.verify }));
+    await far.close();
+    expect(out.result).toBe('actions');
+    expect(step('install').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(`not signed by a key ${far.base}/current/release/allowed_signers pins`) });
+    expect(fs.existsSync(ran)).toBe(false);
+    expect(far.now()).toBe('1.2.2');
+  });
+
+  it('says when a machine has no release installed to pin a signer, so only this controller\'s signers vouched for the new one', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
+    const { bootstrapSetup } = await import('../src/controller/install.js');
+    const master = await SshMaster.open({ destination: 'trift.test', socketDir: ssh.socketDir });
+    const out = await bootstrapSetup(master, {
+      staging: `${work}/fresh/.cache/archipelago/staging-1.2.3`, archive: far.archive, version: '1.2.3', allowUnsigned: false,
+      installed: `${work}/fresh/.local/share/archipelago`,
+    });
+    await master.close();
+    await far.close();
+    expect(out).toContain('no release is installed there yet, so only this controller\'s signers vouched for it');
+  });
+
   it('says when the installed release pins no signer, so only this controller\'s signers vouched for the new one', async () => {
     const unpinned = path.join(work, 'no-signers');
     fs.writeFileSync(unpinned, '# no release key is committed yet\n');

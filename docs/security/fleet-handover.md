@@ -52,7 +52,8 @@ under which licences, and which risks are accepted. Tests are named by file unde
 
   (`cli/test/controller/install.test.ts` "checks the signature over an archive's SHA256SUMS before it unpacks anything
   else from it")
-- **On the far machine, for an upgrade**, the uploaded release is checked before anything it carries runs:
+- **On the far machine**, the uploaded release is checked before anything it carries runs, on an upgrade and on a
+  `host add` run again over an installed release alike:
   - `ssh-keygen -Y verify` of its `SHA256SUMS`, unpacked alone, against the installed release's
     `current/release/allowed_signers`, before the rest of the archive is unpacked;
   - then `sha256sum -c --strict`;
@@ -63,10 +64,12 @@ under which licences, and which risks are accepted. Tests are named by file unde
   the upload carries. The result appears in the `install` step. An `--allow-unsigned` upgrade checks the digests alone
   and says so. An installed release whose signers file pins no key (every release before the first signing key)
   leaves the controller's check as the only one, and says that too. An installed release that has lost its signers
-  file refuses the upgrade. A first install has no installed release, so the controller's check is the one it rests
-  on.
+  file refuses the install. A machine with no release installed has no signer of its own, so the controller's check
+  is the one a first install rests on, and the step says so.
 
-  (`cli/test/host.test.ts` "checks the new release against the signers the installed release pins…", "refuses a
+  (`cli/test/host.test.ts` "checks the new release against the signers the installed release pins…", "holds a repeat
+  host add over an installed release to the signers that release pins…", "says when a machine has no release
+  installed to pin a signer…", "refuses a
   release the installed release's signers do not vouch for, before anything it carries runs", "checks the signature
   over an upgrade's SHA256SUMS before it unpacks anything else the archive holds", "refuses a release the pinned key
   signed that arrives under another release's name…", "checks with the system's own tools, whatever a relative entry
