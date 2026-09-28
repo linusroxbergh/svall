@@ -330,3 +330,59 @@ cache says so, so `host remove trift` uninstalls it.
   `desktop-linux`.
 - **Worktree.** Untouched apart from this section. The untracked `scripts/bench/` and `packages/archid/*-bench.tmp.ts`
   appeared during the review and are another session's.
+
+## Re-review of fix round 2
+
+**Verdict: Approved.** N1, N2 and N3 are addressed. New: Critical 0, Important 0, Minor 1.
+
+| Finding | Verdict | Checked by |
+| --- | --- | --- |
+| N1 far check verifies one `SHA256SUMS`, checks digests against another | ADDRESSED | The far script refuses a member outside `releases/<v>`, a member spelled with an empty, `.` or `..` segment or a backslash, and a member listed twice (exit 9). On the pinned branch it runs the same `ssh-keygen -Y verify` again after the full unpack, over the files `sha256sum -c` reads. `inspectCompanion` and `install-release`'s `stage` share `archiveRelease`, and both already verify again after unpacking. The committed GNU tar test ran in `archi-it:machine` and passed: the good archive gives `pinned`, and the three spellings, the duplicate and the `d -> .` link are each refused with the intruder's `archi` never run. |
+| N2 noisy far shell skips `identify` | ADDRESSED | The id is read with the daemon's regex anywhere in stdout, and an exit-0 answer without an id is `MachineMismatch`. Replacing the regex with the old `JSON.parse` fails both "login shell prints" tests. |
+| N3 `host remove` during an open handover through another gateway | ADDRESSED | The `open` refusal filters every fleet home. Narrowing it back to `named` fails the new test. The daemon journal is removed at complete and abort (`journal.ts:87`), so a finished handover does not block removal. |
+
+**Spec "Published remote setup".** The first verify still comes before anything else is unpacked. The only earlier step
+is `tar -tzf`, which lists and extracts nothing. Then only the manifest and its signature are extracted, and they are
+verified. `inspectCompanion` and `stage` keep the same order.
+
+**Mutations.** Each fails its test:
+
+| Mutation | Result |
+| --- | --- |
+| Second far verify removed | the GNU tar test resolves on the link case |
+| `archiveRelease`'s member loop emptied | 2 failures (`install`, `release`) |
+| `identify` back to `JSON.parse` | 2 failures |
+| `open` back to `named` | 1 failure |
+
+**Concerns to judge:**
+
+- **N2 now also applies to `host upgrade` and `host remove`.** Acceptable:
+  - every companion release prints `machineId` (it arrived with `gateway owner`);
+  - an `archi` that exits non-zero is still passed on to the step that needs it;
+  - a bad install stays repairable by `host add` (which has no `sameMachine`) and by `host remove --forget`.
+- **N3 also blocks removal during an unrelated open handover.** Acceptable. An open handover is short-lived, the
+  refusal names `--resume`/`--abort`, and reading journals to narrow it would add code for a rare case.
+- **GNU tar coverage (the fixer's concern 2).** This is the Minor below.
+
+### M-r2 (Minor). Only an opt-in test guards the second far verify
+
+With the second verify removed, the default Mac run still passes: `host` and `install` gave 100 passed and 2 skipped.
+bsdtar refuses to write through a link, so only the GNU tar test sees the link case. That test runs only when
+`ARCHI_TEST_GNU_TAR` is set, and CI does not reach it.
+
+*Fix, later:* run the GNU tar case whenever docker and the image are present, or have the integration run cover it.
+Otherwise keep it listed in the release checklist.
+
+### Scope and runs
+
+- **Scratch copy.** `git archive HEAD` (`459845c9`) with its dependencies linked.
+- **Tests.** Run with `ARCHI_TEST_GNU_TAR=archi-it:machine`: `host` 78 passed and 1 skipped (the GNU tar case ran), then
+  `connection`, `handover` and `server` 139 passed. A four-file parallel run hit a 228 s timeout in two `host upgrade`
+  cases, which pass alone.
+- **Not rerun by me.**
+  - Hand-made spelling or link variants beyond the committed `smuggledArchive`/`linkedArchive` cases.
+  - `archi setup --release` under GNU tar: the image has no Node, so `stage` was checked only by `release.test.ts` on
+    bsdtar. Its re-verify after unpacking is unchanged from round 1.
+- **Docker.** I started colima's default profile and stopped it after. No container of mine is left, and the docker
+  context is `desktop-linux`.
+- **Worktree.** Untouched apart from this section.
