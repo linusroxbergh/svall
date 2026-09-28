@@ -271,6 +271,10 @@ export class Handover {
       const o = await this.observe(true);
       const v = assess(o);
       if (v.action === 'none') return v.standing === 'none' ? { status: 'none', reason: v.reason } : this.stuck(v);
+      // a journal rebuilt from the daemons' goes on from the destination's phase, which only the destination can say
+      if (!o.controller && v.standing === 'open' && o.destination?.ok === false) {
+        return this.stuck({ ...v, reason: `this controller keeps no journal of ${v.transactionId}, and the destination did not say how far it got (${o.destination.error}); resume once it answers` });
+      }
       await this.adopt(o, v);
       if (v.action === 'finish-abort') return this.letGo({ status: 'aborted', transactionId: v.transactionId, phase: v.phase ?? 'begin' }).catch((e: unknown) => this.stopped(e));
       if (v.action === 'finish') {

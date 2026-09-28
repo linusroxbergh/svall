@@ -125,6 +125,21 @@ const crashed = (at: 'controller.manifest' | 'controller.commit') => async (w: r
 const resume = (w: real.World): Promise<Outcome> => { const c = w.controller(); return w.run(() => c.resume()); };
 const abort = (w: real.World): Promise<Outcome> => { const c = w.controller(); return w.run(() => c.abort()); };
 
+/** A start from this machine whose controller dies as it would ask the gateway to record `at`. */
+async function diesAt(w: real.World, at: string): Promise<void> {
+  const a = party(w, 'mac', 'start');
+  const life = w.lifeOfController(a.c);
+  w.gate = async (g) => { if (g.life === life && g.label === at) life.dead = true; };
+  await a.go();
+  w.gate = undefined;
+}
+
+/** A handover whose controller died once the destination prepared, and whose journal no controller can read. */
+const unreadable = async (w: real.World): Promise<void> => {
+  await diesAt(w, 'gateway ready');
+  fs.writeFileSync(path.join(w.ctlDir, 'handover.json'), '{"version":1,');
+};
+
 const SCRIPTS: Record<string, Script> = {
   move: { go: (w) => real.play(w, 'move') },
   'cancel once prepared': { go: (w) => real.play(w, 'abort') },
@@ -133,6 +148,8 @@ const SCRIPTS: Record<string, Script> = {
   'resume once frozen': { before: crashed('controller.manifest'), go: resume, until: 'trift handover.claim' },
   'abort once frozen': { before: crashed('controller.manifest'), go: abort },
   'resume once committed': { before: crashed('controller.commit'), go: resume },
+  // the journal is rebuilt from the daemons', and the destination asked to prepare again with nothing landed
+  "resume from the daemons' journals once prepared": { before: unreadable, go: resume },
 };
 
 /** Each script's requests, run once at collection: a request a script shares with the move before they part is the move's to strike. */
@@ -527,15 +544,6 @@ try {
 
 describe('a controller with no journal of its own', () => {
   const world = real.worlds();
-
-  /** A start from this machine whose controller dies as it would ask the gateway to record `at`. */
-  async function diesAt(w: real.World, at: string): Promise<void> {
-    const a = party(w, 'mac', 'start');
-    const life = w.lifeOfController(a.c);
-    w.gate = async (g) => { if (g.life === life && g.label === at) life.dead = true; };
-    await a.go();
-    w.gate = undefined;
-  }
 
   for (const at of ['gateway ready', 'gateway commit'] as const) {
     it(`on trift, resumes a handover whose controller died before ${at.split(' ')[1]} once the destination prepared, and takes it to the destination`, async () => {
