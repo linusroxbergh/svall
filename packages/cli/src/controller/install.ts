@@ -37,6 +37,8 @@ export async function inspectCompanion(archive: string, o: { verify: Verify }): 
   const versions = new Set(members.map((m) => /^releases\/([^/]+)\//.exec(m)?.[1]).filter(Boolean));
   if (versions.size !== 1) throw new Error(`${archive} holds ${versions.size} releases, expected exactly one`);
   const [version] = [...versions] as string[];
+  // the name becomes a folder under releases/ and part of each far path the upload uses, as install-release takes it
+  if (!/^[A-Za-z0-9._+-]+$/.test(version) || version === '.' || version === '..') throw new Error(`${archive} names its release ${JSON.stringify(version)}, which no installer takes`);
   if (!members.includes(`releases/${version}/release.json`)) throw new Error(`${archive} carries no releases/${version}/release.json`);
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'archi-companion-'));
   try {

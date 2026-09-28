@@ -42,6 +42,12 @@ describe('the companion archive', () => {
     await expect(inspect(tarball)).rejects.toThrow(/expected exactly one/);
   });
 
+  it('refuses a release name no installer takes before anything is uploaded, so the far paths built from it stay its own', async () => {
+    for (const version of ['a b', '$(touch x)', 'v1;rm']) {
+      await expect(inspect(makeArchive({ version, signed: true }))).rejects.toThrow(`names its release ${JSON.stringify(version)}`);
+    }
+  });
+
   it('takes an archive whose release and protocol are the controller\'s', async () => {
     const c = await inspect(makeArchive({ signed: true }));
     expect(() => requireCompatible(c, { ...CONTROLLER, arch: 'arm64' })).not.toThrow();
