@@ -181,6 +181,13 @@ describe('setupLinux', () => {
     expect(walk(f.root).some((name) => name.endsWith('.plist'))).toBe(false);
   });
 
+  it('keeps the units\' logs in a folder only this account opens, one an earlier setup left open included', async () => {
+    const f = installed();
+    fs.mkdirSync(path.join(f.o.prefix, 'log'), { recursive: true, mode: 0o755 });
+    await setupLinux(f.o);
+    expect(fs.statSync(path.join(f.o.prefix, 'log')).mode & 0o777).toBe(0o700);
+  });
+
   it('writes no Claude settings for a Codex-only machine, and makes CODEX_HOME for its hooks', async () => {
     const f = installed();
     await setupLinux({ ...f.o, agents: ['codex'] });

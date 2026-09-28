@@ -92,7 +92,9 @@ const readOrUndefined = (file: string): string | undefined => {
 /** The units for this machine, written only when they are not already what they should be. */
 export function writeUnits(o: LinuxSetup): string[] {
   fs.mkdirSync(o.unitDir, { recursive: true });
-  fs.mkdirSync(path.join(o.prefix, 'log'), { recursive: true });
+  const logs = path.join(o.prefix, 'log');
+  fs.mkdirSync(logs, { recursive: true, mode: 0o700 });
+  fs.chmodSync(logs, 0o700);
   const done: string[] = [];
   for (const unit of [archidUnit(o), gatewayUnit(o)]) {
     const file = path.join(o.unitDir, unit.name);
