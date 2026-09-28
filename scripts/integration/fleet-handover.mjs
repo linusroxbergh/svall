@@ -183,19 +183,29 @@ printf 'wt unstaged\n' >> a.txt
 printf 'wt untracked\n' > wt-untracked.txt
 `;
 
-function fixture() {
+function fixture(ids) {
   sh(L, GIT_FIXTURE);
   const island = JSON.parse(sh(L, 'archi --json island create integration').stdout).id;
   const agent = JSON.parse(sh(L, `archi --json char new --island ${island} --cwd ~/src/app-wt --name agent --claude`).stdout).id;
   const shell = JSON.parse(sh(L, `archi --json char new --island ${island} --cwd ~/src/app --name shell`).stdout).id;
   sh(L, `archi char wait ${agent} --until idle --timeout 60`);
-  turn(agent, 'first turn on local');
-  return { island, agent, shell };
+  const fx = { island, agent, shell };
+  turn(ids, fx, 'first turn on local');
+  return fx;
 }
 
-/** One prompt to the agent through the controller's `archi`, which reaches whichever machine owns the fleet. */
-function turn(agent, text) {
-  sh(L, `archi char run ${agent} '${text}' && archi char wait ${agent} --until done,idle --timeout 60`);
+/**
+ * One prompt to the agent through the controller's `archi`, which reaches whichever machine owns the fleet, and the
+ * two records it appends to the one transcript the agent keeps there.
+ */
+function turn(ids, fx, text) {
+  const owner = ctx.owner === 'remote' ? R : L;
+  const before = snap(owner, ids).sessions;
+  sh(L, `archi char run ${fx.agent} '${text}' && archi char wait ${fx.agent} --until done,idle --timeout 60`);
+  const after = snap(owner, ids).sessions;
+  const [file] = Object.keys(after);
+  check('same transcript', Object.keys(after).length === 1 && Object.keys(before).every((k) => k === file)
+    && after[file].lines === (before[file]?.lines ?? 0) + 2, () => `${brief(before)} -> ${brief(after)}`);
 }
 
 function snap(machine, ids) {
@@ -312,7 +322,8 @@ function clean(ids, fx, to) {
   const sessionId = base.characters.find((c) => c.id === fx.agent)?.agent?.sessionId;
   check('resumed', agentArgs.includes('--resume') && agentArgs[agentArgs.indexOf('--resume') + 1] === sessionId, () => brief(agentArgs));
   holdsNothing(from === L ? 'local' : 'remote', left, destId, ctx.generation);
-  check('source fleet config', left.fleet.id === ids.fleet && now.fleet.id === ids.fleet && now.fleet.gatewayMachineId === ids.remote, () => brief([left.fleet, now.fleet]));
+  check('fleet config', left.fleet.id === ids.fleet && now.fleet.id === ids.fleet
+    && left.fleet.gatewayMachineId === ids.remote && now.fleet.gatewayMachineId === ids.remote, () => brief([left.fleet, now.fleet]));
   gatewayIs('clean', r, destId, ctx.generation);
   noJournals('clean', l, r);
   if (dest === R) check('remote excludes', !Object.keys(r.trees['src/app'] ?? {}).some((k) => k.startsWith('node_modules')), 'node_modules reached the remote');
@@ -403,17 +414,11 @@ try {
   step('two machines', up);
   const ids = step('install on local, host add remote, host enable', install);
   say(`   fleet ${ids.fleet}; local ${ids.local}; remote ${ids.remote}`);
-  const fx = step('fixture', fixture);
+  const fx = step('fixture', () => fixture(ids));
   step('local -> remote', () => clean(ids, fx, 'remote'));
-  step('a turn on remote', () => {
-    const before = snap(R, ids).sessions;
-    turn(fx.agent, 'a turn on remote');
-    const after = snap(R, ids).sessions;
-    const [file] = Object.keys(before);
-    check('same transcript', Object.keys(after).length === 1 && after[file]?.lines === before[file].lines + 2, () => `${brief(before)} -> ${brief(after)}`);
-  });
+  step('a turn on remote', () => turn(ids, fx, 'a turn on remote'));
   step('remote -> local', () => clean(ids, fx, 'local'));
-  step('a turn on local', () => turn(fx.agent, 'a turn back on local'));
+  step('a turn on local', () => turn(ids, fx, 'a turn back on local'));
   for (const [fault, at, to] of scenarios) {
     if (ctx.owner === to) step(`reposition -> ${to === 'remote' ? 'local' : 'remote'}`, () => clean(ids, fx, to === 'remote' ? 'local' : 'remote'));
     step(`${fault} at ${at}, ${to === 'remote' ? 'local -> remote' : 'remote -> local'} (${POST.has(at) ? 'post' : 'pre'}-commit)`, () => scenario(ids, fx, fault, at, to));
