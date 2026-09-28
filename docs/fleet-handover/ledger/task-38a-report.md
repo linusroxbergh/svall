@@ -194,3 +194,224 @@ to `desktop-linux`. No containers are left. The images `archi-it:latest`, `archi
    release rests on the controller's check alone, and says so. From the next signed release on, the far check applies.
 5. **Task 39a in the same worktree.** Its error catalogue test reads codes from the code. 39a covered the messages
    this task added (`7a83d84e`). Any later message needs the same catch-up.
+
+## Fix round 1
+
+Status: **DONE_WITH_CONCERNS**. Every item in `task-38a-fix1-findings.md` is fixed, test first; spec line 286 needed
+no format change. Base `e1d42fb0`. Task 39a's fixer committed in the same worktree meanwhile (`e3e8e26e`, `ffdc6d76`,
+`cd684bc6`, `5231cbb6`, `81b2e5fe`); those are not 38a's. Their `errors.md` changes were in HEAD before I edited it, and
+my edits there are only the rows for what I changed: `identity_mismatch` under Gateway answers, `credential_file`, and
+the `identity_mismatch`, `path_unsupported` and `path_collision` rows and the `install` and `fleet` step rows.
+
+| Commit | Item | Subject |
+| --- | --- | --- |
+| `8828eb30` | I1 | The far check of an uploaded release runs the system's own grep, ssh-keygen and sha256sum, so a relative entry in the far PATH never runs a tool the upload carries |
+| `e216eb69` | M1 | The far check refuses an upgrade when the installed release has lost its signers file, rather than taking it for one that pins none |
+| `076d8339` | M2 | The far check ties the uploaded release to the version asked for, so a release the pinned key signed cannot be replayed under another release's name |
+| `acb1d7fe` | 286 (far) | On an upgrade the far machine checks the signature over the uploaded release's SHA256SUMS before it unpacks anything else from the archive |
+| `ca5caa9b` | 286 (local) | The controller and archi setup check the signature over an archive's SHA256SUMS before they unpack anything else from it |
+| `21496d3d` | I2 | A repeat host add over an installed release checks the new one on the far machine against the signers the installed one pins, as an upgrade does |
+| `4ebc61ee` | I3 | Host remove refuses a machine that owns a fleet through any gateway, naming the handover that brings the fleet back, so its daemon is never uninstalled from under it |
+| `f6ae782c` | M7 | Every command on an ssh master names an .invalid host, so one whose master has died fails rather than opening a connection to a machine no one checked |
+| `e2a4fedb` | M7 | Host enable makes the gateway's record and the fleet's copy over the one master whose machine it checked |
+| `68de439b` | I5 | The controller asks a far gateway's machine id once per master before it asks the gateway anything, and a handover blocks with identity_mismatch on one an alias now leads elsewhere |
+| `83e1ca4e` | I5 | A daemon asks its gateway's machine id in the same ssh as each ownership question and refuses another machine's answer, which the source's preflight reports as identity_mismatch |
+| `1545b09c` | M3, M4 | Preflight and the destination's claim keep roots off the default agent homes as well as the configured ones, and off Archipelago's own install, the destination by real path on its own disk |
+| `7f0ae4bf` | M4 | Preflight warns with credential_file when a carried folder holds a login another tool keeps in plain text: netrc, git-credentials, gh, AWS or Docker |
+| `d695f34f` | M9 | Preflight blocks names that differ only by Unicode normalization on a destination that folds case, as it does names that differ only by case |
+| `b2d1778e` | M6 | A test shows a controller transaction named . or .. keeps its folder under the handover folder, and clearing it removes nothing else |
+| `6bd3a855` | M5 | The controller refuses an archive whose release name no installer takes before it uploads anything, and the security doc lists every destructive site with the test that refuses an unauthorised target |
+| `e015e484` | I4, M8 | The app names Ghostty's GPL-3.0 shell integration and bash-preexec in its NOTICE and ships both licence texts, and a test fails on any resource it copies whose component or licence the NOTICE leaves out |
+| `ab8a6589` | M9 | The security doc records the far first install, archive members outside the release and the phone page's package list as accepted risks, and gives the lock name's real reason |
+| `4e222aec` | doc | The security doc's list of far-check tests reads as one paragraph |
+
+### Per item
+
+RED is the new test on the code before its fix; GREEN is the named files after it. Tests run as `pnpm test <path>`.
+
+- **I1, far PATH.** `UNPACK` (the far script, formerly `VERIFY`) starts with `PATH=/usr/bin:/bin:/usr/sbin:/sbin`
+  (`sha256sum` is in `/sbin` on macOS, `/usr/bin` on Ubuntu). The fake ssh takes a far `PATH` (`execute({ path })`).
+  - RED: `host.test.ts` "checks with the system's own tools, whatever a relative entry in the far PATH finds in the
+    upload first": the upload's `node_modules/.bin/{grep,ssh-keygen,sha256sum}` shims all ran.
+  - GREEN: `host.test.ts` + `install.test.ts` 87 passed, 1 skipped.
+- **M1, missing signers file.** `current` present with no `current/release/allowed_signers` exits 5 and the step
+  names the missing file. `farMachine` now always pins a signer, as a real release does.
+  - RED: "refuses a release when the installed release has lost its signers file…": the install step was `ok`.
+  - GREEN: 88 passed, 1 skipped.
+- **M2, version tie.** After `sha256sum -c`, `release.json` (covered by the digests) must hold the line
+  `  "version": "<asked>",`; otherwise exit 6.
+  - RED: "refuses a release the pinned key signed that arrives under another release's name…": a signed 1.2.1 renamed
+    to `releases/1.2.3` installed ("signed by a key … pins").
+  - GREEN: 89 passed, 1 skipped.
+- **Spec line 286, verify before unpacking.** No format change: `SHA256SUMS` and its `.sig` are members at
+  `releases/<v>/`, so each installer extracts those two first.
+  - Far: `UNPACK` extracts them, runs `ssh-keygen -Y verify` against the installed signers, and only then unpacks the
+    rest and runs `sha256sum`.
+  - Controller: `inspectCompanion` verifies before its full unpack.
+  - `archi setup --release <archive>`: `install-release.mjs`'s `stage` verifies before its full unpack.
+  - A new `verifySignature` in `release-manifest.mjs` is the signature half of `verifyRelease`, which calls it.
+  - RED:
+    - `host.test.ts` "checks the signature over an upgrade's SHA256SUMS before it unpacks anything else the archive
+      holds": the refused staging held the whole tree (7 entries).
+    - `install.test.ts` and `archid/test/release.test.ts` "checks the signature over an archive's SHA256SUMS before it
+      unpacks anything else from it": the verifier saw 4 and 6 entries.
+  - GREEN: each sees only `SHA256SUMS` and `SHA256SUMS.sig`. `install` + `release` + `host`: 125 passed, 1 skipped.
+  - GNU tar: the extracted script was run in `archi-it:machine` (GNU tar 1.35) on five cases. A pinned good key gave
+    exit 0 `pinned`, and the second extraction replaced `SHA256SUMS` cleanly. An intruder key gave exit 3 with only
+    the two manifest files staged. A missing signers file gave exit 5. No `current` gave `first`. A renamed release
+    gave exit 6.
+- **I2, repeat host add.** `addHost` passes `installed: archiBase` as `upgradeHost` does. The far script, not a
+  separate `readlink`, decides what that means:
+  - with no `current`, it prints `first` and the step says "no release is installed there yet, so only this
+    controller's signers vouched for it";
+  - with one, the pinned check applies.
+
+  `installed` is now required by `bootstrapSetup`.
+  - RED: "holds a repeat host add over an installed release to the signers that release pins, as an upgrade is":
+    `host add` onto a `farMachine` pinning `signer`, with an intruder-signed archive, had an `ok` install step.
+  - GREEN: 93 passed, 1 skipped, with "says when a machine has no release installed to pin a signer…".
+- **I3, host remove.** `gatewayFleets` also refuses any local fleet whose `cachedOwner` or `readRoute` names the
+  machine, whatever its gateway. It does so with `--forget` too, since dropping the route strands that fleet as well.
+  The action names `archi [-p <profile>] handover local`.
+  - RED: `fleetAt('.archipelago-lab', { gateway: OTHER_MAC, owner: REMOTE })` gave `ready`.
+  - GREEN: 73 passed, 1 skipped.
+- **M7, a master that dies, and enable's second master.**
+  - `SshMaster` names `archi-remote.invalid` (moved from `rsync.ts` to `ssh.ts`) for every mux command. The fake ssh
+    now models a mux client whose master has gone: it falls back to its destination, and an `.invalid` one fails to
+    resolve.
+    - RED: `ssh.test.ts` "never lets a command fall back to a connection of its own once its master has gone": exit 0.
+    - GREEN: exit 255, "Could not resolve hostname archi-remote.invalid".
+  - `enableHost` opens one master in the `authority` step, checks it with `sameMachine`, and runs `provisionCopy` over
+    the same master.
+    - RED: "makes the record and the copy of the fleet over the one master whose machine it checked": 2 masters
+      spawned.
+    - GREEN: 1 master. `cli` project: 1465 passed, 3 skipped. `connection.test.ts` and the ssh argv tests now expect
+      the `.invalid` host.
+- **I5, gateway identity.** The accepted risk is removed from the doc.
+  - Controller:
+    - A new `identify(master, entry)` in `connection.ts` throws `MachineMismatch` when `archi version --json` names
+      another machine id. `sameMachine` now wraps it.
+    - `authorityOp` identifies each master once (a `WeakSet`, so a reopened master is checked again).
+    - `askGateway`, owner routing, identifies before `owner get`.
+    - `foreign()` turns `MachineMismatch` into an `identity_mismatch` blocker.
+  - Daemon: `fleetAuthority` runs `sh -c '"$1" version --json; exec "$1" gateway owner get --fleet "$2"'` in its one
+    ssh. A `"machineId"` line naming another machine throws `AuthorityFailure('identity_mismatch')`. The source's
+    preflight reports that code as `identity_mismatch`, not `ssh_interactive`.
+  - RED:
+    - `handover.test.ts` "asks a far gateway nothing once its ssh destination answers as another machine": the owner
+      frame was taken.
+    - "blocks at once on a gateway whose ssh destination now reaches another machine": `interrupted`.
+    - `connection.test.ts` "never takes the word of a gateway whose ssh destination now reaches another machine": a
+      wrong machine's `not_found` routed the fleet to `local`.
+    - `server.test.ts` "refuses the answer of a machine the gateway's ssh route now reaches in its place": accepted.
+    - `source.test.ts` "blocks with identity_mismatch when the route to its gateway now reaches another machine":
+      `ssh_interactive`.
+  - GREEN: all five pass. `server` + `source`: 58 passed. `error-catalogue.test.ts` needed the new Gateway answers row
+    (1 failed → 15 passed).
+- **M3, the destination's own guard.**
+  - `ReplicaStore` takes `local` (files and dirs). `localClash` refuses, by real path on the destination's disk, a
+    root that holds or lies in them, at claim and at archive.
+  - The destination builds `local` from its own home, `CLAUDE_CONFIG_DIR` and `CODEX_HOME`.
+  - The shared `machineLocal()` in `inventory.ts` adds Archipelago's install: `~/.local/share/archipelago`,
+    `~/.config/archipelago`, `~/.config/systemd/user` and the `archi`/`archipelago` shims.
+  - Inventory now checks the destination's set lexically; realpathing it on the source's disk meant nothing.
+  - RED: `replicas.test.ts` "refuses, by real path on this machine, a root that holds or lies in its ssh folder, an
+    agent login or its Archipelago install": a root holding the destination's real `~/.ssh` (reached through a link)
+    was claimed `ok`.
+  - GREEN: `replicas` + `inventory`: 68 passed. `archid` project: 2024 passed, 2 skipped.
+- **M4, credentials.**
+  - Guard: `machineLocal` holds both the default and the configured agent homes.
+    - RED: `inventory.test.ts` "blocks the default agent homes beside the configured ones, and Archipelago's own
+      install…": 1 blocker of 3.
+    - GREEN: 34 passed.
+  - Warning: a new warning code, `credential_file`, in `HandoverIssueCode` and the catalogue. The scan names
+    `.netrc`, `.git-credentials`, `.config/gh/hosts.yml`, `.aws/credentials` and `.docker/config.json` in a carried
+    folder, or a carried file that is one.
+    - RED: `manifest.test.ts` "warns that the logins other tools keep in plain text travel with a folder that holds
+      them": no warnings.
+    - GREEN: 25 passed.
+- **M5, the destructive table.**
+  - New rows, each with a refusal test that already existed:
+    - session files on the destination;
+    - activation's `fleet.json`/`state.json`;
+    - `tmux kill-window` at rest and at activation;
+    - `fleet recover --force-owner`.
+  - For "Upload leftovers", `inspectCompanion` now refuses a release name that is not `[A-Za-z0-9._+-]+`, or is `.` or
+    `..`, before anything is uploaded. The row cites that refusal. The report's accepted "version name from the
+    archive" is fixed rather than accepted.
+    - RED: `install.test.ts` "refuses a release name no installer takes…": `a b` was accepted.
+    - GREEN: `install` + `host`: 96 passed, 1 skipped.
+- **M6, `.`/`..`.** A coverage test: "keeps each transaction's folder one name under its own, so clearing a
+  transaction named . or .. removes nothing else".
+  - Mutation RED: with `progress.ts`'s `.replace(…)` removed, it fails, since `transactionDir('..')` is the base.
+  - GREEN: restored, 19 passed.
+- **I4, the app's Ghostty resources.**
+  - `apps/desktop/mac/NOTICE` names "Ghostty shell integration (…bash/ghostty.bash, zsh), derived from Kitty's
+    GPL-3.0-or-later" and "bash-preexec … MIT".
+  - It ships `LICENSE.gpl-3.0` (gnu.org's text, sha256 `3972dc97…`, identical to rsync's copy) and
+    `LICENSE.bash-preexec` (upstream `LICENSE.md` at tag 0.6.0).
+  - `build.sh` copies both.
+  - `test/app-notice.test.ts` maps every file under `vendor/ghostty-kit/share` (what `build.sh` copies) to a NOTICE
+    component. It fails on a file no component accounts for, or whose first 30 lines name a licence (GPL, MIT, BSD,
+    Apache, MPL) that component's line does not. It also checks that every `LICENSE.*` the NOTICE names exists and is
+    in `build.sh`'s `cp`.
+  - RED: 2 failed. The NOTICE named no GPL or bash-preexec text, and 4 files were unnamed.
+  - GREEN: 3 passed. `swift test --package-path apps/desktop/mac`: 65 passed. `build.sh debug` built the app, and
+    `Contents/Resources/licenses/` holds the NOTICE and the three texts.
+  - I kept the shell integration rather than dropping it. The app runs `tmux`/`ssh` as each surface's command, so
+    Ghostty's detection never injects it, and leaving it out would have been the smaller change. The findings asked to
+    ship it.
+- **M8, the licence items.** The doc now says:
+  - MIT, BSD and Apache-2.0 want their texts in a binary copy, and the FTL wants a credit line; zlib, libpng and BSL-1.0
+    ask nothing.
+  - The LGPL wants its text, libintl's source or an offer, and the relinking material to reach whoever receives the
+    app, public repository or not.
+  - The object check's generic names (`log`, `version`, `timer`, `print`, `st`, `empty`) are listed as an open item.
+- **M9.**
+  - NFD collisions: `caseCollisions` folds `normalize('NFD')` before `toLowerCase`, and the message and catalogue say
+    so.
+    - RED: `probe.test.ts` "names the paths that differ only by Unicode normalization…" missed the decomposed name.
+    - GREEN: `probe` + controller `handover` + catalogue: 92 passed.
+  - Spec 286 is now met, not a deviation.
+  - Accepted risks added:
+    - a far machine with no pinned signer unpacking before a check of its own;
+    - archive members outside `releases/<v>`;
+    - the phone page's whole closure.
+  - The lock name's reason is reworded: a second account and a denial of service only.
+  - All 97 test names the doc cites exist, checked by script.
+
+### Runs
+
+| Check | Result |
+| --- | --- |
+| `pnpm typecheck` | clean |
+| `pnpm vitest run --project protocol --project archid --project cli --project @archipelago/desktop-web --project scripts` | 198 files: 194 passed, 3 failed, 1 skipped. 4402 tests: 4393 passed, 4 failed, 5 skipped |
+| The 4 failures rerun alone | `fleet.test.ts` (2 revive tests, a known flake) 90/90 twice and 89/90 once. `terminals.test.ts` 11/11 three times. `isolate.test.ts` 3/3 three times |
+| `swift test --package-path apps/desktop/mac` | 65 passed |
+| Fresh install, arm64 (colima default), releases built from `4e222aec` | ALL PASS in 15.4 s. Both install steps: "unsigned, checked by its digests alone", now by the far script with Ubuntu's own tar and sha256sum |
+| Handover, arm64, `--scenarios none` | ALL PASS: local → remote → local with a turn on each |
+| The far unpack script under GNU tar 1.35 (`archi-it:machine`) | the five cases above, each as designed |
+
+An earlier full run is void. The Mac hibernated at 1% battery for 85 minutes mid-run and failed 7 tests on timers; all
+7 files pass alone. colima's default profile was stopped. I started it for the container runs, stopped it after, and
+set the docker context back to `desktop-linux`. No containers are left.
+
+### Concerns
+
+1. **Power.** The Mac is on a 15 W USB-C adapter at 3–5% battery, lid closed. It clamshell-slept during the handover
+   run, so the first handover's `ms` (116867) and the fixture step count sleep. The run's own timeline gave that
+   handover about 4 s, and the return 3 s.
+2. **Two files fail only under the full run's load.** `terminals.test.ts` "takes Enter or Esc typed into a blocked
+   agent…" and `isolate.test.ts` (a nested vitest past its 20 s) failed in both full runs and pass alone 3/3. Neither
+   file, nor what it tests, is touched here. They are not in the README's flake list. On a Mac with power to spare they
+   may not recur.
+3. **The pinned far path is not covered by an integration run.** Every integration release is an unsigned build, so
+   the fresh install exercises the digests-only path. The pinned path, the missing signers file and the version tie
+   are covered by `host.test.ts` (bsdtar here) and by the GNU tar container run, not by `fresh-install`.
+4. **The daemon's gateway identity costs one `archi version` per ownership question.** It runs in the same ssh, so
+   no extra connection, but it adds a Node start on the gateway to each. An `archi` that prints no machine id passes,
+   as `sameMachine` always let through, and the owner call that follows then fails on its own.
+5. **`machineLocal` on the destination** uses the daemon's own home, `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, not
+   `ARCHI_CONFIG_DIR` or `ARCHI_GATEWAY_PREFIX`. Those two are development overrides; a real install keeps both under
+   the home.
+6. The licence owner items (GhosttyKit's texts, libintl, Flaticon) stay the owner's; only their wording changed.
