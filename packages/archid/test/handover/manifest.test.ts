@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { emptyState, FleetConfig, type Character, type FleetState, type GitCheckout, type GitGraph, type MachineId, type Warning } from '@archipelago/protocol';
+import { emptyState, FleetConfig, MAX_MANIFEST_BYTES, type Character, type FleetState, type GitCheckout, type GitGraph, type MachineId, type Warning } from '@archipelago/protocol';
 import { gitIndexDigest } from '../../src/handover/git-graph.js';
 import { canonicalDigest, canonicalJson, hashStream } from '../../src/handover/hash.js';
 import { buildInventory, DEFAULT_EXCLUDES, GIT_DIR_KEEP_RULES, GIT_KEEP_RULES, type Inventory, type MachineMaps } from '../../src/handover/inventory.js';
@@ -416,6 +416,21 @@ describe('what a manifest adds up to', () => {
     expect(summarize(manifest)).toEqual({ digest, roots: carried.length, files: files.length, bytes, sessions: 1 });
     const blocks = files.filter((f) => f.type === 'file' && f.size > 0).length;
     expect(spaceNeed(manifest)).toEqual({ [s.mac]: blocks * 4096 });
+  });
+
+  it('names a file with a long path in under 256 bytes, so the cap carries over 500,000 files and 50,000 go in under a tenth of it', async () => {
+    const s = seed();
+    const { manifest } = await buildManifest(inventory(s), HEADER);
+    // a path as long as a deep monorepo's, and every field at its widest
+    const files = Array.from({ length: 50_000 }, (_, i) => ({
+      type: 'file' as const, path: `packages/service-${i % 97}/src/components/widget-${String(i).padStart(6, '0')}.tsx`,
+      mode: 0o100755, size: 2 ** 40, mtimeMs: 1_790_000_000_000, sha256: 'f'.repeat(64), ...(i % 1000 === 0 && { gitIndex: 'e'.repeat(64) }),
+    }));
+    const big = { ...manifest, roots: [{ ...manifest.roots[0], files }] };
+    const bytes = Buffer.byteLength(JSON.stringify(big)) - Buffer.byteLength(JSON.stringify({ ...big, roots: [{ ...big.roots[0], files: [] }] }));
+    expect(bytes / files.length).toBeLessThan(256);
+    expect(MAX_MANIFEST_BYTES / 256).toBeGreaterThan(500_000);
+    expect(bytes).toBeLessThan(MAX_MANIFEST_BYTES / 10);
   });
 
   it('counts a root outside the home against the folder it lands in, and a session against its agent home\'s', async () => {
