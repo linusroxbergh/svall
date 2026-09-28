@@ -7,7 +7,7 @@ import { emptyState, FleetConfig, type Character, type FleetState, type GitCheck
 import { gitIndexDigest } from '../../src/handover/git-graph.js';
 import { canonicalDigest, canonicalJson, hashStream } from '../../src/handover/hash.js';
 import { buildInventory, DEFAULT_EXCLUDES, GIT_DIR_KEEP_RULES, GIT_KEEP_RULES, type Inventory, type MachineMaps } from '../../src/handover/inventory.js';
-import { buildManifest, landingFolder, manifestDigest, readManifest, realScanFs, spaceNeed, summarize, writeManifest, type ScanFs } from '../../src/handover/manifest.js';
+import { buildManifest, landingFolder, manifestDigest, readManifest, realScanFs, scanPath, spaceNeed, summarize, writeManifest, type ScanFs } from '../../src/handover/manifest.js';
 
 const made: string[] = [];
 const tmp = (): string => { const d = fs.realpathSync(fs.mkdtempSync('/tmp/archi-t-')); made.push(d); return d; };
@@ -220,6 +220,29 @@ describe('buildManifest', () => {
     const second = await buildManifest(buildInventory(reversed, { fleet: FLEET }, s.maps), HEADER, backwards);
     expect(second.digest).toBe(first.digest);
     expect(manifestDigest(JSON.parse(JSON.stringify(second.manifest)))).toBe(first.digest);
+  });
+
+  it('hashes several files at once, never more than eight, and lists them in path order whatever order the reads end in', async () => {
+    const dir = tmp();
+    for (let i = 0; i < 40; i++) fs.writeFileSync(path.join(dir, `f${String(i).padStart(2, '0')}`), `file ${i}\n`);
+    let open = 0;
+    let most = 0;
+    const slow: ScanFs = {
+      ...realScanFs,
+      read: (p) => (async function* () {
+        most = Math.max(most, ++open);
+        try {
+          // later names finish first
+          await new Promise((r) => { setTimeout(r, 40 - Number(path.basename(p).slice(1))); });
+          yield* realScanFs.read(p);
+        } finally { open--; }
+      })(),
+    };
+    const scan = await scanPath(dir, () => false, slow);
+    expect(most).toBeGreaterThan(1);
+    expect(most).toBeLessThanOrEqual(8);
+    expect(scan!.files.map((f) => f.path)).toEqual([...Array(40).keys()].map((i) => `f${String(i).padStart(2, '0')}`));
+    expect(scan!.files.every((f, i) => f.type === 'file' && f.sha256 === sha(`file ${i}\n`))).toBe(true);
   });
 
   it('reads a session file a chunk at a time, and keeps none of its chunks once read', async () => {

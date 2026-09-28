@@ -41,6 +41,8 @@ const CREDENTIAL_FILE = /(?:^|\/)(?:\.netrc|\.git-credentials|\.config\/gh\/host
 const BLOCK = 4096;
 // the most a file named like a Git index is read whole to name it by its staged entries
 const INDEX_MAX = 256 * 1024 * 1024;
+// files hashed at once: a many-file tree is bound by round trips to the disk, and each read holds one chunk
+const HASHING = 8;
 const gone = (e: unknown): boolean => (e as NodeJS.ErrnoException).code === 'ENOENT';
 const reason = (e: unknown): string => (e as NodeJS.ErrnoException).code ?? String(e);
 
@@ -62,7 +64,22 @@ async function addFile(scan: Scan, relative: string, file: string, st: Stat, sfs
   }
 }
 
-async function walk(scan: Scan, base: string, relative: string, excluded: (relative: string, dir: boolean) => boolean, sfs: ScanFs, hash: boolean): Promise<void> {
+/** Runs at most `width` tasks at once: `add` waits for a free place, `drain` for every task. A task never rejects. */
+function pool(width: number): { add(task: () => Promise<void>): Promise<void>; drain(): Promise<void> } {
+  const running = new Set<Promise<void>>();
+  return {
+    async add(task) {
+      while (running.size >= width) await Promise.race(running);
+      const p: Promise<void> = task().finally(() => running.delete(p));
+      running.add(p);
+    },
+    drain: async () => { await Promise.all(running); },
+  };
+}
+
+type Hashing = ReturnType<typeof pool>;
+
+async function walk(scan: Scan, base: string, relative: string, excluded: (relative: string, dir: boolean) => boolean, sfs: ScanFs, hashing: Hashing | undefined): Promise<void> {
   let names: Buffer[];
   try { names = await sfs.readdir(path.join(base, relative)); } catch (e) {
     if (!gone(e)) scan.problems.push(`${relative || '.'}: ${reason(e)}`);
@@ -80,7 +97,7 @@ async function walk(scan: Scan, base: string, relative: string, excluded: (relat
       continue;
     }
     if (st.isDirectory()) {
-      if (!excluded(rel, true)) await walk(scan, base, rel, excluded, sfs, hash);
+      if (!excluded(rel, true)) await walk(scan, base, rel, excluded, sfs, hashing);
     } else if (!excluded(rel, false) && st.isSymbolicLink()) {
       try {
         const target = await sfs.readlink(file);
@@ -90,7 +107,9 @@ async function walk(scan: Scan, base: string, relative: string, excluded: (relat
         if (!gone(e)) scan.problems.push(`${rel}: ${reason(e)}`);
       }
     } else if (!excluded(rel, false) && st.isFile()) {
-      if (hash) await addFile(scan, rel, file, st, sfs);
+      // a Git index is read whole, so only one is held at a time
+      if (hashing && name === 'index') await addFile(scan, rel, file, st, sfs);
+      else if (hashing) await hashing.add(() => addFile(scan, rel, file, st, sfs));
       if (ENV_FILE.test(name)) scan.envFiles.push(rel);
       if (CREDENTIAL_FILE.test(file)) scan.credentialFiles.push(rel);
     }
@@ -226,8 +245,12 @@ export async function scanPath(
   }
   const scan: Scan & { entry: TransferRoot['entry'] } = { entry: st.isDirectory() ? 'dir' : 'file', files: [], problems: [], envFiles: [], credentialFiles: [] };
   if (!contents) return scan;
-  if (st.isDirectory()) await walk(scan, top, '', excluded, sfs, hash);
-  else if (st.isFile()) {
+  if (st.isDirectory()) {
+    const hashing = hash ? pool(HASHING) : undefined;
+    await walk(scan, top, '', excluded, sfs, hashing);
+    await hashing?.drain();
+    scan.files.sort((a, b) => byCodeUnit(a.path, b.path));
+  } else if (st.isFile()) {
     if (hash) await addFile(scan, '', top, st, sfs);
     if (CREDENTIAL_FILE.test(top)) scan.credentialFiles.push(top);
   }
