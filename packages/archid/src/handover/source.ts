@@ -308,8 +308,9 @@ export class SourceHandover {
     await this.mayTakeBack(p);
     if (held) boundary('source.abort.journal', () => this.journal.write({ ...held, phase: 'aborted', updatedAt: this.now() }));
     await this.revive(p.transactionId, held?.stoppedTerminals ?? [], 'aborted');
-    await this.release();
+    // while the journal still names it, so no crash leaves it behind
     fs.rmSync(this.d.paths.manifest(p.transactionId), { force: true });
+    await this.release();
     return {};
   }
 
@@ -332,8 +333,8 @@ export class SourceHandover {
     }
     boundary('source.complete.seal', () => this.seal(held, p.landed ?? []));
     await boundary('source.complete.install', () => this.ownership.installCommitted(record));
-    boundary('source.complete.journal', () => this.journal.close());
     fs.rmSync(this.d.paths.manifest(held.transactionId), { force: true });
+    boundary('source.complete.journal', () => this.journal.close());
     return {};
   }
 
@@ -341,6 +342,8 @@ export class SourceHandover {
   private seal(j: SourceJournal, landed: readonly LandedRoot[]): void {
     let manifest: TransferManifestV1;
     try { manifest = this.kept(j); } catch (e) {
+      // an earlier complete sealed with it and removed it before a crash kept it from closing the journal
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return;
       this.d.log.error(`handover ${j.transactionId}: no root is sealed, since its manifest cannot be read: ${(e as Error).message}`);
       return;
     }

@@ -17,7 +17,7 @@ import type { Clock } from '../../src/handover/rest.js';
 import { HandoverService } from '../../src/handover/service.js';
 import { adoptAtStart, enterStartupMode, startupMode } from '../../src/handover/startup.js';
 import type { GitRunner } from '../../src/links/git.js';
-import { silentLogger } from '../../src/log.js';
+import type { Logger } from '../../src/log.js';
 import { guardMethod } from '../../src/ownership/guard.js';
 import { OwnershipState } from '../../src/ownership/state.js';
 import { installedScripts, resolvePaths, type Paths } from '../../src/paths.js';
@@ -247,6 +247,8 @@ class World {
   readonly mac: Machine;
   readonly trift: Machine;
   violations: string[] = [];
+  /** what a living daemon logged as an error */
+  errors: string[] = [];
   trace: string[] = [];
   hits = new Map<string, number>();
   targets: Target[] = [];
@@ -445,9 +447,10 @@ class World {
 
   private async bootOnce(m: Machine): Promise<void> {
     const life = this.life(m.side);
+    const log: Logger = { info() {}, error: (msg) => { if (!life.dead) this.errors.push(`${m.name}: ${msg}`); } };
     await als.run(life, async () => {
       const { paths } = m;
-      const ownership = OwnershipState.load({ paths, fleetId, machineId: m.id, log: silentLogger });
+      const ownership = OwnershipState.load({ paths, fleetId, machineId: m.id, log });
       const store = Store.load(paths.state, () => {});
       const mortal = {
         get state() { return store.state; },
@@ -468,17 +471,17 @@ class World {
         ownership, journal: new MortalJournal(paths, life), agents: async () => [], fleet,
         source: {
           paths, store: mortal, fleet, tmux: m.tmux, viewers: { detach: async () => {} }, processes: m.processes, kill: m.kill, clock, authority, git: noGit,
-          rest: { pollMs: 500, settleMs: 1000, waitMs: 5000 }, log: silentLogger,
+          rest: { pollMs: 500, settleMs: 1000, waitMs: 5000 }, log,
         },
         destination: {
           paths, config, store: mortal, fleet, tmux: m.tmux, processes: m.processes, authority, clock, git: noGit,
-          homedir: () => this.home, sessionStartMs: 60_000, concurrency: 1, log: silentLogger,
+          homedir: () => this.home, sessionStartMs: 60_000, concurrency: 1, log,
         },
       });
       instance = { life, ownership, handover, store, active: false, ctx: { ownership, handover, viewer: { kind: 'app' } } as unknown as Ctx };
       const journal = handover.journalState();
-      await enterStartupMode(startupMode({ ownership, journal, config }), { ownership, journal, log: silentLogger, standalone: false });
-      await adoptAtStart({ handover, authority: authority(), fleetId, log: silentLogger, timeoutMs: 2000 });
+      await enterStartupMode(startupMode({ ownership, journal, config }), { ownership, journal, log, standalone: false });
+      await adoptAtStart({ handover, authority: authority(), fleetId, log, timeoutMs: 2000 });
       // what Fleet.start does: only a writable daemon runs its fleet
       if (ownership.writable()) await fleet.activate();
       // its API answers only now, so only now can anyone reach it
@@ -623,6 +626,7 @@ function settledOn(w: World): 'source' | 'destination' {
   expect([...owner.windows.values()].map((x) => x.name).sort()).toEqual(['c_ada', 'c_ada-2', 'c_bo']);
   expect(other.windows.size).toBe(0);
   expect(fs.existsSync(path.join(w.ctlDir, 'handover.json'))).toBe(false);
+  expect(w.errors).toEqual([]);
   return where;
 }
 
@@ -729,11 +733,6 @@ const CASES: Case[] = NAMES.flatMap((name) => {
 
 const label = (k: Target): string => `${k.name}:${k.edge}#${k.nth}`;
 
-// cases that fail on a defect this suite found, each dropped from here by the commit that fixes it
-const FOUND = [
-  'source.release.unfreeze:after#1', 'source.release.activate:before#1', 'source.release.activate:after#1', 'source.complete.journal:after#1',
-];
-
 describe('a crash at every failpoint', () => {
   const world = worlds();
 
@@ -756,7 +755,7 @@ describe('a crash at every failpoint', () => {
 
   for (const k of CASES) {
     for (const [prefer, heal] of [['resume', 'crashed'], ['abort', 'all']] as const) {
-      (FOUND.includes(label(k)) ? it.fails : it)(`${label(k)} (${k.scenario}), then ${prefer} after restarting ${heal === 'all' ? 'every party' : 'what died'}`, async () => {
+      it(`${label(k)} (${k.scenario}), then ${prefer} after restarting ${heal === 'all' ? 'every party' : 'what died'}`, async () => {
         const w = world();
         w.targets = [...(k.after ? [k.after] : []), { name: k.name, edge: k.edge, nth: k.nth }];
         const first = await play(w, k.scenario);
