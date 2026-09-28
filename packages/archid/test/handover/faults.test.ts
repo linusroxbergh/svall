@@ -13,6 +13,7 @@ import { DURABLE_TEMP, DurableJson, writeDurable } from '../../src/handover/dura
 import { FAILPOINTS, armFailpoints, boundary, type Edge, type Failpoint, type FailSide } from '../../src/handover/failpoints.js';
 import { JournalFile, type HandoverJournal } from '../../src/handover/journal.js';
 import { ProcessTable, type Proc } from '../../src/handover/processes.js';
+import { ReplicaStore } from '../../src/handover/replicas.js';
 import type { Clock } from '../../src/handover/rest.js';
 import { HandoverService } from '../../src/handover/service.js';
 import { adoptAtStart, enterStartupMode, startupMode } from '../../src/handover/startup.js';
@@ -119,7 +120,7 @@ const settle = async (): Promise<void> => { for (let i = 0; i < 30; i++) await n
 const wire = <T>(v: T): T => (v === undefined ? v : JSON.parse(JSON.stringify(v)) as T);
 const noGit: GitRunner = async () => ({ code: 128, stdout: '', stderr: 'fatal: not a git repository (or any of the parent directories): .git' });
 
-type Win = { windowId: string; paneId: string; pid: number; name: string; path: string; job?: string[] };
+type Win = { windowId: string; paneId: string; pid: number; name: string; path: string; job?: string[]; ignoresTerm?: true };
 type Instance = { life: Life; ownership: OwnershipState; handover: HandoverService; store: Store; active: boolean; ctx: Ctx };
 
 /** A daemon's journal that dies with it. */
@@ -184,9 +185,9 @@ class Machine {
     return [shell, ...(p.job ?? []).map((args, i) => ({ pid: group + i, ppid: i ? group + i - 1 : p.pid, pgid: group, tpgid: group, stat: 'S+', args }))];
   }), installedScripts(this.paths.home));
 
-  kill = (group: number): void => {
+  kill = (group: number, signal: NodeJS.Signals): void => {
     this.acting(`signal ${group}`);
-    for (const p of this.windows.values()) if (p.job && p.pid + 1 === group) delete p.job;
+    for (const p of this.windows.values()) if (p.job && p.pid + 1 === group && (signal === 'SIGKILL' || !p.ignoresTerm)) delete p.job;
   };
 
   /**
@@ -206,8 +207,10 @@ class Machine {
       const slot = term ? c.second : c;
       if (slot?.tmux) return c;
       const command = slot?.revive?.command;
-      const win = [...this.windows.values()].find((x) => x.name === key) ?? this.window(key, (term ? c.second?.cwd : undefined) ?? c.cwd, command ? [command] : undefined);
-      const session = command && slot?.agent?.sessionId;
+      // a window its terminal left is gone back to, and nothing is run in it
+      const left = [...this.windows.values()].find((x) => x.name === key);
+      const win = left ?? this.window(key, (term ? c.second?.cwd : undefined) ?? c.cwd, command ? [command] : undefined);
+      const session = !left && command && slot?.agent?.sessionId;
       if (session) setImmediate(() => { if (!life.dead) for (const fn of started) fn(id, term, session); });
       store.update((d) => {
         const cur = d.characters[id];
@@ -264,6 +267,7 @@ class World {
   readonly prefix = path.join(this.base, 'gw');
   readonly ctlDir = path.join(this.base, 'ctl');
   readonly claudeHome = path.join(this.home, '.claude');
+  readonly cy = path.join(this.home, 'work/cy');
   readonly mac: Machine;
   readonly trift: Machine;
   violations: string[] = [];
@@ -310,6 +314,13 @@ class World {
     const [ada, adaSecond, bo, di] = [
       w.mac.window('c_ada', work('ada')), w.mac.window('c_ada-2', work('ada')), w.mac.window('c_bo', work('bo'), ['npm run dev']), w.mac.window('c_di', work('di'), [DI_LAUNCH]),
     ];
+    // bo's dev server holds on through a SIGTERM
+    bo.ignoresTerm = true;
+    // trift sealed cy once, and a file it held then has gone since: a diverged root, which the handover archives
+    new ReplicaStore({ fleetId, paths: w.trift.paths }).seal({ id: 'cy', kind: 'cwd', entry: 'dir', path: w.cy }, {
+      transactionId: crypto.randomUUID(), generation: G, manifestDigest: '0'.repeat(64),
+      files: [{ type: 'file', path: 'draft.md', mode: 0o644, size: 3, mtimeMs: 0, sha256: '0'.repeat(64) }],
+    }, 'source');
     const store = Store.load(w.mac.paths.state, () => {});
     store.update((d) => {
       for (const c of [
@@ -631,6 +642,8 @@ class World {
   async recover(prefer: 'resume' | 'abort'): Promise<string[]> {
     const said: string[] = [];
     for (let i = 0; i < 6; i++) {
+      // whatever died meanwhile starts again, as launchd starts a daemon again
+      await this.heal('crashed');
       const c = this.controller();
       const { verdict } = await this.run(() => c.status());
       said.push(`${verdict.standing}:${verdict.safe.join('+') || '-'}`);
@@ -714,13 +727,16 @@ function worlds(): () => World {
 
 type Scenario = 'move' | 'abort' | 'cancel';
 
+/** What the user chose: to end bo's dev server, and to archive the diverged cy. */
+const choices = (w: World) => ({ terminateShells: true, archiveRoots: [w.cy] });
+
 /** The first run: a handover to trift, or one the user cancels once the destination has prepared, or during the transfer, which aborts it. */
 async function play(w: World, scenario: Scenario): Promise<Outcome> {
   const c = w.controller();
   const cancelAt = { move: undefined, abort: 'destination.prepare.journal:after', cancel: 'controller.rsync:after' }[scenario];
   if (cancelAt) w.onHit = (key) => { if (key === cancelAt) { w.onHit = undefined; c.cancel(); } };
   try {
-    return await w.run(() => c.start(TRIFT, { terminateShells: true }));
+    return await w.run(() => c.start(TRIFT, choices(w)));
   } finally {
     w.onHit = undefined;
   }
@@ -728,13 +744,16 @@ async function play(w: World, scenario: Scenario): Promise<Outcome> {
 
 /**
  * Where each step runs, and how many times: the scenario whose first run reaches it, the times it runs there, and a
- * crash that has to come first for the step to run at all. A failpoint without an entry here does not typecheck.
+ * crash that has to come first for the step to run at all, with what changes while that party is down. A failpoint
+ * without an entry here does not typecheck.
  */
-const REACH: Record<Failpoint, { scenario: Scenario; times: number; after?: Target }> = {
+type Reach = { scenario: Scenario; times: number; after?: Target; setup?: (w: World) => void };
+const REACH: Record<Failpoint, Reach> = {
   'source.freeze.journal': { scenario: 'move', times: 1 },
   'source.freeze.surrender': { scenario: 'move', times: 1 },
   'source.rest.terminated': { scenario: 'move', times: 1 },
   'source.rest.terminate': { scenario: 'move', times: 1 },
+  'source.rest.forcekill': { scenario: 'move', times: 1 },
   'source.rest.stopped': { scenario: 'move', times: 1 },
   'source.rest.kill': { scenario: 'move', times: 4 },
   'source.freeze.manifest': { scenario: 'move', times: 1 },
@@ -751,7 +770,8 @@ const REACH: Record<Failpoint, { scenario: Scenario; times: number; after?: Targ
   'source.complete.install': { scenario: 'move', times: 1 },
   'source.complete.manifest': { scenario: 'move', times: 1 },
   'source.complete.journal': { scenario: 'move', times: 1 },
-  'destination.claim.root': { scenario: 'move', times: 5 },
+  'destination.claim.root': { scenario: 'move', times: 6 },
+  'destination.claim.archive': { scenario: 'move', times: 1 },
   'destination.verify.journal': { scenario: 'move', times: 1 },
   'destination.verify.landed': { scenario: 'move', times: 1 },
   'destination.verify.record': { scenario: 'move', times: 1 },
@@ -765,6 +785,11 @@ const REACH: Record<Failpoint, { scenario: Scenario; times: number; after?: Targ
   'destination.promote.state': { scenario: 'move', times: 1 },
   'destination.activate.journal': { scenario: 'move', times: 1 },
   'destination.activate.fleet': { scenario: 'move', times: 1 },
+  // only an activation retried over a window whose agent has since exited back to its shell closes a window first
+  'destination.activate.kill': {
+    scenario: 'move', times: 0, after: { name: 'destination.activate.open', edge: 'after', nth: 4 },
+    setup: (w) => { for (const x of w.trift.windows.values()) if (x.name === 'c_di') delete x.job; },
+  },
   'destination.activate.open': { scenario: 'move', times: 4 },
   'destination.activate.record': { scenario: 'move', times: 4 },
   'destination.complete.seal': { scenario: 'move', times: 1 },
@@ -789,15 +814,18 @@ const REACH: Record<Failpoint, { scenario: Scenario; times: number; after?: Targ
   'controller.commit': { scenario: 'move', times: 1 },
 };
 
-type Case = Target & { scenario: Scenario; after?: Target };
+type Case = Target & Omit<Reach, 'times'>;
 
 // every run of each step
 const CASES: Case[] = NAMES.flatMap((name) => {
-  const { scenario, times, after } = REACH[name];
-  return (['before', 'after'] as const).flatMap((edge) => Array.from({ length: Math.max(1, times) }, (_, i) => ({ name, edge, nth: i + 1, scenario, ...(after && { after }) })));
+  const { times, ...reach } = REACH[name];
+  return (['before', 'after'] as const).flatMap((edge) => Array.from({ length: Math.max(1, times) }, (_, i) => ({ name, edge, nth: i + 1, ...reach })));
 });
 
 const label = (k: Target): string => `${k.name}:${k.edge}#${k.nth}`;
+
+// cases that fail on a defect this suite found, each dropped from here by the commit that fixes it
+const FOUND = ['destination.activate.kill:before#1'];
 
 describe('the guard on steps outside every failpoint', () => {
   const world = worlds();
@@ -844,10 +872,11 @@ describe('a crash at every failpoint', () => {
 
   for (const k of CASES) {
     for (const [prefer, heal] of [['resume', 'crashed'], ['abort', 'all']] as const) {
-      it(`${label(k)} (${k.scenario}), then ${prefer} after restarting ${heal === 'all' ? 'every party' : 'what died'}`, async () => {
+      (FOUND.includes(label(k)) ? it.fails : it)(`${label(k)} (${k.scenario}), then ${prefer} after restarting ${heal === 'all' ? 'every party' : 'what died'}`, async () => {
         const w = world();
         w.targets = [...(k.after ? [k.after] : []), { name: k.name, edge: k.edge, nth: k.nth }];
         const first = await play(w, k.scenario);
+        k.setup?.(w);
         await w.heal(heal);
         const said = await w.recover(prefer);
         const why = () => `${JSON.stringify(first)}\n${said.join(' ')}\n${w.violations.join('\n')}\n${w.trace.join(' | ')}`;
@@ -910,7 +939,7 @@ describe('the gateway lost', () => {
         if (loss.at) w.onHit = (key) => { if (key === loss.at) { w.onHit = undefined; w.loseGateway(); } };
         else w.loseGateway();
         const c = w.controller();
-        const first = await w.run(() => c.start(TRIFT, { terminateShells: true }));
+        const first = await w.run(() => c.start(TRIFT, choices(w)));
         w.onHit = undefined;
         expect(first).toMatchObject(loss.first);
         const away = await whileAway(w);
@@ -939,7 +968,7 @@ describe('a stale owner.json beside a surrendered journal', () => {
       // the destination activated and completed; the source died before it could complete
       w.targets = [{ name: 'source.complete.seal', edge: 'before', nth: 1 }];
       const c = w.controller();
-      await w.run(() => c.start(TRIFT, { terminateShells: true }));
+      await w.run(() => c.start(TRIFT, choices(w)));
       expect(w.trift.can()).toBe(true);
       rollBack(w);
       if (where === 'with the gateway away') w.loseGateway();
@@ -961,7 +990,7 @@ describe('a stale owner.json beside a surrendered journal', () => {
       const w = world();
       w.targets = [{ name: 'source.freeze.journal', edge: 'after', nth: 1 }];
       const c = w.controller();
-      await w.run(() => c.start(TRIFT, { terminateShells: true }));
+      await w.run(() => c.start(TRIFT, choices(w)));
       expect(surrendered(w).surrendered).toBeUndefined();
       if (where === 'with the gateway away') w.loseGateway();
       await w.boot(w.mac);

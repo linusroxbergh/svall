@@ -268,7 +268,7 @@ export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<Set
         boundary('source.rest.terminate', () => { for (const g of groups) kill(g, 'SIGTERM'); });
         t.terminatedAt = x.now;
       } else if (s === 'kill') {
-        for (const g of (t.groups ?? []).filter(x.alive)) kill(g, 'SIGKILL');
+        boundary('source.rest.forcekill', () => { for (const g of (t.groups ?? []).filter(x.alive)) kill(g, 'SIGKILL'); });
         t.killedAt = x.now;
       }
     }

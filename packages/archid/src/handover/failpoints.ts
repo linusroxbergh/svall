@@ -14,6 +14,7 @@ export const FAILPOINTS = {
   'source.freeze.surrender': 'source',
   'source.rest.terminated': 'source',
   'source.rest.terminate': 'source',
+  'source.rest.forcekill': 'source',
   'source.rest.stopped': 'source',
   'source.rest.kill': 'source',
   'source.freeze.manifest': 'source',
@@ -31,6 +32,7 @@ export const FAILPOINTS = {
   'source.complete.journal': 'source',
 
   'destination.claim.root': 'destination',
+  'destination.claim.archive': 'destination',
   'destination.verify.journal': 'destination',
   'destination.verify.landed': 'destination',
   'destination.verify.record': 'destination',
@@ -44,6 +46,7 @@ export const FAILPOINTS = {
   'destination.promote.state': 'destination',
   'destination.activate.journal': 'destination',
   'destination.activate.fleet': 'destination',
+  'destination.activate.kill': 'destination',
   'destination.activate.open': 'destination',
   'destination.activate.record': 'destination',
   'destination.complete.seal': 'destination',

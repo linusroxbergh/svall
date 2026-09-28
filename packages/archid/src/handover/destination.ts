@@ -291,8 +291,8 @@ export class DestinationHandover {
       let archivedTo: string | undefined;
       if (!check.ok && p.archive?.length && ARCHIVABLE.has(check.blocker.code)) {
         try {
-          archivedTo = this.replicas.archive(r, p.archive).archivedTo;
-          check = await this.replicas.claim(r, claim);
+          archivedTo = boundary('destination.claim.archive', () => this.replicas.archive(r, p.archive)).archivedTo;
+          check = await boundary('destination.claim.root', () => this.replicas.claim(r, claim));
         } catch (e) {
           if (!(e instanceof ReplicaError && e.code === 'not_approved')) throw e;
         }
@@ -743,7 +743,7 @@ export class DestinationHandover {
       const slot = s.term === 2 ? cur?.second : cur;
       if (slot && carried && slot.agent?.sessionId === carried.sessionId) slot.revive = { ...carried.revive };
     });
-    if (windowId) await this.d.tmux.killWindow(windowId);
+    if (windowId) await boundary('destination.activate.kill', () => this.d.tmux.killWindow(windowId));
   }
 
   // whether the notice already shows on a pane's screen, typed or run; a screen that cannot be read shows nothing
