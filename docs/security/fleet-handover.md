@@ -260,7 +260,7 @@ has a new id and never meets them.
 ### Measured
 
 `scripts/bench/handover.sh` runs the benchmark on the integration run's two containers (see `docs/integration.md`),
-over real sshd and rsync, with the controller on `archi-local`. Each repository gets its own shell character, then
+over real sshd and rsync, with the controller on `archi-bench-local`. Each repository gets its own shell character, then
 four handovers: a first one to the machine that has never held it, two incremental ones each after ten changed files
 and one new one, and one after the character is closed that carries only the integration fixture. Every handover
 also carries that fixture: 86 files, 17 MB.
@@ -357,10 +357,11 @@ scripts/bench/handover.sh --out /tmp/handover-bench --flood
 | `--flood` | Also measure a terminal printing to a viewer that reads nothing. |
 | `--archive <file>` | Use this companion archive instead of building one from the checkout. |
 | `--keep`, `--reuse` | Leave the containers running; measure on containers a `--keep` run left. |
+| `--prefix <name>` | Name the containers `<name>-local` and `<name>-remote` (default `archi-bench`). |
 
 The folder holds `bench.md` (the table), `bench.json` (every measure of every handover), each handover's NDJSON,
-`flood.json`, `host.json` and the integration run's logs under `setup/`. It uses the integration run's container names,
-so the two cannot run at once. A run takes about seven minutes.
+`flood.json`, `host.json` and the integration run's logs under `setup/`. Its containers are not the integration run's
+(`archi-local`, `archi-remote`), so the two can share a Docker host. A run takes about seven minutes.
 
 ## Accepted risks
 

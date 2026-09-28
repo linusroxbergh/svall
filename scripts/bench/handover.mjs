@@ -1,6 +1,7 @@
 // The fleet handover benchmark, driven from the host through docker on the two containers the integration run left:
 //
 //   node scripts/bench/handover.mjs --out <dir> [--repos small,large,many] [--files <n>] [--large-mib <n>] [--keep] [--flood]
+//                                   [--prefix <name>]
 //
 // For each repository it makes the repository on the machine that owns the fleet with a shell character in it, hands
 // the fleet over (first), changes ten files and adds one on the new owner and hands it back (incremental), does that
@@ -14,16 +15,18 @@ import { fileURLToPath } from 'node:url';
 import { flags, harness } from '../integration/harness.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const L = 'archi-local';
-const R = 'archi-remote';
-const NET = 'archi-it';
+const o = flags(process.argv.slice(2));
+// apart from an integration run's machines, which are archi-local and archi-remote
+const prefix = o.prefix ?? 'archi-bench';
+const L = `${prefix}-local`;
+const R = `${prefix}-remote`;
+const NET = `${prefix}-it`;
 const HOME = '/home/archi';
 const NODE = '/opt/it/node/bin/node';
 const BENCH = '/opt/it/bench.mjs';
 const USER_ENV = ['HOME=/home/archi', 'USER=archi', 'LOGNAME=archi', 'XDG_RUNTIME_DIR=/run/user/1000',
   'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus', 'LANG=C.UTF-8'].flatMap((e) => ['-e', e]);
 
-const o = flags(process.argv.slice(2));
 if (!o.out) throw new Error('--out <dir> is required');
 const out = path.resolve(o.out);
 const repos = o.repos === 'none' ? [] : String(o.repos ?? 'small,large,many').split(',');

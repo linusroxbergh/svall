@@ -4,20 +4,23 @@
 # small, a large-file and a many-file repository, each measured by handover.mjs.
 #
 #   scripts/bench/handover.sh [--archive <companion.tar.gz>] [--out <dir>] [--repos small,large,many]
-#                             [--files <n>] [--large-mib <n>] [--reuse] [--keep] [--flood]
+#                             [--files <n>] [--large-mib <n>] [--reuse] [--keep] [--flood] [--prefix <name>]
 #
 # --reuse measures on containers a --keep run left; --flood also measures a terminal printing to a viewer that reads
-# nothing. Needs docker (Docker Desktop, colima, or a Linux runner's engine) and the checkout's Node and pnpm install.
+# nothing. The containers are archi-bench-local and archi-bench-remote, or named by --prefix, so an integration run can
+# share the docker host. Needs docker (Docker Desktop, colima, or a Linux runner's engine) and the checkout's Node and
+# pnpm install.
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/../.." && pwd)
-archive='' out='' reuse=''
+archive='' out='' reuse='' prefix=archi-bench
 pass=()
 while [ $# -gt 0 ]; do
   case $1 in
     --archive) archive=$2; shift 2 ;;
     --out) out=$2; shift 2 ;;
     --reuse) reuse=1; shift ;;
+    --prefix) prefix=$2; shift 2 ;;
     *) pass+=("$1"); shift ;;
   esac
 done
@@ -41,6 +44,6 @@ if [ -z "$reuse" ]; then
     archive=$(ls "$work"/companion/archipelago-companion-*-linux-"$arch".tar.gz)
   fi
   docker build -q -t archi-it:latest "$repo/scripts/integration" >/dev/null
-  node "$repo/scripts/integration/fleet-handover.mjs" --archive "$archive" --image archi-it:latest --scenarios none --keep --out "$out/setup"
+  node "$repo/scripts/integration/fleet-handover.mjs" --archive "$archive" --image archi-it:latest --scenarios none --keep --out "$out/setup" --prefix "$prefix"
 fi
-node "$repo/scripts/bench/handover.mjs" --out "$out" ${pass[@]+"${pass[@]}"}
+node "$repo/scripts/bench/handover.mjs" --out "$out" --prefix "$prefix" ${pass[@]+"${pass[@]}"}

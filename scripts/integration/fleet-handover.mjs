@@ -2,9 +2,11 @@
 //
 //   node scripts/integration/fleet-handover.mjs --archive <companion.tar.gz> [--image <tag>] [--out <dir>]
 //                                               [--scenarios all|none|kill|drop|<fault>@<boundary>,...] [--keep]
+//                                               [--prefix <name>]
 //
 // Two Ubuntu 24.04 containers on one network: `archi-local` runs the controller from the companion release built from
-// this checkout, and `archi-remote` is provisioned from the same archive by `archi host add`. The run builds a small
+// this checkout, and `archi-remote` is provisioned from the same archive by `archi host add`. `--prefix` replaces
+// `archi` in their names and the network's, so another run can share the docker host. The run builds a small
 // fleet on local, hands it local -> remote -> local, then kills the controller or drops the ssh link at each boundary
 // in both directions and takes the action `archi handover status` offers. Every check that fails is printed; the run
 // exits 1 on the first step that has one.
@@ -15,9 +17,11 @@ import { fileURLToPath } from 'node:url';
 import { brief, flags, harness, last, lines, same } from './harness.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const L = 'archi-local';
-const R = 'archi-remote';
-const NET = 'archi-it';
+const o = flags(process.argv.slice(2));
+const prefix = o.prefix ?? 'archi';
+const L = `${prefix}-local`;
+const R = `${prefix}-remote`;
+const NET = `${prefix}-it`;
 const HOME = '/home/archi';
 const AGENT_CWD = `${HOME}/src/app-wt`;
 const USER_ENV = ['HOME=/home/archi', 'USER=archi', 'LOGNAME=archi', 'XDG_RUNTIME_DIR=/run/user/1000',
@@ -25,7 +29,6 @@ const USER_ENV = ['HOME=/home/archi', 'USER=archi', 'LOGNAME=archi', 'XDG_RUNTIM
 // pre-commit boundaries abort back to the source; post-commit ones resume onto the destination
 const POST = new Set(['commit', 'activate']);
 
-const o = flags(process.argv.slice(2));
 if (!o.archive || !fs.existsSync(o.archive)) throw new Error('--archive <companion.tar.gz> is required');
 const archive = path.resolve(o.archive);
 const image = o.image ?? 'archi-it:latest';
@@ -236,7 +239,7 @@ let n = 0;
 function drive(to, fault, at) {
   const label = `${String(++n).padStart(2, '0')}-${fault ?? 'clean'}${at ? `-${at}` : ''}-to-${to}`;
   const f = fault ? ` --fault ${fault} --at ${at}` : '';
-  const r = sh(L, `mkdir -p /tmp/it && /opt/it/node/bin/node /opt/it/machine.mjs drive ${to}${f} --log /tmp/it/${label}.ndjson`);
+  const r = sh(L, `mkdir -p /tmp/it && IT_LINK=${R}:7070 /opt/it/node/bin/node /opt/it/machine.mjs drive ${to}${f} --log /tmp/it/${label}.ndjson`);
   const summary = JSON.parse(r.stdout.trim().split('\n').at(-1));
   const log = sh(L, `cat /tmp/it/${label}.ndjson`).stdout;
   fs.writeFileSync(path.join(out, `${label}.ndjson`), log);

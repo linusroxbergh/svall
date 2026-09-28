@@ -24,6 +24,7 @@ Options:
 | `--out <dir>` | Where the logs go (default a new folder under the system temp folder, named when the run starts). |
 | `--scenarios <spec>` | `all` (default), `none` (the clean round trip only), `kill`, `drop`, or a list such as `kill@begin,drop@transfer`. |
 | `--keep` | Leave the containers running afterwards, to look around with `docker exec -it -u archi archi-local bash -l`. |
+| `--prefix <name>` | Name the containers `<name>-local` and `<name>-remote` and the network `<name>-it` (default `archi`), so another run can share the Docker host. The handover benchmark uses `archi-bench`. |
 
 The script builds the companion archive for the Docker host's architecture (`scripts/build-companion.mjs`), and
 `apps/desktop/web/dist-mobile` first if it is missing. It builds the image from `scripts/integration/Dockerfile`, then
