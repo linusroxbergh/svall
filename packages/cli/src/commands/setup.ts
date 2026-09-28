@@ -8,7 +8,7 @@ import { restartUnits, setupLinuxRelease, unitDirOf } from '@archipelago/archid/
 import { realRun } from '@archipelago/archid/linux/service';
 import { defaultsPrefs, moveOldIds, oldIdsLeft, runLaunchctl, signInsLeft, type Launchctl } from '@archipelago/archid/legacy';
 import { resolvePaths, userPaths } from '@archipelago/archid/paths';
-import { LAUNCHD_LABEL, PRIVATE } from '@archipelago/archid/profile';
+import { LAUNCHD_LABEL, PRIVATE, profileHome } from '@archipelago/archid/profile';
 import { repoRoot } from '@archipelago/archid/release';
 import { claudeHooksCurrent, codexHooksCurrent, plistCurrent, readCodexHooks, readJsonSettings, requireWritableHooks, runSetup, shimsCurrent, type RunFrom } from '@archipelago/archid/setup';
 import { appQuit, fleetHomes } from '@archipelago/archid/uninstall';
@@ -109,7 +109,7 @@ async function setupPlatform(t: Target, o: Options, from: From, systemd: boolean
     user: os.userInfo().username,
     run: realRun,
     systemctl: o.launchctl,
-    probe: () => daemonRuns(from.version ?? '', () => Client.connect(t.home)),
+    probe: (fleet) => daemonRuns(from.version ?? '', () => Client.connect(profileHome(fleet))),
     rollback: (p) => rollbackRelease(p, from.rollbackTo),
   });
 }

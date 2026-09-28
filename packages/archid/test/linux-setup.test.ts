@@ -456,6 +456,18 @@ describe('probeOrRollback', () => {
     expect(done.join('\n')).toContain(p.first);
   });
 
+  it('asks every fleet whose daemon was restarted, and goes back when any one of them does not answer, naming it', async () => {
+    const p = prefixWithReleases();
+    const asked: string[] = [];
+    const done = await probeOrRollback({
+      prefix: p.prefix, unitDir: unitDir(), run: fakeRun().run,
+      probe: async (fleet) => { asked.push(fleet); return fleet !== 'work'; }, rollback: rollbackRelease,
+    });
+    expect(asked).toEqual(['private', 'work']);
+    expect(fs.readlinkSync(path.join(p.prefix, 'current'))).toBe(p.first);
+    expect(done[0]).toBe(`the work fleet's daemon did not answer: current -> ${p.first}`);
+  });
+
   it('says so when the daemon does not answer and there is no release to go back to', async () => {
     const prefix = makeHome();
     const only = path.join(prefix, 'releases', '1.0.0');

@@ -152,7 +152,7 @@ export async function setupLinux(o: LinuxSetup): Promise<LinuxSetupResult> {
  */
 export async function setupLinuxRelease(o: LinuxSetup & {
   rollbackTo?: string;
-  probe: () => Promise<boolean>;
+  probe: (fleet: string) => Promise<boolean>;
   rollback: (prefix: string) => Rollback;
 }): Promise<string[]> {
   const { done, started } = await setupLinux(o);
@@ -181,21 +181,28 @@ export async function restartUnits(run: Run, unitDir: string): Promise<string[]>
 
 export type Rollback = { prefix: string; current: string; release: string; version: string };
 
+const fleetOf = (unit: string): string | undefined => /^archipelago-archid@(.+)\.service$/.exec(unit)?.[1];
+
 /**
- * A release whose daemon does not answer goes back where it came from, so an upgrade cannot leave
- * the machine without a daemon.
+ * A release any fleet's daemon does not answer from goes back where it came from, so an upgrade cannot leave
+ * the machine without a daemon. Every fleet with a unit here is asked, as each was restarted onto it.
  */
 export async function probeOrRollback(o: {
   prefix: string; unitDir: string; run: Run;
-  probe: () => Promise<boolean>;
+  probe: (fleet: string) => Promise<boolean>;
   rollback: (prefix: string) => Rollback;
 }): Promise<string[]> {
-  if (await o.probe()) return [];
+  let silent: string | undefined;
+  for (const fleet of ourUnits(o.unitDir).map(fleetOf).filter((f) => f !== undefined)) {
+    if (!await o.probe(fleet)) { silent = fleet; break; }
+  }
+  if (silent === undefined) return [];
+  const daemon = `the ${silent} fleet's daemon`;
   let back: Rollback;
   try {
     back = o.rollback(o.prefix);
   } catch (e) {
-    return [`the daemon did not answer and there is no release to go back to: ${(e as Error).message}`];
+    return [`${daemon} did not answer and there is no release to go back to: ${(e as Error).message}`];
   }
-  return [`the daemon did not answer: current -> ${back.release}`, ...await restartUnits(o.run, o.unitDir)];
+  return [`${daemon} did not answer: current -> ${back.release}`, ...await restartUnits(o.run, o.unitDir)];
 }
