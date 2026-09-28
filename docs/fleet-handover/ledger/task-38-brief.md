@@ -21,6 +21,10 @@ the benchmark script and its results into the same doc; report `task-38b-report.
   again at claim), line 446 (the daemon WebSocket's 8 MiB cap is passed by a prepare at ~25k files), line 564 (the
   dangling-link check costs links × files at preflight), line 312 (directories, empty dirs and dir modes not recorded:
   decide whether it matters and say so).
+- 38a, from Task 37b's review (`ledger/task-37b-review.md` M3 and "The implementer's concerns" 1): on a Mac,
+  `setup --rollback` moves `current` and restarts nothing (restart the launchd agent behind an injectable runner, or say
+  the daemon changes release at its next start); the gateway's socket fails to listen (EINVAL) under a Linux home over
+  59 bytes — refuse at `host add`'s home step with the cause named, and name `listen EINVAL` in the service step.
 - Line 355: the supported agent-version range and what a new Claude/Codex release does to handover (38a documents the
   process; the fixture/probe step is Task 39's).
 
