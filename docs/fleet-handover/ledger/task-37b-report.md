@@ -224,3 +224,164 @@ Owed to a first real tag:
    - Colima's default profile is stopped again, and the docker context is `desktop-linux`.
    - The scratch build trees and the throwaway signing key were deleted. The run folders under `$SP/fi` and
      `$SP/it37b` are kept.
+
+## Fix round 1
+
+Status: **DONE_WITH_CONCERNS**. Every item in `task-37b-fix1-findings.md` is fixed, test first; M3 and the long-home
+gateway socket are left for Task 38a as ruled. `$SP` is the scratchpad above; this round's runs are under `$SP/fix1`.
+
+| Commit | Item | Subject |
+| --- | --- | --- |
+| `c90f2c85` | I1 | An upgrade or a rollback restarts every fleet's daemon on the machine with the gateway, so no fleet keeps running the release it left |
+| `3ddcf7bc` | I3 | The release scan finds a private key a bundler inlined with escaped line breaks, a JWT, and Codex's auth.json |
+| `2013d48c` | M1 | The logs scan keeps the credential file-name rule, and the CI integration job uploads its logs only after that scan passed |
+| `0db0ed1a` | M2 | The release build keeps its signed archives in Actions storage for one day, not ninety |
+| `65994dd0` | Concern 3 | A release tag stops at once when the committed signers do not pin its signing key, and a tag with a dash never publishes |
+| `ee612b13` | I1 (run) | The fresh-install run gives the machine a second fleet with host enable and checks that its daemon follows every upgrade and rollback |
+| `6445a1bd` | I2 | The fresh-install run takes the app's route for a release pinned on this host's loopback: the controller downloads the companion its manifest pins, and the release workflow's upgrade goes that way |
+| `4634e37d` | docs | The integration docs say how the fresh-install run takes the app's download route and a second fleet, what the scan now finds, and how a release tag guards its signing key and dry runs |
+
+`d9114432` and `890b1dfe` in the same range are ledger commits made by someone else in this worktree during the round.
+
+### I1: every fleet's daemon follows an upgrade and a rollback
+
+- **Change.** `restartUnits(run, unitDir)` (`packages/archid/src/linux/setup.ts`) restarts every unit setup and
+  provision wrote to the unit folder, each `archipelago-archid@<fleet>.service` sorted and then the gateway, from
+  a new `ourUnits(unitDir)`. `setupLinuxRelease`, `probeOrRollback` (now given `unitDir`, not `fleet`) and
+  `archi setup --rollback` (`unitDirOf(os.homedir())`) all use it. `uninstall.ts`'s `removeUnits` uses the same
+  `ourUnits`, so the unit-name rule lives once. `rollback()` in the cli no longer takes the target it stopped using.
+- **RED** (cli suite, `packages/cli/test/setup.test.ts`, new case "restarts every fleet daemon and the gateway after a
+  rollback…"): `setupCommand(…, 'linux')` with `--rollback`, a unit folder holding private, `work`, the gateway and
+  `other.service`, and a fake `systemctl` first on PATH that logs its argv (no real systemd is reachable). Before the
+  fix: 1 failed | 3 passed, `- "--user restart archipelago-archid@work.service"` missing from the log.
+- **GREEN.** The same file, plus `linux-setup.test.ts` (the `restartUnits`, `setupLinuxRelease` and three
+  `probeOrRollback` cases now expect the `work` unit too), `linux-provision.test.ts` and cli `uninstall.test.ts`:
+  37 passed; archid `uninstall.test.ts`: 25 passed.
+- **The run.** The driver runs `archi host enable fresh --fleet work` from a controller-side `~/.archipelago-work`
+  holding only a fleet id, after lingering and before the restart. `host enable` must be `ready` with its fleet step
+  naming `archipelago-archid@work.service`. `runs()` then checks all three units at every stage, and the rollback
+  must restart all three. Host add's own service check still names only the two it starts.
+
+### I2: the app's route in the fresh install
+
+- **Rule.** A release whose manifest pins its companion at `http://127.0.0.1:<port>/…` is served by the driver and
+  taken with no `--release`, so the controller runs `companionFor`'s lookup, download, digest check and cache. Any
+  other URL is installed by path, as before.
+- **The driver** (`scripts/integration/fresh-install.mjs`):
+  - it serves those companions from a child `node -e` HTTP server on that port, since the driver blocks in
+    `spawnSync`, and logs each request to `served.log`;
+  - host add's and host upgrade's release step must read exactly `<v> for linux-<arch> from <url> (unsigned)`, or
+    `from the archive you named`;
+  - for a download, the controller's `~/.local/share/archipelago/companions/<name>` must hash to the companion;
+  - the server is killed in `finally`.
+- **Local builds** (`fresh-install.sh`): both releases pin their companions on one free loopback port
+  (`/release`, `/upgrade`), so host add and host upgrade are both downloads.
+- **CI** (`release.yml`): the `-next` build pins `http://127.0.0.1:8765/upgrade`, so the upgrade downloads. The tag's
+  own release keeps its GitHub URL, which does not resolve before publish, so host add goes by path.
+
+### I3 and M1: the scan
+
+- **Rules** (`scripts/release-scan.mjs`):
+  - the private-key rule takes a real line break or an escaped `\n`/`\r\n` after the header and each header line
+    (header values exclude `\`);
+  - `auth.json` is a credential file name;
+  - a new `JWT` rule, `\beyJ[\w-]{10,}\.eyJ[\w-]{10,}\.[\w-]{10,}`;
+  - M1: the credential file-name rule runs under `--secrets-only` too.
+- **ci.yml.** The integration job's failure upload now sits behind the same `id: logs` `--secrets-only` gate as
+  `release.yml`'s.
+- **RED** (`test/release-scan.test.ts`, 3 new cases): 3 failed | 12 passed (15), each `expected [] to deeply equal`:
+  - an OpenSSH key and an encrypted RSA key (`Proc-Type`/`DEK-Info` headers), each inlined in a bundle as a string
+    with escaped line breaks;
+  - `home/.codex/auth.json` holding Codex's login, with `id_token` and `access_token` JWTs, plus a JWT in
+    `lib/archid.mjs`: expects `JWT` twice and `credential file` once;
+  - `--secrets-only` over a folder with `.credentials.json`, `id_ed25519` and `auth.json` holding nothing a content
+    rule knows.
+- **GREEN.** At `3ddcf7bc`, 14 passed: M1's case was not yet in the file and its line not yet changed. At
+  `2013d48c`, 15 passed.
+- **No false positives.**
+  - `--secrets-only` over this task's log folders (`$SP/fi/arm64-full`, `x64-full`, `arm64-vartmp`,
+    `$SP/it37b/full-arm64`, `full-x64`): ok, 11, 11, 11, 79 and 79 files, exit 0.
+  - The app's development trees (`apps/desktop/mac/build/release`, `…/companions/*`) show no `JWT`, `private key` or
+    `credential file` hit. The tree still fails, as before, on its known development paths.
+  - Every `release-build.sh` run this round ended with the scan passing (7 builds).
+
+### M2 and concern 3: the release workflow
+
+- **M2.** `retention-days: 1` on both of the build job's uploads.
+- **The signing-key check.** With the secret, the build job derives the public half with `ssh-keygen -y -P ''`. It
+  fails at once with a named `::error::` when:
+  - the key is not an OpenSSH key without a passphrase;
+  - no uncommented line of `scripts/release/allowed_signers` holds its type and blob.
+
+  The check uses no pipe, as the default `run` shell is `bash -e` without pipefail.
+- **Dash tags.** In `publish`, the dry-run step also runs for a tag with a `-`, and the sign-and-upload step does
+  not. Such a tag builds signed when the secret exists and is otherwise a full dry run.
+- **The key step, run locally.** The step's `run` block, extracted from `release.yml` by awk, ran under `bash -e` in a
+  scratch folder with `RUNNER_TEMP`, `GITHUB_OUTPUT` and `GITHUB_ENV` files:
+
+  | Case | Result |
+  | --- | --- |
+  | throwaway ed25519 key, committed signers | exit 1, "…not in scripts/release/allowed_signers…" |
+  | `not a key` | exit 1, "…not an OpenSSH private key without a passphrase" (`invalid format`) |
+  | key with a passphrase | exit 1, the same (`incorrect passphrase`) |
+  | no secret | exit 0, `signed=false` |
+  | key pinned in a scratch `allowed_signers` | exit 0, `signed=true` |
+  | key pinned only in a comment line | exit 1, not pinned |
+
+  The keys and folder were deleted after.
+
+### Runs
+
+Colima's default profile was stopped; I started it for these runs and stopped it after, and the docker context is
+`desktop-linux` again. No x86-64 run this round.
+
+| Run | Command | Result |
+| --- | --- | --- |
+| **arm64, both downloaded** | `DOCKER_CONTEXT=colima scripts/integration/fresh-install.sh --out $SP/fix1/arm64-download` (builds `65994dd0-dirty` and `-next` on one loopback port) | **ALL PASS**, run 20.3 s, 72.9 s with both builds. `served.log`: both companions `GET … 200`. Release steps: `… from http://127.0.0.1:59274/release/…` and `…/upgrade/…`, both `(unsigned)`. `host enable`: `ready`, "fresh holds this fleet in …/.archipelago-work, made for it, under archipelago-archid@work.service". |
+| **RED, pre-fix product** | the three product files of I1 set to `5bf26d70` in the working tree, releases `red1`/`red1-next` built on a loopback port, the files restored at once, then `fresh-install.sh --release … --upgrade … --out $SP/fix1/arm64-red` | **FAIL at the upgrade**, as it should: `upgraded archipelago-archid@work.service runs red1-next: {"active":"active",…,"exe":"…/releases/red1/node/bin/node","root":"…/releases/red1"}` |
+| **arm64, CI's shape** | `ci1` built for `https://example.invalid/releases/download/ci1`, `ci1-next` for a loopback port; `fresh-install.sh --release … --upgrade … --out $SP/fix1/arm64-ci` | **ALL PASS** in 19.1 s: `host add from ci1, by path` ("… from the archive you named (unsigned)"), `host upgrade to ci1-next, downloaded`. `served.log` holds only the upgrade. |
+| arm64, CI's shape, host Node | the driver with `native: false`, from a temporary copy beside it, deleted after | **ALL PASS** in 16.0 s: the Mac tree's `archi.mjs` on this Mac's Node 24.18, the Linux runners' path, downloading by Node's `fetch` |
+| first try of CI's shape | `ci1-next` built for `127.0.0.1:8765`, as in `release.yml` | FAILED at once, before any machine: `listen EADDRINUSE 127.0.0.1:8765`, then "the server for http://127.0.0.1:8765/upgrade/… exited 1". A `python -m http.server 8765` has held that port on this Mac since 2026-09-22; it is not this task's and was left alone. Rebuilt on a free port. |
+
+In each passing run, every stage's `.machine.json` has all three units `active`/`enabled`, each with
+`/proc/<pid>/exe` and `ARCHI_RELEASE_ROOT` in the stage's release. For arm64-download:
+
+```
+added        private, work, gateway -> releases/65994dd0-dirty/node/bin/node
+upgraded     private, work, gateway -> releases/65994dd0-dirty-next/node/bin/node
+rolled back  private, work, gateway -> releases/65994dd0-dirty/node/bin/node
+rollback.json done: current -> …/releases/65994dd0-dirty, systemctl --user restart archipelago-archid@private.service,
+                    …@work.service, archipelago-gateway.service
+```
+
+No container, `/var/tmp/h*` home or server process was left after the runs.
+
+### Checks
+
+- `pnpm typecheck`: clean.
+- `ARCHI_REQUIRE_RSYNC=1 pnpm test --project cli --project archid --project scripts`: 121 files passed and 1
+  skipped, 3474 tests passed and 5 skipped, 131.9 s.
+- `actionlint` 1.7.12 (the `rhysd/actionlint` image, which runs its bundled shellcheck 0.11.0 over each `run:`) on
+  `ci.yml` and `release.yml`: 0 errors.
+- `shellcheck` 0.11.0 (`koalaman/shellcheck:stable`) on `fresh-install.sh`, `release-build.sh` and
+  `fleet-handover.sh`: 0 findings.
+- `node --check` on the driver.
+- Both lint images were removed after.
+
+### Concerns
+
+1. **Port 8765 in CI.** The fresh-install job assumes nothing listens on the runner's `127.0.0.1:8765`. That holds on
+   a fresh GitHub runner, but it is unproven there. If the port is taken, the run stops before any machine, naming the
+   server that exited. It is listed under "What only a real runner can prove".
+2. **Every unit is restarted.** `restartUnits` restarts every daemon unit in the folder, and `restart` starts a unit
+   that was stopped. Setup and provision enable each unit with `--now`, so running is its intended state; a daemon
+   the user stopped by hand is started again by an upgrade. The probe after an upgrade still asks only the private
+   daemon (review I1's last point), which this round did not change.
+3. **A dash means dry run.** Every tag with a `-`, `v1.0.0-rc1` included, now never publishes. Publishing a
+   pre-release later needs another trigger.
+4. **Shared worktree.** For the RED build, three product files sat at their pre-fix content in the working tree for
+   about a minute (17:41–17:42), and were restored with `git checkout HEAD --`. A build from a `git archive` of HEAD
+   in that window is unaffected; one from the working tree would have carried the pre-fix `restartUnits`.
+   `m3b-env.md` and an untracked `task-37c-report.md` are someone else's and were left alone.
+5. **Still owed to a real runner.** Everything listed in the section above, now also the `-next` download on a
+   runner.
