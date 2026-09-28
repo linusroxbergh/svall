@@ -851,3 +851,6 @@ Task 38a fix round 2/5 (3 addressed, 0 open; commits 2e088a0e..1cf8aaa7) — re-
 Task 38a: minor (deferred): only the opt-in GNU tar test (ARCHI_TEST_GNU_TAR + DOCKER_HOST) guards the second far verify — the default Mac suite passes with it removed; CI's integration job could set it; `archi setup --release` under GNU tar not rerun (the image has no Node; bsdtar tests cover it).
 Task 38a: owner decisions (licences, from 38a's report and review): GhosttyKit's dependency licence texts don't ship yet (names and ids only); libintl (LGPL) is linked statically; the Flaticon art ships as files in the companion archive and the app though its licence note forbids redistributing the files.
 Task 38a: complete (commits 53051df9..4c671f4d, fix rounds 8828eb30..4e222aec and 2e088a0e..1cf8aaa7, review clean). m6 closed.
+Pushed at 896fc015 (Task 38a complete).
+Ruling: Task 39b starts beside 38b's review, building from a git-archive snapshot of 896fc015 — acceptance on the machines takes hours and 38b's changes are hashing and terminal backpressure; if a 38b fix round changes transfer or terminal behaviour, 39b's evidence gets one round trip rerun on the final build — costs that rerun.
+Task 39b: dispatched (fresh opus verifier on the M3b environment; brief ledger/task-39-brief.md item 6 plus 39a's N1/N2; the by-eye list into m3b-env.md; report ledger/task-39b-report.md).
