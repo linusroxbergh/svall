@@ -1,11 +1,17 @@
+import { spawn } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import path from 'node:path';
+import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
 import { armFailpoints } from '@archipelago/archid/handover/failpoints';
 import * as real from '../../../archid/test/handover/fault-world.js';
-import { cleanHomes } from '../../../archid/test/helpers.js';
+import { cleanHomes, makeHome } from '../../../archid/test/helpers.js';
+import { runHandover, type CliDeps, type Ctx, type Transaction } from '../../src/commands/handover.js';
 import type { Outcome } from '../../src/controller/events.js';
 import type { Handover } from '../../src/controller/handover.js';
+import { helperPaths } from '../../src/controller/helper.js';
+import { MachineRegistry } from '../../src/controller/registry.js';
 import { World, controller, keptCommit, opIndex, recover, settledOn, trift, type Fault } from './world.js';
 
 afterEach(cleanHomes);
@@ -407,6 +413,106 @@ describe('two controllers on different machines', () => {
     w.gate = undefined;
     expect(arrived).toBe(2);
     await settleBoth(w, outcomes);
+  });
+});
+
+describe('two controllers on one machine', () => {
+  const world = real.worlds();
+
+  /** The command's view of controller `c` of world `w`, each call made in that controller's own process. */
+  const transaction = (w: real.World, c: Handover): Transaction => {
+    const run = <T>(work: () => Promise<T>): Promise<T> => w.run(work, c);
+    return {
+      handover: {
+        start: (to, choices) => run(() => c.start(to, choices)),
+        resume: () => run(() => c.resume()),
+        abort: () => run(() => c.abort()),
+        status: () => run(() => c.status()),
+        choose: (choices) => c.choose(choices),
+        cancel: () => c.cancel(),
+        get finished() { return c.finished; },
+      },
+      owner: async () => w.record(),
+      secrets: () => [],
+      close: async () => {},
+    };
+  };
+
+  it('refuses a second start, resume or abort here at every request of a running one, before it reaches any party, and the first goes on', async () => {
+    const w = world();
+    // the command's fleet home holds fleet.json and the helper's lock, socket and events beside the world's
+    const home = makeHome();
+    fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: real.fleetId, gatewayMachineId: real.TRIFT }));
+    const registry = MachineRegistry.load(makeHome());
+    registry.add({ name: 'trift', ssh: 'trift', platform: 'linux', arch: 'arm64', home: w.home, archiBase: path.join(w.home, '.local/share/archipelago'), gateway: true }, real.TRIFT);
+    const tmpdir = makeHome();
+    const cli = (connect: CliDeps['connect']) => {
+      const out: string[] = [];
+      const ctx: Ctx = {
+        fleetHome: home, json: true,
+        deps: {
+          connect, registry: () => registry, stdin: new PassThrough(), stdout: { write: (x: string) => out.push(x) }, stderr: { write: () => true },
+          signals: new EventEmitter(), launch: () => { throw new Error('no launcher in this test'); }, argv: () => [], tmpdir,
+        },
+      };
+      return { ctx, result: () => out.join('').trim().split('\n').map((l) => JSON.parse(l) as { event: string; data: Outcome }).filter((e) => e.event === 'handover.result').at(-1)?.data };
+    };
+    const first = party(w, 'mac', 'start');
+    const a = cli(() => transaction(w, first.c));
+    const held = w.lifeOfController(first.c);
+    const seconds: { label: string; job: string; code: number; reached: boolean; result?: Outcome }[] = [];
+    w.gate = async ({ life, label }) => {
+      if (life !== held || label.startsWith('link ')) return;
+      for (const job of [{ kind: 'start', to: 'trift', choices: real.choices(w) }, { kind: 'resume' }, { kind: 'abort' }] as const) {
+        let reached = false;
+        const b = cli(() => { reached = true; throw new Error('the second run reached for the fleet'); });
+        const { code } = await runHandover(job, b.ctx);
+        seconds.push({ label, job: job.kind, code, reached, result: b.result() });
+      }
+    };
+    expect(await runHandover({ kind: 'start', to: 'trift', choices: real.choices(w) }, a.ctx)).toEqual({ code: 0 });
+    w.gate = undefined;
+    expect(a.result()).toMatchObject({ status: 'complete' });
+    expect(seconds).toHaveLength(3 * PROBED.move.labels.filter((l) => !l.startsWith('link ')).length);
+    for (const s of seconds) {
+      expect(s, `${s.job} at ${s.label}`).toMatchObject({ code: 1, reached: false, result: { status: 'interrupted', error: expect.stringContaining('already running here') } });
+    }
+    expect(w.violations).toEqual([]);
+    expect(real.settledOn(w)).toBe('destination');
+  });
+
+  it('lets one of two processes racing for the lock take it, and tells the other it is held', async () => {
+    const repo = path.join(import.meta.dirname, '../../../..');
+    const script = path.join(makeHome(), 'take.mts');
+    fs.writeFileSync(script, `import fs from 'node:fs';
+import { helperPaths, takeLock } from ${JSON.stringify(path.join(repo, 'packages/cli/src/controller/helper.ts'))};
+const [home, go] = process.argv.slice(2);
+fs.writeFileSync(\`\${go}.\${process.pid}\`, '');
+while (!fs.existsSync(go)) await new Promise((r) => setTimeout(r, 2));
+try {
+  const release = takeLock(helperPaths(home));
+  process.stdout.write('took');
+  await new Promise((r) => setTimeout(r, 500));
+  release();
+} catch (e) {
+  process.stdout.write(e instanceof Error && e.name === 'Live' ? 'held' : \`failed: \${String(e)}\`);
+}
+`);
+    for (let round = 0; round < 3; round++) {
+      const home = makeHome();
+      const go = path.join(home, 'go');
+      const said = [0, 1].map(() => new Promise<string>((resolve) => {
+        const child = spawn(path.join(repo, 'node_modules/.bin/tsx'), [script, home, go], { stdio: ['ignore', 'pipe', 'inherit'] });
+        let out = '';
+        child.stdout.on('data', (d: Buffer) => { out += d.toString(); });
+        child.on('close', () => resolve(out));
+      }));
+      // both wait at the line before either may try
+      while (fs.readdirSync(home).filter((f) => f.startsWith('go.')).length < 2) await new Promise((r) => setTimeout(r, 20));
+      fs.writeFileSync(go, '');
+      expect((await Promise.all(said)).sort(), `round ${round}`).toEqual(['held', 'took']);
+      expect(fs.existsSync(helperPaths(home).lock)).toBe(false);
+    }
   });
 });
 
