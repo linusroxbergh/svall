@@ -1011,6 +1011,26 @@ describe('host remove', () => {
     expect(gatewayOf(begun)).toBe(REMOTE);
   });
 
+  it('refuses while a handover through another gateway holds a fleet open, as it may by now have left the fleet on this machine', async () => {
+    ssh.reply(['uninstall'], { stdout: 'removed\n' });
+    const registry = registered('trift.test');
+    // committed on the other gateway to trift, and this Mac's controller stopped before it learnt so
+    const through = fleetAt('.archipelago-lab', { gateway: OTHER_MAC, owner: MAC });
+    fs.mkdirSync(path.join(through, 'controller'));
+    fs.writeFileSync(path.join(through, 'controller', 'handover.json'), JSON.stringify({
+      version: 1, fleetId: FLEET, transactionId: 'tx-3', generation: 2, source: { machineId: MAC, name: 'mac' }, destination: { machineId: REMOTE, name: 'trift', ssh: 'trift.test' },
+      choices: {}, phase: 'commit', startedAt: 1, updatedAt: 1,
+    }));
+    const out = await removeHost('trift', {}, deps({ registry }));
+    expect(out.result).toBe('actions');
+    expect(step('fleet').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(through) });
+    expect(step('fleet').at(-1)?.detail).toContain('holds open');
+    expect(out.actions.join('\n')).toContain('`archi -p lab handover --resume`');
+    expect(ssh.calls()).toEqual([]);
+    expect(registry.get('trift')).toBeDefined();
+    expect(gatewayOf(through)).toBe(OTHER_MAC);
+  });
+
   it('lets the gateway go once the handover that brought a fleet here has completed, though the record it left names that handover', async () => {
     ssh.reply(['uninstall'], { stdout: 'removed\n' });
     const registry = registered('trift.test');

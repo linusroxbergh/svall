@@ -126,7 +126,7 @@ once per fleet; `--fleet work` for a fleet named `work`. Then [hand the fleet ov
 | `archi host list` | | Every machine in the registry, with its id and whether it is a gateway. |
 | `archi host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, its free space and its home path. A check marked ✗ fails and makes it exit 1; one marked ! is a warning. A fresh Ubuntu 24.04 warns on `tmux` (it ships 3.4), `gh` and `path`; none of these stops a handover. |
 | `archi host upgrade <name>` | Upgrade | Installs this Mac's release there, restarts the gateway and every fleet's daemon, and checks each answers from the new release. If one does not, it goes back to the release before. |
-| `archi host remove <name>` | Remove | Runs `archi uninstall` there and drops the machine from the registry. It refuses while the machine is the gateway of a fleet it owns or a handover holds open; bring each back with `archi handover local` first. Its fleets and their files stay on that machine. |
+| `archi host remove <name>` | Remove | Runs `archi uninstall` there and drops the machine from the registry. It refuses while the machine is the gateway of a fleet it owns, and while a handover holds any fleet here open, whatever its gateway; bring each back with `archi handover local` first. Its fleets and their files stay on that machine. |
 | `archi host remove <name> --forget` | Forget | Drops the machine from the registry without reaching it, when it is gone. |
 
 After you update Archipelago on the Mac (`git pull && pnpm desktop:install`), run `archi host upgrade <name>`: until

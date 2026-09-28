@@ -532,8 +532,8 @@ function fleetHomes(homedir: string): string[] {
 
 /**
  * The fleets that name this machine as their gateway: a fleet this Mac owns can drop it, and one
- * that another machine owns, or that a handover holds open, would be stranded, since only its gateway
- * knows where it is. A fleet this machine owns, through whichever gateway, runs there, and goes with it.
+ * that another machine owns would be stranded, since only its gateway knows where it is. A fleet this
+ * machine owns, through whichever gateway, runs there, and goes with it, as may one a handover holds open.
  */
 function gatewayFleets(entry: MachineEntry, d: HostDeps): Outcome<string[]> {
   const me = d.machineId();
@@ -543,12 +543,13 @@ function gatewayFleets(entry: MachineEntry, d: HostDeps): Outcome<string[]> {
     const profile = profileOf(home, d.homedir);
     return `\`archi ${profile === PRIVATE ? '' : `-p ${profile} `}${args}\``;
   };
-  // the gateway may hold a handover open while this Mac's daemon or controller keeps a journal of it
-  const open = named.filter((home) => fs.existsSync(resolvePaths(home).journal) || fileStore(path.join(home, 'controller')).read() !== undefined);
+  // a gateway may hold a handover open while this Mac's daemon or controller keeps a journal of it, and whichever
+  // gateway it is, the handover may have committed the fleet to this machine before any cache here said so
+  const open = homes.filter((home) => fs.existsSync(resolvePaths(home).journal) || fileStore(path.join(home, 'controller')).read() !== undefined);
   if (open.length) {
     const settle = (home: string): string =>
       `${archi(home, 'handover --resume')} finishes the handover of ${home} and ${archi(home, 'handover --abort')} takes it back, as ${archi(home, 'handover status')} says is safe`;
-    throw new StepError(`${entry.record.name} is the gateway for ${open.join(', ')}, which a handover holds open`,
+    throw new StepError(`${entry.record.name} may be the gateway or the owner of ${open.join(', ')}, which a handover holds open`,
       `${open.map(settle).join('; ')}; then \`archi host remove ${entry.record.name}\``);
   }
   const owners = (home: string) => [cachedOwner(home)?.ownerMachineId, readRoute(home)?.ownerMachineId];
