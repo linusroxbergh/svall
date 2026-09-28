@@ -6,7 +6,7 @@ import {
 } from '@archipelago/protocol';
 import { writeDurable } from './durable.js';
 import { gitIndexDigest } from './git-graph.js';
-import { byCodeUnit, canonicalDigest, canonicalJson, hashStream, sha256Hex } from './hash.js';
+import { byCodeUnit, canonicalDigest, canonicalJson, hashStream } from './hash.js';
 import { CONTROL, rootMatcher, settle, type Inventory, type InventorySession } from './inventory.js';
 import { holds } from './portable-path.js';
 import { sessionAdapter } from './sessions/registry.js';
@@ -196,10 +196,8 @@ async function scanSession(session: InventorySession, sfs: ScanFs, read: boolean
     try {
       const st = await sfs.lstat(file);
       if (!read) continue;
-      const chunks: Buffer[] = [];
-      for await (const chunk of sfs.read(file)) chunks.push(chunk);
-      const data = Buffer.concat(chunks);
-      files.push({ type: 'file', path: rel, mode: st.mode & 0o7777, size: data.length, mtimeMs: Math.trunc(st.mtimeMs), sha256: sha256Hex(data) });
+      const { sha256, size } = await hashStream(sfs.read(file));
+      files.push({ type: 'file', path: rel, mode: st.mode & 0o7777, size, mtimeMs: Math.trunc(st.mtimeMs), sha256 });
     } catch (e) {
       if (rel === found.transcript && gone(e)) return { blockers: [{ code: 'transcript_missing', message: `${session.sourcePath} is not there`, entity }] };
       // a sidecar removed since the listing is simply not there; the verify pass catches the change

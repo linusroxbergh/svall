@@ -222,6 +222,18 @@ describe('buildManifest', () => {
     expect(manifestDigest(JSON.parse(JSON.stringify(second.manifest)))).toBe(first.digest);
   });
 
+  it('reads a session file a chunk at a time, and keeps none of its chunks once read', async () => {
+    const s = seed();
+    // a reader that refills one buffer for each chunk: a scan that held a chunk would see it change under it
+    const shared = Buffer.alloc(4);
+    const reused: ScanFs = {
+      ...realScanFs,
+      read: (p) => (p === s.transcript ? (async function* () { for (const word of ['one ', 'two ', 'six ']) { shared.write(word); yield shared; } })() : realScanFs.read(p)),
+    };
+    const { manifest } = await buildManifest(inventory(s), HEADER, reused);
+    expect(manifest.sessions[0].files).toEqual([expect.objectContaining({ path: `projects/app/${SESSION}.jsonl`, size: 12, sha256: sha('one two six ') })]);
+  });
+
   it('changes its digest when a file does, and when it names a transaction', async () => {
     const s = seed();
     const before = await buildManifest(inventory(s), HEADER);
