@@ -233,3 +233,102 @@ None.
     should.
 - **Docker.** I started colima's default profile for these runs and stopped it after, and set the context back to
   `desktop-linux`. My containers and images are removed. The worktree is untouched apart from this file.
+
+## Re-review of fix round 1
+
+Fix commits c90f2c85..4634e37d, against `task-37b-fix1-findings.md`. The ledger and environment commits in the range
+were skipped. M3 and the long-home socket went to Task 38a and are not reopened here.
+
+**Verdict: Approved.** Every finding sent is addressed. The fix diff breaks nothing at Critical or Important level;
+it adds 2 new Minor findings, and 1 more Minor is out of scope.
+
+| Finding | Verdict | Evidence |
+| --- | --- | --- |
+| I1: every fleet follows an upgrade and a rollback | ADDRESSED | See below. |
+| I2: the app's route | ADDRESSED | See below. |
+| I3: the scan's misses | ADDRESSED | See below. |
+| M1: logs scan and `ci.yml` | ADDRESSED | See below. |
+| M2: retention | ADDRESSED | `retention-days: 1` on both of the build job's uploads. |
+| Signed-tag guard | ADDRESSED | See below. |
+
+- **I1.** The fix:
+  - `restartUnits(run, unitDir)` restarts every unit in `ourUnits(unitDir)` (`linux/setup.ts:20`, `:169-171`):
+    each fleet's archid, then the gateway.
+  - `setupLinuxRelease`, `probeOrRollback` and `setup --rollback` all call it.
+  - `removeUnits` in `uninstall.ts` shares the same rule.
+
+  How I checked it:
+  - I made a mutant that skips `@work`. It fails 4 tests, including the new CLI `--rollback` case with a fake
+    `systemctl`.
+  - I ran the fresh install in a Linux container, from a `git archive 4634e37d` build. The `work` fleet's unit ran
+    `v0.0.0-f1` when added, `v0.0.0-f1-next` after the upgrade, and `v0.0.0-f1` after the rollback. The rollback
+    restarted private, `work` and the gateway.
+- **I2.** A companion pinned on `http://127.0.0.1:<port>/` is served by a child process and installed without
+  `--release`. The run checks the release step's exact text and that the cached companion hashes to the pin.
+  - Local builds pin both releases on one free loopback port.
+  - In CI, `-next` pins `127.0.0.1:8765`.
+
+  I ran CI's shape in a clean Linux container: the tag's release on a GitHub-style URL and `-next` on 8765. `host add`
+  went "from the archive you named". The upgrade came "from http://127.0.0.1:8765/upgrade/…" with `served.log`
+  `GET … 200`, and the run ended ALL PASS in 19 s. With 8765 taken, it stopped at 1.6 s, before any machine, naming the
+  server that exited.
+- **I3.** The private-key rule now takes an escaped `\n` or `\r\n`, and there is a new `JWT` rule. `auth.json` is a
+  credential file name.
+  - Mutants that drop the escaped break or `auth.json` each fail the new tests.
+  - All six archives built from the snapshot passed the scan with the new rules, including `node/`, so the rules add
+    no false positives.
+- **M1.** The file-name rule now runs under `--secrets-only`; a mutant that restores `&& !o.secretsOnly` fails its
+  test. `ci.yml`'s upload sits behind the same `id: logs` gate as `release.yml`'s.
+- **Signed-tag guard.** I ran the step's `run` block, taken from `release.yml`, under `/bin/bash -e` (bash 3.2) with
+  throwaway keys:
+  - an unpinned key, a key with a passphrase, and text that is no key each exit 1 with a named `::error::`;
+  - no secret gives `signed=false`, and a pinned key gives `signed=true`;
+  - no key material is printed, and a failed step leaves the key file to the `always()` removal.
+
+  Publishing is skipped, and the dry-run step runs, for any tag with a `-`.
+- **Checks here.**
+  - Typecheck is clean.
+  - The seven touched test files pass: 134 passed, 1 skipped.
+  - The worktree matches the commits: `git status` and `git diff HEAD` are empty, and no product file changed after
+    4634e37d. This answers the fixer's concern 4.
+
+### The fixer's concerns
+
+1. **Port 8765 in CI.** The port has to be fixed, because the signed `-next` manifest is built on the macOS runner
+   before the Linux runner exists. A fresh runner has nothing on it, and a taken port fails fast with a named cause.
+   Accepted.
+2. **`restart` rather than `try-restart`.** Keep `restart`.
+   - Setup and provision enable every unit with `--now`, so a unit stopped by hand starts again at the next boot
+     anyway.
+   - `try-restart` leaves a `failed` unit alone. On the automatic rollback that is the worst case: a daemon that hit
+     its start limit on a bad release would stay down after going back.
+   - The one real gap is a unit the user disabled but whose file is still there (m1 below).
+3. **Every tag with a `-` is a dry run.** This follows the ruling, and it keeps "a test tag is a dry run" true once a
+   key exists. Accepted. Pre-releases need their own rule later.
+4. **The shared worktree.** Confirmed clean, as above.
+
+### New Minor findings
+
+**m1. An upgrade or a rollback starts a fleet daemon the user disabled.**
+- **Where:** `linux/setup.ts:169-171`.
+- **Evidence:** `ourUnits` takes every unit file in the folder, and `restart` starts a stopped unit. A unit the user
+  ran `systemctl --user disable --now` on, but whose file is still there, is started again, against their intent.
+  Before the fix, other fleets were never touched.
+- **Fix:** optional. Skip a unit that `systemctl --user is-enabled` does not report as `enabled`, or accept this as
+  intended.
+
+**m2. The signing-key guard matches the key anywhere on an uncommented line.**
+- **Where:** `release.yml:49`.
+- **Evidence:** the guard does not check the `archipelago-release` principal or `namespaces="archipelago-release"`.
+  A key pinned under another principal passes the guard, and then fails later in the test jobs, as every unpinned
+  key did before the guard.
+- **Fix:** optional. Match `^archipelago-release ` with that namespace, or run `ssh-keygen -Y sign` and then
+  `-Y verify` on a probe file in the guard.
+
+**Out of scope (Minor).** After an upgrade, only the private daemon is probed (`setup.ts:95`). Another fleet's
+daemon that fails on the new release rolls nothing back: `restart` returns once its start job runs. Every daemon runs
+the same code, and the fresh-install run now checks each unit's release at every stage, so this can go to Task 38a
+with the rest of the service behaviour.
+
+**Docker.** I built from a `git archive 4634e37d` snapshot and ran on colima's default profile only. I stopped colima
+after and set the context back to `desktop-linux`. My containers and images are removed.

@@ -25,6 +25,8 @@ the benchmark script and its results into the same doc; report `task-38b-report.
   `setup --rollback` moves `current` and restarts nothing (restart the launchd agent behind an injectable runner, or say
   the daemon changes release at its next start); the gateway's socket fails to listen (EINVAL) under a Linux home over
   59 bytes — refuse at `host add`'s home step with the cause named, and name `listen EINVAL` in the service step.
+  Also from its re-review: after an upgrade or rollback only the private fleet's daemon is checked (check every fleet
+  daemon the upgrade restarted).
 - Line 355: the supported agent-version range and what a new Claude/Codex release does to handover (38a documents the
   process; the fixture/probe step is Task 39's).
 

@@ -1367,13 +1367,13 @@ handover clears obsolete ports rather than forwarding dead processes.
 
 **Steps:**
 
-- [ ] Run local↔Ubuntu handover with isolated homes, real sshd/rsync/tmux/Git and fake hook-speaking
+- [x] Run local↔Ubuntu handover with isolated homes, real sshd/rsync/tmux/Git and fake hook-speaking
   agents in CI; assert manifests, worktree indexes, state and ownership records.
-- [ ] Run controller-kill/network-drop scenarios at representative pre/post-commit boundaries.
-- [ ] Build and install companion archives into clean x86-64 and arm64 environments with no Node or
+- [x] Run controller-kill/network-drop scenarios at representative pre/post-commit boundaries.
+- [x] Build and install companion archives into clean x86-64 and arm64 environments with no Node or
   checkout; verify systemd units and upgrade/rollback.
-- [ ] Cache no user credentials in artifacts/logs and scan release archives for secrets/source paths.
-- [ ] Upload signed manifests/artifacts only after all architecture and integration jobs pass.
+- [x] Cache no user credentials in artifacts/logs and scan release archives for secrets/source paths.
+- [x] Upload signed manifests/artifacts only after all architecture and integration jobs pass.
 
 **Verify:** release workflow dry run from an unsigned test tag and manual supported-host run.
 
