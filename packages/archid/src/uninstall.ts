@@ -5,7 +5,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import type { CodexPaths } from './codex/install.js';
 import { SystemdError, daemonReload, disableUnit, realRun, type Run } from './linux/service.js';
-import { GATEWAY_UNIT } from './linux/setup.js';
+import { ourUnits } from './linux/setup.js';
 import { portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
 import { resolvePaths } from './paths.js';
 import { BUNDLE_ID, isProfileName, LAUNCHD_LABEL, OLD_BUNDLE_ID, OLD_LAUNCHD_LABEL, PRIVATE, profileHome } from './profile.js';
@@ -80,12 +80,10 @@ export async function quitApp(homes: string[], app: AppQuit, command: string): P
   return open.length ? ['quit Archipelago'] : [];
 }
 
-const isOurUnit = (f: string): boolean => f === GATEWAY_UNIT || /^archipelago-archid@[a-z][a-z0-9-]*\.service$/.test(f);
-
 // the units this machine's setup wrote, stopped before their files go
 export async function removeUnits(o: { unitDir: string; systemctl: boolean; run: Run }): Promise<string[]> {
   const done: string[] = [];
-  const units = fs.existsSync(o.unitDir) ? fs.readdirSync(o.unitDir).filter(isOurUnit).sort() : [];
+  const units = ourUnits(o.unitDir);
   for (const unit of units) {
     // a daemon that would not stop keeps running without its unit, so say so rather than claim it went
     if (o.systemctl) await disableUnit(o.run, unit).catch((e: SystemdError) => { done.push(`could not stop ${unit}: ${e.message}`); });

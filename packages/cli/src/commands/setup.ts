@@ -38,12 +38,12 @@ function runFrom(o: Options, done: string[]): From {
 }
 
 /** Recovery, so it asks nothing of the machine but the release it is going back to: the one named, or the one before. */
-async function rollback(t: Target, systemd: boolean, to?: string): Promise<string[]> {
+async function rollback(systemd: boolean, to?: string): Promise<string[]> {
   const releases = path.join(DEFAULT_PREFIX, 'releases');
   if (to !== undefined && path.dirname(path.resolve(releases, to)) !== releases) throw new Error(`${to} names no release under ${releases}`);
   const back = rollbackRelease(DEFAULT_PREFIX, to === undefined ? undefined : path.join(releases, to));
   const done = [`current -> ${back.release}`];
-  return systemd ? [...done, ...await restartUnits(realRun, t.name)] : done;
+  return systemd ? [...done, ...await restartUnits(realRun, unitDirOf(os.homedir()))] : done;
 }
 
 type Daemon = { call(method: 'system.info', params: Record<string, never>): Promise<{ release: string }>; close(): void };
@@ -111,7 +111,7 @@ export function setupCommand(target: () => Target, json: () => boolean, platform
       // setup owns the per-user half — the Claude hooks and the shims — so it only ever means private
       const t = target();
       if (o.rollback) {
-        const done = await rollback(t, systemd, typeof o.rollback === 'string' ? o.rollback : undefined);
+        const done = await rollback(systemd, typeof o.rollback === 'string' ? o.rollback : undefined);
         printResult({ done, warnings: [] }, json(), () => done.join('\n'));
         return;
       }

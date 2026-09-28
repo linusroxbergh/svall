@@ -14,6 +14,12 @@ export const archidUnitName = (fleet: string): string => `archipelago-archid@${f
 /** Where systemd reads a user's own units. */
 export const unitDirOf = (homedir: string): string => path.join(homedir, '.config', 'systemd', 'user');
 
+const isOurUnit = (f: string): boolean => f === GATEWAY_UNIT || /^archipelago-archid@[a-z][a-z0-9-]*\.service$/.test(f);
+
+/** The units setup and provision wrote to `unitDir`: one daemon per fleet, then the gateway. */
+export const ourUnits = (unitDir: string): string[] =>
+  (fs.existsSync(unitDir) ? fs.readdirSync(unitDir).filter(isOurUnit).sort() : []);
+
 // systemd resolves % specifiers in these values, and a value holding a space needs its quotes
 const esc = (s: string): string => s.replace(/[\\"]/g, (c) => `\\${c}`).replace(/%/g, '%%');
 
@@ -152,17 +158,17 @@ export async function setupLinuxRelease(o: LinuxSetup & {
   const { done, started } = await setupLinux(o);
   if (!started || !o.rollbackTo) return done;
   // `enable --now` leaves a running unit alone, so the old release would keep answering the probe
-  done.push(...await restartUnits(o.run, o.fleet));
-  return [...done, ...await probeOrRollback({ prefix: o.prefix, fleet: o.fleet, run: o.run, probe: o.probe, rollback: o.rollback })];
+  done.push(...await restartUnits(o.run, o.unitDir));
+  return [...done, ...await probeOrRollback({ prefix: o.prefix, unitDir: o.unitDir, run: o.run, probe: o.probe, rollback: o.rollback })];
 }
 
 /**
- * A fleet's daemon and the machine's gateway, started again from the release `current` now names. A unit that does not
- * start is said, not thrown.
+ * Every fleet's daemon and the machine's gateway, started again from the release `current` now names. A unit that does
+ * not start is said, not thrown.
  */
-export async function restartUnits(run: Run, fleet: string): Promise<string[]> {
+export async function restartUnits(run: Run, unitDir: string): Promise<string[]> {
   const done: string[] = [];
-  for (const unit of [archidUnitName(fleet), GATEWAY_UNIT]) {
+  for (const unit of ourUnits(unitDir)) {
     try {
       await restartUnit(run, unit);
       done.push(`systemctl --user restart ${unit}`);
@@ -180,7 +186,7 @@ export type Rollback = { prefix: string; current: string; release: string; versi
  * the machine without a daemon.
  */
 export async function probeOrRollback(o: {
-  prefix: string; fleet: string; run: Run;
+  prefix: string; unitDir: string; run: Run;
   probe: () => Promise<boolean>;
   rollback: (prefix: string) => Rollback;
 }): Promise<string[]> {
@@ -191,5 +197,5 @@ export async function probeOrRollback(o: {
   } catch (e) {
     return [`the daemon did not answer and there is no release to go back to: ${(e as Error).message}`];
   }
-  return [`the daemon did not answer: current -> ${back.release}`, ...await restartUnits(o.run, o.fleet)];
+  return [`the daemon did not answer: current -> ${back.release}`, ...await restartUnits(o.run, o.unitDir)];
 }

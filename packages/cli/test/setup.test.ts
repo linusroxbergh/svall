@@ -36,4 +36,33 @@ describe('archi setup on Linux', () => {
     // with no ~/.claude yet, only a claude found makes setup write its hooks
     expect(JSON.parse(out.join('')).warnings).toContain('! hooks  missing or out of date: run archi setup');
   });
+
+  it('restarts every fleet daemon and the gateway after a rollback, so none keeps running the release it left', async () => {
+    const home = process.env.HOME!;
+    const prefix = path.join(home, '.local', 'share', 'archipelago');
+    for (const v of ['1.0.0', '1.1.0']) fs.mkdirSync(path.join(prefix, 'releases', v), { recursive: true });
+    fs.symlinkSync(path.join(prefix, 'releases', '1.1.0'), path.join(prefix, 'current'));
+    const unitDir = path.join(home, '.config', 'systemd', 'user');
+    fs.mkdirSync(unitDir, { recursive: true });
+    for (const u of ['archipelago-archid@private.service', 'archipelago-archid@work.service', 'archipelago-gateway.service', 'other.service']) {
+      fs.writeFileSync(path.join(unitDir, u), '');
+    }
+    const bin = makeHome();
+    const log = path.join(bin, 'systemctl.log');
+    fs.writeFileSync(path.join(bin, 'systemctl'), `#!/bin/sh\necho "$*" >> '${log}'\n`, { mode: 0o755 });
+    vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      await setupCommand(() => ({ name: 'private', home: path.join(home, '.archipelago'), managed: true }), () => true, 'linux')
+        .parseAsync(['--rollback'], { from: 'user' });
+      expect(fs.readlinkSync(path.join(prefix, 'current'))).toBe(path.join(prefix, 'releases', '1.0.0'));
+      expect(fs.readFileSync(log, 'utf8').trim().split('\n')).toEqual([
+        '--user restart archipelago-archid@private.service',
+        '--user restart archipelago-archid@work.service',
+        '--user restart archipelago-gateway.service',
+      ]);
+    } finally {
+      for (const d of [prefix, path.join(home, '.config')]) fs.rmSync(d, { recursive: true, force: true });
+    }
+  });
 });
