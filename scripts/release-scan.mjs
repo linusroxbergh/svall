@@ -36,8 +36,6 @@ const SECRETS = [
 
 const CREDENTIAL_FILE = /^(?:\.credentials\.json|auth\.json|\.git-credentials|\.netrc|\.npmrc|\.pypirc|\.env(?:\..+)?|id_(?:rsa|dsa|ecdsa|ed25519)(?:_sk)?|.+\.(?:pem|p12|pfx|key))$/;
 const CHECKOUT_DIR = new Set(['node_modules', '.git']);
-// what the bundles reach for inside a try and run without: ws's native accelerators and debug's colour detection
-const OPTIONAL = new Set(['bufferutil', 'utf-8-validate', 'supports-color']);
 const BUILTIN = new Set(builtinModules);
 
 const IMPORTS = [
@@ -65,7 +63,7 @@ function builderPaths(o) {
 const UPSTREAM = /^(?:releases\/[^/]+\/)?node\//;
 
 function moduleProblem(spec, file, root) {
-  if (spec.startsWith('node:') || BUILTIN.has(spec) || OPTIONAL.has(spec)) return undefined;
+  if (spec.startsWith('node:') || BUILTIN.has(spec)) return undefined;
   if (spec.startsWith('./') || spec.startsWith('../')) {
     const target = path.resolve(path.dirname(file), spec);
     return target.startsWith(root + path.sep) && fs.existsSync(target) ? undefined : spec;

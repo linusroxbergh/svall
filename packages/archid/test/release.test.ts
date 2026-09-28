@@ -344,5 +344,17 @@ describe('a release built by the build scripts', () => {
     const manifest = fs.readFileSync(path.join(installed.release, 'release.json'), 'utf8');
     expect(manifest).not.toContain(checkout);
     expect(manifest).toContain('https://nodejs.org/dist/');
+
+    // a module the dependencies only try for is never looked up in a folder above the release
+    const mark = path.join(prefix, 'loaded');
+    for (const name of ['bufferutil', 'utf-8-validate', 'supports-color']) {
+      fs.mkdirSync(path.join(prefix, 'node_modules', name), { recursive: true });
+      fs.writeFileSync(path.join(prefix, 'node_modules', name, 'index.js'), `require('fs').appendFileSync(${JSON.stringify(mark)}, '${name}\\n');\n`);
+    }
+    execFileSync(path.join(installed.current, 'bin', 'archi'), ['version', '--json'], { encoding: 'utf8' });
+    for (const bundle of ['archi', 'archid']) {
+      expect(fs.readFileSync(path.join(installed.release, 'lib', `${bundle}.mjs`), 'utf8')).not.toMatch(/require\("(?:bufferutil|utf-8-validate|supports-color)"\)/);
+    }
+    expect(fs.existsSync(mark) ? fs.readFileSync(mark, 'utf8') : '').toBe('');
   }, 180_000);
 });

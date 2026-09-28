@@ -242,8 +242,8 @@ ends by scanning the three archives, and a hit fails it.
   component, such as `/tmp`, names nobody and is not looked for. In `node/`, the upstream runtime whose digest the
   build checked, only the builder's own paths count, as Node's own builds carry their build machine's `/Users/admin`.
 - **Checkout dependencies:**
-  - a module the bundles or hooks import or require that is not a Node builtin, not inside the release, and not one
-    of the optional modules the bundles fall back from (`bufferutil`, `utf-8-validate`, `supports-color`);
+  - a module the bundles or hooks import or require that is not a Node builtin and not inside the release, including
+    one a dependency only tries for, as Node would look for it in every folder above the release;
   - a link out of the release;
   - a `node_modules` or `.git` folder.
 

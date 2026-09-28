@@ -95,6 +95,17 @@ function stageNode(runtime, stage) {
   fs.copyFileSync(path.join(dest, 'LICENSE'), path.join(stage, 'licenses', 'node-LICENSE'));
 }
 
+// modules the dependencies try for and run without: ws's native accelerators and debug's colour detection. Left
+// unresolved, Node would look them up in every folder above the release, whoever put them there
+const ABSENT = /^(?:bufferutil|utf-8-validate|supports-color)$/;
+const absent = {
+  name: 'absent',
+  setup(b) {
+    b.onResolve({ filter: ABSENT }, (a) => ({ path: a.path, namespace: 'absent' }));
+    b.onLoad({ filter: /.*/, namespace: 'absent' }, (a) => ({ contents: `throw new Error(${JSON.stringify(`${a.path} is not bundled`)});`, loader: 'js' }));
+  },
+};
+
 /** One ESM file per entry point, and the set of sources esbuild inlined into them. */
 async function bundle(stage) {
   const bundles = {};
@@ -112,8 +123,7 @@ async function bundle(stage) {
       sourcemap: false,
       metafile: true,
       logLevel: 'warning',
-      // ws reaches for two optional native accelerators that it already falls back from
-      external: ['bufferutil', 'utf-8-validate'],
+      plugins: [absent],
       // esbuild's ESM output has no require(); the CJS dependencies need one
       banner: { js: "import { createRequire as __cr } from 'node:module';\nconst require = __cr(import.meta.url);" },
     });

@@ -26,7 +26,7 @@ function release(files: Record<string, string> = {}): string {
   const stage = path.join(root, 'releases', 'v1.0.0');
   const all: Record<string, string> = {
     'bin/archi': '#!/bin/sh\nexec "$ARCHI_RELEASE_ROOT/node/bin/node" "$ARCHI_RELEASE_ROOT/lib/archi.mjs" "$@"\n',
-    'lib/archi.mjs': "import fs from 'node:fs';\nimport { createRequire as __cr } from 'node:module';\nconst ws = __require(\"bufferutil\");\nconst u = __require(\"util\");\n",
+    'lib/archi.mjs': "import fs from 'node:fs';\nimport { createRequire as __cr } from 'node:module';\nconst u = __require(\"util\");\n",
     'hooks/agent-hook.mjs': "import net from 'node:net';\n",
     'node/bin/node': 'ELF built at /Users/admin/build/ws/out/../deps/cares/src/lib/',
     'web-mobile/index.html': '<script type="module" src="./assets/index.js"></script>',
@@ -43,8 +43,14 @@ function release(files: Record<string, string> = {}): string {
 const rules = (dir: string, o = {}): string[] => scan([dir], { ...where, ...o }).hits.map((h) => `${h.path} ${h.rule}`);
 
 describe('a release with nothing in it that should not be there', () => {
-  test('passes, with Node\'s own build paths in the pinned runtime and the optional modules the bundle falls back from', () => {
+  test('passes, with Node\'s own build paths in the pinned runtime', () => {
     expect(rules(release())).toEqual([]);
+  });
+
+  test('a module a dependency only tries for is one the release does not carry, as Node would look for it above the release', () => {
+    expect(rules(release({ 'lib/archid.mjs': 'try { __require("bufferutil"); } catch {}\ntry { require("supports-color"); } catch {}\n' })).sort()).toEqual([
+      'releases/v1.0.0/lib/archid.mjs module not in the release',
+    ]);
   });
 });
 
