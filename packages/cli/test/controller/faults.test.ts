@@ -389,6 +389,21 @@ describe('a controller with no journal of its own', () => {
     });
   }
 
+  for (const edge of [undefined, 'before', 'after'] as const) {
+    it(`here, resumes from the daemons' journals a handover whose own journal cannot be read${edge ? `, dying ${edge} it sets that journal aside` : ''}, once the destination prepared`, async () => {
+      const w = world();
+      await diesAt(w, 'gateway ready');
+      fs.writeFileSync(path.join(w.ctlDir, 'handover.json'), '{"version":1,');
+      if (edge) w.targets = [{ name: 'controller.journal', edge, nth: (w.hits.get(`controller.journal:${edge}`) ?? 0) + 1 }];
+      const out = await party(w, 'mac', 'resume').go();
+      if (edge) expect(w.struck).toHaveLength(1);
+      else expect(out, w.trace.join(' | ')).toMatchObject({ status: 'complete' });
+      const aside = () => fs.readdirSync(w.ctlDir).filter((f) => f.startsWith('handover.json.broken-'));
+      expect(aside()).toHaveLength(edge === 'before' ? 0 : 1);
+      await settleBoth(w, [out]);
+      expect(aside()).toHaveLength(1);
+    });
+  }
 });
 
 // ---- what keeps a new request of the controller from going unstruck

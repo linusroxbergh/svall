@@ -83,7 +83,7 @@ export function fileStore(dir: string): ControllerStore {
       }
       try { return ControllerJournal.parse(JSON.parse(text)); } catch {
         // the other journals still say where the handover stands, so it is rebuilt from them; only a run that writes one moves this aside
-        if (aside) fs.renameSync(journal, `${journal}.broken-${Date.now()}`);
+        if (aside) boundary('controller.journal', () => fs.renameSync(journal, `${journal}.broken-${Date.now()}`));
         return undefined;
       }
     },

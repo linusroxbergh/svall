@@ -756,8 +756,8 @@ export function settledOn(w: World): 'source' | 'destination' {
   // di's Claude runs as it was launched, or resumed with the flags it was launched with
   expect([DI_LAUNCH, DI_RESUME]).toContain([...owner.windows.values()].find((x) => x.name === 'c_di')?.job?.join(' | '));
   expect(other.windows.size).toBe(0);
-  // the folder that holds each transaction's own may stay, empty
-  for (const dir of w.dirs) expect(entries(dir).filter((e) => e !== 'handover'), dir).toEqual([]);
+  // the folder that holds each transaction's own may stay, empty, and a journal a controller could not read stays for a person to look at
+  for (const dir of w.dirs) expect(entries(dir).filter((e) => e !== 'handover' && !e.startsWith('handover.json.broken-')), dir).toEqual([]);
   expect(entries(w.base).filter((e) => [...w.transactions].some((tx) => e.includes(tx)))).toEqual([]);
   expect(w.errors).toEqual([]);
   return where;
