@@ -268,3 +268,52 @@ and cancel, and it finds nothing, so it raises no false alarm.
   - two repeats in order: 421 passed each.
 - `fleet.test.ts` and `source.test.ts`: 134 passed.
 - Every mutation and scratch case ran in a scratch copy outside the worktree.
+
+## Fix round 2
+
+Commits `fd6e6d1f..ead06bdd`. I read the code at `ead06bdd`, and every scratch copy came from `git archive ead06bdd`.
+
+**Verdict: Approved.** Critical 0, Important 0, Minor 0.
+
+### F1: addressed, and no wider than needed
+
+- **Production change.** It only removes code. `closeLeft`, its `else if (!held)` branch and the `secondName` import are
+  gone from `destination.ts`. The one thing left of `9680eca4` is the corrected comment on `carried`, which is right
+  since fix A.
+- **The fake fleet** (`faults.test.ts:202-205, 238`).
+  - Its `reconcileNow` runs the real `reconcile` from `src/reconcile.ts` over the fake tmux windows, with the carried
+    terminals the destination registered. Like the real one, it does nothing unless the daemon is writable.
+  - Its `activate` runs that reconcile, as `Fleet.begin` does.
+  - It leaves out only what the world cannot produce: the renames of stray windows, and the filter for windows still
+    closing for idleness.
+- **Fake against real, repeated.**
+  - With the real `Fleet` on real tmux at `ead06bdd`, I laid a carried character's main and second terminals dormant
+    while their windows lived on. `reconcileNow` gave both their windows back and kept both carried revives.
+  - The fake now calls that same function, so what it does matches the real fleet's.
+- **Failing first.** With `closeLeft` gone and the fake's reconcile made a no-op again,
+  `destination.activate.kill:before#1` fails in both variants. So the reconcile model is what carries these cases, on
+  the real path: the reconcile takes the window back, `wakeSlot` reads it as `shell` with an agent, `lay` kills it at
+  the second `destination.activate.kill` hit, and the terminal opens afresh with its flags.
+- **`closeLeft` restored with a no-op reconcile** passes the same 48 `destination.activate` cases, which confirms what
+  it used to cover.
+
+### F2: addressed
+
+- **What it checks.** `World.record()` collects every transaction id the gateway's record names, at every step of
+  `check()`, so it includes a Begin whose answer never arrived. `settledOn` then asserts that no path anywhere under the
+  base names one of them (`faults.test.ts:290, 431, 710`). The base holds `home/`, both fleet homes, `gw/` and `ctl/`.
+  The checks on `handover/` and `ctl/` stay.
+- **My stage-`<tx>` mutation, repeated.** I wrote `mac/stage-<tx>.json` inside `source.freeze.manifest` and removed it
+  only in complete. With F2, 142 of 421 cases fail, naming `mac/stage-<tx>.json`: every abort path and every crash that
+  ends back on the source. With the F2 test change reverted, only the move probe fails, and only because the mutation
+  reuses a failpoint name.
+- **Nothing is flagged without the mutation.** At `ead06bdd` all 421 cases pass.
+
+### Runs (scratch copy of `ead06bdd`)
+
+- `pnpm typecheck`: clean.
+- `faults.test.ts`: 421 passed in 21 s. Shuffle seeds 1, 99 and 4242: 421 passed each.
+- `pnpm vitest run --project archid --project cli --project @archipelago/desktop-web`: 181 files passed and 1 skipped;
+  3253 tests passed and 19 skipped. The archive copy skips more than a checkout does (the report's run skipped 5), and
+  nothing failed.
+- I left the worktree untouched apart from this section; the other agent's edits there are theirs.
