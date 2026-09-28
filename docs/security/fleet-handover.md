@@ -52,6 +52,10 @@ under which licences, and which risks are accepted. Tests are named by file unde
   - `ssh-keygen -Y verify` against the installed release's `current/release/allowed_signers`;
   - then `sha256sum -c --strict`.
 
+  The check sets its own `PATH` of system folders, so a relative entry in the login shell's `PATH` never runs a tool
+  the upload carries. (`host.test.ts` "checks with the system's own tools, whatever a relative entry in the far PATH
+  finds in the upload first")
+
   The result appears in the `install` step. An `--allow-unsigned` upgrade checks the digests alone and says so. An
   installed release whose signers file pins no key (every release before the first signing key) leaves the
   controller's check as the only one, and says that too. A first install has no installed release, so the

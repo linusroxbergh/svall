@@ -21,6 +21,8 @@ export type ArchiveOptions = {
   signersInside?: string;
   /** what its bin/archi runs */
   archi?: string;
+  /** more executables it carries, by path in the release */
+  files?: Record<string, string>;
 };
 
 /** A companion archive with a real manifest, signed by `signedBy` when that key is given. */
@@ -31,6 +33,10 @@ export function companionArchive(work: string, o: ArchiveOptions = {}): string {
   const dir = path.join(tree, 'releases', version);
   fs.mkdirSync(path.join(dir, 'bin'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'bin', 'archi'), o.archi ?? '#!/bin/sh\n', { mode: 0o755 });
+  for (const [rel, text] of Object.entries(o.files ?? {})) {
+    fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+    fs.writeFileSync(path.join(dir, rel), text, { mode: 0o755 });
+  }
   if (o.signersInside) {
     fs.mkdirSync(path.join(dir, 'release'));
     fs.copyFileSync(o.signersInside, path.join(dir, 'release', 'allowed_signers'));

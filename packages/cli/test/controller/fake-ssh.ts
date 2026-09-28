@@ -22,10 +22,10 @@ export type FakeSsh = {
   /** takes down the master on a socket, as a network drop or a sleeping laptop would */
   dropMaster: (socket: string) => void;
   /**
-   * runs every far command on this machine instead, with `rsync` as the far side's rsync; a cut takes
-   * the link down once that many bytes have crossed one command, and `undefined` lets it through again
+   * runs every far command on this machine instead, with `rsync` as the far side's rsync and `path` as its login
+   * shell's PATH; a cut takes the link down once that many bytes have crossed one command, and `undefined` lets it through again
    */
-  execute: (o: { rsync: string; cutAfterBytes?: number }) => void;
+  execute: (o: { rsync: string; cutAfterBytes?: number; path?: string }) => void;
   clean: () => void;
 };
 
@@ -48,6 +48,7 @@ export function installFakeSsh(): FakeSsh {
     ARCHI_FAKE_SSH_STATE: process.env.ARCHI_FAKE_SSH_STATE, ARCHI_FAKE_SSH_INFO: process.env.ARCHI_FAKE_SSH_INFO,
     ARCHI_FAKE_SSH_REPLIES: process.env.ARCHI_FAKE_SSH_REPLIES,
     ARCHI_FAKE_SSH_EXEC: process.env.ARCHI_FAKE_SSH_EXEC, ARCHI_FAKE_SSH_CUT_AFTER: process.env.ARCHI_FAKE_SSH_CUT_AFTER,
+    ARCHI_FAKE_SSH_FAR_PATH: process.env.ARCHI_FAKE_SSH_FAR_PATH,
   };
   process.env.PATH = `${bin}:${process.env.PATH ?? ''}`;
   process.env.ARCHI_FAKE_SSH_LOG = log;
@@ -84,6 +85,8 @@ export function installFakeSsh(): FakeSsh {
       process.env.ARCHI_FAKE_SSH_EXEC = '1';
       if (o.cutAfterBytes) process.env.ARCHI_FAKE_SSH_CUT_AFTER = String(o.cutAfterBytes);
       else delete process.env.ARCHI_FAKE_SSH_CUT_AFTER;
+      if (o.path) process.env.ARCHI_FAKE_SSH_FAR_PATH = o.path;
+      else delete process.env.ARCHI_FAKE_SSH_FAR_PATH;
     },
     clean: () => {
       for (const f of fs.readdirSync(state)) {

@@ -157,7 +157,9 @@ function execute(opts) {
   const master = marker(opts, 'master');
   // the master is the only way through: its host name resolves nowhere
   if (!fs.existsSync(master)) die(`ssh: Could not resolve hostname ${opts.destination}: nodename nor servname provided, or not known`);
-  const child = spawn('/bin/sh', ['-c', opts.command.join(' ')], { stdio: ['pipe', 'pipe', 'inherit'] });
+  const farPath = process.env.ARCHI_FAKE_SSH_FAR_PATH;
+  const env = farPath ? { ...process.env, PATH: farPath } : process.env;
+  const child = spawn('/bin/sh', ['-c', opts.command.join(' ')], { stdio: ['pipe', 'pipe', 'inherit'], env });
   let crossed = 0;
   const drop = () => {
     try { process.kill(Number(fs.readFileSync(master, 'utf8')), 'SIGTERM'); } catch { /* already gone */ }

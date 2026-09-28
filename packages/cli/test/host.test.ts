@@ -642,6 +642,22 @@ esac
     expect(far.now()).toBe('1.2.2');
   });
 
+  it('checks with the system\'s own tools, whatever a relative entry in the far PATH finds in the upload first', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], pins: signer.signers });
+    const ran = path.join(work, 'shim-ran');
+    const shim = `#!/bin/sh\necho "$0" >> '${ran}'\nexit 0\n`;
+    const archive = companionArchive(work, {
+      signedBy: signer.key, archi: far.archi('1.2.3', PROTOCOL_VERSION),
+      files: Object.fromEntries(['grep', 'ssh-keygen', 'sha256sum', 'tar'].map((t) => [`node_modules/.bin/${t}`, shim])),
+    });
+    ssh.execute({ rsync: '/usr/bin/rsync', path: `node_modules/.bin:${process.env.PATH}` });
+    const out = await upgradeHost('trift', { release: archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(fs.existsSync(ran) ? fs.readFileSync(ran, 'utf8') : '').toBe('');
+    expect(out.result).toBe('ready');
+    expect(step('install').at(-1)?.detail).toContain(`signed by a key ${far.base}/current/release/allowed_signers pins`);
+  });
+
   it('says when the installed release pins no signer, so only this controller\'s signers vouched for the new one', async () => {
     const unpinned = path.join(work, 'no-signers');
     fs.writeFileSync(unpinned, '# no release key is committed yet\n');

@@ -130,8 +130,10 @@ export async function uploadArchive(master: SshMaster, o: { archive: string; rem
 }
 
 // $1 the staged release, $2 the installed release's allowed_signers, or empty to skip the signature;
-// a file holding only comments pins no key, as a release built before one existed does
-const VERIFY = `cd "$1" || exit 1
+// a file holding only comments pins no key, as a release built before one existed does. The PATH holds only
+// system folders, so no relative entry in the login shell's can reach a tool the upload carries
+const VERIFY = `PATH=/usr/bin:/bin:/usr/sbin:/sbin; export PATH
+cd "$1" || exit 1
 if [ -n "$2" ]; then
   if grep -Eqs '^[[:space:]]*[^#[:space:]]' "$2"; then
     ssh-keygen -Y verify -f "$2" -I ${NAMESPACE} -n ${NAMESPACE} -s ${SIG} < ${SUMS} >/dev/null || exit 3
