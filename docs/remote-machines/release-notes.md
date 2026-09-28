@@ -1,0 +1,58 @@
+# Release notes: remote machines
+
+This release lets a fleet run on an always-on Linux machine as well as on your Mac, and move between the two. It is
+off by default: each fleet turns it on with `"handover": { "enabled": true }` in its `fleet.json`, and a fleet that
+does not works exactly as before.
+
+## New
+
+- **Add a Linux machine** from Settings → Machines, or with `archi host add <name> --ssh <destination>`. Archipelago
+  checks the machine, installs its own companion there over ssh (with its own Node, no clone or build tools), sets up
+  systemd user services and lists anything left for you to do, such as logging the agents in. `archi host doctor`,
+  `upgrade` and `remove` look after it.
+- **Make it a fleet's gateway** with `archi host enable <name> --fleet <fleet>`. The gateway keeps the record of which
+  machine owns the fleet, so only one ever runs it.
+- **Hand the fleet over** with the Handover button or `archi handover <name>`, and back with **This Mac** or
+  `archi handover local`. Characters, islands, notes, browser tab URLs, entity docs and agent profiles move; so do the
+  repositories the characters work in, with their worktrees, staged and unstaged changes, untracked files and
+  stashes, and each Claude Code and Codex conversation. Agents resume from their transcripts, shells reopen in their
+  folders, and the app reconnects to the fleet where it now runs.
+- **The checks come first.** Nothing moves until they pass, and each blocker says what to do: finish or interrupt a
+  working agent, end a busy shell's command, archive a folder in the way. A folder changed on the other machine while
+  it did not own the fleet is never overwritten.
+- **A handover survives interruptions.** Closing the app, a dropped link or a killed process leaves it where it
+  stopped, and the sheet or `archi handover status` says whether Resume or Abort is safe. Before the commit an abort
+  gives the fleet back; after it, only the new machine goes on.
+- **Keep a character on this machine** from its card, or `archi char update <id> --keep-here`, and a handover waits
+  for it.
+- **Disaster recovery**: `archi fleet recover --force-owner <machine>` writes a new ownership record when the gateway
+  is lost for good, after showing everything each machine holds.
+
+## Changed
+
+- A fleet's settings are split into `fleet.json`, which travels with the fleet, and `node.json`, which stays with the
+  machine. Your `config.json` is split on the daemon's first start and kept as `config.json.bak`.
+- The fleet state moves to schema 8 and the protocol to 17; the old state is kept beside it.
+- `pnpm desktop:install` installs a release under `~/.local/share/archipelago`, and `archi` and the daemons run from it
+  instead of the clone. `archi setup --rollback` goes back to the release before.
+- `archi setup` no longer replaces an edited mission control `.claude/settings.json`; `--replace-settings` does.
+- `host`, `handover`, `gateway`, `fleet`, `connect`, `connection-info` and `version` are commands now; a fleet with one
+  of those names opens with `archi -p <name>`.
+
+See [Upgrading and downgrading](migration.md) for the details and the way back.
+
+## Requirements
+
+- macOS 15 or newer, and Ubuntu LTS on x86-64 or arm64 with systemd user services and lingering.
+- The Linux account's home must be the same path as yours on the Mac, such as `/Users/ada`.
+- Tailscale and ssh between the two, and tmux, Git and rsync on the Linux machine.
+- Claude Code 2.1.251 or newer and Codex 0.155.0 or newer, logged in on each machine. Logins never move.
+
+## Not yet
+
+- A signed, notarized download of the Mac app, and a release signing key: the app is built from source, and every
+  companion it installs is unsigned, checked by the digest the app's own build pins.
+- A stable phone URL that follows the fleet between machines, and forwarding a remote dev server's ports to the Mac.
+- More than one Linux machine per fleet, moving a single character or island, and machines whose home paths differ.
+
+Known limitations are listed in [Moving a fleet](handover.md#known-limitations).
