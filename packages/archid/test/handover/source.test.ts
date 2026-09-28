@@ -720,6 +720,17 @@ describe('source freeze', () => {
     expect(fs.existsSync(b.paths.journal)).toBe(false);
   });
 
+  it('blocks a character working in the folder this daemon\'s Claude keeps its login in, wherever CLAUDE_CONFIG_DIR puts it', async () => {
+    const b = boot();
+    const config = path.join(b.work, 'claude-config');
+    fs.mkdirSync(config);
+    fs.writeFileSync(path.join(config, '.credentials.json'), '{}');
+    vi.stubEnv('CLAUDE_CONFIG_DIR', config);
+    b.store.update((d) => { d.characters.c_cy.cwd = config; });
+    const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() }).finally(() => vi.unstubAllEnvs());
+    expect(r.blockers).toContainEqual(expect.objectContaining({ code: 'path_unsupported', message: `${config} holds ${path.join(config, '.credentials.json')}, which stays on its machine` }));
+  });
+
   it('refuses a cwd the fence finds reached through a link before it touches a terminal, and lets the fleet run again', async () => {
     const b = boot();
     b.gateway.begin();

@@ -136,6 +136,21 @@ function fleetHomeClash(root: InventoryRoot, travels: readonly InventoryRoot[], 
   return inside ? undefined : places.find(([home]) => holds(home, root.path))?.[1];
 }
 
+/** What an account keeps for itself and a handover never carries or lands on: each agent's login and config, and its ssh keys. */
+function machineLocal(m: MachineMap): { files: string[]; dirs: string[] } {
+  const claude = m.agentHomes?.claude ?? path.posix.join(m.home, '.claude');
+  const codex = m.agentHomes?.codex ?? path.posix.join(m.home, '.codex');
+  const claudeJson = claude === path.posix.join(m.home, '.claude') ? path.posix.join(m.home, '.claude.json') : path.posix.join(claude, '.claude.json');
+  return { files: [path.posix.join(claude, '.credentials.json'), claudeJson, path.posix.join(codex, 'auth.json')].map((p) => realPath(p)), dirs: [realPath(path.posix.join(m.home, '.ssh'))] };
+}
+
+function credentialClash(root: InventoryRoot, local: { files: string[]; dirs: string[] }): string | undefined {
+  const held = [...local.files, ...local.dirs].find((p) => holds(root.path, p));
+  if (held) return held === root.path ? `${root.path} stays on its machine` : `${root.path} holds ${held}, which stays on its machine`;
+  const dir = local.dirs.find((d) => holds(d, root.path));
+  return dir && `${root.path} lies in ${dir}, which stays on its machine`;
+}
+
 // what is on disk decides how a root folds; a path that is not there folds as a folder
 function entryOf(p: string): InventoryRoot['entry'] {
   try { return fs.statSync(p).isDirectory() ? 'dir' : 'file'; } catch { return 'dir'; }
@@ -223,10 +238,14 @@ export function buildInventory(state: FleetState, configs: InventoryConfigs, mac
   const placed = [...candidates.values()];
   const mission = placed.find((r) => r.kind === 'home' && !fleetHomeClash(r, [r], homes));
   const travels = placed.filter((r) => r === mission || r.kind === 'docs' || r.kind === 'profiles');
+  const [here, there] = [machineLocal(source), machineLocal(destination)];
+  const local = { files: [...new Set([...here.files, ...there.files])], dirs: [...new Set([...here.dirs, ...there.dirs])] };
   const allowed = placed.filter((r) => {
     const fleetHome = fleetHomeClash(r, travels, homes);
     if (fleetHome) blockers.push({ code: 'path_unsupported', message: `${r.path} overlaps the fleet home ${fleetHome}, whose token, keys and node.json stay on their machine`, entity: { kind: 'root', id: r.id } });
-    return !fleetHome;
+    const credential = fleetHome ? undefined : credentialClash(r, local);
+    if (credential) blockers.push({ code: 'path_unsupported', message: credential, entity: { kind: 'root', id: r.id } });
+    return !fleetHome && !credential;
   });
 
   const roots = fold(allowed, excludes);

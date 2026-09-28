@@ -77,6 +77,7 @@ const SCANS: [glob: string, patterns: RegExp[]][] = [
 const ELSEWHERE: Record<string, string[]> = {
   'packages/archid/src/paths.ts': ['.claude', '.claude.json'],
   'packages/archid/src/codex/install.ts': ['.codex'],
+  'packages/archid/src/handover/inventory.ts': ['.claude', '.codex', '.claude.json', '.ssh'],
   'packages/archid/src/handover/sessions/claude.ts': ['.config.json', '.claude.json', 'settings.json'],
   'packages/archid/src/handover/sessions/codex.ts': ['config.toml'],
   'packages/cli/src/controller/host.ts': ['.cache', '.local'],

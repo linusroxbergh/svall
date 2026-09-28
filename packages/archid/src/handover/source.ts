@@ -6,11 +6,12 @@ import {
   type AgentAdapter, type AgentKind, type Blocker, type FleetId, type FleetState, type HandoverMachines, type HandoverPhase, type LandedRoot, type MachineId,
   type OwnerRecord, type ParsedParams, type Result, type SystemInfo, type TransactionRecord, type TransferManifestV1, type Warning,
 } from '@archipelago/protocol';
+import { codexPaths } from '../codex/install.js';
 import type { Fleet } from '../fleet.js';
 import { runGit, type GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
 import type { OwnershipState } from '../ownership/state.js';
-import { installedScripts, type Paths } from '../paths.js';
+import { claudePaths, installedScripts, type Paths } from '../paths.js';
 import { markDormant, markSlotDormant, reviveCommand } from '../reconcile.js';
 import { releaseVersion } from '../release.js';
 import type { Tmux } from '../tmux/tmux.js';
@@ -516,7 +517,7 @@ export class SourceHandover {
   private maps(p: HandoverMachines): MachineMaps {
     const { info, home, fleetHome } = p.destination;
     return {
-      source: { machineId: this.ownership.machineId, home: p.source.home, fleetHome: this.d.paths.home },
+      source: { machineId: this.ownership.machineId, home: p.source.home, fleetHome: this.d.paths.home, agentHomes: { claude: claudePaths().dir, codex: codexPaths().dir } },
       destination: {
         machineId: info.machineId, home, fleetHome,
         agentHomes: Object.fromEntries(info.agentAdapters.flatMap((a) => (a.home ? [[a.kind, a.home]] : []))),

@@ -378,6 +378,39 @@ describe('buildInventory', () => {
     expect(inv.roots.map((r) => r.kind)).toContain('home');
   });
 
+  it('blocks a root that holds an agent\'s credentials or config, or holds or lies in the ssh folder, on either machine', () => {
+    const s = seed();
+    const claude = path.join(s.mac, '.claude');
+    const codex = path.join(s.mac, 'codex-home');
+    const ssh = path.join(s.mac, '.ssh');
+    for (const d of [claude, codex, ssh, path.join(claude, 'skills')]) fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(claude, '.credentials.json'), '{}');
+    fs.writeFileSync(path.join(s.mac, '.claude.json'), '{}');
+    fs.writeFileSync(path.join(codex, 'auth.json'), '{}');
+    fs.writeFileSync(path.join(ssh, 'id_ed25519'), 'key');
+    s.maps.source.agentHomes = { claude, codex: path.join(s.mac, '.codex') };
+    // the destination keeps Codex's login elsewhere, which a root here would land on
+    s.maps.destination.agentHomes = { codex };
+    s.state.characters.dotclaude = char('dotclaude', { cwd: claude });
+    s.state.characters.codex = char('codex', { cwd: codex });
+    s.state.characters.keys = char('keys', { cwd: ssh });
+    s.state.characters.key = char('key', { cwd: s.plain, context: [{ kind: 'file', ref: path.join(ssh, 'id_ed25519'), label: '', source: 'manual' }] });
+    s.state.characters.config = char('config', { cwd: s.plain, context: [{ kind: 'file', ref: path.join(s.mac, '.claude.json'), label: '', source: 'manual' }] });
+    // a folder inside an agent's home holds neither
+    s.state.characters.skills = char('skills', { cwd: path.join(claude, 'skills') });
+    const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
+    const blocked = [claude, codex, ssh, path.join(ssh, 'id_ed25519'), path.join(s.mac, '.claude.json')];
+    expect(inv.blockers.filter((b) => b.code === 'path_unsupported').map((b) => b.message).sort()).toEqual([
+      `${claude} holds ${path.join(claude, '.credentials.json')}, which stays on its machine`,
+      `${codex} holds ${path.join(codex, 'auth.json')}, which stays on its machine`,
+      `${ssh} stays on its machine`,
+      `${path.join(ssh, 'id_ed25519')} lies in ${ssh}, which stays on its machine`,
+      `${path.join(s.mac, '.claude.json')} stays on its machine`,
+    ].sort());
+    expect(inv.roots.filter((r) => blocked.includes(r.path))).toEqual([]);
+    expect(inv.roots.some((r) => r.path === path.join(claude, 'skills'))).toBe(true);
+  });
+
   it('follows the fleet home to its real path before deciding a root is clear of it', () => {
     const s = seed();
     const fleetHome = path.join(s.mac, '.archipelago');
