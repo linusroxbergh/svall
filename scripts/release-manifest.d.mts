@@ -29,4 +29,5 @@ export function manifestDigest(entries: Entry[]): string;
 export function writeManifest(dir: string, meta: Record<string, unknown>): { entries: Entry[]; release: Release };
 export function signManifest(dir: string, keyFile: string): void;
 export function sshVerify(o: { allowedSigners: string }): Verify;
+export function verifySignature(dir: string, o?: VerifyOptions): boolean;
 export function verifyRelease(dir: string, o?: VerifyOptions): { release: Release; entries: Entry[]; signed: boolean; signer?: string };

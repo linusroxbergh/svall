@@ -79,6 +79,13 @@ describe('the companion archive', () => {
     await expect(inspect(archive)).rejects.toThrow(/not signed by archipelago-release/);
   });
 
+  it('checks the signature over an archive\'s SHA256SUMS before it unpacks anything else from it', async () => {
+    let unpacked: string[] = [];
+    const refuse = (dir: string): void => { unpacked = fs.readdirSync(dir).sort(); throw new Error('no key here signed it'); };
+    await expect(inspectCompanion(makeArchive({ signed: true }), { verify: refuse })).rejects.toThrow(/not signed by archipelago-release/);
+    expect(unpacked).toEqual(['SHA256SUMS', 'SHA256SUMS.sig']);
+  });
+
   it('refuses a signed archive whose files no longer match its manifest', async () => {
     const tree = fs.mkdtempSync(path.join(work, 'tampered-'));
     execFileSync('tar', ['-xzf', makeArchive({ signed: true }), '-C', tree]);

@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MANIFEST, sshVerify, verifyRelease } from './release-manifest.mjs';
+import { MANIFEST, SIG, SUMS, sshVerify, verifyRelease, verifySignature } from './release-manifest.mjs';
 
 export const DEFAULT_PREFIX = path.join(os.homedir(), '.local', 'share', 'archipelago');
 
@@ -28,8 +28,11 @@ const VERSION = /^[A-Za-z0-9._+-]+$/;
 
 const isTarball = (p) => /\.tar\.gz$|\.tgz$/.test(p);
 
-/** Puts the release tree in `staging`, from a directory of one or from an archive holding one. */
-function stage(source, staging) {
+/**
+ * Puts the release tree in `staging`, from a directory of one or from an archive holding one. An archive's
+ * signature over its SHA256SUMS is checked before anything else leaves it.
+ */
+function stage(source, staging, o) {
   fs.mkdirSync(staging, { recursive: true });
   if (!isTarball(source)) {
     fs.cpSync(source, staging, { recursive: true, verbatimSymlinks: true });
@@ -40,8 +43,12 @@ function stage(source, staging) {
   const versions = new Set(members.map((m) => /^releases\/([^/]+)\//.exec(m)?.[1]).filter(Boolean));
   if (versions.size !== 1) throw new Error(`${source} holds ${versions.size} releases, expected exactly one`);
   const [version] = versions;
+  const dir = path.join(staging, 'releases', version);
+  const manifest = [SUMS, SIG].map((f) => `releases/${version}/${f}`).filter((m) => members.includes(m));
+  if (manifest.length) execFileSync('tar', ['-xzf', source, '-C', staging, ...manifest], { stdio: 'pipe' });
+  verifySignature(dir, o);
   execFileSync('tar', ['-xzf', source, '-C', staging], { stdio: 'pipe' });
-  return { version, dir: path.join(staging, 'releases', version) };
+  return { version, dir };
 }
 
 /**
@@ -62,7 +69,7 @@ export function installRelease(o) {
   let checked;
   let displaced;
   try {
-    const staged = stage(source, staging);
+    const staged = stage(source, staging, { verify: o.verify, allowUnsigned: o.allowUnsigned, signer: o.signer });
     version = staged.version;
     const release = path.join(releases, version);
     if (!VERSION.test(version) || path.dirname(release) !== releases)

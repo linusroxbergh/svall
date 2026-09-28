@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MANIFEST, NAMESPACE, SIG, SUMS, verifyRelease, type Verify } from '../../../../scripts/release-manifest.mjs';
+import { MANIFEST, NAMESPACE, SIG, SUMS, verifyRelease, verifySignature, type Verify } from '../../../../scripts/release-manifest.mjs';
 import { runProcess } from './process.js';
 import { shellQuote, SshError, type SshMaster } from './ssh.js';
 
@@ -29,8 +29,8 @@ async function tar(argv: string[], o: { timeoutMs?: number; maxOutputBytes?: num
 
 /**
  * The version, platform and protocol an archive names for itself, and whether this controller's own
- * signers vouch for it. The far machine's first install checks the archive against the signers the
- * archive carries, so it is authenticated here, before it is uploaded.
+ * signers vouch for it, checked over its SHA256SUMS before the rest is unpacked. The far machine's first
+ * install checks the archive against the signers the archive carries, so it is authenticated here, before it is uploaded.
  */
 export async function inspectCompanion(archive: string, o: { verify: Verify }): Promise<CompanionArchive> {
   const members = (await tar(['-tzf', archive], { maxOutputBytes: MAX_LISTING })).split('\n').filter(Boolean);
@@ -40,10 +40,14 @@ export async function inspectCompanion(archive: string, o: { verify: Verify }): 
   if (!members.includes(`releases/${version}/release.json`)) throw new Error(`${archive} carries no releases/${version}/release.json`);
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'archi-companion-'));
   try {
-    await tar(['-xzf', archive, '-C', work]);
+    const dir = path.join(work, 'releases', version);
+    const manifest = [SUMS, SIG].map((f) => `releases/${version}/${f}`).filter((m) => members.includes(m));
     let checked: ReturnType<typeof verifyRelease>;
     try {
-      checked = verifyRelease(path.join(work, 'releases', version), { verify: o.verify, allowUnsigned: true });
+      if (manifest.length) await tar(['-xzf', archive, '-C', work, ...manifest]);
+      verifySignature(dir, { verify: o.verify, allowUnsigned: true });
+      await tar(['-xzf', archive, '-C', work]);
+      checked = verifyRelease(dir, { verify: o.verify, allowUnsigned: true });
     } catch (err) {
       throw new Error(`${archive}: ${(err as Error).message}`);
     }

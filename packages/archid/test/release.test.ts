@@ -262,6 +262,17 @@ describe('installing a release', () => {
     expect(fs.existsSync(path.join(prefix, 'releases'))).toBe(false);
   });
 
+  it('checks the signature over an archive\'s SHA256SUMS before it unpacks anything else from it', () => {
+    const stage = fixture();
+    signManifest(stage, ephemeralSigner().key);
+    const archive = path.join(makeHome(), 'release.tar.gz');
+    execFileSync('tar', ['-czf', archive, '-C', path.dirname(path.dirname(stage)), 'releases']);
+    let unpacked: string[] = [];
+    const refuse = (dir: string): void => { unpacked = fs.readdirSync(dir).sort(); throw new Error('no key here signed it'); };
+    expect(() => installRelease({ source: archive, prefix: makeHome(), verify: refuse })).toThrow(/not signed by archipelago-release/);
+    expect(unpacked).toEqual(['SHA256SUMS', 'SHA256SUMS.sig']);
+  });
+
   it('refuses a version token that would reach outside releases/', () => {
     const stage = fixture({ version: '..' });
     expect(() => install(stage, makeHome())).toThrow(/names an unusable release directory: ".."/);

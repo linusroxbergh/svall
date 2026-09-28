@@ -46,30 +46,39 @@ under which licences, and which risks are accepted. Tests are named by file unde
   directions.
 - **On the controller**, before any upload:
   - a downloaded companion must match the digest the controller's own manifest pins;
-  - an archive must verify against the controller's `release/allowed_signers`, with the tree matching its manifest;
+  - an archive's `SHA256SUMS` must verify against the controller's `release/allowed_signers` before anything else is
+    unpacked from it, and the tree must then match its manifest;
   - it must be this controller's release and protocol, built for the machine's architecture.
-- **On the far machine, for an upgrade**, the staged release is checked before anything it carries runs:
-  - `ssh-keygen -Y verify` against the installed release's `current/release/allowed_signers`;
+
+  (`cli/test/controller/install.test.ts` "checks the signature over an archive's SHA256SUMS before it unpacks anything
+  else from it")
+- **On the far machine, for an upgrade**, the uploaded release is checked before anything it carries runs:
+  - `ssh-keygen -Y verify` of its `SHA256SUMS`, unpacked alone, against the installed release's
+    `current/release/allowed_signers`, before the rest of the archive is unpacked;
   - then `sha256sum -c --strict`;
   - then `release.json`, which the digests cover, must name the release asked for, so a signed older release cannot
-    be replayed under a newer one's name. (`host.test.ts` "refuses a release the pinned key signed that arrives under
-    another release's name…")
+    be replayed under a newer one's name.
 
   The check sets its own `PATH` of system folders, so a relative entry in the login shell's `PATH` never runs a tool
-  the upload carries. (`host.test.ts` "checks with the system's own tools, whatever a relative entry in the far PATH
-  finds in the upload first")
+  the upload carries. The result appears in the `install` step. An `--allow-unsigned` upgrade checks the digests alone
+  and says so. An installed release whose signers file pins no key (every release before the first signing key)
+  leaves the controller's check as the only one, and says that too. An installed release that has lost its signers
+  file refuses the upgrade. A first install has no installed release, so the controller's check is the one it rests
+  on.
 
-  The result appears in the `install` step. An `--allow-unsigned` upgrade checks the digests alone and says so. An
-  installed release whose signers file pins no key (every release before the first signing key) leaves the
-  controller's check as the only one, and says that too. An installed release that has lost its signers file refuses
-  the upgrade. A first install has no installed release, so the
-  controller's check is the one it rests on. (`cli/test/host.test.ts` "checks the new release against the signers
-  the installed release pins…", "refuses a release the installed release's signers do not vouch for, before
-  anything it carries runs", "refuses a release when the installed release has lost its signers file…", "says when
-  the installed release pins no signer…", "checks an unsigned release with
-  --allow-unsigned by its digests alone…")
-- **Unpacking.** The archive is unpacked into a staging folder before the check, by the system's tar, which strips
-  absolute and `..` members. Nothing in the staging folder runs until the check passes, and it is removed afterwards.
+  (`cli/test/host.test.ts` "checks the new release against the signers the installed release pins…", "refuses a
+  release the installed release's signers do not vouch for, before anything it carries runs", "checks the signature
+  over an upgrade's SHA256SUMS before it unpacks anything else the archive holds", "refuses a release the pinned key
+  signed that arrives under another release's name…", "checks with the system's own tools, whatever a relative entry
+  in the far PATH finds in the upload first", "refuses a release when the installed release has lost its signers
+  file…", "says when the installed release pins no signer…", "checks an unsigned release with --allow-unsigned by its
+  digests alone…")
+- **`archi setup --release <archive>`**, the installer on each machine, checks the signature over the archive's
+  `SHA256SUMS` before it unpacks the rest, then every digest and the tree. (`archid/test/release.test.ts` "checks the
+  signature over an archive's SHA256SUMS before it unpacks anything else from it")
+- **Unpacking.** Once its signature has passed, or when none is asked for, an archive is unpacked into a staging
+  folder by the system's tar, which strips absolute and `..` members. Nothing in the staging folder runs until the
+  digests pass, and it is removed afterwards.
 - **What a release loads.** The bundles resolve `bufferutil`, `utf-8-validate` and `supports-color`, which their
   dependencies only try for, to a module that throws. Node therefore never searches a folder above the release, such
   as a staging folder, `~/node_modules` or `/Applications/node_modules`, for code to run. The scan fails a bundle

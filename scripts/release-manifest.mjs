@@ -93,10 +93,10 @@ function checkSums(dir) {
 const describe = (e) => JSON.stringify({ type: e.type, mode: e.mode, size: e.size, sha256: e.sha256, target: e.target });
 
 /**
- * Authenticates an unpacked release in place: the signature over SHA256SUMS, then every digest it
- * lists, then the tree against release.json in both directions. `verify(dir, signer)` throws to refuse.
+ * The signature over SHA256SUMS alone, which needs nothing else of the release: an installer checks it
+ * before it unpacks the rest. Whether the release is signed; `verify(dir, signer)` throws to refuse.
  */
-export function verifyRelease(dir, o = {}) {
+export function verifySignature(dir, o = {}) {
   dir = path.resolve(dir);
   const signer = o.signer ?? NAMESPACE;
   const signed = fs.existsSync(path.join(dir, SIG));
@@ -108,6 +108,17 @@ export function verifyRelease(dir, o = {}) {
   } else if (!o.allowUnsigned) {
     throw new Error(`${dir} carries no ${SIG}; install it with --allow-unsigned or get a signed release`);
   }
+  return signed;
+}
+
+/**
+ * Authenticates an unpacked release in place: the signature over SHA256SUMS, then every digest it
+ * lists, then the tree against release.json in both directions. `verify(dir, signer)` throws to refuse.
+ */
+export function verifyRelease(dir, o = {}) {
+  dir = path.resolve(dir);
+  const signer = o.signer ?? NAMESPACE;
+  const signed = verifySignature(dir, o);
 
   const listed = checkSums(dir);
   const release = JSON.parse(fs.readFileSync(path.join(dir, MANIFEST), 'utf8'));
