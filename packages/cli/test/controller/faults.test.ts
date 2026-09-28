@@ -148,8 +148,11 @@ async function probeScripts(): Promise<Record<string, { labels: string[]; at: nu
       const labels = w.requests.slice(from);
       const move = out.move?.labels;
       const parted = s.before || !move ? 0 : labels.findIndex((l, i) => l !== move[i]);
-      const end = s.until ? labels.indexOf(s.until) : labels.length;
-      out[name] = { labels, at: labels.flatMap((_, i) => (i >= (parted < 0 ? labels.length : parted) && i < end ? [i] : [])) };
+      const [start, end] = [parted < 0 ? labels.length : parted, s.until ? labels.indexOf(s.until) : labels.length];
+      if (end < 0) throw new Error(`${name}: its run sent no ${s.until}, but ${labels.join(', ')}`);
+      const at = labels.flatMap((_, i) => (i >= start && i < end ? [i] : []));
+      if (!at.length) throw new Error(`${name}: its run sent no request of its own to strike`);
+      out[name] = { labels, at };
     } finally {
       disarm();
       await w.stop();
