@@ -20,11 +20,11 @@ while [ $# -gt 0 ]; do
 done
 
 docker info >/dev/null 2>&1 || { echo "fleet-handover.sh: docker is not running" >&2; exit 2; }
-# the machines' architecture: the docker host's, or DOCKER_DEFAULT_PLATFORM's when that asks for emulation
-platform=${DOCKER_DEFAULT_PLATFORM:-linux/$(docker info --format '{{.Architecture}}')}
+# the machines run on the docker host's own architecture: under user-mode emulation every process reads as qemu
+platform=$(docker info --format '{{.Architecture}}')
 case $platform in
-  */aarch64 | */arm64) arch=arm64 ;;
-  */x86_64 | */amd64) arch=x64 ;;
+  aarch64 | arm64) arch=arm64 ;;
+  x86_64 | amd64) arch=x64 ;;
   *) echo "fleet-handover.sh: no companion is built for $platform" >&2; exit 2 ;;
 esac
 
