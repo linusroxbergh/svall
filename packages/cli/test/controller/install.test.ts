@@ -170,7 +170,7 @@ describe('putting the archive on the far machine', () => {
 
   it('runs the unpacked copy\'s own archi to install the release it came from', async () => {
     ssh.reply(['setup'], {});
-    ssh.reply(['tar'], {});
+    ssh.reply(['archi-unpack'], {});
     ssh.reply(['mkdir'], {});
     ssh.reply(['rm'], {});
     await bootstrapSetup(await master(), {
@@ -179,7 +179,7 @@ describe('putting the archive on the far machine', () => {
     });
     expect(ssh.remoteCalls()).toEqual([
       ['mkdir', '-p', '/home/linus/.cache/archipelago/staging'],
-      ['tar', '-xzf', '/home/linus/.cache/archipelago/c.tar.gz', '-C', '/home/linus/.cache/archipelago/staging'],
+      ['sh', '-c', expect.stringContaining('tar -xzf "$1" -C "$2"'), 'archi-unpack', '/home/linus/.cache/archipelago/c.tar.gz', '/home/linus/.cache/archipelago/staging', '1.2.3', ''],
       ['/home/linus/.cache/archipelago/staging/releases/1.2.3/bin/archi', 'setup', '--release', '/home/linus/.cache/archipelago/c.tar.gz'],
       // the staged tree and the uploaded archive both go once setup has run, whatever it answered
       ['rm', '-rf', '/home/linus/.cache/archipelago/staging', '/home/linus/.cache/archipelago/c.tar.gz'],
@@ -187,20 +187,20 @@ describe('putting the archive on the far machine', () => {
   });
 
   it('on an upgrade, hands the far check the staged release and the installed signers as words of their own', async () => {
-    for (const m of ['setup', 'tar', 'mkdir', 'rm']) ssh.reply([m], {});
-    ssh.reply(['archi-verify'], { stdout: 'pinned\n' });
+    for (const m of ['setup', 'mkdir', 'rm']) ssh.reply([m], {});
+    ssh.reply(['archi-unpack'], { stdout: 'pinned\n' });
     const out = await bootstrapSetup(await master(), {
       staging: "/home/li nus/it's", archive: '/c.tar.gz', version: '1.2.3', allowUnsigned: false, installed: "/home/li nus/.local/share/archipelago",
     });
     const words = ssh.remoteCalls();
-    expect(words[2].slice(0, 2)).toEqual(['sh', '-c']);
-    expect(words[2].slice(3)).toEqual(['archi-verify', "/home/li nus/it's/releases/1.2.3", "/home/li nus/.local/share/archipelago/current/release/allowed_signers", '1.2.3']);
-    expect(words[3][1]).toBe('setup');
+    expect(words[1].slice(0, 2)).toEqual(['sh', '-c']);
+    expect(words[1].slice(3)).toEqual(['archi-unpack', '/c.tar.gz', "/home/li nus/it's", '1.2.3', "/home/li nus/.local/share/archipelago/current/release/allowed_signers"]);
+    expect(words[2][1]).toBe('setup');
     expect(out).toContain('signed by a key /home/li nus/.local/share/archipelago/current/release/allowed_signers pins');
   });
 
   it('passes --allow-unsigned on only when the archive in hand carries no signature', async () => {
-    for (const m of ['setup', 'tar', 'mkdir', 'rm']) ssh.reply([m], {});
+    for (const m of ['setup', 'archi-unpack', 'mkdir', 'rm']) ssh.reply([m], {});
     await bootstrapSetup(await master(), {
       staging: '/s', archive: '/c.tar.gz', version: '1.2.3', allowUnsigned: true,
     });

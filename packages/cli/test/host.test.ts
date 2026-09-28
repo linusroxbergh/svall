@@ -78,7 +78,7 @@ function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doc
   ssh.reply(['archi-linger'], { stdout: o.linger ?? 'Linger=yes\n' });
   ssh.reply(['cat > "$1"'], {});
   ssh.reply(['mkdir'], {});
-  ssh.reply(['tar'], {});
+  ssh.reply(['archi-unpack'], {});
   ssh.reply(['rm'], {});
   ssh.reply(['setup'], { stdout: 'release 1.2.3 installed\n' });
   ssh.reply(['doctor', '--json'], { stdout: o.doctor ?? DOCTOR });
@@ -133,7 +133,7 @@ describe('host add', () => {
       'tmux -V', 'rsync --version | he', 'df -Pk "$HOME"', 'loginctl show-user "',
     ]);
     expect(order.slice(8)).toEqual([
-      'mkdir -p', 'cat > "$1"', 'mkdir -p', 'tar -xzf', 'archi setup', 'rm -rf',
+      'mkdir -p', 'cat > "$1"', 'mkdir -p', 'PATH=/usr/bin:/bin:/', 'archi setup', 'rm -rf',
       'archi doctor', 'archi version',
       'claude --version', 'claude auth', 'codex --version', 'codex login',
       'archi connection-info',
@@ -619,7 +619,7 @@ esac
     await far.close();
     expect(out).toEqual({ result: 'ready', actions: [] });
     expect(step('install').at(-1)?.detail).toContain(`signed by a key ${far.base}/current/release/allowed_signers pins`);
-    const verify = ssh.remoteCalls().findIndex((w) => w.includes('archi-verify'));
+    const verify = ssh.remoteCalls().findIndex((w) => w.includes('archi-unpack'));
     const setup = ssh.remoteCalls().findIndex((w) => w.includes('setup'));
     expect(verify).toBeGreaterThan(-1);
     expect(verify).toBeLessThan(setup);
@@ -702,6 +702,26 @@ esac
     await far.close();
   });
 
+  it('checks the signature over an upgrade\'s SHA256SUMS before it unpacks anything else the archive holds', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], pins: signer.signers });
+    const archive = companionArchive(work, { signedBy: ephemeralSigner(work).key });
+    const staging = `${work}/far/.cache/archipelago/staging-1.2.3`;
+    const { bootstrapSetup } = await import('../src/controller/install.js');
+    const master = await SshMaster.open({ destination: 'trift.test', socketDir: ssh.socketDir });
+    // what the staging folder holds when the check has refused, read just before it is removed
+    let unpacked: string[] = [];
+    const watched = {
+      run: (argv: string[], o?: Parameters<SshMaster['run']>[1]) => {
+        if (argv[0] === 'rm') unpacked = fs.readdirSync(staging, { recursive: true }).map(String).sort();
+        return master.run(argv, o);
+      },
+    } as SshMaster;
+    await expect(bootstrapSetup(watched, { staging, archive, version: '1.2.3', allowUnsigned: false, installed: far.base })).rejects.toThrow(/not signed by a key/);
+    await master.close();
+    await far.close();
+    expect(unpacked).toEqual(['releases', 'releases/1.2.3', 'releases/1.2.3/SHA256SUMS', 'releases/1.2.3/SHA256SUMS.sig']);
+  });
+
   it('refuses a release the pinned key signed that arrives under another release\'s name, before anything it carries runs', async () => {
     const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], pins: signer.signers });
     const ran = path.join(work, 'staged-archi-ran');
@@ -747,10 +767,9 @@ esac
   it('keeps a new release whose companion doctor exits 1 over a check unrelated to the daemon', async () => {
     ssh.reply(['cat > "$1"'], {});
     ssh.reply(['mkdir'], {});
-    ssh.reply(['tar'], {});
     ssh.reply(['rm'], {});
     ssh.reply(['readlink'], { stdout: `${BASE}/releases/1.2.2\n` });
-    ssh.reply(['archi-verify'], { stdout: 'pinned\n' });
+    ssh.reply(['archi-unpack'], { stdout: 'pinned\n' });
     ssh.reply(['setup', '--release'], { stdout: 'release 1.2.3 installed\n' });
     ssh.reply(['doctor', '--json'], { stdout: doctorJson({ status: 'warn', detail: 'off' }).replace('"tmux 3.4"}', '"tmux 3.4"},{"name":"hooks","status":"fail","detail":"not installed"}'), code: 1 });
     const d = await daemon();
@@ -773,10 +792,9 @@ esac
   it('deletes the archive it uploaded and the release it unpacked once the release is installed', async () => {
     ssh.reply(['cat > "$1"'], {});
     ssh.reply(['mkdir'], {});
-    ssh.reply(['tar'], {});
     ssh.reply(['rm'], {});
     ssh.reply(['readlink'], { stdout: `${BASE}/releases/1.2.2\n` });
-    ssh.reply(['archi-verify'], { stdout: 'pinned\n' });
+    ssh.reply(['archi-unpack'], { stdout: 'pinned\n' });
     ssh.reply(['setup', '--release'], { stdout: 'release 1.2.3 installed\n' });
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
     const d = await daemon();

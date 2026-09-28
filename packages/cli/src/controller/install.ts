@@ -129,20 +129,24 @@ export async function uploadArchive(master: SshMaster, o: { archive: string; rem
   if (r.code !== 0) throw new SshError(r.code === 255 ? 'unreachable' : 'other', `the companion could not be written to ${o.remote}: ${r.stderr.trim().slice(0, 400)}`);
 }
 
-// $1 the staged release, $2 the installed release's allowed_signers, or empty to skip the signature, $3 the release
-// asked for; a file holding only comments pins no key, as a release built before one existed does. The PATH holds only
-// system folders, so no relative entry in the login shell's can reach a tool the upload carries
-const VERIFY = `PATH=/usr/bin:/bin:/usr/sbin:/sbin; export PATH
-cd "$1" || exit 1
-if [ -n "$2" ]; then
-  [ -f "$2" ] || exit 5
-  if grep -Eq '^[[:space:]]*[^#[:space:]]' "$2"; then
-    ssh-keygen -Y verify -f "$2" -I ${NAMESPACE} -n ${NAMESPACE} -s ${SIG} < ${SUMS} >/dev/null || exit 3
+// $1 the archive, $2 the staging folder, $3 the release asked for, $4 the installed release's allowed_signers, or empty
+// to skip the signature. The signature over SHA256SUMS is checked before anything else leaves the archive; a signers
+// file holding only comments pins no key, as a release built before one existed does. The PATH holds only system
+// folders, so no relative entry in the login shell's can reach a tool the upload carries
+const UNPACK = `PATH=/usr/bin:/bin:/usr/sbin:/sbin; export PATH
+dir="$2/releases/$3"
+if [ -n "$4" ]; then
+  [ -f "$4" ] || exit 5
+  if grep -Eq '^[[:space:]]*[^#[:space:]]' "$4"; then
+    tar -xzf "$1" -C "$2" "releases/$3/${SUMS}" "releases/$3/${SIG}" || exit 7
+    ssh-keygen -Y verify -f "$4" -I ${NAMESPACE} -n ${NAMESPACE} -s "$dir/${SIG}" < "$dir/${SUMS}" >/dev/null || exit 3
     echo pinned
   else
     echo unpinned
   fi
 fi
+tar -xzf "$1" -C "$2" || exit 8
+cd "$dir" || exit 1
 sha256sum -c --strict --quiet ${SUMS} || exit 4
 want=$(printf '  "version": "%s"' "$3")
 grep -Fqx -e "$want," -e "$want" ${MANIFEST} || exit 6`;
@@ -151,18 +155,23 @@ grep -Fqx -e "$want," -e "$want" ${MANIFEST} || exit 6`;
 export type FarCheck = 'pinned' | 'unpinned' | 'digests';
 
 /**
- * Checks a staged release on the far machine with ssh-keygen and sha256sum, against the signers the release
- * installed at `archiBase` pins, before anything the staged release carries runs. `signed: false` checks the digests alone.
+ * Unpacks an uploaded archive into `staging` on the far machine and checks it there with ssh-keygen and sha256sum,
+ * against the signers the release installed at `archiBase` pins, before anything the archive carries runs. Without
+ * `archiBase` it checks the digests alone.
  */
-export async function verifyStaged(master: SshMaster, o: { dir: string; version: string; archiBase: string; signed: boolean }): Promise<{ check: FarCheck; signers: string }> {
-  const signers = path.posix.join(o.archiBase, 'current', 'release', 'allowed_signers');
-  const r = await master.run(['sh', '-c', shellQuote(VERIFY), 'archi-verify', shellQuote(o.dir), shellQuote(o.signed ? signers : ''), shellQuote(o.version)], { timeoutMs: TAR_TIMEOUT });
+async function unpackStaged(master: SshMaster, o: { archive: string; staging: string; version: string; archiBase?: string }): Promise<{ check: FarCheck; signers: string }> {
+  const signers = o.archiBase === undefined ? '' : path.posix.join(o.archiBase, 'current', 'release', 'allowed_signers');
+  const r = await master.run(['sh', '-c', shellQuote(UNPACK), 'archi-unpack', ...[o.archive, o.staging, o.version, signers].map(shellQuote)], { timeoutMs: TAR_TIMEOUT });
   const said = r.stderr.trim().slice(0, 400);
-  if (r.code === 3) throw new SshError('other', `the uploaded release is not signed by a key ${signers} pins: ${said || 'ssh-keygen refused it'}`);
-  if (r.code === 4) throw new SshError('other', `the uploaded release's files do not match its ${SUMS}: ${said || 'sha256sum refused it'}`);
-  if (r.code === 5) throw new SshError('other', `${signers} is missing, so the installed release names no signer to check the uploaded one against`);
-  if (r.code === 6) throw new SshError('other', `the uploaded release's ${MANIFEST} does not name release ${o.version}, the one asked for`);
-  if (r.code !== 0) throw new SshError(r.code === 255 ? 'unreachable' : 'other', `the far machine could not check the uploaded release (exit ${r.code}): ${said}`);
+  const fail: Record<number, string> = {
+    3: `the uploaded release is not signed by a key ${signers} pins: ${said || 'ssh-keygen refused it'}`,
+    4: `the uploaded release's files do not match its ${SUMS}: ${said || 'sha256sum refused it'}`,
+    5: `${signers} is missing, so the installed release names no signer to check the uploaded one against`,
+    6: `the uploaded release's ${MANIFEST} does not name release ${o.version}, the one asked for`,
+    7: `the uploaded archive carries no signed ${SUMS} for release ${o.version}: ${said}`,
+  };
+  if (r.code !== null && fail[r.code]) throw new SshError('other', fail[r.code]);
+  if (r.code !== 0) throw new SshError(r.code === 255 ? 'unreachable' : 'other', `the far machine could not unpack and check the uploaded release (exit ${r.code}): ${said}`);
   const check = r.stdout.trim() === 'pinned' ? 'pinned' : r.stdout.trim() === 'unpinned' ? 'unpinned' : 'digests';
   return { check, signers };
 }
@@ -181,12 +190,10 @@ const checked = (c: { check: FarCheck; signers: string }): string => ({
 export async function bootstrapSetup(master: SshMaster, o: { staging: string; archive: string; version: string; allowUnsigned: boolean; installed?: string }): Promise<string> {
   await remote(master, ['mkdir', '-p', shellQuote(o.staging)], `mkdir -p ${o.staging}`, TAR_TIMEOUT);
   try {
-    await remote(master, ['tar', '-xzf', shellQuote(o.archive), '-C', shellQuote(o.staging)], `tar -xzf ${o.archive}`, TAR_TIMEOUT);
-    const dir = path.posix.join(o.staging, 'releases', o.version);
-    const far = o.installed === undefined ? undefined : await verifyStaged(master, { dir, version: o.version, archiBase: o.installed, signed: !o.allowUnsigned });
-    const exe = path.posix.join(dir, 'bin', 'archi');
+    const far = await unpackStaged(master, { archive: o.archive, staging: o.staging, version: o.version, archiBase: o.allowUnsigned ? undefined : o.installed });
+    const exe = path.posix.join(o.staging, 'releases', o.version, 'bin', 'archi');
     const out = await remote(master, [shellQuote(exe), 'setup', '--release', shellQuote(o.archive), ...(o.allowUnsigned ? ['--allow-unsigned'] : [])], 'archi setup', SETUP_TIMEOUT);
-    return far ? `${out.trimEnd()}; ${checked(far)}\n` : out;
+    return o.installed === undefined ? out : `${out.trimEnd()}; ${checked(far)}\n`;
   } finally {
     // setup copies what it installs into releases/, so neither the staged tree nor the upload is needed after it
     await master.run(['rm', '-rf', shellQuote(o.staging), shellQuote(o.archive)], { timeoutMs: TAR_TIMEOUT }).catch(() => undefined);
