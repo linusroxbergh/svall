@@ -241,6 +241,27 @@ describe('transfer with a scripted rsync', () => {
     expect(events.filter((e) => e.state === 'transferring').map((e) => e.bytes)).toEqual([0, 10, 20, 30]);
   });
 
+  it('tells a watcher of a 50,000-file copy as often as of a one-file copy: once per state and second', async () => {
+    const src = tree(tmp(), { 'a.txt': 'a' });
+    let now = 0;
+    const events: EntryProgress[] = [];
+    const FILES = 50_000;
+    // five seconds of an rsync that itemizes and reports every file
+    const run: RunRsync = async (_exe, argv, o) => {
+      if (!argv.includes('--dry-run')) {
+        for (let i = 1; i <= FILES; i++) {
+          o.onLine(`<f+++++++++ src/f${i}.ts`);
+          o.onLine(`        ${i * 1000}  50%    1.00MB/s    0:00:01 (xfr#${i}, to-chk=${FILES - i}/${FILES})`);
+          now += 5000 / FILES;
+        }
+      }
+      return { code: 0, signal: null, stderr: '' };
+    };
+    const r = await transfer(options({ entries: [await root({ source: src, claimed: '/far/app' })], stateDir: tmp(), onProgress: (p) => events.push(p), deps: { run, now: () => now } }));
+    expect(r.status).toBe('verified');
+    expect(events.length).toBeLessThanOrEqual(3 + 6);
+  });
+
   it('refuses a far rsync that is missing, too old or openrsync before it copies anything', async () => {
     const src = tree(tmp(), { 'a.txt': 'a' });
     const entries = [await root({ source: src, claimed: '/far/app' }), await root({ id: 'r_next', source: src, claimed: '/far/next' })];
