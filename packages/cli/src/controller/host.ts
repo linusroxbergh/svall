@@ -620,30 +620,24 @@ function readFleet(file: string): FleetConfig {
  * The record that says this fleet is this Mac's: the gateway's own, asked for over ssh and created
  * where there is none. A record another machine holds is not this Mac's to take.
  */
-async function seedAuthority(entry: Registered, fleetId: FleetId, name: string, d: HostDeps): Promise<Outcome<void>> {
+async function seedAuthority(master: SshMaster, entry: Registered, fleetId: FleetId, name: string, d: HostDeps): Promise<Outcome<void>> {
   const owner = d.machineId();
-  const master = await d.openMaster(entry.record.ssh);
   const exe = archiExe(entry.record.archiBase);
-  try {
-    await sameMachine(master, entry);
-    let frame = await remoteOwner({ master, exe, op: 'get', fleetId });
-    if ('error' in frame && frame.error.code === 'not_found') {
-      frame = await remoteOwner({ master, exe, op: 'create', fleetId, params: { initialOwnerMachineId: owner } });
-    }
-    if ('error' in frame) {
-      const repair = frame.error.code === 'authority_corrupt'
-        ? onThere(entry.record.ssh, `put a readable record back where the gateway looks for it, then run archi host enable ${name} again`)
-        : undefined;
-      throw new StepError(frame.error.message, repair);
-    }
-    const record = frame.record;
-    if (record.fleetId !== fleetId || record.ownerMachineId !== owner) {
-      throw new StepError(`${name} holds fleet ${record.fleetId} for ${record.ownerMachineId} at generation ${record.generation}, not for this machine`);
-    }
-    return { value: undefined, detail: `${name} holds fleet ${fleetId} for ${owner} at generation ${record.generation}` };
-  } finally {
-    await master.close().catch(() => undefined);
+  let frame = await remoteOwner({ master, exe, op: 'get', fleetId });
+  if ('error' in frame && frame.error.code === 'not_found') {
+    frame = await remoteOwner({ master, exe, op: 'create', fleetId, params: { initialOwnerMachineId: owner } });
   }
+  if ('error' in frame) {
+    const repair = frame.error.code === 'authority_corrupt'
+      ? onThere(entry.record.ssh, `put a readable record back where the gateway looks for it, then run archi host enable ${name} again`)
+      : undefined;
+    throw new StepError(frame.error.message, repair);
+  }
+  const record = frame.record;
+  if (record.fleetId !== fleetId || record.ownerMachineId !== owner) {
+    throw new StepError(`${name} holds fleet ${record.fleetId} for ${record.ownerMachineId} at generation ${record.generation}, not for this machine`);
+  }
+  return { value: undefined, detail: `${name} holds fleet ${fleetId} for ${owner} at generation ${record.generation}` };
 }
 
 type FarCopy = { outcome: 'created' | 'held' | 'rekeyed'; home: string; unit: string };
@@ -652,31 +646,26 @@ type FarCopy = { outcome: 'created' | 'held' | 'rekeyed'; home: string; unit: st
  * The gateway machine's own copy of the fleet, under the profile a handover reaches it by: the companion makes
  * one where there is none, and takes over one only `host add` has made, which it refuses for one in use.
  */
-async function provisionCopy(entry: Registered, fleetId: FleetId, profile: string, d: HostDeps): Promise<string> {
+async function provisionCopy(master: SshMaster, entry: Registered, fleetId: FleetId, profile: string): Promise<string> {
   const name = entry.record.name;
-  const master = await d.openMaster(entry.record.ssh);
-  try {
-    const r = await master.run([
-      shellQuote(archiExe(entry.record.archiBase)), '-p', shellQuote(profile),
-      'fleet', 'provision', '--id', shellQuote(fleetId), '--gateway', shellQuote(entry.id), '--json',
-    ], { timeoutMs: PROVISION_TIMEOUT });
-    if (r.code !== 0) {
-      const said = r.stderr.trim().replace(/^archi: /, '').slice(0, 400) || `archi fleet provision exited ${r.code ?? `on ${r.signal}`}`;
-      // only a refusal is a fleet home in the way; anything else is the run failing, which running enable again goes on from
-      if (r.code === REFUSED) {
-        throw new StepError(`${name} cannot take a copy of this fleet: ${said}`,
-          `ssh ${entry.record.ssh} and move that fleet home aside, then run archi host enable ${name} --fleet ${profile} again`);
-      }
-      throw new StepError(`${name} did not finish making its copy of this fleet: ${said}`);
+  const r = await master.run([
+    shellQuote(archiExe(entry.record.archiBase)), '-p', shellQuote(profile),
+    'fleet', 'provision', '--id', shellQuote(fleetId), '--gateway', shellQuote(entry.id), '--json',
+  ], { timeoutMs: PROVISION_TIMEOUT });
+  if (r.code !== 0) {
+    const said = r.stderr.trim().replace(/^archi: /, '').slice(0, 400) || `archi fleet provision exited ${r.code ?? `on ${r.signal}`}`;
+    // only a refusal is a fleet home in the way; anything else is the run failing, which running enable again goes on from
+    if (r.code === REFUSED) {
+      throw new StepError(`${name} cannot take a copy of this fleet: ${said}`,
+        `ssh ${entry.record.ssh} and move that fleet home aside, then run archi host enable ${name} --fleet ${profile} again`);
     }
-    let copy: FarCopy;
-    try { copy = JSON.parse(r.stdout) as FarCopy; } catch { throw new StepError(`archi fleet provision did not answer JSON: ${r.stdout.trim().slice(0, 200)}`); }
-    return copy.outcome === 'held' ? `${name} already holds this fleet in ${copy.home}`
-      : copy.outcome === 'created' ? `${name} holds this fleet in ${copy.home}, made for it, under ${copy.unit}`
-        : `${name}'s unused fleet in ${copy.home} is now this fleet, under ${copy.unit}`;
-  } finally {
-    await master.close().catch(() => undefined);
+    throw new StepError(`${name} did not finish making its copy of this fleet: ${said}`);
   }
+  let copy: FarCopy;
+  try { copy = JSON.parse(r.stdout) as FarCopy; } catch { throw new StepError(`archi fleet provision did not answer JSON: ${r.stdout.trim().slice(0, 200)}`); }
+  return copy.outcome === 'held' ? `${name} already holds this fleet in ${copy.home}`
+    : copy.outcome === 'created' ? `${name} holds this fleet in ${copy.home}, made for it, under ${copy.unit}`
+      : `${name}'s unused fleet in ${copy.home} is now this fleet, under ${copy.unit}`;
 }
 
 /** `archi host enable`: which machine is to be this fleet's gateway, the record that says so, and its copy of the fleet. */
@@ -684,14 +673,24 @@ export function enableHost(name: string, o: { fleetHome: string }, d: HostDeps):
   return flow(d.emit, async (run) => {
     const entry = await run.step('machine', () => Promise.resolve(machineOutcome(d.registry, name)));
     const file = resolvePaths(o.fleetHome).fleetConfig;
-    // fleet.json names the gateway only once the gateway itself holds the record for this fleet, and a copy of it
-    await run.step('authority', () => seedAuthority(entry, readFleet(file).id, name, d));
-    await run.step('fleet', async () => {
-      const copy = await provisionCopy(entry, readFleet(file).id, profileOf(o.fleetHome, d.homedir), d);
-      writeJsonAtomic(file, { ...readFleet(file), gatewayMachineId: entry.id });
-      d.registry.markGateway(entry.id);
-      d.registry.save();
-      return { value: undefined, detail: `${copy}; ${file} names ${name} as the gateway` };
-    });
+    // both steps ride the one master whose machine was checked, which no later command can leave for another
+    let master: SshMaster | undefined;
+    try {
+      // fleet.json names the gateway only once the gateway itself holds the record for this fleet, and a copy of it
+      await run.step('authority', async () => {
+        master = await d.openMaster(entry.record.ssh);
+        await sameMachine(master, entry);
+        return seedAuthority(master, entry, readFleet(file).id, name, d);
+      });
+      await run.step('fleet', async () => {
+        const copy = await provisionCopy(master!, entry, readFleet(file).id, profileOf(o.fleetHome, d.homedir));
+        writeJsonAtomic(file, { ...readFleet(file), gatewayMachineId: entry.id });
+        d.registry.markGateway(entry.id);
+        d.registry.save();
+        return { value: undefined, detail: `${copy}; ${file} names ${name} as the gateway` };
+      });
+    } finally {
+      await master?.close().catch(() => undefined);
+    }
   });
 }

@@ -1047,6 +1047,15 @@ describe('host enable', () => {
     expect(written(home).gatewayMachineId).toBeUndefined();
   });
 
+  it('makes the record and the copy of the fleet over the one master whose machine it checked', async () => {
+    ssh.reply(['owner', 'get'], answers({}));
+    ssh.reply(['fleet', 'provision'], provisioned());
+    const out = await enableHost('trift', { fleetHome: fleetHome() }, deps({ registry: registered() }));
+    expect(out.result).toBe('ready');
+    expect(ssh.calls().filter((c) => c.includes('-M'))).toHaveLength(1);
+    expect(ssh.remoteCalls().map((w) => w.slice(1).filter((a) => ['version', 'owner', 'provision'].includes(a))[0])).toEqual(['version', 'owner', 'provision']);
+  });
+
   it('gives the machine its copy of the fleet under the profile the controller reaches it by, before it names the gateway', async () => {
     ssh.reply(['owner', 'get'], answers({}));
     ssh.reply(['fleet', 'provision'], provisioned('rekeyed'));
