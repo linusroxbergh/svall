@@ -401,21 +401,25 @@ describe('two controllers on different machines', () => {
     });
   }
 
-  it('two starts whose Begins reach the gateway together open one handover, and the fleet settles once', async () => {
-    const w = world();
-    let arrived = 0;
-    let both!: () => void;
-    const met = new Promise<void>((r) => { both = r; });
-    w.gate = async ({ label }) => {
-      if (label !== 'gateway begin' || arrived >= 2) return;
-      if (++arrived === 2) both();
-      await met;
-    };
-    const outcomes = await race(w, party(w, 'mac', 'start'), party(w, 'trift', 'start'));
-    w.gate = undefined;
-    expect(arrived).toBe(2);
-    await settleBoth(w, outcomes);
-  });
+  for (const same of [true, false]) {
+    it(`two starts whose Begins reach the gateway together, ${same ? 'with the same choices' : 'the second also interrupting agents'}, open one handover, and the fleet settles once`, async () => {
+      const w = world();
+      let arrived = 0;
+      let both!: () => void;
+      const met = new Promise<void>((r) => { both = r; });
+      w.gate = async ({ label }) => {
+        if (label !== 'gateway begin' || arrived >= 2) return;
+        if (++arrived === 2) both();
+        await met;
+      };
+      const second = party(w, 'trift', 'start');
+      const outcomes = await race(w, party(w, 'mac', 'start'), same ? second : { ...second, go: () => w.run(() => second.c.start(real.TRIFT, { ...real.choices(w), interruptAfterMs: 0 }), second.c) });
+      w.gate = undefined;
+      expect(arrived).toBe(2);
+      // the gateway answers a Begin between the same machines at the same generation with the handover it holds, so both drive that one
+      expect(await settleBoth(w, outcomes)).toBe('destination');
+    });
+  }
 });
 
 describe('two controllers on one machine', () => {
