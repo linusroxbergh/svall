@@ -214,7 +214,8 @@ async function drive(o) {
   const t0 = Date.now();
   const child = spawn(path.join(HOME, '.local', 'bin', 'archi'), ['handover', to, '--json'], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stderr.pipe(fs.createWriteStream(`${o.log}.stderr`));
-  const exited = new Promise((resolve) => child.on('exit', (code, signal) => resolve({ code, signal })));
+  // `close` waits for the controller's output to be read to its end; nothing it spawns inherits that pipe
+  const exited = new Promise((resolve) => child.on('close', (code, signal) => resolve({ code, signal })));
   const events = [];
   let result = null;
   let fire;
