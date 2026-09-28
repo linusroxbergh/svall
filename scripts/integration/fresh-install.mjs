@@ -7,8 +7,9 @@
 // the companion archives its manifest pins. The controller runs here, on this host, from that tree, with a home of its
 // own; the machine is a clean Ubuntu 24.04 container with systemd and sshd, an account at the controller's home path
 // and no Node. The run adds the machine with the first release (`archi host add`), turns lingering on as host add
-// asks, checks the units run that release and nothing else, upgrades to the second release (`archi host upgrade`),
-// then goes back with `archi setup --rollback` on the machine, checking the units each time.
+// asks, gives it a second fleet (`archi host enable`), checks the units run that release and nothing else, upgrades to
+// the second release (`archi host upgrade`), then goes back with `archi setup --rollback` on the machine, checking the
+// units each time.
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -18,7 +19,10 @@ import { brief, flags, harness, lines } from './harness.mjs';
 
 const M = 'archi-fresh';
 const USER = 'archi';
-const UNITS = ['archipelago-archid@private.service', 'archipelago-gateway.service'];
+const FLEET = 'work';
+// host add starts the private fleet's daemon and the gateway; host enable adds the second fleet's
+const ADDED = ['archipelago-archid@private.service', 'archipelago-gateway.service'];
+const UNITS = [...ADDED, `archipelago-archid@${FLEET}.service`];
 
 const o = flags(process.argv.slice(2));
 if (!o.release || !o.upgrade || !['x64', 'arm64'].includes(o.arch)) throw new Error('--release <dir>, --upgrade <dir> and --arch x64|arm64 are required');
@@ -222,7 +226,7 @@ function hostAdd(a) {
   const lingerOn = `ssh fresh, then loginctl enable-linger ${USER}`;
   check('host add linger', at('linger')?.status === 'warn' && at('linger').action === lingerOn, () => brief(at('linger')));
   // the units run, and the service step warns only that they stop at logout
-  check('host add service', at('service')?.action === lingerOn && UNITS.every((u) => at('service').detail?.includes(`${u}: loaded, active (running), enabled`)),
+  check('host add service', at('service')?.action === lingerOn && ADDED.every((u) => at('service').detail?.includes(`${u}: loaded, active (running), enabled`)),
     () => brief(at('service')));
   check('host add release', at('release')?.detail?.startsWith(`${a.version} for linux-${o.arch} from the archive you named${a.unsigned ? ' (unsigned)' : ''}`), () => brief(at('release')));
   check('host add home', at('home')?.detail === `${HOME} for ${USER}`, () => brief(at('home')));
@@ -234,6 +238,19 @@ function hostAdd(a) {
 function linger() {
   // the action host add named, as the user takes it on the machine
   root(`loginctl enable-linger ${USER}`);
+}
+
+/** A second fleet whose gateway the machine is, as a handover moves one: its own daemon's unit on the machine. */
+function enable(a) {
+  const home = path.join(HOME, `.archipelago-${FLEET}`);
+  fs.mkdirSync(home, { mode: 0o700 });
+  fs.writeFileSync(path.join(home, 'fleet.json'), `${JSON.stringify({ id: crypto.randomUUID() })}\n`);
+  const r = archi(a, 'host', 'enable', 'fresh', '--fleet', FLEET, '--json');
+  save('host-enable.ndjson', r.stdout);
+  const events = lines(r.stdout);
+  const fleet = events.find((e) => e.step === 'fleet' && e.status !== 'start');
+  check('host enable result', events.at(-1)?.result === 'ready' && r.code === 0, () => brief(events.at(-1)));
+  check('host enable fleet', fleet?.status === 'ok' && fleet.detail?.includes(`under ${UNITS[2]}`), () => brief(fleet));
 }
 
 function doctor(rel, label) {
@@ -278,8 +295,11 @@ try {
   say(`   logs in ${out}; controller home ${HOME}`);
   step(`a clean Ubuntu 24.04 ${o.arch} machine, an account at the controller's home path`, machine);
   step(`host add from ${a.version}`, () => hostAdd(a));
-  step('lingering on, as host add asks; after a restart with no login, the units run the release', () => {
+  step(`lingering on, as host add asks, and host enable --fleet ${FLEET}`, () => {
     linger();
+    enable(a);
+  });
+  step('after a restart with no login, both fleets and the gateway run the release', () => {
     reboot();
     runs('added', a, [a.version]);
     doctor(a, 'added');
