@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       systemd systemd-sysv dbus dbus-user-session libpam-systemd \
-      openssh-server openssh-client rsync tmux git iptables socat procps ca-certificates xz-utils \
+      openssh-server openssh-client rsync tmux git iptables procps ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
 # what a container has no use for, and what would wait on hardware it does not have
