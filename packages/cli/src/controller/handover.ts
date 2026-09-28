@@ -132,13 +132,25 @@ type CarriedLink = { root: TransferRoot; path: string; at: string; carried?: boo
 function carriedLinks(m: TransferManifestV1): CarriedLink[] {
   const carried = m.roots.filter((r) => !r.foldedInto);
   const innermostFirst = [...carried].sort((a, b) => b.path.length - a.path.length);
+  // every path a root carries and every folder holding one, gathered once per root a link leads into
+  const held = new Map<TransferRoot, Set<string>>();
+  const heldBy = (root: TransferRoot): Set<string> => {
+    let names = held.get(root);
+    if (!names) {
+      names = new Set();
+      for (const f of root.files) for (let i = f.path.indexOf('/'); i !== -1; i = f.path.indexOf('/', i + 1)) names.add(f.path.slice(0, i));
+      for (const f of root.files) names.add(f.path);
+      held.set(root, names);
+    }
+    return names;
+  };
   return carried.flatMap((r) => r.files.flatMap((f): CarriedLink[] => {
     if (f.type !== 'symlink') return [];
     const from = f.path === '' ? path.posix.dirname(r.path) : path.posix.join(r.path, path.posix.dirname(f.path));
     const at = path.posix.resolve(from, f.target);
     const holder = innermostFirst.find((x) => holds(x.path, at));
     const rel = holder && path.posix.relative(holder.path, at);
-    return [{ root: r, path: f.path, at, ...(holder && { carried: rel === '' || holder.files.some((g) => g.path === rel || g.path.startsWith(`${rel}/`)) }) }];
+    return [{ root: r, path: f.path, at, ...(holder && { carried: rel === '' || heldBy(holder).has(rel!) }) }];
   }));
 }
 

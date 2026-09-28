@@ -349,6 +349,26 @@ describe('preflight', () => {
     });
   });
 
+  it('reads a root\'s file list a few times over to judge its links, however many links it holds', async () => {
+    const [FILES, LINKS] = [5000, 500];
+    const w = new World();
+    const preflight = w.source.answers['handover.preflight'];
+    let reads = 0;
+    w.source.answers['handover.preflight'] = ((p: never) => {
+      const r = (preflight as (x: never) => { manifest: FrozenManifest })(p);
+      const app = r.manifest.roots.find((x) => x.id === 'r_app')!;
+      const files = [...app.files];
+      for (let i = 0; i < FILES; i++) files.push({ type: 'file', path: `src/f${i}.ts`, mode: 0o644, size: 1, mtimeMs: 0, sha256: '0'.repeat(64) });
+      for (let i = 0; i < LINKS; i++) files.push({ type: 'symlink', path: `links/l${i}`, target: `../src/f${FILES - 1 - i}.ts` });
+      app.files = new Proxy(files, { get: (t, k, rcv) => { if (typeof k === 'string' && /^\d+$/.test(k)) reads++; return Reflect.get(t, k, rcv); } });
+      return r;
+    }) as never;
+    const pre = await controller(w).preflight(trift, {});
+    expect(pre.warnings.filter((x) => x.code === 'symlink_dangling')).toEqual([]);
+    // each check reads the list once or twice; looking each link's target up in it would read it once per link
+    expect(reads).toBeLessThan(20 * (FILES + LINKS));
+  });
+
   it('blocks, before anything is rested, on an rsync either end cannot drive and an ssh that would have to ask for a password', async () => {
     const local = new World();
     const noRsync = await controller(local, { rsync: async () => { throw new Error('/opt/archi/bin/rsync could not run: ENOENT'); } }).start(trift, {});
