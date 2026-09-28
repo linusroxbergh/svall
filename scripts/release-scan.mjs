@@ -3,7 +3,7 @@
 //
 //   node scripts/release-scan.mjs [--secrets-only] <archive.tar.gz or directory>...
 //
-// - secrets: private keys, API and access tokens, and files that hold credentials by their name;
+// - secrets: private keys, API and access tokens, JWTs, and files that hold credentials by their name;
 // - developer paths: any /Users/ path, and this builder's home, checkout and temp folder;
 // - checkout dependencies: a module the release does not carry, a link out of it, a node_modules or .git folder.
 //
@@ -18,8 +18,11 @@ import { fileURLToPath } from 'node:url';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+// a line break, or the escaped one a bundler writes into a string literal
+const NL = String.raw`(?:\r?\n|(?:\\r)?\\n)`;
+
 const SECRETS = [
-  ['private key', /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----\r?\n(?:[A-Za-z-]+: [^\r\n]*\r?\n)*\r?\n?[A-Za-z0-9+/=]{40,}/g],
+  ['private key', new RegExp(String.raw`-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----${NL}(?:[A-Za-z-]+: [^\r\n\\]*${NL})*${NL}?[A-Za-z0-9+/=]{40,}`, 'g')],
   ['Anthropic key', /\bsk-ant-[A-Za-z0-9_-]{20,}/g],
   ['OpenAI key', /\bsk-(?!ant-)(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{40,}/g],
   ['GitHub token', /\b(?:gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{50,})\b/g],
@@ -28,9 +31,10 @@ const SECRETS = [
   ['Google key', /\bAIza[0-9A-Za-z_-]{35}\b/g],
   ['npm token', /\bnpm_[A-Za-z0-9]{36}\b/g],
   ['Tailscale key', /\btskey-[a-z]+-[A-Za-z0-9-]{10,}/g],
+  ['JWT', /\beyJ[\w-]{10,}\.eyJ[\w-]{10,}\.[\w-]{10,}/g],
 ];
 
-const CREDENTIAL_FILE = /^(?:\.credentials\.json|\.git-credentials|\.netrc|\.npmrc|\.pypirc|\.env(?:\..+)?|id_(?:rsa|dsa|ecdsa|ed25519)(?:_sk)?|.+\.(?:pem|p12|pfx|key))$/;
+const CREDENTIAL_FILE = /^(?:\.credentials\.json|auth\.json|\.git-credentials|\.netrc|\.npmrc|\.pypirc|\.env(?:\..+)?|id_(?:rsa|dsa|ecdsa|ed25519)(?:_sk)?|.+\.(?:pem|p12|pfx|key))$/;
 const CHECKOUT_DIR = new Set(['node_modules', '.git']);
 // what the bundles reach for inside a try and run without: ws's native accelerators and debug's colour detection
 const OPTIONAL = new Set(['bufferutil', 'utf-8-validate', 'supports-color']);

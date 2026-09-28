@@ -70,6 +70,32 @@ describe('secrets', () => {
     expect(said).not.toContain('Q'.repeat(20));
   });
 
+  test('a private key a bundler inlined as a string, with its line breaks escaped, is a hit', () => {
+    const body = 'b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQ'.repeat(3);
+    expect(rules(release({
+      'lib/archi.mjs': `import fs from 'node:fs';\nconst k = "-----BEGIN OPENSSH PRIVATE KEY-----\\n${body}\\n-----END OPENSSH PRIVATE KEY-----\\n";\n`,
+      'lib/archid.mjs': `const k = "-----BEGIN RSA PRIVATE KEY-----\\r\\nProc-Type: 4,ENCRYPTED\\r\\nDEK-Info: AES-128-CBC,00FF\\r\\n\\r\\n${body}";\n`,
+    })).sort()).toEqual([
+      'releases/v1.0.0/lib/archi.mjs private key',
+      'releases/v1.0.0/lib/archid.mjs private key',
+    ]);
+  });
+
+  test('Codex\'s login is a hit by its file name and by the tokens in it', () => {
+    const jwt = (claims: object): string => ['{"alg":"RS256","typ":"JWT"}', JSON.stringify(claims), 'signature-bytes-here']
+      .map((p) => Buffer.from(p).toString('base64url')).join('.');
+    const auth = JSON.stringify({
+      OPENAI_API_KEY: null,
+      tokens: { id_token: jwt({ email: 'a@b.c' }), access_token: jwt({ scp: ['openid'] }), refresh_token: 'rt_opaque', account_id: 'x' },
+      last_refresh: '2026-09-28T00:00:00Z',
+    });
+    expect(rules(release({ 'home/.codex/auth.json': auth, 'lib/archid.mjs': `const t = "${jwt({ sub: 'x' })}";\n` })).sort()).toEqual([
+      'releases/v1.0.0/home/.codex/auth.json JWT',
+      'releases/v1.0.0/home/.codex/auth.json credential file',
+      'releases/v1.0.0/lib/archid.mjs JWT',
+    ]);
+  });
+
   test('a PEM header alone, as a TLS library carries one, is not a key', () => {
     expect(rules(release({ 'node/bin/node': 'fmt -----BEGIN %s----- and -----BEGIN PRIVATE KEY-----' }))).toEqual([]);
   });
