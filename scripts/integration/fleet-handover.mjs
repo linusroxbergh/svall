@@ -10,6 +10,7 @@
 // exits 1 on the first step that has one.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -38,7 +39,7 @@ const o = flags(process.argv.slice(2));
 if (!o.archive || !fs.existsSync(o.archive)) throw new Error('--archive <companion.tar.gz> is required');
 const archive = path.resolve(o.archive);
 const image = o.image ?? 'archi-it:latest';
-const out = path.resolve(o.out ?? 'integration-logs');
+const out = o.out ? path.resolve(o.out) : fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-handover-'));
 fs.mkdirSync(out, { recursive: true });
 // written synchronously: spawnSync holds the event loop, so a stream would flush only when the run ends
 const RUN_LOG = path.join(out, 'run.log');
@@ -294,6 +295,8 @@ function drive(to, fault, at) {
   const summary = JSON.parse(r.stdout.trim().split('\n').at(-1));
   const log = sh(L, `cat /tmp/it/${label}.ndjson`).stdout;
   fs.writeFileSync(path.join(out, `${label}.ndjson`), log);
+  const stderr = sh(L, `cat /tmp/it/${label}.ndjson.stderr`, { ok: false }).stdout;
+  if (stderr) fs.writeFileSync(path.join(out, `${label}.stderr`), stderr);
   fs.writeFileSync(path.join(out, `${label}.summary.json`), `${JSON.stringify(summary, null, 2)}\n`);
   say(`   ${label}: ${summary.result?.status ?? 'no result'} in ${summary.ms} ms${summary.trigger ? `, ${fault} at ${summary.trigger.ms} ms` : ''}${summary.retries ? `, ${summary.retries} retries` : ''}${summary.capped ? ', capped' : ''}`);
   return { label, summary, log };
@@ -410,6 +413,7 @@ function chosen(spec = 'all') {
 let code = 0;
 try {
   const scenarios = chosen(o.scenarios);
+  say(`logs in ${out}`);
   step('two machines', up);
   const ids = step('install on local, host add remote, host enable', install);
   say(`   fleet ${ids.fleet}; local ${ids.local}; remote ${ids.remote}`);

@@ -21,7 +21,7 @@ Options:
 | Option | What it does |
 | --- | --- |
 | `--archive <file>` | Use this companion archive instead of building one from the checkout. |
-| `--out <dir>` | Where the logs go (default `./integration-logs`). |
+| `--out <dir>` | Where the logs go (default a new folder under the system temp folder, named when the run starts). |
 | `--scenarios <spec>` | `all` (default), `none` (the clean round trip only), `kill`, `drop`, or a list such as `kill@begin,drop@transfer`. |
 | `--keep` | Leave the containers running afterwards, to look around with `docker exec -it -u archi archi-local bash -l`. |
 
@@ -34,7 +34,7 @@ It exits 0 when every check passed. Each step prints `PASS`, or one `FAIL` line 
 the first failed step. The output folder holds:
 
 - `run.log`: every docker command and its output;
-- one `.ndjson` per handover: the controller's event stream;
+- one `.ndjson` per handover: the controller's event stream, and a `.stderr` beside it when the controller wrote any;
 - a `.summary.json` per handover: the fault, when it landed, and the result;
 - a `.stopped.json` per fault: both machines' snapshots right after it;
 - a `.recovery.ndjson` per fault: the `status` and the action taken;
