@@ -22,6 +22,7 @@ import type { Logger } from '../../src/log.js';
 import { guardMethod } from '../../src/ownership/guard.js';
 import { OwnershipState } from '../../src/ownership/state.js';
 import { installedScripts, resolvePaths, type Paths } from '../../src/paths.js';
+import { reconcile } from '../../src/reconcile.js';
 import { Store } from '../../src/store.js';
 import type { Outcome } from '../../../cli/src/controller/events.js';
 import { Handover, Refused, type Daemon, type Side } from '../../../cli/src/controller/handover.js';
@@ -193,11 +194,16 @@ class Machine {
   /**
    * The fleet as the daemon `life` runs it: opening a terminal is idempotent, as the real one's is, runs the command
    * it revives with, keeps that command while a handover carries the terminal, and an agent resumed there reports its
-   * SessionStart.
+   * SessionStart. Starting it, and reconciling it, takes back each window named for a terminal, as the real one does.
    */
   fleet(life: Life, store: Store, instance: () => Instance | undefined) {
     const started = new Set<(id: string, term: 2 | undefined, sessionId: string) => void>();
     let carried: (id: string, term?: 2) => boolean = () => false;
+    const reconcileNow = async () => {
+      alive(life);
+      if (!instance()?.ownership.writable()) return;
+      store.update(reconcile(store.state, await this.tmux.listWindows(), this.w.now, undefined, undefined, carried).mutate);
+    };
     const open = async (id: string, term?: 2) => {
       alive(life);
       const key = term ? `${id}-2` : id;
@@ -229,6 +235,7 @@ class Machine {
         this.w.activated(this);
         const d = instance();
         if (d) d.active = true;
+        await reconcileNow();
       },
       deactivate: async () => {
         alive(life);
@@ -237,7 +244,7 @@ class Machine {
         if (d) d.active = false;
         this.windows.clear();
       },
-      reconcileNow: async () => { alive(life); },
+      reconcileNow,
       reviveCharacter: (id: string) => open(id),
       openSecond: (id: string) => open(id, 2),
       onSessionStart: (fn: (id: string, term: 2 | undefined, sessionId: string) => void) => {

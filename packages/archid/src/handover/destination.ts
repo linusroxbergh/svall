@@ -13,7 +13,7 @@ import type { GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
 import type { OwnershipState } from '../ownership/state.js';
 import { expandHome, installedScripts, type Paths } from '../paths.js';
-import { markDormant, markSlotDormant, reviveCommand, secondName } from '../reconcile.js';
+import { markDormant, markSlotDormant, reviveCommand } from '../reconcile.js';
 import { Store } from '../store.js';
 import type { Tmux } from '../tmux/tmux.js';
 import { writeDurable } from './durable.js';
@@ -572,8 +572,6 @@ export class DestinationHandover {
     if (held === 'gone' || (held === 'shell' && agent)) {
       await this.lay(s, carried);
       held = undefined;
-    } else if (!held) {
-      await this.closeLeft(s);
     }
     let started: { done: Promise<boolean>; cancel(): void } | undefined;
     let entry: Activation;
@@ -746,14 +744,6 @@ export class DestinationHandover {
       if (slot && carried && slot.agent?.sessionId === carried.sessionId) slot.revive = { ...carried.revive };
     });
     if (windowId) await boundary('destination.activate.kill', () => this.d.tmux.killWindow(windowId));
-  }
-
-  /** Closes a window left open by a lay that died after it laid its dormant terminal down: the fleet would go back to it and run nothing there. */
-  private async closeLeft(s: Slot): Promise<void> {
-    const name = s.term === 2 ? secondName(s.characterId) : s.characterId;
-    for (const w of (await this.d.tmux.listWindows()).filter((x) => x.name === name)) {
-      await boundary('destination.activate.kill', () => this.d.tmux.killWindow(w.windowId));
-    }
   }
 
   // whether the notice already shows on a pane's screen, typed or run; a screen that cannot be read shows nothing
