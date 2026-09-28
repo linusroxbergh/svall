@@ -1340,14 +1340,14 @@ handover clears obsolete ports rather than forwarding dead processes.
 
 **Steps:**
 
-- [ ] Enumerate failpoints before/after every authority write, local journal write, terminal kill,
+- [x] Enumerate failpoints before/after every authority write, local journal write, terminal kill,
   rsync root, verification, prepared-state write, Commit response, state promotion and activation.
-- [ ] For each failpoint restart controller/source/destination/gateway from disk and derive the legal
+- [x] For each failpoint restart controller/source/destination/gateway from disk and derive the legal
   action. Assert at most one side can create/input/attach a terminal.
-- [ ] Add concurrent Begin/Resume/Abort calls and duplicate/reordered response tests.
-- [ ] Add gateway loss before Begin, during Freeze, after Ready, after Commit and during Complete.
-- [ ] Add stale source cache plus surrendered journal startup test—the highest-risk split-brain case.
-- [ ] Make the failpoint list exhaustive through a registry so new transaction boundaries require a
+- [x] Add concurrent Begin/Resume/Abort calls and duplicate/reordered response tests.
+- [x] Add gateway loss before Begin, during Freeze, after Ready, after Commit and during Complete.
+- [x] Add stale source cache plus surrendered journal startup test—the highest-risk split-brain case.
+- [x] Make the failpoint list exhaustive through a registry so new transaction boundaries require a
   test case.
 
 **Verify:** focused fault suites repeated with randomized failpoint order, then `pnpm test`.

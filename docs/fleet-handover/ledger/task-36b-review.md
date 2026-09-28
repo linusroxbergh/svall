@@ -171,3 +171,64 @@ untouched apart from this file.
     away.
   - All 19 `daemon.call(` sites in `handover.ts` match the check's regex.
   - `tsc` is clean.
+
+## Re-review of fix round 1
+
+Commits `5a96180d..4bc6968f`. Verdict: **Approved** — 0 Critical, 0 Important, 2 Minor (one of them out of scope).
+Mutations ran in a scratch copy of `4bc6968f`. Baseline there: `faults.test.ts` and `handover.test.ts` give 949 passed;
+both fault suites shuffled with seed 36 give 1302 passed; `tsc` is clean.
+
+| Finding | Verdict | Evidence (each mutation reverted afterwards) |
+| --- | --- | --- |
+| I1 | ADDRESSED | Two new real-world scripts strike 160 cases; the check now counts source lines (29). The review's mutation (`landed()`'s prepare with nothing landed throws, `handover.ts:497`) now fails 65 message cases, where it failed none before. A new unreached `destination.daemon.call('ownership.get')` in `activate()` fails the check with `ownership.get (handover.ts:659)`, although `ownership.get` is struck at other sites. |
+| M1 | ADDRESSED | The review's mutation (`undo` goes on to `letGo` after an unanswered gateway abort) now fails 3 cases: the new before-Freeze case (`aborted` instead of `interrupted`), and the overtaken-abort partition at `gateway abort`, with both prefs. |
+| M3 | ADDRESSED | A second start that never reaches Begin (no `archiveRoots`, so preflight blocks) fails in 147 ms with `expected 1 to be 2`. |
+| M4 | ADDRESSED | Renaming `until` to `trift handover.claims`, or `from` to `gateway aborts`, is a collection error naming the script and listing its requests. |
+| M6 | ADDRESSED | With `psArgs` removed, the new archid case fails on di's flags. The splitter covers the only quoting `startFlags` writes: single quotes and `'\''`. |
+
+**Defect 4 (`40594da9`): correct, minimal, and load-bearing.**
+- Reverting the guard (`handover.ts:275`) fails exactly the 4 cases the report names: lost, dropped, stale and
+  partition at `trift handover.status` (#3), then resume.
+- The guard applies only when all three hold: there is no controller journal, the handover is `open`, and the
+  destination's status went unanswered. That is the one case where `adopt()` would take the source's phase over a
+  destination that may have prepared.
+- Nothing is written, so the next resume rebuilds the journal from the destination's own phase.
+- A committed handover is not affected, because `forward(true)` does not read the phase.
+
+**Fixer's concerns.**
+- `openedHere`'s and `commit`'s `gateway get` are struck with every kind only in the Task 27 world. That is what item 1
+  allows ("in one world or the other"). The real world also reaches both lines, in the unknown-Commit and
+  cancel-while-Begin cases.
+- The rebuilt abort is logged as m2 below.
+
+### Minor
+
+**m1. The matrix's `aborted` check passes vacuously without a transaction id** (`faults.test.ts:248-252`).
+- `expect(holding).not.toBe(first.transactionId)` compares two unknowns when an `aborted` outcome carries no id.
+  - If the gateway holds a handover, the check passes. That is defect 3's shape: a Begin that went unanswered.
+  - If the gateway holds none, the check fails spuriously.
+- No script produces such an outcome today.
+- Fix: every script in this matrix runs one controller, so assert `expect(holding, why()).toBeUndefined()` whenever the
+  first run is `aborted`.
+
+**m2 (out of scope, not from this diff). A rebuilt abort reports `aborted` while the source stays frozen, even with
+only the source away.**
+- The fixer's concern understates the conditions. It is enough that the source does not answer and the destination
+  holds no journal, which is anywhere from Freeze to prepare's first write.
+- Why: `adopt()` falls back to phase `begin` (`handover.ts:958`), and `letGo` then skips both daemons (`:741`).
+- Probe (scratch):
+  - the controller crashed at `controller.manifest:after`;
+  - the mac daemon was cut off from the controller;
+  - an abort ran from the trift seat, and again from mac with its journal unreadable.
+- Result, in both runs:
+  - the abort answers `aborted`, exits 0 and clears the journal;
+  - the gateway has let go;
+  - `mac.can()` is false and mac's journal is still open.
+- Status then says `returned:abort`, and a second abort frees mac. There is no invariant violation.
+- The contract promises "an `--abort` that aborted", and the spec's abort "unfreezes the source". Here the user is told
+  it is done while the source's fleet stays fenced.
+- Fix, whichever is simpler:
+  - apply the same guard to `abort()` when there is no controller journal and the source did not answer;
+  - or rebuild at `freeze` rather than `begin` when a transaction id is known and no daemon gave a phase. `letGo` then
+    asks both daemons, whose aborts are no-ops when they hold nothing, and ends `interrupted` with the abort on offer
+    while the source is away.
