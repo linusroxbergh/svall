@@ -593,7 +593,11 @@ class World {
         if (verdict.standing !== 'none') this.fail(`nothing is safe: ${verdict.reason}`);
         return said;
       }
-      const act = prefer === 'abort' && verdict.safe.includes('abort') ? 'abort' : verdict.safe.includes('resume') ? 'resume' : 'abort';
+      const act = ([prefer, prefer === 'abort' ? 'resume' : 'abort'] as const).find((a) => verdict.safe.includes(a));
+      if (!act) {
+        this.fail(`status offers nothing to do, yet says ${verdict.action} (${verdict.reason})`);
+        return said;
+      }
       const out: Outcome = await this.run(() => (act === 'abort' ? c.abort() : c.resume()));
       said.push(`${act}->${out.status}`);
       this.check(`after ${act}`);
@@ -636,6 +640,8 @@ function worlds(): () => World {
   let watched: World | undefined;
   let disarm = () => {};
   beforeEach(async () => {
+    // a crash here never loses the page cache, so an fsync proves nothing and only costs time
+    vi.spyOn(fs, 'fsyncSync').mockImplementation(() => {});
     const rename = fs.renameSync.bind(fs);
     const link = fs.linkSync.bind(fs);
     const rm = fs.rmSync.bind(fs);
@@ -725,10 +731,10 @@ const REACH: Record<Failpoint, { scenario: Scenario; times: number; after?: Targ
 
 type Case = Target & { scenario: Scenario; after?: Target };
 
-// each step's first run and, where it runs more than once, its last
+// every run of each step
 const CASES: Case[] = NAMES.flatMap((name) => {
   const { scenario, times, after } = REACH[name];
-  return (['before', 'after'] as const).flatMap((edge) => [...new Set([1, Math.max(1, times)])].map((nth) => ({ name, edge, nth, scenario, ...(after && { after }) })));
+  return (['before', 'after'] as const).flatMap((edge) => Array.from({ length: Math.max(1, times) }, (_, i) => ({ name, edge, nth: i + 1, scenario, ...(after && { after }) })));
 });
 
 const label = (k: Target): string => `${k.name}:${k.edge}#${k.nth}`;
