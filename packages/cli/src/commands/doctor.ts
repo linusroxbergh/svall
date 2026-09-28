@@ -11,6 +11,8 @@ import { AGENTS, AGENT_KINDS, findAgents, versionOk } from '@archipelago/archid/
 import { characterKeyEnv } from '@archipelago/archid/claude';
 import { codexInstalled, codexPaths, type CodexPaths } from '@archipelago/archid/codex/install';
 import { Config, configRefusal, configuredMainAgent, parseConfig } from '@archipelago/archid/config';
+import { gatewayPaths, socketTooLong } from '@archipelago/archid/gateway/authority';
+import { gatewayPrefix } from '@archipelago/archid/gateway/bin';
 import { lingerState, unitStatus, type Run } from '@archipelago/archid/linux/service';
 import { archidUnitName, GATEWAY_UNIT, unitPath } from '@archipelago/archid/linux/setup';
 import { resolvePaths, userPaths } from '@archipelago/archid/paths';
@@ -269,11 +271,14 @@ function daemonEnv(t: Target, d: DoctorDeps): Check {
 // the wrappers take stdout and stderr; doctor's runner reports a failure by throwing
 const asRun = (d: DoctorDeps): Run => async (cmd, args) => ({ stdout: await d.run(cmd, args), stderr: '' });
 
-async function unitCheck(name: string, unit: string, d: DoctorDeps): Promise<Check> {
+async function unitCheck(name: string, unit: string, d: DoctorDeps, why?: () => string | undefined): Promise<Check> {
   try {
     const s = await unitStatus(asRun(d), unit);
     const detail = `${unit}: ${s.load}, ${s.active} (${s.sub}), ${s.state}`;
-    return { name, status: s.active === 'active' ? 'ok' : 'fail', detail: s.load === 'not-found' ? `${unit} is not installed: archi setup` : detail };
+    if (s.load === 'not-found') return { name, status: 'fail', detail: `${unit} is not installed: archi setup` };
+    if (s.active === 'active') return { name, status: 'ok', detail };
+    const cause = why?.();
+    return { name, status: 'fail', detail: cause ? `${detail}; ${cause}` : detail };
   } catch (e) {
     return { name, status: 'fail', detail: (e as Error).message };
   }
@@ -360,7 +365,7 @@ export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
     await archid(t, d),
     await hookReceiver(t, d),
     ...(d.platform === 'linux'
-      ? [await systemd(t, d), await unitCheck('gateway', GATEWAY_UNIT, d), await linger(d)]
+      ? [await systemd(t, d), await unitCheck('gateway', GATEWAY_UNIT, d, () => socketTooLong(gatewayPaths(gatewayPrefix()).socket, 'linux')?.message), await linger(d)]
       : [await launchd(t, d), daemonNode(t, d), daemonPath(t, d), daemonEnv(t, d), await rsync(d)]),
     hooks(d),
     await codexCheck(d),

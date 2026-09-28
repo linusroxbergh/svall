@@ -217,6 +217,31 @@ describe('host add', () => {
     expect(registry.get('trift')).toBeUndefined();
   });
 
+  it('stops at a home too long for the gateway\'s socket on Linux, naming the listen EINVAL it would otherwise crash on', async () => {
+    // 60 bytes: its gateway socket, 48 bytes further on, is one past the 107 Linux holds
+    const long = `/tmp/${'h'.repeat(55)}`;
+    vi.stubEnv('HOME', long);
+    ssh.reply(['archi-home'], { stdout: `${long}\nlinus\n` });
+    healthy();
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps()).finally(() => vi.unstubAllEnvs());
+    expect(out.result).toBe('actions');
+    expect(step('home').at(-1)).toMatchObject({
+      status: 'fail',
+      detail: `the gateway's socket ${long}/.local/share/archipelago/gateway/authority.sock is 108 bytes, past the 107 a Unix socket path holds, so its listen fails with EINVAL`,
+      action: 'use an account whose home path is at most 59 bytes, on this Mac and on trift.test alike',
+    });
+    expect(ssh.remoteCalls().some((w) => w.includes('setup') || w.includes('cat > "$1"'))).toBe(false);
+  });
+
+  it('takes a home just short enough for the gateway\'s socket', async () => {
+    const long = `/tmp/${'h'.repeat(54)}`;
+    vi.stubEnv('HOME', long);
+    ssh.reply(['archi-home'], { stdout: `${long}\nlinus\n` });
+    healthy();
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps()).finally(() => vi.unstubAllEnvs());
+    expect(step('home').at(-1)).toMatchObject({ status: 'ok' });
+  });
+
   it('stops on a machine that is not Ubuntu', async () => {
     healthy({ osRelease: 'ID=debian\nVERSION_ID="12"\n' });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());

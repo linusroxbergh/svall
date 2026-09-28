@@ -3,6 +3,7 @@ import path from 'node:path';
 import { FleetConfig, FleetId, MachineId, MachineRecord } from '@archipelago/protocol';
 import { AGENTS, AGENT_KINDS, versionOk } from '@archipelago/archid/agents';
 import { writeJsonAtomic } from '@archipelago/archid/atomic';
+import { gatewayPaths, socketTooLong } from '@archipelago/archid/gateway/authority';
 import { homeCommands } from '@archipelago/archid/handover/inventory';
 import { unitPath } from '@archipelago/archid/linux/setup';
 import { isProfileName, PRIVATE, profileOf } from '@archipelago/archid/profile';
@@ -326,6 +327,10 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
             `${remote.home} is ${remote.user}'s home there and ${mine} is this Mac's; a fleet moves only between accounts with the same home path`,
             onThere(o.ssh, `make an account whose home is ${mine}: ${homeCommands(mine)}; then add the machine again at that account`),
           );
+        }
+        const tooLong = socketTooLong(gatewayPaths(remotePaths(remote.home, '').archiBase).socket, 'linux');
+        if (tooLong) {
+          throw new StepError(tooLong.message, `use an account whose home path is at most ${Buffer.byteLength(remote.home) - tooLong.over} bytes, on this Mac and on ${o.ssh} alike`);
         }
         return { value: remote, detail: `${remote.home} for ${remote.user}` };
       });

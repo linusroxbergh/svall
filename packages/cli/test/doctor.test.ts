@@ -1,5 +1,5 @@
 import os from 'node:os';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { codexHookCommand, mergeCodexHooks } from '@archipelago/archid/codex/install';
 import { archidUnit } from '@archipelago/archid/linux/setup';
 import { LAUNCHD_LABEL } from '@archipelago/archid/profile';
@@ -314,6 +314,20 @@ describe('doctor on Linux', () => {
       .toMatchObject({ status: 'ok', detail: expect.stringContaining('archipelago-gateway.service: loaded, active (running), enabled') });
     const stopped = byName(await doctor(priv, linux({ [gateway]: 'LoadState=loaded\nActiveState=inactive\nSubState=dead\nUnitFileState=disabled\n' }).deps));
     expect(stopped.gateway).toMatchObject({ status: 'fail', detail: expect.stringContaining('inactive') });
+  });
+
+  it('names the listen EINVAL of a gateway whose socket path is too long, as systemd only says it keeps restarting', async () => {
+    const prefix = `/tmp/${'h'.repeat(55)}/.local/share/archipelago`;
+    vi.stubEnv('ARCHI_GATEWAY_PREFIX', prefix);
+    try {
+      const looping = byName(await doctor(priv, linux({ [gateway]: 'LoadState=loaded\nActiveState=activating\nSubState=auto-restart\nUnitFileState=enabled\n' }).deps));
+      expect(looping.gateway).toMatchObject({
+        status: 'fail',
+        detail: `archipelago-gateway.service: loaded, activating (auto-restart), enabled; the gateway's socket ${prefix}/gateway/authority.sock is 108 bytes, past the 107 a Unix socket path holds, so its listen fails with EINVAL`,
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('asks systemd and loginctl instead of launchd', async () => {
