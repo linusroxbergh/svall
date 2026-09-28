@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FleetConfig, FleetId, MachineId, TRANSFER_SCHEMA_VERSION, emptyState, type OwnerRecord, type Result } from '@archipelago/protocol';
 import { manifestDigest } from '@archipelago/archid/handover/manifest';
+import { transactionDir } from '../../src/controller/progress.js';
 import { assess, fileStore, forgettable, type ControllerJournal, type FrozenManifest, type Observation, type Verdict } from '../../src/controller/recovery.js';
 
 const fleetId = FleetId.parse(crypto.randomUUID());
@@ -174,6 +175,20 @@ describe('fileStore', () => {
     store.clear(TX);
     expect(store.read()).toBeUndefined();
     expect(fs.existsSync(path.join(dir, 'handover', TX))).toBe(false);
+  });
+
+  it('keeps each transaction\'s folder one name under its own, so clearing a transaction named . or .. removes nothing else', () => {
+    const dir = tmp();
+    for (const tx of ['.', '..', '../x', 'a/b']) expect(path.dirname(transactionDir(tx, dir))).toBe(path.join(dir, 'handover'));
+    const store = fileStore(dir);
+    store.saveManifest(TX, manifest);
+    fs.writeFileSync(path.join(dir, 'route.json'), '{}');
+    for (const tx of ['.', '..']) {
+      store.write(journal());
+      store.clear(tx);
+    }
+    expect(fs.readdirSync(dir).sort()).toEqual(['handover', 'route.json']);
+    expect(store.manifest(TX, manifestDigest(manifest))).toEqual(manifest);
   });
 
   it('reads a journal it cannot parse as none and leaves it where it is, and sets it aside only for a run that writes one', () => {
