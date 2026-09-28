@@ -89,11 +89,11 @@ build take about 750 MB of disk. An Intel Mac also needs Xcode; see
    you press opens a terminal where Claude Code or Codex asks you to trust
    `~/.archipelago/home`.
 
-Keep the clone where it is, because `archi` and the daemon run from it. If you
-move it or clone it again, `pnpm desktop:install` in the new place points them
-there. Setup's hooks do nothing
-outside Archipelago. [What setup changes](#what-setup-changes) lists every file
-setup writes, and `archi uninstall` removes them.
+`archi` and the daemon run from the release `pnpm desktop:install` installs
+under `~/.local/share/archipelago`, so the clone is only needed to update.
+Setup's hooks do nothing outside Archipelago.
+[What setup changes](#what-setup-changes) lists every file setup writes, and
+`archi uninstall` removes them.
 
 ### Using API keys
 
@@ -306,6 +306,16 @@ Ghostty `initial-command` and `input` are ignored.
 - Each fleet is its own Home Screen app: the private fleet on port 443 and the
   next on 8443. A third fleet needs `mobile.httpsPort: 10000`.
 
+## Remote machines
+
+A fleet can also run on an always-on Linux machine, and move between it and
+the Mac with its repositories, worktrees and agent conversations. It is off
+until a fleet turns it on with `"handover": { "enabled": true }` in its
+`fleet.json`. [docs/remote-machines](docs/remote-machines/README.md) covers the
+machine it needs (Ubuntu, with the same home path as your Mac), adding it with
+`archi host add`, moving the fleet with `archi handover`, and what to do when a
+handover stops part way.
+
 ## Configuration
 
 A fleet keeps everything in its home: `~/.archipelago` for the private fleet
@@ -324,6 +334,7 @@ Its `fleet.json` holds what travels with the fleet wherever it runs, and
 | `scribe` | `fleet.json` | `agent` (default the main agent) and `model`, a model of `agent`'s CLI, or of Claude's when `agent` is unset (default `sonnet`). |
 | `mobile` | `fleet.json` | `logins` to let in (only yours when empty), extra page `origins` allowed to open a socket, and a `pushContact` (https: or mailto:) for push services. |
 | `mobile.httpsPort` | `node.json` | The tailscale serve port this fleet is reached on. |
+| `handover` | `fleet.json` | [Remote machines](docs/remote-machines/README.md): `enabled` turns them on, `exclude` adds patterns a handover leaves out, `excludeDefaults: false` drops the defaults, and `transferFleetEnv: true` carries the fleet's `.env`. |
 
 - The daemon reads both files when it starts.
   `launchctl kickstart -k gui/$(id -u)/io.github.linusroxbergh.archipelago.archid`
@@ -400,14 +411,11 @@ names them.
     archi uninstall
 
 This quits the app, removes the hooks (your own statusline stays), the launchd
-agents, the shims and each fleet's phone link, and stops the fleets' tmux
-servers so no agent keeps running out of sight. It then asks before deleting
-the fleet homes, the app, and its sign-ins, caches and preferences in `~/Library`;
-`--purge` deletes them without asking. The clone and the settings backups
-stay.
-
-Run it before you delete the clone: the launchd agents and `archi` point into
-it, and launchd would otherwise restart the missing daemon every ten seconds.
+agents, the shims, the installed releases and each fleet's phone link, and
+stops the fleets' tmux servers so no agent keeps running out of sight. It then
+asks before deleting the fleet homes, the app, and its sign-ins, caches and
+preferences in `~/Library`; `--purge` deletes them without asking. The clone
+and the settings backups stay.
 
 ## What leaves your Mac
 
@@ -423,6 +431,8 @@ leaves the Mac, beyond what your agents send:
 - For each character in a repository, the daemon runs `gh pr view` to find its
   branch's PR on GitHub.
 - `archi mobile` serves the fleet to your tailnet with `tailscale serve`.
+- A handover copies the fleet's folders and agent sessions over ssh to the
+  Linux machine you added.
 - Push notifications go through your phone's push service: Apple's, Google's
   or Mozilla's. The character's name and prompt are encrypted for your phone;
   the service sees when a push is sent, and the page's address
