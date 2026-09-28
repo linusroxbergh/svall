@@ -26,6 +26,8 @@ cp "$MAC/Info.plist" "$APP/Contents/Info.plist"
 cp "$MAC/Archipelago.icns" "$APP/Contents/Resources/Archipelago.icns"
 cp "$MAC/Resources/ghostty-theme" "$APP/Contents/Resources/ghostty-theme"
 rsync -a --delete "$SHARE/ghostty" "$SHARE/terminfo" "$APP/Contents/Resources/"
+mkdir -p "$APP/Contents/Resources/licenses"
+cp "$MAC/NOTICE" "$MAC/LICENSE.ghostty" "$APP/Contents/Resources/licenses/"
 if [ -d "$ROOT/apps/desktop/web/dist" ]; then
   rsync -a --delete "$ROOT/apps/desktop/web/dist/" "$APP/Contents/Resources/web/"
 fi
