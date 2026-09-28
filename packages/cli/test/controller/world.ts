@@ -77,6 +77,12 @@ export const info = (machineId: MachineId, over: Partial<SystemInfo> = {}): Syst
   ...over,
 });
 
+/** The line of the controller's source a request is sent from, read off the stack it is sent on. */
+export const callSite = (): number | undefined => {
+  const at = /\/controller\/handover\.ts:(\d+):/.exec(new Error().stack ?? '');
+  return at ? Number(at[1]) : undefined;
+};
+
 class Died extends Error {}
 /**
  * What strikes the call at `at`: the controller dies after it, its answer is lost, the request is lost, its machine
@@ -368,6 +374,8 @@ export class World {
   store: MemoryStore;
   infos: Record<string, Partial<SystemInfo>> = {};
   ops: string[] = [];
+  /** the controller's source line each call of `ops` was made from */
+  sites: (number | undefined)[] = [];
   violations: string[] = [];
   events: HandoverEvent[] = [];
   transfers: TransferOptions[] = [];
@@ -434,6 +442,7 @@ export class World {
     if (this.down.has(port)) throw new Error(`${port} did not answer ${name}: connection refused`);
     const k = this.n++;
     this.ops.push(`${port}:${name}`);
+    this.sites[k] = callSite();
     const f = this.fault?.at === k ? this.fault : undefined;
     if (f?.kind === 'dropped') throw new Error(`${port} did not answer ${name}: connection reset`);
     if (f?.kind === 'partition') { this.down.add(port); throw new Error(`${port} did not answer ${name}: connection refused`); }

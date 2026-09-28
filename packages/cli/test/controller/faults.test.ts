@@ -25,7 +25,10 @@ const kindsOf = (op: string): Fault['kind'][] => (op.startsWith('store:') ? ['de
 
 type Run = () => { w: World; go(): Promise<Outcome> };
 
-/** A move; one the user cancels once the destination has prepared, which aborts it; and a move whose claim asks the source about a kept commit. */
+/**
+ * A move; one the user cancels once the destination has prepared, which aborts it; a move whose claim asks the source
+ * about a kept commit; and runs whose Begin, cancelled meanwhile, or whose Commit goes unanswered, so the gateway is asked.
+ */
 const RUNS: Record<string, Run> = {
   move: () => {
     const w = new World();
@@ -42,16 +45,41 @@ const RUNS: Record<string, Run> = {
     const { w } = keptCommit({ reached: true, at: 'claim' });
     return { w, go: () => controller(w).start(trift, {}) };
   },
+  'a cancel while Begin goes unanswered': () => {
+    const w = new World();
+    const c = controller(w);
+    const begin = w.gateway.begin;
+    w.gateway.begin = async (p) => {
+      w.gateway.begin = begin;
+      await begin(p);
+      c.cancel();
+      throw new Error('gateway begin: the connection dropped before the answer');
+    };
+    return { w, go: () => c.start(trift, {}) };
+  },
+  'a Commit whose answer is lost': () => {
+    const w = new World();
+    const commit = w.gateway.commit;
+    w.gateway.commit = async (p) => {
+      w.gateway.commit = commit;
+      await commit(p);
+      throw new Error('gateway commit: the connection dropped before the answer');
+    };
+    return { w, go: () => controller(w).start(trift, {}) };
+  },
 };
 
-/** The calls each run makes, and those its cases strike: every one of a move's, and only its own of any other run's. */
-async function probeRuns(): Promise<Record<string, { ops: string[]; at: number[]; committedAt: number }>> {
+/** The calls each run makes, and those its cases strike: every one of a move's, and of any other run only those sent from a line of the controller the move never sends from. */
+async function probeRuns(): Promise<Record<string, { ops: string[]; sites: (number | undefined)[]; at: number[]; committedAt: number }>> {
   const probe = async (make: Run) => { const { w, go } = make(); await go(); return w; };
-  const move = new Set((await probe(RUNS.move)).ops);
-  const out: Record<string, { ops: string[]; at: number[]; committedAt: number }> = {};
+  // a write to the controller's store is known by its name
+  const key = (w: World, i: number) => w.sites[i] ?? w.ops[i];
+  const m = await probe(RUNS.move);
+  const move = new Set(m.ops.map((_, i) => key(m, i)));
+  const out: Record<string, { ops: string[]; sites: (number | undefined)[]; at: number[]; committedAt: number }> = {};
   for (const [name, make] of Object.entries(RUNS)) {
     const p = await probe(make);
-    out[name] = { ops: p.ops, at: p.ops.flatMap((op, i) => (name === 'move' || !move.has(op) ? [i] : [])), committedAt: opIndex(p, 'gateway:commit') };
+    out[name] = { ops: p.ops, sites: p.sites, at: p.ops.flatMap((_, i) => (name === 'move' || !move.has(key(p, i)) ? [i] : [])), committedAt: opIndex(p, 'gateway:commit') };
   }
   return out;
 }
@@ -113,6 +141,8 @@ type Script = {
   /** what happens before the run whose requests are struck */
   before?: (w: real.World) => Promise<void>;
   go: (w: real.World) => Promise<Outcome>;
+  /** the label of the first request the cases strike, when an earlier one is another script's */
+  from?: string;
   /** the label of the first request the cases leave alone, as a later script's */
   until?: string;
 };
@@ -140,6 +170,22 @@ const unreadable = async (w: real.World): Promise<void> => {
   fs.writeFileSync(path.join(w.ctlDir, 'handover.json'), '{"version":1,');
 };
 
+/** An abort here, before whose gateway abort a resume on trift takes the handover whole to trift. */
+async function overtaken(w: real.World): Promise<Outcome> {
+  const a = party(w, 'mac', 'abort');
+  const held = w.lifeOfController(a.c);
+  w.gate = async ({ life, label }) => {
+    if (life !== held || label !== 'gateway abort') return;
+    w.gate = undefined;
+    await party(w, 'trift', 'resume').go();
+  };
+  try {
+    return await a.go();
+  } finally {
+    w.gate = undefined;
+  }
+}
+
 const SCRIPTS: Record<string, Script> = {
   move: { go: (w) => real.play(w, 'move') },
   'cancel once prepared': { go: (w) => real.play(w, 'abort') },
@@ -150,11 +196,13 @@ const SCRIPTS: Record<string, Script> = {
   'resume once committed': { before: crashed('controller.commit'), go: resume },
   // the journal is rebuilt from the daemons', and the destination asked to prepare again with nothing landed
   "resume from the daemons' journals once prepared": { before: unreadable, go: resume },
+  // the gateway answers the abort at the next generation, and is asked where the fleet went
+  'abort once prepared, overtaken by a resume on trift': { before: (w) => diesAt(w, 'gateway ready'), go: overtaken, from: 'gateway abort' },
 };
 
 /** Each script's requests, run once at collection: a request a script shares with the move before they part is the move's to strike. */
-async function probeScripts(): Promise<Record<string, { labels: string[]; at: number[] }>> {
-  const out: Record<string, { labels: string[]; at: number[] }> = {};
+async function probeScripts(): Promise<Record<string, { labels: string[]; sites: (number | undefined)[]; at: number[] }>> {
+  const out: Record<string, { labels: string[]; sites: (number | undefined)[]; at: number[] }> = {};
   for (const [name, s] of Object.entries(SCRIPTS)) {
     const w = await real.World.create();
     const disarm = armFailpoints((n, edge) => w.hit(n, edge));
@@ -165,11 +213,11 @@ async function probeScripts(): Promise<Record<string, { labels: string[]; at: nu
       const labels = w.requests.slice(from);
       const move = out.move?.labels;
       const parted = s.before || !move ? 0 : labels.findIndex((l, i) => l !== move[i]);
-      const [start, end] = [parted < 0 ? labels.length : parted, s.until ? labels.indexOf(s.until) : labels.length];
-      if (end < 0) throw new Error(`${name}: its run sent no ${s.until}, but ${labels.join(', ')}`);
+      const [start, end] = [s.from ? labels.indexOf(s.from) : parted < 0 ? labels.length : parted, s.until ? labels.indexOf(s.until) : labels.length];
+      if (start < 0 || end < 0) throw new Error(`${name}: its run sent no ${start < 0 ? s.from : s.until}, but ${labels.join(', ')}`);
       const at = labels.flatMap((_, i) => (i >= start && i < end ? [i] : []));
       if (!at.length) throw new Error(`${name}: its run sent no request of its own to strike`);
-      out[name] = { labels, at };
+      out[name] = { labels, sites: w.sites.slice(from), at };
     } finally {
       disarm();
       await w.stop();
@@ -576,18 +624,18 @@ describe('a controller with no journal of its own', () => {
 // ---- what keeps a new request of the controller from going unstruck
 
 describe('the requests the controller sends', () => {
-  /** Each daemon method the controller calls and each gateway operation it asks, read from its source. */
-  const sendable = (): string[] => {
-    const src = fs.readFileSync(path.join(import.meta.dirname, '../../src/controller/handover.ts'), 'utf8');
-    return [...new Set([...[...src.matchAll(/daemon\.call\('([\w.]+)'/g)].map((m) => m[1]), ...[...src.matchAll(/gateway\.(\w+)\(/g)].map((m) => `gateway ${m[1]}`)])].sort();
+  /** Each line of the controller's source that calls a daemon method or asks a gateway operation, with what it sends. */
+  const sendable = (): Map<number, string> => {
+    const lines = fs.readFileSync(path.join(import.meta.dirname, '../../src/controller/handover.ts'), 'utf8').split('\n');
+    return new Map(lines.flatMap((l, i) => [...l.matchAll(/daemon\.call\('([\w.]+)'|gateway\.(\w+)\(/g)].map((m): [number, string] => [i + 1, m[1] ?? `gateway ${m[2]}`])));
   };
 
-  it('are each struck in one world or the other, and rsync over the link in the real one', () => {
-    const simulated = Object.values(RAN).flatMap((r) => r.at.map((i) => r.ops[i].replace(/^(mac|trift):/, '').replace(/^gateway:/, 'gateway ')));
-    const realOnes = Object.values(PROBED).flatMap((p) => p.at.map((i) => p.labels[i].replace(/^(mac|trift) /, '')));
-    const struckKinds = new Set([...simulated, ...realOnes]);
-    expect(sendable().length).toBeGreaterThan(15);
-    expect(sendable().filter((k) => !struckKinds.has(k))).toEqual([]);
+  it('are each struck, from every line that sends one, in one world or the other, and rsync over the link in the real one', () => {
+    const struck = new Set([...Object.values(RAN).flatMap((r) => r.at.map((i) => r.sites[i])), ...Object.values(PROBED).flatMap((p) => p.at.map((i) => p.sites[i]))]);
+    const sites = sendable();
+    expect(sites.size).toBeGreaterThan(25);
+    expect([...sites].filter(([line]) => !struck.has(line)).map(([line, what]) => `${what} (handover.ts:${line})`)).toEqual([]);
+    const realOnes = Object.values(PROBED).flatMap((p) => p.at.map((i) => p.labels[i]));
     expect(realOnes).toEqual(expect.arrayContaining(['link rsync', 'link rsync --dry-run', 'link rsync --version']));
   });
 });

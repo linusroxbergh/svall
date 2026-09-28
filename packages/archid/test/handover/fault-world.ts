@@ -30,6 +30,7 @@ import { gatewayOf } from '../../../cli/src/controller/reach.js';
 import { fileStore, forgettable, type ControllerStore } from '../../../cli/src/controller/recovery.js';
 import type { RunRsync } from '../../../cli/src/controller/rsync.js';
 import { transfer as runTransfer, type Master } from '../../../cli/src/controller/transfer.js';
+import { callSite } from '../../../cli/test/controller/world.js';
 import { makeHome } from '../helpers.js';
 
 export const fleetId = FleetId.parse(crypto.randomUUID());
@@ -250,6 +251,8 @@ export class World {
   controllerLife: Life = this.life('controller');
   /** every request a controller sent, as `<party> <name>`, in the order sent */
   requests: string[] = [];
+  /** the controller's source line each of `requests` was sent from */
+  sites: (number | undefined)[] = [];
   /** the fault on the request at this index of `requests` */
   message?: { at: number; kind: MessageKind };
   /** awaited before a controller's `n`th request goes out, so a test can run another controller there */
@@ -513,6 +516,8 @@ export class World {
 
   /** One request of a controller to `party`, struck by the message fault aimed at it; a request held back goes out after the next one there. */
   private async request<T>(party: string, name: string, send: () => Promise<T>): Promise<T> {
+    // read before the gate's await, while the controller's own frame is still on the stack
+    const site = callSite();
     const life = als.getStore();
     if (life && this.gate) {
       const n = this.sent.get(life) ?? 0;
@@ -523,6 +528,7 @@ export class World {
     const unanswered = (why: string) => new Unanswered(`${party} did not answer ${name}: ${why}`);
     if (this.cut.has(party)) throw unanswered('connection refused');
     const k = this.requests.push(`${party} ${name}`) - 1;
+    this.sites[k] = site;
     const kind = this.message?.at === k ? this.message.kind : undefined;
     if (kind) this.trace.push(`${kind.toUpperCase()} ${party} ${name}`);
     if (kind === 'dropped') throw unanswered('connection reset');
