@@ -17,16 +17,32 @@ const GATEWAY_CLIENT = read('../../archid/src/gateway/client.ts');
 const all = (text: string, pattern: RegExp): string[] => [...text.matchAll(pattern)].map((m) => m[1]);
 const quoted = (text: string): string[] => all(text, /'([^']+)'/g);
 
-/** The string literals of a union declared as `start …;`, a type written on one line. */
+/** The literals of a type written as `'a' | 'b'`; one written any other way, such as through an alias, is refused. */
+function literals(type: string, what: string): string[] {
+  const body = type.trim();
+  if (!/^\|?\s*'[^']+'(\s*\|\s*'[^']+')*$/.test(body)) throw new Error(`${what} is not a union of string literals: ${body}`);
+  return quoted(body);
+}
+
+/** The literals of a union declared as `start …;`. */
 function union(text: string, start: string): string[] {
   const at = text.indexOf(start);
   if (at < 0) throw new Error(`no ${start}`);
-  return quoted(text.slice(at + start.length, text.indexOf(';', at)));
+  return literals(text.slice(at + start.length, text.indexOf(';', at)), start);
 }
 
 /** The literals a field takes in every member of a union, as `field: 'a' | 'b'`. */
 const fieldValues = (text: string, field: string): string[] =>
-  all(text, new RegExp(`${field}: ((?:'[^']+'(?:\\s*\\|\\s*)?)+)`, 'g')).flatMap(quoted);
+  all(text, new RegExp(`\\b${field}: ([^;,}]+)`, 'g')).flatMap((type) => literals(type, `${field}:`));
+
+// the codes the code names only in its text, not in a list it exports
+const named = {
+  statuses: (text: string) => all(text, /\|\s*\{\s*status: '([^']+)'/g),
+  events: (text: string) => all(text, /event: '(handover\.[^']+)'/g),
+  steps: (text: string) => all(text, /run\.step\('([^']+)'/g),
+  checks: (text: string) => [...all(text, /name: '([^']+)'/g), ...all(text, /(?:failed|unitCheck)\('([^']+)'/g)],
+  failures: (text: string) => all(text, /new AuthorityFailure\('([^']+)'/g),
+};
 
 /** The first cell of every table row under `heading`, down to the next heading as high or higher. */
 function listed(heading: string): string[] {
@@ -51,19 +67,16 @@ const CODES: Record<string, () => string[]> = {
   '## Handover phases': () => [...HANDOVER_PHASES],
   '## Blockers and warnings': () => [...HandoverIssueCode.options],
   '## Daemon refusals': () => HandoverError.options.map((o) => o.shape.code.value),
-  '## Gateway answers': () => [...AUTHORITY_ERROR_CODES, ...all(GATEWAY_CLIENT, /new AuthorityFailure\('([a-z_]+)'/g)],
-  '## How a run ends': () => all(EVENTS, /\|\s*\{\s*status: '([a-z]+)'/g),
+  '## Gateway answers': () => [...AUTHORITY_ERROR_CODES, ...named.failures(GATEWAY_CLIENT)],
+  '## How a run ends': () => named.statuses(EVENTS),
   '### Standing': () => union(RECOVERY, 'export type Standing ='),
   '### Action': () => union(RECOVERY, '  action:'),
-  '## Events': () => all(EVENTS, /event: '(handover\.[a-z]+)'/g),
+  '## Events': () => named.events(EVENTS),
   '## Connection errors': () => union(SSH, 'export type SshErrorKind ='),
   '### Step statuses': () => union(HOST, 'export type StepStatus ='),
   // an agent's step and check are named by its kind
-  '### Steps': () => [...all(HOST, /run\.step\('([a-z]+)'/g), ...AGENT_KINDS],
-  '### Doctor checks': () => [
-    ...[DOCTOR, HOST].flatMap((text) => [...all(text, /name: '([a-z ]+)'/g), ...all(text, /(?:failed|unitCheck)\('([a-z ]+)'/g)]),
-    ...AGENT_KINDS,
-  ],
+  '### Steps': () => [...named.steps(HOST), ...AGENT_KINDS],
+  '### Doctor checks': () => [...named.checks(DOCTOR), ...named.checks(HOST), ...AGENT_KINDS],
   '### What the gateway holds': () => fieldValues(RECOVER.slice(RECOVER.indexOf('export type Held ='), RECOVER.indexOf('/** What one machine holds')), 'state'),
   '### Results': () => fieldValues(RECOVER, 'result'),
 };
@@ -77,4 +90,14 @@ describe('the error catalogue', () => {
       expect(listed(heading)).toHaveLength(new Set(listed(heading)).size);
     });
   }
+
+  it('reads a code whatever its name holds, and refuses a type it cannot read', () => {
+    expect(named.steps("await run.step('agent-login', f); await run.step('rsync2', g);")).toEqual(['agent-login', 'rsync2']);
+    expect(named.statuses("  | { status: 'timed_out'; phase: HandoverPhase }")).toEqual(['timed_out']);
+    expect(named.events("  | { event: 'handover.gave_up'; data: { pid: number } }")).toEqual(['handover.gave_up']);
+    expect(named.checks("{ name: 'gh-auth', status: 'ok' }; checks.push(failed('disk2', err));")).toEqual(['gh-auth', 'disk2']);
+    expect(named.failures("throw new AuthorityFailure('socket_2big', message);")).toEqual(['socket_2big']);
+    expect(() => union("export type SshErrorKind = TunnelKind | 'auth';", 'export type SshErrorKind =')).toThrow(/not a union of string literals/);
+    expect(() => fieldValues("  | { state: 'absent' }\n  | { state: GoneState; message: string };", 'state')).toThrow(/not a union of string literals/);
+  });
 });
