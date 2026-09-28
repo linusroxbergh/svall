@@ -26,6 +26,23 @@ runIf('startDaemon', () => {
     cleanHomes();
   });
 
+  it('keeps the fleet home, its keys and its hook socket to this account, a home an earlier start left open included', async () => {
+    const home = makeHome();
+    homes.push(home);
+    fs.chmodSync(home, 0o755);
+    const d = await start({ home, port: 0, log: silentLogger });
+    const p = resolvePaths(home);
+    const mode = (f: string): number => fs.statSync(f).mode & 0o777;
+    try {
+      expect(mode(home)).toBe(0o700);
+      for (const f of [p.token, p.mobileKey, p.vapid]) expect(mode(f), f).toBe(0o600);
+      expect(fs.statSync(p.hooksSock).isSocket()).toBe(true);
+      expect(mode(p.hooksSock)).toBe(0o600);
+    } finally {
+      await d.stop();
+    }
+  });
+
   it('writes the codex hooks when the private fleet starts, and no other fleet does', async () => {
     const codex = codexPaths();
     fs.mkdirSync(codex.dir, { recursive: true });
