@@ -26,6 +26,7 @@ import type { Outcome } from '../../../cli/src/controller/events.js';
 import { Handover, Refused, type Daemon, type Side } from '../../../cli/src/controller/handover.js';
 import { gatewayOf } from '../../../cli/src/controller/reach.js';
 import { fileStore, type ControllerStore } from '../../../cli/src/controller/recovery.js';
+import type { RunRsync } from '../../../cli/src/controller/rsync.js';
 import { transfer as runTransfer, type Master } from '../../../cli/src/controller/transfer.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 
@@ -93,6 +94,10 @@ const fleetId = FleetId.parse(crypto.randomUUID());
 const MAC = MachineId.parse(crypto.randomUUID());
 const TRIFT = MachineId.parse(crypto.randomUUID());
 const G = 0;
+// di's Claude session, launched with a flag its resume has to carry
+const SID = crypto.randomUUID();
+const DI_LAUNCH = 'claude --effort high';
+const DI_RESUME = `claude --effort 'high' --resume ${SID}`;
 
 /** What a process that dies at a failpoint throws: nothing after it runs. */
 class Crash extends Error {
@@ -184,8 +189,12 @@ class Machine {
     for (const p of this.windows.values()) if (p.job && p.pid + 1 === group) delete p.job;
   };
 
-  /** The fleet as the daemon `life` runs it: opening a terminal is idempotent, as the real one's is. */
+  /**
+   * The fleet as the daemon `life` runs it: opening a terminal is idempotent, as the real one's is, runs the command
+   * it revives with, and an agent resumed there reports its SessionStart.
+   */
   fleet(life: Life, store: Store, instance: () => Instance | undefined) {
+    const started = new Set<(id: string, term: 2 | undefined, sessionId: string) => void>();
     const open = async (id: string, term?: 2) => {
       alive(life);
       const key = term ? `${id}-2` : id;
@@ -194,7 +203,10 @@ class Machine {
       const c = store.state.characters[id];
       const slot = term ? c.second : c;
       if (slot?.tmux) return c;
-      const win = [...this.windows.values()].find((x) => x.name === key) ?? this.window(key, (term ? c.second?.cwd : undefined) ?? c.cwd);
+      const command = slot?.revive?.command;
+      const win = [...this.windows.values()].find((x) => x.name === key) ?? this.window(key, (term ? c.second?.cwd : undefined) ?? c.cwd, command ? [command] : undefined);
+      const session = command && slot?.agent?.sessionId;
+      if (session) setImmediate(() => { if (!life.dead) for (const fn of started) fn(id, term, session); });
       store.update((d) => {
         const cur = d.characters[id];
         const s = term ? (cur.second ??= { cwd: cur.cwd, unread: false }) : cur;
@@ -223,7 +235,10 @@ class Machine {
       reconcileNow: async () => { alive(life); },
       reviveCharacter: (id: string) => open(id),
       openSecond: (id: string) => open(id, 2),
-      onSessionStart: () => () => {},
+      onSessionStart: (fn: (id: string, term: 2 | undefined, sessionId: string) => void) => {
+        started.add(fn);
+        return () => { started.delete(fn); };
+      },
       carries: () => {},
     };
   }
@@ -246,6 +261,7 @@ class World {
   readonly home = path.join(this.base, 'home');
   readonly prefix = path.join(this.base, 'gw');
   readonly ctlDir = path.join(this.base, 'ctl');
+  readonly claudeHome = path.join(this.home, '.claude');
   readonly mac: Machine;
   readonly trift: Machine;
   violations: string[] = [];
@@ -274,10 +290,14 @@ class World {
 
   static async create(): Promise<World> {
     const w = new World();
-    for (const d of ['work/ada', 'work/bo', 'work/cy', 'mc']) fs.mkdirSync(path.join(w.home, d), { recursive: true });
+    for (const d of ['work/ada', 'work/bo', 'work/cy', 'work/di', 'mc', '.claude/projects/-work-di']) fs.mkdirSync(path.join(w.home, d), { recursive: true });
     fs.writeFileSync(path.join(w.home, 'work/ada/notes.md'), 'ada\n');
     fs.writeFileSync(path.join(w.home, 'work/bo/index.ts'), 'export {};\n');
+    fs.writeFileSync(path.join(w.home, 'work/di/plan.md'), 'di\n');
     fs.writeFileSync(path.join(w.home, 'mc/README.md'), 'mission control\n');
+    const transcript = path.join(w.claudeHome, 'projects/-work-di', `${SID}.jsonl`);
+    fs.writeFileSync(transcript, `${JSON.stringify({ type: 'user', sessionId: SID, cwd: path.join(w.home, 'work/di') })}\n`);
+    fs.writeFileSync(path.join(w.claudeHome, '.claude.json'), JSON.stringify({ projects: { [path.join(w.home, 'work/di')]: { hasTrustDialogAccepted: true } } }));
     fs.mkdirSync(w.ctlDir, { recursive: true });
     for (const m of [w.mac, w.trift]) {
       fs.mkdirSync(m.paths.home, { recursive: true });
@@ -285,13 +305,18 @@ class World {
       fs.writeFileSync(m.paths.owner, JSON.stringify({ fleetId, generation: G, ownerMachineId: MAC }));
     }
     const work = (p: string) => path.join(w.home, 'work', p);
-    const [ada, adaSecond, bo] = [w.mac.window('c_ada', work('ada')), w.mac.window('c_ada-2', work('ada')), w.mac.window('c_bo', work('bo'), ['npm run dev'])];
+    const [ada, adaSecond, bo, di] = [
+      w.mac.window('c_ada', work('ada')), w.mac.window('c_ada-2', work('ada')), w.mac.window('c_bo', work('bo'), ['npm run dev']), w.mac.window('c_di', work('di'), [DI_LAUNCH]),
+    ];
     const store = Store.load(w.mac.paths.state, () => {});
     store.update((d) => {
       for (const c of [
         char('c_ada', work('ada'), { tmux: { windowId: ada.windowId, paneId: ada.paneId }, second: { cwd: work('ada'), unread: false, tmux: { windowId: adaSecond.windowId, paneId: adaSecond.paneId } } }),
         char('c_bo', work('bo'), { tmux: { windowId: bo.windowId, paneId: bo.paneId } }),
         char('c_cy', work('cy'), { revive: { command: '' } }),
+        char('c_di', work('di'), {
+          tmux: { windowId: di.windowId, paneId: di.paneId }, agent: { kind: 'claude', sessionId: SID, transcriptPath: transcript, status: 'idle', lastActivityAt: 0 },
+        }),
       ]) d.characters[c.id] = c;
     });
     await w.startGateway();
@@ -475,7 +500,8 @@ class World {
       };
       const authority = () => ({ get: (id: FleetId) => this.authorityGet(id) });
       const handover = new HandoverService({
-        ownership, journal: new MortalJournal(paths, life), agents: async () => [], fleet,
+        ownership, journal: new MortalJournal(paths, life), fleet,
+        agents: async () => [{ kind: 'claude', version: '2.1.280', home: this.claudeHome, loggedIn: true, hooks: true }],
         source: {
           paths, store: mortal, fleet, tmux: m.tmux, viewers: { detach: async () => {} }, processes: m.processes, kill: m.kill, clock, authority, git: noGit,
           rest: { pollMs: 500, settleMs: 1000, waitMs: 5000 }, log,
@@ -559,8 +585,19 @@ class World {
         ...(m === this.trift && { master: async () => master }),
       };
     };
-    // both machines share one disk here, so every root already lies where rsync would put it
-    const rsync = async () => { alive(life); return { code: 0, signal: null, stderr: '' }; };
+    // both machines share one disk here, so every root already lies where rsync would put it; a session's files go to its stage
+    const rsync: RunRsync = async (_rsync, argv) => {
+      alive(life);
+      const list = argv.find((a) => a.startsWith('--files-from='))?.slice('--files-from='.length);
+      if (list && !argv.includes('--dry-run')) {
+        const [from, to] = argv.slice(-2).map((p) => p.replace(/^[^/]*:/, ''));
+        for (const file of fs.readFileSync(list, 'utf8').split('\0').filter(Boolean)) {
+          fs.mkdirSync(path.dirname(path.join(to, file)), { recursive: true });
+          fs.copyFileSync(path.join(from, file), path.join(to, file));
+        }
+      }
+      return { code: 0, signal: null, stderr: '' };
+    };
     return new Handover({
       fleetId, store, gateway, local: MAC, machines: [MAC, TRIFT], side,
       transfer: (o) => runTransfer({ ...o, deps: { run: rsync } }), rsync: async () => '/usr/bin/rsync', stateDir: this.ctlDir,
@@ -634,7 +671,9 @@ function settledOn(w: World): 'source' | 'destination' {
   expect(owner.current!.active).toBe(true);
   expect(other.can()).toBe(false);
   expect(other.current!.ownership.record()).toMatchObject({ generation: record.generation, ownerMachineId: owner.id });
-  expect([...owner.windows.values()].map((x) => x.name).sort()).toEqual(['c_ada', 'c_ada-2', 'c_bo']);
+  expect([...owner.windows.values()].map((x) => x.name).sort()).toEqual(['c_ada', 'c_ada-2', 'c_bo', 'c_di']);
+  // di's Claude runs as it was launched, or resumed with the flags it was launched with
+  expect([DI_LAUNCH, DI_RESUME]).toContain([...owner.windows.values()].find((x) => x.name === 'c_di')?.job?.join(' | '));
   expect(other.windows.size).toBe(0);
   expect(fs.existsSync(path.join(w.ctlDir, 'handover.json'))).toBe(false);
   expect(w.errors).toEqual([]);
@@ -695,13 +734,13 @@ const REACH: Record<Failpoint, { scenario: Scenario; times: number; after?: Targ
   'source.rest.terminated': { scenario: 'move', times: 1 },
   'source.rest.terminate': { scenario: 'move', times: 1 },
   'source.rest.stopped': { scenario: 'move', times: 1 },
-  'source.rest.kill': { scenario: 'move', times: 3 },
+  'source.rest.kill': { scenario: 'move', times: 4 },
   'source.freeze.manifest': { scenario: 'move', times: 1 },
   'source.freeze.digest': { scenario: 'move', times: 1 },
   // only a source that died between its journal and its surrender starts by surrendering
   'source.startup.surrender': { scenario: 'move', times: 0, after: { name: 'source.freeze.journal', edge: 'after', nth: 1 } },
   'source.abort.journal': { scenario: 'abort', times: 1 },
-  'source.revive': { scenario: 'abort', times: 3 },
+  'source.revive': { scenario: 'abort', times: 4 },
   'source.abort.manifest': { scenario: 'abort', times: 1 },
   'source.release.journal': { scenario: 'abort', times: 1 },
   'source.release.unfreeze': { scenario: 'abort', times: 1 },
@@ -710,7 +749,7 @@ const REACH: Record<Failpoint, { scenario: Scenario; times: number; after?: Targ
   'source.complete.install': { scenario: 'move', times: 1 },
   'source.complete.manifest': { scenario: 'move', times: 1 },
   'source.complete.journal': { scenario: 'move', times: 1 },
-  'destination.claim.root': { scenario: 'move', times: 4 },
+  'destination.claim.root': { scenario: 'move', times: 5 },
   'destination.verify.journal': { scenario: 'move', times: 1 },
   'destination.verify.landed': { scenario: 'move', times: 1 },
   'destination.verify.record': { scenario: 'move', times: 1 },
@@ -724,8 +763,8 @@ const REACH: Record<Failpoint, { scenario: Scenario; times: number; after?: Targ
   'destination.promote.state': { scenario: 'move', times: 1 },
   'destination.activate.journal': { scenario: 'move', times: 1 },
   'destination.activate.fleet': { scenario: 'move', times: 1 },
-  'destination.activate.open': { scenario: 'move', times: 3 },
-  'destination.activate.record': { scenario: 'move', times: 3 },
+  'destination.activate.open': { scenario: 'move', times: 4 },
+  'destination.activate.record': { scenario: 'move', times: 4 },
   'destination.complete.seal': { scenario: 'move', times: 1 },
   'destination.complete.clear': { scenario: 'move', times: 1 },
   'destination.complete.journal': { scenario: 'move', times: 1 },
@@ -743,8 +782,8 @@ const REACH: Record<Failpoint, { scenario: Scenario; times: number; after?: Targ
   'controller.manifest': { scenario: 'move', times: 1 },
   'controller.landed': { scenario: 'move', times: 1 },
   'controller.clear': { scenario: 'move', times: 1 },
-  'controller.rsync': { scenario: 'move', times: 4 },
-  'controller.verify': { scenario: 'move', times: 4 },
+  'controller.rsync': { scenario: 'move', times: 6 },
+  'controller.verify': { scenario: 'move', times: 6 },
   'controller.commit': { scenario: 'move', times: 1 },
 };
 
@@ -926,7 +965,7 @@ describe('a stale owner.json beside a surrendered journal', () => {
       await w.boot(w.mac);
       expect(w.mac.can()).toBe(false);
       expect(surrendered(w).surrendered).toBe(true);
-      expect(w.mac.windows.size).toBe(3);
+      expect(w.mac.windows.size).toBe(4);
       if (w.away) await w.startGateway();
       await w.recover('resume');
       expect(w.violations).toEqual([]);

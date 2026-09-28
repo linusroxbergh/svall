@@ -21,7 +21,8 @@ export const SourceJournal = z.object({
   ...Common,
   role: z.literal('source'),
   manifestDigest: Sha256.optional(),
-  stoppedTerminals: z.array(Terminal).default([]),
+  // with the launch flags its agent resumes with, where it has any
+  stoppedTerminals: z.array(Terminal.extend({ flags: z.array(z.string()).optional() })).default([]),
   // foreground jobs the user chose to end, each written before its signal was sent
   terminated: z.array(Terminal.extend({ processes: z.array(z.string()) })).default([]),
   error: z.string().optional(),

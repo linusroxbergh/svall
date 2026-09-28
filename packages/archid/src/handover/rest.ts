@@ -327,17 +327,20 @@ async function layToRest(
   // before any window closes, so an abort knows which terminals the handover stopped
   boundary('source.rest.stopped', () => recordJournal(deps.journal, now, (j) => {
     const known = new Set(j.stoppedTerminals.map(keyOf));
-    return { stoppedTerminals: [...j.stoppedTerminals, ...open.filter(({ t }) => !known.has(t.key)).map(({ t }) => refOf(t))] };
+    const added = open.filter(({ t }) => !known.has(t.key)).map(({ t }) => ({ ...refOf(t), ...(t.flags?.length && { flags: t.flags }) }));
+    return { stoppedTerminals: [...j.stoppedTerminals, ...added] };
   }));
   for (const id of new Set(open.map(({ t }) => t.characterId))) await bounded('tmux detach-client', (signal) => deps.viewers.detach(id, signal));
   const byKey = new Map(tracks.map((t) => [t.key, t]));
-  const { transactionId } = sourceJournal(deps.journal);
-  // the agent each terminal carried before the handover stopped it: its exit hook may have taken it since
+  const { transactionId, stoppedTerminals } = sourceJournal(deps.journal);
+  const stopped = new Map(stoppedTerminals.map((s) => [keyOf(s), s]));
+  // the agent each terminal carried before the handover stopped it: its exit hook may have taken it since; one whose
+  // window a rest that died closed has no track, and keeps the launch flags that rest recorded
   const lay = (d: FleetState, t: TerminalRef, closed = false) => {
     const c = d.characters[t.characterId];
     const slot = c && (t.term === 2 ? c.second : c);
     if (!c || !slot?.tmux) return;
-    const { agent, flags } = byKey.get(keyOf(t)) ?? {};
+    const { agent, flags } = byKey.get(keyOf(t)) ?? { agent: undefined, flags: stopped.get(keyOf(t))?.flags };
     if (agent) slot.agent = agent;
     if (closed) slot.restedBy = transactionId;
     if (t.term !== 2) { markDormant(c, flags); return; }
@@ -351,7 +354,6 @@ async function layToRest(
     deps.store.update((d) => lay(d, t, true));
   }
   // and the terminals whose window had already gone, among them any whose window a rest that died closed for this handover
-  const stopped = new Set(sourceJournal(deps.journal).stoppedTerminals.map(keyOf));
   deps.store.update((d) => {
     for (const id of Object.keys(d.characters)) for (const t of [{ characterId: id }, { characterId: id, term: 2 as const }]) lay(d, t, stopped.has(keyOf(t)));
   });

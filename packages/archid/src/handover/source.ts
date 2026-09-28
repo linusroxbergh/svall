@@ -470,8 +470,8 @@ export class SourceHandover {
         const c = d.characters[t.characterId];
         const slot = t.term === 2 ? c?.second : c;
         if (!c || !slot?.tmux || live.has(slot.tmux.windowId)) continue;
-        if (t.term === 2) markSlotDormant(slot);
-        else markDormant(c);
+        if (t.term === 2) markSlotDormant(slot, t.flags);
+        else markDormant(c, t.flags);
       }
     });
     for (const t of stopped) {
