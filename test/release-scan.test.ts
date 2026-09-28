@@ -1,0 +1,158 @@
+import { execFileSync, spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
+import { scan } from '../scripts/release-scan.mjs';
+
+const SCRIPT = path.join(import.meta.dirname, '../scripts/release-scan.mjs');
+const HOME = '/Users/builder';
+const CHECKOUT = '/Users/builder/src/archipelago';
+const TMP = '/private/var/folders/xy/abc123/T';
+const where = { home: HOME, checkout: CHECKOUT, tmp: TMP };
+
+const dirs: string[] = [];
+afterEach(() => { for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
+
+const tmp = (): string => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'archi-release-scan-'));
+  dirs.push(d);
+  return d;
+};
+
+/** A release tree under releases/<version>/ holding `files`, as the build stages one. */
+function release(files: Record<string, string> = {}): string {
+  const root = tmp();
+  const stage = path.join(root, 'releases', 'v1.0.0');
+  const all: Record<string, string> = {
+    'bin/archi': '#!/bin/sh\nexec "$ARCHI_RELEASE_ROOT/node/bin/node" "$ARCHI_RELEASE_ROOT/lib/archi.mjs" "$@"\n',
+    'lib/archi.mjs': "import fs from 'node:fs';\nimport { createRequire as __cr } from 'node:module';\nconst ws = __require(\"bufferutil\");\nconst u = __require(\"util\");\n",
+    'hooks/agent-hook.mjs': "import net from 'node:net';\n",
+    'node/bin/node': 'ELF built at /Users/admin/build/ws/out/../deps/cares/src/lib/',
+    'web-mobile/index.html': '<script type="module" src="./assets/index.js"></script>',
+    'release.json': '{"version":"v1.0.0"}\n',
+    ...files,
+  };
+  for (const [rel, text] of Object.entries(all)) {
+    fs.mkdirSync(path.dirname(path.join(stage, rel)), { recursive: true });
+    fs.writeFileSync(path.join(stage, rel), text);
+  }
+  return root;
+}
+
+const rules = (dir: string, o = {}): string[] => scan([dir], { ...where, ...o }).hits.map((h) => `${h.path} ${h.rule}`);
+
+describe('a release with nothing in it that should not be there', () => {
+  test('passes, with Node\'s own build paths in the pinned runtime and the optional modules the bundle falls back from', () => {
+    expect(rules(release())).toEqual([]);
+  });
+});
+
+describe('secrets', () => {
+  test('a private key, tokens and keys are hits, and the report never repeats the secret', () => {
+    const pem = `-----BEGIN OPENSSH PRIVATE KEY-----\n${'b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQ'.repeat(3)}\n-----END OPENSSH PRIVATE KEY-----\n`;
+    const token = `sk-ant-oat01-${'Q'.repeat(40)}`;
+    const dir = release({
+      'home/CLAUDE.md': pem,
+      'lib/archid.mjs': `const t = "${token}";\nconst g = "ghp_${'a1B2'.repeat(9)}";\n`,
+      'web-mobile/assets/index.js': `k="AKIA${'Z'.repeat(16)}";s="tskey-auth-${'k'.repeat(20)}"`,
+    });
+    const { hits } = scan([dir], where);
+    expect(hits.map((h) => `${h.path} ${h.rule}`).sort()).toEqual([
+      'releases/v1.0.0/home/CLAUDE.md private key',
+      'releases/v1.0.0/lib/archid.mjs Anthropic key',
+      'releases/v1.0.0/lib/archid.mjs GitHub token',
+      'releases/v1.0.0/web-mobile/assets/index.js AWS key',
+      'releases/v1.0.0/web-mobile/assets/index.js Tailscale key',
+    ]);
+    const said = JSON.stringify(hits);
+    expect(said).not.toContain(token);
+    expect(said).not.toContain('Q'.repeat(20));
+  });
+
+  test('a PEM header alone, as a TLS library carries one, is not a key', () => {
+    expect(rules(release({ 'node/bin/node': 'fmt -----BEGIN %s----- and -----BEGIN PRIVATE KEY-----' }))).toEqual([]);
+  });
+
+  test('a credential file is a hit by its name', () => {
+    expect(rules(release({ 'home/.credentials.json': '{}', 'agent-profiles/id_ed25519': 'x', 'release/signing.key': 'x' })).sort()).toEqual([
+      'releases/v1.0.0/agent-profiles/id_ed25519 credential file',
+      'releases/v1.0.0/home/.credentials.json credential file',
+      'releases/v1.0.0/release/signing.key credential file',
+    ]);
+  });
+});
+
+describe('developer paths', () => {
+  test('any /Users/ path, and this builder\'s home, checkout and temp folder, are hits', () => {
+    expect(rules(release({
+      'lib/archi.mjs': "import fs from 'node:fs';\nconst a = '/Users/someone/x';\n",
+      'systemd/archid.service.in': `ExecStart=${CHECKOUT}/node_modules/.bin/tsx\n`,
+      'bin/rsync': `debug map ${TMP}/archi-rsync-1/flist.o`,
+    })).sort()).toEqual([
+      'releases/v1.0.0/bin/rsync developer path',
+      'releases/v1.0.0/lib/archi.mjs developer path',
+      'releases/v1.0.0/systemd/archid.service.in developer path',
+    ]);
+  });
+
+  test('the pinned runtime is held only to this builder\'s paths, not to Node\'s', () => {
+    expect(rules(release({ 'node/bin/node': `/Users/admin/build/ws/out and ${HOME}/.nvm` }))).toEqual(['releases/v1.0.0/node/bin/node developer path']);
+  });
+
+  test('a home or temp folder too short to mean anything is not looked for', () => {
+    expect(rules(release({ 'lib/archid.mjs': "const t = '/tmp/x'; const r = '/root';\n" }), { home: '/root', tmp: '/tmp' })).toEqual([]);
+  });
+});
+
+describe('checkout dependencies', () => {
+  test('a module the release does not carry, a link out of it and a checkout folder are hits', () => {
+    const dir = release({
+      'lib/archi.mjs': "import fs from 'node:fs';\nimport { z } from 'zod';\nconst p = require(\"@archipelago/protocol\");\n",
+      'hooks/claude-status.mjs': "import x from '../lib/missing.mjs';\n",
+      'lib/node_modules/zod/index.js': '',
+    });
+    fs.symlinkSync(CHECKOUT, path.join(dir, 'releases/v1.0.0/lib/checkout'));
+    fs.symlinkSync('../../../../elsewhere', path.join(dir, 'releases/v1.0.0/lib/up'));
+    fs.symlinkSync('archi.mjs', path.join(dir, 'releases/v1.0.0/lib/same'));
+    expect(rules(dir).sort()).toEqual([
+      'releases/v1.0.0/hooks/claude-status.mjs module not in the release',
+      'releases/v1.0.0/lib/archi.mjs module not in the release',
+      'releases/v1.0.0/lib/checkout link out of the release',
+      'releases/v1.0.0/lib/node_modules checkout content',
+      'releases/v1.0.0/lib/up link out of the release',
+    ]);
+  });
+
+  test('ObjC.import in a script string is not a module', () => {
+    expect(rules(release({ 'lib/archi.mjs': "import fs from 'node:fs';\nconst s = `ObjC.import('AppKit'); x`;\n" }))).toEqual([]);
+  });
+});
+
+describe('what it reads', () => {
+  test('an archive is unpacked and its members named after it', () => {
+    const dir = release({ 'lib/archid.mjs': "const a = '/Users/someone';\n" });
+    const archive = path.join(tmp(), 'archipelago-companion-v1.0.0-linux-x64.tar.gz');
+    execFileSync('tar', ['-czf', archive, '-C', dir, 'releases']);
+    const { hits, scanned } = scan([archive], where);
+    expect(hits.map((h) => `${h.input} ${h.path} ${h.rule}`)).toEqual([`${archive} releases/v1.0.0/lib/archid.mjs developer path`]);
+    expect(scanned[0].files).toBeGreaterThan(5);
+  });
+
+  test('--secrets-only looks at logs for secrets and nothing else', () => {
+    const logs = tmp();
+    fs.writeFileSync(path.join(logs, 'run.log'), `$ docker exec … ${CHECKOUT} /Users/runner/work\n`);
+    expect(scan([logs], { ...where, secretsOnly: true }).hits).toEqual([]);
+    fs.writeFileSync(path.join(logs, 'daemon.log'), `token ghs_${'x'.repeat(36)}\n`);
+    expect(scan([logs], { ...where, secretsOnly: true }).hits.map((h) => h.rule)).toEqual(['GitHub token']);
+  });
+
+  test('the command exits 1 on a hit and names it, and 0 on a clean release', () => {
+    const run = (dir: string) => spawnSync(process.execPath, [SCRIPT, dir], { encoding: 'utf8', env: { ...process.env, HOME } });
+    const clean = run(release());
+    expect(clean.status).toBe(0);
+    const dirty = run(release({ 'lib/archid.mjs': "const a = '/Users/someone';\n" }));
+    expect(dirty.status).toBe(1);
+    expect(dirty.stdout).toMatch(/releases\/v1\.0\.0\/lib\/archid\.mjs: developer path/);
+  });
+});
