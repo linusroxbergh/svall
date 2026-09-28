@@ -245,8 +245,11 @@ describe('a message fault at every request of the controller', () => {
             const k = w.requests.length + i;
             w.message = { at: k, kind };
             const first = await s.go(w);
+            const holding = w.record().transaction?.id;
             const said = await w.recover(prefer);
             const why = () => `${JSON.stringify(first)}\n${said.join(' ')}\n${w.violations.join('\n')}\n${w.trace.join(' | ')}`;
+            // an abort is reported only once the gateway has let go of the handover
+            if (first.status === 'aborted') expect(holding, why()).not.toBe(first.transactionId);
             expect(w.requests[k], why()).toBe(labels[i]);
             expect(w.violations, why()).toEqual([]);
             // a request repeated or held back opens no second handover
@@ -360,6 +363,32 @@ describe('a cancel while Begin goes unanswered', () => {
     expect(w.record().transaction).toMatchObject({ phase: 'preparing' });
     expect(fs.existsSync(path.join(w.ctlDir, 'handover.json'))).toBe(true);
     // nothing was frozen, so the source runs its fleet meanwhile
+    expect(w.mac.can()).toBe(true);
+    const said = await w.recover('abort');
+    expect(said).toContain('abort->aborted');
+    expect(w.violations).toEqual([]);
+    expect(real.settledOn(w)).toBe('source');
+  });
+});
+
+// ---- a cancel whose abort the gateway does not answer: nothing is reported aborted while the gateway may hold the handover
+
+describe('a cancel whose abort goes unanswered', () => {
+  const world = real.worlds();
+  const BEGIN = PROBED.move.labels.indexOf('gateway begin');
+
+  it('before Freeze, keeps its journal and offers the abort, which closes the handover once the gateway answers', async () => {
+    const w = world();
+    const a = party(w, 'mac', 'start');
+    w.gate = async () => { if (w.requests.length === BEGIN) a.c.cancel(); };
+    w.message = { at: BEGIN + 1, kind: 'partition' };
+    const out = await a.go();
+    w.gate = undefined;
+    expect(w.requests.slice(BEGIN)).toEqual(['gateway begin', 'gateway abort']);
+    const tx = w.record().transaction;
+    expect(tx).toMatchObject({ phase: 'preparing' });
+    expect(out).toMatchObject({ status: 'interrupted', phase: 'begin', transactionId: tx!.id, safe: ['abort'] });
+    expect(fs.existsSync(path.join(w.ctlDir, 'handover.json'))).toBe(true);
     expect(w.mac.can()).toBe(true);
     const said = await w.recover('abort');
     expect(said).toContain('abort->aborted');
