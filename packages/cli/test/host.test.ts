@@ -591,10 +591,8 @@ esac
     for (const [version, protocol] of o.releases) {
       fs.mkdirSync(`${base}/releases/${version}/bin`, { recursive: true });
       fs.writeFileSync(`${base}/releases/${version}/bin/archi`, archi(version, protocol), { mode: 0o755 });
-      if (o.pins) {
-        fs.mkdirSync(`${base}/releases/${version}/release`);
-        fs.copyFileSync(o.pins, `${base}/releases/${version}/release/allowed_signers`);
-      }
+      fs.mkdirSync(`${base}/releases/${version}/release`);
+      fs.copyFileSync(o.pins ?? signer.signers, `${base}/releases/${version}/release/allowed_signers`);
     }
     fs.symlinkSync(`${base}/releases/${o.releases.at(-1)![0]}`, `${base}/current`);
     const registry = MachineRegistry.load(path.join(work, 'config'));
@@ -656,6 +654,20 @@ esac
     expect(fs.existsSync(ran) ? fs.readFileSync(ran, 'utf8') : '').toBe('');
     expect(out.result).toBe('ready');
     expect(step('install').at(-1)?.detail).toContain(`signed by a key ${far.base}/current/release/allowed_signers pins`);
+  });
+
+  it('refuses a release when the installed release has lost its signers file, rather than taking it for one that pins none', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], pins: signer.signers });
+    fs.rmSync(`${far.base}/releases/1.2.2/release/allowed_signers`);
+    const intruder = ephemeralSigner(work);
+    const ran = path.join(work, 'staged-archi-ran');
+    const archive = companionArchive(work, { signedBy: intruder.key, signersInside: intruder.signers, archi: `#!/bin/sh\ntouch '${ran}'\n` });
+    const out = await upgradeHost('trift', { release: archive }, deps({ registry: far.registry, verify: intruder.verify }));
+    await far.close();
+    expect(out.result).toBe('actions');
+    expect(step('install').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(`${far.base}/current/release/allowed_signers is missing`) });
+    expect(fs.existsSync(ran)).toBe(false);
+    expect(far.now()).toBe('1.2.2');
   });
 
   it('says when the installed release pins no signer, so only this controller\'s signers vouched for the new one', async () => {

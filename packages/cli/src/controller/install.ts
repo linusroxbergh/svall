@@ -135,7 +135,8 @@ export async function uploadArchive(master: SshMaster, o: { archive: string; rem
 const VERIFY = `PATH=/usr/bin:/bin:/usr/sbin:/sbin; export PATH
 cd "$1" || exit 1
 if [ -n "$2" ]; then
-  if grep -Eqs '^[[:space:]]*[^#[:space:]]' "$2"; then
+  [ -f "$2" ] || exit 5
+  if grep -Eq '^[[:space:]]*[^#[:space:]]' "$2"; then
     ssh-keygen -Y verify -f "$2" -I ${NAMESPACE} -n ${NAMESPACE} -s ${SIG} < ${SUMS} >/dev/null || exit 3
     echo pinned
   else
@@ -157,6 +158,7 @@ export async function verifyStaged(master: SshMaster, o: { dir: string; archiBas
   const said = r.stderr.trim().slice(0, 400);
   if (r.code === 3) throw new SshError('other', `the uploaded release is not signed by a key ${signers} pins: ${said || 'ssh-keygen refused it'}`);
   if (r.code === 4) throw new SshError('other', `the uploaded release's files do not match its ${SUMS}: ${said || 'sha256sum refused it'}`);
+  if (r.code === 5) throw new SshError('other', `${signers} is missing, so the installed release names no signer to check the uploaded one against`);
   if (r.code !== 0) throw new SshError(r.code === 255 ? 'unreachable' : 'other', `the far machine could not check the uploaded release (exit ${r.code}): ${said}`);
   const check = r.stdout.trim() === 'pinned' ? 'pinned' : r.stdout.trim() === 'unpinned' ? 'unpinned' : 'digests';
   return { check, signers };
