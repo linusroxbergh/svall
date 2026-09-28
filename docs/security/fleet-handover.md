@@ -297,7 +297,7 @@ network as the link. All the runs below were on AC power at 100% charge with no 
 | --- | --- | --- |
 | Progress events | One per entry per new state, and its counts at most once a second, whatever rsync itemizes | `cli/test/controller/transfer.test.ts` "tells a watcher of a 50,000-file copy as often as of a one-file copy…" |
 | Blocker and warning text | Each names a few paths and counts the rest | `handover.test.ts` "names a few of a root's names that differ only by case…"; `divergence.ts` and `listed` in `manifest.ts` preview 5 to 10 |
-| The manifest | 128 MiB (`manifest_too_large`, at preflight and freeze); under 256 bytes a file, so over 500,000 files | `source.test.ts`; `manifest.test.ts` "names a file with a long path in under 256 bytes…" |
+| The manifest | 128 MiB (`manifest_too_large`, at preflight and freeze). A file the scanner lists takes under 160 bytes beyond its path, so the cap holds 128 MiB / (160 B + path) files: over 500,000 with paths up to 100 bytes | `source.test.ts`; `manifest.test.ts` "lists a file the scanner reads in under 160 bytes beyond its path…" |
 | A request to a daemon | 8 MiB a WebSocket frame; a larger one goes in 4 MiB parts, 256 MiB in all | `cli/test/client.test.ts`, `archid/test/api.test.ts` |
 | An answer to the controller | 256 MiB a frame; the freeze answer, which carries the manifest whole, is the largest (8.7 MB at 50,000 files) | `client.test.ts` "reads an answer as large as a request may be…" |
 | Hashing | Eight files at once, each streamed a chunk at a time; a Git index is read whole, one at a time, up to 256 MiB | `manifest.test.ts` "hashes several files at once, never more than eight…", "reads a session file a chunk at a time…" |

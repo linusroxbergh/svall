@@ -418,19 +418,21 @@ describe('what a manifest adds up to', () => {
     expect(spaceNeed(manifest)).toEqual({ [s.mac]: blocks * 4096 });
   });
 
-  it('names a file with a long path in under 256 bytes, so the cap carries over 500,000 files and 50,000 go in under a tenth of it', async () => {
-    const s = seed();
-    const { manifest } = await buildManifest(inventory(s), HEADER);
-    // a path as long as a deep monorepo's, and every field at its widest
-    const files = Array.from({ length: 50_000 }, (_, i) => ({
-      type: 'file' as const, path: `packages/service-${i % 97}/src/components/widget-${String(i).padStart(6, '0')}.tsx`,
-      mode: 0o100755, size: 2 ** 40, mtimeMs: 1_790_000_000_000, sha256: 'f'.repeat(64), ...(i % 1000 === 0 && { gitIndex: 'e'.repeat(64) }),
-    }));
-    const big = { ...manifest, roots: [{ ...manifest.roots[0], files }] };
-    const bytes = Buffer.byteLength(JSON.stringify(big)) - Buffer.byteLength(JSON.stringify({ ...big, roots: [{ ...big.roots[0], files: [] }] }));
-    expect(bytes / files.length).toBeLessThan(256);
-    expect(MAX_MANIFEST_BYTES / 256).toBeGreaterThan(500_000);
-    expect(bytes).toBeLessThan(MAX_MANIFEST_BYTES / 10);
+  it('lists a file the scanner reads in under 160 bytes beyond its path, so the cap carries 128 MiB / (160 B + path) files', async () => {
+    const dir = tmp();
+    // paths as long as a deep monorepo's
+    const rel = (i: number) => `packages/service-${i % 7}/src/components/widget-${String(i).padStart(6, '0')}.tsx`;
+    for (let i = 0; i < 300; i++) {
+      fs.mkdirSync(path.dirname(path.join(dir, rel(i))), { recursive: true });
+      fs.writeFileSync(path.join(dir, rel(i)), `export const w${i} = ${i};\n`, { mode: 0o755 });
+    }
+    const { files } = (await scanPath(dir, () => false))!;
+    expect(files).toHaveLength(300);
+    // each number at its widest: every mode bit and a terabyte
+    const widest = files.map((f) => (f.type === 'file' ? { ...f, mode: 0o7777, size: 2 ** 40 } : f));
+    const paths = widest.reduce((n, f) => n + Buffer.byteLength(JSON.stringify(f.path)), 0);
+    expect((Buffer.byteLength(JSON.stringify(widest)) - paths) / widest.length).toBeLessThan(160);
+    expect(MAX_MANIFEST_BYTES / (160 + 100)).toBeGreaterThan(500_000);
   });
 
   it('counts a root outside the home against the folder it lands in, and a session against its agent home\'s', async () => {
