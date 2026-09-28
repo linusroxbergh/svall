@@ -284,9 +284,11 @@ export class SourceHandover {
     const big = oversize(built.manifest, this.d.manifestBytes ?? MAX_MANIFEST_BYTES);
     if (built.blockers.length || big) return this.refuse(tx.id, [...built.blockers, ...(big ? [big] : [])]);
     const file = this.d.paths.manifest(tx.id);
-    // a manifest no journal names is left by an attempt that did not live to record it
-    fs.rmSync(file, { force: true });
-    const manifestDigest = boundary('source.freeze.manifest', () => writeManifest(file, built.manifest));
+    const manifestDigest = boundary('source.freeze.manifest', () => {
+      // a manifest no journal names is left by an attempt that did not live to record it
+      fs.rmSync(file, { force: true });
+      return writeManifest(file, built.manifest);
+    });
     boundary('source.freeze.digest', () => this.journal.write({ ...this.open(tx.id)!, manifestDigest, updatedAt: this.now() }));
     for (const id of ids) {
       const n = rested.terminals.filter((t) => t.characterId === id).length;
@@ -309,7 +311,7 @@ export class SourceHandover {
     if (held) boundary('source.abort.journal', () => this.journal.write({ ...held, phase: 'aborted', updatedAt: this.now() }));
     await this.revive(p.transactionId, held?.stoppedTerminals ?? [], 'aborted');
     // while the journal still names it, so no crash leaves it behind
-    fs.rmSync(this.d.paths.manifest(p.transactionId), { force: true });
+    boundary('source.abort.manifest', () => fs.rmSync(this.d.paths.manifest(p.transactionId), { force: true }));
     await this.release();
     return {};
   }
@@ -333,7 +335,7 @@ export class SourceHandover {
     }
     boundary('source.complete.seal', () => this.seal(held, p.landed ?? []));
     await boundary('source.complete.install', () => this.ownership.installCommitted(record));
-    fs.rmSync(this.d.paths.manifest(held.transactionId), { force: true });
+    boundary('source.complete.manifest', () => fs.rmSync(this.d.paths.manifest(held.transactionId), { force: true }));
     boundary('source.complete.journal', () => this.journal.close());
     return {};
   }

@@ -9,7 +9,7 @@ import { loadConfig } from '../../src/config.js';
 import { AuthorityClient } from '../../src/gateway/client.js';
 import { AuthorityFailure } from '../../src/gateway/authority.js';
 import { startAuthorityServer, type AuthorityServer } from '../../src/gateway/server.js';
-import { DurableJson } from '../../src/handover/durable.js';
+import { DURABLE_TEMP, DurableJson, writeDurable } from '../../src/handover/durable.js';
 import { FAILPOINTS, armFailpoints, boundary, type Edge, type Failpoint, type FailSide } from '../../src/handover/failpoints.js';
 import { JournalFile, type HandoverJournal } from '../../src/handover/journal.js';
 import { ProcessTable, type Proc } from '../../src/handover/processes.js';
@@ -40,13 +40,14 @@ describe('the failpoint registry', () => {
     await expect(boundary('source.freeze.surrender', async () => 8)).resolves.toBe(8);
   });
 
-  it('calls the armed hook on both edges of a step, after a promise only once it fulfils', async () => {
+  it('calls the armed hook on both edges of a step, after a promise only once it fulfils, and tells it of a step that throws', async () => {
     const seen: string[] = [];
     const disarm = armFailpoints((name, edge) => { seen.push(`${name}:${edge}`); });
     try {
       boundary('source.freeze.journal', () => seen.push('step'));
       await boundary('source.freeze.surrender', async () => { seen.push('async step'); });
       await boundary('source.rest.kill', async () => { throw new Error('tmux went away'); }).catch(() => seen.push('refused'));
+      expect(() => boundary('source.rest.stopped', () => { throw new Error('disk full'); })).toThrow('disk full');
     } finally {
       disarm();
     }
@@ -54,7 +55,8 @@ describe('the failpoint registry', () => {
     expect(seen).toEqual([
       'source.freeze.journal:before', 'step', 'source.freeze.journal:after',
       'source.freeze.surrender:before', 'async step', 'source.freeze.surrender:after',
-      'source.rest.kill:before', 'refused', 'disarmed',
+      'source.rest.kill:before', 'source.rest.kill:threw', 'refused',
+      'source.rest.stopped:before', 'source.rest.stopped:threw', 'disarmed',
     ]);
   });
 
@@ -307,10 +309,14 @@ class World {
 
   // ---- failpoints
 
-  hit(name: Failpoint, edge: Edge): void {
+  hit(name: Failpoint, edge: Edge | 'threw'): void {
     const side = FAILPOINTS[name];
     // the gateway's socket handlers carry no async context of their own
     const life = side === 'gateway' ? this.gatewayLife : als.getStore() ?? this.lifeOf(side);
+    if (edge === 'threw') {
+      life.open.set(name, (life.open.get(name) ?? 0) - 1);
+      return;
+    }
     // a dead gateway's answer never goes out: its sockets are gone, and a throw there would reach nothing
     const contained = name !== 'gateway.commit.respond';
     if (life.dead) {
@@ -352,14 +358,15 @@ class World {
     if (![...life.open.values()].some((n) => n > 0)) this.fail(`${what} by the ${life.side} ran outside every failpoint`);
   }
 
+  /** Every rename, link or removal under a fleet home, the gateway's or the controller's is a step of the handover. */
   written(file: string, how: string, from?: string): void {
     if (!this.watching) return;
     const rel = path.relative(this.base, file);
-    const durable = /^(mac|trift)\/(owner\.json|fleet\.json|handover\/journal\.json|handover\/(prepared|seal|manifest)-.*\.json|replicas\/.*\.json)$/.test(rel)
-      || /^gw\/gateway\/fleets\/[^/]+\.json$/.test(rel) || rel === 'ctl/handover.json'
-      // state.json is written on every change; only a promotion is a step of the handover
-      || (/^trift\/state\.json$/.test(rel) && !!from && path.basename(from).startsWith('prepared-'));
-    if (!durable) return;
+    if (!/^(mac|trift|gw|ctl)\//.test(rel)) return;
+    // a durable write's temp is part of that write, state.json is written on every change but its promotion, and every
+    // read of the gateway that finds its record lifts a quarantine
+    if (DURABLE_TEMP.test(rel) || /^gw\/.*\.quarantined$/.test(rel)) return;
+    if (/^(mac|trift)\/state\.json$/.test(rel) && !(from && path.basename(from).startsWith('prepared-'))) return;
     const life = rel.startsWith('gw/') ? this.gatewayLife : als.getStore();
     if (!life) this.fail(`${how} of ${rel} outside every party`);
     else this.guarded(life, `${how} of ${rel}`);
@@ -645,9 +652,13 @@ function worlds(): () => World {
     const rename = fs.renameSync.bind(fs);
     const link = fs.linkSync.bind(fs);
     const rm = fs.rmSync.bind(fs);
+    const unlink = fs.unlinkSync.bind(fs);
+    const rmdir = fs.rmdirSync.bind(fs);
     vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => { watched?.written(String(to), 'rename', String(from)); rename(from, to); });
     vi.spyOn(fs, 'linkSync').mockImplementation((from, to) => { watched?.written(String(to), 'link'); link(from, to); });
-    vi.spyOn(fs, 'rmSync').mockImplementation((p, o) => { if (/journal\.json$|handover\.json$/.test(String(p))) watched?.written(String(p), 'removal'); rm(p, o); });
+    vi.spyOn(fs, 'rmSync').mockImplementation((p, o) => { watched?.written(String(p), 'removal'); rm(p, o); });
+    vi.spyOn(fs, 'unlinkSync').mockImplementation((p) => { watched?.written(String(p), 'removal'); unlink(p); });
+    vi.spyOn(fs, 'rmdirSync').mockImplementation((p, o) => { watched?.written(String(p), 'removal'); rmdir(p, o); });
     watched = w = await World.create();
     disarm = armFailpoints((name, edge) => w!.hit(name, edge));
   });
@@ -660,14 +671,13 @@ function worlds(): () => World {
   return () => w!;
 }
 
-type Scenario = 'move' | 'abort';
+type Scenario = 'move' | 'abort' | 'cancel';
 
-/** The first run: a handover to trift, or one the user cancels once the destination has prepared, which aborts it. */
+/** The first run: a handover to trift, or one the user cancels once the destination has prepared, or during the transfer, which aborts it. */
 async function play(w: World, scenario: Scenario): Promise<Outcome> {
   const c = w.controller();
-  if (scenario === 'abort') {
-    w.onHit = (key) => { if (key === 'destination.prepare.journal:after') { w.onHit = undefined; c.cancel(); } };
-  }
+  const cancelAt = { move: undefined, abort: 'destination.prepare.journal:after', cancel: 'controller.rsync:after' }[scenario];
+  if (cancelAt) w.onHit = (key) => { if (key === cancelAt) { w.onHit = undefined; c.cancel(); } };
   try {
     return await w.run(() => c.start(TRIFT, { terminateShells: true }));
   } finally {
@@ -692,11 +702,13 @@ const REACH: Record<Failpoint, { scenario: Scenario; times: number; after?: Targ
   'source.startup.surrender': { scenario: 'move', times: 0, after: { name: 'source.freeze.journal', edge: 'after', nth: 1 } },
   'source.abort.journal': { scenario: 'abort', times: 1 },
   'source.revive': { scenario: 'abort', times: 3 },
+  'source.abort.manifest': { scenario: 'abort', times: 1 },
   'source.release.journal': { scenario: 'abort', times: 1 },
   'source.release.unfreeze': { scenario: 'abort', times: 1 },
   'source.release.activate': { scenario: 'abort', times: 1 },
   'source.complete.seal': { scenario: 'move', times: 1 },
   'source.complete.install': { scenario: 'move', times: 1 },
+  'source.complete.manifest': { scenario: 'move', times: 1 },
   'source.complete.journal': { scenario: 'move', times: 1 },
   'destination.claim.root': { scenario: 'move', times: 4 },
   'destination.verify.journal': { scenario: 'move', times: 1 },
@@ -705,6 +717,7 @@ const REACH: Record<Failpoint, { scenario: Scenario; times: number; after?: Targ
   'destination.prepare.seal': { scenario: 'move', times: 1 },
   'destination.prepare.state': { scenario: 'move', times: 1 },
   'destination.prepare.journal': { scenario: 'move', times: 1 },
+  'destination.prepare.stage': { scenario: 'move', times: 1 },
   'destination.activate.install': { scenario: 'move', times: 1 },
   'destination.commit.journal': { scenario: 'move', times: 1 },
   'destination.promote.fleet': { scenario: 'move', times: 1 },
@@ -714,8 +727,11 @@ const REACH: Record<Failpoint, { scenario: Scenario; times: number; after?: Targ
   'destination.activate.open': { scenario: 'move', times: 3 },
   'destination.activate.record': { scenario: 'move', times: 3 },
   'destination.complete.seal': { scenario: 'move', times: 1 },
+  'destination.complete.clear': { scenario: 'move', times: 1 },
   'destination.complete.journal': { scenario: 'move', times: 1 },
+  'destination.abort.stage': { scenario: 'cancel', times: 1 },
   'destination.abort.seal': { scenario: 'abort', times: 1 },
+  'destination.abort.clear': { scenario: 'abort', times: 1 },
   'destination.abort.journal': { scenario: 'abort', times: 1 },
   'gateway.begin.write': { scenario: 'move', times: 1 },
   'gateway.ready.write': { scenario: 'move', times: 1 },
@@ -724,6 +740,9 @@ const REACH: Record<Failpoint, { scenario: Scenario; times: number; after?: Targ
   'gateway.complete.write': { scenario: 'move', times: 1 },
   'gateway.commit.respond': { scenario: 'move', times: 1 },
   'controller.journal': { scenario: 'move', times: 15 },
+  'controller.manifest': { scenario: 'move', times: 1 },
+  'controller.landed': { scenario: 'move', times: 1 },
+  'controller.clear': { scenario: 'move', times: 1 },
   'controller.rsync': { scenario: 'move', times: 4 },
   'controller.verify': { scenario: 'move', times: 4 },
   'controller.commit': { scenario: 'move', times: 1 },
@@ -739,6 +758,29 @@ const CASES: Case[] = NAMES.flatMap((name) => {
 
 const label = (k: Target): string => `${k.name}:${k.edge}#${k.nth}`;
 
+describe('the guard on steps outside every failpoint', () => {
+  const world = worlds();
+
+  it('watches a party after one of its steps throws, and whatever it renames, links or removes under the homes', async () => {
+    const w = world();
+    w.controller();
+    await w.run(async () => {
+      await boundary('controller.commit', async () => { throw new Error('the gateway refused'); }).catch(() => {});
+      writeDurable(path.join(w.ctlDir, 'stray.json'), {});
+    });
+    const stage = path.join(w.mac.paths.handoverDir, 'stage-x.json');
+    als.run(w.mac.current!.life, () => {
+      writeDurable(stage, {});
+      fs.rmSync(stage);
+    });
+    expect(w.violations).toEqual([
+      'rename of ctl/stray.json by the controller ran outside every failpoint',
+      'rename of mac/handover/stage-x.json by the source ran outside every failpoint',
+      'removal of mac/handover/stage-x.json by the source ran outside every failpoint',
+    ]);
+  });
+});
+
 describe('a crash at every failpoint', () => {
   const world = worlds();
 
@@ -746,7 +788,7 @@ describe('a crash at every failpoint', () => {
     expect(new Set(CASES.map((k) => `${k.name}:${k.edge}`))).toEqual(new Set(NAMES.flatMap((n) => [`${n}:before`, `${n}:after`])));
   });
 
-  for (const scenario of ['move', 'abort'] as const) {
+  for (const scenario of ['move', 'abort', 'cancel'] as const) {
     it(`reaches each step of the ${scenario} run as many times as its entry says, while nothing crashes`, async () => {
       const w = world();
       const out = await play(w, scenario);

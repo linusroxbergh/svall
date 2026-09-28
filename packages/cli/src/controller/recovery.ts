@@ -88,19 +88,19 @@ export function fileStore(dir: string): ControllerStore {
       }
     },
     write: (j) => boundary('controller.journal', () => write(journal, ControllerJournal.parse(j))),
-    saveManifest: (tx, m) => write(txFile(tx, 'manifest.json'), m),
+    saveManifest: (tx, m) => boundary('controller.manifest', () => write(txFile(tx, 'manifest.json'), m)),
     manifest: (tx, digest) => {
       const m = read(txFile(tx, 'manifest.json'), (v) => FrozenManifest.parse(v));
       return m && manifestDigest(m) === digest ? m : undefined;
     },
-    saveLanded: (tx, landed) => write(txFile(tx, 'landed.json'), landed),
+    saveLanded: (tx, landed) => boundary('controller.landed', () => write(txFile(tx, 'landed.json'), landed)),
     landed: (tx, digest) => {
       const landed = read(txFile(tx, 'landed.json'), (v) => z.array(LandedRoot).parse(v));
       return landed && canonicalDigest(landed) === digest ? landed : undefined;
     },
     clear(transactionId) {
       boundary('controller.journal', () => fs.rmSync(journal, { force: true }));
-      if (transactionId) fs.rmSync(transactionDir(transactionId, dir), { recursive: true, force: true });
+      if (transactionId) boundary('controller.clear', () => fs.rmSync(transactionDir(transactionId, dir), { recursive: true, force: true }));
     },
   };
 }

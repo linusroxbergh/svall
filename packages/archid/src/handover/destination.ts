@@ -257,7 +257,7 @@ export class DestinationHandover {
       let record: OwnerRecord;
       try { record = await this.ask(); } catch { return; }
       if (record.transaction?.id === transactionId) return;
-      fs.rmSync(path.dirname(this.d.paths.sessionStage(transactionId, 0)), { recursive: true, force: true });
+      boundary('destination.abort.stage', () => fs.rmSync(path.dirname(this.d.paths.sessionStage(transactionId, 0)), { recursive: true, force: true }));
     });
   }
 
@@ -336,9 +336,11 @@ export class DestinationHandover {
     // an unsealed root would find itself occupied on the way back, so what could not be sealed keeps the record for another try
     const unsealed = boundary('destination.complete.seal', () => this.sealAs(j, j.generation));
     if (unsealed.length) throw notReady(`handover ${j.transactionId} could not seal ${unsealed.join('; ')}; complete it again once that is put right`);
-    for (const f of [this.d.paths.replicaSeal(j.transactionId), this.d.paths.preparedState(j.transactionId), path.dirname(this.d.paths.sessionStage(j.transactionId, 0))]) {
-      fs.rmSync(f, { recursive: true, force: true });
-    }
+    boundary('destination.complete.clear', () => {
+      for (const f of [this.d.paths.replicaSeal(j.transactionId), this.d.paths.preparedState(j.transactionId), path.dirname(this.d.paths.sessionStage(j.transactionId, 0))]) {
+        fs.rmSync(f, { recursive: true, force: true });
+      }
+    });
     boundary('destination.complete.journal', () => this.journal.close());
     return {};
   }
@@ -357,7 +359,7 @@ export class DestinationHandover {
       throw handoverError({ code: 'transaction_mismatch', message: `this machine prepares handover ${tx} from manifest ${held.manifestDigest}, not ${p.manifestDigest}` });
     }
     if (held?.preparedDigest) {
-      fs.rmSync(path.dirname(this.d.paths.sessionStage(tx, 0)), { recursive: true, force: true });
+      boundary('destination.prepare.stage', () => fs.rmSync(path.dirname(this.d.paths.sessionStage(tx, 0)), { recursive: true, force: true }));
       return { preparedDigest: held.preparedDigest };
     }
     const carried = m.roots.filter((r) => !r.foldedInto);
@@ -434,10 +436,12 @@ export class DestinationHandover {
 
     const preparedDigest = canonicalDigest(state);
     const preparedPath = this.d.paths.preparedState(tx);
-    boundary('destination.prepare.state', () => writeDurable(preparedPath, state, { mode: 0o600 }));
-    if (p.relaySecret) writeDurable(this.d.paths.relaySecret, Buffer.from(p.relaySecret), { mode: 0o600 });
+    boundary('destination.prepare.state', () => {
+      writeDurable(preparedPath, state, { mode: 0o600 });
+      if (p.relaySecret) writeDurable(this.d.paths.relaySecret, Buffer.from(p.relaySecret), { mode: 0o600 });
+    });
     boundary('destination.prepare.journal', () => this.journal.write({ ...this.open(tx)!, phase: 'prepare', preparedPath, preparedDigest, fleet: imported.fleet, updatedAt: this.clock.now() }));
-    fs.rmSync(path.dirname(this.d.paths.sessionStage(tx, 0)), { recursive: true, force: true });
+    boundary('destination.prepare.stage', () => fs.rmSync(path.dirname(this.d.paths.sessionStage(tx, 0)), { recursive: true, force: true }));
     return { preparedDigest };
   }
 
@@ -833,9 +837,11 @@ export class DestinationHandover {
   private discard(j: DestinationJournal): void {
     // the content is the source's at the generation it keeps; a root sealed or archived since is left alone
     boundary('destination.abort.seal', () => this.sealAs(j, j.generation - 1));
-    for (const f of [this.d.paths.preparedState(j.transactionId), this.d.paths.replicaSeal(j.transactionId), path.dirname(this.d.paths.sessionStage(j.transactionId, 0))]) {
-      fs.rmSync(f, { recursive: true, force: true });
-    }
+    boundary('destination.abort.clear', () => {
+      for (const f of [this.d.paths.preparedState(j.transactionId), this.d.paths.replicaSeal(j.transactionId), path.dirname(this.d.paths.sessionStage(j.transactionId, 0))]) {
+        fs.rmSync(f, { recursive: true, force: true });
+      }
+    });
     boundary('destination.abort.journal', () => this.journal.close());
     this.ownership.unhold();
   }

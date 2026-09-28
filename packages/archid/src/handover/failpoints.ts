@@ -5,8 +5,9 @@ export type FailSide = 'controller' | 'source' | 'destination' | 'gateway';
 
 /**
  * Every step of a handover a crash can fall before or after, by the party that takes it: each authority, journal and
- * ownership write, terminal kill and start, verification, prepared-state write, promotion and commit answer. A step
- * runs inside `boundary`, which gives it both edges; the fault suite fails on a name here that no case crashes at.
+ * ownership write, removal of a handover's files, terminal kill and start, verification, prepared-state write, promotion
+ * and commit answer. A step runs inside `boundary`, which gives it both edges; the fault suite fails on a name here that
+ * no case crashes at.
  */
 export const FAILPOINTS = {
   'source.freeze.journal': 'source',
@@ -20,11 +21,13 @@ export const FAILPOINTS = {
   'source.startup.surrender': 'source',
   'source.abort.journal': 'source',
   'source.revive': 'source',
+  'source.abort.manifest': 'source',
   'source.release.journal': 'source',
   'source.release.unfreeze': 'source',
   'source.release.activate': 'source',
   'source.complete.seal': 'source',
   'source.complete.install': 'source',
+  'source.complete.manifest': 'source',
   'source.complete.journal': 'source',
 
   'destination.claim.root': 'destination',
@@ -34,6 +37,7 @@ export const FAILPOINTS = {
   'destination.prepare.seal': 'destination',
   'destination.prepare.state': 'destination',
   'destination.prepare.journal': 'destination',
+  'destination.prepare.stage': 'destination',
   'destination.activate.install': 'destination',
   'destination.commit.journal': 'destination',
   'destination.promote.fleet': 'destination',
@@ -43,8 +47,11 @@ export const FAILPOINTS = {
   'destination.activate.open': 'destination',
   'destination.activate.record': 'destination',
   'destination.complete.seal': 'destination',
+  'destination.complete.clear': 'destination',
   'destination.complete.journal': 'destination',
+  'destination.abort.stage': 'destination',
   'destination.abort.seal': 'destination',
+  'destination.abort.clear': 'destination',
   'destination.abort.journal': 'destination',
 
   'gateway.begin.write': 'gateway',
@@ -55,6 +62,9 @@ export const FAILPOINTS = {
   'gateway.commit.respond': 'gateway',
 
   'controller.journal': 'controller',
+  'controller.manifest': 'controller',
+  'controller.landed': 'controller',
+  'controller.clear': 'controller',
   'controller.rsync': 'controller',
   'controller.verify': 'controller',
   'controller.commit': 'controller',
@@ -62,7 +72,8 @@ export const FAILPOINTS = {
 
 export type Failpoint = keyof typeof FAILPOINTS;
 export type Edge = 'before' | 'after';
-export type FailpointHook = (name: Failpoint, edge: Edge) => void;
+/** `threw` is no failpoint: it tells the hook that a step ended by throwing, and so reaches no `after`. */
+export type FailpointHook = (name: Failpoint, edge: Edge | 'threw') => void;
 
 let armed: FailpointHook | undefined;
 
@@ -70,8 +81,14 @@ let armed: FailpointHook | undefined;
 export function boundary<T>(name: Failpoint, step: () => T): T {
   if (!armed) return step();
   armed(name, 'before');
-  const out = step();
-  if (out instanceof Promise) return out.then((v: unknown) => { armed?.(name, 'after'); return v; }) as T;
+  let out: T;
+  try { out = step(); } catch (e) {
+    armed?.(name, 'threw');
+    throw e;
+  }
+  if (out instanceof Promise) {
+    return out.then((v: unknown) => { armed?.(name, 'after'); return v; }, (e: unknown) => { armed?.(name, 'threw'); throw e; }) as T;
+  }
   armed?.(name, 'after');
   return out;
 }
