@@ -671,7 +671,13 @@ class World {
   }
 }
 
-/** Where the fleet came to rest: whole on one machine, nothing open anywhere, and only the terminals the handover stopped running. */
+/** Everything under `dir`, by its path there. */
+const entries = (dir: string): string[] => (fs.existsSync(dir) ? (fs.readdirSync(dir, { recursive: true }) as string[]).sort() : []);
+
+/**
+ * Where the fleet came to rest: whole on one machine, nothing open anywhere, no file a transaction wrote left behind,
+ * and only the terminals the handover stopped running.
+ */
 function settledOn(w: World): 'source' | 'destination' {
   const record = w.record();
   const where = record.generation === G ? 'source' : 'destination';
@@ -679,8 +685,7 @@ function settledOn(w: World): 'source' | 'destination' {
   expect(record).toEqual({ fleetId, generation: where === 'source' ? G : G + 1, ownerMachineId: owner.id });
   for (const m of [w.mac, w.trift]) {
     expect(m.current!.handover.journalState(), m.name).toEqual({ kind: 'none' });
-    const left = fs.existsSync(m.paths.handoverDir) ? fs.readdirSync(m.paths.handoverDir).filter((f) => f.endsWith('.json')) : [];
-    expect(left.join(' '), m.name).toBe('');
+    expect(entries(m.paths.handoverDir), m.name).toEqual([]);
   }
   expect(owner.can()).toBe(true);
   expect(owner.current!.active).toBe(true);
@@ -690,7 +695,8 @@ function settledOn(w: World): 'source' | 'destination' {
   // di's Claude runs as it was launched, or resumed with the flags it was launched with
   expect([DI_LAUNCH, DI_RESUME]).toContain([...owner.windows.values()].find((x) => x.name === 'c_di')?.job?.join(' | '));
   expect(other.windows.size).toBe(0);
-  expect(fs.existsSync(path.join(w.ctlDir, 'handover.json'))).toBe(false);
+  // the folder that holds each transaction's own may stay, empty
+  expect(entries(w.ctlDir).filter((e) => e !== 'handover')).toEqual([]);
   expect(w.errors).toEqual([]);
   return where;
 }
@@ -762,7 +768,7 @@ const REACH: Record<Failpoint, Reach> = {
   'source.startup.surrender': { scenario: 'move', times: 0, after: { name: 'source.freeze.journal', edge: 'after', nth: 1 } },
   'source.abort.journal': { scenario: 'abort', times: 1 },
   'source.revive': { scenario: 'abort', times: 4 },
-  'source.abort.manifest': { scenario: 'abort', times: 1 },
+  'source.release.manifest': { scenario: 'abort', times: 1 },
   'source.release.journal': { scenario: 'abort', times: 1 },
   'source.release.unfreeze': { scenario: 'abort', times: 1 },
   'source.release.activate': { scenario: 'abort', times: 1 },
@@ -885,6 +891,22 @@ describe('a crash at every failpoint', () => {
       });
     }
   }
+});
+
+describe('a freeze asked again that refuses', () => {
+  const world = worlds();
+
+  it('leaves no manifest behind that a freeze before it wrote and did not live to answer', async () => {
+    const w = world();
+    w.targets = [{ name: 'source.freeze.manifest', edge: 'after', nth: 1 }];
+    await play(w, 'move');
+    // meanwhile the user keeps cy on the source, so the freeze asked again refuses
+    Store.load(w.mac.paths.state, () => {}).update((d) => { d.characters.c_cy.keepHere = true; });
+    const said = await w.recover('resume');
+    expect(said, w.violations.join('\n')).toContain('resume->blocked');
+    expect(w.violations).toEqual([]);
+    expect(settledOn(w)).toBe('source');
+  });
 });
 
 /** What each party holds while the gateway is away: each daemon started again from its disk, and what status allows. */

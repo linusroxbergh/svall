@@ -243,8 +243,8 @@ export class SourceHandover {
       const held = this.open(transactionId);
       if (!held) return;
       if (revive) await this.revive(transactionId, held.stoppedTerminals, 'aborted');
-      this.journal.close();
       fs.rmSync(this.d.paths.manifest(transactionId), { force: true });
+      this.journal.close();
     });
   }
 
@@ -310,9 +310,7 @@ export class SourceHandover {
     await this.mayTakeBack(p);
     if (held) boundary('source.abort.journal', () => this.journal.write({ ...held, phase: 'aborted', updatedAt: this.now() }));
     await this.revive(p.transactionId, held?.stoppedTerminals ?? [], 'aborted');
-    // while the journal still names it, so no crash leaves it behind
-    boundary('source.abort.manifest', () => fs.rmSync(this.d.paths.manifest(p.transactionId), { force: true }));
-    await this.release();
+    await this.release(p.transactionId);
     return {};
   }
 
@@ -454,7 +452,7 @@ export class SourceHandover {
   private async refuse(transactionId: string, blockers: Blocker[]): Promise<never> {
     const found = settle(blockers);
     await this.revive(transactionId, this.open(transactionId)?.stoppedTerminals ?? [], 'freeze');
-    await this.release();
+    await this.release(transactionId);
     for (const b of found) if (b.entity?.kind === 'character') this.progress(transactionId, b.entity.id, { error: b.message });
     throw handoverError({ code: 'blocked', message: found.map((b) => b.message).join('; '), blockers: found });
   }
@@ -487,8 +485,12 @@ export class SourceHandover {
     }
   }
 
-  /** Back to running the fleet: the journal closes while the surrender still stands, then the background work starts. */
-  private async release(): Promise<void> {
+  /**
+   * Back to running the fleet: the manifest goes while the journal still names it, so no crash leaves it behind, the
+   * journal closes while the surrender still stands, then the background work starts.
+   */
+  private async release(transactionId: string): Promise<void> {
+    boundary('source.release.manifest', () => fs.rmSync(this.d.paths.manifest(transactionId), { force: true }));
     if (this.journal.journalState().kind === 'open') boundary('source.release.journal', () => this.journal.close());
     await boundary('source.release.unfreeze', () => this.ownership.unfreeze());
     await boundary('source.release.activate', async () => {

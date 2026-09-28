@@ -99,8 +99,9 @@ export function fileStore(dir: string): ControllerStore {
       return landed && canonicalDigest(landed) === digest ? landed : undefined;
     },
     clear(transactionId) {
-      boundary('controller.journal', () => fs.rmSync(journal, { force: true }));
+      // while the journal still names it, so no crash leaves it behind
       if (transactionId) boundary('controller.clear', () => fs.rmSync(transactionDir(transactionId, dir), { recursive: true, force: true }));
+      boundary('controller.journal', () => fs.rmSync(journal, { force: true }));
     },
   };
 }

@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   FleetConfig, FleetId, MachineId, PROTOCOL_VERSION, TRANSFER_SCHEMA_VERSION, emptyState,
   type Agent, type Character, type Event, type OwnerRecord, type ParsedParams, type SystemInfo, type TransactionRecord,
@@ -920,6 +920,20 @@ describe('source under a forced record', () => {
     expect(journalOf(b.paths)?.phase).toBe('freeze');
     expect(b.ownership.isFrozen()).toBe(true);
     expect(b.world.log).toEqual([]);
+  });
+
+  it('removes its manifest before it closes the journal that names it, so a start finishes what a crash between left', async () => {
+    const b = await frozen();
+    const manifest = b.paths.manifest(TX);
+    const rm = fs.rmSync;
+    const crash = vi.spyOn(fs, 'rmSync').mockImplementation((p, o) => { if (p === manifest) throw new Error('crashed'); rm(p, o); });
+    await expect(b.handover.adopt(forced(me))).rejects.toThrow('crashed');
+    crash.mockRestore();
+    const again = await b.restart();
+    b.gateway.record = forced(me);
+    await adoptAtStart({ handover: again.handover, authority: b.gateway, fleetId, log: silentLogger });
+    for (const f of [b.paths.journal, manifest]) expect(fs.existsSync(f), f).toBe(false);
+    expect(ownerFile(b.paths)).toEqual(forced(me));
   });
 
   it('takes the record at start, and finishes letting go a handover a crash left open after the record was taken', async () => {

@@ -22,7 +22,7 @@ export const FAILPOINTS = {
   'source.startup.surrender': 'source',
   'source.abort.journal': 'source',
   'source.revive': 'source',
-  'source.abort.manifest': 'source',
+  'source.release.manifest': 'source',
   'source.release.journal': 'source',
   'source.release.unfreeze': 'source',
   'source.release.activate': 'source',
