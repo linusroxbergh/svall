@@ -81,6 +81,8 @@ const { stage, meta } = await stageRelease({
 const r = await rsync(process.arch);
 fs.copyFileSync(r.binary, path.join(stage, 'bin', 'rsync'));
 fs.chmodSync(path.join(stage, 'bin', 'rsync'), 0o755);
+// the debug map names each object file by the folder this machine built it in
+run('strip', ['-S', path.join(stage, 'bin', 'rsync')]);
 fs.copyFileSync(r.licence, path.join(stage, 'licenses', 'rsync-LICENSE'));
 
 const full = { ...meta, rsync: { version: r.version, sha256: r.sha256 } };
