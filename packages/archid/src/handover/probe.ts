@@ -14,10 +14,10 @@ export type ProbeFs = {
 const ABSENT: RootProbe = { exists: false, writable: false, caseInsensitive: false, freeBytes: 0 };
 
 /**
- * Relative paths that only differ by case or by Unicode normalization: two of them cannot both land on a case-folding
- * filesystem such as a Mac's, which also holds a composed and a decomposed name as one.
+ * Relative paths that only differ by case or by Unicode normalization, each group of them sorted: two of them cannot
+ * both land on a case-folding filesystem such as a Mac's, which also holds a composed and a decomposed name as one.
  */
-export function caseCollisions(relatives: string[]): string[] {
+export function caseCollisions(relatives: string[]): string[][] {
   const byFold = new Map<string, Set<string>>();
   for (const r of relatives) {
     const fold = r.normalize('NFD').toLowerCase();
@@ -25,7 +25,8 @@ export function caseCollisions(relatives: string[]): string[] {
     held.add(r);
     byFold.set(fold, held);
   }
-  return [...byFold.values()].filter((s) => s.size > 1).flatMap((s) => [...s]).sort();
+  const groups = [...byFold.values()].filter((s) => s.size > 1).map((s) => [...s].sort());
+  return groups.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
 }
 
 const swapCase = (name: string): string => name.replace(/[A-Za-z]/g, (c) => (c === c.toLowerCase() ? c.toUpperCase() : c.toLowerCase()));

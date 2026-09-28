@@ -914,9 +914,10 @@ export class Handover {
     for (const root of m.roots.filter((x) => !x.foldedInto && folding(x.path))) {
       const clash = caseCollisions(root.files.map((f) => f.path));
       if (clash.length) {
+        const shown = clash.slice(0, 3).map((g) => g.join(' and ')).join('; ');
         blockers.push({
           code: 'path_collision', entity: { kind: 'root', id: root.id },
-          message: `${root.path} would hold ${clash.slice(0, 6).join(', ')}${clash.length > 6 ? `, and ${clash.length - 6} more` : ''}, whose names differ only by case or Unicode normalization, and ${where} does not tell them apart`,
+          message: `${root.path} would hold names that differ only by case or Unicode normalization, which ${where} does not tell apart: ${shown}${clash.length > 3 ? `; and ${clash.length - 3} more` : ''}`,
         });
       }
     }

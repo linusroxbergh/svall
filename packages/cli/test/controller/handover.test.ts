@@ -242,7 +242,7 @@ describe('preflight', () => {
     expect(w.store.j).toBeUndefined();
   });
 
-  it('names a few of a root\'s names that differ only by case, and counts the rest, however many there are', async () => {
+  it('names a few of a root\'s names that differ only by case, each with the names it clashes with, and counts the rest, however many there are', async () => {
     const w = new World();
     w.destination.probe = { exists: true, writable: true, caseInsensitive: true, freeBytes: 1e12 };
     const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
@@ -253,8 +253,15 @@ describe('preflight', () => {
     }) as never;
     const r = await controller(w).preflight(trift, {});
     const message = r.blockers.find((b) => b.code === 'path_collision')!.message;
-    expect(message).toMatch(/ and \d+ more/);
+    expect(message).toMatch(/; and 9998 more$/);
     expect(message.length).toBeLessThan(1000);
+    const shown = message.slice(message.indexOf(': ') + 2).split('; ').slice(0, -1);
+    expect(shown).toHaveLength(3);
+    for (const group of shown) {
+      const names = group.split(' and ');
+      expect(names).toHaveLength(2);
+      expect(names[0].toLowerCase()).toBe(names[1].toLowerCase());
+    }
   });
 
   it('warns that Codex asks to trust a carried folder only where the destination does not trust it yet', async () => {
@@ -594,7 +601,7 @@ describe('preflight', () => {
     expect(await blockers()).toEqual([{ code: 'path_unsupported', message: '/Volumes/work on mac cannot be written' }]);
     w.destination.folders['/Volumes/work'] = probe({ caseInsensitive: true });
     expect(await blockers()).toEqual([{
-      code: 'path_collision', entity: { kind: 'root', id: 'r_work' }, message: '/Volumes/work would hold A.txt, a.txt, whose names differ only by case or Unicode normalization, and mac does not tell them apart',
+      code: 'path_collision', entity: { kind: 'root', id: 'r_work' }, message: '/Volumes/work would hold names that differ only by case or Unicode normalization, which mac does not tell apart: A.txt and a.txt',
     }]);
 
     // a first copy is made in /Volumes
