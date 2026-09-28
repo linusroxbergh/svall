@@ -227,6 +227,18 @@ describe('a freeze asked again that refuses', () => {
   });
 });
 
+describe('a handover after a cancelled one', () => {
+  const world = worlds();
+
+  it("carries di's Claude with the flags the source revived it with", async () => {
+    const w = world();
+    expect(await play(w, 'cancel')).toMatchObject({ status: 'aborted' });
+    expect(await play(w, 'move')).toMatchObject({ status: 'complete' });
+    expect(w.violations).toEqual([]);
+    expect(settledOn(w)).toBe('destination');
+  });
+});
+
 /** What each party holds while the gateway is away: each daemon started again from its disk, and what status allows. */
 async function whileAway(w: World): Promise<{ source: boolean; destination: boolean; safe: string[] }> {
   for (const m of [w.mac, w.trift]) {

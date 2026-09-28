@@ -124,7 +124,7 @@ export class Machine {
   processes = async (): Promise<ProcessTable> => new ProcessTable([...this.windows.values()].flatMap((p): Proc[] => {
     const group = p.job ? p.pid + 1 : p.pid;
     const shell = { pid: p.pid, ppid: 1, pgid: p.pid, tpgid: group, stat: 'Ss', args: '-zsh' };
-    return [shell, ...(p.job ?? []).map((args, i) => ({ pid: group + i, ppid: i ? group + i - 1 : p.pid, pgid: group, tpgid: group, stat: 'S+', args }))];
+    return [shell, ...(p.job ?? []).map((job, i) => ({ pid: group + i, ppid: i ? group + i - 1 : p.pid, pgid: group, tpgid: group, stat: 'S+', args: psArgs(job) }))];
   }), installedScripts(this.paths.home));
 
   kill = (group: number, signal: NodeJS.Signals): void => {
@@ -196,6 +196,10 @@ export class Machine {
     };
   }
 }
+
+/** What ps prints for a command `sh -c` ran: its words, single quotes and backslashes taken off, joined by spaces. */
+const psArgs = (command: string): string =>
+  (command.match(/(?:'[^']*'|\\.|[^\s'\\])+/g) ?? []).map((w) => w.replace(/'([^']*)'|\\(.)/g, (_, quoted, escaped) => quoted ?? escaped)).join(' ');
 
 const char = (id: string, cwd: string, over: Partial<Character> = {}): Character => ({
   id, islandId: 'home', cell: { x: 0, y: 1 }, name: id.slice(2), portrait: 'fox', note: '', instructions: '', cwd, context: [],
