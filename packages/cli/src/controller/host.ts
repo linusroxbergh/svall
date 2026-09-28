@@ -400,6 +400,20 @@ function need(registry: MachineRegistry, name: string): Registered {
 
 type Registered = MachineEntry & { record: MachineRecord & { ssh: string } };
 
+/**
+ * Refuses a far machine that answers as another than the registry names, as an ssh alias that now leads elsewhere
+ * would. One whose `archi` gives no answer is left to the step that needs it, so a broken install can still be repaired.
+ */
+async function sameMachine(master: SshMaster, entry: Registered): Promise<void> {
+  const r = await master.run([shellQuote(archiExe(entry.record.archiBase)), 'version', '--json'], { timeoutMs: PROBE_TIMEOUT });
+  let id: unknown;
+  try { id = (JSON.parse(r.stdout) as { machineId?: unknown }).machineId; } catch { return; }
+  if (typeof id === 'string' && id !== entry.id) {
+    throw new StepError(`${entry.record.ssh} now reaches machine ${id}, not ${entry.record.name} (${entry.id})`,
+      `point ${entry.record.ssh} back at ${entry.record.name}, or archi host remove ${entry.record.name} --forget`);
+  }
+}
+
 const machineOutcome = (registry: MachineRegistry, name: string): Outcome<Registered> => {
   const entry = need(registry, name);
   return { value: entry, detail: `${name} at ${entry.record.ssh}` };
@@ -461,7 +475,11 @@ const pick = (o: Outcome<unknown>): { status: Check['status']; detail: string } 
 export function upgradeHost(name: string, o: { release?: string; allowUnsigned?: boolean }, d: HostDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
     const entry = await run.step('machine', () => Promise.resolve(machineOutcome(d.registry, name)));
-    const master = await run.step('master', async () => ({ value: await d.openMaster(entry.record.ssh), detail: `one control master to ${entry.record.ssh}` }));
+    const master = await run.step('master', async () => {
+      const opened = await d.openMaster(entry.record.ssh);
+      await sameMachine(opened, entry).catch(async (err: unknown) => { await opened.close().catch(() => undefined); throw err; });
+      return { value: opened, detail: `one control master to ${entry.record.ssh}` };
+    });
     try {
       const companion = await run.step('release', () => companionFor({ name, ssh: entry.record.ssh, ...o }, d, entry.record.arch));
       const remote = remotePaths(entry.record.home, companion.version);
@@ -558,9 +576,11 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
       let master: SshMaster | undefined;
       try {
         master = await d.openMaster(entry.record.ssh);
+        await sameMachine(master, entry);
         const out = await probe(master, [shellQuote(archiExe(entry.record.archiBase)), 'uninstall'], 'archi uninstall');
         return { value: true, detail: out.trim().split('\n').at(-1) ?? 'archi uninstall' };
       } catch (err) {
+        if (err instanceof StepError && err.action) throw err;
         throw new StepError(`${entry.record.ssh} could not be reached: ${(err as Error).message}`,
           `archi host remove ${name} --forget drops the route and leaves the machine untouched`);
       } finally {
@@ -597,6 +617,7 @@ async function seedAuthority(entry: Registered, fleetId: FleetId, name: string, 
   const master = await d.openMaster(entry.record.ssh);
   const exe = archiExe(entry.record.archiBase);
   try {
+    await sameMachine(master, entry);
     let frame = await remoteOwner({ master, exe, op: 'get', fleetId });
     if ('error' in frame && frame.error.code === 'not_found') {
       frame = await remoteOwner({ master, exe, op: 'create', fleetId, params: { initialOwnerMachineId: owner } });

@@ -714,6 +714,14 @@ esac
     expect(out.result).toBe('ready');
   });
 
+  it('uploads and installs nothing on a machine that answers as another than the registry names', async () => {
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.2', protocol: PROTOCOL_VERSION, machineId: OTHER_MAC }) });
+    const out = await upgradeHost('trift', { release: archive() }, deps({ registry: registered() }));
+    expect(out.result).toBe('actions');
+    expect(step('master').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(`now reaches machine ${OTHER_MAC}`) });
+    expect(ssh.remoteCalls().some((w) => w.includes('cat > "$1"') || w.includes('setup'))).toBe(false);
+  });
+
   it('deletes the archive it uploaded and the release it unpacked once the release is installed', async () => {
     ssh.reply(['cat > "$1"'], {});
     ssh.reply(['mkdir'], {});
@@ -746,8 +754,19 @@ describe('host remove', () => {
     const registry = registered('trift.test');
     const out = await removeHost('trift', {}, deps({ registry }));
     expect(out.result).toBe('ready');
-    expect(ssh.remoteCalls()).toEqual([[ARCHI, 'uninstall']]);
+    expect(ssh.remoteCalls()).toEqual([[ARCHI, 'version', '--json'], [ARCHI, 'uninstall']]);
     expect(registry.get('trift')).toBeUndefined();
+  });
+
+  it('uninstalls nothing on a machine that answers as another than the registry names, as an alias that now leads elsewhere', async () => {
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: OTHER_MAC }) });
+    ssh.reply(['uninstall'], { stdout: 'removed\n' });
+    const registry = registered('trift.test');
+    const out = await removeHost('trift', {}, deps({ registry }));
+    expect(out.result).toBe('actions');
+    expect(step('uninstall').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(`trift.test now reaches machine ${OTHER_MAC}, not trift (${REMOTE})`) });
+    expect(ssh.remoteCalls().some((w) => w.includes('uninstall'))).toBe(false);
+    expect(registry.get('trift')).toBeDefined();
   });
 
   it('keeps the route for a machine it cannot reach', async () => {
@@ -900,6 +919,17 @@ describe('host enable', () => {
   /** What `archi fleet provision` on the far side answers once the machine holds its copy of the fleet. */
   const provisioned = (outcome = 'held'): { stdout: string } =>
     ({ stdout: `${JSON.stringify({ outcome, home: `${HOME}/.archipelago-work`, unit: 'archipelago-archid@work.service' })}\n` });
+
+  it('asks for and makes no ownership record on a machine that answers as another than the registry names', async () => {
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: OTHER_MAC }) });
+    ssh.reply(['owner', 'get'], answers({}));
+    const home = fleetHome();
+    const out = await enableHost('trift', { fleetHome: home }, deps({ registry: registered() }));
+    expect(out.result).toBe('actions');
+    expect(step('authority').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(`now reaches machine ${OTHER_MAC}`) });
+    expect(ownerCalls()).toEqual([]);
+    expect(written(home).gatewayMachineId).toBeUndefined();
+  });
 
   it('gives the machine its copy of the fleet under the profile the controller reaches it by, before it names the gateway', async () => {
     ssh.reply(['owner', 'get'], answers({}));
