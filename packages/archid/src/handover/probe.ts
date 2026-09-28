@@ -13,13 +13,17 @@ export type ProbeFs = {
 
 const ABSENT: RootProbe = { exists: false, writable: false, caseInsensitive: false, freeBytes: 0 };
 
-/** Relative paths that only differ by case: two of them cannot both land on a case-folding filesystem. */
+/**
+ * Relative paths that only differ by case or by Unicode normalization: two of them cannot both land on a case-folding
+ * filesystem such as a Mac's, which also holds a composed and a decomposed name as one.
+ */
 export function caseCollisions(relatives: string[]): string[] {
   const byFold = new Map<string, Set<string>>();
   for (const r of relatives) {
-    const held = byFold.get(r.toLowerCase()) ?? new Set();
+    const fold = r.normalize('NFD').toLowerCase();
+    const held = byFold.get(fold) ?? new Set();
     held.add(r);
-    byFold.set(r.toLowerCase(), held);
+    byFold.set(fold, held);
   }
   return [...byFold.values()].filter((s) => s.size > 1).flatMap((s) => [...s]).sort();
 }

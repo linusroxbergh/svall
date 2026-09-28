@@ -65,4 +65,9 @@ describe('the folders a destination writes into', () => {
   it('names the paths that differ only by case', () => {
     expect(caseCollisions(['Notes/TODO.md', 'notes/todo.md', 'keep.md'])).toEqual(['Notes/TODO.md', 'notes/todo.md']);
   });
+
+  it('names the paths that differ only by Unicode normalization, which a Mac holds as one name', () => {
+    const [composed, decomposed] = ['caf\u00e9.md', 'cafe\u0301.md'];
+    expect(caseCollisions([composed, decomposed, 'CAF\u00c9.MD', 'keep.md'])).toEqual(['CAF\u00c9.MD', composed, decomposed].sort());
+  });
 });

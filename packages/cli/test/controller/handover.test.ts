@@ -559,7 +559,7 @@ describe('preflight', () => {
     expect(await blockers()).toEqual([{ code: 'path_unsupported', message: '/Volumes/work on mac cannot be written' }]);
     w.destination.folders['/Volumes/work'] = probe({ caseInsensitive: true });
     expect(await blockers()).toEqual([{
-      code: 'path_collision', entity: { kind: 'root', id: 'r_work' }, message: '/Volumes/work would hold A.txt, a.txt, whose names differ only by case, and mac does not tell them apart',
+      code: 'path_collision', entity: { kind: 'root', id: 'r_work' }, message: '/Volumes/work would hold A.txt, a.txt, whose names differ only by case or Unicode normalization, and mac does not tell them apart',
     }]);
 
     // a first copy is made in /Volumes
