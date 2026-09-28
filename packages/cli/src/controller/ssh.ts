@@ -52,6 +52,13 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => { setTimeout(r, 
  */
 export const shellQuote = (token: string): string => `'${token.split("'").join("'\\''")}'`;
 
+/**
+ * The host every command on a master names. ssh reaches the far machine only through the master's
+ * socket; with no master, an `.invalid` name (RFC 6761) resolves nowhere, whatever the search domains,
+ * so nothing falls back to a connection of its own that no one checked reaches the machine meant.
+ */
+export const REMOTE_HOST = 'archi-remote.invalid';
+
 /** This user's folder for sockets in a temp directory. */
 export function defaultSocketDir(tmp: string = process.env.TMPDIR ?? os.tmpdir()): string {
   return path.join(tmp, `archi-${process.getuid?.() ?? 0}`);
@@ -178,7 +185,7 @@ export class SshMaster {
   }
 
   private argv(control: string[], remote: string[]): string[] {
-    return ['-S', this.socket, '-o', 'BatchMode=yes', ...control, '--', this.destination, ...remote];
+    return ['-S', this.socket, '-o', 'BatchMode=yes', ...control, '--', REMOTE_HOST, ...remote];
   }
 
   async check(): Promise<boolean> {

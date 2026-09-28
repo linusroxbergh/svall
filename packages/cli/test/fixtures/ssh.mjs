@@ -133,6 +133,10 @@ function scripted(words) {
 }
 
 function remote(opts) {
+  // a mux client whose master has gone connects on its own, to whatever its destination names
+  if (opts.S && !fs.existsSync(marker(opts, 'master')) && opts.destination?.endsWith('.invalid')) {
+    die(`ssh: Could not resolve hostname ${opts.destination}: nodename nor servname provided, or not known`);
+  }
   const words = shellWords(opts.command.join(' '));
   if (remoteLog) fs.appendFileSync(remoteLog, `${JSON.stringify(words)}\n`);
   const reply = scripted(words);

@@ -58,7 +58,7 @@ describe('remote connections', () => {
     expect(info.token).toBe(TOKEN);
     const call = ssh.calls().at(-1) as string[];
     // the only `--` ends ssh's own options; everything after the destination is the far shell's line
-    expect(call.slice(call.indexOf('--'))).toEqual(['--', 'trift.test',
+    expect(call.slice(call.indexOf('--'))).toEqual(['--', 'archi-remote.invalid',
       "'/home/linus/.local/share/archipelago/current/bin/archi'", 'connection-info', '--json', '-p', "'private'"]);
     expect(ssh.remoteCalls().at(-1)).toEqual(['/home/linus/.local/share/archipelago/current/bin/archi', 'connection-info', '--json', '-p', 'private']);
   });

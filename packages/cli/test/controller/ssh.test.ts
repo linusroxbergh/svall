@@ -102,7 +102,7 @@ describe('SshMaster', () => {
       '-M', '-S', master.socket, '-N', '-o', 'BatchMode=yes', '-o', 'ControlPersist=no',
       '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3', '-o', 'ConnectTimeout=10', '--', 'trift',
     ]]);
-    expect(ssh.calls()).toContainEqual(['-S', master.socket, '-o', 'BatchMode=yes', '-O', 'check', '--', 'trift']);
+    expect(ssh.calls()).toContainEqual(['-S', master.socket, '-o', 'BatchMode=yes', '-O', 'check', '--', 'archi-remote.invalid']);
     expect(path.dirname(master.socket)).toBe(ssh.socketDir);
     expect(path.basename(master.socket)).toMatch(/^[0-9a-f]{12}$/);
     expect(fs.statSync(ssh.socketDir).mode & 0o777).toBe(0o700);
@@ -150,15 +150,14 @@ describe('SshMaster', () => {
     await master.close();
   });
 
-  it('carries a hostile destination as one argument after the option terminator', async () => {
+  it('carries a hostile destination as one argument after the option terminator, to the master alone', async () => {
     for (const destination of ['evil.test; rm -rf $HOME', '-oProxyCommand=touch /tmp/pwned']) {
       const before = ssh.calls().length;
       const master = await open(destination);
       await master.close();
-      for (const call of ssh.calls().slice(before)) {
-        expect(call.indexOf(destination)).toBe(call.indexOf('--') + 1);
-        expect(call.filter((a) => a === destination)).toHaveLength(1);
-      }
+      const calls = ssh.calls().slice(before);
+      for (const call of calls) expect(call.indexOf(call.includes('-M') ? destination : 'archi-remote.invalid')).toBe(call.indexOf('--') + 1);
+      expect(calls.filter((c) => c.includes(destination))).toEqual(calls.filter((c) => c.includes('-M')));
     }
   });
 
@@ -185,6 +184,16 @@ describe('SshMaster', () => {
     await expect(open('trift')).rejects.toThrow(/not a directory/);
   });
 
+  it('never lets a command fall back to a connection of its own once its master has gone', async () => {
+    const master = await open('trift');
+    ssh.reply(['version'], { stdout: '{}\n' });
+    ssh.dropMaster(master.socket);
+    const r = await master.run(['archi', 'version']);
+    expect(r.code).toBe(255);
+    expect(r.stderr).toContain('Could not resolve hostname archi-remote.invalid');
+    await master.close();
+  });
+
   it('sends a remote command on with nothing of its own in front of it', async () => {
     const master = await open('trift');
     ssh.answer({ ok: true });
@@ -192,7 +201,7 @@ describe('SshMaster', () => {
     await master.run(remote);
     const call = ssh.calls().at(-1) as string[];
     // one `--`, before the destination: a second would reach the far shell as a word
-    expect(call).toEqual(['-S', master.socket, '-o', 'BatchMode=yes', '--', 'trift', ...remote]);
+    expect(call).toEqual(['-S', master.socket, '-o', 'BatchMode=yes', '--', 'archi-remote.invalid', ...remote]);
     expect(call.filter((a) => a === '--')).toHaveLength(1);
     const words = ssh.remoteCalls().at(-1) as string[];
     expect(words[0]).toBe('/opt/archi/current/bin/archi');
@@ -204,11 +213,11 @@ describe('SshMaster', () => {
     const master = await open('trift');
     const forward = await master.forward(4711);
     expect(forward.localPort).toBeGreaterThan(0);
-    expect(ssh.calls().at(-1)).toEqual(['-S', master.socket, '-o', 'BatchMode=yes', '-O', 'forward', '-L', `127.0.0.1:${forward.localPort}:127.0.0.1:4711`, '--', 'trift']);
+    expect(ssh.calls().at(-1)).toEqual(['-S', master.socket, '-o', 'BatchMode=yes', '-O', 'forward', '-L', `127.0.0.1:${forward.localPort}:127.0.0.1:4711`, '--', 'archi-remote.invalid']);
     await forward.cancel();
-    expect(ssh.calls().at(-1)).toEqual(['-S', master.socket, '-o', 'BatchMode=yes', '-O', 'cancel', '-L', `127.0.0.1:${forward.localPort}:127.0.0.1:4711`, '--', 'trift']);
+    expect(ssh.calls().at(-1)).toEqual(['-S', master.socket, '-o', 'BatchMode=yes', '-O', 'cancel', '-L', `127.0.0.1:${forward.localPort}:127.0.0.1:4711`, '--', 'archi-remote.invalid']);
     await master.close();
-    expect(ssh.calls().at(-1)).toEqual(['-S', master.socket, '-o', 'BatchMode=yes', '-O', 'exit', '--', 'trift']);
+    expect(ssh.calls().at(-1)).toEqual(['-S', master.socket, '-o', 'BatchMode=yes', '-O', 'exit', '--', 'archi-remote.invalid']);
   });
 
   it('names what kept it from opening a master', async () => {

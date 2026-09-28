@@ -7,16 +7,10 @@ import { CONTROL, GIT_DIR_KEEP_RULES, GIT_KEEP_RULES } from '@archipelago/archid
 import { relativeProblem } from '@archipelago/archid/handover/replicas';
 import { isRelease, releaseRoot } from '@archipelago/archid/release';
 import { runProcess } from './process.js';
+import { REMOTE_HOST } from './ssh.js';
 
 /** The oldest rsync this engine drives: protected arguments, `--info=progress2` and `--mkpath` all hold from here. */
 export const MIN_RSYNC = [3, 2, 3] as const;
-
-/**
- * The host rsync is told it copies to or from. ssh reaches the far machine only through the master's
- * socket; with no master, an `.invalid` name (RFC 6761) resolves nowhere, whatever the search domains,
- * so nothing falls back to a connection of its own.
- */
-export const REMOTE_HOST = 'archi-remote.invalid';
 
 const PROBE_TIMEOUT = 10_000;
 const KILL_GRACE = 2000;
