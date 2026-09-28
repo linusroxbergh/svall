@@ -244,6 +244,8 @@ function runsFleet(label, s, base, owner, generation, fx) {
   const procs = s.agents.filter((p) => p.cwd === AGENT_CWD);
   check(`${label} one agent process`, procs.length === 1 && s.agents.length === 1, () => brief(s.agents));
   check(`${label} agent pid`, procs[0] && a?.agent?.pid === procs[0].pid, () => `state ${a?.agent?.pid}, running ${brief(procs)}`);
+  const args = procs[0]?.args ?? [];
+  check(`${label} resumed`, args.includes('--resume') && args[args.indexOf('--resume') + 1] === b?.agent?.sessionId, () => brief(args));
   check(`${label} characters`, same(s.characters.map((c) => [c.id, c.name, c.cwd, c.islandId]), base.characters.map((c) => [c.id, c.name, c.cwd, c.islandId])),
     () => brief(s.characters));
   for (const repo of Object.keys(base.git)) {
@@ -318,9 +320,6 @@ function clean(ids, fx, to) {
   const [l, r] = [snap(L, ids), snap(R, ids)];
   const [now, left] = dest === L ? [l, r] : [r, l];
   runsFleet(to, now, base, destId, ctx.generation, fx);
-  const agentArgs = now.agents[0]?.args ?? [];
-  const sessionId = base.characters.find((c) => c.id === fx.agent)?.agent?.sessionId;
-  check('resumed', agentArgs.includes('--resume') && agentArgs[agentArgs.indexOf('--resume') + 1] === sessionId, () => brief(agentArgs));
   holdsNothing(from === L ? 'local' : 'remote', left, destId, ctx.generation);
   check('fleet config', left.fleet.id === ids.fleet && now.fleet.id === ids.fleet
     && left.fleet.gatewayMachineId === ids.remote && now.fleet.gatewayMachineId === ids.remote, () => brief([left.fleet, now.fleet]));
