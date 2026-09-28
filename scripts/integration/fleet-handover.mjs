@@ -226,7 +226,7 @@ function gatewayIs(label, remote, owner, generation) {
 function noJournals(label, local, remote) {
   check(`${label} controller journal`, local.controllerJournal === null, () => brief(local.controllerJournal));
   for (const [side, s] of [['local', local], ['remote', remote]]) {
-    check(`${label} ${side} handover journal`, !s.handover?.transaction && !s.handover?.error, () => brief(s.handover));
+    check(`${label} ${side} handover journal`, !s.handover?.transaction && !s.handover?.quarantined && !s.handover?.error, () => brief(s.handover));
   }
 }
 
