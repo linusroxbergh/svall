@@ -248,6 +248,50 @@ describe('an unknown Commit', () => {
   }
 });
 
+// ---- a cancel while Begin goes unanswered: an abort closes what the gateway may have opened
+
+describe('a cancel while Begin goes unanswered', () => {
+  const world = real.worlds();
+  const BEGIN = PROBED.move.labels.indexOf('gateway begin');
+
+  /** A start the user cancels as its Begin goes out, whose answer is lost; with `away`, the gateway then cannot be asked. */
+  async function cancelled(w: real.World, away: boolean): Promise<Outcome> {
+    const a = party(w, 'mac', 'start');
+    w.message = { at: BEGIN, kind: 'lost' };
+    w.gate = async () => {
+      if (w.requests.length === BEGIN) a.c.cancel();
+      if (away && w.requests.length > BEGIN) w.cut.add('gateway');
+    };
+    try {
+      return await a.go();
+    } finally {
+      w.gate = undefined;
+    }
+  }
+
+  it('asks the gateway whether it opened the handover, and aborts the one it did', async () => {
+    const w = world();
+    expect(await cancelled(w, false)).toMatchObject({ status: 'aborted', phase: 'begin' });
+    expect(w.record().transaction).toBeUndefined();
+    expect(w.violations).toEqual([]);
+    expect(real.settledOn(w)).toBe('source');
+  });
+
+  it('with the gateway then out of reach, keeps its journal and offers the abort, which closes what the gateway opened once it answers', async () => {
+    const w = world();
+    const out = await cancelled(w, true);
+    expect(out).toMatchObject({ status: 'interrupted', phase: 'begin', safe: ['abort'] });
+    expect(w.record().transaction).toMatchObject({ phase: 'preparing' });
+    expect(fs.existsSync(path.join(w.ctlDir, 'handover.json'))).toBe(true);
+    // nothing was frozen, so the source runs its fleet meanwhile
+    expect(w.mac.can()).toBe(true);
+    const said = await w.recover('abort');
+    expect(said).toContain('abort->aborted');
+    expect(w.violations).toEqual([]);
+    expect(real.settledOn(w)).toBe('source');
+  });
+});
+
 // ---- two controllers
 
 type Act = 'start' | 'resume' | 'abort';

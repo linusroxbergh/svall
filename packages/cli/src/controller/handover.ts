@@ -400,7 +400,15 @@ export class Handover {
       }, this.cancel$.signal);
     } catch (e) {
       // a Begin whose answer never came may have opened the handover all the same: then the abort has one to close
-      const opened = unanswered ? await this.openedHere().catch(() => undefined) : undefined;
+      let opened: { id: string } | undefined;
+      if (unanswered) {
+        try { opened = await this.openedHere(); } catch (asked) {
+          // a cancel is not taken as done while the gateway cannot say: the journal stays for the abort that closes it
+          if (e instanceof Cancelled) {
+            throw new Stopped('begin', `cancelled while Begin went unanswered, and the gateway cannot say whether it opened this handover (${messageOf(asked)}); abort once it answers`, ['abort']);
+          }
+        }
+      }
       if (opened) {
         this.save({ transactionId: opened.id });
         this.phase('begin');

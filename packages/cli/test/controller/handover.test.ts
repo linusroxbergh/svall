@@ -780,6 +780,24 @@ describe('cancellation', () => {
     expect(settledOn(w)).toBe('source');
   });
 
+  it('asked while a Begin whose answer was lost waits, and the gateway cannot then say whether it opened it, keeps its journal for the abort', async () => {
+    const w = new World();
+    const c = controller(w);
+    const begin = w.gateway.begin;
+    w.gateway.begin = async (p) => {
+      await begin(p);
+      c.cancel();
+      w.down.add('gateway');
+      throw new Error('ssh: the connection to trift closed before the answer');
+    };
+    const out = await c.start(trift, {});
+    expect(out).toMatchObject({ status: 'interrupted', phase: 'begin', safe: ['abort'], error: expect.stringContaining('cannot say whether it opened') });
+    expect(w.store.j).toMatchObject({ phase: 'begin' });
+    expect(w.record.transaction).toMatchObject({ id: 'tx-1', phase: 'preparing' });
+    await recover(w, 'abort');
+    expect(settledOn(w)).toBe('source');
+  });
+
   it('asked while a Freeze waits out its backoff, stops waiting at once', async () => {
     const w = new World();
     const freeze = w.source.answers['handover.freeze'];
