@@ -104,7 +104,7 @@ function scanTree(root, input, o) {
       }
       if (!st.isFile()) continue;
       files += 1;
-      if (CREDENTIAL_FILE.test(name) && !o.secretsOnly) hit(rel, 'credential file', name);
+      if (CREDENTIAL_FILE.test(name)) hit(rel, 'credential file', name);
       const text = fs.readFileSync(full).toString('latin1');
       for (const [rule, re] of SECRETS) {
         for (const m of text.matchAll(re)) hit(rel, rule, `${m[0].slice(0, 6)}… (${m[0].length} characters)`);

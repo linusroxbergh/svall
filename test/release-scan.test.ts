@@ -173,6 +173,16 @@ describe('what it reads', () => {
     expect(scan([logs], { ...where, secretsOnly: true }).hits.map((h) => h.rule)).toEqual(['GitHub token']);
   });
 
+  test('--secrets-only still names a file that holds credentials by its name', () => {
+    const logs = tmp();
+    for (const f of ['run.log', '.credentials.json', 'id_ed25519', 'auth.json']) fs.writeFileSync(path.join(logs, f), 'nothing a content rule knows\n');
+    expect(scan([logs], { ...where, secretsOnly: true }).hits.map((h) => `${h.path} ${h.rule}`).sort()).toEqual([
+      '.credentials.json credential file',
+      'auth.json credential file',
+      'id_ed25519 credential file',
+    ]);
+  });
+
   test('the command exits 1 on a hit and names it, and 0 on a clean release', () => {
     const run = (dir: string) => spawnSync(process.execPath, [SCRIPT, dir], { encoding: 'utf8', env: { ...process.env, HOME } });
     const clean = run(release());

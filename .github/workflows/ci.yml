@@ -47,7 +47,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: scripts/integration/fleet-handover.sh --out "$RUNNER_TEMP/fleet-handover"
-      - if: failure()
+      - id: logs
+        if: failure()
+        run: node scripts/release-scan.mjs --secrets-only "$RUNNER_TEMP/fleet-handover"
+      - if: failure() && steps.logs.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
           name: fleet-handover-logs
