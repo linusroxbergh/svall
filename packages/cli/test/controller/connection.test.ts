@@ -364,6 +364,16 @@ describe('resolveOwner', () => {
     expect(fs.existsSync(ROUTE())).toBe(false);
   });
 
+  it('never takes the word of a gateway whose ssh destination now reaches another machine', async () => {
+    gateway('gate.test');
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: 'dev', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
+    answers({ error: { code: 'not_found', message: 'no record for that fleet' } });
+    const err = await resolveOwner(home, { deps }).catch((e: SshError) => e);
+    expect(err).toBeInstanceOf(SshError);
+    expect((err as SshError).message).toContain(`gate.test now reaches machine ${REMOTE}, not gate (${GATEWAY})`);
+    expect(ssh.remoteCalls().some((w) => w.includes('owner'))).toBe(false);
+  });
+
   it('passes on a corrupt authority rather than routing anywhere', async () => {
     gateway('gate.test');
     answers({ error: { code: 'authority_corrupt', message: 'owner-11111111.json is not readable' } });

@@ -13,7 +13,7 @@ import { caseCollisions } from '@archipelago/archid/handover/probe';
 import { ARCHIVABLE, contentDigest, replicaRoots } from '@archipelago/archid/handover/replicas';
 import { resumeFolders } from '@archipelago/archid/handover/sessions/registry';
 import { resolvePaths } from '@archipelago/archid/paths';
-import { FleetMismatch } from './connection.js';
+import { FleetMismatch, MachineMismatch } from './connection.js';
 import { entryEvent, namesOf, Observer, type CharacterResult, type HandoverEvent, type Outcome, type SafeAction } from './events.js';
 import { redact } from './process.js';
 import { assess, type ControllerJournal, type ControllerStore, type FrozenManifest, type Observation, type Route, type Seen, type Verdict } from './recovery.js';
@@ -106,8 +106,8 @@ const describe = (r: OwnerRecord): string =>
 const interactive = (e: unknown): Blocker | undefined => (e instanceof SshError && (e.kind === 'auth' || e.kind === 'host_key')
   ? { code: 'ssh_interactive', message: `ssh would have to ask before it could go on, and a handover asks nothing: ${e.message}` } : undefined);
 
-/** A destination whose companion runs another fleet there, as the blocker that names how to give it this one. */
-const foreign = (e: unknown): Blocker | undefined => (e instanceof FleetMismatch ? { code: 'identity_mismatch', message: e.message } : undefined);
+/** A destination whose companion runs another fleet there, or a gateway an alias now leads elsewhere, as the blocker that names it. */
+const foreign = (e: unknown): Blocker | undefined => (e instanceof FleetMismatch || e instanceof MachineMismatch ? { code: 'identity_mismatch', message: e.message } : undefined);
 
 /** Worth asking again: a call whose answer never came, or a daemon that could not reach the gateway. */
 const transient = (e: unknown): boolean =>

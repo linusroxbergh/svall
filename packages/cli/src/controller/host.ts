@@ -15,7 +15,7 @@ import { Client } from '../client.js';
 import type { Check } from '../commands/doctor.js';
 import { REFUSED } from '../commands/fleet-provision.js';
 import { remoteOwner } from './authority.js';
-import { remoteConnectionInfo } from './connection.js';
+import { identify, MachineMismatch, remoteConnectionInfo } from './connection.js';
 import {
   bootstrapSetup, companionAsset, companionCache, currentRelease, downloadCompanion, inspectCompanion,
   remoteRollback, requireCompatible, uploadArchive, type CompanionArchive, type FetchLike,
@@ -405,13 +405,10 @@ type Registered = MachineEntry & { record: MachineRecord & { ssh: string } };
  * would. One whose `archi` gives no answer is left to the step that needs it, so a broken install can still be repaired.
  */
 async function sameMachine(master: SshMaster, entry: Registered): Promise<void> {
-  const r = await master.run([shellQuote(archiExe(entry.record.archiBase)), 'version', '--json'], { timeoutMs: PROBE_TIMEOUT });
-  let id: unknown;
-  try { id = (JSON.parse(r.stdout) as { machineId?: unknown }).machineId; } catch { return; }
-  if (typeof id === 'string' && id !== entry.id) {
-    throw new StepError(`${entry.record.ssh} now reaches machine ${id}, not ${entry.record.name} (${entry.id})`,
-      `point ${entry.record.ssh} back at ${entry.record.name}, or archi host remove ${entry.record.name} --forget`);
-  }
+  await identify(master, entry).catch((err: unknown) => {
+    if (!(err instanceof MachineMismatch)) throw err;
+    throw new StepError(err.message, `point ${entry.record.ssh} back at ${entry.record.name}, or archi host remove ${entry.record.name} --forget`);
+  });
 }
 
 const machineOutcome = (registry: MachineRegistry, name: string): Outcome<Registered> => {

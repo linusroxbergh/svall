@@ -11,10 +11,10 @@ import { contentDigest, replicaRoots } from '@archipelago/archid/handover/replic
 import { resolvePaths } from '@archipelago/archid/paths';
 import type { HandoverEvent } from '../../src/controller/events.js';
 import { Handover, Refused } from '../../src/controller/handover.js';
-import { connectHandover, gatewayOf, reconnecting } from '../../src/controller/reach.js';
+import { authorityOp, connectHandover, gatewayOf, Masters, reconnecting } from '../../src/controller/reach.js';
 import { remoteOwner } from '../../src/controller/authority.js';
 import { fileStore, type FrozenManifest } from '../../src/controller/recovery.js';
-import { FleetMismatch, resolveOwner } from '../../src/controller/connection.js';
+import { FleetMismatch, MachineMismatch, resolveOwner } from '../../src/controller/connection.js';
 import { readRoute } from '../../src/controller/route.js';
 import { SshError, SshMaster } from '../../src/controller/ssh.js';
 import { installFakeSsh } from './fake-ssh.js';
@@ -381,6 +381,34 @@ describe('preflight', () => {
     expect(out).toEqual({ status: 'blocked', phase: 'begin', blockers: [{ code: 'identity_mismatch', message: said }] });
     expect(w.ops.filter((op) => op === 'trift:system.info')).toHaveLength(1);
     expect(w.events.filter((e) => e.event === 'handover.retry')).toEqual([]);
+    expect(w.ops).not.toContain('gateway:begin');
+  });
+
+  it('asks a far gateway nothing once its ssh destination answers as another machine', async () => {
+    const ssh = installFakeSsh();
+    const masters = new Masters();
+    const other = crypto.randomUUID();
+    try {
+      ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: 'dev', protocol: PROTOCOL_VERSION, machineId: other }) });
+      ssh.reply(['gateway', 'owner', 'get'], { stdout: `${JSON.stringify({ result: { record: { fleetId, generation: 0, ownerMachineId: mac } } })}\n` });
+      const gateway = {
+        id: trift,
+        record: { name: 'trift', ssh: 'trift.test', platform: 'linux' as const, arch: 'arm64', home: '/home/ada', archiBase: '/home/ada/.local/share/archipelago', gateway: true },
+      };
+      await expect(authorityOp(gateway, mac, masters)('get', fleetId)).rejects.toThrow(`trift.test now reaches machine ${other}, not trift (${trift})`);
+      expect(ssh.remoteCalls().filter((w) => w.includes('owner'))).toEqual([]);
+    } finally {
+      await masters.close();
+      ssh.clean();
+    }
+  });
+
+  it('blocks at once on a gateway whose ssh destination now reaches another machine', async () => {
+    const w = new World();
+    const said = `gate.test now reaches machine ${crypto.randomUUID()}, not gate (${trift})`;
+    w.gateway.get = () => Promise.reject(new MachineMismatch(said));
+    const out = await controller(w).start(trift, {});
+    expect(out).toEqual({ status: 'blocked', phase: 'begin', blockers: [{ code: 'identity_mismatch', message: said }] });
     expect(w.ops).not.toContain('gateway:begin');
   });
 

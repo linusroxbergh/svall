@@ -26,6 +26,24 @@ export class FleetMismatch extends SshError {
   constructor(message: string) { super('other', message); }
 }
 
+/** A far machine that answers as another than the registry names, as an ssh alias that now leads elsewhere does. */
+export class MachineMismatch extends SshError {
+  constructor(message: string) { super('other', message); }
+}
+
+/**
+ * Refuses a far machine whose `archi version --json` names another machine id than the registry does. One whose archi
+ * gives no answer is left to the call that needs it, which fails on its own.
+ */
+export async function identify(master: Pick<SshMaster, 'run'>, machine: MachineEntry): Promise<void> {
+  const r = await master.run([shellQuote(archiExe(machine.record.archiBase)), 'version', '--json']);
+  let id: unknown;
+  try { id = (JSON.parse(r.stdout) as { machineId?: unknown }).machineId; } catch { return; }
+  if (typeof id === 'string' && id !== machine.id) {
+    throw new MachineMismatch(`${machine.record.ssh ?? machine.record.name} now reaches machine ${id}, not ${machine.record.name} (${machine.id})`);
+  }
+}
+
 /** What a companion answers about the fleet it runs: enough to reach it, and to refuse the wrong one. */
 export const ConnectionInfo = z.object({
   fleetId: FleetId,
@@ -189,6 +207,7 @@ async function askGateway(fleetId: FleetId, gateway: MachineEntry, d: OwnerDeps)
   if (!destination) throw new SshError('other', `the gateway ${gateway.record.name} has no ssh destination in the registry`);
   const master = await d.openMaster(destination);
   try {
+    await identify(master, gateway);
     const answer = await remoteOwner({ master, exe: archiExe(gateway.record.archiBase), op: 'get', fleetId });
     // the authority's own socket went quiet or away: the gateway machine is up, its authority may come back
     if ('error' in answer && (answer.error.code === 'disconnected' || answer.error.code === 'timeout')) {

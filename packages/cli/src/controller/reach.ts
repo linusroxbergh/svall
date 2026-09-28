@@ -8,7 +8,7 @@ import { resolvePaths } from '@archipelago/archid/paths';
 import { archiExe } from '@archipelago/archid/release';
 import { ApiError, Client } from '../client.js';
 import { remoteOwner, type OwnerAnswer } from './authority.js';
-import { remoteConnectionInfo } from './connection.js';
+import { identify, remoteConnectionInfo } from './connection.js';
 import { Handover, Refused, type Daemon, type Gateway, type HandoverDeps, type Side } from './handover.js';
 import { redact } from './process.js';
 import { fileStore, type Route } from './recovery.js';
@@ -43,13 +43,24 @@ export class Masters {
   }
 }
 
-/** One operation on a gateway's authority. It throws only when the gateway's machine did not answer. */
+/** One operation on a gateway's authority. It throws only when the gateway's machine did not answer, or answered as another. */
 export type AuthorityOp = (op: string, fleetId: FleetId, params?: Record<string, unknown>) => Promise<OwnerAnswer>;
 
-/** The authority of the gateway `entry`: over its own socket on this machine, through `archi gateway owner` over the master anywhere else. */
+/**
+ * The authority of the gateway `entry`: over its own socket on this machine, through `archi gateway owner` over the master
+ * anywhere else, once that master has shown it reaches the machine the registry names.
+ */
 export function authorityOp(entry: MachineEntry, localId: MachineId, masters: Masters): AuthorityOp {
   if (entry.id !== localId) {
-    return async (op, fleetId, params) => remoteOwner({ master: await masters.for(entry), exe: archiExe(entry.record.archiBase), op, fleetId, ...(params && { params }) });
+    const identified = new WeakSet<SshMaster>();
+    return async (op, fleetId, params) => {
+      const master = await masters.for(entry);
+      if (!identified.has(master)) {
+        await identify(master, entry);
+        identified.add(master);
+      }
+      return remoteOwner({ master, exe: archiExe(entry.record.archiBase), op, fleetId, ...(params && { params }) });
+    };
   }
   return async (op, fleetId, params) => {
     const prefix = gatewayPrefix();
