@@ -509,8 +509,10 @@ describe('two controllers on different machines', () => {
         if (++arrived === 2) both();
         await met;
       };
+      // a start that ends before its Begin lets the other go on, so the count below fails instead of the wait timing out
+      const meets = (p: Party): Party => ({ ...p, go: () => p.go().finally(both) });
       const second = party(w, 'trift', 'start');
-      const outcomes = await race(w, party(w, 'mac', 'start'), same ? second : { ...second, go: () => w.run(() => second.c.start(real.TRIFT, { ...real.choices(w), interruptAfterMs: 0 }), second.c) });
+      const outcomes = await race(w, meets(party(w, 'mac', 'start')), meets(same ? second : { ...second, go: () => w.run(() => second.c.start(real.TRIFT, { ...real.choices(w), interruptAfterMs: 0 }), second.c) }));
       w.gate = undefined;
       expect(arrived).toBe(2);
       // the gateway answers a Begin between the same machines at the same generation with the handover it holds, so both drive that one
