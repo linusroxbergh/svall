@@ -176,8 +176,9 @@ units' logs.
      with `ARCHI_RELEASE_ROOT` at the tree: the same code, manifest and signers.
 2. **A clean machine.** It is the `machine` stage of `scripts/integration/Dockerfile`: systemd, sshd, tmux 3.4, Git,
    rsync and the `tailscale` double, and no Node.
-   - The run makes one account whose home is the controller's home. That home is a folder of its own under the host's
-     temp folder, short enough for the gateway's socket path, which holds at most 108 bytes.
+   - The run makes one account whose home is the controller's home, a folder of its own under `/var/tmp` on both. It
+     is short enough for the gateway's socket path, which holds at most 108 bytes, and outside `/tmp`, which the
+     machine empties when it starts again.
    - The account logs in with a key made for the run, and lingering is off.
    - No `node` exists anywhere on the machine, and the home holds only Ubuntu's skeleton.
    - ssh from the host reads only the run's own files. A wrapper first on the controller's PATH runs ssh with `-F` on

@@ -27,9 +27,9 @@ const out = o.out ? path.resolve(o.out) : fs.mkdtempSync(path.join(os.tmpdir(), 
 const { log, say, docker, check, step, booted } = harness(out);
 
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'archi-fresh-'));
-// the controller's own home, which the machine's account shares; short, as the gateway's socket lives under it and a
-// unix socket's path holds at most 108 bytes
-const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'h'));
+// the controller's own home, which the machine's account shares: short, as the gateway's socket lives under it and a
+// unix socket's path holds at most 108 bytes, and not under /tmp, which the machine empties when it starts again
+const HOME = fs.mkdtempSync('/var/tmp/h');
 const PREFIX = `${HOME}/.local/share/archipelago`;
 const SSH_DIR = path.join(work, 'ssh');
 const BIN = path.join(work, 'bin');
