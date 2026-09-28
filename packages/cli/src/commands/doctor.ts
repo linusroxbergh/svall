@@ -156,7 +156,8 @@ async function gh(d: DoctorDeps): Promise<Check> {
     await d.run('gh', ['auth', 'status']);
     return { name: 'gh', status: 'ok', detail: 'logged in' };
   } catch (e) {
-    const why = missing(e) ? 'not found on PATH: brew install gh' : 'not logged in: gh auth login';
+    const install = d.platform === 'linux' ? 'sudo apt install gh' : 'brew install gh';
+    const why = missing(e) ? `not found on PATH: ${install}` : 'not logged in: gh auth login';
     return { name: 'gh', status: 'warn', detail: `${why} (pull request links stay unresolved)` };
   }
 }

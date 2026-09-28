@@ -354,9 +354,10 @@ describe('doctor on Linux', () => {
     expect(absent.systemd).toMatchObject({ status: 'fail', detail: expect.stringMatching(/no systemd user services/) });
   });
 
-  it('names the apt package when tmux is missing', async () => {
-    const c = byName(await doctor(priv, linux({ 'tmux -V': undefined as never }).deps));
+  it('names the apt package when tmux or gh is missing', async () => {
+    const c = byName(await doctor(priv, linux({ 'tmux -V': undefined as never, 'gh auth status': undefined as never }).deps));
     expect(c.tmux).toMatchObject({ status: 'fail', detail: 'not found on PATH: sudo apt install tmux' });
+    expect(c.gh).toMatchObject({ status: 'warn', detail: 'not found on PATH: sudo apt install gh (pull request links stay unresolved)' });
   });
 
   it('asks for the agents on the PATH the fleet\'s unit runs with, where the daemon finds them', async () => {
