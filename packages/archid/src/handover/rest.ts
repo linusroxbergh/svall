@@ -123,7 +123,7 @@ type Track = TerminalRef & {
 };
 
 // the launch flags the idle close would resume this terminal's agent with; none when its launch cannot be repeated
-function launchFlags(c: Classified): string[] | undefined {
+export function launchFlags(c: Classified): string[] | undefined {
   const p = c.processes.agent;
   const args = p && p.kind === c.agent?.kind ? c.processes.foreground.find((x) => x.pid === p.pid)?.args : undefined;
   return args === undefined ? undefined : startFlags(args, p!.kind);

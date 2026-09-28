@@ -16,7 +16,7 @@ import { ProcessTable, type Proc } from '../../src/handover/processes.js';
 import { ReplicaStore, replicaRoots } from '../../src/handover/replicas.js';
 import type { Clock } from '../../src/handover/rest.js';
 import { HandoverService } from '../../src/handover/service.js';
-import { agentProber, type AgentProbe, type AgentRun } from '../../src/handover/sessions/registry.js';
+import { agentProber, resumeFolders, type AgentProbe, type AgentRun } from '../../src/handover/sessions/registry.js';
 import type { Authority, SourceDeps } from '../../src/handover/source.js';
 import { adoptAtStart, enterStartupMode, startupMode } from '../../src/handover/startup.js';
 import { silentLogger } from '../../src/log.js';
@@ -494,6 +494,44 @@ describe('source preflight', () => {
       const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines({ info: destinationInfo({ agentAdapters: [{ ...claude, version }] }) }) });
       expect(r.blockers, version).toEqual([]);
     }
+  });
+
+  it('carries each running agent with the revive its rest will record, launch flags read from its process, so a bypass resume shows in either terminal', async () => {
+    const [ADA, ADA2, BO, CY] = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
+    const b = boot({
+      characters: (work) => {
+        const claude = (sessionId: string): Agent => {
+          const transcriptPath = path.join(work, `.claude/projects/-work/${sessionId}.jsonl`);
+          fs.mkdirSync(path.dirname(transcriptPath), { recursive: true });
+          fs.writeFileSync(transcriptPath, `${JSON.stringify({ type: 'user', sessionId })}\n`);
+          return { kind: 'claude', sessionId, transcriptPath, status: 'idle', lastActivityAt: 0 };
+        };
+        const ada = path.join(work, 'ada');
+        return [
+          char('c_ada', ada, { tmux: win(1), agent: claude(ADA), second: { cwd: ada, unread: false, tmux: win(2), agent: claude(ADA2) } }),
+          char('c_bo', path.join(work, 'bo'), { tmux: win(3), agent: claude(BO) }),
+          char('c_cy', path.join(work, 'cy'), { agent: claude(CY), revive: { command: `claude --dangerously-skip-permissions --resume ${CY}` } }),
+        ];
+      },
+    });
+    b.world.panes.get('@1')!.job = ['claude --dangerously-skip-permissions'];
+    b.world.panes.get('@2')!.job = ['claude --permission-mode bypassPermissions'];
+    b.world.panes.get('@3')!.job = ['claude --effort high'];
+    const before = structuredClone(b.store.state);
+
+    const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() });
+
+    expect(r.blockers).toEqual([]);
+    const { c_ada: ada, c_bo: bo, c_cy: cy } = r.manifest.snapshot.characters;
+    expect([ada.revive, ada.second?.revive, bo.revive, cy.revive]).toEqual([
+      { command: `claude --dangerously-skip-permissions --resume ${ADA}` },
+      { command: `claude --permission-mode 'bypassPermissions' --resume ${ADA2}` },
+      { command: `claude --effort 'high' --resume ${BO}` },
+      { command: `claude --dangerously-skip-permissions --resume ${CY}` },
+    ]);
+    expect(resumeFolders(r.manifest).map((f) => [f.characterId, f.bypass ?? false])).toEqual([['c_ada', true], ['c_ada', true], ['c_bo', false], ['c_cy', true]]);
+    expect(b.store.state).toEqual(before);
+    expect(b.world.log).toEqual([]);
   });
 });
 

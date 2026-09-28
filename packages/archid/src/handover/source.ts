@@ -11,7 +11,7 @@ import { runGit, type GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
 import type { OwnershipState } from '../ownership/state.js';
 import { installedScripts, type Paths } from '../paths.js';
-import { markDormant, markSlotDormant } from '../reconcile.js';
+import { markDormant, markSlotDormant, reviveCommand } from '../reconcile.js';
 import { releaseVersion } from '../release.js';
 import type { Tmux } from '../tmux/tmux.js';
 import { boundary } from './failpoints.js';
@@ -23,7 +23,7 @@ import { SourceJournal } from './journal.js';
 import { buildManifest, manifestBlockers, readManifest, realScanFs, summarize, writeManifest, type ScanFs } from './manifest.js';
 import { ProcessTable } from './processes.js';
 import { ReplicaStore, replicaRoots } from './replicas.js';
-import { classifyTerminals, restChoices, restTerminals, unapproved, type Clock, type RestDeps, type RestOptions } from './rest.js';
+import { classifyTerminals, launchFlags, restChoices, restTerminals, unapproved, type Clock, type RestDeps, type RestOptions } from './rest.js';
 import type { HandoverService } from './service.js';
 import { agentBlockers, type AgentProbe } from './sessions/registry.js';
 
@@ -189,7 +189,14 @@ export class SourceHandover {
     }
     const signal = AbortSignal.timeout(CALL_TIMEOUT_MS);
     const [live, table] = await Promise.all([this.d.tmux.listWindows(signal), this.processes(signal)]);
-    blockers.push(...unapproved(state, classifyTerminals(state, live, table), restChoices(p.choices)));
+    const terminals = classifyTerminals(state, live, table);
+    blockers.push(...unapproved(state, terminals, restChoices(p.choices)));
+    // each running agent carries the revive its rest will record, so the destination is asked about the flags it resumes with
+    for (const t of terminals) {
+      const c = inventory.snapshot.characters[t.characterId];
+      const slot = t.term === 2 ? c?.second : c;
+      if (slot?.agent) slot.revive = { command: reviveCommand(slot, launchFlags(t)) };
+    }
     const built = await buildManifest(inventory, { generation: this.ownership.record().generation }, this.d.scanFs);
     const big = oversize(built.manifest, this.d.manifestBytes ?? MAX_MANIFEST_BYTES);
     // one too large to answer whole is answered without its file lists

@@ -985,6 +985,25 @@ describe('the gateway lost', () => {
   }
 });
 
+describe('a preflight of a Claude running in bypass mode', () => {
+  const world = worlds();
+
+  it("warns before anything moves that di's Claude will ask trift to accept the bypass mode it runs in, until trift's Claude has accepted it", async () => {
+    const w = world();
+    const di = [...w.mac.windows.values()].find((x) => x.name === 'c_di')!;
+    const warned = async () => {
+      const c = w.controller();
+      return (await w.run(() => c.preflight(TRIFT, choices(w)))).warnings.filter((x) => x.code === 'claude_bypass').map((x) => x.entity?.id);
+    };
+    expect(await warned()).toEqual([]);
+    di.job = ['claude --dangerously-skip-permissions'];
+    expect(await warned()).toEqual(['c_di']);
+    fs.writeFileSync(path.join(w.claudeHome, 'settings.json'), JSON.stringify({ skipDangerousModePermissionPrompt: true }));
+    expect(await warned()).toEqual([]);
+    expect(w.violations).toEqual([]);
+  });
+});
+
 describe('a stale owner.json beside a surrendered journal', () => {
   const world = worlds();
   const surrendered = (w: World) => JSON.parse(fs.readFileSync(w.mac.paths.owner, 'utf8')) as { surrendered?: true };
