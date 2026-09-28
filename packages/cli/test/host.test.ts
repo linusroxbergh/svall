@@ -254,8 +254,8 @@ describe('host add', () => {
     await d.close();
     expect(step('linger').at(-1)).toMatchObject({ status: 'warn', action: 'ssh trift.test, then loginctl enable-linger linus' });
     expect(step('service').at(-1)).toMatchObject({ status: 'warn', action: 'ssh trift.test, then loginctl enable-linger linus' });
-    expect(out).toMatchObject({ result: 'actions' });
-    expect(out.actions).toContain('ssh trift.test, then loginctl enable-linger linus');
+    // both steps name the one command, which the user is left to run once
+    expect(out).toEqual({ result: 'actions', actions: ['ssh trift.test, then loginctl enable-linger linus'] });
   });
 
   it('takes the service from a companion doctor that exits 1 over a check the service does not need', async () => {

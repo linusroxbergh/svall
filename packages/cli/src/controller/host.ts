@@ -65,6 +65,11 @@ class Runner {
 
   constructor(private readonly emit: (e: StepEvent) => void) {}
 
+  // two steps can find the same thing to do, as lingering is both its own step and the service's
+  private todo(action: string): void {
+    if (!this.actions.includes(action)) this.actions.push(action);
+  }
+
   async step<T>(step: string, fn: () => Promise<Outcome<T>>): Promise<T> {
     this.emit({ step, status: 'start' });
     let r: Outcome<T>;
@@ -73,11 +78,11 @@ class Runner {
     } catch (err) {
       const e = err instanceof StepError ? err : new StepError((err as Error).message);
       this.failed = true;
-      this.actions.push(e.action ?? e.detail);
+      this.todo(e.action ?? e.detail);
       this.emit({ step, status: 'fail', detail: e.detail, ...(e.action ? { action: e.action } : {}) });
       throw e;
     }
-    if (r.action) this.actions.push(r.action);
+    if (r.action) this.todo(r.action);
     this.emit({
       step, status: r.status ?? 'ok',
       ...(r.detail ? { detail: r.detail } : {}), ...(r.action ? { action: r.action } : {}),
