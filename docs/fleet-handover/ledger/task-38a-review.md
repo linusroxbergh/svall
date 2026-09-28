@@ -219,3 +219,114 @@ accept it.
 - Mutations and repros ran in a scratch `git archive 4c671f4d` copy with its dependencies linked, and in a scratch
   directory for the verify script.
 - The worktree is untouched apart from this file.
+
+## Re-review of fix round 1
+
+**Verdict: Needs fixes.** Every finding is addressed. The far half of the spec line 286 fix opens one new Important
+hole (N1). New: Critical 0, Important 1, Minor 2.
+
+| Finding | Verdict | Checked by |
+| --- | --- | --- |
+| I1 far PATH | ADDRESSED | The review's junk tree, run through the script verbatim under GNU tar with `PATH=./node_modules/.bin:bin:.::` and the cwd inside the release: no shim ran, exit 3. Dropping the PATH line fails 3 tests. |
+| I2 repeat `host add` | ADDRESSED | Setting `installed: ""` fails 2 host tests. |
+| I3 `host remove` owner | ADDRESSED | The review's `fleetAt(… { gateway: OTHER_MAC, owner: REMOTE })` is now the test, and `there = []` fails it. See N3. |
+| I4 GPL shell integration | ADDRESSED | The NOTICE lines, both texts and the `cp` are present. Changing the shell integration's licence to MIT in the NOTICE fails the test. |
+| I5 gateway identity | ADDRESSED | Covered: `askGateway`, `authorityOp`, host enable/upgrade/remove, and the daemon's `fleetAuthority.get`, which is its only path to the gateway. Removing any of these checks fails its test. See N2. |
+| M1–M9 | ADDRESSED | M1: exit 5 and M2: exit 6, both under GNU tar. M3 and M6: mutation fails the test. M5: the rows exist and the cited names exist. M4, M7, M8 and M9: read in code and doc. |
+| Spec line 286 | ADDRESSED | The controller and `archi setup` verify before unpacking and again after. The far half is N1. |
+
+### N1 (Important). The far check verifies one `SHA256SUMS`, then checks the digests against another
+
+`packages/cli/src/controller/install.ts:151-160`. The pinned branch works in three steps:
+
+1. It extracts `releases/$3/SHA256SUMS` and `.sig` by name and verifies them.
+2. It unpacks the whole archive over them (line 158).
+3. It runs `sha256sum -c` on whichever `SHA256SUMS` that unpack left.
+
+GNU tar matches named members literally. A full unpack, though, writes `./releases/<v>/SHA256SUMS`,
+`releases/<v>/./SHA256SUMS` and `releases/<v>//SHA256SUMS` onto the same file. So a later member spelled one of those
+ways replaces the verified manifest.
+
+Reproduced in a scratch copy:
+
+- **Archive.** Built with `companionArchive`:
+  - a genuine `SHA256SUMS` and `.sig`, signed by the key the far machine pins;
+  - an intruder's release (`bin/archi`, and a `release.json` naming 1.2.3);
+  - `./releases/1.2.3/SHA256SUMS` and `.sig`, signed by the intruder.
+- **Controller.** `inspectCompanion(crafted, { verify: intruder.verify })` accepts it with `signed: true`. This is the
+  trust split `host.test.ts` models.
+- **Far.** The script ran verbatim in `archi-it:machine` (GNU tar 1.35), with `current` pinning the genuine key. It
+  printed `pinned` and exited 0, and the staged `bin/archi` was the intruder's, which `archi setup` would then run.
+
+For comparison:
+
+- The pre-split script (`076d8339`) refuses the same archive with exit 3.
+- A duplicate under the same name is refused, because the named extraction also takes the last copy.
+- macOS bsdtar normalises names when it matches, so it refuses all three spellings. The unit tests run the far script
+  with the Mac's tar, so they cannot see this.
+
+The fixer's concern holds: the unit tests and the five-case GNU tar run leave exactly this gap. It also breaks the
+premise of the accepted risk "an archive member outside `releases/<v>`", which says nothing runs from staging but the
+checked release. This member lands inside the checked release.
+
+*Fix (test first):*
+
+- After the full unpack, verify the signature again over the `SHA256SUMS` that `sha256sum -c` reads. Or compare it and
+  its `.sig` byte for byte with copies taken before the unpack.
+- Have `inspectCompanion` refuse any member not spelled `releases/<v>/…`, or holding a `.` or empty segment.
+- Put the test under GNU tar, for example the container check made a test, since bsdtar hides the case.
+
+### N2 (Minor). A far shell that prints to stdout skips the controller's gateway identity check
+
+`connection.ts` `identify` parses the whole stdout of `archi version --json`, and passes when that fails. The other two
+readers are more tolerant:
+
+- `remoteOwner` reads only the last line;
+- the daemon's check finds the `"machineId"` line anywhere in the output.
+
+Scratch run: the fixer's `connection.test.ts` case, with `Welcome to other\n` printed before both answers. `resolveOwner`
+then routes the fleet to `local` on the wrong machine's `not_found`. Without that line, it throws.
+
+The case needs the wrong machine to have `archi` at the same base and a non-interactive shell that prints. The daemon's
+own check still guards preflight and Freeze.
+
+*Fix:* read the machine id as the daemon does, or from the last JSON object. Treat an unreadable answer as a mismatch
+whenever an ownership frame follows it.
+
+### N3 (Minor). `host remove` still uninstalls a machine that a handover through another gateway holds open
+
+The `open` refusal covers only fleets that name the removed machine as their gateway. Take a handover to trift through
+gateway G whose controller stopped after G's Commit but before `rememberOwner`. trift then owns the fleet, but no local
+cache says so, so `host remove trift` uninstalls it.
+
+*Fix:* apply the `open` refusal to every fleet home, whatever its gateway.
+
+### Runs
+
+- **Scratch copy.** `git archive 4e222aec` into the scratchpad, with its dependencies linked. The 12 touched test files
+  gave 330 passed and 6 skipped. `app-notice` gave 3 passed once the kit was linked in.
+- **Mutations.** Each of these fails its test (failures in brackets):
+  - the `.`/`..` replace in `progress.ts` (1);
+  - `identify` in `askGateway` (1), and in `authorityOp` (1);
+  - the daemon's `machineId` check (1);
+  - `localClash` (1);
+  - `there` (1);
+  - `installed: ""` (2);
+  - the UNPACK PATH line (3);
+  - the shell integration's licence changed to MIT in the NOTICE (1).
+- **The far script under GNU tar 1.35.**
+
+  | Case | Result |
+  | --- | --- |
+  | Good archive | `pinned`, exit 0 |
+  | Missing signers file | exit 5 |
+  | Replayed older release | exit 6 |
+  | No `current` | `first` |
+  | I1 junk tree | exit 3, and no shim ran |
+  | The three N1 spellings | `pinned`, exit 0, with the intruder's `archi` staged |
+  | A same-name duplicate | exit 3 |
+
+- **Docker.** colima's default profile was started for these runs and stopped after. The docker context is back on
+  `desktop-linux`.
+- **Worktree.** Untouched apart from this section. The untracked `scripts/bench/` and `packages/archid/*-bench.tmp.ts`
+  appeared during the review and are another session's.
