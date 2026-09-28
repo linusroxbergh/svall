@@ -730,7 +730,7 @@ export class Fleet extends EventEmitter<Events> {
     if (alive) {
       this.deps.store.update((d) => {
         const cur = d.characters[id];
-        if (cur) { cur.tmux = { windowId: alive.windowId, paneId: alive.paneId }; delete cur.revive; delete cur.resumeError; }
+        if (cur) { cur.tmux = { windowId: alive.windowId, paneId: alive.paneId }; if (!this.carried(id)) delete cur.revive; delete cur.resumeError; }
       });
       if (prompt) await this.run(id, prompt, true);
       return this.char(id);
@@ -749,7 +749,8 @@ export class Fleet extends EventEmitter<Events> {
     this.deps.store.update((d) => {
       const cur = d.characters[id];
       cur.tmux = { windowId: w.windowId, paneId: w.paneId };
-      delete cur.revive;
+      // one a handover has yet to answer for keeps the resume command it carries, which a retry lays it dormant with again
+      if (!this.carried(id)) delete cur.revive;
       delete cur.resumeError;
       // a resumed session keeps its old agent record; its stale status must not answer the next wait,
       // nor its old activity have it ended again as idle before it is up
@@ -782,7 +783,7 @@ export class Fleet extends EventEmitter<Events> {
     this.deps.store.update((d) => {
       const cur = d.characters[id];
       const second = { unread: false, ...cur.second, cwd, tmux: { windowId: w.windowId, paneId: w.paneId } };
-      delete second.revive;
+      if (!this.carried(id, 2)) delete second.revive;
       delete second.resumeError;
       // a resumed session keeps its old agent record; its stale status must not answer the next wait.
       if (second.agent) { second.agent.status = 'idle'; delete second.agent.prompt; delete second.agent.promptId; delete second.agent.background; second.unread = false; }

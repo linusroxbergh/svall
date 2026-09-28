@@ -1040,6 +1040,29 @@ runIf('Fleet', () => {
     await waitFor(() => store.state.characters[c.id].agent === undefined && store.state.characters[c.id].second?.agent === undefined, 3000);
   });
 
+  it('keeps the resume command of a terminal a handover has yet to answer for when it opens it, so a retry lays it dormant with it again', async () => {
+    const { fleet, store, tmux } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    let carried = true;
+    fleet.carries(() => carried);
+    const main = { command: 'echo main' };
+    const second = { command: 'echo second' };
+    const dormant = () => store.update((d) => { delete d.characters[c.id].tmux; d.characters[c.id].revive = main; });
+    // dormant while its window lives on, then with that window gone, and a dormant second
+    dormant();
+    store.update((d) => { d.characters[c.id].second = { cwd: '/tmp', unread: false, revive: second }; });
+    expect((await fleet.reviveCharacter(c.id)).revive).toEqual(main);
+    await tmux.killWindow(store.state.characters[c.id].tmux!.windowId);
+    dormant();
+    expect((await fleet.reviveCharacter(c.id)).revive).toEqual(main);
+    expect((await fleet.openSecond(c.id)).second?.revive).toEqual(second);
+    // one the handover has answered for opens as any other
+    carried = false;
+    await tmux.killWindow(store.state.characters[c.id].tmux!.windowId);
+    dormant();
+    expect((await fleet.reviveCharacter(c.id)).revive).toBeUndefined();
+  });
+
   it('creates the home island on start, copies config into state, and protects it', async () => {
     const { fleet, store, home: archiHome } = await boot();
     // a character is refused a cwd that is not a directory, so the folder must exist

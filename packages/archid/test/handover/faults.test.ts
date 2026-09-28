@@ -191,10 +191,12 @@ class Machine {
 
   /**
    * The fleet as the daemon `life` runs it: opening a terminal is idempotent, as the real one's is, runs the command
-   * it revives with, and an agent resumed there reports its SessionStart.
+   * it revives with, keeps that command while a handover carries the terminal, and an agent resumed there reports its
+   * SessionStart.
    */
   fleet(life: Life, store: Store, instance: () => Instance | undefined) {
     const started = new Set<(id: string, term: 2 | undefined, sessionId: string) => void>();
+    let carried: (id: string, term?: 2) => boolean = () => false;
     const open = async (id: string, term?: 2) => {
       alive(life);
       const key = term ? `${id}-2` : id;
@@ -211,7 +213,7 @@ class Machine {
         const cur = d.characters[id];
         const s = term ? (cur.second ??= { cwd: cur.cwd, unread: false }) : cur;
         s.tmux = { windowId: win.windowId, paneId: win.paneId };
-        delete s.revive;
+        if (!carried(id, term)) delete s.revive;
         delete s.resumeError;
       });
       this.w.check(`${this.name} opened ${key}`);
@@ -239,7 +241,7 @@ class Machine {
         started.add(fn);
         return () => { started.delete(fn); };
       },
-      carries: () => {},
+      carries: (fn: (id: string, term?: 2) => boolean) => { carried = fn; },
     };
   }
 }
