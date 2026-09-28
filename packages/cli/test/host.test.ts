@@ -914,6 +914,19 @@ describe('host remove', () => {
     expect(gatewayOf(away)).toBe(REMOTE);
   });
 
+  it('refuses to uninstall a machine that owns a fleet through another gateway, and names the handover that brings it back', async () => {
+    ssh.reply(['uninstall'], { stdout: 'removed\n' });
+    const registry = registered('trift.test');
+    const there = fleetAt('.archipelago-lab', { gateway: OTHER_MAC, owner: REMOTE });
+    const out = await removeHost('trift', {}, deps({ registry }));
+    expect(out.result).toBe('actions');
+    expect(step('fleet').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(there) });
+    expect(out.actions.join('\n')).toContain('`archi -p lab handover local`');
+    expect(ssh.calls()).toEqual([]);
+    expect(registry.get('trift')).toBeDefined();
+    expect(gatewayOf(there)).toBe(OTHER_MAC);
+  });
+
   it('names the handover that brings a stranded fleet back, profile and all, before the machine can go', async () => {
     const registry = registered('trift.test');
     fleetAt('.archipelago-lab', { gateway: REMOTE, owner: OTHER_MAC });

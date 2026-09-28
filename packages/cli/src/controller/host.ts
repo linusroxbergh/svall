@@ -536,11 +536,12 @@ function fleetHomes(homedir: string): string[] {
 /**
  * The fleets that name this machine as their gateway: a fleet this Mac owns can drop it, and one
  * that another machine owns, or that a handover holds open, would be stranded, since only its gateway
- * knows where it is.
+ * knows where it is. A fleet this machine owns, through whichever gateway, runs there, and goes with it.
  */
 function gatewayFleets(entry: MachineEntry, d: HostDeps): Outcome<string[]> {
   const me = d.machineId();
-  const named = fleetHomes(d.homedir).filter((home) => readFleet(resolvePaths(home).fleetConfig).gatewayMachineId === entry.id);
+  const homes = fleetHomes(d.homedir);
+  const named = homes.filter((home) => readFleet(resolvePaths(home).fleetConfig).gatewayMachineId === entry.id);
   const archi = (home: string, args: string): string => {
     const profile = profileOf(home, d.homedir);
     return `\`archi ${profile === PRIVATE ? '' : `-p ${profile} `}${args}\``;
@@ -553,10 +554,17 @@ function gatewayFleets(entry: MachineEntry, d: HostDeps): Outcome<string[]> {
     throw new StepError(`${entry.record.name} is the gateway for ${open.join(', ')}, which a handover holds open`,
       `${open.map(settle).join('; ')}; then \`archi host remove ${entry.record.name}\``);
   }
-  const away = named.filter((home) => [cachedOwner(home)?.ownerMachineId, readRoute(home)?.ownerMachineId].some((id) => id !== undefined && id !== me));
-  if (away.length) {
-    throw new StepError(`${entry.record.name} is the gateway for ${away.join(', ')}, which another machine owns`,
-      `bring ${away.length > 1 ? 'each fleet' : 'it'} back to this Mac with ${away.map((home) => archi(home, 'handover local')).join(' and ')}, then \`archi host remove ${entry.record.name}\``);
+  const owners = (home: string) => [cachedOwner(home)?.ownerMachineId, readRoute(home)?.ownerMachineId];
+  const away = named.filter((home) => owners(home).some((id) => id !== undefined && id !== me));
+  const there = homes.filter((home) => !named.includes(home) && owners(home).includes(entry.id));
+  if (away.length || there.length) {
+    const why = [
+      ...(away.length ? [`${entry.record.name} is the gateway for ${away.join(', ')}, which another machine owns`] : []),
+      ...(there.length ? [`${entry.record.name} owns ${there.join(', ')}, whose daemon runs there`] : []),
+    ];
+    const back = [...away, ...there];
+    throw new StepError(why.join('; '),
+      `bring ${back.length > 1 ? 'each fleet' : 'it'} back to this Mac with ${back.map((home) => archi(home, 'handover local')).join(' and ')}, then \`archi host remove ${entry.record.name}\``);
   }
   return {
     value: named,
