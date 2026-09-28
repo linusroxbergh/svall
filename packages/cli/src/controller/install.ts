@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { NAMESPACE, SIG, SUMS, verifyRelease, type Verify } from '../../../../scripts/release-manifest.mjs';
+import { MANIFEST, NAMESPACE, SIG, SUMS, verifyRelease, type Verify } from '../../../../scripts/release-manifest.mjs';
 import { runProcess } from './process.js';
 import { shellQuote, SshError, type SshMaster } from './ssh.js';
 
@@ -129,8 +129,8 @@ export async function uploadArchive(master: SshMaster, o: { archive: string; rem
   if (r.code !== 0) throw new SshError(r.code === 255 ? 'unreachable' : 'other', `the companion could not be written to ${o.remote}: ${r.stderr.trim().slice(0, 400)}`);
 }
 
-// $1 the staged release, $2 the installed release's allowed_signers, or empty to skip the signature;
-// a file holding only comments pins no key, as a release built before one existed does. The PATH holds only
+// $1 the staged release, $2 the installed release's allowed_signers, or empty to skip the signature, $3 the release
+// asked for; a file holding only comments pins no key, as a release built before one existed does. The PATH holds only
 // system folders, so no relative entry in the login shell's can reach a tool the upload carries
 const VERIFY = `PATH=/usr/bin:/bin:/usr/sbin:/sbin; export PATH
 cd "$1" || exit 1
@@ -143,7 +143,9 @@ if [ -n "$2" ]; then
     echo unpinned
   fi
 fi
-sha256sum -c --strict --quiet ${SUMS} || exit 4`;
+sha256sum -c --strict --quiet ${SUMS} || exit 4
+want=$(printf '  "version": "%s"' "$3")
+grep -Fqx -e "$want," -e "$want" ${MANIFEST} || exit 6`;
 
 /** How the far machine's own tools checked a staged release before any of it ran. */
 export type FarCheck = 'pinned' | 'unpinned' | 'digests';
@@ -152,13 +154,14 @@ export type FarCheck = 'pinned' | 'unpinned' | 'digests';
  * Checks a staged release on the far machine with ssh-keygen and sha256sum, against the signers the release
  * installed at `archiBase` pins, before anything the staged release carries runs. `signed: false` checks the digests alone.
  */
-export async function verifyStaged(master: SshMaster, o: { dir: string; archiBase: string; signed: boolean }): Promise<{ check: FarCheck; signers: string }> {
+export async function verifyStaged(master: SshMaster, o: { dir: string; version: string; archiBase: string; signed: boolean }): Promise<{ check: FarCheck; signers: string }> {
   const signers = path.posix.join(o.archiBase, 'current', 'release', 'allowed_signers');
-  const r = await master.run(['sh', '-c', shellQuote(VERIFY), 'archi-verify', shellQuote(o.dir), shellQuote(o.signed ? signers : '')], { timeoutMs: TAR_TIMEOUT });
+  const r = await master.run(['sh', '-c', shellQuote(VERIFY), 'archi-verify', shellQuote(o.dir), shellQuote(o.signed ? signers : ''), shellQuote(o.version)], { timeoutMs: TAR_TIMEOUT });
   const said = r.stderr.trim().slice(0, 400);
   if (r.code === 3) throw new SshError('other', `the uploaded release is not signed by a key ${signers} pins: ${said || 'ssh-keygen refused it'}`);
   if (r.code === 4) throw new SshError('other', `the uploaded release's files do not match its ${SUMS}: ${said || 'sha256sum refused it'}`);
   if (r.code === 5) throw new SshError('other', `${signers} is missing, so the installed release names no signer to check the uploaded one against`);
+  if (r.code === 6) throw new SshError('other', `the uploaded release's ${MANIFEST} does not name release ${o.version}, the one asked for`);
   if (r.code !== 0) throw new SshError(r.code === 255 ? 'unreachable' : 'other', `the far machine could not check the uploaded release (exit ${r.code}): ${said}`);
   const check = r.stdout.trim() === 'pinned' ? 'pinned' : r.stdout.trim() === 'unpinned' ? 'unpinned' : 'digests';
   return { check, signers };
@@ -180,7 +183,7 @@ export async function bootstrapSetup(master: SshMaster, o: { staging: string; ar
   try {
     await remote(master, ['tar', '-xzf', shellQuote(o.archive), '-C', shellQuote(o.staging)], `tar -xzf ${o.archive}`, TAR_TIMEOUT);
     const dir = path.posix.join(o.staging, 'releases', o.version);
-    const far = o.installed === undefined ? undefined : await verifyStaged(master, { dir, archiBase: o.installed, signed: !o.allowUnsigned });
+    const far = o.installed === undefined ? undefined : await verifyStaged(master, { dir, version: o.version, archiBase: o.installed, signed: !o.allowUnsigned });
     const exe = path.posix.join(dir, 'bin', 'archi');
     const out = await remote(master, [shellQuote(exe), 'setup', '--release', shellQuote(o.archive), ...(o.allowUnsigned ? ['--allow-unsigned'] : [])], 'archi setup', SETUP_TIMEOUT);
     return far ? `${out.trimEnd()}; ${checked(far)}\n` : out;

@@ -702,6 +702,25 @@ esac
     await far.close();
   });
 
+  it('refuses a release the pinned key signed that arrives under another release\'s name, before anything it carries runs', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], pins: signer.signers });
+    const ran = path.join(work, 'staged-archi-ran');
+    const older = companionArchive(work, { version: '1.2.1', signedBy: signer.key, archi: `#!/bin/sh\ntouch '${ran}'\n` });
+    const tree = fs.mkdtempSync(path.join(work, 'renamed-'));
+    execFileSync('tar', ['-xzf', older, '-C', tree]);
+    fs.renameSync(path.join(tree, 'releases', '1.2.1'), path.join(tree, 'releases', '1.2.3'));
+    const renamed = path.join(work, 'renamed.tar.gz');
+    execFileSync('tar', ['-czf', renamed, '-C', tree, 'releases']);
+    const { bootstrapSetup } = await import('../src/controller/install.js');
+    const master = await SshMaster.open({ destination: 'trift.test', socketDir: ssh.socketDir });
+    await expect(bootstrapSetup(master, {
+      staging: `${work}/far/.cache/archipelago/staging-1.2.3`, archive: renamed, version: '1.2.3', allowUnsigned: false, installed: far.base,
+    })).rejects.toThrow(/release\.json does not name release 1\.2\.3/);
+    await master.close();
+    await far.close();
+    expect(fs.existsSync(ran)).toBe(false);
+  });
+
   it('puts a new release that does not answer back on the release the machine ran before, and says which it runs', async () => {
     // an older release is the newest by mtime, which is where a rollback that names nothing would go
     const far = await farMachine({ releases: [['1.2.1', PROTOCOL_VERSION], ['1.2.2', PROTOCOL_VERSION]], accepts: (r) => r !== '1.2.3' });

@@ -194,7 +194,7 @@ describe('putting the archive on the far machine', () => {
     });
     const words = ssh.remoteCalls();
     expect(words[2].slice(0, 2)).toEqual(['sh', '-c']);
-    expect(words[2].slice(3)).toEqual(['archi-verify', "/home/li nus/it's/releases/1.2.3", "/home/li nus/.local/share/archipelago/current/release/allowed_signers"]);
+    expect(words[2].slice(3)).toEqual(['archi-verify', "/home/li nus/it's/releases/1.2.3", "/home/li nus/.local/share/archipelago/current/release/allowed_signers", '1.2.3']);
     expect(words[3][1]).toBe('setup');
     expect(out).toContain('signed by a key /home/li nus/.local/share/archipelago/current/release/allowed_signers pins');
   });

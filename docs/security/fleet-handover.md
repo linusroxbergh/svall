@@ -50,7 +50,10 @@ under which licences, and which risks are accepted. Tests are named by file unde
   - it must be this controller's release and protocol, built for the machine's architecture.
 - **On the far machine, for an upgrade**, the staged release is checked before anything it carries runs:
   - `ssh-keygen -Y verify` against the installed release's `current/release/allowed_signers`;
-  - then `sha256sum -c --strict`.
+  - then `sha256sum -c --strict`;
+  - then `release.json`, which the digests cover, must name the release asked for, so a signed older release cannot
+    be replayed under a newer one's name. (`host.test.ts` "refuses a release the pinned key signed that arrives under
+    another release's name…")
 
   The check sets its own `PATH` of system folders, so a relative entry in the login shell's `PATH` never runs a tool
   the upload carries. (`host.test.ts` "checks with the system's own tools, whatever a relative entry in the far PATH
