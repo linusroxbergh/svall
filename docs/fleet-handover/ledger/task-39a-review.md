@@ -190,3 +190,94 @@ Fix:
   - The config row's keys match `FleetConfig.handover`.
 - **Writing:** plain and for a user. `migration.md` and the release notes describe change because change is their
   subject. There are no ticket ids or revision notes.
+
+## Re-review of fix round 1
+
+**Verdict: Approved.** Every finding is addressed. New issues in the fix diff: 0 Critical, 0 Important, 1 Minor,
+plus 1 Minor out of scope.
+
+Scope: e3e8e26e, ffdc6d76 and cd684bc6 (`.superpowers/sdd/plan/review-39a-fix1.diff`). 38a's 8828eb30 and e216eb69
+and its uncommitted `install.ts` and test files were left alone.
+
+| Finding | Verdict | Evidence |
+| --- | --- | --- |
+| I1 | ADDRESSED | See the note after this table. |
+| I2 | ADDRESSED | `errors.md` and `handover.md` now separate a foreground run with no terminal (cancel, `commands/handover.ts:154,198`) from a `--detach` helper. The helper waits frozen at a blocker found after Checks (`:199-205`, `controller/handover.ts:798`). A blocker found at Checks still ends `blocked`. |
+| I3 | ADDRESSED | See the note after this table. One narrow case is still wrong (N1). |
+| I4 | ADDRESSED | Rerun in a `git archive cd684bc6` copy with its own workspace links. Baseline 15/15. Each plant failed exactly its own case (1 failed, 14 passed): step `agent-login`, Outcome `timed_out`, event `handover.gave_up2`, check `gh-auth`, `SshErrorKind = TunnelKind \| …`, `Standing = Extra \| …`, `Held` state `gone-for_good2`, and `AuthorityFailure('time-out2')`. `literals()` refuses anything but `'…'` joined by `\|`. |
+| m1 | ADDRESSED | `setup.md:11` now says "a release other than an LTS is a warning" (`host.ts:129,141-143`). |
+| m2 | ADDRESSED | SMOKE 1.3 names `machine`, `authority` and `fleet`. |
+| m3 | ADDRESSED | SMOKE 8.2 quotes "runs here as pid N". |
+| m4 | ADDRESSED | The `identity` row now says: ssh there, run `~/.local/bin/archi version --json`, then add the machine again. It no longer suggests `upgrade` for an unregistered machine. |
+| m5 | ADDRESSED | The `codex` row and `setup.md` step 5 match `controller/host.ts:221-240` and `agents.ts:30`. |
+| m6 | ADDRESSED | `doctor.ts:158-159` names `sudo apt install gh` on Linux and `brew install gh` on a Mac. `doctor.test.ts` asserts the Linux line. `error-catalogue` and `doctor` tests pass 54/54 in the worktree. |
+| m7 | ADDRESSED | The `handover.md` wording separates killing the app from killing the helper. |
+
+**I1 note.**
+
+- The CLI doctor gives no verdict (`commands/host.ts:96-103`). The docs now say: no ✗, and warnings about
+  `tmux`/`gh`/`path` do not block a handover.
+- The app's Check does end "Check: done" when there are warnings and no failure. Doctor checks carry no action
+  (`ControllerProcess.swift:303`), so `runActions` is empty (`web/src/host.ts:63`), and `readyForHandover` needs every
+  step ok or skip (`:66-70`).
+- SMOKE 1.2 and `setup.md:126` agree with this.
+- The step flows still print "ready for handover" (`commands/host.ts:59`), so `setup.md:80` stays right.
+
+**I3 note.** Re-traced the new "A gateway set up again" section:
+
+1. `host add` under the same name and destination keeps the entry (`claimName`) and swaps in the new id at the
+   registry step (`controller/host.ts:380-383`).
+2. `host enable` creates the record at generation 0 (`authority.ts:105`) and re-points `fleet.json`.
+3. Preflight's generation check (`controller/handover.ts:227-229`) and "never a lower one"
+   (`ownership/state.ts:56-62`) give `generation_mismatch`.
+4. `fleet recover --force-owner local` writes above both.
+
+The fixer's scratchpad `i3.out` shows the same with a local gateway:
+
+- a restart keeps generation 2 against a record at 0;
+- recover writes 3;
+- a restart keeps 3.
+
+The `generation_mismatch` row's new "gateway behind the source" clause is right. The fleet-ran-there paragraph holds
+for the same destination: add does not check fleet ownership, so the three commands run.
+
+### Fixer's concerns
+
+1. **`host.ts:453`'s home message.** The docs are right regardless. `home_mismatch` points to the new section, and the
+   section's steps work.
+   - If the account was moved with `usermod -d -m` (same user name), machine id and records move with the home. Then
+     `host enable` finds the record, and no recovery follows.
+   - The code messages are incomplete, though. Both `controller/host.ts:453` and `archid/src/handover/inventory.ts:184`
+     say "remove, then add" with no enable. See N2.
+2. **Traced and run locally only.** Acceptable for docs. The trace above agrees with the code, and the local run
+   exercises the generation arithmetic. Running add, enable and recover once against a reinstalled companion on the
+   M3b pair belongs in 39b.
+3. **New user name while the fleet ran on the lost machine.** This is real, and the new section gets it wrong. See N1.
+
+### New in the fix diff
+
+- **N1 (Minor): a new user name and a fleet that ran there leads to a dead end.** `handover.md` "A gateway set up
+  again" says:
+  - "An account under another user name is another ssh destination: run `archi host remove studio` first, with
+    `--forget` if the old account can no longer be reached".
+  - "If the fleet was running on that machine, run the same three commands".
+
+  When both hold, `host remove` refuses, `--forget` included. Its `fleet` step runs first and refuses a fleet another
+  machine owns (`controller/host.ts:556-559`). Its action, `archi handover local`, cannot work with that machine lost.
+
+  Traced path that works: `archi host add studio2 --ssh <new destination>`, then `archi host enable studio2 --fleet
+  <fleet>`, then `archi fleet recover --force-owner local`, then `archi host remove studio --forget`. By then no fleet
+  names the old id, so the `fleet` step passes.
+
+  Add one sentence saying so. It is the narrowest disaster case, so this is Minor.
+- **N2 (Minor, out of scope, code): the home messages omit enable.** `controller/host.ts:453` (doctor's `home` check)
+  and `archid/src/handover/inventory.ts:184` (`home_mismatch`) still say only "remove, then add". Add "then `archi host
+  enable`", or point at `docs/remote-machines/handover.md#a-gateway-set-up-again`, the next time 38a's files are open.
+
+### Also checked
+
+- **Links:** all 38 relative links and anchors in the remote-machines docs, SMOKE and README resolve, including
+  `handover.md#a-gateway-set-up-again`.
+- **Catalogue test:** `fieldValues(RECOVER, 'result')` now parses every `result:` in `fleet-recover.ts`. A future
+  `result: someVar` there fails the catalogue with "not a union of string literals". That failure is loud, not silent,
+  so this is not a finding.
