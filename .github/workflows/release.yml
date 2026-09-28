@@ -58,16 +58,19 @@ jobs:
           --url-base "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME-next"
       - if: always()
         run: rm -f "$RUNNER_TEMP/release-key"
+      # signed archives that every installer accepts, kept only as long as this run needs them
       - uses: actions/upload-artifact@v7
         with:
           name: release
           path: ${{ runner.temp }}/release/*.tar.gz
           if-no-files-found: error
+          retention-days: 1
       - uses: actions/upload-artifact@v7
         with:
           name: upgrade
           path: ${{ runner.temp }}/upgrade/*.tar.gz
           if-no-files-found: error
+          retention-days: 1
 
   # the release's own companion, handed between two Linux containers; see scripts/integration/fleet-handover.sh
   integration:
