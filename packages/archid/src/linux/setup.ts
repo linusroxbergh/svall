@@ -152,17 +152,25 @@ export async function setupLinuxRelease(o: LinuxSetup & {
   const { done, started } = await setupLinux(o);
   if (!started || !o.rollbackTo) return done;
   // `enable --now` leaves a running unit alone, so the old release would keep answering the probe
-  for (const unit of [archidUnitName(o.fleet), GATEWAY_UNIT]) {
+  done.push(...await restartUnits(o.run, o.fleet));
+  return [...done, ...await probeOrRollback({ prefix: o.prefix, fleet: o.fleet, run: o.run, probe: o.probe, rollback: o.rollback })];
+}
+
+/**
+ * A fleet's daemon and the machine's gateway, started again from the release `current` now names. A unit that does not
+ * start is said, not thrown.
+ */
+export async function restartUnits(run: Run, fleet: string): Promise<string[]> {
+  const done: string[] = [];
+  for (const unit of [archidUnitName(fleet), GATEWAY_UNIT]) {
     try {
-      await restartUnit(o.run, unit);
+      await restartUnit(run, unit);
       done.push(`systemctl --user restart ${unit}`);
     } catch (e) {
       done.push(`${unit} did not restart: ${(e as Error).message}`);
     }
   }
-  return [...done, ...await probeOrRollback({
-    prefix: o.prefix, unit: archidUnitName(o.fleet), run: o.run, probe: o.probe, rollback: o.rollback,
-  })];
+  return done;
 }
 
 export type Rollback = { prefix: string; current: string; release: string; version: string };
@@ -172,7 +180,7 @@ export type Rollback = { prefix: string; current: string; release: string; versi
  * the machine without a daemon.
  */
 export async function probeOrRollback(o: {
-  prefix: string; unit: string; run: Run;
+  prefix: string; fleet: string; run: Run;
   probe: () => Promise<boolean>;
   rollback: (prefix: string) => Rollback;
 }): Promise<string[]> {
@@ -183,11 +191,5 @@ export async function probeOrRollback(o: {
   } catch (e) {
     return [`the daemon did not answer and there is no release to go back to: ${(e as Error).message}`];
   }
-  const done = [`the daemon did not answer: current -> ${back.release}`];
-  try {
-    await restartUnit(o.run, o.unit);
-    return [...done, `systemctl --user restart ${o.unit}`];
-  } catch (e) {
-    return [...done, `${o.unit} did not restart: ${(e as Error).message}`];
-  }
+  return [`the daemon did not answer: current -> ${back.release}`, ...await restartUnits(o.run, o.fleet)];
 }

@@ -4,8 +4,8 @@ import path from 'node:path';
 import { Command } from 'commander';
 import { findAgents } from '@archipelago/archid/agents';
 import { codexPaths } from '@archipelago/archid/codex/install';
-import { archidUnitName, setupLinuxRelease, unitDirOf } from '@archipelago/archid/linux/setup';
-import { realRun, restartUnit } from '@archipelago/archid/linux/service';
+import { restartUnits, setupLinuxRelease, unitDirOf } from '@archipelago/archid/linux/setup';
+import { realRun } from '@archipelago/archid/linux/service';
 import { defaultsPrefs, moveOldIds, oldIdsLeft, runLaunchctl, signInsLeft } from '@archipelago/archid/legacy';
 import { resolvePaths, userPaths } from '@archipelago/archid/paths';
 import { LAUNCHD_LABEL, PRIVATE } from '@archipelago/archid/profile';
@@ -43,14 +43,7 @@ async function rollback(t: Target, systemd: boolean, to?: string): Promise<strin
   if (to !== undefined && path.dirname(path.resolve(releases, to)) !== releases) throw new Error(`${to} names no release under ${releases}`);
   const back = rollbackRelease(DEFAULT_PREFIX, to === undefined ? undefined : path.join(releases, to));
   const done = [`current -> ${back.release}`];
-  if (!systemd) return done;
-  const unit = archidUnitName(t.name);
-  try {
-    await restartUnit(realRun, unit);
-    return [...done, `systemctl --user restart ${unit}`];
-  } catch (e) {
-    return [...done, `${unit} did not restart: ${(e as Error).message}`];
-  }
+  return systemd ? [...done, ...await restartUnits(realRun, t.name)] : done;
 }
 
 type Daemon = { call(method: 'system.info', params: Record<string, never>): Promise<{ release: string }>; close(): void };

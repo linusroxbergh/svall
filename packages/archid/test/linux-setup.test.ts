@@ -9,7 +9,7 @@ import { codexPaths } from '../src/codex/install.js';
 import { DEFAULT_EXCLUDES, rootMatcher } from '../src/handover/inventory.js';
 import { scanPath } from '../src/handover/manifest.js';
 import { ReplicaStore } from '../src/handover/replicas.js';
-import { archidUnit, gatewayUnit, probeOrRollback, setupLinux, setupLinuxRelease, unitDirOf } from '../src/linux/setup.js';
+import { archidUnit, gatewayUnit, probeOrRollback, restartUnits, setupLinux, setupLinuxRelease, unitDirOf } from '../src/linux/setup.js';
 import { SystemdError, daemonReload, enableUnit, lingerState, unitStatus, type Run } from '../src/linux/service.js';
 import { machineId } from '../src/machine.js';
 import { resolvePaths } from '../src/paths.js';
@@ -402,21 +402,39 @@ describe('rollbackRelease', () => {
   });
 });
 
+describe('restartUnits', () => {
+  it('starts the daemon and the gateway again from where current points, and says which did not start', async () => {
+    const fake = fakeRun({ 'systemctl --user restart archipelago-gateway.service': new Error('unit_failed') });
+    expect(await restartUnits(fake.run, 'work')).toEqual([
+      'systemctl --user restart archipelago-archid@work.service',
+      expect.stringMatching(/^archipelago-gateway\.service did not restart: /),
+    ]);
+    expect(fake.calls).toEqual([
+      ['systemctl', '--user', 'restart', 'archipelago-archid@work.service'],
+      ['systemctl', '--user', 'restart', 'archipelago-gateway.service'],
+    ]);
+  });
+});
+
 describe('probeOrRollback', () => {
   it('leaves a release the daemon answers from alone', async () => {
     const p = prefixWithReleases();
     const fake = fakeRun();
-    expect(await probeOrRollback({ prefix: p.prefix, unit: 'archipelago-archid@private.service', run: fake.run, probe: async () => true, rollback: rollbackRelease })).toEqual([]);
+    expect(await probeOrRollback({ prefix: p.prefix, fleet: 'private', run: fake.run, probe: async () => true, rollback: rollbackRelease })).toEqual([]);
     expect(fs.readlinkSync(path.join(p.prefix, 'current'))).toBe(p.second);
     expect(fake.calls).toEqual([]);
   });
 
-  it('swaps current back and restarts the unit when the daemon does not answer', async () => {
+  it('swaps current back and restarts the daemon and the gateway when the daemon does not answer', async () => {
     const p = prefixWithReleases();
     const fake = fakeRun();
-    const done = await probeOrRollback({ prefix: p.prefix, unit: 'archipelago-archid@private.service', run: fake.run, probe: async () => false, rollback: rollbackRelease });
+    const done = await probeOrRollback({ prefix: p.prefix, fleet: 'private', run: fake.run, probe: async () => false, rollback: rollbackRelease });
     expect(fs.readlinkSync(path.join(p.prefix, 'current'))).toBe(p.first);
-    expect(fake.calls).toEqual([['systemctl', '--user', 'restart', 'archipelago-archid@private.service']]);
+    // the gateway was restarted onto the release that failed, and goes back with the daemon
+    expect(fake.calls).toEqual([
+      ['systemctl', '--user', 'restart', 'archipelago-archid@private.service'],
+      ['systemctl', '--user', 'restart', 'archipelago-gateway.service'],
+    ]);
     expect(done.join('\n')).toContain(p.first);
   });
 
@@ -425,7 +443,7 @@ describe('probeOrRollback', () => {
     const only = path.join(prefix, 'releases', '1.0.0');
     fs.mkdirSync(only, { recursive: true });
     fs.symlinkSync(only, path.join(prefix, 'current'));
-    const done = await probeOrRollback({ prefix, unit: 'archipelago-archid@private.service', run: fakeRun().run, probe: async () => false, rollback: rollbackRelease });
+    const done = await probeOrRollback({ prefix, fleet: 'private', run: fakeRun().run, probe: async () => false, rollback: rollbackRelease });
     expect(done.join('\n')).toMatch(/did not answer/);
   });
 });
