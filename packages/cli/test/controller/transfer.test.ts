@@ -9,7 +9,7 @@ import { DEFAULT_EXCLUDES, excludeMatcher, rootMatcher } from '@archipelago/arch
 import { scanPath } from '../../../archid/src/handover/manifest.js';
 import { runProcess } from '../../src/controller/process.js';
 import { transactionDir, type EntryProgress } from '../../src/controller/progress.js';
-import { bundledRsync, filterRules, probeRsync, runRsync, type RunRsync } from '../../src/controller/rsync.js';
+import { bundledRsync, filterRules, probeRsync, rsyncArgv, runRsync, type RunRsync } from '../../src/controller/rsync.js';
 import { SshMaster } from '../../src/controller/ssh.js';
 import { transfer, type Master, type Roles, type RootEntry, type SessionEntry, type TransferOptions } from '../../src/controller/transfer.js';
 import { installFakeSsh, type FakeSsh } from './fake-ssh.js';
@@ -578,6 +578,25 @@ describe.skipIf(noRsync)('transfer with rsync 3 over the ssh master', { timeout:
     expect(pulled.entries).toMatchObject([{ id: 'r_app', status: 'verified', passes: 1 }]);
     expect(content(await scan(back))).toEqual(content(await scan(src)));
     expect(fs.readlinkSync(path.join(back, 'sp ace', 'link'))).toBe('../-rf');
+  });
+
+  it('carries empty folders and each folder\'s mode, which the manifest does not list, and checks them in its compare', async () => {
+    const src = tree(tmp(), { 'a.txt': 'a' });
+    fs.mkdirSync(path.join(src, 'empty', 'deeper'), { recursive: true });
+    fs.mkdirSync(path.join(src, 'private'));
+    fs.chmodSync(path.join(src, 'private'), 0o700);
+    const claimed = path.join(tmp(), 'app');
+    const entry = await root({ source: src, claimed });
+    expect(entry.files.map((f) => f.path)).toEqual(['a.txt']);
+    const r = await transfer({ transactionId: 'tx-d', roles: PUSH, master, rsync: RSYNC, stateDir: tmp(), entries: [entry] });
+    expect(r.entries).toMatchObject([{ id: 'r_app', status: 'verified', passes: 1 }]);
+    expect(fs.statSync(path.join(claimed, 'empty', 'deeper')).isDirectory()).toBe(true);
+    expect(fs.statSync(path.join(claimed, 'private')).mode & 0o777).toBe(0o700);
+    // the checksum compare itemizes a folder's mode as it does a file's, so a copy that differs there does not verify
+    const lines: string[] = [];
+    fs.chmodSync(path.join(claimed, 'private'), 0o755);
+    await runRsync(RSYNC, rsyncArgv({ source: `${src}/`, target: `${claimed}/`, rsh: 'ssh', dryRun: true, delete: true, mkpath: false }), { onLine: (l) => lines.push(l) });
+    expect(lines).toContainEqual(expect.stringMatching(/^\.d\.\.\.p\.{5} private\/$/));
   });
 
   it('leaves a folder the claim keeps as the far side has it, where --delete removes what the source no longer has', async () => {
