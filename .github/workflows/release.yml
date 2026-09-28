@@ -3,7 +3,8 @@ name: release
 # A tag builds the Mac controller and both Linux companions, hands a fleet between two Linux machines and installs,
 # upgrades and rolls back a clean machine of each architecture with them, and publishes them only once all of that
 # passed. Without the ARCHI_RELEASE_KEY secret the tag is a dry run: everything is built and tested, nothing is
-# signed or uploaded. See docs/integration.md.
+# signed or uploaded. A tag with a `-` in it, such as v1.0.0-test1, is a dry run too, signed when the secret is there.
+# See docs/integration.md.
 on:
   push:
     tags: ['v[0-9]*']
@@ -41,6 +42,12 @@ jobs:
         run: |
           if [ -n "$KEY" ]; then
             (umask 077 && printf '%s\n' "$KEY" > "$RUNNER_TEMP/release-key")
+            # every install refuses a signature the committed signers do not pin, so stop before anything is built
+            pub=$(ssh-keygen -y -P '' -f "$RUNNER_TEMP/release-key") || {
+              echo "::error::ARCHI_RELEASE_KEY is not an OpenSSH private key without a passphrase"; exit 1; }
+            read -r type blob _ <<< "$pub"
+            awk -v k="$type $blob" '!/^#/ && index($0, k) { f = 1 } END { exit !f }' scripts/release/allowed_signers || {
+              echo "::error::the public half of ARCHI_RELEASE_KEY is not in scripts/release/allowed_signers; add it as that file's header says"; exit 1; }
             echo "ARCHI_RELEASE_KEY=$RUNNER_TEMP/release-key" >> "$GITHUB_ENV"
             echo signed=true >> "$GITHUB_OUTPUT"
           else
@@ -152,13 +159,13 @@ jobs:
         with:
           name: release
           path: ${{ runner.temp }}/release
-      - if: needs.build.outputs.signed != 'true'
+      - if: needs.build.outputs.signed != 'true' || contains(github.ref_name, '-')
         working-directory: ${{ runner.temp }}/release
         run: |
-          echo "::notice::dry run: every job passed; nothing is signed or uploaded"
+          echo "::notice::dry run: every job passed; nothing is uploaded"
           sha256sum -- *.tar.gz
       # one signed list of every asset, checked against the signers the release itself pins before anything goes up
-      - if: needs.build.outputs.signed == 'true'
+      - if: needs.build.outputs.signed == 'true' && !contains(github.ref_name, '-')
         working-directory: ${{ runner.temp }}/release
         env:
           KEY: ${{ secrets.ARCHI_RELEASE_KEY }}
