@@ -132,6 +132,24 @@ describe('buildManifest', () => {
     });
   });
 
+  it('warns that the logins other tools keep in plain text travel with a folder that holds them', async () => {
+    const s = seed();
+    const dotfiles = path.join(s.mac, 'dotfiles');
+    const held = ['.netrc', '.git-credentials', '.config/gh/hosts.yml', '.aws/credentials', '.docker/config.json'];
+    for (const rel of held) {
+      fs.mkdirSync(path.dirname(path.join(dotfiles, rel)), { recursive: true });
+      fs.writeFileSync(path.join(dotfiles, rel), 'secret\n');
+    }
+    fs.writeFileSync(path.join(s.mac, '.netrc'), 'machine example.com password x\n');
+    s.state.characters.dots = char('dots', { cwd: dotfiles, context: [{ kind: 'file', ref: path.join(s.mac, '.netrc'), label: '', source: 'manual' }] });
+    const { manifest, warnings } = await buildManifest(inventory(s), HEADER);
+    const idOf = (p: string): string => manifest.roots.find((r) => r.path === p)!.id;
+    expect(warnings.filter((w) => w.code === 'credential_file')).toEqual([
+      { code: 'credential_file', message: expect.stringContaining(`${dotfiles} holds ${[...held].sort().slice(0, 3).join('; ')}; and 2 more`), entity: { kind: 'root', id: idOf(dotfiles) } },
+      { code: 'credential_file', message: expect.stringContaining(`${path.join(s.mac, '.netrc')} is`), entity: { kind: 'root', id: idOf(path.join(s.mac, '.netrc')) } },
+    ].sort((a, b) => (a.entity.id < b.entity.id ? -1 : 1)));
+  });
+
   it('holds no fleet key, and no secret a carried .env holds, even with the fleet .env carried', async () => {
     const s = seed();
     const home = path.join(s.mac, '.archipelago');

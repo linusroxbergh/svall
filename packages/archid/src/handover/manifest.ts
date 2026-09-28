@@ -36,13 +36,15 @@ export type ManifestHeader = { transactionId?: string; generation: number };
 export type BuiltManifest = { manifest: TransferManifestV1; digest: string; blockers: Blocker[]; warnings: Warning[] };
 
 const ENV_FILE = /^\.env(\..+)?$/;
+// the logins other tools keep in plain text under an account's home
+const CREDENTIAL_FILE = /(?:^|\/)(?:\.netrc|\.git-credentials|\.config\/gh\/hosts\.yml|\.aws\/credentials|\.docker\/config\.json)$/;
 const BLOCK = 4096;
 // the most a file named like a Git index is read whole to name it by its staged entries
 const INDEX_MAX = 256 * 1024 * 1024;
 const gone = (e: unknown): boolean => (e as NodeJS.ErrnoException).code === 'ENOENT';
 const reason = (e: unknown): string => (e as NodeJS.ErrnoException).code ?? String(e);
 
-type Scan = { files: TransferFile[]; problems: string[]; envFiles: string[] };
+type Scan = { files: TransferFile[]; problems: string[]; envFiles: string[]; credentialFiles: string[] };
 
 async function* tap(chunks: AsyncIterable<Buffer>, into: Buffer[] | undefined): AsyncIterable<Buffer> {
   for await (const chunk of chunks) { into?.push(chunk); yield chunk; }
@@ -90,6 +92,7 @@ async function walk(scan: Scan, base: string, relative: string, excluded: (relat
     } else if (!excluded(rel, false) && st.isFile()) {
       if (hash) await addFile(scan, rel, file, st, sfs);
       if (ENV_FILE.test(name)) scan.envFiles.push(rel);
+      if (CREDENTIAL_FILE.test(file)) scan.credentialFiles.push(rel);
     }
     // a socket, fifo or device holds nothing to carry
   }
@@ -152,7 +155,7 @@ async function scanRoots(inventory: Inventory, sfs: ScanFs, hash: boolean): Prom
       if (root.kind === 'repo' || root.kind === 'worktree' || root.kind === 'gitdir') blockers.push({ code: 'worktree_unresolved', message: `${root.path} no longer exists`, entity });
       continue;
     }
-    const { entry, files, problems, envFiles } = scanned;
+    const { entry, files, problems, envFiles, credentialFiles } = scanned;
     if (problems.length) {
       blockers.push({ code: 'path_unsupported', message: `${root.path}: ${problems.length} ${problems.length === 1 ? 'path' : 'paths'} cannot be carried: ${listed(problems, 5)}`, entity });
     }
@@ -160,6 +163,13 @@ async function scanRoots(inventory: Inventory, sfs: ScanFs, hash: boolean): Prom
       warnings.push({ code: 'env_file', message: "the fleet's .env, which holds its scribe credentials, is copied to the destination", entity });
     } else if (envFiles.length) {
       warnings.push({ code: 'env_file', message: `${root.path} holds ${listed(envFiles, 3)}, copied to the destination with the rest of the tree; they may hold secrets`, entity });
+    }
+    if (credentialFiles.length) {
+      warnings.push({
+        code: 'credential_file', entity,
+        message: entry === 'file' ? `${root.path} is a login another tool keeps in plain text, and is copied to the destination`
+          : `${root.path} holds ${listed(credentialFiles, 3)}, logins other tools keep in plain text, copied to the destination with the rest of the tree`,
+      });
     }
     roots.push({ ...root, entry, files: files.sort((a, b) => byCodeUnit(a.path, b.path)) });
   }
@@ -214,12 +224,15 @@ export async function scanPath(
   let st: Stat;
   try { st = await sfs.stat(top); } catch (e) {
     if (gone(e)) return undefined;
-    return { entry: 'dir', files: [], problems: [reason(e)], envFiles: [] };
+    return { entry: 'dir', files: [], problems: [reason(e)], envFiles: [], credentialFiles: [] };
   }
-  const scan: Scan & { entry: TransferRoot['entry'] } = { entry: st.isDirectory() ? 'dir' : 'file', files: [], problems: [], envFiles: [] };
+  const scan: Scan & { entry: TransferRoot['entry'] } = { entry: st.isDirectory() ? 'dir' : 'file', files: [], problems: [], envFiles: [], credentialFiles: [] };
   if (!contents) return scan;
   if (st.isDirectory()) await walk(scan, top, '', excluded, sfs, hash);
-  else if (st.isFile()) { if (hash) await addFile(scan, '', top, st, sfs); }
+  else if (st.isFile()) {
+    if (hash) await addFile(scan, '', top, st, sfs);
+    if (CREDENTIAL_FILE.test(top)) scan.credentialFiles.push(top);
+  }
   else scan.problems.push('neither a file nor a folder');
   return scan;
 }

@@ -108,6 +108,10 @@ ssh keys.
   none in version 1.
 - **Repository `.env` files** are working-tree data and travel, with a warning. The fleet's own `.env` travels only
   with `handover.transferFleetEnv`, with a warning.
+- **Other tools' plaintext logins** in a carried folder (`.netrc`, `.git-credentials`, gh's `hosts.yml`, AWS's
+  `credentials`, Docker's `config.json`) travel with a `credential_file` warning. Agent logins and `~/.ssh` never
+  travel. (`manifest.test.ts` "warns that the logins other tools keep in plain text travel with a folder that holds
+  them")
 
 ## Destructive operations
 

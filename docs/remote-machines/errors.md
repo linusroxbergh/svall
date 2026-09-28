@@ -122,6 +122,7 @@ attach` or the app; `archi handover status` names it while it runs.
 | Code | Kind | What it means | What to do |
 | --- | --- | --- | --- |
 | `env_file` | warns | A carried folder holds `.env` files, which may hold secrets, or the fleet's own `.env` is copied because `handover.transferFleetEnv` is on. | Nothing, if they belong on the destination. Otherwise exclude them. |
+| `credential_file` | warns | A carried folder holds, or a carried file is, a login another tool keeps in plain text: `.netrc`, `.git-credentials`, gh's `hosts.yml`, AWS's `credentials` or Docker's `config.json`. It is copied to the destination as it is. | Nothing, if that login belongs on the destination. Otherwise exclude it, or work from a folder that does not hold it. |
 | `platform_heuristic` | warns | A folder holds an Xcode project and the destination is Linux. | Nothing; mark the repository's platforms in `.archipelago/handover.json` to make it a blocker. |
 | `symlink_dangling` | warns | Links in a carried folder will point at nothing on the destination. They are carried as they are. | Nothing, or create what they point to on the destination. |
 | `config_difference` | warns | An agent CLI runs at different versions on the two machines. Each machine keeps its own login, settings, skills and MCP servers; none of them move. | Nothing; update one side to match if a session depends on it. |
