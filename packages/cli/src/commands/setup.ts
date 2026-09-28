@@ -6,7 +6,7 @@ import { findAgents } from '@archipelago/archid/agents';
 import { codexPaths } from '@archipelago/archid/codex/install';
 import { restartUnits, setupLinuxRelease, unitDirOf } from '@archipelago/archid/linux/setup';
 import { realRun } from '@archipelago/archid/linux/service';
-import { defaultsPrefs, moveOldIds, oldIdsLeft, runLaunchctl, signInsLeft } from '@archipelago/archid/legacy';
+import { defaultsPrefs, moveOldIds, oldIdsLeft, runLaunchctl, signInsLeft, type Launchctl } from '@archipelago/archid/legacy';
 import { resolvePaths, userPaths } from '@archipelago/archid/paths';
 import { LAUNCHD_LABEL, PRIVATE } from '@archipelago/archid/profile';
 import { repoRoot } from '@archipelago/archid/release';
@@ -37,13 +37,30 @@ function runFrom(o: Options, done: string[]): From {
   return { release: installed.current, rollbackTo: installed.rollbackTo ?? undefined, version: installed.version };
 }
 
+// launchd starts each fleet's daemon through `current`, so each is started again to run the release it now names
+async function kickstartAgents(launchAgentsDir: string, launchctl: Launchctl): Promise<string[]> {
+  const labels = (fs.existsSync(launchAgentsDir) ? fs.readdirSync(launchAgentsDir) : [])
+    .filter((f) => f.endsWith('.plist') && (f === `${LAUNCHD_LABEL}.plist` || f.startsWith(`${LAUNCHD_LABEL}.`)))
+    .map((f) => f.slice(0, -'.plist'.length)).sort();
+  const done: string[] = [];
+  for (const label of labels) {
+    const target = `gui/${os.userInfo().uid}/${label}`;
+    await launchctl(['kickstart', '-k', target]).then(
+      () => { done.push(`launchctl kickstart -k ${target}`); },
+      (e: Error) => { done.push(`${label} did not restart (${e.message.split('\n')[0]}); it runs the release current names from its next start`); },
+    );
+  }
+  return done;
+}
+
 /** Recovery, so it asks nothing of the machine but the release it is going back to: the one named, or the one before. */
-async function rollback(systemd: boolean, to?: string): Promise<string[]> {
+async function rollback(o: { systemd: boolean; restart: boolean; launchctl: Launchctl }, to?: string): Promise<string[]> {
   const releases = path.join(DEFAULT_PREFIX, 'releases');
   if (to !== undefined && path.dirname(path.resolve(releases, to)) !== releases) throw new Error(`${to} names no release under ${releases}`);
   const back = rollbackRelease(DEFAULT_PREFIX, to === undefined ? undefined : path.join(releases, to));
   const done = [`current -> ${back.release}`];
-  return systemd ? [...done, ...await restartUnits(realRun, unitDirOf(os.homedir()))] : done;
+  if (!o.restart) return [...done, 'nothing was restarted: each daemon runs the release current names from its next start'];
+  return [...done, ...await (o.systemd ? restartUnits(realRun, unitDirOf(os.homedir())) : kickstartAgents(userPaths().launchAgents, o.launchctl))];
 }
 
 type Daemon = { call(method: 'system.info', params: Record<string, never>): Promise<{ release: string }>; close(): void };
@@ -97,7 +114,7 @@ async function setupPlatform(t: Target, o: Options, from: From, systemd: boolean
   });
 }
 
-export function setupCommand(target: () => Target, json: () => boolean, platform: NodeJS.Platform = process.platform): Command {
+export function setupCommand(target: () => Target, json: () => boolean, platform: NodeJS.Platform = process.platform, launchctl: Launchctl = runLaunchctl): Command {
   const systemd = platform === 'linux';
   return new Command('setup')
     .description(`install hooks, tmux.conf, ${systemd ? 'systemd user units' : 'the launchd agent'} and the archi and archipelago shims`)
@@ -111,7 +128,7 @@ export function setupCommand(target: () => Target, json: () => boolean, platform
       // setup owns the per-user half — the Claude hooks and the shims — so it only ever means private
       const t = target();
       if (o.rollback) {
-        const done = await rollback(systemd, typeof o.rollback === 'string' ? o.rollback : undefined);
+        const done = await rollback({ systemd, restart: o.launchctl, launchctl }, typeof o.rollback === 'string' ? o.rollback : undefined);
         printResult({ done, warnings: [] }, json(), () => done.join('\n'));
         return;
       }
@@ -169,7 +186,7 @@ export function setupCommand(target: () => Target, json: () => boolean, platform
         homes: fleetHomes(os.homedir()),
         appDests: [process.env.ARCHI_APP_DEST || '/Applications', path.join(os.homedir(), 'Applications')],
         app: appQuit,
-        run: runLaunchctl,
+        run: launchctl,
         prefs: defaultsPrefs,
       }) : [];
       const done: string[] = [...moved];

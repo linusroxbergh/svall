@@ -1,6 +1,8 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { LAUNCHD_LABEL, profileLabel } from '@archipelago/archid/profile';
 import { cleanHomes, makeHome } from '@archipelago/archid/test-helpers';
 import { daemonRuns, setupCommand } from '../src/commands/setup.js';
 
@@ -17,6 +19,46 @@ describe('the probe after a Linux upgrade', () => {
     let tries = 0;
     const late = () => (++tries < 3 ? Promise.reject(new Error('ECONNREFUSED')) : daemon('1.2.4')());
     expect(await daemonRuns('1.2.4', late, 5000, 10)).toBe(true);
+  });
+});
+
+describe('archi setup --rollback on a Mac', () => {
+  afterEach(() => { vi.restoreAllMocks(); cleanHomes(); });
+
+  const rollback = async (args: string[]) => {
+    const home = process.env.HOME!;
+    const prefix = path.join(home, '.local', 'share', 'archipelago');
+    for (const v of ['1.0.0', '1.1.0']) fs.mkdirSync(path.join(prefix, 'releases', v), { recursive: true });
+    fs.symlinkSync(path.join(prefix, 'releases', '1.1.0'), path.join(prefix, 'current'));
+    const agents = path.join(home, 'Library', 'LaunchAgents');
+    fs.mkdirSync(agents, { recursive: true });
+    for (const f of [`${LAUNCHD_LABEL}.plist`, `${profileLabel('work')}.plist`, 'com.example.other.plist']) fs.writeFileSync(path.join(agents, f), '');
+    const calls: string[][] = [];
+    const out: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { out.push(String(chunk)); return true; });
+    try {
+      await setupCommand(() => ({ name: 'private', home: path.join(home, '.archipelago'), managed: true }), () => true, 'darwin', (a) => { calls.push(a); return Promise.resolve(); })
+        .parseAsync(['--rollback', ...args], { from: 'user' });
+      expect(fs.readlinkSync(path.join(prefix, 'current'))).toBe(path.join(prefix, 'releases', '1.0.0'));
+    } finally {
+      for (const d of [prefix, path.join(home, 'Library')]) fs.rmSync(d, { recursive: true, force: true });
+    }
+    return { calls, done: (JSON.parse(out.join('')) as { done: string[] }).done };
+  };
+
+  it('starts every fleet\'s launchd agent again, so none keeps running the release it went back from', async () => {
+    const { calls } = await rollback([]);
+    const uid = os.userInfo().uid;
+    expect(calls).toEqual([
+      ['kickstart', '-k', `gui/${uid}/${LAUNCHD_LABEL}`],
+      ['kickstart', '-k', `gui/${uid}/${profileLabel('work')}`],
+    ]);
+  });
+
+  it('with --no-launchctl starts nothing and says the daemons change release at their next start', async () => {
+    const { calls, done } = await rollback(['--no-launchctl']);
+    expect(calls).toEqual([]);
+    expect(done.at(-1)).toMatch(/next start/);
   });
 });
 
