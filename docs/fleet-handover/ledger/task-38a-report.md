@@ -415,3 +415,138 @@ set the docker context back to `desktop-linux`. No containers are left.
    `ARCHI_CONFIG_DIR` or `ARCHI_GATEWAY_PREFIX`. Those two are development overrides; a real install keeps both under
    the home.
 6. The licence owner items (GhosttyKit's texts, libintl, Flaticon) stay the owner's; only their wording changed.
+
+## Fix round 2
+
+Status: **DONE_WITH_CONCERNS**. N1, N2 and N3 from `task-38a-fix2-findings.md` are fixed, test first, one commit each. Base
+`42b6e0a9`. Task 38b's implementer committed in the same worktree meanwhile (`15181f00`, `429739a2` and others); those are
+not 38a's.
+
+| Commit | Item | Subject |
+| --- | --- | --- |
+| `2e088a0e` | N1 | Every installer refuses an archive member outside its release, spelled two ways or listed twice, and the far check verifies the pinned signature again after the full unpack, so GNU tar cannot write another SHA256SUMS over the one it checked |
+| `04ab4ae7` | N2 | The controller reads a far machine's id past whatever its login shell prints, and takes an archi that answers without one for another machine, so a noisy shell no longer skips the gateway check |
+| `de17a200` | N3 | Host remove refuses while a handover holds any fleet here open, whatever its gateway, as one through another gateway may by now have left the fleet on the machine |
+| `1cf8aaa7` | N1 | The archive member check's comment says what the listing alone rules out |
+
+### Per item
+
+Tests run as `pnpm test <path>` from the root. The GNU tar runs add
+`DOCKER_HOST=unix://$HOME/.colima/default/docker.sock ARCHI_TEST_GNU_TAR=archi-it:machine` (the tests replace `HOME`,
+so the docker CLI cannot find its colima context by itself).
+
+- **N1, the far check verified one `SHA256SUMS` and checked the digests against another.**
+  - Far script (`UNPACK` in `install.ts`):
+    - it lists the archive first and refuses (exit 9, the member named) any member that is not `releases`,
+      `releases/<v>` or under `releases/<v>/`, holds an empty, `.` or `..` segment or a backslash (GNU tar's escape for
+      a control character), or is listed twice;
+    - on the pinned branch it runs the same `ssh-keygen -Y verify` again after the full unpack, over the
+      `SHA256SUMS` and `.sig` that `sha256sum -c` then reads. The first verify still runs before anything else leaves
+      the archive, so "verify before unpacking" holds.
+  - `inspectCompanion` and `install-release`'s `stage` (`archi setup --release`) share a new `archiveRelease(archive,
+    listing)` in `release-manifest.mjs` with the same member rules. Both already verified the signature again after
+    the full unpack (`verifyRelease`), so there the member check is the new part.
+  - Why both halves: the review's three spellings are caught by the member check, but a link does the same with
+    well-spelled names. The genuine release, then `releases/1.2.3/d -> .`, then the intruder's release as
+    `releases/1.2.3/d/…`: GNU tar writes through the link onto the verified `SHA256SUMS`, `bin/archi` and
+    `release.json`. Only the second verify catches that one. bsdtar refuses to write through the link.
+  - Test helpers (`test/controller/archive.ts`): `smuggledArchive` (the review's archive: intruder's release, the
+    genuine `SHA256SUMS`/`.sig` under the plain names, the intruder's after them under a given spelling) and
+    `linkedArchive` (the link case). Test archives are now packed as `build-companion.mjs` packs a real one
+    (`COPYFILE_DISABLE=1`, `--no-xattrs`); otherwise GNU tar lists the Mac's AppleDouble `releases/._1.2.3`, which the
+    member check rightly refuses.
+  - New tests:
+    - `install.test.ts` "refuses an archive holding a member outside its release, spelled other than as a path in it,
+      or twice, before anything is uploaded" (three spellings, a plain duplicate, and a `run-me.sh` beside
+      `releases/`), with a controller that trusts the intruder too;
+    - `archid/test/release.test.ts` "refuses an archive holding a member outside its release, spelled other than as a
+      path in it, or twice";
+    - `host.test.ts` "refuses an archive that gives the far check one SHA256SUMS to verify and another to check the
+      files by, before anything it carries runs", on the system's tar (bsdtar here, GNU tar on a Linux runner);
+    - `host.test.ts` "checks the files against the SHA256SUMS the pinned key signed, whatever the archive writes over
+      it", skipped unless `ARCHI_TEST_GNU_TAR` names an image: it starts one container, runs every far command there
+      over a `docker exec` master, uploads a good archive (must say `pinned`) and the five smuggled ones (each must be
+      refused, and the intruder's `archi` must not have run).
+  - RED, GNU tar 1.35 in `archi-it:machine`, the far script at `42b6e0a9` (HEAD's `install.ts` copied into a scratch
+    module, since removed), clean archives:
+
+    | Case | Before | Intruder's `archi` ran |
+    | --- | --- | --- |
+    | `./releases/1.2.3/SHA256SUMS` | accepted, `pinned`, exit 0 | yes |
+    | `releases/1.2.3/./SHA256SUMS` | accepted, `pinned`, exit 0 | yes |
+    | `releases/1.2.3//SHA256SUMS` | accepted, `pinned`, exit 0 | yes |
+    | same name twice | exit 3 | no |
+    | through `releases/1.2.3/d -> .` | accepted, `pinned`, exit 0 | yes |
+
+    The committed GNU tar test on the unfixed code: `AssertionError: promise resolved "'; signed by a key
+    /root/.local/share/…'" instead of rejecting`.
+  - RED on the Mac: `install.test.ts` "promise resolved "{ …(5) }" instead of rejecting"; `release.test.ts`
+    "./releases/1.0.0/SHA256SUMS: expected [Function] to throw an error"; the native `host.test.ts` case "dot: expected
+    … but got 'the uploaded release is not signed by…'" (bsdtar refused it, by the first verify).
+  - GREEN, GNU tar: the three spellings exit 9 with `the uploaded archive holds "./releases/1.2.3/SHA256SUMS", which is
+    not a path in releases/1.2.3` (and the other two), the duplicate `holds "releases/1.2.3/SHA256SUMS" twice`, the
+    link exit 3 `not signed by a key … pins`; no intruder `archi` ran. `host` + `install` + `release` with GNU tar on:
+    134 passed, 1 skipped.
+  - Mutations, each failing its test: the second `verify` removed (the GNU tar test, link case resolved); the far
+    member check's `|| exit 9` made `|| :` (both far tests); the JS member loop emptied (`install` and `release`
+    tests). The far tests match the refusal as the whole message (`^…$`): unanchored, the member line also showed up
+    inside the exit-3 message and the mutation went unseen.
+- **N2, a noisy far shell skipped the gateway identity check.** `identify` reads the id with
+  `/"machineId":\s*"([^"]*)"/` anywhere in stdout, as the daemon does, rather than `JSON.parse` of the whole output. An
+  `archi version --json` that exits 0 without an id throws `MachineMismatch` (so `identity_mismatch` in a handover,
+  and "point … back" in `host`). One that exits non-zero still passes to the call that needs it, so an unreachable
+  gateway stays `unreachable` and a broken install can still be upgraded or removed. This applies to every caller
+  (`askGateway`, `authorityOp`, host upgrade/remove/enable): `machineId` in `version --json` and `archi gateway owner`
+  came in the same commit (`f79861d1`), so every companion release prints its id. The daemon's check was already
+  noise-tolerant and is unchanged.
+  - RED: `connection.test.ts` "reads which machine a gateway is past whatever its login shell prints first" and
+    "takes no ownership answer from a gateway whose archi answers without naming its machine" both routed the fleet
+    to `local`; `host.test.ts` "reads which machine answers past whatever its login shell prints first, and makes no
+    record on another" left the `authority` step `ok`.
+  - GREEN: `cli` project 1476 passed, 4 skipped. The `host upgrade` fake companion's `archi` now answers `version`
+    as a real one does; it answered nothing with exit 0, which 9 upgrade tests then took for another machine.
+  - Mutation: `if (id === undefined) return;` fails "takes no ownership answer…".
+- **N3, host remove uninstalled a machine a handover through another gateway held open.** The `open` refusal filters
+  every fleet home, not only those naming the machine as gateway; the detail reads "trift may be the gateway or the
+  owner of …, which a handover holds open".
+  - RED: `host.test.ts` "refuses while a handover through another gateway holds a fleet open, as it may by now have
+    left the fleet on this machine" (a controller record at `commit` for a handover to trift through `OTHER_MAC`):
+    `expected 'ready' to be 'actions'`.
+  - GREEN: `host.test.ts` 77 passed, 2 skipped.
+- **Docs.** `docs/security/fleet-handover.md`: the controller, far and `archi setup` bullets name the member check and
+  the second verify, the "Unpacking" bullet no longer leans on tar stripping `..`, the accepted risk "an archive member
+  outside `releases/<v>`" is gone (now refused), the alias row says the id is read past the shell's output and an
+  id-less answer is refused, the `host remove` row covers any open fleet, and the new tests are cited with how to run
+  the GNU tar one. `docs/remote-machines/setup.md` and `errors.md`'s `fleet` step row say the same of `host remove`.
+
+### Runs
+
+| Check | Result |
+| --- | --- |
+| `pnpm typecheck` | clean |
+| `pnpm vitest run --project cli --project archid --project scripts` at `429739a2` | 124 files: 122 passed, 1 failed, 1 skipped. 3561 tests: 3554 passed, 1 failed, 6 skipped |
+| The failure rerun alone | `archid` `terminals.test.ts` "resumes a paused pane for the viewers that keep up, whatever one that fell behind still holds unsent" (Task 38b's `f8981dd8`, not touched here): 13/13 three times |
+| GNU tar (`archi-it:machine`, GNU tar 1.35) | `host` + `install` + `release` with `ARCHI_TEST_GNU_TAR` set: 134 passed, 1 skipped |
+| Fresh install, arm64 (colima default), releases built from `429739a2-dirty` | ALL PASS in 86.3 s (324 s with both builds). `host add` and `host upgrade`: "unsigned, checked by its digests alone", so Ubuntu's GNU tar listed and passed each real archive through the member check |
+| Handover, arm64, `--scenarios none`, at `1cf8aaa7` | ALL PASS: local → remote 2642 ms, remote → local 2094 ms, a turn on each |
+
+`-dirty` is Task 38b's uncommitted edit to `docs/security/fleet-handover.md`. A first round trip at 00:19 died with
+exit 137 at 15.6 s: Task 38b's benchmark started the same second and replaced `archi-local`/`archi-remote`. The rerun
+at 00:32 is the one above. colima's default profile was already running when I began, and Task 38b is using it, so it is
+left running; no container or `archi-it` network of mine is left, and the docker context is back on `desktop-linux`.
+
+### Concerns
+
+1. **Shared machine.** My GNU tar container runs (00:00–00:05) did not overlap Task 38b's benchmarks, but two
+   `cli`-project runs (about 00:08–00:13) overlapped its `bench-final` (00:06–00:13), whose timings may carry that
+   load. From 00:19 I ran nothing heavy until its `bench-final2` and flood check had finished.
+2. **GNU tar coverage.** The Mac's default run covers the far check with bsdtar only. The GNU tar cases run when
+   `ARCHI_TEST_GNU_TAR` is set, and natively on a Linux runner, which CI does not reach while Actions is blocked.
+3. **N2 is wider than ownership calls.** `identify` refuses an exit-0 answer without an id for `host upgrade` and
+   `host remove` too, not only before an ownership frame. Every companion release prints its id, and `host remove
+   --forget` still drops a machine that answers oddly. The daemon still passes an id-less answer: it reads the id and
+   the frame from one `sh` on one machine, and no release answers `owner` without printing its id.
+4. **N3 refuses more than it must.** `host remove` now also waits out an open handover between this Mac and a third
+   machine that never involves the one removed. The journals could be read to narrow it; the review asked for every
+   fleet home, the refusal names `--resume`/`--abort`, and an open handover is short-lived.
+5. **One full-run failure** is Task 38b's new `terminals.test.ts` case under load; it passes alone 3/3.
