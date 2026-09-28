@@ -731,7 +731,6 @@ const label = (k: Target): string => `${k.name}:${k.edge}#${k.nth}`;
 
 // cases that fail on a defect this suite found, each dropped from here by the commit that fixes it
 const FOUND = [
-  'source.rest.kill:after#1', 'source.rest.kill:after#3',
   'source.release.unfreeze:after#1', 'source.release.activate:before#1', 'source.release.activate:after#1', 'source.complete.journal:after#1',
 ];
 

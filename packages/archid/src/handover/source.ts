@@ -11,6 +11,7 @@ import { runGit, type GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
 import type { OwnershipState } from '../ownership/state.js';
 import { installedScripts, type Paths } from '../paths.js';
+import { markDormant, markSlotDormant } from '../reconcile.js';
 import { releaseVersion } from '../release.js';
 import type { Tmux } from '../tmux/tmux.js';
 import { boundary } from './failpoints.js';
@@ -457,6 +458,17 @@ export class SourceHandover {
   private async revive(transactionId: string, stopped: SourceJournal['stoppedTerminals'], phase: HandoverPhase): Promise<void> {
     if (!stopped.length) return;
     await this.d.tmux.ensureServer();
+    // a terminal whose window a rest that died closed still names that window, and reopens only once it names none
+    const live = new Set((await this.d.tmux.listWindows()).map((w) => w.windowId));
+    this.d.store.update((d) => {
+      for (const t of stopped) {
+        const c = d.characters[t.characterId];
+        const slot = t.term === 2 ? c?.second : c;
+        if (!c || !slot?.tmux || live.has(slot.tmux.windowId)) continue;
+        if (t.term === 2) markSlotDormant(slot);
+        else markDormant(c);
+      }
+    });
     for (const t of stopped) {
       const c = this.d.store.state.characters[t.characterId];
       if (!c || (t.term === 2 && !c.second)) continue;

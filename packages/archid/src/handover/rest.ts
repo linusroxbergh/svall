@@ -350,9 +350,10 @@ async function layToRest(
     await boundary('source.rest.kill', () => bounded('tmux kill-window', (signal) => deps.tmux.killWindow(c.window.windowId, signal)));
     deps.store.update((d) => lay(d, t, true));
   }
-  // and the terminals whose window had already gone
+  // and the terminals whose window had already gone, among them any whose window a rest that died closed for this handover
+  const stopped = new Set(sourceJournal(deps.journal).stoppedTerminals.map(keyOf));
   deps.store.update((d) => {
-    for (const id of Object.keys(d.characters)) for (const t of [{ characterId: id }, { characterId: id, term: 2 as const }]) lay(d, t);
+    for (const id of Object.keys(d.characters)) for (const t of [{ characterId: id }, { characterId: id, term: 2 as const }]) lay(d, t, stopped.has(keyOf(t)));
   });
   return {
     ok: true,
