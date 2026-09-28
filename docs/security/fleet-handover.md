@@ -255,8 +255,17 @@ has a new id and never meets them.
   Both need a process running as the user on that machine, which could read or delete those files directly.
 - **Another account can squat the daemon's lock name on Linux.** The lock is an abstract socket named from the home's
   real path, so another account can bind it first and hold the daemon in a restart loop. Mixing a 0600 key from the
-  fleet home into the name would stop it. It is left because a daemon of an earlier release, still running under the
-  old name, would then not exclude a new one during an upgrade.
+  fleet home into the name would stop it. It is left for version 1: it needs a second account on the machine, and it
+  only keeps the daemon from starting, reading and changing nothing.
+- **A far machine with no release of its own to pin a signer**, a first install or a release built before the first
+  signing key, unpacks the upload before any check of its own. It rests on the controller's check against its own
+  pinned signers, made before the upload and before the controller unpacked anything, and the `install` step says so.
+- **An archive member outside `releases/<v>`** is unpacked into staging with the rest. Nothing runs from staging but
+  the checked release, the bundles never search a folder above it, `install-release` moves only `releases/<v>` into
+  place, and staging is removed.
+- **The phone page's package list is the web app's whole production closure** (161 packages), not only what Vite
+  inlined. Listing more than was bundled is harmless in a NOTICE; a list from the Vite build would need `dist-mobile`
+  rebuilt before every release build.
 - **`archi setup` replaces `~/.local/bin/archi` and `archipelago`** whatever they were. They are setup's own names.
 - **An upgrade restarts a fleet daemon the user disabled but whose unit file remains.** A rollback must not leave a
   failed daemon down, so it restarts every unit.
