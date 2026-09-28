@@ -339,13 +339,13 @@ function scenario(ids, fx, fault, at, to) {
   if (post) {
     check('committed', rec?.ownerMachineId === dstId && rec.generation === g + 1, () => brief(rec));
     check('source stays down', mSrc.agents.length === 0 && mSrc.windows.every((w) => w.name === '_keep'), () => brief([mSrc.agents, mSrc.windows]));
+    // with its controller gone, nothing but a resume activates the destination
+    if (at === 'commit') check('destination waits', mDst.agents.length === 0 && mDst.windows.every((w) => w.name === '_keep'), () => brief([mDst.agents, mDst.windows]));
   } else {
     check('not committed', rec?.ownerMachineId === srcId && rec.generation === g, () => brief(rec));
     check('destination not started', mDst.agents.length === 0 && mDst.windows.every((w) => w.name === '_keep'), () => brief([mDst.agents, mDst.windows]));
-    if (fault === 'kill' && at === 'begin') {
-      check('Begin landed', phase === 'preparing', () => brief(rec));
-      check('source never froze', !mSrc.ownership.frozen && mSrc.agents[0]?.pid === agentBefore, () => `${brief(mSrc.ownership)} agent ${brief(mSrc.agents)} was ${agentBefore}`);
-    }
+    if (fault === 'kill' && at === 'begin') check('Begin landed', phase === 'preparing', () => brief(rec));
+    if (at === 'begin') check('source never froze', !mSrc.ownership.frozen && mSrc.agents[0]?.pid === agentBefore, () => `${brief(mSrc.ownership)} agent ${brief(mSrc.agents)} was ${agentBefore}`);
     if (at === 'transfer' || at === 'ready') check('source frozen', mSrc.ownership.frozen === true && mSrc.agents.length === 0, () => brief([mSrc.ownership, mSrc.agents]));
     if (fault === 'kill' && at === 'ready') check('Ready landed', phase === 'ready-to-commit', () => brief(rec));
   }
@@ -376,7 +376,7 @@ function scenario(ids, fx, fault, at, to) {
   holdsNothing(post ? 'source' : 'destination', other, ownerId, ctx.generation);
   gatewayIs('after', r, ownerId, ctx.generation);
   noJournals('after', l, r);
-  if (!post && fault === 'kill' && at === 'begin') check('agent untouched', owner.agents[0]?.pid === agentBefore, () => `${brief(owner.agents)} was ${agentBefore}`);
+  if (at === 'begin') check('agent untouched', owner.agents[0]?.pid === agentBefore, () => `${brief(owner.agents)} was ${agentBefore}`);
 }
 
 // ---------------------------------------------------------------------------------------------- the run
