@@ -252,6 +252,17 @@ if the old account can no longer be reached, then add the machine at the new one
 If the fleet was running on that machine, run the same three commands. Until the recovery, this Mac holds the fleet
 read-only as it was when it last left; what was done on the other machine since then is gone.
 
+If the fleet was running there and the account comes back under another user name, `archi host remove studio`
+refuses, `--forget` included, because this Mac still has the fleet on that machine. Add the machine under a new name,
+make it the gateway, recover, and only then forget the old one:
+
+```sh
+archi host add studio2 --ssh ada2@studio
+archi host enable studio2 --fleet private
+archi fleet recover --force-owner local
+archi host remove studio --forget
+```
+
 ## Known limitations
 
 - **Two controllers can drive one handover.** Starting a handover of the same fleet from two Macs at once can have
