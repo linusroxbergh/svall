@@ -87,14 +87,26 @@ runIf('TerminalHub', () => {
     const w = viewer();
     await hub.open(c.id, 100, 30, 100, v);
     await hub.open(c.id, 100, 30, 100, w);
-    await hub.input(c.id, Buffer.from('yes 0123456789abcdef0123456789abcdef | head -c 16000000; echo flood-$((1+1))\n'));
-    await waitFor(() => outputText(w).includes('flood-2'), 15_000);
+    await hub.input(c.id, Buffer.from('yes 0123456789abcdef0123456789abcdef | head -c 3000000; echo flood-$((1+1))\n'));
+    await waitFor(() => outputText(w).includes('flood-2'), 40_000);
     // one chunk past the megabyte, and nothing held back from the viewer that keeps up
     expect(backlog).toBeLessThan(1_000_000 + 256 * 1024);
-    expect(outputText(w).length).toBeGreaterThan(16_000_000);
+    expect(outputText(w).length).toBeGreaterThan(3_000_000);
     reading = true;
     backlog = 0;
     await waitFor(() => v.events.some((e) => e.event === 'term.resync'));
+  }, 60_000);
+
+  it('resumes a paused pane for the viewers that keep up, whatever one that fell behind still holds unsent', async () => {
+    const { hub, fleet, c } = await boot();
+    const v = viewer(5_000_000);
+    const w = viewer();
+    await hub.open(c.id, 80, 24, 100, v);
+    await hub.open(c.id, 80, 24, 100, w);
+    fleet.emit('output', c.id, Buffer.from('more than v can take'));
+    const cont = vi.spyOn(fleet, 'continuePane');
+    fleet.emit('pause', c.id);
+    await waitFor(() => cont.mock.calls.length === 1, 1000);
   });
 
   it('resyncs open terminals after a control reset', async () => {

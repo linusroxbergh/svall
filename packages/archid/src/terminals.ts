@@ -166,7 +166,8 @@ export class TerminalHub {
     const deadline = Date.now() + DRAIN_TIMEOUT;
     const attempt = () => {
       const set = this.viewers.get(id);
-      const max = Math.max(0, ...[...(set ?? [])].map((v) => v.backlog()));
+      // a viewer that fell behind gets the screen afresh when it drains, so it holds no pane for the others
+      const max = Math.max(0, ...[...(set ?? [])].filter((v) => !this.behind.has(v)).map((v) => v.backlog()));
       if (max >= DRAIN_LIMIT && Date.now() < deadline) { setTimeout(attempt, 50); return; }
       if (max >= DRAIN_LIMIT) this.log.error(`terminal ${id}: viewer did not drain, resuming the pane anyway`);
       this.fleet.continuePane(id);
