@@ -824,9 +824,6 @@ const CASES: Case[] = NAMES.flatMap((name) => {
 
 const label = (k: Target): string => `${k.name}:${k.edge}#${k.nth}`;
 
-// cases that fail on a defect this suite found, each dropped from here by the commit that fixes it
-const FOUND = ['destination.activate.kill:before#1'];
-
 describe('the guard on steps outside every failpoint', () => {
   const world = worlds();
 
@@ -872,7 +869,7 @@ describe('a crash at every failpoint', () => {
 
   for (const k of CASES) {
     for (const [prefer, heal] of [['resume', 'crashed'], ['abort', 'all']] as const) {
-      (FOUND.includes(label(k)) ? it.fails : it)(`${label(k)} (${k.scenario}), then ${prefer} after restarting ${heal === 'all' ? 'every party' : 'what died'}`, async () => {
+      it(`${label(k)} (${k.scenario}), then ${prefer} after restarting ${heal === 'all' ? 'every party' : 'what died'}`, async () => {
         const w = world();
         w.targets = [...(k.after ? [k.after] : []), { name: k.name, edge: k.edge, nth: k.nth }];
         const first = await play(w, k.scenario);
