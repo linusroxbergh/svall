@@ -6,6 +6,8 @@ import { expect, test } from 'vitest';
 const ROOT = path.join(import.meta.dirname, '..');
 const LIB = path.join(ROOT, 'vendor/ghostty-kit/GhosttyKit.xcframework/macos-arm64/libghostty-fat.a');
 const NOTICE = path.join(ROOT, 'apps/desktop/mac/NOTICE');
+// what build.sh copies into Contents/Resources from the kit
+const SHARE = path.join(ROOT, 'vendor/ghostty-kit/share');
 
 // the component each object file GhosttyKit links comes from, by its name less `.o`
 const OBJECTS: Record<string, RegExp> = {
@@ -26,12 +28,49 @@ const OBJECTS: Record<string, RegExp> = {
   Wuffs: /^wuffs-v[\d.]+$/,
 };
 
-const notice = (): string => fs.readFileSync(NOTICE, 'utf8');
+// the component each file the app copies from Ghostty's share comes from, by its path there
+const RESOURCES: Record<string, RegExp> = {
+  'Ghostty shell integration': /^ghostty\/shell-integration\/(?:bash\/ghostty\.bash|zsh\/[^/]+)$/,
+  'bash-preexec': /^ghostty\/shell-integration\/bash\/bash-preexec\.sh$/,
+  Ghostty: /^(?:ghostty\/shell-integration\/(?:elvish|fish|nushell)\/.+|terminfo\/.+)$/,
+  'iTerm2 Color Schemes': /^ghostty\/themes\/[^/]+$/,
+};
+const LICENCES: [RegExp, RegExp][] = [
+  [/\bGPL|General Public License/, /GPL/],
+  [/\bMIT\b/, /MIT/],
+  [/\bBSD\b/, /BSD/],
+  [/\bApache\b/, /Apache/],
+  [/Mozilla Public License|\bMPL\b/, /MPL/],
+];
 
-test('the app\'s NOTICE names every component GhosttyKit links, and the build ships it with Ghostty\'s licence', () => {
+const notice = (): string => fs.readFileSync(NOTICE, 'utf8');
+const lineOf = (component: string): string | undefined => notice().split('\n').find((l) => l.startsWith(`${component}  `) || l.startsWith(`${component} (`));
+
+test('the app\'s NOTICE names every component GhosttyKit links, and the build ships it with each licence text it names', () => {
   for (const component of Object.keys(OBJECTS)) expect(notice(), component).toMatch(new RegExp(`^${component.replace(/[()]/g, '\\$&')}  `, 'm'));
   const build = fs.readFileSync(path.join(ROOT, 'apps/desktop/mac/build.sh'), 'utf8');
-  expect(build).toMatch(/cp "\$MAC\/NOTICE" "\$MAC\/LICENSE\.ghostty" "\$APP\/Contents\/Resources\/licenses\/"/);
+  const texts = [...notice().matchAll(/\b(LICENSE\.[\w.-]+)/g)].map((m) => m[1]);
+  expect(texts).toEqual(expect.arrayContaining(['LICENSE.ghostty', 'LICENSE.gpl-3.0', 'LICENSE.bash-preexec']));
+  for (const text of new Set(texts)) {
+    expect(fs.existsSync(path.join(ROOT, 'apps/desktop/mac', text)), text).toBe(true);
+    expect(build, text).toMatch(new RegExp(`cp "\\$MAC/NOTICE"[^\\n]* "\\$MAC/${text.replace(/\./g, '\\.')}"[^\\n]* "\\$APP/Contents/Resources/licenses/"`));
+  }
+});
+
+(fs.existsSync(SHARE) ? test : test.skip)('every file the app carries from Ghostty\'s share comes from a component the NOTICE names, under each licence its header names', () => {
+  const files = (fs.readdirSync(SHARE, { recursive: true }) as string[]).filter((f) => fs.statSync(path.join(SHARE, f)).isFile());
+  expect(files.length).toBeGreaterThan(100);
+  const unnamed: string[] = [];
+  const unlicensed: string[] = [];
+  for (const file of files) {
+    const component = Object.keys(RESOURCES).find((c) => RESOURCES[c].test(file));
+    const line = component && lineOf(component);
+    if (!line) { unnamed.push(file); continue; }
+    const header = fs.readFileSync(path.join(SHARE, file), 'latin1').split('\n').slice(0, 30).join('\n');
+    for (const [named, listed] of LICENCES) if (named.test(header) && !listed.test(line)) unlicensed.push(`${file}: ${line}`);
+  }
+  expect(unnamed).toEqual([]);
+  expect(unlicensed).toEqual([]);
 });
 
 (fs.existsSync(LIB) ? test : test.skip)('every object file in GhosttyKit comes from a component the NOTICE names', () => {

@@ -154,18 +154,27 @@ Every delete, rename and archive a handover or its install makes, with the recor
 - **rsync (GPL-3.0-or-later).** The controller archive carries rsync's source tarball, the pinned one, beside its
   licence. The NOTICE line names the configure flags and the `strip -S`. (`release.test.ts` "carries the source of the
   rsync it ships…")
-- **The app.** It carries `LICENSE.ghostty` and `apps/desktop/mac/NOTICE` in `Contents/Resources/licenses`. The NOTICE
-  names every component GhosttyKit links, with its licence and upstream. A test fails on any object file in the kit
-  that no named component accounts for. (`test/app-notice.test.ts`)
+- **The app.** It carries `apps/desktop/mac/NOTICE` in `Contents/Resources/licenses`, with `LICENSE.ghostty`, the
+  GPL-3.0 text (`LICENSE.gpl-3.0`) and bash-preexec's MIT text (`LICENSE.bash-preexec`). The NOTICE names every
+  component GhosttyKit links, and every one whose files the app copies from Ghostty's resources: the themes, Ghostty's
+  bash and zsh shell integration (GPL-3.0-or-later, derived from Kitty's; the scripts are their own source) and
+  bash-preexec. One test fails on any object file in the kit that no named component accounts for; another on any file
+  under the copied resources that no named component accounts for, or whose header names a licence that component's
+  line does not. (`test/app-notice.test.ts`)
 - **Open items for the release:**
-  - **GhosttyKit's own licence texts.** Only Ghostty's text ships. FreeType's FTL asks for its credit line in the
-    documentation. MIT, BSD, zlib, libpng and Apache-2.0 ask for their texts. They are best collected when the kit is
-    built, from zig's package cache.
-  - **libintl** (GNU gettext, LGPL-2.1-or-later) is linked statically. The LGPL asks that a user can relink against a
-    changed library. The app's source and the kit's build script meet that only once the repository is public.
+  - **GhosttyKit's own licence texts.** Only Ghostty's text ships. MIT, BSD and Apache-2.0 ask that a binary copy
+    carry their text, and FreeType's FTL a credit line in the documentation; zlib, libpng and BSL-1.0 (utfcpp) ask
+    nothing of a binary copy. The texts are best collected when the kit is built, from zig's package cache.
+  - **libintl** (GNU gettext, LGPL-2.1-or-later) is linked statically. The LGPL asks that the app ship with the LGPL's
+    text and libintl's source, or a written offer of it, and with what a recipient needs to relink the app against a
+    changed libintl: the app's object files or source and the kit's build script. That has to reach whoever receives
+    the app, whether or not the repository is public.
   - **Flaticon art.** The animal portraits and the lighthouse are Flaticon Premium icons whose licence does not allow
     redistributing the files (`web-mobile/animals/LICENSE`, `resources/LICENSE`). The companion archive, which is
     published, carries them as files. So does the app.
+  - **The object check's generic names.** `app-notice.test.ts` attributes objects named `log`, `version`, `timer`,
+    `print`, `st` or `empty` to the component that brings one today, so a new dependency with an object of such a name
+    would be counted as that component.
 
 ## Service and file permissions
 
