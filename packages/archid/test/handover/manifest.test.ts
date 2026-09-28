@@ -23,6 +23,8 @@ const sha = (data: string | Buffer): string => crypto.createHash('sha256').updat
 const has = (bin: string, arg: string): boolean => { try { execFileSync(bin, [arg], { stdio: 'ignore' }); return true; } catch { return false; } };
 const hasGit = has('git', '--version');
 const hasRsync = has('rsync', '--version');
+// CI sets ARCHI_REQUIRE_RSYNC, and there a missing rsync fails the file instead of skipping what needs it
+if (!hasRsync && process.env.ARCHI_REQUIRE_RSYNC) throw new Error('no rsync on PATH');
 const git = (cwd: string, ...args: string[]): string => execFileSync('git', [
   '-c', 'user.name=Probe', '-c', 'user.email=probe@example.com', '-c', 'commit.gpgsign=false', '-c', 'init.defaultBranch=main', ...args,
 ], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });

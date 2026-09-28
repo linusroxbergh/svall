@@ -15,6 +15,8 @@ import { installFakeSsh, type FakeSsh } from './fake-ssh.js';
 const RSYNC = process.env.ARCHI_TEST_RSYNC ?? bundledRsync();
 const probe = await probeRsync(RSYNC);
 const noRsync = probe.ok ? undefined : `no rsync 3 at ${RSYNC} (${probe.reason}): build it with scripts/build-controller.mjs or set ARCHI_TEST_RSYNC`;
+// CI sets ARCHI_REQUIRE_RSYNC, and there a missing rsync fails the file instead of skipping what needs it
+if (noRsync && process.env.ARCHI_REQUIRE_RSYNC) throw new Error(noRsync);
 
 const temps: string[] = [];
 const tmp = (prefix = 'archi-rsync-'): string => {
