@@ -92,7 +92,7 @@ function checkSums(dir) {
 
 /**
  * The one release an archive holds, from its `tar -t` listing. Every member must be a path in releases/<version>,
- * spelled one way and listed once, so the SHA256SUMS an installer extracts by name is the one a full unpack leaves.
+ * spelled one way and listed once, so a full unpack writes no other spelling over a file an installer extracted by name.
  */
 export function archiveRelease(archive, listing) {
   const members = listing.split('\n').filter(Boolean);
