@@ -8,13 +8,16 @@ Everything sits behind `handover.enabled` in fleet.json, which is off by default
 
 ## Status
 
-- **Done:** plan Tasks 1–29 and 40–42, milestones M0–M3. Every task was reviewed; M1, M2 and M3 each
-  got a deep review, one fix wave and an on-machine pass. Task 40 rebased onto current main and ran a
-  Mac→Linux→Mac round trip with real Codex on the rebased build. Tasks 41–42 made both machines share one
-  home path, so nothing is rewritten, and carry entity docs and agent profiles.
-- **Next:** the M3b gate: an on-machine round trip with real Claude and real Codex, entity docs and the
-  Linux lock, then the owner's by-eye pass. Then Phase G, Tasks 36–39 (hardening, CI, audit, docs,
-  rollout), which ends version 1. A final whole-branch review comes last.
+- **Done:** plan Tasks 1–29, 40–42 and 36a, milestones M0–M3 and M3b's automated gate. Every task was
+  reviewed; M1, M2 and M3 each got a deep review, one fix wave and an on-machine pass. Tasks 41–42 made
+  both machines share one home path, so nothing is rewritten, and carry entity docs and agent profiles.
+  The M3b gate handed a fleet with mocked agents, real Claude and real Codex Mac→Linux→Mac on
+  linus-vault, then re-checked its fix wave there (Claude's trust and bypass prompts). Task 36a added 92
+  named failpoints and a 422-case fault suite, and found and fixed three product defects.
+- **Next:** Task 36b (controller-side faults: concurrent Begin/Resume/Abort, duplicate and reordered
+  responses, seeded order), then Tasks 37–39 (two-machine and fresh-install CI, the security and
+  performance audit, docs and rollout), which end version 1. A final whole-branch review comes last. The
+  owner's by-eye pass is still owed (below).
 - **After version 1:** Phase E, Tasks 30–33 (stable phone gateway), and Phase F, Tasks 34–35 (remote
   ports). Phase E needs a machine-wide `tailscale serve` path mapping on the gateway machine and a
   real phone for its gate, so ask the owner first.
@@ -41,13 +44,11 @@ now `ledger/`, and `docs/superpowers/{specs,plans}/…fleet-handover…` is now 
 
 ## Owed before this can ship
 
-- **Real Claude, both directions** (M3b gate). Real Codex was handed Mac→Linux→Mac on the rebased
-  build. Task 41's probe resumed a real Claude 2.1.283 session and a real Codex rollout, copied
-  unchanged, in both directions. The full handover of a real Claude character has not run yet. Real
-  Claude under a Mac temp HOME logs in from a copied `~/.claude/.credentials.json`, which the owner
-  approved.
 - **The by-eye pass in the built app** (M3b gate): Add Machine, the handover sheet, and terminal
-  re-attach after an SSH drop.
+  re-attach after an SSH drop. `ledger/m3b-env.md` says how to open the test build against the test HOME
+  without touching the owner's own app or fleet.
+- **`claude_bypass` for running Claudes on the machines.** The fix for G2 (a running Claude never got the
+  warning) passed review but has not run on linus-vault.
 - **A release signing key.** `allowed_signers` holds only a comment until one exists, so every install
   needs `--allow-unsigned`. Before release, Task 38 must also restore the far machine's own signer check
   on `host upgrade` (see the ledger's Task 40 fix round 1).

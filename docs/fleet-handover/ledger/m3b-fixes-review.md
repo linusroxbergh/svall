@@ -398,3 +398,83 @@ The copy was confirmed equal to the worktree afterwards.
 - `pnpm typecheck`: exit 0.
 - Four projects: protocol 137, archid 1582 (2 skipped), cli 544 (3 skipped, one of them the no-`.git` `--version` test), web 718. That makes 2981, as reported.
 - The scripts project passes 26.
+
+## Fix round 3
+
+Commit `fd2204af` (G2). Findings `m3b-fix3-findings.md`, report `m3b-fix3-report.md`, source
+`m3b-gate-report.md` "## Re-check after the fix wave".
+
+**Verdict: Approved.** Findings: 0 Critical, 0 Important, 0 Minor.
+- G2 is addressed for running and dormant terminals, main and second.
+- The new tests fail without the change.
+- The real state is untouched by preflight.
+- The commit stays within G2.
+
+About my runs:
+- Every run had my logging `claude`/`codex` stubs first on PATH, with `~/.local/bin` left off PATH and no agent variables. No stub was called.
+- The runs are in `$SP/rv-m3b`: `runs/r3-*.json`, `runs/r3-reverts.txt` and `runs/r3-dormant-second.txt`.
+- The worktree is unchanged apart from this section.
+
+### G2: verified
+
+**The change.**
+- Preflight gives each classified running agent slot of the manifest's snapshot `reviveCommand(slot, launchFlags(t))` (`source.ts:192-199`).
+- That is the rest's own recipe: `rest.ts:256` records `t.flags = launchFlags(c)`, and `markDormant`/`markSlotDormant` build `reviveCommand(t, flags)`. So the preflight revive is the one the freeze will record from the same process tree.
+- `classifyTerminals` (`rest.ts:105-118`) lists only slots with a live window and a readable pane. A dormant slot is never reached and keeps its own revive.
+- `inventory.snapshot` is `exportSnapshot`'s `structuredClone`.
+
+**Coverage.**
+
+| Terminal | How it is verified |
+| --- | --- |
+| Running main | `source.test.ts` (ada, `--dangerously-skip-permissions`) and end to end in `faults.test.ts` (di) |
+| Running second | `source.test.ts` (ada's second, `--permission-mode bypassPermissions` → `--permission-mode 'bypassPermissions'`) |
+| Running without the flag | bo (`--effort high` → `bypass` false), and di's first `faults.test.ts` assertion |
+| Dormant main | cy |
+| Dormant second | not in the commit's tests. It reads the same R3 expression, `(s.term === 2 ? c.second : c)?.revive`. I added cy a dormant second with a bypass revive in the scratch copy only: `resumeFolders` gave `['c_cy', true]` twice, and the test passed |
+
+**Real state untouched.**
+- The test asserts `b.store.state` equals its clone and that no tmux action ran.
+- A mutant that also wrote a revive into `this.d.store.state` fails that assertion (`expected { version: 8, … } to deeply equal …`). So the assertion carries weight, not just the manifest check.
+
+**Failing first.** At `fd2204af`, with `source.ts` and `rest.ts` reverted to its parent, both new tests fail:
+- `source.test.ts`: `expected [ undefined, undefined, …(2) ] to deeply equal [ …(4) ]`.
+- `faults.test.ts`: `expected [] to deeply equal [ 'c_di' ]`. Its no-flag assertion passes, which is G2 as the machines showed it.
+
+Mutants at HEAD:
+
+| Mutant | Result |
+| --- | --- |
+| flags dropped (`reviveCommand(slot)`) | both fail |
+| main terminal only | the source test fails |
+| writing the live state instead of the snapshot | the source test fails |
+
+The copy was confirmed equal to the worktree after each run.
+
+**Scope.**
+- `rest.ts` only exports `launchFlags`.
+- `source.ts` adds the loop.
+- The two tests.
+- No reader of the preflight manifest's `revive` other than `resumeFolders` exists in `packages/cli/src` or `apps/desktop/web/src`. The sheet uses the summary, warnings and names.
+- The comment is 1 line.
+
+**Suites** (scratch copy at HEAD, stubs first, no agent variables).
+- `pnpm typecheck`: exit 0.
+- Four projects: 3405 passed, 5 skipped and 1 failed. The failure is `cli.test.ts --version`, because the copy has no `.git`. That makes 3406, as reported.
+- No stub was called, and the sentinel HOME was unchanged.
+
+### The two concerns
+
+1. **Flags read at preflight, not at freeze: accept.**
+   - The preflight revive exists only in the preflight manifest. The freeze builds its own from its own process tree, so what travels is always right, and only the advice can be stale.
+   - It goes stale only if a Claude is restarted with other flags between the sheet and Begin.
+   - Even then, the destination still recovers: R2 counts it up with its quiet notice, and R1 watches it.
+2. **An unrepeatable launch gets no warning: accept. This is the correct answer, not a gap.**
+   - When `startFlags` gives up, the rest carries `claude --resume …` with no bypass flag. The destination then never shows the warning, and the preflight agrees with what will happen.
+   - Losing the flag is the rest's rule for any launch it cannot repeat (spec "Terminal records": the flags an idle close keeps), not something this change introduced.
+
+### Still open from round 2
+
+Neither is part of this round, and neither is counted above.
+- **n1:** `test/isolate.ts` has no `.profile`. So in tmux panes, the doubles still come after `/usr/local/bin`.
+- **n2:** the `watch` doc comment is still 4 lines (`destination.ts:638-643`).
