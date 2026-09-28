@@ -125,7 +125,7 @@ run yet: Actions jobs do not start on this repository (billing), so its first ru
 The script runs the machines on the Docker host's own architecture: arm64 on an Apple Silicon Mac, x86-64 on the
 runner. It cannot run under user-mode emulation, such as Docker's qemu binfmt on an arm64 host. There every process
 reads as `qemu-x86_64`, so the rest classifier finds every terminal busy and preflight blocks. An x86-64 run needs an
-x86-64 Docker host.
+x86-64 Docker host, such as a full-system x86-64 VM (see [x86-64 on an Apple Silicon Mac](#x86-64-on-an-apple-silicon-mac)).
 
 ### What this run does not cover
 
@@ -137,8 +137,137 @@ x86-64 Docker host.
 - **Real agents.** Real Claude Code and Codex need logins. The mocked Claude speaks the same hooks and transcript
   layout, and the live probes cover the real CLIs (`packages/archid/test/handover/sessions-live.test.ts`).
 - **Tailscale.** The containers talk over the docker network.
-- **Fresh installs.** Installing on clean x86-64 and arm64 machines with no Node, `host upgrade` and
-  `setup --rollback` are Task 37b's.
+- **Fresh installs.** Installing on a clean machine with no Node, `host upgrade` and `setup --rollback` are the
+  fresh-install run's, below.
+
+## Fresh installs
+
+`scripts/integration/fresh-install.sh` provisions a clean Ubuntu 24.04 machine as a user does: with the controller
+the Mac app carries, from the companion archive that controller's manifest pins. It then upgrades the machine to a
+second release and rolls it back.
+
+### Run it
+
+```sh
+colima start                                   # if Docker is not already running
+scripts/integration/fresh-install.sh --out /tmp/fresh-install
+```
+
+| Option | What it does |
+| --- | --- |
+| `--release <dir>`, `--upgrade <dir>` | Use these two releases, each a folder `scripts/release-build.sh` wrote, instead of building both from the checkout. Only macOS builds them, so elsewhere both are needed. |
+| `--out <dir>` | Where the logs go (default a new folder under the system temp folder). |
+| `--keep` | Leave the machine running, and the controller's home and ssh files in place. |
+
+Without `--release`, the script builds the checkout twice with `scripts/release-build.sh`: as its `git describe`
+name and as that name with `-next`. The machine runs on the Docker host's own architecture, as the handover run's
+do. It exits 0 when every check passed, and prints `PASS` or its `FAIL` lines per step, like the handover run. The
+output folder holds `run.log`, the NDJSON of `host add` and `host upgrade`, the JSON of the rollback and of each
+`host doctor`, a `.machine.json` per stage with what the checks read on the machine, and `machine.log` with the
+units' logs.
+
+### What it checks
+
+1. **The controller the app carries.** Each release folder holds the controller tree, packed as
+   `archipelago-controller-<version>-darwin-<arch>.tar.gz`, and the companion archives. The run unpacks the tree and
+   checks that its manifest pins this architecture's companion archive by name and digest.
+   - On a Mac the tree runs through its own shim and Node.
+   - A Linux runner cannot run the Mac's Node, so there the tree's `lib/archi.mjs` runs on the runner's Node 24,
+     with `ARCHI_RELEASE_ROOT` at the tree: the same code, manifest and signers.
+2. **A clean machine.** It is the `machine` stage of `scripts/integration/Dockerfile`: systemd, sshd, tmux 3.4, Git,
+   rsync and the `tailscale` double, and no Node.
+   - The run makes one account whose home is the controller's home. That home is a folder of its own under the host's
+     temp folder, short enough for the gateway's socket path, which holds at most 108 bytes.
+   - The account logs in with a key made for the run, and lingering is off.
+   - No `node` exists anywhere on the machine, and the home holds only Ubuntu's skeleton.
+   - ssh from the host reads only the run's own files. A wrapper first on the controller's PATH runs ssh with `-F` on
+     a config that names the run's key and known_hosts, and no agent.
+3. **`archi host add`** from the first release, with `--release` and its companion, and `--allow-unsigned` only for
+   an unsigned build.
+   - Every step is `ok`, except the advice a fresh machine gets: tmux 3.4, Claude Code and Codex not installed, and
+     lingering off, which both the linger and the service steps name.
+   - The result lists exactly three things to do: the lingering command and the two installs.
+4. **Lingering, as host add asks.** The run turns it on, then the machine restarts and nobody logs in.
+   - Both units, the private fleet's archid and the gateway, are active and enabled.
+   - Each runs the release's own Node (`/proc/<pid>/exe`), with `ARCHI_RELEASE_ROOT` at `releases/<version>`.
+   - `current` and `~/.local/bin/archi` lead to that release.
+   - There is no `node` outside the releases and no `pnpm-workspace.yaml` anywhere.
+   - `archi host doctor` fails nothing, and its systemd, gateway, linger, archid, release and home checks are `ok`.
+5. **`archi host upgrade`** from the second release's controller: every step is `ok`, there is no rollback, and step
+   4's checks pass against the second release, with both releases kept.
+6. **`archi setup --rollback`**, run over ssh on the machine: `current` goes back to the first release, both units
+   restart, and step 4's checks pass against the first release. `host doctor` from the first release's controller
+   agrees.
+
+### x86-64 on an Apple Silicon Mac
+
+Neither run works under Docker's user-mode emulation (see above). A full-system x86-64 VM runs both, slowly:
+
+```sh
+brew install qemu lima-additional-guestagents
+colima start -p x64 --arch x86_64 --vm-type qemu --cpus 8 --memory 8
+DOCKER_CONTEXT=colima-x64 scripts/integration/fresh-install.sh --out /tmp/fresh-install-x64
+DOCKER_CONTEXT=colima-x64 scripts/integration/fleet-handover.sh --scenarios kill --out /tmp/fleet-handover-x64
+colima delete -p x64
+```
+
+## Release builds and the archive scan
+
+`scripts/release-build.sh --out <dir> --version <id> --url-base <url>` builds what a release publishes, on macOS
+only, as the controller build is:
+
+- the phone bundle, then both companion archives;
+- the controller tree, whose manifest names each companion at `<url>/<archive>` with its digest, packed as
+  `archipelago-controller-<id>-darwin-<arch>.tar.gz`.
+
+With `ARCHI_RELEASE_KEY` set, every manifest is signed; without it, every manifest is marked unsigned. The script
+ends by scanning the three archives, and a hit fails it.
+
+`scripts/release-scan.mjs [--secrets-only] <archive or folder>...` exits 1 on any of:
+
+- **Secrets:** private keys, and Anthropic, OpenAI, GitHub, AWS, Slack, Google, npm and Tailscale keys. Files named
+  like credentials count too, such as `.credentials.json`, `id_ed25519`, `*.pem`, `.npmrc` and `.env`. The report
+  names the rule, never the secret.
+- **Developer paths:** any `/Users/` path, and the builder's home, checkout and temp folder. A folder of one
+  component, such as `/tmp`, names nobody and is not looked for. In `node/`, the upstream runtime whose digest the
+  build checked, only the builder's own paths count, as Node's own builds carry their build machine's `/Users/admin`.
+- **Checkout dependencies:**
+  - a module the bundles or hooks import or require that is not a Node builtin, not inside the release, and not one
+    of the optional modules the bundles fall back from (`bufferutil`, `utf-8-validate`, `supports-color`);
+  - a link out of the release;
+  - a `node_modules` or `.git` folder.
+
+`--secrets-only` is for logs, which name their machine's paths by design.
+
+## The release workflow
+
+`.github/workflows/release.yml` runs on a tag `v*`:
+
+| Job | Runner | What it does |
+| --- | --- | --- |
+| `build` | `macos-latest` | Runs `release-build.sh` twice: for the tag, and as `<tag>-next`, the release the fresh installs upgrade to, which is never published. Passes both to the other jobs as workflow artifacts. |
+| `integration` | `ubuntu-24.04` (x64), `ubuntu-24.04-arm` (arm64) | Runs `fleet-handover.sh` with the release's own companion for that architecture. |
+| `fresh-install` | the same two | Runs `fresh-install.sh` with both releases. |
+| `publish` | `ubuntu-24.04` | Needs all three. With the key, it lists every archive in `SHA256SUMS`, signs that with `ssh-keygen -Y sign`, checks the signature against the committed `scripts/release/allowed_signers`, and creates the GitHub release with the archives, `SHA256SUMS` and its signature. Without the key, it notes that the dry run passed, and uploads nothing. |
+
+- **Signing.** The `ARCHI_RELEASE_KEY` secret holds the private key. It is written to a 0600 file only in the steps
+  that sign, and deleted after them. The manifests inside the archives are signed at build time, so the archives the
+  jobs test are the ones published.
+- **The signers.** Before the first signed tag, `scripts/release/allowed_signers` needs the key's public half, as
+  its header says. Otherwise every install refuses the release, and the fresh-install jobs fail.
+- **Dry run.** A tag in a repository without the secret builds, hands over and fresh-installs everything, and
+  uploads nothing.
+- **Logs.** A failed job's logs are scanned with `--secrets-only` before they are uploaded, and a hit keeps them back.
+
+### What only a real runner can prove
+
+Actions jobs do not start on this repository (billing), so these steps have run only as the local scripts they call:
+
+- the upload: `gh release create` with the job's token, and a signed tag end to end;
+- the native x86-64 and arm64 Linux runners;
+- workflow artifacts passing from the macOS job to the Linux jobs;
+- the Mac controller's `archi.mjs` on a Linux runner's Node, which has run only on a Mac's Node;
+- the build on a macOS runner, with the runner's `strip` and an rsync build on a cache miss.
 
 ## Tests that need rsync
 
