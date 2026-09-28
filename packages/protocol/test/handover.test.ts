@@ -82,6 +82,11 @@ describe('machine records', () => {
     }
     expect(MachineRecord.parse({ ...record, ssh: 'linus@trift.tailnet.ts.net:22' }).ssh).toContain('trift');
   });
+  it('refuses a user or host name a ProxyCommand\'s %r or %h would hand a shell to expand', () => {
+    for (const ssh of ['$(touch x)@trift', '`id`@trift', 'linus@trift;id', 'linus@trift|id', "linus@'trift'", 'linus@trift&', 'linus@%h', 'linus@trift\\x']) {
+      expect(() => MachineRecord.parse({ ...record, ssh }), ssh).toThrow();
+    }
+  });
   it('holds a path to an absolute one that climbs nowhere, and takes whatever else a disk holds', () => {
     for (const bad of ['~/.local/share/archipelago', 'relative/path', '/home/linus/../../etc', '/home/linus\nrm -rf /', '/home/\0linus']) {
       expect(() => MachineRecord.parse({ ...record, archiBase: bad })).toThrow();

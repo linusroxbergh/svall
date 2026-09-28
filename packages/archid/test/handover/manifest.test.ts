@@ -132,6 +132,20 @@ describe('buildManifest', () => {
     });
   });
 
+  it('holds no fleet key, and no secret a carried .env holds, even with the fleet .env carried', async () => {
+    const s = seed();
+    const home = path.join(s.mac, '.archipelago');
+    const secrets = { token: 'tok-9f8e7d6c5b4a', 'relay-secret': 'relay-1a2b3c4d5e', 'mobile-key': 'phone-0f1e2d3c4b', 'vapid.json': '{"privateKey":"vapid-5a6b7c8d9e"}' };
+    for (const [name, text] of Object.entries(secrets)) fs.writeFileSync(path.join(home, name), text);
+    fs.writeFileSync(path.join(home, '.env'), 'ANTHROPIC_API_KEY=sk-ant-fleet-7e6d5c4b3a\n');
+    fs.writeFileSync(path.join(s.repo, '.env'), 'TOKEN=repo-env-2b3c4d5e6f\n');
+    const fleet = { ...FLEET, handover: { ...FLEET.handover, transferFleetEnv: true } };
+    const { manifest } = await buildManifest(inventory(s, fleet), HEADER);
+    const text = canonicalJson(manifest);
+    for (const value of ['tok-9f8e7d6c5b4a', 'relay-1a2b3c4d5e', 'phone-0f1e2d3c4b', 'vapid-5a6b7c8d9e', 'sk-ant-fleet-7e6d5c4b3a', 'repo-env-2b3c4d5e6f']) expect(text).not.toContain(value);
+    for (const name of Object.keys(secrets)) expect(text).not.toContain(path.join(home, name));
+  });
+
   it('blocks a file name with a control character and leaves the file out', async () => {
     const s = seed();
     fs.writeFileSync(path.join(s.repo, 'src/a\nb.ts'), '');

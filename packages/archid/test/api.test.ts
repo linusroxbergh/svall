@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -13,7 +14,7 @@ import { Fleet } from '../src/fleet.js';
 import { HandoverService } from '../src/handover/service.js';
 import { openJournal } from '../src/handover/journal.js';
 import { machineId } from '../src/machine.js';
-import { silentLogger } from '../src/log.js';
+import { silentLogger, type Logger } from '../src/log.js';
 import { resolvePaths } from '../src/paths.js';
 import { workspaceRoot } from '../src/resources/scan.js';
 import { PushStore } from '../src/push/store.js';
@@ -97,7 +98,8 @@ runIf('API', () => {
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 
-  async function boot(heartbeatMs?: number) {
+  async function boot(heartbeatMs?: number, o: { log?: Logger; token?: string } = {}) {
+    const log = o.log ?? silentLogger;
     const home = makeHome();
     const paths = resolvePaths(home);
     const config = Config.parse({ shell: '/bin/sh' });
@@ -105,16 +107,16 @@ runIf('API', () => {
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
     const ownership = ownerOf(home, config.id);
-    const fleet = new Fleet({ store, tmux, paths, config, ownership, log: silentLogger, pollMs: 200 });
+    const fleet = new Fleet({ store, tmux, paths, config, ownership, log, pollMs: 200 });
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); fleet.stop(); await tmux.killServer(); });
     await started;
-    const terminals = new TerminalHub(fleet, tmux, store, silentLogger);
+    const terminals = new TerminalHub(fleet, tmux, store, log);
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
-    const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, undefined, paths.docs, paths.agentProfiles), silentLogger, () => [claude.json], [paths.docs, paths.agentProfiles]);
+    const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, undefined, paths.docs, paths.agentProfiles), log, () => [claude.json], [paths.docs, paths.agentProfiles]);
     const handover = new HandoverService({ ownership, journal: openJournal(paths) });
     const api = await startApi({
-      host: '127.0.0.1', port: 0, token: 'secret', store, fleet, terminals, workspace, usage: stubUsage, mobileControl: stubMobile, log: silentLogger,
+      host: '127.0.0.1', port: 0, token: o.token ?? 'secret', store, fleet, terminals, workspace, usage: stubUsage, mobileControl: stubMobile, log,
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(),
       claude, docs: paths.docs, agentProfiles: paths.agentProfiles, heartbeatMs, ownership, handover, key: () => PHONE_KEY, logins: () => ['me@example.com'],
     });
@@ -134,6 +136,23 @@ runIf('API', () => {
     expect(snap.result.islands.home.kind).toBe('home');
     expect(snap.result.home.command).toBe('claude --model sonnet');
     good.ws.close();
+  });
+
+  it('never writes the daemon token, or one a client offered, to its log', async () => {
+    const lines: string[] = [];
+    const log: Logger = { info: (m) => { lines.push(m); }, error: (m) => { lines.push(m); } };
+    const token = `daemon-token-${crypto.randomBytes(8).toString('hex')}`;
+    const { api } = await boot(undefined, { log, token });
+    const offered = `offered-token-${crypto.randomBytes(8).toString('hex')}`;
+    const bad = await TestClient.connect(api.port, offered);
+    await waitFor(() => bad.closeCode === 4401);
+    const good = await TestClient.connect(api.port, token);
+    await good.call('no.such.method', { token });
+    await good.call('char.get', { id: token });
+    good.ws.close();
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.join('\n')).not.toContain(token);
+    expect(lines.join('\n')).not.toContain(offered);
   });
 
   it('answers resources.get with the user scope first', async () => {

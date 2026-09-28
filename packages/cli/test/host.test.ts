@@ -609,6 +609,7 @@ esac
     await far.close();
     expect(out).toEqual({ result: 'ready', actions: [] });
     expect(far.now()).toBe('1.2.3');
+    expect(JSON.stringify(events)).not.toContain(TOKEN);
     const setup = ssh.remoteCalls().find((w) => w.includes('setup'))!;
     expect(setup[0]).toBe(`${work}/far/.cache/archipelago/staging-1.2.3/releases/1.2.3/bin/archi`);
     expect(ssh.remoteCalls().some((w) => w.includes('--rollback'))).toBe(false);
