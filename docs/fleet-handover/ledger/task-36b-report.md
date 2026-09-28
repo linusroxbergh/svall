@@ -281,3 +281,120 @@ never reached Begin, so its gate waited. It was fixed before `fe72be33`, and eve
 - **Runtime.** The cli fault suite takes about 40 s, the archid one about 24 s.
 - **Test-only imports.** The cli suite imports `packages/archid/test/handover/fault-world.ts`, as archid's suite
   already imports `packages/cli/src`.
+
+## Fix round 1
+
+Commits `9de4efc0..4bc6968f` on top of `5a96180d` (not pushed):
+
+1. `9de4efc0` The controller's fault suite fails at collection when a script's label bounding its cases goes missing, or when a script has no request to strike (**M4**)
+2. `40594da9` A resume that would rebuild its journal while the destination does not answer stops there, instead of claiming roots the destination has prepared, which it refuses at every resume after (**defect 4**, found by I1's new cases)
+3. `e362df73` The controller's fault suite strikes each line of the controller that sends a request, those reached only after an unanswered Begin, a lost Commit or an abort the fleet moved past included, and fails on a line it does not strike (**I1**)
+4. `046dc991` The controller's fault suite checks that a run reported aborted left the gateway holding no handover of it, and that a cancel before Freeze whose gateway abort went unanswered keeps its journal and offers the abort (**M1**)
+5. `5b0dcbee` The fault suite's meeting Begins fail at once when a start ends before its Begin, instead of waiting out the test's timeout (**M3**)
+6. `4bc6968f` The fault world's process table prints a revived terminal's command as ps does, without its shell quotes, so a handover after a cancelled one carries di's flags (**M6**)
+
+M2, M5 and M7 are left as deferred.
+
+### I1: every request site struck, and the check counts sites
+
+- **Sites.** Both worlds record, for each request, the line of `controller/handover.ts` it was sent from (`callSite()` in
+  `world.ts`, read off the stack synchronously; vitest's stacks are source-mapped). The real world keeps `sites` beside
+  `requests`, the Task 27 world beside `ops`.
+- **The check** ("are each struck, from every line that sends one, …") reads every line of `handover.ts` holding a
+  `daemon.call('…'` or a `gateway.<op>(` (29 lines today) and fails on each line no case strikes, naming it
+  (`handover.status (handover.ts:660)`). Link rsync is still asserted by label.
+- **RED.** The per-site check alone, before any new case, failed with four lines, not one:
+  - `handover.prepare` in `landed()` (the reviewer's site, now `:497`);
+  - `gateway get` in `openedHere()` (`:438`), reached only after a Begin went unanswered;
+  - `gateway get` in `commit()` (`:639`), reached only after a Commit went unanswered;
+  - `gateway get` in `undo()` (`:720`), reached only when the gateway answers an abort `generation_mismatch`.
+- **New cases that strike them.**
+
+| Where | Script or run | Requests struck | Cases |
+| --- | --- | --- | --- |
+| real world | "resume from the daemons' journals once prepared": the controller dies before `gateway ready`, its journal is made unreadable, a new controller resumes (journal rebuilt from the daemons') | all 14: observe (5), `trift system.info`, `mac handover.freeze`, `trift handover.prepare` with nothing landed, ready, commit, activate, both completes, `gateway complete` | 140 |
+| real world | "abort once prepared, overtaken by a resume on trift": the controller dies before `gateway ready`; an abort here, before whose `gateway abort` a resume on trift (rebuilt journal) takes the handover whole to trift, so the abort meets `generation_mismatch` and asks where the fleet went | from its `gateway abort` (`from`, a new `Script` field): `gateway abort`, `gateway get` (`undo`) | 20 |
+| Task 27 world | "a cancel while Begin goes unanswered": Begin reaches the gateway, the user cancels, the answer is lost | `gateway get` (`openedHere`), `gateway abort` | 2 tests, 12 struck runs each |
+| Task 27 world | "a Commit whose answer is lost" | `gateway get` (`commit`) | 2 tests, 6 struck runs each |
+
+- The Task 27 probe now takes a run's own calls by site, not by name (a store write, which has no site, still by
+  name), so a run other than the move strikes a `gateway get` from a line the move never sends from.
+- `diesAt` moved to module level, as scripts use it.
+
+### Defect 4 (found by the rebuilt-journal cases), fixed in `40594da9`
+
+- **Cases.** "resume from the daemons' journals once prepared: lost / dropped / stale / partition at trift
+  handover.status (#3), then resume": RED, 4 failed and 136 passed of the script's 140. Each ended
+  `no controller settled the handover: open:resume+abort resume->interrupted …` six times.
+- **Cause.** With no journal of its own and the destination's status unanswered, `assess` took the source's phase
+  (`freeze`), so `adopt()` wrote a journal at `freeze` though the destination had prepared. `landed()` then copied
+  again, and `claim` refused (`… is prepared on this machine, so nothing more is copied into its roots`). That journal
+  was then the controller's own, so every later resume claimed again and was refused, while status kept offering
+  resume. Only an abort got out. The same shape as defect 1, entered through an unanswered status.
+- **Fix.** `resume()` does not rebuild a journal of an open handover while the destination has not answered: it
+  returns `interrupted` with status's safe actions (`resume`, `abort`) and writes nothing. The next resume rebuilds from
+  the destination's phase. Abort is unchanged: it needs only whether Freeze was sent, which the source says, and it
+  should not wait on a destination that may be gone.
+- GREEN: the cli fault file, 854 passed. `packages/cli/test/controller/`: 1123 passed, 2 skipped.
+
+### M1: `aborted` means the gateway let go
+
+- New case, "a cancel whose abort goes unanswered › before Freeze, keeps its journal and offers the abort, which
+  closes the handover once the gateway answers". The user cancels as Begin goes out and Begin is answered. The
+  `gateway abort` is partitioned. The case expects `interrupted`, phase `begin`, `safe: ['abort']`, the same
+  transaction still `preparing` at the gateway, the journal kept and the source running. Then `recover('abort')`
+  settles on the source.
+- The message matrix also checks, after each first run: if it is `aborted`, the gateway's record holds no transaction
+  with that id.
+
+### M3, M4, M6
+
+- **M3.** Each meeting-Begins party resolves `met` when its run settles, so a party that never reaches Begin lets the
+  other go on and `expect(arrived).toBe(2)` fails with its count.
+- **M4.** `probeScripts` throws at collection when a script's `until` or `from` label is not among its requests, or when
+  it would strike nothing. The thrown message lists the requests it did send.
+- **M6.** `Machine.processes` passes each job through `psArgs`, which splits it as `sh -c` would (single quotes and
+  backslashes) and joins the words with spaces, as ps prints them. New archid case "a handover after a cancelled one ›
+  carries di's Claude with the flags the source revived it with": `play(w, 'cancel')` then `play(w, 'move')`, which
+  settles on the destination with di's revive command.
+
+### Mutation and RED evidence (each reverted)
+
+| Mutation | Result |
+| --- | --- |
+| The reviewer's: `landed()`'s prepare with nothing landed throws | 71 failed of 818 (the reviewer saw 5): 35 rebuilt-journal message cases, 30 overtaken-abort cases, the 5 no-journal cases, the site check |
+| A new `destination.daemon.call('handover.status', {})` in an unreached branch of `activate()` | the site check fails with `handover.status (handover.ts:660)`; the name check passed it, as `handover.status` is struck elsewhere |
+| `undo()` goes on to `letGo` after an unanswered gateway abort (M1's) | 3 failed of 949 (faults + handover.test.ts): the new M1 case (`aborted`), and the overtaken-abort script's partition at `gateway abort`, both prefs (`destination.abort.stage ran on the source`) |
+| M3: the second start without `archiveRoots`, so it is blocked at preflight | with the fix: fails in 126 ms, `expected 1 to be 2`; without it: `Test timed out in 20000ms` |
+| M4: `until: 'trift handover.claims'` | collection error `resume once frozen: its run sent no trift handover.claims, but gateway get, …`; at `5a96180d` the same rename collects 644 tests instead of 714, and none is "resume once frozen" |
+| M6: the process table keeps the raw command | the new archid case fails: `expected [ 'claude --effort high', … ] to include 'claude --resume <sid>'` |
+| Defect 4's fix reverted | the 4 cases above fail |
+
+### Verification
+
+- `pnpm typecheck`: clean.
+- `pnpm test:faults --sequence.seed=7`: 1302 passed. `--sequence.seed=424242`: 1302 passed. Random seed
+  `1790595284479`: 1302 passed. The count is 879 in cli and 423 in archid; it was 714 and 422.
+- `pnpm vitest run --project archid --project cli`:
+  - first run: 1 failed, 3430 passed, 5 skipped. The failure was cli `transfer.test.ts` "keeps a dropped link's partial
+    copy, and a resume on a new master finishes it": `expected 6291456 to be less than 6291456`. The real rsync copied
+    everything before the cut under load. It passes alone (34 passed, 1 skipped), and this round touches nothing it
+    runs;
+  - second run: 118 files passed and 1 skipped; 3431 passed, 5 skipped.
+
+### Concerns
+
+- **Site identity is a source line.** Two requests sent from one line would count as one site. There are none today:
+  29 sites on 29 lines. A request sent from outside `handover.ts`, such as the transfer's rsync, is outside the check,
+  as before.
+- **Where some sites are struck.** `openedHere`'s and `commit`'s `gateway get` are struck in the Task 27 world only
+  (fake daemons, the real transition). In the real world they are reached only by the partition-like unknown-Commit
+  and cancel-while-Begin cases.
+- **`undo`'s `gateway get` needs a second controller.** The overtaken-abort script strikes only the abort's last two
+  requests. The trift resume under it runs fault-free, so the matrix's mac-only recovery settles it.
+- **An abort rebuilt while neither daemon answers** (not struck by any case). It adopts phase `begin`, so `letGo` skips
+  the daemons and reports `aborted`:
+  - the gateway has let go, so M1's property holds;
+  - a source that froze stays frozen until status's finish-abort frees it;
+  - it is safe, but the outcome overstates what was done. It is outside this round.
+- **Runtime.** The cli fault file takes about 50 s alone, up from about 40 s. Both fault suites shuffled take about 80 s.
