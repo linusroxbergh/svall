@@ -112,8 +112,9 @@ When a new Claude Code or Codex release comes out:
 1. Record a session made by it as a fixture beside the others in
    `packages/archid/test/fixtures/handover/claude/<version>` or `codex/<version>`, sanitized as the README there
    describes. `packages/archid/test/handover/sessions.test.ts` checks the session adapter against every fixture.
-2. Run the live probe, which starts a session on this Mac and resumes it on a machine with the same home path and both
-   agents logged in, then the other way, and removes what it made. It spends a few tiny turns on each account:
+2. Run the live probe against a machine with the same home path and both agents logged in. It carries a session from
+   this Mac there and back, and one started there to this Mac, checks each resumes with its memory, and removes what it
+   made. It spends a few tiny turns on each account:
 
    ```sh
    ARCHI_LIVE_REMOTE=ada@studio pnpm test packages/archid/test/handover/sessions-live.test.ts
@@ -121,9 +122,13 @@ When a new Claude Code or Codex release comes out:
 
    `ARCHI_LIVE_AGENTS=claude` limits it to one agent, and `ARCHI_LIVE_REMOTE_CLAUDE` or `ARCHI_LIVE_REMOTE_CODEX` names
    another CLI on the remote machine, such as an older release still installed there.
-3. If both pass, nothing changes. If the release keeps its session files somewhere new, the session adapter needs
-   updating before a handover can carry them; until then the checks stop with `transcript_missing` or
-   `incompatible_adapter`.
+3. If both pass, nothing changes. A release that keeps its session files somewhere new, or resumes differently,
+   needs the session adapter updated: until then the checks stop with `incompatible_adapter` or `transcript_missing`,
+   or the character stays dormant on the other machine with its transcript and the error. The adapter's minimum rises
+   only when an older release stops working.
+
+Until its probe passes, a new release is untested with handover, not refused. [The security notes](../security/fleet-handover.md#agent-versions)
+say what a new release can break.
 
 An agent asks for your word the first time it resumes in a folder on a machine: the checks warn about each such
 character, and after the move its row says that it waits.
