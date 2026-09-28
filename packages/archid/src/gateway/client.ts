@@ -130,6 +130,9 @@ const quote = (token: string): string => `'${token.split("'").join("'\\''")}'`;
 
 const Registry = z.object({ machines: z.record(z.string(), MachineRecord) });
 
+// the far archi names its machine before the authority answers, so a route that now leads elsewhere is refused
+const OWNER_GET = '"$1" version --json; exec "$1" gateway owner get --fleet "$2"';
+
 function lastLine(stdout: string): unknown {
   try {
     return JSON.parse(stdout.trim().split('\n').at(-1) ?? '');
@@ -173,7 +176,11 @@ export function fleetAuthority(o: FleetAuthorityOptions): { get(fleetId: FleetId
       // a registry that knows no way to the gateway asked for is a wrong question, not a gateway that is away
       const gateway = machines[o.gatewayMachineId];
       if (!gateway?.ssh) throw new AuthorityFailure('invalid_request', `${registry} names no ssh route to the gateway ${o.gatewayMachineId}`);
-      const r = await ssh(['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '--', gateway.ssh, [archiExe(gateway.archiBase), 'gateway', 'owner', 'get', '--fleet', fleetId].map(quote).join(' ')]);
+      const r = await ssh(['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '--', gateway.ssh, ['sh', '-c', OWNER_GET, 'archi-owner', archiExe(gateway.archiBase), fleetId].map(quote).join(' ')]);
+      const answeredAs = /^\s*"machineId": "([^"]+)"/m.exec(r.stdout)?.[1];
+      if (answeredAs !== undefined && answeredAs !== o.gatewayMachineId) {
+        throw new AuthorityFailure('identity_mismatch', `ssh ${gateway.ssh} reaches machine ${answeredAs}, not the gateway ${o.gatewayMachineId}`);
+      }
       // the wrapper prints its frame whether the authority answered or refused, so the exit code says nothing more
       const line = lastLine(r.stdout);
       if (line === undefined) {

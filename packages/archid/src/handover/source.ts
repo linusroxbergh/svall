@@ -7,6 +7,7 @@ import {
   type OwnerRecord, type ParsedParams, type Result, type SystemInfo, type TransactionRecord, type TransferManifestV1, type Warning,
 } from '@archipelago/protocol';
 import { codexPaths } from '../codex/install.js';
+import { AuthorityFailure } from '../gateway/authority.js';
 import type { Fleet } from '../fleet.js';
 import { runGit, type GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
@@ -185,7 +186,9 @@ export class SourceHandover {
     const authority = this.d.authority?.();
     if (authority) {
       await authority.get(this.fleet().id).catch((e: unknown) => {
-        blockers.push({ code: 'ssh_interactive', message: `this machine could not ask its gateway who owns this fleet, as Freeze must without a prompt: ${(e as Error).message}` });
+        blockers.push(e instanceof AuthorityFailure && e.code === 'identity_mismatch'
+          ? { code: 'identity_mismatch', message: `this machine's route to its gateway leads elsewhere: ${e.message}` }
+          : { code: 'ssh_interactive', message: `this machine could not ask its gateway who owns this fleet, as Freeze must without a prompt: ${(e as Error).message}` });
       });
     }
     const signal = AbortSignal.timeout(CALL_TIMEOUT_MS);

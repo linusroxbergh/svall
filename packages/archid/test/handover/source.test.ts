@@ -9,6 +9,7 @@ import {
 } from '@archipelago/protocol';
 import { handlers, type Ctx } from '../../src/api/methods.js';
 import { Config } from '../../src/config.js';
+import { AuthorityFailure } from '../../src/gateway/authority.js';
 import { SourceJournal, openJournal } from '../../src/handover/journal.js';
 import { extensionBlockers } from '../../src/handover/git-extensions.js';
 import { manifestDigest, readManifest, realScanFs } from '../../src/handover/manifest.js';
@@ -144,10 +145,12 @@ class World {
 class Gateway implements Authority {
   asked = 0;
   down = false;
+  refuses?: Error;
   constructor(public record: OwnerRecord) {}
   async get(id: FleetId): Promise<OwnerRecord> {
     this.asked++;
     if (this.down) throw new Error('connect ECONNREFUSED /home/linus/.local/share/archipelago/gateway/authority.sock');
+    if (this.refuses) throw this.refuses;
     if (id !== this.record.fleetId) throw new Error(`asked about ${id}`);
     return structuredClone(this.record);
   }
@@ -330,6 +333,14 @@ describe('source preflight', () => {
     expect(b.gateway.asked).toBe(asked + 1);
     b.gateway.down = true;
     expect(await ask()).toEqual([{ code: 'ssh_interactive', message: expect.stringContaining('ECONNREFUSED') }]);
+  });
+
+  it('blocks with identity_mismatch when the route to its gateway now reaches another machine', async () => {
+    const b = boot();
+    const said = `ssh linus@trift reaches machine ${crypto.randomUUID()}, not the gateway ${trift}`;
+    b.gateway.refuses = new AuthorityFailure('identity_mismatch', said);
+    const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() });
+    expect(r.blockers).toEqual([{ code: 'identity_mismatch', message: expect.stringContaining(said) }]);
   });
 
   it('refuses a manifest too large to travel whole, answering preflight without its file lists, and freezing nothing it would carry', async () => {

@@ -218,7 +218,7 @@ describe('a fleet authority as its daemon reaches it', () => {
     expect(await far.get(FLEET)).toEqual(record);
     expect(calls).toEqual([[
       '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '--', 'linus@trift',
-      `'/home/linus/it'\\''s here/current/bin/archi' 'gateway' 'owner' 'get' '--fleet' '${FLEET}'`,
+      `'sh' '-c' '"$1" version --json; exec "$1" gateway owner get --fleet "$2"' 'archi-owner' '/home/linus/it'\\''s here/current/bin/archi' '${FLEET}'`,
     ]]);
 
     answer = { code: 1, stdout: `${JSON.stringify({ error: { code: 'not_found', message: 'no record' } })}\n`, stderr: '' };
@@ -231,5 +231,20 @@ describe('a fleet authority as its daemon reaches it', () => {
     // a registry that names no route to the gateway it is asked for is a wrong question, not a gateway away
     expect(await failure(fleetAuthority({ gatewayMachineId: OTHER, machineId: MAC, registry, ssh }).get(FLEET))).toMatchObject({ code: 'invalid_request', message: expect.stringMatching(/no ssh route/) });
     expect((await failure(fleetAuthority({ gatewayMachineId: OTHER, machineId: MAC, registry: path.join(prefix(), 'none.json'), ssh }).get(FLEET))).code).toBe('disconnected');
+  });
+
+  it('refuses the answer of a machine the gateway\'s ssh route now reaches in its place', async () => {
+    const registry = path.join(prefix(), 'machines.json');
+    fs.writeFileSync(registry, JSON.stringify({
+      machines: { [TRIFT]: { name: 'trift', ssh: 'linus@trift', platform: 'linux', arch: 'x64', home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', gateway: true } },
+    }));
+    const record = { fleetId: FLEET, generation: 3, ownerMachineId: MAC };
+    const version = (machineId: string): string => `${JSON.stringify({ release: 'dev', machineId, protocol: 1 }, null, 2)}\n`;
+    let as = OTHER as string;
+    const ssh: SshRun = async () => ({ code: 0, stdout: `${version(as)}${JSON.stringify({ result: { record } })}\n`, stderr: '' });
+    const far = fleetAuthority({ gatewayMachineId: TRIFT, machineId: MAC, registry, ssh });
+    expect(await failure(far.get(FLEET))).toMatchObject({ code: 'identity_mismatch', message: expect.stringContaining(`reaches machine ${OTHER}, not the gateway ${TRIFT}`) });
+    as = TRIFT;
+    expect(await far.get(FLEET)).toEqual(record);
   });
 });
