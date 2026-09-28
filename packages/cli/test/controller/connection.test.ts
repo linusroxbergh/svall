@@ -374,6 +374,25 @@ describe('resolveOwner', () => {
     expect(ssh.remoteCalls().some((w) => w.includes('owner'))).toBe(false);
   });
 
+  it('reads which machine a gateway is past whatever its login shell prints first', async () => {
+    gateway('gate.test');
+    const shell = 'Welcome to other\n';
+    ssh.reply(['version', '--json'], { stdout: `${shell}${JSON.stringify({ release: 'dev', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2)}\n` });
+    ssh.reply(['gateway', 'owner', 'get'], { stdout: `${shell}${JSON.stringify({ error: { code: 'not_found', message: 'no record for that fleet' } })}\n` });
+    const err = await resolveOwner(home, { deps }).catch((e: SshError) => e);
+    expect((err as SshError).message).toContain(`gate.test now reaches machine ${REMOTE}, not gate (${GATEWAY})`);
+    expect(ssh.remoteCalls().some((w) => w.includes('owner'))).toBe(false);
+  });
+
+  it('takes no ownership answer from a gateway whose archi answers without naming its machine', async () => {
+    gateway('gate.test');
+    ssh.reply(['version', '--json'], { stdout: `${JSON.stringify({ release: 'dev', protocol: PROTOCOL_VERSION })}\n` });
+    answers({ error: { code: 'not_found', message: 'no record for that fleet' } });
+    const err = await resolveOwner(home, { deps }).catch((e: SshError) => e);
+    expect((err as SshError).message).toContain('gate.test answered archi version --json without a machine id');
+    expect(ssh.remoteCalls().some((w) => w.includes('owner'))).toBe(false);
+  });
+
   it('passes on a corrupt authority rather than routing anywhere', async () => {
     gateway('gate.test');
     answers({ error: { code: 'authority_corrupt', message: 'owner-11111111.json is not readable' } });

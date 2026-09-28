@@ -402,7 +402,7 @@ type Registered = MachineEntry & { record: MachineRecord & { ssh: string } };
 
 /**
  * Refuses a far machine that answers as another than the registry names, as an ssh alias that now leads elsewhere
- * would. One whose `archi` gives no answer is left to the step that needs it, so a broken install can still be repaired.
+ * would. One whose `archi` fails is left to the step that needs it, so a broken install can still be repaired.
  */
 async function sameMachine(master: SshMaster, entry: Registered): Promise<void> {
   await identify(master, entry).catch((err: unknown) => {

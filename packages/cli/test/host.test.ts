@@ -593,6 +593,7 @@ base='${base}'
 now() { basename "$(readlink "$base/current")"; }
 case "$1" in
   connection-info) printf '%s\\n' '${JSON.stringify({ fleetId: FLEET, machineId: REMOTE, release: version, protocol, host: '127.0.0.1', port: d.port, token: TOKEN })}' ;;
+  version) printf '%s\\n' '${JSON.stringify({ release: version, machineId: REMOTE, protocol })}' ;;
   doctor) printf '%s\\n' '${DOCTOR}' ;;
   setup)
     if [ "$2" = --rollback ]; then
@@ -1076,6 +1077,17 @@ describe('host enable', () => {
 
   it('asks for and makes no ownership record on a machine that answers as another than the registry names', async () => {
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: OTHER_MAC }) });
+    ssh.reply(['owner', 'get'], answers({}));
+    const home = fleetHome();
+    const out = await enableHost('trift', { fleetHome: home }, deps({ registry: registered() }));
+    expect(out.result).toBe('actions');
+    expect(step('authority').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(`now reaches machine ${OTHER_MAC}`) });
+    expect(ownerCalls()).toEqual([]);
+    expect(written(home).gatewayMachineId).toBeUndefined();
+  });
+
+  it('reads which machine answers past whatever its login shell prints first, and makes no record on another', async () => {
+    ssh.reply(['version', '--json'], { stdout: `Welcome to other\n${JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: OTHER_MAC }, null, 2)}\n` });
     ssh.reply(['owner', 'get'], answers({}));
     const home = fleetHome();
     const out = await enableHost('trift', { fleetHome: home }, deps({ registry: registered() }));

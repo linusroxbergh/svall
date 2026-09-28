@@ -32,16 +32,17 @@ export class MachineMismatch extends SshError {
 }
 
 /**
- * Refuses a far machine whose `archi version --json` names another machine id than the registry does. One whose archi
- * gives no answer is left to the call that needs it, which fails on its own.
+ * Refuses a far machine whose `archi version --json` names another machine id than the registry does, or answers
+ * without naming one, whatever its login shell printed around it. One whose archi exits without an answer is left to
+ * the call that needs it, which fails on its own.
  */
 export async function identify(master: Pick<SshMaster, 'run'>, machine: MachineEntry): Promise<void> {
   const r = await master.run([shellQuote(archiExe(machine.record.archiBase)), 'version', '--json']);
-  let id: unknown;
-  try { id = (JSON.parse(r.stdout) as { machineId?: unknown }).machineId; } catch { return; }
-  if (typeof id === 'string' && id !== machine.id) {
-    throw new MachineMismatch(`${machine.record.ssh ?? machine.record.name} now reaches machine ${id}, not ${machine.record.name} (${machine.id})`);
-  }
+  if (r.code !== 0) return;
+  const where = machine.record.ssh ?? machine.record.name;
+  const id = /"machineId":\s*"([^"]*)"/.exec(r.stdout)?.[1];
+  if (id === undefined) throw new MachineMismatch(`${where} answered archi version --json without a machine id, so it cannot be told from another machine than ${machine.record.name} (${machine.id})`);
+  if (id !== machine.id) throw new MachineMismatch(`${where} now reaches machine ${id}, not ${machine.record.name} (${machine.id})`);
 }
 
 /** What a companion answers about the fleet it runs: enough to reach it, and to refuse the wrong one. */
