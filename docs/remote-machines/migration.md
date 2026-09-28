@@ -38,7 +38,8 @@ the clone too. Now `pnpm desktop:install` installs a release and points everythi
 - every fleet's launchd agent, the private one and each named fleet's, runs `current/bin/archid`;
 - Claude Code's hooks keep the Node they already name while it is there, and otherwise run the release's own.
 
-The clone is needed only to update. `archi setup --rollback` puts the release before back. `archi setup` run from a
+The clone is needed only to update. `archi setup --rollback` puts the release before back and restarts every
+fleet's daemon on it. `archi setup` run from a
 clone without `--release` still points the shims and the daemon at that clone, for development.
 
 `archi setup` also no longer replaces a mission control `.claude/settings.json` you edited; `archi setup
