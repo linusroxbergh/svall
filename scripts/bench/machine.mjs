@@ -5,6 +5,7 @@
 //   touch <dir> <n>                   changes n tracked files and adds one, as a little work between handovers would
 //   run <host|local> --log <file>     runs `archi handover <host|local> --json` and prints what it measured as one JSON line
 //   daemon reset|read                 resets or reads the peak RSS of this machine's fleet daemon, and sizes its replica records
+//   info                              prints what this machine's fleet daemon answers to system.info
 //   watch <stop file>                 until the stop file appears, keeps the peak RSS of each rsync, ssh and sshd process here
 //   flood <character id> [--seconds <n>]
 //                                     opens a viewer on a character's terminal that reads nothing while the terminal
@@ -223,6 +224,15 @@ async function connect(port, token) {
   return ws;
 }
 
+async function info() {
+  const port = Number(fs.readFileSync(path.join(FLEET, 'port'), 'utf8'));
+  const ws = await connect(port, fs.readFileSync(path.join(FLEET, 'token'), 'utf8').trim());
+  ws.send(JSON.stringify({ id: 1, method: 'system.info', params: {} }));
+  const answer = await new Promise((resolve) => { ws.onmessage = (m) => resolve(JSON.parse(m.data)); });
+  ws.close();
+  process.stdout.write(`${JSON.stringify(answer.result)}\n`);
+}
+
 /**
  * A viewer that opens a character's terminal and then reads nothing, as a phone on a link slower than the terminal
  * prints. The terminal prints without end; the daemon's RSS and what it queued for the viewer are sampled.
@@ -273,6 +283,7 @@ if (cmd === 'repo') repo(o._[0], o._[1], o);
 else if (cmd === 'touch') touch(o._[0], Number(o._[1] ?? 10));
 else if (cmd === 'run') await run(o);
 else if (cmd === 'daemon') daemon(o._[0]);
+else if (cmd === 'info') await info();
 else if (cmd === 'watch') await watch(o._[0]);
 else if (cmd === 'flood') await flood(o);
 else { process.stderr.write(`unknown command ${cmd}\n`); process.exit(2); }

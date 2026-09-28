@@ -96,8 +96,9 @@ function measure(from, label, kind, run) {
 const nodeOf = (peaks) => Math.max(peaks.MainThread ?? 0, peaks.node ?? 0);
 // a daemon's peak, and how far above what it held when the handover began
 const grew = (d) => `${(d.hwmKiB / 1024).toFixed(0)} (+${((d.hwmKiB - (d.startKiB ?? d.hwmKiB)) / 1024).toFixed(0)})`;
-// the charge, power source and one-minute load of the Mac at a run's start
-const charge = (p) => (p ? `${/(\d+)%/.exec(p.batt)?.[1] ?? '?'}% ${p.batt.includes('AC Power') ? 'AC' : 'battery'}${/warning level has been recorded/.test(p.therm) ? '' : ', thermal warning'}, load ${/[\d.]+/.exec(p.load ?? '')?.[0] ?? '?'}` : '-');
+// the charge, power source, thermal state and one-minute load of the Mac at a run's start
+const quiet = (therm) => /No thermal warning level has been recorded/.test(therm) && /No performance warning level has been recorded/.test(therm);
+const charge = (p) => (p ? `${/(\d+)%/.exec(p.batt)?.[1] ?? '?'}% ${p.batt.includes('AC Power') ? 'AC' : 'battery'}${quiet(p.therm) ? '' : ', thermal or performance warning'}, load ${/[\d.]+/.exec(p.load ?? '')?.[0] ?? '?'}` : '-');
 const mib = (kib) => (kib === undefined ? '-' : `${(kib / 1024).toFixed(0)} MiB`);
 const mb = (b) => `${(b / 1e6).toFixed(1)} MB`;
 const kb = (b) => `${(b / 1e3).toFixed(1)} kB`;
@@ -153,13 +154,18 @@ let code = 0;
 try {
   say(`logs in ${out}`);
   const [cpus, memory, arch] = docker(['info', '--format', '{{.NCPU}} {{.MemTotal}} {{.Architecture}}']).stdout.trim().split(' ');
-  fs.writeFileSync(path.join(out, 'host.json'), `${JSON.stringify({ dockerCpus: Number(cpus), dockerMemory: Number(memory), arch, power: power() }, null, 1)}\n`);
   say(`   docker: ${cpus} CPUs and ${(Number(memory) / 2 ** 30).toFixed(1)} GiB for both machines, ${arch}`);
+  const heapLimit = {};
   for (const m of [L, R]) {
     if (docker(['cp', path.join(HERE, 'machine.mjs'), `${m}:${BENCH}`]).code !== 0) throw new Error(`${m} is not running; run without --reuse first`);
     sh(m, `chmod a+r ${BENCH}`, { root: true });
     ids[m] = json(m, 'archi version --json').machineId;
+    heapLimit[hostOf(m)] = bench(m, 'info').heapLimit;
   }
+  // as the source's preflight bounds it: half the smaller daemon heap at 6 KiB a file
+  const mostFiles = Math.floor(Math.min(...Object.values(heapLimit)) / 2 / 6144);
+  fs.writeFileSync(path.join(out, 'host.json'), `${JSON.stringify({ dockerCpus: Number(cpus), dockerMemory: Number(memory), arch, heapLimit, mostFiles, power: power() }, null, 1)}\n`);
+  say(`   daemon heaps: local ${mib(heapLimit.local / 1024)}, remote ${mib(heapLimit.remote / 1024)}; a handover carries at most ${mostFiles} files`);
   const isl = island();
   for (const kind of repos) {
     say(`== ${kind}`);
