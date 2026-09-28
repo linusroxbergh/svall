@@ -18,7 +18,7 @@ import { ReplicaStore, replicaRoots } from '../../src/handover/replicas.js';
 import type { Clock } from '../../src/handover/rest.js';
 import { HandoverService } from '../../src/handover/service.js';
 import { agentProber, resumeFolders, type AgentProbe, type AgentRun } from '../../src/handover/sessions/registry.js';
-import type { Authority, SourceDeps } from '../../src/handover/source.js';
+import { HEAP_PER_FILE, type Authority, type SourceDeps } from '../../src/handover/source.js';
 import { adoptAtStart, enterStartupMode, startupMode } from '../../src/handover/startup.js';
 import { silentLogger } from '../../src/log.js';
 import { OwnershipState } from '../../src/ownership/state.js';
@@ -353,6 +353,35 @@ describe('source preflight', () => {
     const refused = await refusal(b.handover.freeze(b.freezeParams()));
     expect(refused.code).toBe('blocked');
     expect(refused.data.blockers).toEqual([expect.objectContaining({ code: 'manifest_too_large' })]);
+    expect(b.ownership.writable()).toBe(true);
+  });
+
+  it('refuses at preflight, with nothing frozen, more files than the smaller of the two heaps holds through a handover, and again at freeze', async () => {
+    const b = boot();
+    const { files } = (await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() })).manifestSummary;
+    // a heap that holds exactly `n` files: half of it at HEAP_PER_FILE a file
+    const holding = (n: number) => n * 2 * HEAP_PER_FILE;
+    const ask = (own: number, destination: number) => {
+      b.deps.heapLimit = own;
+      return b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines({ info: destinationInfo({ heapLimit: destination }) }) });
+    };
+    expect((await ask(holding(files), holding(files))).blockers).toEqual([]);
+    const mine = await ask(holding(files - 1), holding(files) * 8);
+    expect(mine.blockers).toEqual([{
+      code: 'too_many_files',
+      message: `this handover carries ${files} files, and this machine's daemon, with a ${(holding(files - 1) / 2 ** 30).toFixed(1)} GiB heap, holds at most ${files - 1} through a handover; exclude what need not move, such as build output, in fleet.json handover.exclude`,
+    }]);
+    expect(mine.manifestSummary.files).toBe(files);
+    expect(mine.manifest.roots.every((x) => x.files.length === 0)).toBe(true);
+    const theirs = await ask(holding(files) * 8, holding(files - 1));
+    expect(theirs.blockers).toEqual([expect.objectContaining({ code: 'too_many_files', message: expect.stringContaining("the destination's daemon") })]);
+    expect(b.world.log).toEqual([]);
+    expect(b.ownership.writable()).toBe(true);
+
+    b.gateway.begin();
+    const refused = await refusal(b.handover.freeze(b.freezeParams(b.machines({ info: destinationInfo({ heapLimit: holding(files - 1) }) }))));
+    expect(refused.code).toBe('blocked');
+    expect(refused.data.blockers).toEqual([expect.objectContaining({ code: 'too_many_files' })]);
     expect(b.ownership.writable()).toBe(true);
   });
 

@@ -129,6 +129,7 @@ export const HandoverIssueCode = z.enum([
   'worktree_unresolved', 'destination_diverged', 'destination_occupied', 'destination_no_space', 'path_collision', 'path_unsupported', 'path_symlinked',
   'transcript_missing', 'ssh_interactive', 'platform_unsupported', 'platform_heuristic', 'env_file', 'credential_file', 'external_writer', 'rsync_unsupported',
   'git_mismatch', 'worktree_unused', 'remote_local', 'git_extension', 'codex_trust', 'claude_trust', 'claude_bypass', 'config_difference', 'symlink_dangling', 'manifest_too_large',
+  'too_many_files',
 ]);
 export type HandoverIssueCode = z.infer<typeof HandoverIssueCode>;
 
@@ -370,6 +371,8 @@ export const SystemInfo = z.object({
   agentAdapters: z.array(AgentAdapter),
   // `git --version`'s number; absent where git cannot run
   git: z.string().optional(),
+  // the daemon's V8 heap_size_limit in bytes, which bounds the files a handover may carry
+  heapLimit: z.number().int().positive().optional(),
 });
 export type SystemInfo = z.infer<typeof SystemInfo>;
 

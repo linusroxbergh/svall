@@ -1,3 +1,4 @@
+import v8 from 'node:v8';
 import type { ZodTypeAny } from 'zod';
 import { PROTOCOL_VERSION, TRANSFER_SCHEMA_VERSION, emptyState, methods, type MethodName, type ParsedParams, type Request, type Response, type Result } from '@archipelago/protocol';
 import type { Fleet } from '../fleet.js';
@@ -92,6 +93,7 @@ export const handlers: Handlers = {
     return {
       machineId: ownership.machineId, release: releaseVersion(), protocol: PROTOCOL_VERSION, stateSchema: STATE_SCHEMA,
       transferSchema: TRANSFER_SCHEMA_VERSION, platform: platform(), arch: process.arch, agentAdapters: await handover.agentAdapters(), ...(git && { git }),
+      heapLimit: v8.getHeapStatistics().heap_size_limit,
     };
   },
   'ownership.get': (_p, { handover }) => handover.ownershipInfo(),

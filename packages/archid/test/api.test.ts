@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
+import v8 from 'node:v8';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import {
@@ -223,7 +224,7 @@ runIf('API', () => {
     expect(SystemInfo.parse(info.result)).toEqual({
       machineId: machineId(), release: 'dev', protocol: PROTOCOL_VERSION, stateSchema: emptyState().version,
       transferSchema: TRANSFER_SCHEMA_VERSION, platform: process.platform, arch: process.arch, agentAdapters: [],
-      git: expect.stringMatching(/^\d+\.\d+\.\d+$/),
+      git: expect.stringMatching(/^\d+\.\d+\.\d+$/), heapLimit: v8.getHeapStatistics().heap_size_limit,
     });
     const own = await c.call('ownership.get', {}) as { result: unknown };
     expect(OwnershipInfo.parse(own.result)).toEqual({ fleetId: config.id, generation: 0, ownerMachineId: machineId(), frozen: false });

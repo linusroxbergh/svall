@@ -298,6 +298,7 @@ network as the link. All the runs below were on AC power at 100% charge with no 
 | Progress events | One per entry per new state, and its counts at most once a second, whatever rsync itemizes | `cli/test/controller/transfer.test.ts` "tells a watcher of a 50,000-file copy as often as of a one-file copy…" |
 | Blocker and warning text | Each names a few paths and counts the rest | `handover.test.ts` "names a few of a root's names that differ only by case…"; `divergence.ts` and `listed` in `manifest.ts` preview 5 to 10 |
 | The manifest | 128 MiB (`manifest_too_large`, at preflight and freeze). A file the scanner lists takes under 160 bytes beyond its path, so the cap holds 128 MiB / (160 B + path) files: over 500,000 with paths up to 100 bytes | `source.test.ts`; `manifest.test.ts` "lists a file the scanner reads in under 160 bytes beyond its path…" |
+| Files a handover carries | Half the smaller daemon's heap at 6 KiB a file (`too_many_files`, at preflight and freeze) | `source.test.ts` "refuses at preflight, with nothing frozen, more files than the smaller of the two heaps holds…" |
 | A request to a daemon | 8 MiB a WebSocket frame; a larger one goes in 4 MiB parts, 256 MiB in all | `cli/test/client.test.ts`, `archid/test/api.test.ts` |
 | An answer to the controller | 256 MiB a frame; the freeze answer, which carries the manifest whole, is the largest (8.7 MB at 50,000 files) | `client.test.ts` "reads an answer as large as a request may be…" |
 | Hashing | Eight files at once, each streamed a chunk at a time; a Git index is read whole, one at a time, up to 256 MiB | `manifest.test.ts` "hashes several files at once, never more than eight…", "reads a session file a chunk at a time…" |
@@ -322,8 +323,15 @@ Other caps: a notification's POST body 64 KiB, a gateway line and a helper contr
 
 ### Limits
 
-- **Memory is the practical ceiling, not the manifest cap.** A daemon grew by about 5 KB a file at its peak on a first
-  copy: the manifest and what landed, their JSON and the scans. Near the 128 MiB cap that is several GB.
+- **A handover carries at most as many files as the smaller daemon's heap holds** (`too_many_files`), which comes
+  well before the manifest cap. A daemon's peak RSS grew by up to 279 MiB on a first 50,116-file copy, 5.8 KB a file: the
+  manifest and what landed, their JSON and the scans. The bound gives each file 6 KiB of heap and a handover half the
+  heap, leaving the rest for the daemon's own state and for the garbage collector to work in:
+  files ≤ heap / 2 / 6 KiB, the heap being the smaller of the two daemons' V8 `heap_size_limit` (the destination
+  reports its own in `system.info`). Node sizes that heap from the machine's memory: 4,288 MiB on a 48 GB Mac, which
+  holds 365,909 files. The source checks at preflight, before anything freezes, and answers without its file lists;
+  freeze checks again. The controller runs on one of the two machines with that machine's default heap, and grew by
+  as much a file as a daemon.
 - **More than ten terminals on one remote machine** go past sshd's default `MaxSessions 10` on the shared master.
   Each one past the tenth prints one "Session open refused by peer" line and opens its own login, and while the master
   is full the helper's 30-second check does too. Measured between the containers: a command on the master 3–4 ms, a

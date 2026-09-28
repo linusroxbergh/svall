@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import v8 from 'node:v8';
 import { z } from 'zod';
 import {
   FleetConfig, MAX_MANIFEST_BYTES, PROTOCOL_VERSION, TRANSFER_SCHEMA_VERSION, emptyState, handoverError,
@@ -48,6 +49,8 @@ export type SourceDeps = {
   rest?: Pick<RestOptions, 'waitMs' | 'settleMs' | 'pollMs' | 'callTimeoutMs'>;
   /** The most a manifest may come to. */
   manifestBytes?: number;
+  /** This daemon's heap as V8 bounds it, in bytes. */
+  heapLimit?: number;
   log: Logger;
 };
 
@@ -164,6 +167,20 @@ function oversize(m: TransferManifestV1, cap: number): Blocker | undefined {
   };
 }
 
+// a daemon grew by up to 5.8 KB a carried file on a first 50,000-file handover; a handover may take half the smaller heap
+export const HEAP_PER_FILE = 6 * 1024;
+
+/** More files than the daemon with the smaller heap holds through a handover: the manifest, what landed, their JSON and the scans. */
+function crowded(m: TransferManifestV1, own: number, destination: number | undefined): Blocker | undefined {
+  const files = m.roots.reduce((n, r) => n + r.files.length, 0) + m.sessions.reduce((n, s) => n + s.files.length, 0);
+  const [heap, whose] = destination !== undefined && destination < own ? [destination, "the destination's"] : [own, "this machine's"];
+  const most = Math.floor(heap / 2 / HEAP_PER_FILE);
+  return files <= most ? undefined : {
+    code: 'too_many_files',
+    message: `this handover carries ${files} files, and ${whose} daemon, with a ${(heap / 2 ** 30).toFixed(1)} GiB heap, holds at most ${most} through a handover; exclude what need not move, such as build output, in fleet.json handover.exclude`,
+  };
+}
+
 const named = (m: TransferManifestV1, transactionId: string): Frozen['manifest'] => {
   if (m.transactionId !== transactionId) throw new Error(`the manifest names handover ${m.transactionId}, not ${transactionId}`);
   return { ...m, transactionId };
@@ -202,13 +219,13 @@ export class SourceHandover {
       if (slot?.agent) slot.revive = { command: reviveCommand(slot, launchFlags(t)) };
     }
     const built = await buildManifest(inventory, { generation: this.ownership.record().generation }, this.d.scanFs);
-    const big = oversize(built.manifest, this.d.manifestBytes ?? MAX_MANIFEST_BYTES);
+    const big = this.limits(built.manifest, p.destination.info);
     // one too large to answer whole is answered without its file lists
-    const manifest = big
+    const manifest = big.length
       ? { ...built.manifest, roots: built.manifest.roots.map((r) => ({ ...r, files: [] })), sessions: built.manifest.sessions.map((x) => ({ ...x, files: [] })) }
       : built.manifest;
     return {
-      manifestSummary: summarize(built.manifest), blockers: settle([...blockers, ...built.blockers, ...(big ? [big] : [])]),
+      manifestSummary: summarize(built.manifest), blockers: settle([...blockers, ...built.blockers, ...big]),
       warnings: settle([...built.warnings, ...platformWarnings(built.manifest, p.destination.info.platform)]),
       manifest,
     };
@@ -292,8 +309,8 @@ export class SourceHandover {
     // the snapshot is taken with every terminal dormant and its resume command recorded
     const inventory = await this.inventory(this.d.store.state, p);
     const built = await buildManifest(inventory, { transactionId: tx.id, generation: p.generation }, this.d.scanFs);
-    const big = oversize(built.manifest, this.d.manifestBytes ?? MAX_MANIFEST_BYTES);
-    if (built.blockers.length || big) return this.refuse(tx.id, [...built.blockers, ...(big ? [big] : [])]);
+    const big = this.limits(built.manifest, p.destination.info);
+    if (built.blockers.length || big.length) return this.refuse(tx.id, [...built.blockers, ...big]);
     const file = this.d.paths.manifest(tx.id);
     const manifestDigest = boundary('source.freeze.manifest', () => {
       // a manifest no journal names is left by an attempt that did not live to record it
@@ -367,6 +384,12 @@ export class SourceHandover {
         this.d.log.error(`handover ${j.transactionId}: ${root.path} is left unsealed, so the way back will find it occupied: ${(e as Error).message}`);
       }
     }
+  }
+
+  /** A manifest too large to travel whole, or with more files than either daemon holds through a handover. */
+  private limits(m: TransferManifestV1, destination: SystemInfo): Blocker[] {
+    const own = this.d.heapLimit ?? v8.getHeapStatistics().heap_size_limit;
+    return [oversize(m, this.d.manifestBytes ?? MAX_MANIFEST_BYTES), crowded(m, own, destination.heapLimit)].filter((b) => b !== undefined);
   }
 
   /** What stops the move before any terminal is touched: identities, releases, agent CLIs, characters kept here, platforms and paths. */
