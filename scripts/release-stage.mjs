@@ -204,26 +204,87 @@ function stageAssets(stage) {
   fs.cpSync(mobile, path.join(stage, 'web-mobile'), { recursive: true });
 }
 
+const LICENCE_FILE = /^(?:licen[cs]e|copying)(?:\..*)?$/i;
+
 /**
- * The licence of everything the release redistributes. A bundle inlines its dependencies' code, so
- * the list comes from what esbuild actually read rather than from a manifest that could fall behind.
+ * A bundled package's name, version, stated licence and the file holding its text: its own, else the upstream text kept
+ * in scripts/release/licenses/. One with neither stops the build.
+ */
+export function packageLicence(dir) {
+  const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+  const own = fs.readdirSync(dir).find((f) => LICENCE_FILE.test(f));
+  const kept = path.join(REPO, 'scripts/release/licenses', `${pkg.name.replace('/', '-')}-LICENSE`);
+  const file = own ? path.join(dir, own) : fs.existsSync(kept) ? kept : undefined;
+  if (!file) throw new Error(`${pkg.name}@${pkg.version} is bundled but ships no licence file in ${dir}; put its upstream licence text in ${kept}`);
+  const license = typeof pkg.license === 'string' ? pkg.license : pkg.license?.type ?? 'see its licence file';
+  return { name: pkg.name, version: pkg.version, license, file };
+}
+
+// the folder Node would find `name` in from `from`, walking up as require does
+function resolvePackage(from, name) {
+  for (let dir = from; ; dir = path.dirname(dir)) {
+    const at = path.basename(dir) === 'node_modules' ? path.join(dir, name) : path.join(dir, 'node_modules', name);
+    if (fs.existsSync(path.join(at, 'package.json'))) return fs.realpathSync(at);
+    if (dir === path.dirname(dir)) return undefined;
+  }
+}
+
+/**
+ * Every package the phone page can hold: the web app's production dependencies and theirs, as Node resolves them.
+ * Vite bundled it before this build, so the whole reach stands in for what it inlined.
+ */
+export function phonePackages(repo = REPO) {
+  const found = new Set();
+  const visit = (dir) => {
+    const deps = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).dependencies ?? {};
+    for (const name of Object.keys(deps)) {
+      const at = resolvePackage(dir, name);
+      if (!at) throw new Error(`${name}, a dependency of ${dir}, is not installed`);
+      if (found.has(at)) continue;
+      found.add(at);
+      visit(at);
+    }
+  };
+  visit(path.join(repo, 'apps/desktop/web'));
+  // a workspace package is Archipelago's own, under its LICENSE
+  return [...found].filter((dir) => dir.split(path.sep).includes('node_modules'));
+}
+
+const noticeLine = (what, license, file) => `${what}  ${license}  ${file}\n`;
+
+/**
+ * The licence of everything the release redistributes, and a NOTICE naming each with the file that holds its text. A
+ * bundle inlines its dependencies' code, so its list comes from what esbuild read rather than from a manifest that
+ * could fall behind.
  */
 function stageLicenses(stage, inputs) {
-  fs.copyFileSync(path.join(REPO, 'LICENSE'), path.join(stage, 'licenses', 'archipelago-LICENSE'));
-  const found = new Map();
+  const licenses = path.join(stage, 'licenses');
+  fs.copyFileSync(path.join(REPO, 'LICENSE'), path.join(licenses, 'archipelago-LICENSE'));
+  const bundled = new Set();
   for (const input of inputs) {
     const cut = input.lastIndexOf('node_modules/');
     if (cut === -1) continue;
     const rest = input.slice(cut + 'node_modules/'.length).split('/');
     const pkg = rest[0].startsWith('@') ? `${rest[0]}/${rest[1]}` : rest[0];
-    if (found.has(pkg)) continue;
-    const dir = path.join(REPO, input.slice(0, cut), 'node_modules', pkg);
-    if (!fs.existsSync(dir)) continue;
-    const file = fs.readdirSync(dir).find((f) => /^(licen[cs]e|copying)(\..*)?$/i.test(f));
-    if (file) found.set(pkg, path.join(dir, file));
+    bundled.add(fs.realpathSync(path.join(REPO, input.slice(0, cut), 'node_modules', pkg)));
   }
-  for (const [pkg, file] of found) fs.copyFileSync(file, path.join(stage, 'licenses', `${pkg.replace('/', '-')}-LICENSE`));
-  return [...found.keys()].sort();
+  const phone = new Set(phonePackages());
+  const lines = [];
+  const names = [];
+  for (const dir of [...new Set([...bundled, ...phone])]) {
+    const l = packageLicence(dir);
+    const file = `${l.name.replace('/', '-')}-${l.version}-LICENSE`;
+    fs.copyFileSync(l.file, path.join(licenses, file));
+    const where = [bundled.has(dir) && 'lib/', phone.has(dir) && 'the phone page, web-mobile/'].filter(Boolean).join(' and ');
+    lines.push(noticeLine(`${l.name} ${l.version} (in ${where})`, l.license, `licenses/${file}`));
+    if (bundled.has(dir)) names.push(l.name);
+  }
+  for (const f of fs.readdirSync(path.join(stage, 'web-mobile'), { recursive: true }).map(String).filter((f) => LICENCE_FILE.test(path.basename(f)) || /^OFL\./.test(path.basename(f))).sort()) {
+    lines.push(noticeLine(`the files in web-mobile/${path.dirname(f)}/`, 'as its file says', `web-mobile/${f}`));
+  }
+  const own = [noticeLine('Archipelago', 'MIT', 'licenses/archipelago-LICENSE'), noticeLine('Node.js runtime (node/), with the libraries it bundles', 'MIT and others', 'licenses/node-LICENSE')];
+  fs.writeFileSync(path.join(licenses, 'NOTICE'), `This release carries the software below, each under its own licence, in the file named beside it.\n\n${[...own, ...lines.sort()].join('')}`);
+  return [...new Set(names)].sort();
 }
 
 function emptyStage(out, version) {

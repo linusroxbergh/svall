@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { entriesOf, manifestDigest, signManifest, sshVerify, verifyRelease, writeManifest, type Entry } from '../../../scripts/release-manifest.mjs';
 import { allowedSigners, installRelease } from '../../../scripts/install-release.mjs';
-import { companionAssets, describeVersion, shimText, stageRelease } from '../../../scripts/release-stage.mjs';
+import { companionAssets, describeVersion, packageLicence, phonePackages, shimText, stageRelease } from '../../../scripts/release-stage.mjs';
 import { hooksDir, homeTemplateDir, isRelease, mobileDistDir, releaseRoot, releaseVersion, repoRoot } from '../src/release.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -299,6 +299,43 @@ describe('the companions a desktop release manifest names', () => {
   });
 });
 
+describe('the licences a release carries', () => {
+  const pkg = (dir: string, json: object, licence?: string): string => {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(json));
+    if (licence) fs.writeFileSync(path.join(dir, licence), 'Permission is hereby granted');
+    return dir;
+  };
+
+  it('reads a bundled package\'s licence and the file that holds its text', () => {
+    const dir = pkg(path.join(makeHome(), 'ws'), { name: 'ws', version: '8.18.0', license: 'MIT' }, 'LICENSE');
+    expect(packageLicence(dir)).toEqual({ name: 'ws', version: '8.18.0', license: 'MIT', file: path.join(dir, 'LICENSE') });
+  });
+
+  it('stops the build at a bundled package that ships no licence file, naming it', () => {
+    const dir = pkg(path.join(makeHome(), 'quiet'), { name: 'quiet', version: '1.0.0', license: 'MIT' });
+    expect(() => packageLicence(dir)).toThrow(/quiet@1\.0\.0 is bundled but ships no licence file/);
+  });
+
+  it('finds every package the phone page can bundle, as Node resolves them from the web app, and none of the workspace\'s own', () => {
+    const repo = makeHome();
+    const store = path.join(repo, 'node_modules/.pnpm');
+    pkg(path.join(repo, 'apps/desktop/web'), { name: '@archipelago/desktop-web', dependencies: { react: '^19', '@archipelago/protocol': 'workspace:*' } });
+    pkg(path.join(repo, 'packages/protocol'), { name: '@archipelago/protocol', dependencies: { zod: '^4' } });
+    const react = pkg(path.join(store, 'react@19.0.0/node_modules/react'), { name: 'react', version: '19.0.0', dependencies: { scheduler: '^0' } }, 'LICENSE');
+    const scheduler = pkg(path.join(store, 'scheduler@0.1.0/node_modules/scheduler'), { name: 'scheduler', version: '0.1.0' }, 'LICENSE');
+    const zod = pkg(path.join(store, 'zod@4.0.0/node_modules/zod'), { name: 'zod', version: '4.0.0' }, 'LICENSE');
+    // pnpm links each package's dependencies beside it, and the web app's and the workspace's under their own node_modules
+    fs.symlinkSync(scheduler, path.join(store, 'react@19.0.0/node_modules/scheduler'));
+    fs.mkdirSync(path.join(repo, 'apps/desktop/web/node_modules/@archipelago'), { recursive: true });
+    fs.symlinkSync(react, path.join(repo, 'apps/desktop/web/node_modules/react'));
+    fs.symlinkSync(path.join(repo, 'packages/protocol'), path.join(repo, 'apps/desktop/web/node_modules/@archipelago/protocol'));
+    fs.mkdirSync(path.join(repo, 'packages/protocol/node_modules'));
+    fs.symlinkSync(zod, path.join(repo, 'packages/protocol/node_modules/zod'));
+    expect(phonePackages(repo).map((d) => fs.realpathSync(d)).sort()).toEqual([react, scheduler, zod].map((d) => fs.realpathSync(d)).sort());
+  });
+});
+
 // the whole build, done for real, but only where its inputs are already on disk: a unit test may
 // not reach nodejs.org, and the phone page is built by the desktop build rather than by vitest
 const cached = (): string | undefined => {
@@ -356,5 +393,33 @@ describe('a release built by the build scripts', () => {
       expect(fs.readFileSync(path.join(installed.release, 'lib', `${bundle}.mjs`), 'utf8')).not.toMatch(/require\("(?:bufferutil|utf-8-validate|supports-color)"\)/);
     }
     expect(fs.existsSync(mark) ? fs.readFileSync(mark, 'utf8') : '').toBe('');
+
+    // every licence it carries is named in its NOTICE, with each package esbuild bundled and the phone page's
+    const notice = fs.readFileSync(path.join(installed.release, 'licenses/NOTICE'), 'utf8');
+    for (const f of fs.readdirSync(path.join(installed.release, 'licenses')).filter((f) => f !== 'NOTICE')) expect(notice, f).toContain(`licenses/${f}`);
+    for (const name of meta.bundledLicenses as string[]) expect(notice, name).toMatch(new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\S+ `, 'm'));
+    for (const name of ['react', '@xterm/xterm']) expect(notice, name).toMatch(new RegExp(`^${name.replace('/', '\\/')} \\S+ .*the phone page`, 'm'));
+    for (const f of ['web-mobile/fonts/OFL.txt', 'web-mobile/animals/LICENSE']) expect(notice).toContain(f);
+  }, 180_000);
+});
+
+const rsyncCached = (): string | undefined => {
+  const pins = JSON.parse(fs.readFileSync(path.join(checkout, 'scripts/release/pins.json'), 'utf8'));
+  const built = path.join(checkout, 'vendor/rsync', `${pins.rsync.version}-${process.arch}`, 'rsync');
+  return why ?? (fs.existsSync(built) ? undefined : `no cached ${path.relative(checkout, built)}`);
+};
+
+const whyRsync = rsyncCached();
+describe('the controller a release builds', () => {
+  (whyRsync ? it.skip : it)(`carries the source of the rsync it ships, and names both in its NOTICE${whyRsync ? ` (skipped: ${whyRsync})` : ''}`, () => {
+    const pins = JSON.parse(fs.readFileSync(path.join(checkout, 'scripts/release/pins.json'), 'utf8'));
+    const out = makeHome();
+    execFileSync(process.execPath, [path.join(checkout, 'scripts/build-controller.mjs'), '--out', out, '--version', '0.0.0-test',
+      '--node-shasums', path.join(checkout, 'vendor/node', `SHASUMS256-${pins.node.version}.txt`)], { stdio: 'pipe' });
+    const licenses = path.join(out, 'releases/0.0.0-test/licenses');
+    const source = path.join(licenses, `rsync-${pins.rsync.version}.tar.gz`);
+    expect(execFileSync('shasum', ['-a', '256', source], { encoding: 'utf8' }).split(' ')[0]).toBe(pins.rsync.sha256);
+    const notice = fs.readFileSync(path.join(licenses, 'NOTICE'), 'utf8');
+    expect(notice).toMatch(new RegExp(`^rsync ${pins.rsync.version.replace(/\./g, '\\.')} \\(bin/rsync\\)  GPL-3\\.0-or-later  licenses/rsync-LICENSE; source licenses/rsync-${pins.rsync.version.replace(/\./g, '\\.')}\\.tar\\.gz, built with \\./configure .*, then strip -S$`, 'm'));
   }, 180_000);
 });
