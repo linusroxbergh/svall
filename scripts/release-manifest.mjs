@@ -90,6 +90,27 @@ function checkSums(dir) {
   return listed;
 }
 
+/**
+ * The one release an archive holds, from its `tar -t` listing. Every member must be a path in releases/<version>,
+ * spelled one way and listed once, so the SHA256SUMS an installer extracts by name is the one a full unpack leaves.
+ */
+export function archiveRelease(archive, listing) {
+  const members = listing.split('\n').filter(Boolean);
+  const versions = new Set(members.map((m) => /^releases\/([^/]+)\//.exec(m)?.[1]).filter(Boolean));
+  if (versions.size !== 1) throw new Error(`${archive} holds ${versions.size} releases, expected exactly one`);
+  const [version] = versions;
+  const seen = new Set();
+  for (const member of members) {
+    const name = member.replace(/\/$/, '');
+    const inside = name === 'releases' || name === `releases/${version}` || name.startsWith(`releases/${version}/`);
+    if (!inside || name.includes('\\') || name.split('/').some((s) => s === '' || s === '.' || s === '..'))
+      throw new Error(`${archive} holds ${JSON.stringify(member)}, which is not a path in releases/${version}`);
+    if (seen.has(name)) throw new Error(`${archive} holds ${JSON.stringify(member)} twice`);
+    seen.add(name);
+  }
+  return { version, members };
+}
+
 const describe = (e) => JSON.stringify({ type: e.type, mode: e.mode, size: e.size, sha256: e.sha256, target: e.target });
 
 /**

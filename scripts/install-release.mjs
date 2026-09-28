@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MANIFEST, SIG, SUMS, sshVerify, verifyRelease, verifySignature } from './release-manifest.mjs';
+import { archiveRelease, MANIFEST, SIG, SUMS, sshVerify, verifyRelease, verifySignature } from './release-manifest.mjs';
 
 export const DEFAULT_PREFIX = path.join(os.homedir(), '.local', 'share', 'archipelago');
 
@@ -39,10 +39,7 @@ function stage(source, staging, o) {
     const version = JSON.parse(fs.readFileSync(path.join(staging, MANIFEST), 'utf8')).version;
     return { version: String(version ?? ''), dir: staging };
   }
-  const members = execFileSync('tar', ['-tzf', source], { encoding: 'utf8' }).split('\n');
-  const versions = new Set(members.map((m) => /^releases\/([^/]+)\//.exec(m)?.[1]).filter(Boolean));
-  if (versions.size !== 1) throw new Error(`${source} holds ${versions.size} releases, expected exactly one`);
-  const [version] = versions;
+  const { version, members } = archiveRelease(source, execFileSync('tar', ['-tzf', source], { encoding: 'utf8' }));
   const dir = path.join(staging, 'releases', version);
   const manifest = [SUMS, SIG].map((f) => `releases/${version}/${f}`).filter((m) => members.includes(m));
   if (manifest.length) execFileSync('tar', ['-xzf', source, '-C', staging, ...manifest], { stdio: 'pipe' });

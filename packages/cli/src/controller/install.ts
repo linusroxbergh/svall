@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MANIFEST, NAMESPACE, SIG, SUMS, verifyRelease, verifySignature, type Verify } from '../../../../scripts/release-manifest.mjs';
+import { archiveRelease, MANIFEST, NAMESPACE, SIG, SUMS, verifyRelease, verifySignature, type Verify } from '../../../../scripts/release-manifest.mjs';
 import { runProcess } from './process.js';
 import { shellQuote, SshError, type SshMaster } from './ssh.js';
 
@@ -33,10 +33,7 @@ async function tar(argv: string[], o: { timeoutMs?: number; maxOutputBytes?: num
  * install checks the archive against the signers the archive carries, so it is authenticated here, before it is uploaded.
  */
 export async function inspectCompanion(archive: string, o: { verify: Verify }): Promise<CompanionArchive> {
-  const members = (await tar(['-tzf', archive], { maxOutputBytes: MAX_LISTING })).split('\n').filter(Boolean);
-  const versions = new Set(members.map((m) => /^releases\/([^/]+)\//.exec(m)?.[1]).filter(Boolean));
-  if (versions.size !== 1) throw new Error(`${archive} holds ${versions.size} releases, expected exactly one`);
-  const [version] = [...versions] as string[];
+  const { version, members } = archiveRelease(archive, await tar(['-tzf', archive], { maxOutputBytes: MAX_LISTING }));
   // the name becomes a folder under releases/ and part of each far path the upload uses, as install-release takes it
   if (!/^[A-Za-z0-9._+-]+$/.test(version) || version === '.' || version === '..') throw new Error(`${archive} names its release ${JSON.stringify(version)}, which no installer takes`);
   if (!members.includes(`releases/${version}/release.json`)) throw new Error(`${archive} carries no releases/${version}/release.json`);
@@ -136,12 +133,23 @@ export async function uploadArchive(master: SshMaster, o: { archive: string; rem
 }
 
 // $1 the archive, $2 the staging folder, $3 the release asked for, $4 the far archiBase, or empty to skip the signature.
-// Where a release is installed, the signature over SHA256SUMS is checked against the signers it pins before anything
-// else leaves the archive; a signers file holding only comments pins no key, as a release built before one existed
-// does. The PATH holds only system folders, so no relative entry in the login shell's can reach a tool the upload carries
+// Every member must be a path in releases/$3, spelled one way and listed once. Where a release is installed, the
+// signature over SHA256SUMS is checked against the signers it pins before anything else leaves the archive, and again
+// after, since GNU tar writes a member under a link over the file it extracted by name; a signers file holding only
+// comments pins no key, as a release built before one existed does. The PATH holds only system folders, so no relative
+// entry in the login shell's can reach a tool the upload carries
 const UNPACK = `PATH=/usr/bin:/bin:/usr/sbin:/sbin; export PATH
 dir="$2/releases/$3"
 signers="$4/current/release/allowed_signers"
+verify() { ssh-keygen -Y verify -f "$signers" -I ${NAMESPACE} -n ${NAMESPACE} -s "$dir/${SIG}" < "$dir/${SUMS}" >/dev/null; }
+members=$(tar -tzf "$1") || exit 8
+printf '%s\\n' "$members" | awk -v r="releases/$3" '
+  function no(why) { printf "the uploaded archive holds \\"%s\\"%s\\n", $0, why > "/dev/stderr"; exit 1 }
+  { n = $0; sub("/$", "", n); k = split(n, s, "/")
+    for (i = 1; i <= k; i++) if (s[i] == "" || s[i] == "." || s[i] == "..") no(", which is not a path in " r)
+    if (index(n, "\\\\") || (n != "releases" && n != r && index(n, r "/") != 1)) no(", which is not a path in " r)
+    if (seen[n]++) no(" twice") }' || exit 9
+pinned=
 if [ -z "$4" ]; then
   :
 elif [ ! -e "$4/current" ] && [ ! -L "$4/current" ]; then
@@ -150,12 +158,14 @@ elif [ ! -f "$signers" ]; then
   exit 5
 elif grep -Eq '^[[:space:]]*[^#[:space:]]' "$signers"; then
   tar -xzf "$1" -C "$2" "releases/$3/${SUMS}" "releases/$3/${SIG}" || exit 7
-  ssh-keygen -Y verify -f "$signers" -I ${NAMESPACE} -n ${NAMESPACE} -s "$dir/${SIG}" < "$dir/${SUMS}" >/dev/null || exit 3
+  verify || exit 3
+  pinned=1
   echo pinned
 else
   echo unpinned
 fi
 tar -xzf "$1" -C "$2" || exit 8
+[ -z "$pinned" ] || verify || exit 3
 cd "$dir" || exit 1
 sha256sum -c --strict --quiet ${SUMS} || exit 4
 want=$(printf '  "version": "%s"' "$3")
@@ -179,6 +189,8 @@ async function unpackStaged(master: SshMaster, o: { archive: string; staging: st
     5: `${signers} is missing, so the installed release names no signer to check the uploaded one against`,
     6: `the uploaded release's ${MANIFEST} does not name release ${o.version}, the one asked for`,
     7: `the uploaded archive carries no signed ${SUMS} for release ${o.version}: ${said}`,
+    // after any warning the system's tar printed while it listed the archive
+    9: r.stderr.trim().split('\n').at(-1) ?? '',
   };
   if (r.code !== null && fail[r.code]) throw new SshError('other', fail[r.code]);
   if (r.code !== 0) throw new SshError(r.code === 255 ? 'unreachable' : 'other', `the far machine could not unpack and check the uploaded release (exit ${r.code}): ${said}`);

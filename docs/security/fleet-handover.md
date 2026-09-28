@@ -46,16 +46,21 @@ under which licences, and which risks are accepted. Tests are named by file unde
   directions.
 - **On the controller**, before any upload:
   - a downloaded companion must match the digest the controller's own manifest pins;
+  - every member of the archive must be a path in `releases/<v>`, with no empty, `.` or `..` segment, and listed once;
   - an archive's `SHA256SUMS` must verify against the controller's `release/allowed_signers` before anything else is
     unpacked from it, and the tree must then match its manifest;
   - it must be this controller's release and protocol, built for the machine's architecture.
 
   (`cli/test/controller/install.test.ts` "checks the signature over an archive's SHA256SUMS before it unpacks anything
-  else from it")
+  else from it", "refuses an archive holding a member outside its release, spelled other than as a path in it, or
+  twice, before anything is uploaded")
 - **On the far machine**, the uploaded release is checked before anything it carries runs, on an upgrade and on a
   `host add` run again over an installed release alike:
+  - every member must be a path in `releases/<v>`, spelled one way and listed once, as on the controller;
   - `ssh-keygen -Y verify` of its `SHA256SUMS`, unpacked alone, against the installed release's
     `current/release/allowed_signers`, before the rest of the archive is unpacked;
+  - the same check again once the rest is unpacked, since GNU tar writes a member under a link inside the release
+    over the `SHA256SUMS` it extracted by name;
   - then `sha256sum -c --strict`;
   - then `release.json`, which the digests cover, must name the release asked for, so a signed older release cannot
     be replayed under a newer one's name.
@@ -71,16 +76,22 @@ under which licences, and which risks are accepted. Tests are named by file unde
   host add over an installed release to the signers that release pins…", "says when a machine has no release installed
   to pin a signer…", "refuses a release the installed release's signers do not vouch for, before anything it carries
   runs", "checks the signature over an upgrade's SHA256SUMS before it unpacks anything else the archive holds",
-  "refuses a release the pinned key signed that arrives under another release's name…", "checks with the system's own
+  "refuses a release the pinned key signed that arrives under another release's name…", "refuses an archive that gives
+  the far check one SHA256SUMS to verify and another to check the files by…", "checks with the system's own
   tools, whatever a relative entry in the far PATH finds in the upload first", "refuses a release when the installed
   release has lost its signers file…", "says when the installed release pins no signer…", "checks an unsigned release
-  with --allow-unsigned by its digests alone…")
-- **`archi setup --release <archive>`**, the installer on each machine, checks the signature over the archive's
-  `SHA256SUMS` before it unpacks the rest, then every digest and the tree. (`archid/test/release.test.ts` "checks the
-  signature over an archive's SHA256SUMS before it unpacks anything else from it")
-- **Unpacking.** Once its signature has passed, or when none is asked for, an archive is unpacked into a staging
-  folder by the system's tar, which strips absolute and `..` members. Nothing in the staging folder runs until the
-  digests pass, and it is removed afterwards.
+  with --allow-unsigned by its digests alone…"). The Mac's bsdtar matches every spelling of a name and refuses to
+  write under a link, so the far check also runs under GNU tar in a Linux image: `ARCHI_TEST_GNU_TAR=archi-it:machine`
+  with `DOCKER_HOST` naming the engine's socket runs `host.test.ts` "checks the files against the SHA256SUMS the pinned
+  key signed, whatever the archive writes over it".
+- **`archi setup --release <archive>`**, the installer on each machine, refuses the same members, checks the
+  signature over the archive's `SHA256SUMS` before it unpacks the rest, then the signature again, every digest and the
+  tree. (`archid/test/release.test.ts` "checks the signature over an archive's SHA256SUMS before it unpacks anything
+  else from it", "refuses an archive holding a member outside its release, spelled other than as a path in it, or
+  twice")
+- **Unpacking.** Once its members and its signature have passed, or its members when no signature is asked for, an
+  archive is unpacked into a staging folder by the system's tar. Nothing in the staging folder runs until the digests
+  pass, and it is removed afterwards.
 - **What a release loads.** The bundles resolve `bufferutil`, `utf-8-validate` and `supports-color`, which their
   dependencies only try for, to a module that throws. Node therefore never searches a folder above the release, such
   as a staging folder, `~/node_modules` or `/Applications/node_modules`, for code to run. The scan fails a bundle
@@ -259,9 +270,6 @@ has a new id and never meets them.
 - **A far machine with no release of its own to pin a signer**, a first install or a release built before the first
   signing key, unpacks the upload before any check of its own. It rests on the controller's check against its own
   pinned signers, made before the upload and before the controller unpacked anything, and the `install` step says so.
-- **An archive member outside `releases/<v>`** is unpacked into staging with the rest. Nothing runs from staging but
-  the checked release, the bundles never search a folder above it, `install-release` moves only `releases/<v>` into
-  place, and staging is removed.
 - **The phone page's package list is the web app's whole production closure** (161 packages), not only what Vite
   inlined. Listing more than was bundled is harmless in a NOTICE; a list from the Vite build would need `dist-mobile`
   rebuilt before every release build.

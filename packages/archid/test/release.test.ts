@@ -273,6 +273,24 @@ describe('installing a release', () => {
     expect(unpacked).toEqual(['SHA256SUMS', 'SHA256SUMS.sig']);
   });
 
+  it('refuses an archive holding a member outside its release, spelled other than as a path in it, or twice', () => {
+    const stage = fixture();
+    const root = path.dirname(path.dirname(stage));
+    fs.writeFileSync(path.join(root, 'run-me.sh'), '#!/bin/sh\n');
+    const odd = (m: string): string => `holds ${JSON.stringify(m)}, which is not a path in releases/1.0.0`;
+    for (const [extra, said] of [
+      ['./releases/1.0.0/SHA256SUMS', odd('./releases/1.0.0/SHA256SUMS')], ['releases/1.0.0/./SHA256SUMS', odd('releases/1.0.0/./SHA256SUMS')],
+      ['releases/1.0.0//SHA256SUMS', odd('releases/1.0.0//SHA256SUMS')], ['run-me.sh', odd('run-me.sh')],
+      ['releases/1.0.0/SHA256SUMS', 'holds "releases/1.0.0/SHA256SUMS" twice'],
+    ]) {
+      const archive = path.join(makeHome(), 'release.tar.gz');
+      execFileSync('tar', ['-czf', archive, '-C', root, 'releases', extra]);
+      const prefix = makeHome();
+      expect(() => install(archive, prefix), extra).toThrow(said);
+      expect(fs.existsSync(path.join(prefix, 'current')), extra).toBe(false);
+    }
+  });
+
   it('refuses a version token that would reach outside releases/', () => {
     const stage = fixture({ version: '..' });
     expect(() => install(stage, makeHome())).toThrow(/names an unusable release directory: ".."/);

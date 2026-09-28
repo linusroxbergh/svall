@@ -10,7 +10,7 @@ import {
   requireCompatible, uploadArchive,
 } from '../../src/controller/install.js';
 import { SshMaster } from '../../src/controller/ssh.js';
-import { companionArchive, ephemeralSigner, type ArchiveOptions } from './archive.js';
+import { companionArchive, ephemeralSigner, smuggledArchive, type ArchiveOptions } from './archive.js';
 import { installFakeSsh, type FakeSsh } from './fake-ssh.js';
 
 const CONTROLLER = { release: '1.2.3', protocol: PROTOCOL_VERSION };
@@ -90,6 +90,25 @@ describe('the companion archive', () => {
     const refuse = (dir: string): void => { unpacked = fs.readdirSync(dir).sort(); throw new Error('no key here signed it'); };
     await expect(inspectCompanion(makeArchive({ signed: true }), { verify: refuse })).rejects.toThrow(/not signed by archipelago-release/);
     expect(unpacked).toEqual(['SHA256SUMS', 'SHA256SUMS.sig']);
+  });
+
+  it('refuses an archive holding a member outside its release, spelled other than as a path in it, or twice, before anything is uploaded', async () => {
+    // a controller that trusts the intruder too, so only the spelling is left to refuse
+    const intruder = ephemeralSigner(work);
+    const genuine = makeArchive({ signed: true });
+    const theirs = companionArchive(work, { signedBy: intruder.key });
+    for (const spell of [(m: string) => `./${m}`, (m: string) => m.replace(/\/([^/]+)$/, '/./$1'), (m: string) => m.replace(/\/([^/]+)$/, '//$1')]) {
+      await expect(inspectCompanion(smuggledArchive(work, { genuine, intruder: theirs, spell }), { verify: intruder.verify }))
+        .rejects.toThrow(/holds ".*SHA256SUMS", which is not a path in releases\/1\.2\.3/);
+    }
+    await expect(inspectCompanion(smuggledArchive(work, { genuine, intruder: theirs, spell: (m) => m }), { verify: intruder.verify }))
+      .rejects.toThrow(/holds "releases\/1\.2\.3\/SHA256SUMS" twice/);
+    const tree = fs.mkdtempSync(path.join(work, 'beside-'));
+    execFileSync('tar', ['-xzf', genuine, '-C', tree]);
+    fs.writeFileSync(path.join(tree, 'run-me.sh'), '#!/bin/sh\n');
+    const beside = path.join(work, 'beside.tar.gz');
+    execFileSync('tar', ['-czf', beside, '-C', tree, 'releases', 'run-me.sh']);
+    await expect(inspect(beside)).rejects.toThrow(/holds "run-me\.sh", which is not a path in releases\/1\.2\.3/);
   });
 
   it('refuses a signed archive whose files no longer match its manifest', async () => {

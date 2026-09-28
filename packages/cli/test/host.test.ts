@@ -4,14 +4,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WebSocketServer } from 'ws';
 import { FleetId, MachineId, PROTOCOL_VERSION } from '@archipelago/protocol';
 import { addHost, doctorHost, enableHost, removeHost, upgradeHost, type HostDeps, type StepEvent } from '../src/controller/host.js';
+import { runProcess } from '../src/controller/process.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { shellQuote, SshMaster } from '../src/controller/ssh.js';
 import { cleanHomes, makeHome, waitFor } from '../../archid/test/helpers.js';
-import { companionArchive, ephemeralSigner } from './controller/archive.js';
+import { companionArchive, ephemeralSigner, linkedArchive, smuggledArchive } from './controller/archive.js';
 import { installFakeSsh, type FakeSsh } from './controller/fake-ssh.js';
 
 const REMOTE = MachineId.parse('66666666-7777-8888-9999-aaaaaaaaaaaa');
@@ -50,6 +51,25 @@ let signer: ReturnType<typeof ephemeralSigner>;
 
 const archive = (o: { version?: string; protocol?: number; platform?: string; signed?: boolean } = {}): string =>
   companionArchive(work, { ...o, ...((o.signed ?? true) ? { signedBy: signer.key } : {}) });
+
+/**
+ * Archives holding release 1.2.3 whose SHA256SUMS, extracted by name, `signer` signed, and an intruder's release
+ * that a full unpack writes over it: its SHA256SUMS spelled another way or named twice, or written through a link.
+ * Each intruder's archi touches `ran(name)`.
+ */
+function smuggling(ran: (name: string) => string): { name: string; archive: string }[] {
+  const intruder = ephemeralSigner(work);
+  const genuine = companionArchive(work, { signedBy: signer.key });
+  const theirs = (name: string): string =>
+    companionArchive(work, { signedBy: intruder.key, signersInside: intruder.signers, archi: `#!/bin/sh\ntouch '${ran(name)}'\n` });
+  const spellings: [string, (member: string) => string][] = [
+    ['dot', (m) => `./${m}`], ['dot-segment', (m) => m.replace(/\/([^/]+)$/, '/./$1')], ['empty-segment', (m) => m.replace(/\/([^/]+)$/, '//$1')], ['twice', (m) => m],
+  ];
+  return [
+    ...spellings.map(([name, spell]) => ({ name, archive: smuggledArchive(work, { genuine, intruder: theirs(name), spell }) })),
+    { name: 'link', archive: linkedArchive(work, { genuine, intruder: theirs('link') }) },
+  ];
+}
 
 function deps(o: Partial<HostDeps> = {}): HostDeps {
   return {
@@ -778,6 +798,24 @@ esac
     expect(fs.existsSync(ran)).toBe(false);
   });
 
+  it('refuses an archive that gives the far check one SHA256SUMS to verify and another to check the files by, before anything it carries runs', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], pins: signer.signers });
+    const ran = (name: string): string => path.join(work, `ran-${name}`);
+    const { bootstrapSetup } = await import('../src/controller/install.js');
+    const master = await SshMaster.open({ destination: 'trift.test', socketDir: ssh.socketDir });
+    for (const { name, archive } of smuggling(ran)) {
+      const out = bootstrapSetup(master, {
+        staging: `${work}/far/.cache/archipelago/staging-1.2.3`, archive, version: '1.2.3', allowUnsigned: false, installed: far.base,
+      });
+      // a link is the system tar's to refuse or to write through; the far check refuses what it wrote either way
+      await expect(out, name).rejects.toThrow(name === 'link' ? /./ : /^the uploaded archive holds .*(is not a path in releases\/1\.2\.3|twice)$/);
+      expect(fs.existsSync(ran(name)), name).toBe(false);
+    }
+    await master.close();
+    await far.close();
+    expect(far.now()).toBe('1.2.2');
+  });
+
   it('puts a new release that does not answer back on the release the machine ran before, and says which it runs', async () => {
     // an older release is the newest by mtime, which is where a rollback that names nothing would go
     const far = await farMachine({ releases: [['1.2.1', PROTOCOL_VERSION], ['1.2.2', PROTOCOL_VERSION]], accepts: (r) => r !== '1.2.3' });
@@ -1187,6 +1225,41 @@ describe('host enable', () => {
     const out = await enableHost('nowhere', { fleetHome: home }, deps());
     expect(out.result).toBe('actions');
     expect(step('machine').at(-1)).toMatchObject({ status: 'fail' });
+  });
+});
+
+// GNU tar writes a member spelled another way, or one under a link, over a file it extracted by name, where the Mac's
+// bsdtar matches every spelling and refuses the link, so these run on a Linux image such as archi-it:machine
+const gnuTar = process.env.ARCHI_TEST_GNU_TAR;
+
+describe.skipIf(!gnuTar)('the far check under GNU tar (set ARCHI_TEST_GNU_TAR=<docker image> to run)', () => {
+  const box = `archi-far-check-${crypto.randomBytes(3).toString('hex')}`;
+  const base = '/root/.local/share/archipelago';
+  const docker = (argv: string[], input?: string | Uint8Array) => runProcess('docker', argv, { timeoutMs: 60_000, input });
+  // each far command runs in the container as its login shell would split the line ssh hands it
+  const far = { run: (argv: string[], o: { input?: string | Uint8Array } = {}) => docker(['exec', '-i', box, 'sh', '-c', argv.join(' ')], o.input) } as SshMaster;
+
+  beforeAll(async () => {
+    const r = await docker(['run', '-d', '--rm', '--name', box, gnuTar!, 'sleep', '900']);
+    expect(r.stderr).toBe('');
+  });
+  afterAll(async () => { await docker(['rm', '-f', box]); });
+
+  it('checks the files against the SHA256SUMS the pinned key signed, whatever the archive writes over it', async () => {
+    const pinned = `mkdir -p ${base}/releases/1.2.2/release && cat > ${base}/releases/1.2.2/release/allowed_signers && ln -sfn ${base}/releases/1.2.2 ${base}/current`;
+    expect((await far.run(['sh', '-c', shellQuote(pinned)], { input: fs.readFileSync(signer.signers) })).code).toBe(0);
+    const { bootstrapSetup, uploadArchive } = await import('../src/controller/install.js');
+    const install = async (archive: string): Promise<string> => {
+      const remote = `/root/uploads/${path.basename(archive)}`;
+      await uploadArchive(far, { archive, remote });
+      return bootstrapSetup(far, { staging: '/root/staging-1.2.3', archive: remote, version: '1.2.3', allowUnsigned: false, installed: base });
+    };
+    const good = companionArchive(work, { signedBy: signer.key, archi: '#!/bin/sh\necho release 1.2.3 installed\n' });
+    expect(await install(good)).toContain(`signed by a key ${base}/current/release/allowed_signers pins`);
+    for (const { name, archive } of smuggling((n) => `/tmp/ran-${n}`)) {
+      await expect(install(archive), name).rejects.toThrow(name === 'link' ? /not signed by a key/ : /^the uploaded archive holds .*(is not a path in releases\/1\.2\.3|twice)$/);
+      expect((await far.run(['test', '-e', `/tmp/ran-${name}`])).code, name).toBe(1);
+    }
   });
 });
 
