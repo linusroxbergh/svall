@@ -2,7 +2,8 @@
 # The fresh-install run: a clean Ubuntu 24.04 machine of the docker host's architecture, added by the controller the app
 # carries (`archi host add`), then `archi host upgrade` to a second release and `archi setup --rollback` back. It builds
 # both releases from this checkout with scripts/release-build.sh (macOS only) unless --release and --upgrade name
-# folders that build wrote, and runs fresh-install.mjs, which says what it checks.
+# folders that build wrote, and runs fresh-install.mjs, which says what it checks. A release built with a --url-base on
+# http://127.0.0.1:<port>/ is served by the run and downloaded, as the app does; any other is installed by path.
 #
 #   scripts/integration/fresh-install.sh [--release <dir> --upgrade <dir>] [--out <dir>] [--keep]
 #
@@ -33,9 +34,9 @@ trap 'rm -rf "$work"' EXIT
 if [ -z "$release" ] || [ -z "$upgrade" ]; then
   [ "$(uname -s)" = Darwin ] || { echo "fresh-install.sh: only macOS builds the controller; pass --release and --upgrade" >&2; exit 2; }
   version=$(git -C "$repo" describe --tags --match 'v[0-9]*' --always --dirty)
-  # a local build is never published, so its companions' URLs lead nowhere; the run installs them by path
-  "$repo/scripts/release-build.sh" --out "$work/release" --version "$version" --url-base https://example.invalid/local-build >/dev/null
-  "$repo/scripts/release-build.sh" --out "$work/upgrade" --version "$version-next" --url-base https://example.invalid/local-build >/dev/null
+  port=$(node -e 'const s = require("net").createServer().listen(0, "127.0.0.1", () => { console.log(s.address().port); s.close(); })')
+  "$repo/scripts/release-build.sh" --out "$work/release" --version "$version" --url-base "http://127.0.0.1:$port/release" >/dev/null
+  "$repo/scripts/release-build.sh" --out "$work/upgrade" --version "$version-next" --url-base "http://127.0.0.1:$port/upgrade" >/dev/null
   release=$work/release upgrade=$work/upgrade
 fi
 

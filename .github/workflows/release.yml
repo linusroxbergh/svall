@@ -58,11 +58,12 @@ jobs:
         run: >-
           scripts/release-build.sh --out "$RUNNER_TEMP/release" --version "$GITHUB_REF_NAME"
           --url-base "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
-      # the release a fresh install upgrades to; never published
+      # the release a fresh install upgrades to; never published, but served on the fresh-install runner's loopback so
+      # that the upgrade downloads its companion as the app does
       - name: Build and scan the upgrade
         run: >-
           scripts/release-build.sh --out "$RUNNER_TEMP/upgrade" --version "$GITHUB_REF_NAME-next"
-          --url-base "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME-next"
+          --url-base http://127.0.0.1:8765/upgrade
       - if: always()
         run: rm -f "$RUNNER_TEMP/release-key"
       # signed archives that every installer accepts, kept only as long as this run needs them

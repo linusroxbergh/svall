@@ -9,8 +9,9 @@
 // and no Node. The run adds the machine with the first release (`archi host add`), turns lingering on as host add
 // asks, gives it a second fleet (`archi host enable`), checks the units run that release and nothing else, upgrades to
 // the second release (`archi host upgrade`), then goes back with `archi setup --rollback` on the machine, checking the
-// units each time.
-import { spawnSync } from 'node:child_process';
+// units each time. A release that pins its companion on this host's loopback is served from its folder and downloaded,
+// as the app does; any other is named by path with --release.
+import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -23,6 +24,7 @@ const FLEET = 'work';
 // host add starts the private fleet's daemon and the gateway; host enable adds the second fleet's
 const ADDED = ['archipelago-archid@private.service', 'archipelago-gateway.service'];
 const UNITS = [...ADDED, `archipelago-archid@${FLEET}.service`];
+const LOOPBACK = /^http:\/\/127\.0\.0\.1:\d+\//;
 
 const o = flags(process.argv.slice(2));
 if (!o.release || !o.upgrade || !['x64', 'arm64'].includes(o.arch)) throw new Error('--release <dir>, --upgrade <dir> and --arch x64|arm64 are required');
@@ -60,8 +62,10 @@ function release(dir, name) {
   const root = path.join(unpacked, 'releases', version);
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'release.json'), 'utf8'));
   const companion = one(dir, new RegExp(`^archipelago-companion-${version.replace(/[.+]/g, '\\$&')}-linux-${o.arch}\\.tar\\.gz$`));
+  const url = manifest.companions?.[`linux-${o.arch}`]?.url;
   return {
-    name, version, root, manifest, companion, packed,
+    name, version, root, manifest, companion, packed, url,
+    served: typeof url === 'string' && LOOPBACK.test(url),
     native: manifest.platform === `${process.platform}-${process.arch}`,
     unsigned: manifest.unsigned === true,
   };
@@ -99,6 +103,35 @@ function root(script, opts = {}) {
 }
 
 const save = (name, text) => fs.writeFileSync(path.join(out, name), text);
+
+const SERVER = `
+const fs = require('node:fs');
+const routes = JSON.parse(process.argv[1]);
+require('node:http').createServer((req, res) => {
+  const file = routes[req.url];
+  fs.appendFileSync(process.argv[3], req.method + ' ' + req.url + ' ' + (file ? 200 : 404) + '\\n');
+  if (!file) return res.writeHead(404).end();
+  res.writeHead(200, { 'content-length': fs.statSync(file).size });
+  fs.createReadStream(file).pipe(res);
+}).listen(Number(process.argv[2]), '127.0.0.1', () => process.stdout.write('listening\\n'));
+`;
+
+/** Serves each companion a release pins on this host's loopback, from a child process, as this one blocks in spawnSync. */
+async function serve(rels) {
+  const served = rels.filter((r) => r.served);
+  if (!served.length) return undefined;
+  const ports = [...new Set(served.map((r) => new URL(r.url).port))];
+  if (ports.length !== 1) throw new Error(`the releases pin their companions on ${ports.length} loopback ports, not one`);
+  const routes = Object.fromEntries(served.map((r) => [new URL(r.url).pathname, r.companion]));
+  const child = spawn(process.execPath, ['-e', SERVER, JSON.stringify(routes), ports[0], path.join(out, 'served.log')], { stdio: ['ignore', 'pipe', 'inherit'] });
+  await new Promise((resolve, reject) => {
+    child.stdout.once('data', resolve);
+    child.once('exit', (c) => reject(new Error(`the server for ${served.map((r) => r.url).join(', ')} exited ${c}`)));
+  });
+  for (const r of served) say(`   serving ${r.url}`);
+  return child;
+}
+
 // what printResult prints, indented over many lines
 const json = (text) => { try { return JSON.parse(text); } catch { return undefined; } };
 let uid;
@@ -214,8 +247,18 @@ const ADVICE = new Set(['tmux', 'claude', 'codex', 'linger', 'service']);
 const ADD_STEPS = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'tmux', 'rsync', 'space', 'linger', 'release', 'upload', 'install', 'service',
   'identity', 'claude', 'codex', 'probe', 'registry'];
 
+// with no --release the controller downloads the companion its manifest pins, checks its digest and caches it
+const named = (rel) => (rel.served ? [] : ['--release', rel.companion, ...(rel.unsigned ? ['--allow-unsigned'] : [])]);
+const from = (rel) => `${rel.version} for linux-${o.arch} from ${rel.served ? rel.url : 'the archive you named'}${rel.unsigned ? ' (unsigned)' : ''}`;
+
+function downloaded(rel, label) {
+  if (!rel.served) return;
+  const file = path.join(HOME, '.local/share/archipelago/companions', path.basename(new URL(rel.url).pathname));
+  check(`${label} downloaded`, fs.existsSync(file) && sha256(file) === sha256(rel.companion), () => `${file} is not the pinned companion`);
+}
+
 function hostAdd(a) {
-  const r = archi(a, 'host', 'add', 'fresh', '--ssh', 'fresh', '--release', a.companion, ...(a.unsigned ? ['--allow-unsigned'] : []), '--json');
+  const r = archi(a, 'host', 'add', 'fresh', '--ssh', 'fresh', ...named(a), '--json');
   save('host-add.ndjson', r.stdout);
   const events = lines(r.stdout);
   const steps = events.filter((e) => e.step && e.status !== 'start');
@@ -228,7 +271,8 @@ function hostAdd(a) {
   // the units run, and the service step warns only that they stop at logout
   check('host add service', at('service')?.action === lingerOn && ADDED.every((u) => at('service').detail?.includes(`${u}: loaded, active (running), enabled`)),
     () => brief(at('service')));
-  check('host add release', at('release')?.detail?.startsWith(`${a.version} for linux-${o.arch} from the archive you named${a.unsigned ? ' (unsigned)' : ''}`), () => brief(at('release')));
+  check('host add release', at('release')?.detail === from(a), () => brief(at('release')));
+  downloaded(a, 'host add');
   check('host add home', at('home')?.detail === `${HOME} for ${USER}`, () => brief(at('home')));
   const result = events.at(-1);
   check('host add result', result?.result === 'actions'
@@ -266,7 +310,7 @@ function doctor(rel, label) {
 }
 
 function upgrade(b) {
-  const r = archi(b, 'host', 'upgrade', 'fresh', '--release', b.companion, ...(b.unsigned ? ['--allow-unsigned'] : []), '--json');
+  const r = archi(b, 'host', 'upgrade', 'fresh', ...named(b), '--json');
   save('host-upgrade.ndjson', r.stdout);
   const events = lines(r.stdout);
   const steps = events.filter((e) => e.step && e.status !== 'start');
@@ -274,6 +318,8 @@ function upgrade(b) {
   check('host upgrade steps', JSON.stringify(steps.map((s) => s.step)) === JSON.stringify(['machine', 'master', 'release', 'upload', 'install', 'probe']),
     () => brief(steps.map((s) => s.step)));
   check('host upgrade result', events.at(-1)?.result === 'ready' && r.code === 0, () => brief(events.at(-1)));
+  check('host upgrade release', steps.find((s) => s.step === 'release')?.detail === from(b), () => brief(steps.find((s) => s.step === 'release')));
+  downloaded(b, 'host upgrade');
 }
 
 function rollback(a) {
@@ -286,15 +332,17 @@ function rollback(a) {
 }
 
 let code = 0;
+let server;
 try {
   const [a, b] = step('the controller the app carries', () => {
     const rels = [release(path.resolve(o.release), 'release'), release(path.resolve(o.upgrade), 'upgrade')];
     controller(rels);
     return rels;
   });
+  server = await serve([a, b]);
   say(`   logs in ${out}; controller home ${HOME}`);
   step(`a clean Ubuntu 24.04 ${o.arch} machine, an account at the controller's home path`, machine);
-  step(`host add from ${a.version}`, () => hostAdd(a));
+  step(`host add from ${a.version}${a.served ? ', downloaded' : ', by path'}`, () => hostAdd(a));
   step(`lingering on, as host add asks, and host enable --fleet ${FLEET}`, () => {
     linger();
     enable(a);
@@ -304,7 +352,7 @@ try {
     runs('added', a, [a.version]);
     doctor(a, 'added');
   });
-  step(`host upgrade to ${b.version}`, () => {
+  step(`host upgrade to ${b.version}${b.served ? ', downloaded' : ', by path'}`, () => {
     upgrade(b);
     runs('upgraded', b, [a.version, b.version]);
     doctor(b, 'upgraded');
@@ -319,6 +367,7 @@ try {
   say(`FAILED: ${e.message}`);
   code = 1;
 } finally {
+  server?.kill();
   save('machine.log', root(`tail -n 300 '${PREFIX}'/log/*.log 2>/dev/null; journalctl -b --no-pager -n 200 2>/dev/null`, { ok: false }).stdout);
   if (!o.keep) {
     docker(['rm', '-f', M]);
