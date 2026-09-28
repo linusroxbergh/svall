@@ -23,8 +23,8 @@ import { ApiError, Client } from '../../src/client.js';
 import type { RootEntry } from '../../src/controller/transfer.js';
 import { cleanHomes, makeHome } from '../../../archid/test/helpers.js';
 import {
-  CODEX, FLEET_HOME, G, HOME, SID, TOKEN, World, at, controller, file, fleetId, info, mac, manifestFor, opIndex, phases, recover, settledOn, trift,
-  type Fault, type Probe,
+  CODEX, FLEET_HOME, G, HOME, SID, TOKEN, World, at, controller, file, fleetId, info, keptCommit, mac, manifestFor, opIndex, phases, recover, settledOn, trift,
+  type Probe,
 } from './world.js';
 
 
@@ -393,39 +393,6 @@ describe('preflight', () => {
     expect(asked.map((r) => [r.id, r.content])).toEqual(replicaRoots(pre.manifest)
       .map((r) => [r.id, contentDigest(pre.manifest.roots.find((x) => x.id === r.id)!.files)]));
   });
-
-  /** A world whose manifest carries one graph, and whose destination keeps a worktree at a commit it cannot prove comes back. */
-  function keptCommit(o: { reached: boolean; at: 'inspect' | 'claim' }) {
-    const w = new World();
-    const commit = 'f'.repeat(40);
-    const graph = {
-      id: 'g_app', commonDir: '/Users/ada/app/.git', main: { path: '/Users/ada/app', gitDir: '/Users/ada/app/.git', head: 'c'.repeat(40), branch: 'refs/heads/main', status: [], index: 'd'.repeat(64), characters: [] },
-      worktrees: [], unused: [], stash: [], tips: ['e'.repeat(40)],
-    };
-    // the manifest preflight builds and the one freeze answers both carry the graph
-    for (const method of ['handover.preflight', 'handover.freeze'] as const) {
-      const answer = w.source.answers[method] as (x: never) => Promise<{ manifest: FrozenManifest }> | { manifest: FrozenManifest };
-      w.source.answers[method] = (async (p: never) => {
-        const r = await answer(p);
-        r.manifest.git = [graph];
-        return r;
-      }) as never;
-    }
-    const unproven = [{ graph: 'g_app', path: '/Users/ada/stay', commit }];
-    const asked: { git?: unknown; reaches: unknown[] } = { reaches: [] };
-    const inspect = w.destination.answers['handover.inspect'];
-    w.destination.answers['handover.inspect'] = ((p: { git?: unknown }) => {
-      asked.git = p.git;
-      return { ...(inspect as (x: unknown) => object)(p), ...(o.at === 'inspect' && { unproven }) };
-    }) as never;
-    const claim = w.destination.answers['handover.claim'];
-    w.destination.answers['handover.claim'] = ((p: never) => ({ ...(claim as (x: never) => object)(p), ...(o.at === 'claim' && { unproven }) })) as never;
-    w.source.answers['handover.reaches'] = ((p: { commits: { commonDir: string; commit: string }[] }) => {
-      asked.reaches.push(p);
-      return { unreached: o.reached ? [] : p.commits };
-    }) as never;
-    return { w, asked, commit };
-  }
 
   it('asks the source about a kept commit the destination cannot prove comes back, and blocks only on one the source cannot reach', async () => {
     const lost = keptCommit({ reached: false, at: 'inspect' });
@@ -1073,64 +1040,6 @@ describe('reading the controller journal', () => {
     await controller(w).abort();
     await controller(w).start(trift, {});
     expect(w.store.asides.slice(1, 4)).toEqual([true, true, true]);
-  });
-});
-
-describe('a controller that dies or loses its network after any await', () => {
-  // the happy run, to learn how many calls there are and which one commits
-  const probe = new World();
-  const probeRun = controller(probe).start(trift, {});
-  const kinds: Fault['kind'][] = ['death', 'lost', 'dropped', 'partition'];
-
-  it('ends with the fleet on exactly one machine, and after the commit on the destination, whatever strikes where', async () => {
-    await probeRun;
-    const total = probe.n;
-    const committedAt = opIndex(probe, 'gateway:commit');
-    expect(total).toBeGreaterThan(25);
-    const results: string[] = [];
-    for (let at = 0; at < total; at++) {
-      for (const kind of kinds) {
-        if (probe.ops[at].startsWith('store:') && kind !== 'death') continue;
-        const w = new World();
-        w.fault = { at, kind };
-        const what = `${kind} after ${probe.ops[at]} (${at})`;
-        const first = await controller(w).start(trift, {}).catch((e: unknown) => ({ status: 'threw', error: String(e) }));
-        expect((first as { status: string }).status, what).not.toBe('threw');
-        const committed = w.moved();
-        const outcomes = await recover(w);
-        let where: string;
-        try { where = settledOn(w); } catch (e) { throw new Error(`${what}: ${(e as Error).message}\n${JSON.stringify(first)}\n${JSON.stringify(outcomes)}\n${w.ops.join(' ')}`); }
-        // a commit that took effect is final, whatever the controller saw of it
-        if (committed) expect(where, what).toBe('destination');
-        if (at > committedAt) expect(committed, what).toBe(true);
-        expect(outcomes.at(-1)!.status, what).not.toBe('interrupted');
-        results.push(`${at}:${kind}:${where}`);
-      }
-    }
-    expect(results.length).toBeGreaterThan(60);
-  });
-
-  it('takes the fleet back with an abort from any point before the commit, and refuses one after it', async () => {
-    await probeRun;
-    const committedAt = opIndex(probe, 'gateway:commit');
-    for (let at = 0; at < probe.n; at++) {
-      for (const kind of kinds) {
-        if (probe.ops[at].startsWith('store:') && kind !== 'death') continue;
-        const w = new World();
-        const what = `${kind} after ${probe.ops[at]} (${at})`;
-        w.fault = { at, kind };
-        await controller(w).start(trift, {});
-        const committed = w.moved();
-        const left = w.store.j !== undefined;
-        const outcomes = await recover(w, 'abort');
-        let where: string;
-        try { where = settledOn(w); } catch (e) { throw new Error(`${what}: ${(e as Error).message}\n${JSON.stringify(outcomes)}\n${w.ops.join(' ')}`); }
-        expect(where, what).toBe(committed ? 'destination' : 'source');
-        if (at > committedAt) expect(committed, what).toBe(true);
-        // an abort asked of a fleet that moved, with anything of it still open, is refused, and only a resume goes on
-        if (committed && left) expect(outcomes[0], what).toMatchObject({ status: 'interrupted', safe: ['resume'] });
-      }
-    }
   });
 });
 

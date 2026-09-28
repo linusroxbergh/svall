@@ -78,7 +78,11 @@ export const info = (machineId: MachineId, over: Partial<SystemInfo> = {}): Syst
 });
 
 class Died extends Error {}
-export type Fault = { at: number; kind: 'death' | 'lost' | 'dropped' | 'partition' };
+/**
+ * What strikes the call at `at`: the controller dies after it, its answer is lost, the request is lost, its machine
+ * drops off the network, the request reaches its party twice, or it is held back until the call after it there is answered.
+ */
+export type Fault = { at: number; kind: 'death' | 'lost' | 'dropped' | 'partition' | 'duplicate' | 'stale' };
 
 /** A daemon's answers, keyed by method, as the real service gives them. */
 type Answers = Record<string, (p: never) => unknown>;
@@ -355,8 +359,7 @@ class MemoryStore implements ControllerStore {
 }
 
 /**
- * Both machines, the gateway, the transfer and the controller's store, with one fault that can strike after any
- * call: the controller dies, an answer is lost, a request is lost, or a machine drops off the network.
+ * Both machines, the gateway, the transfer and the controller's store, with one fault that can strike any call.
  */
 export class World {
   record: OwnerRecord = { fleetId, generation: G, ownerMachineId: mac };
@@ -373,6 +376,8 @@ export class World {
   fault?: Fault;
   dead = false;
   down = new Set<string>();
+  /** requests held back, each delivered once the call after it to its port is answered */
+  private held: { port: string; effect: () => unknown }[] = [];
   n = 0;
   now = 1000;
   txn = 0;
@@ -401,7 +406,23 @@ export class World {
   /** Whether the gateway has moved the fleet off generation g: committed, or cleared since. */
   moved(): boolean { return this.record.generation > G || this.record.transaction?.phase === 'committed'; }
 
-  heal(): void { this.fault = undefined; this.dead = false; this.down.clear(); }
+  /** A new controller process on a network that works again, after whatever was held back has arrived. */
+  async heal(): Promise<void> {
+    this.fault = undefined;
+    this.dead = false;
+    this.down.clear();
+    await this.release();
+  }
+
+  /** Delivers the requests held back from `port`, or from every port; their answers go nowhere. */
+  private async release(port?: string): Promise<void> {
+    const due = this.held.filter((h) => port === undefined || h.port === port);
+    this.held = this.held.filter((h) => !due.includes(h));
+    for (const h of due) {
+      try { await h.effect(); } catch { /* a refusal nobody hears */ }
+      this.checkInvariants();
+    }
+  }
 
   private checkInvariants(): void {
     if (this.source.running && this.destination.running) this.violations.push('both machines ran the fleet at once');
@@ -416,10 +437,20 @@ export class World {
     const f = this.fault?.at === k ? this.fault : undefined;
     if (f?.kind === 'dropped') throw new Error(`${port} did not answer ${name}: connection reset`);
     if (f?.kind === 'partition') { this.down.add(port); throw new Error(`${port} did not answer ${name}: connection refused`); }
+    if (f?.kind === 'stale') {
+      this.held.push({ port, effect });
+      throw new Error(`${port} did not answer ${name} in time`);
+    }
     let result: T | undefined;
     let refusal: unknown;
     try { result = await effect(); } catch (e) { refusal = e; }
     this.checkInvariants();
+    // a request held back reaches its party only once the one sent after it has been answered
+    await this.release(port);
+    if (f?.kind === 'duplicate') {
+      try { await effect(); } catch { /* the second delivery's answer goes nowhere */ }
+      this.checkInvariants();
+    }
     if (f?.kind === 'death') { this.dead = true; throw new Died('the controller died'); }
     if (f?.kind === 'lost') throw new Error(`${port} ${name}: the connection dropped before the answer`);
     if (refusal) throw refusal;
@@ -524,7 +555,7 @@ export function settledOn(w: World): 'source' | 'destination' {
 
 /** A new controller, as many times as it takes, doing the one thing the journals leave safe. */
 export async function recover(w: World, first: 'resume' | 'abort' = 'resume'): Promise<Outcome[]> {
-  w.heal();
+  await w.heal();
   const outcomes: Outcome[] = [];
   let how = first;
   for (let i = 0; i < 3; i++) {
@@ -535,6 +566,39 @@ export async function recover(w: World, first: 'resume' | 'abort' = 'resume'): P
     how = 'resume';
   }
   return outcomes;
+}
+
+/** A world whose manifest carries one graph, and whose destination keeps a worktree at a commit it cannot prove comes back. */
+export function keptCommit(o: { reached: boolean; at: 'inspect' | 'claim' }) {
+  const w = new World();
+  const commit = 'f'.repeat(40);
+  const graph = {
+    id: 'g_app', commonDir: '/Users/ada/app/.git', main: { path: '/Users/ada/app', gitDir: '/Users/ada/app/.git', head: 'c'.repeat(40), branch: 'refs/heads/main', status: [], index: 'd'.repeat(64), characters: [] },
+    worktrees: [], unused: [], stash: [], tips: ['e'.repeat(40)],
+  };
+  // the manifest preflight builds and the one freeze answers both carry the graph
+  for (const method of ['handover.preflight', 'handover.freeze'] as const) {
+    const answer = w.source.answers[method] as (x: never) => Promise<{ manifest: FrozenManifest }> | { manifest: FrozenManifest };
+    w.source.answers[method] = (async (p: never) => {
+      const r = await answer(p);
+      r.manifest.git = [graph];
+      return r;
+    }) as never;
+  }
+  const unproven = [{ graph: 'g_app', path: '/Users/ada/stay', commit }];
+  const asked: { git?: unknown; reaches: unknown[] } = { reaches: [] };
+  const inspect = w.destination.answers['handover.inspect'];
+  w.destination.answers['handover.inspect'] = ((p: { git?: unknown }) => {
+    asked.git = p.git;
+    return { ...(inspect as (x: unknown) => object)(p), ...(o.at === 'inspect' && { unproven }) };
+  }) as never;
+  const claim = w.destination.answers['handover.claim'];
+  w.destination.answers['handover.claim'] = ((p: never) => ({ ...(claim as (x: never) => object)(p), ...(o.at === 'claim' && { unproven }) })) as never;
+  w.source.answers['handover.reaches'] = ((p: { commits: { commonDir: string; commit: string }[] }) => {
+    asked.reaches.push(p);
+    return { unreached: o.reached ? [] : p.commits };
+  }) as never;
+  return { w, asked, commit };
 }
 
 export const phases = (w: World): HandoverPhase[] => w.events.flatMap((e) => (e.event === 'handover.changed' ? [e.data.phase] : []));

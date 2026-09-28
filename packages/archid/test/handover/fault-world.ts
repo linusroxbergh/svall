@@ -27,7 +27,7 @@ import { Store } from '../../src/store.js';
 import type { Outcome } from '../../../cli/src/controller/events.js';
 import { Handover, Refused, type Daemon, type Side } from '../../../cli/src/controller/handover.js';
 import { gatewayOf } from '../../../cli/src/controller/reach.js';
-import { fileStore, type ControllerStore } from '../../../cli/src/controller/recovery.js';
+import { fileStore, forgettable, type ControllerStore } from '../../../cli/src/controller/recovery.js';
 import type { RunRsync } from '../../../cli/src/controller/rsync.js';
 import { transfer as runTransfer, type Master } from '../../../cli/src/controller/transfer.js';
 import { makeHome } from '../helpers.js';
@@ -205,6 +205,17 @@ export type Target = { name: Failpoint; edge: Edge; nth: number };
 export type Heal = 'crashed' | 'all';
 
 /**
+ * What can befall one request of the controller: its answer lost, the request lost, the request delivered twice,
+ * the request held back until its retry has been answered, or its party cut off from the controller until recovery.
+ */
+export type MessageKind = 'lost' | 'dropped' | 'duplicate' | 'stale' | 'partition';
+/** Where a controller runs: its machine, and the folder it keeps its journal in. */
+export type Seat = { local: MachineId; dir: string };
+
+/** A request that went unanswered for a reason of the network's, as against its party's refusal. */
+class Unanswered extends Error {}
+
+/**
  * Both machines, their daemons, the gateway's authority on its socket and a controller, sharing one home path as
  * the two machines of a handover do, with every durable file real. A target crashes the party that reaches it.
  */
@@ -237,6 +248,19 @@ export class World {
   private closing?: Promise<void>;
   gatewayLife: Life = this.life('gateway');
   controllerLife: Life = this.life('controller');
+  /** every request a controller sent, as `<party> <name>`, in the order sent */
+  requests: string[] = [];
+  /** the fault on the request at this index of `requests` */
+  message?: { at: number; kind: MessageKind };
+  /** awaited before a controller's `n`th request goes out, so a test can run another controller there */
+  gate?: (at: { life: Life; n: number; label: string }) => Promise<void>;
+  /** the folder of every controller this world has run */
+  readonly dirs = new Set<string>([this.ctlDir]);
+  /** the parties cut off from every controller until recovery */
+  readonly cut = new Set<string>();
+  private held: { party: string; send: () => Promise<unknown> }[] = [];
+  private sent = new Map<Life, number>();
+  private lives = new WeakMap<Handover, Life>();
 
   constructor() {
     this.mac = new Machine(this, 'mac', MAC, 'source', resolvePaths(path.join(this.base, 'mac')));
@@ -349,7 +373,7 @@ export class World {
   written(file: string, how: string, from?: string): void {
     if (!this.watching) return;
     const rel = path.relative(this.base, file);
-    if (!/^(mac|trift|gw|ctl)\//.test(rel)) return;
+    if (!/^(mac|trift|gw|ctl|ctl-trift)\//.test(rel)) return;
     // a durable write's temp is part of that write, state.json is written on every change but its promotion, and every
     // read of the gateway that finds its record lifts a quarantine
     if (DURABLE_TEMP.test(rel) || /^gw\/.*\.quarantined$/.test(rel)) return;
@@ -487,17 +511,68 @@ export class World {
     this.check(`${m.name} started`);
   }
 
+  /** One request of a controller to `party`, struck by the message fault aimed at it; a request held back goes out after the next one there. */
+  private async request<T>(party: string, name: string, send: () => Promise<T>): Promise<T> {
+    const life = als.getStore();
+    if (life && this.gate) {
+      const n = this.sent.get(life) ?? 0;
+      this.sent.set(life, n + 1);
+      await this.gate({ life, n, label: `${party} ${name}` });
+      alive(life);
+    }
+    const unanswered = (why: string) => new Unanswered(`${party} did not answer ${name}: ${why}`);
+    if (this.cut.has(party)) throw unanswered('connection refused');
+    const k = this.requests.push(`${party} ${name}`) - 1;
+    const kind = this.message?.at === k ? this.message.kind : undefined;
+    if (kind) this.trace.push(`${kind.toUpperCase()} ${party} ${name}`);
+    if (kind === 'dropped') throw unanswered('connection reset');
+    if (kind === 'partition') {
+      this.cut.add(party);
+      throw unanswered('connection refused');
+    }
+    if (kind === 'stale') {
+      this.held.push({ party, send });
+      throw unanswered('no answer in time');
+    }
+    let answer: { ok: true; value: T } | { ok: false; error: unknown };
+    try { answer = { ok: true, value: await send() }; } catch (error) { answer = { ok: false, error }; }
+    await this.release(party);
+    if (kind === 'duplicate') await send().catch(() => undefined);
+    if (kind === 'lost') throw unanswered('the connection dropped before the answer');
+    if (!answer.ok) throw answer.error;
+    return answer.value;
+  }
+
+  /** Delivers what was held back from `party`, or from every party, its answers going nowhere. */
+  private async release(party?: string): Promise<void> {
+    const due = this.held.filter((h) => party === undefined || h.party === party);
+    this.held = this.held.filter((h) => !due.includes(h));
+    for (const h of due) {
+      this.trace.push(`LATE ${h.party}`);
+      await h.send().catch(() => undefined);
+    }
+  }
+
+  /** Every party answers the controller again, and what was held back arrives. */
+  async reconnect(): Promise<void> {
+    this.message = undefined;
+    this.cut.clear();
+    await this.release();
+  }
+
   private daemon(m: Machine, ctl: Life): Daemon {
     const call = async (method: MethodName, params: unknown): Promise<unknown> => {
       alive(ctl);
-      const d = m.current;
-      if (!d || d.life.dead) throw new Error(`${m.name} did not answer ${method}: connection refused`);
-      this.trace.push(`${m.name} ${method}`);
-      const res = await als.run(d.life, () => dispatch({ id: 1, method, params: wire(params) } as never, d.ctx));
-      if (d.life.dead) throw new Error(`${m.name} dropped the connection before it answered ${method}`);
-      this.check(`${m.name} answered ${method}`);
-      if ('error' in res) throw new Refused(res.error.code, res.error.message, res.error.data as Record<string, unknown> | undefined);
-      return wire(res.result);
+      return this.request(m.name, method, async () => {
+        const d = m.current;
+        if (!d || d.life.dead) throw new Error(`${m.name} did not answer ${method}: connection refused`);
+        this.trace.push(`${m.name} ${method}`);
+        const res = await als.run(d.life, () => dispatch({ id: 1, method, params: wire(params) } as never, d.ctx));
+        if (d.life.dead) throw new Error(`${m.name} dropped the connection before it answered ${method}`);
+        this.check(`${m.name} answered ${method}`);
+        if ('error' in res) throw new Refused(res.error.code, res.error.message, res.error.data as Record<string, unknown> | undefined);
+        return wire(res.result);
+      });
     };
     return { call: call as Daemon['call'] };
   }
@@ -518,10 +593,16 @@ export class World {
     }
   }
 
-  /** A new controller process, reading its journal from disk, whose every call dies with it. */
-  controller(): Handover {
+  /** Where a controller on trift keeps its journal. */
+  get triftSeat(): Seat {
+    return { local: TRIFT, dir: path.join(this.base, 'ctl-trift') };
+  }
+
+  /** A new controller process on `seat`, reading its journal from disk, whose every call dies with it. */
+  controller(seat: Seat = { local: MAC, dir: this.ctlDir }): Handover {
     const life = (this.controllerLife = this.life('controller'));
-    const inner = fileStore(this.ctlDir);
+    this.dirs.add(seat.dir);
+    const inner = fileStore(seat.dir);
     const store: ControllerStore = {
       read: (aside) => inner.read(aside),
       write: (j) => { alive(life); inner.write(j); },
@@ -533,24 +614,37 @@ export class World {
     };
     const gateway = gatewayOf(async (op, id, params) => {
       alive(life);
-      this.trace.push(`gateway ${op}`);
-      return this.gatewayOp(op, id, params);
+      return this.request('gateway', op, () => {
+        this.trace.push(`gateway ${op}`);
+        return this.gatewayOp(op, id, params);
+      });
     }, fleetId);
+    // an rsync the link dropped under ends as ssh ends one, with 255
+    const link = async <T>(name: string, send: () => Promise<T>, cut: (why: string) => T): Promise<T> => {
+      alive(life);
+      try {
+        return await this.request('link', name, send);
+      } catch (e) {
+        if (e instanceof Unanswered) return cut(e.message);
+        throw e;
+      }
+    };
     const master: Master = {
-      socket: path.join(this.ctlDir, 'ssh'), check: async () => true,
-      run: async (argv) => { alive(life); return { code: 0, signal: null, stdout: argv[0] === 'rsync' ? 'rsync  version 3.2.7  protocol version 31\n' : '', stderr: '', truncated: false }; },
+      socket: path.join(seat.dir, 'ssh'), check: async () => true,
+      run: (argv) => link(argv.join(' '), async () => ({ code: 0, signal: null, stdout: argv[0] === 'rsync' ? 'rsync  version 3.2.7  protocol version 31\n' : '', stderr: '', truncated: false }),
+        (why) => ({ code: 255, signal: null, stdout: '', stderr: why, truncated: false })),
     };
     const side = async (id: MachineId): Promise<Side> => {
       const m = id === MAC ? this.mac : this.trift;
+      const far = id !== seat.local;
       return {
-        route: { machineId: id, name: m.name, ...(m === this.trift && { ssh: 'trift' }) },
+        route: { machineId: id, name: m.name, ...(far && { ssh: m.name }) },
         daemon: this.daemon(m, life), home: this.home, fleetHome: m.paths.home,
-        ...(m === this.trift && { master: async () => master }),
+        ...(far && { master: async () => master }),
       };
     };
     // both machines share one disk here, so every root already lies where rsync would put it; a session's files go to its stage
-    const rsync: RunRsync = async (_rsync, argv) => {
-      alive(life);
+    const rsync: RunRsync = (_rsync, argv) => link(argv.includes('--dry-run') ? 'rsync --dry-run' : 'rsync', async () => {
       const list = argv.find((a) => a.startsWith('--files-from='))?.slice('--files-from='.length);
       if (list && !argv.includes('--dry-run')) {
         const [from, to] = argv.slice(-2).map((p) => p.replace(/^[^/]*:/, ''));
@@ -560,17 +654,24 @@ export class World {
         }
       }
       return { code: 0, signal: null, stderr: '' };
-    };
-    return new Handover({
-      fleetId, store, gateway, local: MAC, machines: [MAC, TRIFT], side,
-      transfer: (o) => runTransfer({ ...o, deps: { run: rsync } }), rsync: async () => '/usr/bin/rsync', stateDir: this.ctlDir,
+    }, (why) => ({ code: 255, signal: null, stderr: `rsync: connection unexpectedly closed (${why})` }));
+    const c = new Handover({
+      fleetId, store, gateway, local: seat.local, machines: [MAC, TRIFT], side,
+      transfer: (o) => runTransfer({ ...o, deps: { run: rsync } }), rsync: async () => '/usr/bin/rsync', stateDir: seat.dir,
       clock: { now: () => this.now, sleep: async () => {} }, retry: { attempts: 3, firstDelayMs: 1 },
     });
+    this.lives.set(c, life);
+    return c;
   }
 
-  /** Runs a controller call in that controller's own process. */
-  run<T>(work: () => Promise<T>): Promise<T> {
-    return als.run(this.controllerLife, work);
+  /** Runs a controller call in that controller's own process: `c`'s, or the one made last. */
+  run<T>(work: () => Promise<T>, c?: Handover): Promise<T> {
+    return als.run(c ? this.lives.get(c)! : this.controllerLife, work);
+  }
+
+  /** The life of controller `c`, for a gate to tell controllers apart. */
+  lifeOfController(c: Handover): Life {
+    return this.lives.get(c)!;
   }
 
   /** Every party that died starts again from its disk, or with `all`, every party does. */
@@ -588,17 +689,27 @@ export class World {
     }
   }
 
-  /** New controllers, each doing what `archi handover status` says is safe, preferring `prefer`, until nothing is open. */
-  async recover(prefer: 'resume' | 'abort'): Promise<string[]> {
+  /**
+   * New controllers on `seat`, each doing what `archi handover status` says is safe, preferring `prefer`, until
+   * nothing is open; a journal status calls superseded is forgotten, as `--forget` does.
+   */
+  async recover(prefer: 'resume' | 'abort', seat?: Seat): Promise<string[]> {
     const said: string[] = [];
+    await this.reconnect();
     for (let i = 0; i < 6; i++) {
       // whatever died meanwhile starts again, as launchd starts a daemon again
       await this.heal('crashed');
-      const c = this.controller();
-      const { verdict } = await this.run(() => c.status());
+      const c = this.controller(seat);
+      const { observation, verdict } = await this.run(() => c.status());
       said.push(`${verdict.standing}:${verdict.safe.join('+') || '-'}`);
       if (this.moved() && verdict.safe.includes('abort')) this.fail(`status offers an abort after the commit (${verdict.reason})`);
       if (verdict.action === 'none') {
+        if (verdict.standing === 'superseded' && forgettable(observation, verdict).ok) {
+          const id = verdict.transactionId ?? observation.controller?.transactionId;
+          await this.run(async () => fileStore(seat?.dir ?? this.ctlDir).clear(id));
+          said.push('forget');
+          continue;
+        }
         if (verdict.standing !== 'none') this.fail(`nothing is safe: ${verdict.reason}`);
         return said;
       }
@@ -646,7 +757,7 @@ export function settledOn(w: World): 'source' | 'destination' {
   expect([DI_LAUNCH, DI_RESUME]).toContain([...owner.windows.values()].find((x) => x.name === 'c_di')?.job?.join(' | '));
   expect(other.windows.size).toBe(0);
   // the folder that holds each transaction's own may stay, empty
-  expect(entries(w.ctlDir).filter((e) => e !== 'handover')).toEqual([]);
+  for (const dir of w.dirs) expect(entries(dir).filter((e) => e !== 'handover'), dir).toEqual([]);
   expect(entries(w.base).filter((e) => [...w.transactions].some((tx) => e.includes(tx)))).toEqual([]);
   expect(w.errors).toEqual([]);
   return where;

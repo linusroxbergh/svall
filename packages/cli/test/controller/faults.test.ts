@@ -1,0 +1,386 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { armFailpoints } from '@archipelago/archid/handover/failpoints';
+import * as real from '../../../archid/test/handover/fault-world.js';
+import { cleanHomes } from '../../../archid/test/helpers.js';
+import type { Outcome } from '../../src/controller/events.js';
+import type { Handover } from '../../src/controller/handover.js';
+import { World, controller, keptCommit, opIndex, recover, settledOn, trift, type Fault } from './world.js';
+
+afterEach(cleanHomes);
+
+// ---- the Task 27 world: fake daemons and a gateway on the real compare-and-swap, every call of a run struck
+
+const EVERY: Fault['kind'][] = ['death', 'lost', 'dropped', 'partition', 'duplicate', 'stale'];
+
+/** What can strike a call: the store is the controller's own disk, and the transfer its own rsync, which it waits out before it runs another. */
+const kindsOf = (op: string): Fault['kind'][] => (op.startsWith('store:') ? ['death'] : op.startsWith('transfer:') ? EVERY.slice(0, 4) : EVERY);
+
+type Run = () => { w: World; go(): Promise<Outcome> };
+
+/** A move; one the user cancels once the destination has prepared, which aborts it; and a move whose claim asks the source about a kept commit. */
+const RUNS: Record<string, Run> = {
+  move: () => {
+    const w = new World();
+    return { w, go: () => controller(w).start(trift, {}) };
+  },
+  'cancel once prepared': () => {
+    const w = new World();
+    const c = controller(w);
+    const prepare = w.destination.answers['handover.prepare'];
+    w.destination.answers['handover.prepare'] = ((p: never) => { const r = prepare(p); c.cancel(); return r; }) as never;
+    return { w, go: () => c.start(trift, {}) };
+  },
+  'a kept commit': () => {
+    const { w } = keptCommit({ reached: true, at: 'claim' });
+    return { w, go: () => controller(w).start(trift, {}) };
+  },
+};
+
+/** The calls each run makes, and those its cases strike: every one of a move's, and only its own of any other run's. */
+async function probeRuns(): Promise<Record<string, { ops: string[]; at: number[]; committedAt: number }>> {
+  const probe = async (make: Run) => { const { w, go } = make(); await go(); return w; };
+  const move = new Set((await probe(RUNS.move)).ops);
+  const out: Record<string, { ops: string[]; at: number[]; committedAt: number }> = {};
+  for (const [name, make] of Object.entries(RUNS)) {
+    const p = await probe(make);
+    out[name] = { ops: p.ops, at: p.ops.flatMap((op, i) => (name === 'move' || !move.has(op) ? [i] : [])), committedAt: opIndex(p, 'gateway:commit') };
+  }
+  return out;
+}
+const RAN = await probeRuns();
+
+describe('a fault of any kind at any call of a controller run', () => {
+  for (const name of Object.keys(RUNS)) {
+    it(`${name}: settles the fleet on exactly one machine, and after the commit on the destination, whatever strikes where`, async () => {
+      const { ops, at: points, committedAt } = RAN[name];
+      let cases = 0;
+      for (const at of points) {
+        for (const kind of kindsOf(ops[at])) {
+          const { w, go } = RUNS[name]();
+          w.fault = { at, kind };
+          const what = `${kind} at ${ops[at]} (${at})`;
+          const first = await go().catch((e: unknown) => ({ status: 'threw', error: String(e) }));
+          expect((first as { status: string }).status, what).not.toBe('threw');
+          expect(w.ops[at], what).toBe(ops[at]);
+          const committed = w.moved();
+          const outcomes = await recover(w);
+          let where: string;
+          try { where = settledOn(w); } catch (e) { throw new Error(`${what}: ${(e as Error).message}\n${JSON.stringify(first)}\n${JSON.stringify(outcomes)}\n${w.ops.join(' ')}`); }
+          // a commit that took effect is final, whatever the controller saw of it
+          if (committed) expect(where, what).toBe('destination');
+          if (committedAt >= 0 && at > committedAt) expect(committed, what).toBe(true);
+          expect(outcomes.at(-1)!.status, what).not.toBe('interrupted');
+          cases++;
+        }
+      }
+      expect(cases).toBeGreaterThan(name === 'move' ? 120 : 5);
+    });
+
+    it(`${name}: takes the fleet back with an abort from any point before the commit, and refuses one after it`, async () => {
+      const { ops, at: points, committedAt } = RAN[name];
+      for (const at of points) {
+        for (const kind of kindsOf(ops[at])) {
+          const { w, go } = RUNS[name]();
+          const what = `${kind} at ${ops[at]} (${at})`;
+          w.fault = { at, kind };
+          await go();
+          const committed = w.moved();
+          const left = w.store.j !== undefined;
+          const outcomes = await recover(w, 'abort');
+          let where: string;
+          try { where = settledOn(w); } catch (e) { throw new Error(`${what}: ${(e as Error).message}\n${JSON.stringify(outcomes)}\n${w.ops.join(' ')}`); }
+          expect(where, what).toBe(committed ? 'destination' : 'source');
+          if (committedAt >= 0 && at > committedAt) expect(committed, what).toBe(true);
+          // an abort asked of a fleet that moved, with anything of it still open, is refused, and only a resume goes on
+          if (committed && left) expect(outcomes[0], what).toMatchObject({ status: 'interrupted', safe: ['resume'] });
+        }
+      }
+    });
+  }
+});
+
+// ---- the real daemons behind their guard and the real gateway on its socket, every request of a run struck
+
+type Script = {
+  /** what happens before the run whose requests are struck */
+  before?: (w: real.World) => Promise<void>;
+  go: (w: real.World) => Promise<Outcome>;
+  /** the label of the first request the cases leave alone, as a later script's */
+  until?: string;
+};
+
+/** A first run a controller crash interrupts, once the source froze or once the gateway committed. */
+const crashed = (at: 'controller.manifest' | 'controller.commit') => async (w: real.World): Promise<void> => {
+  w.targets = [{ name: at, edge: 'after', nth: 1 }];
+  await real.play(w, 'move');
+};
+const resume = (w: real.World): Promise<Outcome> => { const c = w.controller(); return w.run(() => c.resume()); };
+const abort = (w: real.World): Promise<Outcome> => { const c = w.controller(); return w.run(() => c.abort()); };
+
+const SCRIPTS: Record<string, Script> = {
+  move: { go: (w) => real.play(w, 'move') },
+  'cancel once prepared': { go: (w) => real.play(w, 'abort') },
+  'cancel during the transfer': { go: (w) => real.play(w, 'cancel') },
+  // the rest of this resume is the move's again
+  'resume once frozen': { before: crashed('controller.manifest'), go: resume, until: 'trift handover.claim' },
+  'abort once frozen': { before: crashed('controller.manifest'), go: abort },
+  'resume once committed': { before: crashed('controller.commit'), go: resume },
+};
+
+/** Each script's requests, run once at collection: a request a script shares with the move before they part is the move's to strike. */
+async function probeScripts(): Promise<Record<string, { labels: string[]; at: number[] }>> {
+  const out: Record<string, { labels: string[]; at: number[] }> = {};
+  for (const [name, s] of Object.entries(SCRIPTS)) {
+    const w = await real.World.create();
+    const disarm = armFailpoints((n, edge) => w.hit(n, edge));
+    try {
+      await s.before?.(w);
+      const from = w.requests.length;
+      await s.go(w);
+      const labels = w.requests.slice(from);
+      const move = out.move?.labels;
+      const parted = s.before || !move ? 0 : labels.findIndex((l, i) => l !== move[i]);
+      const end = s.until ? labels.indexOf(s.until) : labels.length;
+      out[name] = { labels, at: labels.flatMap((_, i) => (i >= (parted < 0 ? labels.length : parted) && i < end ? [i] : [])) };
+    } finally {
+      disarm();
+      await w.stop();
+    }
+  }
+  return out;
+}
+const PROBED = await probeScripts();
+
+/** The link carries rsync, which the controller waits out before it runs another, so no copy of one arrives twice or late. */
+const messagesOf = (label: string): real.MessageKind[] =>
+  (label.startsWith('link ') ? ['lost', 'dropped', 'partition'] : ['lost', 'dropped', 'duplicate', 'stale', 'partition']);
+
+describe('a message fault at every request of the controller', () => {
+  const world = real.worlds();
+
+  for (const [name, s] of Object.entries(SCRIPTS)) {
+    const { labels, at } = PROBED[name];
+    for (const i of at) {
+      for (const kind of messagesOf(labels[i])) {
+        for (const prefer of ['resume', 'abort'] as const) {
+          it(`${name}: ${kind} at ${labels[i]} (#${i}), then ${prefer}`, async () => {
+            const w = world();
+            await s.before?.(w);
+            const k = w.requests.length + i;
+            w.message = { at: k, kind };
+            const first = await s.go(w);
+            const said = await w.recover(prefer);
+            const why = () => `${JSON.stringify(first)}\n${said.join(' ')}\n${w.violations.join('\n')}\n${w.trace.join(' | ')}`;
+            expect(w.requests[k], why()).toBe(labels[i]);
+            expect(w.violations, why()).toEqual([]);
+            let where: string;
+            try { where = real.settledOn(w); } catch (e) { throw new Error(`${(e as Error).message}\n${why()}`); }
+            if (w.everMoved) expect(where, why()).toBe('destination');
+          });
+        }
+      }
+    }
+  }
+});
+
+// ---- an unknown Commit: the controller asks the gateway, and never gives the source its fleet back while it cannot say
+
+describe('an unknown Commit', () => {
+  const world = real.worlds();
+  const COMMIT = PROBED.move.labels.indexOf('gateway commit');
+
+  /** A move whose Commit meets `kind`; with `away`, the gateway is out of the controller's reach from the request after it until recovery. */
+  async function unknown(w: real.World, kind: 'lost' | 'dropped', away: boolean): Promise<Outcome> {
+    w.message = { at: COMMIT, kind };
+    if (away) w.gate = async () => { if (w.requests.length > COMMIT) w.cut.add('gateway'); };
+    try {
+      return await real.play(w, 'move');
+    } finally {
+      w.gate = undefined;
+    }
+  }
+  const sent = (w: real.World, label: string): number => w.requests.filter((r) => r === label).length;
+
+  it('asks the gateway once the answer is lost after it committed, and goes on to the destination without sending the Commit again', async () => {
+    const w = world();
+    expect(await unknown(w, 'lost', false)).toMatchObject({ status: 'complete' });
+    expect(w.requests[COMMIT + 1]).toBe('gateway get');
+    expect(sent(w, 'gateway commit')).toBe(1);
+    expect(sent(w, 'mac handover.abort')).toBe(0);
+    expect(w.violations).toEqual([]);
+    expect(real.settledOn(w)).toBe('destination');
+  });
+
+  it('asks the gateway once the Commit never reached it, and sends it again while the gateway holds it ready', async () => {
+    const w = world();
+    expect(await unknown(w, 'dropped', false)).toMatchObject({ status: 'complete' });
+    expect(w.requests.slice(COMMIT, COMMIT + 3)).toEqual(['gateway commit', 'gateway get', 'gateway commit']);
+    expect(sent(w, 'mac handover.abort')).toBe(0);
+    expect(w.violations).toEqual([]);
+    expect(real.settledOn(w)).toBe('destination');
+  });
+
+  for (const kind of ['lost', 'dropped'] as const) {
+    for (const prefer of ['resume', 'abort'] as const) {
+      it(`${kind === 'lost' ? 'after' : 'before'} the gateway committed, with the gateway then out of reach, stops with nothing safe, fences the source, and ${prefer} settles it once the gateway answers`, async () => {
+        const w = world();
+        expect(await unknown(w, kind, true)).toMatchObject({ status: 'interrupted', phase: 'commit', safe: [] });
+        expect(w.moved()).toBe(kind === 'lost');
+        expect(w.mac.can()).toBe(false);
+        expect(w.trift.can()).toBe(false);
+        // nothing a controller asks while the gateway cannot say moves the fleet anywhere
+        const owners = () => [w.mac, w.trift].map((m) => m.current!.ownership.record());
+        const before = owners();
+        for (const act of [abort, resume]) {
+          const again = await act(w);
+          expect(again).toMatchObject({ status: 'interrupted', safe: [] });
+        }
+        expect(owners()).toEqual(before);
+        expect(sent(w, 'mac handover.abort')).toBe(0);
+        const said = await w.recover(prefer);
+        expect(w.violations, said.join(' ')).toEqual([]);
+        expect(real.settledOn(w)).toBe(kind === 'lost' || prefer === 'resume' ? 'destination' : 'source');
+        if (kind === 'lost') expect(sent(w, 'mac handover.abort')).toBe(0);
+      });
+    }
+  }
+});
+
+// ---- two controllers
+
+type Act = 'start' | 'resume' | 'abort';
+type Party = { c: Handover; go: () => Promise<Outcome> };
+
+/** One controller's run, on this machine or on trift. */
+function party(w: real.World, on: 'mac' | 'trift', act: Act): Party {
+  const c = w.controller(on === 'mac' ? undefined : w.triftSeat);
+  const go = act === 'start' ? () => c.start(real.TRIFT, real.choices(w)) : act === 'resume' ? () => c.resume() : () => c.abort();
+  return { c, go: () => w.run(go, c) };
+}
+
+type Race = { before?: (w: real.World) => Promise<void>; outer: [on: 'mac' | 'trift', act: Act]; inner: [on: 'mac' | 'trift', act: Act] };
+
+/** Two controllers on different machines: each pair meets at every request of the first, the second run whole there. */
+const RACES: Record<string, Race> = {
+  'a start here and a start on trift': { outer: ['mac', 'start'], inner: ['trift', 'start'] },
+  'a start on trift and a start here': { outer: ['trift', 'start'], inner: ['mac', 'start'] },
+  'a start here and an abort on trift': { outer: ['mac', 'start'], inner: ['trift', 'abort'] },
+  'a start here and a resume on trift': { outer: ['mac', 'start'], inner: ['trift', 'resume'] },
+  'a resume here and an abort on trift, once frozen': { before: crashed('controller.manifest'), outer: ['mac', 'resume'], inner: ['trift', 'abort'] },
+  'an abort here and a resume on trift, once frozen': { before: crashed('controller.manifest'), outer: ['mac', 'abort'], inner: ['trift', 'resume'] },
+  'a resume here and a resume on trift, once frozen': { before: crashed('controller.manifest'), outer: ['mac', 'resume'], inner: ['trift', 'resume'] },
+  'an abort here and an abort on trift, once frozen': { before: crashed('controller.manifest'), outer: ['mac', 'abort'], inner: ['trift', 'abort'] },
+};
+
+/** The requests of each race's first controller, run alone at collection. */
+async function probeRaces(): Promise<Record<string, string[]>> {
+  const out: Record<string, string[]> = {};
+  for (const [name, r] of Object.entries(RACES)) {
+    const w = await real.World.create();
+    const disarm = armFailpoints((n, edge) => w.hit(n, edge));
+    try {
+      await r.before?.(w);
+      const from = w.requests.length;
+      await party(w, ...r.outer).go();
+      out[name] = w.requests.slice(from);
+    } finally {
+      disarm();
+      await w.stop();
+    }
+  }
+  return out;
+}
+const RACED = await probeRaces();
+
+/** Runs `inner` whole while `outer` waits before its `at`th request, or both at once without `at`. */
+async function race(w: real.World, outer: Party, inner: Party, at?: number): Promise<Outcome[]> {
+  if (at === undefined) return Promise.all([outer.go(), inner.go()]);
+  const held = w.lifeOfController(outer.c);
+  let ran: Promise<Outcome> | undefined;
+  w.gate = async ({ life, n }) => {
+    if (life !== held || n !== at || ran) return;
+    ran = inner.go();
+    await ran.catch(() => undefined);
+  };
+  try {
+    const first = await outer.go();
+    expect(ran, 'the first controller never reached that request').toBeDefined();
+    return [first, await ran!];
+  } finally {
+    w.gate = undefined;
+  }
+}
+
+/** Both machines' controllers, each doing what status leaves safe, then where the fleet came to rest. */
+async function settleBoth(w: real.World, outcomes: Outcome[]): Promise<'source' | 'destination'> {
+  const said = [...await w.recover('resume'), '|', ...await w.recover('resume', w.triftSeat)];
+  const why = `${JSON.stringify(outcomes)}\n${said.join(' ')}\n${w.violations.join('\n')}\n${w.trace.join(' | ')}`;
+  expect(w.violations, why).toEqual([]);
+  // at most one handover ever opened, and one the gateway committed was aborted by no one
+  expect(w.transactions.size, why).toBeLessThanOrEqual(1);
+  if (w.everMoved) expect(outcomes.map((o) => o.status), why).not.toContain('aborted');
+  let where: 'source' | 'destination';
+  try { where = real.settledOn(w); } catch (e) { throw new Error(`${(e as Error).message}\n${why}`); }
+  if (w.everMoved) expect(where, why).toBe('destination');
+  return where;
+}
+
+describe('two controllers on different machines', () => {
+  const world = real.worlds();
+
+  for (const [name, r] of Object.entries(RACES)) {
+    it(`${name}, both at once`, async () => {
+      const w = world();
+      await r.before?.(w);
+      const outcomes = await race(w, party(w, ...r.outer), party(w, ...r.inner));
+      await settleBoth(w, outcomes);
+    });
+
+    RACED[name].forEach((label, at) => {
+      if (label.startsWith('link ')) return;
+      it(`${name}, the second whole before the first's ${label} (#${at})`, async () => {
+        const w = world();
+        await r.before?.(w);
+        const outcomes = await race(w, party(w, ...r.outer), party(w, ...r.inner), at);
+        await settleBoth(w, outcomes);
+      });
+    });
+  }
+
+  it('two starts whose Begins reach the gateway together open one handover, and the fleet settles once', async () => {
+    const w = world();
+    let arrived = 0;
+    let both!: () => void;
+    const met = new Promise<void>((r) => { both = r; });
+    w.gate = async ({ label }) => {
+      if (label !== 'gateway begin' || arrived >= 2) return;
+      if (++arrived === 2) both();
+      await met;
+    };
+    const outcomes = await race(w, party(w, 'mac', 'start'), party(w, 'trift', 'start'));
+    w.gate = undefined;
+    expect(arrived).toBe(2);
+    await settleBoth(w, outcomes);
+  });
+});
+
+// ---- what keeps a new request of the controller from going unstruck
+
+describe('the requests the controller sends', () => {
+  /** Each daemon method the controller calls and each gateway operation it asks, read from its source. */
+  const sendable = (): string[] => {
+    const src = fs.readFileSync(path.join(import.meta.dirname, '../../src/controller/handover.ts'), 'utf8');
+    return [...new Set([...[...src.matchAll(/daemon\.call\('([\w.]+)'/g)].map((m) => m[1]), ...[...src.matchAll(/gateway\.(\w+)\(/g)].map((m) => `gateway ${m[1]}`)])].sort();
+  };
+
+  it('are each struck in one world or the other, and rsync over the link in the real one', () => {
+    const simulated = Object.values(RAN).flatMap((r) => r.at.map((i) => r.ops[i].replace(/^(mac|trift):/, '').replace(/^gateway:/, 'gateway ')));
+    const realOnes = Object.values(PROBED).flatMap((p) => p.at.map((i) => p.labels[i].replace(/^(mac|trift) /, '')));
+    const struckKinds = new Set([...simulated, ...realOnes]);
+    expect(sendable().length).toBeGreaterThan(15);
+    expect(sendable().filter((k) => !struckKinds.has(k))).toEqual([]);
+    expect(realOnes).toEqual(expect.arrayContaining(['link rsync', 'link rsync --dry-run', 'link rsync --version']));
+  });
+});
