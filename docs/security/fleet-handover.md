@@ -255,6 +255,104 @@ has a new id and never meets them.
 
   Until the probe passes, the release is untested with handover, not refused.
 
+## Performance and limits
+
+### Measured
+
+`scripts/bench/handover.sh` runs the benchmark on the integration run's two containers (see `docs/integration.md`),
+over real sshd and rsync, with the controller on `archi-local`. Each repository gets its own shell character, then
+four handovers: a first one to the machine that has never held it, two incremental ones each after ten changed files
+and one new one, and one after the character is closed that carries only the integration fixture. Every handover
+also carries that fixture: 86 files, 17 MB.
+
+The machines: colima on an M-series Mac, 2 vCPUs and 2 GiB of memory shared by both containers, arm64, the docker
+network as the link. All the runs below were on AC power at 100% charge with no thermal warning.
+
+| Repository | Carried | First | Incremental | Controller peak | Daemon growth | Manifest | Prepare | Replica record |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| small: 200 tracked files | 316 files, 17 MB | 2.9 s | 2.3–3.0 s | 88–96 MiB | up to 29 MiB | 61 kB | 0.1 MB | 40 kB |
+| large-file: 200 tracked files and 1 GiB of ignored data in 4 files | 320 files, 1.09 GB | 9.5–14.7 s | 9.3–11.3 s | 139–154 MiB | up to 39 MiB | 61 kB | 0.1 MB | 40 kB |
+| many-file: 50,000 tracked files, packed | 50,116 files, 83 MB | 30–57 s | 40–180 s | 292–350 MiB | 236–279 MiB first, 57–120 MiB incremental | 8.7 MB | 17.4 MB in 5 parts | 8.7 MB |
+
+- **Where the time goes** for 50,000 files, in the quietest run: first, 30.4 s (preflight 3.8 s, freeze 5.4 s,
+  claim, copy and verify 10.6 s, prepare 9.0 s); incremental, 41.8 s (8.9, 8.0, 13.7 and 9.1 s). The slow runs lost
+  their time to IO: the 2 GiB machine cannot keep both copies in its page cache beside the daemons, and a run that
+  waited 17 s on IO took 132 s. The benchmark records those seconds (`IO stall s`) and the Mac's load with each run.
+- **What grows with the number of files:** the manifest (174 bytes a file here), the replica records (one file list
+  each, two while a root is receiving), the memory of the daemons and the controller, and the time. The event stream
+  and rsync's memory do not: every handover wrote 34 to 44 events, 6 to 8 kB, no line over 836 bytes, and no rsync
+  went past 7 MiB.
+- **Each side reads every carried file several times.** The source hashes it at preflight and at freeze, and again in
+  the controller's verify when the controller runs there. The destination hashes a replica at preflight, again at the
+  claim, then what landed at prepare, and the roots once more after the Git import for the seal. rsync's checksum
+  compare reads both sides. Each proof guards a different moment (before any write, before `--delete`, after the copy,
+  after the import), so none is reused: a replica can change between preflight and the claim. Files are hashed eight
+  at a time, which made a 50,000-file scan 3 to 6 times faster than one at a time on the Mac (35–53 s against
+  9–13 s with its disk busy). An incremental 50,000-file handover took 92.9 s hashing one file at a time, and 40–51 s
+  in half of the eight runs since; the other half waited on IO.
+
+### Bounds
+
+| What | Bound | Test |
+| --- | --- | --- |
+| Progress events | One per entry per new state, and its counts at most once a second, whatever rsync itemizes | `cli/test/controller/transfer.test.ts` "tells a watcher of a 50,000-file copy as often as of a one-file copy…" |
+| Blocker and warning text | Each names a few paths and counts the rest | `handover.test.ts` "names a few of a root's names that differ only by case…"; `divergence.ts` and `listed` in `manifest.ts` preview 5 to 10 |
+| The manifest | 128 MiB (`manifest_too_large`, at preflight and freeze); under 256 bytes a file, so over 500,000 files | `source.test.ts`; `manifest.test.ts` "names a file with a long path in under 256 bytes…" |
+| A request to a daemon | 8 MiB a WebSocket frame; a larger one goes in 4 MiB parts, 256 MiB in all | `cli/test/client.test.ts`, `archid/test/api.test.ts` |
+| An answer to the controller | 256 MiB a frame; the freeze answer, which carries the manifest whole, is the largest (8.7 MB at 50,000 files) | `client.test.ts` "reads an answer as large as a request may be…" |
+| Hashing | Eight files at once, each streamed a chunk at a time; a Git index is read whole, one at a time, up to 256 MiB | `manifest.test.ts` "hashes several files at once, never more than eight…", "reads a session file a chunk at a time…" |
+| Where carried links lead | One lookup per link in its root's paths | `handover.test.ts` "reads a root's file list a few times over to judge its links…" |
+| A terminal viewer on the daemon's socket | No more output once 1 MB waits unsent on its socket, then the screen afresh once it drains | `archid/test/terminals.test.ts` "sends a viewer no more output once a megabyte waits unsent…", "resumes a paused pane for the viewers that keep up…" |
+
+Other caps: a notification's POST body 64 KiB, a gateway line and a helper control line 1 MiB, a far command's output
+1 MiB, a far release listing 16 MiB.
+
+### Terminal output faster than the link
+
+- **The app's terminals** attach with `ssh -tt … tmux attach`, so a link slower than the terminal backs up into tmux,
+  which stops drawing to a client that falls behind and redraws it once it catches up. Nothing grows in the daemon,
+  and tmux stayed at 8 MiB while a client read nothing for 21 s of a pane printing without end.
+- **A viewer on the daemon's socket**, such as the phone page, stops getting output once 1 MB waits unsent, and gets
+  the screen afresh once it drains. In the benchmark (`--flood`), a terminal printed about 24 MB a second to a viewer
+  that read nothing for 20 s, and the daemon grew by 1 MiB. Without the bound the daemon queued every byte printed,
+  base64-encoded, until the socket closed.
+- **tmux** pauses a pane whose output the daemon's own control client lags 3 s behind (`pause-after=3`). The daemon
+  resumes it once every viewer that keeps up has drained; one that fell behind holds nothing up.
+
+### Limits
+
+- **Memory is the practical ceiling, not the manifest cap.** A daemon grew by about 5 KB a file at its peak on a first
+  copy: the manifest and what landed, their JSON and the scans. Near the 128 MiB cap that is several GB.
+- **More than ten terminals on one remote machine** go past sshd's default `MaxSessions 10` on the shared master.
+  Each one past the tenth prints one "Session open refused by peer" line and opens its own login, and while the master
+  is full the helper's 30-second check does too. Measured between the containers: a command on the master 3–4 ms, a
+  login 161–178 ms. A master per ten surfaces would need the app to choose a socket for each surface; one login per
+  extra terminal does not justify that before the release.
+- **Folders are not listed in the manifest.** rsync carries them, empty ones and their modes included (`-rlpt`), and
+  its checksum compare itemizes a folder's mode as it does a file's, so a copy that differs there does not verify
+  (`transfer.test.ts` "carries empty folders and each folder's mode…"). A folder made or re-moded on the destination
+  while it did not own the fleet is not a divergence: `--delete` removes an empty one and the copy resets a mode.
+  Neither holds work.
+
+### Run it again
+
+```sh
+colima start                                           # if Docker is not already running
+scripts/bench/handover.sh --out /tmp/handover-bench --flood
+```
+
+| Option | What it does |
+| --- | --- |
+| `--repos small,large,many` | Which repositories to measure, in that order; `none` for only the flood. |
+| `--files <n>`, `--large-mib <n>` | The many-file repository's files (50,000) and the large-file repository's data (1024 MiB). |
+| `--flood` | Also measure a terminal printing to a viewer that reads nothing. |
+| `--archive <file>` | Use this companion archive instead of building one from the checkout. |
+| `--keep`, `--reuse` | Leave the containers running; measure on containers a `--keep` run left. |
+
+The folder holds `bench.md` (the table), `bench.json` (every measure of every handover), each handover's NDJSON,
+`flood.json`, `host.json` and the integration run's logs under `setup/`. It uses the integration run's container names,
+so the two cannot run at once. A run takes about seven minutes.
+
 ## Accepted risks
 
 - **A root swapped for a symlink during the transfer.**
