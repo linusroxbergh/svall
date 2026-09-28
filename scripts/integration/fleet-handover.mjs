@@ -8,11 +8,11 @@
 // fleet on local, hands it local -> remote -> local, then kills the controller or drops the ssh link at each boundary
 // in both directions and takes the action `archi handover status` offers. Every check that fails is printed; the run
 // exits 1 on the first step that has one.
-import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { brief, flags, harness, last, lines, same } from './harness.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const L = 'archi-local';
@@ -25,37 +25,12 @@ const USER_ENV = ['HOME=/home/archi', 'USER=archi', 'LOGNAME=archi', 'XDG_RUNTIM
 // pre-commit boundaries abort back to the source; post-commit ones resume onto the destination
 const POST = new Set(['commit', 'activate']);
 
-function flags(argv) {
-  const o = {};
-  for (let i = 0; i < argv.length; i++) {
-    if (!argv[i].startsWith('--')) throw new Error(`bad argument ${argv[i]}`);
-    const k = argv[i].slice(2);
-    o[k] = argv[i + 1] === undefined || argv[i + 1].startsWith('--') ? true : argv[++i];
-  }
-  return o;
-}
-
 const o = flags(process.argv.slice(2));
 if (!o.archive || !fs.existsSync(o.archive)) throw new Error('--archive <companion.tar.gz> is required');
 const archive = path.resolve(o.archive);
 const image = o.image ?? 'archi-it:latest';
 const out = o.out ? path.resolve(o.out) : fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-handover-'));
-fs.mkdirSync(out, { recursive: true });
-// written synchronously: spawnSync holds the event loop, so a stream would flush only when the run ends
-const RUN_LOG = path.join(out, 'run.log');
-fs.writeFileSync(RUN_LOG, '');
-const runLog = { write: (text) => fs.appendFileSync(RUN_LOG, text) };
-
-const t0 = Date.now();
-const stamp = () => `${((Date.now() - t0) / 1000).toFixed(1).padStart(6)}s`;
-const say = (line) => { process.stdout.write(`${stamp()} ${line}\n`); runLog.write(`${stamp()} ${line}\n`); };
-
-function docker(args, opts = {}) {
-  const r = spawnSync('docker', args, { encoding: 'utf8', maxBuffer: 512 * 1024 * 1024, ...opts });
-  runLog.write(`$ docker ${args.map((a) => (a.length > 200 ? `${a.slice(0, 200)}…` : a)).join(' ')}\n${r.stdout ?? ''}${r.stderr ?? ''}[exit ${r.status}]\n`);
-  if (r.error) throw r.error;
-  return { code: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
-}
+const { say, docker, check, step, booted } = harness(out);
 
 /** A login shell on a machine, as archi unless `root`; throws on a nonzero exit unless `ok: false`. */
 function sh(machine, script, opts = {}) {
@@ -63,31 +38,6 @@ function sh(machine, script, opts = {}) {
   const r = docker(['exec', '-i', ...who, machine, 'bash', '-lc', script], { input: opts.input ?? '' });
   if (opts.ok !== false && r.code !== 0) throw new Error(`${machine}: ${script.slice(0, 120)} exited ${r.code}: ${r.stderr.trim().slice(-800)}`);
   return r;
-}
-
-const lines = (text) => text.split('\n').filter((l) => l.trim().startsWith('{')).map((l) => JSON.parse(l));
-const last = (text) => lines(text).at(-1);
-
-// ---------------------------------------------------------------------------------------------- checks
-
-let failures = [];
-function check(label, ok, detail) {
-  if (!ok) failures.push(`${label}: ${typeof detail === 'function' ? detail() : detail}`);
-  return ok;
-}
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-const brief = (v) => JSON.stringify(v)?.slice(0, 600);
-
-function step(name, fn) {
-  say(`== ${name}`);
-  failures = [];
-  const value = fn();
-  if (failures.length) {
-    for (const f of failures) say(`   FAIL ${f}`);
-    throw new Error(`${name}: ${failures.length} check(s) failed`);
-  }
-  say('   PASS');
-  return value;
 }
 
 // ---------------------------------------------------------------------------------------------- machines
@@ -102,12 +52,7 @@ function up() {
     if (r.code !== 0) throw new Error(`${m} did not start: ${r.stderr}`);
   }
   for (const m of [L, R]) {
-    for (let i = 0; ; i++) {
-      const state = docker(['exec', m, 'systemctl', 'is-system-running']).stdout.trim();
-      if (state === 'running') break;
-      if (i > 120) throw new Error(`${m}: systemd is ${state}, not running: ${docker(['exec', m, 'systemctl', '--failed', '--no-legend']).stdout}`);
-      spawnSync('sleep', ['0.5']);
-    }
+    booted(m);
     sh(m, 'mkdir -p /opt/it', { root: true });
     for (const f of [archive, path.join(HERE, 'claude.mjs'), path.join(HERE, 'machine.mjs')]) {
       if (docker(['cp', f, `${m}:/opt/it/`]).code !== 0) throw new Error(`docker cp ${f} to ${m} failed`);
