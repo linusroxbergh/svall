@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -538,7 +538,7 @@ describe('host upgrade', () => {
    * script that answers as that release. Its setup installs an archive and keeps it only while the new release's daemon
    * comes up (no `down-<release>` file beside the releases) and speaks the protocol this archi's client does.
    */
-  async function farMachine(o: { releases: [string, number][]; accepts?: (release: string) => boolean }) {
+  async function farMachine(o: { releases: [string, number][]; accepts?: (release: string) => boolean; pins?: string }) {
     const home = path.join(work, 'far');
     const base = `${home}/.local/share/archipelago`;
     const now = () => path.basename(fs.readlinkSync(`${base}/current`));
@@ -566,12 +566,16 @@ esac
     for (const [version, protocol] of o.releases) {
       fs.mkdirSync(`${base}/releases/${version}/bin`, { recursive: true });
       fs.writeFileSync(`${base}/releases/${version}/bin/archi`, archi(version, protocol), { mode: 0o755 });
+      if (o.pins) {
+        fs.mkdirSync(`${base}/releases/${version}/release`);
+        fs.copyFileSync(o.pins, `${base}/releases/${version}/release/allowed_signers`);
+      }
     }
     fs.symlinkSync(`${base}/releases/${o.releases.at(-1)![0]}`, `${base}/current`);
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, archiBase: base, gateway: false }, REMOTE);
     ssh.execute({ rsync: '/usr/bin/rsync' });
-    return { base, now, registry, close: d.close, archive: companionArchive(work, { signedBy: signer.key, archi: archi('1.2.3', PROTOCOL_VERSION) }) };
+    return { base, now, registry, close: d.close, archi, archive: companionArchive(work, { signedBy: signer.key, archi: archi('1.2.3', PROTOCOL_VERSION) }) };
   }
 
   it('installs a release that speaks a newer protocol with its own setup, and keeps it', async () => {
@@ -583,6 +587,65 @@ esac
     const setup = ssh.remoteCalls().find((w) => w.includes('setup'))!;
     expect(setup[0]).toBe(`${work}/far/.cache/archipelago/staging-1.2.3/releases/1.2.3/bin/archi`);
     expect(ssh.remoteCalls().some((w) => w.includes('--rollback'))).toBe(false);
+  });
+
+  it('checks the new release against the signers the installed release pins, with the far machine\'s own tools', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], pins: signer.signers });
+    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(out).toEqual({ result: 'ready', actions: [] });
+    expect(step('install').at(-1)?.detail).toContain(`signed by a key ${far.base}/current/release/allowed_signers pins`);
+    const verify = ssh.remoteCalls().findIndex((w) => w.includes('archi-verify'));
+    const setup = ssh.remoteCalls().findIndex((w) => w.includes('setup'));
+    expect(verify).toBeGreaterThan(-1);
+    expect(verify).toBeLessThan(setup);
+  });
+
+  it('refuses a release the installed release\'s signers do not vouch for, before anything it carries runs', async () => {
+    // a controller that trusts another key, as one whose own signers were replaced would
+    const intruder = ephemeralSigner(work);
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], pins: signer.signers });
+    const ran = path.join(work, 'staged-archi-ran');
+    const archive = companionArchive(work, { signedBy: intruder.key, signersInside: intruder.signers, archi: `#!/bin/sh\ntouch '${ran}'\n` });
+    const out = await upgradeHost('trift', { release: archive }, deps({ registry: far.registry, verify: intruder.verify }));
+    await far.close();
+    expect(out.result).toBe('actions');
+    expect(step('install').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(`not signed by a key ${far.base}/current/release/allowed_signers pins`) });
+    expect(fs.existsSync(ran)).toBe(false);
+    expect(ssh.remoteCalls().some((w) => w.includes('setup'))).toBe(false);
+    expect(far.now()).toBe('1.2.2');
+  });
+
+  it('says when the installed release pins no signer, so only this controller\'s signers vouched for the new one', async () => {
+    const unpinned = path.join(work, 'no-signers');
+    fs.writeFileSync(unpinned, '# no release key is committed yet\n');
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], pins: unpinned });
+    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(out.result).toBe('ready');
+    expect(step('install').at(-1)?.detail).toContain('the installed release pins no signer, so only this controller\'s signers vouched for it');
+  });
+
+  it('checks an unsigned release with --allow-unsigned by its digests alone, and refuses one whose files do not match them', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], pins: signer.signers });
+    const archive = companionArchive(work, { archi: far.archi('1.2.3', PROTOCOL_VERSION) });
+    const out = await upgradeHost('trift', { release: archive, allowUnsigned: true }, deps({ registry: far.registry }));
+    expect(out.result).toBe('ready');
+    expect(step('install').at(-1)?.detail).toContain('unsigned, checked by its digests alone');
+
+    // the same archive with a file changed after its manifest was written
+    const tree = fs.mkdtempSync(path.join(work, 'tampered-'));
+    execFileSync('tar', ['-xzf', archive, '-C', tree]);
+    fs.appendFileSync(path.join(tree, 'releases', '1.2.3', 'bin', 'archi'), '# changed\n');
+    const tampered = path.join(work, 'tampered.tar.gz');
+    execFileSync('tar', ['-czf', tampered, '-C', tree, 'releases']);
+    const { bootstrapSetup } = await import('../src/controller/install.js');
+    const master = await SshMaster.open({ destination: 'trift.test', socketDir: ssh.socketDir });
+    await expect(bootstrapSetup(master, {
+      staging: `${work}/far/.cache/archipelago/staging-x`, archive: tampered, version: '1.2.3', allowUnsigned: true, installed: far.base,
+    })).rejects.toThrow(/SHA256SUMS/);
+    await master.close();
+    await far.close();
   });
 
   it('puts a new release that does not answer back on the release the machine ran before, and says which it runs', async () => {
@@ -614,6 +677,7 @@ esac
     ssh.reply(['tar'], {});
     ssh.reply(['rm'], {});
     ssh.reply(['readlink'], { stdout: `${BASE}/releases/1.2.2\n` });
+    ssh.reply(['archi-verify'], { stdout: 'pinned\n' });
     ssh.reply(['setup', '--release'], { stdout: 'release 1.2.3 installed\n' });
     ssh.reply(['doctor', '--json'], { stdout: doctorJson({ status: 'warn', detail: 'off' }).replace('"tmux 3.4"}', '"tmux 3.4"},{"name":"hooks","status":"fail","detail":"not installed"}'), code: 1 });
     const d = await daemon();
@@ -631,6 +695,7 @@ esac
     ssh.reply(['tar'], {});
     ssh.reply(['rm'], {});
     ssh.reply(['readlink'], { stdout: `${BASE}/releases/1.2.2\n` });
+    ssh.reply(['archi-verify'], { stdout: 'pinned\n' });
     ssh.reply(['setup', '--release'], { stdout: 'release 1.2.3 installed\n' });
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
     const d = await daemon();

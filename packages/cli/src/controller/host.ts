@@ -468,7 +468,7 @@ export function upgradeHost(name: string, o: { release?: string; allowUnsigned?:
         const was = await currentRelease(master, entry.record.archiBase);
         const out = await bootstrapSetup(master, {
           staging: remote.staging, archive: remote.archive, version: companion.version,
-          allowUnsigned: !companion.signed && companion.allowUnsigned,
+          allowUnsigned: !companion.signed && companion.allowUnsigned, installed: entry.record.archiBase,
         });
         return { value: was, detail: out.trim().split('\n').at(-1) ?? `release ${companion.version} installed` };
       });

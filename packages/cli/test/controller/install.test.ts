@@ -186,6 +186,19 @@ describe('putting the archive on the far machine', () => {
     ]);
   });
 
+  it('on an upgrade, hands the far check the staged release and the installed signers as words of their own', async () => {
+    for (const m of ['setup', 'tar', 'mkdir', 'rm']) ssh.reply([m], {});
+    ssh.reply(['archi-verify'], { stdout: 'pinned\n' });
+    const out = await bootstrapSetup(await master(), {
+      staging: "/home/li nus/it's", archive: '/c.tar.gz', version: '1.2.3', allowUnsigned: false, installed: "/home/li nus/.local/share/archipelago",
+    });
+    const words = ssh.remoteCalls();
+    expect(words[2].slice(0, 2)).toEqual(['sh', '-c']);
+    expect(words[2].slice(3)).toEqual(['archi-verify', "/home/li nus/it's/releases/1.2.3", "/home/li nus/.local/share/archipelago/current/release/allowed_signers"]);
+    expect(words[3][1]).toBe('setup');
+    expect(out).toContain('signed by a key /home/li nus/.local/share/archipelago/current/release/allowed_signers pins');
+  });
+
   it('passes --allow-unsigned on only when the archive in hand carries no signature', async () => {
     for (const m of ['setup', 'tar', 'mkdir', 'rm']) ssh.reply([m], {});
     await bootstrapSetup(await master(), {
