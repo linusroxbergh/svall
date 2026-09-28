@@ -12,7 +12,8 @@ import type { Fleet } from '../fleet.js';
 import type { GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
 import type { OwnershipState } from '../ownership/state.js';
-import { expandHome, installedScripts, type Paths } from '../paths.js';
+import { codexPaths } from '../codex/install.js';
+import { claudePaths, expandHome, installedScripts, type Paths } from '../paths.js';
 import { markDormant, markSlotDormant, reviveCommand } from '../reconcile.js';
 import { Store } from '../store.js';
 import type { Tmux } from '../tmux/tmux.js';
@@ -20,7 +21,7 @@ import { writeDurable } from './durable.js';
 import { boundary } from './failpoints.js';
 import { graphsHere, importGraphs, keptWorktrees, type KeptWorktree } from './git-import.js';
 import { canonicalDigest } from './hash.js';
-import { rootMatcher, settle } from './inventory.js';
+import { machineLocal, rootMatcher, settle } from './inventory.js';
 import { DestinationJournal } from './journal.js';
 import { manifestDigest, scanPath, type ScanFs } from './manifest.js';
 import { ProcessTable } from './processes.js';
@@ -163,7 +164,12 @@ export class DestinationHandover {
   private clock: Clock;
 
   constructor(private journal: Journal, private ownership: OwnershipState, private agents: () => Promise<AgentProbe[]>, private d: DestinationDeps) {
-    this.replicas = new ReplicaStore({ fleetId: d.config.id, paths: d.paths, scanFs: d.scanFs });
+    let home: string | undefined;
+    // a home this machine cannot read refuses every claim, as homeProblem says
+    try { home = (d.homedir ?? os.homedir)(); } catch { home = undefined; }
+    const local = home === undefined ? undefined
+      : machineLocal({ home, agentHomes: { claude: claudePaths(process.env, home).dir, codex: codexPaths(process.env, home).dir } });
+    this.replicas = new ReplicaStore({ fleetId: d.config.id, paths: d.paths, scanFs: d.scanFs, ...(local && { local }) });
     this.clock = d.clock ?? realClock;
     d.fleet.onSessionStart((id, term, sessionId) => this.sessionStarted({ characterId: id, ...(term && { term }) }, sessionId));
     d.fleet.carries((id, term) => this.carrying({ characterId: id, ...(term && { term }) }));

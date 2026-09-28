@@ -6,7 +6,7 @@ import type { Paths } from '../paths.js';
 import { createDurable, realStages, syncDir, writeDurable, type DurableStages } from './durable.js';
 import { diverged, divergenceBlocker, proveReplica, type Divergence } from './divergence.js';
 import { byCodeUnit, canonicalDigest } from './hash.js';
-import { CONTROL, rootMatcher } from './inventory.js';
+import { CONTROL, rootMatcher, type MachineLocal } from './inventory.js';
 import { scanPath, type ScanFs } from './manifest.js';
 import { holds, realPath } from './portable-path.js';
 
@@ -86,6 +86,8 @@ export class ReplicaError extends Error {
 export type ReplicaOptions = {
   fleetId: FleetId;
   paths: Paths;
+  /** what this account keeps for itself, which no root may hold or lie in, by real path here */
+  local?: MachineLocal;
   fs?: Partial<ReplicaFs>;
   scanFs?: ScanFs;
   stages?: Partial<DurableStages>;
@@ -240,7 +242,8 @@ export class ReplicaStore {
     }
     const problem = rootProblem(root, []);
     const home = this.clash(root, at);
-    if (problem || home) throw new ReplicaError('invalid', problem ?? `${at} overlaps the fleet home ${home}`);
+    const local = this.localClash(at);
+    if (problem || home || local) throw new ReplicaError('invalid', problem ?? local ?? `${at} overlaps the fleet home ${home}`);
     let st: fs.Stats;
     try { st = this.fs.lstat(at); } catch (e) {
       if (errno(e) === 'ENOENT') throw new ReplicaError('missing', `nothing is at ${at}`);
@@ -265,6 +268,8 @@ export class ReplicaStore {
     if (problem) return blocked('path_unsupported', `${root.path}: ${problem}`, root);
     const home = this.clash(root, at);
     if (home) return blocked('path_unsupported', `${at} overlaps the fleet home ${home}, whose token, keys and journal stay on this machine`, root);
+    const local = this.localClash(at);
+    if (local) return blocked('path_unsupported', local, root);
     if (held.error) return blocked('destination_occupied', `${at} has a replica record this machine cannot use: ${held.error}`, root);
     let st: fs.Stats | undefined;
     try { st = this.fs.lstat(at); } catch (e) {
@@ -318,6 +323,16 @@ export class ReplicaStore {
     const place = ({ env, docs, profiles: agentProfiles } as Partial<Record<ReplicaRoot['kind'], string>>)[root.kind];
     const allowed = root.kind === 'home' || (place !== undefined && lexical === path.posix.resolve(place));
     return direct && allowed ? undefined : home;
+  }
+
+  /** The ssh folder, agent login or Archipelago install a root would hold or lie in, each by its real path here. */
+  private localClash(at: string): string | undefined {
+    const files = (this.opts.local?.files ?? []).map((p) => this.canonical(p));
+    const dirs = (this.opts.local?.dirs ?? []).map((p) => this.canonical(p));
+    const held = [...files, ...dirs].find((p) => holds(at, p));
+    if (held) return held === at ? `${at} stays on this machine` : `${at} holds ${held}, which stays on this machine`;
+    const dir = dirs.find((d) => holds(d, at));
+    return dir && `${at} lies in ${dir}, which stays on this machine`;
   }
 
   private canonical(p: string): string {

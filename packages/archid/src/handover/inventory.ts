@@ -136,12 +136,24 @@ function fleetHomeClash(root: InventoryRoot, travels: readonly InventoryRoot[], 
   return inside ? undefined : places.find(([home]) => holds(home, root.path))?.[1];
 }
 
-/** What an account keeps for itself and a handover never carries or lands on: each agent's login and config, and its ssh keys. */
-function machineLocal(m: MachineMap): { files: string[]; dirs: string[] } {
-  const claude = m.agentHomes?.claude ?? path.posix.join(m.home, '.claude');
-  const codex = m.agentHomes?.codex ?? path.posix.join(m.home, '.codex');
-  const claudeJson = claude === path.posix.join(m.home, '.claude') ? path.posix.join(m.home, '.claude.json') : path.posix.join(claude, '.claude.json');
-  return { files: [path.posix.join(claude, '.credentials.json'), claudeJson, path.posix.join(codex, 'auth.json')].map((p) => realPath(p)), dirs: [realPath(path.posix.join(m.home, '.ssh'))] };
+/** Files a root may not hold, and folders it may neither hold nor lie in. */
+export type MachineLocal = { files: string[]; dirs: string[] };
+
+/**
+ * What an account keeps for itself and a handover never carries or lands on: each agent's login and config, where the
+ * environment puts them and where the default does, its ssh keys, and Archipelago's own install, units and shims.
+ */
+export function machineLocal(m: Pick<MachineMap, 'home' | 'agentHomes'>): MachineLocal {
+  const at = (...p: string[]): string => path.posix.join(m.home, ...p);
+  const claudes = [...new Set([at('.claude'), m.agentHomes?.claude ?? at('.claude')])];
+  const codexes = [...new Set([at('.codex'), m.agentHomes?.codex ?? at('.codex')])];
+  return {
+    files: [
+      at('.claude.json'), ...claudes.flatMap((d) => [path.posix.join(d, '.credentials.json'), path.posix.join(d, '.claude.json')]),
+      ...codexes.map((d) => path.posix.join(d, 'auth.json')), at('.local', 'bin', 'archi'), at('.local', 'bin', 'archipelago'),
+    ],
+    dirs: [at('.ssh'), at('.local', 'share', 'archipelago'), at('.config', 'archipelago'), at('.config', 'systemd', 'user')],
+  };
 }
 
 function credentialClash(root: InventoryRoot, local: { files: string[]; dirs: string[] }): string | undefined {
@@ -238,8 +250,9 @@ export function buildInventory(state: FleetState, configs: InventoryConfigs, mac
   const placed = [...candidates.values()];
   const mission = placed.find((r) => r.kind === 'home' && !fleetHomeClash(r, [r], homes));
   const travels = placed.filter((r) => r === mission || r.kind === 'docs' || r.kind === 'profiles');
+  // the destination checks its own by real path when it claims a root
   const [here, there] = [machineLocal(source), machineLocal(destination)];
-  const local = { files: [...new Set([...here.files, ...there.files])], dirs: [...new Set([...here.dirs, ...there.dirs])] };
+  const local = { files: [...new Set([...here.files.map((p) => realPath(p)), ...there.files])], dirs: [...new Set([...here.dirs.map((p) => realPath(p)), ...there.dirs])] };
   const allowed = placed.filter((r) => {
     const fleetHome = fleetHomeClash(r, travels, homes);
     if (fleetHome) blockers.push({ code: 'path_unsupported', message: `${r.path} overlaps the fleet home ${fleetHome}, whose token, keys and node.json stay on their machine`, entity: { kind: 'root', id: r.id } });

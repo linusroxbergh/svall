@@ -501,6 +501,28 @@ describe('real paths', () => {
     expect(fs.existsSync(path.join(w.home, 'keys'))).toBe(false);
   });
 
+  it('refuses, by real path on this machine, a root that holds or lies in its ssh folder, an agent login or its Archipelago install', async () => {
+    const w = world();
+    const account = path.join(w.base, 'account');
+    // this machine's ~/.ssh is a link into a folder a handover would carry
+    fs.mkdirSync(path.join(w.work, 'dotfiles', 'ssh'), { recursive: true });
+    fs.mkdirSync(account);
+    fs.symlinkSync(path.join(w.work, 'dotfiles', 'ssh'), path.join(account, '.ssh'));
+    fs.mkdirSync(path.join(account, '.local', 'share', 'archipelago', 'gateway'), { recursive: true });
+    const local = { files: [path.join(account, '.claude', '.credentials.json')], dirs: [path.join(account, '.ssh'), path.join(account, '.local', 'share', 'archipelago')] };
+    const store = w.store({ local });
+    for (const [root, held] of [
+      [dir(path.join(w.work, 'dotfiles')), real(path.join(w.work, 'dotfiles', 'ssh'))],
+      [dir(path.join(w.work, 'dotfiles', 'ssh', 'keys')), real(path.join(w.work, 'dotfiles', 'ssh'))],
+      [dir(path.join(account, '.local')), real(path.join(account, '.local', 'share', 'archipelago'))],
+      [dir(path.join(account, '.claude')), `${real(account)}/.claude/.credentials.json`],
+    ] as const) {
+      expect(await store.claim(root, claimFor(TX))).toMatchObject({ ok: false, blocker: { code: 'path_unsupported', message: expect.stringContaining(held) } });
+      expect(() => store.archive(root, [root.id])).toThrow(held);
+    }
+    expect(fs.readdirSync(path.join(w.work, 'dotfiles'))).toEqual(['ssh']);
+  });
+
   it("refuses mission control's folder, the fleet .env, docs or agent profiles when a link leads them elsewhere in the fleet home", async () => {
     const w = world();
     fs.mkdirSync(path.join(w.home, 'keys'));

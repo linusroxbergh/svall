@@ -411,6 +411,25 @@ describe('buildInventory', () => {
     expect(inv.roots.some((r) => r.path === path.join(claude, 'skills'))).toBe(true);
   });
 
+  it('blocks the default agent homes beside the configured ones, and Archipelago\'s own install, on either machine', () => {
+    const s = seed();
+    const configured = path.join(s.mac, 'claude-config');
+    const fallback = path.join(s.mac, '.claude');
+    for (const d of [configured, fallback, path.join(s.mac, '.local/share/archipelago/gateway'), path.join(s.mac, '.config/archipelago')]) fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(fallback, '.credentials.json'), '{}');
+    // the daemon runs with CLAUDE_CONFIG_DIR set, and a shell without it logs in to ~/.claude
+    s.maps.source.agentHomes = { claude: configured };
+    s.state.characters.fallback = char('fallback', { cwd: fallback });
+    s.state.characters.share = char('share', { cwd: path.join(s.mac, '.local/share') });
+    s.state.characters.config = char('config', { cwd: path.join(s.mac, '.config') });
+    const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
+    expect(inv.blockers.filter((b) => b.code === 'path_unsupported').map((b) => b.message).sort()).toEqual([
+      `${fallback} holds ${path.join(fallback, '.credentials.json')}, which stays on its machine`,
+      `${path.join(s.mac, '.local/share')} holds ${path.join(s.mac, '.local/share/archipelago')}, which stays on its machine`,
+      `${path.join(s.mac, '.config')} holds ${path.join(s.mac, '.config/archipelago')}, which stays on its machine`,
+    ].sort());
+  });
+
   it('follows the fleet home to its real path before deciding a root is clear of it', () => {
     const s = seed();
     const fleetHome = path.join(s.mac, '.archipelago');
