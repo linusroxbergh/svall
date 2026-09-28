@@ -300,6 +300,16 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
       return `Claude asks you to trust each moved folder the first time it resumes on ${ctx.destination}, with "No, exit" preselected: choose "Yes, I trust this folder".`;
     case 'claude_bypass':
       return `Claude warns about Bypass Permissions mode when a moved character resumes in it on ${ctx.destination}, with "No, exit" preselected: choose "Yes, I accept", once for that machine.`;
+    case 'incompatible_release': case 'incompatible_protocol': case 'incompatible_schema': {
+      const linux = ctx.pull ? ctx.source : ctx.destination;
+      return `Both machines need the same Archipelago release: Upgrade ${linux} under Settings → Machines. If it runs a newer release than this Mac, update this Mac first.`;
+    }
+    case 'agent_cli_missing':
+      return `Install it on ${ctx.destination}, where Archipelago's daemon finds it, then try again.`;
+    case 'agent_logged_out':
+      return `Log it in on ${ctx.destination}, in a terminal there. A login never moves with the fleet.`;
+    case 'agent_hooks_missing':
+      return `Run archi setup on ${ctx.destination}, then try again.`;
     default:
       return undefined;
   }

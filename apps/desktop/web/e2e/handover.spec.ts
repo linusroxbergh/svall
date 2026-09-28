@@ -10,8 +10,8 @@ import type { HandoverEvent } from '../src/handover.js';
 type Shell = { __sent: ToShell[]; __archi: { receive(json: string): void } };
 
 /** A stand-in for the native shell: it answers the connection, names the gateway, and records what the page asks for. */
-async function fakeShell(page: Page, port: number, token: string, handoverEnabled = true): Promise<void> {
-  await page.addInitScript(({ port, token, handoverEnabled }) => {
+async function fakeShell(page: Page, port: number, token: string, handoverEnabled = true, gateway: string | null = 'studio'): Promise<void> {
+  await page.addInitScript(({ port, token, handoverEnabled, gateway }) => {
     const w = window as unknown as Shell & { webkit: unknown };
     w.__sent = [];
     w.webkit = { messageHandlers: { archi: { postMessage: (json: string) => {
@@ -19,12 +19,12 @@ async function fakeShell(page: Page, port: number, token: string, handoverEnable
       w.__sent.push(m);
       if (m.type === 'connection') {
         setTimeout(() => {
-          w.__archi.receive(JSON.stringify({ type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled, gateway: 'studio' }));
+          w.__archi.receive(JSON.stringify({ type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled, ...(gateway && { gateway }) }));
           w.__archi.receive(JSON.stringify({ type: 'connection', host: '127.0.0.1', port, token }));
         }, 0);
       }
     } } } };
-  }, { port, token, handoverEnabled });
+  }, { port, token, handoverEnabled, gateway });
 }
 
 const sent = (page: Page) => page.evaluate(() => (window as unknown as Shell).__sent);
@@ -102,6 +102,17 @@ test('the Handover control waits for the fleet to ask for handover', async ({ pa
   expect((await sent(page)).some((m) => m.type === 'handover.attach')).toBe(false);
 });
 
+test('with no gateway the sheet says where one is set up, and offers only This Mac', async ({ page, archi }) => {
+  await fakeShell(page, archi.port, archi.token, true, null);
+  await archi.open();
+  await nothingOpen(page);
+  await receive(page, { type: 'connection.state', state: 'online', owner: 'local' });
+  await page.getByTestId('handover-tab').click();
+  await expect(page.getByTestId('handover-no-gateway')).toContainText('Settings → Machines');
+  await expect(page.getByTestId('handover-to-gateway')).toHaveCount(0);
+  await expect(page.getByTestId('handover-to-local')).toBeDisabled();
+});
+
 test('the sheet carries a move to the gateway through all five sections, then the page reaches the fleet where it landed', async ({ page, archi }) => {
   const island = await archi.api.call('island.create', { name: archi.uniq('move') });
   const a = await archi.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'ada' });
@@ -119,6 +130,9 @@ test('the sheet carries a move to the gateway through all five sections, then th
 
   await receive(page, { type: 'connection.state', state: 'online', owner: 'local' });
   await page.getByTestId('handover-tab').click();
+  // before anything starts, what a handover moves, with a gateway to move to
+  await expect(page.getByTestId('handover-intro')).toContainText('Nothing moves until the checks pass');
+  await expect(page.getByTestId('handover-no-gateway')).toHaveCount(0);
   await expect(page.getByTestId('handover-to-local')).toBeDisabled();
   await page.getByTestId('handover-to-gateway').click();
   expect(await lastOf(page, 'handover.start')).toEqual({ type: 'handover.start', to: 'studio' });
@@ -128,6 +142,7 @@ test('the sheet carries a move to the gateway through all five sections, then th
     { code: 'codex_trust', message: 'Codex asks whether to trust its folder the first time bo resumes on studio', entity: { kind: 'character', id: b.id } },
   ], names: { characters: { [a.id]: 'ada', [b.id]: 'bo' }, roots: { r_0a1b: '/home/ada/app' }, sessions: { s0: 'bo' } } } });
   await expect(page.getByTestId('handover-summary')).toContainText('1 folder, 120 files, 40.0 MB, 1 session');
+  await expect(page.getByTestId('handover-intro')).toHaveCount(0);
   await expect(page.getByTestId('handover-warning-config_difference')).toContainText('agent CLI versions differ');
   await expect(page.getByTestId('handover-warning-config_difference')).not.toContainText(/MCP|skill/i);
   await expect(page.getByTestId('handover-warning-codex_trust')).toContainText('trust each moved folder');

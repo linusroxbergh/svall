@@ -259,4 +259,18 @@ describe('what each blocker and warning is explained with', () => {
     expect(hint).toMatch(/Bypass Permissions mode.*studio/);
     expect(hint).toMatch(/"No, exit".*"Yes, I accept"/);
   });
+
+  it('sends two releases that differ to Upgrade for the Linux machine, whichever way the fleet moves', () => {
+    const release: Blocker = { code: 'incompatible_release', message: 'the destination runs release a1, this machine b2' };
+    expect(blockerHint(release, ctx)).toMatch(/same Archipelago release.*Upgrade studio/);
+    expect(blockerHint(release, { ...ctx, destination: 'This Mac', source: 'studio', pull: true })).toMatch(/Upgrade studio/);
+    expect(blockerHint({ ...release, code: 'incompatible_protocol' }, ctx)).toBe(blockerHint(release, ctx));
+    expect(blockerHint({ ...release, code: 'incompatible_schema' }, ctx)).toBe(blockerHint(release, ctx));
+  });
+
+  it('says where an agent is to be installed, logged in or set up, and that a login never moves', () => {
+    expect(blockerHint({ code: 'agent_cli_missing', message: 'the destination has no codex CLI' }, ctx)).toMatch(/Install it on studio/);
+    expect(blockerHint({ code: 'agent_logged_out', message: 'claude is not logged in on the destination' }, ctx)).toMatch(/on studio.*never moves/);
+    expect(blockerHint({ code: 'agent_hooks_missing', message: "Archipelago's hooks are not installed for codex" }, ctx)).toMatch(/archi setup on studio/);
+  });
 });

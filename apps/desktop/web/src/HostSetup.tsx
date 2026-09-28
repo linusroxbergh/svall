@@ -92,6 +92,13 @@ export function HostSetup() {
           <span className="spacer" />
           <button ref={shut} className="side-x" data-testid="host-close" title="Close" aria-label="Close" onClick={close}>×</button>
         </div>
+        {!run && (
+          <div className="host-note" data-testid="host-intro">
+            The machine needs Ubuntu LTS on x86-64 or arm64, with systemd, and an account reached over ssh whose home is the
+            same path as yours on this Mac. Add machine installs Archipelago there and lists anything left for you to do.
+            Then Make it this fleet&apos;s gateway, and Handover can move the fleet there.
+          </div>
+        )}
         <div className="host-form">
           <input className="fld" data-testid="host-name" placeholder="machine name" aria-label="Machine name"
             value={name} onChange={(e) => setName(e.target.value.trim())} />

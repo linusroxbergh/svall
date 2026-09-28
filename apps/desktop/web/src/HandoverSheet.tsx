@@ -128,6 +128,11 @@ function Destinations({ owner, gateway }: { owner: string; gateway?: string }) {
             title={owner === gateway ? `The fleet runs on ${gateway}` : `Move the fleet to ${gateway}`} onClick={() => start(gateway)}>{gateway}</button>
         )}
       </div>
+      {!gateway && (
+        <div data-testid="handover-no-gateway">
+          No machine is this fleet&apos;s gateway yet: add one under Settings → Machines, then choose Make it this fleet&apos;s gateway.
+        </div>
+      )}
     </div>
   );
 }
@@ -202,6 +207,13 @@ export function HandoverSheet() {
           <button ref={shut} className="side-x" data-testid="handover-close" title="Close" aria-label="Close" disabled={pending} onClick={close}>×</button>
         </div>
         {actionsOf(run).start && <Destinations owner={owner} gateway={gateway} />}
+        {!shown && (
+          <div className="host-note" data-testid="handover-intro">
+            A handover moves the whole fleet: its islands, characters, repositories and agent sessions. Agents resume from
+            their transcripts and shells reopen in their folders on the other machine; a command still running does not
+            move. Nothing moves until the checks pass.
+          </div>
+        )}
         {said && <div className="host-note" data-testid="handover-headline" aria-live="polite">{said}</div>}
         {shown && (
           <div className="host-steps" data-testid="handover-sections">

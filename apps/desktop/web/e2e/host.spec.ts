@@ -47,6 +47,8 @@ test('the machines panel waits for the fleet to ask for handover, then reports e
   await handoverOn(page);
   await page.getByTestId('settings-hosts').click();
   await expect(page.getByTestId('host-setup')).toBeVisible();
+  // before any run, what the machine needs
+  await expect(page.getByTestId('host-intro')).toContainText('same path as yours on this Mac');
 
   // a name the registry would refuse never reaches the shell
   await page.getByTestId('host-name').fill('Studio');
@@ -56,6 +58,7 @@ test('the machines panel waits for the fleet to ask for handover, then reports e
   await page.getByTestId('host-add').click();
   expect((await sent(page)).at(-1)).toEqual({ type: 'host.start', op: 'add', args: { name: 'studio', ssh: 'linus@studio' } });
   await expect(page.getByTestId('host-running')).toBeVisible();
+  await expect(page.getByTestId('host-intro')).toHaveCount(0);
 
   for (const event of ADD_STEPS) await receive(page, { type: 'host.step', op: 'add', event });
   await receive(page, { type: 'host.done', op: 'add', code: 1 });
