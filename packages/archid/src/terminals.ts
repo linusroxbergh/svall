@@ -28,9 +28,11 @@ export class TerminalHub {
   private pinned = new Set<string>();
   // viewers whose socket has closed: an open still under way for one must not add it
   private left = new WeakSet<Viewer>();
+  // viewers whose socket holds DRAIN_LIMIT unsent, and the terminals whose output they missed meanwhile
+  private behind = new Map<Viewer, Set<string>>();
 
   constructor(private fleet: Fleet, private tmux: Tmux, private store: Store, private log: Logger) {
-    fleet.on('output', (id, data) => this.broadcast(id, { event: 'term.output', data: { id, data: data.toString('base64') } }));
+    fleet.on('output', (id, data) => this.stream(id, { event: 'term.output', data: { id, data: data.toString('base64') } }));
     fleet.on('pause', (id) => this.resumeWhenDrained(id));
     fleet.on('continue', (id) => { this.resync(id).catch((e) => log.error(`resync ${id}: ${String(e)}`)); });
     fleet.on('control-reset', () => {
@@ -138,6 +140,28 @@ export class TerminalHub {
     for (const v of this.viewers.get(id) ?? []) v.send(ev);
   }
 
+  /** Output goes to each viewer that keeps up; one whose socket is full misses it, and gets the screen afresh once it drains. */
+  private stream(id: string, ev: Event): void {
+    for (const v of this.viewers.get(id) ?? []) {
+      const missed = this.behind.get(v);
+      if (missed) missed.add(id);
+      else if (v.backlog() >= DRAIN_LIMIT) this.catchUp(v, id);
+      else v.send(ev);
+    }
+  }
+
+  private catchUp(v: Viewer, id: string): void {
+    const missed = new Set([id]);
+    this.behind.set(v, missed);
+    const attempt = () => {
+      if (this.left.has(v)) { this.behind.delete(v); return; }
+      if (v.backlog() >= DRAIN_LIMIT) { setTimeout(attempt, 50); return; }
+      this.behind.delete(v);
+      for (const t of missed) if (this.viewers.get(t)?.has(v)) this.resync(t, v).catch((e) => this.log.error(`resync ${t}: ${String(e)}`));
+    };
+    setTimeout(attempt, 50);
+  }
+
   private resumeWhenDrained(id: string): void {
     const deadline = Date.now() + DRAIN_TIMEOUT;
     const attempt = () => {
@@ -150,10 +174,12 @@ export class TerminalHub {
     attempt();
   }
 
-  private async resync(id: string): Promise<void> {
+  private async resync(id: string, only?: Viewer): Promise<void> {
     const c = this.store.state.characters[id];
     if (!c?.tmux || !this.viewers.get(id)?.size) return;
     const screen = (await this.tmux.capture(c.tmux.paneId, SCROLLBACK, true)).toString('base64');
-    this.broadcast(id, { event: 'term.resync', data: { id, screen } });
+    const ev: Event = { event: 'term.resync', data: { id, screen } };
+    if (only) only.send(ev);
+    else this.broadcast(id, ev);
   }
 }

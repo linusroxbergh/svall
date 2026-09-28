@@ -75,6 +75,28 @@ runIf('TerminalHub', () => {
     await waitFor(() => v.events.some((e) => e.event === 'term.resync'));
   });
 
+  it('sends a viewer no more output once a megabyte waits unsent on its socket, and the screen afresh once it drains', async () => {
+    const { hub, c } = await boot();
+    // a socket that reads nothing: everything sent to it waits
+    let backlog = 0;
+    let reading = false;
+    const v: Viewer & { events: Event[] } = {
+      kind: 'app', events: [], backlog: () => backlog,
+      send: (ev) => { v.events.push(ev); if (!reading) backlog += JSON.stringify(ev).length; },
+    };
+    const w = viewer();
+    await hub.open(c.id, 100, 30, 100, v);
+    await hub.open(c.id, 100, 30, 100, w);
+    await hub.input(c.id, Buffer.from('yes 0123456789abcdef0123456789abcdef | head -c 16000000; echo flood-$((1+1))\n'));
+    await waitFor(() => outputText(w).includes('flood-2'), 15_000);
+    // one chunk past the megabyte, and nothing held back from the viewer that keeps up
+    expect(backlog).toBeLessThan(1_000_000 + 256 * 1024);
+    expect(outputText(w).length).toBeGreaterThan(16_000_000);
+    reading = true;
+    backlog = 0;
+    await waitFor(() => v.events.some((e) => e.event === 'term.resync'));
+  });
+
   it('resyncs open terminals after a control reset', async () => {
     const { hub, fleet, c } = await boot();
     const v = viewer();
