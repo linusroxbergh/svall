@@ -10,7 +10,7 @@ concurrency:
 jobs:
   test:
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6.1.0
@@ -20,5 +20,35 @@ jobs:
           cache: pnpm
       - run: brew install tmux
       - run: pnpm install --frozen-lockfile
+      # the pinned rsync and Node the controller build caches under vendor/, which the transfer tests drive
+      - uses: actions/cache@v6
+        with:
+          path: |
+            vendor/rsync
+            vendor/node
+          key: vendor-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/release/pins.json') }}
+      - run: pnpm --filter @archipelago/desktop-web build:mobile
+      - run: node scripts/build-controller.mjs --out "$RUNNER_TEMP/controller"
       - run: pnpm typecheck
       - run: pnpm test
+        env:
+          ARCHI_REQUIRE_RSYNC: '1'
+
+  # a fleet handed between two Linux containers on real sshd, rsync, tmux, Git and systemd; see docs/integration.md
+  integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: scripts/integration/fleet-handover.sh --out "$RUNNER_TEMP/fleet-handover"
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fleet-handover-logs
+          path: ${{ runner.temp }}/fleet-handover
