@@ -366,3 +366,253 @@ through the API, m3b-role arrived and briefs alpha-feat, no pid travelled, O6 he
 Linux and Mac with nothing touched, original snapshot differs only in notes' revive; new G1 (Important: Claude's folder
 trust prompt on the first resume on a new machine stalls activation 60 s and leaves the character dormant, with no
 preflight warning) and m1 (Minor: refusal stack trace in the running daemon's log).
+
+## Re-check after the fix wave
+
+Status: **DONE_WITH_CONCERNS**.
+
+On release `4697836` (HEAD `46978368`), one more round trip, Mac → Linux (generation 5) and back (generation 6), checked
+the fix wave on the machines:
+
+| Fix | Result on the machines |
+| --- | --- |
+| G1 | The untrusted Claude was kept at its trust prompt with its notice, 2.9 s after its pane opened. "Yes, I trust this folder" bound its SessionStart to the carried id, and it recalled its code word |
+| R1 | "No, exit" at the bypass warning left the character dormant within 1.6 s, with its flagged revive and a visible error. Revived and accepted, it resumed under its id |
+| R2 | The live, silent Claude counted up after 10.3 s with its notice |
+| m1 | A refused second archid leaves the running daemon's log byte-identical, on both machines, twice |
+
+One new defect, **G2 (Important)**: preflight gave **no `claude_bypass` warning**. The destination's Claude had not
+accepted bypass mode, and the two live characters that resume with `--dangerously-skip-permissions` went unwarned.
+`claude_trust` did fire.
+
+`$G` as above, which now also holds `src/` (the build's snapshot) and `logs/r/` (every log named here).
+
+Rules:
+- No command carried a token (`logs/r/70-token-grep.log`: 0 hits for either token).
+- The credential was never printed. Both copies were deleted at 07:29:39Z.
+- No real Claude runs on either machine (`logs/r/66-real-claude-rest.log`).
+
+| Step | Result |
+| --- | --- |
+| 1a build from a clean snapshot | PASS: release `4697836` |
+| 1b install, setup, Mac restart | PASS |
+| 1c `archi host upgrade m3b` (R5) | PASS: `ready`, `m3b answers on release 4697836`, no rollback; m3b's mission-control home untouched |
+| 2 two new real-Claude characters | PASS: real-claude-t (untrusted on both machines) and real-claude-b (started `claude --dangerously-skip-permissions`) |
+| 3 preflight Mac → Linux shows `claude_trust` | PASS |
+| 3 preflight Mac → Linux shows `claude_bypass` | **FAIL** (G2) |
+| 4 handover; untrusted Claude kept at its prompt with its notice within seconds; "Yes" binds the carried id | PASS |
+| 5 "No, exit" at the bypass warning: dormant with its flagged revive and a visible error; revive and accept | PASS |
+| 6 Linux → Mac (`handover local`) | PASS: 11/11 `ok`, no notices; both real Claudes recall their code words on the Mac |
+| 7 a second archid on each machine leaves the running daemon's log untouched (m1) | PASS on both, before and after the round trip |
+| 8 environment left for the by-eye pass | DONE: the Mac owns at generation 6, nothing open; `W/m3b-env.md` updated |
+
+### 1. Build, install, upgrade
+
+- **Snapshot** (`build-r.sh`, `logs/r/01-build.log`):
+  - `git -C <worktree> archive 46978368 | tar -x -C $G/src`.
+  - The build names its release with `git describe`, and `scripts/ghostty-kit.sh` needs `HEAD:vendor/ghostty`. So
+    `$G/src` got that commit's metadata: `git init`, a fetch of `46978368` from the main repository, and a `git reset
+    --mixed` to it. `git status` was empty before and after the build.
+  - The gitignored vendor caches were copied from the worktree: the prebuilt GhosttyKit `332b2aef…-r1` (current for
+    HEAD), and the pinned Node tarballs and rsync (each checked against its digest by the build).
+  - `git describe` in the fresh repository abbreviates to 7 characters, so the release is **`4697836`**. Protocol is
+    still 17.
+  - Companion: `archipelago-companion-4697836-linux-x64.tar.gz`, 46,184,473 B, sha256 `75f4c3efeda351c5…`.
+- **Install** (`11a-install-setup-r.sh`, `logs/r/11a-install-setup.log`): `current` → `releases/4697836`. node.json,
+  Codex `hooks.json` and Claude `settings.json` are unchanged.
+- **Upgrade (R5)** (`11b-upgrade.sh`, `logs/r/11b-upgrade.log`):
+
+  ```
+  {"step":"probe","status":"ok","detail":"m3b answers on release 4697836"}
+  {"result":"ready","actions":[]}
+  upgrade exit 0 after 10s
+  ```
+
+  - Both units restarted onto `releases/4697836` (archid 295623, gateway 295632).
+  - `host doctor`: `release ok "4697836, protocol 17; this controller runs 4697836, protocol 17"`.
+  - m3b's mission-control home listing is identical before and after (29 entries, mtimes included).
+  - As at the gate, both releases speak protocol 17, so N1's cross-protocol path was not exercised.
+- **Mac:** the Mac archid restarted on `4697836` (`logs/r/11c-mac-restart.log`).
+
+### 2. The two real-Claude characters (`logs/r/24-new-chars.log`, `logs/r/24c-code-words.log`)
+
+- **Before:** neither machine's Claude had trusted `real/claude-t`. Each `.claude.json` trusted only `real/claude-r`.
+  - m3b had not accepted bypass mode: no `skipDangerousModePermissionPrompt` in `~/.claude/settings.json`, and no
+    `bypassPermissionsModeAccepted` in `~/.claude.json` (`logs/r/30-m3b-claude-config-before.txt`).
+  - Only the test HOME's files were read or written. The owner's `~/.claude` was not touched.
+- **Wrappers:** the dispatching `claude` wrapper on both machines now also sends `real/claude-t/` to the real 2.1.283.
+- **real-claude-t** `c_jmyxcs`: cwd `$TH/real/claude-t`, `archi char new … --agent claude`.
+  - The Mac's Claude opened on its trust prompt ("No, exit" preselected). It was answered "Yes, I trust this folder".
+  - Code word FALCON, session `10542a51-6750-490a-89cc-3bee4522534d`.
+- **real-claude-b** `c_aosb44`: cwd `$TH/real/claude-r/bypass`, `--command "claude --dangerously-skip-permissions"`.
+  - Its folder is trusted on both machines through `real/claude-r` above it, a walk that the adapter and Claude share.
+    So only bypass mode stands between it and its session.
+  - The Mac showed "WARNING: Claude Code running in Bypass Permissions mode" and was answered "Yes, I accept". That wrote
+    `skipDangerousModePermissionPrompt: true` into the test HOME's `.claude/settings.json`.
+  - Code word LYNX, session `b65e21cb-6b39-4b2e-9f64-727dc5b4ef3f`.
+- **Credential**, as authorised:
+  - The first two reads left 67 and 53 minutes on the owner's access token, under the 90-minute floor. Both copies were
+    deleted unused each time.
+  - After the token's expiry, the owner's own Claude refreshed the keychain item. The read at 07:23:12Z left
+    **473 minutes**.
+  - Every real-Claude step ran from 07:23 to 07:29:39Z (`logs/r/23-creds.log`).
+- **Snapshot:** `s6-before-mac`.
+
+### 3. Mac → Linux: preflight, handover, the untrusted Claude
+
+**`ho-ts.sh r/31-mac-to-linux m3b`: complete, generation 5, in 22 s, 11/11 `ok`** (`logs/r/31-mac-to-linux.ndjson`,
+arrival times in `.times`, m3b pane watch every 0.5 s in m3b's `~/m3b-tools/r31.watch`).
+
+Preflight (`logs/r/31-preflight-warnings.txt`): no blockers.
+- **`claude_trust`** for real-claude-t: `Claude asks whether to trust its folder the first time real-claude-t resumes on
+  m3b, with "No, exit" preselected; choose "Yes, I trust this folder" in that terminal`.
+- **`claude_trust`** for the seven mocked Claude characters as well. m3b's Claude trusts none of their folders, as the
+  rule says; the mock itself never asks.
+- `env_file` and `worktree_unused`.
+- **No `claude_bypass`**, for real-claude-b or for flags, though both resume with `--dangerously-skip-permissions`
+  (G2).
+
+Activation, from the stream's arrival times and the pane watch:
+
+| t (s) | What happened |
+| --- | --- |
+| 9.96 | activate begins |
+| ~11.3 | both real-Claude panes open, running `claude` |
+| ~11.9 | real-claude-t's pane shows the trust prompt; real-claude-b's shows the Bypass Permissions warning |
+| **14.12** | real-claude-t's row: `ok`, with notice `claude waits at its "Trust this folder?" prompt in real-claude-t's terminal; choose "Yes, I trust this folder" there`. That is 2.9 s after its pane opened, with no 60 s wait |
+| **21.58** | real-claude-b's row: `ok`, with notice `claude has not started its session in real-claude-b's terminal and may be waiting at a prompt there; answer it there`. That is 10.3 s after its pane opened |
+| 21.60 | complete. At the gate, the same step took 72 s and ended `ok:false` |
+
+**"Yes, I trust this folder" on Linux: PASS** (`logs/r/32-trust-answer.log`).
+- Down and Enter went into real-claude-t's pane. About 1 s later, the state showed session `10542a51-…` with m3b's
+  pid 568557 (`…/real-claude/claude --resume 10542a51-…`), in the same window.
+- m3b's `.claude.json` now trusts `real/claude-t`.
+- A turn: `● FALCON RECHECK-LINUX`. There is one transcript named after the session, 36 → 44 records, every record's
+  `sessionId` `10542a51-…` (`logs/r/35-linux-turns.log`).
+
+**"No, exit" at the bypass warning: PASS** (`logs/r/33-bypass-no-exit.log`).
+- Enter took the preselected "No, exit". Claude went back to bash within 0.9 s. **0.7 s later** the watch had laid the
+  terminal dormant:
+  - window closed;
+  - `revive: claude --dangerously-skip-permissions --resume b65e21cb-…` (flags kept);
+  - `resumeError: "real-claude-b's terminal resumed claude session b65e21cb-…, but claude exited back to its shell
+    before that session started, so it is dormant again with that session; revive it to see"`;
+  - the same line is in m3b's archid.log.
+- **Revive and accept: PASS** (`logs/r/34-bypass-revive-accept.log`).
+  - `char.revive` reopened it on the Bypass Permissions warning.
+  - "Yes, I accept" wrote `skipDangerousModePermissionPrompt: true` into m3b's `~/.claude/settings.json`.
+  - SessionStart bound `b65e21cb-…` with pid 583839 (`…/real-claude/claude --dangerously-skip-permissions --resume
+    b65e21cb-…`), and `resumeError` was cleared.
+  - A turn: `● LYNX RECHECK-LINUX`, one transcript, 44 records.
+
+**The rest on Linux** (`logs/r/36-far-checks.log`, `logs/r/37-mac-fenced.log`):
+- Ownership: m3b at generation 5, with 13 windows. Every state pid is a process on m3b with its own `--resume` argv.
+- The Mac is fenced. All 34 revive, second, attach, run and `docs.create` probes answer `handover_committed`, before and
+  after an archid restart.
+- **Compare `s6-before-mac → s6-after-linux`: 1 DIFF, 3 rewrite, 26 expected.**
+  - The DIFF is mission control's island at `y 13 → 14`. It is not the handover's: the carried manifests hold `y 13`,
+    and m3b's owner start (`Fleet.begin()`'s `settleHome`, `fleet.ts:337`) re-seats it. The Mac, which had not
+    restarted as owner since real-claude-b grew its island, still held 13.
+  - Everything else matches the gate: O8, `node_modules`, beta-unused not carried, records appended after each resume.
+
+### 4. Linux → Mac (`handover local`)
+
+**`ho-ts.sh r/50-linux-to-mac local`: complete, generation 6, in 16 s, 11/11 `ok`, no notices**
+(`logs/r/50-linux-to-mac.ndjson`).
+- Preflight warned only `claude_trust` for the seven mocked characters (the Mac's Claude trusts `real/claude-r` and
+  `real/claude-t` only), and `env_file`.
+- Both real Claudes came up by their SessionStart, with rows 1.9 and 2.1 s into activation and no notice: the Mac
+  trusts both folders and has accepted bypass mode.
+
+Turns on the Mac (`logs/r/51-mac-turns.log`):
+
+| Character | Answer | Transcript | Process |
+| --- | --- | --- | --- |
+| real-claude-t | `FALCON RECHECK-MAC` | 53 records, one session id | `--resume 10542a51-…` |
+| real-claude-b | `LYNX RECHECK-MAC` | 53 records, one session id | `--dangerously-skip-permissions --resume b65e21cb-…` |
+
+`logs/r/52-mac-after.log`:
+- Every state pid is a Mac process.
+- All four docs are `FOUND` by the same keys.
+- beta-unused is still registered on the Mac with a clean status, both stash entries and `unused-br` (O6).
+- m3b is fenced (`logs/r/53-linux-fenced.log`: 10/10 `handover_committed`, only `_keep`, no agents).
+
+Compares:
+- `s7-before-linux → s7-after-mac`: **0 DIFF**.
+- **`s6-before-mac → s7-after-mac` (the original): 1 DIFF, 0 rewrite, 5 expected.** The DIFF is the same mission-control
+  row, `y 13 → 14`. The sessions only grew: each real Claude by 17 records, and each Codex by 2.
+
+### 5. A second archid for a running home (m1): PASS
+
+`40r-lock-linux.sh` and `41r-lock-mac.sh` ran before the round trip. `40r2-lock-linux.sh` and `61-lock-mac.sh` ran
+after it (`logs/r/40-lock-linux.log`, `41-lock-mac.log`, `60-lock-linux.log`, `61-lock-mac.log`). The release's
+`archid` was started with the unit's environment, and with the plist's:
+
+```
+exit 1 after .158869406 s
+its stdout+stderr (67 B): archid is already running for /Users/Shared/archi-m3b/.archipelago
+== archid.log lines since:            (nothing)
+```
+
+Before and after each attempt, these were identical:
+- `archid.log` (inode, size, mtime, md5), on m3b and on the Mac;
+- m3b's unit log `archipelago-archid@private.log`;
+- state, config, owner, token, tmux conf, port, hooks socket and `daemon.lock` fingerprints;
+- the unit's MainPID and NRestarts 0;
+- the tmux windows.
+
+### 6. Environment left: DONE
+
+- The Mac owns at generation 6, and no transaction is open.
+  - Mac archid 43149 on `4697836`: 11 windows, 8 mocks and 2 real Codex.
+  - The three real-Claude characters are dormant with their sessions. Their windows were closed while archid was down
+    (`66-real-claude-rest.sh`).
+  - This rest dropped real-claude-b's `--dangerously-skip-permissions` from its revive: a daemon that finds a window gone
+    at start has no process to read flags from. That is harness, not the handover.
+- Both credential copies were deleted, and the by-eye pass does not need them. Reviving any real Claude now starts it
+  logged out.
+- `open-test-app.sh` was checked again on the new build (`logs/r/80-app-open.log`): the test app connected to the test
+  daemon, and the owner's app (pid 23913) and his preferences plist were unchanged by it.
+- **Owner's files:**
+  - `~/.ssh/known_hosts` and `~/Library/LaunchAgents` are unchanged (`logs/r/72-owner-files.log`).
+  - `/Applications/Archipelago.app` now reads build `4067bfea`, mtime 2026-09-28 08:27:52 +0200. That was a reinstall
+    outside this pass; this pass installs only into `$TH/Applications`.
+  - linus-vault's stable state differs from the 40b before-state only as before (archi-m3 → archi-m3b, snap loop
+    devices), plus one of linus's own listeners, `192.168.0.100:35459`, now gone (`logs/r/71-linus-diff.log`). The serve
+    mapping is unchanged.
+
+### Defects
+
+1. **G2, Important (new): `claude_bypass` never fires for a Claude that is running when the handover starts.**
+   - `resumeFolders` sets `bypass` from the terminal's `revive.command` (`packages/archid/src/handover/sessions/registry.ts:103`).
+     The controller's `destinationChecks` runs on the preflight manifest (`packages/cli/src/controller/handover.ts:238`).
+   - At preflight a live terminal has no `revive`: the rest writes it only at freeze. The carried manifests do hold
+     `claude --dangerously-skip-permissions --resume b65e21cb-…` and flags' `claude --effort 'high'
+     --dangerously-skip-permissions --resume …` (`evidence/r31-mac-to-linux/`).
+   - So only a character already dormant with a bypass revive can be warned. Every live one, the usual case, is not.
+   - Activation still recovers: R2 counted real-claude-b up with its generic quiet notice after 10 s. But the user
+     learns of the Bypass Permissions warning only in the terminal, not before committing.
+   - Fix direction: read a live terminal's launch flags from its agent process, as the rest does (`startFlags`), when
+     building the preflight's resume folders.
+   - Evidence: `logs/r/31-preflight-warnings.txt`, `logs/r/30-m3b-claude-config-before.txt`, and the pane watch line
+     `prompt=[Bypass Permissions mode,No, exit,Yes, I accept,]`.
+
+### Notes
+
+1. `claude_trust` names every Claude character whose folder the destination's Claude has not trusted. Here that
+   includes the seven mocked ones, which never actually ask. On a real fleet each warning would be true.
+2. The mission-control island moved `y 13 → 14` at the destination's owner start (`settleHome`). This is main's start
+   layout, and it would follow any owner restart. It is the one DIFF in either compare.
+3. The by-eye pass inherits these facts:
+   - m3b's Claude trusts `real/claude-r` and `real/claude-t` and accepts bypass mode. The test HOME's Claude does the
+     same.
+   - Claude placed `$TH/Applications/Claude Code URL Handler.app` when it first ran under the test HOME. It is inside
+     the test HOME and goes with it.
+
+Status (re-check): DONE_WITH_CONCERNS — on 4697836 the fix wave holds on the machines for G1 (untrusted Claude kept at
+its trust prompt with its notice 2.9 s after its pane opened; "Yes" bound the carried id, FALCON recalled on Linux and
+Mac), R1 ("No, exit" at the bypass warning → dormant with its flagged revive and a visible error within 1.6 s; revive
+and accept resumed it, LYNX recalled), R2 (live silent Claude up after 10.3 s with its notice), m1 (refused second
+archid leaves the running log byte-identical on both machines) and R5 (upgrade ready, no rollback); round trip g5/g6
+clean against the original but for mission control's re-seat; new G2 (Important: `claude_bypass` never fires for a
+live Claude, since preflight reads the bypass flag from a revive only a dormant terminal has).
