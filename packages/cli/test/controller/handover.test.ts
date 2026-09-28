@@ -714,6 +714,23 @@ describe('resuming after the destination prepared', () => {
     expect(w.transfers.length).toBe(transfers);
     expect(settledOn(w)).toBe('destination');
   });
+
+  it('goes on from the prepared state when its journal is rebuilt from the daemons\', without copying again', async () => {
+    const probe = new World();
+    await controller(probe).start(trift, {});
+    const w = new World();
+    w.fault = { at: opIndex(probe, 'trift:handover.prepare'), kind: 'death' };
+    await controller(w).start(trift, {});
+    // this controller's journal is gone, as for a controller on another machine
+    w.store.j = undefined;
+    w.store.files.clear();
+    const transfers = w.transfers.length;
+    const [out] = await recover(w);
+    expect(out.status).toBe('complete');
+    expect(w.transfers.length).toBe(transfers);
+    expect(phases(w).slice(phases(w).lastIndexOf('prepare'))).toEqual(['prepare', 'ready', 'commit', 'activate', 'complete']);
+    expect(settledOn(w)).toBe('destination');
+  });
 });
 
 describe('cancellation', () => {

@@ -435,7 +435,8 @@ export class Handover {
     const { transactionId: tx, generation } = this.tx;
     const kept = this.journal.manifestDigest ? this.d.store.manifest(tx, this.journal.manifestDigest) : undefined;
     if (kept) return kept;
-    this.phase('freeze');
+    // a journal rebuilt from the daemons' may stand past Freeze already: the source answers its manifest again, and the handover goes on from there
+    if (!after(this.journal.phase, 'freeze')) this.phase('freeze');
     const info = await this.retrying('freeze', () => this.cancellable(() => destination.daemon.call('system.info', {})), this.cancel$.signal);
     for (;;) {
       if (this.chosen) this.save({ choices: { ...this.journal.choices, ...this.take() } });

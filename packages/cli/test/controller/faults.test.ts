@@ -366,6 +366,31 @@ describe('two controllers on different machines', () => {
   });
 });
 
+describe('a controller with no journal of its own', () => {
+  const world = real.worlds();
+
+  /** A start from this machine whose controller dies as it would ask the gateway to record `at`. */
+  async function diesAt(w: real.World, at: string): Promise<void> {
+    const a = party(w, 'mac', 'start');
+    const life = w.lifeOfController(a.c);
+    w.gate = async (g) => { if (g.life === life && g.label === at) life.dead = true; };
+    await a.go();
+    w.gate = undefined;
+  }
+
+  for (const at of ['gateway ready', 'gateway commit'] as const) {
+    it(`on trift, resumes a handover whose controller died before ${at.split(' ')[1]} once the destination prepared, and takes it to the destination`, async () => {
+      const w = world();
+      await diesAt(w, at);
+      expect(w.trift.current!.handover.journalState()).toMatchObject({ kind: 'open', journal: { phase: 'prepare' } });
+      const out = await party(w, 'trift', 'resume').go();
+      expect(out, w.trace.join(' | ')).toMatchObject({ status: 'complete' });
+      await settleBoth(w, [out]);
+    });
+  }
+
+});
+
 // ---- what keeps a new request of the controller from going unstruck
 
 describe('the requests the controller sends', () => {
