@@ -256,7 +256,7 @@ describe('runUninstall', () => {
 
     const lines = await runUninstall({ ...f.o, platform: 'linux', unitDir, prefix, run, launchctl: true });
     expect(fs.readdirSync(unitDir)).toEqual(['someone-else.service']);
-    expect(calls).toEqual([
+    expect(calls.filter(([cmd]) => cmd === 'systemctl')).toEqual([
       ['systemctl', '--user', 'disable', '--now', 'archipelago-archid@private.service'],
       ['systemctl', '--user', 'disable', '--now', 'archipelago-archid@work.service'],
       ['systemctl', '--user', 'disable', '--now', 'archipelago-gateway.service'],
@@ -268,6 +268,25 @@ describe('runUninstall', () => {
     expect(fs.existsSync(path.join(f.home, 'fleet.json'))).toBe(true);
     expect(fs.existsSync(path.join(f.shimDir, 'archi'))).toBe(false);
     expect(lines.some((l) => l.includes('someone-else'))).toBe(false);
+  });
+
+  it('on Linux takes its hooks back from the agent homes the login shell names, as well as the defaults', async () => {
+    const f = installed();
+    fs.mkdirSync(f.o.codex.dir);
+    await runSetup(f.o);
+    const settingsPath = path.join(f.root, 'claude home', 'settings.json');
+    const codex = codexPaths({ CODEX_HOME: path.join(f.root, 'codex home') });
+    fs.mkdirSync(path.dirname(settingsPath));
+    fs.writeFileSync(settingsPath, JSON.stringify(f.mine));
+    fs.mkdirSync(codex.dir);
+    await runSetup({ ...f.o, settingsPath, codex });
+    const run: Run = async (cmd) => ({ stdout: cmd === 'systemctl' ? '' : `archi-agent-homes\n${path.dirname(settingsPath)}\n${codex.dir}\n`, stderr: '' });
+
+    await runUninstall({ ...f.o, platform: 'linux', unitDir: path.join(f.root, 'units'), run });
+    expect(JSON.parse(fs.readFileSync(settingsPath, 'utf8'))).toEqual(f.mine);
+    expect(JSON.parse(fs.readFileSync(f.settingsPath, 'utf8'))).toEqual(f.mine);
+    expect(fs.readdirSync(codex.dir)).toEqual([]);
+    expect(fs.readdirSync(f.o.codex.dir)).toEqual([]);
   });
 
   it('on a Mac removes the releases it installed too, and keeps the gateway records', async () => {

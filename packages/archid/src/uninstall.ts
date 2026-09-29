@@ -3,10 +3,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import type { CodexPaths } from './codex/install.js';
+import { codexPaths, type CodexPaths } from './codex/install.js';
 import { gatewayPaths } from './gateway/authority.js';
 import { SystemdError, daemonReload, disableUnit, realRun, type Run } from './linux/service.js';
-import { ourUnits } from './linux/setup.js';
+import { agentHomesEnv, ourUnits } from './linux/setup.js';
 import { configDir, machineId } from './machine.js';
 import { portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
 import { resolvePaths } from './paths.js';
@@ -166,18 +166,23 @@ export async function runUninstall(o: {
     throw new UninstallRefused(`uninstalling here would strand fleets: ${strands.join('; ')}. Finish or abort the handover, bring each fleet to the machine that keeps it with archi handover local, and remove this machine from that one with archi host remove <name>, which checks all of this; or run archi uninstall --force`);
   }
   const paths = resolvePaths(o.home);
-  const edits = o.settingsPaths.map((file): [JsonSettings, Record<string, unknown>, string] => {
+  const linux = (o.platform ?? process.platform) === 'linux' && o.unitDir;
+  // Linux setup put the hooks under the agent homes the daemon's unit is given, which this command's env may not name
+  const agentHomes = linux ? await agentHomesEnv(o.run ?? realRun) : {};
+  const settingsPaths = [...new Set([...o.settingsPaths, ...(agentHomes.CLAUDE_CONFIG_DIR ? [path.join(agentHomes.CLAUDE_CONFIG_DIR, 'settings.json')] : [])])];
+  const edits = settingsPaths.map((file): [JsonSettings, Record<string, unknown>, string] => {
     const settings = readJsonSettings(file);
     return [settings, unmergeStatusLine(unmergeHooks(settings.settings, paths.hookScript), paths.statusScript), 'claude hooks and statusline removed'];
   });
-  const codex = fs.existsSync(o.codex.hooks) ? readJsonSettings(o.codex.hooks) : undefined;
-  if (codex) edits.push([codex, unmergeHooks(codex.settings, paths.hookScript), 'codex hooks removed']);
+  const codexes = [...new Set([o.codex.hooks, ...(agentHomes.CODEX_HOME ? [codexPaths(agentHomes).hooks] : [])])]
+    .filter((file) => fs.existsSync(file)).map((file) => readJsonSettings(file));
+  for (const codex of codexes) edits.push([codex, unmergeHooks(codex.settings, paths.hookScript), 'codex hooks removed']);
   // a file that cannot take its change stops the run before anything is removed
   for (const [current, next] of edits) requireWritable(current, next);
   const done = await quitApp(o.homes, o.app, 'archi uninstall');
   for (const [current, next, what] of edits) {
     // Codex needs no hooks file, so one that held only Archipelago's goes, unless it links elsewhere
-    const emptied = current === codex && !Object.keys(next).length && Object.keys(current.settings).length > 0;
+    const emptied = codexes.includes(current) && !Object.keys(next).length && Object.keys(current.settings).length > 0;
     if (emptied && !fs.lstatSync(current.file).isSymbolicLink()) {
       fs.rmSync(current.file);
       done.push(`removed ${current.file}`);
@@ -185,7 +190,6 @@ export async function runUninstall(o: {
   }
   done.push(...await unserveFleets(o.homes, o.mobile));
 
-  const linux = (o.platform ?? process.platform) === 'linux' && o.unitDir;
   if (linux) done.push(...await removeUnits({ unitDir: o.unitDir!, systemctl: o.launchctl, run: o.run ?? realRun }));
   const agents = !linux && fs.existsSync(o.launchAgentsDir) ? fs.readdirSync(o.launchAgentsDir).filter(isAgentPlist).sort() : [];
   for (const name of agents) {
