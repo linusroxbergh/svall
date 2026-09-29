@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { TransactionId } from '@archipelago/protocol';
+import { TransactionId, TransferFile } from '@archipelago/protocol';
 import { writeDurable } from '@archipelago/archid/handover/durable';
 
 /** Where the controller keeps one transaction's files under `base`: its progress journal, and the filter files beside it. */
@@ -75,6 +75,21 @@ export class ProgressJournal {
     writeDurable(this.file, { version: 1, transactionId: this.transactionId, entries: this.entries }, { mode: 0o600 });
     this.written = this.now();
     this.dirty = false;
+  }
+
+  /** Keeps the files an entry's verification read, before its record says it verified them. */
+  keepVerified(id: string, files: readonly TransferFile[]): void {
+    this.keep('verified', `${encodeURIComponent(id)}.json`, JSON.stringify(files));
+  }
+
+  /** The files an entry's last verification read, while its record still says it verified them and they can be read. */
+  verified(id: string): TransferFile[] | undefined {
+    if (!this.entries[id]?.verifiedScan) return undefined;
+    try {
+      return z.array(TransferFile).parse(JSON.parse(fs.readFileSync(path.join(this.dir, 'verified', `${encodeURIComponent(id)}.json`), 'utf8')));
+    } catch {
+      return undefined;
+    }
   }
 
   /** Writes a root's rsync filter into the transaction's storage, and returns where. */

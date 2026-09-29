@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Outcome } from '@archipelago/protocol';
+import type { Blocker, Outcome } from '@archipelago/protocol';
 import { writeDurable } from '../../src/handover/durable.js';
 import { FAILPOINTS, armFailpoints, boundary, type Edge, type Failpoint } from '../../src/handover/failpoints.js';
 import { Store } from '../../src/store.js';
@@ -238,6 +238,53 @@ describe('a handover after a cancelled one', () => {
     expect(await play(w, 'move')).toMatchObject({ status: 'complete' });
     expect(w.violations).toEqual([]);
     expect(settledOn(w)).toBe('destination');
+  });
+});
+
+describe('a source an editor saves into after the freeze', () => {
+  const world = worlds();
+  const notes = (w: World) => path.join(w.home, 'work/ada/notes.md');
+  // the transfer copies mission control's root first, then ada's, then bo's
+  const saving = (w: World, also?: (nth: number) => void) => {
+    w.onHit = (key) => {
+      if (key !== 'controller.rsync:before') return;
+      const nth = w.hits.get(key)!;
+      if (nth === 2) fs.appendFileSync(notes(w), 'saved after the freeze\n');
+      also?.(nth);
+    };
+  };
+
+  it('takes again the copy of ada the transfer verified, once what kept writing into bo is closed', async () => {
+    const w = world();
+    const decided: Blocker[][] = [];
+    let watching = false;
+    saving(w, (nth) => { watching = nth === 3; });
+    // a watcher writes into bo before every copy of it
+    w.gate = async ({ label }) => { if (watching && label === 'link rsync') fs.appendFileSync(path.join(w.home, 'work/bo/index.ts'), '// again\n'); };
+    w.decide = async (blockers) => {
+      decided.push(blockers);
+      return decided.length === 1 ? choices(w) : 'cancel';
+    };
+    const out = await play(w, 'move');
+    [w.gate, w.decide] = [undefined, undefined];
+    expect(out).toMatchObject({ status: 'blocked', phase: 'transfer' });
+    expect(decided[0]).toEqual([expect.objectContaining({ code: 'external_writer', message: expect.stringContaining('/work/bo kept changing') })]);
+    // bo's copy holds what the watcher wrote, which no pass verified
+    expect(decided[1]).toEqual([expect.objectContaining({ code: 'destination_diverged', message: expect.stringContaining('/work/bo changed') })]);
+    await w.recover('abort');
+    expect(w.violations).toEqual([]);
+    expect(settledOn(w)).toBe('source');
+  });
+
+  it('takes again the copy of ada the transfer verified when a controller that died during the transfer is resumed', async () => {
+    const w = world();
+    saving(w);
+    w.targets = [{ name: 'controller.rsync', edge: 'before', nth: 3 }];
+    await play(w, 'move');
+    const said = await w.recover('resume');
+    expect(w.violations, said.join(' ')).toEqual([]);
+    expect(settledOn(w), said.join(' ')).toBe('destination');
+    expect(fs.readFileSync(notes(w), 'utf8')).toBe('ada\nsaved after the freeze\n');
   });
 });
 

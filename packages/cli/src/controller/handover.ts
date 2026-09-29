@@ -18,6 +18,7 @@ import { resolvePaths } from '@archipelago/archid/paths';
 import { FIRST_DELAY, FleetMismatch, MachineMismatch, MAX_DELAY, retryable } from './connection.js';
 import { entryEvent, namesOf, Observer } from './events.js';
 import { redact } from './process.js';
+import { ProgressJournal, transactionDir } from './progress.js';
 import { assess, type ControllerJournal, type ControllerStore, type FrozenManifest, type Observation, type Route, type Seen } from './recovery.js';
 import { SshError } from './ssh.js';
 import { farRsync, transfer as runTransfer, type Master, type RootEntry, type SessionEntry, type TransferOptions, type TransferResult } from './transfer.js';
@@ -583,14 +584,19 @@ export class Handover {
     }
   }
 
-  /** The destination's claim on each carried root, exactly one each; a root it will not take goes to the user. */
+  /**
+   * The destination's claim on each carried root, exactly one each; a root it will not take goes to the user. What an
+   * earlier transfer of this handover verified in a root, which its copy there may hold since, goes with it.
+   */
   private async claim(destination: Side, manifest: FrozenManifest): Promise<RootClaim[]> {
     const { transactionId: tx, generation } = this.tx;
     const carried = replicaRoots(manifest).map((r) => r.id).sort();
+    const progress = new ProgressJournal(tx, transactionDir(tx, this.d.stateDir));
+    const landed = carried.flatMap((id): LandedRoot[] => { const files = progress.verified(id); return files ? [{ id, files }] : []; });
     for (;;) {
       const archive = this.journal.choices.archiveRoots;
       const r = await this.retrying('transfer', () => this.cancellable(() => destination.daemon.call('handover.claim', {
-        transactionId: tx, generation: generation + 1, manifest, manifestDigest: this.journal.manifestDigest!, ...(archive?.length ? { archive } : {}),
+        transactionId: tx, generation: generation + 1, manifest, manifestDigest: this.journal.manifestDigest!, ...(archive?.length ? { archive } : {}), ...(landed.length && { landed }),
       })), this.cancel$.signal);
       const ids = r.roots.map((c) => c.id).sort();
       if (ids.length !== carried.length || ids.some((id, i) => id !== carried[i])) {

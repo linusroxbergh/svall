@@ -270,11 +270,12 @@ export const methods = {
     result: z.object({ manifest: TransferManifestV1.extend({ transactionId: TransactionId }) }),
   },
   // the destination takes each root the manifest carries before anything is written into it, archiving one `archive` names
-  // when it cannot otherwise be taken
+  // when it cannot otherwise be taken; `landed` is what this handover's transfer has verified so far, which its copy may hold
   'handover.claim': {
     params: z.object({
       transactionId: TransactionId, generation: Generation,
       manifest: TransferManifestV1.extend({ transactionId: TransactionId }), manifestDigest: Sha256, archive: z.array(z.string().min(1)).optional(),
+      landed: z.array(LandedRoot).optional(),
     }),
     result: z.object({ roots: z.array(RootClaim), unproven: z.array(KeptCommit).optional() }),
   },
@@ -322,7 +323,7 @@ export type Request = z.infer<typeof Request>;
 export const PART_BYTES = 4 * 1024 * 1024;
 /** The most a request sent in parts may come to, and an answer a client reads. */
 export const MAX_REQUEST_BYTES = 256 * 1024 * 1024;
-/** The most a transfer manifest may come to: prepare carries it and, in what landed, its carried roots' files again, in one request. */
+/** The most a transfer manifest may come to: claim and prepare carry it and, in what landed, its carried roots' files again, in one request. */
 export const MAX_MANIFEST_BYTES = MAX_REQUEST_BYTES / 2;
 
 /** One slice of a request too large for one socket message: the parts of one request arrive in order, and the whole is answered once. */

@@ -24,7 +24,7 @@ import { OwnershipState } from '../../src/ownership/state.js';
 import { installedScripts, resolvePaths, type Paths } from '../../src/paths.js';
 import { reconcile } from '../../src/reconcile.js';
 import { Store } from '../../src/store.js';
-import { Handover, Refused, type Daemon, type Side } from '../../../cli/src/controller/handover.js';
+import { Handover, Refused, type Daemon, type HandoverDeps, type Side } from '../../../cli/src/controller/handover.js';
 import { gatewayOf } from '../../../cli/src/controller/reach.js';
 import { fileStore, forgettable, type ControllerStore } from '../../../cli/src/controller/recovery.js';
 import type { RunRsync } from '../../../cli/src/controller/rsync.js';
@@ -260,6 +260,8 @@ export class World {
   message?: { at: number; kind: MessageKind };
   /** awaited before a controller's `n`th request goes out, so a test can run another controller there */
   gate?: (at: { life: Life; n: number; label: string }) => Promise<void>;
+  /** how each controller made from here on answers a blocker; with none, it cancels */
+  decide?: HandoverDeps['decide'];
   /** the folder of every controller this world has run */
   readonly dirs = new Set<string>([this.ctlDir]);
   /** the parties cut off from every controller until recovery */
@@ -671,7 +673,7 @@ export class World {
     const c = new Handover({
       fleetId, store, gateway, local: seat.local, machines: [MAC, TRIFT], side, route,
       transfer: (o) => runTransfer({ ...o, deps: { run: rsync } }), rsync: async () => '/usr/bin/rsync', stateDir: seat.dir,
-      clock: { now: () => this.now, sleep: async () => {} }, retry: { attempts: 3, firstDelayMs: 1 },
+      clock: { now: () => this.now, sleep: async () => {} }, retry: { attempts: 3, firstDelayMs: 1 }, ...(this.decide && { decide: this.decide }),
     });
     this.lives.set(c, life);
     return c;

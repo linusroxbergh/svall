@@ -312,7 +312,10 @@ export class DestinationHandover {
     const roots: Result<'handover.claim'>['roots'] = [];
     for (const r of replicaRoots(m)) {
       const imported = prior?.roots.find((x) => x.id === r.id)?.files;
-      const claim = { transactionId: tx, excludes: m.excludes, incoming: m.roots.find((x) => x.id === r.id)!.files, keep: stays.keep(r.path), ...(imported && { imported }) };
+      const landed = p.landed?.find((x) => x.id === r.id)?.files;
+      const claim = {
+        transactionId: tx, excludes: m.excludes, incoming: m.roots.find((x) => x.id === r.id)!.files, keep: stays.keep(r.path), ...(imported && { imported }), ...(landed && { landed }),
+      };
       let check = await boundary('destination.claim.root', () => this.replicas.claim(r, claim));
       let archivedTo: string | undefined;
       if (!check.ok && p.archive?.length && ARCHIVABLE.has(check.blocker.code)) {

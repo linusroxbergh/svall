@@ -237,6 +237,7 @@ describe('ownership and handover methods', () => {
     const claim = { transactionId: 't1', generation: 5, manifest: MANIFEST, manifestDigest: DIGEST };
     expect(methods['handover.claim'].params.parse(claim)).toEqual(claim);
     expect(methods['handover.claim'].params.parse({ ...claim, archive: ['r_1'] }).archive).toEqual(['r_1']);
+    expect(methods['handover.claim'].params.parse({ ...claim, landed: [{ id: 'r_1', files: [] }] }).landed).toEqual([{ id: 'r_1', files: [] }]);
     const { transactionId: _t, ...preflight } = MANIFEST;
     expect(() => methods['handover.claim'].params.parse({ ...claim, manifest: preflight })).toThrow();
     const claimed = { roots: [{ id: 'r_1', excludes: ['node_modules/'], check: { ok: true, path: '/home/linus/p', kind: 'absent' }, archivedTo: '/home/linus/p.archived-x' }] };
