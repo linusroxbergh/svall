@@ -34,6 +34,9 @@ the code does. Amend the spec to describe it, briefly, in the section each belon
   (I3), bare `archi setup` on an installed release (C32), remote terminal surfaces when the helper's master is gone
   (C15, C1's decision), release pruning (C17), the rsync version warning (L17), the file-count bound, the spike probes'
   new home (I12).
+- From C1's report: the security doc's release verification (the signature is checked once, then the SUMS on disk is
+  re-checked), release pruning, the app's attach rules (C15); the helper contract's `--interrupt-after` is now `<ms>ms`
+  (`ledger/task-28-29-contract.md` is a ledger file: leave it, but the user-facing docs must say `<ms>ms`).
 - The known-limitations list stays accurate (fold in anything the fixes changed).
 - `errors.md`: every row's recovery still works after the fixes (its test checks codes exist, not that the prose is
   right).

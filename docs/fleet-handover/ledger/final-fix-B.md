@@ -35,6 +35,7 @@ every behaviour change; one commit per item where practical.
   errors).
 - **C20 (cli part)** `identify` / `remoteOwner` use A's parsers.
 - **C18 (cli part)** `inspectCompanion` uses C1's staging function; keep the GNU tar test in `host.test.ts` passing.
+- **C16 (cli part)** after a same-name reinstall, `host upgrade`'s rollback message must not call the new tree "the one it ran before" (C1's report has the suggested change).
 - **C25** drop `export` from the seven unused exports.
 - **C32** bare `archi setup` on an installed release works (it sets up from `current`), so every "run `archi setup`" hint
   in doctor, the daemon's missing-agent error and the docs holds; test it.
