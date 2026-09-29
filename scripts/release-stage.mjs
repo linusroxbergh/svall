@@ -4,6 +4,7 @@
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
@@ -61,27 +62,64 @@ async function download(url, dest) {
 }
 
 /**
- * The pinned Node tarball for one platform, cached under vendor/ and checked against the digest
- * nodejs.org publishes for that exact file before any of it is staged.
+ * The pinned Node tarball for one platform, cached under vendor/ and checked against the digest pins.json
+ * holds for it, and the one nodejs.org publishes for that exact file, before any of it is staged.
  */
-async function nodeRuntime(platform, o = {}) {
+export async function nodeRuntime(platform, o = {}) {
   const { version } = PINS.node;
   if (!PINS.node.platforms.includes(platform)) throw new Error(`${platform} is not a pinned release platform`);
   const name = `node-${version}-${platform}.tar.xz`;
-  const tarball = path.join(VENDOR, 'node', name);
+  const tarball = path.join(o.vendor ?? VENDOR, 'node', name);
   if (!fs.existsSync(tarball)) await download(`https://nodejs.org/dist/${version}/${name}`, tarball);
 
   // the published digests are cached beside the tarball, so a rebuild reaches for neither again.
   // the manifest names where they came from, not where this machine keeps them
   const publishedAt = `https://nodejs.org/dist/${version}/SHASUMS256.txt`;
-  const cached = o.shasums ?? path.join(VENDOR, 'node', `SHASUMS256-${version}.txt`);
+  const cached = o.shasums ?? path.join(o.vendor ?? VENDOR, 'node', `SHASUMS256-${version}.txt`);
   if (!fs.existsSync(cached)) await download(publishedAt, cached);
   const sums = fs.readFileSync(cached, 'utf8');
   const published = sums.split('\n').map((l) => l.trim().split(/\s+/)).find(([, f]) => f === name)?.[0];
   if (!published) throw new Error(`${cached} lists no digest for ${name}`);
   const actual = sha256(tarball);
+  const pinned = PINS.node.sha256?.[platform];
+  if (actual !== pinned) throw new Error(`${name} is not the pinned runtime: pins.json holds ${pinned ?? 'no digest'}, got ${actual}`);
   if (actual !== published) throw new Error(`${name} is not the published runtime: expected ${published}, got ${actual}`);
   return { version, platform, tarball, name, sha256: actual, verifiedAgainst: publishedAt };
+}
+
+export const RSYNC_CONFIGURE = ['--disable-xxhash', '--disable-zstd', '--disable-lz4', '--disable-openssl', '--disable-md2man'];
+
+/**
+ * The pinned rsync, built once per version and architecture and kept under vendor/ after that, and the source it was
+ * built from, which ships beside it under its GPL. A `fresh` one, for a signed release, is built again from that source
+ * whatever vendor/ holds.
+ */
+export async function pinnedRsync(arch, o = {}) {
+  const { version } = PINS.rsync;
+  const vendor = o.vendor ?? VENDOR;
+  const cache = path.join(vendor, 'rsync', `${version}-${arch}`);
+  const binary = path.join(cache, 'rsync');
+  const licence = path.join(cache, 'COPYING');
+  const name = `rsync-${version}.tar.gz`;
+  const tarball = path.join(vendor, 'rsync', name);
+  if (!fs.existsSync(tarball)) await download(`https://download.samba.org/pub/rsync/src/${name}`, tarball);
+  const digest = sha256(tarball);
+  if (digest !== PINS.rsync.sha256) throw new Error(`${name} is not the pinned source: expected ${PINS.rsync.sha256}, got ${digest}`);
+  if (!o.fresh && fs.existsSync(binary) && fs.existsSync(licence)) return { version, binary, licence, tarball, sha256: PINS.rsync.sha256 };
+
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'archi-rsync-'));
+  try {
+    run('tar', ['-xzf', tarball, '-C', work, '--strip-components', '1']);
+    run('./configure', RSYNC_CONFIGURE, { cwd: work });
+    run('make', ['-j', String(os.availableParallelism())], { cwd: work });
+    fs.mkdirSync(cache, { recursive: true });
+    fs.copyFileSync(path.join(work, 'rsync'), binary);
+    fs.chmodSync(binary, 0o755);
+    fs.copyFileSync(path.join(work, 'COPYING'), licence);
+  } finally {
+    fs.rmSync(work, { recursive: true, force: true });
+  }
+  return { version, binary, licence, tarball, sha256: PINS.rsync.sha256 };
 }
 
 /** Unpacks the runtime and drops what a companion never runs: the headers, npm and corepack. */

@@ -9,56 +9,16 @@
 //
 // It is the companion tree plus the rsync 3.x the controller needs, because macOS ships openrsync,
 // which cannot protect remote arguments or report byte progress. rsync is built from the pinned
-// upstream source and cached under vendor/, so only the first build pays for it.
+// upstream source and cached under vendor/, so only the first build pays for it; a signed release
+// builds its own.
 
 import { execFileSync } from 'node:child_process';
-import crypto from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { signManifest, writeManifest } from './release-manifest.mjs';
-import { describeVersion, PINS, releaseKey, stageRelease, VENDOR } from './release-stage.mjs';
+import { describeVersion, pinnedRsync, releaseKey, RSYNC_CONFIGURE, stageRelease } from './release-stage.mjs';
 
 const run = (exe, argv, o = {}) => execFileSync(exe, argv, { stdio: ['ignore', 'pipe', 'inherit'], ...o });
-
-const CONFIGURE = ['--disable-xxhash', '--disable-zstd', '--disable-lz4', '--disable-openssl', '--disable-md2man'];
-
-/**
- * The pinned rsync, built once per version and architecture and kept under vendor/ after that, and the source it was
- * built from, which ships beside it under its GPL.
- */
-async function rsync(arch) {
-  const { version } = PINS.rsync;
-  const cache = path.join(VENDOR, 'rsync', `${version}-${arch}`);
-  const binary = path.join(cache, 'rsync');
-  const licence = path.join(cache, 'COPYING');
-  const name = `rsync-${version}.tar.gz`;
-  const tarball = path.join(VENDOR, 'rsync', name);
-  if (!fs.existsSync(tarball)) {
-    const url = `https://download.samba.org/pub/rsync/src/${name}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
-    fs.mkdirSync(path.dirname(tarball), { recursive: true });
-    fs.writeFileSync(tarball, Buffer.from(await res.arrayBuffer()));
-  }
-  const digest = crypto.createHash('sha256').update(fs.readFileSync(tarball)).digest('hex');
-  if (digest !== PINS.rsync.sha256) throw new Error(`${name} is not the pinned source: expected ${PINS.rsync.sha256}, got ${digest}`);
-  if (fs.existsSync(binary) && fs.existsSync(licence)) return { version, binary, licence, tarball, sha256: PINS.rsync.sha256 };
-
-  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'archi-rsync-'));
-  try {
-    run('tar', ['-xzf', tarball, '-C', work, '--strip-components', '1']);
-    run('./configure', CONFIGURE, { cwd: work });
-    run('make', ['-j', String(os.availableParallelism())], { cwd: work });
-    fs.mkdirSync(cache, { recursive: true });
-    fs.copyFileSync(path.join(work, 'rsync'), binary);
-    fs.chmodSync(binary, 0o755);
-    fs.copyFileSync(path.join(work, 'COPYING'), licence);
-  } finally {
-    fs.rmSync(work, { recursive: true, force: true });
-  }
-  return { version, binary, licence, tarball, sha256: PINS.rsync.sha256 };
-}
 
 function options(argv) {
   const o = {};
@@ -80,7 +40,7 @@ const { stage, meta } = await stageRelease({
   out, version, platform: `darwin-${process.arch}`, shasums: o['node-shasums'],
   companionUrlBase: o['companion-url-base'], companionDir: o.companions,
 });
-const r = await rsync(process.arch);
+const r = await pinnedRsync(process.arch, { fresh: Boolean(key) });
 fs.copyFileSync(r.binary, path.join(stage, 'bin', 'rsync'));
 fs.chmodSync(path.join(stage, 'bin', 'rsync'), 0o755);
 // the debug map names each object file by the folder this machine built it in
@@ -88,7 +48,7 @@ run('strip', ['-S', path.join(stage, 'bin', 'rsync')]);
 fs.copyFileSync(r.licence, path.join(stage, 'licenses', 'rsync-LICENSE'));
 fs.copyFileSync(r.tarball, path.join(stage, 'licenses', path.basename(r.tarball)));
 fs.appendFileSync(path.join(stage, 'licenses', 'NOTICE'), `rsync ${r.version} (bin/rsync)  GPL-3.0-or-later  licenses/rsync-LICENSE; `
-  + `source licenses/${path.basename(r.tarball)}, built with ./configure ${CONFIGURE.join(' ')} and make, then strip -S\n`);
+  + `source licenses/${path.basename(r.tarball)}, built with ./configure ${RSYNC_CONFIGURE.join(' ')} and make, then strip -S\n`);
 
 const full = { ...meta, rsync: { version: r.version, sha256: r.sha256 } };
 const { entries } = writeManifest(stage, key ? full : { ...full, unsigned: true });
