@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Blocker, emptyState, FleetConfig, FleetId, GitGraph, HANDOVER_PHASES, HandoverChoices, HandoverEntity, HandoverError, HandoverPhase, handoverError, MachineId, MachineRecord, ManifestSummary, NodeConfig, OwnerRecord, ReceivedGraph, TRANSFER_SCHEMA_VERSION, TransactionRecord, TransferFile, TransferManifestV1, Warning } from '../src/index.js';
+import { Blocker, emptyState, type HandoverEvent, FleetConfig, FleetId, GitGraph, HANDOVER_PHASES, HandoverChoices, HandoverEntity, HandoverError, HandoverPhase, handoverError, MachineId, MachineRecord, ManifestSummary, NodeConfig, OwnerRecord, ReceivedGraph, TRANSFER_SCHEMA_VERSION, TransactionRecord, TransferFile, TransferManifestV1, Warning } from '../src/index.js';
 
 const UUID_A = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
 const UUID_B = '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
@@ -260,5 +260,20 @@ describe('throwing a handover error', () => {
     expect(handoverError({ code: 'generation_mismatch', message: 'stale', expected: 4, actual: 5 }).data).toEqual({ expected: 4, actual: 5 });
     expect(handoverError({ code: 'transaction_mismatch', message: 'other', actual: 't2' }).data).toEqual({ actual: 't2' });
     expect(handoverError({ code: 'not_ready', message: 'not wired yet' }).data).toEqual({});
+  });
+});
+
+describe('the lines the handover helper prints', () => {
+  it('are one shared type for the helper that writes them and the app that reads them', () => {
+    const lines = [
+      { event: 'handover.entity', data: { transactionId: 't1', kind: 'root', id: 'r_1', phase: 'transfer', done: 1, total: 2, bytes: 10, totalBytes: 20 } },
+      { event: 'handover.result', data: { status: 'interrupted', phase: 'transfer', error: 'ssh dropped', safe: ['resume', 'abort'] } },
+      {
+        event: 'handover.status',
+        data: { standing: 'open', journals: { source: 'freeze' }, safe: ['abort'], action: 'continue', reason: 'the source is frozen', helper: { pid: 7 } },
+      },
+      { event: 'handover.detached', data: { pid: 7 } },
+    ] satisfies HandoverEvent[];
+    expect(lines.map((l) => l.event)).toEqual(['handover.entity', 'handover.result', 'handover.status', 'handover.detached']);
   });
 });

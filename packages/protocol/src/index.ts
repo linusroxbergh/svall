@@ -7,3 +7,4 @@ export * from './shape.js';
 export * from './migrate.js';
 export * from './url.js';
 export * from './handover.js';
+export * from './handover-events.js';
