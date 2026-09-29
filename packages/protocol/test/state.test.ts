@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Agent, Character, ContextItem, DEFAULT_CWD, FleetState, Home, Island, defaultHome, emptyState } from '../src/index.js';
+import { Agent, Character, ContextItem, DEFAULT_CWD, FleetState, Home, Island, STATE_SCHEMA_VERSION, defaultHome, emptyState } from '../src/index.js';
 
 describe('state schemas', () => {
   it('accepts an empty fleet', () => {
@@ -54,6 +54,7 @@ describe('state schemas', () => {
     expect(Island.parse({ id: 'i', name: 'n', description: '', instructions: 'never touch src/legacy', context: [item], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 }).instructions)
       .toBe('never touch src/legacy');
     expect(emptyState().version).toBe(8);
+    expect(STATE_SCHEMA_VERSION).toBe(8);
   });
 
   it('keeps both terminals of an imported state that carries no tmux ids', () => {

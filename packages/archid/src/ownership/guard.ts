@@ -80,7 +80,7 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
 /** Throws before the handler runs when this machine may not do what the call asks, or this caller may not ask it. */
 export function guardMethod(ownership: OwnershipState, method: MethodName, caller?: Viewer['kind']): void {
   const kind = classification[method];
-  // a phone watches a handover and never drives one; an inspection hashes the fleet and writes probe files
+  // a phone watches a handover and never drives one; an inspection hashes the roots and reads the folders this machine holds
   if ((kind === 'recovery' || kind === 'transaction' || method === 'handover.inspect') && caller !== 'app') {
     throw Object.assign(new Error(`${method} answers only a client that holds this fleet's token`), { code: 'unauthorized' });
   }

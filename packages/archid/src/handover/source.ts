@@ -3,7 +3,7 @@ import path from 'node:path';
 import v8 from 'node:v8';
 import { z } from 'zod';
 import {
-  FleetConfig, MAX_MANIFEST_BYTES, PROTOCOL_VERSION, TRANSFER_SCHEMA_VERSION, emptyState, handoverError,
+  FleetConfig, MAX_MANIFEST_BYTES, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, TRANSFER_SCHEMA_VERSION, handoverError,
   type AgentAdapter, type AgentKind, type Blocker, type FleetId, type FleetState, type HandoverMachines, type HandoverPhase, type LandedRoot, type MachineId,
   type OwnerRecord, type ParsedParams, type Result, type SystemInfo, type TransactionRecord, type TransferManifestV1, type Warning,
 } from '@archipelago/protocol';
@@ -59,7 +59,6 @@ type Journal = Pick<HandoverService, 'journalState' | 'write' | 'close' | 'emitE
 type FreezeParams = ParsedParams<'handover.freeze'>;
 type Frozen = Result<'handover.freeze'>;
 
-const STATE_SCHEMA = emptyState().version;
 // how long preflight's one reading of ps and tmux may take
 const CALL_TIMEOUT_MS = 10_000;
 
@@ -72,7 +71,7 @@ function compatibility(info: SystemInfo): Blocker[] {
   const release = releaseVersion();
   if (info.release !== release) out.push({ code: 'incompatible_release', message: `the destination runs release ${info.release}, this machine ${release}` });
   if (info.protocol !== PROTOCOL_VERSION) out.push({ code: 'incompatible_protocol', message: `the destination speaks protocol ${info.protocol}, this machine ${PROTOCOL_VERSION}` });
-  if (info.stateSchema !== STATE_SCHEMA) out.push({ code: 'incompatible_schema', message: `the destination reads state schema ${info.stateSchema}, this machine writes ${STATE_SCHEMA}` });
+  if (info.stateSchema !== STATE_SCHEMA_VERSION) out.push({ code: 'incompatible_schema', message: `the destination reads state schema ${info.stateSchema}, this machine writes ${STATE_SCHEMA_VERSION}` });
   if (info.transferSchema !== TRANSFER_SCHEMA_VERSION) {
     out.push({ code: 'incompatible_schema', message: `the destination reads transfer manifest ${info.transferSchema}, this machine writes ${TRANSFER_SCHEMA_VERSION}` });
   }

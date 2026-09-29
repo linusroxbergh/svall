@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { Character, FleetState, Island } from './state.js';
+import { Character, FleetState, Island, STATE_SCHEMA_VERSION } from './state.js';
 
-const CURRENT = FleetState.shape.version.value;
+const CURRENT = STATE_SCHEMA_VERSION;
 const OLDEST = 6;
 
 export class NewerStateVersion extends Error {

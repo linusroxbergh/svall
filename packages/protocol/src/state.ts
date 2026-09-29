@@ -161,8 +161,11 @@ export const Character = TerminalSlot.extend({
 });
 export type Character = z.infer<typeof Character>;
 
+/** The state.json schema this release reads and writes, which both machines of a handover have to share. */
+export const STATE_SCHEMA_VERSION = 8;
+
 export const FleetState = z.object({
-  version: z.literal(8),
+  version: z.literal(STATE_SCHEMA_VERSION),
   islands: z.record(z.string(), Island),
   characters: z.record(z.string(), Character),
   home: Home.prefault({}),
@@ -185,4 +188,4 @@ export type FleetState = z.infer<typeof FleetState>;
 
 export const DORMANT_AFTER_HOURS = 12;
 
-export const emptyState = (): FleetState => ({ version: 8, islands: {}, characters: {}, home: defaultHome(), defaultCwd: DEFAULT_CWD, scribeAsk: true });
+export const emptyState = (): FleetState => ({ version: STATE_SCHEMA_VERSION, islands: {}, characters: {}, home: defaultHome(), defaultCwd: DEFAULT_CWD, scribeAsk: true });

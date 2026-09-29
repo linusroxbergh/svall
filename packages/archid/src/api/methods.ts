@@ -1,6 +1,6 @@
 import v8 from 'node:v8';
 import type { ZodTypeAny } from 'zod';
-import { PROTOCOL_VERSION, TRANSFER_SCHEMA_VERSION, emptyState, methods, type MethodName, type ParsedParams, type Request, type Response, type Result } from '@archipelago/protocol';
+import { PROTOCOL_VERSION, STATE_SCHEMA_VERSION, TRANSFER_SCHEMA_VERSION, methods, type MethodName, type ParsedParams, type Request, type Response, type Result } from '@archipelago/protocol';
 import type { Fleet } from '../fleet.js';
 import { gitVersion } from '../handover/git-extensions.js';
 import type { HandoverService } from '../handover/service.js';
@@ -20,7 +20,6 @@ export type Ctx = { store: Store; fleet: Fleet; handover: HandoverService; termi
 
 type Handlers = { [M in MethodName]: (p: ParsedParams<M>, ctx: Ctx) => Promise<Result<M>> | Result<M> };
 
-const STATE_SCHEMA = emptyState().version;
 // archid runs on the two platforms a handover can compare; nothing else gets this far
 const platform = (): 'darwin' | 'linux' => (process.platform === 'linux' ? 'linux' : 'darwin');
 
@@ -91,7 +90,7 @@ export const handlers: Handlers = {
   'system.info': async (_p, { ownership, handover }) => {
     const git = await gitVersion();
     return {
-      machineId: ownership.machineId, release: releaseVersion(), protocol: PROTOCOL_VERSION, stateSchema: STATE_SCHEMA,
+      machineId: ownership.machineId, release: releaseVersion(), protocol: PROTOCOL_VERSION, stateSchema: STATE_SCHEMA_VERSION,
       transferSchema: TRANSFER_SCHEMA_VERSION, platform: platform(), arch: process.arch, agentAdapters: await handover.agentAdapters(), ...(git && { git }),
       heapLimit: v8.getHeapStatistics().heap_size_limit,
     };

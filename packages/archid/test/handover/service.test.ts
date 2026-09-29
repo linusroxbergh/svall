@@ -104,7 +104,7 @@ describe('startupMode', () => {
 
   it('starts a committed destination read-only until activation', async () => {
     const b = boot({ record: { generation: 5, ownerMachineId: me }, journal: destination() });
-    expect(modeOf(b)).toBe('committed-destination');
+    expect(modeOf(b)).toBe('receiving-destination');
     await enter(b);
     expect(b.ownership.writable()).toBe(false);
     expect(() => b.ownership.assertOwner('mutation')).toThrow(/activated/);
@@ -114,7 +114,7 @@ describe('startupMode', () => {
 
   it('keeps a destination that has only prepared read-only too', () => {
     const b = boot({ record: { generation: 5, ownerMachineId: me }, journal: destination({ phase: 'prepare' }) });
-    expect(modeOf(b)).toBe('committed-destination');
+    expect(modeOf(b)).toBe('receiving-destination');
   });
 
   it('starts read-only on a journal it cannot read, and names the file it moved aside', async () => {

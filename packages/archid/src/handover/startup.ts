@@ -11,7 +11,7 @@ import type { Authority } from './source.js';
 const GATEWAY_START_MS = 10_000;
 
 /** How this daemon comes up: which of them may reconcile, adopt tmux windows and accept mutations. */
-export type StartupMode = 'owner' | 'replica' | 'frozen-source' | 'committed-destination' | 'quarantined';
+export type StartupMode = 'owner' | 'replica' | 'frozen-source' | 'receiving-destination' | 'quarantined';
 
 /** `standalone`: no gateway is configured, so no controller can resume what a broken journal left open. */
 export type StartupDeps = { ownership: OwnershipState; journal: JournalState; log: Logger; standalone: boolean };
@@ -21,7 +21,7 @@ export function startupMode({ ownership, journal, config }: { ownership: Ownersh
   // a journal from another fleet says nothing about this one, and owner.json alone decides
   if (journal.kind === 'open' && journal.journal.fleetId === config.id) {
     // a destination journal holds the fleet at every phase it has: only activation releases it
-    return journal.journal.role === 'source' ? 'frozen-source' : 'committed-destination';
+    return journal.journal.role === 'source' ? 'frozen-source' : 'receiving-destination';
   }
   return ownership.writable() ? 'owner' : 'replica';
 }
@@ -49,7 +49,7 @@ export async function enterStartupMode(mode: StartupMode, { ownership, journal, 
     log.info(`handover ${open.transactionId} froze this fleet at ${open.phase}; it is read-only until the controller resumes or aborts it`);
     return;
   }
-  if (mode === 'committed-destination' && open) {
+  if (mode === 'receiving-destination' && open) {
     ownership.hold(`handover ${open.transactionId} has not been activated on this machine`);
     log.info(`handover ${open.transactionId} is at ${open.phase} on this machine; the fleet is read-only until it is activated`);
     return;
