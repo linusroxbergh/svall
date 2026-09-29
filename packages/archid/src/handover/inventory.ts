@@ -328,7 +328,8 @@ export function buildInventory(state: FleetState, configs: InventoryConfigs, mac
 
 /**
  * Folds each root into the outermost carried root that copies its files, so a file is sent once. A folded Git
- * root stays listed for the Git import to check; any other folded root has nothing left to do.
+ * root stays listed for the Git import to check; any other folded root has nothing left to do. A folded Git
+ * directory whose Git entries the outer root's excludes would leave behind adds a blocker.
  */
 function fold(candidates: InventoryRoot[], excludes: readonly string[], blockers: Blocker[]): InventoryRoot[] {
   const carried: InventoryRoot[] = [];
