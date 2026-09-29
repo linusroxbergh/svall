@@ -1487,6 +1487,23 @@ describe('destination activate', () => {
     }
   });
 
+  it('promotes no state but the one it prepared: not one changed since, nor a state.json in place of one gone, and stays held', async () => {
+    for (const how of ['changed', 'gone'] as const) {
+      const { s, d, preparedDigest } = await prepared();
+      d.gateway.commit(preparedDigest);
+      const before = fs.readFileSync(s.paths.state);
+      const file = s.paths.preparedState(TX);
+      if (how === 'changed') fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), defaultCwd: '/elsewhere' }));
+      else fs.rmSync(file);
+      const r = await refusal(d.handover.activate({ transactionId: TX, generation: 5 }));
+      expect(r.message, how).toMatch(how === 'changed' ? /is not the state handover tx-1 prepared/ : /prepared is gone/);
+      expect(fs.readFileSync(s.paths.state), how).toEqual(before);
+      expect(s.store.state.characters, how).toEqual({});
+      expect(d.ownership.writable(), how).toBe(false);
+      expect(d.crew.log, how).toEqual([]);
+    }
+  });
+
   it('lets a restarted destination out of its hold only by activating', async () => {
     const { d, preparedDigest } = await prepared();
     d.gateway.commit(preparedDigest);
