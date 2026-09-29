@@ -41,6 +41,13 @@ the code does. Amend the spec to describe it, briefly, in the section each belon
   running background commands.
 - From the C1 re-review: don't repeat the C1 report's claim about what `BatchMode=yes` does for unknown host keys
   (`final-fix-C1-review.md`, minor 4); pruning can remove a release a `--no-launchctl` process still runs from.
+- From B's report: C09 now refuses `host enable` when fleet.json names another registered gateway, so the "gateway set
+  up again" flow in `handover.md` (add under a new name, then enable) must run `fleet recover --gateway` first as the
+  refusal says — reorder it and check it against the code; `daemon env` is checked on Linux too; `host upgrade
+  --rollback` steps; host add's new end-to-end probe (gateway authority, temporary tmux window) and rsync warning;
+  `incompatible_protocol` also covers the gateway authority schema; `archi uninstall --force`, and `host remove` running
+  it; `integration.md`: a fenced old owner runs no tmux server (not just `_keep`); the sheet's archived-copy location
+  (F1) and attach's held choices (L20).
 - The known-limitations list stays accurate (fold in anything the fixes changed).
 - `errors.md`: every row's recovery still works after the fixes (its test checks codes exist, not that the prose is
   right).
