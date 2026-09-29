@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -24,6 +25,19 @@ export function profileHome(name: string, homedir = os.homedir()): string {
 
 export function profileLabel(name: string, base = LAUNCHD_LABEL): string {
   return name === PRIVATE ? base : `${base}.${name}`;
+}
+
+/**
+ * Each `~/.archipelago-<name>` holding a fleet under a name archi now keeps for a command of its own, which no `-p`
+ * reaches, with a name it can move to.
+ */
+export function reservedProfileHomes(homedir = os.homedir()): { home: string; name: string; rename: string }[] {
+  let names: string[];
+  try { names = fs.readdirSync(homedir).sort(); } catch { return []; }
+  return names.filter((f) => f.startsWith(PREFIX) && RESERVED.includes(f.slice(PREFIX.length)))
+    .map((f) => ({ home: path.join(homedir, f), name: f.slice(PREFIX.length) }))
+    .filter(({ home }) => ['fleet.json', 'config.json'].some((c) => fs.existsSync(path.join(home, c))))
+    .map(({ home, name }) => ({ home, name, rename: `${name}-fleet` }));
 }
 
 export function profileOf(home: string, homedir = os.homedir()): string {

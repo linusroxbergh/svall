@@ -11,7 +11,7 @@ import { initConfig, loadConfig } from './config.js';
 import { CLAUDE_HOOKS, hooksFor } from './hooks/receiver.js';
 import { writeAtomic } from './jsonfile.js';
 import { machineId } from './machine.js';
-import { LAUNCHD_LABEL } from './profile.js';
+import { LAUNCHD_LABEL, reservedProfileHomes } from './profile.js';
 import { HOOK_GUARD, HOOK_SCRIPT, claudePaths, expandHome, isOurs, resolvePaths, type Paths } from './paths.js';
 import { hooksDir, homeTemplateDir } from './release.js';
 import { shq } from './text.js';
@@ -464,6 +464,9 @@ export function setupUser(o: RunFrom & { home: string; settings?: JsonSettings; 
     else done.push(...installHomeTemplate(loadConfig(paths).home.cwd, { replaceSettings: o.replaceSettings === true }));
   } catch (e) {
     done.push(`home folder skipped: ${(e as Error).message}`);
+  }
+  for (const r of reservedProfileHomes(path.dirname(o.home))) {
+    done.push(`${r.home} holds a fleet named ${r.name}, a name archi now keeps for its own command, so no -p reaches it: mv ${r.home} ${path.join(path.dirname(r.home), `.archipelago-${r.rename}`)}, then archi -p ${r.rename} setup`);
   }
   return done;
 }
