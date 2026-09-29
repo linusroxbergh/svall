@@ -75,7 +75,7 @@ export type ReplicaCheck =
   | { ok: false; path: string; blocker: Blocker; divergence?: Divergence };
 
 /** What an archive choice can clear: a root holding work no handover left there. */
-export const SVALLVABLE: ReadonlySet<string> = new Set(['destination_diverged', 'destination_occupied']);
+export const ARCHIVABLE: ReadonlySet<string> = new Set(['destination_diverged', 'destination_occupied']);
 
 export class ReplicaError extends Error {
   constructor(readonly code: 'conflict' | 'not_claimed' | 'not_approved' | 'invalid' | 'missing', message: string) {

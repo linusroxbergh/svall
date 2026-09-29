@@ -1,6 +1,6 @@
 import readline from 'node:readline';
 import type { Blocker, HandoverChoices, HandoverEntity, HandoverEvent, HandoverPhase, Names, Outcome, Verdict } from '@svall/protocol';
-import { SVALLVABLE } from '@svall/svalld/handover/replicas';
+import { ARCHIVABLE } from '@svall/svalld/handover/replicas';
 
 /** How a view names the commands it points to and the machines it speaks of. */
 export type Words = { svall(args: string): string; machine(id?: string): string };
@@ -48,7 +48,7 @@ function issueLine(names: Names, b: Blocker, mark: string): string {
 const characters = (blockers: Blocker[], codes: (c: string) => boolean): string[] =>
   unique(blockers.flatMap((b) => (codes(b.code) && b.entity?.kind === 'character' ? [b.entity.id] : [])));
 const roots = (blockers: Blocker[]): string[] =>
-  unique(blockers.flatMap((b) => (SVALLVABLE.has(b.code) && b.entity?.kind === 'root' ? [b.entity.id] : [])));
+  unique(blockers.flatMap((b) => (ARCHIVABLE.has(b.code) && b.entity?.kind === 'root' ? [b.entity.id] : [])));
 
 export type Option = { key: string; label: string; answer: HandoverChoices | 'cancel' };
 

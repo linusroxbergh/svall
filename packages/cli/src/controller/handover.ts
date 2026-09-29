@@ -12,7 +12,7 @@ import { settle } from '@svall/svalld/handover/inventory';
 import { landingFolder, manifestDigest, spaceNeed } from '@svall/svalld/handover/manifest';
 import { holds } from '@svall/svalld/handover/portable-path';
 import { caseCollisions } from '@svall/svalld/handover/probe';
-import { SVALLVABLE, replicaRoots } from '@svall/svalld/handover/replicas';
+import { ARCHIVABLE, replicaRoots } from '@svall/svalld/handover/replicas';
 import { resumeFolders } from '@svall/svalld/handover/sessions/registry';
 import { resolvePaths } from '@svall/svalld/paths';
 import { FIRST_DELAY, FleetMismatch, MachineMismatch, MAX_DELAY, retryable } from './connection.js';
@@ -909,7 +909,7 @@ export class Handover {
       return { blockers: [{ code: 'identity_mismatch', message: `${where} will not read the roots it would receive: ${e.message}` }], warnings: [] };
     }
     // a root the user chose to archive is set aside at claim, and arrives as a first copy
-    const archived = new Set(r.roots.filter((x) => !x.check.ok && SVALLVABLE.has(x.check.blocker.code)
+    const archived = new Set(r.roots.filter((x) => !x.check.ok && ARCHIVABLE.has(x.check.blocker.code)
       && choices.archiveRoots?.some((n) => n === x.id || n === x.check.path || n === carried.find((c) => c.id === x.id)?.path)).map((x) => x.id));
     const blockers: Blocker[] = [
       ...r.roots.flatMap((x) => (x.check.ok || archived.has(x.id) ? [] : [x.check.blocker])),

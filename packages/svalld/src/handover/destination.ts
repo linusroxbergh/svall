@@ -26,7 +26,7 @@ import { DestinationJournal } from './journal.js';
 import { manifestDigest, scanPath, type ScanFs } from './manifest.js';
 import { ProcessTable } from './processes.js';
 import { probeFolders, type ProbeFs } from './probe.js';
-import { SVALLVABLE, kept, ReplicaError, ReplicaStore, replicaRoots, type ReplicaCheck } from './replicas.js';
+import { ARCHIVABLE, kept, ReplicaError, ReplicaStore, replicaRoots, type ReplicaCheck } from './replicas.js';
 import type { Clock } from './rest.js';
 import type { HandoverService } from './service.js';
 import { adapterFor, installSession, placeTranscripts, resumeFolder, sessionAdapter, type AgentProbe, type InstallFs } from './sessions/registry.js';
@@ -318,7 +318,7 @@ export class DestinationHandover {
       };
       let check = await boundary('destination.claim.root', () => this.replicas.claim(r, claim));
       let archivedTo: string | undefined;
-      if (!check.ok && p.archive?.length && SVALLVABLE.has(check.blocker.code)) {
+      if (!check.ok && p.archive?.length && ARCHIVABLE.has(check.blocker.code)) {
         try {
           archivedTo = boundary('destination.claim.archive', () => this.replicas.archive(r, p.archive)).archivedTo;
           check = await boundary('destination.claim.root', () => this.replicas.claim(r, claim));

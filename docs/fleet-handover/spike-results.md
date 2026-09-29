@@ -285,11 +285,11 @@ Three further packaging facts for Task 12:
   create it` and exited 0. The plan's "run `svall version --json` from an unpacked clean artifact"
   needs a real `version` command added first, and it should not be reachable as a profile name.
 - **`tar` on macOS taints the archive, and it takes two flags to stop it.** A plain bsdtar
-  `-czf` wrote `LIBSVALLVE.xattr.com.apple.provenance` pax headers, and GNU tar printed 5,957
+  `-czf` wrote `LIBARCHIVE.xattr.com.apple.provenance` pax headers, and GNU tar printed 5,957
   `Ignoring unknown extended header keyword` warnings while unpacking on the target. `--no-xattrs`
   alone removes the pax headers but makes bsdtar fall back to AppleDouble `._` members instead;
   `COPYFILE_DISABLE=1` in the environment removes those too. The spike script now passes both, and
-  the archive contains zero `LIBSVALLVE` keywords and zero `._` members (58,460,924 B against
+  the archive contains zero `LIBARCHIVE` keywords and zero `._` members (58,460,924 B against
   59,034,579 B before).
 - **The runtime should be pruned.** Of 199 MB unpacked, `node/include` is 62 MB of C++ headers and
   `node/lib/node_modules` 16 MB of npm and corepack, none of which a companion needs. `node/LICENSE`
