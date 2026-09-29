@@ -176,10 +176,16 @@ export function connectHandover(o: {
     return client;
   };
 
-  const side = async (id: MachineId): Promise<Side> => {
+  const entryOf = (id: MachineId): MachineEntry => {
     const entry = registry.get(id);
     if (!entry) throw new Error(`machine ${id} is not in the registry; add it with \`archi host add\`${registry.setAside()}`);
-    const route: Route = { machineId: entry.id, name: entry.record.name, ...(entry.record.ssh && entry.id !== registry.localId && { ssh: entry.record.ssh }) };
+    return entry;
+  };
+  const routeOf = (entry: MachineEntry): Route => ({ machineId: entry.id, name: entry.record.name, ...(entry.record.ssh && entry.id !== registry.localId && { ssh: entry.record.ssh }) });
+
+  const side = async (id: MachineId): Promise<Side> => {
+    const entry = entryOf(id);
+    const route = routeOf(entry);
     const open = async (): Promise<Opened> => {
       const opened = await openDaemon(entry, { localId: registry.localId, fleetHome: o.fleetHome, fleetId: fleet.id, profile: o.profile, masters });
       if (opened.token && !tokens.includes(opened.token)) tokens.push(opened.token);
@@ -207,7 +213,7 @@ export function connectHandover(o: {
   const secrets = (): string[] => tokens.filter(Boolean);
   const handover: Handover = new Handover({
     fleetId: fleet.id, store: fileStore(dir), stateDir: dir, local: registry.localId, machines: [...new Set([registry.localId, gateway.id])],
-    gateway: authority, side, rsync: () => resolveRsync(), emit: o.emit, record: o.record, decide: o.decide, secrets,
+    gateway: authority, side, route: (id) => routeOf(entryOf(id)), rsync: () => resolveRsync(), emit: o.emit, record: o.record, decide: o.decide, secrets,
     moved: (record) => rememberOwner(o.fleetHome, record),
   });
   return {

@@ -530,7 +530,7 @@ export class World {
 export function controller(w: World, o: Partial<HandoverDeps> = {}): Handover {
   return new Handover({
     fleetId, store: w.store, gateway: w.gateway, local: mac, machines: [mac, trift],
-    side: async (id) => w.side(id), transfer: w.transfer, rsync: async () => '/opt/rsync', stateDir: '/tmp/archi-controller',
+    side: async (id) => w.side(id), route: (id) => w.side(id).route, transfer: w.transfer, rsync: async () => '/opt/rsync', stateDir: '/tmp/archi-controller',
     clock: { now: () => w.now, sleep: async () => {} }, emit: (e) => w.events.push(e), retry: { attempts: 3, firstDelayMs: 1 },
     ...o,
   });

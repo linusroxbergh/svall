@@ -1279,6 +1279,54 @@ describe('a far machine that is down', () => {
     await recover(w);
     expect(settledOn(w)).toBe('destination');
   });
+
+  // a push whose controller died at `op` and whose journal is gone, as when it ran on the other machine
+  const lostAt = async (op: string): Promise<World> => {
+    const probe = new World();
+    await controller(probe).start(trift, {});
+    const w = new World();
+    w.fault = { at: opIndex(probe, op), kind: 'death' };
+    await controller(w).start(trift, {});
+    w.store.j = undefined;
+    w.store.files.clear();
+    await w.heal();
+    return w;
+  };
+
+  it('with no journal here, on an abort from the source, gives the source its fleet back while the destination is down', async () => {
+    const w = await lostAt('trift:handover.prepare');
+    w.down.add('trift');
+    const out = await controller(w, eager(w)).abort();
+    expect(out).toMatchObject({ status: 'interrupted', safe: expect.arrayContaining(['abort']) });
+    expect(w.record).toEqual({ fleetId, generation: G, ownerMachineId: mac });
+    expect(w.source.running).toBe(true);
+    expect(w.store.j).toMatchObject({ transactionId: 'tx-1', phase: 'aborted' });
+    await recover(w, 'abort');
+    expect(settledOn(w)).toBe('source');
+  });
+
+  it('with no journal here, after the commit, activates and completes the destination here while the source is down', async () => {
+    const w = await lostAt('gateway:commit');
+    w.down.add('mac');
+    const out = await controller(w, { ...eager(w), local: trift }).resume();
+    expect(out).toMatchObject({ status: 'complete', transactionId: 'tx-1', pending: ['source'] });
+    expect(w.destination.activated).toBe(true);
+    await recover(w);
+    expect(settledOn(w)).toBe('destination');
+  });
+
+  it('with no journal here, stops an abort while the source is down and nothing says how far it got, and lets nothing go', async () => {
+    const w = await lostAt('mac:handover.freeze');
+    expect(w.source.frozen).toBe(true);
+    w.down.add('mac');
+    const ops = w.ops.length;
+    const out = await controller(w, { ...eager(w), local: trift }).abort();
+    expect(out).toMatchObject({ status: 'interrupted', safe: expect.arrayContaining(['abort']), error: expect.stringContaining('the source did not say how far it got') });
+    expect(w.ops.slice(ops).filter((op) => !/status|ownership\.get|gateway:get/.test(op))).toEqual([]);
+    expect(w.record.transaction).toMatchObject({ id: 'tx-1', phase: 'preparing' });
+    await recover(w, 'abort');
+    expect(settledOn(w)).toBe('source');
+  });
 });
 
 describe('resuming a handover the destination may have finished', () => {
@@ -1466,6 +1514,68 @@ describe('the real adapters', () => {
       process.env.ARCHI_GATEWAY_PREFIX = saved;
       if (saved === undefined) delete process.env.ARCHI_GATEWAY_PREFIX;
       for (const wss of daemons) await new Promise((r) => wss.close(r));
+      await authority.close();
+      ssh.clean();
+      cleanHomes();
+    }
+  });
+
+  it('rebuilds a lost journal from the registry, so an abort here lets the source go while the far destination cannot be reached', async () => {
+    const ssh = installFakeSsh();
+    const prefix = makeHome();
+    const home = makeHome();
+    const saved = process.env.ARCHI_GATEWAY_PREFIX;
+    process.env.ARCHI_GATEWAY_PREFIX = prefix;
+    const authority = await startAuthorityServer({ prefix });
+    const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+    const asked: string[] = [];
+    try {
+      await new Promise((r) => wss.once('listening', r));
+      const registry = MachineRegistry.load(makeHome());
+      // an ssh that would ask for a password never opens, so trift cannot be reached
+      registry.add({
+        name: 'trift', ssh: 'denied.test', platform: 'linux', arch: 'arm64',
+        home: '/home/ada', archiBase: '/home/ada/.local/share/archipelago', gateway: false,
+      }, trift);
+      const local = registry.localId;
+      const client = await AuthorityClient.connect(prefix);
+      await client.create({ fleetId, initialOwnerMachineId: local });
+      const tx = (await client.begin({ fleetId, expectedGeneration: 0, fromMachineId: local, toMachineId: trift })).transaction!.id;
+      // the source here froze for the handover, and this controller keeps no journal of it
+      const answers: Record<string, unknown> = {
+        'handover.status': { transaction: { id: tx, fromMachineId: local, toMachineId: trift, phase: 'freeze', startedAt: 1 } },
+        'ownership.get': { fleetId, generation: 0, ownerMachineId: local, frozen: true },
+      };
+      wss.on('connection', (ws) => {
+        let authed = false;
+        ws.on('message', (raw) => {
+          if (!authed) { authed = true; ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } })); return; }
+          const req = JSON.parse(raw.toString()) as { id: number; method: string };
+          asked.push(req.method);
+          ws.send(JSON.stringify({ id: req.id, result: answers[req.method] ?? {} }));
+        });
+      });
+      fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: fleetId, gatewayMachineId: local }));
+      fs.writeFileSync(path.join(home, 'node.json'), JSON.stringify({}));
+      fs.writeFileSync(path.join(home, 'port'), String((wss.address() as { port: number }).port));
+      fs.writeFileSync(path.join(home, 'token'), `${TOKEN}\n`);
+
+      const c = connectHandover({ fleetHome: home, registry });
+      try {
+        expect(await c.handover.abort()).toMatchObject({ status: 'interrupted', safe: expect.arrayContaining(['abort']) });
+      } finally {
+        await c.close();
+      }
+      expect(asked).toContain('handover.abort');
+      expect((await client.get({ fleetId })).transaction).toBeUndefined();
+      client.close();
+      expect(fileStore(path.join(home, 'controller')).read()).toMatchObject({
+        transactionId: tx, phase: 'aborted', destination: { machineId: trift, name: 'trift', ssh: 'denied.test' },
+      });
+    } finally {
+      process.env.ARCHI_GATEWAY_PREFIX = saved;
+      if (saved === undefined) delete process.env.ARCHI_GATEWAY_PREFIX;
+      await new Promise((r) => wss.close(r));
       await authority.close();
       ssh.clean();
       cleanHomes();
