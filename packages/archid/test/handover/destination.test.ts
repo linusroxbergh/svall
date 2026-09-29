@@ -537,6 +537,25 @@ describe('destination prepare', () => {
     }
   });
 
+  it('takes its own roots again after a prepare that stopped past the Git import, holding what that import wrote there', async () => {
+    const s = await scene({ tamper: strayGraph, before: ({ dst }) => { fs.symlinkSync(path.join(dst, 'work/ada'), path.join(dst, 'elsewhere')); } });
+    // the import writes the graph's config, and then git cannot read the graph
+    const git: GitRunner = async () => {
+      fs.writeFileSync(path.join(s.dst, 'elsewhere/config'), '[core]\n\tignorecase = false\n');
+      return { code: 128, stdout: '', stderr: 'fatal: not a git repository' };
+    };
+    const d = daemon(s, { git });
+    expect(blockersOf(await refusal(d.handover.prepare(params(s)))).map((b) => b.code)).toContain('worktree_unresolved');
+
+    // tried again, the transfer copies each root afresh, and claims it first
+    const r = await d.handover.claim({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest });
+    for (const root of replicaRoots(s.manifest)) {
+      expect(r.roots.find((x) => x.id === root.id)!.check, root.path).toEqual({ ok: true, path: root.path, kind: 'resume' });
+    }
+    // and again, should that copy stop short
+    expect((await d.handover.claim({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest })).roots.every((x) => x.check.ok)).toBe(true);
+  });
+
   it('drops the session stage of a handover it never prepared once the gateway lets it go, and nothing else', async () => {
     const s = await scene();
     const d = daemon(s);

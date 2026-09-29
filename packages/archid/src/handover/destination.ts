@@ -300,12 +300,18 @@ export class DestinationHandover {
     if (unsafe.length) throw blocked(unsafe);
     await this.receiving(p);
     const stays = await this.staying(graphsHere(m));
-    // before any root is taken, so an abort before prepare knows which to seal
-    const claimed = SealRecord.parse({ transactionId: tx, generation: p.generation, manifestDigest: p.manifestDigest, roots: replicaRoots(m) });
-    boundary('destination.claim.seal', () => writeDurable(this.d.paths.replicaSeal(tx), claimed, { mode: 0o600 }));
+    // written before any root is taken; one an earlier prepare of this manifest wrote stays, as its Git import left the roots
+    let prior: SealRecord | undefined;
+    try { prior = SealRecord.parse(JSON.parse(fs.readFileSync(this.d.paths.replicaSeal(tx), 'utf8'))); } catch { prior = undefined; }
+    if (prior?.manifestDigest !== p.manifestDigest) {
+      prior = undefined;
+      const claimed = SealRecord.parse({ transactionId: tx, generation: p.generation, manifestDigest: p.manifestDigest, roots: replicaRoots(m) });
+      boundary('destination.claim.seal', () => writeDurable(this.d.paths.replicaSeal(tx), claimed, { mode: 0o600 }));
+    }
     const roots: Result<'handover.claim'>['roots'] = [];
     for (const r of replicaRoots(m)) {
-      const claim = { transactionId: tx, excludes: m.excludes, incoming: m.roots.find((x) => x.id === r.id)!.files, keep: stays.keep(r.path) };
+      const imported = prior?.roots.find((x) => x.id === r.id)?.files;
+      const claim = { transactionId: tx, excludes: m.excludes, incoming: m.roots.find((x) => x.id === r.id)!.files, keep: stays.keep(r.path), ...(imported && { imported }) };
       let check = await boundary('destination.claim.root', () => this.replicas.claim(r, claim));
       let archivedTo: string | undefined;
       if (!check.ok && p.archive?.length && ARCHIVABLE.has(check.blocker.code)) {

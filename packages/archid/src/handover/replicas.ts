@@ -99,7 +99,8 @@ export type ReplicaOptions = {
  * `keep`: folders under the root, relative to it, that belong to this machine and that no handover writes or reads.
  */
 export type Inspect = { transactionId?: string; excludes: readonly string[]; content?: string; keep?: readonly string[] };
-export type Claim = { transactionId: string; excludes: readonly string[]; incoming: readonly TransferFile[]; keep?: readonly string[] };
+/** `imported`: the root as this transaction's own Git import left it, which its copy may still hold when claimed again. */
+export type Claim = { transactionId: string; excludes: readonly string[]; incoming: readonly TransferFile[]; keep?: readonly string[]; imported?: readonly TransferFile[] };
 export type Seal = { transactionId: string; generation: number; manifestDigest: string; files: readonly TransferFile[] };
 
 type Held = { bytes?: Buffer; record?: ReplicaRecord; error?: string };
@@ -190,13 +191,14 @@ export class ReplicaStore {
       case 'blocked':
         return this.refused(at, v);
       case 'resume': {
-        // its own partial copy holds only what the claim knew there or brought, and nothing written there since; what it
-        // left as it was is what it named then
+        // its own partial copy holds only what the claim knew there, brought or imported, and nothing written there since;
+        // what it left as it was is what it named then
         const r = held.record as Extract<ReplicaRecord, { state: 'receiving' }>;
         const known = new Set([...r.baseline, ...r.incoming].map((f) => f.path));
         const incoming = new Set(r.incoming.map((f) => f.path));
         const stays = kept(r.kept ?? []);
-        const { divergence } = await proveReplica(at, [r.baseline, r.incoming], t.excludes, this.opts.scanFs, root.kind, (p) => stays(p) || (!known.has(p) && partialOf(p, incoming)));
+        const accepted = [r.baseline, r.incoming, ...(t.imported ? [t.imported] : [])];
+        const { divergence } = await proveReplica(at, accepted, t.excludes, this.opts.scanFs, root.kind, (p) => stays(p) || (!known.has(p) && partialOf(p, incoming)));
         if (diverged(divergence)) return this.refused(at, { kind: 'blocked', blocker: divergenceBlocker(root, at, divergence), divergence });
         return { ok: true, path: at, kind: 'resume', ...(r.kept?.length && { keep: r.kept }) };
       }
