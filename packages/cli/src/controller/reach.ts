@@ -94,8 +94,8 @@ type Reached = Pick<Client, 'call' | 'close' | 'closed'>;
  * A daemon reached through a client that is opened when first needed, and again after a call whose answer never
  * came or once its socket has closed. A refusal the daemon answered is its word, and keeps the client.
  */
-export function reconnecting(connect: () => Promise<Reached>): Daemon & { close(): void } {
-  let held: Promise<Reached> | undefined;
+export function reconnecting(connect: () => Promise<Reached>, first?: Reached): Daemon & { close(): void } {
+  let held: Promise<Reached> | undefined = first && Promise.resolve(first);
   // lets go the client `was` holds, and never one a concurrent call has opened since
   const drop = (was = held): void => {
     if (held === was) held = undefined;
@@ -180,23 +180,26 @@ export function connectHandover(o: {
     const entry = registry.get(id);
     if (!entry) throw new Error(`machine ${id} is not in the registry; add it with \`archi host add\`${registry.setAside()}`);
     const route: Route = { machineId: entry.id, name: entry.record.name, ...(entry.record.ssh && entry.id !== registry.localId && { ssh: entry.record.ssh }) };
-    let home: string | undefined;
-    const daemon = reconnecting(async () => {
+    const open = async (): Promise<Opened> => {
       const opened = await openDaemon(entry, { localId: registry.localId, fleetHome: o.fleetHome, fleetId: fleet.id, profile: o.profile, masters });
       if (opened.token && !tokens.includes(opened.token)) tokens.push(opened.token);
-      home = opened.fleetHome;
-      return relaying(opened.client);
-    });
-    daemons.push(daemon);
-    if (entry.id === registry.localId) return { route, daemon, home: entry.record.home, fleetHome: o.fleetHome };
-    return {
-      route, daemon, home: entry.record.home, master: () => masters.for(entry),
-      // where its companion said the fleet lies, known once its daemon has been reached
-      get fleetHome(): string {
-        if (!home) throw new Error(`${entry.record.name} has not said where this fleet lies there`);
-        return home;
-      },
+      relaying(opened.client);
+      return opened;
     };
+    if (entry.id === registry.localId) {
+      const daemon = reconnecting(async () => (await open()).client);
+      daemons.push(daemon);
+      return { route, daemon, home: entry.record.home, fleetHome: o.fleetHome };
+    }
+    // a far daemon is reached at once, as only its companion can say where the fleet lies there
+    const first = await open();
+    const daemon = reconnecting(async () => (await open()).client, first.client);
+    daemons.push(daemon);
+    if (!first.fleetHome) {
+      daemon.close();
+      throw new Error(`${entry.record.name} did not say where this fleet lies there`);
+    }
+    return { route, daemon, home: entry.record.home, master: () => masters.for(entry), fleetHome: first.fleetHome };
   };
 
   const dir = path.join(o.fleetHome, 'controller');

@@ -1338,7 +1338,7 @@ describe('the real adapters', () => {
       })));
       fs.writeFileSync(path.join(home, 'token'), `${TOKEN}\n`);
       ssh.answer({
-        fleetId: fleet, machineId: trift, release: 'dev', protocol: PROTOCOL_VERSION, host: '127.0.0.1', token: 'trift-token', generation: 1,
+        fleetId: fleet, machineId: trift, release: 'dev', protocol: PROTOCOL_VERSION, host: '127.0.0.1', token: 'trift-token', generation: 1, fleetHome: '/home/ada/.archipelago',
         port: await daemon({ 'handover.status': {}, 'ownership.get': { fleetId: fleet, generation: 1, ownerMachineId: trift, frozen: false } }),
       });
       fileStore(path.join(home, 'controller')).write({

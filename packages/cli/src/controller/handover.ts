@@ -951,8 +951,8 @@ export class Handover {
     const tx = gateway.ok ? gateway.value.transaction : undefined;
     const from = controller?.source.machineId ?? tx?.fromMachineId;
     const to = controller?.destination.machineId ?? tx?.toMachineId;
-    const status = (id: MachineId) => this.seen(async () => (await this.side(id)).daemon.call('handover.status', {}));
-    const owned = (id: MachineId) => this.seen(async () => (await this.side(id)).daemon.call('ownership.get', {}));
+    const status = (id: MachineId) => this.seen(async () => (await this.side(id, false)).daemon.call('handover.status', {}));
+    const owned = (id: MachineId) => this.seen(async () => (await this.side(id, false)).daemon.call('ownership.get', {}));
     type Status = Seen<Result<'handover.status'>>;
     const source = async (id: MachineId, asked?: Status): Promise<Observation['source']> => {
       const [s, o] = await Promise.all([asked ?? status(id), owned(id)]);
@@ -979,7 +979,7 @@ export class Handover {
     const now = this.clock.now();
     const [from, to] = o.controller ? [o.controller.source, o.controller.destination].map((r) => r.machineId) : [v.fromMachineId, v.toMachineId];
     if (from && to && from !== this.d.local && to !== this.d.local) {
-      const name = async (id: MachineId) => (await this.side(id).catch(() => undefined))?.route.name ?? id;
+      const name = async (id: MachineId) => (await this.side(id, false).catch(() => undefined))?.route.name ?? id;
       const [a, b] = await Promise.all([name(from), name(to)]);
       throw new Stopped(v.phase ?? 'begin', `this machine is neither the source ${a} nor the destination ${b} of ${v.transactionId ?? 'this handover'}, so a transfer from here would copy onto its own disk; run it on ${a} or ${b}`, []);
     }
@@ -1024,10 +1024,11 @@ export class Handover {
     return Promise.all([this.side(this.journal.source.machineId), this.side(this.journal.destination.machineId)]);
   }
 
-  private side(id: MachineId): Promise<Side> {
+  /** One machine as the controller reaches it, asked for again as a daemon call would be unless only looked at (`retry` false). */
+  private side(id: MachineId, retry = true): Promise<Side> {
     let held = this.sides.get(id);
     if (!held) {
-      held = this.d.side(id);
+      held = retry ? this.retrying(this.j?.phase ?? 'begin', () => this.d.side(id)) : this.d.side(id);
       this.sides.set(id, held);
       held.catch(() => this.sides.delete(id));
     }
