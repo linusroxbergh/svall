@@ -270,7 +270,7 @@ do, and exits 1 unless it is ready.
 | `ssh` | add | An interactive ssh, so you can accept the host key and log in. | `ssh <destination>` in a terminal and complete it. |
 | `master` | add, upgrade, upgrade --rollback | One ssh control connection for the rest of the steps. For an upgrade, with or without `--rollback`, the machine it reaches must be the one the registry names. | `ssh <destination>` and see what it answers. A destination that now reaches another machine: point it back, or `svall host remove <name> --forget`. |
 | `os` | add | Linux on x86-64 or arm64, running Ubuntu. A release other than an LTS is a warning. | Use a supported machine ([setup](setup.md#supported-machines)). |
-| `home` | add | The account's home is the Mac's home path, and short enough for the gateway's socket (at most 59 bytes). | Make an account with the right home ([setup](setup.md#the-same-home-path)) and add it again. |
+| `home` | add | The account's home is the Mac's home path, and short enough for the gateway's socket (at most 65 bytes). | Make an account with the right home ([setup](setup.md#the-same-home-path)) and add it again. |
 | `tools` | add | Tailscale, tmux, Git, rsync and systemd user services. | Run the `apt install` command the action names; without systemd the machine is not supported. |
 | `tmux` | add | The tmux version. Older than 3.5 is a warning: Shift+Enter does not reach the agents. | Nothing, or install tmux 3.5 or newer. |
 | `rsync` | add | The rsync version. Openrsync or one older than 3.2.3 is a warning, and a handover then stops with `rsync_unsupported`. | Install rsync 3.2.3 or newer, as Ubuntu 22.04 and later ship (`sudo apt install rsync`). |

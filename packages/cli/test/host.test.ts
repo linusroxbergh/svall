@@ -263,8 +263,8 @@ describe('host add', () => {
   });
 
   it('stops at a home too long for the gateway\'s socket on Linux, naming the listen EINVAL it would otherwise crash on', async () => {
-    // 60 bytes: its gateway socket, 48 bytes further on, is one past the 107 Linux holds
-    const long = `/tmp/${'h'.repeat(55)}`;
+    // 66 bytes: its gateway socket, 42 bytes further on, is one past the 107 Linux holds
+    const long = `/tmp/${'h'.repeat(61)}`;
     vi.stubEnv('HOME', long);
     ssh.reply(['svall-home'], { stdout: `${long}\nlinus\n` });
     healthy();
@@ -273,13 +273,13 @@ describe('host add', () => {
     expect(step('home').at(-1)).toMatchObject({
       status: 'fail',
       detail: `the gateway's socket ${long}/.local/share/svall/gateway/authority.sock is 108 bytes, past the 107 a Unix socket path holds, so its listen fails with EINVAL`,
-      action: 'use an account whose home path is at most 59 bytes, on this Mac and on trift.test alike',
+      action: 'use an account whose home path is at most 65 bytes, on this Mac and on trift.test alike',
     });
     expect(ssh.remoteCalls().some((w) => w.includes('setup') || w.includes('cat > "$1"'))).toBe(false);
   });
 
   it('takes a home just short enough for the gateway\'s socket', async () => {
-    const long = `/tmp/${'h'.repeat(54)}`;
+    const long = `/tmp/${'h'.repeat(60)}`;
     vi.stubEnv('HOME', long);
     ssh.reply(['svall-home'], { stdout: `${long}\nlinus\n` });
     healthy();

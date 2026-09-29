@@ -34,7 +34,7 @@ sudo useradd -m -d /Users/ada -s /bin/bash ada      # a new account
 sudo usermod -d /Users/ada -m ada                   # or move an existing one you are not logged in as
 ```
 
-The home path can be at most 59 bytes long, because the gateway's socket lives under it and a Unix socket path holds
+The home path can be at most 65 bytes long, because the gateway's socket lives under it and a Unix socket path holds
 at most 107. `svall host add` checks both and stops with these commands when the home is wrong.
 
 A folder outside your home, such as `/Volumes/work/repo`, arrives at the same path on the other machine. The folder

@@ -209,7 +209,7 @@ describe('setupLinux', () => {
     expect(fs.existsSync(path.join(f.home, 'hooks/agent-hook.mjs'))).toBe(true);
     expect(fs.existsSync(path.join(f.home, 'node.json'))).toBe(true);
     expect(fs.existsSync(path.join(f.o.shimDir, 'svall'))).toBe(true);
-    expect(fs.readdirSync(f.unitDir).sort()).toEqual(['svall-svalld@private.service', 'svall-gateway.service']);
+    expect(fs.readdirSync(f.unitDir).sort()).toEqual(['svall-gateway.service', 'svall-svalld@private.service']);
     expect(fs.existsSync(path.join(f.o.prefix, 'log'))).toBe(true);
     expect(done.some((l) => l.includes('svall-svalld@private.service'))).toBe(true);
     expect(done.some((l) => l.toLowerCase().includes('launchd') || l.includes('plist'))).toBe(false);

@@ -379,7 +379,7 @@ describe('doctor on Linux', () => {
   });
 
   it('names the listen EINVAL of a gateway whose socket path is too long, as systemd only says it keeps restarting', async () => {
-    const prefix = `/tmp/${'h'.repeat(55)}/.local/share/svall`;
+    const prefix = `/tmp/${'h'.repeat(61)}/.local/share/svall`;
     vi.stubEnv('SVALL_GATEWAY_PREFIX', prefix);
     try {
       const looping = byName(await doctor(priv, linux({ [gateway]: 'LoadState=loaded\nActiveState=activating\nSubState=auto-restart\nUnitFileState=enabled\n' }).deps));

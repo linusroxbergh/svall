@@ -21,8 +21,10 @@ export const unitDirOf = (homedir: string): string => path.join(homedir, '.confi
 const isOurUnit = (f: string): boolean => f === GATEWAY_UNIT || /^svall-svalld@[a-z][a-z0-9-]*\.service$/.test(f);
 
 /** The units setup and provision wrote to `unitDir`: one daemon per fleet, then the gateway. */
-export const ourUnits = (unitDir: string): string[] =>
-  (fs.existsSync(unitDir) ? fs.readdirSync(unitDir).filter(isOurUnit).sort() : []);
+export function ourUnits(unitDir: string): string[] {
+  const units = fs.existsSync(unitDir) ? fs.readdirSync(unitDir).filter(isOurUnit).sort() : [];
+  return [...units.filter((u) => u !== GATEWAY_UNIT), ...units.filter((u) => u === GATEWAY_UNIT)];
+}
 
 // systemd resolves % specifiers in these values, and a value holding a space needs its quotes
 const esc = (s: string): string => s.replace(/[\\"]/g, (c) => `\\${c}`).replace(/%/g, '%%');

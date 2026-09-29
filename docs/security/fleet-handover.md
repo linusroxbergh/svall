@@ -221,7 +221,7 @@ Every delete, rename and archive a handover or its install makes, with the recor
   - The handover helper: 0600, with its events at 0600 (`cli/test/handover.test.ts`).
   - ssh control sockets: in a folder the controller refuses unless it is the user's own at 0700 (`ssh.test.ts`
     "refuses a socket directory another user could reach").
-- **Home length.** A Linux home over 59 bytes cannot hold the gateway's socket, which is 48 bytes past it, under the
+- **Home length.** A Linux home over 65 bytes cannot hold the gateway's socket, which is 42 bytes past it, under the
   107 bytes a socket path takes. `host add` stops at its `home` step with that cause. On a machine already set up,
   `doctor` names the `listen EINVAL` of a gateway that keeps restarting. (`host.test.ts` "stops at a home too long for
   the gateway's socket…"; `doctor.test.ts`)

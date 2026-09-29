@@ -149,9 +149,9 @@ describe('checkout dependencies', () => {
     fs.symlinkSync('svall.mjs', path.join(dir, 'releases/v1.0.0/lib/same'));
     expect(rules(dir).sort()).toEqual([
       'releases/v1.0.0/hooks/claude-status.mjs module not in the release',
-      'releases/v1.0.0/lib/svall.mjs module not in the release',
       'releases/v1.0.0/lib/checkout link out of the release',
       'releases/v1.0.0/lib/node_modules checkout content',
+      'releases/v1.0.0/lib/svall.mjs module not in the release',
       'releases/v1.0.0/lib/up link out of the release',
     ]);
   });
