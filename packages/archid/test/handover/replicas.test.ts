@@ -465,6 +465,20 @@ describe("an aborted transaction's partial copy", () => {
     expect(w.record(app)).toMatchObject({ state: 'receiving', transactionId: TX2, baseline: await content(app) });
   });
 
+  it('is taken over by a later transaction that brings a file the aborted copy wrote there, and passes preflight while it holds exactly what that one brings', async () => {
+    const { w, app, source } = await partial();
+    // the aborted copy finished, with a file the source wrote while it ran
+    write(source, 'e.txt', 'written on the source during the copy');
+    fs.cpSync(source, app, { recursive: true });
+    const store = w.store();
+    expect(await store.inspect(dir(app), { excludes: EXCLUDES, content: contentDigest(await content(source)) })).toMatchObject({ ok: true, kind: 'replica' });
+    expect(await store.inspect(dir(app), { excludes: EXCLUDES })).toMatchObject({ ok: false, divergence: { added: { preview: ['e.txt'] } } });
+    // the source moved on since, and still holds that file
+    write(source, 'c.txt', 'changed on the source');
+    expect(await store.claim(dir(app), claimFor(TX2, await content(source)))).toMatchObject({ ok: true, kind: 'replica' });
+    expect(w.record(app)).toMatchObject({ state: 'receiving', transactionId: TX2 });
+  });
+
   it('blocks a later transaction once someone changed it', async () => {
     const { w, app } = await partial();
     write(app, 'c.txt', 'neither version');

@@ -556,6 +556,42 @@ describe('destination prepare', () => {
     expect(roots.map((r) => [tree(r.path), fs.readFileSync(s.paths.replicaRecord(fleetId, r.path), 'utf8')])).toEqual(before);
   });
 
+  it('keeps the session stage of a handover it never prepared while the gateway cannot say it let go, for another abort', async () => {
+    const s = await scene();
+    const d = daemon(s);
+    const stage = path.dirname(s.paths.sessionStage(TX, 0));
+    d.gateway.down = true;
+    expect((await refusal(d.handover.abort({ transactionId: TX, generation: 5 }))).code).toBe('authority_unreachable');
+    expect(fs.existsSync(stage)).toBe(true);
+    d.gateway.down = false;
+    d.gateway.record = { fleetId, generation: 4, ownerMachineId: mac };
+    expect((await refusal(d.handover.abort({ transactionId: TX, generation: 5 }))).code).toBe('not_owner');
+    expect(fs.existsSync(stage)).toBe(false);
+  });
+
+  it('keeps its journal and what it would seal when a root cannot be sealed as it lets go, so an abort again seals it', async () => {
+    const s = await scene();
+    const d = daemon(s);
+    await d.handover.prepare(params(s));
+    d.gateway.record = { fleetId, generation: 4, ownerMachineId: mac };
+    const records = path.dirname(s.paths.replicaRecord(fleetId, s.dst));
+    fs.chmodSync(records, 0o500);
+    try {
+      const r = await refusal(d.handover.abort({ transactionId: TX, generation: 5 }));
+      expect(r.code).toBe('not_ready');
+      expect(fs.existsSync(s.paths.replicaSeal(TX))).toBe(true);
+      expect(d.handover.journalState()).toMatchObject({ kind: 'open' });
+      expect(d.ownership.isFrozen()).toBe(true);
+    } finally {
+      fs.chmodSync(records, 0o700);
+    }
+    expect(await d.handover.abort({ transactionId: TX, generation: 5 })).toEqual({});
+    for (const r of replicaRoots(s.manifest)) {
+      expect(JSON.parse(fs.readFileSync(s.paths.replicaRecord(fleetId, r.path), 'utf8')), r.path).toMatchObject({ state: 'sealed', generation: 4 });
+    }
+    expect(d.handover.journalState()).toEqual({ kind: 'none' });
+  });
+
   it('discards what it prepared once the gateway no longer holds the handover, and not before', async () => {
     const s = await scene();
     const d = daemon(s);
@@ -1733,23 +1769,34 @@ describe('destination claim', () => {
     expect(d.ownership.isFrozen()).toBe(false);
   });
 
-  it('seals each root it claimed as the transfer left it, at the source\'s generation, once the handover is let go before prepare, so the next one takes it', async () => {
+  it('leaves each root it claimed receiving once the handover is let go before prepare: the next one takes what it brings there, and not an edit made here', async () => {
     const s = await scene({ land: false });
     const d = daemon(s);
     await d.handover.claim(claimParams(s));
     // the transfer copies each root, with a file the source wrote while it ran, as Finder writes .DS_Store
+    fs.writeFileSync(path.join(s.src, 'work/ada/.DS_Store'), 'finder');
     for (const r of replicaRoots(s.manifest)) fs.cpSync(path.join(s.src, path.relative(s.dst, r.path)), r.path, { recursive: true, verbatimSymlinks: true });
-    fs.writeFileSync(path.join(s.dst, 'work/ada/.DS_Store'), 'finder');
+    // and bo is edited here once it has landed
+    fs.appendFileSync(path.join(s.dst, 'work/bo/index.ts'), '// edited here\n');
     d.gateway.record = { fleetId, generation: 4, ownerMachineId: mac };
 
     expect((await refusal(d.handover.abort({ transactionId: TX, generation: 5 }))).code).toBe('not_owner');
 
-    for (const r of replicaRoots(s.manifest)) expect(record(s, r.path), r.path).toMatchObject({ state: 'sealed', sealedBy: TX, generation: 4, manifestDigest: s.digest });
+    for (const r of replicaRoots(s.manifest)) expect(record(s, r.path), r.path).toMatchObject({ state: 'receiving', transactionId: TX });
     expect(fs.existsSync(s.paths.replicaSeal(TX))).toBe(false);
-    const replicas = new ReplicaStore({ fleetId, paths: s.paths });
-    for (const r of replicaRoots(s.manifest)) {
-      expect(await replicas.inspect(r, { transactionId: 'tx-2', excludes: s.manifest.excludes }), r.path).toMatchObject({ ok: true, kind: 'replica' });
-    }
+
+    // the next handover brings ada with that .DS_Store, and a note the source changed since
+    fs.writeFileSync(path.join(s.src, 'work/ada/notes.md'), 'ada, later\n');
+    const next = structuredClone({ ...s.manifest, transactionId: 'tx-2' });
+    const ada = next.roots.find((r) => r.path === path.join(s.dst, 'work/ada'))!;
+    ada.files = (await scanPath(path.join(s.src, 'work/ada'), rootMatcher(ada.kind, next.excludes)))!.files;
+    d.gateway.record = { fleetId, generation: 4, ownerMachineId: mac, transaction: { id: 'tx-2', fromMachineId: mac, toMachineId: trift, phase: 'preparing', startedAt: 2 } };
+    const r = await d.handover.claim({ transactionId: 'tx-2', generation: 5, manifest: next, manifestDigest: manifestDigest(next) });
+
+    const bo = replicaRoots(s.manifest).find((x) => x.path === path.join(s.dst, 'work/bo'))!;
+    expect(r.roots.find((x) => x.id === ada.id)!.check).toEqual({ ok: true, path: ada.path, kind: 'replica' });
+    expect(r.roots.find((x) => x.id === bo.id)!.check).toMatchObject({ ok: false, blocker: { code: 'destination_diverged', message: expect.stringContaining('index.ts') } });
+    expect(fs.readFileSync(path.join(s.dst, 'work/bo/index.ts'), 'utf8')).toContain('edited here');
   });
 
   it('refuses a claim the gateway does not hold open for this machine, or one meant for another, and writes nothing', async () => {
@@ -2112,6 +2159,23 @@ describe('destination complete, when a root cannot be sealed', () => {
     expect(fs.existsSync(s.paths.replicaSeal(TX))).toBe(true);
     expect(d.handover.journalState()).toMatchObject({ kind: 'open' });
     fs.writeFileSync(record, held);
+    expect(await d.handover.complete({ transactionId: TX, generation: 5 })).toEqual({});
+    expect(d.handover.journalState()).toEqual({ kind: 'none' });
+  });
+
+  it('keeps its journal when the record of what to seal cannot be read', async () => {
+    const s = await scene();
+    const d = daemon(s);
+    const { preparedDigest } = await d.handover.prepare(params(s));
+    d.gateway.commit(preparedDigest);
+    await d.handover.activate({ transactionId: TX, generation: 5 });
+    const seal = fs.readFileSync(s.paths.replicaSeal(TX));
+    fs.writeFileSync(s.paths.replicaSeal(TX), '{ not json');
+    const r = await refusal(d.handover.complete({ transactionId: TX, generation: 5 }));
+    expect(r.code).toBe('not_ready');
+    expect(r.message).toContain(s.paths.replicaSeal(TX));
+    expect(d.handover.journalState()).toMatchObject({ kind: 'open' });
+    fs.writeFileSync(s.paths.replicaSeal(TX), seal);
     expect(await d.handover.complete({ transactionId: TX, generation: 5 })).toEqual({});
     expect(d.handover.journalState()).toEqual({ kind: 'none' });
   });

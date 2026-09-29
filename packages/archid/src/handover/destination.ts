@@ -62,14 +62,12 @@ export type DestinationDeps = {
 
 /**
  * What Complete seals: each carried root as the Git import left it, at the generation this machine prepared. A claim
- * writes it first without the files, and an abort before prepare seals each root as the transfer left it, read then
- * under the claim's excludes.
+ * writes it first without the files; a root prepare never read stays receiving when the handover is let go.
  */
 export const SealRecord = z.object({
   transactionId: TransactionId,
   generation: Generation,
   manifestDigest: Sha256,
-  excludes: z.array(z.string()).optional(),
   roots: z.array(z.object({ id: z.string().min(1), kind: TransferRoot.shape.kind, entry: TransferRoot.shape.entry, path: z.string(), files: z.array(TransferFile).optional() })),
 });
 export type SealRecord = z.infer<typeof SealRecord>;
@@ -264,19 +262,18 @@ export class DestinationHandover {
   }
 
   /**
-   * Lets go a handover this machine holds no journal of, once the gateway no longer holds it open either: each root
-   * its claim took is sealed as the transfer left it, and its session stage goes.
+   * Lets go a handover this machine holds no journal of, once the gateway no longer holds it open either: its session
+   * stage goes, and what it would seal stays until every root it names is sealed.
    */
   dropStage(transactionId: string): Promise<void> {
     return this.serial(async () => {
-      if (this.open(transactionId)) return;
-      let record: OwnerRecord;
-      try { record = await this.ask(); } catch { return; }
+      const held = [path.dirname(this.d.paths.sessionStage(transactionId, 0)), this.d.paths.replicaSeal(transactionId)];
+      if (this.open(transactionId) || !held.some((f) => fs.existsSync(f))) return;
+      const record = await this.ask();
       if (record.transaction?.id === transactionId) return;
-      await boundary('destination.abort.seal', () => this.sealAs(transactionId, true));
-      boundary('destination.abort.stage', () => {
-        for (const f of [path.dirname(this.d.paths.sessionStage(transactionId, 0)), this.d.paths.replicaSeal(transactionId)]) fs.rmSync(f, { recursive: true, force: true });
-      });
+      const unsealed = await boundary('destination.abort.seal', () => this.sealAs(transactionId, true));
+      if (unsealed.length) throw notReady(`handover ${transactionId} could not seal ${unsealed.join('; ')}; abort it again once that is put right`);
+      boundary('destination.abort.stage', () => { for (const f of held) fs.rmSync(f, { recursive: true, force: true }); });
     });
   }
 
@@ -304,7 +301,7 @@ export class DestinationHandover {
     await this.receiving(p);
     const stays = await this.staying(graphsHere(m));
     // before any root is taken, so an abort before prepare knows which to seal
-    const claimed = SealRecord.parse({ transactionId: tx, generation: p.generation, manifestDigest: p.manifestDigest, excludes: m.excludes, roots: replicaRoots(m) });
+    const claimed = SealRecord.parse({ transactionId: tx, generation: p.generation, manifestDigest: p.manifestDigest, roots: replicaRoots(m) });
     boundary('destination.claim.seal', () => writeDurable(this.d.paths.replicaSeal(tx), claimed, { mode: 0o600 }));
     const roots: Result<'handover.claim'>['roots'] = [];
     for (const r of replicaRoots(m)) {
@@ -858,7 +855,8 @@ export class DestinationHandover {
 
   private async discard(j: DestinationJournal): Promise<void> {
     // the content is the source's at the generation it keeps; a root sealed or archived since is left alone
-    await boundary('destination.abort.seal', () => this.sealAs(j.transactionId, true));
+    const unsealed = await boundary('destination.abort.seal', () => this.sealAs(j.transactionId, true));
+    if (unsealed.length) throw notReady(`handover ${j.transactionId} could not seal ${unsealed.join('; ')}; abort it again once that is put right`);
     boundary('destination.abort.clear', () => {
       for (const f of [this.d.paths.preparedState(j.transactionId), this.d.paths.replicaSeal(j.transactionId), path.dirname(this.d.paths.sessionStage(j.transactionId, 0))]) {
         fs.rmSync(f, { recursive: true, force: true });
@@ -869,20 +867,23 @@ export class DestinationHandover {
   }
 
   /**
-   * Seals each root the handover's record names, at the generation it prepared or, going `back`, the one before, and
-   * answers the ones it could not; without that record nothing is sealed. A root prepare did not record is read now.
+   * Seals each root the handover's record names as prepare recorded it, at the generation it prepared or, going `back`,
+   * the one before, and answers what it could not seal; with no record there is nothing to seal. Going back, a root
+   * prepare never read, or one no longer this handover's, is left as it is.
    */
   private async sealAs(transactionId: string, back: boolean): Promise<string[]> {
+    const file = this.d.paths.replicaSeal(transactionId);
     let seal: SealRecord;
-    try { seal = SealRecord.parse(JSON.parse(fs.readFileSync(this.d.paths.replicaSeal(transactionId), 'utf8'))); } catch { return []; }
+    try { seal = SealRecord.parse(JSON.parse(fs.readFileSync(file, 'utf8'))); } catch (e) {
+      return (e as NodeJS.ErrnoException).code === 'ENOENT' ? [] : [`${file} (${(e as Error).message})`];
+    }
     const generation = seal.generation - (back ? 1 : 0);
     const unsealed: string[] = [];
     for (const { files, ...root } of seal.roots) {
       try {
-        // a root its claim did not take holds nothing of this handover's
-        if (!files && !this.replicas.receives(root, transactionId)) continue;
-        const now = files ?? (await scanPath(root.path, rootMatcher(root.kind, seal.excludes ?? []), this.d.scanFs))?.files ?? [];
-        this.replicas.seal(root, { transactionId, generation, manifestDigest: seal.manifestDigest, files: now }, 'destination');
+        if (back && (!files || !this.replicas.receives(root, transactionId))) continue;
+        if (!files) throw new Error('prepare recorded nothing to seal there');
+        this.replicas.seal(root, { transactionId, generation, manifestDigest: seal.manifestDigest, files }, 'destination');
       } catch (e) {
         this.d.log.error(`handover ${transactionId}: ${root.path} is left unsealed: ${(e as Error).message}`);
         unsealed.push(`${root.path} (${(e as Error).message})`);
