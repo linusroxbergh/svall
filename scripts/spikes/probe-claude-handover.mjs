@@ -123,7 +123,7 @@ export function copySession({ transcriptPath, sourceCwd, destinationCwd, destina
   return { sessionId: source.sessionId, destinationTranscript, files };
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [transcriptPath, sourceCwd, destinationCwd, destinationConfigDir] = process.argv.slice(2);
   if (!destinationConfigDir) {
     process.stderr.write('Usage: node scripts/spikes/probe-claude-handover.mjs <transcript> <source-cwd> <destination-cwd> <destination-config-dir>\n');

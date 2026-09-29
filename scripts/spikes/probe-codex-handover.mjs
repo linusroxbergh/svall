@@ -112,7 +112,7 @@ export function copySession({ rolloutPath, sourceCwd, destinationCwd, destinatio
   return { sessionId: source.sessionId, destinationRollout, files };
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [rolloutPath, sourceCwd, destinationCwd, destinationCodexHome] = process.argv.slice(2);
   if (!destinationCodexHome) {
     process.stderr.write('Usage: node scripts/spikes/probe-codex-handover.mjs <rollout> <source-cwd> <destination-cwd> <destination-codex-home>\n');

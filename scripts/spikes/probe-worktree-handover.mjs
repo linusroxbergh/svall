@@ -98,7 +98,7 @@ export function reconstruct({ mainRoot, worktrees }) {
   return { commonDir: main.commonDir, rewritten, pruned, repaired, repairReport: repair.stderr.trim() };
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [mainRoot, ...worktrees] = process.argv.slice(2);
   if (!mainRoot) {
     process.stderr.write('Usage: node scripts/spikes/probe-worktree-handover.mjs <destination-main-checkout> [<destination-worktree>...]\n');

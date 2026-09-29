@@ -89,10 +89,11 @@ describe('the release workflow', () => {
     for (const step of steps.filter((s) => s.includes('secrets.ARCHI_RELEASE_KEY'))) expect(step).toContain(`trap 'rm -f "$RUNNER_TEMP/release-key"' EXIT`);
     expect(text).not.toMatch(/GITHUB_ENV|GITHUB_PATH/);
   });
+});
 
-  it('runs every action at a commit, never at a tag that can move', () => {
-    const uses = [...text.matchAll(/uses: (\S+)/g)].map((m) => m[1]);
-    expect(uses.length).toBeGreaterThan(0);
-    for (const u of uses) expect(u).toMatch(/^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/);
-  });
+it.each(['release.yml', 'ci.yml'])('%s runs every action at a commit, never at a tag that can move', (file) => {
+  const text = fs.readFileSync(path.join(import.meta.dirname, '../.github/workflows', file), 'utf8');
+  const uses = [...text.matchAll(/uses: (\S+)/g)].map((m) => m[1]);
+  expect(uses.length).toBeGreaterThan(0);
+  for (const u of uses) expect(u).toMatch(/^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/);
 });
