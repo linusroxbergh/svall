@@ -19,7 +19,7 @@ import { Store } from '../src/store.js';
 import { TerminalHub } from '../src/terminals.js';
 import { Tmux, type LiveWindow } from '../src/tmux/tmux.js';
 import { Workspace } from '../src/workspace/workspace.js';
-import { cleanHomes, makeHome, ownerOf, stubMobile, stubUsage, waitFor } from './helpers.js';
+import { cleanHomes, idleSides, makeHome, ownerOf, stubMobile, stubUsage, waitFor } from './helpers.js';
 
 vi.mock('../src/links/git.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/links/git.js')>();
@@ -183,7 +183,7 @@ describe('char.wait over a socket', () => {
       d.islands.i_1 = { id: 'i_1', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
       d.characters.c_a = char('c_a', 'i_1', { tmux: { windowId: '@1', paneId: '%1' } });
     });
-    const handover = new HandoverService({ ownership, journal: openJournal(paths) });
+    const handover = new HandoverService({ ownership, journal: openJournal(paths), ...idleSides(paths, { store }) });
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
     const workspace = new Workspace(() => home, silentLogger, () => [claude.json], [paths.docs]);
     const api = await startApi({

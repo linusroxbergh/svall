@@ -35,7 +35,7 @@ import { Store } from '../../src/store.js';
 import { runGit, type GitRunner } from '../../src/links/git.js';
 import { tmuxConfText } from '../../src/tmux/conf.js';
 import { Tmux } from '../../src/tmux/tmux.js';
-import { cleanHomes, hasTmux, makeHome, stubMobile, stubUsage, waitFor } from '../helpers.js';
+import { cleanHomes, hasTmux, idleSides, makeHome, stubMobile, stubUsage, waitFor } from '../helpers.js';
 import { crew as gitCrew, git, hasGit, park, parkedAt, seedHere, unpark, type Layout } from './git-fixture.js';
 
 const made: string[] = [];
@@ -345,6 +345,7 @@ function daemon(
     journal.write = (j) => { if (o.failWrite?.(j)) throw new Error('ENOSPC: no space left on device'); write(j); };
     const handover = new HandoverService({
       ownership, journal, agents: async () => s.probes, fleet: { ...crew.fleet, deactivate: async () => { crew.log.push('deactivate'); } },
+      source: idleSides(s.paths, { store: s.store }).source,
       destination: {
         paths: s.paths, config, store: s.store, fleet: crew.fleet, tmux: crew.tmux, processes: crew.processes, authority: () => gateway, clock, ...(o.git && { git: o.git }),
         sessionStartMs: 60_000, concurrency: over.concurrency ?? o.concurrency ?? 2, homedir: o.homedir ?? (() => s.manifest.home), log: silentLogger,
@@ -1484,6 +1485,7 @@ withTmux('destination activate on real terminals', () => {
     };
     const handover = new HandoverService({
       ownership, journal: openJournal(s.paths), agents: async () => s.probes, fleet,
+      source: idleSides(s.paths, { store }).source,
       destination: {
         paths: s.paths, config: loadConfig(s.paths), store, fleet, tmux, authority: () => d.gateway, sessionStartMs: 10_000, concurrency: o.concurrency, log: silentLogger,
       },

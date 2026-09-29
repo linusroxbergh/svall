@@ -27,7 +27,7 @@ import { releaseVersion } from '../../src/release.js';
 import { Store } from '../../src/store.js';
 import type { GitRunner } from '../../src/links/git.js';
 import type { LiveWindow } from '../../src/tmux/tmux.js';
-import { cleanHomes, makeHome, waitFor } from '../helpers.js';
+import { cleanHomes, idleSides, makeHome, waitFor } from '../helpers.js';
 
 afterEach(cleanHomes);
 
@@ -227,7 +227,7 @@ function boot(o: Boot = {}) {
   };
   const start = () => {
     const ownership = OwnershipState.load({ paths, fleetId, machineId: me, log: silentLogger, standalone: o.standalone });
-    const handover = new HandoverService({ ownership, journal: openJournal(paths), agents: async () => probes, source: deps, fleet });
+    const handover = new HandoverService({ ownership, journal: openJournal(paths), agents: async () => probes, fleet, ...idleSides(paths, { store }), source: deps });
     const events: Event[] = [];
     handover.onEvent((e) => events.push(e));
     return { ownership, handover, events };
@@ -1163,7 +1163,7 @@ describe("this machine's agent CLIs", () => {
 
     const paths = resolvePaths(makeHome());
     const ownership = OwnershipState.load({ paths, fleetId, machineId: me, log: silentLogger });
-    const handover = new HandoverService({ ownership, journal: openJournal(paths), agents: probe });
+    const handover = new HandoverService({ ownership, journal: openJournal(paths), agents: probe, ...idleSides(paths) });
     const before = calls;
     const info = await handlers['system.info']({}, { ownership, handover } as Ctx);
     // a login fixed a moment ago counts at the next preflight

@@ -17,10 +17,10 @@ export type HandoverDeps = {
   journal: JournalFile;
   /** This machine's agent CLIs as they last answered, or asked afresh; none when not given. */
   agents?: AgentProber;
-  /** What the source phases run on; without it they answer not_ready. */
-  source?: SourceDeps;
-  /** What the destination phases run on; without it they answer not_ready. */
-  destination?: DestinationDeps;
+  /** What the source phases run on. */
+  source: SourceDeps;
+  /** What the destination phases run on. */
+  destination: DestinationDeps;
   /** What a record naming this machine starts, and one naming another stops. */
   fleet?: Pick<Fleet, 'activate' | 'reconcileNow' | 'deactivate'>;
   /** Names another machine this fleet's gateway, in fleet.json and in the running config. */
@@ -41,27 +41,23 @@ const COMMITTED = new Set<HandoverPhase>(['commit', 'activate', 'complete']);
  */
 const AUTHORITY = {
   preflight: 'source', freeze: 'source', inspect: 'destination', claim: 'destination', prepare: 'destination', activate: 'destination',
-  abort: 'source-abort', complete: 'journal',
+  abort: 'source-abort',
 } as const;
 type Phase = keyof typeof AUTHORITY;
-
-const notReady = (phase: Phase | 'adopt'): never => {
-  throw handoverError({ code: 'not_ready', message: `handover ${phase} is not implemented yet` });
-};
 
 /** The handover state machine as this daemon sees it: the journal it holds, and the phases it can run. */
 export class HandoverService {
   private state: JournalState;
   private listeners = new Set<(e: Event) => void>();
-  private source?: SourceHandover;
-  private destination?: DestinationHandover;
+  private source: SourceHandover;
+  private destination: DestinationHandover;
   private agents: AgentProber;
 
   constructor(private deps: HandoverDeps) {
     this.state = deps.journal.load();
     this.agents = deps.agents ?? (async () => []);
-    if (deps.source) this.source = new SourceHandover(this, deps.ownership, this.agents, deps.source);
-    if (deps.destination) this.destination = new DestinationHandover(this, deps.ownership, this.agents, deps.destination);
+    this.source = new SourceHandover(this, deps.ownership, this.agents, deps.source);
+    this.destination = new DestinationHandover(this, deps.ownership, this.agents, deps.destination);
   }
 
   /** What `system.info` says of this machine's agent CLIs, asked afresh: preflight and freeze read logins from it. */
@@ -140,8 +136,8 @@ export class HandoverService {
     // a crash between letting a journal go and taking the record meets the same record at the next start
     const takes = !superseded || record.generation >= held.generation || ownership.outranked(record);
     const mine = takes && record.ownerMachineId === ownership.machineId;
-    if (superseded && j.role === 'destination') await (this.destination ?? notReady('adopt')).supersede(j.transactionId);
-    else if (superseded) await (this.source ?? notReady('adopt')).supersede(j.transactionId, mine);
+    if (superseded && j.role === 'destination') await this.destination.supersede(j.transactionId);
+    else if (superseded) await this.source.supersede(j.transactionId, mine);
     if (!takes) return { adopted: false, ...(j && { superseded: j.transactionId }), ownership: this.ownershipInfo() };
     // read only now: an activation the supersede waited behind may have made this machine the owner
     const ran = ownership.isOwner();
@@ -158,7 +154,7 @@ export class HandoverService {
 
   async preflight(p: ParsedParams<'handover.preflight'>): Promise<Result<'handover.preflight'>> {
     this.authorize('preflight');
-    return (this.source ?? notReady('preflight')).preflight(p);
+    return this.source.preflight(p);
   }
 
   async freeze(p: ParsedParams<'handover.freeze'>): Promise<Result<'handover.freeze'>> {
@@ -166,18 +162,18 @@ export class HandoverService {
     // a freeze asked again of the source it froze is answered from what that source holds
     if (!(j?.role === 'source' && j.transactionId === p.transactionId)) this.authorize('freeze');
     this.match(p.transactionId, p.generation);
-    return (this.source ?? notReady('freeze')).freeze(p);
+    return this.source.freeze(p);
   }
 
   async inspect(p: ParsedParams<'handover.inspect'>): Promise<Result<'handover.inspect'>> {
     this.authorize('inspect');
-    return (this.destination ?? notReady('inspect')).inspect(p);
+    return this.destination.inspect(p);
   }
 
   async claim(p: ParsedParams<'handover.claim'>): Promise<Result<'handover.claim'>> {
     this.authorize('claim');
     this.match(p.transactionId, p.generation, false);
-    return (this.destination ?? notReady('claim')).claim(p);
+    return this.destination.claim(p);
   }
 
   /** Each side finishes the journal it holds; with none, there is nothing left to finish. */
@@ -185,22 +181,22 @@ export class HandoverService {
     const j = this.open();
     if (!j) return {};
     this.match(p.transactionId, p.generation);
-    if (j.role === 'destination') return (this.destination ?? notReady('complete')).complete(p);
-    return (this.source ?? notReady('complete')).complete(p);
+    if (j.role === 'destination') return this.destination.complete(p);
+    return this.source.complete(p);
   }
 
   async prepare(p: ParsedParams<'handover.prepare'>): Promise<Result<'handover.prepare'>> {
     this.authorize('prepare');
     // a destination's cached record says nothing of the generation it prepares; its manifest and journal do
     this.match(p.transactionId, p.generation, false);
-    return (this.destination ?? notReady('prepare')).prepare(p);
+    return this.destination.prepare(p);
   }
 
   async activate(p: ParsedParams<'handover.activate'>): Promise<Result<'handover.activate'>> {
     // a destination retrying its activation already runs the fleet it received
     if (!this.receiving(p.transactionId)) this.authorize('activate');
     this.match(p.transactionId, p.generation);
-    return (this.destination ?? notReady('activate')).activate(p);
+    return this.destination.activate(p);
   }
 
   /** Which of these commits no ref of this machine's repositories reaches: a destination that keeps a worktree asks it of its source. */
@@ -217,7 +213,7 @@ export class HandoverService {
   async abort(p: ParsedParams<'handover.abort'>): Promise<Result<'handover.abort'>> {
     const receiving = this.receiving(p.transactionId);
     // a destination the transfer staged sessions on before it journaled anything still lets that stage go
-    if (!receiving && !this.deps.ownership.isOwner()) await this.destination?.dropStage(p.transactionId);
+    if (!receiving && !this.deps.ownership.isOwner()) await this.destination.dropStage(p.transactionId);
     if (!receiving) this.authorize('abort');
     this.match(p.transactionId, p.generation);
     const j = this.open();
@@ -228,8 +224,8 @@ export class HandoverService {
         transactionId: j.transactionId, generation: j.generation,
       });
     }
-    if (receiving) return (this.destination ?? notReady('abort')).abort(p);
-    return (this.source ?? notReady('abort')).abort(p);
+    if (receiving) return this.destination.abort(p);
+    return this.source.abort(p);
   }
 
   write(journal: HandoverJournal): void {

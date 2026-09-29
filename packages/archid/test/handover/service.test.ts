@@ -13,7 +13,7 @@ import { adoptAtStart, enterStartupMode, startupMode } from '../../src/handover/
 import { silentLogger } from '../../src/log.js';
 import { OwnershipState } from '../../src/ownership/state.js';
 import { resolvePaths } from '../../src/paths.js';
-import { cleanHomes, makeHome } from '../helpers.js';
+import { cleanHomes, idleSides, makeHome } from '../helpers.js';
 
 afterEach(cleanHomes);
 
@@ -68,7 +68,7 @@ function boot(opts: { record?: object; journal?: unknown; home?: string; gateway
   };
   const asked: MachineId[] = [];
   const handover = new HandoverService({
-    ownership, journal: openJournal(paths), fleet, setGateway: (id) => { log.push(`gateway ${id}`); },
+    ownership, journal: openJournal(paths), fleet, setGateway: (id) => { log.push(`gateway ${id}`); }, ...idleSides(paths, { config }),
     ...(opts.gateway && { authorityFor: (id: MachineId) => { asked.push(id); return opts.gateway!; } }),
   });
   return { home, paths, ownership, handover, log, asked };
@@ -180,25 +180,6 @@ describe('HandoverService', () => {
     expect(status).toEqual({ transaction: expect.objectContaining({ id: 'tx-1', phase: 'activate' }) });
   });
 
-  it('refuses the phases the source runs rather than answering as if it had run them', async () => {
-    const { handover } = boot({ record: { generation: 4, ownerMachineId: me } });
-    const calls: Promise<unknown>[] = [
-      handover.preflight({ toMachineId: other, choices: {}, ...machines }),
-      handover.freeze({ transactionId: 'tx-1', generation: 4, choices: {}, ...machines }),
-      handover.abort({ transactionId: 'tx-1', generation: 4 }),
-    ];
-    for (const call of calls) await expect(call).rejects.toMatchObject({ code: 'not_ready' });
-  });
-
-  it('refuses the phases the destination runs rather than answering as if it had run them', async () => {
-    const { handover } = boot({ record: { generation: 4, ownerMachineId: other } });
-    const calls: Promise<unknown>[] = [
-      handover.prepare({ transactionId: 'tx-1', generation: 5, manifest, manifestDigest: digest, landed: [] }),
-      handover.activate({ transactionId: 'tx-1', generation: 4 }),
-    ];
-    for (const call of calls) await expect(call).rejects.toMatchObject({ code: 'not_ready' });
-  });
-
   it('sends a replica and a frozen source away before it looks at the transaction', async () => {
     const replica = boot({ record: { generation: 4, ownerMachineId: other } });
     await replica.handover.freeze({ transactionId: 'tx-1', generation: 4, choices: {}, ...machines }).then(
@@ -228,10 +209,11 @@ describe('HandoverService', () => {
     const held = boot({ record: { generation: 4, ownerMachineId: me }, journal: source() });
     await expect(held.handover.complete({ transactionId: 'tx-2', generation: 4 })).rejects.toMatchObject({ code: 'transaction_mismatch' });
     await expect(held.handover.complete({ transactionId: 'tx-1', generation: 5 })).rejects.toMatchObject({ code: 'generation_mismatch' });
-    // a source with nothing wired to complete it says so
-    await expect(held.handover.complete({ transactionId: 'tx-1', generation: 4 })).rejects.toMatchObject({ code: 'not_ready' });
+    // a source finishes its own journal, which asks the gateway it has none of here
+    await expect(held.handover.complete({ transactionId: 'tx-1', generation: 4 })).rejects.toMatchObject({ code: 'transaction_mismatch', message: expect.stringContaining('names no gateway') });
     const receiving = boot({ record: { generation: 4, ownerMachineId: other }, journal: destination({ phase: 'activate' }) });
-    await expect(receiving.handover.complete({ transactionId: 'tx-1', generation: 5 })).rejects.toMatchObject({ code: 'not_ready' });
+    expect(await receiving.handover.complete({ transactionId: 'tx-1', generation: 5 })).toEqual({});
+    expect(receiving.handover.journalState()).toEqual({ kind: 'none' });
   });
 
   it('lets a committed destination retry its activation', async () => {
@@ -298,7 +280,8 @@ describe('HandoverService', () => {
 
   it('lets an abort run again on a handover that is already aborted', async () => {
     const { handover } = boot({ record: { generation: 4, ownerMachineId: me }, journal: source({ phase: 'aborted' }) });
-    await expect(handover.abort({ transactionId: 'tx-1', generation: 4 })).rejects.toMatchObject({ code: 'not_ready' });
+    // it reaches the source, which reopens the terminals the handover stopped
+    await expect(handover.abort({ transactionId: 'tx-1', generation: 4 })).rejects.toThrow('this test runs no handover phase');
   });
 
   it('tells its listeners about every journal write, close and entity report', () => {

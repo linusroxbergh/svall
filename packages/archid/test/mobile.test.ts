@@ -20,7 +20,7 @@ import { TerminalHub } from '../src/terminals.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { Tmux } from '../src/tmux/tmux.js';
 import { Workspace } from '../src/workspace/workspace.js';
-import { cleanHomes, hasTmux, makeHome, ownerOf, stubMobile, stubUsage, waitFor, waitForPolls } from './helpers.js';
+import { cleanHomes, hasTmux, idleSides, makeHome, ownerOf, stubMobile, stubUsage, waitFor, waitForPolls } from './helpers.js';
 
 const req = (headers: Record<string, string>) => ({ headers }) as unknown as IncomingMessage;
 
@@ -118,7 +118,7 @@ runIf('phone sockets', () => {
     const terminals = new TerminalHub(fleet, tmux, store, silentLogger);
     const workspace = new Workspace((id) => { const c = store.state.characters[id]; if (!c) throw new Error(id); return c.repo?.root ?? c.cwd; }, silentLogger);
     const current = { key, logins: ['me@example.com'] };
-    const handover = new HandoverService({ ownership, journal: openJournal(paths) });
+    const handover = new HandoverService({ ownership, journal: openJournal(paths), ...idleSides(paths, { store }) });
     const api = await startApi({
       host: '127.0.0.1', port: 0, token: 'secret', store, fleet, terminals, workspace, usage: stubUsage, mobileControl, log: silentLogger,
       origins: () => [], logins: () => current.logins, dist, key: () => current.key, fleetName,

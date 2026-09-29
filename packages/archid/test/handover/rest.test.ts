@@ -17,7 +17,7 @@ import { Store } from '../../src/store.js';
 import { TerminalHub } from '../../src/terminals.js';
 import { tmuxConfText } from '../../src/tmux/conf.js';
 import { Tmux, type LiveWindow } from '../../src/tmux/tmux.js';
-import { cleanHomes, hasTmux, makeHome, waitFor } from '../helpers.js';
+import { cleanHomes, hasTmux, idleSides, makeHome, waitFor } from '../helpers.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
 const SID2 = '7a1d2e3f-4b5c-4d6e-8f70-81a2b3c4d5e6';
@@ -156,7 +156,7 @@ function boot(characters: Character[]) {
   const store = Store.load(paths.state, () => {});
   store.update((d) => { for (const c of characters) d.characters[c.id] = c; });
   const ownership = OwnershipState.load({ paths, fleetId, machineId: me, log: silentLogger });
-  const handover = new HandoverService({ ownership, journal: openJournal(paths) });
+  const handover = new HandoverService({ ownership, journal: openJournal(paths), ...idleSides(paths, { store }) });
   handover.write(SourceJournal.parse({
     role: 'source', transactionId: tx.id, generation: 0, fleetId, fromMachineId: me, toMachineId: other, phase: 'freeze', updatedAt: 0,
   }));
@@ -809,7 +809,7 @@ runIf(`resting real terminals${hasTmux() ? '' : ' (skipped: tmux is not on PATH)
 
     await ownership.freeze(tx);
     await fleet.settle();
-    const handover = new HandoverService({ ownership, journal: openJournal(paths) });
+    const handover = new HandoverService({ ownership, journal: openJournal(paths), ...idleSides(paths, { store }) });
     handover.write(SourceJournal.parse({
       role: 'source', transactionId: tx.id, generation: 0, fleetId, fromMachineId: me, toMachineId: other, phase: 'freeze', updatedAt: 0,
     }));
@@ -837,7 +837,7 @@ runIf(`resting real terminals${hasTmux() ? '' : ' (skipped: tmux is not on PATH)
     const store = Store.load(paths.state, () => {});
     const w = await tmux.newWindow('c_ada', paths.home, {});
     store.update((d) => { d.characters.c_ada = char('c_ada', { tmux: w, agent: agent('claude', 'idle') }); });
-    const handover = new HandoverService({ ownership: OwnershipState.load({ paths, fleetId, machineId: me, log: silentLogger }), journal: openJournal(paths) });
+    const handover = new HandoverService({ ownership: OwnershipState.load({ paths, fleetId, machineId: me, log: silentLogger }), journal: openJournal(paths), ...idleSides(paths, { store }) });
     handover.write(SourceJournal.parse({
       role: 'source', transactionId: tx.id, generation: 0, fleetId, fromMachineId: me, toMachineId: other, phase: 'freeze', updatedAt: 0,
     }));

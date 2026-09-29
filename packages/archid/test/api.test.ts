@@ -25,7 +25,7 @@ import { TerminalHub } from '../src/terminals.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { Tmux } from '../src/tmux/tmux.js';
 import { Workspace } from '../src/workspace/workspace.js';
-import { cleanHomes, hasTmux, makeHome, ownerOf, stubMobile, stubUsage, waitFor } from './helpers.js';
+import { cleanHomes, hasTmux, idleSides, makeHome, ownerOf, stubMobile, stubUsage, waitFor } from './helpers.js';
 
 const PHONE_KEY = 'k'.repeat(48);
 const other = MachineId.parse('9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f');
@@ -115,7 +115,7 @@ runIf('API', () => {
     const terminals = new TerminalHub(fleet, tmux, store, log);
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
     const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, undefined, paths.docs, paths.agentProfiles), log, () => [claude.json], [paths.docs, paths.agentProfiles]);
-    const handover = new HandoverService({ ownership, journal: openJournal(paths) });
+    const handover = new HandoverService({ ownership, journal: openJournal(paths), ...idleSides(paths, { store, config }) });
     const api = await startApi({
       host: '127.0.0.1', port: 0, token: o.token ?? 'secret', store, fleet, terminals, workspace, usage: stubUsage, mobileControl: stubMobile, log,
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(),
@@ -231,16 +231,9 @@ runIf('API', () => {
     expect(((await c.call('handover.status', {})) as { result: unknown }).result).toEqual({});
   });
 
-  it('refuses the handover phases it has not implemented rather than answering as if it had', async () => {
+  it('checks a handover call against the record it holds and its parameters before any phase runs', async () => {
     const { api } = await boot();
     const c = await TestClient.connect(api.port, 'secret');
-    for (const [method, params] of [
-      ['handover.preflight', { toMachineId: other, ...machines }],
-      ['handover.freeze', { transactionId: 't1', generation: 0, ...machines }],
-      ['handover.abort', { transactionId: 't1', generation: 0 }],
-    ] as const) {
-      expect(await c.call(method, params), method).toMatchObject({ error: { code: 'not_ready' } });
-    }
     expect(await c.call('handover.abort', { transactionId: 't1', generation: 4 })).toMatchObject({ error: { code: 'generation_mismatch' } });
     // this daemon is running the fleet, so it is no machine's destination
     expect(await c.call('handover.activate', { transactionId: 't1', generation: 0 })).toMatchObject({ error: { code: 'not_owner' } });
