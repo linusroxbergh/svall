@@ -135,9 +135,14 @@ export function saveMainAgent(paths: Paths, agent: AgentKind): void {
   patchFleetConfig(paths.fleetConfig, { mainAgent: agent });
 }
 
+/** fleet.json as it stands now; an InvalidConfig says what in it is wrong. */
+export function readFleetConfig(paths: Pick<Paths, 'fleetConfig'>): FleetConfig {
+  return read(paths.fleetConfig, FleetConfig);
+}
+
 /** The gateway fleet.json names now: `archi host enable` names one, and `archi host remove` drops it, while the daemon runs. */
 export function namedGateway(paths: Paths): MachineId | undefined {
-  return read(paths.fleetConfig, FleetConfig).gatewayMachineId;
+  return readFleetConfig(paths).gatewayMachineId;
 }
 
 /** Names `id` this fleet's gateway in fleet.json and in the running config, which others hold by reference. */

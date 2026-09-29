@@ -8,6 +8,7 @@ import {
   type OwnerRecord, type ParsedParams, type Result, type SystemInfo, type TransactionRecord, type TransferManifestV1, type Warning,
 } from '@archipelago/protocol';
 import { codexPaths } from '../codex/install.js';
+import { readFleetConfig } from '../config.js';
 import { AuthorityFailure } from '../gateway/authority.js';
 import type { Fleet } from '../fleet.js';
 import { runGit, type GitRunner } from '../links/git.js';
@@ -576,7 +577,7 @@ export class SourceHandover {
     this.d.processes ? this.d.processes(signal) : ProcessTable.read({ signal, scripts: installedScripts(this.d.paths.home) });
 
   private fleet(): FleetConfig {
-    return FleetConfig.parse(JSON.parse(fs.readFileSync(this.d.paths.fleetConfig, 'utf8')));
+    return readFleetConfig(this.d.paths);
   }
 
   private now(): number {

@@ -290,6 +290,13 @@ describe('source preflight', () => {
     expect(b.handover.journalState()).toEqual({ kind: 'none' });
   });
 
+  it('says what in fleet.json is wrong when it no longer reads as a fleet config', async () => {
+    const b = boot();
+    fs.writeFileSync(b.paths.fleetConfig, JSON.stringify({ id: fleetId, gatewayMachineId: 'trift' }));
+    await expect(b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() }))
+      .rejects.toThrow(`invalid config ${b.paths.fleetConfig}: gatewayMachineId:`);
+  });
+
   it('lets the choices a freeze will carry approve a busy shell and a blocked agent', async () => {
     const b = boot();
     b.world.panes.get('@1')!.job = ['npm run dev'];
