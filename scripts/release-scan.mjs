@@ -158,7 +158,7 @@ export function scan(inputs, o = {}) {
   return { hits, scanned };
 }
 
-if (path.resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
   const secretsOnly = args.includes('--secrets-only');
   const inputs = args.filter((a) => a !== '--secrets-only');

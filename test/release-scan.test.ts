@@ -197,4 +197,16 @@ describe('what it reads', () => {
     expect(dirty.status).toBe(1);
     expect(dirty.stdout).toMatch(/releases\/v1\.0\.0\/lib\/archid\.mjs: developer path/);
   });
+
+  test('the command scans when it is run through a link to the checkout', () => {
+    const real = tmp();
+    fs.mkdirSync(path.join(real, 'scripts'));
+    fs.copyFileSync(SCRIPT, path.join(real, 'scripts', 'release-scan.mjs'));
+    const link = path.join(tmp(), 'checkout');
+    fs.symlinkSync(real, link);
+    const dirty = spawnSync(process.execPath, [path.join(link, 'scripts', 'release-scan.mjs'), release({ 'lib/archid.mjs': "const a = '/Users/someone';\n" })],
+      { encoding: 'utf8', env: { ...process.env, HOME } });
+    expect(dirty.stdout).toMatch(/releases\/v1\.0\.0\/lib\/archid\.mjs: developer path/);
+    expect(dirty.status).toBe(1);
+  });
 });
