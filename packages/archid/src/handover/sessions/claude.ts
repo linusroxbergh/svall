@@ -24,13 +24,27 @@ function configOf(home: string): string {
   return path.resolve(home) === byDefault.dir ? byDefault.json : path.join(home, '.claude.json');
 }
 
+const readJson = (file: string): Record<string, unknown> | undefined => {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return undefined; }
+};
+
+// the config can run to megabytes and a watch asks it again and again, so it is read again only once it has changed
+let config: { file: string; stamp: string; value?: Record<string, unknown> } | undefined;
+function readConfig(home: string): Record<string, unknown> | undefined {
+  const file = configOf(home);
+  const st = fs.statSync(file, { throwIfNoEntry: false });
+  if (!st) return undefined;
+  const stamp = `${st.ino}:${st.size}:${st.mtimeMs}:${st.ctimeMs}`;
+  if (config?.file !== file || config.stamp !== stamp) config = { file, stamp, value: readJson(file) };
+  return config.value;
+}
+
 /**
  * As Claude 2.1.283 decides, by real paths composed to NFC: a folder is trusted through its repository's main checkout,
  * or through itself or a folder above it, up to the top of its checkout or, outside one, up to /.
  */
 function trusts(home: string, folder: Omit<ResumeFolder, 'kind'>): boolean {
-  let projects: unknown;
-  try { projects = (JSON.parse(fs.readFileSync(configOf(home), 'utf8')) as { projects?: unknown }).projects; } catch { return false; }
+  const projects = readConfig(home)?.projects;
   if (!projects || typeof projects !== 'object') return false;
   const entries = projects as Record<string, { hasTrustDialogAccepted?: unknown } | undefined>;
   const trusted = (p: string) => Object.hasOwn(entries, p) && entries[p]?.hasTrustDialogAccepted === true;
@@ -47,17 +61,13 @@ function trusts(home: string, folder: Omit<ResumeFolder, 'kind'>): boolean {
 // the launch flags a revive keeps that start Claude in bypass mode
 const BYPASS = /(?:^| )(?:--dangerously-skip-permissions|--allow-dangerously-skip-permissions|--permission-mode 'bypassPermissions')(?= |$)/;
 
-const readJson = (file: string): Record<string, unknown> | undefined => {
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return undefined; }
-};
-
 /**
  * As Claude 2.1.283 decides: bypass mode is accepted by its config, which a start moves into its settings, by its
  * settings, or by the local settings of the folder or of its repository's main checkout.
  */
 function acceptsBypass(home: string, folder: Omit<ResumeFolder, 'kind'>): boolean {
   const skips = (file: string) => readJson(file)?.skipDangerousModePermissionPrompt === true;
-  if (readJson(configOf(home))?.bypassPermissionsModeAccepted === true || skips(path.join(home, 'settings.json'))) return true;
+  if (readConfig(home)?.bypassPermissionsModeAccepted === true || skips(path.join(home, 'settings.json'))) return true;
   return [folder.cwd, folder.repo].some((d) => d !== undefined && skips(path.join(d, '.claude', 'settings.local.json')));
 }
 

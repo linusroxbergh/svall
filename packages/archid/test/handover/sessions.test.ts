@@ -192,6 +192,26 @@ describe('Claude Code folder trust', () => {
     expect(claudeAdapter.trusts!(home, { cwd: at('plain/a/b') }), 'no config').toBe(false);
   });
 
+  it('reads its config again only once the file has changed, however often it is asked', () => {
+    const { at } = layout();
+    const home = at('cfg');
+    fs.mkdirSync(home);
+    const config = path.join(home, '.claude.json');
+    write(config, {});
+    const reads = vi.spyOn(fs, 'readFileSync');
+    const read = () => reads.mock.calls.filter(([f]) => f === config).length;
+    try {
+      for (let i = 0; i < 3; i++) expect(claudeAdapter.trusts!(home, { cwd: at('plain/a/b') })).toBe(false);
+      expect(claudeAdapter.acceptsBypass!(home, { cwd: at('plain/a/b') })).toBe(false);
+      expect(read()).toBe(1);
+      write(config, { [at('plain/a/b')]: T });
+      expect(claudeAdapter.trusts!(home, { cwd: at('plain/a/b') })).toBe(true);
+      expect(read()).toBe(2);
+    } finally {
+      reads.mockRestore();
+    }
+  });
+
   it('trusts a folder whose name is stored decomposed by the composed key Claude 2.1.283 looks it up by', () => {
     const base = tmp();
     const home = path.join(base, 'cfg');

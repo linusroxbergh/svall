@@ -91,8 +91,10 @@ const LOOK_MS = 10_000;
 const SETTLE_MS = 3000;
 const QUIET_MS = 10_000;
 const LOOK_EVERY_MS = 500;
-// how often a terminal counted up at a prompt is looked at until its session starts
-const WATCH_EVERY_MS = 2000;
+// how often a terminal counted up at a prompt is looked at until its session starts: at first, at most, and for how long
+const WATCH_FIRST_MS = 2000;
+const WATCH_MOST_MS = 60_000;
+const WATCH_FOR_MS = 60 * 60_000;
 // typed into a plain shell that came back empty, so whoever opens it knows its old job did not come along
 const NOTICE = 'Archipelago restarted this shell after a handover; whatever ran here before did not move.';
 const RESTARTED = `echo '${NOTICE}'`;
@@ -645,7 +647,8 @@ export class DestinationHandover {
    * Watches a terminal counted up at a prompt until its session starts, or, for an agent that starts none until its
    * first turn, until the folder it was `asked` to trust is trusted, the fleet leaving what it carries alone meanwhile.
    * One whose agent leaves the pane first is left dormant with that session and an error saying `then`, or, once that
-   * folder is trusted and so the agent left at some later prompt, saying to answer that one.
+   * folder is trusted and so the agent left at some later prompt, saying to answer that one. It looks less often as it
+   * goes, and leaves the terminal to the fleet once the handover completes or an hour has passed.
    */
   private async watch(
     tx: string, s: Slot, which: string, agent: { kind: AgentKind; sessionId: string }, carried: Carried | undefined, then: string, asked?: ResumeFolder,
@@ -655,17 +658,19 @@ export class DestinationHandover {
     this.watched.add(key);
     let heard = false;
     const start = started.done.then((ok) => { heard = ok; });
+    const until = this.clock.now() + WATCH_FOR_MS;
     try {
-      for (;;) {
+      const { adapter, home } = await this.cli(agent.kind);
+      for (let every = WATCH_FIRST_MS; ; every = Math.min(every * 2, WATCH_MOST_MS)) {
         const nap = new AbortController();
-        await Promise.race([this.clock.sleep(WATCH_EVERY_MS, nap.signal), start]);
+        await Promise.race([this.clock.sleep(every, nap.signal), start]);
         nap.abort();
         const c = this.d.store.state.characters[s.characterId];
         const slot = s.term === 2 ? c?.second : c;
         // a later handover's rest answers for it from then on
-        if (heard || slot?.restedBy !== tx) return;
-        const answered = !!asked && (await this.trusted(asked));
-        if (answered && !(await this.cli(agent.kind)).adapter.sessionStartOnResume) return;
+        if (heard || slot?.restedBy !== tx || !this.open(tx) || this.clock.now() >= until) return;
+        const answered = !!asked && (!adapter.trusts || (!!home && adapter.trusts(home, asked)));
+        if (answered && !adapter.sessionStartOnResume) return;
         let look: Look;
         try { look = slot.tmux ? await this.holding(slot) : { held: 'gone' }; } catch { continue; }
         if (heard) return;

@@ -934,7 +934,8 @@ describe('destination activate', () => {
 
     // answered "Yes", which Codex writes into its config
     fs.writeFileSync(path.join(s.dst, '.codex/config.toml'), `[projects."${path.join(s.dst, 'work/demo')}"]\ntrust_level = "trusted"\n`);
-    await d.clock.advance(2000);
+    // at its next look, which comes later each time
+    await d.clock.advance(4000);
     expect(d.crew.carried('c_dee')).toBe(false);
     let looks = 0;
     const list = d.crew.tmux.listWindows;
@@ -1039,6 +1040,41 @@ describe('destination activate', () => {
     });
     expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo')).toMatchObject({ ok: false, error: c.resumeError });
     expect(d.crew.carried('c_bo')).toBe(false);
+  });
+
+  it('looks at a Claude waiting at its trust prompt less and less often, down to once a minute, and leaves it to the fleet once the handover completes', async () => {
+    const { d, preparedDigest } = await prepared();
+    d.gateway.commit(preparedDigest);
+    d.crew.silent.add('c_bo');
+    const { r } = await activateBy(d);
+    expect(r.characters.find((c) => c.id === 'c_bo')).toMatchObject({ ok: true, notice: expect.stringMatching(/may be waiting at a prompt/) });
+    let looks = 0;
+    const list = d.crew.tmux.listWindows;
+    d.crew.tmux.listWindows = (signal) => { looks++; return list(signal); };
+
+    for (let t = 0; t < 300; t++) await d.clock.advance(1000);
+    // at 2, 6, 14, 30 and 62 seconds, then once a minute
+    expect(looks).toBeLessThanOrEqual(9);
+    expect(d.crew.carried('c_bo')).toBe(true);
+
+    await d.handover.complete({ transactionId: TX, generation: 5 });
+    for (let t = 0; t < 60; t++) await d.clock.advance(1000);
+    looks = 0;
+    for (let t = 0; t < 120; t++) await d.clock.advance(1000);
+    expect(looks).toBe(0);
+    expect(d.crew.carried('c_bo')).toBe(false);
+  });
+
+  it('stops watching a Claude at its trust prompt after an hour while the handover stays open', async () => {
+    const { d, preparedDigest } = await prepared();
+    d.gateway.commit(preparedDigest);
+    d.crew.silent.add('c_bo');
+    await activateBy(d);
+    for (let t = 0; t < 59; t++) await d.clock.advance(60_000);
+    expect(d.crew.carried('c_bo')).toBe(true);
+    for (let t = 0; t < 3; t++) await d.clock.advance(60_000);
+    expect(d.crew.carried('c_bo')).toBe(false);
+    expect(d.handover.journalState().kind).toBe('open');
   });
 
   it('keeps watching a Claude that answered its trust prompt, and names no trust prompt once it exits at a later one', async () => {
