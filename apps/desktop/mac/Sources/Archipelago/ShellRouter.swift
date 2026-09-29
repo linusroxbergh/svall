@@ -265,6 +265,7 @@ final class ShellRouter {
                 NSLog("archi: no %@ config to open", which)
                 return
             }
+            if let notice = remote.notice(forConfig: which, at: path) { return bridge.send(.notice(text: notice)) }
             ExternalURL.openText(path)
         case .zoom(let factor, let fontDelta):
             // the page lays itself out again at the new size and restates every terminal's rect from there

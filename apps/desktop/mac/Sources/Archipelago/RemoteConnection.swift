@@ -86,6 +86,11 @@ final class RemoteConnection {
         return "\(path) is on \(route.name); open it there"
     }
 
+    /// The fleet's config is the running daemon's only on the machine it runs on; Ghostty's is this Mac's own.
+    func notice(forConfig which: String, at path: String) -> String? {
+        which == "ghostty" ? nil : notice(forOpening: path)
+    }
+
     /// A build with no helper beside it keeps the local-only experience it had before.
     private func fallBack() {
         route = .local

@@ -140,6 +140,21 @@ final class RemoteConnectionTests: XCTestCase {
         XCTAssertNil(localOnly.notice(forOpening: "/w/isle"))
     }
 
+    func testTheFleetsConfigIsOpenedOnlyOnTheMachineItRunsOn() throws {
+        let helper = try fakeHelper(prints: [#"{"type":"connecting","owner":"studio"}"#, remoteOnline])
+        let remote = connection(helper: ControllerProcess(executable: helper, arguments: []))
+        remote.start()
+        waitForTranscript(of: 3)
+        XCTAssertEqual(remote.notice(forConfig: "fleet", at: "/Users/x/.archipelago/fleet.json"), "/Users/x/.archipelago/fleet.json is on studio; open it there")
+        // Ghostty's config is this Mac's own
+        XCTAssertNil(remote.notice(forConfig: "ghostty", at: "/Users/x/.config/ghostty/config"))
+        remote.stop()
+
+        let localOnly = connection(helper: nil, local: ArchiConnection(host: "127.0.0.1", port: 8123, token: "t0ken"))
+        localOnly.start()
+        XCTAssertNil(localOnly.notice(forConfig: "fleet", at: "/Users/x/.archipelago/fleet.json"))
+    }
+
     func testThePageIsToldWhereTheLocalDaemonIsNowNotWhereItWasWhenTheHelperSaidOnline() throws {
         var port = 8123
         let helper = try fakeHelper(prints: [#"{"type":"connecting","owner":"local"}"#, localOnline])
