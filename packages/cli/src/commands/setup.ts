@@ -9,7 +9,6 @@ import { realRun } from '@archipelago/archid/linux/service';
 import { defaultsPrefs, moveOldIds, oldIdsLeft, runLaunchctl, signInsLeft, type Launchctl } from '@archipelago/archid/legacy';
 import { resolvePaths, userPaths } from '@archipelago/archid/paths';
 import { LAUNCHD_LABEL, PRIVATE, profileHome } from '@archipelago/archid/profile';
-import { repoRoot } from '@archipelago/archid/release';
 import { claudeHooksCurrent, codexHooksCurrent, plistCurrent, readCodexHooks, readJsonSettings, requireWritableHooks, runSetup, shimsCurrent, type RunFrom } from '@archipelago/archid/setup';
 import { appQuit, fleetHomes } from '@archipelago/archid/uninstall';
 import type { AgentKind } from '@archipelago/protocol';
@@ -20,6 +19,7 @@ import { Client } from '../client.js';
 import { printResult } from '../format.js';
 import { checkLine, preflight, realPreflightDeps, requireReady, type Check } from './doctor.js';
 import type { Target } from '../target.js';
+import { currentRunFrom } from '../version.js';
 
 type Options = { launchctl: boolean; check?: boolean; release?: string; allowUnsigned?: boolean; replaceSettings?: boolean; rollback?: boolean | string };
 
@@ -27,7 +27,7 @@ type From = RunFrom & { rollbackTo?: string; version?: string };
 
 // a release install replaces the checkout entirely: the service and the shims reach it through `current`
 function runFrom(o: Options, done: string[]): From {
-  if (!o.release) return { repoRoot: repoRoot() };
+  if (!o.release) return currentRunFrom();
   const installed = installRelease({
     source: o.release,
     allowUnsigned: o.allowUnsigned,
@@ -173,7 +173,7 @@ export function setupCommand(
           notes.push({ name: 'hooks', status: 'warn', detail: 'missing or out of date: run archi setup' });
         }
         // shims or a plist that run another checkout or release, moved or not, are out of date
-        const from: RunFrom = o.release ? { release: path.join(DEFAULT_PREFIX, 'current') } : { repoRoot: repoRoot() };
+        const from: RunFrom = o.release ? { release: path.join(DEFAULT_PREFIX, 'current') } : currentRunFrom();
         if (!shimsCurrent(userPaths().shimDir, from)) notes.push({ name: 'shims', status: 'warn', detail: 'missing or out of date: run archi setup' });
         if (!systemd && !plistCurrent({ home: t.home, label: LAUNCHD_LABEL, launchAgentsDir: userPaths().launchAgents, ...from })) {
           notes.push({ name: 'launchd', status: 'warn', detail: 'plist missing or out of date: run archi setup' });

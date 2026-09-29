@@ -2,9 +2,48 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { userPaths } from '@archipelago/archid/paths';
 import { LAUNCHD_LABEL, profileLabel } from '@archipelago/archid/profile';
+import { shimsCurrent } from '@archipelago/archid/setup';
 import { cleanHomes, makeHome } from '@archipelago/archid/test-helpers';
+import { DEFAULT_PREFIX } from '../../../scripts/install-release.mjs';
 import { daemonRuns, setupCommand } from '../src/commands/setup.js';
+
+// an installed release has no checkout, so asking for one throws as it does there
+const release = vi.hoisted(() => ({ installed: false }));
+vi.mock('@archipelago/archid/release', async (actual) => {
+  const real = await actual<typeof import('@archipelago/archid/release')>();
+  return {
+    ...real,
+    isRelease: () => release.installed || real.isRelease(),
+    repoRoot: () => { if (release.installed) throw new Error('this is an installed release, not a checkout'); return real.repoRoot(); },
+  };
+});
+
+describe('archi setup on an installed release', () => {
+  afterEach(() => { release.installed = false; vi.unstubAllEnvs(); vi.restoreAllMocks(); process.exitCode = 0; cleanHomes(); });
+
+  it('sets up from the release current names, with and without --check, as every hint to run archi setup expects', async () => {
+    release.installed = true;
+    const home = process.env.HOME!;
+    // stand-ins for tmux and a signed-in claude, so neither the real ones nor anything else on this PATH runs
+    const bin = makeHome();
+    fs.writeFileSync(path.join(bin, 'tmux'), '#!/bin/sh\necho "tmux 3.5a"\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'claude'), '#!/bin/sh\ncase "$1" in --version) echo "2.1.300 (Claude Code)";; *) echo \'{"loggedIn":true}\';; esac\n', { mode: 0o755 });
+    vi.stubEnv('PATH', `${bin}:/usr/bin:/bin`);
+    const out: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { out.push(String(chunk)); return true; });
+    const setup = () => setupCommand(() => ({ name: 'private', home: path.join(home, '.archipelago'), managed: true }), () => true, 'darwin', () => Promise.reject(new Error('launchctl ran')));
+    try {
+      await setup().parseAsync(['--check'], { from: 'user' });
+      expect(JSON.parse(out.splice(0).join('')).warnings).toContain('! shims  missing or out of date: run archi setup');
+      await setup().parseAsync(['--no-launchctl'], { from: 'user' });
+      expect(shimsCurrent(userPaths().shimDir, { release: path.join(DEFAULT_PREFIX, 'current') })).toBe(true);
+    } finally {
+      for (const d of [path.join(home, '.local'), path.join(home, 'Library'), path.join(home, '.claude'), path.join(home, '.archipelago')]) fs.rmSync(d, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('the probe after a Linux upgrade', () => {
   const daemon = (release: string) => () => Promise.resolve({ call: () => Promise.resolve({ release }), close: () => undefined });
