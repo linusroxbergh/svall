@@ -2,7 +2,6 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import type { AgentKind } from '@svall/protocol';
 import { AGENTS, AGENT_KINDS, isExecutable, onPath } from './agents.js';
@@ -12,6 +11,7 @@ import { CLAUDE_HOOKS, hooksFor } from './hooks/receiver.js';
 import { writeAtomic } from './jsonfile.js';
 import { LAUNCHD_LABEL } from './profile.js';
 import { HOOK_SCRIPT, claudePaths, expandHome, isOurs, resolvePaths, type Paths } from './paths.js';
+import { assetDir } from './runtime.js';
 import { shq } from './text.js';
 import { tmuxConfText } from './tmux/conf.js';
 
@@ -151,7 +151,7 @@ export function launchdPlist(o: { label: string; tsx: string; bin: string; home:
 // the scripts speak the daemon's socket protocol, so every daemon start refreshes them
 export function installHookScripts(paths: Paths): void {
   fs.mkdirSync(path.dirname(paths.hookScript), { recursive: true });
-  const hooksSrc = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../hooks');
+  const hooksSrc = assetDir('hooks');
   fs.copyFileSync(path.join(hooksSrc, HOOK_SCRIPT), paths.hookScript);
   fs.copyFileSync(path.join(hooksSrc, 'claude-status.mjs'), paths.statusScript);
 }
@@ -161,7 +161,7 @@ export function installHookScripts(paths: Paths): void {
 // and are seeded once; `svall setup` is the explicit ask that replaces edited settings, keeping a copy
 export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }): string[] {
   const done: string[] = [];
-  const template = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../home');
+  const template = assetDir('home');
   const dir = expandHome(cwd);
   fs.mkdirSync(dir, { recursive: true });
   const claudeMd = path.join(dir, 'CLAUDE.md');

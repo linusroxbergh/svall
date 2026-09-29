@@ -30,7 +30,7 @@ export function buildProgram(): Command {
     .option('--json', 'machine-readable output')
     .option('-p, --profile <name>', 'the fleet to work on (default: $SVALL_HOME, else private)')
     // commander's own .version() wants the string up front, which would run git on every command
-    .option('-V, --version', 'print the commit this checkout is on')
+    .option('-V, --version', 'print the app version, or the commit a checkout is on')
     .on('option:version', () => {
       process.stdout.write(`${checkoutVersion()}\n`);
       process.exit(0);

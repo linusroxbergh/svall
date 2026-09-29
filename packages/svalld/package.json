@@ -18,6 +18,7 @@
     "./setup": "./src/setup.ts",
     "./uninstall": "./src/uninstall.ts",
     "./profile": "./src/profile.ts",
+    "./runtime": "./src/runtime.ts",
     "./fleets": "./src/fleets.ts",
     "./mobile": "./src/mobile.ts",
     "./tmux/conf": "./src/tmux/conf.ts"
