@@ -186,6 +186,14 @@ describe('runRsync', () => {
     const r = await runRsync(exe, [], { signal: abort.signal, onLine: () => abort.abort() });
     expect(r.signal).toBe('SIGTERM');
   });
+
+  it('runs rsync in a process group of its own, which a terminal\'s Ctrl-C to this one never reaches', async () => {
+    const exe = script(tmp(), 'group', 'ps -o pgid= -p $$');
+    const lines: string[] = [];
+    await runRsync(exe, [], { onLine: (l) => lines.push(l.trim()) });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).not.toBe(execFileSync('ps', ['-o', 'pgid=', '-p', String(process.pid)], { encoding: 'utf8' }).trim());
+  });
 });
 
 describe.skipIf(noRsync)('rsync 3 through the ssh master', { timeout: 60_000 }, () => {

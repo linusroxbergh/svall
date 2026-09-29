@@ -5,7 +5,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { shq } from '@archipelago/archid/text';
 import { redact, runProcess } from '../../src/controller/process.js';
 import { classifyExit, classifySsh, SshError, SshMaster } from '../../src/controller/ssh.js';
+import { waitFor } from '../../../archid/test/helpers.js';
 import { installFakeSsh, type FakeSsh } from './fake-ssh.js';
+
+const pgid = (pid: number): string => execFileSync('ps', ['-o', 'pgid=', '-p', String(pid)], { encoding: 'utf8' }).trim();
+const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
 describe('runProcess', () => {
   it('hands an argument to the command rather than to a shell', async () => {
@@ -35,6 +39,11 @@ describe('runProcess', () => {
   it('feeds stdin and reads it back', async () => {
     const r = await runProcess('/bin/cat', [], { timeoutMs: 5000, input: 'hello' });
     expect(r.stdout).toBe('hello');
+  });
+
+  it('runs a command in a process group of its own, which a terminal\'s Ctrl-C to this one never reaches', async () => {
+    const r = await runProcess('/bin/sh', ['-c', 'ps -o pgid= -p $$'], { timeoutMs: 5000 });
+    expect(r.stdout.trim()).not.toBe(pgid(process.pid));
   });
 });
 
@@ -125,6 +134,37 @@ describe('SshMaster', () => {
     expect(theirs).not.toBe(mine.socket);
     expect(await mine.check()).toBe(true);
     await mine.close();
+  });
+
+  it('keeps its master out of a Ctrl-C the process that opened it answers itself, and ends it when that process exits', async () => {
+    // a process that takes SIGINT itself, as a foreground handover does, and exits on a line of input
+    const script = path.join(ssh.dir, 'hold-master.mts');
+    fs.writeFileSync(script, [
+      `import { SshMaster } from ${JSON.stringify(path.join(import.meta.dirname, '../../src/controller/ssh.ts'))};`,
+      `const master = await SshMaster.open({ destination: 'trift', socketDir: ${JSON.stringify(ssh.socketDir)} });`,
+      "process.on('SIGINT', () => process.stdout.write('interrupted\\n'));",
+      "process.stdin.on('data', () => process.exit(0));",
+      "process.stdout.write(master.socket + '\\n');",
+    ].join('\n'));
+    const root = path.resolve(import.meta.dirname, '../../../..');
+    // a group of its own, as a terminal's foreground job has
+    const child = spawn(process.execPath, ['--import', 'tsx', script], { cwd: root, detached: true, stdio: ['pipe', 'pipe', 'inherit'] });
+    let out = '';
+    child.stdout.on('data', (chunk: Buffer) => { out += chunk.toString(); });
+    const exited = new Promise((resolve) => { child.on('close', resolve); });
+    await waitFor(() => out.includes('\n'), 15_000);
+    const master = ssh.masterPid(out.split('\n')[0]) as number;
+    expect(alive(master)).toBe(true);
+
+    // what a terminal's Ctrl-C does: SIGINT to every process in its foreground group
+    process.kill(-(child.pid as number), 'SIGINT');
+    await waitFor(() => out.includes('interrupted'));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(alive(master)).toBe(true);
+
+    child.stdin.write('exit\n');
+    await exited;
+    await waitFor(() => !alive(master));
   });
 
   it('never adopts a master it did not spawn, even on the socket it would use', async () => {

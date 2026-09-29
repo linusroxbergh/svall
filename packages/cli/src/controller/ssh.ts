@@ -139,10 +139,11 @@ export class SshMaster {
   }
 
   private async spawn(): Promise<SshMaster> {
+    // in a session of its own, so a terminal's Ctrl-C reaches only this process, which ends it on exit
     const child = spawn('ssh', [
       '-M', '-S', this.socket, '-N', '-o', 'BatchMode=yes', '-o', 'ControlPersist=no',
       '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3', '-o', 'ConnectTimeout=10', '--', this.destination,
-    ], { stdio: ['ignore', 'ignore', 'pipe'] });
+    ], { stdio: ['ignore', 'ignore', 'pipe'], detached: true });
     let stderr = '';
     let gone = false;
     child.stderr.on('data', (chunk: Buffer) => { stderr = (stderr + chunk.toString()).slice(-4096); });

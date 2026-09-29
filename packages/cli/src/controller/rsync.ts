@@ -170,11 +170,12 @@ export type RunRsync = (exe: string, argv: string[], o: { signal?: AbortSignal; 
 /**
  * Runs rsync with an argv array, handing on each stdout line as it ends; progress ends its lines with a
  * carriage return. rsync reads RSYNC_* settings that could turn argument protection off or convert
- * names, so none reaches it. A cancel sends SIGTERM, which rsync cleans up after, then SIGKILL.
+ * names, so none reaches it. A cancel sends SIGTERM, which rsync cleans up after, then SIGKILL; a
+ * terminal's Ctrl-C never does, as rsync and its ssh run in a session of their own.
  */
 export const runRsync: RunRsync = (exe, argv, o) => new Promise((resolve, reject) => {
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('RSYNC_')));
-  const child = spawn(exe, argv, { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(exe, argv, { env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
   const decoder = new StringDecoder('utf8');
   let pending = '';
   let stderr = '';
