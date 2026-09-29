@@ -337,6 +337,7 @@ Other caps: a notification's POST body 64 KiB, a gateway line and a helper contr
   274,432 files, and the benchmark's 1,076 MiB 68,832 (`host.json`). The source counts the files from their names
   before it reads any: at preflight, which then answers without its file lists, and at freeze before any terminal
   rests. A fleet however far past the bound is refused that way, never hashed; freeze checks the read manifest again.
+  The controller asks the destination nothing about the roots of a preflight answered without its file lists.
   The controller runs on one of the two machines with that machine's default heap, and grew by less a file than a
   daemon: its peak was at most 348.1 MiB for 50,000 files and at least 87.8 MiB for the small repository.
 - **More than ten terminals on one remote machine** go past sshd's default `MaxSessions 10` on the shared master.

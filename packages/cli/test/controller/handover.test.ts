@@ -264,6 +264,25 @@ describe('preflight', () => {
     }
   });
 
+  it('asks the destination nothing about roots once the source refused a manifest too large to answer with its file lists', async () => {
+    for (const code of ['too_many_files', 'manifest_too_large'] as const) {
+      const w = new World();
+      const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest; blockers: Blocker[] };
+      w.source.answers['handover.preflight'] = ((p: unknown) => {
+        const r = preflight(p);
+        for (const root of r.manifest.roots) root.files = [];
+        r.blockers.push({ code, message: `refused: ${code}` });
+        return r;
+      }) as never;
+      let inspected = 0;
+      const inspect = w.destination.answers['handover.inspect'] as (p: unknown) => object;
+      w.destination.answers['handover.inspect'] = ((p: unknown) => { inspected++; return inspect(p); }) as never;
+      const r = await controller(w).preflight(trift, {});
+      expect(r.blockers).toEqual([{ code, message: `refused: ${code}` }]);
+      expect(inspected).toBe(0);
+    }
+  });
+
   it('warns that Codex asks to trust a carried folder only where the destination does not trust it yet', async () => {
     const w = new World();
     // bo's Codex works in a worktree of app, which Codex trusts through app itself

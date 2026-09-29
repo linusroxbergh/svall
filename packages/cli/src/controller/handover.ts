@@ -248,7 +248,9 @@ export class Handover {
     const pre = await this.retrying('begin', () => source.daemon.call('handover.preflight', {
       toMachineId: to, choices, source: { home: source.home }, destination: { info: b, home: destination.home, fleetHome: destination.fleetHome },
     }));
-    const there = await this.destinationChecks(source, destination, pre.manifest, choices);
+    // a manifest answered without its file lists would have the destination judge every root as empty
+    const stripped = pre.blockers.some((x) => x.code === 'too_many_files' || x.code === 'manifest_too_large');
+    const there = stripped ? { blockers: [], warnings: [] } : await this.destinationChecks(source, destination, pre.manifest, choices);
     blockers.push(...pre.blockers, ...there.blockers);
     const warnings = [...pre.warnings, ...there.warnings, ...differences(source, a, destination, b, pre.manifest)];
     const out = { generation: record.generation, summary: pre.manifestSummary, blockers: settle(blockers), warnings: settle(warnings), manifest: pre.manifest };
