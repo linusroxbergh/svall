@@ -19,7 +19,7 @@ import { SshError, SshMaster } from '../../src/controller/ssh.js';
 import { installFakeSsh } from './fake-ssh.js';
 import { MachineRegistry } from '../../src/controller/registry.js';
 import { ApiError, Client } from '../../src/client.js';
-import type { RootEntry } from '../../src/controller/transfer.js';
+import type { RootEntry, SessionEntry } from '../../src/controller/transfer.js';
 import { cleanHomes, makeHome } from '../../../archid/test/helpers.js';
 import {
   CODEX, FLEET_HOME, G, HOME, SID, TOKEN, World, at, controller, file, fleetId, info, keptCommit, mac, manifestFor, opIndex, phases, recover, settledOn, trift,
@@ -68,6 +68,9 @@ describe('the controller transaction', () => {
 
   it('writes each root only where its claim says, under the excludes and Git keep rules it was proven with, and each session into its stage as one entry', async () => {
     const w = new World();
+    // a second pass found a.txt changed since the freeze, so what the transfer verified is not the manifest's list
+    const scanned = (files: SessionEntry['files']) => files.map((f) => (f.type === 'file' && f.path === 'a.txt' ? { ...f, sha256: 'b'.repeat(64) } : f));
+    w.transferResult = (o) => ({ status: 'verified', blockers: [], entries: o.entries.map((e) => ({ id: e.id, status: 'verified' as const, passes: 2, files: scanned(e.files) })) });
     await controller(w).start(trift, {});
     const [run] = w.transfers;
     expect(run.roles).toEqual({ source: 'local', destination: 'remote' });
@@ -85,7 +88,8 @@ describe('the controller transaction', () => {
       ['s1', '/Users/ada/.codex', stage(1), [`sessions/rollout-${CODEX}.jsonl`]],
     ]);
     // prepare and the source's seal take what the transfer verified, not the frozen manifest's lists
-    expect(w.destination.landedSeen).toEqual([{ id: 'r_app', files: roots[0].files }, { id: 'r_git', files: roots[1].files }]);
+    expect(scanned(roots[0].files)).not.toEqual(roots[0].files);
+    expect(w.destination.landedSeen).toEqual([{ id: 'r_app', files: scanned(roots[0].files) }, { id: 'r_git', files: roots[1].files }]);
     expect(w.source.sealed).toEqual(w.destination.landedSeen);
   });
 
