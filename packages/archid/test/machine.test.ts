@@ -1,11 +1,11 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { configDir, machineId, mintMachineId } from '../src/machine.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
-afterEach(() => { delete process.env.ARCHI_CONFIG_DIR; cleanHomes(); });
+afterEach(() => { vi.restoreAllMocks(); delete process.env.ARCHI_CONFIG_DIR; cleanHomes(); });
 
 const mode = (p: string): string => (fs.statSync(p).mode & 0o777).toString(8);
 
@@ -39,6 +39,15 @@ describe('machine id', () => {
     fs.writeFileSync(path.join(dir, 'machine.json'), JSON.stringify({ id: first }));
     expect(mintMachineId(dir)).toBe(first);
     expect(JSON.parse(fs.readFileSync(path.join(dir, 'machine.json'), 'utf8'))).toEqual({ id: first });
+  });
+
+  it('puts the file in place only once its whole content is on disk', () => {
+    const dir = path.join(makeHome(), 'archipelago');
+    vi.spyOn(fs, 'fsyncSync').mockImplementationOnce(() => { throw Object.assign(new Error('EIO: i/o error, fsync'), { code: 'EIO' }); });
+    expect(() => mintMachineId(dir)).toThrow('EIO');
+    expect(fs.existsSync(path.join(dir, 'machine.json'))).toBe(false);
+    const id = mintMachineId(dir);
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'machine.json'), 'utf8'))).toEqual({ id });
   });
 
   it('never invents a second id over a file it cannot read', () => {

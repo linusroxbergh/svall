@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
 import { MachineId } from '@archipelago/protocol';
+import { createDurable } from './handover/durable.js';
 
 const Machine = z.object({ id: MachineId });
 
@@ -20,13 +21,13 @@ function read(file: string): MachineId {
   }
 }
 
-/** Writes a new id, or reads back the one another process wrote first: the file is never replaced. */
+/** Writes a new id whole, or reads back the one another process wrote first: the file is never replaced. */
 export function mintMachineId(dir: string): MachineId {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const file = path.join(dir, 'machine.json');
   const id = MachineId.parse(crypto.randomUUID());
   try {
-    fs.writeFileSync(file, `${JSON.stringify({ id }, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+    createDurable(file, { id }, { mode: 0o600 });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
     return read(file);
