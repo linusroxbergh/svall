@@ -234,6 +234,11 @@ only, as the controller build is:
 With `ARCHI_RELEASE_KEY` set, every manifest is signed; without it, every manifest is marked unsigned. The script
 ends by scanning the three archives, and a hit fails it.
 
+`scripts/release-build.sh --sign <key> --out <dir>` signs, in place, the archives a build without the key left in
+`<dir>`. It takes no `--version` or `--url-base`. It signs the companions first, as the controller's manifest pins
+their archives' digests. Each archive is checked as an installer checks an unsigned one, loses its unsigned mark, and
+is signed and packed again.
+
 `scripts/release-scan.mjs [--secrets-only] <archive or folder>...` exits 1 on any of:
 
 - **Secrets:** private keys, including one inlined in a bundle with escaped line breaks; Anthropic, OpenAI, GitHub,
@@ -258,16 +263,20 @@ included, and drops the rest.
 
 | Job | Runner | What it does |
 | --- | --- | --- |
-| `build` | `macos-latest` | Runs `release-build.sh` twice: for the tag, and as `<tag>-next`, the release the fresh installs upgrade to, which is never published and pins its companions at `http://127.0.0.1:8765/upgrade`. Passes both to the other jobs as workflow artifacts, kept for one day. |
-| `integration` | `ubuntu-24.04` (x64), `ubuntu-24.04-arm` (arm64) | Runs `fleet-handover.sh` with the release's own companion for that architecture. |
-| `fresh-install` | the same two | Runs `fresh-install.sh` with both releases. `host add` installs the tag's companion by path, as its GitHub URL does not resolve before publish; `host upgrade` downloads the `-next` companion from the run's loopback server, as the app does. |
-| `publish` | `ubuntu-24.04` | Needs all three. With the key, it lists every archive in `SHA256SUMS`, signs that with `ssh-keygen -Y sign`, checks the signature against the committed `scripts/release/allowed_signers`, and creates the GitHub release with the archives, `SHA256SUMS` and its signature. Without the key, or for a tag with a `-`, it notes that the dry run passed, and uploads nothing. |
+| `key` | `ubuntu-24.04` | Checks the key before anything is built: an OpenSSH key without a passphrase whose public half is in `scripts/release/allowed_signers`. Says whether the tag is signed. |
+| `build` | `macos-latest` | Needs `key`, and never holds the key. Runs `release-build.sh` twice: for the tag, and as `<tag>-next`, the release the fresh installs upgrade to, which is never published and pins its companions at `http://127.0.0.1:8765/upgrade`. Restores no cache on a signed tag, so a signed release builds its own rsync. Passes both to the other jobs as workflow artifacts, kept for one day. |
+| `sign` | `macos-latest` | Runs only with the key. Signs both builds' archives with `release-build.sh --sign` and puts them back in place of the unsigned ones. |
+| `integration` | `ubuntu-24.04` (x64), `ubuntu-24.04-arm` (arm64) | Needs `build`, and `sign` unless a run without the key skips it. Runs `fleet-handover.sh` with the release's own companion for that architecture. |
+| `fresh-install` | the same two | Needs `build`, and `sign` unless a run without the key skips it. Runs `fresh-install.sh` with both releases. `host add` installs the tag's companion by path, as its GitHub URL does not resolve before publish; `host upgrade` downloads the `-next` companion from the run's loopback server, as the app does. |
+| `publish` | `ubuntu-24.04` | Needs `key` and the two test jobs. With the key, it lists every archive in `SHA256SUMS`, signs that with `ssh-keygen -Y sign`, checks the signature against the committed `scripts/release/allowed_signers`, and creates the GitHub release with the archives, `SHA256SUMS` and its signature. Without the key, or for a tag with a `-`, it notes that the dry run passed, and uploads nothing. |
 
-- **Signing.** The `ARCHI_RELEASE_KEY` secret holds the private key. It is written to a 0600 file only in the steps
-  that sign, and deleted after them. The manifests inside the archives are signed at build time, so the archives the
-  jobs test are the ones published.
+- **Signing.** The `ARCHI_RELEASE_KEY` secret holds the private key. Only one step in each of the `key`, `sign` and
+  `publish` jobs names it, never one in `build`, so nothing `pnpm install` or the bundlers run can read it. Each such
+  step writes it to a 0600 file and deletes it when the step ends. The `sign` job signs the manifests inside the
+  archives before any other job takes them, so the archives the jobs test are the ones published. Every action runs
+  at a pinned commit.
 - **The signers.** Before the first signed tag, `scripts/release/allowed_signers` needs the key's public half, as
-  its header says. The build job checks that first and fails at once, naming the file, when the key is not there or
+  its header says. The `key` job checks that first and fails at once, naming the file, when the key is not there or
   is not an OpenSSH key without a passphrase.
 - **Dry run.** A tag in a repository without the secret builds, hands over and fresh-installs everything, and
   uploads nothing. A tag with a `-`, such as `v1.0.0-test1`, does the same, signed when the secret is there.
@@ -279,7 +288,8 @@ Actions jobs do not start on this repository (billing), so these steps have run 
 
 - the upload: `gh release create` with the job's token, and a signed tag end to end;
 - the native x86-64 and arm64 Linux runners;
-- workflow artifacts passing from the macOS job to the Linux jobs;
+- workflow artifacts passing from the macOS jobs to the Linux jobs;
+- the `sign` job's upload over the build's artifacts, and the test jobs running when a run without the key skips it;
 - the fresh-install job's server on the runner's `127.0.0.1:8765`, which needs nothing else listening there;
 - the Mac controller's `archi.mjs` on a Linux runner's Node, which has run only on a Mac's Node;
 - the build on a macOS runner, with the runner's `strip` and an rsync build on a cache miss.
