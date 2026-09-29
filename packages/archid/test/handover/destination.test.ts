@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import {
   FleetConfig, FleetId, FleetState, Home, MachineId, emptyState,
@@ -27,6 +27,7 @@ import { HandoverService } from '../../src/handover/service.js';
 import type { AgentProbe } from '../../src/handover/sessions/registry.js';
 import type { Authority } from '../../src/handover/source.js';
 import { adoptAtStart, enterStartupMode, startupMode } from '../../src/handover/startup.js';
+import { linkProblem } from '../../src/handover/validate.js';
 import { silentLogger } from '../../src/log.js';
 import { OwnershipState } from '../../src/ownership/state.js';
 import { resolvePaths, type Paths } from '../../src/paths.js';
@@ -40,6 +41,7 @@ import { crew as gitCrew, git, hasGit, park, parkedAt, seedHere, unpark, type La
 
 const made: string[] = [];
 afterEach(() => {
+  vi.restoreAllMocks();
   cleanHomes();
   for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 });
@@ -2166,6 +2168,17 @@ describe('destination inspect, of what could not land', () => {
     expect(r.roots.find((x) => x.id === ada.id)!.check).toMatchObject({ ok: false, blocker: { code: 'path_symlinked', entity: { kind: 'root', id: ada.id } } });
     expect(r.missing).toEqual([path.join(s.dst, 'gone.txt')]);
     expect(fs.readdirSync(path.join(s.base, 'outside/work'))).toEqual([]);
+  });
+
+  it('names a root the disk here spells in another case, as a Mac finds it', () => {
+    const base = fs.realpathSync(makeHome());
+    fs.mkdirSync(path.join(base, 'Work'));
+    const native = fs.realpathSync.native;
+    vi.spyOn(fs.realpathSync, 'native').mockImplementation(((p: string) => native(p.replace(`${base}/work`, `${base}/Work`))) as typeof native);
+    expect(linkProblem(path.join(base, 'work/ada'), { kind: 'root', id: 'r_ada' })).toEqual({
+      code: 'path_symlinked', entity: { kind: 'root', id: 'r_ada' },
+      message: expect.stringMatching(new RegExp(`^${path.join(base, 'work/ada')} is spelled ${path.join(base, 'Work/ada')} on disk here;`)),
+    });
   });
 });
 

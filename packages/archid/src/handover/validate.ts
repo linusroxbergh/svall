@@ -17,12 +17,16 @@ export function within(p: string, dirs: readonly string[]): boolean {
   return dirs.some((d) => holds(realPath(path.posix.resolve(d)), real));
 }
 
-/** Why a root cannot land at its own path on this machine: a symbolic link on the way leads it elsewhere. */
+/** Why a root cannot land at its own path on this machine: a symbolic link on the way leads it elsewhere, or the disk spells it in another case. */
 export function linkProblem(p: string, entity: HandoverEntity): Blocker | undefined {
   const at = realPath(p);
-  return at === p ? undefined : {
+  if (at === p) return undefined;
+  const spelled = at.normalize('NFD').toLowerCase() === p.normalize('NFD').toLowerCase();
+  return {
     code: 'path_symlinked', entity,
-    message: `${p} leads to ${at} on this machine through a symbolic link; a folder lands at the path it has on the source, the one Git and the agents record, so that link has to go first`,
+    message: spelled
+      ? `${p} is spelled ${at} on disk here; a folder lands at the path it has on the source, the one Git and the agents record, so rename the folder here to that spelling first`
+      : `${p} leads to ${at} on this machine through a symbolic link; a folder lands at the path it has on the source, the one Git and the agents record, so that link has to go first`,
   };
 }
 
