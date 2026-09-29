@@ -9,7 +9,7 @@ import { HandoverJournal, handoverGeneration } from '@archipelago/archid/handove
 import { OwnerCache } from '@archipelago/archid/ownership/state';
 import { resolvePaths } from '@archipelago/archid/paths';
 import { authorityOp, Masters, openDaemon } from '../controller/reach.js';
-import { ControllerJournal } from '../controller/recovery.js';
+import { fileStore, type ControllerJournal } from '../controller/recovery.js';
 import { MachineRegistry, type MachineEntry } from '../controller/registry.js';
 import { readRoute, writeRoute, type CachedRoute } from '../controller/route.js';
 import { closeMastersOnSignal } from '../controller/ssh.js';
@@ -112,9 +112,9 @@ async function look(d: RecoverDeps, m: MachineEntry): Promise<MachineView> {
   }
 }
 
-// read as it lies: the controller's own reader moves a journal it cannot parse aside
+// read without moving one it cannot parse aside; one it cannot read at all is none to show
 function controllerJournal(fleetHome: string): ControllerJournal | undefined {
-  try { return ControllerJournal.parse(JSON.parse(fs.readFileSync(path.join(fleetHome, 'controller', 'handover.json'), 'utf8'))); } catch { return undefined; }
+  try { return fileStore(path.join(fleetHome, 'controller')).read(); } catch { return undefined; }
 }
 
 function lastKnown(id: MachineId, held: Held, c: ControllerJournal | undefined, route: CachedRoute | undefined): string[] {
