@@ -446,7 +446,7 @@ export async function runAttach(c: Ctx): Promise<number> {
       if (e.event !== 'handover.blocked') return;
       const p = prompter;
       pending = setTimeout(() => {
-        void p.pick(options(e.data.blockers, e.data.phase, view.names)).then((a) => {
+        void p.pick(options(e.data.blockers, e.data.phase, view.names, e.data.choices)).then((a) => {
           if (a !== undefined) conn?.send(JSON.stringify(a === 'cancel' ? { cancel: true } : { choose: a }));
         });
       }, SETTLE_MS);

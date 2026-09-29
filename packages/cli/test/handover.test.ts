@@ -746,6 +746,31 @@ describe('archi handover', () => {
     expect(person.out()).toMatch(/Handed over/);
   });
 
+  it('answers from an attached terminal with the choices the run holds, so none it started with is dropped', async () => {
+    const h = harness();
+    const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'character', id: 'c_bo' } }];
+    const held: HandoverChoices = { terminateShells: true, archiveRoots: ['r_app'] };
+    let answered: HandoverChoices | 'cancel' | undefined;
+    h.tx.script = async () => {
+      h.tx.record(pre());
+      h.tx.record(changed('freeze'));
+      h.tx.record({ event: 'handover.blocked', data: { transactionId: 'tx-1', phase: 'freeze', blockers: working, choices: held } });
+      answered = await h.tx.decide(working, 'freeze');
+      return { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] };
+    };
+    const helper = runHandover(start('trift', held), { ...h.ctx, helper: true });
+    await waitFor(async () => (await probe(h.paths.socket)) === 'live' && fs.readFileSync(h.paths.events, 'utf8').includes('handover.blocked'));
+    const person = harness({ tty: true });
+    Object.assign(person.ctx, { fleetHome: h.home, deps: { ...person.deps, tmpdir: h.tmp } });
+    const attached = runAttach(person.ctx);
+    await waitFor(() => /Choose/.test(person.out()));
+    person.type('i');
+    await waitFor(() => answered !== undefined);
+    expect(answered).toEqual({ ...held, interruptAfterMs: 0 });
+    expect(await attached).toBe(0);
+    expect(await helper).toEqual({ code: 0 });
+  });
+
   it('ends a terminal attach when its input ends with a question pending, and neither answers nor cancels', async () => {
     const h = harness();
     const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'character', id: 'c_bo' } }];

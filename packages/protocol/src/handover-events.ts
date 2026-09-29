@@ -1,4 +1,4 @@
-import type { Blocker, HandoverEntityKind, HandoverPhase, MachineId, ManifestSummary, Warning } from './handover.js';
+import type { Blocker, HandoverChoices, HandoverEntityKind, HandoverPhase, MachineId, ManifestSummary, Warning } from './handover.js';
 
 // what the handover helper prints as NDJSON and the app reads: `archi handover --json`, its status and its replay
 
@@ -60,8 +60,8 @@ export type HandoverEvent =
   | { event: 'handover.preflight'; data: { summary: ManifestSummary; blockers: Blocker[]; warnings: Warning[]; names?: Names } }
   | { event: 'handover.changed'; data: { transactionId: string; phase: HandoverPhase } }
   | { event: 'handover.entity'; data: EntityData }
-  // a step that asks the user before it goes on, or before the handover is aborted
-  | { event: 'handover.blocked'; data: { transactionId?: string; phase: HandoverPhase; blockers: Blocker[] } }
+  // a step that asks the user before it goes on, or before the handover is aborted; `choices`: what the run holds, which an answer builds on
+  | { event: 'handover.blocked'; data: { transactionId?: string; phase: HandoverPhase; blockers: Blocker[]; choices?: HandoverChoices } }
   // a call that did not answer and is asked again
   | { event: 'handover.retry'; data: { transactionId?: string; phase: HandoverPhase; attempt: number; error: string } }
   | { event: 'handover.result'; data: Outcome }

@@ -717,12 +717,13 @@ describe('rest choices and blockers after Begin', () => {
     const w = new World();
     w.source.blockedAgent = true;
     const decided: Blocker[][] = [];
-    const out = await controller(w, { decide: async (blockers) => { decided.push(blockers); return { interruptAfterMs: 0 }; } }).start(trift, {});
+    const out = await controller(w, { decide: async (blockers) => { decided.push(blockers); return { interruptAfterMs: 0 }; } }).start(trift, { terminateShells: true });
     expect(out.status).toBe('complete');
     expect(decided).toEqual([[expect.objectContaining({ code: 'agent_blocked' })]]);
-    expect(w.source.freezes).toEqual([{}, { interruptAfterMs: 0 }]);
+    expect(w.source.freezes).toEqual([{ terminateShells: true }, { interruptAfterMs: 0 }]);
     expect(w.ops).not.toContain('gateway:abort');
-    expect(w.events).toContainEqual({ event: 'handover.blocked', data: { transactionId: 'tx-1', phase: 'freeze', blockers: decided[0] } });
+    // the choices the run holds ride along, for whoever answers from elsewhere to build on
+    expect(w.events).toContainEqual({ event: 'handover.blocked', data: { transactionId: 'tx-1', phase: 'freeze', blockers: decided[0], choices: { terminateShells: true } } });
   });
 
   it('says where it stands again once a decision is answered, so a replayed stream never shows it still pending', async () => {

@@ -825,7 +825,7 @@ export class Handover {
   /** Blockers go to the user, whose new choices try the step again; without an answer, or with Cancel, the handover aborts. */
   private async decide(phase: HandoverPhase, blockers: Blocker[]): Promise<HandoverChoices> {
     const found = settle(blockers);
-    this.observer.send({ event: 'handover.blocked', data: { ...(this.j?.transactionId && { transactionId: this.j.transactionId }), phase, blockers: found } });
+    this.observer.send({ event: 'handover.blocked', data: { ...(this.j?.transactionId && { transactionId: this.j.transactionId }), phase, blockers: found, ...(this.j && { choices: this.j.choices }) } });
     const answer = this.d.decide ? await this.cancellable(() => this.d.decide!(found, phase)) : 'cancel';
     if (answer === 'cancel') throw new Blocked(phase, found);
     // the answer is the whole of the choices: one the user turned off is gone
