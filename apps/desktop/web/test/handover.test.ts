@@ -226,6 +226,15 @@ describe('the choices a blocker takes', () => {
     choices = withChoice(choices, b('destination_occupied', { kind: 'root', id: 'r_a' }));
     expect(choices).toEqual({ interruptAfterMs: 0, terminateShells: true });
   });
+
+  it('starts from the choices the run holds, in a sheet opened after the start that made them', () => {
+    const held = { terminateShells: true, archiveRoots: ['r_a'] };
+    const working = b('agent_working', { kind: 'character', id: 'c1' });
+    // a relaunched sheet follows a resume with nothing chosen yet
+    const run = play([...through('freeze'), { event: 'handover.blocked', data: { transactionId: tx, phase: 'freeze', blockers: [working], choices: held } }], followRun());
+    expect(run.choices).toEqual(held);
+    expect(withChoice(run.choices, working)).toEqual({ ...held, interruptAfterMs: 0 });
+  });
 });
 
 describe('what each blocker and warning is explained with', () => {
@@ -333,7 +342,8 @@ describe('the helper lines the sheet reads', () => {
       for (const at of reads) expect(applyEvent(start, without(line, at) as HandoverEvent), `${String(line.event)} without ${at}`).toBe(start);
     }
     for (const odd of [null, 'handover.changed', {}, { event: 'handover.weather', data: {} }, { event: 'handover.changed' },
-      { event: 'handover.result', data: { status: 'renamed' } }, { event: 'handover.changed', data: { phase: 'teleport' } }]) {
+      { event: 'handover.result', data: { status: 'renamed' } }, { event: 'handover.changed', data: { phase: 'teleport' } },
+      { event: 'handover.blocked', data: { phase: 'freeze', blockers: [], choices: 'all' } }]) {
       expect(applyEvent(start, odd as unknown as HandoverEvent), JSON.stringify(odd)).toBe(start);
     }
   });

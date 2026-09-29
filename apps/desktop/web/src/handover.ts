@@ -102,7 +102,7 @@ export function readable(e: unknown): e is HandoverEvent {
     case 'handover.entity':
       return isString(d.kind) && isString(d.id) && isPhase(d.phase) && ['done', 'total', 'bytes', 'totalBytes'].every((k) => optional(d[k], isNumber))
         && optional(d.error, isString) && optional(d.notice, isString) && optional(d.archivedTo, isString);
-    case 'handover.blocked': return isPhase(d.phase) && isEach(d.blockers, isIssue);
+    case 'handover.blocked': return isPhase(d.phase) && isEach(d.blockers, isIssue) && optional(d.choices, isObject);
     case 'handover.retry': return isPhase(d.phase) && isNumber(d.attempt) && isString(d.error);
     case 'handover.result': return isOutcome(d);
     case 'handover.status': return isString(d.standing) && isSafe(d.safe) && isString(d.reason) && optional(d.phase, isPhase);
@@ -129,7 +129,8 @@ export function applyEvent(run: HandoverRun, e: HandoverEvent): HandoverRun {
     case 'handover.entity':
       return { ...next, rows: withEntity(next.rows, e.data) };
     case 'handover.blocked':
-      return { ...next, decision: { phase: e.data.phase, blockers: scrubbed(e.data.blockers) } };
+      // an answer starts from the choices the run holds, which a sheet relaunched after the start never saw
+      return { ...next, decision: { phase: e.data.phase, blockers: scrubbed(e.data.blockers) }, ...(e.data.choices && { choices: e.data.choices }) };
     case 'handover.retry':
       return { ...next, retry: { ...e.data, error: withoutTokens(e.data.error) } };
     case 'handover.result': {

@@ -468,6 +468,46 @@ describe('archi handover', () => {
     expect(await run).toEqual({ code: 0 });
   });
 
+  it('answers a blocker on --resume with the choices the run holds, so none its start was given is dropped', async () => {
+    const h = harness({ tty: true });
+    const working: Blocker[] = [{ code: 'agent_working', message: "bo's terminal is still working", entity: { kind: 'character', id: 'c_bo' } }];
+    const held: HandoverChoices = { terminateShells: true, archiveRoots: ['r_app'] };
+    let answered: HandoverChoices | 'cancel' | undefined;
+    h.tx.script = async () => {
+      h.tx.record(changed('freeze'));
+      h.tx.record({ event: 'handover.blocked', data: { transactionId: 'tx-1', phase: 'freeze', blockers: working, choices: held } });
+      answered = await h.tx.decide(working, 'freeze');
+      return { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] };
+    };
+    const run = runHandover({ kind: 'resume' }, h.ctx);
+    await waitFor(() => /Choose/.test(h.out()));
+    h.type('i');
+    expect(await run).toEqual({ code: 0 });
+    expect(answered).toEqual({ ...held, interruptAfterMs: 0 });
+  });
+
+  it('keeps Interrupt and carry typed while the rest waits in the answer to a blocker after it', async () => {
+    const h = harness({ tty: true });
+    const busy: Blocker[] = [{ code: 'shell_busy', message: "ada's terminal is running vim", entity: { kind: 'character', id: 'c_ada' } }];
+    let answered: HandoverChoices | 'cancel' | undefined;
+    h.tx.script = async () => {
+      h.tx.record(changed('freeze'));
+      h.tx.record({ event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'character', id: 'c_bo', phase: 'freeze' } });
+      await waitFor(() => h.tx.chosen.length === 1);
+      // the controller asks the freeze again with the interrupt merged into the choices it holds
+      h.tx.record({ event: 'handover.blocked', data: { transactionId: 'tx-1', phase: 'freeze', blockers: busy, choices: { archiveRoots: ['r_app'], interruptAfterMs: 0 } } });
+      answered = await h.tx.decide(busy, 'freeze');
+      return { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] };
+    };
+    const run = runHandover(start('trift', { archiveRoots: ['r_app'] }), h.ctx);
+    await waitFor(() => /interrupt and carry/i.test(h.out()));
+    h.type('i');
+    await waitFor(() => /Choose/.test(h.out()));
+    h.type('t');
+    expect(await run).toEqual({ code: 0 });
+    expect(answered).toEqual({ archiveRoots: ['r_app'], interruptAfterMs: 0, terminateShells: ['c_ada'] });
+  });
+
   it('on Ctrl-C before the commit aborts, says so and what comes next', async () => {
     const h = harness();
     h.tx.script = async () => {

@@ -278,8 +278,12 @@ export async function runHandover(job: Job, c: Ctx): Promise<Ran> {
   try {
     tx = c.deps.connect({
       fleetHome: c.fleetHome, profile: c.profile, decide,
-      // the command writes the one result, once the run is over for it
-      record: (e) => { if (e.event !== 'handover.result') record(e); },
+      record: (e) => {
+        // a question comes with the choices the journal holds, which its answer starts from
+        if (e.event === 'handover.blocked' && e.data.choices) replace(held, e.data.choices);
+        // the command writes the one result, once the run is over for it
+        if (e.event !== 'handover.result') record(e);
+      },
     });
     const t = tx;
     let outcome = await Promise.race([run(t).catch((e: unknown): Outcome => stopped(redact(messageOf(e), t.secrets()))), left]);
