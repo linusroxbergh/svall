@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ResourceSource } from '@archipelago/protocol';
+import type { HandoverEvent } from '../src/handover.js';
 import { isVeiled, panesOf } from '../src/selectors.js';
 import type { Tier } from '../src/resources/model.js';
 import { DEFAULT_SETTINGS, type Settings } from '../src/settings.js';
@@ -659,6 +660,18 @@ describe('the handover sheet', () => {
     expect(store.getState().handover?.decision).toBeUndefined();
     expect(store.getState().handover?.choices).toEqual({ interruptAfterMs: 0 });
     store.getState().toggleHandover(false);
+    expect(store.getState().handoverOpen).toBe(false);
+  });
+
+  it('passes over a line the sheet cannot read, and keeps the run it follows', () => {
+    const store = createAppStore();
+    store.getState().handoverFollow('studio');
+    store.getState().handoverEvent(changed('freeze'));
+    const run = store.getState().handover;
+    for (const odd of [{ event: 'handover.status', data: { standing: 'open', reason: 'no safe list' } }, { event: 'handover.weather', data: {} }]) {
+      expect(() => store.getState().handoverEvent(odd as unknown as HandoverEvent)).not.toThrow();
+    }
+    expect(store.getState().handover).toBe(run);
     expect(store.getState().handoverOpen).toBe(false);
   });
 

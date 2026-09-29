@@ -90,8 +90,55 @@ function withEntity(rows: Row[], e: EntityData): Row[] {
 
 const scrubbed = (blockers: Blocker[]): Blocker[] => blockers.map((b) => ({ ...b, message: withoutTokens(b.message) }));
 
-/** Folds one line the helper printed onto the run it belongs to. */
+type Fields = Record<string, unknown>;
+const isObject = (v: unknown): v is Fields => typeof v === 'object' && v !== null && !Array.isArray(v);
+const isString = (v: unknown): v is string => typeof v === 'string';
+const optional = (v: unknown, is: (v: unknown) => boolean): boolean => v === undefined || is(v);
+const isNumber = (v: unknown): boolean => typeof v === 'number';
+const isPhase = (v: unknown): boolean => (HANDOVER_PHASES as readonly unknown[]).includes(v);
+const isEach = (v: unknown, is: (x: unknown) => boolean): boolean => Array.isArray(v) && v.every(is);
+const isIssue = (v: unknown): boolean => isObject(v) && isString(v.code) && isString(v.message)
+  && optional(v.entity, (e) => isObject(e) && isString(e.kind) && isString(e.id));
+const isSafe = (v: unknown): boolean => isEach(v, isString);
+
+function isOutcome(d: Fields): boolean {
+  switch (d.status) {
+    case 'complete': return isEach(d.characters, (c) => isObject(c) && isString(c.id) && typeof c.ok === 'boolean' && optional(c.error, isString) && optional(c.notice, isString))
+      && optional(d.pending, isSafe) && optional(d.error, isString);
+    case 'none': return isString(d.reason);
+    case 'blocked': return isPhase(d.phase) && isEach(d.blockers, isIssue);
+    case 'aborted': return isPhase(d.phase);
+    case 'interrupted': return isPhase(d.phase) && isString(d.error) && isSafe(d.safe);
+    case 'detached': return isString(d.transactionId);
+    default: return false;
+  }
+}
+
+/** Whether a line carries every field the sheet reads from it; an older release's line or a newer helper's may not. */
+export function readable(e: unknown): e is HandoverEvent {
+  if (!isObject(e) || !isObject(e.data)) return false;
+  const d = e.data;
+  switch (e.event) {
+    case 'handover.preflight':
+      return isObject(d.summary) && ['roots', 'files', 'bytes', 'sessions'].every((k) => isNumber((d.summary as Fields)[k]))
+        && isEach(d.blockers, isIssue) && isEach(d.warnings, isIssue)
+        && optional(d.names, (n) => isObject(n) && isObject(n.characters) && isObject(n.roots) && optional(n.sessions, isObject));
+    case 'handover.changed': return isPhase(d.phase) && optional(d.transactionId, isString);
+    case 'handover.entity':
+      return isString(d.kind) && isString(d.id) && isPhase(d.phase) && ['done', 'total', 'bytes', 'totalBytes'].every((k) => optional(d[k], isNumber))
+        && optional(d.error, isString) && optional(d.notice, isString);
+    case 'handover.blocked': return isPhase(d.phase) && isEach(d.blockers, isIssue);
+    case 'handover.retry': return isPhase(d.phase) && isNumber(d.attempt) && isString(d.error);
+    case 'handover.result': return isOutcome(d);
+    case 'handover.status': return isString(d.standing) && isSafe(d.safe) && isString(d.reason) && optional(d.phase, isPhase);
+    case 'handover.detached': return true;
+    default: return false;
+  }
+}
+
+/** Folds one line the helper printed onto the run it belongs to; a line it cannot read leaves the run as it was. */
 export function applyEvent(run: HandoverRun, e: HandoverEvent): HandoverRun {
+  if (!readable(e)) return run;
   const tx = 'transactionId' in e.data && typeof e.data.transactionId === 'string' ? e.data.transactionId : undefined;
   // the controller goes on from a decision only once it is answered; a daemon's relayed row can trail the decision
   const next: HandoverRun = { ...run, transactionId: run.transactionId ?? tx, ...(e.event === 'handover.changed' && { decision: undefined }) };

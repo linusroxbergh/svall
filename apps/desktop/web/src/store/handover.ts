@@ -1,7 +1,7 @@
 import type { HandoverChoices } from '@archipelago/protocol';
 import type { StateCreator } from 'zustand/vanilla';
 import type { ConnectionState, HostArgs, HostOp, HostStep } from '../bridge.js';
-import { applyEvent, decisionPending, endFollow, followRun, needsUser, type HandoverEvent, type HandoverRun } from '../handover.js';
+import { applyEvent, decisionPending, endFollow, followRun, needsUser, readable, type HandoverEvent, type HandoverRun } from '../handover.js';
 import { applyStep, beginRun, endRun, withoutTokens, type HostRun } from '../host.js';
 import type { App } from './index.js';
 
@@ -62,6 +62,7 @@ export const createHandoverSlice: StateCreator<App, [], [], HandoverState & Hand
   }),
   handoverFollow: (to, choices) => set({ handover: followRun(to, choices) }),
   handoverEvent: (e) => set((s) => {
+    if (!readable(e)) return {};
     const handover = applyEvent(s.handover ?? followRun(), e);
     const asks = e.event === 'handover.blocked' || (e.event === 'handover.status' && needsUser(e.data));
     return { handover, handoverOpen: s.handoverOpen || asks };

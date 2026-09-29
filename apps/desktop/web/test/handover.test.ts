@@ -274,3 +274,67 @@ describe('what each blocker and warning is explained with', () => {
     expect(blockerHint({ code: 'agent_hooks_missing', message: "Archipelago's hooks are not installed for codex" }, ctx)).toMatch(/archi setup on studio/);
   });
 });
+
+// The lines `archi handover --json` prints (packages/cli/src/controller/events.ts), each with the fields the sheet
+// reads from it. A line without one of them, from an older release's events file or a newer helper, is passed over.
+describe('the helper lines the sheet reads', () => {
+  const blocker = { code: 'agent_working', message: 'ada is still working', entity: { kind: 'character', id: 'c1' } };
+  const lines: { line: Record<string, unknown>; reads: string[] }[] = [
+    {
+      line: { event: 'handover.preflight', data: { summary, blockers: [blocker], warnings: [blocker], names: { characters: { c1: 'ada' }, roots: {}, sessions: {} } } },
+      reads: ['data.summary', 'data.summary.roots', 'data.summary.files', 'data.summary.bytes', 'data.summary.sessions', 'data.blockers',
+        'data.blockers.0.code', 'data.blockers.0.message', 'data.blockers.0.entity.kind', 'data.blockers.0.entity.id', 'data.warnings',
+        'data.warnings.0.message', 'data.names.characters', 'data.names.roots'],
+    },
+    { line: { event: 'handover.changed', data: { transactionId: tx, phase: 'freeze' } }, reads: ['data.phase'] },
+    {
+      line: { event: 'handover.entity', data: { transactionId: tx, kind: 'root', id: 'r_a', phase: 'transfer', bytes: 1, totalBytes: 2 } },
+      reads: ['data.kind', 'data.id', 'data.phase'],
+    },
+    { line: { event: 'handover.blocked', data: { transactionId: tx, phase: 'freeze', blockers: [blocker] } }, reads: ['data.phase', 'data.blockers', 'data.blockers.0.message'] },
+    { line: { event: 'handover.retry', data: { transactionId: tx, phase: 'transfer', attempt: 2, error: 'ssh closed' } }, reads: ['data.phase', 'data.attempt', 'data.error'] },
+    {
+      line: { event: 'handover.result', data: { status: 'complete', transactionId: tx, generation: 3, characters: [{ id: 'c1', ok: true }] } },
+      reads: ['data.status', 'data.characters', 'data.characters.0.id', 'data.characters.0.ok'],
+    },
+    { line: { event: 'handover.result', data: { status: 'none', reason: 'no handover is open' } }, reads: ['data.reason'] },
+    { line: { event: 'handover.result', data: { status: 'blocked', phase: 'begin', blockers: [blocker] } }, reads: ['data.phase', 'data.blockers'] },
+    { line: { event: 'handover.result', data: { status: 'aborted', phase: 'freeze' } }, reads: ['data.phase'] },
+    {
+      line: { event: 'handover.result', data: { status: 'interrupted', phase: 'transfer', error: 'ssh closed', safe: ['resume', 'abort'] } },
+      reads: ['data.phase', 'data.error', 'data.safe'],
+    },
+    { line: { event: 'handover.result', data: { status: 'detached', transactionId: tx } }, reads: ['data.transactionId'] },
+    { line: { event: 'handover.status', data: { standing: 'open', phase: 'transfer', safe: ['resume'], reason: 'handover tx-1 is under way' } }, reads: ['data.standing', 'data.safe', 'data.reason'] },
+  ];
+  const without = (line: Record<string, unknown>, at: string): unknown => {
+    const copy = structuredClone(line);
+    const keys = at.split('.');
+    const parent = keys.slice(0, -1).reduce<Record<string, unknown>>((o, k) => o[k] as Record<string, unknown>, copy);
+    delete parent[keys.at(-1)!];
+    return copy;
+  };
+  const start = followRun('studio');
+
+  it('folds in every line the helper prints', () => {
+    for (const { line } of lines) expect(applyEvent(start, line as HandoverEvent), JSON.stringify(line)).not.toBe(start);
+  });
+
+  it('passes over a line missing any field it reads, without throwing', () => {
+    for (const { line, reads } of lines) {
+      for (const at of reads) expect(applyEvent(start, without(line, at) as HandoverEvent), `${String(line.event)} without ${at}`).toBe(start);
+    }
+    for (const odd of [null, 'handover.changed', {}, { event: 'handover.weather', data: {} }, { event: 'handover.changed' },
+      { event: 'handover.result', data: { status: 'renamed' } }, { event: 'handover.changed', data: { phase: 'teleport' } }]) {
+      expect(applyEvent(start, odd as unknown as HandoverEvent), JSON.stringify(odd)).toBe(start);
+    }
+  });
+
+  it('reads an older events file back to the status after it, whatever it holds', () => {
+    const older = [changed('begin'), { event: 'handover.preflight', data: { summary } }, { event: 'handover.result', data: { status: 'interrupted', phase: 'transfer' } },
+      { event: 'handover.status', data: { standing: 'none', safe: [], reason: 'no handover is open' } }] as HandoverEvent[];
+    const run = play(older);
+    expect(headline(run, 'studio')).toBe('no handover is open');
+    expect(run.preflight).toBeUndefined();
+  });
+});
