@@ -469,8 +469,9 @@ current transaction, or when it has a matching replica record. It never mirrors 
 pre-existing folder: one with no record is adopted as a replica at the claim only when its content
 already equals what the handover brings, and is otherwise occupied.
 
-Before updating a replica, Archipelago compares it with the last received manifest. Changes made
-while that machine did not own the fleet block the handover. The user may:
+Before updating a replica, Archipelago compares it with the last received manifest. A copy a
+handover was let go with is also compared with what this handover brings: a file equal to it loses
+nothing. Changes made while that machine did not own the fleet block the handover. The user may:
 
 - cancel and recover the changes manually; or
 - explicitly archive the divergent destination root and continue.
@@ -541,6 +542,7 @@ Preflight is read-only and runs before any terminal is interrupted. It blocks wh
 - the destination's home path differs from the source's, or a transfer root's parent is missing
   there;
 - a character is marked **Keep on this machine**;
+- mission control's folder (`home.cwd`) is also another fleet's on the source machine;
 - a foreground shell process is still running;
 - a worktree graph cannot be reconstructed and validated;
 - destination files diverged from the last replica manifest;
