@@ -6,8 +6,8 @@ import { AUTHORITY_ERROR_CODES } from '@archipelago/archid/gateway/authority';
 
 const read = (rel: string): string => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
 const CATALOGUE = read('../../../docs/remote-machines/errors.md');
-const EVENTS = read('../src/controller/events.ts');
-const RECOVERY = read('../src/controller/recovery.ts');
+// the helper's events, outcomes and verdicts, which the app reads too
+const EVENTS = read('../../protocol/src/handover-events.ts');
 const SSH = read('../src/controller/ssh.ts');
 const HOST = read('../src/controller/host.ts');
 const DOCTOR = read('../src/commands/doctor.ts');
@@ -69,8 +69,8 @@ const CODES: Record<string, () => string[]> = {
   '## Daemon refusals': () => HandoverError.options.map((o) => o.shape.code.value),
   '## Gateway answers': () => [...AUTHORITY_ERROR_CODES, ...named.failures(GATEWAY_CLIENT)],
   '## How a run ends': () => named.statuses(EVENTS),
-  '### Standing': () => union(RECOVERY, 'export type Standing ='),
-  '### Action': () => union(RECOVERY, '  action:'),
+  '### Standing': () => union(EVENTS, 'export type Standing ='),
+  '### Action': () => union(EVENTS, '  action:'),
   '## Events': () => named.events(EVENTS),
   '## Connection errors': () => union(SSH, 'export type SshErrorKind ='),
   '### Step statuses': () => union(HOST, 'export type StepStatus ='),
