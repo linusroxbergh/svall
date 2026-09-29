@@ -946,6 +946,21 @@ describe('the human reading of what a row names', () => {
   });
 });
 
+describe('the human reading of an archived root', () => {
+  it('says once where what the root held before was kept, and still says it was copied', () => {
+    const printed: string[] = [];
+    const view = new View((l) => printed.push(l), { archi: (a) => `archi ${a}`, machine: (id) => id ?? '?' });
+    view.show(pre());
+    const row = { transactionId: 'tx-1', kind: 'root' as const, id: 'r_app', archivedTo: '/home/ada/app.archived-1' };
+    view.show({ event: 'handover.entity', data: { ...row, phase: 'transfer' } });
+    view.show({ event: 'handover.entity', data: { ...row, phase: 'transfer', done: 2, total: 2 } });
+    view.show({ event: 'handover.entity', data: { ...row, phase: 'verify', done: 2, total: 2 } });
+    expect(printed.filter((l) => l.includes('/home/ada/app'))).toEqual([
+      '  ! /home/ada/app: what was there is kept at /home/ada/app.archived-1', '  ✓ /home/ada/app copied', '  ✓ /home/ada/app verified',
+    ]);
+  });
+});
+
 describe('the human reading of what a resumed character waits on', () => {
   it('says so on its row as it resumes and again when the handover completes', () => {
     const printed: string[] = [];

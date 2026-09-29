@@ -823,6 +823,10 @@ describe('rest choices and blockers after Begin', () => {
     const out = await controller(w, { decide: async () => ({ archiveRoots: ['r_app'] }) }).start(trift, {});
     expect(out.status).toBe('complete');
     expect(w.destination.archived).toEqual(['r_app']);
+    // where the replica went stays on the root's row through every line of its copy, as no failure
+    const rows = w.events.flatMap((e) => (e.event === 'handover.entity' && e.data.id === 'r_app' ? [e.data] : []));
+    expect(rows.length).toBeGreaterThan(1);
+    expect(rows.every((r) => r.archivedTo === '/Users/ada/app.archived-1' && r.error === undefined)).toBe(true);
   });
 
   it('stops without preparing when the transfer refuses an entry, and leaves the choice to resume or abort', async () => {

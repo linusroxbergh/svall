@@ -215,6 +215,8 @@ export class Handover {
   private j?: ControllerJournal;
   private sides = new Map<MachineId, Promise<Side>>();
   private chosen?: HandoverChoices;
+  /** where each root's claim moved what it held before, which its rows keep saying */
+  private archived = new Map<string, string>();
   private wakeChosen?: () => void;
   private onDetach?: () => void;
 
@@ -545,7 +547,7 @@ export class Handover {
       const result = await (this.d.transfer ?? runTransfer)({
         transactionId: tx, roles: source.master ? { source: 'remote', destination: 'local' } : { source: 'local', destination: 'remote' },
         master, rsync, entries, stateDir: this.d.stateDir, signal: this.cancel$.signal, secrets: this.d.secrets?.() ?? [],
-        onProgress: (p) => this.observer.send(entryEvent(tx, p)),
+        onProgress: (p) => this.observer.send(entryEvent(tx, p, this.archived.get(p.id))),
       });
       this.save({ entries: Object.fromEntries(result.entries.map((e) => [e.id, e.status === 'failed' ? e.reason : e.status])) });
       if (result.status === 'cancelled' || this.cancel$.signal.aborted) throw new Cancelled();
@@ -585,7 +587,9 @@ export class Handover {
         throw new Stopped('transfer', `${destination.route.name} claimed ${ids.join(', ') || 'nothing'}, and the manifest carries ${carried.join(', ')}`, PRE_COMMIT);
       }
       for (const c of r.roots) {
-        if (c.archivedTo) this.observer.send({ event: 'handover.entity', data: { transactionId: tx, kind: 'root', id: c.id, phase: 'transfer', error: `what was there is kept at ${c.archivedTo}` } });
+        if (!c.archivedTo) continue;
+        this.archived.set(c.id, c.archivedTo);
+        this.observer.send({ event: 'handover.entity', data: { transactionId: tx, kind: 'root', id: c.id, phase: 'transfer', archivedTo: c.archivedTo } });
       }
       const refused = r.roots.flatMap((c) => (c.check.ok ? [] : [c.check.blocker]));
       const [source] = await this.pair();

@@ -11,14 +11,14 @@ export function namesOf(m: TransferManifestV1): Names {
   };
 }
 
-/** A transfer entry's progress as an entity row: a root, or a session by its place `s<i>` in the manifest. */
-export function entryEvent(transactionId: string, p: EntryProgress): HandoverEvent {
+/** A transfer entry's progress as an entity row: a root, and where its claim archived what it held, or a session by its place `s<i>` in the manifest. */
+export function entryEvent(transactionId: string, p: EntryProgress, archivedTo?: string): HandoverEvent {
   const phase: HandoverPhase = p.state === 'verifying' || p.state === 'verified' ? 'verify' : 'transfer';
   return {
     event: 'handover.entity',
     data: {
       transactionId, kind: p.kind === 'root' ? 'root' : 'session', id: p.id, phase,
-      done: p.done, total: p.total, bytes: p.bytes, totalBytes: p.totalBytes, ...(p.error && { error: p.error }),
+      done: p.done, total: p.total, bytes: p.bytes, totalBytes: p.totalBytes, ...(p.error && { error: p.error }), ...(archivedTo && { archivedTo }),
     },
   };
 }

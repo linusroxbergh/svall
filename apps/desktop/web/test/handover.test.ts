@@ -94,6 +94,14 @@ describe('the handover a sheet follows', () => {
     expect(sectionStates(done).every((s) => s.state === 'done')).toBe(true);
   });
 
+  it('keeps where an archived root\'s earlier content went on its row, whatever its copy says since', () => {
+    const entity = (over: object): HandoverEvent => ({ event: 'handover.entity', data: { transactionId: tx, kind: 'root', id: 'r_a', phase: 'transfer', archivedTo: '/home/ada/a.archived-1', ...over } });
+    const run = play([...through('transfer'), entity({}), entity({ bytes: 12_000_000, totalBytes: 40_000_000 })]);
+    const row = run.rows.find((r) => r.id === 'r_a')!;
+    expect(row.error).toBeUndefined();
+    expect(rowText(row)).toBe('12.0 MB of 40.0 MB; what was there is kept at /home/ada/a.archived-1');
+  });
+
   it('shows progress in bytes', () => {
     expect(formatBytes(0)).toBe('0 B');
     expect(formatBytes(12_000_000)).toBe('12.0 MB');

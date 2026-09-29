@@ -150,7 +150,11 @@ export class View {
             : d.done === undefined ? `  … ${who} resting` : `  ✓ ${who} rested`;
         } else if (d.error) {
           line = `  ! ${who}: ${d.error}`;
-        } else if (d.kind === 'root' && d.total !== undefined && d.done === d.total) {
+        } else if (d.archivedTo && !this.shown.has(`archived:${d.id}`)) {
+          this.shown.set(`archived:${d.id}`, d.archivedTo);
+          this.print(`  ! ${who}: what was there is kept at ${d.archivedTo}`);
+        }
+        if (d.kind === 'root' && !d.error && d.total !== undefined && d.done === d.total) {
           line = `  ✓ ${who} ${d.phase === 'verify' ? 'verified' : 'copied'}`;
         }
         const key = `${d.kind}:${d.id}:${d.phase}`;

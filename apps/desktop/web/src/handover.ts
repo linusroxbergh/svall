@@ -17,7 +17,7 @@ export const SECTIONS: { id: SectionId; label: string; phases: HandoverPhase[] }
 ];
 export type SectionState = 'pending' | 'active' | 'waiting' | 'done' | 'stopped';
 
-type Progress = { done?: number; total?: number; bytes?: number; totalBytes?: number; error?: string; notice?: string };
+type Progress = { done?: number; total?: number; bytes?: number; totalBytes?: number; error?: string; notice?: string; archivedTo?: string };
 export type Row = Progress & { section: SectionId; kind: HandoverEntityKind; id: string; phase: HandoverPhase };
 
 /** One handover as the sheet follows it: what the helper has said so far, and what the user chose. */
@@ -58,7 +58,7 @@ function withEntity(rows: Row[], e: EntityData): Row[] {
   const at = rows.findIndex((r) => r.section === section && r.kind === e.kind && r.id === e.id);
   const row: Row = {
     section, kind: e.kind, id: e.id, phase: e.phase, done: e.done, total: e.total, bytes: e.bytes, totalBytes: e.totalBytes,
-    ...(e.error && { error: withoutTokens(e.error) }), ...(e.notice && { notice: withoutTokens(e.notice) }),
+    ...(e.error && { error: withoutTokens(e.error) }), ...(e.notice && { notice: withoutTokens(e.notice) }), ...(e.archivedTo && { archivedTo: e.archivedTo }),
   };
   return at < 0 ? [...rows, row] : rows.map((r, i) => (i === at ? row : r));
 }
@@ -101,7 +101,7 @@ export function readable(e: unknown): e is HandoverEvent {
     case 'handover.changed': return isPhase(d.phase) && optional(d.transactionId, isString);
     case 'handover.entity':
       return isString(d.kind) && isString(d.id) && isPhase(d.phase) && ['done', 'total', 'bytes', 'totalBytes'].every((k) => optional(d[k], isNumber))
-        && optional(d.error, isString) && optional(d.notice, isString);
+        && optional(d.error, isString) && optional(d.notice, isString) && optional(d.archivedTo, isString);
     case 'handover.blocked': return isPhase(d.phase) && isEach(d.blockers, isIssue);
     case 'handover.retry': return isPhase(d.phase) && isNumber(d.attempt) && isString(d.error);
     case 'handover.result': return isOutcome(d);
@@ -363,6 +363,10 @@ export function fraction(row: Progress): number | undefined {
 }
 
 export function rowText(row: Row): string {
+  return row.archivedTo ? `${progressText(row)}; what was there is kept at ${row.archivedTo}` : progressText(row);
+}
+
+function progressText(row: Row): string {
   if (row.error) return row.error;
   if (row.section === 'resume') return row.notice ? `resumed; ${row.notice}` : 'resumed';
   if (row.section === 'rest') return row.total !== undefined && row.done === row.total ? 'at rest' : 'resting…';
