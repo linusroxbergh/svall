@@ -95,8 +95,11 @@ final class HandoverTests: XCTestCase {
                        ["-p", "work", "handover", "local", "--json", "--detach"])
         XCTAssertEqual(HandoverCommand.start(to: "studio", choices: HandoverChoices(interruptAfterMs: 0, terminateShells: true, archiveRoots: ["r_0a1b", "/w/app"]),
                                              gateway: "studio", profile: nil),
-                       ["handover", "studio", "--json", "--detach", "--interrupt-after", "0s", "--terminate-shells",
+                       ["handover", "studio", "--json", "--detach", "--interrupt-after", "0ms", "--terminate-shells",
                         "--archive", "r_0a1b", "--archive", "/w/app"])
+        // the wait the page chose goes on as it chose it, not rounded to a second
+        XCTAssertEqual(HandoverCommand.start(to: "studio", choices: HandoverChoices(interruptAfterMs: 1500), gateway: "studio", profile: nil),
+                       ["handover", "studio", "--json", "--detach", "--interrupt-after", "1500ms"])
         XCTAssertEqual(HandoverCommand.resume(profile: "work"), ["-p", "work", "handover", "--resume", "--json", "--detach"])
         XCTAssertEqual(HandoverCommand.abort(profile: nil), ["handover", "--abort", "--json", "--detach"])
         XCTAssertEqual(HandoverCommand.attach(profile: "work"), ["-p", "work", "handover", "attach", "--json"])

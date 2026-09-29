@@ -20,7 +20,7 @@ enum HandoverCommand {
         var flags: [String] = []
         if let ms = choices?.interruptAfterMs {
             guard ms >= 0 else { return nil }
-            flags += ["--interrupt-after", "\((ms + 999) / 1000)s"]
+            flags += ["--interrupt-after", "\(ms)ms"]
         }
         if choices?.terminateShells == true { flags.append("--terminate-shells") }
         for root in choices?.archiveRoots ?? [] {
