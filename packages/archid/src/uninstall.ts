@@ -122,6 +122,15 @@ function removeShims(shimDir: string): string[] {
   return done;
 }
 
+// each file once, however many linked folders lead to it; the file itself stays unresolved, so a hooks file that is
+// a link is written, never removed
+const once = (files: string[]): string[] => {
+  const real = (file: string): string => {
+    try { return path.join(fs.realpathSync(path.dirname(file)), path.basename(file)); } catch { return file; }
+  };
+  return files.filter((file, i) => files.findIndex((f) => real(f) === real(file)) === i);
+};
+
 const readJson = (file: string): Record<string, unknown> | undefined => {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return undefined; }
 };
@@ -169,12 +178,12 @@ export async function runUninstall(o: {
   const linux = (o.platform ?? process.platform) === 'linux' && o.unitDir;
   // Linux setup put the hooks under the agent homes the daemon's unit is given, which this command's env may not name
   const agentHomes = linux ? await agentHomesEnv(o.run ?? realRun) : {};
-  const settingsPaths = [...new Set([...o.settingsPaths, ...(agentHomes.CLAUDE_CONFIG_DIR ? [path.join(agentHomes.CLAUDE_CONFIG_DIR, 'settings.json')] : [])])];
+  const settingsPaths = once([...o.settingsPaths, ...(agentHomes.CLAUDE_CONFIG_DIR ? [path.join(agentHomes.CLAUDE_CONFIG_DIR, 'settings.json')] : [])]);
   const edits = settingsPaths.map((file): [JsonSettings, Record<string, unknown>, string] => {
     const settings = readJsonSettings(file);
     return [settings, unmergeStatusLine(unmergeHooks(settings.settings, paths.hookScript), paths.statusScript), 'claude hooks and statusline removed'];
   });
-  const codexes = [...new Set([o.codex.hooks, ...(agentHomes.CODEX_HOME ? [codexPaths(agentHomes).hooks] : [])])]
+  const codexes = once([o.codex.hooks, ...(agentHomes.CODEX_HOME ? [codexPaths(agentHomes).hooks] : [])])
     .filter((file) => fs.existsSync(file)).map((file) => readJsonSettings(file));
   for (const codex of codexes) edits.push([codex, unmergeHooks(codex.settings, paths.hookScript), 'codex hooks removed']);
   // a file that cannot take its change stops the run before anything is removed

@@ -289,6 +289,20 @@ describe('runUninstall', () => {
     expect(fs.readdirSync(f.o.codex.dir)).toEqual([]);
   });
 
+  it('on Linux takes the codex hooks back once when ~/.codex links to the folder the login shell names', async () => {
+    const f = installed();
+    const codex = codexPaths({ CODEX_HOME: path.join(f.root, 'dotfiles', 'codex') });
+    fs.mkdirSync(codex.dir, { recursive: true });
+    fs.symlinkSync(codex.dir, f.o.codex.dir);
+    await runSetup({ ...f.o, codex });
+    const run: Run = async (cmd) => ({ stdout: cmd === 'systemctl' ? '' : `archi-agent-homes\n\n${codex.dir}\n`, stderr: '' });
+
+    const lines = await runUninstall({ ...f.o, platform: 'linux', unitDir: path.join(f.root, 'units'), run });
+    expect(lines.filter((l) => l.includes('hooks.json'))).toEqual([`removed ${f.o.codex.hooks}`]);
+    expect(fs.readdirSync(codex.dir)).toEqual([]);
+    expect(fs.existsSync(path.join(f.shimDir, 'archi'))).toBe(false);
+  });
+
   it('on a Mac removes the releases it installed too, and keeps the gateway records', async () => {
     const f = installed();
     await runSetup(f.o);
