@@ -1,6 +1,7 @@
 import path from 'node:path';
+import { z } from 'zod';
 import {
-  type AgentKind, type Blocker, type FleetId, type HandoverChoices, type HandoverPhase, type KeptCommit, type LandedRoot, type MachineId, type ManifestSummary, type MethodName, type OwnerRecord,
+  Blocker, type AgentKind, type FleetId, type HandoverChoices, type HandoverPhase, type KeptCommit, type LandedRoot, type MachineId, type ManifestSummary, type MethodName, type OwnerRecord,
   type Params, type Result, type ResumeFolder, type RootClaim, type SystemInfo, type TransferManifestV1, type TransferRoot, type Warning,
   type CharacterResult, type HandoverEvent, type Outcome, type SafeAction, type Verdict,
 } from '@archipelago/protocol';
@@ -98,7 +99,10 @@ const PRE_COMMIT: SafeAction[] = ['resume', 'abort'];
 
 const realClock: HandoverClock = { now: Date.now, sleep: (ms) => new Promise((r) => { setTimeout(r, ms); }) };
 const messageOf = (e: unknown): string => (e instanceof Error ? e.message : String(e));
-const blockersOf = (e: Refused): Blocker[] => (Array.isArray(e.data?.blockers) ? e.data.blockers as Blocker[] : [{ code: 'path_unsupported', message: e.message }]);
+const blockersOf = (e: Refused): Blocker[] => {
+  const said = z.array(Blocker).safeParse(e.data?.blockers);
+  return said.success ? said.data : [{ code: 'path_unsupported', message: e.message }];
+};
 const after = (phase: HandoverPhase, than: HandoverPhase): boolean => PHASES.indexOf(phase) > PHASES.indexOf(than);
 const describe = (r: OwnerRecord): string =>
   `${r.ownerMachineId} at generation ${r.generation}${r.transaction ? ` in handover ${r.transaction.id} (${r.transaction.phase})` : ''}`;

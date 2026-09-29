@@ -725,6 +725,19 @@ describe('rest choices and blockers after Begin', () => {
     expect(w.events).toContainEqual({ event: 'handover.blocked', data: { transactionId: 'tx-1', phase: 'freeze', blockers: decided[0], choices: { terminateShells: true } } });
   });
 
+  it('takes a refusal whose blockers are not blockers as one blocker saying what the daemon said', async () => {
+    const w = new World();
+    let asked = 0;
+    const freeze = w.source.answers['handover.freeze'];
+    w.source.answers['handover.freeze'] = ((p: never) => {
+      if (asked++ === 0) throw new Refused('blocked', 'bo is waiting on an answer', { blockers: [{ code: 'agent_blocked', entity: { kind: 'character', id: 'c_bo' } }] });
+      return (freeze as (x: never) => unknown)(p);
+    }) as never;
+    const decided: Blocker[][] = [];
+    await controller(w, { decide: async (blockers) => { decided.push(blockers); return {}; } }).start(trift, {});
+    expect(decided).toEqual([[{ code: 'path_unsupported', message: 'bo is waiting on an answer' }]]);
+  });
+
   it('says where it stands again once a decision is answered, so a replayed stream never shows it still pending', async () => {
     const rest = new World();
     rest.source.blockedAgent = true;
