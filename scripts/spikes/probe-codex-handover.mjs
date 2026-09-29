@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Manual: an M0 spike probe (docs/fleet-handover/spike-results.md), run by hand; no build or CI runs it.
+// An M0 spike probe (docs/fleet-handover/spike-results.md). Manual: running it by hand on a rollout a real Codex wrote.
+// The archid suite runs it on the fixture rollouts in packages/archid/test/handover/codex-portability.test.ts.
 
 // A disposable-session probe, not the production transfer adapter. Never copies auth/config files.
 // The session_index.jsonl branch is defensive: `codex exec` was not seen to write that file.

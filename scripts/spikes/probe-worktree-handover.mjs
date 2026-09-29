@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Manual: an M0 spike probe (docs/fleet-handover/spike-results.md), run by hand; no build or CI runs it.
+// An M0 spike probe (docs/fleet-handover/spike-results.md). Manual: running it by hand on a fleet's copied checkouts.
+// The archid suite runs its functions on the repositories packages/archid/test/handover/worktree-portability.test.ts builds.
 
 // A probe for moving a fleet's Git checkouts to another machine under a different home prefix.
 // It touches the destination copy only. Measured against git 2.55.0 by
