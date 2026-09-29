@@ -445,6 +445,25 @@ describe('preflight', () => {
     expect(w.ops).not.toContain('gateway:begin');
   });
 
+  it('blocks at once, naming the upgrade, on a destination whose companion speaks another protocol, and asks it only once', async () => {
+    const w = new World();
+    const said = `trift answered with protocol ${PROTOCOL_VERSION - 1}, not ${PROTOCOL_VERSION}`;
+    w.destination.answers['system.info'] = (() => { throw new SshError('version', said); }) as never;
+    const out = await controller(w).start(trift, {});
+    expect(out).toEqual({ status: 'blocked', phase: 'begin', blockers: [{ code: 'incompatible_protocol', message: said }] });
+    expect(w.ops.filter((op) => op === 'trift:system.info')).toHaveLength(1);
+    expect(w.events.filter((e) => e.event === 'handover.retry')).toEqual([]);
+  });
+
+  it('asks again only after an ssh failure a transport comes back from, as a reconnect does', async () => {
+    for (const [kind, asked] of [['unreachable', 3], ['daemon_down', 3], ['other', 1]] as const) {
+      const w = new World();
+      w.destination.answers['system.info'] = (() => { throw new SshError(kind, `trift: ${kind}`); }) as never;
+      await controller(w).start(trift, {});
+      expect([kind, w.ops.filter((op) => op === 'trift:system.info').length]).toEqual([kind, asked]);
+    }
+  });
+
   it('asks a far gateway nothing once its ssh destination answers as another machine', async () => {
     const ssh = installFakeSsh();
     const masters = new Masters();

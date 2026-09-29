@@ -13,7 +13,7 @@ import { caseCollisions } from '@archipelago/archid/handover/probe';
 import { ARCHIVABLE, contentDigest, replicaRoots } from '@archipelago/archid/handover/replicas';
 import { resumeFolders } from '@archipelago/archid/handover/sessions/registry';
 import { resolvePaths } from '@archipelago/archid/paths';
-import { FleetMismatch, MachineMismatch } from './connection.js';
+import { FIRST_DELAY, FleetMismatch, MachineMismatch, MAX_DELAY, retryable } from './connection.js';
 import { entryEvent, namesOf, Observer, type CharacterResult, type HandoverEvent, type Outcome, type SafeAction } from './events.js';
 import { redact } from './process.js';
 import { assess, type ControllerJournal, type ControllerStore, type FrozenManifest, type Observation, type Route, type Seen, type Verdict } from './recovery.js';
@@ -90,8 +90,7 @@ export type HandoverDeps = {
 
 export type Preflight = { generation: number; summary: ManifestSummary; blockers: Blocker[]; warnings: Warning[]; manifest: TransferManifestV1 };
 
-const RETRY = { attempts: 4, firstDelayMs: 1000 };
-const MAX_DELAY = 16_000;
+const RETRY = { attempts: 4, firstDelayMs: FIRST_DELAY };
 const PHASES: readonly HandoverPhase[] = ['begin', 'freeze', 'transfer', 'verify', 'prepare', 'ready', 'commit', 'activate', 'complete'];
 const PRE_COMMIT: SafeAction[] = ['resume', 'abort'];
 
@@ -109,9 +108,15 @@ const interactive = (e: unknown): Blocker | undefined => (e instanceof SshError 
 /** A destination whose companion runs another fleet there, or a gateway an alias now leads elsewhere, as the blocker that names it. */
 const foreign = (e: unknown): Blocker | undefined => (e instanceof FleetMismatch || e instanceof MachineMismatch ? { code: 'identity_mismatch', message: e.message } : undefined);
 
-/** Worth asking again: a call whose answer never came, or a daemon that could not reach the gateway. */
-const transient = (e: unknown): boolean =>
-  !(e instanceof Cancelled || e instanceof Blocked || e instanceof Stopped || e instanceof Moved || interactive(e) || foreign(e)) && (!(e instanceof Refused) || e.code === 'authority_unreachable');
+/** A companion on another protocol, or one whose archi does not run, which only an upgrade changes. */
+const incompatible = (e: unknown): Blocker | undefined => (e instanceof SshError && e.kind === 'version' ? { code: 'incompatible_protocol', message: e.message } : undefined);
+
+/** Worth asking again: an ssh a transport comes back from, a call whose answer never came, or a daemon that could not reach the gateway. */
+const transient = (e: unknown): boolean => {
+  if (e instanceof SshError) return retryable(e);
+  if (e instanceof Refused) return e.code === 'authority_unreachable';
+  return !(e instanceof Cancelled || e instanceof Blocked || e instanceof Stopped || e instanceof Moved);
+};
 
 /** What differs between the machines in a way the fleet feels: an agent CLI at another release. */
 function differences(source: Side, a: SystemInfo, destination: Side, b: SystemInfo, m: TransferManifestV1): Warning[] {
@@ -265,7 +270,7 @@ export class Handover {
       if (open) return { status: 'interrupted', transactionId: open.transactionId, phase: open.phase, error: 'a handover of this fleet is already open here; resume it, which goes the one safe way on', safe: ['resume'] };
       let pre: Preflight;
       try { pre = await this.preflight(to, choices); } catch (e) {
-        const stops = interactive(e) ?? foreign(e);
+        const stops = interactive(e) ?? foreign(e) ?? incompatible(e);
         if (!stops) throw e;
         return { status: 'blocked', phase: 'begin', blockers: [stops] };
       }
