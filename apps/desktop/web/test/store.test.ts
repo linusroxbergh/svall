@@ -678,12 +678,12 @@ describe('the handover sheet', () => {
   it('opens by itself when a relaunch finds a handover stopped part way, and not for one that finished', () => {
     const store = createAppStore();
     store.getState().handoverFollow();
-    store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'none', safe: [], reason: 'no handover is open' } }]);
+    store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover is open' } }]);
     expect(store.getState().handoverOpen).toBe(false);
     expect(store.getState().handover?.following).toBe(false);
     store.getState().handoverFollow();
     store.getState().handoverReplay([changed('begin'), changed('freeze'), changed('transfer'),
-      { event: 'handover.status', data: { standing: 'open', phase: 'transfer', safe: ['resume', 'abort'], reason: 'stopped at transfer' } }]);
+      { event: 'handover.status', data: { standing: 'open', journals: {}, action: 'none', phase: 'transfer', safe: ['resume', 'abort'], reason: 'stopped at transfer' } }]);
     expect(store.getState().handoverOpen).toBe(true);
     expect(store.getState().handover?.status?.safe).toEqual(['resume', 'abort']);
   });
@@ -695,12 +695,12 @@ describe('the handover sheet', () => {
       { event: 'handover.blocked', data: { transactionId: 'tx', phase: 'freeze', blockers: [{ code: 'agent_working', message: "Ada's terminal is still working" }] } },
       changed('transfer'), changed('activate'), changed('complete'),
       { event: 'handover.result', data: { status: 'complete', transactionId: 'tx', generation: 3, characters: [] } },
-      { event: 'handover.status', data: { standing: 'none', safe: [], reason: 'no handover is open' } }]);
+      { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover is open' } }]);
     expect(store.getState().handoverOpen).toBe(false);
-    store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'unknown', safe: [], reason: 'the gateway did not answer' } }]);
+    store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'unknown', journals: {}, action: 'none', safe: [], reason: 'the gateway did not answer' } }]);
     expect(store.getState().handoverOpen).toBe(false);
     // the gateway moved on from this Mac's journal: Forget is the way out, and it is asked
-    store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'superseded', safe: [], reason: 'the gateway holds another handover' } }]);
+    store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'superseded', journals: {}, action: 'none', safe: [], reason: 'the gateway holds another handover' } }]);
     expect(store.getState().handoverOpen).toBe(true);
   });
 

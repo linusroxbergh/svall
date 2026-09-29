@@ -3,13 +3,12 @@ import path from 'node:path';
 import { expect } from 'vitest';
 import {
   FleetConfig, FleetId, FleetState, MachineId, PROTOCOL_VERSION, TRANSFER_SCHEMA_VERSION, emptyState,
-  type Blocker, type Character, type HandoverChoices, type HandoverPhase, type LandedRoot, type OwnerRecord, type SystemInfo, type TransferFile,
+  type Blocker, type Character, type HandoverChoices, type HandoverEvent, type HandoverPhase, type LandedRoot, type Outcome, type OwnerRecord, type SystemInfo, type TransferFile,
 } from '@archipelago/protocol';
 import { transition, type OwnerOp } from '@archipelago/archid/gateway/authority';
 import { canonicalDigest } from '@archipelago/archid/handover/hash';
 import { manifestDigest } from '@archipelago/archid/handover/manifest';
 import { replicaRoots } from '@archipelago/archid/handover/replicas';
-import type { HandoverEvent, Outcome } from '../../src/controller/events.js';
 import { Handover, Refused, type Daemon, type Gateway, type HandoverDeps, type Side } from '../../src/controller/handover.js';
 import type { ControllerJournal, ControllerStore, FrozenManifest } from '../../src/controller/recovery.js';
 import type { Master, TransferOptions, TransferResult } from '../../src/controller/transfer.js';

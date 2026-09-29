@@ -1,31 +1,7 @@
-import type { Blocker, HandoverEntityKind, HandoverPhase, ManifestSummary, TransferManifestV1, Warning } from '@archipelago/protocol';
+import type { HandoverEvent, HandoverPhase, Names, TransferManifestV1 } from '@archipelago/protocol';
 import type { EntryProgress } from './progress.js';
-import type { Verdict } from './recovery.js';
-
-/** One character as its destination brought it up. */
-// `notice`: what a character that came up still waits on in its terminal
-export type CharacterResult = { id: string; ok: boolean; error?: string; notice?: string };
-
-/** What the user may do about a transaction that stopped part way. */
-export type SafeAction = 'resume' | 'abort';
-
-/**
- * How a run ended. `complete`: the fleet runs on the destination, `pending` naming what a resume still finishes and `error` why.
- * `blocked` and `aborted`: nothing committed and the fleet is the source's again. `interrupted`: it stopped part
- * way, and `safe` says what may follow. `detached`: cancelled after the commit, so the move goes on unwatched.
- * `none`: there was no handover to resume or abort.
- */
-export type Outcome =
-  | { status: 'complete'; transactionId: string; generation: number; characters: CharacterResult[]; pending?: ('source' | 'gateway')[]; error?: string }
-  | { status: 'none'; reason: string }
-  | { status: 'blocked'; transactionId?: string; phase: HandoverPhase; blockers: Blocker[] }
-  | { status: 'aborted'; transactionId?: string; phase: HandoverPhase }
-  | { status: 'interrupted'; transactionId?: string; phase: HandoverPhase; error: string; safe: SafeAction[] }
-  | { status: 'detached'; transactionId: string };
 
 /** What a blocker or a row points at, for a person: each character's name, where each root lands, and whose each session row `s<i>` is. */
-export type Names = { characters: Record<string, string>; roots: Record<string, string>; sessions?: Record<string, string> };
-
 export function namesOf(m: TransferManifestV1): Names {
   const characters: Record<string, string> = Object.fromEntries(Object.values(m.snapshot.characters).map((c) => [c.id, c.name]));
   return {
@@ -34,26 +10,6 @@ export function namesOf(m: TransferManifestV1): Names {
     sessions: Object.fromEntries(m.sessions.map((s, i) => [`s${i}`, characters[s.characterId] ?? s.characterId])),
   };
 }
-
-/** One line of what a handover tells whoever watches it; `--json` prints each as it comes. */
-export type HandoverEvent =
-  | { event: 'handover.preflight'; data: { summary: ManifestSummary; blockers: Blocker[]; warnings: Warning[]; names?: Names } }
-  | { event: 'handover.changed'; data: { transactionId: string; phase: HandoverPhase } }
-  | {
-    event: 'handover.entity';
-    data: {
-      transactionId: string; kind: HandoverEntityKind; id: string; phase: HandoverPhase; done?: number; total?: number; bytes?: number; totalBytes?: number; error?: string; notice?: string;
-    };
-  }
-  // a step that asks the user before it goes on, or before the handover is aborted
-  | { event: 'handover.blocked'; data: { transactionId?: string; phase: HandoverPhase; blockers: Blocker[] } }
-  // a call that did not answer and is asked again
-  | { event: 'handover.retry'; data: { transactionId?: string; phase: HandoverPhase; attempt: number; error: string } }
-  | { event: 'handover.result'; data: Outcome }
-  // where the journals leave the handover, and the helper still running it, if one is
-  | { event: 'handover.status'; data: Verdict & { helper?: { pid: number } } }
-  // the only line a launcher prints: the helper it left running
-  | { event: 'handover.detached'; data: { pid: number } };
 
 /** A transfer entry's progress as an entity row: a root, or a session by its place `s<i>` in the manifest. */
 export function entryEvent(transactionId: string, p: EntryProgress): HandoverEvent {

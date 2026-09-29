@@ -40,7 +40,7 @@ const readBack = async (page: Page, ...events: HandoverEvent[]) => {
   await expect.poll(async () => (await sent(page)).some((m) => m.type === 'handover.attach')).toBe(true);
   await receive(page, { type: 'handover.replay', events });
 };
-const nothingOpen = (page: Page) => readBack(page, { event: 'handover.status', data: { standing: 'none', safe: [], reason: 'no handover is open' } });
+const nothingOpen = (page: Page) => readBack(page, { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover is open' } });
 
 /** A dormant character whose resume a handover could not bring up, as the destination records it: the daemon restarts on that state. */
 async function failedResume(archi: Archi, error: string): Promise<string> {
@@ -275,7 +275,7 @@ test('a relaunch rebuilds a stopped handover, with Resume and Abort before the c
   // the events file of the run the app was closed during, then what the journals say now
   await readBack(page, { event: 'handover.preflight', data: { summary, blockers: [], warnings: [] } }, ...changed('begin', 'freeze', 'transfer'),
     { event: 'handover.result', data: { status: 'interrupted', transactionId: 'tx1', phase: 'transfer', error: 'ssh to studio closed', safe: ['resume', 'abort'] } },
-    { event: 'handover.status', data: { standing: 'open', transactionId: 'tx1', phase: 'transfer', safe: ['resume', 'abort'], reason: 'handover tx1 stopped at transfer; resume or abort it' } });
+    { event: 'handover.status', data: { standing: 'open', journals: {}, action: 'none', transactionId: 'tx1', phase: 'transfer', safe: ['resume', 'abort'], reason: 'handover tx1 stopped at transfer; resume or abort it' } });
   await expect(page.getByTestId('handover-sheet')).toBeVisible();
   await expect(page.getByTestId('handover-headline')).toHaveText('handover tx1 stopped at transfer; resume or abort it');
   await expect(page.getByTestId('handover-section-transfer')).toHaveAttribute('data-state', 'stopped');
@@ -286,7 +286,7 @@ test('a relaunch rebuilds a stopped handover, with Resume and Abort before the c
   expect(await lastOf(page, 'handover.cancel')).toBeUndefined();
 
   await receive(page, { type: 'handover.replay', events: [
-    { event: 'handover.status', data: { standing: 'committed', transactionId: 'tx1', phase: 'activate', safe: ['resume'], reason: 'studio holds tx1 committed; resume finishes it there' } }] });
+    { event: 'handover.status', data: { standing: 'committed', journals: {}, action: 'none', transactionId: 'tx1', phase: 'activate', safe: ['resume'], reason: 'studio holds tx1 committed; resume finishes it there' } }] });
   await expect(page.getByTestId('handover-resume')).toHaveText('Retry');
   await expect(page.getByTestId('handover-abort')).toHaveCount(0);
   await expect(page.getByTestId('handover-sheet')).not.toContainText(/abort|roll ?back|undo|revert/i);
@@ -305,7 +305,7 @@ test('a launch after a finished move that once asked leaves an open terminal alo
     { event: 'handover.blocked', data: { transactionId: 'tx1', phase: 'freeze', blockers: [{ code: 'agent_working', message: "ada's terminal is still working", entity: { kind: 'character', id: a.id } }] } },
     ...changed('transfer', 'verify', 'prepare', 'ready', 'commit', 'activate', 'complete'),
     { event: 'handover.result', data: { status: 'complete', transactionId: 'tx1', generation: 2, characters: [{ id: a.id, ok: true }] } },
-    { event: 'handover.status', data: { standing: 'none', safe: [], reason: 'no handover is open' } });
+    { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover is open' } });
   await expect(page.getByTestId('handover-tab')).toBeVisible();
   await expect(page.getByTestId('handover-sheet')).toHaveCount(0);
   await expect(page.getByTestId('surface')).toHaveAttribute('data-char', a.id);
@@ -315,18 +315,18 @@ test('a launch after a finished move that once asked leaves an open terminal alo
 test('a journal the gateway has moved on from offers Forget, and a standing with nothing to decide stays shut', async ({ page, archi }) => {
   await fakeShell(page, archi.port, archi.token);
   await archi.open();
-  await readBack(page, { event: 'handover.status', data: { standing: 'unknown', safe: [], reason: 'the gateway did not answer' } });
+  await readBack(page, { event: 'handover.status', data: { standing: 'unknown', journals: {}, action: 'none', safe: [], reason: 'the gateway did not answer' } });
   await expect(page.getByTestId('handover-tab')).toBeVisible();
   await expect(page.getByTestId('handover-sheet')).toHaveCount(0);
 
-  await receive(page, { type: 'handover.replay', events: [{ event: 'handover.status', data: { standing: 'superseded', transactionId: 'tx1', safe: [], reason: 'the gateway holds another handover than tx1; forget this journal' } }] });
+  await receive(page, { type: 'handover.replay', events: [{ event: 'handover.status', data: { standing: 'superseded', journals: {}, action: 'none', transactionId: 'tx1', safe: [], reason: 'the gateway holds another handover than tx1; forget this journal' } }] });
   await expect(page.getByTestId('handover-sheet')).toBeVisible();
   await expect(page.getByTestId('handover-headline')).toHaveText('the gateway holds another handover than tx1; forget this journal');
   await expect(page.getByTestId('handover-resume')).toHaveCount(0);
   await expect(page.getByTestId('handover-abort')).toHaveCount(0);
   await page.getByTestId('handover-forget').click();
   expect(await lastOf(page, 'handover.forget')).toEqual({ type: 'handover.forget' });
-  await receive(page, { type: 'handover.replay', events: [{ event: 'handover.status', data: { standing: 'none', safe: [], reason: 'no handover is open' } }] });
+  await receive(page, { type: 'handover.replay', events: [{ event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover is open' } }] });
   await expect(page.getByTestId('handover-forget')).toHaveCount(0);
   await expect(page.getByTestId('handover-to-gateway')).toBeVisible();
 });

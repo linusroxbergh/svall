@@ -108,7 +108,7 @@ test('one a handover could not resume says why and waits for the button while th
 });
 
 test('a dormant character wakes nothing while a handover rests the fleet', () => {
-  act(() => store.getState().handoverEvent({ event: 'handover.status', data: { standing: 'committed', safe: [], reason: 'moving' } }));
+  act(() => store.getState().handoverEvent({ event: 'handover.status', data: { standing: 'committed', journals: {}, action: 'none', safe: [], reason: 'moving' } }));
   render(<TerminalArea id="c1" />);
   act(() => { vi.advanceTimersByTime(5000); });
   expect(screen.getByTestId('terminal-held')).toBeTruthy();

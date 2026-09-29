@@ -1,7 +1,5 @@
 import readline from 'node:readline';
-import type { Blocker, HandoverChoices, HandoverEntity, HandoverPhase } from '@archipelago/protocol';
-import type { HandoverEvent, Names, Outcome } from '../controller/events.js';
-import type { Verdict } from '../controller/recovery.js';
+import type { Blocker, HandoverChoices, HandoverEntity, HandoverEvent, HandoverPhase, Names, Outcome, Verdict } from '@archipelago/protocol';
 
 /** How a view names the commands it points to and the machines it speaks of. */
 export type Words = { archi(args: string): string; machine(id?: string): string };

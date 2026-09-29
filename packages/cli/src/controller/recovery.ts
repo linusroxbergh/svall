@@ -3,13 +3,12 @@ import path from 'node:path';
 import { z } from 'zod';
 import {
   FleetId, Generation, HandoverChoices, HandoverPhase, LandedRoot, MachineId, Sha256, TransactionId, TransferManifestV1,
-  type OwnerRecord, type OwnershipInfo, type Result,
+  type OwnerRecord, type OwnershipInfo, type Result, type SafeAction, type Standing, type Verdict,
 } from '@archipelago/protocol';
 import { writeDurable } from '@archipelago/archid/handover/durable';
 import { boundary } from '@archipelago/archid/handover/failpoints';
 import { canonicalDigest } from '@archipelago/archid/handover/hash';
 import { manifestDigest } from '@archipelago/archid/handover/manifest';
-import type { SafeAction } from './events.js';
 import { transactionDir } from './progress.js';
 
 /** Where the controller reaches a machine: its id, its registry name and ssh alias, and never a token. */
@@ -115,30 +114,6 @@ export type Observation = {
   gateway: Seen<OwnerRecord>;
   source?: Seen<{ status: Result<'handover.status'>; ownership: OwnershipInfo }>;
   destination?: Seen<{ status: Result<'handover.status'>; ownership?: OwnershipInfo }>;
-};
-
-/**
- * Where a handover stands by the gateway's word. `open`: nothing has committed. `committed`: the fleet is the
- * destination's and the transaction is open. `moved`: the gateway has cleared it after the commit. `returned`:
- * the gateway no longer holds it and the fleet is still the source's. `none`: nothing began.
- */
-export type Standing = 'none' | 'open' | 'committed' | 'moved' | 'returned' | 'superseded' | 'unknown';
-
-/**
- * What a handover's journals say together, and the one way on: `continue` runs it forward from where it is,
- * `finish` completes what a moved fleet left open, `finish-abort` lets go what an abort the gateway made left.
- */
-export type Verdict = {
-  standing: Standing;
-  transactionId?: string;
-  generation?: number;
-  fromMachineId?: MachineId;
-  toMachineId?: MachineId;
-  phase?: HandoverPhase;
-  journals: { source?: HandoverPhase; destination?: HandoverPhase };
-  safe: SafeAction[];
-  action: 'none' | 'continue' | 'finish' | 'finish-abort';
-  reason: string;
 };
 
 type Found = { transactionId?: string; generation?: number; fromMachineId: MachineId; toMachineId: MachineId };

@@ -2,6 +2,7 @@ import path from 'node:path';
 import {
   type AgentKind, type Blocker, type FleetId, type HandoverChoices, type HandoverPhase, type KeptCommit, type LandedRoot, type MachineId, type ManifestSummary, type MethodName, type OwnerRecord,
   type Params, type Result, type ResumeFolder, type RootClaim, type SystemInfo, type TransferManifestV1, type TransferRoot, type Warning,
+  type CharacterResult, type HandoverEvent, type Outcome, type SafeAction, type Verdict,
 } from '@archipelago/protocol';
 import { boundary } from '@archipelago/archid/handover/failpoints';
 import { graphsHere } from '@archipelago/archid/handover/git-import';
@@ -14,9 +15,9 @@ import { ARCHIVABLE, contentDigest, replicaRoots } from '@archipelago/archid/han
 import { resumeFolders } from '@archipelago/archid/handover/sessions/registry';
 import { resolvePaths } from '@archipelago/archid/paths';
 import { FIRST_DELAY, FleetMismatch, MachineMismatch, MAX_DELAY, retryable } from './connection.js';
-import { entryEvent, namesOf, Observer, type CharacterResult, type HandoverEvent, type Outcome, type SafeAction } from './events.js';
+import { entryEvent, namesOf, Observer } from './events.js';
 import { redact } from './process.js';
-import { assess, type ControllerJournal, type ControllerStore, type FrozenManifest, type Observation, type Route, type Seen, type Verdict } from './recovery.js';
+import { assess, type ControllerJournal, type ControllerStore, type FrozenManifest, type Observation, type Route, type Seen } from './recovery.js';
 import { SshError } from './ssh.js';
 import { farRsync, transfer as runTransfer, type Master, type RootEntry, type SessionEntry, type TransferOptions, type TransferResult } from './transfer.js';
 

@@ -323,7 +323,7 @@ describe('terminal manager', () => {
       { event: 'handover.blocked', data: { transactionId: 'tx', phase: 'freeze', blockers: [{ code: 'agent_working', message: 'still working' }] } },
       phase('freeze'), phase('transfer'), phase('activate'), phase('complete'),
       { event: 'handover.result', data: { status: 'complete', transactionId: 'tx', generation: 3, characters: [] } },
-      { event: 'handover.status', data: { standing: 'none', safe: [], reason: 'no handover is open' } }]);
+      { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover is open' } }]);
     expect(sent.some((m) => m.type === 'term.close')).toBe(false);
     expect(store.getState().terminals.c0).toBeDefined();
     expect(store.getState().handoverOpen).toBe(false);

@@ -3,10 +3,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { FleetConfig, FleetId, MachineId, TRANSFER_SCHEMA_VERSION, emptyState, type HandoverPhase, type OwnerRecord, type Result } from '@archipelago/protocol';
+import { FleetConfig, FleetId, MachineId, TRANSFER_SCHEMA_VERSION, emptyState, type HandoverPhase, type OwnerRecord, type Result, type Verdict } from '@archipelago/protocol';
 import { manifestDigest } from '@archipelago/archid/handover/manifest';
 import { transactionDir } from '../../src/controller/progress.js';
-import { assess, fileStore, forgettable, type ControllerJournal, type FrozenManifest, type Observation, type Verdict } from '../../src/controller/recovery.js';
+import { assess, fileStore, forgettable, type ControllerJournal, type FrozenManifest, type Observation } from '../../src/controller/recovery.js';
 
 const fleetId = FleetId.parse(crypto.randomUUID());
 const mac = MachineId.parse(crypto.randomUUID());

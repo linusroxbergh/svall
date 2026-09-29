@@ -124,7 +124,7 @@ describe('what the sheet offers', () => {
 
   it('rebuilds what may follow from the status a relaunch reads back', () => {
     const status = (standing: 'open' | 'committed' | 'moved', safe: ('resume' | 'abort')[], phase: 'transfer' | 'activate') =>
-      endFollow(play([{ event: 'handover.status', data: { standing, transactionId: tx, phase, safe, reason: `${standing} at ${phase}` } }], followRun()), 0);
+      endFollow(play([{ event: 'handover.status', data: { standing, journals: {}, action: 'none', transactionId: tx, phase, safe, reason: `${standing} at ${phase}` } }], followRun()), 0);
     expect(actionsOf(status('open', ['resume', 'abort'], 'transfer'))).toMatchObject({ resume: 'Resume', abort: true });
     expect(actionsOf(status('committed', ['resume'], 'activate'))).toMatchObject({ resume: 'Retry', abort: false });
     expect(actionsOf(status('moved', [], 'activate'))).toMatchObject({ resume: undefined, abort: false, start: true });
@@ -132,7 +132,7 @@ describe('what the sheet offers', () => {
 
   it('offers Forget for a journal the gateway has moved on from, and asks the user only about what can be decided', () => {
     const status = (standing: 'superseded' | 'open' | 'unknown', safe: ('resume' | 'abort')[]) =>
-      endFollow(play([{ event: 'handover.status', data: { standing, safe, reason: standing } }], followRun()), 0);
+      endFollow(play([{ event: 'handover.status', data: { standing, journals: {}, action: 'none', safe, reason: standing } }], followRun()), 0);
     expect(actionsOf(status('superseded', []))).toMatchObject({ forget: true, resume: undefined, abort: false });
     expect(actionsOf(status('open', ['resume', 'abort'])).forget).toBe(false);
     expect(needsUser(status('superseded', []).status!)).toBe(true);
@@ -189,13 +189,13 @@ describe('the terminals while the fleet moves', () => {
 
   it('reads the hold back from the status a relaunch finds', () => {
     const status = (standing: 'open' | 'moved', phase: 'begin' | 'transfer') =>
-      play([{ event: 'handover.status', data: { standing, phase, safe: [], reason: '' } }], followRun());
+      play([{ event: 'handover.status', data: { standing, journals: {}, action: 'none', phase, safe: [], reason: '' } }], followRun());
     expect(holdsTerminals(status('open', 'transfer'))).toBe(true);
     expect(holdsTerminals(status('open', 'begin'))).toBe(false);
     expect(holdsTerminals(status('moved', 'transfer'))).toBe(false);
     // the events file ends with the run's result, then the status: a finished move holds nothing
     const replay = play([...through('activate'), { event: 'handover.result', data: { status: 'complete', transactionId: tx, generation: 4, characters: [] } },
-      { event: 'handover.status', data: { standing: 'none', safe: [], reason: 'no handover is open' } }], followRun());
+      { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover is open' } }], followRun());
     expect(holdsTerminals(replay)).toBe(false);
   });
 });

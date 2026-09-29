@@ -4,8 +4,7 @@ import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { z } from 'zod';
-import { HandoverChoices } from '@archipelago/protocol';
-import type { HandoverEvent } from './events.js';
+import { HandoverChoices, type HandoverEvent } from '@archipelago/protocol';
 import { defaultSocketDir, ownSocketDir } from './ssh.js';
 
 // the longest Unix socket path macOS takes, 104 bytes with its NUL; Linux takes more

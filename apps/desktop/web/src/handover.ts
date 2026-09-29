@@ -1,36 +1,11 @@
 import {
   HANDOVER_PHASES,
-  type Blocker, type HandoverChoices, type HandoverEntityKind, type HandoverPhase, type ManifestSummary, type Warning,
+  type Blocker, type EntityData, type HandoverChoices, type HandoverEntityKind, type HandoverEvent, type HandoverPhase, type ManifestSummary, type Names, type Outcome, type SafeAction, type Verdict, type Warning,
 } from '@archipelago/protocol';
 import { withoutTokens } from './host.js';
 
-// what `archi handover --json` prints, as packages/cli's controller/events.ts and recovery.ts define it
-export type SafeAction = 'resume' | 'abort';
-export type CharacterResult = { id: string; ok: boolean; error?: string; notice?: string };
-export type Outcome =
-  | { status: 'complete'; transactionId: string; generation: number; characters: CharacterResult[]; pending?: ('source' | 'gateway')[]; error?: string }
-  | { status: 'none'; reason: string }
-  | { status: 'blocked'; transactionId?: string; phase: HandoverPhase; blockers: Blocker[] }
-  | { status: 'aborted'; transactionId?: string; phase: HandoverPhase }
-  | { status: 'interrupted'; transactionId?: string; phase: HandoverPhase; error: string; safe: SafeAction[] }
-  | { status: 'detached'; transactionId: string };
-export type Standing = 'none' | 'open' | 'committed' | 'moved' | 'returned' | 'superseded' | 'unknown';
-export type Verdict = { standing: Standing; transactionId?: string; phase?: HandoverPhase; safe: SafeAction[]; reason: string; helper?: { pid: number } };
-export type EntityData = {
-  transactionId: string; kind: HandoverEntityKind; id: string; phase: HandoverPhase;
-  done?: number; total?: number; bytes?: number; totalBytes?: number; error?: string; notice?: string;
-};
-/** What preflight says each id names: a character's name, where a root lands, whose a session row `s<i>` is. */
-export type Names = { characters: Record<string, string>; roots: Record<string, string>; sessions?: Record<string, string> };
-export type HandoverEvent =
-  | { event: 'handover.preflight'; data: { summary: ManifestSummary; blockers: Blocker[]; warnings: Warning[]; names?: Names } }
-  | { event: 'handover.changed'; data: { transactionId: string; phase: HandoverPhase } }
-  | { event: 'handover.entity'; data: EntityData }
-  | { event: 'handover.blocked'; data: { transactionId?: string; phase: HandoverPhase; blockers: Blocker[] } }
-  | { event: 'handover.retry'; data: { transactionId?: string; phase: HandoverPhase; attempt: number; error: string } }
-  | { event: 'handover.result'; data: Outcome }
-  | { event: 'handover.status'; data: Verdict }
-  | { event: 'handover.detached'; data: { pid: number } };
+// what `archi handover --json` prints
+export type { CharacterResult, EntityData, HandoverEvent, Names, Outcome, SafeAction, Standing, Verdict } from '@archipelago/protocol';
 
 export type SectionId = 'checks' | 'rest' | 'transfer' | 'commit' | 'resume';
 export const SECTIONS: { id: SectionId; label: string; phases: HandoverPhase[] }[] = [
