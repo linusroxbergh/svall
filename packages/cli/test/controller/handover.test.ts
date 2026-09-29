@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { FleetId, MachineId, PROTOCOL_VERSION, type Blocker, type OwnerRecord } from '@archipelago/protocol';
+import { AUTHORITY_SCHEMA_VERSION, FleetId, MachineId, PROTOCOL_VERSION, type Blocker, type OwnerRecord } from '@archipelago/protocol';
 import { AuthorityClient } from '@archipelago/archid/gateway/client';
 import { startAuthorityServer } from '@archipelago/archid/gateway/server';
 import { manifestDigest, spaceNeed } from '@archipelago/archid/handover/manifest';
@@ -488,6 +488,36 @@ describe('preflight', () => {
     const out = await controller(w).start(mac, {});
     expect(out).toEqual({ status: 'blocked', phase: 'begin', blockers: [{ code: 'identity_mismatch', message: `mac already runs this fleet, at generation ${G}; there is nothing to hand it` }] });
     expect(w.ops).toEqual(['gateway:get']);
+  });
+
+  it('asks a far gateway nothing for a handover once it answers on another authority schema, and says so as a version fault naming it', async () => {
+    const ssh = installFakeSsh();
+    const masters = new Masters();
+    try {
+      ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: 'dev', protocol: PROTOCOL_VERSION, machineId: trift, authoritySchema: AUTHORITY_SCHEMA_VERSION + 1 }, null, 2) });
+      ssh.reply(['gateway', 'owner', 'get'], { stdout: `${JSON.stringify({ result: { record: { fleetId, generation: 0, ownerMachineId: mac } } })}\n` });
+      const gateway = {
+        id: trift,
+        record: { name: 'trift', ssh: 'trift.test', platform: 'linux' as const, arch: 'arm64', home: '/home/ada', archiBase: '/home/ada/.local/share/archipelago', gateway: true },
+      };
+      const err = await authorityOp(gateway, mac, masters, { schema: true })('get', fleetId).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(SshError);
+      expect(err).toMatchObject({ kind: 'version', message: expect.stringContaining(`trift runs gateway authority schema ${AUTHORITY_SCHEMA_VERSION + 1}`) });
+      expect(ssh.remoteCalls().filter((w) => w.includes('owner'))).toEqual([]);
+      // a recovery reads it all the same
+      expect(await authorityOp(gateway, mac, masters)('get', fleetId)).toMatchObject({ record: { generation: 0 } });
+    } finally {
+      await masters.close();
+      ssh.clean();
+    }
+  });
+
+  it('blocks as incompatible_protocol, naming it, on a gateway that answers on another authority schema', async () => {
+    const w = new World();
+    const said = `trift runs gateway authority schema ${AUTHORITY_SCHEMA_VERSION + 1}, and this release ${AUTHORITY_SCHEMA_VERSION}; upgrade trift`;
+    w.gateway.get = () => Promise.reject(new SshError('version', said));
+    const out = await controller(w).start(trift, {});
+    expect(out).toEqual({ status: 'blocked', phase: 'begin', blockers: [{ code: 'incompatible_protocol', message: said }] });
   });
 
   it('blocks at once on a gateway whose ssh destination now reaches another machine', async () => {

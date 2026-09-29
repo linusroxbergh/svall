@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { FleetConfig, type FleetId, type MachineId, type MethodName } from '@archipelago/protocol';
+import { AUTHORITY_SCHEMA_VERSION, FleetConfig, type FleetId, type MachineId, type MethodName } from '@archipelago/protocol';
 import type { OwnerAnswer } from '@archipelago/archid/gateway/client';
 import { resolvePaths } from '@archipelago/archid/paths';
 import { archiExe } from '@archipelago/archid/release';
@@ -46,15 +46,21 @@ export type AuthorityOp = (op: string, fleetId: FleetId, params?: Record<string,
 
 /**
  * The authority of the gateway `entry`: over its own socket on this machine, through `archi gateway owner` over the master
- * anywhere else, once that master has shown it reaches the machine the registry names.
+ * anywhere else, once that master has shown it reaches the machine the registry names and, with `schema`, that its
+ * authority keeps records as this release's does.
  */
-export function authorityOp(entry: MachineEntry, localId: MachineId, masters: Masters): AuthorityOp {
+export function authorityOp(entry: MachineEntry, localId: MachineId, masters: Masters, o: { schema?: boolean } = {}): AuthorityOp {
   if (entry.id !== localId) {
     const identified = new WeakSet<SshMaster>();
     return async (op, fleetId, params) => {
       const master = await masters.for(entry);
       if (!identified.has(master)) {
-        await identify(master, entry);
+        const said = await identify(master, entry);
+        const schema = Number(/^\s*"authoritySchema":\s*(\d+)/m.exec(said ?? '')?.[1] ?? AUTHORITY_SCHEMA_VERSION);
+        if (o.schema && schema !== AUTHORITY_SCHEMA_VERSION) {
+          const name = entry.record.name;
+          throw new SshError('version', `${name} runs gateway authority schema ${schema}, and this release ${AUTHORITY_SCHEMA_VERSION}; upgrade ${name} or this machine, whichever is older`);
+        }
         identified.add(master);
       }
       return remoteOwner({ master, exe: archiExe(entry.record.archiBase), op, fleetId, ...(params && { params }) });
@@ -194,7 +200,7 @@ export function connectHandover(o: {
   };
 
   const dir = path.join(o.fleetHome, 'controller');
-  const authority = gatewayOf(authorityOp(gateway, registry.localId, masters), fleet.id);
+  const authority = gatewayOf(authorityOp(gateway, registry.localId, masters, { schema: true }), fleet.id);
   const secrets = (): string[] => tokens.filter(Boolean);
   const handover: Handover = new Handover({
     fleetId: fleet.id, store: fileStore(dir), stateDir: dir, local: registry.localId, machines: [...new Set([registry.localId, gateway.id])],
