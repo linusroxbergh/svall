@@ -58,6 +58,22 @@ every behaviour change; one commit per item where practical.
 - **I9** `archi host upgrade <machine> --rollback [release]` runs the far `archi setup --rollback` and checks every
   restarted fleet daemon, as an upgrade does.
 
+## From Fixer A's report (these keep the suite red until you do them)
+
+- I7 gave Claude a 2.1.251 minimum: raise doctor.test's `claude 2.1.0` fixtures, and make doctor.ts:109 and host.ts:233
+  print the full version (they print "2.1").
+- C27 removed `handover.status`'s `characters`/`roots`: update recovery.test.ts:30-31.
+- C24: add `archi uninstall --force` to the CLI; `host remove` runs the far `archi uninstall --force` after its own
+  checks (otherwise removing a gateway that holds fleet records is refused).
+- C23: the Linux side of doctor's daemon-env check, using A's `agentHomesEnv` and `unitEnv`.
+- A's exports: `versionMachineId`, `ownerAnswer`, `OwnerAnswer` (`@archipelago/archid/gateway/client`); `shq`
+  (`@archipelago/archid/text`); `patchFleetConfig(file, patch)` (a key set to `undefined` is dropped) and
+  `readFleetConfig` (`@archipelago/archid/config`); the event types and `STATE_SCHEMA_VERSION` (`@archipelago/protocol`);
+  `reservedProfileHomes` (`@archipelago/archid/profile`); `runUninstall({ force })`, `stranded`
+  (`@archipelago/archid/uninstall`). C1's: `stageArchive(archive, staging, { verify, allowUnsigned, signer })` in
+  `scripts/install-release.mjs` — for `inspectCompanion`, `stageArchive(archive, work, { verify, allowUnsigned: true })`
+  with `signed = s.signed && s.release.unsigned !== true`.
+
 ## Low
 
 L01 (gateway.ts `send` → `client.call`), L04 (one `currentRunFrom()`), L05 (import `ARCHIVABLE`), L06

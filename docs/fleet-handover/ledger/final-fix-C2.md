@@ -37,6 +37,8 @@ the code does. Amend the spec to describe it, briefly, in the section each belon
 - From C1's report: the security doc's release verification (the signature is checked once, then the SUMS on disk is
   re-checked), release pruning, the app's attach rules (C15); the helper contract's `--interrupt-after` is now `<ms>ms`
   (`ledger/task-28-29-contract.md` is a ledger file: leave it, but the user-facing docs must say `<ms>ms`).
+- From A's report: there are now 94 failpoints; `errors.md`'s `agent_unsettled` row also covers an idle agent still
+  running background commands.
 - The known-limitations list stays accurate (fold in anything the fixes changed).
 - `errors.md`: every row's recovery still works after the fixes (its test checks codes exist, not that the prose is
   right).
