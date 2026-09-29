@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ACTIVATE_TIMEOUT_MS, Blocker, CLAIM_TIMEOUT_MS, COMPLETE_TIMEOUT_MS, BrowserTab, Character, ErrorFrame, FREEZE_TIMEOUT_MS, FleetConfig, FleetState, HelloResult, MAX_MANIFEST_BYTES, MAX_REQUEST_BYTES, MAX_SIDE, MAX_URL, MachineId, PART_BYTES,
-  PREFLIGHT_TIMEOUT_MS, PREPARE_TIMEOUT_MS, PROTOCOL_VERSION, RUN_TIMEOUT_MS, Request, RequestPart, Second, TRANSFER_SCHEMA_VERSION, emptyState, methods, serverWait, type Event,
+  PREFLIGHT_TIMEOUT_MS, PREPARE_TIMEOUT_MS, PROTOCOL_VERSION, RUN_TIMEOUT_MS, Request, RequestPart, TRANSFER_SCHEMA_VERSION, TerminalSlot, emptyState, methods, serverWait, type Event,
 } from '../src/index.js';
 
 describe('serverWait', () => {
@@ -104,10 +104,10 @@ describe('messages', () => {
   });
   it('a character may carry a second terminal, live or dormant', () => {
     const second = { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false };
-    expect(Second.parse(second)).toEqual(second);
+    expect(TerminalSlot.parse(second)).toEqual(second);
     const dormant = { cwd: '/tmp', unread: false, revive: { command: 'codex resume s' } };
-    expect(Second.parse(dormant)).toEqual(dormant);
-    expect(() => Second.parse({ unread: false })).toThrow();
+    expect(TerminalSlot.parse(dormant)).toEqual(dormant);
+    expect(() => TerminalSlot.parse({ unread: false })).toThrow();
   });
 });
 

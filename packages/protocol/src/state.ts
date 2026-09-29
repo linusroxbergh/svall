@@ -134,11 +134,8 @@ export const TerminalSlot = z.object({
 });
 export type TerminalSlot = z.infer<typeof TerminalSlot>;
 
-// a character's second terminal: a side shell beside the main one, dormant when its window is gone
-export const Second = TerminalSlot;
-export type Second = TerminalSlot;
-
-export const Character = z.object({
+// a character is its main terminal and all it knows beside it; its second terminal is a side shell beside the main one
+export const Character = TerminalSlot.extend({
   id: z.string(),
   islandId: z.string(),
   cell: Cell,
@@ -150,22 +147,15 @@ export const Character = z.object({
   instructions: z.string(),
   // a file's name, without .md, in the fleet's agent-profiles folder; its text rides in the brief
   agentProfile: z.string().optional(),
-  cwd: z.string(),
   // the tmux pane's own path when last read; cwd moves with it only when it changes, so a restart keeps where the hooks put it
   panePath: z.string().optional(),
   repo: Repo.optional(),
   context: z.array(ContextItem),
-  tmux: z.object({ windowId: z.string(), paneId: z.string() }).optional(),
   shell: z.object({ lastOutputAt: z.number() }),
-  agent: Agent.optional(),
-  unread: z.boolean(),
   // the window runs codex and no hook has come from it: codex skips a hook until it is trusted, without a word
   hint: z.enum(['codex-silent']).optional(),
-  revive: z.object({ command: z.string() }).optional(),
-  restedBy: RestedBy,
-  resumeError: ResumeError,
   browser: Browser.optional(),
-  second: Second.optional(),
+  second: TerminalSlot.optional(),
   // "Keep on this machine": a handover of the fleet waits until it is lifted
   keepHere: z.literal(true).optional(),
 });
