@@ -372,7 +372,7 @@ class Mirror {
 
   private verified(passes: number, files: TransferFile[]): EntryOutcome {
     const plan = this.plan as Plan;
-    this.journal.keepVerified(this.entry.id, files);
+    if (this.entry.kind === 'root') this.journal.keepVerified(this.entry.id, files);
     return this.finish({ id: this.entry.id, status: 'verified', passes, files }, { verifiedKey: plan.key, verifiedScan: scanDigest(files) });
   }
 

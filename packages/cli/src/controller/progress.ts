@@ -38,8 +38,8 @@ const Journal = z.object({ version: z.literal(1), transactionId: TransactionId, 
 const THROTTLE_MS = 1000;
 
 /**
- * The controller's advisory record of a transfer. It drives display and lets a resume re-verify before
- * skipping a copy; a journal that cannot be read resumes as one that is not there.
+ * The controller's record of a transfer. It drives display, lets a resume re-verify before skipping a copy, and gives a
+ * claim asked again what each root verified as; a journal that cannot be read resumes as one that is not there.
  */
 export class ProgressJournal {
   readonly file: string;
@@ -77,7 +77,7 @@ export class ProgressJournal {
     this.dirty = false;
   }
 
-  /** Keeps the files an entry's verification read, before its record says it verified them. */
+  /** Keeps the files a root's verification read, before its record says it verified them. */
   keepVerified(id: string, files: readonly TransferFile[]): void {
     this.keep('verified', `${encodeURIComponent(id)}.json`, JSON.stringify(files));
   }

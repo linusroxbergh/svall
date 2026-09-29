@@ -8,7 +8,7 @@ import type { Blocker, TransferFile } from '@archipelago/protocol';
 import { DEFAULT_EXCLUDES, excludeMatcher, rootMatcher } from '@archipelago/archid/handover/inventory';
 import { scanPath } from '../../../archid/src/handover/manifest.js';
 import { runProcess } from '../../src/controller/process.js';
-import { transactionDir, type EntryProgress } from '../../src/controller/progress.js';
+import { ProgressJournal, transactionDir, type EntryProgress } from '../../src/controller/progress.js';
 import { bundledRsync, filterRules, probeRsync, rsyncArgv, runRsync, type RunRsync } from '../../src/controller/rsync.js';
 import { SshMaster } from '../../src/controller/ssh.js';
 import { transfer, type Master, type Roles, type RootEntry, type SessionEntry, type TransferOptions } from '../../src/controller/transfer.js';
@@ -151,6 +151,9 @@ describe('transfer with a scripted rsync', () => {
     }
     // each copy is verified with the same arguments, as a checksum dry run
     expect(rsync.dry().map((c) => c.filter((a) => a !== '--dry-run' && a !== '--checksum'))).toEqual(rsync.real().map((c) => c.filter((a) => a !== '--info=progress2')));
+    // what a claim asked again takes: a root's verified files, and nothing of a session's
+    const journal = new ProgressJournal('tx-1', transactionDir('tx-1', state));
+    expect([journal.verified('r_app'), journal.verified('s0')]).toEqual([app.files, undefined]);
   });
 
   it('keeps Git\'s own entries in a Git directory carried on its own, in its filter and in what it reads, whatever the excludes say', async () => {
