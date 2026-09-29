@@ -47,23 +47,25 @@ export class MachineRegistry {
     private readonly file: string,
     readonly localId: MachineId,
     private readonly machines: Map<MachineId, MachineRecord>,
-    /** the copy a registry that could not be read was kept as, for the CLI to name */
+    /** the latest copy a registry that could not be read was kept as, now or at an earlier load, for the CLI to name */
     readonly recovered?: string,
   ) {}
 
-  static load(dir: string = configDir(), o: { hostname?: string } = {}): MachineRegistry {
+  static load(dir: string = configDir(), o: { hostname?: string; warn?: (line: string) => void } = {}): MachineRegistry {
     const id = machineId(dir);
     const file = path.join(dir, 'machines.json');
     let machines = new Map<MachineId, MachineRecord>();
-    let recovered: string | undefined;
     if (fs.existsSync(file)) {
       try {
         machines = new Map(Object.entries(Registry.parse(JSON.parse(fs.readFileSync(file, 'utf8'))).machines) as [MachineId, MachineRecord][]);
-      } catch {
-        recovered = `${file}.broken-${new Date().toISOString().replace(/[:.]/g, '-')}`;
-        fs.renameSync(file, recovered);
+      } catch (e) {
+        const aside = `${file}.broken-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+        fs.renameSync(file, aside);
+        (o.warn ?? ((l) => { process.stderr.write(`archi: ${l}\n`); }))(`${file} could not be read (${e instanceof SyntaxError ? e.message : 'it is not a registry of machines'}), so it was moved to ${aside} and a registry of this machine alone begins`);
       }
     }
+    // an ISO time in the name sorts the latest last
+    const recovered = fs.readdirSync(dir).filter((f) => f.startsWith('machines.json.broken-')).sort().map((f) => path.join(dir, f)).at(-1);
     const registry = new MachineRegistry(file, id, machines, recovered);
     if (!machines.has(id)) {
       machines.set(id, localRecord(o.hostname ?? os.hostname(), [...machines.values()].map((m) => m.name)));
@@ -74,6 +76,13 @@ export class MachineRegistry {
 
   save(): void {
     writeJsonAtomic(this.file, { machines: Object.fromEntries(this.machines) });
+  }
+
+  /** What a lookup that found no machine adds: where a registry that could not be read went, with every machine it named. */
+  setAside(): string {
+    return this.recovered
+      ? `; the registry could not be read once and was moved to ${this.recovered}, with every machine it named: fix that file and move it back to ${this.file}, or add each machine again with \`archi host add\``
+      : '';
   }
 
   localMachine(): MachineRecord {
@@ -119,7 +128,7 @@ export class MachineRegistry {
 
   private need(idOrName: string): MachineEntry {
     const entry = this.get(idOrName);
-    if (!entry) throw new Error(`no machine ${idOrName} in the registry`);
+    if (!entry) throw new Error(`no machine ${idOrName} in the registry${this.setAside()}`);
     return entry;
   }
 

@@ -161,7 +161,7 @@ export function connectHandover(o: {
   const fleet = FleetConfig.parse(JSON.parse(fs.readFileSync(file, 'utf8')));
   if (!fleet.gatewayMachineId) throw new Error(`${file} names no gateway, so no other machine can be handed this fleet`);
   const gateway = registry.get(fleet.gatewayMachineId);
-  if (!gateway) throw new Error(`${file} names gateway ${fleet.gatewayMachineId}, which is not a machine in the registry`);
+  if (!gateway) throw new Error(`${file} names gateway ${fleet.gatewayMachineId}, which is not a machine in the registry${registry.setAside()}`);
   const masters = new Masters();
   const daemons: { close(): void }[] = [];
   const tokens: string[] = [];
@@ -174,7 +174,7 @@ export function connectHandover(o: {
 
   const side = async (id: MachineId): Promise<Side> => {
     const entry = registry.get(id);
-    if (!entry) throw new Error(`machine ${id} is not in the registry; add it with \`archi host add\``);
+    if (!entry) throw new Error(`machine ${id} is not in the registry; add it with \`archi host add\`${registry.setAside()}`);
     const route: Route = { machineId: entry.id, name: entry.record.name, ...(entry.record.ssh && entry.id !== registry.localId && { ssh: entry.record.ssh }) };
     let home: string | undefined;
     const daemon = reconnecting(async () => {

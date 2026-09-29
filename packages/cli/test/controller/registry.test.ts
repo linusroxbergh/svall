@@ -152,6 +152,20 @@ describe('machine registry', () => {
     expect(read(dir)).toEqual({ machines: { [registry.localId]: registry.localMachine() } });
   });
 
+  it('says where a registry it could not read went, when it moves it and at every load after, and in what finds no machine', () => {
+    const dir = path.join(tmp(), 'archipelago');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'machines.json'), '{ "machines": ');
+    const warned: string[] = [];
+    const first = MachineRegistry.load(dir, { hostname: 'kolvik', warn: (l) => warned.push(l) });
+    expect(warned).toEqual([expect.stringContaining(`was moved to ${first.recovered}`)]);
+    const later = MachineRegistry.load(dir, { hostname: 'kolvik', warn: (l) => warned.push(l) });
+    expect(warned).toHaveLength(1);
+    expect(later.recovered).toBe(first.recovered);
+    expect(later.setAside()).toContain(first.recovered);
+    expect(MachineRegistry.load(path.join(tmp(), 'fresh'), { hostname: 'kolvik' }).setAside()).toBe('');
+  });
+
   it('recovers the same way from a registry where two machines share a name', () => {
     const dir = path.join(tmp(), 'archipelago');
     fs.mkdirSync(dir, { recursive: true });

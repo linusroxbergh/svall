@@ -611,4 +611,14 @@ describe('resolveOwner', () => {
     expect((err as SshError).kind).toBe('other');
     expect(ssh.calls()).toEqual([]);
   });
+
+  it('names the registry it set aside when the gateway it cannot find may have been in it', async () => {
+    const dir = path.join(ssh.dir, 'reset');
+    fs.mkdirSync(dir);
+    fs.writeFileSync(path.join(dir, 'machines.json'), '{ not json');
+    const reset = MachineRegistry.load(dir, { warn: () => undefined });
+    fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: GATEWAY }));
+    const err = await resolveOwner(home, { deps: { ...deps, registry: MachineRegistry.load(dir) } }).catch((e: SshError) => e);
+    expect((err as SshError).message).toContain(`which is not a machine in the registry; the registry could not be read once and was moved to ${reset.recovered}`);
+  });
 });

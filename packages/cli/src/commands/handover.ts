@@ -161,7 +161,7 @@ export async function runHandover(job: Job, c: Ctx): Promise<Ran> {
   try { gateway = gatewayOf(c.fleetHome); } catch (e) { return refuse(stopped(messageOf(e))); }
   if (!gateway) return refuse(stopped(noGateway(c)));
   const to = job.kind === 'start' ? c.deps.registry().get(job.to) : undefined;
-  if (job.kind === 'start' && !to) return refuse(stopped(`no machine ${job.to} in the registry; add it with \`archi host add\``));
+  if (job.kind === 'start' && !to) return refuse(stopped(`no machine ${job.to} in the registry; add it with \`archi host add\`${c.deps.registry().setAside()}`));
   view.about.destination = to?.record.name;
 
   const paths = helperPaths(c.fleetHome, c.deps.tmpdir);
@@ -377,7 +377,7 @@ export async function launchHelper(job: Job, c: Ctx): Promise<number> {
   let gateway: MachineId | undefined;
   try { gateway = gatewayOf(c.fleetHome); } catch (e) { return refuse(stopped(messageOf(e))); }
   if (!gateway) return refuse(stopped(noGateway(c)));
-  if (job.kind === 'start' && !c.deps.registry().get(job.to)) return refuse(stopped(`no machine ${job.to} in the registry; add it with \`archi host add\``));
+  if (job.kind === 'start' && !c.deps.registry().get(job.to)) return refuse(stopped(`no machine ${job.to} in the registry; add it with \`archi host add\`${c.deps.registry().setAside()}`));
   const paths = helperPaths(c.fleetHome, c.deps.tmpdir);
   // a lock the child could not take is said here, where the app reads it, and not only in the child's log
   const holder = lockHolder(paths);

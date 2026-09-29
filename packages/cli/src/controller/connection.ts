@@ -150,7 +150,7 @@ export async function withReconnect<T>(attempt: () => Promise<T>, o: { attempts?
 /** A client on a daemon another machine runs: one control master, one forward, and a token kept in memory. */
 export async function connectRemote(o: { registry: MachineRegistry; machine: string; fleetHome: string; profile?: string }): Promise<Client> {
   const machine = o.registry.get(o.machine);
-  if (!machine) throw new Error(`no machine ${o.machine} in the registry`);
+  if (!machine) throw new Error(`no machine ${o.machine} in the registry${o.registry.setAside()}`);
   const destination = machine.record.ssh;
   if (!destination) throw new Error(`the machine ${machine.record.name} has no ssh destination in the registry`);
   const fleetId = localFleetId(o.fleetHome);
@@ -277,7 +277,7 @@ export async function resolveOwner(fleetHome: string, o: { profile?: string; dep
   if (!config || !gatewayId) return LOCAL;
   const d = o.deps ?? realOwnerDeps();
   const gateway = d.registry.get(gatewayId);
-  if (!gateway) throw new SshError('other', `${resolvePaths(fleetHome).fleetConfig} names gateway ${gatewayId}, which is not a machine in the registry`);
+  if (!gateway) throw new SshError('other', `${resolvePaths(fleetHome).fleetConfig} names gateway ${gatewayId}, which is not a machine in the registry${d.registry.setAside()}`);
 
   const cached = { fleetId: config.id, profile: o.profile };
   if (o.memo?.refused) return await fromCachedRoute(fleetHome, cached, d, o.memo.refused);
@@ -304,7 +304,7 @@ export async function resolveOwner(fleetHome: string, o: { profile?: string; dep
   }
   if (ownerMachineId === d.registry.localId) return LOCAL;
   const owner = d.registry.get(ownerMachineId);
-  if (!owner) throw new SshError('other', `${gateway.record.name} holds this fleet for ${ownerMachineId}, which is not a machine in the registry; add it with \`archi host add\``);
+  if (!owner) throw new SshError('other', `${gateway.record.name} holds this fleet for ${ownerMachineId}, which is not a machine in the registry; add it with \`archi host add\`${d.registry.setAside()}`);
   return owner;
 }
 

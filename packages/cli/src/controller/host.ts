@@ -394,7 +394,7 @@ export type HostReport = { machine: string; checks: Check[] };
 
 function need(registry: MachineRegistry, name: string): Registered {
   const entry = registry.get(name);
-  if (!entry) throw new StepError(`no machine ${name} in the registry`);
+  if (!entry) throw new StepError(`no machine ${name} in the registry${registry.setAside()}`);
   if (!entry.record.ssh) throw new StepError(`the machine ${name} has no ssh destination in the registry`);
   return entry as Registered;
 }

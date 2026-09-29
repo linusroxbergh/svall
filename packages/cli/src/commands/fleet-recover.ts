@@ -189,14 +189,14 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
   const gatewayId = fleet.gatewayMachineId;
   if (!gatewayId) return refuse(`${file} names no gateway: no other machine can hold this fleet, so there is nothing to recover`);
   const owner = d.registry.get(o.forceOwner);
-  if (!owner) return refuse(`no machine ${o.forceOwner} in the registry`, ['archi host list names every machine this controller knows']);
+  if (!owner) return refuse(`no machine ${o.forceOwner} in the registry${d.registry.setAside()}`, ['archi host list names every machine this controller knows']);
   const current = d.registry.get(gatewayId);
   const replacement = o.gateway === undefined ? undefined : d.registry.get(o.gateway);
-  if (o.gateway !== undefined && !replacement) return refuse(`no machine ${o.gateway} in the registry`, ['archi host list names every machine this controller knows']);
+  if (o.gateway !== undefined && !replacement) return refuse(`no machine ${o.gateway} in the registry${d.registry.setAside()}`, ['archi host list names every machine this controller knows']);
   if (replacement?.id === gatewayId) return refuse(`${replacement.record.name} is already this fleet's gateway; leave out --gateway`);
 
   const [held, replaced, looked] = await Promise.all([
-    current ? readGateway(d, current, fleet.id) : Promise.resolve<Held>({ state: 'unreachable', message: `${gatewayId} is not a machine in the registry` }),
+    current ? readGateway(d, current, fleet.id) : Promise.resolve<Held>({ state: 'unreachable', message: `${gatewayId} is not a machine in the registry${d.registry.setAside()}` }),
     replacement ? readGateway(d, replacement, fleet.id) : Promise.resolve(undefined),
     Promise.all(d.registry.list().map((m) => look(d, m))),
   ]);
