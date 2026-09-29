@@ -104,6 +104,8 @@ function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doc
   ssh.reply(['setup'], { stdout: 'release 1.2.3 installed\n' });
   ssh.reply(['doctor', '--json'], { stdout: o.doctor ?? DOCTOR });
   ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });
+  ssh.reply(['gateway', 'owner', 'get'], { stdout: `${JSON.stringify({ error: { code: 'not_found', message: 'the gateway holds no record for that fleet' } })}\n`, code: 1 });
+  ssh.reply(['archi-tmux'], {});
   if (o.agents === false) return;
   ssh.reply([UNIT_PATH, 'claude', '--version'], { stdout: '2.1.278 (Claude Code)\n' });
   ssh.reply([UNIT_PATH, 'claude', 'auth', 'status', '--json'], { stdout: '{"loggedIn":true}\n' });
@@ -157,8 +159,29 @@ describe('host add', () => {
       'mkdir -p', 'cat > "$1"', 'mkdir -p', 'PATH=/usr/bin:/bin:/', 'archi setup', 'rm -rf',
       'archi doctor', 'archi version',
       'claude --version', 'claude auth', 'codex --version', 'codex login',
-      'archi connection-info',
+      'archi connection-info', 'archi gateway', 'sh -c',
     ]);
+    expect(step('probe').at(-1)).toMatchObject({ status: 'ok', detail: 'trift answers on its own private fleet, its gateway authority answers, and tmux opens and closes a window there' });
+  });
+
+  it('fails the probe on a gateway authority that does not answer, or a tmux that cannot open a window, and registers nothing', async () => {
+    for (const [match, reply, said] of [
+      [['gateway', 'owner', 'get'], { stdout: `${JSON.stringify({ error: { code: 'disconnected', message: 'the gateway authority did not answer on /x/authority.sock' } })}\n`, code: 1 }, 'the gateway authority did not answer'],
+      [['archi-tmux'], { stderr: 'error connecting to /tmp/archi-probe (No such file or directory)\n', code: 1 }, 'tmux could not open a window'],
+    ] as const) {
+      ssh.clearReplies();
+      ssh.reply([...match], reply);
+      healthy();
+      const d = await daemon();
+      ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+      events = [];
+      const registry = MachineRegistry.load(path.join(work, 'config'));
+      const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
+      await d.close();
+      expect(out.result).toBe('actions');
+      expect(step('probe').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(said) });
+      expect(registry.get('trift')).toBeUndefined();
+    }
   });
 
   it('finds claude and codex on the PATH the companion\'s unit runs with, and holds each to its version floor and login', async () => {

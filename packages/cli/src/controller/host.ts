@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { FleetConfig, FleetId, MachineId, MachineRecord } from '@archipelago/protocol';
@@ -260,6 +261,21 @@ async function endToEnd(master: SshMaster, entry: MachineEntry, release?: string
   }
 }
 
+// a window on a server of its own, which the probe takes down again whatever happened
+const TMUX_PROBE = 'sock="${TMPDIR:-/tmp}/archi-probe-$$"; tmux -S "$sock" new-session -d -s archi-probe sleep 30 && tmux -S "$sock" list-windows -t archi-probe >/dev/null; r=$?; tmux -S "$sock" kill-server 2>/dev/null; rm -f "$sock"; exit $r';
+
+/** Add Machine's end-to-end probe: the daemon over its tunnel, the machine's own gateway authority, and a tmux window on the PATH its units run with. */
+async function addProbe(master: SshMaster, entry: MachineEntry, home: string): Promise<Outcome<void>> {
+  await endToEnd(master, entry);
+  const answer = await remoteOwner({ master, exe: archiExe(entry.record.archiBase), op: 'get', fleetId: crypto.randomUUID() }).catch((e: Error) => ({ error: { code: 'disconnected', message: e.message } }));
+  // any answer of the authority's own will do, as it knows no fleet this probe names
+  if ('error' in answer && (answer.error.code === 'disconnected' || answer.error.code === 'timeout')) throw new StepError(answer.error.message);
+  const PATH = unitPath({ release: path.posix.join(entry.record.archiBase, 'current'), homedir: home, prefix: entry.record.archiBase });
+  const r = await master.run(['env', shq(`PATH=${PATH}`), ...sh('archi-tmux', TMUX_PROBE)], { timeoutMs: PROBE_TIMEOUT });
+  if (r.code !== 0) throw new StepError(`tmux could not open a window there (exit ${r.code}): ${r.stderr.trim().slice(0, 200) || 'no output'}`);
+  return { value: undefined, detail: `${entry.record.name} answers on its own ${PRIVATE} fleet, its gateway authority answers, and tmux opens and closes a window there` };
+}
+
 async function companionFor(o: AddOptions, d: HostDeps, arch: string): Promise<Outcome<CompanionArchive & { allowUnsigned: boolean }>> {
   let archive = o.release;
   let from = 'the archive you named';
@@ -377,7 +393,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         name: o.name, ssh: o.ssh, platform: 'linux', arch, home,
         archiBase: remote.archiBase, gateway: false,
       };
-      await run.step('probe', () => endToEnd(master, { id: machine, record }));
+      await run.step('probe', () => addProbe(master, { id: machine, record }, home));
       await run.step('registry', () => {
         if (held) d.registry.remove(held.id);
         const entry = d.registry.add(record, machine);
