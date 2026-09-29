@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { z } from 'zod';
-import { FleetConfig, FleetId, Generation, HandoverEntityStatus, HandoverPhase, MachineId, Sha256, Term, TransactionId } from '@archipelago/protocol';
+import { FleetConfig, FleetId, Generation, HandoverPhase, MachineId, Sha256, Term, TransactionId } from '@archipelago/protocol';
 import type { Paths } from '../paths.js';
 import { DurableJson, cleanupDurableTemps, realStages, syncDir, type DurableOptions } from './durable.js';
 
@@ -26,7 +26,6 @@ export const SourceJournal = z.object({
   // foreground jobs the user chose to end, each written before its signal was sent
   terminated: z.array(Terminal.extend({ processes: z.array(z.string()) })).default([]),
   error: z.string().optional(),
-  progress: z.array(HandoverEntityStatus).optional(),
 });
 export type SourceJournal = z.infer<typeof SourceJournal>;
 

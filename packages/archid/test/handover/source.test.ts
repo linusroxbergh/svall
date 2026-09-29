@@ -913,7 +913,7 @@ describe('source abort', () => {
     expect(ownerFile(b.paths)).toEqual({ fleetId, generation: 4, ownerMachineId: me });
     expect(fs.existsSync(b.paths.manifest(TX))).toBe(false);
     expect(b.ownership.writable()).toBe(true);
-    expect(b.handover.status()).toEqual({ characters: [], roots: [] });
+    expect(b.handover.status()).toEqual({});
 
     // again: nothing is left to abort, and nothing is done
     expect(await b.handover.abort({ transactionId: TX, generation: 4 })).toEqual({});

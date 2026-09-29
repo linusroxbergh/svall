@@ -58,10 +58,9 @@ describe('journal schemas', () => {
     expect(() => SourceJournal.parse({ ...source(), stoppedTerminals: [{ characterId: 'c_1', term: 1 }] })).toThrow();
   });
 
-  it('keeps stopped terminals and progress on the source', () => {
-    const j = source({ progress: [{ id: 'c_1', phase: 'transfer', done: 1, total: 2 }], error: 'rsync died' });
+  it('keeps stopped terminals on the source', () => {
+    const j = source({ error: 'rsync died' });
     expect(j.stoppedTerminals).toEqual([{ characterId: 'c_1', term: 2 }]);
-    expect(j.progress?.[0].done).toBe(1);
     expect(j.error).toBe('rsync died');
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Blocker, emptyState, FleetConfig, FleetId, GitGraph, HANDOVER_PHASES, HandoverChoices, HandoverEntity, HandoverEntityStatus, HandoverError, HandoverPhase, handoverError, MachineId, MachineRecord, ManifestSummary, NodeConfig, OwnerRecord, ReceivedGraph, TRANSFER_SCHEMA_VERSION, TransactionRecord, TransferFile, TransferManifestV1, Warning } from '../src/index.js';
+import { Blocker, emptyState, FleetConfig, FleetId, GitGraph, HANDOVER_PHASES, HandoverChoices, HandoverEntity, HandoverError, HandoverPhase, handoverError, MachineId, MachineRecord, ManifestSummary, NodeConfig, OwnerRecord, ReceivedGraph, TRANSFER_SCHEMA_VERSION, TransactionRecord, TransferFile, TransferManifestV1, Warning } from '../src/index.js';
 
 const UUID_A = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
 const UUID_B = '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
@@ -153,11 +153,6 @@ describe('handover vocabulary', () => {
     expect(HandoverChoices.parse({ interruptAfterMs: 30_000, terminateShells: true, archiveRoots: ['r_1'] }).terminateShells).toBe(true);
     expect(HandoverChoices.parse({ terminateShells: ['c_1', 'c_2'] }).terminateShells).toEqual(['c_1', 'c_2']);
     expect(() => HandoverChoices.parse({ interruptAfterMs: -1 })).toThrow();
-  });
-  it('reports progress per entity', () => {
-    expect(HandoverEntityStatus.parse({ id: 'r_1', phase: 'transfer', done: 3, total: 9 }).total).toBe(9);
-    expect(HandoverEntityStatus.parse({ id: 'c_1', phase: 'aborted', error: 'tmux refused' }).error).toBe('tmux refused');
-    expect(() => HandoverEntityStatus.parse({ id: 'c_1', phase: 'preparing' })).toThrow();
   });
 });
 

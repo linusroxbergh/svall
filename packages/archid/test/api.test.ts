@@ -228,7 +228,7 @@ runIf('API', () => {
     });
     const own = await c.call('ownership.get', {}) as { result: unknown };
     expect(OwnershipInfo.parse(own.result)).toEqual({ fleetId: config.id, generation: 0, ownerMachineId: machineId(), frozen: false });
-    expect(await c.call('handover.status', {})).toMatchObject({ result: { characters: [], roots: [] } });
+    expect(((await c.call('handover.status', {})) as { result: unknown }).result).toEqual({});
   });
 
   it('refuses the handover phases it has not implemented rather than answering as if it had', async () => {

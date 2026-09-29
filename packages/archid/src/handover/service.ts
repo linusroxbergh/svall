@@ -1,12 +1,12 @@
 import {
   handoverError,
-  type AgentAdapter, type Event, type HandoverEntityStatus, type HandoverPhase, type MachineId, type OwnerRecord, type OwnershipInfo, type ParsedParams, type Result,
+  type AgentAdapter, type Event, type HandoverPhase, type MachineId, type OwnerRecord, type OwnershipInfo, type ParsedParams, type Result,
 } from '@archipelago/protocol';
 import type { Fleet } from '../fleet.js';
 import { AuthorityFailure } from '../gateway/authority.js';
 import type { OwnershipState } from '../ownership/state.js';
 import { runGit } from '../links/git.js';
-import { DestinationHandover, characterResults, type DestinationDeps } from './destination.js';
+import { DestinationHandover, type DestinationDeps } from './destination.js';
 import { unreached } from './git-import.js';
 import { handoverGeneration, type HandoverJournal, type JournalFile, type JournalState } from './journal.js';
 import { agentAdapters, type AgentProber } from './sessions/registry.js';
@@ -76,8 +76,8 @@ export class HandoverService {
 
   status(): Result<'handover.status'> {
     const j = this.open();
-    if (this.state.kind === 'quarantined') return { characters: [], roots: [], quarantined: this.state.file };
-    if (!j) return { characters: [], roots: [] };
+    if (this.state.kind === 'quarantined') return { quarantined: this.state.file };
+    if (!j) return {};
     const tx = this.deps.ownership.record().transaction;
     return {
       transaction: {
@@ -85,8 +85,6 @@ export class HandoverService {
         // the journal records when it was last written; only the gateway's record knows when it began
         startedAt: tx?.id === j.transactionId ? tx.startedAt : j.updatedAt,
       },
-      characters: characterStatus(j),
-      roots: j.role === 'source' ? j.progress ?? [] : [],
     };
   }
 
@@ -297,12 +295,4 @@ export class HandoverService {
   private emit(e: Event): void {
     for (const fn of this.listeners) fn(e);
   }
-}
-
-/** What each journal knows about its characters: the ones the source stopped, and how the destination revived them. */
-function characterStatus(j: HandoverJournal): HandoverEntityStatus[] {
-  if (j.role === 'source') {
-    return [...new Set(j.stoppedTerminals.map((t) => t.characterId))].map((id) => ({ id, phase: j.phase }));
-  }
-  return characterResults(j.activation ?? []).map((a) => ({ id: a.id, phase: j.phase, ...(a.error ? { error: a.error } : {}) }));
 }

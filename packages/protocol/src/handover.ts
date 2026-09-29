@@ -314,16 +314,6 @@ export type RootProbe = z.infer<typeof RootProbe>;
 export const LandedRoot = z.object({ id: z.string().min(1), files: z.array(TransferFile) });
 export type LandedRoot = z.infer<typeof LandedRoot>;
 
-/** How far one character or root has come, and why it stopped. */
-export const HandoverEntityStatus = z.object({
-  id: z.string().min(1),
-  phase: HandoverPhase,
-  done: z.number().int().nonnegative().optional(),
-  total: z.number().int().nonnegative().optional(),
-  error: z.string().optional(),
-});
-export type HandoverEntityStatus = z.infer<typeof HandoverEntityStatus>;
-
 /** The open transaction as the journals see it: the gateway's record at the controller's phase. */
 export const HandoverTransactionStatus = TransactionRecord.extend({ phase: HandoverPhase });
 export type HandoverTransactionStatus = z.infer<typeof HandoverTransactionStatus>;

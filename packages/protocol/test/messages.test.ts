@@ -293,15 +293,12 @@ describe('ownership and handover methods', () => {
     expect(methods['handover.abort'].result.parse({})).toEqual({});
   });
 
-  it('rebuilds status from the journals, per character and per root', () => {
-    const status = {
-      transaction: { id: 't1', fromMachineId: UUID_B, toMachineId: UUID_A, phase: 'transfer', startedAt: 17 },
-      characters: [{ id: 'c_1', phase: 'freeze' }],
-      roots: [{ id: 'r_1', phase: 'transfer', done: 3, total: 9 }],
-    };
+  it('rebuilds status from the journals: the open transaction, or where a journal it could not read went', () => {
+    const status = { transaction: { id: 't1', fromMachineId: UUID_B, toMachineId: UUID_A, phase: 'transfer', startedAt: 17 } };
     expect(methods['handover.status'].result.parse(status)).toEqual(status);
-    expect(methods['handover.status'].result.parse({ characters: [], roots: [] }).transaction).toBeUndefined();
-    expect(() => methods['handover.status'].result.parse({ ...status, roots: [{ id: 'r_1', phase: 'rsyncing' }] })).toThrow();
+    expect(methods['handover.status'].result.parse({ characters: [], roots: [] })).toEqual({});
+    expect(methods['handover.status'].result.parse({ quarantined: '/h/journal.json.broken-1' })).toEqual({ quarantined: '/h/journal.json.broken-1' });
+    expect(() => methods['handover.status'].result.parse({ transaction: { ...status.transaction, phase: 'rsyncing' } })).toThrow();
   });
 
   it('gives every call that hashes, rests or starts a fleet a budget of its own, and nothing else', () => {

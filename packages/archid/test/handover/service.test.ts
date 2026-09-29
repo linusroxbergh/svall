@@ -45,7 +45,7 @@ const dataOf = (e: unknown): Record<string, unknown> => (e as { data?: Record<st
 const source = (over: Partial<SourceJournal> = {}): SourceJournal => SourceJournal.parse({
   role: 'source', transactionId: 'tx-1', generation: 4, fleetId, fromMachineId: me, toMachineId: other,
   phase: 'transfer', stoppedTerminals: [{ characterId: 'c_1' }, { characterId: 'c_1', term: 2 }],
-  progress: [{ id: 'repo', phase: 'transfer', done: 1, total: 2 }], updatedAt: 10, ...over,
+  updatedAt: 10, ...over,
 });
 
 const destination = (over: Partial<DestinationJournal> = {}): DestinationJournal => DestinationJournal.parse({
@@ -129,8 +129,8 @@ describe('startupMode', () => {
   it('says in its status where a journal it could not read was moved, so no one takes it for a finished handover', () => {
     const b = boot({ record: { generation: 5, ownerMachineId: me }, journal: '{ not json' });
     const [moved] = fs.readdirSync(b.paths.handoverDir).filter((n) => n.startsWith('journal.json.broken-'));
-    expect(b.handover.status()).toEqual({ characters: [], roots: [], quarantined: path.join(b.paths.handoverDir, moved) });
-    expect(boot({ record: { generation: 5, ownerMachineId: me } }).handover.status()).toEqual({ characters: [], roots: [] });
+    expect(b.handover.status()).toEqual({ quarantined: path.join(b.paths.handoverDir, moved) });
+    expect(boot({ record: { generation: 5, ownerMachineId: me } }).handover.status()).toEqual({});
   });
 
   it('keeps a gatewayed fleet read-only across restarts when its journal is unreadable', async () => {
@@ -162,15 +162,13 @@ describe('startupMode', () => {
 describe('HandoverService', () => {
   it('reports no transaction when there is no journal', () => {
     const { handover } = boot();
-    expect(handover.status()).toEqual({ characters: [], roots: [] });
+    expect(handover.status()).toEqual({});
   });
 
   it('reports the source journal it holds', () => {
     const { handover } = boot({ record: { generation: 4, ownerMachineId: me }, journal: source() });
     const status = handover.status();
-    expect(status.transaction).toMatchObject({ id: 'tx-1', fromMachineId: me, toMachineId: other, phase: 'transfer' });
-    expect(status.characters).toEqual([{ id: 'c_1', phase: 'transfer' }]);
-    expect(status.roots).toEqual([{ id: 'repo', phase: 'transfer', done: 1, total: 2 }]);
+    expect(status).toEqual({ transaction: expect.objectContaining({ id: 'tx-1', fromMachineId: me, toMachineId: other, phase: 'transfer' }) });
   });
 
   it('reports the destination journal it holds', () => {
@@ -179,9 +177,7 @@ describe('HandoverService', () => {
       journal: destination({ phase: 'activate', activation: [{ characterId: 'c_1', ok: false, error: 'no tmux' }] }),
     });
     const status = handover.status();
-    expect(status.transaction).toMatchObject({ id: 'tx-1', phase: 'activate' });
-    expect(status.characters).toEqual([{ id: 'c_1', phase: 'activate', error: 'no tmux' }]);
-    expect(status.roots).toEqual([]);
+    expect(status).toEqual({ transaction: expect.objectContaining({ id: 'tx-1', phase: 'activate' }) });
   });
 
   it('refuses the phases the source runs rather than answering as if it had run them', async () => {

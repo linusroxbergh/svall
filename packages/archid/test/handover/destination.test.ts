@@ -846,11 +846,11 @@ describe('destination activate', () => {
 
     // another session starting there is not the one that was carried
     d.crew.started('c_bo', undefined, '99999999-9999-4999-8999-999999999999');
-    expect(d.handover.status().characters.find((c) => c.id === 'c_bo')!.error).toBe(byId.c_bo.error);
+    expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo')!.error).toBe(byId.c_bo.error);
     expect(s.store.state.characters.c_bo.resumeError).toBe(byId.c_bo.error);
     // the user revives bo, and the carried session starts
     d.crew.started('c_bo', undefined, SID);
-    expect(d.handover.status().characters).toEqual(expect.arrayContaining([{ id: 'c_bo', phase: 'activate' }]));
+    expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo')).toEqual({ characterId: 'c_bo', ok: true, sessionId: SID });
     expect(s.store.state.characters.c_bo.resumeError).toBeUndefined();
   });
 
@@ -974,7 +974,6 @@ describe('destination activate', () => {
     await settle();
     expect(journalOf(s.paths).activation!.find((a) => a.characterId === 'c_bo')).toEqual(row);
     expect(d.crew.carried('c_bo')).toBe(false);
-    expect(d.handover.status().characters.find((c) => c.id === 'c_bo')!.error).toBeUndefined();
   });
 
   it('counts a resumed Claude in a folder this machine trusts up after ten silent seconds in its pane, with a notice that it may wait at a prompt, and watches it', async () => {

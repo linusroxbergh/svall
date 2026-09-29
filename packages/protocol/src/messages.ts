@@ -1,7 +1,7 @@
 import type { Operation } from 'fast-json-patch';
 import { z } from 'zod';
 import {
-  Blocker, Generation, HandoverChoices, HandoverEntityKind, HandoverEntityStatus, HandoverMachines, HandoverPhase, HandoverTransactionStatus, LandedRoot, MachineId,
+  Blocker, Generation, HandoverChoices, HandoverEntityKind, HandoverMachines, HandoverPhase, HandoverTransactionStatus, LandedRoot, MachineId,
   CommitAt, KeptCommit, ManifestSummary, OwnerRecord, OwnershipInfo, MachinePath, ReceivedGraph, ReplicaCheck, ReplicaRootSpec, ResumeFolder, RootClaim, RootProbe, Sha256, SystemInfo, TransactionId, TransferManifestV1,
   Warning,
 } from './handover.js';
@@ -305,7 +305,7 @@ export const methods = {
   'handover.status': {
     params: z.object({}),
     result: z.object({
-      transaction: HandoverTransactionStatus.optional(), characters: z.array(HandoverEntityStatus), roots: z.array(HandoverEntityStatus), quarantined: z.string().optional(),
+      transaction: HandoverTransactionStatus.optional(), quarantined: z.string().optional(),
     }),
   },
 } as const;
