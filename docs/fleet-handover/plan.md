@@ -1419,15 +1419,15 @@ handover clears obsolete ports rather than forwarding dead processes.
 
 **Steps:**
 
-- [ ] Document supported hosts, Add Machine prerequisites including the same home path,
+- [x] Document supported hosts, Add Machine prerequisites including the same home path,
   data/secrets transferred, agent-version support and process restart semantics.
-- [ ] Document every blocker/error code with safe recovery, including destination divergence,
+- [x] Document every blocker/error code with safe recovery, including destination divergence,
   pre-commit abort, post-commit activation retry and force-owner disaster recovery.
-- [ ] Add migration notes for `config.json`, source-checkout CLI shims and named fleets; prove
+- [x] Add migration notes for `config.json`, source-checkout CLI shims and named fleets; prove
   downgrade behavior or state clearly when downgrade requires restoring backup.
-- [ ] Expand SMOKE with provisioning, both handover directions, worktrees, agent resume, foreground
+- [x] Expand SMOKE with provisioning, both handover directions, worktrees, agent resume, foreground
   blocker and network failure.
-- [ ] Run the complete manual acceptance from the spec on release artifacts, not the source checkout.
+- [x] Run the complete manual acceptance from the spec on release artifacts, not the source checkout.
 - [ ] Remove `handover.enabled` only after M0–M3b and M6 evidence is attached to the release; keep a
   remote kill switch only if it does not make an owner dependent on a cloud service.
 

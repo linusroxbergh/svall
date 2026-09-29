@@ -54,3 +54,34 @@ Counts: Critical 0, Important 1, Minor 4.
 In the 2c1e8cc3 copy: `pnpm typecheck` clean; `vitest --project cli --project protocol --project @archipelago/desktop-web`
 2366 passed, 18 skipped, 1 failed (cli.test "prints the commit it runs from for --version", which needs a `.git` the
 archive copy lacks). 30 fix-removal mutations: all caught.
+
+## Re-review of fix D
+
+Scope: `final-fix-D.diff` (b821e1e3, 53eecd70, 55991e11). Mutations in a `git archive d0602dcc` copy.
+
+| Item | Verdict | Evidence |
+| --- | --- | --- |
+| D1 | ADDRESSED | `stranded(homes, prefix, released)` exempts only `<id>.json` gateway records named by `--force-fleet`. Open journals and fleets run there for their gateway still refuse whatever is released. `host remove` passes only the ids of the fleets its `fleet` step found naming the machine, and none when there are none. A far exit 3 (`UninstallRefused`) fails the step with the far reason and keeps the route and fleet.json. Another Mac's fleet is covered in each case: its gateway record there, it running there through any gateway, or its handover journal there all still refuse. Only a by-hand `archi uninstall --force` passes them. Eight mutations were each caught: released ignored, every record released, journal skipped when released, plain `Error`, `--force` in the argv, ids of every local fleet, no exit-3 mapping, no CLI catch. The four doc places match the code. |
+| D2 | ADDRESSED | `archi <name>-fleet` reaches the root action, which writes the missing agent (launch.ts:55); the setup.test expectation pins the text. |
+| D3 | ADDRESSED | The three headers name the portability tests that import them; the tests exist and pass. |
+
+Fixer's concerns:
+- **Two Macs sharing a gateway are both refused.** This is right. Neither Mac can see the other's fleet, and the
+  documented way out (the other Mac `--forget`s it, then `archi uninstall --force` on the machine) needs an explicit
+  by-hand force.
+- **An older far `archi` rejects `--force-fleet`.** This is acceptable. It exits 1 and reads as "could not be reached", but the detail
+  carries "unknown option", and the offered `--forget` changes nothing on the far machine. `host upgrade` first is the
+  fix a reader has to infer.
+
+New breakage: Critical 0, Important 0, Minor 2.
+- The refusal's action assumes another Mac's fleet ("on each other Mac whose fleet it names…", then
+  `archi uninstall --force`). A refusal that comes from this Mac's own fleet, where the far says it runs the fleet for
+  its gateway because this Mac's cache is stale, gets the same advice. Forcing then would stop that fleet where it runs.
+  The far reason in the detail does say `archi handover local`.
+- The detail strips `archi: ` only at the very start of stderr, so login-shell noise ahead of it keeps the prefix.
+
+Outside the diff, and not new: D2's advice moves the home but leaves the old name's launchd agent (KeepAlive) running.
+When that daemon restarts, main.ts:96 makes the old home again.
+
+Verification (d0602dcc copy): `pnpm typecheck` clean; `--project cli` 1504 passed, 18 skipped, 1 failed (the same
+`--version` test needing `.git`); archid uninstall, setup and the three portability tests 98/98.
