@@ -134,7 +134,7 @@ async function bundle(stage) {
 }
 
 /** The versions every machine in a handover has to agree on, read from the protocol rather than retyped. */
-async function schemaVersions(work) {
+export async function schemaVersions(work) {
   const outfile = path.join(work, 'schema-versions.mjs');
   await build({
     absWorkingDir: REPO,
@@ -156,7 +156,6 @@ async function schemaVersions(work) {
     stateSchema: v.emptyState().version,
     transferSchema: v.TRANSFER_SCHEMA_VERSION,
     authoritySchema: v.AUTHORITY_SCHEMA_VERSION,
-    agentAdapters: [],
   };
 }
 
