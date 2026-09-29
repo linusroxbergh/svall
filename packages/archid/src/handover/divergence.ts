@@ -93,15 +93,19 @@ export async function proveReplica(
   return { divergence: compareReplica(kept, files, scan?.problems ?? [], PREVIEW, kind === 'gitdir'), files };
 }
 
-/** The blocker a divergent root raises: what changed, and the ways on that lose nothing. */
-export function divergenceBlocker(root: { id: string }, at: string, d: Divergence): Blocker {
-  const kinds = (['added', 'removed', 'changed', 'unchecked'] as const).filter((k) => d[k].count > 0).map((k) => {
+/** What differs in the root at `at`, kind by kind, with the paths the report names; the root itself shows by its own name. */
+export function describeDivergence(at: string, d: Divergence): string {
+  return (['added', 'removed', 'changed', 'unchecked'] as const).filter((k) => d[k].count > 0).map((k) => {
     const shown = d[k].preview.map((p) => p || path.basename(at));
     return `${d[k].count} ${k} (${shown.join(', ')}${d[k].count > shown.length ? ', …' : ''})`;
-  });
+  }).join('; ');
+}
+
+/** The blocker a divergent root raises: what changed, and the ways on that lose nothing. */
+export function divergenceBlocker(root: { id: string }, at: string, d: Divergence): Blocker {
   return {
     code: 'destination_diverged',
-    message: `${at} changed while this machine did not own the fleet: ${kinds.join('; ')}. Recover the changes by hand, or archive it to continue`,
+    message: `${at} changed while this machine did not own the fleet: ${describeDivergence(at, d)}. Recover the changes by hand, or archive it to continue`,
     entity: { kind: 'root', id: root.id },
   };
 }

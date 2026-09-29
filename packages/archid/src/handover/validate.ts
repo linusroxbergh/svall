@@ -6,7 +6,7 @@ import {
 } from '@archipelago/protocol';
 import { portableRevive } from '../dormancy.js';
 import { markDormant, markSlotDormant } from '../reconcile.js';
-import { diverged, proveReplica, type Divergence } from './divergence.js';
+import { describeDivergence, diverged, proveReplica } from './divergence.js';
 import type { ScanFs } from './manifest.js';
 import { exportSnapshot, holds, realPath } from './portable-path.js';
 import { absoluteProblem, filesProblem } from './replicas.js';
@@ -104,18 +104,13 @@ export function sessionProblems(m: TransferManifestV1, homes: Partial<Record<Age
   return blockers;
 }
 
-const counted = (d: Divergence): string => (['added', 'removed', 'changed', 'unchecked'] as const)
-  .filter((k) => d[k].count > 0)
-  .map((k) => `${d[k].count} ${k} (${d[k].preview.join(', ')}${d[k].count > d[k].preview.length ? ', …' : ''})`)
-  .join('; ');
-
 /** Whether a root holds what the transfer verified in it, read as its source was: excludes left out, a Git index by what it stages. */
 export async function landedProblem(
   root: TransferRoot, at: string, verified: readonly TransferFile[], excludes: readonly string[], sfs?: ScanFs, ignore?: (relative: string) => boolean,
 ): Promise<Blocker | undefined> {
   const { divergence } = await proveReplica(at, [verified], excludes, sfs, root.kind, ignore);
   if (!diverged(divergence)) return undefined;
-  return { code: 'destination_diverged', message: `${at} no longer holds what the transfer verified: ${counted(divergence)}`, entity: { kind: 'root', id: root.id } };
+  return { code: 'destination_diverged', message: `${at} no longer holds what the transfer verified: ${describeDivergence(at, divergence)}`, entity: { kind: 'root', id: root.id } };
 }
 
 export type Imported = { state: FleetState; fleet: FleetConfig };
