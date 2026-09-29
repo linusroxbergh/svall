@@ -39,6 +39,8 @@ the code does. Amend the spec to describe it, briefly, in the section each belon
   (`ledger/task-28-29-contract.md` is a ledger file: leave it, but the user-facing docs must say `<ms>ms`).
 - From A's report: there are now 94 failpoints; `errors.md`'s `agent_unsettled` row also covers an idle agent still
   running background commands.
+- From the C1 re-review: don't repeat the C1 report's claim about what `BatchMode=yes` does for unknown host keys
+  (`final-fix-C1-review.md`, minor 4); pruning can remove a release a `--no-launchctl` process still runs from.
 - The known-limitations list stays accurate (fold in anything the fixes changed).
 - `errors.md`: every row's recovery still works after the fixes (its test checks codes exist, not that the prose is
   right).
