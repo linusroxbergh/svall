@@ -9,7 +9,7 @@ import { resolvePaths } from '../src/paths.js';
 import { Store } from '../src/store.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { Tmux } from '../src/tmux/tmux.js';
-import { cleanHomes, hasTmux, makeHome } from './helpers.js';
+import { cleanHomes, hasTmux, makeHome, ownerOf } from './helpers.js';
 
 const runIf = hasTmux() ? describe : describe.skip;
 
@@ -27,7 +27,8 @@ runIf('Fleet layout', () => {
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
-    const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 150 });
+    const ownership = ownerOf(home, config.id);
+    const fleet = new Fleet({ store, tmux, paths, config, ownership, log: silentLogger, pollMs: 150 });
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
@@ -201,6 +202,15 @@ runIf('Fleet layout', () => {
     expect(upd.instructions).toBe('in Spanish');
     expect(upd.context[0].kind).toBe('folder');
     expect(fleet.brief(c.id)).toContain('Character instructions: in Spanish');
+  });
+
+  it('char.update keeps a character on this machine, and lets it go again', async () => {
+    const { fleet } = await boot();
+    const a = fleet.createIsland({ name: 'a' });
+    const c = await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
+    expect(fleet.updateCharacter(c.id, { keepHere: true }).keepHere).toBe(true);
+    expect(fleet.updateCharacter(c.id, { note: 'x' }).keepHere).toBe(true);
+    expect(fleet.updateCharacter(c.id, { keepHere: false }).keepHere).toBeUndefined();
   });
 
   it('a move without a cell re-places a character on the island it already stands on', async () => {

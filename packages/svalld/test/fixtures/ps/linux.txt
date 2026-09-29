@@ -1,0 +1,41 @@
+      1       0       1      -1 Ss   /sbin/init splash
+      2       0       0      -1 S    [kthreadd]
+      4       2       0      -1 I<   [kworker/R-rcu_g]
+      9       2       0      -1 I<   [kworker/0:0H-events_highpri]
+    812       1     812      -1 Ssl  /usr/sbin/rsyslogd -n -iNONE
+3526505       1 3526505      -1 Ss   tmux -S /home/ada/.svall/tmux.sock -f /home/ada/.svall/tmux.conf new-session -d -s fleet -n _keep sleep 2147483647
+3526504 3526505 3526504 3526504 Ss+  sleep 2147483647
+3526506 3526505 3526506 3526506 Ss+  -bash
+3526520 3526505 3526520 3527276 Ss   -bash
+3527276 3526520 3527276 3527276 S+   sleep 300
+3527278 3526520 3527276 3527276 S+   cat
+3526538 3526505 3526538 3526538 Ss+  -bash
+3527279 3526538 3527279 3526538 S    sleep 301
+3530001 3526505 3530001 3530010 Ss   -bash
+3530010 3530001 3530010 3530010 Sl+  claude --resume 3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d
+3530011 3530010 3530010 3530010 Sl+  /home/ada/mcp/.venv/bin/python /home/ada/mcp/server.py
+3530012 3530010 3530010 3530010 Sl+  npm exec @playwright/mcp@latest  
+3530013 3530012 3530010 3530010 Sl+  node /home/ada/.npm/_npx/9833c18b2d85bc59/node_modules/.bin/playwright-mcp
+3530020 3530013 3530020      -1 Ssl  /home/ada/.cache/ms-playwright/chromium-1187/chrome-linux/chrome --remote-debugging-pipe
+3530030 3530010 3530030      -1 Ss   /bin/bash -c source /home/ada/.claude/shell-snapshots/snapshot-bash-1790100862789-r2p0hd.sh 2>/dev/null || true && eval 'npm test' < /dev/null && pwd -P >| /tmp/claude-5e1f-cwd
+3530031 3530030 3530030      -1 S    npm test
+3530040 3530010 3530010 3530010 Sl+  claude mcp serve
+3530041 3530010 3530041      -1 Ssl  /home/ada/.local/share/svall/current/node/bin/node /home/ada/.svall/hooks/claude-status.mjs ccstatusline
+3530042 3530010 3530042      -1 Ss   /bin/sh -c [ -z "$SVALL_CHAR_ID" ] || { n='/home/ada/.local/share/svall/current/node/bin/node'; [ -x "$n" ] || n=node; "$n" '/home/ada/.svall/hooks/agent-hook.mjs' claude; }
+3530050 3530010 3530050      -1 Ss   /bin/bash -c source /home/ada/.claude/shell-snapshots/snapshot-bash-1790100862789-r2p0hd.sh 2>/dev/null || true && eval 'node --watch packages/svalld/hooks/agent-hook.mjs --port 0' < /dev/null && pwd -P >| /tmp/claude-5e1f-cwd
+3530051 3530010 3530051      -1 Ss   /bin/bash -c source /home/ada/.claude/shell-snapshots/snapshot-bash-1790100862789-r2p0hd.sh 2>/dev/null || true && eval 'node ~/tools/claude-status.mjs --serve' < /dev/null && pwd -P >| /tmp/claude-5e1f-cwd
+3540001 3526505 3540001 3540001 Ss+  vim notes.md
+3550000 3526505 3550000 3550001 Ss   -bash
+3550001 3550000 3550001 3550001 Z+   [sleep] <defunct>
+3564160 3564158 3564157      -1 Z    [sleep] <defunct>
+1519551 3526505 1519551 1519855 Ss   -bash
+1519855 1519551 1519855 1519855 Sl+  codex
+3560001 3526505 3560001 3560010 Ss   -bash
+3560010 3560001 3560010 3560010 Sl+  node /home/ada/.local/bin/codex
+3560011 3560010 3560010 3560010 Sl+  /home/ada/.local/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex/codex
+3560012 3560011 3560012 3560010 Sl   node /home/ada/mcp/server.js
+3560020 3560011 3560020      -1 Ss   /bin/bash -lc npm test
+3580000 3526505 3580000 3580010 Ss   -bash
+3580010 3580000 3580010 3580010 Sl+  node /usr/local/bin/claude
+3580011 3580010 3580010 3580010 Sl+  node /usr/local/bin/claude mcp serve
+3580020 3580010 3580020      -1 Ss   /bin/bash -c source /home/ada/.claude/shell-snapshots/snapshot-bash-1790100862789-r2p0hd.sh 2>/dev/null || true && eval 'cargo build' < /dev/null && pwd -P >| /tmp/claude-5e1f-cwd

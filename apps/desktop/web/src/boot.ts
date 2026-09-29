@@ -28,6 +28,8 @@ function createApp(): AppContext {
   let repoWatch: RepoWatch | undefined;
   let manager: TerminalManager | undefined;
   let browser: BrowserManager | undefined;
+  // a handover the app was closed during is found again once per page
+  let followedHandover = false;
   const bridge = createBridge();
   const query = new URLSearchParams(window.location.search);
   const initialView = (['map', 'board'] as const).find((v) => v === query.get('view'));
@@ -82,12 +84,28 @@ function createApp(): AppContext {
     bridge.onMessage((m) => {
       if (m.type === 'app.active') { store.getState().setActive(m.active); return; }
       if (m.type === 'ghostty.configErrors') { store.getState().setConfigErrors(m.errors); return; }
-      if (m.type === 'shell.info') { store.getState().setShell({ home: m.home, log: m.log, op: m.op, ghosttyKeys: m.ghosttyKeys }); return; }
+      if (m.type === 'shell.info') {
+        store.getState().setShell({ home: m.home, log: m.log, op: m.op, ghosttyKeys: m.ghosttyKeys, handoverEnabled: m.handoverEnabled, gateway: m.gateway });
+        if (m.handoverEnabled && !followedHandover) {
+          followedHandover = true;
+          store.getState().handoverFollow();
+          bridge.send({ type: 'handover.attach' });
+        }
+        return;
+      }
       if (m.type === 'update.available') { store.getState().setUpdate(m.version || undefined); return; }
       // the menu's Open Fleet…, which works whatever chord the action is on and before svalld first answers
       if (m.type === 'fleets') { openFleetPicker(store); return; }
       // the toast sits below a dialog, and this window is where the user stays
       if (m.type === 'openFleet.failed') { store.getState().setFleetPicker(undefined); store.getState().showToast(`Could not open ${m.home}: ${m.reason}`); return; }
+      if (m.type === 'handover.event') { store.getState().handoverEvent(m.event); return; }
+      if (m.type === 'handover.replay') { store.getState().handoverReplay(m.events); return; }
+      if (m.type === 'handover.exit') { store.getState().handoverExit(m.code, m.error); return; }
+      if (m.type === 'connection.state') { store.getState().setConnectionState({ state: m.state, owner: m.owner, kind: m.kind, message: m.message }); return; }
+      // something only the machine the fleet runs on can do, which this Mac cannot
+      if (m.type === 'notice') { store.getState().showToast(m.text); return; }
+      if (m.type === 'host.step') { store.getState().hostStep(m.op, m.event); return; }
+      if (m.type === 'host.done') { store.getState().hostDone(m.op, m.code); return; }
       if (m.type !== 'connection') return;
       if (!m.port) {
         portlessSince ??= Date.now();
@@ -96,7 +114,8 @@ function createApp(): AppContext {
         return;
       }
       portlessSince = undefined;
-      if (api) api.setEndpoint(endpointOf(m));
+      // a fleet that has just moved is read again wherever it runs now, even from the daemon the page already reaches
+      if (api) api.setEndpoint(endpointOf(m), !!store.getState().handover?.awaitingOwner);
       else start(m);
     });
     bridge.send({ type: 'connection' });

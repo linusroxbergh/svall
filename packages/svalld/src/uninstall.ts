@@ -4,7 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { unmergeHooks, unmergeStatusLine } from './agent-hooks.js';
-import type { CodexPaths } from './codex/install.js';
+import { codexPaths, type CodexPaths } from './codex/install.js';
+import { gatewayPaths } from './gateway/authority.js';
+import { SystemdError, daemonReload, disableUnit, realRun, type Run } from './linux/service.js';
+import { agentHomesEnv, ourUnits } from './linux/setup.js';
+import { configDir, machineId } from './machine.js';
 import { fleetOrigin, portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
 import { resolvePaths } from './paths.js';
 import { BUNDLE_ID, homePrefix, isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome, SHIM } from './profile.js';
@@ -14,6 +18,7 @@ import { resolveTmux } from './tmux/tmux.js';
 
 const exec = promisify(execFile);
 const SHIM_MARKS = ['packages/cli/src/main.ts', 'Contents/Resources/runtime/svall.mjs'];
+const RELEASE_DIR = path.join('share', 'svall');
 
 const isAgentPlist = (f: string): boolean => f.startsWith(`${LAUNCHD_LABEL}.`) && f.endsWith('.plist');
 
@@ -88,25 +93,117 @@ export async function quitApp(homes: string[], app: AppQuit, command: string, sk
   return open.length ? ['quit Svall'] : [];
 }
 
+// the units this machine's setup wrote, stopped before their files go
+export async function removeUnits(o: { unitDir: string; systemctl: boolean; run: Run }): Promise<string[]> {
+  const done: string[] = [];
+  const units = ourUnits(o.unitDir);
+  for (const unit of units) {
+    // a daemon that would not stop keeps running without its unit, so say so rather than claim it went
+    if (o.systemctl) await disableUnit(o.run, unit).catch((e: SystemdError) => { done.push(`could not stop ${unit}: ${e.message}`); });
+    fs.rmSync(path.join(o.unitDir, unit), { force: true });
+    done.push(`removed ${path.join(o.unitDir, unit)}`);
+  }
+  if (units.length && o.systemctl) await daemonReload(o.run).catch(() => {});
+  return done;
+}
+
+// the releases setup installed, the companions a controller fetched and the units' logs; the gateway's
+// ownership records under the same prefix stay, as fleet data does
+function removeReleases(prefix: string): string[] {
+  const done: string[] = [];
+  for (const name of ['releases', 'current', 'companions', 'log']) {
+    const p = path.join(prefix, name);
+    if (!fs.lstatSync(p, { throwIfNoEntry: false })) continue;
+    fs.rmSync(p, { recursive: true, force: true });
+    done.push(`removed ${p}`);
+  }
+  return done;
+}
+
+// only a shim of ours: one pointing into an installed release, or one that runs a checkout's or the app's CLI
+function removeShims(shimDir: string): string[] {
+  const done: string[] = [];
+  for (const name of shimNames(shimDir)) {
+    const shim = path.join(shimDir, name);
+    const link = fs.lstatSync(shim, { throwIfNoEntry: false })?.isSymbolicLink() ? fs.readlinkSync(shim) : undefined;
+    const text = readOrUndefined(shim);
+    if (!(link?.includes(RELEASE_DIR) || (text && SHIM_MARKS.some((m) => text.includes(m))))) continue;
+    fs.rmSync(shim, { force: true });
+    done.push(`removed ${shim}`);
+  }
+  return done;
+}
+
+// each file once, however many linked folders lead to it; the file itself stays unresolved, so a hooks file that is
+// a link is written, never removed
+const once = (files: string[]): string[] => {
+  const real = (file: string): string => {
+    try { return path.join(fs.realpathSync(path.dirname(file)), path.basename(file)); } catch { return file; }
+  };
+  return files.filter((file, i) => files.findIndex((f) => real(f) === real(file)) === i);
+};
+
+const readJson = (file: string): Record<string, unknown> | undefined => {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return undefined; }
+};
+
+/**
+ * What stopping this machine's fleets would strand: a handover open in a fleet home, a fleet run here for its gateway,
+ * or the fleets this machine is the gateway of, but for those in `released`, whose keeper has checked them.
+ */
+export function stranded(homes: string[], prefix?: string, released: string[] = []): string[] {
+  let me: string | undefined;
+  try { me = fs.existsSync(path.join(configDir(), 'machine.json')) ? machineId() : undefined; } catch { me = undefined; }
+  const out: string[] = [];
+  for (const home of homes) {
+    const p = resolvePaths(home);
+    const gateway = readJson(p.fleetConfig)?.gatewayMachineId;
+    if (fs.existsSync(p.journal)) out.push(`a handover of ${home} is open`);
+    else if (typeof gateway === 'string' && me && readJson(p.owner)?.ownerMachineId === me) out.push(`this machine runs ${home} for its gateway ${gateway}`);
+  }
+  const records = prefix ? gatewayPaths(prefix).fleets : undefined;
+  const held = records && fs.existsSync(records) ? fs.readdirSync(records).filter((f) => f.endsWith('.json') && !released.includes(path.basename(f, '.json'))).length : 0;
+  if (held) out.push(`this machine is the gateway of ${held} fleet${held > 1 ? 's' : ''}, whose records are in ${records}`);
+  return out;
+}
+
+/** The refusal of an uninstall that would strand a fleet. */
+export class UninstallRefused extends Error {}
+
 // takes back what setup put outside the fleet homes: the Claude hooks and statusline and the Codex hooks that run
-// `home`'s scripts, every fleet's phone link, launchd agent and tmux server, and the shims. The fleets' own data stays for purge.
-export async function runUninstall(o: { home: string; homes: string[]; settingsPaths: string[]; codex: CodexPaths; launchAgentsDir: string; shimDir: string; launchctl: boolean; mobile: MobileDeps; app: AppQuit; tmux?: string; skipPid?: number }): Promise<string[]> {
+// `home`'s scripts, every fleet's phone link, service and tmux server, the installed releases and the shims. The
+// fleets' own data stays for purge. Unless forced, it refuses where that would strand a fleet; `forceFleets` passes
+// only the gateway records of those fleets.
+export async function runUninstall(o: {
+  home: string; homes: string[]; settingsPaths: string[]; codex: CodexPaths; launchAgentsDir: string; shimDir: string; launchctl: boolean;
+  mobile: MobileDeps; app: AppQuit; tmux?: string; skipPid?: number; platform?: NodeJS.Platform; unitDir?: string; prefix?: string; run?: Run;
+  force?: boolean; forceFleets?: string[];
+}): Promise<string[]> {
   // $TMUX names the server the caller's terminal runs in; stopping it would end this run before the shims and the report
   const inside = o.homes.find((h) => resolvePaths(h).tmuxSock === o.tmux?.split(',')[0]);
   if (inside) throw new Error(`this terminal runs inside the tmux server of ${inside}, which uninstall stops; run ${SHIM} uninstall from a terminal outside Svall`);
+  const strands = o.force ? [] : stranded(o.homes, o.prefix, o.forceFleets);
+  if (strands.length) {
+    throw new UninstallRefused(`uninstalling here would strand fleets: ${strands.join('; ')}. Finish or abort the handover, bring each fleet to the machine that keeps it with ${SHIM} handover local, and remove this machine from that one with ${SHIM} host remove <name>, which checks all of this; or run ${SHIM} uninstall --force`);
+  }
   const paths = resolvePaths(o.home);
-  const edits = o.settingsPaths.map((file): [JsonSettings, Record<string, unknown>, string] => {
+  const linux = (o.platform ?? process.platform) === 'linux' && o.unitDir;
+  // Linux setup put the hooks under the agent homes the daemon's unit is given, which this command's env may not name
+  const agentHomes = linux ? await agentHomesEnv(o.run ?? realRun) : {};
+  const settingsPaths = once([...o.settingsPaths, ...(agentHomes.CLAUDE_CONFIG_DIR ? [path.join(agentHomes.CLAUDE_CONFIG_DIR, 'settings.json')] : [])]);
+  const edits = settingsPaths.map((file): [JsonSettings, Record<string, unknown>, string] => {
     const settings = readJsonSettings(file);
     return [settings, unmergeStatusLine(unmergeHooks(settings.settings, paths.hookScript), paths.statusScript), 'claude hooks and statusline removed'];
   });
-  const codex = fs.existsSync(o.codex.hooks) ? readJsonSettings(o.codex.hooks) : undefined;
-  if (codex) edits.push([codex, unmergeHooks(codex.settings, paths.hookScript), 'codex hooks removed']);
+  const codexes = once([o.codex.hooks, ...(agentHomes.CODEX_HOME ? [codexPaths(agentHomes).hooks] : [])])
+    .filter((file) => fs.existsSync(file)).map((file) => readJsonSettings(file));
+  for (const codex of codexes) edits.push([codex, unmergeHooks(codex.settings, paths.hookScript), 'codex hooks removed']);
   // a file that cannot take its change stops the run before anything is removed
   for (const [current, next] of edits) requireWritable(current, next);
   const done = await quitApp(o.homes, o.app, `${SHIM} uninstall`, o.skipPid);
   for (const [current, next, what] of edits) {
     // Codex needs no hooks file, so one that held only Svall's goes, unless it links elsewhere
-    const emptied = current === codex && !Object.keys(next).length && Object.keys(current.settings).length > 0;
+    const emptied = codexes.includes(current) && !Object.keys(next).length && Object.keys(current.settings).length > 0;
     if (emptied && !fs.lstatSync(current.file).isSymbolicLink()) {
       fs.rmSync(current.file);
       done.push(`removed ${current.file}`);
@@ -114,7 +211,8 @@ export async function runUninstall(o: { home: string; homes: string[]; settingsP
   }
   done.push(...await unserveFleets(o.homes, o.mobile));
 
-  const agents = fs.existsSync(o.launchAgentsDir) ? fs.readdirSync(o.launchAgentsDir).filter(isAgentPlist).sort() : [];
+  if (linux) done.push(...await removeUnits({ unitDir: o.unitDir!, systemctl: o.launchctl, run: o.run ?? realRun }));
+  const agents = !linux && fs.existsSync(o.launchAgentsDir) ? fs.readdirSync(o.launchAgentsDir).filter(isAgentPlist).sort() : [];
   for (const name of agents) {
     const plist = path.join(o.launchAgentsDir, name);
     // a daemon that would not stop keeps running without its plist, so say so rather than claim it went
@@ -124,6 +222,7 @@ export async function runUninstall(o: { home: string; homes: string[]; settingsP
     fs.rmSync(plist, { force: true });
     done.push(`removed ${plist}`);
   }
+  if (o.prefix) done.push(...removeReleases(o.prefix));
 
   // a character's agent would run on in tmux, spending usage with no app left to show it
   for (const home of o.homes) {
@@ -134,22 +233,14 @@ export async function runUninstall(o: { home: string; homes: string[]; settingsP
       () => { done.push(`could not stop tmux server ${sock}`); },
     );
   }
-
-  for (const name of shimNames(o.shimDir)) {
-    const shim = path.join(o.shimDir, name);
-    const shimText = readOrUndefined(shim);
-    if (shimText && SHIM_MARKS.some((m) => shimText.includes(m))) {
-      fs.rmSync(shim, { force: true });
-      done.push(`removed ${shim}`);
-    }
-  }
-  return done;
+  return [...done, ...removeShims(o.shimDir)];
 }
 
-// a fleet home is one that holds a config.json, so a folder of the user's that happens to be
-// named like one is never offered up for deletion
+// a fleet home is one that holds a fleet.json, or the config.json it is split out of, so a folder
+// of the user's that happens to be named like one is never offered up for deletion
 const isFleetHome = (p: string): boolean =>
-  fs.statSync(p, { throwIfNoEntry: false })?.isDirectory() === true && fs.existsSync(resolvePaths(p).config);
+  fs.statSync(p, { throwIfNoEntry: false })?.isDirectory() === true
+  && [resolvePaths(p).fleetConfig, resolvePaths(p).legacyConfig].some((f) => fs.existsSync(f));
 
 export const fleetHomes = (homedir: string): string[] => fs.readdirSync(homedir)
   .filter((f) => f === path.basename(profileHome(PRIVATE, homedir)) || (f.startsWith(homePrefix) && isProfileName(f.slice(homePrefix.length))))

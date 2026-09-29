@@ -1,5 +1,5 @@
-import { DEFAULT_SIZE, randomPortrait, type Agent, type Cell, type Character, type FleetState } from '@svall/protocol';
-import { markDormant } from './dormancy.js';
+import { DEFAULT_SIZE, randomPortrait, type Cell, type Character, type FleetState, type TerminalSlot } from '@svall/protocol';
+import { loseSecond, markDormant, markSlotDormant } from './dormancy.js';
 import { isCharId, newId } from './ids.js';
 import { defaultPosition, placeOnIsland } from './layout.js';
 import type { LiveWindow } from './tmux/tmux.js';
@@ -13,21 +13,41 @@ export const secondName = (id: string): string => `${id}-2`;
 export type Before = Map<string, { main?: string; second?: string }>;
 
 export const snapshot = (state: FleetState): Before =>
-  new Map(Object.values(state.characters).map((c) => [c.id, { main: c.tmux?.windowId, second: c.second?.tmux.windowId }]));
+  new Map(Object.values(state.characters).map((c) => [c.id, { main: c.tmux?.windowId, second: c.second?.tmux?.windowId }]));
 
-type Settle = (key: string, slot: { agent?: Agent }, command: string) => void;
+// the slot a live window leaves behind: at the window's own path, with nothing left to revive unless it is `carried`.
+// tmux reports no path while a setuid program such as sudo runs in the pane
+export function attachSlot(slot: TerminalSlot | undefined, w: LiveWindow, carried = false): TerminalSlot {
+  const next = { unread: false, ...slot, cwd: w.path || (slot?.cwd ?? ''), tmux: { windowId: w.windowId, paneId: w.paneId } };
+  delete next.resumeError;
+  if (!carried) delete next.revive;
+  return next;
+}
+
+/** The terminals a handover has yet to start: each keeps the agent and resume command it carries to it. */
+export type Carried = (id: string, term?: 2) => boolean;
+
+type Settle = (key: string, slot: TerminalSlot, command: string, carried: boolean, dormant: (s: TerminalSlot) => void) => void;
+
+// without `adoptCarried`, as in the poll, a dormant terminal a handover has yet to start is the handover's to open,
+// whatever window is listed for it
+type Sync = { carried?: Carried; adoptCarried?: boolean; settle?: Settle };
 
 /** Matches a character's second terminal, main window and pane directory to a listing taken after `before`; a slot the
  *  fleet changed while tmux answered is left as it stands. Returns the main window the character stands on, when listed. */
-export function syncWindow(c: Character, byName: ReadonlyMap<string, LiveWindow>, before: Before, settle?: Settle): LiveWindow | undefined {
+export function syncWindow(c: Character, byName: ReadonlyMap<string, LiveWindow>, before: Before, o: Sync = {}): LiveWindow | undefined {
+  const { carried = () => false, adoptCarried = false, settle } = o;
   const was = before.get(c.id);
-  if (was?.second === c.second?.tmux.windowId) {
+  if (was?.second === c.second?.tmux?.windowId) {
     const w2 = byName.get(secondName(c.id));
+    const held = carried(c.id, 2);
     if (w2 && !w2.dead) {
-      c.second = { unread: false, ...c.second, tmux: { windowId: w2.windowId, paneId: w2.paneId } };
-      settle?.(secondName(c.id), c.second, w2.command);
-    } else {
-      delete c.second;
+      if (c.second?.tmux || !held || adoptCarried) {
+        c.second = attachSlot(c.second, w2, held);
+        settle?.(secondName(c.id), c.second, w2.command, held, (s) => markSlotDormant(s));
+      }
+    } else if (c.second?.tmux) {
+      loseSecond(c);
     }
   }
   if (was?.main !== c.tmux?.windowId) return undefined;
@@ -37,26 +57,31 @@ export function syncWindow(c: Character, byName: ReadonlyMap<string, LiveWindow>
     if (c.tmux || !c.revive) markDormant(c);
     return undefined;
   }
+  const held = carried(c.id);
+  if (!c.tmux && held && !adoptCarried) return undefined;
   const samePane = c.tmux?.paneId === w.paneId;
   c.tmux = { windowId: w.windowId, paneId: w.paneId };
-  delete c.revive;
+  delete c.resumeError;
+  // a live terminal keeps the resume a handover carried only until the handover has answered for it
+  if (!held) delete c.revive;
   // only a pane that moved moves the character, and an empty path is tmux not knowing, as under sudo.
   // A pane the character had all along with no path on record has not moved, so its cwd stays
   if (w.path && c.panePath !== w.path) {
     if (c.panePath !== undefined || !samePane) c.cwd = w.path;
     c.panePath = w.path;
   }
-  settle?.(c.id, c, w.command);
+  settle?.(c.id, c, w.command, held, () => markDormant(c));
   // shown only where there is no agent's own activity to show
   if (!c.agent) c.shell.lastOutputAt = w.activity;
   return w;
 }
 
-export function reconcile(state: FleetState, live: LiveWindow[], now: number, before = snapshot(state)) {
+export function reconcile(state: FleetState, live: LiveWindow[], now: number, before = snapshot(state), carried: Carried = () => false) {
   const byName = new Map(live.map((w) => [w.name, w]));
   const knownIds = new Set(Object.keys(state.characters));
   const secondNames = new Set(Object.keys(state.characters).map(secondName));
-  const strays = live.filter((w) => !knownIds.has(w.name) && !secondNames.has(w.name));
+  // a row with no name, or one the listing could not split into its fields, is no window to adopt
+  const strays = live.filter((w) => w.name && w.paneId && typeof w.path === 'string' && !knownIds.has(w.name) && !secondNames.has(w.name));
   // a stray named like a character id keeps that id, so the SVALL_CHAR_ID its agent carries still reaches it
   const taken = new Set(knownIds);
   const strayIds = strays.map((w) => {
@@ -74,7 +99,7 @@ export function reconcile(state: FleetState, live: LiveWindow[], now: number, be
   const unplaced: string[] = [];
 
   const mutate = (draft: FleetState) => {
-    for (const c of Object.values(draft.characters)) syncWindow(c, byName, before);
+    for (const c of Object.values(draft.characters)) syncWindow(c, byName, before, { carried, adoptCarried: true });
     // a character whose island is gone joins the recovered island, keeping all it carries
     const orphans = Object.values(draft.characters).filter((c) => !draft.islands[c.islandId]).map((c) => c.id);
     if ((adopted.length || orphans.length) && !draft.islands[RECOVERED_ISLAND]) {
@@ -106,7 +131,7 @@ export function reconcile(state: FleetState, live: LiveWindow[], now: number, be
     }
     for (const [name, id] of seconds) {
       const w2 = byName.get(name);
-      if (draft.characters[id] && w2 && !w2.dead) draft.characters[id].second = { tmux: { windowId: w2.windowId, paneId: w2.paneId }, unread: false };
+      if (draft.characters[id] && w2 && !w2.dead) draft.characters[id].second = attachSlot(undefined, w2);
     }
     for (const id of orphans) {
       try {

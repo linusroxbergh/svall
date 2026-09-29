@@ -32,5 +32,6 @@ let package = Package(
             // the build links Foundation, which it never calls and which costs every launch a millisecond
             linkerSettings: [.unsafeFlags(["-Xlinker", "-dead_strip_dylibs"])]
         ),
+        .testTarget(name: "SvallTests", dependencies: ["Svall"], path: "Tests/SvallTests"),
     ]
 )

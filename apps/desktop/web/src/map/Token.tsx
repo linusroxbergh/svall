@@ -1,5 +1,6 @@
 import type { Cell, Character, ContextItem } from '@svall/protocol';
-import { contextPctOf, isUnread, slotStatus, type DisplayStatus } from '../selectors.js';
+import { useApp } from '../hooks.js';
+import { contextPctOf, isUnread, resumeErrorOf, slotStatus, type DisplayStatus } from '../selectors.js';
 import { LinkIcon } from './LinkIcon.js';
 import { portraitTint, portraitUrl } from '../portraits.js';
 import { theme, tokenPx } from '../theme.js';
@@ -8,7 +9,7 @@ import type { PointerHandlers } from './types.js';
 
 const RAIL_MAX = 4;
 
-function footInner(c: Character, status: DisplayStatus, word: string | undefined) {
+function footInner(c: Character, status: DisplayStatus, word: string | undefined, failed: string | undefined) {
   return (
     <>
       {c.second && (
@@ -17,6 +18,7 @@ function footInner(c: Character, status: DisplayStatus, word: string | undefined
         </span>
       )}
       {word && <span className="sw" style={{ background: `var(--${status})` }}>{word}</span>}
+      {failed && <span className="sw" data-testid={`token-resume-error-${c.id}`} title={failed} style={{ background: 'var(--blocked)' }}>resume failed</span>}
       {c.hint && <span className="sw" data-testid={`token-hint-${c.id}`} title={hintText(c)} style={{ background: 'var(--blocked)' }}>/hooks</span>}
     </>
   );
@@ -48,6 +50,7 @@ export function Token({
   onMenu(e: React.MouseEvent): void;
 }) {
   const word = statusWord(status);
+  const failed = useApp((s) => resumeErrorOf(s, c));
   // the rail holds RAIL_MAX chips; past that the last one counts the rest
   const shown = c.context.length > RAIL_MAX ? c.context.slice(0, RAIL_MAX - 1) : c.context;
   const hidden = c.context.slice(shown.length);
@@ -99,7 +102,7 @@ export function Token({
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); onOpen(); }}
         >
-          {footInner(c, status, word)}
+          {footInner(c, status, word, failed)}
           <svg className="tg" viewBox="0 0 10 9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M1.4 1.6 4 4.4 1.4 7.2" />
             <path d="M5.8 7.2h2.8" />

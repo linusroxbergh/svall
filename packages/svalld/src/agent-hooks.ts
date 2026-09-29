@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import type { AgentKind } from '@svall/protocol';
 import { codexHookCommand, type CodexPaths } from './codex/install.js';
 import { hooksFor } from './hooks/receiver.js';
-import { helperBeside, helperOr, isOurs, resolvePaths } from './paths.js';
+import { HOOK_GUARD, helperBeside, helperOr, isOurs, resolvePaths } from './paths.js';
 import { bundled } from './runtime.js';
 import { readJsonSettings, readOrUndefined, requireWritable, same, writeJsonSettings, type JsonSettings } from './settings-file.js';
 import { shq, unshq } from './text.js';
@@ -159,7 +159,7 @@ export const statusWrapper = (node: string, script: string): string => {
 // outside a character the shell exits before anything starts, as every session on the machine runs this hook;
 // $PPID is the agent, which tells it apart from a `claude -p` or `codex exec` run inside it
 export const hookCommand = (node: string, script: string, backend: AgentKind): string =>
-  `[ -z "$SVALL_CHAR_ID" ] || { ${helperOr(script, `${backend} "$PPID"`, nodeRun(node, script))}; }`;
+  `${HOOK_GUARD} { ${helperOr(script, `${backend} "$PPID"`, nodeRun(node, script))}; }`;
 
 /** Codex's hooks file when Codex is wanted here (on PATH, or its home exists); throws on one that is not JSON. */
 export const readCodexHooks = (codex: CodexPaths, wanted = fs.existsSync(codex.dir)): JsonSettings | undefined =>
@@ -174,9 +174,9 @@ export function installCodexHooks(script: string, before: JsonSettings | undefin
   return wrote.length ? [...wrote, CODEX_TRUST] : [];
 }
 
-/** Writes the hooks and the statusline into the Claude settings, when Claude is wanted here. */
-export const installClaudeHooks = (home: string, before: JsonSettings | undefined): string[] =>
-  (before ? writeJsonSettings(before, withClaudeHooks(before.settings, home), 'claude hooks and statusline') : []);
+/** Writes the hooks and the statusline into the Claude settings, when Claude is wanted here, run by `node` if given. */
+export const installClaudeHooks = (home: string, before: JsonSettings | undefined, node?: string): string[] =>
+  (before ? writeJsonSettings(before, withClaudeHooks(before.settings, home, node), 'claude hooks and statusline') : []);
 
 // the node the installed statusline names, while it is there: the commands fall back to the node on PATH,
 // so svall running under another node is no reason to rewrite them
@@ -191,13 +191,14 @@ function installedNode(settings: Record<string, unknown>, script: string): strin
   }
 }
 
-// the hooks and statusline setup writes into the Claude settings for the fleet at `home`
-function withClaudeHooks(settings: Record<string, unknown>, home: string): Record<string, unknown> {
+// the hooks and statusline setup writes into the Claude settings for the fleet at `home`, run by `node` unless the
+// installed ones name one that is still there
+function withClaudeHooks(settings: Record<string, unknown>, home: string, node: string = process.execPath): Record<string, unknown> {
   const paths = resolvePaths(home);
-  const node = bundled ? process.execPath : installedNode(settings, paths.statusScript) ?? process.execPath;
+  const run = bundled ? node : installedNode(settings, paths.statusScript) ?? node;
   return mergeStatusLine(
-    mergeHooks(settings, hookCommand(node, paths.hookScript, 'claude'), paths.hookScript),
-    statusWrapper(node, paths.statusScript),
+    mergeHooks(settings, hookCommand(run, paths.hookScript, 'claude'), paths.hookScript),
+    statusWrapper(run, paths.statusScript),
     paths.statusScript,
   );
 }

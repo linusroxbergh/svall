@@ -25,11 +25,20 @@ export function resolveTmux(): string {
   return 'tmux';
 }
 
+// the server takes the environment of the command that starts it, and hands it to every pane. The
+// release root the svalld shim exports would make a checkout's `pnpm svall` in a pane act as that release
+function paneEnv(): NodeJS.ProcessEnv {
+  const { SVALL_RELEASE_ROOT: _release, ...env } = process.env;
+  return env;
+}
+
 type LiveSession = { name: string; attached: number; created: number };
 
 export type LiveWindow = {
   windowId: string;
   paneId: string;
+  // the process tmux started in the pane: the shell, unless it replaced itself
+  panePid: number;
   name: string;
   command: string;
   path: string;
@@ -49,6 +58,30 @@ export function rawPasteArgs(usage: string): string[] {
   return /\[-\w*S\w*\]/.test(usage) ? ['-S'] : [];
 }
 
+/** Whether a tmux call failed for want of a server: the one on its socket died, or none was ever started there. */
+export function noServer(e: unknown): boolean {
+  return /no server running on |error connecting to .* \(No such file or directory\)/.test(String(e));
+}
+
+// what tmux 3.4 escapes as it prints, where 3.7 prints the byte: one that is not text as \ooo, a control character
+// that has a C escape as that, and a $ before a letter, _ or { as \$
+const ESCAPED: Record<string, number> = { a: 7, b: 8, f: 12, r: 13, v: 11, $: 36 };
+const unescape = (v: string): string => (v.includes('\\')
+  ? Buffer.concat(v.split(/\\([0-7]{3}|[abfrv$])/).map((part, i) => (i % 2 ? Buffer.of(part.length === 3 ? parseInt(part, 8) : ESCAPED[part]) : Buffer.from(part)))).toString('utf8')
+  : v);
+
+// a name or path may hold any byte but NUL: fields and rows are marked with printable text made for each listing,
+// which no name can hold except by guessing it. 3.4 prints a backslash as it is, so tmux swaps each for more such text
+// first, and every backslash left in what it prints is one of its escapes
+function listing(fields: string[]): { format: string; rows(out: string): string[][] } {
+  const token = crypto.randomBytes(8).toString('hex');
+  const [sep, end, slash] = [`<${token}>`, `</${token}>`, `(${token})`];
+  return {
+    format: fields.map((f) => `#{s/\\\\/${slash}/:${f}}`).join(sep) + end,
+    rows: (out) => out.split(`${end}\n`).filter(Boolean).map((row) => row.split(sep).map((v) => unescape(v).replaceAll(slash, '\\'))),
+  };
+}
+
 export class Tmux {
   readonly binary = resolveTmux();
   private rawPaste?: Promise<string[]>;
@@ -56,7 +89,18 @@ export class Tmux {
   constructor(readonly socket: string, private conf: string) {}
 
   async run(...args: string[]): Promise<string> {
-    const { stdout } = await exec(this.binary, ['-S', this.socket, '-f', this.conf, ...args], { ...CALL, maxBuffer: 64 * 1024 * 1024 });
+    return this.call(args);
+  }
+
+  // a signal that aborts ends the tmux client this call started. Without -u, a client outside a UTF-8 locale is
+  // sent a tab or a letter outside ASCII as _
+  private async call(args: string[], signal?: AbortSignal): Promise<string> {
+    const { stdout } = await exec(this.binary, ['-u', '-S', this.socket, '-f', this.conf, ...args], {
+      ...CALL,
+      maxBuffer: 64 * 1024 * 1024,
+      env: paneEnv(),
+      signal,
+    });
     return stdout;
   }
 
@@ -99,16 +143,19 @@ export class Tmux {
     );
   }
 
+  // every client attached to the session, which leaves the session and its windows running
+  async detachClients(session: string, signal?: AbortSignal): Promise<void> {
+    await this.call(['detach-client', '-s', `=${session}`], signal).catch(() => {});
+  }
+
   async killSession(name: string): Promise<void> {
     await this.run('kill-session', '-t', `=${name}`).catch(() => {});
   }
 
   async listSessions(): Promise<LiveSession[]> {
-    const out = await this.run('list-sessions', '-F', '#{session_name}\t#{session_attached}\t#{session_created}').catch(() => '');
-    return out.split('\n').filter(Boolean).map((l) => {
-      const [name, attached, created] = l.split('\t');
-      return { name, attached: Number(attached), created: Number(created) * 1000 };
-    });
+    const list = listing(['session_name', 'session_attached', 'session_created']);
+    const out = await this.run('list-sessions', '-F', list.format).catch(() => '');
+    return list.rows(out).map(([name, attached, created]) => ({ name, attached: Number(attached), created: Number(created) * 1000 }));
   }
 
   async ensureServer(): Promise<void> {
@@ -117,6 +164,11 @@ export class Tmux {
     } catch {
       // cat as in attachSession: a server killed as it starts can close this pty before its child holds it
       await this.run('new-session', '-d', '-s', SESSION, '-n', KEEP_WINDOW, 'cat', '-');
+    }
+    // a server that outlived a restart holds the agent homes of the daemon that started it, and hands them to new windows
+    for (const key of ['CLAUDE_CONFIG_DIR', 'CODEX_HOME']) {
+      const value = process.env[key];
+      await this.run('set-environment', '-g', ...(value ? [key, value] : ['-u', key]));
     }
   }
 
@@ -137,23 +189,24 @@ export class Tmux {
     return { windowId, paneId };
   }
 
-  // the bytes go in on stdin: as arguments tmux caps them at about 16 KB and reads a trailing ; as syntax
-  private async paste(paneId: string, data: Buffer | string): Promise<void> {
+  // the bytes go in on stdin: as arguments tmux caps them at about 16 KB and reads a trailing ; as syntax.
+  // a signal that aborts ends the tmux client
+  private async paste(paneId: string, data: Buffer | string, signal?: AbortSignal): Promise<void> {
     // an answer tmux failed to give is asked for again on the next paste
     this.rawPaste ??= this.run('list-commands', 'paste-buffer').then(rawPasteArgs)
       .catch((e: unknown) => { this.rawPaste = undefined; throw e; });
     const raw = await this.rawPaste;
     const name = `svall-${crypto.randomUUID()}`;
-    const p = exec(this.binary, ['-S', this.socket, '-f', this.conf, 'load-buffer', '-b', name, '-', ';', 'paste-buffer', '-d', '-r', ...raw, '-b', name, '-t', paneId], CALL);
+    const p = exec(this.binary, ['-S', this.socket, '-f', this.conf, 'load-buffer', '-b', name, '-', ';', 'paste-buffer', '-d', '-r', ...raw, '-b', name, '-t', paneId], { ...CALL, env: paneEnv(), signal });
     // a tmux that fails before reading closes the pipe; its exit status carries the error
     p.child.stdin!.on('error', () => {}).end(data);
     // a pane gone before the paste leaves the buffer behind
     await p.catch(async (e) => { await this.run('delete-buffer', '-b', name).catch(() => {}); throw e; });
   }
 
-  async sendBytes(paneId: string, bytes: Buffer): Promise<void> {
+  async sendBytes(paneId: string, bytes: Buffer, signal?: AbortSignal): Promise<void> {
     if (bytes.length === 0) return;
-    await this.paste(paneId, bytes);
+    await this.paste(paneId, bytes, signal);
   }
 
   async sendLine(paneId: string, text: string, enter: boolean): Promise<void> {
@@ -173,26 +226,19 @@ export class Tmux {
     await this.run('set-option', '-w', '-u', '-t', windowId, 'window-size').catch(() => {});
   }
 
-  async capture(paneId: string, lines: number, escapes = false): Promise<Buffer> {
-    const out = await this.run('capture-pane', '-p', ...(escapes ? ['-e'] : []), '-t', paneId, '-S', `-${lines}`);
+  async capture(paneId: string, lines: number, escapes = false, signal?: AbortSignal): Promise<Buffer> {
+    const out = await this.call(['capture-pane', '-p', ...(escapes ? ['-e'] : []), '-t', paneId, '-S', `-${lines}`], signal);
     return Buffer.from(out.replace(/\n$/, '').replace(/\n/g, '\r\n'), 'utf8');
   }
 
-  async listWindows(): Promise<LiveWindow[]> {
-    // tmux prints a path as it is, and a directory's name may hold any byte but NUL: fields and rows are
-    // marked with a token made for this listing, which no name can hold except by guessing it
-    const token = crypto.randomBytes(8).toString('hex');
-    const [sep, end] = [`\x1f${token}`, `\x1e${token}`];
-    const fmt = ['#{window_id}', '#{pane_id}', '#{window_name}', '#{pane_current_command}', '#{window_activity}', '#{pane_dead}', '#{pane_current_path}'].join(sep) + end;
+  async listWindows(signal?: AbortSignal): Promise<LiveWindow[]> {
+    const list = listing(['window_id', 'pane_id', 'pane_pid', 'window_name', 'pane_current_command', 'window_activity', 'pane_dead', 'pane_current_path']);
     // one row per window: a split window would otherwise yield several rows under the same name.
-    const out = await this.run('list-panes', '-s', '-t', SESSION, '-f', '#{pane_active}', '-F', fmt);
-    return out
-      .split(`${end}\n`)
-      .filter(Boolean)
-      .map((l) => {
-        const [windowId, paneId, name, command, activity, dead, path] = l.split(sep);
+    const out = await this.call(['list-panes', '-s', '-t', SESSION, '-f', '#{pane_active}', '-F', list.format], signal);
+    return list.rows(out)
+      .map(([windowId, paneId, panePid, name, command, activity, dead, path]) => {
         const seconds = Number(activity);
-        return { windowId, paneId, name, command, path, activity: Number.isFinite(seconds) ? seconds * 1000 : 0, dead: dead === '1' };
+        return { windowId, paneId, panePid: Number(panePid), name, command, path, activity: Number.isFinite(seconds) ? seconds * 1000 : 0, dead: dead === '1' };
       })
       .filter((w) => w.name !== KEEP_WINDOW);
   }
@@ -201,8 +247,8 @@ export class Tmux {
     await this.run('rename-window', '-t', windowId, name);
   }
 
-  async killWindow(windowId: string): Promise<void> {
-    await this.run('kill-window', '-t', windowId).catch(() => {});
+  async killWindow(windowId: string, signal?: AbortSignal): Promise<void> {
+    await this.call(['kill-window', '-t', windowId], signal).catch(() => {});
   }
 
   async killServer(): Promise<void> {

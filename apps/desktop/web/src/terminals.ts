@@ -1,6 +1,7 @@
 import { ApiError, charOfKey } from '@svall/protocol';
 import type { Api } from './api.js';
 import type { Attach, Bridge, Rect } from './bridge.js';
+import { holdsTerminals } from './handover.js';
 import { boardViewed, panesOf, type BoardSelection } from './selectors.js';
 import type { AppStore, View } from './store/index.js';
 
@@ -11,6 +12,8 @@ export type TerminalManager = {
 };
 
 type Opts = { reshowDelayMs?: number };
+
+const RETRIED = new Set(['not_owner', 'frozen']);
 
 // the map shows the character in the card; the board shows the one it has selected
 export const viewedId = (s: BoardSelection & { view: View; card?: string }): string | undefined =>
@@ -35,7 +38,7 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
   };
   const focus = (id?: string) => bridge.send({ type: 'term.focus', id });
   const seen = (id: string, term?: 2) => { api.call('char.seen', { id, ...(term ? { term } : {}) }).catch(() => {}); };
-  const live = (key: string) => { const { id, term } = target(key); const c = state().fleet.characters[id]; return Boolean(term ? c?.second : c?.tmux); };
+  const live = (key: string) => { const { id, term } = target(key); const c = state().fleet.characters[id]; return Boolean(term ? c?.second?.tmux : c?.tmux); };
   const inView = (key: string) => viewedId(state()) === target(key).id;
   const lastOpacity = new Map<string, number | undefined>();
   // the surfaces a pane is showing now, and whether its latest show takes the keys; one whose pane was hidden or
@@ -52,6 +55,8 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
       if (takeFocus) focus(id);
       return;
     }
+    // the fleet is between machines: nothing is attached until it runs again
+    if (holdsTerminals(state().handover)) return;
     let p = attaching.get(id);
     if (!p) {
       p = api.call('term.attach', target(id)).finally(() => attaching.delete(id));
@@ -63,10 +68,13 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
     } catch (e) {
       // the window died under the attach: the character is dormant, and Revive answers that better than a tmux error
       if (!live(id)) throw e;
-      // svalld refused: the user decides when to try again; svalld away: retried on its own
-      if (e instanceof ApiError) state().termFailed(id, e.message); else retry.set(id, { rect, opacity });
+      // svalld refused: the user decides when to try again. svalld away, a daemon the fleet has left or one frozen
+      // for a handover: retried once the connection is back, which for a moved fleet is its new owner, or the fleet runs again
+      if (e instanceof ApiError && !RETRIED.has(e.code)) state().termFailed(id, e.message); else retry.set(id, { rect, opacity });
       throw e;
     }
+    // the freeze began while the attach was on its way, and rests the window it names
+    if (holdsTerminals(state().handover)) { retry.set(id, { rect, opacity }); return; }
     bridge.send({ type: 'term.show', id, rect, ...alpha, attach });
     state().termOpened(id, rect);
     if (!wanted.has(id) || !inView(id)) bridge.send({ type: 'term.hide', id });
@@ -88,7 +96,12 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
   });
 
   store.subscribe((s, prev) => {
-    if (s.status === 'online' && prev.status !== 'online') {
+    // the source rests every terminal at its freeze, so the surfaces on them go first
+    if (s.handover !== prev.handover && holdsTerminals(s.handover) && !holdsTerminals(prev.handover)) {
+      retry.clear();
+      for (const id of Object.keys(s.terminals)) close(id);
+    }
+    if ((s.status === 'online' && prev.status !== 'online') || (!holdsTerminals(s.handover) && holdsTerminals(prev.handover))) {
       for (const [id, r] of retry) {
         retry.delete(id);
         if (wanted.has(id) && inView(id) && live(id) && !s.terminals[id]) show(id, r.rect, r.opacity, wanted.get(id)).catch(() => {});

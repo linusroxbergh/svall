@@ -2,7 +2,7 @@ import path from 'node:path';
 import type { ContextItem } from '@svall/protocol';
 import { shq } from '../text.js';
 
-// claude or codex, as config.json may write it with a stray leading space. Both take --add-dir and a prompt as
+// claude or codex, as fleet.json may write it with a stray leading space. Both take --add-dir and a prompt as
 // their argument, on a fresh start and on a resume alike
 export const isAgentCommand = (command: string): boolean => /^\s*(claude|codex)(\s|$)/.test(command);
 

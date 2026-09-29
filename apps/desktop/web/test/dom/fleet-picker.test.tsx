@@ -111,6 +111,16 @@ test('a new fleet\'s name is checked as it is typed, then the fleet is made and 
   expect(call).toHaveBeenCalledWith('fleets.create', { name: 'lab' });
 });
 
+test('with the fleet on another machine, the picker says where and neither lists nor makes a fleet', () => {
+  store.getState().setConnectionState({ state: 'online', owner: 'trift' });
+  store.getState().setFleetPicker('menu');
+  render(<FleetPicker />);
+  expect(screen.getByTestId('fleet-picker-away').textContent).toContain('This fleet runs on trift');
+  expect(screen.queryByTestId('fleet-new-name')).toBeNull();
+  expect(screen.queryAllByTestId(/^fleet-row-/)).toEqual([]);
+  expect(call).not.toHaveBeenCalled();
+});
+
 test('with svalld offline, the fleets cannot be listed or made, and the picker says why', () => {
   store.getState().setStatus('offline');
   store.getState().setFleetPicker('menu');

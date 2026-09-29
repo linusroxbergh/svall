@@ -1,0 +1,24 @@
+Svall.app links GhosttyKit, Ghostty built as a library, and carries Ghostty's resources. They hold the
+software below, each under its own licence: Ghostty's is in LICENSE.ghostty beside this file, the GPL-3.0 in
+LICENSE.gpl-3.0 and bash-preexec's in LICENSE.bash-preexec, and each other component's is at the address named with
+it. The shell integration scripts are their own source. The controller the app installs lists its own in
+release/licenses/NOTICE.
+
+Ghostty  MIT  https://github.com/ghostty-org/ghostty
+Zig compiler-rt  MIT, parts Apache-2.0 WITH LLVM-exception  https://github.com/ziglang/zig
+FreeType  FTL OR GPL-2.0-or-later  https://freetype.org
+libpng  libpng-2.0  http://www.libpng.org/pub/png/libpng.html
+zlib  Zlib  https://zlib.net
+Oniguruma  BSD-2-Clause  https://github.com/kkos/oniguruma
+glslang  BSD-3-Clause, BSD-2-Clause, MIT, Apache-2.0, GPL-3.0-or-later WITH Bison-exception-2.2  https://github.com/KhronosGroup/glslang
+SPIRV-Cross  Apache-2.0  https://github.com/KhronosGroup/SPIRV-Cross
+simdutf  Apache-2.0 OR MIT  https://github.com/simdutf/simdutf
+Highway  Apache-2.0 OR BSD-3-Clause  https://github.com/google/highway
+utfcpp  BSL-1.0  https://github.com/nemtrif/utfcpp
+GNU gettext (libintl)  LGPL-2.1-or-later  https://www.gnu.org/software/gettext/
+Dear ImGui  MIT  https://github.com/ocornut/imgui
+stb  MIT OR Unlicense  https://github.com/nothings/stb
+Wuffs  Apache-2.0 OR MIT  https://github.com/google/wuffs
+iTerm2 Color Schemes (Resources/ghostty/themes)  MIT  https://github.com/mbadolato/iTerm2-Color-Schemes
+Ghostty shell integration (Resources/ghostty/shell-integration: bash/ghostty.bash, zsh), derived from Kitty's  GPL-3.0-or-later  https://github.com/ghostty-org/ghostty
+bash-preexec (Resources/ghostty/shell-integration/bash/bash-preexec.sh)  MIT  https://github.com/rcaloras/bash-preexec

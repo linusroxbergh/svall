@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { Agent, Character, ContextItem, DEFAULT_CWD, FleetState, Home, Island, defaultHome, emptyState } from '../src/index.js';
+import { Agent, Character, ContextItem, DEFAULT_CWD, FleetState, Home, Island, STATE_SCHEMA_VERSION, defaultHome, emptyState } from '../src/index.js';
 
 describe('state schemas', () => {
   it('accepts an empty fleet', () => {
     expect(FleetState.parse(emptyState())).toEqual({
-      version: 7, islands: {}, characters: {},
+      version: 8, islands: {}, characters: {},
       home: {
         cwd: '~/.svall/home', command: 'claude --model sonnet',
         actions: [
@@ -17,7 +17,7 @@ describe('state schemas', () => {
   });
 
   it('fills home from defaults when a state file has none', () => {
-    const s = FleetState.parse({ version: 7, islands: {}, characters: {} });
+    const s = FleetState.parse({ version: 8, islands: {}, characters: {} });
     expect(s.home.command).toBe('claude --model sonnet');
     expect(s.defaultCwd).toBe(DEFAULT_CWD);
     expect(s.home.actions.map((a) => a.label)).toEqual(['update info', 'status']);
@@ -53,7 +53,19 @@ describe('state schemas', () => {
     expect(ContextItem.parse(item)).toEqual(item);
     expect(Island.parse({ id: 'i', name: 'n', description: '', instructions: 'never touch src/legacy', context: [item], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 }).instructions)
       .toBe('never touch src/legacy');
-    expect(emptyState().version).toBe(7);
+    expect(emptyState().version).toBe(8);
+    expect(STATE_SCHEMA_VERSION).toBe(8);
+  });
+
+  it('keeps both terminals of an imported state that carries no tmux ids', () => {
+    const c = Character.parse({
+      id: 'c', islandId: 'i', cell: { x: 1, y: 1 }, name: 'n', portrait: 'fox', note: '', instructions: '', context: [],
+      cwd: '/work', shell: { lastOutputAt: 0 }, unread: false, revive: { command: 'claude --resume a' },
+      second: { cwd: '/work/side', unread: false, revive: { command: 'codex resume b' } },
+    });
+    const s = FleetState.parse({ version: 8, islands: {}, characters: { c } });
+    expect(s.characters.c.revive).toEqual({ command: 'claude --resume a' });
+    expect(s.characters.c.second).toEqual({ cwd: '/work/side', unread: false, revive: { command: 'codex resume b' } });
   });
 
   it('a character may carry browser tabs and which one is active', () => {

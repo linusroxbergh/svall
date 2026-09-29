@@ -7,7 +7,10 @@ import { ContextMenu } from './ContextMenu.js';
 import { ConfirmDeleteIsland } from './ConfirmDeleteIsland.js';
 import { FleetPicker } from './FleetPicker.js';
 import { FleetSummary } from './FleetSummary.js';
+import { HandoverSheet } from './HandoverSheet.js';
 import { useApp } from './hooks.js';
+import { connectionBanner } from './host.js';
+import { HostSetup } from './HostSetup.js';
 import { IslandCard } from './IslandCard.js';
 import { Keybindings } from './Keybindings.js';
 import { keyTip } from './keys.js';
@@ -41,6 +44,8 @@ export function App() {
   const selectedId = useApp((s) => (s.view === 'board' ? boardViewed(s) : s.selectedId && s.fleet.characters[s.selectedId] ? s.selectedId : undefined));
   const selectedIslandId = useApp((s) => s.selectedIslandId);
   const toast = useApp((s) => s.toast);
+  // the fleet the page holds stays on the screen while its machine is away; only this line changes
+  const away = useApp((s) => connectionBanner(s.connection, !!s.shell?.handoverEnabled));
   const sideWidths = useApp((s) => s.sideWidths);
   const bindings = useApp((s) => s.settings.bindings);
   // a launch finds svalld in moments, even one still starting; the setup hint and the log wait out that grace
@@ -74,7 +79,8 @@ export function App() {
   }
   return (
     <div className="app">
-      {status !== 'online' && <div className="banner" data-testid="offline-banner">{status === 'outdated' ? OUTDATED() : 'svalld connection lost, reconnecting…'}</div>}
+      {away && <div className="banner" data-testid="connection-banner">{away}</div>}
+      {!away && status !== 'online' && <div className="banner" data-testid="offline-banner">{status === 'outdated' ? OUTDATED() : 'svalld connection lost, reconnecting…'}</div>}
       {configErrors.length > 0 && (
         <div className="banner warn" data-testid="config-errors">
           Ghostty config: {configErrors.join('; ')}
@@ -108,6 +114,8 @@ export function App() {
       <ConfirmClose />
       <ConfirmDeleteIsland />
       <Keybindings />
+      <HostSetup />
+      <HandoverSheet />
       <ScribeAsk />
       <FleetPicker />
       <LinkAsk />

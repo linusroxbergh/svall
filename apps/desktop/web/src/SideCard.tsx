@@ -13,7 +13,7 @@ import { portraitTint, portraitUrl } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
 import { ResourcesButton } from './ResourcesButton.js';
-import { contextPctOf, islandsSorted, isUnread, statusOf } from './selectors.js';
+import { contextPctOf, islandsSorted, isUnread, resumeErrorOf, statusOf } from './selectors.js';
 
 type Patch = Omit<Params<'char.update'>, 'id'>;
 
@@ -64,6 +64,8 @@ export function SideCard({ id }: { id: string }) {
   const hover = useApp((s) => s.dropHover?.kind === 'char' && s.dropHover.id === id);
   // last activity counts on while a busy agent sends nothing
   useTick(10_000);
+  const handover = useApp((s) => !!s.shell?.handoverEnabled);
+  const failed = useApp((s) => resumeErrorOf(s, s.fleet.characters[id]));
   if (!c) return null;
 
   const status = statusOf(c);
@@ -129,6 +131,13 @@ export function SideCard({ id }: { id: string }) {
             </div>
           )}
           <div className="row"><span>last activity</span><b className="tnum">{ago(c.agent?.lastActivityAt ?? c.shell.lastOutputAt)} ago</b></div>
+          {failed && <div className="row" data-testid="side-resume-error"><span>resume failed</span><b>{failed}</b></div>}
+          {handover && (
+            <label className="row" title="A handover of this fleet waits until this is off">
+              <span>keep on this machine</span>
+              <b><input type="checkbox" data-testid="side-keep-here" checked={!!c.keepHere} onChange={(e) => save({ keepHere: e.target.checked })} /></b>
+            </label>
+          )}
         </div>
         <div className="opens">
           <button className="btn" data-testid="side-finder" title={`Reveal ${c.cwd} in Finder`}

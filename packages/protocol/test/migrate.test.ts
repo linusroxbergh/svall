@@ -8,11 +8,31 @@ const char = (id: string, islandId: string) => ({
 });
 
 describe('migrateState', () => {
-  it('passes a version 7 file through', () => {
+  it('passes a version 8 file through', () => {
     const { state, migrated, dropped } = migrateState(emptyState());
     expect(migrated).toBe(false);
     expect(dropped).toEqual([]);
-    expect(state.version).toBe(7);
+    expect(state.version).toBe(8);
+  });
+
+  const agent = { kind: 'claude', sessionId: 's', transcriptPath: '/t', status: 'idle', lastActivityAt: 3 };
+  const withSecond = (version: number) => ({
+    ...emptyState(),
+    version,
+    islands: { i_a: island('i_a') },
+    characters: {
+      c0: { ...char('c0', 'i_a'), cwd: '/work', second: { tmux: { windowId: '@2', paneId: '%2' }, unread: true, agent } },
+      c1: char('c1', 'i_a'),
+    },
+  });
+
+  it('lifts a version 7 file to 8: a second terminal gets its character\'s cwd, and an absent one stays absent', () => {
+    const { state, migrated, dropped } = migrateState(withSecond(7));
+    expect(migrated).toBe(true);
+    expect(dropped).toEqual([]);
+    expect(state.version).toBe(8);
+    expect(state.characters.c0.second).toEqual({ cwd: '/work', tmux: { windowId: '@2', paneId: '%2' }, unread: true, agent });
+    expect(state.characters.c1.second).toBeUndefined();
   });
 
   it('refuses a file older than version 7 and says so', () => {
@@ -23,7 +43,8 @@ describe('migrateState', () => {
   });
 
   it('refuses a file from a newer svalld', () => {
-    expect(() => migrateState({ version: 8, islands: {}, characters: {} })).toThrow(NewerStateVersion);
+    expect(() => migrateState({ version: 9, islands: {}, characters: {} })).toThrow(NewerStateVersion);
+    expect(() => migrateState({ version: 9, islands: {}, characters: {} })).toThrow(/newer than this svalld reads \(8\)/);
   });
 
   it('rejects garbage', () => {

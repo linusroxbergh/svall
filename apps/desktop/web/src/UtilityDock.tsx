@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { app } from './boot.js';
 import { holdCutout } from './cutout.js';
+import { badgeOf } from './handover.js';
 import { useApp } from './hooks.js';
 import { refocusSurface } from './keyboard.js';
 import { keyTip } from './keys.js';
@@ -43,6 +44,11 @@ export function UtilityDock() {
   const phoneLabel = serving ? 'Phone link on' : 'Phone link off';
   const update = useApp((s) => !!s.update);
   const settingsLabel = update ? 'Settings, update available' : 'Settings';
+  // the machine the fleet runs on, whenever that is not this Mac
+  const owner = useApp((s) => (s.connection && s.connection.owner !== 'local' ? s.connection.owner : undefined));
+  const where = useApp((s) => s.connection?.state);
+  const handover = useApp((s) => !!s.shell?.handoverEnabled);
+  const moving = useApp((s) => badgeOf(s.handover));
   const box = useRef<HTMLDivElement>(null);
   const tabs = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -80,6 +86,14 @@ export function UtilityDock() {
   return (
     <div className="use" ref={box} data-testid="utility-dock" data-collapsed={!sidebarOpen} data-open={open}>
       <div className="use-tabs" ref={tabs}>
+        {owner && (
+          <span className="use-owner" data-testid="owner-badge" data-state={where}
+            title={`This fleet runs on ${owner}`}>{owner}</span>
+        )}
+        {handover && (
+          <button className="use-owner use-handover" data-testid="handover-tab" data-state={moving}
+            title="Move this fleet to another machine" onClick={() => app.store.getState().toggleHandover()}>Handover</button>
+        )}
         {phoneTab && (
           <button className="use-tab" data-testid="mobile-tab" aria-expanded={mobileOpen} aria-controls="corner-panel"
             title={phoneLabel} aria-label={phoneLabel} data-off={!serving || undefined}

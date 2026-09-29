@@ -6,6 +6,7 @@
   "packageManager": "pnpm@12.6.0",
   "scripts": {
     "test": "vitest run",
+    "test:faults": "vitest run --project svalld --project cli --sequence.shuffle packages/svalld/test/handover/faults.test.ts packages/cli/test/controller/faults.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/desktop/web/tsconfig.json",
     "svalld": "tsx packages/svalld/src/bin.ts",
     "svall": "tsx packages/cli/src/main.ts",
@@ -20,7 +21,8 @@
     "release": "scripts/release.sh",
     "site:build": "pnpm --filter @svall/desktop-web build:site",
     "site:shots": "node scripts/site-shots.mjs",
-    "site:deploy": "scripts/site-deploy.sh"
+    "site:deploy": "scripts/site-deploy.sh",
+    "release:companion": "node scripts/build-companion.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.13.6",

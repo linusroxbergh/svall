@@ -1,38 +1,28 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { z } from 'zod';
-import { AgentKind, DEFAULT_CWD, Home, isProfileName } from '@svall/protocol';
-import { writeAtomic } from './jsonfile.js';
-import { resolvePaths } from './paths.js';
+import { FleetConfig, FleetId, NodeConfig, type AgentKind, type MachineId } from '@svall/protocol';
+import { writeJsonAtomic } from './atomic.js';
+import { writeDurable } from './handover/durable.js';
+import { resolvePaths, type Paths } from './paths.js';
 import { DEFAULT_PORT, HOME_CWD, PRIVATE, profileHome, profileOf } from './profile.js';
 
-export const Config = z.object({
-  // what the app and `svall <name>` call the fleet; absent, its directory names it
-  name: z.string().refine(isProfileName, 'use lowercase letters, digits and dashes, starting with a letter, and no svall command or dev name, which Svall Dev keeps').optional(),
-  port: z.number().int().default(DEFAULT_PORT),
-  host: z.string().default('127.0.0.1'),
-  shell: z.string().optional(),
-  linear: z.object({ workspace: z.string(), teamKeys: z.array(z.string()) }).optional(),
-  // with no command, the crew starts the main agent's crewCommand
-  home: Home.extend({ cwd: z.string().default(HOME_CWD), command: z.string().optional() }).prefault({}),
-  defaultCwd: z.string().default(DEFAULT_CWD),
-  // the agent the scribe, mission control's crew and `svall char new --run` use by default; absent, the private fleet's, else
-  // the only one installed, else claude
-  mainAgent: AgentKind.optional(),
-  // the agents whose hooks setup installs; absent, every agent found
-  integrations: z.array(AgentKind).optional(),
-  // which plan a scribe pass spends; absent, the main agent's. model names a model of scribe.agent's CLI, else of claude's
-  scribe: z.object({ agent: AgentKind.optional(), model: z.string().optional() }).prefault({}),
-  mobile: z.object({
-    // the tailnet logins that may drive the fleet and get its pushes; empty lets in only the Mac's own login
-    logins: z.array(z.string()).default([]),
-    // page origins allowed to open a socket, beyond the one svalld itself served
-    origins: z.array(z.string()).default([]),
-    // who a push service may contact about this sender: Apple refuses a push without one; unset, the served page
-    pushContact: z.string().regex(/^(https:\/\/|mailto:)./, 'an https: url or mailto: address').optional(),
-    // the https port this fleet is reached on, which svalld saves once it serves there
-    httpsPort: z.number().int().min(1).max(65535).optional(),
-  }).prefault({}),
-});
+const newFleetId = (): FleetId => FleetId.parse(crypto.randomUUID());
+
+// Svall Dev keeps a port and a mission control folder of its own beside the release's
+const FleetFile = FleetConfig.extend({ home: FleetConfig.shape.home.unwrap().extend({ cwd: z.string().default(HOME_CWD) }).prefault({}) });
+const NodeFile = NodeConfig.extend({ port: z.number().int().default(DEFAULT_PORT) });
+
+/**
+ * Every setting a running fleet reads, portable and machine-local side by side. It is also the shape
+ * of the config.json the two files are split out of.
+ */
+export const Config = FleetFile.omit({ mobile: true })
+  .merge(NodeFile.omit({ mobile: true }))
+  .extend({
+    id: FleetId.default(newFleetId),
+    mobile: FleetConfig.shape.mobile.unwrap().merge(NodeConfig.shape.mobile.unwrap()).prefault({}),
+  });
 export type Config = z.infer<typeof Config>;
 
 export const scribeModel = (s: Config['scribe'], agent: AgentKind): string | undefined =>
@@ -45,18 +35,16 @@ export class InvalidConfig extends Error {}
 export function fleetMainAgent(home: string, own: AgentKind | undefined): AgentKind | undefined {
   if (own || profileOf(home) === PRIVATE) return own;
   // a private config that does not parse is the private fleet's to report
-  try { return loadConfig(resolvePaths(profileHome(PRIVATE)).config).mainAgent; } catch { return undefined; }
+  try { return configuredMainAgent(resolvePaths(profileHome(PRIVATE))); } catch { return undefined; }
 }
 
-export function loadConfig(file: string): Config {
-  if (!fs.existsSync(file)) return Config.parse({});
-  return parseConfig(fs.readFileSync(file, 'utf8'), file);
-}
+export const mergeConfig = (fleet: FleetConfig, node: NodeConfig): Config =>
+  ({ ...fleet, ...node, mobile: { ...fleet.mobile, ...node.mobile } });
 
-/** The config `text` holds; throws an InvalidConfig that says, on one line, what in `file` is wrong. */
-export function parseConfig(text: string, file: string): Config {
+/** What `text` holds under `schema`; throws an InvalidConfig that says, on one line, what in `file` is wrong. */
+export function parseConfig<T extends z.ZodTypeAny>(text: string, file: string, schema: T): z.infer<T> {
   try {
-    return Config.parse(JSON.parse(text));
+    return schema.parse(JSON.parse(text));
   } catch (err) {
     const why = err instanceof z.ZodError
       ? err.issues.map((i) => `${i.path.join('.') || 'the whole file'}: ${i.message}`).join('; ')
@@ -65,23 +53,140 @@ export function parseConfig(text: string, file: string): Config {
   }
 }
 
-/** The phone ports the fleets at `homes` keep in their config.json. */
+const read = <T extends z.ZodTypeAny>(file: string, schema: T): z.infer<T> => parseConfig(fs.readFileSync(file, 'utf8'), file, schema);
+
+type Raw = Record<string, unknown>;
+const only = (from: Raw, keys: string[]): Raw => Object.fromEntries(Object.entries(from).filter(([k]) => keys.includes(k)));
+
+// each key the file held goes to the file whose schema knows it, and a key neither knows is dropped; what the file
+// left out is left to the defaults as the new files are read
+function splitLegacy(file: string): { fleet: Raw; node: Raw } {
+  const text = fs.readFileSync(file, 'utf8');
+  const { id } = parseConfig(text, file, Config);
+  const raw = JSON.parse(text) as Raw;
+  const mobile = (raw.mobile ?? {}) as Raw;
+  const fleetMobile = only(mobile, Object.keys(FleetConfig.shape.mobile.unwrap().shape));
+  const nodeMobile = only(mobile, Object.keys(NodeConfig.shape.mobile.unwrap().shape));
+  return {
+    fleet: { ...only(raw, Object.keys(FleetConfig.shape).filter((k) => k !== 'mobile')), id, ...(Object.keys(fleetMobile).length && { mobile: fleetMobile }) },
+    node: { ...only(raw, Object.keys(NodeConfig.shape).filter((k) => k !== 'mobile')), ...(Object.keys(nodeMobile).length && { mobile: nodeMobile }) },
+  };
+}
+
+/** Why the config files that `has` finds are no layout a fleet can start on, before any of them is read. */
+export function configRefusal(paths: Pick<Paths, 'legacyConfig' | 'fleetConfig' | 'nodeConfig'>, has: (file: string) => boolean): string | undefined {
+  if (!has(paths.legacyConfig)) return undefined;
+  if (has(paths.fleetConfig)) {
+    return `${paths.legacyConfig} is not read any more: this fleet's settings are in ${paths.fleetConfig} and ${paths.nodeConfig}. Move anything you still want from it into them and delete it.`;
+  }
+  const backup = `${paths.legacyConfig}.bak`;
+  if (has(backup)) return `${backup} is in the way of putting ${paths.legacyConfig} beside the new files. Keep whichever of the two you want, delete the other, and start again.`;
+  return undefined;
+}
+
+/**
+ * Writes whichever of the two config files this fleet is missing, out of its config.json when it
+ * still has one, and returns the files written. An unreadable config.json stops it before any write.
+ */
+export function initConfig(paths: Paths, seed: Partial<NodeConfig> = {}): string[] {
+  const has = (file: string): boolean => fs.existsSync(file);
+  const backup = `${paths.legacyConfig}.bak`;
+  // a config.json is put beside the new files byte-exact before anything is read out of it, so the
+  // only file the split ever reads is one nothing edits any more
+  if (has(paths.legacyConfig)) {
+    const refused = configRefusal(paths, has);
+    if (refused) throw new InvalidConfig(refused);
+    read(paths.legacyConfig, Config); // one the schema rejects is left where its owner put it
+    fs.renameSync(paths.legacyConfig, backup);
+  }
+  const wrote: string[] = [];
+  const split = has(backup) && !has(paths.fleetConfig) ? splitLegacy(backup) : undefined;
+  if (split || !has(paths.nodeConfig)) {
+    writeJsonAtomic(paths.nodeConfig, split?.node ?? seed);
+    wrote.push(paths.nodeConfig);
+  }
+  // last, so a fleet.json is only ever there once the split behind it is whole
+  if (!has(paths.fleetConfig)) {
+    writeJsonAtomic(paths.fleetConfig, split?.fleet ?? { id: newFleetId() });
+    wrote.push(paths.fleetConfig);
+  }
+  return wrote;
+}
+
+export function loadConfig(paths: Paths): Config {
+  if (!fs.existsSync(paths.home)) return Config.parse({});
+  initConfig(paths);
+  return mergeConfig(read(paths.fleetConfig, FleetFile), read(paths.nodeConfig, NodeFile));
+}
+
+/** What fleet.json and node.json hold, or the config.json they are still to be split out of; nothing is split or written. */
+export function peekConfig(paths: Paths): Config {
+  if (!fs.existsSync(paths.fleetConfig)) return fs.existsSync(paths.legacyConfig) ? read(paths.legacyConfig, Config) : Config.parse({});
+  return mergeConfig(read(paths.fleetConfig, FleetFile), fs.existsSync(paths.nodeConfig) ? read(paths.nodeConfig, NodeFile) : NodeFile.parse({}));
+}
+
+/** The main agent fleet.json names, or the config.json it is still to be split out of; nothing is split or written. */
+export function configuredMainAgent(paths: Paths): AgentKind | undefined {
+  if (fs.existsSync(paths.fleetConfig)) return read(paths.fleetConfig, FleetConfig).mainAgent;
+  return fs.existsSync(paths.legacyConfig) ? read(paths.legacyConfig, Config).mainAgent : undefined;
+}
+
+/** The phone ports the fleets at `homes` keep in their config. */
 export const keptPorts = (homes: string[]): number[] => homes.flatMap((h) => {
-  try { const p = loadConfig(resolvePaths(h).config).mobile.httpsPort; return p ? [p] : []; } catch { return []; }
+  try { const p = peekConfig(resolvePaths(h)).mobile.httpsPort; return p ? [p] : []; } catch { return []; }
 });
 
-/** Sets the keys of `patch` in `file` and keeps every other key; a file that does not parse is refused, not replaced.
- *  A linked file (stow, home-manager) is written where it points, with the mode it had. */
-export function saveConfig(file: string, patch: Partial<Pick<Config, 'mainAgent' | 'name' | 'integrations' | 'defaultCwd'>> & { mobile?: Pick<Config['mobile'], 'httpsPort'> }): void {
-  const there = fs.existsSync(file);
-  const text = there ? fs.readFileSync(file, 'utf8') : '{}';
-  parseConfig(text, file);
-  const real = there ? fs.realpathSync(file) : file;
-  const mode = there ? fs.statSync(real).mode & 0o777 : undefined;
-  const json = JSON.parse(text) as { mobile?: object };
-  // mobile is merged a level down, so a saved port keeps the logins beside it
-  const next = { ...json, ...patch, ...(patch.mobile && { mobile: { ...json.mobile, ...patch.mobile } }) };
-  writeAtomic(real, JSON.stringify(next, null, 2) + '\n', { mode, perProcess: true });
+/**
+ * Sets the keys `patch` names in `file`, drops those it names as undefined, merges mobile a level down, and keeps every
+ * other key as the file held it. A file that does not parse, or would not after the change, is refused, not replaced.
+ * A linked file (stow, home-manager) is written where it points, with the mode it had.
+ */
+function patchConfigFile(file: string, schema: z.ZodTypeAny, patch: Raw): void {
+  const text = fs.readFileSync(file, 'utf8');
+  parseConfig(text, file, schema);
+  const json = JSON.parse(text) as Raw;
+  const next = JSON.stringify({ ...json, ...patch, ...(patch.mobile !== undefined && { mobile: { ...(json.mobile as object), ...(patch.mobile as object) } }) }, null, 2);
+  parseConfig(next, file, schema);
+  const real = fs.realpathSync(file);
+  const mode = fs.statSync(real).mode & 0o777;
+  writeDurable(real, Buffer.from(`${next}\n`), { mode });
   // the umask narrows the mode a file is created with
-  if (mode !== undefined) fs.chmodSync(real, mode);
+  fs.chmodSync(real, mode);
+}
+
+/** Sets the keys `patch` names in a fleet.json, as `patchConfigFile` does. */
+export const patchFleetConfig = (file: string, patch: Raw): void => patchConfigFile(file, FleetConfig, patch);
+
+export type ConfigPatch = Partial<Pick<Config, 'mainAgent' | 'name' | 'integrations' | 'defaultCwd'>> & { mobile?: Pick<Config['mobile'], 'httpsPort'> };
+
+/** Sets each key of `patch` in fleet.json or node.json, whichever holds it, split out first if need be. */
+export function saveConfig(paths: Paths, patch: ConfigPatch): void {
+  fs.mkdirSync(paths.home, { recursive: true });
+  initConfig(paths);
+  const { integrations, mobile, ...fleet } = patch;
+  if (Object.keys(fleet).length) patchFleetConfig(paths.fleetConfig, fleet);
+  const node = { ...('integrations' in patch && { integrations }), ...(mobile && { mobile }) };
+  if (Object.keys(node).length) patchConfigFile(paths.nodeConfig, NodeConfig, node);
+}
+
+/** Sets mainAgent in fleet.json, split out first if need be. */
+export function saveMainAgent(paths: Paths, agent: AgentKind): void {
+  saveConfig(paths, { mainAgent: agent });
+}
+
+/** fleet.json as it stands now; an InvalidConfig says what in it is wrong. */
+export function readFleetConfig(paths: Pick<Paths, 'fleetConfig'>): FleetConfig {
+  return read(paths.fleetConfig, FleetConfig);
+}
+
+/** The gateway fleet.json names now: `svall host enable` names one, and `svall host remove` drops it, while the daemon runs. */
+export function namedGateway(paths: Paths): MachineId | undefined {
+  return readFleetConfig(paths).gatewayMachineId;
+}
+
+/** Names `id` this fleet's gateway in fleet.json and in the running config, which others hold by reference. */
+export function setGateway(paths: Paths, config: Config, id: MachineId): void {
+  if (config.gatewayMachineId === id) return;
+  patchFleetConfig(paths.fleetConfig, { gatewayMachineId: id });
+  config.gatewayMachineId = id;
 }

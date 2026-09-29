@@ -6,7 +6,7 @@ import { silentLogger } from '../src/log.js';
 import { resolvePaths } from '../src/paths.js';
 import { Store } from '../src/store.js';
 import type { Tmux } from '../src/tmux/tmux.js';
-import { cleanHomes, makeHome } from './helpers.js';
+import { cleanHomes, makeHome, ownerOf } from './helpers.js';
 
 afterEach(cleanHomes);
 
@@ -17,7 +17,8 @@ describe('island order', () => {
     store.update((d) => {
       d.islands[HOME_ISLAND] = { id: HOME_ISLAND, kind: 'home', name: 'mission control', description: '', instructions: '', context: [], position: { x: 0, y: 40 }, size: homeSizeFor(2), seed: 1 };
     });
-    const fleet = new Fleet({ store, tmux: {} as Tmux, paths, config: Config.parse({}), log: silentLogger });
+    const config = Config.parse({});
+    const fleet = new Fleet({ store, tmux: {} as Tmux, paths, config, log: silentLogger, ownership: ownerOf(paths.home, config.id) });
     const listed = () => Object.values(store.state.islands).sort(byIslandOrder).map((i) => i.name);
     return { fleet, listed };
   }

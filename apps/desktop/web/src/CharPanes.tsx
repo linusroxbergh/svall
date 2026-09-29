@@ -51,7 +51,7 @@ export function CharPanes({ id, opacity, lead, trail }: Props) {
   const two = panes.right !== undefined;
 
   const set = (next: Panes) => {
-    if (shows(next, 'terminal2') && !c.second) openSecondTerminal(deps(), id);
+    if (shows(next, 'terminal2') && !c.second?.tmux) openSecondTerminal(deps(), id);
     app.store.getState().setPanes(id, next);
   };
   const dragTo = (e: React.PointerEvent<HTMLElement>) => {

@@ -37,6 +37,15 @@ enum ToShell: Decodable {
     case notifyEnable
     case notifySettings
     case updateInstall
+    case hostStart(op: HostOp, args: HostArgs)
+    case hostCancel
+    case handoverStart(to: String, choices: HandoverChoices?)
+    case handoverResume
+    case handoverAbort
+    case handoverAttach
+    case handoverChoose(choices: HandoverChoices)
+    case handoverCancel
+    case handoverForget
     case quitAnswer(unsaved: [String], working: Int)
     case quitStopped(ok: Bool)
     case openFleet(home: String, quit: Bool?)
@@ -45,7 +54,7 @@ enum ToShell: Decodable {
     case setupRun(agents: [String], found: [String], projects: String)
     case folderPick(start: String)
 
-    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, working, ok, home, quit, agents, found, projects, start }
+    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, working, ok, home, quit, agents, found, projects, start, op, args, to, choices }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -80,6 +89,15 @@ enum ToShell: Decodable {
         case "notify.enable": self = .notifyEnable
         case "notify.settings": self = .notifySettings
         case "update.install": self = .updateInstall
+        case "host.start": self = .hostStart(op: try c.decode(HostOp.self, forKey: .op), args: try c.decode(HostArgs.self, forKey: .args))
+        case "host.cancel": self = .hostCancel
+        case "handover.start": self = .handoverStart(to: try c.decode(String.self, forKey: .to), choices: try c.decodeIfPresent(HandoverChoices.self, forKey: .choices))
+        case "handover.resume": self = .handoverResume
+        case "handover.abort": self = .handoverAbort
+        case "handover.attach": self = .handoverAttach
+        case "handover.choose": self = .handoverChoose(choices: try c.decode(HandoverChoices.self, forKey: .choices))
+        case "handover.cancel": self = .handoverCancel
+        case "handover.forget": self = .handoverForget
         case "quit.answer": self = .quitAnswer(unsaved: try c.decode([String].self, forKey: .unsaved), working: try c.decode(Int.self, forKey: .working))
         case "quit.stopped": self = .quitStopped(ok: try c.decode(Bool.self, forKey: .ok))
         case "openFleet": self = .openFleet(home: try c.decode(String.self, forKey: .home), quit: try c.decodeIfPresent(Bool.self, forKey: .quit))
@@ -95,7 +113,14 @@ enum ToShell: Decodable {
 /// Messages to the webview. Mirrors FromShell in bridge.ts.
 enum FromShell {
     case connection(SvallConnection?)
-    case shellInfo(home: String, log: [String], op: Bool, ghosttyKeys: [String: String])
+    case connectionState(state: String, owner: String, kind: String?, message: String?)
+    case notice(text: String)
+    case hostStep(op: String, step: HostProcess.Step)
+    case hostDone(op: String, code: Int32)
+    case handoverEvent([String: Any])
+    case handoverReplay([[String: Any]])
+    case handoverExit(code: Int32, error: String?)
+    case shellInfo(home: String, log: [String], op: Bool, ghosttyKeys: [String: String], handoverEnabled: Bool, gateway: String?)
     case key(chord: String)
     case termExited(id: String)
     case termFailed(id: String, reason: String)
@@ -124,7 +149,28 @@ enum FromShell {
     var json: [String: Any] {
         switch self {
         case .connection(let c): return ["type": "connection", "host": c?.host ?? "", "port": c?.port ?? 0, "token": c?.token ?? ""]
-        case .shellInfo(let home, let log, let op, let ghosttyKeys): return ["type": "shell.info", "home": home, "log": log, "op": op, "ghosttyKeys": ghosttyKeys]
+        case .connectionState(let state, let owner, let kind, let message):
+            var json: [String: Any] = ["type": "connection.state", "state": state, "owner": owner]
+            if let kind { json["kind"] = kind }
+            if let message { json["message"] = message }
+            return json
+        case .notice(let text): return ["type": "notice", "text": text]
+        case .hostStep(let op, let step):
+            var event: [String: Any] = ["step": step.step, "status": step.status]
+            if let detail = step.detail { event["detail"] = detail }
+            if let action = step.action { event["action"] = action }
+            return ["type": "host.step", "op": op, "event": event]
+        case .hostDone(let op, let code): return ["type": "host.done", "op": op, "code": Int(code)]
+        case .handoverEvent(let event): return ["type": "handover.event", "event": event]
+        case .handoverReplay(let events): return ["type": "handover.replay", "events": events]
+        case .handoverExit(let code, let error):
+            var json: [String: Any] = ["type": "handover.exit", "code": Int(code)]
+            if let error { json["error"] = error }
+            return json
+        case .shellInfo(let home, let log, let op, let ghosttyKeys, let handoverEnabled, let gateway):
+            var json: [String: Any] = ["type": "shell.info", "home": home, "log": log, "op": op, "ghosttyKeys": ghosttyKeys, "handoverEnabled": handoverEnabled]
+            if let gateway { json["gateway"] = gateway }
+            return json
         case .key(let chord): return ["type": "key", "chord": chord]
         case .termExited(let id): return ["type": "term.exited", "id": id]
         case .termFailed(let id, let reason): return ["type": "term.failed", "id": id, "reason": reason]

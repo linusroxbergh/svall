@@ -1,0 +1,204 @@
+import { execFileSync, spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { Config } from '../../src/config.js';
+import { ProcessTable, killGroup, parsePs } from '../../src/handover/processes.js';
+import { installedScripts } from '../../src/paths.js';
+import { tmuxConfText } from '../../src/tmux/conf.js';
+import { Tmux } from '../../src/tmux/tmux.js';
+import { cleanHomes, hasTmux, makeHome, waitFor } from '../helpers.js';
+
+const fixture = (name: string): string => fs.readFileSync(path.join(import.meta.dirname, '../fixtures/ps', name), 'utf8');
+const args = (rows: { args: string }[] | undefined): string[] | undefined => rows?.map((r) => r.args);
+
+// the same panes as each platform's ps prints them: a prompt, a pipeline, a background job, Claude with its MCP
+// servers (`claude mcp serve` among them), tool commands (two naming scripts like Svall's) and Svall's own
+// statusline and hook, a Claude that node runs, a shell that exec'd into vim, a job that exited but is not reaped, a standalone
+// Codex and one behind npm's node launcher. The macOS standalone Codex follows one measured on this Mac, the
+// Linux one is an idle Codex 0.156.1 captured on Ubuntu; the npm layouts and Codex's tool commands are modelled.
+const platforms = [
+  {
+    name: 'macOS', file: 'darwin.txt', rows: 43, shell: '-zsh', tool: /^\/bin\/zsh -c source/, home: '/Users/ada/.svall',
+    pane: { prompt: 88276, pipeline: 88278, pipelineGroup: 88486, background: 88283, agent: 41522, agentGroup: 41598, exec: 50001, reaping: 50100 },
+    codex: { pane: 61000, pid: 61010, commands: ['/bin/zsh -lc npm test'] },
+    npm: { pane: 62000, launcher: 62010, pid: 62011, commands: ['/bin/zsh -lc npm test'] },
+    nodeClaude: { pane: 63000, pid: 63010 },
+    trees: {
+      codex: [
+        'codex', '/Users/ada/.codex/packages/standalone/current/codex-path/node_repl', 'node /opt/homebrew/bin/adlc mcp-server',
+        '/Users/ada/.codex/packages/standalone/current/bin/codex-code-mode-host', '/bin/zsh -lc npm test',
+      ],
+      npm: [
+        'node /opt/homebrew/bin/codex', '/opt/homebrew/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/codex/codex',
+        'node /opt/homebrew/bin/adlc mcp-server', '/bin/zsh -lc npm test',
+      ],
+      claudeGroups: [41598, 41640, 41641, 41650, 41651, 41700, 92650],
+    },
+  },
+  {
+    name: 'Linux procps', file: 'linux.txt', rows: 41, shell: '-bash', tool: /^\/bin\/bash -c source/, home: '/home/ada/.svall',
+    pane: { prompt: 3526506, pipeline: 3526520, pipelineGroup: 3527276, background: 3526538, agent: 3530001, agentGroup: 3530010, exec: 3540001, reaping: 3550000 },
+    codex: { pane: 1519551, pid: 1519855, commands: [] },
+    npm: { pane: 3560001, launcher: 3560010, pid: 3560011, commands: ['/bin/bash -lc npm test'] },
+    nodeClaude: { pane: 3580000, pid: 3580010 },
+    trees: {
+      codex: ['codex'],
+      npm: [
+        'node /home/ada/.local/bin/codex', '/home/ada/.local/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex/codex',
+        'node /home/ada/mcp/server.js', '/bin/bash -lc npm test',
+      ],
+      claudeGroups: [3530010, 3530020, 3530030, 3530041, 3530042, 3530050, 3530051],
+    },
+  },
+];
+
+describe.each(platforms)('ps as $name prints it', ({ file, rows, shell, tool, home, pane, codex, npm, nodeClaude, trees }) => {
+  const table = new ProcessTable(parsePs(fixture(file)), installedScripts(home));
+
+  it('reads every row, with the command line whole and the ids as numbers', () => {
+    const parsed = parsePs(fixture(file));
+    expect(parsed).toHaveLength(rows);
+    expect(parsed.find((r) => r.pid === pane.prompt)).toMatchObject({ pgid: pane.prompt, tpgid: pane.prompt, args: shell });
+    expect(parsed.find((r) => r.args.startsWith('npm exec'))?.args).toBe('npm exec @playwright/mcp@latest');
+    expect(parsed.some((r) => r.tpgid < 1)).toBe(true);
+  });
+
+  it('finds nothing holding a shell at its prompt, and leaves its background jobs out', () => {
+    expect(table.pane(pane.prompt)).toEqual({ group: pane.prompt, foreground: [] });
+    expect(table.pane(pane.background)).toEqual({ group: pane.background, foreground: [] });
+  });
+
+  it('reads a pipeline in the foreground as the job holding the terminal', () => {
+    const p = table.pane(pane.pipeline);
+    expect(p?.group).toBe(pane.pipelineGroup);
+    expect(args(p?.foreground)).toEqual(['sleep 300', 'cat']);
+    expect(p?.agent).toBeUndefined();
+  });
+
+  it('holds Claude with its MCP servers in the foreground, and counts only its own work off the terminal as a command', () => {
+    const p = table.pane(pane.agent);
+    expect(p?.group).toBe(pane.agentGroup);
+    expect(p?.foreground.map((r) => r.args.split(' ')[0])).toEqual([
+      'claude', expect.stringMatching(/python$/), 'npm', 'claude', 'node',
+    ]);
+    // `claude mcp serve` is one of its MCP servers, not the agent behind a launcher
+    expect(p?.agent).toMatchObject({ kind: 'claude', pid: pane.agentGroup });
+    // neither the browser an MCP server launched nor Svall's statusline and hook are the agent's work,
+    // while commands that only name scripts like them are
+    const commands = args(p?.agent?.commands) ?? [];
+    expect(commands).toHaveLength(3);
+    expect(commands[0]).toMatch(tool);
+    expect(commands[1]).toContain("eval 'node --watch packages/svalld/hooks/agent-hook.mjs --port 0'");
+    expect(commands[2]).toContain("eval 'node ~/tools/claude-status.mjs --serve'");
+  });
+
+  it('takes a Claude that node runs as the agent, not the `claude mcp serve` it runs the same way', () => {
+    const p = table.pane(nodeClaude.pane);
+    expect(p?.agent?.kind).toBe('claude');
+    expect(p?.agent?.pid).toBe(nodeClaude.pid);
+    expect(args(p?.agent?.commands)).toEqual([expect.stringContaining("eval 'cargo build'")]);
+  });
+
+  it("leaves Svall's scripts out only where setup installed them", () => {
+    const elsewhere = new ProcessTable(parsePs(fixture(file)), installedScripts('/opt/other'));
+    // the guarded hook command is setup's wherever it lives; a statusline script of another home is not
+    expect(elsewhere.pane(pane.agent)?.agent?.commands).toHaveLength(4);
+  });
+
+  it("finds a standalone Codex, leaving out the MCP servers it keeps on the terminal in groups of their own", () => {
+    const p = table.pane(codex.pane);
+    expect(args(p?.foreground)).toEqual(['codex']);
+    expect(p?.agent?.kind).toBe('codex');
+    expect(p?.agent?.pid).toBe(codex.pid);
+    expect(args(p?.agent?.commands)).toEqual(codex.commands);
+  });
+
+  it("sees through npm's node launcher to the Codex it starts, and reads that process's commands", () => {
+    const p = table.pane(npm.pane);
+    expect(p?.group).toBe(npm.launcher);
+    expect(p?.agent?.kind).toBe('codex');
+    expect(p?.agent?.pid).toBe(npm.pid);
+    expect(args(p?.agent?.commands)).toEqual(npm.commands);
+  });
+
+  it('reaches everything a job holding the terminal started, its helpers on the terminal and its work off it alike', () => {
+    const tree = (panePid: number) => table.tree(table.pane(panePid)?.foreground ?? []);
+    expect(args(tree(codex.pane))).toEqual(trees.codex);
+    expect(args(tree(npm.pane))).toEqual(trees.npm);
+    // Claude's MCP servers, the browser one of them launched, its tool commands, statusline and hook
+    expect([...new Set(tree(pane.agent).map((p) => p.pgid))].sort((a, b) => a - b)).toEqual(trees.claudeGroups);
+    expect(tree(pane.prompt)).toEqual([]);
+    expect(tree(pane.reaping)).toEqual([]);
+  });
+
+  it('counts a pane whose shell was replaced as holding its terminal, with no agent in it', () => {
+    const p = table.pane(pane.exec);
+    expect(args(p?.foreground)).toEqual(['vim notes.md']);
+    expect(p?.agent).toBeUndefined();
+  });
+
+  it('does not count a job that has exited and waits to be reaped', () => {
+    expect(table.pane(pane.reaping)?.foreground).toEqual([]);
+  });
+
+  it('knows nothing of a pane whose process is gone', () => {
+    expect(table.pane(4_000_000)).toBeUndefined();
+  });
+});
+
+describe('ProcessTable.read', () => {
+  it('ends the ps it started when the signal it was given aborts', async () => {
+    await expect(ProcessTable.read({ signal: AbortSignal.abort() })).rejects.toThrow(/abort/i);
+  });
+});
+
+describe('parsePs', () => {
+  it('skips a header, a blank line and anything else that is not a row', () => {
+    const rows = parsePs('  PID  PPID  PGID TPGID STAT ARGS\n\n   12     1    12   12 Ss+  -zsh\nnot a row\n   13    12    13   12 S\n');
+    expect(rows).toEqual([
+      { pid: 12, ppid: 1, pgid: 12, tpgid: 12, stat: 'Ss+', args: '-zsh' },
+      { pid: 13, ppid: 12, pgid: 13, tpgid: 12, stat: 'S', args: '' },
+    ]);
+  });
+});
+
+describe('killGroup', () => {
+  it('refuses a group that would reach every process, or its own', () => {
+    for (const g of [-1, 0, 1]) expect(() => killGroup(g, 'SIGTERM')).toThrow(/process group/);
+  });
+
+  it('leaves a job that is gone, or that this user may not signal, for resting to report', async () => {
+    const child = spawn('sleep', ['0'], { detached: true });
+    await new Promise((r) => child.on('exit', r));
+    expect(() => killGroup(child.pid!, 'SIGTERM')).not.toThrow();
+    // SIGCONT harms nothing it reaches; it reaches nothing here unless this runs as root
+    const rootGroup = execFileSync('ps', ['-A', '-o', 'pgid=,uid='], { encoding: 'utf8' }).split('\n')
+      .map((l) => l.trim().split(/\s+/).map(Number)).find(([pgid, uid]) => pgid > 1 && uid === 0)?.[0];
+    if (process.getuid?.() !== 0 && rootGroup) expect(() => killGroup(rootGroup, 'SIGCONT')).not.toThrow();
+  });
+});
+
+const runIf = hasTmux() ? describe : describe.skip;
+
+runIf(`ProcessTable on this machine${hasTmux() ? '' : ' (skipped: tmux is not on PATH)'}`, () => {
+  const started: Tmux[] = [];
+  afterEach(async () => { for (const t of started.splice(0)) await t.killServer(); cleanHomes(); });
+
+  it("reads what holds a real tmux pane from this machine's ps", async () => {
+    const home = makeHome();
+    fs.writeFileSync(`${home}/tmux.conf`, tmuxConfText(Config.parse({ shell: '/bin/sh' })));
+    const tmux = new Tmux(`${home}/tmux.sock`, `${home}/tmux.conf`);
+    await tmux.ensureServer();
+    started.push(tmux);
+    const w = await tmux.newWindow('c_ps', '/tmp', {});
+    const [listed] = await tmux.listWindows();
+    expect(listed.panePid).toBeGreaterThan(1);
+    await waitFor(async () => (await ProcessTable.read()).pane(listed.panePid)?.foreground.length === 0);
+    await tmux.sendLine(w.paneId, 'sleep 30 | cat', true);
+    await waitFor(async () => args((await ProcessTable.read()).pane(listed.panePid)?.foreground)?.join(',') === 'sleep 30,cat');
+    // a call that resting gives up on takes its tmux client with it
+    await expect(tmux.listWindows(AbortSignal.abort())).rejects.toThrow(/abort/i);
+    await expect(tmux.capture(w.paneId, 10, false, AbortSignal.abort())).rejects.toThrow(/abort/i);
+  });
+});

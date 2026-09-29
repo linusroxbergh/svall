@@ -17,7 +17,7 @@ process.env.HOME = home;
 // the claude and codex doubles come after, so a test that builds its own PATH can keep the rest without them
 process.env.PATH = `${bin}:${fixtures}:${process.env.PATH}`;
 process.env.SVALL_TEST_BIN = bin;
-for (const k of ['SVALL_HOME', 'SVALL_CHAR_ID', 'SVALL_TERM', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'TMUX', 'TMUX_PANE']) delete process.env[k];
+for (const k of ['SVALL_HOME', 'SVALL_RELEASE_ROOT', 'SVALL_CHAR_ID', 'SVALL_TERM', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'TMUX', 'TMUX_PANE']) delete process.env[k];
 // a checkout runs as Svall Dev; the tests read the release's names unless a test asks for the other variant
 process.env.SVALL_VARIANT = 'release';
 

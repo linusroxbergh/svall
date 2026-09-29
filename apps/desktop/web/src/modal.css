@@ -42,3 +42,32 @@
 .fleet-new .btn { flex: none; }
 .btn.ghost { background: none; color: var(--ink-3); font-size: var(--text-sm); font-weight: var(--w-medium); padding: var(--sp-xs) 0; text-align: left; }
 .btn.ghost:hover { background: none; color: var(--ink); }
+
+/* setting a machine up: one long checklist, so the dialog is the tallest of them */
+.modal.host { width: 520px; max-height: min(82vh, 760px); overflow: hidden auto; }
+.host-form { display: flex; flex-direction: column; gap: var(--sp-md); }
+.host .acts { flex-wrap: wrap; }
+.host-note { font-size: var(--text-md); line-height: 1.45; color: var(--ink-2); display: flex; flex-direction: column; gap: var(--sp-md); }
+.host-note ul { margin: 0; padding-left: var(--sp-2xl); }
+.host-steps { display: flex; flex-direction: column; gap: var(--sp-xl); }
+.host-phase { display: flex; flex-direction: column; gap: var(--sp-xs); }
+.host-step { display: flex; gap: var(--sp-md); font-size: var(--text-sm); line-height: 1.45; color: var(--ink-2); }
+.host-mark { flex: none; width: 12px; text-align: center; color: var(--ink-3); }
+.host-step[data-status="ok"] .host-mark { color: var(--done); }
+.host-step[data-status="warn"] .host-mark { color: var(--working); }
+.host-step[data-status="fail"] .host-mark { color: var(--blocked); }
+.host-name { flex: none; width: 72px; color: var(--ink); font-family: var(--mono); font-size: var(--text-xs); }
+.host-said { min-width: 0; overflow-wrap: anywhere; }
+/* what the user has to go and do about this step, which the checklist never hides */
+.host-said em { display: block; font-style: normal; color: var(--sand); }
+.ho-section { display: flex; flex-direction: column; gap: var(--sp-xs); }
+.ho-section[data-state="pending"] { opacity: .55; }
+.ho-head { display: flex; gap: var(--sp-md); font-size: var(--text-md); font-weight: var(--w-semibold); color: var(--ink); }
+.ho-section[data-state="done"] > .ho-head .host-mark { color: var(--done); }
+.ho-section[data-state="active"] > .ho-head .host-mark { color: var(--working); }
+.ho-section[data-state="waiting"] > .ho-head .host-mark, .ho-section[data-state="stopped"] > .ho-head .host-mark { color: var(--blocked); }
+.ho-who { flex: none; width: 96px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn.ho-choice { display: block; margin-top: var(--sp-xs); padding: var(--sp-2xs) var(--sp-lg); font-size: var(--text-sm); font-weight: var(--w-medium); }
+.btn.ho-choice[aria-pressed="true"] { background: var(--sand-fill); color: var(--sand-hi); }
+.ho-bar { display: block; height: 4px; margin-top: var(--sp-xs); border-radius: var(--r-pill); background: var(--line); overflow: hidden; }
+.ho-bar > i { display: block; height: 100%; background: var(--done); }

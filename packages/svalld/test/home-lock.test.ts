@@ -7,7 +7,7 @@ import { silentLogger } from '../src/log.js';
 import { startDaemon, type Daemon } from '../src/main.js';
 import { resolvePaths } from '../src/paths.js';
 import { Tmux } from '../src/tmux/tmux.js';
-import { cleanHomes, hasTmux, makeHome } from './helpers.js';
+import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
 const exec = promisify(execFile);
 const root = path.resolve(import.meta.dirname, '../../..');
@@ -62,20 +62,23 @@ runIf('one daemon per home', () => {
     await (await start({ home, port: 0, log: silentLogger })).stop();
   });
 
-  it('refuses a start while another process holds the lock, and starts once that process is killed', async () => {
+  it('refuses a start while another svalld runs for the home, and starts once that one is killed, its tmux server still up', async () => {
     const home = fleetHome();
-    // what the daemon opens: O_EXLOCK is 0x20 on macOS, and node names no constant for it
-    const holder = spawn(process.execPath, ['-e', `require('fs').openSync(${JSON.stringify(path.join(home, 'daemon.lock'))}, 0x2 | 0x200 | 0x4 | 0x20, 0o600); console.log('held'); setInterval(() => {}, 1000)`]);
+    const paths = resolvePaths(home);
+    // one process, so the kill below is a kill -9 of the daemon itself
+    const holder = spawn(process.execPath, ['--import', 'tsx', path.join(root, 'packages/svalld/src/bin.ts')], { cwd: root, env: { ...process.env, SVALL_HOME: home }, stdio: 'ignore' });
     try {
-      await new Promise((r) => holder.stdout.once('data', r));
+      await waitFor(() => fs.existsSync(paths.port), 30_000);
       await expect(start({ home, port: 0, log: silentLogger })).rejects.toThrow(/svalld is already running for/);
       holder.kill('SIGKILL');
       await new Promise((r) => holder.once('exit', r));
+      // the tmux server it started outlives it, and holds nothing of its lock
+      expect(await new Tmux(paths.tmuxSock, paths.tmuxConf).listSessions()).not.toEqual([]);
       await (await start({ home, port: 0, log: silentLogger })).stop();
     } finally {
       if (holder.exitCode === null) holder.kill('SIGKILL');
     }
-  });
+  }, 40_000);
 
   it('lets go of the lock when a start fails, and a stop run twice lets go once', async () => {
     const home = fleetHome();
@@ -98,7 +101,7 @@ runIf('one daemon per home', () => {
     await (await start({ home, port: 0, log: silentLogger })).stop();
   });
 
-  it('leaves the running daemon\'s log unrotated when svalld is started again for its home', async () => {
+  it('leaves the running daemon\'s log as it was, unrotated and with nothing added, when svalld is started again for its home', async () => {
     const home = fleetHome();
     const paths = resolvePaths(home);
     const first = await start({ home, port: 0, log: silentLogger });
@@ -109,8 +112,7 @@ runIf('one daemon per home', () => {
         .then(() => 0, (e: { code: number }) => e.code);
       expect(r).toBe(1);
       expect(fs.existsSync(`${paths.log}.1`)).toBe(false);
-      expect(fs.readFileSync(paths.log, 'utf8').slice(0, big)).toBe('x'.repeat(big));
-      expect(fs.readFileSync(paths.log, 'utf8')).toMatch(/svalld is already running for/);
+      expect(fs.readFileSync(paths.log, 'utf8')).toBe('x'.repeat(big));
     } finally {
       await first.stop();
     }

@@ -1,10 +1,18 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { MobileStatus, UsageSnapshot } from '@svall/protocol';
+import type { FleetId, MobileStatus, UsageSnapshot } from '@svall/protocol';
+import { Config } from '../src/config.js';
 import type { Fleet } from '../src/fleet.js';
 import type { Fleets } from '../src/fleets.js';
+import type { DestinationDeps } from '../src/handover/destination.js';
+import type { SourceDeps } from '../src/handover/source.js';
+import { silentLogger } from '../src/log.js';
+import { machineId } from '../src/machine.js';
 import type { Mobile } from '../src/mobile.js';
+import { OwnershipState } from '../src/ownership/state.js';
+import { resolvePaths, type Paths } from '../src/paths.js';
+import { Store } from '../src/store.js';
 
 // the root config's test/isolate.ts moves HOME; a run without it would reach the real HOME and the live fleet
 if (!process.env.HOME?.startsWith('/tmp/svall-home-')) throw new Error('run these tests through the root vitest config (pnpm test)');
@@ -72,3 +80,19 @@ export const stubFleets: Fleets = {
   create: () => Promise.reject(new Error('no fleets in tests')),
   start: () => Promise.reject(new Error('no fleets in tests')),
 };
+
+// a home with no gateway and no owner.json owns its fleet at generation zero, which is what every test but the fence wants
+export const ownerOf = (home: string, fleetId: FleetId): OwnershipState =>
+  OwnershipState.load({ paths: resolvePaths(home), fleetId, machineId: machineId(), log: silentLogger, standalone: true });
+
+/** What a HandoverService runs each side's phases on, for a test that runs none of them: any phase that starts fails. */
+export function idleSides(paths: Paths, o: { store?: Store; config?: Config } = {}): { source: SourceDeps; destination: DestinationDeps } {
+  const idle = async (): Promise<never> => { throw new Error('this test runs no handover phase'); };
+  const store = o.store ?? Store.load(paths.state, () => {});
+  const fleet = { settle: idle, activate: idle, deactivate: idle, reconcileNow: idle, reviveCharacter: idle, openSecond: idle, onSessionStart: () => () => {}, carries: () => {} };
+  const tmux = { listWindows: idle, sendBytes: idle, sendLine: idle, capture: idle, killWindow: idle, ensureServer: idle };
+  return {
+    source: { paths, store, fleet, tmux, viewers: { detach: idle }, log: silentLogger },
+    destination: { paths, config: o.config ?? Config.parse({}), store, fleet, tmux, log: silentLogger },
+  };
+}

@@ -12,7 +12,7 @@ import { CLAUDE_HOOKS } from '../src/hooks/receiver.js';
 import { launchdPlist, plistCurrent, plistRun, takenOverBy } from '../src/launchd.js';
 import { isOurs, resolvePaths } from '../src/paths.js';
 import { BUNDLE_ID, LAUNCHD_LABEL, PRIVATE, profileHome, profileLabel } from '../src/profile.js';
-import { bundleRuntime, checkoutRuntime, type Runtime } from '../src/runtime.js';
+import { bundleRuntime, checkoutRuntime, releaseRuntime, type Runtime } from '../src/runtime.js';
 import { readJsonSettings, writeJsonSettings } from '../src/settings-file.js';
 import { installHomeTemplate, installHookScripts, refreshFleetPlists, runSetup, setupHome, shimText, shimsCurrent } from '../src/setup.js';
 import { shq } from '../src/text.js';
@@ -369,6 +369,7 @@ describe('launchdPlist', () => {
     expect(p).toContain('<key>RunAtLoad</key><false/>');
     expect(p).not.toContain('KeepAlive');
     expect(p).toContain('<key>LANG</key>');
+    expect(plistRun(p)).toEqual({ program: ['/r/node_modules/.bin/tsx', '/r/packages/svalld/src/bin.ts'], path: ['/opt/homebrew/bin', '/usr/bin', '/bin'] });
   });
 });
 
@@ -381,6 +382,16 @@ describe('runSetup', () => {
     expect(fs.existsSync(settingsPath)).toBe(false);
     expect(JSON.parse(fs.readFileSync(codex.hooks, 'utf8')).hooks.SessionStart).toBeDefined();
     expect(lines.join('\n')).toContain('Trust all and continue');
+  });
+
+  it('says how to move a fleet whose profile name svall now keeps for a command, where no -p reaches it', async () => {
+    const root = makeHome();
+    const home = path.join(root, '.svall');
+    fs.mkdirSync(path.join(root, '.svall-host'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.svall-host', 'fleet.json'), '{}');
+    const lines = await runSetup({ home, settingsPath: path.join(root, 'claude', 'settings.json'), launchAgentsDir: path.join(root, 'LaunchAgents'), shimDir: path.join(root, 'bin'), runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(root, 'codex') }), agents: ['codex'] });
+    const host = path.join(root, '.svall-host');
+    expect(lines).toContain(`${host} holds a fleet named host, a name svall now keeps for its own command, so no -p reaches it: mv ${host} ${host}-fleet, then svall host-fleet`);
   });
 
   it('keeps writing Claude settings when its folder exists without the CLI', async () => {
@@ -497,6 +508,28 @@ esac
       launchctl(2);
       await expect(setup()).rejects.toThrow(`launchd did not load ${LAUNCHD_LABEL} (Bootstrap failed: 5: Input/output error); run setup again`);
     });
+  });
+
+  it('points the hooks and statusline at the installed release\'s node when a staging copy runs setup', async () => {
+    const home = makeHome();
+    const settingsPath = path.join(home, 'claude-settings.json');
+    // this process's node stands in for the staging copy's, which is deleted once setup has run
+    const release = path.join(makeHome(), 'current');
+    await runSetup({ home, settingsPath, launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime: releaseRuntime(release), launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }) });
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    const node = path.join(release, 'node', 'bin', 'node');
+    expect(settings.hooks.SessionStart[0].hooks[0].command).toBe(hookCommand(node, path.join(home, 'hooks/agent-hook.mjs'), 'claude'));
+    expect(settings.statusLine.command).toBe(statusWrapper(node, path.join(home, 'hooks/claude-status.mjs')));
+    expect(JSON.stringify(settings)).not.toContain(process.execPath);
+    // the shims link into the release through current, which is what setup writes for one
+    expect(fs.readlinkSync(path.join(home, 'bin', 'svall'))).toBe(path.relative(path.join(home, 'bin'), path.join(release, 'bin', 'svall')));
+    expect(shimsCurrent(path.join(home, 'bin'), releaseRuntime(release))).toBe(true);
+    expect(shimsCurrent(path.join(home, 'bin'), runtime)).toBe(false);
+    // a shim that links into another release is out of date for this one
+    const shim = path.join(home, 'bin', 'svall');
+    fs.rmSync(shim);
+    fs.symlinkSync(path.relative(path.join(home, 'bin'), path.join(makeHome(), 'current', 'bin', 'svall')), shim);
+    expect(shimsCurrent(path.join(home, 'bin'), releaseRuntime(release))).toBe(false);
   });
 
   it('writes nothing when the Claude settings are not valid JSON', async () => {
@@ -817,7 +850,7 @@ describe('setupHome', () => {
     const home = path.join(root, '.svall-work');
     const launchAgentsDir = path.join(root, 'LaunchAgents');
     const lines = await setupHome({ home, label: 'io.github.linusroxbergh.svall.svalld.work', runtime, launchAgentsDir, launchctl: false, port: 0 });
-    expect(JSON.parse(fs.readFileSync(path.join(home, 'config.json'), 'utf8'))).toEqual({ port: 0 });
+    expect(JSON.parse(fs.readFileSync(path.join(home, 'node.json'), 'utf8'))).toMatchObject({ port: 0 });
     expect(fs.existsSync(path.join(home, 'hooks/agent-hook.mjs'))).toBe(true);
     const plist = fs.readFileSync(path.join(launchAgentsDir, 'io.github.linusroxbergh.svall.svalld.work.plist'), 'utf8');
     expect(plist).toContain('<string>io.github.linusroxbergh.svall.svalld.work</string>');
@@ -826,11 +859,12 @@ describe('setupHome', () => {
     expect(fs.existsSync(path.join(root, 'bin'))).toBe(false);
   });
 
-  it('leaves an existing config alone', async () => {
+  it('keeps the settings an existing config already holds', async () => {
     const home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), '{"port":47900}\n');
     await setupHome({ home, label: 'io.github.linusroxbergh.svall.svalld.x', runtime, launchAgentsDir: path.join(home, 'LaunchAgents'), launchctl: false, port: 0 });
-    expect(fs.readFileSync(path.join(home, 'config.json'), 'utf8')).toBe('{"port":47900}\n');
+    expect(JSON.parse(fs.readFileSync(path.join(home, 'node.json'), 'utf8')).port).toBe(47900);
+    expect(fs.readFileSync(path.join(home, 'config.json.bak'), 'utf8')).toBe('{"port":47900}\n');
   });
 
   it('starts the daemon PATH at a Homebrew node folder that an upgrade keeps', async () => {
@@ -923,6 +957,17 @@ describe('setupHome', () => {
     const amp = { ...o, runtime: checkoutRuntime(path.join(home, 'R&D', 'svall')) };
     await setupHome(amp);
     expect(plistCurrent(amp)).toBe(true);
+  });
+
+  it('calls a release plist current while it runs that release, and not once it runs another one or the checkout', async () => {
+    const home = makeHome();
+    const release = path.join(makeHome(), 'current');
+    const o = { home, label: LAUNCHD_LABEL, runtime: releaseRuntime(release), launchAgentsDir: path.join(home, 'LaunchAgents'), launchctl: false };
+    expect(plistCurrent(o)).toBe(false);
+    await setupHome(o);
+    expect(plistCurrent(o)).toBe(true);
+    expect(plistCurrent({ ...o, runtime: releaseRuntime(path.join(makeHome(), 'current')) })).toBe(false);
+    expect(plistCurrent({ ...o, runtime })).toBe(false);
   });
 
   it('passes the Claude and Codex homes on to the daemon when they are set', async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyState } from '@svall/protocol';
-import { boardIsland, boardViewed, charactersByPriority, charactersOf, contextPctOf, countsByStatus, DISPLAY_STATUSES, firstOfNextIsland, homeIsland, islandStatus, islandsSorted, isUnread, isVeiled, neighbor, selectedOf, slotStatus, statusOf, stripOrder, wantsUser } from '../src/selectors.js';
+import { boardIsland, boardViewed, charactersByPriority, charactersOf, contextPctOf, countsByStatus, DISPLAY_STATUSES, firstOfNextIsland, homeIsland, islandStatus, islandsSorted, isUnread, isVeiled, neighbor, resumeErrorOf, selectedOf, slotStatus, statusOf, stripOrder, wantsUser } from '../src/selectors.js';
 import { chr, fleet } from './fixtures.js';
 
 describe('selectors', () => {
@@ -57,17 +57,19 @@ describe('selectors', () => {
     }
   });
   it('anything the page spreads over a surface hides it first', () => {
-    const base = { namingCharacter: false, missionPrompt: false, closingCharacter: undefined, keysOpen: false, resourcesOpen: false, fleet: fleet() };
+    const base = { namingCharacter: false, missionPrompt: false, closingCharacter: undefined, keysOpen: false, resourcesOpen: false, hostOpen: false, handoverOpen: false, fleet: fleet() };
     expect(isVeiled(base)).toBe(false);
     expect(isVeiled({ ...base, missionPrompt: true })).toBe(true);
     expect(isVeiled({ ...base, namingCharacter: true })).toBe(true);
     expect(isVeiled({ ...base, closingCharacter: 'c0' })).toBe(true);
     expect(isVeiled({ ...base, deletingIsland: 'i_e' })).toBe(true);
     expect(isVeiled({ ...base, keysOpen: true })).toBe(true);
+    expect(isVeiled({ ...base, hostOpen: true })).toBe(true);
+    expect(isVeiled({ ...base, handoverOpen: true })).toBe(true);
     expect(isVeiled({ ...base, fleet: { ...fleet(), scribeAsk: true } })).toBe(true);
   });
   it('veils while the resources shelf is open', () => {
-    expect(isVeiled({ namingCharacter: false, missionPrompt: false, keysOpen: false, resourcesOpen: true, fleet: fleet() })).toBe(true);
+    expect(isVeiled({ namingCharacter: false, missionPrompt: false, keysOpen: false, resourcesOpen: true, hostOpen: false, handoverOpen: false, fleet: fleet() })).toBe(true);
   });
 });
 
@@ -151,7 +153,7 @@ describe('home island', () => {
 describe('a character with two sessions', () => {
   const agent = (status: 'working' | 'idle' | 'blocked' | 'done', contextPct?: number) =>
     ({ kind: 'claude' as const, sessionId: 's', transcriptPath: '/t', status, contextPct, lastActivityAt: 1 });
-  const second = (a?: ReturnType<typeof agent>, unread = false) => ({ tmux: { windowId: '@2', paneId: '%2' }, agent: a, unread });
+  const second = (a?: ReturnType<typeof agent>, unread = false) => ({ cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, agent: a, unread });
   const at = { x: 0, y: 0 };
 
   it('shows the most urgent of the two: blocked, working, done, idle, shell', () => {
@@ -166,11 +168,33 @@ describe('a character with two sessions', () => {
     expect(slotStatus(c, 1)).toBe('idle');
     expect(slotStatus(c, 2)).toBe('working');
   });
+  it('reads a second terminal without a window as it does the main one, a turn or question left open as idle', () => {
+    const dormant = { cwd: '/tmp', unread: false, revive: { command: 'codex resume s' } };
+    expect(slotStatus(chr('c', 'i', at, { second: dormant }), 2)).toBe('shell');
+    expect(slotStatus(chr('c', 'i', at, { second: { ...dormant, agent: agent('working') } }), 2)).toBe('idle');
+    expect(statusOf(chr('c', 'i', at, { agent: agent('done'), second: { ...dormant, agent: agent('blocked') } }))).toBe('done');
+  });
   it('reads the fuller context and either unread flag', () => {
     const c = chr('c', 'i', at, { agent: agent('idle', 20), second: second(agent('done', 71), true) });
     expect(contextPctOf(c)).toBe(71);
     expect(contextPctOf(chr('c', 'i', at))).toBeUndefined();
     expect(isUnread(c)).toBe(true);
     expect(wantsUser(c)).toBe(true);
+  });
+});
+
+describe('resumeErrorOf', () => {
+  const failed = 'ada\'s terminal resumed claude session s, but its window closed, so it is dormant again with that session; revive it to see';
+  const dormant = { resumeError: failed };
+  const on = { shell: { handoverEnabled: true } };
+
+  it('shows why a handover could not resume a dormant terminal only while the fleet asks for handover', () => {
+    expect(resumeErrorOf(on, dormant)).toBe(failed);
+    expect(resumeErrorOf({ shell: { handoverEnabled: false } }, dormant)).toBeUndefined();
+    expect(resumeErrorOf({}, dormant)).toBeUndefined();
+  });
+  it('shows nothing for a terminal whose window is open, or one there is not', () => {
+    expect(resumeErrorOf(on, { ...dormant, tmux: { windowId: '@1', paneId: '%1' } })).toBeUndefined();
+    expect(resumeErrorOf(on, undefined)).toBeUndefined();
   });
 });

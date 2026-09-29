@@ -1,13 +1,21 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
+import v8 from 'node:v8';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
-import { PROTOCOL_VERSION, type Event, type Response } from '@svall/protocol';
+import {
+  Blocker, MAX_REQUEST_BYTES, MachineId, OwnershipInfo, PART_BYTES, PROTOCOL_VERSION, SystemInfo, TRANSFER_SCHEMA_VERSION, emptyState, handoverError, type Event, type Response,
+} from '@svall/protocol';
 import { Config } from '../src/config.js';
+import { handlers } from '../src/api/methods.js';
 import { startApi } from '../src/api/server.js';
 import { Fleet } from '../src/fleet.js';
-import { silentLogger } from '../src/log.js';
+import { HandoverService } from '../src/handover/service.js';
+import { openJournal } from '../src/handover/journal.js';
+import { machineId } from '../src/machine.js';
+import { silentLogger, type Logger } from '../src/log.js';
 import { resolvePaths } from '../src/paths.js';
 import { workspaceRoot } from '../src/resources/scan.js';
 import { PushStore } from '../src/push/store.js';
@@ -17,7 +25,18 @@ import { TerminalHub } from '../src/terminals.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { Tmux } from '../src/tmux/tmux.js';
 import { Workspace } from '../src/workspace/workspace.js';
-import { cleanHomes, hasTmux, makeHome, stubFleets, stubMobile, stubUsage, waitFor } from './helpers.js';
+import { cleanHomes, hasTmux, idleSides, makeHome, ownerOf, stubFleets, stubMobile, stubUsage, waitFor } from './helpers.js';
+
+const PHONE_KEY = 'k'.repeat(48);
+const other = MachineId.parse('9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f');
+// the two machines a controller describes to a source
+const machines = {
+  source: { home: '/Users/linus' },
+  destination: {
+    info: { machineId: other, release: 'dev', protocol: PROTOCOL_VERSION, stateSchema: 8, transferSchema: 1, platform: 'linux', arch: 'x64', agentAdapters: [] },
+    home: '/Users/linus', fleetHome: '/Users/linus/.svall',
+  },
+};
 
 const runIf = hasTmux() ? describe : describe.skip;
 
@@ -41,6 +60,11 @@ class TestClient {
     ws.send(JSON.stringify({ token }));
     return c;
   }
+  static async phone(port: number, login = 'me@example.com'): Promise<TestClient> {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/${PHONE_KEY}/`, { headers: { 'tailscale-user-login': login } });
+    await new Promise((r) => ws.once('open', r));
+    return new TestClient(ws);
+  }
   call(method: string, params?: unknown): Promise<Response> {
     const id = this.next++;
     return new Promise((resolve) => { this.pending.set(id, resolve); this.ws.send(JSON.stringify({ id, method, params })); });
@@ -62,6 +86,7 @@ describe('startApi', () => {
         store: {} as never, fleet: {} as never, fleets: stubFleets, terminals: {} as never, workspace: {} as never, usage: stubUsage, mobileControl: stubMobile, log: silentLogger,
         push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(),
         claude: { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') },
+        ownership: { onChange: () => () => {} } as never, handover: { onEvent: () => () => {} } as never,
       })).rejects.toThrow(/EADDRINUSE/);
       expect(vi.getTimerCount()).toBe(0);
     } finally {
@@ -74,27 +99,30 @@ runIf('API', () => {
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 
-  async function boot(heartbeatMs?: number) {
+  async function boot(heartbeatMs?: number, o: { log?: Logger; token?: string } = {}) {
+    const log = o.log ?? silentLogger;
     const home = makeHome();
     const paths = resolvePaths(home);
     const config = Config.parse({ shell: '/bin/sh' });
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
-    const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 200 });
+    const ownership = ownerOf(home, config.id);
+    const fleet = new Fleet({ store, tmux, paths, config, ownership, log, pollMs: 200 });
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
-    const terminals = new TerminalHub(fleet, tmux, store, silentLogger);
+    const terminals = new TerminalHub(fleet, tmux, store, log);
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
-    const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, undefined, paths.docs, paths.agentProfiles), silentLogger, () => [claude.json], [paths.docs, paths.agentProfiles]);
+    const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, undefined, paths.docs, paths.agentProfiles), log, () => [claude.json], [paths.docs, paths.agentProfiles]);
+    const handover = new HandoverService({ ownership, journal: openJournal(paths), ...idleSides(paths, { store, config }) });
     const api = await startApi({
-      host: '127.0.0.1', port: 0, token: 'secret', store, fleet, fleets: stubFleets, terminals, workspace, usage: stubUsage, mobileControl: stubMobile, log: silentLogger,
+      host: '127.0.0.1', port: 0, token: o.token ?? 'secret', store, fleet, fleets: stubFleets, terminals, workspace, usage: stubUsage, mobileControl: stubMobile, log,
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(),
-      claude, docs: paths.docs, agentProfiles: paths.agentProfiles, heartbeatMs,
+      claude, docs: paths.docs, agentProfiles: paths.agentProfiles, heartbeatMs, ownership, handover, key: () => PHONE_KEY, logins: () => ['me@example.com'],
     });
     cleanup.unshift(async () => { await api.close(); workspace.close(); });
-    return { api, store, fleet, terminals, claude, docs: paths.docs, agentProfiles: paths.agentProfiles };
+    return { api, store, fleet, terminals, claude, docs: paths.docs, agentProfiles: paths.agentProfiles, ownership, handover, config };
   }
 
   it('rejects a bad token and accepts a good one', async () => {
@@ -104,11 +132,28 @@ runIf('API', () => {
     const good = await TestClient.connect(api.port, 'secret');
     const snap = (await good.call('state.get')) as { id: number; result: { version: number; islands: Record<string, { kind?: string }>; characters: unknown; home: { command: string } } };
     expect(snap.id).toBe(1);
-    expect(snap.result.version).toBe(7);
+    expect(snap.result.version).toBe(8);
     expect(snap.result.characters).toEqual({});
     expect(snap.result.islands.home.kind).toBe('home');
     expect(snap.result.home.command).toBe('claude --model sonnet');
     good.ws.close();
+  });
+
+  it('never writes the daemon token, or one a client offered, to its log', async () => {
+    const lines: string[] = [];
+    const log: Logger = { info: (m) => { lines.push(m); }, error: (m) => { lines.push(m); } };
+    const token = `daemon-token-${crypto.randomBytes(8).toString('hex')}`;
+    const { api } = await boot(undefined, { log, token });
+    const offered = `offered-token-${crypto.randomBytes(8).toString('hex')}`;
+    const bad = await TestClient.connect(api.port, offered);
+    await waitFor(() => bad.closeCode === 4401);
+    const good = await TestClient.connect(api.port, token);
+    await good.call('no.such.method', { token });
+    await good.call('char.get', { id: token });
+    good.ws.close();
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.join('\n')).not.toContain(token);
+    expect(lines.join('\n')).not.toContain(offered);
   });
 
   it('answers resources.get with the user scope first', async () => {
@@ -116,6 +161,37 @@ runIf('API', () => {
     const client = await TestClient.connect(api.port, 'secret');
     const r = (await client.call('resources.get')) as { result: { sources: { name: string; tier?: string }[] } };
     expect(r.result.sources[0]).toMatchObject({ name: 'Claude', tier: 'global' });
+  });
+
+  it('answers a request too large for one socket message once its last part arrives', async () => {
+    const { api } = await boot();
+    const c = await TestClient.connect(api.port, 'secret');
+    await c.call('state.get');
+    const bytes = Buffer.from(JSON.stringify({ id: 7, method: 'state.get', params: { pad: 'x'.repeat(9 * 1024 * 1024) } }));
+    const count = Math.ceil(bytes.length / PART_BYTES);
+    const answered = new Promise<Response>((resolve) => { (c as unknown as { pending: Map<number, (r: Response) => void> }).pending.set(7, resolve); });
+    for (let index = 0; index < count; index++) {
+      c.ws.send(JSON.stringify({ part: { id: 7, index, count, data: bytes.subarray(index * PART_BYTES, (index + 1) * PART_BYTES).toString('base64') } }));
+    }
+    expect(await answered).toMatchObject({ id: 7, result: { version: 8 } });
+    expect(await c.call('state.get')).toMatchObject({ result: { version: 8 } });
+    c.ws.close();
+  });
+
+  it('closes a socket whose parts arrive out of order or would outgrow the cap, and one a phone sends parts on', async () => {
+    const { api } = await boot();
+    const part = (p: Partial<{ id: number; index: number; count: number }>) => JSON.stringify({ part: { id: 1, index: 0, count: 2, data: 'e30=', ...p } });
+    const outOfOrder = await TestClient.connect(api.port, 'secret');
+    await outOfOrder.call('state.get');
+    outOfOrder.ws.send(part({ index: 1 }));
+    await waitFor(() => outOfOrder.closeCode === 4400);
+    const tooLarge = await TestClient.connect(api.port, 'secret');
+    await tooLarge.call('state.get');
+    tooLarge.ws.send(part({ count: Math.floor(MAX_REQUEST_BYTES / PART_BYTES) + 1 }));
+    await waitFor(() => tooLarge.closeCode === 1009);
+    const phone = await TestClient.phone(api.port);
+    phone.ws.send(part({}));
+    await waitFor(() => phone.closeCode === 4400);
   });
 
   it('refuses a socket opened from a web page other than the app', async () => {
@@ -139,6 +215,70 @@ runIf('API', () => {
     ws.send(JSON.stringify({ token: 'secret' }));
     expect(await reply).toEqual({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } });
     ws.close();
+  });
+
+  it('answers what this machine is and who owns the fleet', async () => {
+    const { api, config } = await boot();
+    const c = await TestClient.connect(api.port, 'secret');
+    const info = await c.call('system.info', {}) as { result: unknown };
+    expect(SystemInfo.parse(info.result)).toEqual({
+      machineId: machineId(), release: 'dev', protocol: PROTOCOL_VERSION, stateSchema: emptyState().version,
+      transferSchema: TRANSFER_SCHEMA_VERSION, platform: process.platform, arch: process.arch, agentAdapters: [],
+      git: expect.stringMatching(/^\d+\.\d+\.\d+$/), heapLimit: v8.getHeapStatistics().heap_size_limit,
+    });
+    const own = await c.call('ownership.get', {}) as { result: unknown };
+    expect(OwnershipInfo.parse(own.result)).toEqual({ fleetId: config.id, generation: 0, ownerMachineId: machineId(), frozen: false });
+    expect(((await c.call('handover.status', {})) as { result: unknown }).result).toEqual({});
+  });
+
+  it('checks a handover call against the record it holds and its parameters before any phase runs', async () => {
+    const { api } = await boot();
+    const c = await TestClient.connect(api.port, 'secret');
+    expect(await c.call('handover.abort', { transactionId: 't1', generation: 4 })).toMatchObject({ error: { code: 'generation_mismatch' } });
+    // this daemon is running the fleet, so it is no machine's destination
+    expect(await c.call('handover.activate', { transactionId: 't1', generation: 0 })).toMatchObject({ error: { code: 'not_owner' } });
+    expect(await c.call('handover.preflight', { toMachineId: 'trift', ...machines })).toMatchObject({ error: { code: 'invalid_params' } });
+    expect(await c.call('handover.preflight', { toMachineId: other })).toMatchObject({ error: { code: 'invalid_params' } });
+  });
+
+  it('tells the desktop and the phone when ownership or a handover changes', async () => {
+    const { api, ownership, handover, config } = await boot();
+    const desktop = await TestClient.connect(api.port, 'secret');
+    const phone = await TestClient.phone(api.port);
+    for (const c of [desktop, phone]) await c.call('state.get');
+
+    await ownership.freeze({ id: 'tx-1', fromMachineId: machineId(), toMachineId: other, phase: 'preparing', startedAt: 1 });
+    handover.write({
+      role: 'source', transactionId: 'tx-1', generation: 0, fleetId: config.id, fromMachineId: machineId(), toMachineId: other,
+      phase: 'freeze', stoppedTerminals: [], terminated: [], updatedAt: 1,
+    });
+    handover.emitEntity({ transactionId: 'tx-1', kind: 'character', id: 'c1', phase: 'freeze' });
+
+    const moved = (c: TestClient): Event[] => c.events.filter((e) => e.event.startsWith('ownership.') || e.event.startsWith('handover.'));
+    for (const c of [desktop, phone]) {
+      await waitFor(() => moved(c).length === 3);
+      expect(moved(c)).toEqual([
+        { event: 'ownership.changed', data: { generation: 0, ownerMachineId: machineId() } },
+        { event: 'handover.changed', data: { transactionId: 'tx-1', phase: 'freeze' } },
+        { event: 'handover.entity', data: { transactionId: 'tx-1', kind: 'character', id: 'c1', phase: 'freeze' } },
+      ]);
+    }
+  });
+
+  it('carries the structured half of a handover error to the client', async () => {
+    const { api } = await boot();
+    const c = await TestClient.connect(api.port, 'secret');
+    const wired = handlers['handover.preflight'];
+    handlers['handover.preflight'] = () => {
+      throw handoverError({ code: 'blocked', message: 'one blocker', blockers: [{ code: 'shell_busy', message: 'vite is still running' }] });
+    };
+    try {
+      const res = await c.call('handover.preflight', { toMachineId: other, ...machines });
+      expect('error' in res && res.error.code).toBe('blocked');
+      expect('error' in res && Blocker.array().parse(res.error.data?.blockers)[0].code).toBe('shell_busy');
+    } finally {
+      handlers['handover.preflight'] = wired;
+    }
   });
 
   it('drives islands, characters and terminals, and pushes patches', async () => {

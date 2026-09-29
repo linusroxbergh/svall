@@ -84,7 +84,7 @@ CHECK_OK=1
 pnpm --silent svall -p private setup --check >"$CHECK_OUT" 2>&1 || CHECK_OK=
 # this script runs setup after the build for each line that asks for it, so those lines say that instead
 AFTER="out of date, will be updated after the build"
-NEW="$AFTER"; [ -f "$HOME_DIR/config.json" ] || NEW="will be set up after the build"
+NEW="$AFTER"; [ -f "$HOME_DIR/fleet.json" ] || [ -f "$HOME_DIR/config.json" ] || NEW="will be set up after the build"
 sed -e "/: run svall-dev setup\$/{
 s/$(printf '\033')\[33m!/$C!/
 s/!/→/
@@ -97,9 +97,9 @@ if [ -z "$CHECK_OK" ] || [ -n "$MISSING" ]; then
 fi
 
 # hooks, shims or a plist that are missing, or that setup now writes differently, are set up again, as nothing else
-# rewrites them; uninstall keeps config.json, so its check only finds a first install
+# rewrites them; uninstall keeps fleet.json, or a config.json not yet split, so its check only finds a first install
 SETUP=
-[ -f "$HOME_DIR/config.json" ] || SETUP=1
+[ -f "$HOME_DIR/fleet.json" ] || [ -f "$HOME_DIR/config.json" ] || SETUP=1
 grep -q 'run svall-dev setup' "$CHECK_OUT" && SETUP=1
 # setup is what starts the private fleet's agent, so one a failed start left unloaded gets another
 launchctl print "gui/$(id -u)/io.github.linusroxbergh.svall.dev.svalld" >/dev/null 2>&1 || SETUP=1

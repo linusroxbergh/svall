@@ -2,12 +2,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { resolvePaths } from '@svall/svalld/paths';
 import { setMainAgentCli, type AgentDeps } from '../src/commands/agent.js';
 
 function deps(o: Partial<AgentDeps> = {}) {
-  const configFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'svall-agent-')), 'config.json');
-  const d: AgentDeps = { configFile, found: ['claude', 'codex'], apply: vi.fn(async () => false), ...o };
-  const saved = () => (fs.existsSync(configFile) ? JSON.parse(fs.readFileSync(configFile, 'utf8')).mainAgent : undefined);
+  const paths = resolvePaths(fs.mkdtempSync(path.join(os.tmpdir(), 'svall-agent-')));
+  const d: AgentDeps = { paths, found: ['claude', 'codex'], apply: vi.fn(async () => false), ...o };
+  const saved = () => (fs.existsSync(paths.fleetConfig) ? JSON.parse(fs.readFileSync(paths.fleetConfig, 'utf8')).mainAgent : undefined);
   return { d, saved };
 }
 

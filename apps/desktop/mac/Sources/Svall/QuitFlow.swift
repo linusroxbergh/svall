@@ -5,6 +5,8 @@ final class QuitFlow {
     private let send: (FromShell) -> Void
     private let isListening: () -> Bool
     private let hideWindow: () -> Void
+    // whether the fleet runs on another machine, where a quit here leaves it running
+    private let elsewhere: () -> Bool
     // where the page's answer goes while a quit waits on it, and what quits anyway if it never comes
     private var quitAnswer: ((Bool) -> Void)?
     private var quitTimeout: Timer?
@@ -17,10 +19,12 @@ final class QuitFlow {
     // whether the fleet is being ended from here, which the quit waits on
     private var killing = false
 
-    init(send: @escaping (FromShell) -> Void, isListening: @escaping () -> Bool, hideWindow: @escaping () -> Void) {
+    init(send: @escaping (FromShell) -> Void, isListening: @escaping () -> Bool, hideWindow: @escaping () -> Void,
+         elsewhere: @escaping () -> Bool = { false }) {
         self.send = send
         self.isListening = isListening
         self.hideWindow = hideWindow
+        self.elsewhere = elsewhere
     }
 
     /// Whether a quit waits on the page, the user or the fleet.
@@ -82,9 +86,10 @@ final class QuitFlow {
         answer(ok)
     }
 
-    // the page has the daemon put every character to sleep and exit; what it cannot reach is ended from here
+    // the page has the daemon put every character to sleep and exit; what it cannot reach is ended from here,
+    // as is this Mac's daemon alone for a fleet that runs elsewhere
     private func stopFleet() {
-        guard isListening() else { return fleetStopped(ok: false) }
+        guard isListening(), !elsewhere() else { return fleetStopped(ok: false) }
         stopping = true
         hideWindow()
         quitTimeout = after(12) { [weak self] in self?.fleetStopped(ok: false) }
@@ -110,11 +115,12 @@ final class QuitFlow {
 
     private func confirmQuit(unsaved: [String], working: Int) -> Bool {
         let alert = NSAlert()
+        let working = elsewhere() ? 0 : working
         let busy = working == 0 ? "" : "\(working) \(working == 1 ? "character is" : "characters are") working and will stop."
         if unsaved.isEmpty {
             alert.messageText = "Quit Svall?"
-            alert.informativeText = working == 0
-                ? "Your characters stop and pick up where they left off when you open Svall again."
+            alert.informativeText = elsewhere() ? "Your characters keep working on the machine this fleet runs on."
+                : working == 0 ? "Your characters stop and pick up where they left off when you open Svall again."
                 : busy + " Everything picks up where it left off when you open Svall again."
         } else {
             alert.messageText = "Quit with unsaved changes?"

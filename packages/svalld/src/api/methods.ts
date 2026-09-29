@@ -1,26 +1,37 @@
+import v8 from 'node:v8';
 import { z, type ZodTypeAny } from 'zod';
-import { ERROR_CODES, methods, type ErrorCode, type MethodName, type ParsedParams, type Request, type Response, type Result } from '@svall/protocol';
+import { PROTOCOL_VERSION, STATE_SCHEMA_VERSION, TRANSFER_SCHEMA_VERSION, methods, type MethodName, type ParsedParams, type Request, type Response, type Result } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
+import { gitVersion } from '../handover/git-extensions.js';
+import type { HandoverService } from '../handover/service.js';
 import type { Mobile } from '../mobile.js';
 import type { PushStore } from '../push/store.js';
 import type { CodexPaths } from '../codex/install.js';
 import type { ClaudePaths } from '../paths.js';
 import { listsDeletable, rootIdOf, scanResources } from '../resources/scan.js';
+import type { OwnershipState } from '../ownership/state.js';
+import { guardMethod } from '../ownership/guard.js';
+import { releaseVersion } from '../release.js';
 import type { Store } from '../store.js';
 import type { TerminalHub, Viewer } from '../terminals.js';
 import type { FetchUsage } from '../usage/usage.js';
 import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
 
-export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; signal?: AbortSignal };
+export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; handover: HandoverService; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; signal?: AbortSignal };
 
 // what starts launchd agents and names fleets stays with the Mac
 const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop'] satisfies MethodName[]);
+// the fleets beside this one are a Mac's: a gateway's daemon has no launchd to start them with
+const MAC_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start'] satisfies MethodName[]);
 
 type Handlers = { [M in MethodName]: (p: ParsedParams<M>, ctx: Ctx) => Promise<Result<M>> | Result<M> };
 
-const handlers: Handlers = {
+// svalld runs on the two platforms a handover can compare; nothing else gets this far
+const platform = (): 'darwin' | 'linux' => (process.platform === 'linux' ? 'linux' : 'darwin');
+
+export const handlers: Handlers = {
   'state.get': (_p, { store }) => store.state,
   'island.create': (p, { fleet }) => fleet.createIsland(p),
   'island.update': (p, { fleet }) => fleet.updateIsland(p.id, p),
@@ -94,20 +105,45 @@ const handlers: Handlers = {
   'term.resize': async (p, { terminals, viewer }) => { await terminals.resize(p.id, p.cols, p.rows, viewer); return {}; },
   'term.close': (p, { terminals, viewer }) => { terminals.close(p.id, viewer); return {}; },
   'term.attach': (p, { terminals }) => terminals.attach(p.id, p.term),
+  'system.info': async (_p, { ownership, handover }) => {
+    const git = await gitVersion();
+    return {
+      machineId: ownership.machineId, release: releaseVersion(), protocol: PROTOCOL_VERSION, stateSchema: STATE_SCHEMA_VERSION,
+      transferSchema: TRANSFER_SCHEMA_VERSION, platform: platform(), arch: process.arch, agentAdapters: await handover.agentAdapters(), ...(git && { git }),
+      heapLimit: v8.getHeapStatistics().heap_size_limit,
+    };
+  },
+  'ownership.get': (_p, { handover }) => handover.ownershipInfo(),
+  'ownership.adopt': (p, { handover }) => handover.relay(p),
+  'handover.preflight': (p, { handover }) => handover.preflight(p),
+  'handover.inspect': (p, { handover }) => handover.inspect(p),
+  'handover.freeze': (p, { handover }) => handover.freeze(p),
+  'handover.claim': (p, { handover }) => handover.claim(p),
+  'handover.prepare': (p, { handover }) => handover.prepare(p),
+  'handover.activate': (p, { handover }) => handover.activate(p),
+  'handover.complete': (p, { handover }) => handover.complete(p),
+  'handover.abort': (p, { handover }) => handover.abort(p),
+  'handover.status': (_p, { handover }) => handover.status(),
+  'handover.reaches': (p, { handover }) => handover.reaches(p),
 };
 
 export async function dispatch(req: Request, ctx: Ctx): Promise<Response> {
   const def = Object.hasOwn(methods, req.method) ? (methods as Record<string, { params: ZodTypeAny }>)[req.method] : undefined;
   if (!def) return { id: req.id, error: { code: 'unknown_method', message: `unknown method ${req.method}` } };
   if (DESKTOP_ONLY.has(req.method) && ctx.viewer.kind === 'phone') return { id: req.id, error: { code: 'forbidden', message: `${req.method} is not open to a phone` } };
-  const parsed = def.params.safeParse(req.params ?? {});
-  if (!parsed.success) return { id: req.id, error: { code: 'invalid_params', message: z.prettifyError(parsed.error) } };
+  if (MAC_ONLY.has(req.method) && process.platform !== 'darwin') return { id: req.id, error: { code: 'forbidden', message: `${req.method} answers only on a Mac` } };
   try {
+    // ahead of parsing: what this machine may not do, it may not do with any parameters
+    guardMethod(ctx.ownership, req.method as MethodName, ctx.viewer?.kind);
+    const parsed = def.params.safeParse(req.params ?? {});
+    if (!parsed.success) return { id: req.id, error: { code: 'invalid_params', message: z.prettifyError(parsed.error) } };
     const handler = handlers[req.method as MethodName] as (p: unknown, ctx: Ctx) => unknown;
     return { id: req.id, result: await handler(parsed.data, ctx) };
   } catch (e) {
-    const err = e as Error & { code?: unknown };
-    const code = (ERROR_CODES as readonly unknown[]).includes(err.code) ? err.code as ErrorCode : 'internal';
-    return { id: req.id, error: { code, message: err.message } };
+    const err = e as Error & { code?: unknown; data?: unknown };
+    // a protocol code is lowercase words; a Node errno such as ENOENT is no answer a client can act on
+    const code = typeof err.code === 'string' && /^[a-z_]+$/.test(err.code) ? err.code : 'internal';
+    const data = err.data && typeof err.data === 'object' && !Array.isArray(err.data) ? err.data as Record<string, unknown> : undefined;
+    return { id: req.id, error: { code, message: err.message, ...(data ? { data } : {}) } };
   }
 }
