@@ -1522,6 +1522,27 @@ describe('destination activate', () => {
     }
   });
 
+  it('runs the fleet it activated before a restart once it completes, and only while the gateway names it the owner', async () => {
+    const { d, preparedDigest } = await prepared();
+    d.gateway.commit(preparedDigest);
+    const committed = d.gateway.record;
+    await d.handover.activate({ transactionId: TX, generation: 5 });
+    const restarted = d.start();
+    const journal = restarted.handover.journalState();
+    await enterStartupMode(startupMode({ ownership: restarted.ownership, journal, config: d.config }), { ownership: restarted.ownership, journal, log: silentLogger, standalone: false });
+    d.crew.log.length = 0;
+
+    d.gateway.record = { fleetId, generation: 7, ownerMachineId: mac };
+    expect((await refusal(restarted.handover.complete({ transactionId: TX, generation: 5 }))).code).toBe('not_owner');
+    expect(restarted.ownership.writable()).toBe(false);
+    expect(d.crew.log).toEqual([]);
+
+    d.gateway.record = committed;
+    expect(await restarted.handover.complete({ transactionId: TX, generation: 5 })).toEqual({});
+    expect(restarted.ownership.writable()).toBe(true);
+    expect(d.crew.log).toEqual(['activate', 'reconcile']);
+  });
+
   it('lets a restarted destination out of its hold only by activating', async () => {
     const { d, preparedDigest } = await prepared();
     d.gateway.commit(preparedDigest);

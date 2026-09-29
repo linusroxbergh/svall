@@ -359,8 +359,11 @@ export class DestinationHandover {
     const j = this.open(p.transactionId);
     if (!j) return {};
     if (j.phase !== 'activate') throw notReady(`handover ${j.transactionId} is at ${j.phase} on this machine, and completes only once it has activated`);
-    // a daemon started since the activation holds the fleet it activated until it runs it again
-    if (this.ownership.isOwner() && !this.ownership.writable()) await this.run();
+    // a daemon started since the activation holds the fleet it activated until it runs it again, as the gateway's owner
+    if (this.ownership.isOwner() && !this.ownership.writable()) {
+      await this.committed(j);
+      await this.run();
+    }
     // an unsealed root would find itself occupied on the way back, so what could not be sealed keeps the record for another try
     const unsealed = await boundary('destination.complete.seal', () => this.sealAs(j.transactionId, false));
     if (unsealed.length) throw notReady(`handover ${j.transactionId} could not seal ${unsealed.join('; ')}; complete it again once that is put right`);
