@@ -56,7 +56,8 @@ async function kickstartAgents(launchAgentsDir: string, launchctl: Launchctl): P
 /** Whether a fleet's daemon answers from `release`. */
 export type Probe = (fleet: string, release: string) => Promise<boolean>;
 
-const realProbe: Probe = (fleet, release) => daemonRuns(release, () => Client.connect(profileHome(fleet)));
+// the release gone back to may speak an older protocol than this archi, and its system.info still names it
+const realProbe: Probe = (fleet, release) => daemonRuns(release, () => Client.connect(profileHome(fleet), { anyProtocol: true }));
 
 /**
  * Recovery, so it asks nothing of the machine but the release it is going back to: the one named, or the one before.

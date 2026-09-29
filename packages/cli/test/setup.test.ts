@@ -2,10 +2,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { WebSocketServer } from 'ws';
 import { userPaths } from '@archipelago/archid/paths';
 import { LAUNCHD_LABEL, profileLabel } from '@archipelago/archid/profile';
 import { shimsCurrent } from '@archipelago/archid/setup';
 import { cleanHomes, makeHome } from '@archipelago/archid/test-helpers';
+import { PROTOCOL_VERSION } from '@archipelago/protocol';
 import { DEFAULT_PREFIX } from '../../../scripts/install-release.mjs';
 import { daemonRuns, setupCommand } from '../src/commands/setup.js';
 
@@ -148,6 +150,41 @@ describe('archi setup on Linux', () => {
       for (const d of [prefix, path.join(home, '.config')]) fs.rmSync(d, { recursive: true, force: true });
     }
   });
+
+  it('takes a daemon back on an older protocol as answering from the release it went back to', async () => {
+    const home = process.env.HOME!;
+    const prefix = path.join(home, '.local', 'share', 'archipelago');
+    for (const v of ['1.0.0', '1.1.0']) fs.mkdirSync(path.join(prefix, 'releases', v), { recursive: true });
+    fs.symlinkSync(path.join(prefix, 'releases', '1.1.0'), path.join(prefix, 'current'));
+    const unitDir = path.join(home, '.config', 'systemd', 'user');
+    fs.mkdirSync(unitDir, { recursive: true });
+    fs.writeFileSync(path.join(unitDir, 'archipelago-archid@private.service'), '');
+    const bin = makeHome();
+    fs.writeFileSync(path.join(bin, 'systemctl'), '#!/bin/sh\n', { mode: 0o755 });
+    vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
+    const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+    await new Promise((r) => wss.once('listening', r));
+    wss.on('connection', (ws) => {
+      let authed = false;
+      ws.on('message', (raw) => {
+        if (!authed) { authed = true; ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION - 1 } })); return; }
+        ws.send(JSON.stringify({ id: (JSON.parse(raw.toString()) as { id: number }).id, result: { release: '1.0.0' } }));
+      });
+    });
+    const fleet = path.join(home, '.archipelago');
+    fs.mkdirSync(fleet, { recursive: true });
+    fs.writeFileSync(path.join(fleet, 'port'), String((wss.address() as { port: number }).port));
+    fs.writeFileSync(path.join(fleet, 'token'), 't');
+    const out: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { out.push(String(chunk)); return true; });
+    try {
+      await setupCommand(() => ({ name: 'private', home: fleet, managed: true }), () => true, 'linux').parseAsync(['--rollback'], { from: 'user' });
+      expect(JSON.parse(out.join('')).done).toContain('the private fleet\'s daemon answers from release 1.0.0');
+    } finally {
+      await new Promise((r) => wss.close(r));
+      for (const d of [prefix, path.join(home, '.config'), fleet]) fs.rmSync(d, { recursive: true, force: true });
+    }
+  }, 30_000);
 
   it('fails a rollback, naming the fleet, when a restarted daemon does not answer from the release it went back to', async () => {
     const home = process.env.HOME!;

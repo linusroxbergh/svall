@@ -72,7 +72,8 @@ export class Client {
       : new Error('archid connection closed')));
   }
 
-  static async connect(home: string = archiHome()): Promise<Client> {
+  /** `anyProtocol`: takes a daemon on another protocol too, for a caller that asks it only what every release answers. */
+  static async connect(home: string = archiHome(), { anyProtocol = false } = {}): Promise<Client> {
     const paths = resolvePaths(home);
     if (!fs.existsSync(paths.port) || !fs.existsSync(paths.token)) {
       throw new Error(`archid is not running (no ${paths.port}); \`${doctorHint(resolveTarget({ env: home }))}\` says why`);
@@ -80,7 +81,7 @@ export class Client {
     const port = Number(fs.readFileSync(paths.port, 'utf8'));
     return Client.connectEndpoint({
       url: `ws://${loadConfig(paths).host}:${port}`, token: fs.readFileSync(paths.token, 'utf8').trim(),
-      restart: () => restartHint(resolveTarget({ env: home })),
+      ...(!anyProtocol && { restart: () => restartHint(resolveTarget({ env: home })) }),
     });
   }
 
