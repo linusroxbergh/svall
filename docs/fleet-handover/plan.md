@@ -1391,16 +1391,16 @@ handover clears obsolete ports rather than forwarding dead processes.
 
 **Steps:**
 
-- [ ] Threat-model SSH aliases, remote argv, malicious repository file names, symlinks, stale
+- [x] Threat-model SSH aliases, remote argv, malicious repository file names, symlinks, stale
   authority and destination-path confusion.
-- [ ] Verify tokens/secrets never enter argv, logs, NDJSON, state, manifests or repository roots.
-- [ ] Audit every delete/rename/archive target back to a validated registry/manifest record and add a
+- [x] Verify tokens/secrets never enter argv, logs, NDJSON, state, manifests or repository roots.
+- [x] Audit every delete/rename/archive target back to a validated registry/manifest record and add a
   regression test for each destructive path.
-- [ ] Benchmark first and incremental transfer on small, large-file and many-file repositories;
+- [x] Benchmark first and incremental transfer on small, large-file and many-file repositories;
   bound hashing memory and event volume.
-- [ ] Verify terminal backpressure and API payload limits under large output.
-- [ ] Confirm licenses/notices for bundled Node, rsync/bundler outputs and other release contents.
-- [ ] Review service permissions, file modes, Tailscale exposure and uninstall retention.
+- [x] Verify terminal backpressure and API payload limits under large output.
+- [x] Confirm licenses/notices for bundled Node, rsync/bundler outputs and other release contents.
+- [x] Review service permissions, file modes, Tailscale exposure and uninstall retention.
 
 **Verify:** security regression suite, benchmark recorded in the doc, archive/license inspection.
 

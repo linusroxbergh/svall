@@ -181,3 +181,42 @@ The performance changes are correct. None of them changes what a handover carrie
 - `test:faults`: 1302/1302.
 - Full protocol, archid, cli, web and scripts run at load average 20–30: 18 failures. The 15 affected files then passed 523/523 alone at load 5–7. `cli.test.ts --version` fails only because the archive copy has no `.git`.
 - Every mutation above was restored and compared against `git show ee34500d`.
+
+## Re-review of fix round 2
+
+**Verdict: Approved.** H and N1 are addressed. The fix diff adds nothing Critical or Important; one Minor test gap is
+noted below as N2. Commits reviewed: 664f1eb1 c07de1ec 725829e1.
+
+### Per finding
+
+| Finding | Verdict | Evidence |
+| --- | --- | --- |
+| H: count before hashing | ADDRESSED | Preflight builds a names-only manifest (`source.ts:222`) and, past the bound, answers it stripped without the hashed build (`:224`). Freeze counts the same way (`:302`) before `restTerminals` (`:309`), and checks the read manifest again after the rest (`:318`). Those are the only `buildManifest` calls. The names pass reads no file: `walk` hashes only with a pool, `scanPath` reads a file root only with `hash`, and `scanSession` skips the read at `manifest.ts:220`. On a scratch copy, a check over manifest.test's fixtures found `listed` equal to the read manifest's files and bytes, with identical blockers and warnings and 0 reads. The fixtures cover links (one dangling), default excludes, a folded nested worktree, the fleet `.env` file root, a real Git repo with its indexes, a bare gitdir, a checkout inside one, and a session. Three mutations each fail the new test: hashing first at preflight, dropping the freeze count, and dropping the session count (`:140`). |
+| N1: false `destination_occupied` | ADDRESSED | `stripped` (`handover.ts:252`) matches the source's only strip condition (`manifest_too_large` or `too_many_files`). `destinationChecks` has no side effects. Its only caller is `preflight`, whose only caller `start` returns `blocked` on any blocker (`:272`), so no later step uses what was skipped. The mutation `false ?` fails the new test for both codes. The fixer's 250,116-file run (`huge2-handover.ndjson`) shows only `too_many_files`, where the 100,116-file run before the fix also showed `destination_occupied`. |
+
+### New in the fix diff
+
+**N2 (Minor). No committed test pins the names count for links or a file root.** `manifest.ts:107,258`.
+
+- **Why.** Removing `scan.listed.files++` from `walk`'s link branch, or `counted.files++` from `scanPath`'s file branch, leaves the committed source and manifest tests passing. Only the scratch check above caught either one.
+- **Effect.** Small. An undercount lets the hashed build run, and `limits` still refuses after it. Links and file roots are not what fills the heap.
+- **Fix.** Add one manifest.test case: `buildManifest(inv, HEADER, sfs, false).listed` equals `summarize` of the read manifest's `files` and `bytes`, over `seed()` with `transferFleetEnv`.
+
+### The fixer's concern: the extra names walk
+
+Acceptable.
+
+- **Measured.** On this Mac, 50,000 files over three warm rounds: names 0.54–0.57 s, hashed 1.17–1.27 s, as the fixer found.
+- **In the benchmark.** In bench-fix2 the first preflight went from 3.7–4.6 s to 5.4 s. Incremental, at 10.1–10.6 s, sits within the earlier 8.3–11.5 s. At the 48 GB Mac's 274,432-file bound the extra walk is about 3 s, against a 10-minute `PREFLIGHT_TIMEOUT_MS`.
+- **The alternative.** One walk that stops hashing once its count passes the bound would drop the extra walk. It would thread the bound through four functions, which version 1 does not need.
+
+### Also checked
+
+- **Protocol.** Still 17 (`messages.ts:360`). No file under `packages/protocol` changed, and `ManifestSummary`'s `files`/`bytes` are what `listed` overrides.
+- **Doc ranges.** Recomputed over bench-final, bench-final-many, bench-final2, bench-fix1 and bench-fix2; they match. Controller 291.5–355.8 MiB; daemon growth 193.2–297.7 MiB first and 32.9–120.1 MiB incremental; large-file growth up to 55.6 MiB; small controller 88.4–98.1 MiB.
+- **Scratch copy of 725829e1.**
+  - `pnpm typecheck`: clean.
+  - Source, manifest and controller handover tests: 152/152.
+  - archid handover, cli controller and the error catalogue: 2059 passed, 18 skipped.
+  - `test:faults`: 1302/1302.
+  - Every mutation was restored and compared with the pristine files.
