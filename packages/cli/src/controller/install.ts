@@ -202,10 +202,11 @@ export async function currentRelease(master: SshMaster, archiBase: string): Prom
 }
 
 /**
- * Puts the far machine back on the release `to`, with the `archi` of the release `from` that an upgrade installed:
- * the one it replaced may predate naming a release to go back to.
+ * Puts the far machine back on the release `to`, or without one on the newest other release it keeps, with the `archi`
+ * of the release `from` that an upgrade installed: the one it replaced may predate naming a release to go back to.
  */
-export function remoteRollback(master: SshMaster, o: { archiBase: string; from: string; to: string }): Promise<string> {
+export function remoteRollback(master: SshMaster, o: { archiBase: string; from: string; to?: string }): Promise<string> {
   const exe = path.posix.join(o.archiBase, 'releases', o.from, 'bin', 'archi');
-  return remote(master, [shq(exe), 'setup', '--rollback', shq(o.to)], `archi setup --rollback ${o.to}`, SETUP_TIMEOUT);
+  const to = o.to === undefined ? [] : [o.to];
+  return remote(master, [shq(exe), 'setup', '--rollback', ...to.map(shq)], ['archi setup --rollback', ...to].join(' '), SETUP_TIMEOUT);
 }

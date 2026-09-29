@@ -505,11 +505,15 @@ export function upgradeHost(name: string, o: { release?: string; allowUnsigned?:
       });
       if (probed) return;
       await run.step('rollback', async () => {
-        const out = await remoteRollback(master, { archiBase: entry.record.archiBase, from: companion.version, to: before }).catch((err: Error) => err);
+        // a reinstall under the name it ran replaced that tree, so it goes back to whichever release is kept
+        const replaced = before === companion.version;
+        const out = await remoteRollback(master, { archiBase: entry.record.archiBase, from: companion.version, ...(!replaced && { to: before }) }).catch((err: Error) => err);
         const now = await currentRelease(master, entry.record.archiBase);
-        const action = `ssh ${entry.record.ssh} and read the daemon log; ${name} runs release ${now}${now === before ? ', the one it ran before' : `, not ${before}, the one it ran before`}`;
+        const runs = !replaced ? `${name} runs release ${now}${now === before ? ', the one it ran before' : `, not ${before}, the one it ran before`}`
+          : `${name} ran a release named ${before} before, which this install replaced; ${now === before ? 'no other release is kept there, so it runs the new one' : `it runs release ${now}, the newest one kept there`}`;
+        const action = `ssh ${entry.record.ssh} and read the daemon log; ${runs}`;
         if (out instanceof Error) throw new StepError(out.message, action);
-        return { value: undefined, status: 'warn' as const, detail: out.trim().split('\n').at(-1) ?? `current -> ${before}`, action };
+        return { value: undefined, status: 'warn' as const, detail: out.trim().split('\n').at(-1) ?? `current -> ${now}`, action };
       });
     } finally {
       await master.close().catch(() => undefined);

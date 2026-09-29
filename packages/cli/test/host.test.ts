@@ -599,6 +599,7 @@ case "$1" in
   setup)
     if [ "$2" = --rollback ]; then
       to=\${3:-$(ls -t "$base/releases" | grep -vx "$(now)" | head -1)}
+      [ -n "$to" ] || { echo "no release under $base/releases to go back to" >&2; exit 1; }
       ln -sfn "$base/releases/$to" "$base/current" && echo "current -> $base/releases/$to"
       exit
     fi
@@ -828,6 +829,24 @@ esac
     expect(far.now()).toBe('1.2.2');
     expect(ssh.remoteCalls()).toContainEqual([`${far.base}/releases/1.2.3/bin/archi`, 'setup', '--rollback', '1.2.2']);
     expect(step('rollback').at(-1)).toMatchObject({ status: 'warn', action: expect.stringMatching(/trift runs release 1\.2\.2, the one it ran before$/) });
+  });
+
+  it('after a reinstall under the name it ran, goes back to the newest release kept there, and never calls the new tree the one it ran before', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION], ['1.2.3', PROTOCOL_VERSION]], accepts: (r) => r !== '1.2.3' });
+    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(out.result).toBe('actions');
+    expect(far.now()).toBe('1.2.2');
+    expect(ssh.remoteCalls()).toContainEqual([`${far.base}/releases/1.2.3/bin/archi`, 'setup', '--rollback']);
+    const action = step('rollback').at(-1)?.action ?? '';
+    expect(action).toMatch(/trift ran a release named 1\.2\.3 before, which this install replaced; it runs release 1\.2\.2, the newest one kept there$/);
+  });
+
+  it('after a reinstall under the only name it had, says no other release is kept to go back to', async () => {
+    const far = await farMachine({ releases: [['1.2.3', PROTOCOL_VERSION]], accepts: (r) => r !== '1.2.3' });
+    await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(step('rollback').at(-1)).toMatchObject({ status: 'fail', action: expect.stringMatching(/no other release is kept there, so it runs the new one$/) });
   });
 
   it('counts a new release whose own setup put the old one back as not answering, and says which the machine runs', async () => {
