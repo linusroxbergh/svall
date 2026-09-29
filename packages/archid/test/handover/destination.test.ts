@@ -611,8 +611,8 @@ realGit(`destination prepare of a real repository graph${hasGit ? '' : ' (skippe
     const nested = s.manifest.roots.find((x) => x.path === dd.main)!;
     const gitfile = (files: { path: string; sha256?: string }[]) => files.find((f) => f.path === '.claude/worktrees/nested/.git')?.sha256;
     const sealed = seal.roots.find((x) => x.id === nested.id)!;
-    expect(gitfile(sealed.files)).toBe(crypto.createHash('sha256').update(fs.readFileSync(path.join(dd.nested, '.git'))).digest('hex'));
-    expect(gitfile(sealed.files)).toBe(gitfile(nested.files));
+    expect(gitfile(sealed.files!)).toBe(crypto.createHash('sha256').update(fs.readFileSync(path.join(dd.nested, '.git'))).digest('hex'));
+    expect(gitfile(sealed.files!)).toBe(gitfile(nested.files));
 
     // a prepare cut short after the import, retried, trusts the verification it already made
     const journal = journalOf(s.paths);
@@ -1731,6 +1731,25 @@ describe('destination claim', () => {
     // nothing of the fleet moved: no journal, no hold
     expect(d.handover.journalState()).toEqual({ kind: 'none' });
     expect(d.ownership.isFrozen()).toBe(false);
+  });
+
+  it('seals each root it claimed as the transfer left it, at the source\'s generation, once the handover is let go before prepare, so the next one takes it', async () => {
+    const s = await scene({ land: false });
+    const d = daemon(s);
+    await d.handover.claim(claimParams(s));
+    // the transfer copies each root, with a file the source wrote while it ran, as Finder writes .DS_Store
+    for (const r of replicaRoots(s.manifest)) fs.cpSync(path.join(s.src, path.relative(s.dst, r.path)), r.path, { recursive: true, verbatimSymlinks: true });
+    fs.writeFileSync(path.join(s.dst, 'work/ada/.DS_Store'), 'finder');
+    d.gateway.record = { fleetId, generation: 4, ownerMachineId: mac };
+
+    expect((await refusal(d.handover.abort({ transactionId: TX, generation: 5 }))).code).toBe('not_owner');
+
+    for (const r of replicaRoots(s.manifest)) expect(record(s, r.path), r.path).toMatchObject({ state: 'sealed', sealedBy: TX, generation: 4, manifestDigest: s.digest });
+    expect(fs.existsSync(s.paths.replicaSeal(TX))).toBe(false);
+    const replicas = new ReplicaStore({ fleetId, paths: s.paths });
+    for (const r of replicaRoots(s.manifest)) {
+      expect(await replicas.inspect(r, { transactionId: 'tx-2', excludes: s.manifest.excludes }), r.path).toMatchObject({ ok: true, kind: 'replica' });
+    }
   });
 
   it('refuses a claim the gateway does not hold open for this machine, or one meant for another, and writes nothing', async () => {

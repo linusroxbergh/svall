@@ -95,6 +95,7 @@ const REACH: Record<Failpoint, Reach> = {
   'source.complete.deactivate': { scenario: 'move', times: 1 },
   'source.complete.manifest': { scenario: 'move', times: 1 },
   'source.complete.journal': { scenario: 'move', times: 1 },
+  'destination.claim.seal': { scenario: 'move', times: 1 },
   'destination.claim.root': { scenario: 'move', times: 6 },
   'destination.claim.archive': { scenario: 'move', times: 1 },
   'destination.verify.journal': { scenario: 'move', times: 1 },

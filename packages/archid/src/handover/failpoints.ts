@@ -32,6 +32,7 @@ export const FAILPOINTS = {
   'source.complete.manifest': 'source',
   'source.complete.journal': 'source',
 
+  'destination.claim.seal': 'destination',
   'destination.claim.root': 'destination',
   'destination.claim.archive': 'destination',
   'destination.verify.journal': 'destination',

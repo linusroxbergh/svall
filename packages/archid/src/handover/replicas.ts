@@ -298,6 +298,12 @@ export class ReplicaStore {
     return { kind: 'replica', found: files };
   }
 
+  /** Whether a transaction's claim on a root stands, with nothing sealed over it since. */
+  receives(root: ReplicaRoot, transactionId: string): boolean {
+    const r = this.read(this.canonical(root.path)).record;
+    return r?.state === 'receiving' && r.transactionId === transactionId;
+  }
+
   /** The folders a transaction's claim on a root left as they were, while that claim stands. */
   keptBy(root: ReplicaRoot, transactionId: string): string[] {
     const r = this.read(this.canonical(root.path)).record;

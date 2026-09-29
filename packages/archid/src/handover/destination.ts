@@ -60,12 +60,17 @@ export type DestinationDeps = {
   log: Logger;
 };
 
-/** What Complete seals: each carried root as the Git import left it, at the generation this machine prepared. */
+/**
+ * What Complete seals: each carried root as the Git import left it, at the generation this machine prepared. A claim
+ * writes it first without the files, and an abort before prepare seals each root as the transfer left it, read then
+ * under the claim's excludes.
+ */
 export const SealRecord = z.object({
   transactionId: TransactionId,
   generation: Generation,
   manifestDigest: Sha256,
-  roots: z.array(z.object({ id: z.string().min(1), kind: TransferRoot.shape.kind, entry: TransferRoot.shape.entry, path: z.string(), files: z.array(TransferFile) })),
+  excludes: z.array(z.string()).optional(),
+  roots: z.array(z.object({ id: z.string().min(1), kind: TransferRoot.shape.kind, entry: TransferRoot.shape.entry, path: z.string(), files: z.array(TransferFile).optional() })),
 });
 export type SealRecord = z.infer<typeof SealRecord>;
 
@@ -258,14 +263,20 @@ export class DestinationHandover {
     return this.serial(() => this.runComplete(p));
   }
 
-  /** Removes the session stage of a handover this machine holds no journal of, once the gateway no longer holds it open either. */
+  /**
+   * Lets go a handover this machine holds no journal of, once the gateway no longer holds it open either: each root
+   * its claim took is sealed as the transfer left it, and its session stage goes.
+   */
   dropStage(transactionId: string): Promise<void> {
     return this.serial(async () => {
       if (this.open(transactionId)) return;
       let record: OwnerRecord;
       try { record = await this.ask(); } catch { return; }
       if (record.transaction?.id === transactionId) return;
-      boundary('destination.abort.stage', () => fs.rmSync(path.dirname(this.d.paths.sessionStage(transactionId, 0)), { recursive: true, force: true }));
+      await boundary('destination.abort.seal', () => this.sealAs(transactionId, true));
+      boundary('destination.abort.stage', () => {
+        for (const f of [path.dirname(this.d.paths.sessionStage(transactionId, 0)), this.d.paths.replicaSeal(transactionId)]) fs.rmSync(f, { recursive: true, force: true });
+      });
     });
   }
 
@@ -273,7 +284,7 @@ export class DestinationHandover {
   supersede(transactionId: string): Promise<void> {
     return this.serial(async () => {
       const j = this.open(transactionId);
-      if (j) this.discard(j);
+      if (j) await this.discard(j);
     });
   }
 
@@ -292,6 +303,9 @@ export class DestinationHandover {
     if (unsafe.length) throw blocked(unsafe);
     await this.receiving(p);
     const stays = await this.staying(graphsHere(m));
+    // before any root is taken, so an abort before prepare knows which to seal
+    const claimed = SealRecord.parse({ transactionId: tx, generation: p.generation, manifestDigest: p.manifestDigest, excludes: m.excludes, roots: replicaRoots(m) });
+    boundary('destination.claim.seal', () => writeDurable(this.d.paths.replicaSeal(tx), claimed, { mode: 0o600 }));
     const roots: Result<'handover.claim'>['roots'] = [];
     for (const r of replicaRoots(m)) {
       const claim = { transactionId: tx, excludes: m.excludes, incoming: m.roots.find((x) => x.id === r.id)!.files, keep: stays.keep(r.path) };
@@ -342,7 +356,7 @@ export class DestinationHandover {
     if (!j) return {};
     if (j.phase !== 'activate') throw notReady(`handover ${j.transactionId} is at ${j.phase} on this machine, and completes only once it has activated`);
     // an unsealed root would find itself occupied on the way back, so what could not be sealed keeps the record for another try
-    const unsealed = boundary('destination.complete.seal', () => this.sealAs(j, j.generation));
+    const unsealed = await boundary('destination.complete.seal', () => this.sealAs(j.transactionId, false));
     if (unsealed.length) throw notReady(`handover ${j.transactionId} could not seal ${unsealed.join('; ')}; complete it again once that is put right`);
     boundary('destination.complete.clear', () => {
       for (const f of [this.d.paths.replicaSeal(j.transactionId), this.d.paths.preparedState(j.transactionId), path.dirname(this.d.paths.sessionStage(j.transactionId, 0))]) {
@@ -841,13 +855,13 @@ export class DestinationHandover {
       throw handoverError({ code: 'handover_committed', message: `the gateway names ${record.ownerMachineId} as this fleet's owner at generation ${record.generation}; ${j.transactionId} cannot be undone here`, transactionId: j.transactionId, generation: record.generation });
     }
     if (tx?.id === j.transactionId) throw notReady(`the gateway still holds handover ${tx.id} open (${tx.phase}); abort it there before this machine lets it go`);
-    this.discard(j);
+    await this.discard(j);
     return {};
   }
 
-  private discard(j: DestinationJournal): void {
+  private async discard(j: DestinationJournal): Promise<void> {
     // the content is the source's at the generation it keeps; a root sealed or archived since is left alone
-    boundary('destination.abort.seal', () => this.sealAs(j, j.generation - 1));
+    await boundary('destination.abort.seal', () => this.sealAs(j.transactionId, true));
     boundary('destination.abort.clear', () => {
       for (const f of [this.d.paths.preparedState(j.transactionId), this.d.paths.replicaSeal(j.transactionId), path.dirname(this.d.paths.sessionStage(j.transactionId, 0))]) {
         fs.rmSync(f, { recursive: true, force: true });
@@ -857,16 +871,23 @@ export class DestinationHandover {
     this.ownership.unhold();
   }
 
-  // seals each root prepare recorded, as the import left it, and answers the ones it could not; without that record nothing is sealed
-  private sealAs(j: DestinationJournal, generation: number): string[] {
+  /**
+   * Seals each root the handover's record names, at the generation it prepared or, going `back`, the one before, and
+   * answers the ones it could not; without that record nothing is sealed. A root prepare did not record is read now.
+   */
+  private async sealAs(transactionId: string, back: boolean): Promise<string[]> {
     let seal: SealRecord;
-    try { seal = SealRecord.parse(JSON.parse(fs.readFileSync(this.d.paths.replicaSeal(j.transactionId), 'utf8'))); } catch { return []; }
+    try { seal = SealRecord.parse(JSON.parse(fs.readFileSync(this.d.paths.replicaSeal(transactionId), 'utf8'))); } catch { return []; }
+    const generation = seal.generation - (back ? 1 : 0);
     const unsealed: string[] = [];
     for (const { files, ...root } of seal.roots) {
       try {
-        this.replicas.seal(root, { transactionId: j.transactionId, generation, manifestDigest: j.manifestDigest, files }, 'destination');
+        // a root its claim did not take holds nothing of this handover's
+        if (!files && !this.replicas.receives(root, transactionId)) continue;
+        const now = files ?? (await scanPath(root.path, rootMatcher(root.kind, seal.excludes ?? []), this.d.scanFs))?.files ?? [];
+        this.replicas.seal(root, { transactionId, generation, manifestDigest: seal.manifestDigest, files: now }, 'destination');
       } catch (e) {
-        this.d.log.error(`handover ${j.transactionId}: ${root.path} is left unsealed: ${(e as Error).message}`);
+        this.d.log.error(`handover ${transactionId}: ${root.path} is left unsealed: ${(e as Error).message}`);
         unsealed.push(`${root.path} (${(e as Error).message})`);
       }
     }
