@@ -55,8 +55,8 @@ archi handover --forget                       # drop this Mac's journal of a han
 ```
 
 - `-p <fleet>` moves another fleet, and `--json` prints one event per line ([the events](errors.md#events)).
-- In a terminal, a decision shows as a short menu. While characters rest, type `i` and Enter to interrupt and carry
-  the agents still working, or `c` to cancel.
+- In a terminal, a decision shows as a short menu. It starts from the choices the run already holds, on a `--resume`
+  too. While characters rest, type `i` and Enter to interrupt and carry the agents still working, or `c` to cancel.
 - Ctrl-C before the commit aborts the handover, and the fleet stays where it was. After the commit the move goes on;
   a second Ctrl-C stops watching, and `archi handover --resume` finishes it.
 - `--detach` leaves the handover to a background helper and prints its pid; `archi handover attach` follows it, and
@@ -89,7 +89,7 @@ listed with what to do about it.
 | Islands, characters, their places on the map, notes, instructions, links, context, agent profile and dormancy | `node.json`: the daemon's port and host, the shell, the phone's https port |
 | `fleet.json`, and the fleet's entity docs and `agent-profiles` folder | The fleet's token, the phone key, push keys and subscriptions, and `owner.json` |
 | Browser tab URLs | Browser cookies and logins, and each Mac's own layout |
-| Every folder a character works in, a file or folder named in its context, and mission control's folder (`home.cwd`) | Folders left out by the excludes below |
+| Every folder a character works in, a file or folder named in its context, and mission control's folder (`home.cwd`), which no other fleet on the same machine may use | Folders left out by the excludes below |
 | Each repository a character works in: its Git directory, the main checkout, every worktree a character uses, and their staged, unstaged, untracked and ignored changes, stash, branches and refs | The registration of a worktree no character uses (its branch and stash still move) |
 | Each agent's session: Claude Code's transcript with the session's own folder (subagents and saved tool output), Codex's rollout file | Agent logins, user-wide settings, skills, MCP servers and hooks; Claude's file history, which `/rewind` uses, and session environment |
 | `.env` files inside the folders that move | The fleet's own `.env`, unless `handover.transferFleetEnv` is on in `fleet.json` |
@@ -303,9 +303,9 @@ archi host remove studio --forget
 - **More than ten terminals on a remote fleet** exceed sshd's default of ten sessions per connection. Each one past
   the tenth opens its own ssh login and shows one "Session open refused by peer" line. Like the app's own
   connection, that login asks nothing, and logs in with the keys ssh already holds.
-- **A Codex terminal reopened with its session and quit before its first prompt** goes dormant again, its window
-  closed, saying Codex exited before that session started: Codex reports a session only once it takes a turn. The
-  session is kept; open the terminal again.
+- **A Codex terminal a handover reopened with its session, or one you open again after a handover could not resume
+  it, and quit before its first prompt** goes dormant again, its window closed, saying Codex exited before that
+  session started: Codex reports a session only once it takes a turn. The session is kept; open the terminal again.
 - **A controller killed outright** (such as `kill -9`) leaves its ssh connection open until the link drops.
 - **The phone** shows a character that failed to resume as asleep, without the reason the Mac shows.
 - **Version 1 covers one Mac and one Linux gateway per fleet**, with the same home path on both. It does not move a
