@@ -899,6 +899,28 @@ esac
     expect(step('rollback').at(-1)).toMatchObject({ status: 'warn', action: expect.stringMatching(/trift runs release 1\.2\.2, the one it ran before$/) });
   });
 
+  const gatewayDown = JSON.stringify({ checks: JSON.parse(DOCTOR).checks.map((c: { name: string }) => (c.name === 'gateway'
+    ? { name: 'gateway', status: 'fail', detail: 'archipelago-gateway.service: loaded, inactive (dead), disabled' } : c)) });
+
+  it('puts a new release whose gateway unit is not running back on the release before, though its daemon answers', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
+    ssh.reply(['doctor', '--json'], { stdout: gatewayDown, code: 1 });
+    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(out.result).toBe('actions');
+    expect(step('probe').at(-1)).toMatchObject({ status: 'warn', detail: expect.stringContaining('archipelago-gateway.service') });
+    expect(far.now()).toBe('1.2.2');
+  });
+
+  it('fails a rollback whose gateway unit is not running after it, and says which release the machine runs', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION], ['1.2.3', PROTOCOL_VERSION]] });
+    ssh.reply(['doctor', '--json'], { stdout: gatewayDown, code: 1 });
+    const out = await rollbackHost('trift', {}, deps({ registry: far.registry }));
+    await far.close();
+    expect(out.result).toBe('actions');
+    expect(step('probe').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining('archipelago-gateway.service'), action: expect.stringContaining('trift runs release 1.2.2') });
+  });
+
   it('puts the machine back on the release before when asked, with its own archi, and probes it as an upgrade does', async () => {
     const far = await farMachine({ releases: [['1.2.1', PROTOCOL_VERSION], ['1.2.2', PROTOCOL_VERSION], ['1.2.3', PROTOCOL_VERSION]] });
     fs.utimesSync(`${far.base}/releases/1.2.1`, new Date(0), new Date(0));

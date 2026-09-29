@@ -518,7 +518,7 @@ export function upgradeHost(name: string, o: { release?: string; allowUnsigned?:
 
       const probed = await run.step('probe', async () => {
         try {
-          await remoteJson<RemoteDoctor>(master, entry.record.archiBase, ['doctor', '--json'], 'archi doctor --json');
+          serviceOutcome(await remoteJson<RemoteDoctor>(master, entry.record.archiBase, ['doctor', '--json'], 'archi doctor --json'), entry.record.ssh);
           await endToEnd(master, entry, companion.version);
           return { value: true, detail: `${entry.record.name} answers on release ${companion.version}` };
         } catch (err) {
@@ -565,7 +565,7 @@ export function rollbackHost(name: string, o: { to?: string }, d: HostDeps): Pro
       });
       await run.step('probe', async () => {
         try {
-          await remoteJson<RemoteDoctor>(master, base, ['doctor', '--json'], 'archi doctor --json');
+          serviceOutcome(await remoteJson<RemoteDoctor>(master, base, ['doctor', '--json'], 'archi doctor --json'), entry.record.ssh);
           await endToEnd(master, entry, now);
         } catch (err) {
           throw new StepError((err as Error).message, await runs());
