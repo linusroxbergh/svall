@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(svall status:*)",
+      "Bash(svall char list:*)",
+      "Bash(svall char read:*)",
+      "Bash(svall char show:*)",
+      "Bash(svall char wait:*)",
+      "Bash(svall char move:*)",
+      "Bash(svall char update:*)",
+      "Bash(svall island list:*)",
+      "Bash(svall island show:*)",
+      "Bash(svall island create:*)",
+      "Bash(svall island update:*)",
+      "Bash(svall island arrange:*)",
+      "Bash(svall scribe sweep:*)"
+    ]
+  }
+}

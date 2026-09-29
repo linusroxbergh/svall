@@ -1,0 +1,6 @@
+#!/bin/sh
+# Test double for `tailscale` on PATH, so a test never reaches the machine's tailnet: it answers its
+# version, which ends the search for a CLI, and refuses everything else.
+[ "$1" = version ] && { echo 0.0.0-test; exit 0; }
+echo "tailscale is a test double" >&2
+exit 1

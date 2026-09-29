@@ -1,0 +1,17 @@
+.DS_Store
+node_modules/
+*.tsbuildinfo
+.env
+.claude/worktrees/
+.claude/settings.local.json
+.playwright-mcp/
+.swiftpm/
+apps/desktop/web/dist/
+apps/desktop/web/dist-mobile/
+apps/desktop/web/test-results/
+apps/desktop/web/playwright-report/
+apps/desktop/mac/.build/
+apps/desktop/mac/build/
+apps/desktop/mac/GhosttyKit.xcframework
+vendor/ghostty-kit/
+__pycache__/

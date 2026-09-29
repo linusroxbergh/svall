@@ -1,0 +1,6 @@
+# The svall commands .claude/settings.json allows the Claude crew, allowed here outside Codex's sandbox for a Codex
+# crew. svalld rewrites this file on every start
+prefix_rule(pattern = ["svall", "status"], decision = "allow")
+prefix_rule(pattern = ["svall", "char", ["list", "read", "show", "wait", "move", "update"]], decision = "allow")
+prefix_rule(pattern = ["svall", "island", ["list", "show", "create", "update", "arrange"]], decision = "allow")
+prefix_rule(pattern = ["svall", "scribe", "sweep"], decision = "allow")

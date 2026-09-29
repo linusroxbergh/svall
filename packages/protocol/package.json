@@ -1,0 +1,9 @@
+{
+  "name": "@svall/protocol",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "test": "vitest run --root ../.. --project protocol" },
+  "dependencies": { "fast-json-patch": "^3.1.1", "zod": "^4.6.5" }
+}

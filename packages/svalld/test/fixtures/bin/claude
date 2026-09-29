@@ -1,0 +1,28 @@
+#!/usr/bin/env node
+// Test double for `claude` on PATH, so a test never spends the real account: answers the usage
+// control request, and exits quietly for anything else svalld might spawn.
+import readline from 'node:readline';
+
+const at = (ms) => new Date(Date.now() + ms).toISOString();
+// half an hour off the hour, so a countdown asserted in whole hours does not turn over mid-test
+const week = 4 * 86_400_000 + 9 * 3_600_000 + 1_800_000;
+
+const usage = {
+  subscription_type: 'max',
+  rate_limits_available: true,
+  rate_limits: {
+    five_hour: { utilization: 35, resets_at: at(2 * 3_600_000) },
+    seven_day: { utilization: 56, resets_at: at(week) },
+    model_scoped: [{ display_name: 'Fable', utilization: 52, resets_at: at(week) }],
+  },
+};
+
+for await (const line of readline.createInterface({ input: process.stdin })) {
+  let msg;
+  try { msg = JSON.parse(line); } catch { continue; }
+  if (msg?.request?.subtype !== 'get_usage') continue;
+  process.stdout.write(JSON.stringify({
+    type: 'control_response',
+    response: { subtype: 'success', request_id: msg.request_id, response: usage },
+  }) + '\n');
+}

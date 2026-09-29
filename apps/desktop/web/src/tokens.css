@@ -1,0 +1,138 @@
+:root {
+  color-scheme: dark;
+  --sea-0: #1E2A38;
+  --sea-1: #2A3A4C;
+  --grid: rgba(220,205,173,.055);
+  --contour: rgba(236,220,186,.12);
+  --contour-2: rgba(236,220,186,.05);
+
+  --sand: #E6D8B8;
+  --sand-deep: #C9B992;
+  --sand-lite: #E9DBB8;
+  --bank: #A2905F;
+  --home-sand: #D6C5A0;
+  --home-sand-deep: #B3A078;
+  --home-bank: #978660;
+  --grass: #7B9376;
+  --grass-hi: #98AD92;
+  /* the darker ground a card stands pressed into */
+  --grass-press: color-mix(in srgb, var(--grass) 45%, var(--ink-land));
+  --home-sand-press: color-mix(in srgb, var(--home-sand-deep) 55%, var(--home-bank));
+  --shore: rgba(90,80,55,.42);
+
+  /* surfaces: one blue-slate family, terminal ground to raised panel */
+  --surface-0: #172029;
+  --surface-1: var(--sea-0);
+  --surface-2: #243140;
+  --glass: rgba(22,32,44,.66);
+  --glass-hi: rgba(32,46,62,.94);
+  --panel: rgba(38,52,66,.86);
+  --panel-hi: rgba(48,66,82,.9);
+
+  /* cream on dark: hairlines, then fills from hover to selected */
+  --line: rgba(240,230,206,.13);
+  --line-soft: rgba(240,230,206,.07);
+  --line-strong: rgba(240,230,206,.3);
+  --fill-1: rgba(240,230,206,.06);
+  --fill-2: rgba(240,230,206,.10);
+  --fill-3: rgba(240,230,206,.17);
+  --sand-fill: rgba(230,216,184,.2);
+  --sand-hi: #F6ECD1;
+
+  --ink: #F4EEDF;
+  --ink-2: #CCC5B1;
+  --ink-3: #96907E;
+  --ink-cool: #8EA0B0;
+  --ink-land: #2C3B31;
+  --ink-sand: #3D3418;
+
+  --working: #FFC95C;
+  --blocked: #FF6F5E;
+  --done: #63D7C0;
+  --idle: #7C8F9F;
+  --shell: #EAF1EE;
+  --sel: #8ED0FF;
+
+  --pt-sky: #78B0C4;
+  --pt-sun: #E0BB55;
+  --pt-coral: #DD7364;
+  --pt-earth: #A6734C;
+  --pt-moss: #8CAE68;
+  --pt-slate: #4E6A6E;
+
+  --sans: 'Outfit', ui-sans-serif, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, monospace;
+
+  /* type: every size in the app is one of these rungs */
+  --text-2xs: 9.5px;    /* badges, link glyphs */
+  --text-xs: 10.5px;    /* uppercase eyebrows and pills */
+  --text-sm: 11.5px;    /* secondary rows and meta */
+  --text-md: 12.5px;    /* buttons and tabs */
+  --text-lg: 13.5px;    /* body */
+  --text-xl: 15px;      /* icon glyphs */
+  --text-2xl: 17px;     /* the wordmark and the card's own marks */
+  --text-3xl: 25px;     /* names in a modal or the side card */
+
+  /* the room an icon control gets either side of its glyph */
+  --ctl-pad: 16px;      /* an icon control in a header or tab bar */
+  --ctl-pad-sm: 8px;    /* one inside a tab or a list row */
+
+  --r-lg: 16px; --r-md: 10px; --r-sm: 8px;
+  --ease: cubic-bezier(.22,.7,.24,1);
+  --cell: 44px;
+  --card-w: calc(var(--cell) * 2.56);
+  --card-h: calc(var(--cell) * 2.90 * 1.05);
+  --sb-w: 258px;
+  --side-w: 320px;
+  --disc-side: 52px;    /* the portrait disc in the side card's header */
+  --utility-dock-h: 64px;
+
+  --bg: var(--surface-1);
+  --fg: var(--ink);
+  --dim: var(--ink-3);
+
+  /* spacing: every gap and padding is one of these rungs */
+  --sp-2xs: 2px; --sp-xs: 4px; --sp-sm: 6px; --sp-md: 8px;
+  --sp-lg: 10px; --sp-xl: 12px; --sp-2xl: 16px; --sp-3xl: 24px;
+  --read-inset-max: 4rem;
+
+  --r-xs: 5px; --r-pill: 999px;
+  --edge-tab-w: 20px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+
+  --dur-fast: .12s; --dur: .16s; --dur-slow: .2s;
+  /* the periods of the looping animations */
+  --pulse-fast: 1.2s; --pulse: 2.2s; --pulse-slow: 3.2s; --swell: 48s; --swell-2: 67s;
+
+  --w-light: 300; --w-regular: 400; --w-medium: 500; --w-semibold: 600; --w-bold: 700;
+  --track-tight: -.02em; --track-loose: .06em; --track-caps: .12em; --track-wide: .18em;
+
+  /* app layers; the integers inside a token or island order its own parts */
+  --z-scenery: 35; --z-furniture: 40; --z-popover: 60; --z-hover: 70;
+  --z-card: 80; --z-shelf: 82; --z-usage: 85; --z-toast: 90; --z-modal: 200;
+
+  /* one dark shade, light to heavy, for overlays and shadows */
+  --shade-0: rgba(10,18,24,.15); --shade-1: rgba(10,18,24,.25);
+  --shade-2: rgba(10,18,24,.4);  --shade-3: rgba(10,18,24,.55);
+  --shadow-1: 0 4px 12px var(--shade-2);
+  --shadow-2: 0 8px 22px rgba(10,18,24,.34);
+  --shadow-3: 0 24px 60px rgba(10,18,24,.5);
+  --ring: 0 0 0 3px color-mix(in srgb, var(--sel) 25%, transparent);
+
+  /* ink on a status fill */
+  --ink-on-blocked: #3A0E09; --ink-on-done: #06231E;
+
+  /* islands: the cream card, its disc, the sea and the lamp */
+  --cream: #FFFDF4;
+  --white: #FFFFFF;     /* a disc's shine, and the ground a QR code needs */
+  --card-0: #F6EFDE; --card-1: #ECE2CA; --card-2: #DFD2B4;
+  --card-tint: #786844; --card-band: #B9A578;
+  --disc-0: #FFFEF8; --disc-1: #F7F0DE; --disc-2: #DCCFB2;
+  --ink-land-deep: #15211A;
+  --shell-dim: #9AA7B2;
+  --lamp: #FFE28C;
+  --map-0: #53687C; --map-1: #3E5061; --map-2: #2C3847;
+
+  /* code */
+  --syntax-string: #9BBA86; --syntax-op: #BAD1A2;
+}

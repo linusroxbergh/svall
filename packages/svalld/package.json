@@ -1,0 +1,42 @@
+{
+  "name": "@svall/svalld",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/main.ts",
+    "./agents": "./src/agents.ts",
+    "./claude": "./src/claude.ts",
+    "./bundle": "./src/api/bundle.ts",
+    "./bin": "./src/bin.ts",
+    "./paths": "./src/paths.ts",
+    "./log": "./src/log.ts",
+    "./tmux": "./src/tmux/tmux.ts",
+    "./test-helpers": "./test/helpers.ts",
+    "./config": "./src/config.ts",
+    "./codex/install": "./src/codex/install.ts",
+    "./setup": "./src/setup.ts",
+    "./uninstall": "./src/uninstall.ts",
+    "./profile": "./src/profile.ts",
+    "./fleets": "./src/fleets.ts",
+    "./mobile": "./src/mobile.ts",
+    "./tmux/conf": "./src/tmux/conf.ts"
+  },
+  "scripts": {
+    "test": "vitest run --root ../.. --project svalld"
+  },
+  "dependencies": {
+    "@svall/protocol": "workspace:*",
+    "fast-json-patch": "^3.1.1",
+    "qrcode": "^1.5.4",
+    "smol-toml": "^1.9.0",
+    "web-push": "^3.6.7",
+    "ws": "^8.21.3",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/qrcode": "^1.5.6",
+    "@types/web-push": "^3.6.4",
+    "@types/ws": "^8.18.1"
+  }
+}

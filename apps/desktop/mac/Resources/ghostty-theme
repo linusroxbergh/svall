@@ -1,0 +1,12 @@
+# The terminal's ground, ink, cursor and selection follow the page. Loaded over
+# your own Ghostty config, so your font, keybinds and ANSI palette stay yours.
+background = 172029
+foreground = F4EEDF
+cursor-color = E6D8B8
+cursor-text = 172029
+selection-background = 37495B
+selection-foreground = F4EEDF
+# Every terminal attaches to its character's tmux session, so your own first
+# command and startup input are cleared rather than run or typed there.
+initial-command =
+input =

@@ -1,0 +1,62 @@
+#!/usr/bin/env node
+// Test double for `codex`: posts the hook events svalld reacts to and writes a rollout jsonl.
+import fs from 'node:fs';
+import net from 'node:net';
+import path from 'node:path';
+import readline from 'node:readline';
+
+const args = process.argv.slice(2);
+if (args[0] === '--version') { process.stdout.write('codex-cli 0.156.1\n'); process.exit(0); }
+if (args[0] === 'login' && args[1] === 'status') { process.stdout.write('Logged in using ChatGPT\n'); process.exit(0); }
+
+const charId = process.env.SVALL_CHAR_ID;
+if (!charId) process.exit(0);
+
+const home = process.env.SVALL_HOME;
+const dir = path.join(home, 'fake-codex');
+fs.mkdirSync(dir, { recursive: true });
+fs.writeFileSync(path.join(dir, `${charId}.argv`), JSON.stringify(args));
+
+const sessionId = '019eefb3-8d5c-7b00-ad02-80c4930f74fc';
+const rolloutPath = path.join(dir, `${charId}.jsonl`);
+const cwd = process.cwd();
+
+function post(hook) {
+  return new Promise((resolve) => {
+    const sock = net.createConnection(path.join(home, 'hooks.sock'));
+    sock.on('error', resolve);
+    sock.on('connect', () => sock.end(JSON.stringify({
+      charId, backend: 'codex',
+      hook: { session_id: sessionId, transcript_path: rolloutPath, cwd, model: 'gpt-fake', ...hook },
+    }) + '\n', resolve));
+  });
+}
+
+let metaWritten = false;
+const append = (line) => fs.appendFileSync(rolloutPath, JSON.stringify(line) + '\n');
+function ensureMeta() {
+  if (metaWritten) return;
+  metaWritten = true;
+  append({ timestamp: new Date().toISOString(), type: 'session_meta', payload: { id: sessionId, cwd, originator: 'codex_cli_rs', cli_version: '0.156.1' } });
+}
+
+let turns = 0;
+async function turn(prompt) {
+  if (turns === 0) await post({ hook_event_name: 'SessionStart' });
+  turns++;
+  await post({ hook_event_name: 'UserPromptSubmit', prompt });
+  ensureMeta();
+  append({ timestamp: new Date().toISOString(), type: 'event_msg', payload: { type: 'item_completed', item: { type: 'UserMessage', content: [{ text: prompt }] } } });
+  append({ timestamp: new Date().toISOString(), type: 'event_msg', payload: { type: 'item_completed', item: { type: 'AgentMessage', content: [{ text: `did: ${prompt}` }] } } });
+  append({ timestamp: new Date().toISOString(), type: 'event_msg', payload: { type: 'task_complete', turn_id: `t${turns}` } });
+  await post({ hook_event_name: 'Stop' });
+}
+
+const dashes = args.indexOf('--');
+const first = dashes !== -1 ? args.slice(dashes + 1).join(' ') : undefined;
+if (first) await turn(first);
+
+const rl = readline.createInterface({ input: process.stdin });
+for await (const line of rl) await turn(line);
+await post({ hook_event_name: 'SessionEnd' });
+process.exit(0);

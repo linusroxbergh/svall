@@ -1,0 +1,161 @@
+import { execFile } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { promisify } from 'node:util';
+import WebSocket from 'ws';
+import { fleetNameProblem, PROTOCOL_VERSION, type FleetEntry } from '@svall/protocol';
+import { loadConfig } from './config.js';
+import { Invalid, NotFound } from './errors.js';
+import { repoRoot, resolvePaths, userPaths } from './paths.js';
+import { PRIVATE, profileHome, profileLabel, profileOf } from './profile.js';
+import { setupHome, type HomeSetup } from './setup.js';
+import { appPid, appQuit, fleetHomes } from './uninstall.js';
+
+// the daemon and this build disagree on the protocol: waiting will not fix it
+export class ProtocolMismatch extends Error {}
+
+// managed is false for a home that is not a profile's own directory: it gets no launchd agent
+export type FleetTarget = { name: string; home: string; managed: boolean };
+
+export type StartDeps = {
+  exists(p: string): boolean;
+  exec(cmd: string, args: string[]): Promise<void>;
+  connect(home: string): Promise<{ close(): void }>;
+  setupHome(o: HomeSetup): Promise<string[]>;
+  uid: number;
+  launchAgentsDir: string;
+  repoRoot: string;
+  timeoutMs: number;
+  intervalMs: number;
+};
+
+export type FleetDeps = StartDeps & { homedir: string; isApp(pid: number): boolean };
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export const homeSetup = (t: FleetTarget, d: Pick<StartDeps, 'repoRoot' | 'launchAgentsDir'>): HomeSetup => ({
+  home: t.home, label: profileLabel(t.name), repoRoot: d.repoRoot, launchAgentsDir: d.launchAgentsDir, launchctl: false,
+  port: t.name === PRIVATE ? undefined : 0,
+});
+
+/** Loads a profile's launchd agent when launchd has not, then waits for its daemon to answer. */
+export async function startFleet(t: FleetTarget, d: StartDeps): Promise<void> {
+  const label = profileLabel(t.name);
+  const domain = `gui/${d.uid}`;
+  const plist = path.join(d.launchAgentsDir, `${label}.plist`);
+
+  // an ad-hoc $SVALL_HOME is opened as it stands; only a profile's own home gets an agent
+  if (t.managed) {
+    const loaded = await d.exec('launchctl', ['print', `${domain}/${label}`]).then(() => true, () => false);
+    if (!loaded) {
+      if (!d.exists(plist)) await d.setupHome(homeSetup(t, d));
+      await d.exec('launchctl', ['bootstrap', domain, plist]);
+    }
+  }
+
+  const end = Date.now() + d.timeoutMs;
+  for (;;) {
+    try { (await d.connect(t.home)).close(); return; } catch (e) {
+      if (e instanceof ProtocolMismatch) throw e;
+      const why = (e as Error).message;
+      if (Date.now() >= end) throw new Error(`svalld did not start; see ${path.join(t.home, 'svalld.log')} (${why})`);
+      await sleep(d.intervalMs);
+    }
+  }
+}
+
+const configName = (home: string): string | undefined => {
+  try { return loadConfig(resolvePaths(home).config).name; } catch { return undefined; }
+};
+
+export const displayName = (home: string, homedir = os.homedir()): string => configName(home) ?? profileOf(home, homedir);
+
+const homesIn = (homedir: string): string[] => {
+  try { return fleetHomes(homedir); } catch { return []; }
+};
+
+/** What the fleets other than `except` go by, their config names and their directories alike. */
+export const takenNames = (homedir = os.homedir(), except?: string): string[] => [...new Set(homesIn(homedir)
+  .filter((h) => except === undefined || h !== path.resolve(except))
+  .flatMap((h) => [configName(h), profileOf(h, homedir)].filter((n) => n !== undefined)))];
+
+export const fleetNamed = (name: string, homedir = os.homedir()): string | undefined =>
+  homesIn(homedir).find((h) => configName(h) === name);
+
+const CONNECT_TIMEOUT = 2000;
+
+/** Holds once the daemon at `home` takes its token and speaks this protocol. */
+export async function answers(home: string): Promise<{ close(): void }> {
+  const paths = resolvePaths(home);
+  const port = Number(fs.readFileSync(paths.port, 'utf8'));
+  const token = fs.readFileSync(paths.token, 'utf8').trim();
+  const host = loadConfig(paths.config).host;
+  const ws = new WebSocket(`ws://${host}:${port}`);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`no answer on ${host}:${port}`)), CONNECT_TIMEOUT);
+      const done = (e?: Error) => { clearTimeout(timer); if (e) reject(e); else resolve(); };
+      ws.once('open', () => ws.send(JSON.stringify({ token })));
+      ws.once('message', (raw) => {
+        let r: { ok?: boolean; protocol?: number } | undefined;
+        try { r = (JSON.parse(raw.toString()) as { result?: typeof r }).result; } catch { r = undefined; }
+        if (!r?.ok) done(new Error('svalld refused the token'));
+        else if (r.protocol !== PROTOCOL_VERSION) done(new ProtocolMismatch(`the svalld of ${home} speaks protocol ${r.protocol ?? 'none'}; run pnpm desktop:install`));
+        else done();
+      });
+      ws.once('error', (e) => done(e));
+      ws.once('close', (code) => done(new Error(`svalld closed the connection (${code})`)));
+    });
+  } finally {
+    ws.terminate();
+  }
+  return { close() {} };
+}
+
+/** Lists, creates and starts the fleets beside `current`, which all belong to this user. */
+export function fleetControl(current: string, d: FleetDeps) {
+  const here = path.resolve(current);
+  return {
+    list: (): Promise<FleetEntry[]> => Promise.all(homesIn(d.homedir).map(async (home) => ({
+      home,
+      name: displayName(home, d.homedir),
+      current: home === here,
+      running: home === here || await d.connect(home).then((c) => { c.close(); return true; }, () => false),
+      windowOpen: appPid(home, d) !== undefined,
+    }))),
+    create: async (name: string): Promise<string> => {
+      const problem = fleetNameProblem(name, takenNames(d.homedir));
+      if (problem) throw new Invalid(problem);
+      const home = profileHome(name, d.homedir);
+      if (d.exists(home)) throw new Invalid(`${home} already exists`);
+      const t = { name, home, managed: true };
+      await d.setupHome(homeSetup(t, d));
+      await startFleet(t, d);
+      return home;
+    },
+    start: async (home: string): Promise<string> => {
+      if (!homesIn(d.homedir).includes(home)) throw new NotFound(`no fleet at ${home}`);
+      await startFleet({ name: profileOf(home, d.homedir), home, managed: true }, d);
+      return home;
+    },
+  };
+}
+
+export type Fleets = ReturnType<typeof fleetControl>;
+
+const execFileP = promisify(execFile);
+
+export const realFleetDeps = (): FleetDeps => ({
+  homedir: os.homedir(),
+  exists: (p) => fs.existsSync(p),
+  exec: async (cmd, args) => { await execFileP(cmd, args); },
+  connect: answers,
+  setupHome,
+  isApp: appQuit.isApp,
+  uid: os.userInfo().uid,
+  launchAgentsDir: userPaths().launchAgents,
+  repoRoot: repoRoot(),
+  timeoutMs: 15_000,
+  intervalMs: 200,
+});

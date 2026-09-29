@@ -1,0 +1,9 @@
+{"timestamp":"2026-06-22T14:19:47.737Z","type":"session_meta","payload":{"id":"019eefb3-8d5c-7b00-ad02-80c4930f7426","cwd":"/w","originator":"codex_cli_rs","cli_version":"0.142.0"}}
+{"timestamp":"2026-06-22T14:19:47.800Z","type":"event_msg","payload":{"type":"task_started","turn_id":"t1","model_context_window":258400}}
+{"timestamp":"2026-06-22T14:19:47.850Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>\n  <cwd>/w</cwd>\n</environment_context>"}]}}
+{"timestamp":"2026-06-22T14:19:47.900Z","type":"event_msg","payload":{"type":"user_message","message":"recommend me any features to add\n","images":[]}}
+{"timestamp":"2026-06-22T14:19:48.000Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"command\":\"curl https://example.com/doc\"}"}}
+{"timestamp":"2026-06-22T14:19:48.050Z","type":"response_item","payload":{"type":"function_call_output","output":"see https://example.com/more."}}
+{"timestamp":"2026-06-22T14:19:48.100Z","type":"event_msg","payload":{"type":"agent_message","message":"Here are the ideas."}}
+{"timestamp":"2026-06-22T14:19:48.200Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":206458},"last_token_usage":{"total_tokens":49771},"model_context_window":258400},"rate_limits":{"limit_id":"codex","primary":{"used_percent":13.0,"window_minutes":300,"resets_at":1784729990},"secondary":{"used_percent":40.0,"window_minutes":10080,"resets_at":1784729990},"plan_type":"plus"}}}
+{"timestamp":"2026-06-22T14:19:48.300Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"t1","last_agent_message":"Here are the ideas."}}

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>io.github.linusroxbergh.svall</string>
+  <key>CFBundleName</key><string>Svall</string>
+  <key>CFBundleDisplayName</key><string>Svall</string>
+  <key>CFBundleExecutable</key><string>Svall</string>
+  <key>CFBundleIconFile</key><string>Svall</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>0.1.0</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>LSMinimumSystemVersion</key><string>15.0</string>
+  <key>NSPrincipalClass</key><string>NSApplication</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
+  <key>NSCameraUsageDescription</key><string>A site open in a character's browser is asking to use the camera.</string>
+  <key>NSMicrophoneUsageDescription</key><string>A site open in a character's browser is asking to use the microphone.</string>
+  <key>NSLocationUsageDescription</key><string>A site open in a character's browser is asking for your location.</string>
+  <key>NSLocalNetworkUsageDescription</key><string>Svall, or a site open in a character's browser, is reaching a device on your local network.</string>
+  <key>NSDownloadsFolderUsageDescription</key><string>A character's browser saves the files you download there.</string>
+</dict>
+</plist>

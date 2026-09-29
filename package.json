@@ -1,0 +1,26 @@
+{
+  "name": "svall",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "packageManager": "pnpm@12.6.0",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/desktop/web/tsconfig.json",
+    "svalld": "tsx packages/svalld/src/bin.ts",
+    "svall": "tsx packages/cli/src/main.ts",
+    "ghostty:build": "scripts/ghostty-build.sh",
+    "ghostty:publish": "scripts/ghostty-kit.sh publish",
+    "web:dev": "pnpm --filter @svall/desktop-web dev",
+    "e2e": "pnpm --filter @svall/desktop-web e2e",
+    "desktop:dev": "scripts/desktop-dev.sh",
+    "desktop:build": "pnpm --filter @svall/desktop-web build && pnpm --filter @svall/desktop-web build:mobile && apps/desktop/mac/build.sh release",
+    "desktop:install": "scripts/desktop-install.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  }
+}
