@@ -10,7 +10,7 @@ import { resolvePaths, type Paths } from '../paths.js';
 import { PRIVATE } from '../profile.js';
 import { installHomeTemplate, setupFleetHome } from '../setup.js';
 import { fleetHomes } from '../uninstall.js';
-import { daemonReload, enableUnit, stopUnit, type Run } from './service.js';
+import { daemonReload, enableUnit, restartUnit, stopUnit, type Run } from './service.js';
 import { agentHomesEnv, archidUnitName, writeUnits, type UnitOptions } from './setup.js';
 
 export type Provision = UnitOptions & {
@@ -95,11 +95,15 @@ function unseed(o: Provision, paths: Paths, homeCwd: string): void {
   }
 }
 
-// the unit is written only when it is not already what it should be, and systemd reads it again only then
-async function ensureUnit(o: Provision): Promise<string> {
+// the unit is written only when it is not already what it should be, and systemd reads it again only then;
+// `rewritten`: a unit file that was there changed, and a daemon already running still runs the old one
+async function ensureUnit(o: Provision): Promise<{ unit: string; rewritten: boolean }> {
+  const unit = archidUnitName(o.profile);
+  const had = fs.existsSync(path.join(o.unitDir, unit));
   const env = o.env ?? await agentHomesEnv(o.run);
-  if (writeUnits({ ...o, fleet: o.profile, env }, true).length) await daemonReload(o.run);
-  return archidUnitName(o.profile);
+  const wrote = writeUnits({ ...o, fleet: o.profile, env }, true).length > 0;
+  if (wrote) await daemonReload(o.run);
+  return { unit, rewritten: had && wrote };
 }
 
 /**
@@ -113,7 +117,8 @@ export async function provisionFleet(o: Provision): Promise<Provisioned> {
   // what a home holding this fleet needs to run it; each step changes nothing already right, so a run cut short is finished by the next
   const run = async (): Promise<string> => {
     setupFleetHome({ ...o, port: o.profile === PRIVATE ? undefined : 0 });
-    const unit = await ensureUnit(o);
+    const { unit, rewritten } = await ensureUnit(o);
+    if (rewritten) await restartUnit(o.run, unit);
     await enableUnit(o.run, unit);
     return unit;
   };
@@ -130,7 +135,8 @@ export async function provisionFleet(o: Provision): Promise<Provisioned> {
   if (held === o.fleetId) return { outcome: 'held', home: o.home, unit: await run() };
   const why = inUse(paths);
   if (why) throw new ProvisionRefused(`${o.home} holds fleet ${held}, and ${why}, so it is not this fleet's to replace`);
-  const unit = await ensureUnit(o);
+  // stopped here and started by enable, the daemon runs the unit as written with no restart as the old fleet
+  const { unit } = await ensureUnit(o);
   await stopUnit(o.run, unit);
   unseed(o, paths, parsed.data.home.cwd);
   writeJsonAtomic(paths.fleetConfig, { ...parsed.data, id: o.fleetId, gatewayMachineId: o.gatewayMachineId });

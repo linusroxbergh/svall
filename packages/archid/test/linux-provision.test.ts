@@ -130,6 +130,35 @@ describe('provisionFleet', () => {
     expect(f.sd.calls).toEqual([['systemctl', '--user', 'enable', '--now', f.unit]]);
   });
 
+  it('restarts a unit whose file it rewrote, so a daemon already running takes the new environment', async () => {
+    const stale = (f: Far): void => {
+      fs.mkdirSync(path.dirname(f.unitFile), { recursive: true });
+      fs.writeFileSync(f.unitFile, '[Service]\nEnvironment="CODEX_HOME=/old/codex"\n');
+    };
+    const f = far('work');
+    fs.mkdirSync(f.home, { recursive: true });
+    fs.writeFileSync(f.paths.fleetConfig, JSON.stringify({ id: FLEET, gatewayMachineId: GATEWAY }));
+    stale(f);
+    expect(await provisionFleet(f.o)).toEqual({ outcome: 'held', home: f.home, unit: f.unit });
+    expect(fs.readFileSync(f.unitFile, 'utf8')).not.toContain('/old/codex');
+    expect(f.sd.calls).toEqual([
+      ['systemctl', '--user', 'daemon-reload'],
+      ['systemctl', '--user', 'restart', f.unit],
+      ['systemctl', '--user', 'enable', '--now', f.unit],
+    ]);
+
+    // a fleet taking this one's id is stopped and started again on the new file, and never restarted as the old fleet
+    const g = far();
+    hostAdded(g);
+    stale(g);
+    expect(await provisionFleet(g.o)).toMatchObject({ outcome: 'rekeyed' });
+    expect(g.sd.calls).toEqual([
+      ['systemctl', '--user', 'daemon-reload'],
+      ['systemctl', '--user', 'stop', g.unit],
+      ['systemctl', '--user', 'enable', '--now', g.unit],
+    ]);
+  });
+
   it('gives a home only host add has touched this fleet\'s id and gateway, drops its owner record and starts it again on them', async () => {
     const f = far();
     hostAdded(f);
