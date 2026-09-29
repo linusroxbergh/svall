@@ -1,14 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ResumeFolder } from '@archipelago/protocol';
-import type { Version } from '../../agents.js';
+import { AGENTS } from '../../agents.js';
 import { claudePaths } from '../../paths.js';
 import { holds, realPath } from '../portable-path.js';
 import { filesUnder, transcriptFile } from './records.js';
 import { SessionError, type SessionAdapter, type SessionFs } from './types.js';
 
-// the oldest release a fixture holds; Archipelago asks no floor of Claude Code itself
-const MIN: Version = [2, 1, 251];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const TRANSCRIPT = /^projects\/[^/]+\/([^/]+)\.jsonl$/;
 
@@ -66,7 +64,7 @@ function acceptsBypass(home: string, folder: Omit<ResumeFolder, 'kind'>): boolea
 export const claudeAdapter: SessionAdapter = {
   kind: 'claude',
   adapter: 1,
-  min: MIN,
+  min: AGENTS.claude.minVersion ?? [0, 0, 0],
   sessionStartOnResume: true,
 
   // <config>/projects/<slug>/<id>.jsonl, with the session's own folder beside it
