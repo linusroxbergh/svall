@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { FleetConfig, FleetId, MachineId, MachineRecord } from '@archipelago/protocol';
 import { AGENTS, AGENT_KINDS, versionOk } from '@archipelago/archid/agents';
-import { writeJsonAtomic } from '@archipelago/archid/atomic';
+import { patchFleetConfig } from '@archipelago/archid/config';
 import { gatewayPaths, socketTooLong } from '@archipelago/archid/gateway/authority';
 import { homeCommands } from '@archipelago/archid/handover/inventory';
 import { unitPath } from '@archipelago/archid/linux/setup';
@@ -595,11 +595,7 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
       }
     });
     await run.step('registry', () => {
-      for (const home of fleets) {
-        const file = resolvePaths(home).fleetConfig;
-        const { gatewayMachineId: _gone, ...rest } = readFleet(file);
-        writeJsonAtomic(file, rest);
-      }
+      for (const home of fleets) patchFleetConfig(resolvePaths(home).fleetConfig, { gatewayMachineId: undefined });
       d.registry.remove(entry.id);
       d.registry.save();
       return Promise.resolve({ value: undefined, detail: uninstalled ? `${name} is no longer in the registry` : `${name} is forgotten; the machine was left untouched` });
@@ -683,7 +679,7 @@ export function enableHost(name: string, o: { fleetHome: string }, d: HostDeps):
       });
       await run.step('fleet', async () => {
         const copy = await provisionCopy(master!, entry, readFleet(file).id, profileOf(o.fleetHome, d.homedir));
-        writeJsonAtomic(file, { ...readFleet(file), gatewayMachineId: entry.id });
+        patchFleetConfig(file, { gatewayMachineId: entry.id });
         d.registry.markGateway(entry.id);
         d.registry.save();
         return { value: undefined, detail: `${copy}; ${file} names ${name} as the gateway` };

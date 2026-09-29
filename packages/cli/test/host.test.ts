@@ -1056,6 +1056,21 @@ describe('host remove', () => {
     expect(registry.get('trift')).toBeUndefined();
   });
 
+  it('drops the gateway from fleet.json as it lies, through a link, keeping its own keys and mode and writing no defaults', async () => {
+    ssh.reply(['uninstall'], { stdout: 'removed\n' });
+    const registry = registered('trift.test');
+    const mine = fleetAt('.archipelago', { gateway: REMOTE, owner: MAC });
+    const real = path.join(work, 'dotfiles-fleet.json');
+    fs.writeFileSync(real, JSON.stringify({ id: FLEET, gatewayMachineId: REMOTE, custom: 1 }), { mode: 0o640 });
+    fs.rmSync(path.join(mine, 'fleet.json'));
+    fs.symlinkSync(real, path.join(mine, 'fleet.json'));
+    const out = await removeHost('trift', {}, deps({ registry }));
+    expect(out.result).toBe('ready');
+    expect(fs.lstatSync(path.join(mine, 'fleet.json')).isSymbolicLink()).toBe(true);
+    expect(JSON.parse(fs.readFileSync(real, 'utf8'))).toEqual({ id: FLEET, custom: 1 });
+    expect(fs.statSync(real).mode & 0o777).toBe(0o640);
+  });
+
   it('forgets an unreachable machine and says the remote was left alone', async () => {
     const registry = registered('refused.test');
     const out = await removeHost('trift', { forget: true }, deps({ registry }));
@@ -1188,6 +1203,22 @@ describe('host enable', () => {
       [ARCHI, 'gateway', 'owner', 'create', '--fleet', FLEET, '--params', JSON.stringify({ initialOwnerMachineId: MAC })],
     ]);
     expect(written(home).gatewayMachineId).toBe(REMOTE);
+  });
+
+  it('names the gateway in fleet.json as it lies, through a link, keeping its own keys and mode and writing no defaults', async () => {
+    ssh.reply(['owner', 'get'], answers({}));
+    ssh.reply(['fleet', 'provision'], provisioned());
+    const home = fleetHome();
+    const real = path.join(work, 'dotfiles-fleet.json');
+    fs.writeFileSync(real, JSON.stringify({ id: FLEET, custom: { kept: true } }), { mode: 0o640 });
+    fs.rmSync(path.join(home, 'fleet.json'));
+    fs.symlinkSync(real, path.join(home, 'fleet.json'));
+
+    const out = await enableHost('trift', { fleetHome: home }, deps({ registry: registered() }));
+    expect(out.result).toBe('ready');
+    expect(fs.lstatSync(path.join(home, 'fleet.json')).isSymbolicLink()).toBe(true);
+    expect(JSON.parse(fs.readFileSync(real, 'utf8'))).toEqual({ id: FLEET, custom: { kept: true }, gatewayMachineId: REMOTE });
+    expect(fs.statSync(real).mode & 0o777).toBe(0o640);
   });
 
   it('marks the machine a gateway in the registry', async () => {

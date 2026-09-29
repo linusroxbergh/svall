@@ -277,6 +277,21 @@ describe('fleet recover --force-owner', () => {
     await untouched(w, { fleetId, generation: 2, ownerMachineId: w.mac });
   });
 
+  it('names a replacement gateway in fleet.json through a link, keeping its mode', async () => {
+    const w = world();
+    w.hold(TRIFT, { fleetId, generation: 2, ownerMachineId: w.mac });
+    w.down.add(TRIFT);
+    w.daemons.set(w.mac, { ownership: ownerAt(w.mac, 2), adopted: [] });
+    const real = path.join(tmp(), 'fleet.json');
+    fs.writeFileSync(real, JSON.stringify({ id: fleetId, gatewayMachineId: TRIFT, custom: 1 }), { mode: 0o640 });
+    fs.rmSync(w.paths.fleetConfig);
+    fs.symlinkSync(real, w.paths.fleetConfig);
+    await w.run({ gateway: 'vault', confirm: fleetId });
+    expect(fs.lstatSync(w.paths.fleetConfig).isSymbolicLink()).toBe(true);
+    expect(JSON.parse(fs.readFileSync(real, 'utf8'))).toEqual({ id: fleetId, gatewayMachineId: VAULT, custom: 1 });
+    expect(fs.statSync(real).mode & 0o777).toBe(0o640);
+  });
+
   it('writes the record into a replacement gateway that holds none, and names it the gateway everywhere it reaches', async () => {
     const w = world();
     w.hold(TRIFT, { fleetId, generation: 2, ownerMachineId: w.mac });

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Command } from 'commander';
 import { FleetConfig, type FleetId, type MachineId, type MethodName, type OwnerRecord, type OwnershipInfo, type Params, type Result } from '@archipelago/protocol';
-import { writeJsonAtomic } from '@archipelago/archid/atomic';
+import { patchFleetConfig } from '@archipelago/archid/config';
 import type { OwnerAnswer } from '@archipelago/archid/gateway/client';
 import { appendDurable } from '@archipelago/archid/handover/durable';
 import { HandoverJournal, handoverGeneration } from '@archipelago/archid/handover/journal';
@@ -180,11 +180,9 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
   };
   const archi = `archi${o.profile ? ` -p ${o.profile}` : ''}`;
   const file = resolvePaths(d.fleetHome).fleetConfig;
-  let raw: Record<string, unknown>;
   let fleet: FleetConfig;
   try {
-    raw = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
-    fleet = FleetConfig.parse(raw);
+    fleet = FleetConfig.parse(JSON.parse(fs.readFileSync(file, 'utf8')));
   } catch (e) {
     return refuse(`${file} is not a fleet config: ${messageOf(e)}`);
   }
@@ -287,7 +285,7 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
   }
   // the controller finds the fleet's gateway here whether or not this machine's daemon answers
   if (replacement) {
-    try { writeJsonAtomic(file, { ...raw, gatewayMachineId: replacement.id }); } catch (e) {
+    try { patchFleetConfig(file, { gatewayMachineId: replacement.id }); } catch (e) {
       actions.push(`${file} could not be changed to name ${replacement.record.name} the gateway (${messageOf(e)}); set its gatewayMachineId to ${replacement.id}`);
     }
   }
