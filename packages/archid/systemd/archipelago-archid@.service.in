@@ -10,7 +10,7 @@ ExecStart=@EXEC_START@
 Environment="ARCHI_HOME=@ARCHI_HOME@"
 Environment="HOME=@HOME@"
 Environment="PATH=@PATH@"
-Environment=LANG=C.UTF-8
+Environment=LANG=C.UTF-8@ENV@
 Restart=always
 RestartSec=2
 # the daemon starts the fleet's tmux server, which a crash, a restart or a stop must leave running

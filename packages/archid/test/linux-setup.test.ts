@@ -2,20 +2,20 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FleetId, MachineId } from '@archipelago/protocol';
 import { rollbackRelease } from '../../../scripts/install-release.mjs';
 import { codexPaths } from '../src/codex/install.js';
 import { DEFAULT_EXCLUDES, rootMatcher } from '../src/handover/inventory.js';
 import { scanPath } from '../src/handover/manifest.js';
 import { ReplicaStore } from '../src/handover/replicas.js';
-import { archidUnit, gatewayUnit, probeOrRollback, restartUnits, setupLinux, setupLinuxRelease, unitDirOf } from '../src/linux/setup.js';
+import { agentHomesEnv, archidUnit, gatewayUnit, probeOrRollback, restartUnits, setupLinux, setupLinuxRelease, unitDirOf } from '../src/linux/setup.js';
 import { SystemdError, daemonReload, enableUnit, lingerState, unitStatus, type Run } from '../src/linux/service.js';
 import { machineId } from '../src/machine.js';
 import { resolvePaths } from '../src/paths.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
-afterEach(cleanHomes);
+afterEach(() => { vi.unstubAllEnvs(); cleanHomes(); });
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
 /** A runner that answers from a table of `cmd arg arg` keys and records what it was asked. */
@@ -135,6 +135,43 @@ WantedBy=default.target
   });
 });
 
+describe('the agent homes a daemon is given', () => {
+  // what the account's login shell prints past its own noise, as setup over ssh asks it
+  const shell = (out: string | Error): Run => async (cmd, args) => {
+    if (cmd !== '/bin/bash' || args[0] !== '-lic') throw new Error(`asked ${cmd} ${args.join(' ')}`);
+    if (out instanceof Error) throw out;
+    return { stdout: out, stderr: 'bash: no job control in this shell\n' };
+  };
+
+  it("reads CLAUDE_CONFIG_DIR and CODEX_HOME from the account's login shell, which a setup over ssh does not run in", async () => {
+    vi.stubEnv('SHELL', '/bin/bash');
+    vi.stubEnv('CLAUDE_CONFIG_DIR', undefined);
+    vi.stubEnv('CODEX_HOME', undefined);
+    expect(await agentHomesEnv(shell('Welcome\narchi-agent-homes\n/home/linus/.config/claude\n/home/linus/codex home\n')))
+      .toEqual({ CLAUDE_CONFIG_DIR: '/home/linus/.config/claude', CODEX_HOME: '/home/linus/codex home' });
+    expect(await agentHomesEnv(shell('archi-agent-homes\n\n\n'))).toEqual({});
+    expect(await agentHomesEnv(shell(new Error('timed out')))).toEqual({});
+    // a value this process was started with is the one it is asked for
+    vi.stubEnv('CODEX_HOME', '/srv/codex');
+    expect(await agentHomesEnv(shell('archi-agent-homes\n/home/linus/.config/claude\n/home/linus/codex\n')))
+      .toEqual({ CLAUDE_CONFIG_DIR: '/home/linus/.config/claude', CODEX_HOME: '/srv/codex' });
+  });
+
+  it("puts them in the fleet daemon's unit, as the Mac's plist carries them", async () => {
+    const unit = archidUnit({
+      release: '/r', homedir: '/home/linus', prefix: '/p', fleet: 'private', home: '/home/linus/.archipelago',
+      env: { CLAUDE_CONFIG_DIR: '/home/linus/.config/claude', CODEX_HOME: '/home/linus/codex %home' },
+    });
+    expect(unit.text).toContain('Environment=LANG=C.UTF-8\nEnvironment="CLAUDE_CONFIG_DIR=/home/linus/.config/claude"\nEnvironment="CODEX_HOME=/home/linus/codex %%home"\nRestart=always\n');
+    vi.stubEnv('SHELL', '/bin/bash');
+    vi.stubEnv('CLAUDE_CONFIG_DIR', undefined);
+    vi.stubEnv('CODEX_HOME', undefined);
+    const f = installed();
+    await setupLinux({ ...f.o, run: shell('archi-agent-homes\n/home/linus/.config/claude\n\n') });
+    expect(fs.readFileSync(path.join(f.unitDir, 'archipelago-archid@private.service'), 'utf8')).toContain('Environment="CLAUDE_CONFIG_DIR=/home/linus/.config/claude"\n');
+  });
+});
+
 /** A fleet home, the per-user files setup writes beside it, and where its units go. */
 function installed() {
   const root = makeHome();
@@ -213,7 +250,7 @@ describe('setupLinux', () => {
     const fake = fakeRun({ 'loginctl show-user linus --property=Linger': 'Linger=no\n' });
     const { done, started } = await setupLinux({ ...f.o, systemctl: true, run: fake.run });
     expect(started).toBe(true);
-    expect(fake.calls).toEqual([
+    expect(fake.calls.filter(([, first]) => first !== '-lic')).toEqual([
       ['systemctl', '--user', 'daemon-reload'],
       ['systemctl', '--user', 'enable', '--now', 'archipelago-archid@private.service'],
       ['systemctl', '--user', 'enable', '--now', 'archipelago-gateway.service'],

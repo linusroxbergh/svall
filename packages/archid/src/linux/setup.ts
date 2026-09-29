@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { AgentKind } from '@archipelago/protocol';
-import type { CodexPaths } from '../codex/install.js';
+import { codexPaths, type CodexPaths } from '../codex/install.js';
+import { claudePaths } from '../paths.js';
 import { systemdDir } from '../release.js';
 import { writeAtomic } from '../jsonfile.js';
 import { daemonProgram, readCodexHooks, readJsonSettings, requireWritableHooks, setupFleetHome, setupUser, type RunFrom } from '../setup.js';
@@ -36,7 +37,32 @@ function render(name: string, values: Record<string, string>): string {
   });
 }
 
-export type UnitOptions = RunFrom & { homedir: string; prefix: string };
+/** `env`: the agent homes the daemon is given, as `agentHomesEnv` reads them. */
+export type UnitOptions = RunFrom & { homedir: string; prefix: string; env?: Record<string, string> };
+
+/** The unit line that sets `key` for the daemon. */
+export const unitEnv = (key: string, value: string): string => `Environment="${key}=${esc(value)}"`;
+
+const MARK = 'archi-agent-homes';
+
+/**
+ * Where this account keeps Claude's and Codex's files, when it says: this process's CLAUDE_CONFIG_DIR and CODEX_HOME,
+ * else its login shell's, since a setup over ssh runs in a shell that read no profile. systemd gives a unit neither.
+ */
+export async function agentHomesEnv(run: Run): Promise<Record<string, string>> {
+  let said: string[] = [];
+  try {
+    const out = (await run(process.env.SHELL || '/bin/sh', ['-lic', `printf '\\n%s\\n%s\\n%s\\n' ${MARK} "$CLAUDE_CONFIG_DIR" "$CODEX_HOME"`])).stdout.split('\n');
+    const at = out.lastIndexOf(MARK);
+    if (at >= 0) said = out.slice(at + 1, at + 3);
+  } catch { /* a shell that cannot be asked sets neither */ }
+  const claude = process.env.CLAUDE_CONFIG_DIR || said[0];
+  const codex = process.env.CODEX_HOME || said[1];
+  return {
+    ...(claude && { CLAUDE_CONFIG_DIR: claudePaths({ CLAUDE_CONFIG_DIR: claude }).dir }),
+    ...(codex && { CODEX_HOME: codexPaths({ CODEX_HOME: codex }).dir }),
+  };
+}
 
 // the release's own runtime first, so the daemon starts the node it was built against
 export const unitPath = (o: UnitOptions): string => [
@@ -63,6 +89,7 @@ export function archidUnit(o: UnitOptions & { fleet: string; home: string }): Un
       ARCHI_HOME: esc(o.home),
       HOME: esc(o.homedir),
       PATH: esc(unitPath(o)),
+      ENV: Object.entries(o.env ?? {}).map(([k, v]) => `\n${unitEnv(k, v)}`).join(''),
       LOG: logFile(o, name).replace(/%/g, '%%'),
     }),
   };
@@ -138,9 +165,10 @@ export async function setupLinux(o: LinuxSetup): Promise<LinuxSetupResult> {
   const settings = claudeWanted ? readJsonSettings(o.settingsPath) : undefined;
   const codexHooks = readCodexHooks(o.codex, codexWanted);
   requireWritableHooks(o.home, settings, codexHooks);
+  const env = o.env ?? await agentHomesEnv(o.run);
   const done = setupFleetHome(o);
   done.push(...setupUser({ ...o, settings, codexHooks }));
-  done.push(...writeUnits(o));
+  done.push(...writeUnits({ ...o, env }));
   if (!o.systemctl) return { done, started: false };
   const start = await startUnit(o);
   if (!start.started) return { done: [...done, start.reason], started: false };
