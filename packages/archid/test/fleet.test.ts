@@ -1089,6 +1089,19 @@ runIf('Fleet', () => {
     expect((await fleet.reviveCharacter(c.id)).revive).toBeUndefined();
   });
 
+  it('drops the resume command a live terminal kept for its handover once the handover has answered for it', async () => {
+    const { fleet, store } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    let carried = true;
+    fleet.carries(() => carried);
+    store.update((d) => { d.characters[c.id].revive = { command: 'claude --resume sess-1' }; });
+    await waitForPolls(fleet, 2);
+    expect(store.state.characters[c.id].revive).toEqual({ command: 'claude --resume sess-1' });
+    carried = false;
+    await waitFor(() => store.state.characters[c.id].revive === undefined, 3000);
+    expect(store.state.characters[c.id].tmux).toBeDefined();
+  });
+
   it('creates the home island on start, copies config into state, and protects it', async () => {
     const { fleet, store, home: archiHome } = await boot();
     // a character is refused a cwd that is not a directory, so the folder must exist

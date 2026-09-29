@@ -384,9 +384,10 @@ export class Fleet extends EventEmitter<Events> {
         if (!c.tmux) {
           if (windowOf.get(c.id) || ending.has(c.id) || this.ending.has(c.id)) continue;
           c.tmux = { windowId: w.windowId, paneId: w.paneId };
-          delete c.revive;
           delete c.resumeError;
         }
+        // a live terminal keeps the resume a handover carried only until the handover has answered for it
+        if (!this.carried(c.id)) delete c.revive;
         // the pane's path moves only when the agent process itself changes directory; between moves the hooks may have placed it.
         // tmux reports no path while a setuid program such as sudo runs in the pane
         if (w.path && c.panePath !== w.path) {
