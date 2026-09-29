@@ -47,11 +47,6 @@ export function classifyExit(r: Pick<RunResult, 'code' | 'signal' | 'stderr'>, o
 const sleep = (ms: number): Promise<void> => new Promise((r) => { setTimeout(r, ms); });
 
 /**
- * One word for the login shell on the far side of a `run`, whatever the token holds. Single quotes
- * cover everything but a single quote, which is closed, escaped and reopened.
- */
-
-/**
  * The host every command on a master names. ssh reaches the far machine only through the master's
  * socket; with no master, an `.invalid` name (RFC 6761) resolves nowhere, whatever the search domains,
  * so nothing falls back to a connection of its own that no one checked reaches the machine meant.
