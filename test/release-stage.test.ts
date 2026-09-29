@@ -77,8 +77,15 @@ describe('the release workflow', () => {
   const jobs = new Map(text.split(/^jobs:$/m)[1].split(/^(?= {2}[\w-]+:$)/m).filter((j) => j.trim()).map((j) => [j.trim().split(':')[0], j]));
   const steps = [...jobs.values()].flatMap((j) => j.split(/^(?= {6}- )/m).slice(1));
 
-  it('hands the signing key to the job that checks it and the steps that sign, never to the build, and leaves nothing behind', () => {
+  it('hands the signing key only to the steps that check it and sign, never to a whole job or the build, and leaves nothing behind', () => {
     expect([...jobs.keys()].filter((name) => jobs.get(name)!.includes('secrets.ARCHI_RELEASE_KEY')).sort()).toEqual(['key', 'publish', 'sign']);
+    const lines = text.split('\n');
+    lines.forEach((line, i) => {
+      if (!line.includes('secrets.ARCHI_RELEASE_KEY')) return;
+      expect(line).toMatch(/^ {10}\w+: \$\{\{ secrets\.ARCHI_RELEASE_KEY \}\}$/);
+      // the key the line sits under: a step's own env:, never a job's or the workflow's
+      expect(lines.slice(0, i).reverse().find((l) => /^ {0,9}\S/.test(l))).toMatch(/^( {8}| {6}- )env:$/);
+    });
     for (const step of steps.filter((s) => s.includes('secrets.ARCHI_RELEASE_KEY'))) expect(step).toContain(`trap 'rm -f "$RUNNER_TEMP/release-key"' EXIT`);
     expect(text).not.toMatch(/GITHUB_ENV|GITHUB_PATH/);
   });
