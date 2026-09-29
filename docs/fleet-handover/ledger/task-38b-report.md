@@ -241,3 +241,43 @@ Containers removed afterwards (`archi-bench-*`, `archi-fix1-*`); colima was stop
    unmeasured.
 3. **The three older cited runs were on the benchmark's first build**, the fourth on this one; the changes between do
    not touch a measured path, and the doc says which runs each range covers.
+
+## Fix round 2
+
+Status: DONE. Commits 664f1eb1, c07de1ec, 725829e1. No wire change; protocol 17.
+
+| Commit | Item | What |
+| --- | --- | --- |
+| 664f1eb1 | H | `buildManifest(…, read = false)` walks names only and returns `listed` (files, bytes, counted by the walk); preflight counts that way first and, past the bound, answers the names-only manifest stripped with `too_many_files` (summary files/bytes from the walk), never hashing; freeze uses the same pass in place of `manifestBlockers` (removed), so the count refuses before any terminal rests; the post-rest check stays |
+| c07de1ec | N1 | Controller preflight skips `destinationChecks` when the source refused with `too_many_files` or `manifest_too_large` |
+| 725829e1 | doc | Ranges take in a fifth run (bench-fix2, this build); preflight with the names walk; the by-hand 250k check |
+
+- **H.** RED: source.test "refuses a fleet past the bound from its names, reading no file, at preflight and at freeze
+  before any terminal rests" (heap for half the files; `ScanFs.read` counts and throws) got three blockers
+  (`path_unsupported` from reads plus `too_many_files`). GREEN: only `too_many_files`, `summary.files` = the real
+  count, file lists empty, 0 reads at preflight and freeze, `world.log` = settle/activate/reconcile (no key, no kill),
+  ownership writable. Mutation: dropping the count from freeze's pre-rest blockers fails it. The I1 test (at the bound
+  / one past, either side) still passes, so the names count equals the read count. A shadowing slip (`listed` local
+  over the preview helper) was caught by manifest.test before commit.
+  - Real, bench containers on c07de1ec, heap 1,076 MiB: a 250,116-file fleet, `archi handover remote --json` →
+    `blocked`, only `too_many_files`, in 11.3 s; source daemon peak 203 → 295 MiB (+92 MiB), same PID (no restart),
+    4 tmux windows unchanged, not frozen, no `destination_occupied` (destination not inspected).
+  - Cost: a names walk per preflight. By hand on the Mac, 50,000 files: names 0.57 s against 1.2–1.3 s hashed. In
+    bench-fix2 the 50k preflight was 5.4 s first (3.7–4.6 s before), 10.1–10.6 s incremental (8.3–11.5 s before).
+- **N1.** RED: cli handover.test "asks the destination nothing about roots once the source refused a manifest too
+  large…" saw 1 `handover.inspect`. GREEN for both codes: 0 inspects, only the source's blocker.
+
+### Runs
+
+- bench-fix2: `scripts/bench/handover.sh --out $S/bench-fix2 --flood --keep` at c07de1ec. Its setup is the integration
+  round trip (`--scenarios none`): ALL PASS. pmset before: AC, 100 %, no thermal, no performance warning, load 6.58
+  (02:56:32); after: same, load 3.33 (03:00:27); every row records both. 50k: first 33.2 s, incremental 41.6/40.8 s;
+  controller up to 355.8 MiB; daemon growth 193.2 first; flood +0.46 MiB, 23.5 MB/s.
+- `pnpm typecheck` clean; source/manifest/cli handover tests 152/152; `pnpm test:faults` 1302/1302; full five
+  projects 4419 passed, 6 skipped, 0 failed (load ~5–6).
+- Containers `archi-bench-*` removed; colima started for this and stopped again (`docker ps -a` empty); context
+  `desktop-linux`.
+
+### Concerns
+
+None new. The names walk adds a readdir+lstat pass to every preflight (above).
