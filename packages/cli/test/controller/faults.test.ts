@@ -537,7 +537,6 @@ describe('two controllers on one machine', () => {
         cancel: () => c.cancel(),
         get finished() { return c.finished; },
       },
-      owner: async () => w.record(),
       secrets: () => [],
       close: async () => {},
     };

@@ -142,8 +142,6 @@ export async function openDaemon(entry: MachineEntry, o: { localId: MachineId; f
 
 export type Connected = {
   handover: Handover;
-  /** the gateway's record of this fleet */
-  owner(): ReturnType<Gateway['get']>;
   /** the daemon tokens held, to keep out of whatever is written or printed */
   secrets(): string[];
   close(): Promise<void>;
@@ -205,7 +203,6 @@ export function connectHandover(o: {
   });
   return {
     handover,
-    owner: () => authority.get(),
     secrets,
     close: async () => {
       for (const d of daemons) d.close();

@@ -237,7 +237,6 @@ class FakeTx {
         cancel: () => { tx.cancelled++; tx.onCancel?.(); },
         get finished() { return tx.finished; },
       },
-      owner: async () => tx.owned,
       secrets: () => [TOKEN],
       close: async () => { tx.closed = true; },
     };
@@ -339,20 +338,17 @@ describe('archi handover', () => {
     expect(h.tx.closed).toBe(true);
   });
 
-  it('takes local as this machine, and refuses the machine that already owns the fleet before any other work', async () => {
+  it('takes local as this machine, and leaves a machine that already owns the fleet to the controller\'s preflight', async () => {
     const h = harness({ json: true });
-    h.tx.owned = { ...h.tx.owned, ownerMachineId: TRIFT };
     expect(await runHandover(start('local'), h.ctx)).toEqual({ code: 0 });
     expect(h.tx.calls).toEqual([{ kind: 'start', to: h.registry.localId, choices: {} }]);
 
     const again = harness({ json: true });
-    again.tx.owned = { ...again.tx.owned, ownerMachineId: TRIFT };
+    const refused: Outcome = { status: 'blocked', phase: 'begin', blockers: [{ code: 'identity_mismatch', message: 'trift already runs this fleet' }] };
+    again.tx.script = async () => refused;
     expect(await runHandover(start('trift'), again.ctx)).toEqual({ code: 1 });
-    expect(again.tx.calls).toEqual([]);
-    expect(again.events()).toEqual([{
-      event: 'handover.result',
-      data: { status: 'blocked', phase: 'begin', blockers: [{ code: 'identity_mismatch', message: expect.stringContaining('trift already runs this fleet') }] },
-    }]);
+    expect(again.tx.calls).toEqual([{ kind: 'start', to: TRIFT, choices: {} }]);
+    expect(again.events()).toEqual([{ event: 'handover.result', data: refused }]);
   });
 
   it('refuses a fleet with no gateway before anything else, naming the command that gives it one', async () => {

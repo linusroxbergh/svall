@@ -18,7 +18,7 @@ import type { Target } from '../target.js';
 import { options, Prompter, View, type Words } from './handover-view.js';
 
 /** The one handover transaction of a fleet, as the commands drive it. */
-export type Transaction = Pick<Connected, 'owner' | 'secrets' | 'close'> & {
+export type Transaction = Pick<Connected, 'secrets' | 'close'> & {
   handover: Pick<Handover, 'start' | 'resume' | 'abort' | 'status' | 'choose' | 'cancel'> & { readonly finished?: Promise<Outcome> };
 };
 
@@ -163,6 +163,8 @@ export async function runHandover(job: Job, c: Ctx): Promise<Ran> {
   const to = job.kind === 'start' ? c.deps.registry().get(job.to) : undefined;
   if (job.kind === 'start' && !to) return refuse(stopped(`no machine ${job.to} in the registry; add it with \`archi host add\`${c.deps.registry().setAside()}`));
   view.about.destination = to?.record.name;
+  // a controller hands a fleet only to or from the machine it runs on, so one handed away is this machine's
+  if (to && to.id !== c.deps.registry().localId) view.about.source = c.deps.registry().localMachine().name;
 
   const paths = helperPaths(c.fleetHome, c.deps.tmpdir);
   let tx: Transaction | undefined;
@@ -250,14 +252,6 @@ export async function runHandover(job: Job, c: Ctx): Promise<Ran> {
 
   const run = async (t: Transaction): Promise<Outcome> => {
     if (job.kind === 'start' && to) {
-      const owner = await t.owner();
-      view.about.source = w.machine(owner.ownerMachineId);
-      if (owner.ownerMachineId === to.id) {
-        return {
-          status: 'blocked', phase: 'begin',
-          blockers: [{ code: 'identity_mismatch', message: `${to.record.name} already runs this fleet, at generation ${owner.generation}; there is nothing to hand it` }],
-        };
-      }
       let o = await t.handover.start(to.id, { ...held });
       // nothing began, so a person's answer is a new start with the choices it names
       while (prompter && !cancelled && o.status === 'blocked' && !o.transactionId) {

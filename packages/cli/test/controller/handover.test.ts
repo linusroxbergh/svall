@@ -483,6 +483,13 @@ describe('preflight', () => {
     }
   });
 
+  it('blocks a handover to the machine that runs the fleet as soon as the gateway names it, and asks nothing more', async () => {
+    const w = new World();
+    const out = await controller(w).start(mac, {});
+    expect(out).toEqual({ status: 'blocked', phase: 'begin', blockers: [{ code: 'identity_mismatch', message: `mac already runs this fleet, at generation ${G}; there is nothing to hand it` }] });
+    expect(w.ops).toEqual(['gateway:get']);
+  });
+
   it('blocks at once on a gateway whose ssh destination now reaches another machine', async () => {
     const w = new World();
     const said = `gate.test now reaches machine ${crypto.randomUUID()}, not gate (${trift})`;
@@ -498,8 +505,8 @@ describe('preflight', () => {
     const inspect = w.destination.answers['handover.inspect'];
     w.destination.answers['handover.inspect'] = ((p: { roots: { id: string; content?: string }[] }) => { asked = p.roots; return (inspect as (x: unknown) => object)(p); }) as never;
     const pre = await controller(w).preflight(trift, {});
-    expect(asked.map((r) => [r.id, r.content])).toEqual(replicaRoots(pre.manifest)
-      .map((r) => [r.id, contentDigest(pre.manifest.roots.find((x) => x.id === r.id)!.files)]));
+    const m = pre.manifest!;
+    expect(asked.map((r) => [r.id, r.content])).toEqual(replicaRoots(m).map((r) => [r.id, contentDigest(m.roots.find((x) => x.id === r.id)!.files)]));
   });
 
   it('asks the source about a kept commit the destination cannot prove comes back, and blocks only on one the source cannot reach', async () => {
@@ -583,7 +590,8 @@ describe('preflight', () => {
     w.destination.diverged.add('r_app');
     const plain = await controller(w).preflight(trift, {});
     // room for everything but the root that stays blocked
-    w.destination.probe = { ...w.destination.probe, freeBytes: spaceNeed({ ...plain.manifest, roots: plain.manifest.roots.filter((r) => r.id !== 'r_app') })[HOME] };
+    const m = plain.manifest!;
+    w.destination.probe = { ...w.destination.probe, freeBytes: spaceNeed({ ...m, roots: m.roots.filter((r) => r.id !== 'r_app') })[HOME] };
     expect((await controller(w).preflight(trift, {})).blockers.map((b) => b.code)).toEqual(['destination_diverged']);
 
     const pre = await controller(w).preflight(trift, { archiveRoots: ['r_app'] });
@@ -1549,8 +1557,9 @@ describe('the real adapters', () => {
       const recorded: HandoverEvent[] = [];
       const c = connectHandover({ fleetHome: home, registry, record: (e) => recorded.push(e) });
       try {
-        expect(await c.owner()).toEqual({ fleetId: fleet, generation: 0, ownerMachineId: registry.localId });
-        expect((await c.handover.status()).verdict.standing).toBe('none');
+        const { observation, verdict } = await c.handover.status();
+        expect(observation.gateway).toEqual({ ok: true, value: { fleetId: fleet, generation: 0, ownerMachineId: registry.localId } });
+        expect(verdict.standing).toBe('none');
         expect(recorded).toEqual([{ event: 'handover.entity', data: row }]);
         expect(c.secrets()).toContain(TOKEN);
       } finally {

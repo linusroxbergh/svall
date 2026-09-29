@@ -88,7 +88,8 @@ export type HandoverDeps = {
   secrets?(): string[];
 };
 
-export type Preflight = { generation: number; summary: ManifestSummary; blockers: Blocker[]; warnings: Warning[]; manifest: TransferManifestV1 };
+/** What preflight found; a machine that already runs the fleet is refused before any manifest is asked for. */
+export type Preflight = { generation: number; blockers: Blocker[]; warnings: Warning[] } & ({ summary: ManifestSummary; manifest: TransferManifestV1 } | { summary?: undefined; manifest?: undefined });
 
 const RETRY = { attempts: 4, firstDelayMs: FIRST_DELAY };
 const PHASES: readonly HandoverPhase[] = ['begin', 'freeze', 'transfer', 'verify', 'prepare', 'ready', 'commit', 'activate', 'complete'];
@@ -225,6 +226,10 @@ export class Handover {
   async preflight(to: MachineId, choices: HandoverChoices = {}): Promise<Preflight> {
     const record = await this.retrying('begin', () => this.d.gateway.get());
     const from = record.ownerMachineId;
+    if (to === from) {
+      const message = `${(await this.side(to)).route.name} already runs this fleet, at generation ${record.generation}; there is nothing to hand it`;
+      return { generation: record.generation, blockers: [{ code: 'identity_mismatch', message }], warnings: [] };
+    }
     const blockers: Blocker[] = [];
     const mismatch = (message: string) => blockers.push({ code: 'identity_mismatch', message });
     if (record.transaction) {
@@ -232,7 +237,6 @@ export class Handover {
     }
     if (from !== this.d.local && to !== this.d.local) mismatch('this controller moves a fleet only to or from the machine it runs on');
     const [source, destination] = await Promise.all([this.side(from), this.side(to)]);
-    if (to === from) mismatch(`${destination.route.name} already runs this fleet`);
     const [a, b, owned, receiving] = await Promise.all([
       this.retrying('begin', () => source.daemon.call('system.info', {})),
       this.retrying('begin', () => destination.daemon.call('system.info', {})),
@@ -274,7 +278,7 @@ export class Handover {
         if (!stops) throw e;
         return { status: 'blocked', phase: 'begin', blockers: [stops] };
       }
-      if (pre.blockers.length) return { status: 'blocked', phase: 'begin', blockers: pre.blockers };
+      if (pre.blockers.length || !pre.manifest) return { status: 'blocked', phase: 'begin', blockers: pre.blockers };
       if (this.cancel$.signal.aborted) return { status: 'aborted', phase: 'begin' };
       const [source, destination] = await Promise.all([this.side(pre.manifest.fromMachineId), this.side(to)]);
       const now = this.clock.now();
