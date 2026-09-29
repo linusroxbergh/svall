@@ -136,7 +136,9 @@ function sessions() {
 async function snap(o) {
   const info = await settled(() => rpc('system.info'));
   const state = await settled(() => rpc('state.get'));
-  const windows = run('tmux', ['-S', path.join(FLEET, 'tmux.sock'), 'list-windows', '-a', '-F', '#{window_name}|#{pane_pid}|#{pane_current_command}'])
+  const listed = run('tmux', ['-S', path.join(FLEET, 'tmux.sock'), 'list-windows', '-a', '-F', '#{window_name}|#{pane_pid}|#{pane_current_command}']);
+  // a machine that let the fleet go runs no tmux server for it at all
+  const windows = (/^ERROR \d+: no server running/.test(listed) ? '' : listed)
     .split('\n').filter(Boolean).map((l) => { const [name, pid, command] = l.split('|'); return { name, pid: Number(pid), command }; });
   const controller = path.join(FLEET, 'controller', 'handover.json');
   const fleet = JSON.parse(fs.readFileSync(path.join(FLEET, 'fleet.json'), 'utf8'));
