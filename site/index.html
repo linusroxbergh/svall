@@ -107,13 +107,15 @@ main { overflow-x: clip; }
 @keyframes swell { from { transform: translate(-3%, -2%) scale(1); } to { transform: translate(3%, 2%) scale(1.06); } }
 /* wide: the islands share the stage with the hero, cascading down its right side */
 .world { position: absolute; top: 0; left: var(--gutter); transform-origin: 0 0; filter: brightness(var(--map-tone)); }
-.narrow .world { position: relative; left: auto; margin: 48px 0 0 50%; translate: -50% 0; transform-origin: 50% 0; }
+/* narrow: the whole map zoomed out under the text, spanning the screen */
+.map { display: contents; }
+.narrow .map { display: block; position: relative; margin: 40px calc(-1 * var(--gutter)) 0; }
 .tok .gem[hidden], .tok .sw[hidden] { display: none; }
 .island { position: absolute; pointer-events: none; }
 .island svg { display: block; overflow: visible; }
 .island .grass { filter: brightness(var(--map-tone)) drop-shadow(0 1px 1px color-mix(in srgb, var(--ink-land) 22%, transparent)); }
 .island .land-texture { opacity: .22; }
-.ilabel { position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; white-space: nowrap;
+.ilabel { position: absolute; left: 50%; transform: translateX(-50%) scale(var(--lk, 1)); transform-origin: 50% 100%; display: flex; align-items: center; gap: 8px; white-space: nowrap;
   padding: 6px 10px; border-radius: var(--r-md); background: var(--glass); border: 1px solid var(--line-soft); }
 .ilabel .itog { margin-left: -4px; width: 18px; height: 18px; flex: none; display: grid; place-items: center; color: var(--ink-2); }
 .ilabel b { font-weight: 600; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; }
@@ -216,7 +218,9 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
 
 @media (max-width: 1000px) { .more { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 760px) {
-  .install pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .lede { font-size: .9375rem; }
+  .install { margin-top: 22px; }
+  .install pre { padding: 10px 4px 10px 12px; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .gh span { display: none; }
   .more { grid-template-columns: 1fr; gap: 28px; }
 }
@@ -249,7 +253,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     </div>
     <p class="meta">macOS 15.6 or newer. Private alpha, invite only for now. <a href="https://github.com/linusroxbergh/svall#quickstart">Full setup</a></p>
   </section>
-  <div class="world" role="group" aria-label="Demo map"></div>
+  <div class="map"><div class="world" role="group" aria-label="Demo map"></div></div>
   <section class="features">
     <h2>What it does</h2>
     <ul>
@@ -385,12 +389,13 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     { id: 'payments api', cols: 2, crew: [4, 5] },
     { id: 'docs', cols: 1, crew: [6] },
   ];
-  // wide: the text holds the left column, the islands cascade down the right; narrow: stacked under the text
+  // wide: the text holds the left column, the islands cascade down the right; narrow: the same map under the text.
+  // k is the zoom at most: the map is drawn smaller than the app's scale 1, cards and all
   const LAYOUTS = {
-    wide: { w: 1380, h: 940, at: [[810, 530], [640, 160], [1050, 220]] },
-    narrow: { w: 352, h: 1160, at: [[0, 70], [0, 590], [22, 930]] },
+    wide: { w: 1720, h: 1000, k: .72, at: [[1060, 580], [880, 170], [1330, 230]] },
+    narrow: { w: 748, h: 866, k: .72, at: [[200, 450], [0, 60], [440, 120]] },
   };
-  const stage = document.querySelector('.stage'), world = document.querySelector('.world');
+  const stage = document.querySelector('.stage'), map = document.querySelector('.map'), world = document.querySelector('.world');
   const C = 2 * Math.PI * 32.5;
   const tg = '<svg class="tg" viewBox="0 0 10 9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.4 1.6 4 4.4 1.4 7.2"/><path d="M5.8 7.2h2.8"/></svg>';
 
@@ -428,12 +433,13 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     const wide = wideMQ.matches, L = wide ? LAYOUTS.wide : LAYOUTS.narrow;
     stage.classList.toggle('narrow', !wide);
     const pad = parseFloat(getComputedStyle(stage).paddingLeft);
-    // wide, the world may run into the right gutter; stacked, it keeps both, with room for the coast's wobble
-    const s = Math.min(1, wide ? (stage.clientWidth - pad) / L.w : (stage.clientWidth - 2 * pad) / (L.w + 24));
-    Object.assign(world.style, { width: `${L.w}px`, height: `${L.h}px`, transform: `scale(${s})`, marginBottom: wide ? '' : `${L.h * (s - 1)}px` });
-    // as in the app, a card keeps its screen size while the map shrinks to .78, then shrinks with it
-    world.style.setProperty('--tok', `${34 / Math.max(s, .78)}px`);
-    stage.style.minHeight = wide ? `${L.h * s}px` : '';
+    // wide, the world may run into the right gutter; narrow, it spans the screen with a little sea either side
+    const k = Math.min(L.k, (stage.clientWidth - (wide ? pad : 28)) / L.w);
+    Object.assign(world.style, { width: `${L.w}px`, height: `${L.h}px`, transform: `scale(${k})`, left: wide ? '' : `calc(50% - ${L.w * k / 2}px)` });
+    // island names stay legible however far the map zooms out
+    world.style.setProperty('--lk', Math.max(1, .7 / k));
+    map.style.height = wide ? '' : `${L.h * k}px`;
+    stage.style.minHeight = wide ? `${L.h * k}px` : '';
     islands.forEach((isl, i) => {
       const [x, y] = L.at[i];
       Object.assign(isl.el.style, { left: `${x - PAD}px`, top: `${y - PAD}px` });
