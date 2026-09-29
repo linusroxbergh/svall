@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import { z } from 'zod';
 import { FleetConfig, FleetId, NodeConfig, type AgentKind, type MachineId } from '@archipelago/protocol';
 import { writeJsonAtomic } from './atomic.js';
-import { writeAtomic } from './jsonfile.js';
+import { writeDurable } from './handover/durable.js';
 import type { Paths } from './paths.js';
 
 const newFleetId = (): FleetId => FleetId.parse(crypto.randomUUID());
@@ -102,18 +102,27 @@ export function configuredMainAgent(paths: Paths): AgentKind | undefined {
   return fs.existsSync(paths.legacyConfig) ? read(paths.legacyConfig, Config).mainAgent : undefined;
 }
 
-/** Sets mainAgent in fleet.json, split out first if need be, and keeps every other key; a file that does not parse
- *  is refused, not replaced. A linked file (stow, home-manager) is written where it points, with the mode it had. */
-export function saveMainAgent(paths: Paths, agent: AgentKind): void {
-  initConfig(paths);
-  const file = paths.fleetConfig;
+/**
+ * Sets the keys `patch` names in a fleet.json, drops those it names as undefined, and keeps every other key as the file
+ * held it. A file that does not parse, or would not after the change, is refused, not replaced. A linked file (stow,
+ * home-manager) is written where it points, with the mode it had.
+ */
+export function patchFleetConfig(file: string, patch: Record<string, unknown>): void {
   const text = fs.readFileSync(file, 'utf8');
   parseConfig(text, file, FleetConfig);
+  const next = JSON.stringify({ ...(JSON.parse(text) as object), ...patch }, null, 2);
+  parseConfig(next, file, FleetConfig);
   const real = fs.realpathSync(file);
   const mode = fs.statSync(real).mode & 0o777;
-  writeAtomic(real, JSON.stringify({ ...(JSON.parse(text) as object), mainAgent: agent }, null, 2) + '\n', { mode, perProcess: true });
+  writeDurable(real, Buffer.from(`${next}\n`), { mode });
   // the umask narrows the mode a file is created with
   fs.chmodSync(real, mode);
+}
+
+/** Sets mainAgent in fleet.json, split out first if need be, as `patchFleetConfig` does. */
+export function saveMainAgent(paths: Paths, agent: AgentKind): void {
+  initConfig(paths);
+  patchFleetConfig(paths.fleetConfig, { mainAgent: agent });
 }
 
 /** The gateway fleet.json names now: `archi host enable` names one, and `archi host remove` drops it, while the daemon runs. */
@@ -124,6 +133,6 @@ export function namedGateway(paths: Paths): MachineId | undefined {
 /** Names `id` this fleet's gateway in fleet.json and in the running config, which others hold by reference. */
 export function setGateway(paths: Paths, config: Config, id: MachineId): void {
   if (config.gatewayMachineId === id) return;
-  writeJsonAtomic(paths.fleetConfig, { ...read(paths.fleetConfig, FleetConfig), gatewayMachineId: id });
+  patchFleetConfig(paths.fleetConfig, { gatewayMachineId: id });
   config.gatewayMachineId = id;
 }

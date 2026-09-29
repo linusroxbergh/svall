@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Config, configuredMainAgent, loadConfig, saveMainAgent } from '../src/config.js';
+import { Config, configuredMainAgent, loadConfig, patchFleetConfig, saveMainAgent, setGateway } from '../src/config.js';
 import { newId } from '../src/ids.js';
 import { resolvePaths, userPaths } from '../src/paths.js';
 import { cleanHomes, makeHome } from './helpers.js';
@@ -113,5 +113,43 @@ describe('saveMainAgent', () => {
     expect(fs.existsSync(p.fleetConfig)).toBe(false);
     saveMainAgent(p, 'claude');
     expect(configuredMainAgent(p)).toBe('claude');
+  });
+});
+
+describe('patchFleetConfig', () => {
+  const GATEWAY = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
+  const linked = () => {
+    const p = resolvePaths(makeHome());
+    const real = path.join(p.home, 'dotfiles.json');
+    const id = crypto.randomUUID();
+    fs.writeFileSync(real, JSON.stringify({ id, scribe: { model: 'haiku' }, laterKey: 1 }), { mode: 0o640 });
+    fs.symlinkSync(real, p.fleetConfig);
+    return { p, real, id };
+  };
+
+  it('sets and drops keys and keeps every other one as the file held it, through a link and with its mode', () => {
+    const { p, real, id } = linked();
+    patchFleetConfig(p.fleetConfig, { gatewayMachineId: GATEWAY });
+    expect(JSON.parse(fs.readFileSync(real, 'utf8'))).toEqual({ id, scribe: { model: 'haiku' }, laterKey: 1, gatewayMachineId: GATEWAY });
+    patchFleetConfig(p.fleetConfig, { gatewayMachineId: undefined });
+    expect(JSON.parse(fs.readFileSync(real, 'utf8'))).toEqual({ id, scribe: { model: 'haiku' }, laterKey: 1 });
+    expect(fs.lstatSync(p.fleetConfig).isSymbolicLink()).toBe(true);
+    expect(fs.statSync(real).mode & 0o777).toBe(0o640);
+  });
+
+  it('refuses a change that leaves no fleet config, and leaves the file as it was', () => {
+    const { p, real } = linked();
+    const before = fs.readFileSync(real, 'utf8');
+    expect(() => patchFleetConfig(p.fleetConfig, { gatewayMachineId: 'trift' })).toThrow(/invalid config .*gatewayMachineId/);
+    expect(fs.readFileSync(real, 'utf8')).toBe(before);
+  });
+
+  it('is how the daemon names a gateway, in the file and in the running config', () => {
+    const { p, real, id } = linked();
+    const config = loadConfig(p);
+    setGateway(p, config, GATEWAY as never);
+    expect(JSON.parse(fs.readFileSync(real, 'utf8'))).toEqual({ id, scribe: { model: 'haiku' }, laterKey: 1, gatewayMachineId: GATEWAY });
+    expect(config.gatewayMachineId).toBe(GATEWAY);
+    expect(fs.lstatSync(p.fleetConfig).isSymbolicLink()).toBe(true);
   });
 });
