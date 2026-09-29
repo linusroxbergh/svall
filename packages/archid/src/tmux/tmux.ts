@@ -152,6 +152,11 @@ export class Tmux {
     } catch {
       await this.run('new-session', '-d', '-s', SESSION, '-n', KEEP_WINDOW, 'sleep 2147483647');
     }
+    // a server that outlived a restart holds the agent homes of the daemon that started it, and hands them to new windows
+    for (const key of ['CLAUDE_CONFIG_DIR', 'CODEX_HOME']) {
+      const value = process.env[key];
+      await this.run('set-environment', '-g', ...(value ? [key, value] : ['-u', key]));
+    }
   }
 
   connect(): ControlClient {

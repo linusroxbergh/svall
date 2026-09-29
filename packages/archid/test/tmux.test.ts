@@ -58,7 +58,11 @@ describe('rawPasteArgs', () => {
 
 runIf('Tmux', () => {
   const cleanup: (() => Promise<void>)[] = [];
-  afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); delete process.env.ARCHI_RELEASE_ROOT; });
+  afterEach(async () => {
+    for (const f of cleanup.splice(0)) await f();
+    cleanHomes();
+    for (const k of ['ARCHI_RELEASE_ROOT', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME']) delete process.env[k];
+  });
 
   let lastHome = '';
 
@@ -179,6 +183,20 @@ runIf('Tmux', () => {
     const list = await t.listWindows();
     expect(list.map((x) => x.name)).toEqual(['c_split']);
     expect(list[0].paneId).toBe(w.paneId);
+  });
+
+  it('opens windows with the agent homes of the daemon that ensured the server, not of the one that started it', async () => {
+    process.env.CLAUDE_CONFIG_DIR = '/old/claude';
+    process.env.CODEX_HOME = '/old/codex';
+    const first = await boot();
+    // the unit restarted with new agent homes while the server lived on
+    process.env.CLAUDE_CONFIG_DIR = '/new/claude';
+    delete process.env.CODEX_HOME;
+    const t = new Tmux(first.socket, `${lastHome}/tmux.conf`);
+    await t.ensureServer();
+    const w = await t.newWindow('c_homes', '/tmp', {});
+    await t.sendLine(w.paneId, 'echo "[$CLAUDE_CONFIG_DIR|${CODEX_HOME-unset}]"', true);
+    await waitFor(async () => (await t.capture(w.paneId, 50)).toString().includes('[/new/claude|unset]'));
   });
 
   it('ensureServer is idempotent', async () => {
