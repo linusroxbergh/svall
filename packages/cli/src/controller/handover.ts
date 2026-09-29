@@ -953,20 +953,25 @@ export class Handover {
     const to = controller?.destination.machineId ?? tx?.toMachineId;
     const status = (id: MachineId) => this.seen(async () => (await this.side(id)).daemon.call('handover.status', {}));
     const owned = (id: MachineId) => this.seen(async () => (await this.side(id)).daemon.call('ownership.get', {}));
-    const source = async (id: MachineId): Promise<Observation['source']> => {
-      const [s, o] = [await status(id), await owned(id)];
+    type Status = Seen<Result<'handover.status'>>;
+    const source = async (id: MachineId, asked?: Status): Promise<Observation['source']> => {
+      const [s, o] = await Promise.all([asked ?? status(id), owned(id)]);
       return s.ok && o.ok ? { ok: true, value: { status: s.value, ownership: o.value } } : { ok: false, error: s.ok ? (o as { error: string }).error : s.error };
     };
-    const destination = async (id: MachineId): Promise<Observation['destination']> => {
-      const [s, o] = [await status(id), await owned(id)];
+    const destination = async (id: MachineId, asked?: Status): Promise<Observation['destination']> => {
+      const [s, o] = await Promise.all([asked ?? status(id), owned(id)]);
       return s.ok ? { ok: true, value: { status: s.value, ...(o.ok && { ownership: o.value }) } } : s;
     };
-    if (from && to) return { controller, gateway, source: await source(from), destination: await destination(to) };
+    if (from && to) {
+      const [s, d] = await Promise.all([source(from), destination(to)]);
+      return { controller, gateway, source: s, destination: d };
+    }
     // no journal names the machines: a daemon that holds a handover says which side of it it is
     const held = await Promise.all(this.d.machines.map(async (id) => ({ id, s: await status(id) })));
-    const on = (side: 'fromMachineId' | 'toMachineId') => held.find((x) => x.s.ok && x.s.value.transaction?.[side] === x.id)?.id;
+    const on = (side: 'fromMachineId' | 'toMachineId') => held.find((x) => x.s.ok && x.s.value.transaction?.[side] === x.id);
     const [f, t] = [on('fromMachineId'), on('toMachineId')];
-    return { controller, gateway, ...(f && { source: await source(f) }), ...(t && { destination: await destination(t) }) };
+    const [s, d] = await Promise.all([f && source(f.id, f.s), t && destination(t.id, t.s)]);
+    return { controller, gateway, ...(s && { source: s }), ...(d && { destination: d }) };
   }
 
   /** The journal a resume or abort acts on: the controller's own, or one rebuilt from the other three. */

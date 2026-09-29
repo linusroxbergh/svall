@@ -1265,6 +1265,31 @@ describe('reading the controller journal', () => {
   });
 });
 
+describe('observing the journals', () => {
+  it('asks each daemon its status and ownership at once', async () => {
+    const w = new World();
+    w.store.j = { version: 1, fleetId, transactionId: 'tx-9', generation: G, source: w.side(mac).route, destination: w.side(trift).route, choices: {}, phase: 'freeze', startedAt: 1, updatedAt: 1 };
+    // each status answers only once its machine's ownership has been asked, as it would of a caller asking both at once
+    for (const d of [w.source, w.destination]) {
+      let owned!: () => void;
+      const asked = new Promise<void>((r) => { owned = r; });
+      const [status, ownership] = [d.answers['handover.status'], d.answers['ownership.get']] as ((p: never) => unknown)[];
+      d.answers['handover.status'] = (async (p: never) => { await asked; return status(p); }) as never;
+      d.answers['ownership.get'] = ((p: never) => { owned(); return ownership(p); }) as never;
+    }
+    const seen = await Promise.race([controller(w).status(), new Promise<'stuck'>((r) => { setTimeout(() => r('stuck'), 2000); })]);
+    expect(seen).not.toBe('stuck');
+  });
+
+  it('asks each machine its status only once when no journal names them', async () => {
+    const w = new World();
+    w.source.journal = { tx: 'tx-9', generation: G, phase: 'freeze' };
+    w.source.frozen = true;
+    await controller(w).status();
+    expect(w.ops.filter((op) => op.endsWith(':handover.status'))).toEqual(['mac:handover.status', 'trift:handover.status']);
+  });
+});
+
 describe('the real adapters', () => {
   it('finishes a committed handover and caches the route to its new owner, which owner resolution then reads', async () => {
     const ssh = installFakeSsh();
