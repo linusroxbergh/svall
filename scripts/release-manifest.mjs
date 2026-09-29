@@ -2,11 +2,13 @@
 //
 // release.json describes every entry — its type, mode, size, content digest and link target —
 // and SHA256SUMS carries a digest for every file including release.json, so one detached signature
-// over SHA256SUMS covers the whole description. Nothing here downloads or unpacks anything.
+// over SHA256SUMS covers the whole description. Nothing here downloads anything, and only signing a
+// built archive unpacks one.
 
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 export const MANIFEST = 'release.json';
@@ -62,7 +64,30 @@ export function writeManifest(dir, meta) {
 }
 
 export function signManifest(dir, keyFile) {
+  // ssh-keygen asks before it writes over a signature, and without an answer keeps the old one
+  fs.rmSync(path.join(dir, SIG), { force: true });
   execFileSync('ssh-keygen', ['-Y', 'sign', '-f', keyFile, '-n', NAMESPACE, path.join(dir, SUMS)], { stdio: 'pipe' });
+}
+
+/**
+ * Signs, in place, an archive a build packed without the key. It is checked as an installer checks an unsigned one; its
+ * release.json then loses the unsigned mark and pins each companion at the digest of the archive beside it now, so the
+ * companions are signed first; and the same tree is packed again as the build packs it.
+ */
+export function signArchive(archive, keyFile) {
+  const { version } = archiveRelease(archive, execFileSync('tar', ['-tzf', archive], { encoding: 'utf8' }));
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'archi-sign-'));
+  try {
+    execFileSync('tar', ['-xpzf', archive, '-C', work]);
+    const dir = path.join(work, 'releases', version);
+    const { files, entriesDigest, unsigned, ...meta } = verifyTree(dir, { allowUnsigned: true }).release;
+    for (const c of Object.values(meta.companions ?? {})) c.sha256 = digestOf(path.join(path.dirname(archive), path.basename(c.url)));
+    writeManifest(dir, meta);
+    signManifest(dir, keyFile);
+    execFileSync('tar', ['--no-xattrs', '-czf', archive, '-C', work, path.join('releases', version)], { env: { ...process.env, COPYFILE_DISABLE: '1' } });
+  } finally {
+    fs.rmSync(work, { recursive: true, force: true });
+  }
 }
 
 /** The default verifier: a detached ssh signature over SHA256SUMS from a pinned allowed signer. */

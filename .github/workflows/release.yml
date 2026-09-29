@@ -4,6 +4,7 @@ name: release
 # upgrades and rolls back a clean machine of each architecture with them, and publishes them only once all of that
 # passed. Without the ARCHI_RELEASE_KEY secret the tag is a dry run: everything is built and tested, nothing is
 # signed or uploaded. A tag with a `-` in it, such as v1.0.0-test1, is a dry run too, signed when the secret is there.
+# The key never reaches the build: the build packs every archive unsigned, and a job of its own signs them.
 # See docs/integration.md.
 on:
   push:
@@ -17,43 +18,53 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    runs-on: macos-latest
-    timeout-minutes: 30
+  # every install refuses a signature the committed signers do not pin, so this is settled before anything is built
+  key:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     outputs:
       signed: ${{ steps.key.outputs.signed }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6.1.0
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - uses: actions/cache@v6
-        with:
-          path: |
-            vendor/rsync
-            vendor/node
-          key: vendor-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/release/pins.json') }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - id: key
         env:
           KEY: ${{ secrets.ARCHI_RELEASE_KEY }}
         run: |
           if [ -n "$KEY" ]; then
+            trap 'rm -f "$RUNNER_TEMP/release-key"' EXIT
             (umask 077 && printf '%s\n' "$KEY" > "$RUNNER_TEMP/release-key")
-            # every install refuses a signature the committed signers do not pin, so stop before anything is built
             pub=$(ssh-keygen -y -P '' -f "$RUNNER_TEMP/release-key") || {
               echo "::error::ARCHI_RELEASE_KEY is not an OpenSSH private key without a passphrase"; exit 1; }
             read -r type blob _ <<< "$pub"
             awk -v k="$type $blob" '!/^#/ && index($0, k) { f = 1 } END { exit !f }' scripts/release/allowed_signers || {
               echo "::error::the public half of ARCHI_RELEASE_KEY is not in scripts/release/allowed_signers; add it as that file's header says"; exit 1; }
-            echo "ARCHI_RELEASE_KEY=$RUNNER_TEMP/release-key" >> "$GITHUB_ENV"
             echo signed=true >> "$GITHUB_OUTPUT"
           else
             echo "::notice::no ARCHI_RELEASE_KEY secret: a dry run, which builds and tests everything and uploads nothing"
             echo signed=false >> "$GITHUB_OUTPUT"
           fi
+
+  # the key never reaches this job, so nothing the install or the bundlers run can read it
+  build:
+    needs: key
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # a signed release builds its own rsync from the pinned source, whatever a cache holds
+      - if: needs.key.outputs.signed != 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            vendor/rsync
+            vendor/node
+          key: vendor-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/release/pins.json') }}
       - name: Build and scan the release
         run: >-
           scripts/release-build.sh --out "$RUNNER_TEMP/release" --version "$GITHUB_REF_NAME"
@@ -64,25 +75,67 @@ jobs:
         run: >-
           scripts/release-build.sh --out "$RUNNER_TEMP/upgrade" --version "$GITHUB_REF_NAME-next"
           --url-base http://127.0.0.1:8765/upgrade
-      - if: always()
-        run: rm -f "$RUNNER_TEMP/release-key"
-      # signed archives that every installer accepts, kept only as long as this run needs them
-      - uses: actions/upload-artifact@v7
+      # kept only as long as this run needs them; with the key, the sign job signs them before any other job takes them
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: release
           path: ${{ runner.temp }}/release/*.tar.gz
           if-no-files-found: error
           retention-days: 1
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: upgrade
           path: ${{ runner.temp }}/upgrade/*.tar.gz
           if-no-files-found: error
           retention-days: 1
 
+  # signs the manifest inside every archive the build packed, running nothing but this checkout's scripts, tar and
+  # ssh-keygen, so the archives the other jobs test are the ones published
+  sign:
+    needs: [key, build]
+    if: needs.key.outputs.signed == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release
+          path: ${{ runner.temp }}/release
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: upgrade
+          path: ${{ runner.temp }}/upgrade
+      - env:
+          KEY: ${{ secrets.ARCHI_RELEASE_KEY }}
+        run: |
+          trap 'rm -f "$RUNNER_TEMP/release-key"' EXIT
+          (umask 077 && printf '%s\n' "$KEY" > "$RUNNER_TEMP/release-key")
+          scripts/release-build.sh --sign "$RUNNER_TEMP/release-key" --out "$RUNNER_TEMP/release"
+          scripts/release-build.sh --sign "$RUNNER_TEMP/release-key" --out "$RUNNER_TEMP/upgrade"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release
+          path: ${{ runner.temp }}/release/*.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: upgrade
+          path: ${{ runner.temp }}/upgrade/*.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+
   # the release's own companion, handed between two Linux containers; see scripts/integration/fleet-handover.sh
   integration:
-    needs: build
+    needs: [build, sign]
+    # a dry run skips sign, and its archives are tested unsigned
+    if: ${{ !cancelled() && !failure() }}
     strategy:
       fail-fast: false
       matrix:
@@ -92,11 +145,11 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: release
           path: ${{ runner.temp }}/release
@@ -107,14 +160,15 @@ jobs:
         if: failure()
         run: node scripts/release-scan.mjs --secrets-only "$RUNNER_TEMP/logs"
       - if: failure() && steps.logs.outcome == 'success'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: fleet-handover-logs-${{ matrix.arch }}
           path: ${{ runner.temp }}/logs
 
   # a clean machine added by the Mac controller's archi, upgraded and rolled back; see scripts/integration/fresh-install.sh
   fresh-install:
-    needs: build
+    needs: [build, sign]
+    if: ${{ !cancelled() && !failure() }}
     strategy:
       fail-fast: false
       matrix:
@@ -124,15 +178,15 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: release
           path: ${{ runner.temp }}/release
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: upgrade
           path: ${{ runner.temp }}/upgrade
@@ -143,30 +197,31 @@ jobs:
         if: failure()
         run: node scripts/release-scan.mjs --secrets-only "$RUNNER_TEMP/logs"
       - if: failure() && steps.logs.outcome == 'success'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: fresh-install-logs-${{ matrix.arch }}
           path: ${{ runner.temp }}/logs
 
   publish:
-    needs: [build, integration, fresh-install]
+    needs: [key, integration, fresh-install]
+    if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: release
           path: ${{ runner.temp }}/release
-      - if: needs.build.outputs.signed != 'true' || contains(github.ref_name, '-')
+      - if: needs.key.outputs.signed != 'true' || contains(github.ref_name, '-')
         working-directory: ${{ runner.temp }}/release
         run: |
           echo "::notice::dry run: every job passed; nothing is uploaded"
           sha256sum -- *.tar.gz
       # one signed list of every asset, checked against the signers the release itself pins before anything goes up
-      - if: needs.build.outputs.signed == 'true' && !contains(github.ref_name, '-')
+      - if: needs.key.outputs.signed == 'true' && !contains(github.ref_name, '-')
         working-directory: ${{ runner.temp }}/release
         env:
           KEY: ${{ secrets.ARCHI_RELEASE_KEY }}

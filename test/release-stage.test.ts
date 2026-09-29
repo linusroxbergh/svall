@@ -71,3 +71,21 @@ describe('the rsync a controller release carries', () => {
     expect(execFileSync(r.binary, ['--version'], { encoding: 'utf8' })).toMatch(new RegExp(`^rsync +version ${PINS.rsync.version.replace(/\./g, '\\.')} `));
   }, 300_000);
 });
+
+describe('the release workflow', () => {
+  const text = fs.readFileSync(path.join(import.meta.dirname, '../.github/workflows/release.yml'), 'utf8');
+  const jobs = new Map(text.split(/^jobs:$/m)[1].split(/^(?= {2}[\w-]+:$)/m).filter((j) => j.trim()).map((j) => [j.trim().split(':')[0], j]));
+  const steps = [...jobs.values()].flatMap((j) => j.split(/^(?= {6}- )/m).slice(1));
+
+  it('hands the signing key to the job that checks it and the steps that sign, never to the build, and leaves nothing behind', () => {
+    expect([...jobs.keys()].filter((name) => jobs.get(name)!.includes('secrets.ARCHI_RELEASE_KEY')).sort()).toEqual(['key', 'publish', 'sign']);
+    for (const step of steps.filter((s) => s.includes('secrets.ARCHI_RELEASE_KEY'))) expect(step).toContain(`trap 'rm -f "$RUNNER_TEMP/release-key"' EXIT`);
+    expect(text).not.toMatch(/GITHUB_ENV|GITHUB_PATH/);
+  });
+
+  it('runs every action at a commit, never at a tag that can move', () => {
+    const uses = [...text.matchAll(/uses: (\S+)/g)].map((m) => m[1]);
+    expect(uses.length).toBeGreaterThan(0);
+    for (const u of uses) expect(u).toMatch(/^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/);
+  });
+});

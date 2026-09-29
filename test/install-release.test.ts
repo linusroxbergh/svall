@@ -149,6 +149,39 @@ describe('staging a release archive', () => {
   });
 });
 
+describe('signing the archives a build packed without the key', () => {
+  const digest = (file: string): string => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  // an unsigned release as the build packs it into its --out folder under `name`
+  const packed = (out: string, name: string, build: string, meta: Record<string, unknown>): string => {
+    const dir = tree('1.2.3', build);
+    writeManifest(dir, { version: '1.2.3', ...meta, unsigned: true });
+    const archive = path.join(out, name);
+    fs.renameSync(archiveOf(dir), archive);
+    return archive;
+  };
+
+  it('leaves archives an installer takes without --allow-unsigned, the controller pinning its companion as signed', () => {
+    const out = temp();
+    const companion = packed(out, 'archipelago-companion-1.2.3-linux-x64.tar.gz', 'companion', { platform: 'linux-x64' });
+    const url = `https://example.test/download/${path.basename(companion)}`;
+    const controller = packed(out, 'archipelago-controller-1.2.3-darwin-arm64.tar.gz', 'controller',
+      { platform: 'darwin-arm64', companions: { 'linux-x64': { url, sha256: digest(companion) } } });
+
+    // the second key signs over the first one's signatures
+    for (const key of [signer(), signer()]) {
+      const signing = spawnSync(path.join(import.meta.dirname, '../scripts/release-build.sh'), ['--sign', key.key, '--out', out], { encoding: 'utf8' });
+      expect(signing.stderr).toBe('');
+      expect(signing.status).toBe(0);
+      const c = stageArchive(companion, path.join(temp(), 'staging'), { verify: key.verify });
+      expect(c).toMatchObject({ signed: true, release: { version: '1.2.3', platform: 'linux-x64' } });
+      expect(c.release.unsigned).toBeUndefined();
+      const m = stageArchive(controller, path.join(temp(), 'staging'), { verify: key.verify });
+      expect(m).toMatchObject({ signed: true, release: { platform: 'darwin-arm64', companions: { 'linux-x64': { url, sha256: digest(companion) } } } });
+      expect(fs.readFileSync(path.join(m.dir, 'bin', 'archi'), 'utf8')).toContain('controller');
+    }
+  });
+});
+
 describe('an install by an account with a tight umask', () => {
   it('lays the release down with the modes its release.json records, from an archive and from a folder', () => {
     const archived = tree('1.2.3', 'archive');

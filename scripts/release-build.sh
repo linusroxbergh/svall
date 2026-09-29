@@ -2,23 +2,35 @@
 # Builds what a desktop release publishes into one folder, then scans it; the release workflow's build job runs this:
 #
 #   scripts/release-build.sh --out <dir> --version <id> --url-base <url>
+#   scripts/release-build.sh --sign <key> --out <dir>
 #
 # The folder ends up holding archipelago-companion-<id>-linux-x64.tar.gz and -linux-arm64.tar.gz, and
 # archipelago-controller-<id>-darwin-<arch>.tar.gz, the tree the app carries, whose manifest names each companion at
 # <url>/<archive> with its digest. ARCHI_RELEASE_KEY signs every manifest; without it the release is marked unsigned.
 # macOS only, as the controller is. A secret, developer path or checkout dependency in any archive fails the build.
+# The second form signs, in place, the archives a build without the key left in <dir>; the release workflow runs it in
+# a job of its own, so the key never reaches the build.
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
-out='' version='' base=''
+out='' version='' base='' key=''
 while [ $# -gt 0 ]; do
   case $1 in
     --out) out=$2; shift 2 ;;
     --version) version=$2; shift 2 ;;
     --url-base) base=$2; shift 2 ;;
+    --sign) key=$2; shift 2 ;;
     *) echo "release-build.sh: unknown argument $1" >&2; exit 2 ;;
   esac
 done
+if [ -n "$key" ] && [ -n "$out" ]; then
+  # the companions first, as the controller's manifest pins their archives' digests
+  for archive in "$out"/archipelago-companion-*.tar.gz "$out"/archipelago-controller-*.tar.gz; do
+    node --input-type=module -e 'const [m, a, k] = process.argv.slice(1); (await import(m)).signArchive(a, k);' \
+      "$repo/scripts/release-manifest.mjs" "$archive" "$key"
+  done
+  exit 0
+fi
 if [ -z "$out" ] || [ -z "$version" ] || [ -z "$base" ]; then
   echo "usage: release-build.sh --out <dir> --version <id> --url-base <url>" >&2
   exit 2
