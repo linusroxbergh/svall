@@ -259,37 +259,42 @@ has a new id and never meets them.
 
 ### Measured
 
-`scripts/bench/handover.sh` runs the benchmark on the integration run's two containers (see `docs/integration.md`),
-over real sshd and rsync, with the controller on `archi-bench-local`. Each repository gets its own shell character, then
-four handovers: a first one to the machine that has never held it, two incremental ones each after ten changed files
-and one new one, and one after the character is closed that carries only the integration fixture. Every handover
-also carries that fixture: 86 files, 17 MB.
+`scripts/bench/handover.sh` runs the benchmark on two containers the integration run sets up for it (see
+`docs/integration.md`), over real sshd and rsync, with the controller on `archi-bench-local`. Each repository gets its
+own shell character, then four handovers: a first one to the machine that has never held it, two incremental ones
+each after ten changed files and one new one, and one after the character is closed that carries only the integration
+fixture. Every handover also carries that fixture: 86 files, 17 MB.
 
 The machines: colima on an M-series Mac, 2 vCPUs and 2 GiB of memory shared by both containers, arm64, the docker
-network as the link. All the runs below were on AC power at 100% charge with no thermal warning.
+network as the link; each daemon's heap is 1,076 MiB, as the last run recorded. The ranges cover four recorded runs:
+three on the build that added the benchmark (two of all three repositories, one of the many-file repository alone)
+and, last, one on the build with the file bound (all three). Before and after every handover the Mac was on AC
+power at 100% charge with no thermal or performance warning recorded; each row of `bench.json` keeps what
+`pmset -g batt` and `pmset -g therm` said. Memory is peak RSS, and a daemon's growth is its peak above what it held
+when the handover began. The manifest and prepare sizes are computed from the compact JSON of the controller's copies
+of the manifest and of what landed, not read off the wire.
 
 | Repository | Carried | First | Incremental | Controller peak | Daemon growth | Manifest | Prepare | Replica record |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| small: 200 tracked files | 316 files, 17 MB | 2.9 s | 2.3–3.0 s | 88–96 MiB | up to 29 MiB | 61 kB | 0.1 MB | 40 kB |
-| large-file: 200 tracked files and 1 GiB of ignored data in 4 files | 320 files, 1.09 GB | 9.5–14.7 s | 9.3–11.3 s | 139–154 MiB | up to 39 MiB | 61 kB | 0.1 MB | 40 kB |
-| many-file: 50,000 tracked files, packed | 50,116 files, 83 MB | 30–57 s | 40–180 s | 292–350 MiB | 236–279 MiB first, 57–120 MiB incremental | 8.7 MB | 17.4 MB in 5 parts | 8.7 MB |
+| small: 200 tracked files | 316 files, 17 MB | 2.8–2.9 s | 2.3–3.0 s | 88.4–98.0 MiB | up to 28.5 MiB | 61–62 kB | 0.1 MB | 40 kB |
+| large-file: 200 tracked files and 1 GiB of ignored data in 4 files | 320 files, 1.09 GB | 8.4–14.7 s | 7.3–11.3 s | 138.7–154.3 MiB | up to 45.3 MiB | 61–63 kB | 0.1 MB | 40 kB |
+| many-file: 50,000 tracked files, packed | 50,116 files, 83 MB | 26.0–57.0 s | 39.5–179.6 s | 291.5–348.1 MiB | 235.8–297.7 MiB first, 54.7–120.1 MiB incremental | 8.7 MB | 17.4 MB in 5 parts | 8.7 MB |
 
-- **Where the time goes** for 50,000 files, in the quietest run: first, 30.4 s (preflight 3.8 s, freeze 5.4 s,
-  claim, copy and verify 10.6 s, prepare 9.0 s); incremental, 41.8 s (8.9, 8.0, 13.7 and 9.1 s). The slow runs lost
-  their time to IO: the 2 GiB machine cannot keep both copies in its page cache beside the daemons, and a run that
-  waited 17 s on IO took 132 s. The benchmark records those seconds (`IO stall s`) and the Mac's load with each run.
-- **What grows with the number of files:** the manifest (174 bytes a file here), the replica records (one file list
+- **Where the time goes** for 50,000 files, in the fastest recorded handovers (both in the last run): first,
+  26.0 s (preflight 3.7 s, freeze 5.2 s, claim, copy and verify 7.9 s, prepare 7.7 s); incremental, 39.5 s (8.3, 5.9,
+  12.9 and 10.6 s). The slow runs lost their time to IO: the 2 GiB machine cannot keep both copies in its page cache
+  beside the daemons, and a run that waited 17.2 s on IO took 132.2 s. The last two runs record those seconds
+  (`IO stall s`) and the Mac's load with each handover.
+- **What grows with the number of files:** the manifest (173 bytes a file here), the replica records (one file list
   each, two while a root is receiving), the memory of the daemons and the controller, and the time. The event stream
-  and rsync's memory do not: every handover wrote 34 to 44 events, 6 to 8 kB, no line over 836 bytes, and no rsync
-  went past 7 MiB.
+  and rsync's memory do not: every handover wrote 34 to 44 events, 6.1 to 8.1 kB, no line over 842 bytes, and no
+  rsync went past 7.7 MiB.
 - **Each side reads every carried file several times.** The source hashes it at preflight and at freeze, and again in
   the controller's verify when the controller runs there. The destination hashes a replica at preflight, again at the
   claim, then what landed at prepare, and the roots once more after the Git import for the seal. rsync's checksum
   compare reads both sides. Each proof guards a different moment (before any write, before `--delete`, after the copy,
   after the import), so none is reused: a replica can change between preflight and the claim. Files are hashed eight
-  at a time, which made a 50,000-file scan 3 to 6 times faster than one at a time on the Mac (35–53 s against
-  9–13 s with its disk busy). An incremental 50,000-file handover took 92.9 s hashing one file at a time, and 40–51 s
-  in half of the eight runs since; the other half waited on IO.
+  at a time.
 
 ### Bounds
 
@@ -298,9 +303,9 @@ network as the link. All the runs below were on AC power at 100% charge with no 
 | Progress events | One per entry per new state, and its counts at most once a second, whatever rsync itemizes | `cli/test/controller/transfer.test.ts` "tells a watcher of a 50,000-file copy as often as of a one-file copy…" |
 | Blocker and warning text | Each names a few paths and counts the rest | `handover.test.ts` "names a few of a root's names that differ only by case…"; `divergence.ts` and `listed` in `manifest.ts` preview 5 to 10 |
 | The manifest | 128 MiB (`manifest_too_large`, at preflight and freeze). A file the scanner lists takes under 160 bytes beyond its path, so the cap holds 128 MiB / (160 B + path) files: over 500,000 with paths up to 100 bytes | `source.test.ts`; `manifest.test.ts` "lists a file the scanner reads in under 160 bytes beyond its path…" |
-| Files a handover carries | Half the smaller daemon's heap at 6 KiB a file (`too_many_files`, at preflight and freeze) | `source.test.ts` "refuses at preflight, with nothing frozen, more files than the smaller of the two heaps holds…" |
+| Files a handover carries | Half the smaller daemon's heap at 8 KiB a file (`too_many_files`, at preflight and freeze) | `source.test.ts` "refuses at preflight, with nothing frozen, more files than the smaller of the two heaps holds…" |
 | A request to a daemon | 8 MiB a WebSocket frame; a larger one goes in 4 MiB parts, 256 MiB in all | `cli/test/client.test.ts`, `archid/test/api.test.ts` |
-| An answer to the controller | 256 MiB a frame; the freeze answer, which carries the manifest whole, is the largest (8.7 MB at 50,000 files) | `client.test.ts` "reads an answer as large as a request may be…" |
+| An answer to the controller | 256 MiB a frame; the preflight and freeze answers carry the manifest whole, 8.7 MB at 50,000 files as computed from its compact JSON | `client.test.ts` "reads an answer as large as a request may be…" |
 | Hashing | Eight files at once, each streamed a chunk at a time; a Git index is read whole, one at a time, up to 256 MiB | `manifest.test.ts` "hashes several files at once, never more than eight…", "reads a session file a chunk at a time…" |
 | Where carried links lead | One lookup per link in its root's paths | `handover.test.ts` "reads a root's file list a few times over to judge its links…" |
 | A terminal viewer on the daemon's socket | No more output once 1 MB waits unsent on its socket, then the screen afresh once 250 kB or less waits | `archid/test/terminals.test.ts` "sends a viewer no more output once a megabyte waits unsent…", "lets a viewer that fell behind back in once a quarter of a megabyte or less waits…", "resumes a paused pane for the viewers that keep up…" |
@@ -311,32 +316,35 @@ Other caps: a notification's POST body 64 KiB, a gateway line and a helper contr
 ### Terminal output faster than the link
 
 - **The app's terminals** attach with `ssh -tt … tmux attach`, so a link slower than the terminal backs up into tmux,
-  which stops drawing to a client that falls behind and redraws it once it catches up. Nothing grows in the daemon,
-  and tmux stayed at 8 MiB while a client read nothing for 21 s of a pane printing without end.
+  which stops drawing to a client that falls behind and redraws it once it catches up. Nothing passes through the
+  daemon. The benchmark does not measure this path.
 - **A viewer on the daemon's socket**, such as the phone page, stops getting output once 1 MB waits unsent, and gets
   the screen afresh once 250 kB or less waits, so the resync (2,000 lines) fits under the mark with room to spare. In
-  the benchmark (`--flood`), a terminal printed about 24 MB a second to a viewer that read nothing for 20 s, and the
-  daemon grew by 1 MiB. Without the bound the daemon queued every byte printed, base64-encoded, until the socket
-  closed.
+  the benchmark (`--flood`, three runs), a terminal printed 22.9 to 23.7 MB a second to a viewer that then read
+  nothing for 20 s, and the daemon grew by under 1 MiB. Without the bound the daemon queued every byte printed,
+  base64-encoded, until the socket closed.
 - **tmux** pauses a pane whose output the daemon's own control client lags 3 s behind (`pause-after=3`). The daemon
   resumes it once every viewer that keeps up has drained; one that fell behind holds nothing up.
 
 ### Limits
 
 - **A handover carries at most as many files as the smaller daemon's heap holds** (`too_many_files`), which comes
-  well before the manifest cap. A daemon's peak RSS grew by up to 279 MiB on a first 50,116-file copy, 5.8 KB a file: the
-  manifest and what landed, their JSON and the scans. The bound gives each file 6 KiB of heap and a handover half the
-  heap, leaving the rest for the daemon's own state and for the garbage collector to work in:
-  files ≤ heap / 2 / 6 KiB, the heap being the smaller of the two daemons' V8 `heap_size_limit` (the destination
-  reports its own in `system.info`). Node sizes that heap from the machine's memory: 4,288 MiB on a 48 GB Mac, which
-  holds 365,909 files. The source checks at preflight, before anything freezes, and answers without its file lists;
-  freeze checks again. The controller runs on one of the two machines with that machine's default heap, and grew by
-  as much a file as a daemon.
+  well before the manifest cap. A daemon's peak grew by up to 297.7 MiB on a first 50,116-file copy, 6.2 KB a file:
+  the manifest and what landed, their JSON and the scans. The bound gives each file 8 KiB of heap and a handover half
+  the heap, leaving the rest for the daemon's own state and for the garbage collector to work in:
+  files ≤ heap / 2 / 8 KiB, the heap being the smaller of the two daemons' V8 `heap_size_limit` (the destination
+  reports its own in `system.info`). Node sizes that heap from the machine's memory: 4,288 MiB on a 48 GB Mac holds
+  274,432 files, and the benchmark's 1,076 MiB 68,832 (`host.json`). The source checks at preflight, before anything
+  freezes, and answers without its file lists; freeze checks again. Preflight hashes every file before it can count
+  them, so a repository several times the bound can still run the source daemon out of heap at preflight, before
+  anything freezes. The controller runs on one of the two machines with that machine's default heap, and grew by less
+  a file than a daemon: its peak was at most 348.1 MiB for 50,000 files and at least 87.8 MiB for the small
+  repository.
 - **More than ten terminals on one remote machine** go past sshd's default `MaxSessions 10` on the shared master.
   Each one past the tenth prints one "Session open refused by peer" line and opens its own login, and while the master
-  is full the helper's 30-second check does too. Measured between the containers: a command on the master 3–4 ms, a
-  login 161–178 ms. A master per ten surfaces would need the app to choose a socket for each surface; one login per
-  extra terminal does not justify that before the release.
+  is full the helper's 30-second check does too. Measured by hand between the containers, not by the benchmark: a
+  command on the master 3–4 ms, a login 161–178 ms. A master per ten surfaces would need the app to choose a socket
+  for each surface; one login per extra terminal does not justify that before the release.
 - **Folders are not listed in the manifest.** rsync carries them, empty ones and their modes included (`-rlpt`), and
   its checksum compare itemizes a folder's mode as it does a file's, so a copy that differs there does not verify
   (`transfer.test.ts` "carries empty folders and each folder's mode…"). A folder made or re-moded on the destination
@@ -360,8 +368,9 @@ scripts/bench/handover.sh --out /tmp/handover-bench --flood
 | `--prefix <name>` | Name the containers `<name>-local` and `<name>-remote` (default `archi-bench`). |
 
 The folder holds `bench.md` (the table), `bench.json` (every measure of every handover), each handover's NDJSON,
-`flood.json`, `host.json` and the integration run's logs under `setup/`. Its containers are not the integration run's
-(`archi-local`, `archi-remote`), so the two can share a Docker host. A run takes about seven minutes.
+`flood.json`, `host.json` (each daemon's heap and the files a handover between them may carry) and the integration
+run's logs under `setup/`. Its containers are not the integration run's (`archi-local`, `archi-remote`), so the two
+can share a Docker host. The last run took under four minutes, the companion build included.
 
 ## Accepted risks
 
