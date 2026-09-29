@@ -33,6 +33,13 @@ jobs:
       - run: pnpm test
         env:
           ARCHI_REQUIRE_RSYNC: '1'
+      # the app's Swift tests link GhosttyKit, prebuilt for the Ghostty commit HEAD records
+      - run: |
+          scripts/ghostty-kit.sh fetch
+          ln -sfn "$PWD/vendor/ghostty-kit/GhosttyKit.xcframework" apps/desktop/mac/GhosttyKit.xcframework
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - run: swift test --package-path apps/desktop/mac
 
   # a fleet handed between two Linux containers on real sshd, rsync, tmux, Git and systemd; see docs/integration.md
   integration:

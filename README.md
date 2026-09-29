@@ -462,6 +462,7 @@ signed in to is signed in there too.
 
     pnpm test            # needs tmux on PATH for the integration tests
     pnpm typecheck
+    swift test --package-path apps/desktop/mac   # the app's Swift tests, once a build has linked GhosttyKit
     pnpm e2e             # Playwright against a temporary daemon
     pnpm desktop:dev     # Vite dev server plus a debug app; ARCHI_HOME picks the daemon
     pnpm desktop:build   # an unsigned apps/desktop/mac/build/Archipelago.app
