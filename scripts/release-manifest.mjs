@@ -74,9 +74,8 @@ export function signManifest(dir, keyFile) {
 }
 
 /**
- * Signs, in place, an archive a build packed without the key. It is checked as an installer checks an unsigned one; its
- * release.json then loses the unsigned mark and pins each companion at the digest of the archive beside it now, so the
- * companions are signed first; and the same tree is packed again as the build packs it.
+ * Signs, in place, an archive a build packed unsigned, re-pinning each companion at the archive beside it now
+ * (so sign the companions first).
  */
 export function signArchive(archive, keyFile) {
   const { version } = archiveRelease(archive, execFileSync('tar', ['-tzf', archive], { encoding: 'utf8' }));

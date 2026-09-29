@@ -180,6 +180,15 @@ describe('signing the archives a build packed without the key', () => {
       expect(fs.readFileSync(path.join(m.dir, 'bin', 'archi'), 'utf8')).toContain('controller');
     }
   });
+
+  it('names its own usage without --out, and refuses the build\'s options beside --sign', () => {
+    const out = temp();
+    for (const argv of [['--sign', 'key'], ['--sign', 'key', '--out', out, '--version', '1.2.3'], ['--sign', 'key', '--out', out, '--url-base', 'https://example.test']]) {
+      const r = spawnSync(path.join(import.meta.dirname, '../scripts/release-build.sh'), argv, { encoding: 'utf8' });
+      expect(r.stderr, argv.join(' ')).toContain('release-build.sh --sign <key> --out <dir>');
+      expect(r.status, argv.join(' ')).toBe(2);
+    }
+  });
 });
 
 describe('an install by an account with a tight umask', () => {

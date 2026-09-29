@@ -23,7 +23,13 @@ while [ $# -gt 0 ]; do
     *) echo "release-build.sh: unknown argument $1" >&2; exit 2 ;;
   esac
 done
-if [ -n "$key" ] && [ -n "$out" ]; then
+usage() {
+  printf '%s\n' "usage: release-build.sh --out <dir> --version <id> --url-base <url>" \
+    "       release-build.sh --sign <key> --out <dir>" >&2
+  exit 2
+}
+if [ -n "$key" ]; then
+  if [ -z "$out" ] || [ -n "$version" ] || [ -n "$base" ]; then usage; fi
   # the companions first, as the controller's manifest pins their archives' digests
   for archive in "$out"/archipelago-companion-*.tar.gz "$out"/archipelago-controller-*.tar.gz; do
     node --input-type=module -e 'const [m, a, k] = process.argv.slice(1); (await import(m)).signArchive(a, k);' \
@@ -31,10 +37,7 @@ if [ -n "$key" ] && [ -n "$out" ]; then
   done
   exit 0
 fi
-if [ -z "$out" ] || [ -z "$version" ] || [ -z "$base" ]; then
-  echo "usage: release-build.sh --out <dir> --version <id> --url-base <url>" >&2
-  exit 2
-fi
+if [ -z "$out" ] || [ -z "$version" ] || [ -z "$base" ]; then usage; fi
 mkdir -p "$out"
 out=$(cd "$out" && pwd -P)
 
