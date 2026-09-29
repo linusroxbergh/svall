@@ -266,9 +266,10 @@ each after ten changed files and one new one, and one after the character is clo
 fixture. Every handover also carries that fixture: 86 files, 17 MB.
 
 The machines: colima on an M-series Mac, 2 vCPUs and 2 GiB of memory shared by both containers, arm64, the docker
-network as the link; each daemon's heap is 1,076 MiB, as the last run recorded. The ranges cover four recorded runs:
-three on the build that added the benchmark (two of all three repositories, one of the many-file repository alone)
-and, last, one on the build with the file bound (all three). Before and after every handover the Mac was on AC
+network as the link; each daemon's heap is 1,076 MiB, as the last two runs recorded. The ranges cover five recorded
+runs: three on the build that added the benchmark (two of all three repositories, one of the many-file repository
+alone), a fourth on the build with the file bound and, last, one on the build that counts files from their names
+before reading them (both of all three). Before and after every handover the Mac was on AC
 power at 100% charge with no thermal or performance warning recorded; each row of `bench.json` keeps what
 `pmset -g batt` and `pmset -g therm` said. Memory is peak RSS, and a daemon's growth is its peak above what it held
 when the handover began. The manifest and prepare sizes are computed from the compact JSON of the controller's copies
@@ -276,15 +277,16 @@ of the manifest and of what landed, not read off the wire.
 
 | Repository | Carried | First | Incremental | Controller peak | Daemon growth | Manifest | Prepare | Replica record |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| small: 200 tracked files | 316 files, 17 MB | 2.8–2.9 s | 2.3–3.0 s | 88.4–98.0 MiB | up to 28.5 MiB | 61–62 kB | 0.1 MB | 40 kB |
-| large-file: 200 tracked files and 1 GiB of ignored data in 4 files | 320 files, 1.09 GB | 8.4–14.7 s | 7.3–11.3 s | 138.7–154.3 MiB | up to 45.3 MiB | 61–63 kB | 0.1 MB | 40 kB |
-| many-file: 50,000 tracked files, packed | 50,116 files, 83 MB | 26.0–57.0 s | 39.5–179.6 s | 291.5–348.1 MiB | 235.8–297.7 MiB first, 54.7–120.1 MiB incremental | 8.7 MB | 17.4 MB in 5 parts | 8.7 MB |
+| small: 200 tracked files | 316 files, 17 MB | 2.8–2.9 s | 2.3–3.0 s | 88.4–98.1 MiB | up to 28.5 MiB | 61–62 kB | 0.1 MB | 40 kB |
+| large-file: 200 tracked files and 1 GiB of ignored data in 4 files | 320 files, 1.09 GB | 8.4–14.7 s | 7.3–11.3 s | 138.7–154.3 MiB | up to 55.6 MiB | 61–63 kB | 0.1 MB | 40 kB |
+| many-file: 50,000 tracked files, packed | 50,116 files, 83 MB | 26.0–57.0 s | 39.5–179.6 s | 291.5–355.8 MiB | 193.2–297.7 MiB first, 32.9–120.1 MiB incremental | 8.7 MB | 17.4 MB in 5 parts | 8.7 MB |
 
-- **Where the time goes** for 50,000 files, in the fastest recorded handovers (both in the last run): first,
+- **Where the time goes** for 50,000 files, in the fastest recorded handovers (both in the fourth run): first,
   26.0 s (preflight 3.7 s, freeze 5.2 s, claim, copy and verify 7.9 s, prepare 7.7 s); incremental, 39.5 s (8.3, 5.9,
-  12.9 and 10.6 s). The slow runs lost their time to IO: the 2 GiB machine cannot keep both copies in its page cache
-  beside the daemons, and a run that waited 17.2 s on IO took 132.2 s. The last two runs record those seconds
-  (`IO stall s`) and the Mac's load with each handover.
+  12.9 and 10.6 s). Counting the names first made the last run's preflight 5.4 s first and 10.1–10.6 s incremental.
+  The slow runs lost their time to IO: the 2 GiB machine cannot keep both copies in its page cache beside the
+  daemons, and a run that waited 17.2 s on IO took 132.2 s. The last three runs record those seconds (`IO stall s`)
+  and the Mac's load with each handover.
 - **What grows with the number of files:** the manifest (173 bytes a file here), the replica records (one file list
   each, two while a root is receiving), the memory of the daemons and the controller, and the time. The event stream
   and rsync's memory do not: every handover wrote 34 to 44 events, 6.1 to 8.1 kB, no line over 842 bytes, and no
@@ -320,7 +322,7 @@ Other caps: a notification's POST body 64 KiB, a gateway line and a helper contr
   daemon. The benchmark does not measure this path.
 - **A viewer on the daemon's socket**, such as the phone page, stops getting output once 1 MB waits unsent, and gets
   the screen afresh once 250 kB or less waits, so the resync (2,000 lines) fits under the mark with room to spare. In
-  the benchmark (`--flood`, three runs), a terminal printed 22.9 to 23.7 MB a second to a viewer that then read
+  the benchmark (`--flood`, four runs), a terminal printed 22.9 to 23.7 MB a second to a viewer that then read
   nothing for 20 s, and the daemon grew by under 1 MiB. Without the bound the daemon queued every byte printed,
   base64-encoded, until the socket closed.
 - **tmux** pauses a pane whose output the daemon's own control client lags 3 s behind (`pause-after=3`). The daemon
@@ -337,9 +339,10 @@ Other caps: a notification's POST body 64 KiB, a gateway line and a helper contr
   274,432 files, and the benchmark's 1,076 MiB 68,832 (`host.json`). The source counts the files from their names
   before it reads any: at preflight, which then answers without its file lists, and at freeze before any terminal
   rests. A fleet however far past the bound is refused that way, never hashed; freeze checks the read manifest again.
-  The controller asks the destination nothing about the roots of a preflight answered without its file lists.
-  The controller runs on one of the two machines with that machine's default heap, and grew by less a file than a
-  daemon: its peak was at most 348.1 MiB for 50,000 files and at least 87.8 MiB for the small repository.
+  Tried by hand in the benchmark's containers, a 250,116-file fleet was refused in 11 s, and the source daemon's peak
+  grew by 92 MiB. The controller asks the destination nothing about the roots of a preflight answered without its
+  file lists. It runs on one of the two machines with that machine's default heap, and grew by less a file than a
+  daemon: its peak was at most 355.8 MiB for 50,000 files and at least 87.8 MiB for the small repository.
 - **More than ten terminals on one remote machine** go past sshd's default `MaxSessions 10` on the shared master.
   Each one past the tenth prints one "Session open refused by peer" line and opens its own login, and while the master
   is full the helper's 30-second check does too. Measured by hand between the containers, not by the benchmark: a
