@@ -59,8 +59,8 @@ source daemon's current machine.”
 The first published release supports:
 
 - macOS 15 or newer for the desktop app and local owner;
-- the Ubuntu LTS releases and architectures named in the desktop release manifest for the gateway
-  and remote owner; the initial manifest covers x86-64 and arm64;
+- an Ubuntu LTS release (an even year's `.04`) on x86-64 or arm64 for the gateway and remote owner;
+  another Ubuntu release is a warning, any other system is refused, and 24.04 is the release tested;
 - Tailscale on both machines;
 - OpenSSH access from the Mac to the Linux account, including Tailscale SSH;
 - the same home path on both machines: the Linux account's home is the Mac's, such as
@@ -69,9 +69,9 @@ The first published release supports:
 - systemd user services on Linux;
 - tmux 3.x and Git on both machines; tmux 3.5 or newer is recommended, because Shift+Enter needs
   its `extended-keys-format`, and Ubuntu 24.04 ships 3.4;
-- rsync 3.x on both machines. Linux distributions ship it; macOS ships openrsync, which cannot
-  protect remote arguments or report byte progress, so the desktop release bundles its own rsync
-  and the system binary is only a fallback the doctor flags;
+- rsync 3.2.3 or newer on both machines. Ubuntu 22.04 and later ship it; macOS ships openrsync,
+  which cannot protect remote arguments or report byte progress, so the desktop release bundles
+  its own rsync and the system binary is only a fallback the doctor flags;
 - Claude Code and Codex CLI at or above each session adapter's minimum version.
 
 The Mac app is distributed as a signed and notarized direct download. Mac App Store distribution,
@@ -204,10 +204,12 @@ without that acknowledgement. A surrendered or frozen source therefore starts re
 gateway is unreachable, even if its cached owner record is old. When there is no transaction, no
 other machine can commit without both the gateway and a durable source freeze.
 
-On daemon start, a reachable gateway record always wins. If the gateway is permanently lost,
-recovery requires
-`archi fleet recover --force-owner <machine>` and presents the generations and risks before writing
-a new authority; it is never automatic.
+On daemon start, a reachable gateway record wins when its generation is above the daemon's cached
+one, or equal and naming another owner while no handover journal is open there. A lower generation
+is ignored, so a stale gateway never rolls ownership back. A fleet whose `fleet.json` names a
+gateway and that has no cached record owns nothing until the gateway names its owner. If the
+gateway is permanently lost, recovery requires `archi fleet recover --force-owner <machine>` and
+presents the generations and risks before writing a new authority; it is never automatic.
 
 On app or CLI launch, the controller asks the gateway for the current owner, then opens either the
 local direct connection or the owner's SSH route. If the gateway is temporarily unavailable, it may
@@ -253,12 +255,15 @@ tmux -S <socket> attach -t <session>
 or:
 
 ```text
-ssh -S <control-socket> -tt <ssh-destination> \
+ssh -S <control-socket> -o ControlMaster=no -o BatchMode=yes -tt -- <ssh-destination> \
   tmux -S <socket> attach -t <session>
 ```
 
-The remote daemon does not attempt to guess the caller's SSH alias. Dropped SSH connections leave
-tmux untouched; the app re-establishes the master, API forward and visible terminal surfaces.
+The remote command is built only while the helper's master answers on its control socket; until
+then the surface waits for the helper's next `online`, so ssh never dials the destination on its
+own for a dead master. The remote daemon does not attempt to guess the caller's SSH alias. Dropped
+SSH connections leave tmux untouched; the app re-establishes the master, API forward and visible
+terminal surfaces.
 
 ---
 
@@ -283,7 +288,8 @@ archive contains:
 
 The manifest lists a SHA-256 digest for every file in the archive and is detached-signed with the
 release signing identity using `ssh-keygen -Y sign`. Installers verify it with `ssh-keygen -Y
-verify` against a pinned allowed-signers entry before the archive is unpacked.
+verify` against a pinned allowed-signers entry before the rest of the archive is unpacked, and the
+unpacked tree must still carry the checksum file the signature covered.
 
 The remote machine does not need a repository clone, pnpm, Node, Xcode, Zig or Ghostty. The Mac app
 downloads the companion matching its own release from the same signed release manifest, verifies
@@ -298,8 +304,8 @@ Releases install without root under:
 ~/.local/bin/archi -> ../share/archipelago/current/bin/archi
 ```
 
-Changing `current` is atomic. The previous release remains available for rollback until the next
-successful upgrade.
+Changing `current` is atomic. Each install keeps the release `current` named before it for
+rollback (after a reinstall under the same name, the newest other release) and removes every other.
 
 ## Add Machine flow
 
@@ -308,23 +314,24 @@ successful upgrade.
 
 1. Open an interactive SSH connection so the user can verify a new host key and complete any SSH
    authentication.
-2. Read the remote home, OS and architecture; require a supported Ubuntu release and a home path
-   equal to the Mac's. A different home stops setup with the commands that create an account whose
-   home matches.
+2. Read the remote home, OS and architecture; require Ubuntu (an LTS release passes, another warns)
+   and a home path equal to the Mac's. A different home stops setup with the commands that create
+   an account whose home matches.
 3. Check Tailscale, tmux, Git, rsync and systemd user services. A tmux older than 3.5 is a warning
-   naming the Shift+Enter limitation, not a blocker. Missing system packages are shown with a
-   copyable apt command. Archipelago runs it only in an interactive terminal after the user
-   explicitly approves sudo.
+   naming the Shift+Enter limitation, not a blocker, and so is an rsync older than 3.2.3. Missing
+   system packages are shown with a copyable apt command. Archipelago never runs sudo: the step's
+   action names the command for the user to run in a terminal of their own.
 4. Upload and verify the matching companion release.
-5. Install `archipelago-gateway.service` and an `archipelago-archid-<fleet>.service` template as
-   systemd user units. Units use absolute paths through `current`, a resolved PATH, `Restart=always`
-   and logs under the Archipelago data directory.
+5. Install `archipelago-gateway.service` and an `archipelago-archid@<fleet>.service` template as
+   systemd user units. Units use absolute paths through `current`, a resolved PATH, the
+   `CLAUDE_CONFIG_DIR` and `CODEX_HOME` the account's login shell sets, `Restart=always` and logs
+   under the Archipelago data directory.
 6. Enable and start the gateway. If user lingering is disabled, show the exact
-   `loginctl enable-linger <user>` action and verify it after the user completes it.
+   `loginctl enable-linger <user>` action; `host add` run again and `host doctor` check it again.
 7. Create the stable machine id and add the controller registry entry.
-8. Check Claude Code and Codex installation, supported versions, login and Archipelago hooks. The
-   user completes agent login and Codex hook trust in an offered SSH terminal; credentials are
-   never copied from the Mac.
+8. Check Claude Code and Codex installation, supported versions, login and Archipelago hooks. Each
+   finding names the ssh and login or install command for the user to run in a terminal; the app
+   opens none. Credentials are never copied from the Mac.
 9. Run an end-to-end probe: gateway authority, API tunnel, temporary tmux window, home path and
    free space.
 10. For each existing local fleet the user enables for this machine, create the gateway's initial
@@ -334,6 +341,11 @@ successful upgrade.
 Setup finishes with either **Ready for handover** or a list of concrete remaining actions. Repeated
 setup is idempotent. `archi host doctor trift`, `archi host upgrade trift` and
 `archi host remove trift` expose diagnosis, version upgrade/rollback and uninstall.
+`archi host upgrade trift --rollback [release]` puts the machine back on the release before, or a
+kept one it names, and probes it as an upgrade does. `archi uninstall` run on a machine refuses
+while it holds a handover journal, runs a fleet for its gateway or keeps gateway records.
+`archi host remove` checks the fleets this controller knows of, then runs it with `--force`, which
+passes the far refusal for every fleet, another controller's included.
 
 ## Compatibility
 
@@ -343,7 +355,9 @@ Connection and handover negotiate:
 - RPC protocol version;
 - fleet state schema version;
 - transfer-manifest version;
-- gateway authority version;
+- gateway authority version, which a handover reads from the gateway's `archi version --json`
+  before its first ownership operation, so preflight blocks with `incompatible_protocol` when it
+  differs;
 - installed Claude Code and Codex versions against each session adapter's minimum.
 
 Ordinary remote viewing may allow a documented compatible version range. A handover requires an
@@ -366,9 +380,12 @@ from the recorded one blocks, because Git and the agents record the resolved pat
 detects case-folding collisions, unsupported file names, broken destination symlinks and
 insufficient space.
 
-Tests require every absolute path field in the protocol schema, every process-bound field such as a
-pid or tmux id, and every entry in the fleet home to be classified as travelling or machine-local.
-Machine-local ones are stripped or left behind at export. Adding an unclassified one fails CI.
+Tests require every absolute path field and every process-bound field, such as a pid or tmux id, in
+the schemas that are stored or cross machines (`FleetState`, `FleetConfig`, `NodeConfig`,
+`MachineRecord` and the transfer manifest) to be classified as travelling or machine-local.
+Machine-local ones are stripped or left behind at export. Adding an unclassified one fails CI. RPC
+params that carry a path are validated where they are received. Of the fleet home, only what the
+inventory below names travels.
 
 ## Transfer inventory
 
@@ -425,7 +442,9 @@ Transfer carries the common Git directory, per-worktree index and metadata, and 
 directory. On the destination the importer:
 
 1. removes worktree registrations not present in the manifest from the destination copy without
-   removing their branch refs;
+   removing their branch refs, keeping each one whose worktree folder exists on the destination;
+   preflight and the claim block when such a kept worktree sits at a commit the returning copy
+   would not hold;
 2. verifies `git worktree list`, `git status` and staged changes against the manifest.
 
 The importer never runs `git worktree prune` or `git worktree repair`. With the same paths every
@@ -444,7 +463,8 @@ transfer root. The record is keyed by fleet id and a hash of the canonical desti
 contains that path, the received generation and a content manifest. No marker is written inside a
 repository. `rsync --delete` is permitted only when the destination is absent and reserved by the
 current transaction, or when it has a matching replica record. It never mirrors over an arbitrary
-pre-existing folder.
+pre-existing folder: one with no record is adopted as a replica at the claim only when its content
+already equals what the handover brings, and is otherwise occupied.
 
 Before updating a replica, Archipelago compares it with the last received manifest. Changes made
 while that machine did not own the fleet block the handover. The user may:
@@ -484,12 +504,15 @@ A separate repair action may start a fresh agent with a generated transcript sum
 visibly a new session and is never the automatic handover path.
 
 Global agent credentials, user-wide skills, MCP configuration and shell dotfiles are machine-local.
-Host doctor checks installation, login and hooks, and preflight reports material configuration
-differences. Repository and project-local instructions travel with their filesystem roots.
+Host doctor checks installation, login and hooks. Preflight reads the destination's agent logins
+afresh, and warns (`config_difference`) when an agent CLI the fleet runs is at different versions
+on the two machines; the warning names the settings, skills and MCP servers each machine keeps,
+which are not compared. Repository and project-local instructions travel with their filesystem
+roots.
 
 ## Terminal records
 
-Protocol schema v7 makes both terminal slots explicitly resumable. A terminal record has its cwd,
+State schema v8 makes both terminal slots explicitly resumable. A terminal record has its cwd,
 optional live tmux ids, optional agent, and optional revive command. A second terminal no longer
 disappears merely because its tmux window is absent.
 
@@ -497,8 +520,7 @@ Before export, all `tmux.windowId`, `paneId` and agent pid fields are removed. F
 agent, `revive.command` is `claude --resume <id>` or `codex resume <id>` with the launch flags an
 idle close keeps, whether the handover rested the terminal or it was already dormant, less the Codex
 flags whose values name the source's own config (`-p`/`--profile`, `--local-provider`). A plain shell has no
-command and reopens at its cwd. Archipelago may save terminal scrollback for diagnosis, but it is
-not replayed as process state.
+command and reopens at its cwd. Terminal scrollback is neither saved nor carried.
 
 ---
 
@@ -510,7 +532,8 @@ Preflight is read-only and runs before any terminal is interrupted. It blocks wh
 
 - source, destination or gateway identities/generations disagree;
 - another transaction is open;
-- release, protocol, schema or agent adapters are incompatible;
+- release, protocol, state or transfer schema, the gateway's authority schema or agent adapters are
+  incompatible;
 - a required agent CLI is absent, logged out or missing hooks;
 - the destination's home path differs from the source's, or a transfer root's parent is missing
   there;
@@ -534,12 +557,17 @@ freeze. Freeze rejects every mutating RPC, stops scribe/background state changes
 requests and snapshots the known character set.
 
 Freeze repeats the process-tree and source-path checks because work may have started after
-preflight. A newly discovered blocker leaves the source frozen only long enough to abort the open
-transaction and then returns it to normal ownership without killing a window.
+preflight. A blocker Freeze finds, before, during or after the rest, reopens only the
+terminals the handover stopped and returns the source to normal ownership, while the gateway
+transaction stays open for the user's answer: an answer asks the source to freeze again without a
+new Begin, and Cancel aborts the transaction. If the controller dies meanwhile, `archi handover
+status` offers Resume or Abort.
 
 Each primary and second terminal is classified:
 
-- `idle` or `done` agent: ready;
+- `idle` or `done` agent with no command still running: ready;
+- `idle` or `done` agent whose background command still runs: blocker until the command ends or
+  the user chooses **Terminate and carry**;
 - `working` agent: wait for `done`, `idle` or `blocked`;
 - `blocked` agent: the user may answer it, choose **Interrupt and carry**, or cancel;
 - plain shell at its prompt: ready;
@@ -548,7 +576,8 @@ Each primary and second terminal is classified:
 
 There is no automatic thirty-second Escape. The sheet offers **Continue waiting**,
 **Interrupt and carry**, and **Cancel**. CLI automation opts in with
-`--interrupt-after <duration>` and `--terminate-shells`; without them it exits with blockers.
+`--interrupt-after <duration>` and `--terminate-shells`; without them it exits with blockers. A
+working agent is waited for up to three minutes, or until an `--interrupt-after` that is longer.
 
 After an interrupt, Archipelago waits for the agent hook or process tree to confirm rest. Failure to
 settle is a blocker unless the user explicitly terminates that terminal. Only then are tmux windows
@@ -573,7 +602,8 @@ The controller executes these durable steps:
    prepared file to `state.json`, replaces the in-memory Store, then starts terminal windows with
    bounded concurrency and reports each result. Source records itself inactive.
 8. **Complete.** Gateway clears the transaction while retaining owner and generation. Replica
-   manifests are sealed at generation `g + 1`.
+   manifests are sealed at generation `g + 1`, and the source stops its fleet, tmux server
+   included, so a later handover back starts it afresh.
 
 State import is a validated replacement, not a merge. Character and island deletions on the source
 therefore remain deleted.
@@ -601,7 +631,9 @@ At or after Commit:
 
 If the controller disappears, the sheet and CLI reconstruct status from the three journals.
 `archi handover status` says whether Abort or Resume is safe. A stale pre-commit transaction may be
-aborted after confirming that the authority still names the source at the expected generation.
+aborted after confirming that the authority still names the source at the expected generation. A
+resume or abort runs only on the source or the destination: rsync runs on the controller, so one
+started from a third machine stops before anything moves and names the two it can run on.
 
 Concurrent handovers are rejected by the authority compare-and-swap. A force-owner recovery is a
 separate, deliberately alarming disaster-recovery command and never part of ordinary retry.
@@ -699,13 +731,20 @@ archi host add <name> --ssh <destination>
 archi host list
 archi host doctor <name>
 archi host upgrade <name>
+archi host upgrade <name> --rollback [release]
 archi host remove <name>
+archi host enable <name> --fleet <fleet>
 
 archi handover <host|local>
 archi handover status
 archi handover --resume
 archi handover --abort
 archi handover <host> --interrupt-after 30s --terminate-shells
+archi handover <host> --archive <root>
+archi handover <host> --detach
+archi handover attach
+archi handover --forget
+archi fleet recover --force-owner <machine> [--gateway <machine>]
 ```
 
 `--json` emits newline-delimited phase and entity events suitable for automation.
@@ -723,7 +762,7 @@ handover.freeze        { transactionId, generation, choices } -> { manifest }
 handover.prepare       { transactionId, generation, snapshot, manifestDigest } -> {}
 handover.activate      { transactionId, generation } -> { characters: [...] }
 handover.abort         { transactionId, generation } -> {}
-handover.status        {} -> { transaction?, characters, roots }
+handover.status        {} -> { transaction?, quarantined? }
 ```
 
 Gateway authority operations are available only through the authenticated controller SSH command
@@ -760,7 +799,7 @@ event handover.entity    { transactionId, kind, id, phase, done?, total?, error?
 
 Implementation follows these ownership boundaries:
 
-- `packages/protocol/src/state.ts`, `migrate.ts` and `messages.ts`: schema v7, ids, ownership,
+- `packages/protocol/src/state.ts`, `migrate.ts` and `messages.ts`: schema v8, ids, ownership,
   handover RPCs and events;
 - `packages/archid/src/config.ts` and `paths.ts`: `fleet.json`/`node.json` migration and new durable
   paths;
@@ -784,7 +823,7 @@ CI rather than on ordinary local test runs.
 
 ## Phase 0 — schemas and ownership fencing
 
-1. Add `MachineId`, `FleetId`, schema-v7 resumable second terminals and path-field classification.
+1. Add `MachineId`, `FleetId`, schema-v8 resumable second terminals and path-field classification.
 2. Split and migrate portable `fleet.json` from machine-local `node.json`.
 3. Add machine registry and stable local machine identity.
 4. Add owner/generation checks around every mutating API and background state writer.
@@ -895,4 +934,5 @@ provisioning passes on both supported Linux architectures.
 - browser cookie/login migration between Macs;
 - a guarantee that a colliding local port keeps its original number;
 - unsupported Linux distributions, containers or agent CLI versions;
+- a terminal that Add Machine opens for sudo, agent login or hook trust;
 - machines outside the user's tailnet.
