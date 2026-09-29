@@ -45,7 +45,7 @@ export const OWNER_PARAMS = {
 export type OwnerOp = keyof typeof OWNER_PARAMS;
 export type OwnerParamsOf<O extends OwnerOp> = z.infer<(typeof OWNER_PARAMS)[O]>;
 export type OwnerParams = { [O in OwnerOp]: OwnerParamsOf<O> }[OwnerOp];
-export const isOwnerOp = (v: unknown): v is OwnerOp => typeof v === 'string' && v in OWNER_PARAMS;
+export const isOwnerOp = (v: unknown): v is OwnerOp => typeof v === 'string' && Object.hasOwn(OWNER_PARAMS, v);
 
 export const AUTHORITY_ERROR_CODES = [
   'not_found', 'already_exists', 'not_owner', 'generation_mismatch', 'transaction_mismatch',

@@ -80,7 +80,7 @@ function serveConnection(socket: net.Socket, authority: FleetAuthority, log: Log
         const send = () => { if (!socket.destroyed) socket.write(`${JSON.stringify(response)}\n`); };
         if (request.op === 'owner.commit') boundary('gateway.commit.respond', send);
         else send();
-      });
+      }).catch((err: unknown) => log.error(`gateway authority: request ${request.id} was not answered: ${String(err)}`));
     }
     if (buffer.length > MAX_LINE) {
       log.error(`gateway authority: closing a connection that sent more than ${MAX_LINE} bytes without a newline`);

@@ -7,6 +7,7 @@ import type { FleetId, MachineId } from '@archipelago/protocol';
 import { gatewayPaths } from '../../src/gateway/authority.js';
 import { AuthorityClient, fleetAuthority, ownerAnswer, versionMachineId, type SshRun } from '../../src/gateway/client.js';
 import { startAuthorityServer, type AuthorityServer } from '../../src/gateway/server.js';
+import { armFailpoints } from '../../src/handover/failpoints.js';
 
 const FLEET = '3f1a0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as FleetId;
 const MAC = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId;
@@ -150,6 +151,39 @@ describe('the authority socket', () => {
     expect(frames.map((f) => f.id)).toEqual([1, 2]);
     expect(frames[0].result).toBeTruthy();
     expect(frames[1].error?.code).toBe('transaction_mismatch');
+  });
+
+  it('refuses an operation named after what every object inherits, and answers the next request on that connection', async () => {
+    const dir = prefix();
+    const server = await serve(dir);
+    const client = await connect(dir);
+    await client.create({ fleetId: FLEET, initialOwnerMachineId: MAC });
+
+    const pipe = raw(server.socketPath);
+    const ops = ['toString', 'constructor', '__proto__'];
+    const get = JSON.stringify({ id: 9, op: 'owner.get', params: { fleetId: FLEET } });
+    pipe.socket.write([...ops.map((op, i) => JSON.stringify({ id: i + 1, op, params: {} })), get, ''].join('\n'));
+    await until(() => pipe.lines.length === ops.length + 1, 'every reply');
+
+    const frames = pipe.lines.map((l) => JSON.parse(l) as { id: number; result?: unknown; error?: unknown });
+    expect(frames.slice(0, ops.length)).toEqual(ops.map((op, i) => ({ id: i + 1, error: { code: 'invalid_request', message: `unknown operation ${op}` } })));
+    expect(frames[ops.length]).toMatchObject({ id: 9, result: { record: { generation: 0 } } });
+  });
+
+  it('answers the next request on a connection whose last reply could not be sent', async () => {
+    const dir = prefix();
+    const server = await serve(dir);
+    const client = await connect(dir);
+    await client.create({ fleetId: FLEET, initialOwnerMachineId: MAC });
+    const { transaction } = await client.begin({ fleetId: FLEET, expectedGeneration: 0, fromMachineId: MAC, toMachineId: TRIFT });
+    await client.ready({ fleetId: FLEET, transactionId: transaction!.id, expectedGeneration: 0, sourceFrozen: true, preparedDigest: DIGEST });
+    closers.push(armFailpoints((name, edge) => { if (name === 'gateway.commit.respond' && edge === 'before') throw new Error('the reply could not be sent'); }));
+
+    const pipe = raw(server.socketPath);
+    const commit = JSON.stringify({ id: 1, op: 'owner.commit', params: { fleetId: FLEET, transactionId: transaction!.id, expectedGeneration: 0 } });
+    pipe.socket.write(`${commit}\n${JSON.stringify({ id: 2, op: 'owner.get', params: { fleetId: FLEET } })}\n`);
+    await until(() => pipe.lines.length === 1, 'the second reply');
+    expect(JSON.parse(pipe.lines[0])).toMatchObject({ id: 2, result: { record: { generation: 1, ownerMachineId: TRIFT } } });
   });
 
   it('answers with a failure, not a record, when the record cannot be written', async () => {
