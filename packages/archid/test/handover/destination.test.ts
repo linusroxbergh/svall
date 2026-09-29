@@ -2175,9 +2175,10 @@ describe('destination inspect, of what could not land', () => {
     fs.mkdirSync(path.join(base, 'Work'));
     const native = fs.realpathSync.native;
     vi.spyOn(fs.realpathSync, 'native').mockImplementation(((p: string) => native(p.replace(`${base}/work`, `${base}/Work`))) as typeof native);
-    expect(linkProblem(path.join(base, 'work/ada'), { kind: 'root', id: 'r_ada' })).toEqual({
+    const [p, at] = [path.join(base, 'work/ada'), path.join(base, 'Work/ada')];
+    expect(linkProblem(p, { kind: 'root', id: 'r_ada' })).toEqual({
       code: 'path_symlinked', entity: { kind: 'root', id: 'r_ada' },
-      message: expect.stringMatching(new RegExp(`^${path.join(base, 'work/ada')} is spelled ${path.join(base, 'Work/ada')} on disk here;`)),
+      message: `${p} is spelled ${at} on disk here; a folder lands at the path it has on the source, the one Git and the agents record, so rename the folder here until the path reads ${p}, then try again`,
     });
   });
 });
