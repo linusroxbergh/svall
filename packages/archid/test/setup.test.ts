@@ -225,7 +225,7 @@ describe('runSetup', () => {
     fs.writeFileSync(path.join(root, '.archipelago-host', 'fleet.json'), '{}');
     const lines = await runSetup({ home, settingsPath: path.join(root, 'claude', 'settings.json'), launchAgentsDir: path.join(root, 'LaunchAgents'), shimDir: path.join(root, 'bin'), repoRoot, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(root, 'codex') }), agents: ['codex'] });
     const host = path.join(root, '.archipelago-host');
-    expect(lines).toContain(`${host} holds a fleet named host, a name archi now keeps for its own command, so no -p reaches it: mv ${host} ${host}-fleet, then archi -p host-fleet setup`);
+    expect(lines).toContain(`${host} holds a fleet named host, a name archi now keeps for its own command, so no -p reaches it: mv ${host} ${host}-fleet, then archi host-fleet`);
   });
 
   it('keeps writing Claude settings when its folder exists without the CLI', async () => {

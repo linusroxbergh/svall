@@ -466,7 +466,7 @@ export function setupUser(o: RunFrom & { home: string; settings?: JsonSettings; 
     done.push(`home folder skipped: ${(e as Error).message}`);
   }
   for (const r of reservedProfileHomes(path.dirname(o.home))) {
-    done.push(`${r.home} holds a fleet named ${r.name}, a name archi now keeps for its own command, so no -p reaches it: mv ${r.home} ${path.join(path.dirname(r.home), `.archipelago-${r.rename}`)}, then archi -p ${r.rename} setup`);
+    done.push(`${r.home} holds a fleet named ${r.name}, a name archi now keeps for its own command, so no -p reaches it: mv ${r.home} ${path.join(path.dirname(r.home), `.archipelago-${r.rename}`)}, then archi ${r.rename}`);
   }
   return done;
 }
