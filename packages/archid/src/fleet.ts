@@ -68,10 +68,11 @@ const RESUME_MS = 60_000;
 /** A resume typed into a revived terminal: the session it resumes and the command that resumes it again. */
 type Resume = { characterId: string; term?: 2; sessionId: string; kind: AgentKind; revive: { command: string }; at: number; ran: boolean };
 
-// the resume a revive types, when it brings back the session of the agent the terminal keeps
-function resumeOf(slot: TerminalSlot | undefined, characterId: string, term?: 2): Resume | undefined {
+// the resume a revive types, when it brings back the session of the agent the terminal keeps for a handover that
+// carries it or could not resume it; any other resume that fails leaves its terminal at the shell
+function resumeOf(slot: TerminalSlot | undefined, carried: boolean, characterId: string, term?: 2): Resume | undefined {
   const { agent, revive } = slot ?? {};
-  if (!agent || !revive?.command.includes(agent.sessionId)) return undefined;
+  if (!agent || !revive?.command.includes(agent.sessionId) || (!carried && slot?.resumeError === undefined)) return undefined;
   return { characterId, ...(term && { term }), sessionId: agent.sessionId, kind: agent.kind, revive: { ...revive }, at: Date.now(), ran: false };
 }
 
@@ -816,7 +817,7 @@ export class Fleet extends EventEmitter<Events> {
     const withPrompt = !!prompt && takesPrompt(resume);
     if (withPrompt) fs.writeFileSync(promptFile, prompt, { mode: 0o600 });
     const command = withPrompt ? withPromptFile(resume, promptFile) : resume;
-    const resuming = resumeOf(this.deps.store.state.characters[id], id);
+    const resuming = resumeOf(this.deps.store.state.characters[id], this.carried(id), id);
     this.deps.store.update((d) => {
       const cur = d.characters[id];
       cur.tmux = { windowId: w.windowId, paneId: w.paneId };
@@ -855,7 +856,7 @@ export class Fleet extends EventEmitter<Events> {
       await this.deps.tmux.killWindow(w.windowId);
       throw new NotFound(`no character ${id}`);
     }
-    const resuming = resumeOf(this.deps.store.state.characters[id].second, id, 2);
+    const resuming = resumeOf(this.deps.store.state.characters[id].second, this.carried(id, 2), id, 2);
     this.deps.store.update((d) => {
       const cur = d.characters[id];
       const second = { unread: false, ...cur.second, cwd, tmux: { windowId: w.windowId, paneId: w.paneId } };

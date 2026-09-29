@@ -1144,15 +1144,33 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id].tmux).toBeDefined();
   });
 
+  it('leaves a terminal whose ordinary revive exits back to its shell at that shell, and drops its agent', async () => {
+    const { fleet, store, tmux } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
+    await tmux.killWindow(c.tmux!.windowId);
+    await waitFor(() => store.state.characters[c.id].tmux === undefined);
+    // a resume of a session that is gone, as Claude's is once it has cleaned up the transcript
+    store.update((d) => { d.characters[c.id].revive = { command: `sleep 1; : --resume ${SID}` }; });
+
+    const { tmux: window } = await fleet.reviveCharacter(c.id);
+    await waitFor(() => store.state.characters[c.id].agent === undefined, 5000);
+    await waitForPolls(fleet, 3);
+    expect(store.state.characters[c.id].tmux).toEqual(window);
+    expect(store.state.characters[c.id].revive).toBeUndefined();
+    expect(store.state.characters[c.id].resumeError).toBeUndefined();
+    expect((await tmux.listWindows()).some((w) => w.windowId === window!.windowId && !w.dead)).toBe(true);
+  });
+
   it('lays a revived terminal dormant again with its session and resume when its agent leaves before that session starts, and not once it has', async () => {
     const { fleet, store, tmux } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
     await tmux.killWindow(c.tmux!.windowId);
     await waitFor(() => store.state.characters[c.id].tmux === undefined);
-    // a resume that runs a moment and exits, as a Claude without its login does
+    // a Retry of a terminal a handover could not resume, whose resume runs a moment and exits, as a Claude without its login does
     const revive = { command: `sleep 1; : --resume ${SID}` };
-    store.update((d) => { d.characters[c.id].revive = revive; });
+    store.update((d) => { d.characters[c.id].revive = revive; d.characters[c.id].resumeError = 'the handover could not resume it'; });
 
     await fleet.reviveCharacter(c.id);
     await waitFor(() => store.state.characters[c.id].tmux === undefined, 5000);
@@ -1179,7 +1197,11 @@ runIf('Fleet', () => {
     const revive = { command: `: --resume ${SID}` };
     store.update((d) => { d.characters[c.id].revive = revive; });
 
+    // a terminal a handover carries, opened by that handover, which answers for it straight after
+    let carried = true;
+    fleet.carries(() => carried);
     await fleet.reviveCharacter(c.id);
+    carried = false;
     await waitForPolls(fleet, 3);
     expect(store.state.characters[c.id]).toMatchObject({ tmux: expect.anything(), agent: { sessionId: SID } });
     await waitFor(() => store.state.characters[c.id].tmux === undefined, 5000);
