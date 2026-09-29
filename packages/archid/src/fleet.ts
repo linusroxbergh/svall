@@ -93,6 +93,8 @@ export class Fleet extends EventEmitter<Events> {
   private sweeping = false;
   private pendingLinks = new Set<string>();
   private openingSecond = new Map<string, Promise<Character>>();
+  // new characters between opening their window and typing their start command
+  private creating = new Set<Promise<unknown>>();
   // each revived terminal's resume, by window name, until its session starts
   private resuming = new Map<string, Resume>();
   // the question each character's answer is being typed for, kept when the fleet could not be written after it,
@@ -167,9 +169,9 @@ export class Fleet extends EventEmitter<Events> {
     void done.then(() => this.background.delete(done));
   }
 
-  /** Resolves once the background writes and the revives in flight have landed: after a freeze, none follows it. */
+  /** Resolves once the background writes and every window opening in flight have landed: after a freeze, none follows it. */
   async settle(): Promise<void> {
-    const inFlight = () => [...this.background, ...this.reviving.values(), ...this.openingSecond.values()];
+    const inFlight = () => [...this.background, ...this.creating, ...this.reviving.values(), ...this.openingSecond.values()];
     while (inFlight().length) await Promise.allSettled(inFlight());
     await this.scribe.settled();
   }
@@ -588,6 +590,41 @@ export class Fleet extends EventEmitter<Events> {
     // typed into claude's composer while it boots, a long prompt can arrive in pieces that swallow the Enter
     const prompt = p.command && takesPrompt(p.command) ? p.run : undefined;
     const promptFile = path.join(this.deps.paths.home, `${id}.prompt`);
+    this.deps.ownership.assertOwner('terminal');
+    const opening = this.openCharacter(id, cwd, p, prompt, promptFile);
+    this.creating.add(opening);
+    const done = () => { this.creating.delete(opening); };
+    void opening.then(done, done);
+    await opening;
+    // a freeze since the window opened stops the background work and the prompt
+    if (!this.writable()) {
+      if (p.run && !prompt) this.deps.log.error(`character ${id}: the fleet froze for a handover, prompt not sent`);
+      return { ...this.char(id), ...(p.run && { runSent: !!prompt }) };
+    }
+    this.refresh(id);
+    if (!p.run) return this.char(id);
+    const timeoutMs = this.deps.runTimeoutMs ?? RUN_TIMEOUT_MS;
+    let runSent = await this.waitForAgent(id, timeoutMs);
+    // claude and codex have their prompt already, and submit it once they are up
+    if (prompt) return { ...this.char(id), runSent: true };
+    if (runSent && !this.writable()) {
+      this.deps.log.error(`character ${id}: the fleet froze for a handover, prompt not sent`);
+      return { ...this.char(id), runSent: false };
+    }
+    if (runSent) {
+      // the window can die between the agent attaching and the send; the character stays, without its prompt
+      try { await this.run(id, p.run, true); } catch { runSent = false; }
+    }
+    // Claude Code asks whether an unfamiliar directory is trusted before it starts, and reports in only
+    // once answered: the whole wait passes with the pane sitting on the question, which is worth a line
+    if (!runSent) this.deps.log.error(`character ${id}: no agent reported in within ${timeoutMs}ms, prompt not sent`);
+    return { ...this.char(id), runSent };
+  }
+
+  // the window, the record and the start command of a new character; neither an orphan window nor a half-made character outlives a failure
+  private async openCharacter(
+    id: string, cwd: string, p: { islandId: string; name?: string; command?: string; cell?: Cell; agentProfile?: string }, prompt: string | undefined, promptFile: string,
+  ): Promise<void> {
     const w = await this.deps.tmux.newWindow(id, cwd, { ...characterKeyEnv(this.deps.paths.env), ARCHI_CHAR_ID: id, ARCHI_HOME: this.deps.paths.home });
     try {
       this.deps.store.update((d) => {
@@ -618,20 +655,6 @@ export class Fleet extends EventEmitter<Events> {
       await this.deps.tmux.killWindow(w.windowId);
       throw e;
     }
-    this.refresh(id);
-    if (!p.run) return this.char(id);
-    const timeoutMs = this.deps.runTimeoutMs ?? RUN_TIMEOUT_MS;
-    let runSent = await this.waitForAgent(id, timeoutMs);
-    // claude and codex have their prompt already, and submit it once they are up
-    if (prompt) return { ...this.char(id), runSent: true };
-    if (runSent) {
-      // the window can die between the agent attaching and the send; the character stays, without its prompt
-      try { await this.run(id, p.run, true); } catch { runSent = false; }
-    }
-    // Claude Code asks whether an unfamiliar directory is trusted before it starts, and reports in only
-    // once answered: the whole wait passes with the pane sitting on the question, which is worth a line
-    if (!runSent) this.deps.log.error(`character ${id}: no agent reported in within ${timeoutMs}ms, prompt not sent`);
-    return { ...this.char(id), runSent };
   }
 
   // true once the SessionStart hook has attached an agent; false when the window dies or the wait runs out

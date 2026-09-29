@@ -627,6 +627,48 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id].tmux).toBeUndefined();
   });
 
+  it('settles only once a character created before a freeze holds its window, and opens no window for one asked once frozen', async () => {
+    const b = await boot();
+    const { fleet, store, tmux, ownership } = b;
+    const islandId = fleet.createIsland({ name: 'x' }).id;
+    const real = tmux.newWindow.bind(tmux);
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    const spy = vi.spyOn(tmux, 'newWindow').mockImplementationOnce(async (...a) => { const w = await real(...a); await held; return w; });
+    // admitted while the fleet was writable, its window is open and not yet on its record when the freeze comes
+    const created = fleet.createCharacter({ islandId, cwd: '/tmp', command: 'sleep 600' });
+    await waitFor(() => spy.mock.calls.length === 1);
+    await ownership.freeze({ id: 'tx-1', fromMachineId: ownership.machineId, toMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'), phase: 'preparing', startedAt: 1 });
+    let settled = false;
+    const settling = fleet.settle().then(() => { settled = true; });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(settled).toBe(false);
+    release();
+    await settling;
+    // what the rest lists next is what the state holds
+    const c = Object.values(store.state.characters)[0];
+    expect((await tmux.listWindows()).map((w) => w.windowId)).toEqual([c.tmux!.windowId]);
+    await created;
+
+    await expect(fleet.createCharacter({ islandId, cwd: '/tmp' })).rejects.toMatchObject({ code: 'frozen' });
+    expect(await tmux.listWindows()).toHaveLength(1);
+  });
+
+  it('types no prompt into a character created before a freeze whose agent reports in after it', async () => {
+    const b = await boot({ runTimeoutMs: 5000 });
+    const { fleet, store, tmux, ownership } = b;
+    const typed: string[] = [];
+    const send = tmux.sendLine.bind(tmux);
+    vi.spyOn(tmux, 'sendLine').mockImplementation(async (pane, text, enter) => { typed.push(text); return send(pane, text, enter); });
+    const created = fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600', run: 'fix the tests' });
+    await waitFor(() => Object.keys(store.state.characters).length === 1 && typed.length === 1);
+    const id = Object.keys(store.state.characters)[0];
+    await ownership.freeze({ id: 'tx-1', fromMachineId: ownership.machineId, toMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'), phase: 'preparing', startedAt: 1 });
+    fleet.onSocketEvent({ hook: { charId: id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
+    expect((await created).runSent).toBe(false);
+    expect(typed).toEqual(['sleep 600']);
+  });
+
   it('goes back to a window whose kill failed, rather than start a second agent', async () => {
     const b = await boot();
     const { fleet, store, tmux } = b;
