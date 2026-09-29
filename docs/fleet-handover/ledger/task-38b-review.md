@@ -133,3 +133,51 @@ The performance changes are correct. None of them changes what a handover carrie
   - `tsc`: clean.
   - protocol, archid, cli, web and scripts: 4407 passed, 2 failed. `cli.test.ts --version` fails because an archive copy has no `.git`. transfer.test.ts "keeps a dropped link's partial copy…" is a timing test that failed at load 5–7 and passed 3/3 alone.
   - The integration run with fault scenarios was not rerun by the implementer or by me. The round trip passed in each setup, 40 benchmark handovers completed, and no recovery code changed.
+
+## Re-review of fix round 1
+
+**Verdict: Needs fixes.** One Important item remains: preflight should count files before it hashes them. All six findings are addressed. The fix diff introduces nothing Critical or Important; it widens one earlier path, noted below as N1 (Minor). Commits reviewed: 2ef3851b 515e9154 785ee975 2fae43ef 5926c4d2 bbb1d5f3 b4d9ba51 ee34500d.
+
+### Per finding
+
+| Finding | Verdict | Evidence |
+| --- | --- | --- |
+| I1: file bound | ADDRESSED | `too_many_files` is checked at preflight (`source.ts:222`, answered without file lists) and again at freeze (`:312`), using the smaller of the two heaps (`:174`). The controller fetches `system.info` again before freeze (`handover.ts:464`). Mutations each fail the test: no check at preflight, the destination's heap ignored, no check at freeze, `<` in place of `<=`. The catalogue row is at `errors.md:103`, and the catalogue test passes 15/15. Doc numbers: 4,288 MiB gives 274,432 files, and `host.json`'s 1,127,743,488 B gives 68,832. See the residual below. |
+| I2: manifest bound test | ADDRESSED | My mutation (`ino` + `sha1`) now fails at 230.0 B against 160. Leaving `mtimeMs` untruncated fails at 161.7 B. |
+| M1: collision preview | ADDRESSED | Flattening the groups again fails the pair check. The only caller of `caseCollisions` is `handover.ts:915`. |
+| M2: rejoin threshold | ADDRESSED | Rejoin is at ≤ 250 kB (`terminals.ts` `REJOIN_AT`). With `DRAIN_LIMIT - 1` the test gets `['term.resync', 'term.output']` at 999,999 and fails. Both tests now call `closeAll`. |
+| M3: doc numbers | ADDRESSED | The table and ranges match my recomputation over bench-final, bench-final-many, bench-final2 and bench-fix1: 26.0–57.0 / 39.5–179.6 s, controller 291.5–348.1 MiB, growth 235.8–297.7 and 54.7–120.1 MiB, rsync 7.7 MiB, longest event line 842 B. All 40 rows record AC, 100 % and both "No … warning" lines, before and after. The hand-measured figures are dropped or marked "by hand". |
+| M4: shared names | ADDRESSED | `--prefix` is on both harnesses, and the benchmark defaults to `archi-bench`. Setting the default back to `archi` in `handover.sh` fails `bench-names.test.ts`. `IT_LINK` was already read (`integration/machine.mjs:194`). |
+
+### The fixer's concerns
+
+- **Count before hashing (concern 1): yes, before version 1.**
+  - **Why it matters.** Preflight builds the whole manifest (`source.ts:221`) before `limits` can count. The fixer measured about 3.9 KB per file at preflight. A daemon with a 1,076 MiB heap therefore runs out at roughly 250k files, about 3.7× its 68,832 bound; the same ratio holds on 2 and 4 GiB heaps. Past that, the live owner's daemon crashes and restarts on every attempt, and the user never sees `too_many_files`, the one blocker that says what to do. Nothing is frozen, and tmux survives.
+  - **The fix is small, with no wire change.** Before `buildManifest`, walk the names only: `scanRoots(…, false)` with a counter, plus each session's file count. If the count is past the bound, answer the stripped manifest with `too_many_files`. The same count in freeze's pre-rest `manifestBlockers` (`:298`) would also refuse before any terminal is rested.
+  - **Test.** A `ScanFs` whose `read` throws must still yield `too_many_files` past the bound.
+- **Per-file budget from peak RSS, not heap (concern 2): acceptable.**
+  - RSS includes off-heap buffers and garbage not yet collected, so it overstates what counts against `heap_size_limit`.
+  - The budget sets 8 KiB against a 6.2 KB worst case and keeps half the heap in reserve.
+  - Paths longer than the benchmark's roughly 25 characters add bytes per copy, but not enough to use up that margin.
+- **Protocol 17 (asked).** Safe: main is at `PROTOCOL_VERSION = 16`, so 17 is unreleased.
+  - **Optional `heapLimit`.** A peer without it leaves `destination` undefined, and the source falls back to its own heap (`source.ts:174`). A controller that does not know the field strips it (`z.object`), with the same outcome.
+  - **The new enum value.** A peer without `too_many_files` would fail to parse it, but mixed builds are already refused by the exact-release check.
+  - **Other lists of codes.** No other code lists issue codes: grep over apps/ and packages/ finds no Swift or web switch.
+
+### New in the fix diff
+
+**N1 (Minor). With the file lists stripped, the destination is still inspected against empty lists.**
+`handover.ts:251,868`; `replicas.ts:293-297`.
+
+- **Why.** After a source refuses with `too_many_files`, the controller still sends `handover.inspect` with `content: contentDigest([])`.
+- **Effect.** The destination hashes any folder already at a root's path that no record covers, however large. It also reports `destination_occupied` for a folder that the full list would have adopted, which matches the stray blocker in the fixer's real run.
+- **Why it counts now.** The path existed for `manifest_too_large`, but the fix makes it reachable at about 69k files instead of 500k or more.
+- **Fix.** Skip `destinationChecks` when the source blocked on `too_many_files` or `manifest_too_large`, or pass no `content` for stripped roots.
+
+### Verified on a scratch copy of ee34500d
+
+- `tsc`: clean.
+- The seven changed test files: 194/194.
+- `test:faults`: 1302/1302.
+- Full protocol, archid, cli, web and scripts run at load average 20–30: 18 failures. The 15 affected files then passed 523/523 alone at load 5–7. `cli.test.ts --version` fails only because the archive copy has no `.git`.
+- Every mutation above was restored and compared against `git show ee34500d`.
