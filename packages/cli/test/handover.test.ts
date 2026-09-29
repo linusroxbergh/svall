@@ -551,6 +551,19 @@ describe('archi handover', () => {
     }
   });
 
+  it('holds its signal listeners while it closes its masters, and a signal then leaves at once', async () => {
+    const h = harness();
+    let during = -1;
+    const connect = h.deps.connect;
+    h.deps.connect = (c) => ({ ...connect(c), close: async () => { during = h.signals.listenerCount('SIGINT'); await forever(); } });
+    const run = runHandover(start(), h.ctx);
+    await waitFor(() => during !== -1);
+    expect(during).toBe(1);
+    h.signals.emit('SIGINT');
+    expect(await run).toEqual({ code: 0, hard: true });
+    for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP']) expect(h.signals.listenerCount(s), s).toBe(0);
+  });
+
   it('on a first Ctrl-C after a client already let the committed move go on, says so rather than leaving', async () => {
     const h = harness();
     let finish!: (o: Outcome) => void;

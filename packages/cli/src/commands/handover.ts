@@ -305,15 +305,16 @@ export async function runHandover(job: Job, c: Ctx): Promise<Ran> {
     record({ event: 'handover.result', data: stopped(redact(messageOf(e), tx?.secrets() ?? [])) });
     ran = { code: 1 };
   } finally {
-    if (listening) {
-      c.deps.signals.off('SIGINT', signal);
-      c.deps.signals.off('SIGTERM', signal);
-      c.deps.signals.off('SIGHUP', hangup);
-    }
+    // once the run is over a signal leaves at once, and the exit ends the masters still open
+    if (listening) for (const s of ['SIGINT', 'SIGTERM'] as const) { c.deps.signals.off(s, signal); c.deps.signals.on(s, hangup); }
     prompter?.close();
   }
   await server.close().catch(() => undefined);
-  if (!ran.hard) await tx?.close().catch(() => undefined);
+  if (!ran.hard && tx) {
+    const closing = tx.close().then(() => false, () => false);
+    if (await Promise.race([closing, left.then(() => true)])) ran = { ...ran, hard: true };
+  }
+  if (listening) for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) c.deps.signals.off(s, hangup);
   return ran;
 }
 
