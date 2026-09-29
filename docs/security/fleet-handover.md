@@ -289,12 +289,12 @@ of the manifest and of what landed, not read off the wire.
   each, two while a root is receiving), the memory of the daemons and the controller, and the time. The event stream
   and rsync's memory do not: every handover wrote 34 to 44 events, 6.1 to 8.1 kB, no line over 842 bytes, and no
   rsync went past 7.7 MiB.
-- **Each side reads every carried file several times.** The source hashes it at preflight and at freeze, and again in
-  the controller's verify when the controller runs there. The destination hashes a replica at preflight, again at the
-  claim, then what landed at prepare, and the roots once more after the Git import for the seal. rsync's checksum
-  compare reads both sides. Each proof guards a different moment (before any write, before `--delete`, after the copy,
-  after the import), so none is reused: a replica can change between preflight and the claim. Files are hashed eight
-  at a time.
+- **Each side reads every carried file several times.** The source walks the names at preflight and at freeze, then
+  hashes each file at both, and again in the controller's verify when the controller runs there. The destination
+  hashes a replica at preflight, again at the claim, then what landed at prepare, and the roots once more after the
+  Git import for the seal. rsync's checksum compare reads both sides. Each proof guards a different moment (before
+  any write, before `--delete`, after the copy, after the import), so none is reused: a replica can change between
+  preflight and the claim. Files are hashed eight at a time.
 
 ### Bounds
 
@@ -334,12 +334,11 @@ Other caps: a notification's POST body 64 KiB, a gateway line and a helper contr
   the heap, leaving the rest for the daemon's own state and for the garbage collector to work in:
   files ≤ heap / 2 / 8 KiB, the heap being the smaller of the two daemons' V8 `heap_size_limit` (the destination
   reports its own in `system.info`). Node sizes that heap from the machine's memory: 4,288 MiB on a 48 GB Mac holds
-  274,432 files, and the benchmark's 1,076 MiB 68,832 (`host.json`). The source checks at preflight, before anything
-  freezes, and answers without its file lists; freeze checks again. Preflight hashes every file before it can count
-  them, so a repository several times the bound can still run the source daemon out of heap at preflight, before
-  anything freezes. The controller runs on one of the two machines with that machine's default heap, and grew by less
-  a file than a daemon: its peak was at most 348.1 MiB for 50,000 files and at least 87.8 MiB for the small
-  repository.
+  274,432 files, and the benchmark's 1,076 MiB 68,832 (`host.json`). The source counts the files from their names
+  before it reads any: at preflight, which then answers without its file lists, and at freeze before any terminal
+  rests. A fleet however far past the bound is refused that way, never hashed; freeze checks the read manifest again.
+  The controller runs on one of the two machines with that machine's default heap, and grew by less a file than a
+  daemon: its peak was at most 348.1 MiB for 50,000 files and at least 87.8 MiB for the small repository.
 - **More than ten terminals on one remote machine** go past sshd's default `MaxSessions 10` on the shared master.
   Each one past the tenth prints one "Session open refused by peer" line and opens its own login, and while the master
   is full the helper's 30-second check does too. Measured by hand between the containers, not by the benchmark: a

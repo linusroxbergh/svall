@@ -23,7 +23,7 @@ import { discoverGit } from './git-graph.js';
 import { canonicalJson } from './hash.js';
 import { buildInventory, expandExcludes, settle, type Inventory, type InventoryRoot, type MachineMaps } from './inventory.js';
 import { SourceJournal } from './journal.js';
-import { buildManifest, manifestBlockers, readManifest, realScanFs, summarize, writeManifest, type ScanFs } from './manifest.js';
+import { buildManifest, readManifest, realScanFs, summarize, writeManifest, type ScanFs } from './manifest.js';
 import { ProcessTable } from './processes.js';
 import { ReplicaStore, replicaRoots } from './replicas.js';
 import { classifyTerminals, launchFlags, restChoices, restTerminals, unapproved, type Clock, type RestDeps, type RestOptions } from './rest.js';
@@ -171,8 +171,7 @@ function oversize(m: TransferManifestV1, cap: number): Blocker | undefined {
 export const HEAP_PER_FILE = 8 * 1024;
 
 /** More files than the daemon with the smaller heap holds through a handover: the manifest, what landed, their JSON and the scans. */
-function crowded(m: TransferManifestV1, own: number, destination: number | undefined): Blocker | undefined {
-  const files = m.roots.reduce((n, r) => n + r.files.length, 0) + m.sessions.reduce((n, s) => n + s.files.length, 0);
+function crowded(files: number, own: number, destination: number | undefined): Blocker | undefined {
   const [heap, whose] = destination !== undefined && destination < own ? [destination, "the destination's"] : [own, "this machine's"];
   const most = Math.floor(heap / 2 / HEAP_PER_FILE);
   return files <= most ? undefined : {
@@ -218,14 +217,19 @@ export class SourceHandover {
       const slot = t.term === 2 ? c?.second : c;
       if (slot?.agent) slot.revive = { command: reviveCommand(slot, launchFlags(t)) };
     }
-    const built = await buildManifest(inventory, { generation: this.ownership.record().generation }, this.d.scanFs);
-    const big = this.limits(built.manifest, p.destination.info);
+    const header = { generation: this.ownership.record().generation };
+    // counted from names before any file is read, so a fleet far past the bound is refused without being hashed
+    const names = await buildManifest(inventory, header, this.d.scanFs, false);
+    const crowd = this.crowded(names.listed.files, p.destination.info);
+    const built = crowd ? names : await buildManifest(inventory, header, this.d.scanFs);
+    const big = crowd ? [crowd] : this.limits(built.manifest, p.destination.info);
     // one too large to answer whole is answered without its file lists
     const manifest = big.length
       ? { ...built.manifest, roots: built.manifest.roots.map((r) => ({ ...r, files: [] })), sessions: built.manifest.sessions.map((x) => ({ ...x, files: [] })) }
       : built.manifest;
     return {
-      manifestSummary: summarize(built.manifest), blockers: settle([...blockers, ...built.blockers, ...big]),
+      manifestSummary: crowd ? { ...summarize(manifest), ...names.listed } : summarize(built.manifest),
+      blockers: settle([...blockers, ...built.blockers, ...big]),
       warnings: settle([...built.warnings, ...platformWarnings(built.manifest, p.destination.info.platform)]),
       manifest,
     };
@@ -295,7 +299,9 @@ export class SourceHandover {
 
     const found = await this.check(tx.toMachineId, p, this.d.store.state);
     // what the manifest would refuse, found from names alone while every terminal still runs
-    const before = [...found.blockers, ...(await manifestBlockers(found.inventory, this.d.scanFs))];
+    const names = await buildManifest(found.inventory, { transactionId: tx.id, generation: p.generation }, this.d.scanFs, false);
+    const crowd = this.crowded(names.listed.files, p.destination.info);
+    const before = [...found.blockers, ...names.blockers, ...(crowd ? [crowd] : [])];
     if (before.length) return this.refuse(tx.id, before);
     const ids = Object.keys(this.d.store.state.characters);
     for (const id of ids) this.progress(tx.id, id);
@@ -388,8 +394,12 @@ export class SourceHandover {
 
   /** A manifest too large to travel whole, or with more files than either daemon holds through a handover. */
   private limits(m: TransferManifestV1, destination: SystemInfo): Blocker[] {
-    const own = this.d.heapLimit ?? v8.getHeapStatistics().heap_size_limit;
-    return [oversize(m, this.d.manifestBytes ?? MAX_MANIFEST_BYTES), crowded(m, own, destination.heapLimit)].filter((b) => b !== undefined);
+    const files = m.roots.reduce((n, r) => n + r.files.length, 0) + m.sessions.reduce((n, s) => n + s.files.length, 0);
+    return [oversize(m, this.d.manifestBytes ?? MAX_MANIFEST_BYTES), this.crowded(files, destination)].filter((b) => b !== undefined);
+  }
+
+  private crowded(files: number, destination: SystemInfo): Blocker | undefined {
+    return crowded(files, this.d.heapLimit ?? v8.getHeapStatistics().heap_size_limit, destination.heapLimit);
   }
 
   /** What stops the move before any terminal is touched: identities, releases, agent CLIs, characters kept here, platforms and paths. */

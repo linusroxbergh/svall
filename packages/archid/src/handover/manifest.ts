@@ -33,7 +33,9 @@ export const realScanFs: ScanFs = {
 
 /** A preflight's manifest names no transaction; a freeze's names the one it froze for. */
 export type ManifestHeader = { transactionId?: string; generation: number };
-export type BuiltManifest = { manifest: TransferManifestV1; digest: string; blockers: Blocker[]; warnings: Warning[] };
+/** `listed`: the carried files and their bytes as the walk found them, read or not. */
+export type BuiltManifest = { manifest: TransferManifestV1; digest: string; blockers: Blocker[]; warnings: Warning[]; listed: Listed };
+type Listed = { files: number; bytes: number };
 
 const ENV_FILE = /^\.env(\..+)?$/;
 // the logins other tools keep in plain text under an account's home
@@ -46,7 +48,7 @@ const HASHING = 8;
 const gone = (e: unknown): boolean => (e as NodeJS.ErrnoException).code === 'ENOENT';
 const reason = (e: unknown): string => (e as NodeJS.ErrnoException).code ?? String(e);
 
-type Scan = { files: TransferFile[]; problems: string[]; envFiles: string[]; credentialFiles: string[] };
+type Scan = { files: TransferFile[]; problems: string[]; envFiles: string[]; credentialFiles: string[]; listed: Listed };
 
 async function* tap(chunks: AsyncIterable<Buffer>, into: Buffer[] | undefined): AsyncIterable<Buffer> {
   for await (const chunk of chunks) { into?.push(chunk); yield chunk; }
@@ -102,11 +104,13 @@ async function walk(scan: Scan, base: string, relative: string, excluded: (relat
       try {
         const target = await sfs.readlink(file);
         if (CONTROL.test(target)) scan.problems.push(`${JSON.stringify(rel)}: a link whose text holds a control character`);
-        else scan.files.push({ type: 'symlink', path: rel, target });
+        else { scan.files.push({ type: 'symlink', path: rel, target }); scan.listed.files++; }
       } catch (e) {
         if (!gone(e)) scan.problems.push(`${rel}: ${reason(e)}`);
       }
     } else if (!excluded(rel, false) && st.isFile()) {
+      scan.listed.files++;
+      scan.listed.bytes += st.size;
       // a Git index is read whole, so only one is held at a time
       if (hashing && name === 'index') await addFile(scan, rel, file, st, sfs);
       else if (hashing) await hashing.add(() => addFile(scan, rel, file, st, sfs));
@@ -124,14 +128,17 @@ const listed = (items: string[], limit: number): string => {
 
 /**
  * Reads every root and session the inventory names into one manifest, hashing each file as a stream,
- * and names the result by the digest of its canonical JSON.
+ * and names the result by the digest of its canonical JSON. Without `read` it walks the names alone and reads no
+ * file: the manifest lists links only, and `listed` and the blockers are what a read would find from names.
  */
-export async function buildManifest(inventory: Inventory, header: ManifestHeader, sfs: ScanFs = realScanFs): Promise<BuiltManifest> {
-  const { roots, blockers, warnings } = await scanRoots(inventory, sfs, true);
+export async function buildManifest(inventory: Inventory, header: ManifestHeader, sfs: ScanFs = realScanFs, read = true): Promise<BuiltManifest> {
+  const { roots, blockers, warnings, listed: counted } = await scanRoots(inventory, sfs, read);
   const sessions: TransferSession[] = [];
   for (const session of inventory.sessions) {
-    const carried = await scanSession(session, sfs, true);
+    const carried = await scanSession(session, sfs, read);
     blockers.push(...carried.blockers);
+    counted.files += carried.listed.files;
+    counted.bytes += carried.listed.bytes;
     if (carried.session) sessions.push(carried.session);
   }
 
@@ -149,23 +156,14 @@ export async function buildManifest(inventory: Inventory, header: ManifestHeader
     sessions,
     git: inventory.git,
   });
-  return { manifest, digest: manifestDigest(manifest), blockers: settle(blockers), warnings: settle(warnings) };
+  return { manifest, digest: manifestDigest(manifest), blockers: settle(blockers), warnings: settle(warnings), listed: counted };
 }
 
-/**
- * What a manifest built now would be refused for, from names and existence alone: every root is walked
- * without a file read, and each session's files are found without reading them.
- */
-export async function manifestBlockers(inventory: Inventory, sfs: ScanFs = realScanFs): Promise<Blocker[]> {
-  const { blockers } = await scanRoots(inventory, sfs, false);
-  for (const session of inventory.sessions) blockers.push(...(await scanSession(session, sfs, false)).blockers);
-  return settle(blockers);
-}
-
-async function scanRoots(inventory: Inventory, sfs: ScanFs, hash: boolean): Promise<{ roots: TransferRoot[]; blockers: Blocker[]; warnings: Warning[] }> {
+async function scanRoots(inventory: Inventory, sfs: ScanFs, hash: boolean): Promise<{ roots: TransferRoot[]; blockers: Blocker[]; warnings: Warning[]; listed: Listed }> {
   const blockers = [...inventory.blockers];
   const warnings: Warning[] = [...inventory.warnings];
   const roots: TransferRoot[] = [];
+  const counted: Listed = { files: 0, bytes: 0 };
   for (const root of inventory.roots) {
     const entity: HandoverEntity = { kind: 'root', id: root.id };
     const scanned = await scanPath(root.path, rootMatcher(root.kind, inventory.excludes), sfs, !root.foldedInto, hash);
@@ -175,6 +173,8 @@ async function scanRoots(inventory: Inventory, sfs: ScanFs, hash: boolean): Prom
       continue;
     }
     const { entry, files, problems, envFiles, credentialFiles } = scanned;
+    counted.files += scanned.listed.files;
+    counted.bytes += scanned.listed.bytes;
     if (problems.length) {
       blockers.push({ code: 'path_unsupported', message: `${root.path}: ${problems.length} ${problems.length === 1 ? 'path' : 'paths'} cannot be carried: ${listed(problems, 5)}`, entity });
     }
@@ -192,7 +192,7 @@ async function scanRoots(inventory: Inventory, sfs: ScanFs, hash: boolean): Prom
     }
     roots.push({ ...root, entry, files: files.sort((a, b) => byCodeUnit(a.path, b.path)) });
   }
-  return { roots, blockers, warnings };
+  return { roots, blockers, warnings, listed: counted };
 }
 
 /**
@@ -200,12 +200,13 @@ async function scanRoots(inventory: Inventory, sfs: ScanFs, hash: boolean): Prom
  * source's agent home, and where the transcript lands: at the same place under the destination's agent home.
  * Without `read` its files are only found to be there.
  */
-async function scanSession(session: InventorySession, sfs: ScanFs, read: boolean): Promise<{ session?: TransferSession; blockers: Blocker[] }> {
+async function scanSession(session: InventorySession, sfs: ScanFs, read: boolean): Promise<{ session?: TransferSession; blockers: Blocker[]; listed: Listed }> {
   const entity: HandoverEntity = { kind: 'character', id: session.characterId };
   const adapter = sessionAdapter(session.agent);
+  const counted: Listed = { files: 0, bytes: 0 };
   let found: FoundSession;
   try { found = await adapter.discover(session.sourcePath, session.sessionId, sfs); } catch (e) {
-    if (e instanceof SessionError) return { blockers: [{ code: e.code, message: e.message, entity }] };
+    if (e instanceof SessionError) return { blockers: [{ code: e.code, message: e.message, entity }], listed: counted };
     throw e;
   }
   const files: TransferFile[] = [];
@@ -214,11 +215,13 @@ async function scanSession(session: InventorySession, sfs: ScanFs, read: boolean
     const file = path.posix.join(found.home, rel);
     try {
       const st = await sfs.lstat(file);
+      counted.files++;
+      counted.bytes += st.size;
       if (!read) continue;
       const { sha256, size } = await hashStream(sfs.read(file));
       files.push({ type: 'file', path: rel, mode: st.mode & 0o7777, size, mtimeMs: Math.trunc(st.mtimeMs), sha256 });
     } catch (e) {
-      if (rel === found.transcript && gone(e)) return { blockers: [{ code: 'transcript_missing', message: `${session.sourcePath} is not there`, entity }] };
+      if (rel === found.transcript && gone(e)) return { blockers: [{ code: 'transcript_missing', message: `${session.sourcePath} is not there`, entity }], listed: counted };
       // a sidecar removed since the listing is simply not there; the verify pass catches the change
       if (!gone(e)) unreadable.push(`${rel}: ${reason(e)}`);
     }
@@ -227,7 +230,7 @@ async function scanSession(session: InventorySession, sfs: ScanFs, read: boolean
   if (!session.destinationHome) blockers.push({ code: 'agent_cli_missing', message: `the destination reported no ${session.agent} home to place ${session.sessionId} in`, entity });
   if (unreadable.length) blockers.push({ code: 'path_unsupported', message: `${session.sourcePath}: ${listed(unreadable, 5)}`, entity });
   const placed = session.destinationHome ? { destinationPath: path.posix.join(session.destinationHome, found.transcript) } : {};
-  return { session: { ...session, ...placed, sourceHome: found.home, adapter: adapter.adapter, files }, blockers };
+  return { session: { ...session, ...placed, sourceHome: found.home, adapter: adapter.adapter, files }, blockers, listed: counted };
 }
 
 /**
@@ -239,11 +242,12 @@ export async function scanPath(
   top: string, excluded: (relative: string, dir: boolean) => boolean, sfs: ScanFs = realScanFs, contents = true, hash = true,
 ): Promise<(Scan & { entry: TransferRoot['entry'] }) | undefined> {
   let st: Stat;
+  const counted: Listed = { files: 0, bytes: 0 };
   try { st = await sfs.stat(top); } catch (e) {
     if (gone(e)) return undefined;
-    return { entry: 'dir', files: [], problems: [reason(e)], envFiles: [], credentialFiles: [] };
+    return { entry: 'dir', files: [], problems: [reason(e)], envFiles: [], credentialFiles: [], listed: counted };
   }
-  const scan: Scan & { entry: TransferRoot['entry'] } = { entry: st.isDirectory() ? 'dir' : 'file', files: [], problems: [], envFiles: [], credentialFiles: [] };
+  const scan: Scan & { entry: TransferRoot['entry'] } = { entry: st.isDirectory() ? 'dir' : 'file', files: [], problems: [], envFiles: [], credentialFiles: [], listed: counted };
   if (!contents) return scan;
   if (st.isDirectory()) {
     const hashing = hash ? pool(HASHING) : undefined;
@@ -251,6 +255,8 @@ export async function scanPath(
     await hashing?.drain();
     scan.files.sort((a, b) => byCodeUnit(a.path, b.path));
   } else if (st.isFile()) {
+    counted.files++;
+    counted.bytes += st.size;
     if (hash) await addFile(scan, '', top, st, sfs);
     if (CREDENTIAL_FILE.test(top)) scan.credentialFiles.push(top);
   }

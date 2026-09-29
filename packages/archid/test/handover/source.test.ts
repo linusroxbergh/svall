@@ -385,6 +385,31 @@ describe('source preflight', () => {
     expect(b.ownership.writable()).toBe(true);
   });
 
+  it('refuses a fleet past the bound from its names, reading no file, at preflight and at freeze before any terminal rests', async () => {
+    const b = boot();
+    const { files } = (await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() })).manifestSummary;
+    // a heap that holds half the files, so reading every one to count them would be past it
+    b.deps.heapLimit = Math.floor(files / 2) * 2 * HEAP_PER_FILE;
+    let reads = 0;
+    b.deps.scanFs = { ...realScanFs, read: (p) => { reads++; throw new Error(`${p} read past the bound`); } };
+    const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() });
+    expect(r.blockers).toEqual([{
+      code: 'too_many_files',
+      message: expect.stringContaining(`this handover carries ${files} files, and this machine's daemon`),
+    }]);
+    expect(r.manifestSummary.files).toBe(files);
+    expect(r.manifest.roots.every((x) => x.files.length === 0)).toBe(true);
+    expect(reads).toBe(0);
+
+    b.gateway.begin();
+    const refused = await refusal(b.handover.freeze(b.freezeParams()));
+    expect(refused.data.blockers).toEqual([expect.objectContaining({ code: 'too_many_files' })]);
+    expect(reads).toBe(0);
+    // settled and taken back, and no terminal sent a key or closed
+    expect(b.world.log).toEqual(['settle', 'activate', 'reconcile']);
+    expect(b.ownership.writable()).toBe(true);
+  });
+
   it('blocks a destination on another release, protocol or schema, and one whose agent CLI cannot resume the sessions', async () => {
     const b = boot();
     const codes = async (info: Partial<SystemInfo>) =>
