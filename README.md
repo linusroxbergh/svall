@@ -381,11 +381,12 @@ brief and scribe as Claude Code.
 without the app (`--check` only checks). It changes nothing while something it
 needs is missing. It writes:
 
-- `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`), when
-  Claude Code is installed or `~/.claude` exists: a hook on Claude Code's
-  session, prompt, tool, notification and stop events, which exits before
-  starting Node outside a character, and a statusline wrapper that keeps your
-  own statusline running inside it. Every change keeps a `.bak-<time>` copy.
+- `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`, on Linux
+  the one your login shell sets), when Claude Code is installed or `~/.claude`
+  exists: a hook on Claude Code's session, prompt, tool, notification and stop
+  events, which exits before starting Node outside a character, and a
+  statusline wrapper that keeps your own statusline running inside it. Every
+  change keeps a `.bak-<time>` copy.
 - `~/.codex/hooks.json`, when Codex is installed or `~/.codex` exists
   (creating `~/.codex`): the same hook and backup.
 - `~/Library/LaunchAgents/io.github.linusroxbergh.archipelago.archid*.plist`,
