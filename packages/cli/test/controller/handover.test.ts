@@ -466,6 +466,19 @@ describe('preflight', () => {
     }
   });
 
+  it('reaches a far machine again after an ssh failure a transport comes back from, and goes on, but tries it once after any other', async () => {
+    for (const [kind, reached, status] of [['unreachable', 2, 'complete'], ['other', 1, 'interrupted']] as const) {
+      const w = new World();
+      let asked = 0;
+      const side = async (id: MachineId) => {
+        if (id === trift && asked++ === 0) throw new SshError(kind, `ssh could not reach trift: ${kind}`);
+        return w.side(id);
+      };
+      const out = await controller(w, { side }).start(trift, {});
+      expect([kind, asked, out.status]).toEqual([kind, reached, status]);
+    }
+  });
+
   it('asks a far gateway nothing once its ssh destination answers as another machine', async () => {
     const ssh = installFakeSsh();
     const masters = new Masters();
