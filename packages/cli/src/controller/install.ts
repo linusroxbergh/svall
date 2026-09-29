@@ -64,14 +64,19 @@ export function companionAsset(releaseRoot: string, platform: string): { url: st
   return { url: asset.url, sha256: asset.sha256, unsignedBuild: manifest.unsigned === true };
 }
 
+const sha256Of = (body: Buffer): string => crypto.createHash('sha256').update(body).digest('hex');
+
 /**
- * Fetches a published companion into the cache, keeping nothing whose digest is not the published one.
- * A development build names the companion it built beside it with a file: URL.
+ * Fetches a published companion into the cache, keeping nothing whose digest is not the published one, unless the cache
+ * holds it already. A development build names the companion it built beside it with a file: URL, which its next build deletes.
  */
 export async function downloadCompanion(o: { url: string; sha256: string; dir: string; fetch: FetchLike }): Promise<string> {
   const url = new URL(o.url);
   const name = path.basename(url.pathname) || 'companion.tar.gz';
   const dest = path.join(o.dir, name);
+  let cached: Buffer | undefined;
+  try { cached = fs.readFileSync(dest); } catch { /* not in the cache yet */ }
+  if (cached && sha256Of(cached) === o.sha256) return dest;
   let body: Buffer;
   if (url.protocol === 'file:') {
     body = fs.readFileSync(fileURLToPath(url));
@@ -80,7 +85,7 @@ export async function downloadCompanion(o: { url: string; sha256: string; dir: s
     if (!res.ok) throw new Error(`${o.url}: HTTP ${res.status}`);
     body = Buffer.from(await res.arrayBuffer());
   }
-  const digest = crypto.createHash('sha256').update(body).digest('hex');
+  const digest = sha256Of(body);
   if (digest !== o.sha256) throw new Error(`${o.url} is not the published companion: expected digest ${o.sha256}, got ${digest}`);
   fs.mkdirSync(o.dir, { recursive: true });
   const part = `${dest}.part-${process.pid}`;

@@ -177,6 +177,20 @@ describe('where the companion comes from', () => {
       .rejects.toThrow(/digest/);
   });
 
+  it('takes the copy in the cache that holds the pinned digest before it reads or fetches the pinned URL, so a workspace archive a later build deleted still installs', async () => {
+    const archive = makeArchive();
+    const body = fs.readFileSync(archive);
+    const sha256 = crypto.createHash('sha256').update(body).digest('hex');
+    const dir = path.join(work, 'cache');
+    const noFetch = () => Promise.reject(new Error('fetched'));
+    const first = await downloadCompanion({ url: pathToFileURL(archive).href, sha256, dir, fetch: noFetch });
+    fs.rmSync(archive);
+    expect(await downloadCompanion({ url: pathToFileURL(archive).href, sha256, dir, fetch: noFetch })).toBe(first);
+    // a cached copy that does not hold the pin is no copy of it
+    fs.writeFileSync(first, 'something else');
+    await expect(downloadCompanion({ url: pathToFileURL(archive).href, sha256, dir, fetch: noFetch })).rejects.toThrow(/ENOENT/);
+  });
+
   it('keeps downloads under the user data directory', () => {
     expect(companionCache('/home/linus')).toBe('/home/linus/.local/share/archipelago/companions');
   });
