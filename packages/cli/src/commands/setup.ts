@@ -3,13 +3,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { Command } from 'commander';
 import { findAgents } from '@archipelago/archid/agents';
-import { codexPaths } from '@archipelago/archid/codex/install';
-import { ourUnits, restartUnits, setupLinuxRelease, unitDirOf } from '@archipelago/archid/linux/setup';
+import { codexPaths, type CodexPaths } from '@archipelago/archid/codex/install';
+import { agentHomesEnv, ourUnits, restartUnits, setupLinuxRelease, unitDirOf } from '@archipelago/archid/linux/setup';
 import { realRun } from '@archipelago/archid/linux/service';
 import { defaultsPrefs, moveOldIds, oldIdsLeft, runLaunchctl, signInsLeft, type Launchctl } from '@archipelago/archid/legacy';
-import { resolvePaths, userPaths } from '@archipelago/archid/paths';
+import { claudePaths, resolvePaths, userPaths } from '@archipelago/archid/paths';
 import { LAUNCHD_LABEL, PRIVATE, profileHome } from '@archipelago/archid/profile';
-import { claudeHooksCurrent, codexHooksCurrent, plistCurrent, readCodexHooks, readJsonSettings, requireWritableHooks, runSetup, shimsCurrent, type RunFrom } from '@archipelago/archid/setup';
+import { claudeHooksCurrent, codexHooksCurrent, launchdEnv, plistCurrent, readCodexHooks, readJsonSettings, requireWritableHooks, runSetup, shimsCurrent, type RunFrom } from '@archipelago/archid/setup';
 import { appQuit, fleetHomes } from '@archipelago/archid/uninstall';
 import type { AgentKind } from '@archipelago/protocol';
 import { DEFAULT_PREFIX, allowedSigners, installRelease, rollbackRelease } from '../../../../scripts/install-release.mjs';
@@ -101,14 +101,16 @@ export async function daemonRuns(release: string, connect: () => Promise<Daemon>
   }
 }
 
-async function setupPlatform(t: Target, o: Options, from: From, systemd: boolean, agents: AgentKind[]): Promise<string[]> {
+async function setupPlatform(
+  t: Target, o: Options, from: From, systemd: boolean, a: { agents: AgentKind[]; settingsPath: string; codex: CodexPaths; env: Record<string, string> },
+): Promise<string[]> {
   const shared = {
     home: t.home,
-    settingsPath: userPaths().claudeSettings,
-    codex: codexPaths(),
+    settingsPath: a.settingsPath,
+    codex: a.codex,
     shimDir: userPaths().shimDir,
     replaceSettings: o.replaceSettings,
-    agents,
+    agents: a.agents,
   };
   if (!systemd) {
     return runSetup({ ...from, ...shared, launchAgentsDir: userPaths().launchAgents, launchctl: o.launchctl && process.platform === 'darwin' });
@@ -117,6 +119,7 @@ async function setupPlatform(t: Target, o: Options, from: From, systemd: boolean
   const tmuxVersion = await realRun('tmux', ['-V']).then((r) => r.stdout.trim(), () => undefined);
   return setupLinuxRelease({
     ...from, ...shared,
+    env: a.env,
     fleet: t.name,
     tmuxVersion,
     homedir: os.homedir(),
@@ -153,14 +156,16 @@ export function setupCommand(
       if (t.name !== PRIVATE) throw new Error(`archi setup configures the private fleet; run archi ${t.name} to open that one`);
       const pre = realPreflightDeps(t.home, platform);
       const checks = await preflight(pre);
-      const settingsPath = userPaths().claudeSettings;
+      // the agent homes the daemon is given, where its agents read their hooks: on Linux the login shell's, which an ssh command's env may not name
+      const env = systemd ? await agentHomesEnv(realRun) : launchdEnv();
+      const settingsPath = path.join(claudePaths(env).dir, 'settings.json');
       const library = path.join(os.homedir(), 'Library');
       const notes: Check[] = [];
       const signIns = systemd ? undefined : signInsLeft(library);
       if (signIns) notes.push({ name: 'sign-ins', status: 'warn', detail: signIns });
       // the agent CLIs the daemon's unit finds, which an ssh login's PATH may not reach
       const agents = findAgents(pre.agentPath ?? pre.pathEnv);
-      const codex = codexPaths();
+      const codex = codexPaths(env);
       const claudeWanted = agents.includes('claude') || fs.existsSync(path.dirname(settingsPath));
       const codexWanted = agents.includes('codex') || fs.existsSync(codex.dir);
       // these throw on a file setup could not write back, so --check covers it too
@@ -209,7 +214,7 @@ export function setupCommand(
       }) : [];
       const done: string[] = [...moved];
       try {
-        done.push(...await setupPlatform(t, o, runFrom(o, done), systemd, agents));
+        done.push(...await setupPlatform(t, o, runFrom(o, done), systemd, { agents, settingsPath, codex, env }));
       } catch (e) {
         // what moved stays moved, and a second run finds nothing left to say it
         if (moved.length) (e as Error).message = [...moved, (e as Error).message].join('\n');

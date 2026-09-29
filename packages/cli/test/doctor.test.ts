@@ -1,14 +1,17 @@
+import fs from 'node:fs';
 import os from 'node:os';
-import { describe, expect, it, vi } from 'vitest';
+import path from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { codexHookCommand, mergeCodexHooks } from '@archipelago/archid/codex/install';
 import { archidUnit, unitEnv } from '@archipelago/archid/linux/setup';
 import { LAUNCHD_LABEL } from '@archipelago/archid/profile';
 import { repoRoot } from '@archipelago/archid/release';
 import { HOOK_EVENTS, hookCommand, mergeHooks, mergeStatusLine, nodeRun, statusWrapper } from '@archipelago/archid/setup';
+import { cleanHomes, makeHome } from '@archipelago/archid/test-helpers';
 import type { AgentKind } from '@archipelago/protocol';
 import { DEFAULT_PREFIX } from '../../../scripts/install-release.mjs';
 import type { HookTrust } from '../src/codex-trust.js';
-import { codexCheck, doctor, preflight, realPreflightDeps, reportLines, requireReady, type DoctorDeps } from '../src/commands/doctor.js';
+import { codexCheck, doctor, doctorCommand, preflight, realPreflightDeps, reportLines, requireReady, type DoctorDeps } from '../src/commands/doctor.js';
 
 const priv = { name: 'private', home: '/u/.archipelago', managed: true };
 const adhoc = { name: 'archi-dev', home: '/tmp/archi-dev', managed: false };
@@ -403,6 +406,32 @@ describe('doctor on Linux', () => {
     const f = linux({ 'claude --version': undefined as never });
     expect(byName(await doctor(priv, f.deps)).agents).toMatchObject({ status: 'warn', detail: expect.stringMatching(/neither claude nor codex/) });
     expect(requireReady(await preflight(f.deps))).toEqual(expect.arrayContaining([expect.stringMatching(/^! agents/)]));
+  });
+});
+
+describe('archi doctor on Linux', () => {
+  afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); process.exitCode = 0; cleanHomes(); });
+
+  it('checks the hooks where the unit\'s CLAUDE_CONFIG_DIR and CODEX_HOME point, which only the login shell names', async () => {
+    const home = makeHome();
+    vi.stubEnv('HOME', home);
+    const local = path.join(home, '.local', 'bin');
+    fs.mkdirSync(local, { recursive: true });
+    fs.writeFileSync(path.join(local, 'claude'), '#!/bin/sh\necho "2.1.300 (Claude Code)"\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(local, 'codex'), '#!/bin/sh\necho "codex-cli 0.156.1"\n', { mode: 0o755 });
+    const claudeDir = path.join(home, '.config', 'claude');
+    const codexDir = path.join(home, '.config', 'codex');
+    const bin = makeHome();
+    // the account's profile sets both, and the ssh command doctor runs in reads no profile
+    fs.writeFileSync(path.join(bin, 'login-shell'), `#!/bin/sh\nexport CLAUDE_CONFIG_DIR='${claudeDir}' CODEX_HOME='${codexDir}'\nexec /bin/sh -c "$2"\n`, { mode: 0o755 });
+    vi.stubEnv('SHELL', path.join(bin, 'login-shell'));
+    vi.stubEnv('PATH', `${bin}:/usr/bin:/bin`);
+    const out: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { out.push(String(chunk)); return true; });
+    await doctorCommand(() => ({ name: 'private', home: path.join(home, '.archipelago'), managed: true }), () => true, 'linux').parseAsync([], { from: 'user' });
+    const c = byName(JSON.parse(out.join('')));
+    expect(c.hooks).toMatchObject({ status: 'fail', detail: `not installed in ${claudeDir}/settings.json: archi setup` });
+    expect(c['codex hooks']).toMatchObject({ status: 'warn', detail: `not installed in ${codexDir}/hooks.json: archi setup` });
   });
 });
 

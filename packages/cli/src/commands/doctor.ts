@@ -15,7 +15,7 @@ import { gatewayPaths, socketTooLong } from '@archipelago/archid/gateway/authori
 import { gatewayPrefix } from '@archipelago/archid/gateway/bin';
 import { lingerState, unitStatus, type Run } from '@archipelago/archid/linux/service';
 import { agentHomesEnv, archidUnitName, GATEWAY_UNIT, unitDirOf, unitEnv, unitPath } from '@archipelago/archid/linux/setup';
-import { resolvePaths, userPaths } from '@archipelago/archid/paths';
+import { claudePaths, resolvePaths, userPaths } from '@archipelago/archid/paths';
 import { OLD_LAUNCHD_LABEL, PRIVATE, profileHome, profileLabel } from '@archipelago/archid/profile';
 import { isRelease } from '@archipelago/archid/release';
 import { HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hooksInstalled, launchdEnv, plistEnv, plistRun } from '@archipelago/archid/setup';
@@ -436,26 +436,29 @@ export function realPreflightDeps(home: string, platform: NodeJS.Platform = proc
   };
 }
 
-export function doctorCommand(target: () => Target, json: () => boolean): Command {
+export function doctorCommand(target: () => Target, json: () => boolean, platform: NodeJS.Platform = process.platform): Command {
   return new Command('doctor').description('check what the fleet needs and show the end of its log; changes nothing').action(async () => {
     const t = target();
-    const pre = realPreflightDeps(t.home);
+    const pre = realPreflightDeps(t.home, platform);
+    // a login shell asked over ssh must leave host add's doctor its own time to answer
+    const daemonEnv = platform === 'linux' ? await agentHomesEnv((cmd, args) => execFileP(cmd, args, { timeout: 10_000 })) : launchdEnv();
+    // the hooks are checked where the daemon's agents read them, which an ssh command's env may not name
+    const codex = codexPaths(daemonEnv);
     const report = { version: checkoutVersion(), ...await doctor(t, {
       ...pre,
       read: (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return undefined; } },
       connect: (home) => Client.connect(home),
       connectHook,
       uid: os.userInfo().uid,
-      settingsPath: userPaths().claudeSettings,
+      settingsPath: path.join(claudePaths(daemonEnv).dir, 'settings.json'),
       hooksHome: profileHome(PRIVATE),
       launchAgentsDir: userPaths().launchAgents,
       unitDir: unitDirOf(os.homedir()),
-      // a login shell asked over ssh must leave host add's doctor its own time to answer
-      daemonEnv: process.platform === 'linux' ? await agentHomesEnv((cmd, args) => execFileP(cmd, args, { timeout: 10_000 })) : launchdEnv(),
-      codex: codexPaths(),
+      daemonEnv,
+      codex,
       exists: fs.existsSync,
       found: findAgents(pre.agentPath ?? pre.pathEnv),
-      codexTrust: () => askCodexTrust({ codexHome: codexPaths().dir, script: resolvePaths(profileHome(PRIVATE)).hookScript }),
+      codexTrust: () => askCodexTrust({ codexHome: codex.dir, script: resolvePaths(profileHome(PRIVATE)).hookScript }),
       user: os.userInfo().username,
       rsync: {
         bundled: bundledRsync(),

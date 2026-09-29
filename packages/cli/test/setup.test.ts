@@ -112,12 +112,39 @@ describe('archi setup on Linux', () => {
     fs.mkdirSync(path.join(home, '.local', 'bin'), { recursive: true });
     fs.writeFileSync(path.join(home, '.local', 'bin', 'claude'), '#!/bin/sh\necho "2.1.300 (Claude Code)"\n', { mode: 0o755 });
     vi.stubEnv('PATH', '/usr/bin:/bin');
+    vi.stubEnv('SHELL', '/usr/bin/true');
     const out: string[] = [];
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { out.push(String(chunk)); return true; });
     await setupCommand(() => ({ name: 'private', home: path.join(home, '.archipelago'), managed: true }), () => true, 'linux')
       .parseAsync(['--check'], { from: 'user' });
     // with no ~/.claude yet, only a claude found makes setup write its hooks
     expect(JSON.parse(out.join('')).warnings).toContain('! hooks  missing or out of date: run archi setup');
+  });
+
+  it('writes the hooks where the unit\'s CLAUDE_CONFIG_DIR and CODEX_HOME point, which only the login shell names', async () => {
+    const home = makeHome();
+    vi.stubEnv('HOME', home);
+    const local = path.join(home, '.local', 'bin');
+    fs.mkdirSync(local, { recursive: true });
+    fs.writeFileSync(path.join(local, 'claude'), '#!/bin/sh\necho "2.1.300 (Claude Code)"\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(local, 'codex'), '#!/bin/sh\necho "codex-cli 0.156.1"\n', { mode: 0o755 });
+    const claudeDir = path.join(home, '.config', 'claude');
+    const codexDir = path.join(home, '.config', 'codex');
+    const bin = makeHome();
+    fs.writeFileSync(path.join(bin, 'tmux'), '#!/bin/sh\necho "tmux 3.5a"\n', { mode: 0o755 });
+    // the account's profile sets both, and the ssh command setup runs in reads no profile
+    fs.writeFileSync(path.join(bin, 'login-shell'), `#!/bin/sh\nexport CLAUDE_CONFIG_DIR='${claudeDir}' CODEX_HOME='${codexDir}'\nexec /bin/sh -c "$2"\n`, { mode: 0o755 });
+    vi.stubEnv('SHELL', path.join(bin, 'login-shell'));
+    vi.stubEnv('PATH', `${bin}:/usr/bin:/bin`);
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await setupCommand(() => ({ name: 'private', home: path.join(home, '.archipelago'), managed: true }), () => true, 'linux')
+      .parseAsync(['--no-launchctl'], { from: 'user' });
+    expect(JSON.parse(fs.readFileSync(path.join(claudeDir, 'settings.json'), 'utf8')).hooks).toBeDefined();
+    expect(JSON.parse(fs.readFileSync(path.join(codexDir, 'hooks.json'), 'utf8')).hooks).toBeDefined();
+    expect(fs.existsSync(path.join(home, '.claude'))).toBe(false);
+    expect(fs.existsSync(path.join(home, '.codex'))).toBe(false);
+    expect(fs.readFileSync(path.join(home, '.config', 'systemd', 'user', 'archipelago-archid@private.service'), 'utf8'))
+      .toContain(`Environment="CLAUDE_CONFIG_DIR=${claudeDir}"\nEnvironment="CODEX_HOME=${codexDir}"\n`);
   });
 
   it('restarts every fleet daemon and the gateway after a rollback, so none keeps running the release it left', async () => {
