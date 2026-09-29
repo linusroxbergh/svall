@@ -46,12 +46,24 @@ describe('writeDurable', () => {
     expect(JSON.parse(fs.readFileSync(file, 'utf8')).v).toBe(expected);
   });
 
-  it('leaves the temp behind when it crashes before the rename, and cleanup collects it once the write that followed finished', () => {
+  it.each([
+    ['open', 'open'], ['write', 'write'], ['fsyncFile', 'fsyncFile'], ['rename', 'link'],
+  ] as const)('removes its temp when the write fails at %s', (replacing, creating) => {
     const dir = makeHome();
     const file = path.join(dir, 'state.json');
     writeDurable(file, { v: 'old' });
-    expect(() => writeDurable(file, { v: 'new' }, { stages: failAfter('write') })).toThrow('crash');
-    expect(temps(dir)).toHaveLength(1);
+    expect(() => writeDurable(file, { v: 'new' }, { stages: failAfter(replacing) })).toThrow('crash');
+    expect(() => createDurable(path.join(dir, 'new.json'), { v: 'new' }, { stages: failAfter(creating) })).toThrow('crash');
+    expect(temps(dir)).toEqual([]);
+  });
+
+  it('leaves the temp a crash left before the rename to cleanup, which collects it once the write that followed finished', () => {
+    const dir = makeHome();
+    const file = path.join(dir, 'state.json');
+    writeDurable(file, { v: 'old' });
+    const left = `${file}.durable-1-0badc0de.tmp`;
+    fs.writeFileSync(left, '{"v":"new"');
+    fs.utimesSync(left, new Date(Date.now() - 1000), new Date(Date.now() - 1000));
     writeDurable(file, { v: 'newer' });
     cleanupDurableTemps(dir);
     expect(temps(dir)).toEqual([]);
@@ -87,7 +99,7 @@ describe('writeDurable', () => {
     };
     expect(() => writeDurable(file, { v: 'new' }, { stages })).toThrow(/stalled at 5 of/);
     expect(JSON.parse(fs.readFileSync(file, 'utf8')).v).toBe('old');
-    expect(temps(dir)).toHaveLength(1);
+    expect(temps(dir)).toEqual([]);
   });
 
   it('swallows a directory fsync the platform refuses', () => {
@@ -120,16 +132,19 @@ describe('createDurable', () => {
 });
 
 describe('cleanupDurableTemps', () => {
+  // what a writer that died before its rename leaves
+  const crashed = (dir: string): void => fs.writeFileSync(path.join(dir, 'state.json.durable-1-0badc0de.tmp'), '{"v":');
+
   it('keeps a temp it cannot prove finished', () => {
     const dir = makeHome();
-    expect(() => writeDurable(path.join(dir, 'state.json'), { v: 1 }, { stages: failAfter('open') })).toThrow('crash');
+    crashed(dir);
     cleanupDurableTemps(dir);
     expect(temps(dir)).toHaveLength(1);
   });
 
   it('removes a temp older than the bounded age even without a final file', () => {
     const dir = makeHome();
-    expect(() => writeDurable(path.join(dir, 'state.json'), { v: 1 }, { stages: failAfter('open') })).toThrow('crash');
+    crashed(dir);
     const stale = path.join(dir, temps(dir)[0]);
     const old = new Date(Date.now() - 2 * 86_400_000);
     fs.utimesSync(stale, old, old);

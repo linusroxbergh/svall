@@ -42,7 +42,8 @@ const encode = (data: Buffer | object): Buffer =>
  */
 export function writeDurable(file: string, data: Buffer | object, opts: DurableOptions = {}): void {
   const stages = { ...realStages, ...opts.stages };
-  stages.rename(writeTemp(file, data, opts, stages), file);
+  const tmp = writeTemp(file, data, opts, stages);
+  try { stages.rename(tmp, file); } catch (e) { fs.rmSync(tmp, { force: true }); throw e; }
   syncDir(path.dirname(file), stages);
 }
 
@@ -61,18 +62,24 @@ function writeTemp(file: string, data: Buffer | object, opts: DurableOptions, st
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.durable-${process.pid}-${crypto.randomBytes(4).toString('hex')}.tmp`;
   const bytes = encode(data);
-  const fd = stages.open(tmp, opts.mode ?? 0o600);
   try {
-    // one write(2) can fall short without throwing; a short temp renamed over the target is exactly
-    // the partial file this module exists to prevent
-    for (let at = 0; at < bytes.length;) {
-      const n = stages.write(fd, bytes, at);
-      if (n <= 0) throw new Error(`durable write stalled at ${at} of ${bytes.length} bytes for ${file}`);
-      at += n;
+    const fd = stages.open(tmp, opts.mode ?? 0o600);
+    try {
+      // one write(2) can fall short without throwing; a short temp renamed over the target is exactly
+      // the partial file this module exists to prevent
+      for (let at = 0; at < bytes.length;) {
+        const n = stages.write(fd, bytes, at);
+        if (n <= 0) throw new Error(`durable write stalled at ${at} of ${bytes.length} bytes for ${file}`);
+        at += n;
+      }
+      stages.fsyncFile(fd);
+    } finally {
+      fs.closeSync(fd);
     }
-    stages.fsyncFile(fd);
-  } finally {
-    fs.closeSync(fd);
+  } catch (e) {
+    // the name is this call's own, so whatever it holds is only this write's
+    fs.rmSync(tmp, { force: true });
+    throw e;
   }
   return tmp;
 }
