@@ -421,6 +421,32 @@ describe('restTerminals', () => {
     expect(store.state.characters.c_ada.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session ${SID}` });
   });
 
+  it('rests an idle agent still running commands in the background only by terminating it when chosen, and names those commands otherwise', async () => {
+    const idle = () => boot([char('c_ada', { tmux: win(1), agent: agent('claude', 'idle') })]);
+    const kept = idle();
+    kept.world.pane(1, { job: ['claude'], tools: ['/bin/zsh -c npm run dev'] });
+    expect(await restTerminals(kept.deps, { choices: { interruptAfterMs: 0 } })).toEqual({
+      ok: false,
+      blockers: [{
+        code: 'agent_unsettled', message: "ada's terminal is idle with work still running in the background: /bin/zsh -c npm run dev still runs",
+        entity: { kind: 'character', id: 'c_ada' },
+      }],
+    });
+    expect(kept.world.log).toEqual([]);
+
+    const ended = idle();
+    ended.world.pane(1, { job: ['claude'], tools: ['/bin/zsh -c npm run dev'] });
+    let result: unknown;
+    const run = restTerminals(ended.deps, { choices: { terminate: [{ characterId: 'c_ada' }] }, pollMs: 500, settleMs: 1000 }).then((r) => { result = r; });
+    await ended.world.settle();
+    await ended.world.advance(500);
+    await run;
+    expect(result).toMatchObject({ ok: true });
+    expect(ended.world.log).toEqual(['SIGTERM 1001', 'SIGTERM 1050', 'detach c_ada', 'kill @1']);
+    expect(journalOf(ended.paths).terminated).toEqual([{ characterId: 'c_ada', processes: ['claude', '/bin/zsh -c npm run dev'] }]);
+    expect(ended.store.state.characters.c_ada.revive).toEqual({ command: `claude --resume ${SID}` });
+  });
+
   it('interrupts at the end of the wait when the chosen delay would outlast it', async () => {
     const { world, deps } = boot([char('c_ada', { tmux: win(1), agent: agent('claude', 'working') })]);
     world.pane(1, { job: ['claude'] });
@@ -728,12 +754,14 @@ describe('unapproved', () => {
     world.pane(1, { job: ['claude'] });
     world.pane(2, { job: ['npm run dev'] });
     world.pane(3, { job: ['claude'] });
+    state.characters.c_cy = char('c_cy', { tmux: win(4), agent: agent('claude', 'idle', SID2) });
+    world.pane(4, { job: ['claude'], tools: ['/bin/zsh -c npm run dev'] });
 
     const terminals = classifyTerminals(state, await world.tmux.listWindows(), await world.processes());
 
-    expect(terminals.map((t) => t.class)).toEqual(['agent-working', 'foreground', 'agent-blocked']);
-    expect(unapproved(state, terminals, {}).map((b) => b.code)).toEqual(['shell_busy', 'agent_blocked']);
-    expect(unapproved(state, terminals, { interruptAfterMs: 30_000, terminate: [{ characterId: 'c_ada', term: 2 }] })).toEqual([]);
+    expect(terminals.map((t) => t.class)).toEqual(['agent-working', 'foreground', 'agent-blocked', 'agent-ready']);
+    expect(unapproved(state, terminals, {}).map((b) => b.code)).toEqual(['shell_busy', 'agent_blocked', 'agent_unsettled']);
+    expect(unapproved(state, terminals, { interruptAfterMs: 30_000, terminate: [{ characterId: 'c_ada', term: 2 }, { characterId: 'c_cy' }] })).toEqual([]);
     expect(world.log).toEqual([]);
   });
 });

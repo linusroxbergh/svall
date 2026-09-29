@@ -164,13 +164,18 @@ function step(t: Track, c: Classified | undefined, x: Moment): Step {
       : blocker('agent_unsettled', t, x.state, `did not come to rest after it was terminated${lingering(c)}`);
   }
   if (!c) return 'rest';
-  if (c.class === 'agent-ready' || c.class === 'shell-ready') return 'rest';
+  if (c.class === 'shell-ready') return 'rest';
+  // a command an idle agent left running in the background is work in progress, as the idle close judges it
+  if (c.class === 'agent-ready' && !c.processes.agent?.commands.length) return 'rest';
   if (c.class === 'foreground') return terminates(t, x.choices) ? 'terminate' : blocker('shell_busy', c, x.state, `is running ${job(c)}`);
   if (t.interruptedAt !== undefined) {
     // Claude Code sends no hook for an interrupted turn, so rest shows as its tool commands having ended
     if (x.now - t.interruptedAt >= x.pollMs && !c.processes.agent?.commands.length) return 'rest';
     if (x.now < t.interruptedAt + x.settleMs) return 'wait';
     return terminates(t, x.choices) ? 'terminate' : blocker('agent_unsettled', c, x.state, `did not come to rest after it was interrupted${lingering(c)}`);
+  }
+  if (c.class === 'agent-ready') {
+    return terminates(t, x.choices) ? 'terminate' : blocker('agent_unsettled', c, x.state, `is idle with work still running in the background${lingering(c)}`);
   }
   const { interruptAfterMs } = x.choices;
   if (interruptAfterMs !== undefined && x.now >= x.start + interruptAfterMs) return 'interrupt';
