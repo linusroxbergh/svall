@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { z, type ZodTypeAny } from 'zod';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   Character, emptyState, FleetConfig, FleetState, MachineRecord, NodeConfig, TransferManifestV1,
   type Blocker, type FleetState as State, type GitCheckout, type GitGraph, type MachineId, type Warning,
@@ -14,7 +14,7 @@ import { git, hasGit } from './git-fixture.js';
 
 const made: string[] = [];
 const tmp = (): string => { const d = fs.realpathSync(fs.mkdtempSync('/tmp/archi-t-')); made.push(d); return d; };
-afterEach(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
+afterEach(() => { vi.restoreAllMocks(); for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
 
 const MAC = '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId;
 const TRIFT = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId;
@@ -296,6 +296,28 @@ describe('buildInventory', () => {
       { code: 'path_symlinked', message: said(linked, s.plain) },
     ]);
     expect(inv.roots.some((r) => r.path.startsWith(linked))).toBe(false);
+  });
+
+  it('blocks a folder named in another case than the disk spells it, before any other check reads the name', () => {
+    const s = seed();
+    const ssh = path.join(s.mac, '.ssh');
+    fs.mkdirSync(ssh);
+    // a Mac's disk: a name in any case finds the entry, and the real path spells it as stored
+    const native = fs.realpathSync.native;
+    const stored = (p: string): string => p.split('/').slice(1)
+      .reduce((at, name) => path.join(at, fs.readdirSync(at).find((n) => n.toLowerCase() === name.toLowerCase()) ?? name), '/');
+    vi.spyOn(fs.realpathSync, 'native').mockImplementation(((p: string) => native(stored(p))) as typeof native);
+    s.state.characters.idle.cwd = path.join(s.mac, 'SCRATCH');
+    s.state.characters.keys = char('keys', { cwd: path.join(s.mac, '.SSH') });
+    const inv = buildInventory(s.state, { fleet: FLEET }, s.maps);
+    const said = (p: string, real: string) =>
+      `${p} is spelled ${real} on disk; a handover carries each folder at its real path, the one Git and the agents record, so use ${real} instead`;
+    expect(inv.blockers).toEqual([
+      { code: 'path_symlinked', message: said(path.join(s.mac, 'SCRATCH'), s.plain), entity: { kind: 'character', id: 'idle' } },
+      { code: 'path_symlinked', message: said(path.join(s.mac, '.SSH'), ssh), entity: { kind: 'character', id: 'keys' } },
+    ]);
+    expect(inv.roots.filter((r) => r.path.toLowerCase() === s.plain.toLowerCase()).map((r) => r.path)).toEqual([s.plain]);
+    expect(inv.roots.some((r) => r.path.toLowerCase() === ssh.toLowerCase())).toBe(false);
   });
 
   it('carries a root on its own when the root around it excludes it', () => {

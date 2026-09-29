@@ -212,9 +212,10 @@ export function buildInventory(state: FleetState, configs: InventoryConfigs, mac
     }
     const at = realPath(p);
     if (at === p) return true;
+    const spelled = at.normalize('NFD').toLowerCase() === p.normalize('NFD').toLowerCase();
     blockers.push({
       code: 'path_symlinked', entity,
-      message: `${p} leads to ${at} through a symbolic link; a handover carries each folder at its real path, the one Git and the agents record, so use ${at} instead`,
+      message: `${p} ${spelled ? `is spelled ${at} on disk` : `leads to ${at} through a symbolic link`}; a handover carries each folder at its real path, the one Git and the agents record, so use ${at} instead`,
     });
     return false;
   };
