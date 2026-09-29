@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { FleetId, PROTOCOL_VERSION, type Blocker, type OwnerRecord } from '@archipelago/protocol';
+import { FleetId, MachineId, PROTOCOL_VERSION, type Blocker, type OwnerRecord } from '@archipelago/protocol';
 import { AuthorityClient } from '@archipelago/archid/gateway/client';
 import { startAuthorityServer } from '@archipelago/archid/gateway/server';
 import { manifestDigest, spaceNeed } from '@archipelago/archid/handover/manifest';
@@ -802,6 +802,34 @@ describe('resuming after the destination prepared', () => {
     expect(out.status).toBe('complete');
     expect(w.transfers.length).toBe(transfers);
     expect(settledOn(w)).toBe('destination');
+  });
+
+  it('resumed or aborted from a machine that is neither source nor destination, stops naming both, before anything is copied or let go', async () => {
+    const probe = new World();
+    await controller(probe).start(trift, {});
+    const w = new World();
+    w.fault = { at: opIndex(probe, 'mac:handover.freeze'), kind: 'death' };
+    await controller(w).start(trift, {});
+    w.store.j = undefined;
+    w.store.files.clear();
+    await w.heal();
+    // a third machine reaches both parties over ssh, as a Mac does a handover between two Linux machines
+    const elsewhere = { local: MachineId.parse(crypto.randomUUID()), side: async (id: typeof mac) => ({ ...w.side(id), master: async () => w.masters.trift }) };
+    const ops = w.ops.length;
+    for (const run of [(c: Handover) => c.resume(), (c: Handover) => c.abort()]) {
+      const out = await run(controller(w, elsewhere));
+      expect(out).toMatchObject({ status: 'interrupted', safe: [], error: expect.stringMatching(/neither the source mac nor the destination trift.*on mac or trift/) });
+    }
+    expect(w.transfers).toEqual([]);
+    expect(w.ops.slice(ops).filter((op) => !/status|ownership\.get|gateway:get/.test(op))).toEqual([]);
+    expect(w.store.j).toBeUndefined();
+  });
+
+  it('never runs a transfer whose parties are both reached over ssh, whatever its journal says', async () => {
+    const w = new World();
+    const out = await controller(w, { side: async (id) => ({ ...w.side(id), master: async () => w.masters.trift }) }).start(trift, {});
+    expect(out).toMatchObject({ status: 'interrupted', phase: 'transfer', error: expect.stringContaining('both reached over ssh') });
+    expect(w.transfers).toEqual([]);
   });
 
   it('goes on from the prepared state when its journal is rebuilt from the daemons\', without copying again', async () => {

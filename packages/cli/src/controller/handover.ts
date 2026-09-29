@@ -289,7 +289,7 @@ export class Handover {
       if (!o.controller && v.standing === 'open' && o.destination?.ok === false) {
         return this.stuck({ ...v, reason: `this controller keeps no journal of ${v.transactionId}, and the destination did not say how far it got (${o.destination.error}); resume once it answers` });
       }
-      await this.adopt(o, v);
+      try { await this.adopt(o, v); } catch (e) { return this.stopped(e); }
       if (v.action === 'finish-abort') return this.letGo({ status: 'aborted', transactionId: v.transactionId, phase: v.phase ?? 'begin' }).catch((e: unknown) => this.stopped(e));
       if (v.action === 'finish') {
         this.committed = true;
@@ -309,7 +309,7 @@ export class Handover {
       const o = await this.observe(true);
       const v = assess(o);
       if (!v.safe.includes('abort')) return v.standing === 'none' ? { status: 'none', reason: v.reason } : this.stuck(v);
-      await this.adopt(o, v);
+      try { await this.adopt(o, v); } catch (e) { return this.stopped(e); }
       const done: Outcome = { status: 'aborted', transactionId: v.transactionId, phase: v.phase ?? 'begin' };
       try {
         return await (v.action === 'finish-abort' ? this.letGo(done) : this.undo(done));
@@ -523,8 +523,11 @@ export class Handover {
     for (;;) {
       this.phase('transfer');
       const claims = await this.claim(destination, manifest);
+      // rsync runs here, so this machine has to be one end of the copy
+      if (!source.master === !destination.master) {
+        throw new Stopped('transfer', `${source.route.name} and ${destination.route.name} are ${source.master ? 'both reached over ssh' : 'neither reached over ssh'}, so rsync has no link from this machine`, PRE_COMMIT);
+      }
       const far = source.master ? source : destination;
-      if (!far.master) throw new Stopped('transfer', `neither ${source.route.name} nor ${destination.route.name} is reached over ssh, so rsync has no link`, PRE_COMMIT);
       const master = await this.retrying('transfer', () => this.cancellable(far.master!), this.cancel$.signal);
       const rsync = await this.d.rsync().catch((e: unknown) => { throw new Stopped('transfer', `this machine has no rsync a handover can drive: ${messageOf(e)}`, PRE_COMMIT); });
       const entries = this.entries(manifest, claims, destination);
@@ -961,6 +964,12 @@ export class Handover {
   /** The journal a resume or abort acts on: the controller's own, or one rebuilt from the other three. */
   private async adopt(o: Observation, v: Verdict): Promise<void> {
     const now = this.clock.now();
+    const [from, to] = o.controller ? [o.controller.source, o.controller.destination].map((r) => r.machineId) : [v.fromMachineId, v.toMachineId];
+    if (from && to && from !== this.d.local && to !== this.d.local) {
+      const name = async (id: MachineId) => (await this.side(id).catch(() => undefined))?.route.name ?? id;
+      const [a, b] = await Promise.all([name(from), name(to)]);
+      throw new Stopped(v.phase ?? 'begin', `this machine is neither the source ${a} nor the destination ${b} of ${v.transactionId ?? 'this handover'}, so a transfer from here would copy onto its own disk; run it on ${a} or ${b}`, []);
+    }
     if (o.controller) {
       this.j = o.controller;
       if (!this.j.transactionId && v.transactionId) this.save({ transactionId: v.transactionId });
