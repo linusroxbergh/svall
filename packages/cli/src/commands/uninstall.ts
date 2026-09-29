@@ -12,15 +12,16 @@ import { printResult } from '../format.js';
 import { ask } from '../prompt.js';
 
 export type UninstallDeps = {
-  uninstall(): Promise<string[]>;
+  /** `force`: also where that strands a fleet a handover or another machine still needs */
+  uninstall(o: { force: boolean }): Promise<string[]>;
   data(): string[];
   purge(paths: string[]): Promise<string[]>;
   prompt(q: string): Promise<string>;
   isTTY: boolean;
 };
 
-export async function uninstall(o: { purge: boolean }, d: UninstallDeps): Promise<{ done: string[]; kept: string[] }> {
-  const done = await d.uninstall();
+export async function uninstall(o: { purge: boolean; force?: boolean }, d: UninstallDeps): Promise<{ done: string[]; kept: string[] }> {
+  const done = await d.uninstall({ force: o.force === true });
   const data = d.data();
   if (!data.length) return { done, kept: [] };
   const yes = o.purge || (d.isTTY && /^y(es)?$/i.test((await d.prompt(
@@ -35,9 +36,10 @@ export function uninstallCommand(json: () => boolean): Command {
     .description('remove what archi setup added and stop every fleet; asks before deleting the fleets and the app')
     .option('--purge', 'also delete every fleet and the app, without asking')
     .option('--no-launchctl', 'leave the daemons running, only delete the files that start them')
-    .action(async (o: { purge?: boolean; launchctl: boolean }) => {
-      const r = await uninstall({ purge: Boolean(o.purge) }, {
-        uninstall: () => runUninstall({
+    .option('--force', 'uninstall even where a fleet this machine owns, gateways or holds a handover of would be stranded; archi host remove checks all of this first')
+    .action(async (o: { purge?: boolean; launchctl: boolean; force?: boolean }) => {
+      const r = await uninstall({ purge: Boolean(o.purge), force: o.force === true }, {
+        uninstall: ({ force }) => runUninstall({
           home: profileHome(PRIVATE),
           homes: fleetHomes(os.homedir()),
           settingsPaths: userPaths().claudeSettingsFiles,
@@ -50,6 +52,7 @@ export function uninstallCommand(json: () => boolean): Command {
           tmux: process.env.TMUX,
           unitDir: unitDirOf(os.homedir()),
           prefix: DEFAULT_PREFIX,
+          force,
         }),
         data: () => fleetData({
           homedir: os.homedir(),

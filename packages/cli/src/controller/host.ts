@@ -623,7 +623,8 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
       try {
         master = await d.openMaster(entry.record.ssh);
         await sameMachine(master, entry);
-        const out = await probe(master, [shq(archiExe(entry.record.archiBase)), 'uninstall'], 'archi uninstall');
+        // the fleet step checked what this strands; the far refusal would stop at the records a gateway always holds
+        const out = await probe(master, [shq(archiExe(entry.record.archiBase)), 'uninstall', '--force'], 'archi uninstall');
         return { value: true, detail: out.trim().split('\n').at(-1) ?? 'archi uninstall' };
       } catch (err) {
         if (err instanceof StepError && err.action) throw err;

@@ -955,12 +955,12 @@ describe('host remove', () => {
     return registry;
   };
 
-  it('uninstalls on the machine before the route is dropped, and never purges', async () => {
+  it('uninstalls on the machine before the route is dropped, past the far refusal its own checks stand for, and never purges', async () => {
     ssh.reply(['uninstall'], { stdout: 'removed\n' });
     const registry = registered('trift.test');
     const out = await removeHost('trift', {}, deps({ registry }));
     expect(out.result).toBe('ready');
-    expect(ssh.remoteCalls()).toEqual([[ARCHI, 'version', '--json'], [ARCHI, 'uninstall']]);
+    expect(ssh.remoteCalls()).toEqual([[ARCHI, 'version', '--json'], [ARCHI, 'uninstall', '--force']]);
     expect(registry.get('trift')).toBeUndefined();
   });
 

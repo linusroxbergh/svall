@@ -4,14 +4,15 @@ import { uninstall, type UninstallDeps } from '../src/commands/uninstall.js';
 function fake(o: { answer?: string; isTTY?: boolean; data?: string[] } = {}) {
   const prompts: string[] = [];
   const purged: string[][] = [];
+  const forced: boolean[] = [];
   const deps: UninstallDeps = {
-    uninstall: async () => ['removed /u/.local/bin/archi'],
+    uninstall: async (u) => { forced.push(u.force); return ['removed /u/.local/bin/archi']; },
     data: () => o.data ?? ['/u/.archipelago', '/Applications/Archipelago.app'],
     purge: async (paths) => { purged.push(paths); return paths.map((p) => `deleted ${p}`); },
     prompt: async (q) => { prompts.push(q); return o.answer ?? ''; },
     isTTY: o.isTTY ?? true,
   };
-  return { deps, prompts, purged };
+  return { deps, prompts, purged, forced };
 }
 
 describe('uninstall', () => {
@@ -35,6 +36,13 @@ describe('uninstall', () => {
     expect((await uninstall({ purge: false }, script.deps)).kept).toHaveLength(2);
     expect(script.prompts).toEqual([]);
     expect(script.purged).toEqual([]);
+  });
+
+  it('uninstalls where that would strand a fleet only under --force', async () => {
+    const f = fake({ data: [] });
+    await uninstall({ purge: false }, f.deps);
+    await uninstall({ purge: false, force: true }, f.deps);
+    expect(f.forced).toEqual([false, true]);
   });
 
   it('does not ask when there is nothing left to delete', async () => {
