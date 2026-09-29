@@ -94,8 +94,9 @@ describe('archi setup on Linux', () => {
     fs.writeFileSync(path.join(bin, 'systemctl'), `#!/bin/sh\necho "$*" >> '${log}'\n`, { mode: 0o755 });
     vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const probed: string[] = [];
     try {
-      await setupCommand(() => ({ name: 'private', home: path.join(home, '.archipelago'), managed: true }), () => true, 'linux')
+      await setupCommand(() => ({ name: 'private', home: path.join(home, '.archipelago'), managed: true }), () => true, 'linux', undefined, async (fleet, release) => { probed.push(`${fleet} ${release}`); return true; })
         .parseAsync(['--rollback'], { from: 'user' });
       expect(fs.readlinkSync(path.join(prefix, 'current'))).toBe(path.join(prefix, 'releases', '1.0.0'));
       expect(fs.readFileSync(log, 'utf8').trim().split('\n')).toEqual([
@@ -103,6 +104,27 @@ describe('archi setup on Linux', () => {
         '--user restart archipelago-archid@work.service',
         '--user restart archipelago-gateway.service',
       ]);
+      expect(probed).toEqual(['private 1.0.0', 'work 1.0.0']);
+    } finally {
+      for (const d of [prefix, path.join(home, '.config')]) fs.rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  it('fails a rollback, naming the fleet, when a restarted daemon does not answer from the release it went back to', async () => {
+    const home = process.env.HOME!;
+    const prefix = path.join(home, '.local', 'share', 'archipelago');
+    for (const v of ['1.0.0', '1.1.0']) fs.mkdirSync(path.join(prefix, 'releases', v), { recursive: true });
+    fs.symlinkSync(path.join(prefix, 'releases', '1.1.0'), path.join(prefix, 'current'));
+    const unitDir = path.join(home, '.config', 'systemd', 'user');
+    fs.mkdirSync(unitDir, { recursive: true });
+    for (const u of ['archipelago-archid@private.service', 'archipelago-archid@work.service']) fs.writeFileSync(path.join(unitDir, u), '');
+    const bin = makeHome();
+    fs.writeFileSync(path.join(bin, 'systemctl'), '#!/bin/sh\n', { mode: 0o755 });
+    vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      await expect(setupCommand(() => ({ name: 'private', home: path.join(home, '.archipelago'), managed: true }), () => true, 'linux', undefined, async (fleet) => fleet !== 'work')
+        .parseAsync(['--rollback'], { from: 'user' })).rejects.toThrow(/the work fleet's daemon did not answer from release 1\.0\.0/);
     } finally {
       for (const d of [prefix, path.join(home, '.config')]) fs.rmSync(d, { recursive: true, force: true });
     }

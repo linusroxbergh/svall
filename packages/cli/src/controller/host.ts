@@ -521,6 +521,41 @@ export function upgradeHost(name: string, o: { release?: string; allowUnsigned?:
   });
 }
 
+/**
+ * `archi host upgrade --rollback`: the far machine back on the release `to`, or on the one before, by its own `archi`,
+ * which checks each fleet's daemon answers from it, then the probe an upgrade makes.
+ */
+export function rollbackHost(name: string, o: { to?: string }, d: HostDeps): Promise<HostOutcome> {
+  return flow(d.emit, async (run) => {
+    const entry = await run.step('machine', () => Promise.resolve(machineOutcome(d.registry, name)));
+    const master = await run.step('master', async () => {
+      const opened = await d.openMaster(entry.record.ssh);
+      await sameMachine(opened, entry).catch(async (err: unknown) => { await opened.close().catch(() => undefined); throw err; });
+      return { value: opened, detail: `one control master to ${entry.record.ssh}` };
+    });
+    const base = entry.record.archiBase;
+    const runs = async (): Promise<string> => `ssh ${entry.record.ssh} and read the daemon log; ${name} runs release ${await currentRelease(master, base)}`;
+    try {
+      const now = await run.step('rollback', async () => {
+        const out = await remoteRollback(master, { archiBase: base, from: await currentRelease(master, base), ...(o.to !== undefined && { to: o.to }) })
+          .catch(async (err: Error) => { throw new StepError(err.message, await runs()); });
+        return { value: await currentRelease(master, base), detail: out.trim().split('\n').join('; ') };
+      });
+      await run.step('probe', async () => {
+        try {
+          await remoteJson<RemoteDoctor>(master, base, ['doctor', '--json'], 'archi doctor --json');
+          await endToEnd(master, entry, now);
+        } catch (err) {
+          throw new StepError((err as Error).message, await runs());
+        }
+        return { value: undefined, detail: `${name} answers on release ${now}` };
+      });
+    } finally {
+      await master.close().catch(() => undefined);
+    }
+  });
+}
+
 /** The fleet homes on this Mac, the private one and every named profile's. */
 function fleetHomes(homedir: string): string[] {
   let names: string[];

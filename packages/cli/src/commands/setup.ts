@@ -4,7 +4,7 @@ import path from 'node:path';
 import { Command } from 'commander';
 import { findAgents } from '@archipelago/archid/agents';
 import { codexPaths } from '@archipelago/archid/codex/install';
-import { restartUnits, setupLinuxRelease, unitDirOf } from '@archipelago/archid/linux/setup';
+import { ourUnits, restartUnits, setupLinuxRelease, unitDirOf } from '@archipelago/archid/linux/setup';
 import { realRun } from '@archipelago/archid/linux/service';
 import { defaultsPrefs, moveOldIds, oldIdsLeft, runLaunchctl, signInsLeft, type Launchctl } from '@archipelago/archid/legacy';
 import { resolvePaths, userPaths } from '@archipelago/archid/paths';
@@ -53,14 +53,29 @@ async function kickstartAgents(launchAgentsDir: string, launchctl: Launchctl): P
   return done;
 }
 
-/** Recovery, so it asks nothing of the machine but the release it is going back to: the one named, or the one before. */
-async function rollback(o: { systemd: boolean; restart: boolean; launchctl: Launchctl }, to?: string): Promise<string[]> {
+/** Whether a fleet's daemon answers from `release`. */
+export type Probe = (fleet: string, release: string) => Promise<boolean>;
+
+const realProbe: Probe = (fleet, release) => daemonRuns(release, () => Client.connect(profileHome(fleet)));
+
+/**
+ * Recovery, so it asks nothing of the machine but the release it is going back to: the one named, or the one before.
+ * On Linux each fleet's daemon it restarts has to answer from that release, as after an upgrade.
+ */
+async function rollback(o: { systemd: boolean; restart: boolean; launchctl: Launchctl; probe: Probe }, to?: string): Promise<string[]> {
   const releases = path.join(DEFAULT_PREFIX, 'releases');
   if (to !== undefined && path.dirname(path.resolve(releases, to)) !== releases) throw new Error(`${to} names no release under ${releases}`);
   const back = rollbackRelease(DEFAULT_PREFIX, to === undefined ? undefined : path.join(releases, to));
   const done = [`current -> ${back.release}`];
   if (!o.restart) return [...done, 'nothing was restarted: each daemon runs the release current names from its next start'];
-  return [...done, ...await (o.systemd ? restartUnits(realRun, unitDirOf(os.homedir())) : kickstartAgents(userPaths().launchAgents, o.launchctl))];
+  if (!o.systemd) return [...done, ...await kickstartAgents(userPaths().launchAgents, o.launchctl)];
+  const unitDir = unitDirOf(os.homedir());
+  done.push(...await restartUnits(realRun, unitDir));
+  const fleets = ourUnits(unitDir).flatMap((u) => /^archipelago-archid@(.+)\.service$/.exec(u)?.[1] ?? []);
+  const silent: string[] = [];
+  for (const fleet of fleets) if (!await o.probe(fleet, back.version)) silent.push(fleet);
+  if (silent.length) throw new Error(`${done.join('\n')}\nthe ${silent.join(' and ')} fleet's daemon did not answer from release ${back.version}; read its log`);
+  return [...done, ...fleets.map((f) => `the ${f} fleet's daemon answers from release ${back.version}`)];
 }
 
 type Daemon = { call(method: 'system.info', params: Record<string, never>): Promise<{ release: string }>; close(): void };
@@ -114,7 +129,9 @@ async function setupPlatform(t: Target, o: Options, from: From, systemd: boolean
   });
 }
 
-export function setupCommand(target: () => Target, json: () => boolean, platform: NodeJS.Platform = process.platform, launchctl: Launchctl = runLaunchctl): Command {
+export function setupCommand(
+  target: () => Target, json: () => boolean, platform: NodeJS.Platform = process.platform, launchctl: Launchctl = runLaunchctl, probe: Probe = realProbe,
+): Command {
   const systemd = platform === 'linux';
   return new Command('setup')
     .description(`install hooks, tmux.conf, ${systemd ? 'systemd user units' : 'the launchd agent'} and the archi and archipelago shims`)
@@ -128,7 +145,7 @@ export function setupCommand(target: () => Target, json: () => boolean, platform
       // setup owns the per-user half — the Claude hooks and the shims — so it only ever means private
       const t = target();
       if (o.rollback) {
-        const done = await rollback({ systemd, restart: o.launchctl, launchctl }, typeof o.rollback === 'string' ? o.rollback : undefined);
+        const done = await rollback({ systemd, restart: o.launchctl, launchctl, probe }, typeof o.rollback === 'string' ? o.rollback : undefined);
         printResult({ done, warnings: [] }, json(), () => done.join('\n'));
         return;
       }

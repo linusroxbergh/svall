@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { WebSocketServer } from 'ws';
 import { FleetId, MachineId, PROTOCOL_VERSION } from '@archipelago/protocol';
 import { shq } from '@archipelago/archid/text';
-import { addHost, doctorHost, enableHost, removeHost, upgradeHost, type HostDeps, type StepEvent } from '../src/controller/host.js';
+import { addHost, doctorHost, enableHost, removeHost, rollbackHost, upgradeHost, type HostDeps, type StepEvent } from '../src/controller/host.js';
 import { runProcess } from '../src/controller/process.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { SshMaster } from '../src/controller/ssh.js';
@@ -600,6 +600,7 @@ case "$1" in
     if [ "$2" = --rollback ]; then
       to=\${3:-$(ls -t "$base/releases" | grep -vx "$(now)" | head -1)}
       [ -n "$to" ] || { echo "no release under $base/releases to go back to" >&2; exit 1; }
+      [ -d "$base/releases/$to" ] || { echo "no release at $base/releases/$to to go back to" >&2; exit 1; }
       ln -sfn "$base/releases/$to" "$base/current" && echo "current -> $base/releases/$to"
       exit
     fi
@@ -858,6 +859,49 @@ esac
     expect(step('probe').at(-1)).toMatchObject({ status: 'warn', detail: expect.stringContaining('1.2.2') });
     expect(far.now()).toBe('1.2.2');
     expect(step('rollback').at(-1)).toMatchObject({ status: 'warn', action: expect.stringMatching(/trift runs release 1\.2\.2, the one it ran before$/) });
+  });
+
+  it('puts the machine back on the release before when asked, with its own archi, and probes it as an upgrade does', async () => {
+    const far = await farMachine({ releases: [['1.2.1', PROTOCOL_VERSION], ['1.2.2', PROTOCOL_VERSION], ['1.2.3', PROTOCOL_VERSION]] });
+    fs.utimesSync(`${far.base}/releases/1.2.1`, new Date(0), new Date(0));
+    const out = await rollbackHost('trift', {}, deps({ registry: far.registry }));
+    const named = await rollbackHost('trift', { to: '1.2.1' }, deps({ registry: far.registry }));
+    await far.close();
+    expect([out, named]).toEqual([{ result: 'ready', actions: [] }, { result: 'ready', actions: [] }]);
+    expect(ssh.remoteCalls().filter((w) => w.includes('--rollback'))).toEqual([
+      [`${far.base}/releases/1.2.3/bin/archi`, 'setup', '--rollback'],
+      [`${far.base}/releases/1.2.2/bin/archi`, 'setup', '--rollback', '1.2.1'],
+    ]);
+    expect(far.now()).toBe('1.2.1');
+    expect(step('probe').map((e) => e.detail)).toEqual(['trift answers on release 1.2.2', 'trift answers on release 1.2.1']);
+  });
+
+  it('rolls back from the command line, and refuses a rollback asked with a release to install', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION], ['1.2.3', PROTOCOL_VERSION]] });
+    far.registry.save();
+    const { hostCommands } = await import('../src/commands/host.js');
+    const cli = () => hostCommands(() => true, () => path.join(work, 'config'));
+    const out = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      await cli().parseAsync(['upgrade', 'trift', '--rollback'], { from: 'user' });
+      await expect(cli().parseAsync(['upgrade', 'trift', '--rollback', '--release', far.archive], { from: 'user' })).rejects.toThrow(/--rollback/);
+    } finally {
+      out.mockRestore();
+      await far.close();
+    }
+    expect(process.exitCode ?? 0).toBe(0);
+    expect(far.now()).toBe('1.2.2');
+  });
+
+  it('says which release the machine runs when a rollback fails or its daemon does not answer after it', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION], ['1.2.3', PROTOCOL_VERSION]], accepts: (r) => r !== '1.2.2' });
+    const silent = await rollbackHost('trift', {}, deps({ registry: far.registry }));
+    const none = await rollbackHost('trift', { to: '1.0.0' }, deps({ registry: far.registry }));
+    await far.close();
+    expect(silent.result).toBe('actions');
+    expect(step('probe')[0]).toMatchObject({ status: 'fail', action: expect.stringContaining('trift runs release 1.2.2') });
+    expect(none.result).toBe('actions');
+    expect(step('rollback').at(-1)).toMatchObject({ status: 'fail', action: expect.stringContaining('trift runs release 1.2.2') });
   });
 
   it('keeps a new release whose companion doctor exits 1 over a check unrelated to the daemon', async () => {

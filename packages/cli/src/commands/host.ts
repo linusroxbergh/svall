@@ -7,7 +7,7 @@ import { askpassPath, releaseRoot, releaseVersion } from '@archipelago/archid/re
 import { allowedSigners } from '../../../../scripts/install-release.mjs';
 import { sshVerify } from '../../../../scripts/release-manifest.mjs';
 import { printResult, table } from '../format.js';
-import { addHost, doctorHost, enableHost, removeHost, upgradeHost, type HostDeps, type HostOutcome, type StepEvent } from '../controller/host.js';
+import { addHost, doctorHost, enableHost, removeHost, rollbackHost, upgradeHost, type HostDeps, type HostOutcome, type StepEvent } from '../controller/host.js';
 import { MachineRegistry } from '../controller/registry.js';
 import { closeMastersOnSignal, SshMaster } from '../controller/ssh.js';
 import { targetFor } from '../target.js';
@@ -107,8 +107,13 @@ export function hostCommands(json: () => boolean, dir: () => string = configDir)
     .argument('<name>', 'the machine in the registry')
     .option('--release <archive>', 'install this companion archive instead of the one this release publishes')
     .option('--allow-unsigned', 'install a --release archive that carries no signature')
-    .action((name: string, o: { release?: string; allowUnsigned?: boolean }) =>
-      runFlow(json(), (d) => upgradeHost(name, o, d), dir()));
+    .option('--rollback [release]', 'put the machine back on this release, or on the one before, and check its daemons answer from it')
+    .action((name: string, o: { release?: string; allowUnsigned?: boolean; rollback?: boolean | string }) => {
+      if (o.rollback === undefined) return runFlow(json(), (d) => upgradeHost(name, o, d), dir());
+      if (o.release !== undefined || o.allowUnsigned) throw new Error('--rollback installs nothing, so it takes no --release or --allow-unsigned');
+      const to = typeof o.rollback === 'string' ? o.rollback : undefined;
+      return runFlow(json(), (d) => rollbackHost(name, { ...(to !== undefined && { to }) }, d), dir());
+    });
 
   host.command('remove')
     .description('uninstall Archipelago on the machine and drop its route')
