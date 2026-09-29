@@ -230,7 +230,7 @@ async function agentChecks(master: SshMaster, o: { destination: string; home: st
       if (v.code === 127) return todo(`${kind} is not installed on this machine`, `install ${a.label}`);
       const version = v.stdout.trim().split('\n')[0];
       if (v.code !== 0) return todo(`${a.bin} --version exited ${v.code}: ${v.stderr.trim().slice(0, 200) || 'no output'}`, `run ${a.bin} --version there and see what it answers`);
-      if (!versionOk(a, version)) return todo(`${version}: Archipelago needs ${a.minVersion!.slice(0, 2).join('.')} or newer`, `update ${a.label}`);
+      if (!versionOk(a, version)) return todo(`${version}: Archipelago needs ${a.minVersion!.join('.')} or newer`, `update ${a.label}`);
       const login = await call(a.loginArgs);
       if (login.code === 0 && a.loggedIn(login.stdout)) return { value: undefined, detail: `${version}, logged in` };
       return todo(`${version}, not logged in`, kind === 'codex' ? `${a.loginHint}, and trust the hooks once with /hooks` : a.loginHint);

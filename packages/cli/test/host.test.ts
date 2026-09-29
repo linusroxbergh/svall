@@ -171,7 +171,7 @@ describe('host add', () => {
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     expect(step('claude').at(-1)).toMatchObject({ status: 'warn', detail: '2.1.278 (Claude Code), not logged in', action: 'ssh trift.test, then claude auth login' });
-    expect(step('codex').at(-1)).toMatchObject({ status: 'warn', detail: 'codex-cli 0.154.2: Archipelago needs 0.155 or newer', action: 'ssh trift.test, then update Codex' });
+    expect(step('codex').at(-1)).toMatchObject({ status: 'warn', detail: 'codex-cli 0.154.2: Archipelago needs 0.155.0 or newer', action: 'ssh trift.test, then update Codex' });
     expect(out.actions).toEqual(['ssh trift.test, then claude auth login', 'ssh trift.test, then update Codex']);
     const agentCalls = ssh.remoteCalls().filter((w) => w.includes('claude') || w.includes('codex'));
     expect(agentCalls.length).toBe(3);

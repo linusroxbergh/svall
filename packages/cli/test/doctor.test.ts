@@ -40,7 +40,7 @@ function fake(o: {
   const envs: Record<string, Record<string, string> | undefined> = {};
   const commands: Record<string, string | Error> = {
     'tmux -V': 'tmux 3.5a\n',
-    'claude --version': '2.1.0 (Claude Code)\n',
+    'claude --version': '2.1.251 (Claude Code)\n',
     'claude auth status --json': '{"loggedIn":true}\n',
     'gh auth status': '',
     'launchctl print gui/501/io.github.linusroxbergh.archipelago.archid': '\tstate = running\n\tlast exit code = (never exited)\n',
@@ -107,7 +107,7 @@ describe('doctor', () => {
     expect(c['codex hooks']).toMatchObject({ status: 'skip', detail: 'not installed' });
     expect(c.tmux.detail).toBe('tmux 3.5a');
     expect(c.node.detail).toBe('v24.13.0');
-    expect(c.claude.detail).toBe('2.1.0 (Claude Code), signed in');
+    expect(c.claude.detail).toBe('2.1.251 (Claude Code), signed in');
     expect(c.archid.detail).toBe('running on port 47800');
     expect(c['hook receiver']).toMatchObject({ status: 'ok', detail: 'answering at /u/.archipelago/hooks.sock' });
     expect(c.launchd.detail).toMatch(/state = running/);
@@ -449,11 +449,13 @@ describe('agent checks', () => {
 
   it('warns about an old codex and a missing login, never failing', async () => {
     const old = await agents({ commands: { 'codex --version': 'codex-cli 0.142.0-alpha.6\n', 'codex login status': loggedOut() } });
-    expect(old.find((c) => c.name === 'codex')).toEqual({ name: 'codex', status: 'warn', detail: 'codex-cli 0.142.0-alpha.6: Archipelago needs 0.155 or newer; update Codex' });
+    expect(old.find((c) => c.name === 'codex')).toEqual({ name: 'codex', status: 'warn', detail: 'codex-cli 0.142.0-alpha.6: Archipelago needs 0.155.0 or newer; update Codex' });
+    const olderClaude = await agents({ commands: { 'claude --version': '2.1.250 (Claude Code)\n' } });
+    expect(olderClaude.find((c) => c.name === 'claude')?.detail).toBe('2.1.250 (Claude Code): Archipelago needs 2.1.251 or newer; update Claude Code');
     const out = await agents({ commands: { 'codex --version': 'codex-cli 0.156.1\n', 'codex login status': loggedOut() } });
     expect(out.find((c) => c.name === 'codex')?.detail).toBe('codex-cli 0.156.1, not signed in: codex login');
     const claude = await agents({ commands: { 'claude auth status --json': Object.assign(new Error('x'), { code: 1, stdout: '{"loggedIn":false}' }) } });
-    expect(claude.find((c) => c.name === 'claude')?.detail).toBe('2.1.0 (Claude Code), not signed in: claude auth login');
+    expect(claude.find((c) => c.name === 'claude')?.detail).toBe('2.1.251 (Claude Code), not signed in: claude auth login');
   });
 
   it('hands the fleet .env API keys to the login probe, which Codex does not count', async () => {
@@ -465,7 +467,7 @@ describe('agent checks', () => {
 
   it('says so when a login probe hangs or is unknown', async () => {
     const got = await agents({ commands: { 'claude auth status --json': Object.assign(new Error('timed out'), { killed: true, code: null }) } });
-    expect(got.find((c) => c.name === 'claude')).toEqual({ name: 'claude', status: 'warn', detail: "2.1.0 (Claude Code); couldn't tell whether it is signed in" });
+    expect(got.find((c) => c.name === 'claude')).toEqual({ name: 'claude', status: 'warn', detail: "2.1.251 (Claude Code); couldn't tell whether it is signed in" });
   });
 
   it('warns when the configured main agent is gone', async () => {
