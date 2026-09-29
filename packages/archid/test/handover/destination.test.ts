@@ -1793,6 +1793,22 @@ describe('destination under a forced record', () => {
     expect(d.ownership.writable()).toBe(false);
   });
 
+  it('lets its handover go for a record naming another machine even when a root cannot be sealed', async () => {
+    const { s, d, preparedDigest } = await prepared();
+    d.gateway.commit(preparedDigest);
+    await d.handover.activate({ transactionId: TX, generation: 5 });
+    const records = path.dirname(s.paths.replicaRecord(fleetId, s.dst));
+    fs.chmodSync(records, 0o500);
+    try {
+      expect(await d.handover.adopt({ fleetId, generation: 7, ownerMachineId: mac })).toMatchObject({ adopted: true, superseded: TX, ownership: { generation: 7, ownerMachineId: mac } });
+    } finally {
+      fs.chmodSync(records, 0o700);
+    }
+    expect(d.handover.journalState()).toEqual({ kind: 'none' });
+    expect(d.ownership.writable()).toBe(false);
+    expect(d.crew.log.at(-1)).toBe('deactivate');
+  });
+
   it('keeps its handover for the commit it waits on, and a record at its own generation', async () => {
     const { d, preparedDigest } = await prepared();
     d.gateway.commit(preparedDigest);

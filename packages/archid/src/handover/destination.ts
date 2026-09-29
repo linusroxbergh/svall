@@ -277,11 +277,14 @@ export class DestinationHandover {
     });
   }
 
-  /** Lets go a handover a forced gateway record has superseded, as its abort would: what it prepared is never activated. */
+  /**
+   * Lets go a handover a forced gateway record has superseded, as its abort would: what it prepared is never activated.
+   * The record wins whatever stays unsealed, which is left receiving.
+   */
   supersede(transactionId: string): Promise<void> {
     return this.serial(async () => {
       const j = this.open(transactionId);
-      if (j) await this.discard(j);
+      if (j) await this.discard(j, false);
     });
   }
 
@@ -862,14 +865,15 @@ export class DestinationHandover {
       throw handoverError({ code: 'handover_committed', message: `the gateway names ${record.ownerMachineId} as this fleet's owner at generation ${record.generation}; ${j.transactionId} cannot be undone here`, transactionId: j.transactionId, generation: record.generation });
     }
     if (tx?.id === j.transactionId) throw notReady(`the gateway still holds handover ${tx.id} open (${tx.phase}); abort it there before this machine lets it go`);
-    await this.discard(j);
+    await this.discard(j, true);
     return {};
   }
 
-  private async discard(j: DestinationJournal): Promise<void> {
+  /** `strict`: a root that cannot be sealed keeps the journal and what it would seal, for another try. */
+  private async discard(j: DestinationJournal, strict: boolean): Promise<void> {
     // the content is the source's at the generation it keeps; a root sealed or archived since is left alone
     const unsealed = await boundary('destination.abort.seal', () => this.sealAs(j.transactionId, true));
-    if (unsealed.length) throw notReady(`handover ${j.transactionId} could not seal ${unsealed.join('; ')}; abort it again once that is put right`);
+    if (strict && unsealed.length) throw notReady(`handover ${j.transactionId} could not seal ${unsealed.join('; ')}; abort it again once that is put right`);
     boundary('destination.abort.clear', () => {
       for (const f of [this.d.paths.preparedState(j.transactionId), this.d.paths.replicaSeal(j.transactionId), path.dirname(this.d.paths.sessionStage(j.transactionId, 0))]) {
         fs.rmSync(f, { recursive: true, force: true });
