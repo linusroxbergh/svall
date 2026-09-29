@@ -1,11 +1,14 @@
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { FleetConfig, type FleetId, type MachineId } from '@archipelago/protocol';
+import { seedAgentProfiles } from '../agent-profiles.js';
 import { writeJsonAtomic } from '../atomic.js';
 import { DurableJson } from '../handover/durable.js';
 import { OwnerCache } from '../ownership/state.js';
 import { resolvePaths, type Paths } from '../paths.js';
 import { PRIVATE } from '../profile.js';
-import { setupFleetHome } from '../setup.js';
+import { installHomeTemplate, setupFleetHome } from '../setup.js';
 import { daemonReload, enableUnit, stopUnit, type Run } from './service.js';
 import { agentHomesEnv, archidUnitName, writeUnits, type UnitOptions } from './setup.js';
 
@@ -55,6 +58,38 @@ function inUse(paths: Paths): string | undefined {
   return n ? `it holds ${n} ${n === 1 ? 'character' : 'characters'}` : undefined;
 }
 
+// whether two paths hold the same names, each a folder or a file with the same bytes
+function sameTree(a: string, b: string): boolean {
+  const [at, bt] = [a, b].map((p) => fs.lstatSync(p, { throwIfNoEntry: false }));
+  if (at?.isDirectory() && bt?.isDirectory()) {
+    const names = fs.readdirSync(a).sort();
+    return names.join('\0') === fs.readdirSync(b).sort().join('\0') && names.every((n) => sameTree(path.join(a, n), path.join(b, n)));
+  }
+  return !!at?.isFile() && !!bt?.isFile() && fs.readFileSync(a).equals(fs.readFileSync(b));
+}
+
+/**
+ * Removes mission control's folder and the agent profiles a standalone start seeded, each only while it holds exactly
+ * what the seed writes: left there, they would meet the fleet's own copies as occupied folders.
+ */
+function unseed(o: Provision, paths: Paths, homeCwd: string): void {
+  const cwd = homeCwd === '~' || homeCwd.startsWith('~/') ? path.join(o.homedir, homeCwd.slice(1)) : homeCwd;
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'archi-seed-'));
+  try {
+    const seeds: [string, (dir: string) => unknown][] = [
+      [cwd, (dir) => installHomeTemplate(dir, { replaceSettings: false })],
+      [paths.agentProfiles, (dir) => seedAgentProfiles(dir)],
+    ];
+    for (const [i, [at, seed]] of seeds.entries()) {
+      const fresh = path.join(scratch, String(i));
+      seed(fresh);
+      if (sameTree(at, fresh)) fs.rmSync(at, { recursive: true });
+    }
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
 // the unit is written only when it is not already what it should be, and systemd reads it again only then
 async function ensureUnit(o: Provision): Promise<string> {
   const env = o.env ?? await agentHomesEnv(o.run);
@@ -92,6 +127,7 @@ export async function provisionFleet(o: Provision): Promise<Provisioned> {
   if (why) throw new ProvisionRefused(`${o.home} holds fleet ${held}, and ${why}, so it is not this fleet's to replace`);
   const unit = await ensureUnit(o);
   await stopUnit(o.run, unit);
+  unseed(o, paths, parsed.data.home.cwd);
   writeJsonAtomic(paths.fleetConfig, { ...parsed.data, id: o.fleetId, gatewayMachineId: o.gatewayMachineId });
   fs.rmSync(paths.owner, { force: true });
   await enableUnit(o.run, unit);

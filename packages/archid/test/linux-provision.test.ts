@@ -4,10 +4,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FleetId, MachineId } from '@archipelago/protocol';
+import { seedAgentProfiles } from '../src/agent-profiles.js';
 import { provisionFleet, ProvisionRefused } from '../src/linux/provision.js';
 import { unitDirOf } from '../src/linux/setup.js';
 import type { Run } from '../src/linux/service.js';
 import { resolvePaths } from '../src/paths.js';
+import { installHomeTemplate } from '../src/setup.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 afterEach(() => { vi.unstubAllEnvs(); cleanHomes(); });
@@ -134,6 +136,31 @@ describe('provisionFleet', () => {
     ]);
     // the daemon is stopped before the fleet it runs is changed under it
     expect(f.sd.held).toEqual([OTHER, OTHER, FLEET]);
+  });
+
+  it('drops the mission control folder and agent profiles a standalone start seeded, and keeps each once anything in it has changed', async () => {
+    // what the fleet's standalone start wrote, mission control's folder at home.cwd under the account's home
+    const seeded = (f: Far): string => {
+      hostAdded(f);
+      const mc = path.join(f.root, '.archipelago/home');
+      installHomeTemplate(mc, { replaceSettings: false });
+      seedAgentProfiles(f.paths.agentProfiles);
+      return mc;
+    };
+    const f = far();
+    const mc = seeded(f);
+    expect(await provisionFleet(f.o)).toMatchObject({ outcome: 'rekeyed' });
+    expect(fs.existsSync(mc)).toBe(false);
+    expect(fs.existsSync(f.paths.agentProfiles)).toBe(false);
+
+    const g = far();
+    const edited = seeded(g);
+    fs.writeFileSync(path.join(edited, '.claude/settings.local.json'), '{}\n');
+    const profile = fs.readdirSync(g.paths.agentProfiles)[0];
+    fs.appendFileSync(path.join(g.paths.agentProfiles, profile), '\nand mine\n');
+    const before = [files(edited), files(g.paths.agentProfiles)];
+    expect(await provisionFleet(g.o)).toMatchObject({ outcome: 'rekeyed' });
+    expect([files(edited), files(g.paths.agentProfiles)]).toEqual(before);
   });
 
   it('refuses a home whose fleet has been used, naming the home and why, and changes nothing', async () => {
