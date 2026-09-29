@@ -48,10 +48,10 @@ export function stageArchive(archive, staging, o = {}) {
   let checked;
   try {
     const manifest = [SUMS, SIG].map((f) => `releases/${version}/${f}`).filter((m) => members.includes(m));
-    if (manifest.length) tar(['-xzf', archive, '-C', staging, ...manifest]);
+    if (manifest.length) tar(['-xpzf', archive, '-C', staging, ...manifest]);
     const signed = verifySignature(dir, o);
     const sums = contentOf(path.join(dir, SUMS));
-    tar(['-xzf', archive, '-C', staging]);
+    tar(['-xpzf', archive, '-C', staging]);
     const after = contentOf(path.join(dir, SUMS));
     if (sums === undefined ? after !== undefined : !after?.equals(sums)) throw new Error(`the archive writes over the ${SUMS} its signature was checked over`);
     checked = { ...verifyTree(dir, o), signed };
@@ -67,8 +67,18 @@ function stage(source, staging, o) {
   if (isTarball(source)) return stageArchive(source, staging, o);
   fs.mkdirSync(staging, { recursive: true });
   fs.cpSync(source, staging, { recursive: true, verbatimSymlinks: true });
+  keepModes(source, staging);
   const checked = verifyRelease(staging, o);
   return { version: String(checked.release.version ?? ''), dir: staging, ...checked };
+}
+
+/** Gives every entry `cpSync` copied into `to` the mode it has in `from`, since the copy takes the umask off it. */
+function keepModes(from, to) {
+  for (const e of fs.readdirSync(to, { withFileTypes: true })) {
+    if (e.isSymbolicLink()) continue;
+    if (e.isDirectory()) keepModes(path.join(from, e.name), path.join(to, e.name));
+    fs.chmodSync(path.join(to, e.name), fs.lstatSync(path.join(from, e.name)).mode & 0o7777);
+  }
 }
 
 /**

@@ -149,6 +149,25 @@ describe('staging a release archive', () => {
   });
 });
 
+describe('an install by an account with a tight umask', () => {
+  it('lays the release down with the modes its release.json records, from an archive and from a folder', () => {
+    const archived = tree('1.2.3', 'archive');
+    const archive = archiveOf(archived);
+    const folder = tree('1.2.4', 'folder');
+    const prefix = temp();
+    const umask = process.umask(0o077);
+    try {
+      expect(install(archive, prefix)).toMatchObject({ version: '1.2.3' });
+      expect(build(prefix)).toBe('archive');
+      expect(install(folder, prefix)).toMatchObject({ version: '1.2.4' });
+      expect(build(prefix)).toBe('folder');
+    } finally {
+      process.umask(umask);
+    }
+    expect(fs.statSync(path.join(prefix, 'current', 'bin')).mode & 0o777).toBe(0o755);
+  });
+});
+
 // GNU tar writes a member under a link inside the release over a file it extracted by name, where the Mac's bsdtar refuses
 // the link, so this runs on a Linux image with GNU tar and ssh-keygen, such as archi-it:machine, with the Node runtime
 // the release build keeps under vendor/
