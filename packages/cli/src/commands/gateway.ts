@@ -1,8 +1,8 @@
 import { Command } from 'commander';
 import type { OwnerRecord } from '@archipelago/protocol';
-import { AuthorityFailure, gatewayPaths, isOwnerOp, type OwnerOp, type OwnerParams, type OwnerParamsOf } from '@archipelago/archid/gateway/authority';
-import { gatewayPrefix, main } from '@archipelago/archid/gateway/bin';
-import { AuthorityClient } from '@archipelago/archid/gateway/client';
+import { AuthorityFailure, isOwnerOp } from '@archipelago/archid/gateway/authority';
+import { main } from '@archipelago/archid/gateway/bin';
+import { localOwner, type OwnerAnswer } from '../controller/authority.js';
 
 /** What one operation answered: the same frame the authority put on its socket, minus the request id. */
 type OwnerFrame =
@@ -14,20 +14,6 @@ const write = (frame: OwnerFrame): void => { process.stdout.write(`${JSON.string
 function refuse(code: string, message: string, data?: Record<string, unknown>): void {
   write({ error: data ? { code, message, data } : { code, message } });
   process.exitCode = 1;
-}
-
-// the client's methods are typed one per operation; the authority is the one that validates params
-function send(client: AuthorityClient, op: OwnerOp, params: OwnerParams): Promise<OwnerRecord> {
-  switch (op) {
-    case 'owner.get': return client.get(params as OwnerParamsOf<'owner.get'>);
-    case 'owner.create': return client.create(params as OwnerParamsOf<'owner.create'>);
-    case 'owner.begin': return client.begin(params as OwnerParamsOf<'owner.begin'>);
-    case 'owner.ready': return client.ready(params as OwnerParamsOf<'owner.ready'>);
-    case 'owner.commit': return client.commit(params as OwnerParamsOf<'owner.commit'>);
-    case 'owner.abort': return client.abort(params as OwnerParamsOf<'owner.abort'>);
-    case 'owner.complete': return client.complete(params as OwnerParamsOf<'owner.complete'>);
-    case 'owner.force': return client.force(params as OwnerParamsOf<'owner.force'>);
-  }
 }
 
 function rest(params: string | undefined): Record<string, unknown> {
@@ -44,22 +30,16 @@ function rest(params: string | undefined): Record<string, unknown> {
 
 /** One operation on the authority of the machine this runs on, over its socket and nothing else. */
 async function owner(op: string, o: { fleet: string; params?: string }): Promise<void> {
-  const prefix = gatewayPrefix();
-  let client: AuthorityClient | undefined;
+  let answer: OwnerAnswer;
   try {
-    const name = `owner.${op}`;
-    if (!isOwnerOp(name)) throw new AuthorityFailure('invalid_request', `unknown operation ${op}`);
-    const params = { ...rest(o.params), fleetId: o.fleet } as OwnerParams;
-    client = await AuthorityClient.connect(prefix).catch((err: unknown) => {
-      throw new AuthorityFailure('disconnected', `the gateway authority did not answer on ${gatewayPaths(prefix).socket}: ${String(err)}`);
-    });
-    write({ result: { record: await send(client, name, params) } });
+    if (!isOwnerOp(`owner.${op}`)) throw new AuthorityFailure('invalid_request', `unknown operation ${op}`);
+    answer = await localOwner(op, o.fleet, rest(o.params));
   } catch (err) {
     const failure = err instanceof AuthorityFailure ? err : new AuthorityFailure('internal', String(err));
-    refuse(failure.code, failure.message, failure.data);
-  } finally {
-    client?.close();
+    answer = { error: { code: failure.code, message: failure.message, ...(failure.data && { data: failure.data }) } };
   }
+  if ('record' in answer) write({ result: { record: answer.record } });
+  else refuse(answer.error.code, answer.error.message, answer.error.data);
 }
 
 export function gatewayCommands(): Command {
