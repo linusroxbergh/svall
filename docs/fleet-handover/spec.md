@@ -486,7 +486,9 @@ until ownership commits.
 After the main pass, the controller re-scans source state and file manifests and runs a verification
 pass. App/API writes and background jobs are frozen, but external editors cannot be locked; detected
 source changes cause another pass. After three unstable passes the handover stops and asks the user
-to close the external writer.
+to close the external writer. A claim asked again also accepts each root as a pass verified it, as
+the controller's progress journal kept it; a root that kept changing holds a copy no pass verified,
+and goes on only once archived.
 
 ## Agent sessions
 
