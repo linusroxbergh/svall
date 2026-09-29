@@ -601,6 +601,32 @@ runIf('Fleet', () => {
     expect((await revived).tmux?.windowId).not.toBe(windowId);
   });
 
+  it('opens no window for a revive admitted before a freeze, and settles only once that revive has answered', async () => {
+    const b = await boot();
+    const { fleet, store, tmux, ownership } = b;
+    const { c } = await withAgent(b);
+    store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
+    const real = tmux.killWindow.bind(tmux);
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    vi.spyOn(tmux, 'killWindow').mockImplementation(async (id) => { await held; return real(id); });
+    const ending = fleet['endIdleAgents']();
+    await waitFor(() => !store.state.characters[c.id].tmux);
+    // admitted while the fleet was writable, it waits on the idle close past the freeze
+    const revived = fleet.reviveCharacter(c.id).then(() => 'opened', (e: Error & { code?: string }) => e.code);
+    await ownership.freeze({ id: 'tx-1', fromMachineId: ownership.machineId, toMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'), phase: 'preparing', startedAt: 1 });
+    let settled = false;
+    const settling = fleet.settle().then(() => { settled = true; });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(settled).toBe(false);
+    release();
+    await ending;
+    await settling;
+    expect(await revived).toBe('frozen');
+    expect((await tmux.listWindows()).filter((w) => w.name === c.id)).toEqual([]);
+    expect(store.state.characters[c.id].tmux).toBeUndefined();
+  });
+
   it('goes back to a window whose kill failed, rather than start a second agent', async () => {
     const b = await boot();
     const { fleet, store, tmux } = b;

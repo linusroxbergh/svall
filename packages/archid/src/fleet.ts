@@ -153,9 +153,10 @@ export class Fleet extends EventEmitter<Events> {
     void done.then(() => this.background.delete(done));
   }
 
-  /** Resolves once the background writes in flight have landed: after a freeze, none follows it. */
+  /** Resolves once the background writes and the revives in flight have landed: after a freeze, none follows it. */
   async settle(): Promise<void> {
-    while (this.background.size) await Promise.all([...this.background]);
+    const inFlight = () => [...this.background, ...this.reviving.values(), ...this.openingSecond.values()];
+    while (inFlight().length) await Promise.allSettled(inFlight());
     await this.scribe.settled();
   }
 
@@ -715,18 +716,22 @@ export class Fleet extends EventEmitter<Events> {
   reviveCharacter(id: string, prompt?: string): Promise<Character> {
     const inFlight = this.reviving.get(id);
     if (inFlight) return inFlight;
-    const p = this.doRevive(id, prompt).finally(() => this.reviving.delete(id));
+    const p = this.doRevive(id, prompt, this.writable()).finally(() => this.reviving.delete(id));
     this.reviving.set(id, p);
     return p;
   }
 
-  private async doRevive(id: string, prompt?: string): Promise<Character> {
+  // `admitted`: asked while the fleet was writable, so a freeze since then stops it before it opens anything; a
+  // handover's own revive runs frozen
+  private async doRevive(id: string, prompt: string | undefined, admitted: boolean): Promise<Character> {
     // a window still closing for idleness is not one to go back to
     await this.ending.get(id);
+    if (admitted) this.deps.ownership.assertOwner('terminal');
     const c = this.char(id);
     if (c.tmux) return c;
     // a character marked dormant while its window lived goes back to that window; a new one would run the resume twice
     const alive = (await this.deps.tmux.listWindows()).find((w) => w.name === id && !w.dead);
+    if (admitted) this.deps.ownership.assertOwner('terminal');
     if (alive) {
       this.deps.store.update((d) => {
         const cur = d.characters[id];
