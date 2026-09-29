@@ -68,7 +68,42 @@ export async function readCheckout(dir: string, git: GitRunner): Promise<{ statu
 }
 
 export async function readWorktrees(dir: string, git: GitRunner, subject?: string): Promise<WorktreeEntry[]> {
-  return parseWorktreeList(await must(git, ['worktree', 'list', '--porcelain', '-z'], dir, subject));
+  try {
+    return parseWorktreeList(await must(git, ['worktree', 'list', '--porcelain', '-z'], dir, subject));
+  } catch (e) {
+    // git before 2.36 has no -z here, and lists one attribute a line
+    if (!(e instanceof GitFailure && /unknown switch `z'/.test(e.message))) throw e;
+  }
+  return parseWorktreeList(nulled(await must(git, ['worktree', 'list', '--porcelain'], dir, subject), subject ?? dir));
+}
+
+const ATTRIBUTES = new Set(['worktree', 'HEAD', 'branch', 'detached', 'bare', 'locked', 'prunable']);
+const ESCAPES: Record<string, number> = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, '\\': 92 };
+
+// the -z form of a listing git wrote one attribute a line: a lock reason there is C-quoted, and a path never is,
+// so a path with a line break in it shows as a line git would not write
+function nulled(stdout: string, subject: string): string {
+  let open = false;
+  return stdout.split('\n').map((line) => {
+    const key = line.split(' ', 1)[0];
+    if (line === '') open = false;
+    else if ((key === 'worktree') === open || !ATTRIBUTES.has(key)) {
+      throw new GitFailure(`${subject}: git lists a worktree path with a line break in it, which git prints whole only with -z, in git 2.36 or later`);
+    } else open = true;
+    return line.startsWith('locked "') ? `locked ${unquoted(line.slice(7))}` : line;
+  }).join('\0');
+}
+
+function unquoted(quoted: string): string {
+  const raw = Buffer.from(quoted.slice(1, -1));
+  const out: number[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] !== 0x5c) { out.push(raw[i]); continue; }
+    const escape = ESCAPES[String.fromCharCode(raw[++i])];
+    if (escape !== undefined) out.push(escape);
+    else { out.push(parseInt(raw.toString('latin1', i, i + 3), 8)); i += 2; }
+  }
+  return Buffer.from(out).toString();
 }
 
 export async function readStash(dir: string, git: GitRunner): Promise<string[]> {

@@ -3,9 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { emptyState, type Character } from '@archipelago/protocol';
-import { discoverGit, gitIndexDigest, graphId, parseWorktreeList } from '../../src/handover/git-graph.js';
+import { discoverGit, gitIndexDigest, graphId, parseWorktreeList, readWorktrees } from '../../src/handover/git-graph.js';
 import { DEFAULT_EXCLUDES } from '../../src/handover/inventory.js';
-import type { GitResult, GitRunner } from '../../src/links/git.js';
+import { runGit, type GitResult, type GitRunner } from '../../src/links/git.js';
 import { char, crew, git, hasGit, seedHere } from './git-fixture.js';
 
 const made: string[] = [];
@@ -22,6 +22,10 @@ function fakeGit(answers: Record<string, Partial<GitResult>>): GitRunner {
   };
 }
 const DIRS = 'rev-parse --path-format=absolute --show-toplevel --git-common-dir --git-dir';
+
+// what git before 2.36 says to `worktree list -z`
+const NO_Z: GitResult = { code: 129, stdout: '', stderr: "error: unknown switch `z'\nusage: git worktree list [<options>]\n" };
+const withoutZ = (git: GitRunner): GitRunner => async (args, cwd) => (args[0] === 'worktree' && args.includes('-z') ? NO_Z : git(args, cwd));
 
 function crewOf(characters: Record<string, Partial<Character>>) {
   const state = emptyState();
@@ -59,6 +63,38 @@ describe('parseWorktreeList', () => {
   });
 });
 
+describe('readWorktrees, from a git with no -z for worktree list', () => {
+  const a = 'a'.repeat(40);
+  const lines = (...entries: string[][]): string => entries.map((e) => `${e.join('\n')}\n\n`).join('');
+
+  it('reads the same entries from one attribute a line, with a lock reason git C-quoted', async () => {
+    const git = withoutZ(fakeGit({ '/r: worktree list --porcelain': { stdout: lines(
+      ['worktree /r', `HEAD ${a}`, 'branch refs/heads/main'],
+      ['worktree /r/bare.git', 'bare'],
+      ['worktree /r/d', `HEAD ${a}`, 'detached', 'locked'],
+      ['worktree /r/l', `HEAD ${a}`, 'branch refs/heads/l', String.raw`locked "p\303\245 \"the\" desk\n\\ again"`],
+      ['worktree /r/p', `HEAD ${'0'.repeat(40)}`, 'branch refs/heads/new', 'prunable gitdir file points to non-existent location'],
+    ) } }));
+    expect(await readWorktrees('/r', git)).toEqual([
+      { path: '/r', head: a, branch: 'refs/heads/main', bare: false, prunable: false },
+      { path: '/r/bare.git', head: null, branch: null, bare: true, prunable: false },
+      { path: '/r/d', head: a, branch: null, bare: false, locked: '', prunable: false },
+      { path: '/r/l', head: a, branch: 'refs/heads/l', bare: false, locked: 'på "the" desk\n\\ again', prunable: false },
+      { path: '/r/p', head: null, branch: 'refs/heads/new', bare: false, prunable: true },
+    ]);
+  });
+
+  it('fails on a worktree path with a line break in it, which that form cannot print whole', async () => {
+    const git = withoutZ(fakeGit({ '/r: worktree list --porcelain': { stdout: lines(
+      ['worktree /r', `HEAD ${a}`, 'branch refs/heads/main'],
+      ['worktree /r/two', 'lines', `HEAD ${a}`, 'detached'],
+    ) } }));
+    await expect(readWorktrees('/r', git, '/r/.git')).rejects.toThrow(
+      '/r/.git: git lists a worktree path with a line break in it, which git prints whole only with -z, in git 2.36 or later',
+    );
+  });
+});
+
 describe('discoverGit, when git or the disk refuses', () => {
   const here = (p: string): boolean => p !== '/gone';
 
@@ -86,11 +122,11 @@ describe('discoverGit, when git or the disk refuses', () => {
   it('blocks a graph whose worktrees git will not list, and keeps no half-read graph', async () => {
     const git = fakeGit({
       [`/r: ${DIRS}`]: { stdout: '/r\n/r/.git\n/r/.git\n' },
-      '/r: worktree list --porcelain -z': { code: 129, stderr: 'error: unknown option `z\'\n' },
+      '/r: worktree list --porcelain -z': { code: 128, stderr: "fatal: unable to read '/r/.git/worktrees/x/gitdir': Permission denied\n" },
     });
     const d = await discoverGit(crewOf({ a: { cwd: '/r' } }), { excludes: DEFAULT_EXCLUDES, git, exists: here });
     expect(d.graphs).toEqual([]);
-    expect(d.blockers).toEqual([{ code: 'worktree_unresolved', message: "/r/.git: git worktree list --porcelain -z failed: error: unknown option `z'", entity: { kind: 'git', id: graphId('/r/.git') } }]);
+    expect(d.blockers).toEqual([{ code: 'worktree_unresolved', message: "/r/.git: git worktree list --porcelain -z failed: fatal: unable to read '/r/.git/worktrees/x/gitdir': Permission denied", entity: { kind: 'git', id: graphId('/r/.git') } }]);
   });
 });
 
@@ -128,6 +164,17 @@ real(`discoverGit on a real repository${hasGit ? '' : ' (skipped: git is not on 
     // a submodule a character works in is a graph of its own, its git dir and common dir one folder
     expect(sub.main).toMatchObject({ path: s.sub, gitDir: sub.commonDir, branch: 'refs/heads/main', characters: ['sub'] });
     expect(sub).toMatchObject({ worktrees: [], unused: [], stash: [] });
+  });
+
+  it('reads the same graph from a git with no -z for worktree list, a quoted lock reason included', async () => {
+    const l = seedHere(made);
+    const s = l.source;
+    const reason = 'på "the" desk\n\\ again';
+    git(l.base, s.main, 'worktree', 'unlock', s.locked);
+    git(l.base, s.main, 'worktree', 'lock', '--reason', reason, s.locked);
+    const d = await discoverGit(crew(l), { excludes: DEFAULT_EXCLUDES });
+    expect(d.graphs[0].worktrees.find((w) => w.path === s.locked)?.locked).toBe(reason);
+    expect(await discoverGit(crew(l), { excludes: DEFAULT_EXCLUDES, git: withoutZ(runGit) })).toEqual(d);
   });
 
   it('reads what each checkout stages and changes, and leaves untracked files to the file manifest', async () => {
