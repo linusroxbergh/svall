@@ -332,7 +332,7 @@ const params = (s: Scene, over: Partial<Prepare> = {}): Prepare =>
 /** This destination's daemon, as main wires it, over the scene's home, in an account whose home is the fleet's unless `homedir` says otherwise. */
 function daemon(
   s: { paths: Paths; store: Store; probes: AgentProbe[]; manifest: Pick<TransferManifestV1, 'home'> },
-  o: { concurrency?: number; failWrite?: (j: HandoverJournal) => boolean; git?: GitRunner; homedir?: () => string } = {},
+  o: { concurrency?: number; failWrite?: (j: HandoverJournal) => boolean; git?: GitRunner; homedir?: () => string; agents?: () => Promise<AgentProbe[]> } = {},
 ) {
   const gateway = new Gateway();
   const clock = new Hands();
@@ -344,7 +344,7 @@ function daemon(
     const write = journal.write.bind(journal);
     journal.write = (j) => { if (o.failWrite?.(j)) throw new Error('ENOSPC: no space left on device'); write(j); };
     const handover = new HandoverService({
-      ownership, journal, agents: async () => s.probes, fleet: { ...crew.fleet, deactivate: async () => { crew.log.push('deactivate'); } },
+      ownership, journal, agents: o.agents ?? (async () => s.probes), fleet: { ...crew.fleet, deactivate: async () => { crew.log.push('deactivate'); } },
       source: idleSides(s.paths, { store: s.store }).source,
       destination: {
         paths: s.paths, config, store: s.store, fleet: crew.fleet, tmux: crew.tmux, processes: crew.processes, authority: () => gateway, clock, ...(o.git && { git: o.git }),
@@ -609,6 +609,25 @@ describe('destination prepare', () => {
       expect(JSON.parse(fs.readFileSync(s.paths.replicaRecord(fleetId, r.path), 'utf8')), r.path).toMatchObject({ state: 'sealed', generation: 4 });
     }
     expect(d.handover.journalState()).toEqual({ kind: 'none' });
+  });
+
+  it('lets go a handover whose prepare journaled it while an abort waited behind that prepare', async () => {
+    const s = await scene();
+    let answer!: () => void;
+    const asked = new Promise<void>((r) => { answer = r; });
+    // the prepare waits on this machine's agents before it journals anything
+    const d = daemon(s, { agents: async () => { await asked; return s.probes; } });
+    const preparing = d.handover.prepare(params(s));
+    await settle();
+    d.gateway.record = { fleetId, generation: 4, ownerMachineId: mac };
+    const aborting = d.handover.abort({ transactionId: TX, generation: 5 });
+    await settle();
+    answer();
+    await preparing;
+    expect(await aborting).toEqual({});
+    expect(d.handover.journalState()).toEqual({ kind: 'none' });
+    expect(fs.existsSync(s.paths.preparedState(TX))).toBe(false);
+    expect(d.ownership.isFrozen()).toBe(false);
   });
 
   it('discards what it prepared once the gateway no longer holds the handover, and not before', async () => {

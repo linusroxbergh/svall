@@ -211,9 +211,13 @@ export class HandoverService {
   }
 
   async abort(p: ParsedParams<'handover.abort'>): Promise<Result<'handover.abort'>> {
-    const receiving = this.receiving(p.transactionId);
-    // a destination the transfer staged sessions on before it journaled anything still lets that stage go
-    if (!receiving && !this.deps.ownership.isOwner()) await this.destination.dropStage(p.transactionId);
+    let receiving = this.receiving(p.transactionId);
+    // a destination the transfer staged sessions on before it journaled anything still lets that stage go; a prepare
+    // that stage waited behind may have journaled the handover meanwhile
+    if (!receiving && !this.deps.ownership.isOwner()) {
+      await this.destination.dropStage(p.transactionId);
+      receiving = this.receiving(p.transactionId);
+    }
     if (!receiving) this.authorize('abort');
     this.match(p.transactionId, p.generation);
     const j = this.open();
