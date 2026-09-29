@@ -18,8 +18,10 @@ final class RemoteConnection {
 
     private var helper: ControllerProcess?
     private let local: () -> ArchiConnection?
+    private let localOnly: () -> Bool
     private var owner = "local"
     private var rebuildWhenOnline = false
+    private var saidOnline = false
 
     // what the helper said online with; only a remote owner's forward is kept from it
     private var online: ArchiConnection?
@@ -37,18 +39,22 @@ final class RemoteConnection {
     /// Every surface is to be attached afresh: the route under them went, or the fleet moved.
     var onSurfaces: () -> Void = {}
 
-    init(helper: ControllerProcess?, local: @escaping () -> ArchiConnection?) {
+    /// `localOnly` says whether the fleet's config names no gateway, so it can only be on this Mac.
+    init(helper: ControllerProcess?, local: @escaping () -> ArchiConnection?, localOnly: @escaping () -> Bool = { false }) {
         self.helper = helper
         self.local = local
+        self.localOnly = localOnly
     }
 
     func start() {
         guard let helper else { return fallBack() }
         route = .pending
+        saidOnline = false
         helper.onEvent = { [weak self] event in self?.handle(event) }
         helper.onExit = { [weak self] status in
             guard let self else { return }
             publish(State(state: "error", owner: owner, kind: "other", message: "the connection helper stopped (exit \(status))"))
+            fallBackIfLocalOnly()
         }
         do { try helper.start() } catch {
             NSLog("archi: could not start the connection helper: %@", "\(error)")
@@ -86,12 +92,19 @@ final class RemoteConnection {
         onConnection(connection)
     }
 
+    /// A helper that failed before it said where the fleet is leaves a fleet with no gateway where it can only be.
+    private func fallBackIfLocalOnly() {
+        guard !saidOnline, route == .pending, localOnly() else { return }
+        fallBack()
+    }
+
     private func handle(_ event: ControllerEvent) {
         switch event {
         case .connecting(let owner):
             self.owner = owner
             publish(State(state: "connecting", owner: owner, kind: nil, message: nil))
         case .online(let connection, let remote):
+            saidOnline = true
             owner = remote?.name ?? "local"
             route = remote.map { .remote($0) } ?? .local
             online = connection
@@ -103,6 +116,7 @@ final class RemoteConnection {
             rebuildWhenOnline = true
         case .error(let kind, let message):
             publish(State(state: "error", owner: owner, kind: kind, message: message))
+            fallBackIfLocalOnly()
         case .ownerChanged(let owner):
             self.owner = owner
             online = nil

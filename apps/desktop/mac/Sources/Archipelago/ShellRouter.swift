@@ -54,7 +54,7 @@ final class ShellRouter {
         let helper = ControllerProcess.locate().map {
             ControllerProcess(executable: $0, arguments: ControllerProcess.connectArguments(profile: ArchiHome.profile))
         }
-        remote = RemoteConnection(helper: helper, local: { ArchiHome.connection() })
+        remote = RemoteConnection(helper: helper, local: { ArchiHome.connection() }, localOnly: { !ArchiHome.namesGateway() })
         remote.onConnection = { [weak self] connection in
             guard self?.listening == true else { return }
             self?.bridge.send(.connection(connection))

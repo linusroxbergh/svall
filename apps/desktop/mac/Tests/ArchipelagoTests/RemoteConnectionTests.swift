@@ -9,8 +9,8 @@ final class RemoteConnectionTests: XCTestCase {
     private var wanted: XCTestExpectation?
     private var wantedCount = 0
 
-    private func connection(helper: ControllerProcess?, local: ArchiConnection? = nil) -> RemoteConnection {
-        let remote = RemoteConnection(helper: helper, local: { local })
+    private func connection(helper: ControllerProcess?, local: ArchiConnection? = nil, localOnly: Bool = false) -> RemoteConnection {
+        let remote = RemoteConnection(helper: helper, local: { local }, localOnly: { localOnly })
         remote.onConnection = { [unowned self] c in
             record(c.map { "connection \($0.host):\($0.port):\($0.token)" } ?? "connection none")
         }
@@ -199,6 +199,43 @@ final class RemoteConnectionTests: XCTestCase {
         XCTAssertEqual(transcript.first, "state connecting local - -")
         XCTAssertEqual(remote.state?.state, "error")
         XCTAssertEqual(remote.state?.kind, "other")
+        // the fleet names a gateway, so it may be on another machine
+        XCTAssertEqual(remote.route, .pending)
+        remote.stop()
+    }
+
+    func testAHelperThatDiesBeforeItSaysWhereAFleetWithNoGatewayIsLeavesItOnThisMac() throws {
+        let helper = try fakeHelper(prints: [#"{"type":"connecting","owner":"local"}"#], then: "exit 3")
+        let remote = connection(helper: ControllerProcess(executable: helper, arguments: []),
+                                local: ArchiConnection(host: "127.0.0.1", port: 8123, token: "t0ken"), localOnly: true)
+        remote.start()
+        waitForTranscript(of: 3)
+        XCTAssertEqual(transcript, ["state connecting local - -",
+                                    "state error local other the connection helper stopped (exit 3)",
+                                    "connection 127.0.0.1:8123:t0ken"])
+        XCTAssertEqual(remote.route, .local)
+        XCTAssertEqual(remote.connection, ArchiConnection(host: "127.0.0.1", port: 8123, token: "t0ken"))
+    }
+
+    func testAHelperThatFailsBeforeItSaysWhereAFleetWithNoGatewayIsLeavesItOnThisMac() throws {
+        let helper = try fakeHelper(prints: [#"{"type":"connecting","owner":"local"}"#,
+                                             #"{"type":"error","kind":"other","message":"archid is not running"}"#])
+        let remote = connection(helper: ControllerProcess(executable: helper, arguments: []),
+                                local: ArchiConnection(host: "127.0.0.1", port: 8123, token: "t0ken"), localOnly: true)
+        remote.start()
+        waitForTranscript(of: 3)
+        XCTAssertEqual(Array(transcript.suffix(1)), ["connection 127.0.0.1:8123:t0ken"])
+        XCTAssertEqual(remote.route, .local)
+        remote.stop()
+    }
+
+    func testAHelperThatFailsOnceTheFleetWasOnlineKeepsTheRouteItHad() throws {
+        let helper = try fakeHelper(prints: [#"{"type":"connecting","owner":"studio"}"#, remoteOnline], then: "exit 3")
+        let remote = connection(helper: ControllerProcess(executable: helper, arguments: []), localOnly: true)
+        remote.start()
+        waitForTranscript(of: 4)
+        XCTAssertEqual(remote.state?.state, "error")
+        XCTAssertEqual(remote.route, .remote(RemoteRoute(name: "studio", destination: "linus@studio", controlSocket: "/tmp/archi/studio.sock")))
         remote.stop()
     }
 

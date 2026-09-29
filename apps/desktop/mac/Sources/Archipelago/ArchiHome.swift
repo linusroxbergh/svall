@@ -37,6 +37,14 @@ enum ArchiHome {
         ProcessInfo.processInfo.environment["ARCHI_CONFIG_DIR"] ?? NSHomeDirectory() + "/.config/archipelago"
     }
 
+    /// Whether fleet.json names a gateway at all: a fleet with none has only ever run on this Mac.
+    static func namesGateway(home: String = path) -> Bool {
+        guard let data = FileManager.default.contents(atPath: home + "/fleet.json"),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = json["gatewayMachineId"] as? String else { return false }
+        return !id.isEmpty
+    }
+
     /// The registry name of the machine fleet.json names as its gateway, which a handover can move the fleet to.
     static func gatewayName(home: String = path, configDir: String = configDir) -> String? {
         let json = { (file: String) in FileManager.default.contents(atPath: file).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } }

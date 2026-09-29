@@ -313,11 +313,16 @@ final class HandoverTests: XCTestCase {
             .write(to: config.appendingPathComponent("machines.json"), atomically: true, encoding: .utf8)
 
         XCTAssertNil(ArchiHome.gatewayName(home: home.path, configDir: config.path))
+        XCTAssertFalse(ArchiHome.namesGateway(home: home.path))
         try #"{"id":"f","handover":{"enabled":true}}"#.write(to: home.appendingPathComponent("fleet.json"), atomically: true, encoding: .utf8)
         XCTAssertNil(ArchiHome.gatewayName(home: home.path, configDir: config.path))
+        XCTAssertFalse(ArchiHome.namesGateway(home: home.path))
         try #"{"id":"f","gatewayMachineId":"\#(id)"}"#.write(to: home.appendingPathComponent("fleet.json"), atomically: true, encoding: .utf8)
         XCTAssertEqual(ArchiHome.gatewayName(home: home.path, configDir: config.path), "studio")
+        XCTAssertTrue(ArchiHome.namesGateway(home: home.path))
         try #"{"id":"f","gatewayMachineId":"22222222-1f2a-4b5c-8d7e-9f0a1b2c3d4e"}"#.write(to: home.appendingPathComponent("fleet.json"), atomically: true, encoding: .utf8)
         XCTAssertNil(ArchiHome.gatewayName(home: home.path, configDir: config.path))
+        // a gateway this Mac's registry has lost is still one the fleet may run on
+        XCTAssertTrue(ArchiHome.namesGateway(home: home.path))
     }
 }
