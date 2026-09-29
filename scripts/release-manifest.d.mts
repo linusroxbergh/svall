@@ -32,3 +32,4 @@ export function sshVerify(o: { allowedSigners: string }): Verify;
 export function archiveRelease(archive: string, listing: string): { version: string; members: string[] };
 export function verifySignature(dir: string, o?: VerifyOptions): boolean;
 export function verifyRelease(dir: string, o?: VerifyOptions): { release: Release; entries: Entry[]; signed: boolean; signer?: string };
+export function verifyTree(dir: string, o?: VerifyOptions): { release: Release; entries: Entry[] };

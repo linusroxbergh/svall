@@ -1,4 +1,4 @@
-import type { Verify } from './release-manifest.mjs';
+import type { Entry, Release, Verify, VerifyOptions } from './release-manifest.mjs';
 
 export const DEFAULT_PREFIX: string;
 export function allowedSigners(): string;
@@ -23,6 +23,16 @@ export interface Installed {
   releasesKept: string[];
 }
 
+export interface Staged {
+  version: string;
+  /** `<staging>/releases/<version>`, authenticated */
+  dir: string;
+  release: Release;
+  entries: Entry[];
+  signed: boolean;
+}
+
+export function stageArchive(archive: string, staging: string, o?: VerifyOptions): Staged;
 export function installRelease(o: InstallOptions): Installed;
 export function main(argv: string[]): Installed;
 

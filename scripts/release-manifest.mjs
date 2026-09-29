@@ -137,10 +137,14 @@ export function verifySignature(dir, o = {}) {
  * lists, then the tree against release.json in both directions. `verify(dir, signer)` throws to refuse.
  */
 export function verifyRelease(dir, o = {}) {
-  dir = path.resolve(dir);
   const signer = o.signer ?? NAMESPACE;
   const signed = verifySignature(dir, o);
+  return { ...verifyTree(dir, o), signed, signer: signed ? signer : undefined };
+}
 
+/** Every digest SHA256SUMS lists, then the tree against release.json in both directions: what follows the signature. */
+export function verifyTree(dir, o = {}) {
+  dir = path.resolve(dir);
   const listed = checkSums(dir);
   const release = JSON.parse(fs.readFileSync(path.join(dir, MANIFEST), 'utf8'));
   if (release.unsigned && !o.allowUnsigned) throw new Error(`${dir} was built without a signing key; install it with --allow-unsigned`);
@@ -156,5 +160,5 @@ export function verifyRelease(dir, o = {}) {
   for (const p of listed.keys()) if (p !== MANIFEST && want.get(p)?.type !== 'file') throw new Error(`${SUMS} lists ${p}, which ${MANIFEST} does not carry as a file`);
   for (const [p, e] of want) if (e.type === 'file' && !listed.has(p)) throw new Error(`${p} is in ${MANIFEST} but not in ${SUMS}`);
 
-  return { release, entries: [...found.values()], signed, signer: signed ? signer : undefined };
+  return { release, entries: [...found.values()] };
 }

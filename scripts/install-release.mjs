@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { archiveRelease, MANIFEST, SIG, SUMS, sshVerify, verifyRelease, verifySignature } from './release-manifest.mjs';
+import { archiveRelease, MANIFEST, SIG, SUMS, sshVerify, verifyRelease, verifySignature, verifyTree } from './release-manifest.mjs';
 
 export const DEFAULT_PREFIX = path.join(os.homedir(), '.local', 'share', 'archipelago');
 
@@ -28,24 +28,47 @@ const VERSION = /^[A-Za-z0-9._+-]+$/;
 
 const isTarball = (p) => /\.tar\.gz$|\.tgz$/.test(p);
 
+const tar = (argv) => execFileSync('tar', argv, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120_000, maxBuffer: 16 * 1024 * 1024 });
+
+const contentOf = (file) => (fs.existsSync(file) ? fs.readFileSync(file) : undefined);
+
 /**
- * Puts the release tree in `staging`, from a directory of one or from an archive holding one. An archive's
- * signature over its SHA256SUMS is checked before anything else leaves it.
+ * Unpacks a release archive into `staging` and authenticates it there, as every installer of one does. It must hold one
+ * release under a name an installer takes, each member a path in it spelled one way and listed once. The signature over
+ * its SHA256SUMS is checked before anything else leaves the archive; after the rest is unpacked that SHA256SUMS must still
+ * be the one there, since GNU tar writes a member under a link inside the release over a file it extracted by name, and
+ * every file and the tree must match it. `verify(dir, signer)` throws to refuse a signature.
  */
-function stage(source, staging, o) {
+export function stageArchive(archive, staging, o = {}) {
+  const { version, members } = archiveRelease(archive, tar(['-tzf', archive]));
+  if (!VERSION.test(version) || version === '.' || version === '..') throw new Error(`${archive} names its release ${JSON.stringify(version)}, which no installer takes`);
+  if (!members.includes(`releases/${version}/${MANIFEST}`)) throw new Error(`${archive} carries no releases/${version}/${MANIFEST}`);
   fs.mkdirSync(staging, { recursive: true });
-  if (!isTarball(source)) {
-    fs.cpSync(source, staging, { recursive: true, verbatimSymlinks: true });
-    const version = JSON.parse(fs.readFileSync(path.join(staging, MANIFEST), 'utf8')).version;
-    return { version: String(version ?? ''), dir: staging };
-  }
-  const { version, members } = archiveRelease(source, execFileSync('tar', ['-tzf', source], { encoding: 'utf8' }));
   const dir = path.join(staging, 'releases', version);
-  const manifest = [SUMS, SIG].map((f) => `releases/${version}/${f}`).filter((m) => members.includes(m));
-  if (manifest.length) execFileSync('tar', ['-xzf', source, '-C', staging, ...manifest], { stdio: 'pipe' });
-  verifySignature(dir, o);
-  execFileSync('tar', ['-xzf', source, '-C', staging], { stdio: 'pipe' });
-  return { version, dir };
+  let checked;
+  try {
+    const manifest = [SUMS, SIG].map((f) => `releases/${version}/${f}`).filter((m) => members.includes(m));
+    if (manifest.length) tar(['-xzf', archive, '-C', staging, ...manifest]);
+    const signed = verifySignature(dir, o);
+    const sums = contentOf(path.join(dir, SUMS));
+    tar(['-xzf', archive, '-C', staging]);
+    const after = contentOf(path.join(dir, SUMS));
+    if (sums === undefined ? after !== undefined : !after?.equals(sums)) throw new Error(`the archive writes over the ${SUMS} its signature was checked over`);
+    checked = { ...verifyTree(dir, o), signed };
+  } catch (e) {
+    throw new Error(`${archive}: ${e.message}`);
+  }
+  if (checked.release.version !== version) throw new Error(`${archive} unpacks as ${version} but its ${MANIFEST} says ${checked.release.version}`);
+  return { version, dir, ...checked };
+}
+
+/** Puts the release tree in `staging`, from a directory of one or from an archive holding one, and authenticates it. */
+function stage(source, staging, o) {
+  if (isTarball(source)) return stageArchive(source, staging, o);
+  fs.mkdirSync(staging, { recursive: true });
+  fs.cpSync(source, staging, { recursive: true, verbatimSymlinks: true });
+  const checked = verifyRelease(staging, o);
+  return { version: String(checked.release.version ?? ''), dir: staging, ...checked };
 }
 
 /**
@@ -62,27 +85,22 @@ export function installRelease(o) {
 
   const staging = path.join(prefix, `.staging-${process.pid}`);
   fs.rmSync(staging, { recursive: true, force: true });
-  let version;
   let checked;
   let displaced;
   try {
-    const staged = stage(source, staging, { verify: o.verify, allowUnsigned: o.allowUnsigned, signer: o.signer });
-    version = staged.version;
-    const release = path.join(releases, version);
-    if (!VERSION.test(version) || path.dirname(release) !== releases)
-      throw new Error(`${source} names an unusable release directory: ${JSON.stringify(version)}`);
-    checked = verifyRelease(staged.dir, { verify: o.verify, allowUnsigned: o.allowUnsigned, signer: o.signer });
-    if (checked.release.version !== version)
-      throw new Error(`${source} unpacks as ${version} but ${MANIFEST} says ${checked.release.version}`);
+    checked = stage(source, staging, { verify: o.verify, allowUnsigned: o.allowUnsigned, signer: o.signer });
+    const release = path.join(releases, checked.version);
+    if (!VERSION.test(checked.version) || path.dirname(release) !== releases)
+      throw new Error(`${source} names an unusable release directory: ${JSON.stringify(checked.version)}`);
     fs.mkdirSync(releases, { recursive: true });
     // a build of the same name comes round again all the time in development; it takes that name
     // over only once it is whole, and the tree it replaces goes after `current` has moved
     if (fs.existsSync(release)) {
-      displaced = path.join(releases, `.replaced-${version}-${process.pid}`);
+      displaced = path.join(releases, `.replaced-${checked.version}-${process.pid}`);
       fs.renameSync(release, displaced);
     }
     try {
-      fs.renameSync(staged.dir, release);
+      fs.renameSync(checked.dir, release);
     } catch (e) {
       if (displaced) fs.renameSync(displaced, release);
       throw e;
@@ -91,6 +109,7 @@ export function installRelease(o) {
     fs.rmSync(staging, { recursive: true, force: true });
   }
 
+  const { version } = checked;
   // renaming a symlink over another is atomic, so `current` is never briefly absent or dangling
   const release = path.join(releases, version);
   const staged = `${current}.tmp-${process.pid}`;
