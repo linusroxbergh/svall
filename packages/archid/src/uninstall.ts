@@ -4,8 +4,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { CodexPaths } from './codex/install.js';
+import { gatewayPaths } from './gateway/authority.js';
 import { SystemdError, daemonReload, disableUnit, realRun, type Run } from './linux/service.js';
 import { ourUnits } from './linux/setup.js';
+import { configDir, machineId } from './machine.js';
 import { portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
 import { resolvePaths } from './paths.js';
 import { BUNDLE_ID, isProfileName, LAUNCHD_LABEL, OLD_BUNDLE_ID, OLD_LAUNCHD_LABEL, PRIVATE, profileHome } from './profile.js';
@@ -120,16 +122,41 @@ function removeShims(shimDir: string): string[] {
   return done;
 }
 
+const readJson = (file: string): Record<string, unknown> | undefined => {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return undefined; }
+};
+
+/** What stopping this machine's fleets would strand: a handover open in a fleet home, a fleet run here for its gateway, or the fleets this machine is the gateway of. */
+export function stranded(homes: string[], prefix?: string): string[] {
+  let me: string | undefined;
+  try { me = fs.existsSync(path.join(configDir(), 'machine.json')) ? machineId() : undefined; } catch { me = undefined; }
+  const out: string[] = [];
+  for (const home of homes) {
+    const p = resolvePaths(home);
+    const gateway = readJson(p.fleetConfig)?.gatewayMachineId;
+    if (fs.existsSync(p.journal)) out.push(`a handover of ${home} is open`);
+    else if (typeof gateway === 'string' && me && readJson(p.owner)?.ownerMachineId === me) out.push(`this machine runs ${home} for its gateway ${gateway}`);
+  }
+  const records = prefix ? gatewayPaths(prefix).fleets : undefined;
+  const held = records && fs.existsSync(records) ? fs.readdirSync(records).filter((f) => f.endsWith('.json')).length : 0;
+  if (held) out.push(`this machine is the gateway of ${held} fleet${held > 1 ? 's' : ''}, whose records are in ${records}`);
+  return out;
+}
+
 // takes back what setup put outside the fleet homes: the Claude hooks and statusline and the Codex hooks that run
 // `home`'s scripts, every fleet's phone link, service and tmux server, the installed releases and the shims. The
-// fleets' own data stays for purge.
+// fleets' own data stays for purge. Unless forced, it refuses where that would strand a fleet.
 export async function runUninstall(o: {
   home: string; homes: string[]; settingsPaths: string[]; codex: CodexPaths; launchAgentsDir: string; shimDir: string; launchctl: boolean;
-  mobile: MobileDeps; app: AppQuit; tmux?: string; platform?: NodeJS.Platform; unitDir?: string; prefix?: string; run?: Run;
+  mobile: MobileDeps; app: AppQuit; tmux?: string; platform?: NodeJS.Platform; unitDir?: string; prefix?: string; run?: Run; force?: boolean;
 }): Promise<string[]> {
   // $TMUX names the server the caller's terminal runs in; stopping it would end this run before the shims and the report
   const inside = o.homes.find((h) => resolvePaths(h).tmuxSock === o.tmux?.split(',')[0]);
   if (inside) throw new Error(`this terminal runs inside the tmux server of ${inside}, which uninstall stops; run archi uninstall from a terminal outside Archipelago`);
+  const strands = o.force ? [] : stranded(o.homes, o.prefix);
+  if (strands.length) {
+    throw new Error(`uninstalling here would strand fleets: ${strands.join('; ')}. Finish or abort the handover, bring each fleet to the machine that keeps it with archi handover local, and remove this machine from that one with archi host remove <name>, which checks all of this; or run archi uninstall --force`);
+  }
   const paths = resolvePaths(o.home);
   const edits = o.settingsPaths.map((file): [JsonSettings, Record<string, unknown>, string] => {
     const settings = readJsonSettings(file);

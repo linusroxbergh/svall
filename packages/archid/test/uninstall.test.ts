@@ -9,6 +9,7 @@ import { LAUNCHD_LABEL } from '../src/profile.js';
 import { HOOK_EVENTS, hookCommand, mergeHooks, mergeStatusLine, runSetup, statusWrapper, unmergeHooks, unmergeStatusLine } from '../src/setup.js';
 import type { Run } from '../src/linux/service.js';
 import { appQuit, fleetData, purge, runUninstall, type AppQuit } from '../src/uninstall.js';
+import { machineId } from '../src/machine.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
 afterEach(cleanHomes);
@@ -340,6 +341,34 @@ describe('runUninstall', () => {
     expect(fs.existsSync(path.join(f.launchAgentsDir, 'io.github.linusroxbergh.archipelago.archid.plist'))).toBe(true);
     expect(fs.existsSync(path.join(f.shimDir, 'archi'))).toBe(true);
     expect(await runUninstall({ ...f.o, tmux: '/private/tmp/tmux-501/default,123,0' })).toContain(`removed ${path.join(f.shimDir, 'archi')}`);
+  });
+
+  it('refuses, unless forced, while a handover is open, this machine runs a fleet for its gateway, or it is the gateway of fleets, and changes nothing', async () => {
+    const GATEWAY = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
+    const FLEET = '7c1e2d3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f';
+    const cases: [string, (f: ReturnType<typeof installed>, prefix: string) => void, RegExp][] = [
+      ['an open handover', (f) => { fs.mkdirSync(path.join(f.home, 'handover')); fs.writeFileSync(path.join(f.home, 'handover/journal.json'), '{}'); }, /a handover of \S+ is open/],
+      ['a fleet run here for its gateway', (f) => {
+        fs.writeFileSync(path.join(f.home, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: GATEWAY }));
+        fs.writeFileSync(path.join(f.home, 'owner.json'), JSON.stringify({ fleetId: FLEET, generation: 3, ownerMachineId: machineId() }));
+      }, new RegExp(`this machine runs \\S+ for its gateway ${GATEWAY}`)],
+      ['the gateway of a fleet', (_f, prefix) => {
+        fs.mkdirSync(path.join(prefix, 'gateway/fleets'), { recursive: true });
+        fs.writeFileSync(path.join(prefix, 'gateway/fleets', `${FLEET}.json`), '{}');
+      }, /this machine is the gateway of 1 fleet/],
+    ];
+    for (const [what, set, why] of cases) {
+      const f = installed();
+      await runSetup(f.o);
+      const prefix = path.join(f.root, '.local', 'share', 'archipelago');
+      set(f, prefix);
+      const plist = path.join(f.launchAgentsDir, `${LAUNCHD_LABEL}.plist`);
+      await expect(runUninstall({ ...f.o, prefix }), what).rejects.toThrow(why);
+      await expect(runUninstall({ ...f.o, prefix }), what).rejects.toThrow(/archi handover local.*archi host remove.*--force/);
+      expect(fs.existsSync(plist), what).toBe(true);
+      expect(fs.existsSync(path.join(f.shimDir, 'archi')), what).toBe(true);
+      expect(await runUninstall({ ...f.o, prefix, force: true }), what).toContain(`removed ${path.join(f.shimDir, 'archi')}`);
+    }
   });
 
   it('changes nothing when the Claude settings are not valid JSON', async () => {
