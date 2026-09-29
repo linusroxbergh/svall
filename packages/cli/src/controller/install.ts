@@ -4,14 +4,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { shq } from '@archipelago/archid/text';
-import { archiveRelease, MANIFEST, NAMESPACE, SIG, SUMS, verifyRelease, verifySignature, type Verify } from '../../../../scripts/release-manifest.mjs';
-import { runProcess } from './process.js';
+import { stageArchive } from '../../../../scripts/install-release.mjs';
+import { MANIFEST, NAMESPACE, SIG, SUMS, type Verify } from '../../../../scripts/release-manifest.mjs';
 import { SshError, type SshMaster } from './ssh.js';
 
 const TAR_TIMEOUT = 120_000;
 const UPLOAD_TIMEOUT = 600_000;
 const SETUP_TIMEOUT = 600_000;
-const MAX_LISTING = 16 * 1024 * 1024;
 
 /** What an archive says about itself, before a machine is asked to install it. */
 export type CompanionArchive = { archive: string; version: string; platform: string; protocol: number; signed: boolean };
@@ -22,44 +21,16 @@ export type FetchLike = (url: string) => Promise<{ ok: boolean; status: number; 
 export const companionCache = (homedir: string = os.homedir()): string =>
   path.join(homedir, '.local', 'share', 'archipelago', 'companions');
 
-async function tar(argv: string[], o: { timeoutMs?: number; maxOutputBytes?: number } = {}): Promise<string> {
-  const r = await runProcess('tar', argv, { timeoutMs: o.timeoutMs ?? TAR_TIMEOUT, maxOutputBytes: o.maxOutputBytes });
-  if (r.code !== 0) throw new Error(`tar ${argv.join(' ')} exited ${r.code}: ${r.stderr.trim().slice(0, 400)}`);
-  return r.stdout;
-}
-
 /**
- * The version, platform and protocol an archive names for itself, and whether this controller's own
- * signers vouch for it, checked over its SHA256SUMS before the rest is unpacked. The far machine's first
- * install checks the archive against the signers the archive carries, so it is authenticated here, before it is uploaded.
+ * The version, platform and protocol an archive names for itself, and whether this controller's own signers vouch for
+ * it, staged and checked as the installer stages it. The far machine's first install checks the archive against the
+ * signers the archive carries, so it is authenticated here, before it is uploaded.
  */
 export async function inspectCompanion(archive: string, o: { verify: Verify }): Promise<CompanionArchive> {
-  const { version, members } = archiveRelease(archive, await tar(['-tzf', archive], { maxOutputBytes: MAX_LISTING }));
-  // the name becomes a folder under releases/ and part of each far path the upload uses, as install-release takes it
-  if (!/^[A-Za-z0-9._+-]+$/.test(version) || version === '.' || version === '..') throw new Error(`${archive} names its release ${JSON.stringify(version)}, which no installer takes`);
-  if (!members.includes(`releases/${version}/release.json`)) throw new Error(`${archive} carries no releases/${version}/release.json`);
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'archi-companion-'));
   try {
-    const dir = path.join(work, 'releases', version);
-    const manifest = [SUMS, SIG].map((f) => `releases/${version}/${f}`).filter((m) => members.includes(m));
-    let checked: ReturnType<typeof verifyRelease>;
-    try {
-      if (manifest.length) await tar(['-xzf', archive, '-C', work, ...manifest]);
-      verifySignature(dir, { verify: o.verify, allowUnsigned: true });
-      await tar(['-xzf', archive, '-C', work]);
-      checked = verifyRelease(dir, { verify: o.verify, allowUnsigned: true });
-    } catch (err) {
-      throw new Error(`${archive}: ${(err as Error).message}`);
-    }
-    const { release } = checked;
-    if (release.version !== version) throw new Error(`${archive} unpacks as ${version} but its release.json says ${String(release.version)}`);
-    return {
-      archive,
-      version,
-      platform: String(release.platform ?? ''),
-      protocol: Number(release.protocol),
-      signed: checked.signed && release.unsigned !== true,
-    };
+    const s = stageArchive(archive, work, { verify: o.verify, allowUnsigned: true });
+    return { archive, version: s.version, platform: String(s.release.platform ?? ''), protocol: Number(s.release.protocol), signed: s.signed && s.release.unsigned !== true };
   } finally {
     fs.rmSync(work, { recursive: true, force: true });
   }

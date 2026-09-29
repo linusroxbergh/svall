@@ -48,7 +48,8 @@ under which licences, and which risks are accepted. Tests are named by file unde
   - a downloaded companion must match the digest the controller's own manifest pins;
   - every member of the archive must be a path in `releases/<v>`, with no empty, `.` or `..` segment, and listed once;
   - an archive's `SHA256SUMS` must verify against the controller's `release/allowed_signers` before anything else is
-    unpacked from it, and the tree must then match its manifest;
+    unpacked from it, still be that file once the rest is, and the tree must then match its manifest, staged by the
+    installer's own `stageArchive`;
   - it must be this controller's release and protocol, built for the machine's architecture.
 
   (`cli/test/controller/install.test.ts` "checks the signature over an archive's SHA256SUMS before it unpacks anything
