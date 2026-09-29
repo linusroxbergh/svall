@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { FleetConfig, FleetId, MachineId, TRANSFER_SCHEMA_VERSION, emptyState, type OwnerRecord, type Result } from '@archipelago/protocol';
+import { FleetConfig, FleetId, MachineId, TRANSFER_SCHEMA_VERSION, emptyState, type HandoverPhase, type OwnerRecord, type Result } from '@archipelago/protocol';
 import { manifestDigest } from '@archipelago/archid/handover/manifest';
 import { transactionDir } from '../../src/controller/progress.js';
 import { assess, fileStore, forgettable, type ControllerJournal, type FrozenManifest, type Observation, type Verdict } from '../../src/controller/recovery.js';
@@ -27,8 +27,8 @@ const tx = (phase: 'preparing' | 'ready-to-commit' | 'committed', id = TX) => ({
 const at = (generation: number, owner: MachineId, transaction?: OwnerRecord['transaction']): OwnerRecord =>
   ({ fleetId, generation, ownerMachineId: owner, ...(transaction && { transaction }) });
 
-const status = (phase?: Result<'handover.status'>['characters'][number]['phase'], id = TX): Result<'handover.status'> =>
-  ({ characters: [], roots: [], ...(phase && { transaction: { ...tx('preparing', id), phase } }) });
+const status = (phase?: HandoverPhase, id = TX): Result<'handover.status'> =>
+  (phase ? { transaction: { ...tx('preparing', id), phase } } : {});
 
 type Case = { name: string; o: Observation; want: Partial<Verdict> };
 

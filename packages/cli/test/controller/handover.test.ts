@@ -1111,7 +1111,7 @@ describe('resuming a handover the destination may have finished', () => {
 
   it('never completes over a destination journal that could not be read, and offers nothing until it is looked at', async () => {
     const w = committedWorld();
-    w.destination.answers['handover.status'] = (() => ({ characters: [], roots: [], quarantined: '/home/ada/.archipelago/handover/journal.json.broken-1' })) as never;
+    w.destination.answers['handover.status'] = (() => ({ quarantined: '/home/ada/.archipelago/handover/journal.json.broken-1' })) as never;
     const out = await controller(w).resume();
     expect(out).toMatchObject({ status: 'interrupted', safe: [], error: expect.stringContaining('journal.json.broken-1') });
     expect(w.ops).not.toContain('gateway:complete');
@@ -1211,12 +1211,12 @@ describe('the real adapters', () => {
       fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: fleet, gatewayMachineId: local }));
       fs.writeFileSync(path.join(home, 'node.json'), JSON.stringify({}));
       fs.writeFileSync(path.join(home, 'port'), String(await daemon({
-        'handover.status': { characters: [], roots: [] }, 'ownership.get': { fleetId: fleet, generation: 0, ownerMachineId: local, frozen: true },
+        'handover.status': {}, 'ownership.get': { fleetId: fleet, generation: 0, ownerMachineId: local, frozen: true },
       })));
       fs.writeFileSync(path.join(home, 'token'), `${TOKEN}\n`);
       ssh.answer({
         fleetId: fleet, machineId: trift, release: 'dev', protocol: PROTOCOL_VERSION, host: '127.0.0.1', token: 'trift-token', generation: 1,
-        port: await daemon({ 'handover.status': { characters: [], roots: [] }, 'ownership.get': { fleetId: fleet, generation: 1, ownerMachineId: trift, frozen: false } }),
+        port: await daemon({ 'handover.status': {}, 'ownership.get': { fleetId: fleet, generation: 1, ownerMachineId: trift, frozen: false } }),
       });
       fileStore(path.join(home, 'controller')).write({
         version: 1, fleetId: fleet, transactionId: tx, generation: 0, choices: {}, phase: 'activate', startedAt: 1, updatedAt: 1,
@@ -1485,7 +1485,7 @@ describe('the real adapters', () => {
         // the daemon's journal reports its own step on every write: only the controller says where the handover is
         ws.send(JSON.stringify({ event: 'handover.changed', data: { transactionId: 'tx-9', phase: 'freeze' } }));
         ws.send(JSON.stringify({ event: 'handover.entity', data: row }));
-        ws.send(JSON.stringify({ id: req.id, result: { characters: [], roots: [] } }));
+        ws.send(JSON.stringify({ id: req.id, result: {} }));
       });
     });
     try {

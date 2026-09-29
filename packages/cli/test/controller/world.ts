@@ -138,7 +138,7 @@ export class FakeSource {
 
   status() {
     const j = this.journal;
-    return j ? { transaction: { id: j.tx, fromMachineId: this.id, toMachineId: this.other, phase: j.phase, startedAt: 1 }, characters: [], roots: [] } : { characters: [], roots: [] };
+    return j ? { transaction: { id: j.tx, fromMachineId: this.id, toMachineId: this.other, phase: j.phase, startedAt: 1 } } : {};
   }
 
   async freeze(p: { transactionId: string; generation: number; choices: HandoverChoices }) {
@@ -230,7 +230,7 @@ export class FakeDestination {
     'ownership.get': () => ({ fleetId, generation: this.w.record.generation, ownerMachineId: this.w.record.ownerMachineId, frozen: false }),
     'handover.status': () => {
       const j = this.journal;
-      return j ? { transaction: { id: j.tx, fromMachineId: this.w.other(this.id), toMachineId: this.id, phase: j.phase, startedAt: 1 }, characters: [], roots: [] } : { characters: [], roots: [] };
+      return j ? { transaction: { id: j.tx, fromMachineId: this.w.other(this.id), toMachineId: this.id, phase: j.phase, startedAt: 1 } } : {};
     },
     'handover.inspect': (p: { roots: { id: string; path: string }[]; folders: string[]; resumes?: { kind: string; cwd: string; bypass?: boolean }[] }) => ({
       roots: p.roots.map((r) => ({
