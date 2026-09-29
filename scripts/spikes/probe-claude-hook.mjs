@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Manual: an M0 spike probe (docs/fleet-handover/spike-results.md), run by hand; no build or CI runs it.
 
 // Records only session identity and transcript location from a disposable hook run.
 import fs from 'node:fs';

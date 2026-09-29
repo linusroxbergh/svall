@@ -66,12 +66,12 @@ login is a `401 Unauthorized` in the middle of the resumed turn.
 
 The live source ran under a disposable `CODEX_HOME` holding only `auth.json`, a `config.toml`
 (`model = "gpt-5.6-luna"`, `approval_policy = "never"`, `sandbox_mode = "read-only"`) and a
-`hooks.json` registering `scripts/probe-claude-hook.mjs` on `SessionStart` and `Stop`; a disposable
+`hooks.json` registering `scripts/spikes/probe-claude-hook.mjs` on `SessionStart` and `Stop`; a disposable
 home has no persisted hook trust, so the run needed
 `codex exec --dangerously-bypass-hook-trust --skip-git-repo-check`. That hook probe records only
 hook name, session id and transcript path.
 
-`scripts/probe-codex-handover.mjs <rollout> <source-cwd> <destination-cwd> <destination-codex-home>`
+`scripts/spikes/probe-codex-handover.mjs <rollout> <source-cwd> <destination-cwd> <destination-codex-home>`
 copies one rollout to the same dated path under another home, remapping only path-typed fields, and
 copies this session's `session_index.jsonl` entry when the source home keeps one. It refuses a
 rollout that is not UUID-named under `sessions/<yyyy>/<mm>/<dd>`, a symlink, a rollout whose

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Manual: an M0 spike probe (docs/fleet-handover/spike-results.md), run by hand; no build or CI runs it.
 
 // A disposable-session probe, not the production transfer adapter. Never copies auth/config files.
 import fs from 'node:fs';
@@ -124,7 +125,7 @@ export function copySession({ transcriptPath, sourceCwd, destinationCwd, destina
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [transcriptPath, sourceCwd, destinationCwd, destinationConfigDir] = process.argv.slice(2);
   if (!destinationConfigDir) {
-    process.stderr.write('Usage: node scripts/probe-claude-handover.mjs <transcript> <source-cwd> <destination-cwd> <destination-config-dir>\n');
+    process.stderr.write('Usage: node scripts/spikes/probe-claude-handover.mjs <transcript> <source-cwd> <destination-cwd> <destination-config-dir>\n');
     process.exitCode = 2;
   } else {
     try { process.stdout.write(`${JSON.stringify(copySession({ transcriptPath, sourceCwd,

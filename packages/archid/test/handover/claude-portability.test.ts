@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 
 const FIXTURE = path.resolve(import.meta.dirname, '../fixtures/handover/claude');
-const PROBE = path.resolve(import.meta.dirname, '../../../../scripts/probe-claude-handover.mjs');
+const PROBE = path.resolve(import.meta.dirname, '../../../../scripts/spikes/probe-claude-handover.mjs');
 const SESSION_ID = '11111111-2222-4333-8444-555555555555';
 const SOURCE_CWD = '/Users/source/work/demo';
 const DESTINATION_CWD = '/home/target/work/demo';

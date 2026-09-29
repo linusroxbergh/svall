@@ -45,13 +45,13 @@ claude auth status
 The live source used a disposable cwd, `claude --safe-mode -p --session-id <uuid> --model haiku
 --allowedTools 'Bash(pwd)' --output-format json <prompt>`, followed by a turn with
 `--allowedTools Agent`. Safe mode avoided user hooks/plugins during the content test. The separate
-hook test used `scripts/probe-claude-hook.mjs` with an explicit `SessionStart` command hook, and
+hook test used `scripts/spikes/probe-claude-hook.mjs` with an explicit `SessionStart` command hook, and
 recorded only hook name, session id and transcript path. To verify app integration, Archipelago's
 installed `SessionStart` hook should be checked for the same fields, then the actual captured
 `transcriptPath` passed to the adapter. Hook registration lives in `packages/archid/src/setup.ts`
 and normalization in `packages/archid/src/hooks/receiver.ts`.
 
-`scripts/probe-claude-handover.mjs <transcript> <source-cwd> <destination-cwd>
+`scripts/spikes/probe-claude-handover.mjs <transcript> <source-cwd> <destination-cwd>
 <destination-config-dir>` copies only the selected UUID transcript, its project-local sidecars,
 an optional per-session index entry and optional file-history directory. It rejects existing
 destination transcripts and session symlinks. It does not copy auth/config files or `session-env`.

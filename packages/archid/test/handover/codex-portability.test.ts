@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 
 const FIXTURE = path.resolve(import.meta.dirname, '../fixtures/handover/codex');
-const PROBE = path.resolve(import.meta.dirname, '../../../../scripts/probe-codex-handover.mjs');
+const PROBE = path.resolve(import.meta.dirname, '../../../../scripts/spikes/probe-codex-handover.mjs');
 const SESSION_ID = '01a0aaaa-bbbb-7ccc-8ddd-eeeeffff0000';
 const ROLLOUT = `rollout-2026-09-21T19-28-46-${SESSION_ID}.jsonl`;
 const DATE_DIR = path.join('sessions', '2026', '09', '21');

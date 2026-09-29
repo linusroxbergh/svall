@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Manual: an M0 spike probe (docs/fleet-handover/spike-results.md), run by hand; no build or CI runs it.
 
 // A disposable-session probe, not the production transfer adapter. Never copies auth/config files.
 // The session_index.jsonl branch is defensive: `codex exec` was not seen to write that file.
@@ -113,7 +114,7 @@ export function copySession({ rolloutPath, sourceCwd, destinationCwd, destinatio
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [rolloutPath, sourceCwd, destinationCwd, destinationCodexHome] = process.argv.slice(2);
   if (!destinationCodexHome) {
-    process.stderr.write('Usage: node scripts/probe-codex-handover.mjs <rollout> <source-cwd> <destination-cwd> <destination-codex-home>\n');
+    process.stderr.write('Usage: node scripts/spikes/probe-codex-handover.mjs <rollout> <source-cwd> <destination-cwd> <destination-codex-home>\n');
     process.exitCode = 2;
   } else {
     try { process.stdout.write(`${JSON.stringify(copySession({ rolloutPath, sourceCwd,

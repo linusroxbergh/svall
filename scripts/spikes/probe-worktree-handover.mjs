@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Manual: an M0 spike probe (docs/fleet-handover/spike-results.md), run by hand; no build or CI runs it.
 
 // A probe for moving a fleet's Git checkouts to another machine under a different home prefix.
 // It touches the destination copy only. Measured against git 2.55.0 by
@@ -99,7 +100,7 @@ export function reconstruct({ mainRoot, worktrees }) {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [mainRoot, ...worktrees] = process.argv.slice(2);
   if (!mainRoot) {
-    process.stderr.write('Usage: node scripts/probe-worktree-handover.mjs <destination-main-checkout> [<destination-worktree>...]\n');
+    process.stderr.write('Usage: node scripts/spikes/probe-worktree-handover.mjs <destination-main-checkout> [<destination-worktree>...]\n');
     process.exitCode = 2;
   } else {
     try {

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import { discoverGraph, listWorktrees, reconstruct, snapshotCheckout }
-  from '../../../../scripts/probe-worktree-handover.mjs';
+  from '../../../../scripts/spikes/probe-worktree-handover.mjs';
 
 const hasGit = (() => {
   try { execFileSync('git', ['--version'], { stdio: 'ignore' }); return true; } catch { return false; }
