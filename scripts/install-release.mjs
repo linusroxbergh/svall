@@ -110,8 +110,11 @@ export function installRelease(o) {
   }
 
   const { version } = checked;
-  // renaming a symlink over another is atomic, so `current` is never briefly absent or dangling
   const release = path.join(releases, version);
+  // the tree a same-named reinstall replaced is gone, so the release before it is the one to go back to
+  const was = before === undefined ? undefined : path.resolve(prefix, before);
+  const back = was !== undefined && was !== release && fs.existsSync(was) ? was : otherReleases(releases, release)[0];
+  // renaming a symlink over another is atomic, so `current` is never briefly absent or dangling
   const staged = `${current}.tmp-${process.pid}`;
   fs.rmSync(staged, { force: true });
   fs.symlinkSync(release, staged);
@@ -123,19 +126,17 @@ export function installRelease(o) {
     signed: checked.signed,
     replaced: Boolean(displaced),
     entries: checked.entries.length,
-    rollbackTo: before ?? null,
+    rollbackTo: back ?? null,
     releasesKept: fs.readdirSync(releases).sort(),
   };
 }
 
-/** The newest release that is not the one `current` is on. */
-function previousRelease(releases, current) {
-  const others = fs.readdirSync(releases)
+/** The releases under `releases` but `current`, newest first. */
+function otherReleases(releases, current) {
+  return fs.readdirSync(releases)
     .map((name) => path.join(releases, name))
     .filter((dir) => dir !== current && fs.statSync(dir).isDirectory() && !path.basename(dir).startsWith('.'))
     .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-  if (!others.length) throw new Error(`no release under ${releases} to go back to`);
-  return others[0];
 }
 
 /** Puts `current` back on `to`, or on the release before it, as atomically as the install moved it. */
@@ -144,7 +145,8 @@ export function rollbackRelease(prefix, to) {
   const releases = path.join(root, 'releases');
   const current = path.join(root, 'current');
   const from = fs.existsSync(current) ? fs.readlinkSync(current) : undefined;
-  const release = to ? path.resolve(root, to) : previousRelease(releases, from);
+  const release = to ? path.resolve(root, to) : otherReleases(releases, from === undefined ? undefined : path.resolve(root, from))[0];
+  if (!release) throw new Error(`no release under ${releases} to go back to`);
   if (!fs.existsSync(release)) throw new Error(`no release at ${release} to go back to`);
   const staged = `${current}.tmp-${process.pid}`;
   fs.rmSync(staged, { force: true });

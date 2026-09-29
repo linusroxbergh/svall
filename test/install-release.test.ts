@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { installRelease, stageArchive } from '../scripts/install-release.mjs';
+import { installRelease, rollbackRelease, stageArchive } from '../scripts/install-release.mjs';
 import { manifestDigest, signManifest, sshVerify, writeManifest, type Entry, type Verify } from '../scripts/release-manifest.mjs';
 import { PINS } from '../scripts/release-stage.mjs';
 
@@ -47,6 +47,29 @@ const archiveOf = (dir: string): string => pack(path.dirname(path.dirname(dir)))
 
 const install = (source: string, prefix: string) => installRelease({ source, prefix, allowUnsigned: true });
 const build = (prefix: string): string => execFileSync(path.join(prefix, 'current', 'bin', 'archi'), { encoding: 'utf8' }).trim();
+
+describe('what an install keeps to go back to', () => {
+  it('names the release before a same-named reinstall, never the tree the reinstall replaced', () => {
+    const prefix = temp();
+    const before = install(tree('0.9.0'), prefix);
+    install(tree('1.0.0', 'first build'), prefix);
+    const again = install(tree('1.0.0', 'second build'), prefix);
+    expect(again.replaced).toBe(true);
+    expect(build(prefix)).toBe('second build');
+    expect(again.rollbackTo).toBe(before.release);
+    expect(again.releasesKept).toEqual(['0.9.0', '1.0.0']);
+    rollbackRelease(prefix, again.rollbackTo!);
+    expect(build(prefix)).toBe('0.9.0');
+  });
+
+  it('has nothing to go back to when the only release there was is reinstalled over itself', () => {
+    const prefix = temp();
+    install(tree('1.0.0', 'first build'), prefix);
+    const again = install(tree('1.0.0', 'second build'), prefix);
+    expect(again.rollbackTo).toBeNull();
+    expect(again.releasesKept).toEqual(['1.0.0']);
+  });
+});
 
 describe('staging a release archive', () => {
   it('checks the signature over its SHA256SUMS once, before anything else leaves the archive, then every file', () => {
