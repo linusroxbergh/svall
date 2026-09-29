@@ -147,3 +147,97 @@ handover carries, and `pnpm test:faults` passed.
    of three runs while the machine's load was ~20 (another agent's suites); it touches none of the code I changed.
 5. **Surfaces past MaxSessions** stay as they are (accepted above); the app's user doc already says so
    (`docs/remote-machines/handover.md`).
+
+## Fix round 1
+
+Status: DONE_WITH_CONCERNS. Commits 2ef3851b..ee34500d (8, mine only; 7243b8dc and 76524110 between are Task 39b's).
+Protocol stays 17: the new blocker code and `SystemInfo.heapLimit` (optional) ride the unreleased 17 (main is 16).
+
+| Commit | Item | What |
+| --- | --- | --- |
+| 2ef3851b | M1 | `caseCollisions` returns groups by fold, each sorted; the blocker shows three groups whole ("data/F0.csv and data/f0.csv; …; and 9998 more") |
+| 515e9154 | M2 | A viewer that fell behind rejoins at ≤ `DRAIN_LIMIT / 4` (250 kB) unsent, not < 1 MB; the "resumes a paused pane…" test closes its viewer |
+| 785ee975 | I2 | Bound test measures `scanPath`'s own records over a temp tree with long paths, bytes beyond each path, widest numbers |
+| 2fae43ef | I1 | `too_many_files` at preflight (answered without file lists) and at freeze; bound = min(own heap, destination's `system.info` `heapLimit`) / 2 / per-file |
+| 5926c4d2 | M4 | `--prefix` on both harnesses; the benchmark defaults to `archi-bench-{local,remote,it}`, the integration run keeps `archi-*`; drive passes `IT_LINK` |
+| bbb1d5f3 | M3 | Benchmark records each daemon's heap (via `system.info`) and the bound in `host.json`; the Mac column now needs both "No thermal" and "No performance warning" lines |
+| b4d9ba51 | I1 | Per-file budget 6 → 8 KiB after the new run measured 6.2 KB a file (297.7 MiB / 50,116) |
+| ee34500d | M3 | Doc numbers regenerated from four recorded runs; ad-hoc figures dropped or marked |
+
+### Per item
+
+- **I1.** Bound: files ≤ min(heap_size_limit) / 2 / 8 KiB. Per-file from the worst recorded first-copy daemon peak
+  growth (297.7 MiB at 50,116 files = 6.2 KB, bench-fix1 destination), rounded up to 8 KiB; half the heap left for
+  the daemon's own state and GC. Mac heap 4,288 MiB (measured, `node -e v8.getHeapStatistics()`) → 274,432 files; VM
+  daemons 1,076 MiB (bench `host.json`) → 68,832. Controller runs on one of the two machines ("this controller moves a
+  fleet only to or from the machine it runs on"), default heap there; its growth ≤ a daemon's. Doc: Limits paragraph,
+  Bounds row, errors.md row.
+  - RED: source.test "refuses at preflight, with nothing frozen, more files than the smaller of the two heaps holds…"
+    — `expected [] to deeply equal [{ code: 'too_many_files' … }]`; error-catalogue test RED (41 vs 42 codes) until
+    the row; api.test system.info updated for `heapLimit`. GREEN: at the bound (heap for exactly `files`) no blocker;
+    one file past it on either side blocks, names the smaller side, strips file lists, `world.log` empty, ownership
+    writable; freeze with the small destination heap refused `blocked`/`too_many_files`, ownership writable.
+  - Real machines (final build b4d9ba51, containers `archi-fix1-*`): a 100,116-file fleet, `archi handover remote
+    --json` → `blocked` at `begin` with `too_many_files` ("…carries 100116 files, and this machine's daemon, with a 1.1
+    GiB heap, holds at most 68832…"); after it owner, generation 4 and `frozen: false` unchanged, the 4 tmux windows
+    unchanged. Preflight took 16 s. (It also showed `destination_occupied`: I had made the same folder on the far side
+    first.)
+- **I2.** Real records: 144.0 B beyond the quoted path as scanned, 157.0 B with mode 0o7777 and a 1 TiB size (bound
+  160). Reviewer's mutation (`ino` + `sha1` added in `addFile`): 223.0 B → the new test fails; restored. Doc: cap =
+  128 MiB / (160 B + path), over 500,000 files with paths up to 100 bytes.
+- **M1.** RED: probe.test got a flat list; handover.test's message had no pairs. GREEN: probe.test and handover.test
+  79/79; the test checks three shown groups, each two names equal ignoring case, "; and 9998 more" (the fixture's
+  README.md/Readme.md makes 10,001 groups).
+- **M2.** RED: at 999,999 unsent the viewer got `['term.resync', 'term.output']`. GREEN: nothing at 999,999 or
+  250,001, resync at 250,000; terminals.test 14/14, three runs alone.
+- **M3.** New run `bench-fix1` (scratchpad, not committed) with the committed script at bbb1d5f3:
+  `scripts/bench/handover.sh --out $S/bench-fix1 --flood --keep`, then `--reuse --repos none --keep --out
+  $S/bench-fix1-host` after b4d9ba51 to record `mostFiles` 68,832. `pmset` before: AC, 100 %, "No thermal warning
+  level", "No performance warning level", load 2.27; after: same, load 2.79 (01:58:50–02:02:34). Every row of the four
+  cited runs (bench-final, bench-final-many, bench-final2, bench-fix1) has AC 100 % and both "No … warning" lines
+  before and after; bench-fixed* (no thermal line) are no longer cited. Dropped from the doc: the 92.9 s base run, the
+  Mac scan timings, the tmux 8 MiB/21 s figure; MaxSessions timings marked "by hand"; the largest message labelled as
+  computed from the manifest's compact JSON (preflight and freeze answers both carry it). Ranges recomputed from
+  bench.json (`ranges.mjs`): controller low 291.5 MiB, rsync max 7.7 MiB (7,896 KiB), longest event line 842 B.
+- **M4.** RED: `bench-names.test.ts` saw the benchmark remove `archi-local`/`archi-remote`/`archi-it`, and
+  `--prefix side` ignored. GREEN 2/2 (fake docker on PATH, both harnesses and handover.sh's pass-through). Real:
+  `fleet-handover.sh --archive … --prefix archi-fix1 --scenarios drop@begin` ALL PASS; the link agent answered at
+  `archi-fix1-remote:7070` ("drop 2", "restore 0") in both directions.
+
+### Benchmark, bench-fix1 (build and scripts at bbb1d5f3, bound then 6 KiB a file; no row near it)
+
+| run | wall s | pre | freeze | transfer | prepare | controller MiB | source +MiB | dest +MiB | events | IO stall s |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| small first L→R | 2.8 | 0.8 | 0.4 | 0.8 | 0.1 | 91.4 | 4.9 | 7.3 | 41 | 0.1 |
+| small incr R→L / L→R | 2.3 / 2.8 | | | | | 98.0 / 91.7 | | | 41 | 0 |
+| large first L→R | 8.4 | 1.5 | 1.0 | 3.6 | 1.4 | 148.4 | 32.5 | 14.5 | 42 | 0.4 |
+| large incr R→L / L→R | 7.3 / 7.6 | | | | | 150.7 / 148.7 | 45.0 / 32.9 | 33.4 / 45.3 | 41 | 0.2 / 0.1 |
+| many first L→R | 26.0 | 3.7 | 5.2 | 7.9 | 7.7 | 338.4 | 246.5 | 297.7 | 42 | 1.8 |
+| many incr R→L | 39.9 | 8.8 | 7.8 | 12.8 | 8.9 | 308.6 | 55.6 | 82.4 | 41 | 5.4 |
+| many incr L→R | 39.5 | 8.3 | 5.9 | 12.9 | 10.6 | 313.7 | 94.0 | 54.7 | 41 | 5.4 |
+| flood | daemon 323.5 → 324.0 MiB over 20 s; 22.9 MB read in the second before the pause | | | | | | | | | |
+
+Integration round trip on the final build: inside the benchmark's setup (ALL PASS) and the `archi-fix1` run above.
+Containers removed afterwards (`archi-bench-*`, `archi-fix1-*`); colima was stopped when I began, started for this,
+`docker ps -a` empty, stopped again; docker context back to `desktop-linux`.
+
+### Verification
+
+- `pnpm typecheck`: clean.
+- `pnpm vitest run --project protocol --project archid --project cli --project @archipelago/desktop-web --project
+  scripts` at ee34500d: 4417 passed, 6 skipped, 0 failed (198 files + 1 skipped), load ~3–6.
+- `pnpm test:faults`: 1302/1302.
+- terminals.test.ts alone ×3: 14/14 each.
+
+### Concerns
+
+1. **Preflight itself is not bounded below the file count.** It hashes and lists every file before it can count
+   them: at 100,116 files it raised the source daemon's peak RSS from 102.5 to 489.3 MiB (+387 MiB, ~3.9 KB a file,
+   by hand, not the script) on a 1,076 MiB heap. A repository roughly 2.5× the bound or more can still exhaust the live
+   source daemon at preflight (a daemon restart; nothing frozen; `KillMode=process` keeps tmux on Linux). Closing it
+   needs a scan that stops counting past the bound; the doc says so without the number.
+2. **The per-file budget rests on RSS, not heap.** 8 KiB covers the worst of 8 first copies (6.2 KB) by 31 %; RSS
+   includes uncollected garbage, so it overstates live heap, but a different workload (long paths, many sessions) is
+   unmeasured.
+3. **The three older cited runs were on the benchmark's first build**, the fourth on this one; the changes between do
+   not touch a measured path, and the doc says which runs each range covers.
