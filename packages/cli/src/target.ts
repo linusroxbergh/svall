@@ -18,3 +18,6 @@ export function resolveTarget(o: { profile?: string; env?: string; homedir?: str
   }
   return targetFor(PRIVATE, o.homedir);
 }
+
+/** The profile a far machine is asked for: the target's own name, unless it is the private fleet a far machine runs by default or no profile's home. */
+export const farProfile = (t: Target): string | undefined => (t.managed && t.name !== PRIVATE ? t.name : undefined);

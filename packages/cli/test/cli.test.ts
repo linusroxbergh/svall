@@ -14,7 +14,9 @@ import { isProfileName } from '@archipelago/archid/profile';
 import { HOOK_EVENTS, mergeHooks } from '@archipelago/archid/setup';
 import { cleanHomes, hasTmux, makeHome, waitFor } from '@archipelago/archid/test-helpers';
 import { Tmux } from '@archipelago/archid/tmux';
+import { MachineRegistry } from '../src/controller/registry.js';
 import { buildProgram, typo } from '../src/program.js';
+import { installFakeSsh } from './controller/fake-ssh.js';
 
 const exec = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -57,6 +59,28 @@ describe('archi argument parsing', () => {
     const r = await run({ ARCHI_HOME: '/tmp/archi-should-be-ignored' }, '-p', 'archi-probe', 'status');
     expect(r.code).toBe(1);
     expect(r.stderr).toContain('.archipelago-archi-probe');
+  });
+
+  it('asks a far machine for the named fleet ARCHI_HOME selects, as it does for -p', async () => {
+    const ssh = installFakeSsh();
+    try {
+      const home = fs.mkdtempSync(path.join(ssh.dir, 'home-'));
+      const fleet = path.join(home, '.archipelago-work');
+      fs.mkdirSync(fleet);
+      fs.writeFileSync(path.join(fleet, 'fleet.json'), JSON.stringify({ id: '11111111-2222-3333-4444-555555555555' }));
+      const config = path.join(home, 'config');
+      const registry = MachineRegistry.load(config);
+      registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, archiBase: '/opt/archi', gateway: false }, '66666666-7777-8888-9999-aaaaaaaaaaaa');
+      registry.save();
+      // a companion running another fleet refuses at once, so the command ends after one ask
+      ssh.answer({ fleetId: '77777777-2222-3333-4444-555555555555', machineId: '66666666-7777-8888-9999-aaaaaaaaaaaa', release: 'dev', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: 1, token: 't' });
+      const r = await run({ HOME: home, ARCHI_HOME: fleet, ARCHI_CONFIG_DIR: config }, '--host', 'trift', 'status');
+      expect(r.code).toBe(1);
+      expect(ssh.remoteCalls().filter((w) => w.includes('connection-info'))).toEqual([['/opt/archi/current/bin/archi', 'connection-info', '--json', '-p', 'work']]);
+      expect(r.stderr).toContain('--fleet work');
+    } finally {
+      ssh.clean();
+    }
   });
 
   it('takes a mistyped command for a typo, not a fleet to create', async () => {

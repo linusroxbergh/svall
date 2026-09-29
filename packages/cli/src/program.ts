@@ -20,7 +20,7 @@ import { versionCommand } from './commands/version.js';
 import { connectFor } from './controller/connection.js';
 import { closeMastersOnSignal } from './controller/ssh.js';
 import { launch, realDeps } from './launch.js';
-import { resolveTarget, targetFor } from './target.js';
+import { farProfile, resolveTarget, targetFor } from './target.js';
 import { checkoutVersion } from './version.js';
 
 /** Whether `word` is `name` with one letter added, dropped, changed, or two neighbours swapped. */
@@ -51,11 +51,11 @@ export function buildProgram(): Command {
   const json = () => Boolean(program.opts().json);
   const target = () => resolveTarget({ profile: program.opts().profile, env: process.env.ARCHI_HOME });
   const home = () => target().home;
-  const profileFlag = () => program.opts().profile as string | undefined;
+  const profile = () => farProfile(target());
   const connect = () => {
     // a command routed to another machine holds a master there, which must not outlive it
     closeMastersOnSignal();
-    return connectFor({ home: home(), host: program.opts().host, profile: profileFlag() });
+    return connectFor({ home: home(), host: program.opts().host, profile: profile() });
   };
 
   program.action(async (profile?: string) => {
@@ -76,11 +76,11 @@ export function buildProgram(): Command {
   program.addCommand(agentCommand(target, json));
   program.addCommand(doctorCommand(target, json));
   program.addCommand(hostCommands(json));
-  program.addCommand(handoverCommand({ target, profile: profileFlag, json }));
+  program.addCommand(handoverCommand({ target, profile, json }));
   program.addCommand(gatewayCommands());
-  program.addCommand(fleetCommands(home, json, profileFlag, target));
+  program.addCommand(fleetCommands(home, json, profile, target));
   program.addCommand(uninstallCommand(json));
-  program.addCommand(connectCommand(home, profileFlag));
+  program.addCommand(connectCommand(home, profile));
   program.addCommand(connectionInfoCommand(home, json));
   program.addCommand(versionCommand(json));
 
