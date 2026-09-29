@@ -761,6 +761,8 @@ export function settledOn(w: World): 'source' | 'destination' {
   expect(owner.can()).toBe(true);
   expect(owner.current!.active).toBe(true);
   expect(other.can()).toBe(false);
+  // a fleet coming back to it later starts afresh there
+  expect(other.current!.active).toBe(false);
   expect(other.current!.ownership.record()).toMatchObject({ generation: record.generation, ownerMachineId: owner.id });
   expect([...owner.windows.values()].map((x) => x.name).sort()).toEqual(['c_ada', 'c_ada-2', 'c_bo', 'c_di']);
   // di's Claude runs as it was launched, or resumed with the flags it was launched with

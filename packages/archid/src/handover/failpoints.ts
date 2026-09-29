@@ -28,6 +28,7 @@ export const FAILPOINTS = {
   'source.release.activate': 'source',
   'source.complete.seal': 'source',
   'source.complete.install': 'source',
+  'source.complete.deactivate': 'source',
   'source.complete.manifest': 'source',
   'source.complete.journal': 'source',
 

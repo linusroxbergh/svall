@@ -36,7 +36,7 @@ export type Authority = { get(fleetId: FleetId): Promise<OwnerRecord> };
 export type SourceDeps = {
   paths: Paths;
   store: RestDeps['store'];
-  fleet: Pick<Fleet, 'settle' | 'activate' | 'reconcileNow' | 'reviveCharacter' | 'openSecond'>;
+  fleet: Pick<Fleet, 'settle' | 'activate' | 'deactivate' | 'reconcileNow' | 'reviveCharacter' | 'openSecond'>;
   tmux: RestDeps['tmux'] & Pick<Tmux, 'ensureServer'>;
   viewers: RestDeps['viewers'];
   processes?: NonNullable<RestDeps['processes']>;
@@ -350,7 +350,8 @@ export class SourceHandover {
 
   /**
    * Once the gateway has moved the fleet on, seals each root as the transfer verified it, so the way back can
-   * claim it, takes the gateway's record, which leaves this machine a replica, and closes the journal.
+   * claim it, takes the gateway's record, which leaves this machine a replica, ends the fleet here so the way back
+   * starts it afresh, and closes the journal.
    */
   private async runComplete(p: ParsedParams<'handover.complete'>): Promise<Result<'handover.complete'>> {
     const held = this.open(p.transactionId);
@@ -367,6 +368,7 @@ export class SourceHandover {
     }
     boundary('source.complete.seal', () => this.seal(held, p.landed ?? []));
     await boundary('source.complete.install', () => this.ownership.installCommitted(record));
+    await boundary('source.complete.deactivate', () => this.d.fleet.deactivate());
     boundary('source.complete.manifest', () => fs.rmSync(this.d.paths.manifest(held.transactionId), { force: true }));
     boundary('source.complete.journal', () => this.journal.close());
     return {};

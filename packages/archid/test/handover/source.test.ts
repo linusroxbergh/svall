@@ -1092,7 +1092,8 @@ describe('source complete', () => {
     expect(b.ownership.writable()).toBe(false);
     expect(() => b.ownership.assertOwner('mutation')).toThrow(/moved to another machine/);
     for (const f of [b.paths.journal, b.paths.manifest(TX)]) expect(fs.existsSync(f)).toBe(false);
-    expect(b.world.log).toEqual([]);
+    // ended here, so the fleet coming back starts afresh
+    expect(b.world.log).toEqual(['deactivate']);
     // again: nothing is left to complete
     expect(await b.handover.complete({ transactionId: TX, generation: 4, landed })).toEqual({});
     // the fleet's way back finds each root holding only what this handover left
