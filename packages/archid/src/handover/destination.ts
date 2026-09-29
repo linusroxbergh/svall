@@ -358,6 +358,8 @@ export class DestinationHandover {
     const j = this.open(p.transactionId);
     if (!j) return {};
     if (j.phase !== 'activate') throw notReady(`handover ${j.transactionId} is at ${j.phase} on this machine, and completes only once it has activated`);
+    // a daemon started since the activation holds the fleet it activated until it runs it again
+    if (this.ownership.isOwner() && !this.ownership.writable()) await this.run();
     // an unsealed root would find itself occupied on the way back, so what could not be sealed keeps the record for another try
     const unsealed = await boundary('destination.complete.seal', () => this.sealAs(j.transactionId, false));
     if (unsealed.length) throw notReady(`handover ${j.transactionId} could not seal ${unsealed.join('; ')}; complete it again once that is put right`);
@@ -511,13 +513,18 @@ export class DestinationHandover {
       this.promote(j);
       j = this.advance(j, 'activate');
     }
-    await boundary('destination.activate.fleet', async () => {
+    await this.run();
+    await this.wake(tx);
+    return { characters: characterResults(this.open(tx)?.activation ?? []) };
+  }
+
+  /** Lets the fleet it activated run here. */
+  private run(): Promise<void> {
+    return boundary('destination.activate.fleet', async () => {
       this.ownership.unhold();
       await this.d.fleet.activate();
       await this.d.fleet.reconcileNow();
     });
-    await this.wake(tx);
-    return { characters: characterResults(this.open(tx)?.activation ?? []) };
   }
 
   /** The gateway's record, when it names this machine the owner at the prepared generation with this handover committed on this state. */

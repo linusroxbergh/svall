@@ -241,6 +241,28 @@ describe('a handover after a cancelled one', () => {
   });
 });
 
+describe('a destination that restarts between its activation and its complete', () => {
+  const world = worlds();
+
+  it('runs the fleet once the controller completes the handover there', async () => {
+    const w = world();
+    const c = w.controller();
+    let restarted = false;
+    w.gate = async ({ label }) => {
+      if (label !== 'trift handover.complete' || restarted) return;
+      restarted = true;
+      w.trift.current!.life.dead = true;
+      await w.boot(w.trift);
+    };
+    const out = await w.run(() => c.start(TRIFT, choices(w)));
+    w.gate = undefined;
+    expect(restarted).toBe(true);
+    expect(out.status).toBe('complete');
+    expect(w.violations).toEqual([]);
+    expect(settledOn(w)).toBe('destination');
+  });
+});
+
 /** What each party holds while the gateway is away: each daemon started again from its disk, and what status allows. */
 async function whileAway(w: World): Promise<{ source: boolean; destination: boolean; safe: string[] }> {
   for (const m of [w.mac, w.trift]) {
