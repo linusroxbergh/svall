@@ -12,6 +12,8 @@ export type TerminalManager = {
 
 type Opts = { reshowDelayMs?: number };
 
+const RETRIED = new Set(['not_owner', 'frozen']);
+
 // the map shows the character in the card; the board shows the one it has selected
 export const viewedId = (s: BoardSelection & { view: View; card?: string }): string | undefined =>
   s.view === 'map' ? s.card : boardViewed(s);
@@ -62,11 +64,13 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
     } catch (e) {
       // the window died under the attach: the character is dormant, and Revive answers that better than a tmux error
       if (!live(id)) throw e;
-      // archid refused: the user decides when to try again. archid away, or a daemon the fleet has left:
-      // retried once the connection is back, which for a moved fleet is its new owner
-      if (e instanceof ApiError && e.code !== 'not_owner') state().termFailed(id, e.message); else retry.set(id, { rect, opacity });
+      // archid refused: the user decides when to try again. archid away, a daemon the fleet has left or one frozen
+      // for a handover: retried once the connection is back, which for a moved fleet is its new owner, or the fleet runs again
+      if (e instanceof ApiError && !RETRIED.has(e.code)) state().termFailed(id, e.message); else retry.set(id, { rect, opacity });
       throw e;
     }
+    // the freeze began while the attach was on its way, and rests the window it names
+    if (holdsTerminals(state().handover)) { retry.set(id, { rect, opacity }); return; }
     bridge.send({ type: 'term.show', id, rect, ...alpha, attach });
     state().termOpened(id, rect);
     if (!inView(id)) bridge.send({ type: 'term.hide', id });
@@ -93,7 +97,7 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
       retry.clear();
       for (const id of Object.keys(s.terminals)) close(id);
     }
-    if (s.status === 'online' && prev.status !== 'online') {
+    if ((s.status === 'online' && prev.status !== 'online') || (!holdsTerminals(s.handover) && holdsTerminals(prev.handover))) {
       for (const [id, r] of retry) {
         retry.delete(id);
         if (inView(id) && live(id) && !s.terminals[id]) show(id, r.rect, r.opacity).catch(() => {});
