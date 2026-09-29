@@ -4,6 +4,8 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WebSocketServer } from 'ws';
 import { FleetId, MachineId, PROTOCOL_VERSION } from '@archipelago/protocol';
+import { AuthorityClient } from '@archipelago/archid/gateway/client';
+import { startAuthorityServer } from '@archipelago/archid/gateway/server';
 import { machineId } from '@archipelago/archid/machine';
 import { connectionInfoCommand } from '../../src/commands/connection.js';
 import { connectFor, connectRemote, FleetMismatch, remoteConnectionInfo, resolveOwner, withReconnect, type GatewayMemo, type OwnerDeps } from '../../src/controller/connection.js';
@@ -563,6 +565,30 @@ describe('resolveOwner', () => {
     expect(ssh.remoteCalls().at(-1)).toEqual([
       '/home/linus/.local/share/archipelago/current/bin/archi', 'connection-info', '--json', '-p', 'work',
     ]);
+  });
+
+  it('asks the authority on its own socket when this machine is the gateway, and ssh nothing', async () => {
+    fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: registry.localId }));
+    const prefix = fs.mkdtempSync(path.join(ssh.dir, 'gw-'));
+    const held = process.env.ARCHI_GATEWAY_PREFIX;
+    process.env.ARCHI_GATEWAY_PREFIX = prefix;
+    const server = await startAuthorityServer({ prefix });
+    try {
+      const client = await AuthorityClient.connect(prefix);
+      await client.create({ fleetId: FLEET, initialOwnerMachineId: REMOTE });
+      client.close();
+      expect(await resolveOwner(home, { deps })).toMatchObject({ id: REMOTE });
+      expect(ssh.calls()).toEqual([]);
+      await server.close();
+      // a local authority that is down is out of reach, as a far one is
+      route(REMOTE, 0);
+      ssh.answer(description({ port: 4711, generation: 0 }));
+      expect(await resolveOwner(home, { deps })).toMatchObject({ id: REMOTE });
+    } finally {
+      await server.close().catch(() => undefined);
+      if (held === undefined) delete process.env.ARCHI_GATEWAY_PREFIX;
+      else process.env.ARCHI_GATEWAY_PREFIX = held;
+    }
   });
 
   it('refuses a gateway id the registry has no machine for', async () => {

@@ -1,4 +1,7 @@
 import { OwnerRecord } from '@archipelago/protocol';
+import { AuthorityFailure, gatewayPaths, type OwnerOp } from '@archipelago/archid/gateway/authority';
+import { gatewayPrefix } from '@archipelago/archid/gateway/bin';
+import { AuthorityClient } from '@archipelago/archid/gateway/client';
 import { classifyExit, shellQuote, SshError, type SshMaster } from './ssh.js';
 
 const OWNER_TIMEOUT = 30_000;
@@ -48,4 +51,20 @@ function parseAnswer(line: string): OwnerAnswer | undefined {
   }
   const record = OwnerRecord.safeParse(frame.result?.record);
   return record.success ? { record: record.data } : undefined;
+}
+
+/** One operation on the authority this machine serves, over its own socket; a socket that does not answer is `disconnected`. */
+export async function localOwner(op: string, fleetId: string, params?: Record<string, unknown>, prefix = gatewayPrefix()): Promise<OwnerAnswer> {
+  let client: AuthorityClient;
+  try { client = await AuthorityClient.connect(prefix); } catch (e) {
+    return { error: { code: 'disconnected', message: `the gateway authority did not answer on ${gatewayPaths(prefix).socket}: ${String(e)}` } };
+  }
+  try {
+    return { record: await client.call(`owner.${op}` as OwnerOp, { ...params, fleetId }) };
+  } catch (e) {
+    if (e instanceof AuthorityFailure) return { error: { code: e.code, message: e.message, ...(e.data && { data: e.data }) } };
+    throw e;
+  } finally {
+    client.close();
+  }
 }

@@ -7,7 +7,7 @@ import { resolvePaths } from '@archipelago/archid/paths';
 import { isProfileName, PRIVATE } from '@archipelago/archid/profile';
 import { archiExe, releaseVersion } from '@archipelago/archid/release';
 import { Client } from '../client.js';
-import { remoteOwner, type OwnerAnswer } from './authority.js';
+import { localOwner, remoteOwner, type OwnerAnswer } from './authority.js';
 import { redact } from './process.js';
 import { LOCAL, MachineRegistry, type MachineEntry } from './registry.js';
 import { cachedOwner, readRoute, writeRoute } from './route.js';
@@ -202,19 +202,26 @@ function fleetConfig(fleetHome: string): FleetConfig | undefined {
   }
 }
 
-/** One `owner get` on the gateway. It throws where no ownership frame came back, or where the authority behind it is down. */
+/**
+ * One `owner get` on the gateway: over its own socket when this machine is the gateway, else over ssh. It throws where no
+ * ownership frame came back, or where the authority behind it is down.
+ */
 async function askGateway(fleetId: FleetId, gateway: MachineEntry, d: OwnerDeps): Promise<OwnerAnswer> {
+  const answer = gateway.id === d.registry.localId ? await localOwner('get', fleetId) : await overSsh(fleetId, gateway, d);
+  // the authority's own socket went quiet or away: the gateway machine is up, its authority may come back
+  if ('error' in answer && (answer.error.code === 'disconnected' || answer.error.code === 'timeout')) {
+    throw new SshError('unreachable', `${gateway.record.name}: ${answer.error.message}`);
+  }
+  return answer;
+}
+
+async function overSsh(fleetId: FleetId, gateway: MachineEntry, d: OwnerDeps): Promise<OwnerAnswer> {
   const destination = gateway.record.ssh;
   if (!destination) throw new SshError('other', `the gateway ${gateway.record.name} has no ssh destination in the registry`);
   const master = await d.openMaster(destination);
   try {
     await identify(master, gateway);
-    const answer = await remoteOwner({ master, exe: archiExe(gateway.record.archiBase), op: 'get', fleetId });
-    // the authority's own socket went quiet or away: the gateway machine is up, its authority may come back
-    if ('error' in answer && (answer.error.code === 'disconnected' || answer.error.code === 'timeout')) {
-      throw new SshError('unreachable', `${gateway.record.name}: ${answer.error.message}`);
-    }
-    return answer;
+    return await remoteOwner({ master, exe: archiExe(gateway.record.archiBase), op: 'get', fleetId });
   } finally {
     await master.close().catch(() => undefined);
   }

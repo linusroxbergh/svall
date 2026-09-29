@@ -1,13 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { FleetConfig, type FleetId, type MachineId, type MethodName } from '@archipelago/protocol';
-import { AuthorityFailure, gatewayPaths, type OwnerOp } from '@archipelago/archid/gateway/authority';
-import { gatewayPrefix } from '@archipelago/archid/gateway/bin';
-import { AuthorityClient } from '@archipelago/archid/gateway/client';
 import { resolvePaths } from '@archipelago/archid/paths';
 import { archiExe } from '@archipelago/archid/release';
 import { ApiError, Client } from '../client.js';
-import { remoteOwner, type OwnerAnswer } from './authority.js';
+import { localOwner, remoteOwner, type OwnerAnswer } from './authority.js';
 import { identify, remoteConnectionInfo } from './connection.js';
 import { Handover, Refused, type Daemon, type Gateway, type HandoverDeps, type Side } from './handover.js';
 import { redact } from './process.js';
@@ -62,21 +59,7 @@ export function authorityOp(entry: MachineEntry, localId: MachineId, masters: Ma
       return remoteOwner({ master, exe: archiExe(entry.record.archiBase), op, fleetId, ...(params && { params }) });
     };
   }
-  return async (op, fleetId, params) => {
-    const prefix = gatewayPrefix();
-    let client: AuthorityClient;
-    try { client = await AuthorityClient.connect(prefix); } catch (e) {
-      return { error: { code: 'disconnected', message: `${gatewayPaths(prefix).socket}: ${messageOf(e)}` } };
-    }
-    try {
-      return { record: await client.call(`owner.${op}` as OwnerOp, { fleetId, ...params }) };
-    } catch (e) {
-      if (e instanceof AuthorityFailure) return { error: { code: e.code, message: e.message, ...(e.data && { data: e.data }) } };
-      throw e;
-    } finally {
-      client.close();
-    }
-  };
+  return (op, fleetId, params) => localOwner(op, fleetId, params);
 }
 
 /** The gateway's compare-and-swap operations on one fleet: a refusal is an answer, an authority that went quiet is none. */
