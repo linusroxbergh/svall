@@ -2,12 +2,13 @@ import fs from 'node:fs';
 import { z } from 'zod';
 import { FleetConfig, FleetId, MachineId, MachineRecord, PROTOCOL_VERSION } from '@archipelago/protocol';
 import { loadConfig } from '@archipelago/archid/config';
+import { versionMachineId, type OwnerAnswer } from '@archipelago/archid/gateway/client';
 import { machineId } from '@archipelago/archid/machine';
 import { resolvePaths } from '@archipelago/archid/paths';
 import { isProfileName, PRIVATE } from '@archipelago/archid/profile';
 import { archiExe, releaseVersion } from '@archipelago/archid/release';
 import { Client } from '../client.js';
-import { localOwner, remoteOwner, type OwnerAnswer } from './authority.js';
+import { localOwner, remoteOwner } from './authority.js';
 import { redact } from './process.js';
 import { LOCAL, MachineRegistry, type MachineEntry } from './registry.js';
 import { cachedOwner, readRoute, writeRoute } from './route.js';
@@ -40,7 +41,7 @@ export async function identify(master: Pick<SshMaster, 'run'>, machine: MachineE
   const r = await master.run([shellQuote(archiExe(machine.record.archiBase)), 'version', '--json']);
   if (r.code !== 0) return;
   const where = machine.record.ssh ?? machine.record.name;
-  const id = /"machineId":\s*"([^"]*)"/.exec(r.stdout)?.[1];
+  const id = versionMachineId(r.stdout);
   if (id === undefined) throw new MachineMismatch(`${where} answered archi version --json without a machine id, so it cannot be told from another machine than ${machine.record.name} (${machine.id})`);
   if (id !== machine.id) throw new MachineMismatch(`${where} now reaches machine ${id}, not ${machine.record.name} (${machine.id})`);
 }

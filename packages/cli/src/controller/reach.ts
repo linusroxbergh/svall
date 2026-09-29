@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { FleetConfig, type FleetId, type MachineId, type MethodName } from '@archipelago/protocol';
+import type { OwnerAnswer } from '@archipelago/archid/gateway/client';
 import { resolvePaths } from '@archipelago/archid/paths';
 import { archiExe } from '@archipelago/archid/release';
 import { ApiError, Client } from '../client.js';
-import { localOwner, remoteOwner, type OwnerAnswer } from './authority.js';
+import { localOwner, remoteOwner } from './authority.js';
 import { identify, remoteConnectionInfo } from './connection.js';
 import { Handover, Refused, type Daemon, type Gateway, type HandoverDeps, type Side } from './handover.js';
 import { redact } from './process.js';

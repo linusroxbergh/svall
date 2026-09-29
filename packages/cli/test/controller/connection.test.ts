@@ -368,7 +368,7 @@ describe('resolveOwner', () => {
 
   it('never takes the word of a gateway whose ssh destination now reaches another machine', async () => {
     gateway('gate.test');
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: 'dev', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: 'dev', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });
     answers({ error: { code: 'not_found', message: 'no record for that fleet' } });
     const err = await resolveOwner(home, { deps }).catch((e: SshError) => e);
     expect(err).toBeInstanceOf(SshError);
@@ -384,6 +384,14 @@ describe('resolveOwner', () => {
     const err = await resolveOwner(home, { deps }).catch((e: SshError) => e);
     expect((err as SshError).message).toContain(`gate.test now reaches machine ${REMOTE}, not gate (${GATEWAY})`);
     expect(ssh.remoteCalls().some((w) => w.includes('owner'))).toBe(false);
+  });
+
+  it('reads the machine id only where archi version --json prints it, as the daemon does, whatever a login shell quotes before it', async () => {
+    gateway('gate.test');
+    const banner = `motd: {"machineId": "${REMOTE}"}\n`;
+    ssh.reply(['version', '--json'], { stdout: `${banner}${JSON.stringify({ release: 'dev', protocol: PROTOCOL_VERSION, machineId: GATEWAY }, null, 2)}\n` });
+    holds(REMOTE);
+    expect(await resolveOwner(home, { deps })).toMatchObject({ id: REMOTE });
   });
 
   it('takes no ownership answer from a gateway whose archi answers without naming its machine', async () => {

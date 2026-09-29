@@ -450,7 +450,7 @@ describe('preflight', () => {
     const masters = new Masters();
     const other = crypto.randomUUID();
     try {
-      ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: 'dev', protocol: PROTOCOL_VERSION, machineId: other }) });
+      ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: 'dev', protocol: PROTOCOL_VERSION, machineId: other }, null, 2) });
       ssh.reply(['gateway', 'owner', 'get'], { stdout: `${JSON.stringify({ result: { record: { fleetId, generation: 0, ownerMachineId: mac } } })}\n` });
       const gateway = {
         id: trift,

@@ -2,7 +2,8 @@ import { Command } from 'commander';
 import type { OwnerRecord } from '@archipelago/protocol';
 import { AuthorityFailure, isOwnerOp } from '@archipelago/archid/gateway/authority';
 import { main } from '@archipelago/archid/gateway/bin';
-import { localOwner, type OwnerAnswer } from '../controller/authority.js';
+import type { OwnerAnswer } from '@archipelago/archid/gateway/client';
+import { localOwner } from '../controller/authority.js';
 
 /** What one operation answered: the same frame the authority put on its socket, minus the request id. */
 type OwnerFrame =

@@ -102,7 +102,7 @@ function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doc
   ssh.reply(['rm'], {});
   ssh.reply(['setup'], { stdout: 'release 1.2.3 installed\n' });
   ssh.reply(['doctor', '--json'], { stdout: o.doctor ?? DOCTOR });
-  ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
+  ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });
   if (o.agents === false) return;
   ssh.reply([UNIT_PATH, 'claude', '--version'], { stdout: '2.1.278 (Claude Code)\n' });
   ssh.reply([UNIT_PATH, 'claude', 'auth', 'status', '--json'], { stdout: '{"loggedIn":true}\n' });
@@ -454,7 +454,7 @@ describe('host doctor', () => {
 
   it('reads the companion\'s own doctor, version, linger and free space', async () => {
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });
     ssh.reply(['archi-space'], { stdout: DF });
     ssh.reply(['archi-linger'], { stdout: 'Linger=yes\n' });
     const report = await doctorHost('trift', deps({ registry: registered() }));
@@ -464,7 +464,7 @@ describe('host doctor', () => {
 
   it('names the remote user, not the machine, when the companion reports no linger of its own', async () => {
     ssh.reply(['doctor', '--json'], { stdout: doctorJson() });
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });
     ssh.reply(['archi-space'], { stdout: DF });
     ssh.reply(['archi-home'], { stdout: `${HOME}\nlinus\n` });
     ssh.reply(['archi-linger'], { stdout: 'Linger=no\n' });
@@ -478,7 +478,7 @@ describe('host doctor', () => {
   it('reads the report a companion doctor prints before it exits 1 for a failing check', async () => {
     const failing = JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'hooks', status: 'fail', detail: 'not installed in ~/.claude/settings.json: archi setup' }] });
     ssh.reply(['doctor', '--json'], { stdout: failing, code: 1 });
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });
     ssh.reply(['archi-space'], { stdout: DF });
     const report = await doctorHost('trift', deps({ registry: registered() }));
     expect(report.checks.find((c) => c.name === 'hooks')).toMatchObject({ status: 'fail' });
@@ -488,7 +488,7 @@ describe('host doctor', () => {
 
   it('still reports a companion doctor that exits without a report', async () => {
     ssh.reply(['doctor', '--json'], { stderr: 'node: bad option\n', code: 9 });
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });
     ssh.reply(['archi-space'], { stdout: DF });
     ssh.reply(['archi-home'], { stdout: `${HOME}\nlinus\n` });
     ssh.reply(['archi-linger'], { stdout: 'Linger=yes\n' });
@@ -500,7 +500,7 @@ describe('host doctor', () => {
     const answer = (home: string): void => {
       ssh.clearReplies();
       ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
-      ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
+      ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });
       ssh.reply(['archi-space'], { stdout: DF });
       ssh.reply(['archi-home'], { stdout: `${home}\nlinus\n` });
     };
@@ -516,7 +516,7 @@ describe('host doctor', () => {
 
   it('fails the home of a machine an earlier build registered at a home other than this Mac\'s', async () => {
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });
     ssh.reply(['archi-space'], { stdout: DF });
     ssh.reply(['archi-home'], { stdout: `${ELSEWHERE}\nlinus\n` });
     const report = await doctorHost('trift', deps({ registry: registered(ELSEWHERE) }));
@@ -529,7 +529,7 @@ describe('host doctor', () => {
 
   it('reports a release the controller cannot hand over to as a failure', async () => {
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '0.9.0', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '0.9.0', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });
     ssh.reply(['archi-space'], { stdout: DF });
     ssh.reply(['archi-linger'], { stdout: 'Linger=yes\n' });
     const report = await doctorHost('trift', deps({ registry: registered() }));
@@ -593,7 +593,7 @@ base='${base}'
 now() { basename "$(readlink "$base/current")"; }
 case "$1" in
   connection-info) printf '%s\\n' '${JSON.stringify({ fleetId: FLEET, machineId: REMOTE, release: version, protocol, host: '127.0.0.1', port: d.port, token: TOKEN })}' ;;
-  version) printf '%s\\n' '${JSON.stringify({ release: version, machineId: REMOTE, protocol })}' ;;
+  version) printf '%s\\n' '${JSON.stringify({ release: version, machineId: REMOTE, protocol }, null, 2)}' ;;
   doctor) printf '%s\\n' '${DOCTOR}' ;;
   setup)
     if [ "$2" = --rollback ]; then
@@ -858,7 +858,7 @@ esac
   });
 
   it('uploads and installs nothing on a machine that answers as another than the registry names', async () => {
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.2', protocol: PROTOCOL_VERSION, machineId: OTHER_MAC }) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.2', protocol: PROTOCOL_VERSION, machineId: OTHER_MAC }, null, 2) });
     const out = await upgradeHost('trift', { release: archive() }, deps({ registry: registered() }));
     expect(out.result).toBe('actions');
     expect(step('master').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(`now reaches machine ${OTHER_MAC}`) });
@@ -901,7 +901,7 @@ describe('host remove', () => {
   });
 
   it('uninstalls nothing on a machine that answers as another than the registry names, as an alias that now leads elsewhere', async () => {
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: OTHER_MAC }) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: OTHER_MAC }, null, 2) });
     ssh.reply(['uninstall'], { stdout: 'removed\n' });
     const registry = registered('trift.test');
     const out = await removeHost('trift', {}, deps({ registry }));
@@ -1096,7 +1096,7 @@ describe('host enable', () => {
     ({ stdout: `${JSON.stringify({ outcome, home: `${HOME}/.archipelago-work`, unit: 'archipelago-archid@work.service' })}\n` });
 
   it('asks for and makes no ownership record on a machine that answers as another than the registry names', async () => {
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: OTHER_MAC }) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: OTHER_MAC }, null, 2) });
     ssh.reply(['owner', 'get'], answers({}));
     const home = fleetHome();
     const out = await enableHost('trift', { fleetHome: home }, deps({ registry: registered() }));
