@@ -1,5 +1,6 @@
 import readline from 'node:readline';
 import type { Blocker, HandoverChoices, HandoverEntity, HandoverEvent, HandoverPhase, Names, Outcome, Verdict } from '@archipelago/protocol';
+import { ARCHIVABLE } from '@archipelago/archid/handover/replicas';
 
 /** How a view names the commands it points to and the machines it speaks of. */
 export type Words = { archi(args: string): string; machine(id?: string): string };
@@ -11,7 +12,6 @@ const HEADINGS: Record<HandoverPhase, string> = {
 };
 
 const REST = new Set(['agent_working', 'agent_blocked']);
-const ARCHIVABLE = new Set(['destination_diverged', 'destination_occupied']);
 
 const unique = (xs: string[]): string[] => [...new Set(xs)];
 const union = (held: HandoverChoices['terminateShells'] | string[] | undefined, more: string[]): string[] =>
