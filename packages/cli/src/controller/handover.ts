@@ -558,7 +558,7 @@ export class Handover {
       const failed = result.entries.find((e) => e.status === 'failed');
       // a refused entry is never written past: the transaction stops, whatever the others did
       if (failed?.status === 'failed' || result.status !== 'verified') {
-        throw new Stopped('transfer', failed?.status === 'failed' ? `${failed.id}: ${failed.error}` : `the transfer ended ${result.status}`, PRE_COMMIT);
+        throw new Stopped('transfer', failed?.status === 'failed' ? `${failed.id}: ${failed.error}` : result.failure?.error ?? `the transfer ended ${result.status}`, PRE_COMMIT);
       }
       const landed: LandedRoot[] = [];
       for (const r of replicaRoots(manifest)) {

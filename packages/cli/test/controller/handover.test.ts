@@ -830,6 +830,16 @@ describe('rest choices and blockers after Begin', () => {
     expect(rows.every((r) => r.archivedTo === '/Users/ada/app.archived-1' && r.error === undefined)).toBe(true);
   });
 
+  it('says why a transfer that failed before its first entry stopped', async () => {
+    const w = new World();
+    w.transferResult = (o) => ({
+      status: 'failed', blockers: [], entries: o.entries.map((e) => ({ id: e.id, status: 'pending' as const })),
+      failure: { reason: 'disconnected', code: 255, error: 'the far machine did not answer rsync --version: Connection reset' },
+    });
+    const out = await controller(w).start(trift, {});
+    expect(out).toMatchObject({ status: 'interrupted', phase: 'transfer', error: 'the far machine did not answer rsync --version: Connection reset', safe: ['resume', 'abort'] });
+  });
+
   it('stops without preparing when the transfer refuses an entry, and leaves the choice to resume or abort', async () => {
     const w = new World();
     w.transferResult = (o) => ({
