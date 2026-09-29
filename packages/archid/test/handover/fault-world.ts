@@ -643,11 +643,15 @@ export class World {
       run: (argv) => link(argv.join(' '), async () => ({ code: 0, signal: null, stdout: argv[0] === 'rsync' ? 'rsync  version 3.2.7  protocol version 31\n' : '', stderr: '', truncated: false }),
         (why) => ({ code: 255, signal: null, stdout: '', stderr: why, truncated: false })),
     };
+    const route = (id: MachineId): Side['route'] => {
+      const name = (id === MAC ? this.mac : this.trift).name;
+      return { machineId: id, name, ...(id !== seat.local && { ssh: name }) };
+    };
     const side = async (id: MachineId): Promise<Side> => {
       const m = id === MAC ? this.mac : this.trift;
       const far = id !== seat.local;
       return {
-        route: { machineId: id, name: m.name, ...(far && { ssh: m.name }) },
+        route: route(id),
         daemon: this.daemon(m, life), home: this.home, fleetHome: m.paths.home,
         ...(far && { master: async () => master }),
       };
@@ -665,7 +669,7 @@ export class World {
       return { code: 0, signal: null, stderr: '' };
     }, (why) => ({ code: 255, signal: null, stderr: `rsync: connection unexpectedly closed (${why})` }));
     const c = new Handover({
-      fleetId, store, gateway, local: seat.local, machines: [MAC, TRIFT], side,
+      fleetId, store, gateway, local: seat.local, machines: [MAC, TRIFT], side, route,
       transfer: (o) => runTransfer({ ...o, deps: { run: rsync } }), rsync: async () => '/usr/bin/rsync', stateDir: seat.dir,
       clock: { now: () => this.now, sleep: async () => {} }, retry: { attempts: 3, firstDelayMs: 1 },
     });

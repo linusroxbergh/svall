@@ -73,8 +73,8 @@ export type HandoverDeps = {
   local: MachineId;
   machines: MachineId[];
   side(machineId: MachineId): Promise<Side>;
-  /** where a machine is reached, from the registry, without dialling it; without it a side is built for its route */
-  route?(machineId: MachineId): Route;
+  /** where a machine is reached, from the registry, without dialling it */
+  route(machineId: MachineId): Route;
   transfer?: (o: TransferOptions) => Promise<TransferResult>;
   /** the local rsync, found only when a transfer needs it, and where the transfer keeps its progress journal and filters */
   rsync(): Promise<string>;
@@ -993,8 +993,8 @@ export class Handover {
     const now = this.clock.now();
     const [from, to] = o.controller ? [o.controller.source, o.controller.destination].map((r) => r.machineId) : [v.fromMachineId, v.toMachineId];
     if (from && to && from !== this.d.local && to !== this.d.local) {
-      const name = async (id: MachineId) => (await this.route(id, false).catch(() => undefined))?.name ?? id;
-      const [a, b] = await Promise.all([name(from), name(to)]);
+      const name = (id: MachineId): string => { try { return this.d.route(id).name; } catch { return id; } };
+      const [a, b] = [name(from), name(to)];
       throw new Stopped(v.phase ?? 'begin', `this machine is neither the source ${a} nor the destination ${b} of ${v.transactionId ?? 'this handover'}, so a transfer from here would copy onto its own disk; run it on ${a} or ${b}`, []);
     }
     if (o.controller) {
@@ -1003,7 +1003,7 @@ export class Handover {
       return;
     }
     if (!v.fromMachineId || !v.toMachineId || v.generation === undefined) throw new Stopped('begin', v.reason, []);
-    const [source, destination] = await Promise.all([this.route(v.fromMachineId), this.route(v.toMachineId)]);
+    const [source, destination] = [this.d.route(v.fromMachineId), this.d.route(v.toMachineId)];
     this.j = {
       version: 1, fleetId: this.d.fleetId, ...(v.transactionId && { transactionId: v.transactionId }), generation: v.generation,
       source, destination, choices: {}, phase: v.phase ?? 'begin', startedAt: now, updatedAt: now,
@@ -1032,10 +1032,6 @@ export class Handover {
   private phase(phase: HandoverPhase): void {
     if (this.journal.phase !== phase) this.save({ phase });
     this.observer.send({ event: 'handover.changed', data: { transactionId: this.tx.transactionId, phase } });
-  }
-
-  private async route(id: MachineId, retry = true): Promise<Route> {
-    return this.d.route ? this.d.route(id) : (await this.side(id, retry)).route;
   }
 
   private pair(): Promise<[Side, Side]> {
