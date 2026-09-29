@@ -8,16 +8,15 @@ Everything sits behind `handover.enabled` in fleet.json, which is off by default
 
 ## Status
 
-- **Done:** plan Tasks 1–29, 40–42 and 36a, milestones M0–M3 and M3b's automated gate. Every task was
-  reviewed; M1, M2 and M3 each got a deep review, one fix wave and an on-machine pass. Tasks 41–42 made
-  both machines share one home path, so nothing is rewritten, and carry entity docs and agent profiles.
-  The M3b gate handed a fleet with mocked agents, real Claude and real Codex Mac→Linux→Mac on
-  linus-vault, then re-checked its fix wave there (Claude's trust and bypass prompts). Task 36a added 92
-  named failpoints and a 422-case fault suite, and found and fixed three product defects.
-- **Next:** Task 36b (controller-side faults: concurrent Begin/Resume/Abort, duplicate and reordered
-  responses, seeded order), then Tasks 37–39 (two-machine and fresh-install CI, the security and
-  performance audit, docs and rollout), which end version 1. A final whole-branch review comes last. The
-  owner's by-eye pass is still owed (below).
+- **Done:** version 1 — plan Tasks 1–29 and 36–42, milestones M0–M3, M3b's automated gate and M6. Every
+  task was reviewed, M1–M3 each got a deep review, fix wave and on-machine pass, and the whole branch got a
+  final review (`ledger/final-review.md`) with one fix wave. The fault suites (`pnpm test:faults`) crash
+  every one of 94 failpoints and fault every controller request; the container harness
+  (`docs/integration.md`) hands a fleet over real sshd/rsync/tmux, and a release installs fresh on x86-64
+  and arm64; real Claude and Codex sessions resumed both ways on linus-vault, and the spec's manual
+  acceptance passed there from release artifacts (`ledger/task-39b-report.md`).
+- **Not done on purpose:** `handover.enabled` is still in place (Task 39's last box). It goes in one
+  small commit once the items under "Owed" below exist.
 - **After version 1:** Phase E, Tasks 30–33 (stable phone gateway), and Phase F, Tasks 34–35 (remote
   ports). Phase E needs a machine-wide `tailscale serve` path mapping on the gateway machine and a
   real phone for its gate, so ask the owner first.
@@ -29,13 +28,14 @@ Everything sits behind `handover.enabled` in fleet.json, which is off by default
 | File | What it is |
 | --- | --- |
 | `spec.md` | The design. It is binding: when the plan and the spec disagree, the spec wins. |
-| `plan.md` | Tasks 1–42 with milestone gates. Boxes are ticked through Task 29 and for Tasks 40–42. |
+| `plan.md` | Tasks 1–42 with milestone gates. Boxes are ticked for every version-1 task; Task 39's flag removal and Phases E–F are open. |
 | `spike-results.md`, `readiness.md` | What the M0 spikes proved and what they changed in the spec. |
 | `ledger/progress.md` | **Read this before continuing.** Every dispatch, every `Ruling:` (a decision taken on the owner's behalf, with its cost if wrong), every deferred minor and parked finding, and every milestone gate. Grep it for `Ruling:`, `parked`, `minor (deferred)` and `carried`. |
 | `ledger/task-N-brief.md`, `task-N-report.md` | Each task's requirements and its implementer's report, with test evidence. |
 | `ledger/task-28-29-contract.md` | The fixed contract between the handover helper and the app: NDJSON events and exit codes. |
 | `ledger/review-constraints.md` | The delivery rules every reviewer was given. |
 | `ledger/m2-*`, `ledger/m3-*` | Milestone deep reviews, fix waves, and on-machine briefs and reports. The M3 on-machine reports are `m3-onmachine-{A,A2,B,C}-report.md`. |
+| `ledger/final-review*.md`, `ledger/final-fix-*.md` | The final whole-branch review (candidates, validation, triage of every ledgered minor), its fix waves A, C1, B, C2 and D with their reports and re-reviews, and the deferred follow-ups. |
 | `ledger/m3b-env.md` | The live test environment: the `archi-m3b` account on linus-vault and the Mac test HOME, both at `/Users/Shared/archi-m3b`, with its harness and teardown recipe. |
 | `spikes-ledger/` | The ledger and reports for the M0 spikes (Tasks 1–4). |
 
@@ -44,16 +44,19 @@ now `ledger/`, and `docs/superpowers/{specs,plans}/…fleet-handover…` is now 
 
 ## Owed before this can ship
 
-- **The by-eye pass in the built app** (M3b gate): Add Machine, the handover sheet, and terminal
-  re-attach after an SSH drop. `ledger/m3b-env.md` says how to open the test build against the test HOME
-  without touching the owner's own app or fleet.
-- **`claude_bypass` for running Claudes on the machines.** The fix for G2 (a running Claude never got the
-  warning) passed review but has not run on linus-vault.
+- **The by-eye pass in the built app:** Add Machine, the handover sheet (including the sheet rebuilding
+  after a relaunch), terminal re-attach after an SSH drop. `ledger/m3b-env.md` has the steps and how to
+  open the test build against the test HOME without touching the owner's own app or fleet.
 - **A release signing key.** `allowed_signers` holds only a comment until one exists, so every install
-  needs `--allow-unsigned`. Before release, Task 38 must also restore the far machine's own signer check
-  on `host upgrade` (see the ledger's Task 40 fix round 1).
-- **CI.** Actions jobs do not start on this repo because of billing. Task 37's fresh-install CI needs
-  that sorted first.
+  needs `--allow-unsigned`; a release tag stops at once when the committed signers don't pin its key.
+- **CI.** Actions jobs do not start on this repo because of billing. `ci.yml`'s integration and Swift jobs
+  and `release.yml` have run only as the same scripts on this Mac.
+- **Licence decisions** (`docs/security/fleet-handover.md`): GhosttyKit's dependency licence texts, the
+  statically linked LGPL libintl, and the Flaticon art shipped as files.
+- **A published download** would need the app to install its bundled release on first launch; the app
+  ships from source today (`pnpm desktop:install`).
+- **Follow-ups** the final review deferred: `ledger/final-review.md` ("Deferred as follow-ups"), the
+  triage's follow-up rows in `ledger/final-review-triage.md`, and `minor (deferred)` lines in the ledger.
 
 ## How the work was run
 
@@ -76,10 +79,12 @@ now `ledger/`, and `docs/superpowers/{specs,plans}/…fleet-handover…` is now 
   - `pnpm vitest run --project archid|cli|protocol|@archipelago/desktop-web`
   - `swift test --package-path apps/desktop/mac`
   - `pnpm --filter @archipelago/desktop-web exec playwright test`
+  - `pnpm test:faults` (both fault suites in a seeded random order; `--sequence.seed=<n>` reruns one)
+  - the container harness and fresh installs: `docs/integration.md`
 - Known load flakes; rerun them alone:
   - archid `fleet.test.ts`: the revive tests, "marks the agent working", "deactivate timeout";
   - archid e2e "two turns against a fake claude";
   - the `processes.test.ts` real-ps case and the `source.test.ts` FIFO timer;
-  - cli `cli.test.ts` browser and `ssh.test.ts` spawn-count;
+  - cli `cli.test.ts` browser and `ssh.test.ts` spawn-count, `transfer.test.ts` "keeps a dropped link's partial copy";
   - web `e2e/ide.spec.ts:136`, `e2e/keys.spec.ts:3` and `e2e/card.spec.ts:122`.
 - Tests that need real sshd use `ARCHI_TEST_SSH=<host>`. They cannot run against localhost on the Mac.
