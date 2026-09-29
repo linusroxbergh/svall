@@ -389,9 +389,11 @@ class Mirror {
     const plan = this.plan as Plan;
     const where = last.side === 'source' ? `the source ${this.entry.kind === 'root' ? this.entry.path : this.entry.sourceHome}` : `the ${plan.push ? 'far' : 'local'} copy ${plan.copy}`;
     const shown = [...new Set(last.names)].slice(0, PREVIEW);
+    // a claim asked again takes a root's copy only as a pass verified it
+    const archive = this.entry.kind === 'root' ? ", archiving the destination's copy, which no pass verified" : '';
     return {
       code: 'external_writer',
-      message: `${where} kept changing through ${MAX_PASSES} passes${shown.length ? ` (${shown.join(', ')})` : ''}; close whatever writes there, then resume`,
+      message: `${where} kept changing through ${MAX_PASSES} passes${shown.length ? ` (${shown.join(', ')})` : ''}; close whatever writes there, then resume${archive}`,
       entity: { kind: this.entry.kind === 'root' ? 'root' : 'session', id: this.entry.id },
     };
   }

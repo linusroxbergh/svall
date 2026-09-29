@@ -412,8 +412,26 @@ describe('transfer with a scripted rsync', () => {
     expect(r).toEqual({
       status: 'blocked',
       entries: [{ id: 'r_app', status: 'blocked', blocker: r.blockers[0] }],
-      blockers: [{ code: 'external_writer', message: expect.stringMatching(new RegExp(`^the source ${src} kept changing through 3 passes \\(notes\\.md\\); close`)), entity: { kind: 'root', id: 'r_app' } }],
+      blockers: [{
+        code: 'external_writer', entity: { kind: 'root', id: 'r_app' },
+        message: `the source ${src} kept changing through 3 passes (notes.md); close whatever writes there, then resume, archiving the destination's copy, which no pass verified`,
+      }],
     });
+  });
+
+  it('asks only for a resume once a session\'s files keep changing, since no claim reads its stage', async () => {
+    const home = tree(tmp(), { 'projects/-app/s.jsonl': '{}' });
+    let edits = 0;
+    const rsync = fakeRsync((argv) => {
+      if (!argv.includes('--dry-run')) fs.writeFileSync(path.join(home, 'projects/-app/s.jsonl'), `{"n":${++edits}}`);
+      return {};
+    });
+    const s0 = await session({ home, stage: '/far/stage/0', files: ['projects/-app/s.jsonl'] });
+    const r = await transfer(options({ entries: [s0], stateDir: tmp(), deps: { run: rsync.run } }));
+    expect(r.blockers).toEqual([{
+      code: 'external_writer', entity: { kind: 'session', id: 's0' },
+      message: `the source ${home} kept changing through 3 passes (projects/-app/s.jsonl); close whatever writes there, then resume`,
+    }]);
   });
 
   it('names the far copy when the source holds still and the copy keeps differing', async () => {
