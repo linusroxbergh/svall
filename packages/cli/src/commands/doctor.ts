@@ -21,6 +21,7 @@ import { isRelease } from '@archipelago/archid/release';
 import { HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hooksInstalled, launchdEnv, plistEnv, plistRun } from '@archipelago/archid/setup';
 import { tmuxTooOld } from '@archipelago/archid/tmux/conf';
 import { DEFAULT_PREFIX } from '../../../../scripts/install-release.mjs';
+import { MARK, type Check } from '../checks-view.js';
 import { Client, restartHint } from '../client.js';
 import { askCodexTrust, type HookTrust } from '../codex-trust.js';
 import { bundledRsync, rsyncVersion } from '../controller/rsync.js';
@@ -28,7 +29,6 @@ import { printResult } from '../format.js';
 import type { Target } from '../target.js';
 import { checkoutVersion, currentRunFrom } from '../version.js';
 
-export type Check = { name: string; status: 'ok' | 'warn' | 'fail' | 'skip'; detail: string };
 export type Report = { version?: string; home: string; config: { fleet: string; node: string }; checks: Check[]; log: { path: string; lines: string[] } };
 
 export type DoctorDeps = {
@@ -142,7 +142,6 @@ export async function preflight(d: PreflightDeps): Promise<Check[]> {
   return [await tmux(d), node(d), ...await agentChecks(d), shimDirOnPath(d)];
 }
 
-export const MARK = { ok: '✓', warn: '!', fail: '✗', skip: '–' };
 export const checkLine = (c: Check): string => `${MARK[c.status]} ${c.name}  ${c.detail}`;
 
 // the lines to show for warnings; any failure stops the caller before it changes anything

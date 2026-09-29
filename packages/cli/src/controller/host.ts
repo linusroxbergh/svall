@@ -14,8 +14,7 @@ import { tmuxTooOld } from '@archipelago/archid/tmux/conf';
 import { shq } from '@archipelago/archid/text';
 import type { Verify } from '../../../../scripts/release-manifest.mjs';
 import { Client } from '../client.js';
-import type { Check } from '../commands/doctor.js';
-import { REFUSED } from '../commands/fleet-provision.js';
+import type { Check } from '../checks-view.js';
 import { remoteOwner } from './authority.js';
 import { identify, MachineMismatch, remoteConnectionInfo } from './connection.js';
 import {
@@ -697,6 +696,9 @@ async function seedAuthority(master: SshMaster, entry: Registered, fleetId: Flee
   }
   return { value: undefined, detail: `${name} holds fleet ${fleetId} for ${owner} at generation ${record.generation}` };
 }
+
+/** The exit code of `archi fleet provision` refusing: a fleet home that holds another fleet in use, which only the user can move aside. */
+export const REFUSED = 3;
 
 type FarCopy = { outcome: 'created' | 'held' | 'rekeyed'; home: string; unit: string };
 

@@ -1,5 +1,9 @@
 import { styleText } from 'node:util';
-import { MARK, type Check } from './commands/doctor.js';
+
+/** One thing a doctor checked, and what it found. */
+export type Check = { name: string; status: 'ok' | 'warn' | 'fail' | 'skip'; detail: string };
+
+export const MARK = { ok: '✓', warn: '!', fail: '✗', skip: '–' };
 
 const COLOR = { ok: 'green', warn: 'yellow', fail: 'red', skip: 'dim' } as const;
 

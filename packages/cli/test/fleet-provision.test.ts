@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProvisionRefused } from '@archipelago/archid/linux/provision';
-import { provisionCommand, REFUSED } from '../src/commands/fleet-provision.js';
+import { provisionCommand } from '../src/commands/fleet-provision.js';
+import { REFUSED } from '../src/controller/host.js';
 
 const FLEET = '11111111-2222-3333-4444-555555555555';
 const GATEWAY = '66666666-7777-8888-9999-aaaaaaaaaaaa';

@@ -5,12 +5,10 @@ import { ProvisionRefused, provisionFleet } from '@archipelago/archid/linux/prov
 import { realRun } from '@archipelago/archid/linux/service';
 import { unitDirOf } from '@archipelago/archid/linux/setup';
 import { DEFAULT_PREFIX } from '../../../../scripts/install-release.mjs';
+import { REFUSED } from '../controller/host.js';
 import { printResult } from '../format.js';
 import type { Target } from '../target.js';
 import { currentRunFrom } from '../version.js';
-
-/** The exit code of a refusal: a fleet home that holds another fleet in use, which only the user can move aside. */
-export const REFUSED = 3;
 
 /** `archi fleet provision`: the companion's own copy of a fleet whose gateway it is, as `archi host enable` asks for it. */
 export function provisionCommand(

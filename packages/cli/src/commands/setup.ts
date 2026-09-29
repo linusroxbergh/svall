@@ -14,10 +14,10 @@ import { appQuit, fleetHomes } from '@archipelago/archid/uninstall';
 import type { AgentKind } from '@archipelago/protocol';
 import { DEFAULT_PREFIX, allowedSigners, installRelease, rollbackRelease } from '../../../../scripts/install-release.mjs';
 import { sshVerify } from '../../../../scripts/release-manifest.mjs';
-import { renderGroups, useColor } from '../checks-view.js';
+import { renderGroups, useColor, type Check } from '../checks-view.js';
 import { Client } from '../client.js';
 import { printResult } from '../format.js';
-import { checkLine, preflight, realPreflightDeps, requireReady, type Check } from './doctor.js';
+import { checkLine, preflight, realPreflightDeps, requireReady } from './doctor.js';
 import type { Target } from '../target.js';
 import { currentRunFrom } from '../version.js';
 

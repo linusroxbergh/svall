@@ -11,7 +11,8 @@ import { addHost, doctorHost, enableHost, removeHost, rollbackHost, upgradeHost,
 import { MachineRegistry } from '../controller/registry.js';
 import { closeMastersOnSignal, SshMaster } from '../controller/ssh.js';
 import { targetFor } from '../target.js';
-import { checkLines, MARK } from './doctor.js';
+import { MARK } from '../checks-view.js';
+import { checkLines } from './doctor.js';
 
 /**
  * Where the first ssh asks its questions: the terminal, or a dialog when there is none, as when the
