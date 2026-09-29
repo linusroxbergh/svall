@@ -688,7 +688,7 @@ export class Handover {
   /** Activate: the destination confirms the commit, runs the prepared state and starts the terminals the handover rested. */
   private async activate(): Promise<CharacterResult[]> {
     const { transactionId, generation } = this.tx;
-    const [, destination] = await this.pair();
+    const destination = await this.side(this.journal.destination.machineId);
     this.phase('activate');
     const r = await this.retrying('activate', () => destination.daemon.call('handover.activate', { transactionId, generation: generation + 1 }));
     for (const c of r.characters) {
@@ -705,17 +705,18 @@ export class Handover {
   private async complete(characters: CharacterResult[]): Promise<Outcome> {
     const { transactionId, generation } = this.tx;
     try {
-      const [source, destination] = await this.pair();
+      const destination = await this.side(this.journal.destination.machineId);
       this.phase('complete');
       await this.retrying('complete', () => destination.daemon.call('handover.complete', { transactionId, generation: generation + 1 }));
       const pending: ('source' | 'gateway')[] = [];
       const said: string[] = [];
       const landed = this.journal.landedDigest ? this.d.store.landed(transactionId, this.journal.landedDigest) : undefined;
       try {
+        const source = await this.side(this.journal.source.machineId);
         await this.retrying('complete', () => source.daemon.call('handover.complete', { transactionId, generation, ...(landed && { landed }) }));
       } catch (e) {
         pending.push('source');
-        said.push(`${source.route.name}: ${messageOf(e)}`);
+        said.push(`${this.journal.source.name}: ${messageOf(e)}`);
       }
       try {
         const record = await this.retrying('complete', () => this.d.gateway.complete({ transactionId, generation: generation + 1 }));
@@ -770,9 +771,11 @@ export class Handover {
     this.observer.send({ event: 'handover.changed', data: { transactionId, phase: 'aborted' } });
     // a Freeze never sent froze nothing, and the destination has nothing of it
     if (phase !== 'begin') {
-      const [source, destination] = await this.pair();
+      const source = await this.side(this.journal.source.machineId);
       await this.retrying('aborted', () => source.daemon.call('handover.abort', { transactionId, generation }));
+      // a destination that cannot be reached leaves the journal open, for the abort that lets it go later
       try {
+        const destination = await this.side(this.journal.destination.machineId);
         await this.retrying('aborted', () => destination.daemon.call('handover.abort', { transactionId, generation: generation + 1 }));
       } catch (e) {
         // a destination with no journal of this handover has nothing to let go, and says so as not its fleet

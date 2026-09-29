@@ -1206,6 +1206,51 @@ describe('Complete', () => {
   });
 });
 
+describe('a far machine that is down', () => {
+  // a far side is built only once its daemon answers, as reach.ts builds one
+  const eager = (w: World) => ({
+    side: async (id: MachineId) => {
+      const port = id === mac ? 'mac' : 'trift';
+      if (w.down.has(port)) throw new Error(`${port} did not answer: connection refused`);
+      return w.side(id);
+    },
+  });
+
+  it('on an abort once the gateway let go, still gives the source its fleet back, and keeps the journal until the destination lets go', async () => {
+    const probe = new World();
+    await controller(probe).start(trift, {});
+    const w = new World();
+    w.fault = { at: opIndex(probe, 'trift:handover.prepare'), kind: 'death' };
+    await controller(w).start(trift, {});
+    await w.heal();
+    w.down.add('trift');
+    const out = await controller(w, eager(w)).abort();
+    expect(out).toMatchObject({ status: 'interrupted', safe: expect.arrayContaining(['abort']) });
+    expect(w.record).toEqual({ fleetId, generation: G, ownerMachineId: mac });
+    expect(w.source.running).toBe(true);
+    expect(w.destination.journal).toBeDefined();
+    expect(w.store.j).toMatchObject({ phase: 'aborted' });
+    await recover(w, 'abort');
+    expect(settledOn(w)).toBe('source');
+  });
+
+  it('after the commit, activates and completes the destination here while the source is down, and a resume finishes the source once it answers', async () => {
+    const probe = new World({ pull: true });
+    await controller(probe).start(mac, {});
+    const w = new World({ pull: true });
+    w.fault = { at: opIndex(probe, 'gateway:commit'), kind: 'death' };
+    await controller(w).start(mac, {});
+    await w.heal();
+    w.down.add('trift');
+    const out = await controller(w, eager(w)).resume();
+    expect(out).toMatchObject({ status: 'complete', pending: ['source'], error: expect.stringContaining('trift did not answer') });
+    expect(w.destination.activated).toBe(true);
+    expect(w.record).toEqual({ fleetId, generation: G + 1, ownerMachineId: mac });
+    await recover(w);
+    expect(settledOn(w)).toBe('destination');
+  });
+});
+
 describe('resuming a handover the destination may have finished', () => {
   const committedWorld = (): World => {
     const w = new World();
