@@ -29,6 +29,3 @@ export function writeAtomic(file: string, text: string, o: { mode?: number; perP
   fs.writeFileSync(tmp, text, o.mode === undefined ? undefined : { mode: o.mode });
   fs.renameSync(tmp, file);
 }
-
-export const writeJsonAtomic = (file: string, value: unknown, o: { mode?: number; perProcess?: boolean } = {}): void =>
-  writeAtomic(file, JSON.stringify(value, null, 2), o);
