@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { archiveRelease, MANIFEST, SIG, SUMS, sshVerify, verifyRelease, verifySignature, verifyTree } from './release-manifest.mjs';
+import { archiveRelease, KEEP_MODES, MANIFEST, SIG, SUMS, sshVerify, verifyRelease, verifySignature, verifyTree } from './release-manifest.mjs';
 
 export const DEFAULT_PREFIX = path.join(os.homedir(), '.local', 'share', 'archipelago');
 
@@ -48,10 +48,10 @@ export function stageArchive(archive, staging, o = {}) {
   let checked;
   try {
     const manifest = [SUMS, SIG].map((f) => `releases/${version}/${f}`).filter((m) => members.includes(m));
-    if (manifest.length) tar(['-xpzf', archive, '-C', staging, ...manifest]);
+    if (manifest.length) tar(['-xz', ...KEEP_MODES, '-f', archive, '-C', staging, ...manifest]);
     const signed = verifySignature(dir, o);
     const sums = contentOf(path.join(dir, SUMS));
-    tar(['-xpzf', archive, '-C', staging]);
+    tar(['-xz', ...KEEP_MODES, '-f', archive, '-C', staging]);
     const after = contentOf(path.join(dir, SUMS));
     if (sums === undefined ? after !== undefined : !after?.equals(sums)) throw new Error(`the archive writes over the ${SUMS} its signature was checked over`);
     checked = { ...verifyTree(dir, o), signed };

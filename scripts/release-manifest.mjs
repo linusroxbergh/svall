@@ -19,6 +19,10 @@ export const NAMESPACE = 'archipelago-release';
 // covered by the signature rather than by the entry list, so the list never has to describe itself
 const SELF = [MANIFEST, SUMS, SIG];
 
+// tar options that extract each entry with the mode release.json records and nothing else: the Mac's bsdtar -p would
+// also restore ACLs, file flags and xattrs, which nothing signed describes
+export const KEEP_MODES = process.platform === 'darwin' ? ['-p', '--no-acls', '--no-fflags', '--no-xattrs', '--no-mac-metadata'] : ['-p'];
+
 const digestOf = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
 const byPath = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
@@ -78,7 +82,7 @@ export function signArchive(archive, keyFile) {
   const { version } = archiveRelease(archive, execFileSync('tar', ['-tzf', archive], { encoding: 'utf8' }));
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'archi-sign-'));
   try {
-    execFileSync('tar', ['-xpzf', archive, '-C', work]);
+    execFileSync('tar', ['-xz', ...KEEP_MODES, '-f', archive, '-C', work]);
     const dir = path.join(work, 'releases', version);
     const { files, entriesDigest, unsigned, ...meta } = verifyTree(dir, { allowUnsigned: true }).release;
     for (const c of Object.values(meta.companions ?? {})) c.sha256 = digestOf(path.join(path.dirname(archive), path.basename(c.url)));

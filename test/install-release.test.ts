@@ -199,6 +199,20 @@ describe('an install by an account with a tight umask', () => {
     }
     expect(fs.statSync(path.join(prefix, 'current', 'bin')).mode & 0o777).toBe(0o755);
   });
+
+  it.skipIf(process.platform !== 'darwin')('lays down no ACL a signed archive carries, as nothing the signature covers describes one (macOS)', () => {
+    const key = signer();
+    const dir = tree('1.2.3');
+    signManifest(dir, key.key);
+    const acl = (file: string): string => execFileSync('ls', ['-le', file], { encoding: 'utf8' });
+    execFileSync('chmod', ['+a', 'everyone allow write', path.join(dir, 'bin', 'archi')]);
+    expect(acl(path.join(dir, 'bin', 'archi'))).toMatch(/everyone allow write/);
+    const archive = path.join(temp(), 'release.tar.gz');
+    execFileSync('tar', ['--acls', '--no-xattrs', '-czf', archive, '-C', path.dirname(path.dirname(dir)), 'releases'], { env: { ...process.env, COPYFILE_DISABLE: '1' } });
+    const prefix = temp();
+    expect(installRelease({ source: archive, prefix, verify: key.verify })).toMatchObject({ signed: true });
+    expect(acl(path.join(prefix, 'current', 'bin', 'archi'))).not.toMatch(/allow write/);
+  });
 });
 
 // GNU tar writes a member under a link inside the release over a file it extracted by name, where the Mac's bsdtar refuses
