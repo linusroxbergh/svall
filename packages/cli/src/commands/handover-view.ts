@@ -17,12 +17,14 @@ const unique = (xs: string[]): string[] => [...new Set(xs)];
 const union = (held: HandoverChoices['terminateShells'] | string[] | undefined, more: string[]): string[] =>
   unique([...(Array.isArray(held) ? held : []), ...more]);
 
+// in thousands, as the sheet counts them
 function bytes(n: number): string {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let v = n;
+  if (n < 1000) return `${n} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let v = n / 1000;
   let u = 0;
-  while (v >= 1024 && u < units.length - 1) { v /= 1024; u++; }
-  return `${u ? v.toFixed(1) : v} ${units[u]}`;
+  while (v >= 1000 && u < units.length - 1) { v /= 1000; u++; }
+  return `${v.toFixed(1)} ${units[u]}`;
 }
 
 /** Who or what an entity is, for a person: a character's name, a root's destination path, a session's character. */

@@ -971,6 +971,16 @@ describe('the human reading of what a row names', () => {
   });
 });
 
+describe('the human reading of sizes', () => {
+  it('counts bytes in thousands, as the sheet does', () => {
+    const printed: string[] = [];
+    const view = new View((l) => printed.push(l), { archi: (a) => `archi ${a}`, machine: (id) => id ?? '?' });
+    const checks = pre();
+    view.show({ ...checks, data: { ...(checks.data as object), summary: { digest: 'a'.repeat(64), roots: 2, files: 5, bytes: 1_500_000, sessions: 1 } } } as HandoverEvent);
+    expect(printed[0]).toBe('Checks: 2 roots, 5 files (1.5 MB), 1 agent sessions');
+  });
+});
+
 describe('the human reading of an archived root', () => {
   it('says once where what the root held before was kept, and still says it was copied', () => {
     const printed: string[] = [];
