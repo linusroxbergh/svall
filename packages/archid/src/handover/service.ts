@@ -9,14 +9,14 @@ import { runGit } from '../links/git.js';
 import { DestinationHandover, characterResults, type DestinationDeps } from './destination.js';
 import { unreached } from './git-import.js';
 import { handoverGeneration, type HandoverJournal, type JournalFile, type JournalState } from './journal.js';
-import { agentAdapters, type AgentProbe } from './sessions/registry.js';
+import { agentAdapters, type AgentProber } from './sessions/registry.js';
 import { SourceHandover, type Authority, type SourceDeps } from './source.js';
 
 export type HandoverDeps = {
   ownership: OwnershipState;
   journal: JournalFile;
-  /** This machine's agent CLIs as they last answered; none when not given. */
-  agents?: () => Promise<AgentProbe[]>;
+  /** This machine's agent CLIs as they last answered, or asked afresh; none when not given. */
+  agents?: AgentProber;
   /** What the source phases run on; without it they answer not_ready. */
   source?: SourceDeps;
   /** What the destination phases run on; without it they answer not_ready. */
@@ -55,7 +55,7 @@ export class HandoverService {
   private listeners = new Set<(e: Event) => void>();
   private source?: SourceHandover;
   private destination?: DestinationHandover;
-  private agents: () => Promise<AgentProbe[]>;
+  private agents: AgentProber;
 
   constructor(private deps: HandoverDeps) {
     this.state = deps.journal.load();
@@ -64,9 +64,9 @@ export class HandoverService {
     if (deps.destination) this.destination = new DestinationHandover(this, deps.ownership, this.agents, deps.destination);
   }
 
-  /** What `system.info` says of this machine's agent CLIs. */
+  /** What `system.info` says of this machine's agent CLIs, asked afresh: preflight and freeze read logins from it. */
   async agentAdapters(): Promise<AgentAdapter[]> {
-    return agentAdapters(await this.agents());
+    return agentAdapters(await this.agents(true));
   }
 
   /** The journal as this daemon read it, which is what decides how the daemon starts. */

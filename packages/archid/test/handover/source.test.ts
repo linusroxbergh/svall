@@ -1140,7 +1140,7 @@ describe('source complete', () => {
 });
 
 describe("this machine's agent CLIs", () => {
-  it('are probed once a minute at most, shared between callers, and reported by system.info', async () => {
+  it('are probed once a minute at most, shared between callers, and probed afresh for system.info, which preflight and freeze read', async () => {
     let calls = 0;
     const run: AgentRun = async (cmd, args) => {
       calls++;
@@ -1164,7 +1164,10 @@ describe("this machine's agent CLIs", () => {
     const paths = resolvePaths(makeHome());
     const ownership = OwnershipState.load({ paths, fleetId, machineId: me, log: silentLogger });
     const handover = new HandoverService({ ownership, journal: openJournal(paths), agents: probe });
+    const before = calls;
     const info = await handlers['system.info']({}, { ownership, handover } as Ctx);
+    // a login fixed a moment ago counts at the next preflight
+    expect(calls).toBe(before + once);
     expect(info.agentAdapters).toEqual([
       { kind: 'claude', version: '2.1.280', adapter: 1, home: '/cfg/claude', loggedIn: true, hooks: false },
       { kind: 'codex', adapter: 0, home: '/home/t/.codex', loggedIn: false, hooks: false },

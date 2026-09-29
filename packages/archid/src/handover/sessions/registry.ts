@@ -163,11 +163,14 @@ export const realProbeDeps = (): ProbeDeps => ({
   run: runAgent(), read: (file) => fs.promises.readFile(file, 'utf8').catch(() => undefined), env: process.env, homedir: os.homedir(),
 });
 
-/** Every agent CLI as it last answered, asked again once `ttlMs` has passed; callers in between share one probe. */
-export function agentProber(d: ProbeDeps, ttlMs = 60_000, now: () => number = Date.now): () => Promise<AgentProbe[]> {
+/** How to ask this machine's agent CLIs: as they last answered, or `fresh`. */
+export type AgentProber = (fresh?: boolean) => Promise<AgentProbe[]>;
+
+/** Every agent CLI as it last answered, asked again once `ttlMs` has passed or when asked `fresh`; callers in between share one probe. */
+export function agentProber(d: ProbeDeps, ttlMs = 60_000, now: () => number = Date.now): AgentProber {
   let last: { at: number; probes: Promise<AgentProbe[]> } | undefined;
-  return () => {
-    if (!last || now() - last.at >= ttlMs) {
+  return (fresh = false) => {
+    if (fresh || !last || now() - last.at >= ttlMs) {
       // a CLI that fails mid-probe answers as one that is not there
       const probes = Promise.all(AgentKind.options.map((kind) => probeAgent(kind, d).catch((): AgentProbe => ({ kind, home: '', loggedIn: false, hooks: false }))));
       last = { at: now(), probes };
