@@ -17,7 +17,7 @@ import { lingerState, unitStatus, type Run } from '@archipelago/archid/linux/ser
 import { archidUnitName, GATEWAY_UNIT, unitPath } from '@archipelago/archid/linux/setup';
 import { resolvePaths, userPaths } from '@archipelago/archid/paths';
 import { OLD_LAUNCHD_LABEL, PRIVATE, profileHome, profileLabel } from '@archipelago/archid/profile';
-import { isRelease, repoRoot } from '@archipelago/archid/release';
+import { isRelease } from '@archipelago/archid/release';
 import { HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hooksInstalled, launchdEnv, plistEnv, plistRun } from '@archipelago/archid/setup';
 import { tmuxTooOld } from '@archipelago/archid/tmux/conf';
 import { DEFAULT_PREFIX } from '../../../../scripts/install-release.mjs';
@@ -26,7 +26,7 @@ import { askCodexTrust, type HookTrust } from '../codex-trust.js';
 import { bundledRsync, rsyncVersion } from '../controller/rsync.js';
 import { printResult } from '../format.js';
 import type { Target } from '../target.js';
-import { checkoutVersion } from '../version.js';
+import { checkoutVersion, currentRunFrom } from '../version.js';
 
 export type Check = { name: string; status: 'ok' | 'warn' | 'fail' | 'skip'; detail: string };
 export type Report = { version?: string; home: string; config: { fleet: string; node: string }; checks: Check[]; log: { path: string; lines: string[] } };
@@ -411,7 +411,7 @@ function connectHook(path: string): Promise<void> {
 
 // a login over ssh sees less of the machine than the unit the daemon runs in
 const unitAgentPath = (): string =>
-  unitPath({ ...(isRelease() ? { release: path.join(DEFAULT_PREFIX, 'current') } : { repoRoot: repoRoot() }), homedir: os.homedir(), prefix: DEFAULT_PREFIX });
+  unitPath({ ...currentRunFrom(), homedir: os.homedir(), prefix: DEFAULT_PREFIX });
 
 export function realPreflightDeps(home: string, platform: NodeJS.Platform = process.platform): PreflightDeps {
   let mainAgent: AgentKind | undefined;

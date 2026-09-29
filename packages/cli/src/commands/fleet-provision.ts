@@ -1,14 +1,13 @@
 import os from 'node:os';
-import path from 'node:path';
 import { Command } from 'commander';
 import { FleetId, MachineId } from '@archipelago/protocol';
 import { ProvisionRefused, provisionFleet } from '@archipelago/archid/linux/provision';
 import { realRun } from '@archipelago/archid/linux/service';
 import { unitDirOf } from '@archipelago/archid/linux/setup';
-import { isRelease, repoRoot } from '@archipelago/archid/release';
 import { DEFAULT_PREFIX } from '../../../../scripts/install-release.mjs';
 import { printResult } from '../format.js';
 import type { Target } from '../target.js';
+import { currentRunFrom } from '../version.js';
 
 /** The exit code of a refusal: a fleet home that holds another fleet in use, which only the user can move aside. */
 export const REFUSED = 3;
@@ -33,7 +32,7 @@ export function provisionCommand(
       let r: Awaited<ReturnType<typeof provisionFleet>>;
       try {
         r = await provision({
-          ...(isRelease() ? { release: path.join(DEFAULT_PREFIX, 'current') } : { repoRoot: repoRoot() }),
+          ...currentRunFrom(),
           homedir: os.homedir(), prefix: DEFAULT_PREFIX, unitDir: unitDirOf(os.homedir()),
           profile: t.name, home: t.home, fleetId: fleetId.data, gatewayMachineId: gateway.data, run: realRun, tmuxVersion,
         });

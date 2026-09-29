@@ -5,12 +5,11 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { userPaths } from '@archipelago/archid/paths';
 import { OLD_LAUNCHD_LABEL, PRIVATE, profileLabel } from '@archipelago/archid/profile';
-import { isRelease, repoRoot } from '@archipelago/archid/release';
 import { setupHome, type HomeSetup, type RunFrom } from '@archipelago/archid/setup';
-import { DEFAULT_PREFIX } from '../../../scripts/install-release.mjs';
 import { Client, ProtocolMismatch } from './client.js';
 import { ask } from './prompt.js';
 import type { Target } from './target.js';
+import { currentRunFrom } from './version.js';
 
 export type LaunchDeps = {
   exists(p: string): boolean;
@@ -86,7 +85,7 @@ export function realDeps(): LaunchDeps {
     uid: os.userInfo().uid,
     launchAgentsDir: userPaths().launchAgents,
     // through current, so the agent follows every later install instead of pinning the release that wrote it
-    runFrom: isRelease() ? { release: path.join(DEFAULT_PREFIX, 'current') } : { repoRoot: repoRoot() },
+    runFrom: currentRunFrom(),
     timeoutMs: 15_000,
     intervalMs: 200,
   };
