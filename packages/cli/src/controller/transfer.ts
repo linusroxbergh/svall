@@ -84,8 +84,8 @@ export type TransferOptions = {
   // the local rsync, from `resolveRsync`
   rsync: string;
   entries: readonly TransferEntry[];
-  // the controller's state directory; configDir() unless a test names another
-  stateDir?: string;
+  // where the controller keeps this fleet's handover state
+  stateDir: string;
   signal?: AbortSignal;
   // tokens that must never reach a record
   secrets?: readonly string[];

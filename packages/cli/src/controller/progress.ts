@@ -3,10 +3,9 @@ import path from 'node:path';
 import { z } from 'zod';
 import { TransactionId } from '@archipelago/protocol';
 import { writeDurable } from '@archipelago/archid/handover/durable';
-import { configDir } from '@archipelago/archid/machine';
 
-/** Where the controller keeps one transaction's files: its progress journal, and the filter files beside it. */
-export function transactionDir(transactionId: string, base: string = configDir()): string {
+/** Where the controller keeps one transaction's files under `base`: its progress journal, and the filter files beside it. */
+export function transactionDir(transactionId: string, base: string): string {
   // one path segment, and never `.` or `..`
   const name = encodeURIComponent(transactionId).replace(/^\.{1,2}$/, (dots) => '%2E'.repeat(dots.length));
   return path.join(base, 'handover', name);
