@@ -132,11 +132,15 @@ export function relativeProblem(p: string): string | undefined {
   return undefined;
 }
 
-function rootProblem(root: ReplicaRoot, files: readonly TransferFile[]): string | undefined {
-  if (!root.path.startsWith('/') || relativeProblem(root.path.slice(1))) return `${JSON.stringify(root.path)} is not a plain absolute path`;
+/** Why a manifest path cannot name a place on this machine, if it cannot. */
+export const absoluteProblem = (p: string | undefined): string | undefined =>
+  (p !== undefined && p.startsWith('/') && !relativeProblem(p.slice(1)) ? undefined : `${JSON.stringify(p)} is not a plain absolute path`);
+
+/** Why a list of files cannot lie under a root of this entry, if it cannot. */
+export function filesProblem(files: readonly TransferFile[], entry: TransferRoot['entry']): string | undefined {
   const seen = new Set<string>();
   for (const f of files) {
-    const bad = root.entry === 'file' ? (f.path === '' ? undefined : 'lies under a file') : relativeProblem(f.path);
+    const bad = entry === 'file' ? (f.path === '' ? undefined : 'lies under a file') : relativeProblem(f.path);
     if (bad) return `${JSON.stringify(f.path)} ${bad}`;
     if (f.type === 'symlink' && CONTROL.test(f.target)) return `${JSON.stringify(f.path)} links to a path holding a control character`;
     if (seen.has(f.path)) return `${JSON.stringify(f.path)} is listed twice`;
@@ -144,6 +148,9 @@ function rootProblem(root: ReplicaRoot, files: readonly TransferFile[]): string 
   }
   return undefined;
 }
+
+const rootProblem = (root: ReplicaRoot, files: readonly TransferFile[]): string | undefined =>
+  absoluteProblem(root.path) ?? filesProblem(files, root.entry);
 
 /**
  * The replica records of one fleet on this machine, under its fleet home and never inside a root. Every

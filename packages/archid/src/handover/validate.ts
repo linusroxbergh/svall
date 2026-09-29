@@ -7,30 +7,14 @@ import {
 import { portableRevive } from '../dormancy.js';
 import { markDormant, markSlotDormant } from '../reconcile.js';
 import { diverged, proveReplica, type Divergence } from './divergence.js';
-import { CONTROL } from './inventory.js';
 import type { ScanFs } from './manifest.js';
 import { exportSnapshot, holds, realPath } from './portable-path.js';
-import { relativeProblem } from './replicas.js';
+import { absoluteProblem, filesProblem } from './replicas.js';
 
 /** Whether `p` lies inside one of `dirs`, each side read by its real path. */
 export function within(p: string, dirs: readonly string[]): boolean {
   const real = realPath(path.posix.resolve(p));
   return dirs.some((d) => holds(realPath(path.posix.resolve(d)), real));
-}
-
-const absoluteProblem = (p: string | undefined): string | undefined =>
-  (p !== undefined && p.startsWith('/') && !relativeProblem(p.slice(1)) ? undefined : `${JSON.stringify(p)} is not a plain absolute path`);
-
-function filesProblem(files: readonly TransferFile[], entry: TransferRoot['entry']): string | undefined {
-  const seen = new Set<string>();
-  for (const f of files) {
-    const bad = entry === 'file' ? (f.path === '' ? undefined : 'lies under a file') : relativeProblem(f.path);
-    if (bad) return `${JSON.stringify(f.path)} ${bad}`;
-    if (f.type === 'symlink' && CONTROL.test(f.target)) return `${JSON.stringify(f.path)} links to a path holding a control character`;
-    if (seen.has(f.path)) return `${JSON.stringify(f.path)} is listed twice`;
-    seen.add(f.path);
-  }
-  return undefined;
 }
 
 /** Why a root cannot land at its own path on this machine: a symbolic link on the way leads it elsewhere. */
