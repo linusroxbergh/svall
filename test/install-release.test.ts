@@ -49,6 +49,26 @@ const install = (source: string, prefix: string) => installRelease({ source, pre
 const build = (prefix: string): string => execFileSync(path.join(prefix, 'current', 'bin', 'archi'), { encoding: 'utf8' }).trim();
 
 describe('what an install keeps to go back to', () => {
+  it('names the release current was on before, and keeps it and the new one and no other', () => {
+    const prefix = temp();
+    const first = install(tree('1.0.0'), prefix);
+    const second = install(tree('1.0.1'), prefix);
+    const third = install(tree('1.0.2'), prefix);
+    expect(third.rollbackTo).toBe(second.release);
+    expect(third.releasesKept).toEqual(['1.0.1', '1.0.2']);
+    expect(fs.existsSync(first.release)).toBe(false);
+  });
+
+  it('keeps the release a rollback put current back on', () => {
+    const prefix = temp();
+    const a = install(tree('1.0.0'), prefix);
+    install(tree('1.0.1'), prefix);
+    rollbackRelease(prefix, a.release);
+    const c = install(tree('1.0.2'), prefix);
+    expect(c.rollbackTo).toBe(a.release);
+    expect(c.releasesKept).toEqual(['1.0.0', '1.0.2']);
+  });
+
   it('names the release before a same-named reinstall, never the tree the reinstall replaced', () => {
     const prefix = temp();
     const before = install(tree('0.9.0'), prefix);

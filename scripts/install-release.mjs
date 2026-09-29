@@ -6,7 +6,7 @@
 // The release is untrusted until it is authenticated, so nothing is written anywhere `current`
 // could reach: it is staged, authenticated there, renamed whole into releases/<version>/, and only
 // then reached by a `current` symlink renamed over the old one. The release `current` pointed at
-// before stays for rollback.
+// before stays for rollback, and every other is removed.
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -120,6 +120,7 @@ export function installRelease(o) {
   fs.symlinkSync(release, staged);
   fs.renameSync(staged, current);
   if (displaced) fs.rmSync(displaced, { recursive: true, force: true });
+  for (const dir of otherReleases(releases, release)) if (dir !== back) fs.rmSync(dir, { recursive: true, force: true });
 
   return {
     prefix, version, current, release,
