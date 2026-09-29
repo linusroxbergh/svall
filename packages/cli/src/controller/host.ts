@@ -666,8 +666,20 @@ async function provisionCopy(master: SshMaster, entry: Registered, fleetId: Flee
 /** `archi host enable`: which machine is to be this fleet's gateway, the record that says so, and its copy of the fleet. */
 export function enableHost(name: string, o: { fleetHome: string }, d: HostDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
-    const entry = await run.step('machine', () => Promise.resolve(machineOutcome(d.registry, name)));
     const file = resolvePaths(o.fleetHome).fleetConfig;
+    const entry = await run.step('machine', () => {
+      const out = machineOutcome(d.registry, name);
+      // a gateway the registry still holds may still hold this fleet, which a record made here would strand
+      const named = readFleet(file).gatewayMachineId;
+      const held = named && named !== out.value.id ? d.registry.get(named) : undefined;
+      if (held) {
+        const profile = profileOf(o.fleetHome, d.homedir);
+        const archi = `archi ${profile === PRIVATE ? '' : `-p ${profile} `}`;
+        throw new StepError(`${file} names ${held.record.name} as its gateway, which may still hold this fleet`,
+          `if ${held.record.name} is gone for good, \`${archi}fleet recover --force-owner local --gateway ${name}\` makes ${name} the gateway, then run this again`);
+      }
+      return Promise.resolve(out);
+    });
     // both steps ride the one master whose machine was checked, which no later command can leave for another
     let master: SshMaster | undefined;
     try {

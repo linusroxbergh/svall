@@ -1268,6 +1268,30 @@ describe('host enable', () => {
     expect(written(home).gatewayMachineId).toBeUndefined();
   });
 
+  it('refuses a fleet whose fleet.json names another gateway still in the registry, and asks nothing of either', async () => {
+    const registry = registered();
+    registry.add({ name: 'studio', ssh: 'studio.test', platform: 'linux', arch: 'arm64', home: HOME, archiBase: BASE, gateway: true }, OTHER_MAC);
+    const home = fleetHome();
+    fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: OTHER_MAC }));
+
+    const out = await enableHost('trift', { fleetHome: home }, deps({ registry }));
+    expect(out.result).toBe('actions');
+    expect(step('machine').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining('names studio as its gateway') });
+    expect(out.actions.join(' ')).toContain('fleet recover --force-owner local --gateway trift');
+    expect(ssh.calls()).toEqual([]);
+    expect(written(home).gatewayMachineId).toBe(OTHER_MAC);
+  });
+
+  it('takes over from a gateway the registry no longer holds, as one set up again under its name is', async () => {
+    ssh.reply(['owner', 'get'], answers({}));
+    ssh.reply(['fleet', 'provision'], provisioned());
+    const home = fleetHome();
+    fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: OTHER_MAC }));
+    const out = await enableHost('trift', { fleetHome: home }, deps({ registry: registered() }));
+    expect(out.result).toBe('ready');
+    expect(written(home).gatewayMachineId).toBe(REMOTE);
+  });
+
   it('leaves fleet.json alone when the gateway cannot be reached at all', async () => {
     const home = fleetHome();
     const out = await enableHost('trift', { fleetHome: home }, deps({ registry: registered('refused.test') }));
