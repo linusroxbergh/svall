@@ -10,7 +10,8 @@ Everything sits behind `handover.enabled` in fleet.json, which is off by default
 
 - **Done:** version 1 — plan Tasks 1–29 and 36–42, milestones M0–M3, M3b's automated gate and M6. Every
   task was reviewed, M1–M3 each got a deep review, fix wave and on-machine pass, and the whole branch got a
-  final review (`ledger/final-review.md`) with one fix wave. The fault suites (`pnpm test:faults`) crash
+  final review (`ledger/final-review.md`) with one fix wave, then a PR review (`ledger/pr-review-2026-09-29.md`)
+  with its own fix wave. The fault suites (`pnpm test:faults`) crash
   every one of 94 failpoints and fault every controller request; the container harness
   (`docs/integration.md`) hands a fleet over real sshd/rsync/tmux, and a release installs fresh on x86-64
   and arm64; real Claude and Codex sessions resumed both ways on linus-vault, and the spec's manual
@@ -47,6 +48,8 @@ now `ledger/`, and `docs/superpowers/{specs,plans}/…fleet-handover…` is now 
 - **The by-eye pass in the built app:** Add Machine, the handover sheet (including the sheet rebuilding
   after a relaunch), terminal re-attach after an SSH drop. `ledger/m3b-env.md` has the steps and how to
   open the test build against the test HOME without touching the owner's own app or fleet.
+- **A round trip on the real machines after the PR review's fix wave.** The last one ran at release d0602dc,
+  before it; the fix wave changed claims, aborts, the transport's process groups and Linux setup.
 - **A release signing key.** `allowed_signers` holds only a comment until one exists, so every install
   needs `--allow-unsigned`; a release tag stops at once when the committed signers don't pin its key.
 - **CI.** Actions jobs do not start on this repo because of billing. `ci.yml`'s integration and Swift jobs
