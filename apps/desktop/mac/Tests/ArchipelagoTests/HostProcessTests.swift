@@ -240,6 +240,12 @@ final class HostProcessTests: XCTestCase {
                        ["type": "host.done", "op": "add", "code": 1] as NSDictionary)
     }
 
+    func testTheOperationsThatRewriteTheFleetsConfigAreTheOnesThatTellThePageItsGatewayAfresh() {
+        XCTAssertTrue(HostOp.enable.rewritesFleetConfig)
+        XCTAssertTrue(HostOp.remove.rewritesFleetConfig)
+        for op in [HostOp.add, .doctor, .upgrade] { XCTAssertFalse(op.rewritesFleetConfig, op.rawValue) }
+    }
+
     func testTheWindowNamesTheMachineTheFleetIsOn() {
         XCTAssertEqual(RemoteConnection.windowTitle(base: "Archipelago", owner: "local"), "Archipelago")
         XCTAssertEqual(RemoteConnection.windowTitle(base: "Archipelago · work", owner: "studio"), "Archipelago · work — studio")

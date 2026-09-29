@@ -216,9 +216,7 @@ final class ShellRouter {
     private func handle(_ msg: ToShell) {
         switch msg {
         case .connection:
-            bridge.send(.shellInfo(home: ArchiHome.path, log: ArchiHome.logTail(), op: OnePassword.path != nil,
-                                   ghosttyKeys: GhosttyKeybinds.userChords(), handoverEnabled: ArchiHome.handoverEnabled(),
-                                   gateway: ArchiHome.gatewayName()))
+            sendShellInfo()
             bridge.send(.connection(remote.connection))
             if let state = remote.state {
                 bridge.send(.connectionState(state: state.state, owner: state.owner, kind: state.kind, message: state.message))
@@ -346,12 +344,20 @@ final class ShellRouter {
         child.onExit = { [weak self] code in
             self?.hostRun = nil
             self?.bridge.send(.hostDone(op: op.rawValue, code: code))
+            if op.rewritesFleetConfig { self?.sendShellInfo() }
         }
         do { try child.start() } catch {
             hostRun = nil
             bridge.send(.hostStep(op: op.rawValue, step: HostProcess.Step(step: "archi", status: "fail", detail: "\(error)", action: nil)))
             bridge.send(.hostDone(op: op.rawValue, code: 1))
         }
+    }
+
+    // read afresh each time: the gateway and handover.enabled change when archi host rewrites fleet.json
+    private func sendShellInfo() {
+        bridge.send(.shellInfo(home: ArchiHome.path, log: ArchiHome.logTail(), op: OnePassword.path != nil,
+                               ghosttyKeys: GhosttyKeybinds.userChords(), handoverEnabled: ArchiHome.handoverEnabled(),
+                               gateway: ArchiHome.gatewayName()))
     }
 
     private func followHandover(_ run: (HandoverSession) throws -> Void) {
