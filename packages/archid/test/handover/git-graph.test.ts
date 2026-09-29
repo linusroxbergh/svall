@@ -84,14 +84,22 @@ describe('readWorktrees, from a git with no -z for worktree list', () => {
     ]);
   });
 
-  it('fails on a worktree path with a line break in it, which that form cannot print whole', async () => {
-    const git = withoutZ(fakeGit({ '/r: worktree list --porcelain': { stdout: lines(
-      ['worktree /r', `HEAD ${a}`, 'branch refs/heads/main'],
-      ['worktree /r/two', 'lines', `HEAD ${a}`, 'detached'],
-    ) } }));
-    await expect(readWorktrees('/r', git, '/r/.git')).rejects.toThrow(
-      '/r/.git: git lists a worktree path with a line break in it, which git prints whole only with -z, in git 2.36 or later',
-    );
+  it('fails on a worktree path with a line break in it, which that form cannot print whole, whatever follows the break', async () => {
+    // each is `/r/x`, a line break and more of the path, then the entry git writes for it
+    const broken: string[][][] = [
+      [['worktree /r/x', 'lines', `HEAD ${a}`, 'detached']],
+      [['worktree /r/x', 'locked', `HEAD ${a}`, 'detached']],
+      [['worktree /r/x', 'bare', `HEAD ${a}`, 'branch refs/heads/x']],
+      [['worktree /r/x', `HEAD ${a}`, `HEAD ${a}`, 'detached']],
+      [['worktree /r/x', 'prunable gitdir file points to non-existent location', `HEAD ${a}`, 'detached']],
+      [['worktree /r/x'], [`HEAD ${a}`, 'detached']],
+    ];
+    for (const entries of broken) {
+      const git = withoutZ(fakeGit({ '/r: worktree list --porcelain': { stdout: lines(['worktree /r', `HEAD ${a}`, 'branch refs/heads/main'], ...entries) } }));
+      await expect(readWorktrees('/r', git, '/r/.git'), JSON.stringify(entries)).rejects.toThrow(
+        '/r/.git: git lists a worktree path with a line break in it, which git prints whole only with -z, in git 2.36 or later',
+      );
+    }
   });
 });
 

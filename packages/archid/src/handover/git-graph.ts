@@ -77,21 +77,18 @@ export async function readWorktrees(dir: string, git: GitRunner, subject?: strin
   return parseWorktreeList(nulled(await must(git, ['worktree', 'list', '--porcelain'], dir, subject), subject ?? dir));
 }
 
-const ATTRIBUTES = new Set(['worktree', 'HEAD', 'branch', 'detached', 'bare', 'locked', 'prunable']);
+// one entry as git before 2.36 writes it, less its blank line, each attribute in its place and once
+const ENTRY = /^worktree [^\n]*\n(?:bare|HEAD [0-9a-f]+(?:\n(?:detached|branch [^\n]+))?)(?:\nlocked(?: [^\n]*)?)?(?:\nprunable [^\n]*)?$/;
 const ESCAPES: Record<string, number> = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, '\\': 92 };
 
 // the -z form of a listing git wrote one attribute a line: a lock reason there is C-quoted, and a path never is,
-// so a path with a line break in it shows as a line git would not write
+// so a path with a line break in it makes an entry git would not write
 function nulled(stdout: string, subject: string): string {
-  let open = false;
-  return stdout.split('\n').map((line) => {
-    const key = line.split(' ', 1)[0];
-    if (line === '') open = false;
-    else if ((key === 'worktree') === open || !ATTRIBUTES.has(key)) {
-      throw new GitFailure(`${subject}: git lists a worktree path with a line break in it, which git prints whole only with -z, in git 2.36 or later`);
-    } else open = true;
-    return line.startsWith('locked "') ? `locked ${unquoted(line.slice(7))}` : line;
-  }).join('\0');
+  const entries = stdout.replace(/\n\n$/, '').split('\n\n');
+  if (!entries.every((e) => ENTRY.test(e))) {
+    throw new GitFailure(`${subject}: git lists a worktree path with a line break in it, which git prints whole only with -z, in git 2.36 or later`);
+  }
+  return entries.map((e) => `${e.split('\n').map((line) => (line.startsWith('locked "') ? `locked ${unquoted(line.slice(7))}` : line)).join('\0')}\0\0`).join('');
 }
 
 function unquoted(quoted: string): string {
