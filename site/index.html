@@ -107,7 +107,7 @@ main { overflow-x: clip; }
 @keyframes swell { from { transform: translate(-3%, -2%) scale(1); } to { transform: translate(3%, 2%) scale(1.06); } }
 /* wide: the islands share the stage with the hero, cascading down its right side */
 .world { position: absolute; top: 0; left: var(--gutter); transform-origin: 0 0; filter: brightness(var(--map-tone)); }
-.narrow .world { position: relative; left: auto; margin: 48px 0 0 50%; transform: none; translate: -50% 0; }
+.narrow .world { position: relative; left: auto; margin: 48px 0 0 50%; translate: -50% 0; transform-origin: 50% 0; }
 .tok .gem[hidden], .tok .sw[hidden] { display: none; }
 .island { position: absolute; pointer-events: none; }
 .island svg { display: block; overflow: visible; }
@@ -428,8 +428,9 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     const wide = wideMQ.matches, L = wide ? LAYOUTS.wide : LAYOUTS.narrow;
     stage.classList.toggle('narrow', !wide);
     const pad = parseFloat(getComputedStyle(stage).paddingLeft);
-    const s = wide ? Math.min(1, (stage.clientWidth - pad) / L.w) : 1;
-    Object.assign(world.style, { width: `${L.w}px`, height: `${L.h}px`, transform: wide ? `scale(${s})` : '' });
+    // wide, the world may run into the right gutter; stacked, it keeps both, with room for the coast's wobble
+    const s = Math.min(1, wide ? (stage.clientWidth - pad) / L.w : (stage.clientWidth - 2 * pad) / (L.w + 24));
+    Object.assign(world.style, { width: `${L.w}px`, height: `${L.h}px`, transform: `scale(${s})`, marginBottom: wide ? '' : `${L.h * (s - 1)}px` });
     // as in the app, a card keeps its screen size while the map shrinks to .78, then shrinks with it
     world.style.setProperty('--tok', `${34 / Math.max(s, .78)}px`);
     stage.style.minHeight = wide ? `${L.h * s}px` : '';
