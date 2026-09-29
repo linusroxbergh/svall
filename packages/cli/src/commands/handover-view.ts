@@ -37,7 +37,7 @@ export function label(names: Names, entity?: HandoverEntity): string | undefined
 }
 
 /** One blocker or warning as a line, led by what it names unless its message already says so. */
-export function issueLine(names: Names, b: Blocker, mark: string): string {
+function issueLine(names: Names, b: Blocker, mark: string): string {
   const who = label(names, b.entity);
   const escaped = who?.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   // a name inside a path, as ada in /Users/ada, does not say who

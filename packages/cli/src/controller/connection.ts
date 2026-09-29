@@ -19,7 +19,7 @@ const MAX_ATTEMPTS = 5;
 export const FIRST_DELAY = 1000;
 export const MAX_DELAY = 16_000;
 /** The two failures a transport comes back from on its own; every other kind waits for a person. */
-export const RETRIED: SshErrorKind[] = ['unreachable', 'daemon_down'];
+const RETRIED: SshErrorKind[] = ['unreachable', 'daemon_down'];
 
 export const retryable = (err: unknown): boolean => err instanceof SshError && RETRIED.includes(err.kind);
 
@@ -49,7 +49,7 @@ export async function identify(master: Pick<SshMaster, 'run'>, machine: MachineE
 }
 
 /** What a companion answers about the fleet it runs: enough to reach it, and to refuse the wrong one. */
-export const ConnectionInfo = z.object({
+const ConnectionInfo = z.object({
   fleetId: FleetId,
   machineId: MachineId,
   release: z.string(),
@@ -62,7 +62,7 @@ export const ConnectionInfo = z.object({
   /** where the fleet lies on the machine that answers, which a controller elsewhere cannot work out */
   fleetHome: z.string().optional(),
 });
-export type ConnectionInfo = z.infer<typeof ConnectionInfo>;
+type ConnectionInfo = z.infer<typeof ConnectionInfo>;
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => { setTimeout(r, ms); });
 

@@ -55,7 +55,7 @@ export type HostDeps = {
 export type AddOptions = { name: string; ssh: string; release?: string; allowUnsigned?: boolean };
 
 /** A step that could not finish, with the one thing the user can do about it. */
-export class StepError extends Error {
+class StepError extends Error {
   constructor(readonly detail: string, readonly action?: string) { super(detail); }
 }
 

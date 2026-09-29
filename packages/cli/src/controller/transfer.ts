@@ -15,7 +15,7 @@ import {
 } from './rsync.js';
 
 /** After this many passes that a changing source kept from verifying, the handover stops. */
-export const MAX_PASSES = 3;
+const MAX_PASSES = 3;
 
 const PREVIEW = 5;
 const STDERR_LINES = 5;

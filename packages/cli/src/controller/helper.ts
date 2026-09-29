@@ -97,7 +97,7 @@ export class Live extends Error {
 export type Control = { choose: HandoverChoices } | { cancel: true };
 const ControlLine = z.union([z.object({ choose: HandoverChoices }), z.object({ cancel: z.literal(true) })]);
 
-export function parseControl(line: string): Control | undefined {
+function parseControl(line: string): Control | undefined {
   try {
     const r = ControlLine.safeParse(JSON.parse(line));
     return r.success ? r.data : undefined;

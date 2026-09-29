@@ -13,7 +13,7 @@ export const CachedRoute = z.object({
 });
 export type CachedRoute = z.infer<typeof CachedRoute>;
 
-export const routeFile = (fleetHome: string): string => path.join(fleetHome, 'controller', 'route.json');
+const routeFile = (fleetHome: string): string => path.join(fleetHome, 'controller', 'route.json');
 
 export function readRoute(fleetHome: string): CachedRoute | undefined {
   try {
