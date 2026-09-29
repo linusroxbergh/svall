@@ -13,7 +13,7 @@ whole vitest workspace is green (95 files, 990 tests).
 
 Evidence lives beside the tests: `packages/archid/test/fixtures/handover/{claude,codex}/README.md`,
 `packages/archid/test/handover/*-portability.test.ts`, `packages/archid/test/gateway/relay-contract.test.ts`,
-`scripts/probe-*-handover.mjs`, `scripts/spikes/{build-companion,install-release}.mjs`.
+`scripts/spikes/probe-*-handover.mjs`.
 
 ## What the spikes changed in the spec and plan
 

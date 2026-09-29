@@ -29,8 +29,8 @@ When something needs your answer, the sheet waits and cannot be closed until you
 | --- | --- | --- |
 | Continue waiting | an agent still working | Waits for it to finish its turn. |
 | Interrupt and carry | an agent working or waiting on an answer | Sends Escape to each such agent, waits for it to settle, and carries it. It resumes from its transcript on the other machine. |
-| Terminate and carry | a shell running a command, or an agent that will not settle | Ends what runs in the foreground of each terminal named. The shell reopens in its folder on the other machine. |
-| Archive and carry | a folder on the other machine that is in the way or changed there | Moves that folder to a timestamped sibling first, then copies afresh. Nothing is deleted. |
+| Terminate and carry | a shell running a command, an agent that will not settle, or an idle agent whose background command still runs | Ends what runs in each terminal named. The shell reopens in its folder on the other machine. |
+| Archive and carry | a folder on the other machine that is in the way or changed there | Moves that folder to a timestamped sibling first, then copies afresh. Nothing is deleted, and the folder's row says where the old copy is kept. |
 | Abort | anything before the commit | Nothing moves; the fleet stays where it was. |
 
 A character marked **keep on this machine** on its card blocks the handover until you turn that off.
@@ -60,16 +60,22 @@ archi handover --forget                       # drop this Mac's journal of a han
 - Ctrl-C before the commit aborts the handover, and the fleet stays where it was. After the commit the move goes on;
   a second Ctrl-C stops watching, and `archi handover --resume` finishes it.
 - `--detach` leaves the handover to a background helper and prints its pid; `archi handover attach` follows it, and
-  its log is `controller/handover.log` in the fleet home.
+  its log is `controller/handover.log` in the fleet home. In a terminal, attach's menu starts from the choices the
+  run already holds.
+- Without a terminal, `archi handover attach` passes each line of its stdin to the helper, as the app does, and stops
+  following when stdin ends: `archi handover attach --json </dev/null` returns at once while the helper runs on. A
+  script keeps stdin open for as long as it follows.
 - Only one handover of a fleet runs on a Mac at a time; a second start names the one running.
 
 A run in the foreground with no terminal to ask in (`--json`, or stdin not a terminal) stops at the first blocker and
-gives the fleet back. A `--detach` helper waits at a blocker found after Checks, with the fleet frozen, until someone
-answers it through `archi handover attach` or the app. These flags answer ahead:
+gives the fleet back. A `--detach` helper waits at a blocker found after Checks until someone answers it through
+`archi handover attach` or the app. One found while characters rest lets the fleet run again where it is, with the
+terminals the handover stopped reopened, while the handover stays open at the gateway; an answer freezes it again.
+One found later waits with the fleet frozen. These flags answer ahead:
 
 | Flag | What it answers |
 | --- | --- |
-| `--interrupt-after <duration>` | Interrupt and carry the agents still working after this long, such as `30s` or `2m`; `0` interrupts at once. |
+| `--interrupt-after <duration>` | Interrupt and carry the agents still working after this long: a number with `ms`, `s`, `m` or `h`, such as `1500ms`, `30s` or `2m`; `0` interrupts at once. A time past three minutes makes the rest wait that long. |
 | `--terminate-shells` | Terminate and carry every terminal kept busy by a command, or by an agent that will not settle. |
 | `--archive <root>` | Archive and carry this destination folder, by the root id a blocker names or its path. Repeat it for more. |
 
@@ -147,8 +153,10 @@ Archipelago never writes an agent's own settings to answer these for you.
 Nothing that runs moves; the handover brings each terminal to rest first.
 
 - An idle or finished agent, and a shell at its prompt, are ready at once.
-- An agent still in its turn is waited for, up to three minutes, then shows as a blocker you can keep waiting on or
-  interrupt. Interrupting sends Escape and waits up to ten seconds for the agent and whatever it started to stop.
+- An idle agent that left a command running in the background blocks until the command ends or you terminate it.
+- An agent still in its turn is waited for, up to three minutes (or as long as `--interrupt-after` says, if longer),
+  then shows as a blocker you can keep waiting on or interrupt. Interrupting sends Escape and waits up to ten seconds
+  for the agent and whatever it started to stop.
 - An agent waiting on an answer blocks until you answer it or interrupt it.
 - A shell running a command in the foreground blocks until the command ends or you terminate it.
 
@@ -173,8 +181,9 @@ port. When the Mac sleeps, the fleet goes on.
 
 - `archi` commands go to whichever machine owns the fleet; `--host <name|local>` picks one.
 - The copy on the machine that does not own the fleet is read-only: reading works, and a change is refused with
-  `not_owner`.
-- Revealing a file in Finder asks you to open it on the machine that holds it.
+  `handover_committed` once a handover has moved the fleet away from it (`not_owner` on a machine no handover left).
+- Revealing a file in Finder, or opening Settings → Fleet config, asks you to open it on the machine that holds it.
+- A terminal attaches only while the app's own ssh connection to that machine answers, and waits while it is down.
 - If the ssh link drops, the terminals and agents keep running on the other machine. The banner says it is not
   reachable, and the app reconnects and re-attaches every terminal once the link is back.
 - The phone reaches a fleet through the owning machine's own `archi mobile` setup, so a Home Screen app added from one
@@ -197,9 +206,11 @@ What else to know:
 - **Killing the app** stops nothing, since the helper runs on. **Killing the helper** (or a foreground `archi
   handover`) leaves the handover where it stopped. The journals say where that is, the sheet rebuilds from them when
   the app opens, and `status` says what to do.
-- **A dropped link** takes the controller between 49 and 108 seconds to give up: each gateway call waits 30 seconds
-  and is asked again, and the ssh connection is closed after 45 seconds without an answer. The sheet shows the
-  retries meanwhile, then stops with Resume and Abort, or Retry after the commit.
+- **A dropped link** takes the controller from about 45 seconds to two and a half minutes to give up, depending on
+  the step: each call waits up to 30 seconds and is asked up to four times, and the ssh connection is closed after 45
+  seconds without an answer. The sheet shows the retries meanwhile, then stops with Resume and Abort, or Retry after
+  the commit. The last step of a move to this Mac takes longest, as it asks both the other machine and the gateway;
+  it then ends complete, and `archi handover --resume` finishes what they missed.
 - **An unreachable gateway** never stops the machine that owns the fleet: it goes on working. No handover can begin or
   commit until the gateway answers, and a machine frozen for a handover stays read-only until one of them does.
 - **Changes on the other machine** are never overwritten: a changed replica stops the handover until you copy the
@@ -253,13 +264,14 @@ If the fleet was running on that machine, run the same three commands. Until the
 read-only as it was when it last left; what was done on the other machine since then is gone.
 
 If the fleet was running there and the account comes back under another user name, `archi host remove studio`
-refuses, `--forget` included, because this Mac still has the fleet on that machine. Add the machine under a new name,
-make it the gateway, recover, and only then forget the old one:
+refuses, `--forget` included, because this Mac still has the fleet on that machine, and `archi host enable` for a
+new name refuses while `fleet.json` names `studio`. Add the machine under a new name, recover with it as the
+gateway, give it its copy of the fleet, and only then forget the old one:
 
 ```sh
 archi host add studio2 --ssh ada2@studio
+archi fleet recover --force-owner local --gateway studio2
 archi host enable studio2 --fleet private
-archi fleet recover --force-owner local
 archi host remove studio --forget
 ```
 
@@ -276,7 +288,10 @@ archi host remove studio --forget
   unless `CLAUDE_CONFIG_DIR` says otherwise). Where they differ, the agent sees only each output's preview; running
   the tool again gets it whole.
 - **`/rewind` does not reach back across a handover**, because Claude's file history stays on its machine.
-- **A dropped link takes up to 108 seconds** to end in Resume or Abort.
+- **A dropped link takes up to about two and a half minutes** to end the run.
+- **A handover carries at most as many files as the smaller daemon's heap holds** (`too_many_files`): half the heap
+  at 8 KiB a file, such as 68,832 files when one machine has 2 GB of memory. Leave generated folders out with
+  `handover.exclude`.
 - **A move to this Mac can run nowhere for a while.** If the link drops right after the commit of a move to this Mac,
   the Mac waits to confirm the commit with the gateway, which it cannot reach, so the fleet runs on neither machine.
   Once the link is back, Retry (`archi handover --resume`) starts it here.
@@ -286,7 +301,11 @@ archi host remove studio --forget
   `--resume` rebuilds it from the other three without your interrupt, terminate or archive choices, and may stop at
   the same blockers again; choose again.
 - **More than ten terminals on a remote fleet** exceed sshd's default of ten sessions per connection. Each one past
-  the tenth opens its own ssh login and shows one "Session open refused by peer" line.
+  the tenth opens its own ssh login and shows one "Session open refused by peer" line. Like the app's own
+  connection, that login asks nothing, and logs in with the keys ssh already holds.
+- **A Codex terminal reopened with its session and quit before its first prompt** goes dormant again, its window
+  closed, saying Codex exited before that session started: Codex reports a session only once it takes a turn. The
+  session is kept; open the terminal again.
 - **A controller killed outright** (such as `kill -9`) leaves its ssh connection open until the link drops.
 - **The phone** shows a character that failed to resume as asleep, without the reason the Mac shows.
 - **Version 1 covers one Mac and one Linux gateway per fleet**, with the same home path on both. It does not move a

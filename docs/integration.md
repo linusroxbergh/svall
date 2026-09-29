@@ -86,8 +86,9 @@ the first failed step. The output folder holds:
    - **The agent:** it runs as `claude --resume <its session id>` in its cwd, under the same session id and pid the
      state records. The transcript is identical, and the next turn appends to the same file.
    - **Ownership:** the new owner's daemon owns the fleet at the next generation and is not frozen. The old one is
-     fenced to the new owner, with no windows but `_keep` and no agent. The gateway's record names the new owner with
-     no transaction. No handover journal is left on either machine or in the controller.
+     fenced to the new owner and runs no agent and no window: it has stopped the fleet's tmux server. The gateway's
+     record names the new owner with no transaction. No handover journal is left on either machine or in the
+     controller.
 4. **Faults.** A fault at each boundary, in both directions. After each, `archi handover status` must offer what the
    spec says, and the harness takes that action: `--abort` before the commit, `--resume` after it. Then every check
    of step 3 runs against the owner the fleet should have. Before recovering, the harness also snapshots both
@@ -140,7 +141,7 @@ x86-64 Docker host, such as a full-system x86-64 VM (see [x86-64 on an Apple Sil
   layout, and the live probes cover the real CLIs (`packages/archid/test/handover/sessions-live.test.ts`).
 - **Tailscale.** The containers talk over the docker network.
 - **Fresh installs.** Installing on a clean machine with no Node, `host upgrade` and `setup --rollback` are the
-  fresh-install run's, below.
+  fresh-install run's, below. `host upgrade --rollback` runs in neither.
 
 ## Fresh installs
 
@@ -206,8 +207,8 @@ logs.
 6. **`archi host upgrade`** from the second release's controller, by the same route rule as step 3: every step is
    `ok`, there is no rollback, and step 5's checks pass against the second release, with both releases kept.
 7. **`archi setup --rollback`**, run over ssh on the machine: `current` goes back to the first release, all three
-   units restart, and step 5's checks pass against the first release. `host doctor` from the first release's
-   controller agrees.
+   units restart, setup itself finds each fleet's daemon answering from that release, and step 5's checks pass
+   against the first release. `host doctor` from the first release's controller agrees.
 
 ### x86-64 on an Apple Silicon Mac
 

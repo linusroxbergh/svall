@@ -75,7 +75,7 @@ Details and commands: `packages/archid/test/fixtures/handover/codex/README.md` a
 
 **Proven.** Git **2.55.0** (macOS, darwin 25.6.0), commit `9e00063`. Test file
 `packages/archid/test/handover/worktree-portability.test.ts` against the probe helper
-`scripts/probe-worktree-handover.mjs`, 7 tests, all green.
+`scripts/spikes/probe-worktree-handover.mjs`, 7 tests, all green.
 
 The fixture is a hermetic `fs.mkdtempSync` tree holding one main checkout with a nested worktree
 inside `.claude/worktrees/nested`, a sibling worktree, a registered-but-unused worktree nobody

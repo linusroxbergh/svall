@@ -67,7 +67,7 @@ Select the Claude character and open its side card.
 1. **Handover** → **This Mac**. The same five steps run, and the fleet comes back as it was, agents resuming again
    with their whole conversation.
 2. Over ssh on `studio`: `~/.local/bin/archi -p smoke --host local island create x` reaches that machine's copy and is
-   refused with `not_owner`.
+   refused with `handover_committed` ("this fleet moved to another machine").
 
 ## 5. A foreground blocker
 
@@ -86,8 +86,8 @@ Select the Claude character and open its side card.
 With the fleet on the Mac, edit a file in `studio`'s copy of the repository over ssh. Start a handover to `studio`.
 
 - Checks stops with `destination_diverged`, naming the file. Nothing is overwritten.
-- Choose **Archive and carry**: the handover goes on, and a row says where the changed copy was kept, beside the
-  folder with a timestamp.
+- Choose **Archive and carry**: the handover goes on, and the folder's row says where the changed copy was kept,
+  beside the folder with a timestamp, and still says so once the copy finishes.
 
 ## 7. Network failure
 
@@ -105,7 +105,7 @@ The Linux machine is reached over Tailscale, so disconnecting Tailscale on the M
 
 1. Start a handover. While it transfers, quit the app with Cmd+Q and open it again (`archi smoke`).
    - The sheet shows the handover still running, and it completes.
-2. Start one more. While it transfers, find the helper with `archi -p smoke handover status` ("runs here as pid N")
+2. Start one more. While it transfers, find the helper with `archi -p smoke handover status` ("running here as pid N")
    and `kill -9` it, then quit and reopen the app.
    - The sheet shows the handover stopped part way with **Resume** and **Abort**. Resume completes it.
 3. Do the same once it is Resuming characters: the sheet offers only **Retry**, and Retry completes it.
@@ -116,6 +116,7 @@ With the fleet on `studio` and several terminals visible:
 
 1. Disconnect Tailscale on the Mac for a minute.
    - The banner says `studio` is not reachable. The agents and shells keep running on `studio`.
+   - No terminal asks for a password or opens a login of its own meanwhile; each waits.
 2. Reconnect.
    - Within about a minute the banner clears and every visible terminal re-attaches, with its scrollback.
    - Typing reaches the same shells.

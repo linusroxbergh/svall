@@ -48,10 +48,12 @@ What `handover.changed` and `status` report, in order.
 
 A blocker stops the handover where it is found; a warning only informs. When a blocker turns up during Checks,
 nothing has started and the fleet stays where it is. One found later (while resting, transferring or verifying)
-opens a decision in the sheet: fix the cause and choose Try again, pick the choice it offers, or Abort. A run in the
-foreground with no terminal to ask in (`--json`, or stdin not a terminal) stops with `blocked` and gives the fleet back.
-A `--detach` helper waits instead, with the fleet frozen, until someone answers or cancels through `archi handover
-attach` or the app; `archi handover status` names it while it runs.
+opens a decision in the sheet: fix the cause and choose Try again, pick the choice it offers, or Abort. One found
+while resting gives the fleet back to the source, with the terminals the handover stopped reopened, while the
+handover stays open at the gateway for the answer; later ones wait with the fleet frozen. A run in the foreground
+with no terminal to ask in (`--json`, or stdin not a terminal) stops with `blocked` and gives the fleet back. A
+`--detach` helper waits instead, until someone answers or cancels through `archi handover attach` or the app;
+`archi handover status` names it while it runs, and offers Resume or Abort if the helper dies while it waits.
 
 ### Identity, versions and reaching the machines
 
@@ -61,7 +63,7 @@ attach` or the app; `archi handover status` names it while it runs.
 | `generation_mismatch` | blocks | The source's copy of the ownership record and the gateway's name different generations: another handover or a recovery moved the fleet since the source last heard, or the gateway's record was made again. | `archi handover status`. With nothing open and the gateway ahead, restart the source's daemon: on start it takes a record with a higher generation, never a lower one. A gateway behind the source, as one [set up again](handover.md#a-gateway-set-up-again) is, needs `archi fleet recover --force-owner <machine>` naming the machine that runs the fleet (`local` for this Mac), which writes a record above both. |
 | `transaction_open` | blocks | A handover of this fleet is already open: at the gateway, as a journal on the destination, or as a source frozen for a handover the gateway no longer holds. | `archi handover status`, then `archi handover --resume` or `--abort`, whichever it says is safe. |
 | `incompatible_release` | blocks | The two machines run different Archipelago releases. A handover needs the same release on both. | `archi host upgrade <host>` installs this Mac's release there. If the host is newer, update the Mac first (`pnpm desktop:install`). |
-| `incompatible_protocol` | blocks | The two machines speak different RPC protocols. | As for `incompatible_release`. |
+| `incompatible_protocol` | blocks | The two machines speak different RPC protocols, or the gateway keeps its ownership records under another authority schema than this Mac's release. | As for `incompatible_release`, on the machine the message names. |
 | `incompatible_schema` | blocks | The two machines read different fleet state or transfer manifest versions. | As for `incompatible_release`. |
 | `ssh_interactive` | blocks | ssh would have to ask something (a new host key, a password, a key passphrase), and a handover asks nothing. Also raised when the source's daemon cannot ask its gateway without a prompt. | Run `ssh <destination>` once in a terminal and answer it. Keep a key with a passphrase in the agent (`ssh-add --apple-use-keychain` on a Mac). Then try again. |
 
@@ -70,7 +72,7 @@ attach` or the app; `archi handover status` names it while it runs.
 | Code | Kind | What it means | What to do |
 | --- | --- | --- | --- |
 | `agent_cli_missing` | blocks | The destination has no CLI for an agent the fleet runs, or no home to keep its sessions in, or keeps them somewhere other than where the checks found them. | Install Claude Code or Codex on the destination where its daemon finds it (`archi host doctor <host>` shows what it sees), then try again. |
-| `agent_logged_out` | blocks | The agent is not logged in on the destination. Logins never move with a fleet. | `ssh <host>`, then `claude auth login` or `codex login`. |
+| `agent_logged_out` | blocks | The agent is not logged in on the destination. Logins never move with a fleet. | `ssh <host>`, then `claude auth login` or `codex login`, then try again: the checks ask the destination's login afresh each time. |
 | `agent_hooks_missing` | blocks | Archipelago's hooks are not installed for that agent on the destination, so a resumed agent could not report back. | Run `archi setup` on the destination (on Linux, `~/.local/bin/archi setup`), then trust the hooks in Codex with `/hooks`. |
 | `incompatible_adapter` | blocks | An agent CLI is older than the oldest release a handover carries sessions for (Claude Code 2.1.251, Codex 0.155.0), the two machines read sessions differently, or a session holds a file that is not a regular file. | Update the CLI on the machine the message names. For a file in a session, move the file it names out of that session's folder. |
 | `transcript_missing` | blocks | An agent session recorded no transcript, or its transcript is not there or is not that session's. | An agent that never reported a transcript has no working hooks: `archi doctor`. To move without that conversation, exit the agent (it stays on this machine) and try again. |
@@ -83,7 +85,7 @@ attach` or the app; `archi handover status` names it while it runs.
 | `shell_busy` | blocks | A terminal's shell is running a command in the foreground: a build, a server, a REPL. Also raised when that command outlives Terminate and carry. | Let it finish or stop it, or choose Terminate and carry (`--terminate-shells`), which ends it; the shell reopens in its folder on the destination. |
 | `agent_working` | blocks | An agent is still in its turn after resting waited three minutes. | Continue waiting, or Interrupt and carry (`--interrupt-after <duration>`), which sends Escape; the agent resumes from its transcript. |
 | `agent_blocked` | blocks | An agent is waiting on an answer, such as a permission prompt. | Answer it in its terminal and try again, or Interrupt and carry. |
-| `agent_unsettled` | blocks | An agent did not come to rest within ten seconds of an interrupt or a terminate: a command it started, or a hook of your own, still runs. | Terminate and carry (`--terminate-shells`) ends what still runs in that terminal; the agent resumes from its transcript. |
+| `agent_unsettled` | blocks | An agent did not come to rest within ten seconds of an interrupt or a terminate: a command it started, or a hook of your own, still runs. Also raised for an idle agent that left a command running in the background, named in the message. | Let the command finish, or Terminate and carry (`--terminate-shells`), which ends what still runs in that terminal; the agent resumes from its transcript. |
 
 ### Paths and the destination
 
@@ -93,12 +95,12 @@ attach` or the app; `archi handover status` names it while it runs.
 | `parent_missing` | blocks | A folder outside the home lands at the same path on the destination, and the folder that holds it is missing there. | Create that folder on the destination, owned by the account, and try again. |
 | `path_symlinked` | blocks | A folder is reached through a symbolic link. A handover carries each folder at its real path, the one Git and the agents record; on the destination, a link on the way would send it elsewhere. | On the source, use the real path the message names: `cd` there in the character's terminal, or change the context item or `home.cwd` that names the link. On the destination, remove the link. |
 | `path_unsupported` | blocks | A path cannot travel as it is: it is not absolute or holds a control character, it overlaps a fleet home (whose token and keys stay on their machine), it holds an agent's login or config (`~/.claude.json`, Claude's `.credentials.json`, Codex's `auth.json`, in the default or configured agent home) or lies in or holds `~/.ssh` or Archipelago's own install (`~/.local/share/archipelago`, `~/.config/archipelago`, `~/.config/systemd/user`) on either machine, a `handover.exclude` pattern is one rsync cannot read, an exclude would leave a tracked file behind, the destination keeps this fleet's docs, agent profiles or `.env` at another path, or a destination folder cannot be written. | Follow the message: rename the file, move the character's folder out of the fleet home, the agent's folder or `~/.ssh`, fix `handover.exclude` in `fleet.json`, or make the destination folder writable. |
-| `destination_occupied` | blocks | A folder already exists on the destination and no handover left it there, or the record a handover left for it cannot be used. It is never overwritten. With Archive chosen it shows as a warning instead. | Choose Archive and carry (`--archive <root>`): the folder moves to a timestamped sibling first and nothing is deleted. Or move it aside yourself. |
+| `destination_occupied` | blocks | A folder already exists on the destination and no handover left it there, or the record a handover left for it cannot be used. It is never overwritten. A folder that already holds exactly what the handover brings is taken as it is instead. With Archive chosen it shows as a warning instead. | Choose Archive and carry (`--archive <root>`): the folder moves to a timestamped sibling first and nothing is deleted. Or move it aside yourself. |
 | `destination_diverged` | blocks | A copy on the destination changed while that machine did not own the fleet: files added, removed or changed, or a session continued there. It is never overwritten. With Archive chosen it shows as a warning instead. | Copy what you want to keep back to the source by hand and try again, or choose Archive and carry (`--archive <root>`) to set the changed copy aside. For a session, move its transcript aside on the destination. |
 | `destination_no_space` | blocks | The destination has too little free space for what has to be copied. | Free space there, or leave build output out with `handover.exclude`. |
 | `path_collision` | blocks | Names that differ only by case, or only by Unicode normalization (a composed and a decomposed `é`), would land on a destination that does not tell them apart (a Mac), or a folder on the way is a file there. | Rename one of the files on the source, or move the file out of the way on the destination. |
 | `platform_unsupported` | blocks | A repository's `.archipelago/handover.json` names platforms without the destination's, or cannot be read as `{ "platforms": ["darwin", "linux"] }`. | If the repository runs there, add the platform to the file. Otherwise close the characters working in it before a handover. |
-| `rsync_unsupported` | blocks | This Mac has no rsync a handover can drive (the release's own is missing), or the other machine has none or one older than 3.x. | On the Mac, `archi doctor` checks the bundled rsync, and `pnpm desktop:install` puts it back. On Linux, `sudo apt install rsync`. |
+| `rsync_unsupported` | blocks | This Mac has no rsync a handover can drive (the release's own is missing), or the other machine has none, openrsync, or one older than 3.2.3. | On the Mac, `archi doctor` checks the bundled rsync, and `pnpm desktop:install` puts it back. On Linux, install rsync 3.2.3 or newer: `sudo apt install rsync` on Ubuntu 22.04 and later. |
 | `manifest_too_large` | blocks | The list of files to carry comes to more than 128 MiB. | Leave generated folders out with `handover.exclude` in `fleet.json`. |
 | `too_many_files` | blocks | The handover carries more files than the daemon with the smaller Node heap holds through one: half its heap at 8 KiB a file. The message names that machine, its heap and the most it holds. Node sizes the heap from the machine's memory: a Mac with 48 GB holds 274,432 files, a Linux machine with 2 GB 68,832. | Leave generated folders out with `handover.exclude` in `fleet.json`. |
 
@@ -108,7 +110,7 @@ attach` or the app; `archi handover status` names it while it runs.
 | --- | --- | --- | --- |
 | `worktree_unresolved` | blocks | A character's Git checkout is gone, Git cannot read it, or a repository folder has no graph that describes it. | Put the folder back or close the character; `git status` in it says what Git sees. |
 | `worktree_unused` | both | A warning: a registered worktree no character uses is not carried; its branch and stash travel, and its registration is left out on the destination. A blocker: that worktree holds work nothing else keeps (changes, a detached commit no branch reaches, or a lock), or a worktree that stays on the destination sits at a commit the fleet's copy would not hold. | Commit or stash its work on a branch, unlock it, or `git worktree remove` it. |
-| `git_mismatch` | blocks | After the copy, the destination's Git state (worktree list, HEAD, branch, status, index or stash) differs from what the source left. Nothing has committed. | Try again, which copies again. If it repeats, compare `git status` on both machines and check the destination's git with `archi host doctor <host>`. |
+| `git_mismatch` | blocks | After the copy, the destination's Git state (worktree list, HEAD, branch, status, index or stash) differs from what the source left. Nothing has committed. | Try again, which copies again. If it repeats, compare `git status` on both machines, and `git --version` on the destination. |
 | `git_extension` | blocks | A repository uses a Git extension the destination's git is too old for, or the destination has no git. | Update or install git on the destination. |
 | `remote_local` | warns | A repository's `origin` names a path on the source machine. It travels as it is. | Nothing, unless you push or pull there; then point `origin` somewhere both machines reach. |
 
@@ -140,7 +142,7 @@ What a machine's daemon answers when it will not do a call. A run shows them in 
 | --- | --- | --- |
 | `not_owner` | This machine does not own the fleet; it keeps a read-only copy. | `archi` sends commands to the owner by itself (`--host` picks a machine). If this machine should own it, `archi handover status`. |
 | `frozen` | The fleet is frozen for a handover, so nothing may change it. | Wait for the handover, or `archi handover status` and then `--resume` or `--abort`. |
-| `handover_committed` | The handover has committed: the fleet is the destination's, and this machine stays fenced. | `archi handover --resume` finishes it on the destination. |
+| `handover_committed` | A handover has committed the fleet to another machine, and this machine stays fenced with a read-only copy. A machine a handover moved the fleet away from answers this rather than `not_owner`. | As for `not_owner`. While that handover is still open, `archi handover --resume` finishes it on the destination. |
 | `not_ready` | The step is not ready: the gateway still holds the handover open, the copy of a folder is not verified, or a freeze was asked again with other choices. | Usually passes on its own. Otherwise `archi handover status`. |
 | `generation_mismatch` | The call names another generation than this machine holds: the fleet moved on. | `archi handover status`. |
 | `transaction_mismatch` | The call names another handover than the one this machine or the gateway holds, or one being aborted. | `archi handover status`; `archi handover --forget` when it says superseded. |
@@ -162,7 +164,7 @@ What the gateway's ownership authority answers. They appear in handover messages
 | `handover_committed` | The handover has committed; only its activation can go on. | `archi handover --resume`. |
 | `invalid_phase` | The handover is at a step other than the one the request needs, such as ready on a different prepared state. | `archi handover status`. |
 | `invalid_request` | The request is malformed, names an unknown operation or the machine that already holds the fleet, or the registry names no ssh route to the gateway. | Check `archi host list`; `archi host doctor <gateway>`. |
-| `identity_mismatch` | The registry's ssh route to the gateway now reaches another machine, one whose `archi version --json` names another machine id. Nothing it answers is taken. | Point the ssh destination back at the gateway. A gateway set up again, with a new machine id: [A gateway set up again](handover.md#a-gateway-set-up-again). |
+| `identity_mismatch` | The registry's ssh route to the gateway now reaches another machine, one whose `archi version --json` names another machine id or none. Nothing it answers is taken. | Point the ssh destination back at the gateway. A gateway set up again, with a new machine id: [A gateway set up again](handover.md#a-gateway-set-up-again). |
 | `authority_corrupt` | The gateway cannot read its record of this fleet. It moves the file aside to `<file>.broken-<time>` and refuses the fleet until a readable record is back at `~/.local/share/archipelago/gateway/fleets/<fleet id>.json` on the gateway machine. | Put a readable record back (the `.broken` copy if it is valid JSON), or replace the gateway with `archi fleet recover --force-owner <machine> --gateway <other machine>`. |
 | `record_changed` | `archi fleet recover` wrote against the record it showed you, and the record changed meanwhile. Nothing was written. | Run it again to see the record as it stands. |
 | `internal` | The gateway failed unexpectedly. | Read `~/.local/share/archipelago/log/archipelago-gateway.log` on the gateway machine. |
@@ -219,8 +221,8 @@ What `archi handover --json` prints, one per line. The app reads the same stream
 | --- | --- |
 | `handover.preflight` | The checks: what the manifest holds, the blockers, the warnings and the names of the characters, folders and sessions. |
 | `handover.changed` | The step the controller has moved to. |
-| `handover.entity` | One character, folder or session row: its progress, a notice, or its error. |
-| `handover.blocked` | A decision that waits for an answer. |
+| `handover.entity` | One character, folder or session row: its progress, a notice, its error, or for an archived folder where the old copy is kept (`archivedTo`). |
+| `handover.blocked` | A decision that waits for an answer, with the choices the run holds so far, which an answer builds on. |
 | `handover.retry` | A call that did not answer and is being asked again. |
 | `handover.result` | The last line: how the run ended. |
 | `handover.status` | Where the handover stands, from `status`, or from `attach` when no helper runs. |
@@ -243,7 +245,8 @@ wait until the window is reopened.
 
 ## Host commands
 
-`archi host add`, `upgrade`, `remove` and `enable` run their steps in order and stop at the first that fails. Each
+`archi host add`, `upgrade` (and `upgrade --rollback`), `remove` and `enable` run their steps in order and stop at the
+first that fails. Each
 step's `action` is something for you to do; the run ends with **ready for handover** or a list of what is still to
 do, and exits 1 unless it is ready.
 
@@ -262,14 +265,14 @@ do, and exits 1 unless it is ready.
 | Step | Command | What it checks or does | When it fails |
 | --- | --- | --- | --- |
 | `name` | add | The machine name (lowercase letters, digits and dashes, starting with a letter) and the ssh destination. | Pick another name, or `archi host remove` the machine that holds it. |
-| `machine` | upgrade, remove, enable | The machine is in the registry with an ssh destination. | `archi host list`; `archi host add` it. |
+| `machine` | upgrade, upgrade --rollback, remove, enable | The machine is in the registry with an ssh destination. For enable, the fleet's `fleet.json` names no other gateway the registry still holds, since that one may still hold the fleet. | `archi host list`; `archi host add` it. If the gateway it names is gone for good, `archi fleet recover --force-owner local --gateway <name>` makes this machine the gateway; then enable again. |
 | `ssh` | add | An interactive ssh, so you can accept the host key and log in. | `ssh <destination>` in a terminal and complete it. |
-| `master` | add, upgrade | One ssh control connection for the rest of the steps. For an upgrade, the machine it reaches must be the one the registry names. | `ssh <destination>` and see what it answers. A destination that now reaches another machine: point it back, or `archi host remove <name> --forget`. |
+| `master` | add, upgrade, upgrade --rollback | One ssh control connection for the rest of the steps. For an upgrade, with or without `--rollback`, the machine it reaches must be the one the registry names. | `ssh <destination>` and see what it answers. A destination that now reaches another machine: point it back, or `archi host remove <name> --forget`. |
 | `os` | add | Linux on x86-64 or arm64, running Ubuntu. A release other than an LTS is a warning. | Use a supported machine ([setup](setup.md#supported-machines)). |
 | `home` | add | The account's home is the Mac's home path, and short enough for the gateway's socket (at most 59 bytes). | Make an account with the right home ([setup](setup.md#the-same-home-path)) and add it again. |
 | `tools` | add | Tailscale, tmux, Git, rsync and systemd user services. | Run the `apt install` command the action names; without systemd the machine is not supported. |
 | `tmux` | add | The tmux version. Older than 3.5 is a warning: Shift+Enter does not reach the agents. | Nothing, or install tmux 3.5 or newer. |
-| `rsync` | add | The rsync version. | `sudo apt install rsync`. |
+| `rsync` | add | The rsync version. Openrsync or one older than 3.2.3 is a warning, and a handover then stops with `rsync_unsupported`. | Install rsync 3.2.3 or newer, as Ubuntu 22.04 and later ship (`sudo apt install rsync`). |
 | `space` | add | Free space in the home. Under 5 GiB is a warning. | Free space. |
 | `linger` | add | Whether the account's services keep running after you log out. Off is a warning. | Run the `loginctl enable-linger <user>` the action names. |
 | `release` | add, upgrade | The companion release for the machine's architecture: downloaded and checked against the digest this Mac's release pins, or the archive `--release` names, with its signature. | Name an archive with `--release`; an unsigned development build needs `--allow-unsigned`. |
@@ -277,13 +280,13 @@ do, and exits 1 unless it is ready.
 | `install` | add, upgrade | The machine checks the archive against its manifest and, where a release is installed, the signers that release pins, then installs it under `~/.local/share/archipelago`. | Read the message; `archi host doctor <host>`. |
 | `service` | add | The daemon and gateway units run. | Read the units' logs under `~/.local/share/archipelago/log` there. |
 | `identity` | add | The machine's id, and that it speaks this Mac's protocol. | `ssh <destination>` and run `~/.local/bin/archi version --json` to see what it answers, then add the machine again. |
-| `claude` | add | Claude Code on the PATH the daemon uses, its version and its login. Each finding is a warning with an action. | Install or log in as the action says. |
-| `codex` | add | The same for Codex. When it is not logged in, the action also says to trust Archipelago's hooks once with `/hooks`. | As for `claude`. |
-| `probe` | add, upgrade | The machine's own fleet answers through a forwarded port, from the release just installed. | An upgrade whose probe fails goes back to the release before (`rollback`). |
-| `rollback` | upgrade | Puts back the release the machine ran before. | Read the daemon log there; the action names the release it runs now. |
+| `claude` | add | Claude Code on the PATH the daemon uses, its version (2.1.251 or newer) and its login. Each finding is a warning with an action. | Install, update or log in as the action says. |
+| `codex` | add | The same for Codex (0.155.0 or newer). When it is not logged in, the action also says to trust Archipelago's hooks once with `/hooks`. | As for `claude`. |
+| `probe` | add, upgrade, upgrade --rollback | add: the machine's own fleet answers through a forwarded port, its gateway authority answers, and tmux opens a window, on a socket of its own with the units' PATH, and closes it. upgrade, with or without `--rollback`: the machine's doctor answers, and its fleet answers from the release now current. | An add stops here. An upgrade whose probe fails goes back to the release before (`rollback`). After `--rollback`, read the daemon log there; the action names the release it runs now. |
+| `rollback` | upgrade, upgrade --rollback | Puts back the release the machine ran before, or the kept release `--rollback <release>` names. The machine's own `archi setup --rollback` restarts its units and checks each fleet's daemon answers from that release. | Read the daemon log there; the action names the release it runs now. |
 | `registry` | add, remove | Writes or drops the machine in this Mac's registry. | Check `~/.config/archipelago` is writable. |
 | `fleet` | remove, enable | remove: the fleets that name this machine as their gateway, which must all be on this Mac, no fleet this machine owns through any gateway, and no handover open on any fleet here, whatever its gateway. enable: gives the machine its copy of the fleet. | remove: bring each fleet back with `archi handover local` and settle open handovers first. enable: if the machine already holds another fleet under that name, move its fleet home aside and run enable again. |
-| `uninstall` | remove | Runs `archi uninstall` on the machine, once it has checked the ssh destination reaches the machine the registry names. Its fleets and their files stay there. | `archi host remove <host> --forget` drops the route when the machine cannot be reached, or the destination now reaches another machine. |
+| `uninstall` | remove | Runs `archi uninstall --force` on the machine, once it has checked the ssh destination reaches the machine the registry names. `--force` passes the far machine's own refusal, as the `fleet` step has checked every fleet this Mac knows of. Its fleets, their files and the gateway's records stay there. | `archi host remove <host> --forget` drops the route when the machine cannot be reached, or the destination now reaches another machine. |
 | `authority` | enable | Checks the ssh destination reaches the machine the registry names, then creates the gateway's record naming this Mac as the owner, or finds it there already. | A record held by another machine: `archi handover status`. An unreadable one: see `authority_corrupt`. Another machine at the destination: as for `master`. |
 
 ### Doctor checks
@@ -311,7 +314,7 @@ and adds what only this Mac can check. A check that fails makes the command exit
 | `launchd` | Mac | The fleet's launchd agent is loaded. |
 | `daemon node` | Mac | The Node the launchd agent runs is still there. |
 | `daemon path` | Mac | The launchd agent's program is there and its PATH finds the agents. |
-| `daemon env` | Mac | The launchd agent has the `CLAUDE_CONFIG_DIR` and `CODEX_HOME` your shell sets. |
+| `daemon env` | both | The fleet's launchd agent, or on Linux its systemd unit, has the `CLAUDE_CONFIG_DIR` and `CODEX_HOME` your login shell sets. |
 | `rsync` | Mac | The rsync the release bundles, which a handover needs. |
 | `doctor` | host doctor | The companion's doctor answered. |
 | `release` | host doctor | The machine runs this Mac's release and protocol. |

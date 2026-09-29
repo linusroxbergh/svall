@@ -9,7 +9,8 @@ does not works exactly as before.
 - **Add a Linux machine** from Settings → Machines, or with `archi host add <name> --ssh <destination>`. Archipelago
   checks the machine, installs its own companion there over ssh (with its own Node, no clone or build tools), sets up
   systemd user services and lists anything left for you to do, such as logging the agents in. `archi host doctor`,
-  `upgrade` and `remove` look after it.
+  `upgrade` and `remove` look after it, and `archi host upgrade <name> --rollback` puts it back on the release
+  before.
 - **Make it a fleet's gateway** with `archi host enable <name> --fleet <fleet>`. The gateway keeps the record of which
   machine owns the fleet, so only one ever runs it.
 - **Hand the fleet over** with the Handover button or `archi handover <name>`, and back with **This Mac** or
@@ -34,10 +35,12 @@ does not works exactly as before.
   machine. Your `config.json` is split on the daemon's first start and kept as `config.json.bak`.
 - The fleet state moves to schema 8 and the protocol to 17; the old state is kept beside it.
 - `pnpm desktop:install` installs a release under `~/.local/share/archipelago`, and `archi` and the daemons run from it
-  instead of the clone. `archi setup --rollback` goes back to the release before.
+  instead of the clone, keeping the release before for `archi setup --rollback` and removing older ones.
 - `archi setup` no longer replaces an edited mission control `.claude/settings.json`; `--replace-settings` does.
-- `host`, `handover`, `gateway`, `fleet`, `connect`, `connection-info` and `version` are commands now; a fleet with one
-  of those names opens with `archi -p <name>`.
+- `host`, `handover`, `gateway`, `fleet`, `connect`, `connection-info` and `version` are commands now, and no longer
+  name a fleet; `archi setup` names each fleet made under one of them and the `mv` that renames it.
+- `archi uninstall` refuses while it would strand a fleet: a handover open, a fleet this machine runs for its gateway,
+  or fleets it is the gateway of. `--force` goes ahead anyway.
 
 See [Upgrading and downgrading](migration.md) for the details and the way back.
 
@@ -45,7 +48,7 @@ See [Upgrading and downgrading](migration.md) for the details and the way back.
 
 - macOS 15 or newer, and Ubuntu LTS on x86-64 or arm64 with systemd user services and lingering.
 - The Linux account's home must be the same path as yours on the Mac, such as `/Users/ada`.
-- Tailscale and ssh between the two, and tmux, Git and rsync on the Linux machine.
+- Tailscale and ssh between the two, and tmux, Git and rsync 3.2.3 or newer on the Linux machine.
 - Claude Code 2.1.251 or newer and Codex 0.155.0 or newer, logged in on each machine. Logins never move.
 
 ## Not yet

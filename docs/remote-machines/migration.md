@@ -12,7 +12,8 @@ fleet's `config.json` in two:
 
 1. `config.json` is renamed `config.json.bak`, byte for byte, before anything is read out of it.
 2. `node.json` gets what belongs to this machine: `port`, `host`, `shell` and `mobile.httpsPort`.
-3. `fleet.json` gets everything else, a new fleet `id`, and a `handover` block with `enabled: false`.
+3. `fleet.json` gets everything else and a new fleet `id`. It has no `handover` block, so handover stays off until you
+   [turn it on](setup.md#turning-it-on).
 
 The [README's configuration table](../../README.md#configuration) says which key lives in which file. From then on
 `config.json` is not read. One put back beside `fleet.json` stops the daemon until you move what you want from it into
@@ -38,9 +39,10 @@ the clone too. Now `pnpm desktop:install` installs a release and points everythi
 - every fleet's launchd agent, the private one and each named fleet's, runs `current/bin/archid`;
 - Claude Code's hooks keep the Node they already name while it is there, and otherwise run the release's own.
 
-The clone is needed only to update. `archi setup --rollback` puts the release before back and restarts every
-fleet's daemon on it. `archi setup` run from a
-clone without `--release` still points the shims and the daemon at that clone, for development.
+The clone is needed only to update. Each install keeps the release before it and removes older ones; `archi setup
+--rollback` puts the release before back and restarts every fleet's daemon on it. `archi setup` run from the
+installed release keeps everything on `current`; run from a clone without `--release`, it still points the shims and
+the daemon at that clone, for development.
 
 `archi setup` also no longer replaces a mission control `.claude/settings.json` you edited; `archi setup
 --replace-settings` does, keeping a copy.
@@ -51,8 +53,9 @@ clone without `--release` still points the shims and the daemon at that clone, f
   `node.json`, id and `owner.json`.
 - Remote machines are set up per fleet: `handover.enabled` in that fleet's `fleet.json`, `archi host enable <host>
   --fleet <name>`, and `archi -p <name> handover …`. On Linux each fleet runs as `archipelago-archid@<name>.service`.
-- `host`, `handover`, `gateway`, `fleet`, `connect`, `connection-info` and `version` are now commands. A fleet with one
-  of those names opens with `archi -p <name>`.
+- `host`, `handover`, `gateway`, `fleet`, `connect`, `connection-info` and `version` are now commands, and no longer
+  name a fleet, even with `-p`. `archi setup` names each fleet home made under one of them, such as
+  `~/.archipelago-host`, and the `mv` to a name that reaches it again.
 
 ## Downgrading
 

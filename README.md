@@ -391,9 +391,10 @@ needs is missing. It writes:
 - `~/Library/LaunchAgents/io.github.linusroxbergh.archipelago.archid*.plist`,
   one per fleet, which keeps each daemon running.
 - `~/.local/share/archipelago`: the release `pnpm desktop:install` builds, which
-  launchd, the hooks and the shims run through its `current` link.
+  launchd, the hooks and the shims run through its `current` link, and the
+  release before it, for `archi setup --rollback`; older ones are removed.
 - `~/.local/bin/archi` and `archipelago`: shims into that release, or into the
-  clone when setup runs without one.
+  clone when setup runs from one without `--release`.
 - `~/.archipelago` and `~/.archipelago-<name>`: each fleet's state, config,
   log, hook scripts, tmux.conf and tmux server, plus, in `~/.archipelago/home`,
   the mission control folder they share.
@@ -416,6 +417,12 @@ stops the fleets' tmux servers so no agent keeps running out of sight. It then
 asks before deleting the fleet homes, the app, and its sign-ins, caches and
 preferences in `~/Library`; `--purge` deletes them without asking. The clone
 and the settings backups stay.
+
+With [remote machines](docs/remote-machines/README.md), it first refuses
+while that would strand a fleet: a handover is open, this Mac runs a fleet
+that has a gateway, or it holds a gateway's records. Bring each fleet home
+and remove the other machine with `archi host remove <name>`; `--force`
+uninstalls anyway.
 
 ## What leaves your Mac
 
