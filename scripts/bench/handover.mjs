@@ -162,8 +162,8 @@ try {
     ids[m] = json(m, 'archi version --json').machineId;
     heapLimit[hostOf(m)] = bench(m, 'info').heapLimit;
   }
-  // as the source's preflight bounds it: half the smaller daemon heap at 6 KiB a file
-  const mostFiles = Math.floor(Math.min(...Object.values(heapLimit)) / 2 / 6144);
+  // as the source's preflight bounds it: half the smaller daemon heap at 8 KiB a file
+  const mostFiles = Math.floor(Math.min(...Object.values(heapLimit)) / 2 / 8192);
   fs.writeFileSync(path.join(out, 'host.json'), `${JSON.stringify({ dockerCpus: Number(cpus), dockerMemory: Number(memory), arch, heapLimit, mostFiles, power: power() }, null, 1)}\n`);
   say(`   daemon heaps: local ${mib(heapLimit.local / 1024)}, remote ${mib(heapLimit.remote / 1024)}; a handover carries at most ${mostFiles} files`);
   const isl = island();

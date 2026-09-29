@@ -100,7 +100,7 @@ attach` or the app; `archi handover status` names it while it runs.
 | `platform_unsupported` | blocks | A repository's `.archipelago/handover.json` names platforms without the destination's, or cannot be read as `{ "platforms": ["darwin", "linux"] }`. | If the repository runs there, add the platform to the file. Otherwise close the characters working in it before a handover. |
 | `rsync_unsupported` | blocks | This Mac has no rsync a handover can drive (the release's own is missing), or the other machine has none or one older than 3.x. | On the Mac, `archi doctor` checks the bundled rsync, and `pnpm desktop:install` puts it back. On Linux, `sudo apt install rsync`. |
 | `manifest_too_large` | blocks | The list of files to carry comes to more than 128 MiB. | Leave generated folders out with `handover.exclude` in `fleet.json`. |
-| `too_many_files` | blocks | The handover carries more files than the daemon with the smaller Node heap holds through one: half its heap at 6 KiB a file. The message names that machine, its heap and the most it holds. Node sizes the heap from the machine's memory, so a Mac with 48 GB holds 365,909 files and a small Linux machine far fewer. | Leave generated folders out with `handover.exclude` in `fleet.json`. |
+| `too_many_files` | blocks | The handover carries more files than the daemon with the smaller Node heap holds through one: half its heap at 8 KiB a file. The message names that machine, its heap and the most it holds. Node sizes the heap from the machine's memory: a Mac with 48 GB holds 274,432 files, a Linux machine with 2 GB 68,832. | Leave generated folders out with `handover.exclude` in `fleet.json`. |
 
 ### Git
 

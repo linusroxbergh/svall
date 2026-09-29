@@ -167,8 +167,8 @@ function oversize(m: TransferManifestV1, cap: number): Blocker | undefined {
   };
 }
 
-// a daemon grew by up to 5.8 KB a carried file on a first 50,000-file handover; a handover may take half the smaller heap
-export const HEAP_PER_FILE = 6 * 1024;
+// a daemon's peak RSS grew by up to 6.2 KB a carried file on a first 50,000-file handover; a handover may take half the smaller heap
+export const HEAP_PER_FILE = 8 * 1024;
 
 /** More files than the daemon with the smaller heap holds through a handover: the manifest, what landed, their JSON and the scans. */
 function crowded(m: TransferManifestV1, own: number, destination: number | undefined): Blocker | undefined {
