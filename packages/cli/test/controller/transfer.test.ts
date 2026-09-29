@@ -326,6 +326,17 @@ describe('transfer with a scripted rsync', () => {
     expect(rsync.real().map((c) => c.includes('--checksum'))).toEqual([false, true]);
   });
 
+  it('never takes a checksum compare that failed, having itemized nothing, for agreement', async () => {
+    const src = tree(tmp(), { 'a.txt': 'a' });
+    for (const code of [12, 23]) {
+      const state = tmp();
+      const rsync = fakeRsync((argv) => (argv.includes('--dry-run') ? { code, stderr: `rsync error: code ${code}\n` } : {}));
+      const r = await transfer(options({ entries: [await root({ source: src, claimed: '/far/app' })], master: fakeMaster({ up: true }), stateDir: state, deps: { run: rsync.run } }));
+      expect(r.entries).toEqual([{ id: 'r_app', status: 'failed', reason: 'rsync', code, error: expect.stringContaining(`code ${code}`) }]);
+      expect(readJournal(state).entries.r_app.verifiedKey).toBeUndefined();
+    }
+  });
+
   it('reads an exit of 12 or 255 as a lost link only when the master is gone, and a resume copies again', async () => {
     const src = tree(tmp(), { 'a.txt': 'a' });
     const entries = [await root({ source: src, claimed: '/far/app' }), await root({ id: 'r_next', source: src, claimed: '/far/next' })];
