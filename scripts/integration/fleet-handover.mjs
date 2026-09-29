@@ -94,7 +94,7 @@ function install() {
   // the harness turns the feature on for its fleet; the daemon reads fleet.json when it starts
   sh(L, `/opt/it/node/bin/node -e '
     const fs = require("fs"); const f = process.env.HOME + "/.archipelago/fleet.json";
-    const j = JSON.parse(fs.readFileSync(f, "utf8")); j.handover.enabled = true;
+    const j = JSON.parse(fs.readFileSync(f, "utf8")); j.handover = { ...j.handover, enabled: true };
     fs.writeFileSync(f + ".tmp", JSON.stringify(j, null, 2) + "\\n", { mode: 0o600 }); fs.renameSync(f + ".tmp", f);' &&
     systemctl --user restart archipelago-archid@private.service &&
     for i in $(seq 100); do archi char list >/dev/null 2>&1 && break; sleep 0.2; done && archi char list >/dev/null`);
