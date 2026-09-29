@@ -38,8 +38,8 @@ describe('splitting config.json', () => {
     expect(config.mobile).toMatchObject({ logins: ['you@example.com'], httpsPort: 10000 });
     expect(config.id).toMatch(UUID);
 
-    expect(read(p.fleetConfig)).toMatchObject({ defaultCwd: '/w', mainAgent: 'codex', mobile: { logins: ['you@example.com'] } });
-    expect(read(p.fleetConfig)).not.toHaveProperty('port');
+    // only what the file held: a default is the schema's, and a later release may change it
+    expect(read(p.fleetConfig)).toEqual({ id: config.id, defaultCwd: '/w', mainAgent: 'codex', mobile: { logins: ['you@example.com'] } });
     expect(read(p.nodeConfig)).toEqual({ port: 47900, host: '0.0.0.0', shell: '/bin/sh', mobile: { httpsPort: 10000 } });
     expect(read(p.nodeConfig)).not.toHaveProperty('defaultCwd');
 
@@ -158,8 +158,9 @@ describe('a fleet with nothing to split', () => {
     expect(config).toMatchObject({ port: 47800, host: '127.0.0.1', defaultCwd: '~' });
     expect(config.handover).toEqual({ enabled: false, exclude: [], excludeDefaults: true, transferFleetEnv: false });
     expect(config.mobile).toEqual({ logins: [], origins: [] });
-    expect(read(p.fleetConfig).id).toMatch(UUID);
-    expect(read(p.nodeConfig)).toEqual({ port: 47800, host: '127.0.0.1', mobile: {} });
+    // the defaults apply as the files are read, so a later release's defaults reach this fleet
+    expect(read(p.fleetConfig)).toEqual({ id: config.id });
+    expect(read(p.nodeConfig)).toEqual({});
   });
 
   it('defaults without writing when the home does not exist', () => {

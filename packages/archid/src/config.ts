@@ -42,11 +42,21 @@ export function parseConfig<T extends z.ZodTypeAny>(text: string, file: string, 
 
 const read = <T extends z.ZodTypeAny>(file: string, schema: T): z.infer<T> => parseConfig(fs.readFileSync(file, 'utf8'), file, schema);
 
-function splitLegacy(file: string): { fleet: FleetConfig; node: NodeConfig } {
-  const { id, host, port, shell, mobile, ...portable } = read(file, Config);
+type Raw = Record<string, unknown>;
+const only = (from: Raw, keys: string[]): Raw => Object.fromEntries(Object.entries(from).filter(([k]) => keys.includes(k)));
+
+// each key the file held goes to the file whose schema knows it, and a key neither knows is dropped; what the file
+// left out is left to the defaults as the new files are read
+function splitLegacy(file: string): { fleet: Raw; node: Raw } {
+  const text = fs.readFileSync(file, 'utf8');
+  const { id } = parseConfig(text, file, Config);
+  const raw = JSON.parse(text) as Raw;
+  const mobile = (raw.mobile ?? {}) as Raw;
+  const fleetMobile = only(mobile, Object.keys(FleetConfig.shape.mobile.unwrap().shape));
+  const nodeMobile = only(mobile, Object.keys(NodeConfig.shape.mobile.unwrap().shape));
   return {
-    fleet: FleetConfig.parse({ ...portable, id, mobile }),
-    node: NodeConfig.parse({ host, port, shell, mobile }),
+    fleet: { ...only(raw, Object.keys(FleetConfig.shape).filter((k) => k !== 'mobile')), id, ...(Object.keys(fleetMobile).length && { mobile: fleetMobile }) },
+    node: { ...only(raw, Object.keys(NodeConfig.shape).filter((k) => k !== 'mobile')), ...(Object.keys(nodeMobile).length && { mobile: nodeMobile }) },
   };
 }
 
@@ -79,12 +89,12 @@ export function initConfig(paths: Paths, seed: Partial<NodeConfig> = {}): string
   const wrote: string[] = [];
   const split = has(backup) && !has(paths.fleetConfig) ? splitLegacy(backup) : undefined;
   if (split || !has(paths.nodeConfig)) {
-    writeJsonAtomic(paths.nodeConfig, split?.node ?? NodeConfig.parse(seed));
+    writeJsonAtomic(paths.nodeConfig, split?.node ?? seed);
     wrote.push(paths.nodeConfig);
   }
   // last, so a fleet.json is only ever there once the split behind it is whole
   if (!has(paths.fleetConfig)) {
-    writeJsonAtomic(paths.fleetConfig, split?.fleet ?? FleetConfig.parse({ id: newFleetId() }));
+    writeJsonAtomic(paths.fleetConfig, split?.fleet ?? { id: newFleetId() });
     wrote.push(paths.fleetConfig);
   }
   return wrote;
