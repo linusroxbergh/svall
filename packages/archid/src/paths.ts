@@ -46,8 +46,6 @@ export function resolvePaths(home: string = archiHome()) {
     replicaRecord: (fleetId: string, canonicalPath: string) =>
       path.join(home, 'replicas', encodeURIComponent(fleetId), `${crypto.createHash('sha256').update(canonicalPath).digest('hex')}.json`),
     env: path.join(home, '.env'),
-    // the gateway's secret for this fleet's owner relay; never in fleet.json, a snapshot or a transfer
-    relaySecret: path.join(home, 'relay-secret'),
     token: path.join(home, 'token'),
     port: path.join(home, 'port'),
     log: path.join(home, 'archid.log'),
@@ -66,7 +64,7 @@ export function resolvePaths(home: string = archiHome()) {
 export type Paths = ReturnType<typeof resolvePaths>;
 
 /** The files that hold a fleet's keys, which Files never opens. */
-export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.env, p.vapid, p.push, p.relaySecret];
+export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.env, p.vapid, p.push];
 
 export function expandHome(p: string): string {
   if (p === '~') return os.homedir();

@@ -364,7 +364,7 @@ describe('destination prepare', () => {
     const s = await scene();
     const d = daemon(s);
     const before = fs.readFileSync(s.paths.state);
-    const r = await d.handover.prepare(params(s, { relaySecret: 'relay-s3cret' }));
+    const r = await d.handover.prepare(params(s));
 
     const prepared = FleetState.parse(JSON.parse(fs.readFileSync(s.paths.preparedState(TX), 'utf8')));
     expect(r.preparedDigest).toBe(canonicalDigest(prepared));
@@ -395,8 +395,7 @@ describe('destination prepare', () => {
     const seal = SealRecord.parse(JSON.parse(fs.readFileSync(s.paths.replicaSeal(TX), 'utf8')));
     expect(seal).toMatchObject({ transactionId: TX, generation: 5, manifestDigest: s.digest });
     expect(seal.roots.map((x) => x.id).sort()).toEqual(replicaRoots(s.manifest).map((x) => x.id).sort());
-    expect(fs.readFileSync(s.paths.relaySecret, 'utf8')).toBe('relay-s3cret');
-    for (const f of [s.paths.preparedState(TX), s.paths.journal, s.paths.replicaSeal(TX), s.paths.relaySecret]) expect(mode(f)).toBe('600');
+    for (const f of [s.paths.preparedState(TX), s.paths.journal, s.paths.replicaSeal(TX)]) expect(mode(f)).toBe('600');
 
     // nothing active moved: the old state, no window, no background work, and still a replica
     expect(fs.readFileSync(s.paths.state)).toEqual(before);
@@ -559,7 +558,7 @@ describe('destination prepare', () => {
   it('discards what it prepared once the gateway no longer holds the handover, and not before', async () => {
     const s = await scene();
     const d = daemon(s);
-    await d.handover.prepare(params(s, { relaySecret: 'relay-s3cret' }));
+    await d.handover.prepare(params(s));
     expect((await refusal(d.handover.abort({ transactionId: TX, generation: 5 }))).code).toBe('not_ready');
     expect(fs.existsSync(s.paths.preparedState(TX))).toBe(true);
     d.gateway.record = { fleetId, generation: 4, ownerMachineId: mac };

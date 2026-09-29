@@ -273,7 +273,8 @@ describe('ownership and handover methods', () => {
     const landed = [{ id: 'r_1', files: [{ type: 'file', path: 'a.txt', mode: 0o644, size: 1, mtimeMs: 0, sha256: DIGEST }] }];
     const params = { transactionId: 't1', generation: 5, manifest: MANIFEST, manifestDigest: DIGEST, landed };
     expect(methods['handover.prepare'].params.parse(params)).toEqual(params);
-    expect(methods['handover.prepare'].params.parse({ ...params, relaySecret: 's3cret' }).relaySecret).toBe('s3cret');
+    // a relay secret belongs to the phone gateway of a later version, and no prepare carries one
+    expect(methods['handover.prepare'].params.parse({ ...params, relaySecret: 's3cret' })).toEqual(params);
     expect(methods['handover.prepare'].result.parse({ preparedDigest: DIGEST })).toEqual({ preparedDigest: DIGEST });
     expect(() => methods['handover.prepare'].result.parse({})).toThrow();
     expect(() => methods['handover.prepare'].params.parse({ ...params, manifestDigest: 'abc' })).toThrow();

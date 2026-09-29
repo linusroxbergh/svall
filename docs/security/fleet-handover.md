@@ -102,8 +102,7 @@ under which licences, and which risks are accepted. Tests are named by file unde
 
 ## Secrets
 
-The secrets: the daemon token, the relay secret, the phone key, the VAPID keys, the fleet `.env`, agent logins and
-ssh keys.
+The secrets: the daemon token, the phone key, the VAPID keys, the fleet `.env`, agent logins and ssh keys.
 
 | Channel | What keeps secrets out | Tests |
 | --- | --- | --- |
@@ -114,8 +113,6 @@ ssh keys.
 | Manifests | A manifest names files by hash, never content. No fleet key is a root, and a carried `.env`, repository or fleet, appears only as its digest. | `manifest.test.ts` "holds no fleet key, and no secret a carried .env holds…" |
 | Repository roots | Replica records, filter files and progress live under the fleet home or the controller's state folder, never in a root. A root holding a fleet home, an agent login or `~/.ssh` is blocked. | `replicas.test.ts` "keeps each record under the fleet home…"; `inventory.test.ts` |
 
-- **The relay secret.** It is written at 0600 in the fleet home when a prepare carries one. The controller sends
-  none in version 1.
 - **Repository `.env` files** are working-tree data and travel, with a warning. The fleet's own `.env` travels only
   with `handover.transferFleetEnv`, with a warning.
 - **Other tools' plaintext logins** in a carried folder (`.netrc`, `.git-credentials`, gh's `hosts.yml`, AWS's
@@ -192,7 +189,7 @@ Every delete, rename and archive a handover or its install makes, with the recor
   only. They run as the user with `Restart=always`. Their logs are in `~/.local/share/archipelago/log`, at 0700.
   (`linux-setup.test.ts` "keeps the units' logs in a folder only this account opens…")
 - **Fleet home** 0700, made so at every daemon start. Its contents:
-  - `token`, `mobile-key`, `vapid.json`, `push.json` and `relay-secret` at 0600;
+  - `token`, `mobile-key`, `vapid.json` and `push.json` at 0600;
   - `hooks.sock` at 0600;
   - tmux's socket, inside the 0700 home.
 

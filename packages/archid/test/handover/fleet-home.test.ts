@@ -31,7 +31,6 @@ const ENTRIES: Record<string, Handling> = {
   'owner.json': 'machine-local',
   handover: 'machine-local',
   replicas: 'machine-local',
-  'relay-secret': 'machine-local',
   token: 'machine-local',
   port: 'machine-local',
   'archid.log': 'machine-local',

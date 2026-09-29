@@ -284,7 +284,7 @@ export const methods = {
     params: z.object({
       transactionId: TransactionId, generation: Generation,
       manifest: TransferManifestV1.extend({ transactionId: TransactionId }), manifestDigest: Sha256,
-      landed: z.array(LandedRoot), relaySecret: z.string().min(1).optional(),
+      landed: z.array(LandedRoot),
     }),
     result: z.object({ preparedDigest: Sha256 }),
   },

@@ -458,10 +458,7 @@ export class DestinationHandover {
 
     const preparedDigest = canonicalDigest(state);
     const preparedPath = this.d.paths.preparedState(tx);
-    boundary('destination.prepare.state', () => {
-      writeDurable(preparedPath, state, { mode: 0o600 });
-      if (p.relaySecret) writeDurable(this.d.paths.relaySecret, Buffer.from(p.relaySecret), { mode: 0o600 });
-    });
+    boundary('destination.prepare.state', () => writeDurable(preparedPath, state, { mode: 0o600 }));
     boundary('destination.prepare.journal', () => this.journal.write({ ...this.open(tx)!, phase: 'prepare', preparedPath, preparedDigest, fleet: imported.fleet, updatedAt: this.clock.now() }));
     boundary('destination.prepare.stage', () => fs.rmSync(path.dirname(this.d.paths.sessionStage(tx, 0)), { recursive: true, force: true }));
     return { preparedDigest };
