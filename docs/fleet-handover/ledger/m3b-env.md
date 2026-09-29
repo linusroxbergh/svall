@@ -1,15 +1,17 @@
 # M3b environment (for the owner's by-eye pass and what follows the M3b gate)
 
 Written by Task 37c on 2026-09-28 at release `890b1df` (report `task-37c-report.md`), after the M3b gate and its
-re-check (`m3b-gate-report.md`), and updated by Task 39b on 2026-09-29 at release `896fc01` (report
-`task-39b-report.md`). The fleet's generations:
+re-check (`m3b-gate-report.md`), updated by Task 39b on 2026-09-29 at release `896fc01` (report
+`task-39b-report.md`), and by the final on-machine check the same day at release `d0602dc` (report
+`final-onmachine-report.md`). The fleet's generations:
 - 40b's round trip was generations 1 and 2;
 - the gate's was generations 3 and 4;
 - the re-check's was generations 5 and 6;
 - 37c's Mac → Linux was generation 7, and its Linux → Mac generation 8;
-- 39b's acceptance runs were generations 9 to 36 (its report lists each).
+- 39b's acceptance runs were generations 9 to 36 (its report lists each);
+- the final check's Mac → Linux was generation 37, and its Linux → Mac generation 38.
 
-**The Mac owns it at generation 36**, and no transaction is open anywhere.
+**The Mac owns it at generation 38**, and no transaction is open anywhere.
 
 `$G` below is the gate's scratchpad:
 `/private/tmp/claude-502/-Users-linusroxbergh-linus-laboratory-archipelago--claude-worktrees-fleet-handover-impl/3739c9b8-51d0-4aa6-ac32-19bc0b56eee0/scratchpad/m3bg`.
@@ -18,27 +20,31 @@ re-check (`m3b-gate-report.md`), and updated by Task 39b on 2026-09-29 at releas
 
 `$C` below is Task 39b's folder:
 `/private/tmp/claude-502/-Users-linusroxbergh-linus-laboratory-archipelago--claude-worktrees-fleet-handover-impl/89928d60-3853-43e3-b6cb-3e149e9baba0/scratchpad/t39b`.
-Its scripts are in `$C/` and `$C/bin/`, its logs in `$C/logs/` and its snapshots in `$C/snaps/`. Both folders live
-under `/private/tmp`, which a reboot of the Mac clears.
+Its scripts are in `$C/` and `$C/bin/`, its logs in `$C/logs/` and its snapshots in `$C/snaps/`.
+
+`$F` below is the final check's folder, `…/89928d60-3853-43e3-b6cb-3e149e9baba0/scratchpad/fin` beside `$C`: 39b's
+scripts adapted to it, plus `units-far.sh`, `12-upgrade.sh <label>`, `13-rollback.sh <label> [release]`, `turn.sh` and
+`after-{linux,mac}.sh`, with its logs in `$F/logs/` and snapshots in `$F/snaps/`. All three folders live under
+`/private/tmp`, which a reboot of the Mac clears.
 
 ## Where things are
 
 | | |
 | --- | --- |
-| Build | release **`896fc01`** (unsigned; protocol 17, stateSchema 8, Node 24.21.0), built by `$C/build.sh` in `$C/src`, a `git archive` snapshot of `896fc015` with that commit's git metadata and the worktree's gitignored vendor caches: `scripts/release-build.sh --version 896fc01 --url-base https://github.com/linusroxbergh/archipelago/releases/download/896fc01` wrote and scanned the three archives into `$C/rel/`. The release publishes no app, so the app shell was built from the same snapshot (`apps/desktop/mac/build.sh release`) and its `Contents/Resources/release` replaced by the controller archive's tree (`$C/app/`). Log `$C/logs/01-build.log`. 37c's `890b1df` build is still in `$G/c37/` |
+| Build | release **`d0602dc`** (unsigned; protocol 17, stateSchema 8, Node 24.21.0), built by `$F/build.sh` in `$F/src`, a `git archive` snapshot of `d0602dcc` with that commit's git metadata and the worktree's gitignored vendor caches: `scripts/release-build.sh --version d0602dc --url-base https://github.com/linusroxbergh/archipelago/releases/download/d0602dc` wrote and scanned the three archives into `$F/rel/`. The release publishes no app, so the app shell was built from the same snapshot (`apps/desktop/mac/build.sh release`) and its `Contents/Resources/release` replaced by the controller archive's tree (`$F/app/`). Log `$F/logs/01-build.log`. 39b's `896fc01` build is still in `$C/`, 37c's `890b1df` in `$G/c37/` |
 | Test HOME (`TH`) | `/Users/Shared/archi-m3b` on the Mac (0700), the same path as archi-m3b's home on linus-vault |
-| `ARCHI_APP_DEST` | `$TH/Applications` (the app is `$TH/Applications/Archipelago.app`, build `896fc01`) |
+| `ARCHI_APP_DEST` | `$TH/Applications` (the app is `$TH/Applications/Archipelago.app`, build `d0602dc`) |
 | Helper | `$TH/Applications/Archipelago.app/Contents/Resources/release/bin/archi` (bundled node `…/release/node/bin/node`, `$BNODE` in `env.sh`) |
-| Installed release | `$TH/.local/share/archipelago/current` → `releases/896fc01` (`890b1df`, `4697836`, `32ee1745`, `9be818f5` and `ghostty-kit-24-g0b72b15a-dirty` are still in `releases/`); plist `$TH/Library/LaunchAgents/io.github.linusroxbergh.archipelago.archid.plist`, never loaded |
+| Installed release | `$TH/.local/share/archipelago/current` → `releases/d0602dc`, with `896fc01` kept for a rollback; the install removed the older ones. Plist `$TH/Library/LaunchAgents/io.github.linusroxbergh.archipelago.archid.plist`, never loaded |
 | TMPDIR | `$TH/tmp/` (ssh control sockets go to `$TH/tmp/archi-502/<hash>`) |
-| Companion archive | `$G/companion/archipelago-companion-896fc01-linux-x64.tar.gz` (46,226,695 B, sha256 `49353a0742896d28…`), a copy of the release's; `$G/run/rel` names `896fc01`. The `890b1df`, `4697836` and `32ee1745` archives are beside it |
-| Remote | host `m3b` = `archi-m3b@100.117.42.24`, machine `51cf5316-f3d9-447c-8855-58a6521effd2`, uid/gid 1002, linger on, home `/Users/Shared/archi-m3b`. Release `896fc01` (installed by the release's `archi host upgrade m3b --release <companion> --allow-unsigned`), with `890b1df`, `4697836`, `32ee1745`, `9be818f5` and `ghostty-kit-24-g0b72b15a-dirty` still in `releases/` |
+| Companion archive | `$G/companion/archipelago-companion-d0602dc-linux-x64.tar.gz` (46,233,877 B, sha256 `977873776c6cc13a…`), a copy of the release's; `$G/run/rel` names `d0602dc`. The `896fc01`, `890b1df`, `4697836` and `32ee1745` archives are beside it |
+| Remote | host `m3b` = `archi-m3b@100.117.42.24`, machine `51cf5316-f3d9-447c-8855-58a6521effd2`, uid/gid 1002, linger on, home `/Users/Shared/archi-m3b`. Release `d0602dc`, with `896fc01` kept: the final check ran the release's `archi host upgrade m3b --release <companion> --allow-unsigned`, `--rollback` to `896fc01`, then the upgrade again. The first upgrade removed the older releases |
 | Mac machine | `linuss-macbook-pro` (the test HOME's own id) `05b3af33-8eae-4be7-ae90-4f2d1318c398` |
 | Fleet | `private`, id `d85abac7-4346-4b6a-8e86-d24a4053d294`, gateway `m3b` |
 | Mac fleet home (`FH`) | `$TH/.archipelago`, daemon on `127.0.0.1:47871` (node.json is off 47800, which the owner's live daemon holds) |
-| Linux fleet home | `/Users/Shared/archi-m3b/.archipelago`, `archipelago-archid@private.service` on `127.0.0.1:47800`, a read-only replica with sealed replicas of every root at generation 36, and a tmux server holding only `_keep`. `agent-profiles.archived-2026-09-26T193825Z` (the bundle m3b seeded before profiles travelled), `home.archived-2026-09-26T151618Z` (40b) and `$TH/notes.archived-2026-09-28T234456Z` (39b's divergence check) are safe to delete. `archipelago-gateway.service` holds the authority record |
+| Linux fleet home | `/Users/Shared/archi-m3b/.archipelago`, `archipelago-archid@private.service` on `127.0.0.1:47800`, a read-only replica with sealed replicas of every root at generation 38, and no tmux server (the source stops its fleet at Complete since the fix wave). `agent-profiles.archived-2026-09-26T193825Z` (the bundle m3b seeded before profiles travelled), `home.archived-2026-09-26T151618Z` (40b) and `$TH/notes.archived-2026-09-28T234456Z` (39b's divergence check) are safe to delete. `archipelago-gateway.service` holds the authority record |
 | Path roots | none; both machines' registry records carry `home=/Users/Shared/archi-m3b` |
-| Ownership | the Mac at generation 36; `archi handover status`: none open anywhere |
+| Ownership | the Mac at generation 38; `archi handover status`: none open anywhere |
 
 ## Opening the test build's app (by-eye pass)
 
@@ -61,7 +67,8 @@ It runs the app's binary directly with:
 It opens as a second "Archipelago" beside the owner's own, which keeps running. Quit it with ⌘Q in its window.
 
 The gate checked this on `32ee1745` (`$G/logs/60-app-open.log`), the re-check on `4697836` (`$G/logs/r/80-app-open.log`),
-37c on `890b1df` (`$G/logs/c37/80-app-open.log`) and 39b on `896fc01` (`$C/logs/80-app-open.log`):
+37c on `890b1df` (`$G/logs/c37/80-app-open.log`), 39b on `896fc01` (`$C/logs/80-app-open.log`) and the final check on
+`d0602dc` (`$F/logs/80-app-open.log`):
 
 - the test app claimed `$TH/.archipelago/app.pid`;
 - its helper ran with the test HOME, and its page connected to the test daemon on 47871;
@@ -111,24 +118,25 @@ Handover is **Handover** at the foot of the sidebar, then **m3b** or **This Mac*
 7. **The archived copy's row.** With the fleet on the Mac: `ssh archi-m3b@100.117.42.24 'echo EYE >>
    ~/work/worker/README.txt'`, then Handover → m3b. Checks stops on `destination_diverged` naming `README.txt`; choose
    **Archive and carry**. Watch the `work/worker` row under Transferring: does it say where the old copy went
-   (`…/work/worker.archived-<time>`), is it marked ×, and does the line survive once the copy's progress starts? 39b's
-   stream sends that note once, as the row's error, and the next progress line for the folder replaces it (report
-   F1). Delete `~/work/worker.archived-*` on m3b afterwards.
+   (`…/work/worker.archived-<time>`), is it marked ×, and does the line survive once the copy's progress starts? On
+   `896fc01` the next progress line replaced it (39b's F1); since the fix wave every progress line of that folder
+   carries it (`archivedTo`), so it should stay, unmarked. Delete `~/work/worker.archived-*` on m3b afterwards.
 8. **A resume that fails, and Retry.** With the fleet on the Mac: `ssh archi-m3b@100.117.42.24 'touch
    ~/.m3b-mock/fail-resume'`, then Handover → m3b. failer's row is marked × with "… exited back to its shell, so it is
    dormant again …", with **Retry**; its card says why; the Mac runs nothing. Choose Retry while the flag is still
-   there, and note what the row and the card show; 39b found failer left a plain shell with no session, and a second
-   Retry does nothing (report F3). Then `ssh archi-m3b@100.117.42.24 'rm ~/.m3b-mock/fail-resume'` and type
-   `claude --resume 456339f6-1755-4ddc-bc20-c6550f43e27a` in failer's terminal to bring its session back. (Removing the
-   flag before the first Retry brings it up at once.)
+   there, and note what the row and the card show. On `896fc01` failer was left a plain shell with no session and a
+   second Retry did nothing (39b's F3); since the fix wave it should go dormant again with its session and the error,
+   so Retry stays offered. Then `ssh archi-m3b@100.117.42.24 'rm ~/.m3b-mock/fail-resume'` and Retry once more: it
+   should come up on `456339f6-1755-4ddc-bc20-c6550f43e27a`. If it is left a plain shell instead, type `claude --resume
+   456339f6-1755-4ddc-bc20-c6550f43e27a` in failer's terminal to bring its session back.
 9. **The network pulled, and re-attach after an ssh drop** (`apps/desktop/mac/SMOKE.md` §7 and §9). Only by
    disconnecting Tailscale on the Mac, which 39b did not touch: its cells pulled the link through an ssh proxy the app
    does not use. The CLI's timings to expect: the headline shows retries, then Resume and Abort 59–108 s after the pull
    before the commit, and only Retry 47–98 s after it; in Complete toward the Mac the run can end as complete with the
    source and gateway pending after about 2.5 minutes.
 
-When done, leave the Mac owning the fleet, quit the test app, and restart the test daemon (`sh $G/mac-daemon-restart.sh`)
-so no live terminal keeps a carried `revive` (D1).
+When done, leave the Mac owning the fleet and quit the test app. Since the fix wave a live terminal drops its carried
+`revive` at the first poll after its activation (D1), so no daemon restart is needed.
 
 ## Wrappers (all `sh`; the Mac ones source `$G/env.sh`: unsets ARCHI_HOME/ARCHI_CHAR_ID/TMUX/TMUX_PANE, sets HOME, ARCHI_APP_DEST, TMPDIR and the Finder PATH `/usr/bin:/bin:/usr/sbin:/sbin`)
 
@@ -224,6 +232,10 @@ so no live terminal keeps a carried `revive` (D1).
   `d1-before-mac → f2-after-mac`, across all of 39b's handovers, differs only by D1's `revive` fields and the
   archived replica `work/failer.archived-2026-09-28T234918Z` that 39b's divergence check left on the Mac. The Mac
   archid restarted after the last handover, and no live terminal holds a `revive` now.
+- The final check's snapshots are in `$F/snaps/` (same spec, `$F/snap.sh` and `$F/cmp.sh`), files named
+  `<label>.json`: `a0-mac` (as found), `b1-before-mac` (real-claude live), `b1-after-linux`, `b2-before-linux`,
+  `b2-after-mac`, and `c9-end-mac` (as left, after real-claude's rest). `a0-mac → c9-end-mac` is 0 DIFF: only the
+  real sessions grew.
 
 ## Fixture (Mac)
 
@@ -240,10 +252,10 @@ are in `$G/run/chars.tsv` and `$G/run/islands.tsv`.
 | beta-main | `c_dy5zy3` | `$TH/src/beta` | `node_modules/` default-excluded; holds the character doc |
 | beta-wt1 | `c_9y8x8f` | `$TH/src/beta-wt1` | sibling worktree |
 | beta-wt2 | `c_27vxwy` | `$TH/src/beta-wt2` | sibling worktree |
-| real-codex | `c_ts2fmw` | `$TH/real/codex-x` | real Codex 0.156.1, session `01a0ddbd-67eb-7b41-8ec8-a30797ef4a8f`, 76 records (`… GATE-LINUX GATE-MAC`) |
+| real-codex | `c_ts2fmw` | `$TH/real/codex-x` | real Codex 0.156.1, session `01a0ddbd-67eb-7b41-8ec8-a30797ef4a8f`, 147 records (`…GATE-LINUXGATE-MACFIN-LINUXFIN-MAC`) |
 | flags | `c_ku8ri5` | `$TH/real/flags` | mocked, resumes with `--effort high --dangerously-skip-permissions` |
 | real-codex-p | `c_z2jbwx` | `$TH/real/codex-p` | real Codex, session `01a0de47-a05d-7b20-a108-5e27532bb402`, 76 records; runs `-m gpt-6-astra` without the Mac-only profile `t40` |
-| real-claude | `c_ruypft` | `$TH/real/claude-r` | real Claude Code 2.1.283, session `cff60418-f7bb-44cf-85ce-f9bb153978cd` (code word OSPREY; 96 records: Mac, Linux, Mac, then 39b's Mac, Linux, Mac on `896fc01`). **Dormant** with `revive: claude --resume cff60418-…` |
+| real-claude | `c_ruypft` | `$TH/real/claude-r` | real Claude Code 2.1.283, session `cff60418-f7bb-44cf-85ce-f9bb153978cd` (code word OSPREY; 129 records: Mac, Linux, Mac, then 39b's Mac, Linux, Mac on `896fc01`, then the final check's on `d0602dc`). **Dormant** with `revive: claude --resume cff60418-…` |
 | real-claude-t | `c_jmyxcs` | `$TH/real/claude-t` | real Claude, session `10542a51-6750-490a-89cc-3bee4522534d` (code word FALCON; 53 records: Mac, Linux, Mac). Its folder was untrusted on both machines until answered. **Dormant** with `revive: claude --resume 10542a51-…` |
 | real-claude-b | `c_aosb44` | `$TH/real/claude-r/bypass` | real Claude started `claude --dangerously-skip-permissions`, session `b65e21cb-6b39-4b2e-9f64-727dc5b4ef3f` (code word LYNX; 79 records, turns Mac, Linux, Mac, Linux, Mac). **Dormant** with `revive: claude --resume b65e21cb-…`: the rest that closed its window dropped the flag, and its state keeps the stale pid 41144 |
 
@@ -296,8 +308,8 @@ No Claude login copy is left, so reviving any real-Claude character starts Claud
     `~/m3b-tools/settings.json.before-c37`), so a new bypass check needs that key removed there first
     (`$G/c37/20-m3b-unbypass.sh`).
   - m3b's pre-gate `.claude.json` is `~/.m3b-mock/claude.json.before-gate`.
-  - **No Claude credential is left on either machine.** 39b's copies of the owner's login were deleted at 01:07:59Z on
-    2026-09-29 (37c's at 15:43:02Z on 2026-09-28), and no real Claude runs.
+  - **No Claude credential is left on either machine.** The final check's copies of the owner's login were deleted at
+    07:11:16Z on 2026-09-29 (39b's at 01:07:59Z that day, 37c's at 15:43:02Z on 2026-09-28), and no real Claude runs.
   - `$TH/Applications/Claude Code URL Handler.app` is one real Claude made under the test HOME.
 - **Real Codex 0.156.1:**
   - Mac: `$TH/agents/codex`, with `$TH/.codex/auth.json` (0600) and `config.toml` trusting `real/codex-x`,
@@ -318,17 +330,17 @@ No Claude login copy is left, so reviving any real-Claude character starts Claud
 ## Left running
 
 - **Mac:**
-  - archid, pid in `$G/run/archid.pid` (56652, on `releases/896fc01`, started by `$G/mac-daemon-start.sh` with the
+  - archid, pid in `$G/run/archid.pid` (91360, on `releases/d0602dc`, started by `$G/mac-daemon-start.sh` with the
     plist's PATH), log `$FH/archid.log`;
-  - its tmux server `/opt/homebrew/bin/tmux -S $FH/tmux.sock` (49278) and control client (56670);
+  - its tmux server `/opt/homebrew/bin/tmux -S $FH/tmux.sock` (89638) and control client (91380);
   - 15 windows: `_keep`, the 12 live characters, `c_d4e995-2` and `c_m62lwt-2`. The three real-Claude characters have
     none;
   - 10 mocked agents and 2 real Codex, all idle;
-  - no test app, ssh master, helper, link proxy, watcher or setup tmux. 39b's `caffeinate` has ended.
+  - no test app, ssh master, helper, link proxy, watcher or setup tmux, and no `caffeinate` of the final check.
 - **m3b** (archi-m3b, lingering):
-  - `archipelago-archid@private.service` (MainPID 667595) and `archipelago-gateway.service` (MainPID 667604), both
-    on `896fc01`, active and enabled;
-  - the fleet's tmux server (`_keep` only).
+  - `archipelago-archid@private.service` (MainPID 2708271) and `archipelago-gateway.service` (MainPID 2708280), both
+    on `d0602dc`, active and enabled;
+  - no tmux server for the fleet: a fenced machine runs none since the fix wave.
 
 ## Before-state
 
@@ -345,8 +357,10 @@ No Claude login copy is left, so reviving any real-Claude character starts Claud
   - `~/Library/LaunchAgents` mtime 2026-09-26 11:49:14 +0200, unchanged.
   - `/Applications/Archipelago.app` is the owner's own install. It now reads build `4067bfea`, mtime 2026-09-28
     08:27:52 +0200: a reinstall outside these passes, which install only into `$TH/Applications`.
-  - The owner's `~/Library/Preferences/io.github.linusroxbergh.archipelago.plist` reads mtime 2026-09-28 13:19:04 +0200,
-    1550 B, before 37c began; 37c's test-app check left it unchanged (`$G/logs/c37/72-owner-files.log`).
+  - The owner's `~/Library/Preferences/io.github.linusroxbergh.archipelago.plist` read mtime 2026-09-28 13:19:04 +0200,
+    1550 B, before 37c began; 37c's test-app check left it unchanged (`$G/logs/c37/72-owner-files.log`). On
+    2026-09-29 the owner's own app, opened at 09:03:10 +0200, wrote it (09:05:17, 1567 B, then 09:11:47); the final
+    check's test-app open at 09:05:26 left it as it was (`$F/logs/80-app-open.log`).
   - The gate and the re-check read the owner's keychain item `Claude Code-credentials` as authorised (the re-check three
     times, two of them left unused for too little time), and `~/.archipelago/app.pid` once. Neither wrote anything of
     his.
