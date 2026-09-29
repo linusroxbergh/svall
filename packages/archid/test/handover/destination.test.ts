@@ -556,6 +556,24 @@ describe('destination prepare', () => {
     expect((await d.handover.claim({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest })).roots.every((x) => x.check.ok)).toBe(true);
   });
 
+  it('takes as its own only what a prepare that proved what landed recorded, never an edit made here since', async () => {
+    const s = await scene({ tamper: strayGraph, before: ({ dst }) => { fs.symlinkSync(path.join(dst, 'work/ada'), path.join(dst, 'elsewhere')); } });
+    const git: GitRunner = async () => {
+      fs.writeFileSync(path.join(s.dst, 'elsewhere/config'), '[core]\n\tignorecase = false\n');
+      return { code: 128, stdout: '', stderr: 'fatal: not a git repository' };
+    };
+    const d = daemon(s, { git });
+    expect(blockersOf(await refusal(d.handover.prepare(params(s)))).map((b) => b.code)).toContain('worktree_unresolved');
+    fs.appendFileSync(path.join(s.dst, 'work/bo/index.ts'), '// edited here\n');
+    fs.writeFileSync(path.join(s.dst, 'work/bo/mine.txt'), 'written here\n');
+    // asked again with what landed, as a prepare whose answer was lost is, it does not prove that again
+    expect(blockersOf(await refusal(d.handover.prepare(params(s)))).map((b) => b.code)).toContain('worktree_unresolved');
+
+    const r = await d.handover.claim({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest });
+    const bo = replicaRoots(s.manifest).find((x) => x.path === path.join(s.dst, 'work/bo'))!;
+    expect(r.roots.find((x) => x.id === bo.id)!.check).toMatchObject({ ok: false, blocker: { code: 'destination_diverged', message: expect.stringContaining('mine.txt') } });
+  });
+
   it('drops the session stage of a handover it never prepared once the gateway lets it go, and nothing else', async () => {
     const s = await scene();
     const d = daemon(s);

@@ -301,10 +301,8 @@ export class DestinationHandover {
     await this.receiving(p);
     const stays = await this.staying(graphsHere(m));
     // written before any root is taken; one an earlier prepare of this manifest wrote stays, as its Git import left the roots
-    let prior: SealRecord | undefined;
-    try { prior = SealRecord.parse(JSON.parse(fs.readFileSync(this.d.paths.replicaSeal(tx), 'utf8'))); } catch { prior = undefined; }
-    if (prior?.manifestDigest !== p.manifestDigest) {
-      prior = undefined;
+    const prior = this.recorded(tx, p.manifestDigest);
+    if (!prior) {
       const claimed = SealRecord.parse({ transactionId: tx, generation: p.generation, manifestDigest: p.manifestDigest, roots: replicaRoots(m) });
       boundary('destination.claim.seal', () => writeDurable(this.d.paths.replicaSeal(tx), claimed, { mode: 0o600 }));
     }
@@ -442,11 +440,13 @@ export class DestinationHandover {
         .filter((reg) => path.posix.dirname(reg) === path.posix.join(g.commonDir, 'worktrees')).map((reg) => path.posix.basename(reg))]));
       graphs = await importGraphs(m, { ...(this.d.git && { git: this.d.git }), kept: keptNames });
     } finally {
-      // what Complete seals, or an abort leaves claimable: the roots as the import left them, however far it got
+      // what Complete seals, or an abort leaves claimable: the roots as the import left them, however far it got. Read
+      // only after this call proved what landed; a prepare asked again keeps what the one that proved it recorded
+      const earlier = verified ? this.recorded(tx, p.manifestDigest) : undefined;
       const roots: SealRecord['roots'] = [];
       for (const r of carried) {
-        const scan = await scanPath(at.get(r.id)!, rootMatcher(r.kind, m.excludes), this.d.scanFs);
-        roots.push({ id: r.id, kind: r.kind, entry: r.entry, path: r.path, files: scan?.files ?? [] });
+        const files = earlier?.roots.find((x) => x.id === r.id)?.files ?? (await scanPath(at.get(r.id)!, rootMatcher(r.kind, m.excludes), this.d.scanFs))?.files ?? [];
+        roots.push({ id: r.id, kind: r.kind, entry: r.entry, path: r.path, files });
       }
       const seal = SealRecord.parse({ transactionId: tx, generation: p.generation, manifestDigest: p.manifestDigest, roots });
       boundary('destination.prepare.seal', () => writeDurable(this.d.paths.replicaSeal(tx), seal, { mode: 0o600 }));
@@ -903,6 +903,16 @@ export class DestinationHandover {
       }
     }
     return unsealed;
+  }
+
+  /** The seal record a claim or prepare of this manifest wrote for a handover, when there is one it can read. */
+  private recorded(transactionId: string, manifestDigest: string): SealRecord | undefined {
+    try {
+      const seal = SealRecord.parse(JSON.parse(fs.readFileSync(this.d.paths.replicaSeal(transactionId), 'utf8')));
+      return seal.manifestDigest === manifestDigest ? seal : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private advance(j: DestinationJournal, phase: 'commit' | 'activate'): DestinationJournal {
