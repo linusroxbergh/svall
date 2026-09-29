@@ -72,14 +72,6 @@ export class Store {
     return ops;
   }
 
-  /** Swaps the whole fleet for a validated snapshot: what a snapshot leaves out, the patch removes. */
-  replace(snapshot: unknown): Operation[] {
-    const next = FleetState.parse(snapshot);
-    const ops = jsonpatch.compare(this.current, next);
-    this.commit(next, ops);
-    return ops;
-  }
-
   /** Validates a prepared snapshot without making it the active state. */
   static readSnapshot(file: string): FleetState {
     return FleetState.parse(JSON.parse(fs.readFileSync(file, 'utf8')));

@@ -124,7 +124,7 @@ describe('Store', () => {
 
 const island = (id: string) => ({ id, name: id, description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 });
 
-describe('Store.replace', () => {
+describe('Store.update', () => {
   it('writes no character the schema would refuse, and leaves the fleet as every listener last saw it', () => {
     const file = path.join(makeHome(), 'state.json');
     const s = Store.load(file, () => {});
@@ -141,48 +141,6 @@ describe('Store.replace', () => {
     expect(() => s.update((d) => { delete (d.characters.c_1 as { cwd?: string }).cwd; })).toThrow(/c_1/);
     expect(fs.readFileSync(file, 'utf8')).toBe(written);
     expect(Object.keys(s.state.characters)).toEqual(['c_1']);
-    expect(seen).toEqual([]);
-  });
-
-  it('validates the snapshot and leaves the state alone when it is rejected', () => {
-    const s = Store.load(path.join(makeHome(), 'state.json'), () => {});
-    expect(() => s.replace({ version: 8, islands: { bad: { id: 'bad' } }, characters: {} })).toThrow();
-    expect(s.state.islands).toEqual({});
-  });
-
-  it('emits one patch and drops entities the snapshot does not have', () => {
-    const file = path.join(makeHome(), 'state.json');
-    const s = Store.load(file, () => {});
-    s.update((d) => { d.islands.i_1 = island('i_1'); d.islands.i_2 = island('i_2'); });
-    const seen: Operation[][] = [];
-    s.subscribe((ops) => seen.push(ops));
-    const ops = s.replace({ ...s.state, islands: { i_2: island('i_2'), i_3: island('i_3') } });
-    expect(seen).toEqual([ops]);
-    expect(ops.filter((o) => o.op === 'remove').map((o) => o.path)).toEqual(['/islands/i_1']);
-    expect(Object.keys(s.state.islands).sort()).toEqual(['i_2', 'i_3']);
-    expect(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).islands).sort()).toEqual(['i_2', 'i_3']);
-  });
-
-  it('persists before a listener can throw', () => {
-    const file = path.join(makeHome(), 'state.json');
-    const s = Store.load(file, () => {});
-    s.subscribe(() => { throw new Error('boom'); });
-    s.replace({ ...s.state, islands: { i_1: island('i_1') } });
-    expect(JSON.parse(fs.readFileSync(file, 'utf8')).islands.i_1.name).toBe('i_1');
-  });
-
-  it('rethrows a failed persist with the state unchanged and no listener told', () => {
-    const home = makeHome();
-    const s = Store.load(path.join(home, 'state.json'), () => {});
-    const seen: Operation[][] = [];
-    s.subscribe((ops) => seen.push(ops));
-    fs.chmodSync(home, 0o500);
-    try {
-      expect(() => s.replace({ ...s.state, islands: { i_1: island('i_1') } })).toThrow();
-    } finally {
-      fs.chmodSync(home, 0o700);
-    }
-    expect(s.state.islands).toEqual({});
     expect(seen).toEqual([]);
   });
 });
