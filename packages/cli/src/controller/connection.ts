@@ -126,10 +126,8 @@ export async function remoteConnectionInfo(master: SshMaster, machine: MachineEn
   if (o.fleetId !== undefined && info.fleetId !== o.fleetId) {
     throw new FleetMismatch(`${name} answered with fleetId ${info.fleetId}, not ${o.fleetId}: it runs another fleet there; \`archi host enable ${name} --fleet ${o.profile ?? PRIVATE}\` gives it a copy of this one`);
   }
-  const wrong = info.machineId !== machine.id ? { kind: 'other' as const, field: 'machineId', got: info.machineId as string, want: machine.id as string }
-      : info.protocol !== PROTOCOL_VERSION ? { kind: 'version' as const, field: 'protocol', got: String(info.protocol), want: String(PROTOCOL_VERSION) }
-        : undefined;
-  if (wrong) throw new SshError(wrong.kind, `${name} answered with ${wrong.field} ${wrong.got}, not ${wrong.want}`);
+  if (info.machineId !== machine.id) throw new MachineMismatch(`${name} answered with machineId ${info.machineId}, not ${machine.id}`);
+  if (info.protocol !== PROTOCOL_VERSION) throw new SshError('version', `${name} answered with protocol ${info.protocol}, not ${PROTOCOL_VERSION}`);
   return info;
 }
 

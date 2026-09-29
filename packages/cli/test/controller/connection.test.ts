@@ -8,7 +8,7 @@ import { AuthorityClient } from '@archipelago/archid/gateway/client';
 import { startAuthorityServer } from '@archipelago/archid/gateway/server';
 import { machineId } from '@archipelago/archid/machine';
 import { connectionInfoCommand } from '../../src/commands/connection.js';
-import { connectFor, connectRemote, FleetMismatch, remoteConnectionInfo, resolveOwner, withReconnect, type GatewayMemo, type OwnerDeps } from '../../src/controller/connection.js';
+import { connectFor, connectRemote, FleetMismatch, MachineMismatch, remoteConnectionInfo, resolveOwner, withReconnect, type GatewayMemo, type OwnerDeps } from '../../src/controller/connection.js';
 import { MachineRegistry, type MachineEntry } from '../../src/controller/registry.js';
 import { SshError, SshMaster } from '../../src/controller/ssh.js';
 import { cleanHomes, makeHome, waitFor } from '../../../archid/test/helpers.js';
@@ -99,6 +99,12 @@ describe('remote connections', () => {
     expect((err as SshError).kind).toBe(kind);
     expect((err as SshError).message).toContain(field);
     expect((err as SshError).message).not.toContain(TOKEN);
+  });
+
+  it('refuses a description naming another machine as a machine mismatch, which no retry changes', async () => {
+    ssh.answer(description({ port: 4711, machineId: MachineId.parse(crypto.randomUUID()) }));
+    const err = await remoteConnectionInfo(await master(), remote, { fleetId: FLEET }).catch((e: SshError) => e);
+    expect(err).toBeInstanceOf(MachineMismatch);
   });
 
   it('names host enable as the way on when the companion runs another fleet under the profile', async () => {
