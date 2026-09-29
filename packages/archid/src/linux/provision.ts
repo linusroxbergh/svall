@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { FleetConfig, type FleetId, type MachineId } from '@archipelago/protocol';
+import { FleetConfig, defaultHome, type FleetId, type MachineId } from '@archipelago/protocol';
 import { seedAgentProfiles } from '../agent-profiles.js';
 import { writeJsonAtomic } from '../atomic.js';
 import { DurableJson } from '../handover/durable.js';
@@ -9,6 +9,7 @@ import { OwnerCache } from '../ownership/state.js';
 import { resolvePaths, type Paths } from '../paths.js';
 import { PRIVATE } from '../profile.js';
 import { installHomeTemplate, setupFleetHome } from '../setup.js';
+import { fleetHomes } from '../uninstall.js';
 import { daemonReload, enableUnit, stopUnit, type Run } from './service.js';
 import { agentHomesEnv, archidUnitName, writeUnits, type UnitOptions } from './setup.js';
 
@@ -70,16 +71,20 @@ function sameTree(a: string, b: string): boolean {
 
 /**
  * Removes mission control's folder and the agent profiles a standalone start seeded, each only while it holds exactly
- * what the seed writes: left there, they would meet the fleet's own copies as occupied folders.
+ * what the seed writes: left there, they would meet the fleet's own copies as occupied folders. A mission control
+ * folder another fleet home here names is that fleet's too, and stays.
  */
 function unseed(o: Provision, paths: Paths, homeCwd: string): void {
-  const cwd = homeCwd === '~' || homeCwd.startsWith('~/') ? path.join(o.homedir, homeCwd.slice(1)) : homeCwd;
+  const expand = (p: string): string => path.resolve(p === '~' || p.startsWith('~/') ? path.join(o.homedir, p.slice(1)) : p);
+  const cwd = expand(homeCwd);
+  const shared = fleetHomes(o.homedir).filter((h) => path.resolve(h) !== path.resolve(o.home)).some((h) => {
+    const fleet = FleetConfig.safeParse(readJson(resolvePaths(h).fleetConfig).value);
+    return expand(fleet.success ? fleet.data.home.cwd : defaultHome().cwd) === cwd;
+  });
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'archi-seed-'));
   try {
-    const seeds: [string, (dir: string) => unknown][] = [
-      [cwd, (dir) => installHomeTemplate(dir, { replaceSettings: false })],
-      [paths.agentProfiles, (dir) => seedAgentProfiles(dir)],
-    ];
+    const seeds: [string, (dir: string) => unknown][] = [[paths.agentProfiles, (dir) => seedAgentProfiles(dir)]];
+    if (!shared) seeds.push([cwd, (dir) => installHomeTemplate(dir, { replaceSettings: false })]);
     for (const [i, [at, seed]] of seeds.entries()) {
       const fresh = path.join(scratch, String(i));
       seed(fresh);

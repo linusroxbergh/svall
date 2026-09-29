@@ -62,6 +62,15 @@ function hostAdded(f: Far, o: { characters?: Record<string, unknown>; owner?: Re
   }
 }
 
+/** As `hostAdded`, with what the fleet's standalone start then wrote: mission control's folder at home.cwd under the account's home, and its agent profiles. */
+function seeded(f: Far): string {
+  hostAdded(f);
+  const mc = path.join(f.root, '.archipelago/home');
+  installHomeTemplate(mc, { replaceSettings: false });
+  seedAgentProfiles(f.paths.agentProfiles);
+  return mc;
+}
+
 // every file under a folder with its bytes, so a check can prove nothing was written there
 function files(dir: string): Record<string, string> {
   if (!fs.existsSync(dir)) return {};
@@ -139,14 +148,6 @@ describe('provisionFleet', () => {
   });
 
   it('drops the mission control folder and agent profiles a standalone start seeded, and keeps each once anything in it has changed', async () => {
-    // what the fleet's standalone start wrote, mission control's folder at home.cwd under the account's home
-    const seeded = (f: Far): string => {
-      hostAdded(f);
-      const mc = path.join(f.root, '.archipelago/home');
-      installHomeTemplate(mc, { replaceSettings: false });
-      seedAgentProfiles(f.paths.agentProfiles);
-      return mc;
-    };
     const f = far();
     const mc = seeded(f);
     expect(await provisionFleet(f.o)).toMatchObject({ outcome: 'rekeyed' });
@@ -161,6 +162,27 @@ describe('provisionFleet', () => {
     const before = [files(edited), files(g.paths.agentProfiles)];
     expect(await provisionFleet(g.o)).toMatchObject({ outcome: 'rekeyed' });
     expect([files(edited), files(g.paths.agentProfiles)]).toEqual(before);
+  });
+
+  it('keeps a seeded mission control folder that another fleet home on the machine names as its own', async () => {
+    // another fleet here, on the default home.cwd or on one of its own
+    const beside = (f: Far, fleet: Record<string, unknown>): void => {
+      fs.mkdirSync(path.join(f.root, '.archipelago-work'));
+      fs.writeFileSync(path.join(f.root, '.archipelago-work/fleet.json'), JSON.stringify({ id: crypto.randomUUID(), ...fleet }));
+    };
+    const f = far();
+    const mc = seeded(f);
+    beside(f, {});
+    const before = files(mc);
+    expect(await provisionFleet(f.o)).toMatchObject({ outcome: 'rekeyed' });
+    expect(files(mc)).toEqual(before);
+    expect(fs.existsSync(f.paths.agentProfiles)).toBe(false);
+
+    const g = far();
+    const alone = seeded(g);
+    beside(g, { home: { cwd: '~/work-mc' } });
+    expect(await provisionFleet(g.o)).toMatchObject({ outcome: 'rekeyed' });
+    expect(fs.existsSync(alone)).toBe(false);
   });
 
   it('refuses a home whose fleet has been used, naming the home and why, and changes nothing', async () => {
