@@ -352,8 +352,8 @@ export type Event =
 
 export const Hello = z.object({ token: z.string() });
 
-/** The reply to the handshake: the daemon's protocol version, and what it can do beyond it. */
-export const HelloResult = z.object({ ok: z.literal(true), protocol: z.number().int(), capabilities: z.array(z.string()).optional() });
+/** The reply to the handshake: the daemon's protocol version. */
+export const HelloResult = z.object({ ok: z.literal(true), protocol: z.number().int() });
 export type HelloResult = z.infer<typeof HelloResult>;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it

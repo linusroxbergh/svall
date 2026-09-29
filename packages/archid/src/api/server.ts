@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { Hello, MAX_REQUEST_BYTES, PART_BYTES, PROTOCOL_VERSION, Request, RequestPart, type Event } from '@archipelago/protocol';
+import { Hello, MAX_REQUEST_BYTES, PART_BYTES, PROTOCOL_VERSION, Request, RequestPart, type Event, type HelloResult } from '@archipelago/protocol';
 import type { Fleet } from '../fleet.js';
 import type { HandoverService } from '../handover/service.js';
 import type { Logger } from '../log.js';
@@ -197,7 +197,8 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       unsub = store.subscribe((ops) => viewer.send({ event: 'state.patch', data: { ops } }));
       viewers.add(viewer);
       if (login) { left = phones.add(login); phoneSockets.add(ws); } else desktops.add(viewer);
-      ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } }));
+      const hello: HelloResult = { ok: true, protocol: PROTOCOL_VERSION };
+      ws.send(JSON.stringify({ id: 0, result: hello }));
     };
 
     // the proxy has already proved who this is; a socket without that identity still has to say the token
