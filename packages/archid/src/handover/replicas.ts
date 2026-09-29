@@ -297,7 +297,9 @@ export class ReplicaStore {
     // rsync spares only what this transfer excludes, so the proof reads everything else
     const { divergence, files } = await proveReplica(at, accepted, excludes, this.opts.scanFs, root.kind, kept(keep));
     if (!diverged(divergence)) return { kind: 'replica', found: files };
-    return (r.state === 'receiving' && (await this.holding(root, at, excludes, content, keep))) || { kind: 'blocked', blocker: divergenceBlocker(root, at, divergence), divergence };
+    // a preflight has only the digest of what this handover brings, so it can take such a copy only whole
+    const whole = r.state === 'receiving' && !incoming && (await this.holding(root, at, excludes, content, keep));
+    return whole || { kind: 'blocked', blocker: divergenceBlocker(root, at, divergence), divergence };
   }
 
   /** A root that holds exactly what this handover brings, read under its excludes, and so nothing a copy would lose. */
