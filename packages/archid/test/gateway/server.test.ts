@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FleetId, MachineId } from '@archipelago/protocol';
 import { gatewayPaths } from '../../src/gateway/authority.js';
-import { AuthorityClient, fleetAuthority, type SshRun } from '../../src/gateway/client.js';
+import { AuthorityClient, fleetAuthority, ownerAnswer, versionMachineId, type SshRun } from '../../src/gateway/client.js';
 import { startAuthorityServer, type AuthorityServer } from '../../src/gateway/server.js';
 
 const FLEET = '3f1a0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as FleetId;
@@ -211,7 +211,8 @@ describe('a fleet authority as its daemon reaches it', () => {
     }));
     const record = { fleetId: FLEET, generation: 3, ownerMachineId: MAC };
     const calls: string[][] = [];
-    let answer = { code: 0, stdout: `noise\n${JSON.stringify({ result: { record } })}\n`, stderr: '' };
+    const named = `noise\n${JSON.stringify({ release: 'dev', machineId: TRIFT }, null, 2)}\n`;
+    let answer = { code: 0, stdout: `${named}${JSON.stringify({ result: { record } })}\n`, stderr: '' };
     const ssh: SshRun = async (argv) => { calls.push(argv); return answer; };
     const far = fleetAuthority({ gatewayMachineId: TRIFT, machineId: MAC, registry, ssh });
 
@@ -221,12 +222,12 @@ describe('a fleet authority as its daemon reaches it', () => {
       `'sh' '-c' '"$1" version --json; exec "$1" gateway owner get --fleet "$2"' 'archi-owner' '/home/linus/it'\\''s here/current/bin/archi' '${FLEET}'`,
     ]]);
 
-    answer = { code: 1, stdout: `${JSON.stringify({ error: { code: 'not_found', message: 'no record' } })}\n`, stderr: '' };
+    answer = { code: 1, stdout: `${named}${JSON.stringify({ error: { code: 'not_found', message: 'no record' } })}\n`, stderr: '' };
     expect((await failure(far.get(FLEET))).code).toBe('not_found');
     answer = { code: 255, stdout: '', stderr: 'ssh: connect to host trift port 22: Connection refused' };
     await expect(far.get(FLEET)).rejects.toThrow(/Connection refused/);
     // a frame that is no authority's answer is a refusal, never taken for silence
-    answer = { code: 0, stdout: `${JSON.stringify({ result: { record: { fleetId: FLEET } } })}\n`, stderr: '' };
+    answer = { code: 0, stdout: `${named}${JSON.stringify({ result: { record: { fleetId: FLEET } } })}\n`, stderr: '' };
     expect(await failure(far.get(FLEET))).toMatchObject({ code: 'invalid_request' });
     // a registry that names no route to the gateway it is asked for is a wrong question, not a gateway away
     expect(await failure(fleetAuthority({ gatewayMachineId: OTHER, machineId: MAC, registry, ssh }).get(FLEET))).toMatchObject({ code: 'invalid_request', message: expect.stringMatching(/no ssh route/) });
@@ -246,5 +247,35 @@ describe('a fleet authority as its daemon reaches it', () => {
     expect(await failure(far.get(FLEET))).toMatchObject({ code: 'identity_mismatch', message: expect.stringContaining(`reaches machine ${OTHER}, not the gateway ${TRIFT}`) });
     as = TRIFT;
     expect(await far.get(FLEET)).toEqual(record);
+  });
+
+  it('refuses an answer whose archi names no machine, as the controller does', async () => {
+    const registry = path.join(prefix(), 'machines.json');
+    fs.writeFileSync(registry, JSON.stringify({
+      machines: { [TRIFT]: { name: 'trift', ssh: 'linus@trift', platform: 'linux', arch: 'x64', home: '/home/linus', archiBase: '/home/linus/.local/share/archipelago', gateway: true } },
+    }));
+    const record = { fleetId: FLEET, generation: 3, ownerMachineId: MAC };
+    const ssh: SshRun = async () => ({ code: 0, stdout: `${JSON.stringify({ release: 'dev' }, null, 2)}\n${JSON.stringify({ result: { record } })}\n`, stderr: '' });
+    expect(await failure(fleetAuthority({ gatewayMachineId: TRIFT, machineId: MAC, registry, ssh }).get(FLEET)))
+      .toMatchObject({ code: 'identity_mismatch', message: expect.stringContaining('without naming its machine') });
+  });
+});
+
+describe('what a far archi answers', () => {
+  it('reads the machine id of archi version --json past whatever the login shell printed, and none from an answer without one', () => {
+    const version = JSON.stringify({ release: 'dev', machineId: TRIFT, protocol: 17 }, null, 2);
+    expect(versionMachineId(`Last login: today\n${version}\n`)).toBe(TRIFT);
+    expect(versionMachineId(`${JSON.stringify({ result: { record: { fleetId: FLEET, generation: 1, ownerMachineId: MAC } } })}\n`)).toBeUndefined();
+    expect(versionMachineId(JSON.stringify({ machineId: '' }, null, 2))).toBeUndefined();
+    expect(versionMachineId('')).toBeUndefined();
+  });
+
+  it('reads the ownership frame on the last line, and nothing that is no frame of the authority', () => {
+    const record = { fleetId: FLEET, generation: 1, ownerMachineId: MAC };
+    expect(ownerAnswer(`noise\n${JSON.stringify({ result: { record } })}\n`)).toEqual({ record });
+    expect(ownerAnswer(JSON.stringify({ error: { code: 'not_found', message: 'no record', data: { fleetId: FLEET } } }))).toEqual({ error: { code: 'not_found', message: 'no record', data: { fleetId: FLEET } } });
+    for (const line of ['', 'noise', JSON.stringify({ result: { record: { fleetId: FLEET } } }), JSON.stringify({ error: { code: 1 } }), `${JSON.stringify({ result: { record } })}\nnoise`]) {
+      expect(ownerAnswer(line), line).toBeUndefined();
+    }
   });
 });

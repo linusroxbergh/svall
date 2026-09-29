@@ -38,6 +38,7 @@
     "./legacy": "./src/legacy.ts",
     "./profile": "./src/profile.ts",
     "./release": "./src/release.ts",
+    "./text": "./src/text.ts",
     "./mobile": "./src/mobile.ts",
     "./tmux/conf": "./src/tmux/conf.ts",
     "./linux/setup": "./src/linux/setup.ts",

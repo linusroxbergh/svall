@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { MachineRecord, OwnerRecord, type FleetId, type MachineId } from '@archipelago/protocol';
 import { configDir } from '../machine.js';
 import { archiExe } from '../release.js';
+import { shq } from '../text.js';
 import { AuthorityFailure, gatewayPaths, type OwnerOp, type OwnerParamsOf } from './authority.js';
 import { gatewayPrefix } from './bin.js';
 import { MAX_LINE } from './server.js';
@@ -17,6 +18,29 @@ const Frame = z.union([
   z.object({ result: z.object({ record: OwnerRecord }) }),
   z.object({ error: z.object({ code: z.string(), message: z.string(), data: z.record(z.string(), z.unknown()).optional() }) }),
 ]);
+
+/** What the gateway answered about a fleet: the record it holds, or why it would not act. */
+export type OwnerAnswer = { record: OwnerRecord } | { error: { code: string; message: string; data?: Record<string, unknown> } };
+
+function lastLine(stdout: string): unknown {
+  try {
+    return JSON.parse(stdout.trim().split('\n').at(-1) ?? '');
+  } catch {
+    return undefined;
+  }
+}
+
+/** The frame `archi gateway owner` prints as the last line of `stdout`; undefined when that line is no frame of the authority's. */
+export function ownerAnswer(stdout: string): OwnerAnswer | undefined {
+  const frame = Frame.safeParse(lastLine(stdout));
+  if (!frame.success) return undefined;
+  return 'result' in frame.data ? { record: frame.data.result.record } : { error: frame.data.error };
+}
+
+/** The machine id `archi version --json` names in `stdout`, past whatever a login shell printed around it; undefined when it names none. */
+export function versionMachineId(stdout: string): string | undefined {
+  return /^\s*"machineId":\s*"([^"]+)"/m.exec(stdout)?.[1];
+}
 
 type Pending = { resolve(record: OwnerRecord): void; reject(err: Error): void; timer: NodeJS.Timeout };
 
@@ -125,21 +149,10 @@ const realSsh: SshRun = (argv) => new Promise((resolve, reject) => {
   });
 });
 
-// one word for the far login shell, whatever the token holds
-const quote = (token: string): string => `'${token.split("'").join("'\\''")}'`;
-
 const Registry = z.object({ machines: z.record(z.string(), MachineRecord) });
 
 // the far archi names its machine before the authority answers, so a route that now leads elsewhere is refused
 const OWNER_GET = '"$1" version --json; exec "$1" gateway owner get --fleet "$2"';
-
-function lastLine(stdout: string): unknown {
-  try {
-    return JSON.parse(stdout.trim().split('\n').at(-1) ?? '');
-  } catch {
-    return undefined;
-  }
-}
 
 export type FleetAuthorityOptions = {
   gatewayMachineId: MachineId;
@@ -176,20 +189,24 @@ export function fleetAuthority(o: FleetAuthorityOptions): { get(fleetId: FleetId
       // a registry that knows no way to the gateway asked for is a wrong question, not a gateway that is away
       const gateway = machines[o.gatewayMachineId];
       if (!gateway?.ssh) throw new AuthorityFailure('invalid_request', `${registry} names no ssh route to the gateway ${o.gatewayMachineId}`);
-      const r = await ssh(['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '--', gateway.ssh, ['sh', '-c', OWNER_GET, 'archi-owner', archiExe(gateway.archiBase), fleetId].map(quote).join(' ')]);
-      const answeredAs = /^\s*"machineId": "([^"]+)"/m.exec(r.stdout)?.[1];
-      if (answeredAs !== undefined && answeredAs !== o.gatewayMachineId) {
-        throw new AuthorityFailure('identity_mismatch', `ssh ${gateway.ssh} reaches machine ${answeredAs}, not the gateway ${o.gatewayMachineId}`);
+      const r = await ssh(['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '--', gateway.ssh, ['sh', '-c', OWNER_GET, 'archi-owner', archiExe(gateway.archiBase), fleetId].map(shq).join(' ')]);
+      const answeredAs = versionMachineId(r.stdout);
+      const line = lastLine(r.stdout);
+      const silent = (): AuthorityFailure =>
+        new AuthorityFailure('disconnected', `ssh ${gateway.ssh} exited ${r.code} without an answer: ${(r.stderr.trim() || r.stdout.trim()).slice(0, 200)}`);
+      // an ssh that answered nothing never reached a machine to tell apart
+      if (answeredAs === undefined && line === undefined) throw silent();
+      if (answeredAs !== o.gatewayMachineId) {
+        throw new AuthorityFailure('identity_mismatch', answeredAs === undefined
+          ? `ssh ${gateway.ssh} answered without naming its machine, so it cannot be told from another than the gateway ${o.gatewayMachineId}`
+          : `ssh ${gateway.ssh} reaches machine ${answeredAs}, not the gateway ${o.gatewayMachineId}`);
       }
       // the wrapper prints its frame whether the authority answered or refused, so the exit code says nothing more
-      const line = lastLine(r.stdout);
-      if (line === undefined) {
-        throw new AuthorityFailure('disconnected', `ssh ${gateway.ssh} exited ${r.code} without an answer: ${(r.stderr.trim() || r.stdout.trim()).slice(0, 200)}`);
-      }
-      const frame = Frame.safeParse(line);
-      if (!frame.success) throw new AuthorityFailure('invalid_request', `ssh ${gateway.ssh} answered with what is no authority's frame: ${JSON.stringify(line).slice(0, 200)}`);
-      if ('result' in frame.data) return frame.data.result.record;
-      throw new AuthorityFailure(frame.data.error.code, frame.data.error.message, frame.data.error.data);
+      const answer = ownerAnswer(r.stdout);
+      if (line === undefined) throw silent();
+      if (!answer) throw new AuthorityFailure('invalid_request', `ssh ${gateway.ssh} answered with what is no authority's frame: ${JSON.stringify(line).slice(0, 200)}`);
+      if ('record' in answer) return answer.record;
+      throw new AuthorityFailure(answer.error.code, answer.error.message, answer.error.data);
     },
   };
 }
