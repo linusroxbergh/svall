@@ -10,6 +10,7 @@ import { isProfileName, PRIVATE, profileOf } from '@archipelago/archid/profile';
 import { resolvePaths } from '@archipelago/archid/paths';
 import { archiExe } from '@archipelago/archid/release';
 import { tmuxTooOld } from '@archipelago/archid/tmux/conf';
+import { shq } from '@archipelago/archid/text';
 import type { Verify } from '../../../../scripts/release-manifest.mjs';
 import { Client } from '../client.js';
 import type { Check } from '../commands/doctor.js';
@@ -24,7 +25,7 @@ import { redact } from './process.js';
 import { MachineRegistry, type MachineEntry } from './registry.js';
 import { fileStore } from './recovery.js';
 import { cachedOwner, readRoute } from './route.js';
-import { shellQuote, type SshMaster } from './ssh.js';
+import type { SshMaster } from './ssh.js';
 
 const PROBE_TIMEOUT = 30_000;
 // a fleet made or taken over there waits on systemd to stop and start its daemon
@@ -109,7 +110,7 @@ async function flow(emit: (e: StepEvent) => void, fn: (run: Runner) => Promise<v
 
 // one line for the far side's login shell: the script is literal, and only `sh -c` names reach it
 const sh = (name: string, script: string, ...args: string[]): string[] =>
-  ['sh', '-c', shellQuote(script), shellQuote(name), ...args.map(shellQuote)];
+  ['sh', '-c', shq(script), shq(name), ...args.map(shq)];
 
 const WHICH = 'for c in "$@"; do if command -v "$c" >/dev/null 2>&1; then echo "$c yes"; else echo "$c no"; fi; done';
 const TOOLS = ['tailscale', 'tmux', 'git', 'rsync', 'systemctl', 'loginctl'];
@@ -187,7 +188,7 @@ async function homeProbe(master: SshMaster): Promise<{ home: string; user: strin
 // the companion's doctor prints its report and then exits 1 for any failing check, so a report is
 // read whatever the exit code, and only a run that printed none is a failure
 async function remoteJson<T>(master: SshMaster, archiBase: string, argv: string[], what: string): Promise<T> {
-  const r = await master.run([shellQuote(archiExe(archiBase)), ...argv], { timeoutMs: PROBE_TIMEOUT });
+  const r = await master.run([shq(archiExe(archiBase)), ...argv], { timeoutMs: PROBE_TIMEOUT });
   try {
     return JSON.parse(r.stdout) as T;
   } catch {
@@ -223,7 +224,7 @@ async function agentChecks(master: SshMaster, o: { destination: string; home: st
   for (const kind of AGENT_KINDS) {
     await run.step(kind, async () => {
       const a = AGENTS[kind];
-      const call = (args: string[]) => master.run(['env', shellQuote(`PATH=${PATH}`), a.bin, ...args], { timeoutMs: PROBE_TIMEOUT });
+      const call = (args: string[]) => master.run(['env', shq(`PATH=${PATH}`), a.bin, ...args], { timeoutMs: PROBE_TIMEOUT });
       const todo = (detail: string, how: string): Outcome<void> => ({ value: undefined, status: 'warn', detail, action: `ssh ${o.destination}, then ${how}` });
       const v = await call(['--version']);
       // env exits 127 for a program it finds nowhere on that PATH
@@ -583,7 +584,7 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
       try {
         master = await d.openMaster(entry.record.ssh);
         await sameMachine(master, entry);
-        const out = await probe(master, [shellQuote(archiExe(entry.record.archiBase)), 'uninstall'], 'archi uninstall');
+        const out = await probe(master, [shq(archiExe(entry.record.archiBase)), 'uninstall'], 'archi uninstall');
         return { value: true, detail: out.trim().split('\n').at(-1) ?? 'archi uninstall' };
       } catch (err) {
         if (err instanceof StepError && err.action) throw err;
@@ -647,8 +648,8 @@ type FarCopy = { outcome: 'created' | 'held' | 'rekeyed'; home: string; unit: st
 async function provisionCopy(master: SshMaster, entry: Registered, fleetId: FleetId, profile: string): Promise<string> {
   const name = entry.record.name;
   const r = await master.run([
-    shellQuote(archiExe(entry.record.archiBase)), '-p', shellQuote(profile),
-    'fleet', 'provision', '--id', shellQuote(fleetId), '--gateway', shellQuote(entry.id), '--json',
+    shq(archiExe(entry.record.archiBase)), '-p', shq(profile),
+    'fleet', 'provision', '--id', shq(fleetId), '--gateway', shq(entry.id), '--json',
   ], { timeoutMs: PROVISION_TIMEOUT });
   if (r.code !== 0) {
     const said = r.stderr.trim().replace(/^archi: /, '').slice(0, 400) || `archi fleet provision exited ${r.code ?? `on ${r.signal}`}`;

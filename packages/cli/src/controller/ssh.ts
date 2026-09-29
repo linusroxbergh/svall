@@ -50,7 +50,6 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => { setTimeout(r, 
  * One word for the login shell on the far side of a `run`, whatever the token holds. Single quotes
  * cover everything but a single quote, which is closed, escaped and reopened.
  */
-export const shellQuote = (token: string): string => `'${token.split("'").join("'\\''")}'`;
 
 /**
  * The host every command on a master names. ssh reaches the far machine only through the master's
@@ -198,7 +197,7 @@ export class SshMaster {
    * only when no `--` preceded it (ssh.c `opt_terminated`), so the one `--` in `argv` makes the
    * destination data and sends every remote argument on verbatim — a second one would arrive at the
    * far shell as a word. That shell is handed the argv as a single line, so anything but a literal
-   * flag goes through `shellQuote` first.
+   * flag goes through `shq` first.
    */
   run(argv: string[], o: { timeoutMs?: number; signal?: AbortSignal; maxOutputBytes?: number; input?: string | Uint8Array } = {}): Promise<RunResult> {
     return runProcess('ssh', this.argv([], argv), { ...o, timeoutMs: o.timeoutMs ?? RUN_TIMEOUT });

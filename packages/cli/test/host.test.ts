@@ -7,10 +7,11 @@ import { pathToFileURL } from 'node:url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WebSocketServer } from 'ws';
 import { FleetId, MachineId, PROTOCOL_VERSION } from '@archipelago/protocol';
+import { shq } from '@archipelago/archid/text';
 import { addHost, doctorHost, enableHost, removeHost, upgradeHost, type HostDeps, type StepEvent } from '../src/controller/host.js';
 import { runProcess } from '../src/controller/process.js';
 import { MachineRegistry } from '../src/controller/registry.js';
-import { shellQuote, SshMaster } from '../src/controller/ssh.js';
+import { SshMaster } from '../src/controller/ssh.js';
 import { cleanHomes, makeHome, waitFor } from '../../archid/test/helpers.js';
 import { companionArchive, ephemeralSigner, linkedArchive, smuggledArchive } from './controller/archive.js';
 import { installFakeSsh, type FakeSsh } from './controller/fake-ssh.js';
@@ -1279,7 +1280,7 @@ describe.skipIf(!gnuTar)('the far check under GNU tar (set ARCHI_TEST_GNU_TAR=<d
 
   it('checks the files against the SHA256SUMS the pinned key signed, whatever the archive writes over it', async () => {
     const pinned = `mkdir -p ${base}/releases/1.2.2/release && cat > ${base}/releases/1.2.2/release/allowed_signers && ln -sfn ${base}/releases/1.2.2 ${base}/current`;
-    expect((await far.run(['sh', '-c', shellQuote(pinned)], { input: fs.readFileSync(signer.signers) })).code).toBe(0);
+    expect((await far.run(['sh', '-c', shq(pinned)], { input: fs.readFileSync(signer.signers) })).code).toBe(0);
     const { bootstrapSetup, uploadArchive } = await import('../src/controller/install.js');
     const install = async (archive: string): Promise<string> => {
       const remote = `/root/uploads/${path.basename(archive)}`;
@@ -1305,7 +1306,7 @@ describe('the localhost sshd integration', () => {
       const master = await SshMaster.open({ destination: live as string });
       try {
         const script = 'printf "%s\\n" "$0" "$1" "$HOME" "$USER"';
-        const r = await master.run(['sh', '-c', shellQuote(script), shellQuote('archi-home'), shellQuote("a b'c")]);
+        const r = await master.run(['sh', '-c', shq(script), shq('archi-home'), shq("a b'c")]);
         expect(r.code).toBe(0);
         // the far side's login shell split the line back into exactly the words the probe named
         const [marker, word, home, user] = r.stdout.split('\n');

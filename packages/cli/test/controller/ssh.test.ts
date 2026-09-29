@@ -2,8 +2,9 @@ import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { shq } from '@archipelago/archid/text';
 import { redact, runProcess } from '../../src/controller/process.js';
-import { classifyExit, classifySsh, shellQuote, SshError, SshMaster } from '../../src/controller/ssh.js';
+import { classifyExit, classifySsh, SshError, SshMaster } from '../../src/controller/ssh.js';
 import { installFakeSsh, type FakeSsh } from './fake-ssh.js';
 
 describe('runProcess', () => {
@@ -47,10 +48,10 @@ describe('redact', () => {
   });
 });
 
-describe('shellQuote', () => {
+describe('shq, which every far command line quotes with', () => {
   it('makes one word of anything a path can hold', () => {
-    expect(shellQuote("/home/li nus/it's; touch x")).toBe("'/home/li nus/it'\\''s; touch x'");
-    expect(shellQuote('plain')).toBe("'plain'");
+    expect(shq("/home/li nus/it's; touch x")).toBe("'/home/li nus/it'\\''s; touch x'");
+    expect(shq('plain')).toBe("'plain'");
   });
 });
 

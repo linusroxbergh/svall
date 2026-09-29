@@ -7,12 +7,13 @@ import { machineId } from '@archipelago/archid/machine';
 import { resolvePaths } from '@archipelago/archid/paths';
 import { isProfileName, PRIVATE } from '@archipelago/archid/profile';
 import { archiExe, releaseVersion } from '@archipelago/archid/release';
+import { shq } from '@archipelago/archid/text';
 import { Client } from '../client.js';
 import { localOwner, remoteOwner } from './authority.js';
 import { redact } from './process.js';
 import { LOCAL, MachineRegistry, type MachineEntry } from './registry.js';
 import { cachedOwner, readRoute, writeRoute } from './route.js';
-import { classifyExit, shellQuote, SshError, SshMaster, type SshErrorKind } from './ssh.js';
+import { classifyExit, SshError, SshMaster, type SshErrorKind } from './ssh.js';
 
 const MAX_ATTEMPTS = 5;
 export const FIRST_DELAY = 1000;
@@ -38,7 +39,7 @@ export class MachineMismatch extends SshError {
  * the call that needs it, which fails on its own.
  */
 export async function identify(master: Pick<SshMaster, 'run'>, machine: MachineEntry): Promise<void> {
-  const r = await master.run([shellQuote(archiExe(machine.record.archiBase)), 'version', '--json']);
+  const r = await master.run([shq(archiExe(machine.record.archiBase)), 'version', '--json']);
   if (r.code !== 0) return;
   const where = machine.record.ssh ?? machine.record.name;
   const id = versionMachineId(r.stdout);
@@ -109,8 +110,8 @@ export async function remoteConnectionInfo(master: SshMaster, machine: MachineEn
   if (o.profile !== undefined && !isProfileName(o.profile)) {
     throw new SshError('other', `${name}: the profile ${JSON.stringify(o.profile)} is not a profile name`);
   }
-  const exe = shellQuote(archiExe(machine.record.archiBase));
-  const r = await master.run([exe, 'connection-info', '--json', ...(o.profile ? ['-p', shellQuote(o.profile)] : [])]);
+  const exe = shq(archiExe(machine.record.archiBase));
+  const r = await master.run([exe, 'connection-info', '--json', ...(o.profile ? ['-p', shq(o.profile)] : [])]);
   if (r.code !== 0) {
     // an exit that is neither ssh's nor the far shell's came back from the companion
     throw new SshError(classifyExit(r, 'daemon_down'), `${name}: archi connection-info exited ${r.code}: ${r.stderr.trim().slice(0, 400)}`);

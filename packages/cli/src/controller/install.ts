@@ -3,9 +3,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { shq } from '@archipelago/archid/text';
 import { archiveRelease, MANIFEST, NAMESPACE, SIG, SUMS, verifyRelease, verifySignature, type Verify } from '../../../../scripts/release-manifest.mjs';
 import { runProcess } from './process.js';
-import { shellQuote, SshError, type SshMaster } from './ssh.js';
+import { SshError, type SshMaster } from './ssh.js';
 
 const TAR_TIMEOUT = 120_000;
 const UPLOAD_TIMEOUT = 600_000;
@@ -126,9 +127,9 @@ async function remote(master: SshMaster, argv: string[], what: string, timeoutMs
 /** Streams the archive onto the far machine. The far shell is handed one word for the path. */
 export async function uploadArchive(master: SshMaster, o: { archive: string; remote: string }): Promise<void> {
   const dir = path.posix.dirname(o.remote);
-  await remote(master, ['mkdir', '-p', shellQuote(dir)], `mkdir -p ${dir}`, TAR_TIMEOUT);
+  await remote(master, ['mkdir', '-p', shq(dir)], `mkdir -p ${dir}`, TAR_TIMEOUT);
   const data = fs.readFileSync(o.archive);
-  const r = await master.run(['sh', '-c', shellQuote('cat > "$1"'), '--', shellQuote(o.remote)], { input: data, timeoutMs: UPLOAD_TIMEOUT });
+  const r = await master.run(['sh', '-c', shq('cat > "$1"'), '--', shq(o.remote)], { input: data, timeoutMs: UPLOAD_TIMEOUT });
   if (r.code !== 0) throw new SshError(r.code === 255 ? 'unreachable' : 'other', `the companion could not be written to ${o.remote}: ${r.stderr.trim().slice(0, 400)}`);
 }
 
@@ -181,7 +182,7 @@ export type FarCheck = 'pinned' | 'unpinned' | 'first' | 'digests';
  */
 async function unpackStaged(master: SshMaster, o: { archive: string; staging: string; version: string; archiBase?: string }): Promise<{ check: FarCheck; signers: string }> {
   const signers = path.posix.join(o.archiBase ?? '', 'current', 'release', 'allowed_signers');
-  const r = await master.run(['sh', '-c', shellQuote(UNPACK), 'archi-unpack', ...[o.archive, o.staging, o.version, o.archiBase ?? ''].map(shellQuote)], { timeoutMs: TAR_TIMEOUT });
+  const r = await master.run(['sh', '-c', shq(UNPACK), 'archi-unpack', ...[o.archive, o.staging, o.version, o.archiBase ?? ''].map(shq)], { timeoutMs: TAR_TIMEOUT });
   const said = r.stderr.trim().slice(0, 400);
   const fail: Record<number, string> = {
     3: `the uploaded release is not signed by a key ${signers} pins: ${said || 'ssh-keygen refused it'}`,
@@ -211,22 +212,22 @@ const checked = (c: { check: FarCheck; signers: string }): string => ({
  * machine with none rests on the controller's check before the upload.
  */
 export async function bootstrapSetup(master: SshMaster, o: { staging: string; archive: string; version: string; allowUnsigned: boolean; installed: string }): Promise<string> {
-  await remote(master, ['mkdir', '-p', shellQuote(o.staging)], `mkdir -p ${o.staging}`, TAR_TIMEOUT);
+  await remote(master, ['mkdir', '-p', shq(o.staging)], `mkdir -p ${o.staging}`, TAR_TIMEOUT);
   try {
     const far = await unpackStaged(master, { archive: o.archive, staging: o.staging, version: o.version, archiBase: o.allowUnsigned ? undefined : o.installed });
     const exe = path.posix.join(o.staging, 'releases', o.version, 'bin', 'archi');
-    const out = await remote(master, [shellQuote(exe), 'setup', '--release', shellQuote(o.archive), ...(o.allowUnsigned ? ['--allow-unsigned'] : [])], 'archi setup', SETUP_TIMEOUT);
+    const out = await remote(master, [shq(exe), 'setup', '--release', shq(o.archive), ...(o.allowUnsigned ? ['--allow-unsigned'] : [])], 'archi setup', SETUP_TIMEOUT);
     return `${out.trimEnd()}; ${checked(far)}\n`;
   } finally {
     // setup copies what it installs into releases/, so neither the staged tree nor the upload is needed after it
-    await master.run(['rm', '-rf', shellQuote(o.staging), shellQuote(o.archive)], { timeoutMs: TAR_TIMEOUT }).catch(() => undefined);
+    await master.run(['rm', '-rf', shq(o.staging), shq(o.archive)], { timeoutMs: TAR_TIMEOUT }).catch(() => undefined);
   }
 }
 
 /** The release the far machine's `current` names. */
 export async function currentRelease(master: SshMaster, archiBase: string): Promise<string> {
   const link = path.posix.join(archiBase, 'current');
-  return path.posix.basename((await remote(master, ['readlink', shellQuote(link)], `readlink ${link}`, TAR_TIMEOUT)).trim());
+  return path.posix.basename((await remote(master, ['readlink', shq(link)], `readlink ${link}`, TAR_TIMEOUT)).trim());
 }
 
 /**
@@ -235,5 +236,5 @@ export async function currentRelease(master: SshMaster, archiBase: string): Prom
  */
 export function remoteRollback(master: SshMaster, o: { archiBase: string; from: string; to: string }): Promise<string> {
   const exe = path.posix.join(o.archiBase, 'releases', o.from, 'bin', 'archi');
-  return remote(master, [shellQuote(exe), 'setup', '--rollback', shellQuote(o.to)], `archi setup --rollback ${o.to}`, SETUP_TIMEOUT);
+  return remote(master, [shq(exe), 'setup', '--rollback', shq(o.to)], `archi setup --rollback ${o.to}`, SETUP_TIMEOUT);
 }

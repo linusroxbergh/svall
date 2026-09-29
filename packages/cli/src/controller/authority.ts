@@ -1,7 +1,8 @@
 import { AuthorityFailure, gatewayPaths, type OwnerOp } from '@archipelago/archid/gateway/authority';
 import { gatewayPrefix } from '@archipelago/archid/gateway/bin';
 import { AuthorityClient, ownerAnswer, type OwnerAnswer } from '@archipelago/archid/gateway/client';
-import { classifyExit, shellQuote, SshError, type SshMaster } from './ssh.js';
+import { shq } from '@archipelago/archid/text';
+import { classifyExit, SshError, type SshMaster } from './ssh.js';
 
 const OWNER_TIMEOUT = 30_000;
 
@@ -19,8 +20,8 @@ export type OwnerRequest = {
  * stdout whether it succeeded or not, so the exit code is not what is read here.
  */
 export async function remoteOwner(o: OwnerRequest): Promise<OwnerAnswer> {
-  const argv = [shellQuote(o.exe), 'gateway', 'owner', shellQuote(o.op), '--fleet', shellQuote(o.fleetId)];
-  if (o.params) argv.push('--params', shellQuote(JSON.stringify(o.params)));
+  const argv = [shq(o.exe), 'gateway', 'owner', shq(o.op), '--fleet', shq(o.fleetId)];
+  if (o.params) argv.push('--params', shq(JSON.stringify(o.params)));
   const r = await o.master.run(argv, { timeoutMs: OWNER_TIMEOUT });
   const answer = ownerAnswer(r.stdout);
   if (!answer) {
