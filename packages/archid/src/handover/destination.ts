@@ -192,7 +192,7 @@ export class DestinationHandover {
         const linked = linkProblem(r.path, { kind: 'root', id: r.id });
         const check: WireCheck = linked
           ? { ok: false, path: r.path, blocker: linked }
-          : wire(await this.replicas.inspect(r, { excludes: p.excludes, ...(r.content && { content: r.content }), keep: stays.keep(r.path) }));
+          : wire(await this.replicas.inspect(r, { excludes: p.excludes, ...(r.files && { incoming: r.files }), keep: stays.keep(r.path) }));
         roots.push({ id: r.id, check });
       }
       const missing = (p.links ?? []).filter((l) => { try { fs.lstatSync(l); return false; } catch { return true; } });

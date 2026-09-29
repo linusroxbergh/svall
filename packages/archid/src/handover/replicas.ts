@@ -95,10 +95,10 @@ export type ReplicaOptions = {
 };
 
 /**
- * `content`: the digest of what the handover brings to the root, which a root no handover left may already hold exactly.
+ * `incoming`: what the handover brings to the root, which a root no handover left may already hold exactly.
  * `keep`: folders under the root, relative to it, that belong to this machine and that no handover writes or reads.
  */
-export type Inspect = { transactionId?: string; excludes: readonly string[]; content?: string; keep?: readonly string[] };
+export type Inspect = { transactionId?: string; excludes: readonly string[]; incoming?: readonly TransferFile[]; keep?: readonly string[] };
 /** `imported` and `landed`: the root as this transaction's own Git import left it, or as its transfer verified it, which its copy may still hold when claimed again. */
 export type Claim = { transactionId: string; excludes: readonly string[]; incoming: readonly TransferFile[]; keep?: readonly string[]; imported?: readonly TransferFile[]; landed?: readonly TransferFile[] };
 export type Seal = { transactionId: string; generation: number; manifestDigest: string; files: readonly TransferFile[] };
@@ -170,7 +170,7 @@ export class ReplicaStore {
   /** Read-only, for preflight: whether a transaction could claim this root, and what stops it if not. */
   async inspect(root: ReplicaRoot, t: Inspect): Promise<ReplicaCheck> {
     const at = this.canonical(root.path);
-    const v = await this.assess(root, at, this.read(at), t.transactionId, t.excludes, undefined, t.content, t.keep ?? []);
+    const v = await this.assess(root, at, this.read(at), t.transactionId, t.excludes, t.incoming, t.keep ?? []);
     if (v.kind === 'blocked') return this.refused(at, v);
     return { ok: true, path: at, kind: v.kind === 'resume' || v.kind === 'replica' ? v.kind : 'absent' };
   }
@@ -183,7 +183,7 @@ export class ReplicaStore {
     const at = this.canonical(root.path);
     const held = this.read(at);
     const keep = [...(t.keep ?? [])];
-    const v = await this.assess(root, at, held, t.transactionId, t.excludes, t.incoming, contentDigest(t.incoming), keep);
+    const v = await this.assess(root, at, held, t.transactionId, t.excludes, t.incoming, keep);
     const receiving = (baseline: TransferFile[]): ReplicaRecord => ({
       ...this.base(at), state: 'receiving', transactionId: t.transactionId, baseline, incoming: [...t.incoming], ...(keep.length && { kept: keep }),
     });
@@ -270,8 +270,7 @@ export class ReplicaStore {
   }
 
   private async assess(
-    root: ReplicaRoot, at: string, held: Held, transactionId: string | undefined, excludes: readonly string[], incoming: readonly TransferFile[] | undefined,
-    content: string | undefined, keep: readonly string[],
+    root: ReplicaRoot, at: string, held: Held, transactionId: string | undefined, excludes: readonly string[], incoming: readonly TransferFile[] | undefined, keep: readonly string[],
   ): Promise<Verdict> {
     const problem = rootProblem(root, incoming ?? []);
     if (problem) return blocked('path_unsupported', `${root.path}: ${problem}`, root);
@@ -288,7 +287,7 @@ export class ReplicaStore {
     if (!st) return { kind: 'reserve' };
     const r = held.record;
     const occupied = blocked('destination_occupied', `${at} already exists and no handover left it there`, root);
-    if (!r) return (await this.holding(root, at, excludes, content, keep)) ?? occupied;
+    if (!r) return (await this.holding(root, at, excludes, incoming, keep)) ?? occupied;
     // a crash can fall between creating a reserved root and marking it; an empty root holds no one's work
     if (r.state === 'reserved') return this.empty(root, at, st) ? { kind: 'adopt' } : occupied;
     if (r.state === 'receiving' && r.transactionId === transactionId) return { kind: 'resume' };
@@ -297,17 +296,15 @@ export class ReplicaStore {
     // rsync spares only what this transfer excludes, so the proof reads everything else
     const { divergence, files } = await proveReplica(at, accepted, excludes, this.opts.scanFs, root.kind, kept(keep));
     if (!diverged(divergence)) return { kind: 'replica', found: files };
-    // a preflight has only the digest of what this handover brings, so it can take such a copy only whole
-    const whole = r.state === 'receiving' && !incoming && (await this.holding(root, at, excludes, content, keep));
-    return whole || { kind: 'blocked', blocker: divergenceBlocker(root, at, divergence), divergence };
+    return { kind: 'blocked', blocker: divergenceBlocker(root, at, divergence), divergence };
   }
 
   /** A root that holds exactly what this handover brings, read under its excludes, and so nothing a copy would lose. */
-  private async holding(root: ReplicaRoot, at: string, excludes: readonly string[], content: string | undefined, keep: readonly string[]): Promise<Verdict | undefined> {
-    if (content === undefined) return undefined;
+  private async holding(root: ReplicaRoot, at: string, excludes: readonly string[], incoming: readonly TransferFile[] | undefined, keep: readonly string[]): Promise<Verdict | undefined> {
+    if (incoming === undefined) return undefined;
     const scan = await scanPath(at, rootMatcher(root.kind, excludes), this.opts.scanFs);
     const files = (scan?.files ?? []).filter((f) => !kept(keep)(f.path));
-    if (!scan || scan.problems.length || contentDigest(files) !== content) return undefined;
+    if (!scan || scan.problems.length || contentDigest(files) !== contentDigest(incoming)) return undefined;
     return { kind: 'replica', found: files };
   }
 

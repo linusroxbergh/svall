@@ -7,7 +7,7 @@ import { AUTHORITY_SCHEMA_VERSION, FleetId, MachineId, PROTOCOL_VERSION, type Bl
 import { AuthorityClient } from '@archipelago/archid/gateway/client';
 import { startAuthorityServer } from '@archipelago/archid/gateway/server';
 import { manifestDigest, spaceNeed } from '@archipelago/archid/handover/manifest';
-import { contentDigest, replicaRoots } from '@archipelago/archid/handover/replicas';
+import { replicaRoots } from '@archipelago/archid/handover/replicas';
 import { resolvePaths } from '@archipelago/archid/paths';
 import { Handover, Refused } from '../../src/controller/handover.js';
 import { authorityOp, connectHandover, gatewayOf, Masters, reconnecting } from '../../src/controller/reach.js';
@@ -544,14 +544,14 @@ describe('preflight', () => {
     expect(w.ops).not.toContain('gateway:begin');
   });
 
-  it('tells the destination what each root brings, so a root that already holds exactly that is no blocker', async () => {
+  it('tells the destination what each root brings, so a root that already holds that is no blocker', async () => {
     const w = new World();
-    let asked: { id: string; content?: string }[] = [];
+    let asked: { id: string; files?: unknown[] }[] = [];
     const inspect = w.destination.answers['handover.inspect'];
-    w.destination.answers['handover.inspect'] = ((p: { roots: { id: string; content?: string }[] }) => { asked = p.roots; return (inspect as (x: unknown) => object)(p); }) as never;
+    w.destination.answers['handover.inspect'] = ((p: { roots: { id: string; files?: unknown[] }[] }) => { asked = p.roots; return (inspect as (x: unknown) => object)(p); }) as never;
     const pre = await controller(w).preflight(trift, {});
     const m = pre.manifest!;
-    expect(asked.map((r) => [r.id, r.content])).toEqual(replicaRoots(m).map((r) => [r.id, contentDigest(m.roots.find((x) => x.id === r.id)!.files)]));
+    expect(asked.map((r) => [r.id, r.files])).toEqual(replicaRoots(m).map((r) => [r.id, m.roots.find((x) => x.id === r.id)!.files]));
   });
 
   it('asks the source about a kept commit the destination cannot prove comes back, and blocks only on one the source cannot reach', async () => {

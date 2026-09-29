@@ -8,7 +8,7 @@ import { resolvePaths } from '../../src/paths.js';
 import { realStages } from '../../src/handover/durable.js';
 import { DEFAULT_EXCLUDES, excludeMatcher } from '../../src/handover/inventory.js';
 import { realScanFs, scanPath } from '../../src/handover/manifest.js';
-import { contentDigest, ReplicaRecord, ReplicaStore, realReplicaFs, replicaRoots, type ReplicaOptions, type ReplicaRoot } from '../../src/handover/replicas.js';
+import { ReplicaRecord, ReplicaStore, realReplicaFs, replicaRoots, type ReplicaOptions, type ReplicaRoot } from '../../src/handover/replicas.js';
 
 const made: string[] = [];
 const tmp = (): string => { const d = fs.mkdtempSync('/tmp/archi-t-'); made.push(d); return d; };
@@ -193,7 +193,7 @@ describe('an existing root', () => {
       edit(app);
       const incoming = await content(mac);
       const store = w.store();
-      for (const check of [await store.inspect(dir(app), { excludes: EXCLUDES, content: contentDigest(incoming) }), await store.claim(dir(app), claimFor(TX, incoming))]) {
+      for (const check of [await store.inspect(dir(app), { excludes: EXCLUDES, incoming }), await store.claim(dir(app), claimFor(TX, incoming))]) {
         expect(check).toMatchObject({ ok: false, blocker: { code: 'destination_occupied', entity: { kind: 'root', id: 'r_app' } } });
       }
       expect(fs.existsSync(w.recordFile(app))).toBe(false);
@@ -210,7 +210,7 @@ describe('an existing root', () => {
     write(home, 'node_modules/x.js', 'another cache');
     const incoming = await content(mac);
     const store = w.store();
-    expect(await store.inspect(dir(home, 'r_home'), { excludes: EXCLUDES, content: contentDigest(incoming) })).toMatchObject({ ok: true, kind: 'replica' });
+    expect(await store.inspect(dir(home, 'r_home'), { excludes: EXCLUDES, incoming })).toMatchObject({ ok: true, kind: 'replica' });
     // an inspect that does not say what the handover brings has nothing to find it equal to
     expect(await store.inspect(dir(home, 'r_home'), { excludes: EXCLUDES })).toMatchObject({ ok: false, blocker: { code: 'destination_occupied' } });
 
@@ -465,16 +465,17 @@ describe("an aborted transaction's partial copy", () => {
     expect(w.record(app)).toMatchObject({ state: 'receiving', transactionId: TX2, baseline: await content(app) });
   });
 
-  it('is taken over by a later transaction that brings a file the aborted copy wrote there, and passes preflight while it holds exactly what that one brings', async () => {
+  it('is taken over by a later transaction that brings a file the aborted copy wrote there, and passes that one\'s preflight as its claim does', async () => {
     const { w, app, source } = await partial();
     // the aborted copy finished, with a file the source wrote while it ran
     write(source, 'e.txt', 'written on the source during the copy');
     fs.cpSync(source, app, { recursive: true });
     const store = w.store();
-    expect(await store.inspect(dir(app), { excludes: EXCLUDES, content: contentDigest(await content(source)) })).toMatchObject({ ok: true, kind: 'replica' });
+    expect(await store.inspect(dir(app), { excludes: EXCLUDES, incoming: await content(source) })).toMatchObject({ ok: true, kind: 'replica' });
     expect(await store.inspect(dir(app), { excludes: EXCLUDES })).toMatchObject({ ok: false, divergence: { added: { preview: ['e.txt'] } } });
     // the source moved on since, and still holds that file
     write(source, 'c.txt', 'changed on the source');
+    expect(await store.inspect(dir(app), { excludes: EXCLUDES, incoming: await content(source) })).toMatchObject({ ok: true, kind: 'replica' });
     expect(await store.claim(dir(app), claimFor(TX2, await content(source)))).toMatchObject({ ok: true, kind: 'replica' });
     expect(w.record(app)).toMatchObject({ state: 'receiving', transactionId: TX2 });
   });

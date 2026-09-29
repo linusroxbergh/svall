@@ -3,7 +3,7 @@ import { z } from 'zod';
 import {
   Blocker, Generation, HandoverChoices, HandoverEntityKind, HandoverMachines, HandoverPhase, HandoverTransactionStatus, LandedRoot, MachineId,
   CommitAt, KeptCommit, ManifestSummary, OwnerRecord, OwnershipInfo, MachinePath, ReceivedGraph, ReplicaCheck, ReplicaRootSpec, ResumeFolder, RootClaim, RootProbe, Sha256, SystemInfo, TransactionId, TransferManifestV1,
-  Warning,
+  TransferRoot, Warning,
 } from './handover.js';
 import { Portrait } from './portraits.js';
 import { AgentKind, AgentStatus, BrowserTab, Cell, Character, ContextItem, FleetState, Island, Size } from './state.js';
@@ -249,10 +249,11 @@ export const methods = {
     result: z.object({ manifestSummary: ManifestSummary, blockers: z.array(Blocker), warnings: z.array(Warning), manifest: TransferManifestV1 }),
   },
   // read-only, on the destination: whether each root could be claimed there, what each of `folders` is good for, and which of `links` is not there.
-  // A root's `content` is the digest of what the handover brings to it, which a root no handover left may already hold exactly
+  // A root's `files` are what the handover brings to it, which a root no handover left may already hold exactly, and a copy another handover was
+  // let go with may hold in part
   'handover.inspect': {
     params: z.object({
-      roots: z.array(ReplicaRootSpec.extend({ content: Sha256.optional() })), excludes: z.array(z.string()), folders: z.array(MachinePath), links: z.array(z.string()).optional(),
+      roots: z.array(ReplicaRootSpec.extend({ files: TransferRoot.shape.files.optional() })), excludes: z.array(z.string()), folders: z.array(MachinePath), links: z.array(z.string()).optional(),
       git: z.array(ReceivedGraph).optional(), resumes: z.array(ResumeFolder).optional(),
     }),
     result: z.object({

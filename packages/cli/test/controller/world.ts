@@ -495,7 +495,8 @@ export class World {
       call: ((method: string, params: never) => this.call(port, method, () => {
         const answer = this[port].answers[method];
         if (!answer) throw new Refused('unknown_method', method);
-        return answer(structuredClone(params));
+        // what the wire carries: the params as JSON
+        return answer(JSON.parse(JSON.stringify(params)) as never);
       })) as Daemon['call'],
     };
   }

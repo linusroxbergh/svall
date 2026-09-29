@@ -21,7 +21,7 @@ import { canonicalDigest } from '../../src/handover/hash.js';
 import { DEFAULT_EXCLUDES, buildInventory, rootMatcher } from '../../src/handover/inventory.js';
 import { buildManifest, manifestDigest, scanPath } from '../../src/handover/manifest.js';
 import { ProcessTable, type Proc } from '../../src/handover/processes.js';
-import { contentDigest, ReplicaStore, replicaRoots } from '../../src/handover/replicas.js';
+import { ReplicaStore, replicaRoots } from '../../src/handover/replicas.js';
 import type { Clock } from '../../src/handover/rest.js';
 import { HandoverService } from '../../src/handover/service.js';
 import type { AgentProbe } from '../../src/handover/sessions/registry.js';
@@ -1902,14 +1902,15 @@ describe('destination claim', () => {
     const next = structuredClone({ ...s.manifest, transactionId: 'tx-2' });
     const ada = next.roots.find((r) => r.path === path.join(s.dst, 'work/ada'))!;
     ada.files = (await scanPath(path.join(s.src, 'work/ada'), rootMatcher(ada.kind, next.excludes)))!.files;
-    // preflight gets only a digest of what the next handover brings, so it still reads that .DS_Store as diverged
-    const content = (id: string) => contentDigest(next.roots.find((x) => x.id === id)!.files);
-    const pre = await d.handover.inspect({ roots: replicaRoots(next).map((x) => ({ ...x, content: content(x.id) })), excludes: next.excludes, folders: [] });
-    expect(pre.roots.find((x) => x.id === ada.id)!.check).toMatchObject({ ok: false, blocker: { code: 'destination_diverged', message: expect.stringContaining('.DS_Store') } });
+    // preflight reads what the next handover brings file by file, as its claim does
+    const bo = replicaRoots(s.manifest).find((x) => x.path === path.join(s.dst, 'work/bo'))!;
+    const brings = replicaRoots(next).map((x) => ({ ...x, files: next.roots.find((r) => r.id === x.id)!.files }));
+    const pre = await d.handover.inspect({ roots: brings, excludes: next.excludes, folders: [] });
+    expect(pre.roots.find((x) => x.id === ada.id)!.check).toEqual({ ok: true, path: ada.path, kind: 'replica' });
+    expect(pre.roots.find((x) => x.id === bo.id)!.check).toMatchObject({ ok: false, blocker: { code: 'destination_diverged', message: expect.stringContaining('index.ts') } });
     d.gateway.record = { fleetId, generation: 4, ownerMachineId: mac, transaction: { id: 'tx-2', fromMachineId: mac, toMachineId: trift, phase: 'preparing', startedAt: 2 } };
     const r = await d.handover.claim({ transactionId: 'tx-2', generation: 5, manifest: next, manifestDigest: manifestDigest(next) });
 
-    const bo = replicaRoots(s.manifest).find((x) => x.path === path.join(s.dst, 'work/bo'))!;
     expect(r.roots.find((x) => x.id === ada.id)!.check).toEqual({ ok: true, path: ada.path, kind: 'replica' });
     expect(r.roots.find((x) => x.id === bo.id)!.check).toMatchObject({ ok: false, blocker: { code: 'destination_diverged', message: expect.stringContaining('index.ts') } });
     expect(fs.readFileSync(path.join(s.dst, 'work/bo/index.ts'), 'utf8')).toContain('edited here');
@@ -2125,7 +2126,7 @@ describe('a destination root that already holds what the handover brings', () =>
   const copyMc = ({ src, dst }: { src: string; dst: string }): void => { fs.cpSync(path.join(src, 'mc'), path.join(dst, 'mc'), { recursive: true }); };
   const mcOf = (s: Scene) => replicaRoots(s.manifest).find((x) => x.path === path.join(s.dst, 'mc'))!;
   const inspected = (s: Scene) => daemon(s).handover.inspect({
-    roots: replicaRoots(s.manifest).map((r) => ({ ...r, content: contentDigest(s.manifest.roots.find((x) => x.id === r.id)!.files) })),
+    roots: replicaRoots(s.manifest).map((r) => ({ ...r, files: s.manifest.roots.find((x) => x.id === r.id)!.files })),
     excludes: s.manifest.excludes, folders: [s.dst],
   });
 

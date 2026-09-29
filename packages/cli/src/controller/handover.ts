@@ -12,7 +12,7 @@ import { settle } from '@archipelago/archid/handover/inventory';
 import { landingFolder, manifestDigest, spaceNeed } from '@archipelago/archid/handover/manifest';
 import { holds } from '@archipelago/archid/handover/portable-path';
 import { caseCollisions } from '@archipelago/archid/handover/probe';
-import { ARCHIVABLE, contentDigest, replicaRoots } from '@archipelago/archid/handover/replicas';
+import { ARCHIVABLE, replicaRoots } from '@archipelago/archid/handover/replicas';
 import { resumeFolders } from '@archipelago/archid/handover/sessions/registry';
 import { resolvePaths } from '@archipelago/archid/paths';
 import { FIRST_DELAY, FleetMismatch, MachineMismatch, MAX_DELAY, retryable } from './connection.js';
@@ -898,7 +898,7 @@ export class Handover {
     const resuming = resumeFolders(m);
     let r: Result<'handover.inspect'>;
     try {
-      const roots = carried.map((c) => ({ ...c, content: contentDigest(m.roots.find((x) => x.id === c.id)!.files) }));
+      const roots = carried.map((c) => ({ ...c, files: m.roots.find((x) => x.id === c.id)!.files }));
       const git = graphsHere(m);
       const resumes = resuming.map(({ kind, cwd, repo, root, bypass }) => ({ kind, cwd, ...(repo && { repo }), ...(root && { root }), ...(bypass && { bypass }) }));
       r = await this.retrying('begin', () => destination.daemon.call('handover.inspect', {

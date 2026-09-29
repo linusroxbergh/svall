@@ -222,6 +222,8 @@ describe('ownership and handover methods', () => {
     const roots = [{ id: 'r_1', kind: 'gitdir', entry: 'dir', path: '/Users/linus/p.git' }];
     const inspect = { roots, excludes: ['node_modules/'], folders: ['/Users/linus', '/Volumes/work'] };
     expect(methods['handover.inspect'].params.parse(inspect)).toEqual(inspect);
+    const files = [{ type: 'file', path: 'HEAD', mode: 0o644, size: 23, mtimeMs: 0, sha256: DIGEST }];
+    expect(methods['handover.inspect'].params.parse({ ...inspect, roots: [{ ...roots[0], files }] }).roots[0].files).toEqual(files);
     expect(() => methods['handover.inspect'].params.parse({ ...inspect, roots: [{ ...roots[0], kind: 'folder' }] })).toThrow();
     expect(() => methods['handover.inspect'].params.parse({ ...inspect, folders: ['work'] })).toThrow();
     const probe = { exists: true, writable: true, caseInsensitive: false, freeBytes: 4096 };
