@@ -60,6 +60,12 @@ export const GIT_DIR_KEEP_RULES: readonly string[] = GIT_DIR_ENTRIES.flatMap((e)
 export const rootMatcher = (kind: TransferRoot['kind'] | undefined, excludes: readonly string[]): ((relative: string, dir: boolean) => boolean) =>
   excludeMatcher(excludes, kind === 'gitdir' ? new Set(GIT_DIR_ENTRIES) : undefined);
 
+/** Whether `excluded` drops a relative path, itself or through a folder above it; `dir` says the path is itself a folder. */
+export function excludedPath(relative: string, excluded: (relative: string, dir: boolean) => boolean, dir = false): boolean {
+  const parts = relative.split('/');
+  return parts.some((_, i) => excluded(parts.slice(0, i + 1).join('/'), i < parts.length - 1 || dir));
+}
+
 /** The fleet's excludes: the defaults unless fleet.json turns them off, then its own, each once and in that order. */
 export function expandExcludes(handover: FleetConfig['handover']): { excludes: string[]; blockers: Blocker[] } {
   const blockers: Blocker[] = [];
@@ -312,9 +318,7 @@ function fold(candidates: InventoryRoot[], excludes: readonly string[]): Invento
   for (const root of outerFirst) {
     const outer = carried.find((o) => {
       if (!holds(o.path, root.path)) return false;
-      const parts = path.posix.relative(o.path, root.path).split('/');
-      const excluded = rootMatcher(o.kind, excludes);
-      return !parts.some((_, i) => excluded(parts.slice(0, i + 1).join('/'), i < parts.length - 1 || root.entry === 'dir'));
+      return !excludedPath(path.posix.relative(o.path, root.path), rootMatcher(o.kind, excludes), root.entry === 'dir');
     });
     if (!outer) { carried.push(root); out.push(root); }
     else if (isGit(root.kind)) out.push({ ...root, foldedInto: outer.id });

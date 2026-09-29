@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { Blocker, FleetState, GitCheckout, GitGraph, GitRegistration, HandoverEntity, Warning } from '@archipelago/protocol';
 import { DIRS_ARGS, parseDirs, runGit, type GitDirs, type GitRunner } from '../links/git.js';
 import { byCodeUnit, sha256Hex } from './hash.js';
-import { excludeMatcher, settle } from './inventory.js';
+import { excludeMatcher, excludedPath, settle } from './inventory.js';
 
 /** One entry of `git worktree list --porcelain -z`. `head` is null on an unborn branch, `branch` on a detached HEAD. */
 export type WorktreeEntry = { path: string; head: string | null; branch: string | null; bare: boolean; locked?: string; prunable: boolean };
@@ -120,7 +120,7 @@ export async function discoverGit(state: FleetState, opts: DiscoverOptions): Pro
       const read = await readGraph(commonDir, slots, git);
       graphs.push(read.graph);
       for (const checkout of [...(read.graph.main ? [read.graph.main] : []), ...read.graph.worktrees]) {
-        const left = read.tracked.get(checkout.path)!.filter((p) => leftBehind(p, excluded));
+        const left = read.tracked.get(checkout.path)!.filter((p) => excludedPath(p, excluded));
         if (left.length) blockers.push({ code: 'path_unsupported', message: `${checkout.path}: ${trackedLeft(left)}`, entity });
       }
       for (const [at, url] of await origins(read, standing, git, exists)) {
@@ -186,12 +186,6 @@ async function mainOf(commonDir: string, git: GitRunner): Promise<string> {
   const r = await git(['rev-parse', '--path-format=absolute', '--show-toplevel'], commonDir);
   if (r.code !== 0) throw new GitFailure(`${commonDir}: no character stands in its main checkout, and git cannot say where it is`);
   return r.stdout.replace(/\n$/, '');
-}
-
-// a path the excludes drop, itself or through a folder above it
-function leftBehind(p: string, excluded: (relative: string, dir: boolean) => boolean): boolean {
-  const parts = p.split('/');
-  return parts.some((_, i) => excluded(parts.slice(0, i + 1).join('/'), i < parts.length - 1));
 }
 
 function trackedLeft(paths: string[]): string {

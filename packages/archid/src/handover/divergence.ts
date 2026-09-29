@@ -1,7 +1,7 @@
 import path from 'node:path';
 import type { Blocker, TransferFile, TransferRoot } from '@archipelago/protocol';
 import { byCodeUnit } from './hash.js';
-import { rootMatcher } from './inventory.js';
+import { excludedPath, rootMatcher } from './inventory.js';
 import { realScanFs, scanPath, type ScanFs } from './manifest.js';
 
 /** How many paths of each kind a report names; its counts are always whole. */
@@ -76,12 +76,6 @@ export function compareReplica(accepted: readonly (readonly TransferFile[])[], f
 
 export const diverged = (d: Divergence): boolean => [d.added, d.removed, d.changed, d.unchecked].some((l) => l.count > 0);
 
-// the scan never reaches a path the excludes name or one under an excluded folder; the root itself is always read
-const outside = (excluded: (relative: string, dir: boolean) => boolean, p: string): boolean => {
-  const parts = p.split('/');
-  return p !== '' && parts.some((_, i) => excluded(parts.slice(0, i + 1).join('/'), i < parts.length - 1));
-};
-
 /**
  * Reads a replica the way its source was read and compares it with each version handover may have left,
  * over the paths the excludes leave on both sides: host-local caches drop out, a gitignored file does not.
@@ -94,7 +88,8 @@ export async function proveReplica(
   const excluded = rootMatcher(kind, excludes);
   const scan = await scanPath(at, excluded, sfs);
   const files = (scan?.files ?? []).filter((f) => !ignore?.(f.path));
-  const kept = accepted.map((version) => version.filter((f) => !outside(excluded, f.path) && !ignore?.(f.path)));
+  // the scan never reaches a path the excludes name or one under an excluded folder; the root itself is always read
+  const kept = accepted.map((version) => version.filter((f) => (f.path === '' || !excludedPath(f.path, excluded)) && !ignore?.(f.path)));
   return { divergence: compareReplica(kept, files, scan?.problems ?? [], PREVIEW, kind === 'gitdir'), files };
 }
 
