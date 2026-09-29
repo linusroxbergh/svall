@@ -34,11 +34,6 @@ export const ControllerJournal = z.object({
   manifestDigest: Sha256.optional(),
   landedDigest: Sha256.optional(),
   preparedDigest: Sha256.optional(),
-  // each transfer entry by id, and how its last transfer ended
-  entries: z.record(z.string(), z.string()).optional(),
-  // what Complete has still to finish once the fleet runs on the destination
-  pending: z.array(z.enum(['source', 'gateway'])).optional(),
-  error: z.string().optional(),
   startedAt: z.number(),
   updatedAt: z.number(),
 });

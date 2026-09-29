@@ -112,7 +112,6 @@ describe('the controller transaction', () => {
     expect(written.length).toBeGreaterThan(5);
     expect(written.at(-1)).toMatchObject({
       transactionId: 'tx-1', generation: G, phase: 'complete', source: { machineId: mac, name: 'mac' }, destination: { machineId: trift, name: 'trift', ssh: 'trift' },
-      entries: { r_app: 'verified', r_git: 'verified' },
     });
     expect(JSON.stringify(written)).not.toContain(TOKEN);
     expect(written.every((j) => Object.keys(j).every((k) => !/token|secret/i.test(k)))).toBe(true);
@@ -1186,7 +1185,7 @@ describe('Complete', () => {
     expect(w.record).toEqual({ fleetId, generation: G + 1, ownerMachineId: trift });
     // the source stays fenced by its own journal meanwhile
     expect(w.source.running).toBe(false);
-    expect(w.store.j).toMatchObject({ phase: 'complete', pending: ['source'] });
+    expect(w.store.j).toMatchObject({ phase: 'complete' });
     w.source.answers['handover.complete'] = complete;
     const [again] = await recover(w);
     expect(again).toMatchObject({ status: 'complete' });

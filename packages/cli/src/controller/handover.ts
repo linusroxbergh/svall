@@ -549,7 +549,6 @@ export class Handover {
         master, rsync, entries, stateDir: this.d.stateDir, signal: this.cancel$.signal, secrets: this.d.secrets?.() ?? [],
         onProgress: (p) => this.observer.send(entryEvent(tx, p, this.archived.get(p.id))),
       });
-      this.save({ entries: Object.fromEntries(result.entries.map((e) => [e.id, e.status === 'failed' ? e.reason : e.status])) });
       if (result.status === 'cancelled' || this.cancel$.signal.aborted) throw new Cancelled();
       if (result.status === 'blocked') {
         this.save({ choices: await this.decide('transfer', result.blockers) });
@@ -726,11 +725,8 @@ export class Handover {
         }
       }
       const done: Outcome = { status: 'complete', transactionId, generation: generation + 1, characters };
-      if (pending.length) {
-        const error = this.scrub(said.join('; '));
-        this.save({ pending, error });
-        return { ...done, pending, error };
-      }
+      // the journal stays open, so a resume finishes what is pending
+      if (pending.length) return { ...done, pending, error: this.scrub(said.join('; ')) };
       this.d.store.clear(transactionId);
       return done;
     } catch (e) {
@@ -802,9 +798,7 @@ export class Handover {
   }
 
   private interrupted(phase: HandoverPhase, said: string, safe: SafeAction[]): Outcome {
-    const error = this.scrub(said);
-    try { if (this.j) this.save({ error }); } catch { /* the journal already says where it stopped */ }
-    return { status: 'interrupted', ...(this.j?.transactionId && { transactionId: this.j.transactionId }), phase, error, safe };
+    return { status: 'interrupted', ...(this.j?.transactionId && { transactionId: this.j.transactionId }), phase, error: this.scrub(said), safe };
   }
 
   private failed(e: unknown): Outcome {

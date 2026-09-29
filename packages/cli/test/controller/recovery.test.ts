@@ -50,7 +50,7 @@ const cases: Case[] = [
   },
   {
     name: 'a transaction the gateway cleared after its commit is only finished',
-    o: { controller: journal({ phase: 'complete', pending: ['source'] }), gateway: { ok: true, value: at(5, trift) } },
+    o: { controller: journal({ phase: 'complete' }), gateway: { ok: true, value: at(5, trift) } },
     want: { standing: 'moved', action: 'finish', safe: ['resume'] },
   },
   {
@@ -136,15 +136,15 @@ describe('forgettable', () => {
 
   it('lets go of a journal the gateway has moved past, and of one nothing anywhere still holds', () => {
     expect(judge({ controller: journal(), gateway: { ok: true, value: at(7, trift, tx('preparing', 'tx-9')) }, ...daemons() })).toBe(true);
-    expect(judge({ controller: journal({ phase: 'complete', pending: ['gateway'] }), gateway: { ok: true, value: at(6, mac) }, ...daemons() })).toBe(true);
+    expect(judge({ controller: journal({ phase: 'complete' }), gateway: { ok: true, value: at(6, mac) }, ...daemons() })).toBe(true);
   });
 
   it('keeps a journal while anything it could drive is still open, while the gateway cannot say, or when there is none', () => {
     expect(judge({ controller: journal(), gateway: { ok: true, value: at(4, mac, tx('ready-to-commit')) }, ...daemons() })).toBe(false);
-    expect(judge({ controller: journal({ phase: 'complete', pending: ['source'] }), gateway: { ok: true, value: at(5, trift) }, ...daemons(status('complete')) })).toBe(false);
+    expect(judge({ controller: journal({ phase: 'complete' }), gateway: { ok: true, value: at(5, trift) }, ...daemons(status('complete')) })).toBe(false);
     expect(judge({ controller: journal({ phase: 'prepare' }), gateway: { ok: true, value: at(4, mac) }, ...daemons(status(), status('prepare')) })).toBe(false);
     expect(judge({ controller: journal(), gateway: { ok: false, error: 'ssh: connect to host gate port 22: Connection refused' }, ...daemons() })).toBe(false);
-    expect(judge({ controller: journal({ phase: 'complete', pending: ['source'] }), gateway: { ok: true, value: at(5, trift) }, source: { ok: false, error: 'unreachable' }, destination: { ok: true, value: { status: status() } } })).toBe(false);
+    expect(judge({ controller: journal({ phase: 'complete' }), gateway: { ok: true, value: at(5, trift) }, source: { ok: false, error: 'unreachable' }, destination: { ok: true, value: { status: status() } } })).toBe(false);
     expect(judge({ gateway: { ok: true, value: at(4, mac) } })).toBe(false);
   });
 });
