@@ -14,3 +14,23 @@ extension XCTestCase {
         return path
     }
 }
+
+/// Kills whatever still runs a fake helper's script, as a test that made one hold SIGTERM off leaves it.
+func pkill(_ script: String) {
+    let kill = Process()
+    kill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+    kill.arguments = ["-9", "-f", script]
+    try? kill.run()
+    kill.waitUntilExit()
+}
+
+/// Whether any process still runs a fake helper's script.
+func running(_ script: String) -> Bool {
+    let find = Process()
+    find.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+    find.arguments = ["-f", script]
+    find.standardOutput = FileHandle.nullDevice
+    try? find.run()
+    find.waitUntilExit()
+    return find.terminationStatus == 0
+}

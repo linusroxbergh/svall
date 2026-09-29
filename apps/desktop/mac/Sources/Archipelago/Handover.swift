@@ -10,17 +10,13 @@ struct HandoverChoices: Codable, Equatable {
 
 /// The argv of `archi handover …`: a detached start, resume or abort, and the `attach` that follows each.
 enum HandoverCommand {
-    private static func matches(_ value: String, _ pattern: String) -> Bool {
-        value.range(of: pattern, options: .regularExpression) != nil
-    }
-
     private static func prefix(_ profile: String?) -> [String] {
         profile.map { ["-p", $0] } ?? []
     }
 
     /// `to` is `local` or the fleet's gateway by its registry name; nothing else is a destination.
     static func start(to: String, choices: HandoverChoices?, gateway: String?, profile: String?) -> [String]? {
-        guard to == "local" || to == gateway, matches(to, "^[a-z][a-z0-9-]{0,31}$") else { return nil }
+        guard to == "local" || to == gateway, to.allowed(by: machineNamePattern) else { return nil }
         var flags: [String] = []
         if let ms = choices?.interruptAfterMs {
             guard ms >= 0 else { return nil }
@@ -29,7 +25,7 @@ enum HandoverCommand {
         if choices?.terminateShells == true { flags.append("--terminate-shells") }
         for root in choices?.archiveRoots ?? [] {
             // a root by its manifest id, or by its absolute path on the destination
-            guard matches(root, "^(r_[0-9a-f]+|/[^\\x00\\n]*)$") else { return nil }
+            guard root.allowed(by: "^(r_[0-9a-f]+|/[^\\x00\\n]*)$") else { return nil }
             flags += ["--archive", root]
         }
         return prefix(profile) + ["handover", to, "--json", "--detach"] + flags
@@ -74,85 +70,6 @@ struct HandoverLine {
     }
 }
 
-/// A helper process whose stdout is NDJSON. Its lines reach main in order, and its end only after the last of them.
-private final class LineChild {
-    private let process = Process()
-    private let output = Pipe(), errors = Pipe()
-    private let input: Pipe?
-    private let lock = NSLock()
-    private var buffer = LineBuffer()
-    private var stderr = StderrTail()
-    // the exit, and the end of both pipes: a line read after the exit still comes before the end
-    private let ended = DispatchGroup()
-
-    var onLine: (String) -> Void = { _ in }
-    var onExit: (Int32, [String]) -> Void = { _, _ in }
-
-    init(executable: String, arguments: [String], stdin: Bool) {
-        input = stdin ? Pipe() : nil
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.standardInput = input ?? FileHandle.nullDevice
-        process.standardOutput = output
-        process.standardError = errors
-    }
-
-    var isRunning: Bool { process.isRunning }
-
-    func start() throws {
-        ended.enter(); ended.enter(); ended.enter()
-        output.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            guard let self else { return handle.readabilityHandler = nil }
-            guard !data.isEmpty else {
-                handle.readabilityHandler = nil
-                let rest = lock.withLock { self.buffer.end() }
-                for line in rest { DispatchQueue.main.async { self.onLine(line) } }
-                return ended.leave()
-            }
-            for line in lock.withLock({ self.buffer.take(data) }) { DispatchQueue.main.async { self.onLine(line) } }
-        }
-        errors.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            guard let self else { return handle.readabilityHandler = nil }
-            guard !data.isEmpty else {
-                handle.readabilityHandler = nil
-                lock.withLock { self.stderr.end() }
-                return ended.leave()
-            }
-            lock.withLock { self.stderr.take(data) }
-        }
-        process.terminationHandler = { [weak self] _ in self?.ended.leave() }
-        if let input {
-            // a helper that went away turns a write into EPIPE, not a signal that ends the app
-            _ = fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
-        }
-        do { try process.run() } catch {
-            output.fileHandleForReading.readabilityHandler = nil
-            errors.fileHandleForReading.readabilityHandler = nil
-            throw error
-        }
-        ended.notify(queue: .main) { [weak self] in
-            guard let self else { return }
-            let said = lock.withLock { self.stderr.lines }
-            onExit(process.terminationStatus, said)
-        }
-    }
-
-    func write(_ line: String) {
-        guard let input, process.isRunning else { return }
-        try? input.fileHandleForWriting.write(contentsOf: Data((line + "\n").utf8))
-    }
-
-    /// Ends the child by closing its stdin, which `attach` takes as the user letting go; a child that does not go is terminated.
-    func close() {
-        try? input?.fileHandleForWriting.close()
-        let deadline = Date().addingTimeInterval(1)
-        while process.isRunning, Date() < deadline { usleep(10_000) }
-        if process.isRunning { process.terminate() }
-    }
-}
-
 /// The handover helper as the window follows it: a `--detach` launcher that starts, resumes or aborts the
 /// transaction, then `archi handover attach`, whose stdout is the run and whose stdin carries the user's answers.
 /// With no helper live, the last run is read back from the events file instead. The helper outlives the app;
@@ -186,7 +103,7 @@ final class HandoverSession {
     func launch(_ argv: [String]) throws {
         guard launcher == nil else { return }
         // the page follows the run this starts, and nothing of the one it followed before
-        following?.close()
+        following?.stop()
         following = nil
         let child = LineChild(executable: executable, arguments: argv, stdin: false)
         var detached = false, said = false
@@ -214,7 +131,7 @@ final class HandoverSession {
 
     /// Asks whether a helper is live: one is followed, and without one the last run is read back with the status.
     func observe() throws {
-        following?.close()
+        following?.stop()
         following = nil
         var status: HandoverLine?
         try run(HandoverCommand.status(profile: profile), line: { if $0.event == "handover.status" { status = $0 } }) { [weak self] code, stderr in
@@ -264,7 +181,7 @@ final class HandoverSession {
 
     /// Follows the live helper from its first event.
     func attach() throws {
-        following?.close()
+        following?.stop()
         let child = LineChild(executable: executable, arguments: HandoverCommand.attach(profile: profile), stdin: true)
         var complete = false, status = false, said = false
         child.onLine = { [weak self, weak child] text in
@@ -292,7 +209,7 @@ final class HandoverSession {
     /// Quitting: the attach lets go and the helper goes on; a launcher still starting one is left to finish.
     func stop() {
         stopped = true
-        following?.close()
+        following?.stop()
         following = nil
     }
 }

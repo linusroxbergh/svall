@@ -187,6 +187,18 @@ final class HandoverTests: XCTestCase {
         XCTAssertEqual(fake.received(), [])
     }
 
+    func testQuittingKillsAnAttachThatHoldsOnPastItsStdinAndSIGTERM() throws {
+        let fake = try fake(launcher: [detached], attach: [freeze], attachThen: "trap '' TERM\nwhile :; do sleep 1; done")
+        addTeardownBlock { pkill(fake.executable) }
+        let (session, transcript) = session(fake) { $0.lines.count >= 2 }
+        try session.launch(HandoverCommand.start(to: "studio", choices: nil, gateway: "studio", profile: nil)!)
+        _ = transcript()
+        let began = Date()
+        session.stop()
+        XCTAssertLessThan(Date().timeIntervalSince(began), 5)
+        XCTAssertFalse(running(fake.executable))
+    }
+
     func testALauncherThatCouldNotStartSaysWhyAndNothingIsFollowed() throws {
         let fake = try fake(launcher: [blocked], launcherExit: 1, attach: [freeze])
         let (session, transcript) = session(fake) { !$0.exits.isEmpty }

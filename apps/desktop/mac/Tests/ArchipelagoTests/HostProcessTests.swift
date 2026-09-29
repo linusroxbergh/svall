@@ -141,6 +141,40 @@ final class HostProcessTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(began), 5)
     }
 
+    /// A child that holds SIGTERM off is killed after a bounded wait, so a cancel never hangs the window.
+    func testCancellingKillsAChildThatHoldsSIGTERMOff() throws {
+        let helper = try fakeHelper(prints: [step], then: "trap '' TERM\nwhile :; do sleep 1; done")
+        addTeardownBlock { pkill(helper) }
+        let process = HostProcess(executable: helper, arguments: ["host", "doctor", "studio", "--json"])
+        let stepped = expectation(description: "step")
+        process.onStep = { _ in stepped.fulfill() }
+        try process.start()
+        wait(for: [stepped], timeout: 5)
+        let cancelled = expectation(description: "cancelled")
+        DispatchQueue.global().async {
+            process.cancel()
+            cancelled.fulfill()
+        }
+        wait(for: [cancelled], timeout: 10)
+        XCTAssertFalse(process.isRunning)
+    }
+
+    /// The end of a run reaches the page only after every step the child printed before it exited.
+    func testEveryStepArrivesBeforeTheEndOfTheRun() throws {
+        let many = (0..<200).map { #"{"step":"s\#($0)","status":"ok"}"# }
+        let helper = try fakeHelper(prints: many, then: "exit 0")
+        for round in 0..<20 {
+            let process = HostProcess(executable: helper, arguments: [])
+            var steps = 0, stepsAtExit = -1
+            let done = expectation(description: "exit \(round)")
+            process.onStep = { _ in steps += 1 }
+            process.onExit = { _ in stepsAtExit = steps; done.fulfill() }
+            try process.start()
+            wait(for: [done], timeout: 5)
+            XCTAssertEqual(stepsAtExit, 200, "round \(round)")
+        }
+    }
+
     func testACheckReportsEachOfTheMachinesChecksAsAStep() throws {
         let helper = try fakeHelper(prints: doctorReport.components(separatedBy: "\n"), then: "exit 1")
         let words = try XCTUnwrap(argv(.doctor, HostArgs(name: "studio")))

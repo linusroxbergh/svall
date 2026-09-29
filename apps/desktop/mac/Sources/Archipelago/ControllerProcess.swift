@@ -92,10 +92,7 @@ final class ControllerProcess {
         ["connect", "--json"] + (profile.map { ["-p", $0] } ?? [])
     }
 
-    private let process = Process()
-    private let input = Pipe(), output = Pipe()
-    // read on the pipe's own queue only
-    private var buffer = LineBuffer()
+    private let child: LineChild
     private var loggedBadLine = false
     private var stopping = false
 
@@ -103,31 +100,18 @@ final class ControllerProcess {
     var onExit: (Int32) -> Void = { _ in }
 
     init(executable: String, arguments: [String]) {
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.standardInput = input
-        process.standardOutput = output
+        child = LineChild(executable: executable, arguments: arguments, stdin: true, captureStderr: false)
     }
 
-    var isRunning: Bool { process.isRunning }
+    var isRunning: Bool { child.isRunning }
 
     func start() throws {
-        output.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            guard !data.isEmpty else {
-                handle.readabilityHandler = nil
-                return
-            }
-            self?.take(data)
+        child.onLine = { [weak self] line in self?.deliver(line) }
+        child.onExit = { [weak self] status, _ in
+            guard let self, !stopping else { return }
+            onExit(status)
         }
-        process.terminationHandler = { [weak self] process in
-            let status = process.terminationStatus
-            DispatchQueue.main.async {
-                guard let self, !self.stopping else { return }
-                self.onExit(status)
-            }
-        }
-        try process.run()
+        try child.start()
     }
 
     /// The helper closes its master and forward when its stdin ends, so quitting asks before it insists,
@@ -135,27 +119,12 @@ final class ControllerProcess {
     func stop() {
         guard !stopping else { return }
         stopping = true
-        output.fileHandleForReading.readabilityHandler = nil
-        try? input.fileHandleForWriting.close()
-        guard process.isRunning else { return }
-        if !exits(within: 1) { process.terminate() }
-        if !exits(within: 2) { kill(process.processIdentifier, SIGKILL) }
-        process.waitUntilExit()
-    }
-
-    private func exits(within seconds: TimeInterval) -> Bool {
-        let deadline = Date().addingTimeInterval(seconds)
-        while process.isRunning, Date() < deadline { usleep(10_000) }
-        return !process.isRunning
-    }
-
-    private func take(_ data: Data) {
-        for line in buffer.take(data) { deliver(line) }
+        child.stop()
     }
 
     private func deliver(_ line: String) {
         let line = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !line.isEmpty else { return }
+        guard !stopping, !line.isEmpty else { return }
         guard let event = ControllerEvent.decode(line) else {
             // the line may carry the token, so only its arrival is reported, and only once
             if !loggedBadLine {
@@ -164,10 +133,7 @@ final class ControllerProcess {
             }
             return
         }
-        DispatchQueue.main.async { [weak self] in
-            guard let self, !self.stopping else { return }
-            self.onEvent(event)
-        }
+        onEvent(event)
     }
 }
 
@@ -187,24 +153,28 @@ struct HostArgs: Decodable, Equatable {
     var forget: Bool?
 }
 
+extension String {
+    /// Whether the whole value is what an anchored pattern allows.
+    func allowed(by pattern: String) -> Bool { range(of: pattern, options: .regularExpression) != nil }
+}
+
+/// A machine's registry name: the only name `archi host` and `archi handover` take for one.
+let machineNamePattern = "^[a-z][a-z0-9-]{0,31}$"
+
 /// The argv of `archi host <op> … --json`. The page never passes argv: it names an operation and its
 /// arguments, and every one of them is held to the flag it belongs to before it becomes a word here.
 enum HostCommand {
-    private static func matches(_ value: String, _ pattern: String) -> Bool {
-        value.range(of: pattern, options: .regularExpression) != nil
-    }
-
     /// `fleet` is the profile of the fleet this window runs, which only enable names.
     static func arguments(op: HostOp, args: HostArgs, fleet: String?) -> [String]? {
-        guard matches(args.name, "^[a-z][a-z0-9-]{0,31}$") else { return nil }
+        guard args.name.allowed(by: machineNamePattern) else { return nil }
         var argv = ["host", op.rawValue, args.name]
         switch op {
         case .add:
             guard let ssh = args.ssh, args.forget == nil,
-                  matches(ssh, "^[A-Za-z0-9][A-Za-z0-9._@:\\[\\]-]*$") else { return nil }
+                  ssh.allowed(by: "^[A-Za-z0-9][A-Za-z0-9._@:\\[\\]-]*$") else { return nil }
             argv += ["--ssh", ssh]
         case .enable:
-            guard let fleet, args.ssh == nil, args.forget == nil, matches(fleet, "^[a-z][a-z0-9-]*$") else { return nil }
+            guard let fleet, args.ssh == nil, args.forget == nil, fleet.allowed(by: "^[a-z][a-z0-9-]*$") else { return nil }
             argv += ["--fleet", fleet]
         case .remove:
             guard args.ssh == nil else { return nil }
@@ -230,15 +200,10 @@ final class HostProcess {
         let checks: [Check]
     }
 
-    private let process = Process()
-    private let output = Pipe(), errors = Pipe()
+    private let child: LineChild
     private let report: Bool
     private var cancelled = false
-    // each pipe reads on a queue of its own, and the end of the run reads on main: one lock holds these
-    private let lock = NSLock()
-    private var buffer = LineBuffer()
-    private var printed = Data()
-    private var stderr = StderrTail()
+    private var printed: [String] = []
     private var sawFailure = false
 
     var onStep: (Step) -> Void = { _ in }
@@ -246,87 +211,41 @@ final class HostProcess {
 
     init(executable: String, arguments: [String], report: Bool = false) {
         self.report = report
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = output
-        process.standardError = errors
+        child = LineChild(executable: executable, arguments: arguments, stdin: false)
     }
 
-    var isRunning: Bool { process.isRunning }
+    var isRunning: Bool { child.isRunning }
 
     func start() throws {
-        output.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            guard !data.isEmpty else { return handle.readabilityHandler = nil }
-            self?.take(data)
-        }
-        errors.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            guard let self, !data.isEmpty else { return handle.readabilityHandler = nil }
-            lock.withLock { self.stderr.take(data) }
-        }
-        process.terminationHandler = { [weak self] process in
-            let status = process.terminationStatus
-            DispatchQueue.main.async { self?.finish(status) }
-        }
-        try process.run()
+        child.onLine = { [weak self] line in self?.take(line) }
+        child.onExit = { [weak self] status, said in self?.finish(status, said: said) }
+        try child.start()
     }
 
     /// The page gave up on this run; the child holds an ssh master, so it is not left behind.
     func cancel() {
         guard !cancelled else { return }
         cancelled = true
-        guard process.isRunning else { return }
-        process.terminate()
-        process.waitUntilExit()
+        child.stop()
     }
 
-    private func take(_ data: Data) {
-        for step in steps(in: data) {
-            DispatchQueue.main.async { [weak self] in self?.onStep(step) }
-        }
+    private func take(_ line: String) {
+        if report { return printed.append(line) }
+        if let step = try? JSONDecoder().decode(Step.self, from: Data(line.utf8)) { send(step) }
     }
 
-    private func steps(in data: Data) -> [Step] {
-        lock.withLock {
-            if report {
-                printed.append(data)
-                return []
-            }
-            return failing(buffer.take(data).compactMap { try? JSONDecoder().decode(Step.self, from: Data($0.utf8)) })
-        }
+    private func send(_ step: Step) {
+        if step.status == "fail" { sawFailure = true }
+        onStep(step)
     }
 
-    private func reportSteps() -> [Step] {
-        lock.withLock {
-            guard report, let report = try? JSONDecoder().decode(Report.self, from: printed) else { return [] }
-            return failing(report.checks.map { Step(step: $0.name, status: $0.status, detail: $0.detail, action: nil) })
+    /// The end of the run, after its last line: a run that failed with nothing to show for it leaves the user what the
+    /// command itself said.
+    private func finish(_ status: Int32, said: [String]) {
+        if report, let report = try? JSONDecoder().decode(Report.self, from: Data(printed.joined(separator: "\n").utf8)) {
+            for check in report.checks { send(Step(step: check.name, status: check.status, detail: check.detail, action: nil)) }
         }
-    }
-
-    // under the lock
-    private func failing(_ steps: [Step]) -> [Step] {
-        if steps.contains(where: { $0.status == "fail" }) { sawFailure = true }
-        return steps
-    }
-
-    /// The end of the run, on main: whatever the child printed last is still in its pipes, and a run that
-    /// failed with nothing to show for it leaves the user what the command itself said.
-    private func finish(_ status: Int32) {
-        output.fileHandleForReading.readabilityHandler = nil
-        errors.fileHandleForReading.readabilityHandler = nil
-        if let rest = try? output.fileHandleForReading.readToEnd(), !rest.isEmpty {
-            for step in steps(in: rest) { onStep(step) }
-        }
-        for step in reportSteps() { onStep(step) }
-        let unread = try? errors.fileHandleForReading.readToEnd()
-        let (said, failed) = lock.withLock {
-            if let unread { stderr.take(unread) }
-            stderr.end()
-            return (stderr.lines, sawFailure)
-        }
-        if status != 0, !failed, !said.isEmpty {
+        if status != 0, !sawFailure, !said.isEmpty {
             onStep(Step(step: "archi", status: "fail", detail: said.joined(separator: "\n"), action: nil))
         }
         onExit(status)
