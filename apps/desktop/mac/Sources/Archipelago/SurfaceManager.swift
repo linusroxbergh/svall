@@ -10,6 +10,23 @@ private var tmux: String {
     return dirs.map { $0 + "/tmux" }.first { FileManager.default.isExecutableFile(atPath: $0) } ?? "tmux"
 }
 
+/// Whether an ssh master answers on its control socket. One that was killed leaves the file, which refuses a connect.
+enum ControlSocket {
+    static func answers(_ path: String) -> Bool {
+        var addr = sockaddr_un()
+        let bytes = Array(path.utf8)
+        guard bytes.count < MemoryLayout.size(ofValue: addr.sun_path) else { return false }
+        addr.sun_family = sa_family_t(AF_UNIX)
+        withUnsafeMutableBytes(of: &addr.sun_path) { $0.copyBytes(from: bytes) }
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        return withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+        } == 0
+    }
+}
+
 /// The shell command a surface runs to attach to a character's tmux session, here or on the owner's machine.
 enum AttachCommand {
     static func quote(_ s: String) -> String {
@@ -17,8 +34,10 @@ enum AttachCommand {
     }
 
     // libghostty runs the command through a shell, so each field is single-quoted.
-    // nil while the route is unknown: a session is attached only where the helper says it lives
-    static func build(route: ConnectionRoute, attach: WebAttach, tmux: String = tmux) -> String? {
+    // nil while the route is unknown, or its master is gone: a session is attached only where the helper says it lives,
+    // over the master it checked, never over a login of ssh's own to wherever the destination now reaches
+    static func build(route: ConnectionRoute, attach: WebAttach, tmux: String = tmux,
+                      masterAnswers: (String) -> Bool = ControlSocket.answers) -> String? {
         let session = "-S \(quote(attach.socket)) attach -t \(quote(attach.session))"
         switch route {
         case .local:
@@ -26,10 +45,12 @@ enum AttachCommand {
         case .pending:
             return nil
         case .remote(let route):
+            guard masterAnswers(route.controlSocket) else { return nil }
             // ssh joins the words after the destination into one line for the far login shell, which
             // splits it again, so the socket and session are quoted a second time for that shell
             let far = "-S \(quote(quote(attach.socket))) attach -t \(quote(quote(attach.session)))"
-            return "ssh -S \(quote(route.controlSocket)) -tt -- \(quote(route.destination)) tmux \(far)"
+            // past sshd's MaxSessions on the master, ssh opens a login of its own, as the master did, without a prompt
+            return "ssh -S \(quote(route.controlSocket)) -o ControlMaster=no -o BatchMode=yes -tt -- \(quote(route.destination)) tmux \(far)"
         }
     }
 }
@@ -87,7 +108,7 @@ final class SurfaceManager {
         let route = route()
         let binary = tmux
         guard let command = AttachCommand.build(route: route, attach: attach, tmux: binary) else {
-            // the helper is opening a route: the session is remembered and attached once it is online
+            // the helper is opening a route, or opening one again: the session is remembered and attached once it is online
             attached[id] = Attached(rect: rect, attach: attach, opacity: opacity)
             return
         }
