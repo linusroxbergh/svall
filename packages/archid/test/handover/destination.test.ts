@@ -1900,6 +1900,10 @@ describe('destination claim', () => {
     const next = structuredClone({ ...s.manifest, transactionId: 'tx-2' });
     const ada = next.roots.find((r) => r.path === path.join(s.dst, 'work/ada'))!;
     ada.files = (await scanPath(path.join(s.src, 'work/ada'), rootMatcher(ada.kind, next.excludes)))!.files;
+    // preflight gets only a digest of what the next handover brings, so it still reads that .DS_Store as diverged
+    const content = (id: string) => contentDigest(next.roots.find((x) => x.id === id)!.files);
+    const pre = await d.handover.inspect({ roots: replicaRoots(next).map((x) => ({ ...x, content: content(x.id) })), excludes: next.excludes, folders: [] });
+    expect(pre.roots.find((x) => x.id === ada.id)!.check).toMatchObject({ ok: false, blocker: { code: 'destination_diverged', message: expect.stringContaining('.DS_Store') } });
     d.gateway.record = { fleetId, generation: 4, ownerMachineId: mac, transaction: { id: 'tx-2', fromMachineId: mac, toMachineId: trift, phase: 'preparing', startedAt: 2 } };
     const r = await d.handover.claim({ transactionId: 'tx-2', generation: 5, manifest: next, manifestDigest: manifestDigest(next) });
 
