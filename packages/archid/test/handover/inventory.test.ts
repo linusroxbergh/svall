@@ -614,6 +614,31 @@ describe('buildInventory with the discovered Git graphs', () => {
     expect(rootMatcher('repo', DEFAULT_EXCLUDES)('refs/heads/build', true)).toBe(true);
   });
 
+  it('blocks a Git directory folded into a folder whose excludes would leave some of Git\'s own entries behind, and folds one they leave whole', () => {
+    const s = seed();
+    const d = discovered(s);
+    const code = path.join(s.mac, 'code');
+    s.state.characters.plain = char('plain', { cwd: code });
+    const write = (...files: string[]) => files.forEach((f) => {
+      fs.mkdirSync(path.dirname(path.join(d.bare, f)), { recursive: true });
+      fs.writeFileSync(path.join(d.bare, f), 'x\n');
+    });
+    // a ref named build is a file, which the build/ exclude leaves alone, and a build folder beside Git's entries is a cache
+    write('HEAD', 'refs/heads/main', 'refs/heads/build', 'worktrees/tool-wt/HEAD', 'build/out.js');
+    const clean = buildInventory(s.state, { fleet: FLEET }, s.maps, d.discovery);
+    expect(clean.blockers).toEqual([]);
+    const outer = clean.roots.find((r) => r.path === code)!;
+    const gitdir = clean.roots.find((r) => r.path === d.bare)!;
+    expect(gitdir).toMatchObject({ kind: 'gitdir', foldedInto: outer.id });
+    // a branch under build/ and a worktree named dist, whose folders the default excludes match
+    fs.rmSync(path.join(d.bare, 'refs/heads/build'));
+    write('refs/heads/build/fix', 'worktrees/dist/HEAD');
+    expect(buildInventory(s.state, { fleet: FLEET }, s.maps, d.discovery).blockers).toEqual([{
+      code: 'path_unsupported', entity: { kind: 'root', id: gitdir.id },
+      message: `${d.bare}: ${code} carries this Git directory under the fleet's excludes, which would leave behind refs/heads/build, worktrees/dist; move the repository out of ${code}, or take the pattern that matches out of handover.exclude in fleet.json (with excludeDefaults: false for a default one)`,
+    }]);
+  });
+
   // git names each checkout by its real path, as ~/code to /Volumes/work/code resolves
   it.skipIf(!hasGit)('carries a repository by the real path git names it by, and blocks the character that reached it through a link (needs git)', async () => {
     const base = tmp();

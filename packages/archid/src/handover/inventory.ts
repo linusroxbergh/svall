@@ -286,7 +286,7 @@ export function buildInventory(state: FleetState, configs: InventoryConfigs, mac
     return !fleetHome && !credential;
   });
 
-  const roots = fold(allowed, excludes);
+  const roots = fold(allowed, excludes, blockers);
   if (fleet.handover.transferFleetEnv) {
     const env = resolvePaths(source.fleetHome).env;
     const there = resolvePaths(destination.fleetHome).env;
@@ -330,7 +330,7 @@ export function buildInventory(state: FleetState, configs: InventoryConfigs, mac
  * Folds each root into the outermost carried root that copies its files, so a file is sent once. A folded Git
  * root stays listed for the Git import to check; any other folded root has nothing left to do.
  */
-function fold(candidates: InventoryRoot[], excludes: readonly string[]): InventoryRoot[] {
+function fold(candidates: InventoryRoot[], excludes: readonly string[], blockers: Blocker[]): InventoryRoot[] {
   const carried: InventoryRoot[] = [];
   const out: InventoryRoot[] = [];
   const outerFirst = candidates.sort((a, b) => a.path.length - b.path.length || byCodeUnit(a.path, b.path));
@@ -339,10 +339,36 @@ function fold(candidates: InventoryRoot[], excludes: readonly string[]): Invento
       if (!holds(o.path, root.path)) return false;
       return !excludedPath(path.posix.relative(o.path, root.path), rootMatcher(o.kind, excludes), root.entry === 'dir');
     });
-    if (!outer) { carried.push(root); out.push(root); }
-    else if (isGit(root.kind)) out.push({ ...root, foldedInto: outer.id });
+    if (!outer) { carried.push(root); out.push(root); continue; }
+    if (!isGit(root.kind)) continue;
+    out.push({ ...root, foldedInto: outer.id });
+    const left = root.kind === 'gitdir' ? gitLeft(root.path, path.posix.relative(outer.path, root.path), rootMatcher(outer.kind, excludes)) : [];
+    if (left.length) {
+      const shown = left.slice(0, 5).join(', ') + (left.length > 5 ? `, and ${left.length - 5} more` : '');
+      blockers.push({
+        code: 'path_unsupported', entity: { kind: 'root', id: root.id },
+        message: `${root.path}: ${outer.path} carries this Git directory under the fleet's excludes, which would leave behind ${shown}; move the repository out of ${outer.path}, or take the pattern that matches out of handover.exclude in fleet.json (with excludeDefaults: false for a default one)`,
+      });
+    }
   }
   return out;
+}
+
+/** Git's own entries in the Git directory `dir` that `excluded` leaves out, read at `from` inside the folder that carries it; a folder left out is named, not what it holds. */
+function gitLeft(dir: string, from: string, excluded: (relative: string, dir: boolean) => boolean): string[] {
+  const left: string[] = [];
+  const walk = (rel: string): void => {
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(path.posix.join(dir, rel), { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (!rel && !(GIT_DIR_ENTRIES as readonly string[]).includes(e.name)) continue;
+      const at = rel ? `${rel}/${e.name}` : e.name;
+      if (excluded(`${from}/${at}`, e.isDirectory())) left.push(at);
+      else if (e.isDirectory()) walk(at);
+    }
+  };
+  walk('');
+  return left.sort(byCodeUnit);
 }
 
 /** Blockers or warnings once each, in an order that does not depend on how they were found. */
