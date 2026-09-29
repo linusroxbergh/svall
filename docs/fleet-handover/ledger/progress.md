@@ -878,3 +878,4 @@ Ruling: the final fix wave runs as four area fixers with exclusive file ownershi
 Ruling: intent findings I1, I3, I5, I7, I9, I10–I12 are fixed; I2, I4, I6, I8 and I13–I16 amend the spec to the ruled behaviour (the handoff requires the spec to match what was built); I6's offered SSH terminal is a follow-up — costs the spec describing a narrower v1 than first designed.
 Ruling: L02, L03, L29, L30, L31, L37, L39 and the triage's 19 follow-ups are deferred — behaviour-preserving refactors across many files right before merge carry more regression risk than they remove — costs duplicated code staying until a follow-up.
 Final fix wave 1: dispatched Fixer A (ledger/final-fix-A.md) and Fixer C1 (ledger/final-fix-C1.md) in parallel, fresh opus, BASE the commit recording this line.
+Final fix waves 2–3: briefs written (ledger/final-fix-B.md, ledger/final-fix-C2.md).
