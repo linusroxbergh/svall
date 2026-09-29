@@ -259,6 +259,27 @@ describe('setupLinux', () => {
     expect(done.some((l) => l.includes('loginctl enable-linger linus'))).toBe(true);
   });
 
+  it('restarts a unit it rewrote, which enable --now would leave running on the file it started from', async () => {
+    const f = installed();
+    fs.mkdirSync(f.unitDir, { recursive: true });
+    // an earlier setup's unit, without the agent homes this one gives the daemon
+    fs.writeFileSync(path.join(f.unitDir, 'archipelago-archid@private.service'), '[Service]\n');
+    const systemctl = (calls: string[][]) => calls.filter(([cmd]) => cmd === 'systemctl');
+    const fake = fakeRun({ 'loginctl show-user linus --property=Linger': 'Linger=yes\n' });
+    const { done } = await setupLinux({ ...f.o, systemctl: true, run: fake.run, env: { CLAUDE_CONFIG_DIR: '/home/linus/.config/claude' } });
+    expect(systemctl(fake.calls)).toEqual([
+      ['systemctl', '--user', 'daemon-reload'],
+      ['systemctl', '--user', 'restart', 'archipelago-archid@private.service'],
+      ['systemctl', '--user', 'enable', '--now', 'archipelago-archid@private.service'],
+      ['systemctl', '--user', 'enable', '--now', 'archipelago-gateway.service'],
+    ]);
+    expect(done).toContain('systemctl --user restart archipelago-archid@private.service');
+
+    const again = fakeRun({ 'loginctl show-user linus --property=Linger': 'Linger=yes\n' });
+    await setupLinux({ ...f.o, systemctl: true, run: again.run, env: { CLAUDE_CONFIG_DIR: '/home/linus/.config/claude' } });
+    expect(systemctl(again.calls).some(([, , verb]) => verb === 'restart')).toBe(false);
+  });
+
   it('leaves mission control\'s folder as it is where the fleet is owned elsewhere, so the next handover takes it as it stands', async () => {
     const f = installed();
     const mc = path.join(f.root, 'mc');

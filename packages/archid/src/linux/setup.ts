@@ -134,17 +134,19 @@ export function writeUnits(o: UnitOptions & { fleet: string; home: string; unitD
 
 type UnitStart = { started: true; done: string[] } | { started: false; reason: string };
 
-async function startUnit(o: LinuxSetup): Promise<UnitStart> {
+// `rewritten`: units whose file changed under a daemon that may be running, which `enable --now` would leave on the old one
+async function startUnit(o: LinuxSetup, rewritten: string[]): Promise<UnitStart> {
   const units = [archidUnitName(o.fleet), GATEWAY_UNIT];
   let unit = units[0];
   try {
     await daemonReload(o.run);
+    for (unit of rewritten) await restartUnit(o.run, unit);
     for (unit of units) await enableUnit(o.run, unit);
   } catch (e) {
     if (!(e instanceof SystemdError)) throw e;
     return { started: false, reason: `${unit} was not started: ${e.message}` };
   }
-  const done = units.map((u) => `systemctl --user enable --now ${u}`);
+  const done = [...rewritten.map((u) => `systemctl --user restart ${u}`), ...units.map((u) => `systemctl --user enable --now ${u}`)];
   try {
     const linger = await lingerState(o.run, o.user);
     if (!linger.linger) done.push(`the fleet stops when you log out until you run: ${linger.action}`);
@@ -168,9 +170,12 @@ export async function setupLinux(o: LinuxSetup): Promise<LinuxSetupResult> {
   const env = o.env ?? await agentHomesEnv(o.run);
   const done = setupFleetHome(o);
   done.push(...setupUser({ ...o, settings, codexHooks }));
+  const units = [archidUnitName(o.fleet), GATEWAY_UNIT];
+  const unitText = (u: string) => readOrUndefined(path.join(o.unitDir, u));
+  const before = units.map(unitText);
   done.push(...writeUnits({ ...o, env }));
   if (!o.systemctl) return { done, started: false };
-  const start = await startUnit(o);
+  const start = await startUnit(o, units.filter((u, i) => before[i] !== undefined && before[i] !== unitText(u)));
   if (!start.started) return { done: [...done, start.reason], started: false };
   return { done: [...done, ...start.done], started: true };
 }
