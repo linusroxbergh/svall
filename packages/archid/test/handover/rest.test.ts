@@ -53,6 +53,8 @@ class World {
   psSignals: (AbortSignal | undefined)[] = [];
   hangCapture = new Set<string>();
   hangKill = new Set<string>();
+  // windows a kill leaves open without a word, as tmux's kill-window failing does
+  keepOnKill = new Set<string>();
   onSignal?: () => void;
   onKill?: () => void;
   private sleepers: { at: number; wake: () => void }[] = [];
@@ -91,7 +93,7 @@ class World {
       this.onKill?.();
       this.log.push(`kill ${windowId}`);
       if (this.hangKill.has(windowId)) await new Promise(() => {});
-      this.panes.delete(windowId);
+      if (!this.keepOnKill.has(windowId)) this.panes.delete(windowId);
     },
   };
 
@@ -604,6 +606,24 @@ describe('restTerminals', () => {
     expect(store.state.characters.c_ada.agent?.sessionId).toBe(SID);
     expect(store.state.characters.c_ada.revive).toEqual({ command: `claude --resume ${SID}` });
     expect(store.state.characters.c_bo.tmux).toEqual(win(3));
+  });
+
+  it('stops with the journal open and the slot live when a window is still open after its kill, laying only the ones closed before it dormant', async () => {
+    const { store, world, deps, paths } = boot([
+      char('c_ada', { tmux: win(1), agent: agent('claude', 'idle') }),
+      char('c_bo', { tmux: win(3), agent: agent('codex', 'idle', SID2) }),
+    ]);
+    world.pane(1, { job: ['claude'] });
+    world.pane(3, { job: ['codex'] });
+    world.keepOnKill.add('@3');
+
+    await expect(restTerminals(deps, { choices: {} })).rejects.toThrow(/bo's terminal is still open/);
+
+    expect(store.state.characters.c_ada).toMatchObject({ restedBy: tx.id, revive: { command: `claude --resume ${SID}` } });
+    expect(store.state.characters.c_ada.tmux).toBeUndefined();
+    expect(store.state.characters.c_bo.tmux).toEqual(win(3));
+    expect(store.state.characters.c_bo.restedBy).toBeUndefined();
+    expect(journalOf(paths).stoppedTerminals).toEqual([{ characterId: 'c_ada' }, { characterId: 'c_bo' }]);
   });
 
   it('still waits on a background job of an interrupted Claude, but not on its Archipelago statusline and hook', async () => {

@@ -226,11 +226,7 @@ export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<Set
     o.cancel?.throwIfAborted();
     let fresh = false;
     if (!seen || reread || clock.now() >= nextRead) {
-      const [live, table] = await Promise.all([
-        // a server that died took every window with it, so there is none left to rest
-        bounded('tmux list-panes', (signal) => deps.tmux.listWindows(signal).catch((e: unknown) => { if (noServer(e)) return []; throw e; })),
-        bounded('ps', processes),
-      ]);
+      const [live, table] = await Promise.all([bounded('tmux list-panes', windows(deps)), bounded('ps', processes)]);
       seen = { live, table };
       nextRead = clock.now() + x.pollMs;
       fresh = true;
@@ -277,6 +273,10 @@ export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<Set
 }
 
 type Bounded = <T>(what: string, work: (signal: AbortSignal) => Promise<T>) => Promise<T>;
+
+// a server that died took every window with it, so there is none left to rest
+const windows = (deps: RestDeps) => (signal: AbortSignal): Promise<LiveWindow[]> =>
+  deps.tmux.listWindows(signal).catch((e: unknown) => { if (noServer(e)) return []; throw e; });
 
 // a hung ps or tmux must fail the rest rather than hold the freeze open, and is told to go
 function boundBy(clock: Clock, ms: number): Bounded {
@@ -351,6 +351,11 @@ async function layToRest(
   // each slot goes dormant as its own window closes, so a later window that will not close strands none of them
   for (const { t, c } of open) {
     await boundary('source.rest.kill', () => bounded('tmux kill-window', (signal) => deps.tmux.killWindow(c.window.windowId, signal)));
+    // a kill tmux refused leaves the terminal running: the rest stops there, and an abort or a resume finds it live
+    if ((await bounded('tmux list-panes', windows(deps))).some((w) => w.windowId === c.window.windowId && !w.dead)) {
+      const name = deps.store.state.characters[t.characterId]?.name ?? t.characterId;
+      throw new Error(`${name}'s ${t.term === 2 ? 'second ' : ''}terminal is still open after tmux was asked to close its window ${c.window.windowId}`);
+    }
     deps.store.update((d) => lay(d, t, true));
   }
   // and the terminals whose window had already gone, among them any whose window a rest that died closed for this handover
