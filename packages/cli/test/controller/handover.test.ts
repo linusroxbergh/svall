@@ -1327,6 +1327,16 @@ describe('a far machine that is down', () => {
     await recover(w, 'abort');
     expect(settledOn(w)).toBe('source');
   });
+
+  it('with no journal here, stops a resume while the source is down and nothing says how far it got, so a later abort still lets the source go', async () => {
+    const w = await lostAt('mac:handover.freeze');
+    w.down.add('mac');
+    const out = await controller(w, { ...eager(w), local: trift }).resume();
+    expect(out).toMatchObject({ status: 'interrupted', error: expect.stringContaining('the source did not say how far it got') });
+    expect(w.store.j).toBeUndefined();
+    await recover(w, 'abort');
+    expect(settledOn(w)).toBe('source');
+  });
 });
 
 describe('resuming a handover the destination may have finished', () => {

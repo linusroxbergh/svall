@@ -303,10 +303,11 @@ export class Handover {
       const o = await this.observe(true);
       const v = assess(o);
       if (v.action === 'none') return v.standing === 'none' ? { status: 'none', reason: v.reason } : this.stuck(v);
-      // a journal rebuilt from the daemons' goes on from the destination's phase, which only the destination can say
-      if (!o.controller && v.standing === 'open' && o.destination?.ok === false) {
-        return this.stuck({ ...v, reason: `this controller keeps no journal of ${v.transactionId}, and the destination did not say how far it got (${o.destination.error}); resume once it answers` });
-      }
+      // a journal rebuilt from the daemons' goes on from the destination's phase, or with none anywhere, from whether the source froze: each only that machine can say
+      const silent = o.controller || v.standing !== 'open' ? undefined
+        : o.destination?.ok === false ? `the destination did not say how far it got (${o.destination.error})`
+          : v.phase === undefined && o.source?.ok === false ? `the source did not say how far it got (${o.source.error})` : undefined;
+      if (silent) return this.stuck({ ...v, reason: `this controller keeps no journal of ${v.transactionId}, and ${silent}; resume once it answers` });
       try { await this.adopt(o, v); } catch (e) { return this.stopped(e); }
       if (v.action === 'finish-abort') return this.letGo({ status: 'aborted', transactionId: v.transactionId, phase: v.phase ?? 'begin' }).catch((e: unknown) => this.stopped(e));
       if (v.action === 'finish') {
