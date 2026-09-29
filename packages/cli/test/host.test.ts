@@ -303,6 +303,20 @@ describe('host add', () => {
     expect(ssh.remoteCalls().some((w) => w.includes('sudo'))).toBe(false);
   });
 
+  it('warns about an rsync too old to hand a fleet over with, naming what to install, without blocking the rest of setup', async () => {
+    ssh.reply(['archi-rsync'], { stdout: 'rsync  version 3.1.3  protocol version 31\n' });
+    healthy();
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+    await d.close();
+    expect(step('rsync').at(-1)).toMatchObject({
+      status: 'warn', detail: 'the rsync there is rsync 3.1.3; a handover needs 3.2.3 or newer', action: 'ssh trift.test, then install rsync 3.2.3 or newer, as Ubuntu 22.04 and later ship',
+    });
+    expect(out).toMatchObject({ result: 'actions', actions: ['ssh trift.test, then install rsync 3.2.3 or newer, as Ubuntu 22.04 and later ship'] });
+    expect(step('registry').at(-1)).toMatchObject({ status: 'ok' });
+  });
+
   it('warns about a tmux too old for Shift+Enter without blocking', async () => {
     healthy();
     const d = await daemon();

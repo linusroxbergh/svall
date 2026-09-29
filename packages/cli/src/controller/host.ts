@@ -23,6 +23,7 @@ import {
   remoteRollback, requireCompatible, uploadArchive, type CompanionArchive, type FetchLike,
 } from './install.js';
 import { redact } from './process.js';
+import { MIN_RSYNC, rsyncVersion } from './rsync.js';
 import { MachineRegistry, type MachineEntry } from './registry.js';
 import { fileStore } from './recovery.js';
 import { cachedOwner, readRoute } from './route.js';
@@ -359,7 +360,13 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
           ? { value: undefined, status: 'warn' as const, detail: `${version}: Shift+Enter needs tmux 3.5 or newer; Ubuntu 24.04 ships 3.4` }
           : { value: undefined, detail: version };
       });
-      await run.step('rsync', async () => ({ value: undefined, detail: (await probe(master, sh('archi-rsync', 'rsync --version | head -1'), 'rsync --version')).trim() }));
+      await run.step('rsync', async () => {
+        const line = (await probe(master, sh('archi-rsync', 'rsync --version | head -1'), 'rsync --version')).trim();
+        const r = rsyncVersion(line);
+        return 'reason' in r
+          ? { value: undefined, status: 'warn' as const, detail: `the rsync there ${r.reason}`, action: onThere(o.ssh, `install rsync ${MIN_RSYNC.join('.')} or newer, as Ubuntu 22.04 and later ship`) }
+          : { value: undefined, detail: line };
+      });
       await run.step('space', async () => spaceProbe(await probe(master, sh('archi-space', 'df -Pk "$HOME"'), 'df -Pk $HOME')));
       await run.step('linger', async () => lingerProbe(await probe(master, sh('archi-linger', 'loginctl show-user "$USER" -p Linger'), 'loginctl show-user'), user, o.ssh));
 
