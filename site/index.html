@@ -19,7 +19,7 @@
   color-scheme: dark;
   --sea-1: #2A3A4C; --surface-1: #1E2A38; --surface-2: #243140;
   --map-0: #53687C; --map-1: #3E5061; --map-2: #2C3847;
-  --grid: rgba(220,205,173,.055); --contour: rgba(236,220,186,.19); --contour-2: rgba(236,220,186,.08);
+  --grid: rgba(220,205,173,.055); --contour: rgba(236,220,186,.12); --contour-2: rgba(236,220,186,.05);
   --sand: #E6D8B8; --sand-deep: #C9B992; --sand-lite: #E9DBB8; --sand-hi: #F6ECD1; --bank: #A2905F;
   --grass: #7B9376; --grass-hi: #98AD92; --shore: rgba(90,80,55,.42);
   --grass-press: color-mix(in srgb, var(--grass) 45%, var(--ink-land));
@@ -41,6 +41,7 @@
   --ease: cubic-bezier(.22,.7,.24,1); --ease-out: cubic-bezier(.16,1,.3,1);
   --r-md: 10px; --r-xs: 5px;
   --tok: 34px;
+  --map-tone: .97;
   --gutter: clamp(16px, 4vw, 40px);
 }
 
@@ -105,21 +106,21 @@ main { overflow-x: clip; }
   animation: swell 67s ease-in-out infinite alternate-reverse; }
 @keyframes swell { from { transform: translate(-3%, -2%) scale(1); } to { transform: translate(3%, 2%) scale(1.06); } }
 /* wide: the islands share the stage with the hero, cascading down its right side */
-.world { position: absolute; top: 0; left: var(--gutter); transform-origin: 0 0; }
-.narrow .world { position: relative; left: auto; margin: 48px auto 0; transform: none; }
+.world { position: absolute; top: 0; left: var(--gutter); transform-origin: 0 0; filter: brightness(var(--map-tone)); }
+.narrow .world { position: relative; left: auto; margin: 48px 0 0 50%; transform: none; translate: -50% 0; }
 .tok .gem[hidden], .tok .sw[hidden] { display: none; }
 .island { position: absolute; pointer-events: none; }
 .island svg { display: block; overflow: visible; }
-.island .grass { filter: drop-shadow(0 1px 1px color-mix(in srgb, var(--ink-land) 22%, transparent)); }
+.island .grass { filter: brightness(var(--map-tone)) drop-shadow(0 1px 1px color-mix(in srgb, var(--ink-land) 22%, transparent)); }
 .island .land-texture { opacity: .22; }
 .ilabel { position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; white-space: nowrap;
   padding: 6px 10px; border-radius: var(--r-md); background: var(--glass); border: 1px solid var(--line-soft); }
-.ilabel svg { margin-left: -4px; color: var(--ink-2); }
+.ilabel .itog { margin-left: -4px; width: 18px; height: 18px; flex: none; display: grid; place-items: center; color: var(--ink-2); }
 .ilabel b { font-weight: 600; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; }
 .ilabel .ct { font-size: 10.5px; font-weight: 600; padding: 2px 6px; border-radius: var(--r-xs); background: var(--sand-fill); color: var(--sand); }
 
 /* a character's card (the app's .tok) */
-.tok { position: absolute; z-index: 20; transform: translate(-50%, -48%); --card-w: calc(var(--tok) * 2.56); --card-h: calc(var(--tok) * 3.486); }
+.tok { position: absolute; z-index: 20; transform: translate(-50%, -48%); filter: brightness(var(--map-tone)); --card-w: calc(var(--tok) * 2.56); --card-h: calc(var(--tok) * 3.486); }
 .tok:hover { z-index: 30; }
 .tok::before { content: ''; position: absolute; z-index: -1; pointer-events: none;
   inset: calc(var(--tok)*-.2) calc(var(--tok)*-.2) calc(var(--tok)*-.18); border-radius: calc(var(--tok)*.41);
@@ -179,8 +180,7 @@ main { overflow-x: clip; }
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--card-tint) 24%, transparent); }
 .tok .foot .sw { font-size: calc(var(--tok)*.225); font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
   padding: calc(var(--tok)*.02) calc(var(--tok)*.13); border-radius: var(--r-xs); color: var(--ink-land-deep); }
-.tok .foot .tg { flex: none; width: calc(var(--tok)*.30); height: calc(var(--tok)*.27); color: color-mix(in srgb, var(--ink-land) 55%, transparent); }
-.tok .foot .tg:only-child { margin-left: auto; }
+.tok .foot .tg { flex: none; margin-left: auto; width: calc(var(--tok)*.30); height: calc(var(--tok)*.27); color: color-mix(in srgb, var(--ink-land) 55%, transparent); }
 .tok .rail { position: absolute; z-index: 9; right: calc(var(--tok)*-.36); top: calc(var(--tok)*.09); bottom: calc(var(--tok)*.46);
   display: flex; flex-direction: column; justify-content: center; gap: calc(var(--tok)*.08); }
 .tok .chip { width: calc(var(--tok)*.72); height: calc(var(--tok)*.72); border-radius: 30%; display: grid; place-items: center;
@@ -346,13 +346,14 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     const contours = [[1.2, 'var(--contour-2)'], [1.12, 'var(--contour-2)'], [1.055, 'var(--contour)']].map(([k, c]) =>
       `<path d="${sand}" fill="none" stroke="${c}" stroke-width="${(1 / k).toFixed(3)}" stroke-dasharray="7 9" stroke-linecap="round" transform="${around(k)}"/>`).join('');
     return `<svg width="${bw}" height="${bh}" viewBox="0 0 ${bw} ${bh}" aria-hidden="true"><defs>
-      <filter id="soft-${id}" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="9"/></filter>
+      <filter id="soft-${id}" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="16"/></filter>
+      <filter id="wash-${id}" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="11"/></filter>
       <filter id="sharp-${id}" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="5"/></filter>
       <radialGradient id="g-${id}" cx="40%" cy="30%" r="76%"><stop offset="0" stop-color="var(--grass-hi)"/><stop offset="1" stop-color="var(--grass)"/></radialGradient>
       <linearGradient id="s-${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--sand-lite)"/><stop offset="1" stop-color="var(--sand-deep)"/></linearGradient>
       <pattern id="t-${id}" patternUnits="userSpaceOnUse" width="128" height="128"><image href="map-grain.png" width="128" height="128"/></pattern></defs>
-      <path d="${sand}" fill="rgba(140,190,215,.13)" filter="url(#soft-${id})" transform="${around(1.3)}"/>
-      <path d="${sand}" fill="rgba(205,225,230,.10)" filter="url(#sharp-${id})" transform="${around(1.1)}"/>
+      <path d="${sand}" fill="rgba(140,190,215,.13)" filter="url(#soft-${id})" transform="${around(1.38)}"/>
+      <path d="${sand}" fill="rgba(205,225,230,.09)" filter="url(#wash-${id})" transform="${around(1.16)}"/>
       <path d="${sand}" fill="rgba(8,14,22,.22)" filter="url(#sharp-${id})" transform="translate(2,8)"/>
       ${contours}
       <path d="${sand}" fill="rgba(70,58,34,.2)" transform="translate(0,7.5)"/>
@@ -376,34 +377,38 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     { name: 'review #214', animal: 'lemur', tint: 'coral', status: 'working', ctx: .62, links: [GH] },
     { name: 'changelog', animal: 'penguin', tint: 'sky', status: 'working', ctx: .27, links: [] },
   ];
-  // footprints in px; crew sit on the app's pitch, three cells across and three and a half down
+  // footprints and crew cells follow svalld's crewGrid: 44px cells, crew three cells apart across and four down,
+  // two cells in from the coast, a lone column one further
+  const CELL = 44;
   const islands = [
-    { id: 'storefront', w: 330, h: 370, cols: 2, crew: [0, 1, 2, 3] },
-    { id: 'payments api', w: 330, h: 220, cols: 2, crew: [4, 5] },
-    { id: 'docs', w: 180, h: 200, cols: 1, crew: [6] },
+    { id: 'storefront', cols: 2, crew: [0, 1, 2, 3] },
+    { id: 'payments api', cols: 2, crew: [4, 5] },
+    { id: 'docs', cols: 1, crew: [6] },
   ];
   // wide: the text holds the left column, the islands cascade down the right; narrow: stacked under the text
   const LAYOUTS = {
-    wide: { w: 1200, h: 900, at: [[760, 500], [640, 170], [1020, 230]] },
-    narrow: { w: 330, h: 1100, at: [[0, 70], [0, 560], [75, 890]] },
+    wide: { w: 1380, h: 940, at: [[810, 530], [640, 160], [1050, 220]] },
+    narrow: { w: 352, h: 1160, at: [[0, 70], [0, 590], [22, 930]] },
   };
   const stage = document.querySelector('.stage'), world = document.querySelector('.world');
   const C = 2 * Math.PI * 32.5;
   const tg = '<svg class="tg" viewBox="0 0 10 9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.4 1.6 4 4.4 1.4 7.2"/><path d="M5.8 7.2h2.8"/></svg>';
 
   for (const isl of islands) {
+    const mx = isl.cols === 1 ? 3 : 2, rows = Math.ceil(isl.crew.length / isl.cols);
+    isl.w = (3 * (isl.cols - 1) + 1 + 2 * mx) * CELL;
+    isl.h = (4 * (rows - 1) + 5) * CELL;
     isl.el = document.createElement('div');
     isl.el.className = 'island';
     Object.assign(isl.el.style, { width: `${isl.w + PAD * 2}px`, height: `${isl.h + PAD * 2}px` });
     isl.el.innerHTML = islandSvg(isl.id.replace(/\W/g, ''), isl.w, isl.h) +
-      `<div class="ilabel" style="top:${PAD - 57.2}px"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5"/></svg><b>${isl.id}</b><span class="ct">${isl.crew.length}</span></div>`;
+      `<div class="ilabel" style="top:${PAD - 57.2}px"><span class="itog"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5"/></svg></span><b>${isl.id}</b><span class="ct">${isl.crew.length}</span></div>`;
     world.append(isl.el);
-    const rows = Math.ceil(isl.crew.length / isl.cols);
     isl.crew.forEach((ci, k) => {
-      const c = cast[ci], col = k % isl.cols, row = Math.floor(k / isl.cols);
+      const c = cast[ci];
       c.island = isl; c.since = 0;
-      c.dx = isl.w / 2 + (col - (isl.cols - 1) / 2) * 132;
-      c.dy = isl.h / 2 + (row - (rows - 1) / 2) * 154 + 6;
+      c.dx = (mx + 3 * (k % isl.cols) + .5) * CELL;
+      c.dy = (2 + 4 * Math.floor(k / isl.cols) + .5) * CELL;
       c.el = document.createElement('div');
       c.el.innerHTML = `<div class="card"><div class="edge"></div>
         <div class="pf"><div class="disc-wrap">
@@ -418,13 +423,15 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     });
   }
 
-  const wideMQ = matchMedia('(min-width: 1200px)');
+  const wideMQ = matchMedia('(min-width: 1280px)');
   function place() {
     const wide = wideMQ.matches, L = wide ? LAYOUTS.wide : LAYOUTS.narrow;
     stage.classList.toggle('narrow', !wide);
     const pad = parseFloat(getComputedStyle(stage).paddingLeft);
     const s = wide ? Math.min(1, (stage.clientWidth - pad) / L.w) : 1;
     Object.assign(world.style, { width: `${L.w}px`, height: `${L.h}px`, transform: wide ? `scale(${s})` : '' });
+    // as in the app, a card keeps its screen size while the map shrinks to .78, then shrinks with it
+    world.style.setProperty('--tok', `${34 / Math.max(s, .78)}px`);
     stage.style.minHeight = wide ? `${L.h * s}px` : '';
     islands.forEach((isl, i) => {
       const [x, y] = L.at[i];

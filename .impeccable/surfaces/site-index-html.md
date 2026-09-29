@@ -14,6 +14,6 @@ Mode: Persuade. Visitor: a Mac developer running several Claude Code or Codex ag
 THESIS: The page is the app's own map: three islands where one agent needs you. Refuses the SaaS hero with a screenshot and feature-card grid.
 OWN-WORLD: The app's map sea (map-0 to map-2, grain, dot grid, drifting light), coast-drawn islands with label pills, real-size cream cards with animal portraits, gauges and link chips. Outfit and JetBrains Mono.
 STORY: Visitor reads the headline, watches an agent block and clear on the map, copies the install lines, scans the feature list.
-FIRST VIEWPORT: Wordmark left, GitHub right. Text column left (520px): headline, one sentence, install block, then the feature list. Three live islands cascade down the right, 120px or more clear of the text.
+FIRST VIEWPORT: Wordmark left, GitHub right. Text column left (520px): headline, one sentence, install block, then the feature list. Three live islands at the app's own sizes cascade down the right, clear of the text.
 FORM: "One glance", #3 on my list, header on top per the user; seed e5a77a5a.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
