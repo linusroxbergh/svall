@@ -153,8 +153,8 @@ export class Machine {
       const slot = term ? c.second : c;
       if (slot?.tmux) return c;
       const command = slot?.revive?.command;
-      // a window its terminal left is gone back to, and nothing is run in it
-      const left = [...this.windows.values()].find((x) => x.name === key);
+      // a window its main terminal left is gone back to, and nothing is run in it; a second terminal always opens a new one
+      const left = term ? undefined : [...this.windows.values()].find((x) => x.name === key);
       const win = left ?? this.window(key, (term ? c.second?.cwd : undefined) ?? c.cwd, command ? [command] : undefined);
       const session = !left && command && slot?.agent?.sessionId;
       if (session) setImmediate(() => { if (!life.dead) for (const fn of started) fn(id, term, session); });

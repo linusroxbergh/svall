@@ -215,6 +215,8 @@ function boot(o: Boot = {}) {
       return store.state.characters[id];
     },
     openSecond: async (id) => {
+      // as the fleet does, a second terminal that still names its window keeps it
+      if (store.state.characters[id].second?.tmux) return store.state.characters[id];
       world.log.push(`second ${id}`);
       store.update((d) => { const s = d.characters[id].second!; s.tmux = win(10); delete s.revive; });
       return store.state.characters[id];
@@ -961,6 +963,25 @@ describe('source abort', () => {
     expect(b.world.log).toEqual(['ensure-server', 'revive c_cy', 'activate', 'reconcile']);
     expect(again.ownership.writable()).toBe(true);
     expect(ownerFile(b.paths)).toEqual({ fleetId, generation: 4, ownerMachineId: me });
+  });
+
+  it('keeps the window a rest that died left open for a terminal it stopped, and opens none beside it', async () => {
+    const b = boot();
+    b.gateway.begin();
+    // the rest journaled the terminals it stops, and died before it closed ada's second window
+    b.handover.write(SourceJournal.parse({
+      role: 'source', transactionId: TX, generation: 4, fleetId, fromMachineId: me, toMachineId: trift, phase: 'freeze',
+      stoppedTerminals: [{ characterId: 'c_ada', term: 2 }], updatedAt: 1,
+    }));
+    await b.ownership.freeze(b.gateway.record.transaction!);
+    const again = await b.restart();
+    b.gateway.abort();
+
+    expect(await again.handover.abort({ transactionId: TX, generation: 4 })).toEqual({});
+
+    expect(b.store.state.characters.c_ada.second?.tmux).toEqual(win(2));
+    expect(b.world.log.filter((l) => l.startsWith('second'))).toEqual([]);
+    expect(again.ownership.writable()).toBe(true);
   });
 
   it('finishes an abort a crash cut short after the journal closed and before the fleet was unfrozen', async () => {
