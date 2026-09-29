@@ -14,7 +14,7 @@ import { Config, configRefusal, configuredMainAgent, parseConfig } from '@archip
 import { gatewayPaths, socketTooLong } from '@archipelago/archid/gateway/authority';
 import { gatewayPrefix } from '@archipelago/archid/gateway/bin';
 import { lingerState, unitStatus, type Run } from '@archipelago/archid/linux/service';
-import { archidUnitName, GATEWAY_UNIT, unitPath } from '@archipelago/archid/linux/setup';
+import { agentHomesEnv, archidUnitName, GATEWAY_UNIT, unitDirOf, unitEnv, unitPath } from '@archipelago/archid/linux/setup';
 import { resolvePaths, userPaths } from '@archipelago/archid/paths';
 import { OLD_LAUNCHD_LABEL, PRIVATE, profileHome, profileLabel } from '@archipelago/archid/profile';
 import { isRelease } from '@archipelago/archid/release';
@@ -42,7 +42,9 @@ export type DoctorDeps = {
   // the fleet whose scripts setup points the Claude and Codex hooks at
   hooksHome: string;
   launchAgentsDir: string;
-  // what setup would hand a fleet's daemon from this shell
+  // where the Linux daemons' units lie
+  unitDir: string;
+  // what setup would hand a fleet's daemon from this account
   daemonEnv: Record<string, string>;
   codex: CodexPaths;
   exists(path: string): boolean;
@@ -254,18 +256,21 @@ function daemonPath(t: Target, d: DoctorDeps): Check {
     : { name: 'daemon path', status: 'ok', detail: 'its program is there, and it finds claude and codex as this shell does' };
 }
 
-// launchd gives archid only the plist's environment, which setup took from the shell it ran in
+// launchd and systemd give archid only the environment its plist or unit holds, which setup took from this account
 function daemonEnv(t: Target, d: DoctorDeps): Check {
   if (!t.managed) return { name: 'daemon env', status: 'skip', detail: 'not managed' };
   const keys = Object.keys(d.daemonEnv);
-  if (!keys.length) return { name: 'daemon env', status: 'ok', detail: 'this shell sets no CLAUDE_CONFIG_DIR or CODEX_HOME' };
-  const { plist, fix } = plistOf(t, d);
-  const text = d.read(plist);
-  if (text === undefined) return { name: 'daemon env', status: 'skip', detail: `no ${plist}` };
-  const lacks = keys.filter((k) => !text.includes(plistEnv(k, d.daemonEnv[k])));
+  if (!keys.length) return { name: 'daemon env', status: 'ok', detail: 'this account sets no CLAUDE_CONFIG_DIR or CODEX_HOME' };
+  const linux = d.platform === 'linux';
+  const { plist: file, fix } = linux
+    ? { plist: path.join(d.unitDir, archidUnitName(t.name)), fix: t.name === PRIVATE ? 'archi setup' : `archi host enable <this machine> --fleet ${t.name} from the controller` }
+    : plistOf(t, d);
+  const text = d.read(file);
+  if (text === undefined) return { name: 'daemon env', status: 'skip', detail: `no ${file}` };
+  const lacks = keys.filter((k) => !text.includes((linux ? unitEnv : plistEnv)(k, d.daemonEnv[k])));
   return lacks.length
-    ? { name: 'daemon env', status: 'warn', detail: `${plist} lacks ${lacks.join(' and ')}, which this shell sets: ${fix}` }
-    : { name: 'daemon env', status: 'ok', detail: `same ${keys.join(' and ')} as this shell` };
+    ? { name: 'daemon env', status: 'warn', detail: `${file} lacks ${lacks.join(' and ')}, which this account sets: ${fix}` }
+    : { name: 'daemon env', status: 'ok', detail: `same ${keys.join(' and ')} as this account` };
 }
 
 // the wrappers take stdout and stderr; doctor's runner reports a failure by throwing
@@ -365,7 +370,7 @@ export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
     await archid(t, d),
     await hookReceiver(t, d),
     ...(d.platform === 'linux'
-      ? [await systemd(t, d), await unitCheck('gateway', GATEWAY_UNIT, d, () => socketTooLong(gatewayPaths(gatewayPrefix()).socket, 'linux')?.message), await linger(d)]
+      ? [await systemd(t, d), daemonEnv(t, d), await unitCheck('gateway', GATEWAY_UNIT, d, () => socketTooLong(gatewayPaths(gatewayPrefix()).socket, 'linux')?.message), await linger(d)]
       : [await launchd(t, d), daemonNode(t, d), daemonPath(t, d), daemonEnv(t, d), await rsync(d)]),
     hooks(d),
     await codexCheck(d),
@@ -445,7 +450,9 @@ export function doctorCommand(target: () => Target, json: () => boolean): Comman
       settingsPath: userPaths().claudeSettings,
       hooksHome: profileHome(PRIVATE),
       launchAgentsDir: userPaths().launchAgents,
-      daemonEnv: launchdEnv(),
+      unitDir: unitDirOf(os.homedir()),
+      // a login shell asked over ssh must leave host add's doctor its own time to answer
+      daemonEnv: process.platform === 'linux' ? await agentHomesEnv((cmd, args) => execFileP(cmd, args, { timeout: 10_000 })) : launchdEnv(),
       codex: codexPaths(),
       exists: fs.existsSync,
       found: findAgents(pre.agentPath ?? pre.pathEnv),

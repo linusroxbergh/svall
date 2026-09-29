@@ -1,7 +1,7 @@
 import os from 'node:os';
 import { describe, expect, it, vi } from 'vitest';
 import { codexHookCommand, mergeCodexHooks } from '@archipelago/archid/codex/install';
-import { archidUnit } from '@archipelago/archid/linux/setup';
+import { archidUnit, unitEnv } from '@archipelago/archid/linux/setup';
 import { LAUNCHD_LABEL } from '@archipelago/archid/profile';
 import { repoRoot } from '@archipelago/archid/release';
 import { HOOK_EVENTS, hookCommand, mergeHooks, mergeStatusLine, nodeRun, statusWrapper } from '@archipelago/archid/setup';
@@ -74,6 +74,7 @@ function fake(o: {
     settingsPath: '/u/.claude/settings.json',
     hooksHome: '/u/.archipelago',
     launchAgentsDir: '/u/Library/LaunchAgents',
+    unitDir: '/u/.config/systemd/user',
     daemonEnv: o.daemonEnv ?? {},
     codex: CODEX,
     exists: (p) => p in files,
@@ -299,7 +300,7 @@ describe('doctor on Linux', () => {
   const show = showOf(unit);
   const gateway = showOf('archipelago-gateway.service');
   const running = 'LoadState=loaded\nActiveState=active\nSubState=running\nUnitFileState=enabled\n';
-  const linux = (commands: Record<string, string | Error> = {}) => fake({
+  const linux = (commands: Record<string, string | Error> = {}, o: { daemonEnv?: Record<string, string>; files?: Record<string, string> } = {}) => fake({
     platform: 'linux',
     commands: {
       [show]: running,
@@ -307,6 +308,18 @@ describe('doctor on Linux', () => {
       'loginctl show-user linus --property=Linger': 'Linger=yes\n',
       ...commands,
     },
+    ...o,
+  });
+
+  it('warns when the daemon\'s unit lacks where this account keeps Claude and Codex files', async () => {
+    const env = { CLAUDE_CONFIG_DIR: '/x/claude home', CODEX_HOME: '/x/codex' };
+    const file = `/u/.config/systemd/user/${unit}`;
+    const lacking = byName(await doctor(priv, linux({}, { daemonEnv: env, files: { [file]: '[Service]\n' } }).deps));
+    expect(lacking['daemon env']).toMatchObject({ status: 'warn', detail: `${file} lacks CLAUDE_CONFIG_DIR and CODEX_HOME, which this account sets: archi setup` });
+    const carried = `[Service]\n${unitEnv('CLAUDE_CONFIG_DIR', '/x/claude home')}\n${unitEnv('CODEX_HOME', '/x/codex')}\n`;
+    expect(byName(await doctor(priv, linux({}, { daemonEnv: env, files: { [file]: carried } }).deps))['daemon env']).toMatchObject({ status: 'ok' });
+    expect(byName(await doctor(priv, linux({}, { files: { [file]: '[Service]\n' } }).deps))['daemon env']).toMatchObject({ status: 'ok' });
+    expect(byName(await doctor(adhoc, linux({}, { daemonEnv: env }).deps))['daemon env'].status).toBe('skip');
   });
 
   it('checks the machine\'s gateway unit beside the fleet\'s', async () => {
