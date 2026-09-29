@@ -883,6 +883,19 @@ describe('rest choices and blockers after Begin', () => {
     await recover(w, 'abort');
     expect(settledOn(w)).toBe('source');
   });
+
+  it('says on a refused entry\'s row why it failed', async () => {
+    const w = new World();
+    const error = 'ENOSPC: no space left on device';
+    w.transferResult = (o) => {
+      const [e] = o.entries;
+      o.onProgress?.({ id: e.id, kind: e.kind, state: 'failed', pass: 1, done: 0, total: 2, bytes: 0, totalBytes: 64, items: 0, error, updatedAt: 0 });
+      return { status: 'failed', blockers: [], entries: [{ id: e.id, status: 'failed', reason: 'refused', code: null, error }] };
+    };
+    await controller(w).start(trift, {});
+    const row = w.events.find((x) => x.event === 'handover.entity' && x.data.id === 'r_app');
+    expect(row).toMatchObject({ data: { kind: 'root', phase: 'transfer', error } });
+  });
 });
 
 describe('resuming after the destination prepared', () => {
@@ -1337,6 +1350,24 @@ describe('reading the controller journal', () => {
     await controller(w).abort();
     await controller(w).start(trift, {});
     expect(w.store.asides.slice(1, 4)).toEqual([true, true, true]);
+  });
+
+  it('refuses to start over a journal a run left open here, asks no one anything and keeps it, so only a resume goes on', async () => {
+    const probe = new World();
+    await controller(probe).start(trift, {});
+    const w = new World();
+    w.fault = { at: opIndex(probe, 'gateway:begin'), kind: 'death' };
+    await controller(w).start(trift, {});
+    await w.heal();
+    const open = structuredClone(w.store.j);
+    expect(open).toMatchObject({ phase: 'begin' });
+    const ops = w.ops.length;
+    const out = await controller(w).start(trift, {});
+    expect(out).toMatchObject({ status: 'interrupted', phase: 'begin', safe: ['resume'] });
+    expect(w.ops.slice(ops)).toEqual([]);
+    expect(w.store.j).toEqual(open);
+    await recover(w);
+    expect(settledOn(w)).toBe('destination');
   });
 });
 
