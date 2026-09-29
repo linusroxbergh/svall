@@ -11,7 +11,7 @@ import { resolvePaths } from '@archipelago/archid/paths';
 import { authorityOp, Masters, openDaemon } from '../controller/reach.js';
 import { fileStore, type ControllerJournal } from '../controller/recovery.js';
 import { MachineRegistry, type MachineEntry } from '../controller/registry.js';
-import { readRoute, writeRoute, type CachedRoute } from '../controller/route.js';
+import { readRoute, rememberOwner, type CachedRoute } from '../controller/route.js';
 import { closeMastersOnSignal } from '../controller/ssh.js';
 import { ask } from '../prompt.js';
 import type { Target } from '../target.js';
@@ -289,9 +289,7 @@ export async function recoverFleet(o: RecoverOptions, d: RecoverDeps): Promise<b
       actions.push(`${file} could not be changed to name ${replacement.record.name} the gateway (${messageOf(e)}); set its gatewayMachineId to ${replacement.id}`);
     }
   }
-  try {
-    writeRoute(d.fleetHome, { ownerMachineId: forced.ownerMachineId, generation: forced.generation, at: d.now().toISOString() });
-  } catch { /* the cached route only stands in while the gateway cannot answer */ }
+  rememberOwner(d.fleetHome, forced, d.now());
 
   const tell = async (m: MachineView): Promise<{ ownership?: OwnershipInfo; adopted?: boolean; error?: string }> => {
     try {
