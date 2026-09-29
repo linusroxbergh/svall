@@ -87,3 +87,31 @@ For C2 (docs): `errors.md`'s `agent_unsettled` row now also covers an idle agent
 - The cli suite and typecheck are red until B lands items 1–2.
 - F3's "ran" is read from `pane_current_command` each poll; a resume that fails within one poll counts as never having come up and waits the 60 s before it is laid dormant.
 - `agentHomesEnv` runs an interactive login shell (`-lic`); an rc file that blocks waits out `realRun`'s 30 s before setup goes on without the values.
+
+## Follow-up: createCharacter
+
+Commit `7b9830a2`. What changed:
+
+- `createCharacter` opens the window, records the character and types its start command in `openCharacter`. That promise is
+  kept in `Fleet.creating` until it settles, and `settle()` now waits on `background`, `creating`, `reviving` and
+  `openingSecond`.
+- Just before the window opens it calls `assertOwner('terminal')`, so a create asked of a frozen fleet opens nothing. There
+  is no await between the API guard and `newWindow`, so a create admitted before the freeze always opens its window before
+  settle can return.
+- A create that opened its window before the freeze ends once it is recorded: no link refresh starts, and a `run` prompt is
+  never typed (`runSent: false`), including after an agent that reports in once the fleet is frozen.
+
+Every window-opening path in archid was checked: `createCharacter`, `doRevive` and `doOpenSecond` (C01) are the only
+`newWindow` calls. `terminals.ts` `attachSession` links an existing window into a viewer session, which the rest detaches.
+`ensureServer` only makes `_keep`.
+
+RED → GREEN, both in fleet.test:
+- "settles only once a character created before a freeze holds its window…": settle had returned while `newWindow` was held
+  (`expected true to be false`).
+- "types no prompt into a character created before a freeze…": `runSent` was `true`.
+
+Verification:
+- protocol + archid: 2205 passed, 2 skipped.
+- `pnpm test:faults`: 1310 passed with seed `1790655593251`. The run before it, seed `1790655362341`, failed once in cli
+  `faults.test.ts` "are each struck, from every line that sends one". That test scans `packages/cli/src`, which Fixer B was
+  editing at the time, and it passes alone and in the rerun.
