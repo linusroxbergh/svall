@@ -1,13 +1,13 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { FleetConfig, type FleetId, type MachineId } from '@archipelago/protocol';
 import { writeJsonAtomic } from '../atomic.js';
+import { DurableJson } from '../handover/durable.js';
+import { OwnerCache } from '../ownership/state.js';
 import { resolvePaths, type Paths } from '../paths.js';
 import { PRIVATE } from '../profile.js';
-import { writeAtomic } from '../jsonfile.js';
 import { setupFleetHome } from '../setup.js';
 import { daemonReload, enableUnit, stopUnit, type Run } from './service.js';
-import { archidUnit, type UnitOptions } from './setup.js';
+import { agentHomesEnv, archidUnitName, writeUnits, type UnitOptions } from './setup.js';
 
 export type Provision = UnitOptions & {
   profile: string;
@@ -44,12 +44,11 @@ function readJson(file: string): Read {
 /** Why a fleet home is more than `host add` left it, or nothing when it holds no work, no handover and no ownership beyond generation 0. */
 function inUse(paths: Paths): string | undefined {
   if (fs.existsSync(paths.journal)) return 'it holds a handover journal';
-  const owner = readJson(paths.owner);
-  if (owner.broken) return `its ${paths.owner} cannot be read`;
-  const tx = owner.value?.transaction as { id?: unknown } | undefined;
-  if (tx) return `it is in handover ${String(tx.id)}`;
-  const generation = owner.value?.generation;
-  if (typeof generation === 'number' && generation > 0) return `it has been handed over, to generation ${generation}`;
+  const owner = new DurableJson(OwnerCache, paths.owner).read();
+  if (!owner.ok && owner.reason === 'malformed') return `its ${paths.owner} cannot be read`;
+  const record = owner.ok ? owner.value : undefined;
+  if (record?.transaction) return `it is in handover ${record.transaction.id}`;
+  if (record && record.generation > 0) return `it has been handed over, to generation ${record.generation}`;
   const state = readJson(paths.state);
   if (state.broken) return `its ${paths.state} cannot be read`;
   const n = Object.keys((state.value?.characters as object | undefined) ?? {}).length;
@@ -58,17 +57,9 @@ function inUse(paths: Paths): string | undefined {
 
 // the unit is written only when it is not already what it should be, and systemd reads it again only then
 async function ensureUnit(o: Provision): Promise<string> {
-  const unit = archidUnit({ ...o, fleet: o.profile });
-  const file = path.join(o.unitDir, unit.name);
-  let held: string | undefined;
-  try { held = fs.readFileSync(file, 'utf8'); } catch { /* not written yet */ }
-  if (held !== unit.text) {
-    fs.mkdirSync(o.unitDir, { recursive: true });
-    fs.mkdirSync(path.join(o.prefix, 'log'), { recursive: true });
-    writeAtomic(file, unit.text, { perProcess: true });
-    await daemonReload(o.run);
-  }
-  return unit.name;
+  const env = o.env ?? await agentHomesEnv(o.run);
+  if (writeUnits({ ...o, fleet: o.profile, env }, true).length) await daemonReload(o.run);
+  return archidUnitName(o.profile);
 }
 
 /**

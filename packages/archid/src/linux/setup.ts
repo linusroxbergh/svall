@@ -116,14 +116,14 @@ const readOrUndefined = (file: string): string | undefined => {
   try { return fs.readFileSync(file, 'utf8'); } catch { return undefined; }
 };
 
-/** The units for this machine, written only when they are not already what they should be. */
-export function writeUnits(o: LinuxSetup): string[] {
+/** The fleet's unit and, unless `fleetOnly`, the machine's gateway, written only when they are not already what they should be. */
+export function writeUnits(o: UnitOptions & { fleet: string; home: string; unitDir: string }, fleetOnly = false): string[] {
   fs.mkdirSync(o.unitDir, { recursive: true });
   const logs = path.join(o.prefix, 'log');
   fs.mkdirSync(logs, { recursive: true, mode: 0o700 });
   fs.chmodSync(logs, 0o700);
   const done: string[] = [];
-  for (const unit of [archidUnit(o), gatewayUnit(o)]) {
+  for (const unit of [archidUnit(o), ...(fleetOnly ? [] : [gatewayUnit(o)])]) {
     const file = path.join(o.unitDir, unit.name);
     if (readOrUndefined(file) === unit.text) continue;
     writeAtomic(file, unit.text, { perProcess: true });

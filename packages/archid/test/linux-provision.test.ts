@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FleetId, MachineId } from '@archipelago/protocol';
 import { provisionFleet, ProvisionRefused } from '../src/linux/provision.js';
 import { unitDirOf } from '../src/linux/setup.js';
@@ -10,7 +10,7 @@ import type { Run } from '../src/linux/service.js';
 import { resolvePaths } from '../src/paths.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
-afterEach(cleanHomes);
+afterEach(() => { vi.unstubAllEnvs(); cleanHomes(); });
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
 const FLEET = FleetId.parse(crypto.randomUUID());
@@ -41,7 +41,7 @@ function far(profile = 'private') {
     root, home, paths, sd, unit, unitFile: path.join(unitDirOf(root), unit),
     o: {
       repoRoot, homedir: root, prefix: path.join(root, '.local/share/archipelago'), unitDir: unitDirOf(root),
-      profile, home, fleetId: FLEET, gatewayMachineId: GATEWAY, run: sd.run,
+      profile, home, fleetId: FLEET, gatewayMachineId: GATEWAY, run: sd.run, env: {},
     },
   };
 }
@@ -84,6 +84,19 @@ describe('provisionFleet', () => {
       ['systemctl', '--user', 'daemon-reload'],
       ['systemctl', '--user', 'enable', '--now', f.unit],
     ]);
+  });
+
+  it("keeps the units' logs in a folder only this account opens, and gives the daemon the agent homes the account's login shell sets", async () => {
+    const f = far('work');
+    fs.mkdirSync(path.join(f.o.prefix, 'log'), { recursive: true, mode: 0o755 });
+    vi.stubEnv('SHELL', '/bin/bash');
+    vi.stubEnv('CLAUDE_CONFIG_DIR', undefined);
+    vi.stubEnv('CODEX_HOME', undefined);
+    const { env: _none, ...o } = f.o;
+    const run: Run = async (cmd, args) => (cmd === '/bin/bash' ? { stdout: 'archi-agent-homes\n\n/home/linus/.codex-work\n', stderr: '' } : f.sd.run(cmd, args));
+    await provisionFleet({ ...o, run });
+    expect(fs.statSync(path.join(f.o.prefix, 'log')).mode & 0o777).toBe(0o700);
+    expect(fs.readFileSync(f.unitFile, 'utf8')).toContain('Environment="CODEX_HOME=/home/linus/.codex-work"\n');
   });
 
   it('finishes a home an earlier run left half made, and asks nothing more of one already right than to be running', async () => {
