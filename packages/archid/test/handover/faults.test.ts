@@ -131,7 +131,7 @@ const REACH: Record<Failpoint, Reach> = {
   'gateway.abort.write': { scenario: 'abort', times: 1 },
   'gateway.complete.write': { scenario: 'move', times: 1 },
   'gateway.commit.respond': { scenario: 'move', times: 1 },
-  'controller.journal': { scenario: 'move', times: 15 },
+  'controller.journal': { scenario: 'move', times: 14 },
   'controller.manifest': { scenario: 'move', times: 1 },
   'controller.landed': { scenario: 'move', times: 1 },
   'controller.clear': { scenario: 'move', times: 1 },
