@@ -1337,6 +1337,15 @@ describe('a far machine that is down', () => {
     await recover(w, 'abort');
     expect(settledOn(w)).toBe('source');
   });
+
+  it('with no journal here, after the destination completed, still finishes a committed handover while the source is down and nothing says how far it got', async () => {
+    const w = await lostAt('trift:handover.complete');
+    w.down.add('mac');
+    const out = await controller(w, { ...eager(w), local: trift }).resume();
+    expect(out).toMatchObject({ status: 'complete', transactionId: 'tx-1', pending: ['source'] });
+    await recover(w);
+    expect(settledOn(w)).toBe('destination');
+  });
 });
 
 describe('resuming a handover the destination may have finished', () => {
