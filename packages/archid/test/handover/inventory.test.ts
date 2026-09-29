@@ -482,6 +482,28 @@ describe('buildInventory', () => {
     expect(whole.roots.some((r) => r.kind === 'home' || r.path === notes)).toBe(false);
   });
 
+  it('blocks mission control\'s folder when another fleet on this machine keeps its mission control there too', () => {
+    const s = seed();
+    const [own, work] = [path.join(s.mac, '.archipelago'), path.join(s.mac, '.archipelago-work')];
+    const mission = path.join(own, 'home');
+    fs.mkdirSync(work);
+    const fleetJson = (home: string, o: object) => fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: FLEET.id, ...o }));
+    fleetJson(own, {});
+    // both fleets on the default
+    fleetJson(work, {});
+    const said = (other: string) => `${mission} is mission control's folder for this fleet and for the fleet in ${other}, and a handover would move it away from that fleet; give one of them its own folder with home.cwd in its fleet.json`;
+    const blocked = (maps: MachineMaps) => {
+      const inv = buildInventory(s.state, { fleet: FLEET }, maps);
+      return inv.blockers.map((b) => ({ ...b, entity: b.entity?.id === inv.roots.find((r) => r.kind === 'home')?.id ? 'mission' : b.entity }));
+    };
+    expect(blocked(s.maps)).toEqual([{ code: 'mission_control_shared', message: said(work), entity: 'mission' }]);
+    // the named fleet is refused the same, though the folder lies in the other's fleet home
+    const named = { source: { ...s.maps.source, fleetHome: work }, destination: { ...s.maps.destination, fleetHome: work } };
+    expect(blocked(named)).toEqual([{ code: 'mission_control_shared', message: said(own), entity: 'mission' }]);
+    fleetJson(work, { home: { cwd: '~/.archipelago-work/home' } });
+    expect(blocked(s.maps)).toEqual([]);
+  });
+
   it('folds a root by what is on disk, whatever its ref calls it', () => {
     const s = seed();
     // a file named like an excluded folder rides in the folder around it

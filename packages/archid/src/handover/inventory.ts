@@ -1,8 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { AgentKind, Blocker, FleetConfig, FleetState, GitGraph, HandoverEntity, MachineId, TransferRoot, TransferSession, Warning } from '@archipelago/protocol';
+import { readFleetConfig } from '../config.js';
 import { resolvePaths } from '../paths.js';
 import { shq } from '../text.js';
+import { fleetHomes } from '../uninstall.js';
 import type { GitDiscovery } from './git-graph.js';
 import { byCodeUnit, canonicalJson, sha256Hex } from './hash.js';
 import { exportSnapshot, holds, portablePathValues, realPath, type PathValue } from './portable-path.js';
@@ -142,6 +144,14 @@ function fleetHomeClash(root: InventoryRoot, travels: readonly InventoryRoot[], 
   return inside ? undefined : places.find(([home]) => holds(home, root.path))?.[1];
 }
 
+// the real path of mission control's folder in the fleet at `fleetHome`: ~/.archipelago/home unless its fleet.json says otherwise
+function missionOf(fleetHome: string, home: string): string | undefined {
+  let fleet: FleetConfig;
+  try { fleet = readFleetConfig(resolvePaths(fleetHome)); } catch { return undefined; }
+  const cwd = portablePathValues({ FleetConfig: fleet }, home).find((v) => v.field === 'FleetConfig.home.cwd');
+  return cwd && realPath(cwd.path);
+}
+
 /** Files a root may not hold, and folders it may neither hold nor lie in. */
 export type MachineLocal = { files: string[]; dirs: string[] };
 
@@ -256,6 +266,14 @@ export function buildInventory(state: FleetState, configs: InventoryConfigs, mac
   const homes: FleetHomes = { source: path.posix.resolve(source.fleetHome), sourceReal: realPath(path.posix.resolve(source.fleetHome)), destination: path.posix.resolve(destination.fleetHome) };
   const placed = [...candidates.values()];
   const mission = placed.find((r) => r.kind === 'home' && !fleetHomeClash(r, [r], homes));
+  if (mission) {
+    for (const other of fleetHomes(home).filter((f) => realPath(f) !== homes.sourceReal && missionOf(f, home) === mission.path)) {
+      blockers.push({
+        code: 'mission_control_shared', entity: { kind: 'root', id: mission.id },
+        message: `${mission.path} is mission control's folder for this fleet and for the fleet in ${other}, and a handover would move it away from that fleet; give one of them its own folder with home.cwd in its fleet.json`,
+      });
+    }
+  }
   const travels = placed.filter((r) => r === mission || r.kind === 'docs' || r.kind === 'profiles');
   // the destination checks its own by real path when it claims a root
   const [here, there] = [machineLocal(source), machineLocal(destination)];

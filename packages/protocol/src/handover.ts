@@ -126,7 +126,7 @@ export const HandoverIssueCode = z.enum([
   'incompatible_release', 'incompatible_protocol', 'incompatible_schema', 'incompatible_adapter',
   'agent_cli_missing', 'agent_logged_out', 'agent_hooks_missing',
   'home_mismatch', 'parent_missing', 'character_pinned', 'shell_busy', 'agent_working', 'agent_blocked', 'agent_unsettled',
-  'worktree_unresolved', 'destination_diverged', 'destination_occupied', 'destination_no_space', 'path_collision', 'path_unsupported', 'path_symlinked',
+  'worktree_unresolved', 'destination_diverged', 'destination_occupied', 'destination_no_space', 'path_collision', 'path_unsupported', 'path_symlinked', 'mission_control_shared',
   'transcript_missing', 'ssh_interactive', 'platform_unsupported', 'platform_heuristic', 'env_file', 'credential_file', 'external_writer', 'rsync_unsupported',
   'git_mismatch', 'worktree_unused', 'remote_local', 'git_extension', 'codex_trust', 'claude_trust', 'claude_bypass', 'config_difference', 'symlink_dangling', 'manifest_too_large',
   'too_many_files',
