@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { AUTHORITY_SCHEMA_VERSION, emptyState, PROTOCOL_VERSION, TRANSFER_SCHEMA_VERSION } from '@archipelago/protocol';
+import { AUTHORITY_SCHEMA_VERSION, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, TRANSFER_SCHEMA_VERSION } from '@archipelago/protocol';
 import { machineId } from '@archipelago/archid/machine';
 import { releaseVersion } from '@archipelago/archid/release';
 import { printResult } from '../format.js';
@@ -12,7 +12,7 @@ export function versionCommand(json: () => boolean): Command {
         release: releaseVersion(),
         machineId: machineId(),
         protocol: PROTOCOL_VERSION,
-        stateSchema: emptyState().version,
+        stateSchema: STATE_SCHEMA_VERSION,
         transferSchema: TRANSFER_SCHEMA_VERSION,
         authoritySchema: AUTHORITY_SCHEMA_VERSION,
         runtime: { node: process.version, platform: process.platform, arch: process.arch },
