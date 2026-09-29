@@ -20,6 +20,7 @@ const REMOTE = MachineId.parse('66666666-7777-8888-9999-aaaaaaaaaaaa');
 const MAC = MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f');
 const OTHER_MAC = MachineId.parse('9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f');
 const FLEET = FleetId.parse('11111111-2222-3333-4444-555555555555');
+const OTHER_FLEET = FleetId.parse('0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70');
 const TOKEN = 'remote-token-never-printed';
 // the far account's home is the Mac's, as the registry's own record names it
 const HOME = os.homedir();
@@ -992,12 +993,12 @@ describe('host remove', () => {
     return registry;
   };
 
-  it('uninstalls on the machine before the route is dropped, past the far refusal its own checks stand for, and never purges', async () => {
+  it('uninstalls on the machine before the route is dropped, forcing past no refusal, and never purges', async () => {
     ssh.reply(['uninstall'], { stdout: 'removed\n' });
     const registry = registered('trift.test');
     const out = await removeHost('trift', {}, deps({ registry }));
     expect(out.result).toBe('ready');
-    expect(ssh.remoteCalls()).toEqual([[ARCHI, 'version', '--json'], [ARCHI, 'uninstall', '--force']]);
+    expect(ssh.remoteCalls()).toEqual([[ARCHI, 'version', '--json'], [ARCHI, 'uninstall']]);
     expect(registry.get('trift')).toBeUndefined();
   });
 
@@ -1142,6 +1143,34 @@ describe('host remove', () => {
     const out = await removeHost('trift', {}, deps({ registry }));
     expect(out.result).toBe('ready');
     expect(gatewayOf(mine)).toBeUndefined();
+  });
+
+  it('forces the far uninstall past the gateway records of only the fleets it checked, those naming the machine as gateway', async () => {
+    ssh.reply(['uninstall'], { stdout: 'removed\n' });
+    const registry = registered('trift.test');
+    fleetAt('.archipelago', { gateway: REMOTE, owner: MAC });
+    const other = fleetAt('.archipelago-other', { gateway: OTHER_MAC, owner: MAC });
+    fs.writeFileSync(path.join(other, 'fleet.json'), JSON.stringify({ id: OTHER_FLEET, gatewayMachineId: OTHER_MAC }));
+    const out = await removeHost('trift', {}, deps({ registry }));
+    expect(out.result).toBe('ready');
+    expect(ssh.remoteCalls().at(-1)).toEqual([ARCHI, 'uninstall', '--force-fleet', FLEET]);
+  });
+
+  it('reports the far refusal, with its reason, of what this Mac cannot see, and keeps the route and the fleet\'s gateway', async () => {
+    const why = 'uninstalling here would strand fleets: this machine is the gateway of 1 fleet, whose records are in /home/linus/.local/share/archipelago/gateway/fleets. Finish or abort the handover';
+    ssh.reply(['uninstall'], { stderr: `archi: ${why}\n`, code: 3 });
+    const registry = registered('trift.test');
+    const mine = fleetAt('.archipelago', { gateway: REMOTE, owner: MAC });
+    const out = await removeHost('trift', {}, deps({ registry }));
+    expect(out.result).toBe('actions');
+    const failed = step('uninstall').at(-1);
+    expect(failed).toMatchObject({ status: 'fail', detail: expect.stringContaining(why) });
+    expect(failed?.detail).not.toContain('could not be reached');
+    expect(failed?.action).toContain('archi handover local');
+    expect(failed?.action).toContain('ssh trift.test, then archi uninstall --force');
+    expect(failed?.action).toContain('archi host remove trift --forget');
+    expect(registry.get('trift')).toBeDefined();
+    expect(gatewayOf(mine)).toBe(REMOTE);
   });
 
   it('takes the gateway out of a fleet this Mac owns as the machine goes', async () => {

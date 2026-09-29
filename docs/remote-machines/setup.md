@@ -129,7 +129,7 @@ once per fleet; `--fleet work` for a fleet named `work`. Then [hand the fleet ov
 | `archi host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, its free space and its home path. A check marked ✗ fails and makes it exit 1; one marked ! is a warning. A fresh Ubuntu 24.04 warns on `tmux` (it ships 3.4), `gh` and `path`; none of these stops a handover. |
 | `archi host upgrade <name>` | Upgrade | Installs this Mac's release there, restarts the gateway and every fleet's daemon, and checks each answers from the new release. If one does not, it goes back to the release before. |
 | `archi host upgrade <name> --rollback [release]` | | Puts the machine back on the release before, or on the kept release named, restarts its units, and checks each fleet's daemon answers from it. |
-| `archi host remove <name>` | Remove | Runs `archi uninstall --force` there and drops the machine from the registry. It refuses while the machine is the gateway of a fleet this Mac does not own, while it owns a fleet through any gateway, and while a handover holds any fleet here open, whatever its gateway; bring each back with `archi handover local` first. Its fleets and their files stay on that machine. |
+| `archi host remove <name>` | Remove | Runs `archi uninstall` there and drops the machine from the registry. It refuses while the machine is the gateway of a fleet this Mac does not own, while it owns a fleet through any gateway, and while a handover holds any fleet here open, whatever its gateway; bring each back with `archi handover local` first. The uninstall there passes only the gateway records of this Mac's fleets, so the machine still refuses for anything else, such as another Mac's fleet. Its fleets and their files stay on that machine. |
 | `archi host remove <name> --forget` | Forget | Drops the machine from the registry without reaching it, when it is gone. |
 
 After you update Archipelago on the Mac (`git pull && pnpm desktop:install`), run `archi host upgrade <name>`: until
@@ -142,7 +142,10 @@ On the Linux machine itself:
   names.
 - `archi uninstall` refuses while the machine is a fleet's gateway, runs a fleet for its gateway, or holds a handover
   journal, since that would strand the fleet. `archi host remove` from the Mac checks the fleets that Mac knows of,
-  then runs it with `--force`, which passes the refusal for a fleet another Mac keeps there too.
+  then runs it with `--force-fleet` for each of them that names the machine as its gateway, so it still refuses for a
+  fleet another Mac keeps there. To remove a machine two Macs use, bring the other Mac's fleet home and run
+  `archi host remove <name> --forget` there, then `archi uninstall --force` here and
+  `archi host remove <name> --forget` on the first Mac.
 - Each fleet's own log is `archid.log` in its fleet home (`~/.archipelago` for the private fleet), beside the units'
   logs in `~/.local/share/archipelago/log`.
 - `systemctl --user status archipelago-gateway archipelago-archid@private` shows the units.

@@ -343,9 +343,12 @@ setup is idempotent. `archi host doctor trift`, `archi host upgrade trift` and
 `archi host remove trift` expose diagnosis, version upgrade/rollback and uninstall.
 `archi host upgrade trift --rollback [release]` puts the machine back on the release before, or a
 kept one it names, and probes it as an upgrade does. `archi uninstall` run on a machine refuses
-while it holds a handover journal, runs a fleet for its gateway or keeps gateway records.
-`archi host remove` checks the fleets this controller knows of, then runs it with `--force`, which
-passes the far refusal for every fleet, another controller's included.
+while it holds a handover journal, runs a fleet for its gateway or keeps gateway records;
+`--force` passes all of it, and `--force-fleet <id>` only the gateway record of that fleet.
+`archi host remove` checks the fleets this controller knows of, then runs it with `--force-fleet`
+for each fleet here that names that machine as its gateway. The far machine still refuses for
+anything else, another controller's fleets included, and `host remove` reports that refusal with
+its reason.
 
 ## Compatibility
 

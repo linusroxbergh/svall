@@ -645,9 +645,17 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
       try {
         master = await d.openMaster(entry.record.ssh);
         await sameMachine(master, entry);
-        // the fleet step checked what this strands; the far refusal would stop at the records a gateway always holds
-        const out = await probe(master, [shq(archiExe(entry.record.archiBase)), 'uninstall', '--force'], 'archi uninstall');
-        return { value: true, detail: out.trim().split('\n').at(-1) ?? 'archi uninstall' };
+        // the fleet step checked the fleets naming this gateway, so only their records are forced past; the far
+        // machine still refuses for whatever else it holds, such as another Mac's fleet
+        const ids = [...new Set(fleets.map((home) => readFleet(resolvePaths(home).fleetConfig).id))];
+        const argv = [shq(archiExe(entry.record.archiBase)), 'uninstall', ...ids.flatMap((id) => ['--force-fleet', shq(id)])];
+        const r = await master.run(argv, { timeoutMs: PROBE_TIMEOUT });
+        if (r.code === REFUSED) {
+          throw new StepError(`${name} refuses: ${r.stderr.trim().replace(/^archi: /, '').slice(0, 1000)}`,
+            `on each other Mac whose fleet it names, bring that fleet home with archi handover local and run archi host remove ${name} --forget; then ${onThere(entry.record.ssh, 'archi uninstall --force')}, and archi host remove ${name} --forget here`);
+        }
+        if (r.code !== 0) throw new StepError(`archi uninstall exited ${r.code}: ${r.stderr.trim().slice(0, 200) || 'no output'}`);
+        return { value: true, detail: r.stdout.trim().split('\n').at(-1) ?? 'archi uninstall' };
       } catch (err) {
         if (err instanceof StepError && err.action) throw err;
         throw new StepError(`${entry.record.ssh} could not be reached: ${(err as Error).message}`,
@@ -697,7 +705,7 @@ async function seedAuthority(master: SshMaster, entry: Registered, fleetId: Flee
   return { value: undefined, detail: `${name} holds fleet ${fleetId} for ${owner} at generation ${record.generation}` };
 }
 
-/** The exit code of `archi fleet provision` refusing: a fleet home that holds another fleet in use, which only the user can move aside. */
+/** The exit code of a refusal only the user can settle: `archi fleet provision` finding a fleet home in use, or `archi uninstall` a fleet it would strand. */
 export const REFUSED = 3;
 
 type FarCopy = { outcome: 'created' | 'held' | 'rekeyed'; home: string; unit: string };
