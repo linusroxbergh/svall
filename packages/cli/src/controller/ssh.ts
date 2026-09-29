@@ -96,7 +96,7 @@ let closesOnSignal = false;
 export function closeMastersOnSignal(): void {
   if (closesOnSignal) return;
   closesOnSignal = true;
-  for (const [signal, code] of [['SIGTERM', 143], ['SIGINT', 130], ['SIGHUP', 129]] as const) {
+  for (const [signal, code] of [['SIGTERM', 143], ['SIGINT', 130], ['SIGHUP', 129], ['SIGQUIT', 131]] as const) {
     process.once(signal, () => {
       for (const child of spawned) child.kill();
       process.exit(code);

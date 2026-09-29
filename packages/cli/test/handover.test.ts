@@ -551,6 +551,17 @@ describe('archi handover', () => {
     }
   });
 
+  it('stops watching at once on a hangup or a Ctrl-\\, and the exit ends its masters', async () => {
+    for (const s of ['SIGHUP', 'SIGQUIT']) {
+      const h = harness();
+      h.tx.script = async () => { h.tx.record(changed('transfer')); return forever(); };
+      const run = runHandover(start(), h.ctx);
+      await waitFor(() => /Transferring/.test(h.out()));
+      expect(h.signals.emit(s), s).toBe(true);
+      expect(await run).toEqual({ code: 1, hard: true });
+    }
+  });
+
   it('holds its signal listeners while it closes its masters, and a signal then leaves at once', async () => {
     const h = harness();
     let during = -1;
@@ -561,7 +572,7 @@ describe('archi handover', () => {
     expect(during).toBe(1);
     h.signals.emit('SIGINT');
     expect(await run).toEqual({ code: 0, hard: true });
-    for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP']) expect(h.signals.listenerCount(s), s).toBe(0);
+    for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT']) expect(h.signals.listenerCount(s), s).toBe(0);
   });
 
   it('on a first Ctrl-C after a client already let the committed move go on, says so rather than leaving', async () => {

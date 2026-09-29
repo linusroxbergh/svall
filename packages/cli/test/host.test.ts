@@ -579,7 +579,7 @@ describe('host doctor', () => {
 describe('a host command told to stop', () => {
   const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
-  it('ends the master it opened rather than leaving it running', async () => {
+  it.each(['SIGTERM', 'SIGQUIT'] as const)('ends the master it opened on %s rather than leaving it running', async (signal) => {
     const config = path.join(work, 'config');
     const registry = MachineRegistry.load(config);
     registry.add({
@@ -601,7 +601,7 @@ describe('a host command told to stop', () => {
     const master = Number(fs.readFileSync(path.join(state, marker), 'utf8'));
     expect(alive(master)).toBe(true);
 
-    child.kill('SIGTERM');
+    child.kill(signal);
     await exited;
     await waitFor(() => !alive(master), 5000);
   });

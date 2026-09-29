@@ -247,6 +247,7 @@ export async function runHandover(job: Job, c: Ctx): Promise<Ran> {
     c.deps.signals.on('SIGINT', signal);
     c.deps.signals.on('SIGTERM', signal);
     c.deps.signals.on('SIGHUP', hangup);
+    c.deps.signals.on('SIGQUIT', hangup);
   }
 
   const run = async (t: Transaction): Promise<Outcome> => {
@@ -314,7 +315,7 @@ export async function runHandover(job: Job, c: Ctx): Promise<Ran> {
     const closing = tx.close().then(() => false, () => false);
     if (await Promise.race([closing, left.then(() => true)])) ran = { ...ran, hard: true };
   }
-  if (listening) for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) c.deps.signals.off(s, hangup);
+  if (listening) for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT'] as const) c.deps.signals.off(s, hangup);
   return ran;
 }
 
