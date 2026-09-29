@@ -25,7 +25,7 @@ runIf('Fleet', () => {
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 
-  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind } = {}) {
+  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; resumeMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind } = {}) {
     const { homeCwd, homeCommand, mainAgent, ...deps } = extra;
     // what ps shows the dormancy sweep
     const procs: Proc[] = [];
@@ -1100,6 +1100,48 @@ runIf('Fleet', () => {
     carried = false;
     await waitFor(() => store.state.characters[c.id].revive === undefined, 3000);
     expect(store.state.characters[c.id].tmux).toBeDefined();
+  });
+
+  it('lays a revived terminal dormant again with its session and resume when its agent leaves before that session starts, and not once it has', async () => {
+    const { fleet, store, tmux } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
+    await tmux.killWindow(c.tmux!.windowId);
+    await waitFor(() => store.state.characters[c.id].tmux === undefined);
+    // a resume that runs a moment and exits, as a Claude without its login does
+    const revive = { command: `sleep 1; : --resume ${SID}` };
+    store.update((d) => { d.characters[c.id].revive = revive; });
+
+    await fleet.reviveCharacter(c.id);
+    await waitFor(() => store.state.characters[c.id].tmux === undefined, 5000);
+    expect(store.state.characters[c.id]).toMatchObject({
+      agent: { sessionId: SID }, revive,
+      resumeError: `${c.name}'s terminal resumed claude session ${SID}, but claude exited back to its shell before that session started, so it is dormant again with that session; revive it to see`,
+    });
+    await waitFor(async () => !(await tmux.listWindows()).some((w) => w.name === c.id));
+
+    // one whose session started is an agent that ended, and leaves its shell
+    const back = await fleet.reviveCharacter(c.id);
+    expect(back.resumeError).toBeUndefined();
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
+    await waitFor(() => store.state.characters[c.id].agent === undefined, 5000);
+    expect(store.state.characters[c.id].tmux).toBeDefined();
+  });
+
+  it('lays a revived terminal whose agent never comes up dormant again with its session once the wait for it runs out', async () => {
+    const { fleet, store, tmux } = await boot({ resumeMs: 1000 });
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
+    await tmux.killWindow(c.tmux!.windowId);
+    await waitFor(() => store.state.characters[c.id].tmux === undefined);
+    const revive = { command: `: --resume ${SID}` };
+    store.update((d) => { d.characters[c.id].revive = revive; });
+
+    await fleet.reviveCharacter(c.id);
+    await waitForPolls(fleet, 3);
+    expect(store.state.characters[c.id]).toMatchObject({ tmux: expect.anything(), agent: { sessionId: SID } });
+    await waitFor(() => store.state.characters[c.id].tmux === undefined, 5000);
+    expect(store.state.characters[c.id]).toMatchObject({ agent: { sessionId: SID }, revive, resumeError: expect.stringMatching(/claude did not come up within 1 s before that session started/) });
   });
 
   it('creates the home island on start, copies config into state, and protects it', async () => {
