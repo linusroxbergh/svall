@@ -104,7 +104,6 @@ class World {
       windowId: p.windowId, paneId: p.paneId, panePid: p.pid, name: '', command: '', path: p.path, activity: 0, dead: false,
     })),
     sendBytes: async (paneId, bytes) => { this.log.push(`keys ${paneId} ${bytes.toString('hex')}`); },
-    capture: async () => Buffer.from(''),
     killWindow: async (windowId) => { this.onKill?.(); this.log.push(`kill ${windowId}`); this.panes.delete(windowId); },
     ensureServer: async () => { this.log.push('ensure-server'); },
   };

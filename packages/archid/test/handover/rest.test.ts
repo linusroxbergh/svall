@@ -51,7 +51,6 @@ class World {
   reads = 0;
   hangPs = false;
   psSignals: (AbortSignal | undefined)[] = [];
-  hangCapture = new Set<string>();
   hangKill = new Set<string>();
   // windows a kill leaves open without a word, as tmux's kill-window failing does
   keepOnKill = new Set<string>();
@@ -84,11 +83,6 @@ class World {
       windowId: p.windowId, paneId: p.paneId, panePid: p.pid, name: '', command: '', path: p.path, activity: 0, dead: false,
     })),
     sendBytes: async (paneId, bytes) => { this.log.push(`keys ${paneId} ${bytes.toString('hex')}`); },
-    capture: async (paneId) => {
-      this.log.push(`capture ${paneId}`);
-      if (this.hangCapture.has(paneId)) await new Promise(() => {});
-      return Buffer.from(`screen of ${paneId}\r\nlast line`);
-    },
     killWindow: async (windowId) => {
       this.onKill?.();
       this.log.push(`kill ${windowId}`);
@@ -190,9 +184,9 @@ describe('restTerminals', () => {
     expect(result).toEqual({
       ok: true,
       terminals: [
-        { characterId: 'c_ada', class: 'agent-ready' },
-        { characterId: 'c_ada', term: 2, class: 'shell-ready' },
-        { characterId: 'c_bo', class: 'agent-ready' },
+        { characterId: 'c_ada' },
+        { characterId: 'c_ada', term: 2 },
+        { characterId: 'c_bo' },
       ],
     });
     expect(world.log).toEqual(['detach c_ada', 'detach c_bo', 'kill @1', 'kill @2', 'kill @3']);
@@ -316,7 +310,7 @@ describe('restTerminals', () => {
     await world.advance(500);
     await run;
 
-    expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada', class: 'agent-working', interrupted: true }] });
+    expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada' }] });
     expect(world.log).toEqual(['keys %1 1b', 'detach c_ada', 'kill @1']);
     expect(store.state.characters.c_ada.revive).toEqual({ command: `claude --resume ${SID}` });
   });
@@ -358,7 +352,7 @@ describe('restTerminals', () => {
     await world.advance(500);
     await run;
 
-    expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada', class: 'agent-working', interrupted: true, terminated: true }] });
+    expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada' }] });
     expect(store.state.characters.c_ada.agent?.sessionId).toBe(SID);
     expect(store.state.characters.c_ada.revive).toEqual({ command: `claude --resume ${SID}` });
     expect(journalOf(paths).terminated).toEqual([{ characterId: 'c_ada', processes: ['claude', '/bin/zsh -c npm test'] }]);
@@ -387,7 +381,7 @@ describe('restTerminals', () => {
     await world.advance(500);
     await run;
 
-    expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada', class: 'agent-working', interrupted: true, terminated: true }] });
+    expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada' }] });
   });
 
   it("ends Codex's own-group helpers on the terminal with it when its terminal is terminated, and closes nothing until the last is gone", async () => {
@@ -415,7 +409,7 @@ describe('restTerminals', () => {
     await world.advance(500);
     await run;
 
-    expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada', class: 'agent-working', interrupted: true, terminated: true }] });
+    expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada' }] });
     expect(pane.servers?.filter(Boolean)).toEqual([]);
     expect(world.log.slice(6)).toEqual(['detach c_ada', 'kill @1']);
     expect(store.state.characters.c_ada.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session ${SID}` });
@@ -463,7 +457,7 @@ describe('restTerminals', () => {
     await world.advance(500);
     await run;
 
-    expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada', class: 'agent-working', interrupted: true }] });
+    expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada' }] });
   });
 
   it('ends a job only in the terminal the choice names, journaling it before the signal, and follows an ignored SIGTERM with SIGKILL', async () => {
@@ -486,7 +480,7 @@ describe('restTerminals', () => {
     await world.advance(500);
     await run;
 
-    expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada', class: 'shell-ready' }, { characterId: 'c_ada', term: 2, class: 'foreground', terminated: true }] });
+    expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada' }, { characterId: 'c_ada', term: 2 }] });
     expect(world.log).toEqual(['SIGTERM 2001', 'SIGKILL 2001', 'detach c_ada', 'kill @1', 'kill @2']);
     expect(store.state.characters.c_ada.second?.revive).toEqual({ command: '' });
   });
@@ -545,8 +539,8 @@ describe('restTerminals', () => {
     expect(result).toEqual({
       ok: true,
       terminals: [
-        { characterId: 'c_ada', class: 'agent-working', interrupted: true },
-        { characterId: 'c_bo', class: 'agent-working', interrupted: true },
+        { characterId: 'c_ada' },
+        { characterId: 'c_bo' },
       ],
     });
     expect(store.state.characters.c_bo.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session ${SID2}` });
@@ -691,29 +685,6 @@ describe('restTerminals', () => {
     });
   });
 
-  it('records a scrollback it could not capture and rests the terminal anyway', async () => {
-    const { store, world, deps } = boot([char('c_ada', { tmux: win(1) }), char('c_bo', { tmux: win(3) })]);
-    world.pane(1);
-    world.pane(3);
-    world.hangCapture.add('%1');
-    let result: unknown;
-    const run = restTerminals(deps, { choices: {}, scrollbackLines: 200, callTimeoutMs: 5000 }).then((r) => { result = r; });
-
-    await world.settle();
-    await world.advance(5000);
-    await run;
-
-    expect(result).toEqual({
-      ok: true,
-      terminals: [
-        { characterId: 'c_ada', class: 'shell-ready', scrollbackError: 'tmux capture-pane did not answer within 5000 ms' },
-        { characterId: 'c_bo', class: 'shell-ready', scrollback: 'screen of %3\nlast line' },
-      ],
-    });
-    expect(world.log).toEqual(['capture %1', 'capture %3', 'detach c_ada', 'detach c_bo', 'kill @1', 'kill @3']);
-    expect(store.state.characters.c_ada.tmux).toBeUndefined();
-  });
-
   it('stops waiting when cancelled, and closes nothing', async () => {
     const { world, deps } = boot([char('c_ada', { tmux: win(1), agent: agent('claude', 'working') })]);
     world.pane(1, { job: ['claude'] });
@@ -727,16 +698,16 @@ describe('restTerminals', () => {
     expect(world.log).toEqual([]);
   });
 
-  it('captures scrollback before a window closes when asked, and makes a terminal whose window already went dormant too', async () => {
+  it('makes a terminal whose window already went dormant too', async () => {
     const { store, world, deps, paths } = boot([
       char('c_ada', { tmux: win(1), second: { cwd: '/s', unread: false, tmux: win(2), agent: agent('claude', 'idle', SID2) } }),
     ]);
     world.pane(1);
 
-    const result = await restTerminals(deps, { choices: {}, scrollbackLines: 200 });
+    const result = await restTerminals(deps, { choices: {} });
 
-    expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada', class: 'shell-ready', scrollback: 'screen of %1\nlast line' }] });
-    expect(world.log).toEqual(['capture %1', 'detach c_ada', 'kill @1']);
+    expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada' }] });
+    expect(world.log).toEqual(['detach c_ada', 'kill @1']);
     // the handover did not stop the second, so an abort has nothing of it to bring back, nor a destination to open
     expect(journalOf(paths).stoppedTerminals).toEqual([{ characterId: 'c_ada' }]);
     expect(store.state.characters.c_ada.restedBy).toBe(tx.id);

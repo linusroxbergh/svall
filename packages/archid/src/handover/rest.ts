@@ -23,15 +23,10 @@ export type Classified = TerminalRef & { class: TerminalClass; window: LiveWindo
  */
 export type RestChoices = { interruptAfterMs?: number; terminate?: boolean | TerminalRef[] };
 
-/** Every terminal at rest and its window closed, or why none was closed. */
+/** Every terminal at rest and the ones whose window it closed, or why none was closed. */
 export type SettleResult =
-  | { ok: true; terminals: RestedTerminal[] }
+  | { ok: true; terminals: TerminalRef[] }
   | { ok: false; blockers: Blocker[] };
-
-/** A terminal the handover closed: its class when resting began, and what it took to bring it to rest. */
-export type RestedTerminal = TerminalRef & {
-  class: TerminalClass; interrupted?: true; terminated?: true; scrollback?: string; scrollbackError?: string;
-};
 
 /** `sleep` clears its timer when `signal` aborts, and then never resolves. */
 export type Clock = { now(): number; sleep(ms: number, signal?: AbortSignal): Promise<void> };
@@ -45,7 +40,7 @@ const realClock: Clock = {
 
 export type RestDeps = {
   store: Pick<Store, 'state' | 'update' | 'subscribe'>;
-  tmux: Pick<Tmux, 'listWindows' | 'sendBytes' | 'capture' | 'killWindow'>;
+  tmux: Pick<Tmux, 'listWindows' | 'sendBytes' | 'killWindow'>;
   viewers: Pick<TerminalHub, 'detach'>;
   journal: Pick<HandoverService, 'journalState' | 'write'>;
   processes?: (signal?: AbortSignal) => Promise<ProcessTable>;
@@ -63,7 +58,6 @@ export type RestOptions = {
   pollMs?: number;
   /** How long one ps or tmux call may take before resting gives up. */
   callTimeoutMs?: number;
-  scrollbackLines?: number;
   /** Stops the wait. Once windows start closing, resting runs to the end. */
   cancel?: AbortSignal;
 };
@@ -119,7 +113,7 @@ export function classifyTerminals(state: FleetState, live: LiveWindow[], table: 
 
 // `groups` are what terminating it signalled: the job holding the terminal, and the groups of its agent's tool commands
 type Track = TerminalRef & {
-  key: string; recheck: TerminalClass; agent?: Agent; flags?: string[]; interruptedAt?: number; terminatedAt?: number; killedAt?: number; groups?: number[];
+  key: string; agent?: Agent; flags?: string[]; interruptedAt?: number; terminatedAt?: number; killedAt?: number; groups?: number[];
 };
 
 // the launch flags the idle close would resume this terminal's agent with; none when its launch cannot be repeated
@@ -189,7 +183,7 @@ function step(t: Track, c: Classified | undefined, x: Moment): Step {
 export function unapproved(state: FleetState, terminals: Classified[], choices: RestChoices): Blocker[] {
   const x: Moment = { choices, start: 0, now: 0, waitMs: Infinity, settleMs: SETTLE_MS, pollMs: POLL_MS, state, alive: () => false };
   return terminals.flatMap((c) => {
-    const s = step({ ...refOf(c), key: keyOf(c), recheck: c.class }, c, x);
+    const s = step({ ...refOf(c), key: keyOf(c) }, c, x);
     return typeof s === 'object' ? [s.blocker] : [];
   });
 }
@@ -242,7 +236,7 @@ export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<Set
     x.alive = (group) => table.alive(group);
     const current = new Map(classifyTerminals(x.state, seen.live, seen.table).map((c) => [keyOf(c), c]));
     // a frozen fleet opens no window, so the terminals live at the recheck are all there are
-    tracks ??= [...current.entries()].map(([key, c]) => ({ ...refOf(c), key, recheck: c.class }));
+    tracks ??= [...current.entries()].map(([key, c]) => ({ ...refOf(c), key }));
     const steps = tracks.map((t) => ({ t, c: current.get(t.key), s: step(t, current.get(t.key), x) }));
     const blockers = steps.flatMap(({ s }) => (typeof s === 'object' ? [s.blocker] : []));
     const settled = steps.every(({ s }) => s === 'rest');
@@ -315,19 +309,6 @@ async function layToRest(
 ): Promise<SettleResult> {
   o.cancel?.throwIfAborted();
   const open = tracks.flatMap((t) => { const c = current.get(t.key); return c ? [{ t, c }] : []; });
-  // diagnosis only: a screen that cannot be read is noted, and the terminal rests all the same
-  const scrollback = new Map<string, { scrollback: string } | { scrollbackError: string }>();
-  const lines = o.scrollbackLines;
-  if (lines) {
-    for (const { t, c } of open) {
-      try {
-        const screen = await bounded('tmux capture-pane', (signal) => deps.tmux.capture(c.window.paneId, lines, false, signal));
-        scrollback.set(t.key, { scrollback: screen.toString('utf8').replace(/\r\n/g, '\n') });
-      } catch (e) {
-        scrollback.set(t.key, { scrollbackError: (e as Error).message });
-      }
-    }
-  }
   // before any window closes, so an abort knows which terminals the handover stopped
   boundary('source.rest.stopped', () => recordJournal(deps.journal, now, (j) => {
     const known = new Set(j.stoppedTerminals.map(keyOf));
@@ -366,13 +347,5 @@ async function layToRest(
   deps.store.update((d) => {
     for (const id of Object.keys(d.characters)) for (const t of [{ characterId: id }, { characterId: id, term: 2 as const }]) lay(d, t, stopped.has(keyOf(t)));
   });
-  return {
-    ok: true,
-    terminals: open.map(({ t }) => ({
-      ...refOf(t), class: t.recheck,
-      ...(t.interruptedAt !== undefined && { interrupted: true as const }),
-      ...(t.terminatedAt !== undefined && { terminated: true as const }),
-      ...scrollback.get(t.key),
-    })),
-  };
+  return { ok: true, terminals: open.map(({ t }) => refOf(t)) };
 }
