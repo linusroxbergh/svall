@@ -68,7 +68,7 @@ export type RestOptions = {
   cancel?: AbortSignal;
 };
 
-// inside the freeze call's budget, with room for the settling that follows an interrupt
+// inside the freeze call's budget, with room for the settling that follows an interrupt; a later interrupt extends both
 const WAIT_MS = 3 * 60_000;
 const SETTLE_MS = 10_000;
 const POLL_MS = 500;
@@ -216,11 +216,10 @@ export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<Set
   const kill = deps.kill ?? killGroup;
   const bounded = boundBy(clock, o.callTimeoutMs ?? CALL_TIMEOUT_MS);
   sourceJournal(deps.journal);
-  const waitMs = o.waitMs ?? WAIT_MS;
-  // an interrupt chosen for later than the wait lasts comes at its end instead of never
-  const choices = (o.choices.interruptAfterMs ?? 0) > waitMs ? { ...o.choices, interruptAfterMs: waitMs } : o.choices;
+  // an interrupt chosen for later than the wait lasts extends the wait to it
+  const waitMs = Math.max(o.waitMs ?? WAIT_MS, o.choices.interruptAfterMs ?? 0);
   const x: Moment = {
-    choices, start: clock.now(), now: clock.now(), state: deps.store.state,
+    choices: o.choices, start: clock.now(), now: clock.now(), state: deps.store.state,
     waitMs, settleMs: o.settleMs ?? SETTLE_MS, pollMs: o.pollMs ?? POLL_MS, alive: () => false,
   };
   let tracks: Track[] | undefined;

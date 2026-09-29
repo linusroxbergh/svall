@@ -307,6 +307,8 @@ describe('ownership and handover methods', () => {
     expect(serverWait('handover.preflight', {})).toBe(PREFLIGHT_TIMEOUT_MS);
     expect(serverWait('handover.inspect', {})).toBe(PREFLIGHT_TIMEOUT_MS);
     expect(serverWait('handover.freeze', {})).toBe(FREEZE_TIMEOUT_MS);
+    // an interrupt chosen for later than the rest would wait extends the rest, and the freeze's budget with it
+    expect(serverWait('handover.freeze', { choices: { interruptAfterMs: 20 * 60_000 } })).toBe(FREEZE_TIMEOUT_MS + 20 * 60_000);
     expect(serverWait('handover.claim', {})).toBe(CLAIM_TIMEOUT_MS);
     expect(serverWait('handover.prepare', {})).toBe(PREPARE_TIMEOUT_MS);
     expect(serverWait('handover.activate', {})).toBe(ACTIVATE_TIMEOUT_MS);

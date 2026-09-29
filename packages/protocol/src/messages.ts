@@ -87,7 +87,7 @@ export const serverWait = (method: MethodName, params: unknown): number => {
   if (method === 'scribe.sweep') return SWEEP_TIMEOUT_MS;
   if (method === 'mobile.set') return MOBILE_SET_TIMEOUT_MS;
   if (method === 'handover.preflight' || method === 'handover.inspect' || method === 'handover.reaches') return PREFLIGHT_TIMEOUT_MS;
-  if (method === 'handover.freeze') return FREEZE_TIMEOUT_MS;
+  if (method === 'handover.freeze') return FREEZE_TIMEOUT_MS + ((params as { choices?: { interruptAfterMs?: number } }).choices?.interruptAfterMs ?? 0);
   if (method === 'handover.claim') return CLAIM_TIMEOUT_MS;
   if (method === 'handover.prepare') return PREPARE_TIMEOUT_MS;
   if (method === 'handover.activate') return ACTIVATE_TIMEOUT_MS;

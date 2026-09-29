@@ -447,15 +447,16 @@ describe('restTerminals', () => {
     expect(ended.store.state.characters.c_ada.revive).toEqual({ command: `claude --resume ${SID}` });
   });
 
-  it('interrupts at the end of the wait when the chosen delay would outlast it', async () => {
+  it('waits for an interrupt chosen for later than the wait would last, and interrupts then', async () => {
     const { world, deps } = boot([char('c_ada', { tmux: win(1), agent: agent('claude', 'working') })]);
     world.pane(1, { job: ['claude'] });
     let result: unknown;
-    const run = restTerminals(deps, { choices: { interruptAfterMs: 60_000 }, waitMs: 1000, pollMs: 500, settleMs: 1000 })
+    const run = restTerminals(deps, { choices: { interruptAfterMs: 3000 }, waitMs: 1000, pollMs: 500, settleMs: 1000 })
       .then((r) => { result = r; });
 
     await world.settle();
-    await world.advance(500);
+    for (let t = 500; t < 3000; t += 500) await world.advance(500);
+    expect(result).toBeUndefined();
     expect(world.log).toEqual([]);
     await world.advance(500);
     expect(world.log).toEqual(['keys %1 1b']);
