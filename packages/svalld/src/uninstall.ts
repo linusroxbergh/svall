@@ -7,16 +7,12 @@ import type { CodexPaths } from './codex/install.js';
 import { portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
 import { resolvePaths } from './paths.js';
 import { BUNDLE_ID, homePrefix, isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome } from './profile.js';
-import { readJsonSettings, requireWritable, shimNames, unmergeHooks, unmergeStatusLine, writeJsonSettings, type JsonSettings } from './setup.js';
+import { readJsonSettings, readOrUndefined, requireWritable, shimNames, unmergeHooks, unmergeStatusLine, writeJsonSettings, type JsonSettings } from './setup.js';
 
 const exec = promisify(execFile);
 const SHIM_MARKS = ['packages/cli/src/main.ts', 'Contents/Resources/runtime/svall.mjs'];
 
 const isAgentPlist = (f: string): boolean => f.startsWith(`${LAUNCHD_LABEL}.`) && f.endsWith('.plist');
-
-const readOrUndefined = (file: string): string | undefined => {
-  try { return fs.readFileSync(file, 'utf8'); } catch { return undefined; }
-};
 
 // `tailscale serve --bg` outlives the daemon, the port it listened on and a reboot, so a fleet's link is found
 // by the key it proxies to; a machine without tailscale has none

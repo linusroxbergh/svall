@@ -41,6 +41,18 @@ runIf('startDaemon', () => {
     expect(written.hooks.Stop[0].hooks[0].command).toContain(resolvePaths(home).hookScript);
   });
 
+  it('writes no codex hooks when the private fleet starts with Codex turned off in setup', async () => {
+    const codex = codexPaths();
+    fs.rmSync(codex.hooks, { force: true });
+    fs.mkdirSync(codex.dir, { recursive: true });
+    const home = path.join(os.homedir(), '.svall');
+    fs.mkdirSync(home, { recursive: true });
+    homes.push(home);
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ integrations: ['claude'] }));
+    await (await start({ home, port: 0, log: silentLogger })).stop();
+    expect(fs.existsSync(codex.hooks)).toBe(false);
+  });
+
   it('survives a daemon restart, then a tmux restart', async () => {
     const home = makeHome();
     homes.push(home);

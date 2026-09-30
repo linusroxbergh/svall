@@ -9,13 +9,17 @@ import { codexHookCommand, codexPaths, mergeCodexHooks, type CodexPaths } from '
 import { loadConfig } from './config.js';
 import { CLAUDE_HOOKS, hooksFor } from './hooks/receiver.js';
 import { writeAtomic } from './jsonfile.js';
-import { BUNDLE_ID, LAUNCHD_LABEL, SHIM } from './profile.js';
+import { BUNDLE_ID, LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from './profile.js';
 import { HOOK_SCRIPT, claudePaths, expandHome, isOurs, resolvePaths, type Paths } from './paths.js';
 import { assetDir, bundled, ownRuntime, variant, type Runtime } from './runtime.js';
 import { shq } from './text.js';
 import { tmuxConfText } from './tmux/conf.js';
 
 const exec = promisify(execFile);
+
+export const readOrUndefined = (file: string): string | undefined => {
+  try { return fs.readFileSync(file, 'utf8'); } catch { return undefined; }
+};
 
 export const HOOK_EVENTS = CLAUDE_HOOKS;
 export { LAUNCHD_LABEL };
@@ -326,6 +330,45 @@ async function bootstrapAgent(launchAgentsDir: string, label: string): Promise<s
   return `launchctl bootstrap ${domain} ${plist}`;
 }
 
+export async function kickstart(labels: string[]): Promise<string[]> {
+  const done: string[] = [];
+  for (const label of labels) {
+    await exec('launchctl', ['kickstart', '-k', `gui/${os.userInfo().uid}/${label}`]);
+    done.push(`restarted ${label}`);
+  }
+  return done;
+}
+
+/** Whether launchd has `label` loaded in this user's session. */
+export const isLoaded = (label: string): Promise<boolean> =>
+  exec('launchctl', ['print', `gui/${os.userInfo().uid}/${label}`]).then(() => true, () => false);
+
+/** The program of another copy of Svall, still on disk, whose fleets these are: only an explicit setup takes them from it. */
+export const takenOverBy = (plist: string | undefined, runtime: Runtime, exists: (p: string) => boolean = fs.existsSync): string | undefined => {
+  const program = plist ? plistRun(plist).program[0] : undefined;
+  return program && program !== runtime.daemon[0] && exists(program) ? program : undefined;
+};
+
+/** Points every fleet but the private one at `runtime`, as moving or updating the app leaves their plists behind. */
+export async function refreshFleetPlists(o: { homes: string[]; runtime: Runtime; launchAgentsDir: string; launchctl: boolean; takeOver: boolean }): Promise<{ done: string[]; restarted: string[] }> {
+  const done: string[] = [];
+  const restarted: string[] = [];
+  for (const home of o.homes) {
+    const name = profileOf(home);
+    const label = profileLabel(name);
+    if (name === PRIVATE || plistCurrent({ home, label, launchAgentsDir: o.launchAgentsDir, runtime: o.runtime })) continue;
+    const owner = o.takeOver ? undefined : takenOverBy(readOrUndefined(path.join(o.launchAgentsDir, `${label}.plist`)), o.runtime);
+    if (owner) { done.push(`left ${home}, which ${owner} runs`); continue; }
+    done.push(...await setupHome({ home, label, runtime: o.runtime, launchAgentsDir: o.launchAgentsDir, launchctl: false, port: 0 }));
+    // a fleet the user left stopped stays stopped
+    if (o.launchctl && await isLoaded(label)) {
+      done.push(await bootstrapAgent(o.launchAgentsDir, label));
+      restarted.push(label);
+    }
+  }
+  return { done, restarted };
+}
+
 export type JsonSettings = { file: string; text?: string; settings: Record<string, unknown> };
 
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
@@ -452,7 +495,7 @@ export function requireWritableHooks(home: string, settings: JsonSettings | unde
   if (codexHooks) requireWritable(codexHooks, withCodexHooks(codexHooks.settings, resolvePaths(home).hookScript));
 }
 
-export function setupUser(o: { home: string; settings?: JsonSettings; codex: CodexPaths; codexHooks?: JsonSettings; shimDir: string; runtime: Runtime }): string[] {
+export function setupUser(o: { home: string; settings?: JsonSettings; codex: CodexPaths; codexHooks?: JsonSettings; shimDir: string; runtime: Runtime; replaceSettings: boolean }): string[] {
   const paths = resolvePaths(o.home);
   const done = o.settings ? writeJsonSettings(o.settings, withClaudeHooks(o.settings.settings, o.home), 'claude hooks and statusline') : [];
   done.push(...installCodexHooks(o.codex, paths.hookScript, o.codexHooks));
@@ -467,7 +510,7 @@ export function setupUser(o: { home: string; settings?: JsonSettings; codex: Cod
   // the home folder comes last and never fails the run: an unreadable config or an unwritable cwd
   // must not cost the user the hooks, the plist and the shim
   try {
-    done.push(...installHomeTemplate(loadConfig(paths.config).home.cwd, { replaceSettings: true }));
+    done.push(...installHomeTemplate(loadConfig(paths.config).home.cwd, { replaceSettings: o.replaceSettings }));
   } catch (e) {
     done.push(`home folder skipped: ${(e as Error).message}`);
   }
@@ -476,16 +519,34 @@ export function setupUser(o: { home: string; settings?: JsonSettings; codex: Cod
 
 export async function runSetup(o: {
   home: string; settingsPath: string; codex: CodexPaths; launchAgentsDir: string; shimDir: string; runtime: Runtime; launchctl: boolean; agents?: AgentKind[];
+  integrations?: AgentKind[]; replaceSettings?: boolean;
 }): Promise<string[]> {
-  const claudeWanted = !o.agents || o.agents.includes('claude') || fs.existsSync(path.dirname(o.settingsPath));
-  const codexWanted = !!o.agents?.includes('codex') || fs.existsSync(o.codex.dir);
+  const wants = (k: AgentKind, fallback: boolean) => (o.integrations ? o.integrations.includes(k) : fallback);
+  const claudeWanted = wants('claude', !o.agents || o.agents.includes('claude') || fs.existsSync(path.dirname(o.settingsPath)));
+  const codexWanted = wants('codex', !!o.agents?.includes('codex') || fs.existsSync(o.codex.dir));
   // both files are read and checked before anything is written, so one that is not JSON, or cannot take
   // the change, stops a setup that has changed nothing
   const settings = claudeWanted ? readJsonSettings(o.settingsPath) : undefined;
   const codexHooks = readCodexHooks(o.codex, codexWanted);
   requireWritableHooks(o.home, settings, codexHooks);
+  const paths = resolvePaths(o.home);
+  const holdsOurs = (file: string): boolean => {
+    const text = readOrUndefined(file) ?? '';
+    return text.includes(paths.hookScript) || text.includes(paths.statusScript);
+  };
+  const removals: [JsonSettings, Record<string, unknown>, string][] = [];
+  if (!claudeWanted && holdsOurs(o.settingsPath)) {
+    const s = readJsonSettings(o.settingsPath);
+    removals.push([s, unmergeStatusLine(unmergeHooks(s.settings, paths.hookScript), paths.statusScript), 'claude hooks removed']);
+  }
+  if (!codexWanted && holdsOurs(o.codex.hooks)) {
+    const s = readJsonSettings(o.codex.hooks);
+    removals.push([s, unmergeHooks(s.settings, paths.hookScript), 'codex hooks removed']);
+  }
+  for (const [current, next] of removals) requireWritable(current, next);
   const home = await setupHome({ ...o, label: LAUNCHD_LABEL, launchctl: false });
-  const user = setupUser({ ...o, settings, codexHooks });
+  const user = setupUser({ ...o, settings, codexHooks, replaceSettings: o.replaceSettings ?? true });
+  for (const [current, next, what] of removals) user.push(...writeJsonSettings(current, next, what));
   if (!o.launchctl) return [...home, ...user];
   return [...home, ...user, await bootstrapAgent(o.launchAgentsDir, LAUNCHD_LABEL)];
 }

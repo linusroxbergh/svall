@@ -20,6 +20,7 @@ import { PushStore } from './push/store.js';
 import { readOrCreateVapid } from './push/vapid.js';
 import { claudePaths, workspaceRoot } from './resources/scan.js';
 import { installCodexHooks, installHookScripts, readCodexHooks } from './setup.js';
+import { runtimeVersion } from './setup-plan.js';
 import { Store } from './store.js';
 import { TerminalHub } from './terminals.js';
 import { tmuxConfText, tmuxTooOld } from './tmux/conf.js';
@@ -90,7 +91,7 @@ async function start(opts: Options): Promise<Daemon> {
   const agentsFound = findAgents(process.env.PATH ?? '');
   // a Codex installed after `svall setup` still gets its hooks. Only the private fleet writes them:
   // the command names this fleet's script, and a second fleet rewriting it would reset its trust
-  if (profile === PRIVATE) {
+  if (profile === PRIVATE && (config.integrations?.includes('codex') ?? true)) {
     const codex = codexPaths();
     try { for (const line of installCodexHooks(codex, paths.hookScript, readCodexHooks(codex, agentsFound.includes('codex') || fs.existsSync(codex.dir)))) log.info(line); }
     catch (e) { log.error(`codex hooks: ${(e as Error).message}`); }
@@ -101,6 +102,7 @@ async function start(opts: Options): Promise<Daemon> {
   if (tmuxTooOld(tmuxVersion)) log.error(`${tmuxVersion} is older than 3.5: Shift+Enter will not reach Claude Code; brew upgrade tmux`);
   // the app attaches its terminals with this tmux, which an app opened from Finder may not find on its own PATH
   fs.writeFileSync(path.join(paths.home, 'tmux-binary'), tmux.binary);
+  fs.writeFileSync(path.join(paths.home, 'version'), runtimeVersion());
   const fleet = new Fleet({ store, tmux, paths, config, log, agentsFound });
   const terminals = new TerminalHub(fleet, tmux, store, log);
   const claude = claudePaths();

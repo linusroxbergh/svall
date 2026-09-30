@@ -46,6 +46,7 @@ export type DoctorDeps = {
   mainAgent?: AgentKind;
   // agent CLIs on PATH, as setup finds them
   found: AgentKind[];
+  integrations?: AgentKind[];
   codexTrust(): Promise<HookTrust | undefined>;
 };
 export type PreflightDeps = Pick<DoctorDeps, 'run' | 'node' | 'pathEnv' | 'shimDir' | 'keys' | 'mainAgent'>;
@@ -248,6 +249,7 @@ function daemonEnv(t: Target, d: DoctorDeps): Check {
 }
 
 function hooks(d: DoctorDeps): Check {
+  if (d.integrations && !d.integrations.includes('claude')) return { name: 'hooks', status: 'skip', detail: 'turned off in setup' };
   if (!d.found.includes('claude') && !d.exists(path.dirname(d.settingsPath))) return { name: 'hooks', status: 'skip', detail: 'Claude Code is not installed' };
   const text = d.read(d.settingsPath);
   let ok = false;
@@ -267,7 +269,8 @@ function hooks(d: DoctorDeps): Check {
 }
 
 // verifies the hook definition is installed and current, then asks Codex whether it is trusted.
-export async function codexCheck(d: Pick<DoctorDeps, 'codex' | 'exists' | 'read' | 'hooksHome' | 'found' | 'codexTrust'>): Promise<Check> {
+export async function codexCheck(d: Pick<DoctorDeps, 'codex' | 'exists' | 'read' | 'hooksHome' | 'found' | 'integrations' | 'codexTrust'>): Promise<Check> {
+  if (d.integrations && !d.integrations.includes('codex')) return { name: 'codex hooks', status: 'skip', detail: 'turned off in setup' };
   if (!d.found.includes('codex') && !d.exists(d.codex.dir)) return { name: 'codex hooks', status: 'skip', detail: 'not installed' };
   const script = resolvePaths(d.hooksHome).hookScript;
   let written = false;
@@ -333,6 +336,8 @@ export function realPreflightDeps(home: string): PreflightDeps {
 export function doctorCommand(target: () => Target, json: () => boolean): Command {
   return new Command('doctor').description('check what the fleet needs and show the end of its log; changes nothing').action(async () => {
     const t = target();
+    let integrations: AgentKind[] | undefined;
+    try { integrations = loadConfig(resolvePaths(profileHome(PRIVATE)).config).integrations; } catch { /* the private fleet's doctor reports it */ }
     const report = { version: checkoutVersion(), ...await doctor(t, {
       ...realPreflightDeps(t.home),
       read: (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return undefined; } },
@@ -346,6 +351,7 @@ export function doctorCommand(target: () => Target, json: () => boolean): Comman
       codex: codexPaths(),
       exists: fs.existsSync,
       found: findAgents(process.env.PATH ?? ''),
+      integrations,
       codexTrust: () => askCodexTrust({ codexHome: codexPaths().dir, script: resolvePaths(profileHome(PRIVATE)).hookScript }),
     }) };
     const width = Math.max(...report.checks.map((c) => c.name.length));

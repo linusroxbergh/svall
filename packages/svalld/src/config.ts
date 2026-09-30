@@ -16,6 +16,8 @@ export const Config = z.object({
   defaultCwd: z.string().default(DEFAULT_CWD),
   // the agent the scribe, mission control's crew and `svall char new --run` use by default; absent, the only one installed, else claude
   mainAgent: AgentKind.optional(),
+  // the agents whose hooks setup installs; absent, every agent found
+  integrations: z.array(AgentKind).optional(),
   // which plan a scribe pass spends; absent, the main agent's. model names a model of scribe.agent's CLI, else of claude's
   scribe: z.object({ agent: AgentKind.optional(), model: z.string().optional() }).prefault({}),
   // phone clients: which tailnet logins may drive the fleet and get its pushes (empty lets in only the Mac's own login),
@@ -55,7 +57,7 @@ export function parseConfig(text: string, file: string): Config {
 
 /** Sets the keys of `patch` in `file` and keeps every other key; a file that does not parse is refused, not replaced.
  *  A linked file (stow, home-manager) is written where it points, with the mode it had. */
-export function saveConfig(file: string, patch: Partial<Pick<Config, 'mainAgent' | 'name'>>): void {
+export function saveConfig(file: string, patch: Partial<Pick<Config, 'mainAgent' | 'name' | 'integrations'>>): void {
   const there = fs.existsSync(file);
   const text = there ? fs.readFileSync(file, 'utf8') : '{}';
   parseConfig(text, file);

@@ -6,11 +6,11 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { codexHookCommand, codexPaths, mergeCodexHooks } from '../src/codex/install.js';
 import { isOurs } from '../src/paths.js';
-import { BUNDLE_ID, LAUNCHD_LABEL } from '../src/profile.js';
-import { bundleRuntime, checkoutRuntime } from '../src/runtime.js';
+import { BUNDLE_ID, LAUNCHD_LABEL, PRIVATE, profileHome, profileLabel } from '../src/profile.js';
+import { bundleRuntime, checkoutRuntime, type Runtime } from '../src/runtime.js';
 import {
-  HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hookCommand, hooksInstalled, installHomeTemplate, launchdPlist, mergeHooks, mergeStatusLine, nodeRun, plistCurrent, plistRun, readJsonSettings, runSetup, setupHome,
-  shimText, shimsCurrent, statusWrapper, unmergeHooks, unmergeStatusLine, writeJsonSettings,
+  HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hookCommand, hooksInstalled, installHomeTemplate, launchdPlist, mergeHooks, mergeStatusLine, nodeRun, plistCurrent, plistRun, readJsonSettings, refreshFleetPlists, runSetup, setupHome,
+  shimText, shimsCurrent, statusWrapper, takenOverBy, unmergeHooks, unmergeStatusLine, writeJsonSettings,
 } from '../src/setup.js';
 import { shq } from '../src/text.js';
 import { cleanHomes, makeHome } from './helpers.js';
@@ -417,6 +417,29 @@ describe('runSetup', () => {
     expect(fs.existsSync(path.join(home, 'LaunchAgents/io.github.linusroxbergh.svall.svalld.plist'))).toBe(true);
   });
 
+  it('installs no hooks for an agent the user turned off, and takes back ones already there', async () => {
+    const home = makeHome();
+    const settingsPath = path.join(home, 'claude', 'settings.json');
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    const paths = { home, settingsPath, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), launchAgentsDir: path.join(home, 'la'), shimDir: path.join(home, 'bin'), runtime: checkoutRuntime(repoRoot), launchctl: false };
+    await runSetup({ ...paths, agents: ['claude', 'codex'] });
+    expect(fs.readFileSync(settingsPath, 'utf8')).toContain('agent-hook.mjs');
+    await runSetup({ ...paths, agents: ['claude', 'codex'], integrations: ['codex'] });
+    expect(fs.readFileSync(settingsPath, 'utf8')).not.toContain('agent-hook.mjs');
+  });
+
+  it("leaves mission control's edited settings alone on a silent refresh", async () => {
+    const home = makeHome();
+    const mc = path.join(home, 'mc');
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ home: { cwd: mc } }));
+    const paths = { home, settingsPath: path.join(home, 'claude-settings.json'), codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), launchAgentsDir: path.join(home, 'la'), shimDir: path.join(home, 'bin'), runtime: checkoutRuntime(repoRoot), launchctl: false };
+    await runSetup(paths);
+    const edited = path.join(mc, '.claude', 'settings.json');
+    fs.writeFileSync(edited, '{"mine":true}\n');
+    await runSetup({ ...paths, replaceSettings: false });
+    expect(fs.readFileSync(edited, 'utf8')).toBe('{"mine":true}\n');
+  });
+
   it('writes the home CLAUDE.md once and leaves an edited one alone', async () => {
     const home = makeHome();
     const mc = path.join(home, 'mc');
@@ -541,6 +564,49 @@ describe('runSetup', () => {
     const rules = fs.readFileSync(path.join(template, '.codex/rules/svall.rules'), 'utf8');
     const codex = [...rules.matchAll(/^prefix_rule\(pattern = (\[.*\]), decision = "allow"\)$/gm)].flatMap((m) => expand(JSON.parse(m[1])));
     expect(codex.sort()).toEqual(allow.map((a) => /^Bash\((.+):\*\)$/.exec(a)![1]).sort());
+  });
+});
+
+describe('refreshFleetPlists', () => {
+  it('points every other fleet at this runtime, and leaves the private one to runSetup', async () => {
+    const u = makeHome();
+    const la = path.join(u, 'la');
+    const work = path.join(u, '.svall-work');
+    fs.mkdirSync(work);
+    const now = bundleRuntime('/Applications/Svall.app');
+    await setupHome({ home: work, label: profileLabel('work'), runtime: bundleRuntime('/Old/Svall.app'), launchAgentsDir: la, launchctl: false });
+    await refreshFleetPlists({ homes: [profileHome(PRIVATE), work], runtime: now, launchAgentsDir: la, launchctl: false, takeOver: false });
+    expect(plistCurrent({ home: work, label: profileLabel('work'), launchAgentsDir: la, runtime: now })).toBe(true);
+    expect(fs.existsSync(path.join(la, `${LAUNCHD_LABEL}.plist`))).toBe(false);
+    expect((await refreshFleetPlists({ homes: [work], runtime: now, launchAgentsDir: la, launchctl: false, takeOver: false })).done).toEqual([]);
+  });
+
+  it('leaves a fleet that another copy on disk runs, unless told to take it over', async () => {
+    const u = makeHome();
+    const la = path.join(u, 'la');
+    const work = path.join(u, '.svall-work');
+    fs.mkdirSync(work);
+    const other = bundleRuntime(path.join(u, 'Other', 'Svall.app'));
+    fs.mkdirSync(path.dirname(other.daemon[0]), { recursive: true });
+    fs.writeFileSync(other.daemon[0], '');
+    const now = bundleRuntime('/Applications/Svall.app');
+    await setupHome({ home: work, label: profileLabel('work'), runtime: other, launchAgentsDir: la, launchctl: false });
+    await refreshFleetPlists({ homes: [work], runtime: now, launchAgentsDir: la, launchctl: false, takeOver: false });
+    expect(plistCurrent({ home: work, label: profileLabel('work'), launchAgentsDir: la, runtime: other })).toBe(true);
+    await refreshFleetPlists({ homes: [work], runtime: now, launchAgentsDir: la, launchctl: false, takeOver: true });
+    expect(plistCurrent({ home: work, label: profileLabel('work'), launchAgentsDir: la, runtime: now })).toBe(true);
+  });
+});
+
+describe('takenOverBy', () => {
+  it('names another copy of Svall that runs the fleets while it is still on disk', () => {
+    const plist = (r: Runtime) => launchdPlist({ label: 'L', program: r.daemon, home: '/h', log: '/l', pathEnv: '/usr/bin' });
+    const here = bundleRuntime('/Applications/Svall.app');
+    const other = bundleRuntime('/Users/x/Downloads/Svall.app');
+    expect(takenOverBy(plist(other), here, () => true)).toBe(other.daemon[0]);
+    expect(takenOverBy(plist(other), here, () => false)).toBeUndefined();
+    expect(takenOverBy(plist(here), here, () => true)).toBeUndefined();
+    expect(takenOverBy(undefined, here, () => true)).toBeUndefined();
   });
 });
 

@@ -227,6 +227,12 @@ describe('doctor', () => {
     expect(report.checks.find((c) => c.name === 'hooks')).toEqual({ name: 'hooks', status: 'skip', detail: 'Claude Code is not installed' });
   });
 
+  it('skips the hooks of an agent turned off in setup rather than failing them', async () => {
+    const f = fake({ found: ['claude', 'codex'], files: { '/u/.claude/settings.json': '{}', '/u/.codex': '' } });
+    expect(byName(await doctor(priv, { ...f.deps, integrations: ['codex'] })).hooks).toEqual({ name: 'hooks', status: 'skip', detail: 'turned off in setup' });
+    expect(await codexCheck({ ...f.deps, integrations: ['claude'] })).toEqual({ name: 'codex hooks', status: 'skip', detail: 'turned off in setup' });
+  });
+
   it('fails hooks that Claude Code settings turn off', async () => {
     const off = JSON.stringify({ ...JSON.parse(installed), disableAllHooks: true });
     expect(byName(await doctor(priv, fake({ files: { '/u/.claude/settings.json': off } }).deps)).hooks)
