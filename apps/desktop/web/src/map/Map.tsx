@@ -267,10 +267,10 @@ export function Map() {
     const host = { w: el.clientWidth, h: el.clientHeight };
     return hi && { h: host.h, blocks: homeBlocks(hi, host, row.current, most), row: hi.position.y };
   };
-  // the map height mission control keeps on a map this wide, where its land shrinks to leave the lighthouse room, and
-  // to no more than `most`, the scale the map draws island cards at
+  // the map height mission control keeps on a map this wide: its row as tall as it has wrapped to, and its land, which
+  // shrinks to leave the lighthouse room and to no more than `most`, the scale the map draws island cards at
   const reserveAt = (w: number, hi = homeIsland(app.store.getState().fleet), most = 1): number =>
-    homeReserve(Boolean(hi?.collapsed), theme.home.row, hi ? placeIslet(w, hi.size.w * theme.cell, Boolean(hi.collapsed), most).homeScale : 1);
+    homeReserve(Boolean(hi?.collapsed), row.current.h, hi ? placeIslet(w, hi.size.w * theme.cell, Boolean(hi.collapsed), most).homeScale : 1);
   const refit = (immediate?: boolean, anchor?: PendingIsland['anchor']) => {
     if (cameraHold.current && !immediate) return;
     const el = host.current;
@@ -434,13 +434,15 @@ export function Map() {
   useLayoutEffect(() => {
     const el = host.current?.querySelector<HTMLElement>('.hrow');
     if (!el) return;
+    // the row wraps to the map's width, so a size read before the map has one means nothing
     const read = () => {
+      if (!hostSizeRef.current.w) return false;
       setRowH(el.offsetHeight);
       if (el.offsetWidth === row.current.w && el.offsetHeight === row.current.h) return false;
       row.current = { w: el.offsetWidth, h: el.offsetHeight };
       return true;
     };
-    read();
+    if (read()) refit();
     const ro = new ResizeObserver(() => { if (read()) refit(); });
     ro.observe(el);
     return () => ro.disconnect();
@@ -454,7 +456,8 @@ export function Map() {
     refit(true);
   }, [sideCardOpen, sidebarOpen, settingsOpen]);
 
-  useEffect(() => {
+  // before paint, so the row wraps to the map's real width from the first frame
+  useLayoutEffect(() => {
     const el = host.current;
     if (!el) return;
     setHostSize({ w: el.clientWidth, h: el.clientHeight });
@@ -581,7 +584,8 @@ export function Map() {
         {hi && (
           <Home island={hi} crew={crew} config={fleet.home} collapsed={Boolean(hi.collapsed)}
             selected={selectedIslandId === HOME_ISLAND} selectedId={selectedId} drag={drag} status={statusOf}
-            shift={place.homeShift} scale={place.homeScale} extra={place.mode === 'pill' ? <ResourcesPill /> : undefined}
+            shift={place.homeShift} rowShift={placeIslet(hostSize.w, hi.size.w * theme.cell, Boolean(hi.collapsed)).homeShift}
+            scale={place.homeScale} extra={place.mode === 'pill' ? <ResourcesPill /> : undefined}
             onToggle={() => toggleIsland(deps(), HOME_ISLAND)}
             onArrange={() => arrange()}
             onNewIsland={() => newIsland(deps())}

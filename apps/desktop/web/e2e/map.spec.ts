@@ -252,6 +252,31 @@ test('the arrange button packs the fleet together and the map zooms into it', as
   await expect(page.getByTestId(`island-${folded.id}`)).toHaveCount(0);
 });
 
+test('an arranged fleet leaves as much water over it as under it, at every window size', async ({ page, svall }) => {
+  for (const [n, crew] of [3, 1, 2, 0, 4, 1].entries()) {
+    const island = await svall.api.call('island.create', { name: svall.uniq(`even${n}`), seed: n + 1, position: { x: n * 30, y: n * 7 } });
+    for (let c = 0; c < crew; c++) await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: `e${n}${c}` });
+  }
+  await svall.open('map');
+  for (const size of [{ width: 1280, height: 800 }, { width: 1512, height: 900 }, { width: 1180, height: 760 }]) {
+    await page.setViewportSize(size);
+    await page.getByTestId('home-arrange').click();
+    // the arrange lands a round trip later and the map eases into it, so the gaps are read until they hold
+    const gaps = () => page.evaluate(() => {
+      const map = document.querySelector('[data-testid="map"]')!.getBoundingClientRect();
+      const row = document.querySelector('[data-testid="home-row"]')!.getBoundingClientRect();
+      const tops = Array.from(document.querySelectorAll('.map-world .ilabel'), (el) => el.getBoundingClientRect().top);
+      const bottoms = Array.from(document.querySelectorAll('.map-world .tok .card, .map-world .island .land'), (el) => el.getBoundingClientRect().bottom);
+      return { top: Math.min(...tops) - map.top, bottom: row.top - Math.max(...bottoms) };
+    });
+    // the top clears the wordmark by the same margin the water over mission control's row keeps
+    await expect.poll(async () => { const g = await gaps(); return Math.abs(g.top - g.bottom); }, { message: `${size.width}x${size.height}` }).toBeLessThanOrEqual(8);
+    await settle(page);
+    const g = await gaps();
+    expect(Math.abs(g.top - g.bottom), `${size.width}x${size.height}: ${JSON.stringify(g)}`).toBeLessThanOrEqual(8);
+  }
+});
+
 test('the fleet arranges itself when the map is in full view again, and when the window settles', async ({ page, svall }) => {
   const near = await svall.api.call('island.create', { name: svall.uniq('near'), position: { x: 0, y: 0 }, size: { w: 12, h: 9 } });
   const far = await svall.api.call('island.create', { name: svall.uniq('far'), position: { x: 40, y: 0 }, size: { w: 12, h: 9 } });
