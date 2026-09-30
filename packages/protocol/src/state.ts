@@ -145,6 +145,7 @@ export const Character = z.object({
   repo: Repo.optional(),
   context: z.array(ContextItem),
   tmux: z.object({ windowId: z.string(), paneId: z.string() }).optional(),
+  // the pane's last output, kept current only while the character has no agent
   shell: z.object({ lastOutputAt: z.number() }),
   agent: Agent.optional(),
   unread: z.boolean(),

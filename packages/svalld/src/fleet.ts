@@ -890,6 +890,8 @@ export class Fleet extends EventEmitter<Events> {
         if (!c.tmux && 'hook' in e && e.hook.name === 'SessionEnd') return;
         const next = apply(c);
         if (next.agent) delete next.hint;
+        // the shell's activity shows again once the agent has gone, and its end is that activity
+        else if (c.agent) next.shell.lastOutputAt = Date.now();
         d.characters[ev.charId] = next;
       }
     });

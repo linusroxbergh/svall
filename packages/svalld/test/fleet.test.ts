@@ -243,6 +243,21 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id].shell.lastOutputAt).toBeGreaterThan(0);
   });
 
+  it('records shell activity when a SessionEnd hook ends the agent, without waiting for a poll', async () => {
+    const { fleet, store } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    store.update((d) => {
+      d.characters[c.id].agent = { kind: 'claude', sessionId: 's', transcriptPath: '/t', status: 'working', lastActivityAt: 1 };
+      d.characters[c.id].shell.lastOutputAt = 0;
+    });
+    // a late end from another session leaves the agent, and the shell, as they were
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionEnd', sessionId: 'old' } });
+    expect(store.state.characters[c.id].shell.lastOutputAt).toBe(0);
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionEnd', sessionId: 's' } });
+    expect(store.state.characters[c.id].agent).toBeUndefined();
+    expect(store.state.characters[c.id].shell.lastOutputAt).toBeGreaterThan(0);
+  });
+
   it('follows an agent that cds into another checkout, and the poll leaves it there', async () => {
     const { fleet, store, home } = await boot();
     const repo = fs.realpathSync(fs.mkdtempSync(path.join(home, 'repo-')));
