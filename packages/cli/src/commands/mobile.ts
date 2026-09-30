@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import QRCode from 'qrcode';
+import { SHIM } from '@svall/svalld/profile';
 import type { Client } from '../client.js';
 import { printResult } from '../format.js';
 
@@ -33,7 +34,7 @@ export function mobileCommand(connect: () => Promise<Client>, json: () => boolea
 
   cmd.command('off').description('stop serving; the daemon stays up')
     .action(async () => {
-      printResult(await set(false), json(), () => 'tailscale serve stopped\nafter the next `svall mobile on`, each phone has to turn notifications on again (⚙ → Notify this phone)');
+      printResult(await set(false), json(), () => `tailscale serve stopped\nafter the next \`${SHIM} mobile on\`, each phone has to turn notifications on again (⚙ → Notify this phone)`);
     });
 
   return cmd;
