@@ -368,7 +368,7 @@ Its `config.json` takes:
 | `defaultCwd` | Where a new character starts when no character beside it gives it a directory (default `~`). |
 | `shell` | The shell a terminal runs, if not your login shell. |
 | `linear` | `{ "workspace": "acme", "teamKeys": ["ENG"] }` links a branch named after a Linear issue to that issue. |
-| `mainAgent` | `claude` or `codex`: what the scribe, mission control's crew and `svall char new --run` run by default. Absent, the only CLI installed, else `claude`. Set from the app or with `svall agent <name>`. |
+| `mainAgent` | `claude` or `codex`: what the scribe, mission control's crew and `svall char new --run` run by default. Absent, the private fleet's, else the only CLI installed, else `claude`. Set from the app or with `svall agent <name>`. |
 | `home` | Mission control: `cwd` for its crew, the `command` that starts an agent (default the main agent's: `claude --model sonnet`, or `codex`), and `actions`, one `{ "label", "prompt" }` per button. A button's `/name` prompt reaches a Codex crew as `$name`. |
 | `scribe` | `agent` (default the main agent) and `model`, a model of `agent`'s CLI, or of Claude's when `agent` is unset (default `sonnet`). |
 | `mobile` | `logins` to let in (only yours when empty), extra page `origins` allowed to open a socket, a `pushContact` (https: or mailto:) for push services, and `httpsPort`. |

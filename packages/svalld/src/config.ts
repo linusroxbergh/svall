@@ -14,7 +14,8 @@ export const Config = z.object({
   // with no command, the crew starts the main agent's crewCommand
   home: Home.extend({ cwd: z.string().default(HOME_CWD), command: z.string().optional() }).prefault({}),
   defaultCwd: z.string().default(DEFAULT_CWD),
-  // the agent the scribe, mission control's crew and `svall char new --run` use by default; absent, the only one installed, else claude
+  // the agent the scribe, mission control's crew and `svall char new --run` use by default; absent, the private fleet's, else
+  // the only one installed, else claude
   mainAgent: AgentKind.optional(),
   // the agents whose hooks setup installs; absent, every agent found
   integrations: z.array(AgentKind).optional(),
