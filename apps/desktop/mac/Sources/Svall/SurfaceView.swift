@@ -106,12 +106,13 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
     }
 
     // the view follows its card every frame, drawing the grid it has at the top left; the grid, and with it
-    // the pty and a tmux reflow, changes once the size has held still
+    // the pty and a tmux reflow, changes once the size has held still. A hidden view is sized before it shows
     override func setFrameSize(_ newSize: NSSize) {
         let resized = newSize != frame.size
         super.setFrameSize(newSize)
         guard resized else { return }
         sizeTimer?.invalidate()
+        if isHidden { syncSize(); return }
         let timer = Timer(timeInterval: 0.1, repeats: false) { [weak self] _ in self?.syncSize() }
         RunLoop.main.add(timer, forMode: .common)
         sizeTimer = timer
