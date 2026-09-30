@@ -86,6 +86,10 @@ s/!/→/
 s/missing or out of date: run svall-dev setup\$/$NEW/
 s/out of date: run svall-dev setup\$/$AFTER/
 }" "$CHECK_OUT"; bar
+# a checkout installed before it built Svall Dev runs the release's fleets, whose daemons Svall Dev refuses to start
+grep -q '/node_modules/\.bin/tsx</string>' "$HOME"/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld*.plist 2>/dev/null &&
+  missing "✗ fleets  ~/.svall's fleets run from a checkout, which builds Svall Dev now and cannot run them. Put Svall.app (from svall.dev, or pnpm app:build) in /Applications, then in a terminal outside Svall run
+   /Applications/Svall.app/Contents/Helpers/node /Applications/Svall.app/Contents/Resources/runtime/svall.mjs setup"
 if [ -z "$CHECK_OK" ] || [ -n "$MISSING" ]; then
   [ -z "$MISSING" ] || printf '%s\n' "$MISSING" | sed '/^$/d' >&2
   fail "Nothing was changed. Fix the ✗ items above, then run pnpm desktop:install again."

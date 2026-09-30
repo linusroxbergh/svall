@@ -121,6 +121,15 @@ test('stops before any build on a failed check or a missing tool, showing each',
   expect(noKit.stderr).toContain('Nothing was changed.');
 });
 
+test("stops before any build while the release's fleets run from a checkout, but not once the app runs them", () => {
+  const plist = 'Library/LaunchAgents/io.github.linusroxbergh.svall.svalld.work.plist';
+  const legacy = checks({ [plist]: '<string>/Users/u/svall/node_modules/.bin/tsx</string>' }, true);
+  expect(legacy.status).toBe(1);
+  expect(legacy.stderr).toContain("✗ fleets  ~/.svall's fleets run from a checkout");
+  expect(legacy.stdout).not.toContain('build ghostty:');
+  expect(checks({ [plist]: '<string>/Applications/Svall.app/Contents/Helpers/node</string>' }, true).status).toBe(0);
+});
+
 test("shows the end of a quiet step's log when the step fails", () => {
   const r = checks({ 'bin/pnpm': '[ "$1" = install ] && { echo "ERR_PNPM_FETCH_404 left-pad"; exit 1; }; exit 0' });
   expect(r.status).toBe(1);
