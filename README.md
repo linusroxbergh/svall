@@ -495,7 +495,7 @@ signed in to is signed in there too.
     pnpm test            # needs tmux on PATH for the integration tests
     pnpm typecheck
     pnpm e2e             # Playwright against a temporary daemon
-    pnpm desktop:dev     # Vite dev server plus a debug app; SVALL_HOME picks the daemon
+    pnpm desktop:dev     # Vite dev server plus a debug app; SVALL_HOME picks the daemon, unless it names a release fleet
     pnpm desktop:build   # an unsigned apps/desktop/mac/build/Svall.app
     pnpm ghostty:build   # GhosttyKit from vendor/ghostty (v1.3.1) into vendor/ghostty-kit
     pnpm ghostty:publish # build GhosttyKit and upload it for installs to download

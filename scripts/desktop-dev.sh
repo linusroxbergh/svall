@@ -1,6 +1,10 @@
 #!/bin/sh
-# Vite dev server + a debug shell build pointed at it. SVALL_HOME selects the daemon.
+# Vite dev server + a debug shell build pointed at it. SVALL_HOME selects the daemon, unless it names a release fleet.
 set -eu
+case "$(basename "${SVALL_HOME:-}")" in
+  .svall-dev|.svall-dev-*) ;;
+  .svall|.svall-[a-z]*) unset SVALL_HOME SVALL_CHAR_ID ;;
+esac
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 curl -sf http://localhost:5173 >/dev/null && { echo "port 5173 is in use" >&2; exit 1; }
