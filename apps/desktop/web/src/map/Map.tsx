@@ -60,6 +60,7 @@ export function Map() {
   const autoArrange = useApp((s) => s.settings.autoArrange);
   const arrangeAsk = useApp((s) => s.arrangeAsk);
   const dropHover = useApp((s) => s.dropHover);
+  const active = useApp((s) => s.active);
   const [layout, setLayout] = useState<Layout>({ scale: 1, tile: theme.cell, ox: 0, oy: 0 });
   const [drag, setDrag] = useState<Drag>();
   const [pendingIsland, setPendingIsland] = useState<PendingIsland>();
@@ -510,7 +511,7 @@ export function Map() {
     return p.offset ?? { x: (p.position.x - i.position.x) * theme.cell, y: (p.position.y - i.position.y) * theme.cell };
   };
   return (
-    <div ref={host} className="map" data-testid="map" data-dragging={Boolean(drag) || panning} onWheel={onWheel} onDoubleClick={onSeaDoubleClick} {...hostPointer}
+    <div ref={host} className="map" data-testid="map" data-dragging={Boolean(drag) || panning} data-paused={!active || covered} onWheel={onWheel} onDoubleClick={onSeaDoubleClick} {...hostPointer}
       style={{ '--map-w': `${hostSize.w}px`, '--home-row-top': `${(hi?.collapsed ? theme.home.bar : theme.home.visible * place.homeScale + theme.home.rowGap) + rowH + 24}px` } as React.CSSProperties}>
       <div className="map-grain" />
       {/* the camera's values sit on the one element that reads them: set on the map, every frame of a zoom would restyle all of it */}

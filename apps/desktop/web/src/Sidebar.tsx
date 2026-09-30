@@ -134,6 +134,7 @@ function CharacterRow({ c }: { c: Character }) {
 
 export function Sidebar() {
   const fleet = useApp((s) => s.fleet);
+  const active = useApp((s) => s.active);
   const [editing, setEditing] = useState<string>();
   const [dragIsland, setDragIsland] = useState<string>();
   const [islandHover, setIslandHover] = useState<{ id: string; after: boolean }>();
@@ -161,7 +162,7 @@ export function Sidebar() {
   const setDragging = (id?: string) => { setDragIsland(id); if (!id) setIslandHover(undefined); };
 
   return (
-    <aside className="sb" data-testid="sidebar">
+    <aside className="sb" data-testid="sidebar" data-paused={!active}>
       <div className="sb-head">
         islands
         <button className="sb-add" data-testid="sidebar-new-island" onClick={() => newIsland(deps())}>+ New island</button>

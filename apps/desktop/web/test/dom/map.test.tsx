@@ -225,3 +225,19 @@ test('an island dropped while the last one is still settling settles, and so doe
   await settled();
   expect(held('i_a')).toBe('false');
 });
+
+test('the map holds its animation still while the app is in the background or a full card covers it', async () => {
+  render(<Map />);
+  await act(async () => {});
+  const paused = () => screen.getByTestId('map').getAttribute('data-paused');
+  expect(paused()).toBe('false');
+  act(() => store.getState().setActive(false));
+  expect(paused()).toBe('true');
+  act(() => store.getState().setActive(true));
+  await act(async () => { store.getState().focus('c0'); });
+  expect(paused()).toBe('false');
+  await act(async () => { store.getState().toggleCardSize(); });
+  expect(paused()).toBe('true');
+  await act(async () => { store.getState().closeCard(); });
+  expect(paused()).toBe('false');
+});

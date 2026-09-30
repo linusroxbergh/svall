@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import './setup.js';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { FromShell, ToShell } from '../../src/bridge.js';
 import { setAppStore } from '../../src/hooks.js';
@@ -72,4 +72,11 @@ test('a pick answers the latest menu only', () => {
   shell({ type: 'menu.pick', id: '0' });
   expect(store.getState().closingCharacter).toBe('c2');
   expect(store.getState().deletingIsland).toBeUndefined();
+});
+
+test('the sidebar holds its animation still while the app is in the background', () => {
+  const paused = () => screen.getByTestId('sidebar').getAttribute('data-paused');
+  expect(paused()).toBe('false');
+  act(() => store.getState().setActive(false));
+  expect(paused()).toBe('true');
 });
