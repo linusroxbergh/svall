@@ -16,6 +16,8 @@ describe('fleet names', () => {
     // even with no ~/.svall yet, where profileHome would put a fleet named private
     expect(fleetNameProblem('private', [])).toBe('private is the fleet in ~/.svall');
     expect(isProfileName('private')).toBe(true);
+    for (const kept of ['dev', 'dev-work']) expect(fleetNameProblem(kept, [])).toBe('dev names are kept for Svall Dev');
+    expect(fleetNameProblem('devops', [])).toBeUndefined();
     expect(fleetNameProblem('work', ['private', 'work'])).toBe('another fleet is called work');
   });
 });

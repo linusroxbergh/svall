@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import type { CodexPaths } from './codex/install.js';
 import { portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
 import { resolvePaths } from './paths.js';
-import { BUNDLE_ID, isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome } from './profile.js';
+import { BUNDLE_ID, homePrefix, isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome } from './profile.js';
 import { readJsonSettings, requireWritable, unmergeHooks, unmergeStatusLine, writeJsonSettings, type JsonSettings } from './setup.js';
 
 const exec = promisify(execFile);
@@ -138,7 +138,7 @@ const isFleetHome = (p: string): boolean =>
   fs.statSync(p, { throwIfNoEntry: false })?.isDirectory() === true && fs.existsSync(resolvePaths(p).config);
 
 export const fleetHomes = (homedir: string): string[] => fs.readdirSync(homedir)
-  .filter((f) => f === path.basename(profileHome(PRIVATE, homedir)) || (f.startsWith('.svall-') && isProfileName(f.slice('.svall-'.length))))
+  .filter((f) => f === path.basename(profileHome(PRIVATE, homedir)) || (f.startsWith(homePrefix) && isProfileName(f.slice(homePrefix.length))))
   .sort()
   .map((f) => path.join(homedir, f))
   .filter(isFleetHome);

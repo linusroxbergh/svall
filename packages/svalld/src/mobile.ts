@@ -7,7 +7,7 @@ import type { MobileStatus } from '@svall/protocol';
 import { MOBILE_DIST } from './api/bundle.js';
 import { repoRoot, resolvePaths } from './paths.js';
 import type { Phones } from './phones.js';
-import { PRIVATE, profileLabel } from './profile.js';
+import { PRIVATE, PRIVATE_HTTPS_PORT, profileLabel } from './profile.js';
 
 export type MobileDeps = {
   run(cmd: string, args: string[], cwd?: string): Promise<string>;
@@ -68,7 +68,7 @@ export const buildBundle = (d: MobileDeps): Promise<string> =>
   d.run('pnpm', ['--filter', '@svall/desktop-web', 'build:mobile'], repoRoot());
 
 // a port is part of the origin, so each fleet on its own port is its own app on the phone
-export const servePort = (profile: string, configured?: number): number => configured ?? (profile === PRIVATE ? 443 : 8443);
+export const servePort = (profile: string, configured?: number): number => configured ?? (profile === PRIVATE ? PRIVATE_HTTPS_PORT : 8443);
 
 export const phoneUrl = (host: string, port: number): string => `https://${host}${port === 443 ? '' : `:${port}`}/`;
 

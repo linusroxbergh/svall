@@ -4,7 +4,7 @@ import os from 'node:os';
 import { promisify } from 'node:util';
 import { homeSetup, startFleet, type StartDeps } from '@svall/svalld/fleets';
 import { repoRoot, userPaths } from '@svall/svalld/paths';
-import { PRIVATE } from '@svall/svalld/profile';
+import { BUNDLE_ID, PRIVATE } from '@svall/svalld/profile';
 import { setupHome } from '@svall/svalld/setup';
 import { Client } from './client.js';
 import { ask } from './prompt.js';
@@ -26,8 +26,8 @@ export async function launch(t: Target, d: LaunchDeps): Promise<void> {
 
   await startFleet(t, d);
 
-  await d.exec('open', ['-n', '--env', `SVALL_HOME=${t.home}`, '-a', 'Svall']).catch((e: Error) => {
-    throw new Error(`Svall.app is not installed; run pnpm desktop:install (open: ${e.message})`);
+  await d.exec('open', ['-n', '--env', `SVALL_HOME=${t.home}`, '-b', BUNDLE_ID]).catch((e: Error) => {
+    throw new Error(`${BUNDLE_ID === 'io.github.linusroxbergh.svall' ? 'Svall' : 'Svall Dev'} is not installed; run pnpm desktop:install (open: ${e.message})`);
   });
 }
 

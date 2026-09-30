@@ -13,6 +13,10 @@ export const bundled: boolean = typeof SVALL_BUNDLED !== 'undefined';
 /** The app version the bundle was built as; undefined in a checkout. */
 export const bundledVersion: string | undefined = typeof SVALL_VERSION !== 'undefined' ? SVALL_VERSION : undefined;
 
+export type Variant = 'release' | 'dev';
+// a checkout is Svall Dev, so it never touches the release's fleets; the tests pin the release's names with SVALL_VARIANT
+export const variant: Variant = bundled || process.env.SVALL_VARIANT === 'release' ? 'release' : 'dev';
+
 /** A folder the daemon reads its own files from. */
 export const assetDir = (name: 'hooks' | 'home' | 'agent-profiles'): string =>
   bundled ? path.join(here, name) : path.resolve(here, '..', name);

@@ -13,5 +13,7 @@ fs.writeFileSync(path.join(bin, 'tailscale'), fs.readFileSync(path.join(import.m
 process.env.HOME = home;
 process.env.PATH = `${bin}:${process.env.PATH}`;
 for (const k of ['SVALL_HOME', 'SVALL_CHAR_ID', 'SVALL_TERM', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'TMUX', 'TMUX_PANE']) delete process.env[k];
+// a checkout runs as Svall Dev; the tests read the release's names unless a test asks for the other variant
+process.env.SVALL_VARIANT = 'release';
 
 afterAll(() => fs.rmSync(home, { recursive: true, force: true }));

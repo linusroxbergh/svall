@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -7,7 +8,7 @@ import { codexInstalled, codexPaths } from '../src/codex/install.js';
 import { realDeps } from '../src/mobile.js';
 import { LAUNCHD_LABEL } from '../src/profile.js';
 import { HOOK_EVENTS, hookCommand, mergeHooks, mergeStatusLine, runSetup, statusWrapper, unmergeHooks, unmergeStatusLine } from '../src/setup.js';
-import { appQuit, fleetData, purge, runUninstall, type AppQuit } from '../src/uninstall.js';
+import { appQuit, fleetData, fleetHomes, purge, runUninstall, type AppQuit } from '../src/uninstall.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
 afterEach(cleanHomes);
@@ -59,6 +60,16 @@ function installed() {
   const shimDir = path.join(root, 'bin');
   return { root, home, settingsPath, mine, launchAgentsDir, shimDir, o: { home, homes: [home], settingsPath, settingsPaths: [settingsPath], launchAgentsDir, shimDir, repoRoot, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(root, '.codex') }), mobile: noTailscale, app: noApp } };
 }
+
+describe('fleetHomes', () => {
+  it('lists only this variant\'s fleet homes', () => {
+    const u = fs.mkdtempSync(path.join(os.tmpdir(), 'u-'));
+    for (const d of ['.svall', '.svall-work', '.svall-dev', '.svall-dev-x']) {
+      fs.mkdirSync(path.join(u, d)); fs.writeFileSync(path.join(u, d, 'config.json'), '{}');
+    }
+    expect(fleetHomes(u).map((h) => path.basename(h))).toEqual(['.svall', '.svall-work']);
+  });
+});
 
 describe('runUninstall', () => {
   it('writes the codex hooks beside the user own, once, and takes back only its own', async () => {

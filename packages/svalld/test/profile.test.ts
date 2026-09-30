@@ -6,6 +6,8 @@ describe('profile', () => {
     expect(isProfileName('work')).toBe(true);
     expect(isProfileName('side-2')).toBe(true);
     expect(isProfileName(PRIVATE)).toBe(true);
+    expect(isProfileName('devops')).toBe(true);
+    for (const kept of ['dev', 'dev-work']) expect(isProfileName(kept)).toBe(false);
     for (const bad of ['status', 'island', 'char', 'scribe', 'browser', 'mobile', 'setup', 'doctor', 'uninstall', 'help', 'Work', '2nd', 'a b', '', '-x']) {
       expect(isProfileName(bad)).toBe(false);
     }

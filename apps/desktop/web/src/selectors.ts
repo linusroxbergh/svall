@@ -134,8 +134,8 @@ export const isVeiled = (s: { namingCharacter: boolean; missionPrompt: boolean; 
   s.namingCharacter || s.missionPrompt || s.closingCharacter !== undefined || s.deletingIsland !== undefined || s.fleetPicker !== undefined
   || s.keysOpen || s.resourcesOpen || !!s.fleet.scribeAsk;
 
-// the name a fleet's home directory gives it: ~/.svall is the private fleet, ~/.svall-work is work
+// the name a fleet's home directory gives it: ~/.svall (or ~/.svall-dev) is the private fleet, ~/.svall-work is work
 export const directoryName = (home: string): string => {
   const base = home.replace(/\/+$/, '').split('/').pop() ?? '';
-  return base === '.svall' ? 'private' : base.replace(/^\.svall-/, '');
+  return base === '.svall' || base === '.svall-dev' ? 'private' : base.replace(/^\.svall-(dev-)?/, '');
 };

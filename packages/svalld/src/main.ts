@@ -13,7 +13,8 @@ import { createLogger, rotateLog, type Logger } from './log.js';
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
 import { fleetKeys, resolvePaths } from './paths.js';
 import { Phones } from './phones.js';
-import { isProfileName, PRIVATE, profileOf } from './profile.js';
+import { isProfileName, PRIVATE, profileOf, variantOf } from './profile.js';
+import { variant } from './runtime.js';
 import { startPusher, webPushSender } from './push/pusher.js';
 import { PushStore } from './push/store.js';
 import { readOrCreateVapid } from './push/vapid.js';
@@ -61,6 +62,9 @@ type Options = { home: string; port?: number; host?: string; log?: Logger };
 
 // the lock comes before anything in the home is read or written, so a second start leaves the running one be
 export async function startDaemon(opts: Options): Promise<Daemon> {
+  // a checkout's daemon on the release's home, or the reverse, would run it on the other build's ports and folders
+  const owner = variantOf(opts.home);
+  if (owner && owner !== variant) throw new Error(`${opts.home} belongs to ${owner === 'dev' ? 'Svall Dev' : 'Svall'}, not to this build`);
   fs.mkdirSync(opts.home, { recursive: true, mode: 0o700 });
   const unlock = lockHome(opts.home);
   const daemon = await start(opts).catch((e: unknown) => { unlock(); throw e; });

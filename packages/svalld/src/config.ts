@@ -2,16 +2,17 @@ import fs from 'node:fs';
 import { z } from 'zod';
 import { AgentKind, DEFAULT_CWD, Home, isProfileName } from '@svall/protocol';
 import { writeAtomic } from './jsonfile.js';
+import { DEFAULT_PORT, HOME_CWD } from './profile.js';
 
 export const Config = z.object({
   // what the app and `svall <name>` call the fleet; absent, its directory names it
   name: z.string().refine(isProfileName, 'use lowercase letters, digits and dashes, starting with a letter, and no svall command').optional(),
-  port: z.number().int().default(47800),
+  port: z.number().int().default(DEFAULT_PORT),
   host: z.string().default('127.0.0.1'),
   shell: z.string().optional(),
   linear: z.object({ workspace: z.string(), teamKeys: z.array(z.string()) }).optional(),
   // with no command, the crew starts the main agent's crewCommand
-  home: Home.extend({ command: z.string().optional() }).prefault({}),
+  home: Home.extend({ cwd: z.string().default(HOME_CWD), command: z.string().optional() }).prefault({}),
   defaultCwd: z.string().default(DEFAULT_CWD),
   // the agent the scribe, mission control's crew and `svall char new --run` use by default; absent, the only one installed, else claude
   mainAgent: AgentKind.optional(),
