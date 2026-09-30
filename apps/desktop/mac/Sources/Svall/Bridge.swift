@@ -45,9 +45,9 @@ enum ToShell: Decodable {
     case openFleet(home: String, quit: Bool?)
     case retitle
     case setupPlan
-    case setupRun(agents: [String])
+    case setupRun(agents: [String], found: [String])
 
-    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, home, quit, x, y, items, agents }
+    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, home, quit, x, y, items, agents, found }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -86,7 +86,7 @@ enum ToShell: Decodable {
         case "openFleet": self = .openFleet(home: try c.decode(String.self, forKey: .home), quit: try c.decodeIfPresent(Bool.self, forKey: .quit))
         case "retitle": self = .retitle
         case "setup.plan": self = .setupPlan
-        case "setup.run": self = .setupRun(agents: try c.decode([String].self, forKey: .agents))
+        case "setup.run": self = .setupRun(agents: try c.decode([String].self, forKey: .agents), found: try c.decode([String].self, forKey: .found))
         case let other: throw ShellError("unknown bridge message \(other)")
         }
     }

@@ -133,6 +133,18 @@ describe('svall uninstall --login-shell', () => {
   });
 });
 
+describe('svall setup --agents', () => {
+  it('keeps off an agent the setup screen showed and the user left out, and makes the one left on the main agent', async () => {
+    const home = makeHome();
+    try {
+      await run({ HOME: home, PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin` }, 'setup', '--no-launchctl', '--agents', 'codex', '--found', 'claude,codex');
+      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ integrations: ['codex'], mainAgent: 'codex' });
+    } finally {
+      cleanHomes();
+    }
+  });
+});
+
 describe('svall setup --if-needed --login-shell', () => {
   it('writes nothing when the login shell does not answer', async () => {
     const home = makeHome();

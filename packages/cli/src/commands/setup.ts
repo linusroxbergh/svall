@@ -5,7 +5,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { Command } from 'commander';
 import type { AgentKind } from '@svall/protocol';
-import { AGENTS, AGENT_KINDS, findAgents, onPath } from '@svall/svalld/agents';
+import { AGENTS, AGENT_KINDS, findAgents, mainAgent, onPath } from '@svall/svalld/agents';
 import { codexPaths } from '@svall/svalld/codex/install';
 import { loadConfig, saveConfig } from '@svall/svalld/config';
 import { resolvePaths, userPaths } from '@svall/svalld/paths';
@@ -32,9 +32,10 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
     .option('--check', 'only check what setup needs; change nothing')
     .option('--plan', 'print what setup would do, as the app shows it; change nothing')
     .option('--agents <list>', 'the agents to install hooks for, comma-separated; saved for later runs')
+    .option('--found <list>', 'the agents the setup screen showed; those left out of --agents stay off (default: the agents found now)')
     .option('--if-needed', 'set up only what is missing or out of date, and restart daemons of another version')
     .option('--login-shell', 'take PATH, CLAUDE_CONFIG_DIR and CODEX_HOME from the login shell, as an app opened from Finder has none')
-    .action(async (o: { launchctl: boolean; check?: boolean; plan?: boolean; agents?: string; ifNeeded?: boolean; loginShell?: boolean }) => {
+    .action(async (o: { launchctl: boolean; check?: boolean; plan?: boolean; agents?: string; found?: string; ifNeeded?: boolean; loginShell?: boolean }) => {
       const answered = o.loginShell ? await takeLoginEnv() : true;
       // setup owns the per-user half — the Claude hooks and the shims — so it only ever means private
       const t = target();
@@ -44,10 +45,17 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       const configFile = resolvePaths(t.home).config;
       if (o.agents !== undefined) {
         if (o.plan || o.check) throw new Error('--agents is for a setup that writes');
-        const chosen = o.agents.split(',');
-        for (const name of chosen) if (!AGENT_KINDS.includes(name as AgentKind)) throw new Error(`unknown agent ${name}`);
+        const kinds = (list: string): AgentKind[] => list.split(',').map((name) => {
+          if (!AGENT_KINDS.includes(name as AgentKind)) throw new Error(`unknown agent ${name}`);
+          return name as AgentKind;
+        });
+        const chosen = kinds(o.agents);
+        const found = o.found !== undefined ? kinds(o.found) : findAgents(process.env.PATH ?? '');
         fs.mkdirSync(t.home, { recursive: true });
-        saveConfig(configFile, { integrations: integrationsFor(chosen as AgentKind[], findAgents(process.env.PATH ?? '')) });
+        // a fleet with no main agent set runs claude when both are found, so turning claude off makes the one left on the main agent
+        const on = chosen.filter((k) => found.includes(k));
+        const main = on.length && !on.includes(mainAgent(undefined, found)) && !loadConfig(configFile).mainAgent ? { mainAgent: on[0] } : {};
+        saveConfig(configFile, { integrations: integrationsFor(chosen, found), ...main });
       }
       const integrations = loadConfig(configFile).integrations;
       const settingsPath = userPaths().claudeSettings;

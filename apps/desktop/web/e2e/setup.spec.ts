@@ -33,7 +33,7 @@ test('lists the agents and files, and sets up the agents left on', async ({ page
   await page.getByRole('checkbox', { name: 'Codex' }).uncheck();
   await expect(page.getByText('/u/.codex/hooks.json')).toHaveCount(0);
   await page.getByRole('button', { name: 'Set up' }).click();
-  expect((await sent(page)).find((m) => m.type === 'setup.run')?.agents).toEqual(['claude']);
+  expect((await sent(page)).find((m) => m.type === 'setup.run')).toMatchObject({ agents: ['claude'], found: ['claude', 'codex'] });
 });
 
 test('says what to install when no agent is found, and asks again', async ({ page }) => {

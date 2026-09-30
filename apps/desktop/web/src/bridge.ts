@@ -52,7 +52,7 @@ export type ToShell =
   // the fleet was renamed, and the window title follows
   | { type: 'retitle' }
   | { type: 'setup.plan' }
-  | { type: 'setup.run'; agents: AgentKind[] };
+  | { type: 'setup.run'; agents: AgentKind[]; found: AgentKind[] };
 
 export type FromShell =
   | { type: 'connection'; host: string; port: number; token: string }
