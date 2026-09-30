@@ -4,8 +4,8 @@ import { cardRect, halfCardBy } from '../src/map/card.js';
 const win = { w: 1200, h: 800 };
 
 describe('cardRect', () => {
-  it('half card is half the map, centred', () => {
-    expect(cardRect({ size: 'half', win })).toEqual({ x: 300, y: 200, width: 600, height: 400 });
+  it('half card fills most of the map on first use, centred', () => {
+    expect(cardRect({ size: 'half', win })).toEqual({ x: 60, y: 48, width: 1080, height: 704 });
   });
   it('full card is the whole map, edge to edge', () => {
     expect(cardRect({ size: 'full', win })).toEqual({ x: 0, y: 0, width: 1200, height: 800 });

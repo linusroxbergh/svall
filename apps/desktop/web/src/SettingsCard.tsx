@@ -59,20 +59,22 @@ function Phone() {
 }
 
 // 0 is never, the longest wait of all
-const DORMANCY = [4, 12, 24, 72, 0];
+const DORMANCY = [...Array.from({ length: 24 }, (_, n) => 2 * (n + 1)), 0];
 const dormancyLabel = (h: number) => (h === 0 ? 'never' : h % 24 ? `${h} hours` : h === 24 ? '1 day' : `${h / 24} days`);
+const rank = (h: number) => (h === 0 ? Infinity : h);
 
 function Dormancy() {
   const hours = useApp((s) => s.fleet.dormantAfterHours ?? DORMANT_AFTER_HOURS);
-  const at = DORMANCY.indexOf(hours);
-  const step = (by: -1 | 1) => DORMANCY[at + by];
+  // a wait off the steps moves to the nearest step either side
+  const less = DORMANCY.filter((h) => rank(h) < rank(hours)).at(-1);
+  const more = DORMANCY.find((h) => rank(h) > rank(hours));
   return (
     <div className="row">
       <span>close idle agents after<Info id="dormancy">Frees memory. Opening the terminal resumes the conversation, and agents with background work stay up.</Info></span>
       <b className="set-zoom">
-        <button data-testid="dormancy-less" aria-label="Sooner" disabled={at <= 0} onClick={() => setDormancy(deps(), step(-1))}>−</button>
+        <button data-testid="dormancy-less" aria-label="Sooner" disabled={less === undefined} onClick={() => setDormancy(deps(), less!)}>−</button>
         <span className="tnum" data-testid="dormancy-level">{dormancyLabel(hours)}</span>
-        <button data-testid="dormancy-more" aria-label="Later" disabled={at === DORMANCY.length - 1} onClick={() => setDormancy(deps(), step(1))}>+</button>
+        <button data-testid="dormancy-more" aria-label="Later" disabled={more === undefined} onClick={() => setDormancy(deps(), more!)}>+</button>
       </b>
     </div>
   );

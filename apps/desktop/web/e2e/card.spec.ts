@@ -23,6 +23,20 @@ const worldCellOf = async (svall: Svall, island: { position: { x: number; y: num
   return { x: island.position.x + cell.x, y: island.position.y + cell.y };
 };
 
+test('the first half card fills most of the map, a margin all round', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('first'), seed: 2, position: { x: 0, y: 80 } });
+  const a = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
+  await svall.open('map', { firstRun: true });
+  const pa = await figurePoint(page, await worldCellOf(svall, island, a.id));
+  await page.mouse.dblclick(pa.x, pa.y);
+  const card = page.getByTestId('terminal-card');
+  await expect(card).toHaveAttribute('data-settled', 'true');
+  await expect.poll(async () => {
+    const map = (await page.getByTestId('map').boundingBox())!, half = (await card.boundingBox())!;
+    return [Math.round((half.width / map.width) * 100), Math.round((half.height / map.height) * 100)];
+  }).toEqual([90, 88]);
+});
+
 test('opens, switches, resizes and closes the terminal card; Cmd+M round-trips to the board', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('card'), seed: 2, position: { x: 0, y: 80 } });
   const a = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a' });

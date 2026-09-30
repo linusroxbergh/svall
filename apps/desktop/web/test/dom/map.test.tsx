@@ -3,8 +3,11 @@ import './setup.js';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { setAppStore } from '../../src/hooks.js';
+import { fitWithHome } from '../../src/map/home.js';
+import { crewOf, mapIslands } from '../../src/map/layout.js';
 import { createAppStore, type AppStore } from '../../src/store/index.js';
-import { fleet } from '../fixtures.js';
+import { theme } from '../../src/theme.js';
+import { fleet, isl } from '../fixtures.js';
 
 // reduced motion: a refit lands at once, so nothing waits on animation frames
 window.matchMedia ??= ((q: string) => ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} })) as never;
@@ -166,6 +169,31 @@ test('a side panel opened inside a click sequence refits the map once the sequen
     expect(world()).toBe(before);
     await act(async () => { await new Promise((r) => setTimeout(r, DBL_CLICK_MS + 50)); });
     expect(world()).not.toBe(before);
+  } finally {
+    delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+  }
+});
+
+test('mission control unfolds at the size its fit kept room for, though the map stands still', async () => {
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 1280 });
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 800 });
+  // two islands far apart and clear of mission control, folded or not: the map fits their width and rests the same either way
+  const f = { ...fleet(), characters: {} };
+  f.islands = { i_w: isl('i_w', 'w', 0, { size: { w: 7, h: 5 } }), i_e: isl('i_e', 'e', 46, { position: { x: 46, y: 10 }, size: { w: 7, h: 5 } }),
+    home: { ...f.islands.home, position: { x: 0, y: 20 }, collapsed: true } };
+  store.getState().setFleet(f);
+  try {
+    render(<Map />);
+    await act(async () => {});
+    const world = () => document.querySelector<HTMLElement>('.map-world')!.style.transform;
+    const before = world();
+    const open = { ...f, islands: { ...f.islands, home: { ...f.islands.home, collapsed: false } } };
+    await act(async () => { store.getState().setFleet(open); });
+    expect(world()).toBe(before);
+    const { most } = fitWithHome(mapIslands(open), crewOf(open), { w: 1280, h: 800 }, open.islands.home, { w: 0, h: theme.home.row });
+    expect(most).toBeLessThan(1);
+    expect(document.querySelector<HTMLElement>('.home .island')!.style.transform).toBe(`scale(${most})`);
   } finally {
     delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
     delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;

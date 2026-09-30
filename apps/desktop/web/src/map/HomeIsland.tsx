@@ -16,7 +16,7 @@ const stop = (e: React.PointerEvent) => e.stopPropagation();
 // the home island: sandbar land pinned to the bottom centre, its crew, and the label row with the buttons; the land and
 // crew shrink by `scale` towards the bottom centre, and the row stays full size above them
 export function Home({
-  island, crew, config, collapsed, selected, selectedId, drag, status, shift, scale, extra,
+  island, crew, config, collapsed, selected, selectedId, drag, status, shift, rowShift, scale, extra,
   onToggle, onAction, onArrange, onNewIsland, onNew, label, tokenPointer, onHoverStart, onHoverEnd, onOpen, onLink, dropHover,
 }: {
   island: Island;
@@ -28,6 +28,8 @@ export function Home({
   drag?: Drag;
   status(c: Character): DisplayStatus;
   shift: number;
+  // the shift the window's width alone gives home: the row wraps by it, so its height never follows the map's zoom
+  rowShift: number;
   scale: number;
   extra?: React.ReactNode;
   onToggle(): void;
@@ -56,7 +58,7 @@ export function Home({
   const over = drag?.kind === 'figure' && drag.over?.islandId === island.id ? drag.over : undefined;
   const count = crew.filter((c) => !(drag?.kind === 'figure' && drag.id === c.id)).length;
   return (
-    <div className="home" data-testid="home" data-collapsed={collapsed} data-selected={selected} style={{ width: bw, left: `calc(50% + ${shift}px)`, '--home-shift': `${shift}px` } as React.CSSProperties}>
+    <div className="home" data-testid="home" data-collapsed={collapsed} data-selected={selected} style={{ width: bw, left: `calc(50% + ${shift}px)`, '--home-shift': `${rowShift}px` } as React.CSSProperties}>
       {!collapsed && (
         <div className="island" data-drop={`island:${island.id}`} data-drop-hover={dropHover?.kind === 'island' && dropHover.id === island.id}
           style={{ left: 0, bottom: -(bh - pad - theme.home.visible), width: bw, height: bh,

@@ -1,96 +1,109 @@
 import { describe, expect, it } from 'vitest';
-import { ground, type Island } from '@svall/protocol';
-import { cardScale, cellOwner, characterAt, clampPan, fitAll, fitFloor, labelScale, limitAt, mapIslands, onBlocks, roomOf, screenToCell, worldBounds, worldCell, worldToScreen, type Below, type Layout } from '../src/map/layout.js';
-import { theme } from '../src/theme.js';
+import { ground, pillWidth, type Island } from '@svall/protocol';
+import { cardScale, cellOwner, characterAt, clampPan, crewOf, drawnBox, fitAll, labelScale, limitAt, mapIslands, onBlocks, roomOf, screenToCell, worldBounds, worldCell, worldToScreen, type Below, type Layout } from '../src/map/layout.js';
+import { theme, tokenPx } from '../src/theme.js';
 import { fleet } from './fixtures.js';
 
-// fixture: three 6x4 islands at x = 0, 8, 16, all at y = 0 → footprint box x 0..22, y 0..4
-// bounds grow it by 1.4 left and right, 1.3 above (the island label) and 1.3 below → { x: -1.4, y: -1.3, w: 24.8, h: 6.6 }
-// world pixels at cell 44: ww = 24.8 * 44 = 1091.2, wh = 6.6 * 44 = 290.4
+// fixture: three 6x4 islands at x = 0, 8, 16, all at y = 0, with crew on row 1 of beta and alpha. A card on row 1
+// stands inside a four-row ground at every scale, so the world is the grounds and the label band: x 0..22, y -1.3..4
+const TOK_H = tokenPx.h / theme.cell;
+const cs = (l: Layout) => theme.cell * l.scale;
+
+describe('what an island draws', () => {
+  const beta = () => mapIslands(fleet()).find((i) => i.id === 'i_b')!;
+  it('is its ground and the label band over it while its crew stands inside', () => {
+    expect(drawnBox(beta(), [{ x: 1, y: 1 }], 1)).toEqual({ x: 0, y: -theme.bounds.top, w: 6, h: 4 + theme.bounds.top });
+  });
+  it('reaches down to a card on the bottom row, as far as the card hangs at the scale', () => {
+    const foot = (s: number) => { const d = drawnBox(beta(), [{ x: 2, y: 3 }], s); return d.y + d.h; };
+    for (const s of [theme.scale.min, theme.token.floor, 1, theme.scale.max]) {
+      expect(foot(s)).toBeCloseTo(Math.max(4, 3.5 + (0.52 * TOK_H * cardScale(s)) / s), 10);
+    }
+    // it hangs furthest in cells where it keeps its screen size and the map shrinks under it
+    expect(foot(theme.token.floor)).toBeGreaterThan(foot(1));
+  });
+  it('widens a narrow island to its label pill', () => {
+    const narrow = { ...beta(), name: 'a very long island name indeed', size: { w: 4, h: 3 } };
+    expect(drawnBox(narrow, [], 1).w).toBeCloseTo(pillWidth(narrow.name), 10);
+  });
+  it('is only its pill once folded', () => {
+    const folded = { ...beta(), size: { w: 30, h: 4 }, collapsed: true };
+    const pill = ground(folded);
+    expect(drawnBox(folded, [{ x: 2, y: 3 }], 1)).toEqual({ x: pill.position.x, y: -theme.bounds.top, w: pill.size.w, h: pill.position.y + 1 + theme.bounds.top });
+  });
+});
+
 describe('world layout', () => {
-  it('bounds cover every island plus the asymmetric label and card margins', () => {
-    const b = worldBounds(mapIslands(fleet()));
-    expect(b.x).toBe(-1.4);
-    expect(b.y).toBe(-1.3);
-    expect(b.w).toBeCloseTo(24.8, 10);
-    expect(b.h).toBeCloseTo(6.6, 10);
-    const empty = worldBounds([]);
-    expect(empty.x).toBe(-1.4);
-    expect(empty.y).toBe(-1.3);
-    expect(empty.w).toBeCloseTo(8.8, 10);
-    expect(empty.h).toBeCloseTo(6.6, 10);
+  it('bounds every island by what it draws', () => {
+    const f = fleet();
+    expect(worldBounds(mapIslands(f), crewOf(f), 1)).toEqual({ x: 0, y: -theme.bounds.top, w: 22, h: 4 + theme.bounds.top });
+    expect(worldBounds([])).toEqual({ x: 0, y: -theme.bounds.top, w: 6, h: 4 + theme.bounds.top });
   });
 
-  it('fits continuously and centres the world both ways', () => {
-    const islands = mapIslands(fleet());
-    const l = fitAll(islands, { w: 1400, h: 900 });
-    // min((1400 - 2*24)/1091.2, (900 - 56 - 0)/290.4) = min(1.239002…, 2.906336…)
+  it('fits the drawn world inside even margins, and shares what is left both ways', () => {
+    const f = fleet(), islands = mapIslands(f), crew = crewOf(f);
+    const l = fitAll(islands, { w: 1400, h: 900 }, crew);
     expect(l.tile).toBe(theme.cell);
-    expect(l.scale).toBeCloseTo(1.2390029325513197, 10);
-    expect(l.ox).toBeCloseTo(100.3225806451613, 6);     // (1400 - 1352)/2 + 1.4*44*scale
-    expect(l.oy).toBeCloseTo(368.9677419354839, 6);     // 56 + (844 - 290.4*scale)/2 + 1.3*44*scale
-    // the water left over is shared evenly either side, across and down
-    const b = worldBounds(islands);
-    expect(l.ox + b.x * theme.cell * l.scale).toBeCloseTo(24, 6);
-    const top = l.oy + b.y * theme.cell * l.scale;
-    expect(top - theme.fit.top).toBeCloseTo(900 - theme.fit.bottom - (top + b.h * theme.cell * l.scale), 6);
+    expect(l.scale).toBeCloseTo((1400 - 2 * theme.fit.x) / (22 * theme.cell), 6);
+    const b = worldBounds(islands, crew, l.scale);
+    const left = l.ox + b.x * cs(l), right = 1400 - left - b.w * cs(l);
+    const top = l.oy + b.y * cs(l), bottom = 900 - top - b.h * cs(l);
+    expect(left).toBeCloseTo(theme.fit.x, 6);
+    expect(right).toBeCloseTo(theme.fit.x, 6);
+    expect(top - theme.fit.top).toBeCloseTo(bottom - theme.fit.bottom, 6);
+  });
+
+  it('keeps the margins even: the sides match the top, and so do the bottom and mission control\'s water', () => {
+    expect(theme.fit.x).toBe(theme.fit.top);
+    expect(theme.fit.bottom + theme.home.water).toBe(theme.fit.top);
+  });
+
+  it('finds the largest scale a world whose cards change size with it still fits', () => {
+    // a card on beta's bottom row hangs past the ground by an amount that follows the scale
+    const f = fleet();
+    f.characters.c1 = { ...f.characters.c1, cell: { x: 4, y: 3 } };
+    const islands = mapIslands(f), crew = crewOf(f), win = { w: 3000, h: 400 };
+    const l = fitAll(islands, win, crew);
+    expect(worldBounds(islands, crew, l.scale).h * cs(l)).toBeCloseTo(win.h - theme.fit.top - theme.fit.bottom, 3);
   });
 
   it('holds the ceiling and the floor', () => {
-    const islands = mapIslands(fleet());
-    expect(fitAll(islands, { w: 3000, h: 2000 }).scale).toBe(theme.scale.max);   // raw 2.6467 → 1.5
-    const tiny = fitAll(islands, { w: 400, h: 300 });
-    expect(tiny.scale).toBe(theme.scale.min);                                    // raw 0.2639 → 0.42
-    expect(tiny.ox).toBeCloseTo(-3.28, 6);                                       // (400 - 458.304)/2 + 25.872
-    expect(tiny.oy).toBeCloseTo(141.04, 6);                                      // 56 + (244 - 121.968)/2 + 1.3*44*0.42
-  });
-
-  it('reaches down to mission control, so the water above it is the fleet to spend', () => {
-    const islands = mapIslands(fleet());                 // footprints end at y = 4
-    // the row is the foot of the world: 8 + 1.3, with the cards hanging into the water above it
-    expect(worldBounds(islands, 8).h).toBeCloseTo(9.3, 10);
-    // a floor inside the fleet is no floor at all
-    expect(worldBounds(islands, 2).h).toBeCloseTo(6.6, 10);
-    // an island moved down within the floor leaves the fit alone, so it travels towards the foot of the map
-    const moved = islands.map((i) => (i.id === 'i_a' ? { ...i, position: { x: i.position.x, y: 2 } } : i));
-    expect(fitAll(moved, { w: 1400, h: 900 }, 8)).toEqual(fitAll(islands, { w: 1400, h: 900 }, 8));
-  });
-
-  it('measures a folded island by its pill, so its footprint does not sink the world past the row', () => {
-    const islands = mapIslands(fleet());
-    // folded on the row itself: the pill ends at y = 7, and no card hangs off it
-    const folded = islands.map((i) => (i.id === 'i_a' ? { ...i, position: { x: i.position.x, y: 8 }, collapsed: true } : i));
-    expect(worldBounds(folded, 8).h).toBeCloseTo(9.3, 10);
+    const f = fleet(), islands = mapIslands(f), crew = crewOf(f);
+    expect(fitAll(islands, { w: 3000, h: 2000 }, crew).scale).toBe(theme.scale.max);
+    const tiny = fitAll(islands, { w: 400, h: 300 }, crew);
+    expect(tiny.scale).toBe(theme.scale.min);
+    // too big for the window, the world is still centred across it
+    const b = worldBounds(islands, crew, tiny.scale);
+    expect(tiny.ox + (b.x + b.w / 2) * cs(tiny)).toBeCloseTo(200, 6);
   });
 
   it('measures a folded island across by its pill, not the ground it would take back', () => {
     const islands = mapIslands(fleet()).map((i) => (i.id === 'i_e' ? { ...i, size: { w: 30, h: 4 }, collapsed: true } : i));
     const pill = ground(islands.find((i) => i.id === 'i_e')!);
-    expect(worldBounds(islands).w).toBeCloseTo(pill.position.x + pill.size.w + 2.8, 10);
+    expect(worldBounds(islands).w).toBeCloseTo(pill.position.x + pill.size.w, 10);
   });
 
   it('clamps a pan to the world edge and drops a pan on an axis that fits', () => {
-    const islands = mapIslands(fleet());
+    const f = fleet(), islands = mapIslands(f), crew = crewOf(f);
     const win = { w: 1400, h: 900 };
-    const fits = fitAll(islands, win);
-    expect(clampPan(islands, fits, win, { x: 500, y: -500 }).x).toBeCloseTo(0, 6);
-    expect(clampPan(islands, fits, win, { x: 500, y: -500 }).y).toBeCloseTo(0, 6);
-
+    expect(clampPan(islands, fitAll(islands, win, crew), win, { x: 500, y: -500 }, crew)).toEqual({ x: 0, y: 0 });
     const small = { w: 400, h: 300 };
-    const l = fitAll(islands, small);                    // world 458.3 x 122 px on screen at scale 0.42
-    // x: 458.304 + 2*40 > 400 → clamped to [-69.152, 69.152]; y: 121.968 + 2*40 < 300 → re-centred to 0
-    expect(clampPan(islands, l, small, { x: 1000, y: 0 }).x).toBeCloseTo(69.152, 6);
-    expect(clampPan(islands, l, small, { x: -1000, y: 0 }).x).toBeCloseTo(-69.152, 6);
-    expect(clampPan(islands, l, small, { x: 20, y: 0 }).x).toBeCloseTo(20, 6);
-    expect(clampPan(islands, l, small, { x: 0, y: 999 }).y).toBeCloseTo(0, 6);
+    const l = fitAll(islands, small, crew);
+    const b = worldBounds(islands, crew, l.scale);
+    // wider than the window, it pans as far as the margin past either edge; it fits down, so it stays put that way
+    const reach = (b.w * cs(l) - small.w) / 2 + theme.panMargin;
+    expect(clampPan(islands, l, small, { x: 1000, y: 0 }, crew).x).toBeCloseTo(reach, 6);
+    expect(clampPan(islands, l, small, { x: -1000, y: 0 }, crew).x).toBeCloseTo(-reach, 6);
+    expect(clampPan(islands, l, small, { x: 20, y: 0 }, crew).x).toBeCloseTo(20, 6);
+    expect(clampPan(islands, l, small, { x: 0, y: 999 }, crew).y).toBeCloseTo(0, 6);
   });
 
   it('leaves the fit alone at every height a fitting world is centred at', () => {
-    const islands = mapIslands(fleet());
+    const f = fleet(), islands = mapIslands(f), crew = crewOf(f);
     for (let h = 300; h <= 1200; h += 1) {
       const win = { w: 1400, h };
-      const l = fitAll(islands, win, 6);
-      expect(clampPan(islands, l, win, { x: 0, y: 0 }, 6)).toEqual({ x: 0, y: 0 });
+      const l = fitAll(islands, win, crew);
+      expect(clampPan(islands, l, win, { x: 0, y: 0 }, crew)).toEqual({ x: 0, y: 0 });
     }
   });
 
@@ -130,77 +143,95 @@ describe('world layout', () => {
 describe('fitting around mission control', () => {
   const win = { w: 1400, h: 690 };
   const below: Below = { h: 900, blocks: [{ x: 550, w: 300, top: 690 }, { x: 520, w: 360, top: 746 }] };
-  const cs = (l: Layout) => theme.cell * l.scale;
-  const foot = (i: Island) => ground(i).position.y + ground(i).size.h + theme.bounds.bottom;
+  const crew = crewOf(fleet());
+  const foot = (i: Island, l: Layout) => { const d = drawnBox(i, crew[i.id], l.scale); return d.y + d.h; };
   const span = (i: Island, l: Layout): [number, number] => [l.ox + ground(i).position.x * cs(l), l.ox + (ground(i).position.x + ground(i).size.w) * cs(l)];
-  // every island's cards above the limit under them, and the labels under the top inset
+  // every island's cards the bottom margin above the limit under them, and the labels under the top inset
   const clear = (islands: Island[], l: Layout, b: Below) => {
-    for (const i of islands) expect(l.oy + foot(i) * cs(l)).toBeLessThanOrEqual(limitAt(b, ...span(i, l)) + 1e-6);
-    expect(l.oy + worldBounds(islands).y * cs(l)).toBeGreaterThanOrEqual(theme.fit.top - 1e-6);
+    for (const i of islands) expect(l.oy + foot(i, l) * cs(l)).toBeLessThanOrEqual(limitAt(b, ...span(i, l)) - theme.fit.bottom + 1e-6);
+    expect(l.oy + worldBounds(islands, crew, l.scale).y * cs(l)).toBeGreaterThanOrEqual(theme.fit.top - 1e-6);
   };
   const dropped = (id: string, by: number) => mapIslands(fleet()).map((i) => (i.id === id ? { ...i, position: { x: i.position.x, y: i.position.y + by } } : i));
   const find = (islands: Island[], id: string) => islands.find((i) => i.id === id)!;
 
   it('fits a fleet that stands over mission control as the room above it would', () => {
     const islands = mapIslands(fleet());
-    expect(fitAll(islands, win, undefined, below)).toEqual(fitAll(islands, win));
-    expect(fitAll(islands, win, undefined, { h: 900, blocks: [{ x: 0, w: 1400, top: 690 }] })).toEqual(fitAll(islands, win));
+    expect(fitAll(islands, win, crew, below)).toEqual(fitAll(islands, win));
+    expect(fitAll(islands, win, crew, { h: 900, blocks: [{ x: 0, w: 1400, top: 690 }] })).toEqual(fitAll(islands, win));
   });
 
   it('rests the fleet on mission control when an island clear of it can hang down beside it', () => {
     const islands = dropped('i_e', 3);
-    const l = fitAll(islands, win, undefined, below);
+    const l = fitAll(islands, win, crew, below);
     clear(islands, l, below);
     expect(span(find(islands, 'i_e'), l)[0]).toBeGreaterThan(880);
     expect(l.oy).toBeGreaterThan(fitAll(islands, win).oy);
-    expect(l.oy + foot(find(islands, 'i_e')) * cs(l)).toBeGreaterThan(win.h);
-    expect(roomOf(islands, l, win, undefined, below)).toEqual({ w: 1400, h: 900 });
+    expect(l.oy + foot(find(islands, 'i_e'), l) * cs(l)).toBeGreaterThan(win.h);
+    expect(roomOf(islands, l, win, crew, below)).toEqual({ w: 1400, h: 900 });
     const level = mapIslands(fleet());
-    expect(roomOf(level, fitAll(level, win, undefined, below), win, undefined, below)).toEqual(win);
+    expect(roomOf(level, fitAll(level, win, crew, below), win, crew, below)).toEqual(win);
   });
 
   it('keeps a level fleet centred over mission control, even one standing clear of it', () => {
     const level = mapIslands(fleet()).map((i) => ({ ...i, position: { x: i.id === 'i_e' ? 40 : i.position.x - 40, y: 0 } }));
-    const l = fitAll(level, win, undefined, below);
+    const l = fitAll(level, win, crew, below);
     expect(level.every((i) => limitAt(below, ...span(i, l)) === 900 - theme.home.water)).toBe(true);
     expect(l).toEqual(fitAll(level, win));
     // the room over mission control short of their height makes no difference
     const tall = [0, 20].map((x, n) => ({ ...mapIslands(fleet())[n], position: { x, y: 0 }, size: { w: 6, h: 14 } }));
-    expect(fitAll(tall, win, undefined, below)).toEqual(fitAll(tall, win));
+    expect(fitAll(tall, win, crew, below)).toEqual(fitAll(tall, win));
   });
 
-  it('takes a floor left far under the fleet no lower than a row under its ground', () => {
-    const islands = mapIslands(fleet());                  // ground ends at y = 4
-    expect(fitFloor(islands, 30)).toBe(5);
-    expect(fitFloor(islands, 3)).toBe(3);
-    expect(fitFloor([], 30)).toBe(30);
-    expect(fitFloor(islands, undefined)).toBeUndefined();
+  it('splits the water over and under a fleet resting on mission control', () => {
+    // the width holds the scale down, so there is height to spare above the rest limit
+    const islands = dropped('i_e', 3);
+    const l = fitAll(islands, win, crew, below);
+    expect(l.oy).toBeGreaterThan(fitAll(islands, win, crew).oy);
+    const b = worldBounds(islands, crew, l.scale);
+    const top = l.oy + b.y * cs(l) - theme.fit.top;
+    const bottom = below.h - theme.home.water - theme.fit.bottom - (l.oy + (b.y + b.h) * cs(l));
+    expect(top).toBeGreaterThan(20);
+    expect(top).toBeCloseTo(bottom, 6);
+    clear(islands, l, below);
+  });
+
+  it('keeps the fleet down on mission control while an island stands on its row', () => {
+    // i_e's ground ends on row 7: put there by hand, where arrange leaves mission control a row under the fleet
+    const islands = dropped('i_e', 3);
+    const pinned = fitAll(islands, win, crew, { ...below, row: 7 });
+    expect(pinned.oy).toBeGreaterThan(fitAll(islands, win, crew, below).oy);
+    clear(islands, pinned, below);
+    // resting, some island's cards stand right on the limit under them
+    const slack = Math.min(...islands.map((i) => limitAt(below, ...span(i, pinned)) - theme.fit.bottom - (pinned.oy + foot(i, pinned) * cs(pinned))));
+    expect(slack).toBeCloseTo(0, 6);
+    // a row a cell under the fleet is where arrange leaves it, and the water is split again
+    expect(fitAll(islands, win, crew, { ...below, row: 8 })).toEqual(fitAll(islands, win, crew, below));
   });
 
   it('keeps the room over mission control for a fleet too big for the map, so it pans up to its last row', () => {
     const big = Array.from({ length: 25 }, (_, n) => ({ ...mapIslands(fleet())[0], id: `b${n}`, position: { x: (n % 5) * 12, y: Math.floor(n / 5) * 10 }, size: { w: 10, h: 7 } }));
-    const l = fitAll(big, win, undefined, below);
+    const l = fitAll(big, win, crew, below);
     expect(l.scale).toBe(theme.scale.min);
-    expect(roomOf(big, l, win, undefined, below)).toBe(win);
+    expect(roomOf(big, l, win, crew, below)).toBe(win);
   });
 
   it('grows the world into the water beside mission control when the room above it is short', () => {
     const short = { w: 1400, h: 290 }, low: Below = { h: 500, blocks: [{ x: 620, w: 160, top: 290 }, { x: 600, w: 200, top: 346 }] };
     const islands = dropped('i_e', 3);
-    const l = fitAll(islands, short, undefined, low);
+    const l = fitAll(islands, short, crew, low);
     clear(islands, l, low);
     expect(l.scale).toBeGreaterThan(fitAll(islands, short).scale * 1.1);
   });
 
   it('knows land put down on mission control from land beside it', () => {
-    const l = fitAll(mapIslands(fleet()), win, undefined, below);
+    const l = fitAll(mapIslands(fleet()), win, crew, below);
     const [, a, c] = mapIslands(fleet());
     expect(onBlocks({ ...a, position: { x: a.position.x, y: 8 } }, l, below)).toBe(true);
     expect(onBlocks({ ...c, position: { x: c.position.x, y: 8 } }, l, below)).toBe(false);
     expect(onBlocks(a, l, below)).toBe(false);
     // under a row that ends above the foot, the water is open
     const row: Below = { h: 900, blocks: [{ x: 0, w: 1400, top: 690, bottom: 740 }] };
-    expect(onBlocks({ ...a, position: { x: a.position.x, y: 8 } }, l, row)).toBe(true);
-    expect(onBlocks({ ...a, position: { x: a.position.x, y: 9 } }, l, row)).toBe(false);
+    expect(onBlocks({ ...a, position: { x: a.position.x, y: 7 } }, l, row)).toBe(true);
+    expect(onBlocks({ ...a, position: { x: a.position.x, y: 8 } }, l, row)).toBe(false);
   });
 });

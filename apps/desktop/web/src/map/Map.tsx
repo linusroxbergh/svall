@@ -11,12 +11,12 @@ import { theme, tokenPx } from '../theme.js';
 import { Toast } from '../Toast.js';
 import { cardRect } from './card.js';
 import { Wordmark } from './Furniture.js';
-import { homeBlocks, homeBox, homeCellToScreen, homeCrew, homeFull, homeReserve, homeSlotAt, inHomeBox } from './home.js';
+import { fitWithHome, homeBlocks, homeBox, homeCellToScreen, homeCrew, homeFull, homeReserve, homeSlotAt, inHomeBox } from './home.js';
 import { Home } from './HomeIsland.js';
 import { HoverCard } from './HoverCard.js';
 import { DBL_CLICK_MS, createInteractions, type Intent } from './interactions.js';
 import { Island } from './Island.js';
-import { cardScale, cellSize, clampPan, fitAll, fitFloor, islandNear, labelScale, landSpan, limitAt, mapIslands, onBlocks, roomOf, screenToCell, worldBounds, worldCell, worldToScreen, type Below, type Layout } from './layout.js';
+import { cardScale, cellSize, clampPan, crewOf, islandNear, labelScale, landSpan, limitAt, mapIslands, onBlocks, screenToCell, worldBounds, worldCell, worldToScreen, type Below, type Layout } from './layout.js';
 import { ISLET, placeIslet } from './resources.js';
 import { ResourcesIsland, ResourcesPill } from './ResourcesIsland.js';
 import { TerminalCard } from './TerminalCard.js';
@@ -75,6 +75,8 @@ export function Map() {
   // mission control's row wraps to as many lines as it needs; the shelf's bottom edge follows its real height
   const [rowH, setRowH] = useState(theme.home.row);
   const row = useRef({ w: 0, h: theme.home.row });
+  // the cap mission control is drawn at, eased with the layout towards the one its fit reserved room for
+  const homeMost = useRef(1);
   const hostSizeRef = useRef(hostSize);
   hostSizeRef.current = hostSize;
   const [hover, setHover] = useState<string>();
@@ -255,7 +257,7 @@ export function Map() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const target = useRef<Layout>(undefined);
+  const target = useRef<Layout & { most: number }>(undefined);
   const anim = useRef<number>(undefined);
   const holdUntil = useRef(0);
   const holdTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -265,11 +267,14 @@ export function Map() {
   const belowOf = (el: HTMLElement): Below | undefined => {
     const hi = homeIsland(app.store.getState().fleet);
     const host = { w: el.clientWidth, h: el.clientHeight };
-    return hi && { h: host.h, blocks: homeBlocks(hi, host, row.current) };
+    return hi && { h: host.h, blocks: homeBlocks(hi, host, row.current, homeMost.current), row: hi.position.y };
   };
-  // the map height mission control keeps on a map this wide, where its land shrinks to leave the lighthouse room
-  const reserveAt = (w: number, hi = homeIsland(app.store.getState().fleet)): number =>
-    homeReserve(Boolean(hi?.collapsed), theme.home.row, hi ? placeIslet(w, hi.size.w * theme.cell, Boolean(hi.collapsed)).homeScale : 1);
+  // the map height mission control keeps at its full size on a map this wide, its row as tall as it has wrapped to:
+  // arrange shapes the fleet for it, and the fit shares out whatever a smaller home leaves
+  const reserveAt = (w: number): number => {
+    const hi = homeIsland(app.store.getState().fleet);
+    return homeReserve(Boolean(hi?.collapsed), row.current.h, hi ? placeIslet(w, hi.size.w * theme.cell, Boolean(hi.collapsed)).homeScale : 1);
+  };
   const refit = (immediate?: boolean, anchor?: PendingIsland['anchor']) => {
     if (cameraHold.current && !immediate) return;
     const el = host.current;
@@ -277,16 +282,13 @@ export function Map() {
     // the world stands still under an open click sequence: every caller waits out the hold, then refits once
     const wait = holdUntil.current - performance.now();
     if (wait > 0) { clearTimeout(holdTimer.current); holdTimer.current = setTimeout(() => refit(immediate), wait); return; }
-    const islands = mapIslands(app.store.getState().fleet);
-    const home = homeIsland(app.store.getState().fleet);
-    const win = { w: el.clientWidth, h: el.clientHeight - reserveAt(el.clientWidth, home) };
-    const below = belowOf(el), floor = fitFloor(islands, home?.position.y);
-    const fit = fitAll(islands, win, floor, below);
-    const room = roomOf(islands, fit, win, floor, below);
+    const f = app.store.getState().fleet;
+    const islands = mapIslands(f), crew = crewOf(f);
+    const { fit, win, room, most } = fitWithHome(islands, crew, { w: el.clientWidth, h: el.clientHeight }, homeIsland(f), row.current);
     let next: Layout;
     if (anchor) {
       // Keep the released grip still while zooming, as far as the fitted world can remain in view.
-      const b = worldBounds(islands, floor), s = fit.scale;
+      const b = worldBounds(islands, crew, fit.scale), s = fit.scale;
       const axis = (wanted: number, start: number, length: number, size: number, near: number, far: number, fallback: number) => {
         const lo = size - far - (start + length) * s, hi = near - start * s;
         if (lo <= hi) return Math.max(lo, Math.min(hi, wanted));
@@ -302,20 +304,20 @@ export function Map() {
         oy: room.h === win.h ? axis(anchor.screen.y - anchor.world.y * fit.scale, b.y * theme.cell, b.h * theme.cell, win.h, theme.fit.top, theme.fit.bottom, fit.oy) : fit.oy };
       pan.current = { x: next.ox - fit.ox, y: next.oy - fit.oy };
     } else {
-      pan.current = clampPan(islands, fit, room, pan.current, floor);
+      pan.current = clampPan(islands, fit, room, pan.current, crew);
       next = { ...fit, ox: fit.ox + pan.current.x, oy: fit.oy + pan.current.y };
     }
     const cur = layoutRef.current;
-    if (target.current && target.current.scale === next.scale && target.current.ox === next.ox && target.current.oy === next.oy) return;
-    target.current = next;
-    // the side card and a pan resize the map instantly; jump the layout with them rather than easing across a moving target
-    if (immediate) { cancelAnimationFrame(anim.current ?? 0); setLayout(next); return; }
+    if (target.current && target.current.scale === next.scale && target.current.ox === next.ox && target.current.oy === next.oy && target.current.most === most) return;
+    target.current = { ...next, most };
     cancelAnimationFrame(anim.current ?? 0);
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setLayout(next); return; }
-    const from = { ...cur }, start = performance.now();
+    // the side card and a pan resize the map instantly; jump the layout with them rather than easing across a moving target
+    if (immediate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) { homeMost.current = most; setLayout(next); return; }
+    const from = { ...cur }, fromMost = homeMost.current, start = performance.now();
     const step = () => {
       const t = Math.min(1, (performance.now() - start) / theme.fitEaseMs);
       const e = 1 - (1 - t) * (1 - t);
+      homeMost.current = t >= 1 ? most : lerp(fromMost, most, e);
       setLayout(t >= 1 ? next : { tile: next.tile, scale: lerp(from.scale, next.scale, e), ox: lerp(from.ox, next.ox, e), oy: lerp(from.oy, next.oy, e) });
       if (t < 1) anim.current = requestAnimationFrame(step);
       else anim.current = undefined;
@@ -364,12 +366,12 @@ export function Map() {
   const arrange = (automatic = false) => {
     const el = host.current;
     if (!el || (automatic && app.store.getState().status !== 'online')) return;
-    const w = el.clientWidth - 2 * theme.fit.x;
-    const h = el.clientHeight - reserveAt(el.clientWidth) - theme.fit.top - theme.fit.bottom;
+    const room = { w: el.clientWidth, h: el.clientHeight - reserveAt(el.clientWidth) };
+    const w = room.w - 2 * theme.fit.x, h = room.h - theme.fit.top - theme.fit.bottom;
     if (w <= 0 || h <= 0) return;
-    const aspect = w / h;
-    if (automatic && aspect < MIN_ARRANGE_ASPECT) return;
-    arrangeIslands(deps(), aspect);
+    // the map's own shape says whether it is squeezed, whatever margins the fit keeps inside it
+    if (automatic && room.w / room.h < MIN_ARRANGE_ASPECT) return;
+    arrangeIslands(deps(), w / h);
   };
   const arrangeRef = useRef(() => arrange(true));
   arrangeRef.current = () => arrange(true);
@@ -428,13 +430,15 @@ export function Map() {
   useLayoutEffect(() => {
     const el = host.current?.querySelector<HTMLElement>('.hrow');
     if (!el) return;
+    // the row wraps to the map's width, so a size read before the map has one means nothing
     const read = () => {
+      if (!hostSizeRef.current.w) return false;
       setRowH(el.offsetHeight);
       if (el.offsetWidth === row.current.w && el.offsetHeight === row.current.h) return false;
       row.current = { w: el.offsetWidth, h: el.offsetHeight };
       return true;
     };
-    read();
+    if (read()) refit();
     const ro = new ResizeObserver(() => { if (read()) refit(); });
     ro.observe(el);
     return () => ro.disconnect();
@@ -448,7 +452,8 @@ export function Map() {
     refit(true);
   }, [sideCardOpen, sidebarOpen, settingsOpen]);
 
-  useEffect(() => {
+  // before paint, so the row wraps to the map's real width from the first frame
+  useLayoutEffect(() => {
     const el = host.current;
     if (!el) return;
     setHostSize({ w: el.clientWidth, h: el.clientHeight });
@@ -491,7 +496,7 @@ export function Map() {
   const endHover = () => { clearTimeout(hoverTimer.current); setHover(undefined); };
   const hi = homeIsland(fleet);
   // where the resources islet stands, and how far home slides left to make room for it
-  const place = placeIslet(hostSize.w, (hi?.size.w ?? 0) * theme.cell, Boolean(hi?.collapsed));
+  const place = placeIslet(hostSize.w, (hi?.size.w ?? 0) * theme.cell, Boolean(hi?.collapsed), homeMost.current);
   const placeRef = useRef(place);
   placeRef.current = place;
   const overHome = drag?.kind === 'figure' && drag.over?.islandId === HOME_ISLAND ? drag : undefined;
@@ -575,7 +580,8 @@ export function Map() {
         {hi && (
           <Home island={hi} crew={crew} config={fleet.home} collapsed={Boolean(hi.collapsed)}
             selected={selectedIslandId === HOME_ISLAND} selectedId={selectedId} drag={drag} status={statusOf}
-            shift={place.homeShift} scale={place.homeScale} extra={place.mode === 'pill' ? <ResourcesPill /> : undefined}
+            shift={place.homeShift} rowShift={placeIslet(hostSize.w, hi.size.w * theme.cell, Boolean(hi.collapsed)).homeShift}
+            scale={place.homeScale} extra={place.mode === 'pill' ? <ResourcesPill /> : undefined}
             onToggle={() => toggleIsland(deps(), HOME_ISLAND)}
             onArrange={() => arrange()}
             onNewIsland={() => newIsland(deps())}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Cell, FleetState, Island } from '@svall/protocol';
-import { homeBlocks, homeBox, homeCellToScreen, homeCrew, homeFull, homeReserve, homeSlotAt, inHomeBox } from '../src/map/home.js';
+import { fitWithHome, homeBlocks, homeBox, homeCap, homeCellToScreen, homeCrew, homeFull, homeReserve, homeSlotAt, inHomeBox } from '../src/map/home.js';
+import { cardScale, crewOf, mapIslands } from '../src/map/layout.js';
 import { placeIslet } from '../src/map/resources.js';
 import type { Drag } from '../src/map/types.js';
 import { theme } from '../src/theme.js';
@@ -78,6 +79,20 @@ describe('home geometry', () => {
     expect(ground).toEqual({ x: land.x - w, w: land.w + 2 * w, top: land.y - w });
     expect(islet.x).toBeGreaterThanOrEqual(ground.x + ground.w - 2 * w);
   });
+  it('blocks a home capped by the map where it is drawn', () => {
+    const w = theme.home.water, place = placeIslet(host.w, 8 * 44, false, 0.6);
+    const [row, ground] = homeBlocks(home, host, { w: 300, h: 28 }, 0.6);
+    expect(row.top).toBe(host.h - homeReserve(false, 28, 0.6));
+    expect(ground).toEqual({ x: homeBox(home, host, place.homeShift, 0.6).x - w, w: 8 * 44 * 0.6 + 2 * w, top: host.h - 132 * 0.6 - w });
+  });
+  it('settles the cap where home cards match the cards of the map it leaves room for', () => {
+    // a map that zooms out as home grows
+    const scaleAt = (most: number) => 0.9 - 0.5 * most;
+    const m = homeCap(scaleAt);
+    expect(cardScale(scaleAt(m))).toBeCloseTo(m, 3);
+    expect(homeCap(() => 0.9)).toBe(1);
+    expect(homeCap(() => theme.scale.min)).toBeCloseTo(cardScale(theme.scale.min), 3);
+  });
   it('reserves the row plus half a cell of water, open or collapsed', () => {
     expect(theme.home.water).toBe(theme.cell / 2);
     expect(homeReserve(false)).toBe(132 + 28 + 28 + theme.home.water);
@@ -111,5 +126,61 @@ describe('home crew', () => {
   });
   it('ignores a visitor that no longer exists', () => {
     expect(homeCrew(crewed(), dragging('gone', { islandId: 'home', local: { x: 4, y: 1 }, free: true })).map((c) => c.id)).toEqual(['h1']);
+  });
+});
+
+describe('fitting the map with mission control', () => {
+  // a fleet far wider than it is tall zooms the map out under the card floor, so home shrinks with it
+  const wide = () => {
+    const f = fleet();
+    return { islands: mapIslands(f).map((i, n) => ({ ...i, position: { x: n * 40, y: 0 } })), crew: crewOf(f) };
+  };
+  const row = { w: 400, h: 28 };
+
+  it('reserves the room for the home it hands back to draw, whose cards stand as big as the islands\'', () => {
+    const { islands, crew } = wide();
+    const f = fitWithHome(islands, crew, host, home, row);
+    expect(f.most).toBeLessThan(1);
+    expect(f.most).toBeCloseTo(cardScale(f.fit.scale), 3);
+    const drawn = placeIslet(host.w, home.size.w * theme.cell, false, f.most).homeScale;
+    expect(f.win.h).toBe(host.h - homeReserve(false, row.h, drawn));
+  });
+
+  it('keeps the last fit while nothing that shapes it changes', () => {
+    const { islands, crew } = wide();
+    const first = fitWithHome(islands, crew, host, home, row);
+    expect(fitWithHome(structuredClone(islands), structuredClone(crew), { ...host }, { ...home }, { ...row })).toBe(first);
+  });
+
+  it('fits again when anything the fit reads changes', () => {
+    const { islands, crew } = wide();
+    const [a, ...rest] = islands;
+    const changed: Parameters<typeof fitWithHome>[] = [
+      [[{ ...a, name: `${a.name} and more` }, ...rest], crew, host, home, row],
+      [[{ ...a, position: { x: a.position.x, y: 1 } }, ...rest], crew, host, home, row],
+      [[{ ...a, size: { w: a.size.w + 1, h: a.size.h } }, ...rest], crew, host, home, row],
+      [[{ ...a, collapsed: true }, ...rest], crew, host, home, row],
+      [islands, { ...crew, [a.id]: [{ x: 2, y: 2 }] }, host, home, row],
+      [islands, crew, { ...host, w: host.w - 1 }, home, row],
+      [islands, crew, { ...host, h: host.h - 1 }, home, row],
+      [islands, crew, host, { ...home, size: { w: home.size.w + 3, h: home.size.h } }, row],
+      [islands, crew, host, { ...home, collapsed: true }, row],
+      [islands, crew, host, { ...home, position: { x: 0, y: 5 } }, row],
+      [islands, crew, host, undefined, row],
+      [islands, crew, host, home, { ...row, w: row.w + 1 }],
+      [islands, crew, host, home, { ...row, h: row.h + 1 }],
+    ];
+    for (const args of changed) {
+      const first = fitWithHome(islands, crew, host, home, row);
+      expect(fitWithHome(...args)).not.toBe(first);
+    }
+  });
+
+  it('solves nothing for a folded home or none; a folded one keeps the cap island cards stand at, to unfold at', () => {
+    const { islands, crew } = wide();
+    const folded = fitWithHome(islands, crew, host, { ...home, collapsed: true }, row);
+    expect(folded.most).toBeLessThan(1);
+    expect(folded.most).toBe(cardScale(folded.fit.scale));
+    expect(fitWithHome(islands, crew, host, undefined, row).most).toBe(1);
   });
 });
