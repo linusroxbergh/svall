@@ -225,6 +225,24 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id].second?.unread).toBe(false);
   });
 
+  it('records shell activity only for a character without an agent, and again as soon as its agent ends', async () => {
+    const { fleet, store, tmux } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    // a stand-in agent: the pane is away from its shell prompt
+    await tmux.sendLine(c.tmux!.paneId, 'sleep 30', true);
+    await waitFor(async () => (await tmux.listWindows()).some((w) => w.name === c.id && w.command === 'sleep'));
+    store.update((d) => {
+      d.characters[c.id].agent = { kind: 'claude', sessionId: 's', transcriptPath: '/t', status: 'working', lastActivityAt: 1 };
+      d.characters[c.id].shell.lastOutputAt = 0;
+    });
+    await waitForPolls(fleet, 3);
+    expect(store.state.characters[c.id].shell.lastOutputAt).toBe(0);
+    // back at the prompt for two polls, the agent has ended
+    await tmux.run('send-keys', '-t', c.tmux!.paneId, 'C-c');
+    await waitFor(() => !store.state.characters[c.id].agent);
+    expect(store.state.characters[c.id].shell.lastOutputAt).toBeGreaterThan(0);
+  });
+
   it('follows an agent that cds into another checkout, and the poll leaves it there', async () => {
     const { fleet, store, home } = await boot();
     const repo = fs.realpathSync(fs.mkdtempSync(path.join(home, 'repo-')));

@@ -25,6 +25,13 @@ describe('reconcile', () => {
     expect(renames).toEqual([]);
   });
 
+  it('leaves the shell activity of a character with an agent as it was', () => {
+    const s = emptyState();
+    s.characters.c_a = char({ agent: { kind: 'claude', sessionId: SID, transcriptPath: '/t', status: 'working', lastActivityAt: 1 } });
+    reconcile(s, [live('c_a')], 5000).mutate(s);
+    expect(s.characters.c_a.shell.lastOutputAt).toBe(0);
+  });
+
   it('keeps the cwd the hooks gave a character while its pane has not moved, or has no path to report', () => {
     const s = emptyState();
     s.characters.c_a = char({ cwd: '/repo/.claude/worktrees/x', panePath: '/repo' });

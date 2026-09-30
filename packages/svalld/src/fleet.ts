@@ -326,8 +326,9 @@ export class Fleet extends EventEmitter<Events> {
           c.panePath = w.path;
           if (c.cwd !== w.path) { c.cwd = w.path; cwdChanged.push(c.id); }
         }
-        c.shell.lastOutputAt = w.activity;
         settleAgent(c.id, c, w.command);
+        // shown only where there is no agent's own activity to show
+        if (!c.agent) c.shell.lastOutputAt = w.activity;
         // Codex should report promptly; three polls without an event means delivery needs attention.
         if (!c.agent && w.command === 'codex') {
           const n = (this.codexStreak.get(c.id) ?? 0) + 1;
