@@ -8,6 +8,7 @@ import { portsServing, resolveTailscale, unserve, type MobileDeps } from './mobi
 import { resolvePaths } from './paths.js';
 import { BUNDLE_ID, homePrefix, isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome } from './profile.js';
 import { readJsonSettings, readOrUndefined, requireWritable, shimNames, unmergeHooks, unmergeStatusLine, writeJsonSettings, type JsonSettings } from './setup.js';
+import { resolveTmux } from './tmux/tmux.js';
 
 const exec = promisify(execFile);
 const SHIM_MARKS = ['packages/cli/src/main.ts', 'Contents/Resources/runtime/svall.mjs'];
@@ -61,8 +62,8 @@ const QUIT_WAIT_S = 60;
 
 // an open window could write its sign-ins, caches and defaults back after they move or are purged. Each is asked once and waited for:
 // a second quit while it asks about unsaved edits would answer for the user
-export async function quitApp(homes: string[], app: AppQuit, command: string): Promise<string[]> {
-  const open = homes.map((h) => appPid(h, app)).filter((pid) => pid !== undefined);
+export async function quitApp(homes: string[], app: AppQuit, command: string, skipPid?: number): Promise<string[]> {
+  const open = homes.map((h) => appPid(h, app)).filter((pid): pid is number => pid !== undefined && pid !== skipPid);
   for (const pid of open) {
     await app.quit(pid).catch((e: Error) => {
       throw new Error(`could not ask Svall to quit (${e.message.split('\n')[0]}), so nothing was changed; quit it, then run ${command} again`);
@@ -75,7 +76,7 @@ export async function quitApp(homes: string[], app: AppQuit, command: string): P
 
 // takes back what setup put outside the fleet homes: the Claude hooks and statusline and the Codex hooks that run
 // `home`'s scripts, every fleet's phone link, launchd agent and tmux server, and the shims. The fleets' own data stays for purge.
-export async function runUninstall(o: { home: string; homes: string[]; settingsPaths: string[]; codex: CodexPaths; launchAgentsDir: string; shimDir: string; launchctl: boolean; mobile: MobileDeps; app: AppQuit; tmux?: string }): Promise<string[]> {
+export async function runUninstall(o: { home: string; homes: string[]; settingsPaths: string[]; codex: CodexPaths; launchAgentsDir: string; shimDir: string; launchctl: boolean; mobile: MobileDeps; app: AppQuit; tmux?: string; skipPid?: number }): Promise<string[]> {
   // $TMUX names the server the caller's terminal runs in; stopping it would end this run before the shims and the report
   const inside = o.homes.find((h) => resolvePaths(h).tmuxSock === o.tmux?.split(',')[0]);
   if (inside) throw new Error(`this terminal runs inside the tmux server of ${inside}, which uninstall stops; run svall uninstall from a terminal outside Svall`);
@@ -88,7 +89,7 @@ export async function runUninstall(o: { home: string; homes: string[]; settingsP
   if (codex) edits.push([codex, unmergeHooks(codex.settings, paths.hookScript), 'codex hooks removed']);
   // a file that cannot take its change stops the run before anything is removed
   for (const [current, next] of edits) requireWritable(current, next);
-  const done = await quitApp(o.homes, o.app, 'svall uninstall');
+  const done = await quitApp(o.homes, o.app, 'svall uninstall', o.skipPid);
   for (const [current, next, what] of edits) {
     // Codex needs no hooks file, so one that held only Svall's goes, unless it links elsewhere
     const emptied = current === codex && !Object.keys(next).length && Object.keys(current.settings).length > 0;
@@ -114,7 +115,7 @@ export async function runUninstall(o: { home: string; homes: string[]; settingsP
   for (const home of o.homes) {
     const sock = resolvePaths(home).tmuxSock;
     if (!fs.existsSync(sock)) continue;
-    await exec('tmux', ['-S', sock, 'kill-server']).then(
+    await exec(resolveTmux(), ['-S', sock, 'kill-server']).then(
       () => { done.push(`stopped tmux server ${sock}`); },
       () => { done.push(`could not stop tmux server ${sock}`); },
     );
@@ -142,8 +143,10 @@ export const fleetHomes = (homedir: string): string[] => fs.readdirSync(homedir)
   .map((f) => path.join(homedir, f))
   .filter(isFleetHome);
 
-export function fleetData(o: { homedir: string; appDests: string[] }): string[] {
-  const apps = [...new Set(o.appDests)].map((d) => path.join(d, 'Svall.app')).filter((p) => fs.existsSync(p));
+export function fleetData(o: { homedir: string; appDests: string[]; fromApp?: boolean }): string[] {
+  if (o.fromApp) return fleetHomes(o.homedir);
+  const appName = BUNDLE_ID.endsWith('.dev') ? 'Svall Dev.app' : 'Svall.app';
+  const apps = [...new Set(o.appDests)].map((d) => path.join(d, appName)).filter((p) => fs.existsSync(p));
   // what macOS keeps by the app's bundle id rather than in a fleet home: every fleet's browser sign-ins, the caches and the defaults
   const library = [path.join('WebKit', BUNDLE_ID), path.join('Caches', BUNDLE_ID), path.join('Preferences', `${BUNDLE_ID}.plist`)]
     .map((p) => path.join(o.homedir, 'Library', p)).filter((p) => fs.existsSync(p));

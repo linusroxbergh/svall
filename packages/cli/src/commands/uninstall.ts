@@ -32,8 +32,9 @@ export function uninstallCommand(json: () => boolean): Command {
   return new Command('uninstall')
     .description('remove what svall setup added and stop every fleet; asks before deleting the fleets and the app')
     .option('--purge', 'also delete every fleet and the app, without asking')
+    .option('--from-app', 'run by the app itself: leave it open and in place')
     .option('--no-launchctl', 'leave the launchd agents running, only delete their plists')
-    .action(async (o: { purge?: boolean; launchctl: boolean }) => {
+    .action(async (o: { purge?: boolean; fromApp?: boolean; launchctl: boolean }) => {
       const r = await uninstall({ purge: Boolean(o.purge) }, {
         uninstall: () => runUninstall({
           home: profileHome(PRIVATE),
@@ -46,14 +47,16 @@ export function uninstallCommand(json: () => boolean): Command {
           mobile: realDeps(),
           app: appQuit,
           tmux: process.env.TMUX,
+          skipPid: o.fromApp ? process.ppid : undefined,
         }),
         data: () => fleetData({
           homedir: os.homedir(),
           appDests: [process.env.SVALL_APP_DEST || '/Applications', path.join(os.homedir(), 'Applications')],
+          fromApp: o.fromApp,
         }),
         purge,
         prompt: (q) => ask(q),
-        isTTY: process.stdin.isTTY === true,
+        isTTY: !o.fromApp && process.stdin.isTTY === true,
       });
       printResult(r, json(), () => [
         ...(r.done.length ? r.done : ['nothing to remove']),

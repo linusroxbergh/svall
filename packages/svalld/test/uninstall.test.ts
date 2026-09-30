@@ -6,10 +6,10 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { codexInstalled, codexPaths } from '../src/codex/install.js';
 import { realDeps } from '../src/mobile.js';
-import { LAUNCHD_LABEL } from '../src/profile.js';
+import { BUNDLE_ID, LAUNCHD_LABEL } from '../src/profile.js';
 import { bundleRuntime, checkoutRuntime } from '../src/runtime.js';
 import { HOOK_EVENTS, hookCommand, mergeHooks, mergeStatusLine, runSetup, shimText, statusWrapper, unmergeHooks, unmergeStatusLine } from '../src/setup.js';
-import { appQuit, fleetData, fleetHomes, purge, runUninstall, type AppQuit } from '../src/uninstall.js';
+import { appQuit, fleetData, fleetHomes, purge, quitApp, runUninstall, type AppQuit } from '../src/uninstall.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
 afterEach(cleanHomes);
@@ -195,6 +195,27 @@ describe('runUninstall', () => {
     fs.writeFileSync(path.join(g.home, 'app.pid'), `101\t/elsewhere/.svall`);
     expect(await runUninstall({ ...g.o, app: stays })).toContain(`removed ${path.join(g.launchAgentsDir, `${LAUNCHD_LABEL}.plist`)}`);
     expect(quits).toBe(1);
+  });
+
+  it('does not quit the app that asked for the uninstall', async () => {
+    const a = fs.mkdtempSync(path.join(os.tmpdir(), 'u-'));
+    const b = fs.mkdtempSync(path.join(os.tmpdir(), 'u-'));
+    fs.writeFileSync(path.join(a, 'app.pid'), `111\t${a}`);
+    fs.writeFileSync(path.join(b, 'app.pid'), `222\t${b}`);
+    const quit: number[] = [];
+    const open = new Set([111, 222]);
+    const app: AppQuit = { isApp: (pid) => open.has(pid), quit: async (pid) => { quit.push(pid); open.delete(pid); }, wait: async () => {} };
+    await quitApp([a, b], app, 'svall uninstall', 111);
+    expect(quit).toEqual([222]);
+  });
+
+  it('leaves the app and its Library data to the app when the app itself asked', () => {
+    const u = fs.mkdtempSync(path.join(os.tmpdir(), 'u-'));
+    fs.mkdirSync(path.join(u, 'Apps', 'Svall.app'), { recursive: true });
+    fs.mkdirSync(path.join(u, 'Library', 'Caches', BUNDLE_ID), { recursive: true });
+    const data = fleetData({ homedir: u, appDests: [path.join(u, 'Apps')], fromApp: true });
+    expect(data).not.toContain(path.join(u, 'Apps', 'Svall.app'));
+    expect(data).not.toContain(path.join(u, 'Library', 'Caches', BUNDLE_ID));
   });
 
   it('takes a pid that app.pid names but is not Svall for a window that crashed', async () => {
