@@ -22,7 +22,9 @@ import { Sidebar } from './Sidebar.js';
 import { UtilityDock } from './UtilityDock.js';
 import { theme } from './theme.js';
 
-const OUTDATED = 'App and svalld versions differ: run pnpm desktop:install, then reopen the app';
+const OUTDATED = () => (window.__svallVariant === 'release'
+  ? 'Svall and svalld versions differ: quit and reopen Svall'
+  : 'App and svalld versions differ: run pnpm desktop:install, then reopen the app');
 
 export function App() {
   const loaded = useApp((s) => s.loaded);
@@ -55,7 +57,7 @@ export function App() {
     return (
       <div className="connect" data-testid="connect-screen">
         <div>
-          {status === 'outdated' ? OUTDATED : 'svalld not running'}<br />
+          {status === 'outdated' ? OUTDATED() : 'svalld not running'}<br />
           {!log && <small>run <code>svall setup</code>, or open this page with <code>?port=&amp;token=</code></small>}
           {log && (
             <>
@@ -70,7 +72,7 @@ export function App() {
   }
   return (
     <div className="app">
-      {status !== 'online' && <div className="banner" data-testid="offline-banner">{status === 'outdated' ? OUTDATED : 'svalld connection lost, reconnecting…'}</div>}
+      {status !== 'online' && <div className="banner" data-testid="offline-banner">{status === 'outdated' ? OUTDATED() : 'svalld connection lost, reconnecting…'}</div>}
       {configErrors.length > 0 && (
         <div className="banner warn" data-testid="config-errors">
           Ghostty config: {configErrors.join('; ')}
