@@ -220,8 +220,14 @@ final class ShellRouter {
             AppRuntime.run(["setup", "--plan", "--login-shell"]) { [weak self] ok, text in self?.bridge.send(.setupResult(step: "plan", ok: ok, json: text)) }
         case .setupRun(let agents, let found):
             AppRuntime.run(["setup", "--json", "--login-shell", "--agents", agents.joined(separator: ","), "--found", found.joined(separator: ",")]) { [weak self] ok, text in
-                // the home setup made did not exist when launch claimed it
-                if ok { _ = SvallHome.claim() }
+                // the home setup made did not exist when launch claimed it and named its browser store
+                if ok {
+                    _ = SvallHome.claim()
+                    let file = SvallHome.path + "/browser-store"
+                    if let id = self?.browsers.store.identifier, !FileManager.default.fileExists(atPath: file) {
+                        try? id.uuidString.write(toFile: file, atomically: true, encoding: .utf8)
+                    }
+                }
                 self?.bridge.send(.setupResult(step: "run", ok: ok, json: text))
             }
         case .copy(let text):
