@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AGENT_LABEL, fleetNameProblem, type AgentKind } from '@svall/protocol';
 import { renameFleet, setMainAgent, setScribe } from './actions.js';
 import { deps } from './boot.js';
+import { shim } from './bridge.js';
 import { useApp } from './hooks.js';
 import { directoryName } from './selectors.js';
 
@@ -33,7 +34,7 @@ function NameAsk({ skip }: { skip(): void }) {
           onChange={(e) => { setName(e.target.value.trim()); setError(undefined); }} onKeyDown={(e) => { if (e.key === 'Enter') save(); }} />
         {problem || error
           ? <div className="fleet-error">{problem ?? error}</div>
-          : <div className="modal-note">Open it from a terminal with <code>svall {name || '<name>'}</code></div>}
+          : <div className="modal-note">Open it from a terminal with <code>{shim()} {name || '<name>'}</code></div>}
         <div className="acts">
           <button className="btn pri" data-testid="fleet-name-save" disabled={!name || !!problem} onClick={save}>Name it</button>
           <button className="btn" data-testid="fleet-name-skip" onClick={skip}>Skip</button>

@@ -7,7 +7,7 @@ import type { MobileStatus } from '@svall/protocol';
 import { MOBILE_DIST } from './api/bundle.js';
 import { repoRoot, resolvePaths } from './paths.js';
 import type { Phones } from './phones.js';
-import { PRIVATE, PRIVATE_HTTPS_PORT, profileLabel } from './profile.js';
+import { PRIVATE, PRIVATE_HTTPS_PORT, SHIM, profileLabel } from './profile.js';
 
 export type MobileDeps = {
   run(cmd: string, args: string[], cwd?: string): Promise<string>;
@@ -49,7 +49,7 @@ export async function tailnetSelf(d: MobileDeps, bin: string): Promise<{ host: s
 export function fleetTarget(d: MobileDeps, home: string): string {
   const { port, mobileKey } = resolvePaths(home);
   const p = Number(d.read(port)?.trim());
-  if (!p) throw new Error('the fleet is not running: start the app, or run `svall <profile>`');
+  if (!p) throw new Error(`the fleet is not running: start the app, or run \`${SHIM} <profile>\``);
   const key = d.read(mobileKey)?.trim();
   if (!key) throw new Error(`no phone key at ${mobileKey}: restart the daemon so it writes one`);
   return `http://127.0.0.1:${p}/${key}`;

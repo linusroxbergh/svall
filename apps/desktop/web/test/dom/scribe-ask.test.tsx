@@ -29,7 +29,7 @@ test('a fresh private fleet is named first, with the command that opens it, then
   render(<ScribeAsk />);
   expect(screen.queryByTestId('scribe-ask')).toBeNull();
   fireEvent.change(screen.getByTestId('fleet-name-input'), { target: { value: 'home' } });
-  expect(screen.getByTestId('fleet-name-ask').textContent).toContain('svall home');
+  expect(screen.getByTestId('fleet-name-ask').textContent).toContain('svall-dev home');
   fireEvent.click(screen.getByTestId('fleet-name-save'));
   await waitFor(() => expect(sent).toContainEqual({ type: 'retitle' }));
   expect(call).toHaveBeenCalledWith('fleet.rename', { name: 'home' });

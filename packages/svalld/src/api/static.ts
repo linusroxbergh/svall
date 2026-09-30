@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
+import { SHIM } from '../profile.js';
 
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -14,7 +15,7 @@ const TYPES: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
-const NOT_BUILT = 'The phone bundle is not built. Run `svall mobile` on the Mac.';
+const NOT_BUILT = `The phone bundle is not built. Run \`${SHIM} mobile\` on the Mac.`;
 // no other page may frame this one and steer a tap into it
 const NO_FRAMING = { 'content-security-policy': "frame-ancestors 'none'", 'x-frame-options': 'DENY' };
 
