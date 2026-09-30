@@ -74,7 +74,7 @@ Both run the same steps and show each as it finishes:
    pins and against its signature, copied over ssh and installed under `~/.local/share/svall` there.
 4. **Service.** `svall-gateway.service` and `svall-svalld@private.service` as systemd user units, started.
 5. **Agent logins.** Claude Code and Codex on the machine: installed, Claude Code 2.1.251 or newer and Codex 0.155.0
-   or newer, and logged in.
+   or newer, logged in, and with Svall's hooks in place, as the machine's own `svall doctor` finds them.
 6. **Final probe.** The machine's own fleet answers through a forwarded port, its gateway answers, and tmux opens and
    closes a window there.
 7. **Registry.** The machine is added to this Mac's list in `~/.config/svall/machines.json`.
@@ -88,6 +88,8 @@ never copies a login, so these are yours:
 - An agent not installed or not logged in: `ssh ada@studio`, install it, then `claude auth login` or `codex login`.
   Codex also asks once to trust Svall's hooks: start `codex` there and choose "Trust all and continue", or trust
   them with `/hooks`.
+- Svall's hooks not installed, out of date, turned off or not trusted: the action names what the machine's own
+  `svall doctor` says to do there.
 
 Adding the same machine again runs every check again and changes nothing that is already right.
 

@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { FleetConfig, FleetId, MachineId, MachineRecord } from '@svall/protocol';
+import { FleetConfig, FleetId, MachineId, MachineRecord, type AgentKind } from '@svall/protocol';
 import { AGENTS, AGENT_KINDS, versionOk } from '@svall/svalld/agents';
 import { patchFleetConfig } from '@svall/svalld/config';
 import { gatewayPaths, socketTooLong } from '@svall/svalld/gateway/authority';
@@ -217,11 +217,14 @@ function serviceOutcome(report: RemoteDoctor, destination: string): Outcome<Remo
   return { value: report, detail: units.join('; '), ...(action ? { status: 'warn' as const, action } : {}) };
 }
 
+// the companion doctor's check of each agent's Svall hooks, whose detail ends with what to do there
+const HOOK_CHECKS: Record<AgentKind, string> = { claude: 'hooks', codex: 'codex hooks' };
+
 /**
- * The agent checks, on the PATH the companion's units run with, which a login over ssh does not see all of: every
- * one of them is something to go and do, never something that stops setup.
+ * The agent checks, on the PATH the companion's units run with, which a login over ssh does not see all of, and the
+ * companion doctor's check of its hooks: every one of them is something to go and do, never something that stops setup.
  */
-async function agentChecks(master: SshMaster, o: { destination: string; home: string; svallBase: string }, run: Runner): Promise<void> {
+async function agentChecks(master: SshMaster, o: { destination: string; home: string; svallBase: string; report: RemoteDoctor }, run: Runner): Promise<void> {
   const PATH = unitPath({ runtime: releaseRuntime(path.posix.join(o.svallBase, 'current')), homedir: o.home, prefix: o.svallBase });
   for (const kind of AGENT_KINDS) {
     await run.step(kind, async () => {
@@ -235,7 +238,12 @@ async function agentChecks(master: SshMaster, o: { destination: string; home: st
       if (v.code !== 0) return todo(`${a.bin} --version exited ${v.code}: ${v.stderr.trim().slice(0, 200) || 'no output'}`, `run ${a.bin} --version there and see what it answers`);
       if (!versionOk(a, version)) return todo(`${version}: Svall needs ${a.minVersion!.join('.')} or newer`, `update ${a.label}`);
       const login = await call(a.loginArgs);
-      if (login.code === 0 && a.loggedIn(login.stdout)) return { value: undefined, detail: `${version}, logged in` };
+      if (login.code === 0 && a.loggedIn(login.stdout)) {
+        const hooks = o.report.checks.find((c) => c.name === HOOK_CHECKS[kind]);
+        if (hooks?.status !== 'warn' && hooks?.status !== 'fail') return { value: undefined, detail: `${version}, logged in` };
+        const at = hooks.detail.lastIndexOf(': ');
+        return todo(`${version}, logged in; the ${hooks.name} check there says ${hooks.detail}`, at < 0 ? hooks.detail : hooks.detail.slice(at + 2));
+      }
       return todo(`${version}, not logged in`, kind === 'codex' ? `${a.loginHint}, and trust the hooks once with /hooks` : a.loginHint);
     });
   }
@@ -385,7 +393,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         return { value: undefined, detail: out.trim().split('\n').at(-1) ?? `release ${companion.version} installed` };
       });
 
-      await run.step('service', async () => serviceOutcome(await remoteJson<RemoteDoctor>(master, remote.svallBase, ['doctor', '--json'], 'svall doctor --json'), o.ssh));
+      const report = await run.step('service', async () => serviceOutcome(await remoteJson<RemoteDoctor>(master, remote.svallBase, ['doctor', '--json'], 'svall doctor --json'), o.ssh));
       const machine = await run.step('identity', async () => {
         const v = await remoteJson<RemoteVersion>(master, remote.svallBase, ['version', '--json'], 'svall version --json');
         const id = MachineId.safeParse(v.machineId);
@@ -394,7 +402,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         return { value: id.data, detail: `${v.release}, machine ${id.data}` };
       });
 
-      await agentChecks(master, { destination: o.ssh, home, svallBase: remote.svallBase }, run);
+      await agentChecks(master, { destination: o.ssh, home, svallBase: remote.svallBase, report }, run);
 
       const record: MachineRecord = {
         name: o.name, ssh: o.ssh, platform: 'linux', arch, home,

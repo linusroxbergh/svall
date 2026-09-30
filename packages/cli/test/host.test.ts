@@ -213,6 +213,24 @@ describe('host add', () => {
     expect(step('codex').at(-1)).toMatchObject({ status: 'warn', detail: 'codex is not installed on this machine', action: 'ssh trift.test, then install Codex' });
   });
 
+  it('names what Svall\'s hooks there still need, from the companion\'s own doctor, without stopping setup', async () => {
+    const untrusted = 'not trusted yet: start codex and choose "Trust all and continue", or trust them in /hooks';
+    const disabled = `${HOME}/.claude/settings.json sets disableAllHooks, so no character gets a status; remove it`;
+    healthy({ doctor: JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'hooks', status: 'fail', detail: disabled }, { name: 'codex hooks', status: 'warn', detail: untrusted }] }) });
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
+    await d.close();
+    expect(step('claude').at(-1)).toMatchObject({ status: 'warn', detail: `2.1.278 (Claude Code), logged in; the hooks check there says ${disabled}`, action: `ssh trift.test, then ${disabled}` });
+    expect(step('codex').at(-1)).toMatchObject({
+      status: 'warn', detail: `codex-cli 0.155.1, logged in; the codex hooks check there says ${untrusted}`,
+      action: 'ssh trift.test, then start codex and choose "Trust all and continue", or trust them in /hooks',
+    });
+    expect(out.result).toBe('actions');
+    expect(registry.get('trift')?.id).toBe(REMOTE);
+  });
+
   it('writes the registry record under the machine id the companion reports', async () => {
     healthy();
     const d = await daemon();
