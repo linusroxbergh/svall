@@ -55,7 +55,8 @@ the daemon at that clone, for development.
   --fleet <name>`, and `svall -p <name> handover …`. On Linux each fleet runs as `svall-svalld@<name>.service`.
 - `host`, `handover`, `gateway`, `fleet`, `connect`, `connection-info` and `version` are now commands, and no longer
   name a fleet, even with `-p`. `svall setup` names each fleet home made under one of them, such as
-  `~/.svall-host`, and the `mv` to a name that reaches it again.
+  `~/.svall-host`, and the `mv` to a name that reaches it again. A `config.json` whose `name` is one of them splits
+  without it, so the fleet goes by its default name until you name it in Settings; `svall setup` lists each one.
 
 ## Downgrading
 

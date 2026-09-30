@@ -6,7 +6,7 @@ import {
 } from './agent-hooks.js';
 import { isExecutable } from './agents.js';
 import type { CodexPaths } from './codex/install.js';
-import { initConfig, loadConfig } from './config.js';
+import { initConfig, loadConfig, reservedFleetNames } from './config.js';
 import { writeAtomic } from './jsonfile.js';
 import { bootstrapAgent, isLoaded, plistCurrent, takenOverBy, writePlist } from './launchd.js';
 import { machineId } from './machine.js';
@@ -202,6 +202,9 @@ export function setupUser(o: { home: string; settings?: JsonSettings; codexHooks
   }
   for (const r of reservedProfileHomes(path.dirname(o.home))) {
     done.push(`${r.home} holds a fleet named ${r.name}, a name ${SHIM} now keeps for its own command, so no -p reaches it: mv ${r.home} ${path.join(path.dirname(r.home), `${homePrefix}${r.rename}`)}, then ${SHIM} ${r.rename}`);
+  }
+  for (const r of reservedFleetNames(path.dirname(o.home))) {
+    done.push(`${r.home} holds a fleet named ${r.name}, a name ${SHIM} now keeps for its own command, so the fleet goes without it; give it another in Settings`);
   }
   return done;
 }

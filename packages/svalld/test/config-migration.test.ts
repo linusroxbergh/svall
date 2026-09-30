@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FleetConfig, NodeConfig } from '@svall/protocol';
-import { InvalidConfig, initConfig, loadConfig } from '../src/config.js';
+import { InvalidConfig, configuredMainAgent, initConfig, loadConfig, patchFleetConfig, peekConfig, reservedFleetNames } from '../src/config.js';
 import { resolvePaths } from '../src/paths.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -90,6 +90,44 @@ describe('splitting config.json', () => {
     const p = resolvePaths(legacyHome('{"mobile":{"httpsPort":0}}'));
     expect(() => loadConfig(p)).toThrow(`invalid config ${p.legacyConfig}`);
     expect(fs.existsSync(p.fleetConfig)).toBe(false);
+  });
+
+  it('reads a name svall now keeps for a command as no name, and splits the rest', () => {
+    const text = '{"name":"host","mainAgent":"codex"}';
+    const p = resolvePaths(legacyHome(text));
+    expect(peekConfig(p)).toMatchObject({ mainAgent: 'codex' });
+    expect(peekConfig(p).name).toBeUndefined();
+    expect(configuredMainAgent(p)).toBe('codex');
+    expect(fs.existsSync(p.fleetConfig)).toBe(false);
+
+    const config = loadConfig(p);
+    expect(config.name).toBeUndefined();
+    expect(read(p.fleetConfig)).toEqual({ id: config.id, mainAgent: 'codex' });
+    expect(fs.readFileSync(`${p.legacyConfig}.bak`, 'utf8')).toBe(text);
+  });
+
+  it('refuses a config.json whose name no fleet can go by', () => {
+    const p = resolvePaths(legacyHome('{"name":"Home Base"}'));
+    expect(() => peekConfig(p)).toThrow(/name: /);
+    expect(() => loadConfig(p)).toThrow(`invalid config ${p.legacyConfig}`);
+    expect(fs.existsSync(p.fleetConfig)).toBe(false);
+  });
+
+  it('names each fleet home whose config.json named it with a word svall now keeps, until fleet.json names it', () => {
+    const root = makeHome();
+    const home = (dir: string, text: string): string => {
+      fs.mkdirSync(path.join(root, dir));
+      fs.writeFileSync(path.join(root, dir, 'config.json'), text);
+      return path.join(root, dir);
+    };
+    const [own, work] = [home('.svall', '{"name":"host"}'), home('.svall-work', '{"name":"version"}')];
+    home('.svall-side', '{"name":"side"}');
+    expect(reservedFleetNames(root)).toEqual([{ home: own, name: 'host' }, { home: work, name: 'version' }]);
+    // the backup the split leaves still says so
+    loadConfig(resolvePaths(own));
+    expect(reservedFleetNames(root)).toEqual([{ home: own, name: 'host' }, { home: work, name: 'version' }]);
+    patchFleetConfig(resolvePaths(own).fleetConfig, { name: 'base' });
+    expect(reservedFleetNames(root)).toEqual([{ home: work, name: 'version' }]);
   });
 });
 

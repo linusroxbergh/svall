@@ -1,11 +1,13 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import path from 'node:path';
 import { z } from 'zod';
-import { FleetConfig, FleetId, NodeConfig, type AgentKind, type MachineId } from '@svall/protocol';
+import { FleetConfig, FleetId, NodeConfig, RESERVED, type AgentKind, type MachineId } from '@svall/protocol';
 import { writeJsonAtomic } from './atomic.js';
 import { writeDurable } from './handover/durable.js';
 import { resolvePaths, type Paths } from './paths.js';
-import { DEFAULT_PORT, HOME_CWD, PRIVATE, profileHome, profileOf } from './profile.js';
+import { DEFAULT_PORT, HOME_CWD, PRIVATE, profileHome, profileOf, variantOf } from './profile.js';
+import { variant } from './runtime.js';
 
 const newFleetId = (): FleetId => FleetId.parse(crypto.randomUUID());
 
@@ -13,16 +15,27 @@ const newFleetId = (): FleetId => FleetId.parse(crypto.randomUUID());
 const FleetFile = FleetConfig.extend({ home: FleetConfig.shape.home.unwrap().extend({ cwd: z.string().default(HOME_CWD) }).prefault({}) });
 const NodeFile = NodeConfig.extend({ port: z.number().int().default(DEFAULT_PORT) });
 
+type Raw = Record<string, unknown>;
+
+// a config.json may name its fleet with a word svall has since kept for a command: that name is read as none, so the
+// fleet goes by its default one
+function unreserved(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null || !RESERVED.includes((raw as Raw).name as string)) return raw;
+  const rest = { ...(raw as Raw) };
+  delete rest.name;
+  return rest;
+}
+
 /**
  * Every setting a running fleet reads, portable and machine-local side by side. It is also the shape
  * of the config.json the two files are split out of.
  */
-export const Config = FleetFile.omit({ mobile: true })
+export const Config = z.preprocess(unreserved, FleetFile.omit({ mobile: true })
   .merge(NodeFile.omit({ mobile: true }))
   .extend({
     id: FleetId.default(newFleetId),
     mobile: FleetConfig.shape.mobile.unwrap().merge(NodeConfig.shape.mobile.unwrap()).prefault({}),
-  });
+  }));
 export type Config = z.infer<typeof Config>;
 
 export const scribeModel = (s: Config['scribe'], agent: AgentKind): string | undefined =>
@@ -55,7 +68,6 @@ export function parseConfig<T extends z.ZodTypeAny>(text: string, file: string, 
 
 const read = <T extends z.ZodTypeAny>(file: string, schema: T): z.infer<T> => parseConfig(fs.readFileSync(file, 'utf8'), file, schema);
 
-type Raw = Record<string, unknown>;
 const only = (from: Raw, keys: string[]): Raw => Object.fromEntries(Object.entries(from).filter(([k]) => keys.includes(k)));
 
 // each key the file held goes to the file whose schema knows it, and a key neither knows is dropped; what the file
@@ -63,7 +75,7 @@ const only = (from: Raw, keys: string[]): Raw => Object.fromEntries(Object.entri
 function splitLegacy(file: string): { fleet: Raw; node: Raw } {
   const text = fs.readFileSync(file, 'utf8');
   const { id } = parseConfig(text, file, Config);
-  const raw = JSON.parse(text) as Raw;
+  const raw = unreserved(JSON.parse(text)) as Raw;
   const mobile = (raw.mobile ?? {}) as Raw;
   const fleetMobile = only(mobile, Object.keys(FleetConfig.shape.mobile.unwrap().shape));
   const nodeMobile = only(mobile, Object.keys(NodeConfig.shape.mobile.unwrap().shape));
@@ -135,6 +147,21 @@ export function configuredMainAgent(paths: Paths): AgentKind | undefined {
 export const keptPorts = (homes: string[]): number[] => homes.flatMap((h) => {
   try { const p = peekConfig(resolvePaths(h)).mobile.httpsPort; return p ? [p] : []; } catch { return []; }
 });
+
+/**
+ * Each fleet home in `homedir` whose config.json, or the backup its split left, named the fleet with a word svall now
+ * keeps for a command, while its fleet.json names it nothing else.
+ */
+export function reservedFleetNames(homedir: string): { home: string; name: string }[] {
+  const json = (file: string): Raw | undefined => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) as Raw; } catch { return undefined; } };
+  let entries: string[];
+  try { entries = fs.readdirSync(homedir).sort(); } catch { return []; }
+  return entries.filter((f) => variantOf(f) === variant).flatMap((f) => {
+    const p = resolvePaths(path.join(homedir, f));
+    const name = (json(p.legacyConfig) ?? json(`${p.legacyConfig}.bak`))?.name;
+    return typeof name === 'string' && RESERVED.includes(name) && json(p.fleetConfig)?.name === undefined ? [{ home: p.home, name }] : [];
+  });
+}
 
 /**
  * Sets the keys `patch` names in `file`, drops those it names as undefined, merges mobile a level down, and keeps every
