@@ -4,8 +4,27 @@ import Foundation
 /// choices the page may pass on, in the shapes `HandoverChoices` has on the wire.
 struct HandoverChoices: Codable, Equatable {
     var interruptAfterMs: Int?
-    var terminateShells: Bool?
+    var terminateShells: TerminateShells?
     var archiveRoots: [String]?
+}
+
+/// `terminateShells` on the wire: every busy terminal or none, or the characters whose terminals it names.
+enum TerminateShells: Codable, Equatable {
+    case all(Bool)
+    case characters([String])
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if let all = try? c.decode(Bool.self) { self = .all(all) } else { self = .characters(try c.decode([String].self)) }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        switch self {
+        case .all(let all): try c.encode(all)
+        case .characters(let ids): try c.encode(ids)
+        }
+    }
 }
 
 /// The argv of `svall handover …`: a detached start, resume or abort, and the `attach` that follows each.
@@ -22,7 +41,8 @@ enum HandoverCommand {
             guard ms >= 0 else { return nil }
             flags += ["--interrupt-after", "\(ms)ms"]
         }
-        if choices?.terminateShells == true { flags.append("--terminate-shells") }
+        // the flag terminates every busy terminal, so a list of characters is left for the run to ask about again
+        if choices?.terminateShells == .all(true) { flags.append("--terminate-shells") }
         for root in choices?.archiveRoots ?? [] {
             // a root by its manifest id, or by its absolute path on the destination
             guard root.allowed(by: "^(r_[0-9a-f]+|/[^\\x00\\n]*)$") else { return nil }

@@ -93,7 +93,7 @@ final class HandoverTests: XCTestCase {
                        ["handover", "studio", "--json", "--detach"])
         XCTAssertEqual(HandoverCommand.start(to: "local", choices: nil, gateway: "studio", profile: "work"),
                        ["-p", "work", "handover", "local", "--json", "--detach"])
-        XCTAssertEqual(HandoverCommand.start(to: "studio", choices: HandoverChoices(interruptAfterMs: 0, terminateShells: true, archiveRoots: ["r_0a1b", "/w/app"]),
+        XCTAssertEqual(HandoverCommand.start(to: "studio", choices: HandoverChoices(interruptAfterMs: 0, terminateShells: .all(true), archiveRoots: ["r_0a1b", "/w/app"]),
                                              gateway: "studio", profile: nil),
                        ["handover", "studio", "--json", "--detach", "--interrupt-after", "0ms", "--terminate-shells",
                         "--archive", "r_0a1b", "--archive", "/w/app"])
@@ -116,6 +116,12 @@ final class HandoverTests: XCTestCase {
         XCTAssertNil(HandoverCommand.start(to: "local", choices: HandoverChoices(interruptAfterMs: -1), gateway: "studio", profile: nil))
     }
 
+    func testAStartNeverWidensTheCharactersAnAnswerNamedToEveryTerminal() {
+        // `--terminate-shells` names no characters: the run blocks on those terminals again and asks
+        XCTAssertEqual(HandoverCommand.start(to: "local", choices: HandoverChoices(terminateShells: .characters(["c_ada"])), gateway: nil, profile: nil),
+                       ["handover", "local", "--json", "--detach"])
+    }
+
     func testThePageAsksForAHandoverByTheFormsItMayUse() throws {
         let decode = { (json: String) in try JSONDecoder().decode(ToShell.self, from: Data(json.utf8)) }
         guard case .handoverStart(let to, let choices) = try decode(#"{"type":"handover.start","to":"studio","choices":{"interruptAfterMs":0,"archiveRoots":["r_0a1b"]}}"#) else {
@@ -126,7 +132,7 @@ final class HandoverTests: XCTestCase {
         guard case .handoverChoose(let chosen) = try decode(#"{"type":"handover.choose","choices":{"terminateShells":true}}"#) else {
             return XCTFail("handover.choose did not decode")
         }
-        XCTAssertEqual(chosen, HandoverChoices(terminateShells: true))
+        XCTAssertEqual(chosen, HandoverChoices(terminateShells: .all(true)))
         for (json, name) in [(#"{"type":"handover.resume"}"#, "resume"), (#"{"type":"handover.abort"}"#, "abort"),
                              (#"{"type":"handover.attach"}"#, "attach"), (#"{"type":"handover.cancel"}"#, "cancel"),
                              (#"{"type":"handover.forget"}"#, "forget")] {
@@ -137,8 +143,15 @@ final class HandoverTests: XCTestCase {
             default: XCTFail("\(json) decoded as \(msg)")
             }
         }
+        XCTAssertEqual(HandoverControl.choose(chosen).line, #"{"choose":{"terminateShells":true}}"#)
+        // the characters an answer names reach the helper as the page named them
+        guard case .handoverChoose(let named) = try decode(#"{"type":"handover.choose","choices":{"terminateShells":["c_ada","c_bo"]}}"#) else {
+            return XCTFail("handover.choose did not decode")
+        }
+        XCTAssertEqual(HandoverControl.choose(named).line, #"{"choose":{"terminateShells":["c_ada","c_bo"]}}"#)
         // only the choices the contract names, in the shapes it names
         XCTAssertThrowsError(try decode(#"{"type":"handover.choose","choices":{"terminateShells":"yes"}}"#))
+        XCTAssertThrowsError(try decode(#"{"type":"handover.choose","choices":{"terminateShells":1}}"#))
     }
 
     func testAControlLineIsWhatAttachWritesToTheHelper() throws {
