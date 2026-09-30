@@ -6,11 +6,11 @@ import { promisify } from 'node:util';
 import type { CodexPaths } from './codex/install.js';
 import { portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
 import { resolvePaths } from './paths.js';
-import { BUNDLE_ID, homePrefix, isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome } from './profile.js';
+import { BUNDLE_ID, homePrefix, isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome, SHIM } from './profile.js';
 import { readJsonSettings, requireWritable, unmergeHooks, unmergeStatusLine, writeJsonSettings, type JsonSettings } from './setup.js';
 
 const exec = promisify(execFile);
-const SHIM_MARK = 'packages/cli/src/main.ts';
+const SHIM_MARKS = ['packages/cli/src/main.ts', 'Contents/Resources/runtime/svall.mjs'];
 
 const isAgentPlist = (f: string): boolean => f.startsWith(`${LAUNCHD_LABEL}.`) && f.endsWith('.plist');
 
@@ -124,8 +124,9 @@ export async function runUninstall(o: { home: string; homes: string[]; settingsP
     );
   }
 
-  const shim = path.join(o.shimDir, 'svall');
-  if (readOrUndefined(shim)?.includes(SHIM_MARK)) {
+  const shim = path.join(o.shimDir, SHIM);
+  const shimText = readOrUndefined(shim);
+  if (shimText && SHIM_MARKS.some((m) => shimText.includes(m))) {
     fs.rmSync(shim, { force: true });
     done.push(`removed ${shim}`);
   }

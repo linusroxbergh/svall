@@ -26,3 +26,24 @@ export const mobileDist = bundled ? path.join(here, 'mobile') : path.resolve(her
 
 /** A binary the app ships in Contents/Helpers; undefined in a checkout. */
 export const helper = (name: string): string | undefined => bundled ? path.resolve(here, '../../Helpers', name) : undefined;
+
+/** How to run the daemon and the CLI: from a checkout's sources through tsx, or on the app's own node. */
+export type Runtime = { daemon: string[]; cli: string[]; bundle?: string };
+
+// tsx otherwise reads the tsconfig of the caller's cwd, whose paths can point @svall/* at another checkout
+export const checkoutRuntime = (root: string): Runtime => {
+  const tsx = path.join(root, 'node_modules/.bin/tsx');
+  return {
+    daemon: [tsx, path.join(root, 'packages/svalld/src/bin.ts')],
+    cli: [tsx, '--tsconfig', path.join(root, 'tsconfig.json'), path.join(root, 'packages/cli/src/main.ts')],
+  };
+};
+
+export const bundleRuntime = (app: string): Runtime => {
+  const node = path.join(app, 'Contents/Helpers/node');
+  const dir = path.join(app, 'Contents/Resources/runtime');
+  return { daemon: [node, path.join(dir, 'svalld.mjs')], cli: [node, path.join(dir, 'svall.mjs')], bundle: app };
+};
+
+/** The runtime this code is running from. */
+export const ownRuntime = (): Runtime => (bundled ? bundleRuntime(path.resolve(here, '../../..')) : checkoutRuntime(path.resolve(here, '../../..')));

@@ -7,7 +7,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { codexInstalled, codexPaths } from '../src/codex/install.js';
 import { realDeps } from '../src/mobile.js';
 import { LAUNCHD_LABEL } from '../src/profile.js';
-import { HOOK_EVENTS, hookCommand, mergeHooks, mergeStatusLine, runSetup, statusWrapper, unmergeHooks, unmergeStatusLine } from '../src/setup.js';
+import { bundleRuntime, checkoutRuntime } from '../src/runtime.js';
+import { HOOK_EVENTS, hookCommand, mergeHooks, mergeStatusLine, runSetup, shimText, statusWrapper, unmergeHooks, unmergeStatusLine } from '../src/setup.js';
 import { appQuit, fleetData, fleetHomes, purge, runUninstall, type AppQuit } from '../src/uninstall.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
@@ -58,7 +59,7 @@ function installed() {
   fs.writeFileSync(settingsPath, JSON.stringify(mine));
   const launchAgentsDir = path.join(root, 'LaunchAgents');
   const shimDir = path.join(root, 'bin');
-  return { root, home, settingsPath, mine, launchAgentsDir, shimDir, o: { home, homes: [home], settingsPath, settingsPaths: [settingsPath], launchAgentsDir, shimDir, repoRoot, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(root, '.codex') }), mobile: noTailscale, app: noApp } };
+  return { root, home, settingsPath, mine, launchAgentsDir, shimDir, o: { home, homes: [home], settingsPath, settingsPaths: [settingsPath], launchAgentsDir, shimDir, runtime: checkoutRuntime(repoRoot), launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(root, '.codex') }), mobile: noTailscale, app: noApp } };
 }
 
 describe('fleetHomes', () => {
@@ -252,6 +253,15 @@ describe('runUninstall', () => {
     expect(await runUninstall(f.o)).toEqual([]);
     expect(JSON.parse(fs.readFileSync(f.settingsPath, 'utf8'))).toEqual({ hooks: {}, model: 'x' });
     expect(fs.readdirSync(path.dirname(f.settingsPath))).toEqual(['settings.json']);
+  });
+
+  it('removes the shim of an installed app', async () => {
+    const f = installed();
+    fs.mkdirSync(f.shimDir);
+    const shim = path.join(f.shimDir, 'svall');
+    fs.writeFileSync(shim, shimText(bundleRuntime('/Applications/Svall.app')));
+    expect(await runUninstall(f.o)).toContain(`removed ${shim}`);
+    expect(fs.existsSync(shim)).toBe(false);
   });
 
   it('leaves an svall on PATH that setup did not write', async () => {

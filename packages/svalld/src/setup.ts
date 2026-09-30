@@ -9,9 +9,9 @@ import { codexHookCommand, codexPaths, mergeCodexHooks, type CodexPaths } from '
 import { loadConfig } from './config.js';
 import { CLAUDE_HOOKS, hooksFor } from './hooks/receiver.js';
 import { writeAtomic } from './jsonfile.js';
-import { LAUNCHD_LABEL } from './profile.js';
+import { BUNDLE_ID, LAUNCHD_LABEL, SHIM } from './profile.js';
 import { HOOK_SCRIPT, claudePaths, expandHome, isOurs, resolvePaths, type Paths } from './paths.js';
-import { assetDir } from './runtime.js';
+import { assetDir, bundled, ownRuntime, type Runtime } from './runtime.js';
 import { shq } from './text.js';
 import { tmuxConfText } from './tmux/conf.js';
 
@@ -120,16 +120,16 @@ export const launchdEnv = (): Record<string, string> => ({
   ...(process.env.CODEX_HOME ? { CODEX_HOME: codexPaths().dir } : {}),
 });
 
-export function launchdPlist(o: { label: string; tsx: string; bin: string; home: string; log: string; pathEnv: string; env?: Record<string, string> }): string {
+export function launchdPlist(o: { label: string; program: string[]; home: string; log: string; pathEnv: string; bundleId?: string; env?: Record<string, string> }): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>${xml(o.label)}</string>
+  <key>Label</key><string>${xml(o.label)}</string>${o.bundleId ? `
+  <key>AssociatedBundleIdentifiers</key><array><string>${xml(o.bundleId)}</string></array>` : ''}
   <key>ProgramArguments</key>
   <array>
-    <string>${xml(o.tsx)}</string>
-    <string>${xml(o.bin)}</string>
+${o.program.map((a) => `    <string>${xml(a)}</string>`).join('\n')}
   </array>
   <key>EnvironmentVariables</key>
   <dict>
@@ -211,7 +211,7 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }
 }
 
 export type HomeSetup = {
-  home: string; label: string; repoRoot: string; launchAgentsDir: string; launchctl: boolean; port?: number;
+  home: string; label: string; runtime: Runtime; launchAgentsDir: string; launchctl: boolean; port?: number;
 };
 
 // a Homebrew keg's versioned folder goes with the next upgrade, while its opt link stays
@@ -223,8 +223,8 @@ const realDir = (dir: string): string => {
 
 // launchd gives the daemon no shell PATH, so the folder this shell finds claude or codex in is added after the usual
 // ones when it is none of them, as for a pnpm, bun or volta global. Its real path, as a node manager's can be per shell
-function daemonPath(nodeDir: string): string {
-  const usual = [nodeDir, path.join(os.homedir(), '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'];
+function daemonPath(nodeDir?: string): string {
+  const usual = [...nodeDir ? [nodeDir] : [], path.join(os.homedir(), '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'];
   const found = AGENT_KINDS.map((k) => onPath(AGENTS[k].bin, process.env.PATH ?? ''))
     .filter((dir) => dir !== undefined).map(realDir);
   const known = new Set(usual.map(realDir));
@@ -233,22 +233,25 @@ function daemonPath(nodeDir: string): string {
 
 const plistFile = (o: Pick<HomeSetup, 'label' | 'launchAgentsDir'>): string => path.join(o.launchAgentsDir, `${o.label}.plist`);
 
-const plistText = (o: Pick<HomeSetup, 'home' | 'label' | 'repoRoot'>, nodeDir: string): string => launchdPlist({
-  label: o.label, tsx: path.join(o.repoRoot, 'node_modules/.bin/tsx'), bin: path.join(o.repoRoot, 'packages/svalld/src/bin.ts'),
-  home: o.home, log: resolvePaths(o.home).log, pathEnv: daemonPath(nodeDir), env: launchdEnv(),
+// tsx needs node on PATH; the bundle's node is named outright
+const plistText = (o: Pick<HomeSetup, 'home' | 'label' | 'runtime'>, nodeDir: string | undefined): string => launchdPlist({
+  label: o.label, program: o.runtime.daemon, bundleId: o.runtime.bundle ? BUNDLE_ID : undefined,
+  home: o.home, log: resolvePaths(o.home).log, pathEnv: daemonPath(o.runtime.bundle ? undefined : nodeDir), env: launchdEnv(),
 });
 
-/** The tsx and the PATH folders that a plist setup wrote starts svalld with. */
-export function plistRun(text: string): { tsx?: string; path: string[] } {
-  const tsx = /<string>([^<]*\/node_modules\/\.bin\/tsx)<\/string>/.exec(text)?.[1];
+/** The program and the PATH folders that a plist setup wrote starts svalld with. */
+export function plistRun(text: string): { program: string[]; path: string[] } {
+  const args = /<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(text)?.[1] ?? '';
+  const program = [...args.matchAll(/<string>([^<]*)<\/string>/g)].map((m) => unxml(m[1]));
   const pathEnv = /<key>PATH<\/key><string>([^<]*)<\/string>/.exec(text)?.[1];
-  return { tsx: tsx && unxml(tsx), path: pathEnv ? unxml(pathEnv).split(':') : [] };
+  return { program, path: pathEnv ? unxml(pathEnv).split(':') : [] };
 }
 
-/** Whether a fleet's plist holds what setup would write now to run `repoRoot`; the node it names stands while it is there. */
-export function plistCurrent(o: Pick<HomeSetup, 'home' | 'label' | 'launchAgentsDir' | 'repoRoot'>): boolean {
+/** Whether a fleet's plist holds what setup would write now to run `o.runtime`; the node it names stands while it is there. */
+export function plistCurrent(o: Pick<HomeSetup, 'home' | 'label' | 'launchAgentsDir' | 'runtime'>): boolean {
   let text: string;
   try { text = fs.readFileSync(plistFile(o), 'utf8'); } catch { return false; }
+  if (o.runtime.bundle) return text === plistText(o, undefined);
   const named = plistRun(text).path[0];
   return text === plistText(o, named && isExecutable(path.join(named, 'node')) ? named : nodeDirOf(process.execPath));
 }
@@ -372,7 +375,7 @@ function installedNode(settings: Record<string, unknown>): string | undefined {
 // the hooks and statusline setup writes into the Claude settings for the fleet at `home`
 function withClaudeHooks(settings: Record<string, unknown>, home: string): Record<string, unknown> {
   const paths = resolvePaths(home);
-  const node = installedNode(settings) ?? process.execPath;
+  const node = ownRuntime().bundle ? process.execPath : installedNode(settings) ?? process.execPath;
   return mergeStatusLine(
     mergeHooks(settings, hookCommand(node, paths.hookScript, 'claude'), hooksFor('claude'), paths.hookScript),
     statusWrapper(node, paths.statusScript),
@@ -381,7 +384,7 @@ function withClaudeHooks(settings: Record<string, unknown>, home: string): Recor
 }
 
 const withCodexHooks = (current: Record<string, unknown>, script: string): Record<string, unknown> =>
-  mergeCodexHooks(current, codexHookCommand(script), script);
+  mergeCodexHooks(current, codexHookCommand(script, bundled ? process.execPath : undefined), script);
 
 /** Whether the Claude settings already hold what setup would write for the fleet at `home`. */
 export const claudeHooksCurrent = (settings: Record<string, unknown>, home: string): boolean => same(withClaudeHooks(settings, home), settings);
@@ -389,14 +392,13 @@ export const claudeHooksCurrent = (settings: Record<string, unknown>, home: stri
 /** Whether Codex's hooks file already holds what setup would write for `script`. */
 export const codexHooksCurrent = (current: Record<string, unknown>, script: string): boolean => same(withCodexHooks(current, script), current);
 
-const SHIMS = ['svall'];
+const SHIMS = [SHIM];
 
-// tsx otherwise reads the tsconfig of the caller's cwd, whose paths can point @svall/* at another checkout
-const shimText = (root: string): string => `#!/bin/sh\nexec ${shq(path.join(root, 'node_modules/.bin/tsx'))} --tsconfig ${shq(path.join(root, 'tsconfig.json'))} ${shq(path.join(root, 'packages/cli/src/main.ts'))} "$@"\n`;
+export const shimText = (r: Runtime): string => `#!/bin/sh\nexec ${r.cli.map(shq).join(' ')} "$@"\n`;
 
-/** Whether the shims hold what setup would write now to run `root`. */
-export const shimsCurrent = (shimDir: string, root: string): boolean =>
-  SHIMS.every((name) => fs.existsSync(path.join(shimDir, name)) && fs.readFileSync(path.join(shimDir, name), 'utf8') === shimText(root));
+/** Whether the shims hold what setup would write now to run `runtime`. */
+export const shimsCurrent = (shimDir: string, runtime: Runtime): boolean =>
+  SHIMS.every((name) => fs.existsSync(path.join(shimDir, name)) && fs.readFileSync(path.join(shimDir, name), 'utf8') === shimText(runtime));
 
 /** Throws, before anything is written, when the Claude settings or Codex's hooks need a change setup cannot write. */
 export function requireWritableHooks(home: string, settings: JsonSettings | undefined, codexHooks: JsonSettings | undefined): void {
@@ -404,7 +406,7 @@ export function requireWritableHooks(home: string, settings: JsonSettings | unde
   if (codexHooks) requireWritable(codexHooks, withCodexHooks(codexHooks.settings, resolvePaths(home).hookScript));
 }
 
-export function setupUser(o: { home: string; settings?: JsonSettings; codex: CodexPaths; codexHooks?: JsonSettings; shimDir: string; repoRoot: string }): string[] {
+export function setupUser(o: { home: string; settings?: JsonSettings; codex: CodexPaths; codexHooks?: JsonSettings; shimDir: string; runtime: Runtime }): string[] {
   const paths = resolvePaths(o.home);
   const done = o.settings ? writeJsonSettings(o.settings, withClaudeHooks(o.settings.settings, o.home), 'claude hooks and statusline') : [];
   done.push(...installCodexHooks(o.codex, paths.hookScript, o.codexHooks));
@@ -412,7 +414,7 @@ export function setupUser(o: { home: string; settings?: JsonSettings; codex: Cod
   fs.mkdirSync(o.shimDir, { recursive: true });
   for (const name of SHIMS) {
     const shim = path.join(o.shimDir, name);
-    fs.writeFileSync(shim, shimText(o.repoRoot), { mode: 0o755 });
+    fs.writeFileSync(shim, shimText(o.runtime), { mode: 0o755 });
     done.push(`shim -> ${shim}`);
   }
 
@@ -427,7 +429,7 @@ export function setupUser(o: { home: string; settings?: JsonSettings; codex: Cod
 }
 
 export async function runSetup(o: {
-  home: string; settingsPath: string; codex: CodexPaths; launchAgentsDir: string; shimDir: string; repoRoot: string; launchctl: boolean; agents?: AgentKind[];
+  home: string; settingsPath: string; codex: CodexPaths; launchAgentsDir: string; shimDir: string; runtime: Runtime; launchctl: boolean; agents?: AgentKind[];
 }): Promise<string[]> {
   const claudeWanted = !o.agents || o.agents.includes('claude') || fs.existsSync(path.dirname(o.settingsPath));
   const codexWanted = !!o.agents?.includes('codex') || fs.existsSync(o.codex.dir);

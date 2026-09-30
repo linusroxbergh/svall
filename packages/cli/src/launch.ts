@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import { promisify } from 'node:util';
 import { homeSetup, startFleet, type StartDeps } from '@svall/svalld/fleets';
-import { repoRoot, userPaths } from '@svall/svalld/paths';
+import { userPaths } from '@svall/svalld/paths';
 import { BUNDLE_ID, PRIVATE } from '@svall/svalld/profile';
+import { ownRuntime } from '@svall/svalld/runtime';
 import { setupHome } from '@svall/svalld/setup';
 import { Client } from './client.js';
 import { ask } from './prompt.js';
@@ -26,7 +27,7 @@ export async function launch(t: Target, d: LaunchDeps): Promise<void> {
 
   await startFleet(t, d);
 
-  await d.exec('open', ['-n', '--env', `SVALL_HOME=${t.home}`, '-b', BUNDLE_ID]).catch((e: Error) => {
+  await d.exec('open', ['-n', '--env', `SVALL_HOME=${t.home}`, ...(d.runtime.bundle ? ['-a', d.runtime.bundle] : ['-b', BUNDLE_ID])]).catch((e: Error) => {
     throw new Error(`${BUNDLE_ID === 'io.github.linusroxbergh.svall' ? 'Svall' : 'Svall Dev'} is not installed; run pnpm desktop:install (open: ${e.message})`);
   });
 }
@@ -43,7 +44,7 @@ export function realDeps(): LaunchDeps {
     setupHome,
     uid: os.userInfo().uid,
     launchAgentsDir: userPaths().launchAgents,
-    repoRoot: repoRoot(),
+    runtime: ownRuntime(),
     timeoutMs: 15_000,
     intervalMs: 200,
   };

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { codexHookCommand, mergeCodexHooks } from '@svall/svalld/codex/install';
 import { LAUNCHD_LABEL } from '@svall/svalld/profile';
+import { resolveTmux } from '@svall/svalld/tmux';
 import { HOOK_EVENTS, hookCommand, mergeHooks, mergeStatusLine, nodeRun, statusWrapper } from '@svall/svalld/setup';
 import type { AgentKind } from '@svall/protocol';
 import type { HookTrust } from '../src/codex-trust.js';
@@ -52,7 +53,7 @@ function fake(o: {
   const files: Record<string, string> = Object.fromEntries(Object.entries(mergedFiles).filter(([, v]) => v !== undefined) as [string, string][]);
   const deps: DoctorDeps = {
     run: async (cmd, args, env) => {
-      const key = [cmd, ...args].join(' ');
+      const key = [cmd === resolveTmux() ? 'tmux' : cmd, ...args].join(' ');
       calls.push(key);
       envs[key] = env;
       const out = commands[key];
@@ -175,10 +176,17 @@ describe('doctor', () => {
     expect(byName(await doctor(adhoc, fake().deps))['daemon node'].status).toBe('skip');
   });
 
-  it('fails a plist whose checkout is gone, and warns when its PATH lacks a claude or codex this shell finds', async () => {
+  it("takes the app's own node as the daemon's node", async () => {
+    const node = '/Applications/Svall.app/Contents/Helpers/node';
+    const text = `<key>ProgramArguments</key><array><string>${node}</string><string>/Applications/Svall.app/Contents/Resources/runtime/svalld.mjs</string></array>`;
+    expect(byName(await doctor(priv, fake({ files: { [PLIST]: text } }).deps))['daemon node'])
+      .toEqual({ name: 'daemon node', status: 'ok', detail: `${node} (the app's own)` });
+  });
+
+  it('fails a plist whose program is gone, and warns when its PATH lacks a claude or codex this shell finds', async () => {
     const TSX = '/old/R&amp;D/svall/node_modules/.bin/tsx';
-    const running = (pathEnv: string) => `<dict>\n    <string>${TSX}</string>\n    <key>PATH</key><string>${pathEnv}</string>\n</dict>`;
-    const there = { '/old/R&D/svall/node_modules/.bin/tsx': '', '/opt/homebrew/opt/node/bin/node': '' };
+    const running = (pathEnv: string) => `<dict>\n  <key>ProgramArguments</key>\n  <array>\n    <string>${TSX}</string>\n    <string>/old/R&amp;D/svall/packages/svalld/src/bin.ts</string>\n  </array>\n    <key>PATH</key><string>${pathEnv}</string>\n</dict>`;
+    const there = { '/old/R&D/svall/node_modules/.bin/tsx': '', '/old/R&D/svall/packages/svalld/src/bin.ts': '', '/opt/homebrew/opt/node/bin/node': '' };
     expect(byName(await doctor(priv, fake({ files: { [PLIST]: running('/opt/homebrew/opt/node/bin:/usr/bin'), ...there } }).deps))['daemon path'].status).toBe('ok');
     const gone = byName(await doctor(priv, fake({ files: { [PLIST]: running('/opt/homebrew/opt/node/bin:/usr/bin') } }).deps));
     expect(gone['daemon path']).toMatchObject({ status: 'fail', detail: '/old/R&D/svall/node_modules/.bin/tsx is gone, so launchd cannot start svalld: svall setup' });

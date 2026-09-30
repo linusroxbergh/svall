@@ -12,6 +12,7 @@ import { loadConfig, parseConfig } from '@svall/svalld/config';
 import { resolvePaths, userPaths } from '@svall/svalld/paths';
 import { PRIVATE, profileHome, profileLabel } from '@svall/svalld/profile';
 import { HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hooksInstalled, launchdEnv, plistEnv, plistRun } from '@svall/svalld/setup';
+import { resolveTmux } from '@svall/svalld/tmux';
 import { tmuxTooOld } from '@svall/svalld/tmux/conf';
 import type { AgentKind } from '@svall/protocol';
 import { Client, restartHint } from '../client.js';
@@ -55,7 +56,7 @@ const missing = (e: unknown): boolean => (e as NodeJS.ErrnoException).code === '
 
 async function tmux(d: PreflightDeps): Promise<Check> {
   try {
-    const v = firstLine(await d.run('tmux', ['-V']));
+    const v = firstLine(await d.run(resolveTmux(), ['-V']));
     return tmuxTooOld(v)
       ? { name: 'tmux', status: 'warn', detail: `${v}: Shift+Enter needs tmux 3.5 or newer; brew upgrade tmux` }
       : { name: 'tmux', status: 'ok', detail: v };
@@ -200,11 +201,14 @@ function plistOf(t: Target, d: DoctorDeps): { plist: string; fix: string } {
   return { plist, fix: t.name === PRIVATE ? 'svall setup' : `launchctl bootout gui/${d.uid}/${label}, delete ${plist}, then svall ${t.name}` };
 }
 
-// launchd finds node through the plist's PATH, which starts at the node setup ran with
+// launchd finds a checkout's node through the plist's PATH, which starts at the node setup ran with; the app names its own
 function daemonNode(t: Target, d: DoctorDeps): Check {
   if (!t.managed) return { name: 'daemon node', status: 'skip', detail: 'not managed' };
   const { plist, fix } = plistOf(t, d);
-  const dir = plistRun(d.read(plist) ?? '').path[0];
+  const run = plistRun(d.read(plist) ?? '');
+  const program = run.program[0];
+  if (program?.endsWith('/Contents/Helpers/node')) return { name: 'daemon node', status: 'ok', detail: `${program} (the app's own)` };
+  const dir = run.path[0];
   if (!dir) return { name: 'daemon node', status: 'skip', detail: `no PATH in ${plist}` };
   if (!d.exists(path.join(dir, 'node'))) return { name: 'daemon node', status: 'warn', detail: `${dir}/node is gone: ${fix}` };
   return /^\/nix\/store\/|\/Cellar\/|\/v?\d+\.\d+\.\d+[^/]*\//.test(`${dir}/`)
@@ -212,20 +216,21 @@ function daemonNode(t: Target, d: DoctorDeps): Check {
     : { name: 'daemon node', status: 'ok', detail: `${dir}/node` };
 }
 
-// launchd runs the plist's tsx with only the plist's PATH, and logs nothing to svalld.log when it cannot:
-// a checkout moved or deleted since setup, or a claude or codex installed since outside that PATH
+// launchd runs the plist's program with only the plist's PATH, and logs nothing to svalld.log when it cannot:
+// a checkout or app moved or deleted since setup, or a claude or codex installed since outside that PATH
 function daemonPath(t: Target, d: DoctorDeps): Check {
   if (!t.managed) return { name: 'daemon path', status: 'skip', detail: 'not managed' };
   const { plist, fix } = plistOf(t, d);
   const text = d.read(plist);
   if (text === undefined) return { name: 'daemon path', status: 'skip', detail: `no ${plist}` };
   const run = plistRun(text);
-  if (run.tsx && !d.exists(run.tsx)) return { name: 'daemon path', status: 'fail', detail: `${run.tsx} is gone, so launchd cannot start svalld: ${fix}` };
+  const missing = run.program.find((p) => !d.exists(p));
+  if (missing) return { name: 'daemon path', status: 'fail', detail: `${missing} is gone, so launchd cannot start svalld: ${fix}` };
   const finds = (dirs: string[], bin: string) => dirs.some((dir) => d.exists(path.join(dir, bin)));
   const lacks = ['claude', 'codex'].filter((bin) => finds(d.pathEnv.split(':'), bin) && !finds(run.path, bin));
   return lacks.length
     ? { name: 'daemon path', status: 'warn', detail: `the PATH in ${plist} has no ${lacks.join(' or ')}, which this shell finds: ${fix}` }
-    : { name: 'daemon path', status: 'ok', detail: 'its checkout is there, and it finds claude and codex as this shell does' };
+    : { name: 'daemon path', status: 'ok', detail: 'its program is there, and it finds claude and codex as this shell does' };
 }
 
 // launchd gives svalld only the plist's environment, which setup took from the shell it ran in

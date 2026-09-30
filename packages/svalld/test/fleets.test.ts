@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { WebSocketServer } from 'ws';
 import { PROTOCOL_VERSION } from '@svall/protocol';
 import { answers, displayName, fleetControl, fleetNamed, ProtocolMismatch, takenNames, type FleetDeps } from '../src/fleets.js';
+import { checkoutRuntime } from '../src/runtime.js';
 import type { HomeSetup } from '../src/setup.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -35,7 +36,7 @@ function fake(homedir: string, o: { up?: string[]; loaded?: string[]; apps?: num
     isApp: (pid) => (o.apps ?? []).includes(pid),
     uid: 501,
     launchAgentsDir: path.join(homedir, 'Library/LaunchAgents'),
-    repoRoot: '/r',
+    runtime: checkoutRuntime('/r'),
     timeoutMs: 40,
     intervalMs: 5,
   };
@@ -91,7 +92,7 @@ describe('fleetControl', () => {
     const f = fake(u);
     const home = await fleetControl(priv, f.deps).create('work');
     expect(home).toBe(path.join(u, '.svall-work'));
-    expect(f.setups).toEqual([{ home, label: 'io.github.linusroxbergh.svall.svalld.work', repoRoot: '/r', launchAgentsDir: f.deps.launchAgentsDir, launchctl: false, port: 0 }]);
+    expect(f.setups).toEqual([{ home, label: 'io.github.linusroxbergh.svall.svalld.work', runtime: checkoutRuntime('/r'), launchAgentsDir: f.deps.launchAgentsDir, launchctl: false, port: 0 }]);
     expect(f.calls).toContainEqual(['launchctl', ['bootstrap', 'gui/501', path.join(f.deps.launchAgentsDir, 'io.github.linusroxbergh.svall.svalld.work.plist')]]);
     expect(f.up.has(home)).toBe(true);
   });

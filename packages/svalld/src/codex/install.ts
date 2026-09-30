@@ -15,8 +15,10 @@ export function codexPaths(env: NodeJS.ProcessEnv = process.env, home: string = 
 type Entry = { type: string; command?: string; timeout?: number; additionalContextLimit?: number };
 type Group = { matcher?: string; hooks?: Entry[] };
 
-// codex trusts a hook by the hash of its definition, so the command names no node path that an upgrade would move
-export const codexHookCommand = (script: string): string => `[ -z "$SVALL_CHAR_ID" ] || { node ${shq(script)} codex "$PPID"; }`;
+// codex trusts a hook by the hash of its definition: a checkout names no node an upgrade would move, and the app names
+// its own node, whose path an update keeps
+export const codexHookCommand = (script: string, node?: string): string =>
+  `[ -z "$SVALL_CHAR_ID" ] || { ${node ? `n=${shq(node)}; [ -x "$n" ] || n=node; "$n"` : 'node'} ${shq(script)} codex "$PPID"; }`;
 
 // SessionEnd and Interrupt are capped at 3 s. The two events the daemon answers carry the whole brief, which codex
 // would otherwise cut to a preview past its spill threshold

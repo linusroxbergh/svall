@@ -3,8 +3,9 @@ import path from 'node:path';
 import { Command } from 'commander';
 import { findAgents } from '@svall/svalld/agents';
 import { codexPaths } from '@svall/svalld/codex/install';
-import { repoRoot, resolvePaths, userPaths } from '@svall/svalld/paths';
+import { resolvePaths, userPaths } from '@svall/svalld/paths';
 import { LAUNCHD_LABEL, PRIVATE } from '@svall/svalld/profile';
+import { ownRuntime } from '@svall/svalld/runtime';
 import { claudeHooksCurrent, codexHooksCurrent, plistCurrent, readCodexHooks, readJsonSettings, requireWritableHooks, runSetup, shimsCurrent } from '@svall/svalld/setup';
 import { renderGroups, useColor } from '../checks-view.js';
 import { printResult } from '../format.js';
@@ -38,8 +39,8 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
           notes.push({ name: 'hooks', status: 'warn', detail: 'missing or out of date: run svall setup' });
         }
         // desktop:install puts this checkout's app in place, so shims or a plist that run another checkout, moved or not, are out of date
-        if (!shimsCurrent(userPaths().shimDir, repoRoot())) notes.push({ name: 'shims', status: 'warn', detail: 'missing or out of date: run svall setup' });
-        if (!plistCurrent({ home: t.home, label: LAUNCHD_LABEL, launchAgentsDir: userPaths().launchAgents, repoRoot: repoRoot() })) {
+        if (!shimsCurrent(userPaths().shimDir, ownRuntime())) notes.push({ name: 'shims', status: 'warn', detail: 'missing or out of date: run svall setup' });
+        if (!plistCurrent({ home: t.home, label: LAUNCHD_LABEL, launchAgentsDir: userPaths().launchAgents, runtime: ownRuntime() })) {
           notes.push({ name: 'launchd', status: 'warn', detail: 'plist missing or out of date: run svall setup' });
         }
         // a failed check is listed too, as --json has no other way to say why it exits 1
@@ -60,7 +61,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
         codex,
         launchAgentsDir: userPaths().launchAgents,
         shimDir: userPaths().shimDir,
-        repoRoot: repoRoot(),
+        runtime: ownRuntime(),
         launchctl: system,
         agents,
       });

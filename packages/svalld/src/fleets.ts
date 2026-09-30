@@ -7,8 +7,9 @@ import WebSocket from 'ws';
 import { fleetNameProblem, PROTOCOL_VERSION, type FleetEntry } from '@svall/protocol';
 import { loadConfig } from './config.js';
 import { Invalid, NotFound } from './errors.js';
-import { repoRoot, resolvePaths, userPaths } from './paths.js';
+import { resolvePaths, userPaths } from './paths.js';
 import { PRIVATE, profileHome, profileLabel, profileOf } from './profile.js';
+import { ownRuntime, type Runtime } from './runtime.js';
 import { setupHome, type HomeSetup } from './setup.js';
 import { appPid, appQuit, fleetHomes } from './uninstall.js';
 
@@ -25,7 +26,7 @@ export type StartDeps = {
   setupHome(o: HomeSetup): Promise<string[]>;
   uid: number;
   launchAgentsDir: string;
-  repoRoot: string;
+  runtime: Runtime;
   timeoutMs: number;
   intervalMs: number;
 };
@@ -34,8 +35,8 @@ export type FleetDeps = StartDeps & { homedir: string; isApp(pid: number): boole
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export const homeSetup = (t: FleetTarget, d: Pick<StartDeps, 'repoRoot' | 'launchAgentsDir'>): HomeSetup => ({
-  home: t.home, label: profileLabel(t.name), repoRoot: d.repoRoot, launchAgentsDir: d.launchAgentsDir, launchctl: false,
+export const homeSetup = (t: FleetTarget, d: Pick<StartDeps, 'runtime' | 'launchAgentsDir'>): HomeSetup => ({
+  home: t.home, label: profileLabel(t.name), runtime: d.runtime, launchAgentsDir: d.launchAgentsDir, launchctl: false,
   port: t.name === PRIVATE ? undefined : 0,
 });
 
@@ -155,7 +156,7 @@ export const realFleetDeps = (): FleetDeps => ({
   isApp: appQuit.isApp,
   uid: os.userInfo().uid,
   launchAgentsDir: userPaths().launchAgents,
-  repoRoot: repoRoot(),
+  runtime: ownRuntime(),
   timeoutMs: 15_000,
   intervalMs: 200,
 });
