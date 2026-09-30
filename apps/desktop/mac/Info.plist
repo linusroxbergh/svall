@@ -18,6 +18,7 @@
   <key>NSCameraUsageDescription</key><string>A site open in a character's browser is asking to use the camera.</string>
   <key>NSMicrophoneUsageDescription</key><string>A site open in a character's browser is asking to use the microphone.</string>
   <key>NSLocationUsageDescription</key><string>A site open in a character's browser is asking for your location.</string>
+  <key>NSAppleEventsUsageDescription</key><string>Svall, or a program running in a character, wants to control another app.</string>
   <key>NSLocalNetworkUsageDescription</key><string>Svall, or a site open in a character's browser, is reaching a device on your local network.</string>
   <key>NSDownloadsFolderUsageDescription</key><string>A character's browser saves the files you download there.</string>
 </dict>

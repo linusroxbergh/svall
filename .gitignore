@@ -18,3 +18,4 @@ vendor/node/
 vendor/sparkle/
 vendor/tmux/
 __pycache__/
+dist/
