@@ -6,11 +6,19 @@ import { spawn } from 'node:child_process';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const charId = process.env.SVALL_CHAR_ID;
 const term = process.env.SVALL_TERM === '2' ? 2 : undefined;
 const home = process.env.SVALL_HOME ?? path.join(os.homedir(), '.svall');
 const inner = process.argv[2];
+// the release's and Svall Dev's hooks both run for every agent, so each acts only for its own variant's homes;
+// a home named like neither is a test fleet's, which Svall Dev answers
+const variantOf = (h) => {
+  const b = path.basename(h);
+  return /^\.svall(-[a-z][a-z0-9-]*)?$/.test(b) && !/^\.svall-dev(-|$)/.test(b) ? 'release' : 'dev';
+};
+const mine = variantOf(path.dirname(path.dirname(fileURLToPath(import.meta.url)))) === variantOf(home);
 
 // stdin that never closes must not hold Claude Code's statusline pipe open
 const watchdog = setTimeout(() => process.exit(0), 5000);
@@ -20,7 +28,7 @@ process.stdin.setEncoding('utf8');
 process.stdin.on('data', (d) => (input += d));
 process.stdin.on('end', () => {
   clearTimeout(watchdog);
-  if (charId) report(input);
+  if (charId && mine) report(input);
   if (!inner) return;
   const child = spawn(inner, { shell: true, stdio: ['pipe', 'inherit', 'inherit'] });
   child.on('error', () => { process.exitCode = 1; });

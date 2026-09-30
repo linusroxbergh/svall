@@ -704,3 +704,27 @@ describe('a bundled runtime', () => {
       .toBe(`[ -z "$SVALL_CHAR_ID" ] || { n='/A/node'; [ -x "$n" ] || n=node; "$n" '/h/.svall/hooks/agent-hook.mjs' codex "$PPID"; }`);
   });
 });
+
+describe('both variants in one statusLine', () => {
+  const R = '/u/.svall/hooks/claude-status.mjs';
+  const D = '/u/.svall-dev/hooks/claude-status.mjs';
+  const merge = (s: Record<string, unknown>, script: string) => mergeStatusLine(s, statusWrapper('/n/node', script), script);
+  const command = (s: Record<string, unknown>) => (s.statusLine as { command: string }).command;
+  const start = { statusLine: { type: 'command', command: 'my-status' } };
+
+  for (const [first, second] of [[R, D], [D, R]]) {
+    it(`keeps both wrappers and the user's command when ${first === R ? 'the release' : 'Svall Dev'} set up first`, () => {
+      const both = merge(merge(start, first), second);
+      expect(merge(both, first)).toEqual(both);
+      expect(merge(both, second)).toEqual(both);
+    });
+
+    it(`takes either variant out and leaves the other wrapping the user's command (${first === R ? 'release' : 'dev'} first)`, () => {
+      const both = merge(merge(start, first), second);
+      expect(command(unmergeStatusLine(both, first))).toBe(command(merge(start, second)));
+      expect(command(unmergeStatusLine(both, second))).toBe(command(merge(start, first)));
+      expect(command(unmergeStatusLine(unmergeStatusLine(both, second), first))).toBe('my-status');
+      expect(unmergeStatusLine(unmergeStatusLine(merge(merge({}, first), second), first), second)).toEqual({});
+    });
+  }
+});

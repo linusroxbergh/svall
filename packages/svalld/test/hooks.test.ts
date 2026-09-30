@@ -1,6 +1,7 @@
 import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -487,5 +488,54 @@ describe('hook receiver and script', () => {
     expect(out).toBe('');
     expect(Date.now() - t0).toBeLessThan(2500);
     server.close();
+  });
+});
+
+describe('a hook script of the other variant', () => {
+  // runs a copy of `file` installed under <root>/<scriptHome>/hooks against a listening socket in <root>/<fleet>
+  async function lines(file: string, scriptHome: string, fleet: string, args: string[], stdin: string): Promise<{ got: string[]; code: number | null }> {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sv-'));
+    const copy = path.join(root, scriptHome, 'hooks', path.basename(file));
+    fs.mkdirSync(path.dirname(copy), { recursive: true });
+    fs.copyFileSync(file, copy);
+    const home = path.join(root, fleet);
+    fs.mkdirSync(home, { recursive: true });
+    const got: string[] = [];
+    const server = net.createServer((s) => s.on('data', (d) => got.push(String(d)))).listen(path.join(home, 'hooks.sock'));
+    await new Promise<void>((r) => server.once('listening', r));
+    const code = await new Promise<number | null>((resolve) => {
+      const p = execFile('node', [copy, ...args], { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, () => {});
+      p.on('exit', resolve);
+      p.stdin!.end(stdin);
+    });
+    await new Promise((r) => setTimeout(r, 100));
+    server.close();
+    fs.rmSync(root, { recursive: true, force: true });
+    return { got, code };
+  }
+  const hook = JSON.stringify({ hook_event_name: 'Stop' });
+  const status = JSON.stringify({ session_id: 's', context_window: { used_percentage: 12 } });
+
+  it('forwards nothing for a home of the other variant', async () => {
+    expect((await lines(script, '.svall-dev', '.svall', [], hook)).got).toEqual([]);
+  });
+  it('forwards for a home of its own variant', async () => {
+    expect((await lines(script, '.svall', '.svall', [], hook)).got).toHaveLength(1);
+  });
+  it("leaves a test fleet to Svall Dev's script only", async () => {
+    expect((await lines(script, '.svall', 'fleet', [], hook)).got).toEqual([]);
+    expect((await lines(script, '.svall-dev', 'fleet', [], hook)).got).toHaveLength(1);
+  });
+
+  it('reports no status for a home of the other variant, and still runs the wrapped command', async () => {
+    const r = await lines(statusScript, '.svall-dev', '.svall', ['cat >/dev/null'], status);
+    expect(r).toEqual({ got: [], code: 0 });
+  });
+  it('reports status for a home of its own variant', async () => {
+    expect((await lines(statusScript, '.svall', '.svall', ['cat >/dev/null'], status)).got).toHaveLength(1);
+  });
+  it("leaves a test fleet's status to Svall Dev's script only", async () => {
+    expect((await lines(statusScript, '.svall', 'fleet', ['cat >/dev/null'], status)).got).toEqual([]);
+    expect((await lines(statusScript, '.svall-dev', 'fleet', ['cat >/dev/null'], status)).got).toHaveLength(1);
   });
 });

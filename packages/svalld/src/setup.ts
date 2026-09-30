@@ -77,35 +77,75 @@ export function hooksInstalled(settings: Record<string, unknown>, events: readon
   const paths = resolvePaths(home);
   const hooks = (settings.hooks ?? {}) as Record<string, HookGroup[]>;
   const status = (settings.statusLine as StatusLine | undefined)?.command ?? '';
-  return status.includes(shq(paths.statusScript)) && events.some((ev) =>
+  return ownHead(status, paths.statusScript) !== undefined && events.some((ev) =>
     (hooks[ev] ?? []).some((g) => (g.hooks ?? []).some((h) => isOurs(h.command, paths.hookScript))));
+}
+
+const WORD = String.raw`'(?:[^']|'\\'')*'`;
+const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+type Wrapped = { head: string; inner?: string };
+
+// our wrapper of `script` at the top of `command`: all up to the script, then the command it wraps as one quoted word.
+// the script inside a nested wrapper's quoted argument is followed by an escaped quote, so it never matches here
+function ownWrapper(command: string, script: string): Wrapped | undefined {
+  const m = new RegExp(String.raw`^([\s\S]*?${escape(shq(script))})(?: (${WORD}))?$`).exec(command);
+  return m ? { head: m[1], inner: m[2] === undefined ? undefined : unshq(m[2]) } : undefined;
+}
+
+// the other variant's wrapper, which statusWrapper wrote
+const OTHER = new RegExp(String.raw`^(svall_status\(\) \{ [\s\S]*? \}; svall_status ${WORD})(?: (${WORD}))?$`);
+function otherWrapper(command: string): Wrapped | undefined {
+  const m = OTHER.exec(command);
+  return m ? { head: m[1], inner: m[2] === undefined ? undefined : unshq(m[2]) } : undefined;
+}
+
+// the second variant to set up goes inside the first one's wrapper, which keeps its place
+function withStatus(command: string | undefined, wrapper: string, script: string): string {
+  if (!command) return wrapper;
+  const own = ownWrapper(command, script);
+  if (own) return own.inner ? `${wrapper} ${shq(own.inner)}` : wrapper;
+  const other = otherWrapper(command);
+  if (other) return `${other.head} ${shq(withStatus(other.inner, wrapper, script))}`;
+  return `${wrapper} ${shq(command)}`;
+}
+
+function withoutStatus(command: string, script: string): string | undefined {
+  const own = ownWrapper(command, script);
+  if (own) return own.inner;
+  const other = otherWrapper(command);
+  if (!other) return command;
+  const inner = other.inner && withoutStatus(other.inner, script);
+  return inner ? `${other.head} ${shq(inner)}` : other.head;
+}
+
+/** The part of the statusline that runs `script`, up to it, wherever in a chain of wrappers it sits. */
+function ownHead(command: string | undefined, script: string): string | undefined {
+  for (let c = command; c; c = otherWrapper(c)?.inner) {
+    const own = ownWrapper(c, script);
+    if (own) return own.head;
+  }
+  return undefined;
 }
 
 // Claude Code's context reading reaches the daemon through its statusLine command, so the one
 // the user already had becomes the wrapper's argument and still writes the line. A wrapper from an
-// earlier setup keeps its inner command but is rebuilt, so a moved node is repaired.
+// earlier setup keeps its inner command but is rebuilt, so a moved node is repaired; the other
+// variant's wrapper stays outside it.
 export function mergeStatusLine(settings: Record<string, unknown>, wrapper: string, script: string): Record<string, unknown> {
   const out = structuredClone(settings);
   const current = out.statusLine as StatusLine | undefined;
   const command = current?.type === 'command' && current.command ? current.command : undefined;
-  const inner = command && unwrapStatusLine(command, script);
-  const next = inner ? `${wrapper} ${shq(inner)}` : wrapper;
+  const next = withStatus(command, wrapper, script);
   if (command === next) return out;
   out.statusLine = { ...current, type: 'command', command: next };
   return out;
 }
 
-// the command a wrapper of `script` wraps, or the command itself when it is not one
-function unwrapStatusLine(command: string, script: string): string | undefined {
-  const at = command.indexOf(shq(script));
-  return at === -1 ? command : unshq(command.slice(at + shq(script).length).trim()) || undefined;
-}
-
 export function unmergeStatusLine(settings: Record<string, unknown>, script: string): Record<string, unknown> {
   const out = structuredClone(settings);
   const current = out.statusLine as StatusLine | undefined;
-  if (current?.type !== 'command' || !current.command?.includes(shq(script))) return out;
-  const inner = unwrapStatusLine(current.command, script);
+  if (current?.type !== 'command' || ownHead(current.command, script) === undefined) return out;
+  const inner = withoutStatus(current.command!, script);
   if (inner) out.statusLine = { ...current, command: inner };
   else delete out.statusLine;
   return out;
@@ -361,8 +401,8 @@ export function installCodexHooks(codex: CodexPaths, script: string, before: Jso
 
 // the node the installed statusline names, while it is there: the commands fall back to the node on PATH,
 // so svall running under another node is no reason to rewrite them
-function installedNode(settings: Record<string, unknown>): string | undefined {
-  const quoted = /\bn=('(?:[^']|'\\'')*'); \[ -x "\$n" \]/.exec((settings.statusLine as StatusLine | undefined)?.command ?? '')?.[1];
+function installedNode(settings: Record<string, unknown>, script: string): string | undefined {
+  const quoted = /\bn=('(?:[^']|'\\'')*'); \[ -x "\$n" \]/.exec(ownHead((settings.statusLine as StatusLine | undefined)?.command, script) ?? '')?.[1];
   if (!quoted) return undefined;
   try {
     fs.accessSync(unshq(quoted), fs.constants.X_OK);
@@ -375,7 +415,7 @@ function installedNode(settings: Record<string, unknown>): string | undefined {
 // the hooks and statusline setup writes into the Claude settings for the fleet at `home`
 function withClaudeHooks(settings: Record<string, unknown>, home: string): Record<string, unknown> {
   const paths = resolvePaths(home);
-  const node = ownRuntime().bundle ? process.execPath : installedNode(settings) ?? process.execPath;
+  const node = ownRuntime().bundle ? process.execPath : installedNode(settings, paths.statusScript) ?? process.execPath;
   return mergeStatusLine(
     mergeHooks(settings, hookCommand(node, paths.hookScript, 'claude'), hooksFor('claude'), paths.hookScript),
     statusWrapper(node, paths.statusScript),

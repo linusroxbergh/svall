@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const charId = process.env.SVALL_CHAR_ID;
 const term = process.env.SVALL_TERM === '2' ? 2 : undefined;
@@ -14,7 +15,14 @@ const backend = process.argv[2] === 'codex' ? 'codex' : 'claude';
 const pid = Number(process.argv[3]) || undefined;
 const home = process.env.SVALL_HOME ?? path.join(os.homedir(), '.svall');
 const done = () => process.exit(0);
-if (!charId) done();
+// the release's and Svall Dev's hooks both run for every agent, so each acts only for its own variant's homes;
+// a home named like neither is a test fleet's, which Svall Dev answers
+const variantOf = (h) => {
+  const b = path.basename(h);
+  return /^\.svall(-[a-z][a-z0-9-]*)?$/.test(b) && !/^\.svall-dev(-|$)/.test(b) ? 'release' : 'dev';
+};
+const mine = variantOf(path.dirname(path.dirname(fileURLToPath(import.meta.url)))) === variantOf(home);
+if (!charId || !mine) done();
 const safety = setTimeout(done, 1500);
 safety.unref();
 
