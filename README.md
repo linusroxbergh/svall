@@ -496,11 +496,12 @@ signed in to is signed in there too.
     pnpm typecheck
     pnpm e2e             # Playwright against a temporary daemon
     pnpm desktop:dev     # Vite dev server plus a debug app; SVALL_HOME picks the daemon, unless it names a release fleet
-    pnpm desktop:build   # an unsigned apps/desktop/mac/build/Svall.app
+    pnpm desktop:build   # an unsigned apps/desktop/mac/build/Svall Dev.app
+    pnpm app:build       # apps/desktop/mac/build/Svall.app, with its own node, tmux, daemon and CLI
     pnpm ghostty:build   # GhosttyKit from vendor/ghostty (v1.3.1) into vendor/ghostty-kit
     pnpm ghostty:publish # build GhosttyKit and upload it for installs to download
     mkdir -p /tmp/svall-dev && echo '{ "port": 0 }' > /tmp/svall-dev/config.json
-    SVALL_HOME=/tmp/svall-dev pnpm svalld   # port 0 keeps it off the private fleet's 47800
+    SVALL_HOME=/tmp/svall-dev pnpm svalld   # port 0 keeps it off the private fleets' 47800 and 47900
 
 The first `pnpm e2e` needs
 `pnpm --filter @svall/desktop-web exec playwright install chromium`.
