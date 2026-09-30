@@ -435,11 +435,13 @@ export const hookCommand = (node: string, script: string, backend: AgentKind): s
 export const readCodexHooks = (codex: CodexPaths, wanted = fs.existsSync(codex.dir)): JsonSettings | undefined =>
   (wanted ? readJsonSettings(codex.hooks) : undefined);
 
+export const CODEX_TRUST = 'Codex asks once to trust these hooks: start codex and choose "Trust all and continue", or trust them in /hooks';
+
 /** Writes the hooks into Codex's own file, when Codex is wanted here. */
 export function installCodexHooks(script: string, before: JsonSettings | undefined): string[] {
   if (!before) return [];
   const wrote = writeJsonSettings(before, withCodexHooks(before.settings, script), 'codex hooks');
-  return wrote.length ? [...wrote, 'Codex asks once to trust these hooks: start codex and choose "Trust all and continue", or trust them in /hooks'] : [];
+  return wrote.length ? [...wrote, CODEX_TRUST] : [];
 }
 
 // the node the installed statusline names, while it is there: the commands fall back to the node on PATH,
@@ -520,6 +522,26 @@ export function setupUser(o: { home: string; settings?: JsonSettings; codex: Cod
   return done;
 }
 
+/** What setup takes out of the files of agents turned off here, each file read and checked first; throws before anything is written. */
+export function hookRemovals(o: { home: string; settingsPath: string; codex: CodexPaths; claudeWanted: boolean; codexWanted: boolean }): [JsonSettings, Record<string, unknown>, string][] {
+  const paths = resolvePaths(o.home);
+  const holdsOurs = (file: string): boolean => {
+    const text = readOrUndefined(file) ?? '';
+    return text.includes(paths.hookScript) || text.includes(paths.statusScript);
+  };
+  const removals: [JsonSettings, Record<string, unknown>, string][] = [];
+  if (!o.claudeWanted && holdsOurs(o.settingsPath)) {
+    const s = readJsonSettings(o.settingsPath);
+    removals.push([s, unmergeStatusLine(unmergeHooks(s.settings, paths.hookScript), paths.statusScript), 'claude hooks removed']);
+  }
+  if (!o.codexWanted && holdsOurs(o.codex.hooks)) {
+    const s = readJsonSettings(o.codex.hooks);
+    removals.push([s, unmergeHooks(s.settings, paths.hookScript), 'codex hooks removed']);
+  }
+  for (const [current, next] of removals) requireWritable(current, next);
+  return removals;
+}
+
 export async function runSetup(o: {
   home: string; settingsPath: string; codex: CodexPaths; launchAgentsDir: string; shimDir: string; runtime: Runtime; launchctl: boolean; agents?: AgentKind[];
   integrations?: AgentKind[]; replaceSettings?: boolean;
@@ -532,21 +554,7 @@ export async function runSetup(o: {
   const settings = claudeWanted ? readJsonSettings(o.settingsPath) : undefined;
   const codexHooks = readCodexHooks(o.codex, codexWanted);
   requireWritableHooks(o.home, settings, codexHooks);
-  const paths = resolvePaths(o.home);
-  const holdsOurs = (file: string): boolean => {
-    const text = readOrUndefined(file) ?? '';
-    return text.includes(paths.hookScript) || text.includes(paths.statusScript);
-  };
-  const removals: [JsonSettings, Record<string, unknown>, string][] = [];
-  if (!claudeWanted && holdsOurs(o.settingsPath)) {
-    const s = readJsonSettings(o.settingsPath);
-    removals.push([s, unmergeStatusLine(unmergeHooks(s.settings, paths.hookScript), paths.statusScript), 'claude hooks removed']);
-  }
-  if (!codexWanted && holdsOurs(o.codex.hooks)) {
-    const s = readJsonSettings(o.codex.hooks);
-    removals.push([s, unmergeHooks(s.settings, paths.hookScript), 'codex hooks removed']);
-  }
-  for (const [current, next] of removals) requireWritable(current, next);
+  const removals = hookRemovals({ ...o, claudeWanted, codexWanted });
   const home = await setupHome({ ...o, label: LAUNCHD_LABEL, launchctl: false });
   const user = setupUser({ ...o, settings, codexHooks, replaceSettings: o.replaceSettings ?? true });
   for (const [current, next, what] of removals) user.push(...writeJsonSettings(current, next, what));

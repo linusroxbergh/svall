@@ -13,8 +13,8 @@ import { takeLoginEnv } from '@svall/svalld/login-env';
 import { LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from '@svall/svalld/profile';
 import { ownRuntime } from '@svall/svalld/runtime';
 import {
-  claudeHooksCurrent, codexHooksCurrent, isLoaded, kickstart, plistCurrent, readCodexHooks, readJsonSettings, readOrUndefined, refreshFleetPlists,
-  requireWritableHooks, runSetup, shimsCurrent, takenOverBy, type JsonSettings,
+  CODEX_TRUST, claudeHooksCurrent, codexHooksCurrent, hookRemovals, isLoaded, kickstart, plistCurrent, readCodexHooks, readJsonSettings, readOrUndefined,
+  refreshFleetPlists, requireWritableHooks, runSetup, shimsCurrent, takenOverBy, type JsonSettings,
 } from '@svall/svalld/setup';
 import { integrationsFor, requireInstalledApp, runtimeVersion, setupPlan, staleFleets } from '@svall/svalld/setup-plan';
 import { fleetHomes } from '@svall/svalld/uninstall';
@@ -42,6 +42,10 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       if (t.name !== PRIVATE) throw new Error(`${SHIM} setup configures the private fleet; run ${SHIM} ${t.name} to open that one`);
       const runtime = ownRuntime();
       requireInstalledApp(runtime);
+      // stand-in folders could put the hooks where the user's own agents never look
+      if (!answered && !o.plan && !o.check && !o.ifNeeded) {
+        throw new Error(`the login shell did not answer within 5 seconds, so setup changed nothing: try again, or run ${SHIM} setup in a terminal`);
+      }
       const configFile = resolvePaths(t.home).config;
       // the choices are saved only once setup is about to write, so a run that stops has changed nothing
       let choices: Parameters<typeof saveConfig>[1] | undefined;
@@ -53,15 +57,20 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
         });
         const chosen = kinds(o.agents);
         const found = o.found !== undefined ? kinds(o.found) : findAgents(process.env.PATH ?? '');
-        // a fleet with no main agent set runs claude when both are found, so turning claude off makes the one left on the main agent
+        // a fleet with no main agent set runs claude when both are found; turning off the main agent, saved or not, makes the one left on the main agent
         const on = chosen.filter((k) => found.includes(k));
-        const main = on.length && !on.includes(mainAgent(undefined, found)) && !loadConfig(configFile).mainAgent ? { mainAgent: on[0] } : {};
+        const current = loadConfig(configFile).mainAgent ?? mainAgent(undefined, found);
+        const main = on.length && !on.includes(current) ? { mainAgent: on[0] } : {};
         choices = { integrations: integrationsFor(chosen, found), ...main };
       }
       const integrations = choices?.integrations ?? loadConfig(configFile).integrations;
       const settingsPath = userPaths().claudeSettings;
       const codex = codexPaths();
       const { launchAgents, shimDir } = userPaths();
+      // setup takes an agent whose own folder is here as installed, even when its CLI is not on PATH
+      const hasFolder = (k: AgentKind) => fs.existsSync(k === 'claude' ? path.dirname(settingsPath) : codex.dir);
+      const homes = fleetHomes(os.homedir());
+      const label = (h: string) => profileLabel(profileOf(h));
       if (o.plan) {
         const found = await Promise.all(findAgents(process.env.PATH ?? '').map(async (kind) => {
           const bin = path.join(onPath(AGENTS[kind].bin, process.env.PATH ?? '')!, AGENTS[kind].bin);
@@ -70,14 +79,14 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
         }));
         // the stand-in folders say nothing of whether the user's own PATH holds the shim
         const plan = setupPlan({
-          home: t.home, found, integrations, settingsPath, codexHooks: codex.hooks,
-          launchAgentsDir: launchAgents, shimDir, pathEnv: answered ? process.env.PATH ?? '' : '',
+          home: t.home, found, folders: AGENT_KINDS.filter(hasFolder), integrations, settingsPath, codexHooks: codex.hooks, launchAgentsDir: launchAgents,
+          // the plists a setup from this screen writes for the other fleets, taking over any another copy runs
+          fleets: homes.filter((h) => profileOf(h) !== PRIVATE && !plistCurrent({ home: h, label: label(h), launchAgentsDir: launchAgents, runtime })),
+          shimDir, pathEnv: answered ? process.env.PATH ?? '' : '', answered,
         });
         process.stdout.write(`${JSON.stringify(plan)}\n`);
         return;
       }
-      const homes = fleetHomes(os.homedir());
-      const label = (h: string) => profileLabel(profileOf(h));
       const plistOf = (h: string) => readOrUndefined(path.join(launchAgents, `${label(h)}.plist`));
       if (o.ifNeeded) {
         const owner = takenOverBy(plistOf(t.home), runtime);
@@ -89,8 +98,8 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       }
       const agents = findAgents(process.env.PATH ?? '');
       const wants = (k: AgentKind, fallback: boolean) => fallback && (!integrations || integrations.includes(k));
-      const claudeWanted = wants('claude', agents.includes('claude') || fs.existsSync(path.dirname(settingsPath)));
-      const codexWanted = wants('codex', agents.includes('codex') || fs.existsSync(codex.dir));
+      const claudeWanted = wants('claude', agents.includes('claude') || hasFolder('claude'));
+      const codexWanted = wants('codex', agents.includes('codex') || hasFolder('codex'));
       // these throw on a file setup could not write back, so --check covers it too; a refresh still restarts old daemons
       let settings: JsonSettings | undefined;
       let codexHooks: JsonSettings | undefined;
@@ -99,6 +108,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
         settings = claudeWanted ? readJsonSettings(settingsPath) : undefined;
         codexHooks = readCodexHooks(codex, codexWanted);
         requireWritableHooks(t.home, settings, codexHooks);
+        hookRemovals({ home: t.home, settingsPath, codex, claudeWanted, codexWanted });
       } catch (e) {
         if (!o.ifNeeded) throw e;
         unwritable = (e as Error).message;
@@ -166,6 +176,9 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       const fleets = await refreshFleetPlists({ homes, runtime, launchAgentsDir: launchAgents, launchctl: system, takeOver: !o.ifNeeded });
       lines.push(...fleets.done);
       if (system) lines.push(...await kickstart(stale.filter((l) => l !== LAUNCHD_LABEL && !fleets.restarted.includes(l))));
-      printResult({ done: lines, warnings }, json(), () => [...lines, ...warnings].join('\n'));
+      // Codex's trust ask is the user's next step, so it goes with the warnings the setup screen shows
+      const done = lines.filter((l) => l !== CODEX_TRUST);
+      if (done.length < lines.length) warnings.push(CODEX_TRUST);
+      printResult({ done, warnings }, json(), () => [...done, ...warnings].join('\n'));
     });
 }

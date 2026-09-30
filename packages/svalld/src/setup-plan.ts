@@ -6,24 +6,31 @@ import { LAUNCHD_LABEL, SHIM, profileLabel, profileOf } from './profile.js';
 import { bundledVersion, type Runtime } from './runtime.js';
 
 export type FoundAgent = { kind: AgentKind; path: string; version?: string };
-export type SetupPlan = { agents: FoundAgent[]; writes: { what: string; path: string }[]; shimDir: string; shimOnPath: boolean; blockers: string[] };
+export type SetupPlan = {
+  agents: FoundAgent[]; integrations?: AgentKind[]; writes: { what: string; path: string; agent?: AgentKind }[];
+  shimDir: string; shimOnPath: boolean; blockers: string[];
+};
 
-/** What the app's setup screen shows before anything is written. */
+/** What the app's setup screen shows before anything is written: the screen leaves out the files of the agents it turns off. */
 export function setupPlan(o: {
-  home: string; found: FoundAgent[]; integrations?: AgentKind[]; settingsPath: string; codexHooks: string;
-  launchAgentsDir: string; shimDir: string; pathEnv: string;
+  home: string; found: FoundAgent[]; folders: AgentKind[]; integrations?: AgentKind[]; settingsPath: string; codexHooks: string;
+  launchAgentsDir: string; fleets: string[]; shimDir: string; pathEnv: string; answered: boolean;
 }): SetupPlan {
-  const on = (k: AgentKind) => o.found.some((a) => a.kind === k) && (!o.integrations || o.integrations.includes(k));
+  // setup writes an agent's hooks when its CLI is on PATH or its own folder is here
+  const has = (k: AgentKind) => o.found.some((a) => a.kind === k) || o.folders.includes(k);
   const writes = [
-    ...(on('claude') ? [{ what: 'Claude Code hooks and status line', path: o.settingsPath }] : []),
-    ...(on('codex') ? [{ what: 'Codex hooks', path: o.codexHooks }] : []),
+    ...(has('claude') ? [{ what: 'Claude Code hooks and status line', path: o.settingsPath, agent: 'claude' as const }] : []),
+    ...(has('codex') ? [{ what: 'Codex hooks', path: o.codexHooks, agent: 'codex' as const }] : []),
     { what: 'the background service that keeps fleets running', path: path.join(o.launchAgentsDir, `${LAUNCHD_LABEL}.plist`) },
+    ...o.fleets.map((h) => ({ what: `the background service of the ${profileOf(h)} fleet`, path: path.join(o.launchAgentsDir, `${profileLabel(profileOf(h))}.plist`) })),
     { what: `the ${SHIM} command`, path: path.join(o.shimDir, SHIM) },
     { what: 'your fleet', path: o.home },
   ];
+  let blockers: string[] = [];
+  if (!o.answered) blockers = ['Your login shell did not answer within 5 seconds, so Svall cannot see where Claude Code and Codex are. Check again.'];
+  else if (!o.found.length) blockers = [`Install ${AGENT_KINDS.map((k) => `${AGENTS[k].label} (${AGENTS[k].installUrl})`).join(' or ')} first, then check again.`];
   return {
-    agents: o.found, writes, shimDir: o.shimDir, shimOnPath: o.pathEnv.split(':').includes(o.shimDir),
-    blockers: o.found.length ? [] : [`Install ${AGENT_KINDS.map((k) => `${AGENTS[k].label} (${AGENTS[k].installUrl})`).join(' or ')} first, then check again.`],
+    agents: o.found, integrations: o.integrations, writes, shimDir: o.shimDir, shimOnPath: o.pathEnv.split(':').includes(o.shimDir), blockers,
   };
 }
 

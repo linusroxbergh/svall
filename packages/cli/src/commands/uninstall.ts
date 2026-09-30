@@ -5,7 +5,7 @@ import { codexPaths } from '@svall/svalld/codex/install';
 import { realDeps } from '@svall/svalld/mobile';
 import { takeLoginEnv } from '@svall/svalld/login-env';
 import { userPaths } from '@svall/svalld/paths';
-import { PRIVATE, profileHome } from '@svall/svalld/profile';
+import { PRIVATE, SHIM, profileHome } from '@svall/svalld/profile';
 import { ownRuntime } from '@svall/svalld/runtime';
 import { cliCommand } from '@svall/svalld/setup';
 import { appQuit, fleetData, fleetHomes, purge, runUninstall } from '@svall/svalld/uninstall';
@@ -39,7 +39,10 @@ export function uninstallCommand(json: () => boolean): Command {
     .option('--login-shell', 'take PATH, CLAUDE_CONFIG_DIR and CODEX_HOME from the login shell, as an app opened from Finder has none')
     .option('--no-launchctl', 'leave the launchd agents running, only delete their plists')
     .action(async (o: { purge?: boolean; fromApp?: boolean; launchctl: boolean; loginShell?: boolean }) => {
-      if (o.loginShell) await takeLoginEnv();
+      // stand-in folders would leave the hooks in the folders the user's own agents read
+      if (o.loginShell && !(await takeLoginEnv())) {
+        throw new Error(`the login shell did not answer within 5 seconds, so nothing was uninstalled: try again, or run ${SHIM} uninstall in a terminal`);
+      }
       const r = await uninstall({ purge: Boolean(o.purge) }, {
         uninstall: () => runUninstall({
           home: profileHome(PRIVATE),

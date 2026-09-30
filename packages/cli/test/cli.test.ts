@@ -131,6 +131,23 @@ describe('svall uninstall --login-shell', () => {
       cleanHomes();
     }
   });
+
+  it('uninstalls nothing when the login shell does not answer', async () => {
+    const home = makeHome();
+    const script = path.join(home, '.svall', 'hooks', 'agent-hook.mjs');
+    const settings = path.join(home, '.claude', 'settings.json');
+    fs.mkdirSync(path.dirname(settings));
+    fs.writeFileSync(settings, JSON.stringify(mergeHooks({}, `[ -z "$SVALL_CHAR_ID" ] || { node '${script}' claude; }`, HOOK_EVENTS, script)));
+    const env = { HOME: home, SHELL: path.join(home, 'no-such-shell'), PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin`, SVALL_HOME: '', TMUX: '' };
+    try {
+      const r = await run(env, '--json', 'uninstall', '--from-app', '--no-launchctl', '--login-shell');
+      expect(r.code).not.toBe(0);
+      expect(r.stderr).toContain('did not answer');
+      expect(fs.readFileSync(settings, 'utf8')).toContain(script);
+    } finally {
+      cleanHomes();
+    }
+  });
 });
 
 describe('svall setup --agents', () => {
@@ -149,6 +166,44 @@ describe('svall setup --agents', () => {
       const r = await run({ HOME: home, PATH: tools(home) }, 'setup', '--no-launchctl', '--agents', 'codex', '--found', 'claude,codex');
       expect(r.code).toBe(0);
       expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ integrations: ['codex'], mainAgent: 'codex' });
+    } finally {
+      cleanHomes();
+    }
+  });
+
+  it('makes the one left on the main agent when the saved main agent is turned off', async () => {
+    const home = makeHome();
+    try {
+      fs.mkdirSync(path.join(home, '.svall'));
+      fs.writeFileSync(path.join(home, '.svall', 'config.json'), JSON.stringify({ mainAgent: 'claude' }));
+      const r = await run({ HOME: home, PATH: tools(home) }, 'setup', '--no-launchctl', '--agents', 'codex', '--found', 'claude,codex');
+      expect(r.code).toBe(0);
+      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toMatchObject({ integrations: ['codex'], mainAgent: 'codex' });
+    } finally {
+      cleanHomes();
+    }
+  });
+
+  it('saves no choice when an agent turned off has a file its hooks cannot be taken out of', async () => {
+    const home = makeHome();
+    try {
+      fs.mkdirSync(path.join(home, '.claude'));
+      fs.writeFileSync(path.join(home, '.claude', 'settings.json'), `{ "hooks": "${path.join(home, '.svall', 'hooks', 'agent-hook.mjs')}" `);
+      const r = await run({ HOME: home, PATH: tools(home) }, 'setup', '--no-launchctl', '--agents', 'codex', '--found', 'claude,codex');
+      expect(r.stderr).toContain('is not valid JSON');
+      expect(fs.existsSync(path.join(home, '.svall'))).toBe(false);
+    } finally {
+      cleanHomes();
+    }
+  });
+
+  it('changes nothing when the login shell does not answer', async () => {
+    const home = makeHome();
+    try {
+      const r = await run({ HOME: home, PATH: tools(home), SHELL: path.join(home, 'no-such-shell') }, 'setup', '--no-launchctl', '--login-shell', '--agents', 'codex');
+      expect(r.code).not.toBe(0);
+      expect(r.stderr).toContain('did not answer');
+      expect(fs.existsSync(path.join(home, '.svall'))).toBe(false);
     } finally {
       cleanHomes();
     }
