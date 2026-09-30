@@ -8,7 +8,8 @@ extension BrowserManager {
         guard !profiles.isEmpty else { return tell("No Chrome profile found", "Chrome keeps its profiles in ~/Library/Application Support/Google/Chrome.") }
         let ask = NSAlert()
         ask.messageText = "Import cookies from Chrome"
-        ask.informativeText = "This copies the profile’s cookies, so the browser is signed in wherever the profile is. macOS asks for the “Chrome Safe Storage” key to decrypt them. They are kept in this fleet’s browser data under ~/Library, where any program you run, the fleet’s agents included, can read them. Only ‘svall uninstall --purge’ removes them again."
+        let purge = AppRuntime.cli == nil ? "‘svall-dev uninstall --purge’" : "Svall → Uninstall Svall… with “Also delete fleet data”"
+        ask.informativeText = "This copies the profile’s cookies, so the browser is signed in wherever the profile is. macOS asks for the “Chrome Safe Storage” key to decrypt them. They are kept in this fleet’s browser data under ~/Library, where any program you run, the fleet’s agents included, can read them. \(purge) removes them again."
         let pick = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 260, height: 26))
         for p in profiles { pick.menu?.addItem(withTitle: p.name, action: nil, keyEquivalent: "") }
         ask.accessoryView = pick

@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import type { CodexPaths } from './codex/install.js';
 import { portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
 import { resolvePaths } from './paths.js';
-import { BUNDLE_ID, homePrefix, isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome } from './profile.js';
+import { BUNDLE_ID, homePrefix, isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome, SHIM } from './profile.js';
 import { readJsonSettings, readOrUndefined, requireWritable, shimNames, unmergeHooks, unmergeStatusLine, writeJsonSettings, type JsonSettings } from './setup.js';
 import { resolveTmux } from './tmux/tmux.js';
 
@@ -79,7 +79,7 @@ export async function quitApp(homes: string[], app: AppQuit, command: string, sk
 export async function runUninstall(o: { home: string; homes: string[]; settingsPaths: string[]; codex: CodexPaths; launchAgentsDir: string; shimDir: string; launchctl: boolean; mobile: MobileDeps; app: AppQuit; tmux?: string; skipPid?: number }): Promise<string[]> {
   // $TMUX names the server the caller's terminal runs in; stopping it would end this run before the shims and the report
   const inside = o.homes.find((h) => resolvePaths(h).tmuxSock === o.tmux?.split(',')[0]);
-  if (inside) throw new Error(`this terminal runs inside the tmux server of ${inside}, which uninstall stops; run svall uninstall from a terminal outside Svall`);
+  if (inside) throw new Error(`this terminal runs inside the tmux server of ${inside}, which uninstall stops; run ${SHIM} uninstall from a terminal outside Svall`);
   const paths = resolvePaths(o.home);
   const edits = o.settingsPaths.map((file): [JsonSettings, Record<string, unknown>, string] => {
     const settings = readJsonSettings(file);
@@ -89,7 +89,7 @@ export async function runUninstall(o: { home: string; homes: string[]; settingsP
   if (codex) edits.push([codex, unmergeHooks(codex.settings, paths.hookScript), 'codex hooks removed']);
   // a file that cannot take its change stops the run before anything is removed
   for (const [current, next] of edits) requireWritable(current, next);
-  const done = await quitApp(o.homes, o.app, 'svall uninstall', o.skipPid);
+  const done = await quitApp(o.homes, o.app, `${SHIM} uninstall`, o.skipPid);
   for (const [current, next, what] of edits) {
     // Codex needs no hooks file, so one that held only Svall's goes, unless it links elsewhere
     const emptied = current === codex && !Object.keys(next).length && Object.keys(current.settings).length > 0;

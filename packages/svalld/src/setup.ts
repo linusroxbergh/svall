@@ -483,7 +483,10 @@ export const shimNames = (shimDir: string): string[] => {
   return text.includes('Contents/Resources/runtime/svall.mjs') ? [SHIM] : [SHIM, 'svall'];
 };
 
-export const shimText = (r: Runtime): string => `#!/bin/sh\nexec ${r.cli.map(shq).join(' ')} "$@"\n`;
+/** The command line that runs `r`'s CLI, which still works once uninstall has removed the shims. */
+export const cliCommand = (r: Runtime): string => r.cli.map(shq).join(' ');
+
+export const shimText = (r: Runtime): string => `#!/bin/sh\nexec ${cliCommand(r)} "$@"\n`;
 
 /** Whether the shims hold what setup would write now to run `runtime`. */
 export const shimsCurrent = (shimDir: string, runtime: Runtime): boolean =>

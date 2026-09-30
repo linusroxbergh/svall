@@ -88,7 +88,7 @@ function MainAgent() {
   const found = useApp((s) => s.fleet.agentsFound ?? NO_AGENTS);
   return (
     <div className="row">
-      <span>main agent<Info id="main-agent">What mission control, the scribe and <code>svall char new --run</code> start. A <code>home.command</code> in config.json overrides it for the crew.</Info></span>
+      <span>main agent<Info id="main-agent">What mission control, the scribe and <code>{shim()} char new --run</code> start. A <code>home.command</code> in config.json overrides it for the crew.</Info></span>
       <b><select className="fld inline" aria-label="Main agent" value={main} data-testid="set-main-agent"
         onChange={(e) => setMainAgent(deps(), e.target.value as AgentKind)}>
         {AgentKind.options.map((k) => (
@@ -116,7 +116,7 @@ function FleetName() {
   return (
     <>
       <div className="row">
-        <span>name<Info id="fleet-name"><code>svall &lt;name&gt;</code> opens this fleet from a terminal.</Info></span>
+        <span>name<Info id="fleet-name"><code>{shim()} &lt;name&gt;</code> opens this fleet from a terminal.</Info></span>
         <b><input className="fld inline" aria-label="Fleet name" data-testid="set-fleet-name" key={name} defaultValue={name ?? ''}
           placeholder={home ? directoryName(home) : undefined}
           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} onBlur={(e) => save(e.currentTarget)} /></b>

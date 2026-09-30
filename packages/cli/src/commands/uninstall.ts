@@ -6,6 +6,8 @@ import { realDeps } from '@svall/svalld/mobile';
 import { takeLoginEnv } from '@svall/svalld/login-env';
 import { userPaths } from '@svall/svalld/paths';
 import { PRIVATE, profileHome } from '@svall/svalld/profile';
+import { ownRuntime } from '@svall/svalld/runtime';
+import { cliCommand } from '@svall/svalld/setup';
 import { appQuit, fleetData, fleetHomes, purge, runUninstall } from '@svall/svalld/uninstall';
 import { printResult } from '../format.js';
 import { ask } from '../prompt.js';
@@ -63,7 +65,8 @@ export function uninstallCommand(json: () => boolean): Command {
       });
       printResult(r, json(), () => [
         ...(r.done.length ? r.done : ['nothing to remove']),
-        ...(r.kept.length ? [`kept ${r.kept.join(', ')}; svall uninstall --purge deletes them`] : []),
+        // the shims are gone by now, and a `svall` left on PATH may be the other build's
+        ...(r.kept.length ? [`kept ${r.kept.join(', ')}; ${cliCommand(ownRuntime())} uninstall --purge deletes them`] : []),
       ].join('\n'));
     });
 }
