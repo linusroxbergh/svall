@@ -2,9 +2,10 @@ import type { Tier } from '../resources/model.js';
 import { readSettings, type Settings } from '../settings.js';
 import type { View } from './ui.js';
 
-// the half card's footprint as a fraction of the map, so one window size carries to the next
+// the half card's footprint as a fraction of the map, so one window size carries to the next; the first leaves about
+// a twentieth of the map around it
 export type HalfCard = { w: number; h: number };
-export const DEFAULT_HALF_CARD: HalfCard = { w: 0.5, h: 0.5 };
+export const DEFAULT_HALF_CARD: HalfCard = { w: 0.9, h: 0.88 };
 export const HALF_CARD_RANGE = { min: 0.22, max: 0.98 };
 // the widths of the shelf's Where and Which columns, in pixels; What is fixed and the editor takes what is left
 export type ResourceCols = { rail: number; list: number };
