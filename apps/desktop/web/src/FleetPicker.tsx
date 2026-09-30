@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { fleetNameProblem, type FleetEntry } from '@svall/protocol';
 import { app } from './boot.js';
+import { shim } from './bridge.js';
 import { useApp } from './hooks.js';
 import { directoryName } from './selectors.js';
 
@@ -91,7 +92,7 @@ function Picker({ mode }: { mode: 'bare' | 'menu' }) {
         </div>
         {problem && <div className="fleet-error" data-testid="fleet-new-problem">{problem}</div>}
         {errors.new && <div className="fleet-error">{errors.new}</div>}
-        <div className="modal-note">From a terminal: <code>svall &lt;name&gt;</code></div>
+        <div className="modal-note">From a terminal: <code>{shim()} &lt;name&gt;</code></div>
       </div>
     </div>
   );
