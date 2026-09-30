@@ -19,6 +19,7 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
     var focused = false
     var cellSize = CGSize(width: 8, height: 16)
     private var cursor: NSCursor = .iBeam
+    private var sizeTimer: Timer?
 
     var cutout = Cutout() {
         didSet {
@@ -46,7 +47,12 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
             cfg.command = ptr
             return ghostty_surface_new(app, &cfg)
         }
-        if surface == nil { return nil }
+        guard let surface else { return nil }
+        // libghostty starts a surface focused, blinking its cursor and, once visible, drawing every vsync
+        ghostty_surface_set_focus(surface, false)
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(windowKeyChanged), name: name, object: nil)
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("not supported") }
@@ -99,9 +105,17 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
         if window != nil { viewDidChangeBackingProperties() }
     }
 
+    // the view follows its card every frame, drawing the grid it has at the top left; the grid, and with it
+    // the pty and a tmux reflow, changes once the size has held still. A hidden view is sized before it shows
     override func setFrameSize(_ newSize: NSSize) {
+        let resized = newSize != frame.size
         super.setFrameSize(newSize)
-        syncSize()
+        guard resized else { return }
+        sizeTimer?.invalidate()
+        if isHidden { syncSize(); return }
+        let timer = Timer(timeInterval: 0.1, repeats: false) { [weak self] _ in self?.syncSize() }
+        RunLoop.main.add(timer, forMode: .common)
+        sizeTimer = timer
     }
 
     override func viewDidChangeBackingProperties() {
@@ -128,7 +142,7 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
 
     override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()
-        if ok { focusDidChange(true) }
+        if ok { focusDidChange(window?.isKeyWindow ?? false) }
         return ok
     }
 
@@ -143,6 +157,15 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
         self.focused = focused
         if !focused { suppressNextLeftMouseUp = false }
         ghostty_surface_set_focus(surface, focused)
+    }
+
+    // focused means first responder in the key window; becoming key races the responder change, so it waits a turn
+    @objc private func windowKeyChanged(_ note: Notification) {
+        guard note.object as? NSWindow === window else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            focusDidChange(window?.isKeyWindow == true && window?.firstResponder === self)
+        }
     }
 
     override func updateTrackingAreas() {

@@ -105,7 +105,7 @@ export function reconcile(
           if (c.panePath !== undefined || !samePane) c.cwd = w.path;
           c.panePath = w.path;
         }
-        c.shell.lastOutputAt = w.activity;
+        if (!c.agent) c.shell.lastOutputAt = w.activity;
         delete c.revive;
       } else if (known.has(c.id) && (c.tmux || !c.revive)) {
         // one already dormant keeps the revive it was given, flags and all

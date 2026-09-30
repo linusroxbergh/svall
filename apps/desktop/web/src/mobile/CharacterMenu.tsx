@@ -2,7 +2,7 @@ import { Fragment, useRef, useState, type JSX, type RefObject } from 'react';
 import { contextKind, type Character, type ContextItem, type Params } from '@svall/protocol';
 import { webUrl } from '../bridge.js';
 import { commitFocused, FollowTextarea } from '../Field.js';
-import { useApp } from '../hooks.js';
+import { useApp, useTick } from '../hooks.js';
 import { LinkIcon } from '../map/LinkIcon.js';
 import { ago, hintText, linkText } from '../map/tokenText.js';
 import { usePromptHistory } from '../promptHistory.js';
@@ -105,6 +105,8 @@ function Instructions({ c }: { c: Character }) {
 
 function Details({ c }: { c: Character }) {
   const pct = contextPctOf(c);
+  // last activity counts on while a busy agent sends nothing
+  useTick(10_000);
   return (
     <div className="m-sec">
       <h4>Details</h4>

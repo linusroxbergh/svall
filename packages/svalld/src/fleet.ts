@@ -326,8 +326,9 @@ export class Fleet extends EventEmitter<Events> {
           c.panePath = w.path;
           if (c.cwd !== w.path) { c.cwd = w.path; cwdChanged.push(c.id); }
         }
-        c.shell.lastOutputAt = w.activity;
         settleAgent(c.id, c, w.command);
+        // shown only where there is no agent's own activity to show
+        if (!c.agent) c.shell.lastOutputAt = w.activity;
         // Codex should report promptly; three polls without an event means delivery needs attention.
         if (!c.agent && w.command === 'codex') {
           const n = (this.codexStreak.get(c.id) ?? 0) + 1;
@@ -889,6 +890,8 @@ export class Fleet extends EventEmitter<Events> {
         if (!c.tmux && 'hook' in e && e.hook.name === 'SessionEnd') return;
         const next = apply(c);
         if (next.agent) delete next.hint;
+        // the shell's activity shows again once the agent has gone, and its end is that activity
+        else if (c.agent) next.shell.lastOutputAt = Date.now();
         d.characters[ev.charId] = next;
       }
     });

@@ -165,6 +165,28 @@ runIf('Tmux', () => {
     expect(await t.listWindows()).toEqual([]);
   });
 
+  it('attaches a viewer session in one tmux call, holding only its window, as often as asked', async () => {
+    const t = await boot();
+    const main = await t.newWindow('c_view', '/tmp', {});
+    const second = await t.newWindow('c_view2', '/tmp', {});
+    const windows = async (s: string) => (await t.run('list-windows', '-t', `=${s}`, '-F', '#{window_id}')).trim().split('\n');
+    await t.resize(main.windowId, 100, 30);
+    // a session whose name starts with another's is not taken for it
+    await t.attachSession('v-c_view-2', second.windowId);
+    const run = vi.spyOn(t, 'run');
+    await t.attachSession('v-c_view', main.windowId);
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(await windows('v-c_view')).toEqual([main.windowId]);
+    expect(await windows('v-c_view-2')).toEqual([second.windowId]);
+    // with no client on it the session stays; attaching one sets destroy-unattached
+    expect(await t.run('show-hooks', '-t', 'v-c_view')).toContain('set-option -t v-c_view destroy-unattached on');
+    expect((await t.run('show-options', '-t', 'v-c_view', 'destroy-unattached')).trim()).toBe('');
+    expect((await t.run('show-options', '-w', '-t', main.windowId, 'window-size')).trim()).toBe('');
+    await t.attachSession('v-c_view', main.windowId);
+    expect(await windows('v-c_view')).toEqual([main.windowId]);
+    await expect(t.attachSession('v-c_gone', '@999')).rejects.toThrow(/can't find window/);
+  });
+
   it('control client streams output for panes turned on and stays quiet for panes turned off', async () => {
     const t = await boot();
     const w = await t.newWindow('c_one', '/tmp', {});

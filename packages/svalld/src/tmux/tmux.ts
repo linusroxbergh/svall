@@ -78,16 +78,16 @@ export class Tmux {
   }
 
   // one session per desktop terminal, holding only the character's window: when that window dies the
-  // session dies and the attached client exits instead of being moved to another window.
+  // session dies and the attached client exits instead of being moved to another window. One tmux call:
+  // a failing command ends its sequence, so the steps that would fail on a second attach sit behind `if -F`
   async attachSession(name: string, windowId: string): Promise<void> {
-    if (!(await this.hasSession(name))) {
-      await this.run('new-session', '-d', '-s', name, 'sleep 2147483647');
+    await this.run(
       // set directly on a session with no client, destroy-unattached destroys it at once
-      await this.run('set-hook', '-t', name, 'client-attached', `set -t ${name} destroy-unattached on`);
-    }
-    const linked = (await this.run('list-windows', '-t', `=${name}`, '-F', '#{window_id}')).trim().split('\n');
-    if (!linked.includes(windowId)) await this.run('link-window', '-k', '-s', windowId, '-t', `=${name}:^`);
-    await this.run('set-option', '-w', '-u', '-t', windowId, 'window-size');
+      'if', '-F', `#{N/s:${name}}`, '',
+      `new-session -d -s ${name} "sleep 2147483647" ; set-hook -t ${name} client-attached "set -t ${name} destroy-unattached on"`, ';',
+      'if', '-F', '-t', `=${name}:`, `#{W:#{?#{==:#{window_id},${windowId}},1,}}`, '', `link-window -k -s ${windowId} -t =${name}:^`, ';',
+      'set-option', '-w', '-u', '-t', windowId, 'window-size',
+    );
   }
 
   async killSession(name: string): Promise<void> {
