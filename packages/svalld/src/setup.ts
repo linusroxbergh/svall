@@ -436,7 +436,7 @@ export const readCodexHooks = (codex: CodexPaths, wanted = fs.existsSync(codex.d
   (wanted ? readJsonSettings(codex.hooks) : undefined);
 
 /** Writes the hooks into Codex's own file, when Codex is wanted here. */
-export function installCodexHooks(codex: CodexPaths, script: string, before: JsonSettings | undefined = readCodexHooks(codex)): string[] {
+export function installCodexHooks(script: string, before: JsonSettings | undefined): string[] {
   if (!before) return [];
   const wrote = writeJsonSettings(before, withCodexHooks(before.settings, script), 'codex hooks');
   return wrote.length ? [...wrote, 'Codex asks once to trust these hooks: start codex and choose "Trust all and continue", or trust them in /hooks'] : [];
@@ -498,7 +498,7 @@ export function requireWritableHooks(home: string, settings: JsonSettings | unde
 export function setupUser(o: { home: string; settings?: JsonSettings; codex: CodexPaths; codexHooks?: JsonSettings; shimDir: string; runtime: Runtime; replaceSettings: boolean }): string[] {
   const paths = resolvePaths(o.home);
   const done = o.settings ? writeJsonSettings(o.settings, withClaudeHooks(o.settings.settings, o.home), 'claude hooks and statusline') : [];
-  done.push(...installCodexHooks(o.codex, paths.hookScript, o.codexHooks));
+  done.push(...installCodexHooks(paths.hookScript, o.codexHooks));
 
   fs.mkdirSync(o.shimDir, { recursive: true });
   for (const name of shimNames(o.shimDir)) {

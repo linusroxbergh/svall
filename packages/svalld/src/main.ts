@@ -93,7 +93,7 @@ async function start(opts: Options): Promise<Daemon> {
   // the command names this fleet's script, and a second fleet rewriting it would reset its trust
   if (profile === PRIVATE && (config.integrations?.includes('codex') ?? true)) {
     const codex = codexPaths();
-    try { for (const line of installCodexHooks(codex, paths.hookScript, readCodexHooks(codex, agentsFound.includes('codex') || fs.existsSync(codex.dir)))) log.info(line); }
+    try { for (const line of installCodexHooks(paths.hookScript, readCodexHooks(codex, agentsFound.includes('codex') || fs.existsSync(codex.dir)))) log.info(line); }
     catch (e) { log.error(`codex hooks: ${(e as Error).message}`); }
   }
 

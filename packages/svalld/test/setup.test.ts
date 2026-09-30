@@ -428,6 +428,19 @@ describe('runSetup', () => {
     expect(fs.readFileSync(settingsPath, 'utf8')).not.toContain('agent-hook.mjs');
   });
 
+  it('writes no Codex hooks while Codex is turned off, even with its folder there, and takes back ones already there', async () => {
+    const home = makeHome();
+    const codex = codexPaths({ CODEX_HOME: path.join(home, 'codex') });
+    fs.mkdirSync(codex.dir);
+    const paths = { home, settingsPath: path.join(home, 'claude-settings.json'), codex, launchAgentsDir: path.join(home, 'la'), shimDir: path.join(home, 'bin'), runtime, launchctl: false };
+    await runSetup({ ...paths, agents: ['claude', 'codex'], integrations: ['claude'] });
+    expect(fs.existsSync(codex.hooks)).toBe(false);
+    await runSetup({ ...paths, agents: ['claude', 'codex'] });
+    expect(fs.readFileSync(codex.hooks, 'utf8')).toContain('agent-hook.mjs');
+    await runSetup({ ...paths, agents: ['claude', 'codex'], integrations: ['claude'] });
+    expect(fs.readFileSync(codex.hooks, 'utf8')).not.toContain('agent-hook.mjs');
+  });
+
   it('creates no hooks file for an agent the integrations name but that is not installed', async () => {
     const home = makeHome();
     const codex = codexPaths({ CODEX_HOME: path.join(home, 'codex') });
