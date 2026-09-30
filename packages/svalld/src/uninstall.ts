@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { CodexPaths } from './codex/install.js';
-import { portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
+import { fleetOrigin, portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
 import { resolvePaths } from './paths.js';
 import { BUNDLE_ID, homePrefix, isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome, SHIM } from './profile.js';
 import { readJsonSettings, readOrUndefined, requireWritable, shimNames, unmergeHooks, unmergeStatusLine, writeJsonSettings, type JsonSettings } from './setup.js';
@@ -16,7 +16,7 @@ const SHIM_MARKS = ['packages/cli/src/main.ts', 'Contents/Resources/runtime/sval
 const isAgentPlist = (f: string): boolean => f.startsWith(`${LAUNCHD_LABEL}.`) && f.endsWith('.plist');
 
 // `tailscale serve --bg` outlives the daemon, the port it listened on and a reboot, so a fleet's link is found
-// by the key it proxies to; a machine without tailscale has none
+// by the key it proxies to, or by its daemon's address; a machine without tailscale has none
 async function unserveFleets(homes: string[], d: MobileDeps): Promise<string[]> {
   let bin: string;
   try { bin = await resolveTailscale(d); } catch { return []; }
@@ -27,7 +27,7 @@ async function unserveFleets(homes: string[], d: MobileDeps): Promise<string[]> 
   const done: string[] = [];
   for (const home of homes) {
     const key = d.read(resolvePaths(home).mobileKey)?.trim();
-    for (const port of key ? portsServing(status, key) : []) {
+    for (const port of portsServing(status, key, fleetOrigin(d, home))) {
       await unserve(d, bin, port).then(
         () => { done.push(`turned off the phone link to ${home} on port ${port}`); },
         () => { done.push(`could not turn off the phone link to ${home}; run tailscale serve --https=${port} off`); },

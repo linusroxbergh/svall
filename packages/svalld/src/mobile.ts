@@ -45,12 +45,12 @@ export async function tailnetSelf(d: MobileDeps, bin: string): Promise<{ host: s
   return { host, owner };
 }
 
-/** Where serve sends the phone: the daemon's port behind the key only svalld and tailscaled hold. */
-const fleetOrigin = (d: MobileDeps, home: string): string | undefined => {
+export const fleetOrigin = (d: MobileDeps, home: string): string | undefined => {
   const p = Number(d.read(resolvePaths(home).port)?.trim());
   return p ? `http://127.0.0.1:${p}/` : undefined;
 };
 
+/** Where serve sends the phone: the daemon's port behind the key only svalld and tailscaled hold. */
 export function fleetTarget(d: MobileDeps, home: string): string {
   const origin = fleetOrigin(d, home);
   if (!origin) throw new Error(`the fleet is not running: start the app, or run \`${SHIM} <profile>\``);
@@ -91,11 +91,15 @@ export const unserve = async (d: MobileDeps, bin: string, port: number): Promise
 
 type ServeStatus = { Web?: Record<string, { Handlers?: Record<string, { Proxy?: string }> }> };
 
-/** The https ports that proxy to a daemon behind `key`, on whatever port it listened. */
-export function portsServing(json: string, key: string): number[] {
+/** The https ports that proxy to a daemon behind `key`, on whatever port it listened, or to the daemon at `origin`
+ *  under a key a failed on or off already turned over. */
+export function portsServing(json: string, key: string | undefined, origin?: string): number[] {
   const web = (JSON.parse(json) as ServeStatus).Web ?? {};
   return Object.entries(web)
-    .filter(([, site]) => { const proxy = site.Handlers?.['/']?.Proxy; return !!proxy?.startsWith('http://127.0.0.1:') && proxy.endsWith(`/${key}`); })
+    .filter(([, site]) => {
+      const proxy = site.Handlers?.['/']?.Proxy;
+      return !!proxy?.startsWith('http://127.0.0.1:') && (!!(key && proxy.endsWith(`/${key}`)) || !!(origin && proxy.startsWith(origin)));
+    })
     .map(([at]) => Number(at.slice(at.lastIndexOf(':') + 1)));
 }
 

@@ -328,6 +328,18 @@ describe('runUninstall', () => {
     expect(calls.filter((a) => a.includes('off'))).toEqual([]);
   });
 
+  it('turns off a phone link its running daemon serves under a key already turned over', async () => {
+    const f = installed();
+    fs.writeFileSync(path.join(f.home, 'mobile-key'), 'new');
+    fs.writeFileSync(path.join(f.home, 'port'), '47801');
+    const web = { 'mac.ts.net:443': 'http://127.0.0.1:47801/old', 'mac.ts.net:8443': 'http://127.0.0.1:47802/other' };
+    const calls: string[][] = [];
+    const served = JSON.stringify({ Web: Object.fromEntries(Object.entries(web).map(([at, proxy]) => [at, { Handlers: { '/': { Proxy: proxy } } }])) });
+    const mobile = realDeps(async (_cmd, args) => { calls.push(args); return args.join(' ') === 'serve status --json' ? served : ''; });
+    expect(await runUninstall({ ...f.o, mobile })).toEqual([`turned off the phone link to ${f.home} on port 443`]);
+    expect(calls.filter((a) => a.includes('off'))).toEqual([['serve', '--https=443', 'off']]);
+  });
+
   it('refuses from a terminal inside a fleet\'s tmux server before it changes anything', async () => {
     const f = installed();
     await runSetup(f.o);
