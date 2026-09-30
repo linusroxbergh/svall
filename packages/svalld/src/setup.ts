@@ -11,7 +11,7 @@ import { CLAUDE_HOOKS, hooksFor } from './hooks/receiver.js';
 import { writeAtomic } from './jsonfile.js';
 import { BUNDLE_ID, LAUNCHD_LABEL, SHIM } from './profile.js';
 import { HOOK_SCRIPT, claudePaths, expandHome, isOurs, resolvePaths, type Paths } from './paths.js';
-import { assetDir, bundled, ownRuntime, type Runtime } from './runtime.js';
+import { assetDir, bundled, ownRuntime, variant, type Runtime } from './runtime.js';
 import { shq } from './text.js';
 import { tmuxConfText } from './tmux/conf.js';
 
@@ -432,13 +432,19 @@ export const claudeHooksCurrent = (settings: Record<string, unknown>, home: stri
 /** Whether Codex's hooks file already holds what setup would write for `script`. */
 export const codexHooksCurrent = (current: Record<string, unknown>, script: string): boolean => same(withCodexHooks(current, script), current);
 
-const SHIMS = [SHIM];
+// Svall Dev also answers to `svall`, the name the briefs use, while no release has installed its own
+export const shimNames = (shimDir: string): string[] => {
+  if (variant === 'release') return [SHIM];
+  let text = '';
+  try { text = fs.readFileSync(path.join(shimDir, 'svall'), 'utf8'); } catch { /* none yet */ }
+  return text.includes('Contents/Resources/runtime/svall.mjs') ? [SHIM] : [SHIM, 'svall'];
+};
 
 export const shimText = (r: Runtime): string => `#!/bin/sh\nexec ${r.cli.map(shq).join(' ')} "$@"\n`;
 
 /** Whether the shims hold what setup would write now to run `runtime`. */
 export const shimsCurrent = (shimDir: string, runtime: Runtime): boolean =>
-  SHIMS.every((name) => fs.existsSync(path.join(shimDir, name)) && fs.readFileSync(path.join(shimDir, name), 'utf8') === shimText(runtime));
+  shimNames(shimDir).every((name) => fs.existsSync(path.join(shimDir, name)) && fs.readFileSync(path.join(shimDir, name), 'utf8') === shimText(runtime));
 
 /** Throws, before anything is written, when the Claude settings or Codex's hooks need a change setup cannot write. */
 export function requireWritableHooks(home: string, settings: JsonSettings | undefined, codexHooks: JsonSettings | undefined): void {
@@ -452,7 +458,7 @@ export function setupUser(o: { home: string; settings?: JsonSettings; codex: Cod
   done.push(...installCodexHooks(o.codex, paths.hookScript, o.codexHooks));
 
   fs.mkdirSync(o.shimDir, { recursive: true });
-  for (const name of SHIMS) {
+  for (const name of shimNames(o.shimDir)) {
     const shim = path.join(o.shimDir, name);
     fs.writeFileSync(shim, shimText(o.runtime), { mode: 0o755 });
     done.push(`shim -> ${shim}`);
