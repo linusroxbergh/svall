@@ -12,6 +12,8 @@ export const handoffTarget = (env: NodeJS.ProcessEnv, shimDir: string): string |
 };
 
 export function handoff(argv: string[]): void {
+  // -p beats $SVALL_HOME, so a run that names its fleet is this build's to resolve
+  if (argv.slice(2).some((a) => a === '-p' || a === '--profile' || a.startsWith('--profile='))) return;
   const other = handoffTarget(process.env, userPaths().shimDir);
   if (!other) return;
   // Svall Dev's own `svall`, with no release installed, would hand the run straight back
