@@ -6,7 +6,7 @@ import { DEFAULT_PORT, HOME_CWD } from './profile.js';
 
 export const Config = z.object({
   // what the app and `svall <name>` call the fleet; absent, its directory names it
-  name: z.string().refine(isProfileName, 'use lowercase letters, digits and dashes, starting with a letter, and no svall command').optional(),
+  name: z.string().refine(isProfileName, 'use lowercase letters, digits and dashes, starting with a letter, and no svall command or dev name, which Svall Dev keeps').optional(),
   port: z.number().int().default(DEFAULT_PORT),
   host: z.string().default('127.0.0.1'),
   shell: z.string().optional(),

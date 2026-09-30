@@ -467,6 +467,8 @@ leaves the Mac, beyond what your agents send:
 - For each character in a repository, the daemon runs `gh pr view` to find its
   branch's PR on GitHub.
 - `svall mobile` serves the fleet to your tailnet with `tailscale serve`.
+- Svall checks `https://svall.dev/appcast.xml` for updates, which tells
+  svall.dev your IP address and the version you run. Svall Dev doesn't.
 - Push notifications go through your phone's push service: Apple's, Google's
   or Mozilla's. The character's name and prompt are encrypted for your phone;
   the service sees when a push is sent, and the page's address

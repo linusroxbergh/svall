@@ -18,7 +18,7 @@ export const homePrefix = `${ROOT}-`;
 export const HOME_CWD = `~/${ROOT}/home`;
 
 // ~/.svall and ~/.svall-<name> are the release's, ~/.svall-dev and ~/.svall-dev-<name> Svall Dev's; a home named like
-// neither (a test fleet's) is no variant's. The hook scripts carry the same rule
+// neither (a test fleet's) is no variant's. The hook scripts give such a home to Svall Dev
 export const variantOf = (home: string): Variant | undefined => {
   const base = path.basename(home);
   if (/^\.svall-dev(-|$)/.test(base)) return 'dev';
