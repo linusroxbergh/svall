@@ -15,7 +15,7 @@ enum AppRuntime {
         return !FileManager.default.fileExists(atPath: NSHomeDirectory() + "/Library/LaunchAgents/\(id).svalld.plist")
     }
 
-    /// Runs the bundled CLI off the main thread and hands back its exit and stdout (stderr when it failed) on the main thread.
+    /// Runs the bundled CLI off the main thread and hands back its exit and stdout (stderr when it failed, else why it failed) on the main thread.
     static func run(_ args: [String], done: @escaping (Bool, String) -> Void) {
         guard let cli else { return done(false, "this build has no bundled CLI") }
         DispatchQueue.global(qos: .userInitiated).async {
@@ -35,9 +35,14 @@ enum AppRuntime {
             p.standardOutput = try? FileHandle(forWritingTo: out)
             p.standardError = try? FileHandle(forWritingTo: err)
             var ok = false
-            do { try p.run(); p.waitUntilExit(); ok = p.terminationStatus == 0 } catch { NSLog("svall cli: %@", "\(error)") }
+            let failure: String
+            do {
+                try p.run(); p.waitUntilExit(); ok = p.terminationStatus == 0
+                failure = "svall exited with status \(p.terminationStatus)" + (p.terminationReason == .uncaughtSignal ? " (uncaught signal)" : "")
+            } catch { NSLog("svall cli: %@", "\(error)"); failure = error.localizedDescription }
             let text = (try? String(contentsOf: ok ? out : err, encoding: .utf8)) ?? ""
-            DispatchQueue.main.async { done(ok, text) }
+            let reply = ok || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? text : failure
+            DispatchQueue.main.async { done(ok, reply) }
         }
     }
 }

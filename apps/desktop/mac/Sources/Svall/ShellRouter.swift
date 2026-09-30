@@ -220,6 +220,8 @@ final class ShellRouter {
             AppRuntime.run(["setup", "--plan", "--login-shell"]) { [weak self] ok, text in self?.bridge.send(.setupResult(step: "plan", ok: ok, json: text)) }
         case .setupRun(let agents):
             AppRuntime.run(["setup", "--json", "--login-shell", "--agents", agents.joined(separator: ",")]) { [weak self] ok, text in
+                // the home setup made did not exist when launch claimed it
+                if ok { _ = SvallHome.claim() }
                 self?.bridge.send(.setupResult(step: "run", ok: ok, json: text))
             }
         case .copy(let text):
