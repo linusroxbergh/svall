@@ -3,7 +3,7 @@ import path from 'node:path';
 import { Command } from 'commander';
 import { codexPaths } from '@svall/svalld/codex/install';
 import { realDeps } from '@svall/svalld/mobile';
-import { FALLBACK_DIRS, loginEnv } from '@svall/svalld/login-env';
+import { takeLoginEnv } from '@svall/svalld/login-env';
 import { userPaths } from '@svall/svalld/paths';
 import { PRIVATE, profileHome } from '@svall/svalld/profile';
 import { appQuit, fleetData, fleetHomes, purge, runUninstall } from '@svall/svalld/uninstall';
@@ -37,7 +37,7 @@ export function uninstallCommand(json: () => boolean): Command {
     .option('--login-shell', 'take PATH, CLAUDE_CONFIG_DIR and CODEX_HOME from the login shell, as an app opened from Finder has none')
     .option('--no-launchctl', 'leave the launchd agents running, only delete their plists')
     .action(async (o: { purge?: boolean; fromApp?: boolean; launchctl: boolean; loginShell?: boolean }) => {
-      if (o.loginShell) Object.assign(process.env, await loginEnv({ shell: process.env.SHELL || '/bin/zsh', timeoutMs: 5000, fallback: FALLBACK_DIRS() }));
+      if (o.loginShell) await takeLoginEnv();
       const r = await uninstall({ purge: Boolean(o.purge) }, {
         uninstall: () => runUninstall({
           home: profileHome(PRIVATE),

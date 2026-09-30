@@ -13,15 +13,15 @@ const shellScript = (body: string) => {
 describe('loginEnv', () => {
   it('reads PATH and where the agents keep their files between the markers, whatever the rc files print', async () => {
     const sh = shellScript('echo "welcome back"; PATH=/opt/x/bin:/usr/bin; CODEX_HOME=/c; export PATH CODEX_HOME; eval "$4"; echo "bye"');
-    expect(await loginEnv({ shell: sh, timeoutMs: 5000, fallback: ['/f'] })).toEqual({ PATH: '/opt/x/bin:/usr/bin', CODEX_HOME: '/c' });
+    expect(await loginEnv({ shell: sh, timeoutMs: 5000 })).toEqual({ PATH: '/opt/x/bin:/usr/bin', CODEX_HOME: '/c' });
   });
-  it('falls back when the shell hangs', async () => {
+  it('says nothing when the shell hangs', async () => {
     const sh = shellScript('sleep 30');
     const t = Date.now();
-    expect(await loginEnv({ shell: sh, timeoutMs: 300, fallback: ['/a', '/b'] })).toEqual({ PATH: '/a:/b' });
+    expect(await loginEnv({ shell: sh, timeoutMs: 300 })).toBeUndefined();
     expect(Date.now() - t).toBeLessThan(3000);
   });
-  it('falls back when the shell fails', async () => {
-    expect(await loginEnv({ shell: '/nonexistent/shell', timeoutMs: 1000, fallback: ['/a'] })).toEqual({ PATH: '/a' });
+  it('says nothing when the shell fails', async () => {
+    expect(await loginEnv({ shell: '/nonexistent/shell', timeoutMs: 1000 })).toBeUndefined();
   });
 });

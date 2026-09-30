@@ -133,6 +133,21 @@ describe('svall uninstall --login-shell', () => {
   });
 });
 
+describe('svall setup --if-needed --login-shell', () => {
+  it('writes nothing when the login shell does not answer', async () => {
+    const home = makeHome();
+    try {
+      const r = await run({ HOME: home, SHELL: path.join(home, 'no-such-shell') }, '--json', 'setup', '--if-needed', '--no-launchctl', '--login-shell');
+      expect(r.code).toBe(0);
+      expect(JSON.parse(r.stdout).warnings).toEqual([expect.stringContaining('did not answer')]);
+      expect(fs.existsSync(path.join(home, 'Library/LaunchAgents'))).toBe(false);
+      expect(fs.existsSync(path.join(home, '.local/bin/svall'))).toBe(false);
+    } finally {
+      cleanHomes();
+    }
+  });
+});
+
 runIf('svall CLI', () => {
   let daemon: Daemon | undefined;
   let home = '';

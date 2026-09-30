@@ -9,7 +9,7 @@ import { AGENTS, AGENT_KINDS, findAgents, onPath } from '@svall/svalld/agents';
 import { codexPaths } from '@svall/svalld/codex/install';
 import { loadConfig, saveConfig } from '@svall/svalld/config';
 import { resolvePaths, userPaths } from '@svall/svalld/paths';
-import { FALLBACK_DIRS, loginEnv } from '@svall/svalld/login-env';
+import { takeLoginEnv } from '@svall/svalld/login-env';
 import { LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from '@svall/svalld/profile';
 import { ownRuntime } from '@svall/svalld/runtime';
 import {
@@ -35,7 +35,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
     .option('--if-needed', 'set up only what is missing or out of date, and restart daemons of another version')
     .option('--login-shell', 'take PATH, CLAUDE_CONFIG_DIR and CODEX_HOME from the login shell, as an app opened from Finder has none')
     .action(async (o: { launchctl: boolean; check?: boolean; plan?: boolean; agents?: string; ifNeeded?: boolean; loginShell?: boolean }) => {
-      if (o.loginShell) Object.assign(process.env, await loginEnv({ shell: process.env.SHELL || '/bin/zsh', timeoutMs: 5000, fallback: FALLBACK_DIRS() }));
+      const answered = o.loginShell ? await takeLoginEnv() : true;
       // setup owns the per-user half — the Claude hooks and the shims — so it only ever means private
       const t = target();
       if (t.name !== PRIVATE) throw new Error(`${SHIM} setup configures the private fleet; run ${SHIM} ${t.name} to open that one`);
@@ -59,9 +59,10 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
           const version = await execFileP(bin, ['--version'], { timeout: 5_000 }).then((r) => r.stdout.trim().split('\n')[0], () => undefined);
           return { kind, path: bin, version };
         }));
+        // the stand-in folders say nothing of whether the user's own PATH holds the shim
         const plan = setupPlan({
           home: t.home, found, integrations, settingsPath, codexHooks: codex.hooks,
-          launchAgentsDir: launchAgents, shimDir, pathEnv: process.env.PATH ?? '',
+          launchAgentsDir: launchAgents, shimDir, pathEnv: answered ? process.env.PATH ?? '' : '',
         });
         process.stdout.write(`${JSON.stringify(plan)}\n`);
         return;
@@ -117,9 +118,11 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       const stale = staleFleets(homes, runtimeVersion(), (l) => loaded.has(l));
       if (o.ifNeeded) {
         const fleetsStale = ours.some((h) => profileOf(h) !== PRIVATE && !plistCurrent({ home: h, label: label(h), launchAgentsDir: launchAgents, runtime }));
-        if (!hooksStale && !shimsStale && !plistStale && !fleetsStale) {
+        // stand-in folders must not replace what a setup with the real login environment wrote
+        if (!answered || (!hooksStale && !shimsStale && !plistStale && !fleetsStale)) {
           const done = system ? await kickstart(stale) : [];
-          printResult({ done, warnings: [] }, json(), () => done.join('\n'));
+          const warnings = answered ? [] : ['the login shell did not answer, so the hooks, shims and plists were left as they are'];
+          printResult({ done, warnings }, json(), () => [...done, ...warnings].join('\n'));
           return;
         }
       }
