@@ -15,6 +15,12 @@ describe('loginEnv', () => {
     const sh = shellScript('echo "welcome back"; PATH=/opt/x/bin:/usr/bin; CODEX_HOME=/c; export PATH CODEX_HOME; eval "$4"; echo "bye"');
     expect(await loginEnv({ shell: sh, timeoutMs: 5000 })).toEqual({ PATH: '/opt/x/bin:/usr/bin', CODEX_HOME: '/c' });
   });
+  it('answers at once when an rc file reads input', async () => {
+    const sh = shellScript('read answer; PATH=/opt/x/bin; export PATH; eval "$4"');
+    const t = Date.now();
+    expect(await loginEnv({ shell: sh, timeoutMs: 3000 })).toEqual({ PATH: '/opt/x/bin' });
+    expect(Date.now() - t).toBeLessThan(2000);
+  });
   it('says nothing when the shell hangs', async () => {
     const sh = shellScript('sleep 30');
     const t = Date.now();

@@ -18,7 +18,7 @@ const FALLBACK_DIRS = (homedir = os.homedir()): string[] => [
 /** What the user's login shell exports that setup needs, or undefined when it fails or does not answer in time. */
 export function loginEnv(o: { shell: string; timeoutMs: number }): Promise<LoginEnv | undefined> {
   return new Promise((resolve) => {
-    execFile(o.shell, ['-l', '-i', '-c', COMMAND], { timeout: o.timeoutMs, killSignal: 'SIGKILL', env: { ...process.env, TERM: 'dumb' } }, (_err, stdout) => {
+    const child = execFile(o.shell, ['-l', '-i', '-c', COMMAND], { timeout: o.timeoutMs, killSignal: 'SIGKILL', env: { ...process.env, TERM: 'dumb' } }, (_err, stdout) => {
       const parts = String(stdout ?? '').split(MARK);
       const values = parts.length >= NAMES.length + 2 ? parts.slice(1, NAMES.length + 1).map((p) => p.trim()) : [];
       if (!values[0]) return resolve(undefined);
@@ -26,6 +26,8 @@ export function loginEnv(o: { shell: string; timeoutMs: number }): Promise<Login
       NAMES.forEach((n, i) => { if (i && values[i]) env[n] = values[i]; });
       resolve(env);
     });
+    // an rc file that reads input gets end of file, not a wait until the timeout
+    child.stdin?.end();
   });
 }
 
