@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import type { AgentKind } from '@svall/protocol';
+import { AGENT_LABEL, type AgentKind } from '@svall/protocol';
 import { createBridge } from './bridge.js';
 
 type Plan = { agents: { kind: AgentKind; path: string; version?: string }[]; writes: { what: string; path: string }[]; shimDir: string; shimOnPath: boolean; blockers: string[] };
-const LABEL: Record<AgentKind, string> = { claude: 'Claude Code', codex: 'Codex' };
 const AGENT_FILE: Record<string, AgentKind> = { 'Claude Code hooks and status line': 'claude', 'Codex hooks': 'codex' };
 
 export function Setup() {
@@ -41,9 +40,9 @@ export function Setup() {
         <h2>Agents</h2>
         {plan.agents.map((a) => (
           <label key={a.kind}>
-            <input type="checkbox" checked={!off.includes(a.kind)} aria-label={LABEL[a.kind]}
+            <input type="checkbox" checked={!off.includes(a.kind)} aria-label={AGENT_LABEL[a.kind]}
               onChange={(e) => setOff((o) => (e.target.checked ? o.filter((k) => k !== a.kind) : [...o, a.kind]))} />
-            {LABEL[a.kind]} <small>{a.version ?? ''} {a.path}</small>
+            {AGENT_LABEL[a.kind]} <small>{a.version ?? ''} {a.path}</small>
           </label>
         ))}
       </section>}
