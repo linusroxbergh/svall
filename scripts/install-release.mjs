@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { archiveRelease, KEEP_MODES, MANIFEST, SIG, SUMS, sshVerify, verifyRelease, verifySignature, verifyTree } from './release-manifest.mjs';
+import { archiveRelease, KEEP_MODES, MANIFEST, SIG, SUMS, sshVerify, TAR, verifyRelease, verifySignature, verifyTree } from './release-manifest.mjs';
 
 export const DEFAULT_PREFIX = path.join(os.homedir(), '.local', 'share', 'svall');
 
@@ -28,7 +28,7 @@ const VERSION = /^[A-Za-z0-9._+-]+$/;
 
 const isTarball = (p) => /\.tar\.gz$|\.tgz$/.test(p);
 
-const tar = (argv) => execFileSync('tar', argv, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120_000, maxBuffer: 16 * 1024 * 1024 });
+const tar = (argv) => execFileSync(TAR, argv, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120_000, maxBuffer: 16 * 1024 * 1024 });
 
 const contentOf = (file) => (fs.existsSync(file) ? fs.readFileSync(file) : undefined);
 

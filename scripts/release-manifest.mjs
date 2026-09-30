@@ -23,6 +23,9 @@ const SELF = [MANIFEST, SUMS, SIG];
 // also restore ACLs, file flags and xattrs, which nothing signed describes
 export const KEEP_MODES = process.platform === 'darwin' ? ['-p', '--no-acls', '--no-fflags', '--no-xattrs', '--no-mac-metadata'] : ['-p'];
 
+// the tar KEEP_MODES is written for: on the Mac its own bsdtar, not whichever tar comes first on PATH
+export const TAR = process.platform === 'darwin' ? '/usr/bin/tar' : 'tar';
+
 const digestOf = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
 const byPath = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
@@ -78,16 +81,16 @@ export function signManifest(dir, keyFile) {
  * (so sign the companions first).
  */
 export function signArchive(archive, keyFile) {
-  const { version } = archiveRelease(archive, execFileSync('tar', ['-tzf', archive], { encoding: 'utf8' }));
+  const { version } = archiveRelease(archive, execFileSync(TAR, ['-tzf', archive], { encoding: 'utf8' }));
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-sign-'));
   try {
-    execFileSync('tar', ['-xz', ...KEEP_MODES, '-f', archive, '-C', work]);
+    execFileSync(TAR, ['-xz', ...KEEP_MODES, '-f', archive, '-C', work]);
     const dir = path.join(work, 'releases', version);
     const { files, entriesDigest, unsigned, ...meta } = verifyTree(dir, { allowUnsigned: true }).release;
     for (const c of Object.values(meta.companions ?? {})) c.sha256 = digestOf(path.join(path.dirname(archive), path.basename(c.url)));
     writeManifest(dir, meta);
     signManifest(dir, keyFile);
-    execFileSync('tar', ['--no-xattrs', '-czf', archive, '-C', work, path.join('releases', version)], { env: { ...process.env, COPYFILE_DISABLE: '1' } });
+    execFileSync(TAR, ['--no-xattrs', '-czf', archive, '-C', work, path.join('releases', version)], { env: { ...process.env, COPYFILE_DISABLE: '1' } });
   } finally {
     fs.rmSync(work, { recursive: true, force: true });
   }

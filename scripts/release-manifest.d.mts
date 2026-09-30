@@ -28,6 +28,7 @@ export function entriesOf(dir: string): Entry[];
 export function manifestDigest(entries: Entry[]): string;
 export function writeManifest(dir: string, meta: Record<string, unknown>): { entries: Entry[]; release: Release };
 export function signManifest(dir: string, keyFile: string): void;
+export function signArchive(archive: string, keyFile: string): void;
 export function sshVerify(o: { allowedSigners: string }): Verify;
 export function archiveRelease(archive: string, listing: string): { version: string; members: string[] };
 export function verifySignature(dir: string, o?: VerifyOptions): boolean;

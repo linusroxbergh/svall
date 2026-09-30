@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { installRelease, rollbackRelease, stageArchive } from '../scripts/install-release.mjs';
-import { manifestDigest, signManifest, sshVerify, writeManifest, type Entry, type Verify } from '../scripts/release-manifest.mjs';
+import { manifestDigest, signArchive, signManifest, sshVerify, writeManifest, type Entry, type Verify } from '../scripts/release-manifest.mjs';
 import { PINS } from '../scripts/release-stage.mjs';
 
 const dirs: string[] = [];
@@ -102,6 +102,22 @@ describe('staging a release archive', () => {
     expect(seen).toEqual([['SHA256SUMS', 'SHA256SUMS.sig']]);
     expect(staged).toMatchObject({ version: '1.2.3', signed: true, release: { version: '1.2.3', platform: 'linux-x64' } });
     expect(fs.readFileSync(path.join(staged.dir, 'bin', 'svall'), 'utf8')).toContain('1.2.3');
+  });
+
+  it.runIf(process.platform === 'darwin')('signs and unpacks with the Mac\'s bsdtar when another tar comes first on PATH', () => {
+    const key = signer();
+    const archive = archiveOf(tree('1.2.3'));
+    const bin = temp();
+    // GNU tar, as Homebrew's gnubin or Nix puts it first, knows none of bsdtar's --no-fflags or --no-mac-metadata
+    fs.writeFileSync(path.join(bin, 'tar'), '#!/bin/sh\necho "tar: unrecognized option" >&2\nexit 64\n', { mode: 0o755 });
+    const PATH = process.env.PATH;
+    process.env.PATH = `${bin}:${PATH}`;
+    try {
+      signArchive(archive, key.key);
+      expect(stageArchive(archive, path.join(temp(), 'staging'), { verify: key.verify })).toMatchObject({ version: '1.2.3', signed: true });
+    } finally {
+      process.env.PATH = PATH;
+    }
   });
 
   it('refuses a release name no installer takes before it unpacks anything', () => {
