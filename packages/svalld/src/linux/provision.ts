@@ -138,8 +138,9 @@ export async function provisionFleet(o: Provision): Promise<Provisioned> {
   const { unit } = await ensureUnit(o);
   await stopUnit(o.run, unit);
   unseed(o, paths, parsed.data.home.cwd);
-  writeJsonAtomic(paths.fleetConfig, { ...parsed.data, id: o.fleetId, gatewayMachineId: o.gatewayMachineId });
+  // before fleet.json names this fleet, so a run cut short leaves a home the next one rekeys again
   fs.rmSync(paths.owner, { force: true });
+  writeJsonAtomic(paths.fleetConfig, { ...parsed.data, id: o.fleetId, gatewayMachineId: o.gatewayMachineId });
   await enableUnit(o.run, unit);
   return { outcome: 'rekeyed', home: o.home, unit };
 }

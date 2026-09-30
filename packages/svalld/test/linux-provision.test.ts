@@ -177,6 +177,22 @@ describe('provisionFleet', () => {
     expect(f.sd.held).toEqual([OTHER, OTHER, FLEET]);
   });
 
+  it('finishes a rekey cut short at any step, so the fleet never keeps the owner record host add left', async () => {
+    const [rm, rename] = [fs.rmSync, fs.renameSync];
+    for (const cut of ['owner.json', 'fleet.json']) {
+      const f = far();
+      hostAdded(f);
+      const crash = cut === 'owner.json'
+        ? vi.spyOn(fs, 'rmSync').mockImplementation((p, o) => { if (p === f.paths.owner) throw new Error('crashed'); rm(p, o); })
+        : vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => { if (to === f.paths.fleetConfig) throw new Error('crashed'); rename(from, to); });
+      await expect(provisionFleet(f.o)).rejects.toThrow('crashed');
+      crash.mockRestore();
+      expect(await provisionFleet(f.o), cut).toMatchObject({ outcome: 'rekeyed' });
+      expect(fleetOf(f), cut).toMatchObject({ id: FLEET, gatewayMachineId: GATEWAY });
+      expect(fs.existsSync(f.paths.owner), cut).toBe(false);
+    }
+  });
+
   it('drops the mission control folder and agent profiles a standalone start seeded, and keeps each once anything in it has changed', async () => {
     const f = far();
     const mc = seeded(f);
