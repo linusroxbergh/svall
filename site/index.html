@@ -8,9 +8,11 @@
 <meta name="theme-color" content="#2C3847">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
+<link rel="preload" href="fonts/AlbertSans-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/Outfit-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/JetBrainsMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <style>
+@font-face { font-family: 'Albert Sans'; src: url(fonts/AlbertSans-Variable.woff2) format('woff2'); font-weight: 100 900; font-display: swap; }
 @font-face { font-family: 'Outfit'; src: url(fonts/Outfit-Variable.woff2) format('woff2'); font-weight: 100 900; font-display: swap; }
 @font-face { font-family: 'JetBrains Mono'; src: url(fonts/JetBrainsMono-Regular.woff2) format('woff2'); font-weight: 400; font-display: swap; }
 
@@ -36,7 +38,8 @@
   --disc-0: #FFFEF8; --disc-1: #F7F0DE; --disc-2: #DCCFB2;
   --shade-0: rgba(10,18,24,.15); --shade-1: rgba(10,18,24,.25); --shade-2: rgba(10,18,24,.4); --shade-3: rgba(10,18,24,.55);
   --shadow-2: 0 8px 22px rgba(10,18,24,.34);
-  --sans: 'Outfit', ui-sans-serif, -apple-system, 'Segoe UI', sans-serif;
+  --sans: 'Albert Sans', ui-sans-serif, -apple-system, 'Segoe UI', sans-serif;
+  --app-sans: 'Outfit', ui-sans-serif, -apple-system, 'Segoe UI', sans-serif;
   --mono: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, monospace;
   --ease: cubic-bezier(.22,.7,.24,1); --ease-out: cubic-bezier(.16,1,.3,1);
   --r-md: 10px; --r-xs: 5px;
@@ -74,6 +77,8 @@ h1 { margin: 0; max-width: 13ch; font-size: clamp(2.3rem, 1.4rem + 3vw, 3.5rem);
   background: var(--surface-1); border: 1px solid var(--line-soft); border-radius: var(--r-md); }
 .install pre { flex: 1; min-width: 0; margin: 0; padding: 12px 6px 12px 14px; overflow-x: auto;
   font: 12.5px/1.75 var(--mono); color: var(--ink); scrollbar-width: thin; }
+/* the browser's own code { font-family: monospace } would otherwise win over the block's face */
+.install code { font: inherit; }
 .install .ln { display: block; padding-left: 2ch; text-indent: -2ch; }
 .install .p { color: var(--ink-3); user-select: none; }
 .copy { flex: none; margin: 7px 7px 0 0; display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 7px;
@@ -83,7 +88,7 @@ h1 { margin: 0; max-width: 13ch; font-size: clamp(2.3rem, 1.4rem + 3vw, 3.5rem);
 .copy .ok { display: none; color: var(--done); }
 .copy[data-copied] .ok { display: block; }
 .copy[data-copied] .cp { display: none; }
-.meta { margin: 12px 0 0; font-size: .8125rem; color: #E4DDCB; }
+.meta { margin: 12px 0 0; font-size: .8125rem; color: #E4DDCB; text-wrap: pretty; }
 .meta a { color: var(--ink); }
 .meta a:hover { color: var(--ink); }
 
@@ -95,7 +100,8 @@ h1 { margin: 0; max-width: 13ch; font-size: clamp(2.3rem, 1.4rem + 3vw, 3.5rem);
 main { overflow-x: clip; }
 .stage { position: relative; }
 .stage .hero { position: relative; z-index: 2; max-width: 520px; }
-.world { z-index: 1; }
+/* the demo map is the app's own UI, in the app's face */
+.world { z-index: 1; font-family: var(--app-sans); }
 .sea::before { content: ''; position: absolute; inset: 0; background-image: radial-gradient(circle at 1px 1px, var(--grid) 1px, transparent 1.4px); background-size: 44px 44px; }
 .sea i { position: absolute; inset: -25%; will-change: transform;
   background: radial-gradient(34% 28% at 30% 38%, var(--fill-1), transparent 70%),
@@ -194,7 +200,7 @@ main { overflow-x: clip; }
 .narrow .features { margin-top: 64px; }
 .features h2 { margin: 0 0 14px; font-size: 1.0625rem; font-weight: 600; letter-spacing: -.01em; }
 .features ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
-.features li { position: relative; padding-left: 20px; color: #EDE7D6; line-height: 1.5; }
+.features li { position: relative; padding-left: 20px; color: #EDE7D6; line-height: 1.5; text-wrap: pretty; }
 .features li::before { content: ''; position: absolute; left: 2px; top: .62em; width: 7px; height: 7px; border-radius: 50%;
   background: var(--grass-hi); box-shadow: 0 0 0 2px color-mix(in srgb, var(--sand) 55%, transparent); }
 .features b { font-weight: 600; color: var(--ink); }

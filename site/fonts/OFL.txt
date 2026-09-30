@@ -1,3 +1,4 @@
+Copyright 2021 The Albert Sans Project Authors (https://github.com/usted/Albert-Sans)
 Copyright 2021 The Outfit Project Authors (https://github.com/Outfitio/Outfit-Fonts)
 Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
 
