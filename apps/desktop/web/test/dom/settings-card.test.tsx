@@ -106,16 +106,38 @@ test('the zoom tip names the keys as bound, and leaves out one that is unbound',
   expect(tip()).toBe('Scales the map, panels and terminal text. ⌘0 resets.');
 });
 
-test('dormancy steps through the waits, from 12 hours by default out to never', () => {
+test('dormancy steps two hours at a time from 2 to 48, then never', () => {
+  call.mockClear();
   render(<SettingsCard />);
   expect(screen.getByTestId('dormancy-level').textContent).toBe('12 hours');
   fireEvent.click(screen.getByTestId('dormancy-more'));
-  expect(call).toHaveBeenCalledWith('dormancy.set', { hours: 24 });
+  expect(call).toHaveBeenCalledWith('dormancy.set', { hours: 14 });
+  fireEvent.click(screen.getByTestId('dormancy-less'));
+  expect(call).toHaveBeenCalledWith('dormancy.set', { hours: 10 });
+  act(() => store.getState().setFleet({ ...fleet(), dormantAfterHours: 2 }));
+  expect(screen.getByTestId('dormancy-level').textContent).toBe('2 hours');
+  expect((screen.getByTestId('dormancy-less') as HTMLButtonElement).disabled).toBe(true);
+  act(() => store.getState().setFleet({ ...fleet(), dormantAfterHours: 48 }));
+  expect(screen.getByTestId('dormancy-level').textContent).toBe('2 days');
+  fireEvent.click(screen.getByTestId('dormancy-more'));
+  expect(call).toHaveBeenCalledWith('dormancy.set', { hours: 0 });
+  call.mockClear();
   act(() => store.getState().setFleet({ ...fleet(), dormantAfterHours: 0 }));
   expect(screen.getByTestId('dormancy-level').textContent).toBe('never');
   expect((screen.getByTestId('dormancy-more') as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(screen.getByTestId('dormancy-less'));
-  expect(call).toHaveBeenCalledWith('dormancy.set', { hours: 72 });
+  expect(call).toHaveBeenCalledWith('dormancy.set', { hours: 48 });
+});
+
+test('a wait off the steps moves to the nearest step either side', () => {
+  call.mockClear();
+  act(() => store.getState().setFleet({ ...fleet(), dormantAfterHours: 72 }));
+  render(<SettingsCard />);
+  expect(screen.getByTestId('dormancy-level').textContent).toBe('3 days');
+  fireEvent.click(screen.getByTestId('dormancy-less'));
+  expect(call).toHaveBeenCalledWith('dormancy.set', { hours: 48 });
+  fireEvent.click(screen.getByTestId('dormancy-more'));
+  expect(call).toHaveBeenCalledWith('dormancy.set', { hours: 0 });
 });
 
 test('main agent picks between the CLIs svalld finds', () => {
