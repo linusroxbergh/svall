@@ -8,6 +8,7 @@ import { codexInstalled, codexPaths } from '../src/codex/install.js';
 import { silentLogger } from '../src/log.js';
 import { readOrCreateToken, startDaemon, type Daemon } from '../src/main.js';
 import { resolvePaths } from '../src/paths.js';
+import { runtimeVersion } from '../src/setup-plan.js';
 import { Tmux } from '../src/tmux/tmux.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
@@ -39,6 +40,13 @@ runIf('startDaemon', () => {
     const written = JSON.parse(fs.readFileSync(codex.hooks, 'utf8'));
     expect(codexInstalled(written, resolvePaths(home).hookScript)).toBe(true);
     expect(written.hooks.Stop[0].hooks[0].command).toContain(resolvePaths(home).hookScript);
+  });
+
+  it('writes the version it runs as, which a launch refresh compares with the app\'s', async () => {
+    const home = makeHome();
+    homes.push(home);
+    await (await start({ home, port: 0, log: silentLogger })).stop();
+    expect(fs.readFileSync(path.join(home, 'version'), 'utf8')).toBe(runtimeVersion());
   });
 
   it('writes no codex hooks when the private fleet starts with Codex turned off in setup', async () => {
