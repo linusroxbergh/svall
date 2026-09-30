@@ -192,9 +192,9 @@ needs Xcode; see [Building Ghostty from source](#building-ghostty-from-source).
        echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc   # then open a new terminal
 
 3. Run `svall-dev`, or open Svall Dev from Spotlight, and use it as in the
-   Quickstart. While no release is installed, Svall Dev also installs `svall`,
-   and a `svall` run inside a Svall Dev fleet hands off to `svall-dev`. Fleet
-   names `dev` and `dev-*` are refused.
+   Quickstart. While no release is installed, Svall Dev also installs `svall`.
+   With a release installed, a `svall` run inside a Svall Dev fleet hands off
+   to `svall-dev`. Fleet names `dev` and `dev-*` are refused.
 
 Keep the clone where it is, because `svall-dev` and the daemon run from it. If
 you move it or clone it again, `pnpm desktop:install` in the new place points
@@ -401,7 +401,8 @@ A character running `codex`, typed in or started with
 brief and scribe as Claude Code.
 
 - Setup writes Svall's hook into `~/.codex/hooks.json` when Codex is on in
-  the setup screen, but Codex runs only hooks you trust: choose
+  the setup screen, or, for `svall setup` in a terminal, when Codex is found
+  and not turned off there or with `--agents`, but Codex runs only hooks you trust: choose
   "Trust all and continue" on its startup dialog, or trust it later with
   `/hooks`, and do so again whenever the hook changes. `svall doctor` says
   whether it's trusted. Until then the character stays a plain shell with a
@@ -446,8 +447,9 @@ the `svall` command and each fleet's phone link, stops the fleets' tmux servers
 so no agent keeps running out of sight, and moves the app to the Trash. The
 settings backups stay.
 
-In a terminal, `svall uninstall` does the same and asks before deleting;
-`--purge` deletes without asking.
+In a terminal, `svall uninstall` does the same except it doesn't move the app
+to the Trash: it asks before deleting the fleets and the app (in `/Applications`
+or `~/Applications`), and `--purge` deletes them without asking.
 
 ## What leaves your Mac
 
