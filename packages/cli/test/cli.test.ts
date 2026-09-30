@@ -112,6 +112,27 @@ describe('svall argument parsing', () => {
   });
 });
 
+describe('svall uninstall --login-shell', () => {
+  it('reads CLAUDE_CONFIG_DIR from the login shell before it finds the settings to clean', async () => {
+    const home = makeHome();
+    const cfg = path.join(home, 'claude-cfg');
+    fs.mkdirSync(cfg);
+    const script = path.join(home, '.svall', 'hooks', 'agent-hook.mjs');
+    const settings = path.join(cfg, 'settings.json');
+    fs.writeFileSync(settings, JSON.stringify(mergeHooks({}, `[ -z "$SVALL_CHAR_ID" ] || { node '${script}' claude; }`, HOOK_EVENTS, script)));
+    const shell = path.join(home, 'fake-shell');
+    fs.writeFileSync(shell, `#!/bin/sh\necho __SVALL_ENV__; echo /usr/bin:/bin; echo __SVALL_ENV__; echo ${cfg}; echo __SVALL_ENV__; echo __SVALL_ENV__\n`, { mode: 0o755 });
+    const env = { HOME: home, SHELL: shell, PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin`, SVALL_HOME: '', TMUX: '' };
+    try {
+      const r = await run(env, '--json', 'uninstall', '--from-app', '--no-launchctl', '--login-shell');
+      expect(r.code).toBe(0);
+      expect(JSON.parse(fs.readFileSync(settings, 'utf8')).hooks ?? {}).toEqual({});
+    } finally {
+      cleanHomes();
+    }
+  });
+});
+
 runIf('svall CLI', () => {
   let daemon: Daemon | undefined;
   let home = '';

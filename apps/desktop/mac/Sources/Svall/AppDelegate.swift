@@ -197,7 +197,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         let forget = purge.state == .on
-        AppRuntime.run(["uninstall", "--json", "--from-app"] + (forget ? ["--purge"] : [])) { ok, text in
+        AppRuntime.run(["uninstall", "--json", "--from-app", "--login-shell"] + (forget ? ["--purge"] : [])) { ok, text in
             guard ok else {
                 let failed = NSAlert()
                 failed.messageText = "Uninstall stopped"
