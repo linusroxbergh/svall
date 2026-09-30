@@ -479,4 +479,6 @@ The code is MIT (`LICENSE`). The animal portraits in
 Flaticon Premium licence, not MIT, and may not be redistributed: don't copy
 them out of this repository (see the `LICENSE` in each folder). The fonts in
 `apps/desktop/web/public/fonts` are SIL OFL 1.1 (`OFL.txt`), and Ghostty is
-MIT under its own notice (`apps/desktop/mac/LICENSE.ghostty`).
+MIT under its own notice (`apps/desktop/mac/LICENSE.ghostty`). `Svall.app`
+carries the licences of everything bundled in `Contents/Resources/Licenses`
+(`scripts/licenses.mjs`).

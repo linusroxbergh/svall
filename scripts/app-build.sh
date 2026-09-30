@@ -17,6 +17,9 @@ APP="$ROOT/apps/desktop/mac/build/Svall.app"
 mkdir -p "$APP/Contents/Helpers"
 cp "$NODE" "$TMUX" "$APP/Contents/Helpers/"
 rsync -a --delete apps/desktop/mac/build/runtime/ "$APP/Contents/Resources/runtime/"
+scripts/sparkle-tools.sh >/dev/null
+node scripts/licenses.mjs >/dev/null
+rsync -a --delete apps/desktop/mac/build/licenses/ "$APP/Contents/Resources/Licenses/"
 # nested code is signed before the bundle that seals it
 codesign --force --sign - "$APP/Contents/Helpers/node" "$APP/Contents/Helpers/tmux"
 codesign --force --sign - "$APP"
