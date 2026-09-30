@@ -99,9 +99,10 @@ export function localFleetId(fleetHome: string): FleetId {
 
 /**
  * The far machine's connection description, checked against the machine this controller meant to
- * reach, and against a fleet when one is named, before its token is handed on.
+ * reach, and against a fleet when one is named, before its token is handed on. `anyProtocol` takes a
+ * companion on another protocol too, as one a rollback put back on an older release is.
  */
-export async function remoteConnectionInfo(master: SshMaster, machine: MachineEntry, o: { fleetId?: FleetId; profile?: string }): Promise<ConnectionInfo> {
+export async function remoteConnectionInfo(master: SshMaster, machine: MachineEntry, o: { fleetId?: FleetId; profile?: string; anyProtocol?: boolean }): Promise<ConnectionInfo> {
   const name = machine.record.name;
   // the record and the flag are read again here, whatever wrote them, and everything that is not a
   // literal flag is quoted for the login shell ssh hands the command line to
@@ -128,7 +129,7 @@ export async function remoteConnectionInfo(master: SshMaster, machine: MachineEn
     throw new FleetMismatch(`${name} answered with fleetId ${info.fleetId}, not ${o.fleetId}: it runs another fleet there; \`svall host enable ${name} --fleet ${o.profile ?? PRIVATE}\` gives it a copy of this one`);
   }
   if (info.machineId !== machine.id) throw new MachineMismatch(`${name} answered with machineId ${info.machineId}, not ${machine.id}`);
-  if (info.protocol !== PROTOCOL_VERSION) throw new SshError('version', `${name} answered with protocol ${info.protocol}, not ${PROTOCOL_VERSION}`);
+  if (!o.anyProtocol && info.protocol !== PROTOCOL_VERSION) throw new SshError('version', `${name} answered with protocol ${info.protocol}, not ${PROTOCOL_VERSION}`);
   return info;
 }
 

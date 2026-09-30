@@ -243,10 +243,10 @@ async function agentChecks(master: SshMaster, o: { destination: string; home: st
 
 /**
  * The end-to-end probe: the companion's own private fleet has to answer over a forwarded port, from `release` when one
- * is named, before this machine counts as reachable.
+ * is named, before this machine counts as reachable. `anyProtocol` takes a release on another protocol than this controller's.
  */
-async function endToEnd(master: SshMaster, entry: MachineEntry, release?: string): Promise<Outcome<void>> {
-  const info = await remoteConnectionInfo(master, entry, { profile: PRIVATE });
+async function endToEnd(master: SshMaster, entry: MachineEntry, { release, anyProtocol }: { release?: string; anyProtocol?: boolean } = {}): Promise<Outcome<void>> {
+  const info = await remoteConnectionInfo(master, entry, { profile: PRIVATE, anyProtocol });
   const forward = await master.forward(info.port);
   let client: Client | undefined;
   try {
@@ -520,7 +520,7 @@ export function upgradeHost(name: string, o: { release?: string; allowUnsigned?:
       const probed = await run.step('probe', async () => {
         try {
           serviceOutcome(await remoteJson<RemoteDoctor>(master, entry.record.svallBase, ['doctor', '--json'], 'svall doctor --json'), entry.record.ssh);
-          await endToEnd(master, entry, companion.version);
+          await endToEnd(master, entry, { release: companion.version });
           return { value: true, detail: `${entry.record.name} answers on release ${companion.version}` };
         } catch (err) {
           return { value: false, status: 'warn' as const, detail: (err as Error).message };
@@ -567,7 +567,8 @@ export function rollbackHost(name: string, o: { to?: string }, d: HostDeps): Pro
       await run.step('probe', async () => {
         try {
           serviceOutcome(await remoteJson<RemoteDoctor>(master, base, ['doctor', '--json'], 'svall doctor --json'), entry.record.ssh);
-          await endToEnd(master, entry, now);
+          // the release gone back to may speak an older protocol than this controller, and its system.info still names it
+          await endToEnd(master, entry, { release: now, anyProtocol: true });
         } catch (err) {
           throw new StepError((err as Error).message, await runs());
         }

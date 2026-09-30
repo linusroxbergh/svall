@@ -936,6 +936,15 @@ esac
     expect(step('probe').map((e) => e.detail)).toEqual(['trift answers on release 1.2.2', 'trift answers on release 1.2.1']);
   });
 
+  it('probes a rollback onto a release that speaks the protocol before this controller\'s', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION - 1], ['1.2.3', PROTOCOL_VERSION]] });
+    const out = await rollbackHost('trift', {}, deps({ registry: far.registry }));
+    await far.close();
+    expect(out).toEqual({ result: 'ready', actions: [] });
+    expect(far.now()).toBe('1.2.2');
+    expect(step('probe').at(-1)).toMatchObject({ status: 'ok', detail: 'trift answers on release 1.2.2' });
+  });
+
   it('rolls back from the command line, and refuses a rollback asked with a release to install', async () => {
     const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION], ['1.2.3', PROTOCOL_VERSION]] });
     far.registry.save();
