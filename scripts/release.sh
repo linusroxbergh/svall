@@ -51,6 +51,8 @@ fi
 pnpm install --frozen-lockfile
 pnpm app:build
 APP=apps/desktop/mac/build/Svall.app
+# the app sets itself up, refreshes and uninstalls in a throwaway home before anything is signed
+scripts/app-smoke.sh "$APP"
 scripts/sign.sh "$APP" "$ID"
 if [ -z "$ADHOC" ]; then
   ditto -c -k --keepParent "$APP" dist/Svall.zip
