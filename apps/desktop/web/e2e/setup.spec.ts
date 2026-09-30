@@ -8,18 +8,19 @@ const PLAN: Plan = { agents: [{ kind: 'claude', path: '/u/.local/bin/claude', ve
     { what: 'your fleet', path: '/u/.svall' }], shimDir: '/u/.local/bin', shimOnPath: false, blockers: [] };
 
 // the shell's side of the bridge: answers the page's setup asks with `plan`, and keeps what it was sent
-async function fakeShell(page: Page, plan: Plan): Promise<void> {
-  await page.addInitScript((p) => {
+async function fakeShell(page: Page, plan: Plan, failFirst = false): Promise<void> {
+  await page.addInitScript(([p, failFirst]) => {
     const w = window as unknown as { __sent: { type: string; agents?: string[] }[]; webkit: unknown; __svall: { receive(j: string): void } };
     w.__sent = [];
+    let asks = 0;
     w.webkit = { messageHandlers: { svall: { postMessage: (text: string) => {
       const msg = JSON.parse(text);
       w.__sent.push(msg);
       const reply = (m: object) => setTimeout(() => w.__svall.receive(JSON.stringify(m)), 10);
-      if (msg.type === 'setup.plan') reply({ type: 'setup.result', step: 'plan', ok: true, json: JSON.stringify(p) });
+      if (msg.type === 'setup.plan') reply(failFirst && asks++ === 0 ? { type: 'setup.result', step: 'plan', ok: false, json: 'svall: something went wrong' } : { type: 'setup.result', step: 'plan', ok: true, json: JSON.stringify(p) });
       if (msg.type === 'setup.run') reply({ type: 'setup.result', step: 'run', ok: true, json: '{"done":[],"warnings":[]}' });
     } } } };
-  }, plan);
+  }, [plan, failFirst] as const);
 }
 
 const sent = (page: Page) => page.evaluate(() => (window as unknown as { __sent: { type: string; agents?: string[] }[] }).__sent);
@@ -42,4 +43,12 @@ test('says what to install when no agent is found, and asks again', async ({ pag
   await expect(page.getByRole('button', { name: 'Set up' })).toBeDisabled();
   await page.getByRole('button', { name: 'Check again' }).click();
   expect((await sent(page)).filter((m) => m.type === 'setup.plan')).toHaveLength(2);
+});
+
+test('shows a failed first ask inline and retries it', async ({ page }) => {
+  await fakeShell(page, PLAN, true);
+  await page.goto('/?setup=1');
+  await expect(page.getByText('svall: something went wrong')).toBeVisible();
+  await page.getByRole('button', { name: 'Check again' }).click();
+  await expect(page.getByText('/u/.claude/settings.json')).toBeVisible();
 });

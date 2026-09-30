@@ -23,7 +23,13 @@ export function Setup() {
   const check = () => { setBusy(true); bridge.send({ type: 'setup.plan' }); };
   useEffect(check, [bridge]);
 
-  if (!plan) return <div className="connect" data-testid="setup">{error ?? 'Looking for Claude Code and Codex…'}</div>;
+  if (!plan && error) return (
+    <div className="setup" data-testid="setup">
+      <p className="setup-error">{error}</p>
+      <button type="button" disabled={busy} onClick={check}>Check again</button>
+    </div>
+  );
+  if (!plan) return <div className="connect" data-testid="setup">Looking for Claude Code and Codex…</div>;
   const on = plan.agents.filter((a) => !off.includes(a.kind));
   const writes = plan.writes.filter((w) => !AGENT_FILE[w.what] || on.some((a) => a.kind === AGENT_FILE[w.what]));
   const line = `export PATH="$HOME/.local/bin:$PATH"`;
