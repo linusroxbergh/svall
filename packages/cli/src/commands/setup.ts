@@ -13,7 +13,7 @@ import { takeLoginEnv } from '@svall/svalld/login-env';
 import { LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from '@svall/svalld/profile';
 import { ownRuntime } from '@svall/svalld/runtime';
 import {
-  CODEX_TRUST, claudeHooksCurrent, codexHooksCurrent, hookRemovals, isLoaded, kickstart, plistCurrent, readCodexHooks, readJsonSettings, readOrUndefined,
+  CODEX_TRUST, claudeHooksCurrent, cliCommand, codexHooksCurrent, hookRemovals, isLoaded, kickstart, plistCurrent, readCodexHooks, readJsonSettings, readOrUndefined,
   refreshFleetPlists, requireWritableHooks, runSetup, shimsCurrent, takenOverBy, type JsonSettings,
 } from '@svall/svalld/setup';
 import { integrationsFor, requireInstalledApp, runtimeVersion, setupPlan, staleFleets } from '@svall/svalld/setup-plan';
@@ -44,9 +44,15 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       requireInstalledApp(runtime);
       // stand-in folders could put the hooks where the user's own agents never look
       if (!answered && !o.plan && !o.check && !o.ifNeeded) {
-        throw new Error(`the login shell did not answer within 5 seconds, so setup changed nothing: try again, or run ${SHIM} setup in a terminal`);
+        throw new Error(`the login shell did not answer within 5 seconds, so setup changed nothing: try again, or run ${cliCommand(runtime)} setup in a terminal`);
       }
       const configFile = resolvePaths(t.home).config;
+      const settingsPath = userPaths().claudeSettings;
+      const codex = codexPaths();
+      const { launchAgents, shimDir } = userPaths();
+      // setup takes an agent whose own folder is here as installed, even when its CLI is not on PATH
+      const folderOf = (k: AgentKind) => (k === 'claude' ? path.dirname(settingsPath) : codex.dir);
+      const hasFolder = (k: AgentKind) => fs.existsSync(folderOf(k));
       // the choices are saved only once setup is about to write, so a run that stops has changed nothing
       let choices: Parameters<typeof saveConfig>[1] | undefined;
       if (o.agents !== undefined) {
@@ -56,19 +62,16 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
           return name as AgentKind;
         });
         const chosen = kinds(o.agents);
-        const found = o.found !== undefined ? kinds(o.found) : findAgents(process.env.PATH ?? '');
-        // a fleet with no main agent set runs claude when both are found; turning off the main agent, saved or not, makes the one left on the main agent
-        const on = chosen.filter((k) => found.includes(k));
-        const current = loadConfig(configFile).mainAgent ?? mainAgent(undefined, found);
-        const main = on.length && !on.includes(current) ? { mainAgent: on[0] } : {};
-        choices = { integrations: integrationsFor(chosen, found), ...main };
+        const runnable = findAgents(process.env.PATH ?? '');
+        const found = o.found !== undefined ? kinds(o.found) : AGENT_KINDS.filter((k) => runnable.includes(k) || hasFolder(k));
+        const config = loadConfig(configFile);
+        // a fleet with no main agent set runs claude when both are found; turning off the main agent, saved or not, makes
+        // the one left on whose CLI is here the main agent
+        const on = chosen.filter((k) => runnable.includes(k));
+        const main = on.length && !on.includes(mainAgent(config.mainAgent, found)) ? { mainAgent: on[0] } : {};
+        choices = { integrations: integrationsFor(chosen, found, config.integrations), ...main };
       }
       const integrations = choices?.integrations ?? loadConfig(configFile).integrations;
-      const settingsPath = userPaths().claudeSettings;
-      const codex = codexPaths();
-      const { launchAgents, shimDir } = userPaths();
-      // setup takes an agent whose own folder is here as installed, even when its CLI is not on PATH
-      const hasFolder = (k: AgentKind) => fs.existsSync(k === 'claude' ? path.dirname(settingsPath) : codex.dir);
       const homes = fleetHomes(os.homedir());
       const label = (h: string) => profileLabel(profileOf(h));
       if (o.plan) {
@@ -79,10 +82,10 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
         }));
         // the stand-in folders say nothing of whether the user's own PATH holds the shim
         const plan = setupPlan({
-          home: t.home, found, folders: AGENT_KINDS.filter(hasFolder), integrations, settingsPath, codexHooks: codex.hooks, launchAgentsDir: launchAgents,
+          home: t.home, found, folders: AGENT_KINDS.filter(hasFolder).map((kind) => ({ kind, path: folderOf(kind) })), integrations, settingsPath, codexHooks: codex.hooks, launchAgentsDir: launchAgents,
           // the plists a setup from this screen writes for the other fleets, taking over any another copy runs
           fleets: homes.filter((h) => profileOf(h) !== PRIVATE && !plistCurrent({ home: h, label: label(h), launchAgentsDir: launchAgents, runtime })),
-          shimDir, pathEnv: answered ? process.env.PATH ?? '' : '', answered,
+          shimDir, pathEnv: answered ? process.env.PATH ?? '' : '', answered, cli: cliCommand(runtime),
         });
         process.stdout.write(`${JSON.stringify(plan)}\n`);
         return;
@@ -156,7 +159,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
           return;
         }
       }
-      const warnings = requireReady(await preflight(realPreflightDeps(t.home)));
+      const warnings = requireReady(await preflight({ ...realPreflightDeps(t.home), ...choices?.mainAgent ? { mainAgent: choices.mainAgent } : {} }));
       if (choices) {
         fs.mkdirSync(t.home, { recursive: true });
         saveConfig(configFile, choices);

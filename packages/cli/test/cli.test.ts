@@ -203,7 +203,32 @@ describe('svall setup --agents', () => {
       const r = await run({ HOME: home, PATH: tools(home), SHELL: path.join(home, 'no-such-shell') }, 'setup', '--no-launchctl', '--login-shell', '--agents', 'codex');
       expect(r.code).not.toBe(0);
       expect(r.stderr).toContain('did not answer');
+      // the shim is one of the files setup writes, so the way out names the CLI itself
+      expect(r.stderr).toContain(`packages/cli/src/main.ts' setup in a terminal`);
       expect(fs.existsSync(path.join(home, '.svall'))).toBe(false);
+    } finally {
+      cleanHomes();
+    }
+  });
+
+  it('counts an agent whose folder is here as found, so one left out gets no hooks and stays off', async () => {
+    const home = makeHome();
+    try {
+      const bin = path.join(home, 'bin');
+      fs.mkdirSync(bin);
+      fs.writeFileSync(path.join(bin, 'tmux'), '#!/bin/sh\necho tmux 3.5a\n', { mode: 0o755 });
+      fs.writeFileSync(path.join(bin, 'claude'), '#!/bin/sh\necho 2.1.0\n', { mode: 0o755 });
+      fs.mkdirSync(path.join(home, '.codex'));
+      const env = { HOME: home, PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin` };
+      const plan = await run(env, 'setup', '--plan');
+      expect(JSON.parse(plan.stdout).agents).toContainEqual({ kind: 'codex', path: path.join(home, '.codex'), folderOnly: true });
+      const r = await run(env, 'setup', '--no-launchctl', '--agents', 'claude');
+      expect(r.code).toBe(0);
+      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ integrations: ['claude'] });
+      expect(fs.existsSync(path.join(home, '.codex', 'hooks.json'))).toBe(false);
+      fs.rmSync(path.join(home, '.codex'), { recursive: true });
+      expect((await run(env, 'setup', '--no-launchctl', '--agents', 'claude')).code).toBe(0);
+      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ integrations: ['claude'] });
     } finally {
       cleanHomes();
     }

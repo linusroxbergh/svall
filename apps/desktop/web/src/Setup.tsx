@@ -3,7 +3,7 @@ import { AGENT_LABEL, type AgentKind } from '@svall/protocol';
 import { createBridge } from './bridge.js';
 
 type Plan = {
-  agents: { kind: AgentKind; path: string; version?: string }[]; integrations?: AgentKind[]; writes: { what: string; path: string; agent?: AgentKind }[];
+  agents: { kind: AgentKind; path: string; version?: string; folderOnly?: boolean }[]; integrations?: AgentKind[]; writes: { what: string; path: string; agent?: AgentKind }[];
   shimDir: string; shimOnPath: boolean; blockers: string[];
 };
 
@@ -78,7 +78,8 @@ export function Setup() {
         <code>{line}</code> <button type="button" onClick={() => bridge.send({ type: 'copy', text: line })}>Copy</button>
       </section>}
       {error && <p className="setup-error">{error}</p>}
-      <button type="button" disabled={busy || on.length === 0 || plan.blockers.length > 0} onClick={() => { setBusy(true); bridge.send({ type: 'setup.run', agents: on.map((a) => a.kind), found: plan.agents.map((a) => a.kind) }); }}>Set up</button>
+      {/* the main agent must be one whose CLI setup found */}
+      <button type="button" disabled={busy || !on.some((a) => !a.folderOnly) || plan.blockers.length > 0} onClick={() => { setBusy(true); bridge.send({ type: 'setup.run', agents: on.map((a) => a.kind), found: plan.agents.map((a) => a.kind) }); }}>Set up</button>
       {plan.blockers.length > 0 && <button type="button" disabled={busy} onClick={check}>Check again</button>}
     </div>
   );

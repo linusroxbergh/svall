@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 type Plan = {
-  agents: { kind: string; path: string; version?: string }[]; integrations?: string[]; writes: { what: string; path: string; agent?: string }[];
+  agents: { kind: string; path: string; version?: string; folderOnly?: boolean }[]; integrations?: string[]; writes: { what: string; path: string; agent?: string }[];
   shimDir: string; shimOnPath: boolean; blockers: string[];
 };
 
@@ -46,6 +46,16 @@ test('starts an agent turned off at an earlier setup unchecked, with its file le
   await expect(page.getByText('/u/.codex/hooks.json')).toHaveCount(0);
   await page.getByRole('checkbox', { name: 'Codex' }).check();
   await expect(page.getByText('/u/.codex/hooks.json')).toBeVisible();
+});
+
+test('gives an agent found only by its folder a toggle, but sets up only with an agent whose CLI is here', async ({ page }) => {
+  await fakeShell(page, { ...PLAN, agents: [PLAN.agents[0]!, { kind: 'codex', path: '/u/.codex', folderOnly: true }] });
+  await page.goto('/?setup=1');
+  await page.getByRole('checkbox', { name: 'Codex' }).uncheck();
+  await expect(page.getByText('/u/.codex/hooks.json')).toHaveCount(0);
+  await page.getByRole('checkbox', { name: 'Codex' }).check();
+  await page.getByRole('checkbox', { name: 'Claude Code' }).uncheck();
+  await expect(page.getByRole('button', { name: 'Set up' })).toBeDisabled();
 });
 
 test('shows what setup asks of the user before it opens the map', async ({ page }) => {

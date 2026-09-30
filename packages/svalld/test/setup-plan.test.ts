@@ -13,7 +13,7 @@ describe('setupPlan', () => {
     const plan = setupPlan({
       home, found: [{ kind: 'claude', path: '/u/.local/bin/claude', version: '2.1.0' }], folders: [], integrations: undefined,
       settingsPath: '/u/.claude/settings.json', codexHooks: '/u/.codex/hooks.json', launchAgentsDir: '/u/Library/LaunchAgents',
-      fleets: [], shimDir: '/u/.local/bin', pathEnv: '/usr/bin:/u/.local/bin', answered: true,
+      fleets: [], shimDir: '/u/.local/bin', pathEnv: '/usr/bin:/u/.local/bin', answered: true, cli: 'svall',
     });
     expect(plan.agents.map((a) => a.kind)).toEqual(['claude']);
     expect(plan.writes.map((w) => w.path)).toEqual([
@@ -24,22 +24,29 @@ describe('setupPlan', () => {
     expect(plan.blockers).toEqual([]);
   });
 
+  it('says what blocks setup when only an agent\'s folder is here', () => {
+    const plan = setupPlan({ home: makeHome(), found: [], folders: [{ kind: 'codex', path: '/u/.codex' }], integrations: undefined, settingsPath: '/s', codexHooks: '/c',
+      launchAgentsDir: '/l', fleets: [], shimDir: '/b', pathEnv: '', answered: true, cli: 'svall' });
+    expect(plan.blockers).toEqual([expect.stringMatching(/^Install /)]);
+  });
+
   it('says what blocks setup when no agent is installed', () => {
     const plan = setupPlan({ home: makeHome(), found: [], folders: [], integrations: undefined, settingsPath: '/s', codexHooks: '/c',
-      launchAgentsDir: '/l', fleets: [], shimDir: '/u/.local/bin', pathEnv: '/usr/bin', answered: true });
+      launchAgentsDir: '/l', fleets: [], shimDir: '/u/.local/bin', pathEnv: '/usr/bin', answered: true, cli: 'svall' });
     expect(plan.blockers).toEqual(['Install Claude Code (https://code.claude.com/docs/en/setup) or Codex (https://learn.chatgpt.com/docs/codex/cli) first, then check again.']);
     expect(plan.shimOnPath).toBe(false);
   });
 
   it('says the login shell did not answer rather than that nothing is installed', () => {
     const plan = setupPlan({ home: makeHome(), found: [], folders: [], integrations: undefined, settingsPath: '/s', codexHooks: '/c',
-      launchAgentsDir: '/l', fleets: [], shimDir: '/b', pathEnv: '', answered: false });
+      launchAgentsDir: '/l', fleets: [], shimDir: '/b', pathEnv: '', answered: false, cli: "'/A/node' '/A/svall.mjs'" });
     expect(plan.blockers).toEqual([expect.stringContaining('login shell did not answer')]);
+    expect(plan.blockers[0]).toContain("run '/A/node' '/A/svall.mjs' setup in a terminal");
   });
 
   it('lists a turned-off agent\'s file with the choice saved, for the screen to leave out while it stays off', () => {
     const plan = setupPlan({ home: makeHome(), found: [{ kind: 'claude', path: '/c' }, { kind: 'codex', path: '/x' }], folders: [], integrations: ['codex'],
-      settingsPath: '/u/.claude/settings.json', codexHooks: '/u/.codex/hooks.json', launchAgentsDir: '/l', fleets: [], shimDir: '/b', pathEnv: '', answered: true });
+      settingsPath: '/u/.claude/settings.json', codexHooks: '/u/.codex/hooks.json', launchAgentsDir: '/l', fleets: [], shimDir: '/b', pathEnv: '', answered: true, cli: 'svall' });
     expect(plan.integrations).toEqual(['codex']);
     expect(plan.writes.filter((w) => w.agent)).toEqual([
       { what: 'Claude Code hooks and status line', path: '/u/.claude/settings.json', agent: 'claude' },
@@ -47,11 +54,11 @@ describe('setupPlan', () => {
     ]);
   });
 
-  it('lists the hooks of an agent whose folder is here without its CLI, and the plists of the other fleets', () => {
-    const plan = setupPlan({ home: makeHome(), found: [{ kind: 'claude', path: '/c' }], folders: ['codex'], integrations: undefined,
+  it('lists an agent whose folder is here without its CLI, with its hooks, and the plists of the other fleets', () => {
+    const plan = setupPlan({ home: makeHome(), found: [{ kind: 'claude', path: '/c' }], folders: [{ kind: 'claude', path: '/u/.claude' }, { kind: 'codex', path: '/u/.codex' }], integrations: undefined,
       settingsPath: '/u/.claude/settings.json', codexHooks: '/u/.codex/hooks.json', launchAgentsDir: '/l', fleets: ['/u/.svall-work'],
-      shimDir: '/b', pathEnv: '', answered: true });
-    expect(plan.agents.map((a) => a.kind)).toEqual(['claude']);
+      shimDir: '/b', pathEnv: '', answered: true, cli: 'svall' });
+    expect(plan.agents).toEqual([{ kind: 'claude', path: '/c' }, { kind: 'codex', path: '/u/.codex', folderOnly: true }]);
     expect(plan.writes.map((w) => w.path)).toContain('/u/.codex/hooks.json');
     expect(plan.writes).toContainEqual({ what: 'the background service of the work fleet', path: expect.stringMatching(/^\/l\/.*work\.plist$/) });
   });
@@ -61,6 +68,10 @@ describe('integrationsFor', () => {
   it('keeps every agent not found on, so only one found and left out stays off', () => {
     expect(integrationsFor(['claude'], ['claude'])).toEqual(['claude', 'codex']);
     expect(integrationsFor(['claude'], ['claude', 'codex'])).toEqual(['claude']);
+  });
+  it('keeps an agent turned off before off while no setup shows it', () => {
+    expect(integrationsFor(['claude'], ['claude'], ['claude'])).toEqual(['claude']);
+    expect(integrationsFor(['claude'], ['claude'], ['claude', 'codex'])).toEqual(['claude', 'codex']);
   });
 });
 

@@ -5,7 +5,8 @@ import { AGENTS, AGENT_KINDS } from './agents.js';
 import { LAUNCHD_LABEL, SHIM, profileLabel, profileOf } from './profile.js';
 import { bundledVersion, type Runtime } from './runtime.js';
 
-export type FoundAgent = { kind: AgentKind; path: string; version?: string };
+// an agent found only by its folder gets hooks and a toggle, but cannot be the main agent
+export type FoundAgent = { kind: AgentKind; path: string; version?: string; folderOnly?: boolean };
 export type SetupPlan = {
   agents: FoundAgent[]; integrations?: AgentKind[]; writes: { what: string; path: string; agent?: AgentKind }[];
   shimDir: string; shimOnPath: boolean; blockers: string[];
@@ -13,11 +14,12 @@ export type SetupPlan = {
 
 /** What the app's setup screen shows before anything is written: the screen leaves out the files of the agents it turns off. */
 export function setupPlan(o: {
-  home: string; found: FoundAgent[]; folders: AgentKind[]; integrations?: AgentKind[]; settingsPath: string; codexHooks: string;
-  launchAgentsDir: string; fleets: string[]; shimDir: string; pathEnv: string; answered: boolean;
+  home: string; found: FoundAgent[]; folders: FoundAgent[]; integrations?: AgentKind[]; settingsPath: string; codexHooks: string;
+  launchAgentsDir: string; fleets: string[]; shimDir: string; pathEnv: string; answered: boolean; cli: string;
 }): SetupPlan {
   // setup writes an agent's hooks when its CLI is on PATH or its own folder is here
-  const has = (k: AgentKind) => o.found.some((a) => a.kind === k) || o.folders.includes(k);
+  const agents = [...o.found, ...o.folders.filter((f) => !o.found.some((a) => a.kind === f.kind)).map((f) => ({ ...f, folderOnly: true }))];
+  const has = (k: AgentKind) => agents.some((a) => a.kind === k);
   const writes = [
     ...(has('claude') ? [{ what: 'Claude Code hooks and status line', path: o.settingsPath, agent: 'claude' as const }] : []),
     ...(has('codex') ? [{ what: 'Codex hooks', path: o.codexHooks, agent: 'codex' as const }] : []),
@@ -27,16 +29,17 @@ export function setupPlan(o: {
     { what: 'your fleet', path: o.home },
   ];
   let blockers: string[] = [];
-  if (!o.answered) blockers = ['Your login shell did not answer within 5 seconds, so Svall cannot see where Claude Code and Codex are. Check again.'];
+  if (!o.answered) blockers = [`Your login shell did not answer within 5 seconds, so Svall cannot see where Claude Code and Codex are. Check again, or run ${o.cli} setup in a terminal.`];
   else if (!o.found.length) blockers = [`Install ${AGENT_KINDS.map((k) => `${AGENTS[k].label} (${AGENTS[k].installUrl})`).join(' or ')} first, then check again.`];
   return {
-    agents: o.found, integrations: o.integrations, writes, shimDir: o.shimDir, shimOnPath: o.pathEnv.split(':').includes(o.shimDir), blockers,
+    agents, integrations: o.integrations, writes, shimDir: o.shimDir, shimOnPath: o.pathEnv.split(':').includes(o.shimDir), blockers,
   };
 }
 
-/** The integrations to save: the agents chosen, and every one not found now, so only an agent found and left out stays off. */
-export const integrationsFor = (chosen: AgentKind[], found: AgentKind[]): AgentKind[] =>
-  AGENT_KINDS.filter((k) => chosen.includes(k) || !found.includes(k));
+/** The integrations to save: the agents chosen, and every one not found now that was not turned off before, so an agent
+ *  found and left out stays off until a setup shows it again. */
+export const integrationsFor = (chosen: AgentKind[], found: AgentKind[], saved?: AgentKind[]): AgentKind[] =>
+  AGENT_KINDS.filter((k) => chosen.includes(k) || (!found.includes(k) && (!saved || saved.includes(k))));
 
 /** Throws for an app run from a disk image or translocated by macOS, where the paths setup writes would not last. */
 export function requireInstalledApp(r: Runtime): void {
