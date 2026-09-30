@@ -41,59 +41,46 @@ clients.
 
 ## Quickstart
 
-Svall builds on macOS 15.6 or newer with the Command Line Tools for
-Xcode 26 or newer, which Homebrew installs. On an Apple Silicon Mac the install
-downloads the terminal engine prebuilt, and the clone, its dependencies and the
-build take about 750 MB of disk. An Intel Mac also needs Xcode; see
-[Building Ghostty from source](#building-ghostty-from-source).
+Svall needs an Apple Silicon Mac on macOS 15 or newer, and Claude Code, Codex,
+or both.
 
-1. Install the tools, and Claude Code, Codex, or both:
-
-       brew install node tmux pnpm gh   # skip node if you have 24 or newer
-       gh auth login                    # clones the private repository, downloads the terminal engine and resolves PR links
-
-   Install [Claude Code](https://code.claude.com/docs/en/setup); it works with
+1. Install [Claude Code](https://code.claude.com/docs/en/setup); it works with
    a Claude subscription or an Anthropic API key, see
-   [Using API keys](#using-api-keys).
+   [Using API keys](#using-api-keys). And/or install the
+   [Codex CLI](https://learn.chatgpt.com/docs/codex/cli) 0.155 or newer; an
+   OpenAI API key is enough, you don't need a ChatGPT subscription.
 
-   Install the [Codex CLI](https://learn.chatgpt.com/docs/codex/cli) 0.155 or
-   newer; an OpenAI API key is enough, you don't need a ChatGPT subscription.
+2. Get Svall, in one of two ways:
 
-   If `xcrun --show-sdk-version` prints a version below 26, update the Command
-   Line Tools in System Settings → General → Software Update, or Xcode if
-   `xcode-select -p` points into it. If your pnpm came
-   from somewhere other than Homebrew, `pnpm --version` must show 12 or newer.
-   Update it the way you installed it, such as `npm i -g pnpm@latest` or
-   `pnpm self-update`.
+   - Download it from [svall.dev](https://svall.dev), drag `Svall.app` to
+     Applications and open it.
+   - Or run:
 
-2. Clone and install:
+         curl -fsSL https://svall.dev/install.sh | sh
 
-       git clone https://github.com/linusroxbergh/svall && cd svall
-       pnpm desktop:install
+     It installs to `/Applications`, or `~/Applications` when that isn't
+     writable, or `$SVALL_INSTALL_DIR`. It checks the download's checksum,
+     refuses while Svall is running, and opens the app.
 
-   The installer lists anything missing before it builds, asks nothing, and
-   ends with the main agent it will run: your only installed CLI, or Claude
-   Code with both installed. Without admin rights, run
-   `SVALL_APP_DEST=~/Applications pnpm desktop:install` instead. If your shell
-   can't find `svall` afterwards, add `~/.local/bin` to your PATH:
+3. The first launch shows the setup screen: each agent it found with a toggle,
+   the files setup writes, and one "Set up" button. An agent you turn off gets
+   no hooks; one you install later does. If `~/.local/bin` isn't on your PATH,
+   the screen shows the line to add to your shell profile, so the `svall`
+   command works in a terminal; no shell file is edited for you. Setup
+   refuses to run from the disk image, so move Svall to Applications first.
 
-       echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc   # then open a new terminal
+4. `+ New island` on the sandbar at the bottom makes an island, and Cmd+T makes
+   a character on it: a shell that becomes an agent when you type `claude` or
+   `codex`. With both CLIs installed, the app's first question is which one the
+   scribe and mission control run — Claude Code unless you pick Codex; change
+   it later in Settings or with `svall agent codex`. On first launch, the app
+   asks before the scribe makes paid agent calls. The first mission control
+   button you press opens a terminal where Claude Code or Codex asks you to
+   trust `~/.svall/home`.
 
-3. Run `svall`, or open Svall from Spotlight. `+ New island` on the
-   sandbar at the bottom makes an island, and Cmd+T makes a character on it: a
-   shell that becomes an agent when you type `claude` or `codex`. With both
-   CLIs installed, the app's first question is which one the scribe and
-   mission control run — Claude Code unless you pick Codex; change it later
-   in Settings or with `svall agent codex`. On first launch, the app asks
-   before the scribe makes paid agent calls. The first mission control button
-   you press opens a terminal where Claude Code or Codex asks you to trust
-   `~/.svall/home`.
+Setup's hooks do nothing outside Svall. [What setup changes](#what-setup-changes)
+lists every file setup writes.
 
-Keep the clone where it is, because `svall` and the daemon run from it. If you
-move it or clone it again, `pnpm desktop:install` in the new place points them
-there. Setup's hooks do nothing
-outside Svall. [What setup changes](#what-setup-changes) lists every file
-setup writes, and `svall uninstall` removes them.
 
 ### Using API keys
 
@@ -142,12 +129,15 @@ that. The Usage panel shows Claude's subscription limits, not API spending.
 
 ### Updating
 
-    git pull && pnpm desktop:install
+Svall checks for updates on its own and installs one when you click it. Svall →
+Check for Updates… checks now.
 
-If pnpm says it failed to switch versions, update pnpm to 12 or newer the way
-you installed it (`brew upgrade pnpm`, `npm i -g pnpm@latest`, or
-`pnpm self-update` run outside the clone) and try again. If it says the Node
-version is unsupported, run `brew upgrade node`.
+### Uninstalling
+
+Svall → Uninstall Svall… stops every fleet, removes the hooks, the background
+service and the `svall` command, and moves the app to the Trash. "Also delete
+fleet data" removes `~/.svall` and the other fleets' homes too.
+[Uninstall](#uninstall) has the details.
 
 ### When something breaks
 
@@ -165,6 +155,60 @@ directory, running the same agent
 (`svall char new --island <island> --cwd <dir> --agent <claude|codex>`).
 Only Claude and Codex panes are supported; other agents are untested.
 `herdr --skill` and `svall <command> --help` cover the rest.
+
+## Build from source (Svall Dev)
+
+A checkout builds `Svall Dev.app`, which runs beside the release without
+touching its fleets. It uses `~/.svall-dev` (and `~/.svall-dev-<name>`), the
+`svall-dev` command and port 47900, and needs macOS 15.6 or newer with the
+Command Line Tools for Xcode 26 or newer, which Homebrew installs. On an Apple
+Silicon Mac the install downloads the terminal engine prebuilt, and the clone,
+its dependencies and the build take about 750 MB of disk. An Intel Mac also
+needs Xcode; see [Building Ghostty from source](#building-ghostty-from-source).
+
+1. Install the tools, and Claude Code, Codex, or both:
+
+       brew install node tmux pnpm gh   # skip node if you have 24 or newer
+       gh auth login                    # clones the private repository, downloads the terminal engine and resolves PR links
+
+   If `xcrun --show-sdk-version` prints a version below 26, update the Command
+   Line Tools in System Settings → General → Software Update, or Xcode if
+   `xcode-select -p` points into it. If your pnpm came
+   from somewhere other than Homebrew, `pnpm --version` must show 12 or newer.
+   Update it the way you installed it, such as `npm i -g pnpm@latest` or
+   `pnpm self-update`.
+
+2. Clone and install:
+
+       git clone https://github.com/linusroxbergh/svall && cd svall
+       pnpm desktop:install
+
+   The installer lists anything missing before it builds, asks nothing, and
+   ends with the main agent it will run: your only installed CLI, or Claude
+   Code with both installed. Without admin rights, run
+   `SVALL_APP_DEST=~/Applications pnpm desktop:install` instead. If your shell
+   can't find `svall-dev` afterwards, add `~/.local/bin` to your PATH:
+
+       echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc   # then open a new terminal
+
+3. Run `svall-dev`, or open Svall Dev from Spotlight, and use it as in the
+   Quickstart. While no release is installed, Svall Dev also installs `svall`,
+   and a `svall` run inside a Svall Dev fleet hands off to `svall-dev`. Fleet
+   names `dev` and `dev-*` are refused.
+
+Keep the clone where it is, because `svall-dev` and the daemon run from it. If
+you move it or clone it again, `pnpm desktop:install` in the new place points
+them there. `svall-dev uninstall` removes Svall Dev; run it before you delete
+the clone, or launchd restarts the missing daemon every ten seconds.
+
+### Updating Svall Dev
+
+    git pull && pnpm desktop:install
+
+If pnpm says it failed to switch versions, update pnpm to 12 or newer the way
+you installed it (`brew upgrade pnpm`, `npm i -g pnpm@latest`, or
+`pnpm self-update` run outside the clone) and try again. If it says the Node
+version is unsupported, run `brew upgrade node`.
 
 ### Building Ghostty from source
 
@@ -356,8 +400,8 @@ A character running `codex`, typed in or started with
 `svall char new --agent codex`, gets the same status, context gauge, revive,
 brief and scribe as Claude Code.
 
-- Setup writes Svall's hook into `~/.codex/hooks.json` when Codex is
-  installed or `~/.codex` exists, but Codex runs only hooks you trust: choose
+- Setup writes Svall's hook into `~/.codex/hooks.json` when Codex is on in
+  the setup screen, but Codex runs only hooks you trust: choose
   "Trust all and continue" on its startup dialog, or trust it later with
   `/hooks`, and do so again whenever the hook changes. `svall doctor` says
   whether it's trusted. Until then the character stays a plain shell with a
@@ -367,39 +411,43 @@ brief and scribe as Claude Code.
 
 ## What setup changes
 
-`pnpm desktop:install` runs `svall setup`, which you can also run on its own
+The app's setup screen runs `svall setup`, which you can also run on its own
 without the app (`--check` only checks). It changes nothing while something it
-needs is missing. It writes:
+needs is missing. For each agent you leave on, it writes:
 
-- `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`), when
-  Claude Code is installed or `~/.claude` exists: a hook on Claude Code's
-  session, prompt, tool, permission, notification, stop and subagent-stop
-  events, which exits before starting Node outside a character, and a
-  statusline wrapper that keeps your own statusline running inside it. Every
-  change keeps a `.bak-<time>` copy.
-- `~/.codex/hooks.json`, when Codex is installed or `~/.codex` exists
-  (creating `~/.codex`): the same hook and backup.
+- `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`), for Claude
+  Code: a hook on Claude Code's session, prompt, tool, permission,
+  notification, stop and subagent-stop events, which exits before starting Node
+  outside a character, and a statusline wrapper that keeps your own statusline
+  running inside it. Every change keeps a `.bak-<time>` copy.
+- `~/.codex/hooks.json`, for Codex (creating `~/.codex`): the same hook and
+  backup.
+
+It also writes:
+
 - `~/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld*.plist`,
   one per fleet, which keeps each daemon running.
-- `~/.local/bin/svall`: a shim into the clone.
+- `~/.local/bin/svall`: a shim into `Svall.app`.
 - `~/.svall` and `~/.svall-<name>`: each fleet's state, config,
   log, hook scripts, tmux.conf and tmux server, plus, in `~/.svall/home`,
   the mission control folder they share.
-- `/Applications/Svall.app`, from `pnpm desktop:install`.
+
+Svall Dev writes the same under `.svall-dev`, `svall-dev` and
+`io.github.linusroxbergh.svall.dev.svalld*`, and a hook of one variant ignores
+the other's fleets.
 
 ### Uninstall
 
-    svall uninstall
+Svall → Uninstall Svall… lists what goes and warns that running agents stop.
+"Also delete fleet data" deletes the fleet homes and the app's preferences,
+sign-ins and caches in `~/Library`. Without it they stay. Either way it quits
+the fleets, removes the hooks (your own statusline stays), the launchd agents,
+the `svall` command and each fleet's phone link, stops the fleets' tmux servers
+so no agent keeps running out of sight, and moves the app to the Trash. The
+settings backups stay.
 
-This quits the app, removes the hooks (your own statusline stays), the launchd
-agents, the shims and each fleet's phone link, and stops the fleets' tmux
-servers so no agent keeps running out of sight. It then asks before deleting
-the fleet homes, the app, and its sign-ins, caches and preferences in `~/Library`;
-`--purge` deletes them without asking. The clone and the settings backups
-stay.
-
-Run it before you delete the clone: the launchd agents and `svall` point into
-it, and launchd would otherwise restart the missing daemon every ten seconds.
+In a terminal, `svall uninstall` does the same and asks before deleting;
+`--purge` deletes without asking.
 
 ## What leaves your Mac
 
