@@ -371,7 +371,7 @@ describe('home', () => {
     store.getState().setFleet({ ...fleet(), agentsFound: ['codex'] });
     expect(await startHomeCharacter({ api, store }, { prompt: 'regroup the fleet' })).toBe(true);
     expect(calls.map((c) => c.method)).toEqual(['char.create']);
-    expect(store.getState().toast).toEqual({ text: "Mission control runs claude, which svalld doesn't find. Install it, then run svall setup.", tone: 'error' });
+    expect(store.getState().toast).toEqual({ text: "Mission control runs claude, which svalld doesn't find. Install it, then run svall-dev setup.", tone: 'error' });
   });
 
   it('reports failure and toasts when the fleet refuses', async () => {

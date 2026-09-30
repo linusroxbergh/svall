@@ -27,6 +27,7 @@ import { refreshLinks, refreshMany, slice, type Deps as LinkDeps } from './links
 import type { Logger } from './log.js';
 import { randomName } from './names.js';
 import { expandHome, type Paths } from './paths.js';
+import { SHIM } from './profile.js';
 import { markDormant, placeOnIsland, reconcile, secondName } from './reconcile.js';
 import { codexRunner } from './scribe/codex.js';
 import { claudeRunner, perPass, type RunScribe } from './scribe/run.js';
@@ -411,7 +412,7 @@ export class Fleet extends EventEmitter<Events> {
 
   setMainAgent(agent: AgentKind): void {
     if (!(this.deps.agentsFound ?? []).includes(agent)) {
-      throw new Invalid(`svalld doesn't find ${AGENTS[agent].bin}; install ${AGENTS[agent].label}, then run svall setup`);
+      throw new Invalid(`svalld doesn't find ${AGENTS[agent].bin}; install ${AGENTS[agent].label}, then run ${SHIM} setup`);
     }
     saveConfig(this.deps.paths.config, { mainAgent: agent });
     this.deps.config.mainAgent = agent;

@@ -154,5 +154,5 @@ test('main agent disables a CLI svalld does not find', () => {
   render(<SettingsCard />);
   const codex = screen.getByRole('option', { name: /^Codex/ }) as HTMLOptionElement;
   expect(codex.disabled).toBe(true);
-  expect(codex.textContent).toBe('Codex (not found: install it, then svall setup)');
+  expect(codex.textContent).toBe('Codex (not found: install it, then svall-dev setup)');
 });

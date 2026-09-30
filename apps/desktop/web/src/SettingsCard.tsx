@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { AGENT_LABEL, AgentKind, DORMANT_AFTER_HOURS, fleetNameProblem, type PushStatus } from '@svall/protocol';
 import { loadMobileStatus, renameFleet, setDormancy, setMainAgent, setScribe } from './actions.js';
 import { app, deps } from './boot.js';
-import { openConfig, openUrl } from './bridge.js';
+import { openConfig, openUrl, shim } from './bridge.js';
 import { useApp } from './hooks.js';
 import { Info } from './Info.js';
 import { chordLabel, chordsOf, keyLabel, keyTip } from './keys.js';
@@ -93,7 +93,7 @@ function MainAgent() {
         onChange={(e) => setMainAgent(deps(), e.target.value as AgentKind)}>
         {AgentKind.options.map((k) => (
           <option key={k} value={k} disabled={!found.includes(k) && k !== main}>
-            {found.includes(k) ? AGENT_LABEL[k] : `${AGENT_LABEL[k]} (not found: install it, then svall setup)`}
+            {found.includes(k) ? AGENT_LABEL[k] : `${AGENT_LABEL[k]} (not found: install it, then ${shim()} setup)`}
           </option>
         ))}
       </select></b>

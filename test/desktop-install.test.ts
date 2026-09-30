@@ -130,10 +130,10 @@ test("shows the end of a quiet step's log when the step fails", () => {
 
 test('sets up again only when a check asks for svall setup', () => {
   expect(checks({}, true).stdout).toMatch(/build ghostty: , setup: \n$/);
-  const stale = 'case "$*" in *"setup --check"*) echo "│  ! hooks  missing or out of date: run svall setup" ;; esac';
+  const stale = 'case "$*" in *"setup --check"*) echo "│  ! hooks  missing or out of date: run svall-dev setup" ;; esac';
   const asked = checks({ 'bin/pnpm': stale }, true);
   expect(asked.stdout).toMatch(/build ghostty: , setup: 1\n$/);
   expect(asked.stdout).toContain('│  → hooks  out of date, will be updated after the build');
-  expect(asked.stdout).not.toContain('run svall setup');
+  expect(asked.stdout).not.toContain('run svall-dev setup');
   expect(checks({ 'bin/pnpm': stale }).stdout).toContain('│  → hooks  will be set up after the build');
 });

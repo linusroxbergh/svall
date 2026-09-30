@@ -9,7 +9,7 @@ import { loadConfig } from './config.js';
 import { Invalid, NotFound } from './errors.js';
 import { resolvePaths, userPaths } from './paths.js';
 import { PRIVATE, profileHome, profileLabel, profileOf } from './profile.js';
-import { ownRuntime, type Runtime } from './runtime.js';
+import { ownRuntime, variant, type Runtime } from './runtime.js';
 import { setupHome, type HomeSetup } from './setup.js';
 import { appPid, appQuit, fleetHomes } from './uninstall.js';
 
@@ -102,7 +102,7 @@ export async function answers(home: string): Promise<{ close(): void }> {
         let r: { ok?: boolean; protocol?: number } | undefined;
         try { r = (JSON.parse(raw.toString()) as { result?: typeof r }).result; } catch { r = undefined; }
         if (!r?.ok) done(new Error('svalld refused the token'));
-        else if (r.protocol !== PROTOCOL_VERSION) done(new ProtocolMismatch(`the svalld of ${home} speaks protocol ${r.protocol ?? 'none'}; run pnpm desktop:install`));
+        else if (r.protocol !== PROTOCOL_VERSION) done(new ProtocolMismatch(`the svalld of ${home} speaks protocol ${r.protocol ?? 'none'}; ${variant === 'release' ? 'quit and reopen Svall' : 'run pnpm desktop:install'}`));
         else done();
       });
       ws.once('error', (e) => done(e));

@@ -10,7 +10,7 @@ import { codexPaths } from '@svall/svalld/codex/install';
 import { loadConfig, saveConfig } from '@svall/svalld/config';
 import { resolvePaths, userPaths } from '@svall/svalld/paths';
 import { FALLBACK_DIRS, loginEnv } from '@svall/svalld/login-env';
-import { LAUNCHD_LABEL, PRIVATE, profileLabel, profileOf } from '@svall/svalld/profile';
+import { LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from '@svall/svalld/profile';
 import { ownRuntime } from '@svall/svalld/runtime';
 import {
   claudeHooksCurrent, codexHooksCurrent, isLoaded, kickstart, plistCurrent, readCodexHooks, readJsonSettings, readOrUndefined, refreshFleetPlists,
@@ -38,7 +38,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       if (o.loginShell) Object.assign(process.env, await loginEnv({ shell: process.env.SHELL || '/bin/zsh', timeoutMs: 5000, fallback: FALLBACK_DIRS() }));
       // setup owns the per-user half — the Claude hooks and the shims — so it only ever means private
       const t = target();
-      if (t.name !== PRIVATE) throw new Error(`svall setup configures the private fleet; run svall ${t.name} to open that one`);
+      if (t.name !== PRIVATE) throw new Error(`${SHIM} setup configures the private fleet; run ${SHIM} ${t.name} to open that one`);
       const runtime = ownRuntime();
       requireInstalledApp(runtime);
       const configFile = resolvePaths(t.home).config;
@@ -72,7 +72,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       if (o.ifNeeded) {
         const owner = takenOverBy(plistOf(t.home), runtime);
         if (owner) {
-          const warnings = [`${owner} runs these fleets; open that copy of Svall, or run this copy's svall setup to move them here`];
+          const warnings = [`${owner} runs these fleets; open that copy of Svall, or run this copy's ${SHIM} setup to move them here`];
           printResult({ done: [], warnings }, json(), () => warnings.join('\n'));
           return;
         }
@@ -95,10 +95,10 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
         const checks = await preflight(realPreflightDeps(t.home));
         const notes: Check[] = [];
         // desktop:install runs setup when it sees one of these lines, as nothing else rewrites the Claude hooks, the shims or the plist
-        if (hooksStale) notes.push({ name: 'hooks', status: 'warn', detail: 'missing or out of date: run svall setup' });
+        if (hooksStale) notes.push({ name: 'hooks', status: 'warn', detail: `missing or out of date: run ${SHIM} setup` });
         // desktop:install puts this checkout's app in place, so shims or a plist that run another checkout, moved or not, are out of date
-        if (shimsStale) notes.push({ name: 'shims', status: 'warn', detail: 'missing or out of date: run svall setup' });
-        if (plistStale) notes.push({ name: 'launchd', status: 'warn', detail: 'plist missing or out of date: run svall setup' });
+        if (shimsStale) notes.push({ name: 'shims', status: 'warn', detail: `missing or out of date: run ${SHIM} setup` });
+        if (plistStale) notes.push({ name: 'launchd', status: 'warn', detail: `plist missing or out of date: run ${SHIM} setup` });
         // a failed check is listed too, as --json has no other way to say why it exits 1
         const warnings = [...checks.filter((c) => c.status === 'warn' || c.status === 'fail').map(checkLine), ...notes.map(checkLine)];
         printResult({ done: [], warnings }, json(), () => renderGroups([

@@ -109,6 +109,9 @@ export function createBridge(win: Window = window): Bridge {
   };
 }
 
+// the CLI of the build whose shell shows this page; with no shell, Svall Dev's
+export const shim = (): string => (globalThis.window?.__svallVariant === 'release' ? 'svall' : 'svall-dev');
+
 // a bare host like xyz.com is a web link; any other scheme is refused
 export function webUrl(input: string): string | undefined {
   const raw = input.trim();

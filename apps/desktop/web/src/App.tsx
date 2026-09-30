@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { app } from './boot.js';
 import { Board } from './Board.js';
-import { revealFile } from './bridge.js';
+import { revealFile, shim } from './bridge.js';
 import { ConfirmClose } from './ConfirmClose.js';
 import { ConfirmDeleteIsland } from './ConfirmDeleteIsland.js';
 import { FleetPicker } from './FleetPicker.js';
@@ -58,10 +58,10 @@ export function App() {
       <div className="connect" data-testid="connect-screen">
         <div>
           {status === 'outdated' ? OUTDATED() : 'svalld not running'}<br />
-          {!log && <small>run <code>svall setup</code>, or open this page with <code>?port=&amp;token=</code></small>}
+          {!log && <small>run <code>{shim()} setup</code>, or open this page with <code>?port=&amp;token=</code></small>}
           {log && (
             <>
-              {shell.log.length === 0 && status !== 'outdated' && <><small>run <code>svall setup</code></small><br /></>}
+              {shell.log.length === 0 && status !== 'outdated' && <><small>run <code>{shim()} setup</code></small><br /></>}
               <small>log: <code>{log}</code> <button className="btn" data-testid="connect-log-reveal" onClick={() => revealFile(app.bridge, log)}>Reveal</button></small>
               {shell.log.length > 0 && <pre className="connect-log" data-testid="connect-log">{shell.log.join('\n')}</pre>}
             </>

@@ -80,11 +80,11 @@ pnpm --silent svall -p private setup --check >"$CHECK_OUT" 2>&1 || CHECK_OK=
 # this script runs setup after the build for each line that asks for it, so those lines say that instead
 AFTER="out of date, will be updated after the build"
 NEW="$AFTER"; [ -f "$HOME_DIR/config.json" ] || NEW="will be set up after the build"
-sed -e "/: run svall setup\$/{
+sed -e "/: run svall-dev setup\$/{
 s/$(printf '\033')\[33m!/$C!/
 s/!/→/
-s/missing or out of date: run svall setup\$/$NEW/
-s/out of date: run svall setup\$/$AFTER/
+s/missing or out of date: run svall-dev setup\$/$NEW/
+s/out of date: run svall-dev setup\$/$AFTER/
 }" "$CHECK_OUT"; bar
 if [ -z "$CHECK_OK" ] || [ -n "$MISSING" ]; then
   [ -z "$MISSING" ] || printf '%s\n' "$MISSING" | sed '/^$/d' >&2
@@ -97,7 +97,7 @@ SETUP=
 if [ ! -f "$HOME_DIR/config.json" ] || [ ! -f "$HOME/Library/LaunchAgents/io.github.linusroxbergh.svall.dev.svalld.plist" ] || [ ! -f "$HOME/.local/bin/svall-dev" ]; then
   SETUP=1
 fi
-grep -q 'run svall setup' "$CHECK_OUT" && SETUP=1
+grep -q 'run svall-dev setup' "$CHECK_OUT" && SETUP=1
 # setup is what starts the private fleet's agent, so one a failed start left unloaded gets another
 launchctl print "gui/$(id -u)/io.github.linusroxbergh.svall.dev.svalld" >/dev/null 2>&1 || SETUP=1
 

@@ -10,7 +10,7 @@ import { characterKeyEnv } from '@svall/svalld/claude';
 import { codexInstalled, codexPaths, type CodexPaths } from '@svall/svalld/codex/install';
 import { loadConfig, parseConfig } from '@svall/svalld/config';
 import { resolvePaths, userPaths } from '@svall/svalld/paths';
-import { PRIVATE, profileHome, profileLabel } from '@svall/svalld/profile';
+import { PRIVATE, SHIM, profileHome, profileLabel } from '@svall/svalld/profile';
 import { HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hooksInstalled, launchdEnv, plistEnv, plistRun } from '@svall/svalld/setup';
 import { resolveTmux } from '@svall/svalld/tmux';
 import { tmuxTooOld } from '@svall/svalld/tmux/conf';
@@ -191,7 +191,7 @@ async function launchd(t: Target, d: DoctorDeps): Promise<Check> {
     const running = fields.includes('state = running');
     return { name: 'launchd', status: running ? 'ok' : 'fail', detail: `${label}: ${fields.join(', ') || 'loaded'}` };
   } catch {
-    return { name: 'launchd', status: 'fail', detail: `${label} is not loaded: svall ${t.name === PRIVATE ? 'setup' : t.name}` };
+    return { name: 'launchd', status: 'fail', detail: `${label} is not loaded: ${SHIM} ${t.name === PRIVATE ? 'setup' : t.name}` };
   }
 }
 
@@ -199,7 +199,7 @@ async function launchd(t: Target, d: DoctorDeps): Promise<Check> {
 function plistOf(t: Target, d: DoctorDeps): { plist: string; fix: string } {
   const label = profileLabel(t.name);
   const plist = path.join(d.launchAgentsDir, `${label}.plist`);
-  return { plist, fix: t.name === PRIVATE ? 'svall setup' : `launchctl bootout gui/${d.uid}/${label}, delete ${plist}, then svall ${t.name}` };
+  return { plist, fix: t.name === PRIVATE ? `${SHIM} setup` : `launchctl bootout gui/${d.uid}/${label}, delete ${plist}, then ${SHIM} ${t.name}` };
 }
 
 // launchd finds a checkout's node through the plist's PATH, which starts at the node setup ran with; the app names its own
@@ -261,11 +261,11 @@ function hooks(d: DoctorDeps): Check {
     current = ok && claudeHooksCurrent(settings, d.hooksHome);
     disabled = settings?.disableAllHooks === true;
   } catch { /* unparseable counts as missing */ }
-  if (!ok) return { name: 'hooks', status: 'fail', detail: `not installed in ${d.settingsPath}: svall setup` };
+  if (!ok) return { name: 'hooks', status: 'fail', detail: `not installed in ${d.settingsPath}: ${SHIM} setup` };
   if (disabled) return { name: 'hooks', status: 'fail', detail: `${d.settingsPath} sets disableAllHooks, so no character gets a status; remove it` };
   return current
     ? { name: 'hooks', status: 'ok', detail: `installed in ${d.settingsPath}` }
-    : { name: 'hooks', status: 'warn', detail: `out of date in ${d.settingsPath}: run svall setup` };
+    : { name: 'hooks', status: 'warn', detail: `out of date in ${d.settingsPath}: run ${SHIM} setup` };
 }
 
 // verifies the hook definition is installed and current, then asks Codex whether it is trusted.
@@ -280,8 +280,8 @@ export async function codexCheck(d: Pick<DoctorDeps, 'codex' | 'exists' | 'read'
     written = codexInstalled(hooks, script);
     current = written && codexHooksCurrent(hooks, script);
   } catch { /* unparseable counts as missing */ }
-  if (!written) return { name: 'codex hooks', status: 'warn', detail: `not installed in ${d.codex.hooks}: svall setup` };
-  if (!current) return { name: 'codex hooks', status: 'warn', detail: `out of date in ${d.codex.hooks}: run svall setup, then trust them in Codex` };
+  if (!written) return { name: 'codex hooks', status: 'warn', detail: `not installed in ${d.codex.hooks}: ${SHIM} setup` };
+  if (!current) return { name: 'codex hooks', status: 'warn', detail: `out of date in ${d.codex.hooks}: run ${SHIM} setup, then trust them in Codex` };
   const trust = await d.codexTrust();
   if (!trust) return { name: 'codex hooks', status: 'ok', detail: `installed in ${d.codex.hooks}; couldn't ask Codex about trust, check /hooks in Codex` };
   return trust.untrusted

@@ -41,7 +41,7 @@ test('the connect screen names the daemon log and shows its last lines', async (
 test('the connect screen asks for svall setup while the daemon has never logged', async ({ page }) => {
   await fakeShell(page, { port: 0, token: '', info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false } });
   await page.goto('/');
-  await expect(page.getByTestId('connect-screen')).toContainText('run svall setup');
+  await expect(page.getByTestId('connect-screen')).toContainText('run svall-dev setup');
 });
 
 test('the connect screen says it is connecting at first, and shows the log once svalld is slow to answer', async ({ page }) => {
@@ -75,7 +75,7 @@ test('a daemon on another protocol asks for a reinstall', async ({ page }) => {
     await page.goto('/');
     // a daemon that answered needs no grace to say so: this is well inside the 2.5 s the connect screen waits
     await expect(page.getByTestId('connect-screen')).toContainText('pnpm desktop:install', { timeout: 1500 });
-    await expect(page.getByTestId('connect-screen')).not.toContainText('svall setup');
+    await expect(page.getByTestId('connect-screen')).not.toContainText('svall-dev setup');
   } finally {
     for (const c of wss.clients) c.terminate();
     await new Promise((r) => wss.close(r));

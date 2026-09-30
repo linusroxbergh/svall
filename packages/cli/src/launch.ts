@@ -4,7 +4,7 @@ import os from 'node:os';
 import { promisify } from 'node:util';
 import { homeSetup, startFleet, type StartDeps } from '@svall/svalld/fleets';
 import { userPaths } from '@svall/svalld/paths';
-import { BUNDLE_ID, PRIVATE } from '@svall/svalld/profile';
+import { BUNDLE_ID, PRIVATE, SHIM } from '@svall/svalld/profile';
 import { ownRuntime } from '@svall/svalld/runtime';
 import { setupHome } from '@svall/svalld/setup';
 import { Client } from './client.js';
@@ -18,10 +18,10 @@ export type LaunchDeps = StartDeps & {
 
 export async function launch(t: Target, d: LaunchDeps): Promise<void> {
   if (!d.exists(t.home)) {
-    if (t.name === PRIVATE) throw new Error('no private fleet yet; run svall setup first');
+    if (t.name === PRIVATE) throw new Error(`no private fleet yet; run ${SHIM} setup first`);
     if (!t.managed) throw new Error(`no fleet at ${t.home}; $SVALL_HOME must name a profile home`);
     const yes = d.isTTY && /^y(es)?$/i.test((await d.prompt(`create profile ${t.name} at ${t.home}? [y/N] `)).trim());
-    if (!yes) throw new Error(`no profile ${t.name}; run svall ${t.name} in a terminal to create it`);
+    if (!yes) throw new Error(`no profile ${t.name}; run ${SHIM} ${t.name} in a terminal to create it`);
     await d.setupHome(homeSetup(t, d));
   }
 
