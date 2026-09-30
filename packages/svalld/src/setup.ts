@@ -154,23 +154,24 @@ export const cliCommand = (r: Runtime): string => r.cli.map(shq).join(' ');
 
 export const shimText = (r: Runtime): string => `#!/bin/sh\nexec ${cliCommand(r)} "$@"\n`;
 
-// a companion release's shim is a relative link to its svall through `current`, which setup writes the same way every time
-const releaseLink = (shimDir: string, release: string): string => path.relative(shimDir, path.join(release, 'bin', 'svall'));
+// a companion release's shim links to its svall through `current`, by the full path: the kernel resolves a relative
+// link from the folder a linked ~/.local/bin really is
+const releaseLink = (release: string): string => path.join(release, 'bin', 'svall');
 
 /** Whether the shims hold what setup would write now to run `runtime`. */
 export const shimsCurrent = (shimDir: string, runtime: Runtime): boolean => shimNames(shimDir).every((name) => {
   const file = path.join(shimDir, name);
-  if (runtime.release) return fs.lstatSync(file, { throwIfNoEntry: false })?.isSymbolicLink() === true && fs.readlinkSync(file) === releaseLink(shimDir, runtime.release);
+  if (runtime.release) return fs.lstatSync(file, { throwIfNoEntry: false })?.isSymbolicLink() === true && fs.readlinkSync(file) === releaseLink(runtime.release);
   return fs.existsSync(file) && fs.readFileSync(file, 'utf8') === shimText(runtime);
 });
 
-// a companion release is reached through a relative link, so an upgrade that moves `current` needs no new shim
+// a companion release is reached through `current`, so an upgrade that moves it needs no new shim
 function writeShims(shimDir: string, runtime: Runtime): string[] {
   fs.mkdirSync(shimDir, { recursive: true });
   return shimNames(shimDir).map((name) => {
     const shim = path.join(shimDir, name);
     fs.rmSync(shim, { force: true });
-    if (runtime.release) fs.symlinkSync(releaseLink(shimDir, runtime.release), shim);
+    if (runtime.release) fs.symlinkSync(releaseLink(runtime.release), shim);
     else fs.writeFileSync(shim, shimText(runtime), { mode: 0o755 });
     return `shim -> ${shim}`;
   });

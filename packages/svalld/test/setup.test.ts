@@ -535,14 +535,34 @@ esac
     expect(settings.statusLine.command).toBe(statusWrapper(node, path.join(home, 'hooks/claude-status.mjs')));
     expect(JSON.stringify(settings)).not.toContain(process.execPath);
     // the shims link into the release through current, which is what setup writes for one
-    expect(fs.readlinkSync(path.join(home, 'bin', 'svall'))).toBe(path.relative(path.join(home, 'bin'), path.join(release, 'bin', 'svall')));
+    expect(fs.readlinkSync(path.join(home, 'bin', 'svall'))).toBe(path.join(release, 'bin', 'svall'));
     expect(shimsCurrent(path.join(home, 'bin'), releaseRuntime(release))).toBe(true);
     expect(shimsCurrent(path.join(home, 'bin'), runtime)).toBe(false);
     // a shim that links into another release is out of date for this one
     const shim = path.join(home, 'bin', 'svall');
     fs.rmSync(shim);
-    fs.symlinkSync(path.relative(path.join(home, 'bin'), path.join(makeHome(), 'current', 'bin', 'svall')), shim);
+    fs.symlinkSync(path.join(makeHome(), 'current', 'bin', 'svall'), shim);
     expect(shimsCurrent(path.join(home, 'bin'), releaseRuntime(release))).toBe(false);
+  });
+
+  it('keeps the shim running the release when ~/.local/bin is itself a link, as GNU stow makes it', async () => {
+    const root = makeHome();
+    const prefix = path.join(root, '.local', 'share', 'svall');
+    fs.mkdirSync(path.join(prefix, 'releases', '1.0.0', 'bin'), { recursive: true });
+    fs.writeFileSync(path.join(prefix, 'releases', '1.0.0', 'bin', 'svall'), '#!/bin/sh\necho release svall\n', { mode: 0o755 });
+    const release = path.join(prefix, 'current');
+    fs.symlinkSync(path.join(prefix, 'releases', '1.0.0'), release);
+    fs.mkdirSync(path.join(root, 'dotfiles', 'bin'), { recursive: true });
+    const shimDir = path.join(root, '.local', 'bin');
+    fs.symlinkSync(path.join(root, 'dotfiles', 'bin'), shimDir);
+    // a relative link resolves from the folder ~/.local/bin links to, where no release is
+    const shim = path.join(shimDir, 'svall');
+    fs.symlinkSync(path.relative(shimDir, path.join(release, 'bin', 'svall')), shim);
+    expect(shimsCurrent(shimDir, releaseRuntime(release))).toBe(false);
+    const home = makeHome();
+    await runSetup({ home, settingsPath: path.join(home, 'claude-settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir, runtime: releaseRuntime(release), launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }) });
+    expect(shimsCurrent(shimDir, releaseRuntime(release))).toBe(true);
+    expect(execFileSync(shim, { encoding: 'utf8' })).toBe('release svall\n');
   });
 
   it('writes nothing when the Claude settings are not valid JSON', async () => {

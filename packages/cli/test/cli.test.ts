@@ -207,7 +207,7 @@ describe('svall setup on a Linux release', () => {
     // the link setup makes for a release, into it through `current`
     const shimDir = path.join(os.homedir(), '.local', 'bin');
     fs.mkdirSync(shimDir, { recursive: true });
-    fs.symlinkSync(path.relative(shimDir, path.join(DEFAULT_PREFIX, 'current', 'bin', 'svall')), path.join(shimDir, 'svall'));
+    fs.symlinkSync(path.join(DEFAULT_PREFIX, 'current', 'bin', 'svall'), path.join(shimDir, 'svall'));
     try {
       expect(JSON.parse(await setup('--check', '--release', '/nowhere')).warnings).not.toContain('! shims  missing or out of date: run svall setup');
       expect(JSON.parse(await setup('--check')).warnings).toContain('! shims  missing or out of date: run svall setup');
