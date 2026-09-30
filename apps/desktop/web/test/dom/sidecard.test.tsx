@@ -175,6 +175,22 @@ test('the last command is read again for a new prompt, a turn\'s end and a new s
   expect(reads()).toBe(4);
 });
 
+test('last activity counts on while no patch arrives', async () => {
+  vi.useFakeTimers({ now: 1_000_000, toFake: ['Date', 'setInterval', 'clearInterval'] });
+  try {
+    const f = fleet();
+    f.characters.c0.agent = { kind: 'claude', sessionId: 's', status: 'working', lastActivityAt: 1_000_000, transcriptPath: '/tmp/t.jsonl' };
+    store.getState().setFleet(f);
+    render(<Side />);
+    await act(async () => {});
+    expect(screen.getByText('0s ago')).toBeTruthy();
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(screen.getByText('1m ago')).toBeTruthy();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test('a refused rename is reported, stays in the field, and the next blur sends it again', async () => {
   refuse = (m, p) => (m === 'char.update' && p.name ? `another character is already called ${String(p.name)}` : undefined);
   render(<Side />);

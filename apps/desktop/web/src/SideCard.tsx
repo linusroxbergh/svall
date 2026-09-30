@@ -6,7 +6,7 @@ import { deleteCharacter, newCharacterOn, saveCharacter, saveCharacterContext, s
 import { copyText, openFolder } from './bridge.js';
 import { followLink } from './LinkAsk.js';
 import { FollowLine, FollowTextarea } from './Field.js';
-import { useApp } from './hooks.js';
+import { useApp, useTick } from './hooks.js';
 import { Info } from './Info.js';
 import { keyTip } from './keys.js';
 import { LinkIcon } from './map/LinkIcon.js';
@@ -94,6 +94,8 @@ export function SideCard({ id }: { id: string }) {
   const [ref, setRef] = useState('');
   // the card stays mounted as the selection moves, so a half typed link would be offered to the next character
   useEffect(() => setRef(''), [id]);
+  // last activity counts on while a busy agent sends nothing
+  useTick(10_000);
   if (!c) return null;
 
   const status = statusOf(c);
