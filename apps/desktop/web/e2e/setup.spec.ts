@@ -37,9 +37,9 @@ test('lists the agents and files, and sets up the agents left on', async ({ page
 });
 
 test('says what to install when no agent is found, and asks again', async ({ page }) => {
-  await fakeShell(page, { ...PLAN, agents: [], writes: PLAN.writes.slice(2), blockers: ['Install Claude Code or Codex first, then check again.'] });
+  await fakeShell(page, { ...PLAN, agents: [], writes: PLAN.writes.slice(2), blockers: ['Install Claude Code (https://code.claude.com/docs/en/setup) or Codex (https://learn.chatgpt.com/docs/codex/cli) first, then check again.'] });
   await page.goto('/?setup=1');
-  await expect(page.getByText('Install Claude Code or Codex first')).toBeVisible();
+  await expect(page.getByText('Install Claude Code (https://code.claude.com/docs/en/setup) or Codex')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Set up' })).toBeDisabled();
   await page.getByRole('button', { name: 'Check again' }).click();
   expect((await sent(page)).filter((m) => m.type === 'setup.plan')).toHaveLength(2);

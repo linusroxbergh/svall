@@ -26,7 +26,7 @@ describe('setupPlan', () => {
   it('says what blocks setup when no agent is installed', () => {
     const plan = setupPlan({ home: makeHome(), found: [], integrations: undefined, settingsPath: '/s', codexHooks: '/c',
       launchAgentsDir: '/l', shimDir: '/u/.local/bin', pathEnv: '/usr/bin' });
-    expect(plan.blockers).toEqual(['Install Claude Code or Codex first, then check again.']);
+    expect(plan.blockers).toEqual(['Install Claude Code (https://code.claude.com/docs/en/setup) or Codex (https://learn.chatgpt.com/docs/codex/cli) first, then check again.']);
     expect(plan.shimOnPath).toBe(false);
   });
 

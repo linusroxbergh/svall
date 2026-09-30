@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { AgentKind } from '@svall/protocol';
-import { AGENT_KINDS } from './agents.js';
+import { AGENTS, AGENT_KINDS } from './agents.js';
 import { LAUNCHD_LABEL, SHIM, profileLabel, profileOf } from './profile.js';
 import { bundledVersion, type Runtime } from './runtime.js';
 
@@ -23,7 +23,7 @@ export function setupPlan(o: {
   ];
   return {
     agents: o.found, writes, shimDir: o.shimDir, shimOnPath: o.pathEnv.split(':').includes(o.shimDir),
-    blockers: o.found.length ? [] : ['Install Claude Code or Codex first, then check again.'],
+    blockers: o.found.length ? [] : [`Install ${AGENT_KINDS.map((k) => `${AGENTS[k].label} (${AGENTS[k].installUrl})`).join(' or ')} first, then check again.`],
   };
 }
 
