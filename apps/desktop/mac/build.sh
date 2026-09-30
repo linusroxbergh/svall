@@ -24,6 +24,12 @@ APP="$MAC/build/$NAME.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Svall"
+# the binary links Sparkle, so every build carries it; only a build with a feed starts it
+FRAMEWORK="$(dirname "$BIN")/Sparkle.framework"
+mkdir -p "$APP/Contents/Frameworks"
+rsync -a --delete "$FRAMEWORK" "$APP/Contents/Frameworks/"
+otool -l "$APP/Contents/MacOS/Svall" | grep -q '@executable_path/../Frameworks' ||
+  install_name_tool -add_rpath @executable_path/../Frameworks "$APP/Contents/MacOS/Svall"
 cp "$MAC/Info.plist" "$APP/Contents/Info.plist"
 "$MAC/variant-plist.sh" "$APP/Contents/Info.plist" "$VARIANT"
 cp "$MAC/Svall.icns" "$APP/Contents/Resources/Svall.icns"

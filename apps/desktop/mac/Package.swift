@@ -4,11 +4,14 @@ import PackageDescription
 let package = Package(
     name: "Svall",
     platforms: [.macOS("15.0")],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
+    ],
     targets: [
         .binaryTarget(name: "GhosttyKit", path: "GhosttyKit.xcframework"),
         .executableTarget(
             name: "Svall",
-            dependencies: ["GhosttyKit"],
+            dependencies: ["GhosttyKit", .product(name: "Sparkle", package: "Sparkle")],
             path: "Sources/Svall",
             linkerSettings: [
                 .linkedLibrary("c++"),

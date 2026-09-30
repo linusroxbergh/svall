@@ -15,5 +15,6 @@ apps/desktop/mac/build/
 apps/desktop/mac/GhosttyKit.xcframework
 vendor/ghostty-kit/
 vendor/node/
+vendor/sparkle/
 vendor/tmux/
 __pycache__/
