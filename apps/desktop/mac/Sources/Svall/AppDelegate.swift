@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         if let home = try? JSONEncoder().encode((SvallHome.path as NSString).standardizingPath), let json = String(data: home, encoding: .utf8) {
             config.userContentController.addUserScript(WKUserScript(source: "window.__svallHome = \(json);", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
+        config.userContentController.addUserScript(WKUserScript(source: "window.__svallVariant = \(AppRuntime.cli == nil ? "\"dev\"" : "\"release\"");", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         // a launch that named no fleet offers the others
         if SvallHome.bare {
             config.userContentController.addUserScript(WKUserScript(source: "window.__svallBare = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -65,7 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         if let url = Self.devURL {
             webView.load(URLRequest(url: url))
         } else if assets != nil {
-            webView.load(URLRequest(url: WebAssets.start))
+            webView.load(URLRequest(url: AppRuntime.needsSetup ? URL(string: WebAssets.start.absoluteString + "?setup=1")! : WebAssets.start))
         } else {
             NSLog("no web bundle in %@ and no SVALL_DEV_URL", Bundle.main.resourceURL?.path ?? "")
             missingBundle = true
@@ -73,6 +74,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
+
+        // a set-up app brings its hooks and plists up to date with this build, and restarts older daemons, without asking.
+        // one window per Mac does it: every fleet's window is its own instance, and two refreshes would race on launchd
+        if SvallHome.isPrivate, !AppRuntime.needsSetup, AppRuntime.cli != nil {
+            AppRuntime.run(["setup", "--if-needed", "--json", "--login-shell"]) { ok, text in if !ok { NSLog("setup refresh: %@", text) } }
+        }
 
         // the alert comes after the window so a cold launch does not leave it behind another app
         if missingBundle {
@@ -135,6 +142,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         others.keyEquivalentModifierMask = [.command, .option]
         appMenu.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
+        if AppRuntime.cli != nil {
+            let uninstall = appMenu.addItem(withTitle: "Uninstall Svall…", action: #selector(uninstall(_:)), keyEquivalent: "")
+            uninstall.target = self
+        }
         let quit = appMenu.addItem(withTitle: "Quit Svall", action: #selector(quit(_:)), keyEquivalent: "")
         quit.target = self
         appItem.submenu = appMenu
@@ -174,6 +185,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
     @objc private func openFleets(_ sender: Any?) {
         router?.showFleets()
+    }
+
+    @objc private func uninstall(_ sender: Any?) {
+        let alert = NSAlert()
+        alert.messageText = "Uninstall Svall?"
+        alert.informativeText = "This stops every fleet (running agents end), removes Svall's hooks from Claude Code and Codex, its background service and the svall command, then moves Svall to the Trash."
+        let purge = NSButton(checkboxWithTitle: "Also delete fleet data (~/.svall…)", target: nil, action: nil)
+        alert.accessoryView = purge
+        alert.addButton(withTitle: "Uninstall")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let forget = purge.state == .on
+        AppRuntime.run(["uninstall", "--json", "--from-app"] + (forget ? ["--purge"] : [])) { ok, text in
+            guard ok else {
+                let failed = NSAlert()
+                failed.messageText = "Uninstall stopped"
+                failed.informativeText = text
+                failed.runModal()
+                return
+            }
+            NSWorkspace.shared.recycle([Bundle.main.bundleURL]) { _, error in
+                DispatchQueue.main.async {
+                    if let error {
+                        let stuck = NSAlert()
+                        stuck.messageText = "Svall could not move itself to the Trash"
+                        stuck.informativeText = "Everything else is uninstalled. Drag Svall to the Trash yourself. (\(error.localizedDescription))"
+                        stuck.runModal()
+                    }
+                    if forget { Self.forgetAfterQuit() }
+                    NSApp.terminate(nil)
+                }
+            }
+        }
+    }
+
+    /// Deletes what macOS keeps under this bundle id once this process is gone, as a running app would write it back.
+    private static func forgetAfterQuit() {
+        guard let id = Bundle.main.bundleIdentifier else { return }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        p.arguments = ["-c", "while kill -0 \"$1\" 2>/dev/null; do sleep 0.2; done; defaults delete \"$2\"; rm -rf \"$3/WebKit/$2\" \"$3/Caches/$2\"",
+                       "sh", String(ProcessInfo.processInfo.processIdentifier), id, NSHomeDirectory() + "/Library"]
+        try? p.run()
     }
 
     @objc private func quit(_ sender: Any?) {

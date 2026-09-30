@@ -52,7 +52,7 @@ enum SvallHome {
     /// Opened from Finder, Spotlight or the Dock, which name no fleet.
     static var bare: Bool { ProcessInfo.processInfo.environment["SVALL_HOME"] == nil }
 
-    private static var isPrivate: Bool {
+    static var isPrivate: Bool {
         (path as NSString).standardizingPath == NSHomeDirectory() + "/" + root
     }
 

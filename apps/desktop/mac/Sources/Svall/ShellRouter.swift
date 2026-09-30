@@ -216,6 +216,12 @@ final class ShellRouter {
             ExternalURL.openFolder(path)
         case .reveal(let path):
             ExternalURL.reveal(path)
+        case .setupPlan:
+            AppRuntime.run(["setup", "--plan", "--login-shell"]) { [weak self] ok, text in self?.bridge.send(.setupResult(step: "plan", ok: ok, json: text)) }
+        case .setupRun(let agents):
+            AppRuntime.run(["setup", "--json", "--login-shell", "--agents", agents.joined(separator: ",")]) { [weak self] ok, text in
+                self?.bridge.send(.setupResult(step: "run", ok: ok, json: text))
+            }
         case .copy(let text):
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
