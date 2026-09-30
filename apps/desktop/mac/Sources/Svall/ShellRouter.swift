@@ -295,6 +295,7 @@ final class ShellRouter {
         let config = NSWorkspace.OpenConfiguration()
         config.createsNewApplicationInstance = true
         config.environment = ["SVALL_HOME": home]
+        if quit, Updates.shared.running { config.environment[Updates.handoff] = "1" }
         NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: config) { [weak self] _, error in
             DispatchQueue.main.async {
                 if let error { self?.bridge.send(.openFleetFailed(home: home, reason: error.localizedDescription)) } else { done() }
