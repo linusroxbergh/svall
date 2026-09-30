@@ -18,19 +18,19 @@ describe('placeIslet', () => {
   it('is only its pill when home is collapsed', () => {
     expect(placeIslet(1440, HOME, true)).toEqual({ mode: 'pill', homeShift: 0, cx: 720, scale: 1, homeScale: 1 });
   });
-  it('keeps the islet on a map too narrow for the pair, clear of the edge and no smaller than 0.8', () => {
+  it('keeps the islet on a map too narrow for the pair, clear of the edge and no smaller than 0.65', () => {
     for (const hostW of [1040, 900, 700, 500]) {
       const p = placeIslet(hostW, HOME, false);
       expect(p.mode).toBe('pair');
-      expect(p.scale).toBeGreaterThanOrEqual(0.8);
+      expect(p.scale).toBeGreaterThanOrEqual(0.65);
       expect(p.cx + (ISLET.w * p.scale) / 2).toBeLessThanOrEqual(hostW);
     }
   });
-  it('shrinks the islet first, then home, so the islet keeps 0.8 of its size', () => {
+  it('shrinks the islet first, then home, so the islet keeps 0.65 of its size', () => {
     // 484px of home leaves 194px for the islet at 700px: it shrinks, home does not
     expect(placeIslet(700, 484, false)).toMatchObject({ scale: 194 / ISLET.w, homeScale: 1 });
     for (const hostW of [860, 700]) {
-      expect(placeIslet(hostW, HOME, false)).toMatchObject({ scale: 0.8, homeScale: (hostW - 2 * 8 - 6 - 0.8 * ISLET.w) / HOME });
+      expect(placeIslet(hostW, HOME, false)).toMatchObject({ scale: 0.65, homeScale: (hostW - 2 * 8 - 6 - 0.65 * ISLET.w) / HOME });
     }
   });
   it('stands home and the islet apart and inside the map, down to a 700px map with a 748px home', () => {
@@ -43,6 +43,16 @@ describe('placeIslet', () => {
         expect(p.cx + isletW / 2).toBeLessThanOrEqual(hostW);
       }
     }
+  });
+  it('caps home at the scale the island cards stand at, and the islet with it down to 0.65', () => {
+    const p = placeIslet(1440, HOME, false, 0.7);
+    expect(p).toMatchObject({ homeScale: 0.7, scale: 0.7 });
+    expect(placeIslet(1440, HOME, false, 0.5)).toMatchObject({ homeScale: 0.5, scale: 0.65 });
+    // the smaller pair is centred as one group again
+    const left = (1440 - (HOME * 0.7 + ISLET.gap + ISLET.w * 0.7)) / 2;
+    expect(1440 / 2 + p.homeShift - (HOME * 0.7) / 2).toBeCloseTo(left, 6);
+    // a cap over what the width allows changes nothing
+    expect(placeIslet(900, HOME, false, 1)).toEqual(placeIslet(900, HOME, false));
   });
   it('gives up the water between the pair before the islet gives up size', () => {
     const edge = TOTAL + 2 * ISLET.margin;

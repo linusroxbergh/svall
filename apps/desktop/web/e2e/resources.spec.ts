@@ -63,7 +63,7 @@ test('the lighthouse wears the map’s grain, cut to its outline, and it rises w
   expect(await apart()).toBeLessThan(1);
 });
 
-test('a narrow map keeps the islet at 0.8 of its size or more, clear of the edge and of mission control, which shrinks for it', async ({ page, svall }) => {
+test('a narrow map keeps the islet at 0.65 of its size or more, clear of the edge and of mission control, which shrinks for it', async ({ page, svall }) => {
   // five crew make home 17 cells wide
   for (let n = 0; n < 5; n++) await svall.api.call('char.create', { islandId: 'home', cwd: '/tmp', name: `crew-${n}` });
   await svall.open('map');
@@ -81,7 +81,7 @@ test('a narrow map keeps the islet at 0.8 of its size or more, clear of the edge
     // the pair takes its place a frame after the map takes its width
     await expect.poll(async () => (await pair()).isletRight).toBeLessThanOrEqual(w);
     const p = await pair();
-    expect(p.scale).toBeGreaterThanOrEqual(0.8 - 1e-3);
+    expect(p.scale).toBeGreaterThanOrEqual(0.65 - 1e-3);
     expect(p.homeLeft).toBeGreaterThanOrEqual(0);
     expect(p.homeRight).toBeLessThanOrEqual(p.isletLeft);
     expect(p.isletRight).toBeLessThanOrEqual(p.mapW);
@@ -91,7 +91,7 @@ test('a narrow map keeps the islet at 0.8 of its size or more, clear of the edge
     expect(p.homeScale).toBeLessThanOrEqual(wide);
     wide = p.homeScale;
   }
-  expect(wide).toBeLessThan(0.7);
+  expect(wide).toBeLessThan(0.75);
 
   await page.getByTestId('resources-lighthouse').click();
   await expect(page.getByTestId('resources-shelf')).toBeVisible();

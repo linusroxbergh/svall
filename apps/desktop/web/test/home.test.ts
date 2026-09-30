@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Cell, FleetState, Island } from '@svall/protocol';
-import { homeBlocks, homeBox, homeCellToScreen, homeCrew, homeFull, homeReserve, homeSlotAt, inHomeBox } from '../src/map/home.js';
+import { homeBlocks, homeBox, homeCap, homeCellToScreen, homeCrew, homeFull, homeReserve, homeSlotAt, inHomeBox } from '../src/map/home.js';
+import { cardScale } from '../src/map/layout.js';
 import { placeIslet } from '../src/map/resources.js';
 import type { Drag } from '../src/map/types.js';
 import { theme } from '../src/theme.js';
@@ -77,6 +78,20 @@ describe('home geometry', () => {
     expect(row).toMatchObject({ top: narrow.h - homeReserve(false, 28, place.homeScale), bottom: narrow.h - 132 * place.homeScale - 28 + w });
     expect(ground).toEqual({ x: land.x - w, w: land.w + 2 * w, top: land.y - w });
     expect(islet.x).toBeGreaterThanOrEqual(ground.x + ground.w - 2 * w);
+  });
+  it('blocks a home capped by the map where it is drawn', () => {
+    const w = theme.home.water, place = placeIslet(host.w, 8 * 44, false, 0.6);
+    const [row, ground] = homeBlocks(home, host, { w: 300, h: 28 }, 0.6);
+    expect(row.top).toBe(host.h - homeReserve(false, 28, 0.6));
+    expect(ground).toEqual({ x: homeBox(home, host, place.homeShift, 0.6).x - w, w: 8 * 44 * 0.6 + 2 * w, top: host.h - 132 * 0.6 - w });
+  });
+  it('settles the cap where home cards match the cards of the map it leaves room for', () => {
+    // a map that zooms out as home grows
+    const scaleAt = (most: number) => 0.9 - 0.5 * most;
+    const m = homeCap(scaleAt);
+    expect(cardScale(scaleAt(m))).toBeCloseTo(m, 3);
+    expect(homeCap(() => 0.9)).toBe(1);
+    expect(homeCap(() => theme.scale.min)).toBeCloseTo(cardScale(theme.scale.min), 3);
   });
   it('reserves the row plus half a cell of water, open or collapsed', () => {
     expect(theme.home.water).toBe(theme.cell / 2);

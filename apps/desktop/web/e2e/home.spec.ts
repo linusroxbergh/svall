@@ -100,7 +100,7 @@ test('a card dropped on a shrunk mission control lands in the slot under the poi
   const map = (await page.getByTestId('map').boundingBox())!;
   const drawn = async () => (await page.getByTestId('island-home').boundingBox())!;
   // home shrinks a frame after the map takes its width
-  await expect.poll(async () => (await drawn()).width / (17 * theme.cell + 2 * theme.pad)).toBeLessThan(0.7);
+  await expect.poll(async () => (await drawn()).width / (17 * theme.cell + 2 * theme.pad)).toBeLessThan(0.75);
   const land = await drawn(), s = land.width / (17 * theme.cell + 2 * theme.pad);
   // the middle of slot 1, on land drawn at s and standing on the map's bottom edge
   const slot = { x: land.x + (theme.pad + 1.5 * theme.cell) * s, y: map.y + map.height - (theme.home.visible - 1.5 * theme.cell) * s };

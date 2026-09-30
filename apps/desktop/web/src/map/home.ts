@@ -1,7 +1,7 @@
 import { HOME_ISLAND, HOME_ROW, SPACING, homeSlots, type Cell, type Character, type FleetState, type Island } from '@svall/protocol';
 import { charactersOf, homeIsland } from '../selectors.js';
 import { theme } from '../theme.js';
-import { characterAt, type Block } from './layout.js';
+import { cardScale, characterAt, type Block } from './layout.js';
 import { ISLET, placeIslet } from './resources.js';
 import type { Drag } from './types.js';
 
@@ -41,8 +41,8 @@ export const homeReserve = (collapsed: boolean, row = theme.home.row, scale = 1)
 
 // what mission control stands on the map's foot with, each grown by the water the fleet keeps from it: its label row
 // at its measured size, as tall as it has wrapped to, the land under the row and the resources islet, taken as tall as the row
-export function homeBlocks(island: Island, host: { w: number; h: number }, measured: { w: number; h: number }): Block[] {
-  const place = placeIslet(host.w, island.size.w * theme.cell, Boolean(island.collapsed));
+export function homeBlocks(island: Island, host: { w: number; h: number }, measured: { w: number; h: number }, most = 1): Block[] {
+  const place = placeIslet(host.w, island.size.w * theme.cell, Boolean(island.collapsed), most);
   const pad = theme.home.water, top = host.h - homeReserve(Boolean(island.collapsed), measured.h, place.homeScale);
   const rowFoot = host.h - (island.collapsed ? theme.home.bar : theme.home.visible * place.homeScale + theme.home.rowGap);
   const row = { x: host.w / 2 + place.homeShift - measured.w / 2 - pad, w: measured.w + 2 * pad, top, bottom: rowFoot + pad };
@@ -51,6 +51,15 @@ export function homeBlocks(island: Island, host: { w: number; h: number }, measu
   const blocks = [row, { x: land.x - pad, w: land.w + 2 * pad, top: land.y - pad }];
   if (place.mode === 'pair') blocks.push({ x: place.cx - (ISLET.w * place.scale) / 2 - pad, w: ISLET.w * place.scale + 2 * pad, top });
   return blocks;
+}
+
+// the cap on mission control's scale that agrees with the map it leaves room for: its cards stand as big as the
+// islands', and a smaller home gives the fleet more room, so the two settle together
+export function homeCap(scaleAt: (most: number) => number): number {
+  if (cardScale(scaleAt(1)) >= 1) return 1;
+  let lo = cardScale(theme.scale.min), hi = 1;
+  for (let n = 0; n < 12; n++) { const mid = (lo + hi) / 2; if (cardScale(scaleAt(mid)) >= mid) lo = mid; else hi = mid; }
+  return lo;
 }
 
 // home's crew, minus one being dragged away, plus a visitor while it hovers over home

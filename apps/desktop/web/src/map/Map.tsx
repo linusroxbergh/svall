@@ -11,7 +11,7 @@ import { theme, tokenPx } from '../theme.js';
 import { Toast } from '../Toast.js';
 import { cardRect } from './card.js';
 import { Wordmark } from './Furniture.js';
-import { homeBlocks, homeBox, homeCellToScreen, homeCrew, homeFull, homeReserve, homeSlotAt, inHomeBox } from './home.js';
+import { homeBlocks, homeBox, homeCap, homeCellToScreen, homeCrew, homeFull, homeReserve, homeSlotAt, inHomeBox } from './home.js';
 import { Home } from './HomeIsland.js';
 import { HoverCard } from './HoverCard.js';
 import { DBL_CLICK_MS, createInteractions, type Intent } from './interactions.js';
@@ -262,14 +262,15 @@ export function Map() {
   useEffect(() => () => { cancelAnimationFrame(anim.current ?? 0); cancelAnimationFrame(dragFrame.current ?? 0);
     clearTimeout(holdTimer.current); clearTimeout(hoverTimer.current); clearTimeout(settleTimer.current); }, []);
   // the map under the room kept over mission control, and what mission control stands in it with
-  const belowOf = (el: HTMLElement): Below | undefined => {
+  const belowOf = (el: HTMLElement, most = cardScale(layoutRef.current.scale)): Below | undefined => {
     const hi = homeIsland(app.store.getState().fleet);
     const host = { w: el.clientWidth, h: el.clientHeight };
-    return hi && { h: host.h, blocks: homeBlocks(hi, host, row.current) };
+    return hi && { h: host.h, blocks: homeBlocks(hi, host, row.current, most) };
   };
-  // the map height mission control keeps on a map this wide, where its land shrinks to leave the lighthouse room
-  const reserveAt = (w: number, hi = homeIsland(app.store.getState().fleet)): number =>
-    homeReserve(Boolean(hi?.collapsed), theme.home.row, hi ? placeIslet(w, hi.size.w * theme.cell, Boolean(hi.collapsed)).homeScale : 1);
+  // the map height mission control keeps on a map this wide, where its land shrinks to leave the lighthouse room, and
+  // to no more than `most`, the scale the map draws island cards at
+  const reserveAt = (w: number, hi = homeIsland(app.store.getState().fleet), most = 1): number =>
+    homeReserve(Boolean(hi?.collapsed), theme.home.row, hi ? placeIslet(w, hi.size.w * theme.cell, Boolean(hi.collapsed), most).homeScale : 1);
   const refit = (immediate?: boolean, anchor?: PendingIsland['anchor']) => {
     if (cameraHold.current && !immediate) return;
     const el = host.current;
@@ -279,9 +280,14 @@ export function Map() {
     if (wait > 0) { clearTimeout(holdTimer.current); holdTimer.current = setTimeout(() => refit(immediate), wait); return; }
     const islands = mapIslands(app.store.getState().fleet);
     const home = homeIsland(app.store.getState().fleet);
-    const win = { w: el.clientWidth, h: el.clientHeight - reserveAt(el.clientWidth, home) };
-    const below = belowOf(el), floor = fitFloor(islands, home?.position.y);
-    const fit = fitAll(islands, win, floor, below);
+    const floor = fitFloor(islands, home?.position.y);
+    // home's size and the map's scale are solved together, home's cards standing as big as the islands'
+    const fitAt = (most: number) => {
+      const win = { w: el.clientWidth, h: el.clientHeight - reserveAt(el.clientWidth, home, most) };
+      const below = belowOf(el, most);
+      return { win, below, fit: fitAll(islands, win, floor, below) };
+    };
+    const { win, below, fit } = fitAt(homeCap((most) => fitAt(most).fit.scale));
     const room = roomOf(islands, fit, win, floor, below);
     let next: Layout;
     if (anchor) {
@@ -365,7 +371,7 @@ export function Map() {
     const el = host.current;
     if (!el || (automatic && app.store.getState().status !== 'online')) return;
     const w = el.clientWidth - 2 * theme.fit.x;
-    const h = el.clientHeight - reserveAt(el.clientWidth) - theme.fit.top - theme.fit.bottom;
+    const h = el.clientHeight - reserveAt(el.clientWidth, undefined, cardScale(layoutRef.current.scale)) - theme.fit.top - theme.fit.bottom;
     if (w <= 0 || h <= 0) return;
     const aspect = w / h;
     if (automatic && aspect < MIN_ARRANGE_ASPECT) return;
@@ -491,7 +497,7 @@ export function Map() {
   const endHover = () => { clearTimeout(hoverTimer.current); setHover(undefined); };
   const hi = homeIsland(fleet);
   // where the resources islet stands, and how far home slides left to make room for it
-  const place = placeIslet(hostSize.w, (hi?.size.w ?? 0) * theme.cell, Boolean(hi?.collapsed));
+  const place = placeIslet(hostSize.w, (hi?.size.w ?? 0) * theme.cell, Boolean(hi?.collapsed), cardScale(layout.scale));
   const placeRef = useRef(place);
   placeRef.current = place;
   const overHome = drag?.kind === 'figure' && drag.over?.islandId === HOME_ISLAND ? drag : undefined;

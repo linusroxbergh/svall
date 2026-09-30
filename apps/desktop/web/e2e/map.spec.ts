@@ -387,6 +387,21 @@ test('a crowded crew never covers the card beside it, link rails and all', async
   }
 });
 
+test('mission control cards stand as big as island cards once the fleet zooms the map out', async ({ page, svall }) => {
+  const mc = await svall.api.call('char.create', { islandId: 'home', cwd: '/tmp', name: 'mc' });
+  const island = await svall.api.call('island.create', { name: svall.uniq('near'), seed: 1, position: { x: 0, y: 0 } });
+  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'isl' });
+  // a far island zooms the map out past the scale where cards stop keeping their size
+  await svall.api.call('island.create', { name: svall.uniq('far'), seed: 2, position: { x: 0, y: 40 } });
+  await svall.open('map');
+  await settle(page);
+  expect((await layoutOf(page)).scale).toBeLessThan(theme.token.floor);
+  const [home, own] = await Promise.all([mc.id, c.id].map(async (id) => (await page.getByTestId(`token-${id}`).locator('.card').boundingBox())!));
+  expect(own.width).toBeLessThan(80);
+  expect(Math.abs(home.width - own.width)).toBeLessThan(1);
+  expect(Math.abs(home.height - own.height)).toBeLessThan(1);
+});
+
 test('a zoom rescales cards and label pills, and restyles nothing inside them', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('zoom'), seed: 4, position: { x: 0, y: 0 } });
   const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'zoomed' });
