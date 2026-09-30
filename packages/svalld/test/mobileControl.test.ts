@@ -128,6 +128,8 @@ describe('servesOther', () => {
     expect(servesOther(mapping('http://127.0.0.1:50001/abcdef'), 'mac.tailnet.ts.net', 8443, 'abcdef')).toBe(false);
     expect(servesOther('{}', 'mac.tailnet.ts.net', 8443, 'abcdef')).toBe(false);
     expect(servesOther(mapping('http://127.0.0.1:47900/other'), 'mac.tailnet.ts.net', 8443, 'abcdef')).toBe(true);
+    expect(servesOther(mapping('http://127.0.0.1:47812/old'), 'mac.tailnet.ts.net', 8443, 'abcdef', 'http://127.0.0.1:47812/')).toBe(false);
+    expect(servesOther(mapping('http://127.0.0.1:47900/other'), 'mac.tailnet.ts.net', 8443, 'abcdef', 'http://127.0.0.1:47812/')).toBe(true);
     const text = JSON.stringify({ Web: { 'mac.tailnet.ts.net:8443': { Handlers: { '/': { Text: 'hi' } } } } });
     expect(servesOther(text, 'mac.tailnet.ts.net', 8443, 'abcdef')).toBe(true);
   });
@@ -217,6 +219,24 @@ describe('mobileControl', () => {
     expect(d.calls.find((c) => c.args.includes('--bg'))!.args.at(-1)).toBe('http://127.0.0.1:47812/key1');
     expect((await control_.set(false)).serving).toBe(false);
     expect(made).toBe(2);
+  });
+
+  it('still knows its own mapping by the daemon\'s address after a change that failed once the key had turned over', async () => {
+    const files: Record<string, string> = { [path.join(HOME, 'port')]: '47812', [path.join(HOME, 'mobile-key')]: 'abcdef', [MOBILE_DIST]: 'built' };
+    const d = deps({ files, served: TARGET });
+    let made = 0;
+    const control_ = mobileControl(d, { home: HOME, profile: 'work', logins: [], phones: new Phones(), rotateKey: () => { files[path.join(HOME, 'mobile-key')] = `key${++made}`; } });
+    const run = d.run;
+    d.run = (cmd, args, cwd) => (args.at(-1) === 'off' ? Promise.reject(new Error('serve off failed')) : run(cmd, args, cwd));
+    expect((await control_.set(false)).error).toMatch(/serve off failed/);
+    d.run = run;
+    expect((await control_.set(false)).serving).toBe(false);
+    expect((await control_.set(true)).serving).toBe(true);
+    d.run = (cmd, args, cwd) => (args.includes('--bg') ? Promise.reject(new Error('serve failed')) : run(cmd, args, cwd));
+    expect((await control_.set(true)).error).toMatch(/serve failed/);
+    d.run = run;
+    expect((await control_.set(true)).serving).toBe(true);
+    expect(made).toBe(5);
   });
 
   it('leaves the key a served link carries alone when an on cannot reach tailscale or build the page', async () => {

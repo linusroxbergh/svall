@@ -46,13 +46,18 @@ export async function tailnetSelf(d: MobileDeps, bin: string): Promise<{ host: s
 }
 
 /** Where serve sends the phone: the daemon's port behind the key only svalld and tailscaled hold. */
+const fleetOrigin = (d: MobileDeps, home: string): string | undefined => {
+  const p = Number(d.read(resolvePaths(home).port)?.trim());
+  return p ? `http://127.0.0.1:${p}/` : undefined;
+};
+
 export function fleetTarget(d: MobileDeps, home: string): string {
-  const { port, mobileKey } = resolvePaths(home);
-  const p = Number(d.read(port)?.trim());
-  if (!p) throw new Error(`the fleet is not running: start the app, or run \`${SHIM} <profile>\``);
+  const origin = fleetOrigin(d, home);
+  if (!origin) throw new Error(`the fleet is not running: start the app, or run \`${SHIM} <profile>\``);
+  const { mobileKey } = resolvePaths(home);
   const key = d.read(mobileKey)?.trim();
   if (!key) throw new Error(`no phone key at ${mobileKey}: restart the daemon so it writes one`);
-  return `http://127.0.0.1:${p}/${key}`;
+  return `${origin}${key}`;
 }
 
 /** The key the daemon checks, and the file `fleetTarget` hands tailscale serve: a fresh one shuts out whoever learned the last. */
@@ -100,10 +105,11 @@ export function servesTarget(json: string, host: string, port: number, target: s
   return web[`${host}:${port}`]?.Handlers?.['/']?.Proxy === target;
 }
 
-/** Whether the port serves anything but a daemon behind `key`: another fleet's link, the other Svall build's, or the user's own. */
-export function servesOther(json: string, host: string, port: number, key: string | undefined): boolean {
+/** Whether the port serves anything but this fleet: another fleet's link, the other Svall build's, or the user's own.
+ *  Its mapping carries its key across a daemon restart, and its daemon's address across a change that failed after the key turned over. */
+export function servesOther(json: string, host: string, port: number, key: string | undefined, origin?: string): boolean {
   const handlers = (JSON.parse(json) as ServeStatus).Web?.[`${host}:${port}`]?.Handlers ?? {};
-  return Object.values(handlers).some((h) => !(key && h.Proxy?.endsWith(`/${key}`)));
+  return Object.values(handlers).some((h) => !(key && h.Proxy?.endsWith(`/${key}`)) && !(origin && h.Proxy?.startsWith(origin)));
 }
 
 const exec = promisify(execFile);
@@ -165,7 +171,7 @@ export function mobileControl(d: MobileDeps, opts: { home: string; profile: stri
     owner = self.owner;
     if (enable === true && logins().length === 0) throw new Error(`tailscale reports no login for this Mac: set mobile.logins in config.json, then restart the daemon with launchctl kickstart -k gui/$(id -u)/${profileLabel(opts.profile)}`);
     // tailscale serve holds one mapping per port for the whole Mac, so a port another holds stays theirs
-    const other = enable !== undefined && servesOther(await d.run(bin, ['serve', 'status', '--json']), host, port, key);
+    const other = enable !== undefined && servesOther(await d.run(bin, ['serve', 'status', '--json']), host, port, key, fleetOrigin(d, opts.home));
     if (enable === true && other) throw new Error(`https port ${port} already serves another fleet or site: set mobile.httpsPort (443, 8443 or 10000) in this fleet's config.json and restart it, or turn that one off with tailscale serve --https=${port} off`);
     // an on turns the key over only once tailscale and the page are ready, so one that fails leaves a working link alone
     if (enable === true) {
