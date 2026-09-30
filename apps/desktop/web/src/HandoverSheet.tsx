@@ -145,7 +145,8 @@ function Footer({ run }: { run: HandoverRun }) {
     const go = picked ? 'Carry on' : blockers.length > 0 && blockers.every((b) => b.code === 'agent_working') ? 'Continue waiting' : 'Try again';
     return (
       <div className="acts">
-        <button className="btn pri" data-testid="handover-go" onClick={() => choose(run.choices)}>{go}</button>
+        {/* the close button is disabled while the helper waits, so the answer takes the focus */}
+        <button className="btn pri" data-testid="handover-go" autoFocus onClick={() => choose(run.choices)}>{go}</button>
         <button className="btn dan" data-testid="handover-abort" onClick={cancel}>Abort</button>
       </div>
     );

@@ -17,6 +17,7 @@
 
 .modal-back { position: fixed; inset: 0; z-index: var(--z-modal); display: grid; place-items: center; background: var(--shade-1); backdrop-filter: blur(2px); }
 .modal { background: var(--surface-2); backdrop-filter: none; width: 380px; max-width: calc(100vw - 40px); padding: var(--sp-3xl); display: flex; flex-direction: column; gap: var(--sp-xl); }
+.modal:focus { outline: none; }
 .modal .h2 { background: none; border: 0; border-bottom: 1px solid var(--line-soft); color: var(--ink); font-size: var(--text-3xl); font-weight: var(--w-semibold); letter-spacing: var(--track-tight); padding: var(--sp-2xs) 0; width: 100%; box-sizing: border-box; }
 .modal .h2::placeholder { color: var(--ink-3); }
 .modal .h2:focus { outline: none; border-bottom-color: var(--sand); }

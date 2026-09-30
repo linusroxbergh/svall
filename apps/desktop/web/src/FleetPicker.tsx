@@ -31,6 +31,9 @@ function Picker({ mode }: { mode: 'bare' | 'menu' }) {
   useEffect(() => { shown.current = true; return () => { shown.current = false; }; }, []);
   const load = () => { listFleets().then((f) => { setFleets(f); setListError(undefined); }, (e: Error) => setListError(e.message)); };
   useEffect(() => { if (online && !away) load(); }, [online, away]);
+  // away or offline there is no row or field to hold the focus, so the dialog takes it and hears Esc
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (!panel.current?.contains(document.activeElement)) panel.current?.focus(); }, [online, away]);
 
   const close = () => app.store.getState().setFleetPicker(undefined);
   const problem = name ? fleetNameProblem(name, (fleets ?? []).flatMap((f) => [f.name, directoryName(f.home)])) : undefined;
@@ -63,7 +66,7 @@ function Picker({ mode }: { mode: 'bare' | 'menu' }) {
 
   return (
     <div className="modal-back" data-testid="fleet-picker" onPointerDown={close}>
-      <div className="modal panel" onPointerDown={(e) => e.stopPropagation()}
+      <div className="modal panel" ref={panel} tabIndex={-1} onPointerDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           // the page's own Enter and Esc would act on the map behind the dialog; Enter presses the focused row
           if (e.key === 'Enter') e.stopPropagation();
