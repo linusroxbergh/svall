@@ -492,9 +492,14 @@ describe('hook receiver and script', () => {
 });
 
 describe('a hook script of the other variant', () => {
-  // runs a copy of `file` installed under <root>/<scriptHome>/hooks against a listening socket in <root>/<fleet>
-  async function lines(file: string, scriptHome: string, fleet: string, args: string[], stdin: string): Promise<{ got: string[]; code: number | null }> {
+  // runs a copy of `file` installed under <root>/<scriptHome>/hooks against a listening socket in <root>/<fleet>;
+  // with `target`, <root>/<scriptHome> is a symlink to <root>/<target>
+  async function lines(file: string, scriptHome: string, fleet: string, args: string[], stdin: string, target?: string): Promise<{ got: string[]; code: number | null }> {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sv-'));
+    if (target) {
+      fs.mkdirSync(path.join(root, target));
+      fs.symlinkSync(path.join(root, target), path.join(root, scriptHome));
+    }
     const copy = path.join(root, scriptHome, 'hooks', path.basename(file));
     fs.mkdirSync(path.dirname(copy), { recursive: true });
     fs.copyFileSync(file, copy);
@@ -521,6 +526,10 @@ describe('a hook script of the other variant', () => {
   });
   it('forwards for a home of its own variant', async () => {
     expect((await lines(script, '.svall', '.svall', [], hook)).got).toHaveLength(1);
+  });
+  it('forwards for a home of its own variant that is a symlink', async () => {
+    expect((await lines(script, '.svall', '.svall', [], hook, 'svall-data')).got).toHaveLength(1);
+    expect((await lines(statusScript, '.svall', '.svall', ['cat >/dev/null'], status, 'svall-data')).got).toHaveLength(1);
   });
   it("leaves a test fleet to Svall Dev's script only", async () => {
     expect((await lines(script, '.svall', 'fleet', [], hook)).got).toEqual([]);

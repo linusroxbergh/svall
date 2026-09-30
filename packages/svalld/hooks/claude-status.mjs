@@ -6,7 +6,6 @@ import { spawn } from 'node:child_process';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 const charId = process.env.SVALL_CHAR_ID;
 const term = process.env.SVALL_TERM === '2' ? 2 : undefined;
@@ -18,7 +17,8 @@ const variantOf = (h) => {
   const b = path.basename(h);
   return /^\.svall(-[a-z][a-z0-9-]*)?$/.test(b) && !/^\.svall-dev(-|$)/.test(b) ? 'release' : 'dev';
 };
-const mine = variantOf(path.dirname(path.dirname(fileURLToPath(import.meta.url)))) === variantOf(home);
+// argv[1], unlike import.meta.url, keeps the name of a home that is a symlink
+const mine = variantOf(path.dirname(path.dirname(path.resolve(process.argv[1])))) === variantOf(home);
 
 // stdin that never closes must not hold Claude Code's statusline pipe open
 const watchdog = setTimeout(() => process.exit(0), 5000);
