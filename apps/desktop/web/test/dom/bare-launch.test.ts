@@ -32,18 +32,18 @@ beforeEach(() => {
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); delete window.webkit; delete window.__svallBare; });
 
-test('a bare launch offers the fleets once there are two, and asks again after a list that failed', async () => {
+test('a bare launch offers the fleets once there are two, and asks again after a list that went unanswered', async () => {
   port = 47001;
   window.__svallBare = true;
   const { initApp } = await import('../../src/boot.js');
   const { store } = initApp();
   await vi.advanceTimersByTimeAsync(1);
   Socket.all[0].hello();
-  Socket.all[0].reply({ id: Socket.all[0].asked('fleets.list'), error: { code: 'internal', message: 'busy' } });
+  Socket.all[0].asked('fleets.list');
+  Socket.all[0].close();
   await vi.advanceTimersByTimeAsync(1);
   expect(store.getState().fleetPicker).toBeUndefined();
 
-  Socket.all[0].close();
   await vi.advanceTimersByTimeAsync(1000);
   const next = Socket.all.at(-1)!;
   next.hello();
@@ -57,6 +57,22 @@ test('a bare launch offers the fleets once there are two, and asks again after a
   await vi.advanceTimersByTimeAsync(1000);
   Socket.all.at(-1)!.hello();
   expect(Socket.all.at(-1)!.sent.some((m) => m.method === 'fleets.list')).toBe(false);
+});
+
+test('a bare launch refused the list, as off the Mac, never asks again, so the fleet coming home offers nothing', async () => {
+  port = 47001;
+  window.__svallBare = true;
+  const { initApp } = await import('../../src/boot.js');
+  const { store } = initApp();
+  await vi.advanceTimersByTimeAsync(1);
+  Socket.all[0].hello();
+  Socket.all[0].reply({ id: Socket.all[0].asked('fleets.list'), error: { code: 'forbidden', message: 'fleets.list answers only on a Mac' } });
+  await vi.advanceTimersByTimeAsync(1);
+  Socket.all[0].close();
+  await vi.advanceTimersByTimeAsync(1000);
+  Socket.all.at(-1)!.hello();
+  expect(Socket.all.at(-1)!.sent.some((m) => m.method === 'fleets.list')).toBe(false);
+  expect(store.getState().fleetPicker).toBeUndefined();
 });
 
 test('a bare launch with one fleet offers nothing, and a launch that named one never asks', async () => {

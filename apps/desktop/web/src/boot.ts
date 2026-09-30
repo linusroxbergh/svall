@@ -1,5 +1,5 @@
 import { loadMobileStatus, type Deps } from './actions.js';
-import { Api } from './api.js';
+import { Api, ApiError } from './api.js';
 import { connectionFromUrl, createBridge, type Bridge, type Connection } from './bridge.js';
 import { createBrowserManager, type BrowserManager } from './browser.js';
 import { installDropHandlers } from './drop.js';
@@ -58,14 +58,18 @@ function createApp(): AppContext {
       if (e.event === 'mobile.phones') { store.getState().setPhones(e.data.phones); return; }
       if (e.event === 'state.patch') fleet.patch(e.data.ops);
     };
-    // a launch that named no fleet offers the others, once, when there are any
+    // a launch that named no fleet offers the others, once, when there are any; svalld's first answer settles it,
+    // a refusal from a daemon off the Mac included, and only a list that went unanswered is asked again
     let offerFleets = window.__svallBare === true;
     const offer = () => {
       a.call('fleets.list', {}).then((r) => {
         if (!offerFleets) return;
         offerFleets = false;
         if (r.fleets.length > 1) store.getState().setFleetPicker('bare');
-      }).catch((e: Error) => console.warn(`fleets.list: ${e.message}`));
+      }).catch((e: Error) => {
+        if (e instanceof ApiError) offerFleets = false;
+        console.warn(`fleets.list: ${e.message}`);
+      });
     };
     // the phone tab in the corner reads the mobile status, and `svall mobile` can change it while the page is offline
     a.onOpen = () => { fleet.load(); loadMobileStatus({ api: a, store }); repoWatch?.resend(); if (offerFleets) offer(); };
