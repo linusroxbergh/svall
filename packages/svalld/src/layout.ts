@@ -183,8 +183,9 @@ const roundGrid = (n: number, seed: number, abreast: number) => crewGrid(n, seed
 // label pills stand a cell apart in rows stacked one on the next, and the band keeps a row of water above the labels below it
 const PILL_GAP = 1;
 const BAND_GAP = 3;
-// the water the map keeps around the fleet, as its world bounds do: a coast either side, the cards under the last row, the label above the first
-const FRAME = { w: 2.8, h: 1.3, label: 1.3 };
+// what the map draws round the fleet in cells, as its world bounds do: the label band over the first row. Its margins
+// are screen px, which already come off the aspect the app sends
+const FRAME = { w: 0, h: 0, label: 1.3 };
 
 type Box = { id: string; size: Size };
 type Plan = { band: Box[][]; rows: Box[][]; width: number; height: number; scale: number };

@@ -68,11 +68,11 @@ test('renders the fleet and follows agent status', async ({ page, svall }) => {
 });
 
 test('pans by dragging water and by wheel, clamped', async ({ page, svall }) => {
-  // five islands twelve cells apart reach far wider than the map, so the fit hits theme.scale.min
+  // five islands sixteen cells apart reach far wider than the map, so the fit hits theme.scale.min
   // and the world overflows on x, leaving something to pan
   const y = 300;
   for (let i = 0; i < 5; i++) {
-    await svall.api.call('island.create', { name: svall.uniq(`pan${i}`), position: { x: i * 12, y } });
+    await svall.api.call('island.create', { name: svall.uniq(`pan${i}`), position: { x: i * 16, y } });
   }
   await svall.open('map');
   await settle(page);

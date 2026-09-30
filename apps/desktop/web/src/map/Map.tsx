@@ -16,7 +16,7 @@ import { Home } from './HomeIsland.js';
 import { HoverCard } from './HoverCard.js';
 import { DBL_CLICK_MS, createInteractions, type Intent } from './interactions.js';
 import { Island } from './Island.js';
-import { cardScale, cellSize, clampPan, fitAll, fitFloor, islandNear, labelScale, landSpan, limitAt, mapIslands, onBlocks, roomOf, screenToCell, worldBounds, worldCell, worldToScreen, type Below, type Layout } from './layout.js';
+import { cardScale, cellSize, clampPan, crewOf, fitAll, islandNear, labelScale, landSpan, limitAt, mapIslands, onBlocks, roomOf, screenToCell, worldBounds, worldCell, worldToScreen, type Below, type Layout } from './layout.js';
 import { ISLET, placeIslet } from './resources.js';
 import { ResourcesIsland, ResourcesPill } from './ResourcesIsland.js';
 import { TerminalCard } from './TerminalCard.js';
@@ -265,7 +265,7 @@ export function Map() {
   const belowOf = (el: HTMLElement, most = cardScale(layoutRef.current.scale)): Below | undefined => {
     const hi = homeIsland(app.store.getState().fleet);
     const host = { w: el.clientWidth, h: el.clientHeight };
-    return hi && { h: host.h, blocks: homeBlocks(hi, host, row.current, most) };
+    return hi && { h: host.h, blocks: homeBlocks(hi, host, row.current, most), row: hi.position.y };
   };
   // the map height mission control keeps on a map this wide, where its land shrinks to leave the lighthouse room, and
   // to no more than `most`, the scale the map draws island cards at
@@ -280,19 +280,19 @@ export function Map() {
     if (wait > 0) { clearTimeout(holdTimer.current); holdTimer.current = setTimeout(() => refit(immediate), wait); return; }
     const islands = mapIslands(app.store.getState().fleet);
     const home = homeIsland(app.store.getState().fleet);
-    const floor = fitFloor(islands, home?.position.y);
+    const crew = crewOf(app.store.getState().fleet);
     // home's size and the map's scale are solved together, home's cards standing as big as the islands'
     const fitAt = (most: number) => {
       const win = { w: el.clientWidth, h: el.clientHeight - reserveAt(el.clientWidth, home, most) };
       const below = belowOf(el, most);
-      return { win, below, fit: fitAll(islands, win, floor, below) };
+      return { win, below, fit: fitAll(islands, win, crew, below) };
     };
     const { win, below, fit } = fitAt(homeCap((most) => fitAt(most).fit.scale));
-    const room = roomOf(islands, fit, win, floor, below);
+    const room = roomOf(islands, fit, win, crew, below);
     let next: Layout;
     if (anchor) {
       // Keep the released grip still while zooming, as far as the fitted world can remain in view.
-      const b = worldBounds(islands, floor), s = fit.scale;
+      const b = worldBounds(islands, crew, fit.scale), s = fit.scale;
       const axis = (wanted: number, start: number, length: number, size: number, near: number, far: number, fallback: number) => {
         const lo = size - far - (start + length) * s, hi = near - start * s;
         if (lo <= hi) return Math.max(lo, Math.min(hi, wanted));
@@ -308,7 +308,7 @@ export function Map() {
         oy: room.h === win.h ? axis(anchor.screen.y - anchor.world.y * fit.scale, b.y * theme.cell, b.h * theme.cell, win.h, theme.fit.top, theme.fit.bottom, fit.oy) : fit.oy };
       pan.current = { x: next.ox - fit.ox, y: next.oy - fit.oy };
     } else {
-      pan.current = clampPan(islands, fit, room, pan.current, floor);
+      pan.current = clampPan(islands, fit, room, pan.current, crew);
       next = { ...fit, ox: fit.ox + pan.current.x, oy: fit.oy + pan.current.y };
     }
     const cur = layoutRef.current;
@@ -370,12 +370,12 @@ export function Map() {
   const arrange = (automatic = false) => {
     const el = host.current;
     if (!el || (automatic && app.store.getState().status !== 'online')) return;
-    const w = el.clientWidth - 2 * theme.fit.x;
-    const h = el.clientHeight - reserveAt(el.clientWidth, undefined, cardScale(layoutRef.current.scale)) - theme.fit.top - theme.fit.bottom;
+    const room = { w: el.clientWidth, h: el.clientHeight - reserveAt(el.clientWidth, undefined, cardScale(layoutRef.current.scale)) };
+    const w = room.w - 2 * theme.fit.x, h = room.h - theme.fit.top - theme.fit.bottom;
     if (w <= 0 || h <= 0) return;
-    const aspect = w / h;
-    if (automatic && aspect < MIN_ARRANGE_ASPECT) return;
-    arrangeIslands(deps(), aspect);
+    // the map's own shape says whether it is squeezed, whatever margins the fit keeps inside it
+    if (automatic && room.w / room.h < MIN_ARRANGE_ASPECT) return;
+    arrangeIslands(deps(), w / h);
   };
   const arrangeRef = useRef(() => arrange(true));
   arrangeRef.current = () => arrange(true);

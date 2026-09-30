@@ -419,7 +419,9 @@ test('a folded island lands as its pill, and two of them may stand side by side'
   // the fleet took the drop, and the two pills stand a hair apart rather than a cell or more
   await expect.poll(async () => (await svall.api.call('state.get', {})).islands[right.id].position.x).toBe(abut);
   expect((await svall.api.call('state.get', {})).islands[left.id].position.x).toBe(0);
+  // past scale 1 a pill takes only a share of the map's growth, so the hair between two widens with the zoom
+  await settle(page);
   const [a, b] = await Promise.all([left, right].map(async (i) => (await page.getByTestId(`island-label-${i.id}`).boundingBox())!));
   expect(b.x - (a.x + a.width)).toBeGreaterThan(0);
-  expect(b.x - (a.x + a.width)).toBeLessThan(cs / 2);
+  expect(b.x - (a.x + a.width)).toBeLessThan(await cellPx(page));
 });
