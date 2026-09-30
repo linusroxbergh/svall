@@ -24,10 +24,13 @@ if [ -z "$ADHOC" ]; then
   [ "$(git rev-parse --abbrev-ref HEAD)" = main ] || fail "release from main"
   git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null && fail "v$VERSION is tagged already; bump CFBundleShortVersionString"
   git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null && fail "v$VERSION is tagged on origin already; bump CFBundleShortVersionString"
-  for k in SUFeedURL SUPublicEDKey; do
+  for k in SUFeedURL SUPublicEDKey SUEnableAutomaticChecks SUAutomaticallyUpdate; do
     [ -n "$(/usr/libexec/PlistBuddy -c "Print :$k" apps/desktop/mac/Info.plist 2>/dev/null)" ] ||
-      fail "apps/desktop/mac/Info.plist has no $k, so this release could never update itself; make the key with generate_keys, in the folder scripts/sparkle-tools.sh prints, then add SUFeedURL and SUPublicEDKey"
+      fail "apps/desktop/mac/Info.plist has no $k; make the key with generate_keys, in the folder scripts/sparkle-tools.sh prints, then add SUFeedURL, SUPublicEDKey, SUEnableAutomaticChecks and SUAutomaticallyUpdate"
   done
+  # installed copies take only updates signed by this key, and generate_appcast signs with the one in the keychain
+  [ "$("$(scripts/sparkle-tools.sh)/generate_keys" -p)" = "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' apps/desktop/mac/Info.plist)" ] ||
+    fail "SUPublicEDKey in apps/desktop/mac/Info.plist is not the key generate_keys -p prints, so this release could never update itself"
   : "${SVALL_HOST:?set SVALL_HOST to the ssh host of the server}" "${SVALL_SITE_DIR:?set SVALL_SITE_DIR to the site folder on it}"
   # Sparkle offers only a higher CFBundleVersion, and a commit count falls if history is ever rewritten
   LATEST="$(curl -sS -w '\n%{http_code}' https://svall.dev/latest.json)" || fail "could not read https://svall.dev/latest.json"
@@ -44,6 +47,8 @@ else
   ID=-
 fi
 
+# the runtime bundles node_modules, which must be what the lockfile names
+pnpm install --frozen-lockfile
 pnpm app:build
 APP=apps/desktop/mac/build/Svall.app
 scripts/sign.sh "$APP" "$ID"
