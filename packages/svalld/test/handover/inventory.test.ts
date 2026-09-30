@@ -502,6 +502,13 @@ describe('buildInventory', () => {
     expect(blocked(named)).toEqual([{ code: 'mission_control_shared', message: said(own), entity: 'mission' }]);
     fleetJson(work, { home: { cwd: '~/.svall-work/home' } });
     expect(blocked(s.maps)).toEqual([]);
+    // a fleet whose config.json is not split out yet, and one whose fleet.json cannot be read, count as the default
+    fs.rmSync(path.join(work, 'fleet.json'));
+    fs.writeFileSync(path.join(work, 'config.json'), JSON.stringify({ port: 47801 }));
+    expect(blocked(s.maps)).toEqual([{ code: 'mission_control_shared', message: said(work), entity: 'mission' }]);
+    fs.rmSync(path.join(work, 'config.json'));
+    fs.writeFileSync(path.join(work, 'fleet.json'), '{ "id": ');
+    expect(blocked(s.maps)).toEqual([{ code: 'mission_control_shared', message: said(work), entity: 'mission' }]);
   });
 
   it('folds a root by what is on disk, whatever its ref calls it', () => {

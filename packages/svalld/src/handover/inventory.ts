@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { AgentKind, Blocker, FleetConfig, FleetState, GitGraph, HandoverEntity, MachineId, TransferRoot, TransferSession, Warning } from '@svall/protocol';
-import { readFleetConfig } from '../config.js';
+import { defaultHome, type AgentKind, type Blocker, type FleetConfig, type FleetState, type GitGraph, type HandoverEntity, type MachineId, type TransferRoot, type TransferSession, type Warning } from '@svall/protocol';
+import { peekConfig, readFleetConfig } from '../config.js';
 import { resolvePaths } from '../paths.js';
 import { shq } from '../text.js';
 import { fleetHomes } from '../uninstall.js';
@@ -144,10 +144,11 @@ function fleetHomeClash(root: InventoryRoot, travels: readonly InventoryRoot[], 
   return inside ? undefined : places.find(([home]) => holds(home, root.path))?.[1];
 }
 
-// the real path of mission control's folder in the fleet at `fleetHome`: ~/.svall/home unless its fleet.json says otherwise
+// the real path of mission control's folder in the fleet at `fleetHome`: ~/.svall/home unless a config it can read says otherwise
 function missionOf(fleetHome: string, home: string): string | undefined {
-  let fleet: FleetConfig;
-  try { fleet = readFleetConfig(resolvePaths(fleetHome)); } catch { return undefined; }
+  const paths = resolvePaths(fleetHome);
+  let fleet: { home: { cwd: string } };
+  try { fleet = fs.existsSync(paths.fleetConfig) ? readFleetConfig(paths) : peekConfig(paths); } catch { fleet = { home: defaultHome() }; }
   const cwd = portablePathValues({ FleetConfig: fleet }, home).find((v) => v.field === 'FleetConfig.home.cwd');
   return cwd && realPath(cwd.path);
 }
@@ -166,7 +167,7 @@ export function machineLocal(m: Pick<MachineMap, 'home' | 'agentHomes'>): Machin
   return {
     files: [
       at('.claude.json'), ...claudes.flatMap((d) => [path.posix.join(d, '.credentials.json'), path.posix.join(d, '.claude.json')]),
-      ...codexes.map((d) => path.posix.join(d, 'auth.json')), at('.local', 'bin', 'svall'), at('.local', 'bin', 'svall'),
+      ...codexes.map((d) => path.posix.join(d, 'auth.json')), at('.local', 'bin', 'svall'),
     ],
     dirs: [at('.ssh'), at('.local', 'share', 'svall'), at('.config', 'svall'), at('.config', 'systemd', 'user')],
   };
