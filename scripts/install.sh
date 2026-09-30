@@ -4,7 +4,7 @@ set -eu
 BASE="${SVALL_BASE_URL:-https://svall.dev}"
 fail() { echo "svall install: $*" >&2; exit 1; }
 [ "$(uname -s)" = Darwin ] || fail "Svall runs on macOS only"
-[ "$(uname -m)" = arm64 ] || fail "Svall needs a Mac with Apple silicon"
+[ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = 1 ] || fail "Svall needs a Mac with Apple silicon"
 [ "$(sw_vers -productVersion | cut -d. -f1)" -ge 15 ] || fail "Svall needs macOS 15 or newer"
 DEST="${SVALL_INSTALL_DIR:-/Applications}"
 [ -n "${SVALL_INSTALL_DIR:-}" ] || [ -w "$DEST" ] || DEST="$HOME/Applications"
