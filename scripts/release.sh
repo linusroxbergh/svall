@@ -23,7 +23,11 @@ if [ -z "$ADHOC" ]; then
   [ -z "$(git status --porcelain)" ] || fail "the tree has changes"
   [ "$(git rev-parse --abbrev-ref HEAD)" = main ] || fail "release from main"
   git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null && fail "v$VERSION is tagged already; bump CFBundleShortVersionString"
-  git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null && fail "v$VERSION is tagged on origin already; bump CFBundleShortVersionString"
+  # ls-remote exits 2 when origin has no such tag, and 128 when origin cannot be reached
+  TAGGED=0
+  git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null || TAGGED=$?
+  [ "$TAGGED" -ne 0 ] || fail "v$VERSION is tagged on origin already; bump CFBundleShortVersionString"
+  [ "$TAGGED" -eq 2 ] || fail "could not read the tags on origin"
   for k in SUFeedURL SUPublicEDKey SUEnableAutomaticChecks SUAutomaticallyUpdate; do
     [ -n "$(/usr/libexec/PlistBuddy -c "Print :$k" apps/desktop/mac/Info.plist 2>/dev/null)" ] ||
       fail "apps/desktop/mac/Info.plist has no $k; make the key with generate_keys, in the folder scripts/sparkle-tools.sh prints, then add SUFeedURL, SUPublicEDKey, SUEnableAutomaticChecks and SUAutomaticallyUpdate"
