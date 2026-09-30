@@ -294,6 +294,11 @@ svall host remove studio --forget
 - **A handover carries at most as many files as the smaller daemon's heap holds** (`too_many_files`): half the heap
   at 8 KiB a file, such as 68,832 files when one machine has 2 GB of memory. Leave generated folders out with
   `handover.exclude`.
+- **A Git clean filter set up on one machine only is found after the copy.** A repository that uses Git LFS,
+  git-crypt, nbstripout or another clean filter, usually set up in `~/.gitconfig`, reads as changed where git lacks
+  that filter, so the handover stops with `git_mismatch` when the other machine prepares the fleet, after every file
+  is copied. Nothing checks this sooner: set the same filter up on the other machine first, such as with `git lfs
+  install`.
 - **A move to this Mac can run nowhere for a while.** If the link drops right after the commit of a move to this Mac,
   the Mac waits to confirm the commit with the gateway, which it cannot reach, so the fleet runs on neither machine.
   Once the link is back, Retry (`svall handover --resume`) starts it here.

@@ -120,8 +120,14 @@ A Linux machine you set up can stay as it is; the older build never contacts it.
 
 To keep what changed since the upgrade instead of going back to the kept copy, set `"version": 8` at the top of
 `state.json` to `7` in step 3 rather than copying `state.json.v7-*`. The older build read this release's state that way
-in the same test, every character included. It leaves out any island or character it cannot read, and keeps the file
-as it read it beside `state.json` as `state.json.broken-<time>`.
+in the same test. It leaves out any island or character it cannot read, and keeps the file as it read it beside
+`state.json` as `state.json.broken-<time>`. A character whose second terminal is dormant (a `second` with no `tmux`)
+is one, since the older build has no dormant second terminal; remove each such `second` as you relabel, and the
+character comes back without it:
+
+```sh
+jq '.version = 7 | del(.characters[].second | select(.tmux == null))' state.json > state.json.7 && mv state.json.7 state.json
+```
 
 ### Upgrading again
 
