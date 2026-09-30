@@ -48,10 +48,10 @@ echo "$pid $open" >> ${log}
 
 test('asks each open window to quit by its pid, once, and the next only after it is gone', () => {
   const m = machine();
-  const first = m.window('.svall');
-  const second = m.window('.svall-work');
+  const first = m.window('.svall-dev');
+  const second = m.window('.svall-dev-work');
   // a crashed window's pid, since taken by another process
-  m.window('.svall-old', 'sleep');
+  m.window('.svall-dev-old', 'sleep');
   const r = m.run();
   expect(r.stderr).toBe('');
   expect(r.stdout).toBe('◇  Closing open windows\ninstalled\n');
@@ -60,7 +60,7 @@ test('asks each open window to quit by its pid, once, and the next only after it
 
 test('stops before anything is installed when a window stays open or macOS will not pass the quit on', () => {
   const m = machine();
-  const pid = m.window('.svall');
+  const pid = m.window('.svall-dev');
   fs.writeFileSync(`${m.log}.cancel`, '');
   // the wait counts from seq, cut short here
   fs.writeFileSync(path.join(m.bin, 'seq'), '#!/bin/sh\necho 1; echo 2\n', { mode: 0o755 });
@@ -87,7 +87,7 @@ function checks(stubs: Record<string, string>, setUp = false) {
   const files = {
     'bin/pnpm': CHECK_OK, 'bin/git': '', 'bin/xcodebuild': '', 'bin/launchctl': '',
     'scripts/ghostty-kit.sh': '[ "$1" = current ]', 'scripts/ghostty-build.sh': '',
-    ...(setUp ? { '.svall/config.json': '', 'Library/LaunchAgents/io.github.linusroxbergh.svall.svalld.plist': '', '.local/bin/svall': '' } : {}),
+    ...(setUp ? { '.svall-dev/config.json': '', 'Library/LaunchAgents/io.github.linusroxbergh.svall.dev.svalld.plist': '', '.local/bin/svall-dev': '' } : {}),
     ...stubs,
   };
   for (const [file, body] of Object.entries(files)) {
@@ -95,7 +95,7 @@ function checks(stubs: Record<string, string>, setUp = false) {
     fs.writeFileSync(path.join(root, file), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
   }
   fs.mkdirSync(path.join(root, 'tmp'));
-  return spawnSync('sh', ['-c', `set -eu\nHOME_DIR="$HOME/.svall"\n${PRELUDE}\n${CHECKS}\necho "build ghostty: $BUILD_GHOSTTY, setup: $SETUP"`], {
+  return spawnSync('sh', ['-c', `set -eu\nHOME_DIR="$HOME/.svall-dev"\n${PRELUDE}\n${CHECKS}\necho "build ghostty: $BUILD_GHOSTTY, setup: $SETUP"`], {
     cwd: root, env: { ...process.env, HOME: root, TMPDIR: path.join(root, 'tmp'), PATH: `${path.join(root, 'bin')}:${process.env.PATH}` }, encoding: 'utf8', timeout: 30_000,
   });
 }

@@ -1,9 +1,10 @@
 #!/bin/sh
-# Builds the shell with SwiftPM and assembles build/Svall.app.
+# Builds the shell with SwiftPM and assembles build/Svall Dev.app, or build/Svall.app with SVALL_VARIANT=release.
 set -eu
 MAC="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$MAC/../../.." && pwd)"
 CONFIG="${1:-debug}"
+VARIANT="${SVALL_VARIANT:-dev}"
 XC="$ROOT/vendor/ghostty-kit/GhosttyKit.xcframework"
 SHARE="$ROOT/vendor/ghostty-kit/share"
 [ -d "$XC" ] || { echo "GhosttyKit missing: scripts/ghostty-kit.sh fetch, or pnpm ghostty:build" >&2; exit 1; }
@@ -18,19 +19,21 @@ ARCH="$([ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = 1 ] && echo arm64 || ec
 swift build -c "$CONFIG" --arch "$ARCH" -Xcc -Wno-incomplete-umbrella
 BIN="$(swift build -c "$CONFIG" --arch "$ARCH" --show-bin-path)/Svall"
 
-APP="$MAC/build/Svall.app"
+NAME="$([ "$VARIANT" = release ] && echo Svall || echo 'Svall Dev')"
+APP="$MAC/build/$NAME.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Svall"
 cp "$MAC/Info.plist" "$APP/Contents/Info.plist"
+"$MAC/variant-plist.sh" "$APP/Contents/Info.plist" "$VARIANT"
 cp "$MAC/Svall.icns" "$APP/Contents/Resources/Svall.icns"
 cp "$MAC/Resources/ghostty-theme" "$APP/Contents/Resources/ghostty-theme"
 rsync -a --delete "$SHARE/ghostty" "$SHARE/terminfo" "$APP/Contents/Resources/"
 if [ -d "$ROOT/apps/desktop/web/dist" ]; then
   rsync -a --delete "$ROOT/apps/desktop/web/dist/" "$APP/Contents/Resources/web/"
 fi
-# the build the bundle came from, for a bug report to name
-BUILD="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)"
+# the commit count orders builds for the updater
+BUILD="$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 1)"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" "$APP/Contents/Info.plist"
 codesign --force --sign - "$APP"
 echo "$APP"

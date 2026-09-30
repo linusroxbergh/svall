@@ -13,7 +13,7 @@ if (!fs.existsSync(mobile)) throw new Error('apps/desktop/web/dist-mobile is mis
 const plist = fs.readFileSync(path.join(root, 'apps/desktop/mac/Info.plist'), 'utf8');
 const version = /<key>CFBundleShortVersionString<\/key><string>([^<]+)</.exec(plist)?.[1];
 if (!version) throw new Error('Info.plist has no CFBundleShortVersionString');
-const commit = execFileSync('git', ['-C', root, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim();
+const count = execFileSync('git', ['-C', root, 'rev-list', '--count', 'HEAD'], { encoding: 'utf8' }).trim();
 
 fs.rmSync(out, { recursive: true, force: true });
 await build({
@@ -25,7 +25,7 @@ await build({
   platform: 'node',
   format: 'esm',
   target: 'node24',
-  define: { SVALL_BUNDLED: 'true', SVALL_VERSION: JSON.stringify(`${version} (${commit})`) },
+  define: { SVALL_BUNDLED: 'true', SVALL_VERSION: JSON.stringify(`${version} (${count})`) },
   // the CommonJS dependencies require node's own modules, and an ES module has no require of its own
   banner: { js: "import { createRequire as svallRequire } from 'node:module'; const require = svallRequire(import.meta.url);" },
   // ws loads these native speedups when they are installed and runs without them

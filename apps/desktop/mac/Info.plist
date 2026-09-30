@@ -5,6 +5,7 @@
   <key>CFBundleIdentifier</key><string>io.github.linusroxbergh.svall</string>
   <key>CFBundleName</key><string>Svall</string>
   <key>CFBundleDisplayName</key><string>Svall</string>
+  <key>SvallHomeName</key><string>.svall</string>
   <key>CFBundleExecutable</key><string>Svall</string>
   <key>CFBundleIconFile</key><string>Svall</string>
   <key>CFBundlePackageType</key><string>APPL</string>

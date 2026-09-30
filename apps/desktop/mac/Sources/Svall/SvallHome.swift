@@ -7,8 +7,10 @@ struct SvallConnection: Encodable {
 }
 
 enum SvallHome {
+    private static let root = Bundle.main.object(forInfoDictionaryKey: "SvallHomeName") as? String ?? ".svall"
+
     static var path: String {
-        ProcessInfo.processInfo.environment["SVALL_HOME"] ?? NSHomeDirectory() + "/.svall"
+        ProcessInfo.processInfo.environment["SVALL_HOME"] ?? NSHomeDirectory() + "/" + root
     }
 
     private static func read(_ file: String) -> String? {
@@ -51,14 +53,14 @@ enum SvallHome {
     static var bare: Bool { ProcessInfo.processInfo.environment["SVALL_HOME"] == nil }
 
     private static var isPrivate: Bool {
-        (path as NSString).standardizingPath == NSHomeDirectory() + "/.svall"
+        (path as NSString).standardizingPath == NSHomeDirectory() + "/" + root
     }
 
     // the name the fleet's directory gives it, nil for the private one
     private static var directoryName: String? {
         if isPrivate { return nil }
         let base = ((path as NSString).standardizingPath as NSString).lastPathComponent
-        let prefix = ".svall-"
+        let prefix = root + "-"
         return base.hasPrefix(prefix) ? String(base.dropFirst(prefix.count)) : base
     }
 
@@ -67,7 +69,10 @@ enum SvallHome {
         (config?["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? directoryName
     }
 
-    static var displayName: String { fleetName.map { "Svall · \($0)" } ?? "Svall" }
+    static var displayName: String {
+        let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Svall"
+        return fleetName.map { "\(name) · \($0)" } ?? name
+    }
 
     // one saved frame per fleet, so a second window does not land on the first one's; a rename keeps it
     static var frameAutosaveName: String { directoryName.map { "main-Svall · \($0)" } ?? "main" }

@@ -1,6 +1,7 @@
 #!/bin/sh
 # Builds apps/desktop/mac/build/Svall.app with its own Node, tmux, daemon and CLI inside, so it runs without a checkout.
 set -eu
+export SVALL_VARIANT=release
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
