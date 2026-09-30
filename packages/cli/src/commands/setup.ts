@@ -9,6 +9,7 @@ import { AGENTS, AGENT_KINDS, findAgents, onPath } from '@svall/svalld/agents';
 import { codexPaths } from '@svall/svalld/codex/install';
 import { loadConfig, saveConfig } from '@svall/svalld/config';
 import { resolvePaths, userPaths } from '@svall/svalld/paths';
+import { FALLBACK_DIRS, loginEnv } from '@svall/svalld/login-env';
 import { LAUNCHD_LABEL, PRIVATE, profileLabel, profileOf } from '@svall/svalld/profile';
 import { ownRuntime } from '@svall/svalld/runtime';
 import {
@@ -32,8 +33,9 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
     .option('--plan', 'print what setup would do, as the app shows it; change nothing')
     .option('--agents <list>', 'the agents to install hooks for, comma-separated; saved for later runs')
     .option('--if-needed', 'set up only what is missing or out of date, and restart daemons of another version')
-    .option('--login-shell', "find agents on the login shell's PATH, as an app opened from Finder has none")
+    .option('--login-shell', 'take PATH, CLAUDE_CONFIG_DIR and CODEX_HOME from the login shell, as an app opened from Finder has none')
     .action(async (o: { launchctl: boolean; check?: boolean; plan?: boolean; agents?: string; ifNeeded?: boolean; loginShell?: boolean }) => {
+      if (o.loginShell) Object.assign(process.env, await loginEnv({ shell: process.env.SHELL || '/bin/zsh', timeoutMs: 5000, fallback: FALLBACK_DIRS() }));
       // setup owns the per-user half — the Claude hooks and the shims — so it only ever means private
       const t = target();
       if (t.name !== PRIVATE) throw new Error(`svall setup configures the private fleet; run svall ${t.name} to open that one`);
