@@ -367,6 +367,19 @@ describe('preflight', () => {
     expect(w.ops).not.toContain('gateway:begin');
   });
 
+  it('blocks a frozen source as a handover left open, whether or not the gateway still holds it, and asks it for no manifest', async () => {
+    const stale = new World();
+    stale.source.frozen = true;
+    const open = new World();
+    open.source.frozen = true;
+    open.record.transaction = { id: 'tx-0', fromMachineId: mac, toMachineId: trift, phase: 'preparing', startedAt: 1 };
+    for (const [w, said] of [[stale, 'mac is frozen for a handover the gateway no longer holds'], [open, 'already in handover tx-0']] as const) {
+      const out = await controller(w).start(trift, {});
+      expect(out).toEqual({ status: 'blocked', phase: 'begin', blockers: [expect.objectContaining({ code: 'transaction_open', message: expect.stringContaining(said) })] });
+      expect(w.ops).not.toContain('mac:handover.preflight');
+    }
+  });
+
   it('warns of each carried link that will point at nothing on the destination, asking it of the targets no carried root holds', async () => {
     const w = new World();
     const preflight = w.source.answers['handover.preflight'];
@@ -504,6 +517,14 @@ describe('preflight', () => {
     const out = await controller(w).start(mac, {});
     expect(out).toEqual({ status: 'blocked', phase: 'begin', blockers: [{ code: 'identity_mismatch', message: `mac already runs this fleet, at generation ${G}; there is nothing to hand it` }] });
     expect(w.ops).toEqual(['gateway:get']);
+
+    // a far owner is named from the registry, without dialling it
+    const far = new World({ pull: true });
+    const dialled: MachineId[] = [];
+    const side = async (id: MachineId) => { dialled.push(id); throw new SshError('unreachable', `ssh could not reach ${id}`); };
+    const down = await controller(far, { side }).start(trift, {});
+    expect(down).toEqual({ status: 'blocked', phase: 'begin', blockers: [{ code: 'identity_mismatch', message: `trift already runs this fleet, at generation ${G}; there is nothing to hand it` }] });
+    expect(dialled).toEqual([]);
   });
 
   it('asks a far gateway nothing for a handover once it answers on another authority schema, and says so as a version fault naming it', async () => {

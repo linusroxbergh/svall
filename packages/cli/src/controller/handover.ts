@@ -93,7 +93,7 @@ export type HandoverDeps = {
   secrets?(): string[];
 };
 
-/** What preflight found; a machine that already runs the fleet is refused before any manifest is asked for. */
+/** What preflight found; a machine that already runs the fleet, or a frozen source, is refused before any manifest is asked for. */
 export type Preflight = { generation: number; blockers: Blocker[]; warnings: Warning[] } & ({ summary: ManifestSummary; manifest: TransferManifestV1 } | { summary?: undefined; manifest?: undefined });
 
 const RETRY = { attempts: 4, firstDelayMs: FIRST_DELAY };
@@ -237,7 +237,7 @@ export class Handover {
     const record = await this.retrying('begin', () => this.d.gateway.get());
     const from = record.ownerMachineId;
     if (to === from) {
-      const message = `${(await this.side(to)).route.name} already runs this fleet, at generation ${record.generation}; there is nothing to hand it`;
+      const message = `${this.d.route(to).name} already runs this fleet, at generation ${record.generation}; there is nothing to hand it`;
       return { generation: record.generation, blockers: [{ code: 'identity_mismatch', message }], warnings: [] };
     }
     const blockers: Blocker[] = [];
@@ -264,6 +264,8 @@ export class Handover {
     if (held) {
       blockers.push({ code: 'transaction_open', message: `${destination.route.name} holds handover ${held.transactionId} open as its ${held.role} (${held.phase}); resume or abort it first` });
     }
+    // a frozen source answers no preflight, and a transaction_open blocker above already says why
+    if (owned.frozen) return { generation: record.generation, blockers: settle(blockers), warnings: [] };
     const pre = await this.retrying('begin', () => source.daemon.call('handover.preflight', {
       toMachineId: to, choices, source: { home: source.home }, destination: { info: b, home: destination.home, fleetHome: destination.fleetHome },
     }));
