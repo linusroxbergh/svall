@@ -351,7 +351,9 @@ Ghostty `initial-command` and `input` are ignored.
   others in, list their logins and yours in `mobile.logins` and restart the
   daemon.
 - Each fleet is its own Home Screen app: the private fleet on port 443 and the
-  next on 8443. A third fleet needs `mobile.httpsPort: 10000`.
+  next on 8443. A third fleet needs `mobile.httpsPort: 10000`, which Svall
+  Dev's private fleet also takes. Tailscale serves one fleet per port on the
+  Mac, so a fleet whose port another already serves says so and leaves it.
 
 ## Configuration
 

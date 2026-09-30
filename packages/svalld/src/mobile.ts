@@ -100,6 +100,12 @@ export function servesTarget(json: string, host: string, port: number, target: s
   return web[`${host}:${port}`]?.Handlers?.['/']?.Proxy === target;
 }
 
+/** Whether the port serves anything but a daemon behind `key`: another fleet's link, the other Svall build's, or the user's own. */
+export function servesOther(json: string, host: string, port: number, key: string | undefined): boolean {
+  const handlers = (JSON.parse(json) as ServeStatus).Web?.[`${host}:${port}`]?.Handlers ?? {};
+  return Object.values(handlers).some((h) => !(key && h.Proxy?.endsWith(`/${key}`)));
+}
+
 const exec = promisify(execFile);
 
 // a build prints a great deal, and a pnpm that wedges must still let mobile.set answer before its own deadline
@@ -149,6 +155,8 @@ export function mobileControl(d: MobileDeps, opts: { home: string; profile: stri
   };
 
   const read = async (enable?: boolean): Promise<MobileStatus> => {
+    // the key the link carries now, which tells this fleet's mapping from another's on the same port
+    const key = d.read(mobileKey)?.trim();
     // every on and off serves a new key, so one learned while the link was up opens nothing afterwards
     if (enable === false) opts.rotateKey();
     const bin = await resolveTailscale(d);
@@ -156,6 +164,9 @@ export function mobileControl(d: MobileDeps, opts: { home: string; profile: stri
     const { host } = self;
     owner = self.owner;
     if (enable === true && logins().length === 0) throw new Error(`tailscale reports no login for this Mac: set mobile.logins in config.json, then restart the daemon with launchctl kickstart -k gui/$(id -u)/${profileLabel(opts.profile)}`);
+    // tailscale serve holds one mapping per port for the whole Mac, so a port another holds stays theirs
+    const other = enable !== undefined && servesOther(await d.run(bin, ['serve', 'status', '--json']), host, port, key);
+    if (enable === true && other) throw new Error(`https port ${port} already serves another fleet or site: set mobile.httpsPort (443, 8443 or 10000) in this fleet's config.json and restart it, or turn that one off with tailscale serve --https=${port} off`);
     // an on turns the key over only once tailscale and the page are ready, so one that fails leaves a working link alone
     if (enable === true) {
       if (!d.exists(MOBILE_DIST)) await buildBundle(d);
@@ -163,7 +174,7 @@ export function mobileControl(d: MobileDeps, opts: { home: string; profile: stri
     }
     const target = fleetTarget(d, opts.home);
     if (enable === true) await serve(d, bin, target, port);
-    if (enable === false) await unserve(d, bin, port);
+    if (enable === false && !other) await unserve(d, bin, port);
     const serving = servesTarget(await d.run(bin, ['serve', 'status', '--json']), host, port, target);
     const url = phoneUrl(host, port);
     const status: MobileStatus = {
