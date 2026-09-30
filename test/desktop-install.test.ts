@@ -126,6 +126,7 @@ test("stops before any build while the release's fleets run from a checkout, but
   const legacy = checks({ [plist]: '<string>/Users/u/svall/node_modules/.bin/tsx</string>' }, true);
   expect(legacy.status).toBe(1);
   expect(legacy.stderr).toContain("✗ fleets  ~/.svall's fleets run from a checkout");
+  expect(legacy.stderr).toContain(`/${plist}\n`);
   expect(legacy.stdout).not.toContain('build ghostty:');
   expect(checks({ [plist]: '<string>/Applications/Svall.app/Contents/Helpers/node</string>' }, true).status).toBe(0);
 });
