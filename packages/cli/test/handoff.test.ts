@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { handoff, handoffTarget } from '../src/handoff.js';
 
 describe('handoffTarget', () => {
@@ -16,33 +16,43 @@ describe('handoffTarget', () => {
 });
 
 describe('handoff', () => {
-  // a stand-in svall-dev that notes its arguments and exits 3
-  const shim = path.join(os.homedir(), '.local/bin/svall-dev');
+  // a HOME of its own, whose stand-in svall-dev notes its arguments and exits 3
+  let home = '';
+  const shim = () => path.join(home, '.local/bin/svall-dev');
   const install = () => {
-    fs.mkdirSync(path.dirname(shim), { recursive: true });
-    fs.writeFileSync(shim, `#!/bin/sh\nprintf '%s\\n' "$@" > '${shim}.args'\nexit 3\n`, { mode: 0o755 });
+    fs.mkdirSync(path.dirname(shim()), { recursive: true });
+    fs.writeFileSync(shim(), `#!/bin/sh\nprintf '%s\\n' "$@" > '${shim()}.args'\nexit 3\n`, { mode: 0o755 });
   };
   const exit = () => vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
-  afterEach(() => { vi.restoreAllMocks(); fs.rmSync(path.dirname(shim), { recursive: true, force: true }); });
+  beforeEach(() => {
+    home = fs.mkdtempSync(path.join(os.tmpdir(), 'handoff-'));
+    vi.stubEnv('HOME', home);
+    vi.stubEnv('SVALL_HOME', '/u/.svall-dev-work');
+  });
+  afterEach(() => { vi.restoreAllMocks(); fs.rmSync(home, { recursive: true, force: true }); });
 
   it('runs the other build with the arguments and exits with its status', () => {
-    vi.stubEnv('SVALL_HOME', '/u/.svall-dev-work');
     install();
     const exited = exit();
     handoff(['node', 'svall', 'agent', 'x']);
     expect(exited).toHaveBeenCalledWith(3);
-    expect(fs.readFileSync(`${shim}.args`, 'utf8')).toBe('agent\nx\n');
+    expect(fs.readFileSync(`${shim()}.args`, 'utf8')).toBe('agent\nx\n');
   });
-  it('leaves a run that names its fleet to this build', () => {
-    vi.stubEnv('SVALL_HOME', '/u/.svall-dev-work');
+  it('hands off a run whose -p comes after --, where it is text', () => {
     install();
     const exited = exit();
-    for (const flags of [['-p', 'work'], ['--profile', 'work'], ['--profile=work']]) handoff(['node', 'svall', ...flags, 'setup']);
+    handoff(['node', 'svall', 'char', 'run', 'c1', '--', 'claude', '-p', 'hi']);
+    expect(exited).toHaveBeenCalledWith(3);
+    expect(fs.readFileSync(`${shim()}.args`, 'utf8')).toBe('char\nrun\nc1\n--\nclaude\n-p\nhi\n');
+  });
+  it('leaves a run that names its fleet to this build', () => {
+    install();
+    const exited = exit();
+    for (const flags of [['-p', 'work'], ['-pwork'], ['--profile', 'work'], ['--profile=work']]) handoff(['node', 'svall', ...flags, 'setup']);
     expect(exited).not.toHaveBeenCalled();
-    expect(fs.existsSync(`${shim}.args`)).toBe(false);
+    expect(fs.existsSync(`${shim()}.args`)).toBe(false);
   });
   it('refuses when the other build is missing or hands the run back', () => {
-    vi.stubEnv('SVALL_HOME', '/u/.svall-dev-work');
     expect(() => handoff(['node', 'svall'])).toThrow('/u/.svall-dev-work belongs to the other Svall build, which is not installed');
     install();
     vi.stubEnv('SVALL_HANDOFF', '1');
