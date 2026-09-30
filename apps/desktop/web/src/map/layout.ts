@@ -72,7 +72,8 @@ export const landSpan = (i: Island, l: Layout): [number, number] => {
 // whatever larger scale the water beside it allows, and still in the middle of the height when there is height to spare
 export function fitAll(islands: Island[], win: { w: number; h: number }, crew: Crew = {}, below?: Below): Layout {
   const cell = theme.cell, { x, top, bottom } = theme.fit;
-  const box = (s: number): Bounds => worldBounds(islands, crew, s);
+  const boxes = new Map<number, Bounds>();
+  const box = (s: number): Bounds => boxes.get(s) ?? boxes.set(s, worldBounds(islands, crew, s)).get(s)!;
   // what is drawn only grows on screen with the scale, so the largest scale that fits a room is a bisection
   const largest = (w: number, h: number): number => {
     const ok = (s: number) => { const b = box(s); return b.w * cell * s <= w && b.h * cell * s <= h; };

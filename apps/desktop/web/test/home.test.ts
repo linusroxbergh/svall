@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Cell, FleetState, Island } from '@svall/protocol';
-import { homeBlocks, homeBox, homeCap, homeCellToScreen, homeCrew, homeFull, homeReserve, homeSlotAt, inHomeBox } from '../src/map/home.js';
-import { cardScale } from '../src/map/layout.js';
+import { fitWithHome, homeBlocks, homeBox, homeCap, homeCellToScreen, homeCrew, homeFull, homeReserve, homeSlotAt, inHomeBox } from '../src/map/home.js';
+import { cardScale, crewOf, mapIslands } from '../src/map/layout.js';
 import { placeIslet } from '../src/map/resources.js';
 import type { Drag } from '../src/map/types.js';
 import { theme } from '../src/theme.js';
@@ -126,5 +126,37 @@ describe('home crew', () => {
   });
   it('ignores a visitor that no longer exists', () => {
     expect(homeCrew(crewed(), dragging('gone', { islandId: 'home', local: { x: 4, y: 1 }, free: true })).map((c) => c.id)).toEqual(['h1']);
+  });
+});
+
+describe('fitting the map with mission control', () => {
+  // a fleet far wider than it is tall zooms the map out under the card floor, so home shrinks with it
+  const wide = () => {
+    const f = fleet();
+    return { islands: mapIslands(f).map((i, n) => ({ ...i, position: { x: n * 40, y: 0 } })), crew: crewOf(f) };
+  };
+  const row = { w: 400, h: 28 };
+
+  it('reserves the room for the home it hands back to draw, whose cards stand as big as the islands\'', () => {
+    const { islands, crew } = wide();
+    const f = fitWithHome(islands, crew, host, home, row);
+    expect(f.most).toBeLessThan(1);
+    expect(f.most).toBeCloseTo(cardScale(f.fit.scale), 3);
+    const drawn = placeIslet(host.w, home.size.w * theme.cell, false, f.most).homeScale;
+    expect(f.win.h).toBe(host.h - homeReserve(false, row.h, drawn));
+    expect(f.below?.blocks).toEqual(homeBlocks(home, host, row, f.most));
+  });
+
+  it('keeps the last fit while nothing that shapes it changes', () => {
+    const { islands, crew } = wide();
+    const first = fitWithHome(islands, crew, host, home, row);
+    expect(fitWithHome(structuredClone(islands), structuredClone(crew), { ...host }, { ...home }, { ...row })).toBe(first);
+    expect(fitWithHome(islands, crew, { ...host, w: host.w - 1 }, home, row)).not.toBe(first);
+  });
+
+  it('solves nothing for a folded home or none, which stand at full size', () => {
+    const { islands, crew } = wide();
+    expect(fitWithHome(islands, crew, host, { ...home, collapsed: true }, row).most).toBe(1);
+    expect(fitWithHome(islands, crew, host, undefined, row).most).toBe(1);
   });
 });

@@ -1,7 +1,7 @@
 import { HOME_ISLAND, HOME_ROW, SPACING, homeSlots, type Cell, type Character, type FleetState, type Island } from '@svall/protocol';
 import { charactersOf, homeIsland } from '../selectors.js';
 import { theme } from '../theme.js';
-import { cardScale, characterAt, type Block } from './layout.js';
+import { cardScale, characterAt, fitAll, roomOf, type Below, type Block, type Crew, type Layout } from './layout.js';
 import { ISLET, placeIslet } from './resources.js';
 import type { Drag } from './types.js';
 
@@ -60,6 +60,31 @@ export function homeCap(scaleAt: (most: number) => number): number {
   let lo = cardScale(theme.scale.min), hi = 1;
   for (let n = 0; n < 12; n++) { const mid = (lo + hi) / 2; if (cardScale(scaleAt(mid)) >= mid) lo = mid; else hi = mid; }
   return lo;
+}
+
+type Size = { w: number; h: number };
+export type Fitted = { fit: Layout; win: Size; below?: Below; room: Size; most: number };
+
+let last: { key: string; fitted: Fitted } | undefined;
+
+// the map fitted round the fleet with mission control's size solved alongside, and `most`, the cap home is drawn at. The
+// last answer is kept, so a pan or a patch that moves nothing the fit reads costs nothing
+export function fitWithHome(islands: Island[], crew: Crew, host: Size, home: Island | undefined, row: Size): Fitted {
+  const key = JSON.stringify([islands.map((i) => [i.id, i.name, i.position, i.size, i.collapsed]), crew, host, home && [home.size.w, home.collapsed, home.position.y], row]);
+  if (last?.key === key) return last.fitted;
+  const collapsed = Boolean(home?.collapsed);
+  const at = (most: number) => {
+    const scale = home ? placeIslet(host.w, home.size.w * theme.cell, collapsed, most).homeScale : 1;
+    const win = { w: host.w, h: host.h - homeReserve(collapsed, row.h, scale) };
+    const below: Below | undefined = home && { h: host.h, blocks: homeBlocks(home, host, row, most), row: home.position.y };
+    return { win, below, fit: fitAll(islands, win, crew, below) };
+  };
+  // a folded home has no land to shrink
+  const most = home && !collapsed ? homeCap((m) => at(m).fit.scale) : 1;
+  const { win, below, fit } = at(most);
+  const fitted = { fit, win, below, most, room: roomOf(islands, fit, win, crew, below) };
+  last = { key, fitted };
+  return fitted;
 }
 
 // home's crew, minus one being dragged away, plus a visitor while it hovers over home
