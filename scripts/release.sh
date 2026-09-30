@@ -4,7 +4,14 @@
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-ADHOC=; [ "${1:-}" = --adhoc ] && ADHOC=1
+ADHOC=
+for a in "$@"; do
+  case "$a" in
+    --) ;;
+    --adhoc) ADHOC=1 ;;
+    *) echo "release: usage: pnpm release [--adhoc]" >&2; exit 1 ;;
+  esac
+done
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' apps/desktop/mac/Info.plist)"
 BUILD="$(git rev-list --count HEAD)"
 ID="${SVALL_SIGN_ID:-Developer ID Application}"
@@ -20,7 +27,7 @@ if [ -z "$ADHOC" ]; then
   # Sparkle offers only a higher CFBundleVersion, and a commit count falls if history is ever rewritten
   PUBLISHED="$(curl -fsS https://svall.dev/latest.json 2>/dev/null | sed -n 's/.*.build.: *\([0-9]*\).*/\1/p')"
   [ -z "$PUBLISHED" ] || [ "$BUILD" -gt "$PUBLISHED" ] || fail "build $BUILD is not above the published $PUBLISHED, so no installed copy would update"
-  mkdir -p dist/releases
+  rm -rf dist/releases && mkdir -p dist/releases
   rsync -a "$SVALL_HOST:$SVALL_SITE_DIR/releases/" dist/releases/
 else
   ID=-
@@ -70,6 +77,7 @@ if [ -n "$ADHOC" ]; then
   exit 0
 fi
 # the DMG is in place before the feeds that name it
+rsync -a "$DMG" "$SVALL_HOST:$SVALL_SITE_DIR/releases/"
 rsync -a dist/releases "$SVALL_HOST:$SVALL_SITE_DIR/"
 rsync -a dist/appcast.xml dist/latest.json scripts/install.sh "$SVALL_HOST:$SVALL_SITE_DIR/"
 git tag "v$VERSION"
