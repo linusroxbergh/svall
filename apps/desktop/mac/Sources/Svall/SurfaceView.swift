@@ -19,6 +19,7 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
     var focused = false
     var cellSize = CGSize(width: 8, height: 16)
     private var cursor: NSCursor = .iBeam
+    private var sizeTimer: Timer?
 
     var cutout = Cutout() {
         didSet {
@@ -104,9 +105,16 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
         if window != nil { viewDidChangeBackingProperties() }
     }
 
+    // the view follows its card every frame, drawing the grid it has at the top left; the grid, and with it
+    // the pty and a tmux reflow, changes once the size has held still
     override func setFrameSize(_ newSize: NSSize) {
+        let resized = newSize != frame.size
         super.setFrameSize(newSize)
-        syncSize()
+        guard resized else { return }
+        sizeTimer?.invalidate()
+        let timer = Timer(timeInterval: 0.1, repeats: false) { [weak self] _ in self?.syncSize() }
+        RunLoop.main.add(timer, forMode: .common)
+        sizeTimer = timer
     }
 
     override func viewDidChangeBackingProperties() {
