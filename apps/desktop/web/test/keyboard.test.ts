@@ -64,6 +64,22 @@ describe('dispatchKey', () => {
     await dispatchKey({ type: 'newCharacter' }, c);
     expect(c.store.getState()).toMatchObject({ closingCharacter: undefined, namingCharacter: true });
   });
+  it('with the machines panel or the handover sheet up, no key opens a dialog beneath it', async () => {
+    for (const open of [(c: ReturnType<typeof ctx>) => c.store.getState().toggleHost(true), (c: ReturnType<typeof ctx>) => c.store.getState().toggleHandover(true)]) {
+      const c = ctx();
+      c.store.getState().select('c0');
+      open(c);
+      await dispatchKey({ type: 'closeCharacter' }, c);
+      await dispatchKey({ type: 'closeCharacter' }, c);
+      await dispatchKey({ type: 'newCharacter' }, c);
+      await dispatchKey({ type: 'missionControl' }, c);
+      await dispatchKey({ type: 'openFleets' }, c);
+      expect(c.calls).toEqual([]);
+      expect(c.store.getState()).toMatchObject({ closingCharacter: undefined, namingCharacter: false, missionPrompt: false, selectedId: 'c0' });
+      expect(c.store.getState().fleetPicker).toBeUndefined();
+      expect(c.store.getState().hostOpen || c.store.getState().handoverOpen).toBe(true);
+    }
+  });
   it('a confirmed close moves on to the next character', async () => {
     const c = ctx();
     c.store.getState().select('c0');
