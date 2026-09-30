@@ -72,6 +72,22 @@ describe('Client', () => {
     await new Promise((r) => wss.close(r));
   });
 
+  it('connects to a fleet still on config.json, and leaves splitting it to the daemon', async () => {
+    const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+    await new Promise((r) => wss.once('listening', r));
+    wss.on('connection', (ws) => ws.once('message', () => ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } }))));
+    const home = makeHome();
+    const legacy = `${JSON.stringify({ id: '11111111-2222-3333-4444-555555555555', host: '127.0.0.1' })}\n`;
+    fs.writeFileSync(path.join(home, 'config.json'), legacy);
+    fs.writeFileSync(path.join(home, 'port'), String((wss.address() as { port: number }).port));
+    fs.writeFileSync(path.join(home, 'token'), 't');
+
+    (await Client.connect(home)).close();
+    await new Promise((r) => wss.close(r));
+    expect(fs.readdirSync(home).sort()).toEqual(['config.json', 'port', 'token']);
+    expect(fs.readFileSync(path.join(home, 'config.json'), 'utf8')).toBe(legacy);
+  });
+
   it('sends a call too large for one socket message in parts, and hands on the structured half of a refusal', async () => {
     const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
     await new Promise((r) => wss.once('listening', r));

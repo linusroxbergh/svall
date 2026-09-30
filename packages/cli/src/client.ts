@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import WebSocket from 'ws';
-import { loadConfig } from '@svall/svalld/config';
+import { peekConfig } from '@svall/svalld/config';
 import { ProtocolMismatch } from '@svall/svalld/fleets';
 import { svallHome, resolvePaths } from '@svall/svalld/paths';
 import { SHIM, profileLabel } from '@svall/svalld/profile';
@@ -76,7 +76,7 @@ export class Client {
     }
     const port = Number(fs.readFileSync(paths.port, 'utf8'));
     return Client.connectEndpoint({
-      url: `ws://${loadConfig(paths).host}:${port}`, token: fs.readFileSync(paths.token, 'utf8').trim(),
+      url: `ws://${peekConfig(paths).host}:${port}`, token: fs.readFileSync(paths.token, 'utf8').trim(),
       ...(!anyProtocol && { mismatch: (speaks: string) => {
         const fix = variant === 'release' ? 'quit and reopen Svall' : 'run `pnpm desktop:install`';
         return `the svalld of ${home} ${speaks} and this build speaks ${PROTOCOL_VERSION}: ${fix}, or ${restartHint(resolveTarget({ env: home }))}`;

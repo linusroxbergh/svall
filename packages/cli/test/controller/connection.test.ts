@@ -291,6 +291,17 @@ describe('svall connection-info', () => {
     await run(true);
     expect(JSON.parse(out.join(''))).not.toHaveProperty('generation');
   });
+
+  it('reads a fleet still on config.json, and leaves splitting it to the daemon', async () => {
+    const legacy = `${JSON.stringify({ id: FLEET, host: '127.0.0.1' })}\n`;
+    fs.writeFileSync(path.join(home, 'config.json'), legacy);
+    fs.writeFileSync(path.join(home, 'port'), '4711');
+    fs.writeFileSync(path.join(home, 'token'), 'local-token\n');
+    await run(true);
+    expect(JSON.parse(out.join(''))).toMatchObject({ fleetId: FLEET, host: '127.0.0.1', port: 4711 });
+    expect(fs.readdirSync(home).sort()).toEqual(['config.json', 'port', 'token']);
+    expect(fs.readFileSync(path.join(home, 'config.json'), 'utf8')).toBe(legacy);
+  });
 });
 
 describe('resolveOwner', () => {

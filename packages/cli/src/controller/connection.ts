@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { z } from 'zod';
 import { FleetConfig, FleetId, MachineId, MachineRecord, PROTOCOL_VERSION } from '@svall/protocol';
-import { loadConfig } from '@svall/svalld/config';
+import { peekConfig } from '@svall/svalld/config';
 import { versionMachineId, type OwnerAnswer } from '@svall/svalld/gateway/client';
 import { machineId } from '@svall/svalld/machine';
 import { resolvePaths } from '@svall/svalld/paths';
@@ -72,7 +72,7 @@ export function localConnectionInfo(fleetHome: string): ConnectionInfo {
   if (!fs.existsSync(paths.port) || !fs.existsSync(paths.token)) {
     throw new SshError('daemon_down', `svalld is not running (no ${paths.port}). Start it with \`svall setup\` or \`pnpm svalld\`.`);
   }
-  const config = loadConfig(paths);
+  const config = peekConfig(paths);
   // without a gateway no record but this machine's own can exist, so there is no generation to report
   const generation = config.gatewayMachineId ? cachedOwner(fleetHome)?.generation : undefined;
   return {
