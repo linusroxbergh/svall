@@ -23,12 +23,23 @@ if [ -z "$ADHOC" ]; then
   [ -z "$(git status --porcelain)" ] || fail "the tree has changes"
   [ "$(git rev-parse --abbrev-ref HEAD)" = main ] || fail "release from main"
   git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null && fail "v$VERSION is tagged already; bump CFBundleShortVersionString"
+  git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null && fail "v$VERSION is tagged on origin already; bump CFBundleShortVersionString"
+  for k in SUFeedURL SUPublicEDKey; do
+    [ -n "$(/usr/libexec/PlistBuddy -c "Print :$k" apps/desktop/mac/Info.plist 2>/dev/null)" ] ||
+      fail "apps/desktop/mac/Info.plist has no $k, so this release could never update itself; make the key with generate_keys, in the folder scripts/sparkle-tools.sh prints, then add SUFeedURL and SUPublicEDKey"
+  done
   : "${SVALL_HOST:?set SVALL_HOST to the ssh host of the server}" "${SVALL_SITE_DIR:?set SVALL_SITE_DIR to the site folder on it}"
   # Sparkle offers only a higher CFBundleVersion, and a commit count falls if history is ever rewritten
-  PUBLISHED="$(curl -fsS https://svall.dev/latest.json 2>/dev/null | sed -n 's/.*.build.: *\([0-9]*\).*/\1/p')"
+  LATEST="$(curl -sS -w '\n%{http_code}' https://svall.dev/latest.json)" || fail "could not read https://svall.dev/latest.json"
+  case "$(printf '%s\n' "$LATEST" | tail -n 1)" in
+    200) PUBLISHED="$(printf '%s\n' "$LATEST" | sed -n 's/.*.build.: *\([0-9]*\).*/\1/p')" ;;
+    404) PUBLISHED= ;;
+    *) fail "could not read https://svall.dev/latest.json" ;;
+  esac
   [ -z "$PUBLISHED" ] || [ "$BUILD" -gt "$PUBLISHED" ] || fail "build $BUILD is not above the published $PUBLISHED, so no installed copy would update"
   rm -rf dist/releases && mkdir -p dist/releases
   rsync -a "$SVALL_HOST:$SVALL_SITE_DIR/releases/" dist/releases/
+  [ ! -e "dist/releases/Svall-$VERSION.dmg" ] || fail "Svall-$VERSION.dmg is on the server already, and a published DMG never changes; bump CFBundleShortVersionString"
 else
   ID=-
 fi
