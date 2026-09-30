@@ -40,9 +40,10 @@ if [ -z "$ADHOC" ]; then
     *) fail "could not read https://svall.dev/latest.json" ;;
   esac
   [ -z "$PUBLISHED" ] || [ "$BUILD" -gt "$PUBLISHED" ] || fail "build $BUILD is not above the published $PUBLISHED, so no installed copy would update"
+  # the appcast is made from this build alone, so nothing from the server or a dry run is signed with the Sparkle key
   rm -rf dist/releases && mkdir -p dist/releases
-  rsync -a "$SVALL_HOST:$SVALL_SITE_DIR/releases/" dist/releases/
-  [ ! -e "dist/releases/Svall-$VERSION.dmg" ] || fail "Svall-$VERSION.dmg is on the server already, and a published DMG never changes; bump CFBundleShortVersionString"
+  ssh "$SVALL_HOST" "test ! -e '$SVALL_SITE_DIR/releases/Svall-$VERSION.dmg'" ||
+    fail "Svall-$VERSION.dmg is on the server already, or the server did not answer; a published DMG never changes, so bump CFBundleShortVersionString"
 else
   ID=-
 fi
@@ -51,9 +52,9 @@ fi
 pnpm install --frozen-lockfile
 pnpm app:build
 APP=apps/desktop/mac/build/Svall.app
-# the app sets itself up, refreshes and uninstalls in a throwaway home before anything is signed
-scripts/app-smoke.sh "$APP"
 scripts/sign.sh "$APP" "$ID"
+# the app, hardened and entitled as it ships, sets itself up, refreshes and uninstalls in a throwaway home
+scripts/app-smoke.sh "$APP"
 if [ -z "$ADHOC" ]; then
   ditto -c -k --keepParent "$APP" dist/Svall.zip
   notarize dist/Svall.zip
