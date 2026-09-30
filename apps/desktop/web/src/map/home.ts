@@ -63,7 +63,7 @@ export function homeCap(scaleAt: (most: number) => number): number {
 }
 
 type Size = { w: number; h: number };
-export type Fitted = { fit: Layout; win: Size; below?: Below; room: Size; most: number };
+export type Fitted = { fit: Layout; win: Size; room: Size; most: number };
 
 let last: { key: string; fitted: Fitted } | undefined;
 
@@ -79,10 +79,11 @@ export function fitWithHome(islands: Island[], crew: Crew, host: Size, home: Isl
     const below: Below | undefined = home && { h: host.h, blocks: homeBlocks(home, host, row, most), row: home.position.y };
     return { win, below, fit: fitAll(islands, win, crew, below) };
   };
-  // a folded home has no land to shrink
-  const most = home && !collapsed ? homeCap((m) => at(m).fit.scale) : 1;
-  const { win, below, fit } = at(most);
-  const fitted = { fit, win, below, most, room: roomOf(islands, fit, win, crew, below) };
+  const cap = home && !collapsed ? homeCap((m) => at(m).fit.scale) : 1;
+  const { win, below, fit } = at(cap);
+  // a folded home has no land to shrink; it keeps the cap island cards stand at, so it unfolds at their size
+  const most = collapsed ? Math.min(1, cardScale(fit.scale)) : cap;
+  const fitted = { fit, win, most, room: roomOf(islands, fit, win, crew, below) };
   last = { key, fitted };
   return fitted;
 }

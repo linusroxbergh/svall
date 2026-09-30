@@ -257,22 +257,24 @@ export function Map() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const target = useRef<Layout>(undefined);
+  const target = useRef<Layout & { most: number }>(undefined);
   const anim = useRef<number>(undefined);
   const holdUntil = useRef(0);
   const holdTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => { cancelAnimationFrame(anim.current ?? 0); cancelAnimationFrame(dragFrame.current ?? 0);
     clearTimeout(holdTimer.current); clearTimeout(hoverTimer.current); clearTimeout(settleTimer.current); }, []);
   // the map under the room kept over mission control, and what mission control stands in it with
-  const belowOf = (el: HTMLElement, most = homeMost.current): Below | undefined => {
+  const belowOf = (el: HTMLElement): Below | undefined => {
     const hi = homeIsland(app.store.getState().fleet);
     const host = { w: el.clientWidth, h: el.clientHeight };
-    return hi && { h: host.h, blocks: homeBlocks(hi, host, row.current, most), row: hi.position.y };
+    return hi && { h: host.h, blocks: homeBlocks(hi, host, row.current, homeMost.current), row: hi.position.y };
   };
   // the map height mission control keeps at its full size on a map this wide, its row as tall as it has wrapped to:
   // arrange shapes the fleet for it, and the fit shares out whatever a smaller home leaves
-  const reserveAt = (w: number, hi = homeIsland(app.store.getState().fleet)): number =>
-    homeReserve(Boolean(hi?.collapsed), row.current.h, hi ? placeIslet(w, hi.size.w * theme.cell, Boolean(hi.collapsed)).homeScale : 1);
+  const reserveAt = (w: number): number => {
+    const hi = homeIsland(app.store.getState().fleet);
+    return homeReserve(Boolean(hi?.collapsed), row.current.h, hi ? placeIslet(w, hi.size.w * theme.cell, Boolean(hi.collapsed)).homeScale : 1);
+  };
   const refit = (immediate?: boolean, anchor?: PendingIsland['anchor']) => {
     if (cameraHold.current && !immediate) return;
     const el = host.current;
@@ -306,12 +308,11 @@ export function Map() {
       next = { ...fit, ox: fit.ox + pan.current.x, oy: fit.oy + pan.current.y };
     }
     const cur = layoutRef.current;
-    if (target.current && target.current.scale === next.scale && target.current.ox === next.ox && target.current.oy === next.oy) return;
-    target.current = next;
-    // the side card and a pan resize the map instantly; jump the layout with them rather than easing across a moving target
-    if (immediate) { cancelAnimationFrame(anim.current ?? 0); homeMost.current = most; setLayout(next); return; }
+    if (target.current && target.current.scale === next.scale && target.current.ox === next.ox && target.current.oy === next.oy && target.current.most === most) return;
+    target.current = { ...next, most };
     cancelAnimationFrame(anim.current ?? 0);
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { homeMost.current = most; setLayout(next); return; }
+    // the side card and a pan resize the map instantly; jump the layout with them rather than easing across a moving target
+    if (immediate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) { homeMost.current = most; setLayout(next); return; }
     const from = { ...cur }, fromMost = homeMost.current, start = performance.now();
     const step = () => {
       const t = Math.min(1, (performance.now() - start) / theme.fitEaseMs);

@@ -144,19 +144,43 @@ describe('fitting the map with mission control', () => {
     expect(f.most).toBeCloseTo(cardScale(f.fit.scale), 3);
     const drawn = placeIslet(host.w, home.size.w * theme.cell, false, f.most).homeScale;
     expect(f.win.h).toBe(host.h - homeReserve(false, row.h, drawn));
-    expect(f.below?.blocks).toEqual(homeBlocks(home, host, row, f.most));
   });
 
   it('keeps the last fit while nothing that shapes it changes', () => {
     const { islands, crew } = wide();
     const first = fitWithHome(islands, crew, host, home, row);
     expect(fitWithHome(structuredClone(islands), structuredClone(crew), { ...host }, { ...home }, { ...row })).toBe(first);
-    expect(fitWithHome(islands, crew, { ...host, w: host.w - 1 }, home, row)).not.toBe(first);
   });
 
-  it('solves nothing for a folded home or none, which stand at full size', () => {
+  it('fits again when anything the fit reads changes', () => {
     const { islands, crew } = wide();
-    expect(fitWithHome(islands, crew, host, { ...home, collapsed: true }, row).most).toBe(1);
+    const [a, ...rest] = islands;
+    const changed: Parameters<typeof fitWithHome>[] = [
+      [[{ ...a, name: `${a.name} and more` }, ...rest], crew, host, home, row],
+      [[{ ...a, position: { x: a.position.x, y: 1 } }, ...rest], crew, host, home, row],
+      [[{ ...a, size: { w: a.size.w + 1, h: a.size.h } }, ...rest], crew, host, home, row],
+      [[{ ...a, collapsed: true }, ...rest], crew, host, home, row],
+      [islands, { ...crew, [a.id]: [{ x: 2, y: 2 }] }, host, home, row],
+      [islands, crew, { ...host, w: host.w - 1 }, home, row],
+      [islands, crew, { ...host, h: host.h - 1 }, home, row],
+      [islands, crew, host, { ...home, size: { w: home.size.w + 3, h: home.size.h } }, row],
+      [islands, crew, host, { ...home, collapsed: true }, row],
+      [islands, crew, host, { ...home, position: { x: 0, y: 5 } }, row],
+      [islands, crew, host, undefined, row],
+      [islands, crew, host, home, { ...row, w: row.w + 1 }],
+      [islands, crew, host, home, { ...row, h: row.h + 1 }],
+    ];
+    for (const args of changed) {
+      const first = fitWithHome(islands, crew, host, home, row);
+      expect(fitWithHome(...args)).not.toBe(first);
+    }
+  });
+
+  it('solves nothing for a folded home or none; a folded one keeps the cap island cards stand at, to unfold at', () => {
+    const { islands, crew } = wide();
+    const folded = fitWithHome(islands, crew, host, { ...home, collapsed: true }, row);
+    expect(folded.most).toBeLessThan(1);
+    expect(folded.most).toBe(cardScale(folded.fit.scale));
     expect(fitWithHome(islands, crew, host, undefined, row).most).toBe(1);
   });
 });
