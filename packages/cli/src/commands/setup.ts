@@ -14,7 +14,7 @@ import { LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from '@svall/sv
 import { ownRuntime } from '@svall/svalld/runtime';
 import {
   claudeHooksCurrent, codexHooksCurrent, isLoaded, kickstart, plistCurrent, readCodexHooks, readJsonSettings, readOrUndefined, refreshFleetPlists,
-  requireWritableHooks, runSetup, shimsCurrent, takenOverBy,
+  requireWritableHooks, runSetup, shimsCurrent, takenOverBy, type JsonSettings,
 } from '@svall/svalld/setup';
 import { integrationsFor, requireInstalledApp, runtimeVersion, setupPlan, staleFleets } from '@svall/svalld/setup-plan';
 import { fleetHomes } from '@svall/svalld/uninstall';
@@ -43,21 +43,22 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       const runtime = ownRuntime();
       requireInstalledApp(runtime);
       const configFile = resolvePaths(t.home).config;
+      // the choices are saved only once setup is about to write, so a run that stops has changed nothing
+      let choices: Parameters<typeof saveConfig>[1] | undefined;
       if (o.agents !== undefined) {
-        if (o.plan || o.check) throw new Error('--agents is for a setup that writes');
+        if (o.plan || o.check || o.ifNeeded) throw new Error('--agents is for a setup that writes everything');
         const kinds = (list: string): AgentKind[] => list.split(',').map((name) => {
           if (!AGENT_KINDS.includes(name as AgentKind)) throw new Error(`unknown agent ${name}`);
           return name as AgentKind;
         });
         const chosen = kinds(o.agents);
         const found = o.found !== undefined ? kinds(o.found) : findAgents(process.env.PATH ?? '');
-        fs.mkdirSync(t.home, { recursive: true });
         // a fleet with no main agent set runs claude when both are found, so turning claude off makes the one left on the main agent
         const on = chosen.filter((k) => found.includes(k));
         const main = on.length && !on.includes(mainAgent(undefined, found)) && !loadConfig(configFile).mainAgent ? { mainAgent: on[0] } : {};
-        saveConfig(configFile, { integrations: integrationsFor(chosen, found), ...main });
+        choices = { integrations: integrationsFor(chosen, found), ...main };
       }
-      const integrations = loadConfig(configFile).integrations;
+      const integrations = choices?.integrations ?? loadConfig(configFile).integrations;
       const settingsPath = userPaths().claudeSettings;
       const codex = codexPaths();
       const { launchAgents, shimDir } = userPaths();
@@ -90,10 +91,18 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       const wants = (k: AgentKind, fallback: boolean) => fallback && (!integrations || integrations.includes(k));
       const claudeWanted = wants('claude', agents.includes('claude') || fs.existsSync(path.dirname(settingsPath)));
       const codexWanted = wants('codex', agents.includes('codex') || fs.existsSync(codex.dir));
-      // these throw on a file setup could not write back, so --check covers it too
-      const settings = claudeWanted ? readJsonSettings(settingsPath) : undefined;
-      const codexHooks = readCodexHooks(codex, codexWanted);
-      requireWritableHooks(t.home, settings, codexHooks);
+      // these throw on a file setup could not write back, so --check covers it too; a refresh still restarts old daemons
+      let settings: JsonSettings | undefined;
+      let codexHooks: JsonSettings | undefined;
+      let unwritable: string | undefined;
+      try {
+        settings = claudeWanted ? readJsonSettings(settingsPath) : undefined;
+        codexHooks = readCodexHooks(codex, codexWanted);
+        requireWritableHooks(t.home, settings, codexHooks);
+      } catch (e) {
+        if (!o.ifNeeded) throw e;
+        unwritable = (e as Error).message;
+      }
       const { hookScript, statusScript } = resolvePaths(t.home);
       const holdsOurs = (file: string) => [hookScript, statusScript].some((s) => readOrUndefined(file)?.includes(s));
       const hooksStale = (settings && !claudeHooksCurrent(settings.settings, t.home)) || (codexHooks && !codexHooksCurrent(codexHooks.settings, hookScript))
@@ -127,14 +136,21 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       if (o.ifNeeded) {
         const fleetsStale = ours.some((h) => profileOf(h) !== PRIVATE && !plistCurrent({ home: h, label: label(h), launchAgentsDir: launchAgents, runtime }));
         // stand-in folders must not replace what a setup with the real login environment wrote
-        if (!answered || (!hooksStale && !shimsStale && !plistStale && !fleetsStale)) {
+        if (!answered || unwritable || (!hooksStale && !shimsStale && !plistStale && !fleetsStale)) {
           const done = system ? await kickstart(stale) : [];
-          const warnings = answered ? [] : ['the login shell did not answer, so the hooks, shims and plists were left as they are'];
+          const warnings = [
+            ...answered ? [] : ['the login shell did not answer, so the hooks, shims and plists were left as they are'],
+            ...unwritable ? [unwritable] : [],
+          ];
           printResult({ done, warnings }, json(), () => [...done, ...warnings].join('\n'));
           return;
         }
       }
       const warnings = requireReady(await preflight(realPreflightDeps(t.home)));
+      if (choices) {
+        fs.mkdirSync(t.home, { recursive: true });
+        saveConfig(configFile, choices);
+      }
       const lines = await runSetup({
         home: t.home,
         settingsPath,

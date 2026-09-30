@@ -134,11 +134,49 @@ describe('svall uninstall --login-shell', () => {
 });
 
 describe('svall setup --agents', () => {
+  // stand-ins for the tmux and codex preflight asks for
+  const tools = (home: string) => {
+    const bin = path.join(home, 'bin');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, 'tmux'), '#!/bin/sh\necho tmux 3.5a\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'codex'), '#!/bin/sh\necho codex-cli 0.160.0\n', { mode: 0o755 });
+    return `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`;
+  };
+
   it('keeps off an agent the setup screen showed and the user left out, and makes the one left on the main agent', async () => {
     const home = makeHome();
     try {
-      await run({ HOME: home, PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin` }, 'setup', '--no-launchctl', '--agents', 'codex', '--found', 'claude,codex');
+      const r = await run({ HOME: home, PATH: tools(home) }, 'setup', '--no-launchctl', '--agents', 'codex', '--found', 'claude,codex');
+      expect(r.code).toBe(0);
       expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ integrations: ['codex'], mainAgent: 'codex' });
+    } finally {
+      cleanHomes();
+    }
+  });
+
+  it('saves no choice when setup stops before it writes', async () => {
+    const home = makeHome();
+    try {
+      fs.mkdirSync(path.join(home, '.codex'));
+      fs.writeFileSync(path.join(home, '.codex', 'hooks.json'), '{ "hooks": ');
+      const r = await run({ HOME: home, PATH: tools(home) }, 'setup', '--no-launchctl', '--agents', 'codex', '--found', 'claude,codex');
+      expect(r.stderr).toContain('is not valid JSON');
+      expect(fs.existsSync(path.join(home, '.svall'))).toBe(false);
+    } finally {
+      cleanHomes();
+    }
+  });
+});
+
+describe('svall setup --if-needed', () => {
+  it('still restarts old daemons, and says why, when a settings file stops the rest', async () => {
+    const home = makeHome();
+    try {
+      fs.mkdirSync(path.join(home, '.claude'));
+      fs.writeFileSync(path.join(home, '.claude', 'settings.json'), '{ "hooks": ');
+      const r = await run({ HOME: home }, '--json', 'setup', '--if-needed', '--no-launchctl');
+      expect(r.code).toBe(0);
+      expect(JSON.parse(r.stdout).warnings).toEqual([expect.stringContaining('is not valid JSON')]);
     } finally {
       cleanHomes();
     }
