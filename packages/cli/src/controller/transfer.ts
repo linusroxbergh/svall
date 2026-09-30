@@ -376,11 +376,14 @@ class Mirror {
     return this.finish({ id: this.entry.id, status: 'verified', passes, files }, { verifiedKey: plan.key, verifiedScan: scanDigest(files) });
   }
 
-  /** Records how the entry ended, with every word of it scrubbed of secrets. */
+  /**
+   * Records how the entry ended, with every word of it scrubbed of secrets. An end without a proof keeps the one the
+   * entry holds, which only a copy clears.
+   */
   private finish(outcome: EntryOutcome, proof?: { verifiedKey: string; verifiedScan: string }): EntryOutcome {
     const scrubbed = this.scrub(outcome);
     const error = scrubbed.status === 'failed' ? scrubbed.error : scrubbed.status === 'blocked' ? scrubbed.blocker.message : undefined;
-    this.put({ state: scrubbed.status, verifiedKey: proof?.verifiedKey, verifiedScan: proof?.verifiedScan, ...(error && { error }) });
+    this.put({ state: scrubbed.status, ...proof, ...(error && { error }) });
     this.journal.flush();
     return scrubbed;
   }

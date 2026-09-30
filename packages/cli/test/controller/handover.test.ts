@@ -6,7 +6,7 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { AUTHORITY_SCHEMA_VERSION, FleetId, MachineId, PROTOCOL_VERSION, type Blocker, type HandoverEvent, type OwnerRecord } from '@svall/protocol';
 import { AuthorityClient } from '@svall/svalld/gateway/client';
 import { startAuthorityServer } from '@svall/svalld/gateway/server';
-import { manifestDigest, spaceNeed } from '@svall/svalld/handover/manifest';
+import { manifestDigest, spaceNeed, type ScanFs } from '@svall/svalld/handover/manifest';
 import { replicaRoots } from '@svall/svalld/handover/replicas';
 import { resolvePaths } from '@svall/svalld/paths';
 import { Handover, Refused } from '../../src/controller/handover.js';
@@ -19,7 +19,8 @@ import { SshError, SshMaster } from '../../src/controller/ssh.js';
 import { installFakeSsh } from './fake-ssh.js';
 import { MachineRegistry } from '../../src/controller/registry.js';
 import { ApiError, Client } from '../../src/client.js';
-import type { RootEntry, SessionEntry } from '../../src/controller/transfer.js';
+import type { RunRsync } from '../../src/controller/rsync.js';
+import { transfer as runTransfer, type RootEntry, type SessionEntry, type TransferOptions } from '../../src/controller/transfer.js';
 import { cleanHomes, makeHome } from '../../../svalld/test/helpers.js';
 import {
   CODEX, FLEET_HOME, G, HOME, SID, TOKEN, World, at, controller, file, fleetId, info, keptCommit, mac, manifestFor, opIndex, phases, recover, settledOn, trift,
@@ -895,6 +896,48 @@ describe('rest choices and blockers after Begin', () => {
     await controller(w).start(trift, {});
     const row = w.events.find((x) => x.event === 'handover.entity' && x.data.id === 'r_app');
     expect(row).toMatchObject({ data: { kind: 'root', phase: 'transfer', error } });
+  });
+
+  it('hands the next claim what a root verified, though a later run could not check that copy again', async () => {
+    const w = new World();
+    // this Mac's side of every entry, as the manifest lists it: each file holds its own path
+    const m = manifestFor('tx-1');
+    const held = new Map<string, string>();
+    for (const r of m.roots) for (const f of r.files) held.set(path.posix.join(r.path, f.path), f.path);
+    for (const s of m.sessions) for (const f of s.files) held.set(path.posix.join(s.sourceHome!, f.path), f.path);
+    const node = (dir: boolean, size = 0) => ({ isFile: () => !dir, isDirectory: () => dir, isSymbolicLink: () => false, mode: dir ? 0o40755 : 0o100644, size, mtimeMs: 0 });
+    const scanFs: ScanFs = {
+      stat: async (p) => {
+        const text = held.get(p);
+        if (text !== undefined) return node(false, text.length);
+        if ([...held.keys()].some((k) => k.startsWith(`${p}/`))) return node(true);
+        throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' });
+      },
+      lstat: (p) => scanFs.stat(p),
+      readdir: async (p) => [...new Set([...held.keys()].filter((k) => k.startsWith(`${p}/`)).map((k) => k.slice(p.length + 1).split('/')[0]))].map((n) => Buffer.from(n)),
+      readlink: async (p) => { throw new Error(`${p} is not a link`); },
+      read: async function* (p) { yield Buffer.from(held.get(p)!); },
+    };
+    // the first run's copy of a session fails, and the second's check of the root the first verified
+    let run = 0;
+    const rsync: RunRsync = async (_exe, argv) => {
+      const dry = argv.includes('--dry-run');
+      const fails = run === 1 ? !dry && argv.some((a) => a.startsWith('--files-from=')) : run === 2 && dry && argv.at(-1)!.endsWith('/real/Users/ada/app/');
+      return { code: fails ? 23 : 0, signal: null, stderr: fails ? 'rsync error: some files/attrs were not transferred (code 23)\n' : '' };
+    };
+    const landed: string[][] = [];
+    const claim = w.destination.answers['handover.claim'];
+    w.destination.answers['handover.claim'] = ((p: { landed?: { id: string }[] }) => { landed.push((p.landed ?? []).map((l) => l.id)); return claim(p as never); }) as never;
+    const stateDir = makeHome();
+    const deps = { stateDir, transfer: (o: TransferOptions) => { run++; return runTransfer({ ...o, deps: { run: rsync, scanFs } }); } };
+    try {
+      expect(await controller(w, deps).start(trift, {})).toMatchObject({ status: 'interrupted', phase: 'transfer', error: expect.stringMatching(/^s0: rsync exited 23/) });
+      expect(await controller(w, deps).resume()).toMatchObject({ status: 'interrupted', phase: 'transfer', error: expect.stringMatching(/^r_app: rsync exited 23/) });
+      expect((await controller(w, deps).resume()).status).toBe('complete');
+    } finally {
+      cleanHomes();
+    }
+    expect(landed).toEqual([[], ['r_app', 'r_git'], ['r_app', 'r_git']]);
   });
 });
 
