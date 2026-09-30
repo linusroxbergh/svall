@@ -428,6 +428,13 @@ describe('runSetup', () => {
     expect(fs.readFileSync(settingsPath, 'utf8')).not.toContain('agent-hook.mjs');
   });
 
+  it('creates no hooks file for an agent the integrations name but that is not installed', async () => {
+    const home = makeHome();
+    const codex = codexPaths({ CODEX_HOME: path.join(home, 'codex') });
+    await runSetup({ home, settingsPath: path.join(home, 'claude-settings.json'), codex, launchAgentsDir: path.join(home, 'la'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, agents: ['claude'], integrations: ['claude', 'codex'] });
+    expect(fs.existsSync(codex.hooks)).toBe(false);
+  });
+
   it("leaves mission control's edited settings alone on a silent refresh", async () => {
     const home = makeHome();
     const mc = path.join(home, 'mc');

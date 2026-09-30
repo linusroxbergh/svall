@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { AgentKind } from '@svall/protocol';
+import { AGENT_KINDS } from './agents.js';
 import { LAUNCHD_LABEL, SHIM, profileLabel, profileOf } from './profile.js';
 import { bundledVersion, type Runtime } from './runtime.js';
 
@@ -25,6 +26,10 @@ export function setupPlan(o: {
     blockers: o.found.length ? [] : ['Install Claude Code or Codex first, then check again.'],
   };
 }
+
+/** The integrations to save: the agents chosen, and every one not found now, so only an agent found and left out stays off. */
+export const integrationsFor = (chosen: AgentKind[], found: AgentKind[]): AgentKind[] =>
+  AGENT_KINDS.filter((k) => chosen.includes(k) || !found.includes(k));
 
 /** Throws for an app run from a disk image or translocated by macOS, where the paths setup writes would not last. */
 export function requireInstalledApp(r: Runtime): void {

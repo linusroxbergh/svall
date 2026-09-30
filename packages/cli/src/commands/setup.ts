@@ -15,7 +15,7 @@ import {
   claudeHooksCurrent, codexHooksCurrent, isLoaded, kickstart, plistCurrent, readCodexHooks, readJsonSettings, readOrUndefined, refreshFleetPlists,
   requireWritableHooks, runSetup, shimsCurrent, takenOverBy,
 } from '@svall/svalld/setup';
-import { requireInstalledApp, runtimeVersion, setupPlan, staleFleets } from '@svall/svalld/setup-plan';
+import { integrationsFor, requireInstalledApp, runtimeVersion, setupPlan, staleFleets } from '@svall/svalld/setup-plan';
 import { fleetHomes } from '@svall/svalld/uninstall';
 import { renderGroups, useColor } from '../checks-view.js';
 import { printResult } from '../format.js';
@@ -45,7 +45,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
         const chosen = o.agents.split(',');
         for (const name of chosen) if (!AGENT_KINDS.includes(name as AgentKind)) throw new Error(`unknown agent ${name}`);
         fs.mkdirSync(t.home, { recursive: true });
-        saveConfig(configFile, { integrations: chosen as AgentKind[] });
+        saveConfig(configFile, { integrations: integrationsFor(chosen as AgentKind[], findAgents(process.env.PATH ?? '')) });
       }
       const integrations = loadConfig(configFile).integrations;
       const settingsPath = userPaths().claudeSettings;
@@ -76,7 +76,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
         }
       }
       const agents = findAgents(process.env.PATH ?? '');
-      const wants = (k: AgentKind, fallback: boolean) => (integrations ? integrations.includes(k) : fallback);
+      const wants = (k: AgentKind, fallback: boolean) => fallback && (!integrations || integrations.includes(k));
       const claudeWanted = wants('claude', agents.includes('claude') || fs.existsSync(path.dirname(settingsPath)));
       const codexWanted = wants('codex', agents.includes('codex') || fs.existsSync(codex.dir));
       // these throw on a file setup could not write back, so --check covers it too

@@ -521,7 +521,7 @@ export async function runSetup(o: {
   home: string; settingsPath: string; codex: CodexPaths; launchAgentsDir: string; shimDir: string; runtime: Runtime; launchctl: boolean; agents?: AgentKind[];
   integrations?: AgentKind[]; replaceSettings?: boolean;
 }): Promise<string[]> {
-  const wants = (k: AgentKind, fallback: boolean) => (o.integrations ? o.integrations.includes(k) : fallback);
+  const wants = (k: AgentKind, fallback: boolean) => fallback && (!o.integrations || o.integrations.includes(k));
   const claudeWanted = wants('claude', !o.agents || o.agents.includes('claude') || fs.existsSync(path.dirname(o.settingsPath)));
   const codexWanted = wants('codex', !!o.agents?.includes('codex') || fs.existsSync(o.codex.dir));
   // both files are read and checked before anything is written, so one that is not JSON, or cannot take

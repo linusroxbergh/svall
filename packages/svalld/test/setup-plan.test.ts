@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { bundleRuntime } from '../src/runtime.js';
-import { requireInstalledApp, setupPlan, staleFleets } from '../src/setup-plan.js';
+import { integrationsFor, requireInstalledApp, setupPlan, staleFleets } from '../src/setup-plan.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 afterEach(cleanHomes);
@@ -35,6 +35,13 @@ describe('setupPlan', () => {
       settingsPath: '/u/.claude/settings.json', codexHooks: '/u/.codex/hooks.json', launchAgentsDir: '/l', shimDir: '/b', pathEnv: '' });
     expect(plan.writes.map((w) => w.path)).not.toContain('/u/.claude/settings.json');
     expect(plan.writes.map((w) => w.path)).toContain('/u/.codex/hooks.json');
+  });
+});
+
+describe('integrationsFor', () => {
+  it('keeps every agent not found on, so only one found and left out stays off', () => {
+    expect(integrationsFor(['claude'], ['claude'])).toEqual(['claude', 'codex']);
+    expect(integrationsFor(['claude'], ['claude', 'codex'])).toEqual(['claude']);
   });
 });
 
