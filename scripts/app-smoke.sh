@@ -42,6 +42,7 @@ check "plist runs the app's node" 'grep -q "<string>$A/Helpers/node</string>" "$
 check "plist PATH leaves Helpers out" '! grep "<key>PATH</key>" "$PLIST" | grep -q Helpers'
 check "shim execs the app's CLI" 'grep -q "$A/Resources/runtime/svall.mjs" "$HOME/.local/bin/svall"'
 check "hooks run the app's node" 'grep "$A/Helpers/node" "$HOME/.claude/settings.json" | grep -q agent-hook'
+check "the hook helper sits beside the scripts" '[ -x "$HOME/.svall/hooks/svall-hook" ] && grep -q "hooks/svall-hook" "$HOME/.claude/settings.json"'
 check "refresh finds nothing to do" 'R="$(cli setup --if-needed --json)"; printf %s "$R" | grep -q "\"done\": *\[\]" && printf %s "$R" | grep -q "\"warnings\": *\[\]"'
 check "a second copy leaves the fleets alone" 'O="$T/Other/Svall.app/Contents"; "$O/Helpers/node" "$O/Resources/runtime/svall.mjs" setup --if-needed --json | grep -q "runs these fleets" && grep -q "<string>$A/Helpers/node</string>" "$PLIST"'
 check "the bundled daemon starts" daemon

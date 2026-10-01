@@ -22,8 +22,10 @@ BIN="$(swift build -c "$CONFIG" --arch "$ARCH" --show-bin-path)/Svall"
 NAME="$([ "$VARIANT" = release ] && echo Svall || echo 'Svall Dev')"
 APP="$MAC/build/$NAME.app"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Helpers"
 cp "$BIN" "$APP/Contents/MacOS/Svall"
+# svalld copies the helper into every fleet's hooks folder; a checkout's svalld takes it from build/Svall Dev.app
+cp "$(dirname "$BIN")/svall-hook" "$APP/Contents/Helpers/svall-hook"
 # the binary links Sparkle, so every build carries it; only a build with a feed starts it
 FRAMEWORK="$(dirname "$BIN")/Sparkle.framework"
 mkdir -p "$APP/Contents/Frameworks"
@@ -41,5 +43,6 @@ fi
 # the commit count orders builds for the updater
 BUILD="$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 1)"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" "$APP/Contents/Info.plist"
+codesign --force --sign - "$APP/Contents/Helpers/svall-hook"
 codesign --force --sign - "$APP"
 echo "$APP"

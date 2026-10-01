@@ -21,6 +21,6 @@ SPARKLE="$(scripts/sparkle-tools.sh)"
 node scripts/licenses.mjs "$(dirname "$NODE")" "$(dirname "$TMUX")" "$(dirname "$SPARKLE")" >/dev/null
 rsync -a --delete apps/desktop/mac/build/licenses/ "$APP/Contents/Resources/Licenses/"
 # nested code is signed before the bundle that seals it
-codesign --force --sign - "$APP/Contents/Helpers/node" "$APP/Contents/Helpers/tmux"
+codesign --force --sign - "$APP/Contents/Helpers/node" "$APP/Contents/Helpers/tmux" "$APP/Contents/Helpers/svall-hook"
 codesign --force --sign - "$APP"
 echo "$APP"

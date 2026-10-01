@@ -1,14 +1,14 @@
-import { execFile, spawn } from 'node:child_process';
+import { execFile, execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { codexHookCommand } from '../src/codex/install.js';
 import { normalizeHook, normalizeStatus, startHookReceiver, type SocketEvent } from '../src/hooks/receiver.js';
 import { silentLogger } from '../src/log.js';
-import { hookCommand } from '../src/setup.js';
+import { hookCommand, mergeStatusLine, statusWrapper } from '../src/setup.js';
 import { cleanHomes, makeHome, waitFor } from './helpers.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
@@ -156,7 +156,8 @@ describe('normalizeStatus', () => {
   });
 });
 
-describe('hook receiver and script', () => {
+
+describe('hook receiver', () => {
   it('reclaims a socket left by a crashed daemon', async () => {
     const sock = path.join(makeHome(), 'hooks.sock');
     const child = spawn(process.execPath, ['-e', `require('node:net').createServer().listen(${JSON.stringify(sock)}, () => process.stdout.write('ready'))`]);
@@ -194,193 +195,6 @@ describe('hook receiver and script', () => {
     } finally {
       await first.close();
     }
-  });
-
-  it('delivers events posted by the hook script', async () => {
-    const home = makeHome();
-    const sock = path.join(home, 'hooks.sock');
-    const events: SocketEvent[] = [];
-    const r = await startHookReceiver(sock, (e) => { events.push(e); }, silentLogger);
-    await new Promise<void>((resolve, reject) => {
-      const p = execFile('node', [script], { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
-      p.stdin!.end(JSON.stringify({ hook_event_name: 'Stop', session_id: SID, transcript_path: '/t1.jsonl' }));
-    });
-    await waitFor(() => events.length === 1);
-    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'claude', name: 'Stop', sessionId: SID, transcriptPath: '/t1.jsonl' } });
-    await r.close();
-  });
-
-  it('forwards through the installed commands every field the daemon reads, and the pid of the agent running them', async () => {
-    const home = makeHome();
-    const lines: { backend: string }[] = [];
-    const server = net.createServer((c) => {
-      let buf = '';
-      c.setEncoding('utf8');
-      c.on('data', (d) => { buf += d; });
-      c.on('end', () => lines.push(JSON.parse(buf)));
-    });
-    await new Promise<void>((r) => server.listen(path.join(home, 'hooks.sock'), r));
-    const kept = {
-      hook_event_name: 'Notification', agent_id: 'a1', session_id: SID, transcript_path: '/t1.jsonl', notification_type: 'permission_prompt', message: 'may I',
-      background_tasks: [{ type: 'subagent' }], cwd: '/r', model: 'opus', prompt: 'go', prompt_id: 'p1', turn_id: 't1',
-    };
-    // the shell a hook command runs in is the agent's child, so its $PPID is the agent: here, this test
-    for (const command of [hookCommand(process.execPath, script, 'claude'), codexHookCommand(script)]) {
-      await new Promise<void>((resolve, reject) => {
-        const p = execFile('/bin/sh', ['-c', command], { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
-        p.stdin!.end(JSON.stringify({ ...kept, tool_name: 'Bash', tool_input: { command: 'ls' }, permission_mode: 'default' }));
-      });
-    }
-    await waitFor(() => lines.length === 2);
-    expect(lines.sort((a, b) => a.backend.localeCompare(b.backend))).toEqual([
-      { charId: 'c_9', backend: 'claude', pid: process.pid, hook: kept },
-      { charId: 'c_9', backend: 'codex', pid: process.pid, hook: kept },
-    ]);
-    server.close();
-  });
-
-  it('delivers a large PreToolUse whole, carrying only the fields the daemon reads', async () => {
-    const home = makeHome();
-    const events: SocketEvent[] = [];
-    const r = await startHookReceiver(path.join(home, 'hooks.sock'), (e) => { events.push(e); }, silentLogger);
-    await new Promise<void>((resolve, reject) => {
-      const p = execFile('node', [script], { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
-      p.stdin!.end(JSON.stringify({
-        hook_event_name: 'PreToolUse', session_id: SID, transcript_path: '/t1.jsonl',
-        tool_input: { content: 'x'.repeat(64 * 1024) },
-      }));
-    });
-    await waitFor(() => events.length === 1);
-    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'claude', name: 'PreToolUse', sessionId: SID, transcriptPath: '/t1.jsonl' } });
-    await r.close();
-  });
-
-  it('says what codex asks permission for, which its payload keeps inside tool_input', async () => {
-    const home = makeHome();
-    const events: SocketEvent[] = [];
-    const r = await startHookReceiver(path.join(home, 'hooks.sock'), (e) => { events.push(e); }, silentLogger);
-    await new Promise<void>((resolve, reject) => {
-      const p = execFile('node', [script, 'codex'], { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
-      p.stdin!.end(JSON.stringify({
-        hook_event_name: 'PermissionRequest', session_id: SID, tool_name: 'Bash',
-        tool_input: { command: 'rm -rf build', description: 'remove the build folder' },
-      }));
-    });
-    await waitFor(() => events.length === 1);
-    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'codex', name: 'PermissionRequest', sessionId: SID, message: 'remove the build folder' } });
-    await r.close();
-  });
-
-  it("says why an API error ended a claude turn, from the text Claude Code showed or else the error's name", async () => {
-    const home = makeHome();
-    const events: SocketEvent[] = [];
-    const r = await startHookReceiver(path.join(home, 'hooks.sock'), (e) => { events.push(e); }, silentLogger);
-    for (const hook of [
-      { hook_event_name: 'StopFailure', session_id: SID, error: 'rate_limit', last_assistant_message: "You've hit your limit · resets 5pm" },
-      { hook_event_name: 'StopFailure', session_id: SID, error: 'overloaded' },
-    ]) {
-      await new Promise<void>((resolve, reject) => {
-        const p = execFile('node', [script], { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
-        p.stdin!.end(JSON.stringify(hook));
-      });
-    }
-    await waitFor(() => events.length === 2);
-    expect(events.map((e) => ('hook' in e ? e.hook.message : undefined))).toEqual(["You've hit your limit · resets 5pm", 'overloaded']);
-    await r.close();
-  });
-
-  it('holds an event for a daemon that is restarting, and hands it over once the socket is back', async () => {
-    const home = makeHome();
-    const events: SocketEvent[] = [];
-    const ran = new Promise<void>((resolve, reject) => {
-      const p = execFile('node', [script], { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
-      p.stdin!.end(JSON.stringify({ hook_event_name: 'Stop', session_id: SID }));
-    });
-    await new Promise((res) => setTimeout(res, 600));
-    const r = await startHookReceiver(path.join(home, 'hooks.sock'), (e) => { events.push(e); }, silentLogger);
-    await ran;
-    await waitFor(() => events.length === 1);
-    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'claude', name: 'Stop', sessionId: SID } });
-    await r.close();
-  });
-
-  // an unclipped paste would run past the receiver's line limit, which drops the whole event
-  it('clips a huge pasted prompt to a line the receiver still takes', async () => {
-    const home = makeHome();
-    const events: SocketEvent[] = [];
-    const r = await startHookReceiver(path.join(home, 'hooks.sock'), (e) => { events.push(e); return ''; }, silentLogger);
-    await new Promise<void>((resolve, reject) => {
-      const p = execFile('node', [script], { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
-      p.stdin!.end(JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: SID, prompt: 'x'.repeat(1024 * 1024), prompt_id: 'p1' }));
-    });
-    await waitFor(() => events.length === 1);
-    expect((events[0] as { hook: { prompt?: { id: string; text: string } } }).hook.prompt).toEqual({ id: 'p1', text: 'x'.repeat(4000) });
-    await r.close();
-  });
-
-  it('script exits 0 without a char id or without a socket, giving up on the socket within a few seconds', async () => {
-    const home = makeHome();
-    for (const env of [{ SVALL_HOME: home }, { SVALL_HOME: home, SVALL_CHAR_ID: 'c_1' }]) {
-      const t0 = Date.now();
-      const code = await new Promise<number | null>((resolve) => {
-        const p = execFile('node', [script], { env: { ...process.env, ...env } }, () => {});
-        p.on('exit', resolve);
-        p.stdin!.end('{}');
-      });
-      expect(code).toBe(0);
-      expect(Date.now() - t0).toBeLessThan(3500);
-    }
-    expect(fs.existsSync(path.join(home, 'hooks.down'))).toBe(true);
-  });
-
-  it('gives up at once for a minute after an event gave up on the socket, so a daemon that stays down holds up one hook', async () => {
-    const home = makeHome();
-    fs.writeFileSync(path.join(home, 'hooks.down'), '');
-    const t0 = Date.now();
-    await new Promise<void>((resolve) => {
-      const p = execFile('node', [script], { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_1' } }, () => resolve());
-      p.stdin!.end(JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: SID }));
-    });
-    expect(Date.now() - t0).toBeLessThan(1500);
-  });
-
-  it('gives a tool call up at once without a socket, as the next one says the same', async () => {
-    const home = makeHome();
-    const t0 = Date.now();
-    await new Promise<void>((resolve) => {
-      const p = execFile('node', [script], { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_1' } }, () => resolve());
-      p.stdin!.end(JSON.stringify({ hook_event_name: 'PreToolUse', session_id: SID }));
-    });
-    expect(Date.now() - t0).toBeLessThan(1500);
-  });
-
-  it('reports the context window and passes the wrapped statusline through', async () => {
-    const home = makeHome();
-    const sock = path.join(home, 'hooks.sock');
-    const events: SocketEvent[] = [];
-    const r = await startHookReceiver(sock, (e) => { events.push(e); }, silentLogger);
-    const out = await new Promise<string>((resolve, reject) => {
-      const p = execFile('node', [statusScript, 'echo inner'], { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } },
-        (err, stdout) => (err ? reject(err) : resolve(stdout)));
-      p.stdin!.end(JSON.stringify({
-        session_id: SID, model: { id: 'claude-opus-5' },
-        context_window: { used_percentage: 9.4, context_window_size: 1_000_000 },
-      }));
-    });
-    expect(out.trim()).toBe('inner');
-    await waitFor(() => events.length === 1);
-    expect(events[0]).toEqual({ status: { charId: 'c_9', sessionId: SID, contextPct: 9.4, model: 'claude-opus-5' } });
-    await r.close();
-  });
-
-  it('passes the wrapped statusline exit code on', async () => {
-    const home = makeHome();
-    const code = await new Promise<number | null>((resolve) => {
-      const p = execFile('node', [statusScript, 'exit 7'], { env: { ...process.env, SVALL_HOME: home } }, () => {});
-      p.on('exit', resolve);
-      p.stdin!.end('{}');
-    });
-    expect(code).toBe(7);
   });
 
   it('drops a line over the cap, says so, and reads the one after it', async () => {
@@ -439,21 +253,243 @@ describe('hook receiver and script', () => {
     expect(events).toEqual([]);
     await r.close();
   });
+});
+
+// what the installed commands run: the scripts on node, or the compiled helper svalld puts beside them
+const helperDir = fs.mkdtempSync('/tmp/svall-hook-');
+const helper = path.join(helperDir, 'svall-hook');
+type Run = [string, string[]];
+type Runner = { name: string; dir: string; files: string[]; hook: (dir: string, ...args: string[]) => Run; status: (dir: string, ...args: string[]) => Run };
+const runners: Runner[] = [{
+  name: 'the node scripts', dir: path.dirname(script), files: [script, statusScript],
+  hook: (dir, ...args) => ['node', [path.join(dir, 'agent-hook.mjs'), ...args]],
+  status: (dir, ...args) => ['node', [path.join(dir, 'claude-status.mjs'), ...args]],
+}, {
+  name: 'the compiled helper', dir: helperDir, files: [helper],
+  hook: (dir, ...args) => [path.join(dir, 'svall-hook'), args],
+  status: (dir, ...args) => [path.join(dir, 'svall-hook'), ['status', ...args]],
+}];
+
+beforeAll(() => { execFileSync('swiftc', ['-O', '-o', helper, path.resolve(hooks, '../../../apps/desktop/mac/Sources/SvallHook/main.swift')]); }, 180_000);
+afterAll(() => fs.rmSync(helperDir, { recursive: true, force: true }));
+
+describe.each(runners)('$name', (run) => {
+  const hook = (...args: string[]): Run => run.hook(run.dir, ...args);
+  const status = (...args: string[]): Run => run.status(run.dir, ...args);
+
+  it('delivers the events it is handed', async () => {
+    const home = makeHome();
+    const sock = path.join(home, 'hooks.sock');
+    const events: SocketEvent[] = [];
+    const r = await startHookReceiver(sock, (e) => { events.push(e); }, silentLogger);
+    await new Promise<void>((resolve, reject) => {
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+      p.stdin!.end(JSON.stringify({ hook_event_name: 'Stop', session_id: SID, transcript_path: '/t1.jsonl' }));
+    });
+    await waitFor(() => events.length === 1);
+    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'claude', name: 'Stop', sessionId: SID, transcriptPath: '/t1.jsonl' } });
+    await r.close();
+  });
+
+  it('forwards through the installed commands every field the daemon reads, and the pid of the agent running them', async () => {
+    const home = makeHome();
+    const lines: { backend: string }[] = [];
+    const server = net.createServer((c) => {
+      let buf = '';
+      c.setEncoding('utf8');
+      c.on('data', (d) => { buf += d; });
+      c.on('end', () => lines.push(JSON.parse(buf)));
+    });
+    await new Promise<void>((r) => server.listen(path.join(home, 'hooks.sock'), r));
+    const kept = {
+      hook_event_name: 'Notification', agent_id: 'a1', session_id: SID, transcript_path: '/t1.jsonl', notification_type: 'permission_prompt', message: 'may I',
+      background_tasks: [{ type: 'subagent' }], cwd: '/r', model: 'opus', prompt: 'go', prompt_id: 'p1', turn_id: 't1',
+    };
+    // the helper's folder holds no script, so the commands only forward anything there by running it
+    const installed = path.join(run.dir, 'agent-hook.mjs');
+    // the shell a hook command runs in is the agent's child, so its $PPID is the agent: here, this test
+    for (const command of [hookCommand(process.execPath, installed, 'claude'), codexHookCommand(installed)]) {
+      await new Promise<void>((resolve, reject) => {
+        const p = execFile('/bin/sh', ['-c', command], { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+        p.stdin!.end(JSON.stringify({ ...kept, tool_name: 'Bash', tool_input: { command: 'ls' }, permission_mode: 'default' }));
+      });
+    }
+    await waitFor(() => lines.length === 2);
+    expect(lines.sort((a, b) => a.backend.localeCompare(b.backend))).toEqual([
+      { charId: 'c_9', backend: 'claude', pid: process.pid, hook: kept },
+      { charId: 'c_9', backend: 'codex', pid: process.pid, hook: kept },
+    ]);
+    server.close();
+  });
+
+  it('delivers a large PreToolUse whole, carrying only the fields the daemon reads', async () => {
+    const home = makeHome();
+    const events: SocketEvent[] = [];
+    const r = await startHookReceiver(path.join(home, 'hooks.sock'), (e) => { events.push(e); }, silentLogger);
+    await new Promise<void>((resolve, reject) => {
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+      p.stdin!.end(JSON.stringify({
+        hook_event_name: 'PreToolUse', session_id: SID, transcript_path: '/t1.jsonl',
+        tool_input: { content: 'x'.repeat(64 * 1024) },
+      }));
+    });
+    await waitFor(() => events.length === 1);
+    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'claude', name: 'PreToolUse', sessionId: SID, transcriptPath: '/t1.jsonl' } });
+    await r.close();
+  });
+
+  it('says what codex asks permission for, which its payload keeps inside tool_input', async () => {
+    const home = makeHome();
+    const events: SocketEvent[] = [];
+    const r = await startHookReceiver(path.join(home, 'hooks.sock'), (e) => { events.push(e); }, silentLogger);
+    await new Promise<void>((resolve, reject) => {
+      const p = execFile(...hook('codex'), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+      p.stdin!.end(JSON.stringify({
+        hook_event_name: 'PermissionRequest', session_id: SID, tool_name: 'Bash',
+        tool_input: { command: 'rm -rf build', description: 'remove the build folder' },
+      }));
+    });
+    await waitFor(() => events.length === 1);
+    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'codex', name: 'PermissionRequest', sessionId: SID, message: 'remove the build folder' } });
+    await r.close();
+  });
+
+  it("says why an API error ended a claude turn, from the text Claude Code showed or else the error's name", async () => {
+    const home = makeHome();
+    const events: SocketEvent[] = [];
+    const r = await startHookReceiver(path.join(home, 'hooks.sock'), (e) => { events.push(e); }, silentLogger);
+    for (const payload of [
+      { hook_event_name: 'StopFailure', session_id: SID, error: 'rate_limit', last_assistant_message: "You've hit your limit · resets 5pm" },
+      { hook_event_name: 'StopFailure', session_id: SID, error: 'overloaded' },
+    ]) {
+      await new Promise<void>((resolve, reject) => {
+        const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+        p.stdin!.end(JSON.stringify(payload));
+      });
+    }
+    await waitFor(() => events.length === 2);
+    expect(events.map((e) => ('hook' in e ? e.hook.message : undefined))).toEqual(["You've hit your limit · resets 5pm", 'overloaded']);
+    await r.close();
+  });
+
+  it('holds an event for a daemon that is restarting, and hands it over once the socket is back', async () => {
+    const home = makeHome();
+    const events: SocketEvent[] = [];
+    const ran = new Promise<void>((resolve, reject) => {
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+      p.stdin!.end(JSON.stringify({ hook_event_name: 'Stop', session_id: SID }));
+    });
+    await new Promise((res) => setTimeout(res, 600));
+    const r = await startHookReceiver(path.join(home, 'hooks.sock'), (e) => { events.push(e); }, silentLogger);
+    await ran;
+    await waitFor(() => events.length === 1);
+    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'claude', name: 'Stop', sessionId: SID } });
+    await r.close();
+  });
+
+  // an unclipped paste would run past the receiver's line limit, which drops the whole event
+  it('clips a huge pasted prompt to a line the receiver still takes', async () => {
+    const home = makeHome();
+    const events: SocketEvent[] = [];
+    const r = await startHookReceiver(path.join(home, 'hooks.sock'), (e) => { events.push(e); return ''; }, silentLogger);
+    await new Promise<void>((resolve, reject) => {
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+      p.stdin!.end(JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: SID, prompt: 'x'.repeat(1024 * 1024), prompt_id: 'p1' }));
+    });
+    await waitFor(() => events.length === 1);
+    expect((events[0] as { hook: { prompt?: { id: string; text: string } } }).hook.prompt).toEqual({ id: 'p1', text: 'x'.repeat(4000) });
+    await r.close();
+  });
+
+  it('exits 0 without a char id or without a socket, giving up on the socket within a few seconds', async () => {
+    const home = makeHome();
+    for (const env of [{ SVALL_HOME: home }, { SVALL_HOME: home, SVALL_CHAR_ID: 'c_1' }]) {
+      const t0 = Date.now();
+      const code = await new Promise<number | null>((resolve) => {
+        const p = execFile(...hook(), { env: { ...process.env, ...env } }, () => {});
+        p.on('exit', resolve);
+        p.stdin!.end('{}');
+      });
+      expect(code).toBe(0);
+      expect(Date.now() - t0).toBeLessThan(3500);
+    }
+    expect(fs.existsSync(path.join(home, 'hooks.down'))).toBe(true);
+  });
+
+  it('gives up at once for a minute after an event gave up on the socket, so a daemon that stays down holds up one hook', async () => {
+    const home = makeHome();
+    fs.writeFileSync(path.join(home, 'hooks.down'), '');
+    const t0 = Date.now();
+    await new Promise<void>((resolve) => {
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_1' } }, () => resolve());
+      p.stdin!.end(JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: SID }));
+    });
+    expect(Date.now() - t0).toBeLessThan(1500);
+  });
+
+  it('gives a tool call up at once without a socket, as the next one says the same', async () => {
+    const home = makeHome();
+    const t0 = Date.now();
+    await new Promise<void>((resolve) => {
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_1' } }, () => resolve());
+      p.stdin!.end(JSON.stringify({ hook_event_name: 'PreToolUse', session_id: SID }));
+    });
+    expect(Date.now() - t0).toBeLessThan(1500);
+  });
+
+  it('exits 0 within 1.5 s when its input never ends', async () => {
+    const t0 = Date.now();
+    const code = await new Promise<number | null>((resolve) => {
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: makeHome(), SVALL_CHAR_ID: 'c_1' } }, () => {});
+      p.on('exit', resolve);
+    });
+    expect(code).toBe(0);
+    expect(Date.now() - t0).toBeLessThan(2500);
+  });
+
+  it('reports the context window and passes the wrapped statusline through', async () => {
+    const home = makeHome();
+    const sock = path.join(home, 'hooks.sock');
+    const events: SocketEvent[] = [];
+    const r = await startHookReceiver(sock, (e) => { events.push(e); }, silentLogger);
+    const out = await new Promise<string>((resolve, reject) => {
+      const p = execFile(...status('echo inner'), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } },
+        (err, stdout) => (err ? reject(err) : resolve(stdout)));
+      p.stdin!.end(JSON.stringify({
+        session_id: SID, model: { id: 'claude-opus-5' },
+        context_window: { used_percentage: 9.4, context_window_size: 1_000_000 },
+      }));
+    });
+    expect(out.trim()).toBe('inner');
+    await waitFor(() => events.length === 1);
+    expect(events[0]).toEqual({ status: { charId: 'c_9', sessionId: SID, contextPct: 9.4, model: 'claude-opus-5' } });
+    await r.close();
+  });
+
+  it('passes the wrapped statusline exit code on', async () => {
+    const home = makeHome();
+    const code = await new Promise<number | null>((resolve) => {
+      const p = execFile(...status('exit 7'), { env: { ...process.env, SVALL_HOME: home } }, () => {});
+      p.on('exit', resolve);
+      p.stdin!.end('{}');
+    });
+    expect(code).toBe(7);
+  });
 
   it('prints the receiver reply as additionalContext for SessionStart and stays silent otherwise', async () => {
     const home = makeHome();
     const sock = path.join(home, 'hooks.sock');
     const r = await startHookReceiver(sock, (e) => ('hook' in e && e.hook.name === 'SessionStart' ? 'the brief' : undefined), silentLogger);
-    const run = (hook: Record<string, unknown>) => new Promise<string>((resolve, reject) => {
-      const p = execFile('node', [script], { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err, stdout) => (err ? reject(err) : resolve(stdout)));
-      p.stdin!.end(JSON.stringify({ session_id: SID, transcript_path: '/t1.jsonl', ...hook }));
+    const send = (payload: Record<string, unknown>) => new Promise<string>((resolve, reject) => {
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err, stdout) => (err ? reject(err) : resolve(stdout)));
+      p.stdin!.end(JSON.stringify({ session_id: SID, transcript_path: '/t1.jsonl', ...payload }));
     });
-    expect(JSON.parse(await run({ hook_event_name: 'SessionStart' })))
+    expect(JSON.parse(await send({ hook_event_name: 'SessionStart' })))
       .toEqual({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: 'the brief' } });
     const t0 = Date.now();
-    expect(await run({ hook_event_name: 'UserPromptSubmit' })).toBe('');
+    expect(await send({ hook_event_name: 'UserPromptSubmit' })).toBe('');
     expect(Date.now() - t0).toBeLessThan(1000);
-    expect(await run({ hook_event_name: 'Stop' })).toBe('');
+    expect(await send({ hook_event_name: 'Stop' })).toBe('');
     await r.close();
   });
 
@@ -463,7 +499,7 @@ describe('hook receiver and script', () => {
     const big = 'x'.repeat(200_000);
     const r = await startHookReceiver(sock, (e) => ('hook' in e && e.hook.name === 'SessionStart' ? big : undefined), silentLogger);
     const out = await new Promise<string>((resolve, reject) => {
-      const p = execFile('node', [script], { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' }, maxBuffer: 1024 * 1024 },
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' }, maxBuffer: 1024 * 1024 },
         (err, stdout) => (err ? reject(err) : resolve(stdout)));
       p.stdin!.end(JSON.stringify({ hook_event_name: 'SessionStart', session_id: SID, transcript_path: '/t1.jsonl' }));
     });
@@ -479,7 +515,7 @@ describe('hook receiver and script', () => {
     const t0 = Date.now();
     const { code, out } = await new Promise<{ code: number | null; out: string }>((resolve) => {
       let out = '';
-      const p = execFile('node', [script], { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_1' } }, () => {});
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_1' } }, () => {});
       p.stdout!.on('data', (d) => (out += d));
       p.on('exit', (code) => resolve({ code, out }));
       p.stdin!.end(JSON.stringify({ hook_event_name: 'SessionStart' }));
@@ -491,25 +527,97 @@ describe('hook receiver and script', () => {
   });
 });
 
-describe('a hook script of the other variant', () => {
-  // runs a copy of `file` installed under <root>/<scriptHome>/hooks against a listening socket in <root>/<fleet>;
+describe('the compiled helper', () => {
+  // the same input through each, against a socket that keeps every byte and answers a waiting hook with `reply`
+  async function both(run: (r: Runner) => Run, input: string | Buffer, env: Record<string, string> = {}, reply = '') {
+    const home = makeHome();
+    const got: Buffer[] = [];
+    let opened = 0;
+    const server = net.createServer((c) => {
+      opened++;
+      const chunks: Buffer[] = [];
+      c.on('data', (d) => { chunks.push(d); if (reply && Buffer.concat(chunks).includes(10)) c.write(reply); });
+      c.on('end', () => { got.push(Buffer.concat(chunks)); c.end(); });
+    });
+    await new Promise<void>((r) => server.listen(path.join(home, 'hooks.sock'), r));
+    const results = [];
+    for (const r of runners) {
+      got.length = 0;
+      opened = 0;
+      const { code, stdout } = await new Promise<{ code: number | null; stdout: Buffer }>((resolve) => {
+        const p = execFile(...run(r), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9', ...env }, encoding: 'buffer' }, (_, stdout) => resolve({ code: p.exitCode, stdout }));
+        p.stdin!.end(input);
+      });
+      // a connection the process made can reach the server after it exits
+      await new Promise((r) => setTimeout(r, 50));
+      await waitFor(() => got.length === opened);
+      results.push({ code, stdout: stdout.toString('hex'), sock: Buffer.concat(got).toString('hex') });
+    }
+    server.close();
+    return results;
+  }
+  const same = async (...args: Parameters<typeof both>) => {
+    const [node, helper] = await both(...args);
+    expect(helper).toEqual(node);
+  };
+  const hook = (...args: string[]) => (r: Runner): Run => r.hook(r.dir, ...args);
+  const status = (...args: string[]) => (r: Runner): Run => r.status(r.dir, ...args);
+
+  it('writes the bytes the hook script writes', async () => {
+    const payloads: (string | Buffer)[] = [
+      JSON.stringify({ hook_event_name: 'Stop', agent_id: 'a1', session_id: SID, cwd: 'åäö 中文 😀  \x7f', model: 'opus', background_tasks: [{ type: 'subagent', n: [true, null, {}] }], tool_input: { a: 1 } }),
+      // keys repeated, out of order and integer-like; numbers JS lays out its own way
+      '{"turn_id":"t","hook_event_name":"Stop","cwd":"/a","cwd":"/b","background_tasks":{"b":1,"2":2,"a":3,"1":4,"4294967295":5,"4294967294":6,"01":7,"x":[0,-0,1.50,1E21,1e-7,0.000001,1e400,5e-324,123e-20,-12.5e3,0.1,9007199254740993]}}',
+      '{"hook_event_name":"Stop","cwd":"\\u0000\\u001f\\b\\f\\n\\r\\t\\"\\\\\\/\\ud800\\udbff\\uDFFF\\uD83D\\uDE00x","message":"\\ud83d"}',
+      JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'x'.repeat(3999) + '😀tail', prompt_id: 'p' }),
+      Buffer.concat([Buffer.from('{"hook_event_name":"Stop","cwd":"a'), Buffer.from([0xff, 0xc3, 0x28, 0xe2, 0x82, 0xf0, 0x9f, 0x98, 0xed, 0xa0, 0x80, 0xe2, 0x82]), Buffer.from('"}')]),
+      JSON.stringify({ hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { description: null, command: ['bash', '-lc', null, 3.5, [1, null, [2]], { a: 1 }] } }),
+      JSON.stringify({ hook_event_name: 'PermissionRequest', tool_name: 'Bash', message: '', tool_input: 'str' }),
+      JSON.stringify({ hook_event_name: 'PermissionRequest', message: 0, tool_input: { command: 'y'.repeat(499) + '😀' } }),
+      JSON.stringify({ hook_event_name: 'StopFailure', last_assistant_message: '', error: 'z'.repeat(600) }),
+      JSON.stringify({ hook_event_name: 'StopFailure', last_assistant_message: 7, error: 'overloaded' }),
+      ' \t\n{ "hook_event_name" : "Stop" , "cwd" : [ 1 , 2 ] }\r\n ', '', 'not json', '{"a":01}', '﻿{}', '[]', '"x"', '5',
+    ];
+    for (const p of payloads) await same(hook('claude', '42'), p, { SVALL_TERM: '2' });
+    await same(hook('codex'), payloads[0], { SVALL_CHAR_ID: 'c_é😀' });
+  });
+
+  it("prints the daemon's answer as the hook script prints it", async () => {
+    for (const reply of [JSON.stringify({ additionalContext: 'the brief é 😀 \n"quoted" \u0001' }), '{"additionalContext":{"a":[1]}}', '{"additionalContext":""}', 'null', 'garbage']) {
+      await same(hook(), JSON.stringify({ hook_event_name: 'SessionStart', session_id: SID }), {}, `${reply}\n`);
+    }
+  });
+
+  it('writes the bytes the statusline script writes, and runs the command it wraps alike', async () => {
+    for (const input of [
+      JSON.stringify({ session_id: SID, model: { id: 'claude-opus-5' }, context_window: { used_percentage: 9.4 } }),
+      JSON.stringify({ session_id: 5, model: 'x', context_window: { used_percentage: 1e-7 } }),
+      JSON.stringify({ context_window: { used_percentage: '12' } }), 'null', '{}',
+    ]) await same(status('wc -c; echo "$#:$0"'), input, { SVALL_TERM: '2' });
+    await same(status('kill -9 $$'), '{}');
+    await same(status(), '{}');
+  });
+});
+
+describe.each(runners)('$name of the other variant', (run) => {
+  // runs a copy installed under <root>/<scriptHome>/hooks against a listening socket in <root>/<fleet>;
   // with `target`, <root>/<scriptHome> is a symlink to <root>/<target>
-  async function lines(file: string, scriptHome: string, fleet: string, args: string[], stdin: string, target?: string): Promise<{ got: string[]; code: number | null }> {
+  async function lines(kind: 'hook' | 'status', scriptHome: string, fleet: string, stdin: string, target?: string): Promise<{ got: string[]; code: number | null }> {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sv-'));
     if (target) {
       fs.mkdirSync(path.join(root, target));
       fs.symlinkSync(path.join(root, target), path.join(root, scriptHome));
     }
-    const copy = path.join(root, scriptHome, 'hooks', path.basename(file));
-    fs.mkdirSync(path.dirname(copy), { recursive: true });
-    fs.copyFileSync(file, copy);
+    const dir = path.join(root, scriptHome, 'hooks');
+    fs.mkdirSync(dir, { recursive: true });
+    for (const f of run.files) fs.copyFileSync(f, path.join(dir, path.basename(f)));
     const home = path.join(root, fleet);
     fs.mkdirSync(home, { recursive: true });
     const got: string[] = [];
     const server = net.createServer((s) => s.on('data', (d) => got.push(String(d)))).listen(path.join(home, 'hooks.sock'));
     await new Promise<void>((r) => server.once('listening', r));
     const code = await new Promise<number | null>((resolve) => {
-      const p = execFile('node', [copy, ...args], { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, () => {});
+      const p = execFile(...(kind === 'hook' ? run.hook(dir) : run.status(dir, 'cat >/dev/null')), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, () => {});
       p.on('exit', resolve);
       p.stdin!.end(stdin);
     });
@@ -522,29 +630,59 @@ describe('a hook script of the other variant', () => {
   const status = JSON.stringify({ session_id: 's', context_window: { used_percentage: 12 } });
 
   it('forwards nothing for a home of the other variant', async () => {
-    expect((await lines(script, '.svall-dev', '.svall', [], hook)).got).toEqual([]);
+    expect((await lines('hook', '.svall-dev', '.svall', hook)).got).toEqual([]);
   });
   it('forwards for a home of its own variant', async () => {
-    expect((await lines(script, '.svall', '.svall', [], hook)).got).toHaveLength(1);
+    expect((await lines('hook', '.svall', '.svall', hook)).got).toHaveLength(1);
   });
   it('forwards for a home of its own variant that is a symlink', async () => {
-    expect((await lines(script, '.svall', '.svall', [], hook, 'svall-data')).got).toHaveLength(1);
-    expect((await lines(statusScript, '.svall', '.svall', ['cat >/dev/null'], status, 'svall-data')).got).toHaveLength(1);
+    expect((await lines('hook', '.svall', '.svall', hook, 'svall-data')).got).toHaveLength(1);
+    expect((await lines('status', '.svall', '.svall', status, 'svall-data')).got).toHaveLength(1);
   });
   it("leaves a test fleet to Svall Dev's script only", async () => {
-    expect((await lines(script, '.svall', 'fleet', [], hook)).got).toEqual([]);
-    expect((await lines(script, '.svall-dev', 'fleet', [], hook)).got).toHaveLength(1);
+    expect((await lines('hook', '.svall', 'fleet', hook)).got).toEqual([]);
+    expect((await lines('hook', '.svall-dev', 'fleet', hook)).got).toHaveLength(1);
   });
 
   it('reports no status for a home of the other variant, and still runs the wrapped command', async () => {
-    const r = await lines(statusScript, '.svall-dev', '.svall', ['cat >/dev/null'], status);
+    const r = await lines('status', '.svall-dev', '.svall', status);
     expect(r).toEqual({ got: [], code: 0 });
   });
   it('reports status for a home of its own variant', async () => {
-    expect((await lines(statusScript, '.svall', '.svall', ['cat >/dev/null'], status)).got).toHaveLength(1);
+    expect((await lines('status', '.svall', '.svall', status)).got).toHaveLength(1);
   });
   it("leaves a test fleet's status to Svall Dev's script only", async () => {
-    expect((await lines(statusScript, '.svall', 'fleet', ['cat >/dev/null'], status)).got).toEqual([]);
-    expect((await lines(statusScript, '.svall-dev', 'fleet', ['cat >/dev/null'], status)).got).toHaveLength(1);
+    expect((await lines('status', '.svall', 'fleet', status)).got).toEqual([]);
+    expect((await lines('status', '.svall-dev', 'fleet', status)).got).toHaveLength(1);
+  });
+
+  it("reports each event once, to the fleet's own variant, through both variants' installed commands", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sv-'));
+    const homes = ['.svall', '.svall-dev'].map((h) => path.join(root, h));
+    const got = new Map<string, string[]>();
+    const servers: net.Server[] = [];
+    let statusLine: Record<string, unknown> = { statusLine: { type: 'command', command: 'echo mine' } };
+    const hooks: string[] = [];
+    for (const home of homes) {
+      const dir = path.join(home, 'hooks');
+      fs.mkdirSync(dir, { recursive: true });
+      for (const f of run.files) fs.copyFileSync(f, path.join(dir, path.basename(f)));
+      got.set(home, []);
+      servers.push(net.createServer((s) => s.on('data', (d) => got.get(home)!.push(String(d)))).listen(path.join(home, 'hooks.sock')));
+      statusLine = mergeStatusLine(statusLine, statusWrapper(process.execPath, path.join(dir, 'claude-status.mjs')), path.join(dir, 'claude-status.mjs'));
+      hooks.push(hookCommand(process.execPath, path.join(dir, 'agent-hook.mjs'), 'claude'));
+    }
+    const sh = (command: string, home: string, stdin: string) => new Promise<string>((resolve, reject) => {
+      const p = execFile('/bin/sh', ['-c', command], { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err, stdout) => (err ? reject(err) : resolve(stdout)));
+      p.stdin!.end(stdin);
+    });
+    for (const home of homes) {
+      expect(await sh((statusLine.statusLine as { command: string }).command, home, status)).toBe('mine\n');
+      for (const command of hooks) await sh(command, home, hook);
+    }
+    await new Promise((r) => setTimeout(r, 100));
+    for (const s of servers) s.close();
+    fs.rmSync(root, { recursive: true, force: true });
+    for (const home of homes) expect(got.get(home)!.map((l) => Object.keys(JSON.parse(l)).pop())).toEqual(['status', 'hook']);
   });
 });

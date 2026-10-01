@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { CODEX_HOOKS } from '../hooks/receiver.js';
-import { isOurs } from '../paths.js';
+import { helperOr, isOurs } from '../paths.js';
 import { shq } from '../text.js';
 
 export type CodexPaths = { dir: string; config: string; hooks: string };
@@ -18,7 +18,7 @@ type Group = { matcher?: string; hooks?: Entry[] };
 // codex trusts a hook by the hash of its definition: a checkout names no node an upgrade would move, and the app names
 // its own node, whose path an update keeps
 export const codexHookCommand = (script: string, node?: string): string =>
-  `[ -z "$SVALL_CHAR_ID" ] || { ${node ? `n=${shq(node)}; [ -x "$n" ] || n=node; "$n"` : 'node'} ${shq(script)} codex "$PPID"; }`;
+  `[ -z "$SVALL_CHAR_ID" ] || { ${helperOr(script, 'codex "$PPID"', `${node ? `n=${shq(node)}; [ -x "$n" ] || n=node; "$n"` : 'node'} ${shq(script)}`)}; }`;
 
 // SessionEnd and Interrupt are capped at 3 s. The two events the daemon answers carry the whole brief, which codex
 // would otherwise cut to a preview past its spill threshold

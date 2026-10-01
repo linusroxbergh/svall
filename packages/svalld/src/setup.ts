@@ -10,8 +10,8 @@ import { loadConfig } from './config.js';
 import { CLAUDE_HOOKS, hooksFor } from './hooks/receiver.js';
 import { writeAtomic } from './jsonfile.js';
 import { BUNDLE_ID, LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from './profile.js';
-import { HOOK_SCRIPT, claudePaths, expandHome, isOurs, resolvePaths, type Paths } from './paths.js';
-import { assetDir, bundled, ownRuntime, variant, type Runtime } from './runtime.js';
+import { HOOK_HELPER, HOOK_SCRIPT, claudePaths, expandHome, helperOr, isOurs, resolvePaths, type Paths } from './paths.js';
+import { assetDir, bundled, hookHelperSource, ownRuntime, variant, type Runtime } from './runtime.js';
 import { shq } from './text.js';
 import { tmuxConfText } from './tmux/conf.js';
 
@@ -192,12 +192,21 @@ ${o.program.map((a) => `    <string>${xml(a)}</string>`).join('\n')}
 `;
 }
 
-// the scripts speak the daemon's socket protocol, so every daemon start refreshes them
-export function installHookScripts(paths: Paths): void {
+// the scripts speak the daemon's socket protocol, so every daemon start refreshes them and the helper that stands in
+// for them; without a built helper the scripts run
+export function installHookScripts(paths: Paths, helper: string = hookHelperSource()): void {
   fs.mkdirSync(path.dirname(paths.hookScript), { recursive: true });
   const hooksSrc = assetDir('hooks');
   fs.copyFileSync(path.join(hooksSrc, HOOK_SCRIPT), paths.hookScript);
   fs.copyFileSync(path.join(hooksSrc, 'claude-status.mjs'), paths.statusScript);
+  if (!isExecutable(helper)) { fs.rmSync(paths.hookHelper, { force: true }); return; }
+  // a new file's first run waits ~90 ms on its signature check, so an unchanged one stays
+  if (isExecutable(paths.hookHelper) && fs.readFileSync(helper).equals(fs.readFileSync(paths.hookHelper))) return;
+  // renamed into place, as a hook may be running the old file and macOS kills a process whose binary changes under it
+  const tmp = `${paths.hookHelper}.${process.pid}.tmp`;
+  fs.copyFileSync(helper, tmp);
+  fs.chmodSync(tmp, 0o755);
+  fs.renameSync(tmp, paths.hookHelper);
 }
 
 // Svall's instructions and the skills the mission control buttons call live in the crew's cwd,
@@ -422,14 +431,16 @@ export function writeJsonSettings(current: JsonSettings, next: Record<string, un
 export const nodeRun = (node: string, script: string): string => `n=${shq(node)}; [ -x "$n" ] || n=node; "$n" ${shq(script)}`;
 
 // every Claude session on the machine runs the statusline, so outside a character, or once the script
-// is gone, the one the user had runs on its own and node never starts
-export const statusWrapper = (node: string, script: string): string =>
-  `svall_status() { if [ -n "$SVALL_CHAR_ID" ] && [ -f "$1" ]; then n=${shq(node)}; [ -x "$n" ] || n=node; "$n" "$@"; elif [ -n "$2" ]; then c=$2; shift 2; eval "$c"; fi; }; svall_status ${shq(script)}`;
+// is gone, the one the user had runs on its own; inside one, the helper wraps it, or node where there is none
+export const statusWrapper = (node: string, script: string): string => {
+  const helper = shq(path.join(path.dirname(script), HOOK_HELPER));
+  return `svall_status() { if [ -n "$SVALL_CHAR_ID" ] && [ -x ${helper} ]; then shift; ${helper} status "$@"; elif [ -n "$SVALL_CHAR_ID" ] && [ -f "$1" ]; then n=${shq(node)}; [ -x "$n" ] || n=node; "$n" "$@"; elif [ -n "$2" ]; then c=$2; shift 2; eval "$c"; fi; }; svall_status ${shq(script)}`;
+};
 
-// outside a character the shell exits before node starts, as every session on the machine runs this hook;
+// outside a character the shell exits before anything starts, as every session on the machine runs this hook;
 // $PPID is the agent, which tells it apart from a `claude -p` or `codex exec` run inside it
 export const hookCommand = (node: string, script: string, backend: AgentKind): string =>
-  `[ -z "$SVALL_CHAR_ID" ] || { ${nodeRun(node, script)} ${backend} "$PPID"; }`;
+  `[ -z "$SVALL_CHAR_ID" ] || { ${helperOr(script, `${backend} "$PPID"`, nodeRun(node, script))}; }`;
 
 /** Codex's hooks file when Codex is wanted here (on PATH, or its home exists); throws on one that is not JSON. */
 export const readCodexHooks = (codex: CodexPaths, wanted = fs.existsSync(codex.dir)): JsonSettings | undefined =>
