@@ -201,30 +201,13 @@ main { overflow-x: clip; }
   background: var(--grass-hi); box-shadow: 0 0 0 2px color-mix(in srgb, var(--sand) 55%, transparent); }
 .features b { font-weight: 600; color: var(--ink); }
 
-.shot { margin-top: clamp(80px, 12vh, 140px); }
-.shot img { display: block; width: 100%; height: auto; border-radius: 12px;
-  box-shadow: 0 0 0 1px var(--line), 0 40px 90px -30px var(--shade-3), 0 12px 30px -12px var(--shade-2); }
-
-.more { margin-top: clamp(64px, 9vh, 104px); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px 56px; }
-.more h3 { margin: 0 0 8px; font-size: 1.0625rem; font-weight: 600; letter-spacing: -.01em; }
-.more p { margin: 0; color: var(--ink-2); line-height: 1.6; text-wrap: pretty; }
-.more code { font: .875em var(--mono); color: var(--ink); }
-.def { margin-top: clamp(64px, 9vh, 104px); }
-.def p { margin: 0; max-width: 40em; padding-left: 16px; border-left: 2px solid var(--line-strong); }
-.def .hw { font-size: .8125rem; color: var(--ink-3); }
-.def .hw b { font-size: 1.0625rem; font-weight: 600; color: var(--ink); margin-right: 8px; }
-.def .hw span { font-family: var(--mono); margin-right: 8px; }
-.def .gloss { padding-top: 6px; color: var(--ink-2); line-height: 1.6; text-wrap: pretty; }
-
 footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-bottom: 36px; font-size: .8125rem; color: var(--ink-3); }
 
-@media (max-width: 1000px) { .more { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 760px) {
   .lede { font-size: .9375rem; }
   .install { margin-top: 22px; }
   .install pre { padding: 10px 4px 10px 12px; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .gh span { display: none; }
-  .more { grid-template-columns: 1fr; gap: 28px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -268,43 +251,6 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     </ul>
   </section>
 </div>
-
-<section class="shot wrap">
-  <img src="app.webp" width="2400" height="1437" loading="lazy" decoding="async"
-    alt="The Svall window: the islands list on the left, a character's terminal running Claude Code beside its built-in browser, and the character's side card on the right">
-</section>
-
-<section class="more wrap" aria-label="Details">
-  <div>
-    <h3>At a glance</h3>
-    <p>Each card shows its agent's status, how full its context window is, and its PR and ticket. An optional scribe agent names every character and keeps its note current, so you don't reopen terminals to remember what they were for.</p>
-  </div>
-  <div>
-    <h3>Layered context</h3>
-    <p>Context sits in layers: the whole fleet, a repository, an island and one character. You, your agents and the scribe keep it current. Each new session starts with a brief of every layer that applies, plus its PR and ticket, and gets a diff when any of it changes.</p>
-  </div>
-  <div>
-    <h3>Persistence</h3>
-    <p>Each terminal is a tmux window that a small daemon keeps running. Quit the app or restart the Mac, and reviving a character resumes its conversation with <code>claude --resume</code> or <code>codex resume</code>.</p>
-  </div>
-  <div>
-    <h3>Built-in browser</h3>
-    <p>Every terminal has one beside it. Tabs survive a relaunch, the agent can read them, and you sign in once per fleet with Chrome's cookies or 1Password.</p>
-  </div>
-  <div>
-    <h3>Built-in editor</h3>
-    <p>Edit the character's files and see each file's diff against HEAD or against where the branch left main. When the agent rewrites a file you haven't touched, the editor reloads it.</p>
-  </div>
-  <div>
-    <h3>Your CLIs</h3>
-    <p>Svall runs the Claude Code and Codex CLIs you already have, on your own subscription or API key. The <code>svall</code> CLI makes characters, sends prompts and waits for them.</p>
-  </div>
-</section>
-
-<aside class="def wrap" aria-label="About the name">
-  <p class="hw"><b>svall</b><span>/svalː/</span><i>Swedish, noun</i></p>
-  <p class="gloss">Swell from a passing boat.</p>
-</aside>
 </main>
 
 <footer class="wrap">Svall. MIT licensed.</footer>
