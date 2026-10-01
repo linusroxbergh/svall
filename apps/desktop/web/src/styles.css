@@ -10,18 +10,27 @@ textarea { overflow-x: hidden; }
 .main { position: relative; display: flex; flex: 1; min-height: 0; }
 .connect { display: grid; place-items: center; height: 100%; color: var(--dim); text-align: center; }
 .connect-log { max-width: min(90vw, 900px); max-height: 40vh; overflow: auto; margin-top: 12px; padding: var(--sp-md) var(--sp-xl); text-align: left; font: var(--text-sm)/1.5 var(--mono); background: var(--shade-1); border: 1px solid var(--line); border-radius: var(--r-sm); white-space: pre-wrap; }
-.setup { display: flex; flex-direction: column; gap: var(--sp-2xl); width: min(90vw, 64ch); margin: 0 auto; padding: var(--sp-3xl) 0; height: 100%; overflow: auto; color: var(--ink); font-size: var(--text-lg); }
-.setup h1 { margin: 0; font-size: var(--text-2xl); font-weight: var(--w-semibold); }
-.setup h2 { margin: 0 0 var(--sp-sm); font-size: var(--text-sm); font-weight: var(--w-semibold); color: var(--dim); }
-.setup ul { margin: 0; padding: 0; list-style: none; }
-.setup li { display: flex; flex-direction: column; padding: var(--sp-xs) 0; }
-.setup label { display: flex; align-items: baseline; gap: var(--sp-md); padding: var(--sp-xs) 0; }
-.setup small, .setup p { color: var(--dim); font-size: var(--text-sm); margin: 0; }
-.setup code { font: var(--text-sm)/1.5 var(--mono); color: var(--ink-3); overflow-wrap: anywhere; }
-.setup-folder { display: flex; gap: var(--sp-md); margin-top: var(--sp-sm); }
-.setup-folder input { flex: 1; min-width: 0; font: var(--text-sm)/1.5 var(--mono); padding: var(--sp-xs) var(--sp-md); border-radius: var(--r-sm); border: 1px solid var(--line-soft); background: var(--fill-1); color: var(--ink); }
-.setup > button { align-self: flex-start; background: var(--sand); color: var(--ink-sand); }
-.setup > button:disabled { opacity: 0.5; cursor: default; }
+.setup { display: flex; height: 100%; overflow: auto; color: var(--ink); font-size: var(--text-lg); }
+.setup-body { display: flex; flex-direction: column; gap: var(--sp-2xl); width: min(90vw, 680px); margin: auto; padding: var(--sp-3xl) 0; }
+.setup h1 { margin: 0; font-size: var(--text-3xl); font-weight: var(--w-semibold); letter-spacing: var(--track-tight); }
+.setup section { display: flex; flex-direction: column; gap: var(--sp-sm); }
+.setup h2 { margin: 0; font-size: var(--text-xs); font-weight: var(--w-semibold); letter-spacing: var(--track-caps); text-transform: uppercase; color: var(--ink-cool); }
+.setup p { margin: 0; color: var(--dim); font-size: var(--text-md); }
+.setup code { font: var(--text-sm)/1.5 var(--mono); color: var(--ink-3); }
+.setup-list { display: grid; grid-template-columns: max-content minmax(0, 1fr); margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--fill-1); }
+.setup-row, .setup-note { grid-column: 1 / -1; padding: var(--sp-md) var(--sp-xl); }
+.setup-row { display: grid; grid-template-columns: subgrid; column-gap: var(--sp-3xl); align-items: center; }
+.setup-row + .setup-row, .setup-note + .setup-note { border-top: 1px solid var(--line-soft); }
+.setup-row > span { display: flex; align-items: center; gap: var(--sp-md); }
+.setup-row input { margin: 0; accent-color: var(--sand); }
+.setup-row code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.setup-folder { display: flex; gap: var(--sp-md); }
+.setup-folder input { flex: 1; min-width: 0; font: var(--text-sm)/1.5 var(--mono); padding: var(--sp-md) var(--sp-xl); border-radius: var(--r-md); border: 1px solid var(--line); background: var(--fill-1); color: var(--ink); }
+.setup-code { display: flex; align-items: center; gap: var(--sp-md); padding: var(--sp-xs) var(--sp-xs) var(--sp-xs) var(--sp-xl); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--fill-1); }
+.setup-code code { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.setup-acts { display: flex; gap: var(--sp-md); }
+.setup-acts .btn { padding-inline: var(--sp-3xl); }
+.setup button:disabled { opacity: 0.5; cursor: default; }
 .setup .setup-blocker, .setup .setup-error { color: color-mix(in srgb, var(--blocked) 45%, var(--ink)); font-size: var(--text-lg); }
 .banner { background: color-mix(in srgb, var(--blocked) 16%, transparent); color: color-mix(in srgb, var(--blocked) 45%, var(--ink)); padding: var(--sp-sm) var(--sp-2xl); border-bottom: 1px solid var(--line); }
 .banner.warn { background: color-mix(in srgb, var(--working) 14%, transparent); color: color-mix(in srgb, var(--working) 35%, var(--ink)); display: flex; gap: var(--sp-xl); align-items: center; }
