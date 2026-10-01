@@ -21,5 +21,9 @@
   <key>NSAppleEventsUsageDescription</key><string>Svall, or a program running in a character, wants to control another app.</string>
   <key>NSLocalNetworkUsageDescription</key><string>Svall, or a site open in a character's browser, is reaching a device on your local network.</string>
   <key>NSDownloadsFolderUsageDescription</key><string>A character's browser saves the files you download there.</string>
+  <key>SUFeedURL</key><string>https://svall.dev/appcast.xml</string>
+  <key>SUPublicEDKey</key><string>aUfbLrSJ4kd1j9gi0OTR8I7IXakd8ShTDd2MQpSQq4Y=</string>
+  <key>SUEnableAutomaticChecks</key><true/>
+  <key>SUAutomaticallyUpdate</key><false/>
 </dict>
 </plist>
