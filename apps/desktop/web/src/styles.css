@@ -359,7 +359,7 @@ textarea { overflow-x: hidden; }
 @property --k { syntax: '<number>'; inherits: false; initial-value: 1; }
 @property --lk { syntax: '<number>'; inherits: false; initial-value: 1; }
 .map-world .tok { --k: inherit; }
-.map-world .island, .map-world .ilabel { --lk: inherit; }
+.map-world .island, .map-world .ilabel, .map-world .inew[data-empty="true"] { --lk: inherit; }
 .map-world .island { pointer-events: none; }
 .map-world .tok, .map-world .island > * { pointer-events: auto; }
 .map[data-dragging="true"] { cursor: grabbing; }
@@ -446,7 +446,9 @@ textarea { overflow-x: hidden; }
   padding:var(--sp-xs) var(--sp-xl);border-radius:var(--r-sm);font-size:var(--text-sm);font-weight:var(--w-semibold);
   background:var(--sand);color:var(--ink-sand);box-shadow:var(--shadow-1);white-space:nowrap}
 .map-world .inew:hover{background:var(--sand-hi)}
-.map-world .inew[data-empty="true"]{opacity:1;pointer-events:auto;transform:translate(-50%,-50%)}
+/* an empty island's button reads at its label's size, and grows with the map as the label does */
+.map-world .inew[data-empty="true"]{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(var(--lk,1));
+  padding:var(--sp-xs) var(--sp-lg);font-size:var(--text-xs)}
 .map-world .inew[data-empty="false"]{transform:translateX(-100%)}
 .map-world .inew:focus-visible{opacity:1;pointer-events:auto;outline:2px solid var(--sel);outline-offset:2px}
 .map-world .ihandle{position:absolute;z-index:13;width:15px;height:15px;opacity:0;pointer-events:none;
