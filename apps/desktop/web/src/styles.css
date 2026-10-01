@@ -83,7 +83,7 @@ textarea { overflow-x: hidden; }
 /* one tab on the sidebar's edge, at the same height whether it is open or shut */
 .sb-collapse { right: 0; border-right: 0; border-radius: var(--r-md) 0 0 var(--r-md); }
 .sb-show { left: 0; border-left: 0; border-radius: 0 var(--r-md) var(--r-md) 0; }
-.sb-list { flex: 1; min-height: 0; overflow: hidden auto; margin-bottom: var(--utility-dock-h); padding: 0 var(--sp-xs) var(--sp-xl); }
+.sb-list { flex: 1; min-height: 0; overflow: hidden auto; margin-bottom: var(--utility-dock-h); padding: 0 var(--sp-xl) var(--sp-xl) var(--sp-xs); }
 .sb-folder { margin-bottom: 6px; }
 .sb-row { display: flex; align-items: center; gap: var(--sp-md); min-width: 0; padding: var(--sp-sm) var(--sp-md); margin-bottom: 2px; border-radius: var(--r-sm); overflow: hidden; cursor: default;
   font-size: var(--text-md); color: var(--ink); }
