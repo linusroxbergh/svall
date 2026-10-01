@@ -9,7 +9,7 @@ import { expandHome } from './paths.js';
 export type EntityTier = 'repo' | 'island' | 'character';
 export type DocTier = 'fleet' | EntityTier;
 // name is the filename without .md; a frontmatter name never replaces it
-export type DocEntry = { name: string; path: string; description?: string; error?: string };
+export type DocEntry = { name: string; path: string; description?: string; modifiedAt?: number; error?: string };
 export type DocFolder = { tier: DocTier; dir: string; docs: DocEntry[] };
 
 const TREE: Record<EntityTier, string> = { repo: 'repos', island: 'islands', character: 'characters' };
@@ -33,12 +33,12 @@ export function listDocs(dir: string): DocEntry[] {
   try { found = fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; }
   return found.filter((d) => d.isFile() && d.name.endsWith('.md')).sort((a, b) => a.name.localeCompare(b.name)).map((d): DocEntry => {
     const file = path.join(dir, d.name), name = d.name.slice(0, -3);
-    let text: string;
-    try { text = fs.readFileSync(file, 'utf8'); }
+    let text: string, modifiedAt: number;
+    try { text = fs.readFileSync(file, 'utf8'); modifiedAt = fs.statSync(file).mtimeMs; }
     catch (e) { return { name, path: file, error: `cannot be read: ${(e as NodeJS.ErrnoException).code ?? 'unknown'}` }; }
     if (text.includes('\u0000')) return { name, path: file, error: 'is not text' };
     const { description } = frontmatter(text);
-    return { name, path: file, ...(description && { description }) };
+    return { name, path: file, ...(description && { description }), modifiedAt };
   });
 }
 

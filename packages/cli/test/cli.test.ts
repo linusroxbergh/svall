@@ -38,6 +38,10 @@ describe('svall argument parsing', () => {
     expect((await run({}, 'help', 'status')).stdout).toMatch(/Usage: svall status/);
   });
 
+  it('tells an agent how to hand work to a new character in char new --help', async () => {
+    expect((await run({}, 'char', 'new', '--help')).stdout).toMatch(/Handing work to a new character:\n {2}svall char new --island <id>/);
+  });
+
   it('prints the commit it runs from for --version', async () => {
     const r = await run({}, '--version');
     expect(r.code).toBe(0);

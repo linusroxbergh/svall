@@ -47,14 +47,14 @@ describe('listDocs', () => {
     put(path.join(dir, 'b-plan.md'), doc('What is left.'));
     put(path.join(dir, 'a-notes.md'), doc('Why it broke.', 'Something Else'));
     expect(listDocs(dir)).toEqual([
-      { name: 'a-notes', path: path.join(dir, 'a-notes.md'), description: 'Why it broke.' },
-      { name: 'b-plan', path: path.join(dir, 'b-plan.md'), description: 'What is left.' },
+      { name: 'a-notes', path: path.join(dir, 'a-notes.md'), description: 'Why it broke.', modifiedAt: expect.any(Number) },
+      { name: 'b-plan', path: path.join(dir, 'b-plan.md'), description: 'What is left.', modifiedAt: expect.any(Number) },
     ]);
   });
   it('lists a file without frontmatter with no description', () => {
     const dir = path.join(makeHome(), 'd');
     put(path.join(dir, 'bare.md'), '# just text\n');
-    expect(listDocs(dir)).toEqual([{ name: 'bare', path: path.join(dir, 'bare.md') }]);
+    expect(listDocs(dir)).toEqual([{ name: 'bare', path: path.join(dir, 'bare.md'), modifiedAt: expect.any(Number) }]);
   });
   it('ignores other extensions, subdirectories and links', () => {
     const home = makeHome(), dir = path.join(home, 'd');
