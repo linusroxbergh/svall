@@ -15,8 +15,9 @@ afterEach(() => {
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 });
 
-// a DMG holding a stand-in Svall.app, served with a latest.json that names it
-async function site(o: { sha?: string } = {}) {
+// a DMG holding a stand-in Svall.app, served with a latest.json that names it; codesign and spctl are stubs that
+// report the stand-in as signed by `team`
+async function site(o: { sha?: string; team?: string } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-install-'));
   dirs.push(dir);
   fs.mkdirSync(path.join(dir, 'stage/Svall.app/Contents'), { recursive: true });
@@ -35,6 +36,8 @@ async function site(o: { sha?: string } = {}) {
   fs.mkdirSync(bin);
   const opened = path.join(dir, 'opened');
   fs.writeFileSync(path.join(bin, 'open'), `#!/bin/sh\necho "$1" > ${opened}\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, 'codesign'), `#!/bin/sh\n[ "$1" = -dv ] && echo TeamIdentifier=${o.team ?? 'W76DRQ3JZN'} >&2\nexit 0\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, 'spctl'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
   return { dir, opened, env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, SVALL_BASE_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, SVALL_INSTALL_DIR: path.join(dir, 'Apps') } };
 }
 
@@ -61,4 +64,13 @@ test('refuses a download whose sha256 does not match, and installs nothing', asy
   expect(r.status).toBe(1);
   expect(r.stderr).toMatch(/sha256/);
   expect(fs.existsSync(path.join(s.dir, 'Apps/Svall.app'))).toBe(false);
+}, 30_000);
+
+test('refuses an app signed by another team, and installs nothing', async () => {
+  const s = await site({ team: 'AAAAAAAAAA' });
+  const r = await run(s.env);
+  expect(r.status).toBe(1);
+  expect(r.stderr).toMatch(/signed by its developer/);
+  expect(fs.existsSync(path.join(s.dir, 'Apps/Svall.app'))).toBe(false);
+  expect(fs.existsSync(s.opened)).toBe(false);
 }, 30_000);

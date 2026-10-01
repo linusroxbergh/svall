@@ -2,6 +2,7 @@
 # Installs Svall from svall.dev: curl -fsSL https://svall.dev/install.sh | sh
 set -eu
 BASE="${SVALL_BASE_URL:-https://svall.dev}"
+TEAM=W76DRQ3JZN
 fail() { echo "svall install: $*" >&2; exit 1; }
 [ "$(uname -s)" = Darwin ] || fail "Svall runs on macOS only"
 [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = 1 ] || fail "Svall needs a Mac with Apple silicon"
@@ -21,8 +22,14 @@ curl -fL --progress-bar "$URL" -o "$TMP/Svall.dmg"
 echo "$SHA  $TMP/Svall.dmg" | shasum -a 256 -c - >/dev/null 2>&1 || fail "the download does not match its sha256"
 mkdir "$TMP/mnt"
 hdiutil attach -quiet -nobrowse -readonly -mountpoint "$TMP/mnt" "$TMP/Svall.dmg"
+# curl sets no quarantine flag, so Gatekeeper never sees this download: check its signature and notarization here
+APP="$TMP/mnt/Svall.app"
+codesign --verify --deep --strict "$APP" 2>/dev/null \
+  && codesign -dv "$APP" 2>&1 | grep -qx "TeamIdentifier=$TEAM" \
+  && spctl --assess --type execute "$APP" 2>/dev/null \
+  || fail "the download is not Svall as signed by its developer and notarized by Apple"
 # the new copy is whole before the old one goes, so a failed copy leaves a working Svall
-ditto "$TMP/mnt/Svall.app" "$DEST/.Svall.app.new"
+ditto "$APP" "$DEST/.Svall.app.new"
 rm -rf "$DEST/Svall.app" || fail "could not replace $DEST/Svall.app (macOS may ask to let your terminal manage apps); move it to the Trash and run this again"
 mv "$DEST/.Svall.app.new" "$DEST/Svall.app"
 echo "Installed Svall $VERSION in $DEST"
