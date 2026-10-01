@@ -1,0 +1,26 @@
+name: svall-site
+
+# svall.dev stack (runs on linus-vault).
+#
+# Cloudflare Tunnel -> cloudflared -> Caddy, which serves /srv/svall.dev.
+# scripts/release.sh in the svall repo fills that folder over rsync, and
+# scripts/site-deploy.sh puts the landing page beside it. Nothing here
+# publishes a host port.
+services:
+  web:
+    image: caddy:2-alpine
+    container_name: svall-web
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /srv/svall.dev:/srv/svall.dev:ro
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: svall-cloudflared
+    command: tunnel --no-autoupdate run
+    env_file:
+      - ./deploy/cloudflared.env
+    depends_on:
+      - web
+    restart: unless-stopped
