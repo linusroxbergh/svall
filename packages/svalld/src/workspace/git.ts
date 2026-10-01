@@ -6,15 +6,22 @@ export type GitResult = { code: number; stdout: Buffer };
 
 // a git that hangs on a lock or a credential prompt would hold its caller for good
 const TIMEOUT_MS = 10_000;
+// SIGTERM lets git remove the index.lock a diff takes to refresh the index; SIGKILL would leave it behind for every later git
+const GRACE_MS = 5_000;
 
 export function git(args: string[], cwd: string, input?: string): Promise<GitResult> {
   return new Promise((resolve, reject) => {
     const p = spawn('git', args, { cwd, stdio: ['pipe', 'pipe', 'ignore'] });
     const chunks: Buffer[] = [];
-    const timer = setTimeout(() => { p.kill('SIGKILL'); reject(new Error(`git ${args[0]} timed out after ${TIMEOUT_MS}ms`)); }, TIMEOUT_MS);
+    let kill: NodeJS.Timeout | undefined;
+    const timer = setTimeout(() => {
+      p.kill('SIGTERM');
+      kill = setTimeout(() => p.kill('SIGKILL'), GRACE_MS);
+      reject(new Error(`git ${args[0]} timed out after ${TIMEOUT_MS}ms`));
+    }, TIMEOUT_MS);
     p.stdout.on('data', (c: Buffer) => chunks.push(c));
-    p.on('error', (e) => { clearTimeout(timer); reject(e); });
-    p.on('close', (code) => { clearTimeout(timer); resolve({ code: code ?? 1, stdout: Buffer.concat(chunks) }); });
+    p.on('error', (e) => { clearTimeout(timer); clearTimeout(kill); reject(e); });
+    p.on('close', (code) => { clearTimeout(timer); clearTimeout(kill); resolve({ code: code ?? 1, stdout: Buffer.concat(chunks) }); });
     // a git that refuses at once never reads its input; the exit code says what happened
     p.stdin.on('error', () => {});
     p.stdin.end(input ?? '');

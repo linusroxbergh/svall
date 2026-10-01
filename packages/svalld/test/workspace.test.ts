@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Event } from '@svall/protocol';
 import { silentLogger } from '../src/log.js';
 import type { Viewer } from '../src/terminals.js';
+import { git } from '../src/workspace/git.js';
 import { Workspace } from '../src/workspace/workspace.js';
 import { cleanHomes, makeHome, waitFor } from './helpers.js';
 
@@ -466,6 +467,66 @@ describe('Workspace git', () => {
     expect(await codeOf(() => ws.status('c', 'head'))).toBe('no_repo');
     expect(await codeOf(() => ws.file('c', 'x', 'head'))).toBe('no_repo');
     expect(await codeOf(() => ws.status('sub', 'head'))).toBe('no_repo');
+  });
+});
+
+describe('Workspace git runs', () => {
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); cleanHomes(); });
+
+  // a git first on PATH, written as a shell script into its own folder
+  function fakeGit(script: string): string {
+    const bin = makeHome();
+    fs.writeFileSync(path.join(bin, 'git'), `#!/bin/sh\n${script}\n`, { mode: 0o755 });
+    vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
+    return bin;
+  }
+
+  // waitFor sleeps on setTimeout, which the timeout test fakes
+  const until = async (check: () => boolean): Promise<void> => {
+    const end = Date.now() + 5000;
+    while (!check()) {
+      if (Date.now() > end) throw new Error('until: timed out');
+      await new Promise((r) => setImmediate(r));
+    }
+  };
+  const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
+  it('stops a git past its time with SIGTERM, which lets it remove its index.lock, and SIGKILLs one that ignores it', async () => {
+    const bin = fakeGit('trap \'echo TERM > "$0.term"\' TERM\necho $$ > "$0.pid"\nwhile :; do sleep 1 & wait; done');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const run = git(['diff'], bin);
+    run.catch(() => {});
+    const pidFile = path.join(bin, 'git.pid');
+    await until(() => fs.existsSync(pidFile) && fs.readFileSync(pidFile, 'utf8').endsWith('\n'));
+    const pid = Number(fs.readFileSync(pidFile, 'utf8'));
+    try {
+      await vi.advanceTimersByTimeAsync(10_000);
+      await expect(run).rejects.toThrow('git diff timed out after 10000ms');
+      await until(() => fs.existsSync(path.join(bin, 'git.term')));
+      expect(alive(pid)).toBe(true);
+      await vi.advanceTimersByTimeAsync(5_000);
+      await until(() => !alive(pid));
+    } finally {
+      if (alive(pid)) process.kill(pid, 'SIGKILL');
+    }
+  });
+
+  it('runs one status per repository and base at a time, and the calls made during it share one run after it', async () => {
+    const dir = repo();
+    const real = execFileSync('/bin/sh', ['-c', 'command -v git']).toString().trim();
+    // every git is logged by its subcommand, and a diff is held until the gate opens
+    const bin = fakeGit(`echo "$1" >> "$0.log"\nif [ "$1" = diff ]; then while [ ! -e "$0.gate" ]; do sleep 0.05; done; fi\nexec "${real}" "$@"`);
+    const log = (): string[] => (fs.existsSync(path.join(bin, 'git.log')) ? fs.readFileSync(path.join(bin, 'git.log'), 'utf8').trim().split('\n') : []);
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'changed\n');
+    const ws = workspace({ c: dir, d: dir });
+    const first = [ws.status('c', 'head'), ws.status('d', 'head')];
+    await waitFor(() => log().includes('diff'));
+    const during = [ws.status('c', 'head'), ws.status('d', 'head'), ws.status('c', 'head')];
+    fs.writeFileSync(path.join(bin, 'git.gate'), '');
+    for (const s of await Promise.all([...first, ...during])) expect(s).toEqual({ branch: 'main', files: [{ path: 'a.txt', status: 'M' }] });
+    // a run's four gits all start before the next run's first
+    const run = ['diff', 'ls-files', 'rev-parse', 'symbolic-ref'];
+    expect([log().slice(0, 4).sort(), log().slice(4).sort()]).toEqual([run, run]);
   });
 });
 
