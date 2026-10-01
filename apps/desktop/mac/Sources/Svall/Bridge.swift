@@ -41,14 +41,15 @@ enum ToShell: Decodable {
     case notifyRemove(key: String)
     case notifyEnable
     case notifySettings
-    case quitAnswer(unsaved: [String])
+    case quitAnswer(unsaved: [String], working: Int)
+    case quitStopped(ok: Bool)
     case openFleet(home: String, quit: Bool?)
     case retitle
     case setupPlan
     case setupRun(agents: [String], found: [String], projects: String)
     case folderPick(start: String)
 
-    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, home, quit, x, y, items, agents, found, projects, start }
+    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, working, ok, home, quit, x, y, items, agents, found, projects, start }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -83,7 +84,8 @@ enum ToShell: Decodable {
         case "notify.remove": self = .notifyRemove(key: try c.decode(String.self, forKey: .key))
         case "notify.enable": self = .notifyEnable
         case "notify.settings": self = .notifySettings
-        case "quit.answer": self = .quitAnswer(unsaved: try c.decode([String].self, forKey: .unsaved))
+        case "quit.answer": self = .quitAnswer(unsaved: try c.decode([String].self, forKey: .unsaved), working: try c.decode(Int.self, forKey: .working))
+        case "quit.stopped": self = .quitStopped(ok: try c.decode(Bool.self, forKey: .ok))
         case "openFleet": self = .openFleet(home: try c.decode(String.self, forKey: .home), quit: try c.decodeIfPresent(Bool.self, forKey: .quit))
         case "retitle": self = .retitle
         case "setup.plan": self = .setupPlan
@@ -117,6 +119,7 @@ enum FromShell {
     case notifyAction(key: String, action: String, promptId: String)
     case menuPick(id: String)
     case quitAsk
+    case quitStop
     case fleets
     case openFleetFailed(home: String, reason: String)
     case setupResult(step: String, ok: Bool, json: String)
@@ -145,6 +148,7 @@ enum FromShell {
         case .notifyAction(let key, let action, let promptId): return ["type": "notify.action", "key": key, "action": action, "promptId": promptId]
         case .menuPick(let id): return ["type": "menu.pick", "id": id]
         case .quitAsk: return ["type": "quit.ask"]
+        case .quitStop: return ["type": "quit.stop"]
         case .fleets: return ["type": "fleets"]
         case .openFleetFailed(let home, let reason): return ["type": "openFleet.failed", "home": home, "reason": reason]
         case .setupResult(let step, let ok, let json): return ["type": "setup.result", "step": step, "ok": ok, "json": json]

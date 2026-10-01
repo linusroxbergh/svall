@@ -57,7 +57,7 @@ enum SvallHome {
     }
 
     // the name the fleet's directory gives it, nil for the private one
-    private static var directoryName: String? {
+    static var directoryName: String? {
         if isPrivate { return nil }
         let base = ((path as NSString).standardizingPath as NSString).lastPathComponent
         let prefix = root + "-"

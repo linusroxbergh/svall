@@ -118,7 +118,7 @@ test('a quit saves the draft before it answers', async () => {
   type(field('side-instructions'), 'never push to main');
   let ask = (_: FromShell) => {};
   let savedFirst: boolean | undefined;
-  const stop = followQuit({ store, bridge: {
+  const stop = followQuit({ store, api: () => undefined, bridge: {
     send: (m) => { if (m.type === 'quit.answer') savedFirst = updates().length > 0; },
     onMessage: (h) => { ask = h; return () => {}; },
   } });
