@@ -68,6 +68,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
         // a fleet with no main agent set runs claude when both are found; turning off the main agent, saved or not, makes
         // the one left on whose CLI is here the main agent
         const on = chosen.filter((k) => runnable.includes(k));
+        if (!on.length && runnable.length) throw new Error(`--agents ${o.agents} leaves on no agent whose CLI is on PATH; add ${runnable.join(' or ')}`);
         const main = on.length && !on.includes(mainAgent(config.mainAgent, found)) ? { mainAgent: on[0] } : {};
         choices = { integrations: integrationsFor(chosen, found, config.integrations), ...main };
       }

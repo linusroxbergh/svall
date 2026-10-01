@@ -234,6 +234,23 @@ describe('svall setup --agents', () => {
     }
   });
 
+  it('refuses a choice that leaves on no agent whose CLI is on PATH', async () => {
+    const home = makeHome();
+    try {
+      const bin = path.join(home, 'bin');
+      fs.mkdirSync(bin);
+      fs.writeFileSync(path.join(bin, 'tmux'), '#!/bin/sh\necho tmux 3.5a\n', { mode: 0o755 });
+      fs.writeFileSync(path.join(bin, 'claude'), '#!/bin/sh\necho 2.1.0\n', { mode: 0o755 });
+      fs.mkdirSync(path.join(home, '.codex'));
+      const r = await run({ HOME: home, PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin` }, 'setup', '--no-launchctl', '--agents', 'codex');
+      expect(r.code).not.toBe(0);
+      expect(r.stderr).toContain('--agents codex leaves on no agent whose CLI is on PATH; add claude');
+      expect(fs.existsSync(path.join(home, '.svall'))).toBe(false);
+    } finally {
+      cleanHomes();
+    }
+  });
+
   it('saves no choice when setup stops before it writes', async () => {
     const home = makeHome();
     try {
