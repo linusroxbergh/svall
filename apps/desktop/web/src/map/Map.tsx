@@ -222,7 +222,7 @@ export function Map() {
   const domPointer = (target: Target) => ({
     onPointerDown: (e: React.PointerEvent<Element>) => {
       // a right-click, or a control-click, only opens the menu: it selects and drags nothing
-      if (e.button !== 0 || e.ctrlKey) return;
+      if (e.button !== 0 || e.ctrlKey) { endHover(); return; }
       const el = host.current!;
       commitFocused();
       el.setPointerCapture(e.pointerId);

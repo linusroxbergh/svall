@@ -91,3 +91,16 @@ test('a right press or a control press on a card selects nothing', () => {
   fireEvent.pointerUp(screen.getByTestId('map'), { pointerId: 1 });
   expect(store.getState().selectedId).toBe('c0');
 });
+
+test('a right press puts away the hover card, so it stands under neither the menu nor the confirmation', async () => {
+  vi.useFakeTimers();
+  try {
+    fireEvent.pointerEnter(screen.getByTestId('token-c0'));
+    await act(async () => { vi.advanceTimersByTime(400); });
+    expect(screen.queryByTestId('hover-card')).not.toBeNull();
+    fireEvent.pointerDown(screen.getByTestId('token-c0'), { pointerId: 1, button: 2 });
+    expect(screen.queryByTestId('hover-card')).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});

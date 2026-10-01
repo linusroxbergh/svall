@@ -9,7 +9,7 @@ import { createUiSlice, type UiActions, type UiState, type View } from './ui.js'
 export type { Status };
 export type { IdeState } from './ide.js';
 export type { AppStorage, FilesTree, HalfCard, ResourceCols, SideWidths } from './persist.js';
-export { DEFAULT_HALF_CARD, DEFAULT_RESOURCE_SIZE, FILES_TREE_RANGE, HALF_CARD_RANGE, RESOURCE_COL_RANGE, SETTINGS_KEY, SIDE_WIDTH_RANGE, localAppStorage } from './persist.js';
+export { DEFAULT_HALF_CARD, FILES_TREE_RANGE, HALF_CARD_RANGE, RESOURCE_COL_RANGE, SETTINGS_KEY, SIDE_WIDTH_RANGE, localAppStorage } from './persist.js';
 export type { CardSize, LinkAsk, Terminal, Toast, View, Webview } from './ui.js';
 
 export type AppState = FleetSliceState & UiState & ShelfState & IdeSliceState;
