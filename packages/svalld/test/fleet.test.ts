@@ -1059,7 +1059,7 @@ runIf('Fleet', () => {
     expect(store.state.characters[crew[0].id].cell).toEqual({ x: 13, y: 1 });
   });
 
-  it('drops the empty slots off the end of home as its crew leaves, moving no one', async () => {
+  it('drops the empty slots off the end of home but one as its crew leaves, moving no one', async () => {
     const { fleet, store } = await boot();
     const crew = [];
     for (let n = 0; n < 5; n++) crew.push(await fleet.createCharacter({ islandId: 'home', cwd: '/tmp', name: `m${n}` }));
@@ -1069,24 +1069,24 @@ runIf('Fleet', () => {
     await fleet.closeCharacter(crew[1].id);
     expect(width()).toBe(17);
     fleet.moveCharacter(crew[4].id, away.id);
-    expect(width()).toBe(14);
+    expect(width()).toBe(17);
     fleet.updateCharacter(crew[3].id, { islandId: away.id });
-    expect(width()).toBe(11);
+    expect(width()).toBe(14);
     expect([crew[0], crew[2]].map((c) => store.state.characters[c.id].cell)).toEqual([{ x: 1, y: 1 }, { x: 7, y: 1 }]);
     fleet.moveCharacter(crew[2].id, 'home', { x: 4, y: 1 });
-    expect(width()).toBe(8);
+    expect(width()).toBe(11);
     for (const c of [crew[0], crew[2]]) await fleet.closeCharacter(c.id);
     expect(width()).toBe(8);
   });
 
-  it('trims a home left wider than its crew on start, moving no one', async () => {
+  it('trims a home left wider than its crew and a spare slot on start, moving no one', async () => {
     const state = emptyState();
     state.islands.home = { id: 'home', kind: 'home', name: 'mission control', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 17, h: 4 }, seed: 7 };
     for (const [id, x] of [['c_aaaaaa', 1], ['c_bbbbbb', 7]] as const) {
       state.characters[id] = { id, islandId: 'home', cell: { x, y: 1 }, name: id, portrait: 'fox', note: '', instructions: '', cwd: '/tmp', context: [], shell: { lastOutputAt: 0 }, unread: false };
     }
     const { store } = await boot({ state });
-    expect(store.state.islands.home.size).toEqual({ w: 11, h: 4 });
+    expect(store.state.islands.home.size).toEqual({ w: 14, h: 4 });
     expect(['c_aaaaaa', 'c_bbbbbb'].map((id) => store.state.characters[id].cell)).toEqual([{ x: 1, y: 1 }, { x: 7, y: 1 }]);
   });
 

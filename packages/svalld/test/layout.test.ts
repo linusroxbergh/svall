@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SIZE, SPACING, emptyState, isLand, landCells, sizeForCrew, type FleetState, type Island } from '@svall/protocol';
+import { DEFAULT_SIZE, SPACING, emptyState, homeSizeFor, isLand, landCells, sizeForCrew, type FleetState, type Island } from '@svall/protocol';
 import { CREW_INSET, GAP, HOME_GAP, HOME_REACH, ROW_GAP, aboveHome, arrangeFleet, crewGrid, blockedCells, clearBy, defaultPosition, freePosition, ground, makeRoom, nearestFreeLand, occupiedCells, pillWidth, placementOk, settleHome, sinkHome, uniqueName, worldIslands } from '../src/layout.js';
 
 const island = (id: string, x: number, y: number, w = 6, h = 4): Island => ({ id, name: id, description: '', instructions: '', context: [], position: { x, y }, size: { w, h }, seed: 1 });
@@ -298,6 +298,18 @@ describe('arrangeFleet', () => {
     const st = withIslands(home(9));
     arrangeFleet(st);
     expect(st.islands.home.position.y).toBe(9);
+  });
+
+  it('gives mission control an empty slot past its crew where the map has room for it, and takes it back where not', () => {
+    const st = withIslands(island('a', 0, 0), { ...home(9), size: homeSizeFor(2) });
+    for (const x of [1, 4]) st.characters[`h${x}`] = { id: `h${x}`, islandId: 'home', cell: { x, y: 1 }, name: `h${x}`, portrait: 'fox', note: '', instructions: '', cwd: '/', context: [], shell: { lastOutputAt: 0 }, unread: false };
+    arrangeFleet(st);
+    expect(st.islands.home.size).toEqual(homeSizeFor(2));
+    arrangeFleet(st, 4 / 3, 11);
+    expect(st.islands.home.size).toEqual(homeSizeFor(3));
+    expect([st.characters.h1.cell, st.characters.h4.cell]).toEqual([{ x: 1, y: 1 }, { x: 4, y: 1 }]);
+    arrangeFleet(st, 4 / 3, 10);
+    expect(st.islands.home.size).toEqual(homeSizeFor(2));
   });
 });
 

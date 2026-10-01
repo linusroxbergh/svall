@@ -96,8 +96,8 @@ export function toggleIsland(d: ActionDeps, id: string): void {
 }
 
 // the daemon lays the whole fleet out at once; the map refits to whatever comes back
-export function arrangeIslands(d: ActionDeps, aspect?: number): void {
-  d.api.call('island.arrange', { aspect }).catch(toast(d));
+export function arrangeIslands(d: ActionDeps, aspect?: number, homeRoom?: number): void {
+  d.api.call('island.arrange', { aspect, homeRoom }).catch(toast(d));
 }
 
 // an island made on the map centres on the cell that asked for it; made from a button it has no cell,

@@ -140,6 +140,19 @@ test('a card dropped past the last slot of a full mission control joins it at th
   expect(crew.map((m) => s.characters[m.id])).toMatchObject([{ islandId: 'home', cell: { x: 1, y: 1 } }, { islandId: 'home', cell: { x: 4, y: 1 } }]);
 });
 
+test('arrange gives mission control a spare slot past its crew where the map has room, and takes it back where not', async ({ page, svall }) => {
+  for (let n = 0; n < 2; n++) await svall.api.call('char.create', { islandId: 'home', cwd: '/tmp', name: `crew-${n}` });
+  await svall.api.call('island.create', { name: svall.uniq('crew'), position: { x: 0, y: 0 } });
+  await svall.open('map');
+  const width = async () => (await svall.api.call('state.get', {})).islands.home.size.w;
+  expect(await width()).toBe(8);
+  await page.getByTestId('home-arrange').click();
+  await expect.poll(width).toBe(11);
+  await setMapWidth(page, 600);
+  await page.getByTestId('home-arrange').click();
+  await expect.poll(width).toBe(8);
+});
+
 test('Cmd+G sends a prompt to a fresh mission control agent', async ({ page, svall }) => {
   await svall.open('map');
   await page.keyboard.press('Meta+g');

@@ -58,7 +58,7 @@ export class Store {
   update(mutate: (draft: FleetState) => void): Operation[] {
     const next = structuredClone(this.current);
     mutate(next);
-    // the shape rules the map depends on, kept wherever the fleet changes: mission control is its floor, and no wider than its crew needs
+    // the shape rules the map depends on, kept wherever the fleet changes: mission control is its floor, and no wider than its crew needs and a spare slot
     sinkHome(next);
     trimHome(next);
     const ops = jsonpatch.compare(this.current, next);

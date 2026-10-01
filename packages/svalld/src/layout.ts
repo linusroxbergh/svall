@@ -117,13 +117,27 @@ export function settleHome(draft: FleetState): void {
   if (floor !== undefined) home.position.y = floor;
 }
 
-// mission control drops the empty slots past its last crew member, down to two slots; no one moves
+// the slots up to and including mission control's last crew member
+const slotsInUse = (draft: FleetState, home: Island): number => {
+  const last = Math.max(0, ...Object.values(draft.characters).filter((c) => c.islandId === HOME_ISLAND).map((c) => c.cell.x));
+  return homeSlots(home.size.w).filter((x) => x <= last).length;
+};
+
+// mission control drops the empty slots past its last crew member but the one arrange may give it, down to two slots; no one moves
 export function trimHome(draft: FleetState): void {
   const home = draft.islands[HOME_ISLAND];
   if (!home) return;
-  const last = Math.max(0, ...Object.values(draft.characters).filter((c) => c.islandId === HOME_ISLAND).map((c) => c.cell.x));
-  const { w } = homeSizeFor(homeSlots(home.size.w).filter((x) => x <= last).length);
+  const { w } = homeSizeFor(slotsInUse(draft, home) + 1);
   if (w < home.size.w) home.size = { ...home.size, w };
+}
+
+// arrange gives mission control an empty slot past its crew when the map has room for that width, in cells, and none when not
+function widenHome(draft: FleetState, room: number): void {
+  const home = draft.islands[HOME_ISLAND];
+  if (!home) return;
+  const used = slotsInUse(draft, home);
+  const roomy = homeSizeFor(used + 1);
+  home.size = { ...home.size, w: roomy.w <= room ? roomy.w : homeSizeFor(used).w };
 }
 
 const fleetFloor = (state: FleetState, gap: number): number | undefined => {
@@ -237,8 +251,10 @@ function plan(pills: Box[], lands: Box[], aspect: number): Plan {
 
 // every island cut to a grid its crew's cards fit on and the fleet packed to fill a window of that aspect: the
 // folded islands as a band of label pills on top, the rest in centred rows under it, and mission control under them.
-// how many crew stand abreast is chosen with the rows, so a wide window gets long islands and a tall one deep islands
-export function arrangeFleet(draft: FleetState, aspect = 4 / 3): void {
+// how many crew stand abreast is chosen with the rows, so a wide window gets long islands and a tall one deep islands.
+// homeRoom is the widest mission control, in cells, the map has room for
+export function arrangeFleet(draft: FleetState, aspect = 4 / 3, homeRoom?: number): void {
+  if (homeRoom !== undefined) widenHome(draft, homeRoom);
   const islands = worldIslands(draft).sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x || a.id.localeCompare(b.id));
   if (islands.length === 0) return;
   const grounds = islands.map(ground);

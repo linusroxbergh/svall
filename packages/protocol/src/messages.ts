@@ -124,8 +124,8 @@ export const methods = {
     result: Island,
   },
   'island.delete': { params: Id, result: z.object({}) },
-  // aspect is the shape of the window the fleet should fill, width over height
-  'island.arrange': { params: z.object({ aspect: z.number().min(0.01).max(100).optional() }), result: z.object({}) },
+  // aspect is the shape of the window the fleet should fill, width over height; homeRoom the widest mission control, in cells, it has room for
+  'island.arrange': { params: z.object({ aspect: z.number().min(0.01).max(100).optional(), homeRoom: z.number().int().min(0).max(10_000).optional() }), result: z.object({}) },
   'island.show': { params: Id, result: z.object({ text: z.string() }) },
   'island.reorder': { params: z.object({ id: z.string(), targetId: z.string(), after: z.boolean() }), result: Island },
   'char.create': {
