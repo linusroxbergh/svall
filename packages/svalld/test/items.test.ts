@@ -55,6 +55,10 @@ describe('prFirst', () => {
     expect(prFirst([doc, ticket, foundPr])).toEqual([foundPr, doc, ticket]);
     expect(prFirst([doc, ticket])).toEqual([doc, ticket]);
   });
+  it("puts the branch's PR the scribe holds, the one the lookup reads a state for, in front of the others it found", () => {
+    const held = { ...link('scribe', 'pr', 'https://github.com/o/r/pull/4'), prState: 'open' as const };
+    expect(prFirst([doc, foundPr, held])).toEqual([held, doc, foundPr]);
+  });
   it('leaves a PR the user added where they put it', () => {
     const typed = link('manual', 'pr', 'https://github.com/o/r/pull/3');
     expect(prFirst([doc, typed])).toEqual([doc, typed]);

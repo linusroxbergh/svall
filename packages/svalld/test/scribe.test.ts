@@ -368,7 +368,8 @@ describe('Scribe, swept', () => {
 
   it("holds the branch's PR in place of its auto chip, with its state, beside a second PR the work is on", async () => {
     const own = 'https://github.com/o/r/pull/42', other = 'https://github.com/o/r/pull/41';
-    const w = world(answer({ links: [{ url: own, label: '#42' }, { url: other, label: '#41' }] }));
+    // listed second, the branch's own PR still leads
+    const w = world(answer({ links: [{ url: other, label: '#41' }, { url: own, label: '#42' }] }));
     w.island('i1');
     w.char('a', { context: [{ kind: 'pr', ref: own, label: '#42', source: 'auto', prState: 'draft' }] });
     const file = w.store.state.characters.a.agent!.transcriptPath!;

@@ -145,12 +145,12 @@ export function acceptLine(text: string | null | undefined, max: number): string
   return v || undefined;
 }
 
-// the scribe's links after this answer: only URLs the given text names or the scribe already holds, none the other sources hold;
-// a held link someone pinned stays whatever the answer says. The branch's PR is the scribe's to take too, so the
-// work keeps it once its checkout moves to another branch
+// the scribe's links after this answer: only URLs the given text names or the scribe already holds, none the other sources hold.
+// The branch's PR is the scribe's to take too, pin and all, so the work keeps it once its checkout moves to another branch.
+// A held link someone pinned, or that the branch's lookup still reads a state for, stays whatever the answer says
 export function acceptLinks(proposed: NonNullable<CharacterAnswer['links']>, text: string, context: ContextItem[]): ContextItem[] {
   const held = new Map(context.filter((it) => it.source === 'scribe').map((it) => [bareUrl(it.ref), it]));
-  const branchPrs = new Set(context.filter((it) => it.source === 'auto' && it.kind === 'pr').map((it) => bareUrl(it.ref)));
+  const branchPrs = new Map(context.filter((it) => it.source === 'auto' && it.kind === 'pr').map((it) => [bareUrl(it.ref), it]));
   const seen = new Set(context.filter((it) => it.source !== 'scribe').map((it) => bareUrl(it.ref)).filter((key) => !branchPrs.has(key)));
   const out: ContextItem[] = [];
   for (const { url, label } of proposed) {
@@ -159,9 +159,9 @@ export function acceptLinks(proposed: NonNullable<CharacterAnswer['links']>, tex
     const key = bareUrl(ref);
     if (seen.has(key) || !(text.includes(ref) || held.has(key) || branchPrs.has(key))) continue;
     seen.add(key);
-    const pinned = held.get(key)?.pinned;
+    const pinned = (held.get(key) ?? branchPrs.get(key))?.pinned;
     out.push({ kind: linkKind(ref), ref, label: acceptLine(label, LABEL_MAX) ?? ref, source: 'scribe', ...(pinned ? { pinned } : {}) });
   }
-  for (const [key, it] of held) if (it.pinned && !seen.has(key)) out.push(it);
+  for (const [key, it] of held) if ((it.pinned || it.prState) && !seen.has(key)) out.push(it);
   return out;
 }

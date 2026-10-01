@@ -92,11 +92,17 @@ describe('acceptLinks', () => {
     expect(acceptLinks([], transcript, [manual, held, loose])).toEqual([held]);
   });
 
-  it("takes the branch's PR, which no transcript need name, but not the repository fallback", () => {
-    const pr: ContextItem = { kind: 'pr', ref: 'https://github.com/o/r/pull/5', label: '#5', source: 'auto', prState: 'open' };
+  it("takes the branch's PR, which no transcript need name, with its pin, but not the repository fallback", () => {
+    const pr: ContextItem = { kind: 'pr', ref: 'https://github.com/o/r/pull/5', label: '#5', source: 'auto', prState: 'open', pinned: true };
     const repo: ContextItem = { kind: 'github', ref: 'https://github.com/o/r', label: 'o/r', source: 'auto' };
     expect(acceptLinks([{ url: pr.ref, label: '#5' }, { url: repo.ref, label: 'o/r' }], `see ${repo.ref}`, [pr, repo]))
-      .toEqual([{ kind: 'pr', ref: pr.ref, label: '#5', source: 'scribe' }]);
+      .toEqual([{ kind: 'pr', ref: pr.ref, label: '#5', source: 'scribe', pinned: true }]);
+  });
+
+  it("keeps a held PR the branch's lookup still reads, whatever the answer says", () => {
+    const own: ContextItem = { kind: 'pr', ref: 'https://github.com/o/r/pull/5', label: '#5', source: 'scribe', prState: 'open' };
+    const old: ContextItem = { kind: 'pr', ref: 'https://github.com/o/r/pull/4', label: '#4', source: 'scribe' };
+    expect(acceptLinks([], transcript, [own, old])).toEqual([own]);
   });
 });
 
