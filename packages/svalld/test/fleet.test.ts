@@ -970,6 +970,15 @@ runIf('Fleet', () => {
     expect(Object.values(again.store.state.islands).map((i) => i.name)).toEqual(['mission control']);
   });
 
+  it('gives a fleet back its mission control, and no new island, when a start finds it missing', async () => {
+    const { store } = await boot({ opening: true });
+    // what salvage leaves when only mission control's entry is broken
+    const salvaged = structuredClone(store.state);
+    for (const i of Object.values(salvaged.islands)) if (i.kind === 'home') delete salvaged.islands[i.id];
+    const again = await boot({ opening: true, state: salvaged });
+    expect(Object.values(again.store.state.islands).map((i) => i.name).sort()).toEqual(['Island 1', 'mission control']);
+  });
+
   it("starts mission control's crew on the main agent unless config.json names a command", async () => {
     const both = await boot({ agentsFound: ['claude', 'codex'] });
     expect(both.store.state.home.command).toBe('claude --model sonnet');
