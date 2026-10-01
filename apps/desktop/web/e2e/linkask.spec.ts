@@ -63,8 +63,11 @@ test('a link followed in a terminal asks over the terminal, with the keys, and h
   await follow('https://example.com/a');
   await expect(ask).toBeVisible();
   await expect(ask).toContainText('example.com/a');
-  // the terminal is drawn above the page, so the ask takes a hole in it, and the keys, or Esc would reach the agent
-  await expect.poll(async () => (await cutout())?.rects.length).toBe(1);
+  const box = (await ask.boundingBox())!, surface = (await card.getByTestId('surface').boundingBox())!;
+  expect(box.x >= surface.x && box.y >= surface.y && box.x + box.width <= surface.x + surface.width && box.y + box.height <= surface.y + surface.height).toBe(true);
+  // the terminal is drawn above the page, so the ask takes a hole in it where it stands, and the keys, or Esc would reach the agent
+  await expect.poll(async () => (await cutout())?.rects.map((r) => [r.x, r.y, r.width, r.height].map(Math.round)))
+    .toEqual([[box.x, box.y, box.width, box.height].map(Math.round)]);
   expect(await since(from)).toContainEqual({ type: 'term.focus' });
   from = await mark();
   await page.keyboard.press('Escape');
