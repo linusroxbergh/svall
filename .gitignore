@@ -9,6 +9,8 @@ node_modules/
 .swiftpm/
 apps/desktop/web/dist/
 apps/desktop/web/dist-mobile/
+site/map/
+site/shots-in/
 apps/desktop/web/test-results/
 apps/desktop/web/playwright-report/
 apps/desktop/mac/.build/

@@ -28,5 +28,6 @@ describe('stylesheets draw from tokens.css', () => {
   it('catches a raw value in a longhand', () =>
     expect(offenders('.x { padding-inline-start: 6px; border-top-left-radius: 4px; }')).toHaveLength(2));
   it('styles.css', () => expect(offenders(read('styles.css'))).toEqual([]));
+  it('map/map.css', () => expect(offenders(read('map/map.css'))).toEqual([]));
   it('mobile.css', () => expect(offenders(read('mobile/mobile.css'))).toEqual([]));
 });
