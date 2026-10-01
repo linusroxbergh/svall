@@ -69,15 +69,8 @@ if [ -z "$ADHOC" ]; then
 fi
 
 DMG="dist/releases/Svall-$VERSION.dmg"
-rm -rf dist/stage && mkdir -p dist/stage dist/releases
-ditto "$APP" dist/stage/Svall.app
-ln -s /Applications dist/stage/Applications
-# hdiutil create fails now and then on a stage it builds fine a moment later
-for try in 1 2 3; do
-  hdiutil create -volname Svall -srcfolder dist/stage -fs HFS+ -format UDZO -ov "$DMG" && break
-  [ "$try" -lt 3 ] || fail "hdiutil could not create $DMG"
-  sleep 10
-done
+mkdir -p dist/releases
+scripts/dmg/build.sh "$APP" "$DMG"
 if [ -z "$ADHOC" ]; then
   codesign --timestamp --sign "$ID" "$DMG"
   notarize "$DMG"
