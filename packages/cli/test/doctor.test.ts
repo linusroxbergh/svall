@@ -119,7 +119,7 @@ describe('doctor', () => {
     expect(c.tmux).toMatchObject({ status: 'fail', detail: expect.stringMatching(/brew install tmux/) });
     expect(c.agents).toMatchObject({ status: 'fail', detail: expect.stringContaining('neither claude nor codex is on PATH') });
     expect(c.gh).toMatchObject({ status: 'warn', detail: expect.stringMatching(/gh auth login/) });
-    expect(c.svalld).toMatchObject({ status: 'fail', detail: expect.stringMatching(/not running .*: the log below says why$/) });
+    expect(c.svalld).toMatchObject({ status: 'warn', detail: expect.stringMatching(/not running .*: it starts when Svall opens on this fleet$/) });
     expect(c.launchd).toMatchObject({ status: 'fail', detail: expect.stringMatching(/not loaded/) });
     expect(c.hooks).toMatchObject({ status: 'fail', detail: expect.stringMatching(/svall setup/) });
     expect(r.log.lines).toEqual([]);

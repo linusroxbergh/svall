@@ -349,7 +349,9 @@ describe('launchdPlist', () => {
     expect(p).toContain('<string>io.github.linusroxbergh.svall.svalld</string>');
     expect(p).toContain('<string>/r/node_modules/.bin/tsx</string>');
     expect(p).toContain('<key>SVALL_HOME</key>');
-    expect(p).toContain('<key>KeepAlive</key>');
+    // the app starts the daemon and stops it as it quits: nothing starts it at login or keeps it up after
+    expect(p).toContain('<key>RunAtLoad</key><false/>');
+    expect(p).not.toContain('KeepAlive');
     expect(p).toContain('<key>LANG</key>');
   });
 });

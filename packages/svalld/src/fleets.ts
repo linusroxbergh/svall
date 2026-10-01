@@ -40,7 +40,7 @@ export const homeSetup = (t: FleetTarget, d: Pick<StartDeps, 'runtime' | 'launch
   port: t.name === PRIVATE ? undefined : 0,
 });
 
-/** Loads a profile's launchd agent when launchd has not, then waits for its daemon to answer. */
+/** Loads a profile's launchd agent when launchd has not and starts its daemon, then waits for it to answer. */
 export async function startFleet(t: FleetTarget, d: StartDeps): Promise<void> {
   const label = profileLabel(t.name);
   const domain = `gui/${d.uid}`;
@@ -53,6 +53,8 @@ export async function startFleet(t: FleetTarget, d: StartDeps): Promise<void> {
       if (!d.exists(plist)) await d.setupHome(homeSetup(t, d));
       await d.exec('launchctl', ['bootstrap', domain, plist]);
     }
+    // launchd starts no daemon at login; the window opening on the fleet does
+    await d.exec('launchctl', ['kickstart', `${domain}/${label}`]);
   }
 
   const end = Date.now() + d.timeoutMs;

@@ -153,7 +153,8 @@ if [ -n "$SETUP" ]; then
 fi
 
 step "Restarting svalld"
-launchctl list | awk '$3 ~ /^io\.github\.linusroxbergh\.svall\.dev\.svalld/ { print $3 }' | while read -r label; do
+# only the fleets whose windows are open run; the rest start with their window
+launchctl list | awk '$1 != "-" && $3 ~ /^io\.github\.linusroxbergh\.svall\.dev\.svalld/ { print $3 }' | while read -r label; do
   echo "    $label" >>"$LOG"
   launchctl kickstart -k "gui/$(id -u)/$label" >>"$LOG" 2>&1 || echo "    (kickstart failed for $label)" >>"$LOG"
 done

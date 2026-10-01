@@ -44,12 +44,13 @@ const priv = { name: 'private', home: '/u/.svall', managed: true };
 const adhoc = { name: 'svall-dev', home: '/tmp/svall-dev', managed: false };
 
 describe('launch', () => {
-  it('opens an existing, loaded profile without touching launchd', async () => {
+  it('starts an existing, loaded profile without loading it again', async () => {
     const f = fake({ homes: [priv.home], loaded: ['io.github.linusroxbergh.svall.svalld'] });
     await launch(priv, f.deps);
     expect(f.setups).toEqual([]);
     expect(f.calls).toEqual([
       ['launchctl', ['print', 'gui/501/io.github.linusroxbergh.svall.svalld']],
+      ['launchctl', ['kickstart', 'gui/501/io.github.linusroxbergh.svall.svalld']],
       ['open', ['-n', '--env', 'SVALL_HOME=/u/.svall', '-b', 'io.github.linusroxbergh.svall']],
     ]);
   });
