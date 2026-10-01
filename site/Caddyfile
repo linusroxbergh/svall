@@ -9,6 +9,9 @@
 		file
 	}
 	header @dmg Cache-Control "public, max-age=31536000, immutable"
+	# Caddy has no type for .dmg and sends none, which browsers under nosniff show as text
+	@disk path /releases/*.dmg
+	header @disk Content-Type application/x-apple-diskimage
 	redir /download /releases/Svall.dmg 302
 	file_server
 }
