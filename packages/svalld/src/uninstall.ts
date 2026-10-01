@@ -65,14 +65,20 @@ export const appPid = (home: string, app: Pick<AppQuit, 'isApp'>): number | unde
 const QUIT_WAIT_S = 60;
 
 // an open window could write its sign-ins, caches and defaults back after they move or are purged. Each is asked once and waited for:
-// a second quit while it asks about unsaved edits would answer for the user
+// a second quit while it asks about unsaved edits would answer for the user. The mark in its home has it quit without asking first
 export async function quitApp(homes: string[], app: AppQuit, command: string, skipPid?: number): Promise<string[]> {
-  const open = homes.map((h) => appPid(h, app)).filter((pid): pid is number => pid !== undefined && pid !== skipPid);
-  for (const pid of open) {
-    await app.quit(pid).catch((e: Error) => {
-      throw new Error(`could not ask Svall to quit (${e.message.split('\n')[0]}), so nothing was changed; quit it, then run ${command} again`);
-    });
-    for (let s = 0; s < QUIT_WAIT_S && app.isApp(pid); s++) await app.wait(1000);
+  const open = homes.map((h) => [h, appPid(h, app)] as const).filter((o): o is readonly [string, number] => o[1] !== undefined && o[1] !== skipPid);
+  for (const [home, pid] of open) {
+    const mark = path.join(home, 'quit-quietly');
+    fs.writeFileSync(mark, '');
+    try {
+      await app.quit(pid).catch((e: Error) => {
+        throw new Error(`could not ask Svall to quit (${e.message.split('\n')[0]}), so nothing was changed; quit it, then run ${command} again`);
+      });
+      for (let s = 0; s < QUIT_WAIT_S && app.isApp(pid); s++) await app.wait(1000);
+    } finally {
+      fs.rmSync(mark, { force: true });
+    }
     if (app.isApp(pid)) throw new Error(`Svall did not quit within ${QUIT_WAIT_S} s, so nothing was changed; quit it, then run ${command} again`);
   }
   return open.length ? ['quit Svall'] : [];

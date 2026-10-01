@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -439,6 +439,51 @@ runIf('Fleet', () => {
     store.update((d) => { d.characters[c.id].revive = { command: 'sleep 600' }; });
     await fleet.reviveCharacter(c.id);
     expect(Date.now() - store.state.characters[c.id].agent!.lastActivityAt).toBeLessThan(HOUR);
+  });
+
+  it('stops every terminal for a quit: an agent resumes with its flags, a shell starts afresh, and the server stays down', async () => {
+    const b = await boot();
+    const { fleet, store, tmux } = b;
+    const { c, pid } = await withAgent(b, 'claude --effort xhigh', "trap 'sleep 1; exit' HUP; while :; do sleep 0.1; done");
+    const shell = await fleet.createCharacter({ islandId: c.islandId, cwd: '/tmp', command: 'sleep 600' });
+    await fleet.openSecond(c.id);
+    const stopped = new Promise<void>((r) => fleet.once('stopped', r));
+    await fleet.stopAll();
+    await stopped;
+    const after = store.state.characters;
+    expect(after[c.id].tmux).toBeUndefined();
+    expect(after[c.id].second).toBeUndefined();
+    expect(after[c.id].revive).toEqual({ command: `claude --effort 'xhigh' --resume ${SID}` });
+    expect(after[shell.id].tmux).toBeUndefined();
+    expect(after[shell.id].revive).toEqual({ command: '' });
+    // the stop returns once the agent itself has gone, so a resume right after runs alone
+    expect(() => process.kill(pid, 0)).toThrow();
+    // the end the closing window sends leaves the agent the revive resumes
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionEnd', sessionId: SID } });
+    expect(store.state.characters[c.id].agent?.sessionId).toBe(SID);
+    // the lost control client brings no server back, and a page still open on the character does not wake it
+    await new Promise((r) => setTimeout(r, 1500));
+    await expect(tmux.run('list-sessions')).rejects.toThrow();
+    await expect(fleet.reviveCharacter(c.id)).rejects.toThrow('the fleet is stopping');
+  });
+
+  it('waits on and kills only a pid that still runs its agent when it stops for a quit', async () => {
+    const b = await boot();
+    const { c } = await withAgent(b, 'claude');
+    // the pid the agent had now runs another program, which the stop leaves be
+    const other = spawn('sleep', ['30'], { stdio: 'ignore' });
+    let signal: string | null = null;
+    other.on('exit', (_code, sig) => { signal = sig; });
+    b.store.update((d) => { d.characters[c.id].agent!.pid = other.pid!; });
+    b.procs.push({ pid: other.pid!, ppid: 1, pgid: other.pid!, args: 'sleep 30' });
+    try {
+      await b.fleet.stopAll();
+      await new Promise((r) => setTimeout(r, 100));
+      expect(signal).toBeNull();
+      expect(b.store.state.characters[c.id].revive).toEqual({ command: `claude --resume ${SID}` });
+    } finally {
+      other.kill();
+    }
   });
 
   it('keeps every agent running while dormancy is off', async () => {

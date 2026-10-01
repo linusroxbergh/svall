@@ -183,8 +183,7 @@ ${o.program.map((a) => `    <string>${xml(a)}</string>`).join('\n')}
     <key>LANG</key><string>en_US.UTF-8</string>${Object.entries(o.env ?? {}).map(([k, v]) => `
     ${plistEnv(k, v)}`).join('')}
   </dict>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
+  <key>RunAtLoad</key><false/>
   <key>StandardOutPath</key><string>${xml(o.log)}</string>
   <key>StandardErrorPath</key><string>${xml(o.log)}</string>
 </dict>
@@ -344,8 +343,11 @@ export async function setupHome(o: HomeSetup): Promise<string[]> {
 async function bootstrapAgent(launchAgentsDir: string, label: string): Promise<string> {
   const domain = `gui/${os.userInfo().uid}`;
   const plist = path.join(launchAgentsDir, `${label}.plist`);
+  // launchd starts the daemon only when the app asks, so one that ran before the reload is started again on the new plist
+  const running = await isRunning(label);
   await exec('launchctl', ['bootout', domain, plist]).catch(() => {});
   await exec('launchctl', ['bootstrap', domain, plist]);
+  if (running) await exec('launchctl', ['kickstart', `${domain}/${label}`]);
   return `launchctl bootstrap ${domain} ${plist}`;
 }
 
@@ -361,6 +363,10 @@ export async function kickstart(labels: string[]): Promise<string[]> {
 /** Whether launchd has `label` loaded in this user's session. */
 export const isLoaded = (label: string): Promise<boolean> =>
   exec('launchctl', ['print', `gui/${os.userInfo().uid}/${label}`]).then(() => true, () => false);
+
+/** Whether `label`'s daemon runs: a loaded job runs only while its fleet's window is open. */
+export const isRunning = (label: string): Promise<boolean> =>
+  exec('launchctl', ['print', `gui/${os.userInfo().uid}/${label}`]).then(({ stdout }) => /\bstate = running\b/.test(stdout), () => false);
 
 /** The program of another copy of Svall, still on disk, whose fleets these are: only an explicit setup takes them from it. */
 export const takenOverBy = (plist: string | undefined, runtime: Runtime, exists: (p: string) => boolean = fs.existsSync): string | undefined => {

@@ -1,7 +1,9 @@
+import type { Api } from './api.js';
 import type { Bridge } from './bridge.js';
 import { commitFocused } from './Field.js';
 import { chordFor } from './keys.js';
 import { flushDocs } from './resources/autosave.js';
+import { statusOf } from './selectors.js';
 import type { IdeState } from './store/ide.js';
 import type { AppStore } from './store/index.js';
 
@@ -15,12 +17,18 @@ export const unsavedFiles = (ide: Record<string, IdeState>): string[] => {
   return paths.map((p) => (paths.filter((q) => name(q) === name(p)).length > 1 ? p : name(p)));
 };
 
-/** Tells the shell which chord quits, and answers it before a quit: the docs waiting to be saved are written, and the files still unsaved are named for it to ask about. */
-export function followQuit({ store, bridge }: { store: AppStore; bridge: Pick<Bridge, 'send' | 'onMessage'> }): () => void {
+/** Tells the shell which chord quits, and answers it before a quit: the docs waiting to be saved are written, the files still
+ * unsaved and the agents at work are named for it to ask about, and once it goes ahead the fleet is stopped. */
+export function followQuit({ store, bridge, api }: { store: AppStore; bridge: Pick<Bridge, 'send' | 'onMessage'>; api: () => Pick<Api, 'call'> | undefined }): () => void {
   const tell = () => bridge.send({ type: 'keys.quit', chord: chordFor('quit', store.getState().settings.bindings) ?? undefined });
   tell();
   const unwatch = store.subscribe((s, prev) => { if (s.settings.bindings !== prev.settings.bindings) tell(); });
   const off = bridge.onMessage((m) => {
+    if (m.type === 'quit.stop') {
+      const stopping = api()?.call('fleet.stop', {}) ?? Promise.reject(new Error('svalld not connected'));
+      void stopping.then(() => true, () => false).then((ok) => bridge.send({ type: 'quit.stopped', ok }));
+      return;
+    }
     if (m.type !== 'quit.ask') return;
     // a field saves on blur, which a quit from the shell never sends
     commitFocused();
@@ -28,7 +36,9 @@ export function followQuit({ store, bridge }: { store: AppStore; bridge: Pick<Br
     const waited = new Promise<void>((resolve) => { timer = setTimeout(resolve, QUIT_FLUSH_MS); });
     void Promise.race([flushDocs().catch(() => {}), waited]).then(() => {
       clearTimeout(timer);
-      bridge.send({ type: 'quit.answer', unsaved: unsavedFiles(store.getState().ide) });
+      const s = store.getState();
+      const working = Object.values(s.fleet.characters).filter((c) => statusOf(c) === 'working').length;
+      bridge.send({ type: 'quit.answer', unsaved: unsavedFiles(s.ide), working });
     });
   });
   return () => { unwatch(); off(); };

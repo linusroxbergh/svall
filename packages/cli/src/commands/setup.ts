@@ -13,7 +13,7 @@ import { takeLoginEnv } from '@svall/svalld/login-env';
 import { LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from '@svall/svalld/profile';
 import { ownRuntime } from '@svall/svalld/runtime';
 import {
-  CODEX_TRUST, claudeHooksCurrent, cliCommand, codexHooksCurrent, hookRemovals, isLoaded, kickstart, plistCurrent, readCodexHooks, readJsonSettings, readOrUndefined,
+  CODEX_TRUST, claudeHooksCurrent, cliCommand, codexHooksCurrent, hookRemovals, isRunning, kickstart, plistCurrent, readCodexHooks, readJsonSettings, readOrUndefined,
   refreshFleetPlists, requireWritableHooks, runSetup, shimsCurrent, takenOverBy, type JsonSettings,
 } from '@svall/svalld/setup';
 import { inheritingFleets, integrationsFor, projectsFolder, requireInstalledApp, runtimeVersion, setupPlan, staleFleets, suggestProjects } from '@svall/svalld/setup-plan';
@@ -149,9 +149,10 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       const system = o.launchctl && process.platform === 'darwin';
       // a fleet another copy on disk runs keeps its daemon, whatever version it is
       const ours = homes.filter((h) => !takenOverBy(plistOf(h), runtime));
-      const loaded = new Set<string>();
-      if (system) for (const h of ours) if (await isLoaded(label(h))) loaded.add(label(h));
-      const stale = staleFleets(homes, runtimeVersion(), (l) => loaded.has(l));
+      // only a fleet whose window is open runs; the rest start on the new build with their window
+      const running = new Set<string>();
+      if (system) for (const h of ours) if (await isRunning(label(h))) running.add(label(h));
+      const stale = staleFleets(homes, runtimeVersion(), (l) => running.has(l));
       if (o.ifNeeded) {
         const fleetsStale = ours.some((h) => profileOf(h) !== PRIVATE && !plistCurrent({ home: h, label: label(h), launchAgentsDir: launchAgents, runtime }));
         // stand-in folders must not replace what a setup with the real login environment wrote
@@ -186,7 +187,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       const fleets = await refreshFleetPlists({ homes, runtime, launchAgentsDir: launchAgents, launchctl: system, takeOver: !o.ifNeeded });
       lines.push(...fleets.done);
       // a running fleet took the private fleet's main agent at its start, so a switch reaches it only through a restart
-      const inheriting = choices?.mainAgent ? inheritingFleets(ours, (l) => loaded.has(l)) : [];
+      const inheriting = choices?.mainAgent ? inheritingFleets(ours, (l) => running.has(l)) : [];
       const restart = [...new Set([...stale, ...inheriting])].filter((l) => l !== LAUNCHD_LABEL && !fleets.restarted.includes(l));
       if (system) lines.push(...await kickstart(restart));
       // Codex's trust ask is the user's next step, so it goes with the warnings the setup screen shows

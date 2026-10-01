@@ -24,8 +24,8 @@ const stamp = (): string => [paths.config, paths.state].map((file) => {
   try { const s = fs.statSync(file); return `${s.ino}:${s.size}:${s.mtimeMs}`; } catch { return '-'; }
 }).join(' ');
 
-// launchd would restart an exiting daemon every ten seconds, so one refused for its config.json or state.json waits for
-// either to change. The stamp is taken before the start, so a fix written while it fails is not missed
+// the app would start an exiting daemon again every ten seconds while its window is open, so one refused for its config.json
+// or state.json waits for either to change. The stamp is taken before the start, so a fix written while it fails is not missed
 async function start(): Promise<Daemon> {
   for (;;) {
     const before = stamp();
@@ -49,5 +49,7 @@ const daemon = await start().catch((e: Error) => {
   process.exit(1);
 });
 const shutdown = async (sig: string) => { log.info(`received ${sig}`); await daemon.stop(); process.exit(0); };
+// the app quit and the fleet has stopped; launchd starts the daemon again only when the app asks
+daemon.fleet.once('stopped', () => void shutdown('fleet.stop'));
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 process.on('SIGINT', () => void shutdown('SIGINT'));

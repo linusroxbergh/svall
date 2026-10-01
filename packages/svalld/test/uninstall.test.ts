@@ -161,16 +161,17 @@ describe('runUninstall', () => {
     fs.writeFileSync(path.join(work, 'app.pid'), `102\t${work}`);
     const plist = path.join(f.launchAgentsDir, `${LAUNCHD_LABEL}.plist`);
     const open = new Set([101, 102]);
-    const asked: [number, boolean][] = [];
+    const asked: [number, boolean, boolean][] = [];
     let waits = 0;
-    // each window takes a few seconds to answer, as one asking about unsaved edits would
+    // each window takes a few seconds to answer, as one asking about unsaved edits would; the mark in its home has it skip the question
     const app: AppQuit = {
       isApp: (pid) => open.has(pid),
-      quit: async (pid) => { asked.push([pid, fs.existsSync(plist)]); },
+      quit: async (pid) => { asked.push([pid, fs.existsSync(plist), fs.existsSync(path.join(pid === 101 ? f.home : work, 'quit-quietly'))]); },
       wait: async () => { if (++waits % 5 === 0) open.delete(asked[asked.length - 1][0]); },
     };
     const lines = await runUninstall({ ...f.o, homes: [f.home, work], app });
-    expect(asked).toEqual([[101, true], [102, true]]);
+    expect(asked).toEqual([[101, true, true], [102, true, true]]);
+    expect(fs.existsSync(path.join(work, 'quit-quietly'))).toBe(false);
     expect(waits).toBe(10);
     expect(lines[0]).toBe('quit Svall');
 
@@ -190,6 +191,8 @@ describe('runUninstall', () => {
     await expect(runUninstall({ ...g.o, app: refused }))
       .rejects.toThrow('could not ask Svall to quit (Not authorized to send Apple events to Svall. (-1743)), so nothing was changed');
     expect(waited).toBe(60);
+    // a mark left behind would have the user's own next quit skip the question
+    expect(fs.existsSync(path.join(g.home, 'quit-quietly'))).toBe(false);
 
     // a pid the file names for another home is some other fleet's
     fs.writeFileSync(path.join(g.home, 'app.pid'), `101\t/elsewhere/.svall`);

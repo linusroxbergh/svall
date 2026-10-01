@@ -119,7 +119,8 @@ describe('doctor', () => {
     expect(c.tmux).toMatchObject({ status: 'fail', detail: expect.stringMatching(/brew install tmux/) });
     expect(c.agents).toMatchObject({ status: 'fail', detail: expect.stringContaining('neither claude nor codex is on PATH') });
     expect(c.gh).toMatchObject({ status: 'warn', detail: expect.stringMatching(/gh auth login/) });
-    expect(c.svalld).toMatchObject({ status: 'fail', detail: expect.stringMatching(/not running .*: the log below says why$/) });
+    expect(c.svalld).toMatchObject({ status: 'warn', detail: expect.stringMatching(/not running .*: it starts when Svall opens on this fleet$/) });
+    expect(c['hook receiver']).toMatchObject({ status: 'skip', detail: 'svalld is not running' });
     expect(c.launchd).toMatchObject({ status: 'fail', detail: expect.stringMatching(/not loaded/) });
     expect(c.hooks).toMatchObject({ status: 'fail', detail: expect.stringMatching(/svall setup/) });
     expect(r.log.lines).toEqual([]);
@@ -137,9 +138,23 @@ describe('doctor', () => {
     const c = byName(await doctor(priv, fake({ hookUp: false }).deps));
     expect(c.svalld.status).toBe('ok');
     expect(c['hook receiver']).toMatchObject({ status: 'fail', detail: expect.stringMatching(/does not answer \(ENOENT\); restart it with `launchctl kickstart -k gui\/\$\(id -u\)\/io\.github\.linusroxbergh\.svall\.svalld`$/) });
-    const work = byName(await doctor({ name: 'work', home: '/u/.svall-work', managed: true }, fake({ hookUp: false }).deps));
+    const work = byName(await doctor({ name: 'work', home: '/u/.svall-work', managed: true }, fake({ hookUp: false, files: { '/u/.svall-work/port': '51000' } }).deps));
     expect(work['hook receiver'].detail).toMatch(/io\.github\.linusroxbergh\.svall\.svalld\.work`$/);
-    expect(byName(await doctor(adhoc, fake({ hookUp: false }).deps))['hook receiver'].detail).toMatch(/restart the svalld serving \/tmp\/svall-dev$/);
+    expect(byName(await doctor(adhoc, fake({ hookUp: false, files: { '/tmp/svall-dev/port': '47900' } }).deps))['hook receiver'].detail).toMatch(/restart the svalld serving \/tmp\/svall-dev$/);
+  });
+
+  it('reads a fleet whose window is shut as at rest, not broken', async () => {
+    const f = fake({
+      hookUp: false,
+      commands: { 'launchctl print gui/501/io.github.linusroxbergh.svall.svalld': '\tstate = not running\n\tlast exit code = 0\n' },
+      files: { '/u/.svall/port': undefined as never },
+    });
+    const r = await doctor(priv, f.deps);
+    const c = byName(r);
+    expect(c.svalld.status).toBe('warn');
+    expect(c['hook receiver']).toMatchObject({ status: 'skip', detail: 'svalld is not running' });
+    expect(c.launchd.status).toBe('ok');
+    expect(r.checks.filter((x) => x.status === 'fail')).toEqual([]);
   });
 
   it('says the hooks are out of date when they hold a command or statusline setup no longer writes', async () => {

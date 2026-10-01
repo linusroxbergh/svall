@@ -32,8 +32,10 @@ function createApp(): AppContext {
   const initialView = (['map', 'board'] as const).find((v) => v === query.get('view'));
   const store = createAppStore(localAppStorage(window.__svallHome), initialView);
   setAppStore(store);
-  // one ask for the port stays pending, however many reconnects asked meanwhile
+  // one ask for the port stays pending, however many reconnects asked meanwhile; the daemon the shell starts with the
+  // window writes its port within moments, so it is asked for often at first and steadily once it stays down
   let retry: ReturnType<typeof setTimeout> | undefined;
+  let portlessSince: number | undefined;
 
   function start(conn: Connection): void {
     const a = new Api(endpointOf(conn));
@@ -64,7 +66,7 @@ function createApp(): AppContext {
         if (r.fleets.length > 1) store.getState().setFleetPicker('bare');
       }).catch((e: Error) => console.warn(`fleets.list: ${e.message}`));
     };
-    // the phone tab in the corner reads the mobile status, and `svall mobile` can change it while the app is shut
+    // the phone tab in the corner reads the mobile status, and `svall mobile` can change it while the page is offline
     a.onOpen = () => { load(); loadMobileStatus({ api: a, store }); repoWatch?.resend(); if (offerFleets) offer(); };
     installKeyHandlers({ store, api: a, bridge, browser });
     a.start();
@@ -77,7 +79,7 @@ function createApp(): AppContext {
   store.subscribe((s, prev) => { for (const id of Object.keys(prev.ide)) if (!s.ide[id]) dropBuffers(id); });
   if (bridge.present) {
     followNotifications({ store, bridge, api: () => api });
-    followQuit({ store, bridge });
+    followQuit({ store, bridge, api: () => api });
     bridge.onMessage((m) => {
       if (m.type === 'app.active') { store.getState().setActive(m.active); return; }
       if (m.type === 'ghostty.configErrors') { store.getState().setConfigErrors(m.errors); return; }
@@ -87,7 +89,13 @@ function createApp(): AppContext {
       // the toast sits below a dialog, and this window is where the user stays
       if (m.type === 'openFleet.failed') { store.getState().setFleetPicker(undefined); store.getState().showToast(`Could not open ${m.home}: ${m.reason}`); return; }
       if (m.type !== 'connection') return;
-      if (!m.port) { clearTimeout(retry); retry = setTimeout(() => bridge.send({ type: 'connection' }), 2000); return; }
+      if (!m.port) {
+        portlessSince ??= Date.now();
+        clearTimeout(retry);
+        retry = setTimeout(() => bridge.send({ type: 'connection' }), Date.now() - portlessSince < 5000 ? 250 : 2000);
+        return;
+      }
+      portlessSince = undefined;
       if (api) api.setEndpoint(endpointOf(m));
       else start(m);
     });

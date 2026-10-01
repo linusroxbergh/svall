@@ -208,6 +208,15 @@ describe('mobileControl', () => {
     expect(made).toBe(1);
   });
 
+  it('moves its link to the port the daemon started on this time, and leaves another fleet\'s alone', async () => {
+    const d = deps({ served: 'http://127.0.0.1:51000/abcdef' });
+    expect((await control(d).get()).serving).toBe(true);
+    expect(d.calls.find((c) => c.args.includes('--bg'))!.args.at(-1)).toBe(TARGET);
+    const theirs = deps({ served: 'http://127.0.0.1:51000/theirs' });
+    expect((await control(theirs).get()).serving).toBe(false);
+    expect(theirs.calls.some((c) => c.args.includes('--bg'))).toBe(false);
+  });
+
   it('serves the fleet behind a fresh key on every on and off, and leaves the key alone on a look', async () => {
     const files = { [path.join(HOME, 'port')]: '47812', [path.join(HOME, 'mobile-key')]: 'abcdef', [MOBILE_DIST]: 'built' };
     const d = deps({ files });

@@ -61,7 +61,7 @@ export class Client {
   static async connect(home: string = svallHome()): Promise<Client> {
     const paths = resolvePaths(home);
     if (!fs.existsSync(paths.port) || !fs.existsSync(paths.token)) {
-      throw new Error(`svalld is not running (no ${paths.port}); \`${doctorHint(resolveTarget({ env: home }))}\` says why`);
+      throw new Error(`svalld is not running (no ${paths.port}): it runs while Svall is open on this fleet; \`${doctorHint(resolveTarget({ env: home }))}\` says more`);
     }
     const port = Number(fs.readFileSync(paths.port, 'utf8'));
     const token = fs.readFileSync(paths.token, 'utf8').trim();

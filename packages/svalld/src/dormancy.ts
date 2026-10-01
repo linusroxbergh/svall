@@ -42,10 +42,8 @@ const PLAIN = /^[\w.:@/[\]-]+$/;
 export function startFlags(args: string, kind: AgentKind): string[] | undefined {
   const { kept, keptSwitches, dropped, droppedSwitches } = FLAGS[kind];
   const words = args.trim().split(/\s+/);
-  // the agent's own binary, or node running Claude Code's script
-  const script = kind === 'claude' && path.basename(words[0]) === 'node' && (!!words[1]?.endsWith('/claude-code/cli.js') || path.basename(words[1] ?? '') === 'claude');
-  if (path.basename(words[0]) !== kind && !script) return undefined;
-  let i = script ? 2 : 1;
+  if (!runsAgent(args, kind)) return undefined;
+  let i = path.basename(words[0]) === 'node' ? 2 : 1;
   const resume = kind === 'codex' && words[i] === 'resume';
   if (resume) i++;
   const out: string[] = [];
@@ -73,6 +71,13 @@ export function startFlags(args: string, kind: AgentKind): string[] | undefined 
     out.push(flag, shq(value));
   }
   return out;
+}
+
+/** Whether `args`, as ps prints them, run the agent: its own binary, or node running Claude Code's script. */
+export function runsAgent(args: string, kind: AgentKind): boolean {
+  const words = args.trim().split(/\s+/);
+  const script = kind === 'claude' && path.basename(words[0]) === 'node' && (!!words[1]?.endsWith('/claude-code/cli.js') || path.basename(words[1] ?? '') === 'claude');
+  return path.basename(words[0]) === kind || script;
 }
 
 export type Proc = { pid: number; ppid: number; pgid: number; args: string };
@@ -105,7 +110,7 @@ export function runsInBackground(pid: number, procs: Proc[]): boolean {
 
 // a hung-up agent runs its SessionEnd hooks, for at most a minute, before it exits; a resume started meanwhile would
 // write to the same session
-export async function exited(pid: number): Promise<void> {
-  for (let n = 0; n < 600 && running(pid); n++) await new Promise((r) => setTimeout(r, 100));
+export async function exited(pid: number, waitMs = 60_000): Promise<void> {
+  for (let n = 0; n < waitMs / 100 && running(pid); n++) await new Promise((r) => setTimeout(r, 100));
   if (running(pid)) try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ }
 }

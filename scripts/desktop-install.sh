@@ -131,9 +131,12 @@ for home in "$HOME"/.svall-dev "$HOME"/.svall-dev-*; do
   case "$pid" in '' | *[!0-9]*) continue ;; esac
   is_app "$pid" || continue
   [ -n "$CLOSED" ] || { step "Closing open windows"; CLOSED=1; }
+  # the mark has the window quit without asking first
+  : >"$home/quit-quietly"
   osascript -l JavaScript -e "ObjC.import('AppKit'); const a = \$.NSRunningApplication.runningApplicationWithProcessIdentifier($pid); if (!a.isNil() && !a.terminate) throw new Error('macOS did not pass the quit on')" >/dev/null \
-    || fail "could not ask Svall to quit, so nothing was installed; quit it, then run pnpm desktop:install again"
+    || { rm -f "$home/quit-quietly"; fail "could not ask Svall to quit, so nothing was installed; quit it, then run pnpm desktop:install again"; }
   for _ in $(seq 60); do is_app "$pid" || break; sleep 1; done
+  rm -f "$home/quit-quietly"
   ! is_app "$pid" || fail "Svall did not quit within 60 s, so nothing was installed; quit it, then run pnpm desktop:install again"
 done
 
@@ -153,7 +156,8 @@ if [ -n "$SETUP" ]; then
 fi
 
 step "Restarting svalld"
-launchctl list | awk '$3 ~ /^io\.github\.linusroxbergh\.svall\.dev\.svalld/ { print $3 }' | while read -r label; do
+# only the fleets whose windows are open run; the rest start with their window
+launchctl list | awk '$1 != "-" && $3 ~ /^io\.github\.linusroxbergh\.svall\.dev\.svalld/ { print $3 }' | while read -r label; do
   echo "    $label" >>"$LOG"
   launchctl kickstart -k "gui/$(id -u)/$label" >>"$LOG" 2>&1 || echo "    (kickstart failed for $label)" >>"$LOG"
 done

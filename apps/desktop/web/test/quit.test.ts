@@ -5,6 +5,7 @@ import { dropBuffers, editBuffer, loadBuffer } from '../src/ide/buffers.js';
 import { followQuit, QUIT_FLUSH_MS, unsavedFiles } from '../src/quit.js';
 import { watchDoc } from '../src/resources/autosave.js';
 import { createAppStore } from '../src/store/index.js';
+import { chr, fleet } from './fixtures.js';
 
 const ROOT = 'r:/d/islands/quit';
 
@@ -20,12 +21,13 @@ function fakeBridge() {
 }
 
 // a disk that takes every write, or holds each one until `release` while `hold` is set
-function setup(o: { hold?: boolean } = {}) {
+function setup(o: { hold?: boolean; stop?: () => Promise<object> } = {}) {
   const disk: Record<string, string> = {};
   const held: (() => void)[] = [];
   const api = {
     call: (m: string, p: { path: string; text: string }) => {
       if (m === 'resources.get') return Promise.resolve({ sources: [] });
+      if (m === 'fleet.stop') return o.stop ? o.stop() : Promise.resolve({});
       if (m !== 'fs.write') return Promise.reject(new Error(m));
       const write = () => { disk[p.path] = p.text; return { mtimeMs: 2 }; };
       return o.hold ? new Promise((resolve) => { held.push(() => resolve(write())); }) : Promise.resolve(write());
@@ -33,7 +35,7 @@ function setup(o: { hold?: boolean } = {}) {
   } as unknown as Pick<Api, 'call'>;
   const store = createAppStore();
   const bridge = fakeBridge();
-  const stop = followQuit({ store, bridge });
+  const stop = followQuit({ store, bridge, api: () => api });
   // a doc open on the shelf with an edit the autosave has not written yet, flagged as the editor flags it
   const edit = (path: string, text: string) => {
     loadBuffer(ROOT, path, '', 1, []);
@@ -41,7 +43,7 @@ function setup(o: { hold?: boolean } = {}) {
     editBuffer(ROOT, path, { changes: { from: 0, insert: text } });
     store.getState().markFile(ROOT, path, { dirty: true });
   };
-  const answers = () => bridge.sent.filter((m) => m.type === 'quit.answer');
+  const answers = () => bridge.sent.filter((m) => m.type === 'quit.answer' || m.type === 'quit.stopped');
   return { store, bridge, disk, edit, answers, release: () => held.shift()?.(), stop };
 }
 
@@ -64,7 +66,7 @@ describe('followQuit', () => {
     q.bridge.emit({ type: 'quit.ask' });
     await vi.advanceTimersByTimeAsync(0);
     expect(q.disk['a.md']).toBe('typed');
-    expect(q.answers()).toEqual([{ type: 'quit.answer', unsaved: [] }]);
+    expect(q.answers()).toEqual([{ type: 'quit.answer', unsaved: [], working: 0 }]);
     q.stop();
   });
 
@@ -73,7 +75,7 @@ describe('followQuit', () => {
     q.store.getState().markFile('c1', '/repo/src/main.ts', { dirty: true });
     q.bridge.emit({ type: 'quit.ask' });
     await vi.advanceTimersByTimeAsync(0);
-    expect(q.answers()).toEqual([{ type: 'quit.answer', unsaved: ['main.ts'] }]);
+    expect(q.answers()).toEqual([{ type: 'quit.answer', unsaved: ['main.ts'], working: 0 }]);
     q.stop();
   });
 
@@ -84,10 +86,35 @@ describe('followQuit', () => {
     await vi.advanceTimersByTimeAsync(QUIT_FLUSH_MS - 1);
     expect(q.answers()).toEqual([]);
     await vi.advanceTimersByTimeAsync(1);
-    expect(q.answers()).toEqual([{ type: 'quit.answer', unsaved: ['b.md'] }]);
+    expect(q.answers()).toEqual([{ type: 'quit.answer', unsaved: ['b.md'], working: 0 }]);
     q.release();
     await vi.advanceTimersByTimeAsync(0);
     q.stop();
+  });
+
+  it('counts the agents a quit would stop mid-task', async () => {
+    const q = setup();
+    const agent = (status: 'working' | 'idle') => ({ kind: 'claude' as const, sessionId: 's', transcriptPath: '/t', status, lastActivityAt: 0 });
+    const f = fleet();
+    f.characters = { a: chr('a', 'i_a', { x: 0, y: 0 }, { agent: agent('working') }), b: chr('b', 'i_a', { x: 1, y: 0 }, { agent: agent('idle') }) };
+    q.store.getState().setFleet(f);
+    q.bridge.emit({ type: 'quit.ask' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(q.answers()).toEqual([{ type: 'quit.answer', unsaved: [], working: 1 }]);
+    q.stop();
+  });
+
+  it('has the fleet stopped once the quit goes ahead, and says so when the daemon could not do it', async () => {
+    const q = setup();
+    q.bridge.emit({ type: 'quit.stop' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(q.answers()).toEqual([{ type: 'quit.stopped', ok: true }]);
+    q.stop();
+    const down = setup({ stop: () => Promise.reject(new Error('svalld offline')) });
+    down.bridge.emit({ type: 'quit.stop' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(down.answers()).toEqual([{ type: 'quit.stopped', ok: false }]);
+    down.stop();
   });
 });
 

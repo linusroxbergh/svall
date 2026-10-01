@@ -109,6 +109,11 @@ export function servesTarget(json: string, host: string, port: number, target: s
   return web[`${host}:${port}`]?.Handlers?.['/']?.Proxy === target;
 }
 
+/** Whether the port's link carries `key`, wherever the daemon behind it was. */
+export function servesKey(json: string, host: string, port: number, key: string): boolean {
+  return !!(JSON.parse(json) as ServeStatus).Web?.[`${host}:${port}`]?.Handlers?.['/']?.Proxy?.endsWith(`/${key}`);
+}
+
 /** Whether the port serves anything but this fleet: another fleet's link, the other Svall build's, or the user's own.
  *  Its mapping carries its key across a daemon restart, and its daemon's address across a change that failed after the key turned over. */
 export function servesOther(json: string, host: string, port: number, key: string | undefined, origin?: string): boolean {
@@ -185,7 +190,13 @@ export function mobileControl(d: MobileDeps, opts: { home: string; profile: stri
     const target = fleetTarget(d, opts.home);
     if (enable === true) await serve(d, bin, target, port);
     if (enable === false && !other) await unserve(d, bin, port);
-    const serving = servesTarget(await d.run(bin, ['serve', 'status', '--json']), host, port, target);
+    let json = await d.run(bin, ['serve', 'status', '--json']);
+    // the daemon starts with the app, on a new port unless the fleet names one: its link, known by its key, follows it there
+    if (enable === undefined && key && !servesTarget(json, host, port, target) && servesKey(json, host, port, key)) {
+      await serve(d, bin, target, port);
+      json = await d.run(bin, ['serve', 'status', '--json']);
+    }
+    const serving = servesTarget(json, host, port, target);
     const url = phoneUrl(host, port);
     const status: MobileStatus = {
       serving, url, port, logins: logins(), phones: opts.phones.list(),

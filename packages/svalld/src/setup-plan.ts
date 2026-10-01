@@ -77,18 +77,18 @@ const readVersion = (home: string): string | undefined => {
   try { return fs.readFileSync(path.join(home, 'version'), 'utf8').trim(); } catch { return undefined; }
 };
 
-/** The launchd labels of the loaded fleets whose daemon started as another version than `version`, or wrote none. */
-export function staleFleets(homes: string[], version: string, loaded: (label: string) => boolean,
+/** The launchd labels of the running fleets whose daemon started as another version than `version`, or wrote none. */
+export function staleFleets(homes: string[], version: string, running: (label: string) => boolean,
   label: (home: string) => string = (h) => profileLabel(profileOf(h))): string[] {
   return homes.map((h) => [h, label(h)] as const)
-    .filter(([h, l]) => loaded(l) && readVersion(h) !== version)
+    .filter(([h, l]) => running(l) && readVersion(h) !== version)
     .map(([, l]) => l);
 }
 
-/** The launchd labels of the loaded fleets that run the private fleet's main agent, as their own config names none. */
-export function inheritingFleets(homes: string[], loaded: (label: string) => boolean,
+/** The launchd labels of the running fleets that run the private fleet's main agent, as their own config names none. */
+export function inheritingFleets(homes: string[], running: (label: string) => boolean,
   label: (home: string) => string = (h) => profileLabel(profileOf(h))): string[] {
   // a config that does not parse stops its daemon at start anyway
   const namesOwn = (h: string) => { try { return loadConfig(resolvePaths(h).config).mainAgent !== undefined; } catch { return true; } };
-  return homes.filter((h) => profileOf(h) !== PRIVATE && loaded(label(h)) && !namesOwn(h)).map(label);
+  return homes.filter((h) => profileOf(h) !== PRIVATE && running(label(h)) && !namesOwn(h)).map(label);
 }

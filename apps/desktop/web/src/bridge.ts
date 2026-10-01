@@ -45,8 +45,10 @@ export type ToShell =
   | { type: 'notify.remove'; key: string }
   | { type: 'notify.enable' }
   | { type: 'notify.settings' }
-  // the files a quit would drop, by name, once the docs waiting to be written are
-  | { type: 'quit.answer'; unsaved: string[] }
+  // the files a quit would drop, by name, once the docs waiting to be written are, and the agents it would stop mid-task
+  | { type: 'quit.answer'; unsaved: string[]; working: number }
+  // the fleet has stopped, or could not be asked to
+  | { type: 'quit.stopped'; ok: boolean }
   // brings up the window open on another fleet, or opens one; quit then leaves that window alone
   | { type: 'openFleet'; home: string; quit?: boolean }
   // the fleet was renamed, and the window title follows
@@ -85,6 +87,8 @@ export type FromShell =
   | { type: 'folder.picked'; path: string }
   // the app is about to quit and waits for a quit.answer
   | { type: 'quit.ask' }
+  // the quit goes ahead: the fleet stops, and the shell waits for quit.stopped
+  | { type: 'quit.stop' }
   // the menu's Open Fleet…
   | { type: 'fleets' }
   | { type: 'openFleet.failed'; home: string; reason: string };

@@ -160,7 +160,8 @@ function config(t: Target, d: DoctorDeps): Check {
 
 async function svalld(t: Target, d: DoctorDeps): Promise<Check> {
   const port = d.read(resolvePaths(t.home).port)?.trim();
-  if (!port) return { name: 'svalld', status: 'fail', detail: `not running (no port file in ${t.home}): the log below says why` };
+  // the daemon runs while Svall is open on the fleet; one that stopped otherwise says why in the log below
+  if (!port) return { name: 'svalld', status: 'warn', detail: `not running (no port file in ${t.home}): it starts when Svall opens on this fleet` };
   try {
     (await d.connect(t.home)).close();
     return { name: 'svalld', status: 'ok', detail: `running on port ${port}` };
@@ -170,7 +171,10 @@ async function svalld(t: Target, d: DoctorDeps): Promise<Check> {
 }
 
 async function hookReceiver(t: Target, d: DoctorDeps): Promise<Check> {
-  const path = resolvePaths(t.home).hooksSock;
+  const paths = resolvePaths(t.home);
+  // the daemon listens only while Svall is open on the fleet, as the svalld check says
+  if (!d.read(paths.port)?.trim()) return { name: 'hook receiver', status: 'skip', detail: 'svalld is not running' };
+  const path = paths.hooksSock;
   try {
     await d.connectHook(path);
     return { name: 'hook receiver', status: 'ok', detail: `answering at ${path}` };
@@ -188,8 +192,9 @@ async function launchd(t: Target, d: DoctorDeps): Promise<Check> {
     const out = await d.run('launchctl', ['print', `gui/${d.uid}/${label}`]);
     // the service's own fields sit one tab in; deeper ones belong to its endpoints and triggers
     const fields = out.split('\n').filter((l) => /^\t(state|last exit code|runs) =/.test(l)).map((l) => l.trim());
-    const running = fields.includes('state = running');
-    return { name: 'launchd', status: running ? 'ok' : 'fail', detail: `${label}: ${fields.join(', ') || 'loaded'}` };
+    // a job at rest is the fleet with its window shut; only one that last exited in failure is wrong
+    const failed = !fields.includes('state = running') && fields.some((f) => /^last exit code = [1-9]/.test(f));
+    return { name: 'launchd', status: failed ? 'fail' : 'ok', detail: `${label}: ${fields.join(', ') || 'loaded'}` };
   } catch {
     return { name: 'launchd', status: 'fail', detail: `${label} is not loaded: ${SHIM} ${t.name === PRIVATE ? 'setup' : t.name}` };
   }

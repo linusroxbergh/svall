@@ -12,9 +12,9 @@ you or done.
 - Islands group your characters, say one per project, on a map or a board.
   Each card shows its agent's status, how full its context window is, its
   model and links such as its PR and ticket.
-- Each terminal is a tmux window, so quitting the app or restarting the daemon
-  loses nothing. After a reboot, reviving a character resumes its session with
-  `claude --resume` or `codex resume`.
+- Each terminal is a tmux window that runs while the app is open. Quitting
+  the app stops them all; opening a character again resumes its session with
+  `claude --resume` or `codex resume`, as it does after a reboot.
 - Context carries over. Give an island or character instructions, and links,
   files or folders to read. Agents leave notes for the next agent, per fleet,
   repository, island or character. Each session starts with a short brief of
@@ -37,8 +37,9 @@ you or done.
 - The `svall` CLI scripts the fleet: make characters, send prompts, wait for
   them.
 
-A daemon (`svalld`) runs each fleet; the app, the CLI and the phone are its
-clients.
+A daemon (`svalld`) runs each fleet while its window is open; the app, the CLI
+and the phone are its clients. Quitting the app stops the daemon and every
+terminal in it.
 
 ## Quickstart
 
@@ -132,7 +133,8 @@ that. The Usage panel shows Claude's subscription limits, not API spending.
 ### Updating
 
 Svall checks for updates on its own and installs one when you click it. Svall →
-Check for Updates… checks now.
+Check for Updates… checks now. Installing quits every Svall window, which stops
+each fleet; a character picks up where it left off when you open it.
 
 ### Uninstalling
 
@@ -201,7 +203,7 @@ needs Xcode; see [Building Ghostty from source](#building-ghostty-from-source).
 Keep the clone where it is, because `svall-dev` and the daemon run from it. If
 you move it or clone it again, `pnpm desktop:install` in the new place points
 them there. `svall-dev uninstall` removes Svall Dev; run it before you delete
-the clone, or launchd restarts the missing daemon every ten seconds.
+the clone, or its launchd agents stay behind pointing at a missing daemon.
 
 ### Updating Svall Dev
 
@@ -345,6 +347,8 @@ Ghostty `initial-command` and `input` are ignored.
   above the keyboard.
 - `⚙` → *Notify this phone* sends a push when an agent is blocked or done. Tap
   a blocked one to approve or deny it.
+- The page and its pushes work while Svall is open on that fleet, as its daemon
+  serves them.
 - The tailnet needs MagicDNS and HTTPS certificates, both turned on in
   Tailscale's admin console. The certificate puts the Mac's tailnet name in a
   public log.
@@ -432,7 +436,8 @@ needs is missing. For each agent you leave on, it writes:
 It also writes:
 
 - `~/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld*.plist`,
-  one per fleet, which keeps each daemon running.
+  one per fleet, through which the app starts each daemon while its window is
+  open.
 - `~/.local/bin/svall`: a shim into `Svall.app`.
 - `~/.svall` and `~/.svall-<name>`: each fleet's state, config,
   log, hook scripts, tmux.conf and tmux server, plus, in `~/.svall/home`,

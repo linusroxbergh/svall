@@ -5,6 +5,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
+import WebSocket from 'ws';
 import { FleetState, emptyState } from '@svall/protocol';
 import { resolvePaths } from '../src/paths.js';
 import { Tmux } from '../src/tmux/tmux.js';
@@ -29,7 +30,7 @@ async function runBin(home: string): Promise<{ code: number; stderr: string }> {
 describe('svalld bin on the other build\'s home', () => {
   afterEach(cleanHomes);
 
-  it('waits rather than exiting for launchd to restart every ten seconds', async () => {
+  it('waits rather than exiting for the app to start it again every ten seconds', async () => {
     // the tests run as the release, whose daemon refuses Svall Dev's homes
     const home = path.join(makeHome(), '.svall-dev');
     const log = () => (fs.existsSync(resolvePaths(home).log) ? fs.readFileSync(resolvePaths(home).log, 'utf8') : '');
@@ -52,6 +53,30 @@ runIf('svalld bin', () => {
     for (const h of homes.splice(0)) { const p = resolvePaths(h); await new Tmux(p.tmuxSock, p.tmuxConf).killServer(); }
     cleanHomes();
   });
+
+  it('stops the fleet when the app quits, answers, and exits for good', async () => {
+    const home = makeHome();
+    homes.push(home);
+    const p = resolvePaths(home);
+    fs.writeFileSync(p.config, JSON.stringify({ shell: '/bin/sh', port: 0 }));
+    const daemon = spawn(tsx, [bin], { env: { ...process.env, SVALL_HOME: home }, stdio: 'ignore' });
+    try {
+      await waitFor(() => fs.existsSync(p.port), 30_000);
+      const ws = new WebSocket(`ws://127.0.0.1:${fs.readFileSync(p.port, 'utf8').trim()}`);
+      await once(ws, 'open');
+      const answer = new Promise((resolve) => ws.on('message', (raw) => { const m = JSON.parse(raw.toString()); if (m.id === 1) resolve(m); }));
+      ws.send(JSON.stringify({ token: fs.readFileSync(p.token, 'utf8').trim() }));
+      ws.send(JSON.stringify({ id: 1, method: 'fleet.stop', params: {} }));
+      expect(await answer).toEqual({ id: 1, result: {} });
+      // exit 0 is the end launchd leaves be, and the app is what starts it again
+      const [code] = await once(daemon, 'exit');
+      expect(code).toBe(0);
+      expect(fs.existsSync(p.port)).toBe(false);
+      await expect(new Tmux(p.tmuxSock, p.tmuxConf).run('list-sessions')).rejects.toThrow();
+    } finally {
+      if (daemon.exitCode === null) { daemon.kill('SIGTERM'); await once(daemon, 'exit'); }
+    }
+  }, 60_000);
 
   it('exits non-zero and logs why when startup fails', async () => {
     const home = makeHome();

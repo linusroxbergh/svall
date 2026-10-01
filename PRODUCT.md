@@ -20,7 +20,7 @@ Svall is a macOS map of your coding agents. Every terminal is a character on an 
 
 ## Positioning
 
-The fleet is a place, not a list: islands per project, characters per terminal, status you read from across the room. Sessions live in tmux under a daemon, so quitting the app loses nothing and a reboot resumes each agent's conversation.
+The fleet is a place, not a list: islands per project, characters per terminal, status you read from across the room. Sessions live in tmux under a daemon that runs while the app is open; quitting stops them, and opening a character resumes its agent's conversation, as after a reboot.
 
 ## Operating Context
 

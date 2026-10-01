@@ -57,7 +57,7 @@ enum SvallHome {
     }
 
     // the name the fleet's directory gives it, nil for the private one
-    private static var directoryName: String? {
+    static var directoryName: String? {
         if isPrivate { return nil }
         let base = ((path as NSString).standardizingPath as NSString).lastPathComponent
         let prefix = root + "-"
@@ -92,6 +92,14 @@ enum SvallHome {
         do { try "\(pid)\t\(path)".write(toFile: pidFile, atomically: true, encoding: .utf8) }
         catch { NSLog("svall: could not claim %@: %@", pidFile, "\(error)") }
         return true
+    }
+
+    /// Whether a script marked the quit on its way as its own; a mark older than its 60 s wait is stale.
+    static func takeQuietQuit() -> Bool {
+        let file = path + "/quit-quietly"
+        guard let made = (try? FileManager.default.attributesOfItem(atPath: file))?[.modificationDate] as? Date else { return false }
+        try? FileManager.default.removeItem(atPath: file)
+        return Date().timeIntervalSince(made) < 60
     }
 
     static func release() {

@@ -7,7 +7,7 @@ private func sh(_ s: String) -> String {
 
 // the page names the socket and session only; which binary a terminal runs is decided here: the one the daemon
 // names in the home, else a search. an app opened from Finder has no Homebrew on PATH, so the search adds it
-private var tmux: String {
+var tmux: String {
     if let named = SvallHome.tmux, FileManager.default.isExecutableFile(atPath: named) { return named }
     let path = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map(String.init)
     let dirs = path + [NSHomeDirectory() + "/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"]
