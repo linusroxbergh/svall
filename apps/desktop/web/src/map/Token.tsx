@@ -30,7 +30,7 @@ function gem(status: DisplayStatus, unread: boolean) {
 }
 
 export function Token({
-  c, status, world, selected, dragging, settling, hover, offset, pointer, onHoverStart, onHoverEnd, onOpen, onLink,
+  c, status, world, selected, dragging, settling, hover, offset, pointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu,
 }: {
   c: Character;
   status: DisplayStatus;
@@ -45,6 +45,7 @@ export function Token({
   onHoverEnd(): void;
   onOpen(): void;
   onLink(item: ContextItem, charId: string, at: { x: number; y: number }): void;
+  onMenu(e: React.MouseEvent): void;
 }) {
   const word = statusWord(status);
   // the rail holds RAIL_MAX chips; past that the last one counts the rest
@@ -72,6 +73,7 @@ export function Token({
       {...pointer}
       onPointerEnter={onHoverStart}
       onPointerLeave={onHoverEnd}
+      onContextMenu={onMenu}
     >
       <div className="card">
         <div className="edge" />
