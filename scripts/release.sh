@@ -1,6 +1,7 @@
 #!/bin/sh
 # Builds, signs, notarizes and packages Svall into dist/, writes its appcast and latest.json, and uploads them to svall.dev.
-# --adhoc does the same unsigned and stops before notarizing and uploading.
+# --adhoc does the same unsigned and stops before notarizing and uploading. SVALL_NOTES names a Markdown file the update
+# dialog shows as this version's notes.
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -18,6 +19,8 @@ ID="${SVALL_SIGN_ID:-Developer ID Application}"
 NOTARY="${SVALL_NOTARY_PROFILE:-svall-notary}"
 fail() { echo "release: $*" >&2; exit 1; }
 notarize() { xcrun notarytool submit "$1" --keychain-profile "$NOTARY" --wait | tee /dev/stderr | grep -q 'status: Accepted' || fail "notarization of $1 was not accepted"; }
+NOTES="${SVALL_NOTES:-}"
+[ -z "$NOTES" ] || [ -f "$NOTES" ] || fail "SVALL_NOTES names no file: $NOTES"
 
 if [ -z "$ADHOC" ]; then
   [ -z "$(git status --porcelain)" ] || fail "the tree has changes"
@@ -96,7 +99,8 @@ printf '{"version":"%s","build":%s,"url":"https://svall.dev/releases/Svall-%s.dm
 if [ -z "$ADHOC" ]; then
   # the Svall.dmg link stays out while the appcast is made, so the latest release is listed once
   rm -f dist/releases/Svall.dmg
-  "$(scripts/sparkle-tools.sh)/generate_appcast" --download-url-prefix https://svall.dev/releases/ dist/releases
+  [ -z "$NOTES" ] || cp "$NOTES" "dist/releases/Svall-$VERSION.md"
+  "$(scripts/sparkle-tools.sh)/generate_appcast" --embed-release-notes --download-url-prefix https://svall.dev/releases/ dist/releases
   mv dist/releases/appcast.xml dist/appcast.xml
 fi
 ln -sf "Svall-$VERSION.dmg" dist/releases/Svall.dmg
