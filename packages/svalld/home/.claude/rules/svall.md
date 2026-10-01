@@ -21,8 +21,8 @@ An ambiguous name is refused with the ids to pick from.
 A character is one tmux window: a plain shell, or a Claude Code or Codex
 session. States: `working`, `idle`, `blocked` (waiting on a permission or a
 question), `done` (`*` means nobody has looked at it yet), `shell`, `dormant`
-(its window is gone, most often because its agent sat idle past the wait set in
-Settings; `svall char run` wakes a Claude or Codex one with the prompt, and
+(its window is gone, because its agent sat idle past the wait set in Settings,
+the app was quit, or the Mac restarted; `svall char run` wakes a Claude or Codex one with the prompt, and
 `svall char revive <name>` brings any back).
 
 This island has kind `home`. Its crew are agents started from the mission

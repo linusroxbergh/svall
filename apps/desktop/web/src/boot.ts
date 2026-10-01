@@ -64,7 +64,7 @@ function createApp(): AppContext {
         if (r.fleets.length > 1) store.getState().setFleetPicker('bare');
       }).catch((e: Error) => console.warn(`fleets.list: ${e.message}`));
     };
-    // the phone tab in the corner reads the mobile status, and `svall mobile` can change it while the app is shut
+    // the phone tab in the corner reads the mobile status, and `svall mobile` can change it while the page is offline
     a.onOpen = () => { load(); loadMobileStatus({ api: a, store }); repoWatch?.resend(); if (offerFleets) offer(); };
     installKeyHandlers({ store, api: a, bridge, browser });
     a.start();
@@ -77,7 +77,7 @@ function createApp(): AppContext {
   store.subscribe((s, prev) => { for (const id of Object.keys(prev.ide)) if (!s.ide[id]) dropBuffers(id); });
   if (bridge.present) {
     followNotifications({ store, bridge, api: () => api });
-    followQuit({ store, bridge });
+    followQuit({ store, bridge, api: () => api });
     bridge.onMessage((m) => {
       if (m.type === 'app.active') { store.getState().setActive(m.active); return; }
       if (m.type === 'ghostty.configErrors') { store.getState().setConfigErrors(m.errors); return; }
