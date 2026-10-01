@@ -30,7 +30,7 @@ async function runBin(home: string): Promise<{ code: number; stderr: string }> {
 describe('svalld bin on the other build\'s home', () => {
   afterEach(cleanHomes);
 
-  it('waits rather than exiting for launchd to restart every ten seconds', async () => {
+  it('waits rather than exiting for the app to start it again every ten seconds', async () => {
     // the tests run as the release, whose daemon refuses Svall Dev's homes
     const home = path.join(makeHome(), '.svall-dev');
     const log = () => (fs.existsSync(resolvePaths(home).log) ? fs.readFileSync(resolvePaths(home).log, 'utf8') : '');

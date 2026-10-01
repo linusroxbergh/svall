@@ -133,7 +133,8 @@ that. The Usage panel shows Claude's subscription limits, not API spending.
 ### Updating
 
 Svall checks for updates on its own and installs one when you click it. Svall →
-Check for Updates… checks now.
+Check for Updates… checks now. Installing quits every Svall window, which stops
+each fleet; a character picks up where it left off when you open it.
 
 ### Uninstalling
 
@@ -346,6 +347,8 @@ Ghostty `initial-command` and `input` are ignored.
   above the keyboard.
 - `⚙` → *Notify this phone* sends a push when an agent is blocked or done. Tap
   a blocked one to approve or deny it.
+- The page and its pushes work while Svall is open on that fleet, as its daemon
+  serves them.
 - The tailnet needs MagicDNS and HTTPS certificates, both turned on in
   Tailscale's admin console. The certificate puts the Mac's tailnet name in a
   public log.
