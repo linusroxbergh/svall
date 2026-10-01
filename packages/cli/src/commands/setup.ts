@@ -8,7 +8,7 @@ import type { AgentKind } from '@svall/protocol';
 import { AGENTS, AGENT_KINDS, findAgents, mainAgent, onPath } from '@svall/svalld/agents';
 import { codexPaths } from '@svall/svalld/codex/install';
 import { loadConfig, saveConfig } from '@svall/svalld/config';
-import { resolvePaths, userPaths } from '@svall/svalld/paths';
+import { expandHome, resolvePaths, userPaths } from '@svall/svalld/paths';
 import { takeLoginEnv } from '@svall/svalld/login-env';
 import { LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from '@svall/svalld/profile';
 import { ownRuntime } from '@svall/svalld/runtime';
@@ -16,7 +16,7 @@ import {
   CODEX_TRUST, claudeHooksCurrent, cliCommand, codexHooksCurrent, hookRemovals, isLoaded, kickstart, plistCurrent, readCodexHooks, readJsonSettings, readOrUndefined,
   refreshFleetPlists, requireWritableHooks, runSetup, shimsCurrent, takenOverBy, type JsonSettings,
 } from '@svall/svalld/setup';
-import { inheritingFleets, integrationsFor, requireInstalledApp, runtimeVersion, setupPlan, staleFleets } from '@svall/svalld/setup-plan';
+import { inheritingFleets, integrationsFor, projectsFolder, requireInstalledApp, runtimeVersion, setupPlan, staleFleets, suggestProjects } from '@svall/svalld/setup-plan';
 import { fleetHomes } from '@svall/svalld/uninstall';
 import { renderGroups, useColor } from '../checks-view.js';
 import { printResult } from '../format.js';
@@ -33,9 +33,10 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
     .option('--plan', 'print what setup would do, as the app shows it; change nothing')
     .option('--agents <list>', 'the agents to install hooks for, comma-separated; saved for later runs')
     .option('--found <list>', 'the agents the setup screen showed; those left out of --agents stay off (default: the agents found now)')
+    .option('--projects <dir>', 'where new characters start, made if missing; saved as defaultCwd')
     .option('--if-needed', 'set up only what is missing or out of date, and restart daemons of another version')
     .option('--login-shell', 'take PATH, CLAUDE_CONFIG_DIR and CODEX_HOME from the login shell, as an app opened from Finder has none')
-    .action(async (o: { launchctl: boolean; check?: boolean; plan?: boolean; agents?: string; found?: string; ifNeeded?: boolean; loginShell?: boolean }) => {
+    .action(async (o: { launchctl: boolean; check?: boolean; plan?: boolean; agents?: string; found?: string; projects?: string; ifNeeded?: boolean; loginShell?: boolean }) => {
       const answered = o.loginShell ? await takeLoginEnv() : true;
       // setup owns the per-user half — the Claude hooks and the shims — so it only ever means private
       const t = target();
@@ -72,6 +73,10 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
         const main = on.length && !on.includes(mainAgent(config.mainAgent, found)) ? { mainAgent: on[0] } : {};
         choices = { integrations: integrationsFor(chosen, found, config.integrations), ...main };
       }
+      if (o.projects !== undefined) {
+        if (o.plan || o.check || o.ifNeeded) throw new Error('--projects is for a setup that writes everything');
+        choices = { ...choices, defaultCwd: projectsFolder(o.projects) };
+      }
       const integrations = choices?.integrations ?? loadConfig(configFile).integrations;
       const homes = fleetHomes(os.homedir());
       const label = (h: string) => profileLabel(profileOf(h));
@@ -83,7 +88,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
         }));
         // the stand-in folders say nothing of whether the user's own PATH holds the shim
         const plan = setupPlan({
-          home: t.home, found, folders: AGENT_KINDS.filter(hasFolder).map((kind) => ({ kind, path: folderOf(kind) })), integrations, settingsPath, codexHooks: codex.hooks, launchAgentsDir: launchAgents,
+          home: t.home, projects: suggestProjects(os.homedir(), loadConfig(configFile).defaultCwd), found, folders: AGENT_KINDS.filter(hasFolder).map((kind) => ({ kind, path: folderOf(kind) })), integrations, settingsPath, codexHooks: codex.hooks, launchAgentsDir: launchAgents,
           // the plists a setup from this screen writes for the other fleets, taking over any another copy runs
           fleets: homes.filter((h) => profileOf(h) !== PRIVATE && !plistCurrent({ home: h, label: label(h), launchAgentsDir: launchAgents, runtime })),
           shimDir, pathEnv: answered ? process.env.PATH ?? '' : '', answered, cli: cliCommand(runtime),
@@ -163,6 +168,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       const warnings = requireReady(await preflight({ ...realPreflightDeps(t.home), ...choices?.mainAgent ? { mainAgent: choices.mainAgent } : {} }));
       if (choices) {
         fs.mkdirSync(t.home, { recursive: true });
+        if (choices.defaultCwd) fs.mkdirSync(expandHome(choices.defaultCwd), { recursive: true });
         saveConfig(configFile, choices);
       }
       const lines = await runSetup({

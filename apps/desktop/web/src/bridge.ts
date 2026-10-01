@@ -52,7 +52,9 @@ export type ToShell =
   // the fleet was renamed, and the window title follows
   | { type: 'retitle' }
   | { type: 'setup.plan' }
-  | { type: 'setup.run'; agents: AgentKind[]; found: AgentKind[] };
+  | { type: 'setup.run'; agents: AgentKind[]; found: AgentKind[]; projects: string }
+  // a native folder picker opened at `start`, answered by folder.picked unless cancelled
+  | { type: 'folder.pick'; start: string };
 
 export type FromShell =
   | { type: 'connection'; host: string; port: number; token: string }
@@ -80,6 +82,7 @@ export type FromShell =
   | { type: 'notify.action'; key: string; action: 'approve' | 'deny'; promptId?: string }
   | { type: 'menu.pick'; id: string }
   | { type: 'setup.result'; step: 'plan' | 'run'; ok: boolean; json: string }
+  | { type: 'folder.picked'; path: string }
   // the app is about to quit and waits for a quit.answer
   | { type: 'quit.ask' }
   // the menu's Open Fleet…

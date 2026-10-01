@@ -18,6 +18,8 @@ textarea { overflow-x: hidden; }
 .setup label { display: flex; align-items: baseline; gap: var(--sp-md); padding: var(--sp-xs) 0; }
 .setup small, .setup p { color: var(--dim); font-size: var(--text-sm); margin: 0; }
 .setup code { font: var(--text-sm)/1.5 var(--mono); color: var(--ink-3); overflow-wrap: anywhere; }
+.setup-folder { display: flex; gap: var(--sp-md); margin-top: var(--sp-sm); }
+.setup-folder input { flex: 1; min-width: 0; font: var(--text-sm)/1.5 var(--mono); padding: var(--sp-xs) var(--sp-md); border-radius: var(--r-sm); border: 1px solid var(--line-soft); background: var(--fill-1); color: var(--ink); }
 .setup > button { align-self: flex-start; background: var(--sand); color: var(--ink-sand); }
 .setup > button:disabled { opacity: 0.5; cursor: default; }
 .setup .setup-blocker, .setup .setup-error { color: color-mix(in srgb, var(--blocked) 45%, var(--ink)); font-size: var(--text-lg); }

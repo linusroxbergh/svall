@@ -218,8 +218,22 @@ final class ShellRouter {
             ExternalURL.reveal(path)
         case .setupPlan:
             AppRuntime.run(["setup", "--plan", "--login-shell"]) { [weak self] ok, text in self?.bridge.send(.setupResult(step: "plan", ok: ok, json: text)) }
-        case .setupRun(let agents, let found):
-            AppRuntime.run(["setup", "--json", "--login-shell", "--agents", agents.joined(separator: ","), "--found", found.joined(separator: ",")]) { [weak self] ok, text in
+        case .folderPick(let start):
+            let panel = NSOpenPanel()
+            panel.canChooseFiles = false
+            panel.canChooseDirectories = true
+            panel.canCreateDirectories = true
+            panel.prompt = "Choose"
+            // a suggested folder setup has yet to make opens on the folder it would go in
+            var dir = URL(fileURLWithPath: (start as NSString).expandingTildeInPath)
+            if !FileManager.default.fileExists(atPath: dir.path) { dir = dir.deletingLastPathComponent() }
+            panel.directoryURL = dir
+            panel.begin { [weak self] response in
+                guard response == .OK, let url = panel.url else { return }
+                self?.bridge.send(.folderPicked(path: (url.path as NSString).abbreviatingWithTildeInPath))
+            }
+        case .setupRun(let agents, let found, let projects):
+            AppRuntime.run(["setup", "--json", "--login-shell", "--agents", agents.joined(separator: ","), "--found", found.joined(separator: ","), "--projects", projects]) { [weak self] ok, text in
                 // the home setup made did not exist when launch claimed it and named its browser store
                 if ok {
                     _ = SvallHome.claim()
