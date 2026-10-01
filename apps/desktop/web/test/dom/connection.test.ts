@@ -49,6 +49,17 @@ test('a daemon that comes back on another port is found through the shell', asyn
   expect(Socket.all.at(-1)?.url).toBe('ws://127.0.0.1:47002');
 });
 
+test('the daemon the shell starts with the window is found as soon as it writes its port', async () => {
+  port = 0;
+  const { initApp } = await import('../../src/boot.js');
+  initApp();
+  await vi.advanceTimersByTimeAsync(800);
+  expect(Socket.all).toEqual([]);
+  port = 47001;
+  await vi.advanceTimersByTimeAsync(300);
+  expect(Socket.all.map((s) => s.url)).toEqual(['ws://127.0.0.1:47001']);
+});
+
 test('while svalld stays down the shell is asked at a steady pace', async () => {
   port = 47001;
   Socket.dead = true;
