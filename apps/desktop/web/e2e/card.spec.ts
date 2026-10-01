@@ -34,7 +34,7 @@ test('the first half card fills most of the map, a margin all round', async ({ p
   await expect.poll(async () => {
     const map = (await page.getByTestId('map').boundingBox())!, half = (await card.boundingBox())!;
     return [Math.round((half.width / map.width) * 100), Math.round((half.height / map.height) * 100)];
-  }).toEqual([90, 88]);
+  }).toEqual([94, 92]);
 });
 
 test('opens, switches, resizes and closes the terminal card; Cmd+M round-trips to the board', async ({ page, svall }) => {

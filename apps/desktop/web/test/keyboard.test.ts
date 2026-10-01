@@ -530,6 +530,7 @@ describe('dispatchKey on the map', () => {
   });
   it('Cmd+= and Cmd+- step the zoom, and Cmd+0 puts it back', async () => {
     const c = ctx();
+    c.store.getState().setSettings({ zoom: 1 });
     await dispatchKey({ type: 'zoom', steps: 1 }, c);
     await dispatchKey({ type: 'zoom', steps: 1 }, c);
     expect(c.store.getState().settings.zoom).toBe(1.25);

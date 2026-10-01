@@ -33,6 +33,10 @@ describe('settings', () => {
     expect(readSettings({ cardOpacity: 4, fullOpacity: 'x', zoom: 1.12, onePassword: 'yes', bindings: {} }))
       .toEqual({ cardOpacity: 1, fullOpacity: 1, zoom: 1.1, onePassword: false, usageTab: true, autoArrange: true, bindings: {}, notifications: DEFAULT_SETTINGS.notifications });
   });
+  it('starts a fresh install at 90% and keeps a stored zoom of 100%', () => {
+    expect(readSettings(undefined).zoom).toBe(0.9);
+    expect(readSettings({ zoom: 1 }).zoom).toBe(1);
+  });
   it('arranges on its own until the machine says otherwise', () => {
     expect(DEFAULT_SETTINGS.autoArrange).toBe(true);
     expect(readSettings({ zoom: 1.1 }).autoArrange).toBe(true);
