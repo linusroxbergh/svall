@@ -247,10 +247,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     // the page saves what it can and names what a quit would drop, and a quit the user started waits on a yes;
-    // a logout or shutdown names its reason, and the system asked about it already
+    // a logout or shutdown names its reason, and an install or uninstall marks its quit in the home
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let system = NSAppleEventManager.shared().currentAppleEvent?.attributeDescriptor(forKeyword: AEKeyword(kAEQuitReason)) != nil
-        let confirm = !NSApplication.quietQuit && !system
+        let scripted = SvallHome.takeQuietQuit()
+        let confirm = !NSApplication.quietQuit && !system && !scripted
         NSApplication.quietQuit = false
         guard let router else { return .terminateNow }
         return router.askToQuit(confirm: confirm) { NSApp.reply(toApplicationShouldTerminate: $0) }

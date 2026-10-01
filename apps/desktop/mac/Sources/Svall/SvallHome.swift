@@ -94,6 +94,14 @@ enum SvallHome {
         return true
     }
 
+    /// Whether a script marked the quit on its way as its own; a mark older than its 60 s wait is stale.
+    static func takeQuietQuit() -> Bool {
+        let file = path + "/quit-quietly"
+        guard let made = (try? FileManager.default.attributesOfItem(atPath: file))?[.modificationDate] as? Date else { return false }
+        try? FileManager.default.removeItem(atPath: file)
+        return Date().timeIntervalSince(made) < 60
+    }
+
     static func release() {
         guard read("app.pid")?.split(separator: "\t").first.flatMap({ Int32($0) }) == pid else { return }
         try? FileManager.default.removeItem(atPath: pidFile)
