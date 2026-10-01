@@ -43,6 +43,7 @@ type Events = {
   pause: [charId: string];
   continue: [charId: string];
   'control-reset': [];
+  stopped: [];
 };
 
 // text a person writes stays theirs until they clear it; cleared, the scribe may write it again
@@ -394,6 +395,31 @@ export class Fleet extends EventEmitter<Events> {
     }
   }
 
+  /** Ends every terminal as the app quits: each character goes dormant with the revive that resumes it, then the
+   * tmux server goes, and nothing runs again until a character is opened. */
+  async stopAll(): Promise<void> {
+    // the control client's exit would otherwise start a server again
+    this.stop();
+    await Promise.all([...this.ending.values(), ...this.reviving.values()].map((p) => p.catch(() => {})));
+    const procs = await (this.deps.processes ?? processes)();
+    const pids: number[] = [];
+    // dormant before the kill: the SessionEnd the kill sends then finds no live character to clear
+    this.deps.store.update((d) => {
+      for (const c of Object.values(d.characters)) {
+        if (c.second?.agent?.pid) pids.push(c.second.agent.pid);
+        delete c.second;
+        if (!c.tmux) continue;
+        const proc = c.agent && procs.find((p) => p.pid === c.agent!.pid);
+        if (proc) pids.push(proc.pid);
+        markDormant(c, proc ? startFlags(proc.args, c.agent!.kind) : undefined);
+      }
+    });
+    await this.deps.tmux.killServer();
+    // a resume opened right after must not write to a session still ending
+    await Promise.all(pids.map((pid) => exited(pid, 5000)));
+    setImmediate(() => this.emit('stopped'));
+  }
+
   setDormancy(hours: number): void {
     this.deps.store.update((d) => { d.dormantAfterHours = hours; });
   }
@@ -660,6 +686,8 @@ export class Fleet extends EventEmitter<Events> {
 
   // concurrent revives would each spawn a window and orphan all but the last.
   reviveCharacter(id: string, prompt?: string): Promise<Character> {
+    // a page still open on a character that the stop has just put to sleep would wake it again
+    if (this.stopped) return Promise.reject(new Invalid('the fleet is stopping'));
     const inFlight = this.reviving.get(id);
     if (inFlight) return inFlight;
     const p = this.doRevive(id, prompt).finally(() => this.reviving.delete(id));

@@ -182,6 +182,8 @@ export const methods = {
   'fleets.create': { params: z.object({ name: z.string() }), result: z.object({ home: z.string() }) },
   'fleets.start': { params: z.object({ home: z.string() }), result: z.object({ home: z.string() }) },
   'fleet.rename': { params: z.object({ name: z.string() }), result: z.object({}) },
+  // the app quitting: every terminal ends, each character resumes when opened, and the daemon exits once it has answered
+  'fleet.stop': { params: z.object({}), result: z.object({}) },
   'usage.get': { params: z.object({}), result: UsageSnapshot },
   'mobile.get': { params: z.object({}), result: MobileStatus },
   'mobile.set': { params: z.object({ enabled: z.boolean() }), result: MobileStatus },

@@ -73,10 +73,10 @@ describe('names every object has', () => {
 
 describe('the fleets beside this one', () => {
   const fleets = { list: async () => [], create: async () => '/u/.svall-work', start: async (home: string) => home };
-  const ctx = (kind: 'app' | 'phone') => ({ fleets, fleet: { renameFleet() {} }, viewer: { kind } }) as unknown as Ctx;
+  const ctx = (kind: 'app' | 'phone') => ({ fleets, fleet: { renameFleet() {}, async stopAll() {} }, viewer: { kind } }) as unknown as Ctx;
 
   it('are refused to a phone', async () => {
-    for (const [method, params] of [['fleets.list', {}], ['fleets.create', { name: 'work' }], ['fleets.start', { home: '/u/.svall-work' }], ['fleet.rename', { name: 'home' }]] as const) {
+    for (const [method, params] of [['fleets.list', {}], ['fleets.create', { name: 'work' }], ['fleets.start', { home: '/u/.svall-work' }], ['fleet.rename', { name: 'home' }], ['fleet.stop', {}]] as const) {
       expect(await dispatch({ id: 1, method, params }, ctx('phone'))).toMatchObject({ error: { code: 'forbidden' } });
     }
   });
@@ -86,5 +86,6 @@ describe('the fleets beside this one', () => {
     expect(await dispatch({ id: 2, method: 'fleets.create', params: { name: 'work' } }, ctx('app'))).toEqual({ id: 2, result: { home: '/u/.svall-work' } });
     expect(await dispatch({ id: 3, method: 'fleets.start', params: { home: '/u/.svall-side' } }, ctx('app'))).toEqual({ id: 3, result: { home: '/u/.svall-side' } });
     expect(await dispatch({ id: 4, method: 'fleet.rename', params: { name: 'home' } }, ctx('app'))).toEqual({ id: 4, result: {} });
+    expect(await dispatch({ id: 5, method: 'fleet.stop', params: {} }, ctx('app'))).toEqual({ id: 5, result: {} });
   });
 });

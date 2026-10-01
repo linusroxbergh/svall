@@ -105,7 +105,7 @@ export function runsInBackground(pid: number, procs: Proc[]): boolean {
 
 // a hung-up agent runs its SessionEnd hooks, for at most a minute, before it exits; a resume started meanwhile would
 // write to the same session
-export async function exited(pid: number): Promise<void> {
-  for (let n = 0; n < 600 && running(pid); n++) await new Promise((r) => setTimeout(r, 100));
+export async function exited(pid: number, waitMs = 60_000): Promise<void> {
+  for (let n = 0; n < waitMs / 100 && running(pid); n++) await new Promise((r) => setTimeout(r, 100));
   if (running(pid)) try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ }
 }

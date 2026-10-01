@@ -49,5 +49,7 @@ const daemon = await start().catch((e: Error) => {
   process.exit(1);
 });
 const shutdown = async (sig: string) => { log.info(`received ${sig}`); await daemon.stop(); process.exit(0); };
+// the app quit and the fleet has stopped; launchd starts the daemon again only when the app asks
+daemon.fleet.once('stopped', () => void shutdown('fleet.stop'));
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 process.on('SIGINT', () => void shutdown('SIGINT'));
