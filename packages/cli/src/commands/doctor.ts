@@ -171,7 +171,10 @@ async function svalld(t: Target, d: DoctorDeps): Promise<Check> {
 }
 
 async function hookReceiver(t: Target, d: DoctorDeps): Promise<Check> {
-  const path = resolvePaths(t.home).hooksSock;
+  const paths = resolvePaths(t.home);
+  // the daemon listens only while Svall is open on the fleet, as the svalld check says
+  if (!d.read(paths.port)?.trim()) return { name: 'hook receiver', status: 'skip', detail: 'svalld is not running' };
+  const path = paths.hooksSock;
   try {
     await d.connectHook(path);
     return { name: 'hook receiver', status: 'ok', detail: `answering at ${path}` };
