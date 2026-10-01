@@ -14,7 +14,7 @@ final class Updates: NSObject, SPUUpdaterDelegate {
         super.init()
         // the other fleets' windows run from the bundle an update replaces, so they quit before it is installed
         DistributedNotificationCenter.default().addObserver(forName: Self.quitForUpdate, object: nil, queue: .main) { [me] note in
-            if note.object as? String != me { NSApp.terminate(nil) }
+            if note.object as? String != me { NSApp.terminateQuietly() }
         }
         guard Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil,
               SvallHome.isPrivate || ProcessInfo.processInfo.environment[Self.handoff] != nil else { return }
@@ -22,6 +22,8 @@ final class Updates: NSObject, SPUUpdaterDelegate {
     }
 
     func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) {
+        // Sparkle quits this window to install, after the user chose to
+        NSApplication.quietQuit = true
         DistributedNotificationCenter.default().postNotificationName(Self.quitForUpdate, object: me, userInfo: nil, deliverImmediately: true)
     }
 

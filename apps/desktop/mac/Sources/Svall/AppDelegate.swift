@@ -125,7 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             alert.addButton(withTitle: "Reload")
             alert.addButton(withTitle: "Quit")
             NSApp.activate()
-            if alert.runModal() != .alertFirstButtonReturn { return NSApp.terminate(nil) }
+            if alert.runModal() != .alertFirstButtonReturn { return NSApp.terminateQuietly() }
         }
         pageCrashedAt = Date()
         webView.reload()
@@ -220,7 +220,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                         stuck.runModal()
                     }
                     if forget { Self.forgetAfterQuit() }
-                    NSApp.terminate(nil)
+                    NSApp.terminateQuietly()
                 }
             }
         }
@@ -246,14 +246,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         return false
     }
 
-    // the page saves what it can and names what a quit would drop; a page that is not up is not waited on
+    // the page saves what it can and names what a quit would drop, and a quit the user started waits on a yes;
+    // a logout or shutdown names its reason, and the system asked about it already
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard let router, router.askToQuit({ NSApp.reply(toApplicationShouldTerminate: $0) }) else { return .terminateNow }
-        return .terminateLater
+        let system = NSAppleEventManager.shared().currentAppleEvent?.attributeDescriptor(forKeyword: AEKeyword(kAEQuitReason)) != nil
+        let confirm = !NSApplication.quietQuit && !system
+        NSApplication.quietQuit = false
+        guard let router else { return .terminateNow }
+        return router.askToQuit(confirm: confirm) { NSApp.reply(toApplicationShouldTerminate: $0) }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         router?.closeAll()
         SvallHome.release()
+    }
+}
+
+extension NSApplication {
+    // the app's own quits (an update, an uninstall, the picker handing over) skip the question the user's get
+    static var quietQuit = false
+
+    func terminateQuietly() {
+        Self.quietQuit = true
+        terminate(nil)
     }
 }

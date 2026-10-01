@@ -24,7 +24,7 @@ final class ShellRouter {
     // where the page's answer goes while a quit waits on it, and what quits anyway if it never comes
     private var quitAnswer: ((Bool) -> Void)?
     private var quitTimeout: DispatchWorkItem?
-    // a quit the user asked for waits on a yes; the app's own (an update, an uninstall) do not
+    // whether the quit waiting on the page also waits on the user's yes
     private var userQuit = false
     // while the question is up, the user's answer is the only one: a late reply or a reload waits on it
     private var confirming = false
@@ -116,24 +116,25 @@ final class ShellRouter {
         finishQuit(true)
     }
 
-    /// Quits once the user says yes, unless a quit already waits on the page: AppKit takes a second terminate as a yes to the first.
+    /// Quits, unless a quit already waits on the page: AppKit takes a second terminate as a yes to the first.
     func quit() {
-        guard quitAnswer == nil else { return }
-        // a page that is up names its unsaved files first, so the one question can name them too
-        if listening { userQuit = true } else if !confirmQuit(unsaved: []) { return }
-        NSApp.terminate(nil)
+        if quitAnswer == nil { NSApp.terminate(nil) }
     }
 
-    /// Asks the page to save its docs and name the files a quit would drop; false when no page is there to ask.
-    func askToQuit(_ answer: @escaping (Bool) -> Void) -> Bool {
-        guard listening, quitAnswer == nil else { return false }
+    /// Asks the page to save its docs and name the files a quit would drop, then the user when `confirm` or a file would be lost.
+    func askToQuit(confirm: Bool, _ answer: @escaping (Bool) -> Void) -> NSApplication.TerminateReply {
+        guard quitAnswer == nil else { return .terminateNow }
+        // a page that is not up has nothing to save
+        guard listening else { return !confirm || confirmQuit(unsaved: []) ? .terminateNow : .terminateCancel }
+        // a page that is up names its unsaved files first, so the one question can name them too
+        userQuit = confirm
         quitAnswer = answer
         // longer than the page gives its saves, so only a page that is stuck or gone runs it out
         let timeout = DispatchWorkItem { [weak self] in self?.answerQuit(unsaved: []) }
         quitTimeout = timeout
         DispatchQueue.main.asyncAfter(deadline: .now() + 6, execute: timeout)
         bridge.send(.quitAsk)
-        return true
+        return .terminateLater
     }
 
     private func finishQuit(_ ok: Bool) {
@@ -328,7 +329,7 @@ final class ShellRouter {
     // a fleet whose window is open is brought up; any other opens in a new instance of this app
     private func openFleet(_ home: String, quit: Bool) {
         // the picker gives way to the fleet it opened without asking
-        let done = { [weak self] in if quit, self?.quitAnswer == nil { NSApp.terminate(nil) } }
+        let done = { [weak self] in if quit, self?.quitAnswer == nil { NSApp.terminateQuietly() } }
         if let pid = SvallHome.appPid(of: home), let app = NSRunningApplication(processIdentifier: pid), app.bundleIdentifier == Bundle.main.bundleIdentifier {
             app.activate()
             return done()
