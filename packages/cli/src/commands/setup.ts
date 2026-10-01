@@ -94,7 +94,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       if (o.ifNeeded) {
         const owner = takenOverBy(plistOf(t.home), runtime);
         if (owner) {
-          const warnings = [`${owner} runs these fleets; open that copy of Svall, or run this copy's ${SHIM} setup to move them here`];
+          const warnings = [`${owner} runs these fleets; open that copy of Svall, or run ${cliCommand(runtime)} setup to move them here`];
           printResult({ done: [], warnings }, json(), () => warnings.join('\n'));
           return;
         }

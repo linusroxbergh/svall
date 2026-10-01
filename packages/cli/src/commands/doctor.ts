@@ -75,7 +75,7 @@ function node(d: PreflightDeps): Check {
 function shimDirOnPath(d: PreflightDeps): Check {
   return d.pathEnv.split(':').includes(d.shimDir)
     ? { name: 'path', status: 'ok', detail: `${d.shimDir} is on PATH` }
-    : { name: 'path', status: 'warn', detail: `${d.shimDir} is not on PATH, so your shell will not find svall; add it in your shell profile` };
+    : { name: 'path', status: 'warn', detail: `${d.shimDir} is not on PATH, so your shell will not find ${SHIM}; add it in your shell profile` };
 }
 
 // 1 is the CLI's own "not signed in"; anything else (a timeout, an unknown subcommand) leaves it unknown
@@ -86,7 +86,7 @@ async function agentCheck(d: PreflightDeps, kind: AgentKind, version: string | E
   if (version === undefined) {
     const other = AGENT_KINDS.find((k) => k !== kind && found.includes(k));
     return d.mainAgent === kind && other
-      ? { name: kind, status: 'warn', detail: `not installed, but it is the main agent: svall agent ${other}` }
+      ? { name: kind, status: 'warn', detail: `not installed, but it is the main agent: ${SHIM} agent ${other}` }
       : { name: kind, status: 'skip', detail: 'not installed' };
   }
   if (version instanceof Error) return { name: kind, status: 'warn', detail: firstLine(version.message) };

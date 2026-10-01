@@ -93,7 +93,7 @@ describe('launch', () => {
 
   it('names the install step when the app is missing', async () => {
     const f = fake({ homes: [priv.home], loaded: ['io.github.linusroxbergh.svall.svalld'], openFails: true });
-    await expect(launch(priv, f.deps)).rejects.toThrow('Svall is not installed; run pnpm desktop:install');
+    await expect(launch(priv, f.deps)).rejects.toThrow('could not open Svall: reinstall it from svall.dev');
   });
 
   it('sends a missing private home to setup instead of creating half of one', async () => {
