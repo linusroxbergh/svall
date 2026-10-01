@@ -6,7 +6,7 @@ import { DEFAULT_SETTINGS, type Settings } from '../src/settings.js';
 import { createAppStore, FILES_TREE_RANGE, RESOURCE_COL_RANGE, SIDE_WIDTH_RANGE, type AppStorage, type FilesTree, type HalfCard, type ResourceCols, type SideWidths, type View } from '../src/store/index.js';
 import { chr, fleet } from './fixtures.js';
 
-type Mem = AppStorage & { focus?: string; view?: View; sidebar?: boolean; half?: HalfCard; cols?: ResourceCols; sides?: SideWidths; tree?: FilesTree; settings?: Settings; groups?: Tier[] };
+type Mem = AppStorage & { focus?: string; view?: View; sidebar?: boolean; half?: HalfCard; cols?: ResourceCols; size?: HalfCard; sides?: SideWidths; tree?: FilesTree; settings?: Settings; groups?: Tier[] };
 
 const memStorage = (): Mem => {
   const s: Mem = {
@@ -14,6 +14,7 @@ const memStorage = (): Mem => {
     getSidebarOpen: () => s.sidebar, setSidebarOpen: (v) => { s.sidebar = v; },
     getHalfCard: () => s.half, setHalfCard: (v) => { s.half = v; },
     getResourceCols: () => s.cols, setResourceCols: (v) => { s.cols = v; },
+    getResourceSize: () => s.size, setResourceSize: (v) => { s.size = v; },
     getSideWidths: () => s.sides, setSideWidths: (v) => { s.sides = v; },
     getFilesTree: () => s.tree, setFilesTree: (v) => { s.tree = v; },
     getSettings: () => s.settings, setSettings: (v) => { s.settings = v; },

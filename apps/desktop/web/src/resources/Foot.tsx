@@ -29,7 +29,7 @@ function ChainChip({ chip, sources, on }: { chip: Chip; sources: ResourceSource[
 }
 
 /** The line under all three panes: the shown file's path, what an island's or a character's agent reads, and the actions on the file. */
-export function Foot({ onRefresh }: { onRefresh(): void }) {
+export function Foot({ onRefresh, children }: { onRefresh(): void; children?: React.ReactNode }) {
   const sources = useApp((s) => s.resources);
   const fleet = useApp((s) => s.fleet);
   const resourcesWhere = useApp((s) => s.resourcesWhere);
@@ -60,6 +60,7 @@ export function Foot({ onRefresh }: { onRefresh(): void }) {
       {file && !doc && unsaved && <span className="res-unsaved-word">unsaved · ⌘S saves</span>}
       {file && <button className="res-link" onClick={() => revealFile(app.bridge, file)}>Show in Finder ›</button>}
       <button className="res-link" data-testid="resources-refresh" title="Reload from disk" onClick={onRefresh}>↻ Refresh</button>
+      {children}
     </footer>
   );
 }

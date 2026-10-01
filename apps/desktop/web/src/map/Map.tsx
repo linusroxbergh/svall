@@ -5,6 +5,7 @@ import { app, deps } from '../boot.js';
 import { commitFocused } from '../Field.js';
 import { followLink } from '../LinkAsk.js';
 import { useApp } from '../hooks.js';
+import { characterMenu, islandMenu } from '../menus.js';
 import { ResourcesLayer } from '../resources/Shelf.js';
 import { charactersOf, homeIsland, mapIslandsSorted, statusOf } from '../selectors.js';
 import { theme, tokenPx } from '../theme.js';
@@ -220,6 +221,8 @@ export function Map() {
   // survives its token being re-parented between the world and the home island
   const domPointer = (target: Target) => ({
     onPointerDown: (e: React.PointerEvent<Element>) => {
+      // a right-click, or a control-click, only opens the menu: it selects and drags nothing
+      if (e.button !== 0 || e.ctrlKey) { endHover(); return; }
       const el = host.current!;
       commitFocused();
       el.setPointerCapture(e.pointerId);
@@ -527,14 +530,16 @@ export function Map() {
               y: Math.max((MIN_SIZE.h - i.size.h) * theme.cell, preview.offset.y) - (preview.size.h - i.size.h) * theme.cell }
             : undefined;
           const hold = { onPointerEnter: () => holdIsland(i.id), onPointerLeave: () => releaseIsland(i.id) };
+          const count = charactersOf(fleet, i.id).length;
           return (
-            <Island key={i.id} island={shown} count={charactersOf(fleet, i.id).length} offset={islandOffset(i, preview)} gripOffset={gripOffset}
+            <Island key={i.id} island={shown} count={count} offset={islandOffset(i, preview)} gripOffset={gripOffset}
               hot={hotIsland === i.id || selectedIslandId === i.id} selected={selectedIslandId === i.id}
               collapsed={Boolean(i.collapsed)}
               dragging={Boolean(preview)} settling={preview === pendingIsland}
               hover={dropHover?.kind === 'island' && dropHover.id === i.id}
               onNew={() => newCharacterOn(deps(), i.id)}
               onToggle={() => toggleIsland(deps(), i.id)}
+              onMenu={(e) => islandMenu(e, i.id, count === 0)}
               land={domPointer({ kind: 'label', islandId: i.id })}
               label={domPointer({ kind: 'label', islandId: i.id })}
               handle={domPointer({ kind: 'handle', islandId: i.id })}
@@ -567,13 +572,13 @@ export function Map() {
               pointer={domPointer({ kind: 'figure', id: c.id })}
               onHoverStart={() => startHover(c.id)} onHoverEnd={endHover}
               onOpen={() => app.store.getState().focus(c.id)}
-              onLink={followLink} />
+              onLink={followLink} onMenu={(e) => characterMenu(e, c.id)} />
           );
         }))}
         {drag?.kind === 'figure' && !overHome && fleet.characters[drag.id]?.islandId === HOME_ISLAND && (
           <Token key={drag.id} c={fleet.characters[drag.id]} status={statusOf(fleet.characters[drag.id])} world={drag.cell} selected={drag.id === selectedId} dragging
             pointer={domPointer({ kind: 'figure', id: drag.id })} hover={false} onHoverStart={() => {}} onHoverEnd={endHover}
-            onOpen={() => app.store.getState().focus(drag.id)} onLink={followLink} />
+            onOpen={() => app.store.getState().focus(drag.id)} onLink={followLink} onMenu={(e) => characterMenu(e, drag.id)} />
         )}
       </div>
       <div className="map-overlay">
@@ -593,6 +598,7 @@ export function Map() {
             onHoverStart={startHover} onHoverEnd={endHover}
             onOpen={(id) => app.store.getState().focus(id)}
             onLink={followLink}
+            onMenu={(id, e) => characterMenu(e, id)}
             dropHover={dropHover} />
         )}
         {hi && place.mode !== 'pill' && <ResourcesIsland place={place} />}

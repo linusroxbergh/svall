@@ -2,7 +2,7 @@ import type { ResourceSource } from '@svall/protocol';
 import type { StateCreator } from 'zustand/vanilla';
 import { offers, type FieldRef, type Tier, type What } from '../resources/model.js';
 import type { App } from './index.js';
-import { clampCols, DEFAULT_RESOURCE_COLS, type AppStorage, type ResourceCols } from './persist.js';
+import { clampCols, DEFAULT_RESOURCE_COLS, DEFAULT_RESOURCE_SIZE, type AppStorage, type HalfCard, type ResourceCols } from './persist.js';
 
 export type ShelfState = {
   resourcesOpen: boolean;
@@ -17,6 +17,9 @@ export type ShelfState = {
   // set when a card's + new doc opened the shelf, so the list starts its name field; cleared once it has
   resourcesNaming: boolean;
   resourceCols: ResourceCols;
+  // the shelf's size as a fraction of its room, and whether it fills the room instead, as the terminal card does the map
+  resourceSize: HalfCard;
+  resourcesFull: boolean;
   // the tier groups standing open in the shelf's Where column
   resourceGroups: Tier[];
 };
@@ -29,6 +32,8 @@ export type ShelfActions = {
   showResourceField(ref: FieldRef): void;
   setResourcesNaming(v: boolean): void;
   setResourceCols(cols: ResourceCols, persist?: boolean): void;
+  setResourceSize(size: HalfCard, persist?: boolean): void;
+  toggleResourcesFull(): void;
 };
 
 // a source the shelf is sent to must be in view, so its group opens
@@ -50,6 +55,8 @@ export const createShelfSlice = (storage?: AppStorage): StateCreator<App, [], []
   resourcesChosen: undefined,
   resourcesNaming: false,
   resourceCols: storage?.getResourceCols() ?? DEFAULT_RESOURCE_COLS,
+  resourceSize: storage?.getResourceSize() ?? DEFAULT_RESOURCE_SIZE,
+  resourcesFull: false,
   resourceGroups: storage?.getResourceGroups() ?? ['global', 'fleet'],
   // the shelf stands on the map, in the corner panels' light: opening it takes the view there and closes them
   toggleResources: (open, opts) => {
@@ -82,4 +89,6 @@ export const createShelfSlice = (storage?: AppStorage): StateCreator<App, [], []
   showResourceField: (ref) => set({ resourcesField: ref, resourcesShown: undefined }),
   setResourcesNaming: (v) => set({ resourcesNaming: v }),
   setResourceCols: (cols, persist = true) => set(() => { const c = clampCols(cols); if (persist) storage?.setResourceCols(c); return { resourceCols: c }; }),
+  setResourceSize: (size, persist = true) => set(() => { if (persist) storage?.setResourceSize(size); return { resourceSize: size }; }),
+  toggleResourcesFull: () => set((s) => ({ resourcesFull: !s.resourcesFull })),
 });

@@ -13,7 +13,7 @@ const LABEL_OFFSET = theme.bounds.top * theme.cell;
 const PILL_AIR = 10;
 
 export function Island({
-  island, count, hot, selected, collapsed, dragging, settling, hover, offset, gripOffset, onNew, onToggle, land, label, handle, hold,
+  island, count, hot, selected, collapsed, dragging, settling, hover, offset, gripOffset, onNew, onToggle, onMenu, land, label, handle, hold,
 }: {
   island: IslandModel;
   count: number;
@@ -27,6 +27,7 @@ export function Island({
   gripOffset?: { x: number; y: number };
   onNew(): void;
   onToggle(): void;
+  onMenu(e: React.MouseEvent): void;
   land: PointerHandlers;
   label: PointerHandlers;
   handle: PointerHandlers;
@@ -53,6 +54,7 @@ export function Island({
       data-settling={settling}
       data-drop={`island:${island.id}`}
       data-drop-hover={hover}
+      onContextMenu={onMenu}
       style={{ left: island.position.x * cell - pad, top: island.position.y * cell - pad, width: bw, height: bh,
         translate: offset ? `${offset.x}px ${offset.y}px` : undefined,
         ...(pill && { '--pill-x': `${pad + (pill.position.x - island.position.x) * cell + PILL_AIR / 2}px`,

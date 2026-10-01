@@ -3,8 +3,10 @@ import './setup.js';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { setAppStore } from '../../src/hooks.js';
-import { createAppStore, type AppStore } from '../../src/store/index.js';
+import { createAppStore, localAppStorage, type AppStore } from '../../src/store/index.js';
 import { fleet } from '../fixtures.js';
+
+Element.prototype.setPointerCapture ??= function () {};
 
 const answer = (method: string, _params?: unknown): Promise<unknown> => Promise.resolve(method === 'resources.get' ? { sources: [] } : {});
 const call = vi.fn(answer);
@@ -109,4 +111,46 @@ test('the new doc field stands until Enter or Escape, and a refused name keeps i
 
   act(() => { fireEvent.keyDown(field, { key: 'Escape' }); });
   expect(screen.queryByTestId('resources-new-doc-name')).toBeNull();
+});
+
+// the shelf's box in percent of its room
+const box = () => {
+  const st = screen.getByTestId('resources-shelf').style;
+  const pc = (v: string) => Math.round(parseFloat(v) * 100) / 100;
+  return { left: pc(st.left), top: pc(st.top), width: pc(st.width), height: pc(st.height) };
+};
+
+test('the shelf opens centred at nine tenths of its room, and the size button fills the room and points at the islet', async () => {
+  render(<OnMap />);
+  await act(async () => {});
+  expect(box()).toEqual({ left: 5, top: 5, width: 90, height: 90 });
+  expect(screen.getByTestId('resources-shelf').dataset.full).toBe('false');
+  fireEvent.click(screen.getByTestId('resources-size'));
+  expect(box()).toEqual({ left: 0, top: 0, width: 100, height: 100 });
+  expect(screen.getByTestId('resources-shelf').dataset.full).toBe('true');
+  expect(screen.queryByTestId('resources-grip')).toBeNull();
+  fireEvent.click(screen.getByTestId('resources-size'));
+  expect(box().width).toBe(90);
+});
+
+test('the grip drags the shelf from its corner and the size is kept once it is let go', async () => {
+  localStorage.clear();
+  store = createAppStore(localAppStorage());
+  setAppStore(store);
+  store.getState().setFleet(fleet());
+  store.getState().toggleResources(true);
+  render(<OnMap />);
+  await act(async () => {});
+  const room = document.querySelector('.res-room')!;
+  room.getBoundingClientRect = () => ({ width: 1000, height: 600 }) as DOMRect;
+  const grip = screen.getByTestId('resources-grip');
+  // the shelf stays centred, so it shrinks by twice what the grip travels
+  fireEvent.pointerDown(grip, { pointerId: 1, clientX: 900, clientY: 560 });
+  fireEvent.pointerMove(grip, { pointerId: 1, clientX: 800, clientY: 500, buttons: 1 });
+  expect(box()).toEqual({ left: 15, top: 15, width: 70, height: 70 });
+  expect(localStorage.getItem('svall.resources.size')).toBeNull();
+  fireEvent.pointerUp(grip, { pointerId: 1 });
+  const kept = createAppStore(localAppStorage()).getState().resourceSize;
+  expect(kept.w).toBeCloseTo(0.7);
+  expect(kept.h).toBeCloseTo(0.7);
 });

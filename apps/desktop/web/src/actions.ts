@@ -14,6 +14,9 @@ type ActionDeps = Pick<Deps, 'api' | 'store'>;
 
 const toast = (d: ActionDeps) => (e: Error) => d.store.getState().showToast(e.message);
 
+// Settings stands where the side card would show a new island or character, so making one puts Settings away
+const closeSettings = (d: ActionDeps): void => { if (d.store.getState().settingsOpen) d.store.getState().toggleSettings(false); };
+
 // where a new character starts when it takes another one's directory: the repo itself, never the worktree that one sits in
 const startCwd = (c: Character | undefined): string | undefined => (c?.repo?.isWorktree ? c.repo.mainRoot : c?.cwd);
 
@@ -31,6 +34,7 @@ export async function createCharacter(api: Pick<Api, 'call'>, params: Params<'ch
 // without an explicit cwd a new character inherits the one of the island's first character; home crew
 // start in the home cwd, and an island with no crew to inherit from starts in the fleet's default cwd
 export async function newCharacterOn(d: ActionDeps, islandId: string, cwd?: string): Promise<void> {
+  closeSettings(d);
   const f = d.store.getState().fleet;
   const dir = cwd ?? (f.islands[islandId]?.kind === 'home' ? f.home.cwd : startCwd(charactersOf(f, islandId)[0]) ?? f.defaultCwd);
   try {
@@ -62,6 +66,7 @@ export const moveCharacterToCell = (d: ActionDeps, id: string, islandId: string,
 export function newIslandAround(d: ActionDeps, id: string, cell: Cell): void {
   const c = d.store.getState().fleet.characters[id];
   if (!c) return;
+  closeSettings(d);
   const size = DEFAULT_SIZE;
   const position = { x: cell.x - Math.floor(size.w / 2), y: cell.y - Math.floor(size.h / 2) };
   d.api.call('island.create', { name: islandName(c.cwd), position, size })
@@ -98,6 +103,7 @@ export function arrangeIslands(d: ActionDeps, aspect?: number): void {
 // an island made on the map centres on the cell that asked for it; made from a button it has no cell,
 // and the daemon picks the spot
 export function newIsland(d: ActionDeps, cell?: Cell): void {
+  closeSettings(d);
   const n = mapIslandsSorted(d.store.getState().fleet).length + 1;
   const position = cell && { x: cell.x - Math.floor(DEFAULT_SIZE.w / 2), y: cell.y - Math.floor(DEFAULT_SIZE.h / 2) };
   d.api.call('island.create', { name: `Island ${n}`, ...(position ? { position } : {}) })
@@ -123,6 +129,7 @@ export async function newCharacterTarget(d: ActionDeps): Promise<{ islandId: str
 // a named character wherever the map last was, with its note and links written on once it exists;
 // it is the caller that reports a refusal, so the dialog can stay open on one
 export async function newNamedCharacter(d: ActionDeps, p: { name: string; note: string; refs: string[] }): Promise<string> {
+  closeSettings(d);
   const { islandId, cwd } = await newCharacterTarget(d);
   const c = await createCharacter(d.api, { islandId, cwd, ...(p.name ? { name: p.name } : {}) }, d.store.getState().fleet.defaultCwd);
   if (p.note || p.refs.length) {
@@ -153,6 +160,7 @@ function selectOnArrival(d: ActionDeps, before: string | undefined): () => void 
 // a fresh crew member in the home cwd, started with the home command and handed the prompt;
 // without a label the daemon names it. false when the fleet refused, the reason already on a toast
 export async function startHomeCharacter(d: ActionDeps, p: { prompt: string; label?: string }): Promise<boolean> {
+  closeSettings(d);
   const { home } = d.store.getState().fleet;
   const before = d.store.getState().selectedId;
   const stop = selectOnArrival(d, before);

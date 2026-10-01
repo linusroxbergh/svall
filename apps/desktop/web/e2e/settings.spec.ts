@@ -200,6 +200,14 @@ test('the first launch on a machine opens the settings, and no launch after it',
   await expect(page.getByTestId('settings')).toHaveCount(0);
 });
 
+test('a new island made with the first-run settings open puts them away and shows the island', async ({ page, svall }) => {
+  await svall.open('map', { firstRun: true });
+  await expect(page.getByTestId('settings')).toBeVisible();
+  await page.getByTestId('sidebar-new-island').click();
+  await expect(page.getByTestId('settings')).toHaveCount(0);
+  await expect(page.getByTestId('side-island-card')).toBeVisible();
+});
+
 test('the keyboard rows take a new chord, ask before a taken one, clear and put back', async ({ page, svall }) => {
   await svall.open();
   await page.getByTestId('settings-open').click();

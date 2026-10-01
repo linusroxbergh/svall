@@ -17,7 +17,7 @@ const stop = (e: React.PointerEvent) => e.stopPropagation();
 // crew shrink by `scale` towards the bottom centre, and the row stays full size above them
 export function Home({
   island, crew, config, collapsed, selected, selectedId, drag, status, shift, rowShift, scale, extra,
-  onToggle, onAction, onArrange, onNewIsland, onNew, label, tokenPointer, onHoverStart, onHoverEnd, onOpen, onLink, dropHover,
+  onToggle, onAction, onArrange, onNewIsland, onNew, label, tokenPointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu, dropHover,
 }: {
   island: Island;
   crew: Character[];
@@ -43,6 +43,7 @@ export function Home({
   onHoverEnd(): void;
   onOpen(id: string): void;
   onLink(item: ContextItem, charId: string, at: { x: number; y: number }): void;
+  onMenu(id: string, e: React.MouseEvent): void;
   dropHover?: DropTarget;
 }) {
   // an action holds the daemon for up to the run timeout; the row stays disabled so one press is one crew member
@@ -89,7 +90,7 @@ export function Home({
               <Token key={c.id} c={c} status={status(c)} world={{ x: at.x + PAD_CELLS, y: at.y + PAD_CELLS }}
                 selected={c.id === selectedId} dragging={dragging} hover={dropHover?.kind === 'char' && dropHover.id === c.id}
                 pointer={tokenPointer(c.id)} onHoverStart={() => onHoverStart(c.id)} onHoverEnd={onHoverEnd}
-                onOpen={() => onOpen(c.id)} onLink={onLink} />
+                onOpen={() => onOpen(c.id)} onLink={onLink} onMenu={(e) => onMenu(c.id, e)} />
             );
           })}
         </div>

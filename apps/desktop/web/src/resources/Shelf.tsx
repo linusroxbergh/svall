@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { app, deps } from '../boot.js';
 import { commitFocused } from '../Field.js';
+import { useHalfGrip } from '../halfGrip.js';
 import { useApp } from '../hooks.js';
 import { checkDisk } from '../ide/files.js';
 import { flushDocs } from './autosave.js';
@@ -21,6 +22,12 @@ function refresh(): void {
 function Shelf({ tip }: { tip: number }) {
   const box = useRef<HTMLDivElement>(null);
   const cols = useApp((s) => s.resourceCols);
+  const size = useApp((s) => s.resourceSize);
+  const full = useApp((s) => s.resourcesFull);
+  const { resizing, grip } = useHalfGrip(() => app.store.getState().resourceSize, (v, persist) => app.store.getState().setResourceSize(v, persist),
+    (g) => { const r = g.closest('.res-room')!.getBoundingClientRect(); return { w: r.width, h: r.height }; });
+  // centred in the room over mission control and sized as the terminal card is; full, it fills the room and points at the islet
+  const { w, h } = full ? { w: 1, h: 1 } : size;
   useEffect(() => {
     refresh();
     // the shelf takes the keyboard as it opens, so the arrows walk it without a click first
@@ -37,20 +44,26 @@ function Shelf({ tip }: { tip: number }) {
     return () => window.removeEventListener('pointerdown', away, true);
   }, []);
   return (
-    <div className="res-shelf" ref={box} data-testid="resources-shelf" role="dialog" aria-label="Resources" tabIndex={-1}
-      style={{ '--tip': `${tip}px`, '--rail': `${cols.rail}px`, '--list': `${cols.list}px` } as React.CSSProperties}
-      onDoubleClick={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}
-      onPointerDown={pointerPicked}
-      onKeyDown={(e) => { if (box.current && shelfKey(e.nativeEvent, box.current)) e.preventDefault(); }}>
-      <div className="res-in">
-        <div className="res-panes">
-          <Where />
-          <Split col="rail" label="Resize the sources" />
-          <List />
-          <Split col="list" label="Resize the list" />
-          <EditorPane onClose={() => app.store.getState().toggleResources(false)} />
+    <div className="res-room">
+      <div className="res-shelf" ref={box} data-testid="resources-shelf" role="dialog" aria-label="Resources" tabIndex={-1}
+        data-full={full} data-resizing={resizing}
+        style={{ left: `${(1 - w) * 50}%`, top: `${(1 - h) * 50}%`, width: `${w * 100}%`, height: `${h * 100}%`,
+          '--tip': `${tip}px`, '--rail': `${cols.rail}px`, '--list': `${cols.list}px` } as React.CSSProperties}
+        onDoubleClick={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}
+        onPointerDown={pointerPicked}
+        onKeyDown={(e) => { if (box.current && shelfKey(e.nativeEvent, box.current)) e.preventDefault(); }}>
+        <div className="res-in">
+          <div className="res-panes">
+            <Where />
+            <Split col="rail" label="Resize the sources" />
+            <List />
+            <Split col="list" label="Resize the list" />
+            <EditorPane onClose={() => app.store.getState().toggleResources(false)} />
+          </div>
+          <Foot onRefresh={refresh}>
+            {!full && <i className="card-grip" data-testid="resources-grip" title="Drag to resize" {...grip} />}
+          </Foot>
         </div>
-        <Foot onRefresh={refresh} />
       </div>
     </div>
   );

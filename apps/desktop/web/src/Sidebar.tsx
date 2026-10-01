@@ -2,9 +2,9 @@ import { useState } from 'react';
 import type { Character, Island } from '@svall/protocol';
 import { moveCharacterTo, newCharacterOn, newIsland, reorderIsland, saveIsland, toggleIsland } from './actions.js';
 import { app, deps } from './boot.js';
-import { showMenu } from './bridge.js';
 import type { DropTarget } from './drop.js';
 import { useApp } from './hooks.js';
+import { characterMenu, islandMenu } from './menus.js';
 import { boardIsland, boardViewed, charactersOf, islandStatus, islandsSorted, isUnread, statusOf, wantsUser } from './selectors.js';
 
 // what a folded island would hide: the characters that want the user
@@ -68,9 +68,8 @@ function IslandRow({ i, chars, editing, setEditing, dragging, setDragging }: {
     if (!open) toggleIsland(deps(), i.id);
     if (onBoard && chars[0]) s.focus(chars[0].id); else s.selectIsland(i.id);
   };
-  // the daemon deletes only an empty island; the rename field keeps the text menu
-  const menu = i.kind === 'home' || editing ? undefined : (e: React.MouseEvent) =>
-    showMenu(app.bridge, e, [{ title: 'Delete', run: chars.length ? undefined : () => app.store.getState().setDeletingIsland(i.id) }]);
+  // the rename field keeps the text menu
+  const menu = i.kind === 'home' || editing ? undefined : (e: React.MouseEvent) => islandMenu(e, i.id, chars.length === 0);
   return (
     <div className="sb-row sb-isle" data-testid={`sb-island-${i.id}`} data-selected={selected} data-open={open}
       data-drop={`island:${i.id}`} data-drop-hover={hover} {...dropZone({ kind: 'island', id: i.id })}
@@ -124,7 +123,7 @@ function CharacterRow({ c }: { c: Character }) {
       onDragStart={(e) => { e.dataTransfer.setData(CHAR_DRAG, c.id); e.dataTransfer.effectAllowed = 'move'; setDragging(true); }}
       onDragEnd={() => { setDragging(false); app.store.getState().setDropHover(undefined); }}
       onClick={click}
-      onContextMenu={(e) => showMenu(app.bridge, e, [{ title: 'Delete', run: () => app.store.getState().setClosingCharacter(c.id) }])}
+      onContextMenu={(e) => characterMenu(e, c.id)}
     >
       <i className="sdot" data-status={status} />
       <span className="sb-name">{c.name}</span>
