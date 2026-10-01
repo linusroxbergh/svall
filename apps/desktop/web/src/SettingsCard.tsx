@@ -3,6 +3,7 @@ import { AGENT_LABEL, AgentKind, DORMANT_AFTER_HOURS, fleetNameProblem, type Pus
 import { loadMobileStatus, renameFleet, setDormancy, setMainAgent, setScribe } from './actions.js';
 import { app, deps } from './boot.js';
 import { openConfig, openUrl, shim } from './bridge.js';
+import { AS_TYPED } from './Field.js';
 import { useApp } from './hooks.js';
 import { Info } from './Info.js';
 import { chordLabel, chordsOf, keyLabel, keyTip } from './keys.js';
@@ -117,7 +118,7 @@ function FleetName() {
     <>
       <div className="row">
         <span>name<Info id="fleet-name"><code>{shim()} &lt;name&gt;</code> opens this fleet from a terminal.</Info></span>
-        <b><input className="fld inline" aria-label="Fleet name" data-testid="set-fleet-name" key={name} defaultValue={name ?? ''}
+        <b><input className="fld inline" aria-label="Fleet name" data-testid="set-fleet-name" key={name} defaultValue={name ?? ''} {...AS_TYPED}
           placeholder={home ? directoryName(home) : undefined}
           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} onBlur={(e) => save(e.currentTarget)} /></b>
       </div>

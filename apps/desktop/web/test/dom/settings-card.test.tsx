@@ -36,6 +36,7 @@ test('the Tailscale link in the phone tip opens in the default browser', () => {
 test('the fleet name saves on Enter and retitles the window, and a name that will not do says why and is not sent', async () => {
   render(<SettingsCard />);
   const input = screen.getByTestId('set-fleet-name') as HTMLInputElement;
+  expect(['autocapitalize', 'autocorrect', 'spellcheck', 'autocomplete'].map((a) => input.getAttribute(a))).toEqual(['off', 'off', 'false', 'off']);
   input.focus();
   fireEvent.change(input, { target: { value: 'Big Base' } });
   fireEvent.keyDown(input, { key: 'Enter' });

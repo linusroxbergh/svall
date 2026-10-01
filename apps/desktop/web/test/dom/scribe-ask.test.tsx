@@ -42,6 +42,7 @@ test('a name svalld refuses says why and stays on the step; Skip leaves the flee
   call.mockImplementationOnce(() => Promise.reject(new Error('another fleet is called work')));
   render(<ScribeAsk />);
   const input = screen.getByTestId('fleet-name-input');
+  expect(['autocapitalize', 'autocorrect', 'spellcheck', 'autocomplete'].map((a) => input.getAttribute(a))).toEqual(['off', 'off', 'false', 'off']);
   fireEvent.change(input, { target: { value: 'Work' } });
   expect((screen.getByTestId('fleet-name-save') as HTMLButtonElement).disabled).toBe(true);
   fireEvent.change(input, { target: { value: 'work' } });

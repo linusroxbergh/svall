@@ -110,6 +110,7 @@ test('a new fleet\'s name is checked as it is typed, then the fleet is made and 
   render(<FleetPicker />);
   await rows();
   const input = screen.getByTestId('fleet-new-name');
+  expect(['autocapitalize', 'autocorrect', 'spellcheck', 'autocomplete'].map((a) => input.getAttribute(a))).toEqual(['off', 'off', 'false', 'off']);
   fireEvent.change(input, { target: { value: 'work' } });
   expect(screen.getByTestId('fleet-new-problem').textContent).toBe('another fleet is called work');
   expect((screen.getByTestId('fleet-new-create') as HTMLButtonElement).disabled).toBe(true);
