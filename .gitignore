@@ -4,6 +4,7 @@ node_modules/
 .env
 .claude/worktrees/
 .claude/settings.local.json
+.claude/skills/
 .playwright-mcp/
 .swiftpm/
 apps/desktop/web/dist/
