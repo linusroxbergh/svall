@@ -21,7 +21,11 @@ async function unserveFleets(homes: string[], d: MobileDeps): Promise<string[]> 
   let bin: string;
   try { bin = await resolveTailscale(d); } catch { return []; }
   let status: string;
-  try { status = await d.run(bin, ['serve', 'status', '--json']); } catch (e) {
+  try {
+    status = await d.run(bin, ['serve', 'status', '--json']);
+    // a tailscale that cannot start can still exit 0, saying so in prose
+    try { JSON.parse(status); } catch { throw new Error(status.trim() || 'no output'); }
+  } catch (e) {
     return [`could not read tailscale serve status, so any phone link was left in place: ${(e as Error).message.split('\n')[0]}`];
   }
   const done: string[] = [];
