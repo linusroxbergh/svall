@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -465,6 +465,25 @@ runIf('Fleet', () => {
     await new Promise((r) => setTimeout(r, 1500));
     await expect(tmux.run('list-sessions')).rejects.toThrow();
     await expect(fleet.reviveCharacter(c.id)).rejects.toThrow('the fleet is stopping');
+  });
+
+  it('waits on and kills only a pid that still runs its agent when it stops for a quit', async () => {
+    const b = await boot();
+    const { c } = await withAgent(b, 'claude');
+    // the pid the agent had now runs another program, which the stop leaves be
+    const other = spawn('sleep', ['30'], { stdio: 'ignore' });
+    let signal: string | null = null;
+    other.on('exit', (_code, sig) => { signal = sig; });
+    b.store.update((d) => { d.characters[c.id].agent!.pid = other.pid!; });
+    b.procs.push({ pid: other.pid!, ppid: 1, pgid: other.pid!, args: 'sleep 30' });
+    try {
+      await b.fleet.stopAll();
+      await new Promise((r) => setTimeout(r, 100));
+      expect(signal).toBeNull();
+      expect(b.store.state.characters[c.id].revive).toEqual({ command: `claude --resume ${SID}` });
+    } finally {
+      other.kill();
+    }
   });
 
   it('keeps every agent running while dormancy is off', async () => {
