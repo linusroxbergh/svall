@@ -209,10 +209,18 @@ export class Scribe {
       const noted = !!note && note !== cur.note && cur.note === before.note && cur.noteSource !== 'manual';
       if (noted) { cur.note = note; lines.push(`${cur.name}  note: ${note}`); }
       if (!namesOnly && a.links && scribeKey(cur.context) === scribeKey(before.context)) {
-        const links = prFirst(acceptLinks(a.links, transcript, cur.context));
+        // a PR the scribe takes from the branch's lookup keeps the state that lookup read until the next one
+        const states = new Map(cur.context.flatMap((it) => (it.prState ? [[bareUrl(it.ref), it.prState] as const] : [])));
+        const links = prFirst(acceptLinks(a.links, transcript, cur.context)).map((l) => {
+          const prState = states.get(bareUrl(l.ref));
+          return prState ? { ...l, prState } : l;
+        });
+        const mine = new Set(links.map((l) => bareUrl(l.ref)));
+        // an auto chip goes for a PR the scribe now holds, as does the repository one of its PRs is in
+        const replaced = (it: ContextItem) => it.source === 'auto' && (mine.has(bareUrl(it.ref)) || (it.kind === 'github' &&
+          links.some((link) => link.kind === 'pr' && bareUrl(link.ref).startsWith(`${bareUrl(it.ref).slice(0, -1)}/pull/`))));
         if (scribeKey(links) !== scribeKey(cur.context)) {
-          cur.context = prFirst([...cur.context.filter((it) => it.source !== 'scribe' && !(it.source === 'auto' && it.kind === 'github' &&
-            links.some((link) => link.kind === 'pr' && bareUrl(link.ref).startsWith(`${bareUrl(it.ref).slice(0, -1)}/pull/`)))), ...links]);
+          cur.context = prFirst([...cur.context.filter((it) => it.source !== 'scribe' && !replaced(it)), ...links]);
           lines.push(`${cur.name}  links: ${links.map((l) => l.label).join(', ') || 'none'}`);
         }
       }

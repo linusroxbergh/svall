@@ -91,6 +91,13 @@ describe('acceptLinks', () => {
     const loose: ContextItem = { kind: 'other', ref: 'https://loose', label: 'loose', source: 'scribe' };
     expect(acceptLinks([], transcript, [manual, held, loose])).toEqual([held]);
   });
+
+  it("takes the branch's PR, which no transcript need name, but not the repository fallback", () => {
+    const pr: ContextItem = { kind: 'pr', ref: 'https://github.com/o/r/pull/5', label: '#5', source: 'auto', prState: 'open' };
+    const repo: ContextItem = { kind: 'github', ref: 'https://github.com/o/r', label: 'o/r', source: 'auto' };
+    expect(acceptLinks([{ url: pr.ref, label: '#5' }, { url: repo.ref, label: 'o/r' }], `see ${repo.ref}`, [pr, repo]))
+      .toEqual([{ kind: 'pr', ref: pr.ref, label: '#5', source: 'scribe' }]);
+  });
 });
 
 describe('parseAnswer', () => {
@@ -135,6 +142,12 @@ describe('prEvidence', () => {
   });
   it('resolves a numbered PR mentioned before the condensed turns', () => {
     expect(prEvidence(char({ context: [repo] }), 'AGENT: continuing review', 'USER: Please review pull request #42')).toEqual(['https://github.com/o/r/pull/42']);
+  });
+  it('keeps a second PR that the first is named far more often than', () => {
+    const urls = ['https://github.com/o/r/pull/41', ...Array<string>(9).fill('https://github.com/o/r/pull/42')].join(' ');
+    expect(prEvidence(char(), '', urls)).toEqual(['https://github.com/o/r/pull/41', 'https://github.com/o/r/pull/42']);
+    const refs = ['PR #43', ...Array<string>(9).fill('PR #44')].join('\n');
+    expect(prEvidence(char({ context: [repo] }), refs, '')).toEqual(['https://github.com/o/r/pull/43', 'https://github.com/o/r/pull/44']);
   });
 });
 
