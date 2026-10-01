@@ -40,7 +40,12 @@ final class ShellRouter {
         surfaces.onExited = { [weak self] id in self?.bridge.send(.termExited(id: id)) }
         surfaces.onFailed = { [weak self] id, reason in self?.bridge.send(.termFailed(id: id, reason: reason)) }
         surfaces.onFocused = { [weak self] id in self?.bridge.send(.termFocused(id: id)) }
-        surfaces.onOpenURL = { [weak self] id, url in self?.bridge.send(.termOpenUrl(id: id, url: url)) }
+        // the page asks where the link opens, beside the pointer that followed it
+        surfaces.onOpenURL = { [weak self] id, url in
+            guard let self else { return }
+            let (x, y) = self.webView.webPoint(self.webView.window?.mouseLocationOutsideOfEventStream ?? .zero)
+            self.bridge.send(.termOpenUrl(id: id, url: url, x: x, y: y))
+        }
 
         browsers.onState = { [weak self] s in self?.bridge.send(.browserState(s)) }
         browsers.onOpened = { [weak self] from, tab, url in self?.bridge.send(.browserOpened(from: from, tab: tab, url: url)) }

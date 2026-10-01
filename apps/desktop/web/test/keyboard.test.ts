@@ -566,7 +566,7 @@ describe('dispatchKey on the map', () => {
     installKeyHandlers(c, win);
     const enter = () => listeners.keydown({ key: 'Enter', target: { tagName: 'DIV' }, preventDefault() {} } as unknown as KeyboardEvent);
     c.store.getState().select('c1', false);
-    c.store.getState().askLink({ item: { kind: 'link', ref: 'https://example.com' } as never, charId: 'c1', x: 0, y: 0 });
+    c.store.getState().askLink({ url: 'https://example.com', charId: 'c1', x: 0, y: 0 });
     enter();
     c.store.getState().closeLinkAsk();
     c.store.getState().toggleUsage(true);

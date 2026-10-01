@@ -11,8 +11,8 @@ final class DropWebView: WKWebView {
     }
 
     // the page is zoomed, so a window point is fewer page pixels than one
-    private func webPoint(_ sender: NSDraggingInfo) -> (Double, Double) {
-        let p = convert(sender.draggingLocation, from: nil)
+    func webPoint(_ windowPoint: NSPoint) -> (Double, Double) {
+        let p = convert(windowPoint, from: nil)
         return (p.x / pageZoom, (isFlipped ? p.y : bounds.height - p.y) / pageZoom)
     }
 
@@ -22,7 +22,7 @@ final class DropWebView: WKWebView {
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard !fileURLs(sender).isEmpty else { return super.draggingUpdated(sender) }
-        let (x, y) = webPoint(sender)
+        let (x, y) = webPoint(sender.draggingLocation)
         onDrag?(.dragOver(x: x, y: y))
         return .copy
     }
@@ -35,7 +35,7 @@ final class DropWebView: WKWebView {
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         let urls = fileURLs(sender)
         guard !urls.isEmpty else { return super.performDragOperation(sender) }
-        let (x, y) = webPoint(sender)
+        let (x, y) = webPoint(sender.draggingLocation)
         onDrag?(.dragDrop(paths: urls.map(\.path), x: x, y: y))
         return true
     }

@@ -44,18 +44,16 @@ export function createBrowserManager(api: Api, bridge: Bridge, store: AppStore):
     else { opening.add(id); api.fire('browser.open', { id, url }); }
   };
 
-  // a link followed in a terminal opens beside it, as a tab of that character; anything the browser
-  // cannot hold, and a character that is not there, goes out to the user's own browser
-  const fromTerminal = (key: string, url: string) => {
+  // a link followed in a terminal asks whether it opens beside it, as a tab of that character; anything the
+  // browser cannot hold, and a character that is not there, goes straight out to the user's own browser
+  const fromTerminal = (key: string, url: string, x: number, y: number) => {
     const id = charOfSurface(key);
-    const s = state();
-    if (!s.fleet.characters[id] || !/^https?:/i.test(url)) { openUrl(bridge, url); return; }
-    s.setPanes(id, showBrowser(panesOf(s, id)));
-    load(id, undefined, url);
+    if (!state().fleet.characters[id] || !/^https?:/i.test(url)) { openUrl(bridge, url); return; }
+    state().askLink({ url, charId: id, x, y, surface: key });
   };
 
   bridge.onMessage((m) => {
-    if (m.type === 'term.openUrl') fromTerminal(m.id, m.url);
+    if (m.type === 'term.openUrl') fromTerminal(m.id, m.url, m.x, m.y);
     if (m.type === 'browser.state') {
       const prev = state().webviews[m.tab];
       if (!prev) return;

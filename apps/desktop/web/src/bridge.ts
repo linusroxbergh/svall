@@ -64,7 +64,7 @@ export type FromShell =
   | { type: 'term.failed'; id: string; reason: string }
   | { type: 'term.focused'; id: string }
   // a link followed in a terminal, for the character's own browser
-  | { type: 'term.openUrl'; id: string; url: string }
+  | { type: 'term.openUrl'; id: string; url: string; x: number; y: number }
   // error: what stopped the last navigation, empty once one gets somewhere
   | { type: 'browser.state'; tab: string; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error?: string }
   | { type: 'browser.opened'; from: string; tab: string; url: string }
