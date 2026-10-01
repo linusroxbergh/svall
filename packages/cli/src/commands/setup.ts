@@ -16,7 +16,7 @@ import {
   CODEX_TRUST, claudeHooksCurrent, cliCommand, codexHooksCurrent, hookRemovals, isLoaded, kickstart, plistCurrent, readCodexHooks, readJsonSettings, readOrUndefined,
   refreshFleetPlists, requireWritableHooks, runSetup, shimsCurrent, takenOverBy, type JsonSettings,
 } from '@svall/svalld/setup';
-import { integrationsFor, requireInstalledApp, runtimeVersion, setupPlan, staleFleets } from '@svall/svalld/setup-plan';
+import { inheritingFleets, integrationsFor, requireInstalledApp, runtimeVersion, setupPlan, staleFleets } from '@svall/svalld/setup-plan';
 import { fleetHomes } from '@svall/svalld/uninstall';
 import { renderGroups, useColor } from '../checks-view.js';
 import { printResult } from '../format.js';
@@ -179,7 +179,10 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       });
       const fleets = await refreshFleetPlists({ homes, runtime, launchAgentsDir: launchAgents, launchctl: system, takeOver: !o.ifNeeded });
       lines.push(...fleets.done);
-      if (system) lines.push(...await kickstart(stale.filter((l) => l !== LAUNCHD_LABEL && !fleets.restarted.includes(l))));
+      // a running fleet took the private fleet's main agent at its start, so a switch reaches it only through a restart
+      const inheriting = choices?.mainAgent ? inheritingFleets(ours, (l) => loaded.has(l)) : [];
+      const restart = [...new Set([...stale, ...inheriting])].filter((l) => l !== LAUNCHD_LABEL && !fleets.restarted.includes(l));
+      if (system) lines.push(...await kickstart(restart));
       // Codex's trust ask is the user's next step, so it goes with the warnings the setup screen shows
       const done = lines.filter((l) => l !== CODEX_TRUST);
       if (done.length < lines.length) warnings.push(CODEX_TRUST);

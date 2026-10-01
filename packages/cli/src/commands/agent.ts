@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { AGENTS, findAgents, mainAgent } from '@svall/svalld/agents';
-import { loadConfig, saveConfig } from '@svall/svalld/config';
+import { fleetMainAgent, loadConfig, saveConfig } from '@svall/svalld/config';
 import { resolvePaths } from '@svall/svalld/paths';
 import { AgentKind, type FleetState } from '@svall/protocol';
 import { Client } from '../client.js';
@@ -36,7 +36,7 @@ export function agentCommand(target: () => Target, json: () => boolean): Command
       if (name === undefined) {
         // a running svalld answers with what the fleet uses, which its own PATH and its start's config.json decide
         const live = await fleetState(t.home);
-        const agent = live?.mainAgent ?? mainAgent(loadConfig(configFile).mainAgent, found);
+        const agent = live?.mainAgent ?? mainAgent(fleetMainAgent(t.home, loadConfig(configFile).mainAgent), found);
         printResult({ agent, found: live?.agentsFound ?? found }, json(), () => `Main agent: ${label(agent)}`);
         return;
       }

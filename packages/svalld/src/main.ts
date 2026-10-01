@@ -5,7 +5,7 @@ import path from 'node:path';
 import { startApi } from './api/server.js';
 import { findAgents } from './agents.js';
 import { codexPaths } from './codex/install.js';
-import { loadConfig } from './config.js';
+import { fleetMainAgent, loadConfig } from './config.js';
 import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
 import { startHookReceiver } from './hooks/receiver.js';
@@ -13,7 +13,7 @@ import { createLogger, rotateLog, type Logger } from './log.js';
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
 import { fleetKeys, resolvePaths } from './paths.js';
 import { Phones } from './phones.js';
-import { isProfileName, PRIVATE, profileHome, profileOf, variantOf } from './profile.js';
+import { isProfileName, PRIVATE, profileOf, variantOf } from './profile.js';
 import { variant } from './runtime.js';
 import { startPusher, webPushSender } from './push/pusher.js';
 import { PushStore } from './push/store.js';
@@ -89,10 +89,7 @@ async function start(opts: Options): Promise<Daemon> {
   const push = new PushStore(paths.push, log.error);
   const vapid = readOrCreateVapid(paths.vapid);
   const profile = profileOf(paths.home);
-  // a fleet with no main agent of its own takes the private fleet's, which setup switches when the user turns one off
-  if (profile !== PRIVATE && !config.mainAgent) {
-    try { config.mainAgent = loadConfig(resolvePaths(profileHome(PRIVATE)).config).mainAgent; } catch { /* the private fleet reports its own config */ }
-  }
+  config.mainAgent = fleetMainAgent(paths.home, config.mainAgent);
   // launchd's PATH, which setup built to include where the shell found claude and codex
   const agentsFound = findAgents(process.env.PATH ?? '');
   // a Codex installed after `svall setup` still gets its hooks. Only the private fleet writes them:

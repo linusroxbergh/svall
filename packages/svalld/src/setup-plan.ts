@@ -2,7 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { AgentKind } from '@svall/protocol';
 import { AGENTS, AGENT_KINDS } from './agents.js';
-import { LAUNCHD_LABEL, SHIM, profileLabel, profileOf } from './profile.js';
+import { loadConfig } from './config.js';
+import { resolvePaths } from './paths.js';
+import { LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from './profile.js';
 import { bundledVersion, type Runtime } from './runtime.js';
 
 // an agent found only by its folder gets hooks and a toggle, but cannot be the main agent
@@ -60,4 +62,12 @@ export function staleFleets(homes: string[], version: string, loaded: (label: st
   return homes.map((h) => [h, label(h)] as const)
     .filter(([h, l]) => loaded(l) && readVersion(h) !== version)
     .map(([, l]) => l);
+}
+
+/** The launchd labels of the loaded fleets that run the private fleet's main agent, as their own config names none. */
+export function inheritingFleets(homes: string[], loaded: (label: string) => boolean,
+  label: (home: string) => string = (h) => profileLabel(profileOf(h))): string[] {
+  // a config that does not parse stops its daemon at start anyway
+  const namesOwn = (h: string) => { try { return loadConfig(resolvePaths(h).config).mainAgent !== undefined; } catch { return true; } };
+  return homes.filter((h) => profileOf(h) !== PRIVATE && loaded(label(h)) && !namesOwn(h)).map(label);
 }

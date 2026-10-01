@@ -8,7 +8,7 @@ import { Command } from 'commander';
 import { AGENTS, AGENT_KINDS, findAgents, versionOk } from '@svall/svalld/agents';
 import { characterKeyEnv } from '@svall/svalld/claude';
 import { codexInstalled, codexPaths, type CodexPaths } from '@svall/svalld/codex/install';
-import { loadConfig, parseConfig } from '@svall/svalld/config';
+import { fleetMainAgent, loadConfig, parseConfig } from '@svall/svalld/config';
 import { resolvePaths, userPaths } from '@svall/svalld/paths';
 import { PRIVATE, SHIM, profileHome, profileLabel } from '@svall/svalld/profile';
 import { HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hooksInstalled, launchdEnv, plistEnv, plistRun } from '@svall/svalld/setup';
@@ -321,7 +321,7 @@ function connectHook(path: string): Promise<void> {
 
 export function realPreflightDeps(home: string): PreflightDeps {
   let mainAgent: AgentKind | undefined;
-  try { mainAgent = loadConfig(resolvePaths(home).config).mainAgent; } catch { /* doctor's config check reports it */ }
+  try { mainAgent = fleetMainAgent(home, loadConfig(resolvePaths(home).config).mainAgent); } catch { /* doctor's config check reports it */ }
   return {
     // a login probe, the one call given the fleet's keys, must not hold up install when it hangs
     run: async (cmd, args, env) => (await execFileP(cmd, args, { timeout: env ? 5_000 : 10_000, env: env && { ...process.env, ...env } })).stdout,

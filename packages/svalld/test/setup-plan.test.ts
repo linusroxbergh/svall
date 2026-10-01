@@ -1,8 +1,9 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { bundleRuntime } from '../src/runtime.js';
-import { integrationsFor, requireInstalledApp, setupPlan, staleFleets } from '../src/setup-plan.js';
+import { inheritingFleets, integrationsFor, requireInstalledApp, setupPlan, staleFleets } from '../src/setup-plan.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 afterEach(cleanHomes);
@@ -93,5 +94,16 @@ describe('staleFleets', () => {
     const loaded = (label: string) => !label.endsWith(path.basename(c));
     const label = (home: string) => `L.${path.basename(home)}`;
     expect(staleFleets([a, b, c, d], '0.1.1 (12)', loaded, label)).toEqual([label(a), label(d)]);
+  });
+});
+
+describe('inheritingFleets', () => {
+  it('names the loaded fleets whose config names no main agent, and leaves the private fleet, a stopped one and the rest', () => {
+    const a = makeHome(), b = makeHome(), c = makeHome(), d = makeHome();
+    fs.writeFileSync(path.join(b, 'config.json'), JSON.stringify({ mainAgent: 'claude' }));
+    fs.writeFileSync(path.join(d, 'config.json'), '{');
+    const loaded = (label: string) => !label.endsWith(path.basename(c));
+    const label = (home: string) => `L.${path.basename(home)}`;
+    expect(inheritingFleets([path.join(os.homedir(), '.svall'), a, b, c, d], loaded, label)).toEqual([label(a)]);
   });
 });

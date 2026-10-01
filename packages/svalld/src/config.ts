@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import { z } from 'zod';
 import { AgentKind, DEFAULT_CWD, Home, isProfileName } from '@svall/protocol';
 import { writeAtomic } from './jsonfile.js';
-import { DEFAULT_PORT, HOME_CWD } from './profile.js';
+import { resolvePaths } from './paths.js';
+import { DEFAULT_PORT, HOME_CWD, PRIVATE, profileHome, profileOf } from './profile.js';
 
 export const Config = z.object({
   // what the app and `svall <name>` call the fleet; absent, its directory names it
@@ -38,6 +39,14 @@ export const scribeModel = (s: Config['scribe'], agent: AgentKind): string | und
   ((s.agent ?? 'claude') === agent ? s.model : undefined);
 
 export class InvalidConfig extends Error {}
+
+/** The main agent of the fleet at `home`, whose own config names `own`: absent, the private fleet's, which setup switches
+ *  when the user turns one off. */
+export function fleetMainAgent(home: string, own: AgentKind | undefined): AgentKind | undefined {
+  if (own || profileOf(home) === PRIVATE) return own;
+  // a private config that does not parse is the private fleet's to report
+  try { return loadConfig(resolvePaths(profileHome(PRIVATE)).config).mainAgent; } catch { return undefined; }
+}
 
 export function loadConfig(file: string): Config {
   if (!fs.existsSync(file)) return Config.parse({});

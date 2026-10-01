@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Config, loadConfig, saveConfig } from '../src/config.js';
+import { Config, fleetMainAgent, loadConfig, saveConfig } from '../src/config.js';
 import { newId } from '../src/ids.js';
 import { resolvePaths, userPaths } from '../src/paths.js';
 import { cleanHomes, makeHome } from './helpers.js';
@@ -98,5 +98,24 @@ describe('saveConfig', () => {
     expect(loadConfig(f).name).toBe('home');
     fs.writeFileSync(f, JSON.stringify({ name: 'Home Base' }));
     expect(() => loadConfig(f)).toThrow(/name: /);
+  });
+});
+
+describe('fleetMainAgent', () => {
+  it("gives a fleet that names no main agent the private fleet's, and keeps one a fleet names", () => {
+    const privateConfig = path.join(os.homedir(), '.svall', 'config.json');
+    fs.mkdirSync(path.dirname(privateConfig), { recursive: true });
+    const before = fs.existsSync(privateConfig) ? fs.readFileSync(privateConfig, 'utf8') : undefined;
+    fs.writeFileSync(privateConfig, JSON.stringify({ mainAgent: 'codex' }));
+    try {
+      const work = makeHome();
+      expect(fleetMainAgent(work, undefined)).toBe('codex');
+      expect(fleetMainAgent(work, 'claude')).toBe('claude');
+      expect(fleetMainAgent(path.dirname(privateConfig), undefined)).toBeUndefined();
+      fs.writeFileSync(privateConfig, '{');
+      expect(fleetMainAgent(work, undefined)).toBeUndefined();
+    } finally {
+      if (before === undefined) fs.rmSync(privateConfig); else fs.writeFileSync(privateConfig, before);
+    }
   });
 });

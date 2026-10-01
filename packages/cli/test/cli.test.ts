@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { startDaemon, type Daemon } from '@svall/svalld';
 import { silentLogger } from '@svall/svalld/log';
 import { resolvePaths } from '@svall/svalld/paths';
-import { isProfileName } from '@svall/svalld/profile';
+import { isProfileName, profileLabel } from '@svall/svalld/profile';
 import { HOOK_EVENTS, mergeHooks } from '@svall/svalld/setup';
 import { cleanHomes, hasTmux, makeHome, waitFor } from '@svall/svalld/test-helpers';
 import { Tmux } from '@svall/svalld/tmux';
@@ -246,6 +246,31 @@ describe('svall setup --agents', () => {
       expect(r.code).not.toBe(0);
       expect(r.stderr).toContain('--agents codex leaves on no agent whose CLI is on PATH; add claude');
       expect(fs.existsSync(path.join(home, '.svall'))).toBe(false);
+    } finally {
+      cleanHomes();
+    }
+  });
+
+  it.runIf(process.platform === 'darwin')("restarts a running fleet that takes the private fleet's main agent when setup switches it", async () => {
+    const home = makeHome();
+    try {
+      const PATH = tools(home);
+      const bin = path.join(home, 'bin');
+      const log = path.join(home, 'launchctl.log');
+      fs.writeFileSync(path.join(bin, 'claude'), '#!/bin/sh\necho 2.1.0\n', { mode: 0o755 });
+      // every daemon counts as loaded
+      fs.writeFileSync(path.join(bin, 'launchctl'), `#!/bin/sh\necho "$@" >> '${log}'\n`, { mode: 0o755 });
+      for (const [name, config] of [['work', {}], ['own', { mainAgent: 'claude' }]] as const) {
+        fs.mkdirSync(path.join(home, `.svall-${name}`));
+        fs.writeFileSync(path.join(home, `.svall-${name}`, 'config.json'), JSON.stringify(config));
+      }
+      // the first setup writes every fleet's plist; their daemons then run this version, so nothing else restarts them
+      expect((await run({ HOME: home, PATH }, 'setup', '--no-launchctl', '--agents', 'claude,codex')).code).toBe(0);
+      for (const name of ['work', 'own']) fs.writeFileSync(path.join(home, `.svall-${name}`, 'version'), 'dev');
+      const r = await run({ HOME: home, PATH }, 'setup', '--agents', 'codex');
+      expect(r.code).toBe(0);
+      const kicked = fs.readFileSync(log, 'utf8').split('\n').filter((l) => l.startsWith('kickstart '));
+      expect(kicked).toEqual([expect.stringMatching(new RegExp(`/${profileLabel('work').replaceAll('.', '\\.')}$`))]);
     } finally {
       cleanHomes();
     }
