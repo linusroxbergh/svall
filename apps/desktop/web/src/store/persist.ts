@@ -2,10 +2,10 @@ import type { Tier } from '../resources/model.js';
 import { readSettings, type Settings } from '../settings.js';
 import type { View } from './ui.js';
 
-// the half card's footprint as a fraction of the map, so one window size carries to the next; the first leaves about
-// a twentieth of the map around it
+// the half card's footprint as a fraction of the map, so one window size carries to the next; the first leaves 3% of
+// the map at each side and 4% above and below, about the same in pixels on a wide map
 export type HalfCard = { w: number; h: number };
-export const DEFAULT_HALF_CARD: HalfCard = { w: 0.9, h: 0.88 };
+export const DEFAULT_HALF_CARD: HalfCard = { w: 0.94, h: 0.92 };
 export const HALF_CARD_RANGE = { min: 0.22, max: 0.98 };
 // the resources shelf sizes the same way, as a fraction of the room over mission control; the first leaves a twentieth around it
 export const DEFAULT_RESOURCE_SIZE: HalfCard = { w: 0.9, h: 0.9 };

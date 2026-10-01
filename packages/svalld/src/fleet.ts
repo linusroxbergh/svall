@@ -263,6 +263,8 @@ export class Fleet extends EventEmitter<Events> {
     if (!fs.statSync(expandHome(cwd), { throwIfNoEntry: false })?.isDirectory()) {
       this.deps.log.error(`default cwd ${cwd} is not a directory: characters cannot start there`);
     }
+    // a fleet with no islands at all is new; a recovered or salvaged one already has some by now
+    const first = Object.keys(this.deps.store.state.islands).length === 0;
     this.deps.store.update((d) => {
       d.home = { ...home, command: this.crewCommand() };
       d.defaultCwd = this.deps.config.defaultCwd;
@@ -278,6 +280,8 @@ export class Fleet extends EventEmitter<Events> {
       // a start is the one moment mission control comes back up to the fleet; from here it only follows it down
       settleHome(d);
     });
+    // a new fleet opens with one empty island beside mission control; only its first start makes it, so a deleted one stays gone
+    if (first) this.createIsland({ name: 'Island 1' });
   }
 
   private async tick(): Promise<void> {

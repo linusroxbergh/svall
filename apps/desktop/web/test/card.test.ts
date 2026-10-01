@@ -5,7 +5,7 @@ const win = { w: 1200, h: 800 };
 
 describe('cardRect', () => {
   it('half card fills most of the map on first use, centred', () => {
-    expect(cardRect({ size: 'half', win })).toEqual({ x: 60, y: 48, width: 1080, height: 704 });
+    expect(cardRect({ size: 'half', win })).toEqual({ x: 36, y: 32, width: 1128, height: 736 });
   });
   it('full card is the whole map, edge to edge', () => {
     expect(cardRect({ size: 'full', win })).toEqual({ x: 0, y: 0, width: 1200, height: 800 });

@@ -36,6 +36,7 @@ test('the Tailscale link in the phone tip opens in the default browser', () => {
 test('the fleet name saves on Enter and retitles the window, and a name that will not do says why and is not sent', async () => {
   render(<SettingsCard />);
   const input = screen.getByTestId('set-fleet-name') as HTMLInputElement;
+  expect(['autocapitalize', 'autocorrect', 'spellcheck', 'autocomplete'].map((a) => input.getAttribute(a))).toEqual(['off', 'off', 'false', 'off']);
   input.focus();
   fireEvent.change(input, { target: { value: 'Big Base' } });
   fireEvent.keyDown(input, { key: 'Enter' });
@@ -99,11 +100,11 @@ test('outside the app there is no shell to post banners, so the section is absen
 test('the zoom tip names the keys as bound, and leaves out one that is unbound', () => {
   render(<SettingsCard />);
   const tip = () => document.getElementById('set-tip-zoom')!.textContent;
-  expect(tip()).toBe('⌘− and ⌘+ scale the map, panels and terminal text. ⌘0 resets.');
+  expect(tip()).toBe('⌘− and ⌘+ scale the map, panels and terminal text. ⌘0 sets 100%.');
   act(() => store.getState().setSettings({ bindings: { zoomIn: 'cmd+shift+i', zoomReset: null } }));
   expect(tip()).toBe('⌘− and ⌘⇧I scale the map, panels and terminal text.');
   act(() => store.getState().setSettings({ bindings: { zoomOut: null } }));
-  expect(tip()).toBe('Scales the map, panels and terminal text. ⌘0 resets.');
+  expect(tip()).toBe('Scales the map, panels and terminal text. ⌘0 sets 100%.');
 });
 
 test('dormancy steps two hours at a time from 2 to 48, then never', () => {

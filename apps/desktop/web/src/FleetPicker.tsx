@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { fleetNameProblem, type FleetEntry } from '@svall/protocol';
 import { app } from './boot.js';
 import { shim } from './bridge.js';
+import { AS_TYPED } from './Field.js';
 import { useApp } from './hooks.js';
 import { directoryName } from './selectors.js';
 
@@ -84,7 +85,7 @@ function Picker({ mode }: { mode: 'bare' | 'menu' }) {
           ))}
         </div>
         <div className="fleet-new">
-          <input className="fld" placeholder="New fleet" aria-label="New fleet name" value={name} disabled={!online} data-testid="fleet-new-name"
+          <input className="fld" placeholder="New fleet" aria-label="New fleet name" value={name} disabled={!online} data-testid="fleet-new-name" {...AS_TYPED}
             onChange={(e) => setName(e.target.value.trim())} onKeyDown={(e) => { if (e.key === 'Enter') create(); }} />
           <button className="btn" data-testid="fleet-new-create" disabled={!online || !name || !!problem || busy !== undefined} onClick={create}>
             {busy === 'new' ? 'Creating…' : 'Create'}

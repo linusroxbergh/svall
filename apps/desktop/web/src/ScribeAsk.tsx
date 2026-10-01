@@ -3,6 +3,7 @@ import { AGENT_LABEL, fleetNameProblem, type AgentKind } from '@svall/protocol';
 import { renameFleet, setMainAgent, setScribe } from './actions.js';
 import { deps } from './boot.js';
 import { shim } from './bridge.js';
+import { AS_TYPED } from './Field.js';
 import { useApp } from './hooks.js';
 import { directoryName } from './selectors.js';
 
@@ -30,7 +31,7 @@ function NameAsk({ skip }: { skip(): void }) {
         }}>
         <div className="kicker">Your fleet</div>
         <div className="modal-name">Name this fleet</div>
-        <input className="fld" autoFocus placeholder="private" aria-label="Fleet name" value={name} data-testid="fleet-name-input"
+        <input className="fld" autoFocus placeholder="private" aria-label="Fleet name" value={name} data-testid="fleet-name-input" {...AS_TYPED}
           onChange={(e) => { setName(e.target.value.trim()); setError(undefined); }} onKeyDown={(e) => { if (e.key === 'Enter') save(); }} />
         {problem || error
           ? <div className="fleet-error">{problem ?? error}</div>

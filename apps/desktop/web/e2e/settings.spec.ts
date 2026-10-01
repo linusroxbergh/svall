@@ -193,6 +193,7 @@ test('the shell is told the opacity, the zoom and which config to open', async (
 test('the first launch on a machine opens the settings, and no launch after it', async ({ page, svall }) => {
   await svall.open('board', { firstRun: true });
   await expect(page.getByTestId('settings')).toBeVisible();
+  await expect(page.getByTestId('zoom-level')).toHaveText('90%');
   await page.getByTestId('settings-close').click();
 
   await page.reload();

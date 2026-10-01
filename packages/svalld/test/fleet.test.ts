@@ -26,8 +26,8 @@ runIf('Fleet', () => {
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 
-  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind; name?: string; state?: FleetState } = {}) {
-    const { homeCwd, homeCommand, mainAgent, name, state, ...deps } = extra;
+  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind; name?: string; state?: FleetState; opening?: boolean } = {}) {
+    const { homeCwd, homeCommand, mainAgent, name, state, opening, ...deps } = extra;
     // what ps shows the dormancy sweep
     const procs: Proc[] = [];
     const home = makeHome();
@@ -42,6 +42,8 @@ runIf('Fleet', () => {
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); fleet.stop(); await tmux.killServer(); });
     await started;
+    // a test lays out from mission control alone unless it asks for the island a new fleet opens with
+    if (!opening) for (const i of Object.values(store.state.islands)) if (i.kind !== 'home') fleet.deleteIsland(i.id);
     // a spawned stand-in agent reaches the fleet the way a real one does: over the hooks socket
     const hooks = await startHookReceiver(paths.hooksSock, (e) => fleet.onSocketEvent(e), silentLogger);
     cleanup.push(() => hooks.close());
@@ -954,6 +956,27 @@ runIf('Fleet', () => {
     expect(updated.size).toEqual(home.size);
     await fleet.reconcileNow();
     expect(Object.values(store.state.islands).filter((i) => i.kind === 'home')).toHaveLength(1);
+  });
+
+  it('opens a new fleet with one empty island, and does not make it again once deleted', async () => {
+    const { fleet, store } = await boot({ opening: true });
+    const first = Object.values(store.state.islands).filter((i) => i.kind !== 'home');
+    expect(first).toEqual([expect.objectContaining({ name: 'Island 1' })]);
+    expect(Object.keys(store.state.characters)).toEqual([]);
+    expect(placementOk(store.state, first[0])).toBe(true);
+    fleet.deleteIsland(first[0].id);
+    // the next start reads the fleet the last one left
+    const again = await boot({ opening: true, state: structuredClone(store.state) });
+    expect(Object.values(again.store.state.islands).map((i) => i.name)).toEqual(['mission control']);
+  });
+
+  it('gives a fleet back its mission control, and no new island, when a start finds it missing', async () => {
+    const { store } = await boot({ opening: true });
+    // what salvage leaves when only mission control's entry is broken
+    const salvaged = structuredClone(store.state);
+    for (const i of Object.values(salvaged.islands)) if (i.kind === 'home') delete salvaged.islands[i.id];
+    const again = await boot({ opening: true, state: salvaged });
+    expect(Object.values(again.store.state.islands).map((i) => i.name).sort()).toEqual(['Island 1', 'mission control']);
   });
 
   it("starts mission control's crew on the main agent unless config.json names a command", async () => {

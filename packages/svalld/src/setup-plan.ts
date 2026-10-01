@@ -25,10 +25,10 @@ export function setupPlan(o: {
   const writes = [
     ...(has('claude') ? [{ what: 'Claude Code hooks and status line', path: o.settingsPath, agent: 'claude' as const }] : []),
     ...(has('codex') ? [{ what: 'Codex hooks', path: o.codexHooks, agent: 'codex' as const }] : []),
-    { what: 'the background service that keeps fleets running', path: path.join(o.launchAgentsDir, `${LAUNCHD_LABEL}.plist`) },
-    ...o.fleets.map((h) => ({ what: `the background service of the ${profileOf(h)} fleet`, path: path.join(o.launchAgentsDir, `${profileLabel(profileOf(h))}.plist`) })),
-    { what: `the ${SHIM} command`, path: path.join(o.shimDir, SHIM) },
-    { what: 'your fleet', path: o.home },
+    { what: 'Service that keeps fleets running', path: path.join(o.launchAgentsDir, `${LAUNCHD_LABEL}.plist`) },
+    ...o.fleets.map((h) => ({ what: `Service for the ${profileOf(h)} fleet`, path: path.join(o.launchAgentsDir, `${profileLabel(profileOf(h))}.plist`) })),
+    { what: `The ${SHIM} command`, path: path.join(o.shimDir, SHIM) },
+    { what: 'Your fleet', path: o.home },
   ];
   let blockers: string[] = [];
   if (!o.answered) blockers = [`Your login shell did not answer within 5 seconds, so Svall cannot see where Claude Code and Codex are. Check again, or run ${o.cli} setup in a terminal.`];

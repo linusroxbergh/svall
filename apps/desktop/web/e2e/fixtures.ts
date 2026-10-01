@@ -33,7 +33,7 @@ export const test = base.extend<{ svall: Svall }>({
           await page.addInitScript(({ key, value }) => {
             // this runs again on every navigation, and a reload is where a spec reads back what it saved
             try { if (localStorage.getItem(key) === null) localStorage.setItem(key, value); } catch { /* seeded where there is a store */ }
-          }, { key: SETTINGS_KEY, value: JSON.stringify(DEFAULT_SETTINGS) });
+          }, { key: SETTINGS_KEY, value: JSON.stringify({ ...DEFAULT_SETTINGS, zoom: 1 }) });
           // specs click the map beside an open half card, so it opens at half the map rather than the first-use size
           await page.addInitScript(() => {
             try { if (localStorage.getItem('svall.card.half') === null) localStorage.setItem('svall.card.half', JSON.stringify({ w: 0.5, h: 0.5 })); } catch { /* seeded where there is a store */ }
