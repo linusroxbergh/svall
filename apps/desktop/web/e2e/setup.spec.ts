@@ -7,8 +7,8 @@ type Plan = {
 
 const PLAN: Plan = { agents: [{ kind: 'claude', path: '/u/.local/bin/claude', version: '2.1.0' }, { kind: 'codex', path: '/opt/homebrew/bin/codex' }],
   writes: [{ what: 'Claude Code hooks and status line', path: '/u/.claude/settings.json', agent: 'claude' }, { what: 'Codex hooks', path: '/u/.codex/hooks.json', agent: 'codex' },
-    { what: 'the background service that keeps fleets running', path: '/u/Library/LaunchAgents/x.plist' }, { what: 'the svall command', path: '/u/.local/bin/svall' },
-    { what: 'your fleet', path: '/u/.svall' }], shimDir: '/u/.local/bin', shimOnPath: false, blockers: [], projects: '~/Developer' };
+    { what: 'Service that keeps fleets running', path: '/u/Library/LaunchAgents/x.plist' }, { what: 'The svall command', path: '/u/.local/bin/svall' },
+    { what: 'Your fleet', path: '/u/.svall' }], shimDir: '/u/.local/bin', shimOnPath: false, blockers: [], projects: '~/Developer' };
 
 // the shell's side of the bridge: answers the page's setup asks with `plan`, and keeps what it was sent
 async function fakeShell(page: Page, plan: Plan, failFirst = false, warnings: string[] = []): Promise<void> {

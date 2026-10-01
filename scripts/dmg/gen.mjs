@@ -3,8 +3,9 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = new URL('../../', import.meta.url).pathname;
+const root = fileURLToPath(new URL('../../', import.meta.url));
 const { chromium } = createRequire(join(root, 'apps/desktop/web/package.json'))('@playwright/test');
 const outfit = readFileSync(join(root, 'apps/desktop/web/public/fonts/Outfit-Variable.woff2')).toString('base64');
 

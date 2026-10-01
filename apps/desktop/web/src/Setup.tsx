@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { AGENT_LABEL, type AgentKind } from '@svall/protocol';
 import { createBridge } from './bridge.js';
+import { shortPath } from './resources/model.js';
 
 type Plan = {
   agents: { kind: AgentKind; path: string; version?: string; folderOnly?: boolean }[]; integrations?: AgentKind[]; writes: { what: string; path: string; agent?: AgentKind }[];
@@ -72,7 +73,7 @@ export function Setup() {
                   onChange={(e) => setOff((o) => (e.target.checked ? o.filter((k) => k !== a.kind) : [...o, a.kind]))} />
                 {AGENT_LABEL[a.kind]}
               </span>
-              <code title={a.path}>{[a.version, tilde(a.path)].filter(Boolean).join(' · ')}</code>
+              <code title={a.path}>{[a.version, shortPath(a.path)].filter(Boolean).join(' · ')}</code>
             </label>
           ))}
         </div>
@@ -87,11 +88,11 @@ export function Setup() {
       </section>
       <section>
         <h2>What setup writes</h2>
-        <ul className="setup-list">{writes.map((w) => <li key={w.path} className="setup-row"><span>{w.what}</span><code title={w.path}>{tilde(w.path)}</code></li>)}</ul>
+        <ul className="setup-list">{writes.map((w) => <li key={w.path} className="setup-row"><span>{w.what}</span><code title={w.path}>{shortPath(w.path)}</code></li>)}</ul>
       </section>
       {!plan.shimOnPath && <section>
         <h2>The svall command</h2>
-        <p>{tilde(plan.shimDir)} is not on your PATH; add this line to your shell profile.</p>
+        <p>{shortPath(plan.shimDir)} is not on your PATH; add this line to your shell profile.</p>
         <div className="setup-code">
           <code>{line}</code>
           <button type="button" className="btn sm" onClick={() => bridge.send({ type: 'copy', text: line })}>Copy</button>
@@ -111,5 +112,3 @@ export function Setup() {
 const Page = ({ children }: { children: ReactNode }) => (
   <div className="setup" data-testid="setup"><div className="setup-body">{children}</div></div>
 );
-
-const tilde = (p: string): string => p.replace(/^\/Users\/[^/]+(?=\/|$)/, '~');
