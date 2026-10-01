@@ -18,7 +18,8 @@ const cellPx = (page: Page) => page.evaluate(() => { const l = (window as unknow
 const settle = (page: Page) => page.waitForFunction(() => {
   const m = (window as unknown as { __map: MapHandle }).__map;
   const before = JSON.stringify(m.layout());
-  return new Promise<boolean>((done) => setTimeout(() => done(before === JSON.stringify(m.layout())), 100));
+  // a frame can lag past the wait, so the layout is read again two frames on
+  return new Promise<boolean>((done) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => done(before === JSON.stringify(m.layout())))), 100));
 });
 
 // a token card is centred on its cell; press the cell centre
@@ -419,6 +420,8 @@ test('a folded island lands as its pill, and two of them may stand side by side'
   // the fleet took the drop, and the two pills stand a hair apart rather than a cell or more
   await expect.poll(async () => (await svall.api.call('state.get', {})).islands[right.id].position.x).toBe(abut);
   expect((await svall.api.call('state.get', {})).islands[left.id].position.x).toBe(0);
+  // a landed island eases nothing, or its last drag offset would slide it back over the water it crossed
+  await expect(page.locator('.island', { has: page.getByTestId(`island-label-${right.id}`) })).toHaveAttribute('data-settling', 'false');
   // past scale 1 a pill takes only a share of the map's growth, so the hair between two widens with the zoom
   await settle(page);
   const [a, b] = await Promise.all([left, right].map(async (i) => (await page.getByTestId(`island-label-${i.id}`).boundingBox())!));

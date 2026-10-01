@@ -3,7 +3,11 @@
 	# Svall.dmg moves to each new release, and Cloudflare caches .dmg files by default, so only versioned DMGs are immutable
 	@fresh path /appcast.xml /latest.json /install.sh /releases/Svall.dmg
 	header @fresh Cache-Control "no-cache"
-	@dmg path_regexp ^/releases/Svall-.+\.dmg$
+	# only a DMG on disk: a 404 marked immutable stays cached after the release uploads it
+	@dmg {
+		path_regexp ^/releases/Svall-.+\.dmg$
+		file
+	}
 	header @dmg Cache-Control "public, max-age=31536000, immutable"
 	redir /download /releases/Svall.dmg 302
 	file_server

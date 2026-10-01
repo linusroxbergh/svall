@@ -18,7 +18,8 @@ const dump = (page: Page) => page.evaluate(() => (window as unknown as { __map: 
 const settle = (page: Page) => page.waitForFunction(() => {
   const m = (window as unknown as { __map: MapHandle }).__map;
   const before = JSON.stringify(m.layout());
-  return new Promise<boolean>((done) => setTimeout(() => done(before === JSON.stringify(m.layout())), 100));
+  // a frame can lag past the wait, so the layout is read again two frames on
+  return new Promise<boolean>((done) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => done(before === JSON.stringify(m.layout())))), 100));
 });
 
 // the fit centres the islands in the window, so the water to press is the strip above them

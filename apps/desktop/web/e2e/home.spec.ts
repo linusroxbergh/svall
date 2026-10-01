@@ -54,7 +54,8 @@ test('a card drags onto a home slot and back out to the map', async ({ page, sva
   const settle = () => page.waitForFunction(() => {
     const m = (window as unknown as { __map: { layout(): unknown } }).__map;
     const before = JSON.stringify(m.layout());
-    return new Promise<boolean>((done) => setTimeout(() => done(before === JSON.stringify(m.layout())), 100));
+    // a frame can lag past the wait, so the layout is read again two frames on
+    return new Promise<boolean>((done) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => done(before === JSON.stringify(m.layout())))), 100));
   });
   const drag = async (to: { x: number; y: number }) => {
     await settle();
