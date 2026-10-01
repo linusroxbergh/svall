@@ -11,7 +11,9 @@ const one = (dir, pattern) => {
   if (!hit) throw new Error(`no licence matching ${pattern} in ${dir}: run pnpm app:build first`);
   return path.join(dir, hit);
 };
-const newest = (dir) => path.join(dir, fs.readdirSync(dir).sort().at(-1));
+// the vendor folders of the node, tmux and Sparkle this build ships, which app-build.sh names
+const [nodeDir, tmux, sparkleDir] = process.argv.slice(2);
+if (!sparkleDir) throw new Error('usage: licenses.mjs <node dir> <tmux dir> <sparkle dir>');
 // the MIT text, for a package that names the licence but ships no copy of it
 const mit = (dir) => {
   const author = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).author;
@@ -41,14 +43,13 @@ SOFTWARE.`;
 
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
-const tmux = newest(path.join(root, 'vendor/tmux'));
 const copies = {
-  'node.txt': one(newest(path.join(root, 'vendor/node')), /^LICENSE$/),
+  'node.txt': one(nodeDir, /^LICENSE$/),
   'tmux.txt': one(tmux, /^LICENSE\.tmux$/),
   'libevent.txt': one(tmux, /^LICENSE\.libevent$/),
   'utf8proc.txt': one(tmux, /^LICENSE\.utf8proc$/),
   'ghostty.txt': path.join(root, 'apps/desktop/mac/LICENSE.ghostty'),
-  'sparkle.txt': one(newest(path.join(root, 'vendor/sparkle')), /^LICENSE$/),
+  'sparkle.txt': one(sparkleDir, /^LICENSE$/),
 };
 for (const [name, from] of Object.entries(copies)) fs.copyFileSync(from, path.join(out, name));
 
