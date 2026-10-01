@@ -62,6 +62,19 @@ describe('applyHook', () => {
       expect(ran.agent?.promptId).toBeUndefined();
     }
   });
+  it('stays blocked while another tool of the batch finishes, before or after the question shows, until the one asked about runs', () => {
+    const ev = (name: HookEvent['name'], o: Partial<HookEvent> = {}): HookEvent => ({ charId: 'c_a', backend: 'claude', name, ...o });
+    let c = applyHook(withAgent('working'), ev('PermissionRequest', { toolName: 'AskUserQuestion' }), 1);
+    c = applyHook(c, ev('PostToolUse', { toolName: 'WebFetch' }), 2);
+    c = applyHook(c, ev('Notification', { notificationType: 'permission_prompt' }), 3);
+    expect(applyHook(c, ev('PostToolUse', { toolName: 'Agent' }), 4).agent?.status).toBe('blocked');
+    expect(applyHook(c, ev('PostToolUseFailure', { toolName: 'Bash' }), 4).agent?.status).toBe('blocked');
+    const answered = applyHook(c, ev('PostToolUse', { toolName: 'AskUserQuestion' }), 4);
+    expect(answered.agent?.status).toBe('working');
+    // the next question is asked afresh, so an old one's tool no longer holds it
+    const next = applyHook(applyHook(answered, ev('Notification', { notificationType: 'permission_prompt' }), 5), ev('PostToolUse', { toolName: 'Agent' }), 6);
+    expect(next.agent?.status).toBe('working');
+  });
   it('gives each blocking question an id of its own, and drops it once the agent moves on', () => {
     const ask = (c: Character) => applyHook(c, { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'permission_prompt' }, 1);
     const one = ask(withAgent('working'));

@@ -60,7 +60,7 @@ describe('normalizeHook', () => {
     expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'Notification' } })).toBeUndefined();
     expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'SubagentStop', agent_id: 'a1' } })).toBeUndefined();
     expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'PostToolUseFailure' } })).toBeUndefined();
-    expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'PostToolUse' } })?.name).toBe('PostToolUse');
+    expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'PostToolUse', tool_name: 'Bash' } })).toMatchObject({ name: 'PostToolUse', toolName: 'Bash' });
     expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'PostToolUseFailure' } })?.name).toBe('PostToolUseFailure');
     expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Interrupt' } })).toBeUndefined();
     expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'StopFailure' } })).toBeUndefined();
@@ -306,7 +306,7 @@ describe.each(runners)('$name', (run) => {
     await new Promise<void>((r) => server.listen(path.join(home, 'hooks.sock'), r));
     const kept = {
       hook_event_name: 'Notification', agent_id: 'a1', session_id: SID, transcript_path: '/t1.jsonl', notification_type: 'permission_prompt', message: 'may I',
-      background_tasks: [{ type: 'subagent' }], cwd: '/r', model: 'opus', prompt: 'go', prompt_id: 'p1', turn_id: 't1',
+      background_tasks: [{ type: 'subagent' }], cwd: '/r', model: 'opus', prompt: 'go', prompt_id: 'p1', turn_id: 't1', tool_name: 'Bash',
     };
     // the helper's folder holds no script, so the commands only forward anything there by running it
     const installed = path.join(run.dir, 'agent-hook.mjs');
@@ -314,7 +314,7 @@ describe.each(runners)('$name', (run) => {
     for (const command of [hookCommand(process.execPath, installed, 'claude'), codexHookCommand(installed)]) {
       await new Promise<void>((resolve, reject) => {
         const p = execFile('/bin/sh', ['-c', command], { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
-        p.stdin!.end(JSON.stringify({ ...kept, tool_name: 'Bash', tool_input: { command: 'ls' }, permission_mode: 'default' }));
+        p.stdin!.end(JSON.stringify({ ...kept, tool_input: { command: 'ls' }, permission_mode: 'default' }));
       });
     }
     await waitFor(() => lines.length === 2);
@@ -332,12 +332,12 @@ describe.each(runners)('$name', (run) => {
     await new Promise<void>((resolve, reject) => {
       const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
       p.stdin!.end(JSON.stringify({
-        hook_event_name: 'PreToolUse', session_id: SID, transcript_path: '/t1.jsonl',
+        hook_event_name: 'PreToolUse', session_id: SID, transcript_path: '/t1.jsonl', tool_name: 'Write',
         tool_input: { content: 'x'.repeat(64 * 1024) },
       }));
     });
     await waitFor(() => events.length === 1);
-    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'claude', name: 'PreToolUse', sessionId: SID, transcriptPath: '/t1.jsonl' } });
+    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'claude', name: 'PreToolUse', sessionId: SID, transcriptPath: '/t1.jsonl', toolName: 'Write' } });
     await r.close();
   });
 
@@ -353,7 +353,7 @@ describe.each(runners)('$name', (run) => {
       }));
     });
     await waitFor(() => events.length === 1);
-    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'codex', name: 'PermissionRequest', sessionId: SID, message: 'remove the build folder' } });
+    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'codex', name: 'PermissionRequest', sessionId: SID, message: 'remove the build folder', toolName: 'Bash' } });
     await r.close();
   });
 

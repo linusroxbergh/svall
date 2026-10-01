@@ -29,6 +29,8 @@ export type HookEvent = {
   backgroundAgents?: number;
   // the Claude Code subagent the event came from
   agentId?: string;
+  // the tool a tool or permission event is about
+  toolName?: string;
   cwd?: string;
   // 2 when the event comes from the character's second terminal
   term?: 2;
@@ -135,6 +137,8 @@ export function normalizeHook(raw: unknown): HookEvent | undefined {
   if (message) ev.message = message.slice(0, 500);
   const model = str(h.model);
   if (model) ev.model = model.slice(0, 100);
+  const toolName = str(h.tool_name);
+  if (toolName) ev.toolName = toolName.slice(0, 200);
   if (agents) ev.backgroundAgents = agents;
   if (ev.name === 'UserPromptSubmit') {
     const submitted = prompt(h);

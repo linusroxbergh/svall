@@ -99,15 +99,25 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     delete agent.promptId;
     delete agent.background;
   };
+  // a new prompt or the end of a turn leaves no tool asked about
+  if (e.name === 'UserPromptSubmit' || e.name === 'Stop' || e.name === 'StopFailure' || e.name === 'Interrupt') delete agent.askedTool;
   switch (e.name) {
     case 'UserPromptSubmit':
     case 'PreToolUse':
-    // a tool is asked about between the two, so the answer it waited for is the run itself
-    case 'PostToolUse':
-    case 'PostToolUseFailure':
       settle('working');
       next.unread = false;
       break;
+    // a tool is asked about between the two, so the answer it waited for is its run; another tool of the same batch
+    // finishing leaves the question open
+    case 'PostToolUse':
+    case 'PostToolUseFailure': {
+      const other = Boolean(agent.askedTool && e.toolName && e.toolName !== agent.askedTool);
+      if (other && agent.status === 'blocked') break;
+      if (!other) delete agent.askedTool;
+      settle('working');
+      next.unread = false;
+      break;
+    }
     case 'Stop':
     case 'StopFailure':
       // the turn ended but background agents are still going; their completion starts a new turn
@@ -125,9 +135,11 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     case 'Interrupt':
       settle('idle');
       break;
-    // Claude Code shows its question first and notifies of it only if it is still up a few seconds on
+    // Claude Code shows its question first and notifies of it only if it is still up a few seconds on, naming no tool
     case 'PermissionRequest':
       if (e.backend === 'codex') ask();
+      else if (e.toolName) agent.askedTool = e.toolName;
+      else delete agent.askedTool;
       break;
     case 'Notification':
       if (e.notificationType && BLOCKING.has(e.notificationType)) ask();

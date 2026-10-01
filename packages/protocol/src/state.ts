@@ -53,6 +53,8 @@ export const Agent = z.object({
   background: z.literal(true).optional(),
   // Claude Code subagents with a permission request open; the notification that blocks never says whose it is
   asking: z.array(z.string()).optional(),
+  // the tool Claude Code's main thread last asked permission for, whose run alone answers the question
+  askedTool: z.string().optional(),
   // the newest prompt Claude Code accepted, as its UserPromptSubmit hook reported it. The transcript
   // is written after that hook, so this is what the last command reads until the entry lands.
   lastPrompt: z.object({ id: z.string(), text: z.string(), at: z.number() }).optional(),
