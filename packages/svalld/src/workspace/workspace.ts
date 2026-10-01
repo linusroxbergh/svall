@@ -188,8 +188,7 @@ export class Workspace {
     try { fs.unlinkSync(abs); } catch (e) { throw refuse(rel, 'be deleted', e); }
   }
 
-  private async repoRoot(id: string): Promise<string> {
-    const root = inside(this.rootOf(id), '');
+  private async repoRoot(root: string): Promise<string> {
     if (!(await isTop(root))) throw new WorkspaceError('no_repo', `${root} is not a git working tree`);
     return root;
   }
@@ -200,13 +199,14 @@ export class Workspace {
   private running = new Map<string, Promise<Status>>();
 
   async status(id: string, base: DiffBase): Promise<Status> {
-    const key = `${base}\0${inside(this.rootOf(id), '')}`;
+    const top = inside(this.rootOf(id), '');
+    const key = `${base}\0${top}`;
     const queued = this.queued.get(key);
     if (queued) return queued;
     const run: Promise<Status> = (this.running.get(key) ?? Promise.resolve()).catch(() => {}).then(async () => {
       this.queued.delete(key);
       this.running.set(key, run);
-      const root = await this.repoRoot(id);
+      const root = await this.repoRoot(top);
       const [branch, files] = await Promise.all([branchOf(root), changedFiles(root, await baseRef(root, base))]);
       return { branch, files };
     }).finally(() => { if (this.running.get(key) === run) this.running.delete(key); });
@@ -215,7 +215,7 @@ export class Workspace {
   }
 
   async file(id: string, rel: string, base: DiffBase, from?: string): Promise<{ before?: string; after?: string; binary?: true }> {
-    const root = await this.repoRoot(id);
+    const root = await this.repoRoot(inside(this.rootOf(id), ''));
     const abs = this.at(id, rel);
     if (from) this.at(id, from);
     const ref = await baseRef(root, base);

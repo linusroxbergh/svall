@@ -499,28 +499,34 @@ describe('Workspace git runs', () => {
     const pidFile = path.join(bin, 'git.pid');
     await until(() => fs.existsSync(pidFile) && fs.readFileSync(pidFile, 'utf8').endsWith('\n'));
     const pid = Number(fs.readFileSync(pidFile, 'utf8'));
-    await vi.advanceTimersByTimeAsync(10_000);
-    await expect(run).rejects.toThrow('git diff timed out after 10000ms');
-    await until(() => fs.existsSync(path.join(bin, 'git.term')));
-    expect(alive(pid)).toBe(true);
-    await vi.advanceTimersByTimeAsync(5_000);
-    await until(() => !alive(pid));
+    try {
+      await vi.advanceTimersByTimeAsync(10_000);
+      await expect(run).rejects.toThrow('git diff timed out after 10000ms');
+      await until(() => fs.existsSync(path.join(bin, 'git.term')));
+      expect(alive(pid)).toBe(true);
+      await vi.advanceTimersByTimeAsync(5_000);
+      await until(() => !alive(pid));
+    } finally {
+      if (alive(pid)) process.kill(pid, 'SIGKILL');
+    }
   });
 
   it('runs one status per repository and base at a time, and the calls made during it share one run after it', async () => {
     const dir = repo();
     const real = execFileSync('/bin/sh', ['-c', 'command -v git']).toString().trim();
-    // every diff is counted, and held until the gate opens
-    const bin = fakeGit(`if [ "$1" = diff ]; then echo >> "$0.diffs"; while [ ! -e "$0.gate" ]; do sleep 0.05; done; fi\nexec "${real}" "$@"`);
-    const diffs = (): number => fs.readFileSync(path.join(bin, 'git.diffs'), 'utf8').length;
+    // every git is logged by its subcommand, and a diff is held until the gate opens
+    const bin = fakeGit(`echo "$1" >> "$0.log"\nif [ "$1" = diff ]; then while [ ! -e "$0.gate" ]; do sleep 0.05; done; fi\nexec "${real}" "$@"`);
+    const log = (): string[] => (fs.existsSync(path.join(bin, 'git.log')) ? fs.readFileSync(path.join(bin, 'git.log'), 'utf8').trim().split('\n') : []);
     fs.writeFileSync(path.join(dir, 'a.txt'), 'changed\n');
     const ws = workspace({ c: dir, d: dir });
     const first = [ws.status('c', 'head'), ws.status('d', 'head')];
-    await waitFor(() => fs.existsSync(path.join(bin, 'git.diffs')));
+    await waitFor(() => log().includes('diff'));
     const during = [ws.status('c', 'head'), ws.status('d', 'head'), ws.status('c', 'head')];
     fs.writeFileSync(path.join(bin, 'git.gate'), '');
     for (const s of await Promise.all([...first, ...during])) expect(s).toEqual({ branch: 'main', files: [{ path: 'a.txt', status: 'M' }] });
-    expect(diffs()).toBe(2);
+    // a run's four gits all start before the next run's first
+    const run = ['diff', 'ls-files', 'rev-parse', 'symbolic-ref'];
+    expect([log().slice(0, 4).sort(), log().slice(4).sort()]).toEqual([run, run]);
   });
 });
 
