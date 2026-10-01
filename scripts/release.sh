@@ -21,6 +21,9 @@ fail() { echo "release: $*" >&2; exit 1; }
 notarize() { xcrun notarytool submit "$1" --keychain-profile "$NOTARY" --wait | tee /dev/stderr | grep -q 'status: Accepted' || fail "notarization of $1 was not accepted"; }
 NOTES="${SVALL_NOTES:-}"
 [ -z "$NOTES" ] || [ -f "$NOTES" ] || fail "SVALL_NOTES names no file: $NOTES"
+# the DMG's window is laid out by Finder, so a terminal Finder will not answer stops here rather than after notarizing
+osascript -e 'tell application "Finder" to get name of startup disk' >/dev/null ||
+  fail "this terminal may not control Finder; allow it in System Settings > Privacy & Security > Automation"
 
 if [ -z "$ADHOC" ]; then
   [ -z "$(git status --porcelain)" ] || fail "the tree has changes"

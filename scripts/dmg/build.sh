@@ -17,7 +17,8 @@ trap 'hdiutil detach "$MNT" -force -quiet 2>/dev/null || true; rm -rf "$WORK"' E
 mkdir -p "$WORK/stage/.background"
 ditto "$APP" "$WORK/stage/$NAME.app"
 ln -s /Applications "$WORK/stage/Applications"
-tiffutil -cathidpicheck "$DIR/background.png" "$DIR/background@2x.png" -out "$WORK/stage/.background/background.tiff" 2>/dev/null
+tiffutil -cathidpicheck "$DIR/background.png" "$DIR/background@2x.png" -out "$WORK/stage/.background/background.tiff" 2>/dev/null ||
+  fail "could not make the background from $DIR/background.png and background@2x.png"
 # room for the .DS_Store Finder writes
 SIZE="$(($(du -sm "$WORK/stage" | cut -f1) + 20))m"
 # hdiutil create fails now and then on a stage it builds fine a moment later
@@ -63,6 +64,8 @@ EOF
 # Finder writes the layout a moment after the window closes
 for i in 1 2 3 4 5 6 7 8 9 10; do [ -f "$MNT/.DS_Store" ] && break; sleep 1; done
 [ -f "$MNT/.DS_Store" ] || fail "Finder wrote no layout to the image"
+# the event log macOS keeps on a writable volume is this machine's, not part of the image
+rm -rf "$MNT/.fseventsd" 2>/dev/null || true
 sync
 hdiutil detach "$MNT" -quiet || { sleep 3; hdiutil detach "$MNT" -force -quiet; }
 hdiutil convert "$WORK/rw.dmg" -format UDZO -imagekey zlib-level=9 -ov -o "$DMG" >/dev/null
