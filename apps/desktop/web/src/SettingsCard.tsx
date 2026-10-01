@@ -229,7 +229,7 @@ export function SettingsCard() {
       <h2 className="h2">Settings</h2>
       <div className="rows">
         <div className="row">
-          <span>zoom<Info id="zoom">{zoomOut && zoomIn ? `${zoomOut} and ${zoomIn} scale` : 'Scales'} the map, panels and terminal text.{zoomReset && ` ${zoomReset} resets.`}</Info></span>
+          <span>zoom<Info id="zoom">{zoomOut && zoomIn ? `${zoomOut} and ${zoomIn} scale` : 'Scales'} the map, panels and terminal text.{zoomReset && ` ${zoomReset} sets 100%.`}</Info></span>
           <b className="set-zoom">
             <button data-testid="zoom-out" aria-label="Smaller" onClick={() => set({ zoom: zoomBy(zoom, -1) })}>−</button>
             <span className="tnum" data-testid="zoom-level">{Math.round(zoom * 100)}%</span>
