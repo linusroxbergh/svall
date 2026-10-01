@@ -26,6 +26,8 @@ final class ShellRouter {
     private var quitTimeout: DispatchWorkItem?
     // a quit the user asked for waits on a yes; the app's own (an update, an uninstall) do not
     private var userQuit = false
+    // while the question is up, the user's answer is the only one: a late reply or a reload waits on it
+    private var confirming = false
 
     init(runtime: GhosttyRuntime, bridge: Bridge, container: NSView, webView: DropWebView, quitItem: NSMenuItem) {
         self.runtime = runtime
@@ -135,6 +137,7 @@ final class ShellRouter {
     }
 
     private func finishQuit(_ ok: Bool) {
+        guard !confirming else { return }
         userQuit = false
         guard let answer = quitAnswer else { return }
         quitAnswer = nil
@@ -144,10 +147,13 @@ final class ShellRouter {
     }
 
     private func answerQuit(unsaved: [String]) {
-        guard quitAnswer != nil else { return }
+        guard quitAnswer != nil, !confirming else { return }
         quitTimeout?.cancel()
         guard userQuit || !unsaved.isEmpty else { return finishQuit(true) }
-        finishQuit(confirmQuit(unsaved: unsaved))
+        confirming = true
+        let ok = confirmQuit(unsaved: unsaved)
+        confirming = false
+        finishQuit(ok)
     }
 
     private func confirmQuit(unsaved: [String]) -> Bool {
@@ -321,7 +327,8 @@ final class ShellRouter {
 
     // a fleet whose window is open is brought up; any other opens in a new instance of this app
     private func openFleet(_ home: String, quit: Bool) {
-        let done = { [weak self] in if quit { self?.quit() } }
+        // the picker gives way to the fleet it opened without asking
+        let done = { [weak self] in if quit, self?.quitAnswer == nil { NSApp.terminate(nil) } }
         if let pid = SvallHome.appPid(of: home), let app = NSRunningApplication(processIdentifier: pid), app.bundleIdentifier == Bundle.main.bundleIdentifier {
             app.activate()
             return done()
