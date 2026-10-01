@@ -3,10 +3,10 @@ import { app } from '../boot.js';
 import { rectOf } from '../BrowserArea.js';
 import { useApp } from '../hooks.js';
 import { CharPanes } from '../CharPanes.js';
+import { useHalfGrip } from '../halfGrip.js';
 import { statusOf } from '../selectors.js';
-import type { HalfCard } from '../store/index.js';
 import { theme } from '../theme.js';
-import { cardRect, halfCardBy } from './card.js';
+import { cardRect } from './card.js';
 
 type Props = { id: string; host: { w: number; h: number } };
 
@@ -18,33 +18,7 @@ export function TerminalCard({ id, host }: Props) {
   const rect = cardRect({ size, win: host, half });
   const ref = useRef<HTMLDivElement>(null);
   const [settled, setSettled] = useState(true);
-  // the drag measures pointer travel from where it started, so it never reads the easing card's box
-  const drag = useRef<{ x: number; y: number; from: HalfCard }>(undefined);
-  const [resizing, setResizing] = useState(false);
-  // the card only leaves half size with the grip released, so a drag that outlives its grip ends here
-  const endDrag = () => {
-    if (!drag.current) return;
-    drag.current = undefined;
-    setResizing(false);
-    app.store.getState().setHalfCard(app.store.getState().halfCard);
-  };
-  const grip = {
-    onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
-      e.stopPropagation();
-      drag.current = { x: e.clientX, y: e.clientY, from: app.store.getState().halfCard };
-      setResizing(true);
-      e.currentTarget.setPointerCapture(e.pointerId);
-    },
-    onPointerMove: (e: React.PointerEvent<HTMLElement>) => {
-      const d = drag.current;
-      if (!d || e.buttons === 0) return;
-      // the size follows the pointer but is written to storage once, on release
-      app.store.getState().setHalfCard(halfCardBy(d.from, { x: e.clientX - d.x, y: e.clientY - d.y }, host), false);
-    },
-    onPointerUp: endDrag,
-    onPointerCancel: endDrag,
-    onLostPointerCapture: endDrag,
-  };
+  const { resizing, grip } = useHalfGrip(() => app.store.getState().halfCard, (v, persist) => app.store.getState().setHalfCard(v, persist), () => host);
 
   // the card eases to a new size in CSS; the surface follows the body per frame until the transition ends
   useEffect(() => {

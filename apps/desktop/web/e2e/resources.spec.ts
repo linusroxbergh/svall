@@ -234,11 +234,48 @@ test('a drag on a narrow map starts from the width on screen', async ({ page, sv
   await page.getByTestId('resources-pill').click();
   // the stored width is pushed past anything a narrow map will render
   await dragList(page, 600);
-  await page.setViewportSize({ width: 1100, height: 1000 });
+  // narrow, but with room above the list's least width for the drag back
+  await page.setViewportSize({ width: 1300, height: 1000 });
   const capped = await listWidth(page);
   expect(capped).toBeLessThan(RESOURCE_COL_RANGE.list.max);
   await dragList(page, -60);
   await expect.poll(() => listWidth(page)).toBeCloseTo(capped - 60, -1);
+});
+
+test('the shelf is dragged smaller from its corner, opens at that size again, and the size button fills its room', async ({ page, svall }) => {
+  await page.setViewportSize(WIDE);
+  await svall.open('map');
+  await page.getByTestId('resources-pill').click();
+  const shelf = page.getByTestId('resources-shelf');
+  const before = (await shelf.boundingBox())!;
+  const grip = (await page.getByTestId('resources-grip').boundingBox())!;
+  const from = { x: grip.x + grip.width / 2, y: grip.y + grip.height / 2 };
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x - 120, from.y - 80, { steps: 8 });
+  await page.mouse.up();
+  // the shelf stays centred, so each edge moves half as far as the grip
+  await expect.poll(async () => (await shelf.boundingBox())!.width).toBeCloseTo(before.width - 240, 0);
+  const small = (await shelf.boundingBox())!;
+  expect(small.height).toBeCloseTo(before.height - 160, 0);
+  expect(small.x - before.x).toBeCloseTo(120, 0);
+  expect(small.y - before.y).toBeCloseTo(80, 0);
+
+  await svall.open('map');
+  await page.getByTestId('resources-pill').click();
+  await expect.poll(async () => (await shelf.boundingBox())!.width).toBeCloseTo(small.width, 0);
+
+  await page.getByTestId('resources-size').click();
+  await expect(shelf).toHaveAttribute('data-full', 'true');
+  await expect(page.getByTestId('resources-grip')).toHaveCount(0);
+  // full, the shelf fills the room the default leaves a twentieth around, and comes down to the row
+  await expect.poll(async () => (await shelf.boundingBox())!.width).toBeCloseTo(before.width / 0.9, 0);
+  const row = (await page.getByTestId('home-row').boundingBox())!;
+  const full = (await shelf.boundingBox())!;
+  expect(row.y - (full.y + full.height)).toBeLessThan(40);
+  await rowClearOfShelf(page);
+  await page.getByTestId('resources-size').click();
+  await expect.poll(async () => (await shelf.boundingBox())!.width).toBeCloseTo(small.width, 0);
 });
 
 test('a hook opens settings.json with the cursor on its event, and Esc closes the shelf', async ({ page, svall }) => {

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { saveEntityField } from '../actions.js';
-import { deps } from '../boot.js';
+import { app, deps } from '../boot.js';
 import { FollowTextarea } from '../Field.js';
 import { useApp } from '../hooks.js';
 import { Editor } from '../ide/Editor.js';
@@ -31,6 +31,7 @@ export function EditorPane({ onClose }: { onClose(): void }) {
   // a field whose island or character the fleet has lost is no field at all, and the pane falls back to what it shows without one
   const field = useApp((s) => (s.resourcesField && entityOf(s, s.resourcesField) ? s.resourcesField : undefined));
   const name = useApp((s) => (s.resourcesField ? entityOf(s, s.resourcesField)?.name : undefined));
+  const full = useApp((s) => s.resourcesFull);
   // the row whose file or folder holds the shown file names its tier, source and kind; a file with no such row shows its name alone
   const home = shown && sources.flatMap((s) => s.groups.flatMap((g) => g.items.map((i) => ({ s, g, i }))))
     .find(({ i }) => i.open?.rootId === shown.rootId && (i.open.path === shown.path || (i.open.folder !== undefined && shown.path.startsWith(`${i.open.folder}/`))));
@@ -57,7 +58,11 @@ export function EditorPane({ onClose }: { onClose(): void }) {
             <b style={{ color: `var(${tierOf(home.s.tier).colour})` }}>{tierOf(home.s.tier).one}</b><i>/</i>{home.s.name}<i>/</i>{kindOf(home.g.kind).label}<i>/</i>{file}
           </span>
         ) : <span className="res-crumb">{file}</span>}
-        <button className="res-x" data-testid="resources-close" aria-label="Close resources" onClick={onClose}>✕</button>
+        <span className="res-ctl">
+          <button className="res-x res-size" data-testid="resources-size" title={full ? 'Back to its size' : 'Full size'}
+            aria-label={full ? 'Back to its size' : 'Full size'} onClick={() => app.store.getState().toggleResourcesFull()}>{full ? '⤡' : '⤢'}</button>
+          <button className="res-x" data-testid="resources-close" aria-label="Close resources" onClick={onClose}>✕</button>
+        </span>
       </header>
       {field ? <Field r={field} /> : shown ? (
         <>

@@ -669,11 +669,17 @@ textarea { overflow-x: hidden; }
 .res-tower:hover .res-tower-pill{border-color:var(--sand-hi)}
 .res-tower[data-selected="true"] .res-tower-pill{border-color:var(--sel);box-shadow:var(--shadow-2),var(--ring)}
 
-/* the shelf the islet opens: a tree of sources, the list, the file, and one line under all three */
-.res-shelf{--rail-w:min(var(--rail),24%);--list-w:min(var(--list),30%);position:absolute;left:26px;right:26px;top:34px;bottom:calc(var(--home-row-top, 212px));z-index:var(--z-shelf);pointer-events:auto;
-  background:var(--glass-hi);border:1px solid var(--line-strong);border-radius:var(--r-lg);box-shadow:var(--shadow-3);backdrop-filter:blur(10px)}
+/* the shelf the islet opens: a tree of sources, the list, the file, and one line under all three. it stands centred
+   in the room over mission control's row, at the size it was dragged to, easing as the terminal card does */
+.res-room{position:absolute;left:26px;right:26px;top:34px;bottom:calc(var(--home-row-top, 212px));z-index:var(--z-shelf);pointer-events:none}
+.res-shelf{--rail-w:min(var(--rail),24%);--list-w:min(var(--list),30%);position:absolute;box-sizing:border-box;pointer-events:auto;
+  background:var(--glass-hi);border:1px solid var(--line-strong);border-radius:var(--r-lg);box-shadow:var(--shadow-3);backdrop-filter:blur(10px);
+  transition:left var(--dur) var(--ease),top var(--dur) var(--ease),width var(--dur) var(--ease),height var(--dur) var(--ease)}
+.res-shelf[data-resizing="true"]{transition:none}
 .res-shelf::after{content:"";position:absolute;bottom:-8px;left:var(--tip);width:14px;height:14px;background:var(--surface-2);
   border-right:1px solid var(--line-strong);border-bottom:1px solid var(--line-strong);transform:translateX(-50%) rotate(45deg)}
+/* only a full shelf reaches down to the islet it points at */
+.res-shelf[data-full="false"]::after{display:none}
 .res-in{position:absolute;inset:0;border-radius:inherit;overflow:hidden;display:flex;flex-direction:column}
 .res-panes{flex:1;min-height:0;display:flex}
 .res-tree{width:var(--rail-w);flex:none;padding:var(--sp-xl) var(--sp-lg) var(--sp-xl) var(--sp-2xl);display:flex;flex-direction:column;gap:var(--sp-2xs);overflow:hidden auto}
@@ -743,14 +749,17 @@ em.res-bdg[data-kind="lookup"]{border:1px solid var(--line);color:var(--ink-3)}
 .res-crumb{flex:1;min-width:0;font-size:var(--text-sm);color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .res-crumb b{font-size:var(--text-xs);font-weight:var(--w-semibold);letter-spacing:var(--track-caps);text-transform:uppercase}
 .res-crumb i{font-style:normal;color:var(--ink-3);padding:0 var(--sp-xs)}
-.res-x{margin:-8px -12px -8px 0;background:none;color:var(--ink-3)}
+.res-ctl{flex:none;display:flex;align-self:stretch;margin:-8px -12px -8px 0}
+.res-x{background:none;color:var(--ink-3)}
 .res-x:hover{color:var(--ink);background:var(--fill-2)}
+.res-size{font-size:var(--text-3xl)}
 .res-editor .editor{flex:1;min-height:0}
 .res-editor .ide-empty{position:static;flex:1}
 .res-field{flex:1;min-height:0;resize:none;padding:var(--sp-xl) var(--sp-2xl);border:0;background:none;color:var(--ink);font:var(--text-md)/1.55 var(--sans)}
 .res-field:focus{outline:none}
 /* the line under the panes: the file's path, clipped at its head so the name stays, then the actions on it */
-.res-foot{flex:none;display:flex;align-items:center;gap:var(--sp-xl);min-height:30px;padding:var(--sp-sm) var(--sp-2xl);border-top:1px solid var(--line-soft);background:var(--surface-2);font:var(--w-regular) var(--text-xs) var(--mono);color:var(--ink-3)}
+.res-foot{position:relative;flex:none;display:flex;align-items:center;gap:var(--sp-xl);min-height:30px;padding:var(--sp-sm) var(--sp-2xl);border-top:1px solid var(--line-soft);background:var(--surface-2);font:var(--w-regular) var(--text-xs) var(--mono);color:var(--ink-3)}
+.res-foot:has(.card-grip){padding-right:var(--sp-3xl)}
 .res-path{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
 .res-chain{flex:none;display:flex;align-items:center;gap:var(--sp-xs);font-family:var(--sans)}
 .res-chain-h{margin-right:var(--sp-xs);font-size:var(--text-xs);color:var(--ink-3)}

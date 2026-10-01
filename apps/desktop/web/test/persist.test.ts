@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '../src/settings.js';
-import { FILES_TREE_RANGE, localAppStorage, RESOURCE_COL_RANGE, SETTINGS_KEY, SIDE_WIDTH_RANGE } from '../src/store/index.js';
+import { FILES_TREE_RANGE, HALF_CARD_RANGE, localAppStorage, RESOURCE_COL_RANGE, SETTINGS_KEY, SIDE_WIDTH_RANGE } from '../src/store/index.js';
 
 // a Storage of our own, so a read or a write can be made to fail the way a real one does
 class Mem implements Storage {
@@ -29,6 +29,7 @@ describe('localAppStorage', () => {
     s.setSidebarOpen(false);
     s.setHalfCard({ w: 0.4, h: 0.6 });
     s.setResourceCols({ rail: 200, list: 300 });
+    s.setResourceSize({ w: 0.5, h: 0.7 });
     s.setResourceGroups(['global', 'fleet', 'repo']);
     s.setSideWidths({ sidebar: 200, card: 300 });
     s.setFilesTree({ open: false, width: 320 });
@@ -39,6 +40,7 @@ describe('localAppStorage', () => {
       'svall.sidebar.open': 'false',
       'svall.card.half': '{"w":0.4,"h":0.6}',
       'svall.resources.cols': '{"rail":200,"list":300}',
+      'svall.resources.size': '{"w":0.5,"h":0.7}',
       'svall.resources.tiers': '["global","fleet","repo"]',
       'svall.side.widths': '{"sidebar":200,"card":300}',
       'svall.files.tree': '{"open":false,"width":320}',
@@ -87,6 +89,8 @@ describe('localAppStorage', () => {
     expect(store().getFilesTree()).toEqual({ open: true, width: FILES_TREE_RANGE.max });
     mem.setItem('svall.files.tree', '{"open":true,"width":9}');
     expect(store().getFilesTree()).toEqual({ open: true, width: FILES_TREE_RANGE.min });
+    mem.setItem('svall.resources.size', '{"w":0.01,"h":4}');
+    expect(store().getResourceSize()).toEqual({ w: HALF_CARD_RANGE.min, h: HALF_CARD_RANGE.max });
   });
 
   it('ignores a value of the wrong shape rather than starting on it', () => {

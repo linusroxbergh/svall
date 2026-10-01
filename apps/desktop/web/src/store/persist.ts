@@ -7,6 +7,9 @@ import type { View } from './ui.js';
 export type HalfCard = { w: number; h: number };
 export const DEFAULT_HALF_CARD: HalfCard = { w: 0.9, h: 0.88 };
 export const HALF_CARD_RANGE = { min: 0.22, max: 0.98 };
+// the resources shelf sizes the same way, as a fraction of the room over mission control; the first leaves a twentieth around it
+export const DEFAULT_RESOURCE_SIZE: HalfCard = { w: 0.9, h: 0.9 };
+const clampHalf = (v: number): number => Math.min(HALF_CARD_RANGE.max, Math.max(HALF_CARD_RANGE.min, v));
 // the widths of the shelf's Where and Which columns, in pixels; What is fixed and the editor takes what is left
 export type ResourceCols = { rail: number; list: number };
 export const DEFAULT_RESOURCE_COLS: ResourceCols = { rail: 216, list: 262 };
@@ -35,6 +38,7 @@ export type AppStorage = {
   getSettings(): Settings | undefined; setSettings(v: Settings): void;
   getHalfCard(): HalfCard | undefined; setHalfCard(v: HalfCard): void;
   getResourceCols(): ResourceCols | undefined; setResourceCols(v: ResourceCols): void;
+  getResourceSize(): HalfCard | undefined; setResourceSize(v: HalfCard): void;
   getResourceGroups(): Tier[] | undefined; setResourceGroups(v: Tier[]): void;
   getSideWidths(): SideWidths | undefined; setSideWidths(v: SideWidths): void;
   getFilesTree(): FilesTree | undefined; setFilesTree(v: FilesTree): void;
@@ -45,6 +49,7 @@ const VIEW_KEY = 'svall.view';
 const SIDEBAR_KEY = 'svall.sidebar.open';
 const HALF_KEY = 'svall.card.half';
 const COLS_KEY = 'svall.resources.cols';
+const SIZE_KEY = 'svall.resources.size';
 const GROUPS_KEY = 'svall.resources.tiers';
 // read until GROUPS_KEY is written; Fleet opens with Global
 const OLD_GROUPS_KEY = 'svall.resources.groups';
@@ -90,6 +95,8 @@ export function localAppStorage(fleet?: string): AppStorage | undefined {
       setHalfCard: (v) => write(HALF_KEY, JSON.stringify(v)),
       getResourceCols: () => { const c = readJson(read(COLS_KEY), isCols); return c && clampCols(c); },
       setResourceCols: (v) => write(COLS_KEY, JSON.stringify(v)),
+      getResourceSize: () => { const v = readJson(read(SIZE_KEY), isHalf); return v && { w: clampHalf(v.w), h: clampHalf(v.h) }; },
+      setResourceSize: (v) => write(SIZE_KEY, JSON.stringify(v)),
       getResourceGroups: () => readJson(read(GROUPS_KEY), isTiers) ?? withFleet(readJson(read(OLD_GROUPS_KEY), isTiers)),
       setResourceGroups: (v) => write(GROUPS_KEY, JSON.stringify(v)),
       getSideWidths: () => { const w = readJson(read(SIDES_KEY), isSides); return w && clampSides(w); },
