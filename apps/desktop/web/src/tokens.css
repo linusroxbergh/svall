@@ -98,6 +98,7 @@
 
   --r-xs: 5px; --r-pill: 999px;
   --edge-tab-w: 20px;
+  --edge-lip-w: 11px;   /* a side panel's edge tab, kept under the panel's --sp-xl inset */
   --safe-b: env(safe-area-inset-bottom, 0px);
 
   --dur-fast: .12s; --dur: .16s; --dur-slow: .2s;
