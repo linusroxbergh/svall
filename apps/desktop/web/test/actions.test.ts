@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CWD, emptyState } from '@svall/protocol';
-import { deleteCharacter, deleteIsland, moveCharacterTo, newCharacterOn, newCharacterTarget, newNamedCharacter, openSecondTerminal, reviveCharacter, saveCharacter, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeCharacter } from '../src/actions.js';
+import { deleteCharacter, deleteIsland, moveCharacterTo, newCharacterOn, newCharacterTarget, newIsland, newIslandAround, newNamedCharacter, openSecondTerminal, reviveCharacter, saveCharacter, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeCharacter } from '../src/actions.js';
 import { ApiError, type Api } from '../src/api.js';
 import { createAppStore } from '../src/store/index.js';
 import { chr, fleet, isl } from './fixtures.js';
@@ -446,5 +446,22 @@ describe('home', () => {
     const api = { call: () => Promise.resolve({ id: 'c_new', name: 'bright otter', runSent: true }) } as unknown as Api;
     await startHomeCharacter({ api, store }, { prompt: 'regroup the fleet' });
     expect(store.getState().selectedId).toBe('c_new');
+  });
+});
+
+describe('a new island or character', () => {
+  const made: [string, (c: ReturnType<typeof ctx>) => unknown][] = [
+    ['a character on an island', (c) => newCharacterOn(c, 'i_a')],
+    ['a named character', (c) => newNamedCharacter(c, { name: 'n', note: '', refs: [] })],
+    ['a crew member on mission control', (c) => startHomeCharacter(c, { prompt: 'hi' })],
+    ['an island', (c) => newIsland(c)],
+    ['an island around a dragged character', (c) => newIslandAround(c, 'c0', { x: 40, y: 0 })],
+  ];
+  it.each(made)('puts Settings away so it can be seen: %s', async (_what, make) => {
+    const c = ctx();
+    c.store.getState().toggleSettings(true);
+    await make(c);
+    expect(c.store.getState().settingsOpen).toBe(false);
+    expect(c.calls.some((x) => x.method === 'char.create' || x.method === 'island.create')).toBe(true);
   });
 });
