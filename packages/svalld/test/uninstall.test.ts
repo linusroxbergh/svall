@@ -340,6 +340,16 @@ describe('runUninstall', () => {
     expect(calls.filter((a) => a.includes('off'))).toEqual([['serve', '--https=443', 'off']]);
   });
 
+  it('carries on when tailscale answers its serve status in prose', async () => {
+    const f = installed();
+    await runSetup(f.o);
+    const mobile = realDeps(async (_cmd, args) => args.join(' ') === 'serve status --json' ? 'The Tailscale CLI failed to start: Failed to load preferences.\n' : '');
+    expect(await runUninstall({ ...f.o, mobile })).toContain('could not read tailscale serve status, so any phone link was left in place: The Tailscale CLI failed to start: Failed to load preferences.');
+    expect(JSON.parse(fs.readFileSync(f.settingsPath, 'utf8'))).toEqual(f.mine);
+    expect(fs.readdirSync(f.launchAgentsDir)).toEqual([]);
+    expect(fs.readdirSync(f.shimDir)).toEqual([]);
+  });
+
   it('refuses from a terminal inside a fleet\'s tmux server before it changes anything', async () => {
     const f = installed();
     await runSetup(f.o);
