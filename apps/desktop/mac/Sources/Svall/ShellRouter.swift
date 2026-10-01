@@ -24,6 +24,8 @@ final class ShellRouter {
     // where the page's answer goes while a quit waits on it, and what quits anyway if it never comes
     private var quitAnswer: ((Bool) -> Void)?
     private var quitTimeout: DispatchWorkItem?
+    // a quit the user asked for waits on a yes; the app's own (an update, an uninstall) do not
+    private var userQuit = false
 
     init(runtime: GhosttyRuntime, bridge: Bridge, container: NSView, webView: DropWebView, quitItem: NSMenuItem) {
         self.runtime = runtime
@@ -112,9 +114,12 @@ final class ShellRouter {
         finishQuit(true)
     }
 
-    /// Quits, unless a quit already waits on the page: AppKit takes a second terminate as a yes to the first.
+    /// Quits once the user says yes, unless a quit already waits on the page: AppKit takes a second terminate as a yes to the first.
     func quit() {
-        if quitAnswer == nil { NSApp.terminate(nil) }
+        guard quitAnswer == nil else { return }
+        // a page that is up names its unsaved files first, so the one question can name them too
+        if listening { userQuit = true } else if !confirmQuit(unsaved: []) { return }
+        NSApp.terminate(nil)
     }
 
     /// Asks the page to save its docs and name the files a quit would drop; false when no page is there to ask.
@@ -122,7 +127,7 @@ final class ShellRouter {
         guard listening, quitAnswer == nil else { return false }
         quitAnswer = answer
         // longer than the page gives its saves, so only a page that is stuck or gone runs it out
-        let timeout = DispatchWorkItem { [weak self] in self?.finishQuit(true) }
+        let timeout = DispatchWorkItem { [weak self] in self?.answerQuit(unsaved: []) }
         quitTimeout = timeout
         DispatchQueue.main.asyncAfter(deadline: .now() + 6, execute: timeout)
         bridge.send(.quitAsk)
@@ -130,6 +135,7 @@ final class ShellRouter {
     }
 
     private func finishQuit(_ ok: Bool) {
+        userQuit = false
         guard let answer = quitAnswer else { return }
         quitAnswer = nil
         quitTimeout?.cancel()
@@ -140,15 +146,24 @@ final class ShellRouter {
     private func answerQuit(unsaved: [String]) {
         guard quitAnswer != nil else { return }
         quitTimeout?.cancel()
-        guard !unsaved.isEmpty else { return finishQuit(true) }
+        guard userQuit || !unsaved.isEmpty else { return finishQuit(true) }
+        finishQuit(confirmQuit(unsaved: unsaved))
+    }
+
+    private func confirmQuit(unsaved: [String]) -> Bool {
         let alert = NSAlert()
-        alert.messageText = "Quit with unsaved changes?"
-        let names = unsaved.count > 4 ? unsaved.prefix(3).joined(separator: ", ") + " and \(unsaved.count - 3) more" : ListFormatter.localizedString(byJoining: unsaved)
-        alert.informativeText = "\(names) \(unsaved.count == 1 ? "has" : "have") changes that were not saved. Quitting drops them."
+        if unsaved.isEmpty {
+            alert.messageText = "Quit Svall?"
+            alert.informativeText = "Your characters keep running, so nothing is lost."
+        } else {
+            alert.messageText = "Quit with unsaved changes?"
+            let names = unsaved.count > 4 ? unsaved.prefix(3).joined(separator: ", ") + " and \(unsaved.count - 3) more" : ListFormatter.localizedString(byJoining: unsaved)
+            alert.informativeText = "\(names) \(unsaved.count == 1 ? "has" : "have") changes that were not saved. Quitting drops them."
+        }
         alert.addButton(withTitle: "Quit")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate()
-        finishQuit(alert.runModal() == .alertFirstButtonReturn)
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     // the page names the chord it quits with, for the menu and for the monitor that takes it on a stuck page
