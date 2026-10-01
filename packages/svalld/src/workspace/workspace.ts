@@ -22,6 +22,8 @@ const byKindThenName = (a: FsEntry, b: FsEntry): number =>
 // touched holds the burst's paths, '' for one that always counts
 type Watch = { root: string; watcher?: fs.FSWatcher; deep?: boolean; viewers: Set<Viewer>; touched: Set<string>; timer?: NodeJS.Timeout };
 
+type Status = { branch?: string; files: ChangedFile[] };
+
 const REFLOG = path.join('.git', 'logs', 'HEAD');
 const INDEX = path.join('.git', 'index');
 
@@ -192,10 +194,24 @@ export class Workspace {
     return root;
   }
 
-  async status(id: string, base: DiffBase): Promise<{ branch?: string; files: ChangedFile[] }> {
-    const root = await this.repoRoot(id);
-    const [branch, files] = await Promise.all([branchOf(root), changedFiles(root, await baseRef(root, base))]);
-    return { branch, files };
+  // one status per root and base runs at a time, and the calls made during it share the run after it:
+  // a burst of changes on a loaded machine never stacks diffs that each run into the timeout
+  private queued = new Map<string, Promise<Status>>();
+  private running = new Map<string, Promise<Status>>();
+
+  async status(id: string, base: DiffBase): Promise<Status> {
+    const key = `${base}\0${inside(this.rootOf(id), '')}`;
+    const queued = this.queued.get(key);
+    if (queued) return queued;
+    const run: Promise<Status> = (this.running.get(key) ?? Promise.resolve()).catch(() => {}).then(async () => {
+      this.queued.delete(key);
+      this.running.set(key, run);
+      const root = await this.repoRoot(id);
+      const [branch, files] = await Promise.all([branchOf(root), changedFiles(root, await baseRef(root, base))]);
+      return { branch, files };
+    }).finally(() => { if (this.running.get(key) === run) this.running.delete(key); });
+    this.queued.set(key, run);
+    return run;
   }
 
   async file(id: string, rel: string, base: DiffBase, from?: string): Promise<{ before?: string; after?: string; binary?: true }> {
