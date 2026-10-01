@@ -102,8 +102,9 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
   switch (e.name) {
     case 'UserPromptSubmit':
     case 'PreToolUse':
-    // codex asks to run a tool between the two, so the answer it waited for is the run itself
+    // a tool is asked about between the two, so the answer it waited for is the run itself
     case 'PostToolUse':
+    case 'PostToolUseFailure':
       settle('working');
       next.unread = false;
       break;

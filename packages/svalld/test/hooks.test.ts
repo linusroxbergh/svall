@@ -48,6 +48,7 @@ describe('normalizeHook', () => {
     expect(sub({ hook_event_name: 'SubagentStop' })).toMatchObject({ name: 'SubagentStop', agentId: 'a95af83797c89a762' });
     expect(sub({ hook_event_name: 'Stop' })).toBeUndefined();
     expect(sub({ hook_event_name: 'StopFailure' })).toBeUndefined();
+    expect(sub({ hook_event_name: 'PostToolUse' })).toBeUndefined();
     expect(sub({ hook_event_name: 'UserPromptSubmit', prompt: 'p', prompt_id: 'p1' })).toBeUndefined();
     expect(sub({ hook_event_name: 'PreToolUse', agent_id: 'x'.repeat(300) })).toBeUndefined();
   });
@@ -58,7 +59,9 @@ describe('normalizeHook', () => {
   it('knows no event a backend does not send', () => {
     expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'Notification' } })).toBeUndefined();
     expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'SubagentStop', agent_id: 'a1' } })).toBeUndefined();
-    expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'PostToolUse' } })).toBeUndefined();
+    expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'PostToolUseFailure' } })).toBeUndefined();
+    expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'PostToolUse' } })?.name).toBe('PostToolUse');
+    expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'PostToolUseFailure' } })?.name).toBe('PostToolUseFailure');
     expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Interrupt' } })).toBeUndefined();
     expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'StopFailure' } })).toBeUndefined();
     expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'StopFailure', message: 'x' } })).toMatchObject({ name: 'StopFailure', message: 'x' });
@@ -428,13 +431,15 @@ describe.each(runners)('$name', (run) => {
   });
 
   it('gives a tool call up at once without a socket, as the next one says the same', async () => {
-    const home = makeHome();
-    const t0 = Date.now();
-    await new Promise<void>((resolve) => {
-      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_1' } }, () => resolve());
-      p.stdin!.end(JSON.stringify({ hook_event_name: 'PreToolUse', session_id: SID }));
-    });
-    expect(Date.now() - t0).toBeLessThan(1500);
+    for (const name of ['PreToolUse', 'PostToolUse', 'PostToolUseFailure']) {
+      const home = makeHome();
+      const t0 = Date.now();
+      await new Promise<void>((resolve) => {
+        const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_1' } }, () => resolve());
+        p.stdin!.end(JSON.stringify({ hook_event_name: name, session_id: SID }));
+      });
+      expect(Date.now() - t0).toBeLessThan(1500);
+    }
   });
 
   it('exits 0 within 1.5 s when its input never ends', async () => {

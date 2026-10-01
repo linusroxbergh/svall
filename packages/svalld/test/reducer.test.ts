@@ -54,6 +54,14 @@ describe('applyHook', () => {
     expect(applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'elicitation_url_dialog' }, 1).agent?.status).toBe('blocked');
     expect(applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'auth_success' }, 1).agent?.status).toBe('working');
   });
+  it('is working again once the tool asked about has run, as when a choice is picked, whether it succeeded or not', () => {
+    const asked = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'permission_prompt', message: 'Claude needs your permission to use AskUserQuestion' }, 1);
+    for (const name of ['PostToolUse', 'PostToolUseFailure'] as const) {
+      const ran = applyHook(asked, { charId: 'c_a', backend: 'claude', name }, 2);
+      expect(ran.agent).toMatchObject({ status: 'working' });
+      expect(ran.agent?.promptId).toBeUndefined();
+    }
+  });
   it('gives each blocking question an id of its own, and drops it once the agent moves on', () => {
     const ask = (c: Character) => applyHook(c, { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'permission_prompt' }, 1);
     const one = ask(withAgent('working'));

@@ -52,7 +52,7 @@ const failed = (h) => {
 // Nor is any event within a minute of one giving up, so a daemon that stays down holds up one hook a minute
 const RETRIES = 8;
 const RETRY_MS = 250;
-const ONCE = new Set(['PreToolUse', 'PostToolUse']);
+const ONCE = new Set(['PreToolUse', 'PostToolUse', 'PostToolUseFailure']);
 const DOWN = path.join(home, 'hooks.down');
 const gaveUpLately = () => { try { return Date.now() - fs.statSync(DOWN).mtimeMs < 60_000; } catch { return false; } };
 
