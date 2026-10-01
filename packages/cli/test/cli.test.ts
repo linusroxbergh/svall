@@ -385,7 +385,7 @@ runIf('svall CLI', () => {
     const dup = await svall('island', 'create', 'Feature');
     expect(dup.code).toBe(1);
     expect(dup.stderr).toContain(island.id);
-    expect(Object.keys(daemon.store.state.islands)).toHaveLength(2);
+    expect(Object.values(daemon.store.state.islands).map((i) => i.name)).toEqual(['mission control', 'Island 1', 'feature']);
     const second = JSON.parse((await svall('island', 'create', 'second', '--at', '0,10', '--size', '5,4', '--description', 'the second', '--json')).stdout);
     expect(second).toMatchObject({ position: { x: 0, y: 10 }, size: { w: 5, h: 4 }, description: 'the second' });
     const updatedIsland = JSON.parse((await svall('island', 'update', second.id, '--context', 'https://x Second', '--at', '0,8', '--json')).stdout);
@@ -441,7 +441,7 @@ runIf('svall CLI', () => {
     expect((await svall('char', 'close', c.id)).code).toBe(0);
     expect((await svall('island', 'delete', second.id)).code).toBe(0);
     expect((await svall('island', 'delete', island.id)).code).toBe(0);
-    expect(JSON.parse((await svall('island', 'list', '--json')).stdout).map((i: { id: string }) => i.id)).toEqual(['home']);
+    expect(JSON.parse((await svall('island', 'list', '--json')).stdout).map((i: { name: string }) => i.name)).toEqual(['mission control', 'Island 1']);
   }, 60_000);
 
   it('fails clearly when the daemon is not running', async () => {
