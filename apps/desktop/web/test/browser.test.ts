@@ -106,20 +106,21 @@ describe('browser manager', () => {
     expect(store.getState().webviews).toEqual({});
   });
 
-  it('opens a link followed in a terminal as a tab of that character, beside the terminal', () => {
+  it('asks by the pointer where a link followed in a terminal opens, and opens nothing yet', () => {
     const { bridge, calls, store } = fakes();
-    bridge.emit({ type: 'term.openUrl', id: 'c0-2', url: 'https://ticket.test/1' });
-    expect(calls.at(-1)).toEqual({ method: 'browser.open', params: { id: 'c0', url: 'https://ticket.test/1' } });
-    expect(store.getState().ide.c0.panes).toEqual({ left: 'terminal', right: 'browser' });
+    bridge.emit({ type: 'term.openUrl', id: 'c0-2', url: 'https://ticket.test/1', x: 120, y: 340 });
+    expect(store.getState().linkAsk).toEqual({ url: 'https://ticket.test/1', charId: 'c0', x: 120, y: 340, surface: 'c0-2' });
+    expect(calls.filter((k) => k.method === 'browser.open')).toEqual([]);
   });
 
   it('sends a link the browser cannot hold, and one of a character that is gone, out of the app', () => {
     const { bridge, calls, sent, store } = fakes();
-    bridge.emit({ type: 'term.openUrl', id: 'c0', url: 'mailto:a@b.test' });
+    bridge.emit({ type: 'term.openUrl', id: 'c0', url: 'mailto:a@b.test', x: 0, y: 0 });
     expect(sent.at(-1)).toEqual({ type: 'openUrl', url: 'mailto:a@b.test' });
     store.getState().applyPatch([{ op: 'remove', path: '/characters/c0' }]);
-    bridge.emit({ type: 'term.openUrl', id: 'c0', url: 'https://ticket.test/1' });
+    bridge.emit({ type: 'term.openUrl', id: 'c0', url: 'https://ticket.test/1', x: 0, y: 0 });
     expect(sent.at(-1)).toEqual({ type: 'openUrl', url: 'https://ticket.test/1' });
+    expect(store.getState().linkAsk).toBeUndefined();
     expect(calls.filter((k) => k.method === 'browser.open')).toEqual([]);
   });
 

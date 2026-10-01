@@ -102,7 +102,7 @@ enum FromShell {
     case termExited(id: String)
     case termFailed(id: String, reason: String)
     case termFocused(id: String)
-    case termOpenUrl(id: String, url: String)
+    case termOpenUrl(id: String, url: String, x: Double, y: Double)
     case appActive(Bool)
     case ghosttyConfigErrors([String])
     case dragOver(x: Double, y: Double)
@@ -130,7 +130,7 @@ enum FromShell {
         case .termExited(let id): return ["type": "term.exited", "id": id]
         case .termFailed(let id, let reason): return ["type": "term.failed", "id": id, "reason": reason]
         case .termFocused(let id): return ["type": "term.focused", "id": id]
-        case .termOpenUrl(let id, let url): return ["type": "term.openUrl", "id": id, "url": url]
+        case .termOpenUrl(let id, let url, let x, let y): return ["type": "term.openUrl", "id": id, "url": url, "x": x, "y": y]
         case .appActive(let active): return ["type": "app.active", "active": active]
         case .ghosttyConfigErrors(let errors): return ["type": "ghostty.configErrors", "errors": errors]
         case .dragOver(let x, let y): return ["type": "drag.over", "x": x, "y": y]

@@ -1,4 +1,4 @@
-import type { ContextItem, MobileStatus, PhoneSession } from '@svall/protocol';
+import type { MobileStatus, PhoneSession } from '@svall/protocol';
 import type { StateCreator } from 'zustand/vanilla';
 import type { NotifyPermission, Rect, ShellInfo } from '../bridge.js';
 import type { DropTarget } from '../drop.js';
@@ -15,8 +15,8 @@ export type Terminal = { id: string; rect: Rect };
 export type Webview = { tab: string; rect: Rect; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error?: string };
 // a toast either reports a refusal or confirms something the user set going; an action is the one thing it offers to take back
 export type Toast = { text: string; tone: 'error' | 'ok'; action?: { label: string; run(): void } };
-// a link waiting by the pointer for the user to say where it should open
-export type LinkAsk = { item: ContextItem; charId: string; x: number; y: number };
+// a link waiting by the pointer for the user to say where it should open; one from a terminal names the surface the keys go back to
+export type LinkAsk = { url: string; charId: string; x: number; y: number; surface?: string };
 
 export type UiState = {
   view: View;
