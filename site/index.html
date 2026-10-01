@@ -70,7 +70,15 @@ a { color: inherit; text-underline-offset: .22em; text-decoration-thickness: 1px
 .hero { position: relative; padding-top: clamp(32px, 7vh, 80px); }
 h1 { margin: 0; max-width: 13ch; font-size: clamp(2.3rem, 1.4rem + 3vw, 3.5rem); font-weight: 600; line-height: 1.04; letter-spacing: -.03em; text-wrap: balance; }
 .lede { margin: 16px 0 0; max-width: 31em; font-size: 1.0625rem; line-height: 1.55; color: #EDE7D6; text-wrap: pretty; }
-.install { display: flex; align-items: flex-start; margin-top: 28px; max-width: 520px;
+/* the app's primary button: sand, as on its setup screen */
+.dl { display: inline-flex; align-items: center; gap: 9px; margin-top: 28px; padding: 11px 18px 11px 15px; border-radius: var(--r-md);
+  font-size: .9375rem; font-weight: 600; letter-spacing: -.005em; text-decoration: none; color: var(--ink-sand); background: var(--sand);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--white) 35%, transparent), 0 6px 16px -6px var(--shade-2);
+  transition: background .16s var(--ease), transform .16s var(--ease); }
+.dl:hover { background: var(--sand-hi); }
+.dl:active { transform: translateY(1px); }
+.dl svg { width: 16px; height: 16px; }
+.install { display: flex; align-items: flex-start; margin-top: 12px; max-width: 520px;
   background: var(--surface-1); border: 1px solid var(--line-soft); border-radius: var(--r-md); }
 .install pre { flex: 1; min-width: 0; margin: 0; padding: 12px 6px 12px 14px; overflow-x: auto;
   font: 12.5px/1.75 var(--mono); color: var(--ink); scrollbar-width: thin; }
@@ -78,6 +86,7 @@ h1 { margin: 0; max-width: 13ch; font-size: clamp(2.3rem, 1.4rem + 3vw, 3.5rem);
 .install code { font: inherit; }
 .install .ln { display: block; padding-left: 2ch; text-indent: -2ch; }
 .install .p { color: var(--ink-3); user-select: none; }
+.install .nw { white-space: nowrap; }
 .copy { flex: none; margin: 7px 7px 0 0; display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 7px;
   background: transparent; color: var(--ink-3); cursor: pointer; transition: color .16s var(--ease), background .16s var(--ease); }
 .copy:hover { color: var(--ink); background: var(--fill-2); }
@@ -205,7 +214,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
 
 @media (max-width: 760px) {
   .lede { font-size: .9375rem; }
-  .install { margin-top: 22px; }
+  .dl { margin-top: 22px; }
   .install pre { padding: 10px 4px 10px 12px; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .gh span { display: none; }
 }
@@ -229,14 +238,18 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
   <section class="hero">
     <h1>All you need to run your agents, on one map.</h1>
     <p class="lede">Svall is a Mac app that puts each agent on an island, so one look shows which are working, waiting on you or done.</p>
+    <a class="dl" href="/download">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.5v9"/><path d="M6 9l4 4 4-4"/><path d="M4 15.5h12"/></svg>
+      Download for Mac
+    </a>
     <div class="install">
-      <pre><code id="cmd"><span class="ln"><span class="p">$ </span>git clone https://github.com/linusroxbergh/<wbr>svall</span><span class="ln"><span class="p">$ </span>cd svall</span><span class="ln"><span class="p">$ </span>pnpm desktop:install</span></code></pre>
-      <button class="copy" type="button" aria-label="Copy install commands">
+      <pre><code id="cmd"><span class="ln"><span class="p">$ </span>curl -fsSL <span class="nw">https://svall.dev/install.sh | sh</span></span></code></pre>
+      <button class="copy" type="button" aria-label="Copy install command">
         <svg class="cp" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><rect x="6.5" y="6.5" width="10" height="10" rx="2.2"/><path d="M13.5 6.5V5.2A1.7 1.7 0 0 0 11.8 3.5H5.2A1.7 1.7 0 0 0 3.5 5.2v6.6a1.7 1.7 0 0 0 1.7 1.7h1.3"/></svg>
         <svg class="ok" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8"/></svg>
       </button>
     </div>
-    <p class="meta">macOS 15.6 or newer. Private alpha, invite only for now. <a href="https://github.com/linusroxbergh/svall#quickstart">Full setup</a></p>
+    <p class="meta">Apple silicon, macOS 15 or newer, with Claude Code or Codex. <a href="https://github.com/linusroxbergh/svall#build-from-source-svall-dev">Build from source</a></p>
   </section>
   <div class="map"><div class="world" role="group" aria-label="Demo map"></div></div>
   <section class="features">
@@ -265,7 +278,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     try { await navigator.clipboard.writeText(text); } catch { return; }
     copy.dataset.copied = '';
     copy.setAttribute('aria-label', 'Copied');
-    setTimeout(() => { delete copy.dataset.copied; copy.setAttribute('aria-label', 'Copy install commands'); }, 1600);
+    setTimeout(() => { delete copy.dataset.copied; copy.setAttribute('aria-label', 'Copy install command'); }, 1600);
   });
 
   // the map's coastPath (apps/desktop/web/src/map/coast.ts): a seeded squircle, four sine harmonics, Catmull-Rom cubics
