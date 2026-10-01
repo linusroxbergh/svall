@@ -535,7 +535,7 @@ export function Map() {
             <Island key={i.id} island={shown} count={count} offset={islandOffset(i, preview)} gripOffset={gripOffset}
               hot={hotIsland === i.id || selectedIslandId === i.id} selected={selectedIslandId === i.id}
               collapsed={Boolean(i.collapsed)}
-              dragging={Boolean(preview)} settling={preview === pendingIsland}
+              dragging={Boolean(preview)} settling={Boolean(pendingIsland) && preview === pendingIsland}
               hover={dropHover?.kind === 'island' && dropHover.id === i.id}
               onNew={() => newCharacterOn(deps(), i.id)}
               onToggle={() => toggleIsland(deps(), i.id)}
@@ -567,7 +567,7 @@ export function Map() {
           const world = dragging ? drag.cell : worldCell(base, c.cell);
           return (
             <Token key={c.id} c={c} status={statusOf(c)} world={world} selected={c.id === selectedId} dragging={dragging}
-              offset={islandOffset(i, preview)} settling={preview === pendingIsland}
+              offset={islandOffset(i, preview)} settling={Boolean(pendingIsland) && preview === pendingIsland}
               hover={dropHover?.kind === 'char' && dropHover.id === c.id}
               pointer={domPointer({ kind: 'figure', id: c.id })}
               onHoverStart={() => startHover(c.id)} onHoverEnd={endHover}
