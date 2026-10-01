@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Svall</title>
+<meta name="description" content="A macOS map of your Claude Code and Codex agents. One look shows which are working, which need you and which are done.">
+<meta name="theme-color" content="#2C3847">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="preload" href="fonts/Outfit-Variable.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/JetBrainsMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+@font-face { font-family: 'Outfit'; src: url(fonts/Outfit-Variable.woff2) format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url(fonts/JetBrainsMono-Regular.woff2) format('woff2'); font-weight: 400; font-display: swap; }
+
+/* the app's tokens (apps/desktop/web/src/tokens.css) */
+:root {
+  color-scheme: dark;
+  --sea-1: #2A3A4C; --surface-1: #1E2A38; --surface-2: #243140;
+  --map-0: #53687C; --map-1: #3E5061; --map-2: #2C3847;
+  --grid: rgba(220,205,173,.055); --contour: rgba(236,220,186,.12); --contour-2: rgba(236,220,186,.05);
+  --sand: #E6D8B8; --sand-deep: #C9B992; --sand-lite: #E9DBB8; --sand-hi: #F6ECD1; --bank: #A2905F;
+  --grass: #7B9376; --grass-hi: #98AD92; --shore: rgba(90,80,55,.42);
+  --grass-press: color-mix(in srgb, var(--grass) 45%, var(--ink-land));
+  --glass: rgba(22,32,44,.66); --glass-hi: rgba(32,46,62,.94);
+  --line: rgba(240,230,206,.13); --line-soft: rgba(240,230,206,.07); --line-strong: rgba(240,230,206,.3);
+  --fill-1: rgba(240,230,206,.06); --fill-2: rgba(240,230,206,.10); --fill-3: rgba(240,230,206,.17);
+  --sand-fill: rgba(230,216,184,.2);
+  --ink: #F4EEDF; --ink-2: #CCC5B1; --ink-3: #B3AD9A; --ink-cool: #8EA0B0;
+  --ink-land: #2C3B31; --ink-sand: #3D3418; --ink-land-deep: #15211A;
+  --working: #FFC95C; --blocked: #FF6F5E; --done: #63D7C0; --idle: #7C8F9F; --sel: #8ED0FF;
+  --pt-sky: #78B0C4; --pt-sun: #E0BB55; --pt-coral: #DD7364; --pt-earth: #A6734C; --pt-moss: #8CAE68; --pt-slate: #4E6A6E;
+  --cream: #FFFDF4; --white: #FFFFFF;
+  --card-0: #F6EFDE; --card-1: #ECE2CA; --card-2: #DFD2B4; --card-tint: #786844; --card-band: #B9A578;
+  --disc-0: #FFFEF8; --disc-1: #F7F0DE; --disc-2: #DCCFB2;
+  --shade-0: rgba(10,18,24,.15); --shade-1: rgba(10,18,24,.25); --shade-2: rgba(10,18,24,.4); --shade-3: rgba(10,18,24,.55);
+  --shadow-2: 0 8px 22px rgba(10,18,24,.34);
+  --sans: 'Outfit', ui-sans-serif, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, monospace;
+  --ease: cubic-bezier(.22,.7,.24,1); --ease-out: cubic-bezier(.16,1,.3,1);
+  --r-md: 10px; --r-xs: 5px;
+  --tok: 34px;
+  --map-tone: .97;
+  --gutter: clamp(16px, 4vw, 40px);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+/* the page is the app's map: lit from the top, darkening down to map-2 */
+html { -webkit-text-size-adjust: 100%; scrollbar-color: var(--fill-3) var(--map-2);
+  background: radial-gradient(125vw 1250px at 50% 60px, var(--map-0) 0%, var(--map-1) 46%, var(--map-2) 100%) no-repeat, var(--map-2); }
+body { position: relative; margin: 0; font: 400 1rem/1.55 var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; }
+/* the map's grain over the whole page */
+body::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: url(map-grain.png) 0 0 / 128px 128px; mix-blend-mode: soft-light; opacity: .42; }
+::selection { background: color-mix(in srgb, var(--sand) 32%, transparent); color: var(--white); }
+a { color: inherit; text-underline-offset: .22em; text-decoration-thickness: 1px; }
+:focus-visible { outline: 2px solid var(--sel); outline-offset: 3px; border-radius: 6px; }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 0 var(--gutter); }
+
+.bar { display: flex; align-items: center; justify-content: space-between; padding-top: 22px; padding-bottom: 22px; }
+.mark { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; font-size: 17px; font-weight: 600; letter-spacing: -.02em; }
+.mark img { width: 22px; height: 22px; border-radius: 6px; box-shadow: 0 0 0 1px var(--line-soft); }
+.gh { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: var(--r-md);
+  font-size: 12.5px; font-weight: 500; text-decoration: none; color: var(--ink-2);
+  background: var(--glass); border: 1px solid var(--line-soft); transition: background .16s var(--ease), color .16s var(--ease), border-color .16s var(--ease); }
+.gh:hover { color: var(--ink); background: var(--glass-hi); border-color: var(--line-strong); }
+.gh svg { width: 14px; height: 14px; }
+
+.hero { position: relative; padding-top: clamp(32px, 7vh, 80px); }
+h1 { margin: 0; max-width: 13ch; font-size: clamp(2.3rem, 1.4rem + 3vw, 3.5rem); font-weight: 600; line-height: 1.04; letter-spacing: -.03em; text-wrap: balance; }
+.lede { margin: 16px 0 0; max-width: 31em; font-size: 1.0625rem; line-height: 1.55; color: #EDE7D6; text-wrap: pretty; }
+/* the app's primary button: sand, as on its setup screen */
+.dl { display: inline-flex; align-items: center; gap: 9px; margin-top: 28px; padding: 11px 18px 11px 15px; border-radius: var(--r-md);
+  font-size: .9375rem; font-weight: 600; letter-spacing: -.005em; text-decoration: none; color: var(--ink-sand); background: var(--sand);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--white) 35%, transparent), 0 6px 16px -6px var(--shade-2);
+  transition: background .16s var(--ease), transform .16s var(--ease); }
+.dl:hover { background: var(--sand-hi); }
+.dl:active { transform: translateY(1px); }
+.dl svg { width: 16px; height: 16px; }
+.install { display: flex; align-items: flex-start; margin-top: 12px; max-width: 520px;
+  background: var(--surface-1); border: 1px solid var(--line-soft); border-radius: var(--r-md); }
+.install pre { flex: 1; min-width: 0; margin: 0; padding: 12px 6px 12px 14px; overflow-x: auto;
+  font: 12.5px/1.75 var(--mono); color: var(--ink); scrollbar-width: thin; }
+/* the browser's own code { font-family: monospace } would otherwise win over the block's face */
+.install code { font: inherit; }
+.install .ln { display: block; padding-left: 2ch; text-indent: -2ch; }
+.install .p { color: var(--ink-3); user-select: none; }
+.install .nw { white-space: nowrap; }
+.copy { flex: none; margin: 7px 7px 0 0; display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--ink-3); cursor: pointer; transition: color .16s var(--ease), background .16s var(--ease); }
+.copy:hover { color: var(--ink); background: var(--fill-2); }
+.copy svg { width: 15px; height: 15px; }
+.copy .ok { display: none; color: var(--done); }
+.copy[data-copied] .ok { display: block; }
+.copy[data-copied] .cp { display: none; }
+.meta { margin: 12px 0 0; font-size: .8125rem; color: #E4DDCB; text-wrap: pretty; }
+.meta a { color: var(--ink); }
+.meta a:hover { color: var(--ink); }
+
+/* the sea's dot grid and drifting light under the hero and the map, fading out above the feature list */
+.sea { position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden;
+  -webkit-mask-image: linear-gradient(#000 60%, transparent); mask-image: linear-gradient(#000 60%, transparent); }
+/* the map's edge vignette, on the window */
+.vignette { position: fixed; inset: 0; z-index: 45; pointer-events: none; box-shadow: inset 0 0 190px 40px var(--shade-1); }
+main { overflow-x: clip; }
+.stage { position: relative; }
+.stage .hero { position: relative; z-index: 2; max-width: 520px; }
+.world { z-index: 1; }
+.sea::before { content: ''; position: absolute; inset: 0; background-image: radial-gradient(circle at 1px 1px, var(--grid) 1px, transparent 1.4px); background-size: 44px 44px; }
+.sea i { position: absolute; inset: -25%; will-change: transform;
+  background: radial-gradient(34% 28% at 30% 38%, var(--fill-1), transparent 70%),
+              radial-gradient(26% 22% at 72% 64%, color-mix(in srgb, var(--ink) 4.5%, transparent), transparent 70%);
+  animation: swell 48s ease-in-out infinite alternate; }
+.sea i + i { background: radial-gradient(30% 24% at 62% 28%, color-mix(in srgb, var(--ink-cool) 8.5%, transparent), transparent 70%),
+              radial-gradient(22% 20% at 22% 76%, color-mix(in srgb, var(--ink-cool) 6.5%, transparent), transparent 70%);
+  animation: swell 67s ease-in-out infinite alternate-reverse; }
+@keyframes swell { from { transform: translate(-3%, -2%) scale(1); } to { transform: translate(3%, 2%) scale(1.06); } }
+/* wide: the islands share the stage with the hero, cascading down its right side */
+.world { position: absolute; top: 0; left: var(--gutter); transform-origin: 0 0; filter: brightness(var(--map-tone)); }
+/* narrow: the whole map zoomed out under the text, spanning the screen */
+.map { display: contents; }
+.narrow .map { display: block; position: relative; margin: 40px calc(-1 * var(--gutter)) 0; }
+.tok .gem[hidden], .tok .sw[hidden] { display: none; }
+.island { position: absolute; pointer-events: none; }
+.island svg { display: block; overflow: visible; }
+.island .grass { filter: brightness(var(--map-tone)) drop-shadow(0 1px 1px color-mix(in srgb, var(--ink-land) 22%, transparent)); }
+.island .land-texture { opacity: .22; }
+.ilabel { position: absolute; left: 50%; transform: translateX(-50%) scale(var(--lk, 1)); transform-origin: 50% 100%; display: flex; align-items: center; gap: 8px; white-space: nowrap;
+  padding: 6px 10px; border-radius: var(--r-md); background: var(--glass); border: 1px solid var(--line-soft); }
+.ilabel .itog { margin-left: -4px; width: 18px; height: 18px; flex: none; display: grid; place-items: center; color: var(--ink-2); }
+.ilabel b { font-weight: 600; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; }
+.ilabel .ct { font-size: 10.5px; font-weight: 600; padding: 2px 6px; border-radius: var(--r-xs); background: var(--sand-fill); color: var(--sand); }
+
+/* a character's card (the app's .tok) */
+.tok { position: absolute; z-index: 20; transform: translate(-50%, -48%); filter: brightness(var(--map-tone)); --card-w: calc(var(--tok) * 2.56); --card-h: calc(var(--tok) * 3.486); }
+.tok:hover { z-index: 30; }
+.tok::before { content: ''; position: absolute; z-index: -1; pointer-events: none;
+  inset: calc(var(--tok)*-.2) calc(var(--tok)*-.2) calc(var(--tok)*-.18); border-radius: calc(var(--tok)*.41);
+  background: color-mix(in srgb, var(--grass-press) 30%, transparent); filter: blur(calc(var(--tok)*.14)); }
+.tok .card { position: relative; width: var(--card-w); height: var(--card-h); border-radius: calc(var(--tok)*.21);
+  display: flex; flex-direction: column; overflow: hidden;
+  background: linear-gradient(var(--card-0) 0%, var(--card-1) 62%, var(--card-2) 100%);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--card-tint) 16%, transparent), 0 1px 2px var(--shade-1);
+  transition: transform .16s var(--ease), box-shadow .16s var(--ease); }
+.tok .card::after { content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 8; border-radius: inherit;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cream) 55%, transparent),
+              inset 0 calc(var(--tok)*.2) calc(var(--tok)*.24) calc(var(--tok)*-.12) var(--shade-1); }
+.tok:hover .card { transform: translateY(-6px);
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--card-tint) 12%, transparent), 0 10px 16px -7px var(--shade-2), 0 2px 4px var(--shade-0); }
+.tok .edge { flex: none; height: calc(var(--tok)*.09); background: var(--card-band); z-index: 7; }
+.tok.s-working .edge { background: var(--working); animation: edgepulse 3.2s ease-in-out infinite; }
+@keyframes edgepulse { 0%, 100% { filter: brightness(1); } 55% { filter: brightness(1.28); } }
+.tok.s-blocked .edge { background: var(--blocked); }
+.tok.s-done .edge { background: var(--done); }
+.tok .pf { position: relative; flex: none; height: calc(var(--tok)*1.64); padding-top: calc(var(--tok)*.13); display: grid; place-items: center; }
+.tok .disc-wrap { position: relative; width: calc(var(--tok)*1.55); height: calc(var(--tok)*1.55); display: grid; place-items: center; }
+.tok .disc { position: relative; z-index: 2; width: calc(var(--tok)*1.18); height: calc(var(--tok)*1.18); border-radius: 50%; display: grid; place-items: center;
+  box-shadow: 0 2px 4px var(--shade-1), inset 0 -1px 2px color-mix(in srgb, var(--card-tint) 18%, transparent),
+              inset 0 1px 1px color-mix(in srgb, var(--white) 55%, transparent); }
+.tok .disc::before { content: ''; position: absolute; inset: 0; z-index: 1; border-radius: 50%; background: var(--sea-1); opacity: .1; mix-blend-mode: color; pointer-events: none; }
+.tok .disc::after { content: ''; position: absolute; left: 9%; top: 6%; width: 62%; height: 42%; border-radius: 50%;
+  background: linear-gradient(170deg, color-mix(in srgb, var(--white) 70%, transparent), transparent 72%); pointer-events: none; opacity: .35; }
+.tok .disc[data-tint=sky] { background: var(--pt-sky); }
+.tok .disc[data-tint=sun] { background: var(--pt-sun); }
+.tok .disc[data-tint=coral] { background: var(--pt-coral); }
+.tok .disc[data-tint=earth] { background: var(--pt-earth); }
+.tok .disc[data-tint=moss] { background: var(--pt-moss); }
+.tok .disc[data-tint=slate] { background: var(--pt-slate); }
+.tok .portrait { position: relative; width: 100%; height: 100%; user-select: none; filter: saturate(.9) contrast(.96); }
+.tok .gauge { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: visible; }
+.tok .gauge circle { fill: none; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50% 50%; }
+.tok .gauge .track { stroke: color-mix(in srgb, var(--ink-land) 42%, transparent); stroke-width: 5.6; }
+.tok .gauge .arc { stroke-width: 5.6; stroke: var(--idle); filter: drop-shadow(0 1px 1.5px var(--shade-1)); transition: stroke-dasharray 1.2s var(--ease-out); }
+.tok.s-working .gauge .arc { stroke: var(--working); }
+.tok.s-blocked .gauge .arc { stroke: var(--blocked); }
+.tok.s-done .gauge .arc { stroke: var(--done); }
+.tok .gem { position: absolute; top: calc(var(--tok)*-.11); left: 50%; transform: translateX(-50%); z-index: 5;
+  width: calc(var(--tok)*.42); height: calc(var(--tok)*.42); border-radius: 50%; display: grid; place-items: center; line-height: 1;
+  font-size: calc(var(--tok)*.26); font-weight: 700; box-shadow: 0 2px 4px var(--shade-2), 0 0 0 calc(var(--tok)*.055) var(--cream); }
+.tok .gem.blocked { background: var(--blocked); color: #3A0E09; }
+.tok .gem.done { background: var(--done); color: #06231E; }
+.tok .gem.working { width: calc(var(--tok)*.28); height: calc(var(--tok)*.28); top: calc(var(--tok)*-.04); background: var(--working);
+  box-shadow: 0 0 0 calc(var(--tok)*.055) var(--cream); animation: gempulse 2.2s ease-in-out infinite; }
+@keyframes gempulse {
+  0%, 100% { box-shadow: 0 0 0 calc(var(--tok)*.055) var(--cream), 0 0 0 0 color-mix(in srgb, var(--working) 75%, transparent); }
+  60% { box-shadow: 0 0 0 calc(var(--tok)*.055) var(--cream), 0 0 0 calc(var(--tok)*.22) transparent; } }
+.tok .nm { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; text-align: center;
+  padding: 0 calc(var(--tok)*.15) calc(var(--tok)*.04); font-size: calc(var(--tok)*.295); font-weight: 600; line-height: 1.16; letter-spacing: -.02em; color: var(--ink-land); overflow: hidden; }
+.tok .foot { flex: none; height: calc(var(--tok)*.46); display: flex; align-items: center; justify-content: space-between; gap: calc(var(--tok)*.08);
+  padding: 0 calc(var(--tok)*.20);
+  background: linear-gradient(color-mix(in srgb, var(--card-tint) 10%, transparent), color-mix(in srgb, var(--card-tint) 17%, transparent));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--card-tint) 24%, transparent); }
+.tok .foot .sw { font-size: calc(var(--tok)*.225); font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  padding: calc(var(--tok)*.02) calc(var(--tok)*.13); border-radius: var(--r-xs); color: var(--ink-land-deep); }
+.tok .foot .tg { flex: none; margin-left: auto; width: calc(var(--tok)*.30); height: calc(var(--tok)*.27); color: color-mix(in srgb, var(--ink-land) 55%, transparent); }
+.tok .rail { position: absolute; z-index: 9; right: calc(var(--tok)*-.36); top: calc(var(--tok)*.09); bottom: calc(var(--tok)*.46);
+  display: flex; flex-direction: column; justify-content: center; gap: calc(var(--tok)*.08); }
+.tok .chip { width: calc(var(--tok)*.72); height: calc(var(--tok)*.72); border-radius: 30%; display: grid; place-items: center;
+  background: var(--surface-2); color: var(--ink);
+  box-shadow: 0 2px 4px var(--shade-3), inset 0 0 0 1.6px color-mix(in srgb, var(--cream) 62%, transparent); }
+.tok .chip svg { width: 58%; height: 58%; display: block; }
+
+.features { position: relative; z-index: 2; max-width: 520px; margin-top: 56px; }
+.narrow .features { margin-top: 64px; }
+.features h2 { margin: 0 0 14px; font-size: 1.0625rem; font-weight: 600; letter-spacing: -.01em; }
+.features ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.features li { position: relative; padding-left: 20px; color: #EDE7D6; line-height: 1.5; text-wrap: pretty; }
+.features li::before { content: ''; position: absolute; left: 2px; top: .62em; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--grass-hi); box-shadow: 0 0 0 2px color-mix(in srgb, var(--sand) 55%, transparent); }
+.features b { font-weight: 600; color: var(--ink); }
+
+footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-bottom: 36px; font-size: .8125rem; color: var(--ink-3); }
+
+@media (max-width: 760px) {
+  .lede { font-size: .9375rem; }
+  .dl { margin-top: 22px; }
+  .install pre { padding: 10px 4px 10px 12px; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .gh span { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="sea" aria-hidden="true"><i></i><i></i></div>
+<header class="wrap bar">
+  <a class="mark" href="./"><img src="icon.svg" alt="" width="22" height="22">svall</a>
+  <a class="gh" href="https://github.com/linusroxbergh/svall" aria-label="GitHub">
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+    <span>GitHub</span>
+  </a>
+</header>
+
+<main>
+<div class="stage wrap">
+  <section class="hero">
+    <h1>All you need to run your agents, on one map.</h1>
+    <p class="lede">Svall is a Mac app that puts each agent on an island, so one look shows which are working, waiting on you or done.</p>
+    <a class="dl" href="/download">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.5v9"/><path d="M6 9l4 4 4-4"/><path d="M4 15.5h12"/></svg>
+      Download for Mac
+    </a>
+    <div class="install">
+      <pre><code id="cmd"><span class="ln"><span class="p">$ </span>curl -fsSL <span class="nw">https://svall.dev/install.sh | sh</span></span></code></pre>
+      <button class="copy" type="button" aria-label="Copy install command">
+        <svg class="cp" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><rect x="6.5" y="6.5" width="10" height="10" rx="2.2"/><path d="M13.5 6.5V5.2A1.7 1.7 0 0 0 11.8 3.5H5.2A1.7 1.7 0 0 0 3.5 5.2v6.6a1.7 1.7 0 0 0 1.7 1.7h1.3"/></svg>
+        <svg class="ok" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8"/></svg>
+      </button>
+    </div>
+    <p class="meta">Apple silicon, macOS 15 or newer, with Claude Code or Codex. <a href="https://github.com/linusroxbergh/svall#build-from-source-svall-dev">Build from source</a></p>
+  </section>
+  <div class="map"><div class="world" role="group" aria-label="Demo map"></div></div>
+  <section class="features">
+    <h2>What it does</h2>
+    <ul>
+      <li><b>At a glance:</b> the map keeps track of every agent, so you don't have to.</li>
+      <li><b>Layered context:</b> per repo, island and agent, kept current for you.</li>
+      <li><b>Persistence:</b> quit or reboot, and sessions pick up where they left off.</li>
+      <li><b>Built-in browser:</b> PRs, previews and docs beside the terminal.</li>
+      <li><b>Built-in editor:</b> edit files and review the diff in place.</li>
+      <li><b>On your phone:</b> every agent and terminal, over Tailscale.</li>
+    </ul>
+  </section>
+</div>
+</main>
+
+<footer class="wrap">Svall. MIT licensed.</footer>
+
+<div class="vignette" aria-hidden="true"></div>
+
+<script>
+(() => {
+  const copy = document.querySelector('.copy');
+  copy.addEventListener('click', async () => {
+    const text = document.getElementById('cmd').innerText.replace(/^\$ /gm, '');
+    try { await navigator.clipboard.writeText(text); } catch { return; }
+    copy.dataset.copied = '';
+    copy.setAttribute('aria-label', 'Copied');
+    setTimeout(() => { delete copy.dataset.copied; copy.setAttribute('aria-label', 'Copy install command'); }, 1600);
+  });
+
+  // the map's coastPath (apps/desktop/web/src/map/coast.ts): a seeded squircle, four sine harmonics, Catmull-Rom cubics
+  const PAD = 132, N = 96;
+  const seedNum = (s) => { let h = 2166136261; for (const ch of s) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967296; };
+  function coast(w, h, seed, grow) {
+    const a = w / 2, b = h / 2, n = 4.5, s1 = seedNum(seed), s2 = seedNum(seed + '~'), s3 = seedNum(seed + '~~'), amp = Math.min(a, b) * .08;
+    const pts = [];
+    for (let i = 0; i < N; i++) {
+      const t = i / N * Math.PI * 2, c = Math.cos(t), s = Math.sin(t);
+      const k = 1 / Math.pow(Math.pow(Math.abs(c / a), n) + Math.pow(Math.abs(s / b), n), 1 / n);
+      const wob = Math.sin(3 * t + s1 * 6.28) * .55 + Math.sin(5 * t + s2 * 6.28) * .3 + Math.sin(7 * t + s3 * 6.28) * .2 + Math.sin(11 * t + s1 * 3.1) * .1;
+      const r = k + wob * amp + grow;
+      pts.push([a + PAD + r * c, b + PAD + r * s]);
+    }
+    const f = (v) => v.toFixed(1);
+    let d = `M${f(pts[0][0])},${f(pts[0][1])}`;
+    for (let i = 0; i < N; i++) {
+      const p0 = pts[(i - 1 + N) % N], p1 = pts[i], p2 = pts[(i + 1) % N], p3 = pts[(i + 2) % N];
+      d += `C${f(p1[0] + (p2[0] - p0[0]) / 6)},${f(p1[1] + (p2[1] - p0[1]) / 6)} ${f(p2[0] - (p3[0] - p1[0]) / 6)},${f(p2[1] - (p3[1] - p1[1]) / 6)} ${f(p2[0])},${f(p2[1])}`;
+    }
+    return d + 'Z';
+  }
+
+  // Seabed, land, grass, grain and waterline from Island.tsx and Relief.tsx
+  function islandSvg(id, w, h) {
+    const bw = w + PAD * 2, bh = h + PAD * 2, cx = bw / 2, cy = bh / 2;
+    const sand = coast(w, h, id, 0), grass = coast(w, h, id, -4);
+    const around = (k) => `translate(${cx},${cy}) scale(${k}) translate(${-cx},${-cy})`;
+    const contours = [[1.2, 'var(--contour-2)'], [1.12, 'var(--contour-2)'], [1.055, 'var(--contour)']].map(([k, c]) =>
+      `<path d="${sand}" fill="none" stroke="${c}" stroke-width="${(1 / k).toFixed(3)}" stroke-dasharray="7 9" stroke-linecap="round" transform="${around(k)}"/>`).join('');
+    return `<svg width="${bw}" height="${bh}" viewBox="0 0 ${bw} ${bh}" aria-hidden="true"><defs>
+      <filter id="soft-${id}" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="16"/></filter>
+      <filter id="wash-${id}" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="11"/></filter>
+      <filter id="sharp-${id}" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="5"/></filter>
+      <radialGradient id="g-${id}" cx="40%" cy="30%" r="76%"><stop offset="0" stop-color="var(--grass-hi)"/><stop offset="1" stop-color="var(--grass)"/></radialGradient>
+      <linearGradient id="s-${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--sand-lite)"/><stop offset="1" stop-color="var(--sand-deep)"/></linearGradient>
+      <pattern id="t-${id}" patternUnits="userSpaceOnUse" width="128" height="128"><image href="map-grain.png" width="128" height="128"/></pattern></defs>
+      <path d="${sand}" fill="rgba(140,190,215,.13)" filter="url(#soft-${id})" transform="${around(1.38)}"/>
+      <path d="${sand}" fill="rgba(205,225,230,.09)" filter="url(#wash-${id})" transform="${around(1.16)}"/>
+      <path d="${sand}" fill="rgba(8,14,22,.22)" filter="url(#sharp-${id})" transform="translate(2,8)"/>
+      ${contours}
+      <path d="${sand}" fill="rgba(70,58,34,.2)" transform="translate(0,7.5)"/>
+      <path d="${sand}" fill="var(--bank)" transform="translate(0,6.5)"/>
+      <path d="${sand}" fill="url(#s-${id})"/>
+      <path class="grass" d="${grass}" fill="url(#g-${id})" stroke="var(--shore)" stroke-width="1"/>
+      <path class="land-texture" d="${sand}" fill="url(#t-${id})"/>
+      <path d="${sand}" fill="none" stroke="rgba(252,246,230,.38)" stroke-width="1.4"/></svg>`;
+  }
+
+  const GH = 'M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12';
+  const LINEAR = 'M2.886 4.18A11.982 11.982 0 0 1 11.99 0C18.624 0 24 5.376 24 12.009c0 3.64-1.62 6.903-4.18 9.105L2.887 4.18ZM1.817 5.626l16.556 16.556c-.524.33-1.075.62-1.65.866L.951 7.277c.247-.575.537-1.126.866-1.65ZM.322 9.163l14.515 14.515c-.71.172-1.443.282-2.195.322L0 11.358a12 12 0 0 1 .322-2.195Zm-.17 4.862 9.823 9.824a12.02 12.02 0 0 1-9.824-9.824Z';
+
+  // synthetic crew
+  const cast = [
+    { name: 'checkout redesign', animal: 'fox', tint: 'slate', status: 'working', ctx: .46, links: [GH] },
+    { name: 'fix cart total', animal: 'deer', tint: 'sun', status: 'working', ctx: .58, links: [GH, LINEAR] },
+    { name: 'a11y audit', animal: 'owl', tint: 'sky', status: 'done', ctx: .71, links: [LINEAR] },
+    { name: 'flaky e2e', animal: 'frog', tint: 'earth', status: 'idle', ctx: .12, links: [] },
+    { name: 'refund webhooks', animal: 'elephant', tint: 'moss', status: 'working', ctx: .33, links: [GH] },
+    { name: 'review #214', animal: 'lemur', tint: 'coral', status: 'working', ctx: .62, links: [GH] },
+    { name: 'changelog', animal: 'penguin', tint: 'sky', status: 'working', ctx: .27, links: [] },
+  ];
+  // footprints and crew cells follow svalld's crewGrid: 44px cells, crew three cells apart across and four down,
+  // two cells in from the coast, a lone column one further
+  const CELL = 44;
+  const islands = [
+    { id: 'storefront', cols: 2, crew: [0, 1, 2, 3] },
+    { id: 'payments api', cols: 2, crew: [4, 5] },
+    { id: 'docs', cols: 1, crew: [6] },
+  ];
+  // wide: the text holds the left column, the islands cascade down the right; narrow: the same map under the text.
+  // k is the zoom at most: the map is drawn smaller than the app's scale 1, cards and all
+  const LAYOUTS = {
+    wide: { w: 1720, h: 1000, k: .72, at: [[1060, 580], [880, 170], [1330, 230]] },
+    narrow: { w: 748, h: 866, k: .72, at: [[200, 450], [0, 60], [440, 120]] },
+  };
+  const stage = document.querySelector('.stage'), map = document.querySelector('.map'), world = document.querySelector('.world');
+  const C = 2 * Math.PI * 32.5;
+  const tg = '<svg class="tg" viewBox="0 0 10 9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.4 1.6 4 4.4 1.4 7.2"/><path d="M5.8 7.2h2.8"/></svg>';
+
+  for (const isl of islands) {
+    const mx = isl.cols === 1 ? 3 : 2, rows = Math.ceil(isl.crew.length / isl.cols);
+    isl.w = (3 * (isl.cols - 1) + 1 + 2 * mx) * CELL;
+    isl.h = (4 * (rows - 1) + 5) * CELL;
+    isl.el = document.createElement('div');
+    isl.el.className = 'island';
+    Object.assign(isl.el.style, { width: `${isl.w + PAD * 2}px`, height: `${isl.h + PAD * 2}px` });
+    isl.el.innerHTML = islandSvg(isl.id.replace(/\W/g, ''), isl.w, isl.h) +
+      `<div class="ilabel" style="top:${PAD - 57.2}px"><span class="itog"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5"/></svg></span><b>${isl.id}</b><span class="ct">${isl.crew.length}</span></div>`;
+    world.append(isl.el);
+    isl.crew.forEach((ci, k) => {
+      const c = cast[ci];
+      c.island = isl; c.since = 0;
+      c.dx = (mx + 3 * (k % isl.cols) + .5) * CELL;
+      c.dy = (2 + 4 * Math.floor(k / isl.cols) + .5) * CELL;
+      c.el = document.createElement('div');
+      c.el.innerHTML = `<div class="card"><div class="edge"></div>
+        <div class="pf"><div class="disc-wrap">
+          <svg class="gauge" viewBox="0 0 72 72" aria-hidden="true"><circle class="track" cx="36" cy="36" r="32.5"/><circle class="arc" cx="36" cy="36" r="32.5"/></svg>
+          <div class="disc" data-tint="${c.tint}"><img class="portrait" src="animals/${c.animal}.svg" alt="" draggable="false"></div>
+          <span class="gem"></span></div></div>
+        <div class="nm"><span>${c.name}</span></div>
+        <div class="foot"><span class="sw"></span>${tg}</div></div>
+        ${c.links.length ? `<div class="rail" aria-hidden="true">${c.links.map((p) => `<span class="chip"><svg viewBox="0 0 24 24" fill="currentColor"><path d="${p}"/></svg></span>`).join('')}</div>` : ''}`;
+      world.append(c.el);
+      paint(c);
+    });
+  }
+
+  const wideMQ = matchMedia('(min-width: 1280px)');
+  function place() {
+    const wide = wideMQ.matches, L = wide ? LAYOUTS.wide : LAYOUTS.narrow;
+    stage.classList.toggle('narrow', !wide);
+    const pad = parseFloat(getComputedStyle(stage).paddingLeft);
+    // wide, the world may run into the right gutter; narrow, it spans the screen with a little sea either side
+    const k = Math.min(L.k, (stage.clientWidth - (wide ? pad : 28)) / L.w);
+    Object.assign(world.style, { width: `${L.w}px`, height: `${L.h}px`, transform: `scale(${k})`, left: wide ? '' : `calc(50% - ${L.w * k / 2}px)` });
+    // island names stay legible however far the map zooms out
+    world.style.setProperty('--lk', Math.max(1, .7 / k));
+    map.style.height = wide ? '' : `${L.h * k}px`;
+    stage.style.minHeight = wide ? `${L.h * k}px` : '';
+    islands.forEach((isl, i) => {
+      const [x, y] = L.at[i];
+      Object.assign(isl.el.style, { left: `${x - PAD}px`, top: `${y - PAD}px` });
+      for (const ci of isl.crew) Object.assign(cast[ci].el.style, { left: `${x + cast[ci].dx}px`, top: `${y + cast[ci].dy}px` });
+    });
+  }
+  place();
+  addEventListener('resize', place);
+
+  function paint(c) {
+    c.el.className = `tok s-${c.status}`;
+    c.el.setAttribute('role', 'img');
+    c.el.setAttribute('aria-label', `${c.name}: ${c.status}`);
+    const sw = c.el.querySelector('.sw'), gem = c.el.querySelector('.gem');
+    const word = c.status === 'blocked' || c.status === 'done' ? c.status : '';
+    sw.textContent = word; sw.hidden = !word; sw.style.background = word ? `var(--${c.status})` : '';
+    gem.className = `gem ${c.status}`;
+    gem.textContent = c.status === 'blocked' ? '!' : c.status === 'done' ? '✓' : '';
+    gem.hidden = c.status === 'idle';
+    c.el.querySelector('.arc').setAttribute('stroke-dasharray', `${(C * Math.max(c.ctx * 100, 3) / 100).toFixed(2)} ${C.toFixed(2)}`);
+  }
+
+  // the map only moves while it is on screen
+  let inView = false;
+  new IntersectionObserver(([e]) => { inView = e.isIntersecting; }).observe(world);
+
+  let clock = 0, resolvedAt = -1e9, next = 0, asking = null;
+  const asks = [5, 1, 6, 4, 0];
+  const set = (c, status) => { c.status = status; c.since = clock; paint(c); };
+
+  // one beat every 2.4 s: working cards fill their context, one agent at a time blocks and is answered
+  // a few beats later, the rest finish or start again
+  function beat() {
+    if (document.hidden || !inView) return;
+    clock += 2400;
+    for (const c of cast) if (c.status === 'working') { c.ctx = Math.min(.94, c.ctx + .015 + Math.random() * .025); paint(c); }
+    if (asking && clock - asking.since >= 7200) { set(asking, 'working'); asking = null; resolvedAt = clock; return; }
+    if (!asking && clock - resolvedAt > 4800) {
+      for (let k = 0; k < asks.length; k++) {
+        const c = cast[asks[(next + k) % asks.length]];
+        if (c.status === 'working') { next = (next + k + 1) % asks.length; set(c, 'blocked'); asking = c; break; }
+      }
+      return;
+    }
+    const pick = (fn) => cast.filter(fn).sort(() => Math.random() - .5)[0];
+    const done = pick((c) => c.status === 'working' && c.ctx > .8);
+    if (done) return set(done, 'done');
+    const again = pick((c) => (c.status === 'done' && clock - c.since > 9600) || (c.status === 'idle' && clock - c.since > 12000));
+    if (again) { again.ctx = .05; set(again, 'working'); }
+  }
+  setTimeout(() => { beat(); setInterval(beat, 2400); }, 900);
+})();
+</script>
+</body>
+</html>

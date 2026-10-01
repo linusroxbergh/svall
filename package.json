@@ -17,7 +17,8 @@
     "desktop:build": "pnpm --filter @svall/desktop-web build && pnpm --filter @svall/desktop-web build:mobile && apps/desktop/mac/build.sh release",
     "desktop:install": "scripts/desktop-install.sh",
     "app:build": "scripts/app-build.sh",
-    "release": "scripts/release.sh"
+    "release": "scripts/release.sh",
+    "site:deploy": "scripts/site-deploy.sh"
   },
   "devDependencies": {
     "@types/node": "^24.13.6",
