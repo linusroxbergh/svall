@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { AGENT_LABEL, AgentKind, DORMANT_AFTER_HOURS, fleetNameProblem, type PushStatus } from '@svall/protocol';
 import { loadMobileStatus, renameFleet, setDormancy, setMainAgent, setScribe } from './actions.js';
 import { app, deps } from './boot.js';
-import { openConfig, openUrl } from './bridge.js';
+import { openConfig, openUrl, shim } from './bridge.js';
 import { useApp } from './hooks.js';
 import { Info } from './Info.js';
 import { chordLabel, chordsOf, keyLabel, keyTip } from './keys.js';
@@ -88,12 +88,12 @@ function MainAgent() {
   const found = useApp((s) => s.fleet.agentsFound ?? NO_AGENTS);
   return (
     <div className="row">
-      <span>main agent<Info id="main-agent">What mission control, the scribe and <code>svall char new --run</code> start. A <code>home.command</code> in config.json overrides it for the crew.</Info></span>
+      <span>main agent<Info id="main-agent">What mission control, the scribe and <code>{shim()} char new --run</code> start. A <code>home.command</code> in config.json overrides it for the crew.</Info></span>
       <b><select className="fld inline" aria-label="Main agent" value={main} data-testid="set-main-agent"
         onChange={(e) => setMainAgent(deps(), e.target.value as AgentKind)}>
         {AgentKind.options.map((k) => (
           <option key={k} value={k} disabled={!found.includes(k) && k !== main}>
-            {found.includes(k) ? AGENT_LABEL[k] : `${AGENT_LABEL[k]} (not found: install it, then svall setup)`}
+            {found.includes(k) ? AGENT_LABEL[k] : `${AGENT_LABEL[k]} (not found: install it, then ${shim()} setup)`}
           </option>
         ))}
       </select></b>
@@ -116,7 +116,7 @@ function FleetName() {
   return (
     <>
       <div className="row">
-        <span>name<Info id="fleet-name"><code>svall &lt;name&gt;</code> opens this fleet from a terminal.</Info></span>
+        <span>name<Info id="fleet-name"><code>{shim()} &lt;name&gt;</code> opens this fleet from a terminal.</Info></span>
         <b><input className="fld inline" aria-label="Fleet name" data-testid="set-fleet-name" key={name} defaultValue={name ?? ''}
           placeholder={home ? directoryName(home) : undefined}
           onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} onBlur={(e) => save(e.currentTarget)} /></b>

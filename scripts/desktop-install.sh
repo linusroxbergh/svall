@@ -1,12 +1,14 @@
 #!/bin/sh
-# Installs dependencies, downloads or builds GhosttyKit, builds Svall.app, installs it to /Applications and restarts
+# Installs dependencies, downloads or builds GhosttyKit, builds Svall Dev.app, installs it to /Applications and restarts
 # the daemon. Checks first and runs `svall setup` after the build when setup is missing or its
 # hooks, shims or launchd agent are out of date or run another checkout, so a failed check or build leaves the machine untouched.
 set -eu
+# a character's shell names its own fleet, which may be the release's
+unset SVALL_HOME SVALL_CHAR_ID
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 DEST="${SVALL_APP_DEST:-/Applications}"
-HOME_DIR="$HOME/.svall"
+HOME_DIR="$HOME/.svall-dev"
 
 # one column, like the svall output it runs; colour only on a terminal that wants it
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
@@ -78,12 +80,19 @@ pnpm --silent svall -p private setup --check >"$CHECK_OUT" 2>&1 || CHECK_OK=
 # this script runs setup after the build for each line that asks for it, so those lines say that instead
 AFTER="out of date, will be updated after the build"
 NEW="$AFTER"; [ -f "$HOME_DIR/config.json" ] || NEW="will be set up after the build"
-sed -e "/: run svall setup\$/{
+sed -e "/: run svall-dev setup\$/{
 s/$(printf '\033')\[33m!/$C!/
 s/!/→/
-s/missing or out of date: run svall setup\$/$NEW/
-s/out of date: run svall setup\$/$AFTER/
+s/missing or out of date: run svall-dev setup\$/$NEW/
+s/out of date: run svall-dev setup\$/$AFTER/
 }" "$CHECK_OUT"; bar
+# a release fleet whose plist runs a checkout's tsx, which Svall Dev's daemon refuses
+LEGACY="$(grep -l '/node_modules/\.bin/tsx</string>' "$HOME"/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld*.plist 2>/dev/null || true)"
+[ -z "$LEGACY" ] ||
+  missing "✗ fleets  ~/.svall's fleets run from a checkout, which builds Svall Dev and cannot run them. Put Svall.app (from svall.dev, or pnpm app:build) in /Applications, then in a terminal outside Svall run
+   /Applications/Svall.app/Contents/Helpers/node /Applications/Svall.app/Contents/Resources/runtime/svall.mjs setup
+   That moves every fleet with a home. For a plist here whose fleet is gone, run launchctl bootout gui/$(id -u) <plist> and delete the file:
+$(printf '%s\n' "$LEGACY" | sed 's/^/   /')"
 if [ -z "$CHECK_OK" ] || [ -n "$MISSING" ]; then
   [ -z "$MISSING" ] || printf '%s\n' "$MISSING" | sed '/^$/d' >&2
   fail "Nothing was changed. Fix the ✗ items above, then run pnpm desktop:install again."
@@ -92,12 +101,12 @@ fi
 # uninstall keeps the fleet homes, so config.json alone would call a stripped machine set up;
 # hooks, shims or a plist setup now writes differently are set up again, as nothing else rewrites them
 SETUP=
-if [ ! -f "$HOME_DIR/config.json" ] || [ ! -f "$HOME/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld.plist" ] || [ ! -f "$HOME/.local/bin/svall" ]; then
+if [ ! -f "$HOME_DIR/config.json" ] || [ ! -f "$HOME/Library/LaunchAgents/io.github.linusroxbergh.svall.dev.svalld.plist" ] || [ ! -f "$HOME/.local/bin/svall-dev" ]; then
   SETUP=1
 fi
-grep -q 'run svall setup' "$CHECK_OUT" && SETUP=1
+grep -q 'run svall-dev setup' "$CHECK_OUT" && SETUP=1
 # setup is what starts the private fleet's agent, so one a failed start left unloaded gets another
-launchctl print "gui/$(id -u)/io.github.linusroxbergh.svall.svalld" >/dev/null 2>&1 || SETUP=1
+launchctl print "gui/$(id -u)/io.github.linusroxbergh.svall.dev.svalld" >/dev/null 2>&1 || SETUP=1
 
 if [ -n "$BUILD_GHOSTTY" ]; then
   step "Building GhosttyKit (several minutes)"
@@ -116,7 +125,7 @@ is_app() { case "$(ps -p "$1" -o comm= 2>/dev/null)" in Svall | */Svall) return 
 # an open window stays the old bundle (svall only brings it to the front). Each is asked by its pid, as a quit sent
 # to the bundle id can reach another window, and once: a second quit while it asks about unsaved edits would answer for the user
 CLOSED=
-for home in "$HOME"/.svall "$HOME"/.svall-*; do
+for home in "$HOME"/.svall-dev "$HOME"/.svall-dev-*; do
   [ -f "$home/app.pid" ] || continue
   pid=$(cut -f1 "$home/app.pid")
   case "$pid" in '' | *[!0-9]*) continue ;; esac
@@ -129,10 +138,10 @@ for home in "$HOME"/.svall "$HOME"/.svall-*; do
 done
 
 step "Installing to $DEST"
-rm -rf "$DEST/Svall.app"
-cp -R apps/desktop/mac/build/Svall.app "$DEST/Svall.app"
+rm -rf "$DEST/Svall Dev.app"
+cp -R "apps/desktop/mac/build/Svall Dev.app" "$DEST/Svall Dev.app"
 # Finder caches icons per bundle path; touching the bundle makes it re-read this build's
-touch "$DEST/Svall.app"
+touch "$DEST/Svall Dev.app"
 
 if [ -n "$SETUP" ]; then
   step "Setting up hooks, the daemon and the svall command"
@@ -144,13 +153,13 @@ if [ -n "$SETUP" ]; then
 fi
 
 step "Restarting svalld"
-launchctl list | awk '$3 ~ /^io\.github\.linusroxbergh\.svall\.svalld/ { print $3 }' | while read -r label; do
+launchctl list | awk '$3 ~ /^io\.github\.linusroxbergh\.svall\.dev\.svalld/ { print $3 }' | while read -r label; do
   echo "    $label" >>"$LOG"
   launchctl kickstart -k "gui/$(id -u)/$label" >>"$LOG" 2>&1 || echo "    (kickstart failed for $label)" >>"$LOG"
 done
 
 step "$(pnpm --silent svall -p private agent)"
 bar
-printf '%s└%s  Installed. Open Svall from Spotlight, or run svall.\n' "$C" "$N"
+printf '%s└%s  Installed. Open Svall Dev from Spotlight, or run svall-dev.\n' "$C" "$N"
 command -v codex >/dev/null 2>&1 && printf '   If Codex asks to trust Svall'\''s hooks, choose "Trust all and continue".\n'
 exit 0

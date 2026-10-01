@@ -26,6 +26,26 @@ async function runBin(home: string): Promise<{ code: number; stderr: string }> {
   }
 }
 
+describe('svalld bin on the other build\'s home', () => {
+  afterEach(cleanHomes);
+
+  it('waits rather than exiting for launchd to restart every ten seconds', async () => {
+    // the tests run as the release, whose daemon refuses Svall Dev's homes
+    const home = path.join(makeHome(), '.svall-dev');
+    const log = () => (fs.existsSync(resolvePaths(home).log) ? fs.readFileSync(resolvePaths(home).log, 'utf8') : '');
+    const daemon = spawn(tsx, [bin], { env: { ...process.env, SVALL_HOME: home }, stdio: 'ignore' });
+    try {
+      await waitFor(() => log().includes("svalld waits until that build's setup takes the fleet over"), 30_000);
+      expect(log()).toContain('belongs to Svall Dev');
+      await new Promise((r) => setTimeout(r, 500));
+      expect(daemon.exitCode).toBeNull();
+    } finally {
+      daemon.kill('SIGTERM');
+      if (daemon.exitCode === null) await once(daemon, 'exit');
+    }
+  }, 40_000);
+});
+
 runIf('svalld bin', () => {
   const homes: string[] = [];
   afterEach(async () => {

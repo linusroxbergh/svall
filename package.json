@@ -15,10 +15,13 @@
     "e2e": "pnpm --filter @svall/desktop-web e2e",
     "desktop:dev": "scripts/desktop-dev.sh",
     "desktop:build": "pnpm --filter @svall/desktop-web build && pnpm --filter @svall/desktop-web build:mobile && apps/desktop/mac/build.sh release",
-    "desktop:install": "scripts/desktop-install.sh"
+    "desktop:install": "scripts/desktop-install.sh",
+    "app:build": "scripts/app-build.sh",
+    "release": "scripts/release.sh"
   },
   "devDependencies": {
     "@types/node": "^24.13.6",
+    "esbuild": "^0.28.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.0.1"

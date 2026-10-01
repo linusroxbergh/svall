@@ -8,6 +8,7 @@ import { codexInstalled, codexPaths } from '../src/codex/install.js';
 import { silentLogger } from '../src/log.js';
 import { readOrCreateToken, startDaemon, type Daemon } from '../src/main.js';
 import { resolvePaths } from '../src/paths.js';
+import { runtimeVersion } from '../src/setup-plan.js';
 import { Tmux } from '../src/tmux/tmux.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
@@ -39,6 +40,45 @@ runIf('startDaemon', () => {
     const written = JSON.parse(fs.readFileSync(codex.hooks, 'utf8'));
     expect(codexInstalled(written, resolvePaths(home).hookScript)).toBe(true);
     expect(written.hooks.Stop[0].hooks[0].command).toContain(resolvePaths(home).hookScript);
+  });
+
+  it('writes the version it runs as, which a launch refresh compares with the app\'s', async () => {
+    const home = makeHome();
+    homes.push(home);
+    await (await start({ home, port: 0, log: silentLogger })).stop();
+    expect(fs.readFileSync(path.join(home, 'version'), 'utf8')).toBe(runtimeVersion());
+  });
+
+  it('writes no codex hooks when the private fleet starts with Codex turned off in setup', async () => {
+    const codex = codexPaths();
+    fs.rmSync(codex.hooks, { force: true });
+    fs.mkdirSync(codex.dir, { recursive: true });
+    const home = path.join(os.homedir(), '.svall');
+    fs.mkdirSync(home, { recursive: true });
+    homes.push(home);
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ integrations: ['claude'] }));
+    await (await start({ home, port: 0, log: silentLogger })).stop();
+    expect(fs.existsSync(codex.hooks)).toBe(false);
+  });
+
+  it('gives a fleet with no main agent of its own the private fleet\'s, and keeps one it has', async () => {
+    const privateConfig = path.join(os.homedir(), '.svall', 'config.json');
+    fs.mkdirSync(path.dirname(privateConfig), { recursive: true });
+    const before = fs.existsSync(privateConfig) ? fs.readFileSync(privateConfig, 'utf8') : undefined;
+    fs.writeFileSync(privateConfig, JSON.stringify({ mainAgent: 'codex' }));
+    try {
+      const home = makeHome();
+      homes.push(home);
+      const d = await start({ home, port: 0, log: silentLogger });
+      expect(d.store.state.mainAgent).toBe('codex');
+      await d.stop();
+      fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ mainAgent: 'claude' }));
+      const again = await start({ home, port: 0, log: silentLogger });
+      expect(again.store.state.mainAgent).toBe('claude');
+      await again.stop();
+    } finally {
+      if (before === undefined) fs.rmSync(privateConfig); else fs.writeFileSync(privateConfig, before);
+    }
   });
 
   it('survives a daemon restart, then a tmux restart', async () => {

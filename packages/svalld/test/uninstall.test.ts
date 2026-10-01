@@ -1,13 +1,15 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { codexInstalled, codexPaths } from '../src/codex/install.js';
 import { realDeps } from '../src/mobile.js';
-import { LAUNCHD_LABEL } from '../src/profile.js';
-import { HOOK_EVENTS, hookCommand, mergeHooks, mergeStatusLine, runSetup, statusWrapper, unmergeHooks, unmergeStatusLine } from '../src/setup.js';
-import { appQuit, fleetData, purge, runUninstall, type AppQuit } from '../src/uninstall.js';
+import { BUNDLE_ID, LAUNCHD_LABEL } from '../src/profile.js';
+import { bundleRuntime, checkoutRuntime } from '../src/runtime.js';
+import { HOOK_EVENTS, hookCommand, mergeHooks, mergeStatusLine, runSetup, shimText, statusWrapper, unmergeHooks, unmergeStatusLine } from '../src/setup.js';
+import { appQuit, fleetData, fleetHomes, purge, quitApp, runUninstall, type AppQuit } from '../src/uninstall.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
 afterEach(cleanHomes);
@@ -57,8 +59,18 @@ function installed() {
   fs.writeFileSync(settingsPath, JSON.stringify(mine));
   const launchAgentsDir = path.join(root, 'LaunchAgents');
   const shimDir = path.join(root, 'bin');
-  return { root, home, settingsPath, mine, launchAgentsDir, shimDir, o: { home, homes: [home], settingsPath, settingsPaths: [settingsPath], launchAgentsDir, shimDir, repoRoot, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(root, '.codex') }), mobile: noTailscale, app: noApp } };
+  return { root, home, settingsPath, mine, launchAgentsDir, shimDir, o: { home, homes: [home], settingsPath, settingsPaths: [settingsPath], launchAgentsDir, shimDir, runtime: checkoutRuntime(repoRoot), launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(root, '.codex') }), mobile: noTailscale, app: noApp } };
 }
+
+describe('fleetHomes', () => {
+  it('lists only this variant\'s fleet homes', () => {
+    const u = fs.mkdtempSync(path.join(os.tmpdir(), 'u-'));
+    for (const d of ['.svall', '.svall-work', '.svall-dev', '.svall-dev-x']) {
+      fs.mkdirSync(path.join(u, d)); fs.writeFileSync(path.join(u, d, 'config.json'), '{}');
+    }
+    expect(fleetHomes(u).map((h) => path.basename(h))).toEqual(['.svall', '.svall-work']);
+  });
+});
 
 describe('runUninstall', () => {
   it('writes the codex hooks beside the user own, once, and takes back only its own', async () => {
@@ -185,6 +197,27 @@ describe('runUninstall', () => {
     expect(quits).toBe(1);
   });
 
+  it('does not quit the app that asked for the uninstall', async () => {
+    const a = fs.mkdtempSync(path.join(os.tmpdir(), 'u-'));
+    const b = fs.mkdtempSync(path.join(os.tmpdir(), 'u-'));
+    fs.writeFileSync(path.join(a, 'app.pid'), `111\t${a}`);
+    fs.writeFileSync(path.join(b, 'app.pid'), `222\t${b}`);
+    const quit: number[] = [];
+    const open = new Set([111, 222]);
+    const app: AppQuit = { isApp: (pid) => open.has(pid), quit: async (pid) => { quit.push(pid); open.delete(pid); }, wait: async () => {} };
+    await quitApp([a, b], app, 'svall uninstall', 111);
+    expect(quit).toEqual([222]);
+  });
+
+  it('leaves the app and its Library data to the app when the app itself asked', () => {
+    const u = fs.mkdtempSync(path.join(os.tmpdir(), 'u-'));
+    fs.mkdirSync(path.join(u, 'Apps', 'Svall.app'), { recursive: true });
+    fs.mkdirSync(path.join(u, 'Library', 'Caches', BUNDLE_ID), { recursive: true });
+    const data = fleetData({ homedir: u, appDests: [path.join(u, 'Apps')], fromApp: true });
+    expect(data).not.toContain(path.join(u, 'Apps', 'Svall.app'));
+    expect(data).not.toContain(path.join(u, 'Library', 'Caches', BUNDLE_ID));
+  });
+
   it('takes a pid that app.pid names but is not Svall for a window that crashed', async () => {
     const f = installed();
     await runSetup(f.o);
@@ -243,6 +276,15 @@ describe('runUninstall', () => {
     expect(fs.readdirSync(path.dirname(f.settingsPath))).toEqual(['settings.json']);
   });
 
+  it('removes the shim of an installed app', async () => {
+    const f = installed();
+    fs.mkdirSync(f.shimDir);
+    const shim = path.join(f.shimDir, 'svall');
+    fs.writeFileSync(shim, shimText(bundleRuntime('/Applications/Svall.app')));
+    expect(await runUninstall(f.o)).toContain(`removed ${shim}`);
+    expect(fs.existsSync(shim)).toBe(false);
+  });
+
   it('leaves an svall on PATH that setup did not write', async () => {
     const f = installed();
     fs.mkdirSync(f.shimDir);
@@ -284,6 +326,18 @@ describe('runUninstall', () => {
     const unread = tailscale(() => { throw new Error('tailscaled is not running\nretry later'); });
     expect(await runUninstall({ ...f.o, homes: [f.home, work], mobile: unread })).toEqual(['could not read tailscale serve status, so any phone link was left in place: tailscaled is not running']);
     expect(calls.filter((a) => a.includes('off'))).toEqual([]);
+  });
+
+  it('turns off a phone link its running daemon serves under a key already turned over', async () => {
+    const f = installed();
+    fs.writeFileSync(path.join(f.home, 'mobile-key'), 'new');
+    fs.writeFileSync(path.join(f.home, 'port'), '47801');
+    const web = { 'mac.ts.net:443': 'http://127.0.0.1:47801/old', 'mac.ts.net:8443': 'http://127.0.0.1:47802/other' };
+    const calls: string[][] = [];
+    const served = JSON.stringify({ Web: Object.fromEntries(Object.entries(web).map(([at, proxy]) => [at, { Handlers: { '/': { Proxy: proxy } } }])) });
+    const mobile = realDeps(async (_cmd, args) => { calls.push(args); return args.join(' ') === 'serve status --json' ? served : ''; });
+    expect(await runUninstall({ ...f.o, mobile })).toEqual([`turned off the phone link to ${f.home} on port 443`]);
+    expect(calls.filter((a) => a.includes('off'))).toEqual([['serve', '--https=443', 'off']]);
   });
 
   it('refuses from a terminal inside a fleet\'s tmux server before it changes anything', async () => {

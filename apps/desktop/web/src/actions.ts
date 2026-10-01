@@ -1,6 +1,6 @@
 import { AgentKind, contextKind, DEFAULT_SIZE, HOME_ISLAND, type Cell, type Character, type ContextItem, type HomeAction, type Params, type Result, type Size } from '@svall/protocol';
 import { ApiError, type Api } from './api.js';
-import type { Bridge } from './bridge.js';
+import { shim, type Bridge } from './bridge.js';
 import type { DropTarget } from './drop.js';
 import { withoutSecond } from './panes.js';
 import type { FieldRef } from './resources/model.js';
@@ -161,7 +161,7 @@ export async function startHomeCharacter(d: ActionDeps, p: { prompt: string; lab
   const cli = home.command.trim().split(/\s+/)[0];
   const found = d.store.getState().fleet.agentsFound;
   const unfound = AgentKind.safeParse(cli).success && found !== undefined && !found.includes(cli as AgentKind);
-  if (unfound) d.store.getState().showToast(`Mission control runs ${cli}, which svalld doesn't find. Install it, then run svall setup.`);
+  if (unfound) d.store.getState().showToast(`Mission control runs ${cli}, which svalld doesn't find. Install it, then run ${shim()} setup.`);
   try {
     const c = await d.api.call('char.create', { islandId: HOME_ISLAND, cwd: home.cwd, ...(p.label ? { name: p.label } : {}), command: home.command, run: p.prompt });
     // a crew member the mirror already has was chosen for, or yielded, on arrival

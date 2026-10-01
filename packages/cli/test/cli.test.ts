@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { startDaemon, type Daemon } from '@svall/svalld';
 import { silentLogger } from '@svall/svalld/log';
 import { resolvePaths } from '@svall/svalld/paths';
-import { isProfileName } from '@svall/svalld/profile';
+import { isProfileName, profileLabel } from '@svall/svalld/profile';
 import { HOOK_EVENTS, mergeHooks } from '@svall/svalld/setup';
 import { cleanHomes, hasTmux, makeHome, waitFor } from '@svall/svalld/test-helpers';
 import { Tmux } from '@svall/svalld/tmux';
@@ -112,6 +112,214 @@ describe('svall argument parsing', () => {
       expect(plain.stdout).not.toContain('ready for svall setup');
     } finally {
       fs.rmSync(path.dirname(settings), { recursive: true });
+    }
+  });
+});
+
+describe('svall uninstall --login-shell', () => {
+  it('reads CLAUDE_CONFIG_DIR from the login shell before it finds the settings to clean', async () => {
+    const home = makeHome();
+    const cfg = path.join(home, 'claude-cfg');
+    fs.mkdirSync(cfg);
+    const script = path.join(home, '.svall', 'hooks', 'agent-hook.mjs');
+    const settings = path.join(cfg, 'settings.json');
+    fs.writeFileSync(settings, JSON.stringify(mergeHooks({}, `[ -z "$SVALL_CHAR_ID" ] || { node '${script}' claude; }`, HOOK_EVENTS, script)));
+    const shell = path.join(home, 'fake-shell');
+    fs.writeFileSync(shell, `#!/bin/sh\necho __SVALL_ENV__; echo /usr/bin:/bin; echo __SVALL_ENV__; echo ${cfg}; echo __SVALL_ENV__; echo __SVALL_ENV__\n`, { mode: 0o755 });
+    const env = { HOME: home, SHELL: shell, PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin`, SVALL_HOME: '', TMUX: '' };
+    try {
+      const r = await run(env, '--json', 'uninstall', '--from-app', '--no-launchctl', '--login-shell');
+      expect(r.code).toBe(0);
+      expect(JSON.parse(fs.readFileSync(settings, 'utf8')).hooks ?? {}).toEqual({});
+    } finally {
+      cleanHomes();
+    }
+  });
+
+  it('uninstalls nothing when the login shell does not answer', async () => {
+    const home = makeHome();
+    const script = path.join(home, '.svall', 'hooks', 'agent-hook.mjs');
+    const settings = path.join(home, '.claude', 'settings.json');
+    fs.mkdirSync(path.dirname(settings));
+    fs.writeFileSync(settings, JSON.stringify(mergeHooks({}, `[ -z "$SVALL_CHAR_ID" ] || { node '${script}' claude; }`, HOOK_EVENTS, script)));
+    const env = { HOME: home, SHELL: path.join(home, 'no-such-shell'), PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin`, SVALL_HOME: '', TMUX: '' };
+    try {
+      const r = await run(env, '--json', 'uninstall', '--from-app', '--no-launchctl', '--login-shell');
+      expect(r.code).not.toBe(0);
+      expect(r.stderr).toContain('did not answer');
+      expect(fs.readFileSync(settings, 'utf8')).toContain(script);
+    } finally {
+      cleanHomes();
+    }
+  });
+});
+
+describe('svall setup --agents', () => {
+  // stand-ins for the tmux and codex preflight asks for
+  const tools = (home: string) => {
+    const bin = path.join(home, 'bin');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, 'tmux'), '#!/bin/sh\necho tmux 3.5a\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'codex'), '#!/bin/sh\necho codex-cli 0.160.0\n', { mode: 0o755 });
+    return `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`;
+  };
+
+  it('keeps off an agent the setup screen showed and the user left out, and makes the one left on the main agent', async () => {
+    const home = makeHome();
+    try {
+      const r = await run({ HOME: home, PATH: tools(home) }, 'setup', '--no-launchctl', '--agents', 'codex', '--found', 'claude,codex');
+      expect(r.code).toBe(0);
+      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ integrations: ['codex'], mainAgent: 'codex' });
+    } finally {
+      cleanHomes();
+    }
+  });
+
+  it('makes the one left on the main agent when the saved main agent is turned off', async () => {
+    const home = makeHome();
+    try {
+      fs.mkdirSync(path.join(home, '.svall'));
+      fs.writeFileSync(path.join(home, '.svall', 'config.json'), JSON.stringify({ mainAgent: 'claude' }));
+      const r = await run({ HOME: home, PATH: tools(home) }, 'setup', '--no-launchctl', '--agents', 'codex', '--found', 'claude,codex');
+      expect(r.code).toBe(0);
+      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toMatchObject({ integrations: ['codex'], mainAgent: 'codex' });
+    } finally {
+      cleanHomes();
+    }
+  });
+
+  it('saves no choice when an agent turned off has a file its hooks cannot be taken out of', async () => {
+    const home = makeHome();
+    try {
+      fs.mkdirSync(path.join(home, '.claude'));
+      fs.writeFileSync(path.join(home, '.claude', 'settings.json'), `{ "hooks": "${path.join(home, '.svall', 'hooks', 'agent-hook.mjs')}" `);
+      const r = await run({ HOME: home, PATH: tools(home) }, 'setup', '--no-launchctl', '--agents', 'codex', '--found', 'claude,codex');
+      expect(r.stderr).toContain('is not valid JSON');
+      expect(fs.existsSync(path.join(home, '.svall'))).toBe(false);
+    } finally {
+      cleanHomes();
+    }
+  });
+
+  it('changes nothing when the login shell does not answer', async () => {
+    const home = makeHome();
+    try {
+      const r = await run({ HOME: home, PATH: tools(home), SHELL: path.join(home, 'no-such-shell') }, 'setup', '--no-launchctl', '--login-shell', '--agents', 'codex');
+      expect(r.code).not.toBe(0);
+      expect(r.stderr).toContain('did not answer');
+      // the shim is one of the files setup writes, so the way out names the CLI itself
+      expect(r.stderr).toContain(`packages/cli/src/main.ts' setup in a terminal`);
+      expect(fs.existsSync(path.join(home, '.svall'))).toBe(false);
+    } finally {
+      cleanHomes();
+    }
+  });
+
+  it('counts an agent whose folder is here as found, so one left out gets no hooks and stays off', async () => {
+    const home = makeHome();
+    try {
+      const bin = path.join(home, 'bin');
+      fs.mkdirSync(bin);
+      fs.writeFileSync(path.join(bin, 'tmux'), '#!/bin/sh\necho tmux 3.5a\n', { mode: 0o755 });
+      fs.writeFileSync(path.join(bin, 'claude'), '#!/bin/sh\necho 2.1.0\n', { mode: 0o755 });
+      fs.mkdirSync(path.join(home, '.codex'));
+      const env = { HOME: home, PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin` };
+      const plan = await run(env, 'setup', '--plan');
+      expect(JSON.parse(plan.stdout).agents).toContainEqual({ kind: 'codex', path: path.join(home, '.codex'), folderOnly: true });
+      const r = await run(env, 'setup', '--no-launchctl', '--agents', 'claude');
+      expect(r.code).toBe(0);
+      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ integrations: ['claude'] });
+      expect(fs.existsSync(path.join(home, '.codex', 'hooks.json'))).toBe(false);
+      fs.rmSync(path.join(home, '.codex'), { recursive: true });
+      expect((await run(env, 'setup', '--no-launchctl', '--agents', 'claude')).code).toBe(0);
+      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ integrations: ['claude'] });
+    } finally {
+      cleanHomes();
+    }
+  });
+
+  it('refuses a choice that leaves on no agent whose CLI is on PATH', async () => {
+    const home = makeHome();
+    try {
+      const bin = path.join(home, 'bin');
+      fs.mkdirSync(bin);
+      fs.writeFileSync(path.join(bin, 'tmux'), '#!/bin/sh\necho tmux 3.5a\n', { mode: 0o755 });
+      fs.writeFileSync(path.join(bin, 'claude'), '#!/bin/sh\necho 2.1.0\n', { mode: 0o755 });
+      fs.mkdirSync(path.join(home, '.codex'));
+      const r = await run({ HOME: home, PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin` }, 'setup', '--no-launchctl', '--agents', 'codex');
+      expect(r.code).not.toBe(0);
+      expect(r.stderr).toContain('--agents codex leaves on no agent whose CLI is on PATH; add claude');
+      expect(fs.existsSync(path.join(home, '.svall'))).toBe(false);
+    } finally {
+      cleanHomes();
+    }
+  });
+
+  it.runIf(process.platform === 'darwin')("restarts a running fleet that takes the private fleet's main agent when setup switches it", async () => {
+    const home = makeHome();
+    try {
+      const PATH = tools(home);
+      const bin = path.join(home, 'bin');
+      const log = path.join(home, 'launchctl.log');
+      fs.writeFileSync(path.join(bin, 'claude'), '#!/bin/sh\necho 2.1.0\n', { mode: 0o755 });
+      // every daemon counts as loaded
+      fs.writeFileSync(path.join(bin, 'launchctl'), `#!/bin/sh\necho "$@" >> '${log}'\n`, { mode: 0o755 });
+      for (const [name, config] of [['work', {}], ['own', { mainAgent: 'claude' }]] as const) {
+        fs.mkdirSync(path.join(home, `.svall-${name}`));
+        fs.writeFileSync(path.join(home, `.svall-${name}`, 'config.json'), JSON.stringify(config));
+      }
+      // the first setup writes every fleet's plist; their daemons then run this version, so nothing else restarts them
+      expect((await run({ HOME: home, PATH }, 'setup', '--no-launchctl', '--agents', 'claude,codex')).code).toBe(0);
+      for (const name of ['work', 'own']) fs.writeFileSync(path.join(home, `.svall-${name}`, 'version'), 'dev');
+      const r = await run({ HOME: home, PATH }, 'setup', '--agents', 'codex');
+      expect(r.code).toBe(0);
+      const kicked = fs.readFileSync(log, 'utf8').split('\n').filter((l) => l.startsWith('kickstart '));
+      expect(kicked).toEqual([expect.stringMatching(new RegExp(`/${profileLabel('work').replaceAll('.', '\\.')}$`))]);
+    } finally {
+      cleanHomes();
+    }
+  });
+
+  it('saves no choice when setup stops before it writes', async () => {
+    const home = makeHome();
+    try {
+      fs.mkdirSync(path.join(home, '.codex'));
+      fs.writeFileSync(path.join(home, '.codex', 'hooks.json'), '{ "hooks": ');
+      const r = await run({ HOME: home, PATH: tools(home) }, 'setup', '--no-launchctl', '--agents', 'codex', '--found', 'claude,codex');
+      expect(r.stderr).toContain('is not valid JSON');
+      expect(fs.existsSync(path.join(home, '.svall'))).toBe(false);
+    } finally {
+      cleanHomes();
+    }
+  });
+});
+
+describe('svall setup --if-needed', () => {
+  it('still restarts old daemons, and says why, when a settings file stops the rest', async () => {
+    const home = makeHome();
+    try {
+      fs.mkdirSync(path.join(home, '.claude'));
+      fs.writeFileSync(path.join(home, '.claude', 'settings.json'), '{ "hooks": ');
+      const r = await run({ HOME: home }, '--json', 'setup', '--if-needed', '--no-launchctl');
+      expect(r.code).toBe(0);
+      expect(JSON.parse(r.stdout).warnings).toEqual([expect.stringContaining('is not valid JSON')]);
+    } finally {
+      cleanHomes();
+    }
+  });
+});
+
+describe('svall setup --if-needed --login-shell', () => {
+  it('writes nothing when the login shell does not answer', async () => {
+    const home = makeHome();
+    try {
+      const r = await run({ HOME: home, SHELL: path.join(home, 'no-such-shell') }, '--json', 'setup', '--if-needed', '--no-launchctl', '--login-shell');
+      expect(r.code).toBe(0);
+      expect(JSON.parse(r.stdout).warnings).toEqual([expect.stringContaining('did not answer')]);
+      expect(fs.existsSync(path.join(home, 'Library/LaunchAgents'))).toBe(false);
+      expect(fs.existsSync(path.join(home, '.local/bin/svall'))).toBe(false);
+    } finally {
+      cleanHomes();
     }
   });
 });

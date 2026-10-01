@@ -6,7 +6,7 @@ const OLDEST = 6;
 
 export class NewerStateVersion extends Error {
   constructor(version: number) {
-    super(`state.json is version ${version}, newer than this svalld reads (${CURRENT}): update svall (git pull && pnpm desktop:install)`);
+    super(`state.json is version ${version}, newer than this svalld reads (${CURRENT}): update svall`);
   }
 }
 

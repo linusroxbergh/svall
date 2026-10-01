@@ -3,8 +3,11 @@ import path from 'node:path';
 import { Command } from 'commander';
 import { codexPaths } from '@svall/svalld/codex/install';
 import { realDeps } from '@svall/svalld/mobile';
+import { takeLoginEnv } from '@svall/svalld/login-env';
 import { userPaths } from '@svall/svalld/paths';
 import { PRIVATE, profileHome } from '@svall/svalld/profile';
+import { ownRuntime } from '@svall/svalld/runtime';
+import { cliCommand } from '@svall/svalld/setup';
 import { appQuit, fleetData, fleetHomes, purge, runUninstall } from '@svall/svalld/uninstall';
 import { printResult } from '../format.js';
 import { ask } from '../prompt.js';
@@ -32,8 +35,14 @@ export function uninstallCommand(json: () => boolean): Command {
   return new Command('uninstall')
     .description('remove what svall setup added and stop every fleet; asks before deleting the fleets and the app')
     .option('--purge', 'also delete every fleet and the app, without asking')
+    .option('--from-app', 'run by the app itself: leave it open and in place')
+    .option('--login-shell', 'take PATH, CLAUDE_CONFIG_DIR and CODEX_HOME from the login shell, as an app opened from Finder has none')
     .option('--no-launchctl', 'leave the launchd agents running, only delete their plists')
-    .action(async (o: { purge?: boolean; launchctl: boolean }) => {
+    .action(async (o: { purge?: boolean; fromApp?: boolean; launchctl: boolean; loginShell?: boolean }) => {
+      // stand-in folders would leave the hooks in the folders the user's own agents read
+      if (o.loginShell && !(await takeLoginEnv())) {
+        throw new Error(`the login shell did not answer within 5 seconds, so nothing was uninstalled: try again, or run ${cliCommand(ownRuntime())} uninstall in a terminal`);
+      }
       const r = await uninstall({ purge: Boolean(o.purge) }, {
         uninstall: () => runUninstall({
           home: profileHome(PRIVATE),
@@ -46,18 +55,21 @@ export function uninstallCommand(json: () => boolean): Command {
           mobile: realDeps(),
           app: appQuit,
           tmux: process.env.TMUX,
+          skipPid: o.fromApp ? process.ppid : undefined,
         }),
         data: () => fleetData({
           homedir: os.homedir(),
           appDests: [process.env.SVALL_APP_DEST || '/Applications', path.join(os.homedir(), 'Applications')],
+          fromApp: o.fromApp,
         }),
         purge,
         prompt: (q) => ask(q),
-        isTTY: process.stdin.isTTY === true,
+        isTTY: !o.fromApp && process.stdin.isTTY === true,
       });
       printResult(r, json(), () => [
         ...(r.done.length ? r.done : ['nothing to remove']),
-        ...(r.kept.length ? [`kept ${r.kept.join(', ')}; svall uninstall --purge deletes them`] : []),
+        // the shims are gone by now, and a `svall` left on PATH may be the other build's
+        ...(r.kept.length ? [`kept ${r.kept.join(', ')}; ${cliCommand(ownRuntime())} uninstall --purge deletes them`] : []),
       ].join('\n'));
     });
 }

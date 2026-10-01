@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { Command } from 'commander';
+import { SHIM } from '@svall/svalld/profile';
 import { Client } from './client.js';
 import { agentCommand } from './commands/agent.js';
 import { browserCommands } from './commands/browser.js';
@@ -30,7 +31,7 @@ export function buildProgram(): Command {
     .option('--json', 'machine-readable output')
     .option('-p, --profile <name>', 'the fleet to work on (default: $SVALL_HOME, else private)')
     // commander's own .version() wants the string up front, which would run git on every command
-    .option('-V, --version', 'print the commit this checkout is on')
+    .option('-V, --version', 'print the app version, or the commit a checkout is on')
     .on('option:version', () => {
       process.stdout.write(`${checkoutVersion()}\n`);
       process.exit(0);
@@ -49,7 +50,7 @@ export function buildProgram(): Command {
     // a mistyped command arrives as a profile name, and must not be offered as a new fleet
     const meant = profile !== undefined && !fs.existsSync(t.home)
       ? [...program.commands.map((c) => c.name()), 'help'].find((c) => typo(profile, c)) : undefined;
-    if (meant) throw new Error(`unknown command ${profile}; did you mean ${meant}? (svall -p ${profile} makes a fleet by that name)`);
+    if (meant) throw new Error(`unknown command ${profile}; did you mean ${meant}? (${SHIM} -p ${profile} makes a fleet by that name)`);
     await launch(t, realDeps());
   });
   program.addCommand(statusCommand(connect, json, home));

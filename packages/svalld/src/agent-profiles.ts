@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { bodyOf, frontmatter } from '@svall/protocol';
+import { assetDir } from './runtime.js';
 
 // the body rides first in every brief whose character picks it, and in a change to one; Claude shows only the first 2,000 or so
 // characters of hook text past 10,000, and under this cap the whole role fits in them
@@ -10,7 +10,7 @@ export const AGENT_PROFILE_MAX = 1500;
 const FILE_MAX = 16 * 1024;
 // a file directly in the folder: no path, no hidden file, nothing that could forge a line of the brief
 const NAME = /^[^/\\.\x00-\x1f][^/\\\x00-\x1f]*$/;
-const BUNDLED = fileURLToPath(new URL('../agent-profiles', import.meta.url));
+const BUNDLED = assetDir('agent-profiles');
 
 export type AgentProfile = { name: string; description?: string; body: string };
 export type AgentProfileRead = AgentProfile | { name: string; error: string };

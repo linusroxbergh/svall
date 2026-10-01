@@ -1,4 +1,4 @@
-import type { ContextItem } from '@svall/protocol';
+import type { AgentKind, ContextItem } from '@svall/protocol';
 
 export type Rect = { x: number; y: number; width: number; height: number };
 export type Attach = { socket: string; session: string };
@@ -50,7 +50,9 @@ export type ToShell =
   // brings up the window open on another fleet, or opens one; quit then leaves that window alone
   | { type: 'openFleet'; home: string; quit?: boolean }
   // the fleet was renamed, and the window title follows
-  | { type: 'retitle' };
+  | { type: 'retitle' }
+  | { type: 'setup.plan' }
+  | { type: 'setup.run'; agents: AgentKind[]; found: AgentKind[] };
 
 export type FromShell =
   | { type: 'connection'; host: string; port: number; token: string }
@@ -77,6 +79,7 @@ export type FromShell =
   | { type: 'notify.open'; key: string }
   | { type: 'notify.action'; key: string; action: 'approve' | 'deny'; promptId?: string }
   | { type: 'menu.pick'; id: string }
+  | { type: 'setup.result'; step: 'plan' | 'run'; ok: boolean; json: string }
   // the app is about to quit and waits for a quit.answer
   | { type: 'quit.ask' }
   // the menu's Open Fleet…
@@ -105,6 +108,9 @@ export function createBridge(win: Window = window): Bridge {
     onMessage: (h) => { handlers.add(h); return () => { handlers.delete(h); }; },
   };
 }
+
+// the CLI of the build whose shell shows this page; with no shell, Svall Dev's
+export const shim = (): string => (globalThis.window?.__svallVariant === 'release' ? 'svall' : 'svall-dev');
 
 // a bare host like xyz.com is a web link; any other scheme is refused
 export function webUrl(input: string): string | undefined {

@@ -46,7 +46,7 @@ test('lists each fleet, tags this window\'s and the ones open elsewhere, and say
   store.getState().setFleetPicker('menu');
   render(<FleetPicker />);
   expect((await rows()).map((r) => r.textContent)).toEqual(['homethis window', 'workopen', 'side']);
-  expect(screen.getByTestId('fleet-picker').textContent).toContain('svall <name>');
+  expect(screen.getByTestId('fleet-picker').textContent).toContain('svall-dev <name>');
 });
 
 test('from the menu, a fleet is started and opened and this window stays', async () => {

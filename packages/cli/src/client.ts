@@ -3,7 +3,8 @@ import WebSocket from 'ws';
 import { loadConfig } from '@svall/svalld/config';
 import { ProtocolMismatch } from '@svall/svalld/fleets';
 import { svallHome, resolvePaths } from '@svall/svalld/paths';
-import { profileLabel } from '@svall/svalld/profile';
+import { SHIM, profileLabel } from '@svall/svalld/profile';
+import { variant } from '@svall/svalld/runtime';
 import { PROTOCOL_VERSION, serverWait, type Event, type MethodName, type Params, type Response, type Result } from '@svall/protocol';
 import { resolveTarget, type Target } from './target.js';
 
@@ -23,7 +24,7 @@ export const restartHint = (t: Target): string => (t.managed
   : `restart the svalld serving ${t.home}`);
 
 /** The doctor that checks a fleet; an ad-hoc home is found again through the same $SVALL_HOME. */
-const doctorHint = (t: Target): string => (t.managed ? `svall -p ${t.name} doctor` : 'svall doctor');
+const doctorHint = (t: Target): string => (t.managed ? `${SHIM} -p ${t.name} doctor` : `${SHIM} doctor`);
 
 const deadline = <T>(p: Promise<T>, ms: number, message: string): Promise<T> => {
   let timer: NodeJS.Timeout;
@@ -81,7 +82,7 @@ export class Client {
           if (theirs !== PROTOCOL_VERSION) {
             // a daemon from before the handshake carried a version sends none
             const speaks = theirs === undefined ? 'predates the protocol check' : `speaks protocol ${theirs}`;
-            reject(new ProtocolMismatch(`the running svalld ${speaks} and this svall speaks ${PROTOCOL_VERSION}: run \`pnpm desktop:install\`, or ${restartHint(resolveTarget({ env: home }))}`));
+            reject(new ProtocolMismatch(`the running svalld ${speaks} and this svall speaks ${PROTOCOL_VERSION}: ${variant === 'release' ? 'quit and reopen Svall' : 'run `pnpm desktop:install`'}, or ${restartHint(resolveTarget({ env: home }))}`));
             return;
           }
           resolve();

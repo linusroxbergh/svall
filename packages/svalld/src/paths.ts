@@ -1,6 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PRIVATE, profileHome } from './profile.js';
 
 export const HOOK_SCRIPT = 'agent-hook.mjs';
 // an install may still name the script claude-hook.mjs; that entry is ours to repair and remove too
@@ -12,7 +13,7 @@ export const isOurs = (command: unknown, script: string): boolean =>
     .some((p) => command.includes(p) || command.includes(p.replace(/'/g, `'\\''`)));
 
 export function svallHome(): string {
-  return process.env.SVALL_HOME ?? path.join(os.homedir(), '.svall');
+  return process.env.SVALL_HOME ?? profileHome(PRIVATE);
 }
 
 export function resolvePaths(home: string = svallHome()) {

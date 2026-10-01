@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { NewerStateVersion, OlderStateVersion } from '@svall/protocol';
 import { InvalidConfig } from './config.js';
 import { createLogger } from './log.js';
-import { startDaemon, type Daemon } from './main.js';
+import { OtherBuildHome, startDaemon, type Daemon } from './main.js';
 import { svallHome, resolvePaths } from './paths.js';
 
 const home = svallHome();
@@ -32,6 +32,11 @@ async function start(): Promise<Daemon> {
     try {
       return await startDaemon({ home, log });
     } catch (e) {
+      // no file here can fix that; the other build's setup restarts the agent onto its own program
+      if (e instanceof OtherBuildHome) {
+        report(`${e.message}; svalld waits until that build's setup takes the fleet over`);
+        await new Promise(() => setInterval(() => {}, 60_000));
+      }
       if (!(e instanceof InvalidConfig || e instanceof NewerStateVersion || e instanceof OlderStateVersion)) throw e;
       report(`${e.message}; svalld starts once it is fixed`);
       while (stamp() === before) await new Promise((r) => setTimeout(r, 1000));

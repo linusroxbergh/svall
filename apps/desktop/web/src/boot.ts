@@ -18,7 +18,7 @@ export type AppContext = { bridge: Bridge; store: AppStore; api(): Api; manager(
 
 // the shell names the fleet's home before the page runs, so each fleet's window keeps its own settings,
 // and says when the app was opened without naming one
-declare global { interface Window { __svallHome?: string; __svallBare?: boolean } }
+declare global { interface Window { __svallHome?: string; __svallBare?: boolean; __svallVariant?: 'release' | 'dev' } }
 
 const endpointOf = (c: Connection) => ({ url: `ws://${c.host}:${c.port}`, token: c.token });
 

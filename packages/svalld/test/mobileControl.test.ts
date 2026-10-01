@@ -3,7 +3,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MobileStatus } from '@svall/protocol';
 import { MOBILE_DIST } from '../src/api/bundle.js';
-import { fleetTarget, mobileControl, phoneKey, phoneUrl, resolveTailscale, serve, servePort, servesTarget, tailnetSelf, unserve, watchServed, type MobileDeps } from '../src/mobile.js';
+import { fleetTarget, mobileControl, phoneKey, phoneUrl, resolveTailscale, serve, servePort, servesOther, servesTarget, tailnetSelf, unserve, watchServed, type MobileDeps } from '../src/mobile.js';
 import { Phones } from '../src/phones.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -29,7 +29,7 @@ function deps(opts: { served?: string; files?: Record<string, string>; status?: 
     run: (cmd, args) => {
       calls.push({ cmd, args });
       if (cmd !== 'tailscale' && cmd !== 'pnpm') return Promise.reject(new Error(`no ${cmd}`));
-      if (args[0] === 'serve' && args[1] === 'status') return Promise.resolve(mapping(served ?? 'nothing'));
+      if (args[0] === 'serve' && args[1] === 'status') return Promise.resolve(served ? mapping(served) : '{}');
       if (args[0] === 'serve' && args.includes('--bg')) { served = args[args.length - 1]; return Promise.resolve(''); }
       if (args[0] === 'serve') { served = undefined; return Promise.resolve(''); }
       if (args[0] === 'status') return Promise.resolve(JSON.stringify(opts.status ?? SIGNED_IN));
@@ -123,6 +123,18 @@ describe('servesTarget', () => {
   });
 });
 
+describe('servesOther', () => {
+  it('tells this fleet\'s mapping, on whatever daemon port, from anything else on the port', () => {
+    expect(servesOther(mapping('http://127.0.0.1:50001/abcdef'), 'mac.tailnet.ts.net', 8443, 'abcdef')).toBe(false);
+    expect(servesOther('{}', 'mac.tailnet.ts.net', 8443, 'abcdef')).toBe(false);
+    expect(servesOther(mapping('http://127.0.0.1:47900/other'), 'mac.tailnet.ts.net', 8443, 'abcdef')).toBe(true);
+    expect(servesOther(mapping('http://127.0.0.1:47812/old'), 'mac.tailnet.ts.net', 8443, 'abcdef', 'http://127.0.0.1:47812/')).toBe(false);
+    expect(servesOther(mapping('http://127.0.0.1:47900/other'), 'mac.tailnet.ts.net', 8443, 'abcdef', 'http://127.0.0.1:47812/')).toBe(true);
+    const text = JSON.stringify({ Web: { 'mac.tailnet.ts.net:8443': { Handlers: { '/': { Text: 'hi' } } } } });
+    expect(servesOther(text, 'mac.tailnet.ts.net', 8443, 'abcdef')).toBe(true);
+  });
+});
+
 describe('mobileControl', () => {
   it('reports the link and the port this fleet answers on', async () => {
     const status = await control(deps({ served: TARGET })).get();
@@ -183,6 +195,19 @@ describe('mobileControl', () => {
     expect((await control_.set(false)).serving).toBe(false);
   });
 
+  it('leaves a port another fleet serves to it: an on is refused with the key kept, and an off takes nothing down', async () => {
+    const theirs = 'http://127.0.0.1:47900/theirs';
+    const d = deps({ served: theirs });
+    let made = 0;
+    const control_ = mobileControl(d, { home: HOME, profile: 'work', logins: ['me@example.com'], phones: new Phones(), rotateKey: () => { made++; } });
+    expect((await control_.set(true)).error).toContain('https port 8443 already serves another fleet or site');
+    expect(made).toBe(0);
+    expect(await control_.set(false)).toMatchObject({ serving: false });
+    expect(d.calls.some((c) => c.args.includes('--bg') || c.args.includes('off'))).toBe(false);
+    expect((await control_.get()).serving).toBe(false);
+    expect(made).toBe(1);
+  });
+
   it('serves the fleet behind a fresh key on every on and off, and leaves the key alone on a look', async () => {
     const files = { [path.join(HOME, 'port')]: '47812', [path.join(HOME, 'mobile-key')]: 'abcdef', [MOBILE_DIST]: 'built' };
     const d = deps({ files });
@@ -194,6 +219,24 @@ describe('mobileControl', () => {
     expect(d.calls.find((c) => c.args.includes('--bg'))!.args.at(-1)).toBe('http://127.0.0.1:47812/key1');
     expect((await control_.set(false)).serving).toBe(false);
     expect(made).toBe(2);
+  });
+
+  it('still knows its own mapping by the daemon\'s address after a change that failed once the key had turned over', async () => {
+    const files: Record<string, string> = { [path.join(HOME, 'port')]: '47812', [path.join(HOME, 'mobile-key')]: 'abcdef', [MOBILE_DIST]: 'built' };
+    const d = deps({ files, served: TARGET });
+    let made = 0;
+    const control_ = mobileControl(d, { home: HOME, profile: 'work', logins: [], phones: new Phones(), rotateKey: () => { files[path.join(HOME, 'mobile-key')] = `key${++made}`; } });
+    const run = d.run;
+    d.run = (cmd, args, cwd) => (args.at(-1) === 'off' ? Promise.reject(new Error('serve off failed')) : run(cmd, args, cwd));
+    expect((await control_.set(false)).error).toMatch(/serve off failed/);
+    d.run = run;
+    expect((await control_.set(false)).serving).toBe(false);
+    expect((await control_.set(true)).serving).toBe(true);
+    d.run = (cmd, args, cwd) => (args.includes('--bg') ? Promise.reject(new Error('serve failed')) : run(cmd, args, cwd));
+    expect((await control_.set(true)).error).toMatch(/serve failed/);
+    d.run = run;
+    expect((await control_.set(true)).serving).toBe(true);
+    expect(made).toBe(5);
   });
 
   it('leaves the key a served link carries alone when an on cannot reach tailscale or build the page', async () => {

@@ -2,19 +2,24 @@ import fs from 'node:fs';
 import { z } from 'zod';
 import { AgentKind, DEFAULT_CWD, Home, isProfileName } from '@svall/protocol';
 import { writeAtomic } from './jsonfile.js';
+import { resolvePaths } from './paths.js';
+import { DEFAULT_PORT, HOME_CWD, PRIVATE, profileHome, profileOf } from './profile.js';
 
 export const Config = z.object({
   // what the app and `svall <name>` call the fleet; absent, its directory names it
-  name: z.string().refine(isProfileName, 'use lowercase letters, digits and dashes, starting with a letter, and no svall command').optional(),
-  port: z.number().int().default(47800),
+  name: z.string().refine(isProfileName, 'use lowercase letters, digits and dashes, starting with a letter, and no svall command or dev name, which Svall Dev keeps').optional(),
+  port: z.number().int().default(DEFAULT_PORT),
   host: z.string().default('127.0.0.1'),
   shell: z.string().optional(),
   linear: z.object({ workspace: z.string(), teamKeys: z.array(z.string()) }).optional(),
   // with no command, the crew starts the main agent's crewCommand
-  home: Home.extend({ command: z.string().optional() }).prefault({}),
+  home: Home.extend({ cwd: z.string().default(HOME_CWD), command: z.string().optional() }).prefault({}),
   defaultCwd: z.string().default(DEFAULT_CWD),
-  // the agent the scribe, mission control's crew and `svall char new --run` use by default; absent, the only one installed, else claude
+  // the agent the scribe, mission control's crew and `svall char new --run` use by default; absent, the private fleet's, else
+  // the only one installed, else claude
   mainAgent: AgentKind.optional(),
+  // the agents whose hooks setup installs; absent, every agent found
+  integrations: z.array(AgentKind).optional(),
   // which plan a scribe pass spends; absent, the main agent's. model names a model of scribe.agent's CLI, else of claude's
   scribe: z.object({ agent: AgentKind.optional(), model: z.string().optional() }).prefault({}),
   // phone clients: which tailnet logins may drive the fleet and get its pushes (empty lets in only the Mac's own login),
@@ -35,6 +40,14 @@ export const scribeModel = (s: Config['scribe'], agent: AgentKind): string | und
 
 export class InvalidConfig extends Error {}
 
+/** The main agent of the fleet at `home`, whose own config names `own`: absent, the private fleet's, which setup switches
+ *  when the user turns one off. */
+export function fleetMainAgent(home: string, own: AgentKind | undefined): AgentKind | undefined {
+  if (own || profileOf(home) === PRIVATE) return own;
+  // a private config that does not parse is the private fleet's to report
+  try { return loadConfig(resolvePaths(profileHome(PRIVATE)).config).mainAgent; } catch { return undefined; }
+}
+
 export function loadConfig(file: string): Config {
   if (!fs.existsSync(file)) return Config.parse({});
   return parseConfig(fs.readFileSync(file, 'utf8'), file);
@@ -54,7 +67,7 @@ export function parseConfig(text: string, file: string): Config {
 
 /** Sets the keys of `patch` in `file` and keeps every other key; a file that does not parse is refused, not replaced.
  *  A linked file (stow, home-manager) is written where it points, with the mode it had. */
-export function saveConfig(file: string, patch: Partial<Pick<Config, 'mainAgent' | 'name'>>): void {
+export function saveConfig(file: string, patch: Partial<Pick<Config, 'mainAgent' | 'name' | 'integrations'>>): void {
   const there = fs.existsSync(file);
   const text = there ? fs.readFileSync(file, 'utf8') : '{}';
   parseConfig(text, file);

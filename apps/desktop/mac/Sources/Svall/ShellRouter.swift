@@ -216,6 +216,20 @@ final class ShellRouter {
             ExternalURL.openFolder(path)
         case .reveal(let path):
             ExternalURL.reveal(path)
+        case .setupPlan:
+            AppRuntime.run(["setup", "--plan", "--login-shell"]) { [weak self] ok, text in self?.bridge.send(.setupResult(step: "plan", ok: ok, json: text)) }
+        case .setupRun(let agents, let found):
+            AppRuntime.run(["setup", "--json", "--login-shell", "--agents", agents.joined(separator: ","), "--found", found.joined(separator: ",")]) { [weak self] ok, text in
+                // the home setup made did not exist when launch claimed it and named its browser store
+                if ok {
+                    _ = SvallHome.claim()
+                    let file = SvallHome.path + "/browser-store"
+                    if let id = self?.browsers.store.identifier, !FileManager.default.fileExists(atPath: file) {
+                        try? id.uuidString.write(toFile: file, atomically: true, encoding: .utf8)
+                    }
+                }
+                self?.bridge.send(.setupResult(step: "run", ok: ok, json: text))
+            }
         case .copy(let text):
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
@@ -281,6 +295,7 @@ final class ShellRouter {
         let config = NSWorkspace.OpenConfiguration()
         config.createsNewApplicationInstance = true
         config.environment = ["SVALL_HOME": home]
+        if quit, Updates.shared.running { config.environment[Updates.handoff] = "1" }
         NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: config) { [weak self] _, error in
             DispatchQueue.main.async {
                 if let error { self?.bridge.send(.openFleetFailed(home: home, reason: error.localizedDescription)) } else { done() }

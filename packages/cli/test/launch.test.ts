@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { HomeSetup } from '@svall/svalld/setup';
+import { checkoutRuntime, bundleRuntime } from '@svall/svalld/runtime';
 import { ProtocolMismatch } from '../src/client.js';
 import { launch, type LaunchDeps } from '../src/launch.js';
 
 type Call = [string, string[]];
 
 function fake(o: {
-  homes?: string[]; loaded?: string[]; answer?: string; isTTY?: boolean; daemonUp?: boolean; openFails?: boolean; mismatch?: boolean;
+  homes?: string[]; loaded?: string[]; answer?: string; isTTY?: boolean; daemonUp?: boolean; openFails?: boolean; mismatch?: boolean; runtime?: LaunchDeps['runtime'];
 } = {}) {
   const calls: Call[] = [];
   const connects: string[] = [];
@@ -31,7 +32,7 @@ function fake(o: {
     setupHome: async (s) => { setups.push(s); files.add(s.home); files.add(`${s.launchAgentsDir}/${s.label}.plist`); return []; },
     uid: 501,
     launchAgentsDir: '/u/Library/LaunchAgents',
-    repoRoot: '/r',
+    runtime: o.runtime ?? checkoutRuntime('/r'),
     timeoutMs: 30,
     intervalMs: 5,
   };
@@ -49,17 +50,23 @@ describe('launch', () => {
     expect(f.setups).toEqual([]);
     expect(f.calls).toEqual([
       ['launchctl', ['print', 'gui/501/io.github.linusroxbergh.svall.svalld']],
-      ['open', ['-n', '--env', 'SVALL_HOME=/u/.svall', '-a', 'Svall']],
+      ['open', ['-n', '--env', 'SVALL_HOME=/u/.svall', '-b', 'io.github.linusroxbergh.svall']],
     ]);
+  });
+
+  it('opens the app the runtime belongs to when it is a bundle', async () => {
+    const f = fake({ homes: [priv.home], loaded: ['io.github.linusroxbergh.svall.svalld'], runtime: bundleRuntime('/Applications/Svall.app') });
+    await launch(priv, f.deps);
+    expect(f.calls.at(-1)).toEqual(['open', ['-n', '--env', 'SVALL_HOME=/u/.svall', '-a', '/Applications/Svall.app']]);
   });
 
   it('creates a missing profile after a yes, with a free port and its own label, then bootstraps it', async () => {
     const f = fake({ answer: 'y' });
     await launch(work, f.deps);
     expect(f.prompts).toEqual(['create profile work at /u/.svall-work? [y/N] ']);
-    expect(f.setups).toEqual([{ home: work.home, label: 'io.github.linusroxbergh.svall.svalld.work', repoRoot: '/r', launchAgentsDir: '/u/Library/LaunchAgents', launchctl: false, port: 0 }]);
+    expect(f.setups).toEqual([{ home: work.home, label: 'io.github.linusroxbergh.svall.svalld.work', runtime: checkoutRuntime('/r'), launchAgentsDir: '/u/Library/LaunchAgents', launchctl: false, port: 0 }]);
     expect(f.calls).toContainEqual(['launchctl', ['bootstrap', 'gui/501', '/u/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld.work.plist']]);
-    expect(f.calls.at(-1)).toEqual(['open', ['-n', '--env', 'SVALL_HOME=/u/.svall-work', '-a', 'Svall']]);
+    expect(f.calls.at(-1)).toEqual(['open', ['-n', '--env', 'SVALL_HOME=/u/.svall-work', '-b', 'io.github.linusroxbergh.svall']]);
   });
 
   it('refuses to create without a TTY or after a no', async () => {
@@ -86,7 +93,7 @@ describe('launch', () => {
 
   it('names the install step when the app is missing', async () => {
     const f = fake({ homes: [priv.home], loaded: ['io.github.linusroxbergh.svall.svalld'], openFails: true });
-    await expect(launch(priv, f.deps)).rejects.toThrow('Svall.app is not installed; run pnpm desktop:install');
+    await expect(launch(priv, f.deps)).rejects.toThrow('could not open Svall: reinstall it from svall.dev');
   });
 
   it('sends a missing private home to setup instead of creating half of one', async () => {
@@ -100,7 +107,7 @@ describe('launch', () => {
     const f = fake({ homes: [adhoc.home] });
     await launch(adhoc, f.deps);
     expect(f.setups).toEqual([]);
-    expect(f.calls).toEqual([['open', ['-n', '--env', 'SVALL_HOME=/tmp/svall-dev', '-a', 'Svall']]]);
+    expect(f.calls).toEqual([['open', ['-n', '--env', 'SVALL_HOME=/tmp/svall-dev', '-b', 'io.github.linusroxbergh.svall']]]);
   });
 
   it('refuses to create an ad-hoc home', async () => {

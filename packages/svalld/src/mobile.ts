@@ -7,7 +7,7 @@ import type { MobileStatus } from '@svall/protocol';
 import { MOBILE_DIST } from './api/bundle.js';
 import { repoRoot, resolvePaths } from './paths.js';
 import type { Phones } from './phones.js';
-import { PRIVATE, profileLabel } from './profile.js';
+import { PRIVATE, PRIVATE_HTTPS_PORT, SHIM, profileLabel } from './profile.js';
 
 export type MobileDeps = {
   run(cmd: string, args: string[], cwd?: string): Promise<string>;
@@ -45,14 +45,19 @@ export async function tailnetSelf(d: MobileDeps, bin: string): Promise<{ host: s
   return { host, owner };
 }
 
+export const fleetOrigin = (d: MobileDeps, home: string): string | undefined => {
+  const p = Number(d.read(resolvePaths(home).port)?.trim());
+  return p ? `http://127.0.0.1:${p}/` : undefined;
+};
+
 /** Where serve sends the phone: the daemon's port behind the key only svalld and tailscaled hold. */
 export function fleetTarget(d: MobileDeps, home: string): string {
-  const { port, mobileKey } = resolvePaths(home);
-  const p = Number(d.read(port)?.trim());
-  if (!p) throw new Error('the fleet is not running: start the app, or run `svall <profile>`');
+  const origin = fleetOrigin(d, home);
+  if (!origin) throw new Error(`the fleet is not running: start the app, or run \`${SHIM} <profile>\``);
+  const { mobileKey } = resolvePaths(home);
   const key = d.read(mobileKey)?.trim();
   if (!key) throw new Error(`no phone key at ${mobileKey}: restart the daemon so it writes one`);
-  return `http://127.0.0.1:${p}/${key}`;
+  return `${origin}${key}`;
 }
 
 /** The key the daemon checks, and the file `fleetTarget` hands tailscale serve: a fresh one shuts out whoever learned the last. */
@@ -68,7 +73,7 @@ export const buildBundle = (d: MobileDeps): Promise<string> =>
   d.run('pnpm', ['--filter', '@svall/desktop-web', 'build:mobile'], repoRoot());
 
 // a port is part of the origin, so each fleet on its own port is its own app on the phone
-export const servePort = (profile: string, configured?: number): number => configured ?? (profile === PRIVATE ? 443 : 8443);
+export const servePort = (profile: string, configured?: number): number => configured ?? (profile === PRIVATE ? PRIVATE_HTTPS_PORT : 8443);
 
 export const phoneUrl = (host: string, port: number): string => `https://${host}${port === 443 ? '' : `:${port}`}/`;
 
@@ -86,11 +91,15 @@ export const unserve = async (d: MobileDeps, bin: string, port: number): Promise
 
 type ServeStatus = { Web?: Record<string, { Handlers?: Record<string, { Proxy?: string }> }> };
 
-/** The https ports that proxy to a daemon behind `key`, on whatever port it listened. */
-export function portsServing(json: string, key: string): number[] {
+/** The https ports that proxy to a daemon behind `key`, on whatever port it listened, or to the daemon at `origin`
+ *  under a key a failed on or off already turned over. */
+export function portsServing(json: string, key: string | undefined, origin?: string): number[] {
   const web = (JSON.parse(json) as ServeStatus).Web ?? {};
   return Object.entries(web)
-    .filter(([, site]) => { const proxy = site.Handlers?.['/']?.Proxy; return !!proxy?.startsWith('http://127.0.0.1:') && proxy.endsWith(`/${key}`); })
+    .filter(([, site]) => {
+      const proxy = site.Handlers?.['/']?.Proxy;
+      return !!proxy?.startsWith('http://127.0.0.1:') && (!!(key && proxy.endsWith(`/${key}`)) || !!(origin && proxy.startsWith(origin)));
+    })
     .map(([at]) => Number(at.slice(at.lastIndexOf(':') + 1)));
 }
 
@@ -98,6 +107,13 @@ export function portsServing(json: string, key: string): number[] {
 export function servesTarget(json: string, host: string, port: number, target: string): boolean {
   const web = (JSON.parse(json) as ServeStatus).Web ?? {};
   return web[`${host}:${port}`]?.Handlers?.['/']?.Proxy === target;
+}
+
+/** Whether the port serves anything but this fleet: another fleet's link, the other Svall build's, or the user's own.
+ *  Its mapping carries its key across a daemon restart, and its daemon's address across a change that failed after the key turned over. */
+export function servesOther(json: string, host: string, port: number, key: string | undefined, origin?: string): boolean {
+  const handlers = (JSON.parse(json) as ServeStatus).Web?.[`${host}:${port}`]?.Handlers ?? {};
+  return Object.values(handlers).some((h) => !(key && h.Proxy?.endsWith(`/${key}`)) && !(origin && h.Proxy?.startsWith(origin)));
 }
 
 const exec = promisify(execFile);
@@ -149,6 +165,8 @@ export function mobileControl(d: MobileDeps, opts: { home: string; profile: stri
   };
 
   const read = async (enable?: boolean): Promise<MobileStatus> => {
+    // the key the link carries now, which tells this fleet's mapping from another's on the same port
+    const key = d.read(mobileKey)?.trim();
     // every on and off serves a new key, so one learned while the link was up opens nothing afterwards
     if (enable === false) opts.rotateKey();
     const bin = await resolveTailscale(d);
@@ -156,6 +174,9 @@ export function mobileControl(d: MobileDeps, opts: { home: string; profile: stri
     const { host } = self;
     owner = self.owner;
     if (enable === true && logins().length === 0) throw new Error(`tailscale reports no login for this Mac: set mobile.logins in config.json, then restart the daemon with launchctl kickstart -k gui/$(id -u)/${profileLabel(opts.profile)}`);
+    // tailscale serve holds one mapping per port for the whole Mac, so a port another holds stays theirs
+    const other = enable !== undefined && servesOther(await d.run(bin, ['serve', 'status', '--json']), host, port, key, fleetOrigin(d, opts.home));
+    if (enable === true && other) throw new Error(`https port ${port} already serves another fleet or site: set mobile.httpsPort (443, 8443 or 10000) in this fleet's config.json and restart it, or turn that one off with tailscale serve --https=${port} off`);
     // an on turns the key over only once tailscale and the page are ready, so one that fails leaves a working link alone
     if (enable === true) {
       if (!d.exists(MOBILE_DIST)) await buildBundle(d);
@@ -163,7 +184,7 @@ export function mobileControl(d: MobileDeps, opts: { home: string; profile: stri
     }
     const target = fleetTarget(d, opts.home);
     if (enable === true) await serve(d, bin, target, port);
-    if (enable === false) await unserve(d, bin, port);
+    if (enable === false && !other) await unserve(d, bin, port);
     const serving = servesTarget(await d.run(bin, ['serve', 'status', '--json']), host, port, target);
     const url = phoneUrl(host, port);
     const status: MobileStatus = {

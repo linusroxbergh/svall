@@ -4,6 +4,7 @@ import jsonpatch, { type Operation } from 'fast-json-patch';
 import { FleetState, NewerStateVersion, OlderStateVersion, emptyState, migrateState } from '@svall/protocol';
 import { readJsonOrQuarantine, writeJsonAtomic } from './jsonfile.js';
 import { sinkHome, trimHome } from './layout.js';
+import { variant } from './runtime.js';
 
 type Listener = (ops: Operation[]) => void;
 
@@ -27,6 +28,7 @@ export class Store {
         (raw) => ({ raw, ...migrateState(raw) }),
         (e) => e instanceof NewerStateVersion || e instanceof OlderStateVersion);
     } catch (e) {
+      if (e instanceof NewerStateVersion) e.message += ` (${variant === 'release' ? 'Svall → Check for Updates…' : 'git pull && pnpm desktop:install'})`;
       const kept = e instanceof NewerStateVersion ? keptCopy(file) : undefined;
       if (kept) (e as Error).message += `; or, to go back to the fleet as this version last saw it, move ${kept} to ${file}`;
       throw e;

@@ -10,6 +10,17 @@ textarea { overflow-x: hidden; }
 .main { position: relative; display: flex; flex: 1; min-height: 0; }
 .connect { display: grid; place-items: center; height: 100%; color: var(--dim); text-align: center; }
 .connect-log { max-width: min(90vw, 900px); max-height: 40vh; overflow: auto; margin-top: 12px; padding: var(--sp-md) var(--sp-xl); text-align: left; font: var(--text-sm)/1.5 var(--mono); background: var(--shade-1); border: 1px solid var(--line); border-radius: var(--r-sm); white-space: pre-wrap; }
+.setup { display: flex; flex-direction: column; gap: var(--sp-2xl); width: min(90vw, 64ch); margin: 0 auto; padding: var(--sp-3xl) 0; height: 100%; overflow: auto; color: var(--ink); font-size: var(--text-lg); }
+.setup h1 { margin: 0; font-size: var(--text-2xl); font-weight: var(--w-semibold); }
+.setup h2 { margin: 0 0 var(--sp-sm); font-size: var(--text-sm); font-weight: var(--w-semibold); color: var(--dim); }
+.setup ul { margin: 0; padding: 0; list-style: none; }
+.setup li { display: flex; flex-direction: column; padding: var(--sp-xs) 0; }
+.setup label { display: flex; align-items: baseline; gap: var(--sp-md); padding: var(--sp-xs) 0; }
+.setup small, .setup p { color: var(--dim); font-size: var(--text-sm); margin: 0; }
+.setup code { font: var(--text-sm)/1.5 var(--mono); color: var(--ink-3); overflow-wrap: anywhere; }
+.setup > button { align-self: flex-start; background: var(--sand); color: var(--ink-sand); }
+.setup > button:disabled { opacity: 0.5; cursor: default; }
+.setup .setup-blocker, .setup .setup-error { color: color-mix(in srgb, var(--blocked) 45%, var(--ink)); font-size: var(--text-lg); }
 .banner { background: color-mix(in srgb, var(--blocked) 16%, transparent); color: color-mix(in srgb, var(--blocked) 45%, var(--ink)); padding: var(--sp-sm) var(--sp-2xl); border-bottom: 1px solid var(--line); }
 .banner.warn { background: color-mix(in srgb, var(--working) 14%, transparent); color: color-mix(in srgb, var(--working) 35%, var(--ink)); display: flex; gap: var(--sp-xl); align-items: center; }
 .banner.warn button { margin-left: auto; }

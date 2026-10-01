@@ -14,7 +14,15 @@ const backend = process.argv[2] === 'codex' ? 'codex' : 'claude';
 const pid = Number(process.argv[3]) || undefined;
 const home = process.env.SVALL_HOME ?? path.join(os.homedir(), '.svall');
 const done = () => process.exit(0);
-if (!charId) done();
+// the release's and Svall Dev's hooks both run for every agent, so each acts only for its own variant's homes;
+// a home named like neither is a test fleet's, which Svall Dev answers
+const variantOf = (h) => {
+  const b = path.basename(h);
+  return /^\.svall(-[a-z][a-z0-9-]*)?$/.test(b) && !/^\.svall-dev(-|$)/.test(b) ? 'release' : 'dev';
+};
+// argv[1], unlike import.meta.url, keeps the name of a home that is a symlink
+const mine = variantOf(path.dirname(path.dirname(path.resolve(process.argv[1])))) === variantOf(home);
+if (!charId || !mine) done();
 const safety = setTimeout(done, 1500);
 safety.unref();
 

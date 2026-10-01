@@ -16,8 +16,11 @@
     "./config": "./src/config.ts",
     "./codex/install": "./src/codex/install.ts",
     "./setup": "./src/setup.ts",
+    "./login-env": "./src/login-env.ts",
+    "./setup-plan": "./src/setup-plan.ts",
     "./uninstall": "./src/uninstall.ts",
     "./profile": "./src/profile.ts",
+    "./runtime": "./src/runtime.ts",
     "./fleets": "./src/fleets.ts",
     "./mobile": "./src/mobile.ts",
     "./tmux/conf": "./src/tmux/conf.ts"
