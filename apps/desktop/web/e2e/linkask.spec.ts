@@ -43,13 +43,20 @@ test('a link followed in a terminal asks over the terminal, with the keys, and h
       if (m.type === 'connection') setTimeout(() => w.__svall.receive(JSON.stringify({ type: 'connection', host: '127.0.0.1', port, token })), 0);
     } } } };
   }, { port: svall.port, token: svall.token });
-  await svall.open();
+  await svall.open('map');
+  const token = page.getByTestId(`token-${c.id}`);
+  await token.click();
+  await token.click();
+  const card = page.getByTestId('terminal-card');
+  await expect(card).toHaveAttribute('data-settled', 'true');
+  // the shell's hole shows the page, so the ask must be drawn above the card that stands under the terminal
+  const at = (await card.getByTestId('surface').boundingBox())!;
   const sent = () => page.evaluate(() => (window as unknown as Shell).__sent);
   const mark = async () => (await sent()).length;
   const since = async (from: number) => (await sent()).slice(from);
   const cutout = async () => (await sent()).filter((m) => m.type === 'shell.cutout').at(-1) as Extract<ToShell, { type: 'shell.cutout' }> | undefined;
-  const follow = (url: string) => page.evaluate(({ id, url }) => (window as unknown as Shell).__svall.receive(
-    JSON.stringify({ type: 'term.openUrl', id, url, x: 300, y: 200 })), { id: c.id, url });
+  const follow = (url: string) => page.evaluate(({ id, url, x, y }) => (window as unknown as Shell).__svall.receive(
+    JSON.stringify({ type: 'term.openUrl', id, url, x, y })), { id: c.id, url, x: at.x + 40, y: at.y + 40 });
   const ask = page.getByTestId('link-ask');
 
   let from = await mark();
