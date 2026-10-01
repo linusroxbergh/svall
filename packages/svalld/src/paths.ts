@@ -15,9 +15,12 @@ export const isOurs = (command: unknown, script: string): boolean =>
   typeof command === 'string' && HOOK_NAMES.map((n) => path.join(path.dirname(script), n))
     .some((p) => command.includes(p) || command.includes(p.replace(/'/g, `'\\''`)));
 
+/** The helper beside `script`, quoted for the shell. */
+export const helperBeside = (script: string): string => shq(path.join(path.dirname(script), HOOK_HELPER));
+
 /** Runs the helper beside `script` with `args` while it is there and executable, else `fallback`, the script on node. */
 export const helperOr = (script: string, args: string, fallback: string): string => {
-  const helper = shq(path.join(path.dirname(script), HOOK_HELPER));
+  const helper = helperBeside(script);
   return `if [ -x ${helper} ]; then ${helper} ${args}; else ${fallback} ${args}; fi`;
 };
 

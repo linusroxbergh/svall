@@ -611,11 +611,7 @@ func status(home: Bytes, report: Bool, charId: Text, term: Bool, command: Unsafe
     exitAfter(0)
     let wraps = command.map { $0[0] != 0 } ?? false
     let child = wraps ? spawnShell(command!) : nil
-    if let child {
-        _ = writeAll(child.stdin, input)
-        close(child.stdin)
-    }
-    // a daemon that has stopped reading must not delay the statusline
+    // a daemon that has stopped reading must not delay the statusline, nor a command that never reads its input the report
     if report, let parsed = Parser.parse(input), let out = statusLine(parsed, charId: charId, term: term) {
         let (fd, _) = connectTo(join(home, "hooks.sock"))
         if fd >= 0 {
@@ -623,6 +619,10 @@ func status(home: Bytes, report: Bool, charId: Text, term: Bool, command: Unsafe
             _ = writeAll(fd, out, deadline: now() + 1.5)
             close(fd)
         }
+    }
+    if let child {
+        _ = writeAll(child.stdin, input)
+        close(child.stdin)
     }
     guard wraps else { exit(0) }
     guard let child else { exit(1) }

@@ -476,6 +476,24 @@ describe.each(runners)('$name', (run) => {
     expect(code).toBe(7);
   });
 
+  it('reports without waiting for a wrapped statusline that never reads its input', async () => {
+    const home = makeHome();
+    const sock = path.join(home, 'hooks.sock');
+    const events: SocketEvent[] = [];
+    const r = await startHookReceiver(sock, (e) => { events.push(e); }, silentLogger);
+    let exited = false;
+    const done = new Promise<void>((resolve) => {
+      const p = execFile(...status('sleep 2'), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, () => {});
+      p.on('exit', () => { exited = true; resolve(); });
+      // more than a pipe holds, so a write to the command blocks until it exits
+      p.stdin!.end(JSON.stringify({ context_window: { used_percentage: 9 }, pad: 'x'.repeat(200_000) }));
+    });
+    await waitFor(() => events.length === 1);
+    expect(exited).toBe(false);
+    await done;
+    await r.close();
+  });
+
   it('prints the receiver reply as additionalContext for SessionStart and stays silent otherwise', async () => {
     const home = makeHome();
     const sock = path.join(home, 'hooks.sock');

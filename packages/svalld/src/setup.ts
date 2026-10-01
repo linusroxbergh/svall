@@ -10,8 +10,8 @@ import { loadConfig } from './config.js';
 import { CLAUDE_HOOKS, hooksFor } from './hooks/receiver.js';
 import { writeAtomic } from './jsonfile.js';
 import { BUNDLE_ID, LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from './profile.js';
-import { HOOK_HELPER, HOOK_SCRIPT, claudePaths, expandHome, helperOr, isOurs, resolvePaths, type Paths } from './paths.js';
-import { assetDir, bundled, hookHelperSource, ownRuntime, variant, type Runtime } from './runtime.js';
+import { HOOK_SCRIPT, claudePaths, expandHome, helperBeside, helperOr, isOurs, resolvePaths, type Paths } from './paths.js';
+import { assetDir, bundled, hookHelperSource, hookHelperSources, ownRuntime, variant, type Runtime } from './runtime.js';
 import { shq } from './text.js';
 import { tmuxConfText } from './tmux/conf.js';
 
@@ -194,19 +194,29 @@ ${o.program.map((a) => `    <string>${xml(a)}</string>`).join('\n')}
 
 // the scripts speak the daemon's socket protocol, so every daemon start refreshes them and the helper that stands in
 // for them; without a built helper the scripts run
-export function installHookScripts(paths: Paths, helper: string = hookHelperSource()): void {
+export function installHookScripts(paths: Paths, helper: string | undefined = hookHelperSource()): void {
   fs.mkdirSync(path.dirname(paths.hookScript), { recursive: true });
   const hooksSrc = assetDir('hooks');
   fs.copyFileSync(path.join(hooksSrc, HOOK_SCRIPT), paths.hookScript);
   fs.copyFileSync(path.join(hooksSrc, 'claude-status.mjs'), paths.statusScript);
-  if (!isExecutable(helper)) { fs.rmSync(paths.hookHelper, { force: true }); return; }
-  // a new file's first run waits ~90 ms on its signature check, so an unchanged one stays
-  if (isExecutable(paths.hookHelper) && fs.readFileSync(helper).equals(fs.readFileSync(paths.hookHelper))) return;
-  // renamed into place, as a hook may be running the old file and macOS kills a process whose binary changes under it
   const tmp = `${paths.hookHelper}.${process.pid}.tmp`;
-  fs.copyFileSync(helper, tmp);
-  fs.chmodSync(tmp, 0o755);
-  fs.renameSync(tmp, paths.hookHelper);
+  try {
+    // a checkout's build older than its sources would run in place of newer scripts
+    if (!helper || !isExecutable(helper) || hookHelperSources.some((s) => fs.statSync(s).mtimeMs > fs.statSync(helper).mtimeMs)) {
+      fs.rmSync(paths.hookHelper, { force: true });
+      return;
+    }
+    // a new file's first run waits ~90 ms on its signature check, so an unchanged one stays
+    if (isExecutable(paths.hookHelper) && fs.readFileSync(helper).equals(fs.readFileSync(paths.hookHelper))) return;
+    // renamed into place, as a hook may be running the old file and macOS kills a process whose binary changes under it
+    fs.copyFileSync(helper, tmp);
+    fs.chmodSync(tmp, 0o755);
+    fs.renameSync(tmp, paths.hookHelper);
+  } catch {
+    // the helper only saves time, so one that cannot be put in place leaves the scripts to run
+    fs.rmSync(tmp, { force: true });
+    fs.rmSync(paths.hookHelper, { force: true });
+  }
 }
 
 // Svall's instructions and the skills the mission control buttons call live in the crew's cwd,
@@ -433,7 +443,7 @@ export const nodeRun = (node: string, script: string): string => `n=${shq(node)}
 // every Claude session on the machine runs the statusline, so outside a character, or once the script
 // is gone, the one the user had runs on its own; inside one, the helper wraps it, or node where there is none
 export const statusWrapper = (node: string, script: string): string => {
-  const helper = shq(path.join(path.dirname(script), HOOK_HELPER));
+  const helper = helperBeside(script);
   return `svall_status() { if [ -n "$SVALL_CHAR_ID" ] && [ -x ${helper} ]; then shift; ${helper} status "$@"; elif [ -n "$SVALL_CHAR_ID" ] && [ -f "$1" ]; then n=${shq(node)}; [ -x "$n" ] || n=node; "$n" "$@"; elif [ -n "$2" ]; then c=$2; shift 2; eval "$c"; fi; }; svall_status ${shq(script)}`;
 };
 

@@ -18,14 +18,15 @@ ARCH="$([ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = 1 ] && echo arm64 || ec
 # GhosttyKit ships headers its umbrella header does not import; the warning is upstream noise
 swift build -c "$CONFIG" --arch "$ARCH" -Xcc -Wno-incomplete-umbrella
 BIN="$(swift build -c "$CONFIG" --arch "$ARCH" --show-bin-path)/Svall"
+# every hook and statusline refresh runs the helper, so a debug app still gets an optimised one
+swift build -c release --arch "$ARCH" -Xcc -Wno-incomplete-umbrella --product svall-hook
+HOOK="$(swift build -c release --arch "$ARCH" --show-bin-path)/svall-hook"
 
 NAME="$([ "$VARIANT" = release ] && echo Svall || echo 'Svall Dev')"
 APP="$MAC/build/$NAME.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Helpers"
 cp "$BIN" "$APP/Contents/MacOS/Svall"
-# svalld copies the helper into every fleet's hooks folder; a checkout's svalld takes it from build/Svall Dev.app
-cp "$(dirname "$BIN")/svall-hook" "$APP/Contents/Helpers/svall-hook"
 # the binary links Sparkle, so every build carries it; only a build with a feed starts it
 FRAMEWORK="$(dirname "$BIN")/Sparkle.framework"
 mkdir -p "$APP/Contents/Frameworks"
@@ -43,6 +44,9 @@ fi
 # the commit count orders builds for the updater
 BUILD="$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 1)"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" "$APP/Contents/Info.plist"
-codesign --force --sign - "$APP/Contents/Helpers/svall-hook"
+# a checkout's svalld copies the helper from here into its fleets, so it lands whole and signed
+cp "$HOOK" "$APP/Contents/Helpers/svall-hook.tmp"
+codesign --force --sign - "$APP/Contents/Helpers/svall-hook.tmp"
+mv "$APP/Contents/Helpers/svall-hook.tmp" "$APP/Contents/Helpers/svall-hook"
 codesign --force --sign - "$APP"
 echo "$APP"

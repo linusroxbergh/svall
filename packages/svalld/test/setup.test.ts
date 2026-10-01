@@ -264,6 +264,24 @@ describe('installHookScripts', () => {
     expect(fs.existsSync(paths.hookHelper)).toBe(false);
     expect(fs.existsSync(paths.hookScript)).toBe(true);
   });
+
+  it("leaves the scripts to run while a checkout's helper is older than its sources", () => {
+    const paths = resolvePaths(makeHome());
+    const helper = built();
+    installHookScripts(paths, helper);
+    fs.utimesSync(helper, new Date(0), new Date(0));
+    installHookScripts(paths, helper);
+    expect(fs.existsSync(paths.hookHelper)).toBe(false);
+    expect(fs.existsSync(paths.hookScript)).toBe(true);
+  });
+
+  it('leaves the scripts to run when the helper cannot be copied, and no half copy behind', () => {
+    const paths = resolvePaths(makeHome());
+    const helper = built();
+    fs.chmodSync(helper, 0o111);
+    expect(() => installHookScripts(paths, helper)).not.toThrow();
+    expect(fs.readdirSync(path.dirname(paths.hookHelper)).sort()).toEqual(['agent-hook.mjs', 'claude-status.mjs']);
+  });
 });
 
 describe('commands Svall 0.1 wrote', () => {
@@ -426,8 +444,6 @@ describe('runSetup', () => {
     };
     expect(run('')).toBe('mine\n');
     expect(fs.existsSync(mark)).toBe(false);
-    // a checkout that has built the app copies its helper in, which runs in node's place
-    fs.rmSync(path.join(home, 'hooks', 'svall-hook'), { force: true });
     expect(run('c1')).toBe('mine\n');
     expect(fs.existsSync(mark)).toBe(true);
     fs.rmSync(path.join(home, 'hooks'), { recursive: true });
