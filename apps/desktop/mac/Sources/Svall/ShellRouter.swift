@@ -114,8 +114,11 @@ final class ShellRouter {
         notifier.clearAll()
         listening = false
         pendingNotify = []
-        // the page a quit was waiting on is gone with nothing of it left to save, so its fleet is ended from here
-        if quitAnswer != nil, !confirming { fleetStopped(ok: false) }
+        // the page a quit was waiting on is gone with nothing of it left to save: the user still answers a quit of theirs,
+        // and the fleet is ended from here
+        if quitAnswer != nil, !confirming {
+            if stopping { fleetStopped(ok: false) } else { answerQuit(unsaved: [], working: 0) }
+        }
     }
 
     /// Quits, unless a quit already waits on the page: AppKit takes a second terminate as a yes to the first.
@@ -130,6 +133,7 @@ final class ShellRouter {
         // a page that is not up has nothing to save and no daemon to ask
         guard listening else {
             guard !confirm || confirmQuit(unsaved: [], working: 0) else { return .terminateCancel }
+            stopping = true
             FleetDaemon.kill()
             return .terminateNow
         }
@@ -173,12 +177,13 @@ final class ShellRouter {
         webView.window?.orderOut(nil)
         let timeout = DispatchWorkItem { [weak self] in self?.fleetStopped(ok: false) }
         quitTimeout = timeout
-        DispatchQueue.main.asyncAfter(deadline: .now() + 8, execute: timeout)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: timeout)
         bridge.send(.quitStop)
     }
 
     private func fleetStopped(ok: Bool) {
         guard quitAnswer != nil else { return }
+        stopping = true
         if !ok { FleetDaemon.kill() }
         finishQuit(true)
     }

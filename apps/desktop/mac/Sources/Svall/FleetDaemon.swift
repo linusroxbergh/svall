@@ -1,7 +1,8 @@
 import Foundation
 
 /// The fleet's daemon, as the launchd job setup writes for a profile's home: launchd starts it only when the app asks,
-/// so it runs while the fleet's window is open. A home with no job (a test fleet's) is left to whoever started it.
+/// so it runs while the fleet's window is open. A home with no job (a test fleet's) runs whatever daemon its owner started,
+/// which a quit stops all the same.
 enum FleetDaemon {
     private static var label: String? {
         Bundle.main.bundleIdentifier.map { $0 + ".svalld" + (SvallHome.directoryName.map { ".\($0)" } ?? "") }
