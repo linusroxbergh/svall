@@ -18,6 +18,8 @@
     "desktop:install": "scripts/desktop-install.sh",
     "app:build": "scripts/app-build.sh",
     "release": "scripts/release.sh",
+    "site:build": "pnpm --filter @svall/desktop-web build:site",
+    "site:shots": "node scripts/site-shots.mjs",
     "site:deploy": "scripts/site-deploy.sh"
   },
   "devDependencies": {
