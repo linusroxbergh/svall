@@ -5,11 +5,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { codexHookCommand, codexPaths, mergeCodexHooks } from '../src/codex/install.js';
-import { isOurs } from '../src/paths.js';
+import { isOurs, resolvePaths } from '../src/paths.js';
 import { BUNDLE_ID, LAUNCHD_LABEL, PRIVATE, profileHome, profileLabel } from '../src/profile.js';
 import { bundleRuntime, checkoutRuntime, type Runtime } from '../src/runtime.js';
 import {
-  HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hookCommand, hooksInstalled, installHomeTemplate, launchdPlist, mergeHooks, mergeStatusLine, nodeRun, plistCurrent, plistRun, readJsonSettings, refreshFleetPlists, runSetup, setupHome,
+  HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hookCommand, hooksInstalled, installHomeTemplate, installHookScripts, launchdPlist, mergeHooks, mergeStatusLine, nodeRun, plistCurrent, plistRun, readJsonSettings, refreshFleetPlists, runSetup, setupHome,
   shimText, shimsCurrent, statusWrapper, takenOverBy, unmergeHooks, unmergeStatusLine, writeJsonSettings,
 } from '../src/setup.js';
 import { shq } from '../src/text.js';
@@ -203,12 +203,144 @@ describe('hookCommand and nodeRun', () => {
     expect(sh((wrapped as { statusLine: { command: string } }).statusLine.command, { SVALL_CHAR_ID: '' })).toBe('args:0\n');
   });
 
+  it('runs the helper beside the script while it is there and executable, with the arguments the script would get', () => {
+    const { dir, script, pinned } = scripts();
+    const helper = path.join(dir, 'svall-hook');
+    fs.writeFileSync(helper, '#!/bin/sh\necho "helper $*"\n', { mode: 0o755 });
+    const wrapped = (inner: string) => (mergeStatusLine({ statusLine: { type: 'command', command: inner } }, statusWrapper(pinned, script), script) as { statusLine: { command: string } }).statusLine.command;
+    expect(sh(hookCommand(pinned, script, 'claude'), { SVALL_CHAR_ID: 'c1' })).toMatch(/^helper claude \d+\n$/);
+    expect(sh(codexHookCommand(script), { SVALL_CHAR_ID: 'c1' })).toMatch(/^helper codex \d+\n$/);
+    expect(sh(wrapped("echo it's mine"), { SVALL_CHAR_ID: 'c1' })).toBe("helper status echo it's mine\n");
+    expect(sh(statusWrapper(pinned, script), { SVALL_CHAR_ID: 'c1' })).toBe('helper status\n');
+    expect(sh(wrapped('echo mine'), { SVALL_CHAR_ID: '' })).toBe('mine\n');
+    fs.chmodSync(helper, 0o644);
+    expect(sh(hookCommand(pinned, script, 'claude'), { SVALL_CHAR_ID: 'c1' })).toBe('pinned\n');
+    expect(sh(wrapped('echo mine'), { SVALL_CHAR_ID: 'c1' })).toBe('pinned\n');
+  });
+
   it('keeps the inner statusline when an earlier wrapper is rebuilt', () => {
     const once = mergeStatusLine({ statusLine: { type: 'command', command: "ccstatusline --it's" } }, nodeRun('/n/node', status), status);
     const moved = statusWrapper('/other/node', status);
     expect((mergeStatusLine(once, moved, status) as { statusLine: { command: string } }).statusLine.command)
       .toBe(`${moved} 'ccstatusline --it'\\''s'`);
   });
+});
+
+describe('installHookScripts', () => {
+  const built = () => {
+    const helper = path.join(makeHome(), 'svall-hook');
+    fs.writeFileSync(helper, '#!/bin/sh\necho one\n', { mode: 0o755 });
+    return helper;
+  };
+
+  it('puts the built helper beside the scripts, and leaves an unchanged one in place', () => {
+    const paths = resolvePaths(makeHome());
+    const helper = built();
+    installHookScripts(paths, helper);
+    expect(fs.readFileSync(paths.hookHelper, 'utf8')).toBe('#!/bin/sh\necho one\n');
+    expect(fs.statSync(paths.hookHelper).mode & 0o777).toBe(0o755);
+    const ino = fs.statSync(paths.hookHelper).ino;
+    installHookScripts(paths, helper);
+    expect(fs.statSync(paths.hookHelper).ino).toBe(ino);
+    expect(fs.readdirSync(path.dirname(paths.hookHelper)).sort()).toEqual(['agent-hook.mjs', 'claude-status.mjs', 'svall-hook']);
+  });
+
+  it('renames a changed helper into place, so a hook running the old one keeps its file', () => {
+    const paths = resolvePaths(makeHome());
+    const helper = built();
+    installHookScripts(paths, helper);
+    const running = fs.openSync(paths.hookHelper, 'r');
+    fs.writeFileSync(helper, '#!/bin/sh\necho two\n');
+    installHookScripts(paths, helper);
+    expect(fs.readFileSync(paths.hookHelper, 'utf8')).toBe('#!/bin/sh\necho two\n');
+    expect(fs.readFileSync(running, 'utf8')).toBe('#!/bin/sh\necho one\n');
+    fs.closeSync(running);
+  });
+
+  it('takes away a helper an earlier start put there once this build has none, so the scripts run', () => {
+    const paths = resolvePaths(makeHome());
+    installHookScripts(paths, built());
+    installHookScripts(paths, path.join(makeHome(), 'svall-hook'));
+    expect(fs.existsSync(paths.hookHelper)).toBe(false);
+    expect(fs.existsSync(paths.hookScript)).toBe(true);
+  });
+
+  it("leaves the scripts to run while a checkout's helper is older than its sources", () => {
+    const paths = resolvePaths(makeHome());
+    const helper = built();
+    installHookScripts(paths, helper);
+    fs.utimesSync(helper, new Date(0), new Date(0));
+    installHookScripts(paths, helper);
+    expect(fs.existsSync(paths.hookHelper)).toBe(false);
+    expect(fs.existsSync(paths.hookScript)).toBe(true);
+  });
+
+  it('leaves the scripts to run when the helper cannot be copied, and no half copy behind', () => {
+    const paths = resolvePaths(makeHome());
+    const helper = built();
+    fs.chmodSync(helper, 0o111);
+    expect(() => installHookScripts(paths, helper)).not.toThrow();
+    expect(fs.readdirSync(path.dirname(paths.hookHelper)).sort()).toEqual(['agent-hook.mjs', 'claude-status.mjs']);
+  });
+});
+
+describe('commands Svall 0.1 wrote', () => {
+  // what setup wrote before the helper, word for word
+  const v01 = {
+    hook: (node: string, script: string) => `[ -z "$SVALL_CHAR_ID" ] || { n=${shq(node)}; [ -x "$n" ] || n=node; "$n" ${shq(script)} claude "$PPID"; }`,
+    codex: (script: string, node: string) => `[ -z "$SVALL_CHAR_ID" ] || { n=${shq(node)}; [ -x "$n" ] || n=node; "$n" ${shq(script)} codex "$PPID"; }`,
+    status: (node: string, script: string) =>
+      `svall_status() { if [ -n "$SVALL_CHAR_ID" ] && [ -f "$1" ]; then n=${shq(node)}; [ -x "$n" ] || n=node; "$n" "$@"; elif [ -n "$2" ]; then c=$2; shift 2; eval "$c"; fi; }; svall_status ${shq(script)}`,
+  };
+  const R = { hook: '/u/.svall/hooks/agent-hook.mjs', status: '/u/.svall/hooks/claude-status.mjs' };
+  const D = { hook: '/u/.svall-dev/hooks/agent-hook.mjs', status: '/u/.svall-dev/hooks/claude-status.mjs' };
+  const command = (s: Record<string, unknown>) => (s.statusLine as { command: string }).command;
+  const old = (v: typeof R, inner?: string) => ({
+    hooks: { Stop: [{ matcher: '*', hooks: [{ type: 'command', command: v01.hook('/n/node', v.hook), timeout: 10 }, { type: 'command', command: 'mine.sh' }] }] },
+    statusLine: { type: 'command', command: inner ? `${v01.status('/n/node', v.status)} ${shq(inner)}` : v01.status('/n/node', v.status) },
+  });
+  const now = (s: Record<string, unknown>, v: typeof R) =>
+    mergeStatusLine(mergeHooks(s, hookCommand('/n/node', v.hook, 'claude'), ['Stop'], v.hook), statusWrapper('/n/node', v.status), v.status);
+
+  it('rewrites them for the helper, keeping the hooks and the statusline beside them', () => {
+    const out = now(old(R, "ccstatusline --it's"), R) as { hooks: Record<string, { hooks: { command: string }[] }[]> };
+    expect(out.hooks.Stop[0].hooks.map((h) => h.command)).toEqual([hookCommand('/n/node', R.hook, 'claude'), 'mine.sh']);
+    expect(command(out)).toBe(`${statusWrapper('/n/node', R.status)} ${shq("ccstatusline --it's")}`);
+    expect(hooksInstalled(old(R), ['Stop'], '/u/.svall')).toBe(true);
+    expect(claudeHooksCurrent(old(R), '/u/.svall')).toBe(false);
+    const codex = { hooks: { Stop: [{ hooks: [{ type: 'command', command: v01.codex(R.hook, '/A/node') }] }] } };
+    expect((mergeCodexHooks(codex, codexHookCommand(R.hook), R.hook) as { hooks: { Stop: { hooks: { command: string }[] }[] } }).hooks.Stop[0].hooks)
+      .toEqual([expect.objectContaining({ command: codexHookCommand(R.hook) })]);
+  });
+
+  it('takes them out on the way out', () => {
+    expect(unmergeStatusLine(unmergeHooks(old(R, 'my-status'), R.hook), R.status))
+      .toEqual({ hooks: { Stop: [{ matcher: '*', hooks: [{ type: 'command', command: 'mine.sh' }] }] }, statusLine: { type: 'command', command: 'my-status' } });
+  });
+
+  // each variant updates on its own, so a 0.1 wrapper sits outside or inside the other variant's newer one
+  const wrap = (s: Record<string, unknown>, v: typeof R) => mergeStatusLine(s, statusWrapper('/n/node', v.status), v.status);
+  for (const [first, second] of [[R, D], [D, R]]) {
+    const start = { statusLine: { type: 'command', command: 'my-status' } };
+    const current = wrap(wrap(start, first), second);
+
+    it(`nests a 0.1 wrapper outside a newer one (${first === R ? 'release' : 'dev'} outside)`, () => {
+      const both = wrap({ statusLine: old(first, 'my-status').statusLine }, second);
+      expect(command(both).startsWith(v01.status('/n/node', first.status))).toBe(true);
+      expect(wrap(both, second)).toEqual(both);
+      expect(wrap(both, first)).toEqual(current);
+      expect(unmergeStatusLine(both, first.status)).toEqual(wrap(start, second));
+      expect(command(unmergeStatusLine(both, second.status))).toBe(`${v01.status('/n/node', first.status)} 'my-status'`);
+    });
+
+    it(`nests a 0.1 wrapper inside a newer one (${first === R ? 'release' : 'dev'} outside)`, () => {
+      const both = { statusLine: { type: 'command', command: `${statusWrapper('/n/node', first.status)} ${shq(`${v01.status('/n/node', second.status)} 'my-status'`)}` } };
+      expect(wrap(both, first)).toEqual(both);
+      expect(wrap(both, second)).toEqual(current);
+      expect(unmergeStatusLine(both, second.status)).toEqual(wrap(start, first));
+      expect(command(unmergeStatusLine(both, first.status))).toBe(`${v01.status('/n/node', second.status)} 'my-status'`);
+    });
+  }
 });
 
 describe('launchdPlist', () => {
@@ -785,9 +917,9 @@ describe('a bundled runtime', () => {
     expect(text).toContain(`<key>AssociatedBundleIdentifiers</key><array><string>${BUNDLE_ID}</string></array>`);
   });
 
-  it("names the app's node in Codex's hook, falling back to the one on PATH", () => {
+  it("names the app's node in Codex's hook for when the helper is missing, falling back to the one on PATH", () => {
     expect(codexHookCommand('/h/.svall/hooks/agent-hook.mjs', '/A/node'))
-      .toBe(`[ -z "$SVALL_CHAR_ID" ] || { n='/A/node'; [ -x "$n" ] || n=node; "$n" '/h/.svall/hooks/agent-hook.mjs' codex "$PPID"; }`);
+      .toBe(`[ -z "$SVALL_CHAR_ID" ] || { if [ -x '/h/.svall/hooks/svall-hook' ]; then '/h/.svall/hooks/svall-hook' codex "$PPID"; else n='/A/node'; [ -x "$n" ] || n=node; "$n" '/h/.svall/hooks/agent-hook.mjs' codex "$PPID"; fi; }`);
   });
 });
 

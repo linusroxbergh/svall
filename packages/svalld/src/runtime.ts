@@ -27,6 +27,16 @@ export const mobileDist = bundled ? path.join(here, 'mobile') : path.resolve(her
 /** A binary the app ships in Contents/Helpers; undefined in a checkout. */
 export const helper = (name: string): string | undefined => bundled ? path.resolve(here, '../../Helpers', name) : undefined;
 
+/** The compiled hook helper: the app's, or for Svall Dev the one apps/desktop/mac/build.sh put in its checkout's Svall Dev.app. */
+export const hookHelperSource = (): string | undefined =>
+  helper('svall-hook') ?? (variant === 'dev' ? path.resolve(here, '../../../apps/desktop/mac/build/Svall Dev.app/Contents/Helpers/svall-hook') : undefined);
+
+/** What a checkout's helper must be newer than: its source and the scripts it stands in for. The app's was built with its own. */
+export const hookHelperSources: string[] = bundled ? [] : [
+  path.resolve(here, '../../../apps/desktop/mac/Sources/SvallHook/main.swift'),
+  ...['agent-hook.mjs', 'claude-status.mjs'].map((name) => path.join(assetDir('hooks'), name)),
+];
+
 /** How to run the daemon and the CLI: from a checkout's sources through tsx, or on the app's own node. */
 export type Runtime = { daemon: string[]; cli: string[]; bundle?: string };
 

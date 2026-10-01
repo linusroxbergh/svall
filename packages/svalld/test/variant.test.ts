@@ -31,6 +31,14 @@ describe('variant names', () => {
     expect([p.DEFAULT_PORT, p.PRIVATE_HTTPS_PORT, p.HOME_CWD]).toEqual([47800, 443, '~/.svall/home']);
   });
 
+  it("hands a checkout's Svall Dev.app helper to Svall Dev only", async () => {
+    vi.stubEnv('SVALL_VARIANT', 'dev');
+    expect((await import('../src/runtime.js')).hookHelperSource()).toMatch(/\/build\/Svall Dev\.app\/Contents\/Helpers\/svall-hook$/);
+    vi.resetModules();
+    vi.stubEnv('SVALL_VARIANT', 'release');
+    expect((await import('../src/runtime.js')).hookHelperSource()).toBeUndefined();
+  });
+
   it("tells a home's variant by its folder name, and claims no other home", async () => {
     const { variantOf } = await names('release');
     expect(variantOf('/u/.svall')).toBe('release');

@@ -25,5 +25,12 @@ let package = Package(
                 .linkedFramework("UserNotifications"),
             ]
         ),
+        // the hook and statusline helper svalld copies into every fleet's hooks folder
+        .executableTarget(
+            name: "svall-hook",
+            path: "Sources/SvallHook",
+            // the build links Foundation, which it never calls and which costs every launch a millisecond
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-dead_strip_dylibs"])]
+        ),
     ]
 )

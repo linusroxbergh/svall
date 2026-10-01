@@ -41,8 +41,8 @@ describe('mergeCodexHooks', () => {
     expect(codexInstalled({}, SCRIPT)).toBe(false);
   });
 
-  it('names plain node, so a node upgrade leaves the hook trusted', () => {
-    expect(CMD).toBe(`[ -z "$SVALL_CHAR_ID" ] || { node '/h/agent-hook.mjs' codex "$PPID"; }`);
+  it('runs the helper beside the script, else plain node, so a node upgrade leaves the hook trusted', () => {
+    expect(CMD).toBe(`[ -z "$SVALL_CHAR_ID" ] || { if [ -x '/h/svall-hook' ]; then '/h/svall-hook' codex "$PPID"; else node '/h/agent-hook.mjs' codex "$PPID"; fi; }`);
   });
 
   it('repairs an earlier command for the same script and keeps a hook of the user own', () => {

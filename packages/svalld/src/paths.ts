@@ -2,8 +2,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PRIVATE, profileHome } from './profile.js';
+import { shq } from './text.js';
 
 export const HOOK_SCRIPT = 'agent-hook.mjs';
+/** The compiled stand-in for the hook and statusline scripts, which svalld copies beside them. */
+export const HOOK_HELPER = 'svall-hook';
 // an install may still name the script claude-hook.mjs; that entry is ours to repair and remove too
 const HOOK_NAMES = [HOOK_SCRIPT, 'claude-hook.mjs'];
 
@@ -11,6 +14,15 @@ const HOOK_NAMES = [HOOK_SCRIPT, 'claude-hook.mjs'];
 export const isOurs = (command: unknown, script: string): boolean =>
   typeof command === 'string' && HOOK_NAMES.map((n) => path.join(path.dirname(script), n))
     .some((p) => command.includes(p) || command.includes(p.replace(/'/g, `'\\''`)));
+
+/** The helper beside `script`, quoted for the shell. */
+export const helperBeside = (script: string): string => shq(path.join(path.dirname(script), HOOK_HELPER));
+
+/** Runs the helper beside `script` with `args` while it is there and executable, else `fallback`, the script on node. */
+export const helperOr = (script: string, args: string, fallback: string): string => {
+  const helper = helperBeside(script);
+  return `if [ -x ${helper} ]; then ${helper} ${args}; else ${fallback} ${args}; fi`;
+};
 
 export function svallHome(): string {
   return process.env.SVALL_HOME ?? profileHome(PRIVATE);
@@ -31,6 +43,7 @@ export function resolvePaths(home: string = svallHome()) {
     tmuxConf: path.join(home, 'tmux.conf'),
     hookScript: path.join(home, 'hooks', HOOK_SCRIPT),
     statusScript: path.join(home, 'hooks', 'claude-status.mjs'),
+    hookHelper: path.join(home, 'hooks', HOOK_HELPER),
     push: path.join(home, 'push.json'),
     vapid: path.join(home, 'vapid.json'),
     docs: path.join(home, 'docs'),

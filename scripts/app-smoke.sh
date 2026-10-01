@@ -33,6 +33,17 @@ daemon() {
   "$A/Helpers/tmux" -S "$F/tmux.sock" kill-server 2>/dev/null
   [ "$UP" = 0 ] || { cat "$F/svalld.log" "$T/svalld.err" >&2 2>/dev/null; return 1; }
 }
+# the signed helper setup put in the fleet runs a wrapped statusline and reports, to a home named like the release's
+reports() {
+  H="$T/.svall-smoke"
+  mkdir -p "$H" || return 1
+  "$A/Helpers/node" -e 'setTimeout(() => process.exit(1), 5000); require("net").createServer((c) => c.on("data", (d) => { process.stdout.write(d); process.exit(0); })).listen(process.argv[1])' "$H/hooks.sock" >"$T/report" &
+  P=$! i=0
+  while [ ! -S "$H/hooks.sock" ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+  OUT="$(printf '{"context_window":{"used_percentage":7}}' | SVALL_HOME="$H" SVALL_CHAR_ID=c_smoke "$HOME/.svall/hooks/svall-hook" status 'echo ok')"
+  wait "$P"
+  [ "$OUT" = ok ] && grep -q '"contextPct":7' "$T/report"
+}
 PLIST="$HOME/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld.plist"
 
 PLAN="$(cli setup --plan)"
@@ -42,6 +53,8 @@ check "plist runs the app's node" 'grep -q "<string>$A/Helpers/node</string>" "$
 check "plist PATH leaves Helpers out" '! grep "<key>PATH</key>" "$PLIST" | grep -q Helpers'
 check "shim execs the app's CLI" 'grep -q "$A/Resources/runtime/svall.mjs" "$HOME/.local/bin/svall"'
 check "hooks run the app's node" 'grep "$A/Helpers/node" "$HOME/.claude/settings.json" | grep -q agent-hook'
+check "the hook helper sits beside the scripts" '[ -x "$HOME/.svall/hooks/svall-hook" ] && grep -q "hooks/svall-hook" "$HOME/.claude/settings.json"'
+check "the hook helper runs and reports" reports
 check "refresh finds nothing to do" 'R="$(cli setup --if-needed --json)"; printf %s "$R" | grep -q "\"done\": *\[\]" && printf %s "$R" | grep -q "\"warnings\": *\[\]"'
 check "a second copy leaves the fleets alone" 'O="$T/Other/Svall.app/Contents"; "$O/Helpers/node" "$O/Resources/runtime/svall.mjs" setup --if-needed --json | grep -q "runs these fleets" && grep -q "<string>$A/Helpers/node</string>" "$PLIST"'
 check "the bundled daemon starts" daemon
