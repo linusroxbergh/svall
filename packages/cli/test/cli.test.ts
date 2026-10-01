@@ -175,6 +175,34 @@ describe('svall setup --agents', () => {
     }
   });
 
+  it('offers a projects folder in the plan, and makes and saves the one chosen as where new characters start', async () => {
+    const home = makeHome();
+    try {
+      fs.mkdirSync(path.join(home, 'Projects'));
+      const env = { HOME: home, PATH: tools(home) };
+      expect(JSON.parse((await run(env, 'setup', '--plan')).stdout).projects).toBe('~/Projects');
+      const r = await run(env, 'setup', '--no-launchctl', '--agents', 'codex', '--projects', '~/Developer');
+      expect(r.code).toBe(0);
+      expect(fs.statSync(path.join(home, 'Developer')).isDirectory()).toBe(true);
+      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toMatchObject({ defaultCwd: '~/Developer' });
+      expect(JSON.parse((await run(env, 'setup', '--plan')).stdout).projects).toBe('~/Developer');
+    } finally {
+      cleanHomes();
+    }
+  });
+
+  it('changes nothing when the projects folder is a file', async () => {
+    const home = makeHome();
+    try {
+      fs.writeFileSync(path.join(home, 'code'), '');
+      const r = await run({ HOME: home, PATH: tools(home) }, 'setup', '--no-launchctl', '--agents', 'codex', '--projects', '~/code');
+      expect(r.stderr).toContain('~/code is a file, not a folder');
+      expect(fs.existsSync(path.join(home, '.svall'))).toBe(false);
+    } finally {
+      cleanHomes();
+    }
+  });
+
   it('makes the one left on the main agent when the saved main agent is turned off', async () => {
     const home = makeHome();
     try {

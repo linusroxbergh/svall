@@ -64,7 +64,8 @@ or both.
      refuses while Svall is running, and opens the app.
 
 3. The first launch shows the setup screen: each agent it found with a toggle,
-   the files setup writes, and one "Set up" button. An agent you turn off gets
+   your projects folder, where new characters start (made if missing), the
+   files setup writes, and one "Set up" button. An agent you turn off gets
    no hooks; one you install later does. If `~/.local/bin` isn't on your PATH,
    the screen shows the line to add to your shell profile, so the `svall`
    command works in a terminal; no shell file is edited for you. Setup
@@ -366,7 +367,7 @@ Its `config.json` takes:
 | --- | --- |
 | `name` | What the window title and `svall <name>` call the fleet: lowercase letters, digits and dashes, starting with a letter, and not an `svall` command. Absent, the directory names it. Set from Settings. |
 | `port`, `host` | Where the daemon listens, `47800` on `127.0.0.1` by default. Any address off loopback sends the API token in plain text. |
-| `defaultCwd` | Where a new character starts when no character beside it gives it a directory (default `~`). |
+| `defaultCwd` | Where a new character starts when no character beside it gives it a directory (default `~`). Set by the setup screen's projects folder or `svall setup --projects`. |
 | `shell` | The shell a terminal runs, if not your login shell. |
 | `linear` | `{ "workspace": "acme", "teamKeys": ["ENG"] }` links a branch named after a Linear issue to that issue. |
 | `mainAgent` | `claude` or `codex`: what the scribe, mission control's crew and `svall char new --run` run by default. Absent, the private fleet's, else the only CLI installed, else `claude`. Set from the app or with `svall agent <name>`. |

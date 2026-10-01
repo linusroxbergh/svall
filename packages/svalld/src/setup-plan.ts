@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { AgentKind } from '@svall/protocol';
+import { DEFAULT_CWD, type AgentKind } from '@svall/protocol';
 import { AGENTS, AGENT_KINDS } from './agents.js';
 import { loadConfig } from './config.js';
-import { resolvePaths } from './paths.js';
+import { expandHome, resolvePaths } from './paths.js';
 import { LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from './profile.js';
 import { bundledVersion, type Runtime } from './runtime.js';
 
@@ -11,12 +11,12 @@ import { bundledVersion, type Runtime } from './runtime.js';
 export type FoundAgent = { kind: AgentKind; path: string; version?: string; folderOnly?: boolean };
 export type SetupPlan = {
   agents: FoundAgent[]; integrations?: AgentKind[]; writes: { what: string; path: string; agent?: AgentKind }[];
-  shimDir: string; shimOnPath: boolean; blockers: string[];
+  shimDir: string; shimOnPath: boolean; blockers: string[]; projects: string;
 };
 
 /** What the app's setup screen shows before anything is written: the screen leaves out the files of the agents it turns off. */
 export function setupPlan(o: {
-  home: string; found: FoundAgent[]; folders: FoundAgent[]; integrations?: AgentKind[]; settingsPath: string; codexHooks: string;
+  home: string; projects: string; found: FoundAgent[]; folders: FoundAgent[]; integrations?: AgentKind[]; settingsPath: string; codexHooks: string;
   launchAgentsDir: string; fleets: string[]; shimDir: string; pathEnv: string; answered: boolean; cli: string;
 }): SetupPlan {
   // setup writes an agent's hooks when its CLI is on PATH or its own folder is here
@@ -34,8 +34,29 @@ export function setupPlan(o: {
   if (!o.answered) blockers = [`Your login shell did not answer within 5 seconds, so Svall cannot see where Claude Code and Codex are. Check again, or run ${o.cli} setup in a terminal.`];
   else if (!o.found.length) blockers = [`Install ${AGENT_KINDS.map((k) => `${AGENTS[k].label} (${AGENTS[k].installUrl})`).join(' or ')} first, then check again.`];
   return {
-    agents, integrations: o.integrations, writes, shimDir: o.shimDir, shimOnPath: o.pathEnv.split(':').includes(o.shimDir), blockers,
+    agents, integrations: o.integrations, writes, shimDir: o.shimDir, shimOnPath: o.pathEnv.split(':').includes(o.shimDir), blockers, projects: o.projects,
   };
+}
+
+const PROJECT_DIRS = ['Developer', 'Projects', 'Code', 'src', 'dev', 'repos', 'workspace', 'git'];
+
+/** The folder setup offers for new characters to start in: the one saved before, else the first usual code folder in
+ *  `userHome`, else ~/Developer. An agent started in home reads Documents, Downloads and Music, each asking for access. */
+export function suggestProjects(userHome: string, saved: string): string {
+  if (saved !== DEFAULT_CWD) return saved;
+  let names: string[] = [];
+  try { names = fs.readdirSync(userHome); } catch { /* none to offer */ }
+  const found = PROJECT_DIRS.map((d) => names.find((n) => n.toLowerCase() === d.toLowerCase()))
+    .find((n) => n && fs.statSync(path.join(userHome, n), { throwIfNoEntry: false })?.isDirectory());
+  return `~/${found ?? 'Developer'}`;
+}
+
+/** The projects folder as typed, to save once checked: a full path or one from ~, a folder or still to be made. */
+export function projectsFolder(input: string): string {
+  const dir = input.trim();
+  if (!path.isAbsolute(expandHome(dir))) throw new Error('the projects folder must be a full path or start with ~');
+  if (fs.statSync(expandHome(dir), { throwIfNoEntry: false })?.isFile()) throw new Error(`${dir} is a file, not a folder`);
+  return dir;
 }
 
 /** The integrations to save: the agents chosen, and every one not found now that was not turned off before, so an agent

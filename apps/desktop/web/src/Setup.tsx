@@ -4,18 +4,20 @@ import { createBridge } from './bridge.js';
 
 type Plan = {
   agents: { kind: AgentKind; path: string; version?: string; folderOnly?: boolean }[]; integrations?: AgentKind[]; writes: { what: string; path: string; agent?: AgentKind }[];
-  shimDir: string; shimOnPath: boolean; blockers: string[];
+  shimDir: string; shimOnPath: boolean; blockers: string[]; projects: string;
 };
 
 export function Setup() {
   const [bridge] = useState(createBridge);
   const [plan, setPlan] = useState<Plan>();
   const [off, setOff] = useState<AgentKind[]>([]);
+  const [projects, setProjects] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [warnings, setWarnings] = useState<string[]>();
 
   useEffect(() => bridge.onMessage((m) => {
+    if (m.type === 'folder.picked') { setProjects(m.path); return; }
     if (m.type !== 'setup.result') return;
     setBusy(false);
     if (!m.ok) { setError(m.json.trim()); return; }
@@ -24,6 +26,7 @@ export function Setup() {
       setPlan(p);
       // an agent turned off at an earlier setup starts off
       setOff(p.agents.map((a) => a.kind).filter((k) => p.integrations && !p.integrations.includes(k)));
+      setProjects((typed) => typed || p.projects);
       setError(undefined);
       return;
     }
@@ -69,6 +72,14 @@ export function Setup() {
         ))}
       </section>}
       <section>
+        <h2>Projects folder</h2>
+        <p>New characters start here, so agents work in your code rather than your whole home folder.</p>
+        <div className="setup-folder">
+          <input type="text" value={projects} aria-label="Projects folder" spellCheck={false} onChange={(e) => setProjects(e.target.value)} />
+          <button type="button" onClick={() => bridge.send({ type: 'folder.pick', start: projects.trim() || '~' })}>Choose…</button>
+        </div>
+      </section>
+      <section>
         <h2>What setup writes</h2>
         <ul>{writes.map((w) => <li key={w.path}>{w.what} <code>{w.path}</code></li>)}</ul>
       </section>
@@ -79,7 +90,7 @@ export function Setup() {
       </section>}
       {error && <p className="setup-error">{error}</p>}
       {/* the main agent must be one whose CLI setup found */}
-      <button type="button" disabled={busy || !on.some((a) => !a.folderOnly) || plan.blockers.length > 0} onClick={() => { setBusy(true); bridge.send({ type: 'setup.run', agents: on.map((a) => a.kind), found: plan.agents.map((a) => a.kind) }); }}>Set up</button>
+      <button type="button" disabled={busy || !on.some((a) => !a.folderOnly) || plan.blockers.length > 0 || !projects.trim()} onClick={() => { setBusy(true); bridge.send({ type: 'setup.run', agents: on.map((a) => a.kind), found: plan.agents.map((a) => a.kind), projects: projects.trim() }); }}>Set up</button>
       {plan.blockers.length > 0 && <button type="button" disabled={busy} onClick={check}>Check again</button>}
     </div>
   );

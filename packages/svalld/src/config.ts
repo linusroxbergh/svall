@@ -67,7 +67,7 @@ export function parseConfig(text: string, file: string): Config {
 
 /** Sets the keys of `patch` in `file` and keeps every other key; a file that does not parse is refused, not replaced.
  *  A linked file (stow, home-manager) is written where it points, with the mode it had. */
-export function saveConfig(file: string, patch: Partial<Pick<Config, 'mainAgent' | 'name' | 'integrations'>>): void {
+export function saveConfig(file: string, patch: Partial<Pick<Config, 'mainAgent' | 'name' | 'integrations' | 'defaultCwd'>>): void {
   const there = fs.existsSync(file);
   const text = there ? fs.readFileSync(file, 'utf8') : '{}';
   parseConfig(text, file);
