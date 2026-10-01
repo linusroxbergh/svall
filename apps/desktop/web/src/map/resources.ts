@@ -13,6 +13,10 @@ const MIN_HOME_SCALE = 0.5;
 
 export type Placement = { mode: 'pair' | 'pill'; homeShift: number; cx: number; scale: number; homeScale: number };
 
+/** The widest home, in cells, that stands beside the islet at full size, before placeIslet squeezes anything. */
+export const homeRoom = (hostW: number): number =>
+  Math.max(0, Math.floor((hostW - 2 * ISLET.margin - ISLET.gap - ISLET.w) / theme.cell));
+
 /** Home and the islet are centred as one group; a map too narrow for both squeezes the water between them,
  *  then the islet, then home, which shrinks towards its bottom centre, so the lighthouse keeps its place beside
  *  mission control. Folded, home has no land to stand it beside, so the islet is only its pill. `most` caps home at

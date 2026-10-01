@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ISLET, placeIslet } from '../src/map/resources.js';
+import { ISLET, homeRoom, placeIslet } from '../src/map/resources.js';
+import { theme } from '../src/theme.js';
 
 const HOME = 748;
 const TOTAL = HOME + ISLET.gap + ISLET.w;
@@ -59,5 +60,22 @@ describe('placeIslet', () => {
     expect(placeIslet(edge, HOME, false).scale).toBe(1);
     expect(placeIslet(edge - 1, HOME, false).scale).toBe(1);
     expect(placeIslet(900, HOME, false).scale).toBeLessThan(1);
+  });
+});
+
+describe('homeRoom', () => {
+  it('is the widest home in cells that stands beside the islet unsqueezed, and none on a map too narrow', () => {
+    // the water between home and the islet, the first thing a squeeze gives up
+    const gap = (hostW: number, cells: number) => {
+      const hw = cells * theme.cell, p = placeIslet(hostW, hw, false);
+      return p.cx - (ISLET.w * p.scale) / 2 - (hostW / 2 + p.homeShift + (hw * p.homeScale) / 2);
+    };
+    for (const hostW of [1512, 991, 700]) {
+      const cells = homeRoom(hostW);
+      expect(placeIslet(hostW, cells * theme.cell, false)).toMatchObject({ scale: 1, homeScale: 1 });
+      expect(gap(hostW, cells)).toBeCloseTo(ISLET.gap);
+      expect(gap(hostW, cells + 1)).toBeLessThan(ISLET.gap);
+    }
+    expect(homeRoom(200)).toBe(0);
   });
 });

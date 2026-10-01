@@ -4,8 +4,9 @@ import { AgentKind, isSessionId } from '@svall/protocol';
 import type { Logger } from '../log.js';
 
 // Claude Code ends a turn an API error cut short with StopFailure, in place of Stop. PermissionRequest and
-// SubagentStop only say which subagent asked and when it is gone
-export const CLAUDE_HOOKS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'Notification', 'Stop', 'StopFailure', 'SubagentStop', 'SessionEnd'] as const;
+// SubagentStop only say which subagent asked and when it is gone. A tool that has run, or failed, was answered
+// if it asked, which is the first word that a picked choice gives
+export const CLAUDE_HOOKS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest', 'Notification', 'Stop', 'StopFailure', 'SubagentStop', 'SessionEnd'] as const;
 // codex asks permission through an event of its own, where Claude Code sends a notification, and says
 // when the tool it asked about has run, which is the only word that the wait is over. An Esc ends its turn with Interrupt
 export const CODEX_HOOKS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'Stop', 'Interrupt', 'SessionEnd'] as const;
@@ -28,6 +29,8 @@ export type HookEvent = {
   backgroundAgents?: number;
   // the Claude Code subagent the event came from
   agentId?: string;
+  // the tool a tool or permission event is about
+  toolName?: string;
   cwd?: string;
   // 2 when the event comes from the character's second terminal
   term?: 2;
@@ -134,6 +137,8 @@ export function normalizeHook(raw: unknown): HookEvent | undefined {
   if (message) ev.message = message.slice(0, 500);
   const model = str(h.model);
   if (model) ev.model = model.slice(0, 100);
+  const toolName = str(h.tool_name);
+  if (toolName) ev.toolName = toolName.slice(0, 200);
   if (agents) ev.backgroundAgents = agents;
   if (ev.name === 'UserPromptSubmit') {
     const submitted = prompt(h);

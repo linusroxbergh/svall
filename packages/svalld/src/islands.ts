@@ -74,8 +74,8 @@ export function updateIsland({ store, log }: Deps, id: string, patch: IslandPatc
 }
 
 // one update for the whole fleet: islands moved one at a time would collide with the ones still to move
-export function arrangeIslands({ store }: Deps, aspect?: number): void {
-  store.update((d) => arrangeFleet(d, aspect));
+export function arrangeIslands({ store }: Deps, aspect?: number, homeRoom?: number): void {
+  store.update((d) => arrangeFleet(d, aspect, homeRoom));
 }
 
 // a sidebar drop numbers every island in the new order, so islands made later follow them

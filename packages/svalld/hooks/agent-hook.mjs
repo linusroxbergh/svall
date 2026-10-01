@@ -29,7 +29,7 @@ safety.unref();
 const WAITS = new Set(['SessionStart', 'UserPromptSubmit']);
 
 // only what the daemon reads: a whole payload carries tool_input, which can run past the receiver's line limit
-const KEEP = ['hook_event_name', 'agent_id', 'session_id', 'transcript_path', 'notification_type', 'message', 'background_tasks', 'cwd', 'model', 'prompt', 'prompt_id', 'turn_id'];
+const KEEP = ['hook_event_name', 'agent_id', 'session_id', 'transcript_path', 'notification_type', 'message', 'background_tasks', 'cwd', 'model', 'prompt', 'prompt_id', 'turn_id', 'tool_name'];
 // a pasted prompt runs to megabytes; only its head is ever shown, and the whole line must stay under the limit
 const clip = (k, v) => (k === 'prompt' && typeof v === 'string' ? v.slice(0, 4000) : v);
 const fields = (h) => Object.fromEntries(KEEP.filter((k) => h[k] !== undefined).map((k) => [k, clip(k, h[k])]));
@@ -52,7 +52,7 @@ const failed = (h) => {
 // Nor is any event within a minute of one giving up, so a daemon that stays down holds up one hook a minute
 const RETRIES = 8;
 const RETRY_MS = 250;
-const ONCE = new Set(['PreToolUse', 'PostToolUse']);
+const ONCE = new Set(['PreToolUse', 'PostToolUse', 'PostToolUseFailure']);
 const DOWN = path.join(home, 'hooks.down');
 const gaveUpLately = () => { try { return Date.now() - fs.statSync(DOWN).mtimeMs < 60_000; } catch { return false; } };
 

@@ -18,7 +18,7 @@ import { HoverCard } from './HoverCard.js';
 import { DBL_CLICK_MS, createInteractions, type Intent } from './interactions.js';
 import { Island } from './Island.js';
 import { cardScale, cellSize, clampPan, crewOf, islandNear, labelScale, landSpan, limitAt, mapIslands, onBlocks, screenToCell, worldBounds, worldCell, worldToScreen, type Below, type Layout } from './layout.js';
-import { ISLET, placeIslet } from './resources.js';
+import { ISLET, homeRoom, placeIslet } from './resources.js';
 import { ResourcesIsland, ResourcesPill } from './ResourcesIsland.js';
 import { TerminalCard } from './TerminalCard.js';
 import { Token } from './Token.js';
@@ -375,7 +375,7 @@ export function Map() {
     if (w <= 0 || h <= 0) return;
     // the map's own shape says whether it is squeezed, whatever margins the fit keeps inside it
     if (automatic && room.w / room.h < MIN_ARRANGE_ASPECT) return;
-    arrangeIslands(deps(), w / h);
+    arrangeIslands(deps(), w / h, homeRoom(el.clientWidth));
   };
   const arrangeRef = useRef(() => arrange(true));
   arrangeRef.current = () => arrange(true);

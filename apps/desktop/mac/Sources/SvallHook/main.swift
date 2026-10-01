@@ -465,9 +465,9 @@ func connectTo(_ path: Bytes) -> (fd: Int32, error: Int32) {
 
 // MARK: agent-hook.mjs
 
-let KEEP = ["hook_event_name", "agent_id", "session_id", "transcript_path", "notification_type", "message", "background_tasks", "cwd", "model", "prompt", "prompt_id", "turn_id"]
+let KEEP = ["hook_event_name", "agent_id", "session_id", "transcript_path", "notification_type", "message", "background_tasks", "cwd", "model", "prompt", "prompt_id", "turn_id", "tool_name"]
 let WAITS = [text("SessionStart"), text("UserPromptSubmit")]
-let ONCE = [text("PreToolUse"), text("PostToolUse")]
+let ONCE = [text("PreToolUse"), text("PostToolUse"), text("PostToolUseFailure")]
 let RETRIES = 8
 
 /// a ?? b: b where a is null or missing.

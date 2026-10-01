@@ -366,6 +366,22 @@ describe('Scribe, swept', () => {
     expect(w.store.state.characters.a.context).toEqual([{ kind: 'pr', ref: pr, label: '#42', source: 'scribe' }]);
   });
 
+  it("holds the branch's PR in place of its auto chip, with its state, beside a second PR the work is on", async () => {
+    const own = 'https://github.com/o/r/pull/42', other = 'https://github.com/o/r/pull/41';
+    // listed second, the branch's own PR still leads
+    const w = world(answer({ links: [{ url: other, label: '#41' }, { url: own, label: '#42' }] }));
+    w.island('i1');
+    w.char('a', { context: [{ kind: 'pr', ref: own, label: '#42', source: 'auto', prState: 'draft' }] });
+    const file = w.store.state.characters.a.agent!.transcriptPath!;
+    fs.writeFileSync(file, JSON.stringify({ type: 'user', message: { content: `Rebase ${other} onto main` } }) + '\n');
+    await w.scribe.sweep();
+    expect(w.calls[0].system).toContain('every PR');
+    expect(w.store.state.characters.a.context).toEqual([
+      { kind: 'pr', ref: own, label: '#42', source: 'scribe', prState: 'draft' },
+      { kind: 'pr', ref: other, label: '#41', source: 'scribe' },
+    ]);
+  });
+
   it('puts the PR the work is on in front of every link, and leaves it there on the next pass', async () => {
     const pr = 'https://github.com/o/r/pull/42';
     const w = world(answer({ links: [{ url: 'https://docs.example/plan', label: 'plan' }, { url: pr, label: '#42' }] }));

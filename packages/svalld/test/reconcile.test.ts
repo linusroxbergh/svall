@@ -262,12 +262,12 @@ describe('trimHome', () => {
     xs.forEach((x, n) => { s.characters[`c${n}`] = char({ id: `c${n}`, islandId: HOME_ISLAND, cell: { x, y: 1 } }); });
     return s;
   };
-  it('drops the empty slots past the last crew member and moves nobody', () => {
+  it('drops the empty slots past the last crew member but one, and moves nobody', () => {
     const s = crew([1, 7]);
     // a character on another island is no crew of home's, wherever it stands
     s.characters.far = char({ id: 'far', islandId: 'i_1', cell: { x: 13, y: 1 } });
     trimHome(s);
-    expect(s.islands.home.size).toEqual({ w: 11, h: 4 });
+    expect(s.islands.home.size).toEqual({ w: 14, h: 4 });
     expect([s.characters.c0.cell, s.characters.c1.cell]).toEqual([{ x: 1, y: 1 }, { x: 7, y: 1 }]);
   });
   it('never goes below two slots', () => {

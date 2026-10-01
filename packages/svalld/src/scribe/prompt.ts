@@ -20,7 +20,7 @@ A name is at most 4 words and ${NAME_MAX} characters, count them; lower case exc
 
 note: one line under ${NOTE_MAX} characters on the session's overall goal, the feature or fix the work is for, never the step it is on: "rewrite of the auth test helpers", not "finishing task 2, task 3 next". Omit it when the note is hand-written or the current note still names the goal.
 
-links: full URLs the transcript or the PR evidence names, copied exactly, for the things the work is about: its PR, issue, ticket or doc. A PR named by number may have its URL in the PR evidence. Link the item itself, not a comment, commit or file inside it, and not a repository or home page. Leave out links already listed as manual or auto. Keep the scribe links still worth having. Short labels: "#542", "ENG-1907", "design doc". List the PR the work is on first. [] when there are none.
+links: full URLs the transcript, the PR evidence or an auto PR names, copied exactly, for the things the work is about: every PR it opens, reviews or works on, and its issues, tickets and docs. A PR named by number may have its URL in the PR evidence. Link the item itself, not a comment, commit or file inside it, and not a repository or home page. Leave out links listed as manual, and auto links other than PRs. Keep the scribe links still worth having. Short labels: "#542", "ENG-1907", "design doc". List the PR the work is on first. [] when there are none.
 
 With too little to go on, omit name and note.`;
 
@@ -61,19 +61,22 @@ export function parseAnswer<T>(schema: ZodType<T>, text: string): T {
 
 const linkLine = (it: ContextItem): string => `- ${it.source} ${it.label && it.label !== it.ref ? `${it.label} ` : ''}${it.ref}`;
 
+// the last n distinct values, in the order each was last seen
+const lastDistinct = (xs: string[], n: number): string[] => [...new Set([...xs].reverse())].slice(0, n).reverse();
+
 // The condensed transcript can lose a PR URL in an older tool result. An explicit "PR #42"
 // also names a PR without spelling out its URL; the known GitHub repository supplies that part.
 export function prEvidence(c: Character, transcript: string, tail: string): string[] {
   const urls = [...(tail.match(/https?:\/\/[^\s"'<>()[\]{}`\\]+/g) ?? [])]
     .map((url) => itemUrl(url.replace(/[.,;:!?]+$/, '')))
     .filter((url) => /^https?:\/\/(?:www\.)?github\.com\/[^/]+\/[^/]+\/pull\/\d+$/i.test(url));
-  const found = new Set(urls.slice(-8));
+  const found = new Set(lastDistinct(urls, 8));
   const repo = c.context.map((it) => it.ref.replace(/\/pull\/\d+\/?$/i, ''))
     .find((ref) => /^https?:\/\/(?:www\.)?github\.com\/[^/]+\/[^/]+\/?$/i.test(ref));
   if (repo) {
     const refs = [...(`${tail}\n${transcript}`.matchAll(/\b(?:PR|pull request)\s*#?\s*(\d+)\b|\b#(\d+)\s+(?:PR|pull request)\b/gi))]
       .map((m) => m[1] ?? m[2]);
-    for (const number of refs.slice(-8)) {
+    for (const number of lastDistinct(refs, 8)) {
       if (![...found].some((url) => url.endsWith(`/pull/${number}`))) found.add(`${repo.replace(/\/$/, '')}/pull/${number}`);
     }
   }
@@ -142,21 +145,23 @@ export function acceptLine(text: string | null | undefined, max: number): string
   return v || undefined;
 }
 
-// the scribe's links after this answer: only URLs the given text names or the scribe already holds, none the other sources hold;
-// a held link someone pinned stays whatever the answer says
+// the scribe's links after this answer: only URLs the given text names or the scribe already holds, none the other sources hold.
+// The branch's PR is the scribe's to take too, pin and all, so the work keeps it once its checkout moves to another branch.
+// A held link someone pinned, or that the branch's lookup still reads a state for, stays whatever the answer says
 export function acceptLinks(proposed: NonNullable<CharacterAnswer['links']>, text: string, context: ContextItem[]): ContextItem[] {
   const held = new Map(context.filter((it) => it.source === 'scribe').map((it) => [bareUrl(it.ref), it]));
-  const seen = new Set(context.filter((it) => it.source !== 'scribe').map((it) => bareUrl(it.ref)));
+  const branchPrs = new Map(context.filter((it) => it.source === 'auto' && it.kind === 'pr').map((it) => [bareUrl(it.ref), it]));
+  const seen = new Set(context.filter((it) => it.source !== 'scribe').map((it) => bareUrl(it.ref)).filter((key) => !branchPrs.has(key)));
   const out: ContextItem[] = [];
   for (const { url, label } of proposed) {
     const ref = itemUrl(url.trim());
     if (!/^https?:\/\/\S+$/.test(ref)) continue;
     const key = bareUrl(ref);
-    if (seen.has(key) || !(text.includes(ref) || held.has(key))) continue;
+    if (seen.has(key) || !(text.includes(ref) || held.has(key) || branchPrs.has(key))) continue;
     seen.add(key);
-    const pinned = held.get(key)?.pinned;
+    const pinned = (held.get(key) ?? branchPrs.get(key))?.pinned;
     out.push({ kind: linkKind(ref), ref, label: acceptLine(label, LABEL_MAX) ?? ref, source: 'scribe', ...(pinned ? { pinned } : {}) });
   }
-  for (const [key, it] of held) if (it.pinned && !seen.has(key)) out.push(it);
+  for (const [key, it] of held) if ((it.pinned || it.prState) && !seen.has(key)) out.push(it);
   return out;
 }

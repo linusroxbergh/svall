@@ -490,8 +490,8 @@ export class Fleet extends EventEmitter<Events> {
     return updateIsland(this.deps, id, patch);
   }
 
-  arrangeIslands(aspect?: number): void {
-    arrangeIslands(this.deps, aspect);
+  arrangeIslands(aspect?: number, homeRoom?: number): void {
+    arrangeIslands(this.deps, aspect, homeRoom);
   }
 
   reorderIsland(id: string, targetId: string, after: boolean): Island {
