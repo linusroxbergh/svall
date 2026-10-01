@@ -19,7 +19,8 @@ you or done.
   files or folders to read. Agents leave notes for the next agent, per fleet,
   repository, island or character. Each session starts with a short brief of
   all of it plus its repository, open PR and ticket, and gets a diff when any
-  of it changes.
+  of it changes. The brief also tells the agent when to hand work to a new
+  character, and to ask you before starting more than two or a new island.
 - Resources gathers the instructions, skills, MCP servers, plugins and hooks
   that Claude Code and Codex give your agents, globally and per repository,
   and opens each in an editor.

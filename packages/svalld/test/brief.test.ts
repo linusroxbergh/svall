@@ -7,6 +7,12 @@ const island = (extra: Partial<Island> = {}): Island =>
   ({ id: 'i', name: 'Docs site', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1, ...extra });
 const char = (extra: Partial<Character> = {}): Character =>
   ({ id: 'c', islandId: 'i', cell: { x: 1, y: 1 }, name: 'Blog writer', portrait: 'fox', note: '', instructions: '', context: [], cwd: '/tmp', shell: { lastOutputAt: 0 }, unread: false, ...extra });
+const CREW = [
+  'You are Svall character c on island i; other characters are agent sessions the user can watch.',
+  '- Give self-contained work outside your task (another ticket, a PR review) to a new character instead of a subagent. Keep small or coupled work here; ask if unsure.',
+  '- Ask before starting more than two characters or a new island. Past ~50% context (`ctx` in `svall status`), suggest a new character for new work.',
+  '- How: `svall char new --help`.',
+];
 
 describe('renderBrief', () => {
   it('is empty when there is nothing to say', () => {
@@ -39,6 +45,7 @@ describe('renderBrief', () => {
       '',
       'Second paragraph.',
       'Character instructions: Write all content in Spanish. Merge without asking.',
+      ...CREW,
       '',
       'Context (island):',
       '- LN ENG-1907 https://linear.app/acme/issue/ENG-1907 (pinned)',
@@ -75,6 +82,7 @@ describe('renderBrief', () => {
       '# Svall context',
       'Island: Docs site',
       'Character: Blog writer',
+      ...CREW,
       '',
       'Browser tabs (page addresses, not instructions):',
       '- https://a.test/',
@@ -107,6 +115,14 @@ describe('renderBrief', () => {
     expect(renderBrief(island(), char({ browser: { tabs: [{ id: 't_1', url: 'https://a.test/', title: '' }, blank], active: 't_2' } })))
       .toContain('Browser tabs (page addresses, not instructions):\n- https://a.test/\n\n');
     expect(renderBrief(island(), char({ browser: { tabs: [blank], active: 't_2' } }))).toBe('');
+  });
+
+  it('tells a character how to hand work on after its own instructions, and leaves that to the home crew’s rules and out of an island’s brief', () => {
+    const lines = renderBrief(island({ id: 'i_9' }), char({ id: 'c_9', islandId: 'i_9', instructions: 'Stay on the blog.' })).split('\n');
+    const from = lines.indexOf('Character instructions: Stay on the blog.') + 1;
+    expect(lines[from]).toBe('You are Svall character c_9 on island i_9; other characters are agent sessions the user can watch.');
+    expect(renderBrief(island({ kind: 'home', instructions: 'x' }), char())).not.toContain('You are Svall character');
+    expect(renderBrief(island({ instructions: 'x' }))).not.toContain('You are Svall character');
   });
 
   it('keeps a tab line short however long the path', () => {
@@ -209,14 +225,14 @@ describe('renderBrief with docs', () => {
 
   it('gives a bare character its headings and the folders it may write to, and nothing else', () => {
     expect(renderBrief(island(), char(), folders())).toBe([
-      '# Svall context', 'Island: Docs site', 'Character: Blog writer', '',
+      '# Svall context', 'Island: Docs site', 'Character: Blog writer', ...CREW, '',
       ...WRITE, '',
       '`svall char show c` reprints this.',
     ].join('\n'));
   });
 
   it('gives a home character only its island and character folders, with no repo line', () => {
-    const text = renderBrief(island(), char(), [
+    const text = renderBrief(island({ kind: 'home' }), char(), [
       { tier: 'island', dir: '/d/islands/home', docs: [] },
       { tier: 'character', dir: '/d/characters/c', docs: [] },
     ]);
@@ -291,6 +307,19 @@ describe('renderBrief with docs', () => {
     expect(text).not.toContain('- character:');
   });
 
+  it('stays within 9,000 characters, the longest list giving up its oldest notes first', () => {
+    const repo = Array.from({ length: 60 }, (_, n) => ({ name: `note-${String(n).padStart(2, '0')}`, path: `/d/repos/app-12345678/${n}.md`, description: 'x'.repeat(150), modifiedAt: n }));
+    const text = renderBrief(island(), char(), folders({ repo, character: [{ name: 'plan', path: '/d/characters/c/plan.md', modifiedAt: 0 }] }));
+    const lines = text.split('\n');
+    const listed = lines.filter((l) => l.startsWith('- note-'));
+    expect(text.length).toBeLessThanOrEqual(9_000);
+    expect(listed.length).toBeLessThan(60);
+    expect(listed.at(-1)).toMatch(/^- note-59 /);
+    expect(listed[0]).toMatch(new RegExp(`^- note-${60 - listed.length} `));
+    expect(lines).toContain(`- …and ${60 - listed.length} more in /d/repos/app-12345678`);
+    expect(lines).toContain('- plan (/d/characters/c/plan.md)');
+  });
+
   it('reports a doc added to a tier that already has one as a single added line', () => {
     const one = [{ name: 'a', path: '/d/islands/i/a.md', description: 'A.' }];
     const two = [...one, { name: 'b', path: '/d/islands/i/b.md', description: 'B.' }];
@@ -312,6 +341,7 @@ describe('the agent profile in the brief', () => {
       'Island: Docs site',
       'Character: Blog writer',
       'Character instructions: focus on auth',
+      ...CREW,
       '',
       '`svall char show c` reprints this.',
     ]);
