@@ -43,21 +43,31 @@ test('a link followed in a terminal asks over the terminal, with the keys, and h
       if (m.type === 'connection') setTimeout(() => w.__svall.receive(JSON.stringify({ type: 'connection', host: '127.0.0.1', port, token })), 0);
     } } } };
   }, { port: svall.port, token: svall.token });
-  await svall.open();
+  await svall.open('map');
+  const token = page.getByTestId(`token-${c.id}`);
+  await token.click();
+  await token.click();
+  const card = page.getByTestId('terminal-card');
+  await expect(card).toHaveAttribute('data-settled', 'true');
+  // the shell's hole shows the page, so the ask must be drawn above the card that stands under the terminal
+  const at = (await card.getByTestId('surface').boundingBox())!;
   const sent = () => page.evaluate(() => (window as unknown as Shell).__sent);
   const mark = async () => (await sent()).length;
   const since = async (from: number) => (await sent()).slice(from);
   const cutout = async () => (await sent()).filter((m) => m.type === 'shell.cutout').at(-1) as Extract<ToShell, { type: 'shell.cutout' }> | undefined;
-  const follow = (url: string) => page.evaluate(({ id, url }) => (window as unknown as Shell).__svall.receive(
-    JSON.stringify({ type: 'term.openUrl', id, url, x: 300, y: 200 })), { id: c.id, url });
+  const follow = (url: string) => page.evaluate(({ id, url, x, y }) => (window as unknown as Shell).__svall.receive(
+    JSON.stringify({ type: 'term.openUrl', id, url, x, y })), { id: c.id, url, x: at.x + 40, y: at.y + 40 });
   const ask = page.getByTestId('link-ask');
 
   let from = await mark();
   await follow('https://example.com/a');
   await expect(ask).toBeVisible();
   await expect(ask).toContainText('example.com/a');
-  // the terminal is drawn above the page, so the ask takes a hole in it, and the keys, or Esc would reach the agent
-  await expect.poll(async () => (await cutout())?.rects.length).toBe(1);
+  const box = (await ask.boundingBox())!, surface = (await card.getByTestId('surface').boundingBox())!;
+  expect(box.x >= surface.x && box.y >= surface.y && box.x + box.width <= surface.x + surface.width && box.y + box.height <= surface.y + surface.height).toBe(true);
+  // the terminal is drawn above the page, so the ask takes a hole in it where it stands, and the keys, or Esc would reach the agent
+  await expect.poll(async () => (await cutout())?.rects.map((r) => [r.x, r.y, r.width, r.height].map(Math.round)))
+    .toEqual([[box.x, box.y, box.width, box.height].map(Math.round)]);
   expect(await since(from)).toContainEqual({ type: 'term.focus' });
   from = await mark();
   await page.keyboard.press('Escape');

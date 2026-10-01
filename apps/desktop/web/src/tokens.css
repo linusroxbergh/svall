@@ -110,7 +110,7 @@
 
   /* app layers; the integers inside a token or island order its own parts */
   --z-scenery: 35; --z-furniture: 40; --z-popover: 60; --z-hover: 70;
-  --z-card: 80; --z-shelf: 82; --z-usage: 85; --z-toast: 90; --z-modal: 200;
+  --z-card: 80; --z-shelf: 82; --z-usage: 85; --z-ask: 88; --z-toast: 90; --z-modal: 200;
 
   /* one dark shade, light to heavy, for overlays and shadows */
   --shade-0: rgba(10,18,24,.15); --shade-1: rgba(10,18,24,.25);
