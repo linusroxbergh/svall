@@ -7,6 +7,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var router: ShellRouter?
     private var assets: WebAssets?
     private var pageCrashedAt: Date?
+    // a second Uninstall… while the first run quits the other windows would race it
+    private var uninstalling = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard SvallHome.claim() else { NSApp.terminate(nil); return }
@@ -189,6 +191,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     @objc private func uninstall(_ sender: Any?) {
+        guard !uninstalling else { return }
         let alert = NSAlert()
         alert.messageText = "Uninstall Svall?"
         alert.informativeText = "This stops every fleet (running agents end), removes Svall's hooks from Claude Code and Codex, its background service and the svall command, then moves Svall to the Trash."
@@ -198,8 +201,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         let forget = purge.state == .on
-        AppRuntime.run(["uninstall", "--json", "--from-app", "--login-shell"] + (forget ? ["--purge"] : [])) { ok, text in
+        uninstalling = true
+        AppRuntime.run(["uninstall", "--json", "--from-app", "--login-shell"] + (forget ? ["--purge"] : [])) { [self] ok, text in
             guard ok else {
+                uninstalling = false
                 let failed = NSAlert()
                 failed.messageText = "Uninstall stopped"
                 failed.informativeText = text
