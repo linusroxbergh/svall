@@ -1,11 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { AGENT_LABEL, type AgentKind } from '@svall/protocol';
-import { createBridge } from './bridge.js';
+import { copyText, createBridge, openUrl, type Bridge } from './bridge.js';
 import { shortPath } from './resources/model.js';
 
 type Plan = {
   agents: { kind: AgentKind; path: string; version?: string; folderOnly?: boolean }[]; integrations?: AgentKind[]; writes: { what: string; path: string; agent?: AgentKind }[];
-  shimDir: string; shimOnPath: boolean; blockers: string[]; projects: string;
+  shimDir: string; shimOnPath: boolean; blockers: string[]; projects: string; install?: { kind: AgentKind; command: string; url: string }[];
 };
 
 export function Setup() {
@@ -54,7 +54,7 @@ export function Setup() {
       <div className="setup-acts"><button type="button" className="btn" disabled={busy} onClick={check}>Check again</button></div>
     </Page>
   );
-  if (!plan) return <div className="connect" data-testid="setup">Looking for Claude Code and Codex…</div>;
+  if (!plan) return <div className="connect" data-testid="setup">Looking for the claude and codex commands…</div>;
   const on = plan.agents.filter((a) => !off.includes(a.kind));
   const writes = plan.writes.filter((w) => !w.agent || !off.includes(w.agent));
   const line = `export PATH="$HOME/.local/bin:$PATH"`;
@@ -62,6 +62,22 @@ export function Setup() {
     <Page>
       <h1>Set up Svall</h1>
       {plan.blockers.map((b) => <p key={b} className="setup-blocker">{b}</p>)}
+      {plan.install && <section>
+        <h2>Install</h2>
+        {plan.install.map((i) => (
+          <div key={i.kind} className="setup-install">
+            <div className="setup-install-head">
+              <span>{AGENT_LABEL[i.kind]}</span>
+              <a href={i.url} target="_blank" rel="noreferrer" aria-label={`Other ways to install ${AGENT_LABEL[i.kind]}`} onClick={(e) => { e.preventDefault(); openUrl(bridge, i.url); }}>Other ways</a>
+            </div>
+            <Command bridge={bridge} text={i.command} />
+          </div>
+        ))}
+        {!plan.shimOnPath && <div className="setup-install">
+          <p>Both install to {shortPath(plan.shimDir)}, which is not on your PATH; add this line to ~/.zshrc, or your shell's startup file, then check again.</p>
+          <Command bridge={bridge} text={line} />
+        </div>}
+      </section>}
       {plan.agents.length > 0 && <section>
         <h2>Agents</h2>
         <p>Your characters run these. Uncheck one to leave it alone.</p>
@@ -73,7 +89,7 @@ export function Setup() {
                   onChange={(e) => setOff((o) => (e.target.checked ? o.filter((k) => k !== a.kind) : [...o, a.kind]))} />
                 {AGENT_LABEL[a.kind]}
               </span>
-              <code title={a.path}>{[a.version, shortPath(a.path)].filter(Boolean).join(' · ')}</code>
+              <code title={a.path}>{[a.version, shortPath(a.path), a.folderOnly && `no ${a.kind} command`].filter(Boolean).join(' · ')}</code>
             </label>
           ))}
         </div>
@@ -90,13 +106,11 @@ export function Setup() {
         <h2>What setup writes</h2>
         <ul className="setup-list">{writes.map((w) => <li key={w.path} className="setup-row"><span>{w.what}</span><code title={w.path}>{shortPath(w.path)}</code></li>)}</ul>
       </section>
-      {!plan.shimOnPath && <section>
+      {/* the installers write to the svall command's folder, so the Install section gives this line */}
+      {!plan.shimOnPath && !plan.install && <section>
         <h2>The svall command</h2>
         <p>{shortPath(plan.shimDir)} is not on your PATH; add this line to your shell profile.</p>
-        <div className="setup-code">
-          <code>{line}</code>
-          <button type="button" className="btn sm" onClick={() => bridge.send({ type: 'copy', text: line })}>Copy</button>
-        </div>
+        <Command bridge={bridge} text={line} />
       </section>}
       {error && <p className="setup-error">{error}</p>}
       <div className="setup-acts">
@@ -105,6 +119,21 @@ export function Setup() {
         {plan.blockers.length > 0 && <button type="button" className="btn" disabled={busy} onClick={check}>Check again</button>}
       </div>
     </Page>
+  );
+}
+
+function Command({ bridge, text }: { bridge: Bridge; text: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(t);
+  }, [copied]);
+  return (
+    <div className="setup-code">
+      <code>{text}</code>
+      <button type="button" className="btn sm" onClick={() => { copyText(bridge, text); setCopied(true); }}>{copied ? 'Copied' : 'Copy'}</button>
+    </div>
   );
 }
 

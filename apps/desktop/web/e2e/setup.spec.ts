@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 type Plan = {
   agents: { kind: string; path: string; version?: string; folderOnly?: boolean }[]; integrations?: string[]; writes: { what: string; path: string; agent?: string }[];
-  shimDir: string; shimOnPath: boolean; blockers: string[]; projects: string;
+  shimDir: string; shimOnPath: boolean; blockers: string[]; projects: string; install?: { kind: string; command: string; url: string }[];
 };
 
 const PLAN: Plan = { agents: [{ kind: 'claude', path: '/u/.local/bin/claude', version: '2.1.0' }, { kind: 'codex', path: '/opt/homebrew/bin/codex' }],
@@ -27,7 +27,12 @@ async function fakeShell(page: Page, plan: Plan, failFirst = false, warnings: st
   }, [plan, failFirst, warnings] as const);
 }
 
-const sent = (page: Page) => page.evaluate(() => (window as unknown as { __sent: { type: string; agents?: string[] }[] }).__sent);
+const sent = (page: Page) => page.evaluate(() => (window as unknown as { __sent: { type: string; agents?: string[]; text?: string; url?: string }[] }).__sent);
+
+const NOTHING: Plan = { ...PLAN, agents: [], writes: PLAN.writes.slice(2),
+  blockers: ["Svall runs Claude Code or Codex in its terminals, so it needs the claude or codex command. The desktop apps don't install it. Install one in Terminal, then check again."],
+  install: [{ kind: 'claude', command: 'curl -fsSL https://claude.ai/install.sh | bash', url: 'https://code.claude.com/docs/en/setup' },
+    { kind: 'codex', command: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh', url: 'https://learn.chatgpt.com/docs/codex/cli' }] };
 
 test('lists the agents and files, and sets up the agents left on', async ({ page }) => {
   await fakeShell(page, PLAN);
@@ -83,12 +88,43 @@ test('shows what setup asks of the user before it opens the map', async ({ page 
 });
 
 test('says what to install when no agent is found, and asks again', async ({ page }) => {
-  await fakeShell(page, { ...PLAN, agents: [], writes: PLAN.writes.slice(2), blockers: ['Install Claude Code (https://code.claude.com/docs/en/setup) or Codex (https://learn.chatgpt.com/docs/codex/cli) first, then check again.'] });
+  await fakeShell(page, NOTHING);
   await page.goto('/?setup=1');
-  await expect(page.getByText('Install Claude Code (https://code.claude.com/docs/en/setup) or Codex')).toBeVisible();
+  await expect(page.getByText('needs the claude or codex command')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Set up' })).toBeDisabled();
   await page.getByRole('button', { name: 'Check again' }).click();
   expect((await sent(page)).filter((m) => m.type === 'setup.plan')).toHaveLength(2);
+});
+
+test('gives each agent\'s install command to select or copy, and its other ways in the browser', async ({ page }) => {
+  await fakeShell(page, NOTHING);
+  await page.goto('/?setup=1');
+  for (const [label, i] of [['Claude Code', NOTHING.install![0]!], ['Codex', NOTHING.install![1]!]] as const) {
+    const command = page.getByText(i.command);
+    await expect(command).toHaveCSS('user-select', 'text');
+    const box = page.locator('.setup-code', { has: command });
+    await box.getByRole('button', { name: 'Copy' }).click();
+    await expect(box.getByRole('button', { name: 'Copied' })).toBeVisible();
+    await page.getByRole('link', { name: `Other ways to install ${label}` }).click();
+    const msgs = await sent(page);
+    expect(msgs.filter((m) => m.type === 'copy').at(-1)).toMatchObject({ text: i.command });
+    expect(msgs.filter((m) => m.type === 'openUrl').at(-1)).toMatchObject({ url: i.url });
+  }
+});
+
+test('gives the PATH line with the installers when their folder is not on PATH, and only there', async ({ page }) => {
+  await fakeShell(page, NOTHING);
+  await page.goto('/?setup=1');
+  await expect(page.getByText('Both install to /u/.local/bin, which is not on your PATH')).toBeVisible();
+  await expect(page.getByText('export PATH="$HOME/.local/bin:$PATH"')).toHaveCount(1);
+  await expect(page.getByRole('heading', { name: 'The svall command' })).toHaveCount(0);
+});
+
+test('says an agent found only by its folder has no command, as a desktop app leaves one', async ({ page }) => {
+  await fakeShell(page, { ...NOTHING, agents: [{ kind: 'claude', path: '/u/.claude', folderOnly: true }] });
+  await page.goto('/?setup=1');
+  await expect(page.getByText('/u/.claude · no claude command')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Set up' })).toBeDisabled();
 });
 
 test('shows a failed first ask inline and retries it', async ({ page }) => {

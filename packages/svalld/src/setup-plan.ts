@@ -12,6 +12,8 @@ export type FoundAgent = { kind: AgentKind; path: string; version?: string; fold
 export type SetupPlan = {
   agents: FoundAgent[]; integrations?: AgentKind[]; writes: { what: string; path: string; agent?: AgentKind }[];
   shimDir: string; shimOnPath: boolean; blockers: string[]; projects: string;
+  // how to install each agent's CLI, while setup found none
+  install?: { kind: AgentKind; command: string; url: string }[];
 };
 
 /** What the app's setup screen shows before anything is written: the screen leaves out the files of the agents it turns off. */
@@ -31,10 +33,15 @@ export function setupPlan(o: {
     { what: 'Your fleet', path: o.home },
   ];
   let blockers: string[] = [];
+  let install: SetupPlan['install'];
   if (!o.answered) blockers = [`Your login shell did not answer within 5 seconds, so Svall cannot see where Claude Code and Codex are. Check again, or run ${o.cli} setup in a terminal.`];
-  else if (!o.found.length) blockers = [`Install ${AGENT_KINDS.map((k) => `${AGENTS[k].label} (${AGENTS[k].installUrl})`).join(' or ')} first, then check again.`];
+  else if (!o.found.length) {
+    const either = (f: (k: AgentKind) => string) => AGENT_KINDS.map(f).join(' or ');
+    blockers = [`Svall runs ${either((k) => AGENTS[k].label)} in its terminals, so it needs the ${either((k) => AGENTS[k].bin)} command. The desktop apps don't install it. Install one in Terminal, then check again.`];
+    install = AGENT_KINDS.map((kind) => ({ kind, command: AGENTS[kind].installCommand, url: AGENTS[kind].installUrl }));
+  }
   return {
-    agents, integrations: o.integrations, writes, shimDir: o.shimDir, shimOnPath: o.pathEnv.split(':').includes(o.shimDir), blockers, projects: o.projects,
+    agents, integrations: o.integrations, writes, shimDir: o.shimDir, shimOnPath: o.pathEnv.split(':').includes(o.shimDir), blockers, projects: o.projects, install,
   };
 }
 

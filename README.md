@@ -43,11 +43,12 @@ terminal in it.
 
 ## Quickstart
 
-Svall needs an Apple Silicon Mac on macOS 15 or newer, and Claude Code, Codex,
-or both.
+Svall needs an Apple Silicon Mac on macOS 15 or newer, and the Claude Code CLI,
+the Codex CLI, or both. Svall runs the `claude` and `codex` commands in its
+terminals; the Claude and Codex desktop apps don't install them.
 
-1. Install [Claude Code](https://code.claude.com/docs/en/setup); it works with
-   a Claude subscription or an Anthropic API key, see
+1. Install the [Claude Code CLI](https://code.claude.com/docs/en/setup); it
+   works with a Claude subscription or an Anthropic API key, see
    [Using API keys](#using-api-keys). And/or install the
    [Codex CLI](https://learn.chatgpt.com/docs/codex/cli) 0.155 or newer; an
    OpenAI API key is enough, you don't need a ChatGPT subscription.
@@ -66,11 +67,13 @@ or both.
 
 3. The first launch shows the setup screen: each agent it found with a toggle,
    your projects folder, where new characters start (made if missing), the
-   files setup writes, and one "Set up" button. An agent you turn off gets
-   no hooks; one you install later does. If `~/.local/bin` isn't on your PATH,
-   the screen shows the line to add to your shell profile, so the `svall`
-   command works in a terminal; no shell file is edited for you. Setup
-   refuses to run from the disk image, so move Svall to Applications first.
+   files setup writes, and one "Set up" button. With neither CLI found, it
+   shows each one's install command to copy instead of letting you set up.
+   An agent you turn off gets no hooks; one you install later does. If
+   `~/.local/bin` isn't on your PATH, the screen shows the line to add to your
+   shell profile, so the `svall` command works in a terminal; no shell file is
+   edited for you. Setup refuses to run from the disk image, so move Svall to
+   Applications first.
 
 4. `+ New island` on the sandbar at the bottom makes an island, and Cmd+T makes
    a character on it: a shell that becomes an agent when you type `claude` or
@@ -170,7 +173,7 @@ Silicon Mac the install downloads the terminal engine prebuilt, and the clone,
 its dependencies and the build take about 750 MB of disk. An Intel Mac also
 needs Xcode; see [Building Ghostty from source](#building-ghostty-from-source).
 
-1. Install the tools, and Claude Code, Codex, or both:
+1. Install the tools, and the Claude Code CLI, the Codex CLI, or both:
 
        brew install node tmux pnpm gh   # skip node if you have 24 or newer
        gh auth login                    # clones the private repository, downloads the terminal engine and resolves PR links

@@ -315,6 +315,7 @@ describe('agent checks', () => {
   it('fails when neither is installed', async () => {
     const got = await agents({ commands: { 'claude --version': undefined as never } });
     expect(got).toEqual([{ name: 'agents', status: 'fail', detail: expect.stringContaining('neither claude nor codex is on PATH') }]);
+    expect(got[0]!.detail).toContain('run curl -fsSL https://claude.ai/install.sh | bash (Claude Code) or curl -fsSL https://chatgpt.com/codex/install.sh | sh (Codex)');
     expect(() => requireReady(got)).toThrow(/nothing was changed/);
   });
 
