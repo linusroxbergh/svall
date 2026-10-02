@@ -12,13 +12,16 @@ const emptyIde = (): IdeState => ({ panes: SINGLE, ratio: 0.5, open: [], expande
 const withSet = (list: string[], v: string, on: boolean): string[] =>
   list.includes(v) === on ? list : on ? [...list, v] : list.filter((x) => x !== v);
 
-// a character that is gone takes its panes and buffers with it; a resource root is nobody's. A second
-// terminal that ended closes the pane that showed it; one still starting has no record yet and stays
-export const pruneIde = (ide: Record<string, IdeState>, f: FleetState, prev: FleetState): Record<string, IdeState> =>
-  Object.fromEntries(Object.entries(ide).filter(([id]) => id.startsWith('r:') || f.characters[id]).map(([id, s]) => {
+// a character that is gone takes its panes and buffers with it, a resource root is nobody's, and a second terminal
+// that ended closes the pane that showed it (one still starting has no record yet); nothing pruned gives `ide` back
+export const pruneIde = (ide: Record<string, IdeState>, f: FleetState, prev: FleetState): Record<string, IdeState> => {
+  const next = Object.fromEntries(Object.entries(ide).filter(([id]) => id.startsWith('r:') || f.characters[id]).map(([id, s]) => {
     if (!prev.characters[id]?.second || f.characters[id]?.second || !shows(s.panes, 'terminal2')) return [id, s];
     return [id, { ...s, panes: withoutSecond(s.panes) }];
   }));
+  const ids = Object.keys(next);
+  return ids.length === Object.keys(ide).length && ids.every((id) => next[id] === ide[id]) ? ide : next;
+};
 
 export type IdeSliceState = { ide: Record<string, IdeState> };
 

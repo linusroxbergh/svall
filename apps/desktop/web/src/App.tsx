@@ -37,7 +37,7 @@ export function App() {
   const settingsOpen = useApp((s) => s.settingsOpen);
   // the side card edits the board's viewed character, and on the map the explicit selection
   const selectedId = useApp((s) => (s.view === 'board' ? boardViewed(s) : s.selectedId && s.fleet.characters[s.selectedId] ? s.selectedId : undefined));
-  const selectedIslandId = useApp((s) => (s.selectedIslandId && s.fleet.islands[s.selectedIslandId] ? s.selectedIslandId : undefined));
+  const selectedIslandId = useApp((s) => s.selectedIslandId);
   const toast = useApp((s) => s.toast);
   const sideWidths = useApp((s) => s.sideWidths);
   const bindings = useApp((s) => s.settings.bindings);
