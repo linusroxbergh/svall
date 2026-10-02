@@ -201,7 +201,7 @@ export class Fleet extends EventEmitter<Events> {
     c.on('output', (paneId, data) => { const id = this.charByPane(paneId); if (id && this.streaming.has(id)) this.emit('output', id, data); });
     c.on('pause', (paneId) => { const id = this.charByPane(paneId); if (id) this.emit('pause', id); });
     c.on('continue', (paneId) => { const id = this.charByPane(paneId); if (id) this.emit('continue', id); });
-    c.on('window-close', (windowId) => { void this.windowClosed(windowId); });
+    c.on('window-close', (windowId) => { this.windowClosed(windowId).catch((e) => this.deps.log.error(`window ${windowId} closed: ${String(e)}`)); });
     // a client that exits before it is ready fails start, and the caller's retry is the one recovery
     let ready = false;
     let gone = false;
@@ -556,7 +556,7 @@ export class Fleet extends EventEmitter<Events> {
       await this.deps.tmux.killWindow(w.windowId);
       throw e;
     }
-    void refreshLinks(this.deps.store, this.deps.config, id);
+    refreshLinks(this.deps.store, this.deps.config, id).catch((e) => this.deps.log.error(`links ${id}: ${String(e)}`));
     if (!p.run) return this.char(id);
     const timeoutMs = this.deps.runTimeoutMs ?? RUN_TIMEOUT_MS;
     let runSent = await this.waitForAgent(id, timeoutMs);
@@ -937,7 +937,8 @@ export class Fleet extends EventEmitter<Events> {
     const agent = this.deps.store.state.characters[ev.charId]?.agent;
     const nested = 'hook' in e && !!agent && !!e.hook.sessionId && e.hook.sessionId !== agent.sessionId;
     if ('hook' in e && e.hook.cwd && e.hook.term !== 2 && !nested && !e.hook.agentId) {
-      void this.followCwd(ev.charId, agent?.kind === 'codex' ? this.codexCwd(ev.charId, agent.transcriptPath, e.hook.cwd) : e.hook.cwd);
+      const cwd = agent?.kind === 'codex' ? this.codexCwd(ev.charId, agent.transcriptPath, e.hook.cwd) : e.hook.cwd;
+      this.followCwd(ev.charId, cwd).catch((err) => this.deps.log.error(`follow ${ev.charId} to ${cwd}: ${String(err)}`));
     }
     return reply;
   }
@@ -958,7 +959,8 @@ export class Fleet extends EventEmitter<Events> {
     const from = this.deps.store.state.characters[charId]?.cwd;
     if (!from) return;
     const [to, now] = await Promise.all([resolveRepo(cwd), resolveRepo(from)]);
-    if (!to || to.root === now?.root) return;
+    // a report that came in while git answered is the newer one
+    if (this.hookCwd.get(charId) !== cwd || !to || to.root === now?.root) return;
     try { this.deps.store.update((d) => { if (d.characters[charId]) d.characters[charId].cwd = to.root; }); }
     // a write that fails leaves the directory for the next hook that reports it
     catch (e) { this.hookCwd.delete(charId); throw e; }

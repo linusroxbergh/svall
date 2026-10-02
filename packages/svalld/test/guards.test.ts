@@ -9,7 +9,7 @@ import { Config } from '../src/config.js';
 import { Fleet } from '../src/fleet.js';
 import { aboveHome, crewGrid, placementOk, worldIslands } from '../src/layout.js';
 import { resolveRepo } from '../src/links/git.js';
-import { silentLogger } from '../src/log.js';
+import { silentLogger, type Logger } from '../src/log.js';
 import { resolvePaths } from '../src/paths.js';
 import { Phones } from '../src/phones.js';
 import { PushStore } from '../src/push/store.js';
@@ -32,7 +32,7 @@ const char = (id: string, islandId: string, over: Partial<Character> = {}): Char
 });
 
 // a fleet that is never started: what these guards decide happens in the store, without tmux
-function fleetOn(seed: (s: ReturnType<typeof emptyState>) => void) {
+function fleetOn(seed: (s: ReturnType<typeof emptyState>) => void, log: Logger = silentLogger) {
   const home = makeHome();
   const paths = resolvePaths(home);
   const store = Store.load(paths.state, () => {});
@@ -40,7 +40,7 @@ function fleetOn(seed: (s: ReturnType<typeof emptyState>) => void) {
   let windows = 0;
   const live: LiveWindow[] = [];
   const tmux = { newWindow: async () => { windows++; return { windowId: `@${windows}`, paneId: `%${windows}` }; }, listWindows: async () => live } as unknown as Tmux;
-  const fleet = new Fleet({ store, tmux, paths, config: Config.parse({ shell: '/bin/sh' }), log: silentLogger });
+  const fleet = new Fleet({ store, tmux, paths, config: Config.parse({ shell: '/bin/sh' }), log });
   return { fleet, store, home, paths, live };
 }
 
@@ -54,8 +54,8 @@ function repo(parent: string, name: string): string {
 }
 
 describe('following a hook into another checkout', () => {
-  const setup = () => {
-    const f = fleetOn((d) => { d.islands.i_1 = { id: 'i_1', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 }; });
+  const setup = (log?: Logger) => {
+    const f = fleetOn((d) => { d.islands.i_1 = { id: 'i_1', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 }; }, log);
     const [one, two] = [repo(f.home, 'one'), repo(f.home, 'two')];
     f.store.update((d) => { d.characters.c_a = char('c_a', 'i_1', { cwd: one }); });
     const follow = (id: string, cwd: string): Promise<void> => f.fleet['followCwd'](id, cwd);
@@ -111,6 +111,29 @@ describe('following a hook into another checkout', () => {
     fs.rmdirSync(`${paths.state}.tmp`);
     await follow('c_a', two);
     expect(store.state.characters.c_a.cwd).toBe(two);
+  });
+
+  it('logs a move a hook reported but the fleet could not write', async () => {
+    const errors: string[] = [];
+    const { fleet, paths, two } = setup({ info() {}, error: (m) => errors.push(m) });
+    fs.mkdirSync(`${paths.state}.tmp`);
+    fleet.onSocketEvent({ hook: { charId: 'c_a', backend: 'claude', name: 'PreToolUse', cwd: two } });
+    await waitFor(() => errors.length > 0);
+    expect(errors[0]).toMatch(`follow c_a to ${two}: `);
+  });
+
+  it('follows the newer of two reports when git answers the older one last', async () => {
+    const { store, home, two, follow } = setup();
+    const three = repo(home, 'three');
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    const real = vi.mocked(resolveRepo).getMockImplementation()!;
+    vi.mocked(resolveRepo).mockImplementationOnce(async (dir) => { await held; return real(dir); });
+    const older = follow('c_a', two);
+    await follow('c_a', three);
+    release();
+    await older;
+    expect(store.state.characters.c_a.cwd).toBe(three);
   });
 
   it('leaves a character closed while git answered closed', async () => {
