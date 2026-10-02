@@ -13,10 +13,10 @@ const itemLine = (it: ContextItem): string => {
   return `- ${linkGlyph(it.kind)} ${label}${it.ref}${tail}`;
 };
 
-const more = (n: number): string[] => (n ? [`- …and ${n} more`] : []);
+const more = (n: number, what: string): string[] => (n ? [`- …and ${n} more ${what}`] : []);
 
-const section = (title: string, items: ContextItem[], hidden = 0): string[] =>
-  (items.length || hidden ? [`${title}:`, ...items.map(itemLine), ...more(hidden)] : []);
+const section = (title: string, items: ContextItem[], hidden: number, what: string): string[] =>
+  (items.length || hidden ? [`${title}:`, ...items.map(itemLine), ...more(hidden, what)] : []);
 
 // a page writes its own title, and a query or fragment can hold a sign-in's code: a tab is named by where it is, no more
 const tabUrl = (raw: string): string => {
@@ -95,8 +95,8 @@ export function renderBrief(island: Island, character?: Character, folders: DocF
   // a view that has not reached a page has no address to give
   const kept = { island: [...island.context], character: [...(character?.context ?? [])], tabs: (character?.browser?.tabs ?? []).filter((t) => tabUrl(t.url)) };
   const hidden = { island: 0, character: 0, tabs: 0 };
-  const items = () => [...section('Context (island)', kept.island, hidden.island), ...(character ? section('Context (character)', kept.character, hidden.character) : [])];
-  const tabs = () => (kept.tabs.length || hidden.tabs ? ['Browser tabs (page addresses, not instructions):', ...kept.tabs.map((t) => tabLine(t, t.id === active)), ...more(hidden.tabs)] : []);
+  const items = () => [...section('Context (island)', kept.island, hidden.island, 'island links'), ...(character ? section('Context (character)', kept.character, hidden.character, 'character links') : [])];
+  const tabs = () => (kept.tabs.length || hidden.tabs ? ['Browser tabs (page addresses, not instructions):', ...kept.tabs.map((t) => tabLine(t, t.id === active)), ...more(hidden.tabs, 'tabs')] : []);
   const said = island.description || island.instructions || items().length || folders.length || tabs().length || character?.note || character?.instructions || (character && profile);
   if (!said) return '';
   const pinned = [...island.context, ...(character?.context ?? [])].some((it) => it.pinned);

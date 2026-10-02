@@ -32,6 +32,13 @@ describe('condenseTurns', () => {
       'CLAUDE: [tool: WebFetch] [links: https://docs.example/plan]\nTOOL: [links: https://github.com/o/r/pull/51]');
     expect(condenseTurns(text, 5)).toBe('CLAUDE: [tool: WebFetch]');
   });
+  // a /[.,;:!?]+$/ over a long run of dots backtracks from every one of them
+  it('reads a tool result with a URL of tens of thousands of dots in one pass', () => {
+    const text = line({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', content: `https://x.test/${'.'.repeat(60_000)}a.` }] } });
+    const started = performance.now();
+    expect(condenseTurns(text, 1, { toolLinks: true })).toMatch(/^TOOL: \[links: https:\/\/x\.test\/\.+…$/);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
   it('truncates long entries', () => {
     expect(condenseTurns(user('x'.repeat(5000)), 1)).toHaveLength('USER: '.length + 2000 + 1);
   });

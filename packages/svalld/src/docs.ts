@@ -6,7 +6,7 @@ import type { Logger } from './log.js';
 import { expandHome } from './paths.js';
 
 // the fleet's own folder stands above the rest and names no entity, so it alone has no id
-export type EntityTier = 'repo' | 'island' | 'character';
+type EntityTier = 'repo' | 'island' | 'character';
 export type DocTier = 'fleet' | EntityTier;
 // name is the filename without .md; a frontmatter name never replaces it
 export type DocEntry = { name: string; path: string; description?: string; modifiedAt?: number; error?: string };

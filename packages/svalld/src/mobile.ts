@@ -157,7 +157,7 @@ export type Mobile = {
 };
 
 /** The link as last seen, which a push reads rather than asking tailscale: its https url while served. */
-export type Served = { served(): string | undefined };
+type Served = { served(): string | undefined };
 
 /** Looks at the link, and again every `ms` while a look fails and `wanted` holds: at login tailscale may still be starting. */
 export function watchServed(mobile: Pick<Mobile, 'get'>, wanted: () => boolean, ms: number): () => void {

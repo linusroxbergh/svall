@@ -79,7 +79,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
   const logins = opts.logins ?? (() => []);
   const origins = opts.origins ?? [];
   const dist = opts.dist ?? mobileDist;
-  // a page can retry forever, so each origin is named once rather than once per attempt
+  // a page can retry forever, so each origin or login is named once rather than once per attempt
   const refused = new Set<string>();
   // the desktop panel is the one surface that asks who is on the phone page, so the answer goes only there
   const desktops = new Set<Viewer>();
@@ -164,6 +164,8 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
     const login = proxied ? phoneLogin(req) : undefined;
     // a phone page holds no token, so one the proxy brought from a login the fleet does not take is told so at once
     if (proxied && !login) {
+      const who = String(req.headers[IDENTITY_HEADER] ?? '');
+      if (!refused.has(who)) { refused.add(who); log.error(`api: refused a phone socket from tailnet login ${who || '(none)'}`); }
       wss.handleUpgrade(req, socket, head, (ws: WebSocket) => { ws.on('error', () => {}); ws.close(LOGIN_REFUSED, 'tailnet login not accepted'); });
       return;
     }

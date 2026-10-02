@@ -13,7 +13,7 @@ const NAME = /^[^/\\.\x00-\x1f][^/\\\x00-\x1f]*$/;
 const BUNDLED = assetDir('agent-profiles');
 
 export type AgentProfile = { name: string; description?: string; body: string };
-export type AgentProfileRead = AgentProfile | { name: string; error: string };
+type AgentProfileRead = AgentProfile | { name: string; error: string };
 
 const isAgentProfileName = (name: string): boolean => NAME.test(name);
 

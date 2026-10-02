@@ -13,7 +13,7 @@ import { hooks, mcpServers, plugins, type Parsed } from './parse.js';
 
 export const rootIdOf = (root: string): string => `r:${root}`;
 
-export type FleetRoot = { root: string; islandIds: string[]; characterIds: string[] };
+type FleetRoot = { root: string; islandIds: string[]; characterIds: string[] };
 
 /** The folders the fleet works in, a worktree counted as its repository, mission control left out. */
 export function fleetRoots(state: FleetState): FleetRoot[] {

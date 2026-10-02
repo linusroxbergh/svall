@@ -9,7 +9,7 @@ import { brand, resolveFile, serveBundle } from '../src/api/static.js';
 import { Config } from '../src/config.js';
 import { Fleet } from '../src/fleet.js';
 import type { Mobile } from '../src/mobile.js';
-import { silentLogger } from '../src/log.js';
+import { silentLogger, type Logger } from '../src/log.js';
 import { resolvePaths } from '../src/paths.js';
 import { PushStore } from '../src/push/store.js';
 import { Phones } from '../src/phones.js';
@@ -109,7 +109,7 @@ runIf('phone sockets', () => {
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 
-  async function boot(fleetName?: () => string | undefined, mobileControl: Mobile = stubMobile) {
+  async function boot(fleetName?: () => string | undefined, mobileControl: Mobile = stubMobile, log: Logger = silentLogger) {
     const home = makeHome();
     const paths = resolvePaths(home);
     const config = Config.parse({ shell: '/bin/sh' });
@@ -130,7 +130,7 @@ runIf('phone sockets', () => {
     const workspace = new Workspace((id) => { const c = store.state.characters[id]; if (!c) throw new Error(id); return c.repo?.root ?? c.cwd; }, silentLogger);
     const current = { key, logins: ['me@example.com'] };
     const api = await startApi({
-      host: '127.0.0.1', port: 0, token: 'secret', store, fleet, fleets: stubFleets, terminals, workspace, usage: stubUsage, mobileControl, log: silentLogger,
+      host: '127.0.0.1', port: 0, token: 'secret', store, fleet, fleets: stubFleets, terminals, workspace, usage: stubUsage, mobileControl, log,
       origins: [], logins: () => current.logins, dist, key: () => current.key, fleetName,
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(),
       claude: { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') },
@@ -183,8 +183,9 @@ runIf('phone sockets', () => {
     expect(await asset.text()).toBe('code');
   });
 
-  it('admits a trusted login behind the key with no token, and refuses a stranger there at once, with its own code', async () => {
-    const api = await boot();
+  it('admits a trusted login behind the key with no token, and refuses a stranger there at once, with its own code, naming it once', async () => {
+    const errors: string[] = [];
+    const api = await boot(undefined, stubMobile, { info() {}, error: (m) => errors.push(m) });
     const open = (login: string) => {
       const ws = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, { headers: { 'Tailscale-User-Login': login } });
       cleanup.push(async () => ws.close());
@@ -194,6 +195,8 @@ runIf('phone sockets', () => {
     const started = Date.now();
     await expect(hello(open('them@example.com'))).rejects.toThrow(/closed 4403/);
     expect(Date.now() - started).toBeLessThan(2000);
+    await expect(hello(open('them@example.com'))).rejects.toThrow(/closed 4403/);
+    expect(errors).toEqual(['api: refused a phone socket from tailnet login them@example.com']);
   });
 
   // the Mac's own login is learned from tailscale after the server is up

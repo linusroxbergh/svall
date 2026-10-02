@@ -331,7 +331,7 @@ describe('renderBrief with docs', () => {
     );
     const lines = text.split('\n');
     expect(text.length).toBeLessThanOrEqual(9_000);
-    expect(lines).toEqual(expect.arrayContaining([...CREW, '- …and 1 more in /d/repos/app-12345678', '- …and 39 more', `- https://example.com/${'t'.repeat(150)}/39 (active)`]));
+    expect(lines).toEqual(expect.arrayContaining([...CREW, '- …and 1 more in /d/repos/app-12345678', '- …and 15 more island links', '- …and 15 more character links', '- …and 39 more tabs', `- https://example.com/${'t'.repeat(150)}/39 (active)`]));
     expect(lines.find((l) => l.startsWith('Island instructions: '))).toHaveLength('Island instructions: '.length + 2000);
     expect(text).toContain(`/${'p'.repeat(150)}/0 (pinned)`);
     expect(text).toContain(`/${'p'.repeat(150)}/1\n`);
