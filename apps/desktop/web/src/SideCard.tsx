@@ -1,57 +1,21 @@
-import { useState } from 'react';
-import { contextKind, stepPortrait, type Character, type ContextItem, type Params, type Portrait } from '@svall/protocol';
+import { stepPortrait, type Character, type ContextItem, type Params, type Portrait } from '@svall/protocol';
 import { AgentProfilePick } from './AgentProfilePick.js';
 import { app, deps } from './boot.js';
-import { newCharacterOn, saveCharacter, saveCharacterContext, saveIsland, saveIslandContext } from './actions.js';
+import { saveCharacter, saveCharacterContext } from './actions.js';
 import { copyText, openFolder } from './bridge.js';
-import { followLink } from './LinkAsk.js';
+import { AddLink, ContextPills } from './ContextList.js';
 import { FollowLine, FollowTextarea } from './Field.js';
 import { useApp, useTick } from './hooks.js';
 import { Info } from './Info.js';
 import { keyTip } from './keys.js';
-import { LinkIcon } from './map/LinkIcon.js';
-import { ago, hintText, linkText } from './map/tokenText.js';
+import { ago, hintText } from './map/tokenText.js';
 import { portraitTint, portraitUrl } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
 import { sourceOfRoot } from './resources/model.js';
-import { charactersOf, contextPctOf, islandsSorted, isUnread, statusOf } from './selectors.js';
+import { contextPctOf, islandsSorted, isUnread, statusOf } from './selectors.js';
 
 type Patch = Omit<Params<'char.update'>, 'id'>;
-
-// a pinned item is read before the agent starts; the toggle flips that flag
-function ContextPills({ items, ids, charId, onChange }: { items: ContextItem[]; ids: { list: string; remove: string; pin: string }; charId?: string; onChange(next: ContextItem[]): void }) {
-  const toggle = (i: number) => onChange(items.map((it, j) => (j !== i ? it : it.pinned ? (({ pinned: _p, ...r }) => r)(it) : { ...it, pinned: true })));
-  return (
-    <div className="pills" data-testid={ids.list}>
-      {items.map((it, i) => (
-        <span key={`${it.ref}-${i}`} className="lp" data-pinned={Boolean(it.pinned)}>
-          <i className="lg"><LinkIcon item={it} /></i>
-          <a className="clip-head" href={/^(https?|mailto):/i.test(it.ref) ? it.ref : undefined} title={it.ref}
-            onClick={(e) => { e.preventDefault(); followLink(it, charId, { x: e.clientX, y: e.clientY }); }}>{linkText(it)}</a>
-          <button data-testid={ids.pin} title={it.pinned ? 'Unpin' : 'Pin: the agent reads it first'} onClick={() => toggle(i)}>{it.pinned ? '●' : '○'}</button>
-          {it.source === 'manual' && <button data-testid={ids.remove} onClick={() => onChange(items.filter((_, j) => j !== i))}>×</button>}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-// keyed by the card's id, so a link half typed for one character or island is never offered to the next
-function AddLink({ ids, onAdd }: { ids: { ref: string; add: string }; onAdd(item: ContextItem): void }) {
-  const [ref, setRef] = useState('');
-  const add = () => {
-    if (!ref.trim()) return;
-    onAdd({ kind: contextKind(ref), ref: ref.trim(), label: '', source: 'manual' });
-    setRef('');
-  };
-  return (
-    <div className="addlink">
-      <input className="fld" placeholder="Add a url or path" value={ref} data-testid={ids.ref} onKeyDown={(e) => { if (e.key === 'Enter') add(); }} onChange={(e) => setRef(e.target.value)} />
-      <button className="btn sm" data-testid={ids.add} onClick={add}>Add</button>
-    </div>
-  );
-}
 
 // collapsing is sticky: the card stays shut until the user opens it again.
 export function Collapse() {
@@ -93,7 +57,7 @@ function PortraitPicker({ id, portrait }: { id: string; portrait: Portrait }) {
   );
 }
 
-function ResourcesButton({ root, testid }: { root: string | undefined; testid: string }) {
+export function ResourcesButton({ root, testid }: { root: string | undefined; testid: string }) {
   const sources = useApp((s) => s.resources);
   const source = sourceOfRoot(sources, root);
   return (
@@ -186,58 +150,6 @@ export function SideCard({ id }: { id: string }) {
         <button className="btn dan" data-testid="side-close" title="Deletes the character and kills its terminal"
           onClick={() => app.store.getState().setClosingCharacter(id)}>Delete character</button>
       </div>
-    </aside>
-  );
-}
-
-export function DeleteIsland({ id, testid, label }: { id: string; testid: string; label: string }) {
-  return <button className="btn dan" data-testid={testid} onClick={() => app.store.getState().setDeletingIsland(id)}>{label}</button>;
-}
-
-// the repository most of the island's characters stand in
-const commonRoot = (chars: Character[]): string | undefined => {
-  const n = new Map<string, number>();
-  for (const c of chars) { const r = c.repo?.mainRoot ?? c.cwd; n.set(r, (n.get(r) ?? 0) + 1); }
-  return [...n.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-};
-
-export function IslandCard({ id }: { id: string }) {
-  const i = useApp((s) => s.fleet.islands[id]);
-  const fleet = useApp((s) => s.fleet);
-  const hover = useApp((s) => s.dropHover?.kind === 'island' && s.dropHover.id === id);
-  if (!i) return null;
-  const chars = charactersOf(fleet, id);
-  const save = (patch: Omit<Params<'island.update'>, 'id'>) => saveIsland(deps(), id, patch);
-  const saveContext = (context: ContextItem[]) => saveIslandContext(deps(), id, context);
-  return (
-    <aside className="side" data-testid="side-island-card" data-drop={`island:${id}`} data-drop-hover={hover}>
-      <div className="kicker">Island</div>
-      <div className="side-island-head">
-        <FollowLine className="h2" aria-label="Island name" key={`name-${id}`} value={i.name} data-testid="side-island-name"
-          onSave={(v) => { const name = v.trim(); if (!name || name === i.name) return false; save({ name }); }} />
-        <button className="btn pri sm" data-testid="side-island-new" onClick={() => newCharacterOn(deps(), id)}>+ New character</button>
-      </div>
-      <div className="sec">
-        <div className="kicker">Description</div>
-        <FollowTextarea className="fld desc" rows={4} placeholder="What this island is for" key={`description-${id}`} value={i.description} data-testid="side-island-description"
-          onSave={(v) => { if (v !== i.description) save({ description: v }); }} />
-      </div>
-      <div className="sec">
-        <div className="kicker">Instructions</div>
-        <FollowTextarea className="fld desc" rows={3} placeholder="How agents on this island should work" key={`instructions-${id}`} value={i.instructions} data-testid="side-island-instructions"
-          onSave={(v) => { if (v !== i.instructions) save({ instructions: v }); }} />
-      </div>
-      <div className="sec">
-        <div className="kicker">Context</div>
-        <ContextPills items={i.context} ids={{ list: 'side-island-context', remove: 'island-context-remove', pin: 'island-context-pin' }}
-          charId={chars[0]?.id} onChange={saveContext} />
-        <AddLink key={id} ids={{ ref: 'island-context-ref', add: 'island-context-add' }} onAdd={(item) => saveContext([...i.context, item])} />
-      </div>
-      <DocsList tier="island" id={id} />
-      <div className="opens"><ResourcesButton root={commonRoot(chars)} testid="side-island-resources" /></div>
-      {chars.length === 0 && i.kind !== 'home' && <div className="acts">
-        <DeleteIsland id={id} testid="side-island-delete" label="Delete" />
-      </div>}
     </aside>
   );
 }

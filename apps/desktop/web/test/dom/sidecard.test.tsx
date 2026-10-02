@@ -21,7 +21,8 @@ vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModu
 vi.mock('../../src/resources/Shelf.js', () => ({ ResourcesLayer: () => null }));
 
 const { Map } = await import('../../src/map/Map.js');
-const { IslandCard, SideCard } = await import('../../src/SideCard.js');
+const { SideCard } = await import('../../src/SideCard.js');
+const { IslandCard } = await import('../../src/IslandCard.js');
 const { ConfirmDeleteIsland } = await import('../../src/ConfirmDeleteIsland.js');
 const { ConfirmClose } = await import('../../src/ConfirmClose.js');
 const { dispatchKey } = await import('../../src/keyboard.js');
