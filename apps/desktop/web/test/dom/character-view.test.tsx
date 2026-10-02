@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 import './setup.js';
+import fs from 'node:fs';
+import path from 'node:path';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { setAppStore } from '../../src/hooks.js';
+import { portraitUrl } from '../../src/portraits.js';
 import { createAppStore, type AppStore } from '../../src/store/index.js';
 import { chr, fleet } from '../fixtures.js';
 
@@ -224,4 +227,35 @@ test('a note being typed is saved when the back gesture takes the view away', ()
   act(() => { dispatchEvent(new PopStateEvent('popstate')); });
   expect(screen.queryByLabelText('Note')).toBeNull();
   expect(call).toHaveBeenCalledWith('char.update', { id: 'c0', note: 'new note' });
+});
+
+test('the header words a blocked character as the list does', () => {
+  store.getState().setFleet(blockedFleet());
+  store.getState().setStatus('online');
+  const { container } = render(<CharacterView id="c2" onBack={() => {}} />);
+  expect(container.querySelector('.conn')?.textContent).toBe('needs you');
+});
+
+test('a character closed while it is open takes its view back to the list', () => {
+  history.replaceState(null, '', '/char/c0');
+  store.getState().setFleet(fleet());
+  render(<App />);
+  const f = fleet();
+  delete f.characters.c0;
+  act(() => store.getState().setFleet(f));
+  expect(location.pathname).toBe('/');
+  expect(screen.getByRole('button', { name: 'beta' })).toBeTruthy();
+});
+
+// the list's portraits are in the page before the path goes back to the root, and keep the URL they resolved to then
+test('a portrait resolves from the root on a page opened at a character', () => {
+  const page = fs.readFileSync(path.join(__dirname, '../../mobile.html'), 'utf8');
+  const head = document.head.innerHTML;
+  document.head.innerHTML = /<head>([\s\S]*)<\/head>/.exec(page)![1];
+  try {
+    history.replaceState(null, '', '/char/c0');
+    expect(new URL(portraitUrl('fox'), document.baseURI).pathname).toBe('/animals/fox.svg');
+  } finally {
+    document.head.innerHTML = head;
+  }
 });

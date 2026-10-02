@@ -45,6 +45,16 @@ export class Api {
 
   stop(): void { this.stopped = true; clearTimeout(this.timer); this.ws?.close(); }
 
+  /** Drops the socket as closed without waiting for its close, which one lost to a network change may never send. */
+  restart(): void {
+    const ws = this.ws;
+    const closed = ws?.onclose;
+    if (!ws || !closed) return;
+    ws.onclose = null;
+    ws.close();
+    closed.call(ws, new Event('close') as CloseEvent);
+  }
+
   call<M extends MethodName>(method: M, params: Params<M>): Promise<Result<M>> {
     const ws = this.ws;
     if (!ws || !this.online) return Promise.reject(new Error('svalld offline'));

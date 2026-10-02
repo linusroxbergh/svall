@@ -8,6 +8,7 @@ import { ago, hintText, linkText } from '../map/tokenText.js';
 import { usePromptHistory } from '../promptHistory.js';
 import { contextPctOf } from '../selectors.js';
 import { phone } from './boot.js';
+import { CloseConfirm } from './CloseCharacter.js';
 import { DocsList } from './DocsList.js';
 import { Sheet } from './Sheet.js';
 
@@ -127,8 +128,6 @@ function Details({ c }: { c: Character }) {
 export function CharacterMenu({ id, onClose, onClosed }: { id: string; onClose(): void; onClosed(): void }): JSX.Element | null {
   const c = useApp((s) => s.fleet.characters[id]);
   const [confirm, setConfirm] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
   const saving = useRef<Promise<boolean>>(undefined);
   if (!c) return null;
 
@@ -138,11 +137,6 @@ export function CharacterMenu({ id, onClose, onClosed }: { id: string; onClose()
     const note = saving.current;
     saving.current = undefined;
     if (!note || await note) onClose();
-  };
-  const closeCharacter = async () => {
-    if (busy) return;
-    setBusy(true);
-    try { await phone.api().call('char.close', { id }); onClosed(); } catch (e) { setError((e as Error).message); setBusy(false); }
   };
   const hint = hintText(c);
 
@@ -156,9 +150,9 @@ export function CharacterMenu({ id, onClose, onClosed }: { id: string; onClose()
       <Instructions c={c} />
       <Details c={c} />
       <div className="sheet-form m-acts">
-        {!confirm && <button type="button" className="dan" disabled={busy} onClick={() => setConfirm(true)}>Close character</button>}
-        {confirm && <button type="button" className="dan" disabled={busy} onClick={() => void closeCharacter()}>Close {c.name}? Its terminal and docs go with it.</button>}
-        {error && <p className="sheet-error">{error}</p>}
+        {confirm
+          ? <CloseConfirm c={c} onClosed={onClosed} />
+          : <button type="button" className="dan" onClick={() => setConfirm(true)}>Close character</button>}
       </div>
     </Sheet>
   );

@@ -24,7 +24,7 @@ export function Settings({ onClose }: { onClose(): void }): JSX.Element {
         {push?.kind === 'unsupported' && <p className="sheet-note">This browser cannot receive notifications.</p>}
         {push?.kind === 'install' && <p className="sheet-note">Notifications need the Home Screen app: Share → Add to Home Screen.</p>}
         {push?.kind === 'denied' && <p className="sheet-note">Turn on notifications for Svall in the phone's Settings.</p>}
-        {push?.kind === 'off' && <button type="button" className="pri" onClick={() => apply(enablePush(phone.api()))}>Notify this phone</button>}
+        {push?.kind === 'off' && <button type="button" className="pri" onClick={() => apply(enablePush(phone.api(), push.publicKey))}>Notify this phone</button>}
         {push?.kind === 'on' && (
           <>
             {(Object.keys(ABOUT) as PushStatus[]).map((s) => (

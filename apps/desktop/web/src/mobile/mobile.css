@@ -14,7 +14,7 @@ body {
   overscroll-behavior: none;
 }
 
-#root { height: 100dvh; display: flex; flex-direction: column; }
+#root { height: var(--vvh, 100dvh); display: flex; flex-direction: column; }
 
 button { font: inherit; color: inherit; background: none; border: 0; }
 
@@ -152,7 +152,7 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 }
 .fold[aria-expanded='false'] .chev { margin: 0 4px 0 0; transform: rotate(-45deg); }
 
-.sheet-back { position: fixed; inset: 0; z-index: 5; display: flex; align-items: flex-end; background: var(--shade-3); }
+.sheet-back { position: fixed; inset: 0 0 auto; height: var(--vvh, 100dvh); z-index: 5; display: flex; align-items: flex-end; background: var(--shade-3); }
 .sheet {
   width: 100%; max-height: 85dvh; overflow-y: auto;
   padding: var(--sp-xl) var(--sp-2xl) calc(var(--sp-2xl) + var(--safe-b));

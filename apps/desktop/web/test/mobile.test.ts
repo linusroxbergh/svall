@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import type { Event } from '@svall/protocol';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Event, PushStatus } from '@svall/protocol';
 import type { Api } from '../src/api.js';
 import { sections, subtitle, waiting } from '../src/mobile/list.js';
 import { encode, linkTerminal, type Screen } from '../src/mobile/term.js';
@@ -7,7 +7,7 @@ import { parseRoute, routePath } from '../src/mobile/route.js';
 import { NO_PAGE, OFF, phonesHere } from '../src/phoneText.js';
 import { chr, fleet, isl } from './fixtures.js';
 import { cwdChoices, islandCwd } from '../src/mobile/choices.js';
-import { keyBytes, needsInstall, sameApplicationServerKey, subscriptionParams } from '../src/mobile/push.js';
+import { disablePush, enablePush, keyBytes, needsInstall, readPush, sameApplicationServerKey, setPushStatuses, subscriptionParams } from '../src/mobile/push.js';
 import { dragOffset, isSwipe, REVEAL, settle } from '../src/mobile/swipe.js';
 import { dragToScroll, holdScroll, lineSteps, type TouchSurface } from '../src/mobile/scroll.js';
 
@@ -147,10 +147,13 @@ describe('phone push helpers', () => {
     expect(Array.from(keyBytes('_-8'))).toEqual([255, 239]);
   });
 
-  it('asks an iPhone to install first, and nobody else', () => {
+  it('asks an iPhone or an iPad to install first, and nobody else', () => {
     const ios = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15';
+    const mac = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15';
     expect(needsInstall({ userAgent: ios })).toBe(true);
     expect(needsInstall({ userAgent: ios, standalone: true })).toBe(false);
+    expect(needsInstall({ userAgent: mac, maxTouchPoints: 5 })).toBe(true);
+    expect(needsInstall({ userAgent: mac, maxTouchPoints: 0 })).toBe(false);
     expect(needsInstall({ userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/120' })).toBe(false);
   });
 
@@ -164,6 +167,82 @@ describe('phone push helpers', () => {
     expect(sameApplicationServerKey(keyBytes('AQID').buffer, 'AQID')).toBe(true);
     expect(sameApplicationServerKey(keyBytes('BAUG').buffer, 'AQID')).toBe(false);
     expect(sameApplicationServerKey(null, 'AQID')).toBe(false);
+  });
+});
+
+type FakeSub = { endpoint: string; options: { applicationServerKey: ArrayBuffer | null }; toJSON(): { endpoint: string; keys: Record<string, string> }; unsubscribe(): Promise<boolean> };
+const fakeSub = (endpoint: string, key: string): FakeSub => ({
+  endpoint, options: { applicationServerKey: keyBytes(key).buffer as ArrayBuffer },
+  toJSON: () => ({ endpoint, keys: { p256dh: 'p', auth: 'a' } }),
+  unsubscribe: vi.fn(() => Promise.resolve(true)),
+});
+
+// a browser with a service worker ready and a daemon whose key is AQID; `known` is what the daemon holds for the endpoint
+function pushEnv(o: { sub?: FakeSub; known?: PushStatus[]; permission?: string } = {}) {
+  let sub: FakeSub | null = o.sub ?? null;
+  const subscribe = vi.fn((_opts: { applicationServerKey: Uint8Array }) => Promise.resolve(sub = fakeSub('https://push.example/new', 'AQID')));
+  vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (Linux; Android 14)', serviceWorker: { ready: Promise.resolve({ pushManager: { getSubscription: () => Promise.resolve(sub), subscribe } }) } });
+  vi.stubGlobal('window', { PushManager: class {}, Notification: class {} });
+  vi.stubGlobal('Notification', { permission: o.permission ?? 'default' });
+  const calls: [string, Record<string, unknown>][] = [];
+  const api = {
+    call: (method: string, params: Record<string, unknown>) => {
+      calls.push([method, params]);
+      if (method === 'push.key') return Promise.resolve({ publicKey: 'AQID' });
+      if (method === 'push.get') return Promise.resolve({ statuses: o.known });
+      return Promise.resolve({});
+    },
+  } as unknown as Api;
+  return { api, calls, subscribe };
+}
+
+describe('phone push', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('reads a phone with no subscription as off, holding the key a tap will need', async () => {
+    const { api } = pushEnv();
+    expect(await readPush(api)).toEqual({ kind: 'off', publicKey: 'AQID' });
+  });
+
+  it('reads a subscription the daemon holds as on, and one it forgot as off', async () => {
+    expect(await readPush(pushEnv({ sub: fakeSub('https://push.example/a', 'AQID'), known: ['done'] }).api))
+      .toEqual({ kind: 'on', endpoint: 'https://push.example/a', statuses: ['done'] });
+    expect(await readPush(pushEnv({ sub: fakeSub('https://push.example/a', 'AQID') }).api)).toEqual({ kind: 'off', publicKey: 'AQID' });
+  });
+
+  it('says when the phone has refused notifications', async () => {
+    expect(await readPush(pushEnv({ permission: 'denied' }).api)).toEqual({ kind: 'denied' });
+  });
+
+  // a round trip before the prompt can outlast the tap's activation, and the prompt is then refused
+  it('subscribes with the key it already holds, asking the daemon nothing first', async () => {
+    const { api, calls, subscribe } = pushEnv();
+    expect(await enablePush(api, 'AQID')).toEqual({ kind: 'on', endpoint: 'https://push.example/new', statuses: ['blocked', 'done'] });
+    expect(Array.from(subscribe.mock.calls[0][0].applicationServerKey)).toEqual([1, 2, 3]);
+    expect(calls.map(([m]) => m)).toEqual(['push.subscribe']);
+  });
+
+  it('replaces a subscription made against an older key', async () => {
+    const old = fakeSub('https://push.example/old', 'BAUG');
+    const { api, subscribe } = pushEnv({ sub: old });
+    await enablePush(api, 'AQID');
+    expect(old.unsubscribe).toHaveBeenCalled();
+    expect(subscribe).toHaveBeenCalled();
+  });
+
+  it('changes which turns it hears about, and reads a lost subscription as off', async () => {
+    const { api, calls } = pushEnv({ sub: fakeSub('https://push.example/a', 'AQID') });
+    expect(await setPushStatuses(api, ['blocked'])).toEqual({ kind: 'on', endpoint: 'https://push.example/a', statuses: ['blocked'] });
+    expect(calls[0]).toEqual(['push.subscribe', { endpoint: 'https://push.example/a', keys: { p256dh: 'p', auth: 'a' }, statuses: ['blocked'] }]);
+    expect(await setPushStatuses(pushEnv().api, ['blocked'])).toEqual({ kind: 'off', publicKey: 'AQID' });
+  });
+
+  it('turning it off forgets the phone on both sides', async () => {
+    const sub = fakeSub('https://push.example/a', 'AQID');
+    const { api, calls } = pushEnv({ sub });
+    expect(await disablePush(api)).toEqual({ kind: 'off', publicKey: 'AQID' });
+    expect(calls[0]).toEqual(['push.unsubscribe', { endpoint: 'https://push.example/a' }]);
+    expect(sub.unsubscribe).toHaveBeenCalled();
   });
 });
 
