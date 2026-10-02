@@ -208,7 +208,7 @@ export async function codexCheck(d: Pick<DoctorDeps, 'codex' | 'exists' | 'read'
 function shims(d: DoctorDeps): Check {
   return d.shimsCurrent
     ? { name: 'shims', status: 'ok', detail: `${SHIM} in ${d.shimDir} runs this build` }
-    : { name: 'shims', status: 'warn', detail: `missing or out of date: run ${SHIM} setup` };
+    : { name: 'shims', status: 'warn', detail: `missing or not what this build writes: run ${SHIM} setup from the build you use` };
 }
 
 function plistCheck(t: Target, d: DoctorDeps): Check {
@@ -216,7 +216,7 @@ function plistCheck(t: Target, d: DoctorDeps): Check {
   const { plist, fix } = plistOf(t, d);
   return d.plistCurrent
     ? { name: 'launchd plist', status: 'ok', detail: `${plist} runs this build` }
-    : { name: 'launchd plist', status: 'warn', detail: `missing or out of date: ${fix}` };
+    : { name: 'launchd plist', status: 'warn', detail: `missing or not what this build writes: ${fix}, from the build you use` };
 }
 
 export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {

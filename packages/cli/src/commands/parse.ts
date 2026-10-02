@@ -26,9 +26,9 @@ export function int(value: string, flag: string, { min = -Infinity, max = Infini
   return n;
 }
 
-/** A number above zero from `flag`, such as a ratio. */
-export function num(value: string, flag: string): number {
-  const n = /^\d*\.?\d+$/.test(value.trim()) ? Number(value) : 0;
-  if (!(n > 0)) throw new Error(`bad ${flag} "${value}", expected a number above 0`);
+/** A number from `flag`, such as a ratio, from `min` to `max`. */
+export function num(value: string, flag: string, { min, max }: { min: number; max: number }): number {
+  const n = /^\d*\.?\d+$/.test(value.trim()) ? Number(value) : NaN;
+  if (!(n >= min && n <= max)) throw new Error(`bad ${flag} "${value}", expected a number from ${min} to ${max}`);
   return n;
 }

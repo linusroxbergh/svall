@@ -48,7 +48,7 @@ export function islandCommands(connect: () => Promise<Client>, json: () => boole
   cmd.command('arrange').description('resize every island to its crew and pack the fleet together')
     .option('--aspect <n>', 'width over height of the window to fill')
     .action(async (o: { aspect?: string }) => {
-      const aspect = o.aspect ? num(o.aspect, '--aspect') : undefined;
+      const aspect = o.aspect ? num(o.aspect, '--aspect', { min: 0.01, max: 100 }) : undefined;
       const islands = await withClient(connect, async (c) => {
         await c.call('island.arrange', { aspect });
         return (await c.call('state.get', {})).islands;

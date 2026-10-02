@@ -68,6 +68,10 @@ fetch() {
 
 publish() {
   cd "$ROOT"
+  if gh release view "$TAG" -R "github.com/$REPO" --json assets --jq '.assets[].name' 2>/dev/null | grep -qx "$ASSET"; then
+    echo "$ASSET is published already, and commits pin it; bump REV to publish a new kit" >&2
+    return 1
+  fi
   git submodule update --init vendor/ghostty
   if [ -n "$(git -C vendor/ghostty status --porcelain --untracked-files=no)" ]; then
     echo "vendor/ghostty has local changes" >&2
@@ -83,7 +87,7 @@ publish() {
   gh release view "$TAG" -R "github.com/$REPO" >/dev/null 2>&1 ||
     gh release create "$TAG" -R "github.com/$REPO" --prerelease --title "GhosttyKit" \
       --notes "GhosttyKit builds that pnpm desktop:install downloads, one per Ghostty commit and kit revision."
-  gh release upload "$TAG" "$out/$ASSET" -R "github.com/$REPO" --clobber
+  gh release upload "$TAG" "$out/$ASSET" -R "github.com/$REPO"
   echo "published $ASSET; pin it in scripts/ghostty-kit.sh:"
   echo "PINNED=$VERSION"
   echo "SHA256=$(shasum -a 256 "$out/$ASSET" | cut -d' ' -f1)"

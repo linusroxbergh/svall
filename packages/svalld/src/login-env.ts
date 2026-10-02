@@ -10,7 +10,7 @@ const COMMAND = `echo ${MARK}; ${NAMES.map((n) => `/usr/bin/printenv ${n}; echo 
 
 export type LoginEnv = Partial<Record<(typeof NAMES)[number], string>> & { PATH: string };
 
-/** How long setup waits for the login shell. */
+/** How long setup and uninstall wait for the login shell. */
 export const LOGIN_SHELL_TIMEOUT_MS = 5000;
 
 /** Where agent CLIs usually live, in the order the daemon's PATH searches them. */

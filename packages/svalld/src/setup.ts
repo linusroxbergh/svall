@@ -205,7 +205,9 @@ export function setupState(o: SetupOptions): SetupState {
   };
 }
 
-export async function runSetup(o: SetupOptions & { launchctl: boolean; replaceSettings?: boolean }, state: SetupState = setupState(o)): Promise<string[]> {
+export async function runSetup(o: SetupOptions & { launchctl: boolean; replaceSettings?: boolean }): Promise<string[]> {
+  // read again here, as a run decides what to do seconds before it writes, and an agent may have changed its file since
+  const state = setupState(o);
   const home = await setupHome({ ...o, label: LAUNCHD_LABEL, launchctl: false });
   const user = setupUser({ ...o, settings: state.settings, codexHooks: state.codexHooks, replaceSettings: o.replaceSettings ?? true });
   for (const [current, next, what] of state.removals) user.push(...writeJsonSettings(current, next, what));

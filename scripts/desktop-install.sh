@@ -21,6 +21,10 @@ step() { printf '%s◇%s  %s\n' "$C" "$N" "$*"; }
 bar() { printf '%s│%s\n' "$D" "$N"; }
 fail() { printf '%s■%s  %s\n' "$R" "$N" "$*" >&2; exit 1; }
 LOG="$(mktemp -t svall-install)"
+CHECK_OUT="$(mktemp -t svall-check)"
+SETUP_OUT="$(mktemp -t svall-setup)"
+# the log stays, for a failed step to point at
+trap 'rm -rf "$CHECK_OUT" "$SETUP_OUT" "$DEST/.Svall Dev.app.new"' EXIT
 # a step's own output goes to the log, which is shown only when the step fails
 quiet() { "$@" >>"$LOG" 2>&1 || { tail -n 40 "$LOG" >&2; fail "$* failed; the whole log is $LOG"; }; }
 printf '%s┌%s  Svall\n' "$C" "$N"; bar
@@ -74,7 +78,6 @@ step "Installing packages"
 quiet pnpm install --silent
 
 # the setup checks need node_modules, so they come straight after the install and before any build
-CHECK_OUT="$(mktemp -t svall-check)"
 CHECK_OK=1
 pnpm --silent svall -p private setup --check >"$CHECK_OUT" 2>&1 || CHECK_OK=
 # this script runs setup after the build for each line that asks for it, so those lines say that instead
@@ -96,7 +99,6 @@ fi
 SETUP=
 [ -f "$HOME_DIR/config.json" ] || SETUP=1
 grep -q 'run svall-dev setup' "$CHECK_OUT" && SETUP=1
-rm -f "$CHECK_OUT"
 # setup is what starts the private fleet's agent, so one a failed start left unloaded gets another
 launchctl print "gui/$(id -u)/io.github.linusroxbergh.svall.dev.svalld" >/dev/null 2>&1 || SETUP=1
 
@@ -134,21 +136,21 @@ done
 
 step "Installing to $DEST"
 # the new copy is whole before the old one goes, so a failed copy leaves the installed app
-trap 'rm -rf "$DEST/.Svall Dev.app.new"' EXIT
+rm -rf "$DEST/.Svall Dev.app.new"
 quiet ditto "apps/desktop/mac/build/Svall Dev.app" "$DEST/.Svall Dev.app.new"
 rm -rf "$DEST/Svall Dev.app"
 mv "$DEST/.Svall Dev.app.new" "$DEST/Svall Dev.app"
 # Finder caches icons per bundle path; touching the bundle makes it re-read this build's
 touch "$DEST/Svall Dev.app"
+# the build LaunchServices knows could stand for the bundle id in place of the installed app
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "apps/desktop/mac/build/Svall Dev.app" 2>/dev/null || true
 
 if [ -n "$SETUP" ]; then
   step "Setting up hooks, the daemon and the svall command"
-  SETUP_OUT="$(mktemp -t svall-setup)"
   pnpm --silent svall -p private setup >"$SETUP_OUT" 2>&1 || { cat "$SETUP_OUT" >&2; fail "svall setup failed"; }
   cat "$SETUP_OUT" >>"$LOG"
   # its ! lines, and Codex's ask to trust the hooks it rewrote, are the user's to act on
   grep -e '^! ' -e '^Codex asks once' "$SETUP_OUT" | sed "s/^/${D}│${N}  /" || true
-  rm -f "$SETUP_OUT"
 fi
 
 # quitting a window stops its daemon, so one still running was left by a window that crashed, on the old build

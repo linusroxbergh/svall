@@ -232,6 +232,16 @@ test.each([
   expect(kitVersion(root)).toBe(version(B));
 });
 
+test('publish refuses a kit already published, as commits pin its sha256', () => {
+  const root = repo();
+  const f = fakes();
+  fs.writeFileSync(path.join(f.PATH.split(':')[0], 'gh'), `#!/bin/sh\necho "gh $*" >> '${f.log}'\necho GhosttyKit-${version(A)}-arm64.zip\n`, { mode: 0o755 });
+  const r = run(root, ['publish'], { PATH: f.PATH });
+  expect(r.status).toBe(1);
+  expect(r.stderr).toContain(`GhosttyKit-${version(A)}-arm64.zip is published already, and commits pin it; bump REV to publish a new kit`);
+  expect(fs.readFileSync(f.log, 'utf8')).not.toContain('upload');
+});
+
 test('fetch downloads nothing on an Intel Mac', () => {
   const root = repo();
   const f = fakes({ zip: kitZip(version(A)), arm64: '0' });

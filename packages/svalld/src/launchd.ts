@@ -111,12 +111,9 @@ export async function bootstrapAgent(launchAgentsDir: string, label: string): Pr
   await exec('launchctl', ['bootout', domain, plist]).catch(() => {});
   const bootstrap = () => exec('launchctl', ['bootstrap', domain, plist]);
   // launchd refuses a bootstrap while the job it booted out is still going away, so a refusal is tried once more
-  try {
-    await bootstrap().catch(() => new Promise((r) => setTimeout(r, 500)).then(bootstrap));
-  } catch (e) {
-    const why = ((e as { stderr?: string }).stderr || (e as Error).message).trim().split('\n')[0];
-    if (!await isLoaded(label)) throw new Error(`launchd did not load ${label} (${why}); opening Svall loads it`);
-  }
+  await bootstrap().catch(() => new Promise((r) => setTimeout(r, 500)).then(bootstrap)).catch((e: Error & { stderr?: string }) => {
+    throw new Error(`launchd did not load ${label} (${(e.stderr || e.message).trim().split('\n')[0]}); run setup again`);
+  });
   if (running) await exec('launchctl', ['kickstart', `${domain}/${label}`]);
   return `launchctl bootstrap ${domain} ${plist}`;
 }

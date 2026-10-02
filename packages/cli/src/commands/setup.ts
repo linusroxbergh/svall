@@ -119,14 +119,14 @@ async function refreshAction(r: Run, stale: string[], system: boolean, unwritabl
   printResult({ done, warnings }, r.json, () => [...done, ...warnings].join('\n'));
 }
 
-async function runAction(r: Run, o: Daemons & { choices?: Choices; options: SetupOptions; state?: SetupState; system: boolean; ifNeeded?: boolean }): Promise<void> {
+async function runAction(r: Run, o: Daemons & { choices?: Choices; options: SetupOptions; system: boolean; ifNeeded?: boolean }): Promise<void> {
   const warnings = requireReady(await preflight({ ...realPreflightDeps(r.home), ...o.choices?.mainAgent ? { mainAgent: o.choices.mainAgent } : {} }));
   if (o.choices) {
     fs.mkdirSync(r.home, { recursive: true });
     if (o.choices.defaultCwd) fs.mkdirSync(expandHome(o.choices.defaultCwd), { recursive: true });
     saveConfig(r.configFile, o.choices);
   }
-  const lines = await runSetup({ ...o.options, launchctl: o.system, replaceSettings: !o.ifNeeded }, o.state);
+  const lines = await runSetup({ ...o.options, launchctl: o.system, replaceSettings: !o.ifNeeded });
   const fleets = await refreshFleetPlists({ homes: r.homes, runtime: r.runtime, launchAgentsDir: r.launchAgents, launchctl: o.system, takeOver: !o.ifNeeded });
   lines.push(...fleets.done);
   // a running fleet took the private fleet's main agent at its start, so a switch reaches it only through a restart
@@ -141,7 +141,7 @@ async function runAction(r: Run, o: Daemons & { choices?: Choices; options: Setu
 
 export function setupCommand(target: () => Target, json: () => boolean): Command {
   return new Command('setup')
-    .description('install hooks, tmux.conf, launchd agent and the svall shim')
+    .description('install hooks, the launchd agent and the svall shim')
     .option('--no-launchctl', 'write files only; leave launchd alone')
     .option('--check', 'only check what setup needs; change nothing')
     .option('--plan', 'print what setup would do, as the app shows it; change nothing')
@@ -195,6 +195,6 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
         // stand-in folders must not replace what a setup with the real login environment wrote
         if (!answered || !state || (!state.hooksStale && !state.shimsStale && !state.plistStale && !fleetsStale)) return refreshAction(r, d.stale, system, unwritable);
       }
-      return runAction(r, { ...d, choices, options, state, system, ifNeeded: o.ifNeeded });
+      return runAction(r, { ...d, choices, options, system, ifNeeded: o.ifNeeded });
     });
 }

@@ -114,8 +114,8 @@ describe('doctor', () => {
 
   it('warns about shims or a plist that setup would write differently now, as setup --check does', async () => {
     const c = byName(await doctor(priv, fake({ shimsCurrent: false, plistCurrent: false }).deps));
-    expect(c.shims).toEqual({ name: 'shims', status: 'warn', detail: 'missing or out of date: run svall setup' });
-    expect(c['launchd plist']).toEqual({ name: 'launchd plist', status: 'warn', detail: 'missing or out of date: svall setup' });
+    expect(c.shims).toEqual({ name: 'shims', status: 'warn', detail: 'missing or not what this build writes: run svall setup from the build you use' });
+    expect(c['launchd plist']).toEqual({ name: 'launchd plist', status: 'warn', detail: 'missing or not what this build writes: svall setup, from the build you use' });
     expect(byName(await doctor(adhoc, fake().deps))['launchd plist'].status).toBe('skip');
   });
 

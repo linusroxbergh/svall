@@ -17,10 +17,11 @@ describe('int', () => {
 });
 
 describe('num', () => {
-  it('takes a ratio above 0', () => {
-    expect(num('1.6', '--aspect')).toBe(1.6);
-    expect(num('16', '--aspect')).toBe(16);
-    for (const bad of ['16:9', '0', '-1', 'Infinity', '']) expect(() => num(bad, '--aspect')).toThrow(`bad --aspect "${bad}", expected a number above 0`);
+  it('takes a ratio within its range', () => {
+    const aspect = { min: 0.01, max: 100 };
+    expect(num('1.6', '--aspect', aspect)).toBe(1.6);
+    expect(num('16', '--aspect', aspect)).toBe(16);
+    for (const bad of ['16:9', '0', '-1', '500', 'Infinity', '']) expect(() => num(bad, '--aspect', aspect)).toThrow(`bad --aspect "${bad}", expected a number from 0.01 to 100`);
   });
 });
 

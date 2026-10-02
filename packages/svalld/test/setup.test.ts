@@ -280,9 +280,9 @@ describe('installHookScripts', () => {
   it('rewrites a script only when it changed, renaming it into place, so a hook reading the old one keeps its file', () => {
     const paths = resolvePaths(makeHome());
     installHookScripts(paths, undefined);
-    const ino = fs.statSync(paths.hookScript).ino;
+    fs.utimesSync(paths.hookScript, new Date(0), new Date(0));
     installHookScripts(paths, undefined);
-    expect(fs.statSync(paths.hookScript).ino).toBe(ino);
+    expect(fs.statSync(paths.hookScript).mtimeMs).toBe(0);
     fs.writeFileSync(paths.hookScript, 'old');
     const reading = fs.openSync(paths.hookScript, 'r');
     installHookScripts(paths, undefined);
@@ -391,7 +391,7 @@ describe('runSetup', () => {
     expect(fs.existsSync(settingsPath)).toBe(true);
   });
 
-  it('writes hooks, conf, settings backup, plist and shim', async () => {
+  it('writes hooks, settings backup, plist and shim', async () => {
     const home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ home: { cwd: path.join(home, 'mc') } }));
     const settingsPath = path.join(home, 'claude-settings.json');
@@ -493,9 +493,9 @@ esac
       expect(calls()).toEqual(['print', 'bootout', 'bootstrap', 'bootstrap']);
     });
 
-    it('says launchd did not load the service, and that opening Svall loads it, once it refuses twice', async () => {
+    it('says launchd did not load the service once it refuses twice', async () => {
       launchctl(2);
-      await expect(setup()).rejects.toThrow(`launchd did not load ${LAUNCHD_LABEL} (Bootstrap failed: 5: Input/output error); opening Svall loads it`);
+      await expect(setup()).rejects.toThrow(`launchd did not load ${LAUNCHD_LABEL} (Bootstrap failed: 5: Input/output error); run setup again`);
     });
   });
 

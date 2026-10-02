@@ -104,7 +104,7 @@ function checks(stubs: Record<string, string>, setUp = false) {
     fs.writeFileSync(path.join(root, file), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
   }
   fs.mkdirSync(path.join(root, 'tmp'));
-  return spawnSync('sh', ['-c', `set -eu\nHOME_DIR="$HOME/.svall-dev"\n${PRELUDE}\n${CHECKS}\necho "build ghostty: $BUILD_GHOSTTY, setup: $SETUP"`], {
+  return spawnSync('sh', ['-c', `set -eu\nDEST="$HOME/Applications"\nHOME_DIR="$HOME/.svall-dev"\n${PRELUDE}\n${CHECKS}\necho "build ghostty: $BUILD_GHOSTTY, setup: $SETUP"`], {
     cwd: root, env: { ...process.env, HOME: root, TMPDIR: path.join(root, 'tmp'), PATH: `${path.join(root, 'bin')}:${process.env.PATH}` }, encoding: 'utf8', timeout: 30_000,
   });
 }
@@ -159,8 +159,9 @@ function install(stubs: Record<string, string>) {
     fs.mkdirSync(path.join(root, app, 'Contents'), { recursive: true });
     fs.writeFileSync(path.join(root, app, 'Contents/build'), build);
   }
+  fs.mkdirSync(path.join(root, 'tmp'));
   const r = spawnSync('sh', ['-c', `set -eu\nDEST="$HOME/Applications"\nSETUP=1\n${PRELUDE}\n${part('step "Installing to', 'step "$(pnpm')}`], {
-    cwd: root, env: { ...process.env, HOME: root, PATH: `${path.join(root, 'bin')}:${process.env.PATH}` }, encoding: 'utf8', timeout: 30_000,
+    cwd: root, env: { ...process.env, HOME: root, TMPDIR: path.join(root, 'tmp'), PATH: `${path.join(root, 'bin')}:${process.env.PATH}` }, encoding: 'utf8', timeout: 30_000,
   });
   const installed = (): string | undefined => {
     try { return fs.readFileSync(path.join(root, 'Applications/Svall Dev.app/Contents/build'), 'utf8'); } catch { return undefined; }
@@ -179,6 +180,11 @@ test('replaces the installed app only once the new copy is whole', () => {
   expect(full.r.stderr).toContain('No space left on device');
   expect(full.installed()).toBe('old');
   expect(fs.readdirSync(path.join(full.root, 'Applications'))).toEqual(['Svall Dev.app']);
+
+  // a copy a killed install left behind is not merged into the new one
+  const killed = install({ 'bin/pnpm': '', 'Applications/.Svall Dev.app.new/Contents/stale': '' });
+  expect(killed.r.status).toBe(0);
+  expect(fs.readdirSync(path.join(killed.root, 'Applications/Svall Dev.app/Contents'))).toEqual(['build']);
 });
 
 test("shows setup's warnings and Codex's ask to trust the hooks it rewrote, and nothing else of its output", () => {
