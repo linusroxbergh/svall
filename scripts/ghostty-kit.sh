@@ -4,7 +4,7 @@
 #   current   exit 0 when vendor/ghostty-kit was built from the Ghostty commit HEAD records, at REV
 #   ahead     exit 0 when it was built from a vendor/ghostty checkout ahead of that commit, a bump not yet committed
 #   fetch     download that commit's kit into vendor/ghostty-kit
-#   publish   build that commit's kit and upload it (maintainers)
+#   publish   build that commit's kit, upload it and print the lines that pin it (maintainers)
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REPO=linusroxbergh/svall
@@ -17,6 +17,9 @@ VERSION="$COMMIT-r$REV"
 ASSET="GhosttyKit-$VERSION-arm64.zip"
 # xcodebuild names the slice after the library's architecture, which is zig's own, whatever the shell's
 LIB=GhosttyKit.xcframework/macos-arm64/libghostty-fat.a
+# the one kit fetch takes: the VERSION it was published as, and the sha256 publish printed for it
+PINNED=332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28-r1
+SHA256=c31cad36b47911a0e4a45a8d32e4699b1b2217598a58747a9c10da833b846c4b
 
 current() {
   [ "$(cat "$KIT/version" 2>/dev/null)" = "$VERSION" ]
@@ -34,13 +37,18 @@ fetch() {
     echo "prebuilt GhosttyKit is for Apple Silicon only" >&2
     return 1
   fi
+  if [ "$VERSION" != "$PINNED" ]; then
+    echo "no GhosttyKit is pinned for Ghostty $COMMIT at r$REV: publish it, then pin the sha256 publish prints" >&2
+    return 1
+  fi
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT
-  # gh reaches the release while the repository is private, curl once it is public
-  why="gh is not installed"
-  if ! { command -v gh >/dev/null 2>&1 && why="$(gh release download "$TAG" -R "github.com/$REPO" -p "$ASSET" -D "$tmp" 2>&1 >/dev/null)"; } &&
-    ! curl -fsSL --max-time 600 -o "$tmp/$ASSET" "https://github.com/$REPO/releases/download/$TAG/$ASSET" 2>/dev/null; then
-    echo "no GhosttyKit could be downloaded for Ghostty $COMMIT: $(echo "$why" | head -n 1)" >&2
+  if ! curl -fsSL --max-time 600 -o "$tmp/$ASSET" "https://github.com/$REPO/releases/download/$TAG/$ASSET"; then
+    echo "no GhosttyKit could be downloaded for Ghostty $COMMIT" >&2
+    return 1
+  fi
+  if ! echo "$SHA256  $tmp/$ASSET" | shasum -a 256 -c - >/dev/null 2>&1; then
+    echo "the downloaded GhosttyKit for Ghostty $COMMIT does not match its pinned sha256" >&2
     return 1
   fi
   if ! ditto -x -k "$tmp/$ASSET" "$tmp/kit" 2>/dev/null || [ "$(cat "$tmp/kit/version" 2>/dev/null)" != "$VERSION" ] ||
@@ -76,7 +84,9 @@ publish() {
     gh release create "$TAG" -R "github.com/$REPO" --prerelease --title "GhosttyKit" \
       --notes "GhosttyKit builds that pnpm desktop:install downloads, one per Ghostty commit and kit revision."
   gh release upload "$TAG" "$out/$ASSET" -R "github.com/$REPO" --clobber
-  echo "published $ASSET"
+  echo "published $ASSET; pin it in scripts/ghostty-kit.sh:"
+  echo "PINNED=$VERSION"
+  echo "SHA256=$(shasum -a 256 "$out/$ASSET" | cut -d' ' -f1)"
 }
 
 case "${1:-}" in

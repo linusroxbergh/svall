@@ -4,9 +4,18 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, test } from 'vitest';
 
-// the step that closes every open window before the app is replaced, run on its own
 const SCRIPT = fs.readFileSync(path.join(import.meta.dirname, '../scripts/desktop-install.sh'), 'utf8');
-const STEP = SCRIPT.slice(SCRIPT.indexOf("# app.pid outlives a crash"), SCRIPT.indexOf('step "Installing to'));
+/** The script from the line of code `from` up to the one `to`, to run a part of it on its own. */
+const part = (from: string, to: string): string => {
+  const at = (code: string): number => {
+    const i = SCRIPT.indexOf(code);
+    if (i < 0) throw new Error(`desktop-install.sh no longer holds ${code}`);
+    return i;
+  };
+  return SCRIPT.slice(at(from), at(to));
+};
+// the step that closes every open window before the app is replaced
+const STEP = part('is_app() {', 'step "Installing to');
 
 const dirs: string[] = [];
 const procs: ChildProcess[] = [];
@@ -77,8 +86,8 @@ test('stops before anything is installed when a window stays open or macOS will 
 });
 
 // the script's own step, quiet and fail, then everything from GhosttyKit to the setup checks, run with stubbed tools
-const PRELUDE = SCRIPT.slice(SCRIPT.indexOf('# one column'), SCRIPT.indexOf('step "Checking your Mac"'));
-const CHECKS = SCRIPT.slice(SCRIPT.indexOf('# GhosttyKit is downloaded'), SCRIPT.indexOf('if [ -n "$BUILD_GHOSTTY" ]'));
+const PRELUDE = part('if [ -t 1 ] && [ -z "${NO_COLOR', 'step "Checking your Mac"');
+const CHECKS = part('BUILD_GHOSTTY=', 'if [ -n "$BUILD_GHOSTTY" ]');
 const CHECK_OK = 'case "$*" in *"setup --check"*) echo "│  ✓ tmux  tmux 3.5a" ;; esac';
 
 function checks(stubs: Record<string, string>, setUp = false) {
@@ -101,9 +110,9 @@ function checks(stubs: Record<string, string>, setUp = false) {
 }
 
 test('builds GhosttyKit from source when the download fails, and says why it failed', () => {
-  const r = checks({ 'scripts/ghostty-kit.sh': '[ "$1" = fetch ] && echo "gh: not signed in" >&2; exit 1' });
+  const r = checks({ 'scripts/ghostty-kit.sh': '[ "$1" = fetch ] && echo "curl: (6) Could not resolve host: github.com" >&2; exit 1' });
   expect(r.status).toBe(0);
-  expect(r.stderr).toContain('gh: not signed in');
+  expect(r.stderr).toContain('Could not resolve host');
   expect(r.stdout).toContain('◇  Terminal engine: building it from source instead');
   expect(r.stdout).toMatch(/build ghostty: 1, setup: 1\n$/);
 });
@@ -121,16 +130,6 @@ test('stops before any build on a failed check or a missing tool, showing each',
   expect(noKit.stderr).toContain('Nothing was changed.');
 });
 
-test("stops before any build while the release's fleets run from a checkout, but not once the app runs them", () => {
-  const plist = 'Library/LaunchAgents/io.github.linusroxbergh.svall.svalld.work.plist';
-  const legacy = checks({ [plist]: '<string>/Users/u/svall/node_modules/.bin/tsx</string>' }, true);
-  expect(legacy.status).toBe(1);
-  expect(legacy.stderr).toContain("✗ fleets  ~/.svall's fleets run from a checkout");
-  expect(legacy.stderr).toContain(`/${plist}\n`);
-  expect(legacy.stdout).not.toContain('build ghostty:');
-  expect(checks({ [plist]: '<string>/Applications/Svall.app/Contents/Helpers/node</string>' }, true).status).toBe(0);
-});
-
 test("shows the end of a quiet step's log when the step fails", () => {
   const r = checks({ 'bin/pnpm': '[ "$1" = install ] && { echo "ERR_PNPM_FETCH_404 left-pad"; exit 1; }; exit 0' });
   expect(r.status).toBe(1);
@@ -146,4 +145,46 @@ test('sets up again only when a check asks for svall setup', () => {
   expect(asked.stdout).toContain('│  → hooks  out of date, will be updated after the build');
   expect(asked.stdout).not.toContain('run svall-dev setup');
   expect(checks({ 'bin/pnpm': stale }).stdout).toContain('│  → hooks  will be set up after the build');
+});
+
+// the install and setup steps, run with stubbed tools on a machine that has an older Svall Dev installed
+function install(stubs: Record<string, string>) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-desktop-install-'));
+  dirs.push(root);
+  for (const [file, body] of Object.entries({ 'bin/launchctl': '', ...stubs })) {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+  }
+  for (const [app, build] of [['Applications/Svall Dev.app', 'old'], ['apps/desktop/mac/build/Svall Dev.app', 'new']]) {
+    fs.mkdirSync(path.join(root, app, 'Contents'), { recursive: true });
+    fs.writeFileSync(path.join(root, app, 'Contents/build'), build);
+  }
+  const r = spawnSync('sh', ['-c', `set -eu\nDEST="$HOME/Applications"\nSETUP=1\n${PRELUDE}\n${part('step "Installing to', 'step "$(pnpm')}`], {
+    cwd: root, env: { ...process.env, HOME: root, PATH: `${path.join(root, 'bin')}:${process.env.PATH}` }, encoding: 'utf8', timeout: 30_000,
+  });
+  const installed = (): string | undefined => {
+    try { return fs.readFileSync(path.join(root, 'Applications/Svall Dev.app/Contents/build'), 'utf8'); } catch { return undefined; }
+  };
+  return { r, root, installed };
+}
+
+test('replaces the installed app only once the new copy is whole', () => {
+  const ok = install({ 'bin/pnpm': '' });
+  expect(ok.r.status).toBe(0);
+  expect(ok.installed()).toBe('new');
+  expect(fs.readdirSync(path.join(ok.root, 'Applications'))).toEqual(['Svall Dev.app']);
+
+  const full = install({ 'bin/pnpm': '', 'bin/ditto': 'mkdir -p "$2"; echo "ditto: No space left on device" >&2; exit 1' });
+  expect(full.r.status).toBe(1);
+  expect(full.r.stderr).toContain('No space left on device');
+  expect(full.installed()).toBe('old');
+  expect(fs.readdirSync(path.join(full.root, 'Applications'))).toEqual(['Svall Dev.app']);
+});
+
+test("shows setup's warnings and Codex's ask to trust the hooks it rewrote, and nothing else of its output", () => {
+  const lines = ['hook script -> /h', '! path  ~/.local/bin is not on PATH', 'Codex asks once to trust these hooks: start codex'];
+  const r = install({ 'bin/pnpm': `[ "$2" = svall ] && printf '%s\\n' ${lines.map((l) => `'${l}'`).join(' ')}` }).r;
+  expect(r.status).toBe(0);
+  expect(r.stdout).toContain('│  ! path  ~/.local/bin is not on PATH\n│  Codex asks once to trust these hooks');
+  expect(r.stdout).not.toContain('hook script');
 });

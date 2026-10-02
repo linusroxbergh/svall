@@ -1,6 +1,6 @@
 #!/bin/sh
-# Installs dependencies, downloads or builds GhosttyKit, builds Svall Dev.app, installs it to /Applications and restarts
-# the daemon. Checks first and runs `svall setup` after the build when setup is missing or its
+# Installs dependencies, downloads or builds GhosttyKit, builds Svall Dev.app and installs it to /Applications.
+# Checks first and runs `svall setup` after the build when setup is missing or its
 # hooks, shims or launchd agent are out of date or run another checkout, so a failed check or build leaves the machine untouched.
 set -eu
 # a character's shell names its own fleet, which may be the release's
@@ -57,9 +57,9 @@ elif ! scripts/ghostty-kit.sh current; then
   if ! scripts/ghostty-kit.sh fetch >>"$LOG" 2>&1; then
     tail -n 20 "$LOG" >&2
     BUILD_GHOSTTY=1
-    NO_KIT="✗ ghostty  no GhosttyKit could be downloaded (the reason is above; gh auth login fixes a signed-out gh)"
+    NO_KIT="✗ ghostty  no GhosttyKit could be downloaded (the reason is above)"
     if xcodebuild -license check >/dev/null 2>&1; then
-      step "Terminal engine: building it from source instead (if gh is signed out, gh auth login and a rerun skip that)"
+      step "Terminal engine: building it from source instead"
       step "Terminal engine: fetching Ghostty"
       git submodule update --init vendor/ghostty
       GHOSTTY_CHECK="$(scripts/ghostty-build.sh --check 2>&1)" || missing "$NO_KIT, and building it needs:
@@ -86,25 +86,17 @@ s/!/→/
 s/missing or out of date: run svall-dev setup\$/$NEW/
 s/out of date: run svall-dev setup\$/$AFTER/
 }" "$CHECK_OUT"; bar
-# a release fleet whose plist runs a checkout's tsx, which Svall Dev's daemon refuses
-LEGACY="$(grep -l '/node_modules/\.bin/tsx</string>' "$HOME"/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld*.plist 2>/dev/null || true)"
-[ -z "$LEGACY" ] ||
-  missing "✗ fleets  ~/.svall's fleets run from a checkout, which builds Svall Dev and cannot run them. Put Svall.app (from svall.dev, or pnpm app:build) in /Applications, then in a terminal outside Svall run
-   /Applications/Svall.app/Contents/Helpers/node /Applications/Svall.app/Contents/Resources/runtime/svall.mjs setup
-   That moves every fleet with a home. For a plist here whose fleet is gone, run launchctl bootout gui/$(id -u) <plist> and delete the file:
-$(printf '%s\n' "$LEGACY" | sed 's/^/   /')"
 if [ -z "$CHECK_OK" ] || [ -n "$MISSING" ]; then
   [ -z "$MISSING" ] || printf '%s\n' "$MISSING" | sed '/^$/d' >&2
   fail "Nothing was changed. Fix the ✗ items above, then run pnpm desktop:install again."
 fi
 
-# uninstall keeps the fleet homes, so config.json alone would call a stripped machine set up;
-# hooks, shims or a plist setup now writes differently are set up again, as nothing else rewrites them
+# hooks, shims or a plist that are missing, or that setup now writes differently, are set up again, as nothing else
+# rewrites them; uninstall keeps config.json, so its check only finds a first install
 SETUP=
-if [ ! -f "$HOME_DIR/config.json" ] || [ ! -f "$HOME/Library/LaunchAgents/io.github.linusroxbergh.svall.dev.svalld.plist" ] || [ ! -f "$HOME/.local/bin/svall-dev" ]; then
-  SETUP=1
-fi
+[ -f "$HOME_DIR/config.json" ] || SETUP=1
 grep -q 'run svall-dev setup' "$CHECK_OUT" && SETUP=1
+rm -f "$CHECK_OUT"
 # setup is what starts the private fleet's agent, so one a failed start left unloaded gets another
 launchctl print "gui/$(id -u)/io.github.linusroxbergh.svall.dev.svalld" >/dev/null 2>&1 || SETUP=1
 
@@ -141,8 +133,11 @@ for home in "$HOME"/.svall-dev "$HOME"/.svall-dev-*; do
 done
 
 step "Installing to $DEST"
+# the new copy is whole before the old one goes, so a failed copy leaves the installed app
+trap 'rm -rf "$DEST/.Svall Dev.app.new"' EXIT
+quiet ditto "apps/desktop/mac/build/Svall Dev.app" "$DEST/.Svall Dev.app.new"
 rm -rf "$DEST/Svall Dev.app"
-cp -R "apps/desktop/mac/build/Svall Dev.app" "$DEST/Svall Dev.app"
+mv "$DEST/.Svall Dev.app.new" "$DEST/Svall Dev.app"
 # Finder caches icons per bundle path; touching the bundle makes it re-read this build's
 touch "$DEST/Svall Dev.app"
 
@@ -151,12 +146,12 @@ if [ -n "$SETUP" ]; then
   SETUP_OUT="$(mktemp -t svall-setup)"
   pnpm --silent svall -p private setup >"$SETUP_OUT" 2>&1 || { cat "$SETUP_OUT" >&2; fail "svall setup failed"; }
   cat "$SETUP_OUT" >>"$LOG"
-  # its ! lines are the user's to act on
-  grep '^! ' "$SETUP_OUT" | sed "s/^/${D}│${N}  /" || true
+  # its ! lines, and Codex's ask to trust the hooks it rewrote, are the user's to act on
+  grep -e '^! ' -e '^Codex asks once' "$SETUP_OUT" | sed "s/^/${D}│${N}  /" || true
+  rm -f "$SETUP_OUT"
 fi
 
-step "Restarting svalld"
-# only the fleets whose windows are open run; the rest start with their window
+# quitting a window stops its daemon, so one still running was left by a window that crashed, on the old build
 launchctl list | awk '$1 != "-" && $3 ~ /^io\.github\.linusroxbergh\.svall\.dev\.svalld/ { print $3 }' | while read -r label; do
   echo "    $label" >>"$LOG"
   launchctl kickstart -k "gui/$(id -u)/$label" >>"$LOG" 2>&1 || echo "    (kickstart failed for $label)" >>"$LOG"
@@ -165,5 +160,4 @@ done
 step "$(pnpm --silent svall -p private agent)"
 bar
 printf '%s└%s  Installed. Open Svall Dev from Spotlight, or run svall-dev.\n' "$C" "$N"
-command -v codex >/dev/null 2>&1 && printf '   If Codex asks to trust Svall'\''s hooks, choose "Trust all and continue".\n'
 exit 0

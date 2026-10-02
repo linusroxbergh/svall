@@ -23,4 +23,7 @@ rsync -a --delete apps/desktop/mac/build/licenses/ "$APP/Contents/Resources/Lice
 # nested code is signed before the bundle that seals it
 codesign --force --sign - "$APP/Contents/Helpers/node" "$APP/Contents/Helpers/tmux"
 codesign --force --sign - "$APP"
+# a build LaunchServices knows can stand for the bundle id in place of the installed app, and take its Sparkle update;
+# unregistering one it never saw fails, which is fine
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$APP" 2>/dev/null || true
 echo "$APP"
