@@ -1,8 +1,7 @@
-import type { Cell, Character, ContextItem, Island as IslandModel, Portrait } from '@svall/protocol';
+import { crewGrid, type Cell, type Character, type ContextItem, type Island as IslandModel, type Portrait } from '@svall/protocol';
 import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
-import { crewGrid } from '../../../../../packages/svalld/src/layout.js';
 import { Island } from '../map/Island.js';
 import { cardScale, labelScale } from '../map/layout.js';
 import { Token } from '../map/Token.js';
@@ -35,7 +34,7 @@ const ISLANDS = [
   { id: 'docs', name: 'docs', seed: 171633796, crew: [6] },
 ];
 // each island's footprint and where its crew stand, as svalld lays them out
-const GRIDS = ISLANDS.map((i) => crewGrid(i.crew.length, i.seed));
+const GRIDS = ISLANDS.map((i) => crewGrid(i.crew.length));
 
 // wide: the text holds the left column and the islands cascade down the right; narrow: the same map under the text.
 // w and h are the world's box in px, k the most it is zoomed to, at each island's position in cells

@@ -21,7 +21,7 @@ import { takenNames } from './fleets.js';
 import type { SocketEvent } from './hooks/receiver.js';
 import { newId } from './ids.js';
 import { arrangeIslands, createIsland, deleteIsland, reorderIsland, updateIsland, type IslandPatch, type NewIsland } from './islands.js';
-import { blockedCells, defaultPosition, freePosition, occupiedCells, settleHome } from './layout.js';
+import { blockedCells, crewOf, defaultPosition, freePosition, occupiedCells, settleHome } from './layout.js';
 import { resolveRepo } from './links/git.js';
 import { refreshLinks, refreshMany, slice, type Deps as LinkDeps } from './links/refresh.js';
 import type { Logger } from './log.js';
@@ -665,9 +665,7 @@ export class Fleet extends EventEmitter<Events> {
         d.characters[id].islandId = target.islandId;
         d.characters[id].cell = placed;
       }
-      const crew = Object.values(d.characters)
-        .filter((c) => c.islandId === target.islandId)
-        .sort((a, b) => a.cell.y - b.cell.y || a.cell.x - b.cell.x || a.id.localeCompare(b.id));
+      const crew = crewOf(d, target.islandId).map((charId) => d.characters[charId]);
       const cells = crew.map((c) => c.cell);
       const order = crew.map((c) => c.id).filter((c) => c !== id);
       order.splice(order.indexOf(targetId) + Number(after), 0, id);

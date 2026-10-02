@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
-import { HOME_ISLAND, PORTRAITS, landCells, spacedCells, type Cell, type Size } from '@svall/protocol';
+import { CREW_INSET, HOME_ISLAND, PORTRAITS, crewGrid, landCells, spacedCells, type Cell, type Size } from '@svall/protocol';
 import { Config } from '../src/config.js';
 import { Fleet } from '../src/fleet.js';
-import { CREW_INSET, clearBy, crewGrid } from '../src/layout.js';
+import { clearBy } from '../src/layout.js';
 import { silentLogger } from '../src/log.js';
 import { resolvePaths } from '../src/paths.js';
 import { Store } from '../src/store.js';
@@ -65,7 +65,7 @@ runIf('Fleet layout', () => {
     const b = fleet.createIsland({ name: 'b' });
     const c1 = await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
     const c2 = await fleet.createCharacter({ islandId: b.id, cwd: '/tmp' });
-    const target = landCells(a.size, a.seed)[3];
+    const target = landCells(a.size)[3];
     expect(fleet.moveCharacter(c1.id, a.id, target).cell).toEqual(target);
     const ops: number[] = [];
     store.subscribe((o) => ops.push(o.length));
@@ -83,7 +83,7 @@ runIf('Fleet layout', () => {
     const first = await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
     const grown = store.state.islands[a.id].size;
     expect(grown.h).toBeGreaterThan(3);
-    expect(landCells(grown, 1)).toContainEqual(store.state.characters[first.id].cell);
+    expect(landCells(grown)).toContainEqual(store.state.characters[first.id].cell);
     // growing into the water the island below held moves that one out of the way rather than refusing
     for (let i = 0; i < 20 && store.state.islands[a.id].size.h < 8; i++) await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
     expect(store.state.islands[a.id].size.h).toBeGreaterThanOrEqual(8);
@@ -113,14 +113,14 @@ runIf('Fleet layout', () => {
   it('resize relocates a drowned character and refuses when too small', async () => {
     const { fleet, store } = await boot();
     const a = fleet.createIsland({ name: 'a', size: { w: 8, h: 6 }, seed: 2 });
-    const far = landCells(a.size, a.seed).at(-1)!;
+    const far = landCells(a.size).at(-1)!;
     const c = await fleet.createCharacter({ islandId: a.id, cwd: '/tmp', cell: far });
     fleet.updateIsland(a.id, { size: { w: 4, h: 3 } });
-    expect(landCells({ w: 4, h: 3 }, 2)).toContainEqual(store.state.characters[c.id].cell);
+    expect(landCells({ w: 4, h: 3 })).toContainEqual(store.state.characters[c.id].cell);
     fleet.updateIsland(a.id, { size: { w: 8, h: 6 } });
-    const cap = spacedCells({ w: 8, h: 6 }, 2, 99).length;
+    const cap = spacedCells({ w: 8, h: 6 }, 99).length;
     for (let i = 1; i < cap; i++) await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
-    expect(store.state.islands[a.id].size).toEqual(crewGrid(cap, 2).size);
+    expect(store.state.islands[a.id].size).toEqual(crewGrid(cap).size);
     expect(() => fleet.updateIsland(a.id, { size: { w: 4, h: 3 } })).toThrow(/fewer|free land/);
   });
 
@@ -207,7 +207,7 @@ runIf('Fleet layout', () => {
     const { fleet, store } = await boot();
     const a = fleet.createIsland({ name: 'a' });
     const c = await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
-    const coast = landCells(store.state.islands[a.id].size, a.seed).at(-1)!;
+    const coast = landCells(store.state.islands[a.id].size).at(-1)!;
     expect(fleet.moveCharacter(c.id, a.id, coast).cell).toEqual(coast);
     const moved = fleet.moveCharacter(c.id, a.id);
     expect(moved.cell).not.toEqual(coast);

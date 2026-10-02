@@ -4,13 +4,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SPACING, emptyState, isLand, landCells, sizeForCrew, type AgentKind, type FleetState } from '@svall/protocol';
+import { SPACING, crewGrid, emptyState, isLand, landCells, sizeForCrew, type AgentKind, type FleetState } from '@svall/protocol';
 import { Config } from '../src/config.js';
 import { docsDir } from '../src/docs.js';
 import type { Proc } from '../src/dormancy.js';
 import { Dormant, Fleet, Invalid, NotFound } from '../src/fleet.js';
 import { startHookReceiver, type HookEvent } from '../src/hooks/receiver.js';
-import { aboveHome, crewGrid, placementOk } from '../src/layout.js';
+import { aboveHome, placementOk } from '../src/layout.js';
 import type { Deps as LinkDeps } from '../src/links/refresh.js';
 import { silentLogger, type Logger } from '../src/log.js';
 import { resolvePaths } from '../src/paths.js';
@@ -66,7 +66,7 @@ runIf('Fleet', () => {
     const island = fleet.createIsland({ name: 'feature' });
     const c = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
     expect(c.name).toMatch(/^[a-z]+ [a-z]+$/);
-    expect(landCells(island.size, island.seed)).toContainEqual(c.cell);
+    expect(landCells(island.size)).toContainEqual(c.cell);
     expect((await tmux.listWindows()).map((w) => w.name)).toEqual([c.id]);
     const c2 = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp', name: 'two', command: 'echo started-$SVALL_CHAR_ID' });
     // the island reshaped around the pair, so the first one moved with it
@@ -141,8 +141,8 @@ runIf('Fleet', () => {
     const c = await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
     fleet.arrangeIslands(2);
     const state = store.state;
-    expect(state.islands[a.id].size).toEqual(crewGrid(1, a.seed).size);
-    expect(state.islands[b.id].size).toEqual(sizeForCrew(0, b.seed));
+    expect(state.islands[a.id].size).toEqual(crewGrid(1).size);
+    expect(state.islands[b.id].size).toEqual(sizeForCrew(0));
     expect(isLand(state.islands[a.id], state.characters[c.id].cell)).toBe(true);
     expect(placementOk(state, state.islands[b.id])).toBe(true);
     expect(state.islands[b.id].position.x).toBeLessThan(20);
@@ -1234,7 +1234,7 @@ runIf('Fleet', () => {
     await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
     const moved = fleet.updateCharacter(c1.id, { islandId: b.id, note: 'hi', context: [{ kind: 'other', ref: 'u', label: 'l', source: 'manual' }] });
     expect(moved).toMatchObject({ islandId: b.id, note: 'hi' });
-    expect(landCells(b.size, b.seed)).toContainEqual(moved.cell);
+    expect(landCells(b.size)).toContainEqual(moved.cell);
     expect(fleet.updateIsland(b.id, { name: 'bee' }).name).toBe('bee');
   });
 

@@ -1,9 +1,7 @@
-import { byIslandOrder, type Character, type FleetState, type Island } from '@svall/protocol';
+import { byCell, byIslandOrder, type Character, type FleetState, type Island } from '@svall/protocol';
 import { SINGLE, type Panes } from './panes.js';
 
 export type DisplayStatus = 'working' | 'idle' | 'blocked' | 'done' | 'shell';
-
-const byCell = (a: Character, b: Character) => a.cell.y - b.cell.y || a.cell.x - b.cell.x || a.id.localeCompare(b.id);
 
 export const islandsSorted = (f: FleetState): Island[] => Object.values(f.islands).sort(byIslandOrder);
 

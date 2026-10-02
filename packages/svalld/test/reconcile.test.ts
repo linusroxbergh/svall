@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SIZE, HOME_ISLAND, HOME_SEED, cellKey, emptyState, homeSizeFor, isLand, landCells, type Cell, type Character, type Island } from '@svall/protocol';
-import { crewGrid, placementOk, trimHome } from '../src/layout.js';
+import { DEFAULT_SIZE, HOME_ISLAND, HOME_SEED, cellKey, crewGrid, emptyState, homeSizeFor, isLand, landCells, type Cell, type Character, type Island } from '@svall/protocol';
+import { placementOk, trimHome } from '../src/layout.js';
 import { RECOVERED_ISLAND, markDormant, placeOnIsland, reconcile, reviveCommand, snapshot } from '../src/reconcile.js';
 import type { LiveWindow } from '../src/tmux/tmux.js';
 
@@ -110,7 +110,7 @@ describe('reconcile', () => {
   it('puts a character whose island is gone on the recovered island, keeping all it carries', () => {
     const s = emptyState();
     s.islands.i_1 = { id: 'i_1', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: DEFAULT_SIZE, seed: 1 };
-    s.characters.c_a = char({ cell: landCells(DEFAULT_SIZE, 1)[0] });
+    s.characters.c_a = char({ cell: landCells(DEFAULT_SIZE)[0] });
     s.characters.c_b = char({ id: 'c_b', islandId: 'i_gone', note: 'halfway', agent: { kind: 'claude', sessionId: SID, transcriptPath: '/t', status: 'idle', lastActivityAt: 0 } });
     reconcile(s, [], 0).mutate(s);
     expect(s.characters.c_a.islandId).toBe('i_1');
@@ -123,7 +123,7 @@ describe('reconcile', () => {
     s.characters.c_a = char({ islandId: RECOVERED_ISLAND });
     s.characters.c_b = char({ id: 'c_b', islandId: RECOVERED_ISLAND });
     reconcile(s, [], 0).mutate(s);
-    const { size, cells } = crewGrid(2, s.islands[RECOVERED_ISLAND].seed);
+    const { size, cells } = crewGrid(2);
     expect(s.islands[RECOVERED_ISLAND].size).toEqual(size);
     expect([s.characters.c_a.cell, s.characters.c_b.cell]).toEqual(cells);
   });
@@ -200,7 +200,7 @@ describe('reconcile', () => {
   it('placeOnIsland keeps growing while every new row touches a character', () => {
     // every land cell taken: the first new row is all blocked, so a single grow is not enough
     const island: Island = { id: 'a', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 10, h: 8 }, seed: 5 };
-    const cells = landCells(island.size, island.seed);
+    const cells = landCells(island.size);
     const s = { ...emptyState(), islands: { a: island } };
     cells.forEach((cell, i) => { s.characters[`c_${i}`] = char({ id: `c_${i}`, islandId: 'a', cell }); });
     const cell = placeOnIsland(s, 'a');
@@ -216,7 +216,7 @@ describe('reconcile', () => {
     s.characters.c_0 = char({ id: 'c_0', islandId: 'a', cell: { x: 2, y: 2 } });
     s.characters.c_1 = char({ id: 'c_1', islandId: 'a', cell: { x: 5, y: 2 } });
     const cell = placeOnIsland(s, 'a', 'c_1');
-    expect(s.islands.a.size).toEqual(crewGrid(2, 4).size);
+    expect(s.islands.a.size).toEqual(crewGrid(2).size);
     expect(isLand(s.islands.a, cell)).toBe(true);
     expect(cellKey(cell)).not.toBe(cellKey(s.characters.c_0.cell));
   });
@@ -225,7 +225,7 @@ describe('reconcile', () => {
     const island: Island = { id: 'a', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 4, h: 3 }, seed: 3 };
     const folded: Island = { ...island, id: 'o', name: 'ab', position: { x: 0, y: 4 }, size: { w: 6, h: 4 }, collapsed: true };
     const s = { ...emptyState(), islands: { a: island, o: folded } };
-    landCells(island.size, island.seed).forEach((cell, i) => { s.characters[`c_${i}`] = char({ id: `c_${i}`, islandId: 'a', cell }); });
+    landCells(island.size).forEach((cell, i) => { s.characters[`c_${i}`] = char({ id: `c_${i}`, islandId: 'a', cell }); });
     const cell = placeOnIsland(s, 'a');
     expect(isLand(s.islands.a, cell)).toBe(true);
     expect(placementOk(s, s.islands.a)).toBe(true);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SIZE, SPACING, emptyState, homeSizeFor, isLand, landCells, sizeForCrew, type FleetState, type Island } from '@svall/protocol';
-import { CREW_INSET, GAP, HOME_GAP, HOME_REACH, ROW_GAP, aboveHome, arrangeFleet, crewGrid, blockedCells, clearBy, defaultPosition, freePosition, makeRoom, nearestFreeLand, occupiedCells, pillWidth, placementOk, settleHome, sinkHome, uniqueName, worldIslands } from '../src/layout.js';
+import { CREW_INSET, DEFAULT_SIZE, SPACING, crewGrid, emptyState, homeSizeFor, isLand, landCells, pillWidth, sizeForCrew, type FleetState, type Island } from '@svall/protocol';
+import { GAP, HOME_GAP, ROW_GAP, aboveHome, arrangeFleet, blockedCells, clearBy, defaultPosition, freePosition, makeRoom, nearestFreeLand, occupiedCells, placementOk, settleHome, sinkHome, uniqueName, worldIslands } from '../src/layout.js';
 
 const island = (id: string, x: number, y: number, w = 6, h = 4): Island => ({ id, name: id, description: '', instructions: '', context: [], position: { x, y }, size: { w, h }, seed: 1 });
 const withIslands = (...islands: Island[]): FleetState => ({ ...emptyState(), islands: Object.fromEntries(islands.map((i) => [i.id, i])) });
@@ -37,7 +37,7 @@ describe('defaultPosition', () => {
 describe('cells', () => {
   it('nearestFreeLand prefers the closest land cell', () => {
     const i = island('a', 0, 0);
-    const cells = landCells(i.size, i.seed);
+    const cells = landCells(i.size);
     const from = cells[Math.floor(cells.length / 2)];
     expect(nearestFreeLand(i, from, new Set())).toEqual(from);
     const near = nearestFreeLand(i, from, new Set([`${from.x},${from.y}`]))!;
@@ -72,10 +72,10 @@ describe('cells', () => {
     expect(SPACING).toBe(2);
     expect(DEFAULT_SIZE).toEqual({ w: 7, h: 5 });
     // a fresh island is the ground a crew of one needs
-    expect(crewGrid(1, 1).size).toEqual(DEFAULT_SIZE);
+    expect(crewGrid(1).size).toEqual(DEFAULT_SIZE);
     for (let n = 1; n <= 9; n++) {
-      const { size, cells } = crewGrid(n, 1);
-      const land = new Set(landCells(size, 1).map((c) => `${c.x},${c.y}`));
+      const { size, cells } = crewGrid(n);
+      const land = new Set(landCells(size).map((c) => `${c.x},${c.y}`));
       for (const c of cells) {
         expect(land.has(`${c.x},${c.y}`)).toBe(true);
         expect(Math.min(c.x, c.y, size.w - 1 - c.x, size.h - 1 - c.y)).toBeGreaterThanOrEqual(CREW_INSET);
@@ -114,7 +114,7 @@ describe('cells', () => {
     const st = withIslands(island('a', 0, 0), mc);
     expect(freePosition(st, island('new', 0, 18))).toEqual({ x: 0, y: 18 });
     const at = freePosition(st, island('new', 0, 18), true);
-    expect(at.y + 4 + HOME_REACH).toBeLessThanOrEqual(20);
+    expect(at.y + 4).toBeLessThanOrEqual(20);
   });
 });
 
@@ -131,10 +131,10 @@ describe('mission control as the floor', () => {
   it('follows ground that grows past its row, and holds when the fleet rises', () => {
     const st = state(island('a', 0, 0, 6, 20), home(6));
     sinkHome(st);
-    expect(st.islands.home.position.y).toBe(20 + HOME_REACH);
+    expect(st.islands.home.position.y).toBe(20);
     st.islands.a.size = { w: 6, h: 4 };
     sinkHome(st);
-    expect(st.islands.home.position.y).toBe(20 + HOME_REACH);
+    expect(st.islands.home.position.y).toBe(20);
   });
 
   it('holds its row for an island that comes down onto it and no further', () => {
@@ -172,7 +172,7 @@ describe('arrangeFleet', () => {
     const st = withIslands(island('a', 0, 0, 12, 9), island('b', 40, 30, 12, 9), home(99));
     crew(st, 'a', 3);
     arrangeFleet(st);
-    expect(st.islands.b.size).toEqual(sizeForCrew(0, st.islands.b.seed));
+    expect(st.islands.b.size).toEqual(sizeForCrew(0));
     const cells = Object.values(st.characters).map((c) => c.cell);
     const { w, h } = st.islands.a.size;
     for (const c of cells) expect(isLand(st.islands.a, c)).toBe(true);
@@ -292,10 +292,10 @@ describe('arrangeFleet', () => {
 describe('crewGrid', () => {
   it('stands every crew on land, spaced, a cell in from the coast', () => {
     for (const abreast of [1, 3, 5]) for (let n = 1; n <= 16; n++) {
-      const { size, cells } = crewGrid(n, 1, abreast);
+      const { size, cells } = crewGrid(n, abreast);
       expect(cells).toHaveLength(n);
       for (const c of cells) {
-        expect(isLand({ size, seed: 1 }, c)).toBe(true);
+        expect(isLand({ size }, c)).toBe(true);
         expect(c.x >= 1 && c.y >= 1 && c.x <= size.w - 2 && c.y <= size.h - 2).toBe(true);
       }
       for (const p of cells) for (const q of cells) if (p !== q) expect(Math.max(Math.abs(p.x - q.x), Math.abs(p.y - q.y))).toBeGreaterThan(SPACING);
@@ -303,7 +303,7 @@ describe('crewGrid', () => {
   });
 
   it('centres a lone crew on its island', () => {
-    const { size, cells } = crewGrid(1, 1);
+    const { size, cells } = crewGrid(1);
     expect(cells[0].x * 2 + 1).toBe(size.w);
   });
 });

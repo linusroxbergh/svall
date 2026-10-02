@@ -1,6 +1,6 @@
-import { DEFAULT_SIZE, HOME_ROW, cellKey, homeSizeFor, homeSlots, isSessionId, randomPortrait, type Agent, type Cell, type Character, type FleetState, type Island } from '@svall/protocol';
+import { DEFAULT_SIZE, HOME_ROW, cellKey, crewGrid, homeSizeFor, homeSlots, isSessionId, randomPortrait, type Agent, type Cell, type Character, type FleetState, type Island } from '@svall/protocol';
 import { isCharId, newId } from './ids.js';
-import { clearOf, crewGrid, crewOf, defaultPosition, freePosition, occupiedCells, placementOk, worldIslands } from './layout.js';
+import { clearOf, crewOf, defaultPosition, freePosition, occupiedCells, placementOk, worldIslands } from './layout.js';
 import type { LiveWindow } from './tmux/tmux.js';
 
 export const RECOVERED_ISLAND = 'i_recovered';
@@ -41,7 +41,7 @@ export function placeOnIsland(draft: FleetState, islandId: string, exceptId?: st
   delete island.collapsed;
   // a character re-placed on its own island is not its own crew, or the grid would size for it twice
   const crew = crewOf(draft, islandId).filter((id) => id !== exceptId);
-  const { size, cells } = crewGrid(crew.length + 1, island.seed);
+  const { size, cells } = crewGrid(crew.length + 1);
   island.size = size;
   crew.forEach((id, i) => { draft.characters[id].cell = cells[i]; });
   for (const o of worldIslands(draft)) {

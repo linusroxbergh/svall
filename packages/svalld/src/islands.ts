@@ -48,7 +48,7 @@ export function updateIsland({ store, log }: Deps, id: string, patch: IslandPatc
   if (clash) throw new Invalid(`another island is already called ${clash.name}`);
   if ((p.position || p.size) && !placementOk(store.state, next)) throw new Invalid(`island ${current.name} would overlap another island`);
   const members = Object.values(store.state.characters).filter((c) => c.islandId === id);
-  if (p.size && landCells(next.size, next.seed).length < members.length) throw new Invalid(`island ${current.name} would have fewer cells than characters`);
+  if (p.size && landCells(next.size).length < members.length) throw new Invalid(`island ${current.name} would have fewer cells than characters`);
   const context = p.context && settleItems(p.context, current.context);
   store.update((d) => {
     const i = d.islands[id];

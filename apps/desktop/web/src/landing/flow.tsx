@@ -1,7 +1,6 @@
-import type { Cell, Character, ContextItem, Island as IslandModel, Portrait } from '@svall/protocol';
+import { crewGrid, type Cell, type Character, type ContextItem, type Island as IslandModel, type Portrait } from '@svall/protocol';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { crewGrid } from '../../../../../packages/svalld/src/layout.js';
 import { coastPath } from '../map/coast.js';
 import { Home } from '../map/HomeIsland.js';
 import { Island } from '../map/Island.js';
@@ -23,7 +22,7 @@ const link = (kind: 'pr' | 'issue', n: number): ContextItem =>
 
 const SHORE = { id: 'storefront', name: 'storefront', seed: 568461961 };
 const REVIEWS = { id: 'reviews', name: 'storefront reviews', seed: 912345 };
-const SG = crewGrid(2, SHORE.seed), RG = crewGrid(3, REVIEWS.seed);
+const SG = crewGrid(2), RG = crewGrid(3);
 const SHORE_AT: Cell = { x: 0, y: 0 }, REVIEWS_AT: Cell = { x: SG.size.w + 3, y: 0 };
 const WORLD_W = (REVIEWS_AT.x + RG.size.w) * theme.cell;
 
