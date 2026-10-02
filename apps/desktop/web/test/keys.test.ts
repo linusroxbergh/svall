@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACTIONS, chordFor, chordOf, declineTaken, holderOf, keyTip, LEGACY_BINDINGS, resolve } from '../src/keys.js';
+import { ACTIONS, chordFor, chordOf, declineTaken, holderOf, keyTip, resolve } from '../src/keys.js';
 
 const ev = (key: string, o: Partial<{ metaKey: boolean; shiftKey: boolean; ctrlKey: boolean; altKey: boolean }> = {}) =>
   ({ key, metaKey: true, shiftKey: false, ctrlKey: false, altKey: false, ...o });
@@ -116,15 +116,6 @@ describe('overrides', () => {
   it('measures collisions against the chord in force, not the one shipped', () => {
     expect(declineTaken({ 'cmd+t': 'x' }, { newCharacter: 'cmd+n' }).newCharacter).toBe('cmd+n');
     expect(declineTaken({ 'cmd+n': 'x' }, { newCharacter: 'cmd+n' }).newCharacter).toBeNull();
-  });
-  it('keeps the chords an older install learned, so an upgrade moves nothing', () => {
-    const b = resolve(LEGACY_BINDINGS);
-    expect(b['cmd+q']).toEqual({ type: 'prevCharacter' });
-    expect(b['cmd+e']).toEqual({ type: 'nextCharacter' });
-    expect(b['cmd+d']).toEqual({ type: 'nextIsland' });
-    expect(b['cmd+shift+q']).toEqual({ type: 'none' });
-    expect(b['cmd+j']).toBeUndefined();
-    expect(b['cmd+k']).toBeUndefined();
   });
 });
 

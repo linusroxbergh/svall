@@ -1,4 +1,4 @@
-export type MarkdownLink =
+type MarkdownLink =
   | { kind: 'external'; href: string }
   | { kind: 'anchor'; fragment: string }
   | { kind: 'file'; path: string }

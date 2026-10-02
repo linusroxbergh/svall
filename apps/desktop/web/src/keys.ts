@@ -32,7 +32,7 @@ export type ActionId =
   | 'quit';
 
 // `also` carries the chords a layout may put the same key on; they follow the shipped chord, not a chosen one
-export type ActionSpec = { label: string; action: KeyAction; chord: Chord; also?: Chord[] };
+type ActionSpec = { label: string; action: KeyAction; chord: Chord; also?: Chord[] };
 
 // Shipped chords stay on letters and digits: a bracket or a slash needs Option on many layouts,
 // and Option is what keeps a chord out of the terminal's reach.
@@ -70,14 +70,6 @@ export const actionIds = (): ActionId[] => Object.keys(ACTIONS) as ActionId[];
 
 // only what the user changed: a chord of their own, or null for an action they left unbound
 export type Bindings = Partial<Record<ActionId, Chord | null>>;
-
-// the chords an install made before the shipped set moved, kept so an upgrade changes nothing
-export const LEGACY_BINDINGS: Bindings = {
-  prevCharacter: 'cmd+q',
-  nextCharacter: 'cmd+e',
-  nextIsland: 'cmd+d',
-  quit: 'cmd+shift+q',
-};
 
 export const chordFor = (id: ActionId, b: Bindings = {}): Chord | null =>
   id in b ? (b[id] ?? null) : ACTIONS[id].chord;

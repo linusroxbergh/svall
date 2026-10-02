@@ -7,22 +7,22 @@ export type CardKind = 'note' | 'agentInstructions' | 'links';
 export type Kind = ResourceKind | CardKind;
 export type What = Kind | 'all';
 
-// short is the islet's sign, singular; colour is a CSS custom property; card marks what comes off the card
-export const KINDS: { kind: Kind; label: string; short: string; colour: string; card?: true }[] = [
-  { kind: 'docs', label: 'Docs', short: 'doc', colour: '--pt-earth' },
-  { kind: 'agentProfiles', label: 'Agent profiles', short: 'profile', colour: '--sand' },
-  { kind: 'note', label: 'Note', short: 'note', colour: '--pt-slate', card: true },
-  { kind: 'agentInstructions', label: 'Agent instructions', short: 'instructions', colour: '--sand', card: true },
-  { kind: 'links', label: 'Links', short: 'link', colour: '--pt-sky', card: true },
-  { kind: 'instructions', label: 'Instructions', short: 'instructions', colour: '--sand' },
-  { kind: 'skills', label: 'Skills', short: 'skill', colour: '--pt-sun' },
-  { kind: 'agents', label: 'Agents', short: 'agent', colour: '--ink-cool' },
-  { kind: 'commands', label: 'Commands', short: 'command', colour: '--ink-cool' },
-  { kind: 'plugins', label: 'Plugins', short: 'plugin', colour: '--pt-moss' },
-  { kind: 'mcp', label: 'MCP servers', short: 'mcp', colour: '--pt-sky' },
-  { kind: 'hooks', label: 'Hooks', short: 'hook', colour: '--pt-coral' },
-  { kind: 'settings', label: 'Settings', short: 'settings', colour: '--ink-cool' },
-  { kind: 'autoMemory', label: 'Memory', short: 'memory', colour: '--ink-cool' },
+// colour is a CSS custom property; card marks what comes off the card
+const KINDS: { kind: Kind; label: string; colour: string; card?: true }[] = [
+  { kind: 'docs', label: 'Docs', colour: '--pt-earth' },
+  { kind: 'agentProfiles', label: 'Agent profiles', colour: '--sand' },
+  { kind: 'note', label: 'Note', colour: '--pt-slate', card: true },
+  { kind: 'agentInstructions', label: 'Agent instructions', colour: '--sand', card: true },
+  { kind: 'links', label: 'Links', colour: '--pt-sky', card: true },
+  { kind: 'instructions', label: 'Instructions', colour: '--sand' },
+  { kind: 'skills', label: 'Skills', colour: '--pt-sun' },
+  { kind: 'agents', label: 'Agents', colour: '--ink-cool' },
+  { kind: 'commands', label: 'Commands', colour: '--ink-cool' },
+  { kind: 'plugins', label: 'Plugins', colour: '--pt-moss' },
+  { kind: 'mcp', label: 'MCP servers', colour: '--pt-sky' },
+  { kind: 'hooks', label: 'Hooks', colour: '--pt-coral' },
+  { kind: 'settings', label: 'Settings', colour: '--ink-cool' },
+  { kind: 'autoMemory', label: 'Memory', colour: '--ink-cool' },
 ];
 
 export const kindOf = (kind: Kind) => KINDS.find((k) => k.kind === kind)!;
@@ -65,6 +65,10 @@ export function visible(s: Source | undefined, what: What, query: string): Group
 
 // the head of the text, so a row says what is written without opening it
 const preview = (text: string): string => text.trim().split('\n').find((l) => l.trim() !== '')?.slice(0, 140) ?? 'nothing written';
+
+/** Each source's count of everything it holds, its card included, by root. */
+export const countsBySource = (sources: ResourceSource[], f: FleetState): Map<string, number> =>
+  new Map(sources.map((s) => [s.rootId, countOf(withCard(s, f), 'all')]));
 
 /** A source with the island's or character's own card among its groups; anything else is left as it is. */
 export function withCard(s: ResourceSource, f: FleetState): Source {
@@ -128,7 +132,7 @@ export function qualifierOf(s: ResourceSource, f: FleetState): string {
   return s.tier === 'repo' && s.docs === s.rootId ? 'no characters here' : shortPath(s.root);
 }
 
-export type WhereGroup = { tier: Tier; count: number; sections: { id?: string; heading?: string; sources: ResourceSource[] }[] };
+type WhereGroup = { tier: Tier; count: number; sections: { id?: string; heading?: string; sources: ResourceSource[] }[] };
 
 // island rows in the fleet's own island order, home last; a source whose island the fleet has not got follows the rest
 const inIslandOrder = (sources: ResourceSource[], f: FleetState): ResourceSource[] => {
@@ -168,7 +172,7 @@ export const badgeOf = (kind: Kind, item: Pick<Item, 'name'>): 'attached' | 'loo
     : kind === 'docs' || kind === 'skills' || kind === 'agents' || kind === 'commands' ? 'lookup' : undefined;
 
 export type Chip = { tier: Tier; label: string; rootIds: string[] };
-export type Chain = { heading: string; chips: Chip[] };
+type Chain = { heading: string; chips: Chip[] };
 
 const chip = (s: Omit<ResourceSource, 'groups'>): Chip => ({ tier: s.tier, label: s.name, rootIds: [s.rootId] });
 

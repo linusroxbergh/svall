@@ -1,4 +1,5 @@
 import { byIslandOrder, type Character, type FleetState, type Island } from '@svall/protocol';
+import { mapIslands } from './map/layout.js';
 import { SINGLE, type Panes } from './panes.js';
 
 export type DisplayStatus = 'working' | 'idle' | 'blocked' | 'done' | 'shell';
@@ -8,7 +9,7 @@ const byCell = (a: Character, b: Character) => a.cell.y - b.cell.y || a.cell.x -
 export const islandsSorted = (f: FleetState): Island[] => Object.values(f.islands).sort(byIslandOrder);
 
 // the islands the map draws in the panned world, in the same order; home is drawn in screen space, and a folded island not at all
-export const mapIslandsSorted = (f: FleetState): Island[] => islandsSorted(f).filter((i) => i.kind !== 'home' && !i.collapsed);
+export const mapIslandsSorted = (f: FleetState): Island[] => mapIslands(f).sort(byIslandOrder);
 
 export const homeIsland = (f: FleetState): Island | undefined => Object.values(f.islands).find((i) => i.kind === 'home');
 

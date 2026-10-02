@@ -17,10 +17,8 @@ export type Placement = { mode: 'pair' | 'pill'; homeShift: number; cx: number; 
 export const homeRoom = (hostW: number): number =>
   Math.max(0, Math.floor((hostW - 2 * ISLET.margin - ISLET.gap - ISLET.w) / theme.cell));
 
-/** Home and the islet are centred as one group; a map too narrow for both squeezes the water between them,
- *  then the islet, then home, which shrinks towards its bottom centre, so the lighthouse keeps its place beside
- *  mission control. Folded, home has no land to stand it beside, so the islet is only its pill. `most` caps home at
- *  the scale the map draws island cards at, and the islet shrinks with it. */
+/** Home and the islet centred as one group: a narrow map squeezes the water between them, then the islet, then home;
+ *  folded home leaves the islet only its pill, and `most` caps home, and the islet with it, at the cards' scale. */
 export function placeIslet(hostW: number, homeW: number, collapsed: boolean, most = 1): Placement {
   if (collapsed) return { mode: 'pill', homeShift: 0, cx: hostW / 2, scale: 1, homeScale: 1 };
   const spare = (gap: number, margin: number) => hostW - 2 * margin - homeW - gap;

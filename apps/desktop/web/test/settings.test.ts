@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import type { Bridge, ToShell } from '../src/bridge.js';
-import { LEGACY_BINDINGS } from '../src/keys.js';
 import { applyZoom, DEFAULT_SETTINGS, fontDelta, placeTip, readSettings, ZOOMS, zoomBy } from '../src/settings.js';
 
 const bridge = (present: boolean): Bridge & { sent: ToShell[] } => {
@@ -54,12 +53,9 @@ describe('settings', () => {
     expect(readSettings({ notifications: { on: true, statuses: [] } }).notifications.statuses).toEqual([]);
     expect(readSettings({ notifications: 'on' }).notifications).toEqual(DEFAULT_SETTINGS.notifications);
   });
-  it('leaves an install that predates the setting on the chords it learned', () => {
-    // settings of its own but no bindings: the machine has been used, so the shipped chords must not move under it
-    expect(readSettings({ zoom: 1.1 }).bindings).toEqual(LEGACY_BINDINGS);
-    // nothing stored at all is a fresh machine, which gets the shipped chords
+  it('gives settings with no bindings of their own the shipped chords', () => {
     expect(readSettings(undefined).bindings).toEqual({});
-    expect(readSettings({ zoom: 1.1, bindings: {} }).bindings).toEqual({});
+    expect(readSettings({ zoom: 1.1 }).bindings).toEqual({});
   });
   it('keeps only bindings it can act on', () => {
     const b = readSettings({

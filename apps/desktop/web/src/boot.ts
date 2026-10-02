@@ -15,7 +15,7 @@ import { followFleet } from './store/fleet.js';
 import { createAppStore, localAppStorage, type AppStore } from './store/index.js';
 import { createTerminalManager, type TerminalManager } from './terminals.js';
 
-export type AppContext = { bridge: Bridge; store: AppStore; api(): Api; manager(): TerminalManager; browser(): BrowserManager; repoWatch(): RepoWatch };
+type AppContext = { bridge: Bridge; store: AppStore; api(): Api; manager(): TerminalManager; browser(): BrowserManager; repoWatch(): RepoWatch };
 
 // the shell names the fleet's home before the page runs, so each fleet's window keeps its own settings,
 // and says when the app was opened without naming one

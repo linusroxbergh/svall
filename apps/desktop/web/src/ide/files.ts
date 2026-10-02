@@ -3,7 +3,7 @@ import type { AppStore } from '../store/index.js';
 import { dropBuffer, getBuffer, isDirty, loadBuffer, markSaved, replaceText, select } from './buffers.js';
 import { editorExtensions, languageFor } from './codemirror.js';
 
-export type FilesDeps = { api: Pick<Api, 'call'>; store: AppStore };
+type FilesDeps = { api: Pick<Api, 'call'>; store: AppStore };
 
 const name = (path: string): string => path.slice(path.lastIndexOf('/') + 1);
 

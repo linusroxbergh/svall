@@ -1,8 +1,7 @@
 import { useRef, useState } from 'react';
+import type { Size } from '@svall/protocol';
 import { halfCardBy } from './map/card.js';
 import type { HalfCard } from './store/index.js';
-
-type Size = { w: number; h: number };
 
 /** The grip on a centred panel's bottom-right corner: the size follows the pointer and is written to storage once, on release. */
 export function useHalfGrip(get: () => HalfCard, set: (size: HalfCard, persist?: boolean) => void, room: (grip: Element) => Size) {

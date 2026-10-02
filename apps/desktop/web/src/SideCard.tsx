@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { contextKind, stepPortrait, type Character, type ContextItem, type Params, type Portrait } from '@svall/protocol';
 import { AgentProfilePick } from './AgentProfilePick.js';
 import { app, deps } from './boot.js';
@@ -33,6 +33,22 @@ function ContextPills({ items, ids, charId, onChange }: { items: ContextItem[]; 
           {it.source === 'manual' && <button data-testid={ids.remove} onClick={() => onChange(items.filter((_, j) => j !== i))}>×</button>}
         </span>
       ))}
+    </div>
+  );
+}
+
+// keyed by the card's id, so a link half typed for one character or island is never offered to the next
+function AddLink({ ids, onAdd }: { ids: { ref: string; add: string }; onAdd(item: ContextItem): void }) {
+  const [ref, setRef] = useState('');
+  const add = () => {
+    if (!ref.trim()) return;
+    onAdd({ kind: contextKind(ref), ref: ref.trim(), label: '', source: 'manual' });
+    setRef('');
+  };
+  return (
+    <div className="addlink">
+      <input className="fld" placeholder="Add a url or path" value={ref} data-testid={ids.ref} onKeyDown={(e) => { if (e.key === 'Enter') add(); }} onChange={(e) => setRef(e.target.value)} />
+      <button className="btn sm" data-testid={ids.add} onClick={add}>Add</button>
     </div>
   );
 }
@@ -91,9 +107,6 @@ export function SideCard({ id }: { id: string }) {
   const fleet = useApp((s) => s.fleet);
   const onBoard = useApp((s) => s.view === 'board');
   const hover = useApp((s) => s.dropHover?.kind === 'char' && s.dropHover.id === id);
-  const [ref, setRef] = useState('');
-  // the card stays mounted as the selection moves, so a half typed link would be offered to the next character
-  useEffect(() => setRef(''), [id]);
   // last activity counts on while a busy agent sends nothing
   useTick(10_000);
   if (!c) return null;
@@ -103,11 +116,6 @@ export function SideCard({ id }: { id: string }) {
   const pct = contextPctOf(c);
   const save = (patch: Patch) => saveCharacter(deps(), id, patch);
   const saveContext = (context: ContextItem[]) => saveCharacterContext(deps(), id, context);
-  const addItem = () => {
-    if (!ref.trim()) return;
-    saveContext([...c.context, { kind: contextKind(ref), ref: ref.trim(), label: '', source: 'manual' }]);
-    setRef('');
-  };
 
   return (
     <aside className="side" data-testid="side-card" data-drop={`char:${id}`} data-drop-hover={hover}>
@@ -140,10 +148,7 @@ export function SideCard({ id }: { id: string }) {
         <div className="kicker"><span>Context</span><Info id="char-context">Listed for the agent when it starts, pinned items to read first; your change mid-session reaches it with your next prompt.</Info></div>
         <ContextPills items={c.context} ids={{ list: 'side-context', remove: 'context-remove', pin: 'context-pin' }}
           charId={id} onChange={saveContext} />
-        <div className="addlink">
-          <input className="fld" placeholder="Add a url or path" value={ref} data-testid="context-ref" onKeyDown={(e) => { if (e.key === 'Enter') addItem(); }} onChange={(e) => setRef(e.target.value)} />
-          <button className="btn sm" data-testid="context-add" onClick={addItem}>Add</button>
-        </div>
+        <AddLink key={id} ids={{ ref: 'context-ref', add: 'context-add' }} onAdd={(item) => saveContext([...c.context, item])} />
       </div>
       <DocsList tier="character" id={id} />
       <LastCommand key={id} id={id} agent={c.agent} />
@@ -200,17 +205,10 @@ export function IslandCard({ id }: { id: string }) {
   const i = useApp((s) => s.fleet.islands[id]);
   const fleet = useApp((s) => s.fleet);
   const hover = useApp((s) => s.dropHover?.kind === 'island' && s.dropHover.id === id);
-  const [ref, setRef] = useState('');
-  useEffect(() => setRef(''), [id]);
   if (!i) return null;
   const chars = charactersOf(fleet, id);
   const save = (patch: Omit<Params<'island.update'>, 'id'>) => saveIsland(deps(), id, patch);
   const saveContext = (context: ContextItem[]) => saveIslandContext(deps(), id, context);
-  const addItem = () => {
-    if (!ref.trim()) return;
-    saveContext([...i.context, { kind: contextKind(ref), ref: ref.trim(), label: '', source: 'manual' }]);
-    setRef('');
-  };
   return (
     <aside className="side" data-testid="side-island-card" data-drop={`island:${id}`} data-drop-hover={hover}>
       <div className="kicker">Island</div>
@@ -233,10 +231,7 @@ export function IslandCard({ id }: { id: string }) {
         <div className="kicker">Context</div>
         <ContextPills items={i.context} ids={{ list: 'side-island-context', remove: 'island-context-remove', pin: 'island-context-pin' }}
           charId={chars[0]?.id} onChange={saveContext} />
-        <div className="addlink">
-          <input className="fld" placeholder="Add a url or path" value={ref} data-testid="island-context-ref" onKeyDown={(e) => { if (e.key === 'Enter') addItem(); }} onChange={(e) => setRef(e.target.value)} />
-          <button className="btn sm" data-testid="island-context-add" onClick={addItem}>Add</button>
-        </div>
+        <AddLink key={id} ids={{ ref: 'island-context-ref', add: 'island-context-add' }} onAdd={(item) => saveContext([...i.context, item])} />
       </div>
       <DocsList tier="island" id={id} />
       <div className="opens"><ResourcesButton root={commonRoot(chars)} testid="side-island-resources" /></div>

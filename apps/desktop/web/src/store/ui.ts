@@ -128,6 +128,14 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
   const firstRun = storage !== undefined && storage.getSettings() === undefined;
   // the collision check belongs to that same launch: after it, what is written down is the user's answer
   let checkGhosttyKeys = firstRun;
+  // the dock has one open utility at a time; leaving first-run settings still records the answer
+  const toggleUtility = (which: 'usageOpen' | 'mobileOpen', open?: boolean, opts?: { keepPageFocus?: boolean }) => set((s) => {
+    const next = open ?? !s[which];
+    if (next && s.settingsOpen && s.loaded) storage?.setSettings(s.settings);
+    return { usageOpen: false, mobileOpen: false, [which]: next, settingsOpen: next ? false : s.settingsOpen,
+      keysOpen: next ? false : s.keysOpen, capturingKey: next ? undefined : s.capturingKey,
+      resourcesOpen: next ? false : s.resourcesOpen, keepPageFocus: opts?.keepPageFocus ?? false };
+  });
   return {
     view,
     focusedId: storage?.getFocus(),
@@ -234,21 +242,8 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
         keysOpen: next && s.keysOpen, capturingKey: next ? s.capturingKey : undefined };
     }),
     toggleKeys: (open) => set((s) => { const next = open ?? !s.keysOpen; return { keysOpen: next, capturingKey: next ? s.capturingKey : undefined }; }),
-    // the dock has one open utility at a time; leaving first-run settings still records the answer
-    toggleUsage: (open, opts) => set((s) => {
-      const next = open ?? !s.usageOpen;
-      if (next && s.settingsOpen && s.loaded) storage?.setSettings(s.settings);
-      return { usageOpen: next, mobileOpen: false, settingsOpen: next ? false : s.settingsOpen,
-        keysOpen: next ? false : s.keysOpen, capturingKey: next ? undefined : s.capturingKey,
-        resourcesOpen: next ? false : s.resourcesOpen, keepPageFocus: opts?.keepPageFocus ?? false };
-    }),
-    toggleMobile: (open, opts) => set((s) => {
-      const next = open ?? !s.mobileOpen;
-      if (next && s.settingsOpen && s.loaded) storage?.setSettings(s.settings);
-      return { mobileOpen: next, usageOpen: false, settingsOpen: next ? false : s.settingsOpen,
-        keysOpen: next ? false : s.keysOpen, capturingKey: next ? undefined : s.capturingKey,
-        resourcesOpen: next ? false : s.resourcesOpen, keepPageFocus: opts?.keepPageFocus ?? false };
-    }),
+    toggleUsage: (open, opts) => toggleUtility('usageOpen', open, opts),
+    toggleMobile: (open, opts) => toggleUtility('mobileOpen', open, opts),
     // the panel carries the switch, so it stays open across turning the link off; only a link that cannot be made at all shuts it
     setMobile: (mobile) => set((s) => ({ mobile, mobileOpen: mobile && !mobile.error ? s.mobileOpen : false })),
     // the daemon says who is on the page as they come and go; the rest of the status stands

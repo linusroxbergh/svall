@@ -1,3 +1,4 @@
+import { ResourceTier } from '@svall/protocol';
 import type { Tier } from '../resources/model.js';
 import { readSettings, type Settings } from '../settings.js';
 import type { View } from './ui.js';
@@ -51,8 +52,6 @@ const HALF_KEY = 'svall.card.half';
 const COLS_KEY = 'svall.resources.cols';
 const SIZE_KEY = 'svall.resources.size';
 const GROUPS_KEY = 'svall.resources.tiers';
-// read until GROUPS_KEY is written; Fleet opens with Global
-const OLD_GROUPS_KEY = 'svall.resources.groups';
 const SIDES_KEY = 'svall.side.widths';
 const TREE_KEY = 'svall.files.tree';
 export const SETTINGS_KEY = 'svall.settings';
@@ -66,9 +65,7 @@ const isHalf = (v: unknown): v is HalfCard =>
   typeof v === 'object' && v !== null && typeof (v as HalfCard).w === 'number' && typeof (v as HalfCard).h === 'number';
 const isCols = (v: unknown): v is ResourceCols =>
   typeof v === 'object' && v !== null && typeof (v as ResourceCols).rail === 'number' && typeof (v as ResourceCols).list === 'number';
-const TIER_NAMES = ['global', 'fleet', 'repo', 'island', 'character'];
-const isTiers = (v: unknown): v is Tier[] => Array.isArray(v) && v.every((t) => TIER_NAMES.includes(t as string));
-const withFleet = (v: Tier[] | undefined): Tier[] | undefined => (v?.includes('global') ? [...v, 'fleet'] : v);
+const isTiers = (v: unknown): v is Tier[] => Array.isArray(v) && v.every((t) => ResourceTier.safeParse(t).success);
 const isSides = (v: unknown): v is SideWidths =>
   typeof v === 'object' && v !== null && typeof (v as SideWidths).sidebar === 'number' && typeof (v as SideWidths).card === 'number';
 const isTree = (v: unknown): v is FilesTree =>
@@ -97,7 +94,7 @@ export function localAppStorage(fleet?: string): AppStorage | undefined {
       setResourceCols: (v) => write(COLS_KEY, JSON.stringify(v)),
       getResourceSize: () => { const v = readJson(read(SIZE_KEY), isHalf); return v && { w: clampHalf(v.w), h: clampHalf(v.h) }; },
       setResourceSize: (v) => write(SIZE_KEY, JSON.stringify(v)),
-      getResourceGroups: () => readJson(read(GROUPS_KEY), isTiers) ?? withFleet(readJson(read(OLD_GROUPS_KEY), isTiers)),
+      getResourceGroups: () => readJson(read(GROUPS_KEY), isTiers),
       setResourceGroups: (v) => write(GROUPS_KEY, JSON.stringify(v)),
       getSideWidths: () => { const w = readJson(read(SIDES_KEY), isSides); return w && clampSides(w); },
       setSideWidths: (v) => write(SIDES_KEY, JSON.stringify(v)),

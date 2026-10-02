@@ -26,11 +26,8 @@ export const theme = {
   card: { margin: 26, easeMs: 160 },
   // the little box that asks where a link should open, kept clear of the window's own edges
   linkAsk: { width: 200, height: 112, gap: 6, margin: 8 },
-  // card box in token units; unit is one token unit in world px. a card keeps its screen size between map
-  // scales `floor` and 1: below, it shrinks with the map so the ground an island reserves for it is finite;
-  // above, it takes `grow` of the map's growth. `floor` is therefore how wide a card stands in cells at its
-  // largest: at .78 a card and the rail of links down its right come to a hair under the three cells the
-  // fleet keeps between crew, so the rail never reaches the card beside it
+  // card box in token units, unit one token unit in world px; a card keeps its screen size between map scales `floor`
+  // and 1, above that taking `grow` of the growth. At .78 a card and its link rail stay inside the three cells between crew
   token: { w: 2.56, h: 3.32 * 1.05, unit: 34, floor: 0.78, grow: 0.3 },
   // an island's label pill scales with the map up to 1, then takes `grow` of the map's growth
   label: { grow: 0.2 },

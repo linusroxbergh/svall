@@ -11,7 +11,7 @@ import { charactersOf, homeIsland, mapIslandsSorted, statusOf } from '../selecto
 import { theme, tokenPx } from '../theme.js';
 import { Toast } from '../Toast.js';
 import { cardRect } from './card.js';
-import { Wordmark } from './Furniture.js';
+import { Wordmark } from './Wordmark.js';
 import { fitWithHome, homeBlocks, homeBox, homeCellToScreen, homeCrew, homeFull, homeReserve, homeSlotAt, inHomeBox } from './home.js';
 import { Home } from './HomeIsland.js';
 import { HoverCard } from './HoverCard.js';

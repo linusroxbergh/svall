@@ -18,7 +18,7 @@ export type Intent =
   | { type: 'moveIsland'; id: string; position: Cell }
   | { type: 'resize'; id: string; size: Size };
 
-export type Interactions = { handle(ev: CellEv, fleet: FleetState, selectedId?: string): Intent | undefined; drag(): Drag | undefined; cancel(): void };
+type Interactions = { handle(ev: CellEv, fleet: FleetState, selectedId?: string): Intent | undefined; drag(): Drag | undefined; cancel(): void };
 
 const same = (a: Cell, b: Cell) => a.x === b.x && a.y === b.y;
 

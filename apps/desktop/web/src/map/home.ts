@@ -1,4 +1,4 @@
-import { HOME_ISLAND, HOME_ROW, SPACING, homeSlots, type Cell, type Character, type FleetState, type Island } from '@svall/protocol';
+import { HOME_ISLAND, HOME_ROW, SPACING, homeSlots, type Cell, type Character, type FleetState, type Island, type Size } from '@svall/protocol';
 import { charactersOf, homeIsland } from '../selectors.js';
 import { theme } from '../theme.js';
 import { cardScale, characterAt, fitAll, roomOf, type Below, type Block, type Crew, type Layout } from './layout.js';
@@ -7,7 +7,7 @@ import type { Drag } from './types.js';
 
 // the visible strip of home land, in map px: centred, theme.home.visible tall, flush with the bottom edge, and the
 // size of a cell on it, all drawn at `scale`
-export type HomeBox = { x: number; y: number; w: number; h: number; cell: number };
+type HomeBox = { x: number; y: number; w: number; h: number; cell: number };
 
 export function homeBox(island: Island, host: { w: number; h: number }, shift = 0, scale = 1): HomeBox {
   const cell = theme.cell * scale, w = island.size.w * cell, h = theme.home.visible * scale;
@@ -62,8 +62,7 @@ export function homeCap(scaleAt: (most: number) => number): number {
   return lo;
 }
 
-type Size = { w: number; h: number };
-export type Fitted = { fit: Layout; win: Size; room: Size; most: number };
+type Fitted = { fit: Layout; win: Size; room: Size; most: number };
 
 let last: { key: string; fitted: Fitted } | undefined;
 

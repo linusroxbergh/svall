@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { ResourceSource } from '@svall/protocol';
 import { app } from '../boot.js';
 import { useApp } from '../hooks.js';
-import { countOf, qualifierOf, tierOf, tierWhere, whereGroups, whereTier, withCard, type Tier } from './model.js';
+import { countsBySource, qualifierOf, tierOf, tierWhere, whereGroups, whereTier, type Tier } from './model.js';
 
 const pick = (where: string) => app.store.getState().setResourcesFilter({ where });
 
@@ -44,7 +44,7 @@ export function Where() {
   const tier = whereTier(where);
   const groups = whereGroups(sources, fleet, query);
   // every row shows what its own source holds, card included, read once for the whole tree
-  const counts = useMemo(() => new Map(sources.map((s) => [s.rootId, countOf(withCard(s, fleet), 'all')])), [sources, fleet]);
+  const counts = useMemo(() => countsBySource(sources, fleet), [sources, fleet]);
   return (
     <nav className="res-tree" aria-label="Sources">
       <input className="res-find" data-testid="resources-source-find" placeholder="find a source" aria-label="Find a source" value={query} onChange={(e) => setQuery(e.target.value)} />

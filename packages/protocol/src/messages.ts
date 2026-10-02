@@ -108,7 +108,7 @@ export const ResourceItem = z.object({
 export type ResourceItem = z.infer<typeof ResourceItem>;
 export const ResourceGroup = z.object({ kind: ResourceKind, items: z.array(ResourceItem) });
 export type ResourceGroup = z.infer<typeof ResourceGroup>;
-const ResourceTier = z.enum(['global', 'fleet', 'repo', 'island', 'character']);
+export const ResourceTier = z.enum(['global', 'fleet', 'repo', 'island', 'character']);
 // docs is the root id a new doc goes to, agentProfiles the one a new agent profile goes to; a global source has neither
 export const ResourceSource = z.object({
   rootId: z.string(), root: z.string(), name: z.string(), tier: ResourceTier, docs: z.string().optional(), agentProfiles: z.string().optional(),

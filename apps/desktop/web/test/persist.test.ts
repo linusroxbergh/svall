@@ -111,22 +111,6 @@ describe('localAppStorage', () => {
     expect(s.getSettings()).toBeUndefined();
   });
 
-  it('opens Fleet on a set saved while the fleet stood under Global, and reads its own key first', () => {
-    mem.setItem('svall.resources.groups', '["global","repo"]');
-    expect(store().getResourceGroups()).toEqual(['global', 'repo', 'fleet']);
-    mem.setItem('svall.resources.groups', '["repo"]');
-    expect(store().getResourceGroups()).toEqual(['repo']);
-    mem.setItem('svall.resources.tiers', '["global"]');
-    expect(store().getResourceGroups()).toEqual(['global']);
-  });
-
-  it('reads the older set a fleet kept under its own key, and no other fleet’s', () => {
-    mem.setItem('svall.resources.groups@/Users/me/.svall', '["global"]');
-    mem.setItem('svall.resources.groups@/Users/me/.svall-work', '["repo"]');
-    expect(localAppStorage('/Users/me/.svall')!.getResourceGroups()).toEqual(['global', 'fleet']);
-    expect(localAppStorage('/Users/me/.svall-work')!.getResourceGroups()).toEqual(['repo']);
-  });
-
   it('carries on when the store is full', () => {
     const s = store();
     mem.setItem = () => { throw new Error('QuotaExceededError'); };
