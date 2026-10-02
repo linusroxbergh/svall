@@ -156,6 +156,17 @@ daemon's log, `~/.svall/svalld.log`. Send its output, and what you were
 doing, as an issue on
 [linusroxbergh/svall](https://github.com/linusroxbergh/svall/issues).
 
+### A new character's terminal takes seconds to show its prompt
+
+Usually it is zsh rebuilding its completion cache, `~/.zcompdump`. Homebrew's
+`brew shellenv` exports `FPATH`, so shells that Claude Code starts inherit a
+different `fpath` and rewrite the cache; the next fresh terminal then rebuilds
+it. Add this line to the end of `~/.zshrc`:
+
+```zsh
+typeset +x FPATH
+```
+
 ### Migrating from Herdr
 
 Ask your agent to move your Herdr workspaces into Svall. It reads them
