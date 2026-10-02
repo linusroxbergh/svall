@@ -23,6 +23,18 @@ describe('bridge', () => {
     win.__svall!.receive(JSON.stringify({ type: 'key', chord: 'cmd+e' }));
     expect(got).toHaveLength(1);
   });
+  it('hands a message to every handler, whatever one before it throws', () => {
+    const win = { webkit: { messageHandlers: { svall: { postMessage: vi.fn() } } } } as unknown as Window;
+    const b = createBridge(win);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const got: FromShell[] = [];
+    b.onMessage(() => { throw new Error('broken'); });
+    b.onMessage((m) => got.push(m));
+    win.__svall!.receive(JSON.stringify({ type: 'quit.ask' }));
+    expect(got).toEqual([{ type: 'quit.ask' }]);
+    expect(error).toHaveBeenCalledOnce();
+    error.mockRestore();
+  });
   it('delivers ghostty.configErrors to handlers', () => {
     const win = { webkit: { messageHandlers: { svall: { postMessage: vi.fn() } } } } as unknown as Window;
     const b = createBridge(win);

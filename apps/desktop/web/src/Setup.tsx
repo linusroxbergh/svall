@@ -1,16 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { AGENT_LABEL, type AgentKind } from '@svall/protocol';
+import { AGENT_LABEL, type AgentKind, type SetupPlan } from '@svall/protocol';
 import { copyText, createBridge, openUrl, type Bridge } from './bridge.js';
 import { shortPath } from './resources/model.js';
 
-type Plan = {
-  agents: { kind: AgentKind; path: string; version?: string; folderOnly?: boolean }[]; integrations?: AgentKind[]; writes: { what: string; path: string; agent?: AgentKind }[];
-  shimDir: string; shimOnPath: boolean; blockers: string[]; projects: string; install?: { kind: AgentKind; command: string; url: string }[];
-};
-
 export function Setup() {
   const [bridge] = useState(createBridge);
-  const [plan, setPlan] = useState<Plan>();
+  const [plan, setPlan] = useState<SetupPlan>();
   const [off, setOff] = useState<AgentKind[]>([]);
   const [projects, setProjects] = useState('');
   const [busy, setBusy] = useState(false);
@@ -22,8 +17,11 @@ export function Setup() {
     if (m.type !== 'setup.result') return;
     setBusy(false);
     if (!m.ok) { setError(m.json.trim()); return; }
+    let data: unknown;
+    // output that is not the JSON asked for is shown as it came, rather than leaving the screen waiting
+    try { data = JSON.parse(m.json); } catch { setError(m.json.trim()); return; }
     if (m.step === 'plan') {
-      const p = JSON.parse(m.json) as Plan;
+      const p = data as SetupPlan;
       setPlan(p);
       // an agent turned off at an earlier setup starts off
       setOff(p.agents.map((a) => a.kind).filter((k) => p.integrations && !p.integrations.includes(k)));
@@ -31,7 +29,7 @@ export function Setup() {
       setError(undefined);
       return;
     }
-    const run = JSON.parse(m.json) as { warnings: string[] };
+    const run = data as { warnings: string[] };
     if (run.warnings.length) setWarnings(run.warnings);
     else window.location.replace('/');
   }), [bridge]);

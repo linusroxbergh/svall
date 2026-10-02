@@ -54,6 +54,22 @@ test('a double click on a map button makes no island, even right after a press o
   expect(methods()).not.toContain('island.create');
 });
 
+test('a drag whose release the map never heard ends when the map loses the pointer', async () => {
+  render(<Map />);
+  await act(async () => {});
+  const map = screen.getByTestId('map');
+  act(() => {
+    fireEvent.pointerDown(screen.getByTestId('token-c0'), { pointerId: 1, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(map, { pointerId: 1, clientX: 400, clientY: 400 });
+  });
+  await act(async () => { await new Promise((r) => requestAnimationFrame(r)); });
+  expect(map.getAttribute('data-dragging')).toBe('true');
+  act(() => { fireEvent.lostPointerCapture(map, { pointerId: 1 }); });
+  expect(map.getAttribute('data-dragging')).toBe('false');
+  press(document.querySelector('.map-sea')!);
+  expect(methods()).toEqual([]);
+});
+
 test('a double click on open water makes an island there', async () => {
   render(<Map />);
   await act(async () => {});

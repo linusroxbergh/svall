@@ -250,6 +250,12 @@ export function Map() {
       const r = host.current!.getBoundingClientRect();
       pointer({ type: 'cancel', screen: { x: e.clientX - r.left, y: e.clientY - r.top }, time: e.timeStamp });
     },
+    // a release the map never hears, taken by a native menu or the system, still ends the drag or pan it began
+    onLostPointerCapture: (e: React.PointerEvent<Element>) => {
+      if (!interactions.current.drag() && !panDrag.current) return;
+      const r = host.current!.getBoundingClientRect();
+      pointer({ type: 'cancel', screen: { x: e.clientX - r.left, y: e.clientY - r.top }, time: e.timeStamp });
+    },
   };
 
   useEffect(() => {

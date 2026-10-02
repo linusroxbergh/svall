@@ -1,8 +1,9 @@
 import { useState, type JSX } from 'react';
+import { createCharacter } from '../actions.js';
 import { useApp } from '../hooks.js';
-import { startOf } from '../selectors.js';
+import { islandCwd, startOf } from '../selectors.js';
 import { phone } from './boot.js';
-import { cwdChoices, islandCwd } from './choices.js';
+import { cwdChoices } from './choices.js';
 import { Sheet } from './Sheet.js';
 
 export function NewCharacter({ islandId, onClose, onCreated }: { islandId: string; onClose(): void; onCreated(id: string): void }): JSX.Element {
@@ -18,7 +19,7 @@ export function NewCharacter({ islandId, onClose, onCreated }: { islandId: strin
     if (busy) return;
     setBusy(true);
     try {
-      const c = await phone.api().call('char.create', { islandId, cwd, ...(name.trim() ? { name: name.trim() } : {}), ...startOf(fleet, islandId) });
+      const c = await createCharacter(phone.api(), { islandId, cwd, ...(name.trim() ? { name: name.trim() } : {}), ...startOf(fleet, islandId) }, fleet.defaultCwd);
       onCreated(c.id);
     } catch (e) {
       setError((e as Error).message);

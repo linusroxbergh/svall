@@ -17,18 +17,35 @@ export const homeIsland = (f: FleetState): Island | undefined => Object.values(f
 export const startOf = (f: FleetState, islandId: string): { command?: string } =>
   (f.islands[islandId]?.kind === 'home' ? { command: f.home.command } : {});
 
-export const charactersOf = (f: FleetState, islandId: string): Character[] =>
-  Object.values(f.characters).filter((c) => c.islandId === islandId).sort(byCell);
+// a fleet object only changes with a patch, while every row's selector asks again on every store change
+const crews = new WeakMap<FleetState, Map<string, Character[]>>();
+const strips = new WeakMap<FleetState, Character[]>();
 
-export const stripOrder = (f: FleetState): Character[] => islandsSorted(f).flatMap((i) => charactersOf(f, i.id));
+export const charactersOf = (f: FleetState, islandId: string): Character[] => {
+  let byIsland = crews.get(f);
+  if (!byIsland) crews.set(f, (byIsland = new Map()));
+  let crew = byIsland.get(islandId);
+  if (!crew) byIsland.set(islandId, (crew = Object.values(f.characters).filter((c) => c.islandId === islandId).sort(byCell)));
+  return crew;
+};
+
+// where a new character starts when it takes another one's directory: the repo itself, never the worktree that one sits in
+export const startCwd = (c: Character): string => (c.repo?.isWorktree ? c.repo.mainRoot : c.cwd);
+
+// with no directory asked for, home crew start in the home cwd, others where their island's first character
+// started, and on an island with no crew in the fleet's default
+export const islandCwd = (f: FleetState, islandId: string): string => {
+  const first = charactersOf(f, islandId)[0];
+  return f.islands[islandId]?.kind === 'home' ? f.home.cwd : first ? startCwd(first) : f.defaultCwd;
+};
+
+export const stripOrder = (f: FleetState): Character[] => {
+  let strip = strips.get(f);
+  if (!strip) strips.set(f, (strip = islandsSorted(f).flatMap((i) => charactersOf(f, i.id))));
+  return strip;
+};
 
 const islandOf = (f: FleetState, id: string | undefined): Island | undefined => (id ? f.islands[f.characters[id]?.islandId ?? ''] : undefined);
-
-// the tabs of a character: its island's characters in reading order by cell
-export const tabsOf = (f: FleetState, id: string | undefined): Character[] => {
-  const c = id ? f.characters[id] : undefined;
-  return c ? charactersOf(f, c.islandId) : [];
-};
 
 // the previous or next character across the whole fleet, in strip order, wrapping past collapsed islands
 export function neighbor(f: FleetState, id: string | undefined, step: 1 | -1): Character | undefined {

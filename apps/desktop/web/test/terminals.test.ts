@@ -82,6 +82,26 @@ describe('terminal manager', () => {
     expect(sent.at(-1)).toEqual({ type: 'term.hide', id: 'c0' });
   });
 
+  it('keeps a surface hidden, and the keys where they are, when its pane went during the attach', async () => {
+    const { sent, store, manager } = fakes();
+    store.getState().focus('c0');
+    const p = manager.show('c0', rect);
+    manager.hide('c0');
+    await p;
+    expect(sent.at(-1)).toEqual({ type: 'term.hide', id: 'c0' });
+    expect(sent).not.toContainEqual({ type: 'term.focus', id: 'c0' });
+  });
+
+  it('does not bring back a hidden surface whose tmux client died', async () => {
+    const { calls, store, bridge, manager } = fakes();
+    store.getState().focus('c0');
+    await manager.show('c0', rect);
+    manager.hide('c0');
+    bridge.emit({ type: 'term.exited', id: 'c0' });
+    await flush(); await flush();
+    expect(calls.filter((c) => c.method === 'term.attach')).toHaveLength(1);
+  });
+
   it('marks the terminal seen when it comes into view and when unread arrives while looking', async () => {
     const { calls, store } = fakes();
     store.getState().focus('c0');

@@ -38,8 +38,11 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
   const live = (key: string) => { const { id, term } = target(key); const c = state().fleet.characters[id]; return Boolean(term ? c?.second : c?.tmux); };
   const inView = (key: string) => viewedId(state()) === target(key).id;
   const lastOpacity = new Map<string, number | undefined>();
+  // the surfaces a pane is showing now; one whose pane was hidden or veiled during its attach stays hidden
+  const wanted = new Set<string>();
 
   async function show(id: string, rect: Rect, opacity?: number, takeFocus = true): Promise<void> {
+    wanted.add(id);
     lastOpacity.set(id, opacity);
     const alpha = opacity !== undefined ? { opacity } : {};
     if (state().terminals[id]) {
@@ -65,7 +68,7 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
     }
     bridge.send({ type: 'term.show', id, rect, ...alpha, attach });
     state().termOpened(id, rect);
-    if (!inView(id)) bridge.send({ type: 'term.hide', id });
+    if (!wanted.has(id) || !inView(id)) bridge.send({ type: 'term.hide', id });
     else if (takeFocus) focus(id);
   }
 
@@ -74,7 +77,7 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
       const t = state().terminals[m.id];
       state().termGone(m.id);
       // the tmux client died; if the window is still alive (client detached by hand) the terminal comes back
-      if (t) setTimeout(() => { if (inView(m.id) && live(m.id) && !state().terminals[m.id]) show(m.id, t.rect, lastOpacity.get(m.id)).catch(() => {}); }, reshowDelayMs);
+      if (t) setTimeout(() => { if (wanted.has(m.id) && inView(m.id) && live(m.id) && !state().terminals[m.id]) show(m.id, t.rect, lastOpacity.get(m.id)).catch(() => {}); }, reshowDelayMs);
     }
     if (m.type === 'term.failed') {
       state().termGone(m.id);
@@ -87,7 +90,7 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
     if (s.status === 'online' && prev.status !== 'online') {
       for (const [id, r] of retry) {
         retry.delete(id);
-        if (inView(id) && live(id) && !s.terminals[id]) show(id, r.rect, r.opacity).catch(() => {});
+        if (wanted.has(id) && inView(id) && live(id) && !s.terminals[id]) show(id, r.rect, r.opacity).catch(() => {});
       }
     }
     if (s.fleet !== prev.fleet) {
@@ -116,6 +119,7 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
       state().termMoved(id, rect);
     },
     hide(id) {
+      wanted.delete(id);
       if (state().terminals[id]) bridge.send({ type: 'term.hide', id });
     },
   };

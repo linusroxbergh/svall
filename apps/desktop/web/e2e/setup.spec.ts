@@ -1,9 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-
-type Plan = {
-  agents: { kind: string; path: string; version?: string; folderOnly?: boolean }[]; integrations?: string[]; writes: { what: string; path: string; agent?: string }[];
-  shimDir: string; shimOnPath: boolean; blockers: string[]; projects: string; install?: { kind: string; command: string; url: string }[];
-};
+import type { SetupPlan as Plan } from '@svall/protocol';
 
 const PLAN: Plan = { agents: [{ kind: 'claude', path: '/u/.local/bin/claude', version: '2.1.0' }, { kind: 'codex', path: '/opt/homebrew/bin/codex' }],
   writes: [{ what: 'Claude Code hooks and status line', path: '/u/.claude/settings.json', agent: 'claude' }, { what: 'Codex hooks', path: '/u/.codex/hooks.json', agent: 'codex' },
