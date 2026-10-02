@@ -10,7 +10,7 @@ export default defineConfig({
     outDir: '../../../site/map',
     emptyOutDir: true,
     rolldownOptions: {
-      input: { map: 'src/landing/main.tsx' },
+      input: { map: 'src/landing/main.tsx', flow: 'src/landing/flow.tsx' },
       // the protocol's schemas run nothing on import, so the map leaves them and zod out
       treeshake: { moduleSideEffects: (id) => !/packages\/protocol\/|node_modules\/zod\//.test(id) },
       output: { entryFileNames: '[name].js', assetFileNames: '[name][extname]' },
