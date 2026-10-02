@@ -1,4 +1,4 @@
-import { HOME_ISLAND, SPACING, byCell, cellKey, crewGrid, homeSizeFor, homeSlots, isLand, landCells, pillWidth, type Cell, type FleetState, type Footprint, type Island, type Size } from '@svall/protocol';
+import { HOME_ISLAND, HOME_ROW, SPACING, byCell, cellKey, crewGrid, homeSizeFor, homeSlots, isLand, landCells, pillWidth, type Cell, type FleetState, type Footprint, type Island, type Size } from '@svall/protocol';
 import type { Logger } from './log.js';
 
 export const GAP = 2;
@@ -249,6 +249,34 @@ export function arrangeFleet(draft: FleetState, aspect = 4 / 3, homeRoom?: numbe
     y += Math.max(...r.map((b) => b.size.h)) + ROW_GAP + extra;
   }
   settleHome(draft);
+}
+
+class IslandFull extends Error { code = 'invalid'; }
+
+// the island takes the ground a crew one larger needs and everyone lines up on it, as `arrange` lays out
+// the fleet; the newcomer takes the cell the grid leaves at the end, and the islands the new shape reaches
+// into are pushed aside. a hidden island comes back onto the map, so the newcomer is seen arriving
+export function placeOnIsland(draft: FleetState, islandId: string, exceptId?: string): Cell {
+  const island = draft.islands[islandId];
+  if (island.kind === 'home') return placeOnHome(draft, island, exceptId);
+  // a character re-placed on its own island is not its own crew, or the grid would size for it twice
+  const crew = crewOf(draft, islandId).filter((id) => id !== exceptId);
+  const { size, cells } = crewGrid(crew.length + 1);
+  island.size = size;
+  crew.forEach((id, i) => { draft.characters[id].cell = cells[i]; });
+  unfold(draft, islandId);
+  // a neighbour the push could not clear would leave the two overlapping, a shape no other move can produce
+  if (!placementOk(draft, island)) throw new IslandFull(`island ${island.name} is full`);
+  return cells[crew.length];
+}
+
+// the first free slot on the crew row; a full row widens the island by one slot
+function placeOnHome(draft: FleetState, island: Island, exceptId?: string): Cell {
+  const taken = occupiedCells(draft, island.id, exceptId);
+  const free = homeSlots(island.size.w).find((x) => !taken.has(cellKey({ x, y: HOME_ROW })));
+  if (free !== undefined) return { x: free, y: HOME_ROW };
+  island.size = homeSizeFor(homeSlots(island.size.w).length + 1);
+  return { x: homeSlots(island.size.w).at(-1)!, y: HOME_ROW };
 }
 
 export function occupiedCells(state: FleetState, islandId: string, exceptId?: string): Set<string> {

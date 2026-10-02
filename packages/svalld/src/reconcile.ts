@@ -1,60 +1,13 @@
-import { DEFAULT_SIZE, HOME_ROW, cellKey, crewGrid, homeSizeFor, homeSlots, isSessionId, randomPortrait, type Agent, type Cell, type Character, type FleetState, type Island } from '@svall/protocol';
-import { settle } from './agent/reducer.js';
+import { DEFAULT_SIZE, randomPortrait, type Agent, type Cell, type Character, type FleetState } from '@svall/protocol';
+import { markDormant } from './dormancy.js';
 import { isCharId, newId } from './ids.js';
-import { crewOf, defaultPosition, occupiedCells, placementOk, unfold } from './layout.js';
+import { defaultPosition, placeOnIsland } from './layout.js';
 import type { LiveWindow } from './tmux/tmux.js';
 
 export const RECOVERED_ISLAND = 'i_recovered';
 
 // the tmux window of a character's second terminal
 export const secondName = (id: string): string => `${id}-2`;
-
-class IslandFull extends Error { code = 'invalid'; }
-
-// flags are the launch flags to resume with, already quoted
-export function reviveCommand(c: Character, flags: string[] = []): string {
-  if (!c.agent || !isSessionId(c.agent.sessionId)) return '';
-  // a codex character's cwd follows its commands into worktrees; resumed from one, codex would stop to ask which directory
-  const words = c.agent.kind === 'codex' ? ['codex', 'resume', '-c', 'tui.resume_cwd=session', ...flags] : ['claude', ...flags, '--resume'];
-  return [...words, c.agent.sessionId].join(' ');
-}
-
-export function markDormant(c: Character, flags?: string[]): void {
-  delete c.tmux;
-  delete c.hint;
-  c.revive = { command: reviveCommand(c, flags) };
-  // nothing runs until the revive, so no question is left open and no turn goes on; a finished result stays
-  if (c.agent && (c.agent.status === 'blocked' || c.agent.status === 'working')) {
-    settle(c.agent, 'idle');
-    delete c.agent.asking;
-  }
-}
-
-// the island takes the ground a crew one larger needs and everyone lines up on it, as `arrange` lays out
-// the fleet; the newcomer takes the cell the grid leaves at the end, and the islands the new shape reaches
-// into are pushed aside. a hidden island comes back onto the map, so the newcomer is seen arriving
-export function placeOnIsland(draft: FleetState, islandId: string, exceptId?: string): Cell {
-  const island = draft.islands[islandId];
-  if (island.kind === 'home') return placeOnHome(draft, island, exceptId);
-  // a character re-placed on its own island is not its own crew, or the grid would size for it twice
-  const crew = crewOf(draft, islandId).filter((id) => id !== exceptId);
-  const { size, cells } = crewGrid(crew.length + 1);
-  island.size = size;
-  crew.forEach((id, i) => { draft.characters[id].cell = cells[i]; });
-  unfold(draft, islandId);
-  // a neighbour the push could not clear would leave the two overlapping, a shape no other move can produce
-  if (!placementOk(draft, island)) throw new IslandFull(`island ${island.name} is full`);
-  return cells[crew.length];
-}
-
-// the first free slot on the crew row; a full row widens the island by one slot
-function placeOnHome(draft: FleetState, island: Island, exceptId?: string): Cell {
-  const taken = occupiedCells(draft, island.id, exceptId);
-  const free = homeSlots(island.size.w).find((x) => !taken.has(cellKey({ x, y: HOME_ROW })));
-  if (free !== undefined) return { x: free, y: HOME_ROW };
-  island.size = homeSizeFor(homeSlots(island.size.w).length + 1);
-  return { x: homeSlots(island.size.w).at(-1)!, y: HOME_ROW };
-}
 
 // each character's windows as the fleet knew them before a listing was taken
 export type Before = Map<string, { main?: string; second?: string }>;

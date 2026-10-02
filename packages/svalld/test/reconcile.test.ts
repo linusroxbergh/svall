@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SIZE, HOME_ISLAND, HOME_SEED, cellKey, crewGrid, emptyState, homeSizeFor, isLand, landCells, type Cell, type Character, type Island } from '@svall/protocol';
-import { aboveHome, placementOk, trimHome } from '../src/layout.js';
-import { RECOVERED_ISLAND, markDormant, placeOnIsland, reconcile, reviveCommand, snapshot } from '../src/reconcile.js';
+import { markDormant, reviveCommand } from '../src/dormancy.js';
+import { aboveHome, placeOnIsland, placementOk, trimHome } from '../src/layout.js';
+import { RECOVERED_ISLAND, reconcile, snapshot } from '../src/reconcile.js';
 import type { LiveWindow } from '../src/tmux/tmux.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';

@@ -2,10 +2,29 @@ import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { isSessionId, type AgentKind, type Character } from '@svall/protocol';
-import { running } from './agent/reducer.js';
+import { running, settle } from './agent/reducer.js';
 import { shq } from './text.js';
 
 const exec = promisify(execFile);
+
+// flags are the launch flags to resume with, already quoted
+export function reviveCommand(c: Character, flags: string[] = []): string {
+  if (!c.agent || !isSessionId(c.agent.sessionId)) return '';
+  // a codex character's cwd follows its commands into worktrees; resumed from one, codex would stop to ask which directory
+  const words = c.agent.kind === 'codex' ? ['codex', 'resume', '-c', 'tui.resume_cwd=session', ...flags] : ['claude', ...flags, '--resume'];
+  return [...words, c.agent.sessionId].join(' ');
+}
+
+export function markDormant(c: Character, flags?: string[]): void {
+  delete c.tmux;
+  delete c.hint;
+  c.revive = { command: reviveCommand(c, flags) };
+  // nothing runs until the revive, so no question is left open and no turn goes on; a finished result stays
+  if (c.agent && (c.agent.status === 'blocked' || c.agent.status === 'working')) {
+    settle(c.agent, 'idle');
+    delete c.agent.asking;
+  }
+}
 
 // an agent resting this long, since its last turn or the user's last look, with nothing running for it and nothing
 // the user has yet to see. A failed turn keeps its error, and one a usage limit stopped carries on once it resets
