@@ -79,6 +79,27 @@ test('a socket that answers once the page is back in view is kept', async () => 
   expect(Socket.all).toHaveLength(1);
 });
 
+test('a socket still bringing terminal output is kept while its answer queues behind it', async () => {
+  vi.useFakeTimers();
+  const socket = await boot();
+  socket.hello();
+  backInView();
+  await vi.advanceTimersByTimeAsync(3000);
+  socket.receive({ event: 'term.output', data: { id: 'c0', data: 'eA==' } });
+  await vi.advanceTimersByTimeAsync(7000);
+  expect(Socket.all).toHaveLength(1);
+});
+
+test('a socket that closed on its own is left to the reconnect already on its way', async () => {
+  vi.useFakeTimers();
+  const socket = await boot();
+  socket.hello();
+  socket.close();
+  apis.at(-1)!.restart();
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(Socket.all).toHaveLength(2);
+});
+
 test('the page takes its height from the part of the screen the keyboard leaves', async () => {
   const vv = Object.assign(new EventTarget(), { height: 800, scale: 1 });
   vi.stubGlobal('visualViewport', vv);

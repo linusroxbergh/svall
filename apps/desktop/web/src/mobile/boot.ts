@@ -42,12 +42,13 @@ function createPhone(): PhoneContext {
   api.onOpen = load;
   api.start();
 
-  // a network change can leave the socket open here and dead at the Mac: back in view or online, one that does not
-  // answer soon is dropped for a fresh one. Any answer proves it alive
+  // a network change can leave the socket open here and dead at the Mac: back in view or online, one that hears
+  // nothing soon is dropped for a fresh one. Terminal output counts, since the answer can queue behind it
   const probe = () => {
     if (document.hidden) return;
-    const dead = setTimeout(() => api.restart(), PROBE_MS);
-    void api.call('push.key', {}).catch(() => {}).finally(() => clearTimeout(dead));
+    const heard = api.heard;
+    setTimeout(() => { if (api.heard === heard) api.restart(); }, PROBE_MS);
+    void api.call('push.key', {}).catch(() => {});
   };
   addEventListener('online', probe);
   document.addEventListener('visibilitychange', probe);

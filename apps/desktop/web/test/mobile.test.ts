@@ -241,8 +241,17 @@ describe('phone push', () => {
     const sub = fakeSub('https://push.example/a', 'AQID');
     const { api, calls } = pushEnv({ sub });
     expect(await disablePush(api)).toEqual({ kind: 'off', publicKey: 'AQID' });
-    expect(calls[0]).toEqual(['push.unsubscribe', { endpoint: 'https://push.example/a' }]);
+    expect(calls).toEqual([['push.key', {}], ['push.unsubscribe', { endpoint: 'https://push.example/a' }]]);
     expect(sub.unsubscribe).toHaveBeenCalled();
+  });
+
+  it('turning it off without the daemon leaves the phone subscribed', async () => {
+    const sub = fakeSub('https://push.example/a', 'AQID');
+    const { api, calls } = pushEnv({ sub });
+    const away = { call: (m: string, p: object) => (m === 'push.key' ? Promise.reject(new Error('svalld offline')) : api.call(m as 'push.unsubscribe', p as never)) } as unknown as Api;
+    await expect(disablePush(away)).rejects.toThrow('svalld offline');
+    expect(calls).toEqual([]);
+    expect(sub.unsubscribe).not.toHaveBeenCalled();
   });
 });
 

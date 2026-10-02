@@ -69,10 +69,12 @@ export async function setPushStatuses(api: Api, statuses: PushStatus[]): Promise
 }
 
 export async function disablePush(api: Api): Promise<PushState> {
+  // the key first, so a failed read leaves the subscription as it was rather than gone behind an error
+  const next = await off(api);
   const sub = await (await worker()).pushManager.getSubscription();
   if (sub) {
     await api.call('push.unsubscribe', { endpoint: sub.endpoint });
     await sub.unsubscribe();
   }
-  return off(api);
+  return next;
 }

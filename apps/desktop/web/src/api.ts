@@ -25,6 +25,7 @@ export class Api {
   // a daemon on another protocol stays reported as such across retries, until one answers in ours or none answers
   private outdated = false;
   private next = 1;
+  private messages = 0;
   private pending = new Map<number, Pending>();
   private delay: number;
   private stopped = true;
@@ -45,6 +46,9 @@ export class Api {
 
   stop(): void { this.stopped = true; clearTimeout(this.timer); this.ws?.close(); }
 
+  /** How many messages svalld has sent this page, answers and events alike. */
+  get heard(): number { return this.messages; }
+
   /** Drops the socket as closed without waiting for its close, which one lost to a network change may never send. */
   restart(): void {
     const ws = this.ws;
@@ -52,7 +56,7 @@ export class Api {
     if (!ws || !closed || !this.online) return;
     ws.onclose = null;
     ws.close();
-    closed.call(ws, new Event('close') as CloseEvent);
+    closed.call(ws, new CloseEvent('close'));
   }
 
   call<M extends MethodName>(method: M, params: Params<M>): Promise<Result<M>> {
@@ -85,6 +89,7 @@ export class Api {
     // a socket already replaced by a reconnect speaks for nobody: neither its messages nor its close count
     ws.onmessage = (ev) => {
       if (this.ws !== ws) return;
+      this.messages++;
       let msg: Response | Event;
       try { msg = JSON.parse(String(ev.data)) as Response | Event; } catch { return; }
       if (!this.online) {
