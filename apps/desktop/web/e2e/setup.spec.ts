@@ -110,6 +110,14 @@ test('gives each agent\'s install command to select or copy, and its other ways 
   expect(msgs.find((m) => m.type === 'openUrl')).toMatchObject({ url: 'https://code.claude.com/docs/en/setup' });
 });
 
+test('gives the PATH line with the installers when their folder is not on PATH, and only there', async ({ page }) => {
+  await fakeShell(page, NOTHING);
+  await page.goto('/?setup=1');
+  await expect(page.getByText('Both install to /u/.local/bin, which is not on your PATH')).toBeVisible();
+  await expect(page.getByText('export PATH="$HOME/.local/bin:$PATH"')).toHaveCount(1);
+  await expect(page.getByRole('heading', { name: 'The svall command' })).toHaveCount(0);
+});
+
 test('says an agent found only by its folder has no command, as a desktop app leaves one', async ({ page }) => {
   await fakeShell(page, { ...NOTHING, agents: [{ kind: 'claude', path: '/u/.claude', folderOnly: true }] });
   await page.goto('/?setup=1');

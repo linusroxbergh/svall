@@ -114,8 +114,8 @@ async function agentChecks(d: PreflightDeps): Promise<Check[]> {
     catch (e) { if (!missing(e)) versions.set(k, e as Error); }
   }
   if (!versions.size) {
-    const how = AGENT_KINDS.map((k) => `${AGENTS[k].label} (${AGENTS[k].installUrl})`).join(' or ');
-    return [{ name: 'agents', status: 'fail', detail: `neither claude nor codex is on PATH: install ${how}` }];
+    const how = AGENT_KINDS.map((k) => `${AGENTS[k].installCommand} (${AGENTS[k].label})`).join(' or ');
+    return [{ name: 'agents', status: 'fail', detail: `neither claude nor codex is on PATH, and the desktop apps don't install them: run ${how}` }];
   }
   const found = [...versions.keys()];
   return Promise.all(AGENT_KINDS.map((k) => agentCheck(d, k, versions.get(k), found)));

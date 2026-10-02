@@ -73,6 +73,10 @@ export function Setup() {
             <Command bridge={bridge} text={i.command} />
           </div>
         ))}
+        {!plan.shimOnPath && <div className="setup-install">
+          <p>Both install to {shortPath(plan.shimDir)}, which is not on your PATH; add this line to your shell profile too.</p>
+          <Command bridge={bridge} text={line} />
+        </div>}
       </section>}
       {plan.agents.length > 0 && <section>
         <h2>Agents</h2>
@@ -102,7 +106,8 @@ export function Setup() {
         <h2>What setup writes</h2>
         <ul className="setup-list">{writes.map((w) => <li key={w.path} className="setup-row"><span>{w.what}</span><code title={w.path}>{shortPath(w.path)}</code></li>)}</ul>
       </section>
-      {!plan.shimOnPath && <section>
+      {/* the installers write to the svall command's folder, so the Install section gives this line */}
+      {!plan.shimOnPath && !plan.install && <section>
         <h2>The svall command</h2>
         <p>{shortPath(plan.shimDir)} is not on your PATH; add this line to your shell profile.</p>
         <Command bridge={bridge} text={line} />
