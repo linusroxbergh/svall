@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { SHIM } from '@svall/svalld/profile';
 import type { Client } from '../client.js';
 import { printResult } from '../format.js';
+import { withClient } from './fleet.js';
 
 export function mobileCommand(connect: () => Promise<Client>, json: () => boolean): Command {
   const cmd = new Command('mobile').description('serve the fleet to your phone over Tailscale');
@@ -10,9 +11,7 @@ export function mobileCommand(connect: () => Promise<Client>, json: () => boolea
   // the daemon answers an environment it cannot serve in with a reason rather than a failed call; its
   // base64 data url is for the app, so no command here carries it
   const set = async (enabled: boolean) => {
-    const c = await connect();
-    const { qr: _qr, ...status } = await c.call('mobile.set', { enabled });
-    c.close();
+    const { qr: _qr, ...status } = await withClient(connect, (c) => c.call('mobile.set', { enabled }));
     if (status.error) throw new Error(status.error);
     return status;
   };
