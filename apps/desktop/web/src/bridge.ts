@@ -83,9 +83,9 @@ export type FromShell =
   | { type: 'notify.permission'; state: NotifyPermission }
   // the version a scheduled check found, empty when none waits
   | { type: 'update.available'; version: string }
-  // a banner was clicked, or answered from its buttons; promptId is the question it showed, empty when it named none
+  // a banner was clicked, or answered from its buttons; promptId is the question it showed
   | { type: 'notify.open'; key: string }
-  | { type: 'notify.action'; key: string; action: 'approve' | 'deny'; promptId?: string }
+  | { type: 'notify.action'; key: string; action: 'approve' | 'deny'; promptId: string }
   | { type: 'menu.pick'; id: string }
   | { type: 'setup.result'; step: 'plan' | 'run'; ok: boolean; json: string }
   | { type: 'folder.picked'; path: string }

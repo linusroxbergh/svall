@@ -15,7 +15,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     var onPermission: (String) -> Void = { _ in }
     var onOpen: (String) -> Void = { _ in }
-    // the question the banner showed goes back with its answer, so a stale one is refused; empty when it named none
+    // the question the banner showed goes back with its answer, so a stale one is refused
     var onAction: (_ key: String, _ action: String, _ promptId: String) -> Void = { _, _, _ in }
 
     override init() {
@@ -130,7 +130,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    // any local process can post the forward, so an answer is taken only with the question its banner named
     private func deliver(key: String, action: String, promptId: String) {
-        if action == "open" { onOpen(key) } else { onAction(key, action, promptId) }
+        if action == "open" { onOpen(key) } else if !promptId.isEmpty { onAction(key, action, promptId) }
     }
 }

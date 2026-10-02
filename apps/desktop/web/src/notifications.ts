@@ -107,7 +107,7 @@ export function followNotifications(o: { store: AppStore; bridge: Bridge; api():
     });
   };
   // only a main terminal's banner has buttons, so the key is the character's id
-  const answer = async (key: string, action: 'approve' | 'deny', promptId?: string) => {
+  const answer = async (key: string, action: 'approve' | 'deny', promptId: string) => {
     const c = o.store.getState().fleet.characters[key];
     if (!c) return;
     try {
@@ -133,7 +133,10 @@ export function followNotifications(o: { store: AppStore; bridge: Bridge; api():
     } else if (m.type === 'notify.open') {
       const id = charOfSurface(m.key);
       if (o.store.getState().fleet.characters[id]) o.store.getState().focus(id);
-    } else if (m.type === 'notify.action') void answer(m.key, m.action, m.promptId || undefined);
+    } else if (m.type === 'notify.action') {
+      // one that names no question would have svalld approve whatever is pending
+      if (m.promptId) void answer(m.key, m.action, m.promptId);
+    }
   });
   return () => { offStore(); offShell(); };
 }

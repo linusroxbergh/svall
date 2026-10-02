@@ -15,9 +15,12 @@ final class Updates: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate
 
     private override init() {
         super.init()
-        // the other fleets' windows run from the bundle an update replaces, so they quit before it is installed
+        // the other fleets' windows run from the bundle an update replaces, so they quit before it is installed.
+        // anything local can post this, so the pid it names must be another running Svall's
         DistributedNotificationCenter.default().addObserver(forName: Self.quitForUpdate, object: nil, queue: .main) { [me] note in
-            if note.object as? String != me { NSApp.terminateQuietly() }
+            guard let from = note.object as? String, from != me, let pid = pid_t(from),
+                  NSRunningApplication(processIdentifier: pid)?.bundleIdentifier == Bundle.main.bundleIdentifier else { return }
+            NSApp.terminateQuietly()
         }
         guard Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil,
               SvallHome.isPrivate || ProcessInfo.processInfo.environment[Self.handoff] != nil else { return }
