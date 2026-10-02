@@ -23,19 +23,25 @@ describe('setupPlan', () => {
     expect(plan.writes[0]!.agent).toBe('claude');
     expect(plan.shimOnPath).toBe(true);
     expect(plan.blockers).toEqual([]);
+    expect(plan.install).toBeUndefined();
     expect(plan.projects).toBe('~/Developer');
   });
 
   it('says what blocks setup when only an agent\'s folder is here', () => {
     const plan = setupPlan({ projects: '~/Developer', home: makeHome(), found: [], folders: [{ kind: 'codex', path: '/u/.codex' }], integrations: undefined, settingsPath: '/s', codexHooks: '/c',
       launchAgentsDir: '/l', fleets: [], shimDir: '/b', pathEnv: '', answered: true, cli: 'svall' });
-    expect(plan.blockers).toEqual([expect.stringMatching(/^Install /)]);
+    expect(plan.blockers).toEqual([expect.stringContaining('needs the claude or codex command')]);
+    expect(plan.install?.map((i) => i.kind)).toEqual(['claude', 'codex']);
   });
 
-  it('says what blocks setup when no agent is installed', () => {
+  it('says the CLI is what setup needs when no agent is installed, and how to install each', () => {
     const plan = setupPlan({ projects: '~/Developer', home: makeHome(), found: [], folders: [], integrations: undefined, settingsPath: '/s', codexHooks: '/c',
       launchAgentsDir: '/l', fleets: [], shimDir: '/u/.local/bin', pathEnv: '/usr/bin', answered: true, cli: 'svall' });
-    expect(plan.blockers).toEqual(['Install Claude Code (https://code.claude.com/docs/en/setup) or Codex (https://learn.chatgpt.com/docs/codex/cli) first, then check again.']);
+    expect(plan.blockers).toEqual(["Svall runs Claude Code or Codex in its terminals, so it needs the claude or codex command. The desktop apps don't install it. Install one in Terminal, then check again."]);
+    expect(plan.install).toEqual([
+      { kind: 'claude', command: 'curl -fsSL https://claude.ai/install.sh | bash', url: 'https://code.claude.com/docs/en/setup' },
+      { kind: 'codex', command: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh', url: 'https://learn.chatgpt.com/docs/codex/cli' },
+    ]);
     expect(plan.shimOnPath).toBe(false);
   });
 
@@ -44,6 +50,7 @@ describe('setupPlan', () => {
       launchAgentsDir: '/l', fleets: [], shimDir: '/b', pathEnv: '', answered: false, cli: "'/A/node' '/A/svall.mjs'" });
     expect(plan.blockers).toEqual([expect.stringContaining('login shell did not answer')]);
     expect(plan.blockers[0]).toContain("run '/A/node' '/A/svall.mjs' setup in a terminal");
+    expect(plan.install).toBeUndefined();
   });
 
   it('lists a turned-off agent\'s file with the choice saved, for the screen to leave out while it stays off', () => {

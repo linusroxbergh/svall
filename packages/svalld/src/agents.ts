@@ -9,6 +9,8 @@ type AgentAdapter = {
   label: string;
   bin: string;
   installUrl: string;
+  // the vendor's own installer for the CLI; the desktop apps don't put the command on PATH
+  installCommand: string;
   minVersion?: Version;
   // argv that reports the login; exit 1 means not logged in
   loginArgs: string[];
@@ -21,6 +23,7 @@ type AgentAdapter = {
 export const AGENTS: Record<AgentKind, AgentAdapter> = {
   claude: {
     label: AGENT_LABEL.claude, bin: 'claude', installUrl: 'https://code.claude.com/docs/en/setup',
+    installCommand: 'curl -fsSL https://claude.ai/install.sh | bash',
     loginArgs: ['auth', 'status', '--json'],
     loggedIn: (out) => { try { return (JSON.parse(out) as { loggedIn?: boolean }).loggedIn === true; } catch { return false; } },
     loginHint: 'claude auth login',
@@ -28,6 +31,7 @@ export const AGENTS: Record<AgentKind, AgentAdapter> = {
   },
   codex: {
     label: AGENT_LABEL.codex, bin: 'codex', installUrl: 'https://learn.chatgpt.com/docs/codex/cli', minVersion: [0, 155, 0],
+    installCommand: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh',
     loginArgs: ['login', 'status'], loggedIn: () => true,
     loginHint: 'codex login',
     crewCommand: 'codex',

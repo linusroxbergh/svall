@@ -43,11 +43,12 @@ terminal in it.
 
 ## Quickstart
 
-Svall needs an Apple Silicon Mac on macOS 15 or newer, and Claude Code, Codex,
-or both.
+Svall needs an Apple Silicon Mac on macOS 15 or newer, and the Claude Code CLI,
+the Codex CLI, or both. Svall runs the `claude` and `codex` commands in its
+terminals; the Claude and Codex desktop apps don't install them.
 
-1. Install [Claude Code](https://code.claude.com/docs/en/setup); it works with
-   a Claude subscription or an Anthropic API key, see
+1. Install the [Claude Code CLI](https://code.claude.com/docs/en/setup); it
+   works with a Claude subscription or an Anthropic API key, see
    [Using API keys](#using-api-keys). And/or install the
    [Codex CLI](https://learn.chatgpt.com/docs/codex/cli) 0.155 or newer; an
    OpenAI API key is enough, you don't need a ChatGPT subscription.

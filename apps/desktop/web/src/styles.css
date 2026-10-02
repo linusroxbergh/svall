@@ -29,6 +29,11 @@ textarea { overflow-x: hidden; }
 .setup-folder input { flex: 1; min-width: 0; font: var(--text-sm)/1.5 var(--mono); padding: var(--sp-md) var(--sp-xl); border-radius: var(--r-md); border: 1px solid var(--line); background: var(--fill-1); color: var(--ink); }
 .setup-code { display: flex; align-items: center; gap: var(--sp-md); padding: var(--sp-xs) var(--sp-xs) var(--sp-xs) var(--sp-xl); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--fill-1); }
 .setup-code code { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.setup p, .setup code, .setup-note { user-select: text; }
+.setup-install { display: flex; flex-direction: column; gap: var(--sp-sm); }
+.setup-install + .setup-install { margin-top: var(--sp-md); }
+.setup-install-head { display: flex; justify-content: space-between; align-items: baseline; font-size: var(--text-md); font-weight: var(--w-medium); }
+.setup-install-head a { color: var(--ink-3); font-size: var(--text-sm); font-weight: var(--w-regular); }
 .setup-acts { display: flex; gap: var(--sp-md); }
 .setup-acts .btn { padding-inline: var(--sp-3xl); }
 .setup button:disabled { opacity: 0.5; cursor: default; }
