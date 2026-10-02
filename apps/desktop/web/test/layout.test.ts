@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ground, pillWidth, type Island } from '@svall/protocol';
+import { pillWidth, type Island } from '@svall/protocol';
 import { cardScale, cellOwner, characterAt, clampPan, crewOf, drawnBox, fitAll, labelScale, limitAt, mapIslands, onBlocks, roomOf, screenToCell, worldBounds, worldCell, worldToScreen, type Below, type Layout } from '../src/map/layout.js';
 import { theme, tokenPx } from '../src/theme.js';
 import { fleet } from './fixtures.js';
@@ -25,11 +25,6 @@ describe('what an island draws', () => {
   it('widens a narrow island to its label pill', () => {
     const narrow = { ...beta(), name: 'a very long island name indeed', size: { w: 4, h: 3 } };
     expect(drawnBox(narrow, [], 1).w).toBeCloseTo(pillWidth(narrow.name), 10);
-  });
-  it('is only its pill once folded', () => {
-    const folded = { ...beta(), size: { w: 30, h: 4 }, collapsed: true };
-    const pill = ground(folded);
-    expect(drawnBox(folded, [{ x: 2, y: 3 }], 1)).toEqual({ x: pill.position.x, y: -theme.bounds.top, w: pill.size.w, h: pill.position.y + 1 + theme.bounds.top });
   });
 });
 
@@ -77,10 +72,11 @@ describe('world layout', () => {
     expect(tiny.ox + (b.x + b.w / 2) * cs(tiny)).toBeCloseTo(200, 6);
   });
 
-  it('measures a folded island across by its pill, not the ground it would take back', () => {
-    const islands = mapIslands(fleet()).map((i) => (i.id === 'i_e' ? { ...i, size: { w: 30, h: 4 }, collapsed: true } : i));
-    const pill = ground(islands.find((i) => i.id === 'i_e')!);
-    expect(worldBounds(islands).w).toBeCloseTo(pill.position.x + pill.size.w, 10);
+  it('leaves a folded island off the map and out of the world it bounds', () => {
+    const f = fleet();
+    f.islands.i_e.collapsed = true;
+    expect(mapIslands(f).map((i) => i.id).sort()).toEqual(['i_a', 'i_b']);
+    expect(worldBounds(mapIslands(f)).w).toBeCloseTo(14, 10);
   });
 
   it('clamps a pan to the world edge and drops a pan on an axis that fits', () => {
@@ -145,7 +141,7 @@ describe('fitting around mission control', () => {
   const below: Below = { h: 900, blocks: [{ x: 550, w: 300, top: 690 }, { x: 520, w: 360, top: 746 }] };
   const crew = crewOf(fleet());
   const foot = (i: Island, l: Layout) => { const d = drawnBox(i, crew[i.id], l.scale); return d.y + d.h; };
-  const span = (i: Island, l: Layout): [number, number] => [l.ox + ground(i).position.x * cs(l), l.ox + (ground(i).position.x + ground(i).size.w) * cs(l)];
+  const span = (i: Island, l: Layout): [number, number] => [l.ox + i.position.x * cs(l), l.ox + (i.position.x + i.size.w) * cs(l)];
   // every island's cards the bottom margin above the limit under them, and the labels under the top inset
   const clear = (islands: Island[], l: Layout, b: Below) => {
     for (const i of islands) expect(l.oy + foot(i, l) * cs(l)).toBeLessThanOrEqual(limitAt(b, ...span(i, l)) - theme.fit.bottom + 1e-6);

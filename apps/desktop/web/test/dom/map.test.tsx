@@ -64,6 +64,16 @@ test('a double click on open water makes an island there', async () => {
   expect(methods()).toContain('island.create');
 });
 
+test('a folded island is off the map, label, crew and all, and the map can only hide one', async () => {
+  store.getState().applyPatch([{ op: 'add', path: '/islands/i_b/collapsed', value: true }]);
+  render(<Map />);
+  await act(async () => {});
+  for (const id of ['island-i_b', 'island-label-i_b', 'token-c0', 'token-c1']) expect(screen.queryByTestId(id)).toBeNull();
+  expect(screen.getByTestId('island-toggle-i_a').getAttribute('aria-label')).toBe('Hide alpha');
+  fireEvent.click(screen.getByTestId('island-toggle-i_a'));
+  expect(call).toHaveBeenCalledWith('island.update', { id: 'i_a', collapsed: true });
+});
+
 test('mission control puts arrange beside its name, as bright as the buttons that start an agent', async () => {
   render(<Map />);
   await act(async () => {});
@@ -85,6 +95,35 @@ test('the arrange key arranges the fleet once, to the shape of the map', async (
     expect(arranged).toHaveLength(1);
     expect((arranged[0][1] as { aspect: number }).aspect).toBeGreaterThan(1);
     expect(store.getState().arrangeAsk).toBe(false);
+  } finally {
+    delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+  }
+});
+
+test('the fleet arranges round an island back from hidden, whichever client showed it', async () => {
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 1200 });
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 800 });
+  const arranges = () => methods().filter((m) => m === 'island.arrange').length;
+  const fold = (id: string, on: boolean) => act(async () => {
+    store.getState().applyPatch([on ? { op: 'add', path: `/islands/${id}/collapsed`, value: true } : { op: 'remove', path: `/islands/${id}/collapsed` }]);
+  });
+  store.getState().setStatus('online');
+  try {
+    render(<Map />);
+    await act(async () => {});
+    // hiding and a hidden mission control's return move nothing
+    await fold('i_a', true);
+    await fold('home', true);
+    await fold('home', false);
+    expect(arranges()).toBe(0);
+    await fold('i_a', false);
+    expect(arranges()).toBe(1);
+
+    store.getState().setSettings({ autoArrange: false });
+    await fold('i_a', true);
+    await fold('i_a', false);
+    expect(arranges()).toBe(1);
   } finally {
     delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
     delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;

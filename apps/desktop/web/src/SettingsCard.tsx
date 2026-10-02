@@ -244,7 +244,7 @@ export function SettingsCard() {
       </div>
       <div className="rows">
         <div className="row">
-          <span>arrange on its own<Info id="auto-arrange">Arranges the fleet when you come back to the map or resize the window.</Info></span>
+          <span>arrange on its own<Info id="auto-arrange">Arranges the fleet when you come back to the map, show a hidden island or resize the window.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={autoArrange} data-testid="set-auto-arrange"
             onClick={() => set({ autoArrange: !autoArrange })}>{autoArrange ? 'on' : 'off'}</button></b>
         </div>

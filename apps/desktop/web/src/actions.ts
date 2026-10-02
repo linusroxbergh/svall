@@ -4,7 +4,7 @@ import { shim, type Bridge } from './bridge.js';
 import type { DropTarget } from './drop.js';
 import { withoutSecond } from './panes.js';
 import type { FieldRef } from './resources/model.js';
-import { boardViewed, charactersOf, mapIslandsSorted, panesOf, selectedOf } from './selectors.js';
+import { boardViewed, charactersOf, islandsSorted, mapIslandsSorted, panesOf, selectedOf, startOf } from './selectors.js';
 import type { AppStore } from './store/index.js';
 
 // what it takes to act on the fleet: the socket, the mirror, and the shell
@@ -21,14 +21,31 @@ const closeSettings = (d: ActionDeps): void => { if (d.store.getState().settings
 const startCwd = (c: Character | undefined): string | undefined => (c?.repo?.isWorktree ? c.repo.mainRoot : c?.cwd);
 
 // a cwd taken from another character can be gone (a removed worktree), so one the fleet refuses as not a
-// directory gives way once to the fleet's default
+// directory gives way once to the fleet's default; an agent's start command only runs where it was meant to
 export async function createCharacter(api: Pick<Api, 'call'>, params: Params<'char.create'>, fallback: string): Promise<Result<'char.create'>> {
   try {
     return await api.call('char.create', params);
   } catch (e) {
-    if (params.cwd === fallback || !/not a directory/.test((e as Error).message)) throw e;
+    if (params.cwd === fallback || params.command || !/not a directory/.test((e as Error).message)) throw e;
     return api.call('char.create', { ...params, cwd: fallback });
   }
+}
+
+// a new character opens its side card, whatever the side card was left at, and its terminal unless it is only selected
+export const showCreated = (d: ActionDeps, id: string, how: 'focus' | 'select' = 'focus'): void => {
+  const s = d.store.getState();
+  if (how === 'focus') s.focus(id); else s.select(id);
+  s.toggleSideCard(true);
+};
+
+// a crew member whose CLI svalld doesn't find only prints command not found; the toast says why, and a
+// login shell that finds it still gets its chance
+function warnUnfound(d: ActionDeps, command: string): boolean {
+  const cli = command.trim().split(/\s+/)[0];
+  const found = d.store.getState().fleet.agentsFound;
+  const unfound = AgentKind.safeParse(cli).success && found !== undefined && !found.includes(cli as AgentKind);
+  if (unfound) d.store.getState().showToast(`Mission control runs ${cli}, which svalld doesn't find. Install it, then run ${shim()} setup.`);
+  return unfound;
 }
 
 // without an explicit cwd a new character inherits the one of the island's first character; home crew
@@ -37,9 +54,11 @@ export async function newCharacterOn(d: ActionDeps, islandId: string, cwd?: stri
   closeSettings(d);
   const f = d.store.getState().fleet;
   const dir = cwd ?? (f.islands[islandId]?.kind === 'home' ? f.home.cwd : startCwd(charactersOf(f, islandId)[0]) ?? f.defaultCwd);
+  const start = startOf(f, islandId);
+  if (start.command) warnUnfound(d, start.command);
   try {
-    const c = await createCharacter(d.api, { islandId, cwd: dir }, f.defaultCwd);
-    d.store.getState().focus(c.id);
+    const c = await createCharacter(d.api, { islandId, cwd: dir, ...start }, f.defaultCwd);
+    showCreated(d, c.id);
   } catch (e) {
     d.store.getState().showToast((e as Error).message);
   }
@@ -104,7 +123,7 @@ export function arrangeIslands(d: ActionDeps, aspect?: number, homeRoom?: number
 // and the daemon picks the spot
 export function newIsland(d: ActionDeps, cell?: Cell): void {
   closeSettings(d);
-  const n = mapIslandsSorted(d.store.getState().fleet).length + 1;
+  const n = Object.values(d.store.getState().fleet.islands).filter((i) => i.kind !== 'home').length + 1;
   const position = cell && { x: cell.x - Math.floor(DEFAULT_SIZE.w / 2), y: cell.y - Math.floor(DEFAULT_SIZE.h / 2) };
   d.api.call('island.create', { name: `Island ${n}`, ...(position ? { position } : {}) })
     .then((i) => d.store.getState().selectIsland(i.id))
@@ -113,7 +132,8 @@ export function newIsland(d: ActionDeps, cell?: Cell): void {
 
 const islandName = (cwd: string): string => (cwd === '~' ? 'island' : cwd.split('/').filter(Boolean).pop() ?? 'island');
 
-// the selected island, else the current character's island, else the first one, else a fresh island
+// the selected island, else the current character's island, else the first shown one, else the first hidden one,
+// which comes back with the character, else a fresh island
 export async function newCharacterTarget(d: ActionDeps): Promise<{ islandId: string; cwd: string }> {
   const s = d.store.getState();
   const current = s.view === 'map' ? (s.selectedId ?? s.card ?? selectedOf(s)) : boardViewed(s);
@@ -121,6 +141,7 @@ export async function newCharacterTarget(d: ActionDeps): Promise<{ islandId: str
   const base = islandSel ? charactersOf(s.fleet, islandSel)[0] : current ? s.fleet.characters[current] : undefined;
   const start = startCwd(base) ?? s.fleet.defaultCwd;
   const islandId = islandSel || base?.islandId || mapIslandsSorted(s.fleet)[0]?.id
+    || islandsSorted(s.fleet).find((i) => i.kind !== 'home')?.id
     || (await d.api.call('island.create', { name: islandName(start) })).id;
   const cwd = s.fleet.islands[islandId]?.kind === 'home' ? s.fleet.home.cwd : start;
   return { islandId, cwd };
@@ -131,7 +152,10 @@ export async function newCharacterTarget(d: ActionDeps): Promise<{ islandId: str
 export async function newNamedCharacter(d: ActionDeps, p: { name: string; note: string; refs: string[] }): Promise<string> {
   closeSettings(d);
   const { islandId, cwd } = await newCharacterTarget(d);
-  const c = await createCharacter(d.api, { islandId, cwd, ...(p.name ? { name: p.name } : {}) }, d.store.getState().fleet.defaultCwd);
+  const f = d.store.getState().fleet;
+  const start = startOf(f, islandId);
+  if (start.command) warnUnfound(d, start.command);
+  const c = await createCharacter(d.api, { islandId, cwd, ...(p.name ? { name: p.name } : {}), ...start }, f.defaultCwd);
   if (p.note || p.refs.length) {
     // the character already exists, so a refused path is reported rather than retried
     await d.api.call('char.update', {
@@ -152,7 +176,7 @@ function selectOnArrival(d: ActionDeps, before: string | undefined): () => void 
     const fresh = Object.values(s.fleet.characters).find((c) => c.islandId === HOME_ISLAND && !known.has(c.id));
     if (!fresh) return;
     stop();
-    if (d.store.getState().selectedId === before) d.store.getState().select(fresh.id);
+    if (d.store.getState().selectedId === before) showCreated(d, fresh.id, 'select');
   });
   return stop;
 }
@@ -164,17 +188,12 @@ export async function startHomeCharacter(d: ActionDeps, p: { prompt: string; lab
   const { home } = d.store.getState().fleet;
   const before = d.store.getState().selectedId;
   const stop = selectOnArrival(d, before);
-  // a crew member whose CLI svalld doesn't find only prints command not found; the toast says why, and a
-  // login shell that finds it still gets its chance
-  const cli = home.command.trim().split(/\s+/)[0];
-  const found = d.store.getState().fleet.agentsFound;
-  const unfound = AgentKind.safeParse(cli).success && found !== undefined && !found.includes(cli as AgentKind);
-  if (unfound) d.store.getState().showToast(`Mission control runs ${cli}, which svalld doesn't find. Install it, then run ${shim()} setup.`);
+  const unfound = warnUnfound(d, home.command);
   try {
     const c = await d.api.call('char.create', { islandId: HOME_ISLAND, cwd: home.cwd, ...(p.label ? { name: p.label } : {}), command: home.command, run: p.prompt });
     // a crew member the mirror already has was chosen for, or yielded, on arrival
     const s = d.store.getState();
-    if (s.selectedId === before && !s.fleet.characters[c.id]) s.select(c.id);
+    if (s.selectedId === before && !s.fleet.characters[c.id]) showCreated(d, c.id, 'select');
     // an agent that never reported in was booting slowly or is waiting on a question of its own; either
     // way the crew member is there and the prompt is still the user's to send, so it is not thrown away
     if (!unfound) {

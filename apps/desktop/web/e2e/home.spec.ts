@@ -26,6 +26,8 @@ test('a button spawns a crew member on home and hands it the prompt', async ({ p
   await expect(home.locator('.tok')).toHaveCount(2, { timeout: 15_000 });
   const second = Object.values((await svall.api.call('state.get', {})).characters).find((c) => c.islandId === 'home' && c.id !== crew!.id);
   expect(second!.cell).toEqual({ x: 4, y: 1 });
+  // a crew member made by hand starts the home command too, rather than a shell
+  await expect(page.getByTestId(`token-${second!.id}`)).toHaveAttribute('data-status', 'idle', { timeout: 15_000 });
 });
 
 test('the chevron collapses home to its row and the choice survives a reload', async ({ page, svall }) => {

@@ -71,6 +71,16 @@ describe('newCharacterTarget', () => {
     expect(await newCharacterTarget(c)).toEqual({ islandId: 'i_new', cwd: DEFAULT_CWD });
     expect(c.calls).toEqual([{ method: 'island.create', params: { name: 'island' } }]);
   });
+
+  it('takes the first hidden island when every island is hidden, rather than make another', async () => {
+    const c = ctx();
+    c.store.getState().setView('board');
+    c.store.getState().setFleet({ ...emptyState(), islands: {
+      home: isl('home', 'mission control', 0, { kind: 'home' }), i_x: isl('i_x', 'x', 0, { collapsed: true }),
+    } });
+    expect(await newCharacterTarget(c)).toEqual({ islandId: 'i_x', cwd: DEFAULT_CWD });
+    expect(c.calls).toEqual([]);
+  });
 });
 
 describe('moveCharacterTo', () => {
@@ -229,6 +239,14 @@ describe('a crew member whose directory is gone', () => {
     s.getState().selectIsland('i_a');
     expect(await newNamedCharacter({ api: goneDir(calls), store: s }, { name: 'scribe', note: '', refs: [] })).toBe('c_new');
     expect(calls.map((c) => c.params)).toEqual([{ islandId: 'i_a', cwd: '/tmp', name: 'scribe' }, { islandId: 'i_a', cwd: DEFAULT_CWD, name: 'scribe' }]);
+  });
+
+  it('reports a mission control folder that is gone rather than start the agent somewhere else', async () => {
+    const calls: Call[] = [];
+    const s = store();
+    await newCharacterOn({ api: goneDir(calls, 'cwd /mc is not a directory'), store: s }, 'home');
+    expect(calls).toHaveLength(1);
+    expect(s.getState().toast?.text).toBe('cwd /mc is not a directory');
   });
 
   it('reports any other refusal without a second try', async () => {
@@ -463,5 +481,56 @@ describe('a new island or character', () => {
     await make(c);
     expect(c.store.getState().settingsOpen).toBe(false);
     expect(c.calls.some((x) => x.method === 'char.create' || x.method === 'island.create')).toBe(true);
+  });
+});
+
+describe('a new character', () => {
+  function made() {
+    const c = ctx();
+    c.api.call = ((method: string, params: unknown) => {
+      c.calls.push({ method, params });
+      return Promise.resolve(method === 'char.create' ? { id: 'c_new', name: 'n', runSent: true } : {});
+    }) as Api['call'];
+    // the user put the side card away before making one
+    c.store.getState().toggleSideCard(false);
+    return c;
+  }
+  const created = (c: ReturnType<typeof ctx>) => c.calls.find((x) => x.method === 'char.create')?.params as { command?: string };
+
+  it('opens its terminal and its side card, even when the side card was put away', async () => {
+    const c = made();
+    await newCharacterOn(c, 'i_a');
+    expect(c.store.getState()).toMatchObject({ card: 'c_new', selectedId: 'c_new', sideCardOpen: true, sideCardCollapsed: false });
+  });
+
+  it('opens the side card of a crew member started on mission control, without a terminal', async () => {
+    const c = made();
+    await startHomeCharacter(c, { prompt: 'hi' });
+    expect(c.store.getState()).toMatchObject({ card: undefined, selectedId: 'c_new', sideCardOpen: true });
+  });
+
+  it('starts the home command on mission control, and a shell anywhere else', async () => {
+    const c = made();
+    await newCharacterOn(c, 'home');
+    expect(created(c).command).toBe('claude --model sonnet');
+    c.calls.length = 0;
+    await newCharacterOn(c, 'i_a');
+    expect(created(c)).not.toHaveProperty('command');
+  });
+
+  it('follows the main agent for a named character on mission control', async () => {
+    const c = made();
+    c.store.getState().applyPatch([{ op: 'replace', path: '/home/command', value: 'codex' }]);
+    c.store.getState().selectIsland('home');
+    await newNamedCharacter(c, { name: 'n', note: '', refs: [] });
+    expect(created(c).command).toBe('codex');
+  });
+
+  it('says so on mission control when svalld does not find the agent, and still starts it', async () => {
+    const c = made();
+    c.store.getState().applyPatch([{ op: 'add', path: '/agentsFound', value: ['codex'] }]);
+    await newCharacterOn(c, 'home');
+    expect(created(c).command).toBe('claude --model sonnet');
+    expect(c.store.getState().toast?.text).toMatch(/Mission control runs claude, which svalld doesn't find/);
   });
 });

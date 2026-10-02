@@ -1,6 +1,6 @@
-import { HOME_ISLAND, SPACING, cellKey, ground, homeSizeFor, homeSlots, isLand, landCells, pillWidth, sizeForCrew, type Cell, type FleetState, type Footprint, type Island, type Size } from '@svall/protocol';
+import { HOME_ISLAND, SPACING, cellKey, homeSizeFor, homeSlots, isLand, landCells, pillWidth, sizeForCrew, type Cell, type FleetState, type Footprint, type Island, type Size } from '@svall/protocol';
 
-export { ground, pillWidth };
+export { pillWidth };
 
 export const GAP = 2;
 // the next island's label pill floats above its ground, so rows of islands keep a row of water either side of it
@@ -14,8 +14,9 @@ const ROW_LENGTH = 4;
 
 export const randomSeed = (): number => Math.floor(Math.random() * 2 ** 31);
 
-// mission control keeps its own row at the foot of the world; the islands above it are the ones that move
-export const worldIslands = (state: FleetState): Island[] => Object.values(state.islands).filter((i) => i.kind !== 'home');
+// mission control keeps its own row at the foot of the world; the islands above it are the ones that move.
+// a folded island is off the map and holds no ground
+export const worldIslands = (state: FleetState): Island[] => Object.values(state.islands).filter((i) => i.kind !== 'home' && !i.collapsed);
 
 // footprints separated by at least `margin` cells do not intersect
 export function clearBy(a: Footprint, b: Footprint, margin: number): boolean {
@@ -23,21 +24,17 @@ export function clearBy(a: Footprint, b: Footprint, margin: number): boolean {
     a.position.y + a.size.h + margin <= b.position.y || b.position.y + b.size.h + margin <= a.position.y;
 }
 
-// islands keep a cell of water between them; a label pill asks for none
-const gapFor = (a: Island, b: Island, margin: number): number => (a.collapsed || b.collapsed ? 0 : margin);
-
-// the two may stand where they are: what each holds is its footprint, or its label pill once folded
-export const clearOf = (a: Island, b: Island): boolean => clearBy(ground(a), ground(b), gapFor(a, b, 1));
+// the two may stand where they are: a cell of water between them
+export const clearOf = (a: Island, b: Island): boolean => clearBy(a, b, 1);
 
 // how far the search walks from the wanted cell before it gives up
 const REACH = 80;
 
-const fits = (state: FleetState, island: Island, margin: number, floor: boolean): boolean =>
-  (!floor || aboveHome(state, island)) && worldIslands(state).every((o) => o.id === island.id || clearBy(ground(o), ground(island), gapFor(o, island, margin)));
+const fits = (state: FleetState, island: Island, margin: number, floor: boolean): boolean => Boolean(island.collapsed) ||
+  ((!floor || aboveHome(state, island)) && worldIslands(state).every((o) => o.id === island.id || clearBy(o, island, margin)));
 
 // the island's own position whenever it is legal, else the closest spot that clears its neighbours by
-// GAP, walking outwards a cell at a time and preferring to stay on the same row. a candidate carries the
-// island's fold, so it is weighed by the ground it would hold — its label pill once folded — as neighbours are
+// GAP, walking outwards a cell at a time and preferring to stay on the same row.
 // `floor` keeps the result off mission control's row, for callers placing into a fleet that has already settled
 export function freePosition(state: FleetState, island: Island, floor = false): Cell {
   const wanted = island.position;
@@ -96,8 +93,7 @@ export function makeRoom(draft: FleetState, islandId: string): number {
 export function aboveHome(state: FleetState, island: Island): boolean {
   const home = state.islands[HOME_ISLAND];
   if (!home || island.id === home.id) return true;
-  const g = ground(island);
-  return g.position.y + g.size.h + HOME_REACH <= home.position.y;
+  return island.position.y + island.size.h + HOME_REACH <= home.position.y;
 }
 
 // mission control follows the fleet down whenever an island lands past its row, and never rises again on its
@@ -141,13 +137,13 @@ function widenHome(draft: FleetState, room: number): void {
 }
 
 const fleetFloor = (state: FleetState, gap: number): number | undefined => {
-  const grounds = worldIslands(state).map(ground);
-  return grounds.length ? Math.max(...grounds.map((i) => i.position.y + i.size.h)) + gap : undefined;
+  const islands = worldIslands(state);
+  return islands.length ? Math.max(...islands.map((i) => i.position.y + i.size.h)) + gap : undefined;
 };
 
 // islands created by default share a row (same y); the last row fills up to ROW_LENGTH, then a new row starts below everything
 export function defaultPosition(state: FleetState): Cell {
-  const islands = worldIslands(state).map(ground);
+  const islands = worldIslands(state);
   if (islands.length === 0) return { x: 0, y: 0 };
   const y = Math.max(...islands.map((i) => i.position.y));
   const row = islands.filter((i) => i.position.y === y);
@@ -155,9 +151,9 @@ export function defaultPosition(state: FleetState): Cell {
   return { x: Math.min(...islands.map((i) => i.position.x)), y: Math.max(...islands.map((i) => i.position.y + i.size.h)) + GAP };
 }
 
-// what an island shows: its ground, or its label pill alone once folded — and never narrower than that pill,
-// which floats above the island and would otherwise hang over a neighbour's cards
-const shown = (i: Island): Size => (i.collapsed ? ground(i).size : { w: Math.max(i.size.w, pillWidth(i.name)), h: i.size.h });
+// what an island shows: its ground, never narrower than its label pill, which floats above the island and would
+// otherwise hang over a neighbour's cards
+const shown = (i: Island): Size => ({ w: Math.max(i.size.w, pillWidth(i.name)), h: i.size.h });
 
 // the crew of an island, in reading order of where they stand
 export const crewOf = (state: FleetState, islandId: string): string[] =>
@@ -194,15 +190,12 @@ export function crewGrid(n: number, seed: number, abreast = 3): { size: Size; ce
 const widest = (n: number): number => Math.max(3, Math.ceil(Math.sqrt(2 * n)));
 const roundGrid = (n: number, seed: number, abreast: number) => crewGrid(n, seed, Math.min(abreast, widest(n)));
 
-// label pills stand a cell apart in rows stacked one on the next, and the band keeps a row of water above the labels below it
-const PILL_GAP = 1;
-const BAND_GAP = 3;
 // what the map draws round the fleet in cells, as its world bounds do: the label band over the first row. Its margins
 // are screen px, which already come off the aspect the app sends
 const FRAME = { w: 0, h: 0, label: 1.3 };
 
 type Box = { id: string; size: Size };
-type Plan = { band: Box[][]; rows: Box[][]; width: number; height: number; scale: number };
+type Plan = { rows: Box[][]; width: number; height: number; scale: number };
 
 // boxes in order, a row broken whenever the next would reach past `width`
 function shelves(boxes: Box[], width: number, gap: number): Box[][] {
@@ -219,46 +212,31 @@ function shelves(boxes: Box[], width: number, gap: number): Box[][] {
 
 const span = (row: Box[], gap: number): number => row.reduce((w, b) => w + b.size.w, 0) + gap * (row.length - 1);
 
-// as few rows as `width` allows, dealt out so no row holds more than one box over another
-function evenShelves(boxes: Box[], width: number, gap: number): Box[][] {
-  const n = shelves(boxes, width, gap).length;
-  const rows: Box[][] = [];
-  for (let r = 0, at = 0; r < n; r++) {
-    const take = Math.ceil((boxes.length - at) / (n - r));
-    rows.push(boxes.slice(at, at + take));
-    at += take;
-  }
-  return rows;
-}
-
-// the folded islands' pills as a band above the unfolded, each wrapped in order; of every row width, the one
-// a window of that aspect shows largest
-function plan(pills: Box[], lands: Box[], aspect: number): Plan {
+// the islands wrapped in order; of every row width, the one a window of that aspect shows largest
+function plan(lands: Box[], aspect: number): Plan {
   let best: Plan | undefined;
-  const widest = Math.max(...pills.map((b) => b.size.w), ...lands.map((b) => b.size.w));
-  const longest = Math.max(span(pills, PILL_GAP), span(lands, GAP));
+  const widest = Math.max(...lands.map((b) => b.size.w));
+  const longest = span(lands, GAP);
   for (let w = widest; w <= longest; w++) {
-    const band = evenShelves(pills, w, PILL_GAP), rows = shelves(lands, w, GAP);
-    const width = Math.max(...band.map((r) => span(r, PILL_GAP)), ...rows.map((r) => span(r, GAP)));
-    const top = band.length === 0 ? FRAME.label : band.length + (rows.length > 0 ? BAND_GAP : 0);
-    const landH = rows.reduce((h, r) => h + Math.max(...r.map((b) => b.size.h)), 0) + ROW_GAP * Math.max(0, rows.length - 1);
-    const height = top + landH + FRAME.h;
+    const rows = shelves(lands, w, GAP);
+    const width = Math.max(...rows.map((r) => span(r, GAP)));
+    const landH = rows.reduce((h, r) => h + Math.max(...r.map((b) => b.size.h)), 0) + ROW_GAP * (rows.length - 1);
+    const height = FRAME.label + landH + FRAME.h;
     const scale = Math.min(aspect / (width + FRAME.w), 1 / height);
-    if (!best || scale > best.scale) best = { band, rows, width, height, scale };
+    if (!best || scale > best.scale) best = { rows, width, height, scale };
   }
   return best!;
 }
 
-// every island cut to a grid its crew's cards fit on and the fleet packed to fill a window of that aspect: the
-// folded islands as a band of label pills on top, the rest in centred rows under it, and mission control under them.
+// every island on the map cut to a grid its crew's cards fit on and the fleet packed to fill a window of that aspect,
+// in centred rows with mission control under them; a folded island keeps its place and size for when it unfolds.
 // how many crew stand abreast is chosen with the rows, so a wide window gets long islands and a tall one deep islands.
 // homeRoom is the widest mission control, in cells, the map has room for
 export function arrangeFleet(draft: FleetState, aspect = 4 / 3, homeRoom?: number): void {
   if (homeRoom !== undefined) widenHome(draft, homeRoom);
   const islands = worldIslands(draft).sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x || a.id.localeCompare(b.id));
   if (islands.length === 0) return;
-  const grounds = islands.map(ground);
-  const origin = { x: Math.min(...grounds.map((i) => i.position.x)), y: Math.min(...grounds.map((i) => i.position.y)) };
+  const origin = { x: Math.min(...islands.map((i) => i.position.x)), y: Math.min(...islands.map((i) => i.position.y)) };
   const crews = new Map(islands.map((i) => [i.id, crewOf(draft, i.id)]));
 
   const box = (i: Island): Box => ({ id: i.id, size: shown(draft.islands[i.id]) });
@@ -267,13 +245,13 @@ export function arrangeFleet(draft: FleetState, aspect = 4 / 3, homeRoom?: numbe
   // three abreast first, so it stands whenever another count only matches it
   for (const abreast of [3, ...Array.from({ length: Math.min(most, widest(most)) }, (_, i) => i + 1).filter((k) => k !== 3)]) {
     for (const { id, seed } of islands) draft.islands[id].size = roundGrid(crews.get(id)!.length, seed, abreast).size;
-    // the unfolded pack tallest first, so each row wastes the least water under its shorter islands
-    const next = plan(islands.filter((i) => i.collapsed).map(box), islands.filter((i) => !i.collapsed).map(box).sort((a, b) => b.size.h - a.size.h), aspect);
+    // tallest first, so each row wastes the least water under its shorter islands
+    const next = plan(islands.map(box).sort((a, b) => b.size.h - a.size.h), aspect);
     if (!best || next.scale > best.scale) best = { ...next, abreast };
   }
-  const { abreast, band, rows, width, height } = best!;
-  // the height the window has to spare at that width is shared between the band and the rows, so the fleet fills it
-  const gaps = rows.length - 1 + (band.length > 0 && rows.length > 0 ? 1 : 0);
+  const { abreast, rows, width, height } = best!;
+  // the height the window has to spare at that width is shared between the rows, so the fleet fills it
+  const gaps = rows.length - 1;
   const extra = gaps > 0 ? Math.floor(Math.max(0, (width + FRAME.w) / aspect - height) / gaps) : 0;
   for (const { id, seed } of islands) {
     const { size, cells } = roundGrid(crews.get(id)!.length, seed, abreast);
@@ -282,18 +260,6 @@ export function arrangeFleet(draft: FleetState, aspect = 4 / 3, homeRoom?: numbe
   }
 
   let y = origin.y;
-  for (const r of band) {
-    let x = origin.x + Math.round((width - span(r, PILL_GAP)) / 2);
-    for (const b of r) {
-      // the folded island stands centred under its pill, two rows down, as ground() draws it
-      const island = draft.islands[b.id];
-      island.position = { x: x - Math.ceil((island.size.w - b.size.w) / 2), y: y + 2 };
-      x += b.size.w + PILL_GAP;
-    }
-    y++;
-  }
-  if (band.length > 0) y += BAND_GAP + extra;
-
   for (const r of rows) {
     let x = origin.x + Math.round((width - span(r, GAP)) / 2);
     for (const b of r) {
