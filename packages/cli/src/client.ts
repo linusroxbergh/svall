@@ -1,22 +1,14 @@
 import fs from 'node:fs';
 import WebSocket from 'ws';
-import { loadConfig } from '@svall/svalld/config';
-import { ProtocolMismatch } from '@svall/svalld/fleets';
+import { handshake } from '@svall/svalld/fleets';
 import { svallHome, resolvePaths } from '@svall/svalld/paths';
 import { SHIM, profileLabel } from '@svall/svalld/profile';
-import { variant } from '@svall/svalld/runtime';
-import { PROTOCOL_VERSION, serverWait, type Event, type MethodName, type Params, type Response, type Result } from '@svall/protocol';
+import { ApiError, serverWait, type Event, type MethodName, type Params, type Response, type Result } from '@svall/protocol';
 import { resolveTarget, type Target } from './target.js';
 
 // a wedged daemon must not hang the control loop, which shells out to svall and expects it to return.
 const CALL_TIMEOUT = 30_000;
 const CONNECT_TIMEOUT = 10_000;
-
-class ApiError extends Error {
-  constructor(public code: string, message: string) { super(message); }
-}
-
-export { ProtocolMismatch };
 
 /** How to restart a fleet's daemon: through its launchd agent, when it has one. */
 export const restartHint = (t: Target): string => (t.managed
@@ -25,14 +17,6 @@ export const restartHint = (t: Target): string => (t.managed
 
 /** The doctor that checks a fleet; an ad-hoc home is found again through the same $SVALL_HOME. */
 const doctorHint = (t: Target): string => (t.managed ? `${SHIM} -p ${t.name} doctor` : `${SHIM} doctor`);
-
-const deadline = <T>(p: Promise<T>, ms: number, message: string): Promise<T> => {
-  let timer: NodeJS.Timeout;
-  return Promise.race([
-    p.finally(() => clearTimeout(timer)),
-    new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); }),
-  ]);
-};
 
 export class Client {
   private next = 1;
@@ -63,41 +47,12 @@ export class Client {
     if (!fs.existsSync(paths.port) || !fs.existsSync(paths.token)) {
       throw new Error(`svalld is not running (no ${paths.port}): it runs while Svall is open on this fleet; \`${doctorHint(resolveTarget({ env: home }))}\` says more`);
     }
-    const port = Number(fs.readFileSync(paths.port, 'utf8'));
-    const token = fs.readFileSync(paths.token, 'utf8').trim();
-    const host = loadConfig(paths.config).host;
-    const ws = new WebSocket(`ws://${host}:${port}`);
-    try {
-      await deadline(new Promise<void>((resolve, reject) => {
-        ws.once('open', () => resolve());
-        ws.once('error', (e) => reject(new Error(`svalld not reachable on ${host}:${port}: ${e.message}`)));
-      }), CONNECT_TIMEOUT, `svalld did not accept a connection on ${host}:${port} within ${CONNECT_TIMEOUT}ms`);
-      ws.send(JSON.stringify({ token }));
-      await deadline(new Promise<void>((resolve, reject) => {
-        ws.once('message', (raw) => {
-          let msg: { result?: { ok?: boolean; protocol?: number } };
-          try { msg = JSON.parse(raw.toString()); } catch { msg = {}; }
-          if (!msg.result?.ok) { reject(new Error('svalld rejected the token')); return; }
-          const theirs = msg.result.protocol;
-          if (theirs !== PROTOCOL_VERSION) {
-            // a daemon from before the handshake carried a version sends none
-            const speaks = theirs === undefined ? 'predates the protocol check' : `speaks protocol ${theirs}`;
-            reject(new ProtocolMismatch(`the running svalld ${speaks} and this svall speaks ${PROTOCOL_VERSION}: ${variant === 'release' ? 'quit and reopen Svall' : 'run `pnpm desktop:install`'}, or ${restartHint(resolveTarget({ env: home }))}`));
-            return;
-          }
-          resolve();
-        });
-        ws.once('close', (code) => reject(new Error(`svalld closed the connection (${code})`)));
-      }), CONNECT_TIMEOUT, `svalld did not answer the handshake within ${CONNECT_TIMEOUT}ms`);
-    } catch (err) {
-      // a socket left open keeps a caller that handles the error from exiting
-      ws.terminate();
-      throw err;
-    }
-    return new Client(ws);
+    return new Client(await handshake(home, CONNECT_TIMEOUT, restartHint(resolveTarget({ env: home }))));
   }
 
   call<M extends MethodName>(method: M, params: Params<M>): Promise<Result<M>> {
+    // a socket that closed since drops what is sent on it without a word
+    if (this.ws.readyState !== WebSocket.OPEN) return Promise.reject(new Error('svalld connection closed'));
     const id = this.next++;
     const ms = serverWait(method, params) + CALL_TIMEOUT;
     return new Promise((resolve, reject) => {

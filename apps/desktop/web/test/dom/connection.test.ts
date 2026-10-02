@@ -5,14 +5,14 @@ import { PROTOCOL_VERSION } from '@svall/protocol';
 class Socket {
   static all: Socket[] = [];
   static dead = false;
-  onopen?: () => void; onmessage?: (ev: { data: string }) => void; onerror?: () => void; onclose?: () => void;
+  onopen?: () => void; onmessage?: (ev: { data: string }) => void; onerror?: () => void; onclose?: (ev: { code: number }) => void;
   constructor(public url: string) {
     Socket.all.push(this);
     // a daemon that went away: nothing listens on the port
-    if (Socket.dead) setTimeout(() => this.onclose?.(), 0);
+    if (Socket.dead) setTimeout(() => this.onclose?.({ code: 1006 }), 0);
   }
   send(): void {}
-  close(): void { this.onclose?.(); }
+  close(): void { this.onclose?.({ code: 1000 }); }
 }
 
 // the shell answers each ask with whatever the port file says now
@@ -44,7 +44,7 @@ test('a daemon that comes back on another port is found through the shell', asyn
 
   // an `svall <name>` fleet restarts on a free port and writes the new one
   port = 47002;
-  Socket.all[0].onclose?.();
+  Socket.all[0].onclose?.({ code: 1006 });
   await vi.advanceTimersByTimeAsync(1000);
   expect(Socket.all.at(-1)?.url).toBe('ws://127.0.0.1:47002');
 });

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import WebSocket from 'ws';
-import { fleetNameProblem, PROTOCOL_VERSION, type FleetEntry } from '@svall/protocol';
+import { fleetNameProblem, HelloReply, PROTOCOL_VERSION, type FleetEntry } from '@svall/protocol';
 import { loadConfig } from './config.js';
 import { Invalid, NotFound } from './errors.js';
 import { resolvePaths, userPaths } from './paths.js';
@@ -88,8 +88,8 @@ export const fleetNamed = (name: string, homedir = os.homedir()): string | undef
 
 const CONNECT_TIMEOUT = 2000;
 
-/** Holds once the daemon at `home` takes its token and speaks this protocol. */
-export async function answers(home: string): Promise<{ close(): void }> {
+/** A socket to the daemon at `home` that said its token and found it speaks this protocol; `restart` adds a way out of a mismatch. */
+export async function handshake(home: string, timeoutMs: number, restart?: string): Promise<WebSocket> {
   const paths = resolvePaths(home);
   const port = Number(fs.readFileSync(paths.port, 'utf8'));
   const token = fs.readFileSync(paths.token, 'utf8').trim();
@@ -97,22 +97,32 @@ export async function answers(home: string): Promise<{ close(): void }> {
   const ws = new WebSocket(`ws://${host}:${port}`);
   try {
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`no answer on ${host}:${port}`)), CONNECT_TIMEOUT);
+      const timer = setTimeout(() => reject(new Error(`svalld on ${host}:${port} did not answer the handshake within ${timeoutMs}ms`)), timeoutMs);
       const done = (e?: Error) => { clearTimeout(timer); if (e) reject(e); else resolve(); };
       ws.once('open', () => ws.send(JSON.stringify({ token })));
       ws.once('message', (raw) => {
-        let r: { ok?: boolean; protocol?: number } | undefined;
-        try { r = (JSON.parse(raw.toString()) as { result?: typeof r }).result; } catch { r = undefined; }
-        if (!r?.ok) done(new Error('svalld refused the token'));
-        else if (r.protocol !== PROTOCOL_VERSION) done(new ProtocolMismatch(`the svalld of ${home} speaks protocol ${r.protocol ?? 'none'}; ${variant === 'release' ? 'quit and reopen Svall' : 'run pnpm desktop:install'}`));
+        let msg: unknown;
+        try { msg = JSON.parse(raw.toString()); } catch { msg = undefined; }
+        const r = HelloReply.safeParse(msg);
+        const fix = variant === 'release' ? 'quit and reopen Svall' : 'run `pnpm desktop:install`';
+        if (!r.success) done(new Error('svalld refused the token'));
+        else if (r.data.result.protocol !== PROTOCOL_VERSION) done(new ProtocolMismatch(`the svalld of ${home} speaks protocol ${r.data.result.protocol} and this build speaks ${PROTOCOL_VERSION}: ${fix}${restart ? `, or ${restart}` : ''}`));
         else done();
       });
-      ws.once('error', (e) => done(e));
+      ws.once('error', (e) => done(new Error(`svalld not reachable on ${host}:${port}: ${e.message}`)));
       ws.once('close', (code) => done(new Error(`svalld closed the connection (${code})`)));
     });
-  } finally {
+  } catch (e) {
+    // a socket left open keeps a caller that handles the error from exiting
     ws.terminate();
+    throw e;
   }
+  return ws;
+}
+
+/** Holds once the daemon at `home` takes its token and speaks this protocol. */
+export async function answers(home: string): Promise<{ close(): void }> {
+  (await handshake(home, CONNECT_TIMEOUT)).terminate();
   return { close() {} };
 }
 

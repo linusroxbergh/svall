@@ -15,7 +15,7 @@ const BUNDLED = assetDir('agent-profiles');
 export type AgentProfile = { name: string; description?: string; body: string };
 export type AgentProfileRead = AgentProfile | { name: string; error: string };
 
-export const isAgentProfileName = (name: string): boolean => NAME.test(name);
+const isAgentProfileName = (name: string): boolean => NAME.test(name);
 
 /** The profile `name` in `dir`: a plain .md file whose body is text under the cap. A link is refused, since it can lead out of the folder. */
 export function readAgentProfile(dir: string, name: string): AgentProfileRead {

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MobileStatus } from '@svall/protocol';
-import { MOBILE_DIST } from '../src/api/bundle.js';
+import { mobileDist } from '../src/runtime.js';
 import { fleetTarget, freePort, mobileControl, phoneKey, phoneUrl, resolveTailscale, serve, servePort, servesOther, servesTarget, tailnetSelf, unserve, watchServed, type MobileDeps } from '../src/mobile.js';
 import { Phones } from '../src/phones.js';
 import { cleanHomes, makeHome } from './helpers.js';
@@ -27,7 +27,7 @@ const TAGGED = { ...SIGNED_IN, Self: { ...SIGNED_IN.Self, UserID: 9, Tags: ['tag
 
 // `served` is what 8443 proxies to, `web` what any port does, `tcp` the ports a plain tcp forward holds
 function deps(opts: { served?: string; web?: Record<number, string>; tcp?: number[]; files?: Record<string, string>; status?: object } = {}): MobileDeps & { calls: Call[]; web: Record<number, string> } {
-  const files = opts.files ?? { [path.join(HOME, 'port')]: '47812\n', [path.join(HOME, 'mobile-key')]: 'abcdef\n', [MOBILE_DIST]: 'built' };
+  const files = opts.files ?? { [path.join(HOME, 'port')]: '47812\n', [path.join(HOME, 'mobile-key')]: 'abcdef\n', [mobileDist]: 'built' };
   const calls: Call[] = [];
   const web: Record<number, string> = { ...opts.web };
   if (opts.served) web[8443] = opts.served;
@@ -304,7 +304,7 @@ describe('mobileControl', () => {
   });
 
   it('serves the fleet behind a fresh key on every on and off, and leaves the key alone on a look', async () => {
-    const files = { [path.join(HOME, 'port')]: '47812', [path.join(HOME, 'mobile-key')]: 'abcdef', [MOBILE_DIST]: 'built' };
+    const files = { [path.join(HOME, 'port')]: '47812', [path.join(HOME, 'mobile-key')]: 'abcdef', [mobileDist]: 'built' };
     const d = deps({ files });
     let made = 0;
     const control_ = mobileControl(d, { ...NONE, home: HOME, profile: 'work', logins: [], phones: new Phones(), rotateKey: () => { files[path.join(HOME, 'mobile-key')] = `key${++made}`; } });
@@ -316,8 +316,39 @@ describe('mobileControl', () => {
     expect(made).toBe(2);
   });
 
+  // a refused phone sends a look every few seconds, and the panel can switch the link off in the middle of one
+  it('lets a look finish before an off turns the key over, so the off is the last word on the mapping', async () => {
+    const files: Record<string, string> = { [path.join(HOME, 'port')]: '47812', [path.join(HOME, 'mobile-key')]: 'abcdef', [mobileDist]: 'built' };
+    const d = deps({ files, served: TARGET });
+    const control_ = mobileControl(d, { ...NONE, home: HOME, profile: 'work', logins: [], phones: new Phones(), rotateKey: () => { files[path.join(HOME, 'mobile-key')] = 'fresh'; } });
+    // the look's serve status is slow, and answers with the mapping as it stood when asked
+    const run = d.run;
+    let slow = true;
+    d.run = (cmd, args, cwd) => {
+      if (!slow || args[1] !== 'status') return run(cmd, args, cwd);
+      slow = false;
+      const then = run(cmd, args, cwd);
+      return new Promise((r) => setTimeout(() => r(then), 30));
+    };
+    const [, off] = await Promise.all([control_.get(), control_.set(false)]);
+    expect(off.serving).toBe(false);
+    expect(d.web[8443]).toBeUndefined();
+    expect(control_.served()).toBeUndefined();
+  });
+
+  // a refused phone knocks every few seconds, and a stuck tailscale must not pile its looks up
+  it('answers a look asked for while another is under way with that one', async () => {
+    const d = deps({ served: TARGET });
+    const control_ = control(d);
+    const [a, b] = await Promise.all([control_.get(), control_.get()]);
+    expect(b).toBe(a);
+    expect(d.calls.filter((c) => c.args[0] === 'status')).toHaveLength(1);
+    await control_.get();
+    expect(d.calls.filter((c) => c.args[0] === 'status')).toHaveLength(2);
+  });
+
   it('still knows its own mapping by the daemon\'s address after a change that failed once the key had turned over', async () => {
-    const files: Record<string, string> = { [path.join(HOME, 'port')]: '47812', [path.join(HOME, 'mobile-key')]: 'abcdef', [MOBILE_DIST]: 'built' };
+    const files: Record<string, string> = { [path.join(HOME, 'port')]: '47812', [path.join(HOME, 'mobile-key')]: 'abcdef', [mobileDist]: 'built' };
     const d = deps({ files, served: TARGET });
     let made = 0;
     const control_ = mobileControl(d, { ...NONE, home: HOME, profile: 'work', logins: [], phones: new Phones(), rotateKey: () => { files[path.join(HOME, 'mobile-key')] = `key${++made}`; } });
@@ -335,7 +366,7 @@ describe('mobileControl', () => {
   });
 
   it('leaves the key a served link carries alone when an on cannot reach tailscale or build the page', async () => {
-    const files: Record<string, string> = { [path.join(HOME, 'port')]: '47812', [path.join(HOME, 'mobile-key')]: 'abcdef', [MOBILE_DIST]: 'built' };
+    const files: Record<string, string> = { [path.join(HOME, 'port')]: '47812', [path.join(HOME, 'mobile-key')]: 'abcdef', [mobileDist]: 'built' };
     const d = deps({ files });
     let made = 0;
     const control_ = mobileControl(d, { ...NONE, home: HOME, profile: 'work', logins: [], phones: new Phones(), rotateKey: () => { files[path.join(HOME, 'mobile-key')] = `key${++made}`; } });
@@ -344,9 +375,9 @@ describe('mobileControl', () => {
     d.run = (cmd, args, cwd) => (args[0] === 'status' ? Promise.resolve(JSON.stringify({ BackendState: 'Stopped' })) : run(cmd, args, cwd));
     expect((await control_.set(true)).error).toMatch(/Stopped/);
     d.run = (cmd, args, cwd) => (cmd === 'pnpm' ? Promise.reject(new Error('build failed')) : run(cmd, args, cwd));
-    delete files[MOBILE_DIST];
+    delete files[mobileDist];
     expect((await control_.set(true)).error).toMatch(/build failed/);
-    files[MOBILE_DIST] = 'built';
+    files[mobileDist] = 'built';
     d.run = run;
     expect(made).toBe(1);
     expect((await control_.get()).serving).toBe(true);

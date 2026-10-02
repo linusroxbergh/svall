@@ -1,6 +1,6 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import webpush from 'web-push';
+import { writeJsonAtomic } from '../jsonfile.js';
 
 export type Vapid = { publicKey: string; privateKey: string };
 
@@ -15,9 +15,6 @@ export function readOrCreateVapid(file: string): Vapid {
     throw new Error(`${file} is missing publicKey or privateKey; move it aside to start over`);
   }
   const keys = webpush.generateVAPIDKeys();
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(keys), { mode: 0o600 });
-  fs.renameSync(tmp, file);
+  writeJsonAtomic(file, keys, { mode: 0o600 });
   return keys;
 }

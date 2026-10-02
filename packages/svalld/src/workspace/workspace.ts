@@ -48,7 +48,8 @@ const idOf = (p: string): string | undefined => {
 };
 
 export class Workspace {
-  /** `refused` answers the absolute paths the fleet never reaches, whatever root they lie in: the files Claude Code and Codex keep a login in, and every fleet's own keys. `trees` are the docs tree and the agent profiles, whose folders take new, renamed and deleted files. */
+  /** `refused` names the files no root reaches: Claude Code's and Codex's logins, every fleet's keys.
+   *  `trees` are the folders whose files may be created, renamed and deleted: the docs and the agent profiles. */
   constructor(private rootOf: (id: string) => string, private log: Logger, private refused: () => string[] = () => [], private trees: string[] = []) {}
 
   // another name, another case on a folding volume, a symlink, a hard link: only identity tells them apart.

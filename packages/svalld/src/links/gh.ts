@@ -10,6 +10,8 @@ const SPREAD = 0.4;
 // a lookup that failed is asked again this much later, not at every refresh
 const RETRY = 60_000;
 const cache = new Map<string, { until: number; link?: ContextItem; failed?: unknown }>();
+// characters that share a checkout and branch miss together, and wait on the one lookup
+const inflight = new Map<string, Promise<ContextItem | undefined>>();
 
 type GhPr = { url: string; number: number; state: string; isDraft: boolean; reviewDecision: string };
 type Deps = { exec: (cwd: string) => Promise<string>; now: () => number; rand?: () => number };
@@ -42,6 +44,14 @@ export async function lookupPr(cwd: string, branch: string, deps: Deps = default
     if (hit.failed) throw hit.failed;
     return hit.link;
   }
+  const pending = inflight.get(key);
+  if (pending) return pending;
+  const lookup = readPr(key, cwd, now, deps).finally(() => inflight.delete(key));
+  inflight.set(key, lookup);
+  return lookup;
+}
+
+async function readPr(key: string, cwd: string, now: number, deps: Deps): Promise<ContextItem | undefined> {
   // a character that is gone leaves its reading behind, so every miss sweeps the readings that have run out
   for (const [k, v] of cache) if (now >= v.until) cache.delete(k);
   let link: ContextItem | undefined;

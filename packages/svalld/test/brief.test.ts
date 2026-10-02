@@ -320,6 +320,25 @@ describe('renderBrief with docs', () => {
     expect(lines).toContain('- plan (/d/characters/c/plan.md)');
   });
 
+  it('stays within 9,000 characters once the docs are gone: tabs but the active one go, then unpinned links from the end, the leading PR last', () => {
+    const link = (n: number, pinned?: true) => ({ kind: 'other' as const, ref: `https://example.com/${'p'.repeat(150)}/${n}`, label: '', source: 'scribe' as const, ...(pinned && { pinned }) });
+    const pr = { kind: 'pr' as const, ref: 'https://github.com/o/r/pull/7', label: '#7', source: 'auto' as const, prState: 'open' as const };
+    const tabs = Array.from({ length: 40 }, (_, n) => ({ id: `t${n}`, url: `https://example.com/${'t'.repeat(150)}/${n}`, title: '' }));
+    const text = renderBrief(
+      island({ context: [link(0, true), ...Array.from({ length: 30 }, (_, n) => link(n + 1))], instructions: 'i'.repeat(5000) }),
+      char({ context: [pr, ...Array.from({ length: 30 }, (_, n) => link(n + 100))], browser: { tabs, active: 't39' } }),
+      folders({ repo: [{ name: 'plan', path: '/d/repos/app-12345678/plan.md', description: 'x'.repeat(150), modifiedAt: 0 }] }),
+    );
+    const lines = text.split('\n');
+    expect(text.length).toBeLessThanOrEqual(9_000);
+    expect(lines).toEqual(expect.arrayContaining([...CREW, '- …and 1 more in /d/repos/app-12345678', '- …and 39 more', `- https://example.com/${'t'.repeat(150)}/39 (active)`]));
+    expect(lines.find((l) => l.startsWith('Island instructions: '))).toHaveLength('Island instructions: '.length + 2000);
+    expect(text).toContain(`/${'p'.repeat(150)}/0 (pinned)`);
+    expect(text).toContain(`/${'p'.repeat(150)}/1\n`);
+    expect(text).not.toContain(`/${'p'.repeat(150)}/30\n`);
+    expect(lines).toContain('- PR #7 https://github.com/o/r/pull/7 (open)');
+  });
+
   it('reports a doc added to a tier that already has one as a single added line', () => {
     const one = [{ name: 'a', path: '/d/islands/i/a.md', description: 'A.' }];
     const two = [...one, { name: 'b', path: '/d/islands/i/b.md', description: 'B.' }];

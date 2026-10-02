@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { Hello, PROTOCOL_VERSION, Request, type Event } from '@svall/protocol';
+import { Hello, LOGIN_REFUSED, PROTOCOL_VERSION, Request, type Event, type HelloReply } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import type { Logger } from '../log.js';
@@ -9,13 +9,13 @@ import type { Mobile } from '../mobile.js';
 import type { Phones } from '../phones.js';
 import type { PushStore } from '../push/store.js';
 import type { CodexPaths } from '../codex/install.js';
-import type { ClaudePaths } from '../resources/scan.js';
+import type { ClaudePaths } from '../paths.js';
+import { mobileDist } from '../runtime.js';
 import type { Store } from '../store.js';
 import type { TerminalHub, Viewer } from '../terminals.js';
 import type { FetchUsage } from '../usage/usage.js';
 import type { Workspace } from '../workspace/workspace.js';
-import { MOBILE_DIST } from './bundle.js';
-import { dispatch } from './methods.js';
+import { dispatch, type Ctx } from './methods.js';
 import { serveBundle } from './static.js';
 
 type Opts = {
@@ -33,7 +33,7 @@ const LOOK_MS = 10_000;
 // what a worker may do with one POST: answer the prompt a notification carried
 const RPC_METHODS = new Set(['char.answer']);
 const MAX_RPC_BODY = 64 * 1024;
-// the packaged app, the Vite dev server, and clients that send no Origin at all (the CLI)
+// the packaged app and the Vite dev server
 const APP_ORIGINS = new Set(['svall://app', 'http://localhost:5173', 'http://127.0.0.1:5173']);
 // tailscale serve sets this on every request it proxies, and strips any the client sent itself
 const IDENTITY_HEADER = 'tailscale-user-login';
@@ -78,7 +78,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
   const { host, port, token, store, fleet, fleets, terminals, workspace, usage, mobileControl, log, push, vapidPublicKey, phones, claude, codex, docs, agentProfiles } = opts;
   const logins = opts.logins ?? (() => []);
   const origins = opts.origins ?? [];
-  const dist = opts.dist ?? MOBILE_DIST;
+  const dist = opts.dist ?? mobileDist;
   // a page can retry forever, so each origin is named once rather than once per attempt
   const refused = new Set<string>();
   // the desktop panel is the one surface that asks who is on the phone page, so the answer goes only there
@@ -93,6 +93,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       return status;
     },
   };
+  const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, terminals, workspace, usage, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles };
   const unwatchPhones = phones.onChange((list) => {
     for (const v of desktops) v.send({ event: 'mobile.phones', data: { phones: list } });
   });
@@ -121,7 +122,14 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
   const server = http.createServer((req, res) => {
     const stripped = behindKey(req);
     if (stripped) req.url = stripped;
-    if (req.method === 'POST' && req.url === '/rpc') { void rpc(req, res, stripped ? phoneLogin(req) : undefined); return; }
+    if (req.method === 'POST' && req.url === '/rpc') {
+      // a client that drops mid-body rejects the read
+      rpc(req, res, stripped ? phoneLogin(req) : undefined).catch((e: Error) => {
+        log.error(`rpc: ${e.message}`);
+        if (!res.headersSent) res.writeHead(400).end();
+      });
+      return;
+    }
     serveBundle(req, res, dist, opts.fleetName?.());
   });
 
@@ -129,17 +137,19 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
   async function rpc(req: IncomingMessage, res: ServerResponse, login: string | undefined): Promise<void> {
     if (!login) { res.writeHead(401).end(); return; }
     if (!originAllowed(req, origins, true)) { res.writeHead(403).end(); return; }
-    let body = '';
-    for await (const chunk of req) {
-      body += chunk;
-      if (body.length > MAX_RPC_BODY) { res.writeHead(413).end(); return; }
+    const chunks: Buffer[] = [];
+    let size = 0;
+    for await (const chunk of req as AsyncIterable<Buffer>) {
+      size += chunk.length;
+      if (size > MAX_RPC_BODY) { res.writeHead(413).end(); return; }
+      chunks.push(chunk);
     }
     let parsed: unknown;
-    try { parsed = JSON.parse(body); } catch { res.writeHead(400).end(); return; }
+    try { parsed = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { res.writeHead(400).end(); return; }
     const r = Request.safeParse(parsed);
     if (!r.success || !RPC_METHODS.has(r.data.method)) { res.writeHead(400).end(); return; }
     const viewer: Viewer = { kind: 'phone', login, send: () => {}, backlog: () => 0 };
-    const out = await dispatch(r.data, { store, fleet, fleets, terminals, workspace, usage, mobile, push, vapidPublicKey, viewer, claude, codex, docs, agentProfiles });
+    const out = await dispatch(r.data, { ...base, viewer });
     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(out));
   }
   server.on('upgrade', (req, socket, head) => {
@@ -152,6 +162,11 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       return;
     }
     const login = proxied ? phoneLogin(req) : undefined;
+    // a phone page holds no token, so one the proxy brought from a login the fleet does not take is told so at once
+    if (proxied && !login) {
+      wss.handleUpgrade(req, socket, head, (ws: WebSocket) => { ws.on('error', () => {}); ws.close(LOGIN_REFUSED, 'tailnet login not accepted'); });
+      return;
+    }
     wss.handleUpgrade(req, socket, head, (ws: WebSocket) => connect(ws, login));
   });
 
@@ -169,7 +184,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
     const admit = () => {
       unsub = store.subscribe((ops) => viewer.send({ event: 'state.patch', data: { ops } }));
       if (login) { left = phones.add(login); phoneSockets.add(ws); } else desktops.add(viewer);
-      ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } }));
+      ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } } satisfies HelloReply));
     };
 
     // the proxy has already proved who this is; a socket without that identity still has to say the token
@@ -190,7 +205,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       }
       const req = Request.safeParse(msg);
       if (!req.success) { ws.close(4400, 'bad request'); return; }
-      const res = await dispatch(req.data, { store, fleet, fleets, terminals, workspace, usage, mobile, push, vapidPublicKey, viewer, claude, codex, docs, agentProfiles, signal: aborter.signal });
+      const res = await dispatch(req.data, { ...base, viewer, signal: aborter.signal });
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(res));
     });
 

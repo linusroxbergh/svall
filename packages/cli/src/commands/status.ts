@@ -1,11 +1,10 @@
 import fs from 'node:fs';
 import { Command } from 'commander';
+import { ellipsis } from '@svall/protocol';
 import { resolvePaths } from '@svall/svalld/paths';
 import type { Client } from '../client.js';
 import { printResult, table } from '../format.js';
 import { contextOf, stateOf } from '../render.js';
-
-const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 export function statusCommand(connect: () => Promise<Client>, json: () => boolean, home: () => string): Command {
   return new Command('status').description('show every island and character').action(async () => {
@@ -24,7 +23,7 @@ export function statusCommand(connect: () => Promise<Client>, json: () => boolea
       '',
       table(chars.map((ch) => ({
         character: ch.id, name: ch.name, island: state.islands[ch.islandId]?.name ?? ch.islandId, state: stateOf(ch),
-        ctx: contextOf(ch), cwd: ch.cwd, note: clip(ch.note, 40),
+        ctx: contextOf(ch), cwd: ch.cwd, note: ellipsis(ch.note, 40),
       }))),
     ].join('\n'));
     c.close();

@@ -176,9 +176,11 @@ export const FleetState = z.object({
   // an agent idle this many hours is ended and its character left dormant, to be resumed on revive;
   // 0 keeps every agent running, and absent is DORMANT_AFTER_HOURS
   dormantAfterHours: z.number().int().min(0).optional(),
-  // the agent the scribe, mission control's crew and `svall char new --run` use by default, the CLIs svalld finds, and the one the scribe uses
+  // the agent mission control's crew and `svall char new --run` start by default
   mainAgent: AgentKind.optional(),
+  // the agent CLIs svalld finds on its PATH
   agentsFound: z.array(AgentKind).optional(),
+  // the agent the scribe runs: config.json's scribe.agent, else the main agent
   scribeAgent: AgentKind.optional(),
 });
 export type FleetState = z.infer<typeof FleetState>;

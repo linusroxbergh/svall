@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import { ellipsis } from '@svall/protocol';
 import { activateBrowserTab, closeBrowserTab } from './actions.js';
 import { app, deps } from './boot.js';
 import { useApp } from './hooks.js';
 import { keyTip } from './keys.js';
 import { canFill } from './settings.js';
 import { isVeiled } from './selectors.js';
-
-const clip = (text: string, max = 24): string => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 
 export const rectOf = (el: HTMLElement) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; };
 
@@ -83,7 +82,7 @@ export function BrowserArea({ id, aside }: { id: string; aside?: boolean }) {
         {tabs.map((t) => (
           <span key={t.id} className="btab" data-testid={`btab-${t.id}`} data-active={t.id === active}
             onClick={() => activateBrowserTab(deps(), id, t.id)} title={t.url}>
-            {clip(t.title || t.url.replace(/^https?:\/\//, '') || 'New tab')}
+            {ellipsis(t.title || t.url.replace(/^https?:\/\//, '') || 'New tab', 24)}
             <button data-testid={`btab-close-${t.id}`} aria-label="Close tab"
               onClick={(e) => { e.stopPropagation(); closeBrowserTab(deps(), id, t.id); }}>×</button>
           </span>
@@ -101,7 +100,7 @@ export function BrowserArea({ id, aside }: { id: string; aside?: boolean }) {
             // the page's own Escape would close the card around the field
             if (e.key === 'Escape') { e.stopPropagation(); fresh.current = false; setDraft(undefined); e.currentTarget.blur(); }
           }} />
-        {failure && <span className="baddr-err" data-testid="browser-error" title={failure}>{clip(failure, 40)}</span>}
+        {failure && <span className="baddr-err" data-testid="browser-error" title={failure}>{ellipsis(failure, 40)}</span>}
         {fills && <button data-testid="browser-fill" disabled={!active} title={keyTip('Fill from 1Password', 'fillLogin', bindings)}
           onClick={() => active && app.bridge.send({ type: 'browser.fill', tab: active })}>⚿</button>}
       </div>

@@ -5,11 +5,11 @@ import { fleet } from '../fixtures.js';
 
 class Socket {
   static all: Socket[] = [];
-  onopen?: () => void; onmessage?: (ev: { data: string }) => void; onerror?: () => void; onclose?: () => void;
+  onopen?: () => void; onmessage?: (ev: { data: string }) => void; onerror?: () => void; onclose?: (ev: { code: number }) => void;
   sent: { id: number; method: string }[] = [];
   constructor(public url: string) { Socket.all.push(this); }
   send(json: string): void { this.sent.push(JSON.parse(json) as { id: number; method: string }); }
-  close(): void { this.onclose?.(); }
+  close(): void { this.onclose?.({ code: 1000 }); }
   receive(msg: unknown): void { this.onmessage?.({ data: JSON.stringify(msg) }); }
   hello(protocol = PROTOCOL_VERSION): void { this.receive({ id: 0, result: { ok: true, protocol } }); }
 }

@@ -123,6 +123,7 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
           {status === 'online' ? (need ? `${need} waiting` : 'all quiet') : status}
         </span>
       </header>
+      {status === 'refused' && <p className="empty">This tailnet login can't open this fleet. On the Mac, add it to mobile.logins in the fleet's config.json, then quit and reopen Svall.</p>}
       {loaded && groups.length === 0 && <p className="empty">No islands yet. Tap + to make one.</p>}
       {groups.map(({ island, characters }) => (
         <section key={island.id}>

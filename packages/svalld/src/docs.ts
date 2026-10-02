@@ -13,6 +13,8 @@ export type DocEntry = { name: string; path: string; description?: string; modif
 export type DocFolder = { tier: DocTier; dir: string; docs: DocEntry[] };
 
 const TREE: Record<EntityTier, string> = { repo: 'repos', island: 'islands', character: 'characters' };
+// only the frontmatter at a doc's head is read, so a long doc costs every prompt no more than a short one
+const HEAD_MAX = 64 * 1024;
 
 /** Notes that hold for the whole fleet, whichever island or repository a session is on. */
 export const fleetDir = (docs: string): string => path.join(docs, 'fleet');
@@ -27,6 +29,14 @@ export const docsDir = (docs: string, tier: EntityTier, id: string): string => p
 export const repoRootOf = (c: Character): string | undefined =>
   (c.islandId === HOME_ISLAND ? undefined : c.repo?.mainRoot ?? expandHome(c.cwd));
 
+function readHead(file: string): string {
+  const fd = fs.openSync(file, 'r');
+  try {
+    const buf = Buffer.allocUnsafe(HEAD_MAX);
+    return buf.toString('utf8', 0, fs.readSync(fd, buf, 0, HEAD_MAX, 0));
+  } finally { fs.closeSync(fd); }
+}
+
 /** The .md files directly in `dir`. One that cannot be read is listed with its error; a link, a folder or another extension is left out. */
 export function listDocs(dir: string): DocEntry[] {
   let found: fs.Dirent[];
@@ -34,7 +44,7 @@ export function listDocs(dir: string): DocEntry[] {
   return found.filter((d) => d.isFile() && d.name.endsWith('.md')).sort((a, b) => a.name.localeCompare(b.name)).map((d): DocEntry => {
     const file = path.join(dir, d.name), name = d.name.slice(0, -3);
     let text: string, modifiedAt: number;
-    try { text = fs.readFileSync(file, 'utf8'); modifiedAt = fs.statSync(file).mtimeMs; }
+    try { text = readHead(file); modifiedAt = fs.statSync(file).mtimeMs; }
     catch (e) { return { name, path: file, error: `cannot be read: ${(e as NodeJS.ErrnoException).code ?? 'unknown'}` }; }
     if (text.includes('\u0000')) return { name, path: file, error: 'is not text' };
     const { description } = frontmatter(text);
