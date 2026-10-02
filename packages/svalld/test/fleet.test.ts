@@ -307,12 +307,12 @@ runIf('Fleet', () => {
   it('keeps a character where it is while tmux reports no path for its pane, as under sudo', async () => {
     const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    await fleet['tick']();
+    await fleet['poll']['tick']();
     const cwd = store.state.characters[c.id].cwd;
     expect(cwd).toBeTruthy();
     const list = tmux.listWindows.bind(tmux);
     vi.spyOn(tmux, 'listWindows').mockImplementation(async () => (await list()).map((w) => ({ ...w, path: '' })));
-    await fleet['tick']();
+    await fleet['poll']['tick']();
     expect(store.state.characters[c.id].cwd).toBe(cwd);
   });
 
@@ -351,7 +351,7 @@ runIf('Fleet', () => {
   it('stays where its agent is when a claude -p run inside it reports from another checkout', async () => {
     const { fleet, home } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    const follow = vi.spyOn(fleet as unknown as { followCwd: () => Promise<void> }, 'followCwd').mockResolvedValue();
+    const follow = vi.spyOn(fleet['agentEvents'] as unknown as { followCwd: () => Promise<void> }, 'followCwd').mockResolvedValue();
     const outer = '11111111-1111-4111-8111-111111111111';
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: outer, pid: process.pid } });
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', sessionId: '22222222-2222-4222-8222-222222222222', pid: process.ppid, cwd: home } });
@@ -363,7 +363,7 @@ runIf('Fleet', () => {
   it('stays where its agent is when a subagent reports from its own worktree', async () => {
     const { fleet, home } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    const follow = vi.spyOn(fleet as unknown as { followCwd: () => Promise<void> }, 'followCwd').mockResolvedValue();
+    const follow = vi.spyOn(fleet['agentEvents'] as unknown as { followCwd: () => Promise<void> }, 'followCwd').mockResolvedValue();
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', agentId: 'a95af83797c89a762', cwd: home } });
     expect(follow).not.toHaveBeenCalled();
   });
@@ -386,22 +386,22 @@ runIf('Fleet', () => {
     await fleet.createCharacter({ islandId, cwd: one });
     const b = await fleet.createCharacter({ islandId, cwd: two });
 
-    fleet['ticks'] = 9;
-    await fleet['tick']();
+    fleet['poll']['ticks'] = 9;
+    await fleet['poll']['tick']();
     await waitFor(() => asked.length === 1);
     expect(asked).toEqual([one]);
 
     // b moves while that sweep is still out
     store.update((d) => { d.characters[b.id].cwd = '/nope'; d.characters[b.id].panePath = '/nope'; });
-    await fleet['tick']();
+    await fleet['poll']['tick']();
     expect(asked).toEqual([one]);
 
     release();
-    await waitFor(() => fleet['sweeping'] === false);
+    await waitFor(() => fleet['poll']['sweeping'] === false);
     await new Promise((r) => setTimeout(r, 50));
     expect(asked).toEqual([one]);
 
-    await fleet['tick']();
+    await fleet['poll']['tick']();
     await waitFor(() => asked.includes(two));
   });
 
@@ -635,7 +635,7 @@ runIf('Fleet', () => {
     vi.spyOn(tmux, 'killWindow').mockImplementation(async (id) => { await held; return real(id); });
     const ending = fleet['endIdleAgents']();
     await waitFor(() => !store.state.characters[c.id].tmux);
-    await fleet['tick']();
+    await fleet['poll']['tick']();
     await fleet.reconcileNow();
     expect(store.state.characters[c.id].tmux).toBeUndefined();
     store.update((d) => { d.characters[c.id].revive = { command: 'sleep 600' }; });
@@ -663,7 +663,7 @@ runIf('Fleet', () => {
     store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
     // the listing, taken with the window alive, is handed back only after the agent has been ended
     const poll = holdListing(tmux);
-    const tick = fleet['tick']();
+    const tick = fleet['poll']['tick']();
     await poll.listed;
     await fleet['endIdleAgents']();
     poll.release();
@@ -676,7 +676,7 @@ runIf('Fleet', () => {
     const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     // the listing is handed back only after the create has landed
     const poll = holdListing(tmux);
-    const tick = fleet['tick']();
+    const tick = fleet['poll']['tick']();
     await poll.listed;
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     poll.release();
@@ -691,7 +691,7 @@ runIf('Fleet', () => {
     await waitFor(() => store.state.characters[c.id].tmux === undefined);
     // the listing is handed back only after the revive has landed
     const poll = holdListing(tmux);
-    const tick = fleet['tick']();
+    const tick = fleet['poll']['tick']();
     await poll.listed;
     const revived = await fleet.reviveCharacter(c.id);
     poll.release();
@@ -721,7 +721,7 @@ runIf('Fleet', () => {
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     // the listing is handed back only after the second terminal has opened
     const poll = holdListing(tmux);
-    const tick = fleet['tick']();
+    const tick = fleet['poll']['tick']();
     await poll.listed;
     await fleet.openSecond(c.id);
     poll.release();
@@ -735,7 +735,7 @@ runIf('Fleet', () => {
     await fleet.openSecond(c.id);
     // the listing, taken with the second terminal open, is handed back only after it has closed
     const poll = holdListing(tmux);
-    const tick = fleet['tick']();
+    const tick = fleet['poll']['tick']();
     await poll.listed;
     store.update((d) => { delete d.characters[c.id].second; });
     poll.release();
@@ -781,7 +781,7 @@ runIf('Fleet', () => {
     const { fleet, tmux } = await boot();
     // a tmux -C that exits before it is ready, as when the server goes away between ensureServer and attach
     const connect = vi.spyOn(tmux, 'connect').mockImplementation(() => new ControlClient({ binary: '/usr/bin/false', socket: tmux.socket, conf: '', session: SESSION }));
-    fleet['control']!['proc']!.kill();
+    fleet['link']['control']!['proc']!.kill();
     // the retries back off 1s, 2s, 4s: the second one lands alone
     await waitFor(() => connect.mock.calls.length >= 2, 5000);
     await new Promise((r) => setTimeout(r, 300));
@@ -793,9 +793,9 @@ runIf('Fleet', () => {
     let release!: () => void;
     const held = new Promise<void>((r) => { release = r; });
     const ensure = vi.spyOn(tmux, 'ensureServer').mockImplementationOnce(() => held);
-    const recover = vi.spyOn(fleet as unknown as { recover: () => Promise<void> }, 'recover');
+    const recover = vi.spyOn(fleet['link'] as unknown as { recover: () => Promise<void> }, 'recover');
     const reconcile = vi.spyOn(fleet, 'reconcileNow');
-    fleet['control']!['proc']!.kill();
+    fleet['link']['control']!['proc']!.kill();
     await waitFor(() => ensure.mock.calls.length === 1);
     await fleet.stopAll();
     release();
@@ -1404,16 +1404,16 @@ runIf('Fleet', () => {
   it('forgets what it kept outside the state when a character closes', async () => {
     const { fleet } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    fleet['hookCwd'].set(c.id, '/tmp');
-    fleet['shellStreak'].set(`${c.id}-2`, 1);
+    fleet['agentEvents']['hookCwd'].set(c.id, '/tmp');
+    fleet['poll']['shellStreak'].set(`${c.id}-2`, 1);
     fleet['scribe']['seen'].set(c.id, { lastPassAt: 0, path: '', bytes: 0 });
     fleet.markSeen(c.id);
     fleet.setPaneOutput(c.id, true);
     await fleet.closeCharacter(c.id);
     expect(fleet['seen'].has(c.id)).toBe(false);
-    expect(fleet['streaming'].has(c.id)).toBe(false);
-    expect(fleet['hookCwd'].has(c.id)).toBe(false);
-    expect(fleet['shellStreak'].has(`${c.id}-2`)).toBe(false);
+    expect(fleet['link']['streaming'].has(c.id)).toBe(false);
+    expect(fleet['agentEvents']['hookCwd'].has(c.id)).toBe(false);
+    expect(fleet['poll']['shellStreak'].has(`${c.id}-2`)).toBe(false);
     expect(fleet['scribe']['seen'].has(c.id)).toBe(false);
   });
 

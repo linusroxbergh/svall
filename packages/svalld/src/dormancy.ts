@@ -1,9 +1,13 @@
 import { execFile } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { isSessionId, type AgentKind, type Character } from '@svall/protocol';
+import { DORMANT_AFTER_HOURS, isSessionId, type Agent, type AgentKind, type Character } from '@svall/protocol';
 import { running, settle } from './agent/reducer.js';
+import type { Logger } from './log.js';
+import type { Store } from './store.js';
 import { shq } from './text.js';
+import type { Tmux } from './tmux/tmux.js';
 
 const exec = promisify(execFile);
 
@@ -132,4 +136,69 @@ export function runsInBackground(pid: number, procs: Proc[]): boolean {
 export async function exited(pid: number, waitMs = 60_000): Promise<void> {
   for (let n = 0; n < waitMs / 100 && running(pid); n++) await new Promise((r) => setTimeout(r, 100));
   if (running(pid)) try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ }
+}
+
+/** What dormancy acts on: the fleet, its tmux server, what ps shows, and the windows of agents ended for idleness,
+ *  until tmux has closed them and the agent has exited. */
+export type Sleep = { store: Store; tmux: Tmux; log: Logger; processes: () => Promise<Proc[]>; ending: Map<string, Promise<void>> };
+
+// an agent idle past the fleet's limit is ended to free what it holds; its character goes dormant, and a revive
+// resumes the session with the launch flags it still needs. `seen` is when the user last looked at each character
+export async function endIdleAgents(o: Sleep, seen: ReadonlyMap<string, number>, stopped: () => boolean): Promise<void> {
+  const hours = o.store.state.dormantAfterHours ?? DORMANT_AFTER_HOURS;
+  if (!hours) return;
+  const afterMs = hours * 3_600_000;
+  const due = (c: Character) => drowsy(c, Date.now(), afterMs, seen.get(c.id));
+  const idle = Object.values(o.store.state.characters).filter(due);
+  if (!idle.length) return;
+  const procs = await o.processes();
+  if (stopped()) return;
+  for (const c of idle) {
+    const a = c.agent!;
+    // a pid gone or moved on to another program, a launch the resume can't repeat, work going on in the background,
+    // or no transcript to resume from leaves the agent be
+    const proc = procs.find((p) => p.pid === a.pid);
+    const flags = proc && startFlags(proc.args, a.kind);
+    if (!proc || !flags || runsInBackground(proc.pid, procs) || !a.transcriptPath || !fs.existsSync(a.transcriptPath)) continue;
+    // a prompt, a close or a revive while ps ran leaves it be
+    const cur = o.store.state.characters[c.id];
+    if (!cur?.tmux || cur.tmux.windowId !== c.tmux?.windowId || !due(cur)) continue;
+    // dormant before the kill: the SessionEnd the kill sends then finds no live character to clear
+    o.store.update((d) => { markDormant(d.characters[c.id], flags); });
+    const closing = o.tmux.killWindow(cur.tmux.windowId).then(
+      () => exited(proc.pid).then(() => o.log.info(`${cur.name} dormant after ${hours} h idle`)),
+      (e) => o.log.error(`dormant ${c.id}: ${String(e)}`),
+    );
+    o.ending.set(c.id, closing);
+    await closing;
+    o.ending.delete(c.id);
+  }
+}
+
+// the quit's own work: every character dormant with the revive that resumes it, then the tmux server gone
+export async function endAll(o: Sleep, reviving: ReadonlyMap<string, Promise<unknown>>): Promise<void> {
+  // an agent ended for idleness can take a minute to exit, and the server's end reaches it anyway
+  const settled = Promise.all([...o.ending.values(), ...reviving.values()].map((p) => p.catch(() => {})));
+  await Promise.race([settled, new Promise((r) => setTimeout(r, 2000))]);
+  const procs = await o.processes();
+  // only a pid still running its agent is waited on, and killed if it outstays the wait
+  const agentProc = (a?: Agent) => a && procs.find((p) => p.pid === a.pid && runsAgent(p.args, a.kind));
+  const pids: number[] = [];
+  // dormant before the kill: the SessionEnd the kill sends then finds no live character to clear
+  o.store.update((d) => {
+    for (const c of Object.values(d.characters)) {
+      const second = agentProc(c.second?.agent);
+      if (second) pids.push(second.pid);
+      delete c.second;
+      if (!c.tmux) continue;
+      const proc = agentProc(c.agent);
+      if (proc) pids.push(proc.pid);
+      markDormant(c, proc ? startFlags(proc.args, c.agent!.kind) : undefined);
+    }
+  });
+  // written now: what the quit has left to do can take seconds, and the daemon may not outlive them
+  o.store.flush();
+  await o.tmux.killServer();
+  // a resume opened right after must not write to a session still ending
+  await Promise.all(pids.map((pid) => exited(pid, 5000)));
 }

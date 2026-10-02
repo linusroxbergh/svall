@@ -2,49 +2,43 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { DORMANT_AFTER_HOURS, HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Character, type ContextItem, type FleetState, type Island, type Portrait } from '@svall/protocol';
+import { HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Character, type ContextItem, type FleetState, type Island, type Portrait } from '@svall/protocol';
 import { AGENTS, mainAgent } from './agents.js';
 import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
-import { lastTokenCount } from './agent/codex-transcript.js';
-import { followRollout, type RolloutMark } from './agent/codex-workdir.js';
-import { applyHook, applyStatus, markSeen as markSeenPure, settle, type Slot } from './agent/reducer.js';
+import { markSeen as markSeenPure, settle } from './agent/reducer.js';
 import { condenseTurns, readTail, userPrompts } from './agent/transcript.js';
 import { characterKeyEnv } from './claude.js';
 import { saveConfig, scribeModel, type Config } from './config.js';
-import { briefReply, renderBrief } from './context/brief.js';
+import { renderBrief } from './context/brief.js';
 import { isAgentCommand, withAddDirs, withPromptFile } from './context/launch.js';
 import { settleItems } from './context/items.js';
 import { docFolders, removeDocs } from './docs.js';
-import { drowsy, exited, markDormant, processes, runsAgent, runsInBackground, startFlags, type Proc } from './dormancy.js';
+import { endAll, endIdleAgents, processes, type Proc, type Sleep } from './dormancy.js';
 import { Dormant, Invalid, NotFound } from './errors.js';
 import { takenNames } from './fleets.js';
+import { AgentEvents } from './fleet/agent-events.js';
+import { ControlLink, type PaneEvents } from './fleet/control.js';
+import { Poll } from './fleet/poll.js';
+import { Prompts, type WaitResult } from './fleet/prompts.js';
 import type { SocketEvent } from './hooks/receiver.js';
 import { newId } from './ids.js';
 import { arrangeIslands, createIsland, deleteIsland, reorderIsland, updateIsland, type IslandPatch, type NewIsland } from './islands.js';
 import { blockedCells, crewOf, defaultPosition, freePosition, occupiedCells, placeOnIsland, settleHome, unfold, uniqueName } from './layout.js';
-import { resolveRepo } from './links/git.js';
-import { refreshLinks, refreshMany, slice, type Deps as LinkDeps } from './links/refresh.js';
+import { refreshLinks, type Deps as LinkDeps } from './links/refresh.js';
 import type { Logger } from './log.js';
 import { randomName } from './names.js';
 import { expandHome, type Paths } from './paths.js';
 import { SHIM } from './profile.js';
-import { reconcile, secondName, snapshot, syncWindow } from './reconcile.js';
+import { reconcile, secondName, snapshot } from './reconcile.js';
 import { codexRunner } from './scribe/codex.js';
 import { claudeRunner, perPass, type RunScribe } from './scribe/run.js';
 import { Scribe, type SweepOptions } from './scribe/scribe.js';
 import { installHomeTemplate } from './setup.js';
 import type { Store } from './store.js';
 import { activateTab, closeTab, openTab, updateTab } from './tabs.js';
-import type { ControlClient } from './tmux/control.js';
-import { isShellCommand, type LiveWindow, type Tmux } from './tmux/tmux.js';
+import type { LiveWindow, Tmux } from './tmux/tmux.js';
 
-type Events = {
-  output: [charId: string, data: Buffer];
-  pause: [charId: string];
-  continue: [charId: string];
-  'control-reset': [];
-  stopped: [];
-};
+type Events = PaneEvents & { stopped: [] };
 
 // text a person writes stays theirs until they clear it; cleared, the scribe may write it again
 function setNote(c: Character, note: string): void {
@@ -54,40 +48,22 @@ function setNote(c: Character, note: string): void {
 
 type Deps = { store: Store; tmux: Tmux; paths: Paths; config: Config; log: Logger; pollMs?: number; staleSessionMs?: number; runTimeoutMs?: number; runScribe?: RunScribe; linkDeps?: Partial<LinkDeps>; processes?: () => Promise<Proc[]>; agentsFound?: AgentKind[] };
 type LiveCharacter = Character & { tmux: NonNullable<Character['tmux']> };
-type WaitResult = AgentStatus | 'timeout' | 'gone';
-
-// the ticks between looks for agents idle long enough to end
-const DORMANCY_EVERY = 20;
 
 export class Fleet extends EventEmitter<Events> {
-  private control?: ControlClient;
-  // the next try at bringing the control client back
-  private retry?: NodeJS.Timeout;
-  private poll?: NodeJS.Timeout;
-  private ticking?: Promise<void>;
-  private ticks = 0;
-  private shellStreak = new Map<string, number>();
-  private codexStreak = new Map<string, number>();
-  private hookCwd = new Map<string, string>();
-  private rolloutMark = new Map<string, RolloutMark>();
   private reviving = new Map<string, Promise<Character>>();
   // the windows of agents ended for idleness, until tmux has closed them and the agent has exited
   private ending = new Map<string, Promise<void>>();
   // when the user last looked at each character's main terminal
   private seen = new Map<string, number>();
-  // one link sweep at a time, so the cap on characters out asking holds across ticks; the characters a
-  // tick found moved wait in `pendingLinks` for the sweep that follows the one running
-  private sweeping = false;
-  private pendingLinks = new Set<string>();
   private openingSecond = new Map<string, Promise<Character>>();
-  // the question each character's answer is being typed for, so a second answer to it is refused rather than typed too
-  private answering = new Map<string, string | undefined>();
-  // tmux stops reading a pane's pty once every client has it off, which freezes the pane;
-  // output is filtered here instead.
-  private streaming = new Set<string>();
   private stopped = false;
 
   private scribe: Scribe;
+  private sleep: Sleep;
+  private link: ControlLink;
+  private poll: Poll;
+  private agentEvents: AgentEvents;
+  private prompts: Prompts;
 
   constructor(private deps: Deps) {
     super();
@@ -98,6 +74,11 @@ export class Fleet extends EventEmitter<Events> {
       codex: codexRunner({ model: scribeModel(config.scribe, 'codex'), cwd }),
     }, () => store.state.scribeAgent ?? 'claude');
     this.scribe = new Scribe({ store, log, run, brief: (island, c) => this.render(island, c) });
+    this.sleep = { store, tmux: deps.tmux, log, processes: deps.processes ?? processes, ending: this.ending };
+    this.link = new ControlLink({ store, tmux: deps.tmux, log, events: this, reconcile: () => this.reconcileNow() });
+    this.poll = new Poll({ ...deps, scribe: this.scribe, listWindows: () => this.listWindows(), endIdleAgents: () => this.endIdleAgents() });
+    this.agentEvents = new AgentEvents({ store, config, log, render: (island, c) => this.render(island, c) });
+    this.prompts = new Prompts({ fleet: this, store, tmux: deps.tmux, reviving: this.reviving });
   }
 
   async start(): Promise<void> {
@@ -111,31 +92,17 @@ export class Fleet extends EventEmitter<Events> {
     this.deps.store.update((d) => { if (this.deps.config.name) d.name = this.deps.config.name; else delete d.name; });
     try { if (seedAgentProfiles(this.deps.paths.agentProfiles)) this.deps.log.info(`agent profiles -> ${this.deps.paths.agentProfiles}`); }
     catch (e) { this.deps.log.error(`agent profiles: ${String(e)}`); }
-    await this.attachControl();
-    this.schedule();
-  }
-
-  // the next poll waits for the last, so a slow tmux never has two listings out
-  private schedule(): void {
-    if (this.stopped) return;
-    this.poll = setTimeout(() => {
-      this.ticking = this.tick()
-        .catch((e) => this.deps.log.error(`poll: ${String(e)}`))
-        .finally(() => { this.ticking = undefined; this.schedule(); });
-    }, this.deps.pollMs ?? 3000);
+    await this.link.attach();
+    this.poll.schedule();
   }
 
   /** Stops polling and the control client; resolves once a poll under way has finished and the fleet is on disk. */
   async stop(): Promise<void> {
     this.stopped = true;
-    clearTimeout(this.poll);
-    clearTimeout(this.retry);
-    this.control?.stop();
-    await this.ticking;
+    this.link.stop();
+    await this.poll.stop();
     this.deps.store.flush();
   }
-
-  // ---- lookups
 
   char(id: string): Character {
     const c = this.deps.store.state.characters[id];
@@ -187,76 +154,13 @@ export class Fleet extends EventEmitter<Events> {
     return c.second;
   }
 
-  private charByPane(paneId: string): string | undefined {
-    return Object.values(this.deps.store.state.characters).find((c) => c.tmux?.paneId === paneId)?.id;
-  }
-
-  private charByWindow(windowId: string): string | undefined {
-    return Object.values(this.deps.store.state.characters).find((c) => c.tmux?.windowId === windowId)?.id;
-  }
-
-  // ---- control client
-
-  private async attachControl(): Promise<void> {
-    const c = this.deps.tmux.connect();
-    c.on('output', (paneId, data) => { const id = this.charByPane(paneId); if (id && this.streaming.has(id)) this.emit('output', id, data); });
-    c.on('pause', (paneId) => { const id = this.charByPane(paneId); if (id) this.emit('pause', id); });
-    c.on('continue', (paneId) => { const id = this.charByPane(paneId); if (id) this.emit('continue', id); });
-    c.on('window-close', (windowId) => { this.windowClosed(windowId).catch((e) => this.deps.log.error(`window ${windowId} closed: ${String(e)}`)); });
-    // a client that exits before it is ready fails start, and the caller's retry is the one recovery
-    let ready = false;
-    let gone = false;
-    c.once('ready', () => { ready = true; });
-    c.on('exit', (reason) => {
-      gone = true;
-      this.deps.log.error(`control client lost: ${reason}`);
-      if (this.control === c) this.control = undefined;
-      if (ready && !this.stopped) this.retry = setTimeout(() => this.recover(), 1000);
-    });
-    await c.start();
-    // a stop while it attached, or an exit read in the same breath as its ready, leaves nothing to keep
-    if (this.stopped) { c.stop(); return; }
-    if (gone) return;
-    c.send('refresh-client -f pause-after=3');
-    this.control = c;
-  }
-
-  // tmux also reports a close when a viewer session holding a linked window goes away
-  private async windowClosed(windowId: string): Promise<void> {
-    if (await this.deps.tmux.hasWindow(windowId)) return;
-    const id = this.charByWindow(windowId);
-    if (id) { this.deps.store.update((d) => { const ch = d.characters[id]; if (ch) markDormant(ch); }); return; }
-    const owner = Object.values(this.deps.store.state.characters).find((ch) => ch.second?.tmux.windowId === windowId)?.id;
-    if (owner) this.deps.store.update((d) => { delete d.characters[owner]?.second; });
-  }
-
-  // a stop at any step ends the recovery there, or it would start the server the stop just ended
-  private async recover(delayMs = 1000): Promise<void> {
-    if (this.stopped) return;
-    try {
-      await this.deps.tmux.ensureServer();
-      if (this.stopped) return;
-      await this.reconcileNow();
-      if (this.stopped) return;
-      await this.attachControl();
-      if (this.stopped) return;
-      this.emit('control-reset');
-    } catch (e) {
-      this.deps.log.error(`recover failed: ${String(e)}`);
-      if (!this.stopped) this.retry = setTimeout(() => this.recover(Math.min(delayMs * 2, 30_000)), delayMs);
-    }
-  }
-
   setPaneOutput(id: string, on: boolean): void {
-    if (on) this.streaming.add(id); else this.streaming.delete(id);
+    this.link.setPaneOutput(id, on);
   }
 
   continuePane(id: string): void {
-    const c = this.deps.store.state.characters[id];
-    if (c?.tmux) this.control?.send(`refresh-client -A '${c.tmux.paneId}:continue'`);
+    this.link.continuePane(id);
   }
-
-  // ---- reconciliation and polling
 
   // the windows tmux has, less those still closing for idleness, which are not to be taken back
   private async listWindows(): Promise<LiveWindow[]> {
@@ -311,89 +215,8 @@ export class Fleet extends EventEmitter<Events> {
     if (first) this.createIsland({ name: 'Island 1' });
   }
 
-  private async tick(): Promise<void> {
-    const before = snapshot(this.deps.store.state);
-    const live = await this.listWindows();
-    // a stop while tmux answered has ended what the listing shows
-    if (this.stopped) return;
-    const byName = new Map(live.map((w) => [w.name, w]));
-    const cwdChanged: string[] = [];
-    // an agent whose pane is back at a shell prompt for two polls has ended without a SessionEnd
-    const settleAgent = (key: string, slot: { agent?: Agent }, command: string) => {
-      if (slot.agent && isShellCommand(command, this.deps.config.shell)) {
-        const n = (this.shellStreak.get(key) ?? 0) + 1;
-        this.shellStreak.set(key, n);
-        if (n >= 2) { delete slot.agent; this.shellStreak.delete(key); }
-      } else {
-        this.shellStreak.delete(key);
-      }
-    };
-    this.deps.store.update((d) => {
-      for (const c of Object.values(d.characters)) {
-        const cwd = c.cwd;
-        const w = syncWindow(c, byName, before, settleAgent);
-        if (c.cwd !== cwd) cwdChanged.push(c.id);
-        if (!w) continue;
-        // Codex should report promptly; three polls without an event means delivery needs attention.
-        if (!c.agent && w.command === 'codex') {
-          const n = (this.codexStreak.get(c.id) ?? 0) + 1;
-          this.codexStreak.set(c.id, n);
-          if (n >= 3) c.hint = 'codex-silent';
-        } else {
-          this.codexStreak.delete(c.id);
-          delete c.hint;
-        }
-      }
-    });
-    this.ticks++;
-    // the fleet's links are looked at a slice per tick, so the whole crew never spawns git and gh in the same breath
-    const awake = Object.values(this.deps.store.state.characters).filter((c) => c.tmux).map((c) => c.id);
-    for (const id of cwdChanged) this.pendingLinks.add(id);
-    if (!this.sweeping) {
-      const toRefresh = [...new Set([...this.pendingLinks, ...slice(awake, this.ticks)])];
-      this.pendingLinks.clear();
-      this.sweeping = true;
-      void refreshMany(this.deps.store, this.deps.config, toRefresh, this.deps.linkDeps)
-        .catch((e) => this.deps.log.error(`links: ${String(e)}`))
-        .finally(() => { this.sweeping = false; });
-    }
-    this.scribe.tick();
-    if (this.ticks % 10 === 0) await this.sweepViewerSessions();
-    // ending an agent waits up to a minute for it to exit, which the next poll does not
-    if (this.ticks % DORMANCY_EVERY === 0) this.endIdleAgents().catch((e) => this.deps.log.error(`dormancy: ${String(e)}`));
-  }
-
-  // an agent idle past the fleet's limit is ended to free what it holds; its character goes dormant, and a revive
-  // resumes the session with the launch flags it still needs
-  private async endIdleAgents(): Promise<void> {
-    const hours = this.deps.store.state.dormantAfterHours ?? DORMANT_AFTER_HOURS;
-    if (!hours) return;
-    const afterMs = hours * 3_600_000;
-    const due = (c: Character) => drowsy(c, Date.now(), afterMs, this.seen.get(c.id));
-    const idle = Object.values(this.deps.store.state.characters).filter(due);
-    if (!idle.length) return;
-    const procs = await (this.deps.processes ?? processes)();
-    if (this.stopped) return;
-    for (const c of idle) {
-      const a = c.agent!;
-      // a pid gone or moved on to another program, a launch the resume can't repeat, work going on in the background,
-      // or no transcript to resume from leaves the agent be
-      const proc = procs.find((p) => p.pid === a.pid);
-      const flags = proc && startFlags(proc.args, a.kind);
-      if (!proc || !flags || runsInBackground(proc.pid, procs) || !a.transcriptPath || !fs.existsSync(a.transcriptPath)) continue;
-      // a prompt, a close or a revive while ps ran leaves it be
-      const cur = this.deps.store.state.characters[c.id];
-      if (!cur?.tmux || cur.tmux.windowId !== c.tmux?.windowId || !due(cur)) continue;
-      // dormant before the kill: the SessionEnd the kill sends then finds no live character to clear
-      this.deps.store.update((d) => { markDormant(d.characters[c.id], flags); });
-      const closing = this.deps.tmux.killWindow(cur.tmux.windowId).then(
-        () => exited(proc.pid).then(() => this.deps.log.info(`${cur.name} dormant after ${hours} h idle`)),
-        (e) => this.deps.log.error(`dormant ${c.id}: ${String(e)}`),
-      );
-      this.ending.set(c.id, closing);
-      await closing;
-      this.ending.delete(c.id);
-    }
+  private endIdleAgents(): Promise<void> {
+    return endIdleAgents(this.sleep, this.seen, () => this.stopped);
   }
 
   /** Ends every terminal as the app quits: each character goes dormant with the revive that resumes it, then the
@@ -401,30 +224,7 @@ export class Fleet extends EventEmitter<Events> {
   async stopAll(): Promise<void> {
     // the control client's exit would otherwise start a server again, and a poll under way write back what this ends
     await this.stop();
-    // an agent ended for idleness can take a minute to exit, and the server's end reaches it anyway
-    const settled = Promise.all([...this.ending.values(), ...this.reviving.values()].map((p) => p.catch(() => {})));
-    await Promise.race([settled, new Promise((r) => setTimeout(r, 2000))]);
-    const procs = await (this.deps.processes ?? processes)();
-    // only a pid still running its agent is waited on, and killed if it outstays the wait
-    const agentProc = (a?: Agent) => a && procs.find((p) => p.pid === a.pid && runsAgent(p.args, a.kind));
-    const pids: number[] = [];
-    // dormant before the kill: the SessionEnd the kill sends then finds no live character to clear
-    this.deps.store.update((d) => {
-      for (const c of Object.values(d.characters)) {
-        const second = agentProc(c.second?.agent);
-        if (second) pids.push(second.pid);
-        delete c.second;
-        if (!c.tmux) continue;
-        const proc = agentProc(c.agent);
-        if (proc) pids.push(proc.pid);
-        markDormant(c, proc ? startFlags(proc.args, c.agent!.kind) : undefined);
-      }
-    });
-    // written now: what the quit has left to do can take seconds, and the daemon may not outlive them
-    this.deps.store.flush();
-    await this.deps.tmux.killServer();
-    // a resume opened right after must not write to a session still ending
-    await Promise.all(pids.map((pid) => exited(pid, 5000)));
+    await endAll(this.sleep, this.reviving);
     setImmediate(() => this.emit('stopped'));
   }
 
@@ -475,16 +275,6 @@ export class Fleet extends EventEmitter<Events> {
     this.deps.store.update((d) => { delete d.scribeAsk; if (enabled) delete d.scribeOff; else d.scribeOff = true; });
   }
 
-  // a desktop terminal that never attached leaves its v-<charId> session behind
-  private async sweepViewerSessions(): Promise<void> {
-    const staleMs = this.deps.staleSessionMs ?? 60_000;
-    for (const s of await this.deps.tmux.listSessions()) {
-      if (s.name.startsWith('v-') && s.attached === 0 && Date.now() - s.created > staleMs) await this.deps.tmux.killSession(s.name);
-    }
-  }
-
-  // ---- islands
-
   createIsland(p: NewIsland): Island {
     return createIsland(this.deps, p);
   }
@@ -504,8 +294,6 @@ export class Fleet extends EventEmitter<Events> {
   deleteIsland(id: string): void {
     deleteIsland(this.deps, id);
   }
-
-  // ---- characters
 
   async createCharacter(p: { islandId: string; cwd: string; name?: string; command?: string; cell?: Cell; run?: string; agentProfile?: string }): Promise<Character & { runSent?: boolean }> {
     if (p.run && !p.command) throw new Invalid('run needs a command to start the agent');
@@ -554,7 +342,7 @@ export class Fleet extends EventEmitter<Events> {
     refreshLinks(this.deps.store, this.deps.config, id).catch((e) => this.deps.log.error(`links ${id}: ${String(e)}`));
     if (!p.run) return this.char(id);
     const timeoutMs = this.deps.runTimeoutMs ?? RUN_TIMEOUT_MS;
-    let runSent = await this.waitForAgent(id, timeoutMs);
+    let runSent = await this.prompts.waitForAgent(id, timeoutMs);
     // claude and codex have their prompt already, and submit it once they are up
     if (prompt) return { ...this.char(id), runSent: true };
     if (runSent) {
@@ -565,28 +353,6 @@ export class Fleet extends EventEmitter<Events> {
     // once answered: the whole wait passes with the pane sitting on the question, which is worth a line
     if (!runSent) this.deps.log.error(`character ${id}: no agent reported in within ${timeoutMs}ms, prompt not sent`);
     return { ...this.char(id), runSent };
-  }
-
-  // true once the SessionStart hook has attached an agent; false when the window dies or the wait runs out
-  private waitForAgent(id: string, timeoutMs: number): Promise<boolean> {
-    return this.until(() => {
-      const c = this.deps.store.state.characters[id];
-      if (!c || !c.tmux) return false;
-      return c.agent ? true : undefined;
-    }, timeoutMs, false);
-  }
-
-  // the first answer `check` gives, now or after a change to the fleet; `timedOut` once the wait runs out
-  private until<T>(check: () => T | undefined, timeoutMs: number, timedOut: T, signal?: AbortSignal): Promise<T> {
-    const now = check();
-    if (now !== undefined) return Promise.resolve(now);
-    return new Promise((resolve, reject) => {
-      const finish = (fn: () => void) => { unsub(); clearTimeout(timer); signal?.removeEventListener('abort', onAbort); fn(); };
-      const onAbort = () => finish(() => reject(new Error('wait cancelled')));
-      const unsub = this.deps.store.subscribe(() => { const r = check(); if (r !== undefined) finish(() => resolve(r)); });
-      const timer = setTimeout(() => finish(() => resolve(timedOut)), timeoutMs);
-      signal?.addEventListener('abort', onAbort, { once: true });
-    });
   }
 
   private charEnv(id: string, extra: Record<string, string> = {}): Record<string, string> {
@@ -696,9 +462,8 @@ export class Fleet extends EventEmitter<Events> {
     if (c.tmux) await this.deps.tmux.killWindow(c.tmux.windowId);
     if (c.second) await this.deps.tmux.killWindow(c.second.tmux.windowId);
     // nothing the fleet keeps outside the state outlives the character
-    for (const m of [this.shellStreak, this.codexStreak, this.hookCwd, this.rolloutMark, this.answering, this.seen, this.streaming]) m.delete(id);
-    this.shellStreak.delete(secondName(id));
-    this.scribe.forget(id);
+    this.seen.delete(id);
+    for (const m of [this.link, this.poll, this.agentEvents, this.prompts, this.scribe]) m.forget(id);
     removeDocs(this.deps.paths.docs, 'character', id, this.deps.log);
   }
 
@@ -783,8 +548,6 @@ export class Fleet extends EventEmitter<Events> {
     return this.char(id);
   }
 
-  // ---- browser tabs
-
   openTab(id: string, url: string, tab?: string): BrowserTab {
     return openTab(this.deps.store, this.char(id), url, tab);
   }
@@ -801,62 +564,16 @@ export class Fleet extends EventEmitter<Events> {
     updateTab(this.deps.store, this.char(id), tab, patch);
   }
 
-  async run(id: string, text: string, enter: boolean, term?: 2): Promise<void> {
-    const c = this.char(id);
-    // a dormant claude or codex wakes with the text as its launch prompt; typed while it boots, a prompt can lose its Enter
-    if (!term && enter && !c.tmux && !this.reviving.has(id) && isAgentCommand(c.revive?.command ?? '')) {
-      await this.reviveCharacter(id, text);
-      return;
-    }
-    const t = this.terminal(id, term);
-    const before = t.agent?.status;
-    const asked = t.agent?.promptId;
-    await this.deps.tmux.sendLine(t.tmux.paneId, text, enter);
-    // a submitted prompt makes the agent busy right away; the UserPromptSubmit hook only confirms it.
-    // If a hook already moved the status, or put a new question, while the send was in flight, that wins, unread included.
-    if (enter && t.agent) {
-      this.deps.store.update((d) => {
-        const slot = term === 2 ? d.characters[id]?.second : d.characters[id];
-        const a = slot?.agent;
-        if (!slot || !a || a.status !== before || a.promptId !== asked) return;
-        settle(a, 'working');
-        slot.unread = false;
-      });
-    }
+  run(id: string, text: string, enter: boolean, term?: 2): Promise<void> {
+    return this.prompts.run(id, text, enter, term);
   }
 
-  async answerPrompt(id: string, answer: 'approve' | 'deny', promptId?: string): Promise<void> {
-    const c = this.live(id);
-    const asked = c.agent?.promptId;
-    if (c.agent?.status !== 'blocked') throw new Invalid(`${c.name} is not waiting on an answer`);
-    if (promptId !== undefined && promptId !== asked) throw new Invalid(`${c.name} has moved on from that question`);
-    if (this.answering.has(id) && this.answering.get(id) === asked) throw new Invalid(`${c.name}'s answer is already in`);
-    this.answering.set(id, asked);
-    // an answer to a newer question may have been typed meanwhile; its hold stays
-    const release = () => { if (this.answering.get(id) === asked) this.answering.delete(id); };
-    try { await this.deps.tmux.sendBytes(c.tmux.paneId, Buffer.from(answer === 'approve' ? '\r' : '\x1b')); }
-    finally { release(); }
-    this.settleAnswer(id, asked, answer);
+  answerPrompt(id: string, answer: 'approve' | 'deny', promptId?: string): Promise<void> {
+    return this.prompts.answer(id, answer, promptId);
   }
 
-  // Enter typed into the terminal takes the question's highlighted option and Esc or ^C turns it down, as the
-  // keys answerPrompt sends do; only the keys a viewer sends through the daemon are seen here
   typedAnswer(id: string, data: Buffer, asked: string | undefined): void {
-    const key = data.toString('latin1');
-    const answer = key === '\r' ? 'approve' : key === '\x1b' || key === '\x03' ? 'deny' : undefined;
-    if (answer && asked) this.settleAnswer(id, asked, answer);
-  }
-
-  // Claude Code fires no hook when Esc ends the turn, though Esc on a question asked while background agents
-  // run ends no turn; a hook that moved the agent on while the key was sent wins
-  private settleAnswer(id: string, asked: string | undefined, answer: 'approve' | 'deny'): void {
-    this.deps.store.update((d) => {
-      const a = d.characters[id]?.agent;
-      if (a?.status !== 'blocked' || a.promptId !== asked) return;
-      a.status = answer === 'approve' || a.background ? 'working' : 'idle';
-      delete a.prompt;
-      delete a.promptId;
-    });
+    this.prompts.typed(id, data, asked);
   }
 
   async readScreen(id: string, lines: number, term?: 2): Promise<string> {
@@ -879,80 +596,10 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   waitFor(id: string, until: AgentStatus[], timeoutMs: number, signal?: AbortSignal, term?: 2): Promise<WaitResult> {
-    return this.until<WaitResult>(() => {
-      const c = this.deps.store.state.characters[id];
-      const t = term === 2 ? c?.second : c;
-      // a terminal whose tmux window died will never reach the awaited status.
-      if (!t?.tmux) return 'gone';
-      if (t.agent && until.includes(t.agent.status)) return t.agent.status;
-      return undefined;
-    }, timeoutMs, 'timeout', signal);
+    return this.prompts.waitFor(id, until, timeoutMs, signal, term);
   }
 
   onSocketEvent(e: SocketEvent): string | undefined {
-    const ev = 'hook' in e ? e.hook : e.status;
-    let reply: string | undefined;
-    this.deps.store.update((d) => {
-      const c = d.characters[ev.charId];
-      if (!Object.hasOwn(d.characters, ev.charId)) return;
-      const apply = <T extends Slot>(slot: T): T => {
-        let next = 'hook' in e ? applyHook(slot, e.hook, Date.now()) : applyStatus(slot, e.status);
-        // codex has no statusline to push its context reading, so each hook reads it off the tail of the rollout
-        if ('hook' in e && next.agent?.kind === 'codex' && next.agent.transcriptPath) {
-          const t = lastTokenCount(readTail(next.agent.transcriptPath, 64 * 1024));
-          if (t) next = applyStatus(next, { charId: ev.charId, sessionId: next.agent.sessionId, contextPct: t.pct });
-        }
-        // the brief is the agent's own: a run nested inside it neither gets it nor takes its changes
-        if ('hook' in e && next.agent && (e.hook.name === 'SessionStart' || e.hook.name === 'UserPromptSubmit')
-          && (!e.hook.sessionId || e.hook.sessionId === next.agent.sessionId)) {
-          const island = d.islands[c.islandId];
-          const r = briefReply(e.hook.name, island ? this.render(island, c) : '', next.agent.brief);
-          if (r.delivered !== undefined) next.agent.brief = r.delivered;
-          reply = r.reply;
-        }
-        return next;
-      };
-      // an event from a second terminal that has already gone has nowhere to land
-      if (ev.term === 2) { if (c.second) c.second = apply(c.second); }
-      else {
-        // a dormant character keeps the agent its revive resumes; the end its closing window sends does not clear it
-        if (!c.tmux && 'hook' in e && e.hook.name === 'SessionEnd') return;
-        const next = apply(c);
-        if (next.agent) delete next.hint;
-        // the shell's activity shows again once the agent has gone, and its end is that activity
-        else if (c.agent) next.shell.lastOutputAt = Date.now();
-        d.characters[ev.charId] = next;
-      }
-    });
-    // the second terminal is a side shell, and a run nested inside the agent or a subagent works where it likes; none moves the character
-    const agent = this.deps.store.state.characters[ev.charId]?.agent;
-    const nested = 'hook' in e && !!agent && !!e.hook.sessionId && e.hook.sessionId !== agent.sessionId;
-    if ('hook' in e && e.hook.cwd && e.hook.term !== 2 && !nested && !e.hook.agentId) {
-      const cwd = agent?.kind === 'codex' ? this.codexCwd(ev.charId, agent.transcriptPath, e.hook.cwd) : e.hook.cwd;
-      this.followCwd(ev.charId, cwd).catch((err) => this.deps.log.error(`follow ${ev.charId} to ${cwd}: ${String(err)}`));
-    }
-    return reply;
-  }
-
-  // codex runs each command in the directory its call names and tells its hooks only the one the session began in;
-  // the newest command that ran elsewhere says where the agent works, until that directory is gone
-  private codexCwd(charId: string, transcript: string | undefined, home: string): string {
-    if (!transcript) return home;
-    const mark = followRollout(transcript, home, this.rolloutMark.get(charId));
-    this.rolloutMark.set(charId, mark);
-    return mark.dir && fs.existsSync(mark.dir) ? mark.dir : home;
-  }
-
-  // an agent that cds into another checkout from its shell leaves the pane's path behind; its hooks say where it went
-  private async followCwd(charId: string, cwd: string): Promise<void> {
-    if (this.hookCwd.get(charId) === cwd) return;
-    this.hookCwd.set(charId, cwd);
-    const from = this.deps.store.state.characters[charId]?.cwd;
-    if (!from) return;
-    const [to, now] = await Promise.all([resolveRepo(cwd), resolveRepo(from)]);
-    // a report that came in while git answered is the newer one
-    if (this.hookCwd.get(charId) !== cwd || !to || to.root === now?.root) return;
-    this.deps.store.update((d) => { if (d.characters[charId]) d.characters[charId].cwd = to.root; });
-    await refreshLinks(this.deps.store, this.deps.config, charId);
+    return this.agentEvents.apply(e);
   }
 }

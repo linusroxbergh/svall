@@ -51,10 +51,11 @@ export async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs
 
 // counts only polls begun after the call: a slow listing lets polls overlap, so an earlier one can end later
 export async function waitForPolls(fleet: Fleet, n: number): Promise<void> {
-  const tick = fleet['tick'];
+  const poll = fleet['poll'];
+  const tick = poll['tick'];
   let done = 0;
-  fleet['tick'] = async () => { await tick.call(fleet); done++; };
-  try { await waitFor(() => done >= n); } finally { fleet['tick'] = tick; }
+  poll['tick'] = async () => { await tick.call(poll); done++; };
+  try { await waitFor(() => done >= n); } finally { poll['tick'] = tick; }
 }
 
 // startApi needs a reading of the plan's limits; tests that are not about usage take this one

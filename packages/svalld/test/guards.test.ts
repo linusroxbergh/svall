@@ -58,7 +58,7 @@ describe('following a hook into another checkout', () => {
     const f = fleetOn((d) => { d.islands.i_1 = { id: 'i_1', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 }; }, log);
     const [one, two] = [repo(f.home, 'one'), repo(f.home, 'two')];
     f.store.update((d) => { d.characters.c_a = char('c_a', 'i_1', { cwd: one }); });
-    const follow = (id: string, cwd: string): Promise<void> => f.fleet['followCwd'](id, cwd);
+    const follow = (id: string, cwd: string): Promise<void> => f.fleet['agentEvents']['followCwd'](id, cwd);
     return { ...f, one, two, follow };
   };
 
@@ -70,7 +70,7 @@ describe('following a hook into another checkout', () => {
 
   it('ignores a hook from the second terminal', () => {
     const { fleet, store, one, two } = setup();
-    const follow = vi.spyOn(fleet as unknown as { followCwd: () => Promise<void> }, 'followCwd');
+    const follow = vi.spyOn(fleet['agentEvents'] as unknown as { followCwd: () => Promise<void> }, 'followCwd');
     fleet.onSocketEvent({ hook: { charId: 'c_a', backend: 'claude', name: 'PreToolUse', cwd: two, term: 2 } });
     expect(follow).not.toHaveBeenCalled();
     expect(store.state.characters.c_a.cwd).toBe(one);
