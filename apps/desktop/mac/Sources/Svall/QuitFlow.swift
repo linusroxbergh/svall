@@ -7,7 +7,7 @@ final class QuitFlow {
     private let hideWindow: () -> Void
     // where the page's answer goes while a quit waits on it, and what quits anyway if it never comes
     private var quitAnswer: ((Bool) -> Void)?
-    private var quitTimeout: DispatchWorkItem?
+    private var quitTimeout: Timer?
     // whether the quit waiting on the page also waits on the user's yes
     private var userQuit = false
     // while the question is up, the user's answer is the only one: a late reply or a reload waits on it
@@ -41,9 +41,7 @@ final class QuitFlow {
         userQuit = confirm
         quitAnswer = answer
         // longer than the page gives its saves, so only a page that is stuck or gone runs it out
-        let timeout = DispatchWorkItem { [weak self] in self?.answered(unsaved: [], working: 0) }
-        quitTimeout = timeout
-        DispatchQueue.main.asyncAfter(deadline: .now() + 6, execute: timeout)
+        quitTimeout = after(6) { [weak self] in self?.answered(unsaved: [], working: 0) }
         send(.quitAsk)
         return .terminateLater
     }
@@ -51,7 +49,7 @@ final class QuitFlow {
     /// The page's answer to `.quitAsk`: the files the quit would drop and the agents it would stop mid-task.
     func answered(unsaved: [String], working: Int) {
         guard quitAnswer != nil, !confirming, !stopping else { return }
-        quitTimeout?.cancel()
+        quitTimeout?.invalidate()
         if userQuit || !unsaved.isEmpty {
             confirming = true
             let ok = confirmQuit(unsaved: unsaved, working: working)
@@ -79,7 +77,7 @@ final class QuitFlow {
         userQuit = false
         guard let answer = quitAnswer else { return }
         quitAnswer = nil
-        quitTimeout?.cancel()
+        quitTimeout?.invalidate()
         quitTimeout = nil
         answer(ok)
     }
@@ -89,10 +87,15 @@ final class QuitFlow {
         guard isListening() else { return fleetStopped(ok: false) }
         stopping = true
         hideWindow()
-        let timeout = DispatchWorkItem { [weak self] in self?.fleetStopped(ok: false) }
-        quitTimeout = timeout
-        DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: timeout)
+        quitTimeout = after(12) { [weak self] in self?.fleetStopped(ok: false) }
         send(.quitStop)
+    }
+
+    // a run-loop timer, as a quit started from a main-queue block holds that queue while AppKit waits on it
+    private func after(_ seconds: TimeInterval, _ fire: @escaping () -> Void) -> Timer {
+        let timer = Timer(timeInterval: seconds, repeats: false) { _ in fire() }
+        RunLoop.main.add(timer, forMode: .common)
+        return timer
     }
 
     private func fleetStopped(ok: Bool) {

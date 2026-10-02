@@ -40,9 +40,13 @@ enum GhosttyKeybinds {
             let s = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !s.hasPrefix("#"), let eq = s.firstIndex(of: "=") else { continue }
             let key = s[s.startIndex..<eq].trimmingCharacters(in: .whitespacesAndNewlines)
-            let value = s[s.index(after: eq)...].trimmingCharacters(in: .whitespacesAndNewlines)
+            let value = unquoted(s[s.index(after: eq)...].trimmingCharacters(in: .whitespacesAndNewlines))
             if key == "config-file" {
-                let file = expand(value, near: url).standardizedFileURL
+                // an empty one forgets the files named before it; a path its `?` and quotes leave empty is skipped
+                guard !value.isEmpty else { includes.removeAll(); continue }
+                let path = unquoted(value.hasPrefix("?") ? String(value.dropFirst()) : value)
+                guard !path.isEmpty else { continue }
+                let file = expand(path, near: url).standardizedFileURL
                 if !includes.contains(file) { includes.append(file) }
             } else if key == "keybind" {
                 // `clear`, and an empty value that goes back to Ghostty's defaults, drop every binding above it;
@@ -53,12 +57,15 @@ enum GhosttyKeybinds {
         }
     }
 
-    private static func expand(_ path: String, near url: URL) -> URL {
-        var p = path
-        if p.hasPrefix("?") { p.removeFirst() }
+    private static func expand(_ p: String, near url: URL) -> URL {
         if p.hasPrefix("~") { return URL(fileURLWithPath: NSString(string: p).expandingTildeInPath) }
         if p.hasPrefix("/") { return URL(fileURLWithPath: p) }
         return url.deletingLastPathComponent().appendingPathComponent(p)
+    }
+
+    /// Ghostty drops one pair of quotes around a value: `"x"` -> `x`.
+    private static func unquoted(_ s: String) -> String {
+        s.count >= 2 && s.hasPrefix("\"") && s.hasSuffix("\"") ? String(s.dropFirst().dropLast()) : s
     }
 
     /// `cmd+shift+p=new_window` -> ("cmd+shift+p", "new_window")
