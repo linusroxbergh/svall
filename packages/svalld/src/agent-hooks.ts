@@ -3,7 +3,7 @@ import type { AgentKind } from '@svall/protocol';
 import { codexHookCommand, type CodexPaths } from './codex/install.js';
 import { hooksFor } from './hooks/receiver.js';
 import { helperBeside, helperOr, isOurs, resolvePaths } from './paths.js';
-import { bundled, ownRuntime } from './runtime.js';
+import { bundled } from './runtime.js';
 import { readJsonSettings, readOrUndefined, requireWritable, same, writeJsonSettings, type JsonSettings } from './settings-file.js';
 import { shq, unshq } from './text.js';
 
@@ -194,7 +194,7 @@ function installedNode(settings: Record<string, unknown>, script: string): strin
 // the hooks and statusline setup writes into the Claude settings for the fleet at `home`
 function withClaudeHooks(settings: Record<string, unknown>, home: string): Record<string, unknown> {
   const paths = resolvePaths(home);
-  const node = ownRuntime().bundle ? process.execPath : installedNode(settings, paths.statusScript) ?? process.execPath;
+  const node = bundled ? process.execPath : installedNode(settings, paths.statusScript) ?? process.execPath;
   return mergeStatusLine(
     mergeHooks(settings, hookCommand(node, paths.hookScript, 'claude'), paths.hookScript),
     statusWrapper(node, paths.statusScript),

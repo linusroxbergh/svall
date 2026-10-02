@@ -10,9 +10,11 @@ const GROUPS: [string, string[]][] = [
   ['Setup', ['hooks', 'codex hooks', 'shims', 'launchd plist']],
 ];
 
-/** `checks` under the titles they show with, each group in the order its names come. */
-export const grouped = (checks: Check[]): { title: string; checks: Check[] }[] =>
-  GROUPS.map(([title, names]) => ({ title, checks: names.flatMap((n) => checks.filter((c) => c.name === n)) }));
+/** `checks` under the titles they show with, each group in the order its names come, and any check no group names last. */
+export const grouped = (checks: Check[]): { title: string; checks: Check[] }[] => [
+  ...GROUPS.map(([title, names]) => ({ title, checks: names.flatMap((n) => checks.filter((c) => c.name === n)) })),
+  { title: 'Other', checks: checks.filter((c) => !GROUPS.some(([, names]) => names.includes(c.name))) },
+];
 
 // the installer reads this through a file, so it passes its own terminal's answer in FORCE_COLOR
 export const useColor = (): boolean =>

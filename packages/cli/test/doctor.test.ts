@@ -13,7 +13,9 @@ const priv = { name: 'private', home: '/u/.svall', managed: true };
 const adhoc = { name: 'svall-dev', home: '/tmp/svall-dev', managed: false };
 
 const PLIST = '/u/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld.plist';
-const plist = (nodeDir: string) => `<dict>\n    <key>PATH</key><string>${nodeDir}:/u/.local/bin:/usr/bin</string>\n</dict>`;
+const DAEMON = ['/u/svall/node_modules/.bin/tsx', '/u/svall/packages/svalld/src/bin.ts'];
+const plist = (nodeDir: string, program = DAEMON) =>
+  `<dict>\n  <key>ProgramArguments</key>\n  <array>\n${program.map((p) => `    <string>${p}</string>\n`).join('')}  </array>\n    <key>PATH</key><string>${nodeDir}:/u/.local/bin:/usr/bin</string>\n</dict>`;
 
 const SCRIPT = '/u/.svall/hooks/agent-hook.mjs';
 const STATUS = '/u/.svall/hooks/claude-status.mjs';
@@ -33,7 +35,6 @@ function fake(o: {
   found?: AgentKind[];
   trust?: HookTrust;
   shimsCurrent?: boolean;
-  plistCurrent?: boolean;
 } = {}) {
   const calls: string[] = [];
   const envs: Record<string, Record<string, string> | undefined> = {};
@@ -51,6 +52,7 @@ function fake(o: {
     '/u/.claude/settings.json': installed,
     [PLIST]: plist('/opt/homebrew/opt/node/bin'),
     '/opt/homebrew/opt/node/bin/node': '',
+    ...Object.fromEntries(DAEMON.map((p) => [p, ''])),
     '/u/.svall/svalld.log': Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join('\n') + '\n',
     ...o.files,
   };
@@ -83,7 +85,7 @@ function fake(o: {
     found: o.found ?? ['claude'],
     codexTrust: async () => o.trust,
     shimsCurrent: o.shimsCurrent ?? true,
-    plistCurrent: o.plistCurrent ?? true,
+    daemon: DAEMON,
   };
   return { deps, calls, envs };
 }
@@ -112,10 +114,14 @@ describe('doctor', () => {
     expect(grouped(r.checks).flatMap((g) => g.checks)).toHaveLength(r.checks.length);
   });
 
-  it('warns about shims or a plist that setup would write differently now, as setup --check does', async () => {
-    const c = byName(await doctor(priv, fake({ shimsCurrent: false, plistCurrent: false }).deps));
+  it('warns about shims setup would write differently now, and a plist that is missing or runs another build', async () => {
+    const c = byName(await doctor(priv, fake({ shimsCurrent: false }).deps));
     expect(c.shims).toEqual({ name: 'shims', status: 'warn', detail: 'missing or not what this build writes: run svall setup from the build you use' });
-    expect(c['launchd plist']).toEqual({ name: 'launchd plist', status: 'warn', detail: 'missing or not what this build writes: svall setup, from the build you use' });
+    // the PATH setup took from its own shell is the daemon path check's to judge
+    expect(c['launchd plist']).toEqual({ name: 'launchd plist', status: 'ok', detail: `${PLIST} runs this build` });
+    const other = fake({ files: { [PLIST]: plist('/opt/homebrew/opt/node/bin', ['/old/svall/node_modules/.bin/tsx', '/old/svall/packages/svalld/src/bin.ts']) } });
+    expect(byName(await doctor(priv, other.deps))['launchd plist']).toEqual({ name: 'launchd plist', status: 'warn', detail: 'runs another build: svall setup, from the build you use' });
+    expect(byName(await doctor(priv, fake({ files: { [PLIST]: undefined } }).deps))['launchd plist']).toMatchObject({ status: 'warn', detail: 'missing: svall setup' });
     expect(byName(await doctor(adhoc, fake().deps))['launchd plist'].status).toBe('skip');
   });
 

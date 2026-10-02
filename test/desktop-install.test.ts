@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, test } from 'vitest';
+import { CODEX_TRUST } from '../packages/svalld/src/agent-hooks.js';
 
 const SCRIPT = fs.readFileSync(path.join(import.meta.dirname, '../scripts/desktop-install.sh'), 'utf8');
 /** The script from the line of code `from` up to the one `to`, to run a part of it on its own. */
@@ -187,10 +188,22 @@ test('replaces the installed app only once the new copy is whole', () => {
   expect(fs.readdirSync(path.join(killed.root, 'Applications/Svall Dev.app/Contents'))).toEqual(['build']);
 });
 
+test('never takes the installed app apart in place, and says so when macOS refuses to move it', () => {
+  // an rm of the installed app that stops partway, as on a ^C
+  const halfRm = install({ 'bin/pnpm': '', 'bin/rm': 'for a; do case "$a" in */"Svall Dev.app") /bin/rm "$a/Contents/build"; exit 1 ;; esac; done; exec /bin/rm "$@"' });
+  expect(halfRm.r.status).toBe(0);
+  expect(halfRm.installed()).toBe('new');
+
+  const refused = install({ 'bin/pnpm': '', 'bin/mv': 'case "$1" in */"Svall Dev.app") echo "mv: Operation not permitted" >&2; exit 1 ;; esac; exec /bin/mv "$@"' });
+  expect(refused.r.status).toBe(1);
+  expect(refused.r.stderr).toContain('could not replace');
+  expect(refused.installed()).toBe('old');
+});
+
 test("shows setup's warnings and Codex's ask to trust the hooks it rewrote, and nothing else of its output", () => {
-  const lines = ['hook script -> /h', '! path  ~/.local/bin is not on PATH', 'Codex asks once to trust these hooks: start codex'];
+  const lines = ['hook script -> /h', '! path  ~/.local/bin is not on PATH', CODEX_TRUST];
   const r = install({ 'bin/pnpm': `[ "$2" = svall ] && printf '%s\\n' ${lines.map((l) => `'${l}'`).join(' ')}` }).r;
   expect(r.status).toBe(0);
-  expect(r.stdout).toContain('│  ! path  ~/.local/bin is not on PATH\n│  Codex asks once to trust these hooks');
+  expect(r.stdout).toContain(`│  ! path  ~/.local/bin is not on PATH\n│  ${CODEX_TRUST}`);
   expect(r.stdout).not.toContain('hook script');
 });

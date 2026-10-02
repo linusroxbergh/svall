@@ -13,11 +13,9 @@ export type LoginEnv = Partial<Record<(typeof NAMES)[number], string>> & { PATH:
 /** How long setup and uninstall wait for the login shell. */
 export const LOGIN_SHELL_TIMEOUT_MS = 5000;
 
-/** Where agent CLIs usually live, in the order the daemon's PATH searches them. */
-export const usualDirs = (homedir = os.homedir()): string[] => [path.join(homedir, '.local/bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'];
-
 const FALLBACK_DIRS = (homedir = os.homedir()): string[] => [
-  ...usualDirs(homedir), path.join(homedir, '.bun/bin'), path.join(homedir, '.npm-global/bin'), '/usr/sbin', '/sbin',
+  '/opt/homebrew/bin', '/usr/local/bin', path.join(homedir, '.local/bin'), path.join(homedir, '.bun/bin'),
+  path.join(homedir, '.npm-global/bin'), '/usr/bin', '/bin', '/usr/sbin', '/sbin',
 ];
 
 /** What the user's login shell exports that setup needs, or undefined when it fails or does not answer in time. */

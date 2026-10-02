@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderGroups } from '../src/checks-view.js';
+import { grouped, renderGroups } from '../src/checks-view.js';
 
 describe('renderGroups', () => {
   it('draws one column of groups, names padded to the widest', () => {
@@ -22,5 +22,13 @@ describe('renderGroups', () => {
     const out = renderGroups([{ title: 'T', checks: [{ name: 'x', status: 'fail', detail: 'run svall setup' }] }], true);
     expect(out).toContain('run svall setup');
     expect(out).toMatch(/\u001b\[/);
+  });
+});
+
+describe('grouped', () => {
+  it('shows a check no group names under Other, rather than dropping it', () => {
+    const groups = grouped([{ name: 'tmux', status: 'ok', detail: 'tmux 3.5a' }, { name: 'new check', status: 'warn', detail: 'added since' }]);
+    expect(groups.find((g) => g.title === 'Tools')?.checks.map((c) => c.name)).toEqual(['tmux']);
+    expect(groups.at(-1)).toEqual({ title: 'Other', checks: [{ name: 'new check', status: 'warn', detail: 'added since' }] });
   });
 });

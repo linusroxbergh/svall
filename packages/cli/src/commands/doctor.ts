@@ -7,10 +7,11 @@ import { claudeHooksCurrent, codexHooksCurrent, codexInstalled, hooksInstalled }
 import { AGENTS, AGENT_KINDS, findAgents } from '@svall/svalld/agents';
 import { codexPaths, type CodexPaths } from '@svall/svalld/codex/install';
 import { loadConfig, parseConfig } from '@svall/svalld/config';
-import { launchdEnv, plistCurrent, plistEnv, plistRun } from '@svall/svalld/launchd';
+import { launchdEnv, plistEnv, plistRun } from '@svall/svalld/launchd';
 import { resolvePaths, userPaths } from '@svall/svalld/paths';
 import { PRIVATE, SHIM, profileHome, profileLabel } from '@svall/svalld/profile';
 import { ownRuntime } from '@svall/svalld/runtime';
+import { readOrUndefined } from '@svall/svalld/settings-file';
 import { shimsCurrent } from '@svall/svalld/setup';
 import type { AgentKind } from '@svall/protocol';
 import { grouped, renderGroups, useColor } from '../checks-view.js';
@@ -21,7 +22,7 @@ import type { Target } from '../target.js';
 import { checkoutVersion } from '../version.js';
 import { missing, preflight, realPreflightDeps, type Check, type PreflightDeps } from './preflight.js';
 
-export type Report = { home: string; checks: Check[]; log: { path: string; lines: string[] } };
+type Report = { home: string; checks: Check[]; log: { path: string; lines: string[] } };
 
 export type DoctorDeps = PreflightDeps & {
   read(file: string): string | undefined;
@@ -40,9 +41,10 @@ export type DoctorDeps = PreflightDeps & {
   found: AgentKind[];
   integrations?: AgentKind[];
   codexTrust(): Promise<HookTrust | undefined>;
-  // whether the shims and the fleet's plist hold what setup would write now
+  // whether the shims hold what setup would write now
   shimsCurrent: boolean;
-  plistCurrent: boolean;
+  // the program this build's plist starts svalld with
+  daemon: string[];
 };
 const LOG_LINES = 20;
 
@@ -135,7 +137,7 @@ function daemonNode(t: Target, d: DoctorDeps): Check {
 
 // launchd runs the plist's program with only the plist's PATH, and logs nothing to svalld.log when it cannot:
 // a checkout or app moved or deleted since setup, or a claude or codex installed since outside that PATH
-function daemonPathCheck(t: Target, d: DoctorDeps): Check {
+function daemonPath(t: Target, d: DoctorDeps): Check {
   if (!t.managed) return { name: 'daemon path', status: 'skip', detail: 'not managed' };
   const { plist, fix } = plistOf(t, d);
   const text = d.read(plist);
@@ -211,12 +213,15 @@ function shims(d: DoctorDeps): Check {
     : { name: 'shims', status: 'warn', detail: `missing or not what this build writes: run ${SHIM} setup from the build you use` };
 }
 
+// only the build it runs: the plist's PATH and env come from the shell setup ran in, which the daemon checks compare
 function plistCheck(t: Target, d: DoctorDeps): Check {
   if (!t.managed) return { name: 'launchd plist', status: 'skip', detail: 'not managed' };
   const { plist, fix } = plistOf(t, d);
-  return d.plistCurrent
+  const text = d.read(plist);
+  if (text === undefined) return { name: 'launchd plist', status: 'warn', detail: `missing: ${fix}` };
+  return plistRun(text).program.join('\n') === d.daemon.join('\n')
     ? { name: 'launchd plist', status: 'ok', detail: `${plist} runs this build` }
-    : { name: 'launchd plist', status: 'warn', detail: `missing or not what this build writes: ${fix}, from the build you use` };
+    : { name: 'launchd plist', status: 'warn', detail: `runs another build: ${fix}, from the build you use` };
 }
 
 export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
@@ -229,7 +234,7 @@ export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
     await hookReceiver(t, d),
     await launchd(t, d),
     daemonNode(t, d),
-    daemonPathCheck(t, d),
+    daemonPath(t, d),
     daemonEnv(t, d),
     hooks(d),
     await codexCheck(d),
@@ -254,16 +259,16 @@ export function doctorCommand(target: () => Target, json: () => boolean): Comman
     const t = target();
     let integrations: AgentKind[] | undefined;
     try { integrations = loadConfig(resolvePaths(profileHome(PRIVATE)).config).integrations; } catch { /* the private fleet's doctor reports it */ }
-    const { launchAgents, shimDir } = userPaths();
+    const { claudeSettings, launchAgents, shimDir } = userPaths();
     const report = { version: checkoutVersion(), ...await doctor(t, {
       ...realPreflightDeps(t.home),
-      read: (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return undefined; } },
+      read: readOrUndefined,
       connect: (home) => Client.connect(home),
       connectHook,
       uid: os.userInfo().uid,
-      settingsPath: userPaths().claudeSettings,
+      settingsPath: claudeSettings,
       hooksHome: profileHome(PRIVATE),
-      launchAgentsDir: userPaths().launchAgents,
+      launchAgentsDir: launchAgents,
       daemonEnv: launchdEnv(),
       codex: codexPaths(),
       exists: fs.existsSync,
@@ -271,7 +276,7 @@ export function doctorCommand(target: () => Target, json: () => boolean): Comman
       integrations,
       codexTrust: () => askCodexTrust({ codexHome: codexPaths().dir, script: resolvePaths(profileHome(PRIVATE)).hookScript }),
       shimsCurrent: shimsCurrent(shimDir, ownRuntime()),
-      plistCurrent: plistCurrent({ home: t.home, label: profileLabel(t.name), launchAgentsDir: launchAgents, runtime: ownRuntime() }),
+      daemon: ownRuntime().daemon,
     }) };
     printResult(report, json(), () => [
       `svall ${report.version}`,

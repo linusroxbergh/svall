@@ -64,6 +64,8 @@ CLIs.
    `codex`. With both CLIs installed, the app asks which one the scribe and
    mission control run. Change it later in Settings or with `svall agent codex`.
 
+## Using Svall
+
 ### Using API keys
 
 Svall has no AI account or billing of its own. The provider whose key you use

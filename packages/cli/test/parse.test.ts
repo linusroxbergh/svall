@@ -4,7 +4,7 @@ import { int, num, point, size } from '../src/commands/parse.js';
 describe('int', () => {
   it('names the flag a value that is not a whole number came from', () => {
     expect(int('50', '--lines')).toBe(50);
-    for (const bad of ['all', '', '1.5', '0x10', 'Infinity', '1e3']) expect(() => int(bad, '--lines')).toThrow(`bad --lines "${bad}", expected a whole number`);
+    for (const bad of ['all', '', '1.5', '0x10', 'Infinity', '1e3', '99999999999999999999']) expect(() => int(bad, '--lines')).toThrow(`bad --lines "${bad}", expected a whole number`);
   });
 
   it('keeps a value within its range', () => {

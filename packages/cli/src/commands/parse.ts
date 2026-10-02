@@ -20,8 +20,8 @@ export const size = (spec: string | undefined, flag: string): { w: number; h: nu
 
 /** A whole number from `flag`, from `min` to `max`. */
 export function int(value: string, flag: string, { min = -Infinity, max = Infinity } = {}): number {
-  if (!/^-?\d+$/.test(value.trim())) throw new Error(`bad ${flag} "${value}", expected a whole number`);
   const n = Number(value);
+  if (!/^-?\d+$/.test(value.trim()) || !Number.isSafeInteger(n)) throw new Error(`bad ${flag} "${value}", expected a whole number`);
   if (n < min || n > max) throw new Error(`bad ${flag} "${value}", expected ${max === Infinity ? `at least ${min}` : `${min} to ${max}`}`);
   return n;
 }

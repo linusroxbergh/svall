@@ -5,7 +5,6 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { AGENTS, AGENT_KINDS, isExecutable, onPath } from './agents.js';
 import { codexPaths } from './codex/install.js';
-import { usualDirs } from './login-env.js';
 import { claudePaths, realPath, resolvePaths } from './paths.js';
 import { BUNDLE_ID } from './profile.js';
 import type { Runtime } from './runtime.js';
@@ -63,7 +62,7 @@ const nodeDirOf = (execPath: string): string => path.dirname(execPath).replace(/
 // launchd gives the daemon no shell PATH, so the folder this shell finds claude or codex in is added after the usual
 // ones when it is none of them, as for a pnpm, bun or volta global. Its real path, as a node manager's can be per shell
 function daemonPath(nodeDir?: string): string {
-  const usual = [...nodeDir ? [nodeDir] : [], ...usualDirs()];
+  const usual = [...nodeDir ? [nodeDir] : [], path.join(os.homedir(), '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'];
   const found = AGENT_KINDS.map((k) => onPath(AGENTS[k].bin, process.env.PATH ?? ''))
     .filter((dir) => dir !== undefined).map(realPath);
   const known = new Set(usual.map(realPath));

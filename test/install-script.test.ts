@@ -58,6 +58,14 @@ test('installs the app latest.json names, after checking its sha256, and opens i
   expect(fs.readFileSync(s.opened, 'utf8').trim()).toBe(path.join(s.dir, 'Apps/Svall.app'));
 }, 30_000);
 
+test('starts the new copy afresh, so one a stopped install left behind is not merged into it', async () => {
+  const s = await site();
+  fs.mkdirSync(path.join(s.dir, 'Apps/.Svall.app.new/Contents'), { recursive: true });
+  fs.writeFileSync(path.join(s.dir, 'Apps/.Svall.app.new/Contents/stale'), '');
+  expect((await run(s.env)).status).toBe(0);
+  expect(fs.readdirSync(path.join(s.dir, 'Apps/Svall.app/Contents'))).toEqual(['Info.plist']);
+}, 30_000);
+
 test('refuses a download whose sha256 does not match, and installs nothing', async () => {
   const s = await site({ sha: '0'.repeat(64) });
   const r = await run(s.env);

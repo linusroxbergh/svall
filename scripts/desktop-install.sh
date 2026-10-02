@@ -135,11 +135,13 @@ for home in "$HOME"/.svall-dev "$HOME"/.svall-dev-*; do
 done
 
 step "Installing to $DEST"
-# the new copy is whole before the old one goes, so a failed copy leaves the installed app
-rm -rf "$DEST/.Svall Dev.app.new"
+# the new copy is whole before the old one is renamed aside, so a failed copy or a ^C leaves a whole app in place
+rm -rf "$DEST/.Svall Dev.app.new" "$DEST/.Svall Dev.app.old"
 quiet ditto "apps/desktop/mac/build/Svall Dev.app" "$DEST/.Svall Dev.app.new"
-rm -rf "$DEST/Svall Dev.app"
+[ ! -e "$DEST/Svall Dev.app" ] || mv "$DEST/Svall Dev.app" "$DEST/.Svall Dev.app.old" ||
+  fail "could not replace $DEST/Svall Dev.app (macOS may ask to let your terminal manage apps); move it to the Trash and run pnpm desktop:install again"
 mv "$DEST/.Svall Dev.app.new" "$DEST/Svall Dev.app"
+rm -rf "$DEST/.Svall Dev.app.old"
 # Finder caches icons per bundle path; touching the bundle makes it re-read this build's
 touch "$DEST/Svall Dev.app"
 # the build LaunchServices knows could stand for the bundle id in place of the installed app
