@@ -135,9 +135,11 @@ that. The Usage panel shows Claude's subscription limits, not API spending.
 
 ### Updating
 
-Svall checks for updates on its own and installs one when you click it. Svall →
-Check for Updates… checks now. Installing quits every Svall window, which stops
-each fleet; a character picks up where it left off when you open it.
+Svall checks for updates on its own. When one is out, "Update available" shows
+at the right end of the title bar; clicking it opens the release notes and the
+Install button. Svall → Check for Updates… checks now. Installing quits every
+Svall window, which stops each fleet; a character picks up where it left off
+when you open it.
 
 ### Uninstalling
 
