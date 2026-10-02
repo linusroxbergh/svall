@@ -7,23 +7,137 @@ import { Command } from 'commander';
 import type { AgentKind } from '@svall/protocol';
 import { CODEX_TRUST } from '@svall/svalld/agent-hooks';
 import { AGENTS, AGENT_KINDS, findAgents, mainAgent, onPath } from '@svall/svalld/agents';
-import { codexPaths } from '@svall/svalld/codex/install';
+import { codexPaths, type CodexPaths } from '@svall/svalld/codex/install';
 import { loadConfig, saveConfig } from '@svall/svalld/config';
 import { isRunning, kickstart, plistCurrent, takenOverBy } from '@svall/svalld/launchd';
 import { expandHome, resolvePaths, userPaths } from '@svall/svalld/paths';
 import { LOGIN_SHELL_TIMEOUT_MS, takeLoginEnv } from '@svall/svalld/login-env';
 import { LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from '@svall/svalld/profile';
-import { ownRuntime, runtimeVersion } from '@svall/svalld/runtime';
+import { ownRuntime, runtimeVersion, type Runtime } from '@svall/svalld/runtime';
 import { readOrUndefined } from '@svall/svalld/settings-file';
-import { cliCommand, refreshFleetPlists, runSetup, setupState, type SetupState } from '@svall/svalld/setup';
+import { cliCommand, refreshFleetPlists, runSetup, setupState, type SetupOptions, type SetupState } from '@svall/svalld/setup';
 import { inheritingFleets, integrationsFor, projectsFolder, requireInstalledApp, setupPlan, staleFleets, suggestProjects } from '@svall/svalld/setup-plan';
 import { fleetHomes } from '@svall/svalld/uninstall';
 import { grouped, renderGroups, useColor } from '../checks-view.js';
 import { printResult } from '../format.js';
-import { checkLine, preflight, realPreflightDeps, requireReady, type Check } from './doctor.js';
+import { checkLine, preflight, realPreflightDeps, requireReady, type Check } from './preflight.js';
 import type { Target } from '../target.js';
 
 const execFileP = promisify(execFile);
+
+type Flags = { launchctl: boolean; check?: boolean; plan?: boolean; agents?: string; found?: string; projects?: string; ifNeeded?: boolean; loginShell?: boolean };
+type Choices = Parameters<typeof saveConfig>[1];
+
+// what every part of a setup run reads
+type Run = {
+  home: string; runtime: Runtime; answered: boolean; json: boolean; configFile: string; settingsPath: string; codex: CodexPaths;
+  launchAgents: string; shimDir: string; homes: string[];
+};
+
+const label = (home: string): string => profileLabel(profileOf(home));
+const plistOf = (r: Run, home: string): string | undefined => readOrUndefined(path.join(r.launchAgents, `${label(home)}.plist`));
+
+// setup takes an agent whose own folder is here as installed, even when its CLI is not on PATH
+const folderOf = (r: Run, k: AgentKind): string => (k === 'claude' ? path.dirname(r.settingsPath) : r.codex.dir);
+const hasFolder = (r: Run, k: AgentKind): boolean => fs.existsSync(folderOf(r, k));
+
+// the choices are saved only once setup is about to write, so a run that stops has changed nothing
+function parseChoices(o: Flags, r: Run): Choices | undefined {
+  let choices: Choices | undefined;
+  if (o.agents !== undefined) {
+    if (o.plan || o.check || o.ifNeeded) throw new Error('--agents is for a setup that writes everything');
+    const kinds = (list: string): AgentKind[] => list.split(',').map((name) => {
+      if (!AGENT_KINDS.includes(name as AgentKind)) throw new Error(`unknown agent ${name}`);
+      return name as AgentKind;
+    });
+    const chosen = kinds(o.agents);
+    const runnable = findAgents(process.env.PATH ?? '');
+    const found = o.found !== undefined ? kinds(o.found) : AGENT_KINDS.filter((k) => runnable.includes(k) || hasFolder(r, k));
+    const config = loadConfig(r.configFile);
+    // a fleet with no main agent set runs claude when both are found; turning off the main agent, saved or not, makes
+    // the one left on whose CLI is here the main agent
+    const on = chosen.filter((k) => runnable.includes(k));
+    if (!on.length && runnable.length) throw new Error(`--agents ${o.agents} leaves on no agent whose CLI is on PATH; add ${runnable.join(' or ')}`);
+    const main = on.length && !on.includes(mainAgent(config.mainAgent, found)) ? { mainAgent: on[0] } : {};
+    choices = { integrations: integrationsFor(chosen, found, config.integrations), ...main };
+  }
+  if (o.projects !== undefined) {
+    if (o.plan || o.check || o.ifNeeded) throw new Error('--projects is for a setup that writes everything');
+    choices = { ...choices, defaultCwd: projectsFolder(o.projects) };
+  }
+  return choices;
+}
+
+async function planAction(r: Run, integrations: AgentKind[] | undefined): Promise<void> {
+  const found = await Promise.all(findAgents(process.env.PATH ?? '').map(async (kind) => {
+    const bin = path.join(onPath(AGENTS[kind].bin, process.env.PATH ?? '')!, AGENTS[kind].bin);
+    const version = await execFileP(bin, ['--version'], { timeout: 5_000 }).then((res) => res.stdout.trim().split('\n')[0], () => undefined);
+    return { kind, path: bin, version };
+  }));
+  // the stand-in folders say nothing of whether the user's own PATH holds the shim
+  const plan = setupPlan({
+    home: r.home, projects: suggestProjects(os.homedir(), loadConfig(r.configFile).defaultCwd), found, folders: AGENT_KINDS.filter((k) => hasFolder(r, k)).map((kind) => ({ kind, path: folderOf(r, kind) })), integrations, settingsPath: r.settingsPath, codexHooks: r.codex.hooks, launchAgentsDir: r.launchAgents,
+    // the plists a setup from this screen writes for the other fleets, taking over any another copy runs
+    fleets: r.homes.filter((h) => profileOf(h) !== PRIVATE && !plistCurrent({ home: h, label: label(h), launchAgentsDir: r.launchAgents, runtime: r.runtime })),
+    shimDir: r.shimDir, pathEnv: r.answered ? process.env.PATH ?? '' : '', answered: r.answered, cli: cliCommand(r.runtime),
+  });
+  process.stdout.write(`${JSON.stringify(plan)}\n`);
+}
+
+async function checkAction(r: Run, state: SetupState): Promise<void> {
+  const checks = await preflight(realPreflightDeps(r.home));
+  const notes: Check[] = [];
+  // desktop:install runs setup when it sees one of these lines, as nothing else rewrites the Claude hooks, the shims or the plist;
+  // it puts this checkout's app in place, so shims or a plist that run another checkout, moved or not, are out of date
+  if (state.hooksStale) notes.push({ name: 'hooks', status: 'warn', detail: `missing or out of date: run ${SHIM} setup` });
+  if (state.shimsStale) notes.push({ name: 'shims', status: 'warn', detail: `missing or out of date: run ${SHIM} setup` });
+  if (state.plistStale) notes.push({ name: 'launchd plist', status: 'warn', detail: `missing or out of date: run ${SHIM} setup` });
+  // a failed check is listed too, as --json has no other way to say why it exits 1
+  const warnings = [...checks.filter((c) => c.status === 'warn' || c.status === 'fail').map(checkLine), ...notes.map(checkLine)];
+  printResult({ done: [], warnings }, r.json, () => renderGroups(grouped([...checks, ...notes]), useColor()));
+  if (checks.some((c) => c.status === 'fail')) process.exitCode = 1;
+}
+
+type Daemons = { ours: string[]; running: Set<string>; stale: string[] };
+
+// a fleet another copy on disk runs keeps its daemon, whatever version it is; only a fleet whose window is open runs,
+// and the rest start on the new build with their window
+async function daemons(r: Run, system: boolean): Promise<Daemons> {
+  const ours = r.homes.filter((h) => !takenOverBy(plistOf(r, h), r.runtime));
+  const running = new Set<string>();
+  if (system) for (const h of ours) if (await isRunning(label(h))) running.add(label(h));
+  return { ours, running, stale: staleFleets(r.homes, runtimeVersion(), (l) => running.has(l)) };
+}
+
+// --if-needed with nothing to set up, or nothing it may set up, still restarts old daemons
+async function refreshAction(r: Run, stale: string[], system: boolean, unwritable: string | undefined): Promise<void> {
+  const done = system ? await kickstart(stale) : [];
+  const warnings = [
+    ...r.answered ? [] : ['the login shell did not answer, so the hooks, shims and plists were left as they are'],
+    ...unwritable ? [unwritable] : [],
+  ];
+  printResult({ done, warnings }, r.json, () => [...done, ...warnings].join('\n'));
+}
+
+async function runAction(r: Run, o: Daemons & { choices?: Choices; options: SetupOptions; state?: SetupState; system: boolean; ifNeeded?: boolean }): Promise<void> {
+  const warnings = requireReady(await preflight({ ...realPreflightDeps(r.home), ...o.choices?.mainAgent ? { mainAgent: o.choices.mainAgent } : {} }));
+  if (o.choices) {
+    fs.mkdirSync(r.home, { recursive: true });
+    if (o.choices.defaultCwd) fs.mkdirSync(expandHome(o.choices.defaultCwd), { recursive: true });
+    saveConfig(r.configFile, o.choices);
+  }
+  const lines = await runSetup({ ...o.options, launchctl: o.system, replaceSettings: !o.ifNeeded }, o.state);
+  const fleets = await refreshFleetPlists({ homes: r.homes, runtime: r.runtime, launchAgentsDir: r.launchAgents, launchctl: o.system, takeOver: !o.ifNeeded });
+  lines.push(...fleets.done);
+  // a running fleet took the private fleet's main agent at its start, so a switch reaches it only through a restart
+  const inheriting = o.choices?.mainAgent ? inheritingFleets(o.ours, (l) => o.running.has(l)) : [];
+  const restart = [...new Set([...o.stale, ...inheriting])].filter((l) => l !== LAUNCHD_LABEL && !fleets.restarted.includes(l));
+  if (o.system) lines.push(...await kickstart(restart));
+  // Codex's trust ask is the user's next step, so it goes with the warnings the setup screen shows
+  const done = lines.filter((l) => l !== CODEX_TRUST);
+  if (done.length < lines.length) warnings.push(CODEX_TRUST);
+  printResult({ done, warnings }, r.json, () => [...done, ...warnings].join('\n'));
+}
 
 export function setupCommand(target: () => Target, json: () => boolean): Command {
   return new Command('setup')
@@ -36,7 +150,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
     .option('--projects <dir>', 'where new characters start, made if missing; saved as defaultCwd')
     .option('--if-needed', 'set up only what is missing or out of date, and restart daemons of another version')
     .option('--login-shell', 'take PATH, CLAUDE_CONFIG_DIR and CODEX_HOME from the login shell, as an app opened from Finder has none')
-    .action(async (o: { launchctl: boolean; check?: boolean; plan?: boolean; agents?: string; found?: string; projects?: string; ifNeeded?: boolean; loginShell?: boolean }) => {
+    .action(async (o: Flags) => {
       const answered = o.loginShell ? await takeLoginEnv() : true;
       // setup owns the per-user half — the Claude hooks and the shims — so it only ever means private
       const t = target();
@@ -47,65 +161,23 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       if (!answered && !o.plan && !o.check && !o.ifNeeded) {
         throw new Error(`the login shell did not answer within ${LOGIN_SHELL_TIMEOUT_MS / 1000} seconds, so setup changed nothing: try again, or run ${cliCommand(runtime)} setup in a terminal`);
       }
-      const configFile = resolvePaths(t.home).config;
-      const settingsPath = userPaths().claudeSettings;
-      const codex = codexPaths();
-      const { launchAgents, shimDir } = userPaths();
-      // setup takes an agent whose own folder is here as installed, even when its CLI is not on PATH
-      const folderOf = (k: AgentKind) => (k === 'claude' ? path.dirname(settingsPath) : codex.dir);
-      const hasFolder = (k: AgentKind) => fs.existsSync(folderOf(k));
-      // the choices are saved only once setup is about to write, so a run that stops has changed nothing
-      let choices: Parameters<typeof saveConfig>[1] | undefined;
-      if (o.agents !== undefined) {
-        if (o.plan || o.check || o.ifNeeded) throw new Error('--agents is for a setup that writes everything');
-        const kinds = (list: string): AgentKind[] => list.split(',').map((name) => {
-          if (!AGENT_KINDS.includes(name as AgentKind)) throw new Error(`unknown agent ${name}`);
-          return name as AgentKind;
-        });
-        const chosen = kinds(o.agents);
-        const runnable = findAgents(process.env.PATH ?? '');
-        const found = o.found !== undefined ? kinds(o.found) : AGENT_KINDS.filter((k) => runnable.includes(k) || hasFolder(k));
-        const config = loadConfig(configFile);
-        // a fleet with no main agent set runs claude when both are found; turning off the main agent, saved or not, makes
-        // the one left on whose CLI is here the main agent
-        const on = chosen.filter((k) => runnable.includes(k));
-        if (!on.length && runnable.length) throw new Error(`--agents ${o.agents} leaves on no agent whose CLI is on PATH; add ${runnable.join(' or ')}`);
-        const main = on.length && !on.includes(mainAgent(config.mainAgent, found)) ? { mainAgent: on[0] } : {};
-        choices = { integrations: integrationsFor(chosen, found, config.integrations), ...main };
-      }
-      if (o.projects !== undefined) {
-        if (o.plan || o.check || o.ifNeeded) throw new Error('--projects is for a setup that writes everything');
-        choices = { ...choices, defaultCwd: projectsFolder(o.projects) };
-      }
-      const integrations = choices?.integrations ?? loadConfig(configFile).integrations;
-      const homes = fleetHomes(os.homedir());
-      const label = (h: string) => profileLabel(profileOf(h));
-      if (o.plan) {
-        const found = await Promise.all(findAgents(process.env.PATH ?? '').map(async (kind) => {
-          const bin = path.join(onPath(AGENTS[kind].bin, process.env.PATH ?? '')!, AGENTS[kind].bin);
-          const version = await execFileP(bin, ['--version'], { timeout: 5_000 }).then((r) => r.stdout.trim().split('\n')[0], () => undefined);
-          return { kind, path: bin, version };
-        }));
-        // the stand-in folders say nothing of whether the user's own PATH holds the shim
-        const plan = setupPlan({
-          home: t.home, projects: suggestProjects(os.homedir(), loadConfig(configFile).defaultCwd), found, folders: AGENT_KINDS.filter(hasFolder).map((kind) => ({ kind, path: folderOf(kind) })), integrations, settingsPath, codexHooks: codex.hooks, launchAgentsDir: launchAgents,
-          // the plists a setup from this screen writes for the other fleets, taking over any another copy runs
-          fleets: homes.filter((h) => profileOf(h) !== PRIVATE && !plistCurrent({ home: h, label: label(h), launchAgentsDir: launchAgents, runtime })),
-          shimDir, pathEnv: answered ? process.env.PATH ?? '' : '', answered, cli: cliCommand(runtime),
-        });
-        process.stdout.write(`${JSON.stringify(plan)}\n`);
-        return;
-      }
-      const plistOf = (h: string) => readOrUndefined(path.join(launchAgents, `${label(h)}.plist`));
+      const { claudeSettings, launchAgents, shimDir } = userPaths();
+      const r: Run = {
+        home: t.home, runtime, answered, json: json(), configFile: resolvePaths(t.home).config, settingsPath: claudeSettings, codex: codexPaths(),
+        launchAgents, shimDir, homes: fleetHomes(os.homedir()),
+      };
+      const choices = parseChoices(o, r);
+      const integrations = choices?.integrations ?? loadConfig(r.configFile).integrations;
+      if (o.plan) return planAction(r, integrations);
       if (o.ifNeeded) {
-        const owner = takenOverBy(plistOf(t.home), runtime);
+        const owner = takenOverBy(plistOf(r, r.home), runtime);
         if (owner) {
           const warnings = [`${owner} runs these fleets; open that copy of Svall, or run ${cliCommand(runtime)} setup to move them here`];
-          printResult({ done: [], warnings }, json(), () => warnings.join('\n'));
+          printResult({ done: [], warnings }, r.json, () => warnings.join('\n'));
           return;
         }
       }
-      const options = { home: t.home, settingsPath, codex, launchAgentsDir: launchAgents, shimDir, runtime, agents: findAgents(process.env.PATH ?? ''), integrations };
+      const options = { home: r.home, settingsPath: r.settingsPath, codex: r.codex, launchAgentsDir: launchAgents, shimDir, runtime, agents: findAgents(process.env.PATH ?? ''), integrations };
       // this throws on a file setup could not write back, so --check covers it too; a refresh still restarts old daemons
       let state: SetupState | undefined;
       let unwritable: string | undefined;
@@ -115,56 +187,14 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
         if (!o.ifNeeded || o.check) throw e;
         unwritable = (e as Error).message;
       }
-      if (o.check) {
-        const checks = await preflight(realPreflightDeps(t.home));
-        const notes: Check[] = [];
-        // desktop:install runs setup when it sees one of these lines, as nothing else rewrites the Claude hooks, the shims or the plist;
-        // it puts this checkout's app in place, so shims or a plist that run another checkout, moved or not, are out of date
-        if (state!.hooksStale) notes.push({ name: 'hooks', status: 'warn', detail: `missing or out of date: run ${SHIM} setup` });
-        if (state!.shimsStale) notes.push({ name: 'shims', status: 'warn', detail: `missing or out of date: run ${SHIM} setup` });
-        if (state!.plistStale) notes.push({ name: 'launchd plist', status: 'warn', detail: `missing or out of date: run ${SHIM} setup` });
-        // a failed check is listed too, as --json has no other way to say why it exits 1
-        const warnings = [...checks.filter((c) => c.status === 'warn' || c.status === 'fail').map(checkLine), ...notes.map(checkLine)];
-        printResult({ done: [], warnings }, json(), () => renderGroups(grouped([...checks, ...notes]), useColor()));
-        if (checks.some((c) => c.status === 'fail')) process.exitCode = 1;
-        return;
-      }
+      if (o.check) return checkAction(r, state!);
       const system = o.launchctl && process.platform === 'darwin';
-      // a fleet another copy on disk runs keeps its daemon, whatever version it is
-      const ours = homes.filter((h) => !takenOverBy(plistOf(h), runtime));
-      // only a fleet whose window is open runs; the rest start on the new build with their window
-      const running = new Set<string>();
-      if (system) for (const h of ours) if (await isRunning(label(h))) running.add(label(h));
-      const stale = staleFleets(homes, runtimeVersion(), (l) => running.has(l));
+      const d = await daemons(r, system);
       if (o.ifNeeded) {
-        const fleetsStale = ours.some((h) => profileOf(h) !== PRIVATE && !plistCurrent({ home: h, label: label(h), launchAgentsDir: launchAgents, runtime }));
+        const fleetsStale = d.ours.some((h) => profileOf(h) !== PRIVATE && !plistCurrent({ home: h, label: label(h), launchAgentsDir: launchAgents, runtime }));
         // stand-in folders must not replace what a setup with the real login environment wrote
-        if (!answered || !state || (!state.hooksStale && !state.shimsStale && !state.plistStale && !fleetsStale)) {
-          const done = system ? await kickstart(stale) : [];
-          const warnings = [
-            ...answered ? [] : ['the login shell did not answer, so the hooks, shims and plists were left as they are'],
-            ...unwritable ? [unwritable] : [],
-          ];
-          printResult({ done, warnings }, json(), () => [...done, ...warnings].join('\n'));
-          return;
-        }
+        if (!answered || !state || (!state.hooksStale && !state.shimsStale && !state.plistStale && !fleetsStale)) return refreshAction(r, d.stale, system, unwritable);
       }
-      const warnings = requireReady(await preflight({ ...realPreflightDeps(t.home), ...choices?.mainAgent ? { mainAgent: choices.mainAgent } : {} }));
-      if (choices) {
-        fs.mkdirSync(t.home, { recursive: true });
-        if (choices.defaultCwd) fs.mkdirSync(expandHome(choices.defaultCwd), { recursive: true });
-        saveConfig(configFile, choices);
-      }
-      const lines = await runSetup({ ...options, launchctl: system, replaceSettings: !o.ifNeeded }, state);
-      const fleets = await refreshFleetPlists({ homes, runtime, launchAgentsDir: launchAgents, launchctl: system, takeOver: !o.ifNeeded });
-      lines.push(...fleets.done);
-      // a running fleet took the private fleet's main agent at its start, so a switch reaches it only through a restart
-      const inheriting = choices?.mainAgent ? inheritingFleets(ours, (l) => running.has(l)) : [];
-      const restart = [...new Set([...stale, ...inheriting])].filter((l) => l !== LAUNCHD_LABEL && !fleets.restarted.includes(l));
-      if (system) lines.push(...await kickstart(restart));
-      // Codex's trust ask is the user's next step, so it goes with the warnings the setup screen shows
-      const done = lines.filter((l) => l !== CODEX_TRUST);
-      if (done.length < lines.length) warnings.push(CODEX_TRUST);
-      printResult({ done, warnings }, json(), () => [...done, ...warnings].join('\n'));
+      return runAction(r, { ...d, choices, options, state, system, ifNeeded: o.ifNeeded });
     });
 }

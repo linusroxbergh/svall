@@ -6,7 +6,8 @@ import { resolveTmux } from '@svall/svalld/tmux';
 import type { AgentKind } from '@svall/protocol';
 import { grouped } from '../src/checks-view.js';
 import type { HookTrust } from '../src/codex-trust.js';
-import { codexCheck, doctor, preflight, requireReady, type DoctorDeps } from '../src/commands/doctor.js';
+import { codexCheck, doctor, type DoctorDeps } from '../src/commands/doctor.js';
+import { preflight, requireReady } from '../src/commands/preflight.js';
 
 const priv = { name: 'private', home: '/u/.svall', managed: true };
 const adhoc = { name: 'svall-dev', home: '/tmp/svall-dev', managed: false };

@@ -1,5 +1,5 @@
 import { styleText } from 'node:util';
-import { MARK, type Check } from './commands/doctor.js';
+import { MARK, type Check } from './commands/preflight.js';
 
 const COLOR = { ok: 'green', warn: 'yellow', fail: 'red', skip: 'dim' } as const;
 
