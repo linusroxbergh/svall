@@ -85,20 +85,6 @@ describe('Store', () => {
     expect(fs.readFileSync(file, 'utf8')).toBe(older);
   });
 
-  it('migrates a version 6 file and writes it back, keeping the file it read', () => {
-    const home = makeHome();
-    const file = path.join(home, 'state.json');
-    const before = JSON.stringify({ version: 6, islands: {}, characters: {} });
-    fs.writeFileSync(file, before);
-    const logs: string[] = [];
-    Store.load(file, (m) => logs.push(m));
-    expect(JSON.parse(fs.readFileSync(file, 'utf8')).version).toBe(7);
-    expect(logs[0]).toMatch(/migrated/);
-    const kept = fs.readdirSync(home).find((f) => f.startsWith('state.json.v6-'));
-    expect(kept).toBeDefined();
-    expect(fs.readFileSync(path.join(home, kept!), 'utf8')).toBe(before);
-  });
-
   it('leaves out a character the schema rejects, keeps the file as read beside the rest, and writes the rest back', () => {
     const home = makeHome();
     const file = path.join(home, 'state.json');

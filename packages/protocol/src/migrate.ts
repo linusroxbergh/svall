@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { Character, FleetState, Island } from './state.js';
 
 const CURRENT = FleetState.shape.version.value;
-const OLDEST = 6;
+const OLDEST = 7;
 
 export class NewerStateVersion extends Error {
   constructor(version: number) {
@@ -41,7 +41,7 @@ export function migrateState(raw: unknown): { state: FleetState; migrated: boole
   const version = (raw as { version?: unknown } | null)?.version;
   if (typeof version === 'number' && version > CURRENT) throw new NewerStateVersion(version);
   if (typeof version === 'number' && version < OLDEST) throw new OlderStateVersion(version);
-  if (version !== 6 && version !== 7) throw new Error(`unsupported state version ${String(version)}`);
-  // 7 has 6's shape under a new number: a build from before codex agents refuses a 7 instead of quarantining it
-  return { ...salvage({ ...(raw as object), version: 7 }), migrated: version === 6 };
+  if (version !== CURRENT) throw new Error(`unsupported state version ${String(version)}`);
+  // a version bump lifts the older files it reads here and says so, which has the store keep the file it read
+  return { ...salvage(raw as object), migrated: false };
 }
