@@ -109,11 +109,12 @@ runIf('desktop terminal attach', () => {
 
   it('keeps resizing while the session it made has no client on it', async () => {
     const { tmux, hub, c } = await boot();
-    await hub.open(c.id, 90, 25, 2000, viewer());
+    const v = viewer();
+    await hub.open(c.id, 90, 25, 2000, v);
     expect((await tmux.run('show-options', '-w', '-t', c.tmux!.windowId, '-v', 'window-size')).trim()).toBe('manual');
     await hub.attach(c.id);
     expect((await tmux.run('show-options', '-w', '-t', c.tmux!.windowId, 'window-size')).trim()).toBe('');
-    await hub.resize(c.id, 100, 30, viewer());
+    await hub.resize(c.id, 100, 30, v);
     expect((await tmux.run('display-message', '-p', '-t', c.tmux!.windowId, '#{window_width}')).trim()).toBe('100');
   });
 

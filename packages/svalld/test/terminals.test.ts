@@ -122,10 +122,24 @@ runIf('TerminalHub', () => {
     const { hub, tmux, c } = await boot();
     const size = async () => (await tmux.run('display-message', '-p', '-t', c.tmux!.windowId, '#{window_width}')).trim();
     vi.spyOn(tmux, 'listSessions').mockResolvedValue([{ name: `v-${c.id}`, attached: 1, created: Date.now() }]);
-    await hub.open(c.id, 61, 24, 2000, viewer(0, 'app'));
+    const app = viewer(0, 'app');
+    await hub.open(c.id, 61, 24, 2000, app);
     expect(await size()).not.toBe('61');
-    await hub.resize(c.id, 41, 24, viewer(0, 'phone'));
+    await hub.resize(c.id, 63, 24, app);
+    expect(await size()).not.toBe('63');
+    const phone = viewer(0, 'phone');
+    await hub.open(c.id, 41, 24, 2000, phone);
     expect(await size()).toBe('41');
+    await hub.resize(c.id, 45, 24, phone);
+    expect(await size()).toBe('45');
+  });
+
+  it('takes no size from a phone that is not watching, so nothing is left pinned once it goes', async () => {
+    const { hub, tmux, c } = await boot();
+    const phone = viewer(0, 'phone');
+    await hub.resize(c.id, 41, 24, phone);
+    hub.closeAll(phone);
+    expect((await tmux.run('show-options', '-w', '-t', c.tmux!.windowId, 'window-size')).trim()).toBe('');
   });
 
   it('gives the window back to automatic sizing when the last viewer leaves', async () => {
