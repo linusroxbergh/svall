@@ -72,7 +72,7 @@ h1 { margin: 0; max-width: 13ch; font-size: clamp(2.3rem, 1.4rem + 3vw, 3.5rem);
 /* the page is the app's map: its sea stays put under everything as the page scrolls */
 .sea { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden;
   background: radial-gradient(125vw 1250px at 50% 60px, var(--map-0) 0%, var(--map-1) 46%, var(--map-2) 100%) no-repeat, var(--map-2); }
-.sea::after { content: ''; position: absolute; inset: 0; background: url(map-grain.png) 0 0 / 128px 128px; mix-blend-mode: soft-light; opacity: .42; }
+.sea::after { content: ''; position: absolute; inset: 0; background: url(map/map-grain.png) 0 0 / 128px 128px; mix-blend-mode: soft-light; opacity: .42; }
 .vignette { position: fixed; inset: 0; z-index: 45; pointer-events: none; box-shadow: inset 0 0 190px 40px var(--shade-1); }
 main { overflow-x: clip; }
 .stage { position: relative; }
