@@ -1,3 +1,4 @@
+import Carbon
 import Foundation
 
 /// The chords the user has spent in their own Ghostty config, in the form KeyMonitor speaks.
@@ -8,8 +9,8 @@ enum GhosttyKeybinds {
     private static let triggerPrefixes = ["global:", "all:", "unconsumed:", "performable:"]
     /// the key names Ghostty accepts for characters the app can claim
     private static let namedKeys: [String: String] = [
-        "comma": ",", "period": ".", "slash": "/", "semicolon": ";", "apostrophe": "'",
-        "minus": "-", "equal": "=", "plus": "+", "grave_accent": "`", "backslash": "\\",
+        "comma": ",", "period": ".", "slash": "/", "semicolon": ";", "apostrophe": "'", "quote": "'",
+        "minus": "-", "equal": "=", "plus": "+", "grave_accent": "`", "backquote": "`", "backslash": "\\",
         "bracket_left": "[", "bracket_right": "]",
         "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4",
         "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9",
@@ -37,8 +38,11 @@ enum GhosttyKeybinds {
             let value = s[s.index(after: eq)...].trimmingCharacters(in: .whitespacesAndNewlines)
             if key == "config-file" {
                 read(expand(value, near: url), depth: depth + 1, into: &out)
-            } else if key == "keybind", let (chord, action) = binding(value) {
-                out[chord] = action
+            } else if key == "keybind" {
+                // `clear`, and an empty value that goes back to Ghostty's defaults, drop every binding above it;
+                // `unbind` hands one key back
+                if value.isEmpty || value == "clear" { out = [:] }
+                else if let (chord, action) = binding(value) { out[chord] = action == "unbind" ? nil : action }
             }
         }
     }
@@ -52,14 +56,13 @@ enum GhosttyKeybinds {
     }
 
     /// `cmd+shift+p=new_window` -> ("cmd+shift+p", "new_window")
-    static func binding(_ value: String) -> (String, String)? {
+    private static func binding(_ value: String) -> (String, String)? {
         guard let eq = separator(in: value) else { return nil }
         var trigger = String(value[value.startIndex..<eq]).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let action = String(value[value.index(after: eq)...]).trimmingCharacters(in: .whitespacesAndNewlines)
         while let p = triggerPrefixes.first(where: { trigger.hasPrefix($0) }) { trigger.removeFirst(p.count) }
-        // a sequence fires on more than one press, which the app has no way to swallow;
-        // `unbind` is the user handing the key back, so it is not one they spend
-        guard !trigger.contains(">"), !action.isEmpty, action != "unbind" else { return nil }
+        // a sequence fires on more than one press, which the app has no way to swallow
+        guard !trigger.contains(">"), !action.isEmpty else { return nil }
         guard let chord = chord(for: trigger) else { return nil }
         return (chord, action)
     }
@@ -87,10 +90,29 @@ enum GhosttyKeybinds {
         let mods = Set(parts)
         guard mods.subtracting(commandMods).subtracting(["shift"]).isEmpty else { return nil }
         guard !mods.intersection(commandMods).isEmpty else { return nil }
-        if key.hasPrefix("physical:") { key.removeFirst("physical:".count) }
-        if key.hasPrefix("digit_") { key.removeFirst("digit_".count) }
-        if key == "enter" || key == "return" { return "cmd+" + (mods.contains("shift") ? "shift+" : "") + "enter" }
+        for prefix in ["physical:", "digit_", "key_"] where key.hasPrefix(prefix) { key.removeFirst(prefix.count) }
+        let shift = mods.contains("shift")
+        if key == "enter" || key == "return" { return "cmd+" + (shift ? "shift+" : "") + "enter" }
         guard let k = namedKeys[key] ?? (key.count == 1 ? key : nil) else { return nil }
-        return "cmd+" + (mods.contains("shift") ? "shift+" : "") + k
+        return "cmd+" + (shift ? "shift+" + (shifted(k) ?? k) : k)
+    }
+
+    /// What KeyMonitor reads with Shift on the key the current layout types `key` with: `cmd+shift+1` is ⌘! on a US layout.
+    private static func shifted(_ key: String) -> String? {
+        guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+              let data = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return nil }
+        let layout = Unmanaged<CFData>.fromOpaque(data).takeUnretainedValue() as Data
+        return layout.withUnsafeBytes { raw -> String? in
+            guard let layout = raw.baseAddress?.assumingMemoryBound(to: UCKeyboardLayout.self) else { return nil }
+            func type(_ code: UInt16, shift: Bool) -> String? {
+                var dead: UInt32 = 0, length = 0
+                var chars = [UniChar](repeating: 0, count: 4)
+                guard UCKeyTranslate(layout, code, UInt16(kUCKeyActionDown), shift ? UInt32(shiftKey >> 8) : 0, UInt32(LMGetKbdType()),
+                                     OptionBits(kUCKeyTranslateNoDeadKeysMask), &dead, chars.count, &length, &chars) == noErr, length > 0 else { return nil }
+                return String(utf16CodeUnits: chars, count: length)
+            }
+            guard let code = (0..<128).first(where: { type(UInt16($0), shift: false) == key }) else { return nil }
+            return type(UInt16(code), shift: true)?.lowercased()
+        }
     }
 }
