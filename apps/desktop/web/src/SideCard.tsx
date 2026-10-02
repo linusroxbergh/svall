@@ -12,7 +12,7 @@ import { ago, hintText } from './map/tokenText.js';
 import { portraitTint, portraitUrl } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
-import { sourceOfRoot } from './resources/model.js';
+import { ResourcesButton } from './ResourcesButton.js';
 import { contextPctOf, islandsSorted, isUnread, statusOf } from './selectors.js';
 
 type Patch = Omit<Params<'char.update'>, 'id'>;
@@ -54,15 +54,6 @@ function PortraitPicker({ id, portrait }: { id: string; portrait: Portrait }) {
       <span className="pdisc" data-tint={portraitTint(portrait)}><img className="portrait-img" src={portraitUrl(portrait)} alt={portrait} draggable={false} /></span>
       <button className="pnav" data-testid="portrait-next" aria-label="Next animal" onClick={() => step(1)}>›</button>
     </div>
-  );
-}
-
-export function ResourcesButton({ root, testid }: { root: string | undefined; testid: string }) {
-  const sources = useApp((s) => s.resources);
-  const source = sourceOfRoot(sources, root);
-  return (
-    <button className="btn res-open" data-testid={testid} title="Open the resources shelf"
-      onClick={() => app.store.getState().toggleResources(true, { where: (source ?? sources[0])?.rootId, what: 'all' })}>Resources</button>
   );
 }
 
@@ -112,7 +103,7 @@ export function SideCard({ id }: { id: string }) {
         <div className="kicker"><span>Context</span><Info id="char-context">Listed for the agent when it starts, pinned items to read first; your change mid-session reaches it with your next prompt.</Info></div>
         <ContextPills items={c.context} ids={{ list: 'side-context', remove: 'context-remove', pin: 'context-pin' }}
           charId={id} onChange={saveContext} />
-        <AddLink key={id} ids={{ ref: 'context-ref', add: 'context-add' }} onAdd={(item) => saveContext([...c.context, item])} />
+        <AddLink id={id} ids={{ ref: 'context-ref', add: 'context-add' }} onAdd={(item) => saveContext([...c.context, item])} />
       </div>
       <DocsList tier="character" id={id} />
       <LastCommand key={id} id={id} agent={c.agent} />

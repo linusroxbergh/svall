@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { HOME_ISLAND, MIN_SIZE } from '@svall/protocol';
 import { newCharacterOn, newIsland, startHomeAction, toggleIsland } from '../actions.js';
 import { app, deps } from '../boot.js';
@@ -17,7 +17,7 @@ import { homeCrew } from './home.js';
 import { Home } from './HomeIsland.js';
 import { HoverLayer, useHover } from './hover.js';
 import { Island } from './Island.js';
-import { cardScale, cellSize, labelScale, worldCell } from './layout.js';
+import { cardScale, cellSize, crewOf, labelScale, worldCell } from './layout.js';
 import { useMapPointer, type IslandDrag, type PendingIsland } from './pointer.js';
 import { ISLET, placeIslet } from './resources.js';
 import { ResourcesIsland, ResourcesPill } from './ResourcesIsland.js';
@@ -44,8 +44,10 @@ export function Map() {
   const place = placeIslet(hostSize.w, (hi?.size.w ?? 0) * theme.cell, Boolean(hi?.collapsed), camera.homeMost.current);
   const placeRef = useRef(place);
   placeRef.current = place;
+  // the fit reads where the crew stand, which a patch can change without touching an island
+  const crewCells = useMemo(() => JSON.stringify(crewOf(fleet)), [fleet]);
   const { drag, pendingIsland, panning, inDrag, domPointer, hostPointer, onSeaDoubleClick } =
-    useMapPointer({ host, camera, hover: hov, place: placeRef, lastPressAt, islands: fleet.islands });
+    useMapPointer({ host, camera, hover: hov, place: placeRef, lastPressAt, islands: fleet.islands, crewCells });
   const { arrange, covered } = useAutoArrange({ host, islands: fleet.islands, card, cardSize, lastPressAt, reserveAt: camera.reserveAt });
   useDevHook(camera.layoutRef, camera.refits);
 

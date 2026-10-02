@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { contextKind, type ContextItem } from '@svall/protocol';
 import { followLink } from './LinkAsk.js';
 import { LinkIcon } from './map/LinkIcon.js';
@@ -22,9 +22,10 @@ export function ContextPills({ items, ids, charId, onChange }: { items: ContextI
   );
 }
 
-// keyed by the card's id, so a link half typed for one character or island is never offered to the next
-export function AddLink({ ids, onAdd }: { ids: { ref: string; add: string }; onAdd(item: ContextItem): void }) {
+export function AddLink({ id, ids, onAdd }: { id: string; ids: { ref: string; add: string }; onAdd(item: ContextItem): void }) {
   const [ref, setRef] = useState('');
+  // the card stays mounted as the selection moves, so a half typed link would be offered to the next character or island
+  useEffect(() => setRef(''), [id]);
   const add = () => {
     if (!ref.trim()) return;
     onAdd({ kind: contextKind(ref), ref: ref.trim(), label: '', source: 'manual' });

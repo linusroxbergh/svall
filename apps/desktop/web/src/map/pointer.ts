@@ -23,10 +23,11 @@ type Opts = {
   place: RefObject<Placement>;
   lastPressAt: RefObject<number>;
   islands: FleetState['islands'];
+  crewCells: string;
 };
 
 /** Every press, drag and release on the map, turned into what it asks of the fleet. */
-export function useMapPointer({ host, camera, hover, place, lastPressAt, islands }: Opts) {
+export function useMapPointer({ host, camera, hover, place, lastPressAt, islands, crewCells }: Opts) {
   const [drag, setDrag] = useState<Drag>();
   const [pendingIsland, setPendingIsland] = useState<PendingIsland>();
   const pendingRef = useRef<PendingIsland>(undefined);
@@ -220,7 +221,7 @@ export function useMapPointer({ host, camera, hover, place, lastPressAt, islands
       return;
     }
     if (!camera.hold.current) camera.refit();
-  }, [islands]);
+  }, [islands, crewCells]);
 
   const onSeaDoubleClick = (e: React.MouseEvent) => {
     if (pressedKind.current !== 'water') return;

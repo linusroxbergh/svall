@@ -1,5 +1,4 @@
 import { byIslandOrder, type Character, type FleetState, type Island } from '@svall/protocol';
-import { mapIslands } from './map/layout.js';
 import { SINGLE, type Panes } from './panes.js';
 
 export type DisplayStatus = 'working' | 'idle' | 'blocked' | 'done' | 'shell';
@@ -8,7 +7,9 @@ const byCell = (a: Character, b: Character) => a.cell.y - b.cell.y || a.cell.x -
 
 export const islandsSorted = (f: FleetState): Island[] => Object.values(f.islands).sort(byIslandOrder);
 
-// the islands the map draws in the panned world, in the same order; home is drawn in screen space, and a folded island not at all
+// the islands the map draws in the panned world; home is drawn in screen space, and a folded island not at all
+export const mapIslands = (f: FleetState): Island[] => Object.values(f.islands).filter((i) => i.kind !== 'home' && !i.collapsed);
+
 export const mapIslandsSorted = (f: FleetState): Island[] => mapIslands(f).sort(byIslandOrder);
 
 export const homeIsland = (f: FleetState): Island | undefined => Object.values(f.islands).find((i) => i.kind === 'home');
@@ -18,7 +19,7 @@ export const homeIsland = (f: FleetState): Island | undefined => Object.values(f
 export const startOf = (f: FleetState, islandId: string): { command?: string } =>
   (f.islands[islandId]?.kind === 'home' ? { command: f.home.command } : {});
 
-// a fleet object only changes with a patch, while every row's selector asks again on every store change
+// a fleet object is replaced only by a patch or a snapshot, while every row's selector asks again on every store change
 const crews = new WeakMap<FleetState, Map<string, Character[]>>();
 const strips = new WeakMap<FleetState, Character[]>();
 

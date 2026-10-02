@@ -6,7 +6,7 @@ import { HoverCard } from './HoverCard.js';
 import { cardScale, cellSize, worldCell, worldToScreen, type Layout } from './layout.js';
 import type { Placement } from './resources.js';
 
-// how far a hovered card rises, matching `.tok:hover .card` in styles.css
+// how far a hovered card rises, matching `.tok:hover .card` in map.css
 const HOVER_LIFT = 6;
 
 /** The character whose hover card shows, after a moment over its token, and the island hot under the pointer. */

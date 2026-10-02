@@ -18,7 +18,7 @@ export function Setup() {
     setBusy(false);
     if (!m.ok) { setError(m.json.trim()); return; }
     let data: unknown;
-    // output that is not the JSON asked for is shown as it came, rather than leaving the screen waiting
+    // output that is not JSON is shown as it came, rather than leaving the screen waiting
     try { data = JSON.parse(m.json); } catch { setError(m.json.trim()); return; }
     if (m.step === 'plan') {
       const p = data as SetupPlan;

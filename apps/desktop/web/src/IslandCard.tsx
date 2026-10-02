@@ -5,8 +5,8 @@ import { AddLink, ContextPills } from './ContextList.js';
 import { FollowLine, FollowTextarea } from './Field.js';
 import { useApp } from './hooks.js';
 import { DocsList } from './resources/DocsList.js';
+import { ResourcesButton } from './ResourcesButton.js';
 import { charactersOf } from './selectors.js';
-import { ResourcesButton } from './SideCard.js';
 
 export function DeleteIsland({ id, testid, label }: { id: string; testid: string; label: string }) {
   return <button className="btn dan" data-testid={testid} onClick={() => app.store.getState().setDeletingIsland(id)}>{label}</button>;
@@ -49,7 +49,7 @@ export function IslandCard({ id }: { id: string }) {
         <div className="kicker">Context</div>
         <ContextPills items={i.context} ids={{ list: 'side-island-context', remove: 'island-context-remove', pin: 'island-context-pin' }}
           charId={chars[0]?.id} onChange={saveContext} />
-        <AddLink key={id} ids={{ ref: 'island-context-ref', add: 'island-context-add' }} onAdd={(item) => saveContext([...i.context, item])} />
+        <AddLink id={id} ids={{ ref: 'island-context-ref', add: 'island-context-add' }} onAdd={(item) => saveContext([...i.context, item])} />
       </div>
       <DocsList tier="island" id={id} />
       <div className="opens"><ResourcesButton root={commonRoot(chars)} testid="side-island-resources" /></div>

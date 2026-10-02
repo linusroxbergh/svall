@@ -64,6 +64,14 @@ describe('store', () => {
     expect(store.getState().fleet).toBe(before);
     expect(before.characters.c0.unread).toBe(false);
   });
+  it('takes a patch on the whole fleet for drift, for the snapshot to replace', () => {
+    const store = createAppStore();
+    store.getState().setFleet(fleet());
+    const before = store.getState().fleet;
+    expect(() => store.getState().applyPatch([{ op: 'move', from: '/characters/c0', path: '' }])).toThrow();
+    expect(store.getState().fleet).toBe(before);
+    expect(before.characters.c0).toBeDefined();
+  });
   it('ignores patches until the snapshot has loaded', () => {
     const store = createAppStore();
     store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/unread', value: true }]);

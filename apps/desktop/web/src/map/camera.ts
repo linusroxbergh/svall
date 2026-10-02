@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { app } from '../boot.js';
 import { useApp } from '../hooks.js';
-import { homeIsland } from '../selectors.js';
+import { homeIsland, mapIslands } from '../selectors.js';
 import { theme } from '../theme.js';
 import { fitWithHome, homeBlocks, homeReserve } from './home.js';
 import { DBL_CLICK_MS } from './interactions.js';
-import { cellSize, clampPan, crewOf, landSpan, limitAt, mapIslands, worldBounds, type Below, type Layout } from './layout.js';
+import { cellSize, clampPan, crewOf, landSpan, limitAt, worldBounds, type Below, type Layout } from './layout.js';
 import { placeIslet } from './resources.js';
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;

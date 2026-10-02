@@ -2,7 +2,8 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { fitWithHome } from '../../src/map/home.js';
-import { crewOf, mapIslands } from '../../src/map/layout.js';
+import { crewOf } from '../../src/map/layout.js';
+import { mapIslands } from '../../src/selectors.js';
 import { theme } from '../../src/theme.js';
 import { fleet, isl } from '../fixtures.js';
 import { call, freshStore, store } from './harness.js';
@@ -59,6 +60,22 @@ test('a drag whose release the map never heard ends when the map loses the point
   expect(map.getAttribute('data-dragging')).toBe('false');
   press(document.querySelector('.map-sea')!);
   expect(methods()).toEqual([]);
+});
+
+test('a crew member moved where its card changes what the map must show refits the map, though no island moved', async () => {
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 1200 });
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 800 });
+  try {
+    render(<Map />);
+    await act(async () => {});
+    const refits = window.__map!.refits();
+    // a card on the island's bottom row hangs below its ground
+    await act(async () => { store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/cell', value: { x: 1, y: 3 } }]); });
+    expect(window.__map!.refits()).toBeGreaterThan(refits);
+  } finally {
+    delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+  }
 });
 
 test('a double click on open water makes an island there', async () => {

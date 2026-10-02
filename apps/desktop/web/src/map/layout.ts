@@ -1,4 +1,5 @@
 import { SPACING, isLand, pillWidth, type Cell, type Character, type FleetState, type Island } from '@svall/protocol';
+import { mapIslands } from '../selectors.js';
 import { theme, tokenPx } from '../theme.js';
 
 export type Layout = { scale: number; tile: number; ox: number; oy: number };
@@ -155,9 +156,6 @@ export const cellSize = (l: Layout): number => l.tile * l.scale;
 export const worldToScreen = (l: Layout, c: Cell) => ({ x: l.ox + c.x * cellSize(l), y: l.oy + c.y * cellSize(l) });
 export const screenToCell = (l: Layout, p: { x: number; y: number }): Cell => ({ x: Math.floor((p.x - l.ox) / cellSize(l)), y: Math.floor((p.y - l.oy) / cellSize(l)) });
 export const worldCell = (origin: Cell, local: Cell): Cell => ({ x: origin.x + local.x, y: origin.y + local.y });
-
-// the islands that live in the panned world; home is drawn in screen space, and a folded island not at all
-export const mapIslands = (f: FleetState): Island[] => Object.values(f.islands).filter((i) => i.kind !== 'home' && !i.collapsed);
 
 export function cellOwner(f: FleetState, cell: Cell): { island: Island; local: Cell; land: boolean } | undefined {
   for (const island of mapIslands(f)) {

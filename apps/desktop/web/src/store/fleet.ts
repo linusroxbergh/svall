@@ -41,6 +41,8 @@ function patched(fleet: FleetState, ops: Operation[]): FleetState {
     }
   };
   for (const op of ops) {
+    // the whole fleet only ever comes as a snapshot
+    if (!op.path) throw new Error('a patch on the whole fleet');
     own(op.path);
     if (op.op === 'move') own(op.from);
     doc = jsonpatch.applyOperation(doc, op, false, true).newDocument;

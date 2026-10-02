@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Cell } from '@svall/protocol';
 import { createInteractions, type CellEv } from '../src/map/interactions.js';
-import { cellOwner, islandNear, mapIslands } from '../src/map/layout.js';
+import { cellOwner, islandNear } from '../src/map/layout.js';
+import { mapIslands } from '../src/selectors.js';
 import type { Target } from '../src/map/types.js';
 import { chr, fleet } from './fixtures.js';
 
