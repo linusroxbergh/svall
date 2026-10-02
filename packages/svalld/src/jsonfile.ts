@@ -21,14 +21,23 @@ export function readJsonOrQuarantine<T>(
   }
 }
 
-/** Replaces `file` through a temporary name, so an interrupted write cannot truncate what is there.
- *  `perProcess` puts this process's id in that name, for a file two processes may write at once. */
-export function writeAtomic(file: string, text: string, o: { mode?: number; perProcess?: boolean } = {}): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+type WriteOptions = { mode?: number; perProcess?: boolean; mkdir?: boolean };
+
+/** Replaces `file` through a temporary name synced to disk first, so neither an interrupted write nor a crash can
+ *  truncate what is there. `perProcess` puts this process's id in that name, for a file two processes may write at
+ *  once; `mkdir: false` fails the write when the folder is gone rather than making it again. */
+export function writeAtomic(file: string, text: string, o: WriteOptions = {}): void {
+  if (o.mkdir !== false) fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = o.perProcess ? `${file}.tmp-${process.pid}` : `${file}.tmp`;
-  fs.writeFileSync(tmp, text, o.mode === undefined ? undefined : { mode: o.mode });
+  const fd = fs.openSync(tmp, 'w', o.mode);
+  try {
+    fs.writeFileSync(fd, text);
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
   fs.renameSync(tmp, file);
 }
 
-export const writeJsonAtomic = (file: string, value: unknown, o: { mode?: number; perProcess?: boolean } = {}): void =>
+export const writeJsonAtomic = (file: string, value: unknown, o: WriteOptions = {}): void =>
   writeAtomic(file, JSON.stringify(value, null, 2), o);

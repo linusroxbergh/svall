@@ -485,6 +485,8 @@ runIf('Fleet', () => {
     expect(after[c.id].revive).toEqual({ command: `claude --effort 'xhigh' --resume ${SID}` });
     expect(after[shell.id].tmux).toBeUndefined();
     expect(after[shell.id].revive).toEqual({ command: '' });
+    // on disk too, for a daemon ended right after
+    expect(JSON.parse(fs.readFileSync(resolvePaths(b.home).state, 'utf8')).characters[c.id].revive).toEqual(after[c.id].revive);
     // the stop returns once the agent itself has gone, so a resume right after runs alone
     expect(() => process.kill(pid, 0)).toThrow();
     // the end the closing window sends leaves the agent the revive resumes
@@ -494,6 +496,13 @@ runIf('Fleet', () => {
     await new Promise((r) => setTimeout(r, 1500));
     await expect(tmux.run('list-sessions')).rejects.toThrow();
     await expect(fleet.reviveCharacter(c.id)).rejects.toThrow('the fleet is stopping');
+  });
+
+  it('has every change on disk once it has stopped', async () => {
+    const { fleet, home } = await boot();
+    fleet.setDormancy(5);
+    await fleet.stop();
+    expect(JSON.parse(fs.readFileSync(resolvePaths(home).state, 'utf8')).dormantAfterHours).toBe(5);
   });
 
   it('waits on and kills only a pid that still runs its agent when it stops for a quit', async () => {

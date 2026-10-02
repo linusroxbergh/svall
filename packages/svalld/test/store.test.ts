@@ -1,10 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Store } from '../src/store.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
-afterEach(cleanHomes);
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  cleanHomes();
+});
 
 describe('Store', () => {
   it('starts empty when no file exists', () => {
@@ -20,22 +24,61 @@ describe('Store', () => {
     const ops = s.update((d) => { d.islands.i_1 = { id: 'i_1', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 }; });
     expect(ops[0]).toMatchObject({ op: 'add', path: '/islands/i_1' });
     expect(seen).toHaveLength(1);
+    s.flush();
     expect(JSON.parse(fs.readFileSync(file, 'utf8')).islands.i_1.name).toBe('a');
     expect(fs.existsSync(file + '.tmp')).toBe(false);
   });
 
-  it('leaves the state as it was when the write fails, so every listener still agrees with it', () => {
+  it('writes a burst of changes to disk once, soon after the first', () => {
+    vi.useFakeTimers();
     const file = path.join(makeHome(), 'state.json');
     const s = Store.load(file, () => {});
-    const seen: unknown[] = [];
-    s.subscribe((ops) => seen.push(...ops));
+    const renames = vi.spyOn(fs, 'renameSync');
+    for (let n = 1; n <= 5; n++) s.update((d) => { d.dormantAfterHours = n; });
+    expect(s.state.dormantAfterHours).toBe(5);
+    expect(fs.existsSync(file)).toBe(false);
+    vi.advanceTimersByTime(250);
+    expect(renames).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).dormantAfterHours).toBe(5);
+  });
+
+  it('writes a change still waiting at once when flushed, and only once', () => {
+    vi.useFakeTimers();
+    const file = path.join(makeHome(), 'state.json');
+    const s = Store.load(file, () => {});
+    const renames = vi.spyOn(fs, 'renameSync');
+    s.update((d) => { d.scribeOff = true; });
+    s.flush();
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).scribeOff).toBe(true);
+    vi.advanceTimersByTime(1000);
+    s.flush();
+    expect(renames).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs a write that fails, keeps the change, and writes it with the next one', () => {
+    vi.useFakeTimers();
+    const file = path.join(makeHome(), 'state.json');
+    const logs: string[] = [];
+    const s = Store.load(file, (m) => logs.push(m));
     // stands in for a full disk or a permission error
     fs.mkdirSync(`${file}.tmp`);
-    expect(() => s.update((d) => { d.defaultCwd = '/elsewhere'; })).toThrow();
-    expect(s.state.defaultCwd).not.toBe('/elsewhere');
+    s.update((d) => { d.defaultCwd = '/elsewhere'; });
+    vi.advanceTimersByTime(250);
+    expect(logs).toEqual([expect.stringMatching(/^state.json not written: /)]);
+    expect(s.state.defaultCwd).toBe('/elsewhere');
     fs.rmdirSync(`${file}.tmp`);
     s.update((d) => { d.scribeOff = true; });
-    expect(seen).toEqual([{ op: 'add', path: '/scribeOff', value: true }]);
+    vi.advanceTimersByTime(250);
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toMatchObject({ defaultCwd: '/elsewhere', scribeOff: true });
+  });
+
+  it('does not make a fleet home that is gone again', () => {
+    const home = makeHome();
+    const s = Store.load(path.join(home, 'state.json'), () => {});
+    s.update((d) => { d.scribeOff = true; });
+    fs.rmSync(home, { recursive: true });
+    s.flush();
+    expect(fs.existsSync(home)).toBe(false);
   });
 
   it('emits nothing when the mutator changes nothing', () => {

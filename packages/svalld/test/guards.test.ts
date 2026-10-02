@@ -104,22 +104,13 @@ describe('following a hook into another checkout', () => {
     expect(resolveRepo).not.toHaveBeenCalled();
   });
 
-  it('follows the same report again once a state write that failed has passed', async () => {
-    const { store, paths, two, follow } = setup();
-    fs.mkdirSync(`${paths.state}.tmp`);
-    await expect(follow('c_a', two)).rejects.toThrow();
-    fs.rmdirSync(`${paths.state}.tmp`);
-    await follow('c_a', two);
-    expect(store.state.characters.c_a.cwd).toBe(two);
-  });
-
-  it('logs a move a hook reported but the fleet could not write', async () => {
+  it('logs a directory a hook reported but the fleet could not follow', async () => {
     const errors: string[] = [];
-    const { fleet, paths, two } = setup({ info() {}, error: (m) => errors.push(m) });
-    fs.mkdirSync(`${paths.state}.tmp`);
+    const { fleet, two } = setup({ info() {}, error: (m) => errors.push(m) });
+    vi.mocked(resolveRepo).mockRejectedValueOnce(new Error('git went away'));
     fleet.onSocketEvent({ hook: { charId: 'c_a', backend: 'claude', name: 'PreToolUse', cwd: two } });
     await waitFor(() => errors.length > 0);
-    expect(errors[0]).toMatch(`follow c_a to ${two}: `);
+    expect(errors).toEqual([`follow c_a to ${two}: Error: git went away`]);
   });
 
   it('follows the newer of two reports when git answers the older one last', async () => {
@@ -142,22 +133,6 @@ describe('following a hook into another checkout', () => {
     store.update((d) => { delete d.characters.c_a; });
     await expect(moving).resolves.toBeUndefined();
     expect(store.state.characters.c_a).toBeUndefined();
-  });
-});
-
-describe('following the pane', () => {
-  it('moves a character on the next poll when the state write of this one fails', async () => {
-    const { fleet, store, home, paths, live } = fleetOn((d) => {
-      d.islands.i_1 = { id: 'i_1', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
-      d.characters.c_a = char('c_a', 'i_1', { tmux: { windowId: '@1', paneId: '%1' }, panePath: '/tmp' });
-    });
-    const moved = fs.realpathSync(home);
-    live.push({ windowId: '@1', paneId: '%1', name: 'c_a', command: 'sh', path: moved, activity: 1000, dead: false });
-    fs.mkdirSync(`${paths.state}.tmp`);
-    await expect(fleet['tick']()).rejects.toThrow();
-    fs.rmdirSync(`${paths.state}.tmp`);
-    await fleet['tick']();
-    expect(store.state.characters.c_a.cwd).toBe(moved);
   });
 });
 

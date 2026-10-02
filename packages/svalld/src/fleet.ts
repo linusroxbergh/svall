@@ -125,13 +125,14 @@ export class Fleet extends EventEmitter<Events> {
     }, this.deps.pollMs ?? 3000);
   }
 
-  /** Stops polling and the control client; resolves once a poll under way has finished. */
+  /** Stops polling and the control client; resolves once a poll under way has finished and the fleet is on disk. */
   async stop(): Promise<void> {
     this.stopped = true;
     clearTimeout(this.poll);
     clearTimeout(this.retry);
     this.control?.stop();
     await this.ticking;
+    this.deps.store.flush();
   }
 
   // ---- lookups
@@ -419,6 +420,8 @@ export class Fleet extends EventEmitter<Events> {
         markDormant(c, proc ? startFlags(proc.args, c.agent!.kind) : undefined);
       }
     });
+    // written now: what the quit has left to do can take seconds, and the daemon may not outlive them
+    this.deps.store.flush();
     await this.deps.tmux.killServer();
     // a resume opened right after must not write to a session still ending
     await Promise.all(pids.map((pid) => exited(pid, 5000)));
@@ -966,9 +969,7 @@ export class Fleet extends EventEmitter<Events> {
     const [to, now] = await Promise.all([resolveRepo(cwd), resolveRepo(from)]);
     // a report that came in while git answered is the newer one
     if (this.hookCwd.get(charId) !== cwd || !to || to.root === now?.root) return;
-    try { this.deps.store.update((d) => { if (d.characters[charId]) d.characters[charId].cwd = to.root; }); }
-    // a write that fails leaves the directory for the next hook that reports it
-    catch (e) { this.hookCwd.delete(charId); throw e; }
+    this.deps.store.update((d) => { if (d.characters[charId]) d.characters[charId].cwd = to.root; });
     await refreshLinks(this.deps.store, this.deps.config, charId);
   }
 }

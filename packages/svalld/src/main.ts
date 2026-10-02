@@ -127,7 +127,7 @@ async function start(opts: Options): Promise<Daemon> {
   const usage = fleetUsage({ state: () => store.state, claude: cachedUsage(usageFetcher({ cwd: path.join(paths.home, 'usage'), envFile: paths.env }), USAGE_TTL_MS) });
 
   // run in reverse on stop, and on a failed start for whatever had already started
-  const teardown: (() => unknown)[] = [() => fleet.stop(), store.subscribe(() => workspace.retarget()), () => workspace.close()];
+  const teardown: (() => unknown)[] = [() => store.flush(), () => fleet.stop(), store.subscribe(() => workspace.retarget()), () => workspace.close()];
   const stop = async () => { for (const fn of teardown.splice(0).reverse()) await fn(); };
   try {
     await fleet.start();

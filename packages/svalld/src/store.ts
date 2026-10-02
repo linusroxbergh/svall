@@ -8,6 +8,9 @@ import { variant } from './runtime.js';
 
 type Listener = (ops: Operation[]) => void;
 
+// state.json is written at most this often, so a burst of changes reaches the disk as one write
+const WRITE_EVERY_MS = 250;
+
 // the newest copy a newer svalld kept of `file` as this version wrote it, before migrating it
 function keptCopy(file: string): string | undefined {
   const prefix = `${path.basename(file)}.v${FleetState.shape.version.value}-`;
@@ -18,6 +21,7 @@ function keptCopy(file: string): string | undefined {
 
 export class Store {
   private listeners = new Set<Listener>();
+  private writing?: NodeJS.Timeout;
 
   private constructor(private file: string, private current: FleetState, private log: (msg: string) => void) {}
 
@@ -63,9 +67,9 @@ export class Store {
     trimHome(next);
     const ops = jsonpatch.compare(this.current, next);
     if (ops.length === 0) return ops;
-    // written before it is taken: a write that fails leaves the fleet as every listener last saw it
-    writeJsonAtomic(this.file, next);
+    // taken at once and written soon after: a crash loses at most the last WRITE_EVERY_MS of changes
     this.current = next;
+    this.writing ??= setTimeout(() => this.flush(), WRITE_EVERY_MS);
     for (const l of this.listeners) {
       try { l(ops); } catch (err) { this.log(`store listener failed: ${String(err)}`); }
     }
@@ -75,6 +79,16 @@ export class Store {
   subscribe(fn: Listener): () => void {
     this.listeners.add(fn);
     return () => { this.listeners.delete(fn); };
+  }
+
+  /** Writes a change still waiting for its turn on disk. A write that fails is logged, and the next change writes it all. */
+  flush(): void {
+    if (!this.writing) return;
+    clearTimeout(this.writing);
+    this.writing = undefined;
+    // a fleet home that is gone stays gone
+    try { writeJsonAtomic(this.file, this.current, { mkdir: false }); }
+    catch (e) { this.log(`state.json not written: ${String(e)}`); }
   }
 
   private persist(): void {
