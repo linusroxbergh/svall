@@ -25,12 +25,12 @@ export const Config = z.object({
   // phone clients: which tailnet logins may drive the fleet and get its pushes (empty lets in only the Mac's own login),
   // extra page origins allowed to open a socket beyond the one svalld itself served, who a push
   // service may contact about this sender (Apple refuses a push without one; unset, it is the served page), and
-  // which of the three https ports tailscale serve offers this fleet is reached on
+  // the https port this fleet is reached on, which svalld saves once it serves there
   mobile: z.object({
     logins: z.array(z.string()).default([]),
     origins: z.array(z.string()).default([]),
     pushContact: z.string().regex(/^(https:\/\/|mailto:)./, 'an https: url or mailto: address').optional(),
-    httpsPort: z.union([z.literal(443), z.literal(8443), z.literal(10000)]).optional(),
+    httpsPort: z.number().int().min(1).max(65535).optional(),
   }).prefault({}),
 });
 export type Config = z.infer<typeof Config>;
@@ -67,13 +67,16 @@ export function parseConfig(text: string, file: string): Config {
 
 /** Sets the keys of `patch` in `file` and keeps every other key; a file that does not parse is refused, not replaced.
  *  A linked file (stow, home-manager) is written where it points, with the mode it had. */
-export function saveConfig(file: string, patch: Partial<Pick<Config, 'mainAgent' | 'name' | 'integrations' | 'defaultCwd'>>): void {
+export function saveConfig(file: string, patch: Partial<Pick<Config, 'mainAgent' | 'name' | 'integrations' | 'defaultCwd'>> & { mobile?: Pick<Config['mobile'], 'httpsPort'> }): void {
   const there = fs.existsSync(file);
   const text = there ? fs.readFileSync(file, 'utf8') : '{}';
   parseConfig(text, file);
   const real = there ? fs.realpathSync(file) : file;
   const mode = there ? fs.statSync(real).mode & 0o777 : undefined;
-  writeAtomic(real, JSON.stringify({ ...(JSON.parse(text) as object), ...patch }, null, 2) + '\n', { mode, perProcess: true });
+  const json = JSON.parse(text) as { mobile?: object };
+  // mobile is merged a level down, so a saved port keeps the logins beside it
+  const next = { ...json, ...patch, ...(patch.mobile && { mobile: { ...json.mobile, ...patch.mobile } }) };
+  writeAtomic(real, JSON.stringify(next, null, 2) + '\n', { mode, perProcess: true });
   // the umask narrows the mode a file is created with
   if (mode !== undefined) fs.chmodSync(real, mode);
 }

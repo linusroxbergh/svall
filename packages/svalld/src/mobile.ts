@@ -89,7 +89,16 @@ export const unserve = async (d: MobileDeps, bin: string, port: number): Promise
   }
 };
 
-type ServeStatus = { Web?: Record<string, { Handlers?: Record<string, { Proxy?: string }> }> };
+type ServeStatus = { TCP?: Record<string, unknown>; Web?: Record<string, { Handlers?: Record<string, { Proxy?: string }> }> };
+
+/** The first port from 8443 up that nothing on this Mac serves and no other fleet keeps. */
+export function freePort(json: string, kept: number[]): number {
+  const { TCP = {}, Web = {} } = JSON.parse(json) as ServeStatus;
+  const used = new Set([...Object.keys(TCP).map(Number), ...Object.keys(Web).map((at) => Number(at.slice(at.lastIndexOf(':') + 1))), ...kept]);
+  let port = 8443;
+  while (used.has(port)) port++;
+  return port;
+}
 
 /** The https ports that proxy to a daemon behind `key`, on whatever port it listened, or to the daemon at `origin`
  *  under a key a failed on or off already turned over. */
@@ -154,8 +163,13 @@ export function watchServed(mobile: Pick<Mobile, 'get'>, wanted: () => boolean, 
  * The phone link as a panel can drive it: every environment failure comes back as `error` rather than
  * a rejection, because the panel that shows the switch is also where the reason belongs.
  */
-export function mobileControl(d: MobileDeps, opts: { home: string; profile: string; logins: string[]; phones: Phones; httpsPort?: number; rotateKey: () => void }): Mobile & Served & { logins: () => string[] } {
-  const port = servePort(opts.profile, opts.httpsPort);
+export function mobileControl(d: MobileDeps, opts: {
+  home: string; profile: string; logins: string[]; phones: Phones; httpsPort?: number; rotateKey: () => void;
+  // the ports other fleets keep, and where this fleet keeps the one it serves on
+  kept?: () => number[]; savePort?: (port: number) => void;
+}): Mobile & Served & { logins: () => string[] } {
+  let saved = opts.httpsPort;
+  let port = servePort(opts.profile, saved);
   const { mobileKey } = resolvePaths(opts.home);
 
   // who a phone socket and a push are let through for: the configured logins, else the Mac's own once tailscale named it
@@ -179,9 +193,10 @@ export function mobileControl(d: MobileDeps, opts: { home: string; profile: stri
     const { host } = self;
     owner = self.owner;
     if (enable === true && logins().length === 0) throw new Error(`tailscale reports no login for this Mac: set mobile.logins in config.json, then restart the daemon with launchctl kickstart -k gui/$(id -u)/${profileLabel(opts.profile)}`);
-    // tailscale serve holds one mapping per port for the whole Mac, so a port another holds stays theirs
-    const other = enable !== undefined && servesOther(await d.run(bin, ['serve', 'status', '--json']), host, port, key, fleetOrigin(d, opts.home));
-    if (enable === true && other) throw new Error(`https port ${port} already serves another fleet or site: set mobile.httpsPort (443, 8443 or 10000) in this fleet's config.json and restart it, or turn that one off with tailscale serve --https=${port} off`);
+    // tailscale serve holds one mapping per port for the whole Mac, so a port another holds stays theirs and an on moves to a free one
+    const before = enable === undefined ? undefined : await d.run(bin, ['serve', 'status', '--json']);
+    const other = !!before && servesOther(before, host, port, key, fleetOrigin(d, opts.home));
+    if (enable === true && before && other) port = freePort(before, opts.kept?.() ?? []);
     // an on turns the key over only once tailscale and the page are ready, so one that fails leaves a working link alone
     if (enable === true) {
       if (!d.exists(MOBILE_DIST)) await buildBundle(d);
@@ -197,6 +212,8 @@ export function mobileControl(d: MobileDeps, opts: { home: string; profile: stri
       json = await d.run(bin, ['serve', 'status', '--json']);
     }
     const serving = servesTarget(json, host, port, target);
+    // the port is part of the phone app's address, so the one served on is kept for the next start
+    if (serving && port !== saved) { opts.savePort?.(port); saved = port; }
     const url = phoneUrl(host, port);
     const status: MobileStatus = {
       serving, url, port, logins: logins(), phones: opts.phones.list(),

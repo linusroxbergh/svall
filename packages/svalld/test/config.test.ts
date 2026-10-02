@@ -40,7 +40,8 @@ describe('config and paths', () => {
     expect(() => Config.parse({ mobile: { pushContact: 'me@example.com' } })).toThrow('mailto');
     expect(Config.parse({}).mobile.httpsPort).toBeUndefined();
     expect(Config.parse({ mobile: { httpsPort: 10000 } }).mobile.httpsPort).toBe(10000);
-    expect(() => Config.parse({ mobile: { httpsPort: 8080 } })).toThrow();
+    expect(Config.parse({ mobile: { httpsPort: 8444 } }).mobile.httpsPort).toBe(8444);
+    expect(() => Config.parse({ mobile: { httpsPort: 0 } })).toThrow();
     expect(loadConfig('/nonexistent/config.json').home).toEqual({
       cwd: '~/.svall/home',
       actions: [
@@ -88,6 +89,12 @@ describe('saveConfig', () => {
     expect(fs.lstatSync(f).isSymbolicLink()).toBe(true);
     expect(JSON.parse(fs.readFileSync(real, 'utf8')).mainAgent).toBe('codex');
     expect(fs.statSync(real).mode & 0o777).toBe(0o600);
+  });
+  it('saves the phone port beside the mobile keys already there', () => {
+    const f = file();
+    fs.writeFileSync(f, JSON.stringify({ mobile: { logins: ['me@example.com'] } }));
+    saveConfig(f, { mobile: { httpsPort: 8444 } });
+    expect(JSON.parse(fs.readFileSync(f, 'utf8')).mobile).toEqual({ logins: ['me@example.com'], httpsPort: 8444 });
   });
   it('leaves the scribe agent unset unless it is named', () => {
     expect(loadConfig(file()).scribe.agent).toBeUndefined();

@@ -356,10 +356,10 @@ Ghostty `initial-command` and `input` are ignored.
   so no token reaches the phone. Only your own tailnet login gets in. To let
   others in, list their logins and yours in `mobile.logins` and restart the
   daemon.
-- Each fleet is its own Home Screen app: the private fleet on port 443 and the
-  next on 8443. A third fleet needs `mobile.httpsPort: 10000`, which Svall
-  Dev's private fleet also takes. Tailscale serves one fleet per port on the
-  Mac, so a fleet whose port another already serves says so and leaves it.
+- Each fleet is its own Home Screen app on its own port: the private fleet on
+  443, the next on 8443. Tailscale serves one fleet per port on the Mac, so a
+  fleet whose port another fleet or site already serves moves to the first
+  free port from 8443 up, and keeps it in `mobile.httpsPort`.
 
 ## Configuration
 
@@ -378,7 +378,7 @@ Its `config.json` takes:
 | `integrations` | The private fleet's list of agents, `claude` and `codex`, whose hooks setup installs. Absent, every agent found. Set by the setup screen or `svall setup --agents`. |
 | `home` | Mission control: `cwd` for its crew, the `command` that starts an agent (default the main agent's: `claude --model sonnet`, or `codex`), and `actions`, one `{ "label", "prompt" }` per button. A button's `/name` prompt reaches a Codex crew as `$name`. |
 | `scribe` | `agent` (default the main agent) and `model`, a model of `agent`'s CLI, or of Claude's when `agent` is unset (default `sonnet`). |
-| `mobile` | `logins` to let in (only yours when empty), extra page `origins` allowed to open a socket, a `pushContact` (https: or mailto:) for push services, and `httpsPort`. |
+| `mobile` | `logins` to let in (only yours when empty), extra page `origins` allowed to open a socket, a `pushContact` (https: or mailto:) for push services, and the `httpsPort` it is served on, which Svall saves. |
 
 - The daemon reads `config.json` when it starts.
   `launchctl kickstart -k gui/$(id -u)/io.github.linusroxbergh.svall.svalld`
