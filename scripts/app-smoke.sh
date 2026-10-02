@@ -47,7 +47,7 @@ reports() {
 PLIST="$HOME/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld.plist"
 
 PLAN="$(cli setup --plan)"
-check "plan lists claude" 'printf %s "$PLAN" | grep -q "\"agents\": *\[{\"kind\": *\"claude\""'
+check "plan lists claude" 'printf %s "$PLAN" | grep -q "\"agents\": *\[{\"kind\": *\"claude\", *\"path\": *\"[^\"]*/claude\""'
 check "setup runs" 'cli setup --json --agents claude >/dev/null'
 check "plist runs the app's node" 'grep -q "<string>$A/Helpers/node</string>" "$PLIST" && grep -q "runtime/svalld.mjs" "$PLIST"'
 check "plist PATH leaves Helpers out" '! grep "<key>PATH</key>" "$PLIST" | grep -q Helpers'

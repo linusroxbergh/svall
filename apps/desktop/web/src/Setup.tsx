@@ -74,7 +74,7 @@ export function Setup() {
           </div>
         ))}
         {!plan.shimOnPath && <div className="setup-install">
-          <p>Both install to {shortPath(plan.shimDir)}, which is not on your PATH; add this line to your shell profile too.</p>
+          <p>Both install to {shortPath(plan.shimDir)}, which is not on your PATH; add this line to ~/.zshrc, or your shell's startup file, then check again.</p>
           <Command bridge={bridge} text={line} />
         </div>}
       </section>}

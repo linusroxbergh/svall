@@ -99,15 +99,17 @@ test('says what to install when no agent is found, and asks again', async ({ pag
 test('gives each agent\'s install command to select or copy, and its other ways in the browser', async ({ page }) => {
   await fakeShell(page, NOTHING);
   await page.goto('/?setup=1');
-  const command = page.getByText('curl -fsSL https://chatgpt.com/codex/install.sh | sh');
-  await expect(command).toHaveCSS('user-select', 'text');
-  const box = page.locator('.setup-code', { has: command });
-  await box.getByRole('button', { name: 'Copy' }).click();
-  await expect(box.getByRole('button', { name: 'Copied' })).toBeVisible();
-  await page.getByRole('link', { name: 'Other ways to install Claude Code' }).click();
-  const msgs = await sent(page);
-  expect(msgs.find((m) => m.type === 'copy')).toMatchObject({ text: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh' });
-  expect(msgs.find((m) => m.type === 'openUrl')).toMatchObject({ url: 'https://code.claude.com/docs/en/setup' });
+  for (const [label, i] of [['Claude Code', NOTHING.install![0]!], ['Codex', NOTHING.install![1]!]] as const) {
+    const command = page.getByText(i.command);
+    await expect(command).toHaveCSS('user-select', 'text');
+    const box = page.locator('.setup-code', { has: command });
+    await box.getByRole('button', { name: 'Copy' }).click();
+    await expect(box.getByRole('button', { name: 'Copied' })).toBeVisible();
+    await page.getByRole('link', { name: `Other ways to install ${label}` }).click();
+    const msgs = await sent(page);
+    expect(msgs.filter((m) => m.type === 'copy').at(-1)).toMatchObject({ text: i.command });
+    expect(msgs.filter((m) => m.type === 'openUrl').at(-1)).toMatchObject({ url: i.url });
+  }
 });
 
 test('gives the PATH line with the installers when their folder is not on PATH, and only there', async ({ page }) => {
