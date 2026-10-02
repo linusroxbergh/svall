@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -31,9 +32,11 @@ export const helper = (name: string): string | undefined => bundled ? path.resol
 export const hookHelperSource = (): string | undefined =>
   helper('svall-hook') ?? (variant === 'dev' ? path.resolve(here, '../../../apps/desktop/mac/build/Svall Dev.app/Contents/Helpers/svall-hook') : undefined);
 
-/** What a checkout's helper must be newer than: its source and the scripts it stands in for. The app's was built with its own. */
+const hookSwift = path.resolve(here, '../../../apps/desktop/mac/Sources/SvallHook');
+
+/** What a checkout's helper must be newer than: its sources and the scripts it stands in for. The app's was built with its own. */
 export const hookHelperSources: string[] = bundled ? [] : [
-  path.resolve(here, '../../../apps/desktop/mac/Sources/SvallHook/main.swift'),
+  ...fs.readdirSync(hookSwift).filter((f) => f.endsWith('.swift')).map((f) => path.join(hookSwift, f)),
   ...['agent-hook.mjs', 'claude-status.mjs'].map((name) => path.join(assetDir('hooks'), name)),
 ];
 
