@@ -4,15 +4,17 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  claudeHooksCurrent, codexHooksCurrent, hookCommand, hooksInstalled, mergeCodexHooks, mergeHooks, mergeStatusLine, nodeRun, statusWrapper, unmergeHooks, unmergeStatusLine,
+} from '../src/agent-hooks.js';
 import { codexHookCommand, codexPaths } from '../src/codex/install.js';
 import { CLAUDE_HOOKS } from '../src/hooks/receiver.js';
+import { launchdPlist, plistCurrent, plistRun, takenOverBy } from '../src/launchd.js';
 import { isOurs, resolvePaths } from '../src/paths.js';
 import { BUNDLE_ID, LAUNCHD_LABEL, PRIVATE, profileHome, profileLabel } from '../src/profile.js';
 import { bundleRuntime, checkoutRuntime, type Runtime } from '../src/runtime.js';
-import {
-  claudeHooksCurrent, codexHooksCurrent, hookCommand, hooksInstalled, installHomeTemplate, installHookScripts, launchdPlist, mergeCodexHooks, mergeHooks, mergeStatusLine, nodeRun, plistCurrent, plistRun, readJsonSettings, refreshFleetPlists, runSetup, setupHome,
-  shimText, shimsCurrent, statusWrapper, takenOverBy, unmergeHooks, unmergeStatusLine, writeJsonSettings,
-} from '../src/setup.js';
+import { readJsonSettings, writeJsonSettings } from '../src/settings-file.js';
+import { installHomeTemplate, installHookScripts, refreshFleetPlists, runSetup, setupHome, shimText, shimsCurrent } from '../src/setup.js';
 import { shq } from '../src/text.js';
 import { cleanHomes, makeHome } from './helpers.js';
 

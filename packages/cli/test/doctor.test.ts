@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { hookCommand, mergeCodexHooks, mergeHooks, mergeStatusLine, nodeRun, statusWrapper } from '@svall/svalld/agent-hooks';
 import { codexHookCommand } from '@svall/svalld/codex/install';
 import { LAUNCHD_LABEL } from '@svall/svalld/profile';
 import { resolveTmux } from '@svall/svalld/tmux';
-import { hookCommand, mergeCodexHooks, mergeHooks, mergeStatusLine, nodeRun, statusWrapper } from '@svall/svalld/setup';
 import type { AgentKind } from '@svall/protocol';
 import { grouped } from '../src/checks-view.js';
 import type { HookTrust } from '../src/codex-trust.js';

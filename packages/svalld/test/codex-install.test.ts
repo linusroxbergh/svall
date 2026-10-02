@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { codexInstalled, mergeCodexHooks, unmergeHooks } from '../src/agent-hooks.js';
 import { codexHookCommand, codexPaths } from '../src/codex/install.js';
 import { CODEX_HOOKS } from '../src/hooks/receiver.js';
-import { codexInstalled, mergeCodexHooks, unmergeHooks } from '../src/setup.js';
 
 const SCRIPT = '/h/agent-hook.mjs';
 const CMD = codexHookCommand(SCRIPT);

@@ -5,11 +5,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { hookCommand, mergeStatusLine, statusWrapper } from '../src/agent-hooks.js';
 import { codexHookCommand } from '../src/codex/install.js';
 import { normalizeHook, normalizeStatus, startHookReceiver, type SocketEvent } from '../src/hooks/receiver.js';
 import { silentLogger } from '../src/log.js';
 import { hookHelperSources } from '../src/runtime.js';
-import { hookCommand, mergeStatusLine, statusWrapper } from '../src/setup.js';
 import { cleanHomes, makeHome, waitFor } from './helpers.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';

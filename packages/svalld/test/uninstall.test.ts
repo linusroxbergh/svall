@@ -4,11 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import {
+  codexInstalled, hookCommand, mergeHooks, mergeStatusLine, statusWrapper, unmergeHooks, unmergeStatusLine,
+} from '../src/agent-hooks.js';
 import { codexPaths } from '../src/codex/install.js';
 import { realDeps } from '../src/mobile.js';
 import { BUNDLE_ID, LAUNCHD_LABEL } from '../src/profile.js';
 import { bundleRuntime, checkoutRuntime } from '../src/runtime.js';
-import { codexInstalled, hookCommand, mergeHooks, mergeStatusLine, runSetup, shimText, statusWrapper, unmergeHooks, unmergeStatusLine } from '../src/setup.js';
+import { runSetup, shimText } from '../src/setup.js';
 import { appQuit, fleetData, fleetHomes, purge, quitApp, runUninstall, type AppQuit } from '../src/uninstall.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 

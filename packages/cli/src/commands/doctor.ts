@@ -5,16 +5,16 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { Command } from 'commander';
+import { claudeHooksCurrent, codexHooksCurrent, codexInstalled, hooksInstalled } from '@svall/svalld/agent-hooks';
 import { AGENTS, AGENT_KINDS, findAgents, versionOk } from '@svall/svalld/agents';
 import { characterKeyEnv } from '@svall/svalld/claude';
 import { codexPaths, type CodexPaths } from '@svall/svalld/codex/install';
 import { fleetMainAgent, loadConfig, parseConfig } from '@svall/svalld/config';
+import { launchdEnv, plistCurrent, plistEnv, plistRun } from '@svall/svalld/launchd';
 import { resolvePaths, userPaths } from '@svall/svalld/paths';
 import { PRIVATE, SHIM, profileHome, profileLabel } from '@svall/svalld/profile';
 import { ownRuntime } from '@svall/svalld/runtime';
-import {
-  claudeHooksCurrent, codexHooksCurrent, codexInstalled, hooksInstalled, launchdEnv, plistCurrent, plistEnv, plistRun, shimsCurrent,
-} from '@svall/svalld/setup';
+import { shimsCurrent } from '@svall/svalld/setup';
 import { resolveTmux } from '@svall/svalld/tmux';
 import { tmuxTooOld } from '@svall/svalld/tmux/conf';
 import type { AgentKind } from '@svall/protocol';

@@ -5,16 +5,17 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { Command } from 'commander';
 import type { AgentKind } from '@svall/protocol';
+import { CODEX_TRUST } from '@svall/svalld/agent-hooks';
 import { AGENTS, AGENT_KINDS, findAgents, mainAgent, onPath } from '@svall/svalld/agents';
 import { codexPaths } from '@svall/svalld/codex/install';
 import { loadConfig, saveConfig } from '@svall/svalld/config';
+import { isRunning, kickstart, plistCurrent, takenOverBy } from '@svall/svalld/launchd';
 import { expandHome, resolvePaths, userPaths } from '@svall/svalld/paths';
 import { LOGIN_SHELL_TIMEOUT_MS, takeLoginEnv } from '@svall/svalld/login-env';
 import { LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from '@svall/svalld/profile';
 import { ownRuntime, runtimeVersion } from '@svall/svalld/runtime';
-import {
-  CODEX_TRUST, cliCommand, isRunning, kickstart, plistCurrent, readOrUndefined, refreshFleetPlists, runSetup, setupState, takenOverBy, type SetupState,
-} from '@svall/svalld/setup';
+import { readOrUndefined } from '@svall/svalld/settings-file';
+import { cliCommand, refreshFleetPlists, runSetup, setupState, type SetupState } from '@svall/svalld/setup';
 import { inheritingFleets, integrationsFor, projectsFolder, requireInstalledApp, setupPlan, staleFleets, suggestProjects } from '@svall/svalld/setup-plan';
 import { fleetHomes } from '@svall/svalld/uninstall';
 import { grouped, renderGroups, useColor } from '../checks-view.js';

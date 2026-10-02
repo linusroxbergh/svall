@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,6 +52,11 @@ export type Paths = ReturnType<typeof resolvePaths>;
 
 /** The files that hold a fleet's keys, which Files never opens. */
 export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.env, p.vapid, p.push];
+
+/** `p` with its links resolved, or as it is when it cannot be. */
+export const realPath = (p: string): string => {
+  try { return fs.realpathSync(p); } catch { return p; }
+};
 
 export function expandHome(p: string): string {
   if (p === '~') return os.homedir();

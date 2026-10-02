@@ -3,11 +3,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { unmergeHooks, unmergeStatusLine } from './agent-hooks.js';
 import type { CodexPaths } from './codex/install.js';
 import { fleetOrigin, portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
 import { resolvePaths } from './paths.js';
 import { BUNDLE_ID, homePrefix, isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome, SHIM } from './profile.js';
-import { readJsonSettings, readOrUndefined, requireWritable, shimNames, unmergeHooks, unmergeStatusLine, writeJsonSettings, type JsonSettings } from './setup.js';
+import { readJsonSettings, readOrUndefined, requireWritable, writeJsonSettings, type JsonSettings } from './settings-file.js';
+import { shimNames } from './setup.js';
 import { resolveTmux } from './tmux/tmux.js';
 
 const exec = promisify(execFile);
