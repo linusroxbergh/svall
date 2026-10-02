@@ -218,17 +218,32 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
 .lh-img::before { content: ''; position: absolute; left: 50%; top: 28%; width: 110px; height: 110px; translate: -50% -50%; border-radius: 50%;
   background: radial-gradient(circle, color-mix(in srgb, var(--lamp) 42%, transparent) 0%, color-mix(in srgb, var(--lamp) 14%, transparent) 38%, transparent 68%); }
 .lh p { margin: 0; text-wrap: pretty; }
-.shelf { display: grid; grid-template-columns: 210px minmax(0, 1fr); border-radius: 14px; overflow: hidden;
-  background: var(--surface-2); border: 1px solid var(--line); box-shadow: 0 30px 60px -20px var(--shade-2); }
+.shelf { display: grid; grid-template-columns: 250px minmax(0, 1fr); border-radius: 14px; overflow: hidden;
+  background: var(--surface-2); border: 1px solid var(--line); box-shadow: 0 30px 60px -20px var(--shade-2);
+  zoom: .9; width: 90%; justify-self: end; }
 .tree { padding: 16px 10px 16px 14px; border-right: 1px solid var(--line-soft); display: flex; flex-direction: column; gap: 2px; font-size: .875rem; }
-.tier { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; border: 0; border-radius: 7px; background: none;
-  font: 500 .875rem/1.3 var(--sans); color: var(--ink); text-align: left; cursor: pointer; }
+/* each level a folder as in the app's shelf: its sources under a guide line; the ones the brief draws on stay lit */
+.tier, .src { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 8px; border: 0; border-radius: 7px; background: none;
+  font: 500 .875rem/1.3 var(--sans); color: var(--ink); text-align: left; }
+.tier { cursor: pointer; }
+.src { font-weight: 400; }
+span.src { color: var(--ink-3); }
 .tier:hover, .tier[aria-pressed="true"] { background: var(--fill-1); }
-.tier i { font-style: normal; width: 14px; text-align: center; }
-.tier .n { margin-left: auto; font-size: .75rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.tier b { flex: none; width: 10px; margin-right: -2px; font-size: .625rem; font-weight: 400; color: var(--ink-3); text-align: center; }
+.tier i, .src i { flex: none; font-style: normal; width: 14px; text-align: center; }
+.tier .n, .src .n { margin-left: auto; font-size: .75rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.kids { display: flex; flex-direction: column; gap: 2px; margin: 0 0 6px 12px; padding-left: 10px; border-left: 1px solid var(--line-soft); }
+.grp { padding: 6px 8px 1px; font-size: .6875rem; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
 .brief { padding: 16px 18px 18px; min-width: 0; }
 .brief-cap { margin-bottom: 10px; font-size: .75rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-cool); }
-.brief pre { margin: 0; display: grid; gap: 6px; font: 11.5px/1.6 var(--mono); color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.brief pre { margin: 0; display: grid; gap: 12px; font: 11.5px/1.6 var(--mono); color: var(--ink-2); white-space: normal; overflow-wrap: anywhere; }
+.brief pre i { display: block; font-style: normal; }
+/* an item: its name, then its kind with the shelf's colour for it */
+.brief pre i.in { display: flex; align-items: baseline; gap: 1ch; padding-left: 2ch; }
+.brief pre em { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-style: normal; color: var(--ink-3); }
+.brief pre em::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--kind); }
+[data-k="instructions"], [data-k="profile"] { --kind: var(--sand); } [data-k="skill"] { --kind: var(--pt-sun); } [data-k="mcp"], [data-k="link"] { --kind: var(--pt-sky); }
+[data-k="hook"] { --kind: var(--pt-coral); } [data-k="doc"] { --kind: var(--pt-earth); } [data-k="note"] { --kind: var(--pt-slate); }
 .brief pre > span { display: block; padding-left: 10px; border-left: 2px solid var(--c); transition: opacity .2s var(--ease); }
 .brief pre > span.g { color: var(--ink-3); }
 .shelf[data-hl] .brief pre > span { opacity: .3; }
@@ -246,6 +261,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
 
 @media (max-width: 960px) {
   .ctx { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+  .shelf { width: auto; justify-self: stretch; }
 }
 @media (max-width: 760px) {
   .lede, .sub { font-size: .9375rem; }
@@ -254,7 +270,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
   .gh span { display: none; }
   .tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
   .shelf { grid-template-columns: minmax(0, 1fr); }
-  .tree { border-right: 0; border-bottom: 1px solid var(--line-soft); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tree { border-right: 0; border-bottom: 1px solid var(--line-soft); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -264,7 +280,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
 <body>
 <div class="sea" aria-hidden="true"><i></i><i></i></div>
 <header class="wrap bar">
-  <a class="mark" href="./"><img src="icon.svg" alt="" width="22" height="22">svall</a>
+  <a class="mark" href="./"><img src="icon.svg" alt="" width="22" height="22">Svall</a>
   <a class="gh" href="https://github.com/linusroxbergh/svall" aria-label="GitHub">
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
     <span>GitHub</span>
@@ -361,15 +377,42 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
   </div>
   <div class="shelf">
     <nav class="tree" aria-label="Levels">
-      <button class="tier" type="button" data-tier="global" aria-pressed="false"><i>◎</i>Global<span class="n">31</span></button>
-      <button class="tier" type="button" data-tier="fleet" aria-pressed="false"><i>◆</i>Fleet<span class="n">6</span></button>
-      <button class="tier" type="button" data-tier="repo" aria-pressed="false"><i>▣</i>Repos<span class="n">9</span></button>
-      <button class="tier" type="button" data-tier="island" aria-pressed="false"><i>▲</i>Islands<span class="n">3</span></button>
-      <button class="tier" type="button" data-tier="character" aria-pressed="false"><i>●</i>Characters<span class="n">2</span></button>
+      <button class="tier" type="button" data-tier="global" aria-pressed="false"><b>▾</b><i>◎</i>Global<span class="n">2</span></button>
+      <div class="kids">
+        <button class="tier src" type="button" data-tier="global" aria-pressed="false"><i>◎</i>Claude<span class="n">24</span></button>
+        <span class="src"><i>◎</i>Codex<span class="n">7</span></span>
+      </div>
+      <button class="tier" type="button" data-tier="fleet" aria-pressed="false"><b>▾</b><i>◆</i>Fleet<span class="n">1</span></button>
+      <div class="kids">
+        <button class="tier src" type="button" data-tier="fleet" aria-pressed="false"><i>◆</i>demo<span class="n">6</span></button>
+      </div>
+      <button class="tier" type="button" data-tier="repo" aria-pressed="false"><b>▾</b><i>▣</i>Repos<span class="n">2</span></button>
+      <div class="kids">
+        <button class="tier src" type="button" data-tier="repo" aria-pressed="false"><i>▣</i>storefront<span class="n">5</span></button>
+        <span class="src"><i>▣</i>payments-api<span class="n">3</span></span>
+      </div>
+      <button class="tier" type="button" data-tier="island" aria-pressed="false"><b>▾</b><i>▲</i>Islands<span class="n">2</span></button>
+      <div class="kids">
+        <button class="tier src" type="button" data-tier="island" aria-pressed="false"><i>▲</i>storefront reviews<span class="n">3</span></button>
+        <span class="src"><i>▲</i>storefront<span class="n">1</span></span>
+      </div>
+      <button class="tier" type="button" data-tier="character" aria-pressed="false"><b>▾</b><i>●</i>Characters<span class="n">2</span></button>
+      <div class="kids">
+        <span class="grp">storefront reviews</span>
+        <button class="tier src" type="button" data-tier="character" aria-pressed="false"><i>●</i>#10 review search<span class="n">3</span></button>
+        <span class="grp">storefront</span>
+        <span class="src"><i>●</i>checkout redesign<span class="n">3</span></span>
+      </div>
     </nav>
     <div class="brief">
       <div class="brief-cap">#10 review search starts with</div>
-      <pre><span data-tier="global">~/.claude: CLAUDE.md, skills, MCP servers, hooks</span><span data-tier="fleet">Docs (fleet): ticket-tracking</span><span data-tier="repo">Docs (repo): e2e-flakes</span><span data-tier="island">Island: storefront reviews — comment, never push</span><span data-tier="character">Character: #10 review search · PR #10</span></pre>
+      <pre>
+        <span data-tier="global"><i>Global: ~/.claude</i><i class="in">CLAUDE.md<em data-k="instructions">instructions</em></i><i class="in">code-review<em data-k="skill">skill</em></i><i class="in">github<em data-k="mcp">mcp</em></i><i class="in">format-on-save<em data-k="hook">hook</em></i></span>
+        <span data-tier="fleet"><i>Fleet: demo</i><i class="in">ticket-tracking<em data-k="doc">doc</em></i><i class="in">reviewer<em data-k="profile">profile</em></i></span>
+        <span data-tier="repo"><i>Repo: storefront</i><i class="in">CLAUDE.md<em data-k="instructions">instructions</em></i><i class="in">e2e-flakes<em data-k="doc">doc</em></i></span>
+        <span data-tier="island"><i>Island: storefront reviews</i><i class="in">comment, never push<em data-k="instructions">instructions</em></i><i class="in">GH storefront<em data-k="link">link</em></i><i class="in">review-checklist<em data-k="doc">doc</em></i></span>
+        <span data-tier="character"><i>Character: #10 review search</i><i class="in">PR #10<em data-k="link">link</em></i><i class="in">focus on ranking<em data-k="note">note</em></i></span>
+      </pre>
     </div>
   </div>
 </section>
@@ -426,16 +469,17 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     });
   });
 
-  // a level picked in the tree lights its lines in the brief; picking it again lets go
-  const shelf = document.querySelector('.shelf'), tiers = [...shelf.querySelectorAll('.tier')];
-  const light = (t) => {
-    if (t) shelf.dataset.hl = t; else delete shelf.dataset.hl;
-    tiers.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tier === t)));
-  };
+  // a row hovered or picked in the tree lights its level's lines in the brief; picking it again lets go
+  const shelf = document.querySelector('.shelf'), rows = [...shelf.querySelectorAll('.tier')];
+  const light = (b) => { if (b) shelf.dataset.hl = b.dataset.tier; else delete shelf.dataset.hl; };
   let pinned;
-  tiers.forEach((b) => {
-    b.addEventListener('pointerenter', () => light(b.dataset.tier));
-    b.addEventListener('click', () => { pinned = pinned === b.dataset.tier ? undefined : b.dataset.tier; light(pinned); });
+  rows.forEach((b) => {
+    b.addEventListener('pointerenter', () => light(b));
+    b.addEventListener('click', () => {
+      pinned = pinned === b ? undefined : b;
+      rows.forEach((r) => r.setAttribute('aria-pressed', String(r === pinned)));
+      light(b);
+    });
   });
   shelf.querySelector('.tree').addEventListener('pointerleave', () => light(pinned));
 })();
