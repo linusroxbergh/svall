@@ -11,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var uninstalling = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // opened in the disk image's window after the drag to Applications, which is the copy to run
+        if let copy = InstalledCopy.instead(of: Bundle.main.bundleURL) { return InstalledCopy.open(copy) }
         guard SvallHome.claim() else { NSApp.terminate(nil); return }
         let runtime: GhosttyRuntime
         do { runtime = try GhosttyRuntime() } catch {

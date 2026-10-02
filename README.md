@@ -72,8 +72,9 @@ terminals; the Claude and Codex desktop apps don't install them.
    An agent you turn off gets no hooks; one you install later does. If
    `~/.local/bin` isn't on your PATH, the screen shows the line to add to your
    shell profile, so the `svall` command works in a terminal; no shell file is
-   edited for you. Setup refuses to run from the disk image, so move Svall to
-   Applications first.
+   edited for you. Setup refuses to run from the disk image, so drag Svall to
+   Applications first; opening it in the disk image's window after that opens
+   the copy there.
 
 4. `+ New island` on the sandbar at the bottom makes an island, and Cmd+T makes
    a character on it: a shell that becomes an agent when you type `claude` or
