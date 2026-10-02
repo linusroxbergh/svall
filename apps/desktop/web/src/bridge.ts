@@ -22,7 +22,7 @@ export type ToShell =
   | { type: 'browser.hide'; tab: string }
   | { type: 'browser.close'; tab: string }
   | { type: 'browser.load'; tab: string; url: string }
-  | { type: 'browser.go'; tab: string; action: 'back' | 'forward' | 'reload' }
+  | { type: 'browser.go'; tab: string; action: 'back' | 'forward' | 'reload' | 'stop' }
   | { type: 'browser.importCookies' }
   | { type: 'browser.fill'; tab: string }
   | { type: 'browser.focus'; tab: string }

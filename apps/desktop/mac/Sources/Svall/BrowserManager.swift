@@ -45,6 +45,8 @@ final class BrowserManager: NSObject, WKUIDelegate, WKNavigationDelegate {
         c.websiteDataStore = store
         c.applicationNameForUserAgent = Self.safariSuffix
         c.preferences.isElementFullscreenEnabled = true
+        // a page opens a tab only from a click; WebKit builds a popup's config from its opener's
+        c.preferences.javaScriptCanOpenWindowsAutomatically = false
         return c
     }
 
@@ -113,6 +115,7 @@ final class BrowserManager: NSObject, WKUIDelegate, WKNavigationDelegate {
         case "back": v.goBack()
         case "forward": v.goForward()
         case "reload": v.reload()
+        case "stop": v.stopLoading()
         default: break
         }
     }

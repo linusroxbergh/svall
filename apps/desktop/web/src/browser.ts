@@ -14,7 +14,7 @@ export type BrowserManager = {
   load(id: string, tab: string | undefined, url: string): void;
   // the start page, for a pane with no tabs and none on the way
   start(id: string): void;
-  go(tab: string, action: 'back' | 'forward' | 'reload'): void;
+  go(tab: string, action: 'back' | 'forward' | 'reload' | 'stop'): void;
 };
 
 // where a popup sits until the page places it
@@ -41,7 +41,7 @@ export function createBrowserManager(api: Api, bridge: Bridge, store: AppStore):
     const url = toUrl(input);
     if (!url) return;
     if (tab && state().webviews[tab]) bridge.send({ type: 'browser.load', tab, url });
-    else { opening.add(id); api.fire('browser.open', { id, url }); }
+    else { opening.add(id); api.call('browser.open', { id, url }).catch(() => opening.delete(id)); }
   };
 
   // a link followed in a terminal asks whether it opens beside it, as a tab of that character; anything the

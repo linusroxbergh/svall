@@ -134,4 +134,19 @@ describe('browser manager', () => {
     manager.go('t_1', 'back');
     expect(sent.at(-1)).toEqual({ type: 'browser.go', tab: 't_1', action: 'back' });
   });
+
+  it('opens the start page once while its first tab is on the way, and again after svalld failed to open it', async () => {
+    const { calls, api, manager } = fakes();
+    let answer = (): Promise<unknown> => Promise.reject(new Error('svalld offline'));
+    api.call = ((method: string, params: unknown) => { calls.push({ method, params }); return answer(); }) as Api['call'];
+    const opens = () => calls.filter((k) => k.method === 'browser.open');
+    manager.start('c1');
+    manager.start('c1');
+    expect(opens()).toHaveLength(1);
+    await new Promise((r) => setTimeout(r, 0));
+    answer = () => new Promise(() => {});
+    manager.start('c1');
+    manager.start('c1');
+    expect(opens()).toEqual([1, 2].map(() => ({ method: 'browser.open', params: { id: 'c1', url: 'https://www.google.com' } })));
+  });
 });
