@@ -207,10 +207,9 @@ function plan(lands: Box[], aspect: number): Plan {
   return best!;
 }
 
-// every island on the map cut to a grid its crew's cards fit on and the fleet packed to fill a window of that aspect,
-// in centred rows with mission control under them; a folded island keeps its place and size for when it unfolds.
-// how many crew stand abreast is chosen with the rows, so a wide window gets long islands and a tall one deep islands.
-// homeRoom is the widest mission control, in cells, the map has room for
+// every island on the map cut to its crew's grid, as many abreast as fills a window of that aspect best, and packed in
+// centred rows above mission control; a folded island keeps its place and size. homeRoom is the widest mission
+// control the map has room for, in cells
 export function arrangeFleet(draft: FleetState, aspect = 4 / 3, homeRoom?: number): void {
   if (homeRoom !== undefined) widenHome(draft, homeRoom);
   const islands = worldIslands(draft).sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x || a.id.localeCompare(b.id));
@@ -273,8 +272,7 @@ export function nearestFreeLand(island: Island, from: Cell, blocked: Set<string>
 
 class NoFreeLand extends Error { code = 'invalid'; }
 
-// characters whose cell became water move to the nearest free land, in reading order of their old cells;
-// shared by island resize and by placeOnIsland's auto-grow, both of which can change the island's shape
+// after a resize, characters whose cell became water move to the nearest free land, in reading order of their old cells
 export function relocateDrowned(draft: FleetState, islandId: string): void {
   const island = draft.islands[islandId];
   const drowned = Object.values(draft.characters)
@@ -287,12 +285,10 @@ export function relocateDrowned(draft: FleetState, islandId: string): void {
   }
 }
 
-// names resolve without regard to case, so a twin differing only in case would leave both islands unreachable by name
-export function uniqueName(state: FleetState, base: string): string {
-  const taken = new Set(Object.values(state.islands).map((i) => i.name.toLowerCase()));
-  const free = (name: string) => !taken.has(name.toLowerCase());
-  if (free(base)) return base;
-  let n = 2;
-  while (!free(`${base} ${n}`)) n++;
-  return `${base} ${n}`;
+// names resolve without regard to case, so a twin differing only in case would leave both unreachable by name
+export function uniqueName(names: string[], base: string): string {
+  const taken = new Set(names.map((n) => n.toLowerCase()));
+  let name = base;
+  for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${base} ${n}`;
+  return name;
 }

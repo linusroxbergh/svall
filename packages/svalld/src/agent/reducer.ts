@@ -7,6 +7,14 @@ export type Slot = { agent?: Agent; unread: boolean };
 
 const BLOCKING = new Set(['permission_prompt', 'worker_permission_prompt', 'elicitation_dialog', 'elicitation_url_dialog']);
 
+/** Puts the agent at `status` with no question open and no background work counted. */
+export function settle(agent: Agent, status: Agent['status']): void {
+  agent.status = status;
+  delete agent.prompt;
+  delete agent.promptId;
+  delete agent.background;
+}
+
 // a process of another user still counts as running
 export const running = (pid: number): boolean => {
   try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === 'EPERM'; }
@@ -95,18 +103,12 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     agent.promptId = crypto.randomUUID();
     if (e.message) agent.prompt = e.message; else delete agent.prompt;
   };
-  const settle = (status: Agent['status']) => {
-    agent.status = status;
-    delete agent.prompt;
-    delete agent.promptId;
-    delete agent.background;
-  };
   // a new prompt or the end of a turn leaves no tool asked about
   if (e.name === 'UserPromptSubmit' || e.name === 'Stop' || e.name === 'StopFailure' || e.name === 'Interrupt') delete agent.askedTool;
   switch (e.name) {
     case 'UserPromptSubmit':
     case 'PreToolUse':
-      settle('working');
+      settle(agent, 'working');
       next.unread = false;
       break;
     // a tool is asked about between the two, so the answer it waited for is its run; another tool of the same batch
@@ -116,7 +118,7 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
       const other = Boolean(agent.askedTool && e.toolName && e.toolName !== agent.askedTool);
       if (other && agent.status === 'blocked') break;
       if (!other) delete agent.askedTool;
-      settle('working');
+      settle(agent, 'working');
       next.unread = false;
       break;
     }
@@ -124,18 +126,18 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     case 'StopFailure':
       // the turn ended but background agents are still going; their completion starts a new turn
       if (e.backgroundAgents) {
-        settle('working');
+        settle(agent, 'working');
         agent.background = true;
         break;
       }
-      settle('done');
+      settle(agent, 'done');
       // an API error ended the turn, and its message says which
       if (e.name === 'StopFailure' && e.message) agent.prompt = e.message;
       next.unread = true;
       break;
     // codex's word that an Esc ended the turn
     case 'Interrupt':
-      settle('idle');
+      settle(agent, 'idle');
       break;
     // Claude Code shows its question first and notifies of it only if it is still up a few seconds on, naming no tool
     case 'PermissionRequest':
@@ -149,7 +151,7 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
       // With background agents out, the question is gone but the work goes on
       else if (e.notificationType === 'idle_prompt' && (agent.status === 'blocked' || agent.status === 'working')) {
         const background = agent.background;
-        settle(background ? 'working' : 'idle');
+        settle(agent, background ? 'working' : 'idle');
         if (background) agent.background = true;
       }
       break;

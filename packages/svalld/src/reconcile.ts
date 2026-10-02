@@ -1,4 +1,5 @@
 import { DEFAULT_SIZE, HOME_ROW, cellKey, crewGrid, homeSizeFor, homeSlots, isSessionId, randomPortrait, type Agent, type Cell, type Character, type FleetState, type Island } from '@svall/protocol';
+import { settle } from './agent/reducer.js';
 import { isCharId, newId } from './ids.js';
 import { crewOf, defaultPosition, occupiedCells, placementOk, unfold } from './layout.js';
 import type { LiveWindow } from './tmux/tmux.js';
@@ -24,10 +25,7 @@ export function markDormant(c: Character, flags?: string[]): void {
   c.revive = { command: reviveCommand(c, flags) };
   // nothing runs until the revive, so no question is left open and no turn goes on; a finished result stays
   if (c.agent && (c.agent.status === 'blocked' || c.agent.status === 'working')) {
-    c.agent.status = 'idle';
-    delete c.agent.prompt;
-    delete c.agent.promptId;
-    delete c.agent.background;
+    settle(c.agent, 'idle');
     delete c.agent.asking;
   }
 }

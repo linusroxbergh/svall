@@ -23,7 +23,7 @@ export function createIsland({ store }: Deps, p: NewIsland): Island {
   const size = p.size ?? DEFAULT_SIZE;
   const wanted = p.position ?? defaultPosition(state);
   const island: Island = {
-    id: newId('i'), name: uniqueName(state, p.name), description: p.description ?? '', instructions: p.instructions ?? '', context: settleItems(p.context ?? [], []),
+    id: newId('i'), name: uniqueName(Object.values(state.islands).map((i) => i.name), p.name), description: p.description ?? '', instructions: p.instructions ?? '', context: settleItems(p.context ?? [], []),
     position: wanted, size, seed: p.seed ?? randomSeed(),
   };
   setDescription(island, island.description);

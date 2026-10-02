@@ -1,9 +1,6 @@
 import type { PhoneSession } from '@svall/protocol';
 
-/**
- * The phone sockets open right now. A serve mapping says the door is open; this says whether
- * anyone came through it, so the panel can name the login and the minute it arrived.
- */
+/** The phone sockets open right now: the serve mapping says the door is open, this says who came through it and when. */
 export class Phones {
   private open: { login: string; since: number }[] = [];
   private watchers = new Set<(phones: PhoneSession[]) => void>();

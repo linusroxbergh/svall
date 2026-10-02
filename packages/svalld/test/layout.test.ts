@@ -61,12 +61,11 @@ describe('cells', () => {
     expect(blockedCells(s, 'a', 'c').size).toBe(0);
   });
   it('uniqueName suffixes taken names', () => {
-    const s = withIslands(island('a', 0, 0));
-    s.islands.a.name = 'repo';
-    expect(uniqueName(s, 'repo')).toBe('repo 2');
-    expect(uniqueName(s, 'other')).toBe('other');
+    expect(uniqueName(['repo'], 'repo')).toBe('repo 2');
+    expect(uniqueName(['repo', 'repo 2'], 'repo')).toBe('repo 3');
+    expect(uniqueName(['repo'], 'other')).toBe('other');
     // a name resolves without regard to case, so a twin differing only in case is taken too
-    expect(uniqueName(s, 'Repo')).toBe('Repo 2');
+    expect(uniqueName(['repo'], 'Repo')).toBe('Repo 2');
   });
   it('SPACING is two cells, and a crew grid stands that far apart and clear of the coast', () => {
     expect(SPACING).toBe(2);

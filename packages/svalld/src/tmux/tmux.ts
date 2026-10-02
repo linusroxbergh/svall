@@ -25,7 +25,7 @@ export function resolveTmux(): string {
   return 'tmux';
 }
 
-export type LiveSession = { name: string; attached: number; created: number };
+type LiveSession = { name: string; attached: number; created: number };
 
 export type LiveWindow = {
   windowId: string;

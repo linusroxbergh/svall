@@ -8,7 +8,8 @@ import { SPACING, crewGrid, emptyState, isLand, landCells, sizeForCrew, type Age
 import { Config } from '../src/config.js';
 import { docsDir } from '../src/docs.js';
 import type { Proc } from '../src/dormancy.js';
-import { Dormant, Fleet, Invalid, NotFound } from '../src/fleet.js';
+import { Dormant, Invalid, NotFound } from '../src/errors.js';
+import { Fleet } from '../src/fleet.js';
 import { startHookReceiver, type HookEvent } from '../src/hooks/receiver.js';
 import { aboveHome, placementOk } from '../src/layout.js';
 import type { Deps as LinkDeps } from '../src/links/refresh.js';

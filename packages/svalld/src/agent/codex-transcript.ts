@@ -21,10 +21,8 @@ type Event = { kind: 'user' | 'agent'; text: string } | { kind: 'tool'; name: st
 
 const ITEMS: Record<string, 'user' | 'agent'> = { UserMessage: 'user', AgentMessage: 'agent' };
 
-// What was said is an event of its own: `user_message` and `agent_message` up to codex 0.142, a completed
-// `UserMessage` or `AgentMessage` item since. Both are written only for what a person sent and what the agent
-// answered, which the `response_item` messages beside them are not: those carry codex's own notes to the model
-// too. A tool call is a `response_item` in every version, under either of two names.
+// what a person sent and the agent answered: `user_message`/`agent_message` up to codex 0.142, a completed item
+// since, never the `response_item` messages, which carry codex's notes to the model too; a tool call is a `response_item`
 function eventOf(l: Line): Event | undefined {
   const p = l.payload;
   if (!p) return undefined;
