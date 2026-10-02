@@ -208,6 +208,22 @@ function Notifications() {
   );
 }
 
+function Update() {
+  const version = useApp((s) => s.update);
+  if (!version) return null;
+  return (
+    <>
+      <div className="kicker">Updates</div>
+      <div className="rows">
+        <div className="row">
+          <span>Svall {version} is out</span>
+          <b><button className="btn set-open" data-testid="set-update" onClick={() => app.bridge.send({ type: 'update.install' })}>Update</button></b>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export function SettingsCard() {
   const { cardOpacity, fullOpacity, zoom, onePassword, usageTab, autoArrange, bindings } = useApp((s) => s.settings);
   const zoomOut = keyLabel('zoomOut', bindings), zoomReset = keyLabel('zoomReset', bindings);
@@ -284,6 +300,7 @@ export function SettingsCard() {
       {shell && <Notifications />}
       <Phone />
       <Scribe />
+      <Update />
     </aside>
   );
 }

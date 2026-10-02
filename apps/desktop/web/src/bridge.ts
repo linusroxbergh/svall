@@ -45,6 +45,8 @@ export type ToShell =
   | { type: 'notify.remove'; key: string }
   | { type: 'notify.enable' }
   | { type: 'notify.settings' }
+  // brings up Sparkle's window for the update update.available named
+  | { type: 'update.install' }
   // the files a quit would drop, by name, once the docs waiting to be written are, and the agents it would stop mid-task
   | { type: 'quit.answer'; unsaved: string[]; working: number }
   // the fleet has stopped, or could not be asked to
@@ -79,6 +81,8 @@ export type FromShell =
   | { type: 'drag.exit' }
   | { type: 'drag.drop'; paths: string[]; x: number; y: number }
   | { type: 'notify.permission'; state: NotifyPermission }
+  // the version a scheduled check found, empty when none waits
+  | { type: 'update.available'; version: string }
   // a banner was clicked, or answered from its buttons; promptId is the question it showed, empty when it named none
   | { type: 'notify.open'; key: string }
   | { type: 'notify.action'; key: string; action: 'approve' | 'deny'; promptId?: string }

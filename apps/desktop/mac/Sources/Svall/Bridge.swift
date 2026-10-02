@@ -41,6 +41,7 @@ enum ToShell: Decodable {
     case notifyRemove(key: String)
     case notifyEnable
     case notifySettings
+    case updateInstall
     case quitAnswer(unsaved: [String], working: Int)
     case quitStopped(ok: Bool)
     case openFleet(home: String, quit: Bool?)
@@ -84,6 +85,7 @@ enum ToShell: Decodable {
         case "notify.remove": self = .notifyRemove(key: try c.decode(String.self, forKey: .key))
         case "notify.enable": self = .notifyEnable
         case "notify.settings": self = .notifySettings
+        case "update.install": self = .updateInstall
         case "quit.answer": self = .quitAnswer(unsaved: try c.decode([String].self, forKey: .unsaved), working: try c.decode(Int.self, forKey: .working))
         case "quit.stopped": self = .quitStopped(ok: try c.decode(Bool.self, forKey: .ok))
         case "openFleet": self = .openFleet(home: try c.decode(String.self, forKey: .home), quit: try c.decodeIfPresent(Bool.self, forKey: .quit))
@@ -115,6 +117,7 @@ enum FromShell {
     case browserClosed(tab: String)
     case pressedAway
     case notifyPermission(String)
+    case updateAvailable(String?)
     case notifyOpen(key: String)
     case notifyAction(key: String, action: String, promptId: String)
     case menuPick(id: String)
@@ -144,6 +147,7 @@ enum FromShell {
         case .browserClosed(let tab): return ["type": "browser.closed", "tab": tab]
         case .pressedAway: return ["type": "shell.pressedAway"]
         case .notifyPermission(let state): return ["type": "notify.permission", "state": state]
+        case .updateAvailable(let version): return ["type": "update.available", "version": version ?? ""]
         case .notifyOpen(let key): return ["type": "notify.open", "key": key]
         case .notifyAction(let key, let action, let promptId): return ["type": "notify.action", "key": key, "action": action, "promptId": promptId]
         case .menuPick(let id): return ["type": "menu.pick", "id": id]

@@ -65,6 +65,8 @@ export type UiState = {
   dropHover?: DropTarget;
   // what macOS allows for banners, as the shell last read it
   notifyPermission: NotifyPermission;
+  // the version a scheduled check found, until the user has looked at it in Sparkle's window
+  update?: string;
 };
 
 export type UiActions = {
@@ -102,6 +104,7 @@ export type UiActions = {
   setConfigErrors(errors: string[]): void;
   setShell(info: ShellInfo): void;
   setNotifyPermission(p: NotifyPermission): void;
+  setUpdate(version?: string): void;
   setCapturingKey(id?: ActionId): void;
   toggleSidebar(open?: boolean): void;
   toggleSettings(open?: boolean): void;
@@ -149,6 +152,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     linkAsk: undefined,
     configErrors: [],
     notifyPermission: 'unknown',
+    update: undefined,
     sidebarOpen: storage?.getSidebarOpen() ?? true,
     settingsOpen: firstRun,
     keysOpen: false,
@@ -217,6 +221,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
       return { shell, settings: { ...s.settings, bindings: declineTaken(shell.ghosttyKeys, s.settings.bindings) } };
     }),
     setNotifyPermission: (notifyPermission) => set({ notifyPermission }),
+    setUpdate: (update) => set({ update }),
     toggleSidebar: (open) => set((s) => { const next = open ?? !s.sidebarOpen; storage?.setSidebarOpen(next); return { sidebarOpen: next }; }),
     toggleSettings: (open) => set((s) => {
       const next = open ?? !s.settingsOpen;

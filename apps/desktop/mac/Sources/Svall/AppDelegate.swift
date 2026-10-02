@@ -37,7 +37,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         window.appearance = NSAppearance(named: .darkAqua)
         window.center()
         window.setFrameAutosaveName(SvallHome.frameAutosaveName)
-        Updates.shared.attach(to: window)
         let content = window.contentView!
 
         let config = WKWebViewConfiguration()

@@ -62,6 +62,7 @@ final class ShellRouter {
         notifier.onPermission = { [weak self] state in self?.bridge.send(.notifyPermission(state)) }
         notifier.onOpen = { [weak self] key in self?.open(key) }
         notifier.onAction = { [weak self] key, action, promptId in self?.sendNotify(.notifyAction(key: key, action: action, promptId: promptId)) }
+        Updates.shared.onWaiting = { [weak self] version in self?.bridge.send(.updateAvailable(version)) }
 
         bridge.onMessage = { [weak self] msg in self?.handle(msg) }
         keys.onChord = { [weak self] chord in
@@ -247,6 +248,7 @@ final class ShellRouter {
             bridge.send(.connection(SvallHome.connection()))
             sendAppActive()
             notifier.refreshPermission()
+            bridge.send(.updateAvailable(Updates.shared.waiting))
             if !sentConfigErrors, !runtime.configErrors.isEmpty {
                 sentConfigErrors = true
                 bridge.send(.ghosttyConfigErrors(runtime.configErrors))
@@ -352,6 +354,8 @@ final class ShellRouter {
             notifier.enable()
         case .notifySettings:
             notifier.openSettings()
+        case .updateInstall:
+            Updates.shared.install()
         case .openFleet(let home, let quit):
             openFleet(home, quit: quit ?? false)
         case .retitle:
