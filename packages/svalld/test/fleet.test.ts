@@ -271,6 +271,19 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id].shell.lastOutputAt).toBeGreaterThan(0);
   });
 
+  it('takes a pane at the shell config.json names for its prompt, which its agent has left', async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    await waitFor(async () => (await tmux.listWindows()).some((w) => w.name === c.id && w.command === 'sleep'));
+    store.update((d) => { d.characters[c.id].agent = { kind: 'claude', sessionId: 's', status: 'idle', lastActivityAt: 1 }; });
+    const twice = async () => { await fleet['poll']['tick'](); await fleet['poll']['tick'](); };
+    await twice();
+    expect(store.state.characters[c.id].agent).toBeDefined();
+    fleet['deps'].config.shell = '/opt/homebrew/bin/sleep';
+    await twice();
+    expect(store.state.characters[c.id].agent).toBeUndefined();
+  });
+
   it('records shell activity when a SessionEnd hook ends the agent, without waiting for a poll', async () => {
     const { fleet, store } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
@@ -472,11 +485,9 @@ runIf('Fleet', () => {
     const shell = await fleet.createCharacter({ islandId: c.islandId, cwd: '/tmp', command: 'sleep 600' });
     await fleet.openSecond(c.id);
     const stopped = new Promise<void>((r) => fleet.once('stopped', r));
-    // a poll holds a listing with the second terminal on it until the quit has ended that terminal, or has waited a while for the poll
+    // a poll holding a listing with the second terminal on it, let go once the quit waits on it, must not write it back
     const poll = holdListing(tmux);
     await poll.listed;
-    const unsub = store.subscribe(() => { if (!store.state.characters[c.id].second) poll.release(); });
-    cleanup.push(async () => unsub());
     setTimeout(poll.release, 100);
     await fleet.stopAll();
     await stopped;
@@ -654,6 +665,23 @@ runIf('Fleet', () => {
     vi.spyOn(tmux, 'killWindow').mockRejectedValueOnce(new Error('tmux went away'));
     await fleet['endIdleAgents']();
     expect((await fleet.reviveCharacter(c.id)).tmux?.windowId).toBe(windowId);
+  });
+
+  it('ends no further idle agent once the fleet has stopped', async () => {
+    const b = await boot();
+    const { fleet, store, tmux } = b;
+    const agents = [await withAgent(b), await withAgent(b)];
+    store.update((d) => { for (const { c } of agents) d.characters[c.id].agent!.lastActivityAt = 0; });
+    const real = tmux.killWindow.bind(tmux);
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    vi.spyOn(tmux, 'killWindow').mockImplementation(async (id) => { await held; return real(id); });
+    const ending = fleet['endIdleAgents']();
+    await waitFor(() => agents.some(({ c }) => !store.state.characters[c.id].tmux));
+    await fleet.stop();
+    release();
+    await ending;
+    expect(agents.filter(({ c }) => store.state.characters[c.id].tmux)).toHaveLength(1);
   });
 
   it('does not take back a window a poll listed before its agent was ended', async () => {
@@ -1415,6 +1443,9 @@ runIf('Fleet', () => {
     expect(fleet['agentEvents']['hookCwd'].has(c.id)).toBe(false);
     expect(fleet['poll']['shellStreak'].has(`${c.id}-2`)).toBe(false);
     expect(fleet['scribe']['seen'].has(c.id)).toBe(false);
+    // nor does the end its agent sends as the window goes
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionEnd', cwd: '/tmp' } });
+    expect(fleet['agentEvents']['hookCwd'].has(c.id)).toBe(false);
   });
 
   it('opens, activates, updates and closes browser tabs on a character', async () => {

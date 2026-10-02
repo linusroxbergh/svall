@@ -79,7 +79,9 @@ export class Tmux {
 
   // display succeeds for a window that is gone too, printing an empty id
   async hasWindow(windowId: string): Promise<boolean> {
-    return (await this.run('display', '-p', '-t', windowId, '#{window_id}').catch(() => '')).trim() === windowId;
+    // a tmux that did not answer in time says nothing about the window
+    const said = await this.run('display', '-p', '-t', windowId, '#{window_id}').catch((e: { killed?: boolean }) => { if (e.killed) throw e; return ''; });
+    return said.trim() === windowId;
   }
 
   // one session per desktop terminal, holding only the character's window: when that window dies the

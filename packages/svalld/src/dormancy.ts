@@ -152,8 +152,9 @@ export async function endIdleAgents(o: Sleep, seen: ReadonlyMap<string, number>,
   const idle = Object.values(o.store.state.characters).filter(due);
   if (!idle.length) return;
   const procs = await o.processes();
-  if (stopped()) return;
   for (const c of idle) {
+    // the fleet stopped while ps ran or the last agent exited
+    if (stopped()) return;
     const a = c.agent!;
     // a pid gone or moved on to another program, a launch the resume can't repeat, work going on in the background,
     // or no transcript to resume from leaves the agent be

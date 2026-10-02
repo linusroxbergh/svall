@@ -49,7 +49,7 @@ export async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs
   throw new Error('waitFor: timed out');
 }
 
-// counts only polls begun after the call: a slow listing lets polls overlap, so an earlier one can end later
+// counts only polls begun after the call, not one already under way
 export async function waitForPolls(fleet: Fleet, n: number): Promise<void> {
   const poll = fleet['poll'];
   const tick = poll['tick'];

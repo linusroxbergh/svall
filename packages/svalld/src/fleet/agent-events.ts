@@ -83,10 +83,9 @@ export class AgentEvents {
 
   // an agent that cds into another checkout from its shell leaves the pane's path behind; its hooks say where it went
   private async followCwd(charId: string, cwd: string): Promise<void> {
-    if (this.hookCwd.get(charId) === cwd) return;
-    this.hookCwd.set(charId, cwd);
     const from = this.deps.store.state.characters[charId]?.cwd;
-    if (!from) return;
+    if (!from || this.hookCwd.get(charId) === cwd) return;
+    this.hookCwd.set(charId, cwd);
     const [to, now] = await Promise.all([resolveRepo(cwd), resolveRepo(from)]);
     // a report that came in while git answered is the newer one
     if (this.hookCwd.get(charId) !== cwd || !to || to.root === now?.root) return;

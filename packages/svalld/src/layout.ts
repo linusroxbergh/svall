@@ -86,7 +86,7 @@ export function makeRoom(draft: FleetState, islandId: string): number {
   return worldIslands(draft).filter((o) => o.id !== islandId && !settled(draft, o)).length;
 }
 
-// a hidden island takes its ground back where it stands, and whatever stands there yields
+// a hidden or grown island takes its ground where it stands, and whatever stands there yields
 export function unfold(draft: FleetState, islandId: string, log?: Logger): void {
   const island = draft.islands[islandId];
   delete island.collapsed;

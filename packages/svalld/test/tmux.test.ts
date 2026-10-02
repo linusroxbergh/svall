@@ -43,6 +43,16 @@ describe('isShellCommand', () => {
   });
 });
 
+describe('hasWindow', () => {
+  it('passes on a tmux that timed out rather than call the window gone', async () => {
+    const tmux = new Tmux('/nonexistent.sock', '/dev/null');
+    vi.spyOn(tmux, 'run').mockRejectedValue(Object.assign(new Error('timed out'), { killed: true }));
+    await expect(tmux.hasWindow('@1')).rejects.toThrow('timed out');
+    vi.spyOn(tmux, 'run').mockRejectedValue(new Error("can't find window: @1"));
+    expect(await tmux.hasWindow('@1')).toBe(false);
+  });
+});
+
 describe('rawPasteArgs', () => {
   it('turns off the paste sanitizing only on a tmux that has the flag for it', () => {
     expect(rawPasteArgs('paste-buffer (pasteb) [-dprS] [-s separator] [-b buffer-name] [-t target-pane]')).toEqual(['-S']);

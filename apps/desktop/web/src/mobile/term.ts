@@ -49,8 +49,12 @@ export function linkTerminal(deps: LinkDeps, id: string, screen: Screen, lines =
         else paint(e.data.screen);
       });
       try {
-        const { screen: seed } = await deps.api.call('term.open', { id, cols: screen.cols, rows: screen.rows, lines });
-        if (!closed) paint(seed);
+        const { cols, rows } = screen;
+        const { screen: seed } = await deps.api.call('term.open', { id, cols, rows, lines });
+        if (closed) return;
+        paint(seed);
+        // the daemon takes no size from a viewer still opening, so one the screen settled on meanwhile goes now
+        if (screen.cols !== cols || screen.rows !== rows) deps.api.fire('term.resize', { id, cols: screen.cols, rows: screen.rows });
       } catch (e) {
         unsubscribe?.();
         unsubscribe = undefined;

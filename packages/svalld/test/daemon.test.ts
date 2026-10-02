@@ -58,6 +58,19 @@ runIf('startDaemon', () => {
     expect(onDisk).toBe(7);
   });
 
+  it('returns from a second stop only once the first has the fleet on disk', async () => {
+    const home = makeHome();
+    homes.push(home);
+    const paths = resolvePaths(home);
+    const d = await start({ home, port: 0, log: silentLogger });
+    d.fleet.setDormancy(7);
+    const first = d.stop();
+    await d.stop();
+    expect(JSON.parse(fs.readFileSync(paths.state, 'utf8')).dormantAfterHours).toBe(7);
+    expect(fs.existsSync(paths.port)).toBe(false);
+    await first;
+  });
+
   it('writes the version it runs as, which a launch refresh compares with the app\'s', async () => {
     const home = makeHome();
     homes.push(home);
