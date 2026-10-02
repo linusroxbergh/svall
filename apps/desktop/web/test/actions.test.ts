@@ -270,9 +270,15 @@ describe('deleteIsland', () => {
 
     const c = ctx();
     c.store.getState().selectIsland('i_e');
+    // svalld sends the fleet's patch before it answers the call
+    const call = c.api.call;
+    c.api.call = ((method: string, params: unknown) => {
+      if (method === 'island.delete') c.store.getState().applyPatch([{ op: 'remove', path: '/islands/i_e' }]);
+      return call(method as never, params as never);
+    }) as Api['call'];
     deleteIsland(c, 'i_e');
     await new Promise((r) => setTimeout(r, 0));
-    expect(c.store.getState().selectedIslandId).toBeUndefined();
+    expect(c.store.getState()).toMatchObject({ selectedIslandId: undefined, sideCardOpen: false });
   });
 });
 

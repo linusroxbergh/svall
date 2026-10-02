@@ -253,9 +253,7 @@ export const saveIslandContext = (d: ActionDeps, id: string, context: ContextIte
 
 // the island goes and the card that showed it goes with it; a refused delete leaves both
 export const deleteIsland = (d: ActionDeps, id: string): void => {
-  d.api.call('island.delete', { id })
-    .then(() => { if (d.store.getState().selectedIslandId === id) d.store.getState().selectIsland(undefined); })
-    .catch(toast(d));
+  d.api.call('island.delete', { id }).catch(toast(d));
 };
 
 // an island's or a character's own field, written straight back to the fleet

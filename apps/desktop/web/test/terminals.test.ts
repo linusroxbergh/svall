@@ -92,6 +92,16 @@ describe('terminal manager', () => {
     expect(sent).not.toContainEqual({ type: 'term.focus', id: 'c0' });
   });
 
+  it('leaves the keys on the page when the pane comes back during the attach asking it to', async () => {
+    const { sent, store, manager } = fakes();
+    store.getState().focus('c0');
+    const first = manager.show('c0', rect);
+    manager.hide('c0');
+    const again = manager.show('c0', rect, undefined, false);
+    await Promise.all([first, again]);
+    expect(sent).not.toContainEqual({ type: 'term.focus', id: 'c0' });
+  });
+
   it('does not bring back a hidden surface whose tmux client died', async () => {
     const { calls, store, bridge, manager } = fakes();
     store.getState().focus('c0');

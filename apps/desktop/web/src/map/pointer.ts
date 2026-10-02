@@ -39,13 +39,19 @@ export function useMapPointer({ host, camera, hover, place, lastPressAt, islands
   const interactions = useRef(createInteractions());
   // the host holds the capture, so a click lands on it whatever was pressed; the press remembers what that was
   const pressedKind = useRef<Target['kind']>(undefined);
+  // a fleet change the hold kept the camera from is fitted when the hold lets go
+  const missed = useRef(false);
+  const release = () => {
+    camera.hold.current = false;
+    if (missed.current) { missed.current = false; camera.refit(); }
+  };
 
   // the drag is shown where it was dropped until the fleet answers; a refusal puts the island back
   const undoPending = (id: string) => () => {
     if (pendingRef.current?.id !== id) return;
     pendingRef.current = undefined;
     setPendingIsland(undefined);
-    camera.hold.current = false;
+    release();
   };
 
   const run = (intent: Intent | undefined) => {
@@ -135,7 +141,7 @@ export function useMapPointer({ host, camera, hover, place, lastPressAt, islands
     const current = interactions.current.drag();
     if (current?.kind === 'island' || current?.kind === 'resize') camera.hold.current = true;
     if (ev.type === 'cancel' || (ev.type === 'up' && !pendingRef.current)) {
-      camera.hold.current = false;
+      release();
       if (!before) requestAnimationFrame(() => camera.refit());
     }
     if (ev.type === 'move') {
@@ -215,12 +221,12 @@ export function useMapPointer({ host, camera, hover, place, lastPressAt, islands
           settleTimer.current = undefined;
           if (pendingRef.current !== p) return;
           pendingRef.current = undefined; setPendingIsland(undefined);
-          if (!interactions.current.drag()) camera.hold.current = false;
+          if (!interactions.current.drag()) release();
         }, theme.dragSettleMs);
-      }
+      } else missed.current = true;
       return;
     }
-    if (!camera.hold.current) camera.refit();
+    if (camera.hold.current) missed.current = true; else camera.refit();
   }, [islands, crewCells]);
 
   const onSeaDoubleClick = (e: React.MouseEvent) => {

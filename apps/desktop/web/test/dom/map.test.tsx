@@ -289,6 +289,24 @@ test('an island dropped while the last one is still settling settles, and so doe
   expect(held('i_a')).toBe('false');
 });
 
+test('an island made elsewhere while a drop settles is fitted once it has', async () => {
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 1200 });
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 800 });
+  try {
+    render(<Map />);
+    await act(async () => {});
+    land(dragRight('i_e'));
+    const refits = window.__map!.refits();
+    act(() => { store.getState().applyPatch([{ op: 'add', path: '/islands/i_far', value: isl('i_far', 'far', 60) }]); });
+    expect(window.__map!.refits()).toBe(refits);
+    await settled();
+    expect(window.__map!.refits()).toBeGreaterThan(refits);
+  } finally {
+    delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+  }
+});
+
 test('the map holds its animation still while the app is in the background or a full card covers it', async () => {
   render(<Map />);
   await act(async () => {});

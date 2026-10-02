@@ -265,7 +265,7 @@ describe('store', () => {
     s.getState().setFleet(fleet());
     s.getState().selectIsland('i_e');
     s.getState().applyPatch([{ op: 'remove', path: '/islands/i_e' }]);
-    expect(s.getState().selectedIslandId).toBeUndefined();
+    expect(s.getState()).toMatchObject({ selectedIslandId: undefined, sideCardOpen: false });
     s.getState().selectIsland('i_a');
     const next = fleet();
     delete next.islands.i_a;

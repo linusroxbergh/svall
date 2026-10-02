@@ -38,11 +38,12 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
   const live = (key: string) => { const { id, term } = target(key); const c = state().fleet.characters[id]; return Boolean(term ? c?.second : c?.tmux); };
   const inView = (key: string) => viewedId(state()) === target(key).id;
   const lastOpacity = new Map<string, number | undefined>();
-  // the surfaces a pane is showing now; one whose pane was hidden or veiled during its attach stays hidden
-  const wanted = new Set<string>();
+  // the surfaces a pane is showing now, and whether its latest show takes the keys; one whose pane was hidden or
+  // veiled during its attach stays hidden
+  const wanted = new Map<string, boolean>();
 
   async function show(id: string, rect: Rect, opacity?: number, takeFocus = true): Promise<void> {
-    wanted.add(id);
+    wanted.set(id, takeFocus);
     lastOpacity.set(id, opacity);
     const alpha = opacity !== undefined ? { opacity } : {};
     if (state().terminals[id]) {
@@ -69,7 +70,7 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
     bridge.send({ type: 'term.show', id, rect, ...alpha, attach });
     state().termOpened(id, rect);
     if (!wanted.has(id) || !inView(id)) bridge.send({ type: 'term.hide', id });
-    else if (takeFocus) focus(id);
+    else if (wanted.get(id)) focus(id);
   }
 
   bridge.onMessage((m) => {
