@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createLogger } from '../src/log.js';
 import { Store } from '../src/store.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -74,12 +75,12 @@ describe('Store', () => {
     expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toMatchObject({ defaultCwd: '/elsewhere', scribeOff: true });
   });
 
-  it('does not make a fleet home that is gone again', () => {
+  it('does not make a fleet home that is gone again, nor fail on the log gone with it', () => {
     const home = makeHome();
-    const s = Store.load(path.join(home, 'state.json'), () => {});
+    const s = Store.load(path.join(home, 'state.json'), createLogger(path.join(home, 'svalld.log')).error);
     s.update((d) => { d.scribeOff = true; });
     fs.rmSync(home, { recursive: true });
-    s.flush();
+    expect(() => s.flush()).not.toThrow();
     expect(fs.existsSync(home)).toBe(false);
   });
 

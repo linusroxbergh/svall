@@ -317,6 +317,17 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id].cwd).toBe(repo);
   });
 
+  it('follows a cd made before the first poll, and keeps /tmp as it was asked for', async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    const islandId = fleet.createIsland({ name: 'x' }).id;
+    const stays = await fleet.createCharacter({ islandId, cwd: '/tmp', command: 'sleep 600' });
+    const moves = await fleet.createCharacter({ islandId, cwd: '/tmp', command: 'cd /usr && sleep 600' });
+    await waitFor(async () => (await tmux.listWindows()).filter((w) => w.command === 'sleep').length === 2);
+    await fleet['poll']['tick']();
+    expect(store.state.characters[stays.id].cwd).toBe('/tmp');
+    expect(store.state.characters[moves.id].cwd).toBe('/usr');
+  });
+
   it('keeps a character where it is while tmux reports no path for its pane, as under sudo', async () => {
     const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
@@ -820,13 +831,15 @@ runIf('Fleet', () => {
     const { fleet, tmux } = await boot();
     let release!: () => void;
     const held = new Promise<void>((r) => { release = r; });
-    const ensure = vi.spyOn(tmux, 'ensureServer').mockImplementationOnce(() => held);
+    // the server comes up only once released, after the quit has begun
+    const real = tmux.ensureServer.bind(tmux);
+    const ensure = vi.spyOn(tmux, 'ensureServer').mockImplementationOnce(async () => { await held; await real(); });
     const recover = vi.spyOn(fleet['link'] as unknown as { recover: () => Promise<void> }, 'recover');
     const reconcile = vi.spyOn(fleet, 'reconcileNow');
     fleet['link']['control']!['proc']!.kill();
     await waitFor(() => ensure.mock.calls.length === 1);
+    setTimeout(release, 100);
     await fleet.stopAll();
-    release();
     await recover.mock.results[0].value;
     expect(reconcile).not.toHaveBeenCalled();
     await expect(tmux.run('list-sessions')).rejects.toThrow();

@@ -99,7 +99,7 @@ export class Fleet extends EventEmitter<Events> {
   /** Stops polling and the control client; resolves once a poll under way has finished and the fleet is on disk. */
   async stop(): Promise<void> {
     this.stopped = true;
-    this.link.stop();
+    await this.link.stop();
     await this.poll.stop();
     this.deps.store.flush();
   }
@@ -313,6 +313,8 @@ export class Fleet extends EventEmitter<Events> {
     if (!path.isAbsolute(cwd)) throw new Invalid(`cwd ${p.cwd} is not an absolute path`);
     if (!fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) throw new Invalid(`cwd ${p.cwd} is not a directory`);
     const id = newId('c');
+    // the path tmux reports for a pane started here, as for /tmp, so a poll moves the character only once the pane moves
+    const panePath = fs.realpathSync(cwd);
     const prompt = p.command && isAgentCommand(p.command) ? p.run : undefined;
     const w = await this.deps.tmux.newWindow(id, cwd, this.charEnv(id));
     try {
@@ -323,7 +325,7 @@ export class Fleet extends EventEmitter<Events> {
           id, islandId: p.islandId, cell: p.cell ?? placeOnIsland(d, p.islandId, undefined, this.deps.log),
           name: uniqueName(names, p.name ?? randomName(new Set(names))),
           portrait: randomPortrait(new Set(Object.values(d.characters).map((c) => c.portrait))),
-          note: '', instructions: '', ...(p.agentProfile && { agentProfile: p.agentProfile }), cwd, context: [],
+          note: '', instructions: '', ...(p.agentProfile && { agentProfile: p.agentProfile }), cwd, panePath, context: [],
           tmux: { windowId: w.windowId, paneId: w.paneId },
           shell: { lastOutputAt: Date.now() }, unread: false,
         };

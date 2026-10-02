@@ -21,6 +21,8 @@ export class ControlLink {
   private control?: ControlClient;
   // the next try at bringing the control client back
   private retry?: NodeJS.Timeout;
+  // a server the recovery is bringing up, which a stop waits for so that a quit's kill comes after it
+  private starting?: Promise<void>;
   // tmux stops reading a pane's pty once every client has it off, which freezes the pane;
   // output is filtered here instead.
   private streaming = new Set<string>();
@@ -53,10 +55,11 @@ export class ControlLink {
     this.control = c;
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.stopped = true;
     clearTimeout(this.retry);
     this.control?.stop();
+    await this.starting?.catch(() => {});
   }
 
   setPaneOutput(id: string, on: boolean): void {
@@ -93,7 +96,8 @@ export class ControlLink {
   private async recover(delayMs = 1000): Promise<void> {
     if (this.stopped) return;
     try {
-      await this.deps.tmux.ensureServer();
+      this.starting = this.deps.tmux.ensureServer();
+      await this.starting;
       if (this.stopped) return;
       await this.deps.reconcile();
       if (this.stopped) return;
