@@ -63,6 +63,8 @@ const DORMANCY_EVERY = 20;
 
 export class Fleet extends EventEmitter<Events> {
   private control?: ControlClient;
+  // the next try at bringing the control client back
+  private retry?: NodeJS.Timeout;
   private poll?: NodeJS.Timeout;
   private ticking?: Promise<void>;
   private ticks = 0;
@@ -127,6 +129,7 @@ export class Fleet extends EventEmitter<Events> {
   async stop(): Promise<void> {
     this.stopped = true;
     clearTimeout(this.poll);
+    clearTimeout(this.retry);
     this.control?.stop();
     await this.ticking;
   }
@@ -201,13 +204,18 @@ export class Fleet extends EventEmitter<Events> {
     c.on('window-close', (windowId) => { void this.windowClosed(windowId); });
     // a client that exits before it is ready fails start, and the caller's retry is the one recovery
     let ready = false;
+    let gone = false;
     c.once('ready', () => { ready = true; });
     c.on('exit', (reason) => {
+      gone = true;
       this.deps.log.error(`control client lost: ${reason}`);
-      this.control = undefined;
-      if (ready && !this.stopped) setTimeout(() => this.recover(), 1000);
+      if (this.control === c) this.control = undefined;
+      if (ready && !this.stopped) this.retry = setTimeout(() => this.recover(), 1000);
     });
     await c.start();
+    // a stop while it attached, or an exit read in the same breath as its ready, leaves nothing to keep
+    if (this.stopped) { c.stop(); return; }
+    if (gone) return;
     c.send('refresh-client -f pause-after=3');
     this.control = c;
   }
@@ -221,16 +229,20 @@ export class Fleet extends EventEmitter<Events> {
     if (owner) this.deps.store.update((d) => { delete d.characters[owner]?.second; });
   }
 
+  // a stop at any step ends the recovery there, or it would start the server the stop just ended
   private async recover(delayMs = 1000): Promise<void> {
     if (this.stopped) return;
     try {
       await this.deps.tmux.ensureServer();
+      if (this.stopped) return;
       await this.reconcileNow();
+      if (this.stopped) return;
       await this.attachControl();
+      if (this.stopped) return;
       this.emit('control-reset');
     } catch (e) {
       this.deps.log.error(`recover failed: ${String(e)}`);
-      setTimeout(() => this.recover(Math.min(delayMs * 2, 30_000)), delayMs);
+      if (!this.stopped) this.retry = setTimeout(() => this.recover(Math.min(delayMs * 2, 30_000)), delayMs);
     }
   }
 
@@ -254,6 +266,7 @@ export class Fleet extends EventEmitter<Events> {
   async reconcileNow(): Promise<void> {
     const before = snapshot(this.deps.store.state);
     const live = await this.listWindows();
+    if (this.stopped) return;
     const { mutate, renames, unplaced } = reconcile(this.deps.store.state, live, Date.now(), before);
     this.deps.store.update(mutate);
     for (const line of unplaced) this.deps.log.error(line);

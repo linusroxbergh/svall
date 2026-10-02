@@ -1,7 +1,7 @@
-export type ControlLine =
+type ControlLine =
   | { type: 'output'; paneId: string; data: Buffer }
   | { type: 'begin' | 'end' | 'error' }
-  | { type: 'window-add' | 'window-close'; windowId: string }
+  | { type: 'window-close'; windowId: string }
   | { type: 'pause' | 'continue'; paneId: string }
   | { type: 'exit'; reason: string }
   | { type: 'other'; raw: string };
@@ -42,8 +42,6 @@ export function parseLine(line: string): ControlLine {
     case '%begin': return { type: 'begin' };
     case '%end': return { type: 'end' };
     case '%error': return { type: 'error' };
-    case '%window-add':
-    case '%unlinked-window-add': return { type: 'window-add', windowId: splitFirst(rest)[0] };
     case '%window-close':
     case '%unlinked-window-close': return { type: 'window-close', windowId: splitFirst(rest)[0] };
     case '%pause': return { type: 'pause', paneId: rest };

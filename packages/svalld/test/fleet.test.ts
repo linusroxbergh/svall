@@ -752,6 +752,22 @@ runIf('Fleet', () => {
     expect(connect).toHaveBeenCalledTimes(2);
   });
 
+  it('ends a recovery under way at a stop, and takes it no further', async () => {
+    const { fleet, tmux } = await boot();
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    const ensure = vi.spyOn(tmux, 'ensureServer').mockImplementationOnce(() => held);
+    const recover = vi.spyOn(fleet as unknown as { recover: () => Promise<void> }, 'recover');
+    const reconcile = vi.spyOn(fleet, 'reconcileNow');
+    fleet['control']!['proc']!.kill();
+    await waitFor(() => ensure.mock.calls.length === 1);
+    await fleet.stopAll();
+    release();
+    await recover.mock.results[0].value;
+    expect(reconcile).not.toHaveBeenCalled();
+    await expect(tmux.run('list-sessions')).rejects.toThrow();
+  });
+
   it('spawns one window for concurrent revives', async () => {
     const { fleet, store, tmux } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });

@@ -221,6 +221,12 @@ runIf('Tmux', () => {
     c.stop();
   });
 
+  it('start rejects when tmux refuses the attach', async () => {
+    const t = await boot();
+    const c = new ControlClient({ binary: t.binary, socket: t.socket, conf: `${lastHome}/tmux.conf`, session: 'nosuch' });
+    await expect(c.start()).rejects.toThrow("tmux refused the attach: can't find session: nosuch");
+  });
+
   it('start rejects when the client does not become ready in time', async () => {
     await boot();
     const c = new ControlClient({
