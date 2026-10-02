@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Config, fleetMainAgent, loadConfig, saveConfig } from '../src/config.js';
+import { Config, fleetMainAgent, keptPorts, loadConfig, saveConfig } from '../src/config.js';
 import { newId } from '../src/ids.js';
 import { resolvePaths, userPaths } from '../src/paths.js';
 import { cleanHomes, makeHome } from './helpers.js';
@@ -105,6 +105,15 @@ describe('saveConfig', () => {
     expect(loadConfig(f).name).toBe('home');
     fs.writeFileSync(f, JSON.stringify({ name: 'Home Base' }));
     expect(() => loadConfig(f)).toThrow(/name: /);
+  });
+});
+
+describe('keptPorts', () => {
+  it('lists the phone ports the fleets keep, past a fleet that keeps none or whose config does not parse', () => {
+    const [kept, none, broken] = [makeHome(), makeHome(), makeHome()];
+    fs.writeFileSync(path.join(kept, 'config.json'), JSON.stringify({ mobile: { httpsPort: 8444 } }));
+    fs.writeFileSync(path.join(broken, 'config.json'), '{');
+    expect(keptPorts([kept, none, broken, '/nonexistent'])).toEqual([8444]);
   });
 });
 

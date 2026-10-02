@@ -5,7 +5,7 @@ import path from 'node:path';
 import { startApi } from './api/server.js';
 import { findAgents } from './agents.js';
 import { codexPaths } from './codex/install.js';
-import { fleetMainAgent, loadConfig, saveConfig } from './config.js';
+import { fleetMainAgent, keptPorts, loadConfig, saveConfig } from './config.js';
 import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
 import { startHookReceiver } from './hooks/receiver.js';
@@ -117,11 +117,12 @@ async function start(opts: Options): Promise<Daemon> {
     ...homes().flatMap((h) => fleetKeys(resolvePaths(h)))];
   const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs, paths.agentProfiles), log, refused, [paths.docs, paths.agentProfiles]);
   const phones = new Phones();
-  const keptPort = (h: string): number[] => { try { const p = loadConfig(resolvePaths(h).config).mobile.httpsPort; return p ? [p] : []; } catch { return []; } };
   const mobile = mobileControl(realDeps(), {
     home: paths.home, profile, logins: config.mobile.logins, phones, httpsPort: config.mobile.httpsPort, rotateKey: key.rotate,
-    kept: () => homes().filter((h) => h !== paths.home).flatMap(keptPort),
-    savePort: (httpsPort) => { try { saveConfig(paths.config, { mobile: { httpsPort } }); } catch (e) { log.error(`phone port ${httpsPort} not saved: ${(e as Error).message}`); } },
+    kept: () => keptPorts(homes().filter((h) => h !== paths.home)),
+    savePort: (httpsPort) => {
+      try { saveConfig(paths.config, { mobile: { httpsPort } }); return true; } catch (e) { log.error(`phone port ${httpsPort} not saved: ${(e as Error).message}`); return false; }
+    },
   });
   const usage = fleetUsage({ state: () => store.state, claude: cachedUsage(usageFetcher({ cwd: path.join(paths.home, 'usage'), envFile: paths.env }), USAGE_TTL_MS) });
 

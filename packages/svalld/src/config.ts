@@ -65,6 +65,11 @@ export function parseConfig(text: string, file: string): Config {
   }
 }
 
+/** The phone ports the fleets at `homes` keep in their config.json. */
+export const keptPorts = (homes: string[]): number[] => homes.flatMap((h) => {
+  try { const p = loadConfig(resolvePaths(h).config).mobile.httpsPort; return p ? [p] : []; } catch { return []; }
+});
+
 /** Sets the keys of `patch` in `file` and keeps every other key; a file that does not parse is refused, not replaced.
  *  A linked file (stow, home-manager) is written where it points, with the mode it had. */
 export function saveConfig(file: string, patch: Partial<Pick<Config, 'mainAgent' | 'name' | 'integrations' | 'defaultCwd'>> & { mobile?: Pick<Config['mobile'], 'httpsPort'> }): void {

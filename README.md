@@ -357,9 +357,11 @@ Ghostty `initial-command` and `input` are ignored.
   others in, list their logins and yours in `mobile.logins` and restart the
   daemon.
 - Each fleet is its own Home Screen app on its own port: the private fleet on
-  443, the next on 8443. Tailscale serves one fleet per port on the Mac, so a
-  fleet whose port another fleet or site already serves moves to the first
-  free port from 8443 up, and keeps it in `mobile.httpsPort`.
+  443, every other fleet on the first port from 8443 up that is free when its
+  link first turns on. Svall keeps that port in `mobile.httpsPort`, so the
+  app's address stays the same. Tailscale serves one fleet per port on the
+  Mac: if something else serves a kept port, or the private fleet's 443,
+  turning the link on says so and leaves it.
 
 ## Configuration
 
