@@ -629,6 +629,7 @@ em.res-bdg[data-kind="lookup"]{border:1px solid var(--line);color:var(--ink-3)}
 .use-tab[data-off] .use-glyph { opacity: .65; }
 .use-status { position: absolute; top: 5px; left: calc(50% + 7px); width: 5px; height: 5px; border-radius: var(--r-pill); background: var(--idle); }
 .use-status[data-on="true"] { background: var(--done); }
+.use-status[data-update] { background: var(--sel); }
 .use[data-collapsed="true"] .use-tabs { width: var(--cell); height: auto; flex-direction: column; gap: var(--sp-xs); padding: var(--sp-sm);
   border: 1px solid var(--line); border-left: 0; border-bottom: 0; border-radius: 0 var(--r-md) 0 0; background: var(--glass-hi); backdrop-filter: blur(7px); }
 .use[data-collapsed="true"] .use-tab { flex: none; width: 100%; height: 36px; }

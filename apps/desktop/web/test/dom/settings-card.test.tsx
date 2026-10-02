@@ -160,3 +160,14 @@ test('main agent disables a CLI svalld does not find', () => {
   expect(codex.disabled).toBe(true);
   expect(codex.textContent).toBe('Codex (not found: install it, then svall-dev setup)');
 });
+
+test('the update section stands at the foot only while an update waits, and its button asks the shell to install', () => {
+  render(<SettingsCard />);
+  expect(screen.queryByTestId('set-update')).toBeNull();
+  act(() => store.getState().setUpdate('0.2.1'));
+  expect(screen.getByTestId('settings').lastElementChild?.textContent).toContain('Svall 0.2.1 is out');
+  fireEvent.click(screen.getByTestId('set-update'));
+  expect(sent).toContainEqual({ type: 'update.install' });
+  act(() => store.getState().setUpdate(undefined));
+  expect(screen.queryByTestId('set-update')).toBeNull();
+});

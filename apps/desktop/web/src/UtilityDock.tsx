@@ -41,6 +41,8 @@ export function UtilityDock() {
   const phoneTab = useApp((s) => !!s.mobile && !s.mobile.error);
   const serving = useApp((s) => !!s.mobile?.serving);
   const phoneLabel = serving ? 'Phone link on' : 'Phone link off';
+  const update = useApp((s) => !!s.update);
+  const settingsLabel = update ? 'Settings, update available' : 'Settings';
   const box = useRef<HTMLDivElement>(null);
   const tabs = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -87,8 +89,9 @@ export function UtilityDock() {
           <button className="use-tab" data-testid="usage-tab" aria-expanded={usageOpen} aria-controls="corner-panel"
             title="Plan usage" aria-label="Plan usage" onClick={() => app.store.getState().toggleUsage()}><Meter /><span className="use-tab-label">Usage</span></button>
         )}
-        <button className="use-tab" data-testid="settings-open" aria-expanded={settingsOpen} title={keyTip('Settings', 'toggleSettings', bindings)} aria-label="Settings"
-          onClick={() => app.store.getState().toggleSettings()}><Gear /><span className="use-tab-label">Settings</span></button>
+        <button className="use-tab" data-testid="settings-open" aria-expanded={settingsOpen} title={keyTip(settingsLabel, 'toggleSettings', bindings)} aria-label={settingsLabel}
+          onClick={() => app.store.getState().toggleSettings()}><Gear /><span className="use-tab-label">Settings</span>
+          {update && <i className="use-status" data-update data-testid="settings-update" aria-hidden="true" />}</button>
       </div>
       {open && (
         <div className="use-panel" ref={panel} id="corner-panel" data-testid={usageOpen ? 'usage-panel' : 'mobile-panel'} aria-live="polite">
