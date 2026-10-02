@@ -80,13 +80,14 @@ export const test = base.extend<{ svall: Svall }>({
   },
 });
 
-// the fit ease keeps shifting the layout for a few frames after the view opens, a move, or a panel taking width
-export const settleMap = (page: Page) => page.waitForFunction(() => {
+// the fit ease keeps shifting the layout for a few frames after the view opens, a move, or a panel taking width, so
+// the layout is read a beat apart until two reads agree (waitForFunction would take the returned promise as a pass)
+export const settleMap = (page: Page) => expect.poll(() => page.evaluate(() => {
   const m = window.__map!;
   const before = JSON.stringify(m.layout());
   // a frame can lag past the wait, so the layout is read again two frames on
   return new Promise<boolean>((done) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => done(before === JSON.stringify(m.layout())))), 100));
-});
+}), { intervals: [50] }).toBe(true);
 
 // the viewport that leaves the map `w` px wide beside whatever panels are open
 export async function setMapWidth(page: Page, w: number): Promise<void> {

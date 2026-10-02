@@ -7,6 +7,17 @@ import { theme } from '../src/theme.js';
 const layoutOf = (page: Page) => page.evaluate(() => window.__map!.layout());
 const dump = (page: Page) => page.evaluate(() => window.__map!.dump());
 
+test('the settle wait holds until the map stops moving, however long that takes', async ({ page }) => {
+  await page.setContent('<p>map</p>');
+  // a stand-in camera that eases for 600ms, several times one settle window
+  await page.evaluate(() => {
+    const start = performance.now();
+    (window as unknown as { __map: { layout(): unknown } }).__map = { layout: () => ({ t: Math.min(600, Math.floor(performance.now() - start)) }) };
+  });
+  await settleMap(page);
+  expect(await page.evaluate(() => (window as unknown as { __map: { layout(): { t: number } } }).__map.layout().t)).toBe(600);
+});
+
 // the fit centres the islands in the window, so the water to press is the strip above them
 async function dragSea(page: Page, dx: number, dy: number) {
   const sea = (await page.locator('.map-sea').boundingBox())!;
