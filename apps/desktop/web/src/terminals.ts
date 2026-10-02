@@ -78,7 +78,7 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
       const t = state().terminals[m.id];
       state().termGone(m.id);
       // the tmux client died; if the window is still alive (client detached by hand) the terminal comes back
-      if (t) setTimeout(() => { if (wanted.has(m.id) && inView(m.id) && live(m.id) && !state().terminals[m.id]) show(m.id, t.rect, lastOpacity.get(m.id)).catch(() => {}); }, reshowDelayMs);
+      if (t) setTimeout(() => { if (wanted.has(m.id) && inView(m.id) && live(m.id) && !state().terminals[m.id]) show(m.id, t.rect, lastOpacity.get(m.id), wanted.get(m.id)).catch(() => {}); }, reshowDelayMs);
     }
     if (m.type === 'term.failed') {
       state().termGone(m.id);
@@ -91,7 +91,7 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
     if (s.status === 'online' && prev.status !== 'online') {
       for (const [id, r] of retry) {
         retry.delete(id);
-        if (wanted.has(id) && inView(id) && live(id) && !s.terminals[id]) show(id, r.rect, r.opacity).catch(() => {});
+        if (wanted.has(id) && inView(id) && live(id) && !s.terminals[id]) show(id, r.rect, r.opacity, wanted.get(id)).catch(() => {});
       }
     }
     if (s.fleet !== prev.fleet) {

@@ -62,6 +62,24 @@ test('a drag whose release the map never heard ends when the map loses the point
   expect(methods()).toEqual([]);
 });
 
+test('a press on an island whose release the map never heard lets the camera go when the map loses the pointer', async () => {
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 1200 });
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 800 });
+  try {
+    render(<Map />);
+    await act(async () => {});
+    const map = screen.getByTestId('map');
+    act(() => { fireEvent.pointerDown(screen.getByTestId('island-label-i_e'), { pointerId: 1, clientX: 100, clientY: 100 }); });
+    act(() => { fireEvent.lostPointerCapture(map, { pointerId: 1 }); });
+    const refits = window.__map!.refits();
+    act(() => { store.getState().applyPatch([{ op: 'add', path: '/islands/i_far', value: isl('i_far', 'far', 60) }]); });
+    expect(window.__map!.refits()).toBeGreaterThan(refits);
+  } finally {
+    delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+  }
+});
+
 test('a crew member moved where its card changes what the map must show refits the map, though no island moved', async () => {
   Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 1200 });
   Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 800 });

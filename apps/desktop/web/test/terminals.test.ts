@@ -102,6 +102,16 @@ describe('terminal manager', () => {
     expect(sent).not.toContainEqual({ type: 'term.focus', id: 'c0' });
   });
 
+  it('leaves the keys on the page when a surface shown without them comes back after its client died', async () => {
+    const { sent, store, bridge, manager } = fakes();
+    store.getState().focus('c0');
+    await manager.show('c0', rect, undefined, false);
+    bridge.emit({ type: 'term.exited', id: 'c0' });
+    await flush(); await flush();
+    expect(sent.filter((m) => m.type === 'term.show')).toHaveLength(2);
+    expect(sent).not.toContainEqual({ type: 'term.focus', id: 'c0' });
+  });
+
   it('does not bring back a hidden surface whose tmux client died', async () => {
     const { calls, store, bridge, manager } = fakes();
     store.getState().focus('c0');

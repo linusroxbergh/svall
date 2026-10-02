@@ -39,6 +39,8 @@ export function useMapPointer({ host, camera, hover, place, lastPressAt, islands
   const interactions = useRef(createInteractions());
   // the host holds the capture, so a click lands on it whatever was pressed; the press remembers what that was
   const pressedKind = useRef<Target['kind']>(undefined);
+  // a press still waiting for its release
+  const pressed = useRef(false);
   // a fleet change the hold kept the camera from is fitted when the hold lets go
   const missed = useRef(false);
   const release = () => {
@@ -90,6 +92,7 @@ export function useMapPointer({ host, camera, hover, place, lastPressAt, islands
     const home = hi && box && inHomeBox(box, ev.screen) ? homeSlotAt(hi, box, ev.screen, joining) : undefined;
     // the refit's hold is measured on performance.now(); an event's timeStamp need not share its clock
     if (ev.type === 'down' || ev.type === 'up') lastPressAt.current = performance.now();
+    if (ev.type !== 'move') pressed.current = ev.type === 'down';
     if (ev.type === 'down' && (ev.target?.kind === 'label' || ev.target?.kind === 'handle') &&
       st.fleet.islands[ev.target.islandId]?.kind !== 'home') camera.freeze();
     // a press on water that travels pans the map; a press that stays put is a click
@@ -190,9 +193,9 @@ export function useMapPointer({ host, camera, hover, place, lastPressAt, islands
       const r = host.current!.getBoundingClientRect();
       pointer({ type: 'cancel', screen: { x: e.clientX - r.left, y: e.clientY - r.top }, time: e.timeStamp });
     },
-    // a release the map never hears, taken by a native menu or the system, still ends the drag or pan it began
+    // a release the map never hears, taken by a native menu or the system, still ends the press, drag or pan it began
     onLostPointerCapture: (e: React.PointerEvent<Element>) => {
-      if (!interactions.current.drag() && !panDrag.current) return;
+      if (!pressed.current) return;
       const r = host.current!.getBoundingClientRect();
       pointer({ type: 'cancel', screen: { x: e.clientX - r.left, y: e.clientY - r.top }, time: e.timeStamp });
     },
