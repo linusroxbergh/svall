@@ -15,6 +15,7 @@ final class UpdatePill: NSTitlebarAccessoryViewController {
         let title = NSMutableAttributedString(string: "●", attributes: [.font: NSFont.systemFont(ofSize: 7), .foregroundColor: sand, .baselineOffset: 1.5])
         title.append(NSAttributedString(string: " Update available", attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: sand]))
         button.attributedTitle = title
+        button.setAccessibilityLabel("Update available")
         button.wantsLayer = true
         button.layer?.cornerRadius = 9
         button.layer?.borderWidth = 1

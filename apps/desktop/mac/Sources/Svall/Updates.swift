@@ -9,7 +9,6 @@ final class Updates: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate
     private static let quitForUpdate = Notification.Name((Bundle.main.bundleIdentifier ?? "svall") + ".quit-for-update")
     private let me = String(ProcessInfo.processInfo.processIdentifier)
     private var controller: SPUStandardUpdaterController?
-    // a scheduled check's find shows as this pill in the title bar rather than as Sparkle's window
     private var pill: UpdatePill?
 
     private override init() {
@@ -21,6 +20,8 @@ final class Updates: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate
         guard Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil,
               SvallHome.isPrivate || ProcessInfo.processInfo.environment[Self.handoff] != nil else { return }
         controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self, userDriverDelegate: self)
+        // an update found before a relaunch shows its pill again now rather than at the next daily check
+        if let updater = controller?.updater, updater.automaticallyChecksForUpdates { updater.checkForUpdatesInBackground() }
     }
 
     func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) {
