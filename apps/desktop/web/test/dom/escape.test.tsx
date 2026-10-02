@@ -1,18 +1,9 @@
 // @vitest-environment jsdom
-import './setup.js';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { setAppStore } from '../../src/hooks.js';
-import { createAppStore, type AppStore } from '../../src/store/index.js';
-import { fleet } from '../fixtures.js';
+import { bridge, call, freshStore, store } from './harness.js';
 
-const call = vi.fn((_method: string, _params: unknown) => Promise.resolve({}));
-const bridge = { present: false, send() {}, onMessage: () => () => {} };
-let store: AppStore;
-vi.mock('../../src/boot.js', () => ({
-  app: { get store() { return store; }, bridge, api: () => ({ call }) },
-  deps: () => ({ api: { call }, store, bridge }),
-}));
+vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
 const { NewCharacter } = await import('../../src/NewCharacter.js');
 const { MissionPrompt } = await import('../../src/MissionPrompt.js');
@@ -21,10 +12,7 @@ const { dispatchKey, installKeyHandlers } = await import('../../src/keyboard.js'
 
 let off: () => void;
 beforeEach(() => {
-  call.mockClear();
-  store = createAppStore();
-  setAppStore(store);
-  store.getState().setFleet(fleet());
+  freshStore();
   off = installKeyHandlers({ store, api: { call } as never, bridge });
 });
 afterEach(() => off());

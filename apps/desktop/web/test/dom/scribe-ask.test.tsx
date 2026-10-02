@@ -1,26 +1,17 @@
 // @vitest-environment jsdom
-import './setup.js';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import type { ToShell } from '../../src/bridge.js';
-import { setAppStore } from '../../src/hooks.js';
-import { createAppStore, type AppStore } from '../../src/store/index.js';
 import { fleet } from '../fixtures.js';
+import { bridge, call, freshStore, sent, store } from './harness.js';
 
-const call = vi.fn((_method: string, _params?: unknown) => Promise.resolve({}));
-const sent: ToShell[] = [];
-const bridge = { present: true, send: (m: ToShell) => { sent.push(m); }, onMessage: () => () => {} };
-let store: AppStore;
-vi.mock('../../src/boot.js', () => ({ deps: () => ({ api: { call }, store, bridge }) }));
+bridge.present = true;
+vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
 const { ScribeAsk } = await import('../../src/ScribeAsk.js');
 
 beforeEach(() => {
-  call.mockClear();
-  sent.length = 0;
   window.__svallHome = undefined;
-  store = createAppStore();
-  setAppStore(store);
+  freshStore();
   store.getState().setFleet({ ...fleet(), scribeAsk: true });
 });
 

@@ -1,35 +1,26 @@
 // @vitest-environment jsdom
-import './setup.js';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { setAppStore } from '../../src/hooks.js';
 import { fitWithHome } from '../../src/map/home.js';
 import { crewOf, mapIslands } from '../../src/map/layout.js';
-import { createAppStore, type AppStore } from '../../src/store/index.js';
 import { theme } from '../../src/theme.js';
 import { fleet, isl } from '../fixtures.js';
+import { call, freshStore, store } from './harness.js';
 
 // reduced motion: a refit lands at once, so nothing waits on animation frames
 window.matchMedia ??= ((q: string) => ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} })) as never;
 Element.prototype.setPointerCapture ??= function () {};
 Element.prototype.hasPointerCapture ??= function () { return true; };
 
-const call = vi.fn((method: string, _params?: unknown) => Promise.resolve(method === 'island.create' ? { id: 'i_new' } : {}));
-const bridge = { present: false, send() {}, onMessage: () => () => {} };
-let store: AppStore;
-vi.mock('../../src/boot.js', () => ({
-  app: { get store() { return store; }, bridge, api: () => ({ call }), manager: () => ({ move() {}, show: () => Promise.resolve(), hide() {} }), browser: () => ({ move() {} }) },
-  deps: () => ({ api: { call }, store, bridge }),
-}));
+call.mockImplementation((method: string) => Promise.resolve(method === 'island.create' ? { id: 'i_new' } : {}));
+vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 vi.mock('../../src/resources/Shelf.js', () => ({ ResourcesLayer: () => null }));
 
 const { Map } = await import('../../src/map/Map.js');
 const { DBL_CLICK_MS } = await import('../../src/map/interactions.js');
 
 beforeEach(() => {
-  call.mockClear();
-  store = createAppStore();
-  setAppStore(store);
+  freshStore();
   const f = fleet();
   // mission control well below the islands, so a drag to the right is always legal
   f.islands.home.position = { x: 0, y: 20 };

@@ -1,21 +1,13 @@
 // @vitest-environment jsdom
-import './setup.js';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { setAppStore } from '../../src/hooks.js';
-import { createAppStore, localAppStorage, type AppStore } from '../../src/store/index.js';
-import { fleet } from '../fixtures.js';
+import { createAppStore, localAppStorage } from '../../src/store/index.js';
+import { bridge, call, freshStore, store } from './harness.js';
 
 Element.prototype.setPointerCapture ??= function () {};
 
 const answer = (method: string, _params?: unknown): Promise<unknown> => Promise.resolve(method === 'resources.get' ? { sources: [] } : {});
-const call = vi.fn(answer);
-const bridge = { present: false, send() {}, onMessage: () => () => {} };
-let store: AppStore;
-vi.mock('../../src/boot.js', () => ({
-  app: { get store() { return store; }, bridge, api: () => ({ call }) },
-  deps: () => ({ api: { call }, store, bridge }),
-}));
+vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
 const { ResourcesLayer } = await import('../../src/resources/Shelf.js');
 const { dispatchKey } = await import('../../src/keyboard.js');
@@ -23,9 +15,7 @@ const { dispatchKey } = await import('../../src/keyboard.js');
 beforeEach(() => {
   call.mockReset();
   call.mockImplementation(answer);
-  store = createAppStore();
-  setAppStore(store);
-  store.getState().setFleet(fleet());
+  freshStore();
   store.getState().toggleResources(true);
 });
 
@@ -135,9 +125,7 @@ test('the shelf opens centred at nine tenths of its room, and the size button fi
 
 test('the grip drags the shelf from its corner and the size is kept once it is let go', async () => {
   localStorage.clear();
-  store = createAppStore(localAppStorage());
-  setAppStore(store);
-  store.getState().setFleet(fleet());
+  freshStore(() => createAppStore(localAppStorage()));
   store.getState().toggleResources(true);
   render(<OnMap />);
   await act(async () => {});

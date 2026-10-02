@@ -1,26 +1,17 @@
 // @vitest-environment jsdom
-import './setup.js';
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { setAppStore } from '../../src/hooks.js';
-import { createAppStore, type AppStore } from '../../src/store/index.js';
 import { fleet } from '../fixtures.js';
+import { bridge, call, freshStore, store } from './harness.js';
 
-const call = vi.fn((_method: string, _params?: unknown) => Promise.resolve({}));
-const manager = { show: vi.fn(() => Promise.resolve()), move: vi.fn(), hide: vi.fn() };
-let store: AppStore;
-vi.mock('../../src/boot.js', () => ({
-  app: { get store() { return store; }, bridge: { present: true, send: () => {}, onMessage: () => () => {} }, manager: () => manager },
-  deps: () => ({ api: { call }, store }),
-}));
+bridge.present = true;
+vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
 const { TerminalArea } = await import('../../src/TerminalArea.js');
 
 beforeEach(() => {
   vi.useFakeTimers();
-  call.mockClear();
-  store = createAppStore();
-  setAppStore(store);
+  freshStore();
   const f = fleet();
   delete f.characters.c1.tmux;
   store.getState().setFleet(f);
