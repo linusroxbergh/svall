@@ -39,8 +39,8 @@ export type UiState = {
   webviews: Record<string, Webview>;
   // ⌘L asks for the address bar; the pane that answers clears the request
   addressFocus: boolean;
-  // ⌘⇧A asks for an arrange, and a return from the board or an unfolded island for an automatic one; the map,
-  // which knows the room the fleet has, clears the request
+  // ⌘⇧A asks for an arrange, and a return from the board for an automatic one; the map, which knows the room
+  // the fleet has, clears the request
   arrangeAsk: 'key' | 'auto' | false;
   toast?: Toast;
   linkAsk?: LinkAsk;
@@ -92,7 +92,7 @@ export type UiActions = {
   webviewGone(tab: string): void;
   focusAddress(): void;
   addressFocused(): void;
-  askArrange(how?: 'key' | 'auto'): void;
+  askArrange(): void;
   arranged(): void;
   showToast(message: string, tone?: Toast['tone'], action?: Toast['action']): void;
   runToastAction(): void;
@@ -202,7 +202,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     webviewGone: (tab) => set((s) => { const webviews = { ...s.webviews }; delete webviews[tab]; return { webviews }; }),
     focusAddress: () => set({ addressFocus: true }),
     addressFocused: () => set({ addressFocus: false }),
-    askArrange: (how = 'key') => set({ arrangeAsk: how }),
+    askArrange: () => set({ arrangeAsk: 'key' }),
     arranged: () => set({ arrangeAsk: false }),
     showToast: (message, tone = 'error', action) => set({ toast: { text: message, tone, ...(action && { action }) } }),
     runToastAction: () => { const a = get().toast?.action; if (!a) return; set({ toast: undefined }); a.run(); },

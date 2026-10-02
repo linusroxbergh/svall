@@ -4,7 +4,7 @@ import { shim, type Bridge } from './bridge.js';
 import type { DropTarget } from './drop.js';
 import { withoutSecond } from './panes.js';
 import type { FieldRef } from './resources/model.js';
-import { boardViewed, charactersOf, mapIslandsSorted, panesOf, selectedOf, startOf } from './selectors.js';
+import { boardViewed, charactersOf, islandsSorted, mapIslandsSorted, panesOf, selectedOf, startOf } from './selectors.js';
 import type { AppStore } from './store/index.js';
 
 // what it takes to act on the fleet: the socket, the mirror, and the shell
@@ -21,12 +21,12 @@ const closeSettings = (d: ActionDeps): void => { if (d.store.getState().settings
 const startCwd = (c: Character | undefined): string | undefined => (c?.repo?.isWorktree ? c.repo.mainRoot : c?.cwd);
 
 // a cwd taken from another character can be gone (a removed worktree), so one the fleet refuses as not a
-// directory gives way once to the fleet's default
+// directory gives way once to the fleet's default; an agent's start command only runs where it was meant to
 export async function createCharacter(api: Pick<Api, 'call'>, params: Params<'char.create'>, fallback: string): Promise<Result<'char.create'>> {
   try {
     return await api.call('char.create', params);
   } catch (e) {
-    if (params.cwd === fallback || !/not a directory/.test((e as Error).message)) throw e;
+    if (params.cwd === fallback || params.command || !/not a directory/.test((e as Error).message)) throw e;
     return api.call('char.create', { ...params, cwd: fallback });
   }
 }
@@ -48,12 +48,6 @@ function warnUnfound(d: ActionDeps, command: string): boolean {
   return unfound;
 }
 
-// a hidden island comes back onto the map with the character made on it
-const unfoldFor = (d: ActionDeps, islandId: string): void => {
-  const i = d.store.getState().fleet.islands[islandId];
-  if (i?.collapsed && i.kind !== 'home') d.api.call('island.update', { id: islandId, collapsed: false }).catch(toast(d));
-};
-
 // without an explicit cwd a new character inherits the one of the island's first character; home crew
 // start in the home cwd, and an island with no crew to inherit from starts in the fleet's default cwd
 export async function newCharacterOn(d: ActionDeps, islandId: string, cwd?: string): Promise<void> {
@@ -64,7 +58,6 @@ export async function newCharacterOn(d: ActionDeps, islandId: string, cwd?: stri
   if (start.command) warnUnfound(d, start.command);
   try {
     const c = await createCharacter(d.api, { islandId, cwd: dir, ...start }, f.defaultCwd);
-    unfoldFor(d, islandId);
     showCreated(d, c.id);
   } catch (e) {
     d.store.getState().showToast((e as Error).message);
@@ -139,7 +132,8 @@ export function newIsland(d: ActionDeps, cell?: Cell): void {
 
 const islandName = (cwd: string): string => (cwd === '~' ? 'island' : cwd.split('/').filter(Boolean).pop() ?? 'island');
 
-// the selected island, else the current character's island, else the first one, else a fresh island
+// the selected island, else the current character's island, else the first shown one, else the first hidden one,
+// which comes back with the character, else a fresh island
 export async function newCharacterTarget(d: ActionDeps): Promise<{ islandId: string; cwd: string }> {
   const s = d.store.getState();
   const current = s.view === 'map' ? (s.selectedId ?? s.card ?? selectedOf(s)) : boardViewed(s);
@@ -147,6 +141,7 @@ export async function newCharacterTarget(d: ActionDeps): Promise<{ islandId: str
   const base = islandSel ? charactersOf(s.fleet, islandSel)[0] : current ? s.fleet.characters[current] : undefined;
   const start = startCwd(base) ?? s.fleet.defaultCwd;
   const islandId = islandSel || base?.islandId || mapIslandsSorted(s.fleet)[0]?.id
+    || islandsSorted(s.fleet).find((i) => i.kind !== 'home')?.id
     || (await d.api.call('island.create', { name: islandName(start) })).id;
   const cwd = s.fleet.islands[islandId]?.kind === 'home' ? s.fleet.home.cwd : start;
   return { islandId, cwd };
@@ -161,7 +156,6 @@ export async function newNamedCharacter(d: ActionDeps, p: { name: string; note: 
   const start = startOf(f, islandId);
   if (start.command) warnUnfound(d, start.command);
   const c = await createCharacter(d.api, { islandId, cwd, ...(p.name ? { name: p.name } : {}), ...start }, f.defaultCwd);
-  unfoldFor(d, islandId);
   if (p.note || p.refs.length) {
     // the character already exists, so a refused path is reported rather than retried
     await d.api.call('char.update', {

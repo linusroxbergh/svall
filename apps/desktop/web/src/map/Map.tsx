@@ -393,7 +393,8 @@ export function Map() {
     const now = new Set(Object.values(fleet.islands).filter((i) => i.collapsed && i.kind !== 'home').map((i) => i.id));
     const back = [...(folded.current ?? [])].some((id) => fleet.islands[id] && !now.has(id));
     folded.current = now;
-    if (back && app.store.getState().settings.autoArrange) app.store.getState().askArrange('auto');
+    // behind a full card the card's closing arranges
+    if (back && autoArrange && !coveredRef.current) arrange(true);
   }, [fleet.islands]);
 
   // the fleet is arranged to the room the map finds each time its card shrinks from full or closes

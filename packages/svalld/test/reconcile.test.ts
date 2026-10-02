@@ -192,7 +192,7 @@ describe('reconcile', () => {
     expect(cellKey(cell)).not.toBe(cellKey(s.characters.c_0.cell));
   });
 
-  it('placeOnIsland grows over a folded neighbour, and a folded island grows over the map, moving no one', () => {
+  it('placeOnIsland grows over a folded neighbour, and a folded island comes back to take a character, pushing it aside', () => {
     const island: Island = { id: 'a', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 4, h: 3 }, seed: 3 };
     const folded: Island = { ...island, id: 'o', name: 'ab', position: { x: 0, y: 4 }, size: { w: 6, h: 4 }, collapsed: true };
     const s = { ...emptyState(), islands: { a: island, o: folded } };
@@ -200,9 +200,12 @@ describe('reconcile', () => {
     const cell = placeOnIsland(s, 'a');
     expect(isLand(s.islands.a, cell)).toBe(true);
     expect(placementOk(s, s.islands.a)).toBe(true);
-    expect(s.islands.o.position).toEqual({ x: 0, y: 4 });
+    expect(s.islands.o).toMatchObject({ position: { x: 0, y: 4 }, collapsed: true });
     placeOnIsland(s, 'o');
-    expect(s.islands.a.position).toEqual({ x: 0, y: 0 });
+    expect(s.islands.o.collapsed).toBeUndefined();
+    expect(s.islands.o.position).toEqual({ x: 0, y: 4 });
+    expect(s.islands.a.position).not.toEqual({ x: 0, y: 0 });
+    expect(placementOk(s, s.islands.a) && placementOk(s, s.islands.o)).toBe(true);
   });
 
   it('a character gone dormant has no window left to be told about', () => {

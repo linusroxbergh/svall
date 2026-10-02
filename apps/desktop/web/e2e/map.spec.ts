@@ -281,6 +281,20 @@ test('a hidden island leaves the map, and the sidebar brings it back to an arran
   await expect.poll(async () => (await svall.api.call('state.get', {})).islands[island.id].position.y).toBeLessThan(100);
 });
 
+test('a character made on a hidden island from another client brings the island back', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('fold'), position: { x: 0, y: 0 } });
+  await svall.api.call('island.update', { id: island.id, collapsed: true });
+  await svall.open('map');
+  await settle(page);
+  await expect(page.getByTestId(`island-${island.id}`)).toHaveCount(0);
+
+  // as the phone or `svall char new` makes one
+  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'arrived' });
+  await expect(page.getByTestId(`island-${island.id}`)).toBeVisible();
+  await expect(page.getByTestId(`token-${c.id}`)).toBeVisible();
+  await expect(page.getByTestId(`sb-island-${island.id}`)).toHaveAttribute('data-open', 'true');
+});
+
 test('the arrange button packs the fleet together and the map zooms into it', async ({ page, svall }) => {
   const a = await svall.api.call('island.create', { name: svall.uniq('near'), position: { x: 0, y: 0 }, size: { w: 12, h: 9 } });
   const b = await svall.api.call('island.create', { name: svall.uniq('far'), position: { x: 40, y: 0 }, size: { w: 12, h: 9 } });

@@ -34,10 +34,11 @@ export function markDormant(c: Character, flags?: string[]): void {
 
 // the island takes the ground a crew one larger needs and everyone lines up on it, as `arrange` lays out
 // the fleet; the newcomer takes the cell the grid leaves at the end, and the islands the new shape reaches
-// into are pushed aside
+// into are pushed aside. a hidden island comes back onto the map, so the newcomer is seen arriving
 export function placeOnIsland(draft: FleetState, islandId: string, exceptId?: string): Cell {
   const island = draft.islands[islandId];
   if (island.kind === 'home') return placeOnHome(draft, island);
+  delete island.collapsed;
   // a character re-placed on its own island is not its own crew, or the grid would size for it twice
   const crew = crewOf(draft, islandId).filter((id) => id !== exceptId);
   const { size, cells } = crewGrid(crew.length + 1, island.seed);

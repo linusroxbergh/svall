@@ -71,6 +71,16 @@ describe('newCharacterTarget', () => {
     expect(await newCharacterTarget(c)).toEqual({ islandId: 'i_new', cwd: DEFAULT_CWD });
     expect(c.calls).toEqual([{ method: 'island.create', params: { name: 'island' } }]);
   });
+
+  it('takes the first hidden island when every island is hidden, rather than make another', async () => {
+    const c = ctx();
+    c.store.getState().setView('board');
+    c.store.getState().setFleet({ ...emptyState(), islands: {
+      home: isl('home', 'mission control', 0, { kind: 'home' }), i_x: isl('i_x', 'x', 0, { collapsed: true }),
+    } });
+    expect(await newCharacterTarget(c)).toEqual({ islandId: 'i_x', cwd: DEFAULT_CWD });
+    expect(c.calls).toEqual([]);
+  });
 });
 
 describe('moveCharacterTo', () => {
@@ -229,6 +239,14 @@ describe('a crew member whose directory is gone', () => {
     s.getState().selectIsland('i_a');
     expect(await newNamedCharacter({ api: goneDir(calls), store: s }, { name: 'scribe', note: '', refs: [] })).toBe('c_new');
     expect(calls.map((c) => c.params)).toEqual([{ islandId: 'i_a', cwd: '/tmp', name: 'scribe' }, { islandId: 'i_a', cwd: DEFAULT_CWD, name: 'scribe' }]);
+  });
+
+  it('reports a mission control folder that is gone rather than start the agent somewhere else', async () => {
+    const calls: Call[] = [];
+    const s = store();
+    await newCharacterOn({ api: goneDir(calls, 'cwd /mc is not a directory'), store: s }, 'home');
+    expect(calls).toHaveLength(1);
+    expect(s.getState().toast?.text).toBe('cwd /mc is not a directory');
   });
 
   it('reports any other refusal without a second try', async () => {
@@ -514,19 +532,5 @@ describe('a new character', () => {
     await newCharacterOn(c, 'home');
     expect(created(c).command).toBe('claude --model sonnet');
     expect(c.store.getState().toast?.text).toMatch(/Mission control runs claude, which svalld doesn't find/);
-  });
-
-  it('brings a hidden island back onto the map, once the character is made on it', async () => {
-    const tries: [string, (c: ReturnType<typeof ctx>) => Promise<unknown>][] = [
-      ['newCharacterOn', (c) => newCharacterOn(c, 'i_a')],
-      ['newNamedCharacter', (c) => { c.store.getState().selectIsland('i_a'); return newNamedCharacter(c, { name: 'n', note: '', refs: [] }); }],
-    ];
-    for (const [what, make] of tries) {
-      const c = made();
-      c.store.getState().applyPatch([{ op: 'add', path: '/islands/i_a/collapsed', value: true }]);
-      await make(c);
-      expect(c.calls.map((x) => x.method), what).toEqual(['char.create', 'island.update']);
-      expect(c.calls[1].params).toEqual({ id: 'i_a', collapsed: false });
-    }
   });
 });
