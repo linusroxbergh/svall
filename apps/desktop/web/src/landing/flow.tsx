@@ -15,9 +15,9 @@ import { theme } from '../theme.js';
 
 type Status = 'working' | 'idle' | 'blocked' | 'done';
 type Member = { id: string; name: string; portrait: Portrait; status: Status; ctx: number; links: ContextItem[] };
-type Scene = { step: number; keys: boolean; modal: boolean; typed: number; send: boolean; mc?: Member; island: boolean; crew: Member[]; shore: Member[]; picked?: string };
+type Scene = { keys: boolean; modal: boolean; typed: number; send: boolean; mc?: Member; island: boolean; crew: Member[]; shore: Member[]; picked?: string };
 
-const PROMPT = 'Create an island to review the 3 open PRs in linusroxbergh/storefront';
+const PROMPT = 'Create an island to review the 3 open PRs in the storefront repo';
 const link = (kind: 'pr' | 'issue', n: number): ContextItem =>
   ({ kind, ref: `https://github.com/linusroxbergh/storefront/${kind === 'pr' ? 'pull' : 'issues'}/${n}`, label: '', source: 'auto' });
 
@@ -44,7 +44,7 @@ const SHORE_CREW: Member[] = [
 const HOME: IslandModel = { id: 'home', name: 'mission control', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 8, h: 4 }, seed: 7 };
 const HOME_CONFIG = { cwd: '', command: '', actions: [{ label: 'update info', prompt: '' }, { label: 'status', prompt: '' }] };
 
-const START: Scene = { step: 0, keys: false, modal: false, typed: 0, send: false, island: false, crew: [], shore: SHORE_CREW };
+const START: Scene = { keys: false, modal: false, typed: 0, send: false, island: false, crew: [], shore: SHORE_CREW };
 
 const none = () => {};
 const pointer = { onPointerDown: none };
@@ -68,13 +68,13 @@ function script(): [number, (s: Scene) => Scene][] {
   const ev: [number, (s: Scene) => Scene][] = [];
   const at = (t: number, f: (s: Scene) => Partial<Scene>) => ev.push([t, (s) => ({ ...s, ...f(s) })]);
   at(1800, () => ({ keys: true }));
-  at(2400, () => ({ modal: true, step: 1 }));
+  at(2400, () => ({ modal: true }));
   at(2700, () => ({ keys: false }));
   const typing = 3200, per = 36;
   for (let i = 1; i <= PROMPT.length; i++) at(typing + i * per, () => ({ typed: i }));
   const sent = typing + PROMPT.length * per + 1200;
   at(sent, () => ({ send: true }));
-  at(sent + 250, () => ({ modal: false, send: false, step: 2, mc: MC }));
+  at(sent + 250, () => ({ modal: false, send: false, mc: MC }));
   at(sent + 2600, () => ({ island: true }));
   CREW.forEach((m, i) => {
     at(sent + 4000 + i * 1100, (s) => ({ crew: [...s.crew, m] }));
@@ -84,7 +84,7 @@ function script(): [number, (s: Scene) => Scene][] {
   at(live, (s) => ({ mc: { ...s.mc!, status: 'done' } }));
   for (let b = 0; b < 10; b++) at(live + 300 + b * 1100, (s) => ({ crew: grow(s.crew, b), shore: grow(s.shore, b + 1) }));
   at(live + 7000, (s) => ({ crew: s.crew.map((c) => (c.id === '10' ? { ...c, status: 'done' } : c)) }));
-  at(live + 9000, () => ({ picked: '10', step: 3 }));
+  at(live + 9000, () => ({ picked: '10' }));
   return ev;
 }
 
@@ -95,8 +95,6 @@ const HOLD = 4000, FADE = 500;
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const host = document.querySelector<HTMLElement>('.scene')!;
-const foot = document.querySelector<HTMLElement>('.scene-foot')!;
-const captions = [...foot.querySelectorAll<HTMLElement>('.cap span')];
 
 // loops while the scene is mostly in view; a run that ends out of view waits for the scene to come back
 function useScene(): Scene {
@@ -124,9 +122,6 @@ function useScene(): Scene {
     seen.observe(host);
     return () => { timers.forEach(clearTimeout); seen.disconnect(); };
   }, []);
-  useEffect(() => {
-    captions.forEach((c, i) => c.toggleAttribute('data-on', i === s.step));
-  }, [s.step]);
   return s;
 }
 

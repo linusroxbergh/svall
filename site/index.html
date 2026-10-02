@@ -123,12 +123,10 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
 .scene-map.out { opacity: 0; }
 .scene-map .home, .scene-map .res-islet { bottom: 64px; }
 .scene-map > .world { position: absolute; transform-origin: 0 0; filter: brightness(var(--map-tone)); }
-.scene-foot { display: flex; justify-content: center; min-height: 30px; margin-top: 16px; }
 .cap { display: grid; margin: 0; font-size: .875rem; color: var(--ink-2); }
 .cap span { grid-area: 1 / 1; display: flex; align-items: center; gap: 10px; opacity: 0; translate: 0 3px; transition: opacity .35s var(--ease), translate .35s var(--ease); }
 .cap span[data-on] { opacity: 1; translate: 0 0; }
 .cap span::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--sand); }
-.cap kbd { font: inherit; color: var(--ink); }
 /* a new island rises out of the sea; a new card drops onto it */
 .rise, .pop { --k: inherit; --lk: inherit; }
 .rise > .island { animation: rise .9s var(--ease-out) both; }
@@ -293,7 +291,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
   <section class="features">
     <h2>What it does</h2>
     <ul>
-      <li><b>At a glance:</b> the map keeps track of every agent, so you don't have to.</li>
+      <li><b>Clear overview:</b> the map keeps track of every agent, so you don't have to.</li>
       <li><b>Layered context:</b> per repo, island and agent, kept current for you.</li>
       <li><b>Persistence:</b> quit or reboot, and sessions pick up where they left off.</li>
       <li><b>Built-in browser:</b> PRs, previews and docs beside the terminal.</li>
@@ -306,17 +304,9 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
 <section class="sec wrap" aria-labelledby="flow-h">
   <div class="sec-head">
     <h2 id="flow-h">One prompt, a whole island.</h2>
-    <p class="sub">Mission control, or any agent, makes islands and characters for you.</p>
+    <p class="sub">Mission control, or any agent, creates islands and characters running your harness.</p>
   </div>
   <div class="scene" role="img" aria-label="Pressing Command G opens mission control's prompt. The prompt asks for an island to review three open PRs. A new island appears and three review characters land on it and start working."><div class="scene-map" inert></div></div>
-  <div class="scene-foot">
-    <p class="cap" aria-hidden="true">
-      <span data-on><kbd>⌘G</kbd> opens mission control</span>
-      <span>Say what you need</span>
-      <span>It makes the island, and a character per PR</span>
-      <span>Double-click a card to open it</span>
-    </p>
-  </div>
 </section>
 
 <section class="sec wrap" aria-labelledby="views-h">
