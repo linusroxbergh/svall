@@ -35,7 +35,7 @@ export const hookHelperSource = (): string | undefined =>
 const hookSwift = path.resolve(here, '../../../apps/desktop/mac/Sources/SvallHook');
 
 /** What a checkout's helper must be newer than: its sources and the scripts it stands in for. The app's was built with its own. */
-export const hookHelperSources: string[] = bundled ? [] : [
+export const hookHelperSources = (): string[] => bundled ? [] : [
   ...fs.readdirSync(hookSwift).filter((f) => f.endsWith('.swift')).map((f) => path.join(hookSwift, f)),
   ...['agent-hook.mjs', 'claude-status.mjs'].map((name) => path.join(assetDir('hooks'), name)),
 ];

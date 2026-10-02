@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Api } from '../src/api.js';
 import type { Bridge, FromShell, ToShell } from '../src/bridge.js';
 import { createBrowserManager } from '../src/browser.js';
@@ -137,6 +137,7 @@ describe('browser manager', () => {
 
   it('opens the start page once while its first tab is on the way, and again after svalld failed to open it', async () => {
     const { calls, api, manager } = fakes();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     let answer = (): Promise<unknown> => Promise.reject(new Error('svalld offline'));
     api.call = ((method: string, params: unknown) => { calls.push({ method, params }); return answer(); }) as Api['call'];
     const opens = () => calls.filter((k) => k.method === 'browser.open');
@@ -144,6 +145,8 @@ describe('browser manager', () => {
     manager.start('c1');
     expect(opens()).toHaveLength(1);
     await new Promise((r) => setTimeout(r, 0));
+    expect(warn).toHaveBeenCalledWith('browser.open: svalld offline');
+    warn.mockRestore();
     answer = () => new Promise(() => {});
     manager.start('c1');
     manager.start('c1');

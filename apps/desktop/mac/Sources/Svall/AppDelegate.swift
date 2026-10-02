@@ -81,7 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             AppRuntime.run(["setup", "--if-needed", "--json", "--login-shell"]) { ok, text in if !ok { NSLog("setup refresh: %@", text) } }
         }
 
-        // the alert comes after the window so a cold launch does not leave it behind another app
+        // last, as the alert holds up whatever comes after it until it is answered
         if missingBundle {
             NSAlert.tell("The web bundle is missing", "This build has no web/ folder in its Resources. Run pnpm desktop:install to add it.")
         }

@@ -274,7 +274,7 @@ const runners: Runner[] = [{
   status: (dir, ...args) => [path.join(dir, 'svall-hook'), ['status', ...args]],
 }];
 
-beforeAll(() => { execFileSync('swiftc', ['-O', '-wmo', '-o', helper, ...hookHelperSources.filter((f) => f.endsWith('.swift'))]); }, 180_000);
+beforeAll(() => { execFileSync('swiftc', ['-O', '-wmo', '-o', helper, ...hookHelperSources().filter((f) => f.endsWith('.swift'))]); }, 180_000);
 afterAll(() => fs.rmSync(helperDir, { recursive: true, force: true }));
 
 describe.each(runners)('$name', (run) => {

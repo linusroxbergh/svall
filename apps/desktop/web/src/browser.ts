@@ -41,7 +41,10 @@ export function createBrowserManager(api: Api, bridge: Bridge, store: AppStore):
     const url = toUrl(input);
     if (!url) return;
     if (tab && state().webviews[tab]) bridge.send({ type: 'browser.load', tab, url });
-    else { opening.add(id); api.call('browser.open', { id, url }).catch(() => opening.delete(id)); }
+    else {
+      opening.add(id);
+      api.call('browser.open', { id, url }).catch((e: Error) => { opening.delete(id); console.warn(`browser.open: ${e.message}`); });
+    }
   };
 
   // a link followed in a terminal asks whether it opens beside it, as a tab of that character; anything the

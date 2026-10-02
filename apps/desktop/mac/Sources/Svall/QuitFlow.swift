@@ -14,8 +14,8 @@ final class QuitFlow {
     private var confirming = false
     // once the fleet is being stopped for a quit, a page that loses the daemon must not start it again
     private(set) var stopping = false
-    // the fleet being ended from here, which the quit waits on
-    private var killing: DispatchWorkItem?
+    // whether the fleet is being ended from here, which the quit waits on
+    private var killing = false
 
     init(send: @escaping (FromShell) -> Void, isListening: @escaping () -> Bool, hideWindow: @escaping () -> Void) {
         self.send = send
@@ -29,11 +29,7 @@ final class QuitFlow {
     /// Asks the page to save its docs and name the files a quit would drop, then the user when `confirm` or a file would be lost,
     /// then stops the fleet: every character sleeps until it is opened again.
     func ask(confirm: Bool, answer: @escaping (Bool) -> Void) -> NSApplication.TerminateReply {
-        guard quitAnswer == nil else {
-            // a second quit, from the Dock or a script, ends the app; the fleet's kill finishes first
-            _ = killing?.wait(timeout: .now() + 5)
-            return .terminateNow
-        }
+        guard quitAnswer == nil else { return .terminateNow }
         // a page that is not up has nothing to save and no daemon to ask
         guard isListening() else {
             guard !confirm || confirmQuit(unsaved: [], working: 0) else { return .terminateCancel }
@@ -100,12 +96,13 @@ final class QuitFlow {
     }
 
     private func fleetStopped(ok: Bool) {
-        guard quitAnswer != nil, killing == nil else { return }
+        guard quitAnswer != nil, !killing else { return }
         stopping = true
         if ok { return finishQuit(true) }
         // the kill can take a couple of seconds, which the window should not sit through
         hideWindow()
-        killing = FleetDaemon.kill { [weak self] in self?.finishQuit(true) }
+        killing = true
+        FleetDaemon.kill { [weak self] in self?.finishQuit(true) }
     }
 
     private func confirmQuit(unsaved: [String], working: Int) -> Bool {
