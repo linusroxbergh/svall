@@ -7,7 +7,7 @@ import type { AgentKind } from '@svall/protocol';
 import { AGENTS, AGENT_KINDS, isExecutable, onPath } from './agents.js';
 import { codexHookCommand, codexPaths, type CodexPaths } from './codex/install.js';
 import { loadConfig } from './config.js';
-import { CLAUDE_HOOKS, CODEX_HOOKS } from './hooks/receiver.js';
+import { hooksFor } from './hooks/receiver.js';
 import { writeAtomic } from './jsonfile.js';
 import { usualDirs } from './login-env.js';
 import { BUNDLE_ID, LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from './profile.js';
@@ -54,7 +54,7 @@ const holdsHook = (settings: Record<string, unknown>, events: readonly string[],
 // is on record before the tool call its answer lets through
 const ASYNC_HOOKS = new Set(['SubagentStop']);
 
-export const mergeHooks = (settings: Record<string, unknown>, command: string, script: string, events: readonly string[] = CLAUDE_HOOKS): Record<string, unknown> =>
+export const mergeHooks = (settings: Record<string, unknown>, command: string, script: string, events: readonly string[] = hooksFor('claude')): Record<string, unknown> =>
   mergeOurHooks(settings, events, (ev) => ({ type: 'command', command, timeout: 10, ...(ASYNC_HOOKS.has(ev) && { async: true }) }), script, { matcher: '*' });
 
 // SessionEnd and Interrupt are capped at 3 s. The two events the daemon answers carry the whole brief, which codex
@@ -66,9 +66,9 @@ const codexEntry = (ev: string, command: string): HookEntry => ({
 
 // a matcher is a regex on codex and is ignored outright for several events, so a match-all group has none
 export const mergeCodexHooks = (current: Record<string, unknown>, command: string, script: string): Record<string, unknown> =>
-  mergeOurHooks(current, CODEX_HOOKS, (ev) => codexEntry(ev, command), script, {});
+  mergeOurHooks(current, hooksFor('codex'), (ev) => codexEntry(ev, command), script, {});
 
-export const codexInstalled = (current: Record<string, unknown>, script: string): boolean => holdsHook(current, CODEX_HOOKS, script);
+export const codexInstalled = (current: Record<string, unknown>, script: string): boolean => holdsHook(current, hooksFor('codex'), script);
 
 export function unmergeHooks(settings: Record<string, unknown>, script: string): Record<string, unknown> {
   const out = structuredClone(settings);
@@ -95,7 +95,7 @@ export function unmergeHooks(settings: Record<string, unknown>, script: string):
 export function hooksInstalled(settings: Record<string, unknown>, home: string): boolean {
   const paths = resolvePaths(home);
   const status = (settings.statusLine as StatusLine | undefined)?.command ?? '';
-  return ownHead(status, paths.statusScript) !== undefined && holdsHook(settings, CLAUDE_HOOKS, paths.hookScript);
+  return ownHead(status, paths.statusScript) !== undefined && holdsHook(settings, hooksFor('claude'), paths.hookScript);
 }
 
 const WORD = String.raw`'(?:[^']|'\\'')*'`;

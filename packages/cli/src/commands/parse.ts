@@ -1,4 +1,4 @@
-export function parsePair(spec: string, what: string): [number, number] {
+function parsePair(spec: string, what: string): [number, number] {
   const m = /^(-?\d+),(-?\d+)$/.exec(spec.trim());
   if (!m) throw new Error(`bad ${what} "${spec}", expected two integers like 3,4`);
   return [Number(m[1]), Number(m[2])];

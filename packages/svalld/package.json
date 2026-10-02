@@ -7,7 +7,6 @@
     ".": "./src/main.ts",
     "./agents": "./src/agents.ts",
     "./claude": "./src/claude.ts",
-    "./bin": "./src/bin.ts",
     "./paths": "./src/paths.ts",
     "./log": "./src/log.ts",
     "./tmux": "./src/tmux/tmux.ts",
