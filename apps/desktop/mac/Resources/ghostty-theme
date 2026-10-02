@@ -1,6 +1,5 @@
-# The terminal's ground, ink and cursor are the page's tokens.css --surface-0, --ink
-# and --sand; the selection's slate has no token. Loaded over your own Ghostty
-# config, so your font, keybinds and ANSI palette stay yours.
+# Ground, ink and cursor are the page's tokens.css --surface-0, --ink and --sand. Loaded
+# over your own Ghostty config, so your font, keybinds and ANSI palette stay yours.
 background = 172029
 foreground = F4EEDF
 cursor-color = E6D8B8

@@ -219,11 +219,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     /// The defaults go through `defaults`, as cfprefsd keeps them in memory.
     private static func forgetAfterQuit(_ report: String) {
         guard let id = Bundle.main.bundleIdentifier else { return }
-        let library = (try? JSONSerialization.jsonObject(with: Data(report.utf8)) as? [String: Any])?["library"] as? [String] ?? []
+        let library = (try? JSONSerialization.jsonObject(with: Data(report.utf8)) as? [String: Any])?["library"] as? [String]
+        if library == nil { NSLog("uninstall: its report names no Library data to delete") }
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/sh")
         p.arguments = ["-c", "pid=$1 id=$2; shift 2; while kill -0 \"$pid\" 2>/dev/null; do sleep 0.2; done; defaults delete \"$id\"; rm -rf \"$@\"",
-                       "sh", String(ProcessInfo.processInfo.processIdentifier), id] + library
+                       "sh", String(ProcessInfo.processInfo.processIdentifier), id] + (library ?? [])
         try? p.run()
     }
 

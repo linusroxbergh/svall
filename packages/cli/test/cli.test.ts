@@ -134,7 +134,8 @@ describe('svall uninstall --login-shell', () => {
       // the app deletes its Library data itself once it has quit
       const library = path.join(home, 'Library');
       expect(JSON.parse(r.stdout).library).toEqual([path.join(library, 'WebKit', BUNDLE_ID), path.join(library, 'Caches', BUNDLE_ID),
-        path.join(library, 'HTTPStorages', BUNDLE_ID), path.join(library, 'Saved Application State', `${BUNDLE_ID}.savedState`),
+        path.join(library, 'HTTPStorages', BUNDLE_ID), path.join(library, 'HTTPStorages', `${BUNDLE_ID}.binarycookies`),
+        path.join(library, 'Saved Application State', `${BUNDLE_ID}.savedState`),
         path.join(library, 'Preferences', `${BUNDLE_ID}.plist`)]);
     } finally {
       cleanHomes();

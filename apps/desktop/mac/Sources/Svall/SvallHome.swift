@@ -93,11 +93,16 @@ enum SvallHome {
         if held >= 0 { return true }
         let fd = open(pidFile, O_RDWR | O_CREAT | O_CLOEXEC, 0o644)
         guard fd >= 0 else { NSLog("svall: could not claim %@: %@", pidFile, String(cString: strerror(errno))); return true }
-        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
-            close(fd)
-            if let other = appPid(of: path), let app = NSRunningApplication(processIdentifier: other),
-               app.bundleIdentifier == Bundle.main.bundleIdentifier { app.activate() }
-            return false
+        if flock(fd, LOCK_EX | LOCK_NB) != 0 {
+            guard errno != EWOULDBLOCK else {
+                close(fd)
+                NSLog("svall: another window holds %@", path)
+                if let other = appPid(of: path), let app = NSRunningApplication(processIdentifier: other),
+                   app.bundleIdentifier == Bundle.main.bundleIdentifier { app.activate() }
+                return false
+            }
+            // a file system without locks, a network one say, leaves the home unguarded
+            NSLog("svall: could not lock %@: %@", pidFile, String(cString: strerror(errno)))
         }
         held = fd
         // written in place: a new file would carry no lock
@@ -114,9 +119,10 @@ enum SvallHome {
         return Date().timeIntervalSince(made) < 60
     }
 
+    // emptied rather than removed, so a launch that opened the file as this one quit locks the one the next launch sees
     static func release() {
-        guard read("app.pid")?.split(separator: "\t").first.flatMap({ Int32($0) }) == pid else { return }
-        try? FileManager.default.removeItem(atPath: pidFile)
+        guard held >= 0, read("app.pid")?.split(separator: "\t").first.flatMap({ Int32($0) }) == pid else { return }
+        ftruncate(held, 0)
     }
 
     /// The pid of the instance that holds another fleet's home, as that home's app.pid names it.

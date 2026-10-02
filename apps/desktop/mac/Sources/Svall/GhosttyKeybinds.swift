@@ -21,23 +21,29 @@ enum GhosttyKeybinds {
     static func userChords() -> [String: String] {
         if let cached { return cached }
         var out: [String: String] = [:]
-        // the files as Ghostty loaded them; asking Ghostty for its config path would create one
-        for path in GhosttyRuntime.defaultConfigFiles() {
-            read(URL(fileURLWithPath: path), depth: 0, into: &out)
+        // the files as Ghostty loaded them, which asking it for its config path would create; as in Ghostty, a config-file
+        // is read after every default file and every file named before it, and once
+        var includes: [URL] = []
+        for path in GhosttyRuntime.defaultConfigFiles() { read(URL(fileURLWithPath: path), into: &out, includes: &includes) }
+        var next = 0
+        while next < includes.count {
+            read(includes[next], into: &out, includes: &includes)
+            next += 1
         }
         cached = out
         return out
     }
 
-    private static func read(_ url: URL, depth: Int, into out: inout [String: String]) {
-        guard depth < 4, let text = try? String(contentsOf: url, encoding: .utf8) else { return }
+    private static func read(_ url: URL, into out: inout [String: String], includes: inout [URL]) {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return }
         for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
             let s = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !s.hasPrefix("#"), let eq = s.firstIndex(of: "=") else { continue }
             let key = s[s.startIndex..<eq].trimmingCharacters(in: .whitespacesAndNewlines)
             let value = s[s.index(after: eq)...].trimmingCharacters(in: .whitespacesAndNewlines)
             if key == "config-file" {
-                read(expand(value, near: url), depth: depth + 1, into: &out)
+                let file = expand(value, near: url).standardizedFileURL
+                if !includes.contains(file) { includes.append(file) }
             } else if key == "keybind" {
                 // `clear`, and an empty value that goes back to Ghostty's defaults, drop every binding above it;
                 // `unbind` hands one key back

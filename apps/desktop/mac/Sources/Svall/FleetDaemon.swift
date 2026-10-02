@@ -33,8 +33,8 @@ enum FleetDaemon {
 
     /// Ends the fleet off the main thread when the daemon could not be asked to, then calls `done` on main: the daemon first, so
     /// the hooks of the terminals closing after it find nobody to clear the agents its next start resumes, then the tmux server.
-    static func kill(then done: @escaping () -> Void) {
-        DispatchQueue.global(qos: .userInitiated).async {
+    static func kill(then done: @escaping () -> Void) -> DispatchWorkItem {
+        let work = DispatchWorkItem {
             if let label, plist != nil {
                 run("/bin/launchctl", ["kill", "SIGTERM", "gui/\(getuid())/\(label)"])
                 let port = SvallHome.path + "/port"
@@ -42,8 +42,10 @@ enum FleetDaemon {
                 while FileManager.default.fileExists(atPath: port), waited < 20 { usleep(100_000); waited += 1 }
             }
             run(SvallHome.tmuxBinary, ["-S", SvallHome.path + "/tmux.sock", "kill-server"])
-            DispatchQueue.main.async(execute: done)
         }
+        work.notify(queue: .main, execute: done)
+        DispatchQueue.global(qos: .userInitiated).async(execute: work)
+        return work
     }
 
     @discardableResult
