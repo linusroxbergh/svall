@@ -1,27 +1,11 @@
-import { FAKE_CLAUDE, expect, test } from './fixtures.js';
+import { FAKE_CLAUDE, expect, settleMap, test } from './fixtures.js';
 import type { Page } from '@playwright/test';
-import type { ToShell } from '../src/bridge.js';
 import { cardScale, labelScale } from '../src/map/layout.js';
+import type { MapDump } from '../src/map/types.js';
 import { theme } from '../src/theme.js';
 
-type Layout = { scale: number; tile: number; ox: number; oy: number };
-type Dump = {
-  scale: number;
-  islands: { id: string; x: number; y: number; w: number; h: number }[];
-  tokens: { id: string; cell: { x: number; y: number }; status: string }[];
-};
-type MapHandle = { layout(): Layout; dump(): Dump };
-
-const layoutOf = (page: Page) => page.evaluate(() => (window as unknown as { __map: MapHandle }).__map.layout());
-const dump = (page: Page) => page.evaluate(() => (window as unknown as { __map: MapHandle }).__map.dump());
-
-// the fit ease keeps shifting the layout for a few frames after the view opens
-const settle = (page: Page) => page.waitForFunction(() => {
-  const m = (window as unknown as { __map: MapHandle }).__map;
-  const before = JSON.stringify(m.layout());
-  // a frame can lag past the wait, so the layout is read again two frames on
-  return new Promise<boolean>((done) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => done(before === JSON.stringify(m.layout())))), 100));
-});
+const layoutOf = (page: Page) => page.evaluate(() => window.__map!.layout());
+const dump = (page: Page) => page.evaluate(() => window.__map!.dump());
 
 // the fit centres the islands in the window, so the water to press is the strip above them
 async function dragSea(page: Page, dx: number, dy: number) {
@@ -77,7 +61,7 @@ test('pans by dragging water and by wheel, clamped', async ({ page, svall }) => 
     await svall.api.call('island.create', { name: svall.uniq(`pan${i}`), position: { x: i * 16, y } });
   }
   await svall.open('map');
-  await settle(page);
+  await settleMap(page);
   expect((await layoutOf(page)).scale).toBeCloseTo(0.42, 5);
 
   const start = (await layoutOf(page)).ox;
@@ -91,10 +75,10 @@ test('pans by dragging water and by wheel, clamped', async ({ page, svall }) => 
 
   // a drag far past the world's edge stops at theme.panMargin; a second one cannot move it further
   await dragSea(page, 4000, 0);
-  await settle(page);
+  await settleMap(page);
   const clamped = (await layoutOf(page)).ox;
   await dragSea(page, 4000, 0);
-  await settle(page);
+  await settleMap(page);
   expect((await layoutOf(page)).ox).toBeCloseTo(clamped, 5);
 });
 
@@ -102,10 +86,10 @@ test('a click on the sea deselects and closes the card', async ({ page, svall })
   const island = await svall.api.call('island.create', { name: svall.uniq('sea'), position: { x: 0, y: 200 } });
   const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'c' });
   await svall.open('map');
-  await settle(page);
+  await settleMap(page);
   const l = await layoutOf(page);
   const cs = l.tile * l.scale;
-  const p = await page.evaluate((cell) => (window as unknown as { __map: { screenOf(c: { x: number; y: number }): { x: number; y: number } } }).__map.screenOf(cell),
+  const p = await page.evaluate((cell) => window.__map!.screenOf(cell),
     { x: island.position.x + c.cell.x, y: island.position.y + c.cell.y });
   const box = (await page.getByTestId('map').boundingBox())!;
   await page.mouse.dblclick(box.x + p.x + cs / 2, box.y + p.y + cs / 2);
@@ -120,7 +104,7 @@ test('a click on the sea deselects and closes the card', async ({ page, svall })
 test('+ New stays live while the pointer rests on it', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('new'), position: { x: 0, y: 400 } });
   await svall.open('map');
-  await settle(page);
+  await settleMap(page);
 
   const svg = page.getByTestId(`island-${island.id}`);
   const box = (await svg.boundingBox())!;
@@ -137,7 +121,7 @@ test('+ New stays live while the pointer rests on it', async ({ page, svall }) =
 test('makes an island by double-clicking the sea', async ({ page, svall }) => {
   await svall.api.call('island.create', { name: svall.uniq('seed'), position: { x: 0, y: 600 } });
   await svall.open('map');
-  await settle(page);
+  await settleMap(page);
 
   const before = Object.keys((await svall.api.call('state.get', {})).islands).length;
   const sea = (await page.locator('.map-sea').boundingBox())!;
@@ -149,7 +133,7 @@ test('makes an island by double-clicking the sea', async ({ page, svall }) => {
 test('makes an island from the mission control row and from the sidebar', async ({ page, svall }) => {
   await svall.api.call('island.create', { name: svall.uniq('btn'), position: { x: 0, y: 1300 } });
   await svall.open('map');
-  await settle(page);
+  await settleMap(page);
   const count = async () => Object.keys((await svall.api.call('state.get', {})).islands).length;
 
   const before = await count();
@@ -166,7 +150,7 @@ test('the side card stays collapsed until it is opened again, or a character is 
   const a = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
   const b = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'b' });
   await svall.open('map');
-  await settle(page);
+  await settleMap(page);
 
   await page.getByTestId(`token-${a.id}`).click();
   await expect(page.getByTestId('side-card')).toBeVisible();
@@ -190,28 +174,17 @@ test('the side card stays collapsed until it is opened again, or a character is 
   await expect(page.getByTestId('side-name')).toHaveValue(made.name);
 });
 
-type Shell = { __sent: ToShell[]; __svall: { receive(json: string): void } };
-
 test('Rename on a sidebar row names the character or the island in place', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('ren'), position: { x: 0, y: 0 } });
   const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
-  // a stand-in for the native shell: it records what the page sends and answers the connection request
-  await page.addInitScript(({ port, token }) => {
-    const w = window as unknown as Shell & { webkit: unknown };
-    w.__sent = [];
-    w.webkit = { messageHandlers: { svall: { postMessage: (json: string) => {
-      const m = JSON.parse(json) as ToShell;
-      w.__sent.push(m);
-      if (m.type === 'connection') setTimeout(() => w.__svall.receive(JSON.stringify({ type: 'connection', host: '127.0.0.1', port, token })), 0);
-    } } } };
-  }, { port: svall.port, token: svall.token });
+  const { sent, receive } = await svall.nativeShell();
   await svall.open('map');
-  const menus = () => page.evaluate(() => (window as unknown as Shell).__sent.filter((m) => m.type === 'menu').length);
+  const menus = async () => (await sent()).filter((m) => m.type === 'menu').length;
   const rename = async (row: string) => {
     const before = await menus();
     await page.getByTestId(row).click({ button: 'right' });
     await expect.poll(menus).toBe(before + 1);
-    await page.evaluate(() => (window as unknown as Shell).__svall.receive(JSON.stringify({ type: 'menu.pick', id: '0' })));
+    await receive({ type: 'menu.pick', id: '0' });
   };
   const state = () => svall.api.call('state.get', {});
 
@@ -235,7 +208,7 @@ test('a rename left by a press on another character is saved to the one it was t
   const a = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
   const b = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'b' });
   await svall.open('map');
-  await settle(page);
+  await settleMap(page);
 
   await page.getByTestId(`token-${a.id}`).click();
   await page.getByTestId('side-name').fill('auth fix');
@@ -249,7 +222,7 @@ test('double-clicking an island opens its card, collapsed or not', async ({ page
   const island = await svall.api.call('island.create', { name: svall.uniq('dbl'), position: { x: 0, y: 1000 } });
   const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'aboard' });
   await svall.open('map');
-  await settle(page);
+  await settleMap(page);
 
   await page.getByTestId(`token-${c.id}`).click();
   await page.getByTestId('side-collapse').click();
@@ -267,7 +240,7 @@ test('a hidden island leaves the map, and the sidebar brings it back to an arran
   const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'folded' });
   await svall.api.call('island.update', { id: island.id, collapsed: true });
   await svall.open('map');
-  await settle(page);
+  await settleMap(page);
 
   await expect(page.getByTestId(`island-${island.id}`)).toHaveCount(0);
   await expect(page.getByTestId(`island-label-${island.id}`)).toHaveCount(0);
@@ -285,7 +258,7 @@ test('a character made on a hidden island from another client brings the island 
   const island = await svall.api.call('island.create', { name: svall.uniq('fold'), position: { x: 0, y: 0 } });
   await svall.api.call('island.update', { id: island.id, collapsed: true });
   await svall.open('map');
-  await settle(page);
+  await settleMap(page);
   await expect(page.getByTestId(`island-${island.id}`)).toHaveCount(0);
 
   // as the phone or `svall char new` makes one
@@ -302,15 +275,15 @@ test('the arrange button packs the fleet together and the map zooms into it', as
   await svall.api.call('island.update', { id: folded.id, collapsed: true });
   await svall.api.call('char.create', { islandId: a.id, cwd: '/tmp', name: 'aboard' });
   await svall.open('map');
-  await settle(page);
+  await settleMap(page);
   const spread = await dump(page);
 
   await page.getByTestId('home-arrange').click();
   await expect.poll(async () => (await dump(page)).islands.find((i) => i.id === b.id)?.x).toBeLessThan(20);
-  await settle(page);
+  await settleMap(page);
   const packed = await dump(page);
 
-  const width = (d: Dump) => Math.max(...d.islands.map((i) => i.x + i.w)) - Math.min(...d.islands.map((i) => i.x));
+  const width = (d: MapDump) => Math.max(...d.islands.map((i) => i.x + i.w)) - Math.min(...d.islands.map((i) => i.x));
   expect(width(packed)).toBeLessThan(width(spread));
   expect(packed.islands.find((i) => i.id === a.id)!.w).toBeLessThan(12);
   expect(packed.scale).toBeGreaterThan(spread.scale);
@@ -336,7 +309,7 @@ test('an arranged fleet leaves as much water over it as under it, at every windo
     });
     // the top clears the wordmark by the same margin the water over mission control's row keeps
     await expect.poll(async () => { const g = await gaps(); return Math.abs(g.top - g.bottom); }, { message: `${size.width}x${size.height}` }).toBeLessThanOrEqual(8);
-    await settle(page);
+    await settleMap(page);
     const g = await gaps();
     expect(Math.abs(g.top - g.bottom), `${size.width}x${size.height}: ${JSON.stringify(g)}`).toBeLessThanOrEqual(8);
   }
@@ -347,7 +320,7 @@ test('the fleet arranges itself when the map is in full view again, and when the
   const far = await svall.api.call('island.create', { name: svall.uniq('far'), position: { x: 40, y: 0 }, size: { w: 12, h: 9 } });
   const c = await svall.api.call('char.create', { islandId: near.id, cwd: '/tmp', name: 'aboard' });
   await svall.open('map');
-  await settle(page);
+  await settleMap(page);
   const farX = async () => (await dump(page)).islands.find((i) => i.id === far.id)?.x;
   const spreadAgain = async () => {
     await svall.api.call('island.update', { id: far.id, position: { x: 40, y: 0 } });
@@ -406,11 +379,11 @@ test('an arranged fleet keeps every label pill clear of the cards around it', as
   const chars = [];
   for (const island of [crewed, crewed, crewed, below]) chars.push(await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp' }));
   await svall.open('map');
-  await settle(page);
+  await settleMap(page);
 
   await page.getByTestId('home-arrange').click();
   await expect.poll(async () => new Set((await dump(page)).islands.map((i) => i.y)).size).toBe(2);
-  await settle(page);
+  await settleMap(page);
 
   const boxes = await page.evaluate(() => {
     const box = (el: Element) => { const r = el.getBoundingClientRect(); return { id: el.getAttribute('data-testid') ?? '', x: r.x, y: r.y, w: r.width, h: r.height }; };
@@ -457,7 +430,7 @@ test('a crowded crew never covers the card beside it, link rails and all', async
   // where a card stands largest against the cells and two of them come closest to touching
   await svall.api.call('island.create', { name: svall.uniq('far'), seed: 2, position: { x: 0, y: 40 } });
   await svall.open('map');
-  await settle(page);
+  await settleMap(page);
   expect((await layoutOf(page)).scale).toBeLessThanOrEqual(theme.token.floor);
 
   const boxes = await page.evaluate(() => Array.from(document.querySelectorAll('.tok')).map((el) => {
@@ -484,7 +457,7 @@ test('mission control cards stand as big as island cards once the fleet zooms th
   // a far island zooms the map out past the scale where cards stop keeping their size
   await svall.api.call('island.create', { name: svall.uniq('far'), seed: 2, position: { x: 0, y: 40 } });
   await svall.open('map');
-  await settle(page);
+  await settleMap(page);
   expect((await layoutOf(page)).scale).toBeLessThan(theme.token.floor);
   const [home, own] = await Promise.all([mc.id, c.id].map(async (id) => (await page.getByTestId(`token-${id}`).locator('.card').boundingBox())!));
   expect(own.width).toBeLessThan(80);
@@ -496,7 +469,7 @@ test('a zoom rescales cards and label pills, and restyles nothing inside them', 
   const island = await svall.api.call('island.create', { name: svall.uniq('zoom'), seed: 4, position: { x: 0, y: 0 } });
   const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'zoomed' });
   await svall.open('map');
-  await settle(page);
+  await settleMap(page);
   // a zoom changes these values every frame and restyles every element holding one, so only the card,
   // the pill and the grid may hold them
   const read = () => page.evaluate(({ tok, label }) => {
@@ -525,7 +498,7 @@ test('a zoom rescales cards and label pills, and restyles nothing inside them', 
   // a far island zooms the map out past the scale where cards stop keeping their size
   await svall.api.call('island.create', { name: svall.uniq('far'), seed: 5, position: { x: 0, y: 40 } });
   await expect.poll(async () => (await layoutOf(page)).scale).toBeLessThan(theme.token.floor);
-  await settle(page);
+  await settleMap(page);
   const far = (await layoutOf(page)).scale;
   const down = await read();
   expect(down.card).toBeCloseTo(cardScale(far), 2);

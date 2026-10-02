@@ -6,6 +6,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+// the specs' page has a port and an address of its own, so a dev server already up on 5173 never answers them
+export const WEB_PORT = 5183;
+export const WEB_ORIGIN = `http://127.0.0.1:${WEB_PORT}`;
 export type DaemonInfo = { home: string; port: number; token: string; pid: number };
 
 export const freePort = (): Promise<number> => new Promise((resolve) => {
@@ -18,7 +21,7 @@ export function newHome(port: number): string {
   fs.mkdirSync(path.join(home, 'home'), { recursive: true });
   const fakeClaude = `node ${path.join(ROOT, 'packages/svalld/test/fixtures/fake-claude.mjs')}`;
   fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({
-    port, shell: '/bin/sh',
+    port, shell: '/bin/sh', mobile: { origins: [WEB_ORIGIN] },
     home: { cwd: path.join(home, 'mc'), command: fakeClaude, actions: [{ label: 'organise', prompt: '/svall-organise' }, { label: 'rename', prompt: '/svall-rename' }] },
   }));
   // what the resources shelf lists and edits: never the real ~/.claude
@@ -38,7 +41,8 @@ export async function startDaemon(home: string): Promise<DaemonInfo> {
   const portFile = path.join(home, 'port');
   fs.rmSync(portFile, { force: true });
   const log = fs.openSync(path.join(home, 'e2e-svalld.log'), 'a');
-  const child = spawn(path.join(ROOT, 'node_modules/.bin/tsx'), [path.join(ROOT, 'packages/svalld/src/bin.ts')], {
+  // node itself runs svalld, so the pid stopDaemon signals is the daemon's own and not a launcher's
+  const child = spawn(process.execPath, ['--import', 'tsx', path.join(ROOT, 'packages/svalld/src/bin.ts')], {
     // a fake `claude` first on PATH and a HOME of its own: nothing svalld spawns may reach the real account or files
     env: {
       ...process.env, HOME: path.join(home, 'home'), SVALL_HOME: home, CLAUDE_CONFIG_DIR: path.join(home, 'claude'), CODEX_HOME: path.join(home, 'codex'),

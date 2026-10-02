@@ -1,6 +1,6 @@
 import { spacedCells } from '@svall/protocol';
 import { theme } from '../src/theme.js';
-import { expect, setMapWidth, test } from './fixtures.js';
+import { expect, setMapWidth, settleMap, test } from './fixtures.js';
 
 test('a button spawns a crew member on home and hands it the prompt', async ({ page, svall }) => {
   await svall.open('map');
@@ -52,15 +52,8 @@ test('a card drags onto a home slot and back out to the map', async ({ page, sva
   const token = page.getByTestId(`token-${c.id}`);
   await expect(token).toBeVisible();
 
-  // the fit ease keeps shifting the layout for a few frames after a move
-  const settle = () => page.waitForFunction(() => {
-    const m = (window as unknown as { __map: { layout(): unknown } }).__map;
-    const before = JSON.stringify(m.layout());
-    // a frame can lag past the wait, so the layout is read again two frames on
-    return new Promise<boolean>((done) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => done(before === JSON.stringify(m.layout())))), 100));
-  });
   const drag = async (to: { x: number; y: number }) => {
-    await settle();
+    await settleMap(page);
     const from = (await token.boundingBox())!;
     await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
     await page.mouse.down();
@@ -81,10 +74,10 @@ test('a card drags onto a home slot and back out to the map', async ({ page, sva
   // and back out: a drop on its own island must move it there, not strand it on the crossing cell
   const back = spacedCells(island.size, island.seed, 3)[2];
   const world = { x: island.position.x + back.x, y: island.position.y + back.y };
-  await settle();
-  const at = await page.evaluate((w) => (window as unknown as { __map: { screenOf(c: { x: number; y: number }): { x: number; y: number } } }).__map.screenOf(w), world);
-  const cs = await page.evaluate(() => { const l = (window as unknown as { __map: { layout(): { scale: number; tile: number } } }).__map.layout(); return l.scale * l.tile; });
-  await settle();
+  await settleMap(page);
+  const at = await page.evaluate((w) => window.__map!.screenOf(w), world);
+  const cs = await page.evaluate(() => { const l = window.__map!.layout(); return l.scale * l.tile; });
+  await settleMap(page);
   await drag({ x: map.x + at.x + cs / 2, y: map.y + at.y + cs / 2 });
   await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].islandId).toBe(island.id);
   expect((await svall.api.call('state.get', {})).characters[c.id].cell).toEqual(back);

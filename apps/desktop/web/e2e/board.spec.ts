@@ -109,23 +109,11 @@ test('shows the connect screen without a daemon address', async ({ page }) => {
   await expect(page.getByTestId('connect-screen')).toBeVisible();
 });
 
-type Shell = { __sent: ToShell[]; __svall: { receive(json: string): void } };
-
 test('a toast takes a hole in the terminal under it, on the board and over a full card', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('toast') });
   const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
-  // a stand-in for the native shell: it records what the page sends and answers the connection request
-  await page.addInitScript(({ port, token }) => {
-    const w = window as unknown as Shell & { webkit: unknown };
-    w.__sent = [];
-    w.webkit = { messageHandlers: { svall: { postMessage: (json: string) => {
-      const m = JSON.parse(json) as ToShell;
-      w.__sent.push(m);
-      if (m.type === 'connection') setTimeout(() => w.__svall.receive(JSON.stringify({ type: 'connection', host: '127.0.0.1', port, token })), 0);
-    } } } };
-  }, { port: svall.port, token: svall.token });
+  const { sent, receive } = await svall.nativeShell();
   await svall.open();
-  const sent = () => page.evaluate(() => (window as unknown as Shell).__sent);
   const cutout = async () => (await sent()).filter((m) => m.type === 'shell.cutout').at(-1) as Extract<ToShell, { type: 'shell.cutout' }> | undefined;
   const toast = page.getByTestId('toast');
   // the terminal is drawn above the page, and the hole it gives up is where the toast stands once it has eased in;
@@ -137,8 +125,7 @@ test('a toast takes a hole in the terminal under it, on the board and over a ful
   // a path that is not there, dropped on the character's row, is refused on a toast
   const refused = async () => {
     const row = (await page.getByTestId(`sb-char-${c.id}`).boundingBox())!;
-    await page.evaluate(([x, y]) => (window as unknown as Shell).__svall.receive(JSON.stringify({ type: 'drag.drop', paths: ['/no/such/path'], x, y })),
-      [row.x + row.width / 2, row.y + row.height / 2]);
+    await receive({ type: 'drag.drop', paths: ['/no/such/path'], x: row.x + row.width / 2, y: row.y + row.height / 2 });
     await expect(toast).toContainText('no such file');
   };
 

@@ -1,9 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from './fixtures.js';
-import type { ToShell } from '../src/bridge.js';
-
-type Shell = { __sent: ToShell[]; __svall: { receive(json: string): void } };
 
 test('the settings open from the sidebar, zoom the page and are remembered', async ({ page, svall }) => {
   await svall.open();
@@ -142,19 +139,9 @@ test('a new fleet asks once before the scribe runs, and the settings show its la
 test('the shell is told the opacity, the zoom and which config to open', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('set') });
   const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
-  // a stand-in for the native shell: it records what the page sends and answers the connection request
-  await page.addInitScript(({ port, token }) => {
-    const w = window as unknown as Shell & { webkit: unknown };
-    w.__sent = [];
-    w.webkit = { messageHandlers: { svall: { postMessage: (json: string) => {
-      const m = JSON.parse(json) as ToShell;
-      w.__sent.push(m);
-      if (m.type === 'connection') setTimeout(() => w.__svall.receive(JSON.stringify({ type: 'connection', host: '127.0.0.1', port, token })), 0);
-    } } } };
-  }, { port: svall.port, token: svall.token });
+  const { sent, receive } = await svall.nativeShell();
   await svall.open();
-  const sent = () => page.evaluate(() => (window as unknown as Shell).__sent);
-  const chord = (key: string) => page.evaluate((k) => (window as unknown as Shell).__svall.receive(JSON.stringify({ type: 'key', chord: k })), key);
+  const chord = (key: string) => receive({ type: 'key', chord: key });
   const shown = async () => (await sent()).filter((m) => m.type === 'term.show' && m.id === c.id).at(-1) as { opacity?: number } | undefined;
   await expect.poll(shown).toBeTruthy();
 
@@ -175,7 +162,7 @@ test('the shell is told the opacity, the zoom and which config to open', async (
 
   // the switch waits for a shell that has found the 1Password CLI, and the pane grows its fill button with it
   await expect(page.getByTestId('set-1password')).toBeDisabled();
-  await page.evaluate(() => (window as unknown as Shell).__svall.receive(JSON.stringify({ type: 'shell.info', home: '/tmp/fleet-x', log: [], op: true })));
+  await receive({ type: 'shell.info', home: '/tmp/fleet-x', log: [], op: true });
   await page.getByTestId('set-1password').click();
   await expect(page.getByTestId('set-1password')).toHaveAttribute('aria-checked', 'true');
   await chord('cmd+b');

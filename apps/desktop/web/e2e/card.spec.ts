@@ -1,22 +1,17 @@
 import { spacedCells } from '@svall/protocol';
-import { expect, test, type Svall } from './fixtures.js';
+import { expect, settleMap, test, type Svall } from './fixtures.js';
 import type { Page } from '@playwright/test';
 
-type MapHandle = { screenOf(cell: { x: number; y: number }): { x: number; y: number }; layout(): { scale: number; tile: number } };
-// the fit ease keeps shifting the layout for a few frames after the view opens, and again whenever the side card takes width
-const settle = (page: Page) => page.waitForFunction(() => {
-  const m = (window as unknown as { __map: MapHandle }).__map;
-  const before = JSON.stringify(m.layout());
-  // a frame can lag past the wait, so the layout is read again two frames on
-  return new Promise<boolean>((done) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => done(before === JSON.stringify(m.layout())))), 100));
-});
-
+// a patch can still move the camera after one settle, so the point is only trusted once two settled reads agree
 async function figurePoint(page: Page, cell: { x: number; y: number }) {
-  await settle(page);
-  const p = await page.evaluate((c) => (window as unknown as { __map: MapHandle }).__map.screenOf(c), cell);
-  const cs = await page.evaluate(() => { const l = (window as unknown as { __map: MapHandle }).__map.layout(); return l.scale * l.tile; });
-  const box = (await page.getByTestId('map').boundingBox())!;
-  return { x: box.x + p.x + cs / 2, y: box.y + p.y + cs / 2 };
+  for (let last = ''; ;) {
+    await settleMap(page);
+    const p = await page.evaluate((c) => { const l = window.__map!.layout(), at = window.__map!.screenOf(c); return { x: at.x + l.scale * l.tile / 2, y: at.y + l.scale * l.tile / 2 }; }, cell);
+    const box = (await page.getByTestId('map').boundingBox())!;
+    const point = { x: box.x + p.x, y: box.y + p.y };
+    if (JSON.stringify(point) === last) return point;
+    last = JSON.stringify(point);
+  }
 }
 
 const worldCellOf = async (svall: Svall, island: { position: { x: number; y: number } }, id: string) => {
@@ -146,7 +141,7 @@ test('the half card keeps the size it was dragged to, for the next character too
   // opening the card selected the character, which opened the side card; close it so the map stops resizing
   await page.keyboard.press('Meta+i');
   await expect(page.getByTestId('side-card')).toBeHidden();
-  await settle(page);
+  await settleMap(page);
   const before = (await card.boundingBox())!;
   const grip = (await page.getByTestId('card-grip').boundingBox())!;
   await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);

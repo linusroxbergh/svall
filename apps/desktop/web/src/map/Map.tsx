@@ -24,7 +24,7 @@ import { TerminalCard } from './TerminalCard.js';
 import { Token } from './Token.js';
 import type { Drag, MapDump, PointerEv, Target } from './types.js';
 
-declare global { interface Window { __map?: { layout(): Layout; screenOf(cell: Cell): { x: number; y: number }; dump(): MapDump } } }
+declare global { interface Window { __map?: { layout(): Layout; screenOf(cell: Cell): { x: number; y: number }; dump(): MapDump; refits(): number } } }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 type IslandDrag = Extract<Drag, { kind: 'island' | 'resize' }>;
@@ -271,6 +271,7 @@ export function Map() {
   const anim = useRef<number>(undefined);
   const holdUntil = useRef(0);
   const holdTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const refits = useRef(0);
   useEffect(() => () => { cancelAnimationFrame(anim.current ?? 0); cancelAnimationFrame(dragFrame.current ?? 0);
     clearTimeout(holdTimer.current); clearTimeout(hoverTimer.current); clearTimeout(settleTimer.current); }, []);
   // the map under the room kept over mission control, and what mission control stands in it with
@@ -320,6 +321,7 @@ export function Map() {
     const cur = layoutRef.current;
     if (target.current && target.current.scale === next.scale && target.current.ox === next.ox && target.current.oy === next.oy && target.current.most === most) return;
     target.current = { ...next, most };
+    refits.current += 1;
     cancelAnimationFrame(anim.current ?? 0);
     // the side card and a pan resize the map instantly; jump the layout with them rather than easing across a moving target
     if (immediate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) { homeMost.current = most; setLayout(next); return; }
@@ -488,6 +490,8 @@ export function Map() {
     window.__map = {
       layout: () => layoutRef.current,
       screenOf: (c) => worldToScreen(layoutRef.current, c),
+      // how often the camera has been sent somewhere new
+      refits: () => refits.current,
       dump: () => {
         const f = app.store.getState().fleet;
         return {

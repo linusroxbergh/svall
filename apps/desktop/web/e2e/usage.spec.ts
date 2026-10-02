@@ -1,8 +1,6 @@
 import { FAKE_CLAUDE, expect, test } from './fixtures.js';
 import type { ToShell } from '../src/bridge.js';
 
-type Shell = { __sent: ToShell[]; __svall: { receive(json: string): void } };
-
 test('the usage tab tells nothing until it is opened, then reads the plan limits', async ({ page, svall }) => {
   await svall.open();
   const tab = page.getByTestId('usage-tab');
@@ -45,18 +43,8 @@ test('the usage tab tells nothing until it is opened, then reads the plan limits
 test('the panel takes a hole in the terminal rather than the whole of it', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('use') });
   const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
-  // a stand-in for the native shell: it records what the page sends and answers the connection request
-  await page.addInitScript(({ port, token }) => {
-    const w = window as unknown as Shell & { webkit: unknown };
-    w.__sent = [];
-    w.webkit = { messageHandlers: { svall: { postMessage: (json: string) => {
-      const m = JSON.parse(json) as ToShell;
-      w.__sent.push(m);
-      if (m.type === 'connection') setTimeout(() => w.__svall.receive(JSON.stringify({ type: 'connection', host: '127.0.0.1', port, token })), 0);
-    } } } };
-  }, { port: svall.port, token: svall.token });
+  const { sent, receive } = await svall.nativeShell();
   await svall.open();
-  const sent = () => page.evaluate(() => (window as unknown as Shell).__sent);
   const mark = async () => (await sent()).length;
   const since = async (from: number) => (await sent()).slice(from).filter((m) => !('id' in m) || m.id === c.id).map((m) => m.type);
   const cutout = async () => {
@@ -107,13 +95,13 @@ test('the panel takes a hole in the terminal rather than the whole of it', async
   await tab.click();
   await expect(panel).toBeVisible();
   const touched = await mark();
-  await page.evaluate(() => (window as unknown as Shell).__svall.receive(JSON.stringify({ type: 'shell.pressedAway' })));
+  await receive({ type: 'shell.pressedAway' });
   await expect(panel).toHaveCount(0);
   await expect.poll(async () => (await cutout())?.rects).toEqual([]);
   expect(await since(touched)).not.toContain('term.focus');
 
   // a browser tab is drawn above the page the same way, and is left standing the same way
-  await page.evaluate(() => (window as unknown as Shell).__svall.receive(JSON.stringify({ type: 'key', chord: 'cmd+l' })));
+  await receive({ type: 'key', chord: 'cmd+l' });
   await expect(page.getByTestId('browser-surface')).toBeVisible();
   const paned = await mark();
   await tab.click();

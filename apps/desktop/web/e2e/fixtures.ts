@@ -3,10 +3,14 @@ import { test as base, expect, type Page } from '@playwright/test';
 import type { Cell } from '@svall/protocol';
 import { NodeClient } from './client.js';
 import { ROOT, readInfo, startDaemon, stopDaemon, type DaemonInfo } from './daemon.js';
+import type { FromShell, ToShell } from '../src/bridge.js';
 import { DEFAULT_SETTINGS } from '../src/settings.js';
 import { SETTINGS_KEY } from '../src/store/index.js';
 
 export const FAKE_CLAUDE = `node ${path.join(ROOT, 'packages/svalld/test/fixtures/fake-claude.mjs')}`;
+
+type Shell = { __sent: ToShell[]; __svall: { receive(json: string): void } };
+export type NativeShell = { sent(): Promise<ToShell[]>; receive(m: FromShell): Promise<void> };
 
 export type Svall = DaemonInfo & {
   api: NodeClient;
@@ -16,6 +20,8 @@ export type Svall = DaemonInfo & {
   uniq(prefix: string): string;
   // an island reshapes around its crew as it grows, so a cell read at creation goes stale
   cellOf(id: string): Promise<Cell>;
+  // a stand-in for the native shell, installed before the page opens: it records what the page sends and answers the connection request
+  nativeShell(): Promise<NativeShell>;
 };
 
 export const test = base.extend<{ svall: Svall }>({
@@ -44,6 +50,21 @@ export const test = base.extend<{ svall: Svall }>({
         // the world transform lands a frame after the view; window.__map appears with it
         if (view === 'map') await page.waitForFunction(() => '__map' in window);
       },
+      nativeShell: async () => {
+        await page.addInitScript(({ port, token }) => {
+          const w = window as unknown as Shell & { webkit: unknown };
+          w.__sent = [];
+          w.webkit = { messageHandlers: { svall: { postMessage: (json: string) => {
+            const m = JSON.parse(json) as ToShell;
+            w.__sent.push(m);
+            if (m.type === 'connection') setTimeout(() => w.__svall.receive(JSON.stringify({ type: 'connection', host: '127.0.0.1', port, token })), 0);
+          } } } };
+        }, { port: svall.port, token: svall.token });
+        return {
+          sent: () => page.evaluate(() => (window as unknown as Shell).__sent),
+          receive: (m) => page.evaluate((json) => (window as unknown as Shell).__svall.receive(json), JSON.stringify(m)),
+        };
+      },
       stopDaemon: async () => { svall.api.close(); await stopDaemon(home); },
       startDaemon: async () => { const next = await startDaemon(home); svall.pid = next.pid; svall.api = await NodeClient.connect(next.port, next.token); },
     };
@@ -57,6 +78,14 @@ export const test = base.extend<{ svall: Svall }>({
     await use(svall);
     svall.api.close();
   },
+});
+
+// the fit ease keeps shifting the layout for a few frames after the view opens, a move, or a panel taking width
+export const settleMap = (page: Page) => page.waitForFunction(() => {
+  const m = window.__map!;
+  const before = JSON.stringify(m.layout());
+  // a frame can lag past the wait, so the layout is read again two frames on
+  return new Promise<boolean>((done) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => done(before === JSON.stringify(m.layout())))), 100));
 });
 
 // the viewport that leaves the map `w` px wide beside whatever panels are open

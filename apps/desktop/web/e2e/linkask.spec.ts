@@ -1,8 +1,6 @@
 import { expect, test } from './fixtures.js';
 import type { ToShell } from '../src/bridge.js';
 
-type Shell = { __sent: ToShell[]; __svall: { receive(json: string): void } };
-
 test('a link asks where it should open, and opening it here puts it in the character\'s browser', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('lnk') });
   const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'reader' });
@@ -33,16 +31,7 @@ test('a link asks where it should open, and opening it here puts it in the chara
 test('a link followed in a terminal asks over the terminal, with the keys, and hands them back', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('lnk') });
   const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'reader' });
-  // a stand-in for the native shell: it records what the page sends and answers the connection request
-  await page.addInitScript(({ port, token }) => {
-    const w = window as unknown as Shell & { webkit: unknown };
-    w.__sent = [];
-    w.webkit = { messageHandlers: { svall: { postMessage: (json: string) => {
-      const m = JSON.parse(json) as ToShell;
-      w.__sent.push(m);
-      if (m.type === 'connection') setTimeout(() => w.__svall.receive(JSON.stringify({ type: 'connection', host: '127.0.0.1', port, token })), 0);
-    } } } };
-  }, { port: svall.port, token: svall.token });
+  const { sent, receive } = await svall.nativeShell();
   await svall.open('map');
   const token = page.getByTestId(`token-${c.id}`);
   await token.click();
@@ -51,12 +40,10 @@ test('a link followed in a terminal asks over the terminal, with the keys, and h
   await expect(card).toHaveAttribute('data-settled', 'true');
   // the shell's hole shows the page, so the ask must be drawn above the card that stands under the terminal
   const at = (await card.getByTestId('surface').boundingBox())!;
-  const sent = () => page.evaluate(() => (window as unknown as Shell).__sent);
   const mark = async () => (await sent()).length;
   const since = async (from: number) => (await sent()).slice(from);
   const cutout = async () => (await sent()).filter((m) => m.type === 'shell.cutout').at(-1) as Extract<ToShell, { type: 'shell.cutout' }> | undefined;
-  const follow = (url: string) => page.evaluate(({ id, url, x, y }) => (window as unknown as Shell).__svall.receive(
-    JSON.stringify({ type: 'term.openUrl', id, url, x, y })), { id: c.id, url, x: at.x + 40, y: at.y + 40 });
+  const follow = (url: string) => receive({ type: 'term.openUrl', id: c.id, url, x: at.x + 40, y: at.y + 40 });
   const ask = page.getByTestId('link-ask');
 
   let from = await mark();
@@ -78,7 +65,7 @@ test('a link followed in a terminal asks over the terminal, with the keys, and h
   // a press on the terminal never reaches the page; the shell answers for it
   await follow('https://example.com/b');
   await expect(ask).toBeVisible();
-  await page.evaluate(() => (window as unknown as Shell).__svall.receive(JSON.stringify({ type: 'shell.pressedAway' })));
+  await receive({ type: 'shell.pressedAway' });
   await expect(ask).toHaveCount(0);
 
   await follow('https://example.com/c');
