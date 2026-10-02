@@ -55,7 +55,7 @@ describe('Store', () => {
     expect(renames).toHaveBeenCalledTimes(1);
   });
 
-  it('logs a write that fails, keeps the change, and writes it with the next one', () => {
+  it('logs a write that fails, keeps the change, and writes it at the next flush or change', () => {
     vi.useFakeTimers();
     const file = path.join(makeHome(), 'state.json');
     const logs: string[] = [];
@@ -67,6 +67,8 @@ describe('Store', () => {
     expect(logs).toEqual([expect.stringMatching(/^state.json not written: /)]);
     expect(s.state.defaultCwd).toBe('/elsewhere');
     fs.rmdirSync(`${file}.tmp`);
+    s.flush();
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).defaultCwd).toBe('/elsewhere');
     s.update((d) => { d.scribeOff = true; });
     vi.advanceTimersByTime(250);
     expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toMatchObject({ defaultCwd: '/elsewhere', scribeOff: true });

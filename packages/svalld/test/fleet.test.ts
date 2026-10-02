@@ -700,7 +700,7 @@ runIf('Fleet', () => {
   });
 
   it('does not mark a character revived during a reconcile listing dormant', async () => {
-    const { fleet, store, tmux } = await boot();
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     await tmux.killWindow(c.tmux!.windowId);
     await waitFor(() => store.state.characters[c.id].tmux === undefined);

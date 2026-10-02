@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { codexInstalled, codexPaths } from '../src/codex/install.js';
 import { silentLogger } from '../src/log.js';
@@ -40,6 +40,22 @@ runIf('startDaemon', () => {
     const written = JSON.parse(fs.readFileSync(codex.hooks, 'utf8'));
     expect(codexInstalled(written, resolvePaths(home).hookScript)).toBe(true);
     expect(written.hooks.Stop[0].hooks[0].command).toContain(resolvePaths(home).hookScript);
+  });
+
+  it('has the fleet on disk by the time its port file goes', async () => {
+    const home = makeHome();
+    homes.push(home);
+    const paths = resolvePaths(home);
+    const d = await start({ home, port: 0, log: silentLogger });
+    d.fleet.setDormancy(7);
+    let onDisk: number | undefined;
+    const rm = fs.rmSync.bind(fs);
+    const spy = vi.spyOn(fs, 'rmSync').mockImplementation((p, o) => {
+      if (p === paths.port) onDisk = JSON.parse(fs.readFileSync(paths.state, 'utf8')).dormantAfterHours;
+      rm(p, o);
+    });
+    try { await d.stop(); } finally { spy.mockRestore(); }
+    expect(onDisk).toBe(7);
   });
 
   it('writes the version it runs as, which a launch refresh compares with the app\'s', async () => {

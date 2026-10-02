@@ -17,9 +17,8 @@ export const snapshot = (state: FleetState): Before =>
 
 type Settle = (key: string, slot: { agent?: Agent }, command: string) => void;
 
-/** Matches a character to a listing taken after `before`: its second terminal, its main window and the directory
- *  its pane moved to. A window opened, closed or replaced while tmux answered is absent from the listing, so that
- *  slot is left as it stands. Returns the main window the character stands on, when the listing has it. */
+/** Matches a character's second terminal, main window and pane directory to a listing taken after `before`; a slot the
+ *  fleet changed while tmux answered is left as it stands. Returns the main window the character stands on, when listed. */
 export function syncWindow(c: Character, byName: ReadonlyMap<string, LiveWindow>, before: Before, settle?: Settle): LiveWindow | undefined {
   const was = before.get(c.id);
   if (was?.second === c.second?.tmux.windowId) {

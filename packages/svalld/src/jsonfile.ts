@@ -23,9 +23,8 @@ export function readJsonOrQuarantine<T>(
 
 type WriteOptions = { mode?: number; perProcess?: boolean; mkdir?: boolean };
 
-/** Replaces `file` through a temporary name synced to disk first, so neither an interrupted write nor a crash can
- *  truncate what is there. `perProcess` puts this process's id in that name, for a file two processes may write at
- *  once; `mkdir: false` fails the write when the folder is gone rather than making it again. */
+/** Replaces `file` through a temporary name synced to disk first, so no crash can truncate it. `perProcess` names that
+ *  temporary for this process, for a file two may write; `mkdir: false` fails rather than make a folder that is gone. */
 export function writeAtomic(file: string, text: string, o: WriteOptions = {}): void {
   if (o.mkdir !== false) fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = o.perProcess ? `${file}.tmp-${process.pid}` : `${file}.tmp`;

@@ -22,6 +22,8 @@ function keptCopy(file: string): string | undefined {
 export class Store {
   private listeners = new Set<Listener>();
   private writing?: NodeJS.Timeout;
+  // a change not yet on disk
+  private dirty = false;
 
   private constructor(private file: string, private current: FleetState, private log: (msg: string) => void) {}
 
@@ -69,6 +71,7 @@ export class Store {
     if (ops.length === 0) return ops;
     // taken at once and written soon after: a crash loses at most the last WRITE_EVERY_MS of changes
     this.current = next;
+    this.dirty = true;
     this.writing ??= setTimeout(() => this.flush(), WRITE_EVERY_MS);
     for (const l of this.listeners) {
       try { l(ops); } catch (err) { this.log(`store listener failed: ${String(err)}`); }
@@ -81,13 +84,14 @@ export class Store {
     return () => { this.listeners.delete(fn); };
   }
 
-  /** Writes a change still waiting for its turn on disk. A write that fails is logged, and the next change writes it all. */
+  /** Writes what has changed since the last write that went through; a write that fails is logged and tried again by
+   *  the next change or flush. */
   flush(): void {
-    if (!this.writing) return;
     clearTimeout(this.writing);
     this.writing = undefined;
+    if (!this.dirty) return;
     // a fleet home that is gone stays gone
-    try { writeJsonAtomic(this.file, this.current, { mkdir: false }); }
+    try { writeJsonAtomic(this.file, this.current, { mkdir: false }); this.dirty = false; }
     catch (e) { this.log(`state.json not written: ${String(e)}`); }
   }
 

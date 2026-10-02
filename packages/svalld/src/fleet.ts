@@ -320,7 +320,7 @@ export class Fleet extends EventEmitter<Events> {
         // a name asked for twice, as a button pressed twice does, gets a number
         const names = Object.values(d.characters).map((c) => c.name);
         d.characters[id] = {
-          id, islandId: p.islandId, cell: p.cell ?? placeOnIsland(d, p.islandId),
+          id, islandId: p.islandId, cell: p.cell ?? placeOnIsland(d, p.islandId, undefined, this.deps.log),
           name: uniqueName(names, p.name ?? randomName(new Set(names))),
           portrait: randomPortrait(new Set(Object.values(d.characters).map((c) => c.portrait))),
           note: '', instructions: '', ...(p.agentProfile && { agentProfile: p.agentProfile }), cwd, context: [],
@@ -373,7 +373,7 @@ export class Fleet extends EventEmitter<Events> {
 
   // the cell before the islandId, or the character's stale cell would count as occupied on the target island
   private placeOn(d: FleetState, id: string, islandId: string): void {
-    const cell = placeOnIsland(d, islandId, id);
+    const cell = placeOnIsland(d, islandId, id, this.deps.log);
     d.characters[id].islandId = islandId;
     d.characters[id].cell = cell;
   }

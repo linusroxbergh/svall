@@ -208,8 +208,7 @@ function plan(lands: Box[], aspect: number): Plan {
 }
 
 // every island on the map cut to its crew's grid, as many abreast as fills a window of that aspect best, and packed in
-// centred rows above mission control; a folded island keeps its place and size. homeRoom is the widest mission
-// control the map has room for, in cells
+// centred rows above mission control, homeRoom cells wide at most; a folded island keeps its place and size
 export function arrangeFleet(draft: FleetState, aspect = 4 / 3, homeRoom?: number): void {
   if (homeRoom !== undefined) widenHome(draft, homeRoom);
   const islands = worldIslands(draft).sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x || a.id.localeCompare(b.id));
@@ -256,7 +255,7 @@ class IslandFull extends Error { code = 'invalid'; }
 // the island takes the ground a crew one larger needs and everyone lines up on it, as `arrange` lays out
 // the fleet; the newcomer takes the cell the grid leaves at the end, and the islands the new shape reaches
 // into are pushed aside. a hidden island comes back onto the map, so the newcomer is seen arriving
-export function placeOnIsland(draft: FleetState, islandId: string, exceptId?: string): Cell {
+export function placeOnIsland(draft: FleetState, islandId: string, exceptId?: string, log?: Logger): Cell {
   const island = draft.islands[islandId];
   if (island.kind === 'home') return placeOnHome(draft, island, exceptId);
   // a character re-placed on its own island is not its own crew, or the grid would size for it twice
@@ -264,7 +263,7 @@ export function placeOnIsland(draft: FleetState, islandId: string, exceptId?: st
   const { size, cells } = crewGrid(crew.length + 1);
   island.size = size;
   crew.forEach((id, i) => { draft.characters[id].cell = cells[i]; });
-  unfold(draft, islandId);
+  unfold(draft, islandId, log);
   // a neighbour the push could not clear would leave the two overlapping, a shape no other move can produce
   if (!placementOk(draft, island)) throw new IslandFull(`island ${island.name} is full`);
   return cells[crew.length];
