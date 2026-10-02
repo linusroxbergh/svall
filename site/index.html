@@ -96,6 +96,15 @@ main { overflow-x: clip; }
 .map-world { font: var(--text-lg)/1.45 var(--sans); user-select: none; }
 .map-world .tok .gauge .arc { transition: stroke-dasharray 1.2s var(--ease-out); }
 
+.features { position: relative; z-index: 2; max-width: 520px; margin-top: 56px; }
+.narrow .features { margin-top: 64px; }
+.features h2 { margin: 0 0 14px; font-size: 1.0625rem; font-weight: 600; letter-spacing: -.01em; }
+.features ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.features li { position: relative; padding-left: 20px; color: #EDE7D6; line-height: 1.5; text-wrap: pretty; }
+.features li::before { content: ''; position: absolute; left: 2px; top: .62em; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--grass-hi); box-shadow: 0 0 0 2px color-mix(in srgb, var(--sand) 55%, transparent); }
+.features b { font-weight: 600; color: var(--ink); }
+
 /* sections below the hero: a short head, then one picture */
 .sec { margin-top: clamp(96px, 14vh, 168px); }
 .sec-head { max-width: 560px; margin-bottom: 32px; }
@@ -282,6 +291,17 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     <p class="meta">Apple silicon, macOS 15 or newer, with Claude Code or Codex. <a href="https://github.com/linusroxbergh/svall#build-from-source-svall-dev">Build from source</a></p>
   </section>
   <div class="map"><div class="world map-world" inert></div></div>
+  <section class="features">
+    <h2>What it does</h2>
+    <ul>
+      <li><b>At a glance:</b> the map keeps track of every agent, so you don't have to.</li>
+      <li><b>Layered context:</b> per repo, island and agent, kept current for you.</li>
+      <li><b>Persistence:</b> quit or reboot, and sessions pick up where they left off.</li>
+      <li><b>Built-in browser:</b> PRs, previews and docs beside the terminal.</li>
+      <li><b>Built-in editor:</b> edit files and review the diff in place.</li>
+      <li><b>On your phone:</b> every agent and terminal, over Tailscale.</li>
+    </ul>
+  </section>
 </div>
 
 <section class="sec wrap" aria-labelledby="flow-h">
