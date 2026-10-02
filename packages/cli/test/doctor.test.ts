@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { codexHookCommand, mergeCodexHooks } from '@svall/svalld/codex/install';
+import { codexHookCommand } from '@svall/svalld/codex/install';
 import { LAUNCHD_LABEL } from '@svall/svalld/profile';
 import { resolveTmux } from '@svall/svalld/tmux';
-import { HOOK_EVENTS, hookCommand, mergeHooks, mergeStatusLine, nodeRun, statusWrapper } from '@svall/svalld/setup';
+import { hookCommand, mergeCodexHooks, mergeHooks, mergeStatusLine, nodeRun, statusWrapper } from '@svall/svalld/setup';
 import type { AgentKind } from '@svall/protocol';
+import { grouped } from '../src/checks-view.js';
 import type { HookTrust } from '../src/codex-trust.js';
 import { codexCheck, doctor, preflight, requireReady, type DoctorDeps } from '../src/commands/doctor.js';
 
@@ -15,7 +16,7 @@ const plist = (nodeDir: string) => `<dict>\n    <key>PATH</key><string>${nodeDir
 
 const SCRIPT = '/u/.svall/hooks/agent-hook.mjs';
 const STATUS = '/u/.svall/hooks/claude-status.mjs';
-const claudeSettings = (hook: string, status: string) => JSON.stringify(mergeStatusLine(mergeHooks({}, hook, HOOK_EVENTS, SCRIPT), status, STATUS));
+const claudeSettings = (hook: string, status: string) => JSON.stringify(mergeStatusLine(mergeHooks({}, hook, SCRIPT), status, STATUS));
 const installed = claudeSettings(hookCommand(process.execPath, SCRIPT, 'claude'), statusWrapper(process.execPath, STATUS));
 
 function fake(o: {
@@ -30,6 +31,8 @@ function fake(o: {
   mainAgent?: AgentKind;
   found?: AgentKind[];
   trust?: HookTrust;
+  shimsCurrent?: boolean;
+  plistCurrent?: boolean;
 } = {}) {
   const calls: string[] = [];
   const envs: Record<string, Record<string, string> | undefined> = {};
@@ -78,6 +81,8 @@ function fake(o: {
     mainAgent: o.mainAgent,
     found: o.found ?? ['claude'],
     codexTrust: async () => o.trust,
+    shimsCurrent: o.shimsCurrent ?? true,
+    plistCurrent: o.plistCurrent ?? true,
   };
   return { deps, calls, envs };
 }
@@ -102,6 +107,15 @@ describe('doctor', () => {
     expect(c.launchd.detail).toMatch(/state = running/);
     expect(r.log.path).toBe('/u/.svall/svalld.log');
     expect(r.log.lines).toEqual(Array.from({ length: 20 }, (_, i) => `line ${i + 11}`));
+    // the plain report shows every check under a title
+    expect(grouped(r.checks).flatMap((g) => g.checks)).toHaveLength(r.checks.length);
+  });
+
+  it('warns about shims or a plist that setup would write differently now, as setup --check does', async () => {
+    const c = byName(await doctor(priv, fake({ shimsCurrent: false, plistCurrent: false }).deps));
+    expect(c.shims).toEqual({ name: 'shims', status: 'warn', detail: 'missing or out of date: run svall setup' });
+    expect(c['launchd plist']).toEqual({ name: 'launchd plist', status: 'warn', detail: 'missing or out of date: svall setup' });
+    expect(byName(await doctor(adhoc, fake().deps))['launchd plist'].status).toBe('skip');
   });
 
   it('names what is broken and how to fix it', async () => {
@@ -353,17 +367,17 @@ describe('agent checks', () => {
 });
 
 describe('codexCheck', () => {
-  it('warns when codex is there but the hooks are not written, or will not parse', async () => {
+  it('fails when codex is there but the hooks are not written, or will not parse, as the Claude check does', async () => {
     for (const text of ['', '{ "hooks": ']) {
       const c = await codexCheck(fake({ files: { '/u/.codex': '', '/u/.codex/hooks.json': text } }).deps);
-      expect(c.status).toBe('warn');
+      expect(c.status).toBe('fail');
       expect(c.detail).toContain('svall setup');
     }
   });
 
   it('checks Codex hooks when codex is on PATH, even with no ~/.codex yet', async () => {
     const check = await codexCheck({ ...fake().deps, exists: () => false, found: ['claude', 'codex'] });
-    expect(check).toEqual({ name: 'codex hooks', status: 'warn', detail: `not installed in ${CODEX.hooks}: svall setup` });
+    expect(check).toEqual({ name: 'codex hooks', status: 'fail', detail: `not installed in ${CODEX.hooks}: svall setup` });
   });
 
   it('warns when the hooks hold a command setup no longer writes', async () => {

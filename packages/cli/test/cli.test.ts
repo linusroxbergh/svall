@@ -9,7 +9,7 @@ import { startDaemon, type Daemon } from '@svall/svalld';
 import { silentLogger } from '@svall/svalld/log';
 import { resolvePaths } from '@svall/svalld/paths';
 import { BUNDLE_ID, isProfileName, LAUNCHD_LABEL, profileLabel } from '@svall/svalld/profile';
-import { HOOK_EVENTS, mergeHooks } from '@svall/svalld/setup';
+import { mergeHooks } from '@svall/svalld/setup';
 import { cleanHomes, hasTmux, makeHome, waitFor } from '@svall/svalld/test-helpers';
 import { Tmux } from '@svall/svalld/tmux';
 import { buildProgram, typo } from '../src/program.js';
@@ -92,7 +92,7 @@ describe('svall argument parsing', () => {
     const script = path.join(os.homedir(), '.svall', 'hooks', 'agent-hook.mjs');
     const settings = path.join(os.homedir(), '.claude', 'settings.json');
     fs.mkdirSync(path.dirname(settings), { recursive: true });
-    const old = JSON.stringify(mergeHooks({}, `[ -z "$SVALL_CHAR_ID" ] || { node '${script}' claude; }`, HOOK_EVENTS, script));
+    const old = JSON.stringify(mergeHooks({}, `[ -z "$SVALL_CHAR_ID" ] || { node '${script}' claude; }`, script));
     fs.writeFileSync(settings, old);
     const PATH = `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`;
     try {
@@ -101,7 +101,7 @@ describe('svall argument parsing', () => {
       const { warnings } = JSON.parse(r.stdout);
       expect(warnings).toContain('! hooks  missing or out of date: run svall setup');
       expect(warnings).toContain('! shims  missing or out of date: run svall setup');
-      expect(warnings).toContain('! launchd  plist missing or out of date: run svall setup');
+      expect(warnings).toContain('! launchd plist  missing or out of date: run svall setup');
       expect(warnings).toContain('! codex  codex-cli 0.156.1, not signed in: codex login');
       expect(fs.readFileSync(settings, 'utf8')).toBe(old);
 
@@ -123,7 +123,7 @@ describe('svall uninstall --login-shell', () => {
     fs.mkdirSync(cfg);
     const script = path.join(home, '.svall', 'hooks', 'agent-hook.mjs');
     const settings = path.join(cfg, 'settings.json');
-    fs.writeFileSync(settings, JSON.stringify(mergeHooks({}, `[ -z "$SVALL_CHAR_ID" ] || { node '${script}' claude; }`, HOOK_EVENTS, script)));
+    fs.writeFileSync(settings, JSON.stringify(mergeHooks({}, `[ -z "$SVALL_CHAR_ID" ] || { node '${script}' claude; }`, script)));
     const shell = path.join(home, 'fake-shell');
     fs.writeFileSync(shell, `#!/bin/sh\necho __SVALL_ENV__; echo /usr/bin:/bin; echo __SVALL_ENV__; echo ${cfg}; echo __SVALL_ENV__; echo __SVALL_ENV__\n`, { mode: 0o755 });
     const env = { HOME: home, SHELL: shell, PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin`, SVALL_HOME: '', TMUX: '' };
@@ -147,7 +147,7 @@ describe('svall uninstall --login-shell', () => {
     const script = path.join(home, '.svall', 'hooks', 'agent-hook.mjs');
     const settings = path.join(home, '.claude', 'settings.json');
     fs.mkdirSync(path.dirname(settings));
-    fs.writeFileSync(settings, JSON.stringify(mergeHooks({}, `[ -z "$SVALL_CHAR_ID" ] || { node '${script}' claude; }`, HOOK_EVENTS, script)));
+    fs.writeFileSync(settings, JSON.stringify(mergeHooks({}, `[ -z "$SVALL_CHAR_ID" ] || { node '${script}' claude; }`, script)));
     const env = { HOME: home, SHELL: path.join(home, 'no-such-shell'), PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin`, SVALL_HOME: '', TMUX: '' };
     try {
       const r = await run(env, '--json', 'uninstall', '--from-app', '--no-launchctl', '--login-shell');

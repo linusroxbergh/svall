@@ -9,16 +9,15 @@ import { AGENTS, AGENT_KINDS, findAgents, mainAgent, onPath } from '@svall/svall
 import { codexPaths } from '@svall/svalld/codex/install';
 import { loadConfig, saveConfig } from '@svall/svalld/config';
 import { expandHome, resolvePaths, userPaths } from '@svall/svalld/paths';
-import { takeLoginEnv } from '@svall/svalld/login-env';
+import { LOGIN_SHELL_TIMEOUT_MS, takeLoginEnv } from '@svall/svalld/login-env';
 import { LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from '@svall/svalld/profile';
-import { ownRuntime } from '@svall/svalld/runtime';
+import { ownRuntime, runtimeVersion } from '@svall/svalld/runtime';
 import {
-  CODEX_TRUST, claudeHooksCurrent, cliCommand, codexHooksCurrent, hookRemovals, isRunning, kickstart, plistCurrent, readCodexHooks, readJsonSettings, readOrUndefined,
-  refreshFleetPlists, requireWritableHooks, runSetup, shimsCurrent, takenOverBy, type JsonSettings,
+  CODEX_TRUST, cliCommand, isRunning, kickstart, plistCurrent, readOrUndefined, refreshFleetPlists, runSetup, setupState, takenOverBy, type SetupState,
 } from '@svall/svalld/setup';
-import { inheritingFleets, integrationsFor, projectsFolder, requireInstalledApp, runtimeVersion, setupPlan, staleFleets, suggestProjects } from '@svall/svalld/setup-plan';
+import { inheritingFleets, integrationsFor, projectsFolder, requireInstalledApp, setupPlan, staleFleets, suggestProjects } from '@svall/svalld/setup-plan';
 import { fleetHomes } from '@svall/svalld/uninstall';
-import { renderGroups, useColor } from '../checks-view.js';
+import { grouped, renderGroups, useColor } from '../checks-view.js';
 import { printResult } from '../format.js';
 import { checkLine, preflight, realPreflightDeps, requireReady, type Check } from './doctor.js';
 import type { Target } from '../target.js';
@@ -45,7 +44,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       requireInstalledApp(runtime);
       // stand-in folders could put the hooks where the user's own agents never look
       if (!answered && !o.plan && !o.check && !o.ifNeeded) {
-        throw new Error(`the login shell did not answer within 5 seconds, so setup changed nothing: try again, or run ${cliCommand(runtime)} setup in a terminal`);
+        throw new Error(`the login shell did not answer within ${LOGIN_SHELL_TIMEOUT_MS / 1000} seconds, so setup changed nothing: try again, or run ${cliCommand(runtime)} setup in a terminal`);
       }
       const configFile = resolvePaths(t.home).config;
       const settingsPath = userPaths().claudeSettings;
@@ -105,44 +104,27 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
           return;
         }
       }
-      const agents = findAgents(process.env.PATH ?? '');
-      const wants = (k: AgentKind, fallback: boolean) => fallback && (!integrations || integrations.includes(k));
-      const claudeWanted = wants('claude', agents.includes('claude') || hasFolder('claude'));
-      const codexWanted = wants('codex', agents.includes('codex') || hasFolder('codex'));
-      // these throw on a file setup could not write back, so --check covers it too; a refresh still restarts old daemons
-      let settings: JsonSettings | undefined;
-      let codexHooks: JsonSettings | undefined;
+      const options = { home: t.home, settingsPath, codex, launchAgentsDir: launchAgents, shimDir, runtime, agents: findAgents(process.env.PATH ?? ''), integrations };
+      // this throws on a file setup could not write back, so --check covers it too; a refresh still restarts old daemons
+      let state: SetupState | undefined;
       let unwritable: string | undefined;
       try {
-        settings = claudeWanted ? readJsonSettings(settingsPath) : undefined;
-        codexHooks = readCodexHooks(codex, codexWanted);
-        requireWritableHooks(t.home, settings, codexHooks);
-        hookRemovals({ home: t.home, settingsPath, codex, claudeWanted, codexWanted });
+        state = setupState(options);
       } catch (e) {
-        if (!o.ifNeeded) throw e;
+        if (!o.ifNeeded || o.check) throw e;
         unwritable = (e as Error).message;
       }
-      const { hookScript, statusScript } = resolvePaths(t.home);
-      const holdsOurs = (file: string) => [hookScript, statusScript].some((s) => readOrUndefined(file)?.includes(s));
-      const hooksStale = (settings && !claudeHooksCurrent(settings.settings, t.home)) || (codexHooks && !codexHooksCurrent(codexHooks.settings, hookScript))
-        || (!claudeWanted && holdsOurs(settingsPath)) || (!codexWanted && holdsOurs(codex.hooks));
-      const shimsStale = !shimsCurrent(shimDir, runtime);
-      const plistStale = !plistCurrent({ home: t.home, label: LAUNCHD_LABEL, launchAgentsDir: launchAgents, runtime });
       if (o.check) {
         const checks = await preflight(realPreflightDeps(t.home));
         const notes: Check[] = [];
-        // desktop:install runs setup when it sees one of these lines, as nothing else rewrites the Claude hooks, the shims or the plist
-        if (hooksStale) notes.push({ name: 'hooks', status: 'warn', detail: `missing or out of date: run ${SHIM} setup` });
-        // desktop:install puts this checkout's app in place, so shims or a plist that run another checkout, moved or not, are out of date
-        if (shimsStale) notes.push({ name: 'shims', status: 'warn', detail: `missing or out of date: run ${SHIM} setup` });
-        if (plistStale) notes.push({ name: 'launchd', status: 'warn', detail: `plist missing or out of date: run ${SHIM} setup` });
+        // desktop:install runs setup when it sees one of these lines, as nothing else rewrites the Claude hooks, the shims or the plist;
+        // it puts this checkout's app in place, so shims or a plist that run another checkout, moved or not, are out of date
+        if (state!.hooksStale) notes.push({ name: 'hooks', status: 'warn', detail: `missing or out of date: run ${SHIM} setup` });
+        if (state!.shimsStale) notes.push({ name: 'shims', status: 'warn', detail: `missing or out of date: run ${SHIM} setup` });
+        if (state!.plistStale) notes.push({ name: 'launchd plist', status: 'warn', detail: `missing or out of date: run ${SHIM} setup` });
         // a failed check is listed too, as --json has no other way to say why it exits 1
         const warnings = [...checks.filter((c) => c.status === 'warn' || c.status === 'fail').map(checkLine), ...notes.map(checkLine)];
-        printResult({ done: [], warnings }, json(), () => renderGroups([
-          { title: 'Tools', checks: checks.filter((c) => c.name === 'tmux' || c.name === 'node' || c.name === 'path') },
-          { title: 'Agents', checks: checks.filter((c) => c.name === 'claude' || c.name === 'codex' || c.name === 'agents') },
-          { title: 'Setup', checks: notes },
-        ], useColor()));
+        printResult({ done: [], warnings }, json(), () => renderGroups(grouped([...checks, ...notes]), useColor()));
         if (checks.some((c) => c.status === 'fail')) process.exitCode = 1;
         return;
       }
@@ -156,7 +138,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       if (o.ifNeeded) {
         const fleetsStale = ours.some((h) => profileOf(h) !== PRIVATE && !plistCurrent({ home: h, label: label(h), launchAgentsDir: launchAgents, runtime }));
         // stand-in folders must not replace what a setup with the real login environment wrote
-        if (!answered || unwritable || (!hooksStale && !shimsStale && !plistStale && !fleetsStale)) {
+        if (!answered || !state || (!state.hooksStale && !state.shimsStale && !state.plistStale && !fleetsStale)) {
           const done = system ? await kickstart(stale) : [];
           const warnings = [
             ...answered ? [] : ['the login shell did not answer, so the hooks, shims and plists were left as they are'],
@@ -172,18 +154,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
         if (choices.defaultCwd) fs.mkdirSync(expandHome(choices.defaultCwd), { recursive: true });
         saveConfig(configFile, choices);
       }
-      const lines = await runSetup({
-        home: t.home,
-        settingsPath,
-        codex,
-        launchAgentsDir: launchAgents,
-        shimDir,
-        runtime,
-        launchctl: system,
-        agents,
-        integrations,
-        replaceSettings: !o.ifNeeded,
-      });
+      const lines = await runSetup({ ...options, launchctl: system, replaceSettings: !o.ifNeeded }, state);
       const fleets = await refreshFleetPlists({ homes, runtime, launchAgentsDir: launchAgents, launchctl: system, takeOver: !o.ifNeeded });
       lines.push(...fleets.done);
       // a running fleet took the private fleet's main agent at its start, so a switch reaches it only through a restart

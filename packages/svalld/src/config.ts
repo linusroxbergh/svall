@@ -22,14 +22,14 @@ export const Config = z.object({
   integrations: z.array(AgentKind).optional(),
   // which plan a scribe pass spends; absent, the main agent's. model names a model of scribe.agent's CLI, else of claude's
   scribe: z.object({ agent: AgentKind.optional(), model: z.string().optional() }).prefault({}),
-  // phone clients: which tailnet logins may drive the fleet and get its pushes (empty lets in only the Mac's own login),
-  // extra page origins allowed to open a socket beyond the one svalld itself served, who a push
-  // service may contact about this sender (Apple refuses a push without one; unset, it is the served page), and
-  // the https port this fleet is reached on, which svalld saves once it serves there
   mobile: z.object({
+    // the tailnet logins that may drive the fleet and get its pushes; empty lets in only the Mac's own login
     logins: z.array(z.string()).default([]),
+    // page origins allowed to open a socket, beyond the one svalld itself served
     origins: z.array(z.string()).default([]),
+    // who a push service may contact about this sender: Apple refuses a push without one; unset, the served page
     pushContact: z.string().regex(/^(https:\/\/|mailto:)./, 'an https: url or mailto: address').optional(),
+    // the https port this fleet is reached on, which svalld saves once it serves there
     httpsPort: z.number().int().min(1).max(65535).optional(),
   }).prefault({}),
 });

@@ -18,6 +18,8 @@ const isAgentPlist = (f: string): boolean => f.startsWith(`${LAUNCHD_LABEL}.`) &
 // `tailscale serve --bg` outlives the daemon, the port it listened on and a reboot, so a fleet's link is found
 // by the key it proxies to, or by its daemon's address; a machine without tailscale has none
 async function unserveFleets(homes: string[], d: MobileDeps): Promise<string[]> {
+  // every daemon start writes its fleet's key, so fleets that never started have no link, and tailscale is not asked
+  if (!homes.some((h) => d.read(resolvePaths(h).mobileKey) !== undefined)) return [];
   let bin: string;
   try { bin = await resolveTailscale(d); } catch { return []; }
   let status: string;

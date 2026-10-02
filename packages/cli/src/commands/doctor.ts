@@ -7,14 +7,18 @@ import { promisify } from 'node:util';
 import { Command } from 'commander';
 import { AGENTS, AGENT_KINDS, findAgents, versionOk } from '@svall/svalld/agents';
 import { characterKeyEnv } from '@svall/svalld/claude';
-import { codexInstalled, codexPaths, type CodexPaths } from '@svall/svalld/codex/install';
+import { codexPaths, type CodexPaths } from '@svall/svalld/codex/install';
 import { fleetMainAgent, loadConfig, parseConfig } from '@svall/svalld/config';
 import { resolvePaths, userPaths } from '@svall/svalld/paths';
 import { PRIVATE, SHIM, profileHome, profileLabel } from '@svall/svalld/profile';
-import { HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hooksInstalled, launchdEnv, plistEnv, plistRun } from '@svall/svalld/setup';
+import { ownRuntime } from '@svall/svalld/runtime';
+import {
+  claudeHooksCurrent, codexHooksCurrent, codexInstalled, hooksInstalled, launchdEnv, plistCurrent, plistEnv, plistRun, shimsCurrent,
+} from '@svall/svalld/setup';
 import { resolveTmux } from '@svall/svalld/tmux';
 import { tmuxTooOld } from '@svall/svalld/tmux/conf';
 import type { AgentKind } from '@svall/protocol';
+import { grouped, renderGroups, useColor } from '../checks-view.js';
 import { Client, restartHint } from '../client.js';
 import { askCodexTrust, type HookTrust } from '../codex-trust.js';
 import { printResult } from '../format.js';
@@ -48,6 +52,9 @@ export type DoctorDeps = {
   found: AgentKind[];
   integrations?: AgentKind[];
   codexTrust(): Promise<HookTrust | undefined>;
+  // whether the shims and the fleet's plist hold what setup would write now
+  shimsCurrent: boolean;
+  plistCurrent: boolean;
 };
 export type PreflightDeps = Pick<DoctorDeps, 'run' | 'node' | 'pathEnv' | 'shimDir' | 'keys' | 'mainAgent'>;
 
@@ -224,7 +231,7 @@ function daemonNode(t: Target, d: DoctorDeps): Check {
 
 // launchd runs the plist's program with only the plist's PATH, and logs nothing to svalld.log when it cannot:
 // a checkout or app moved or deleted since setup, or a claude or codex installed since outside that PATH
-function daemonPath(t: Target, d: DoctorDeps): Check {
+function daemonPathCheck(t: Target, d: DoctorDeps): Check {
   if (!t.managed) return { name: 'daemon path', status: 'skip', detail: 'not managed' };
   const { plist, fix } = plistOf(t, d);
   const text = d.read(plist);
@@ -233,7 +240,7 @@ function daemonPath(t: Target, d: DoctorDeps): Check {
   const missing = run.program.find((p) => !d.exists(p));
   if (missing) return { name: 'daemon path', status: 'fail', detail: `${missing} is gone, so launchd cannot start svalld: ${fix}` };
   const finds = (dirs: string[], bin: string) => dirs.some((dir) => d.exists(path.join(dir, bin)));
-  const lacks = ['claude', 'codex'].filter((bin) => finds(d.pathEnv.split(':'), bin) && !finds(run.path, bin));
+  const lacks = AGENT_KINDS.map((k) => AGENTS[k].bin).filter((bin) => finds(d.pathEnv.split(':'), bin) && !finds(run.path, bin));
   return lacks.length
     ? { name: 'daemon path', status: 'warn', detail: `the PATH in ${plist} has no ${lacks.join(' or ')}, which this shell finds: ${fix}` }
     : { name: 'daemon path', status: 'ok', detail: 'its program is there, and it finds claude and codex as this shell does' };
@@ -262,7 +269,7 @@ function hooks(d: DoctorDeps): Check {
   let disabled = false;
   try {
     const settings = text === undefined ? undefined : JSON.parse(text);
-    ok = settings !== undefined && hooksInstalled(settings, HOOK_EVENTS, d.hooksHome);
+    ok = settings !== undefined && hooksInstalled(settings, d.hooksHome);
     current = ok && claudeHooksCurrent(settings, d.hooksHome);
     disabled = settings?.disableAllHooks === true;
   } catch { /* unparseable counts as missing */ }
@@ -285,13 +292,27 @@ export async function codexCheck(d: Pick<DoctorDeps, 'codex' | 'exists' | 'read'
     written = codexInstalled(hooks, script);
     current = written && codexHooksCurrent(hooks, script);
   } catch { /* unparseable counts as missing */ }
-  if (!written) return { name: 'codex hooks', status: 'warn', detail: `not installed in ${d.codex.hooks}: ${SHIM} setup` };
+  if (!written) return { name: 'codex hooks', status: 'fail', detail: `not installed in ${d.codex.hooks}: ${SHIM} setup` };
   if (!current) return { name: 'codex hooks', status: 'warn', detail: `out of date in ${d.codex.hooks}: run ${SHIM} setup, then trust them in Codex` };
   const trust = await d.codexTrust();
   if (!trust) return { name: 'codex hooks', status: 'ok', detail: `installed in ${d.codex.hooks}; couldn't ask Codex about trust, check /hooks in Codex` };
   return trust.untrusted
     ? { name: 'codex hooks', status: 'warn', detail: 'not trusted yet: start codex and choose "Trust all and continue", or trust them in /hooks' }
     : { name: 'codex hooks', status: 'ok', detail: `installed in ${d.codex.hooks}; trusted` };
+}
+
+function shims(d: DoctorDeps): Check {
+  return d.shimsCurrent
+    ? { name: 'shims', status: 'ok', detail: `${SHIM} in ${d.shimDir} runs this build` }
+    : { name: 'shims', status: 'warn', detail: `missing or out of date: run ${SHIM} setup` };
+}
+
+function plistCheck(t: Target, d: DoctorDeps): Check {
+  if (!t.managed) return { name: 'launchd plist', status: 'skip', detail: 'not managed' };
+  const { plist, fix } = plistOf(t, d);
+  return d.plistCurrent
+    ? { name: 'launchd plist', status: 'ok', detail: `${plist} runs this build` }
+    : { name: 'launchd plist', status: 'warn', detail: `missing or out of date: ${fix}` };
 }
 
 export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
@@ -304,10 +325,12 @@ export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
     await hookReceiver(t, d),
     await launchd(t, d),
     daemonNode(t, d),
-    daemonPath(t, d),
+    daemonPathCheck(t, d),
     daemonEnv(t, d),
     hooks(d),
     await codexCheck(d),
+    shims(d),
+    plistCheck(t, d),
   ];
   const lines = (d.read(log) ?? '').split('\n').filter(Boolean).slice(-LOG_LINES);
   return { home: t.home, checks, log: { path: log, lines } };
@@ -343,6 +366,7 @@ export function doctorCommand(target: () => Target, json: () => boolean): Comman
     const t = target();
     let integrations: AgentKind[] | undefined;
     try { integrations = loadConfig(resolvePaths(profileHome(PRIVATE)).config).integrations; } catch { /* the private fleet's doctor reports it */ }
+    const { launchAgents, shimDir } = userPaths();
     const report = { version: checkoutVersion(), ...await doctor(t, {
       ...realPreflightDeps(t.home),
       read: (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return undefined; } },
@@ -358,12 +382,13 @@ export function doctorCommand(target: () => Target, json: () => boolean): Comman
       found: findAgents(process.env.PATH ?? ''),
       integrations,
       codexTrust: () => askCodexTrust({ codexHome: codexPaths().dir, script: resolvePaths(profileHome(PRIVATE)).hookScript }),
+      shimsCurrent: shimsCurrent(shimDir, ownRuntime()),
+      plistCurrent: plistCurrent({ home: t.home, label: profileLabel(t.name), launchAgentsDir: launchAgents, runtime: ownRuntime() }),
     }) };
-    const width = Math.max(...report.checks.map((c) => c.name.length));
     printResult(report, json(), () => [
       `svall ${report.version}`,
       `fleet ${report.home}`,
-      ...report.checks.map((c) => `${MARK[c.status]} ${c.name.padEnd(width)}  ${c.detail}`),
+      renderGroups(grouped(report.checks), useColor()),
       '',
       `last ${LOG_LINES} lines of ${report.log.path}:`,
       ...(report.log.lines.length ? report.log.lines : ['(empty)']),

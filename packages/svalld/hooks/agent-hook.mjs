@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Installed to $SVALL_HOME/hooks/agent-hook.mjs by `svall setup`, and run by Claude Code and by Codex,
+// Copied to $SVALL_HOME/hooks/agent-hook.mjs by svalld and `svall setup`, and run by Claude Code and by Codex,
 // which names itself in the first argument; the second is the pid of the agent. Forwards a hook payload
 // to svalld. On SessionStart and UserPromptSubmit it waits for one reply line and prints it as
 // additionalContext. Never blocks the agent: exits 0 within 1.5 s of its last try at the socket.
@@ -47,9 +47,8 @@ const failed = (h) => {
   return typeof text === 'string' && text ? { ...h, message: text.slice(0, 500) } : h;
 };
 
-// a daemon restarting has no socket for a second or two, so a refused connect is tried again, for up to 2 s.
-// A tool call is not: the next one says the same, and a daemon that stays down would hold up every tool.
-// Nor is any event within a minute of one giving up, so a daemon that stays down holds up one hook a minute
+// a refused connect is tried again for up to 2 s, as a restarting daemon has no socket for a second or two; a tool call's is
+// not, as the next one says the same, nor any within a minute of giving up, so a daemon that stays down holds up one hook a minute
 const RETRIES = 8;
 const RETRY_MS = 250;
 const ONCE = new Set(['PreToolUse', 'PostToolUse', 'PostToolUseFailure']);

@@ -5,15 +5,15 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import type { AgentKind } from '@svall/protocol';
 import { AGENTS, AGENT_KINDS, isExecutable, onPath } from './agents.js';
-import { codexHookCommand, codexPaths, mergeCodexHooks, type CodexPaths } from './codex/install.js';
+import { codexHookCommand, codexPaths, type CodexPaths } from './codex/install.js';
 import { loadConfig } from './config.js';
-import { CLAUDE_HOOKS, hooksFor } from './hooks/receiver.js';
+import { CLAUDE_HOOKS, CODEX_HOOKS } from './hooks/receiver.js';
 import { writeAtomic } from './jsonfile.js';
+import { usualDirs } from './login-env.js';
 import { BUNDLE_ID, LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from './profile.js';
 import { HOOK_SCRIPT, claudePaths, expandHome, helperBeside, helperOr, isOurs, resolvePaths, type Paths } from './paths.js';
 import { assetDir, bundled, hookHelperSource, hookHelperSources, ownRuntime, variant, type Runtime } from './runtime.js';
-import { shq } from './text.js';
-import { tmuxConfText } from './tmux/conf.js';
+import { shq, unshq } from './text.js';
 
 const exec = promisify(execFile);
 
@@ -21,39 +21,54 @@ export const readOrUndefined = (file: string): string | undefined => {
   try { return fs.readFileSync(file, 'utf8'); } catch { return undefined; }
 };
 
-export const HOOK_EVENTS = CLAUDE_HOOKS;
-export { LAUNCHD_LABEL };
-
 const xml = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const unxml = (s: string): string =>
   s.replace(/&quot;/g, '"').replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
 
-const unshq = (s: string): string =>
-  (s.startsWith("'") && s.endsWith("'") ? s.slice(1, -1).replace(/'\\''/g, "'") : s);
-
-type HookEntry = { type: string; command?: string; timeout?: number; async?: boolean };
+type HookEntry = { type: string; command?: string; timeout?: number; async?: boolean; additionalContextLimit?: number };
 type HookGroup = { matcher?: string; hooks?: HookEntry[] };
 type StatusLine = { type?: string; command?: string };
 
-// an event Claude Code need not wait on: it only says a subagent is gone. PermissionRequest waits, so a question
-// is on record before the tool call its answer lets through
-const ASYNC_HOOKS = new Set(['SubagentStop']);
-
 // an entry from an earlier setup is rewritten whole, so a moved node, a changed command or a changed flag is repaired
-export function mergeHooks(settings: Record<string, unknown>, command: string, events: readonly string[], script: string): Record<string, unknown> {
+function mergeOurHooks(settings: Record<string, unknown>, events: readonly string[], entryFor: (ev: string) => HookEntry, script: string, group: Omit<HookGroup, 'hooks'>): Record<string, unknown> {
   const out = structuredClone(settings);
   const hooks = ((out.hooks ??= {}) as Record<string, HookGroup[]>);
   for (const ev of events) {
     const groups = (hooks[ev] ??= []);
     const ours = groups.flatMap((g) => g.hooks ?? []).filter((h) => isOurs(h.command, script));
-    const entry = { type: 'command', command, timeout: 10, ...(ASYNC_HOOKS.has(ev) && { async: true }) };
-    for (const h of ours) { delete h.async; Object.assign(h, entry); }
-    if (!ours.length) groups.push({ matcher: '*', hooks: [entry] });
+    for (const h of ours) { delete h.async; Object.assign(h, entryFor(ev)); }
+    if (!ours.length) groups.push({ ...group, hooks: [entryFor(ev)] });
   }
   return out;
 }
+
+// any of the events will do; an event added since is left to the out-of-date checks
+const holdsHook = (settings: Record<string, unknown>, events: readonly string[], script: string): boolean => {
+  const hooks = (settings.hooks ?? {}) as Record<string, HookGroup[]>;
+  return events.some((ev) => (hooks[ev] ?? []).some((g) => (g.hooks ?? []).some((h) => isOurs(h.command, script))));
+};
+
+// an event Claude Code need not wait on: it only says a subagent is gone. PermissionRequest waits, so a question
+// is on record before the tool call its answer lets through
+const ASYNC_HOOKS = new Set(['SubagentStop']);
+
+export const mergeHooks = (settings: Record<string, unknown>, command: string, script: string, events: readonly string[] = CLAUDE_HOOKS): Record<string, unknown> =>
+  mergeOurHooks(settings, events, (ev) => ({ type: 'command', command, timeout: 10, ...(ASYNC_HOOKS.has(ev) && { async: true }) }), script, { matcher: '*' });
+
+// SessionEnd and Interrupt are capped at 3 s. The two events the daemon answers carry the whole brief, which codex
+// would otherwise cut to a preview past its spill threshold
+const codexEntry = (ev: string, command: string): HookEntry => ({
+  type: 'command', command, timeout: ev === 'SessionEnd' || ev === 'Interrupt' ? 3 : 10,
+  ...(ev === 'SessionStart' || ev === 'UserPromptSubmit' ? { additionalContextLimit: 0 } : {}),
+});
+
+// a matcher is a regex on codex and is ignored outright for several events, so a match-all group has none
+export const mergeCodexHooks = (current: Record<string, unknown>, command: string, script: string): Record<string, unknown> =>
+  mergeOurHooks(current, CODEX_HOOKS, (ev) => codexEntry(ev, command), script, {});
+
+export const codexInstalled = (current: Record<string, unknown>, script: string): boolean => holdsHook(current, CODEX_HOOKS, script);
 
 export function unmergeHooks(settings: Record<string, unknown>, script: string): Record<string, unknown> {
   const out = structuredClone(settings);
@@ -76,13 +91,11 @@ export function unmergeHooks(settings: Record<string, unknown>, script: string):
   return out;
 }
 
-/** Whether the Claude settings run the statusline and the hook script of the fleet at `home`, for any of the events; an event added since is left to claudeHooksCurrent. */
-export function hooksInstalled(settings: Record<string, unknown>, events: readonly string[], home: string): boolean {
+/** Whether the Claude settings run the statusline and the hook script of the fleet at `home`. */
+export function hooksInstalled(settings: Record<string, unknown>, home: string): boolean {
   const paths = resolvePaths(home);
-  const hooks = (settings.hooks ?? {}) as Record<string, HookGroup[]>;
   const status = (settings.statusLine as StatusLine | undefined)?.command ?? '';
-  return ownHead(status, paths.statusScript) !== undefined && events.some((ev) =>
-    (hooks[ev] ?? []).some((g) => (g.hooks ?? []).some((h) => isOurs(h.command, paths.hookScript))));
+  return ownHead(status, paths.statusScript) !== undefined && holdsHook(settings, CLAUDE_HOOKS, paths.hookScript);
 }
 
 const WORD = String.raw`'(?:[^']|'\\'')*'`;
@@ -131,10 +144,8 @@ function ownHead(command: string | undefined, script: string): string | undefine
   return undefined;
 }
 
-// Claude Code's context reading reaches the daemon through its statusLine command, so the one
-// the user already had becomes the wrapper's argument and still writes the line. A wrapper from an
-// earlier setup keeps its inner command but is rebuilt, so a moved node is repaired; the other
-// variant's wrapper stays outside it.
+// Claude Code's context reading reaches the daemon only through its statusLine, so the user's own statusline becomes the
+// wrapper's argument; an earlier wrapper is rebuilt around its inner command, inside the other variant's if there is one
 export function mergeStatusLine(settings: Record<string, unknown>, wrapper: string, script: string): Record<string, unknown> {
   const out = structuredClone(settings);
   const current = out.statusLine as StatusLine | undefined;
@@ -194,10 +205,12 @@ ${o.program.map((a) => `    <string>${xml(a)}</string>`).join('\n')}
 // the scripts speak the daemon's socket protocol, so every daemon start refreshes them and the helper that stands in
 // for them; without a built helper the scripts run
 export function installHookScripts(paths: Paths, helper: string | undefined = hookHelperSource()): void {
-  fs.mkdirSync(path.dirname(paths.hookScript), { recursive: true });
   const hooksSrc = assetDir('hooks');
-  fs.copyFileSync(path.join(hooksSrc, HOOK_SCRIPT), paths.hookScript);
-  fs.copyFileSync(path.join(hooksSrc, 'claude-status.mjs'), paths.statusScript);
+  // a hook may be reading a script as it is replaced, so an unchanged one stays and a changed one is renamed into place
+  for (const [name, dest] of [[HOOK_SCRIPT, paths.hookScript], ['claude-status.mjs', paths.statusScript]]) {
+    const text = fs.readFileSync(path.join(hooksSrc, name), 'utf8');
+    if (readOrUndefined(dest) !== text) writeAtomic(dest, text, { perProcess: true });
+  }
   const tmp = `${paths.hookHelper}.${process.pid}.tmp`;
   try {
     // a checkout's build older than its sources would run in place of newer scripts
@@ -218,9 +231,8 @@ export function installHookScripts(paths: Paths, helper: string | undefined = ho
   }
 }
 
-// Svall's instructions and the skills the mission control buttons call live in the crew's cwd,
-// so every daemon start refreshes them there. the CLAUDE.md and the settings are the user's to edit,
-// and are seeded once; `svall setup` is the explicit ask that replaces edited settings, keeping a copy
+// every daemon start refreshes Svall's instructions and the skills the mission control buttons call in the crew's cwd;
+// the CLAUDE.md and the settings are the user's, seeded once, and only `svall setup` replaces edited settings, keeping a copy
 export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }): string[] {
   const done: string[] = [];
   const template = assetDir('home');
@@ -241,7 +253,7 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }
   const agentsMd = path.join(dir, 'AGENTS.md');
   const agentsHeader = '<!-- svalld rewrites this file on every start from .claude/rules/svall.md and CLAUDE.md; add your own rules to CLAUDE.md -->';
   // CLAUDE.md -> AGENTS.md (a common convention) would otherwise make AGENTS.md read, then append, itself
-  if (fs.existsSync(agentsMd) && fs.existsSync(claudeMd) && realDir(agentsMd) === realDir(claudeMd)) {
+  if (fs.existsSync(agentsMd) && fs.existsSync(claudeMd) && realPath(agentsMd) === realPath(claudeMd)) {
     done.push(`home AGENTS.md left alone, as it is CLAUDE.md, so a Codex crew misses Svall's rules -> ${agentsMd}`);
   } else {
     if (fs.existsSync(agentsMd) && !fs.readFileSync(agentsMd, 'utf8').startsWith(agentsHeader)) {
@@ -279,17 +291,17 @@ export type HomeSetup = {
 // a Homebrew keg's versioned folder goes with the next upgrade, while its opt link stays
 const nodeDirOf = (execPath: string): string => path.dirname(execPath).replace(/\/Cellar\/([^/]+)\/[^/]+\/bin$/, '/opt/$1/bin');
 
-const realDir = (dir: string): string => {
-  try { return fs.realpathSync(dir); } catch { return dir; }
+const realPath = (p: string): string => {
+  try { return fs.realpathSync(p); } catch { return p; }
 };
 
 // launchd gives the daemon no shell PATH, so the folder this shell finds claude or codex in is added after the usual
 // ones when it is none of them, as for a pnpm, bun or volta global. Its real path, as a node manager's can be per shell
 function daemonPath(nodeDir?: string): string {
-  const usual = [...nodeDir ? [nodeDir] : [], path.join(os.homedir(), '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'];
+  const usual = [...nodeDir ? [nodeDir] : [], ...usualDirs()];
   const found = AGENT_KINDS.map((k) => onPath(AGENTS[k].bin, process.env.PATH ?? ''))
-    .filter((dir) => dir !== undefined).map(realDir);
-  const known = new Set(usual.map(realDir));
+    .filter((dir) => dir !== undefined).map(realPath);
+  const known = new Set(usual.map(realPath));
   return [...new Set([...usual, ...found.filter((dir) => !known.has(dir))])].join(':');
 }
 
@@ -329,7 +341,6 @@ export async function setupHome(o: HomeSetup): Promise<string[]> {
     fs.writeFileSync(paths.config, JSON.stringify(o.port === undefined ? {} : { port: o.port }) + '\n');
     done.push(`config -> ${paths.config}`);
   }
-  if (!fs.existsSync(paths.tmuxConf)) { fs.writeFileSync(paths.tmuxConf, tmuxConfText(loadConfig(paths.config))); done.push(`tmux.conf -> ${paths.tmuxConf}`); }
 
   fs.mkdirSync(o.launchAgentsDir, { recursive: true });
   const plist = plistFile(o);
@@ -346,7 +357,14 @@ async function bootstrapAgent(launchAgentsDir: string, label: string): Promise<s
   // launchd starts the daemon only when the app asks, so one that ran before the reload is started again on the new plist
   const running = await isRunning(label);
   await exec('launchctl', ['bootout', domain, plist]).catch(() => {});
-  await exec('launchctl', ['bootstrap', domain, plist]);
+  const bootstrap = () => exec('launchctl', ['bootstrap', domain, plist]);
+  // launchd refuses a bootstrap while the job it booted out is still going away, so a refusal is tried once more
+  try {
+    await bootstrap().catch(() => new Promise((r) => setTimeout(r, 500)).then(bootstrap));
+  } catch (e) {
+    const why = ((e as { stderr?: string }).stderr || (e as Error).message).trim().split('\n')[0];
+    if (!await isLoaded(label)) throw new Error(`launchd did not load ${label} (${why}); opening Svall loads it`);
+  }
   if (running) await exec('launchctl', ['kickstart', `${domain}/${label}`]);
   return `launchctl bootstrap ${domain} ${plist}`;
 }
@@ -361,7 +379,7 @@ export async function kickstart(labels: string[]): Promise<string[]> {
 }
 
 /** Whether launchd has `label` loaded in this user's session. */
-export const isLoaded = (label: string): Promise<boolean> =>
+const isLoaded = (label: string): Promise<boolean> =>
   exec('launchctl', ['print', `gui/${os.userInfo().uid}/${label}`]).then(() => true, () => false);
 
 /** Whether `label`'s daemon runs: a loaded job runs only while its fleet's window is open. */
@@ -384,7 +402,7 @@ export async function refreshFleetPlists(o: { homes: string[]; runtime: Runtime;
     if (name === PRIVATE || plistCurrent({ home, label, launchAgentsDir: o.launchAgentsDir, runtime: o.runtime })) continue;
     const owner = o.takeOver ? undefined : takenOverBy(readOrUndefined(path.join(o.launchAgentsDir, `${label}.plist`)), o.runtime);
     if (owner) { done.push(`left ${home}, which ${owner} runs`); continue; }
-    done.push(...await setupHome({ home, label, runtime: o.runtime, launchAgentsDir: o.launchAgentsDir, launchctl: false, port: 0 }));
+    done.push(...await setupHome({ home, label, runtime: o.runtime, launchAgentsDir: o.launchAgentsDir, launchctl: false }));
     // a fleet the user left stopped stays stopped
     if (o.launchctl && await isLoaded(label)) {
       done.push(await bootstrapAgent(o.launchAgentsDir, label));
@@ -489,7 +507,7 @@ function withClaudeHooks(settings: Record<string, unknown>, home: string): Recor
   const paths = resolvePaths(home);
   const node = ownRuntime().bundle ? process.execPath : installedNode(settings, paths.statusScript) ?? process.execPath;
   return mergeStatusLine(
-    mergeHooks(settings, hookCommand(node, paths.hookScript, 'claude'), hooksFor('claude'), paths.hookScript),
+    mergeHooks(settings, hookCommand(node, paths.hookScript, 'claude'), paths.hookScript),
     statusWrapper(node, paths.statusScript),
     paths.statusScript,
   );
@@ -522,12 +540,12 @@ export const shimsCurrent = (shimDir: string, runtime: Runtime): boolean =>
   shimNames(shimDir).every((name) => fs.existsSync(path.join(shimDir, name)) && fs.readFileSync(path.join(shimDir, name), 'utf8') === shimText(runtime));
 
 /** Throws, before anything is written, when the Claude settings or Codex's hooks need a change setup cannot write. */
-export function requireWritableHooks(home: string, settings: JsonSettings | undefined, codexHooks: JsonSettings | undefined): void {
+function requireWritableHooks(home: string, settings: JsonSettings | undefined, codexHooks: JsonSettings | undefined): void {
   if (settings) requireWritable(settings, withClaudeHooks(settings.settings, home));
   if (codexHooks) requireWritable(codexHooks, withCodexHooks(codexHooks.settings, resolvePaths(home).hookScript));
 }
 
-export function setupUser(o: { home: string; settings?: JsonSettings; codex: CodexPaths; codexHooks?: JsonSettings; shimDir: string; runtime: Runtime; replaceSettings: boolean }): string[] {
+function setupUser(o: { home: string; settings?: JsonSettings; codexHooks?: JsonSettings; shimDir: string; runtime: Runtime; replaceSettings: boolean }): string[] {
   const paths = resolvePaths(o.home);
   const done = o.settings ? writeJsonSettings(o.settings, withClaudeHooks(o.settings.settings, o.home), 'claude hooks and statusline') : [];
   done.push(...installCodexHooks(paths.hookScript, o.codexHooks));
@@ -549,14 +567,16 @@ export function setupUser(o: { home: string; settings?: JsonSettings; codex: Cod
   return done;
 }
 
+type Removal = [JsonSettings, Record<string, unknown>, string];
+
 /** What setup takes out of the files of agents turned off here, each file read and checked first; throws before anything is written. */
-export function hookRemovals(o: { home: string; settingsPath: string; codex: CodexPaths; claudeWanted: boolean; codexWanted: boolean }): [JsonSettings, Record<string, unknown>, string][] {
+function hookRemovals(o: { home: string; settingsPath: string; codex: CodexPaths; claudeWanted: boolean; codexWanted: boolean }): Removal[] {
   const paths = resolvePaths(o.home);
   const holdsOurs = (file: string): boolean => {
     const text = readOrUndefined(file) ?? '';
     return text.includes(paths.hookScript) || text.includes(paths.statusScript);
   };
-  const removals: [JsonSettings, Record<string, unknown>, string][] = [];
+  const removals: Removal[] = [];
   if (!o.claudeWanted && holdsOurs(o.settingsPath)) {
     const s = readJsonSettings(o.settingsPath);
     removals.push([s, unmergeStatusLine(unmergeHooks(s.settings, paths.hookScript), paths.statusScript), 'claude hooks removed']);
@@ -569,23 +589,37 @@ export function hookRemovals(o: { home: string; settingsPath: string; codex: Cod
   return removals;
 }
 
-export async function runSetup(o: {
-  home: string; settingsPath: string; codex: CodexPaths; launchAgentsDir: string; shimDir: string; runtime: Runtime; launchctl: boolean; agents?: AgentKind[];
-  integrations?: AgentKind[]; replaceSettings?: boolean;
-}): Promise<string[]> {
+export type SetupOptions = {
+  home: string; settingsPath: string; codex: CodexPaths; launchAgentsDir: string; shimDir: string; runtime: Runtime;
+  // the agent CLIs on PATH; absent, Claude counts as installed
+  agents?: AgentKind[]; integrations?: AgentKind[];
+};
+
+export type SetupState = { settings?: JsonSettings; codexHooks?: JsonSettings; removals: Removal[]; hooksStale: boolean; shimsStale: boolean; plistStale: boolean };
+
+/** What setup finds for the private fleet at `o.home`: the agent files it would write, read and checked before anything
+ *  is written, and which of the hooks, the shims and the plist it would change. Throws on a file it could not write back. */
+export function setupState(o: SetupOptions): SetupState {
   const wants = (k: AgentKind, fallback: boolean) => fallback && (!o.integrations || o.integrations.includes(k));
   const claudeWanted = wants('claude', !o.agents || o.agents.includes('claude') || fs.existsSync(path.dirname(o.settingsPath)));
   const codexWanted = wants('codex', !!o.agents?.includes('codex') || fs.existsSync(o.codex.dir));
-  // both files are read and checked before anything is written, so one that is not JSON, or cannot take
-  // the change, stops a setup that has changed nothing
   const settings = claudeWanted ? readJsonSettings(o.settingsPath) : undefined;
   const codexHooks = readCodexHooks(o.codex, codexWanted);
   requireWritableHooks(o.home, settings, codexHooks);
   const removals = hookRemovals({ ...o, claudeWanted, codexWanted });
+  return {
+    settings, codexHooks, removals,
+    hooksStale: !!settings && !claudeHooksCurrent(settings.settings, o.home)
+      || !!codexHooks && !codexHooksCurrent(codexHooks.settings, resolvePaths(o.home).hookScript) || removals.length > 0,
+    shimsStale: !shimsCurrent(o.shimDir, o.runtime),
+    plistStale: !plistCurrent({ home: o.home, label: LAUNCHD_LABEL, launchAgentsDir: o.launchAgentsDir, runtime: o.runtime }),
+  };
+}
+
+export async function runSetup(o: SetupOptions & { launchctl: boolean; replaceSettings?: boolean }, state: SetupState = setupState(o)): Promise<string[]> {
   const home = await setupHome({ ...o, label: LAUNCHD_LABEL, launchctl: false });
-  const user = setupUser({ ...o, settings, codexHooks, replaceSettings: o.replaceSettings ?? true });
-  for (const [current, next, what] of removals) user.push(...writeJsonSettings(current, next, what));
+  const user = setupUser({ ...o, settings: state.settings, codexHooks: state.codexHooks, replaceSettings: o.replaceSettings ?? true });
+  for (const [current, next, what] of state.removals) user.push(...writeJsonSettings(current, next, what));
   if (!o.launchctl) return [...home, ...user];
   return [...home, ...user, await bootstrapAgent(o.launchAgentsDir, LAUNCHD_LABEL)];
 }
-

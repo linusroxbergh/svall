@@ -10,9 +10,14 @@ const COMMAND = `echo ${MARK}; ${NAMES.map((n) => `/usr/bin/printenv ${n}; echo 
 
 export type LoginEnv = Partial<Record<(typeof NAMES)[number], string>> & { PATH: string };
 
+/** How long setup waits for the login shell. */
+export const LOGIN_SHELL_TIMEOUT_MS = 5000;
+
+/** Where agent CLIs usually live, in the order the daemon's PATH searches them. */
+export const usualDirs = (homedir = os.homedir()): string[] => [path.join(homedir, '.local/bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'];
+
 const FALLBACK_DIRS = (homedir = os.homedir()): string[] => [
-  '/opt/homebrew/bin', '/usr/local/bin', path.join(homedir, '.local/bin'), path.join(homedir, '.bun/bin'),
-  path.join(homedir, '.npm-global/bin'), '/usr/bin', '/bin', '/usr/sbin', '/sbin',
+  ...usualDirs(homedir), path.join(homedir, '.bun/bin'), path.join(homedir, '.npm-global/bin'), '/usr/sbin', '/sbin',
 ];
 
 /** What the user's login shell exports that setup needs, or undefined when it fails or does not answer in time. */
@@ -34,7 +39,7 @@ export function loginEnv(o: { shell: string; timeoutMs: number }): Promise<Login
 /** Puts the login shell's environment into this process, as an app opened from Finder has only launchd's, with the usual
  *  folders standing in for a shell that does not answer; whether it answered. */
 export async function takeLoginEnv(): Promise<boolean> {
-  const env = await loginEnv({ shell: process.env.SHELL || '/bin/zsh', timeoutMs: 5000 });
+  const env = await loginEnv({ shell: process.env.SHELL || '/bin/zsh', timeoutMs: LOGIN_SHELL_TIMEOUT_MS });
   Object.assign(process.env, env ?? { PATH: FALLBACK_DIRS().join(':') });
   return env !== undefined;
 }

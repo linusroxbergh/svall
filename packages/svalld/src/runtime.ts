@@ -14,6 +14,9 @@ export const bundled: boolean = typeof SVALL_BUNDLED !== 'undefined';
 /** The app version the bundle was built as; undefined in a checkout. */
 export const bundledVersion: string | undefined = typeof SVALL_VERSION !== 'undefined' ? SVALL_VERSION : undefined;
 
+/** The version a daemon writes to its fleet's `version` file: the app's, or `dev` for a checkout. */
+export const runtimeVersion = (): string => bundledVersion ?? 'dev';
+
 export type Variant = 'release' | 'dev';
 // a checkout is Svall Dev, so it never touches the release's fleets; the tests pin the release's names with SVALL_VARIANT
 export const variant: Variant = bundled || process.env.SVALL_VARIANT === 'release' ? 'release' : 'dev';

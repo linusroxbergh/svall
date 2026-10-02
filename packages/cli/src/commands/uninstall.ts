@@ -3,7 +3,7 @@ import path from 'node:path';
 import { Command } from 'commander';
 import { codexPaths } from '@svall/svalld/codex/install';
 import { realDeps } from '@svall/svalld/mobile';
-import { takeLoginEnv } from '@svall/svalld/login-env';
+import { LOGIN_SHELL_TIMEOUT_MS, takeLoginEnv } from '@svall/svalld/login-env';
 import { userPaths } from '@svall/svalld/paths';
 import { PRIVATE, profileHome } from '@svall/svalld/profile';
 import { ownRuntime } from '@svall/svalld/runtime';
@@ -41,7 +41,7 @@ export function uninstallCommand(json: () => boolean): Command {
     .action(async (o: { purge?: boolean; fromApp?: boolean; launchctl: boolean; loginShell?: boolean }) => {
       // stand-in folders would leave the hooks in the folders the user's own agents read
       if (o.loginShell && !(await takeLoginEnv())) {
-        throw new Error(`the login shell did not answer within 5 seconds, so nothing was uninstalled: try again, or run ${cliCommand(ownRuntime())} uninstall in a terminal`);
+        throw new Error(`the login shell did not answer within ${LOGIN_SHELL_TIMEOUT_MS / 1000} seconds, so nothing was uninstalled: try again, or run ${cliCommand(ownRuntime())} uninstall in a terminal`);
       }
       const r = await uninstall({ purge: Boolean(o.purge) }, {
         uninstall: () => runUninstall({
