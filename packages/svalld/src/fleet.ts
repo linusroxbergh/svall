@@ -21,7 +21,7 @@ import { takenNames } from './fleets.js';
 import type { SocketEvent } from './hooks/receiver.js';
 import { newId } from './ids.js';
 import { arrangeIslands, createIsland, deleteIsland, reorderIsland, updateIsland, type IslandPatch, type NewIsland } from './islands.js';
-import { blockedCells, crewOf, defaultPosition, freePosition, occupiedCells, settleHome } from './layout.js';
+import { blockedCells, crewOf, defaultPosition, freePosition, occupiedCells, settleHome, unfold } from './layout.js';
 import { resolveRepo } from './links/git.js';
 import { refreshLinks, refreshMany, slice, type Deps as LinkDeps } from './links/refresh.js';
 import type { Logger } from './log.js';
@@ -509,8 +509,7 @@ export class Fleet extends EventEmitter<Events> {
     this.island(p.islandId);
     if (p.agentProfile) this.checkAgentProfile(p.agentProfile);
     if (p.cell) {
-      if (this.deps.store.state.islands[p.islandId].kind === 'home' && !isHomeSlot(this.deps.store.state.islands[p.islandId], p.cell)) throw new Invalid(`cell ${cellKey(p.cell)} is not a home slot`);
-      if (!isLand(this.deps.store.state.islands[p.islandId], p.cell)) throw new Invalid(`cell ${cellKey(p.cell)} is not land`);
+      this.checkCell(this.island(p.islandId), p.cell);
       if (occupiedCells(this.deps.store.state, p.islandId).has(cellKey(p.cell))) throw new Invalid(`cell ${cellKey(p.cell)} is occupied`);
       if (blockedCells(this.deps.store.state, p.islandId).has(cellKey(p.cell))) throw new Invalid(`cell ${cellKey(p.cell)} touches another character`);
     } else {
@@ -542,6 +541,8 @@ export class Fleet extends EventEmitter<Events> {
           tmux: { windowId: w.windowId, paneId: w.paneId },
           shell: { lastOutputAt: Date.now() }, unread: false,
         };
+        // a hidden island comes back to take the character, as one placed there for it does
+        if (p.cell && d.islands[p.islandId].collapsed) unfold(d, p.islandId, this.deps.log);
       });
       if (p.command) {
         const command = withAddDirs(p.command, this.deps.store.state.islands[p.islandId].context);
@@ -638,8 +639,7 @@ export class Fleet extends EventEmitter<Events> {
       });
       return this.char(id);
     }
-    if (island.kind === 'home' && !isHomeSlot(island, cell)) throw new Invalid(`cell ${cellKey(cell)} is not a home slot`);
-    if (!isLand(island, cell)) throw new Invalid(`cell ${cellKey(cell)} is not land`);
+    this.checkCell(island, cell);
     const state = this.deps.store.state;
     const occupant = Object.values(state.characters).find((o) => o.id !== id && o.islandId === islandId && cellKey(o.cell) === cellKey(cell));
     if (!occupant && blockedCells(state, islandId, id).has(cellKey(cell))) throw new Invalid(`cell ${cellKey(cell)} touches another character`);
@@ -649,8 +649,15 @@ export class Fleet extends EventEmitter<Events> {
       if (other) { other.islandId = c.islandId; other.cell = c.cell; }
       c.islandId = islandId;
       c.cell = cell;
+      if (d.islands[islandId].collapsed) unfold(d, islandId, this.deps.log);
     });
     return this.char(id);
+  }
+
+  // a cell asked for by name is one of mission control's slots, or land on any other island
+  private checkCell(island: Island, cell: Cell): void {
+    if (island.kind === 'home' && !isHomeSlot(island, cell)) throw new Invalid(`cell ${cellKey(cell)} is not a home slot`);
+    if (!isLand(island, cell)) throw new Invalid(`cell ${cellKey(cell)} is not land`);
   }
 
   // A sidebar drop inserts into the target crew in one update. On another island it first

@@ -168,6 +168,20 @@ runIf('Fleet', () => {
     }
   });
 
+  it('brings back a hidden island a character is made or moved onto by cell', async () => {
+    const { fleet, store } = await boot();
+    const island = fleet.createIsland({ name: 'hidden' });
+    const away = fleet.createIsland({ name: 'away' });
+    fleet.updateIsland(island.id, { collapsed: true });
+    await fleet.createCharacter({ islandId: island.id, cwd: '/tmp', cell: { x: 3, y: 2 } });
+    expect(store.state.islands[island.id].collapsed).toBeUndefined();
+    const c = await fleet.createCharacter({ islandId: away.id, cwd: '/tmp' });
+    fleet.updateIsland(island.id, { collapsed: true });
+    fleet.moveCharacter(c.id, island.id, { x: 6, y: 2 });
+    expect(store.state.islands[island.id].collapsed).toBeUndefined();
+    for (const i of [island.id, away.id]) expect(placementOk(store.state, store.state.islands[i])).toBe(true);
+  });
+
   it('runs text and streams output only when the pane is on', async () => {
     const { fleet } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });

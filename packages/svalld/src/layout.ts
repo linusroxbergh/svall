@@ -1,4 +1,5 @@
 import { HOME_ISLAND, SPACING, byCell, cellKey, crewGrid, homeSizeFor, homeSlots, isLand, landCells, pillWidth, type Cell, type FleetState, type Footprint, type Island, type Size } from '@svall/protocol';
+import type { Logger } from './log.js';
 
 export const GAP = 2;
 // the next island's label pill floats above its ground, so rows of islands keep a row of water either side of it
@@ -83,6 +84,14 @@ export function makeRoom(draft: FleetState, islandId: string): number {
     if (moved === 0) break;
   }
   return worldIslands(draft).filter((o) => o.id !== islandId && !settled(draft, o)).length;
+}
+
+// a hidden island takes its ground back where it stands, and whatever stands there yields
+export function unfold(draft: FleetState, islandId: string, log?: Logger): void {
+  const island = draft.islands[islandId];
+  delete island.collapsed;
+  const crowded = makeRoom(draft, islandId);
+  if (crowded > 0) log?.error(`island ${island.name}: ${crowded} island(s) the search could not settle`);
 }
 
 // the lowest row the fleet puts an island on of its own accord: mission control's row is the floor of the world

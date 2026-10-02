@@ -1,6 +1,6 @@
 import { DEFAULT_SIZE, HOME_ROW, cellKey, crewGrid, homeSizeFor, homeSlots, isSessionId, randomPortrait, type Agent, type Cell, type Character, type FleetState, type Island } from '@svall/protocol';
 import { isCharId, newId } from './ids.js';
-import { clearOf, crewOf, defaultPosition, freePosition, occupiedCells, placementOk, worldIslands } from './layout.js';
+import { crewOf, defaultPosition, occupiedCells, placementOk, unfold } from './layout.js';
 import type { LiveWindow } from './tmux/tmux.js';
 
 export const RECOVERED_ISLAND = 'i_recovered';
@@ -37,24 +37,21 @@ export function markDormant(c: Character, flags?: string[]): void {
 // into are pushed aside. a hidden island comes back onto the map, so the newcomer is seen arriving
 export function placeOnIsland(draft: FleetState, islandId: string, exceptId?: string): Cell {
   const island = draft.islands[islandId];
-  if (island.kind === 'home') return placeOnHome(draft, island);
-  delete island.collapsed;
+  if (island.kind === 'home') return placeOnHome(draft, island, exceptId);
   // a character re-placed on its own island is not its own crew, or the grid would size for it twice
   const crew = crewOf(draft, islandId).filter((id) => id !== exceptId);
   const { size, cells } = crewGrid(crew.length + 1);
   island.size = size;
   crew.forEach((id, i) => { draft.characters[id].cell = cells[i]; });
-  for (const o of worldIslands(draft)) {
-    if (o.id !== islandId && !clearOf(o, island)) draft.islands[o.id].position = freePosition(draft, o);
-  }
+  unfold(draft, islandId);
   // a neighbour the push could not clear would leave the two overlapping, a shape no other move can produce
   if (!placementOk(draft, island)) throw new IslandFull(`island ${island.name} is full`);
   return cells[crew.length];
 }
 
 // the first free slot on the crew row; a full row widens the island by one slot
-function placeOnHome(draft: FleetState, island: Island): Cell {
-  const taken = occupiedCells(draft, island.id);
+function placeOnHome(draft: FleetState, island: Island, exceptId?: string): Cell {
+  const taken = occupiedCells(draft, island.id, exceptId);
   const free = homeSlots(island.size.w).find((x) => !taken.has(cellKey({ x, y: HOME_ROW })));
   if (free !== undefined) return { x: free, y: HOME_ROW };
   island.size = homeSizeFor(homeSlots(island.size.w).length + 1);
@@ -129,17 +126,24 @@ export function reconcile(state: FleetState, live: LiveWindow[], now: number, be
   const mutate = (draft: FleetState) => {
     for (const c of Object.values(draft.characters)) syncWindow(c, byName, before);
     // a character whose island is gone joins the recovered island, keeping all it carries
-    const orphans = Object.values(draft.characters).filter((c) => !draft.islands[c.islandId]);
+    const orphans = Object.values(draft.characters).filter((c) => !draft.islands[c.islandId]).map((c) => c.id);
     if ((adopted.length || orphans.length) && !draft.islands[RECOVERED_ISLAND]) {
       draft.islands[RECOVERED_ISLAND] = {
         id: RECOVERED_ISLAND, name: 'recovered', description: '', instructions: '', context: [],
         position: defaultPosition(draft), size: DEFAULT_SIZE, seed: 0,
       };
     }
+    // tried on a copy: a placement the island has no room for leaves the fleet as it was, and the rest of the reconcile standing
+    const place = (exceptId?: string): Cell => {
+      const trial = structuredClone(draft);
+      const cell = placeOnIsland(trial, RECOVERED_ISLAND, exceptId);
+      draft.islands = trial.islands;
+      draft.characters = trial.characters;
+      return cell;
+    };
     for (const { w, id } of adopted) {
       let cell: Cell;
-      // one stray the island cannot hold leaves the others, and the whole reconcile, standing
-      try { cell = placeOnIsland(draft, RECOVERED_ISLAND); }
+      try { cell = place(); }
       catch (e) { unplaced.push(`stray window ${w.name}: ${String(e)}`); continue; }
       draft.characters[id] = {
         id, islandId: RECOVERED_ISLAND, cell, name: w.name,
@@ -154,9 +158,12 @@ export function reconcile(state: FleetState, live: LiveWindow[], now: number, be
       const w2 = byName.get(name);
       if (draft.characters[id] && w2 && !w2.dead) draft.characters[id].second = { tmux: { windowId: w2.windowId, paneId: w2.paneId }, unread: false };
     }
-    for (const c of orphans) {
-      try { c.cell = placeOnIsland(draft, RECOVERED_ISLAND, c.id); c.islandId = RECOVERED_ISLAND; }
-      catch (e) { unplaced.push(`character ${c.id}: ${String(e)}`); }
+    for (const id of orphans) {
+      try {
+        const cell = place(id);
+        draft.characters[id].cell = cell;
+        draft.characters[id].islandId = RECOVERED_ISLAND;
+      } catch (e) { unplaced.push(`character ${id}: ${String(e)}`); }
     }
   };
   return { mutate, renames, unplaced };

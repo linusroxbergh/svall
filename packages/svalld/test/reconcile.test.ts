@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SIZE, HOME_ISLAND, HOME_SEED, cellKey, crewGrid, emptyState, homeSizeFor, isLand, landCells, type Cell, type Character, type Island } from '@svall/protocol';
-import { placementOk, trimHome } from '../src/layout.js';
+import { aboveHome, placementOk, trimHome } from '../src/layout.js';
 import { RECOVERED_ISLAND, markDormant, placeOnIsland, reconcile, reviveCommand, snapshot } from '../src/reconcile.js';
 import type { LiveWindow } from '../src/tmux/tmux.js';
 
@@ -197,6 +197,32 @@ describe('reconcile', () => {
     expect(s.characters.c_a.second).toBeUndefined();
   });
 
+  it('leaves the recovered island as it was when a stray cannot be placed on it', () => {
+    const s = emptyState();
+    s.islands[RECOVERED_ISLAND] = { id: RECOVERED_ISLAND, name: 'recovered', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: DEFAULT_SIZE, seed: 0 };
+    s.characters.c_r = char({ id: 'c_r', islandId: RECOVERED_ISLAND, cell: crewGrid(1).cells[0] });
+    // an island too large for any push to clear off the recovered island as it grows
+    s.islands.i_big = { id: 'i_big', name: 'big', description: '', instructions: '', context: [], position: { x: -100, y: -100 }, size: { w: 210, h: 210 }, seed: 1 };
+    const { mutate, unplaced } = reconcile(s, [live('stray', '@4', '%4')], 0);
+    mutate(s);
+    expect(unplaced).toHaveLength(1);
+    expect(s.islands[RECOVERED_ISLAND].size).toEqual(DEFAULT_SIZE);
+    expect(s.characters.c_r.cell).toEqual(crewGrid(1).cells[0]);
+  });
+
+  it('placeOnIsland pushes a neighbour its growth reaches aside, never onto mission control', () => {
+    const s = emptyState();
+    const island = (id: string, position: Cell, size: { w: number; h: number }): Island => ({ id, name: id, description: '', instructions: '', context: [], position, size, seed: 0 });
+    const three = crewGrid(3);
+    s.islands.a = island('a', { x: 0, y: 0 }, three.size);
+    three.cells.forEach((cell, i) => { s.characters[`c_${i}`] = char({ id: `c_${i}`, islandId: 'a', cell }); });
+    s.islands.b = island('b', { x: 0, y: 6 }, { w: 8, h: 3 });
+    s.islands[HOME_ISLAND] = { ...island(HOME_ISLAND, { x: 0, y: 10 }, homeSizeFor(2)), kind: 'home', seed: HOME_SEED };
+    placeOnIsland(s, 'a');
+    expect(placementOk(s, s.islands.b)).toBe(true);
+    expect(aboveHome(s, s.islands.b)).toBe(true);
+  });
+
   it('placeOnIsland keeps growing while every new row touches a character', () => {
     // every land cell taken: the first new row is all blocked, so a single grow is not enough
     const island: Island = { id: 'a', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 10, h: 8 }, seed: 5 };
@@ -276,6 +302,14 @@ describe('placeOnIsland on home', () => {
     }
     expect(placed).toEqual([{ x: 1, y: 1 }, { x: 4, y: 1 }, { x: 7, y: 1 }, { x: 10, y: 1 }]);
     expect(s.islands.home.size).toEqual({ w: 14, h: 4 });
+  });
+  it('gives a crew member placed again its own slot back', () => {
+    const s = emptyState();
+    s.islands.home = home();
+    s.characters.c1 = char({ id: 'c1', islandId: HOME_ISLAND, cell: { x: 1, y: 1 } });
+    s.characters.c4 = char({ id: 'c4', islandId: HOME_ISLAND, cell: { x: 4, y: 1 } });
+    expect(placeOnIsland(s, HOME_ISLAND, 'c4')).toEqual({ x: 4, y: 1 });
+    expect(s.islands.home.size).toEqual(homeSizeFor(2));
   });
   it('reuses a freed slot before growing', () => {
     const s = emptyState();
