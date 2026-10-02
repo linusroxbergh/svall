@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Character, Island } from '@svall/protocol';
-import { moveCharacterTo, newCharacterOn, newIsland, reorderIsland, saveIsland, toggleIsland } from './actions.js';
+import { moveCharacterTo, newCharacterOn, newIsland, reorderIsland, saveCharacter, saveIsland, toggleIsland } from './actions.js';
 import { app, deps } from './boot.js';
 import type { DropTarget } from './drop.js';
 import { useApp } from './hooks.js';
@@ -44,6 +44,17 @@ const dropZone = (target: DropTarget) => ({
   },
 });
 
+// Enter or a click away hands back a changed name, Escape nothing
+function NameField({ name, testid, onDone }: { name: string; testid: string; onDone(name?: string): void }) {
+  return (
+    <input
+      autoFocus defaultValue={name} data-testid={testid} onClick={stop}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { e.stopPropagation(); onDone(); } }}
+      onBlur={(e) => { const next = e.currentTarget.value.trim(); onDone(next && next !== name ? next : undefined); }}
+    />
+  );
+}
+
 export function Caret({ open }: { open: boolean }) {
   return (
     <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
@@ -69,7 +80,7 @@ function IslandRow({ i, chars, editing, setEditing, dragging, setDragging }: {
     if (onBoard && chars[0]) s.focus(chars[0].id); else s.selectIsland(i.id);
   };
   // the rename field keeps the text menu
-  const menu = i.kind === 'home' || editing ? undefined : (e: React.MouseEvent) => islandMenu(e, i.id, chars.length === 0);
+  const menu = i.kind === 'home' || editing ? undefined : (e: React.MouseEvent) => islandMenu(e, i.id, chars.length === 0, () => setEditing(i.id));
   return (
     <div className="sb-row sb-isle" data-testid={`sb-island-${i.id}`} data-selected={selected} data-open={open}
       data-drop={`island:${i.id}`} data-drop-hover={hover} {...dropZone({ kind: 'island', id: i.id })}
@@ -81,15 +92,10 @@ function IslandRow({ i, chars, editing, setEditing, dragging, setDragging }: {
         aria-label={open ? `Collapse ${i.name}` : `Expand ${i.name}`}
         onClick={(e) => { stop(e); toggleIsland(deps(), i.id); }} onDoubleClick={stop}><Caret open={open} /></button>
       {editing ? (
-        <input
-          autoFocus defaultValue={i.name} data-testid="island-name-input" onClick={stop}
-          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { e.stopPropagation(); setEditing(undefined); } }}
-          onBlur={(e) => {
-            const name = e.currentTarget.value.trim();
-            setEditing(undefined);
-            if (name && name !== i.name) saveIsland(deps(), i.id, { name });
-          }}
-        />
+        <NameField name={i.name} testid="island-name-input" onDone={(name) => {
+          setEditing(undefined);
+          if (name) saveIsland(deps(), i.id, { name });
+        }} />
       ) : (
         <span className="sb-name" data-testid="island-name">{i.name}</span>
       )}
@@ -103,7 +109,7 @@ function IslandRow({ i, chars, editing, setEditing, dragging, setDragging }: {
   );
 }
 
-function CharacterRow({ c }: { c: Character }) {
+function CharacterRow({ c, editing, setEditing }: { c: Character; editing: boolean; setEditing(id?: string): void }) {
   const onBoard = useApp((s) => s.view === 'board');
   const selected = useApp((s) => (s.view === 'board' ? boardViewed(s) === c.id : s.selectedId === c.id));
   const hover = useApp((s) => s.dropHover?.kind === 'char' && s.dropHover.id === c.id);
@@ -119,14 +125,21 @@ function CharacterRow({ c }: { c: Character }) {
       className="sb-row sb-child" data-testid={`sb-char-${c.id}`} data-status={status} data-unread={isUnread(c)}
       data-attention={wantsUser(c)} data-selected={selected}
       data-drop={`char:${c.id}`} data-drop-hover={hover} data-drop-reorder={reorderHover} data-drop-after={hoverAfter} {...dropZone({ kind: 'char', id: c.id })}
-      draggable data-dragging={dragging}
+      draggable={!editing} data-dragging={dragging}
       onDragStart={(e) => { e.dataTransfer.setData(CHAR_DRAG, c.id); e.dataTransfer.effectAllowed = 'move'; setDragging(true); }}
       onDragEnd={() => { setDragging(false); app.store.getState().setDropHover(undefined); }}
       onClick={click}
-      onContextMenu={(e) => characterMenu(e, c.id)}
+      onContextMenu={editing ? undefined : (e) => characterMenu(e, c.id, () => setEditing(c.id))}
     >
       <i className="sdot" data-status={status} />
-      <span className="sb-name">{c.name}</span>
+      {editing ? (
+        <NameField name={c.name} testid="char-name-input" onDone={(name) => {
+          setEditing(undefined);
+          if (name) saveCharacter(deps(), c.id, { name });
+        }} />
+      ) : (
+        <span className="sb-name">{c.name}</span>
+      )}
     </div>
   );
 }
@@ -178,7 +191,7 @@ export function Sidebar() {
               {!i.collapsed && chars.length === 0 && <div className="sb-kids"><button className="sb-row sb-char-empty" data-testid={`sb-island-new-${i.id}`}
                 aria-label={`New character on ${i.name}`} onClick={() => void newCharacterOn(deps(), i.id)}><i className="sb-plus" aria-hidden="true">+</i>New character</button></div>}
               {!i.collapsed && chars.length > 0 && (
-                <div className="sb-kids">{chars.map((c) => <CharacterRow key={c.id} c={c} />)}</div>
+                <div className="sb-kids">{chars.map((c) => <CharacterRow key={c.id} c={c} editing={editing === c.id} setEditing={setEditing} />)}</div>
               )}
             </div>
           );

@@ -3,7 +3,7 @@ import type { Character, Island } from '@svall/protocol';
 import { createCharacter } from '../actions.js';
 import { useApp } from '../hooks.js';
 import { portraitTint, portraitUrl } from '../portraits.js';
-import { statusOf, wantsUser, type DisplayStatus } from '../selectors.js';
+import { startOf, statusOf, wantsUser, type DisplayStatus } from '../selectors.js';
 import { phone } from './boot.js';
 import { islandCwd } from './choices.js';
 import { CloseCharacter } from './CloseCharacter.js';
@@ -98,7 +98,7 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
     setAdding(true);
     setFailed(undefined);
     try {
-      const c = await createCharacter(phone.api(), { islandId, cwd: islandCwd(fleet, islandId) }, fleet.defaultCwd);
+      const c = await createCharacter(phone.api(), { islandId, cwd: islandCwd(fleet, islandId), ...startOf(fleet, islandId) }, fleet.defaultCwd);
       onOpen(c.id);
     } catch (e) {
       setFailed({ islandId, message: (e as Error).message });

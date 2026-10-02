@@ -190,12 +190,12 @@ function FlowScene() {
   return (
     <>
       <div className="world map-world" style={{ left, top: SIZE.top, width: WORLD_W, transform: `scale(${k})`, '--k': cardScale(k) / k, '--lk': Math.max(labelScale(k), 0.7) / k } as React.CSSProperties}>
-        <Island island={islandModel(SHORE, SHORE_AT, SG.size)} count={2} hot={false} selected={false} collapsed={false}
+        <Island island={islandModel(SHORE, SHORE_AT, SG.size)} count={2} hot={false} selected={false}
           dragging={false} settling={false} hover={false} onNew={none} onToggle={none} onMenu={none}
           land={pointer} label={pointer} handle={pointer} hold={hold} />
         {s.island && (
           <div className="rise">
-            <Island island={islandModel(REVIEWS, REVIEWS_AT, RG.size)} count={s.crew.length} hot={false} selected={false} collapsed={false}
+            <Island island={islandModel(REVIEWS, REVIEWS_AT, RG.size)} count={s.crew.length} hot={false} selected={false}
               dragging={false} settling={false} hover={false} onNew={none} onToggle={none} onMenu={none}
               land={pointer} label={pointer} handle={pointer} hold={hold} />
           </div>

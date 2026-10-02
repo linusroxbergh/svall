@@ -64,6 +64,16 @@ test('a double click on open water makes an island there', async () => {
   expect(methods()).toContain('island.create');
 });
 
+test('a folded island is off the map, label, crew and all, and the map can only hide one', async () => {
+  store.getState().applyPatch([{ op: 'add', path: '/islands/i_b/collapsed', value: true }]);
+  render(<Map />);
+  await act(async () => {});
+  for (const id of ['island-i_b', 'island-label-i_b', 'token-c0', 'token-c1']) expect(screen.queryByTestId(id)).toBeNull();
+  expect(screen.getByTestId('island-toggle-i_a').getAttribute('aria-label')).toBe('Hide alpha');
+  fireEvent.click(screen.getByTestId('island-toggle-i_a'));
+  expect(call).toHaveBeenCalledWith('island.update', { id: 'i_a', collapsed: true });
+});
+
 test('mission control puts arrange beside its name, as bright as the buttons that start an agent', async () => {
   render(<Map />);
   await act(async () => {});

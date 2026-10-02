@@ -164,38 +164,29 @@ runIf('Fleet layout', () => {
     expect(floor()).toBe(5);
   });
 
-  it('a folded island holds only its label, and takes its ground back by pushing neighbours aside', async () => {
+  it('a folded island holds no ground, and takes its own back by pushing neighbours aside', async () => {
     const { fleet, store } = await boot();
     const a = fleet.createIsland({ name: 'a', position: { x: 0, y: 0 }, size: { w: 6, h: 4 } });
     const b = fleet.createIsland({ name: 'b', position: { x: 20, y: 0 }, size: { w: 6, h: 4 } });
     expect(() => fleet.updateIsland(b.id, { position: { x: 0, y: 0 } })).toThrow(/overlap/);
 
     fleet.updateIsland(a.id, { collapsed: true });
-    // every cell the folded island stood on is free, down to the ones under its own label
+    // every cell the folded island stood on is free
     expect(fleet.updateIsland(b.id, { position: { x: 0, y: 0 } }).position).toEqual({ x: 0, y: 0 });
-    // the pill itself is not: it draws in the band above where the island stood
-    expect(() => fleet.updateIsland(b.id, { position: { x: 0, y: -4 } })).toThrow(/overlap/);
+    // and it may itself be put anywhere while it is off the map
+    expect(fleet.updateIsland(a.id, { position: { x: 1, y: 1 } }).position).toEqual({ x: 1, y: 1 });
 
     fleet.updateIsland(a.id, { collapsed: false });
-    expect(store.state.islands[a.id].position).toEqual({ x: 0, y: 0 });
+    expect(store.state.islands[a.id].position).toEqual({ x: 1, y: 1 });
     expect(store.state.islands[a.id].collapsed).toBeUndefined();
     expect(clearBy(store.state.islands[a.id], store.state.islands[b.id], 1)).toBe(true);
   });
 
-  it('folded islands stand a row apart, as close as their pills are drawn', async () => {
+  it('a new island may stand on the ground a folded one left', async () => {
     const { fleet } = await boot();
-    const a = fleet.createIsland({ name: 'liraboll', position: { x: 0, y: 0 }, size: { w: 6, h: 4 } });
-    const b = fleet.createIsland({ name: 'tenfold', position: { x: 40, y: 0 }, size: { w: 6, h: 4 } });
+    const a = fleet.createIsland({ name: 'a', position: { x: 0, y: 0 }, size: { w: 6, h: 4 } });
     fleet.updateIsland(a.id, { collapsed: true });
-    fleet.updateIsland(b.id, { collapsed: true });
-
-    // one row below is clear: the pills are drawn a third of a cell apart there
-    expect(fleet.updateIsland(b.id, { position: { x: 0, y: 1 } }).position).toEqual({ x: 0, y: 1 });
-    // the same row is not: that is the same pill
-    expect(() => fleet.updateIsland(b.id, { position: { x: 0, y: 0 } })).toThrow(/overlap/);
-    // side by side, the pills stand as wide as they are drawn and no wider
-    expect(fleet.updateIsland(b.id, { position: { x: 4, y: 0 } }).position).toEqual({ x: 4, y: 0 });
-    expect(() => fleet.updateIsland(b.id, { position: { x: 3, y: 0 } })).toThrow(/overlap/);
+    expect(fleet.createIsland({ name: 'b', position: { x: 0, y: 0 }, size: { w: 6, h: 4 } }).position).toEqual({ x: 0, y: 0 });
   });
 
   it('char.update with a new island places the character on a free cell', async () => {

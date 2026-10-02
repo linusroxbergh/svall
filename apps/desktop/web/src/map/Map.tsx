@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { HOME_ISLAND, MIN_SIZE, ground, type Cell } from '@svall/protocol';
+import { HOME_ISLAND, MIN_SIZE, type Cell } from '@svall/protocol';
 import { arrangeIslands, moveCharacterToCell, moveIsland, newCharacterOn, newIsland, newIslandAround, resizeIsland, startHomeAction, toggleIsland } from '../actions.js';
 import { app, deps } from '../boot.js';
 import { commitFocused } from '../Field.js';
@@ -534,7 +534,6 @@ export function Map() {
           return (
             <Island key={i.id} island={shown} count={count} offset={islandOffset(i, preview)} gripOffset={gripOffset}
               hot={hotIsland === i.id || selectedIslandId === i.id} selected={selectedIslandId === i.id}
-              collapsed={Boolean(i.collapsed)}
               dragging={Boolean(preview)} settling={Boolean(pendingIsland) && preview === pendingIsland}
               hover={dropHover?.kind === 'island' && dropHover.id === i.id}
               onNew={() => newCharacterOn(deps(), i.id)}
@@ -547,11 +546,10 @@ export function Map() {
           );
         })}
         {drag?.kind === 'island' && fleet.islands[drag.id] && (() => {
-          // a folded island lands as its pill: there is no coastline to promise
-          const g = ground({ ...fleet.islands[drag.id], position: drag.position });
+          const { size } = fleet.islands[drag.id];
           return <div className="island-landing" aria-hidden="true"
-            style={{ left: g.position.x * theme.cell, top: g.position.y * theme.cell,
-              width: g.size.w * theme.cell, height: g.size.h * theme.cell }} />;
+            style={{ left: drag.position.x * theme.cell, top: drag.position.y * theme.cell,
+              width: size.w * theme.cell, height: size.h * theme.cell }} />;
         })()}
         {drag?.kind === 'figure' && drag.over && (() => {
           const i = fleet.islands[drag.over.islandId];
@@ -559,7 +557,7 @@ export function Map() {
           return <div className="drop-cell" data-testid="drop-cell" data-free={drag.over.free}
             style={{ left: (i.position.x + drag.over.local.x) * theme.cell, top: (i.position.y + drag.over.local.y) * theme.cell, width: theme.cell, height: theme.cell }} />;
         })()}
-        {mapIslandsSorted(fleet).filter((i) => !i.collapsed).flatMap((i) => charactersOf(fleet, i.id).map((c) => {
+        {mapIslandsSorted(fleet).flatMap((i) => charactersOf(fleet, i.id).map((c) => {
           const dragging = drag?.kind === 'figure' && drag.id === c.id;
           if (dragging && overHome) return null;
           const preview = previewFor(i.id);

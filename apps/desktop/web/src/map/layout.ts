@@ -1,11 +1,11 @@
-import { SPACING, ground, isLand, pillWidth, type Cell, type Character, type FleetState, type Island } from '@svall/protocol';
+import { SPACING, isLand, pillWidth, type Cell, type Character, type FleetState, type Island } from '@svall/protocol';
 import { theme, tokenPx } from '../theme.js';
 
 export type Layout = { scale: number; tile: number; ox: number; oy: number };
 export type Bounds = { x: number; y: number; w: number; h: number };
 
-// the row an island's ground ends on, or its pill's once folded
-const foot = (i: Island): number => ground(i).position.y + ground(i).size.h;
+// the row an island's ground ends on
+const foot = (i: Island): number => i.position.y + i.size.h;
 
 // each island's crew, by the cells they stand on in it
 export type Crew = Record<string, Cell[]>;
@@ -19,22 +19,17 @@ export const crewOf = (f: FleetState): Crew => {
 const TOK = { w: tokenPx.w / theme.cell, h: tokenPx.h / theme.cell, rail: (0.36 * theme.token.unit) / theme.cell };
 
 // what an island draws at a map scale, in cells: its ground, the label band over it and the pill across it, and each
-// card where it hangs past the ground, centred on its cell with 48% of it above. A folded island is its pill alone
+// card where it hangs past the ground, centred on its cell with 48% of it above
 export function drawnBox(i: Island, crew: Cell[] = [], scale = 1): Bounds {
-  const g = ground(i);
-  let x0 = g.position.x, x1 = x0 + g.size.w, y1 = g.position.y + g.size.h;
+  const half = (pillWidth(i.name) * labelScale(scale)) / scale / 2, mid = i.position.x + i.size.w / 2;
+  let x0 = Math.min(i.position.x, mid - half), x1 = Math.max(i.position.x + i.size.w, mid + half), y1 = foot(i);
   const y0 = i.position.y - theme.bounds.top;
-  if (!i.collapsed) {
-    const half = (pillWidth(i.name) * labelScale(scale)) / scale / 2, mid = i.position.x + i.size.w / 2;
-    x0 = Math.min(x0, mid - half);
-    x1 = Math.max(x1, mid + half);
-    const k = cardScale(scale) / scale;
-    for (const c of crew) {
-      const cx = i.position.x + c.x + 0.5, cy = i.position.y + c.y + 0.5;
-      x0 = Math.min(x0, cx - (TOK.w / 2) * k);
-      x1 = Math.max(x1, cx + (TOK.w / 2 + TOK.rail) * k);
-      y1 = Math.max(y1, cy + 0.52 * TOK.h * k);
-    }
+  const k = cardScale(scale) / scale;
+  for (const c of crew) {
+    const cx = i.position.x + c.x + 0.5, cy = i.position.y + c.y + 0.5;
+    x0 = Math.min(x0, cx - (TOK.w / 2) * k);
+    x1 = Math.max(x1, cx + (TOK.w / 2 + TOK.rail) * k);
+    y1 = Math.max(y1, cy + 0.52 * TOK.h * k);
   }
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
@@ -62,8 +57,8 @@ export const limitAt = (below: Below, l: number, r: number): number =>
 
 // the screen x an island's land spans at a layout; the shoal glow around it counts for nothing
 export const landSpan = (i: Island, l: Layout): [number, number] => {
-  const g = ground(i), s = cellSize(l);
-  return [l.ox + g.position.x * s, l.ox + (g.position.x + g.size.w) * s];
+  const s = cellSize(l);
+  return [l.ox + i.position.x * s, l.ox + (i.position.x + i.size.w) * s];
 };
 
 // the largest scale in [theme.scale.min, theme.scale.max] at which what the islands draw fits inside the fit margins,
@@ -127,8 +122,8 @@ export function roomOf(islands: Island[], l: Layout, win: { w: number; h: number
 // an island's land at a layout, on mission control itself rather than in the water it keeps: a drop there has nowhere
 // to go, where one in the water only has the map make room
 export function onBlocks(island: Island, l: Layout, below: Below): boolean {
-  const g = ground(island), s = cellSize(l), pad = theme.home.water, [left, right] = landSpan(island, l);
-  const top = l.oy + g.position.y * s, bottom = top + g.size.h * s;
+  const s = cellSize(l), pad = theme.home.water, [left, right] = landSpan(island, l);
+  const top = l.oy + island.position.y * s, bottom = top + island.size.h * s;
   return below.blocks.some((k) => left < k.x + k.w - pad && right > k.x + pad && bottom > k.top + pad && (k.bottom === undefined || top < k.bottom - pad));
 }
 
@@ -163,13 +158,11 @@ export const worldToScreen = (l: Layout, c: Cell) => ({ x: l.ox + c.x * cellSize
 export const screenToCell = (l: Layout, p: { x: number; y: number }): Cell => ({ x: Math.floor((p.x - l.ox) / cellSize(l)), y: Math.floor((p.y - l.oy) / cellSize(l)) });
 export const worldCell = (origin: Cell, local: Cell): Cell => ({ x: origin.x + local.x, y: origin.y + local.y });
 
-// the islands that live in the panned world; home is drawn in screen space
-export const mapIslands = (f: FleetState): Island[] => Object.values(f.islands).filter((i) => i.kind !== 'home');
+// the islands that live in the panned world; home is drawn in screen space, and a folded island not at all
+export const mapIslands = (f: FleetState): Island[] => Object.values(f.islands).filter((i) => i.kind !== 'home' && !i.collapsed);
 
-// a folded island draws no land, so it reads as open water
 export function cellOwner(f: FleetState, cell: Cell): { island: Island; local: Cell; land: boolean } | undefined {
   for (const island of mapIslands(f)) {
-    if (island.collapsed) continue;
     const local = { x: cell.x - island.position.x, y: cell.y - island.position.y };
     if (local.x < 0 || local.y < 0 || local.x >= island.size.w || local.y >= island.size.h) continue;
     return { island, local, land: isLand(island, local) };
@@ -177,9 +170,9 @@ export function cellOwner(f: FleetState, cell: Cell): { island: Island; local: C
   return undefined;
 }
 
-// the unfolded island whose footprint, grown by its one-cell coast, holds the cell
+// the island whose footprint, grown by its one-cell coast, holds the cell
 export const islandNear = (f: FleetState, c: Cell): string | undefined =>
-  mapIslands(f).find((i) => !i.collapsed && c.x >= i.position.x - 1 && c.y >= i.position.y - 1 && c.x <= i.position.x + i.size.w && c.y <= i.position.y + i.size.h)?.id;
+  mapIslands(f).find((i) => c.x >= i.position.x - 1 && c.y >= i.position.y - 1 && c.x <= i.position.x + i.size.w && c.y <= i.position.y + i.size.h)?.id;
 
 export const characterAt = (f: FleetState, islandId: string, local: Cell): Character | undefined =>
   Object.values(f.characters).find((c) => c.islandId === islandId && c.cell.x === local.x && c.cell.y === local.y);

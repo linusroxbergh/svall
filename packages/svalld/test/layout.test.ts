@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SIZE, SPACING, emptyState, homeSizeFor, isLand, landCells, sizeForCrew, type FleetState, type Island } from '@svall/protocol';
-import { CREW_INSET, GAP, HOME_GAP, HOME_REACH, ROW_GAP, aboveHome, arrangeFleet, crewGrid, blockedCells, clearBy, defaultPosition, freePosition, ground, makeRoom, nearestFreeLand, occupiedCells, pillWidth, placementOk, settleHome, sinkHome, uniqueName, worldIslands } from '../src/layout.js';
+import { CREW_INSET, GAP, HOME_GAP, HOME_REACH, ROW_GAP, aboveHome, arrangeFleet, crewGrid, blockedCells, clearBy, defaultPosition, freePosition, makeRoom, nearestFreeLand, occupiedCells, pillWidth, placementOk, settleHome, sinkHome, uniqueName, worldIslands } from '../src/layout.js';
 
 const island = (id: string, x: number, y: number, w = 6, h = 4): Island => ({ id, name: id, description: '', instructions: '', context: [], position: { x, y }, size: { w, h }, seed: 1 });
 const withIslands = (...islands: Island[]): FleetState => ({ ...emptyState(), islands: Object.fromEntries(islands.map((i) => [i.id, i])) });
@@ -188,8 +188,8 @@ describe('arrangeFleet', () => {
     const before = pairs(st).length;
     arrangeFleet(st);
     expect(before).toBe(6);
-    for (const [a, b] of pairs(st)) expect(clearBy(ground(a), ground(b), GAP)).toBe(true);
-    const bottom = Math.max(...Object.values(st.islands).filter((i) => i.kind !== 'home').map((i) => ground(i).position.y + ground(i).size.h));
+    for (const [a, b] of pairs(st)) expect(clearBy(a, b, GAP)).toBe(true);
+    const bottom = Math.max(...Object.values(st.islands).filter((i) => i.kind !== 'home').map((i) => i.position.y + i.size.h));
     expect(st.islands.home.position.y).toBe(bottom + HOME_GAP);
     // the whole fleet fits in a fraction of the ground it was strewn over
     const right = Math.max(...Object.values(st.islands).filter((i) => i.kind !== 'home').map((i) => i.position.x + i.size.w));
@@ -206,50 +206,26 @@ describe('arrangeFleet', () => {
     expect(rows(4)).toBeLessThan(rows(0.4));
   });
 
-  it('keeps a folded island folded and packs it as its label pill', () => {
-    const st = withIslands(island('a', 0, 0), { ...island('b', 40, 0, 12, 9), collapsed: true }, home(99));
+  it('leaves a folded island where it stands and packs the rest as if it were not there', () => {
+    const folded = { ...island('b', 2, 1, 12, 9), collapsed: true };
+    const st = withIslands(island('a', 0, 0), { ...folded }, island('c', 40, 0), home(99));
     crew(st, 'b', 1);
+    const bare = withIslands(island('a', 0, 0), island('c', 40, 0), home(99));
     arrangeFleet(st);
-    expect(st.islands.b.collapsed).toBe(true);
-    expect(st.islands.b.size).toEqual(crewGrid(1, st.islands.b.seed).size);
-    for (const [a, b] of pairs(st)) expect(clearBy(ground(a), ground(b), GAP)).toBe(true);
+    arrangeFleet(bare);
+    expect(st.islands.b).toEqual(folded);
+    expect(st.characters.bc0.cell).toEqual({ x: 1, y: 1 });
+    for (const id of ['a', 'c', 'home']) expect(st.islands[id]).toEqual(bare.islands[id]);
   });
 
-  it('gathers the folded islands as a band of pills above every unfolded island', () => {
-    const st = withIslands(island('a', 0, 0), { ...island('b', 20, 0), collapsed: true }, island('c', 0, 20),
-      { ...island('d', 30, 30), collapsed: true }, { ...island('e', 50, 0), collapsed: true }, home(99));
-    crew(st, 'a', 2);
-    crew(st, 'c', 4);
-    arrangeFleet(st);
-    const list = Object.values(st.islands).filter((i) => i.kind !== 'home');
-    const pills = list.filter((i) => i.collapsed).map(ground), lands = list.filter((i) => !i.collapsed);
-    // a row of water between the lowest pill and the highest label, which floats two rows above its island
-    const bandFoot = Math.max(...pills.map((p) => p.position.y + p.size.h));
-    for (const i of lands) expect(i.position.y - 2).toBeGreaterThanOrEqual(bandFoot + 1);
-    for (const [p, i] of pills.entries()) for (const q of pills.slice(p + 1)) expect(clearBy(i, q, 1)).toBe(true);
-  });
-
-  it('spreads the band and the rows apart to fill the height a window has to spare', () => {
+  it('spreads the rows apart to fill the height a window has to spare', () => {
     const drop = (aspect: number): number => {
-      const st = withIslands(island('a', 0, 0), island('b', 20, 0), { ...island('c', 40, 0), collapsed: true }, home(99));
+      const st = withIslands(island('a', 0, 0), island('b', 20, 0), home(99));
       arrangeFleet(st, aspect);
-      return st.islands.a.position.y - st.islands.c.position.y;
+      return Math.abs(st.islands.a.position.y - st.islands.b.position.y);
     };
-    expect(drop(1)).toBeGreaterThan(drop(4));
-  });
-
-  it('wraps a long band into rows that neither overlap nor leave a pill stranded', () => {
-    const folded = Array.from({ length: 10 }, (_, n) => ({ ...island(`f${n}`, n * 10, 0), collapsed: true }));
-    const st = withIslands(island('a', 0, 20), ...folded, home(99));
-    arrangeFleet(st, 0.5);
-    const pills = Object.values(st.islands).filter((i) => i.collapsed).map(ground);
-    const rows = [...new Set(pills.map((p) => p.position.y))].map((y) => pills.filter((p) => p.position.y === y));
-    expect(rows.length).toBeGreaterThan(1);
-    expect(Math.max(...rows.map((r) => r.length)) - Math.min(...rows.map((r) => r.length))).toBeLessThanOrEqual(1);
-    for (const [p, i] of pills.entries()) for (const q of pills.slice(p + 1)) {
-      expect(clearBy(i, q, 0)).toBe(true);
-      if (i.position.y === q.position.y) expect(clearBy(i, q, 1)).toBe(true);
-    }
+    expect(drop(0.6)).toBeGreaterThan(0);
+    expect(drop(0.3)).toBeGreaterThan(drop(0.6));
   });
 
   it('stands a crew abreast for a wide window and deeper for a tall one', () => {
@@ -355,10 +331,12 @@ describe('makeRoom', () => {
     for (const id of ['a', 'b', 'c', 'd']) expect(placementOk(st, st.islands[id])).toBe(true);
   });
 
-  it('clears a folded neighbour whose label pill stands on the island', () => {
-    const st = withIslands(island('a', 0, 1), { ...island('b', 2, 6), collapsed: true }, home(40));
+  it('leaves a folded neighbour where it stands, off the map', () => {
+    const st = withIslands(island('a', 0, 1), { ...island('b', 2, 3), collapsed: true }, home(40));
     makeRoom(st, 'a');
-    for (const i of worldIslands(st)) expect(placementOk(st, i)).toBe(true);
+    expect(st.islands.b.position).toEqual({ x: 2, y: 3 });
+    expect(worldIslands(st).map((i) => i.id)).toEqual(['a']);
+    expect(placementOk(st, st.islands.b)).toBe(true);
   });
 
   it('leaves mission control where it stands', () => {

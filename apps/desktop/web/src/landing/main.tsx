@@ -108,7 +108,7 @@ function DemoMap({ at }: { at: Cell[] }) {
   return (
     <>
       {ISLANDS.map((isl, i) => (
-        <Island key={isl.id} island={islandModel(i, at[i])} count={isl.crew.length} hot={false} selected={false} collapsed={false}
+        <Island key={isl.id} island={islandModel(i, at[i])} count={isl.crew.length} hot={false} selected={false}
           dragging={false} settling={false} hover={false} onNew={none} onToggle={none} onMenu={none}
           land={pointer} label={pointer} handle={pointer} hold={hold} />
       ))}

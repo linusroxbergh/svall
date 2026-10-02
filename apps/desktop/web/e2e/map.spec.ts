@@ -1,5 +1,6 @@
 import { FAKE_CLAUDE, expect, test } from './fixtures.js';
 import type { Page } from '@playwright/test';
+import type { ToShell } from '../src/bridge.js';
 import { cardScale, labelScale } from '../src/map/layout.js';
 import { theme } from '../src/theme.js';
 
@@ -160,7 +161,7 @@ test('makes an island from the mission control row and from the sidebar', async 
   await expect.poll(count).toBe(before + 2);
 });
 
-test('the side card stays collapsed until it is opened again', async ({ page, svall }) => {
+test('the side card stays collapsed until it is opened again, or a character is made', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('col'), position: { x: 0, y: 800 } });
   const a = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
   const b = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'b' });
@@ -180,6 +181,52 @@ test('the side card stays collapsed until it is opened again', async ({ page, sv
   await page.getByTestId('side-show').click();
   await expect(page.getByTestId('side-card')).toBeVisible();
   await expect(page.getByTestId('side-name')).toHaveValue('b');
+
+  await page.getByTestId('side-collapse').click();
+  await expect(page.getByTestId('side-card')).toHaveCount(0);
+  await page.getByTestId(`island-new-${island.id}`).click();
+  await expect(page.getByTestId('side-card')).toBeVisible();
+  const made = Object.values((await svall.api.call('state.get', {})).characters).find((c) => c.islandId === island.id && ![a.id, b.id].includes(c.id))!;
+  await expect(page.getByTestId('side-name')).toHaveValue(made.name);
+});
+
+type Shell = { __sent: ToShell[]; __svall: { receive(json: string): void } };
+
+test('Rename on a sidebar row names the character or the island in place', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('ren'), position: { x: 0, y: 0 } });
+  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
+  // a stand-in for the native shell: it records what the page sends and answers the connection request
+  await page.addInitScript(({ port, token }) => {
+    const w = window as unknown as Shell & { webkit: unknown };
+    w.__sent = [];
+    w.webkit = { messageHandlers: { svall: { postMessage: (json: string) => {
+      const m = JSON.parse(json) as ToShell;
+      w.__sent.push(m);
+      if (m.type === 'connection') setTimeout(() => w.__svall.receive(JSON.stringify({ type: 'connection', host: '127.0.0.1', port, token })), 0);
+    } } } };
+  }, { port: svall.port, token: svall.token });
+  await svall.open('map');
+  const menus = () => page.evaluate(() => (window as unknown as Shell).__sent.filter((m) => m.type === 'menu').length);
+  const rename = async (row: string) => {
+    const before = await menus();
+    await page.getByTestId(row).click({ button: 'right' });
+    await expect.poll(menus).toBe(before + 1);
+    await page.evaluate(() => (window as unknown as Shell).__svall.receive(JSON.stringify({ type: 'menu.pick', id: '0' })));
+  };
+  const state = () => svall.api.call('state.get', {});
+
+  await rename(`sb-char-${c.id}`);
+  await expect(page.getByTestId('char-name-input')).toBeFocused();
+  await page.getByTestId('char-name-input').fill('auth fix');
+  await page.getByTestId('char-name-input').press('Enter');
+  await expect.poll(async () => (await state()).characters[c.id].name).toBe('auth fix');
+  await expect(page.getByTestId(`sb-char-${c.id}`)).toHaveText('auth fix');
+
+  const name = svall.uniq('renamed');
+  await rename(`sb-island-${island.id}`);
+  await page.getByTestId('island-name-input').fill(name);
+  await page.getByTestId('island-name-input').press('Enter');
+  await expect.poll(async () => (await state()).islands[island.id].name).toBe(name);
 });
 
 // a press on the map calls preventDefault, so the browser moves no focus and the field hears no blur of its own
@@ -214,21 +261,24 @@ test('double-clicking an island opens its card, collapsed or not', async ({ page
   await expect(card.getByTestId('side-island-name')).toHaveValue(island.name);
 });
 
-test('an island folds to its label, in step with the sidebar', async ({ page, svall }) => {
+test('a hidden island leaves the map, and the sidebar brings it back to an arranged fleet', async ({ page, svall }) => {
+  await svall.api.call('island.create', { name: svall.uniq('stay'), position: { x: 0, y: 0 } });
   const island = await svall.api.call('island.create', { name: svall.uniq('fold'), position: { x: 0, y: 1100 } });
   const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'folded' });
+  await svall.api.call('island.update', { id: island.id, collapsed: true });
   await svall.open('map');
   await settle(page);
 
-  await page.getByTestId(`island-toggle-${island.id}`).click();
   await expect(page.getByTestId(`island-${island.id}`)).toHaveCount(0);
+  await expect(page.getByTestId(`island-label-${island.id}`)).toHaveCount(0);
   await expect(page.getByTestId(`token-${c.id}`)).toHaveCount(0);
-  await expect(page.getByTestId(`island-label-${island.id}`)).toContainText(island.name);
   await expect(page.getByTestId(`sb-island-${island.id}`)).toHaveAttribute('data-open', 'false');
 
   await page.getByTestId(`sb-island-toggle-${island.id}`).click();
   await expect(page.getByTestId(`island-${island.id}`)).toBeVisible();
   await expect(page.getByTestId(`token-${c.id}`)).toBeVisible();
+  // the arrange packs it in beside the island that stayed, far from where it was left
+  await expect.poll(async () => (await svall.api.call('state.get', {})).islands[island.id].position.y).toBeLessThan(100);
 });
 
 test('the arrange button packs the fleet together and the map zooms into it', async ({ page, svall }) => {

@@ -38,11 +38,6 @@
 .map-world .ilabel{backdrop-filter:none}
 /* the pill takes only a share of the map's growth past 1, shrinking towards its island */
 .map-world .ilabel{transform:translateX(-50%) scale(var(--lk,1));transform-origin:50% 100%}
-/* a folded island is only its pill, so it stays on top of any label that lands on it, and it is drawn
-   on the ground it holds: butt two folded islands together and their pills read as neighbours, not as one */
-.island[data-collapsed="true"] .ilabel{z-index:19}
-.map-world .island[data-collapsed="true"] .ilabel{left:var(--pill-x);width:var(--pill-w);box-sizing:border-box;
-  justify-content:center;overflow:hidden;transform:scale(var(--lk,1))}
 .ilabel .itog{margin-left:-4px;width:18px;height:18px;padding:0;flex:none;display:grid;place-items:center;
   border:0;border-radius:var(--r-xs);background:none;color:var(--ink-2);cursor:pointer}
 .ilabel .itog:hover{background:var(--fill-1);color:var(--ink)}

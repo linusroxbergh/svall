@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CWD, emptyState } from '@svall/protocol';
-import { deleteCharacter, deleteIsland, moveCharacterTo, newCharacterOn, newCharacterTarget, newIsland, newIslandAround, newNamedCharacter, openSecondTerminal, reviveCharacter, saveCharacter, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeCharacter } from '../src/actions.js';
+import { deleteCharacter, deleteIsland, moveCharacterTo, newCharacterOn, newCharacterTarget, newIsland, newIslandAround, newNamedCharacter, openSecondTerminal, reviveCharacter, saveCharacter, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeCharacter, toggleIsland } from '../src/actions.js';
 import { ApiError, type Api } from '../src/api.js';
 import { createAppStore } from '../src/store/index.js';
 import { chr, fleet, isl } from './fixtures.js';
@@ -463,5 +463,73 @@ describe('a new island or character', () => {
     await make(c);
     expect(c.store.getState().settingsOpen).toBe(false);
     expect(c.calls.some((x) => x.method === 'char.create' || x.method === 'island.create')).toBe(true);
+  });
+});
+
+describe('a new character', () => {
+  function made() {
+    const c = ctx();
+    c.api.call = ((method: string, params: unknown) => {
+      c.calls.push({ method, params });
+      return Promise.resolve(method === 'char.create' ? { id: 'c_new', name: 'n', runSent: true } : {});
+    }) as Api['call'];
+    // the user put the side card away before making one
+    c.store.getState().toggleSideCard(false);
+    return c;
+  }
+  const created = (c: ReturnType<typeof ctx>) => c.calls.find((x) => x.method === 'char.create')?.params as { command?: string };
+
+  it('opens its terminal and its side card, even when the side card was put away', async () => {
+    const c = made();
+    await newCharacterOn(c, 'i_a');
+    expect(c.store.getState()).toMatchObject({ card: 'c_new', selectedId: 'c_new', sideCardOpen: true, sideCardCollapsed: false });
+  });
+
+  it('opens the side card of a crew member started on mission control, without a terminal', async () => {
+    const c = made();
+    await startHomeCharacter(c, { prompt: 'hi' });
+    expect(c.store.getState()).toMatchObject({ card: undefined, selectedId: 'c_new', sideCardOpen: true });
+  });
+
+  it('starts the home command on mission control, and a shell anywhere else', async () => {
+    const c = made();
+    await newCharacterOn(c, 'home');
+    expect(created(c).command).toBe('claude --model sonnet');
+    c.calls.length = 0;
+    await newCharacterOn(c, 'i_a');
+    expect(created(c)).not.toHaveProperty('command');
+  });
+
+  it('follows the main agent for a named character on mission control', async () => {
+    const c = made();
+    c.store.getState().applyPatch([{ op: 'replace', path: '/home/command', value: 'codex' }]);
+    c.store.getState().selectIsland('home');
+    await newNamedCharacter(c, { name: 'n', note: '', refs: [] });
+    expect(created(c).command).toBe('codex');
+  });
+});
+
+describe('toggleIsland', () => {
+  it('asks the map for an automatic arrange once a folded island is back', async () => {
+    const c = ctx();
+    c.store.getState().applyPatch([{ op: 'add', path: '/islands/i_a/collapsed', value: true }]);
+    toggleIsland(c, 'i_a');
+    expect(c.calls).toEqual([{ method: 'island.update', params: { id: 'i_a', collapsed: false } }]);
+    await expect.poll(() => c.store.getState().arrangeAsk).toBe('auto');
+  });
+
+  it('leaves the fleet where it is when folding, for mission control, and with arranging on its own off', async () => {
+    const tries: [string, (c: ReturnType<typeof ctx>) => void][] = [
+      ['fold', () => {}],
+      ['home', (c) => c.store.getState().applyPatch([{ op: 'add', path: '/islands/home/collapsed', value: true }])],
+      ['off', (c) => { c.store.getState().applyPatch([{ op: 'add', path: '/islands/i_a/collapsed', value: true }]); c.store.getState().setSettings({ autoArrange: false }); }],
+    ];
+    for (const [what, setUp] of tries) {
+      const c = ctx();
+      setUp(c);
+      toggleIsland(c, what === 'home' ? 'home' : 'i_a');
+      await new Promise((r) => setTimeout(r, 0));
+      expect(c.store.getState().arrangeAsk, what).toBe(false);
+    }
   });
 });

@@ -4,7 +4,7 @@ import { shim, type Bridge } from './bridge.js';
 import type { DropTarget } from './drop.js';
 import { withoutSecond } from './panes.js';
 import type { FieldRef } from './resources/model.js';
-import { boardViewed, charactersOf, mapIslandsSorted, panesOf, selectedOf } from './selectors.js';
+import { boardViewed, charactersOf, mapIslandsSorted, panesOf, selectedOf, startOf } from './selectors.js';
 import type { AppStore } from './store/index.js';
 
 // what it takes to act on the fleet: the socket, the mirror, and the shell
@@ -31,6 +31,13 @@ export async function createCharacter(api: Pick<Api, 'call'>, params: Params<'ch
   }
 }
 
+// a new character opens its side card, whatever the side card was left at, and its terminal unless it is only selected
+export const showCreated = (d: ActionDeps, id: string, how: 'focus' | 'select' = 'focus'): void => {
+  const s = d.store.getState();
+  if (how === 'focus') s.focus(id); else s.select(id);
+  s.toggleSideCard(true);
+};
+
 // without an explicit cwd a new character inherits the one of the island's first character; home crew
 // start in the home cwd, and an island with no crew to inherit from starts in the fleet's default cwd
 export async function newCharacterOn(d: ActionDeps, islandId: string, cwd?: string): Promise<void> {
@@ -38,8 +45,8 @@ export async function newCharacterOn(d: ActionDeps, islandId: string, cwd?: stri
   const f = d.store.getState().fleet;
   const dir = cwd ?? (f.islands[islandId]?.kind === 'home' ? f.home.cwd : startCwd(charactersOf(f, islandId)[0]) ?? f.defaultCwd);
   try {
-    const c = await createCharacter(d.api, { islandId, cwd: dir }, f.defaultCwd);
-    d.store.getState().focus(c.id);
+    const c = await createCharacter(d.api, { islandId, cwd: dir, ...startOf(f, islandId) }, f.defaultCwd);
+    showCreated(d, c.id);
   } catch (e) {
     d.store.getState().showToast((e as Error).message);
   }
@@ -88,11 +95,15 @@ export function reorderIsland(d: ActionDeps, id: string, targetId: string, after
   if (id !== targetId) d.api.call('island.reorder', { id, targetId, after }).catch(toast(d));
 }
 
-// folding is the island's own state, so the map and the sidebar read the same flag on every client
+// folding is the island's own state, so the map and the sidebar read the same flag on every client; a folded
+// island is off the map, and one unfolded comes back to an arrange when the map arranges on its own
 export function toggleIsland(d: ActionDeps, id: string): void {
   const island = d.store.getState().fleet.islands[id];
   if (!island) return;
-  d.api.call('island.update', { id, collapsed: !island.collapsed }).catch(toast(d));
+  const unfold = Boolean(island.collapsed) && island.kind !== 'home';
+  d.api.call('island.update', { id, collapsed: !island.collapsed })
+    .then(() => { if (unfold && d.store.getState().settings.autoArrange) d.store.getState().askArrange('auto'); })
+    .catch(toast(d));
 }
 
 // the daemon lays the whole fleet out at once; the map refits to whatever comes back
@@ -104,7 +115,7 @@ export function arrangeIslands(d: ActionDeps, aspect?: number, homeRoom?: number
 // and the daemon picks the spot
 export function newIsland(d: ActionDeps, cell?: Cell): void {
   closeSettings(d);
-  const n = mapIslandsSorted(d.store.getState().fleet).length + 1;
+  const n = Object.values(d.store.getState().fleet.islands).filter((i) => i.kind !== 'home').length + 1;
   const position = cell && { x: cell.x - Math.floor(DEFAULT_SIZE.w / 2), y: cell.y - Math.floor(DEFAULT_SIZE.h / 2) };
   d.api.call('island.create', { name: `Island ${n}`, ...(position ? { position } : {}) })
     .then((i) => d.store.getState().selectIsland(i.id))
@@ -131,7 +142,8 @@ export async function newCharacterTarget(d: ActionDeps): Promise<{ islandId: str
 export async function newNamedCharacter(d: ActionDeps, p: { name: string; note: string; refs: string[] }): Promise<string> {
   closeSettings(d);
   const { islandId, cwd } = await newCharacterTarget(d);
-  const c = await createCharacter(d.api, { islandId, cwd, ...(p.name ? { name: p.name } : {}) }, d.store.getState().fleet.defaultCwd);
+  const f = d.store.getState().fleet;
+  const c = await createCharacter(d.api, { islandId, cwd, ...(p.name ? { name: p.name } : {}), ...startOf(f, islandId) }, f.defaultCwd);
   if (p.note || p.refs.length) {
     // the character already exists, so a refused path is reported rather than retried
     await d.api.call('char.update', {
@@ -152,7 +164,7 @@ function selectOnArrival(d: ActionDeps, before: string | undefined): () => void 
     const fresh = Object.values(s.fleet.characters).find((c) => c.islandId === HOME_ISLAND && !known.has(c.id));
     if (!fresh) return;
     stop();
-    if (d.store.getState().selectedId === before) d.store.getState().select(fresh.id);
+    if (d.store.getState().selectedId === before) showCreated(d, fresh.id, 'select');
   });
   return stop;
 }
@@ -174,7 +186,7 @@ export async function startHomeCharacter(d: ActionDeps, p: { prompt: string; lab
     const c = await d.api.call('char.create', { islandId: HOME_ISLAND, cwd: home.cwd, ...(p.label ? { name: p.label } : {}), command: home.command, run: p.prompt });
     // a crew member the mirror already has was chosen for, or yielded, on arrival
     const s = d.store.getState();
-    if (s.selectedId === before && !s.fleet.characters[c.id]) s.select(c.id);
+    if (s.selectedId === before && !s.fleet.characters[c.id]) showCreated(d, c.id, 'select');
     // an agent that never reported in was booting slowly or is waiting on a question of its own; either
     // way the crew member is there and the prompt is still the user's to send, so it is not thrown away
     if (!unfound) {

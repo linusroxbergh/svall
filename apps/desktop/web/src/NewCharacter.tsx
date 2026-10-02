@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { newNamedCharacter } from './actions.js';
+import { newNamedCharacter, showCreated } from './actions.js';
 import { app, deps } from './boot.js';
 import { useApp } from './hooks.js';
 
@@ -29,7 +29,7 @@ export function NewCharacter() {
     try {
       const id = await newNamedCharacter(d, { name: name.trim(), note: note.trim(), refs });
       close();
-      d.store.getState().focus(id);
+      showCreated(d, id);
     } catch (e) {
       d.store.getState().showToast((e as Error).message);
       setBusy(false);

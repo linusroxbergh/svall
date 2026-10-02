@@ -1,4 +1,4 @@
-import { DEFAULT_SIZE, ground, spacedCells, type Cell } from '@svall/protocol';
+import { spacedCells } from '@svall/protocol';
 import { expect, test, type Svall } from './fixtures.js';
 import type { Page } from '@playwright/test';
 
@@ -215,7 +215,7 @@ test('a drop in the gap between two islands lands clear of both', async ({ page,
   await expect(page.getByTestId('toast')).toHaveCount(0);
 });
 
-test('a folded island gives up its ground, and takes it back on unfolding', async ({ page, svall }) => {
+test('a hidden island gives up its ground, and takes it back when the sidebar shows it', async ({ page, svall }) => {
   const left = await svall.api.call('island.create', { name: svall.uniq('fl'), seed: 1, position: { x: 0, y: 200 } });
   const right = await svall.api.call('island.create', { name: svall.uniq('fr'), seed: 1, position: { x: 11, y: 200 } });
   const at = async (id: string) => (await svall.api.call('state.get', {})).islands[id].position;
@@ -227,6 +227,7 @@ test('a folded island gives up its ground, and takes it back on unfolding', asyn
   const unfolded = await cellPx(page);
   await page.getByTestId(`island-toggle-${left.id}`).click();
   await expect(page.getByTestId(`island-${left.id}`)).toHaveCount(0);
+  await expect(page.getByTestId(`island-label-${left.id}`)).toHaveCount(0);
 
   // the fit waits out the click before it zooms into the narrower world
   await expect.poll(() => cellPx(page)).not.toBe(unfolded);
@@ -245,13 +246,16 @@ test('a folded island gives up its ground, and takes it back on unfolding', asyn
     return p.y === 200 && p.x < left.position.x + left.size.w;
   }).toBe(true);
 
-  // unfolding takes the ground back, and the island standing on it slides clear
-  await page.getByTestId(`island-toggle-${left.id}`).click();
+  // shown again, it takes ground back, and the island standing on it ends up clear
+  await page.getByTestId(`sb-island-toggle-${left.id}`).click();
   await expect(page.getByTestId(`island-${left.id}`)).toBeVisible();
-  // both are the default footprint, so clear of each other means a whole one apart on an axis
-  const apart = (a: Cell, b: Cell) => Math.abs(a.x - b.x) >= DEFAULT_SIZE.w || Math.abs(a.y - b.y) >= DEFAULT_SIZE.h;
-  await expect.poll(async () => apart(await at(left.id), await at(right.id))).toBe(true);
-  expect(await at(left.id)).toEqual({ x: 0, y: 200 });
+  const apart = async () => {
+    const { islands } = await svall.api.call('state.get', {});
+    const [a, b] = [islands[left.id], islands[right.id]];
+    return a.position.x + a.size.w <= b.position.x || b.position.x + b.size.w <= a.position.x ||
+      a.position.y + a.size.h <= b.position.y || b.position.y + b.size.h <= a.position.y;
+  };
+  await expect.poll(apart).toBe(true);
 });
 
 // the land of mission control and of an island, as drawn
@@ -390,41 +394,4 @@ test('the sidebar reorders islands by drag, and mission control stays last', asy
   await page.getByTestId(`sb-island-${b.id}`).dragTo(page.getByTestId(`sb-folder-${a.id}`), { targetPosition: { x: 20, y: 3 } });
   await expect.poll(pair).toEqual([b.id, a.id]);
   expect((await listed()).at(-1)).toBe('home');
-});
-
-test('a folded island lands as its pill, and two of them may stand side by side', async ({ page, svall }) => {
-  const size = { w: 6, h: 3 };
-  const at = { y: 400 };
-  const left = await svall.api.call('island.create', { name: svall.uniq('fa'), seed: 1, position: { x: 0, ...at }, size });
-  const right = await svall.api.call('island.create', { name: svall.uniq('fb'), seed: 1, position: { x: 14, ...at }, size });
-  for (const i of [left, right]) await svall.api.call('island.update', { id: i.id, collapsed: true });
-  // the x where the right island's pill butts against the left island's
-  const held = ground({ ...left, collapsed: true });
-  const abut = [...Array(14).keys()]
-    .find((x) => ground({ ...right, collapsed: true, position: { x, ...at } }).position.x >= held.position.x + held.size.w)!;
-
-  await svall.open('map');
-  await settle(page);
-  const box = (await page.getByTestId(`island-label-${right.id}`).boundingBox())!, cs = await cellPx(page);
-  const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-  await page.mouse.move(start.x, start.y);
-  await page.mouse.down();
-  await page.mouse.move(start.x - cs * (14 - abut), start.y, { steps: 6 });
-
-  // the landing is the ground the pill holds, not the island's: one cell tall, no wider than the pill
-  const landing = (await page.locator('.island-landing').boundingBox())!;
-  expect(landing.height).toBeCloseTo(cs, 0);
-  expect(landing.width).toBeLessThan(size.w * cs);
-  await page.mouse.up();
-
-  // the fleet took the drop, and the two pills stand a hair apart rather than a cell or more
-  await expect.poll(async () => (await svall.api.call('state.get', {})).islands[right.id].position.x).toBe(abut);
-  expect((await svall.api.call('state.get', {})).islands[left.id].position.x).toBe(0);
-  // a landed island eases nothing, or its last drag offset would slide it back over the water it crossed
-  await expect(page.locator('.island', { has: page.getByTestId(`island-label-${right.id}`) })).toHaveAttribute('data-settling', 'false');
-  // past scale 1 a pill takes only a share of the map's growth, so the hair between two widens with the zoom
-  await settle(page);
-  const [a, b] = await Promise.all([left, right].map(async (i) => (await page.getByTestId(`island-label-${i.id}`).boundingBox())!));
-  expect(b.x - (a.x + a.width)).toBeGreaterThan(0);
-  expect(b.x - (a.x + a.width)).toBeLessThan(await cellPx(page));
 });
