@@ -2,7 +2,21 @@ import { useEffect, useRef } from 'react';
 import { app } from './boot.js';
 import { holdCutout } from './cutout.js';
 import { useApp } from './hooks.js';
-import type { Corner } from './map/Map.js';
+import { theme } from './theme.js';
+
+const CORNERS = ['bottom-left', 'bottom-right', 'top-left', 'top-right'] as const;
+type Corner = (typeof CORNERS)[number];
+// the toast takes the first corner the open card leaves free
+export function toastCorner(card: { x: number; y: number; width: number; height: number } | undefined, host: { w: number; h: number }): Corner {
+  if (!card) return 'bottom-left';
+  const m = theme.card.margin;
+  const free = (c: Corner) => {
+    const x = c.endsWith('left') ? m : host.w - m;
+    const y = c.startsWith('top') ? m : host.h - m;
+    return x < card.x || x > card.x + card.width || y < card.y || y > card.y + card.height;
+  };
+  return CORNERS.find(free) ?? 'bottom-left';
+}
 
 // a toast can land on a terminal or a browser tab, which the shell draws above the page, so it takes a hole in them;
 // one with nothing to press leaves the presses in that hole to the surface
