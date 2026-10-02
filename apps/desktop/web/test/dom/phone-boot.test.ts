@@ -90,6 +90,18 @@ test('a socket still bringing terminal output is kept while its answer queues be
   expect(Socket.all).toHaveLength(1);
 });
 
+test('a page hidden again before the socket answers leaves the socket alone', async () => {
+  vi.useFakeTimers();
+  const socket = await boot();
+  socket.hello();
+  backInView();
+  const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+  document.dispatchEvent(new Event('visibilitychange'));
+  await vi.advanceTimersByTimeAsync(10_000);
+  hidden.mockRestore();
+  expect(Socket.all).toHaveLength(1);
+});
+
 test('a socket that closed on its own is left to the reconnect already on its way', async () => {
   vi.useFakeTimers();
   const socket = await boot();

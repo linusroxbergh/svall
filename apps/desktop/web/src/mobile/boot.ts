@@ -44,10 +44,12 @@ function createPhone(): PhoneContext {
 
   // a network change can leave the socket open here and dead at the Mac: back in view or online, one that hears
   // nothing soon is dropped for a fresh one. Terminal output counts, since the answer can queue behind it
+  let probing: ReturnType<typeof setTimeout> | undefined;
   const probe = () => {
+    clearTimeout(probing);
     if (document.hidden) return;
     const heard = api.heard;
-    setTimeout(() => { if (api.heard === heard) api.restart(); }, PROBE_MS);
+    probing = setTimeout(() => { if (api.heard === heard) api.restart(); }, PROBE_MS);
     void api.call('push.key', {}).catch(() => {});
   };
   addEventListener('online', probe);

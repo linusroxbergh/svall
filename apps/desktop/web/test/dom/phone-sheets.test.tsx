@@ -78,6 +78,17 @@ test('a sheet opened while svalld is away reads again once it is back', async ()
   expect(screen.getByRole('button', { name: 'Notify this phone' })).toBeTruthy();
 });
 
+test('a read still on its way when the phone is turned off does not turn it back on', async () => {
+  let answer!: (s: PushState) => void;
+  push.disablePush.mockResolvedValue({ kind: 'off', publicKey: 'K' });
+  await settings({ kind: 'on', endpoint: 'e', statuses: ['blocked'] });
+  push.readPush.mockReturnValueOnce(new Promise((r) => { answer = r; }));
+  await act(async () => { store.getState().setStatus('online'); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Stop notifying this phone' })); });
+  await act(async () => { answer({ kind: 'on', endpoint: 'e', statuses: ['blocked'] }); });
+  expect(screen.getByRole('button', { name: 'Notify this phone' })).toBeTruthy();
+});
+
 test('a refusal to notify is told in the sheet', async () => {
   push.enablePush.mockRejectedValue(new Error('permission refused'));
   await settings({ kind: 'off', publicKey: 'K' });

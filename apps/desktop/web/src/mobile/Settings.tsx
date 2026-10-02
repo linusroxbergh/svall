@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
 import type { PushStatus } from '@svall/protocol';
 import { useApp } from '../hooks.js';
 import { phone } from './boot.js';
@@ -11,7 +11,13 @@ export function Settings({ onClose }: { onClose(): void }): JSX.Element {
   const [push, setPush] = useState<PushState>();
   const [error, setError] = useState<string>();
   const online = useApp((s) => s.status === 'online');
-  const apply = (p: Promise<PushState>) => { setError(undefined); p.then(setPush, (e: Error) => setError(e.message)); };
+  const latest = useRef(0);
+  // a slower answer to an earlier read or tap must not undo a later one
+  const apply = (p: Promise<PushState>) => {
+    const n = ++latest.current;
+    setError(undefined);
+    p.then((s) => { if (n === latest.current) setPush(s); }, (e: Error) => { if (n === latest.current) setError(e.message); });
+  };
 
   // reading the phone's push state asks svalld, so a sheet opened while it is away reads again once it is back
   useEffect(() => { apply(readPush(phone.api())); }, [online]);
