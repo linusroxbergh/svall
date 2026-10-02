@@ -59,6 +59,8 @@ test('a socket that does not answer once the page is back in view is dropped for
   vi.useFakeTimers();
   const socket = await boot();
   socket.hello();
+  // a socket lost to a network change never reports its own close
+  socket.close = () => {};
   backInView();
   expect(socket.sent.at(-1)?.method).toBe('push.key');
   await vi.advanceTimersByTimeAsync(4999);

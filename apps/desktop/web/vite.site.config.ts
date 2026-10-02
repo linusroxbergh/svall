@@ -3,7 +3,7 @@ import path from 'node:path';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
 
-// the page's fonts and art are the app's own, copied beside it on every build rather than kept twice in git
+// the page's fonts and art are the app's own, copied beside it on every build
 const ASSETS: Record<string, string> = {
   fonts: 'public/fonts',
   animals: 'public/animals',

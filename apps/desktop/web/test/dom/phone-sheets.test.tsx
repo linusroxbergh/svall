@@ -69,6 +69,15 @@ test('a phone that cannot be notified from here is told what would do it', async
   expect(screen.queryByRole('button', { name: 'Notify this phone' })).toBeNull();
 });
 
+test('a sheet opened while svalld is away reads again once it is back', async () => {
+  push.readPush.mockRejectedValueOnce(new Error('svalld offline'));
+  await settings({ kind: 'off', publicKey: 'K' });
+  expect(screen.getByText('svalld offline')).toBeTruthy();
+  await act(async () => { store.getState().setStatus('online'); });
+  expect(screen.queryByText('svalld offline')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Notify this phone' })).toBeTruthy();
+});
+
 test('a refusal to notify is told in the sheet', async () => {
   push.enablePush.mockRejectedValue(new Error('permission refused'));
   await settings({ kind: 'off', publicKey: 'K' });

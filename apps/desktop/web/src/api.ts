@@ -49,7 +49,7 @@ export class Api {
   restart(): void {
     const ws = this.ws;
     const closed = ws?.onclose;
-    if (!ws || !closed) return;
+    if (!ws || !closed || !this.online) return;
     ws.onclose = null;
     ws.close();
     closed.call(ws, new Event('close') as CloseEvent);
