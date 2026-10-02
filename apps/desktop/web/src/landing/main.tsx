@@ -13,16 +13,17 @@ import '../map/map.css';
 type Status = 'working' | 'idle' | 'blocked' | 'done';
 type Member = { name: string; portrait: Portrait; status: Status; ctx: number; links: ContextItem[]; since: number };
 
-const pr = (repo: string, n: number): ContextItem => ({ kind: 'pr', ref: `https://github.com/acme/${repo}/pull/${n}`, label: '', source: 'auto' });
+const pr = (repo: string, n: number): ContextItem => ({ kind: 'pr', ref: `https://github.com/linusroxbergh/${repo}/pull/${n}`, label: '', source: 'auto' });
+const issue = (repo: string, n: number): ContextItem => ({ kind: 'issue', ref: `https://github.com/linusroxbergh/${repo}/issues/${n}`, label: '', source: 'auto' });
 const linear = (n: number): ContextItem => ({ kind: 'linear', ref: `https://linear.app/acme/issue/SHOP-${n}`, label: `SHOP-${n}`, source: 'scribe' });
 
 const CAST: Member[] = [
-  { name: 'checkout redesign', portrait: 'fox', status: 'working', ctx: 46, links: [pr('storefront', 88)], since: 0 },
-  { name: 'fix cart total', portrait: 'deer', status: 'working', ctx: 58, links: [pr('storefront', 91), linear(150)], since: 0 },
+  { name: 'checkout redesign', portrait: 'fox', status: 'working', ctx: 46, links: [issue('storefront', 6)], since: 0 },
+  { name: 'fix cart total', portrait: 'deer', status: 'working', ctx: 58, links: [issue('storefront', 5), linear(150)], since: 0 },
   { name: 'a11y audit', portrait: 'owl', status: 'done', ctx: 71, links: [linear(133)], since: 0 },
   { name: 'flaky e2e', portrait: 'frog', status: 'idle', ctx: 12, links: [], since: 0 },
-  { name: 'refund webhooks', portrait: 'elephant', status: 'working', ctx: 33, links: [pr('payments-api', 57)], since: 0 },
-  { name: 'review #214', portrait: 'lemur', status: 'working', ctx: 62, links: [pr('payments-api', 214)], since: 0 },
+  { name: 'refund webhooks', portrait: 'elephant', status: 'working', ctx: 33, links: [pr('payments-api', 1)], since: 0 },
+  { name: 'review #1', portrait: 'lemur', status: 'working', ctx: 62, links: [pr('payments-api', 1)], since: 0 },
   { name: 'changelog', portrait: 'penguin', status: 'working', ctx: 27, links: [], since: 0 },
 ];
 
