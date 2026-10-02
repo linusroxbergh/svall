@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { contextKind, stepPortrait, type Character, type ContextItem, type Params, type Portrait } from '@svall/protocol';
 import { AgentProfilePick } from './AgentProfilePick.js';
 import { app, deps } from './boot.js';
-import { deleteCharacter, newCharacterOn, saveCharacter, saveCharacterContext, saveIsland, saveIslandContext } from './actions.js';
+import { newCharacterOn, saveCharacter, saveCharacterContext, saveIsland, saveIslandContext } from './actions.js';
 import { copyText, openFolder } from './bridge.js';
 import { followLink } from './LinkAsk.js';
 import { FollowLine, FollowTextarea } from './Field.js';
@@ -179,7 +179,7 @@ export function SideCard({ id }: { id: string }) {
       <div className="acts">
         {!onBoard && <button className="btn pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>}
         <button className="btn dan" data-testid="side-close" title="Deletes the character and kills its terminal"
-          onClick={() => deleteCharacter(deps(), id)}>Delete character</button>
+          onClick={() => app.store.getState().setClosingCharacter(id)}>Delete character</button>
       </div>
     </aside>
   );

@@ -95,6 +95,7 @@ test('edits a character from the side card', async ({ page, svall }) => {
   await expect(card).toBeVisible();
 
   await card.getByTestId('side-close').click();
+  await page.getByTestId('confirm-close-delete').click();
   await expect(page.getByTestId(`sb-char-${c.id}`)).toHaveCount(0);
   await expect(card).toBeHidden();
 });

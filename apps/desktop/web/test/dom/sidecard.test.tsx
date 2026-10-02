@@ -30,6 +30,7 @@ vi.mock('../../src/resources/Shelf.js', () => ({ ResourcesLayer: () => null }));
 const { Map } = await import('../../src/map/Map.js');
 const { IslandCard, SideCard } = await import('../../src/SideCard.js');
 const { ConfirmDeleteIsland } = await import('../../src/ConfirmDeleteIsland.js');
+const { ConfirmClose } = await import('../../src/ConfirmClose.js');
 const { dispatchKey } = await import('../../src/keyboard.js');
 const { FleetSummary } = await import('../../src/FleetSummary.js');
 const { followQuit } = await import('../../src/quit.js');
@@ -281,6 +282,18 @@ test('the fleet summary counts one character on one island in the singular', () 
   store.getState().setFleet({ ...fleet(), islands: { i_a: isl('i_a', 'alpha', 0) }, characters: { c2: chr('c2', 'i_a', { x: 1, y: 1 }) } });
   render(<FleetSummary />);
   expect(screen.getByRole('heading').textContent).toMatch(/^1 character\s*on 1 island$/);
+});
+
+test('Delete character asks first, naming the unsaved files, and moves the selection on before the character goes', async () => {
+  store.getState().markFile('c0', '/tmp/a.ts', { dirty: true });
+  render(<><Side /><ConfirmClose /></>);
+  fireEvent.click(screen.getByTestId('side-close'));
+  expect(screen.getByTestId('confirm-close-note').textContent).toContain('1 unsaved file goes with it');
+  expect(calls.filter(([m]) => m === 'char.close')).toEqual([]);
+  fireEvent.click(screen.getByTestId('confirm-close-delete'));
+  await act(async () => {});
+  expect(calls.filter(([m]) => m === 'char.close')).toEqual([['char.close', { id: 'c0' }]]);
+  expect(store.getState().selectedId).toBe('c1');
 });
 
 const deletes = () => calls.filter(([m]) => m === 'island.delete');

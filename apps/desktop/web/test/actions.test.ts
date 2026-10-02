@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CWD, emptyState } from '@svall/protocol';
-import { deleteCharacter, deleteIsland, moveCharacterTo, newCharacterOn, newCharacterTarget, newIsland, newIslandAround, newNamedCharacter, openSecondTerminal, reviveCharacter, saveCharacter, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeCharacter } from '../src/actions.js';
+import { deleteIsland, moveCharacterTo, newCharacterOn, newCharacterTarget, newIsland, newIslandAround, newNamedCharacter, openSecondTerminal, reviveCharacter, saveCharacter, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeCharacter } from '../src/actions.js';
 import { ApiError, type Api } from '../src/api.js';
 import { createAppStore } from '../src/store/index.js';
 import { chr, fleet, isl } from './fixtures.js';
@@ -162,7 +162,7 @@ describe('a write the fleet refuses', () => {
   it('is reported on a toast when it saves, revives or deletes', async () => {
     type D = ReturnType<typeof refusing>;
     for (const act of [(d: D) => saveCharacter(d, 'c0', { name: 'x' }), (d: D) => saveIsland(d, 'i_a', { name: 'x' }),
-      (d: D) => reviveCharacter(d, 'c0'), (d: D) => deleteCharacter(d, 'c0'), (d: D) => deleteIsland(d, 'i_e')]) {
+      (d: D) => reviveCharacter(d, 'c0'), (d: D) => deleteIsland(d, 'i_e')]) {
       const d = refusing();
       act(d);
       await new Promise((r) => setTimeout(r, 0));
