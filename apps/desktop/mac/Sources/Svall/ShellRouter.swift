@@ -30,6 +30,8 @@ final class ShellRouter {
     private var confirming = false
     // once the fleet is being stopped for a quit, a page that loses the daemon must not start it again
     private var stopping = false
+    // the fleet is being ended from here, and the quit finishes when it is
+    private var killing = false
 
     init(runtime: GhosttyRuntime, bridge: Bridge, container: NSView, webView: DropWebView, quitItem: NSMenuItem) {
         self.runtime = runtime
@@ -134,9 +136,9 @@ final class ShellRouter {
         // a page that is not up has nothing to save and no daemon to ask
         guard listening else {
             guard !confirm || confirmQuit(unsaved: [], working: 0) else { return .terminateCancel }
-            stopping = true
-            FleetDaemon.kill()
-            return .terminateNow
+            quitAnswer = answer
+            fleetStopped(ok: false)
+            return .terminateLater
         }
         // a page that is up names its unsaved files first, so the one question can name them too
         userQuit = confirm
@@ -183,10 +185,13 @@ final class ShellRouter {
     }
 
     private func fleetStopped(ok: Bool) {
-        guard quitAnswer != nil else { return }
+        guard quitAnswer != nil, !killing else { return }
         stopping = true
-        if !ok { FleetDaemon.kill() }
-        finishQuit(true)
+        if ok { return finishQuit(true) }
+        // the kill can take a couple of seconds, which the window should not sit through
+        killing = true
+        webView.window?.orderOut(nil)
+        FleetDaemon.kill { [weak self] in self?.finishQuit(true) }
     }
 
     private func confirmQuit(unsaved: [String], working: Int) -> Bool {

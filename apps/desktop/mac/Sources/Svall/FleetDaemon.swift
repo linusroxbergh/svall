@@ -30,16 +30,20 @@ enum FleetDaemon {
         }
     }
 
-    /// Ends the fleet when the daemon could not be asked to: the daemon first, so the hooks of the terminals closing after
-    /// it find nobody to clear the agents its next start resumes, then the tmux server with every terminal in it.
-    static func kill() {
-        if let label, plist != nil {
-            run("/bin/launchctl", ["kill", "SIGTERM", "gui/\(getuid())/\(label)"])
-            let port = SvallHome.path + "/port"
-            var waited = 0
-            while FileManager.default.fileExists(atPath: port), waited < 20 { usleep(100_000); waited += 1 }
+    /// Ends the fleet when the daemon could not be asked to, off the main thread, then calls `done` back on it: the daemon
+    /// first, so the hooks of the terminals closing after it find nobody to clear the agents its next start resumes, then the
+    /// tmux server with every terminal in it.
+    static func kill(then done: @escaping () -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            if let label, plist != nil {
+                run("/bin/launchctl", ["kill", "SIGTERM", "gui/\(getuid())/\(label)"])
+                let port = SvallHome.path + "/port"
+                var waited = 0
+                while FileManager.default.fileExists(atPath: port), waited < 20 { usleep(100_000); waited += 1 }
+            }
+            run(tmux, ["-S", SvallHome.path + "/tmux.sock", "kill-server"])
+            DispatchQueue.main.async(execute: done)
         }
-        run(tmux, ["-S", SvallHome.path + "/tmux.sock", "kill-server"])
     }
 
     @discardableResult

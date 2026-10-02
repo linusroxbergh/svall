@@ -79,18 +79,25 @@ enum SvallHome {
 
     private static var pidFile: String { path + "/app.pid" }
     private static var pid: Int32 { ProcessInfo.processInfo.processIdentifier }
+    // app.pid, locked for as long as this process runs; the kernel lets go of it however the process ends
+    private static var held: Int32 = -1
 
     // false when another instance of this app already owns the home; that one is brought to the front.
-    // the home travels with the pid so a recycled pid belonging to another fleet is taken over, not obeyed
+    // the file names the home beside the pid for the daemon and other fleets, which read it unlocked
     static func claim() -> Bool {
-        let parts = (read("app.pid") ?? "").split(separator: "\t", maxSplits: 1)
-        if let other = parts.first.flatMap({ Int32($0) }), other != pid, parts.count == 2, String(parts[1]) == path,
-           let app = NSRunningApplication(processIdentifier: other), app.bundleIdentifier == Bundle.main.bundleIdentifier {
-            app.activate()
+        if held >= 0 { return true }
+        let fd = open(pidFile, O_RDWR | O_CREAT | O_CLOEXEC, 0o644)
+        guard fd >= 0 else { NSLog("svall: could not claim %@: %@", pidFile, String(cString: strerror(errno))); return true }
+        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
+            close(fd)
+            if let other = appPid(of: path), let app = NSRunningApplication(processIdentifier: other),
+               app.bundleIdentifier == Bundle.main.bundleIdentifier { app.activate() }
             return false
         }
-        do { try "\(pid)\t\(path)".write(toFile: pidFile, atomically: true, encoding: .utf8) }
-        catch { NSLog("svall: could not claim %@: %@", pidFile, "\(error)") }
+        held = fd
+        // written in place: a new file would carry no lock
+        let line = Array("\(pid)\t\(path)".utf8)
+        if ftruncate(fd, 0) != 0 || pwrite(fd, line, line.count, 0) != line.count { NSLog("svall: could not write %@: %@", pidFile, String(cString: strerror(errno))) }
         return true
     }
 

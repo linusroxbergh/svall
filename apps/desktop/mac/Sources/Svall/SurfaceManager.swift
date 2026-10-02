@@ -52,8 +52,8 @@ final class SurfaceManager {
         }
         guard let attach else { return }
         let binary = tmux
-        // libghostty runs the command through a shell, so each field is single-quoted
-        let command = "\(sh(binary)) -S \(sh(attach.socket)) attach -t \(sh(attach.session))"
+        // libghostty runs the command through a shell, so each field is single-quoted; `=` matches the session's whole name
+        let command = "\(sh(binary)) -S \(sh(attach.socket)) attach -t \(sh("=" + attach.session))"
         guard let view = SurfaceView(app: runtime.app, command: command, frame: overlay.frame(rect)) else {
             NSLog("ghostty_surface_new failed for %@", id)
             onFailed(id, "Ghostty could not open a terminal; see the app log")
