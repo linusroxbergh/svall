@@ -228,7 +228,7 @@ describe('doctor', () => {
 
   it('fails a config.json that does not parse, saying where and what is wrong on one line', async () => {
     expect(byName(await doctor(priv, fake().deps)).config).toMatchObject({ status: 'ok' });
-    for (const [text, why] of [['{}{}', /after JSON/], ['{ "port": "x", "mobile": { "httpsPort": 1 } }', /port: .*expected number.*; mobile\.httpsPort: /]] as const) {
+    for (const [text, why] of [['{}{}', /after JSON/], ['{ "port": "x", "mobile": { "httpsPort": 0 } }', /port: .*expected number.*; mobile\.httpsPort: /]] as const) {
       const c = byName(await doctor(priv, fake({ files: { '/u/.svall/config.json': text } }).deps)).config;
       expect(c).toMatchObject({ status: 'fail', detail: expect.stringMatching(/^invalid config \/u\/\.svall\/config\.json: .*; a stopped svalld waits for it to be fixed$/) });
       expect(c.detail).toMatch(why);

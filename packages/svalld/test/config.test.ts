@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Config, fleetMainAgent, loadConfig, saveConfig } from '../src/config.js';
+import { Config, fleetMainAgent, keptPorts, loadConfig, saveConfig } from '../src/config.js';
 import { newId } from '../src/ids.js';
 import { resolvePaths, userPaths } from '../src/paths.js';
 import { cleanHomes, makeHome } from './helpers.js';
@@ -40,7 +40,8 @@ describe('config and paths', () => {
     expect(() => Config.parse({ mobile: { pushContact: 'me@example.com' } })).toThrow('mailto');
     expect(Config.parse({}).mobile.httpsPort).toBeUndefined();
     expect(Config.parse({ mobile: { httpsPort: 10000 } }).mobile.httpsPort).toBe(10000);
-    expect(() => Config.parse({ mobile: { httpsPort: 8080 } })).toThrow();
+    expect(Config.parse({ mobile: { httpsPort: 8444 } }).mobile.httpsPort).toBe(8444);
+    expect(() => Config.parse({ mobile: { httpsPort: 0 } })).toThrow();
     expect(loadConfig('/nonexistent/config.json').home).toEqual({
       cwd: '~/.svall/home',
       actions: [
@@ -89,6 +90,12 @@ describe('saveConfig', () => {
     expect(JSON.parse(fs.readFileSync(real, 'utf8')).mainAgent).toBe('codex');
     expect(fs.statSync(real).mode & 0o777).toBe(0o600);
   });
+  it('saves the phone port beside the mobile keys already there', () => {
+    const f = file();
+    fs.writeFileSync(f, JSON.stringify({ mobile: { logins: ['me@example.com'] } }));
+    saveConfig(f, { mobile: { httpsPort: 8444 } });
+    expect(JSON.parse(fs.readFileSync(f, 'utf8')).mobile).toEqual({ logins: ['me@example.com'], httpsPort: 8444 });
+  });
   it('leaves the scribe agent unset unless it is named', () => {
     expect(loadConfig(file()).scribe.agent).toBeUndefined();
   });
@@ -98,6 +105,15 @@ describe('saveConfig', () => {
     expect(loadConfig(f).name).toBe('home');
     fs.writeFileSync(f, JSON.stringify({ name: 'Home Base' }));
     expect(() => loadConfig(f)).toThrow(/name: /);
+  });
+});
+
+describe('keptPorts', () => {
+  it('lists the phone ports the fleets keep, past a fleet that keeps none or whose config does not parse', () => {
+    const [kept, none, broken] = [makeHome(), makeHome(), makeHome()];
+    fs.writeFileSync(path.join(kept, 'config.json'), JSON.stringify({ mobile: { httpsPort: 8444 } }));
+    fs.writeFileSync(path.join(broken, 'config.json'), '{');
+    expect(keptPorts([kept, none, broken, '/nonexistent'])).toEqual([8444]);
   });
 });
 

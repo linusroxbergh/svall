@@ -89,7 +89,23 @@ export const unserve = async (d: MobileDeps, bin: string, port: number): Promise
   }
 };
 
-type ServeStatus = { Web?: Record<string, { Handlers?: Record<string, { Proxy?: string }> }> };
+type ServeConfig = { TCP?: Record<string, unknown>; Web?: Record<string, { Handlers?: Record<string, { Proxy?: string }> }> };
+type ServeStatus = ServeConfig & { Foreground?: Record<string, ServeConfig> };
+
+/** Every port a serve on this Mac holds, in the background or in a foreground session. */
+function heldPorts(json: string): Set<number> {
+  const status = JSON.parse(json) as ServeStatus;
+  const of = (c: ServeConfig) => [...Object.keys(c.TCP ?? {}).map(Number), ...Object.keys(c.Web ?? {}).map((at) => Number(at.slice(at.lastIndexOf(':') + 1)))];
+  return new Set([...of(status), ...Object.values(status.Foreground ?? {}).flatMap(of)]);
+}
+
+/** The first port from 8443 up that nothing on this Mac serves and no other fleet keeps. */
+export function freePort(json: string, kept: number[]): number {
+  const used = new Set([...heldPorts(json), ...kept]);
+  let port = 8443;
+  while (used.has(port)) port++;
+  return port;
+}
 
 /** The https ports that proxy to a daemon behind `key`, on whatever port it listened, or to the daemon at `origin`
  *  under a key a failed on or off already turned over. */
@@ -117,8 +133,10 @@ export function servesKey(json: string, host: string, port: number, key: string)
 /** Whether the port serves anything but this fleet: another fleet's link, the other Svall build's, or the user's own.
  *  Its mapping carries its key across a daemon restart, and its daemon's address across a change that failed after the key turned over. */
 export function servesOther(json: string, host: string, port: number, key: string | undefined, origin?: string): boolean {
-  const handlers = (JSON.parse(json) as ServeStatus).Web?.[`${host}:${port}`]?.Handlers ?? {};
-  return Object.values(handlers).some((h) => !(key && h.Proxy?.endsWith(`/${key}`)) && !(origin && h.Proxy?.startsWith(origin)));
+  const site = (JSON.parse(json) as ServeStatus).Web?.[`${host}:${port}`];
+  // a port with no web mapping here may still carry a tcp forward or a foreground serve
+  if (!site) return heldPorts(json).has(port);
+  return Object.values(site.Handlers ?? {}).some((h) => !(key && h.Proxy?.endsWith(`/${key}`)) && !(origin && h.Proxy?.startsWith(origin)));
 }
 
 const exec = promisify(execFile);
@@ -154,8 +172,13 @@ export function watchServed(mobile: Pick<Mobile, 'get'>, wanted: () => boolean, 
  * The phone link as a panel can drive it: every environment failure comes back as `error` rather than
  * a rejection, because the panel that shows the switch is also where the reason belongs.
  */
-export function mobileControl(d: MobileDeps, opts: { home: string; profile: string; logins: string[]; phones: Phones; httpsPort?: number; rotateKey: () => void }): Mobile & Served & { logins: () => string[] } {
-  const port = servePort(opts.profile, opts.httpsPort);
+export function mobileControl(d: MobileDeps, opts: {
+  home: string; profile: string; logins: string[]; phones: Phones; httpsPort?: number; rotateKey: () => void;
+  // the ports other fleets keep, and where this fleet keeps the one it serves on, saying whether that worked
+  kept: () => number[]; savePort: (port: number) => boolean;
+}): Mobile & Served & { logins: () => string[] } {
+  let saved = opts.httpsPort;
+  let port = servePort(opts.profile, saved);
   const { mobileKey } = resolvePaths(opts.home);
 
   // who a phone socket and a push are let through for: the configured logins, else the Mac's own once tailscale named it
@@ -179,27 +202,39 @@ export function mobileControl(d: MobileDeps, opts: { home: string; profile: stri
     const { host } = self;
     owner = self.owner;
     if (enable === true && logins().length === 0) throw new Error(`tailscale reports no login for this Mac: set mobile.logins in config.json, then restart the daemon with launchctl kickstart -k gui/$(id -u)/${profileLabel(opts.profile)}`);
-    // tailscale serve holds one mapping per port for the whole Mac, so a port another holds stays theirs
-    const other = enable !== undefined && servesOther(await d.run(bin, ['serve', 'status', '--json']), host, port, key, fleetOrigin(d, opts.home));
-    if (enable === true && other) throw new Error(`https port ${port} already serves another fleet or site: set mobile.httpsPort (443, 8443 or 10000) in this fleet's config.json and restart it, or turn that one off with tailscale serve --https=${port} off`);
+    // tailscale serve holds one mapping per port for the whole Mac, so a port another holds stays theirs. A named fleet that
+    // keeps no port yet takes a free one; a kept port, or the private fleet's, is the address a phone app already has
+    const before = enable === undefined ? undefined : await d.run(bin, ['serve', 'status', '--json']);
+    const other = !!before && servesOther(before, host, port, key, fleetOrigin(d, opts.home));
+    const picks = enable === true && saved === undefined && opts.profile !== PRIVATE;
+    const kept = picks ? opts.kept() : [];
+    // the port this attempt serves on, which becomes the fleet's only once it is served
+    let at = port;
+    if (picks && before && (other || kept.includes(port))) at = freePort(before, kept);
+    else if (enable === true && other) throw new Error(`https port ${port} already serves another fleet or site: turn that one off with tailscale serve --https=${port} off, or set mobile.httpsPort to a free port in this fleet's config.json and restart it`);
     // an on turns the key over only once tailscale and the page are ready, so one that fails leaves a working link alone
     if (enable === true) {
       if (!d.exists(MOBILE_DIST)) await buildBundle(d);
       opts.rotateKey();
     }
     const target = fleetTarget(d, opts.home);
-    if (enable === true) await serve(d, bin, target, port);
-    if (enable === false && !other) await unserve(d, bin, port);
+    if (enable === true) await serve(d, bin, target, at);
+    if (enable === false && !other) await unserve(d, bin, at);
     let json = await d.run(bin, ['serve', 'status', '--json']);
     // the daemon starts with the app, on a new port unless the fleet names one: its link, known by its key, follows it there
-    if (enable === undefined && key && !servesTarget(json, host, port, target) && servesKey(json, host, port, key)) {
-      await serve(d, bin, target, port);
+    if (enable === undefined && key && !servesTarget(json, host, at, target) && servesKey(json, host, at, key)) {
+      await serve(d, bin, target, at);
       json = await d.run(bin, ['serve', 'status', '--json']);
     }
-    const serving = servesTarget(json, host, port, target);
-    const url = phoneUrl(host, port);
+    const serving = servesTarget(json, host, at, target);
+    if (serving) {
+      port = at;
+      // the port is part of the phone app's address, so the one served on is kept for the next start
+      if (at !== saved && opts.savePort(at)) saved = at;
+    }
+    const url = phoneUrl(host, at);
     const status: MobileStatus = {
-      serving, url, port, logins: logins(), phones: opts.phones.list(),
+      serving, url, port: at, logins: logins(), phones: opts.phones.list(),
       qr: await QRCode.toDataURL(url, { margin: 1, width: 320 }),
     };
     // the mapping outlives the checkout it was made from: a page cleaned away leaves the switch on over nothing
