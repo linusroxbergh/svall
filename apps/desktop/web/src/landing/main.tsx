@@ -1,10 +1,12 @@
 import type { Cell, Character, ContextItem, Island as IslandModel, Portrait } from '@svall/protocol';
 import { useEffect, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { crewGrid } from '../../../../../packages/svalld/src/layout.js';
 import { Island } from '../map/Island.js';
 import { cardScale, labelScale } from '../map/layout.js';
 import { Token } from '../map/Token.js';
+import { theme } from '../theme.js';
 import '../tokens.css';
 import '../map/map.css';
 
@@ -58,6 +60,8 @@ const character = (m: Member, islandId: string): Character => ({
 });
 
 const stage = document.querySelector<HTMLElement>('.stage')!;
+const hero = document.querySelector<HTMLElement>('.stage .hero')!;
+const features = document.querySelector<HTMLElement>('.features')!;
 const map = document.querySelector<HTMLElement>('.map')!;
 const world = document.querySelector<HTMLElement>('.world')!;
 
@@ -122,21 +126,46 @@ function DemoMap({ at }: { at: Cell[] }) {
   );
 }
 
+// the islands' left edge and width in world px
+const x0 = Math.min(...LAYOUTS.wide.at.map((c) => c.x)) * theme.cell;
+const spanW = Math.max(...LAYOUTS.wide.at.map((c, i) => c.x + GRIDS[i].size.w)) * theme.cell - x0;
+
 const root = createRoot(world);
-const wideMQ = matchMedia('(min-width: 1280px)');
+const wideMQ = matchMedia('(min-width: 960px)');
 function place() {
   const wide = wideMQ.matches, L = wide ? LAYOUTS.wide : LAYOUTS.narrow;
   stage.classList.toggle('narrow', !wide);
   const pad = parseFloat(getComputedStyle(stage).paddingLeft);
-  // wide, the world may run into the right gutter; narrow, it spans the screen with a little sea either side
-  const k = Math.min(L.k, (stage.clientWidth - (wide ? pad : 28)) / L.w);
-  Object.assign(world.style, { width: `${L.w}px`, height: `${L.h}px`, transform: `scale(${k})`, left: wide ? '' : `calc(50% - ${(L.w * k) / 2}px)` });
+  let k: number, left: string;
+  if (wide) {
+    // the islands fit right of the text and centre in that room, with the right gutter as sea
+    const from = hero.offsetLeft + hero.offsetWidth + 48;
+    k = Math.min(L.k, (stage.clientWidth - pad - from) / spanW);
+    left = `${from + (stage.clientWidth - from - spanW * k) / 2 - x0 * k}px`;
+  } else {
+    // the same map under the text, across the screen with a little sea either side
+    k = Math.min(L.k, (stage.clientWidth - 28) / L.w);
+    left = `calc(50% - ${(L.w * k) / 2}px)`;
+  }
+  Object.assign(world.style, { width: `${L.w}px`, height: `${L.h}px`, transform: `scale(${k})`, left });
   // cards scale as they do in the app at this zoom; island names stay legible however far the map zooms out
   world.style.setProperty('--k', String(cardScale(k) / k));
   world.style.setProperty('--lk', String(Math.max(labelScale(k), 0.7) / k));
   map.style.height = wide ? '' : `${L.h * k}px`;
-  stage.style.minHeight = wide ? `${L.h * k}px` : '';
-  root.render(<DemoMap at={L.at} />);
+  flushSync(() => root.render(<DemoMap at={L.at} />));
+  world.style.top = '';
+  stage.style.minHeight = '';
+  if (!wide) return;
+  // the islands, name pills included, share a vertical centre with the text from the title to the last bullet
+  const box = (els: Iterable<Element>) => {
+    const rs = [...els].map((e) => e.getBoundingClientRect());
+    return { top: Math.min(...rs.map((r) => r.top)), bottom: Math.max(...rs.map((r) => r.bottom)) };
+  };
+  const text = box([hero.querySelector('h1')!, features]), isles = box(world.querySelectorAll('.ilabel, .land'));
+  const shift = (text.top + text.bottom - isles.top - isles.bottom) / 2;
+  world.style.top = `${shift}px`;
+  stage.style.minHeight = `${isles.bottom + shift - stage.getBoundingClientRect().top}px`;
 }
 place();
 addEventListener('resize', place);
+document.fonts.ready.then(place);
