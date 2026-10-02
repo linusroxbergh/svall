@@ -80,8 +80,7 @@ export class Fleet extends EventEmitter<Events> {
   private sweeping = false;
   private pendingLinks = new Set<string>();
   private openingSecond = new Map<string, Promise<Character>>();
-  // the question each character's answer is being typed for, kept when the fleet could not be written after it,
-  // so a second answer to it is refused rather than typed too
+  // the question each character's answer is being typed for, so a second answer to it is refused rather than typed too
   private answering = new Map<string, string | undefined>();
   // tmux stops reading a pane's pty once every client has it off, which freezes the pane;
   // output is filtered here instead.
@@ -836,14 +835,8 @@ export class Fleet extends EventEmitter<Events> {
     // an answer to a newer question may have been typed meanwhile; its hold stays
     const release = () => { if (this.answering.get(id) === asked) this.answering.delete(id); };
     try { await this.deps.tmux.sendBytes(c.tmux.paneId, Buffer.from(answer === 'approve' ? '\r' : '\x1b')); }
-    catch (e) { release(); throw e; }
-    try {
-      this.settleAnswer(id, asked, answer);
-      release();
-    } catch (e) {
-      // the key is in, so the answer stands
-      this.deps.log.error(`answer for ${id} was typed, but not written down: ${String(e)}`);
-    }
+    finally { release(); }
+    this.settleAnswer(id, asked, answer);
   }
 
   // Enter typed into the terminal takes the question's highlighted option and Esc or ^C turns it down, as the

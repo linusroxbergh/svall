@@ -983,22 +983,6 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id].agent).toMatchObject({ status: 'working', background: true });
   });
 
-  it('stands by a typed answer the fleet could not write down, and does not type it again', async () => {
-    const { fleet, store, tmux } = await boot();
-    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
-    const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', sessionId: 'sess', ...h } });
-    hook({ name: 'SessionStart', transcriptPath: '/nope' });
-    hook({ notificationType: 'permission_prompt' });
-    // the write right after the key is the one that fails; the poll's and the links' go through
-    let typed = false;
-    const sent = vi.spyOn(tmux, 'sendBytes').mockImplementation(async () => { typed = true; });
-    const update = store.update.bind(store);
-    vi.spyOn(store, 'update').mockImplementation((m) => { if (!typed) return update(m); typed = false; throw new Error('disk full'); });
-    await fleet.answerPrompt(c.id, 'approve');
-    await expect(fleet.answerPrompt(c.id, 'approve')).rejects.toThrow('already in');
-    expect(sent).toHaveBeenCalledTimes(1);
-  });
-
   it('recovers from a tmux server death', async () => {
     const { fleet, store, tmux } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
