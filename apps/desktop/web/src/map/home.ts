@@ -70,7 +70,7 @@ let last: { key: string; fitted: Fitted } | undefined;
 // the map fitted round the fleet with mission control's size solved alongside, and `most`, the cap home is drawn at. The
 // last answer is kept, so a pan or a patch that moves nothing the fit reads costs nothing
 export function fitWithHome(islands: Island[], crew: Crew, host: Size, home: Island | undefined, row: Size): Fitted {
-  const key = JSON.stringify([islands.map((i) => [i.id, i.name, i.position, i.size, i.collapsed]), crew, host, home && [home.size.w, home.collapsed, home.position.y], row]);
+  const key = JSON.stringify([islands.map((i) => [i.id, i.name, i.position, i.size]), crew, host, home && [home.size.w, home.collapsed, home.position.y], row]);
   if (last?.key === key) return last.fitted;
   const collapsed = Boolean(home?.collapsed);
   const at = (most: number) => {

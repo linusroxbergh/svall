@@ -387,6 +387,15 @@ export function Map() {
     arrange(arrangeAsk === 'auto');
   }, [arrangeAsk]);
 
+  // a hidden island comes back to the stale spot it left, so whichever client unfolded it, the fleet is arranged round it
+  const folded = useRef<Set<string>>(undefined);
+  useEffect(() => {
+    const now = new Set(Object.values(fleet.islands).filter((i) => i.collapsed && i.kind !== 'home').map((i) => i.id));
+    const back = [...(folded.current ?? [])].some((id) => fleet.islands[id] && !now.has(id));
+    folded.current = now;
+    if (back && app.store.getState().settings.autoArrange) app.store.getState().askArrange('auto');
+  }, [fleet.islands]);
+
   // the fleet is arranged to the room the map finds each time its card shrinks from full or closes
   const covered = Boolean(card) && cardSize === 'full';
   const coveredRef = useRef(covered);

@@ -159,7 +159,6 @@ describe('fitting the map with mission control', () => {
       [[{ ...a, name: `${a.name} and more` }, ...rest], crew, host, home, row],
       [[{ ...a, position: { x: a.position.x, y: 1 } }, ...rest], crew, host, home, row],
       [[{ ...a, size: { w: a.size.w + 1, h: a.size.h } }, ...rest], crew, host, home, row],
-      [[{ ...a, collapsed: true }, ...rest], crew, host, home, row],
       [islands, { ...crew, [a.id]: [{ x: 2, y: 2 }] }, host, home, row],
       [islands, crew, { ...host, w: host.w - 1 }, home, row],
       [islands, crew, { ...host, h: host.h - 1 }, home, row],

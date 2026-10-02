@@ -87,7 +87,7 @@ export type Size = z.infer<typeof Size>;
 export const Island = z.object({
   id: z.string(), name: z.string(), description: z.string(), instructions: z.string(), context: z.array(ContextItem),
   position: Cell, size: Size, seed: z.number().int(),
-  // a folded island is drawn as its label alone, and holds only that much ground
+  // a folded island is off the map and holds no ground; a folded mission control keeps its row
   collapsed: z.boolean().optional(),
   kind: z.literal('home').optional(),
   // set by a person's edit; absent, the scribe may rewrite it

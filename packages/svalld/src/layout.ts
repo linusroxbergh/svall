@@ -24,8 +24,8 @@ export function clearBy(a: Footprint, b: Footprint, margin: number): boolean {
     a.position.y + a.size.h + margin <= b.position.y || b.position.y + b.size.h + margin <= a.position.y;
 }
 
-// the two may stand where they are: a cell of water between them, or one of them folded off the map
-export const clearOf = (a: Island, b: Island): boolean => Boolean(a.collapsed || b.collapsed) || clearBy(a, b, 1);
+// the two may stand where they are: a cell of water between them
+export const clearOf = (a: Island, b: Island): boolean => clearBy(a, b, 1);
 
 // how far the search walks from the wanted cell before it gives up
 const REACH = 80;

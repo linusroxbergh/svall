@@ -61,9 +61,10 @@ test('an island with characters shows Delete greyed out, as the daemon refuses i
   expect(sent).toEqual(menu(false));
 });
 
-test('Rename puts a character row into a name field, and Enter saves the new name', () => {
+test('Rename takes the keys from any terminal into a name field on the character row, and Enter saves the new name', () => {
   rightClick('sb-char-c0');
   act(() => shell({ type: 'menu.pick', id: '0' }));
+  expect(sent.at(-1)).toEqual({ type: 'term.focus' });
   const field = screen.getByTestId('char-name-input') as HTMLInputElement;
   expect(document.activeElement).toBe(field);
   fireEvent.change(field, { target: { value: '  auth fix ' } });

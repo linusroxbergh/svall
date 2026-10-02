@@ -101,6 +101,35 @@ test('the arrange key arranges the fleet once, to the shape of the map', async (
   }
 });
 
+test('the fleet arranges round an island back from hidden, whichever client showed it', async () => {
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 1200 });
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 800 });
+  const arranges = () => methods().filter((m) => m === 'island.arrange').length;
+  const fold = (id: string, on: boolean) => act(async () => {
+    store.getState().applyPatch([on ? { op: 'add', path: `/islands/${id}/collapsed`, value: true } : { op: 'remove', path: `/islands/${id}/collapsed` }]);
+  });
+  store.getState().setStatus('online');
+  try {
+    render(<Map />);
+    await act(async () => {});
+    // hiding and a hidden mission control's return move nothing
+    await fold('i_a', true);
+    await fold('home', true);
+    await fold('home', false);
+    expect(arranges()).toBe(0);
+    await fold('i_a', false);
+    expect(arranges()).toBe(1);
+
+    store.getState().setSettings({ autoArrange: false });
+    await fold('i_a', true);
+    await fold('i_a', false);
+    expect(arranges()).toBe(1);
+  } finally {
+    delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+  }
+});
+
 test('the fleet arranges each time the map gets room back from its card, and on a return from the board', async () => {
   let width = 1200;
   Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => width });

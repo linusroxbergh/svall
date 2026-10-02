@@ -13,6 +13,7 @@ const fire = vi.fn();
 vi.mock('../../src/mobile/boot.js', () => ({ phone: { api: () => ({ call, fire }) } }));
 
 const { Fleet } = await import('../../src/mobile/Fleet.js');
+const { NewCharacter } = await import('../../src/mobile/NewCharacter.js');
 
 let store: AppStore;
 
@@ -91,6 +92,21 @@ test('a one-tap character whose crew mate\'s directory is gone starts in the fle
   await act(async () => {});
   expect(call.mock.calls).toEqual([['char.create', { islandId: 'i_b', cwd: '/tmp' }], ['char.create', { islandId: 'i_b', cwd: DEFAULT_CWD }]]);
   expect(onOpen).toHaveBeenCalledWith('c_new');
+  call.mockImplementation(() => Promise.resolve({}));
+});
+
+test('a character made on mission control from the phone starts the home command, by one tap or the sheet', async () => {
+  store.getState().setFleet(fleet());
+  call.mockImplementation((() => Promise.resolve({ id: 'c_new' })) as never);
+  render(<Fleet onOpen={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'New character on mission control' }));
+  await act(async () => {});
+  expect(call).toHaveBeenLastCalledWith('char.create', { islandId: 'home', cwd: '/mc', command: 'claude --model sonnet' });
+
+  render(<NewCharacter islandId="home" onClose={() => {}} onCreated={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+  await act(async () => {});
+  expect(call).toHaveBeenLastCalledWith('char.create', { islandId: 'home', cwd: '/mc', command: 'claude --model sonnet' });
   call.mockImplementation(() => Promise.resolve({}));
 });
 

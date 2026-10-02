@@ -3,8 +3,10 @@ import { showMenu } from './bridge.js';
 
 type Press = Pick<MouseEvent, 'clientX' | 'clientY' | 'preventDefault'>;
 
-// Rename leads where the caller has a field to rename in
-const renameFirst = (rename?: () => void) => (rename ? [{ title: 'Rename', run: rename }] : []);
+// Rename leads where the caller has a field to rename in; a right-click leaves the keys wherever they were,
+// a terminal perhaps, so the page takes them for the field
+const renameFirst = (rename?: () => void) =>
+  (rename ? [{ title: 'Rename', run: () => { app.bridge.send({ type: 'term.focus' }); rename(); } }] : []);
 
 // the right-click menus the sidebar and the map share; Delete only asks, and the confirmation does the deleting
 export const characterMenu = (e: Press, id: string, rename?: () => void): void =>

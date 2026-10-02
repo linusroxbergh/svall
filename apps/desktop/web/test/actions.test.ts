@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CWD, emptyState } from '@svall/protocol';
-import { deleteCharacter, deleteIsland, moveCharacterTo, newCharacterOn, newCharacterTarget, newIsland, newIslandAround, newNamedCharacter, openSecondTerminal, reviveCharacter, saveCharacter, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeCharacter, toggleIsland } from '../src/actions.js';
+import { deleteCharacter, deleteIsland, moveCharacterTo, newCharacterOn, newCharacterTarget, newIsland, newIslandAround, newNamedCharacter, openSecondTerminal, reviveCharacter, saveCharacter, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeCharacter } from '../src/actions.js';
 import { ApiError, type Api } from '../src/api.js';
 import { createAppStore } from '../src/store/index.js';
 import { chr, fleet, isl } from './fixtures.js';
@@ -507,29 +507,26 @@ describe('a new character', () => {
     await newNamedCharacter(c, { name: 'n', note: '', refs: [] });
     expect(created(c).command).toBe('codex');
   });
-});
 
-describe('toggleIsland', () => {
-  it('asks the map for an automatic arrange once a folded island is back', async () => {
-    const c = ctx();
-    c.store.getState().applyPatch([{ op: 'add', path: '/islands/i_a/collapsed', value: true }]);
-    toggleIsland(c, 'i_a');
-    expect(c.calls).toEqual([{ method: 'island.update', params: { id: 'i_a', collapsed: false } }]);
-    await expect.poll(() => c.store.getState().arrangeAsk).toBe('auto');
+  it('says so on mission control when svalld does not find the agent, and still starts it', async () => {
+    const c = made();
+    c.store.getState().applyPatch([{ op: 'add', path: '/agentsFound', value: ['codex'] }]);
+    await newCharacterOn(c, 'home');
+    expect(created(c).command).toBe('claude --model sonnet');
+    expect(c.store.getState().toast?.text).toMatch(/Mission control runs claude, which svalld doesn't find/);
   });
 
-  it('leaves the fleet where it is when folding, for mission control, and with arranging on its own off', async () => {
-    const tries: [string, (c: ReturnType<typeof ctx>) => void][] = [
-      ['fold', () => {}],
-      ['home', (c) => c.store.getState().applyPatch([{ op: 'add', path: '/islands/home/collapsed', value: true }])],
-      ['off', (c) => { c.store.getState().applyPatch([{ op: 'add', path: '/islands/i_a/collapsed', value: true }]); c.store.getState().setSettings({ autoArrange: false }); }],
+  it('brings a hidden island back onto the map, once the character is made on it', async () => {
+    const tries: [string, (c: ReturnType<typeof ctx>) => Promise<unknown>][] = [
+      ['newCharacterOn', (c) => newCharacterOn(c, 'i_a')],
+      ['newNamedCharacter', (c) => { c.store.getState().selectIsland('i_a'); return newNamedCharacter(c, { name: 'n', note: '', refs: [] }); }],
     ];
-    for (const [what, setUp] of tries) {
-      const c = ctx();
-      setUp(c);
-      toggleIsland(c, what === 'home' ? 'home' : 'i_a');
-      await new Promise((r) => setTimeout(r, 0));
-      expect(c.store.getState().arrangeAsk, what).toBe(false);
+    for (const [what, make] of tries) {
+      const c = made();
+      c.store.getState().applyPatch([{ op: 'add', path: '/islands/i_a/collapsed', value: true }]);
+      await make(c);
+      expect(c.calls.map((x) => x.method), what).toEqual(['char.create', 'island.update']);
+      expect(c.calls[1].params).toEqual({ id: 'i_a', collapsed: false });
     }
   });
 });

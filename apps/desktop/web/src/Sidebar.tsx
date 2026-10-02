@@ -48,7 +48,7 @@ const dropZone = (target: DropTarget) => ({
 function NameField({ name, testid, onDone }: { name: string; testid: string; onDone(name?: string): void }) {
   return (
     <input
-      autoFocus defaultValue={name} data-testid={testid} onClick={stop}
+      autoFocus defaultValue={name} aria-label={`Rename ${name}`} data-testid={testid} onClick={stop}
       onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { e.stopPropagation(); onDone(); } }}
       onBlur={(e) => { const next = e.currentTarget.value.trim(); onDone(next && next !== name ? next : undefined); }}
     />
