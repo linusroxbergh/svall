@@ -15,7 +15,7 @@ import { theme } from '../theme.js';
 
 type Status = 'working' | 'idle' | 'blocked' | 'done';
 type Member = { id: string; name: string; portrait: Portrait; status: Status; ctx: number; links: ContextItem[] };
-type Scene = { step: number; keys: boolean; modal: boolean; typed: number; send: boolean; mc?: Member; island: boolean; crew: Member[]; shore: Member[]; picked?: string; end: boolean };
+type Scene = { step: number; keys: boolean; modal: boolean; typed: number; send: boolean; mc?: Member; island: boolean; crew: Member[]; shore: Member[]; picked?: string };
 
 const PROMPT = 'Create an island to review the 3 open PRs in linusroxbergh/storefront';
 const link = (kind: 'pr' | 'issue', n: number): ContextItem =>
@@ -28,7 +28,7 @@ const SHORE_AT: Cell = { x: 0, y: 0 }, REVIEWS_AT: Cell = { x: SG.size.w + 3, y:
 const WORLD_W = (REVIEWS_AT.x + RG.size.w) * theme.cell;
 
 // the scene is drawn at this size and scaled to its column; k is the map's zoom inside it
-const SIZE = { w: 900, h: 540, k: 0.8, top: 74 };
+const SIZE = { w: 900, h: 600, k: 0.8, top: 74 };
 
 const MC: Member = { id: 'mc', name: 'review open PRs', portrait: 'monkey', status: 'working', ctx: 4, links: [] };
 const CREW: Member[] = [
@@ -44,7 +44,7 @@ const SHORE_CREW: Member[] = [
 const HOME: IslandModel = { id: 'home', name: 'mission control', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 8, h: 4 }, seed: 7 };
 const HOME_CONFIG = { cwd: '', command: '', actions: [{ label: 'update info', prompt: '' }, { label: 'status', prompt: '' }] };
 
-const START: Scene = { step: 0, keys: false, modal: false, typed: 0, send: false, island: false, crew: [], shore: SHORE_CREW, end: false };
+const START: Scene = { step: 0, keys: false, modal: false, typed: 0, send: false, island: false, crew: [], shore: SHORE_CREW };
 
 const none = () => {};
 const pointer = { onPointerDown: none };
@@ -67,62 +67,66 @@ const grow = (crew: Member[], beat: number) =>
 function script(): [number, (s: Scene) => Scene][] {
   const ev: [number, (s: Scene) => Scene][] = [];
   const at = (t: number, f: (s: Scene) => Partial<Scene>) => ev.push([t, (s) => ({ ...s, ...f(s) })]);
-  at(600, () => ({ keys: true }));
-  at(1000, () => ({ modal: true, step: 1 }));
-  at(1300, () => ({ keys: false }));
-  const typing = 1600, per = 36;
+  at(1800, () => ({ keys: true }));
+  at(2400, () => ({ modal: true, step: 1 }));
+  at(2700, () => ({ keys: false }));
+  const typing = 3200, per = 36;
   for (let i = 1; i <= PROMPT.length; i++) at(typing + i * per, () => ({ typed: i }));
-  const sent = typing + PROMPT.length * per + 600;
+  const sent = typing + PROMPT.length * per + 1200;
   at(sent, () => ({ send: true }));
-  at(sent + 220, () => ({ modal: false, send: false, step: 2, mc: MC }));
-  at(sent + 1600, () => ({ island: true }));
+  at(sent + 250, () => ({ modal: false, send: false, step: 2, mc: MC }));
+  at(sent + 2600, () => ({ island: true }));
   CREW.forEach((m, i) => {
-    at(sent + 2500 + i * 700, (s) => ({ crew: [...s.crew, m] }));
-    at(sent + 3300 + i * 700, (s) => ({ crew: s.crew.map((c) => (c.id === m.id ? { ...c, status: 'working', ctx: 3 } : c)) }));
+    at(sent + 4000 + i * 1100, (s) => ({ crew: [...s.crew, m] }));
+    at(sent + 4900 + i * 1100, (s) => ({ crew: s.crew.map((c) => (c.id === m.id ? { ...c, status: 'working', ctx: 3 } : c)) }));
   });
-  const live = sent + 5000;
+  const live = sent + 8200;
   at(live, (s) => ({ mc: { ...s.mc!, status: 'done' } }));
-  for (let b = 0; b < 9; b++) at(live + 300 + b * 900, (s) => ({ crew: grow(s.crew, b), shore: grow(s.shore, b + 1) }));
-  at(live + 6200, (s) => ({ crew: s.crew.map((c) => (c.id === '10' ? { ...c, status: 'done' } : c)) }));
-  at(live + 7600, () => ({ picked: '10', end: true, step: 3 }));
+  for (let b = 0; b < 10; b++) at(live + 300 + b * 1100, (s) => ({ crew: grow(s.crew, b), shore: grow(s.shore, b + 1) }));
+  at(live + 7000, (s) => ({ crew: s.crew.map((c) => (c.id === '10' ? { ...c, status: 'done' } : c)) }));
+  at(live + 9000, () => ({ picked: '10', step: 3 }));
   return ev;
 }
 
 const EVENTS = script();
 const FINAL = EVENTS.reduce((s, [, f]) => f(s), START);
+// a run holds its last beat this long, then fades out and starts again
+const HOLD = 4000, FADE = 500;
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const host = document.querySelector<HTMLElement>('.scene')!;
 const foot = document.querySelector<HTMLElement>('.scene-foot')!;
 const captions = [...foot.querySelectorAll<HTMLElement>('.cap span')];
-const replay = document.querySelector<HTMLButtonElement>('.replay')!;
 
-// plays once the scene is mostly in view, again on Replay, and again on coming back into view after it ended
+// loops while the scene is mostly in view; a run that ends out of view waits for the scene to come back
 function useScene(): Scene {
   const [s, set] = useState<Scene>(still ? FINAL : START);
   useEffect(() => {
     if (still) return;
     let timers: ReturnType<typeof setTimeout>[] = [];
-    let played = false, ended = false;
+    let visible = false, running = false;
     const play = () => {
       timers.forEach(clearTimeout);
-      played = true;
-      ended = false;
+      running = true;
+      map.classList.remove('out');
       set(START);
       timers = EVENTS.map(([t, f]) => setTimeout(() => set(f), t));
-      timers.push(setTimeout(() => { ended = true; }, EVENTS[EVENTS.length - 1][0]));
+      timers.push(setTimeout(() => {
+        if (!visible) { running = false; return; }
+        map.classList.add('out');
+        timers.push(setTimeout(play, FADE));
+      }, EVENTS[EVENTS.length - 1][0] + HOLD));
     };
     const seen = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting && (!played || ended)) play();
+      visible = e.isIntersecting;
+      if (visible && !running) play();
     }, { threshold: 0.45 });
     seen.observe(host);
-    replay.addEventListener('click', play);
-    return () => { timers.forEach(clearTimeout); seen.disconnect(); replay.removeEventListener('click', play); };
+    return () => { timers.forEach(clearTimeout); seen.disconnect(); };
   }, []);
   useEffect(() => {
     captions.forEach((c, i) => c.toggleAttribute('data-on', i === s.step));
-    replay.hidden = !s.end || still;
-  }, [s.step, s.end]);
+  }, [s.step]);
   return s;
 }
 
@@ -218,9 +222,8 @@ function FlowScene() {
 const map = host.querySelector<HTMLElement>('.scene-map')!;
 // the scene grows a little past its drawn size on a wide page and stays centred in its column
 function fit() {
-  const s = Math.min(1.16, host.clientWidth / SIZE.w), left = (host.clientWidth - SIZE.w * s) / 2;
-  Object.assign(map.style, { width: `${SIZE.w}px`, height: `${SIZE.h}px`, transform: `scale(${s})`, left: `${left}px` });
-  foot.style.paddingInline = `${left}px`;
+  const s = Math.min(1.16, host.clientWidth / SIZE.w);
+  Object.assign(map.style, { width: `${SIZE.w}px`, height: `${SIZE.h}px`, transform: `scale(${s})`, left: `${(host.clientWidth - SIZE.w * s) / 2}px` });
   map.style.setProperty('--map-w', `${SIZE.w}px`);
   host.style.height = `${SIZE.h * s}px`;
 }
