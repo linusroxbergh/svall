@@ -83,7 +83,7 @@ runIf('API', () => {
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
     const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 200 });
     const started = fleet.start();
-    cleanup.push(async () => { await started.catch(() => {}); fleet.stop(); await tmux.killServer(); });
+    cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
     const terminals = new TerminalHub(fleet, tmux, store, silentLogger);
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };

@@ -126,7 +126,7 @@ describe('following the pane', () => {
   it('moves a character on the next poll when the state write of this one fails', async () => {
     const { fleet, store, home, paths, live } = fleetOn((d) => {
       d.islands.i_1 = { id: 'i_1', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
-      d.characters.c_a = char('c_a', 'i_1', { tmux: { windowId: '@1', paneId: '%1' } });
+      d.characters.c_a = char('c_a', 'i_1', { tmux: { windowId: '@1', paneId: '%1' }, panePath: '/tmp' });
     });
     const moved = fs.realpathSync(home);
     live.push({ windowId: '@1', paneId: '%1', name: 'c_a', command: 'sh', path: moved, activity: 1000, dead: false });

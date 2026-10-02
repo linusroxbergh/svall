@@ -28,7 +28,7 @@ import type { Logger } from './log.js';
 import { randomName } from './names.js';
 import { expandHome, type Paths } from './paths.js';
 import { SHIM } from './profile.js';
-import { markDormant, placeOnIsland, reconcile, secondName } from './reconcile.js';
+import { markDormant, placeOnIsland, reconcile, secondName, snapshot, syncWindow } from './reconcile.js';
 import { codexRunner } from './scribe/codex.js';
 import { claudeRunner, perPass, type RunScribe } from './scribe/run.js';
 import { Scribe, type SweepOptions } from './scribe/scribe.js';
@@ -36,7 +36,7 @@ import { installHomeTemplate } from './setup.js';
 import type { Store } from './store.js';
 import { activateTab, closeTab, openTab, updateTab } from './tabs.js';
 import type { ControlClient } from './tmux/control.js';
-import { isShellCommand, type Tmux } from './tmux/tmux.js';
+import { isShellCommand, type LiveWindow, type Tmux } from './tmux/tmux.js';
 
 type Events = {
   output: [charId: string, data: Buffer];
@@ -64,6 +64,7 @@ const DORMANCY_EVERY = 20;
 export class Fleet extends EventEmitter<Events> {
   private control?: ControlClient;
   private poll?: NodeJS.Timeout;
+  private ticking?: Promise<void>;
   private ticks = 0;
   private shellStreak = new Map<string, number>();
   private codexStreak = new Map<string, number>();
@@ -109,15 +110,25 @@ export class Fleet extends EventEmitter<Events> {
     try { if (seedAgentProfiles(this.deps.paths.agentProfiles)) this.deps.log.info(`agent profiles -> ${this.deps.paths.agentProfiles}`); }
     catch (e) { this.deps.log.error(`agent profiles: ${String(e)}`); }
     await this.attachControl();
-    this.poll = setInterval(() => {
-      this.tick().catch((e) => this.deps.log.error(`poll: ${String(e)}`));
+    this.schedule();
+  }
+
+  // the next poll waits for the last, so a slow tmux never has two listings out
+  private schedule(): void {
+    if (this.stopped) return;
+    this.poll = setTimeout(() => {
+      this.ticking = this.tick()
+        .catch((e) => this.deps.log.error(`poll: ${String(e)}`))
+        .finally(() => { this.ticking = undefined; this.schedule(); });
     }, this.deps.pollMs ?? 3000);
   }
 
-  stop(): void {
+  /** Stops polling and the control client; resolves once a poll under way has finished. */
+  async stop(): Promise<void> {
     this.stopped = true;
-    if (this.poll) clearInterval(this.poll);
+    clearTimeout(this.poll);
     this.control?.stop();
+    await this.ticking;
   }
 
   // ---- lookups
@@ -234,15 +245,16 @@ export class Fleet extends EventEmitter<Events> {
 
   // ---- reconciliation and polling
 
-  async reconcileNow(): Promise<void> {
-    const windowOf = new Map(Object.values(this.deps.store.state.characters).map((c) => [c.id, c.tmux?.windowId]));
-    const hadSecond = new Set(Object.values(this.deps.store.state.characters).filter((c) => c.second).map((c) => c.id));
+  // the windows tmux has, less those still closing for idleness, which are not to be taken back
+  private async listWindows(): Promise<LiveWindow[]> {
     const ending = new Set(this.ending.keys());
-    // a window still closing for idleness is not one to take back
-    const live = (await this.deps.tmux.listWindows()).filter((w) => !ending.has(w.name) && !this.ending.has(w.name));
-    // as in the poll, a character created or revived during the await is not known to the listing
-    const known = new Set(Object.values(this.deps.store.state.characters).filter((c) => windowOf.get(c.id) === c.tmux?.windowId).map((c) => c.id));
-    const { mutate, renames, unplaced } = reconcile(this.deps.store.state, live, Date.now(), known, hadSecond);
+    return (await this.deps.tmux.listWindows()).filter((w) => !ending.has(w.name) && !this.ending.has(w.name));
+  }
+
+  async reconcileNow(): Promise<void> {
+    const before = snapshot(this.deps.store.state);
+    const live = await this.listWindows();
+    const { mutate, renames, unplaced } = reconcile(this.deps.store.state, live, Date.now(), before);
     this.deps.store.update(mutate);
     for (const line of unplaced) this.deps.log.error(line);
     for (const r of renames) {
@@ -286,13 +298,10 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   private async tick(): Promise<void> {
-    // a create or revive during the await makes a window the listing lacks: only a character still on the
-    // window it had before is marked dormant
-    const windowOf = new Map(Object.values(this.deps.store.state.characters).map((c) => [c.id, c.tmux?.windowId]));
-    // a second terminal opened during the await is absent from the listing and must not be dropped
-    const hadSecond = new Set(Object.values(this.deps.store.state.characters).filter((c) => c.second).map((c) => c.id));
-    const ending = new Set(this.ending.keys());
-    const live = await this.deps.tmux.listWindows();
+    const before = snapshot(this.deps.store.state);
+    const live = await this.listWindows();
+    // a stop while tmux answered has ended what the listing shows
+    if (this.stopped) return;
     const byName = new Map(live.map((w) => [w.name, w]));
     const cwdChanged: string[] = [];
     // an agent whose pane is back at a shell prompt for two polls has ended without a SessionEnd
@@ -307,34 +316,10 @@ export class Fleet extends EventEmitter<Events> {
     };
     this.deps.store.update((d) => {
       for (const c of Object.values(d.characters)) {
-        const w2 = byName.get(secondName(c.id));
-        if (w2 && !w2.dead) {
-          c.second = { unread: false, ...c.second, tmux: { windowId: w2.windowId, paneId: w2.paneId } };
-          settleAgent(secondName(c.id), c.second, w2.command);
-        } else if (hadSecond.has(c.id)) {
-          delete c.second;
-        }
-        const w = byName.get(c.id);
-        if (!w || w.dead) {
-          if (c.tmux && windowOf.get(c.id) === c.tmux.windowId) markDormant(c);
-          continue;
-        }
-        // a live window for a dormant character means the dormancy was spurious: re-attach. One made dormant
-        // during the listing, or ended while it was taken, is still closing the window the listing saw
-        if (!c.tmux) {
-          if (windowOf.get(c.id) || ending.has(c.id) || this.ending.has(c.id)) continue;
-          c.tmux = { windowId: w.windowId, paneId: w.paneId };
-          delete c.revive;
-        }
-        // the pane's path moves only when the agent process itself changes directory; between moves the hooks may have placed it.
-        // tmux reports no path while a setuid program such as sudo runs in the pane
-        if (w.path && c.panePath !== w.path) {
-          c.panePath = w.path;
-          if (c.cwd !== w.path) { c.cwd = w.path; cwdChanged.push(c.id); }
-        }
-        settleAgent(c.id, c, w.command);
-        // shown only where there is no agent's own activity to show
-        if (!c.agent) c.shell.lastOutputAt = w.activity;
+        const cwd = c.cwd;
+        const w = syncWindow(c, byName, before, settleAgent);
+        if (c.cwd !== cwd) cwdChanged.push(c.id);
+        if (!w) continue;
         // Codex should report promptly; three polls without an event means delivery needs attention.
         if (!c.agent && w.command === 'codex') {
           const n = (this.codexStreak.get(c.id) ?? 0) + 1;
@@ -360,7 +345,8 @@ export class Fleet extends EventEmitter<Events> {
     }
     this.scribe.tick();
     if (this.ticks % 10 === 0) await this.sweepViewerSessions();
-    if (this.ticks % DORMANCY_EVERY === 0) await this.endIdleAgents();
+    // ending an agent waits up to a minute for it to exit, which the next poll does not
+    if (this.ticks % DORMANCY_EVERY === 0) this.endIdleAgents().catch((e) => this.deps.log.error(`dormancy: ${String(e)}`));
   }
 
   // an agent idle past the fleet's limit is ended to free what it holds; its character goes dormant, and a revive
@@ -373,6 +359,7 @@ export class Fleet extends EventEmitter<Events> {
     const idle = Object.values(this.deps.store.state.characters).filter(due);
     if (!idle.length) return;
     const procs = await (this.deps.processes ?? processes)();
+    if (this.stopped) return;
     for (const c of idle) {
       const a = c.agent!;
       // a pid gone or moved on to another program, a launch the resume can't repeat, work going on in the background,
@@ -398,8 +385,8 @@ export class Fleet extends EventEmitter<Events> {
   /** Ends every terminal as the app quits: each character goes dormant with the revive that resumes it, then the
    * tmux server goes, and nothing runs again until a character is opened. */
   async stopAll(): Promise<void> {
-    // the control client's exit would otherwise start a server again
-    this.stop();
+    // the control client's exit would otherwise start a server again, and a poll under way write back what this ends
+    await this.stop();
     // an agent ended for idleness can take a minute to exit, and the server's end reaches it anyway
     const settled = Promise.all([...this.ending.values(), ...this.reviving.values()].map((p) => p.catch(() => {})));
     await Promise.race([settled, new Promise((r) => setTimeout(r, 2000))]);

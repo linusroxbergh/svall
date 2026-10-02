@@ -7,6 +7,8 @@ import { helper } from '../runtime.js';
 import { ControlClient } from './control.js';
 
 const exec = promisify(execFile);
+// a tmux server that stops answering must not hang every poll and API call behind it
+const CALL = { timeout: 10_000, killSignal: 'SIGKILL' } as const;
 
 export const SESSION = 'fleet';
 const KEEP_WINDOW = '_keep';
@@ -52,9 +54,7 @@ export class Tmux {
   constructor(readonly socket: string, private conf: string) {}
 
   async run(...args: string[]): Promise<string> {
-    const { stdout } = await exec(this.binary, ['-S', this.socket, '-f', this.conf, ...args], {
-      maxBuffer: 64 * 1024 * 1024,
-    });
+    const { stdout } = await exec(this.binary, ['-S', this.socket, '-f', this.conf, ...args], { ...CALL, maxBuffer: 64 * 1024 * 1024 });
     return stdout;
   }
 
@@ -137,7 +137,7 @@ export class Tmux {
       .catch((e: unknown) => { this.rawPaste = undefined; throw e; });
     const raw = await this.rawPaste;
     const name = `svall-${crypto.randomUUID()}`;
-    const p = exec(this.binary, ['-S', this.socket, '-f', this.conf, 'load-buffer', '-b', name, '-', ';', 'paste-buffer', '-d', '-r', ...raw, '-b', name, '-t', paneId]);
+    const p = exec(this.binary, ['-S', this.socket, '-f', this.conf, 'load-buffer', '-b', name, '-', ';', 'paste-buffer', '-d', '-r', ...raw, '-b', name, '-t', paneId], CALL);
     // a tmux that fails before reading closes the pipe; its exit status carries the error
     p.child.stdin!.on('error', () => {}).end(data);
     // a pane gone before the paste leaves the buffer behind

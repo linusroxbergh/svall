@@ -1,7 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import type { MobileStatus, UsageSnapshot } from '@svall/protocol';
 import type { Fleet } from '../src/fleet.js';
 import type { Fleets } from '../src/fleets.js';
@@ -13,8 +12,7 @@ if (!process.env.HOME?.startsWith('/tmp/svall-home-')) throw new Error('run thes
 const homes: string[] = [];
 
 export function makeHome(): string {
-  const dir = `/tmp/svall-t-${crypto.randomBytes(3).toString('hex')}`;
-  fs.mkdirSync(dir, { recursive: true });
+  const dir = fs.mkdtempSync('/tmp/svall-t-');
   homes.push(dir);
   return dir;
 }

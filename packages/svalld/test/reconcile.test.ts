@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SIZE, HOME_ISLAND, HOME_SEED, cellKey, emptyState, homeSizeFor, isLand, landCells, type Cell, type Character, type Island } from '@svall/protocol';
 import { crewGrid, placementOk, trimHome } from '../src/layout.js';
-import { RECOVERED_ISLAND, markDormant, placeOnIsland, reconcile, reviveCommand } from '../src/reconcile.js';
+import { RECOVERED_ISLAND, markDormant, placeOnIsland, reconcile, reviveCommand, snapshot } from '../src/reconcile.js';
 import type { LiveWindow } from '../src/tmux/tmux.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
@@ -162,10 +162,39 @@ describe('reconcile', () => {
   it('a second terminal opened since the listing was taken is left alone', () => {
     const s = emptyState();
     s.characters.c_a = char({});
-    const { mutate } = reconcile(s, [live('c_a')], 1, new Set(['c_a']), new Set());
+    const before = snapshot(s);
     s.characters.c_a.second = { tmux: { windowId: '@2', paneId: '%2' }, unread: false };
-    mutate(s);
+    reconcile(s, [live('c_a')], 1, before).mutate(s);
     expect(s.characters.c_a.second).toEqual({ tmux: { windowId: '@2', paneId: '%2' }, unread: false });
+  });
+
+  it('a second terminal closed since the listing was taken stays closed', () => {
+    const s = emptyState();
+    s.characters.c_a = char({ second: { tmux: { windowId: '@2', paneId: '%2' }, unread: false } });
+    const before = snapshot(s);
+    delete s.characters.c_a.second;
+    reconcile(s, [live('c_a'), live('c_a-2', '@2', '%2')], 1, before).mutate(s);
+    expect(s.characters.c_a.second).toBeUndefined();
+  });
+
+  it('leaves a main window opened or closed since the listing was taken to the store', () => {
+    const s = emptyState();
+    s.characters.c_a = char({});
+    s.characters.c_b = char({ id: 'c_b', tmux: { windowId: '@2', paneId: '%2' } });
+    const before = snapshot(s);
+    s.characters.c_a.tmux = { windowId: '@1', paneId: '%1' };
+    markDormant(s.characters.c_b);
+    reconcile(s, [live('c_b', '@2', '%2')], 1, before).mutate(s);
+    expect(s.characters.c_a.tmux).toEqual({ windowId: '@1', paneId: '%1' });
+    expect(s.characters.c_b.tmux).toBeUndefined();
+  });
+
+  it('takes no dead window back', () => {
+    const s = emptyState();
+    s.characters.c_a = char({ tmux: { windowId: '@1', paneId: '%1' }, second: { tmux: { windowId: '@2', paneId: '%2' }, unread: false } });
+    reconcile(s, [{ ...live('c_a'), dead: true }, { ...live('c_a-2', '@2', '%2'), dead: true }], 1).mutate(s);
+    expect(s.characters.c_a.tmux).toBeUndefined();
+    expect(s.characters.c_a.second).toBeUndefined();
   });
 
   it('placeOnIsland keeps growing while every new row touches a character', () => {

@@ -1,4 +1,4 @@
-import { DEFAULT_SIZE, HOME_ROW, cellKey, homeSizeFor, homeSlots, isSessionId, randomPortrait, type Cell, type Character, type FleetState, type Island } from '@svall/protocol';
+import { DEFAULT_SIZE, HOME_ROW, cellKey, homeSizeFor, homeSlots, isSessionId, randomPortrait, type Agent, type Cell, type Character, type FleetState, type Island } from '@svall/protocol';
 import { isCharId, newId } from './ids.js';
 import { clearOf, crewGrid, crewOf, defaultPosition, freePosition, occupiedCells, placementOk, worldIslands } from './layout.js';
 import type { LiveWindow } from './tmux/tmux.js';
@@ -61,16 +61,51 @@ function placeOnHome(draft: FleetState, island: Island): Cell {
   return { x: homeSlots(island.size.w).at(-1)!, y: HOME_ROW };
 }
 
-// `known` is the characters still on the window they had when the live window list was taken; one created
-// or revived since is absent from that list and must not be marked dormant. `hadSecond` is the same for second
-// terminals: one opened since is absent from the listing and must not be dropped.
-export function reconcile(
-  state: FleetState,
-  live: LiveWindow[],
-  now: number,
-  known = new Set(Object.keys(state.characters)),
-  hadSecond = new Set(Object.values(state.characters).filter((c) => c.second).map((c) => c.id)),
-) {
+// each character's windows as the fleet knew them before a listing was taken
+export type Before = Map<string, { main?: string; second?: string }>;
+
+export const snapshot = (state: FleetState): Before =>
+  new Map(Object.values(state.characters).map((c) => [c.id, { main: c.tmux?.windowId, second: c.second?.tmux.windowId }]));
+
+type Settle = (key: string, slot: { agent?: Agent }, command: string) => void;
+
+/** Matches a character to a listing taken after `before`: its second terminal, its main window and the directory
+ *  its pane moved to. A window opened, closed or replaced while tmux answered is absent from the listing, so that
+ *  slot is left as it stands. Returns the main window the character stands on, when the listing has it. */
+export function syncWindow(c: Character, byName: ReadonlyMap<string, LiveWindow>, before: Before, settle?: Settle): LiveWindow | undefined {
+  const was = before.get(c.id);
+  if (was?.second === c.second?.tmux.windowId) {
+    const w2 = byName.get(secondName(c.id));
+    if (w2 && !w2.dead) {
+      c.second = { unread: false, ...c.second, tmux: { windowId: w2.windowId, paneId: w2.paneId } };
+      settle?.(secondName(c.id), c.second, w2.command);
+    } else {
+      delete c.second;
+    }
+  }
+  if (was?.main !== c.tmux?.windowId) return undefined;
+  const w = byName.get(c.id);
+  if (!w || w.dead) {
+    // one already dormant keeps the revive it was given, flags and all
+    if (c.tmux || !c.revive) markDormant(c);
+    return undefined;
+  }
+  const samePane = c.tmux?.paneId === w.paneId;
+  c.tmux = { windowId: w.windowId, paneId: w.paneId };
+  delete c.revive;
+  // only a pane that moved moves the character, and an empty path is tmux not knowing, as under sudo.
+  // A pane the character had all along with no path on record has not moved, so its cwd stays
+  if (w.path && c.panePath !== w.path) {
+    if (c.panePath !== undefined || !samePane) c.cwd = w.path;
+    c.panePath = w.path;
+  }
+  settle?.(c.id, c, w.command);
+  // shown only where there is no agent's own activity to show
+  if (!c.agent) c.shell.lastOutputAt = w.activity;
+  return w;
+}
+
+export function reconcile(state: FleetState, live: LiveWindow[], now: number, before = snapshot(state)) {
   const byName = new Map(live.map((w) => [w.name, w]));
   const knownIds = new Set(Object.keys(state.characters));
   const secondNames = new Set(Object.keys(state.characters).map(secondName));
@@ -92,27 +127,7 @@ export function reconcile(
   const unplaced: string[] = [];
 
   const mutate = (draft: FleetState) => {
-    for (const c of Object.values(draft.characters)) {
-      const w2 = byName.get(secondName(c.id));
-      if (w2 && !w2.dead) c.second = { unread: false, ...c.second, tmux: { windowId: w2.windowId, paneId: w2.paneId } };
-      else if (hadSecond.has(c.id)) delete c.second;
-      const w = byName.get(c.id);
-      if (w) {
-        const samePane = c.tmux?.paneId === w.paneId;
-        c.tmux = { windowId: w.windowId, paneId: w.paneId };
-        // as in the poll: only a pane that moved moves the character, and an empty path is tmux not knowing.
-        // A pane the character had all along with no path on record has not moved, so its cwd stays
-        if (w.path && c.panePath !== w.path) {
-          if (c.panePath !== undefined || !samePane) c.cwd = w.path;
-          c.panePath = w.path;
-        }
-        if (!c.agent) c.shell.lastOutputAt = w.activity;
-        delete c.revive;
-      } else if (known.has(c.id) && (c.tmux || !c.revive)) {
-        // one already dormant keeps the revive it was given, flags and all
-        markDormant(c);
-      }
-    }
+    for (const c of Object.values(draft.characters)) syncWindow(c, byName, before);
     // a character whose island is gone joins the recovered island, keeping all it carries
     const orphans = Object.values(draft.characters).filter((c) => !draft.islands[c.islandId]);
     if ((adopted.length || orphans.length) && !draft.islands[RECOVERED_ISLAND]) {

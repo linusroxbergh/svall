@@ -40,7 +40,7 @@ runIf('Fleet', () => {
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
     const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 150, processes: async () => procs, ...deps });
     const started = fleet.start();
-    cleanup.push(async () => { await started.catch(() => {}); fleet.stop(); await tmux.killServer(); });
+    cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
     // a test lays out from mission control alone unless it asks for the island a new fleet opens with
     if (!opening) for (const i of Object.values(store.state.islands)) if (i.kind !== 'home') fleet.deleteIsland(i.id);
@@ -48,6 +48,17 @@ runIf('Fleet', () => {
     const hooks = await startHookReceiver(paths.hooksSock, (e) => fleet.onSocketEvent(e), silentLogger);
     cleanup.push(() => hooks.close());
     return { fleet, store, tmux, home, procs };
+  }
+
+  // the next listing tmux gives is handed back only once released
+  function holdListing(tmux: Tmux) {
+    const real = tmux.listWindows.bind(tmux);
+    let taken!: () => void;
+    let release!: () => void;
+    const listed = new Promise<void>((r) => { taken = r; });
+    const held = new Promise<void>((r) => { release = r; });
+    vi.spyOn(tmux, 'listWindows').mockImplementationOnce(async () => { const r = await real(); taken(); await held; return r; });
+    return { listed, release };
   }
 
   it('creates islands and characters backed by tmux windows', async () => {
@@ -191,7 +202,7 @@ runIf('Fleet', () => {
     const { fleet, store } = await boot();
     const island = fleet.createIsland({ name: 'two' });
     const c = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
-    fleet.stop();
+    await fleet.stop();
     const start = { charId: c.id, backend: 'claude' as const, term: 2 as const, name: 'SessionStart' as const, sessionId: '11111111-1111-4111-8111-111111111111', transcriptPath: '/t/b.jsonl' };
     fleet.onSocketEvent({ hook: start });
     expect(store.state.characters[c.id].agent).toBeUndefined();
@@ -213,7 +224,7 @@ runIf('Fleet', () => {
     const { fleet, store } = await boot();
     const island = fleet.createIsland({ name: 'two' });
     const c = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
-    fleet.stop();
+    await fleet.stop();
     store.update((d) => {
       d.characters[c.id].unread = true;
       d.characters[c.id].second = { tmux: { windowId: '@99', paneId: '%99' }, unread: true };
@@ -279,8 +290,7 @@ runIf('Fleet', () => {
   });
 
   it('keeps a character where it is while tmux reports no path for its pane, as under sudo', async () => {
-    const { fleet, store, tmux } = await boot();
-    fleet.stop();
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     await fleet['tick']();
     const cwd = store.state.characters[c.id].cwd;
@@ -348,9 +358,8 @@ runIf('Fleet', () => {
     let release = () => {};
     const held = new Promise<void>((r) => { release = r; });
     const lookupPr = async (cwd: string) => { asked.push(cwd); if (asked.length === 1) await held; return undefined; };
-    const { fleet, store, home } = await boot({ linkDeps: { lookupPr, originUrl: async () => undefined } });
     // the ticks this test drives are the only ones
-    fleet.stop();
+    const { fleet, store, home } = await boot({ pollMs: 60_000, linkDeps: { lookupPr, originUrl: async () => undefined } });
     const repo = (name: string) => {
       const dir = fs.realpathSync(fs.mkdtempSync(path.join(home, `${name}-`)));
       execFileSync('git', ['init', '-q', dir]);
@@ -448,6 +457,12 @@ runIf('Fleet', () => {
     const shell = await fleet.createCharacter({ islandId: c.islandId, cwd: '/tmp', command: 'sleep 600' });
     await fleet.openSecond(c.id);
     const stopped = new Promise<void>((r) => fleet.once('stopped', r));
+    // a poll holds a listing with the second terminal on it until the quit has ended that terminal, or has waited a while for the poll
+    const poll = holdListing(tmux);
+    await poll.listed;
+    const unsub = store.subscribe(() => { if (!store.state.characters[c.id].second) poll.release(); });
+    cleanup.push(async () => unsub());
+    setTimeout(poll.release, 100);
     await fleet.stopAll();
     await stopped;
     const after = store.state.characters;
@@ -606,82 +621,46 @@ runIf('Fleet', () => {
   });
 
   it('does not take back a window a poll listed before its agent was ended', async () => {
-    const b = await boot();
+    const b = await boot({ pollMs: 60_000 });
     const { fleet, store, tmux } = b;
     const { c } = await withAgent(b);
     store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
-    // the next listing, taken with the window alive, is handed back only after the agent has been ended
-    const real = tmux.listWindows.bind(tmux);
-    let taken = false;
-    let release!: () => void;
-    const held = new Promise<void>((r) => { release = r; });
-    vi.spyOn(tmux, 'listWindows').mockImplementation(async () => {
-      const r = await real();
-      if (taken) return r;
-      taken = true;
-      await held;
-      return r;
-    });
-    await waitFor(() => taken);
+    // the listing, taken with the window alive, is handed back only after the agent has been ended
+    const poll = holdListing(tmux);
+    const tick = fleet['tick']();
+    await poll.listed;
     await fleet['endIdleAgents']();
-    let back = false;
-    const unsub = store.subscribe(() => { if (store.state.characters[c.id].tmux) back = true; });
-    cleanup.push(async () => unsub());
-    release();
-    await new Promise((r) => setTimeout(r, 500));
-    expect(back).toBe(false);
+    poll.release();
+    await tick;
+    expect(store.state.characters[c.id].tmux).toBeUndefined();
     expect(store.state.characters[c.id].revive).toEqual({ command: `claude --resume ${SID}` });
   });
 
   it('does not mark a character created during a poll snapshot dormant', async () => {
-    const { fleet, store, tmux } = await boot();
-    // the next listing is handed back only after the create has landed
-    const real = tmux.listWindows.bind(tmux);
-    let taken = false;
-    let release!: () => void;
-    const held = new Promise<void>((r) => { release = r; });
-    vi.spyOn(tmux, 'listWindows').mockImplementation(async () => {
-      const r = await real();
-      if (taken) return r;
-      taken = true;
-      await held;
-      return r;
-    });
-    await waitFor(() => taken);
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    // the listing is handed back only after the create has landed
+    const poll = holdListing(tmux);
+    const tick = fleet['tick']();
+    await poll.listed;
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    let dormant = false;
-    const unsub = store.subscribe(() => { if (!store.state.characters[c.id].tmux) dormant = true; });
-    cleanup.push(async () => unsub());
-    release();
-    await new Promise((r) => setTimeout(r, 500));
-    expect(dormant).toBe(false);
+    poll.release();
+    await tick;
+    expect(store.state.characters[c.id].tmux).toEqual(c.tmux);
   });
 
   it('does not mark a character revived during a poll snapshot dormant', async () => {
-    const { fleet, store, tmux } = await boot();
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     await tmux.killWindow(c.tmux!.windowId);
     await waitFor(() => store.state.characters[c.id].tmux === undefined);
-    // the next listing is handed back only after the revive has landed
-    const real = tmux.listWindows.bind(tmux);
-    let taken = false;
-    let release!: () => void;
-    const held = new Promise<void>((r) => { release = r; });
-    vi.spyOn(tmux, 'listWindows').mockImplementation(async () => {
-      const r = await real();
-      if (taken) return r;
-      taken = true;
-      await held;
-      return r;
-    });
-    await waitFor(() => taken);
-    await fleet.reviveCharacter(c.id);
-    let dormant = false;
-    const unsub = store.subscribe(() => { if (!store.state.characters[c.id].tmux) dormant = true; });
-    cleanup.push(async () => unsub());
-    release();
-    await new Promise((r) => setTimeout(r, 500));
-    expect(dormant).toBe(false);
+    // the listing is handed back only after the revive has landed
+    const poll = holdListing(tmux);
+    const tick = fleet['tick']();
+    await poll.listed;
+    const revived = await fleet.reviveCharacter(c.id);
+    poll.release();
+    await tick;
+    expect(store.state.characters[c.id].tmux).toEqual(revived.tmux);
   });
 
   it('does not mark a character revived during a reconcile listing dormant', async () => {
@@ -702,28 +681,30 @@ runIf('Fleet', () => {
   });
 
   it('does not drop a second terminal opened during a poll snapshot', async () => {
-    const { fleet, store, tmux } = await boot();
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    // the next listing is handed back only after the second terminal has opened
-    const real = tmux.listWindows.bind(tmux);
-    let taken = false;
-    let release!: () => void;
-    const held = new Promise<void>((r) => { release = r; });
-    vi.spyOn(tmux, 'listWindows').mockImplementation(async () => {
-      const r = await real();
-      if (taken) return r;
-      taken = true;
-      await held;
-      return r;
-    });
-    await waitFor(() => taken);
+    // the listing is handed back only after the second terminal has opened
+    const poll = holdListing(tmux);
+    const tick = fleet['tick']();
+    await poll.listed;
     await fleet.openSecond(c.id);
-    let dropped = false;
-    const unsub = store.subscribe(() => { if (!store.state.characters[c.id].second) dropped = true; });
-    cleanup.push(async () => unsub());
-    release();
-    await new Promise((r) => setTimeout(r, 500));
-    expect(dropped).toBe(false);
+    poll.release();
+    await tick;
+    expect(store.state.characters[c.id].second).toBeDefined();
+  });
+
+  it('does not bring back a second terminal closed during a poll snapshot', async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    await fleet.openSecond(c.id);
+    // the listing, taken with the second terminal open, is handed back only after it has closed
+    const poll = holdListing(tmux);
+    const tick = fleet['tick']();
+    await poll.listed;
+    store.update((d) => { delete d.characters[c.id].second; });
+    poll.release();
+    await tick;
+    expect(store.state.characters[c.id].second).toBeUndefined();
   });
 
   it('kills the window of a revive whose character was closed meanwhile', async () => {
