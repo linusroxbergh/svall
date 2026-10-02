@@ -16,7 +16,6 @@ final class OverlayViews<V: OverlayView> {
     private unowned let container: NSView
     private unowned let webView: NSView
     private(set) var views: [String: V] = [:]
-    // the page is zoomed, so its rects are in page pixels: this many window points each
     private(set) var zoom = 1.0
     // the rects the page's panels are drawn into, which every view gives up while they stand
     private var cutout: (rects: [WebRect], passive: [WebRect]) = ([], [])

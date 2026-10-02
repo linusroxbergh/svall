@@ -27,7 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                           styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
         window.delegate = self
         window.title = SvallHome.displayName
-        // the titlebar carries the page's own panel colour instead of the system chrome
+        // the titlebar carries the page's own panel colour, tokens.css --sea-0, instead of the system chrome
         window.titlebarAppearsTransparent = true
         window.backgroundColor = NSColor(srgbRed: 0x1E / 255, green: 0x2A / 255, blue: 0x38 / 255, alpha: 1)
         window.appearance = NSAppearance(named: .darkAqua)

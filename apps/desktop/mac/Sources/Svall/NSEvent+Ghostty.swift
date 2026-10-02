@@ -1,3 +1,4 @@
+// Upstream's vendor/ghostty/macos/Sources/Ghostty/NSEvent+Extension.swift, kept verbatim below this line.
 import Cocoa
 import GhosttyKit
 

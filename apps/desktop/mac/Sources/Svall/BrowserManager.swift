@@ -18,9 +18,8 @@ final class BrowserManager: NSObject, WKUIDelegate, WKNavigationDelegate {
         super.init()
     }
 
-    // the store's UUID is kept beside the fleet's state, so the same cookies come back after a relaunch.
-    // WebKit raises on the all-zero UUID, so a file holding one mints a store instead. A store whose id could not
-    // be written stays the fleet's own for this launch; the shared default store would sign every fleet in as one
+    // the UUID kept beside the fleet's state brings its cookies back after a relaunch; WebKit raises on an all-zero one.
+    // a new UUID that cannot be written still beats the shared default store, which would sign every fleet in as one
     private static func dataStore(file: String) -> WKWebsiteDataStore {
         if let text = try? String(contentsOfFile: file, encoding: .utf8),
            let id = UUID(uuidString: text.trimmingCharacters(in: .whitespacesAndNewlines)),
@@ -126,9 +125,8 @@ final class BrowserManager: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     // MARK: navigation
 
-    // a tab's main frame follows the web and its own blobs, and the blank page a popup starts on; a mailto is
-    // offered to the user's mail app and anything else, javascript: among it, is refused. a subframe is the page's own
-    // business, srcdoc and data urls among it
+    // a tab's main frame loads the web, its own blobs and a popup's blank start; a mailto is offered to the mail app and
+    // the rest, javascript: among it, is refused. a subframe, srcdoc and data urls among it, is the page's own business
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
         if navigationAction.targetFrame?.isMainFrame != true { return decisionHandler(.allow) }
@@ -194,9 +192,8 @@ final class BrowserManager: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     // MARK: popups
 
-    // window.open and target=_blank get a real view built on the given configuration, which is what keeps
-    // window.opener alive for sign-in flows; the page adopts it as a tab of the same character. a mailto
-    // opened in a new window is asked about over its tab, with no tab left behind
+    // window.open and target=_blank get a real view on WebKit's configuration, which keeps window.opener alive for
+    // sign-in flows, and the page adopts it as the character's tab; a mailto is asked about over its tab instead
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if let url = navigationAction.request.url, url.scheme?.lowercased() == "mailto" {

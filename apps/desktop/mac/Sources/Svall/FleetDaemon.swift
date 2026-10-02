@@ -1,8 +1,7 @@
 import Foundation
 
-/// The fleet's daemon, as the launchd job setup writes for a profile's home: launchd starts it only when the app asks,
-/// so it runs while the fleet's window is open. A home with no job (a test fleet's) runs whatever daemon its owner started,
-/// which a quit stops all the same.
+/// The fleet's daemon, from the launchd job setup writes, which starts it only when the app asks: while the fleet's window is
+/// open. A home with no job (a test fleet's) runs whatever daemon its owner started, which a quit stops all the same.
 enum FleetDaemon {
     private static var label: String? {
         Bundle.main.bundleIdentifier.map { $0 + ".svalld" + (SvallHome.directoryName.map { ".\($0)" } ?? "") }
@@ -32,9 +31,8 @@ enum FleetDaemon {
         }
     }
 
-    /// Ends the fleet when the daemon could not be asked to, off the main thread, then calls `done` back on it: the daemon
-    /// first, so the hooks of the terminals closing after it find nobody to clear the agents its next start resumes, then the
-    /// tmux server with every terminal in it.
+    /// Ends the fleet off the main thread when the daemon could not be asked to, then calls `done` on main: the daemon first, so
+    /// the hooks of the terminals closing after it find nobody to clear the agents its next start resumes, then the tmux server.
     static func kill(then done: @escaping () -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             if let label, plist != nil {

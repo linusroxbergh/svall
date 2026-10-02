@@ -2,9 +2,8 @@ import AppKit
 import GhosttyKit
 
 extension SurfaceView {
-    /// Ctrl is the link modifier here, where libghostty's own is cmd. Shift comes along while the
-    /// program in the pane is reading the mouse: it is how Ghostty takes the events back, and Ghostty
-    /// drops it again before matching a link, leaving the cmd it wants.
+    /// Ctrl is the link modifier here, where libghostty's is cmd. Shift comes along while the pane's program reads the mouse:
+    /// it is how Ghostty takes the events back, and Ghostty drops it again before matching a link.
     private func linkMods(_ flags: NSEvent.ModifierFlags) -> NSEvent.ModifierFlags {
         guard let surface, flags.contains(.control), !flags.contains(.command) else { return flags }
         var mods = flags.subtracting(.control).union(.command)
