@@ -67,7 +67,7 @@ const transcript = (v: unknown): string | undefined => {
 
 // a pasted prompt runs to megabytes; only its head is ever shown. The id pairs the hook with the
 // transcript entry Claude Code writes for it afterwards; Codex names the turn the prompt opened instead.
-const MAX_PROMPT = 4000;
+export const MAX_PROMPT = 4000;
 // the harness re-invokes a session through the same hook when a background agent finishes, when a peer
 // hands back, and when a usage limit resets, carrying its own report as the prompt. Nobody typed those.
 const INJECTED = ['<task-notification>', 'Another Claude session sent a message:', 'Your claude.ai usage limit has reset.'];
@@ -78,13 +78,11 @@ const prompt = (h: Record<string, unknown>): { id: string; text: string } | unde
   return id && text ? { id, text } : undefined;
 };
 
-// a finished background agent or workflow re-invokes the session; a shell or monitor may never finish
+// a finished background agent or workflow re-invokes the session; a shell or monitor may never finish.
+// A list with none of them says none is left, which no list at all does not
 const AGENT_TASKS = new Set(['subagent', 'workflow']);
-const backgroundAgents = (v: unknown): number | undefined => {
-  if (!Array.isArray(v)) return undefined;
-  const n = v.filter((t) => AGENT_TASKS.has((t as { type?: unknown } | null)?.type as string)).length;
-  return n || undefined;
-};
+const backgroundAgents = (v: unknown): number | undefined =>
+  Array.isArray(v) ? v.filter((t) => AGENT_TASKS.has((t as { type?: unknown } | null)?.type as string)).length : undefined;
 
 export function normalizeStatus(raw: unknown): StatusEvent | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
@@ -139,7 +137,7 @@ export function normalizeHook(raw: unknown): HookEvent | undefined {
   if (model) ev.model = model.slice(0, 100);
   const toolName = str(h.tool_name);
   if (toolName) ev.toolName = toolName.slice(0, 200);
-  if (agents) ev.backgroundAgents = agents;
+  if (agents !== undefined) ev.backgroundAgents = agents;
   if (ev.name === 'UserPromptSubmit') {
     const submitted = prompt(h);
     if (submitted) ev.prompt = submitted;

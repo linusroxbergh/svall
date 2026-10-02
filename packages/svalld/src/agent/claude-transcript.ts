@@ -1,4 +1,4 @@
-import { LINK, MAX_ENTRY, MAX_URLS, clip, jsonLines, orSkip } from './jsonl.js';
+import { LINK, MAX_URLS, clip, clipLine, jsonLines, orSkip } from './jsonl.js';
 
 type Block = { type: string; text?: string; name?: string; input?: unknown; content?: unknown };
 type Entry = { type?: string; isSidechain?: boolean; isMeta?: boolean; promptId?: string; timestamp?: string; origin?: { kind?: string }; message?: { content?: string | Block[] } };
@@ -74,6 +74,6 @@ export function condenseTurnsClaude(text: string, turns: number, { toolLinks = f
     .filter((e) => !e.isSidechain)
     .map((e) => orSkip(() => render(e, toolLinks)))
     .filter((s): s is string => Boolean(s))
-    .map((s) => (s.length > MAX_ENTRY + 6 ? s.slice(0, MAX_ENTRY + 6) + '…' : s));
+    .map(clipLine);
   return turns > 0 ? rendered.slice(-turns).join('\n') : '';
 }

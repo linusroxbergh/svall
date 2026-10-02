@@ -120,7 +120,9 @@ describe('normalizeHook', () => {
       { id: 'b1', type: 'shell', status: 'running' },
       { id: 'm1', type: 'monitor', status: 'running' },
     ])?.backgroundAgents).toBe(2);
-    expect(stop([{ id: 'b1', type: 'shell', status: 'running' }])?.backgroundAgents).toBeUndefined();
+    // a list with no agent in it says none is left
+    expect(stop([{ id: 'b1', type: 'shell', status: 'running' }])?.backgroundAgents).toBe(0);
+    expect(stop([])?.backgroundAgents).toBe(0);
     expect(stop('junk')?.backgroundAgents).toBeUndefined();
   });
   it('drops subagent events, unknown events and malformed input', () => {

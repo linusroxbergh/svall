@@ -37,8 +37,10 @@ export type LiveWindow = {
   dead: boolean;
 };
 
-export function isShellCommand(command: string): boolean {
-  return SHELLS.has(command.replace(/^-/, ''));
+// `shell` is the one config.json names, whatever it is
+export function isShellCommand(command: string, shell?: string): boolean {
+  const name = command.replace(/^-/, '');
+  return SHELLS.has(name) || (!!shell && name === path.basename(shell));
 }
 
 // tmux 3.7 runs a paste through vis(3) unless given -S, a flag older versions refuse; `usage` is what

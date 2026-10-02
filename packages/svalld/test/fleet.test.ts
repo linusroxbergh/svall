@@ -579,6 +579,18 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id].agent!.lastActivityAt).toBe(0);
   });
 
+  it('gives every agent awake at a daemon start a whole rest before ending it', async () => {
+    const b = await boot();
+    const { c } = await withAgent(b);
+    b.store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
+    await b.fleet.stop();
+    const again = new Fleet({ ...b.fleet['deps'], pollMs: 60_000 });
+    cleanup.push(() => again.stop());
+    await again.start();
+    await again['endIdleAgents']();
+    expect(b.store.state.characters[c.id].tmux).toBeDefined();
+  });
+
   it('wakes a dormant claude with a prompt run into it, as its launch prompt', async () => {
     const b = await boot();
     const { fleet, store, tmux, home } = b;
@@ -1410,7 +1422,11 @@ runIf('Fleet', () => {
     fleet['hookCwd'].set(c.id, '/tmp');
     fleet['shellStreak'].set(`${c.id}-2`, 1);
     fleet['scribe']['seen'].set(c.id, { lastPassAt: 0, path: '', bytes: 0 });
+    fleet.markSeen(c.id);
+    fleet.setPaneOutput(c.id, true);
     await fleet.closeCharacter(c.id);
+    expect(fleet['seen'].has(c.id)).toBe(false);
+    expect(fleet['streaming'].has(c.id)).toBe(false);
     expect(fleet['hookCwd'].has(c.id)).toBe(false);
     expect(fleet['shellStreak'].has(`${c.id}-2`)).toBe(false);
     expect(fleet['scribe']['seen'].has(c.id)).toBe(false);

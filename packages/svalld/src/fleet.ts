@@ -12,7 +12,7 @@ import { condenseTurns, readTail, userPrompts } from './agent/transcript.js';
 import { characterKeyEnv } from './claude.js';
 import { saveConfig, scribeModel, type Config } from './config.js';
 import { briefReply, renderBrief } from './context/brief.js';
-import { takesPrompt, withAddDirs, withPromptFile } from './context/launch.js';
+import { isAgentCommand, withAddDirs, withPromptFile } from './context/launch.js';
 import { settleItems } from './context/items.js';
 import { docFolders, removeDocs } from './docs.js';
 import { drowsy, exited, processes, runsAgent, runsInBackground, startFlags, type Proc } from './dormancy.js';
@@ -106,6 +106,9 @@ export class Fleet extends EventEmitter<Events> {
   async start(): Promise<void> {
     await this.deps.tmux.ensureServer();
     await this.reconcileNow();
+    // when the user last looked is not kept across a restart, so every agent awake now gets a whole rest from here
+    const now = Date.now();
+    for (const c of Object.values(this.deps.store.state.characters)) if (c.tmux) this.seen.set(c.id, now);
     this.ensureHome();
     this.syncAgents();
     this.deps.store.update((d) => { if (this.deps.config.name) d.name = this.deps.config.name; else delete d.name; });
@@ -320,7 +323,7 @@ export class Fleet extends EventEmitter<Events> {
     const cwdChanged: string[] = [];
     // an agent whose pane is back at a shell prompt for two polls has ended without a SessionEnd
     const settleAgent = (key: string, slot: { agent?: Agent }, command: string) => {
-      if (slot.agent && isShellCommand(command)) {
+      if (slot.agent && isShellCommand(command, this.deps.config.shell)) {
         const n = (this.shellStreak.get(key) ?? 0) + 1;
         this.shellStreak.set(key, n);
         if (n >= 2) { delete slot.agent; this.shellStreak.delete(key); }
@@ -526,7 +529,7 @@ export class Fleet extends EventEmitter<Events> {
     if (!fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) throw new Invalid(`cwd ${p.cwd} is not a directory`);
     const id = newId('c');
     // typed into claude's composer while it boots, a long prompt can arrive in pieces that swallow the Enter
-    const prompt = p.command && takesPrompt(p.command) ? p.run : undefined;
+    const prompt = p.command && isAgentCommand(p.command) ? p.run : undefined;
     const promptFile = path.join(this.deps.paths.home, `${id}.prompt`);
     const w = await this.deps.tmux.newWindow(id, cwd, { ...characterKeyEnv(this.deps.paths.env), SVALL_CHAR_ID: id, SVALL_HOME: this.deps.paths.home });
     try {
@@ -690,8 +693,8 @@ export class Fleet extends EventEmitter<Events> {
     this.deps.store.update((d) => { delete d.characters[id]; });
     if (c.tmux) await this.deps.tmux.killWindow(c.tmux.windowId);
     if (c.second) await this.deps.tmux.killWindow(c.second.tmux.windowId);
-    // nothing the daemon keeps outside the state outlives the character
-    for (const m of [this.shellStreak, this.codexStreak, this.hookCwd, this.rolloutMark, this.answering]) m.delete(id);
+    // nothing the fleet keeps outside the state outlives the character
+    for (const m of [this.shellStreak, this.codexStreak, this.hookCwd, this.rolloutMark, this.answering, this.seen, this.streaming]) m.delete(id);
     this.shellStreak.delete(secondName(id));
     this.scribe.forget(id);
     removeDocs(this.deps.paths.docs, 'character', id, this.deps.log);
@@ -731,7 +734,7 @@ export class Fleet extends EventEmitter<Events> {
     const island = this.deps.store.state.islands[c.islandId];
     const resume = withAddDirs(c.revive?.command ?? '', [...(island?.context ?? []), ...c.context]);
     const promptFile = path.join(this.deps.paths.home, `${id}.prompt`);
-    const withPrompt = !!prompt && takesPrompt(resume);
+    const withPrompt = !!prompt && isAgentCommand(resume);
     if (withPrompt) fs.writeFileSync(promptFile, prompt, { mode: 0o600 });
     const command = withPrompt ? withPromptFile(resume, promptFile) : resume;
     this.deps.store.update((d) => {
@@ -803,7 +806,7 @@ export class Fleet extends EventEmitter<Events> {
   async run(id: string, text: string, enter: boolean, term?: 2): Promise<void> {
     const c = this.char(id);
     // a dormant claude or codex wakes with the text as its launch prompt; typed while it boots, a prompt can lose its Enter
-    if (!term && enter && !c.tmux && !this.reviving.has(id) && takesPrompt(c.revive?.command ?? '')) {
+    if (!term && enter && !c.tmux && !this.reviving.has(id) && isAgentCommand(c.revive?.command ?? '')) {
       await this.reviveCharacter(id, text);
       return;
     }

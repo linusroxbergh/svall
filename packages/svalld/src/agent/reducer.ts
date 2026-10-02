@@ -78,6 +78,8 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
   // the hook carries the prompt before the transcript holds it, so this is the newest one there is
   if (e.prompt && (!e.sessionId || e.sessionId === next.agent.sessionId)) next.agent.lastPrompt = { ...e.prompt, at: now };
   const agent = next.agent;
+  // background agents that never re-invoke the session, killed or crashed, are over once a hook lists none
+  if (e.backgroundAgents === 0) delete agent.background;
   // the main thread moving on leaves a question a subagent still has open, unless the user typed a prompt past it
   if (agent.asking && e.backend === 'claude') {
     const stop = e.name === 'Stop' || e.name === 'StopFailure';

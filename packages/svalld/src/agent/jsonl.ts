@@ -1,9 +1,12 @@
 // what one entry of a rendered transcript may run to, and how many links one turn may carry
-export const MAX_ENTRY = 2000;
+const MAX_ENTRY = 2000;
 export const MAX_URLS = 10;
 export const LINK = /https?:\/\/[^\s"'<>()[\]{}`\\]+/g;
 
-export const clip = (s: string): string => (s.length > MAX_ENTRY ? s.slice(0, MAX_ENTRY) + '…' : s);
+const clipAt = (s: string, max: number): string => (s.length > max ? s.slice(0, max) + '…' : s);
+export const clip = (s: string): string => clipAt(s, MAX_ENTRY);
+// a rendered line: an entry, and the `USER: ` or such it is said under
+export const clipLine = (s: string): string => clipAt(s, MAX_ENTRY + 6);
 
 /** What one line reads as, or nothing for a line of a shape the reader does not know, as for a junk one. */
 export const orSkip = <T>(read: () => T): T | undefined => {

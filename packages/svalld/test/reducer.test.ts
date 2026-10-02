@@ -47,6 +47,14 @@ describe('applyHook', () => {
     expect(w.agent?.status).toBe('working');
     expect(w.unread).toBe(false);
   });
+  it('settles once a hook lists no background agent left, as when they were killed rather than finished', () => {
+    const w = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Stop', backgroundAgents: 1 }, 8);
+    expect(w.agent).toMatchObject({ status: 'working', background: true });
+    expect(applyHook(w, { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'idle_prompt' }, 9).agent?.background).toBe(true);
+    const idle = applyHook(w, { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'idle_prompt', backgroundAgents: 0 }, 9);
+    expect(idle.agent?.status).toBe('idle');
+    expect(idle.agent?.background).toBeUndefined();
+  });
   it('blocks on permission prompts only', () => {
     expect(applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'permission_prompt' }, 1).agent?.status).toBe('blocked');
     expect(applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'worker_permission_prompt' }, 1).agent?.status).toBe('blocked');
