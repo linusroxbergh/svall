@@ -78,11 +78,14 @@ test('sound and the two events are switched one by one', () => {
   expect(sent).not.toContainEqual({ type: 'notify.enable' });
 });
 
-test('turned off in System Settings, the switch is disabled and the card points there', () => {
+test('turned off in System Settings, the switch still asks macOS and the card points there', () => {
   store.getState().setNotifyPermission('denied');
   render(<SettingsCard />);
-  expect((screen.getByTestId('set-notify') as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByTestId('set-notify-denied')).toBeTruthy();
+  fireEvent.click(screen.getByTestId('set-notify'));
+  expect(sent).toContainEqual({ type: 'notify.enable' });
+  expect(store.getState().settings.notifications.on).toBe(true);
+  expect(checked('set-notify')).toBe('false');
   fireEvent.click(screen.getByTestId('set-notify-settings'));
   expect(sent).toContainEqual({ type: 'notify.settings' });
 });

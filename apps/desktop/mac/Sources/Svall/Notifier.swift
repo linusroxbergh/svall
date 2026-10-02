@@ -44,10 +44,17 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    // macOS asks only once, so after a no the way back is Svall's page in System Settings
     func enable() {
-        center.requestAuthorization(options: [.alert, .sound]) { _, error in
-            if let error { NSLog("notifications: %@", "\(error)") }
-            self.refreshPermission()
+        center.getNotificationSettings { settings in
+            if settings.authorizationStatus == .denied {
+                DispatchQueue.main.async { self.openSettings() }
+                return
+            }
+            self.center.requestAuthorization(options: [.alert, .sound]) { _, error in
+                if let error { NSLog("notifications: %@", "\(error)") }
+                self.refreshPermission()
+            }
         }
     }
 

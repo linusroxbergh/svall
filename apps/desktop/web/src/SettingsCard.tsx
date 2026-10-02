@@ -163,7 +163,7 @@ function Notifications() {
   const flip = () => {
     if (shown) { setN({ on: false }); return; }
     setN({ on: true });
-    if (permission === 'unknown') app.bridge.send({ type: 'notify.enable' });
+    if (permission !== 'granted') app.bridge.send({ type: 'notify.enable' });
   };
   const toggle = (id: string, on: boolean, change: () => void) => (
     <b><button className="set-switch" role="switch" aria-checked={on} data-testid={id} onClick={change}>{on ? 'on' : 'off'}</button></b>
@@ -183,7 +183,7 @@ function Notifications() {
       <div className="rows">
         <div className="row">
           <span>notifications<Info id="notify">macOS banners when a character needs you or is done. Approve and Deny work from the banner.</Info></span>
-          <b><button className="set-switch" role="switch" aria-checked={shown} data-testid="set-notify" disabled={permission === 'denied'} onClick={flip}>{shown ? 'on' : 'off'}</button></b>
+          <b><button className="set-switch" role="switch" aria-checked={shown} data-testid="set-notify" onClick={flip}>{shown ? 'on' : 'off'}</button></b>
         </div>
         {shown && (
           <>
