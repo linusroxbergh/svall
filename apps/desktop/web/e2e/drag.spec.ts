@@ -305,16 +305,19 @@ test('an island moved towards mission control closes the gap instead of refittin
   await svall.api.call('island.create', { name: svall.uniq('mb'), seed: 1, position: { x: 0, y: 14 }, size: small });
   await svall.open('map');
   await settleMap(page);
-  const layoutOf = () => page.evaluate(() => JSON.stringify(window.__map!.layout()));
+  const layoutOf = () => page.evaluate(() => window.__map!.layout());
   const before = await layoutOf();
   const homeTop = (await page.getByTestId('island-home').boundingBox())!.y;
 
   await svall.api.call('island.update', { id: mid.id, position: { x: 0, y: 10 } });
   await expect.poll(async () => (await drawnAt(page, mid.id))?.y).toBe(10);
 
-  // the world neither rescaled nor slid, so those three rows are three rows nearer a sandbar that stayed put
-  expect(await layoutOf()).toBe(before);
-  expect((await page.getByTestId('island-home').boundingBox())!.y).toBeCloseTo(homeTop, 0);
+  // the world neither rescaled nor slid, so those three rows are three rows nearer a sandbar that stayed put;
+  // mission control's row settling may still nudge the fit by a fraction of a pixel
+  const after = await layoutOf();
+  expect(after.scale).toBeCloseTo(before.scale, 2);
+  expect(Math.abs(after.ox - before.ox) + Math.abs(after.oy - before.oy)).toBeLessThan(1);
+  expect(Math.abs((await page.getByTestId('island-home').boundingBox())!.y - homeTop)).toBeLessThan(1);
 
   // past mission control's row too: the floor goes down with it
   await svall.api.call('island.update', { id: mid.id, position: { x: 0, y: 20 } });
