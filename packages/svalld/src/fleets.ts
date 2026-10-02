@@ -17,7 +17,7 @@ import { appPid, appQuit, fleetHomes } from './uninstall.js';
 export class ProtocolMismatch extends Error {}
 
 // managed is false for a home that is not a profile's own directory: it gets no launchd agent
-export type FleetTarget = { name: string; home: string; managed: boolean };
+type FleetTarget = { name: string; home: string; managed: boolean };
 
 export type StartDeps = {
   exists(p: string): boolean;

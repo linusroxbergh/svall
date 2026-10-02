@@ -3,7 +3,7 @@ import { ApiError, HelloReply, LOGIN_REFUSED, PROTOCOL_VERSION, serverWait, type
 export { ApiError };
 
 // where svalld answers, and the token to say on arrival; a socket the proxy has already vouched for has none
-export type Endpoint = { url: string; token?: string };
+type Endpoint = { url: string; token?: string };
 
 // refused: the proxy brought the page from a tailnet login the fleet does not accept
 export type Status = 'connecting' | 'online' | 'offline' | 'outdated' | 'refused';
