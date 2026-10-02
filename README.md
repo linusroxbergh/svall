@@ -154,7 +154,7 @@ newer. An Intel Mac also needs Xcode; see
 1. Install the tools, and the Claude Code CLI, the Codex CLI, or both:
 
        brew install node tmux pnpm gh   # skip node if you have 24 or newer
-       gh auth login                    # clones the private repository, downloads the terminal engine and resolves PR links
+       gh auth login                    # resolves PR links
 
    If `xcrun --show-sdk-version` prints a version below 26, update the Command
    Line Tools in System Settings → General → Software Update. pnpm must be 12
@@ -188,9 +188,9 @@ installed it. If Node is unsupported, run `brew upgrade node`.
 ### Building Ghostty from source
 
 The installer downloads GhosttyKit, the terminal engine, prebuilt. It builds it
-from source instead on an Intel Mac, when `gh` isn't signed in, or when no build
-of the pinned Ghostty version has been published. That needs Xcode 26 or newer
-from the App Store. Open Xcode once to accept its license, then run:
+from source instead on an Intel Mac, or when no build of the Ghostty version
+this checkout records has been published and pinned. That needs Xcode 26 or
+newer from the App Store. Open Xcode once to accept its license, then run:
 
     sudo xcode-select -s /Applications/Xcode.app
     xcodebuild -downloadComponent MetalToolchain
@@ -366,7 +366,7 @@ missing. For each agent you leave on, it writes:
   Claude Code's session, prompt, tool, permission, notification and stop
   events, which exits before starting Node outside a character, and a
   statusline wrapper that keeps your own statusline running inside it.
-- `~/.codex/hooks.json`: the same hook.
+- `~/.codex/hooks.json` (or `$CODEX_HOME/hooks.json`): the same hook.
 
 Every change keeps a `.bak-<time>` copy. Setup also writes:
 
@@ -422,13 +422,13 @@ to every site the Chrome profile is signed in to.
 
 ## Development
 
-    pnpm test            # needs tmux on PATH for the integration tests
+    pnpm test            # needs tmux and swiftc (the Command Line Tools) on PATH
     pnpm typecheck
     pnpm e2e             # Playwright against a temporary daemon
     pnpm desktop:dev     # Vite dev server plus a debug app; SVALL_HOME picks the daemon, unless it names a release fleet
-    pnpm desktop:build   # an unsigned apps/desktop/mac/build/Svall Dev.app
+    pnpm desktop:build   # an ad-hoc signed apps/desktop/mac/build/Svall Dev.app
     pnpm app:build       # apps/desktop/mac/build/Svall.app, with its own node, tmux, daemon and CLI
-    pnpm ghostty:build   # GhosttyKit from vendor/ghostty (v1.3.1) into vendor/ghostty-kit
+    pnpm ghostty:build   # GhosttyKit from vendor/ghostty into vendor/ghostty-kit
     pnpm ghostty:publish # build GhosttyKit and upload it for installs to download
     mkdir -p /tmp/svall-dev && echo '{ "port": 0 }' > /tmp/svall-dev/config.json
     SVALL_HOME=/tmp/svall-dev pnpm svalld   # port 0 keeps it off the private fleets' 47800 and 47900
@@ -436,10 +436,12 @@ to every site the Chrome profile is signed in to.
 The first `pnpm e2e` needs
 `pnpm --filter @svall/desktop-web exec playwright install chromium`.
 
-Run `pnpm ghostty:publish` after committing a `vendor/ghostty` bump, or installs
-of that commit need Xcode. When a change to `scripts/ghostty-build.sh` changes
-what it builds, also bump `REV` in `scripts/ghostty-kit.sh` before publishing.
-Publishing needs the Metal toolchain and zig.
+Run `pnpm ghostty:publish` after committing a `vendor/ghostty` bump, then commit
+the `PINNED` and `SHA256` lines it prints into `scripts/ghostty-kit.sh`, or
+installs of that commit need Xcode: the installer downloads only the kit pinned
+there. When a change to `scripts/ghostty-build.sh` changes what it builds, also
+bump `REV` in `scripts/ghostty-kit.sh` before publishing. Publishing needs the
+Metal toolchain and zig.
 
 - `packages/protocol`: state types and message schemas (zod).
 - `packages/svalld`: the daemon (tmux, state, hooks, transcripts, API).

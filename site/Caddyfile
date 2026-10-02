@@ -1,3 +1,5 @@
+# The server keeps its own copy of this file, which site:deploy does not send: copy a change there by hand,
+# then reload Caddy.
 :8080 {
 	root * /srv/svall.dev
 	# Svall.dmg moves to each new release, and Cloudflare caches .dmg files by default, so only versioned DMGs are immutable

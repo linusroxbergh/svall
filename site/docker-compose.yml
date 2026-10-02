@@ -5,7 +5,8 @@ name: svall-site
 # Cloudflare Tunnel -> cloudflared -> Caddy, which serves /srv/svall.dev.
 # scripts/release.sh in the svall repo fills that folder over rsync, and
 # scripts/site-deploy.sh puts the landing page beside it. Nothing here
-# publishes a host port.
+# publishes a host port. The server keeps its own copy of this file and the
+# Caddyfile, so a change here reaches it only when copied there by hand.
 services:
   web:
     image: caddy:2-alpine

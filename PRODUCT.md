@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-Marketing site: static HTML/CSS in `site/`, no build step. The product itself is a macOS app (Swift shell around a React webview) with a Node daemon and CLI.
+Marketing site: a static page in `site/`, with a demo map `pnpm site:build` builds from the app's own code. The product itself is a macOS app (Swift shell around a React webview) with a Node daemon and CLI.
 
 ## Users
 
@@ -24,7 +24,7 @@ The fleet is a place, not a list: islands per project, characters per terminal, 
 
 ## Operating Context
 
-Runs on macOS 15.6+. Wraps the Claude Code and Codex CLIs the user already has; no AI account or billing of its own. Phone access over Tailscale. `svall` CLI scripts the fleet.
+Runs on macOS 15+ on Apple silicon. Wraps the Claude Code and Codex CLIs the user already has; no AI account or billing of its own. Phone access over Tailscale. `svall` CLI scripts the fleet.
 
 ## Capabilities and Constraints
 
@@ -33,14 +33,14 @@ Runs on macOS 15.6+. Wraps the Claude Code and Codex CLIs the user already has; 
 - Briefs carry instructions, links and agents' notes into every new session.
 - Browser, file editor and working-tree diff beside each terminal.
 - macOS banners with Approve and Deny; phone app with push notifications.
-- Install today: `git clone` then `pnpm desktop:install`. The repository is private (invited testers). No downloadable build yet.
-- Alpha 0.1.
+- Install: the notarized DMG from svall.dev, `curl -fsSL https://svall.dev/install.sh | sh`, or from source with `git clone` then `pnpm desktop:install`. The repository is public.
+- Alpha.
 
 ## Brand Commitments
 
 - Name: Svall (Swedish for the swell of water that washes in behind a boat).
 - Visual world: the app's night sea, sand and sage-grass island (`apps/desktop/web/src/tokens.css`), and the bare round island icon (`apps/desktop/web/public/icons/icon.svg`).
-- The animal portraits and lighthouse are licensed Flaticon art (`apps/desktop/web/public/animals/LICENSE`): never in a logo or icon. The site shows a few portraits on its demo cards, as the app does, at the owner's request.
+- The animal portraits and lighthouse are licensed Flaticon art (`apps/desktop/web/public/animals/LICENSE`): never in a logo or icon. The site's demo cards show the portraits, as the app's cards do, at the owner's request.
 - The site matches the app's map: its sea, grain, island drawing, label pills and cards at their real size.
 
 ## Evidence on Hand
@@ -51,5 +51,5 @@ Runs on macOS 15.6+. Wraps the Claude Code and Codex CLIs the user already has; 
 ## Product Principles
 
 - Glanceable over exhaustive: status first, detail on demand.
-- Nothing is lost: sessions outlive the app, the daemon and reboots.
+- Nothing is lost: a character resumes its agent's conversation after a quit or a reboot.
 - Bring your own agents: wrap the CLIs people already trust.
