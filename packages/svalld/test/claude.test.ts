@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { characterKeyEnv, readEnvFile, spawnClaude } from '../src/claude.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -24,7 +24,6 @@ const read = (o: { args: string[]; cwd: string; envFile: string }): Promise<stri
   });
 
 describe('spawnClaude', () => {
-  const env = { PATH: process.env.PATH, SVALL_CHAR_ID: process.env.SVALL_CHAR_ID, ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY };
   let home: string;
   let cwd: string;
   let envFile: string;
@@ -32,15 +31,15 @@ describe('spawnClaude', () => {
   beforeEach(() => {
     home = makeHome();
     fs.writeFileSync(path.join(home, 'claude'), FAKE, { mode: 0o755 });
-    process.env.PATH = `${home}:${env.PATH}`;
-    process.env.SVALL_CHAR_ID = 'c_parent';
-    delete process.env.ANTHROPIC_API_KEY;
+    vi.stubEnv('PATH', `${home}:${process.env.PATH}`);
+    vi.stubEnv('SVALL_CHAR_ID', 'c_parent');
+    vi.stubEnv('ANTHROPIC_API_KEY', undefined);
     cwd = path.join(home, 'pass');
     envFile = path.join(home, '.env');
   });
 
   afterEach(() => {
-    for (const [k, v] of Object.entries(env)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    vi.unstubAllEnvs();
     cleanHomes();
   });
 

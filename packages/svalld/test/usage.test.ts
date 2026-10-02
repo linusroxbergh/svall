@@ -29,15 +29,12 @@ case "$FAKE_CLAUDE" in
   null) echo 'null'; echo '${full}'; exec sleep 30 ;;
   shape) echo '${limits('"model_scoped":{"not":"an array"}')}'; exec sleep 30 ;;
   echo) echo "$line" > "$FAKE_OUT"; echo "char=\${SVALL_CHAR_ID:-none} key=\${ANTHROPIC_API_KEY:-none}" >> "$FAKE_OUT"; echo '${full}' ;;
-  count) echo x >> "$FAKE_COUNT"; echo '${full}' ;;
-  slowcount) echo x >> "$FAKE_COUNT"; sleep 0.3; echo '${full}' ;;
   exit) echo 'no credentials' >&2; exit 3 ;;
   hang) exec sleep 30 ;;
 esac
 `;
 
 describe('usageFetcher', () => {
-  const env = { PATH: process.env.PATH, SVALL_CHAR_ID: process.env.SVALL_CHAR_ID, FAKE_CLAUDE: process.env.FAKE_CLAUDE, FAKE_OUT: process.env.FAKE_OUT, FAKE_COUNT: process.env.FAKE_COUNT, ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY };
   let home: string;
   let fetch: ReturnType<typeof usageFetcher>;
   let envFile: string;
@@ -45,20 +42,20 @@ describe('usageFetcher', () => {
   beforeEach(() => {
     home = makeHome();
     fs.writeFileSync(path.join(home, 'claude'), FAKE, { mode: 0o755 });
-    process.env.PATH = `${home}:${env.PATH}`;
-    process.env.SVALL_CHAR_ID = 'c_parent';
-    delete process.env.ANTHROPIC_API_KEY;
+    vi.stubEnv('PATH', `${home}:${process.env.PATH}`);
+    vi.stubEnv('SVALL_CHAR_ID', 'c_parent');
+    vi.stubEnv('ANTHROPIC_API_KEY', undefined);
     envFile = path.join(home, '.env');
-    fetch = usageFetcher({ cwd: path.join(home, 'usage'), envFile, timeoutMs: 2000 });
+    fetch = usageFetcher({ cwd: path.join(home, 'usage'), envFile });
   });
 
   afterEach(() => {
-    for (const [k, v] of Object.entries(env)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    vi.unstubAllEnvs();
     cleanHomes();
   });
 
   it('reads the session, week and model-scoped windows, in that order', async () => {
-    process.env.FAKE_CLAUDE = 'ok';
+    vi.stubEnv('FAKE_CLAUDE', 'ok');
     const snap = await fetch();
     expect(snap.available).toBe(true);
     expect(snap.windows).toEqual([
@@ -69,21 +66,22 @@ describe('usageFetcher', () => {
   });
 
   it('answers before the child exits, and skips lines that are not the response', async () => {
-    process.env.FAKE_CLAUDE = 'noise';
+    vi.stubEnv('FAKE_CLAUDE', 'noise');
     await expect(fetch()).resolves.toMatchObject({ available: true });
   });
 
   it('reports a login with no plan limits as unavailable rather than failing', async () => {
-    process.env.FAKE_CLAUDE = 'apikey';
+    vi.stubEnv('FAKE_CLAUDE', 'apikey');
     await expect(fetch()).resolves.toEqual({ available: false, windows: [] });
   });
 
   it('asks for the plan limits alone, without the character id, and with the fleet .env', async () => {
-    process.env.FAKE_CLAUDE = 'echo';
-    process.env.FAKE_OUT = path.join(home, 'out');
+    const out = path.join(home, 'out');
+    vi.stubEnv('FAKE_CLAUDE', 'echo');
+    vi.stubEnv('FAKE_OUT', out);
     fs.writeFileSync(envFile, 'ANTHROPIC_API_KEY="sk-ant-test"\n');
     await fetch();
-    const [request, vars] = fs.readFileSync(process.env.FAKE_OUT, 'utf8').trim().split('\n');
+    const [request, vars] = fs.readFileSync(out, 'utf8').trim().split('\n');
     expect(JSON.parse(request)).toMatchObject({ type: 'control_request', request: { subtype: 'get_usage', skip_behaviors: true } });
     expect(vars).toBe('char=none key=sk-ant-test');
   });
@@ -91,68 +89,54 @@ describe('usageFetcher', () => {
   // claude is resolved from PATH and its replies are not ours to shape: neither a bare null line
   // nor a field of the wrong type may throw past the promise and leave the read hanging to its timeout
   it('reads past a bare null line, and drops a field that is not the array it should be', async () => {
-    process.env.FAKE_CLAUDE = 'null';
+    vi.stubEnv('FAKE_CLAUDE', 'null');
     await expect(fetch()).resolves.toMatchObject({ available: true });
-    process.env.FAKE_CLAUDE = 'shape';
+    vi.stubEnv('FAKE_CLAUDE', 'shape');
     await expect(fetch()).resolves.toEqual({ available: true, windows: [] });
   });
 
   it('rejects an error response, a failed exit and a read that hangs', async () => {
-    process.env.FAKE_CLAUDE = 'failed';
+    vi.stubEnv('FAKE_CLAUDE', 'failed');
     await expect(fetch()).rejects.toThrow('not logged in');
-    process.env.FAKE_CLAUDE = 'exit';
+    vi.stubEnv('FAKE_CLAUDE', 'exit');
     await expect(fetch()).rejects.toThrow('claude exited 3: no credentials');
-    process.env.FAKE_CLAUDE = 'hang';
-    await expect(fetch()).rejects.toThrow('timed out after 2000ms');
+    vi.stubEnv('FAKE_CLAUDE', 'hang');
+    await expect(usageFetcher({ cwd: path.join(home, 'usage'), envFile, timeoutMs: 2000 })()).rejects.toThrow('timed out after 2000ms');
   });
 });
 
 describe('cachedUsage', () => {
-  const env = { PATH: process.env.PATH, FAKE_CLAUDE: process.env.FAKE_CLAUDE, FAKE_COUNT: process.env.FAKE_COUNT };
-  let home: string;
-  let fetch: ReturnType<typeof usageFetcher>;
-  const runs = (): number => fs.readFileSync(process.env.FAKE_COUNT!, 'utf8').trim().split('\n').length;
-
-  beforeEach(() => {
-    home = makeHome();
-    fs.writeFileSync(path.join(home, 'claude'), FAKE, { mode: 0o755 });
-    process.env.PATH = `${home}:${env.PATH}`;
-    process.env.FAKE_COUNT = path.join(home, 'count');
-    fetch = usageFetcher({ cwd: path.join(home, 'usage'), envFile: path.join(home, '.env'), timeoutMs: 2000 });
-  });
-
-  afterEach(() => {
-    for (const [k, v] of Object.entries(env)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
-    cleanHomes();
-  });
+  const snapshot: UsageSnapshot = { available: true, windows: [{ key: 'session', label: 'Session', pct: 5 }] };
 
   it('serves a snapshot within the window, and reads again once it is past', async () => {
-    process.env.FAKE_CLAUDE = 'count';
+    const fetch = vi.fn(async () => snapshot);
     let now = 1000;
     const cached = cachedUsage(fetch, 60_000, () => now);
     const first = await cached();
     now += 59_000;
     expect(await cached()).toEqual(first);
-    expect(runs()).toBe(1);
+    expect(fetch).toHaveBeenCalledTimes(1);
     now += 2000;
     await cached();
-    expect(runs()).toBe(2);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('shares one read between callers asking at once', async () => {
-    process.env.FAKE_CLAUDE = 'slowcount';
+    let answer!: (s: UsageSnapshot) => void;
+    const fetch = vi.fn(() => new Promise<UsageSnapshot>((r) => { answer = r; }));
     const cached = cachedUsage(fetch, 60_000);
-    const [a, b] = await Promise.all([cached(), cached()]);
-    expect(a).toEqual(b);
-    expect(runs()).toBe(1);
+    const both = Promise.all([cached(), cached()]);
+    answer(snapshot);
+    const [a, b] = await both;
+    expect(a).toBe(b);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('does not cache a failure', async () => {
-    process.env.FAKE_CLAUDE = 'exit';
+    const fetch = vi.fn<() => Promise<UsageSnapshot>>().mockRejectedValueOnce(new Error('claude exited 3')).mockResolvedValue(snapshot);
     const cached = cachedUsage(fetch, 60_000);
     await expect(cached()).rejects.toThrow();
-    process.env.FAKE_CLAUDE = 'count';
-    await expect(cached()).resolves.toMatchObject({ available: true });
+    await expect(cached()).resolves.toEqual(snapshot);
   });
 });
 
