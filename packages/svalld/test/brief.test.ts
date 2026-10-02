@@ -162,6 +162,16 @@ describe('briefReply', () => {
   it('ignores other events', () => {
     expect(briefReply('Stop', 'B', undefined)).toEqual({});
   });
+  // two briefs that each fit can differ by nearly twice the cap, as for a character moved between busy islands
+  it('sends the whole brief, said to replace the one before, when the change runs past the cap', () => {
+    const links = (host: string) => Array.from({ length: 60 }, (_, n) => ({ kind: 'other' as const, ref: `https://${host}/${'p'.repeat(150)}/${n}`, label: '', source: 'manual' as const }));
+    const before = renderBrief(island({ id: 'a', context: links('a.test') }), char());
+    const after = renderBrief(island({ id: 'b', context: links('b.test') }), char());
+    const { reply } = briefReply('UserPromptSubmit', after, before);
+    expect(reply).toBe(['# Svall context, in place of the one before', ...after.split('\n').slice(1)].join('\n'));
+    expect(reply!.length).toBeLessThan(10_000);
+    expect(briefReply('UserPromptSubmit', '', before).reply).toMatch(/^# Svall context changed\n- /);
+  });
 });
 
 describe('brief item marks', () => {

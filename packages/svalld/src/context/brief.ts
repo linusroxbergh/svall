@@ -171,5 +171,8 @@ export function briefReply(name: HookName, brief: string, delivered: string | un
   if (name !== 'SessionStart' && name !== 'UserPromptSubmit') return {};
   if (name === 'SessionStart' || delivered === undefined) return brief ? { reply: brief, delivered: brief } : {};
   if (delivered === brief) return {};
-  return { reply: briefDiff(delivered, brief), delivered: brief };
+  const diff = briefDiff(delivered, brief);
+  // two briefs under the cap can differ by nearly twice it, so a change past the cap goes out as the brief whole
+  const reply = brief && diff.length > BRIEF_MAX ? ['# Svall context, in place of the one before', ...brief.split('\n').slice(1)].join('\n') : diff;
+  return { reply, delivered: brief };
 }
