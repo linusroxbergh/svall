@@ -10,10 +10,13 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 curl -fsSL -o "$TMP/sparkle.tar.xz" "https://github.com/sparkle-project/Sparkle/releases/download/$VERSION/Sparkle-$VERSION.tar.xz"
 echo "$SHA256  $TMP/sparkle.tar.xz" | shasum -a 256 -c - >/dev/null || { echo "Sparkle-$VERSION.tar.xz does not match its pinned sha256" >&2; exit 1; }
-# the folder lands whole, as bin/generate_appcast in it marks the download done
-mkdir "$TMP/out"
-tar -xJf "$TMP/sparkle.tar.xz" -C "$TMP/out" ./bin ./LICENSE
+# the folder lands whole, as bin/generate_appcast in it marks the download done; it is staged beside its place, so the
+# rename that lands it never crosses a volume
 mkdir -p "$(dirname "$OUT")"
+STAGE="$OUT.$$"
+trap 'rm -rf "$TMP" "$STAGE"' EXIT
+mkdir "$STAGE"
+tar -xJf "$TMP/sparkle.tar.xz" -C "$STAGE" ./bin ./LICENSE
 rm -rf "$OUT"
-mv "$TMP/out" "$OUT"
+mv "$STAGE" "$OUT"
 echo "$OUT/bin"

@@ -23,8 +23,10 @@ fail() { printf '%s■%s  %s\n' "$R" "$N" "$*" >&2; exit 1; }
 LOG="$(mktemp -t svall-install)"
 CHECK_OUT="$(mktemp -t svall-check)"
 SETUP_OUT="$(mktemp -t svall-setup)"
+# the app renamed aside goes back while none is in its place, as when a run stopped between the two renames
+keep_app() { [ -e "$DEST/Svall Dev.app" ] || [ ! -e "$DEST/.Svall Dev.app.old" ] || mv "$DEST/.Svall Dev.app.old" "$DEST/Svall Dev.app"; }
 # the log stays, for a failed step to point at
-trap 'rm -rf "$CHECK_OUT" "$SETUP_OUT" "$DEST/.Svall Dev.app.new"' EXIT
+trap 'keep_app; rm -rf "$CHECK_OUT" "$SETUP_OUT" "$DEST/.Svall Dev.app.new"' EXIT
 # a step's own output goes to the log, which is shown only when the step fails
 quiet() { "$@" >>"$LOG" 2>&1 || { tail -n 40 "$LOG" >&2; fail "$* failed; the whole log is $LOG"; }; }
 printf '%s┌%s  Svall\n' "$C" "$N"; bar
@@ -135,7 +137,8 @@ for home in "$HOME"/.svall-dev "$HOME"/.svall-dev-*; do
 done
 
 step "Installing to $DEST"
-# the new copy is whole before the old one is renamed aside, so a failed copy or a ^C leaves a whole app in place
+# the new copy is whole before the old one is renamed aside, so a failed copy or move, or a ^C, leaves a whole app
+keep_app
 rm -rf "$DEST/.Svall Dev.app.new" "$DEST/.Svall Dev.app.old"
 quiet ditto "apps/desktop/mac/build/Svall Dev.app" "$DEST/.Svall Dev.app.new"
 [ ! -e "$DEST/Svall Dev.app" ] || mv "$DEST/Svall Dev.app" "$DEST/.Svall Dev.app.old" ||

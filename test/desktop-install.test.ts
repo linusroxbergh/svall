@@ -148,15 +148,15 @@ test('sets up again only when a check asks for svall setup', () => {
   expect(checks({ 'bin/pnpm': stale }).stdout).toContain('│  → hooks  will be set up after the build');
 });
 
-// the install and setup steps, run with stubbed tools on a machine that has an older Svall Dev installed
-function install(stubs: Record<string, string>) {
+// the install and setup steps, run with stubbed tools on a machine that has an older Svall Dev at `old`
+function install(stubs: Record<string, string>, old = 'Applications/Svall Dev.app') {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-desktop-install-'));
   dirs.push(root);
   for (const [file, body] of Object.entries({ 'bin/launchctl': '', ...stubs })) {
     fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
     fs.writeFileSync(path.join(root, file), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
   }
-  for (const [app, build] of [['Applications/Svall Dev.app', 'old'], ['apps/desktop/mac/build/Svall Dev.app', 'new']]) {
+  for (const [app, build] of [[old, 'old'], ['apps/desktop/mac/build/Svall Dev.app', 'new']]) {
     fs.mkdirSync(path.join(root, app, 'Contents'), { recursive: true });
     fs.writeFileSync(path.join(root, app, 'Contents/build'), build);
   }
@@ -198,6 +198,14 @@ test('never takes the installed app apart in place, and says so when macOS refus
   expect(refused.r.status).toBe(1);
   expect(refused.r.stderr).toContain('could not replace');
   expect(refused.installed()).toBe('old');
+
+  // the old app goes back when the new one cannot move in, and a run that stopped between the moves is undone first
+  const stuck = install({ 'bin/pnpm': '', 'bin/mv': 'case "$1" in *.new) exit 1 ;; esac; exec /bin/mv "$@"' });
+  expect(stuck.r.status).toBe(1);
+  expect(stuck.installed()).toBe('old');
+  const stopped = install({ 'bin/pnpm': '', 'bin/ditto': 'exit 1' }, 'Applications/.Svall Dev.app.old');
+  expect(stopped.r.status).toBe(1);
+  expect(stopped.installed()).toBe('old');
 });
 
 test("shows setup's warnings and Codex's ask to trust the hooks it rewrote, and nothing else of its output", () => {
