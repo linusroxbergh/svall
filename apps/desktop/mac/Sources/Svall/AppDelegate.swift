@@ -16,11 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         guard SvallHome.claim() else { NSApp.terminate(nil); return }
         let runtime: GhosttyRuntime
         do { runtime = try GhosttyRuntime() } catch {
-            let alert = NSAlert()
-            alert.messageText = "The terminal could not start"
-            alert.informativeText = "Ghostty failed to set up (\(error)), so Svall cannot open."
-            NSApp.activate()
-            alert.runModal()
+            NSAlert.tell("The terminal could not start", "Ghostty failed to set up (\(error)), so Svall cannot open.")
             NSApp.terminate(nil)
             return
         }
@@ -87,10 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
         // the alert comes after the window so a cold launch does not leave it behind another app
         if missingBundle {
-            let alert = NSAlert()
-            alert.messageText = "The web bundle is missing"
-            alert.informativeText = "This build has no web/ folder in its Resources. Run pnpm desktop:install to add it."
-            alert.runModal()
+            NSAlert.tell("The web bundle is missing", "This build has no web/ folder in its Resources. Run pnpm desktop:install to add it.")
         }
     }
 
@@ -207,19 +200,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         AppRuntime.run(["uninstall", "--json", "--from-app", "--login-shell"] + (forget ? ["--purge"] : [])) { [self] ok, text in
             guard ok else {
                 uninstalling = false
-                let failed = NSAlert()
-                failed.messageText = "Uninstall stopped"
-                failed.informativeText = text
-                failed.runModal()
+                NSAlert.tell("Uninstall stopped", text)
                 return
             }
             NSWorkspace.shared.recycle([Bundle.main.bundleURL]) { _, error in
                 DispatchQueue.main.async {
                     if let error {
-                        let stuck = NSAlert()
-                        stuck.messageText = "Svall could not move itself to the Trash"
-                        stuck.informativeText = "Everything else is uninstalled. Drag Svall to the Trash yourself. (\(error.localizedDescription))"
-                        stuck.runModal()
+                        NSAlert.tell("Svall could not move itself to the Trash", "Everything else is uninstalled. Drag Svall to the Trash yourself. (\(error.localizedDescription))")
                     }
                     if forget { Self.forgetAfterQuit(text) }
                     NSApp.terminateQuietly()
@@ -264,6 +251,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     func applicationWillTerminate(_ notification: Notification) {
         router?.closeAll()
         SvallHome.release()
+    }
+}
+
+extension NSAlert {
+    /// A message with only an OK button, in front of every other app.
+    static func tell(_ message: String, _ detail: String) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.informativeText = detail
+        NSApp.activate()
+        alert.runModal()
     }
 }
 

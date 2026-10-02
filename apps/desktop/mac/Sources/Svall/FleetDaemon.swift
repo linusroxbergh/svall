@@ -8,9 +8,11 @@ enum FleetDaemon {
         Bundle.main.bundleIdentifier.map { $0 + ".svalld" + (SvallHome.directoryName.map { ".\($0)" } ?? "") }
     }
 
+    static func plistPath(label: String) -> String { NSHomeDirectory() + "/Library/LaunchAgents/\(label).plist" }
+
     private static var plist: String? {
         guard let label else { return nil }
-        let file = NSHomeDirectory() + "/Library/LaunchAgents/\(label).plist"
+        let file = plistPath(label: label)
         return FileManager.default.fileExists(atPath: file) ? file : nil
     }
 
@@ -41,7 +43,7 @@ enum FleetDaemon {
                 var waited = 0
                 while FileManager.default.fileExists(atPath: port), waited < 20 { usleep(100_000); waited += 1 }
             }
-            run(tmux, ["-S", SvallHome.path + "/tmux.sock", "kill-server"])
+            run(SvallHome.tmuxBinary, ["-S", SvallHome.path + "/tmux.sock", "kill-server"])
             DispatchQueue.main.async(execute: done)
         }
     }

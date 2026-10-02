@@ -17,8 +17,13 @@ enum SvallHome {
         (try? String(contentsOfFile: path + "/" + file, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// The tmux the daemon runs, as it names it in the home.
-    static var tmux: String? { read("tmux-binary") }
+    /// The tmux the daemon names in the home, else a search: an app opened from Finder has no Homebrew on PATH, so the search adds it.
+    static var tmuxBinary: String {
+        if let named = read("tmux-binary"), FileManager.default.isExecutableFile(atPath: named) { return named }
+        let path = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map(String.init)
+        let dirs = path + [NSHomeDirectory() + "/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"]
+        return dirs.map { $0 + "/tmux" }.first { FileManager.default.isExecutableFile(atPath: $0) } ?? "tmux"
+    }
 
     /// The fleet's config.json, created empty when the fleet has none so there is something to edit.
     static func configPath() -> String? {
