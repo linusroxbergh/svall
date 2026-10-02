@@ -2,7 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const read = (f: string) => fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+const src = path.join(__dirname, '..', 'src');
+const read = (f: string) => fs.readFileSync(path.join(src, f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+// every stylesheet but the one that defines the values
+const sheets = fs.globSync('**/*.css', { cwd: src }).filter((f) => f !== 'tokens.css').sort();
 
 // what a rule may not hold raw: the value belongs in tokens.css
 const RAW: [string, RegExp][] = [
@@ -11,23 +14,30 @@ const RAW: [string, RegExp][] = [
   ['named colour', /(?<![-\w.#'"])(white|black|red|green|blue|yellow|orange|purple|gr[ae]y|silver)(?![-\w])/],
   ['px radius', /-radius:\s*[^;}]*\d+px/],
   ['raw duration', /\b(transition|animation)[a-z-]*:\s*[^;}]*\d*\.?\d+m?s\b/],
+  ['raw easing', /cubic-bezier\(/],
   ['app layer', /z-index:\s*(3[5-9]|[4-9]\d|\d{3,})\b/],
   ['px gap', /\bgap:\s*[^;}]*\d+px/],
   ['px padding', /\bpadding(-[a-z]+)*:\s*[^;}]*\d+px/],
-  // a descriptor is not a property: var() there is invalid and the face loses its weight
-  ['font-face var()', /@font-face\s*\{[^}]*var\(/],
+  // a hairline or nothing is not spacing
+  ['px margin', /\bmargin(-[a-z]+)*:\s*[^;}]*?(?<![\w.])(?!1px)\d*\.?\d+px/],
+  ['px type size', /\bfont(-size)?:\s*[^;}]*\d+px/],
+  ['numeric weight', /\bfont(-weight)?:\s*[1-9]00\b/],
 ];
 
-const offenders = (css: string) =>
-  RAW.flatMap(([what, re]) => {
-    const hits = css.match(new RegExp(re.source, 'g')) ?? [];
-    return hits.map((h) => `${what}: ${h.trim()}`);
-  });
+// a font face's descriptors are not properties: var() there is invalid and the face loses its weight, so they stay raw
+const FACE = /@font-face\s*\{[^}]*\}/g;
+const offenders = (css: string) => [
+  ...(css.match(FACE) ?? []).filter((face) => face.includes('var(')).map(() => 'font-face var()'),
+  ...RAW.flatMap(([what, re]) => (css.replace(FACE, '').match(new RegExp(re.source, 'g')) ?? []).map((h) => `${what}: ${h.trim()}`)),
+];
 
 describe('stylesheets draw from tokens.css', () => {
   it('catches a raw value in a longhand', () =>
-    expect(offenders('.x { padding-inline-start: 6px; border-top-left-radius: 4px; }')).toHaveLength(2));
-  it('styles.css', () => expect(offenders(read('styles.css'))).toEqual([]));
-  it('map/map.css', () => expect(offenders(read('map/map.css'))).toEqual([]));
-  it('mobile.css', () => expect(offenders(read('mobile/mobile.css'))).toEqual([]));
+    expect(offenders('.x { padding-inline-start: 6px; border-top-left-radius: 4px; margin-block: -8px; font-weight: 500 }')).toHaveLength(4));
+  it('lets a hairline margin, a tokened one and a font face through, but not a token in a face', () => {
+    expect(offenders('.x { margin: 0 -1px 1px auto; margin-left: calc(-1 * var(--sp-md)) } @font-face { font-weight: 300 700 }')).toEqual([]);
+    expect(offenders('@font-face { font-weight: var(--w-regular) }')).toEqual(['font-face var()']);
+  });
+  it('finds the stylesheets', () => expect(sheets).toEqual(expect.arrayContaining(['styles.css', 'map/map.css', 'mobile/mobile.css', 'fonts.css'])));
+  it.each(sheets)('%s', (f) => expect(offenders(read(f))).toEqual([]));
 });

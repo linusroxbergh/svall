@@ -9,6 +9,7 @@ import { Token } from '../map/Token.js';
 import { theme } from '../theme.js';
 import { character, hold, islandModel, none, pointer, type Member, type Status } from './demo.js';
 import '../tokens.css';
+import '../fonts.css';
 import '../map/map.css';
 
 // The landing page's demo map: the app's own islands and cards, holding a made-up crew whose statuses move on a beat.

@@ -69,7 +69,8 @@ function Row({ c, revealed, onOpen, onReveal, onClose }: RowProps): JSX.Element 
           ? <button type="button" className="row-read" aria-label={`Mark ${c.name} read`} onClick={() => phone.api().fire('char.seen', { id: c.id })}>✓</button>
           : <span className="row-status">{statusLabel(status)}</span>}
       </div>
-      <button type="button" className="row-close" aria-label={`Close ${c.name}`} tabIndex={revealed ? 0 : -1} aria-hidden={!revealed} onClick={() => onClose(c.id)}>close</button>
+      <button type="button" className="row-close" style={{ width: REVEAL }} aria-label={`Close ${c.name}`} tabIndex={revealed ? 0 : -1} aria-hidden={!revealed}
+        onClick={() => onClose(c.id)}>close</button>
     </div>
   );
 }
