@@ -72,8 +72,9 @@ terminals; the Claude and Codex desktop apps don't install them.
    An agent you turn off gets no hooks; one you install later does. If
    `~/.local/bin` isn't on your PATH, the screen shows the line to add to your
    shell profile, so the `svall` command works in a terminal; no shell file is
-   edited for you. Setup refuses to run from the disk image, so move Svall to
-   Applications first.
+   edited for you. Svall never runs from the disk image: opened in its window,
+   it opens the copy you dragged to Applications, or asks you to drag it there
+   first.
 
 4. `+ New island` on the sandbar at the bottom makes an island, and Cmd+T makes
    a character on it: a shell that becomes an agent when you type `claude` or
@@ -135,9 +136,11 @@ that. The Usage panel shows Claude's subscription limits, not API spending.
 
 ### Updating
 
-Svall checks for updates on its own and installs one when you click it. Svall →
-Check for Updates… checks now. Installing quits every Svall window, which stops
-each fleet; a character picks up where it left off when you open it.
+Svall checks for updates on its own. When one is out, the private fleet's window
+shows "Update available" at the right end of its title bar; clicking it opens
+the release notes and the Install button. Svall → Check for Updates… checks
+now. Installing quits every Svall window, which stops each fleet; a character
+picks up where it left off when you open it.
 
 ### Uninstalling
 

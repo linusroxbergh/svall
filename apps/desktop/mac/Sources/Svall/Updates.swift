@@ -3,12 +3,13 @@ import Sparkle
 
 /// Sparkle's updater, in a build whose Info.plist names a feed (Svall Dev has none), run by the private fleet's window, or by
 /// the fleet window it opened as it quit: every fleet's window is its own instance, and one updater per Mac is enough.
-final class Updates: NSObject, SPUUpdaterDelegate {
+final class Updates: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate {
     static let shared = Updates()
     static let handoff = "SVALL_UPDATER"
     private static let quitForUpdate = Notification.Name((Bundle.main.bundleIdentifier ?? "svall") + ".quit-for-update")
     private let me = String(ProcessInfo.processInfo.processIdentifier)
     private var controller: SPUStandardUpdaterController?
+    private var pill: UpdatePill?
 
     private override init() {
         super.init()
@@ -18,7 +19,9 @@ final class Updates: NSObject, SPUUpdaterDelegate {
         }
         guard Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil,
               SvallHome.isPrivate || ProcessInfo.processInfo.environment[Self.handoff] != nil else { return }
-        controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self, userDriverDelegate: nil)
+        controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self, userDriverDelegate: self)
+        // an update found before a relaunch shows its pill again now rather than at the next daily check
+        if let updater = controller?.updater, updater.automaticallyChecksForUpdates { updater.checkForUpdatesInBackground() }
     }
 
     func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) {
@@ -35,4 +38,25 @@ final class Updates: NSObject, SPUUpdaterDelegate {
         item.target = controller
         return item
     }
+
+    /// Puts the pill in the window's title bar; a click brings up Sparkle's window for the update it stands for.
+    func attach(to window: NSWindow) {
+        guard let controller else { return }
+        let pill = UpdatePill(target: controller, action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)))
+        window.addTitlebarAccessoryViewController(pill)
+        self.pill = pill
+    }
+
+    var supportsGentleScheduledUpdateReminders: Bool { true }
+
+    func standardUserDriverShouldHandleShowingScheduledUpdate(_ update: SUAppcastItem, andInImmediateFocus immediateFocus: Bool) -> Bool { false }
+
+    func standardUserDriverWillHandleShowingUpdate(_ handleShowingUpdate: Bool, forUpdate update: SUAppcastItem, state: SPUUserUpdateState) {
+        guard !handleShowingUpdate else { return }
+        pill?.show(version: update.displayVersionString)
+    }
+
+    func standardUserDriverDidReceiveUserAttention(forUpdate update: SUAppcastItem) { pill?.isHidden = true }
+
+    func standardUserDriverWillFinishUpdateSession() { pill?.isHidden = true }
 }
