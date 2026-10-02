@@ -8,7 +8,7 @@ import { userPaths } from '@svall/svalld/paths';
 import { PRIVATE, profileHome } from '@svall/svalld/profile';
 import { ownRuntime } from '@svall/svalld/runtime';
 import { cliCommand } from '@svall/svalld/setup';
-import { appQuit, fleetData, fleetHomes, purge, runUninstall } from '@svall/svalld/uninstall';
+import { appQuit, fleetData, fleetHomes, libraryData, purge, runUninstall } from '@svall/svalld/uninstall';
 import { printResult } from '../format.js';
 import { ask } from '../prompt.js';
 
@@ -66,7 +66,8 @@ export function uninstallCommand(json: () => boolean): Command {
         prompt: (q) => ask(q),
         isTTY: !o.fromApp && process.stdin.isTTY === true,
       });
-      printResult(r, json(), () => [
+      // the app deletes its Library data itself once it has quit, as it would write it back while it runs
+      printResult(o.fromApp ? { ...r, library: libraryData(os.homedir()) } : r, json(), () => [
         ...(r.done.length ? r.done : ['nothing to remove']),
         // the shims are gone by now, and a `svall` left on PATH may be the other build's
         ...(r.kept.length ? [`kept ${r.kept.join(', ')}; ${cliCommand(ownRuntime())} uninstall --purge deletes them`] : []),

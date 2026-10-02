@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { startDaemon, type Daemon } from '@svall/svalld';
 import { silentLogger } from '@svall/svalld/log';
 import { resolvePaths } from '@svall/svalld/paths';
-import { isProfileName, LAUNCHD_LABEL, profileLabel } from '@svall/svalld/profile';
+import { BUNDLE_ID, isProfileName, LAUNCHD_LABEL, profileLabel } from '@svall/svalld/profile';
 import { HOOK_EVENTS, mergeHooks } from '@svall/svalld/setup';
 import { cleanHomes, hasTmux, makeHome, waitFor } from '@svall/svalld/test-helpers';
 import { Tmux } from '@svall/svalld/tmux';
@@ -131,6 +131,11 @@ describe('svall uninstall --login-shell', () => {
       const r = await run(env, '--json', 'uninstall', '--from-app', '--no-launchctl', '--login-shell');
       expect(r.code).toBe(0);
       expect(JSON.parse(fs.readFileSync(settings, 'utf8')).hooks ?? {}).toEqual({});
+      // the app deletes its Library data itself once it has quit
+      const library = path.join(home, 'Library');
+      expect(JSON.parse(r.stdout).library).toEqual([path.join(library, 'WebKit', BUNDLE_ID), path.join(library, 'Caches', BUNDLE_ID),
+        path.join(library, 'HTTPStorages', BUNDLE_ID), path.join(library, 'Saved Application State', `${BUNDLE_ID}.savedState`),
+        path.join(library, 'Preferences', `${BUNDLE_ID}.plist`)]);
     } finally {
       cleanHomes();
     }

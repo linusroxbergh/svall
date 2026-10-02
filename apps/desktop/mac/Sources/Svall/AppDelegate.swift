@@ -221,20 +221,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                         stuck.informativeText = "Everything else is uninstalled. Drag Svall to the Trash yourself. (\(error.localizedDescription))"
                         stuck.runModal()
                     }
-                    if forget { Self.forgetAfterQuit() }
+                    if forget { Self.forgetAfterQuit(text) }
                     NSApp.terminateQuietly()
                 }
             }
         }
     }
 
-    /// Deletes what macOS keeps under this bundle id once this process is gone, as a running app would write it back.
-    private static func forgetAfterQuit() {
+    /// Deletes the Library data the uninstall's report names once this process is gone, as a running app would write it back.
+    /// The defaults go through `defaults`, as cfprefsd keeps them in memory.
+    private static func forgetAfterQuit(_ report: String) {
         guard let id = Bundle.main.bundleIdentifier else { return }
+        let library = (try? JSONSerialization.jsonObject(with: Data(report.utf8)) as? [String: Any])?["library"] as? [String] ?? []
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/sh")
-        p.arguments = ["-c", "while kill -0 \"$1\" 2>/dev/null; do sleep 0.2; done; defaults delete \"$2\"; rm -rf \"$3/WebKit/$2\" \"$3/Caches/$2\"",
-                       "sh", String(ProcessInfo.processInfo.processIdentifier), id, NSHomeDirectory() + "/Library"]
+        p.arguments = ["-c", "pid=$1 id=$2; shift 2; while kill -0 \"$pid\" 2>/dev/null; do sleep 0.2; done; defaults delete \"$id\"; rm -rf \"$@\"",
+                       "sh", String(ProcessInfo.processInfo.processIdentifier), id] + library
         try? p.run()
     }
 
