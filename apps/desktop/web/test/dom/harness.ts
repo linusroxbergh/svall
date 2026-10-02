@@ -17,7 +17,7 @@ export const bridge = {
   send: (m: ToShell) => { sent.push(m); },
   onMessage: (h: (m: FromShell) => void) => { handlers.add(h); return () => { handlers.delete(h); }; },
 };
-export const manager = { show: vi.fn(() => Promise.resolve()), move: vi.fn(), hide: vi.fn() };
+const manager = { show: vi.fn(() => Promise.resolve()), move: vi.fn(), hide: vi.fn() };
 export let store: AppStore;
 
 /** A store holding the fixture fleet, with what the shell was sent and the calls made forgotten. */

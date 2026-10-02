@@ -10,7 +10,7 @@ import { SETTINGS_KEY } from '../src/store/index.js';
 export const FAKE_CLAUDE = `node ${path.join(ROOT, 'packages/svalld/test/fixtures/fake-claude.mjs')}`;
 
 type Shell = { __sent: ToShell[]; __svall: { receive(json: string): void } };
-export type NativeShell = { sent(): Promise<ToShell[]>; receive(m: FromShell): Promise<void> };
+type NativeShell = { sent(): Promise<ToShell[]>; receive(m: FromShell): Promise<void> };
 
 export type Svall = DaemonInfo & {
   api: NodeClient;
