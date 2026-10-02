@@ -30,6 +30,7 @@ vi.mock('../../src/mobile/push.js', () => push);
 const { Settings } = await import('../../src/mobile/Settings.js');
 const { IslandSheet } = await import('../../src/mobile/IslandSheet.js');
 const { CloseCharacter } = await import('../../src/mobile/CloseCharacter.js');
+const { NewIsland } = await import('../../src/mobile/NewIsland.js');
 
 beforeEach(() => {
   calls.length = 0;
@@ -112,4 +113,24 @@ test('a close the fleet refuses is told beside the button, which works again', a
   expect(screen.getByText('svalld offline')).toBeTruthy();
   expect(onClose).not.toHaveBeenCalled();
   expect((screen.getByRole('button', { name: 'Close c0' }) as HTMLButtonElement).disabled).toBe(false);
+});
+
+test('a new island takes the name typed, trimmed', async () => {
+  const onClose = vi.fn();
+  render(<NewIsland onClose={onClose} />);
+  expect((screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText('Name'), { target: { value: '  reviews ' } });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Create' })); });
+  expect(calls).toEqual([['island.create', { name: 'reviews' }]]);
+  expect(onClose).toHaveBeenCalled();
+});
+
+test('a new island the fleet refuses keeps the sheet up with the reason', async () => {
+  refuse = 'an island named reviews exists';
+  const onClose = vi.fn();
+  render(<NewIsland onClose={onClose} />);
+  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'reviews' } });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Create' })); });
+  expect(screen.getByText('an island named reviews exists')).toBeTruthy();
+  expect(onClose).not.toHaveBeenCalled();
 });
