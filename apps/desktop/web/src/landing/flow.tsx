@@ -215,9 +215,9 @@ function FlowScene() {
 }
 
 const map = host.querySelector<HTMLElement>('.scene-map')!;
-// the scene grows a little past its drawn size on a wide page and stays centred in its column
+// the scene shows at most at its drawn size and stays centred in its column
 function fit() {
-  const s = Math.min(1.16, host.clientWidth / SIZE.w);
+  const s = Math.min(1, host.clientWidth / SIZE.w);
   Object.assign(map.style, { width: `${SIZE.w}px`, height: `${SIZE.h}px`, transform: `scale(${s})`, left: `${(host.clientWidth - SIZE.w * s) / 2}px` });
   map.style.setProperty('--map-w', `${SIZE.w}px`);
   host.style.height = `${SIZE.h * s}px`;
