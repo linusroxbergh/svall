@@ -1,5 +1,6 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { expect, test } from 'vitest';
 
@@ -53,7 +54,26 @@ test('the app\'s NOTICE names every component GhosttyKit links, and the build sh
   expect(texts).toEqual(expect.arrayContaining(['LICENSE.ghostty', 'LICENSE.gpl-3.0', 'LICENSE.bash-preexec']));
   for (const text of new Set(texts)) {
     expect(fs.existsSync(path.join(ROOT, 'apps/desktop/mac', text)), text).toBe(true);
-    expect(build, text).toMatch(new RegExp(`cp "\\$MAC/NOTICE"[^\\n]* "\\$MAC/${text.replace(/\./g, '\\.')}"[^\\n]* "\\$APP/Contents/Resources/licenses/"`));
+    expect(build, text).toMatch(new RegExp(`cp "\\$MAC/NOTICE"[^\\n]* "\\$MAC/${text.replace(/\./g, '\\.')}"[^\\n]* "\\$APP/Contents/Resources/Licenses/"`));
+  }
+});
+
+test('the release build keeps those texts beside the licences it collects, in the one Licenses folder', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-app-notice-'));
+  try {
+    const collected = path.join(dir, 'apps/desktop/mac/build/licenses');
+    fs.mkdirSync(collected, { recursive: true });
+    fs.writeFileSync(path.join(collected, 'node.txt'), 'node');
+    // build.sh's copy, then app-build.sh's, as each writes the app's licences
+    const copies = ['apps/desktop/mac/build.sh', 'scripts/app-build.sh']
+      .map((f) => fs.readFileSync(path.join(ROOT, f), 'utf8').split('\n').filter((l) => /Resources\/licenses/i.test(l)).join('\n'));
+    const r = spawnSync('sh', ['-c', `set -eu\nMAC="${path.join(ROOT, 'apps/desktop/mac')}"\nAPP="${dir}/Svall.app"\n${copies.join('\n')}`], { cwd: dir, encoding: 'utf8' });
+    expect(r.status, r.stderr).toBe(0);
+    expect(fs.readdirSync(path.join(dir, 'Svall.app/Contents/Resources'))).toEqual(['Licenses']);
+    expect(fs.readdirSync(path.join(dir, 'Svall.app/Contents/Resources/Licenses')).sort())
+      .toEqual(['LICENSE.bash-preexec', 'LICENSE.ghostty', 'LICENSE.gpl-3.0', 'NOTICE', 'node.txt']);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
