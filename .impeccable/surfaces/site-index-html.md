@@ -7,7 +7,7 @@ related_targets: []
 
 # Landing page (site/index.html)
 
-Mode: Persuade. Visitor: a Mac developer running several Claude Code or Codex agents. Job: understand Svall in one look, then install or open GitHub. Proof: a live demo map drawn with the app's own components and assets, labeled as a demo. Constraints: static HTML, no build, no invented stats, repo private. Very minimal, after t3.codes and herdr.dev.
+Mode: Persuade. Visitor: a Mac developer running several Claude Code or Codex agents. Job: understand Svall in one look, then install or open GitHub. Proof: a live demo map drawn with the app's own components and assets, labeled as a demo. Constraints: a static page plus the demo map `pnpm site:build` builds from the app's code, no invented stats, public repo. Very minimal, after t3.codes and herdr.dev.
 
 ## Direction contract
 
@@ -16,4 +16,4 @@ OWN-WORLD: The app's map sea (map-0 to map-2, grain, dot grid, drifting light), 
 STORY: Visitor reads the headline, watches an agent block and clear on the map, copies the install lines, scans the feature list.
 FIRST VIEWPORT: Wordmark left, GitHub right. Text column left (520px): headline, one sentence, install block, then the feature list. Three live islands, the app's map drawn at 72%, cascade down the right, clear of the text. On phones the same map sits zoomed out under the install block, spanning the screen.
 FORM: "One glance", #3 on my list, header on top per the user; seed e5a77a5a.
-FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+FINISH: unreviewed is unfinished; this build ends with the finish review, the verdict, and every shipping raster carrying its provenance

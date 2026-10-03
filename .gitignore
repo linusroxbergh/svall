@@ -30,3 +30,4 @@ vendor/sparkle/
 vendor/tmux/
 __pycache__/
 dist/
+.pnpm-store/

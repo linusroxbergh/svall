@@ -46,9 +46,16 @@ JOBS="$(sysctl -n hw.ncpu)"
 BIN="$TMP/tmux-$TMUX/tmux"
 FOREIGN="$(otool -L "$BIN" | tail -n +2 | awk '{ print $1 }' | grep -Ev '^(/usr/lib|/System)/' || true)"
 [ -z "$FOREIGN" ] || { echo "tmux links libraries outside the system: $FOREIGN" >&2; exit 1; }
-mkdir -p "$OUT"
-cp "$BIN" "$OUT/tmux"
-cp "$TMP/tmux-$TMUX/COPYING" "$OUT/LICENSE.tmux"
-cp "$TMP/libevent-$LIBEVENT/LICENSE" "$OUT/LICENSE.libevent"
-cp "$TMP/utf8proc-$UTF8PROC/LICENSE.md" "$OUT/LICENSE.utf8proc"
+# the folder lands whole, as the binary in it marks the build done; it is staged beside its place, so the rename that
+# lands it never crosses a volume
+mkdir -p "$(dirname "$OUT")"
+STAGE="$OUT.$$"
+trap 'rm -rf "$TMP" "$STAGE"' EXIT
+mkdir "$STAGE"
+cp "$BIN" "$STAGE/tmux"
+cp "$TMP/tmux-$TMUX/COPYING" "$STAGE/LICENSE.tmux"
+cp "$TMP/libevent-$LIBEVENT/LICENSE" "$STAGE/LICENSE.libevent"
+cp "$TMP/utf8proc-$UTF8PROC/LICENSE.md" "$STAGE/LICENSE.utf8proc"
+rm -rf "$OUT"
+mv "$STAGE" "$OUT"
 echo "$OUT/tmux"

@@ -8,7 +8,7 @@ esac
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 curl -sf http://localhost:5173 >/dev/null && { echo "port 5173 is in use" >&2; exit 1; }
-(cd "$ROOT/apps/desktop/web" && exec ./node_modules/.bin/vite --port 5173 --strictPort) >/tmp/svall-vite.log 2>&1 &
+(cd "$ROOT/apps/desktop/web" && exec ./node_modules/.bin/vite) >/tmp/svall-vite.log 2>&1 &
 VITE=$!
 trap 'kill $VITE 2>/dev/null || true' EXIT INT TERM
 READY=

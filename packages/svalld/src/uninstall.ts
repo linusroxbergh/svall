@@ -3,11 +3,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { unmergeHooks, unmergeStatusLine } from './agent-hooks.js';
 import type { CodexPaths } from './codex/install.js';
 import { fleetOrigin, portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
 import { resolvePaths } from './paths.js';
 import { BUNDLE_ID, homePrefix, isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome, SHIM } from './profile.js';
-import { readJsonSettings, readOrUndefined, requireWritable, shimNames, unmergeHooks, unmergeStatusLine, writeJsonSettings, type JsonSettings } from './setup.js';
+import { readJsonSettings, readOrUndefined, requireWritable, writeJsonSettings, type JsonSettings } from './settings-file.js';
+import { shimNames } from './setup.js';
 import { resolveTmux } from './tmux/tmux.js';
 
 const exec = promisify(execFile);
@@ -18,6 +20,8 @@ const isAgentPlist = (f: string): boolean => f.startsWith(`${LAUNCHD_LABEL}.`) &
 // `tailscale serve --bg` outlives the daemon, the port it listened on and a reboot, so a fleet's link is found
 // by the key it proxies to, or by its daemon's address; a machine without tailscale has none
 async function unserveFleets(homes: string[], d: MobileDeps): Promise<string[]> {
+  // every daemon start writes its fleet's key, so fleets that never started have no link, and tailscale is not asked
+  if (!homes.some((h) => d.read(resolvePaths(h).mobileKey) !== undefined)) return [];
   let bin: string;
   try { bin = await resolveTailscale(d); } catch { return []; }
   let status: string;

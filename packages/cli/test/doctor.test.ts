@@ -1,21 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { codexHookCommand, mergeCodexHooks } from '@svall/svalld/codex/install';
+import { hookCommand, mergeCodexHooks, mergeHooks, mergeStatusLine, nodeRun, statusWrapper } from '@svall/svalld/agent-hooks';
+import { codexHookCommand } from '@svall/svalld/codex/install';
 import { LAUNCHD_LABEL } from '@svall/svalld/profile';
 import { resolveTmux } from '@svall/svalld/tmux';
-import { HOOK_EVENTS, hookCommand, mergeHooks, mergeStatusLine, nodeRun, statusWrapper } from '@svall/svalld/setup';
 import type { AgentKind } from '@svall/protocol';
+import { grouped } from '../src/checks-view.js';
 import type { HookTrust } from '../src/codex-trust.js';
-import { codexCheck, doctor, preflight, requireReady, type DoctorDeps } from '../src/commands/doctor.js';
+import { codexCheck, doctor, type DoctorDeps } from '../src/commands/doctor.js';
+import { preflight, requireReady } from '../src/commands/preflight.js';
 
 const priv = { name: 'private', home: '/u/.svall', managed: true };
 const adhoc = { name: 'svall-dev', home: '/tmp/svall-dev', managed: false };
 
 const PLIST = '/u/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld.plist';
-const plist = (nodeDir: string) => `<dict>\n    <key>PATH</key><string>${nodeDir}:/u/.local/bin:/usr/bin</string>\n</dict>`;
+const DAEMON = ['/u/svall/node_modules/.bin/tsx', '/u/svall/packages/svalld/src/bin.ts'];
+const plist = (nodeDir: string, program = DAEMON) =>
+  `<dict>\n  <key>ProgramArguments</key>\n  <array>\n${program.map((p) => `    <string>${p}</string>\n`).join('')}  </array>\n    <key>PATH</key><string>${nodeDir}:/u/.local/bin:/usr/bin</string>\n</dict>`;
 
 const SCRIPT = '/u/.svall/hooks/agent-hook.mjs';
 const STATUS = '/u/.svall/hooks/claude-status.mjs';
-const claudeSettings = (hook: string, status: string) => JSON.stringify(mergeStatusLine(mergeHooks({}, hook, HOOK_EVENTS, SCRIPT), status, STATUS));
+const claudeSettings = (hook: string, status: string) => JSON.stringify(mergeStatusLine(mergeHooks({}, hook, SCRIPT), status, STATUS));
 const installed = claudeSettings(hookCommand(process.execPath, SCRIPT, 'claude'), statusWrapper(process.execPath, STATUS));
 
 function fake(o: {
@@ -30,6 +34,7 @@ function fake(o: {
   mainAgent?: AgentKind;
   found?: AgentKind[];
   trust?: HookTrust;
+  shimsCurrent?: boolean;
 } = {}) {
   const calls: string[] = [];
   const envs: Record<string, Record<string, string> | undefined> = {};
@@ -47,6 +52,7 @@ function fake(o: {
     '/u/.claude/settings.json': installed,
     [PLIST]: plist('/opt/homebrew/opt/node/bin'),
     '/opt/homebrew/opt/node/bin/node': '',
+    ...Object.fromEntries(DAEMON.map((p) => [p, ''])),
     '/u/.svall/svalld.log': Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join('\n') + '\n',
     ...o.files,
   };
@@ -78,6 +84,8 @@ function fake(o: {
     mainAgent: o.mainAgent,
     found: o.found ?? ['claude'],
     codexTrust: async () => o.trust,
+    shimsCurrent: o.shimsCurrent ?? true,
+    daemon: DAEMON,
   };
   return { deps, calls, envs };
 }
@@ -102,6 +110,19 @@ describe('doctor', () => {
     expect(c.launchd.detail).toMatch(/state = running/);
     expect(r.log.path).toBe('/u/.svall/svalld.log');
     expect(r.log.lines).toEqual(Array.from({ length: 20 }, (_, i) => `line ${i + 11}`));
+    // the plain report shows every check under a title
+    expect(grouped(r.checks).flatMap((g) => g.checks)).toHaveLength(r.checks.length);
+  });
+
+  it('warns about shims setup would write differently now, and a plist that is missing or runs another build', async () => {
+    const c = byName(await doctor(priv, fake({ shimsCurrent: false }).deps));
+    expect(c.shims).toEqual({ name: 'shims', status: 'warn', detail: 'missing or not what this build writes: run svall setup from the build you use' });
+    // the PATH setup took from its own shell is the daemon path check's to judge
+    expect(c['launchd plist']).toEqual({ name: 'launchd plist', status: 'ok', detail: `${PLIST} runs this build` });
+    const other = fake({ files: { [PLIST]: plist('/opt/homebrew/opt/node/bin', ['/old/svall/node_modules/.bin/tsx', '/old/svall/packages/svalld/src/bin.ts']) } });
+    expect(byName(await doctor(priv, other.deps))['launchd plist']).toEqual({ name: 'launchd plist', status: 'warn', detail: 'runs another build: svall setup, from the build you use' });
+    expect(byName(await doctor(priv, fake({ files: { [PLIST]: undefined } }).deps))['launchd plist']).toMatchObject({ status: 'warn', detail: 'missing: svall setup' });
+    expect(byName(await doctor(adhoc, fake().deps))['launchd plist'].status).toBe('skip');
   });
 
   it('names what is broken and how to fix it', async () => {
@@ -353,17 +374,17 @@ describe('agent checks', () => {
 });
 
 describe('codexCheck', () => {
-  it('warns when codex is there but the hooks are not written, or will not parse', async () => {
+  it('fails when codex is there but the hooks are not written, or will not parse, as the Claude check does', async () => {
     for (const text of ['', '{ "hooks": ']) {
       const c = await codexCheck(fake({ files: { '/u/.codex': '', '/u/.codex/hooks.json': text } }).deps);
-      expect(c.status).toBe('warn');
+      expect(c.status).toBe('fail');
       expect(c.detail).toContain('svall setup');
     }
   });
 
   it('checks Codex hooks when codex is on PATH, even with no ~/.codex yet', async () => {
     const check = await codexCheck({ ...fake().deps, exists: () => false, found: ['claude', 'codex'] });
-    expect(check).toEqual({ name: 'codex hooks', status: 'warn', detail: `not installed in ${CODEX.hooks}: svall setup` });
+    expect(check).toEqual({ name: 'codex hooks', status: 'fail', detail: `not installed in ${CODEX.hooks}: svall setup` });
   });
 
   it('warns when the hooks hold a command setup no longer writes', async () => {

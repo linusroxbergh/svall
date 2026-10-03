@@ -4,8 +4,9 @@ import { DEFAULT_CWD, type AgentKind } from '@svall/protocol';
 import { AGENTS, AGENT_KINDS } from './agents.js';
 import { loadConfig } from './config.js';
 import { expandHome, resolvePaths } from './paths.js';
+import { LOGIN_SHELL_TIMEOUT_MS } from './login-env.js';
 import { LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from './profile.js';
-import { bundledVersion, type Runtime } from './runtime.js';
+import type { Runtime } from './runtime.js';
 
 // an agent found only by its folder gets hooks and a toggle, but cannot be the main agent
 export type FoundAgent = { kind: AgentKind; path: string; version?: string; folderOnly?: boolean };
@@ -34,7 +35,7 @@ export function setupPlan(o: {
   ];
   let blockers: string[] = [];
   let install: SetupPlan['install'];
-  if (!o.answered) blockers = [`Your login shell did not answer within 5 seconds, so Svall cannot see where Claude Code and Codex are. Check again, or run ${o.cli} setup in a terminal.`];
+  if (!o.answered) blockers = [`Your login shell did not answer within ${LOGIN_SHELL_TIMEOUT_MS / 1000} seconds, so Svall cannot see where Claude Code and Codex are. Check again, or run ${o.cli} setup in a terminal.`];
   else if (!o.found.length) {
     const either = (f: (k: AgentKind) => string) => AGENT_KINDS.map(f).join(' or ');
     blockers = [`Svall runs ${either((k) => AGENTS[k].label)} in its terminals, so it needs the ${either((k) => AGENTS[k].bin)} command. The desktop apps don't install it. Install one in Terminal, then check again.`];
@@ -77,8 +78,6 @@ export function requireInstalledApp(r: Runtime): void {
     throw new Error('Move Svall to your Applications folder and open it from there, then set it up.');
   }
 }
-
-export const runtimeVersion = (): string => bundledVersion ?? 'dev';
 
 const readVersion = (home: string): string | undefined => {
   try { return fs.readFileSync(path.join(home, 'version'), 'utf8').trim(); } catch { return undefined; }

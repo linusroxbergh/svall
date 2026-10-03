@@ -4,11 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { codexInstalled, codexPaths } from '../src/codex/install.js';
+import {
+  codexInstalled, hookCommand, mergeHooks, mergeStatusLine, statusWrapper, unmergeHooks, unmergeStatusLine,
+} from '../src/agent-hooks.js';
+import { codexPaths } from '../src/codex/install.js';
 import { realDeps } from '../src/mobile.js';
 import { BUNDLE_ID, LAUNCHD_LABEL } from '../src/profile.js';
 import { bundleRuntime, checkoutRuntime } from '../src/runtime.js';
-import { HOOK_EVENTS, hookCommand, mergeHooks, mergeStatusLine, runSetup, shimText, statusWrapper, unmergeHooks, unmergeStatusLine } from '../src/setup.js';
+import { runSetup, shimText } from '../src/setup.js';
 import { appQuit, fleetData, fleetHomes, purge, quitApp, runUninstall, type AppQuit } from '../src/uninstall.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
@@ -25,8 +28,8 @@ const noApp: AppQuit = { isApp: () => false, quit: () => Promise.reject(new Erro
 describe('unmergeHooks', () => {
   it('removes only Svall entries and the groups and events they leave empty', () => {
     const mine = { hooks: { Stop: [{ matcher: '', hooks: [{ type: 'command', command: 'keep.sh' }] }] }, model: 'x' };
-    expect(unmergeHooks(mergeHooks(mine, hook, HOOK_EVENTS, script), script)).toEqual(mine);
-    expect(unmergeHooks(mergeHooks({}, hook, HOOK_EVENTS, script), script)).toEqual({});
+    expect(unmergeHooks(mergeHooks(mine, hook, script), script)).toEqual(mine);
+    expect(unmergeHooks(mergeHooks({}, hook, script), script)).toEqual({});
   });
 
   it('keeps a hook of yours that shares a group with an Svall entry', () => {
@@ -343,9 +346,17 @@ describe('runUninstall', () => {
     expect(calls.filter((a) => a.includes('off'))).toEqual([['serve', '--https=443', 'off']]);
   });
 
+  it('asks tailscale nothing when no fleet has ever started', async () => {
+    const f = installed();
+    const calls: string[][] = [];
+    expect(await runUninstall({ ...f.o, mobile: realDeps(async (_cmd, args) => { calls.push(args); return ''; }) })).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+
   it('carries on when tailscale answers its serve status in prose', async () => {
     const f = installed();
     await runSetup(f.o);
+    fs.writeFileSync(path.join(f.home, 'mobile-key'), 'mine');
     const mobile = realDeps(async (_cmd, args) => args.join(' ') === 'serve status --json' ? 'The Tailscale CLI failed to start: Failed to load preferences.\n' : '');
     expect(await runUninstall({ ...f.o, mobile })).toContain('could not read tailscale serve status, so any phone link was left in place: The Tailscale CLI failed to start: Failed to load preferences.');
     expect(JSON.parse(fs.readFileSync(f.settingsPath, 'utf8'))).toEqual(f.mine);

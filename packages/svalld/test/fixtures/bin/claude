@@ -1,7 +1,10 @@
 #!/usr/bin/env node
-// Test double for `claude` on PATH, so a test never spends the real account: answers the usage
+// Test double for `claude` on PATH, so a test never spends the real account: answers its version, its sign-in and the usage
 // control request, and exits quietly for anything else svalld might spawn.
 import readline from 'node:readline';
+
+if (process.argv[2] === '--version') { process.stdout.write('2.1.0 (Claude Code)\n'); process.exit(0); }
+if (process.argv[2] === 'auth') { process.stdout.write('{"loggedIn":true}\n'); process.exit(0); }
 
 const at = (ms) => new Date(Date.now() + ms).toISOString();
 // half an hour off the hour, so a countdown asserted in whole hours does not turn over mid-test

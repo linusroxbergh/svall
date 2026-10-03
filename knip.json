@@ -1,0 +1,9 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    ".": { "entry": ["scripts/**/*.mjs", "test/*.test.ts"] },
+    "packages/svalld": { "entry": ["hooks/*.mjs", "test/fixtures/*.{mjs,cjs}"] }
+  },
+  "ignoreBinaries": ["ditto", "hdiutil", "iconutil", "infocmp", "magick", "sips", "swiftc"],
+  "ignoreExportsUsedInFile": { "type": true, "interface": true }
+}

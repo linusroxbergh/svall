@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -6,14 +7,11 @@ import { shq } from './text.js';
 
 export const HOOK_SCRIPT = 'agent-hook.mjs';
 /** The compiled stand-in for the hook and statusline scripts, which svalld copies beside them. */
-export const HOOK_HELPER = 'svall-hook';
-// an install may still name the script claude-hook.mjs; that entry is ours to repair and remove too
-const HOOK_NAMES = [HOOK_SCRIPT, 'claude-hook.mjs'];
+const HOOK_HELPER = 'svall-hook';
 
-/** Whether a hook command runs `script`, or the older name beside it: it holds the full path, bare or shell-quoted. */
+/** Whether a hook command runs `script`: it holds the full path, bare or shell-quoted. */
 export const isOurs = (command: unknown, script: string): boolean =>
-  typeof command === 'string' && HOOK_NAMES.map((n) => path.join(path.dirname(script), n))
-    .some((p) => command.includes(p) || command.includes(p.replace(/'/g, `'\\''`)));
+  typeof command === 'string' && (command.includes(script) || command.includes(script.replace(/'/g, `'\\''`)));
 
 /** The helper beside `script`, quoted for the shell. */
 export const helperBeside = (script: string): string => shq(path.join(path.dirname(script), HOOK_HELPER));
@@ -54,6 +52,11 @@ export type Paths = ReturnType<typeof resolvePaths>;
 
 /** The files that hold a fleet's keys, which Files never opens. */
 export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.env, p.vapid, p.push];
+
+/** `p` with its links resolved, or as it is when it cannot be. */
+export const realPath = (p: string): string => {
+  try { return fs.realpathSync(p); } catch { return p; }
+};
 
 export function expandHome(p: string): string {
   if (p === '~') return os.homedir();

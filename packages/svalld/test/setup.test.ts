@@ -4,14 +4,17 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { codexHookCommand, codexPaths, mergeCodexHooks } from '../src/codex/install.js';
+import {
+  claudeHooksCurrent, codexHooksCurrent, hookCommand, hooksInstalled, mergeCodexHooks, mergeHooks, mergeStatusLine, nodeRun, statusWrapper, unmergeHooks, unmergeStatusLine,
+} from '../src/agent-hooks.js';
+import { codexHookCommand, codexPaths } from '../src/codex/install.js';
+import { CLAUDE_HOOKS } from '../src/hooks/receiver.js';
+import { launchdPlist, plistCurrent, plistRun, takenOverBy } from '../src/launchd.js';
 import { isOurs, resolvePaths } from '../src/paths.js';
 import { BUNDLE_ID, LAUNCHD_LABEL, PRIVATE, profileHome, profileLabel } from '../src/profile.js';
 import { bundleRuntime, checkoutRuntime, type Runtime } from '../src/runtime.js';
-import {
-  HOOK_EVENTS, claudeHooksCurrent, codexHooksCurrent, hookCommand, hooksInstalled, installHomeTemplate, installHookScripts, launchdPlist, mergeHooks, mergeStatusLine, nodeRun, plistCurrent, plistRun, readJsonSettings, refreshFleetPlists, runSetup, setupHome,
-  shimText, shimsCurrent, statusWrapper, takenOverBy, unmergeHooks, unmergeStatusLine, writeJsonSettings,
-} from '../src/setup.js';
+import { readJsonSettings, writeJsonSettings } from '../src/settings-file.js';
+import { installHomeTemplate, installHookScripts, refreshFleetPlists, runSetup, setupHome, shimText, shimsCurrent } from '../src/setup.js';
 import { shq } from '../src/text.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -23,14 +26,13 @@ const status = '/h/.svall/hooks/claude-status.mjs';
 
 describe('isOurs', () => {
   const quoted = "/Users/o'brien/.svall/hooks/agent-hook.mjs";
-  it('matches the installed script anywhere in a command, bare or quoted, and its older name beside it', () => {
+  it('matches the installed script anywhere in a command, bare or quoted', () => {
     expect(isOurs(`SVALL_PID=$PPID ${hookCommand('/n/node', quoted, 'claude')} --from-hook`, quoted)).toBe(true);
     expect(isOurs(`FOO=1 node "${quoted}" claude; true`, quoted)).toBe(true);
     expect(isOurs(`/n/node ${script}`, script)).toBe(true);
-    expect(isOurs(`'/old/node' ${shq(quoted.replace('agent-hook', 'claude-hook'))}`, quoted)).toBe(true);
   });
   it('leaves a script of the user own that shares the name', () => {
-    for (const cmd of ['node ~/bin/claude-hook.mjs --notify', `node ${shq(quoted.replace('agent-hook', 'notify-claude-hook'))}`, 'node /elsewhere/hooks/agent-hook.mjs', undefined]) {
+    for (const cmd of ['node ~/bin/agent-hook.mjs --notify', `node ${shq(quoted.replace('agent-hook', 'notify-agent-hook'))}`, 'node /elsewhere/hooks/agent-hook.mjs', undefined]) {
       expect(isOurs(cmd, quoted)).toBe(false);
     }
   });
@@ -40,40 +42,40 @@ describe('mergeHooks', () => {
   const cmd = `node ${shq(script)}`;
   it('adds one entry per event and keeps existing hooks', () => {
     const existing = { hooks: { Stop: [{ matcher: '', hooks: [{ type: 'command', command: 'other.sh' }] }] }, model: 'x' };
-    const out = mergeHooks(existing, cmd, HOOK_EVENTS, script) as { hooks: Record<string, { matcher?: string; hooks: { command: string; timeout?: number }[] }[]>; model: string };
+    const out = mergeHooks(existing, cmd, script) as { hooks: Record<string, { matcher?: string; hooks: { command: string; timeout?: number }[] }[]>; model: string };
     expect(out.model).toBe('x');
     expect(out.hooks.Stop).toHaveLength(2);
     expect(out.hooks.Stop[0].hooks[0].command).toBe('other.sh');
-    for (const ev of HOOK_EVENTS) expect(out.hooks[ev].some((g) => g.matcher === '*' && g.hooks.some((h) => h.command === cmd && h.timeout === 10))).toBe(true);
+    for (const ev of CLAUDE_HOOKS) expect(out.hooks[ev].some((g) => g.matcher === '*' && g.hooks.some((h) => h.command === cmd && h.timeout === 10))).toBe(true);
     expect(existing.hooks.Stop).toHaveLength(1);
   });
   it('runs the hook that only tells which subagent stopped without holding the agent up', () => {
-    const out = mergeHooks({}, cmd, HOOK_EVENTS, script) as { hooks: Record<string, { hooks: { async?: boolean }[] }[]> };
+    const out = mergeHooks({}, cmd, script) as { hooks: Record<string, { hooks: { async?: boolean }[] }[]> };
     expect(out.hooks.SubagentStop[0].hooks[0].async).toBe(true);
     // a question must be on record before the tool call that follows its answer
     expect(out.hooks.PermissionRequest[0].hooks[0].async).toBeUndefined();
     expect(out.hooks.PreToolUse[0].hooks[0].async).toBeUndefined();
   });
   it('makes a hook an earlier setup ran in the background wait again', () => {
-    const stale = mergeHooks({}, cmd, HOOK_EVENTS, script) as { hooks: Record<string, { hooks: { async?: boolean }[] }[]> };
+    const stale = mergeHooks({}, cmd, script) as { hooks: Record<string, { hooks: { async?: boolean }[] }[]> };
     stale.hooks.PermissionRequest[0].hooks[0].async = true;
-    const out = mergeHooks(stale, cmd, HOOK_EVENTS, script) as typeof stale;
+    const out = mergeHooks(stale, cmd, script) as typeof stale;
     expect(out.hooks.PermissionRequest[0].hooks[0].async).toBeUndefined();
     expect(out.hooks.SubagentStop[0].hooks[0].async).toBe(true);
   });
   it('is idempotent', () => {
-    const once = mergeHooks({}, cmd, HOOK_EVENTS, script);
-    expect(mergeHooks(once, cmd, HOOK_EVENTS, script)).toEqual(once);
+    const once = mergeHooks({}, cmd, script);
+    expect(mergeHooks(once, cmd, script)).toEqual(once);
   });
   it('rewrites the command an earlier setup wrote, keeping the hooks beside it', () => {
-    const stale = { hooks: { Stop: [{ matcher: '*', hooks: [{ type: 'command', command: `'/old/node' '/h/.svall/hooks/claude-hook.mjs'`, timeout: 10 }, { type: 'command', command: 'mine.sh' }] }] } };
-    const out = mergeHooks(stale, cmd, HOOK_EVENTS, script) as { hooks: Record<string, { hooks: { command: string; timeout?: number }[] }[]> };
+    const stale = { hooks: { Stop: [{ matcher: '*', hooks: [{ type: 'command', command: `'/old/node' '/h/.svall/hooks/agent-hook.mjs'`, timeout: 10 }, { type: 'command', command: 'mine.sh' }] }] } };
+    const out = mergeHooks(stale, cmd, script) as { hooks: Record<string, { hooks: { command: string; timeout?: number }[] }[]> };
     expect(out.hooks.Stop).toEqual([{ matcher: '*', hooks: [{ type: 'command', command: cmd, timeout: 10 }, { type: 'command', command: 'mine.sh' }] }]);
   });
   it('leaves a hook of the user own that shares the script name, on the way in and out', () => {
-    const mine = { hooks: { Stop: [{ matcher: '*', hooks: [{ type: 'command', command: 'node ~/bin/claude-hook.mjs --notify' }] }] } };
-    const out = mergeHooks(mine, cmd, ['Stop'], script) as { hooks: Record<string, { hooks: { command: string }[] }[]> };
-    expect(out.hooks.Stop.flatMap((g) => g.hooks.map((h) => h.command))).toEqual(['node ~/bin/claude-hook.mjs --notify', cmd]);
+    const mine = { hooks: { Stop: [{ matcher: '*', hooks: [{ type: 'command', command: 'node ~/bin/agent-hook.mjs --notify' }] }] } };
+    const out = mergeHooks(mine, cmd, script, ['Stop']) as { hooks: Record<string, { hooks: { command: string }[] }[]> };
+    expect(out.hooks.Stop.flatMap((g) => g.hooks.map((h) => h.command))).toEqual(['node ~/bin/agent-hook.mjs --notify', cmd]);
     expect(unmergeHooks(mine, script)).toEqual(mine);
   });
 });
@@ -81,14 +83,14 @@ describe('mergeHooks', () => {
 describe('hooksInstalled', () => {
   const statusLine = { type: 'command', command: statusWrapper('/n/node', status) };
   it('counts only hooks that run this fleet script, whatever they are named', () => {
-    const foreign = Object.fromEntries(HOOK_EVENTS.map((ev) => [ev, [{ matcher: '*', hooks: [{ type: 'command', command: 'node /x/agent-hook.mjs claude' }] }]]));
-    expect(hooksInstalled({ hooks: foreign, statusLine }, HOOK_EVENTS, '/h/.svall')).toBe(false);
-    expect(hooksInstalled({ ...mergeHooks({}, hookCommand('/n/node', script, 'claude'), HOOK_EVENTS, script), statusLine }, HOOK_EVENTS, '/h/.svall')).toBe(true);
+    const foreign = Object.fromEntries(CLAUDE_HOOKS.map((ev) => [ev, [{ matcher: '*', hooks: [{ type: 'command', command: 'node /x/agent-hook.mjs claude' }] }]]));
+    expect(hooksInstalled({ hooks: foreign, statusLine }, '/h/.svall')).toBe(false);
+    expect(hooksInstalled({ ...mergeHooks({}, hookCommand('/n/node', script, 'claude'), script), statusLine }, '/h/.svall')).toBe(true);
   });
 });
 
 describe('claudeHooksCurrent', () => {
-  const written = (node: string) => mergeStatusLine(mergeHooks({}, hookCommand(node, script, 'claude'), HOOK_EVENTS, script), statusWrapper(node, status), status);
+  const written = (node: string) => mergeStatusLine(mergeHooks({}, hookCommand(node, script, 'claude'), script), statusWrapper(node, status), status);
   it('reads hooks another node wrote as current while that node is there, and not once it is gone', () => {
     expect(claudeHooksCurrent(written(process.execPath), '/h/.svall')).toBe(true);
     const other = path.join(makeHome(), "o'brien-node");
@@ -135,7 +137,7 @@ describe('mergeStatusLine', () => {
     const mine = { statusLine: { type: 'command', command: 'node ~/.claude/claude-status.mjs' } };
     expect(line(mine)).toEqual({ type: 'command', command: `${wrapper} 'node ~/.claude/claude-status.mjs'` });
     expect(unmergeStatusLine(mine, status)).toEqual(mine);
-    expect(hooksInstalled({ ...mergeHooks({}, `node ${shq(script)}`, HOOK_EVENTS, script), ...mine }, HOOK_EVENTS, '/h/.svall')).toBe(false);
+    expect(hooksInstalled({ ...mergeHooks({}, `node ${shq(script)}`, script), ...mine }, '/h/.svall')).toBe(false);
   });
 });
 
@@ -275,6 +277,20 @@ describe('installHookScripts', () => {
     expect(fs.existsSync(paths.hookScript)).toBe(true);
   });
 
+  it('rewrites a script only when it changed, renaming it into place, so a hook reading the old one keeps its file', () => {
+    const paths = resolvePaths(makeHome());
+    installHookScripts(paths, undefined);
+    fs.utimesSync(paths.hookScript, new Date(0), new Date(0));
+    installHookScripts(paths, undefined);
+    expect(fs.statSync(paths.hookScript).mtimeMs).toBe(0);
+    fs.writeFileSync(paths.hookScript, 'old');
+    const reading = fs.openSync(paths.hookScript, 'r');
+    installHookScripts(paths, undefined);
+    expect(fs.readFileSync(paths.hookScript, 'utf8')).toContain('svalld');
+    expect(fs.readFileSync(reading, 'utf8')).toBe('old');
+    fs.closeSync(reading);
+  });
+
   it('leaves the scripts to run when the helper cannot be copied, and no half copy behind', () => {
     const paths = resolvePaths(makeHome());
     const helper = built();
@@ -300,13 +316,13 @@ describe('commands Svall 0.1 wrote', () => {
     statusLine: { type: 'command', command: inner ? `${v01.status('/n/node', v.status)} ${shq(inner)}` : v01.status('/n/node', v.status) },
   });
   const now = (s: Record<string, unknown>, v: typeof R) =>
-    mergeStatusLine(mergeHooks(s, hookCommand('/n/node', v.hook, 'claude'), ['Stop'], v.hook), statusWrapper('/n/node', v.status), v.status);
+    mergeStatusLine(mergeHooks(s, hookCommand('/n/node', v.hook, 'claude'), v.hook, ['Stop']), statusWrapper('/n/node', v.status), v.status);
 
   it('rewrites them for the helper, keeping the hooks and the statusline beside them', () => {
     const out = now(old(R, "ccstatusline --it's"), R) as { hooks: Record<string, { hooks: { command: string }[] }[]> };
     expect(out.hooks.Stop[0].hooks.map((h) => h.command)).toEqual([hookCommand('/n/node', R.hook, 'claude'), 'mine.sh']);
     expect(command(out)).toBe(`${statusWrapper('/n/node', R.status)} ${shq("ccstatusline --it's")}`);
-    expect(hooksInstalled(old(R), ['Stop'], '/u/.svall')).toBe(true);
+    expect(hooksInstalled(old(R), '/u/.svall')).toBe(true);
     expect(claudeHooksCurrent(old(R), '/u/.svall')).toBe(false);
     const codex = { hooks: { Stop: [{ hooks: [{ type: 'command', command: v01.codex(R.hook, '/A/node') }] }] } };
     expect((mergeCodexHooks(codex, codexHookCommand(R.hook), R.hook) as { hooks: { Stop: { hooks: { command: string }[] }[] } }).hooks.Stop[0].hooks)
@@ -375,7 +391,7 @@ describe('runSetup', () => {
     expect(fs.existsSync(settingsPath)).toBe(true);
   });
 
-  it('writes hooks, conf, settings backup, plist and shim', async () => {
+  it('writes hooks, settings backup, plist and shim', async () => {
     const home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ home: { cwd: path.join(home, 'mc') } }));
     const settingsPath = path.join(home, 'claude-settings.json');
@@ -386,7 +402,6 @@ describe('runSetup', () => {
     expect(lines.length).toBeGreaterThan(3);
     expect(fs.existsSync(path.join(home, 'hooks/agent-hook.mjs'))).toBe(true);
     expect(fs.existsSync(path.join(home, 'hooks/claude-status.mjs'))).toBe(true);
-    expect(fs.existsSync(path.join(home, 'tmux.conf'))).toBe(true);
     expect(fs.readdirSync(home).some((f) => f.startsWith('claude-settings.json.bak-'))).toBe(true);
     const plist = fs.readFileSync(path.join(launchAgentsDir, 'io.github.linusroxbergh.svall.svalld.plist'), 'utf8');
     expect(plist).toContain(path.join(os.homedir(), '.local', 'bin'));
@@ -450,6 +465,38 @@ describe('runSetup', () => {
     expect(fs.existsSync(mark)).toBe(true);
     fs.rmSync(path.join(home, 'hooks'), { recursive: true });
     expect(run('c1')).toBe('mine\n');
+  });
+
+  describe('loading the service', () => {
+    // a launchctl that refuses the first `refused` bootstraps and has the job loaded only once one went through
+    const launchctl = (refused: number) => {
+      const bin = makeHome();
+      const log = path.join(bin, 'calls');
+      fs.writeFileSync(path.join(bin, 'launchctl'), `#!/bin/sh
+echo "$1" >> '${log}'
+case "$1" in
+  bootstrap) [ "$(grep -c bootstrap '${log}')" -gt ${refused} ] || { echo 'Bootstrap failed: 5: Input/output error' >&2; exit 5; }; touch '${bin}/loaded' ;;
+  print) [ -f '${bin}/loaded' ] ;;
+esac
+`, { mode: 0o755 });
+      vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
+      return () => fs.readFileSync(log, 'utf8').trim().split('\n');
+    };
+    const setup = () => {
+      const home = makeHome();
+      return runSetup({ home, settingsPath: path.join(home, 'claude-settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: true, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }) });
+    };
+
+    it('tries a bootstrap launchd refuses once more, as the job it booted out may still be going away', async () => {
+      const calls = launchctl(1);
+      expect((await setup()).at(-1)).toMatch(/^launchctl bootstrap gui\/\d+ /);
+      expect(calls()).toEqual(['print', 'bootout', 'bootstrap', 'bootstrap']);
+    });
+
+    it('says launchd did not load the service once it refuses twice', async () => {
+      launchctl(2);
+      await expect(setup()).rejects.toThrow(`launchd did not load ${LAUNCHD_LABEL} (Bootstrap failed: 5: Input/output error); run setup again`);
+    });
   });
 
   it('writes nothing when the Claude settings are not valid JSON', async () => {
@@ -772,7 +819,6 @@ describe('setupHome', () => {
     const lines = await setupHome({ home, label: 'io.github.linusroxbergh.svall.svalld.work', runtime, launchAgentsDir, launchctl: false, port: 0 });
     expect(JSON.parse(fs.readFileSync(path.join(home, 'config.json'), 'utf8'))).toEqual({ port: 0 });
     expect(fs.existsSync(path.join(home, 'hooks/agent-hook.mjs'))).toBe(true);
-    expect(fs.existsSync(path.join(home, 'tmux.conf'))).toBe(true);
     const plist = fs.readFileSync(path.join(launchAgentsDir, 'io.github.linusroxbergh.svall.svalld.work.plist'), 'utf8');
     expect(plist).toContain('<string>io.github.linusroxbergh.svall.svalld.work</string>');
     expect(plist).toContain(`<string>${home}</string>`);

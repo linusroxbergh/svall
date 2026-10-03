@@ -54,6 +54,25 @@ describe('agentFor', () => {
   });
 });
 
+describe('char new', () => {
+  it('refuses two agents, or an agent and a command, rather than drop one', async () => {
+    const cmd = charCommands(async () => { throw new Error('connected'); }, () => false);
+    cmd.commands.find((c) => c.name() === 'new')!.exitOverride().configureOutput({ writeErr: () => {} });
+    for (const flags of [['--claude', '--codex'], ['--agent', 'codex', '--command', 'x'], ['--codex', '--command', 'x'], ['--agent', '--claude']]) {
+      await expect(cmd.parseAsync(['node', 'char', 'new', '--island', 'i', '--cwd', '/tmp', ...flags]), flags.join(' ')).rejects.toThrow(/cannot be used with/);
+    }
+  });
+});
+
+describe('a char command that stops on an error', () => {
+  it('closes its connection to the fleet', async () => {
+    const close = vi.fn();
+    const client = { call: async () => ({ version: 7, islands: {}, characters: { c_a: base } }), close };
+    await expect(charCommands(async () => client as unknown as Client, () => false).parseAsync(['node', 'char', 'show', 'nobody'])).rejects.toThrow('no character "nobody"');
+    expect(close).toHaveBeenCalledOnce();
+  });
+});
+
 describe('char wait', () => {
   afterEach(() => { process.exitCode = 0; vi.restoreAllMocks(); });
   const wait = async (ref: string, characters: Record<string, Character>, flags: string[] = []) => {

@@ -15,18 +15,11 @@ describe('migrateState', () => {
     expect(state.version).toBe(7);
   });
 
-  it('lifts a version 6 file to 7 and changes nothing else', () => {
-    const raw = { ...emptyState(), version: 6, islands: { i_a: island('i_a') }, characters: { c_a: char('c_a', 'i_a') } };
-    const { state, migrated } = migrateState(raw);
-    expect(migrated).toBe(true);
-    expect(state).toEqual({ ...raw, version: 7 });
-  });
-
-  it('refuses a file older than version 6 and says so', () => {
-    for (const version of [1, 5]) {
+  it('refuses a file older than version 7 and says so', () => {
+    for (const version of [1, 6]) {
       expect(() => migrateState({ version, islands: {}, characters: {} })).toThrow(OlderStateVersion);
     }
-    expect(() => migrateState({ version: 5, islands: {}, characters: {} })).toThrow(/version 5, older than this svalld reads/);
+    expect(() => migrateState({ version: 6, islands: {}, characters: {} })).toThrow(/version 6, older than this svalld reads \(7\)/);
   });
 
   it('refuses a file from a newer svalld', () => {

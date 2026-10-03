@@ -29,6 +29,7 @@ codesign --verify --deep --strict "$APP" 2>/dev/null \
   && spctl --assess --type execute "$APP" 2>/dev/null \
   || fail "the download is not Svall as signed by its developer and notarized by Apple"
 # the new copy is whole before the old one goes, so a failed copy leaves a working Svall
+rm -rf "$DEST/.Svall.app.new"
 ditto "$APP" "$DEST/.Svall.app.new"
 rm -rf "$DEST/Svall.app" || fail "could not replace $DEST/Svall.app (macOS may ask to let your terminal manage apps); move it to the Trash and run this again"
 mv "$DEST/.Svall.app.new" "$DEST/Svall.app"

@@ -70,6 +70,8 @@ if [ -z "$ADHOC" ]; then
   notarize dist/Svall.zip
   xcrun stapler staple "$APP"
 fi
+# signing and the smoke test touch the bundle again, so it is unregistered as app-build.sh leaves it
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$APP" 2>/dev/null || true
 
 DMG="dist/releases/Svall-$VERSION.dmg"
 mkdir -p dist/releases
@@ -80,13 +82,16 @@ if [ -z "$ADHOC" ]; then
   xcrun stapler staple "$DMG"
   spctl -a -t open --context context:primary-signature -v "$DMG"
   # a copy marked as downloaded by a browser must still open under Gatekeeper
+  MNT="$(mktemp -d)"
+  trap 'hdiutil detach -quiet "$MNT" 2>/dev/null || true; rmdir "$MNT" 2>/dev/null || true; rm -f dist/quarantined.dmg' EXIT
   cp "$DMG" dist/quarantined.dmg
   xattr -w com.apple.quarantine "0081;$(printf %x "$(date +%s)");Safari;" dist/quarantined.dmg
-  MNT="$(mktemp -d)"
   hdiutil attach -quiet -nobrowse -readonly -mountpoint "$MNT" dist/quarantined.dmg
-  spctl -a -vv "$MNT/Svall.app" || { hdiutil detach -quiet "$MNT"; fail "Gatekeeper refused the app in the DMG"; }
+  spctl -a -vv "$MNT/Svall.app" || fail "Gatekeeper refused the app in the DMG"
   hdiutil detach -quiet "$MNT"
+  rmdir "$MNT"
   rm dist/quarantined.dmg
+  trap - EXIT
 fi
 
 SHA="$(shasum -a 256 "$DMG" | cut -d' ' -f1)"
@@ -109,5 +114,6 @@ rsync -a "$DMG" "$SVALL_HOST:$SVALL_SITE_DIR/releases/"
 rsync -a dist/releases "$SVALL_HOST:$SVALL_SITE_DIR/"
 rsync -a dist/appcast.xml dist/latest.json scripts/install.sh "$SVALL_HOST:$SVALL_SITE_DIR/"
 git tag "v$VERSION"
-git push origin "v$VERSION"
+# the release is public by now, and a second run refuses it, so a failed push is finished by hand
+git push origin "v$VERSION" || fail "Svall $VERSION is published, but its tag did not reach origin: run git push origin v$VERSION"
 echo "released Svall $VERSION ($BUILD)"

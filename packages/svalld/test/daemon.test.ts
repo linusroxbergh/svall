@@ -4,11 +4,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import { codexInstalled, codexPaths } from '../src/codex/install.js';
+import { codexInstalled } from '../src/agent-hooks.js';
+import { codexPaths } from '../src/codex/install.js';
 import { silentLogger } from '../src/log.js';
 import { readOrCreateToken, startDaemon, type Daemon } from '../src/main.js';
 import { resolvePaths } from '../src/paths.js';
-import { runtimeVersion } from '../src/setup-plan.js';
+import { runtimeVersion } from '../src/runtime.js';
 import { Tmux } from '../src/tmux/tmux.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
