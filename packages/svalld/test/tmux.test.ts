@@ -206,6 +206,33 @@ runIf('Tmux', () => {
     await expect(t.attachSession('v-c_gone', '@999')).rejects.toThrow(/can't find window/);
   });
 
+  // stand-ins ignore SIGHUP until their pty is gone, then start the real command on it, as a child that lost the race would
+  it('leaves no keeper or viewer placeholder running once its pty is gone, even one that never got SIGHUP', async () => {
+    const home = makeHome();
+    const bin = path.join(home, 'bin');
+    fs.mkdirSync(bin);
+    const held = (real: string) => `#!/bin/sh\ntrap '' HUP\ntouch ${bin}/$$\nfor i in $(/usr/bin/seq 400); do [ -e ${bin}/go ] && exec ${real} "$@"; /bin/sleep 0.05; done\n`;
+    for (const cmd of ['cat', 'sleep', 'zsh']) fs.writeFileSync(path.join(bin, cmd), held(`/bin/${cmd}`), { mode: 0o755 });
+    // tmux looks a command up on the PATH of the client that asks for it
+    vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
+    cleanup.push(async () => { vi.unstubAllEnvs(); });
+    fs.writeFileSync(`${home}/tmux.conf`, tmuxConfText(Config.parse({ shell: path.join(bin, 'zsh') })));
+    const t = new Tmux(`${home}/tmux.sock`, `${home}/tmux.conf`);
+    cleanup.push(() => t.killServer());
+    await t.ensureServer();
+    // a link that fails leaves the placeholder's session up
+    await expect(t.attachSession('v-c_held', '@999')).rejects.toThrow(/can't find window/);
+    const pids = (await t.run('list-panes', '-a', '-F', '#{pane_pid}')).trim().split('\n').map(Number);
+    expect(pids).toHaveLength(2);
+    await waitFor(() => pids.every((p) => fs.existsSync(path.join(bin, String(p)))));
+    await t.killServer();
+    fs.writeFileSync(path.join(bin, 'go'), '');
+    const alive = (p: number) => { try { process.kill(p, 0); return true; } catch { return false; } };
+    const ended = await waitFor(() => !pids.some(alive), 2000).then(() => true, () => false);
+    for (const p of pids.filter(alive)) { try { process.kill(p, 'SIGKILL'); } catch { /* already gone */ } }
+    expect(ended).toBe(true);
+  });
+
   it('control client streams output for panes turned on and stays quiet for panes turned off', async () => {
     const t = await boot();
     const w = await t.newWindow('c_one', '/tmp', {});

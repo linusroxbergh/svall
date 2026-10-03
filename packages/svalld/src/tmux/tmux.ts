@@ -90,8 +90,10 @@ export class Tmux {
   async attachSession(name: string, windowId: string): Promise<void> {
     await this.run(
       // set directly on a session with no client, destroy-unattached destroys it at once
+      // link-window -k can close the placeholder's pty before tmux's child holds it, and then no SIGHUP comes:
+      // cat still ends, at EOF, and as two words it skips default-shell, which (zsh) hangs on a dead pty
       'if', '-F', `#{N/s:${name}}`, '',
-      `new-session -d -s ${name} "sleep 2147483647" ; set-hook -t ${name} client-attached "set -t ${name} destroy-unattached on"`, ';',
+      `new-session -d -s ${name} cat - ; set-hook -t ${name} client-attached "set -t ${name} destroy-unattached on"`, ';',
       'if', '-F', '-t', `=${name}:`, `#{W:#{?#{==:#{window_id},${windowId}},1,}}`, '', `link-window -k -s ${windowId} -t =${name}:^`, ';',
       'set-option', '-w', '-u', '-t', windowId, 'window-size',
     );
@@ -113,7 +115,8 @@ export class Tmux {
     try {
       await this.run('has-session', '-t', SESSION);
     } catch {
-      await this.run('new-session', '-d', '-s', SESSION, '-n', KEEP_WINDOW, 'sleep 2147483647');
+      // cat as in attachSession: a server killed as it starts can close this pty before its child holds it
+      await this.run('new-session', '-d', '-s', SESSION, '-n', KEEP_WINDOW, 'cat', '-');
     }
   }
 

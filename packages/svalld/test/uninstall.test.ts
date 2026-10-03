@@ -302,12 +302,16 @@ describe('runUninstall', () => {
   it.runIf(hasTmux())('stops every fleet\'s tmux server and keeps its home', async () => {
     const f = installed();
     const sock = path.join(f.home, 'tmux.sock');
-    execFileSync('tmux', ['-S', sock, '-f', '/dev/null', 'new-session', '-d', 'sleep 600']);
-    const pid = Number(execFileSync('tmux', ['-S', sock, 'display-message', '-p', '#{pid}'], { encoding: 'utf8' }));
-    expect(await runUninstall(f.o)).toEqual([`stopped tmux server ${sock}`]);
-    const alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
-    await waitFor(() => !alive());
-    expect(fs.existsSync(path.join(f.home, 'config.json'))).toBe(true);
+    try {
+      execFileSync('tmux', ['-S', sock, '-f', '/dev/null', 'new-session', '-d', 'cat', '-']);
+      const pid = Number(execFileSync('tmux', ['-S', sock, 'display-message', '-p', '#{pid}'], { encoding: 'utf8' }));
+      expect(await runUninstall(f.o)).toEqual([`stopped tmux server ${sock}`]);
+      const alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
+      await waitFor(() => !alive());
+      expect(fs.existsSync(path.join(f.home, 'config.json'))).toBe(true);
+    } finally {
+      try { execFileSync('tmux', ['-S', sock, 'kill-server'], { stdio: 'ignore' }); } catch { /* already gone */ }
+    }
   });
 
   it('turns off every phone link that proxies to its fleet\'s key, whatever port the daemon had, and no other', async () => {
