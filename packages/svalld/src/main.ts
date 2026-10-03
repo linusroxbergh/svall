@@ -115,7 +115,7 @@ async function start(opts: Options): Promise<Daemon> {
   const homes = () => [paths.home, ...fs.readdirSync(os.homedir()).filter((f) => f.startsWith('.svall')).map((f) => path.join(os.homedir(), f))];
   const refused = () => [claude.json, path.join(claude.dir, '.credentials.json'), path.join(codex.dir, 'auth.json'),
     ...homes().flatMap((h) => fleetKeys(resolvePaths(h)))];
-  const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs, paths.agentProfiles), log, refused, [paths.docs, paths.agentProfiles]);
+  const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs, paths.agentProfiles), log, refused, [paths.docs, paths.agentProfiles], paths.trash);
   const phones = new Phones();
   const mobile = mobileControl(realDeps(), {
     home: paths.home, profile, logins: config.mobile.logins, phones, httpsPort: config.mobile.httpsPort, rotateKey: key.rotate,

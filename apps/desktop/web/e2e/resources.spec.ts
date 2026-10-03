@@ -319,6 +319,40 @@ test('the side card’s button opens the shelf on that character’s repository'
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('a repository skill and agent are deleted from their rows, and Undo puts the skill back whole', async ({ page, svall }) => {
+  // the shell reports its folder by its real path, and a root that changes spelling moves the shelf off it
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'svall-res-')));
+  const skill = path.join(dir, '.claude/skills/prepush');
+  fs.mkdirSync(skill, { recursive: true });
+  fs.writeFileSync(path.join(skill, 'SKILL.md'), '---\nname: prepush\ndescription: Before pushing\n---\n');
+  fs.writeFileSync(path.join(skill, 'check.sh'), 'exit 0\n');
+  fs.mkdirSync(path.join(dir, '.claude/agents'));
+  fs.writeFileSync(path.join(dir, '.claude/agents/critic.md'), '---\nname: critic\n---\n');
+  fs.writeFileSync(path.join(dir, 'CLAUDE.md'), '# repo\n');
+  const island = await svall.api.call('island.create', { name: svall.uniq('del') });
+  const c = await svall.api.call('char.create', { islandId: island.id, cwd: dir, name: 'deleter' });
+  await page.setViewportSize(WIDE);
+  await svall.open('map');
+  await page.getByTestId(`token-${c.id}`).click();
+  await page.getByTestId('side-resources').click();
+
+  await page.getByTestId('resources-item-instructions-CLAUDE.md').hover();
+  await expect(page.getByTestId('resources-delete-instructions-CLAUDE.md')).toHaveCount(0);
+  await page.getByTestId('resources-item-skills-prepush').hover();
+  await page.getByTestId('resources-delete-skills-prepush').click();
+  await expect(page.getByTestId('resources-item-skills-prepush')).toHaveCount(0);
+  expect(fs.existsSync(skill)).toBe(false);
+  await page.getByTestId('toast-action').click();
+  await expect(page.getByTestId('resources-item-skills-prepush')).toBeVisible();
+  expect(fs.readdirSync(skill).sort()).toEqual(['SKILL.md', 'check.sh']);
+
+  await page.getByTestId('resources-item-agents-critic').hover();
+  await page.getByTestId('resources-delete-agents-critic').click();
+  await expect(page.getByTestId('resources-item-agents-critic')).toHaveCount(0);
+  expect(fs.readdirSync(path.join(dir, '.claude/agents'))).toEqual([]);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('the shelf stands over an open terminal card', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('under') });
   const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'under' });

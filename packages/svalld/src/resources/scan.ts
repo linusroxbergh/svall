@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse as parseToml } from 'smol-toml';
-import { frontmatter, type FleetState, type ResourceGroup, type ResourceItem, type ResourceKind, type ResourceSource } from '@svall/protocol';
+import { deletable, frontmatter, type FleetState, type ResourceGroup, type ResourceItem, type ResourceKind, type ResourceSource } from '@svall/protocol';
 import { listAgentProfiles } from '../agent-profiles.js';
 import type { CodexPaths } from '../codex/install.js';
 import { docsDir, fleetDir, listDocs, repoRootOf, repoSlug } from '../docs.js';
@@ -208,6 +208,10 @@ const groupsOf = (pairs: [ResourceKind, Row[]][]): ResourceGroup[] =>
     .map(([kind, items]) => ({ kind, items: items.map((r) => ({ id: idOf(kind, r), ...r })) }));
 
 const slugOf = (root: string): string => root.replace(/[^A-Za-z0-9]/g, '-');
+
+/** Whether `rel` under root `id` is a row the shelf deletes: its file, or a skill's folder. */
+export const listsDeletable = (sources: ResourceSource[], id: string, rel: string): boolean =>
+  sources.some((s) => s.groups.some((g) => g.items.some((i) => deletable(g.kind, i) && i.open!.rootId === id && (i.open!.folder ?? i.open!.path) === rel)));
 
 export function scanResources(state: FleetState, claude: ClaudePaths, codex?: CodexPaths, docs?: string, agentProfiles?: string): ResourceSource[] {
   const user: Base = { rootId: rootIdOf(claude.dir), root: claude.dir };

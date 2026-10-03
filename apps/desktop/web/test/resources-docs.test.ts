@@ -3,7 +3,7 @@ import type { Api } from '../src/api.js';
 import { dropBuffers, editBuffer, getBuffer } from '../src/ide/buffers.js';
 import { openFile } from '../src/ide/files.js';
 import { flushDoc, watchDoc } from '../src/resources/autosave.js';
-import { createDoc, deleteDoc, isFresh, letGo, renameDoc, skeleton } from '../src/resources/docs.js';
+import { createDoc, deleteDoc, deleteResource, isFresh, letGo, renameDoc, skeleton } from '../src/resources/docs.js';
 import { createAppStore } from '../src/store/index.js';
 
 const ROOT = 'r:/d/islands/i1';
@@ -135,6 +135,42 @@ describe('deleteDoc', () => {
     await deleteDoc(d, ROOT, 'plan.md');
     expect(files).toEqual({ 'plan.md': 'the text' });
     expect(store.getState().toast).toMatchObject({ tone: 'error', text: expect.stringContaining('not a file') });
+  });
+});
+
+describe('deleteResource', () => {
+  const C = 'r:/u/.claude';
+  const skill = { rootId: C, path: 'skills/tidy/SKILL.md', folder: 'skills/tidy' };
+  function setup(answer: (m: string) => Promise<unknown> = (m) => Promise.resolve(m === 'resources.delete' ? { token: 't1' } : m === 'resources.get' ? { sources: [] } : {})) {
+    const calls: [string, unknown][] = [];
+    const api = { call: (m: string, p: unknown) => { calls.push([m, p]); return answer(m); } } as unknown as Pick<Api, 'call'>;
+    const store = createAppStore();
+    return { d: { api, store }, calls, store };
+  }
+  it('sets a skill folder aside, closes its files and offers it back', async () => {
+    const { d, calls, store } = setup();
+    store.getState().openFile(C, 'skills/tidy/SKILL.md');
+    store.getState().openFile(C, 'skills/tidy/run.sh');
+    store.getState().openFile(C, 'skills/tidy-two/SKILL.md');
+    await deleteResource(d, 'tidy', skill);
+    expect(calls[0]).toEqual(['resources.delete', { id: C, path: 'skills/tidy' }]);
+    expect(store.getState().ide[C]?.open).toEqual(['skills/tidy-two/SKILL.md']);
+    expect(store.getState().toast).toMatchObject({ tone: 'ok', text: 'Deleted tidy', action: { label: 'Undo' } });
+    store.getState().toast!.action!.run();
+    expect(calls.at(-1)).toEqual(['resources.restore', { token: 't1' }]);
+  });
+  it('leaves a skill with an unsaved file alone', async () => {
+    const { d, calls, store } = setup();
+    store.getState().openFile(C, 'skills/tidy/run.sh');
+    store.getState().markFile(C, 'skills/tidy/run.sh', { dirty: true });
+    await deleteResource(d, 'tidy', skill);
+    expect(calls).toEqual([]);
+    expect(store.getState().toast).toMatchObject({ tone: 'error', text: 'Save tidy before deleting it' });
+  });
+  it('surfaces a delete svalld refuses', async () => {
+    const { d, store } = setup(() => Promise.reject(Object.assign(new Error('CLAUDE.md is not a skill, agent, command or memory file the shelf lists'), { code: 'invalid' })));
+    await deleteResource(d, 'CLAUDE.md', { rootId: C, path: 'CLAUDE.md' });
+    expect(store.getState().toast).toMatchObject({ tone: 'error', text: expect.stringContaining('the shelf lists') });
   });
 });
 

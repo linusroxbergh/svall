@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { dispatch, type Ctx } from '../src/api/methods.js';
 import { Config } from '../src/config.js';
@@ -8,6 +10,7 @@ import { resolvePaths } from '../src/paths.js';
 import { workspaceRoot } from '../src/resources/scan.js';
 import { Store } from '../src/store.js';
 import type { Tmux } from '../src/tmux/tmux.js';
+import { Workspace } from '../src/workspace/workspace.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 afterEach(cleanHomes);
@@ -87,6 +90,32 @@ describe('the fleets beside this one', () => {
     expect(await dispatch({ id: 3, method: 'fleets.start', params: { home: '/u/.svall-side' } }, ctx('app'))).toEqual({ id: 3, result: { home: '/u/.svall-side' } });
     expect(await dispatch({ id: 4, method: 'fleet.rename', params: { name: 'home' } }, ctx('app'))).toEqual({ id: 4, result: {} });
     expect(await dispatch({ id: 5, method: 'fleet.stop', params: {} }, ctx('app'))).toEqual({ id: 5, result: {} });
+  });
+});
+
+describe('resources.delete', () => {
+  it('sets aside only a row the shelf deletes, and resources.restore puts it back', async () => {
+    const home = makeHome();
+    const store = Store.load(resolvePaths(home).state, () => {});
+    const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
+    for (const rel of ['CLAUDE.md', 'settings.json', 'agents/critic.md', 'skills/tidy/SKILL.md']) {
+      fs.mkdirSync(path.dirname(path.join(claude.dir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(claude.dir, rel), rel);
+    }
+    const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude), silentLogger, () => [claude.json], [], path.join(home, 'trash'));
+    const ctx = { store, workspace, claude, viewer: { kind: 'app' } } as unknown as Ctx;
+    const call = (method: string, params: unknown) => dispatch({ id: 1, method, params }, ctx) as Promise<{ result?: { token: string }; error?: { code: string } }>;
+    const id = `r:${claude.dir}`;
+    for (const rel of ['CLAUDE.md', 'settings.json', 'skills/tidy/SKILL.md', 'agents'])
+      expect(await call('resources.delete', { id, path: rel })).toMatchObject({ error: { code: 'invalid' } });
+    const agent = (await call('resources.delete', { id, path: 'agents/critic.md' })).result!.token;
+    const skill = (await call('resources.delete', { id, path: 'skills/tidy' })).result!.token;
+    expect(fs.readdirSync(claude.dir).sort()).toEqual(['CLAUDE.md', 'agents', 'settings.json', 'skills']);
+    expect(fs.readdirSync(path.join(claude.dir, 'skills'))).toEqual([]);
+    expect(await call('resources.restore', { token: agent })).toMatchObject({ result: {} });
+    expect(await call('resources.restore', { token: skill })).toMatchObject({ result: {} });
+    expect(fs.readFileSync(path.join(claude.dir, 'agents/critic.md'), 'utf8')).toBe('agents/critic.md');
+    expect(fs.readFileSync(path.join(claude.dir, 'skills/tidy/SKILL.md'), 'utf8')).toBe('skills/tidy/SKILL.md');
   });
 });
 

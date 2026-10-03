@@ -66,6 +66,24 @@ export async function deleteDoc(d: ResourcesDeps, rootId: string, path: string):
   d.store.getState().showToast(`Deleted ${bare(path)}`, 'ok', undo && { label: 'Undo', run: undo });
 }
 
+/** Sets a skill's folder, an agent, a command or a memory file aside and offers, for as long as the toast stands, to put it back.
+ *  One with unsaved edits is left alone. */
+export async function deleteResource(d: ResourcesDeps, name: string, open: { rootId: string; path: string; folder?: string }): Promise<void> {
+  const { rootId } = open;
+  const target = open.folder ?? open.path;
+  const under = (p: string): boolean => p === target || p.startsWith(`${target}/`);
+  if (d.store.getState().ide[rootId]?.dirty.some(under)) { refuse(d, `Save ${name} before deleting it`); return; }
+  let token: string;
+  try { ({ token } = await d.api.call('resources.delete', { id: rootId, path: target })); }
+  catch (e) { refuse(d, (e as Error).message); return; }
+  for (const p of d.store.getState().ide[rootId]?.open.filter(under) ?? []) closeFile(d, rootId, p);
+  await loadResources(d);
+  const undo = () => {
+    void d.api.call('resources.restore', { token }).then(() => loadResources(d), (e: Error) => d.store.getState().showToast(e.message));
+  };
+  d.store.getState().showToast(`Deleted ${name}`, 'ok', { label: 'Undo', run: undo });
+}
+
 /** As the editor lets go of a doc: one this session made and nobody wrote in is deleted, anything else waiting is saved. */
 export async function letGo(d: ResourcesDeps, rootId: string, path: string): Promise<void> {
   const made = fresh.delete(key(rootId, path));

@@ -42,6 +42,13 @@ const statOf = (rel: string, abs: string): fs.Stats | undefined => {
 
 const changed = (id: string): Event => ({ event: 'repo.changed', data: { id } });
 
+// a rename, or across volumes a copy and then a removal
+function move(from: string, to: string): void {
+  try { fs.renameSync(from, to); return; } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'EXDEV') throw e; }
+  fs.cpSync(from, to, { recursive: true, preserveTimestamps: true, verbatimSymlinks: true, errorOnExist: true, force: false });
+  fs.rmSync(from, { recursive: true });
+}
+
 // what another name, case or link of a file shares with it
 const idOf = (p: string): string | undefined => {
   try { const s = fs.statSync(p, { throwIfNoEntry: false }); return s && `${s.dev}:${s.ino}`; } catch { return undefined; }
@@ -49,8 +56,11 @@ const idOf = (p: string): string | undefined => {
 
 export class Workspace {
   /** `refused` names the files no root reaches: Claude Code's and Codex's logins, every fleet's keys.
-   *  `trees` are the folders whose files may be created, renamed and deleted: the docs and the agent profiles. */
-  constructor(private rootOf: (id: string) => string, private log: Logger, private refused: () => string[] = () => [], private trees: string[] = []) {}
+   *  `trees` are the folders whose files may be created, renamed and deleted: the docs and the agent profiles.
+   *  `trash` holds what setAside took until putBack; what a past run left there cannot be put back, so it goes. */
+  constructor(private rootOf: (id: string) => string, private log: Logger, private refused: () => string[] = () => [], private trees: string[] = [], private trash?: string) {
+    if (trash) fs.rmSync(trash, { recursive: true, force: true });
+  }
 
   // another name, another case on a folding volume, a symlink, a hard link: only identity tells them apart.
   // The spelling is compared first, for a path that is not on disk yet
@@ -187,6 +197,30 @@ export class Workspace {
   remove(id: string, rel: string): void {
     const abs = this.docAt(id, rel);
     try { fs.unlinkSync(abs); } catch (e) { throw refuse(rel, 'be deleted', e); }
+  }
+
+  // each token's place in the trash, and the path it came from
+  private aside = new Map<string, string>();
+
+  /** Moves a file or a folder into the trash and answers the token that puts it back. */
+  setAside(id: string, rel: string): string {
+    const abs = this.at(id, rel);
+    if (!this.trash) throw new WorkspaceError('invalid', 'nothing can be deleted here');
+    if (!statOf(rel, abs)) throw new WorkspaceError('not_found', `${rel} is not there`);
+    const token = crypto.randomUUID();
+    try { fs.mkdirSync(this.trash, { recursive: true }); move(abs, path.join(this.trash, token)); } catch (e) { throw refuse(rel, 'be deleted', e); }
+    this.aside.set(token, abs);
+    return token;
+  }
+
+  /** Moves what setAside took back to where it was, unless something stands there now. */
+  putBack(token: string): void {
+    const abs = this.aside.get(token);
+    if (abs === undefined || !this.trash) throw new WorkspaceError('not_found', 'it is gone for good');
+    const name = path.basename(abs);
+    if (fs.lstatSync(abs, { throwIfNoEntry: false })) throw new WorkspaceError('exists', `${name} is there again`);
+    try { fs.mkdirSync(path.dirname(abs), { recursive: true }); move(path.join(this.trash, token), abs); } catch (e) { throw refuse(name, 'be put back', e); }
+    this.aside.delete(token);
   }
 
   private async repoRoot(root: string): Promise<string> {

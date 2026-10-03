@@ -798,3 +798,55 @@ describe('Workspace docs', () => {
     expect(await codeOf(() => ws.create('r:x', 'a.md', 'x'))).toBe('invalid');
   });
 });
+
+describe('Workspace trash', () => {
+  afterEach(cleanHomes);
+
+  function setup() {
+    const home = makeHome();
+    const root = path.join(home, 'claude'), trash = path.join(home, 'trash');
+    fs.mkdirSync(path.join(root, 'skills/tidy'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'skills/tidy/SKILL.md'), 'tidy');
+    fs.writeFileSync(path.join(root, 'skills/tidy/run.sh'), 'echo', { mode: 0o755 });
+    fs.mkdirSync(path.join(root, 'agents'));
+    fs.writeFileSync(path.join(root, 'agents/critic.md'), 'critic');
+    return { ws: new Workspace(() => root, silentLogger, () => [], [], trash), root, trash };
+  }
+
+  it('sets a file and a folder aside, and puts each back as it was', () => {
+    const { ws, root } = setup();
+    const file = ws.setAside('r:c', 'agents/critic.md');
+    const folder = ws.setAside('r:c', 'skills/tidy');
+    expect(fs.readdirSync(path.join(root, 'agents'))).toEqual([]);
+    expect(fs.readdirSync(path.join(root, 'skills'))).toEqual([]);
+    ws.putBack(file);
+    ws.putBack(folder);
+    expect(fs.readFileSync(path.join(root, 'agents/critic.md'), 'utf8')).toBe('critic');
+    expect(fs.readFileSync(path.join(root, 'skills/tidy/SKILL.md'), 'utf8')).toBe('tidy');
+    expect(fs.statSync(path.join(root, 'skills/tidy/run.sh')).mode & 0o777).toBe(0o755);
+  });
+
+  it('leaves alone a file written in its place since, and answers a token already used as gone', async () => {
+    const { ws, root } = setup();
+    const token = ws.setAside('r:c', 'agents/critic.md');
+    fs.writeFileSync(path.join(root, 'agents/critic.md'), 'new');
+    expect(await codeOf(() => ws.putBack(token))).toBe('exists');
+    expect(fs.readFileSync(path.join(root, 'agents/critic.md'), 'utf8')).toBe('new');
+    fs.rmSync(path.join(root, 'agents/critic.md'));
+    ws.putBack(token);
+    expect(await codeOf(() => ws.putBack(token))).toBe('not_found');
+  });
+
+  it('says when there is nothing to set aside, and refuses a path out of the root', async () => {
+    const { ws } = setup();
+    expect(await codeOf(() => ws.setAside('r:c', 'agents/gone.md'))).toBe('not_found');
+    expect(await codeOf(() => ws.setAside('r:c', '../trash'))).toBe('invalid');
+  });
+
+  it('empties what a past run set aside', () => {
+    const { ws, root, trash } = setup();
+    ws.setAside('r:c', 'agents/critic.md');
+    new Workspace(() => root, silentLogger, () => [], [], trash);
+    expect(fs.existsSync(trash)).toBe(false);
+  });
+});

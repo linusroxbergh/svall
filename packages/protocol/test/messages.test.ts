@@ -138,8 +138,14 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 17 with fleets listed, started and named from the app', () => {
-    expect(PROTOCOL_VERSION).toBe(17);
+  it('is 18 with shelf rows set aside and put back', () => {
+    expect(PROTOCOL_VERSION).toBe(18);
+    expect(methods['resources.delete'].params.safeParse({ id: 'r:/u/.claude', path: 'skills/tidy' }).success).toBe(true);
+    expect(methods['resources.delete'].result.safeParse({ token: 't' }).success).toBe(true);
+    expect(methods['resources.restore'].params.safeParse({ token: 't' }).success).toBe(true);
+  });
+
+  it('was 17 with fleets listed, started and named from the app', () => {
     expect(methods['fleets.list'].result.safeParse({ fleets: [{ home: '/u/.svall', name: 'private', current: true, running: true, windowOpen: true }] }).success).toBe(true);
     expect(methods['fleets.create'].params.safeParse({ name: 'work' }).success).toBe(true);
     expect(methods['fleets.start'].params.safeParse({ home: '/u/.svall-work' }).success).toBe(true);
