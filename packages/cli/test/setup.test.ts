@@ -132,6 +132,24 @@ describe('svall setup on Linux', () => {
     }
   }, 30_000);
 
+  it('refuses a rollback asked with --check or --release, or for a fleet other than the private one, and goes back on nothing', async () => {
+    const home = process.env.HOME!;
+    const prefix = path.join(home, '.local', 'share', 'svall');
+    for (const v of ['1.0.0', '1.1.0']) fs.mkdirSync(path.join(prefix, 'releases', v), { recursive: true });
+    fs.symlinkSync(path.join(prefix, 'releases', '1.1.0'), path.join(prefix, 'current'));
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const setup = (name: string, argv: string[]) => setupCommand(() => ({ name, home: path.join(home, name === 'private' ? '.svall' : `.svall-${name}`), managed: true }), () => true, 'linux')
+      .parseAsync(['--no-launchctl', '--rollback', ...argv], { from: 'user' });
+    try {
+      await expect(setup('private', ['--check'])).rejects.toThrow('--rollback takes neither --check nor --release');
+      await expect(setup('private', ['--release', path.join(prefix, 'releases', '1.0.0')])).rejects.toThrow('--rollback takes neither --check nor --release');
+      await expect(setup('work', [])).rejects.toThrow('svall setup configures the private fleet; run svall work to open that one');
+      expect(fs.readlinkSync(path.join(prefix, 'current'))).toBe(path.join(prefix, 'releases', '1.1.0'));
+    } finally {
+      fs.rmSync(prefix, { recursive: true, force: true });
+    }
+  });
+
   it('fails a rollback, naming the fleet, when a restarted daemon does not answer from the release it went back to', async () => {
     const home = process.env.HOME!;
     const prefix = path.join(home, '.local', 'share', 'svall');

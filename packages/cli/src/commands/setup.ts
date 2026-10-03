@@ -273,12 +273,13 @@ function linuxSetupCommand(target: () => Target, json: () => boolean, probe: Pro
     .action(async (o: LinuxFlags) => {
       // setup owns the per-user half — the Claude hooks and the shims — so it only ever means private
       const t = target();
+      if (t.name !== PRIVATE) throw new Error(`${SHIM} setup configures the private fleet; run ${SHIM} ${t.name} to open that one`);
       if (o.rollback) {
+        if (o.check || o.release) throw new Error('--rollback takes neither --check nor --release');
         const done = await rollback({ restart: o.launchctl, probe }, typeof o.rollback === 'string' ? o.rollback : undefined);
         printResult({ done, warnings: [] }, json(), () => done.join('\n'));
         return;
       }
-      if (t.name !== PRIVATE) throw new Error(`${SHIM} setup configures the private fleet; run ${SHIM} ${t.name} to open that one`);
       return linuxSetup(t, o, json());
     });
 }
