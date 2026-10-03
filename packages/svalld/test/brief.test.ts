@@ -226,8 +226,12 @@ describe('renderBrief with docs', () => {
     { tier: 'island', dir: '/d/islands/i', docs: over.island ?? [] },
     { tier: 'character', dir: '/d/characters/c', docs: over.character ?? [] },
   ];
+  const NOTE = [
+    'Leave a note only for what a later agent will need again, not a record of this task (that goes in its PR or ticket). Update or delete a note before adding one, and hold memories to the same bar.',
+    'Write a note as <name>.md with a `description:` frontmatter line, in the narrowest folder it applies to:',
+  ];
   const WRITE = [
-    'Leave a note for the next agent as <name>.md with a `description:` frontmatter line, in the narrowest folder it applies to:',
+    ...NOTE,
     '- repo: /d/repos/app-12345678',
     '- island: /d/islands/i',
     '- character: /d/characters/c',
@@ -248,7 +252,7 @@ describe('renderBrief with docs', () => {
     ]);
     expect(text).toBe([
       '# Svall context', 'Island: Docs site', 'Character: Blog writer', '',
-      'Leave a note for the next agent as <name>.md with a `description:` frontmatter line, in the narrowest folder it applies to:',
+      ...NOTE,
       '- island: /d/islands/home',
       '- character: /d/characters/c', '',
       '`svall char show c` reprints this.',
@@ -341,7 +345,7 @@ describe('renderBrief with docs', () => {
     );
     const lines = text.split('\n');
     expect(text.length).toBeLessThanOrEqual(9_000);
-    expect(lines).toEqual(expect.arrayContaining([...CREW, '- …and 1 more in /d/repos/app-12345678', '- …and 15 more island links', '- …and 15 more character links', '- …and 39 more tabs', `- https://example.com/${'t'.repeat(150)}/39 (active)`]));
+    expect(lines).toEqual(expect.arrayContaining([...CREW, '- …and 1 more in /d/repos/app-12345678', '- …and 16 more island links', '- …and 15 more character links', '- …and 39 more tabs', `- https://example.com/${'t'.repeat(150)}/39 (active)`]));
     expect(lines.find((l) => l.startsWith('Island instructions: '))).toHaveLength('Island instructions: '.length + 2000);
     expect(text).toContain(`/${'p'.repeat(150)}/0 (pinned)`);
     expect(text).toContain(`/${'p'.repeat(150)}/1\n`);
