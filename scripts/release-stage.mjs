@@ -42,6 +42,15 @@ export function companionAssets(o) {
   return companions;
 }
 
+/** Copies each companion pinned by a URL relative to the release into the stage, where that URL finds it. */
+export function carryCompanions(stage, companions, dir) {
+  for (const { url } of Object.values(companions)) {
+    if (URL.canParse(url)) continue;
+    fs.mkdirSync(path.dirname(path.join(stage, url)), { recursive: true });
+    fs.copyFileSync(path.join(dir, path.basename(url)), path.join(stage, url));
+  }
+}
+
 /**
  * The release name, from the tree being built: its release tag, or its commit when none is there, as another tag such
  * as ghostty-kit names no release; never a path or anything a directory cannot be called.
@@ -345,13 +354,16 @@ export async function stageRelease(o) {
   const bundledLicenses = stageLicenses(stage, inputs);
   const schemas = await schemaVersions(work);
   fs.rmSync(work, { recursive: true, force: true });
+  const companionDir = o.companionDir ?? o.out;
+  const companions = o.companionUrlBase && companionAssets({ dir: companionDir, version: o.version, urlBase: o.companionUrlBase });
+  if (companions) carryCompanions(stage, companions, companionDir);
   return {
     stage,
     meta: {
       version: o.version,
       platform: o.platform,
       ...schemas,
-      ...(o.companionUrlBase ? { companions: companionAssets({ dir: o.companionDir ?? o.out, version: o.version, urlBase: o.companionUrlBase }) } : {}),
+      ...(companions ? { companions } : {}),
       node: { version: runtime.version, tarball: runtime.name, sha256: runtime.sha256, verifiedAgainst: runtime.verifiedAgainst },
       bundles,
       bundledLicenses,

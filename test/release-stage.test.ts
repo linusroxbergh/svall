@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { nodeRuntime, PINS, pinnedRsync, schemaVersions, VENDOR } from '../scripts/release-stage.mjs';
+import { carryCompanions, companionAssets, nodeRuntime, PINS, pinnedRsync, schemaVersions, VENDOR } from '../scripts/release-stage.mjs';
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
@@ -70,6 +70,23 @@ describe('the rsync a controller release carries', () => {
     const r = await pinnedRsync(process.arch, { vendor: vendor(), fresh: true });
     expect(execFileSync(r.binary, ['--version'], { encoding: 'utf8' })).toMatch(new RegExp(`^rsync +version ${PINS.rsync.version.replace(/\./g, '\\.')} `));
   }, 300_000);
+});
+
+describe('the companions a controller release carries', () => {
+  it('copies each companion pinned relative to the release into it, where its URL finds it, and leaves a published one out', () => {
+    const dir = temp();
+    const name = 'svall-companion-v1.2.3-linux-x64.tar.gz';
+    fs.writeFileSync(path.join(dir, name), 'a companion');
+    const carried = companionAssets({ dir, version: 'v1.2.3', urlBase: 'companions' });
+    expect(carried['linux-x64'].url).toBe(`companions/${name}`);
+    const stage = temp();
+    carryCompanions(stage, carried, dir);
+    expect(fs.readFileSync(path.join(stage, 'companions', name), 'utf8')).toBe('a companion');
+
+    const published = temp();
+    carryCompanions(published, companionAssets({ dir, version: 'v1.2.3', urlBase: 'https://example.test/r' }), dir);
+    expect(fs.readdirSync(published)).toEqual([]);
+  });
 });
 
 describe('the release workflow', () => {

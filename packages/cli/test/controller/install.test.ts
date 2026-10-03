@@ -142,6 +142,21 @@ describe('where the companion comes from', () => {
     expect(companionAsset(root, 'linux-x64')).toBeUndefined();
   });
 
+  it('finds a companion the release carries, pinned relative to its root, inside the release wherever it is', async () => {
+    const root = path.join(releaseRoot(), 'Svall Test.app', 'Contents', 'Resources', 'release');
+    const archive = makeArchive();
+    const sha256 = crypto.createHash('sha256').update(fs.readFileSync(archive)).digest('hex');
+    const name = 'companions/svall-companion-1.2.3-linux-arm64.tar.gz';
+    fs.mkdirSync(path.join(root, 'companions'), { recursive: true });
+    fs.copyFileSync(archive, path.join(root, name));
+    fs.writeFileSync(path.join(root, 'release.json'), JSON.stringify({ version: '1.2.3', companions: { 'linux-arm64': { url: name, sha256 } } }));
+    const asset = companionAsset(root, 'linux-arm64')!;
+    expect(asset.url).toBe(pathToFileURL(path.join(root, name)).href);
+    const noFetch = () => Promise.reject(new Error('a carried companion is not fetched'));
+    const file = await downloadCompanion({ ...asset, dir: path.join(work, 'cache'), fetch: noFetch });
+    expect(fs.readFileSync(file)).toEqual(fs.readFileSync(archive));
+  });
+
   it('downloads into the companion cache and checks the published digest', async () => {
     const body = Buffer.from('a companion archive');
     const sha256 = crypto.createHash('sha256').update(body).digest('hex');

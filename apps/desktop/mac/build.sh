@@ -44,17 +44,17 @@ if [ -d "$ROOT/apps/desktop/web/dist" ]; then
   rsync -a --delete "$ROOT/apps/desktop/web/dist/" "$APP/Contents/Resources/web/"
 fi
 
-# a release build carries the controller it installs: production svall and svalld, the pinned Node
-# runtime, the phone page and the rsync 3.x macOS does not have. A workspace build also pins the
-# linux-x64 companion it built beside it, by file: URL and digest, so Add Machine has one to install
-if [ "$CONFIG" = release ]; then
+# a release build of Svall.app carries the controller it installs: production svall and svalld, the pinned
+# Node runtime, the phone page, the rsync 3.x macOS does not have, and the linux-x64 companion Add Machine
+# installs, pinned by its path in the release. pnpm release names it by the tag it pushes, other builds by git describe
+if [ "$CONFIG" = release ] && [ "$VARIANT" = release ]; then
   RELEASE="$MAC/build/release"
   COMPANIONS="$MAC/build/companions"
-  VERSION="$(node -e 'import(process.argv[1]).then((m) => console.log(m.describeVersion()))' "$ROOT/scripts/release-stage.mjs")"
+  VERSION="${SVALL_RELEASE_NAME:-$(node -e 'import(process.argv[1]).then((m) => console.log(m.describeVersion()))' "$ROOT/scripts/release-stage.mjs")}"
   rm -rf "$RELEASE" "$COMPANIONS"
   node "$ROOT/scripts/build-companion.mjs" --out "$COMPANIONS" --arch x64 --version "$VERSION" >"$MAC/build/companions.json"
   node "$ROOT/scripts/build-controller.mjs" --out "$RELEASE" --version "$VERSION" \
-    --companion-url-base "file://$COMPANIONS" --companions "$COMPANIONS" >"$MAC/build/release.json"
+    --companion-url-base companions --companions "$COMPANIONS" >"$MAC/build/release.json"
   rsync -a --delete "$RELEASE/releases/"*/ "$APP/Contents/Resources/release/"
 fi
 # the commit count orders builds for the updater

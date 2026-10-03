@@ -9,6 +9,7 @@ export function nodeRuntime(platform: string, o?: { vendor?: string; shasums?: s
 export function schemaVersions(work: string): Promise<{ protocol: number; stateSchema: number; transferSchema: number; authoritySchema: number }>;
 export function shimText(name: string): string;
 export function companionAssets(o: { dir: string; version: string; urlBase: string }): Record<string, { url: string; sha256: string }>;
+export function carryCompanions(stage: string, companions: Record<string, { url: string; sha256: string }>, dir: string): void;
 export function stageRelease(o: { out: string; version: string; platform: string; shasums?: string; companionUrlBase?: string; companionDir?: string }): Promise<{ stage: string; meta: Record<string, unknown> }>;
 export function releaseKey(): string | undefined;
 export function packageLicence(dir: string): { name: string; version: string; license: string; file: string };

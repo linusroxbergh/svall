@@ -5,7 +5,8 @@
 //                                       [--companion-url-base <url> [--companions <dir>]]
 //
 // With --companion-url-base the manifest also names the Linux companion archives built for this
-// version, so `svall host add` can fetch the one matching a machine without being handed a path.
+// version, so `svall host add` can fetch the one matching a machine without being handed a path. A
+// base relative to the release, as Svall.app's build passes, carries the archives inside it.
 //
 // It is the companion tree plus the rsync 3.x the controller needs, because macOS ships openrsync,
 // which cannot protect remote arguments or report byte progress. rsync is built from the pinned

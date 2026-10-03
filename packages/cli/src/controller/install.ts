@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { shq } from '@svall/svalld/text';
 import { stageArchive } from '../../../../scripts/install-release.mjs';
 import { MANIFEST, NAMESPACE, SIG, SUMS, type Verify } from '../../../../scripts/release-manifest.mjs';
@@ -50,7 +50,7 @@ export function requireCompatible(c: CompanionArchive, o: { release: string; pro
 
 /**
  * The companion this desktop release publishes for a platform, from its own manifest, and whether that
- * manifest is itself an unsigned development build's.
+ * manifest is itself an unsigned development build's. A URL relative to the release names an archive it carries.
  */
 export function companionAsset(releaseRoot: string, platform: string): { url: string; sha256: string; unsignedBuild: boolean } | undefined {
   let manifest: { unsigned?: unknown; companions?: Record<string, { url?: unknown; sha256?: unknown }> };
@@ -61,14 +61,15 @@ export function companionAsset(releaseRoot: string, platform: string): { url: st
   }
   const asset = manifest.companions?.[platform];
   if (typeof asset?.url !== 'string' || typeof asset.sha256 !== 'string') return undefined;
-  return { url: asset.url, sha256: asset.sha256, unsignedBuild: manifest.unsigned === true };
+  const url = new URL(asset.url, pathToFileURL(path.join(releaseRoot, path.sep))).href;
+  return { url, sha256: asset.sha256, unsignedBuild: manifest.unsigned === true };
 }
 
 const sha256Of = (body: Buffer): string => crypto.createHash('sha256').update(body).digest('hex');
 
 /**
  * Fetches a published companion into the cache, keeping nothing whose digest is not the published one, unless the cache
- * holds it already. A development build names the companion it built beside it with a file: URL, which its next build deletes.
+ * holds it already. A companion the release carries is read from its file: URL.
  */
 export async function downloadCompanion(o: { url: string; sha256: string; dir: string; fetch: FetchLike }): Promise<string> {
   const url = new URL(o.url);
