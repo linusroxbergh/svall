@@ -210,7 +210,7 @@ runIf('Tmux', () => {
     fs.writeFileSync(path.join(bin, 'go'), '');
     const alive = (p: number) => { try { process.kill(p, 0); return true; } catch { return false; } };
     const ended = await waitFor(() => !pids.some(alive), 2000).then(() => true, () => false);
-    for (const p of pids.filter(alive)) process.kill(p, 'SIGKILL');
+    for (const p of pids.filter(alive)) { try { process.kill(p, 'SIGKILL'); } catch { /* already gone */ } }
     expect(ended).toBe(true);
   });
 
