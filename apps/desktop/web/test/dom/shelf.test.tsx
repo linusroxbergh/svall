@@ -103,6 +103,35 @@ test('the new doc field stands until Enter or Escape, and a refused name keeps i
   expect(screen.queryByTestId('resources-new-doc-name')).toBeNull();
 });
 
+test('a skill, an agent, a command and a memory file each offer a delete that Undo takes back; instructions, settings and MEMORY.md offer none', async () => {
+  const C = 'r:/u/.claude';
+  const row = (kind: string, name: string, path: string, folder?: string) =>
+    ({ id: `${kind}:${name}`, name, reveal: `/u/.claude/${folder ?? path}`, target: folder ? 'folder' as const : 'file' as const, open: { rootId: C, path, ...(folder && { folder }) } });
+  const src = { rootId: C, root: '/u/.claude', name: 'Claude', tier: 'global' as const, islandIds: [], characterIds: [], groups: [
+    { kind: 'instructions' as const, items: [row('instructions', 'CLAUDE.md', 'CLAUDE.md')] },
+    { kind: 'skills' as const, items: [row('skills', 'tidy', 'skills/tidy/SKILL.md', 'skills/tidy')] },
+    { kind: 'agents' as const, items: [row('agents', 'critic', 'agents/critic.md')] },
+    { kind: 'commands' as const, items: [row('commands', 'git:sync', 'commands/git/sync.md')] },
+    { kind: 'settings' as const, items: [row('settings', 'settings.json', 'settings.json')] },
+    { kind: 'autoMemory' as const, items: [row('autoMemory', 'MEMORY.md', 'projects/-r/memory/MEMORY.md'), row('autoMemory', 'old-plan.md', 'projects/-r/memory/old-plan.md')] },
+  ] };
+  call.mockImplementation((m: string) => Promise.resolve(m === 'resources.get' ? { sources: [src] } : m === 'resources.delete' ? { token: 't1' } : {}));
+  store.getState().setResources([src]);
+  store.getState().toggleResources(true, { where: C, what: 'all' });
+  render(<OnMap />);
+  await act(async () => {});
+  for (const [kind, name] of [['skills', 'tidy'], ['agents', 'critic'], ['commands', 'git:sync'], ['autoMemory', 'old-plan.md']])
+    expect(screen.queryByTestId(`resources-delete-${kind}-${name}`)).not.toBeNull();
+  for (const [kind, name] of [['instructions', 'CLAUDE.md'], ['settings', 'settings.json'], ['autoMemory', 'MEMORY.md']])
+    expect(screen.queryByTestId(`resources-delete-${kind}-${name}`)).toBeNull();
+
+  await act(async () => { fireEvent.click(screen.getByTestId('resources-delete-skills-tidy')); });
+  expect(call).toHaveBeenCalledWith('resources.delete', { id: C, path: 'skills/tidy' });
+  expect(store.getState().toast).toMatchObject({ tone: 'ok', text: 'Deleted tidy', action: { label: 'Undo' } });
+  await act(async () => { store.getState().toast!.action!.run(); });
+  expect(call).toHaveBeenCalledWith('resources.restore', { token: 't1' });
+});
+
 // the shelf's box in percent of its room
 const box = () => {
   const st = screen.getByTestId('resources-shelf').style;

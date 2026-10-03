@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { emptyState, HOME_ISLAND, type FleetState, type ResourceSource } from '@svall/protocol';
 import { docsDir, repoSlug } from '../src/docs.js';
 import { claudePaths } from '../src/paths.js';
-import { fleetRoots, resourceRoot, rootIdOf, scanResources } from '../src/resources/scan.js';
+import { fleetRoots, listsDeletable, resourceRoot, rootIdOf, scanResources } from '../src/resources/scan.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 const put = (file: string, text: string) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
@@ -220,6 +220,21 @@ describe('scanResources', () => {
     expect(user.groups.find((g) => g.kind === 'hooks')!.items).toEqual([
       { id: `hooks\u0000${path.join(claude.dir, 'settings.json')}\u0000settings.json`, name: 'settings.json', error: 'cannot be read as JSON', reveal: path.join(claude.dir, 'settings.json'), target: 'file', open: { rootId: rootIdOf(claude.dir), path: 'settings.json' } },
     ]);
+  });
+
+  it('lets a skill folder, an agent, a command and a memory file be deleted, and nothing else', () => {
+    const { claude, repo, state } = disk();
+    const memory = path.join('projects', repo.replace(/[^A-Za-z0-9]/g, '-'), 'memory');
+    put(path.join(claude.dir, memory, 'old-plan.md'), 'stale');
+    const sources = scanResources(state, claude);
+    const user = rootIdOf(claude.dir);
+    for (const rel of ['skills/ship-it', 'agents/reviewer.md', 'commands/git/sync.md', path.join(memory, 'old-plan.md')])
+      expect(listsDeletable(sources, user, rel)).toBe(true);
+    for (const rel of ['CLAUDE.md', 'settings.json', 'keybindings.json', 'skills/ship-it/SKILL.md', 'skills', 'agents', path.join(memory, 'MEMORY.md')])
+      expect(listsDeletable(sources, user, rel)).toBe(false);
+    expect(listsDeletable(sources, rootIdOf(repo), 'CLAUDE.md')).toBe(false);
+    expect(listsDeletable(sources, rootIdOf(repo), '.claude/skills/prepush')).toBe(true);
+    expect(listsDeletable(sources, rootIdOf(repo), 'agents/reviewer.md')).toBe(false);
   });
 
   it('answers an empty user scope when there is no ~/.claude at all', () => {

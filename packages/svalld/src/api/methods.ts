@@ -6,10 +6,11 @@ import type { Mobile } from '../mobile.js';
 import type { PushStore } from '../push/store.js';
 import type { CodexPaths } from '../codex/install.js';
 import type { ClaudePaths } from '../paths.js';
-import { rootIdOf, scanResources } from '../resources/scan.js';
+import { listsDeletable, rootIdOf, scanResources } from '../resources/scan.js';
 import type { Store } from '../store.js';
 import type { TerminalHub, Viewer } from '../terminals.js';
 import type { FetchUsage } from '../usage/usage.js';
+import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
 
 export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; signal?: AbortSignal };
@@ -71,6 +72,11 @@ const handlers: Handlers = {
     return {};
   },
   'docs.delete': (p, { workspace }) => { workspace.remove(p.id, p.path); return {}; },
+  'resources.delete': (p, { store, claude, codex, docs, agentProfiles, workspace }) => {
+    if (!listsDeletable(scanResources(store.state, claude, codex, docs, agentProfiles), p.id, p.path)) throw new WorkspaceError('invalid', `${p.path} is not a skill, agent, command or memory file the shelf lists`);
+    return { token: workspace.setAside(p.id, p.path) };
+  },
+  'resources.restore': (p, { workspace }) => { workspace.putBack(p.token); return {}; },
   'repo.status': (p, { workspace }) => workspace.status(p.id, p.base),
   'repo.file': (p, { workspace }) => workspace.file(p.id, p.path, p.base, p.from),
   'repo.watch': (p, { workspace, viewer }) => { workspace.watch(p.id, viewer); return {}; },

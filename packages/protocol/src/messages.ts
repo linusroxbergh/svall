@@ -106,6 +106,9 @@ export const ResourceItem = z.object({
   reveal: z.string(), target: z.enum(['file', 'folder']), open: ResourceOpen.optional(),
 });
 export type ResourceItem = z.infer<typeof ResourceItem>;
+/** Whether resources.delete takes a row: a skill's folder, an agent, a command or a memory file other than the MEMORY.md every session loads. */
+export const deletable = (kind: string, item: Pick<ResourceItem, 'name' | 'open'>): boolean =>
+  item.open !== undefined && (kind === 'skills' || kind === 'agents' || kind === 'commands' || (kind === 'autoMemory' && item.name !== 'MEMORY.md'));
 export const ResourceGroup = z.object({ kind: ResourceKind, items: z.array(ResourceItem) });
 export type ResourceGroup = z.infer<typeof ResourceGroup>;
 export const ResourceTier = z.enum(['global', 'fleet', 'repo', 'island', 'character']);
@@ -206,6 +209,9 @@ export const methods = {
   'docs.create': { params: RootPath.extend({ text: z.string() }), result: z.object({ mtimeMs: z.number() }) },
   'docs.rename': { params: RootPath.extend({ to: z.string() }), result: z.object({}) },
   'docs.delete': { params: RootPath, result: z.object({}) },
+  // a row deletable() takes, by its open path or a skill's folder, set aside until resources.restore puts it back or svalld restarts
+  'resources.delete': { params: RootPath, result: z.object({ token: z.string() }) },
+  'resources.restore': { params: z.object({ token: z.string() }), result: z.object({}) },
   'repo.status': {
     params: z.object({ id: z.string(), base: DiffBase.default('head') }),
     result: z.object({ branch: z.string().optional(), files: z.array(ChangedFile) }),
@@ -269,4 +275,4 @@ export type HelloReply = z.infer<typeof HelloReply>;
 export const LOGIN_REFUSED = 4403;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 17;
+export const PROTOCOL_VERSION = 18;

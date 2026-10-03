@@ -46,6 +46,7 @@ export function resolvePaths(home: string = svallHome()) {
     vapid: path.join(home, 'vapid.json'),
     docs: path.join(home, 'docs'),
     agentProfiles: path.join(home, 'agent-profiles'),
+    trash: path.join(home, 'trash'),
   };
 }
 export type Paths = ReturnType<typeof resolvePaths>;
