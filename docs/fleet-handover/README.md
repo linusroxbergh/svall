@@ -11,7 +11,8 @@ Everything sits behind `handover.enabled` in fleet.json, which is off by default
 - **Done:** version 1 — plan Tasks 1–29 and 36–42, milestones M0–M3, M3b's automated gate and M6. Every
   task was reviewed, M1–M3 each got a deep review, fix wave and on-machine pass, and the whole branch got a
   final review (`ledger/final-review.md`) with one fix wave, then a PR review (`ledger/pr-review-2026-09-29.md`)
-  with its own fix wave. The fault suites (`pnpm test:faults`) crash
+  with its own fix wave, and a review of the branch on svall (`ledger/pr-review-2026-10-03.md`) with one more.
+  The fault suites (`pnpm test:faults`) crash
   every one of 94 failpoints and fault every controller request; the container harness
   (`docs/integration.md`) hands a fleet over real sshd/rsync/tmux, and a release installs fresh on x86-64
   and arm64; real Claude and Codex sessions resumed both ways on test-server, and the spec's manual
