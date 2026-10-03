@@ -7,6 +7,10 @@ final class QuitFlow {
     private let hideWindow: () -> Void
     // whether the fleet runs on another machine, where a quit here leaves it running
     private let elsewhere: () -> Bool
+    // whether a handover of this fleet is open on this Mac
+    private let handoverOpen: () -> Bool
+    private let confirm: (_ message: String, _ detail: String) -> Bool
+    private let kill: (@escaping () -> Void) -> Void
     // where the page's answer goes while a quit waits on it, and what quits anyway if it never comes
     private var quitAnswer: ((Bool) -> Void)?
     private var quitTimeout: Timer?
@@ -20,11 +24,16 @@ final class QuitFlow {
     private var killing = false
 
     init(send: @escaping (FromShell) -> Void, isListening: @escaping () -> Bool, hideWindow: @escaping () -> Void,
-         elsewhere: @escaping () -> Bool = { false }) {
+         elsewhere: @escaping () -> Bool = { false }, handoverOpen: @escaping () -> Bool = { false },
+         confirm: @escaping (_ message: String, _ detail: String) -> Bool = QuitFlow.alert,
+         kill: @escaping (@escaping () -> Void) -> Void = FleetDaemon.kill) {
         self.send = send
         self.isListening = isListening
         self.hideWindow = hideWindow
         self.elsewhere = elsewhere
+        self.handoverOpen = handoverOpen
+        self.confirm = confirm
+        self.kill = kill
     }
 
     /// Whether a quit waits on the page, the user or the fleet.
@@ -37,6 +46,7 @@ final class QuitFlow {
         // a page that is not up has nothing to save and no daemon to ask
         guard isListening() else {
             guard !confirm || confirmQuit(unsaved: [], working: 0) else { return .terminateCancel }
+            if handoverOpen() { return .terminateNow }
             quitAnswer = answer
             fleetStopped(ok: false)
             return .terminateLater
@@ -86,9 +96,10 @@ final class QuitFlow {
         answer(ok)
     }
 
-    // the page has the daemon put every character to sleep and exit; what it cannot reach is ended from here,
-    // as is this Mac's daemon alone for a fleet that runs elsewhere
+    // the page has the daemon put every character to sleep and exit; what it cannot reach is ended from here, as is this
+    // Mac's daemon alone for a fleet that runs elsewhere. An open handover needs this Mac's daemon, so it is left running
     private func stopFleet() {
+        if handoverOpen() { return finishQuit(true) }
         guard isListening(), !elsewhere() else { return fleetStopped(ok: false) }
         stopping = true
         hideWindow()
@@ -110,23 +121,34 @@ final class QuitFlow {
         // the kill can take a couple of seconds, which the window should not sit through
         hideWindow()
         killing = true
-        FleetDaemon.kill { [weak self] in self?.finishQuit(true) }
+        kill { [weak self] in self?.finishQuit(true) }
     }
 
     private func confirmQuit(unsaved: [String], working: Int) -> Bool {
-        let alert = NSAlert()
+        // a handover may be bringing the fleet to this Mac, or hold its characters at rest for the move
+        let handover = handoverOpen()
         let working = elsewhere() ? 0 : working
-        let busy = working == 0 ? "" : "\(working) \(working == 1 ? "character is" : "characters are") working and will stop."
+        let busy = handover ? "The handover carries on while Svall is closed."
+            : working == 0 ? "" : "\(working) \(working == 1 ? "character is" : "characters are") working and will stop."
+        let message: String, detail: String
         if unsaved.isEmpty {
-            alert.messageText = "Quit Svall?"
-            alert.informativeText = elsewhere() ? "Your characters keep working on the machine this fleet runs on."
+            message = "Quit Svall?"
+            detail = handover ? busy : elsewhere() ? "Your characters keep working on the machine this fleet runs on."
                 : working == 0 ? "Your characters stop and pick up where they left off when you open Svall again."
                 : busy + " Everything picks up where it left off when you open Svall again."
         } else {
-            alert.messageText = "Quit with unsaved changes?"
+            message = "Quit with unsaved changes?"
             let names = unsaved.count > 4 ? unsaved.prefix(3).joined(separator: ", ") + " and \(unsaved.count - 3) more" : ListFormatter.localizedString(byJoining: unsaved)
-            alert.informativeText = "\(names) \(unsaved.count == 1 ? "has" : "have") changes that were not saved. Quitting drops them." + (busy.isEmpty ? "" : " " + busy)
+            detail = "\(names) \(unsaved.count == 1 ? "has" : "have") changes that were not saved. Quitting drops them." + (busy.isEmpty ? "" : " " + busy)
         }
+        return confirm(message, detail)
+    }
+
+    /// The quit's question, in front of every other app: true when the user picks Quit.
+    static func alert(_ message: String, _ detail: String) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.informativeText = detail
         alert.addButton(withTitle: "Quit")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate()

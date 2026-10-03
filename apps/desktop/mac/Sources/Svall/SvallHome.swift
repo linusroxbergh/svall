@@ -39,6 +39,12 @@ enum SvallHome {
         return handover["enabled"] as? Bool ?? false
     }
 
+    /// Whether a handover of this fleet is open here: the controller keeps its journal from Begin until every side has let go,
+    /// and the daemon its own while it is the source or destination of one.
+    static func handoverOpen(at home: String = path) -> Bool {
+        ["/controller/handover.json", "/handover/journal.json"].contains { FileManager.default.fileExists(atPath: home + $0) }
+    }
+
     /// Where this Mac keeps its machine id and the registry of the machines it reaches.
     static var configDir: String {
         ProcessInfo.processInfo.environment["SVALL_CONFIG_DIR"] ?? NSHomeDirectory() + "/.config/svall"
