@@ -42,8 +42,16 @@ export class Api {
 
   start(): void { this.stopped = false; this.open(); }
 
-  /** A daemon that restarted on a free port comes back on a different one; the next attempt uses this. */
-  setEndpoint(endpoint: Endpoint): void { this.endpoint = endpoint; }
+  /**
+   * A daemon that restarted on a free port comes back on a different one; the next attempt uses this. A fleet
+   * that moved leaves its old daemon running, so a socket still open to it is let go, and `again` reconnects
+   * even to the same one, whose fleet is then read afresh.
+   */
+  setEndpoint(endpoint: Endpoint, again = false): void {
+    const moved = endpoint.url !== this.endpoint.url || endpoint.token !== this.endpoint.token;
+    this.endpoint = endpoint;
+    if (moved || again) this.ws?.close();
+  }
 
   stop(): void { this.stopped = true; clearTimeout(this.timer); this.ws?.close(); }
 

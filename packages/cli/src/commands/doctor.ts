@@ -1,28 +1,37 @@
+import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import { Command } from 'commander';
+import type { z } from 'zod';
+import { FleetConfig, NodeConfig, type AgentKind } from '@svall/protocol';
 import { claudeHooksCurrent, codexHooksCurrent, codexInstalled, hooksInstalled } from '@svall/svalld/agent-hooks';
 import { AGENTS, AGENT_KINDS, findAgents } from '@svall/svalld/agents';
 import { codexPaths, type CodexPaths } from '@svall/svalld/codex/install';
-import { loadConfig, parseConfig } from '@svall/svalld/config';
+import { Config, configRefusal, parseConfig, peekConfig } from '@svall/svalld/config';
+import { gatewayPaths, socketTooLong } from '@svall/svalld/gateway/authority';
+import { gatewayPrefix } from '@svall/svalld/gateway/bin';
 import { launchdEnv, plistEnv, plistRun } from '@svall/svalld/launchd';
-import { resolvePaths, userPaths } from '@svall/svalld/paths';
+import { lingerState, unitStatus, type Run } from '@svall/svalld/linux/service';
+import { agentHomesEnv, svalldUnitName, GATEWAY_UNIT, unitDirOf, unitEnv } from '@svall/svalld/linux/setup';
+import { claudePaths, resolvePaths, userPaths } from '@svall/svalld/paths';
 import { PRIVATE, SHIM, profileHome, profileLabel } from '@svall/svalld/profile';
+import { isRelease } from '@svall/svalld/release';
 import { ownRuntime } from '@svall/svalld/runtime';
 import { readOrUndefined } from '@svall/svalld/settings-file';
 import { shimsCurrent } from '@svall/svalld/setup';
-import type { AgentKind } from '@svall/protocol';
-import { grouped, renderGroups, useColor } from '../checks-view.js';
+import { MARK, grouped, renderGroups, useColor, type Check } from '../checks-view.js';
 import { Client, restartHint } from '../client.js';
 import { askCodexTrust, type HookTrust } from '../codex-trust.js';
+import { bundledRsync, rsyncVersion } from '../controller/rsync.js';
 import { printResult } from '../format.js';
 import type { Target } from '../target.js';
 import { checkoutVersion } from '../version.js';
-import { missing, preflight, realPreflightDeps, type Check, type PreflightDeps } from './preflight.js';
+import { missing, preflight, realPreflightDeps, type PreflightDeps } from './preflight.js';
 
-type Report = { home: string; checks: Check[]; log: { path: string; lines: string[] } };
+export type Report = { version?: string; home: string; config: { fleet: string; node: string }; checks: Check[]; log: { path: string; lines: string[] } };
 
 export type DoctorDeps = PreflightDeps & {
   read(file: string): string | undefined;
@@ -33,7 +42,9 @@ export type DoctorDeps = PreflightDeps & {
   // the fleet whose scripts setup points the Claude and Codex hooks at
   hooksHome: string;
   launchAgentsDir: string;
-  // what setup would hand a fleet's daemon from this shell
+  // where the Linux daemons' units lie
+  unitDir: string;
+  // what setup would hand a fleet's daemon from this account
   daemonEnv: Record<string, string>;
   codex: CodexPaths;
   exists(path: string): boolean;
@@ -45,27 +56,38 @@ export type DoctorDeps = PreflightDeps & {
   shimsCurrent: boolean;
   // the program this build's plist starts svalld with
   daemon: string[];
+  user: string;
+  // the rsync this Mac hands over with, and how to get it back when it is missing
+  rsync: { bundled: string; fix: string };
 };
 const LOG_LINES = 20;
+const firstLine = (s: string): string => s.trim().split('\n')[0] ?? '';
 
 async function gh(d: DoctorDeps): Promise<Check> {
   try {
     await d.run('gh', ['auth', 'status']);
     return { name: 'gh', status: 'ok', detail: 'logged in' };
   } catch (e) {
-    const why = missing(e) ? 'not found on PATH: brew install gh' : 'not logged in: gh auth login';
+    const install = d.platform === 'linux' ? 'sudo apt install gh' : 'brew install gh';
+    const why = missing(e) ? `not found on PATH: ${install}` : 'not logged in: gh auth login';
     return { name: 'gh', status: 'warn', detail: `${why} (pull request links stay unresolved)` };
   }
 }
 
-// svalld waits, without starting, while its config.json does not parse
+// svalld waits, without starting, while its fleet.json or node.json does not parse, or the config.json they are
+// still to be split out of, or its config files lie in a layout it refuses
 function config(t: Target, d: DoctorDeps): Check {
-  const file = resolvePaths(t.home).config;
-  const text = d.read(file);
-  if (text === undefined) return { name: 'config', status: 'ok', detail: `the defaults, as there is no ${file}` };
+  const p = resolvePaths(t.home);
+  const refused = configRefusal(p, (file) => d.exists(file));
+  if (refused) return { name: 'config', status: 'fail', detail: `${refused.replace(/\.$/, '')}; a stopped svalld waits for it to be fixed` };
+  const files: [string, z.ZodTypeAny][] = d.read(p.fleetConfig) === undefined && d.read(p.legacyConfig) !== undefined
+    ? [[p.legacyConfig, Config]]
+    : [[p.fleetConfig, FleetConfig], [p.nodeConfig, NodeConfig]];
+  const found = files.flatMap(([file, schema]) => { const text = d.read(file); return text === undefined ? [] : [{ file, text, schema }]; });
+  if (!found.length) return { name: 'config', status: 'ok', detail: `the defaults, as there is no ${p.fleetConfig}` };
   try {
-    parseConfig(text, file);
-    return { name: 'config', status: 'ok', detail: file };
+    for (const f of found) parseConfig(f.text, f.file, f.schema);
+    return { name: 'config', status: 'ok', detail: found.map((f) => f.file).join(' and ') };
   } catch (e) {
     return { name: 'config', status: 'fail', detail: `${(e as Error).message}; a stopped svalld waits for it to be fixed` };
   }
@@ -136,7 +158,7 @@ function daemonNode(t: Target, d: DoctorDeps): Check {
 }
 
 // launchd runs the plist's program with only the plist's PATH, and logs nothing to svalld.log when it cannot:
-// a checkout or app moved or deleted since setup, or a claude or codex installed since outside that PATH
+// a checkout, app or release moved or deleted since setup, or a claude or codex installed since outside that PATH
 function daemonPath(t: Target, d: DoctorDeps): Check {
   if (!t.managed) return { name: 'daemon path', status: 'skip', detail: 'not managed' };
   const { plist, fix } = plistOf(t, d);
@@ -152,18 +174,53 @@ function daemonPath(t: Target, d: DoctorDeps): Check {
     : { name: 'daemon path', status: 'ok', detail: 'its program is there, and it finds claude and codex as this shell does' };
 }
 
-// launchd gives svalld only the plist's environment, which setup took from the shell it ran in
+// launchd and systemd give svalld only the environment its plist or unit holds, which setup took from this account
 function daemonEnv(t: Target, d: DoctorDeps): Check {
   if (!t.managed) return { name: 'daemon env', status: 'skip', detail: 'not managed' };
   const keys = Object.keys(d.daemonEnv);
-  if (!keys.length) return { name: 'daemon env', status: 'ok', detail: 'this shell sets no CLAUDE_CONFIG_DIR or CODEX_HOME' };
-  const { plist, fix } = plistOf(t, d);
-  const text = d.read(plist);
-  if (text === undefined) return { name: 'daemon env', status: 'skip', detail: `no ${plist}` };
-  const lacks = keys.filter((k) => !text.includes(plistEnv(k, d.daemonEnv[k])));
+  if (!keys.length) return { name: 'daemon env', status: 'ok', detail: 'this account sets no CLAUDE_CONFIG_DIR or CODEX_HOME' };
+  const linux = d.platform === 'linux';
+  const { plist: file, fix } = linux
+    ? { plist: path.join(d.unitDir, svalldUnitName(t.name)), fix: t.name === PRIVATE ? `${SHIM} setup` : `${SHIM} host enable <this machine> --fleet ${t.name} from the controller` }
+    : plistOf(t, d);
+  const text = d.read(file);
+  if (text === undefined) return { name: 'daemon env', status: 'skip', detail: `no ${file}` };
+  const lacks = keys.filter((k) => !text.includes((linux ? unitEnv : plistEnv)(k, d.daemonEnv[k])));
   return lacks.length
-    ? { name: 'daemon env', status: 'warn', detail: `${plist} lacks ${lacks.join(' and ')}, which this shell sets: ${fix}` }
-    : { name: 'daemon env', status: 'ok', detail: `same ${keys.join(' and ')} as this shell` };
+    ? { name: 'daemon env', status: 'warn', detail: `${file} lacks ${lacks.join(' and ')}, which this account sets: ${fix}` }
+    : { name: 'daemon env', status: 'ok', detail: `same ${keys.join(' and ')} as this account` };
+}
+
+// the wrappers take stdout and stderr; doctor's runner reports a failure by throwing
+const asRun = (d: DoctorDeps): Run => async (cmd, args) => ({ stdout: await d.run(cmd, args), stderr: '' });
+
+async function unitCheck(name: string, unit: string, d: DoctorDeps, why?: () => string | undefined): Promise<Check> {
+  try {
+    const s = await unitStatus(asRun(d), unit);
+    const detail = `${unit}: ${s.load}, ${s.active} (${s.sub}), ${s.state}`;
+    if (s.load === 'not-found') return { name, status: 'fail', detail: `${unit} is not installed: ${SHIM} setup` };
+    if (s.active === 'active') return { name, status: 'ok', detail };
+    const cause = why?.();
+    return { name, status: 'fail', detail: cause ? `${detail}; ${cause}` : detail };
+  } catch (e) {
+    return { name, status: 'fail', detail: (e as Error).message };
+  }
+}
+
+function systemd(t: Target, d: DoctorDeps): Promise<Check> {
+  if (!t.managed) return Promise.resolve({ name: 'systemd', status: 'ok', detail: `not managed: ${t.home} is not a profile home` });
+  return unitCheck('systemd', svalldUnitName(t.name), d);
+}
+
+async function linger(d: DoctorDeps): Promise<Check> {
+  try {
+    const l = await lingerState(asRun(d), d.user);
+    return l.linger
+      ? { name: 'linger', status: 'ok', detail: `on for ${l.user}: the fleet keeps running after you log out` }
+      : { name: 'linger', status: 'warn', detail: `off for ${l.user}: the fleet stops when you log out; run ${l.action}` };
+  } catch (e) {
+    return { name: 'linger', status: 'warn', detail: (e as Error).message };
+  }
 }
 
 function hooks(d: DoctorDeps): Check {
@@ -184,6 +241,23 @@ function hooks(d: DoctorDeps): Check {
   return current
     ? { name: 'hooks', status: 'ok', detail: `installed in ${d.settingsPath}` }
     : { name: 'hooks', status: 'warn', detail: `out of date in ${d.settingsPath}: run ${SHIM} setup` };
+}
+
+async function rsyncAt(d: DoctorDeps, exe: string): Promise<{ version: string } | { reason: string }> {
+  try {
+    return rsyncVersion(await d.run(exe, ['--version']));
+  } catch (e) {
+    return { reason: missing(e) ? 'is not there' : `could not run: ${firstLine((e as Error).message)}` };
+  }
+}
+
+/** The rsync a handover runs on this Mac. macOS's own is openrsync, which cannot stand in for it. */
+async function rsync(d: DoctorDeps): Promise<Check> {
+  const bundled = await rsyncAt(d, d.rsync.bundled);
+  if ('version' in bundled) return { name: 'rsync', status: 'ok', detail: `${bundled.version} at ${d.rsync.bundled}` };
+  const system = await rsyncAt(d, 'rsync');
+  const fallback = 'version' in system ? `the rsync on PATH is ${system.version}, which handover does not use` : `the rsync on PATH ${system.reason}`;
+  return { name: 'rsync', status: 'warn', detail: `${d.rsync.bundled} ${bundled.reason}, and ${fallback}; handover needs the bundled rsync: ${d.rsync.fix}` };
 }
 
 // verifies the hook definition is installed and current, then asks Codex whether it is trusted.
@@ -225,25 +299,51 @@ function plistCheck(t: Target, d: DoctorDeps): Check {
 }
 
 export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
-  const log = resolvePaths(t.home).log;
+  const paths = resolvePaths(t.home);
+  const linux = d.platform === 'linux';
   const checks = [
     ...await preflight(d),
     await gh(d),
     config(t, d),
     await svalld(t, d),
     await hookReceiver(t, d),
-    await launchd(t, d),
-    daemonNode(t, d),
-    daemonPath(t, d),
-    daemonEnv(t, d),
+    ...(linux
+      ? [await systemd(t, d), daemonEnv(t, d), await unitCheck('gateway', GATEWAY_UNIT, d, () => socketTooLong(gatewayPaths(gatewayPrefix()).socket, 'linux')?.message), await linger(d)]
+      : [await launchd(t, d), daemonNode(t, d), daemonPath(t, d), daemonEnv(t, d), await rsync(d)]),
     hooks(d),
     await codexCheck(d),
     shims(d),
-    plistCheck(t, d),
+    ...(linux ? [] : [plistCheck(t, d)]),
   ];
-  const lines = (d.read(log) ?? '').split('\n').filter(Boolean).slice(-LOG_LINES);
-  return { home: t.home, checks, log: { path: log, lines } };
+  const lines = (d.read(paths.log) ?? '').split('\n').filter(Boolean).slice(-LOG_LINES);
+  return {
+    home: t.home,
+    config: { fleet: paths.fleetConfig, node: paths.nodeConfig },
+    checks,
+    log: { path: paths.log, lines },
+  };
 }
+
+/** One padded line per check, for a report too short to group. */
+export function checkLines(checks: Check[]): string[] {
+  const width = Math.max(...checks.map((c) => c.name.length));
+  return checks.map((c) => `${MARK[c.status]} ${c.name.padEnd(width)}  ${c.detail}`);
+}
+
+/** What `svall doctor` prints when it is not asked for JSON. */
+export function reportLines(report: Report, color = false): string[] {
+  return [
+    ...(report.version ? [`svall ${report.version}`] : []),
+    `fleet ${report.home}`,
+    `config ${report.config.fleet} and ${report.config.node}`,
+    renderGroups(grouped(report.checks), color),
+    '',
+    `last ${LOG_LINES} lines of ${report.log.path}:`,
+    ...(report.log.lines.length ? report.log.lines : ['(empty)']),
+  ];
+}
+
+const execFileP = promisify(execFile);
 
 function connectHook(path: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -254,38 +354,42 @@ function connectHook(path: string): Promise<void> {
   });
 }
 
-export function doctorCommand(target: () => Target, json: () => boolean): Command {
+export function doctorCommand(target: () => Target, json: () => boolean, platform: NodeJS.Platform = process.platform): Command {
   return new Command('doctor').description('check what the fleet needs and show the end of its log; changes nothing').action(async () => {
     const t = target();
     let integrations: AgentKind[] | undefined;
-    try { integrations = loadConfig(resolvePaths(profileHome(PRIVATE)).config).integrations; } catch { /* the private fleet's doctor reports it */ }
-    const { claudeSettings, launchAgents, shimDir } = userPaths();
+    try { integrations = peekConfig(resolvePaths(profileHome(PRIVATE))).integrations; } catch { /* the private fleet's doctor reports it */ }
+    const { launchAgents, shimDir } = userPaths();
+    const pre = realPreflightDeps(t.home, platform);
+    // a login shell asked over ssh must leave host add's doctor its own time to answer
+    const daemonEnv = platform === 'linux' ? await agentHomesEnv((cmd, args) => execFileP(cmd, args, { timeout: 10_000 })) : launchdEnv();
+    // the hooks are checked where the daemon's agents read them, which an ssh command's env may not name
+    const codex = codexPaths(daemonEnv);
     const report = { version: checkoutVersion(), ...await doctor(t, {
-      ...realPreflightDeps(t.home),
+      ...pre,
       read: readOrUndefined,
       connect: (home) => Client.connect(home),
       connectHook,
       uid: os.userInfo().uid,
-      settingsPath: claudeSettings,
+      settingsPath: path.join(claudePaths(daemonEnv).dir, 'settings.json'),
       hooksHome: profileHome(PRIVATE),
       launchAgentsDir: launchAgents,
-      daemonEnv: launchdEnv(),
-      codex: codexPaths(),
+      unitDir: unitDirOf(os.homedir()),
+      daemonEnv,
+      codex,
       exists: fs.existsSync,
-      found: findAgents(process.env.PATH ?? ''),
+      found: findAgents(pre.agentPath ?? pre.pathEnv),
       integrations,
-      codexTrust: () => askCodexTrust({ codexHome: codexPaths().dir, script: resolvePaths(profileHome(PRIVATE)).hookScript }),
+      codexTrust: () => askCodexTrust({ codexHome: codex.dir, script: resolvePaths(profileHome(PRIVATE)).hookScript }),
       shimsCurrent: shimsCurrent(shimDir, ownRuntime()),
       daemon: ownRuntime().daemon,
+      user: os.userInfo().username,
+      rsync: {
+        bundled: bundledRsync(),
+        fix: isRelease() ? 'reinstall Svall; its release carries one in bin/' : 'build it with node scripts/build-controller.mjs',
+      },
     }) };
-    printResult(report, json(), () => [
-      `svall ${report.version}`,
-      `fleet ${report.home}`,
-      renderGroups(grouped(report.checks), useColor()),
-      '',
-      `last ${LOG_LINES} lines of ${report.log.path}:`,
-      ...(report.log.lines.length ? report.log.lines : ['(empty)']),
-    ].join('\n'));
+    printResult(report, json(), () => reportLines(report, useColor()).join('\n'));
     if (report.checks.some((c) => c.status === 'fail')) process.exitCode = 1;
   });
 }

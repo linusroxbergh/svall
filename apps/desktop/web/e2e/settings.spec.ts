@@ -154,6 +154,7 @@ test('the shell is told the opacity, the zoom and which config to open', async (
   await expect.poll(async () => (await sent()).filter((m) => m.type === 'zoom').at(-1)).toEqual({ type: 'zoom', factor: 1.1, fontDelta: 1.5 });
 
   await page.getByTestId('settings-ghostty').click();
+  await expect(page.getByTestId('settings-fleet')).toHaveAttribute('title', /^(?!.*[Pp]ort).*$/);
   await page.getByTestId('settings-fleet').click();
   expect((await sent()).filter((m) => m.type === 'openConfig')).toEqual([{ type: 'openConfig', which: 'ghostty' }, { type: 'openConfig', which: 'fleet' }]);
 
@@ -251,7 +252,7 @@ test('the fleet is renamed from the settings, and a name that will not do is nev
   await field.press('Enter');
   await expect.poll(async () => (await svall.api.call('state.get', {})).name).toBe(name);
   await expect(page.getByTestId('set-fleet-name-error')).toHaveCount(0);
-  expect(JSON.parse(fs.readFileSync(path.join(svall.home, 'config.json'), 'utf8')).name).toBe(name);
+  expect(JSON.parse(fs.readFileSync(path.join(svall.home, 'fleet.json'), 'utf8')).name).toBe(name);
   // the specs after this one know the fleet by its directory
   await svall.api.call('fleet.rename', { name: path.basename(svall.home) });
 });

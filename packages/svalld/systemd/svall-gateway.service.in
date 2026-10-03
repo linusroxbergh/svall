@@ -1,0 +1,19 @@
+# One per machine, rendered by `svall setup`: the ownership authority for every fleet that names
+# this machine as its gateway.
+[Unit]
+Description=Svall gateway
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=@EXEC_START@
+Environment="HOME=@HOME@"
+Environment="PATH=@PATH@"
+Environment=LANG=C.UTF-8
+Restart=always
+RestartSec=2
+StandardOutput=append:@LOG@
+StandardError=append:@LOG@
+
+[Install]
+WantedBy=default.target

@@ -16,9 +16,10 @@ describe('stateOf', () => {
     expect(stateOf({ ...base, agent: agent('done'), unread: true })).toBe('done*');
   });
   it('names the second session after the main one', () => {
-    const second = { tmux: { windowId: '@2', paneId: '%2' }, unread: false };
+    const second = { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false };
     expect(stateOf({ ...base, agent: agent('working'), second })).toBe('working +shell');
     expect(stateOf({ ...base, second: { ...second, agent: agent('done'), unread: true } })).toBe('shell +done*');
+    expect(stateOf({ ...base, second: { cwd: '/tmp', unread: false, revive: { command: '' } } })).toBe('shell +dormant');
   });
 });
 
@@ -27,9 +28,9 @@ describe('contextOf', () => {
   it('is empty without a context, and shows the fuller of the two sessions', () => {
     expect(contextOf(base)).toBe('');
     expect(contextOf({ ...base, agent: withPct(12) })).toBe('12%');
-    expect(contextOf({ ...base, agent: withPct(12), second: { tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: withPct(80) } })).toBe('80%');
-    expect(contextOf({ ...base, agent: withPct(80), second: { tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: withPct(12) } })).toBe('80%');
-    expect(contextOf({ ...base, second: { tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: withPct(30) } })).toBe('30%');
+    expect(contextOf({ ...base, agent: withPct(12), second: { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: withPct(80) } })).toBe('80%');
+    expect(contextOf({ ...base, agent: withPct(80), second: { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: withPct(12) } })).toBe('80%');
+    expect(contextOf({ ...base, second: { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: withPct(30) } })).toBe('30%');
   });
 });
 
@@ -97,5 +98,53 @@ describe('char wait', () => {
 
   it('refuses a name two characters share', async () => {
     await expect(wait('a', { c_a: base, c_b: { ...base, id: 'c_b' } })).rejects.toThrow(/matches/);
+  });
+});
+
+describe('Keep on this machine', () => {
+  const ada: Character = { ...base, id: 'c_ada', name: 'ada', keepHere: true };
+  const bo: Character = { ...base, id: 'c_bo', name: 'bo' };
+
+  function daemon() {
+    const updates: Record<string, unknown>[] = [];
+    const client = {
+      call: async (method: string, params: Record<string, unknown>) => {
+        if (method === 'state.get') return { characters: { c_ada: ada, c_bo: bo }, islands: { i_1: { id: 'i_1', name: 'home' } } };
+        if (method === 'char.update') { updates.push(params); return { ...ada, ...params }; }
+        if (method === 'char.show') return { text: 'the brief' };
+        return {};
+      },
+      close: () => undefined,
+    };
+    return { updates, connect: async () => client as unknown as Client };
+  }
+
+  async function svall(connect: () => Promise<Client>, ...argv: string[]): Promise<string> {
+    const out: string[] = [];
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((s) => { out.push(String(s)); return true; });
+    try {
+      await charCommands(connect, () => false).parseAsync(argv, { from: 'user' });
+    } finally {
+      spy.mockRestore();
+    }
+    return out.join('');
+  }
+
+  it('is set and cleared through char.update, and left alone otherwise', async () => {
+    const d = daemon();
+    await svall(d.connect, 'update', 'bo', '--keep-here');
+    await svall(d.connect, 'update', 'ada', '--no-keep-here');
+    await svall(d.connect, 'update', 'ada', '--name', 'ada2');
+    expect(d.updates.map((u) => u.keepHere)).toEqual([true, false, undefined]);
+    expect(d.updates.map((u) => u.id)).toEqual(['c_bo', 'c_ada', 'c_ada']);
+  });
+
+  it('marks a kept character where char list and char show name it', async () => {
+    const d = daemon();
+    const list = await svall(d.connect, 'list');
+    expect(list).toMatch(/ada \(kept here\)/);
+    expect(list).not.toMatch(/bo \(kept here\)/);
+    expect(await svall(d.connect, 'show', 'ada')).toMatch(/^ada is kept on this machine, so a handover is blocked until that is cleared\n/);
+    expect(await svall(d.connect, 'show', 'bo')).toBe('the brief\n');
   });
 });

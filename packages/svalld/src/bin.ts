@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { NewerStateVersion, OlderStateVersion } from '@svall/protocol';
 import { InvalidConfig } from './config.js';
 import { createLogger } from './log.js';
-import { OtherBuildHome, startDaemon, type Daemon } from './main.js';
+import { AlreadyRunning, OtherBuildHome, startDaemon, type Daemon } from './main.js';
 import { svallHome, resolvePaths } from './paths.js';
 
 const home = svallHome();
@@ -19,13 +19,13 @@ const report = (line: string, detail = line) => {
   if (process.stderr.isTTY) process.stderr.write(`${line}\n`);
 };
 
-// changes whenever config.json or state.json is written, the two files a start can be refused for
-const stamp = (): string => [paths.config, paths.state].map((file) => {
+// changes whenever a config file or state.json is written, the files a start can be refused for
+const stamp = (): string => [paths.fleetConfig, paths.nodeConfig, paths.legacyConfig, `${paths.legacyConfig}.bak`, paths.state].map((file) => {
   try { const s = fs.statSync(file); return `${s.ino}:${s.size}:${s.mtimeMs}`; } catch { return '-'; }
 }).join(' ');
 
-// the app would start an exiting daemon again every ten seconds while its window is open, so one refused for its config.json
-// or state.json waits for either to change. The stamp is taken before the start, so a fix written while it fails is not missed
+// the app would start an exiting daemon again every ten seconds while its window is open, so one refused for its config
+// or state.json waits for one of them to change. The stamp is taken before the start, so a fix written while it fails is not missed
 async function start(): Promise<Daemon> {
   for (;;) {
     const before = stamp();
@@ -45,7 +45,9 @@ async function start(): Promise<Daemon> {
 }
 
 const daemon = await start().catch((e: Error) => {
-  report(`svalld failed to start: ${e.message}`, `svalld failed to start: ${e.stack ?? String(e)}`);
+  // the log is the running daemon's, so a refused second one says why only where it was started
+  if (e instanceof AlreadyRunning) process.stderr.write(`${e.message}\n`);
+  else report(`svalld failed to start: ${e.message}`, `svalld failed to start: ${e.stack ?? String(e)}`);
   process.exit(1);
 });
 const shutdown = async (sig: string) => { log.info(`received ${sig}`); await daemon.stop(); process.exit(0); };

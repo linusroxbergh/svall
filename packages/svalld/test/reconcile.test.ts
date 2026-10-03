@@ -7,7 +7,7 @@ import type { LiveWindow } from '../src/tmux/tmux.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
 const live = (name: string, windowId = '@1', paneId = '%1'): LiveWindow =>
-  ({ windowId, paneId, name, command: 'zsh', path: '/repo', activity: 1000, dead: false });
+  ({ windowId, paneId, panePid: 100, name, command: 'zsh', path: '/repo', activity: 1000, dead: false });
 
 const char = (over: Partial<Character>): Character => ({
   id: 'c_a', islandId: 'i_1', cell: { x: 0, y: 1 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: '/old', context: [],
@@ -89,6 +89,17 @@ describe('reconcile', () => {
     expect(renames).toEqual([{ windowId: '@4', name: c.id }]);
   });
 
+  it('adopts no window whose listing row has no name, or did not parse', () => {
+    const s = emptyState();
+    // a row whose separators tmux printed as text: one field, holding the whole row
+    const unread = { windowId: '@0\\037ab%0\\037ab21\\037ab_keep', panePid: NaN, activity: 0, dead: false } as unknown as LiveWindow;
+    const { mutate, renames } = reconcile(s, [live('', '@4', '%4'), unread], 0);
+    mutate(s);
+    expect(s.characters).toEqual({});
+    expect(s.islands[RECOVERED_ISLAND]).toBeUndefined();
+    expect(renames).toEqual([]);
+  });
+
   it('adopts a stray named like a character id under that id, which a second window of that name cannot share', () => {
     const s = emptyState();
     const { mutate, renames } = reconcile(s, [live('c_ab12cd', '@4', '%4'), live('c_ab12cd', '@5', '%5')], 0);
@@ -104,7 +115,7 @@ describe('reconcile', () => {
     const { mutate, renames } = reconcile(s, [live('c_ab12cd', '@4', '%4'), live('c_ab12cd-2', '@5', '%5')], 0);
     mutate(s);
     expect(Object.keys(s.characters)).toEqual(['c_ab12cd']);
-    expect(s.characters.c_ab12cd.second).toEqual({ tmux: { windowId: '@5', paneId: '%5' }, unread: false });
+    expect(s.characters.c_ab12cd.second).toEqual({ cwd: '/repo', tmux: { windowId: '@5', paneId: '%5' }, unread: false });
     expect(renames).toEqual([]);
   });
 
@@ -150,28 +161,79 @@ describe('reconcile', () => {
     expect(renames).toEqual([]);
     mutate(s);
     expect(Object.keys(s.characters)).toEqual(['c_a']);
-    expect(s.characters.c_a.second).toEqual({ tmux: { windowId: '@2', paneId: '%2' }, unread: false });
+    expect(s.characters.c_a.second).toEqual({ cwd: '/repo', tmux: { windowId: '@2', paneId: '%2' }, unread: false });
   });
 
-  it('a second terminal whose window is gone is dropped, keeping nothing to revive', () => {
+  it('a live second terminal takes its pane cwd and loses the command that revived it', () => {
     const s = emptyState();
-    s.characters.c_a = char({ second: { tmux: { windowId: '@2', paneId: '%2' }, unread: true } });
+    s.characters.c_a = char({ second: { cwd: '/old', unread: true, revive: { command: `claude --resume ${SID}` } } });
+    reconcile(s, [live('c_a'), live('c_a-2', '@2', '%2')], 1).mutate(s);
+    expect(s.characters.c_a.second).toEqual({ cwd: '/repo', tmux: { windowId: '@2', paneId: '%2' }, unread: true });
+  });
+
+  it('a live second terminal whose pane reports no path, as while sudo runs there, keeps the cwd it had', () => {
+    const s = emptyState();
+    s.characters.c_a = char({ second: { cwd: '/side', unread: false, tmux: { windowId: '@2', paneId: '%2' } } });
+    reconcile(s, [live('c_a'), { ...live('c_a-2', '@2', '%2'), path: '' }], 1).mutate(s);
+    expect(s.characters.c_a.second).toEqual({ cwd: '/side', tmux: { windowId: '@2', paneId: '%2' }, unread: false });
+  });
+
+  it('a plain second terminal whose window is gone goes with it', () => {
+    const s = emptyState();
+    s.characters.c_a = char({ second: { cwd: '/side', tmux: { windowId: '@2', paneId: '%2' }, unread: true } });
     reconcile(s, [live('c_a')], 1).mutate(s);
     expect(s.characters.c_a.second).toBeUndefined();
+  });
+
+  it('a second terminal that came in already dormant is left as it is', () => {
+    const s = emptyState();
+    const dormant = { cwd: '/side', unread: false, revive: { command: '' } };
+    s.characters.c_a = char({ second: { ...dormant } });
+    reconcile(s, [live('c_a')], 1).mutate(s);
+    expect(s.characters.c_a.second).toEqual(dormant);
+  });
+
+  it('a second terminal that ran an agent stays as a dormant record with its revive command', () => {
+    const s = emptyState();
+    s.characters.c_a = char({
+      second: {
+        cwd: '/side', tmux: { windowId: '@2', paneId: '%2' }, unread: true,
+        agent: { kind: 'codex', sessionId: SID, status: 'idle', lastActivityAt: 0 },
+      },
+    });
+    reconcile(s, [live('c_a')], 1).mutate(s);
+    expect(s.characters.c_a.second).toEqual({
+      cwd: '/side', unread: true,
+      agent: { kind: 'codex', sessionId: SID, status: 'idle', lastActivityAt: 0 },
+      revive: { command: `codex resume -c tui.resume_cwd=session ${SID}` },
+    });
+  });
+
+  it('keeps the resume command of a terminal a handover has yet to start when it finds the window opened for it', () => {
+    const s = emptyState();
+    const agent = { kind: 'claude' as const, sessionId: SID, transcriptPath: '/t', status: 'idle' as const, lastActivityAt: 0 };
+    const revive = { command: `claude --resume ${SID}` };
+    s.characters.c_a = char({ agent, revive, second: { cwd: '/s', unread: false, agent, revive } });
+    s.characters.c_b = char({ id: 'c_b', revive: { command: '' } });
+    const carried = (id: string) => id === 'c_a';
+    reconcile(s, [live('c_a'), live('c_a-2', '@2', '%2'), live('c_b', '@3', '%3')], 0, undefined, carried).mutate(s);
+    expect(s.characters.c_a).toMatchObject({ tmux: { windowId: '@1' }, agent, revive, second: { tmux: { windowId: '@2' }, agent, revive } });
+    expect(s.characters.c_b.tmux).toEqual({ windowId: '@3', paneId: '%3' });
+    expect(s.characters.c_b.revive).toBeUndefined();
   });
 
   it('a second terminal opened since the listing was taken is left alone', () => {
     const s = emptyState();
     s.characters.c_a = char({});
     const before = snapshot(s);
-    s.characters.c_a.second = { tmux: { windowId: '@2', paneId: '%2' }, unread: false };
+    s.characters.c_a.second = { cwd: '/side', tmux: { windowId: '@2', paneId: '%2' }, unread: false };
     reconcile(s, [live('c_a')], 1, before).mutate(s);
-    expect(s.characters.c_a.second).toEqual({ tmux: { windowId: '@2', paneId: '%2' }, unread: false });
+    expect(s.characters.c_a.second).toEqual({ cwd: '/side', tmux: { windowId: '@2', paneId: '%2' }, unread: false });
   });
 
   it('a second terminal closed since the listing was taken stays closed', () => {
     const s = emptyState();
-    s.characters.c_a = char({ second: { tmux: { windowId: '@2', paneId: '%2' }, unread: false } });
+    s.characters.c_a = char({ second: { cwd: '/side', tmux: { windowId: '@2', paneId: '%2' }, unread: false } });
     const before = snapshot(s);
     delete s.characters.c_a.second;
     reconcile(s, [live('c_a'), live('c_a-2', '@2', '%2')], 1, before).mutate(s);
@@ -192,7 +254,7 @@ describe('reconcile', () => {
 
   it('takes no dead window back', () => {
     const s = emptyState();
-    s.characters.c_a = char({ tmux: { windowId: '@1', paneId: '%1' }, second: { tmux: { windowId: '@2', paneId: '%2' }, unread: false } });
+    s.characters.c_a = char({ tmux: { windowId: '@1', paneId: '%1' }, second: { cwd: '/side', tmux: { windowId: '@2', paneId: '%2' }, unread: false } });
     reconcile(s, [{ ...live('c_a'), dead: true }, { ...live('c_a-2', '@2', '%2'), dead: true }], 1).mutate(s);
     expect(s.characters.c_a.tmux).toBeUndefined();
     expect(s.characters.c_a.second).toBeUndefined();

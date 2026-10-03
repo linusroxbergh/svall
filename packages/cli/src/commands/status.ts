@@ -8,12 +8,12 @@ import { contextOf, stateOf } from '../render.js';
 import { withFleet } from './fleet.js';
 
 export function statusCommand(connect: () => Promise<Client>, json: () => boolean, home: () => string): Command {
-  return new Command('status').description('show every island and character').action(() => withFleet(connect, async (_c, state) => {
+  return new Command('status').description('show every island and character').action(() => withFleet(connect, async (c, state) => {
     const paths = resolvePaths(home());
     const chars = Object.values(state.characters);
     const islands = Object.values(state.islands);
     printResult(state, json(), () => [
-      `svalld running on port ${Number(fs.readFileSync(paths.port, 'utf8'))} (home ${home()})`,
+      c.via ? `svalld on ${c.via}, which runs this fleet (home ${home()} here)` : `svalld running on port ${Number(fs.readFileSync(paths.port, 'utf8'))} (home ${home()})`,
       `${islands.length} island(s), ${chars.length} character(s)`,
       '',
       table(islands.map((i) => ({

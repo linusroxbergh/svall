@@ -1,5 +1,5 @@
 #!/bin/sh
-# Signs Svall.app inside-out with hardened runtime: helpers, Sparkle's nested code, then the app.
+# Signs Svall.app inside-out with hardened runtime: helpers, Sparkle's nested code, the carried controller's, then the app.
 set -eu
 APP="$1"; ID="$2"; MAC="$(cd "$(dirname "$0")/../apps/desktop/mac" && pwd)"
 TS="--timestamp"; [ "$ID" = - ] && TS="--timestamp=none"
@@ -11,5 +11,9 @@ sign "$S/XPCServices/Installer.xpc"
 sign --preserve-metadata=entitlements "$S/XPCServices/Downloader.xpc"
 sign "$S/Autoupdate" "$S/Updater.app"
 sign "$APP/Contents/Frameworks/Sparkle.framework"
+# signing rewrites these two, so the carried SHA256SUMS keeps their unsigned digests; nothing on the Mac reads it
+R="$APP/Contents/Resources/release"
+[ ! -e "$R/node/bin/node" ] || sign --entitlements "$MAC/node.entitlements" "$R/node/bin/node"
+[ ! -e "$R/bin/rsync" ] || sign "$R/bin/rsync"
 sign --entitlements "$MAC/app.entitlements" "$APP"
 codesign --verify --strict --deep "$APP"

@@ -6,7 +6,7 @@ import { followLink } from '../LinkAsk.js';
 import { useApp } from '../hooks.js';
 import { characterMenu, islandMenu } from '../menus.js';
 import { ResourcesLayer } from '../resources/Shelf.js';
-import { charactersOf, homeIsland, mapIslandsSorted, statusOf } from '../selectors.js';
+import { charactersOf, homeIsland, mapIslandsSorted, resumeErrorOf, statusOf } from '../selectors.js';
 import { theme } from '../theme.js';
 import { Toast, toastCorner } from '../Toast.js';
 import { useAutoArrange } from './arrange.js';
@@ -35,6 +35,7 @@ export function Map() {
   const halfCard = useApp((s) => s.halfCard);
   const dropHover = useApp((s) => s.dropHover);
   const active = useApp((s) => s.active);
+  const shell = useApp((s) => s.shell);
   const lastPressAt = useRef(-Infinity);
   const hov = useHover();
   const camera = useCamera(host, lastPressAt);
@@ -119,7 +120,7 @@ export function Map() {
           const world = dragging ? drag.cell : worldCell(base, c.cell);
           return (
             <Token key={c.id} c={c} status={statusOf(c)} world={world} selected={c.id === selectedId} dragging={dragging}
-              offset={islandOffset(i, preview)} settling={Boolean(pendingIsland) && preview === pendingIsland}
+              offset={islandOffset(i, preview)} settling={Boolean(pendingIsland) && preview === pendingIsland} failed={resumeErrorOf({ shell }, c)}
               hover={dropHover?.kind === 'char' && dropHover.id === c.id}
               pointer={domPointer({ kind: 'figure', id: c.id })}
               onHoverStart={() => startHover(c.id)} onHoverEnd={endHover}
@@ -129,6 +130,7 @@ export function Map() {
         }))}
         {drag?.kind === 'figure' && !overHome && fleet.characters[drag.id]?.islandId === HOME_ISLAND && (
           <Token key={drag.id} c={fleet.characters[drag.id]} status={statusOf(fleet.characters[drag.id])} world={drag.cell} selected={drag.id === selectedId} dragging
+            failed={resumeErrorOf({ shell }, fleet.characters[drag.id])}
             pointer={domPointer({ kind: 'figure', id: drag.id })} hover={false} onHoverStart={() => {}} onHoverEnd={endHover}
             onOpen={() => app.store.getState().focus(drag.id)} onLink={followLink} onMenu={(e) => characterMenu(e, drag.id)} />
         )}
@@ -138,6 +140,7 @@ export function Map() {
         {hi && (
           <Home island={hi} crew={crew} config={fleet.home} collapsed={Boolean(hi.collapsed)}
             selected={selectedIslandId === HOME_ISLAND} selectedId={selectedId} drag={drag} status={statusOf}
+            failed={(c) => resumeErrorOf({ shell }, c)}
             shift={place.homeShift} rowShift={placeIslet(hostSize.w, hi.size.w * theme.cell, Boolean(hi.collapsed)).homeShift}
             scale={place.homeScale} extra={place.mode === 'pill' ? <ResourcesPill /> : undefined}
             onToggle={() => toggleIsland(deps(), HOME_ISLAND)}

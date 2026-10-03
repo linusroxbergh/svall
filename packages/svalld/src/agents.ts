@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { AGENT_LABEL, type AgentKind } from '@svall/protocol';
 
-type Version = [number, number, number];
+export type Version = [number, number, number];
 
 // what Svall needs to know about each agent CLI
 type AgentAdapter = {
@@ -16,13 +16,14 @@ type AgentAdapter = {
   loginArgs: string[];
   loggedIn(stdout: string): boolean;
   loginHint: string;
-  // what mission control's crew starts with, unless config.json's home.command names a command
+  // what mission control's crew starts with, unless fleet.json's home.command names a command
   crewCommand: string;
 };
 
 export const AGENTS: Record<AgentKind, AgentAdapter> = {
   claude: {
-    label: AGENT_LABEL.claude, bin: 'claude', installUrl: 'https://code.claude.com/docs/en/setup',
+    // the oldest release whose sessions a handover carries, which a fixture holds
+    label: AGENT_LABEL.claude, bin: 'claude', installUrl: 'https://code.claude.com/docs/en/setup', minVersion: [2, 1, 251],
     installCommand: 'curl -fsSL https://claude.ai/install.sh | bash',
     loginArgs: ['auth', 'status', '--json'],
     loggedIn: (out) => { try { return (JSON.parse(out) as { loggedIn?: boolean }).loggedIn === true; } catch { return false; } },
@@ -56,7 +57,7 @@ export function parseVersion(text: string): Version | undefined {
 }
 
 // a version line that can't be read passes, so a new format never blocks anyone
-export function versionOk(a: AgentAdapter, text: string): boolean {
+export function versionOk(a: Pick<AgentAdapter, 'minVersion'>, text: string): boolean {
   const v = parseVersion(text);
   if (!a.minVersion || !v) return true;
   for (let i = 0; i < 3; i++) if (v[i] !== a.minVersion[i]) return v[i] > a.minVersion[i];

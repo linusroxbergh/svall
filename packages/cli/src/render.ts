@@ -1,10 +1,10 @@
-import { contextPctOf, type Character } from '@svall/protocol';
+import { contextPctOf, type Character, type TerminalSlot } from '@svall/protocol';
 
-const sessionState = (s: { agent?: Character['agent']; unread: boolean }): string =>
-  (s.agent ? s.agent.status + (s.unread ? '*' : '') : 'shell');
+const sessionState = (s: TerminalSlot): string =>
+  (!s.tmux ? 'dormant' : s.agent ? s.agent.status + (s.unread ? '*' : '') : 'shell');
 
 export function stateOf(c: Character): string {
-  const main = c.tmux ? sessionState(c) : 'dormant';
+  const main = sessionState(c);
   return c.second ? `${main} +${sessionState(c.second)}` : main;
 }
 

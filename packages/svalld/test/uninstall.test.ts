@@ -9,10 +9,12 @@ import {
 } from '../src/agent-hooks.js';
 import { codexPaths } from '../src/codex/install.js';
 import { realDeps } from '../src/mobile.js';
+import type { Run } from '../src/linux/service.js';
+import { machineId } from '../src/machine.js';
 import { BUNDLE_ID, LAUNCHD_LABEL } from '../src/profile.js';
 import { bundleRuntime, checkoutRuntime } from '../src/runtime.js';
 import { runSetup, shimText } from '../src/setup.js';
-import { appQuit, fleetData, fleetHomes, purge, quitApp, runUninstall, type AppQuit } from '../src/uninstall.js';
+import { appQuit, fleetData, fleetHomes, purge, quitApp, runUninstall, UninstallRefused, type AppQuit } from '../src/uninstall.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
 afterEach(cleanHomes);
@@ -72,6 +74,13 @@ describe('fleetHomes', () => {
       fs.mkdirSync(path.join(u, d)); fs.writeFileSync(path.join(u, d, 'config.json'), '{}');
     }
     expect(fleetHomes(u).map((h) => path.basename(h))).toEqual(['.svall', '.svall-work']);
+  });
+
+  it('counts a home whose split stopped between moving config.json aside and writing fleet.json', () => {
+    const u = makeHome();
+    fs.mkdirSync(path.join(u, '.svall-work'));
+    fs.writeFileSync(path.join(u, '.svall-work', 'config.json.bak'), '{}');
+    expect(fleetHomes(u)).toEqual([path.join(u, '.svall-work')]);
   });
 });
 
@@ -255,7 +264,7 @@ describe('runUninstall', () => {
     expect(JSON.parse(fs.readFileSync(f.settingsPath, 'utf8'))).toEqual(f.mine);
     expect(fs.readdirSync(f.launchAgentsDir)).toEqual(['com.other.plist']);
     expect(fs.readdirSync(f.shimDir)).toEqual(['other']);
-    expect(fs.existsSync(path.join(f.home, 'config.json'))).toBe(true);
+    expect(fs.existsSync(path.join(f.home, 'fleet.json'))).toBe(true);
     expect(lines).toContain(`removed ${path.join(f.launchAgentsDir, 'io.github.linusroxbergh.svall.svalld.work.plist')}`);
 
     // a second run has nothing of ours left to take back, so it writes nothing and backs nothing up
@@ -272,6 +281,83 @@ describe('runUninstall', () => {
     await runUninstall({ ...f.o, settingsPaths: [other, f.settingsPath] });
     expect(JSON.parse(fs.readFileSync(other, 'utf8'))).toEqual(f.mine);
     expect(JSON.parse(fs.readFileSync(f.settingsPath, 'utf8'))).toEqual(f.mine);
+  });
+
+  it('on Linux removes only Svall units and the releases, and keeps the fleet', async () => {
+    const f = installed();
+    await runSetup(f.o);
+    const unitDir = path.join(f.root, '.config', 'systemd', 'user');
+    fs.mkdirSync(unitDir, { recursive: true });
+    for (const name of ['svall-svalld@private.service', 'svall-svalld@work.service', 'svall-gateway.service', 'someone-else.service']) {
+      fs.writeFileSync(path.join(unitDir, name), '[Service]\n');
+    }
+    const prefix = path.join(f.root, '.local', 'share', 'svall');
+    fs.mkdirSync(path.join(prefix, 'releases', '1.0.0'), { recursive: true });
+    fs.mkdirSync(path.join(prefix, 'log'), { recursive: true });
+    fs.symlinkSync(path.join(prefix, 'releases', '1.0.0'), path.join(prefix, 'current'));
+    const calls: string[][] = [];
+    const run: Run = async (cmd, args) => { calls.push([cmd, ...args]); return { stdout: '', stderr: '' }; };
+
+    const lines = await runUninstall({ ...f.o, platform: 'linux', unitDir, prefix, run, launchctl: true });
+    expect(fs.readdirSync(unitDir)).toEqual(['someone-else.service']);
+    expect(calls.filter(([cmd]) => cmd === 'systemctl')).toEqual([
+      ['systemctl', '--user', 'disable', '--now', 'svall-svalld@private.service'],
+      ['systemctl', '--user', 'disable', '--now', 'svall-svalld@work.service'],
+      ['systemctl', '--user', 'disable', '--now', 'svall-gateway.service'],
+      ['systemctl', '--user', 'daemon-reload'],
+    ]);
+    expect(fs.existsSync(path.join(prefix, 'releases'))).toBe(false);
+    expect(fs.existsSync(path.join(prefix, 'log'))).toBe(false);
+    expect(fs.lstatSync(path.join(prefix, 'current'), { throwIfNoEntry: false })).toBeUndefined();
+    expect(fs.existsSync(path.join(f.home, 'fleet.json'))).toBe(true);
+    expect(fs.existsSync(path.join(f.shimDir, 'svall'))).toBe(false);
+    expect(lines.some((l) => l.includes('someone-else'))).toBe(false);
+  });
+
+  it('on Linux takes its hooks back from the agent homes the login shell names, as well as the defaults', async () => {
+    const f = installed();
+    fs.mkdirSync(f.o.codex.dir);
+    await runSetup(f.o);
+    const settingsPath = path.join(f.root, 'claude home', 'settings.json');
+    const codex = codexPaths({ CODEX_HOME: path.join(f.root, 'codex home') });
+    fs.mkdirSync(path.dirname(settingsPath));
+    fs.writeFileSync(settingsPath, JSON.stringify(f.mine));
+    fs.mkdirSync(codex.dir);
+    await runSetup({ ...f.o, settingsPath, codex });
+    const run: Run = async (cmd) => ({ stdout: cmd === 'systemctl' ? '' : `svall-agent-homes\n${path.dirname(settingsPath)}\n${codex.dir}\n`, stderr: '' });
+
+    await runUninstall({ ...f.o, platform: 'linux', unitDir: path.join(f.root, 'units'), run });
+    expect(JSON.parse(fs.readFileSync(settingsPath, 'utf8'))).toEqual(f.mine);
+    expect(JSON.parse(fs.readFileSync(f.settingsPath, 'utf8'))).toEqual(f.mine);
+    expect(fs.readdirSync(codex.dir)).toEqual([]);
+    expect(fs.readdirSync(f.o.codex.dir)).toEqual([]);
+  });
+
+  it('on Linux takes the codex hooks back once when ~/.codex links to the folder the login shell names', async () => {
+    const f = installed();
+    const codex = codexPaths({ CODEX_HOME: path.join(f.root, 'dotfiles', 'codex') });
+    fs.mkdirSync(codex.dir, { recursive: true });
+    fs.symlinkSync(codex.dir, f.o.codex.dir);
+    await runSetup({ ...f.o, codex });
+    const run: Run = async (cmd) => ({ stdout: cmd === 'systemctl' ? '' : `svall-agent-homes\n\n${codex.dir}\n`, stderr: '' });
+
+    const lines = await runUninstall({ ...f.o, platform: 'linux', unitDir: path.join(f.root, 'units'), run });
+    expect(lines.filter((l) => l.includes('hooks.json'))).toEqual([`removed ${f.o.codex.hooks}`]);
+    expect(fs.readdirSync(codex.dir)).toEqual([]);
+    expect(fs.existsSync(path.join(f.shimDir, 'svall'))).toBe(false);
+  });
+
+  it('on a Mac removes the releases it installed too, and keeps the gateway records', async () => {
+    const f = installed();
+    await runSetup(f.o);
+    const prefix = path.join(f.root, '.local', 'share', 'svall');
+    fs.mkdirSync(path.join(prefix, 'releases', '1.0.0'), { recursive: true });
+    fs.mkdirSync(path.join(prefix, 'companions'), { recursive: true });
+    fs.mkdirSync(path.join(prefix, 'gateway', 'fleets'), { recursive: true });
+    fs.symlinkSync(path.join(prefix, 'releases', '1.0.0'), path.join(prefix, 'current'));
+
+    await runUninstall({ ...f.o, platform: 'darwin', unitDir: path.join(f.root, 'units'), prefix });
+    expect(fs.readdirSync(prefix)).toEqual(['gateway']);
   });
 
   it('writes nothing on a machine where setup never ran', async () => {
@@ -375,6 +461,58 @@ describe('runUninstall', () => {
     expect(fs.existsSync(path.join(f.launchAgentsDir, 'io.github.linusroxbergh.svall.svalld.plist'))).toBe(true);
     expect(fs.existsSync(path.join(f.shimDir, 'svall'))).toBe(true);
     expect(await runUninstall({ ...f.o, tmux: '/private/tmp/tmux-501/default,123,0' })).toContain(`removed ${path.join(f.shimDir, 'svall')}`);
+  });
+
+  it('refuses, unless forced, while a handover is open, this machine runs a fleet for its gateway, or it is the gateway of fleets, and changes nothing', async () => {
+    const GATEWAY = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
+    const FLEET = '7c1e2d3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f';
+    const cases: [string, (f: ReturnType<typeof installed>, prefix: string) => void, RegExp][] = [
+      ['an open handover', (f) => { fs.mkdirSync(path.join(f.home, 'handover')); fs.writeFileSync(path.join(f.home, 'handover/journal.json'), '{}'); }, /a handover of \S+ is open/],
+      ['a fleet run here for its gateway', (f) => {
+        fs.writeFileSync(path.join(f.home, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: GATEWAY }));
+        fs.writeFileSync(path.join(f.home, 'owner.json'), JSON.stringify({ fleetId: FLEET, generation: 3, ownerMachineId: machineId() }));
+      }, new RegExp(`this machine runs \\S+ for its gateway ${GATEWAY}`)],
+      ['the gateway of a fleet', (_f, prefix) => {
+        fs.mkdirSync(path.join(prefix, 'gateway/fleets'), { recursive: true });
+        fs.writeFileSync(path.join(prefix, 'gateway/fleets', `${FLEET}.json`), '{}');
+      }, /this machine is the gateway of 1 fleet/],
+    ];
+    for (const [what, set, why] of cases) {
+      const f = installed();
+      await runSetup(f.o);
+      const prefix = path.join(f.root, '.local', 'share', 'svall');
+      set(f, prefix);
+      const plist = path.join(f.launchAgentsDir, `${LAUNCHD_LABEL}.plist`);
+      await expect(runUninstall({ ...f.o, prefix }), what).rejects.toThrow(why);
+      await expect(runUninstall({ ...f.o, prefix }), what).rejects.toThrow(/svall handover local.*svall host remove.*--force/);
+      expect(fs.existsSync(plist), what).toBe(true);
+      expect(fs.existsSync(path.join(f.shimDir, 'svall')), what).toBe(true);
+      expect(await runUninstall({ ...f.o, prefix, force: true }), what).toContain(`removed ${path.join(f.shimDir, 'svall')}`);
+    }
+  });
+
+  it('lets go only of the gateway records of the fleets it is told to, and refuses any other, and an open handover of those fleets too', async () => {
+    const FLEET = '7c1e2d3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f';
+    const THEIRS = '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70';
+    const f = installed();
+    await runSetup(f.o);
+    const prefix = path.join(f.root, '.local', 'share', 'svall');
+    fs.mkdirSync(path.join(prefix, 'gateway/fleets'), { recursive: true });
+    for (const id of [FLEET, THEIRS]) fs.writeFileSync(path.join(prefix, 'gateway/fleets', `${id}.json`), '{}');
+    const plist = path.join(f.launchAgentsDir, `${LAUNCHD_LABEL}.plist`);
+
+    // a fleet another controller keeps here, which the one that asked has not checked
+    await expect(runUninstall({ ...f.o, prefix, forceFleets: [FLEET] })).rejects.toThrow(UninstallRefused);
+    await expect(runUninstall({ ...f.o, prefix, forceFleets: [FLEET] })).rejects.toThrow(/this machine is the gateway of 1 fleet/);
+    fs.writeFileSync(path.join(f.home, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: machineId() }));
+    fs.mkdirSync(path.join(f.home, 'handover'));
+    fs.writeFileSync(path.join(f.home, 'handover/journal.json'), '{}');
+    await expect(runUninstall({ ...f.o, prefix, forceFleets: [FLEET, THEIRS] })).rejects.toThrow(/a handover of \S+ is open/);
+    expect(fs.existsSync(plist)).toBe(true);
+    expect(fs.existsSync(path.join(f.shimDir, 'svall'))).toBe(true);
+
+    fs.rmSync(path.join(f.home, 'handover'), { recursive: true });
+    expect(await runUninstall({ ...f.o, prefix, forceFleets: [FLEET, THEIRS] })).toContain(`removed ${path.join(f.shimDir, 'svall')}`);
   });
 
   it('changes nothing when the Claude settings are not valid JSON', async () => {

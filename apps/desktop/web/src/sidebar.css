@@ -44,6 +44,7 @@
 .sb-caret:hover { background: var(--fill-3); color: var(--ink); }
 .sb-row .sdot[data-empty="true"] { background: none; box-shadow: inset 0 0 0 1.5px var(--ink-3); }
 .sb-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-sub { flex: none; display: flex; gap: var(--sp-sm); font-size: var(--text-xs); color: var(--ink-3); }
 .sb-ct { flex: none; font-size: var(--text-xs); color: var(--ink-3); }
 .sb-attn { flex: none; min-width: 9px; text-align: center; padding: var(--sp-2xs) var(--sp-sm); border-radius: var(--r-pill); background: var(--blocked); color: var(--surface-0); font-size: var(--text-2xs); font-weight: var(--w-bold); line-height: 1.3; }
 .sb-row input { flex: 1; background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--r-sm); color: var(--ink); padding: var(--sp-2xs) var(--sp-sm); font: inherit; min-width: 0; }

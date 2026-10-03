@@ -1,0 +1,12 @@
+# The identities whose signature over a release's SHA256SUMS an installer accepts.
+#
+# No release key is committed yet, so no signature verifies against this file and every signed
+# release is refused; an unsigned one installs only with --allow-unsigned. To sign releases, add the
+# public half of the release signing key:
+#
+#   ssh-keygen -t ed25519 -C svall-release -f ~/.ssh/svall-release
+#   printf 'svall-release namespaces="svall-release" %s\n' \
+#     "$(cut -d' ' -f1,2 ~/.ssh/svall-release.pub)" > scripts/release/allowed_signers
+#
+# and build with SVALL_RELEASE_KEY=~/.ssh/svall-release. A build without that key writes no
+# signature and marks the release unsigned.

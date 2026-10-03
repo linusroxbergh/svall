@@ -120,16 +120,26 @@ export const Home = z.object({
 export type Home = z.infer<typeof Home>;
 export const defaultHome = (): Home => Home.parse({});
 
-// a character's second terminal: a plain shell beside the main one. It is never dormant: when its
-// tmux window is gone, so is this record
-export const Second = z.object({
-  tmux: z.object({ windowId: z.string(), paneId: z.string() }),
+// the handover whose rest closed a terminal's window: its destination opens that terminal again, and no other
+const RestedBy = z.string().min(1).optional();
+// why a handover could not resume a terminal, kept while it lies dormant and cleared once it next comes up
+const ResumeError = z.string().optional();
+
+// one terminal of a character: its directory, its live tmux ids while it has a window, and the
+// command that brings its session back once it has none
+export const TerminalSlot = z.object({
+  cwd: z.string(),
+  tmux: z.object({ windowId: z.string(), paneId: z.string() }).optional(),
   agent: Agent.optional(),
   unread: z.boolean(),
+  revive: z.object({ command: z.string() }).optional(),
+  restedBy: RestedBy,
+  resumeError: ResumeError,
 });
-export type Second = z.infer<typeof Second>;
+export type TerminalSlot = z.infer<typeof TerminalSlot>;
 
-export const Character = z.object({
+// a character is its main terminal and all it knows beside it; its second terminal is a side shell beside the main one
+export const Character = TerminalSlot.extend({
   id: z.string(),
   islandId: z.string(),
   cell: Cell,
@@ -141,27 +151,27 @@ export const Character = z.object({
   instructions: z.string(),
   // a file's name, without .md, in the fleet's agent-profiles folder; its text rides in the brief
   agentProfile: z.string().optional(),
-  cwd: z.string(),
   // the tmux pane's own path when last read; cwd moves with it only when it changes, so a restart keeps where the hooks put it
   panePath: z.string().optional(),
   repo: Repo.optional(),
   context: z.array(ContextItem),
-  tmux: z.object({ windowId: z.string(), paneId: z.string() }).optional(),
   // the pane's last output, kept current only while the character has no agent
   shell: z.object({ lastOutputAt: z.number() }),
-  agent: Agent.optional(),
-  unread: z.boolean(),
   // the window runs codex and no hook has come from it: codex skips a hook until it is trusted, without a word
   hint: z.enum(['codex-silent']).optional(),
-  revive: z.object({ command: z.string() }).optional(),
   browser: Browser.optional(),
-  second: Second.optional(),
+  second: TerminalSlot.optional(),
+  // "Keep on this machine": a handover of the fleet waits until it is lifted
+  keepHere: z.literal(true).optional(),
 });
 export type Character = z.infer<typeof Character>;
 
+/** The state.json schema this release reads and writes, which both machines of a handover have to share. */
+export const STATE_SCHEMA_VERSION = 8;
+
 export const FleetState = z.object({
-  version: z.literal(7),
-  // the name config.json gives the fleet; absent, its directory names it
+  version: z.literal(STATE_SCHEMA_VERSION),
+  // the name fleet.json gives the fleet; absent, its directory names it
   name: z.string().optional(),
   islands: z.record(z.string(), Island),
   characters: z.record(z.string(), Character),
@@ -180,11 +190,11 @@ export const FleetState = z.object({
   mainAgent: AgentKind.optional(),
   // the agent CLIs svalld finds on its PATH
   agentsFound: z.array(AgentKind).optional(),
-  // the agent the scribe runs: config.json's scribe.agent, else the main agent
+  // the agent the scribe runs: fleet.json's scribe.agent, else the main agent
   scribeAgent: AgentKind.optional(),
 });
 export type FleetState = z.infer<typeof FleetState>;
 
 export const DORMANT_AFTER_HOURS = 12;
 
-export const emptyState = (): FleetState => ({ version: 7, islands: {}, characters: {}, home: defaultHome(), defaultCwd: DEFAULT_CWD, scribeAsk: true });
+export const emptyState = (): FleetState => ({ version: STATE_SCHEMA_VERSION, islands: {}, characters: {}, home: defaultHome(), defaultCwd: DEFAULT_CWD, scribeAsk: true });

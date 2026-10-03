@@ -135,7 +135,7 @@ describe('pusher', () => {
 
   it('tells a device about the second terminal turning blocked, under the character and marked as its own session', async () => {
     const { store, sent } = setup();
-    store.update((d) => { d.characters.c.second = { tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: agent('blocked', 'Write?') }; });
+    store.update((d) => { d.characters.c.second = { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: agent('blocked', 'Write?') }; });
     await tick();
     expect(sent).toEqual([{ endpoint: 'https://push.example/a', payload: { id: 'c', name: 'otter', status: 'blocked', term: 2, prompt: 'Write?' } }]);
   });
@@ -212,7 +212,7 @@ describe('turning the phone link off', () => {
         return Promise.resolve({ serving: false, url: '', port: 443, logins: [], phones: [], error: 'tailscale is Stopped' });
       },
     };
-    const set = (enabled: boolean) => dispatch({ id: 1, method: 'mobile.set', params: { enabled } }, { mobile, push } as unknown as Ctx);
+    const set = (enabled: boolean) => dispatch({ id: 1, method: 'mobile.set', params: { enabled } }, { mobile, push, ownership: { assertOwner: () => {} } } as unknown as Ctx);
     await set(true);
     expect(push.list()).toHaveLength(1);
     await set(false);
