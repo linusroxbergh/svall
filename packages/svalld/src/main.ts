@@ -8,7 +8,7 @@ import { installCodexHooks, readCodexHooks } from './agent-hooks.js';
 import { startApi } from './api/server.js';
 import { findAgents } from './agents.js';
 import { codexPaths } from './codex/install.js';
-import { fleetMainAgent, keptPorts, loadConfig, namedGateway, saveConfig, setGateway } from './config.js';
+import { configRelinked, fleetMainAgent, keptPorts, loadConfig, namedGateway, saveConfig, setGateway } from './config.js';
 import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
 import { fleetAuthority } from './gateway/client.js';
@@ -113,6 +113,7 @@ async function start(opts: Options): Promise<Daemon> {
   rotateLog(paths.log);
   const log = opts.log ?? createLogger();
   const config = loadConfig(paths);
+  if (configRelinked(paths)) log.info(`${paths.legacyConfig} is not read: it links to the file ${paths.legacyConfig}.bak does, which ${paths.fleetConfig} and ${paths.nodeConfig} were split out of; link those instead`);
   // a state.json this svalld refuses stops it before the hooks, tmux.conf and Codex's trust are touched
   const store = Store.load(paths.state, log.error);
   installHookScripts(paths);

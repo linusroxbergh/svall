@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FleetConfig, NodeConfig } from '@svall/protocol';
-import { InvalidConfig, configuredMainAgent, initConfig, loadConfig, patchFleetConfig, peekConfig, reservedFleetNames } from '../src/config.js';
+import { InvalidConfig, configRefusal, configRelinked, configuredMainAgent, initConfig, loadConfig, patchFleetConfig, peekConfig, reservedFleetNames } from '../src/config.js';
 import { resolvePaths } from '../src/paths.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -186,6 +186,51 @@ describe('finishing an interrupted split', () => {
     expect(fs.readFileSync(p.legacyConfig, 'utf8')).toBe(LEGACY);
     expect(fs.existsSync(p.fleetConfig)).toBe(false);
     expect(fs.existsSync(p.nodeConfig)).toBe(false);
+  });
+});
+
+describe('a config.json a dotfile manager links in', () => {
+  /** A fleet home whose config.json links to a file kept elsewhere, as stow and home-manager keep it. */
+  function linkedHome(): { p: ReturnType<typeof resolvePaths>; dotfile: string } {
+    const p = resolvePaths(makeHome());
+    const dotfile = path.join(makeHome(), 'svall.json');
+    fs.writeFileSync(dotfile, LEGACY);
+    fs.symlinkSync(dotfile, p.legacyConfig);
+    return { p, dotfile };
+  }
+
+  it('is split through its link, and ignored, without a word, once put back as a link to the same file', () => {
+    const { p, dotfile } = linkedHome();
+    const id = loadConfig(p).id;
+    expect(fs.lstatSync(`${p.legacyConfig}.bak`).isSymbolicLink()).toBe(true);
+    expect(configRelinked(p)).toBe(false);
+
+    // `stow -R` or `home-manager switch` puts the link back
+    fs.symlinkSync(dotfile, p.legacyConfig);
+    expect(configRelinked(p)).toBe(true);
+    expect(configRefusal(p, fs.existsSync)).toBeUndefined();
+    // the daemon says so once, as it starts; each save and setup reads the files again
+    const said = vi.spyOn(process.stderr, 'write');
+    try {
+      expect(loadConfig(p)).toMatchObject({ id, port: 47900 });
+      expect(said).not.toHaveBeenCalled();
+    } finally {
+      said.mockRestore();
+    }
+    expect(fs.lstatSync(p.legacyConfig).isSymbolicLink()).toBe(true);
+    expect(fs.readFileSync(dotfile, 'utf8')).toBe(LEGACY);
+  });
+
+  it('is refused beside fleet.json when it links anywhere else', () => {
+    const { p } = linkedHome();
+    loadConfig(p);
+    const other = path.join(makeHome(), 'other.json');
+    fs.writeFileSync(other, LEGACY);
+    fs.symlinkSync(other, p.legacyConfig);
+
+    expect(configRelinked(p)).toBe(false);
+    expect(() => loadConfig(p)).toThrow(`${p.legacyConfig} is not read any more`);
+    expect(fs.lstatSync(p.legacyConfig).isSymbolicLink()).toBe(true);
   });
 });
 

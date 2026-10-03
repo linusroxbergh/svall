@@ -62,6 +62,21 @@ runIf('startDaemon', () => {
     expect(written.hooks.Stop[0].hooks[0].command).toContain(resolvePaths(home).hookScript);
   });
 
+  it('says once in its log that a config.json linked back to the file its split moved aside is not read', async () => {
+    const home = makeHome();
+    homes.push(home);
+    const p = resolvePaths(home);
+    const dotfile = path.join(makeHome(), 'svall.json');
+    fs.writeFileSync(dotfile, JSON.stringify({ shell: '/bin/sh' }));
+    fs.symlinkSync(dotfile, p.legacyConfig);
+    await (await start({ home, port: 0, log: silentLogger })).stop();
+    // `stow -R` or `home-manager switch` puts the link back
+    fs.symlinkSync(dotfile, p.legacyConfig);
+    const logged: string[] = [];
+    await (await start({ home, port: 0, log: { info: (m) => logged.push(m), error: (m) => logged.push(m) } })).stop();
+    expect(logged.filter((l) => l.startsWith(`${p.legacyConfig} is not read`))).toHaveLength(1);
+  });
+
   it('has the fleet on disk by the time its port file goes', async () => {
     const home = makeHome();
     homes.push(home);

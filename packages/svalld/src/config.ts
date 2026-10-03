@@ -85,9 +85,19 @@ function splitLegacy(file: string): { fleet: Raw; node: Raw } {
   };
 }
 
+/** Whether config.json is a link to the file config.json.bak is, as a dotfile manager (stow, home-manager) puts back
+ *  the link the split moved aside: it is not read, and refuses nothing. */
+export function configRelinked(paths: Pick<Paths, 'legacyConfig'>): boolean {
+  try {
+    return fs.lstatSync(paths.legacyConfig).isSymbolicLink() && fs.realpathSync(paths.legacyConfig) === fs.realpathSync(`${paths.legacyConfig}.bak`);
+  } catch {
+    return false;
+  }
+}
+
 /** Why the config files that `has` finds are no layout a fleet can start on, before any of them is read. */
 export function configRefusal(paths: Pick<Paths, 'legacyConfig' | 'fleetConfig' | 'nodeConfig'>, has: (file: string) => boolean): string | undefined {
-  if (!has(paths.legacyConfig)) return undefined;
+  if (!has(paths.legacyConfig) || configRelinked(paths)) return undefined;
   if (has(paths.fleetConfig)) {
     return `${paths.legacyConfig} is not read any more: this fleet's settings are in ${paths.fleetConfig} and ${paths.nodeConfig}. Move anything you still want from it into them and delete it.`;
   }
@@ -105,7 +115,7 @@ export function initConfig(paths: Paths, seed: Partial<NodeConfig> = {}): string
   const backup = `${paths.legacyConfig}.bak`;
   // a config.json is put beside the new files byte-exact before anything is read out of it, so the
   // only file the split ever reads is one nothing edits any more
-  if (has(paths.legacyConfig)) {
+  if (has(paths.legacyConfig) && !configRelinked(paths)) {
     const refused = configRefusal(paths, has);
     if (refused) throw new InvalidConfig(refused);
     read(paths.legacyConfig, Config); // one the schema rejects is left where its owner put it
