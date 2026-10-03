@@ -14,7 +14,7 @@ it('builds every file the landing page loads', async () => {
     await build({ root: web, configFile: path.join(web, 'vite.site.config.ts'), logLevel: 'silent', build: { outDir: path.join(out, 'map'), emptyOutDir: true } });
     const page = fs.readFileSync(path.join(site, 'index.html'), 'utf8');
     const refs = [...page.matchAll(/(?:href|src)="([^"#:/][^"#:]*)"|url\(([^)'"]+)\)/g)].map((m) => m[1] ?? m[2]);
-    expect(refs).toEqual(expect.arrayContaining(['icon.svg', 'fonts/Outfit-Variable.woff2', 'lighthouse.svg', 'map/map.js', 'map/map-grain.png']));
+    expect(refs).toEqual(expect.arrayContaining(['icon.svg', 'fonts/FunnelSans-Variable.woff2', 'lighthouse.svg', 'map/map.js', 'map/map-grain.png']));
     const missing = refs.filter((r) => !fs.existsSync(path.join(r.startsWith('shots/') ? site : out, r)));
     expect(missing).toEqual([]);
     // the cast's portraits load from beside the page, as the app's own load from beside index.html
