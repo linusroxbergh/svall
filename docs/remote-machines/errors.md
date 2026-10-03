@@ -276,7 +276,7 @@ do, and exits 1 unless it is ready.
 | `rsync` | add | The rsync version. Openrsync or one older than 3.2.3 is a warning, and a handover then stops with `rsync_unsupported`. | Install rsync 3.2.3 or newer, as Ubuntu 22.04 and later ship (`sudo apt install rsync`). |
 | `space` | add | Free space in the home. Under 5 GiB is a warning. | Free space. |
 | `linger` | add | Whether the account's services keep running after you log out. Off is a warning. | Run the `loginctl enable-linger <user>` the action names. |
-| `release` | add, upgrade | The companion release for the machine's architecture: downloaded and checked against the digest this Mac's release pins, or the archive `--release` names, with its signature. | Name an archive with `--release`; an unsigned development build needs `--allow-unsigned`. |
+| `release` | add, upgrade | The companion release for the machine's architecture: the one Svall.app carries or its release names, checked against the digest this Mac's release pins, or the archive `--release` names, with its signature. | Name an archive with `--release`; an unsigned development build needs `--allow-unsigned`. |
 | `upload` | add, upgrade | Copies the companion archive to the machine. | Check free space and the link. |
 | `install` | add, upgrade | The machine checks the archive against its manifest and, where a release is installed, the signers that release pins, then installs it under `~/.local/share/svall`. | Read the message; `svall host doctor <host>`. |
 | `service` | add | The daemon and gateway units run. | Read the units' logs under `~/.local/share/svall/log` there. |

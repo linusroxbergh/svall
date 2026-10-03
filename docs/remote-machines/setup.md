@@ -96,14 +96,16 @@ Adding the same machine again runs every check again and changes nothing that is
 ### The companion release
 
 `svall host add` installs the companion matching the Mac's release exactly: a handover needs the same release on both
-machines. It takes it from the list the Mac's release carries, downloads it and checks its digest.
+machines. It takes the one Svall.app carries and checks it against the digest the app's release pins.
 
-- Svall.app carries a companion for x86-64 Linux only. For an arm64 machine, build one
-  from the same checkout and name it:
+- Svall.app carries a companion for x86-64 Linux only. For an arm64 machine, name one of the same release: the GitHub
+  release of a signed tag carries it, or build one from a checkout of that release under the name `svall version`
+  shows, which is the tag `v<version>` for a Svall from svall.dev and `git describe`'s name for a local
+  `pnpm app:build`:
 
   ```sh
-  pnpm release:companion --out /tmp/companions --arch arm64
-  svall host add studio --ssh ada@studio --release /tmp/companions/svall-companion-<version>-linux-arm64.tar.gz --allow-unsigned
+  pnpm release:companion --out /tmp/companions --arch arm64 --version v<version>
+  svall host add studio --ssh ada@studio --release /tmp/companions/svall-companion-v<version>-linux-arm64.tar.gz --allow-unsigned
   ```
 
 - `--release <archive>` installs that archive instead; `--allow-unsigned` accepts one without a signature, as every

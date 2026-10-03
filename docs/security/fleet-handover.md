@@ -36,7 +36,7 @@ under which licences, and which risks are accepted. Tests are named by file unde
 | A manifest path that climbs out of its root, or a session file out of its agent home | Refused before a path is built from it. | `replicas.test.ts` "refuses manifest paths that could leave their root"; `transfer.test.ts` "refuses a session file whose name climbs out of its agent home…" |
 | A root that holds a fleet home, whose token, keys and journal stay on their machine | Blocked on both machines, by lexical and real path. | `inventory.test.ts` "blocks a root that holds or lies in either fleet home…"; `replicas.test.ts` "refuses a root that reaches the fleet home through a symlink or holds it…" |
 | A root that holds an agent's login or config, the ssh folder, or Svall's own install | Blocked on both machines: `.credentials.json`, `.claude.json`, Codex's `auth.json`, both where `CLAUDE_CONFIG_DIR` and `CODEX_HOME` put them and in the default homes; `~/.ssh`; `~/.local/share/svall` (releases and the gateway's records), `~/.config/svall` (the machine id and registry), `~/.config/systemd/user` and the `svall` shims. The source checks by real path on its own disk; the destination checks its own by real path when it claims or archives a root. | `inventory.test.ts` "blocks a root that holds an agent's credentials or config…", "blocks the default agent homes beside the configured ones, and Svall's own install…"; `source.test.ts` "blocks a character working in the folder this daemon's Claude keeps its login in…"; `replicas.test.ts` "refuses, by real path on this machine, a root that holds or lies in its ssh folder, an agent login or its Svall install" |
-| A stale authority record | The gateway swaps only on the expected generation and owner. A reachable gateway's record wins over a daemon's cached one. A frozen or surrendered source starts read-only. A prepare or activation for another generation, transaction or manifest is refused. | `svalld/test/gateway/authority.test.ts`; `svalld/test/ownership.test.ts`; `destination.test.ts` "refuses a prepare meant for another machine, fleet, generation, transaction or manifest…", "waits for the gateway to commit this handover at the next generation…" |
+| A stale authority record | The gateway swaps only on the expected generation and owner. A reachable gateway's record wins over a daemon's cached one: a starting daemon waits up to 10 s for it, asking again while the gateway on its own machine is not yet listening. A frozen or surrendered source starts read-only. A prepare or activation for another generation, transaction or manifest is refused. | `svalld/test/gateway/authority.test.ts`; `svalld/test/ownership.test.ts`; `svalld/test/handover/service.test.ts` "asks the gateway on this machine again until it listens, and takes its record"; `destination.test.ts` "refuses a prepare meant for another machine, fleet, generation, transaction or manifest…", "waits for the gateway to commit this handover at the next generation…" |
 | Destination path confusion | Both machines must share the home path (`home_mismatch`). A root lands only at the real path its claim checked, and never over a folder no handover left there (`destination_occupied`). | `inventory.test.ts`; `source.test.ts` "blocks a destination whose home is not this machine's…"; `replicas.test.ts` |
 
 ## Release integrity
@@ -47,7 +47,8 @@ under which licences, and which risks are accepted. Tests are named by file unde
   build; see `docs/integration.md`. (`test/release-stage.test.ts` "hands the signing key only to the steps that check
   it and sign…", "%s runs every action at a commit, never at a tag that can move")
 - **On the controller**, before any upload:
-  - a downloaded companion must match the digest the controller's own manifest pins;
+  - a companion the controller's own manifest names, carried in its release or downloaded, must match the digest
+    that manifest pins;
   - every member of the archive must be a path in `releases/<v>`, with no empty, `.` or `..` segment, and listed once;
   - an archive's `SHA256SUMS` must verify against the controller's `release/allowed_signers` before anything else is
     unpacked from it, still be that file once the rest is, and the tree must then match its manifest, staged by the
@@ -87,9 +88,9 @@ under which licences, and which risks are accepted. Tests are named by file unde
   write under a link, so the far check also runs under GNU tar in a Linux image: `SVALL_TEST_GNU_TAR=svall-it:machine`
   with `DOCKER_HOST` naming the engine's socket runs `host.test.ts` "checks the files against the SHA256SUMS the pinned
   key signed, whatever the archive writes over it".
-- **`svall setup --release <archive>`**, the installer on each machine, refuses the same members and a release name
-  it would not take, checks the signature over the archive's `SHA256SUMS` before it unpacks the rest, then that the
-  unpacked `SHA256SUMS` is byte for byte the one it checked, then every digest and the tree.
+- **`svall setup --release <archive>`**, the installer on the Linux machine, refuses the same members and a release
+  name it would not take, checks the signature over the archive's `SHA256SUMS` before it unpacks the rest, then that
+  the unpacked `SHA256SUMS` is byte for byte the one it checked, then every digest and the tree.
   (`svalld/test/release.test.ts` "checks the signature over an archive's SHA256SUMS before it unpacks anything else
   from it", "refuses an archive holding a member outside its release, spelled other than as a path in it, or twice";
   `test/install-release.test.ts` "checks the signature over its SHA256SUMS once…", "refuses an archive whose members
@@ -171,8 +172,9 @@ Every delete, rename and archive a handover or its install makes, with the recor
 - **rsync (GPL-3.0-or-later).** The controller archive carries rsync's source tarball, the pinned one, beside its
   licence. The NOTICE line names the configure flags and the `strip -S`. (`release.test.ts` "carries the source of the
   rsync it ships…")
-- **The app.** It carries `apps/desktop/mac/NOTICE` in `Contents/Resources/licenses`, with `LICENSE.ghostty`, the
-  GPL-3.0 text (`LICENSE.gpl-3.0`) and bash-preexec's MIT text (`LICENSE.bash-preexec`). The NOTICE names every
+- **The app.** It carries `apps/desktop/mac/NOTICE` in `Contents/Resources/Licenses`, beside the licence texts
+  `scripts/licenses.mjs` collects there, with `LICENSE.ghostty`, the GPL-3.0 text (`LICENSE.gpl-3.0`) and
+  bash-preexec's MIT text (`LICENSE.bash-preexec`). The NOTICE names every
   component GhosttyKit links, and every one whose files the app copies from Ghostty's resources: the themes, Ghostty's
   bash and zsh shell integration (GPL-3.0-or-later, derived from Kitty's; the scripts are their own source) and
   bash-preexec. One test fails on any object file in the kit that no named component accounts for; another on any file
@@ -301,10 +303,12 @@ of the manifest and of what landed, not read off the wire.
   rsync went past 7.7 MiB.
 - **Each side reads every carried file several times.** The source walks the names at preflight and at freeze, then
   hashes each file at both, and again in the controller's verify when the controller runs there. The destination
-  hashes a replica at preflight, again at the claim, then what landed at prepare, and the roots once more after the
-  Git import for the seal. rsync's checksum compare reads both sides. Each proof guards a different moment (before
-  any write, before `--delete`, after the copy, after the import), so none is reused: a replica can change between
-  preflight and the claim. Files are hashed eight at a time.
+  hashes a replica at preflight, again at the claim, then what landed at prepare, and once more after the Git import
+  each root that holds or lies in a carried Git directory. The seal is what landed, with only what the import writes
+  taken from that last read: each carried graph's `config`, and the worktree registrations it removes. rsync's
+  checksum compare reads both sides. Each proof guards a different moment (before any write, before `--delete`, after
+  the copy, after the import), so none is reused: a replica can change between preflight and the claim. Files are
+  hashed eight at a time.
 
 ### Bounds
 

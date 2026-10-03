@@ -21,9 +21,10 @@ does not works exactly as before.
 - **The checks come first.** Nothing moves until they pass, and each blocker says what to do: finish or interrupt a
   working agent, end a busy shell's command, archive a folder in the way. A folder changed on the other machine while
   it did not own the fleet is never overwritten.
-- **A handover survives interruptions.** Closing the app, a dropped link or a killed process leaves it where it
-  stopped, and the sheet or `svall handover status` says whether Resume or Abort is safe. Before the commit an abort
-  gives the fleet back; after it, only the new machine goes on.
+- **A handover survives interruptions.** It carries on while the app is closed, with this Mac's daemon and terminals
+  left running for it. A dropped link or a killed process leaves it where it stopped, and the sheet or
+  `svall handover status` says whether Resume or Abort is safe. Before the commit an abort gives the fleet back; after
+  it, only the new machine goes on.
 - **Keep a character on this machine** from its card, or `svall char update <id> --keep-here`, and a handover waits
   for it.
 - **Disaster recovery**: `svall fleet recover --force-owner <machine>` writes a new ownership record when the gateway
@@ -50,8 +51,8 @@ See [Upgrading and downgrading](migration.md) for the details and the way back.
 
 ## Not yet
 
-- A signed, notarized download of the Mac app, and a release signing key: the app is built from source, and every
-  companion it installs is unsigned, checked by the digest the app's own build pins.
+- A release signing key: every companion the app installs is unsigned, checked by the digest the app's own release
+  pins.
 - A stable phone URL that follows the fleet between machines, and forwarding a remote dev server's ports to the Mac.
 - More than one Linux machine per fleet, moving a single character or island, and machines whose home paths differ.
 

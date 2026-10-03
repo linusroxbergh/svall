@@ -271,14 +271,20 @@ terminal surfaces.
 
 ## Companion release
 
-The signed desktop bundle contains production `svall` and `svalld` JavaScript, the phone assets and
-a pinned macOS Node runtime. Its installer places that runtime under the same per-user
-`releases/<version>` plus atomic `current` layout used on Linux, points launchd and
-`~/.local/bin/svall` at `current`, and keeps the previous release for rollback. Neither ordinary Mac
-use nor remote setup depends on the source checkout.
+The signed desktop bundle, Svall.app, runs production `svall` and `svalld` from its own runtime
+bundle on the Node it carries, with the phone assets and templates beside them; launchd and
+`~/.local/bin/svall` point into the app. Beside that runtime it carries the controller release in
+`Contents/Resources/release`: `release.json` naming the release, the rsync 3.x macOS lacks, the
+askpass the first SSH connection asks through, the allowed signers a companion is checked against,
+a pinned Node with the `svall` the app's helpers run, and the x86-64 Linux companion under
+`companions/`, which `release.json` pins by its path in the release and its digest. `pnpm release`
+names the release after the tag it pushes, `v<CFBundleShortVersionString>`; a local
+`pnpm app:build` names it by `git describe`. Svall Dev carries no controller release, so it has no
+connection helper and opens its fleets on this Mac only. Neither ordinary Mac use nor remote setup
+depends on the source checkout.
 
-Every desktop release publishes the Linux companion archives named in its release manifest. An
-archive contains:
+A signed release tag publishes its x86-64 and arm64 Linux companion archives, built under the tag's
+name, on its GitHub release. An archive contains:
 
 - bundled production JavaScript for `svall` and `svalld` with a pinned Node runtime;
 - the phone bundle and gateway service;
@@ -292,16 +298,16 @@ verify` against a pinned allowed-signers entry before the rest of the archive is
 unpacked tree must still carry the checksum file the signature covered.
 
 The remote machine does not need a repository clone, pnpm, Node, Xcode, Zig or Ghostty. The Mac app
-downloads the companion matching its own release from the same signed release manifest, verifies
-the digest, and uploads it over SSH. A development build may instead upload the current workspace
-artifact explicitly.
+takes the companion its release manifest names for the machine's architecture, verifies the digest,
+and uploads it over SSH; another archive of the same release, such as the arm64 companion, is named
+with `--release`. A development build may instead upload the current workspace artifact explicitly.
 
-Releases install without root under:
+On the Linux machine, releases install without root under:
 
 ```text
 ~/.local/share/svall/releases/<version>/
-~/.local/share/svall/current -> releases/<version>
-~/.local/bin/svall -> ../share/svall/current/bin/svall
+~/.local/share/svall/current -> ~/.local/share/svall/releases/<version>
+~/.local/bin/svall -> ~/.local/share/svall/current/bin/svall
 ```
 
 Changing `current` is atomic. Each install keeps the release `current` named before it for

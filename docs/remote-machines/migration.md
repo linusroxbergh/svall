@@ -11,15 +11,18 @@ here needs doing unless you downgrade.
 The first time a fleet's daemon starts on the new release (or `svall setup` runs for the private fleet), it splits the
 fleet's `config.json` in two:
 
-1. `config.json` is renamed `config.json.bak`, byte for byte, before anything is read out of it.
-2. `node.json` gets what belongs to this machine: `port`, `host`, `shell` and `mobile.httpsPort`.
+1. `config.json` is renamed `config.json.bak`, byte for byte (a link stays a link), before anything is read out of
+   it.
+2. `node.json` gets what belongs to this machine: `port`, `host`, `shell`, `integrations` and `mobile.httpsPort`.
 3. `fleet.json` gets everything else and a new fleet `id`. It has no `handover` block, so handover stays off until you
    [turn it on](setup.md#turning-it-on).
 
 The [README's configuration table](../../README.md#configuration) says which key lives in which file. From then on
-`config.json` is not read. One put back beside `fleet.json` stops the daemon until you move what you want from it into
-the new files and delete it; the daemon's log and `svall doctor` both say so. A `config.json.bak` already in the way
-stops the split the same way, before anything is written.
+`config.json` is not read. A dotfile manager such as stow or home-manager may link it back to the file
+`config.json.bak` links to; that link is left alone, with a line in the daemon's log, so link `fleet.json` and
+`node.json` from your dotfiles instead. Any other `config.json` put back beside `fleet.json` stops the daemon until you
+move what you want from it into the new files and delete it; the daemon's log and `svall doctor` both say so. A
+`config.json.bak` already in the way stops the split the same way, before anything is written.
 
 ### State schema 8 and protocol 19
 

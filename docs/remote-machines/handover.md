@@ -23,21 +23,22 @@ Mac** to bring it back. The sheet follows five steps:
    it to that machine. From here there is no way back.
 5. **Resuming characters.** The fleet runs on the other machine, and each character resumes there.
 
-When something needs your answer, the sheet waits and cannot be closed until you give one:
+When something needs your answer, the sheet waits for one. You can close it meanwhile, such as to answer an agent in
+its terminal, and open it again from **Handover**, which is marked while a decision waits:
 
 | Choice | Offered for | What it does |
 | --- | --- | --- |
 | Continue waiting | an agent still working | Waits for it to finish its turn. |
 | Interrupt and carry | an agent working or waiting on an answer | Sends Escape to each such agent, waits for it to settle, and carries it. It resumes from its transcript on the other machine. |
-| Terminate and carry | a shell running a command, an agent that will not settle, or an idle agent whose background command still runs | Ends what runs in each terminal named. The shell reopens in its folder on the other machine. |
+| Terminate and carry | a shell running a command, an agent that will not settle, or an idle agent whose background command still runs | Ends what runs in the terminals of each character named. The shell reopens in its folder on the other machine. |
 | Archive and carry | a folder on the other machine that is in the way or changed there | Moves that folder to a timestamped sibling first, then copies afresh. Nothing is deleted, and the folder's row says where the old copy is kept. |
 | Abort | anything before the commit | Nothing moves; the fleet stays where it was. |
 
 A character marked **keep on this machine** on its card blocks the handover until you turn that off.
 
-Quitting the app or closing the sheet does not stop a handover: it runs in a helper process of its own. When the app
-opens again, the sheet picks up where the handover stands, with **Resume** and **Abort** before the commit, or only
-**Retry** after it.
+Quitting the app or closing the sheet does not stop a handover: it runs in a helper process of its own, and quitting
+leaves this Mac's daemon and terminals running for it. When the app opens again, the sheet picks up where the
+handover stands, with **Resume** and **Abort** before the commit, or only **Retry** after it.
 
 Once the fleet has moved, the app reconnects to it where it runs, keeping the character you had selected, its open
 card and your pane layout, which belong to this Mac. The machine's name shows at the foot of the sidebar.
