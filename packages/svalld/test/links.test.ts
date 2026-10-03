@@ -95,6 +95,18 @@ describe('prState and lookupPr', () => {
     await lookupPr('/r', 'b', { exec, now: () => 400_000 });
     expect(calls).toBe(2);
   });
+  // two characters in one checkout miss together in the same refresh
+  it('asks gh once for lookups of one checkout and branch that miss together', async () => {
+    let calls = 0;
+    let answer!: () => void;
+    const asked = new Promise<void>((r) => { answer = r; });
+    const exec = async () => { calls++; await asked; return JSON.stringify({ url: 'https://x/pr/2', number: 2, state: 'OPEN', isDraft: false, reviewDecision: '' }); };
+    const both = Promise.all([lookupPr('/shared', 'b', { exec, now: () => 0 }), lookupPr('/shared', 'b', { exec, now: () => 0 })]);
+    answer();
+    const [a, b] = await both;
+    expect(a).toEqual(b);
+    expect(calls).toBe(1);
+  });
   // what execFile rejects with when gh exits non-zero
   const ghFailed = (stderr: string) => async () => { throw Object.assign(new Error('Command failed: gh pr view'), { code: 1, stderr }); };
   it('holds gh saying there is no PR, for a branch, a repository with no remote or none on GitHub, as none', async () => {

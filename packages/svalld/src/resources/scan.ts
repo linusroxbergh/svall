@@ -6,16 +6,14 @@ import { listAgentProfiles } from '../agent-profiles.js';
 import type { CodexPaths } from '../codex/install.js';
 import { docsDir, fleetDir, listDocs, repoRootOf, repoSlug } from '../docs.js';
 import { NotFound } from '../errors.js';
-import { claudePaths, type ClaudePaths } from '../paths.js';
+import type { ClaudePaths } from '../paths.js';
 import { profileOf } from '../profile.js';
 import { realOf, within } from '../workspace/paths.js';
 import { hooks, mcpServers, plugins, type Parsed } from './parse.js';
 
-export { claudePaths, type ClaudePaths };
-
 export const rootIdOf = (root: string): string => `r:${root}`;
 
-export type FleetRoot = { root: string; islandIds: string[]; characterIds: string[] };
+type FleetRoot = { root: string; islandIds: string[]; characterIds: string[] };
 
 /** The folders the fleet works in, a worktree counted as its repository, mission control left out. */
 export function fleetRoots(state: FleetState): FleetRoot[] {
@@ -96,6 +94,18 @@ const fileItem = (b: Base, rel: string, p: Partial<Parsed> = {}): Row => ({
   reveal: path.join(b.root, rel), target: 'file', open: { rootId: b.rootId, path: rel, ...(p.find && { find: p.find }) },
 });
 const broken = (b: Base, rel: string): Row => ({ ...fileItem(b, rel), error: 'cannot be read as JSON' });
+
+// ~/.claude.json keeps every project's history and outgrows the cap, so it is parsed again only once it changes
+let claudeJsonRead: { file: string; mtimeMs: number; size: number; json: ReturnType<typeof readJson> } | undefined;
+function readClaudeJson(file: string): ReturnType<typeof readJson> {
+  let st: fs.Stats;
+  try { st = fs.statSync(file); } catch { return undefined; }
+  const last = claudeJsonRead;
+  if (last?.file === file && last.mtimeMs === st.mtimeMs && last.size === st.size) return last.json;
+  const json = readJson(file, Infinity);
+  claudeJsonRead = { file, mtimeMs: st.mtimeMs, size: st.size, json };
+  return json;
+}
 
 const files = (b: Base, rels: string[]): Row[] => rels.filter((rel) => readText(path.join(b.root, rel)) !== undefined).map((rel) => fileItem(b, rel));
 
@@ -201,8 +211,7 @@ const slugOf = (root: string): string => root.replace(/[^A-Za-z0-9]/g, '-');
 
 export function scanResources(state: FleetState, claude: ClaudePaths, codex?: CodexPaths, docs?: string, agentProfiles?: string): ResourceSource[] {
   const user: Base = { rootId: rootIdOf(claude.dir), root: claude.dir };
-  // the user's own ~/.claude.json keeps every project's history and outgrows the cap
-  const cj = readJson(claude.json, Infinity);
+  const cj = readClaudeJson(claude.json);
   const claudeJson = cj && !(cj instanceof Error) ? cj : {};
   const projects = (claudeJson.projects && typeof claudeJson.projects === 'object' ? claudeJson.projects : {}) as Record<string, { mcpServers?: unknown } | undefined>;
 

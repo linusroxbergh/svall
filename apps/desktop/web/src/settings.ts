@@ -24,7 +24,7 @@ export type Settings = {
 
 export const DEFAULT_SETTINGS: Settings = {
   cardOpacity: 0.65, fullOpacity: 1, zoom: 0.9, onePassword: false, usageTab: true, autoArrange: true, bindings: {},
-  notifications: { on: false, sound: true, statuses: ['blocked', 'done'] },
+  notifications: { on: false, sound: true, statuses: [...PUSH_STATUSES] },
 };
 export const OPACITY = { min: 0.3, max: 1, step: 0.05 };
 

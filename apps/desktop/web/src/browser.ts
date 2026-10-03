@@ -1,10 +1,9 @@
-import { toUrl, type ContextItem } from '@svall/protocol';
+import { charOfKey, toUrl, type ContextItem } from '@svall/protocol';
 import type { Api } from './api.js';
 import { openUrl, webUrl, type Bridge, type Rect } from './bridge.js';
 import { showBrowser } from './panes.js';
 import { panesOf } from './selectors.js';
 import type { AppStore } from './store/index.js';
-import { charOfSurface } from './terminals.js';
 
 export type BrowserManager = {
   show(id: string, tab: string, rect: Rect, takeFocus?: boolean): void;
@@ -50,7 +49,7 @@ export function createBrowserManager(api: Api, bridge: Bridge, store: AppStore):
   // a link followed in a terminal asks whether it opens beside it, as a tab of that character; anything the
   // browser cannot hold, and a character that is not there, goes straight out to the user's own browser
   const fromTerminal = (key: string, url: string, x: number, y: number) => {
-    const id = charOfSurface(key);
+    const id = charOfKey(key);
     if (!state().fleet.characters[id] || !/^https?:/i.test(url)) { openUrl(bridge, url); return; }
     state().askLink({ url, charId: id, x, y, surface: key });
   };

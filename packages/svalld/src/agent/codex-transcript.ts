@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { trimEnd } from '@svall/protocol';
 import type { Pending } from './claude-transcript.js';
 import { LINK, MAX_ENTRY, MAX_URLS, clip, jsonLines, orSkip } from './jsonl.js';
 
@@ -64,7 +65,7 @@ export function userPromptsCodex(text: string, limit: number, pending?: Pending)
   return list.slice(0, limit);
 }
 
-const urlsIn = (v: unknown): string[] => (JSON.stringify(v ?? '').match(LINK) ?? []).map((u) => u.replace(/[.,;:!?]+$/, ''));
+const urlsIn = (v: unknown): string[] => (JSON.stringify(v ?? '').match(LINK) ?? []).map((u) => trimEnd(u, '.,;:!?'));
 
 // a codex turn is a dozen tool calls to one thing said, each on a line of its own in the rollout. They
 // ride on the agent's line here, so a turn is counted by what was said, as it is for Claude Code

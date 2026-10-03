@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ContextItem } from '@svall/protocol';
-import { prFirst, settleItems } from '../src/context/items.js';
+import { MAX_REF, prFirst, settleItems } from '../src/context/items.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 afterEach(cleanHomes);
@@ -24,6 +24,14 @@ describe('settleItems', () => {
     expect(() => settleItems([{ kind: 'file', ref: '/nope/never/here', label: '', source: 'manual' }])).toThrow(/no such file or folder/);
     const link = { kind: 'pr' as const, ref: 'https://github.com/o/r/pull/1', label: '', source: 'manual' as const };
     expect(settleItems([link])).toEqual([link]);
+  });
+  // every link refresh reads each ref again; one already stored stays, so it never blocks an edit of the rest
+  it('refuses a new ref past the cap, and keeps a stored one', () => {
+    const link = (ref: string) => ({ kind: 'other' as const, ref, label: '', source: 'manual' as const });
+    const long = link(`https://a.test/${'x'.repeat(MAX_REF)}`);
+    expect(() => settleItems([long])).toThrow(/may run to 4096/);
+    expect(settleItems([link(long.ref.slice(0, MAX_REF))])).toHaveLength(1);
+    expect(settleItems([long, link('https://b.test')], [long])).toHaveLength(2);
   });
   it('stores a view inside a GitHub PR or issue as the PR or issue itself', () => {
     const at = (ref: string) => settleItems([{ kind: 'pr', ref, label: '', source: 'manual' }])[0].ref;

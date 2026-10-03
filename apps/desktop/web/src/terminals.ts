@@ -1,4 +1,5 @@
-import { ApiError, type Api } from './api.js';
+import { ApiError, charOfKey } from '@svall/protocol';
+import type { Api } from './api.js';
 import type { Attach, Bridge, Rect } from './bridge.js';
 import { boardViewed, panesOf, type BoardSelection } from './selectors.js';
 import type { AppStore, View } from './store/index.js';
@@ -15,10 +16,9 @@ type Opts = { reshowDelayMs?: number };
 export const viewedId = (s: BoardSelection & { view: View; card?: string }): string | undefined =>
   s.view === 'map' ? s.card : boardViewed(s);
 
-// the surface of a character's second terminal; the shell treats surface ids as opaque
-export const secondKey = (id: string): string => `${id}-2`;
-export const charOfSurface = (key: string): string => (key.endsWith('-2') ? key.slice(0, -2) : key);
-const target = (key: string): { id: string; term?: 2 } => (key.endsWith('-2') ? { id: charOfSurface(key), term: 2 } : { id: key });
+// a second terminal's surface; the shell treats surface ids as opaque
+export { secondKey } from '@svall/protocol';
+const target = (key: string): { id: string; term?: 2 } => { const id = charOfKey(key); return id === key ? { id } : { id, term: 2 }; };
 
 export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore, opts: Opts = {}): TerminalManager {
   const attaching = new Map<string, Promise<Attach>>();

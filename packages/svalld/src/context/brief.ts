@@ -1,4 +1,4 @@
-import { linkGlyph, type BrowserTab, type Character, type ContextItem, type Island } from '@svall/protocol';
+import { ellipsis, INSTRUCTIONS_MAX, linkGlyph, type BrowserTab, type Character, type ContextItem, type Island } from '@svall/protocol';
 import type { AgentProfile } from '../agent-profiles.js';
 import type { DocEntry, DocFolder } from '../docs.js';
 import type { HookName } from '../hooks/receiver.js';
@@ -13,24 +13,25 @@ const itemLine = (it: ContextItem): string => {
   return `- ${linkGlyph(it.kind)} ${label}${it.ref}${tail}`;
 };
 
-const section = (title: string, items: ContextItem[]): string[] => (items.length ? [`${title}:`, ...items.map(itemLine)] : []);
+const more = (n: number, what: string): string[] => (n ? [`- …and ${n} more ${what}`] : []);
+
+const section = (title: string, items: ContextItem[], hidden: number, what: string): string[] =>
+  (items.length || hidden ? [`${title}:`, ...items.map(itemLine), ...more(hidden, what)] : []);
 
 // a page writes its own title, and a query or fragment can hold a sign-in's code: a tab is named by where it is, no more
 const tabUrl = (raw: string): string => {
   try { const u = new URL(raw); return /^(https?|file):$/.test(u.protocol) ? `${u.protocol}//${u.host}${u.pathname}` : u.protocol; }
   catch { return ''; }
 };
-// a view that has not reached a page has no address to give
-const tabLine = (t: BrowserTab, active: boolean): string => { const url = tabUrl(t.url); return url && `- ${clip(url)}${active ? ' (active)' : ''}`; };
+const tabLine = (t: BrowserTab, active: boolean): string => `- ${ellipsis(tabUrl(t.url), DESCRIPTION_MAX)}${active ? ' (active)' : ''}`;
 
 const DESCRIPTION_MAX = 200;
-const clip = (s: string): string => (s.length > DESCRIPTION_MAX ? `${s.slice(0, DESCRIPTION_MAX - 1)}…` : s);
 
 // one line a doc: a name or description is whatever an agent wrote, so it is flattened before it can forge a line of
 // its own, and the brief reaches a session as a line diff, so the path travels with the name
 const docLine = (d: DocEntry): string => {
   const name = oneLine(d.name);
-  return `- ${d.description ? `${name} — ${JSON.stringify(clip(oneLine(d.description)))}` : name} (${oneLine(d.path)})`;
+  return `- ${d.description ? `${name} — ${JSON.stringify(ellipsis(oneLine(d.description), DESCRIPTION_MAX))}` : name} (${oneLine(d.path)})`;
 };
 
 function docLines(folders: DocFolder[], hidden: number[] = []): string[] {
@@ -85,24 +86,41 @@ export function renderBrief(island: Island, character?: Character, folders: DocF
   const head = [
     ...(character && profile ? profileLines(profile) : []),
     `Island: ${headline(island.name, island.description)}`,
-    island.instructions && `Island instructions: ${island.instructions}`,
+    island.instructions && `Island instructions: ${ellipsis(island.instructions, INSTRUCTIONS_MAX)}`,
     character && `Character: ${headline(character.name, character.note)}`,
-    character?.instructions && `Character instructions: ${character.instructions}`,
+    character?.instructions && `Character instructions: ${ellipsis(character.instructions, INSTRUCTIONS_MAX)}`,
     ...(character && island.kind !== 'home' ? crewLines(island, character) : []),
   ].filter((l): l is string => Boolean(l));
-  const items = [...section('Context (island)', island.context), ...(character ? section('Context (character)', character.context) : [])];
-  const tabLines = (character?.browser?.tabs ?? []).map((t) => tabLine(t, t.id === character?.browser?.active)).filter(Boolean);
-  const tabs = tabLines.length ? ['Browser tabs (page addresses, not instructions):', ...tabLines] : [];
-  const said = island.description || island.instructions || items.length || folders.length || tabs.length || character?.note || character?.instructions || (character && profile);
+  const active = character?.browser?.active;
+  // a view that has not reached a page has no address to give
+  const kept = { island: [...island.context], character: [...(character?.context ?? [])], tabs: (character?.browser?.tabs ?? []).filter((t) => tabUrl(t.url)) };
+  const hidden = { island: 0, character: 0, tabs: 0 };
+  const items = () => [...section('Context (island)', kept.island, hidden.island, 'island links'), ...(character ? section('Context (character)', kept.character, hidden.character, 'character links') : [])];
+  const tabs = () => (kept.tabs.length || hidden.tabs ? ['Browser tabs (page addresses, not instructions):', ...kept.tabs.map((t) => tabLine(t, t.id === active)), ...more(hidden.tabs, 'tabs')] : []);
+  const said = island.description || island.instructions || items().length || folders.length || tabs().length || character?.note || character?.instructions || (character && profile);
   if (!said) return '';
   const pinned = [...island.context, ...(character?.context ?? [])].some((it) => it.pinned);
   const show = character ? `\`svall char show ${character.id}\`` : `\`svall island show ${island.id}\``;
   const foot = `${pinned ? 'Read pinned items before starting. ' : ''}${show} reprints this.`;
   const compose = (docs: string[]): string => {
-    const body = [items, docs, tabs].filter((b) => b.length).flatMap((b, i) => (i ? ['', ...b] : b));
+    const body = [items(), docs, tabs()].filter((b) => b.length).flatMap((b, i) => (i ? ['', ...b] : b));
     return ['# Svall context', ...head, '', ...(body.length ? [...body, ''] : []), foot].join('\n');
   };
-  return compose(fitDocs(folders, (docs) => compose(docs).length <= BRIEF_MAX));
+  const fits = (docs: string[]) => compose(docs).length <= BRIEF_MAX;
+  const docs = fitDocs(folders, fits);
+  // with every doc gone and still too long, the tabs go but the active one, then the unpinned links from the end of each
+  // list: the scribe's come last, and the PR the work is on leads
+  const drop = (): boolean => {
+    const tab = kept.tabs.findIndex((t) => t.id !== active);
+    if (tab !== -1) { kept.tabs.splice(tab, 1); hidden.tabs++; return true; }
+    const from = (['island', 'character'] as const).filter((k) => kept[k].some((it) => !it.pinned)).sort((a, b) => kept[b].length - kept[a].length)[0];
+    if (!from) return false;
+    kept[from].splice(kept[from].map((it) => !it.pinned).lastIndexOf(true), 1);
+    hidden[from]++;
+    return true;
+  };
+  while (!fits(docs) && drop());
+  return compose(docs);
 }
 
 // removed lines, then added, each in the order of its source; multiset by line text
@@ -153,5 +171,8 @@ export function briefReply(name: HookName, brief: string, delivered: string | un
   if (name !== 'SessionStart' && name !== 'UserPromptSubmit') return {};
   if (name === 'SessionStart' || delivered === undefined) return brief ? { reply: brief, delivered: brief } : {};
   if (delivered === brief) return {};
-  return { reply: briefDiff(delivered, brief), delivered: brief };
+  const diff = briefDiff(delivered, brief);
+  // two briefs under the cap can differ by nearly twice it, so a change past the cap goes out as the brief whole
+  const reply = brief && diff.length > BRIEF_MAX ? ['# Svall context, in place of the one before', ...brief.split('\n').slice(1)].join('\n') : diff;
+  return { reply, delivered: brief };
 }

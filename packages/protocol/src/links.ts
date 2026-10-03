@@ -1,4 +1,5 @@
 import type { ContextKind, LinkKind } from './state.js';
+import { trimEnd } from './text.js';
 
 // first match wins, so the github PR and issue patterns come before the bare host
 const PATTERNS: [RegExp, LinkKind][] = [
@@ -42,7 +43,7 @@ const GLYPH: Record<ContextKind, string> = {
 // the url without its protocol or leading www, lowercased, and always ending in the slash the
 // patterns anchor on, so a bare host reads the same as one with a path
 export const bareUrl = (url: string): string =>
-  url.trim().toLowerCase().replace(/^[a-z][a-z0-9+.-]*:\/\//, '').replace(/^www\./, '').replace(/\/*$/, '/');
+  `${trimEnd(url.trim().toLowerCase().replace(/^[a-z][a-z0-9+.-]*:\/\//, '').replace(/^www\./, ''), '/')}/`;
 
 export function linkKind(url: string): LinkKind {
   const bare = bareUrl(url);

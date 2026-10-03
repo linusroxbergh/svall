@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import type { Repo } from '@svall/protocol';
+import { trimEnd, type Repo } from '@svall/protocol';
 
 const exec = promisify(execFile);
 
@@ -28,7 +28,7 @@ export async function resolveRepo(cwd: string): Promise<Repo | undefined> {
 // the browsable url behind a remote: scp-style and url-style both land on https, without the .git.
 // the parser drops any credential the remote carries, so a token never reaches the state or the rail
 export function webUrl(remote: string): string | undefined {
-  const r = remote.trim().replace(/\/+$/, '').replace(/\.git$/, '');
+  const r = trimEnd(remote.trim(), '/').replace(/\.git$/, '');
   // the scp shape has no scheme, so it is rewritten to one before the url parser reads it
   const scp = /^(?!\w+:\/\/)(?:[^@\s]+@)?([^:/\s]+):(?!\/)(.+)$/.exec(r);
   try {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BrowserTab, emptyState, FleetState, MAX_SIDE, MAX_URL, PROTOCOL_VERSION, RUN_TIMEOUT_MS, Request, Second, methods, serverWait } from '../src/index.js';
+import { BrowserTab, emptyState, FleetState, HelloReply, INSTRUCTIONS_MAX, MAX_SIDE, MAX_URL, PROTOCOL_VERSION, RUN_TIMEOUT_MS, Request, Second, methods, serverWait } from '../src/index.js';
 
 describe('serverWait', () => {
   it('extends the deadline for the calls the daemon holds open', () => {
@@ -48,6 +48,27 @@ describe('messages', () => {
   it('arranges for the shape of a real window, and refuses one of no width or no height', () => {
     for (const aspect of [390 / 844, 16 / 9, 3440 / 1440]) expect(methods['island.arrange'].params.safeParse({ aspect }).success).toBe(true);
     for (const aspect of [5e-324, 1e-6, 1e6, Infinity]) expect(methods['island.arrange'].params.safeParse({ aspect }).success).toBe(false);
+  });
+  // the brief would cut them short, so the user hears of it when saving rather than the agent never seeing the rest
+  it('refuses instructions past the length the brief carries, while a state holding longer ones still loads', () => {
+    const long = 'x'.repeat(INSTRUCTIONS_MAX + 1);
+    expect(methods['island.create'].params.safeParse({ name: 'x', instructions: long }).success).toBe(false);
+    expect(methods['island.update'].params.safeParse({ id: 'i', instructions: long }).success).toBe(false);
+    expect(methods['char.update'].params.safeParse({ id: 'c', instructions: long }).success).toBe(false);
+    expect(methods['char.update'].params.safeParse({ id: 'c', instructions: long.slice(1) }).success).toBe(true);
+    const island = { id: 'i', name: 'x', description: '', instructions: long, context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
+    expect(FleetState.safeParse({ version: 7, islands: { i: island }, characters: {} }).success).toBe(true);
+  });
+  // past 2^31-1 ms a timer fires at once, so a wait that long would answer timeout straight away
+  it('waits a whole number of milliseconds a timer can hold', () => {
+    const wait = (timeoutMs: number) => methods['char.wait'].params.safeParse({ id: 'c', until: ['idle'], timeoutMs }).success;
+    expect([0, 5_000, 2_000_000_000].map(wait)).toEqual([true, true, true]);
+    expect([-1, 1.5, 2 ** 31, Infinity].map(wait)).toEqual([false, false, false, false]);
+  });
+  it('reads the handshake reply a daemon admits a socket with', () => {
+    expect(HelloReply.safeParse({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } }).success).toBe(true);
+    expect(HelloReply.safeParse({ id: 0, result: { ok: true } }).success).toBe(false);
+    expect(HelloReply.safeParse({ id: 3, result: {} }).success).toBe(false);
   });
   it('takes the long urls pages keep, refuses one past the cap, and still loads a state holding a longer one', () => {
     const long = `https://a.test/#${'x'.repeat(MAX_URL)}`;

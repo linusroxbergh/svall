@@ -5,11 +5,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { PROTOCOL_VERSION, type Event, type PhoneSession } from '@svall/protocol';
 import { identityOf, originAllowed, startApi, stripKey } from '../src/api/server.js';
-import { brand, resolveFile } from '../src/api/static.js';
+import { brand, resolveFile, serveBundle } from '../src/api/static.js';
 import { Config } from '../src/config.js';
 import { Fleet } from '../src/fleet.js';
 import type { Mobile } from '../src/mobile.js';
-import { silentLogger } from '../src/log.js';
+import { silentLogger, type Logger } from '../src/log.js';
 import { resolvePaths } from '../src/paths.js';
 import { PushStore } from '../src/push/store.js';
 import { Phones } from '../src/phones.js';
@@ -81,6 +81,20 @@ describe('bundle paths', () => {
     expect(resolveFile('/nowhere', '/')).toBeUndefined();
   });
 
+  it('says the page is not built only when it is not', async () => {
+    const built = makeHome(), empty = makeHome();
+    fs.writeFileSync(path.join(built, 'index.html'), 'page');
+    const server = http.createServer((req, res) => serveBundle(req, res, req.url === '/empty/' ? empty : built));
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
+    const at = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    try {
+      const undecodable = await fetch(`${at}/%E0%A4%A`);
+      expect(undecodable.status).toBe(404);
+      expect(await undecodable.text()).toBe('Not found');
+      expect(await (await fetch(`${at}/empty/`)).text()).toMatch(/not built/);
+    } finally { await new Promise((r) => server.close(r)); }
+  });
+
   it('names the fleet in the page title and the manifest, and leaves everything else alone', () => {
     expect(brand('/d/index.html', '<title>Svall</title><p>Svall</p>', 'work')).toBe('<title>Svall work</title><p>Svall</p>');
     const manifest = JSON.parse(brand('/d/manifest.webmanifest', '{"name":"Svall","short_name":"Svall","id":"/"}', 'work'));
@@ -95,7 +109,7 @@ runIf('phone sockets', () => {
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 
-  async function boot(fleetName?: () => string | undefined, mobileControl: Mobile = stubMobile) {
+  async function boot(fleetName?: () => string | undefined, mobileControl: Mobile = stubMobile, log: Logger = silentLogger) {
     const home = makeHome();
     const paths = resolvePaths(home);
     const config = Config.parse({ shell: '/bin/sh' });
@@ -116,7 +130,7 @@ runIf('phone sockets', () => {
     const workspace = new Workspace((id) => { const c = store.state.characters[id]; if (!c) throw new Error(id); return c.repo?.root ?? c.cwd; }, silentLogger);
     const current = { key, logins: ['me@example.com'] };
     const api = await startApi({
-      host: '127.0.0.1', port: 0, token: 'secret', store, fleet, fleets: stubFleets, terminals, workspace, usage: stubUsage, mobileControl, log: silentLogger,
+      host: '127.0.0.1', port: 0, token: 'secret', store, fleet, fleets: stubFleets, terminals, workspace, usage: stubUsage, mobileControl, log,
       origins: [], logins: () => current.logins, dist, key: () => current.key, fleetName,
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(),
       claude: { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') },
@@ -159,7 +173,8 @@ runIf('phone sockets', () => {
     for (const path of ['/anything', `/${key}/anything`, `/${key}`]) {
       const res = await fetch(`http://127.0.0.1:${api.port}${path}`);
       expect(res.headers.get('content-type')).toContain('text/html');
-      expect(res.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
+      expect(res.headers.get('content-security-policy')).toContain("script-src 'self';");
+      expect(res.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
       expect(res.headers.get('x-frame-options')).toBe('DENY');
       expect(await res.text()).toContain('phone');
     }
@@ -168,19 +183,20 @@ runIf('phone sockets', () => {
     expect(await asset.text()).toBe('code');
   });
 
-  it('admits a trusted login behind the key with no token, and refuses a stranger there', async () => {
-    const api = await boot();
+  it('admits a trusted login behind the key with no token, and refuses a stranger there at once, with its own code, naming it once', async () => {
+    const errors: string[] = [];
+    const api = await boot(undefined, stubMobile, { info() {}, error: (m) => errors.push(m) });
     const open = (login: string) => {
       const ws = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, { headers: { 'Tailscale-User-Login': login } });
       cleanup.push(async () => ws.close());
       return ws;
     };
     expect((await hello(open('me@example.com'))).protocol).toBe(PROTOCOL_VERSION);
-
-    const stranger = open('them@example.com');
-    await new Promise((r) => stranger.once('open', r));
-    stranger.send(JSON.stringify({ id: 1, method: 'state.get', params: {} }));
-    await expect(hello(stranger)).rejects.toThrow(/closed 4401/);
+    const started = Date.now();
+    await expect(hello(open('them@example.com'))).rejects.toThrow(/closed 4403/);
+    expect(Date.now() - started).toBeLessThan(2000);
+    await expect(hello(open('them@example.com'))).rejects.toThrow(/closed 4403/);
+    expect(errors).toEqual(['api: refused a phone socket from tailnet login them@example.com']);
   });
 
   // the Mac's own login is learned from tailscale after the server is up
@@ -192,10 +208,7 @@ runIf('phone sockets', () => {
       return ws;
     };
     api.current.logins = [];
-    const early = open('me@example.com');
-    await new Promise((r) => early.once('open', r));
-    early.send(JSON.stringify({ id: 1, method: 'state.get', params: {} }));
-    await expect(hello(early)).rejects.toThrow(/closed 4401/);
+    await expect(hello(open('me@example.com'))).rejects.toThrow(/closed 4403/);
     api.current.logins = ['me@example.com'];
     expect((await hello(open('me@example.com'))).protocol).toBe(PROTOCOL_VERSION);
   });
@@ -214,11 +227,7 @@ runIf('phone sockets', () => {
       cleanup.push(async () => ws.close());
       return ws;
     };
-    const refused = [open(), open(), open()].map(async (ws) => {
-      await new Promise((r) => ws.once('open', r));
-      ws.send(JSON.stringify({ id: 1, method: 'state.get', params: {} }));
-      await expect(hello(ws)).rejects.toThrow(/closed 4401/);
-    });
+    const refused = [open(), open(), open()].map((ws) => expect(hello(ws)).rejects.toThrow(/closed 4403/));
     const call = { id: 1, method: 'char.answer', params: { id: 'c_none', answer: 'approve' } };
     const post = fetch(`http://127.0.0.1:${api.port}/${key}/rpc`, { method: 'POST', body: JSON.stringify(call), headers: { 'Tailscale-User-Login': 'me@example.com' } });
     expect((await post).status).toBe(401);
@@ -242,10 +251,7 @@ runIf('phone sockets', () => {
       cleanup.push(async () => ws.close());
       return ws;
     };
-    const refused = open();
-    await new Promise((r) => refused.once('open', r));
-    refused.send(JSON.stringify({ id: 1, method: 'state.get', params: {} }));
-    await expect(hello(refused)).rejects.toThrow(/closed 4401/);
+    await expect(hello(open())).rejects.toThrow(/closed 4403/);
     await waitFor(() => looks === 1);
     expect((await hello(open())).protocol).toBe(PROTOCOL_VERSION);
     expect(looks).toBe(1);
@@ -381,5 +387,28 @@ runIf('phone sockets', () => {
     for (const method of ['state.get', 'char.seen']) expect((await post(`/${key}/rpc`, { id: 1, method, params: { id: 'c_none' } }, me)).status).toBe(400);
     expect((await post(`/${key}/rpc`, call, { ...me, origin: 'https://evil.example' })).status).toBe(403);
     expect((await fetch(`http://127.0.0.1:${api.port}/${key}/rpc`, { method: 'POST', body: '{', headers: me })).status).toBe(400);
+  });
+
+  it('reads a POST body whole, a character split across its chunks and all, and lets a dropped one go', async () => {
+    const api = await boot();
+    const headers = { 'tailscale-user-login': 'me@example.com', 'content-type': 'application/json' };
+    const body = Buffer.from(JSON.stringify({ id: 1, method: 'char.answer', params: { id: 'c_ö', answer: 'approve' } }));
+    const split = body.indexOf(Buffer.from('ö')) + 1;
+    const answer = await new Promise<string>((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port: api.port, path: `/${key}/rpc`, method: 'POST', headers: { ...headers, 'content-length': body.length } },
+        (res) => { let text = ''; res.on('data', (d) => { text += d; }); res.on('end', () => resolve(text)); });
+      req.on('error', reject);
+      req.write(body.subarray(0, split));
+      setTimeout(() => req.end(body.subarray(split)), 50);
+    });
+    expect(JSON.parse(answer)).toMatchObject({ error: { code: 'not_found', message: expect.stringContaining('c_ö') } });
+
+    const dropped = http.request({ host: '127.0.0.1', port: api.port, path: `/${key}/rpc`, method: 'POST', headers: { ...headers, 'content-length': 100 } });
+    dropped.on('error', () => {});
+    dropped.write('{"id":1,');
+    await new Promise((r) => setTimeout(r, 50));
+    dropped.destroy();
+    await new Promise((r) => setTimeout(r, 50));
+    expect((await fetch(`http://127.0.0.1:${api.port}/${key}/`)).status).toBe(200);
   });
 });

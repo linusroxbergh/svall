@@ -59,6 +59,14 @@ describe('condenseTurnsCodex', () => {
     expect(condenseTurnsCodex(text, 1, { toolLinks: true })).toBe('AGENT: [tool: shell] Here are the ideas. [links: https://example.com/doc https://example.com/more]');
     expect(condenseTurnsCodex(text, 10)).not.toContain('example.com');
   });
+
+  // a /[.,;:!?]+$/ over a long run of dots backtracks from every one of them
+  it('reads a tool call with a URL of tens of thousands of dots in one pass', () => {
+    const long = line({ type: 'response_item', payload: { type: 'function_call', name: 'shell', arguments: `https://x.test/${'.'.repeat(60_000)}a.` } });
+    const started = performance.now();
+    expect(condenseTurnsCodex(long, 1, { toolLinks: true })).toMatch(/^AGENT: \[tool: shell] \[links: https:\/\/x\.test\/\.+…$/);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
 });
 
 describe('lastTokenCount', () => {

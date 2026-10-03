@@ -4,10 +4,10 @@ import fs from 'node:fs';
 import { promisify } from 'node:util';
 import QRCode from 'qrcode';
 import type { MobileStatus } from '@svall/protocol';
-import { MOBILE_DIST } from './api/bundle.js';
 import { repoRoot, resolvePaths } from './paths.js';
 import type { Phones } from './phones.js';
 import { PRIVATE, PRIVATE_HTTPS_PORT, SHIM, profileLabel } from './profile.js';
+import { mobileDist } from './runtime.js';
 
 export type MobileDeps = {
   run(cmd: string, args: string[], cwd?: string): Promise<string>;
@@ -69,7 +69,7 @@ export function phoneKey(file: string, initial: string): { get(): string; rotate
   };
 }
 
-export const buildBundle = (d: MobileDeps): Promise<string> =>
+const buildBundle = (d: MobileDeps): Promise<string> =>
   d.run('pnpm', ['--filter', '@svall/desktop-web', 'build:mobile'], repoRoot());
 
 // a port is part of the origin, so each fleet on its own port is its own app on the phone
@@ -126,7 +126,7 @@ export function servesTarget(json: string, host: string, port: number, target: s
 }
 
 /** Whether the port's link carries `key`, wherever the daemon behind it was. */
-export function servesKey(json: string, host: string, port: number, key: string): boolean {
+function servesKey(json: string, host: string, port: number, key: string): boolean {
   return !!(JSON.parse(json) as ServeStatus).Web?.[`${host}:${port}`]?.Handlers?.['/']?.Proxy?.endsWith(`/${key}`);
 }
 
@@ -157,7 +157,7 @@ export type Mobile = {
 };
 
 /** The link as last seen, which a push reads rather than asking tailscale: its https url while served. */
-export type Served = { served(): string | undefined };
+type Served = { served(): string | undefined };
 
 /** Looks at the link, and again every `ms` while a look fails and `wanted` holds: at login tailscale may still be starting. */
 export function watchServed(mobile: Pick<Mobile, 'get'>, wanted: () => boolean, ms: number): () => void {
@@ -214,7 +214,7 @@ export function mobileControl(d: MobileDeps, opts: {
     else if (enable === true && other) throw new Error(`https port ${port} already serves another fleet or site: turn that one off with tailscale serve --https=${port} off, or set mobile.httpsPort to a free port in this fleet's config.json and restart it`);
     // an on turns the key over only once tailscale and the page are ready, so one that fails leaves a working link alone
     if (enable === true) {
-      if (!d.exists(MOBILE_DIST)) await buildBundle(d);
+      if (!d.exists(mobileDist)) await buildBundle(d);
       opts.rotateKey();
     }
     const target = fleetTarget(d, opts.home);
@@ -238,19 +238,30 @@ export function mobileControl(d: MobileDeps, opts: {
       qr: await QRCode.toDataURL(url, { margin: 1, width: 320 }),
     };
     // the mapping outlives the checkout it was made from: a page cleaned away leaves the switch on over nothing
-    if (serving && !d.exists(MOBILE_DIST)) status.pageMissing = true;
+    if (serving && !d.exists(mobileDist)) status.pageMissing = true;
     return status;
   };
 
   // a look that cannot reach tailscale leaves what was seen; a change always replaces it, since the key turned over
   let served: string | undefined;
-  const status = async (enable?: boolean): Promise<MobileStatus> => {
+  const settle = async (enable?: boolean): Promise<MobileStatus> => {
     let s: MobileStatus;
     try { s = await read(enable); } catch (e) {
       s = { serving: false, url: '', port, logins: logins(), phones: opts.phones.list(), error: reason(e) };
     }
     if (enable !== undefined || !s.error) served = s.serving ? s.url : undefined;
     return s;
+  };
+  // one at a time: a look still running when a change turns the key over would serve the fleet again under the new key.
+  // A look asked for meanwhile takes the answer of the last one queued
+  let queued: Promise<MobileStatus> | undefined;
+  const status = (enable?: boolean): Promise<MobileStatus> => {
+    if (enable === undefined && queued) return queued;
+    const run = () => settle(enable);
+    const next = (queued ?? Promise.resolve()).then(run, run);
+    queued = next;
+    void next.then(() => { if (queued === next) queued = undefined; });
+    return next;
   };
 
   return { get: () => status(), set: (enabled) => status(enabled), served: () => served, logins };

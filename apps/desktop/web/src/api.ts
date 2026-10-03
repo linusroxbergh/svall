@@ -1,12 +1,12 @@
-import { PROTOCOL_VERSION, serverWait, type Event, type MethodName, type Params, type Response, type Result } from '@svall/protocol';
+import { ApiError, HelloReply, LOGIN_REFUSED, PROTOCOL_VERSION, serverWait, type Event, type MethodName, type Params, type Response, type Result } from '@svall/protocol';
+
+export { ApiError };
 
 // where svalld answers, and the token to say on arrival; a socket the proxy has already vouched for has none
-export type Endpoint = { url: string; token?: string };
+type Endpoint = { url: string; token?: string };
 
-export type Status = 'connecting' | 'online' | 'offline' | 'outdated';
-export class ApiError extends Error {
-  constructor(public code: string, message: string) { super(message); }
-}
+// refused: the proxy brought the page from a tailnet login the fleet does not accept
+export type Status = 'connecting' | 'online' | 'offline' | 'outdated' | 'refused';
 
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> };
 type Opts = { WS?: typeof WebSocket; minDelay?: number; maxDelay?: number; callTimeout?: number };
@@ -22,8 +22,9 @@ export class Api {
   private callTimeout: number;
   private ws?: WebSocket;
   private online = false;
-  // a daemon on another protocol stays reported as such across retries, until one answers in ours or none answers
-  private outdated = false;
+  // a daemon on another protocol, or one that refuses this login, stays reported as such across retries, until one
+  // admits the page or none answers; the owner's login can still be on its way to the daemon, so the retries go on
+  private held?: 'outdated' | 'refused';
   private next = 1;
   private messages = 0;
   private pending = new Map<number, Pending>();
@@ -80,7 +81,7 @@ export class Api {
   }
 
   private open(): void {
-    if (!this.outdated) this.onStatus('connecting');
+    if (!this.held) this.onStatus('connecting');
     const ws = new this.WS(this.endpoint.url);
     this.ws = ws;
     let answered = false;
@@ -93,14 +94,15 @@ export class Api {
       let msg: Response | Event;
       try { msg = JSON.parse(String(ev.data)) as Response | Event; } catch { return; }
       if (!this.online) {
-        const hello = 'result' in msg ? msg.result as { ok?: boolean; protocol?: number } : undefined;
-        if (hello?.ok) answered = true;
-        if (hello?.ok && hello.protocol !== PROTOCOL_VERSION) {
-          this.outdated = true;
+        const hello = HelloReply.safeParse(msg);
+        if (!hello.success) return;
+        answered = true;
+        if (hello.data.result.protocol !== PROTOCOL_VERSION) {
+          this.held = 'outdated';
           this.onStatus('outdated');
           ws.close();
-        } else if (hello?.ok) {
-          this.outdated = false;
+        } else {
+          this.held = undefined;
           this.online = true;
           this.delay = this.minDelay;
           this.onStatus('online');
@@ -117,14 +119,15 @@ export class Api {
       else p.resolve(msg.result);
     };
     ws.onerror = () => { /* onclose follows */ };
-    ws.onclose = () => {
+    ws.onclose = (ev) => {
       if (this.ws !== ws) return;
       this.online = false;
       for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error('svalld connection closed')); }
       this.pending.clear();
       if (this.stopped) return;
-      if (!answered) this.outdated = false;
-      if (!this.outdated) this.onStatus('offline');
+      if (ev.code === LOGIN_REFUSED) { this.held = 'refused'; this.onStatus('refused'); }
+      else if (!answered) this.held = undefined;
+      if (!this.held) this.onStatus('offline');
       this.timer = setTimeout(() => this.open(), this.delay);
       this.delay = Math.min(this.delay * 2, this.maxDelay);
     };

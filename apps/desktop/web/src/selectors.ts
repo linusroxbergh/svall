@@ -74,11 +74,7 @@ export const statusOf = (c: Character): DisplayStatus => {
 
 export const isUnread = (c: Character): boolean => c.unread || !!c.second?.unread;
 
-// the fuller of the character's contexts: the one nearer to trouble
-export const contextPctOf = (c: Character): number | undefined => {
-  const all = [c.agent?.contextPct, c.second?.agent?.contextPct].filter((n): n is number => n !== undefined);
-  return all.length ? Math.max(...all) : undefined;
-};
+export { contextPctOf } from '@svall/protocol';
 
 export const DISPLAY_STATUSES: DisplayStatus[] = ['working', 'idle', 'blocked', 'done', 'shell'];
 

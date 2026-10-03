@@ -1,11 +1,12 @@
-import type { ZodTypeAny } from 'zod';
-import { methods, type MethodName, type ParsedParams, type Request, type Response, type Result } from '@svall/protocol';
+import { z, type ZodTypeAny } from 'zod';
+import { ERROR_CODES, methods, type ErrorCode, type MethodName, type ParsedParams, type Request, type Response, type Result } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import type { Mobile } from '../mobile.js';
 import type { PushStore } from '../push/store.js';
 import type { CodexPaths } from '../codex/install.js';
-import { rootIdOf, scanResources, type ClaudePaths } from '../resources/scan.js';
+import type { ClaudePaths } from '../paths.js';
+import { rootIdOf, scanResources } from '../resources/scan.js';
 import type { Store } from '../store.js';
 import type { TerminalHub, Viewer } from '../terminals.js';
 import type { FetchUsage } from '../usage/usage.js';
@@ -18,7 +19,7 @@ const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.st
 
 type Handlers = { [M in MethodName]: (p: ParsedParams<M>, ctx: Ctx) => Promise<Result<M>> | Result<M> };
 
-export const handlers: Handlers = {
+const handlers: Handlers = {
   'state.get': (_p, { store }) => store.state,
   'island.create': (p, { fleet }) => fleet.createIsland(p),
   'island.update': (p, { fleet }) => fleet.updateIsland(p.id, p),
@@ -94,12 +95,13 @@ export async function dispatch(req: Request, ctx: Ctx): Promise<Response> {
   if (!def) return { id: req.id, error: { code: 'unknown_method', message: `unknown method ${req.method}` } };
   if (DESKTOP_ONLY.has(req.method) && ctx.viewer.kind === 'phone') return { id: req.id, error: { code: 'forbidden', message: `${req.method} is not open to a phone` } };
   const parsed = def.params.safeParse(req.params ?? {});
-  if (!parsed.success) return { id: req.id, error: { code: 'invalid_params', message: parsed.error.message } };
+  if (!parsed.success) return { id: req.id, error: { code: 'invalid_params', message: z.prettifyError(parsed.error) } };
   try {
     const handler = handlers[req.method as MethodName] as (p: unknown, ctx: Ctx) => unknown;
     return { id: req.id, result: await handler(parsed.data, ctx) };
   } catch (e) {
-    const err = e as Error & { code?: string };
-    return { id: req.id, error: { code: err.code ?? 'internal', message: err.message } };
+    const err = e as Error & { code?: unknown };
+    const code = (ERROR_CODES as readonly unknown[]).includes(err.code) ? err.code as ErrorCode : 'internal';
+    return { id: req.id, error: { code, message: err.message } };
   }
 }

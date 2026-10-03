@@ -5,10 +5,10 @@ import { PROTOCOL_VERSION } from '@svall/protocol';
 class Socket {
   static all: Socket[] = [];
   sent: { id?: number; method?: string }[] = [];
-  onopen?: () => void; onmessage?: (ev: { data: string }) => void; onerror?: () => void; onclose?: () => void;
+  onopen?: () => void; onmessage?: (ev: { data: string }) => void; onerror?: () => void; onclose?: (ev: { code: number }) => void;
   constructor(public url: string) { Socket.all.push(this); }
   send(json: string): void { this.sent.push(JSON.parse(json) as { id?: number; method?: string }); }
-  close(): void { this.onclose?.(); }
+  close(): void { this.onclose?.({ code: 1000 }); }
   reply(msg: object): void { this.onmessage?.({ data: JSON.stringify(msg) }); }
   hello(): void { this.reply({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } }); }
   asked(method: string): number { return this.sent.find((m) => m.method === method)!.id!; }

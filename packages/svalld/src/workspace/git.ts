@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import type { ChangedFile, DiffBase } from '@svall/protocol';
 
-export type GitResult = { code: number; stdout: Buffer };
+type GitResult = { code: number; stdout: Buffer };
 
 // a git that hangs on a lock or a credential prompt would hold its caller for good
 const TIMEOUT_MS = 10_000;
