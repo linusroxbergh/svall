@@ -11,7 +11,7 @@ import { codexHookCommand, codexPaths } from '../src/codex/install.js';
 import { CLAUDE_HOOKS } from '../src/hooks/receiver.js';
 import { launchdPlist, plistCurrent, plistRun, takenOverBy } from '../src/launchd.js';
 import { isOurs, resolvePaths } from '../src/paths.js';
-import { BUNDLE_ID, LAUNCHD_LABEL, PRIVATE, profileHome, profileLabel } from '../src/profile.js';
+import { BUNDLE_ID, LAUNCHD_LABEL, PRIVATE, profileHome, profileLabel, profileOf } from '../src/profile.js';
 import { bundleRuntime, checkoutRuntime, releaseRuntime, type Runtime } from '../src/runtime.js';
 import { readJsonSettings, writeJsonSettings } from '../src/settings-file.js';
 import { installHomeTemplate, installHookScripts, refreshFleetPlists, runSetup, setupHome, shimText, shimsCurrent } from '../src/setup.js';
@@ -861,6 +861,21 @@ describe('refreshFleetPlists', () => {
     await refreshFleetPlists({ homes: [work], runtime: now, launchAgentsDir: la, launchctl: false, takeOver: false });
     expect(plistCurrent({ home: work, label: profileLabel('work'), launchAgentsDir: la, runtime: other })).toBe(true);
     await refreshFleetPlists({ homes: [work], runtime: now, launchAgentsDir: la, launchctl: false, takeOver: true });
+    expect(plistCurrent({ home: work, label: profileLabel('work'), launchAgentsDir: la, runtime: now })).toBe(true);
+  });
+
+  it('reports a fleet whose config svalld would refuse, and still refreshes the ones after it', async () => {
+    const u = makeHome();
+    const la = path.join(u, 'la');
+    const [bad, work] = [path.join(u, '.svall-bad'), path.join(u, '.svall-work')];
+    for (const home of [bad, work]) {
+      fs.mkdirSync(home);
+      await setupHome({ home, label: profileLabel(profileOf(home)), runtime: bundleRuntime('/Old/Svall.app'), launchAgentsDir: la, launchctl: false });
+    }
+    fs.writeFileSync(path.join(bad, 'config.json'), '{}');
+    const now = bundleRuntime('/Applications/Svall.app');
+    const { done } = await refreshFleetPlists({ homes: [bad, work], runtime: now, launchAgentsDir: la, launchctl: false, takeOver: false });
+    expect(done).toContainEqual(`left ${bad}: ${path.join(bad, 'config.json')} is not read any more: this fleet's settings are in ${path.join(bad, 'fleet.json')} and ${path.join(bad, 'node.json')}. Move anything you still want from it into them and delete it.`);
     expect(plistCurrent({ home: work, label: profileLabel('work'), launchAgentsDir: la, runtime: now })).toBe(true);
   });
 });

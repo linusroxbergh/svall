@@ -131,11 +131,16 @@ export async function refreshFleetPlists(o: { homes: string[]; runtime: Runtime;
     if (name === PRIVATE || plistCurrent({ home, label, launchAgentsDir: o.launchAgentsDir, runtime: o.runtime })) continue;
     const owner = o.takeOver ? undefined : takenOverBy(readOrUndefined(path.join(o.launchAgentsDir, `${label}.plist`)), o.runtime);
     if (owner) { done.push(`left ${home}, which ${owner} runs`); continue; }
-    done.push(...await setupHome({ home, label, runtime: o.runtime, launchAgentsDir: o.launchAgentsDir, launchctl: false }));
-    // a fleet the user left stopped stays stopped
-    if (o.launchctl && await isLoaded(label)) {
-      done.push(await bootstrapAgent(o.launchAgentsDir, label));
-      restarted.push(label);
+    // one fleet that cannot be set up, such as one whose config svalld would refuse, must not cost the others their refresh
+    try {
+      done.push(...await setupHome({ home, label, runtime: o.runtime, launchAgentsDir: o.launchAgentsDir, launchctl: false }));
+      // a fleet the user left stopped stays stopped
+      if (o.launchctl && await isLoaded(label)) {
+        done.push(await bootstrapAgent(o.launchAgentsDir, label));
+        restarted.push(label);
+      }
+    } catch (e) {
+      done.push(`left ${home}: ${(e as Error).message}`);
     }
   }
   return { done, restarted };
