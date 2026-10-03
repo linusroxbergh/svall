@@ -59,6 +59,16 @@ function shimDirOnPath(d: PreflightDeps): Check {
 // 1 is the CLI's own "not signed in"; anything else (a timeout, an unknown subcommand) leaves it unknown
 const exitCode = (e: unknown): unknown => (e as { code?: unknown }).code;
 
+async function signedIn(d: PreflightDeps, kind: AgentKind): Promise<boolean | undefined> {
+  const a = AGENTS[kind];
+  try {
+    // the fleet's API keys ride along, as they do into a character's shell
+    return a.loggedIn(await d.run(a.bin, a.loginArgs, { path: d.agentPath, env: d.keys }));
+  } catch (e) {
+    return exitCode(e) === 1 ? false : undefined;
+  }
+}
+
 async function agentCheck(d: PreflightDeps, kind: AgentKind, version: string | Error | undefined, found: AgentKind[]): Promise<Check> {
   const a = AGENTS[kind];
   if (version === undefined) {
@@ -68,19 +78,15 @@ async function agentCheck(d: PreflightDeps, kind: AgentKind, version: string | E
       : { name: kind, status: 'skip', detail: 'not installed' };
   }
   if (version instanceof Error) return { name: kind, status: 'warn', detail: firstLine(version.message) };
+  const login = await signedIn(d, kind);
   if (!versionOk(a, version)) {
-    return { name: kind, status: 'warn', detail: `${version}: Svall needs ${a.minVersion!.join('.')} or newer; update ${a.label}` };
+    const old = `${version}: Svall needs ${a.minVersion!.join('.')} or newer; update ${a.label}`;
+    return { name: kind, status: 'warn', detail: login === false ? `${old}; not signed in: ${a.loginHint}` : old };
   }
-  try {
-    // the fleet's API keys ride along, as they do into a character's shell
-    return a.loggedIn(await d.run(a.bin, a.loginArgs, { path: d.agentPath, env: d.keys }))
-      ? { name: kind, status: 'ok', detail: `${version}, signed in` }
-      : { name: kind, status: 'warn', detail: `${version}, not signed in: ${a.loginHint}` };
-  } catch (e) {
-    return exitCode(e) === 1
-      ? { name: kind, status: 'warn', detail: `${version}, not signed in: ${a.loginHint}` }
-      : { name: kind, status: 'warn', detail: `${version}; couldn't tell whether it is signed in` };
-  }
+  if (login === undefined) return { name: kind, status: 'warn', detail: `${version}; couldn't tell whether it is signed in` };
+  return login
+    ? { name: kind, status: 'ok', detail: `${version}, signed in` }
+    : { name: kind, status: 'warn', detail: `${version}, not signed in: ${a.loginHint}` };
 }
 
 async function agentChecks(d: PreflightDeps): Promise<Check[]> {
