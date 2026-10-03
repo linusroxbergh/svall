@@ -3,6 +3,7 @@ import { app } from './boot.js';
 import { Board } from './Board.js';
 import { revealFile, shim } from './bridge.js';
 import { ConfirmClose } from './ConfirmClose.js';
+import { ContextMenu } from './ContextMenu.js';
 import { ConfirmDeleteIsland } from './ConfirmDeleteIsland.js';
 import { FleetPicker } from './FleetPicker.js';
 import { FleetSummary } from './FleetSummary.js';
@@ -110,6 +111,7 @@ export function App() {
       <ScribeAsk />
       <FleetPicker />
       <LinkAsk />
+      <ContextMenu />
     </div>
   );
 }

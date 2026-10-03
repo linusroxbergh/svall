@@ -11,7 +11,6 @@ final class ShellRouter {
     private let browsers: BrowserManager
     private let keys = KeyMonitor()
     private let notifier = Notifier()
-    private let menu = PageMenu()
     private var sentConfigErrors = false
     // whether a page panel holds a rect of the surfaces
     private var holding = false
@@ -49,8 +48,6 @@ final class ShellRouter {
         browsers.onState = { [weak self] s in self?.bridge.send(.browserState(s)) }
         browsers.onOpened = { [weak self] from, tab, url in self?.bridge.send(.browserOpened(from: from, tab: tab, url: url)) }
         browsers.onClosed = { [weak self] tab in self?.bridge.send(.browserClosed(tab: tab)) }
-
-        menu.onPick = { [weak self] id in self?.bridge.send(.menuPick(id: id)) }
 
         notifier.onPermission = { [weak self] state in self?.bridge.send(.notifyPermission(state)) }
         notifier.onOpen = { [weak self] key in self?.open(key) }
@@ -234,8 +231,6 @@ final class ShellRouter {
             webView.pageZoom = factor
             surfaces.setZoom(factor, fontDelta: fontDelta)
             browsers.setZoom(factor)
-        case .menu(let x, let y, let items):
-            menu.show(items, x: x, y: y, in: webView)
         case .browserShow(let tab, let rect, let url, let focus):
             browsers.show(tab: tab, rect: rect, url: url, focus: focus ?? true)
         case .browserMove(let tab, let rect):

@@ -5,10 +5,6 @@ struct WebAttach: Decodable {
     let socket: String, session: String
 }
 
-struct WebMenuItem: Decodable {
-    let id: String, title: String, enabled: Bool
-}
-
 /// Messages from the webview. Mirrors ToShell in apps/desktop/web/src/bridge.ts.
 enum ToShell: Decodable {
     case connection
@@ -26,7 +22,6 @@ enum ToShell: Decodable {
     case copy(text: String)
     case openConfig(which: String)
     case zoom(factor: Double, fontDelta: Double)
-    case menu(x: Double, y: Double, items: [WebMenuItem])
     case browserShow(tab: String, rect: WebRect, url: String?, focus: Bool?)
     case browserMove(tab: String, rect: WebRect)
     case browserHide(tab: String)
@@ -50,7 +45,7 @@ enum ToShell: Decodable {
     case setupRun(agents: [String], found: [String], projects: String)
     case folderPick(start: String)
 
-    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, working, ok, home, quit, x, y, items, agents, found, projects, start }
+    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, working, ok, home, quit, agents, found, projects, start }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -70,7 +65,6 @@ enum ToShell: Decodable {
         case "copy": self = .copy(text: try c.decode(String.self, forKey: .text))
         case "openConfig": self = .openConfig(which: try c.decode(String.self, forKey: .which))
         case "zoom": self = .zoom(factor: try c.decode(Double.self, forKey: .factor), fontDelta: try c.decode(Double.self, forKey: .fontDelta))
-        case "menu": self = .menu(x: try c.decode(Double.self, forKey: .x), y: try c.decode(Double.self, forKey: .y), items: try c.decode([WebMenuItem].self, forKey: .items))
         case "browser.show": self = .browserShow(tab: try c.decode(String.self, forKey: .tab), rect: try c.decode(WebRect.self, forKey: .rect), url: try c.decodeIfPresent(String.self, forKey: .url), focus: try c.decodeIfPresent(Bool.self, forKey: .focus))
         case "browser.move": self = .browserMove(tab: try c.decode(String.self, forKey: .tab), rect: try c.decode(WebRect.self, forKey: .rect))
         case "browser.hide": self = .browserHide(tab: try c.decode(String.self, forKey: .tab))
@@ -120,7 +114,6 @@ enum FromShell {
     case updateAvailable(String?)
     case notifyOpen(key: String)
     case notifyAction(key: String, action: String, promptId: String)
-    case menuPick(id: String)
     case quitAsk
     case quitStop
     case fleets
@@ -150,7 +143,6 @@ enum FromShell {
         case .updateAvailable(let version): return ["type": "update.available", "version": version ?? ""]
         case .notifyOpen(let key): return ["type": "notify.open", "key": key]
         case .notifyAction(let key, let action, let promptId): return ["type": "notify.action", "key": key, "action": action, "promptId": promptId]
-        case .menuPick(let id): return ["type": "menu.pick", "id": id]
         case .quitAsk: return ["type": "quit.ask"]
         case .quitStop: return ["type": "quit.stop"]
         case .fleets: return ["type": "fleets"]

@@ -188,14 +188,11 @@ test('the side card stays collapsed until it is opened again, or a character is 
 test('Rename on a sidebar row names the character or the island in place', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('ren'), position: { x: 0, y: 0 } });
   const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
-  const { sent, receive } = await svall.nativeShell();
+  await svall.nativeShell();
   await svall.open('map');
-  const menus = async () => (await sent()).filter((m) => m.type === 'menu').length;
   const rename = async (row: string) => {
-    const before = await menus();
     await page.getByTestId(row).click({ button: 'right' });
-    await expect.poll(menus).toBe(before + 1);
-    await receive({ type: 'menu.pick', id: '0' });
+    await page.getByTestId('menu-rename').click();
   };
   const state = () => svall.api.call('state.get', {});
 

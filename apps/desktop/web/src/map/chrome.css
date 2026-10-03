@@ -44,6 +44,13 @@
 .linkask { position: fixed; z-index: var(--z-ask); display: flex; flex-direction: column; gap: var(--sp-sm); padding: var(--sp-lg); }
 .linkask-ref { font-size: var(--text-xs); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .linkask .btn { padding: var(--sp-md) var(--sp-lg); font-size: var(--text-md); }
+.ctx-menu { position: fixed; z-index: var(--z-ask); min-width: 148px; padding: var(--sp-xs); border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--surface-2); box-shadow: var(--shadow-2); font-size: var(--text-md); color: var(--ink); user-select: none; }
+.ctx-item { padding: var(--sp-sm) var(--sp-md); border-radius: var(--r-sm); cursor: default; }
+.ctx-item[data-active="true"] { background: var(--fill-2); }
+.ctx-item[data-danger] { color: color-mix(in srgb, var(--blocked) 70%, var(--ink)); }
+.ctx-item[aria-disabled="true"] { opacity: .55; }
+.ctx-sep { height: 1px; margin: var(--sp-xs) var(--sp-md); background: var(--line-soft); }
 
 .card-body { position: relative; flex: 1; min-height: 0; background: var(--surface-0); }
 /* the full card meets the map's edges, so it keeps no corners of its own */

@@ -8,7 +8,6 @@ export type Connection = { host: string; port: number; token: string };
 export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?: Record<string, string> };
 // what macOS allows for banners: unknown until the app has asked
 export type NotifyPermission = 'unknown' | 'denied' | 'granted';
-type MenuItem = { id: string; title: string; enabled: boolean };
 
 export type ToShell =
   | { type: 'connection' }
@@ -38,8 +37,6 @@ export type ToShell =
   | { type: 'copy'; text: string }
   | { type: 'openConfig'; which: 'ghostty' | 'fleet' }
   | { type: 'zoom'; factor: number; fontDelta: number }
-  // a right-click menu at a point in page pixels
-  | { type: 'menu'; x: number; y: number; items: MenuItem[] }
   // a banner in Notification Center; a new one for the same session key replaces the last
   | { type: 'notify.post'; key: string; title: string; subtitle: string; body: string; sound: boolean; actions: boolean; promptId?: string }
   | { type: 'notify.remove'; key: string }
@@ -86,7 +83,6 @@ export type FromShell =
   // a banner was clicked, or answered from its buttons; promptId is the question it showed
   | { type: 'notify.open'; key: string }
   | { type: 'notify.action'; key: string; action: 'approve' | 'deny'; promptId: string }
-  | { type: 'menu.pick'; id: string }
   | { type: 'setup.result'; step: 'plan' | 'run'; ok: boolean; json: string }
   | { type: 'folder.picked'; path: string }
   // the app is about to quit and waits for a quit.answer
@@ -162,19 +158,6 @@ export function openItem(bridge: Bridge, item: ContextItem): void {
   if (item.kind === 'folder') openFolder(bridge, item.ref);
   else if (item.kind === 'file') revealFile(bridge, item.ref);
   else openUrl(bridge, item.ref);
-}
-
-// an entry without run shows greyed out
-export type MenuEntry = { title: string; run?: () => void };
-let offMenu: (() => void) | undefined;
-
-// the shell draws the menu, so the surfaces above the page cannot cover it; a browser keeps its own
-export function showMenu(bridge: Bridge, e: Pick<MouseEvent, 'clientX' | 'clientY' | 'preventDefault'>, entries: MenuEntry[]): void {
-  if (!bridge.present) return;
-  e.preventDefault();
-  offMenu?.();
-  offMenu = bridge.onMessage((m) => { if (m.type === 'menu.pick') entries[Number(m.id)]?.run?.(); });
-  bridge.send({ type: 'menu', x: e.clientX, y: e.clientY, items: entries.map((it, n) => ({ id: String(n), title: it.title, enabled: Boolean(it.run) })) });
 }
 
 // the shell knows where each config lives, and creates one that is not there yet
