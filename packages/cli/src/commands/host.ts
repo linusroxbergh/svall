@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process';
 import os from 'node:os';
+import path from 'node:path';
 import { Command } from 'commander';
 import { PROTOCOL_VERSION } from '@svall/protocol';
 import { configDir, machineId } from '@svall/svalld/machine';
-import { askpassPath, releaseRoot, releaseVersion } from '@svall/svalld/release';
+import { askpassPath, isRelease, releaseRoot, releaseVersion } from '@svall/svalld/release';
 import { allowedSigners } from '../../../../scripts/install-release.mjs';
 import { sshVerify } from '../../../../scripts/release-manifest.mjs';
 import { printResult, table } from '../format.js';
@@ -32,6 +33,9 @@ function interactiveSsh(destination: string): Promise<number> {
   });
 }
 
+/** The signers a companion is checked against: the ones this release carries, or the checkout's. */
+export const controllerSigners = (): string => (isRelease() ? path.join(releaseRoot(), 'release', 'allowed_signers') : allowedSigners());
+
 function realDeps(emit: (e: StepEvent) => void, dir: string): HostDeps {
   return {
     emit,
@@ -42,7 +46,7 @@ function realDeps(emit: (e: StepEvent) => void, dir: string): HostDeps {
     controller: { release: releaseVersion(), protocol: PROTOCOL_VERSION, releaseRoot: releaseRoot() },
     machineId: () => machineId(dir),
     homedir: os.homedir(),
-    verify: sshVerify({ allowedSigners: allowedSigners() }),
+    verify: sshVerify({ allowedSigners: controllerSigners() }),
   };
 }
 
