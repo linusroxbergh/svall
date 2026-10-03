@@ -68,7 +68,7 @@ final class GhosttyRuntime {
     }
 
     private static func action(_ target: ghostty_target_s, _ action: ghostty_action_s) -> Bool {
-        // resolved here, on libghostty's thread: the pointer is only valid while the surface exists
+        // on the main thread, from ghostty_app_tick or a view's input; the surface pointer is resolved now, while it exists
         var view: SurfaceView?
         if target.tag == GHOSTTY_TARGET_SURFACE, let surface = target.target.surface {
             view = surfaceView(ghostty_surface_userdata(surface))
@@ -99,16 +99,11 @@ final class GhosttyRuntime {
     }
 
     private static func readClipboard(_ userdata: UnsafeMutableRawPointer?, _ location: ghostty_clipboard_e, _ state: UnsafeMutableRawPointer?) -> Bool {
-        guard location == GHOSTTY_CLIPBOARD_STANDARD else { return false }
-        // the pasteboard and the view belong to the main thread, and libghostty wants the request completed
-        // before the answer comes back, so a call from its own thread waits for the hop
-        let read: () -> Bool = {
-            guard let surface = surfaceView(userdata)?.surface,
-                  let text = NSPasteboard.general.string(forType: .string) else { return false }
-            text.withCString { ghostty_surface_complete_clipboard_request(surface, $0, state, false) }
-            return true
-        }
-        return Thread.isMainThread ? read() : DispatchQueue.main.sync(execute: read)
+        // on the main thread: a paste comes from a view's input, an OSC 52 read from ghostty_app_tick
+        guard location == GHOSTTY_CLIPBOARD_STANDARD, let surface = surfaceView(userdata)?.surface,
+              let text = NSPasteboard.general.string(forType: .string) else { return false }
+        text.withCString { ghostty_surface_complete_clipboard_request(surface, $0, state, false) }
+        return true
     }
 
     /// Ghostty's paste protection, OSC 52 authorization and clipboard-write = ask: the user confirms or denies in a sheet.
@@ -151,8 +146,9 @@ final class GhosttyRuntime {
     private static func writeClipboard(_ userdata: UnsafeMutableRawPointer?, _ location: ghostty_clipboard_e, _ content: UnsafePointer<ghostty_clipboard_content_s>?, _ len: Int, _ confirm: Bool) {
         guard location == GHOSTTY_CLIPBOARD_STANDARD, let content, len > 0 else { return }
         let view = surfaceView(userdata)
-        for i in 0..<len where String(cString: content[i].mime) == "text/plain" {
-            let text = String(cString: content[i].data)
+        for i in 0..<len {
+            guard let mime = content[i].mime, let data = content[i].data, String(cString: mime) == "text/plain" else { continue }
+            let text = String(cString: data)
             DispatchQueue.main.async {
                 let write = {
                     NSPasteboard.general.clearContents()

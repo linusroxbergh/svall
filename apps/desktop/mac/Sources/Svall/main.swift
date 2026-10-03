@@ -7,11 +7,7 @@ if let resources = Bundle.main.resourcePath.map({ $0 + "/ghostty" }), FileManage
 // an alert and a clean exit rather than a crash report, which would tell the user nothing
 guard ghostty_init(UInt(CommandLine.argc), CommandLine.unsafeArgv) == GHOSTTY_SUCCESS else {
     NSApplication.shared.setActivationPolicy(.regular)
-    NSApp.activate()
-    let alert = NSAlert()
-    alert.messageText = "The terminal could not start"
-    alert.informativeText = "Ghostty failed to initialise, so Svall cannot open."
-    alert.runModal()
+    NSAlert.tell("The terminal could not start", "Ghostty failed to initialise, so Svall cannot open.")
     exit(1)
 }
 

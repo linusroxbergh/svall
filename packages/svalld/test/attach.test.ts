@@ -131,7 +131,7 @@ runIf('desktop terminal attach', () => {
     await tmux.run('send-keys', '-t', c.tmux!.paneId, `${process.execPath} ${fixtures}/kitty-keys.cjs ${log}`, 'Enter');
     const r = await hub.attach(c.id);
     // a desktop client: tmux attached on a pty, TERM as Ghostty sets it
-    const client = spawn('python3', [path.join(fixtures, 'on-pty.py'), tmux.binary, '-S', r.socket, 'attach', '-t', r.session], {
+    const client = spawn('python3', [path.join(fixtures, 'on-pty.py'), tmux.binary, '-S', r.socket, 'attach', '-t', `=${r.session}`], {
       env: { ...process.env, ...ghostty }, stdio: ['pipe', 'ignore', 'inherit'],
     });
     cleanup.push(async () => { client.kill(); });
@@ -150,7 +150,7 @@ runIf('desktop terminal attach', () => {
     fs.writeFileSync(script, `printf '\\033]8;;https://example.com/pull/157\\007PR 157\\033]8;;\\007\\n'; sleep 30\n`);
     await tmux.run('respawn-pane', '-k', '-t', c.tmux!.paneId, `sh ${script}`);
     const r = await hub.attach(c.id);
-    const client = spawn('python3', [path.join(import.meta.dirname, 'fixtures', 'on-pty.py'), tmux.binary, '-S', r.socket, 'attach', '-t', r.session], {
+    const client = spawn('python3', [path.join(import.meta.dirname, 'fixtures', 'on-pty.py'), tmux.binary, '-S', r.socket, 'attach', '-t', `=${r.session}`], {
       env: { ...process.env, ...(ghostty ?? { TERM: 'xterm-256color' }) }, stdio: ['pipe', 'pipe', 'inherit'],
     });
     cleanup.push(async () => { client.kill(); });
@@ -158,6 +158,19 @@ runIf('desktop terminal attach', () => {
     client.stdout.on('data', (d: Buffer) => { seen += d.toString('latin1'); });
     await waitFor(() => seen.includes('PR 157'));
     expect(seen).toMatch(/\x1b\]8;[^;]*;https:\/\/example\.com\/pull\/157(\x07|\x1b\\)/);
+  });
+
+  it('attaches a desktop client to its own session only, never to one whose name starts the same', async () => {
+    const { fleet, tmux, hub, c } = await boot();
+    await fleet.openSecond(c.id);
+    const second = await hub.attach(c.id, 2);
+    // no v-<id> session, only the second terminal's v-<id>-2, which a prefix match would take
+    const client = spawn('python3', [path.join(import.meta.dirname, 'fixtures', 'on-pty.py'), tmux.binary, '-S', second.socket, 'attach', '-t', `=v-${c.id}`], {
+      stdio: ['pipe', 'ignore', 'inherit'],
+    });
+    cleanup.push(async () => { client.kill(); });
+    await new Promise((resolve) => client.on('exit', resolve));
+    expect(await tmux.run('list-clients', '-F', '#{session_name}')).not.toContain(second.session);
   });
 
   it('expands ~ in a new character cwd', async () => {

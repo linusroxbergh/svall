@@ -201,7 +201,7 @@ export function installHookScripts(paths: Paths, helper: string | undefined = ho
   const tmp = `${paths.hookHelper}.${process.pid}.tmp`;
   try {
     // a checkout's build older than its sources would run in place of newer scripts
-    if (!helper || !isExecutable(helper) || hookHelperSources.some((s) => fs.statSync(s).mtimeMs > fs.statSync(helper).mtimeMs)) {
+    if (!helper || !isExecutable(helper) || hookHelperSources().some((s) => fs.statSync(s).mtimeMs > fs.statSync(helper).mtimeMs)) {
       fs.rmSync(paths.hookHelper, { force: true });
       return;
     }

@@ -3,7 +3,7 @@ import AppKit
 /// The copy dragged to Applications, which an app opened from its disk image (or from wherever macOS moved it to run it)
 /// opens in its place.
 enum InstalledCopy {
-    static let folders = [URL(fileURLWithPath: "/Applications"), FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications")]
+    private static let folders = [URL(fileURLWithPath: "/Applications"), FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications")]
 
     /// Hands over to the copy in Applications when this app runs from a read-only volume, or asks for the drag when there is
     /// none yet, and quits either way; false when this app runs where it is.
@@ -16,7 +16,7 @@ enum InstalledCopy {
 
     /// The copy to open instead of the app at `me`: one in `folders` under its name, with its bundle id, at least its build
     /// (an older install is not opened in place of the newer image), and signed as it is.
-    static func instead(of me: URL, in folders: [URL] = folders) -> URL? {
+    private static func instead(of me: URL) -> URL? {
         guard let mine = Bundle(url: me) else { return nil }
         return folders.map { $0.appendingPathComponent(me.lastPathComponent) }.first { url in
             guard url.standardizedFileURL != me.standardizedFileURL, let copy = Bundle(url: url),
@@ -32,11 +32,7 @@ enum InstalledCopy {
         NSWorkspace.shared.openApplication(at: copy, configuration: NSWorkspace.OpenConfiguration()) { _, error in
             DispatchQueue.main.async {
                 if let error {
-                    let alert = NSAlert()
-                    alert.messageText = "Svall could not open the copy in Applications"
-                    alert.informativeText = "\(error.localizedDescription) Open Svall from your Applications folder."
-                    NSApp.activate()
-                    alert.runModal()
+                    NSAlert.tell("Svall could not open the copy in Applications", "\(error.localizedDescription) Open Svall from your Applications folder.")
                 }
                 NSApp.terminate(nil)
             }
@@ -44,17 +40,13 @@ enum InstalledCopy {
     }
 
     private static func askForDrag() {
-        let alert = NSAlert()
-        alert.messageText = "Move Svall to Applications"
-        alert.informativeText = "Drag Svall to the Applications folder, then open it from there."
-        NSApp.activate()
-        alert.runModal()
+        NSAlert.tell("Move Svall to Applications", "Drag Svall to the Applications folder, then open it from there.")
         NSApp.terminate(nil)
     }
 
     /// Whether `copy` passes the designated requirement of the app at `me` (the same team and bundle id, or for an ad-hoc
     /// build the same code) with every sealed file and nested bundle intact, as `codesign --verify --deep --strict` checks.
-    static func signedAlike(_ copy: URL, _ me: URL) -> Bool {
+    private static func signedAlike(_ copy: URL, _ me: URL) -> Bool {
         var mine: SecStaticCode?, theirs: SecStaticCode?, requirement: SecRequirement?
         guard SecStaticCodeCreateWithPath(me as CFURL, [], &mine) == errSecSuccess, let mine,
               SecCodeCopyDesignatedRequirement(mine, [], &requirement) == errSecSuccess, let requirement,
@@ -62,7 +54,7 @@ enum InstalledCopy {
         return SecStaticCodeCheckValidity(theirs, SecCSFlags(rawValue: kSecCSCheckNestedCode | kSecCSStrictValidate), requirement) == errSecSuccess
     }
 
-    static func releaseFromQuarantine(_ bundle: URL) {
+    private static func releaseFromQuarantine(_ bundle: URL) {
         removexattr(bundle.path, "com.apple.quarantine", XATTR_NOFOLLOW)
         guard let files = FileManager.default.enumerator(at: bundle, includingPropertiesForKeys: nil) else { return }
         for case let url as URL in files { removexattr(url.path, "com.apple.quarantine", XATTR_NOFOLLOW) }

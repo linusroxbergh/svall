@@ -1,16 +1,17 @@
 import Foundation
 
-/// The fleet's daemon, as the launchd job setup writes for a profile's home: launchd starts it only when the app asks,
-/// so it runs while the fleet's window is open. A home with no job (a test fleet's) runs whatever daemon its owner started,
-/// which a quit stops all the same.
+/// The fleet's daemon, from the launchd job setup writes, which starts it only when the app asks: while the fleet's window is
+/// open. A home with no job (a test fleet's) runs whatever daemon its owner started, which a quit stops all the same.
 enum FleetDaemon {
     private static var label: String? {
         Bundle.main.bundleIdentifier.map { $0 + ".svalld" + (SvallHome.directoryName.map { ".\($0)" } ?? "") }
     }
 
+    static func plistPath(label: String) -> String { NSHomeDirectory() + "/Library/LaunchAgents/\(label).plist" }
+
     private static var plist: String? {
         guard let label else { return nil }
-        let file = NSHomeDirectory() + "/Library/LaunchAgents/\(label).plist"
+        let file = plistPath(label: label)
         return FileManager.default.fileExists(atPath: file) ? file : nil
     }
 
@@ -30,16 +31,20 @@ enum FleetDaemon {
         }
     }
 
-    /// Ends the fleet when the daemon could not be asked to: the daemon first, so the hooks of the terminals closing after
-    /// it find nobody to clear the agents its next start resumes, then the tmux server with every terminal in it.
-    static func kill() {
-        if let label, plist != nil {
-            run("/bin/launchctl", ["kill", "SIGTERM", "gui/\(getuid())/\(label)"])
-            let port = SvallHome.path + "/port"
-            var waited = 0
-            while FileManager.default.fileExists(atPath: port), waited < 20 { usleep(100_000); waited += 1 }
+    /// Ends the fleet off the main thread when the daemon could not be asked to, then calls `done` on main: the daemon first, so
+    /// the hooks of the terminals closing after it find nobody to clear the agents its next start resumes, then the tmux server.
+    static func kill(then done: @escaping () -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            if let label, plist != nil {
+                run("/bin/launchctl", ["kill", "SIGTERM", "gui/\(getuid())/\(label)"])
+                let port = SvallHome.path + "/port"
+                var waited = 0
+                while FileManager.default.fileExists(atPath: port), waited < 20 { usleep(100_000); waited += 1 }
+            }
+            run(SvallHome.tmuxBinary, ["-S", SvallHome.path + "/tmux.sock", "kill-server"])
+            // by the run loop, not the main queue: a quit started from a main-queue block holds that queue while AppKit waits on it
+            RunLoop.main.perform(inModes: [.common], block: done)
         }
-        run(tmux, ["-S", SvallHome.path + "/tmux.sock", "kill-server"])
     }
 
     @discardableResult

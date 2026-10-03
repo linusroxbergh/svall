@@ -19,7 +19,6 @@ final class PageMenu: NSObject {
         let reload = NSMenuItem(title: "Reload", action: #selector(WKWebView.reload(_:)), keyEquivalent: "")
         reload.target = webView
         menu.addItem(reload)
-        // the point is in page pixels, and the page is zoomed
         let zoom = webView.pageZoom
         let point = NSPoint(x: x * zoom, y: webView.isFlipped ? y * zoom : webView.bounds.height - y * zoom)
         menu.popUp(positioning: nil, at: point, in: webView)

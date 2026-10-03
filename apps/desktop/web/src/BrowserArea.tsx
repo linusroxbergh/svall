@@ -93,7 +93,7 @@ export function BrowserArea({ id, aside }: { id: string; aside?: boolean }) {
       <div className="baddr">
         <button data-testid="browser-back" disabled={!view?.canGoBack} onClick={() => active && app.browser().go(active, 'back')}>‹</button>
         <button data-testid="browser-forward" disabled={!view?.canGoForward} onClick={() => active && app.browser().go(active, 'forward')}>›</button>
-        <button data-testid="browser-reload" disabled={!active} onClick={() => active && app.browser().go(active, 'reload')}>{view?.loading ? '×' : '↻'}</button>
+        <button data-testid="browser-reload" disabled={!active} onClick={() => active && app.browser().go(active, view?.loading ? 'stop' : 'reload')}>{view?.loading ? '×' : '↻'}</button>
         <input ref={input} data-testid="browser-address" className="mono" value={shown} placeholder="Search or enter a url"
           spellCheck={false} onChange={(e) => setDraft(e.target.value)} onFocus={(e) => e.target.select()}
           onKeyDown={(e) => {

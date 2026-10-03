@@ -5,15 +5,6 @@ private func sh(_ s: String) -> String {
     "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
 }
 
-// the page names the socket and session only; which binary a terminal runs is decided here: the one the daemon
-// names in the home, else a search. an app opened from Finder has no Homebrew on PATH, so the search adds it
-var tmux: String {
-    if let named = SvallHome.tmux, FileManager.default.isExecutableFile(atPath: named) { return named }
-    let path = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map(String.init)
-    let dirs = path + [NSHomeDirectory() + "/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"]
-    return dirs.map { $0 + "/tmux" }.first { FileManager.default.isExecutableFile(atPath: $0) } ?? "tmux"
-}
-
 /// Creates, positions, hides and frees one SurfaceView per character id, above the webview.
 final class SurfaceManager {
     private let runtime: GhosttyRuntime
@@ -51,9 +42,10 @@ final class SurfaceManager {
             return
         }
         guard let attach else { return }
-        let binary = tmux
-        // libghostty runs the command through a shell, so each field is single-quoted
-        let command = "\(sh(binary)) -S \(sh(attach.socket)) attach -t \(sh(attach.session))"
+        // the page names the socket and session only; which binary runs is decided here
+        let binary = SvallHome.tmuxBinary
+        // libghostty runs the command through a shell, so each field is single-quoted; `=` matches the session's whole name
+        let command = "\(sh(binary)) -S \(sh(attach.socket)) attach -t \(sh("=" + attach.session))"
         guard let view = SurfaceView(app: runtime.app, command: command, frame: overlay.frame(rect)) else {
             NSLog("ghostty_surface_new failed for %@", id)
             onFailed(id, "Ghostty could not open a terminal; see the app log")

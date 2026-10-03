@@ -10,7 +10,6 @@ final class DropWebView: WKWebView {
         (sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
     }
 
-    // the page is zoomed, so a window point is fewer page pixels than one
     func webPoint(_ windowPoint: NSPoint) -> (Double, Double) {
         let p = convert(windowPoint, from: nil)
         return (p.x / pageZoom, (isFlipped ? p.y : bounds.height - p.y) / pageZoom)
