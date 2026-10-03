@@ -20,18 +20,18 @@ function harness() {
   const calls: { method: string; params: Record<string, unknown> }[] = [];
   const handlers = new Set<(e: TermEvent) => void>();
   let painted = '';
-  const screen: Screen = {
+  const screen = {
     cols: 41, rows: 24,
-    write: (b) => { painted += new TextDecoder().decode(b); },
+    write: (b: Uint8Array) => { painted += new TextDecoder().decode(b); },
     reset: () => { painted = ''; },
-  };
+  } satisfies Screen;
   const api = {
     call: (method: string, params: Record<string, unknown>) => { calls.push({ method, params }); return Promise.resolve({ screen: b64('seed') }); },
     fire: (method: string, params: Record<string, unknown>) => { calls.push({ method, params }); },
   } as unknown as Api;
   const link = linkTerminal({ api, subscribe: (h) => { handlers.add(h); return () => handlers.delete(h); } }, 'c1', screen);
   const emit = (e: TermEvent) => { for (const h of [...handlers]) h(e); };
-  return { link, calls, emit, screen: () => painted, viewers: () => handlers.size };
+  return { link, calls, emit, size: screen, screen: () => painted, viewers: () => handlers.size };
 }
 
 describe('phone terminal', () => {
@@ -42,6 +42,17 @@ describe('phone terminal', () => {
     expect(h.screen()).toBe('seed');
     h.emit({ event: 'term.output', data: { id: 'c1', data: b64('+more') } });
     expect(h.screen()).toBe('seed+more');
+  });
+
+  it('sends a size the screen settled on while the open ran, and none when it held still', async () => {
+    const h = harness();
+    const opening = h.link.open();
+    h.size.cols = 50;
+    await opening;
+    expect(h.calls.slice(1)).toEqual([{ method: 'term.resize', params: { id: 'c1', cols: 50, rows: 24 } }]);
+    const still = harness();
+    await still.link.open();
+    expect(still.calls.map((c) => c.method)).toEqual(['term.open']);
   });
 
   it('ignores frames for another character', async () => {

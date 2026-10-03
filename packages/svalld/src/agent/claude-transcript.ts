@@ -1,5 +1,5 @@
 import { trimEnd } from '@svall/protocol';
-import { LINK, MAX_ENTRY, MAX_URLS, clip, jsonLines, orSkip } from './jsonl.js';
+import { LINK, MAX_URLS, clip, clipLine, jsonLines, orSkip } from './jsonl.js';
 
 type Block = { type: string; text?: string; name?: string; input?: unknown; content?: unknown };
 type Entry = { type?: string; isSidechain?: boolean; isMeta?: boolean; promptId?: string; timestamp?: string; origin?: { kind?: string }; message?: { content?: string | Block[] } };
@@ -52,10 +52,8 @@ export type Pending = { id: string; text: string; at: number };
 // that is not a person's. The hook fires for those too, and what it reports was never typed.
 const machine = (e: Entry): boolean => Boolean(e.origin?.kind) && e.origin?.kind !== 'human';
 
-// Claude Code writes a prompt down after its UserPromptSubmit hook, and a long turn can push it out
-// of the tail, so the reported prompt leads the list until its own entry shows up — or until one under
-// the same id shows it opened a turn nobody typed. An entry written since the hook means the reported
-// one was never the newest, and it is dropped instead.
+// Claude Code writes a prompt down after its hook, so the hook's leads until its entry shows up or one under its id shows
+// nobody typed it; an entry written since the hook, as when a long turn pushed it out of the tail, means it was never the newest
 function leads(all: Entry[], sent: { e: Entry }[], pending: Pending): boolean {
   if (all.some((e) => e.promptId === pending.id && (orSkip(() => submitted(e)) || machine(e)))) return false;
   return !(Date.parse(sent.at(-1)?.e.timestamp ?? '') > pending.at);
@@ -75,6 +73,6 @@ export function condenseTurnsClaude(text: string, turns: number, { toolLinks = f
     .filter((e) => !e.isSidechain)
     .map((e) => orSkip(() => render(e, toolLinks)))
     .filter((s): s is string => Boolean(s))
-    .map((s) => (s.length > MAX_ENTRY + 6 ? s.slice(0, MAX_ENTRY + 6) + '…' : s));
+    .map(clipLine);
   return turns > 0 ? rendered.slice(-turns).join('\n') : '';
 }

@@ -11,8 +11,8 @@ export const cellKey = (c: Cell): string => `${c.x},${c.y}`;
 const grid = (size: Size, value: boolean): Grid => Array.from({ length: size.h }, () => Array.from({ length: size.w }, () => value));
 const at = (g: Grid, x: number, y: number): boolean => g[y]?.[x] ?? false;
 
-// a rounded rectangle: a quarter-disc off each corner, radius a third of the short side; the seed is kept for later
-export function islandShape(size: Size, _seed: number): Grid {
+// a rounded rectangle: a quarter-disc off each corner, radius a third of the short side
+export function islandShape(size: Size): Grid {
   const { w, h } = size;
   const g = grid(size, true);
   const r = Math.max(1, Math.floor(Math.min(w, h) / 3));
@@ -25,17 +25,17 @@ export function islandShape(size: Size, _seed: number): Grid {
   return g;
 }
 
-export function landCells(size: Size, seed: number): Cell[] {
-  const g = islandShape(size, seed);
+export function landCells(size: Size): Cell[] {
+  const g = islandShape(size);
   const cells: Cell[] = [];
   for (let y = 0; y < size.h; y++) for (let x = 0; x < size.w; x++) if (g[y][x]) cells.push({ x, y });
   return cells;
 }
 
 // land cells in reading order, skipping any within Chebyshev distance SPACING of a cell already taken
-export function spacedCells(size: Size, seed: number, n: number): Cell[] {
+export function spacedCells(size: Size, n: number): Cell[] {
   const taken: Cell[] = [];
-  for (const c of landCells(size, seed)) {
+  for (const c of landCells(size)) {
     if (taken.length === n) break;
     if (!taken.some((t) => Math.max(Math.abs(t.x - c.x), Math.abs(t.y - c.y)) <= SPACING)) taken.push(c);
   }
@@ -43,13 +43,42 @@ export function spacedCells(size: Size, seed: number, n: number): Cell[] {
 }
 
 // the smallest near-square footprint whose land holds n characters SPACING apart, grown a cell at a time
-export function sizeForCrew(n: number, seed: number): Size {
+export function sizeForCrew(n: number): Size {
   let size: Size = { ...MIN_SIZE };
-  while (spacedCells(size, seed, n).length < n) size = size.w <= size.h + 1 ? { w: size.w + 1, h: size.h } : { w: size.w, h: size.h + 1 };
+  while (spacedCells(size, n).length < n) size = size.w <= size.h + 1 ? { w: size.w + 1, h: size.h } : { w: size.w, h: size.h + 1 };
   return size;
 }
 
-export const isLand = (island: { size: Size; seed: number }, cell: Cell): boolean => at(islandShape(island.size, island.seed), cell.x, cell.y);
+export const isLand = (island: { size: Size }, cell: Cell): boolean => at(islandShape(island.size), cell.x, cell.y);
+
+// at its largest against the cells a card is just under three wide, counting the rail of links down its
+// right, and three and a half tall, hanging from a little above its cell: crew stand in a grid this far
+// apart so the cards keep water between them
+const CREW_PITCH = { x: 3, y: 4 };
+// the cells between a crew member and the coast: half a card, so the card stands on visible land
+export const CREW_INSET = 2;
+
+// the ground a crew of n needs, and where each stands: a grid of at most `abreast` to a row, as square as that
+// allows, the last row centred and the whole grid moved further in from the coast until every cell of it is land
+export function crewGrid(n: number, abreast = 3): { size: Size; cells: Cell[] } {
+  if (n === 0) return { size: sizeForCrew(0), cells: [] };
+  const rows = Math.ceil(n / abreast), cols = Math.ceil(n / rows);
+  for (let m = CREW_INSET; ; m++) {
+    // a lone column stands a cell further in, so its card sits centred on an island of odd width
+    const mx = cols === 1 ? m + 1 : m;
+    const size = { w: CREW_PITCH.x * (cols - 1) + 1 + 2 * mx, h: CREW_PITCH.y * (rows - 1) + 1 + 2 * m };
+    const cells = Array.from({ length: n }, (_, i) => {
+      const row = Math.floor(i / cols), inRow = Math.min(cols, n - row * cols);
+      return { x: mx + CREW_PITCH.x * (i % cols) + Math.round((CREW_PITCH.x * (cols - inRow)) / 2), y: m + CREW_PITCH.y * row };
+    });
+    const land = new Set(landCells(size).map(cellKey));
+    if (cells.every((c) => land.has(cellKey(c)))) return { size, cells };
+  }
+}
+
+// the order crew are read in: by row, then along it
+export const byCell = (a: { id: string; cell: Cell }, b: { id: string; cell: Cell }): number =>
+  a.cell.y - b.cell.y || a.cell.x - b.cell.x || a.id.localeCompare(b.id);
 
 export const HOME_ISLAND = 'home';
 export const HOME_ROW = 1;

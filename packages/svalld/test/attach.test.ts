@@ -51,7 +51,7 @@ runIf('desktop terminal attach', () => {
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
     const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 200, staleSessionMs });
     const started = fleet.start();
-    cleanup.push(async () => { await started.catch(() => {}); fleet.stop(); await tmux.killServer(); });
+    cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
     const hub = new TerminalHub(fleet, tmux, store, silentLogger);
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
@@ -109,11 +109,12 @@ runIf('desktop terminal attach', () => {
 
   it('keeps resizing while the session it made has no client on it', async () => {
     const { tmux, hub, c } = await boot();
-    await hub.open(c.id, 90, 25, 2000, viewer());
+    const v = viewer();
+    await hub.open(c.id, 90, 25, 2000, v);
     expect((await tmux.run('show-options', '-w', '-t', c.tmux!.windowId, '-v', 'window-size')).trim()).toBe('manual');
     await hub.attach(c.id);
     expect((await tmux.run('show-options', '-w', '-t', c.tmux!.windowId, 'window-size')).trim()).toBe('');
-    await hub.resize(c.id, 100, 30, viewer());
+    await hub.resize(c.id, 100, 30, v);
     expect((await tmux.run('display-message', '-p', '-t', c.tmux!.windowId, '#{window_width}')).trim()).toBe('100');
   });
 

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Config } from '../src/config.js';
 import { tmuxConfText, tmuxTooOld } from '../src/tmux/conf.js';
 import { ControlClient } from '../src/tmux/control.js';
-import { SESSION, Tmux, rawPasteArgs, resolveTmux } from '../src/tmux/tmux.js';
+import { SESSION, Tmux, isShellCommand, rawPasteArgs, resolveTmux } from '../src/tmux/tmux.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
 const runIf = hasTmux() ? describe : describe.skip;
@@ -31,6 +31,25 @@ describe('tmuxTooOld', () => {
     expect(tmuxTooOld('tmux next-3.6')).toBe(false);
     expect(tmuxTooOld('tmux 4.0')).toBe(false);
     expect(tmuxTooOld('tmux master')).toBe(false);
+  });
+});
+
+describe('isShellCommand', () => {
+  it('knows the common shells and the one config.json names', () => {
+    expect(isShellCommand('-zsh')).toBe(true);
+    expect(isShellCommand('nu')).toBe(false);
+    expect(isShellCommand('nu', '/opt/homebrew/bin/nu')).toBe(true);
+    expect(isShellCommand('claude', '/opt/homebrew/bin/nu')).toBe(false);
+  });
+});
+
+describe('hasWindow', () => {
+  it('passes on a tmux that timed out rather than call the window gone', async () => {
+    const tmux = new Tmux('/nonexistent.sock', '/dev/null');
+    vi.spyOn(tmux, 'run').mockRejectedValue(Object.assign(new Error('timed out'), { killed: true }));
+    await expect(tmux.hasWindow('@1')).rejects.toThrow('timed out');
+    vi.spyOn(tmux, 'run').mockRejectedValue(new Error("can't find window: @1"));
+    expect(await tmux.hasWindow('@1')).toBe(false);
   });
 });
 
@@ -219,6 +238,12 @@ runIf('Tmux', () => {
     await new Promise((r) => setTimeout(r, 300));
     expect(reasons).toHaveLength(1);
     c.stop();
+  });
+
+  it('start rejects when tmux refuses the attach', async () => {
+    const t = await boot();
+    const c = new ControlClient({ binary: t.binary, socket: t.socket, conf: `${lastHome}/tmux.conf`, session: 'nosuch' });
+    await expect(c.start()).rejects.toThrow("tmux refused the attach: can't find session: nosuch");
   });
 
   it('start rejects when the client does not become ready in time', async () => {

@@ -4,13 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SPACING, emptyState, isLand, landCells, sizeForCrew, type AgentKind, type FleetState } from '@svall/protocol';
+import { SPACING, crewGrid, emptyState, isLand, landCells, sizeForCrew, type AgentKind, type FleetState } from '@svall/protocol';
 import { Config } from '../src/config.js';
 import { docsDir } from '../src/docs.js';
 import type { Proc } from '../src/dormancy.js';
-import { Dormant, Fleet, Invalid, NotFound } from '../src/fleet.js';
+import { Dormant, Invalid, NotFound } from '../src/errors.js';
+import { Fleet } from '../src/fleet.js';
 import { startHookReceiver, type HookEvent } from '../src/hooks/receiver.js';
-import { aboveHome, crewGrid, placementOk } from '../src/layout.js';
+import { aboveHome, placementOk } from '../src/layout.js';
 import type { Deps as LinkDeps } from '../src/links/refresh.js';
 import { silentLogger, type Logger } from '../src/log.js';
 import { resolvePaths } from '../src/paths.js';
@@ -40,7 +41,7 @@ runIf('Fleet', () => {
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
     const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 150, processes: async () => procs, ...deps });
     const started = fleet.start();
-    cleanup.push(async () => { await started.catch(() => {}); fleet.stop(); await tmux.killServer(); });
+    cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
     // a test lays out from mission control alone unless it asks for the island a new fleet opens with
     if (!opening) for (const i of Object.values(store.state.islands)) if (i.kind !== 'home') fleet.deleteIsland(i.id);
@@ -50,12 +51,23 @@ runIf('Fleet', () => {
     return { fleet, store, tmux, home, procs };
   }
 
+  // the next listing tmux gives is handed back only once released
+  function holdListing(tmux: Tmux) {
+    const real = tmux.listWindows.bind(tmux);
+    let taken!: () => void;
+    let release!: () => void;
+    const listed = new Promise<void>((r) => { taken = r; });
+    const held = new Promise<void>((r) => { release = r; });
+    vi.spyOn(tmux, 'listWindows').mockImplementationOnce(async () => { const r = await real(); taken(); await held; return r; });
+    return { listed, release };
+  }
+
   it('creates islands and characters backed by tmux windows', async () => {
     const { fleet, store, tmux } = await boot();
     const island = fleet.createIsland({ name: 'feature' });
     const c = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
     expect(c.name).toMatch(/^[a-z]+ [a-z]+$/);
-    expect(landCells(island.size, island.seed)).toContainEqual(c.cell);
+    expect(landCells(island.size)).toContainEqual(c.cell);
     expect((await tmux.listWindows()).map((w) => w.name)).toEqual([c.id]);
     const c2 = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp', name: 'two', command: 'echo started-$SVALL_CHAR_ID' });
     // the island reshaped around the pair, so the first one moved with it
@@ -130,8 +142,8 @@ runIf('Fleet', () => {
     const c = await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
     fleet.arrangeIslands(2);
     const state = store.state;
-    expect(state.islands[a.id].size).toEqual(crewGrid(1, a.seed).size);
-    expect(state.islands[b.id].size).toEqual(sizeForCrew(0, b.seed));
+    expect(state.islands[a.id].size).toEqual(crewGrid(1).size);
+    expect(state.islands[b.id].size).toEqual(sizeForCrew(0));
     expect(isLand(state.islands[a.id], state.characters[c.id].cell)).toBe(true);
     expect(placementOk(state, state.islands[b.id])).toBe(true);
     expect(state.islands[b.id].position.x).toBeLessThan(20);
@@ -155,6 +167,20 @@ runIf('Fleet', () => {
       expect(placementOk(state, state.islands[id])).toBe(true);
       expect(aboveHome(state, state.islands[id])).toBe(true);
     }
+  });
+
+  it('brings back a hidden island a character is made or moved onto by cell', async () => {
+    const { fleet, store } = await boot();
+    const island = fleet.createIsland({ name: 'hidden' });
+    const away = fleet.createIsland({ name: 'away' });
+    fleet.updateIsland(island.id, { collapsed: true });
+    await fleet.createCharacter({ islandId: island.id, cwd: '/tmp', cell: { x: 3, y: 2 } });
+    expect(store.state.islands[island.id].collapsed).toBeUndefined();
+    const c = await fleet.createCharacter({ islandId: away.id, cwd: '/tmp' });
+    fleet.updateIsland(island.id, { collapsed: true });
+    fleet.moveCharacter(c.id, island.id, { x: 6, y: 2 });
+    expect(store.state.islands[island.id].collapsed).toBeUndefined();
+    for (const i of [island.id, away.id]) expect(placementOk(store.state, store.state.islands[i])).toBe(true);
   });
 
   it('runs text and streams output only when the pane is on', async () => {
@@ -191,7 +217,7 @@ runIf('Fleet', () => {
     const { fleet, store } = await boot();
     const island = fleet.createIsland({ name: 'two' });
     const c = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
-    fleet.stop();
+    await fleet.stop();
     const start = { charId: c.id, backend: 'claude' as const, term: 2 as const, name: 'SessionStart' as const, sessionId: '11111111-1111-4111-8111-111111111111', transcriptPath: '/t/b.jsonl' };
     fleet.onSocketEvent({ hook: start });
     expect(store.state.characters[c.id].agent).toBeUndefined();
@@ -213,7 +239,7 @@ runIf('Fleet', () => {
     const { fleet, store } = await boot();
     const island = fleet.createIsland({ name: 'two' });
     const c = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
-    fleet.stop();
+    await fleet.stop();
     store.update((d) => {
       d.characters[c.id].unread = true;
       d.characters[c.id].second = { tmux: { windowId: '@99', paneId: '%99' }, unread: true };
@@ -243,6 +269,19 @@ runIf('Fleet', () => {
     await tmux.run('send-keys', '-t', c.tmux!.paneId, 'C-c');
     await waitFor(() => !store.state.characters[c.id].agent);
     expect(store.state.characters[c.id].shell.lastOutputAt).toBeGreaterThan(0);
+  });
+
+  it('takes a pane at the shell config.json names for its prompt, which its agent has left', async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    await waitFor(async () => (await tmux.listWindows()).some((w) => w.name === c.id && w.command === 'sleep'));
+    store.update((d) => { d.characters[c.id].agent = { kind: 'claude', sessionId: 's', status: 'idle', lastActivityAt: 1 }; });
+    const twice = async () => { await fleet['poll']['tick'](); await fleet['poll']['tick'](); };
+    await twice();
+    expect(store.state.characters[c.id].agent).toBeDefined();
+    fleet['deps'].config.shell = '/opt/homebrew/bin/sleep';
+    await twice();
+    expect(store.state.characters[c.id].agent).toBeUndefined();
   });
 
   it('records shell activity when a SessionEnd hook ends the agent, without waiting for a poll', async () => {
@@ -278,16 +317,26 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id].cwd).toBe(repo);
   });
 
+  it('follows a cd made before the first poll, and keeps /tmp as it was asked for', async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    const islandId = fleet.createIsland({ name: 'x' }).id;
+    const stays = await fleet.createCharacter({ islandId, cwd: '/tmp', command: 'sleep 600' });
+    const moves = await fleet.createCharacter({ islandId, cwd: '/tmp', command: 'cd /usr && sleep 600' });
+    await waitFor(async () => (await tmux.listWindows()).filter((w) => w.command === 'sleep').length === 2);
+    await fleet['poll']['tick']();
+    expect(store.state.characters[stays.id].cwd).toBe('/tmp');
+    expect(store.state.characters[moves.id].cwd).toBe('/usr');
+  });
+
   it('keeps a character where it is while tmux reports no path for its pane, as under sudo', async () => {
-    const { fleet, store, tmux } = await boot();
-    fleet.stop();
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    await fleet['tick']();
+    await fleet['poll']['tick']();
     const cwd = store.state.characters[c.id].cwd;
     expect(cwd).toBeTruthy();
     const list = tmux.listWindows.bind(tmux);
     vi.spyOn(tmux, 'listWindows').mockImplementation(async () => (await list()).map((w) => ({ ...w, path: '' })));
-    await fleet['tick']();
+    await fleet['poll']['tick']();
     expect(store.state.characters[c.id].cwd).toBe(cwd);
   });
 
@@ -326,7 +375,7 @@ runIf('Fleet', () => {
   it('stays where its agent is when a claude -p run inside it reports from another checkout', async () => {
     const { fleet, home } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    const follow = vi.spyOn(fleet as unknown as { followCwd: () => Promise<void> }, 'followCwd').mockResolvedValue();
+    const follow = vi.spyOn(fleet['agentEvents'] as unknown as { followCwd: () => Promise<void> }, 'followCwd').mockResolvedValue();
     const outer = '11111111-1111-4111-8111-111111111111';
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: outer, pid: process.pid } });
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', sessionId: '22222222-2222-4222-8222-222222222222', pid: process.ppid, cwd: home } });
@@ -338,7 +387,7 @@ runIf('Fleet', () => {
   it('stays where its agent is when a subagent reports from its own worktree', async () => {
     const { fleet, home } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    const follow = vi.spyOn(fleet as unknown as { followCwd: () => Promise<void> }, 'followCwd').mockResolvedValue();
+    const follow = vi.spyOn(fleet['agentEvents'] as unknown as { followCwd: () => Promise<void> }, 'followCwd').mockResolvedValue();
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', agentId: 'a95af83797c89a762', cwd: home } });
     expect(follow).not.toHaveBeenCalled();
   });
@@ -348,9 +397,8 @@ runIf('Fleet', () => {
     let release = () => {};
     const held = new Promise<void>((r) => { release = r; });
     const lookupPr = async (cwd: string) => { asked.push(cwd); if (asked.length === 1) await held; return undefined; };
-    const { fleet, store, home } = await boot({ linkDeps: { lookupPr, originUrl: async () => undefined } });
     // the ticks this test drives are the only ones
-    fleet.stop();
+    const { fleet, store, home } = await boot({ pollMs: 60_000, linkDeps: { lookupPr, originUrl: async () => undefined } });
     const repo = (name: string) => {
       const dir = fs.realpathSync(fs.mkdtempSync(path.join(home, `${name}-`)));
       execFileSync('git', ['init', '-q', dir]);
@@ -362,22 +410,22 @@ runIf('Fleet', () => {
     await fleet.createCharacter({ islandId, cwd: one });
     const b = await fleet.createCharacter({ islandId, cwd: two });
 
-    fleet['ticks'] = 9;
-    await fleet['tick']();
+    fleet['poll']['ticks'] = 9;
+    await fleet['poll']['tick']();
     await waitFor(() => asked.length === 1);
     expect(asked).toEqual([one]);
 
     // b moves while that sweep is still out
     store.update((d) => { d.characters[b.id].cwd = '/nope'; d.characters[b.id].panePath = '/nope'; });
-    await fleet['tick']();
+    await fleet['poll']['tick']();
     expect(asked).toEqual([one]);
 
     release();
-    await waitFor(() => fleet['sweeping'] === false);
+    await waitFor(() => fleet['poll']['sweeping'] === false);
     await new Promise((r) => setTimeout(r, 50));
     expect(asked).toEqual([one]);
 
-    await fleet['tick']();
+    await fleet['poll']['tick']();
     await waitFor(() => asked.includes(two));
   });
 
@@ -448,6 +496,10 @@ runIf('Fleet', () => {
     const shell = await fleet.createCharacter({ islandId: c.islandId, cwd: '/tmp', command: 'sleep 600' });
     await fleet.openSecond(c.id);
     const stopped = new Promise<void>((r) => fleet.once('stopped', r));
+    // a poll holding a listing with the second terminal on it, let go once the quit waits on it, must not write it back
+    const poll = holdListing(tmux);
+    await poll.listed;
+    setTimeout(poll.release, 100);
     await fleet.stopAll();
     await stopped;
     const after = store.state.characters;
@@ -456,6 +508,8 @@ runIf('Fleet', () => {
     expect(after[c.id].revive).toEqual({ command: `claude --effort 'xhigh' --resume ${SID}` });
     expect(after[shell.id].tmux).toBeUndefined();
     expect(after[shell.id].revive).toEqual({ command: '' });
+    // on disk too, for a daemon ended right after
+    expect(JSON.parse(fs.readFileSync(resolvePaths(b.home).state, 'utf8')).characters[c.id].revive).toEqual(after[c.id].revive);
     // the stop returns once the agent itself has gone, so a resume right after runs alone
     expect(() => process.kill(pid, 0)).toThrow();
     // the end the closing window sends leaves the agent the revive resumes
@@ -465,6 +519,13 @@ runIf('Fleet', () => {
     await new Promise((r) => setTimeout(r, 1500));
     await expect(tmux.run('list-sessions')).rejects.toThrow();
     await expect(fleet.reviveCharacter(c.id)).rejects.toThrow('the fleet is stopping');
+  });
+
+  it('has every change on disk once it has stopped', async () => {
+    const { fleet, home } = await boot();
+    fleet.setDormancy(5);
+    await fleet.stop();
+    expect(JSON.parse(fs.readFileSync(resolvePaths(home).state, 'utf8')).dormantAfterHours).toBe(5);
   });
 
   it('waits on and kills only a pid that still runs its agent when it stops for a quit', async () => {
@@ -541,6 +602,18 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id].agent!.lastActivityAt).toBe(0);
   });
 
+  it('gives every agent awake at a daemon start a whole rest before ending it', async () => {
+    const b = await boot();
+    const { c } = await withAgent(b);
+    b.store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
+    await b.fleet.stop();
+    const again = new Fleet({ ...b.fleet['deps'], pollMs: 60_000 });
+    cleanup.push(() => again.stop());
+    await again.start();
+    await again['endIdleAgents']();
+    expect(b.store.state.characters[c.id].tmux).toBeDefined();
+  });
+
   it('wakes a dormant claude with a prompt run into it, as its launch prompt', async () => {
     const b = await boot();
     const { fleet, store, tmux, home } = b;
@@ -584,7 +657,7 @@ runIf('Fleet', () => {
     vi.spyOn(tmux, 'killWindow').mockImplementation(async (id) => { await held; return real(id); });
     const ending = fleet['endIdleAgents']();
     await waitFor(() => !store.state.characters[c.id].tmux);
-    await fleet['tick']();
+    await fleet['poll']['tick']();
     await fleet.reconcileNow();
     expect(store.state.characters[c.id].tmux).toBeUndefined();
     store.update((d) => { d.characters[c.id].revive = { command: 'sleep 600' }; });
@@ -605,87 +678,68 @@ runIf('Fleet', () => {
     expect((await fleet.reviveCharacter(c.id)).tmux?.windowId).toBe(windowId);
   });
 
-  it('does not take back a window a poll listed before its agent was ended', async () => {
+  it('ends no further idle agent once the fleet has stopped', async () => {
     const b = await boot();
+    const { fleet, store, tmux } = b;
+    const agents = [await withAgent(b), await withAgent(b)];
+    store.update((d) => { for (const { c } of agents) d.characters[c.id].agent!.lastActivityAt = 0; });
+    const real = tmux.killWindow.bind(tmux);
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    vi.spyOn(tmux, 'killWindow').mockImplementation(async (id) => { await held; return real(id); });
+    const ending = fleet['endIdleAgents']();
+    await waitFor(() => agents.some(({ c }) => !store.state.characters[c.id].tmux));
+    await fleet.stop();
+    release();
+    await ending;
+    expect(agents.filter(({ c }) => store.state.characters[c.id].tmux)).toHaveLength(1);
+  });
+
+  it('does not take back a window a poll listed before its agent was ended', async () => {
+    const b = await boot({ pollMs: 60_000 });
     const { fleet, store, tmux } = b;
     const { c } = await withAgent(b);
     store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
-    // the next listing, taken with the window alive, is handed back only after the agent has been ended
-    const real = tmux.listWindows.bind(tmux);
-    let taken = false;
-    let release!: () => void;
-    const held = new Promise<void>((r) => { release = r; });
-    vi.spyOn(tmux, 'listWindows').mockImplementation(async () => {
-      const r = await real();
-      if (taken) return r;
-      taken = true;
-      await held;
-      return r;
-    });
-    await waitFor(() => taken);
+    // the listing, taken with the window alive, is handed back only after the agent has been ended
+    const poll = holdListing(tmux);
+    const tick = fleet['poll']['tick']();
+    await poll.listed;
     await fleet['endIdleAgents']();
-    let back = false;
-    const unsub = store.subscribe(() => { if (store.state.characters[c.id].tmux) back = true; });
-    cleanup.push(async () => unsub());
-    release();
-    await new Promise((r) => setTimeout(r, 500));
-    expect(back).toBe(false);
+    poll.release();
+    await tick;
+    expect(store.state.characters[c.id].tmux).toBeUndefined();
     expect(store.state.characters[c.id].revive).toEqual({ command: `claude --resume ${SID}` });
   });
 
   it('does not mark a character created during a poll snapshot dormant', async () => {
-    const { fleet, store, tmux } = await boot();
-    // the next listing is handed back only after the create has landed
-    const real = tmux.listWindows.bind(tmux);
-    let taken = false;
-    let release!: () => void;
-    const held = new Promise<void>((r) => { release = r; });
-    vi.spyOn(tmux, 'listWindows').mockImplementation(async () => {
-      const r = await real();
-      if (taken) return r;
-      taken = true;
-      await held;
-      return r;
-    });
-    await waitFor(() => taken);
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    // the listing is handed back only after the create has landed
+    const poll = holdListing(tmux);
+    const tick = fleet['poll']['tick']();
+    await poll.listed;
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    let dormant = false;
-    const unsub = store.subscribe(() => { if (!store.state.characters[c.id].tmux) dormant = true; });
-    cleanup.push(async () => unsub());
-    release();
-    await new Promise((r) => setTimeout(r, 500));
-    expect(dormant).toBe(false);
+    poll.release();
+    await tick;
+    expect(store.state.characters[c.id].tmux).toEqual(c.tmux);
   });
 
   it('does not mark a character revived during a poll snapshot dormant', async () => {
-    const { fleet, store, tmux } = await boot();
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     await tmux.killWindow(c.tmux!.windowId);
     await waitFor(() => store.state.characters[c.id].tmux === undefined);
-    // the next listing is handed back only after the revive has landed
-    const real = tmux.listWindows.bind(tmux);
-    let taken = false;
-    let release!: () => void;
-    const held = new Promise<void>((r) => { release = r; });
-    vi.spyOn(tmux, 'listWindows').mockImplementation(async () => {
-      const r = await real();
-      if (taken) return r;
-      taken = true;
-      await held;
-      return r;
-    });
-    await waitFor(() => taken);
-    await fleet.reviveCharacter(c.id);
-    let dormant = false;
-    const unsub = store.subscribe(() => { if (!store.state.characters[c.id].tmux) dormant = true; });
-    cleanup.push(async () => unsub());
-    release();
-    await new Promise((r) => setTimeout(r, 500));
-    expect(dormant).toBe(false);
+    // the listing is handed back only after the revive has landed
+    const poll = holdListing(tmux);
+    const tick = fleet['poll']['tick']();
+    await poll.listed;
+    const revived = await fleet.reviveCharacter(c.id);
+    poll.release();
+    await tick;
+    expect(store.state.characters[c.id].tmux).toEqual(revived.tmux);
   });
 
   it('does not mark a character revived during a reconcile listing dormant', async () => {
-    const { fleet, store, tmux } = await boot();
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     await tmux.killWindow(c.tmux!.windowId);
     await waitFor(() => store.state.characters[c.id].tmux === undefined);
@@ -702,28 +756,30 @@ runIf('Fleet', () => {
   });
 
   it('does not drop a second terminal opened during a poll snapshot', async () => {
-    const { fleet, store, tmux } = await boot();
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    // the next listing is handed back only after the second terminal has opened
-    const real = tmux.listWindows.bind(tmux);
-    let taken = false;
-    let release!: () => void;
-    const held = new Promise<void>((r) => { release = r; });
-    vi.spyOn(tmux, 'listWindows').mockImplementation(async () => {
-      const r = await real();
-      if (taken) return r;
-      taken = true;
-      await held;
-      return r;
-    });
-    await waitFor(() => taken);
+    // the listing is handed back only after the second terminal has opened
+    const poll = holdListing(tmux);
+    const tick = fleet['poll']['tick']();
+    await poll.listed;
     await fleet.openSecond(c.id);
-    let dropped = false;
-    const unsub = store.subscribe(() => { if (!store.state.characters[c.id].second) dropped = true; });
-    cleanup.push(async () => unsub());
-    release();
-    await new Promise((r) => setTimeout(r, 500));
-    expect(dropped).toBe(false);
+    poll.release();
+    await tick;
+    expect(store.state.characters[c.id].second).toBeDefined();
+  });
+
+  it('does not bring back a second terminal closed during a poll snapshot', async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    await fleet.openSecond(c.id);
+    // the listing, taken with the second terminal open, is handed back only after it has closed
+    const poll = holdListing(tmux);
+    const tick = fleet['poll']['tick']();
+    await poll.listed;
+    store.update((d) => { delete d.characters[c.id].second; });
+    poll.release();
+    await tick;
+    expect(store.state.characters[c.id].second).toBeUndefined();
   });
 
   it('kills the window of a revive whose character was closed meanwhile', async () => {
@@ -764,11 +820,29 @@ runIf('Fleet', () => {
     const { fleet, tmux } = await boot();
     // a tmux -C that exits before it is ready, as when the server goes away between ensureServer and attach
     const connect = vi.spyOn(tmux, 'connect').mockImplementation(() => new ControlClient({ binary: '/usr/bin/false', socket: tmux.socket, conf: '', session: SESSION }));
-    fleet['control']!['proc']!.kill();
+    fleet['link']['control']!['proc']!.kill();
     // the retries back off 1s, 2s, 4s: the second one lands alone
     await waitFor(() => connect.mock.calls.length >= 2, 5000);
     await new Promise((r) => setTimeout(r, 300));
     expect(connect).toHaveBeenCalledTimes(2);
+  });
+
+  it('ends a recovery under way at a stop, and takes it no further', async () => {
+    const { fleet, tmux } = await boot();
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    // the server comes up only once released, after the quit has begun
+    const real = tmux.ensureServer.bind(tmux);
+    const ensure = vi.spyOn(tmux, 'ensureServer').mockImplementationOnce(async () => { await held; await real(); });
+    const recover = vi.spyOn(fleet['link'] as unknown as { recover: () => Promise<void> }, 'recover');
+    const reconcile = vi.spyOn(fleet, 'reconcileNow');
+    fleet['link']['control']!['proc']!.kill();
+    await waitFor(() => ensure.mock.calls.length === 1);
+    setTimeout(release, 100);
+    await fleet.stopAll();
+    await recover.mock.results[0].value;
+    expect(reconcile).not.toHaveBeenCalled();
+    await expect(tmux.run('list-sessions')).rejects.toThrow();
   });
 
   it('spawns one window for concurrent revives', async () => {
@@ -948,22 +1022,6 @@ runIf('Fleet', () => {
     hook({ notificationType: 'worker_permission_prompt' });
     await fleet.answerPrompt(c.id, 'deny');
     expect(store.state.characters[c.id].agent).toMatchObject({ status: 'working', background: true });
-  });
-
-  it('stands by a typed answer the fleet could not write down, and does not type it again', async () => {
-    const { fleet, store, tmux } = await boot();
-    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
-    const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', sessionId: 'sess', ...h } });
-    hook({ name: 'SessionStart', transcriptPath: '/nope' });
-    hook({ notificationType: 'permission_prompt' });
-    // the write right after the key is the one that fails; the poll's and the links' go through
-    let typed = false;
-    const sent = vi.spyOn(tmux, 'sendBytes').mockImplementation(async () => { typed = true; });
-    const update = store.update.bind(store);
-    vi.spyOn(store, 'update').mockImplementation((m) => { if (!typed) return update(m); typed = false; throw new Error('disk full'); });
-    await fleet.answerPrompt(c.id, 'approve');
-    await expect(fleet.answerPrompt(c.id, 'approve')).rejects.toThrow('already in');
-    expect(sent).toHaveBeenCalledTimes(1);
   });
 
   it('recovers from a tmux server death', async () => {
@@ -1237,7 +1295,7 @@ runIf('Fleet', () => {
     await fleet.createCharacter({ islandId: a.id, cwd: '/tmp' });
     const moved = fleet.updateCharacter(c1.id, { islandId: b.id, note: 'hi', context: [{ kind: 'other', ref: 'u', label: 'l', source: 'manual' }] });
     expect(moved).toMatchObject({ islandId: b.id, note: 'hi' });
-    expect(landCells(b.size, b.seed)).toContainEqual(moved.cell);
+    expect(landCells(b.size)).toContainEqual(moved.cell);
     expect(fleet.updateIsland(b.id, { name: 'bee' }).name).toBe('bee');
   });
 
@@ -1387,13 +1445,20 @@ runIf('Fleet', () => {
   it('forgets what it kept outside the state when a character closes', async () => {
     const { fleet } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
-    fleet['hookCwd'].set(c.id, '/tmp');
-    fleet['shellStreak'].set(`${c.id}-2`, 1);
+    fleet['agentEvents']['hookCwd'].set(c.id, '/tmp');
+    fleet['poll']['shellStreak'].set(`${c.id}-2`, 1);
     fleet['scribe']['seen'].set(c.id, { lastPassAt: 0, path: '', bytes: 0 });
+    fleet.markSeen(c.id);
+    fleet.setPaneOutput(c.id, true);
     await fleet.closeCharacter(c.id);
-    expect(fleet['hookCwd'].has(c.id)).toBe(false);
-    expect(fleet['shellStreak'].has(`${c.id}-2`)).toBe(false);
+    expect(fleet['seen'].has(c.id)).toBe(false);
+    expect(fleet['link']['streaming'].has(c.id)).toBe(false);
+    expect(fleet['agentEvents']['hookCwd'].has(c.id)).toBe(false);
+    expect(fleet['poll']['shellStreak'].has(`${c.id}-2`)).toBe(false);
     expect(fleet['scribe']['seen'].has(c.id)).toBe(false);
+    // nor does the end its agent sends as the window goes
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionEnd', cwd: '/tmp' } });
+    expect(fleet['agentEvents']['hookCwd'].has(c.id)).toBe(false);
   });
 
   it('opens, activates, updates and closes browser tabs on a character', async () => {

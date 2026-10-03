@@ -5,8 +5,9 @@ export type Logger = { info(msg: string): void; error(msg: string): void };
 export function createLogger(file?: string): Logger {
   const write = (level: string, msg: string) => {
     const line = `${new Date().toISOString()} ${level} ${msg}\n`;
-    if (file) fs.appendFileSync(file, line);
-    else process.stderr.write(line);
+    // a log on a full disk or in a home that is gone has nowhere to say so, and must not take the daemon down
+    if (!file) { process.stderr.write(line); return; }
+    try { fs.appendFileSync(file, line); } catch { /* nowhere to say it */ }
   };
   return { info: (m) => write('info', m), error: (m) => write('error', m) };
 }

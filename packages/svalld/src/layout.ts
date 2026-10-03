@@ -1,6 +1,5 @@
-import { HOME_ISLAND, SPACING, cellKey, homeSizeFor, homeSlots, isLand, landCells, pillWidth, sizeForCrew, type Cell, type FleetState, type Footprint, type Island, type Size } from '@svall/protocol';
-
-export { pillWidth };
+import { HOME_ISLAND, HOME_ROW, SPACING, byCell, cellKey, crewGrid, homeSizeFor, homeSlots, isLand, landCells, pillWidth, type Cell, type FleetState, type Footprint, type Island, type Size } from '@svall/protocol';
+import type { Logger } from './log.js';
 
 export const GAP = 2;
 // the next island's label pill floats above its ground, so rows of islands keep a row of water either side of it
@@ -8,8 +7,6 @@ export const ROW_GAP = 3;
 // mission control draws as a fixed strip at the foot of the screen and the view already keeps the fleet
 // out from under it, so the floor only has to read as water: one row, not the gap between two islands
 export const HOME_GAP = 1;
-// the row mission control's floor keeps under the lowest island: its own. the gap above is where arrange leaves the fleet
-export const HOME_REACH = 0;
 const ROW_LENGTH = 4;
 
 export const randomSeed = (): number => Math.floor(Math.random() * 2 ** 31);
@@ -89,19 +86,27 @@ export function makeRoom(draft: FleetState, islandId: string): number {
   return worldIslands(draft).filter((o) => o.id !== islandId && !settled(draft, o)).length;
 }
 
+// a hidden or grown island takes its ground where it stands, and whatever stands there yields
+export function unfold(draft: FleetState, islandId: string, log?: Logger): void {
+  const island = draft.islands[islandId];
+  delete island.collapsed;
+  const crowded = makeRoom(draft, islandId);
+  if (crowded > 0) log?.error(`island ${island.name}: ${crowded} island(s) the search could not settle`);
+}
+
 // the lowest row the fleet puts an island on of its own accord: mission control's row is the floor of the world
 export function aboveHome(state: FleetState, island: Island): boolean {
   const home = state.islands[HOME_ISLAND];
   if (!home || island.id === home.id) return true;
-  return island.position.y + island.size.h + HOME_REACH <= home.position.y;
+  return island.position.y + island.size.h <= home.position.y;
 }
 
 // mission control follows the fleet down whenever an island lands past its row, and never rises again on its
-// own. it gives way by the reach, not the gap, so an island put on its row stays where it was put
+// own. it drops to the island's foot, not a gap below it, so an island put on its row stays where it was put
 export function sinkHome(draft: FleetState): void {
   const home = draft.islands[HOME_ISLAND];
   if (!home) return;
-  const floor = fleetFloor(draft, HOME_REACH);
+  const floor = fleetFloor(draft, 0);
   if (floor !== undefined && floor > home.position.y) home.position.y = floor;
 }
 
@@ -157,38 +162,12 @@ const shown = (i: Island): Size => ({ w: Math.max(i.size.w, pillWidth(i.name)), 
 
 // the crew of an island, in reading order of where they stand
 export const crewOf = (state: FleetState, islandId: string): string[] =>
-  Object.values(state.characters).filter((c) => c.islandId === islandId)
-    .sort((a, b) => a.cell.y - b.cell.y || a.cell.x - b.cell.x || a.id.localeCompare(b.id)).map((c) => c.id);
-
-// at its largest against the cells a card is just under three wide, counting the rail of links down its
-// right, and three and a half tall, hanging from a little above its cell: crew stand in a grid this far
-// apart so the cards keep water between them
-const CREW_PITCH = { x: 3, y: 4 };
-// the cells between a crew member and the coast: half a card, so the card stands on visible land
-export const CREW_INSET = 2;
-
-// the ground a crew of n needs, and where each stands: a grid of at most `abreast` to a row, as square as that
-// allows, the last row centred and the whole grid moved further in from the coast until every cell of it is land
-export function crewGrid(n: number, seed: number, abreast = 3): { size: Size; cells: Cell[] } {
-  if (n === 0) return { size: sizeForCrew(0, seed), cells: [] };
-  const rows = Math.ceil(n / abreast), cols = Math.ceil(n / rows);
-  for (let m = CREW_INSET; ; m++) {
-    // a lone column stands a cell further in, so its card sits centred on an island of odd width
-    const mx = cols === 1 ? m + 1 : m;
-    const size = { w: CREW_PITCH.x * (cols - 1) + 1 + 2 * mx, h: CREW_PITCH.y * (rows - 1) + 1 + 2 * m };
-    const cells = Array.from({ length: n }, (_, i) => {
-      const row = Math.floor(i / cols), inRow = Math.min(cols, n - row * cols);
-      return { x: mx + CREW_PITCH.x * (i % cols) + Math.round((CREW_PITCH.x * (cols - inRow)) / 2), y: m + CREW_PITCH.y * row };
-    });
-    const land = new Set(landCells(size, seed).map(cellKey));
-    if (cells.every((c) => land.has(cellKey(c)))) return { size, cells };
-  }
-}
+  Object.values(state.characters).filter((c) => c.islandId === islandId).sort(byCell).map((c) => c.id);
 
 // however wide the window, a crew stands at most about twice as many abreast as deep, so a long crew wraps
 // into a rounder island instead of running out into a single row
 const widest = (n: number): number => Math.max(3, Math.ceil(Math.sqrt(2 * n)));
-const roundGrid = (n: number, seed: number, abreast: number) => crewGrid(n, seed, Math.min(abreast, widest(n)));
+const roundGrid = (n: number, abreast: number) => crewGrid(n, Math.min(abreast, widest(n)));
 
 // what the map draws round the fleet in cells, as its world bounds do: the label band over the first row. Its margins
 // are screen px, which already come off the aspect the app sends
@@ -228,10 +207,8 @@ function plan(lands: Box[], aspect: number): Plan {
   return best!;
 }
 
-// every island on the map cut to a grid its crew's cards fit on and the fleet packed to fill a window of that aspect,
-// in centred rows with mission control under them; a folded island keeps its place and size for when it unfolds.
-// how many crew stand abreast is chosen with the rows, so a wide window gets long islands and a tall one deep islands.
-// homeRoom is the widest mission control, in cells, the map has room for
+// every island on the map cut to its crew's grid, as many abreast as fills a window of that aspect best, and packed in
+// centred rows above mission control, homeRoom cells wide at most; a folded island keeps its place and size
 export function arrangeFleet(draft: FleetState, aspect = 4 / 3, homeRoom?: number): void {
   if (homeRoom !== undefined) widenHome(draft, homeRoom);
   const islands = worldIslands(draft).sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x || a.id.localeCompare(b.id));
@@ -244,7 +221,7 @@ export function arrangeFleet(draft: FleetState, aspect = 4 / 3, homeRoom?: numbe
   let best: (Plan & { abreast: number }) | undefined;
   // three abreast first, so it stands whenever another count only matches it
   for (const abreast of [3, ...Array.from({ length: Math.min(most, widest(most)) }, (_, i) => i + 1).filter((k) => k !== 3)]) {
-    for (const { id, seed } of islands) draft.islands[id].size = roundGrid(crews.get(id)!.length, seed, abreast).size;
+    for (const { id } of islands) draft.islands[id].size = roundGrid(crews.get(id)!.length, abreast).size;
     // tallest first, so each row wastes the least water under its shorter islands
     const next = plan(islands.map(box).sort((a, b) => b.size.h - a.size.h), aspect);
     if (!best || next.scale > best.scale) best = { ...next, abreast };
@@ -253,8 +230,8 @@ export function arrangeFleet(draft: FleetState, aspect = 4 / 3, homeRoom?: numbe
   // the height the window has to spare at that width is shared between the rows, so the fleet fills it
   const gaps = rows.length - 1;
   const extra = gaps > 0 ? Math.floor(Math.max(0, (width + FRAME.w) / aspect - height) / gaps) : 0;
-  for (const { id, seed } of islands) {
-    const { size, cells } = roundGrid(crews.get(id)!.length, seed, abreast);
+  for (const { id } of islands) {
+    const { size, cells } = roundGrid(crews.get(id)!.length, abreast);
     draft.islands[id].size = size;
     crews.get(id)!.forEach((c, i) => { draft.characters[c].cell = cells[i]; });
   }
@@ -273,6 +250,34 @@ export function arrangeFleet(draft: FleetState, aspect = 4 / 3, homeRoom?: numbe
   settleHome(draft);
 }
 
+class IslandFull extends Error { code = 'invalid'; }
+
+// the island takes the ground a crew one larger needs and everyone lines up on it, as `arrange` lays out
+// the fleet; the newcomer takes the cell the grid leaves at the end, and the islands the new shape reaches
+// into are pushed aside. a hidden island comes back onto the map, so the newcomer is seen arriving
+export function placeOnIsland(draft: FleetState, islandId: string, exceptId?: string, log?: Logger): Cell {
+  const island = draft.islands[islandId];
+  if (island.kind === 'home') return placeOnHome(draft, island, exceptId);
+  // a character re-placed on its own island is not its own crew, or the grid would size for it twice
+  const crew = crewOf(draft, islandId).filter((id) => id !== exceptId);
+  const { size, cells } = crewGrid(crew.length + 1);
+  island.size = size;
+  crew.forEach((id, i) => { draft.characters[id].cell = cells[i]; });
+  unfold(draft, islandId, log);
+  // a neighbour the push could not clear would leave the two overlapping, a shape no other move can produce
+  if (!placementOk(draft, island)) throw new IslandFull(`island ${island.name} is full`);
+  return cells[crew.length];
+}
+
+// the first free slot on the crew row; a full row widens the island by one slot
+function placeOnHome(draft: FleetState, island: Island, exceptId?: string): Cell {
+  const taken = occupiedCells(draft, island.id, exceptId);
+  const free = homeSlots(island.size.w).find((x) => !taken.has(cellKey({ x, y: HOME_ROW })));
+  if (free !== undefined) return { x: free, y: HOME_ROW };
+  island.size = homeSizeFor(homeSlots(island.size.w).length + 1);
+  return { x: homeSlots(island.size.w).at(-1)!, y: HOME_ROW };
+}
+
 export function occupiedCells(state: FleetState, islandId: string, exceptId?: string): Set<string> {
   return new Set(Object.values(state.characters).filter((c) => c.islandId === islandId && c.id !== exceptId).map((c) => cellKey(c.cell)));
 }
@@ -289,18 +294,17 @@ export function blockedCells(state: FleetState, islandId: string, exceptId?: str
 
 export function nearestFreeLand(island: Island, from: Cell, blocked: Set<string>): Cell | undefined {
   const dist = (c: Cell) => Math.abs(c.x - from.x) + Math.abs(c.y - from.y);
-  return landCells(island.size, island.seed).filter((c) => !blocked.has(cellKey(c))).sort((a, b) => dist(a) - dist(b))[0];
+  return landCells(island.size).filter((c) => !blocked.has(cellKey(c))).sort((a, b) => dist(a) - dist(b))[0];
 }
 
 class NoFreeLand extends Error { code = 'invalid'; }
 
-// characters whose cell became water move to the nearest free land, in reading order of their old cells;
-// shared by island resize and by placeOnIsland's auto-grow, both of which can change the island's shape
+// after a resize, characters whose cell became water move to the nearest free land, in reading order of their old cells
 export function relocateDrowned(draft: FleetState, islandId: string): void {
   const island = draft.islands[islandId];
   const drowned = Object.values(draft.characters)
     .filter((c) => c.islandId === islandId && !isLand(island, c.cell))
-    .sort((a, b) => a.cell.y - b.cell.y || a.cell.x - b.cell.x);
+    .sort(byCell);
   for (const c of drowned) {
     const cell = nearestFreeLand(island, c.cell, blockedCells(draft, islandId, c.id));
     if (!cell) throw new NoFreeLand(`island ${island.name} has no free land to relocate ${c.name}`);
@@ -308,12 +312,10 @@ export function relocateDrowned(draft: FleetState, islandId: string): void {
   }
 }
 
-// names resolve without regard to case, so a twin differing only in case would leave both islands unreachable by name
-export function uniqueName(state: FleetState, base: string): string {
-  const taken = new Set(Object.values(state.islands).map((i) => i.name.toLowerCase()));
-  const free = (name: string) => !taken.has(name.toLowerCase());
-  if (free(base)) return base;
-  let n = 2;
-  while (!free(`${base} ${n}`)) n++;
-  return `${base} ${n}`;
+// names resolve without regard to case, so a twin differing only in case would leave both unreachable by name
+export function uniqueName(names: string[], base: string): string {
+  const taken = new Set(names.map((n) => n.toLowerCase()));
+  let name = base;
+  for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${base} ${n}`;
+  return name;
 }

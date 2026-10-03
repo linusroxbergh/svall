@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ContextItem } from '@svall/protocol';
-import { takesPrompt, withAddDirs, withPromptFile } from '../src/context/launch.js';
+import { isAgentCommand, withAddDirs, withPromptFile } from '../src/context/launch.js';
 
 const item = (kind: ContextItem['kind'], ref: string): ContextItem => ({ kind, ref, label: '', source: 'manual' });
 
@@ -23,16 +23,16 @@ describe('withAddDirs', () => {
 
 describe('withPromptFile', () => {
   it('is for claude and codex', () => {
-    expect(takesPrompt('claude')).toBe(true);
-    expect(takesPrompt('claude --model sonnet')).toBe(true);
-    expect(takesPrompt('codex')).toBe(true);
-    expect(takesPrompt('codex -m gpt-6-luna')).toBe(true);
-    expect(takesPrompt('codex resume -c tui.resume_cwd=session s1')).toBe(true);
+    expect(isAgentCommand('claude')).toBe(true);
+    expect(isAgentCommand('claude --model sonnet')).toBe(true);
+    expect(isAgentCommand('codex')).toBe(true);
+    expect(isAgentCommand('codex -m gpt-6-luna')).toBe(true);
+    expect(isAgentCommand('codex resume -c tui.resume_cwd=session s1')).toBe(true);
     // as the app reads a home.command with a stray space
-    expect(takesPrompt(' codex')).toBe(true);
-    expect(takesPrompt('claudette')).toBe(false);
-    expect(takesPrompt('codexx')).toBe(false);
-    expect(takesPrompt('node fake.mjs')).toBe(false);
+    expect(isAgentCommand(' codex')).toBe(true);
+    expect(isAgentCommand('claudette')).toBe(false);
+    expect(isAgentCommand('codexx')).toBe(false);
+    expect(isAgentCommand('node fake.mjs')).toBe(false);
   });
   it('passes the file as the last argument, after the options, and removes it once read', () => {
     expect(withPromptFile("claude --add-dir '/a'", "/h/it's.prompt"))

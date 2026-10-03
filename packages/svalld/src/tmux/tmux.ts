@@ -7,6 +7,8 @@ import { helper } from '../runtime.js';
 import { ControlClient } from './control.js';
 
 const exec = promisify(execFile);
+// a tmux server that stops answering must not hang every poll and API call behind it
+const CALL = { timeout: 10_000, killSignal: 'SIGKILL' } as const;
 
 export const SESSION = 'fleet';
 const KEEP_WINDOW = '_keep';
@@ -23,7 +25,7 @@ export function resolveTmux(): string {
   return 'tmux';
 }
 
-export type LiveSession = { name: string; attached: number; created: number };
+type LiveSession = { name: string; attached: number; created: number };
 
 export type LiveWindow = {
   windowId: string;
@@ -35,8 +37,10 @@ export type LiveWindow = {
   dead: boolean;
 };
 
-export function isShellCommand(command: string): boolean {
-  return SHELLS.has(command.replace(/^-/, ''));
+// `shell` is the one config.json names, whatever it is
+export function isShellCommand(command: string, shell?: string): boolean {
+  const name = command.replace(/^-/, '');
+  return SHELLS.has(name) || (!!shell && name === path.basename(shell));
 }
 
 // tmux 3.7 runs a paste through vis(3) unless given -S, a flag older versions refuse; `usage` is what
@@ -52,9 +56,7 @@ export class Tmux {
   constructor(readonly socket: string, private conf: string) {}
 
   async run(...args: string[]): Promise<string> {
-    const { stdout } = await exec(this.binary, ['-S', this.socket, '-f', this.conf, ...args], {
-      maxBuffer: 64 * 1024 * 1024,
-    });
+    const { stdout } = await exec(this.binary, ['-S', this.socket, '-f', this.conf, ...args], { ...CALL, maxBuffer: 64 * 1024 * 1024 });
     return stdout;
   }
 
@@ -77,7 +79,9 @@ export class Tmux {
 
   // display succeeds for a window that is gone too, printing an empty id
   async hasWindow(windowId: string): Promise<boolean> {
-    return (await this.run('display', '-p', '-t', windowId, '#{window_id}').catch(() => '')).trim() === windowId;
+    // a tmux that did not answer in time says nothing about the window
+    const said = await this.run('display', '-p', '-t', windowId, '#{window_id}').catch((e: { killed?: boolean }) => { if (e.killed) throw e; return ''; });
+    return said.trim() === windowId;
   }
 
   // one session per desktop terminal, holding only the character's window: when that window dies the
@@ -137,7 +141,7 @@ export class Tmux {
       .catch((e: unknown) => { this.rawPaste = undefined; throw e; });
     const raw = await this.rawPaste;
     const name = `svall-${crypto.randomUUID()}`;
-    const p = exec(this.binary, ['-S', this.socket, '-f', this.conf, 'load-buffer', '-b', name, '-', ';', 'paste-buffer', '-d', '-r', ...raw, '-b', name, '-t', paneId]);
+    const p = exec(this.binary, ['-S', this.socket, '-f', this.conf, 'load-buffer', '-b', name, '-', ';', 'paste-buffer', '-d', '-r', ...raw, '-b', name, '-t', paneId], CALL);
     // a tmux that fails before reading closes the pipe; its exit status carries the error
     p.child.stdin!.on('error', () => {}).end(data);
     // a pane gone before the paste leaves the buffer behind

@@ -76,8 +76,10 @@ export class TerminalHub {
     this.fleet.typedAnswer(id, data, asked);
   }
 
+  // only a viewer has a size to give: open sized the window, and close hands it back
   async resize(id: string, cols: number, rows: number, viewer: Viewer): Promise<void> {
     const c = this.fleet.live(id);
+    if (!this.viewers.get(id)?.has(viewer)) return;
     await this.resizeFor(viewer, id, c.tmux.windowId, cols, rows);
   }
 

@@ -1,11 +1,9 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { trimEnd } from '@svall/protocol';
+import { MAX_PROMPT } from '../hooks/receiver.js';
 import type { Pending } from './claude-transcript.js';
-import { LINK, MAX_ENTRY, MAX_URLS, clip, jsonLines, orSkip } from './jsonl.js';
-
-// what the hook script clips a prompt to
-const MAX_PROMPT = 4000;
+import { LINK, MAX_URLS, clip, clipLine, jsonLines, orSkip } from './jsonl.js';
 
 export type RawRateWindow = { used_percent?: number; window_minutes?: number; resets_at?: number } | null;
 export type RawRateLimits = { primary?: RawRateWindow; secondary?: RawRateWindow; plan_type?: string | null };
@@ -24,10 +22,8 @@ type Event = { kind: 'user' | 'agent'; text: string } | { kind: 'tool'; name: st
 
 const ITEMS: Record<string, 'user' | 'agent'> = { UserMessage: 'user', AgentMessage: 'agent' };
 
-// What was said is an event of its own: `user_message` and `agent_message` up to codex 0.142, a completed
-// `UserMessage` or `AgentMessage` item since. Both are written only for what a person sent and what the agent
-// answered, which the `response_item` messages beside them are not: those carry codex's own notes to the model
-// too. A tool call is a `response_item` in every version, under either of two names.
+// what a person sent and the agent answered: `user_message`/`agent_message` up to codex 0.142, a completed item
+// since, never the `response_item` messages, which carry codex's notes to the model too; a tool call is a `response_item`
 function eventOf(l: Line): Event | undefined {
   const p = l.payload;
   if (!p) return undefined;
@@ -58,9 +54,10 @@ export function userPromptsCodex(text: string, limit: number, pending?: Pending)
   const said = events(text).flatMap((e) => (e.kind === 'user' ? [e.text] : []));
   const list = said.slice(-limit).reverse().map(clip);
   // the hook reports a prompt before the rollout holds it, so it leads until its own line, the newest, lands.
-  // The hook clips a long prompt and the rollout does not, so a clipped one is matched on its head
+  // The hook clips a long prompt, ends trimmed or not, and the rollout does not, so one longer than that is matched on its head
   const head = pending?.text.trim();
-  const landed = head !== undefined && (head.length >= MAX_PROMPT ? said.at(-1)?.startsWith(head) : said.at(-1) === head);
+  const last = said.at(-1);
+  const landed = head !== undefined && last !== undefined && (last === head || (last.length > MAX_PROMPT && last.startsWith(head)));
   if (head && !landed) list.unshift(clip(head));
   return list.slice(0, limit);
 }
@@ -98,7 +95,7 @@ export function condenseTurnsCodex(text: string, turns: number, { toolLinks = fa
     const body = [...r.parts, ...links].join(' ');
     if (!body) return [];
     const s = `${r.who}: ${body}`;
-    return [s.length > MAX_ENTRY + 6 ? s.slice(0, MAX_ENTRY + 6) + '…' : s];
+    return [clipLine(s)];
   });
   return turns > 0 ? out.slice(-turns).join('\n') : '';
 }

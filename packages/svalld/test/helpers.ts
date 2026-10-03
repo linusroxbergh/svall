@@ -1,7 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import type { MobileStatus, UsageSnapshot } from '@svall/protocol';
 import type { Fleet } from '../src/fleet.js';
 import type { Fleets } from '../src/fleets.js';
@@ -13,8 +12,7 @@ if (!process.env.HOME?.startsWith('/tmp/svall-home-')) throw new Error('run thes
 const homes: string[] = [];
 
 export function makeHome(): string {
-  const dir = `/tmp/svall-t-${crypto.randomBytes(3).toString('hex')}`;
-  fs.mkdirSync(dir, { recursive: true });
+  const dir = fs.mkdtempSync('/tmp/svall-t-');
   homes.push(dir);
   return dir;
 }
@@ -51,12 +49,13 @@ export async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs
   throw new Error('waitFor: timed out');
 }
 
-// counts only polls begun after the call: a slow listing lets polls overlap, so an earlier one can end later
+// counts only polls begun after the call, not one already under way
 export async function waitForPolls(fleet: Fleet, n: number): Promise<void> {
-  const tick = fleet['tick'];
+  const poll = fleet['poll'];
+  const tick = poll['tick'];
   let done = 0;
-  fleet['tick'] = async () => { await tick.call(fleet); done++; };
-  try { await waitFor(() => done >= n); } finally { fleet['tick'] = tick; }
+  poll['tick'] = async () => { await tick.call(poll); done++; };
+  try { await waitFor(() => done >= n); } finally { poll['tick'] = tick; }
 }
 
 // startApi needs a reading of the plan's limits; tests that are not about usage take this one

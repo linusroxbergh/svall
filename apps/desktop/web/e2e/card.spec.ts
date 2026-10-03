@@ -105,7 +105,7 @@ test('opens, switches, resizes and closes the terminal card; Cmd+M round-trips t
 test('an open card follows the selection, from the sidebar and from the map', async ({ page, svall }) => {
   // a wide island keeps the left character clear of the half card, which sits over the middle of the map
   const island = await svall.api.call('island.create', { name: svall.uniq('follow'), seed: 2, size: { w: 20, h: 3 }, position: { x: 0, y: 160 } });
-  const cells = spacedCells(island.size, island.seed, 3).sort((p, q) => p.x - q.x);
+  const cells = spacedCells(island.size, 3).sort((p, q) => p.x - q.x);
   const a = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a', cell: cells[0] });
   const b = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'b', cell: cells[cells.length - 1] });
   await svall.open('map');

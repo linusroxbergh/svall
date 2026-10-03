@@ -72,7 +72,7 @@ test('a card drags onto a home slot and back out to the map', async ({ page, sva
   expect((await svall.api.call('state.get', {})).characters[c.id].cell).toEqual({ x: 1, y: 1 });
 
   // and back out: a drop on its own island must move it there, not strand it on the crossing cell
-  const back = spacedCells(island.size, island.seed, 3)[2];
+  const back = spacedCells(island.size, 3)[2];
   const world = { x: island.position.x + back.x, y: island.position.y + back.y };
   await settleMap(page);
   const at = await page.evaluate((w) => window.__map!.screenOf(w), world);

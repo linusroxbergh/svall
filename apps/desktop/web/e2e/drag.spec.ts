@@ -29,7 +29,7 @@ const charOf = async (svall: Svall, id: string) => (await svall.api.call('state.
 
 test('moves a character by drag, swaps on an occupied cell, makes an island on water', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('drag'), seed: 4, position: { x: 0, y: 40 } });
-  const cells = spacedCells(island.size, island.seed, 3);
+  const cells = spacedCells(island.size, 3);
   const a = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a', cell: cells[0] });
   const b = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'b', cell: cells[1] });
   await svall.open('map');

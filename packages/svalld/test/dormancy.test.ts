@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Agent, Character } from '@svall/protocol';
-import { drowsy, runsInBackground, startFlags } from '../src/dormancy.js';
-import { reviveCommand } from '../src/reconcile.js';
+import { drowsy, reviveCommand, runsInBackground, startFlags } from '../src/dormancy.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
 const HOUR = 3_600_000;

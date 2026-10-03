@@ -4,7 +4,6 @@ import { parseLine } from './parse.js';
 
 type Events = {
   output: [paneId: string, data: Buffer];
-  'window-add': [windowId: string];
   'window-close': [windowId: string];
   pause: [paneId: string];
   continue: [paneId: string];
@@ -16,6 +15,9 @@ export class ControlClient extends EventEmitter<Events> {
   private proc?: ChildProcess;
   private buf = '';
   private inReply = false;
+  private ready = false;
+  // what tmux said in its reply to the attach
+  private said: string[] = [];
   private stopped = false;
   private exited = false;
   private stderr = '';
@@ -36,6 +38,8 @@ export class ControlClient extends EventEmitter<Events> {
     proc.stderr!.on('data', (chunk: string) => { this.stderr = (this.stderr + chunk).slice(-4096); });
     proc.on('exit', (code) => this.emitExit(`tmux control client exited (${code})`));
     proc.on('error', (e) => this.emitExit(`tmux control client failed: ${e.message}`));
+    // a write to a client already gone fails, and its exit says so
+    proc.stdin!.on('error', () => {});
     const timeoutMs = this.opts.readyTimeoutMs ?? 10_000;
     return new Promise((resolve, reject) => {
       const done = (fn: () => void) => { clearTimeout(timer); this.off('exit', onExit); this.off('ready', onReady); fn(); };
@@ -83,16 +87,25 @@ export class ControlClient extends EventEmitter<Events> {
   private onLine(line: string): void {
     const ev = parseLine(line);
     if (this.inReply) {
-      if (ev.type === 'end' || ev.type === 'error') {
-        this.inReply = false;
-        this.emit('ready');
+      if (ev.type !== 'end' && ev.type !== 'error') {
+        if (!this.ready) this.said.push(line);
+        return;
       }
+      this.inReply = false;
+      if (this.ready) return;
+      // the first reply is the attach's own; refused, there is nothing attached to drive
+      if (ev.type === 'error') {
+        this.emitExit(`tmux refused the attach: ${this.said.join(' ')}`);
+        this.proc?.kill();
+        return;
+      }
+      this.ready = true;
+      this.emit('ready');
       return;
     }
     switch (ev.type) {
       case 'begin': this.inReply = true; break;
       case 'output': this.emit('output', ev.paneId, ev.data); break;
-      case 'window-add': this.emit('window-add', ev.windowId); break;
       case 'window-close': this.emit('window-close', ev.windowId); break;
       case 'pause': this.emit('pause', ev.paneId); break;
       case 'continue': this.emit('continue', ev.paneId); break;

@@ -34,6 +34,10 @@ describe('userPromptsCodex', () => {
     const long = 'x'.repeat(5000);
     const landed = text + line({ type: 'event_msg', payload: { type: 'user_message', message: long } });
     expect(userPromptsCodex(landed, 5, { id: 't3', text: long.slice(0, 4000), at })).toHaveLength(2);
+    // nor the ends of what it clipped, which the hook leaves to be trimmed
+    const spaced = `\n\n${long}`;
+    const landedSpaced = text + line({ type: 'event_msg', payload: { type: 'user_message', message: spaced } });
+    expect(userPromptsCodex(landedSpaced, 5, { id: 't3', text: spaced.slice(0, 4000).trim(), at })).toHaveLength(2);
   });
 });
 

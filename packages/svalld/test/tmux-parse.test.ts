@@ -22,8 +22,6 @@ describe('parseLine', () => {
     expect(parseLine('%output %3 ')).toEqual({ type: 'output', paneId: '%3', data: Buffer.alloc(0) });
   });
   it('parses window events, both linked and unlinked forms', () => {
-    expect(parseLine('%window-add @2')).toEqual({ type: 'window-add', windowId: '@2' });
-    expect(parseLine('%unlinked-window-add @2')).toEqual({ type: 'window-add', windowId: '@2' });
     expect(parseLine('%window-close @2')).toEqual({ type: 'window-close', windowId: '@2' });
     expect(parseLine('%unlinked-window-close @2')).toEqual({ type: 'window-close', windowId: '@2' });
   });

@@ -128,7 +128,9 @@ async function start(opts: Options): Promise<Daemon> {
 
   // run in reverse on stop, and on a failed start for whatever had already started
   const teardown: (() => unknown)[] = [() => fleet.stop(), store.subscribe(() => workspace.retarget()), () => workspace.close()];
-  const stop = async () => { for (const fn of teardown.splice(0).reverse()) await fn(); };
+  // a second stop, as a second signal sends, waits for the first to have the fleet on disk
+  let stopping: Promise<void> | undefined;
+  const stop = () => (stopping ??= (async () => { for (const fn of teardown.splice(0).reverse()) await fn(); })());
   try {
     await fleet.start();
     teardown.push(startPusher({ store, push, send: webPushSender(vapid), log, logins: mobile.logins, served: mobile.served, contact: config.mobile.pushContact }));
@@ -143,7 +145,8 @@ async function start(opts: Options): Promise<Daemon> {
     const hooks = await startHookReceiver(paths.hooksSock, (e) => fleet.onSocketEvent(e), log);
     teardown.push(() => hooks.close());
     fs.writeFileSync(paths.port, String(api.port));
-    teardown.push(() => fs.rmSync(paths.port, { force: true }));
+    // gone last: whoever waits for it to go may read state.json next
+    teardown.unshift(() => fs.rmSync(paths.port, { force: true }));
     // pushes go out only over a link seen served: it is looked at once the port it proxies to is known,
     // and again while a device waits and tailscale has not answered
     teardown.push(watchServed(mobile, () => push.list().length > 0, LOOK_AGAIN_MS));

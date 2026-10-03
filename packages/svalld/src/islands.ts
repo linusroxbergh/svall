@@ -3,7 +3,7 @@ import { settleItems } from './context/items.js';
 import { removeDocs } from './docs.js';
 import { Invalid, NotFound } from './errors.js';
 import { newId } from './ids.js';
-import { arrangeFleet, defaultPosition, freePosition, makeRoom, placementOk, randomSeed, relocateDrowned, settleHome, uniqueName } from './layout.js';
+import { arrangeFleet, defaultPosition, freePosition, placementOk, randomSeed, relocateDrowned, settleHome, unfold, uniqueName } from './layout.js';
 import type { Logger } from './log.js';
 import type { Paths } from './paths.js';
 import type { Store } from './store.js';
@@ -23,7 +23,7 @@ export function createIsland({ store }: Deps, p: NewIsland): Island {
   const size = p.size ?? DEFAULT_SIZE;
   const wanted = p.position ?? defaultPosition(state);
   const island: Island = {
-    id: newId('i'), name: uniqueName(state, p.name), description: p.description ?? '', instructions: p.instructions ?? '', context: settleItems(p.context ?? [], []),
+    id: newId('i'), name: uniqueName(Object.values(state.islands).map((i) => i.name), p.name), description: p.description ?? '', instructions: p.instructions ?? '', context: settleItems(p.context ?? [], []),
     position: wanted, size, seed: p.seed ?? randomSeed(),
   };
   setDescription(island, island.description);
@@ -48,7 +48,7 @@ export function updateIsland({ store, log }: Deps, id: string, patch: IslandPatc
   if (clash) throw new Invalid(`another island is already called ${clash.name}`);
   if ((p.position || p.size) && !placementOk(store.state, next)) throw new Invalid(`island ${current.name} would overlap another island`);
   const members = Object.values(store.state.characters).filter((c) => c.islandId === id);
-  if (p.size && landCells(next.size, next.seed).length < members.length) throw new Invalid(`island ${current.name} would have fewer cells than characters`);
+  if (p.size && landCells(next.size).length < members.length) throw new Invalid(`island ${current.name} would have fewer cells than characters`);
   const context = p.context && settleItems(p.context, current.context);
   store.update((d) => {
     const i = d.islands[id];
@@ -61,14 +61,8 @@ export function updateIsland({ store, log }: Deps, id: string, patch: IslandPatc
       i.size = p.size;
       relocateDrowned(d, id);
     }
-    if (p.collapsed !== undefined) {
-      if (p.collapsed) i.collapsed = true; else delete i.collapsed;
-      // an island taking its ground back pushes whatever stands on it aside
-      if (!p.collapsed) {
-        const crowded = makeRoom(d, id);
-        if (crowded > 0) log.error(`island ${i.name}: ${crowded} island(s) the search could not settle`);
-      }
-    }
+    if (p.collapsed) i.collapsed = true;
+    else if (p.collapsed === false) unfold(d, id, log);
   });
   return store.state.islands[id];
 }
