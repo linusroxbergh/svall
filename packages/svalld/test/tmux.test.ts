@@ -192,7 +192,7 @@ runIf('Tmux', () => {
     const home = makeHome();
     const bin = path.join(home, 'bin');
     fs.mkdirSync(bin);
-    const held = (real: string) => `#!/bin/sh\ntrap '' HUP\ntouch ${bin}/$$\nuntil [ -e ${bin}/go ]; do [ -d ${bin} ] || exit; /bin/sleep 0.05; done\nexec ${real} "$@"\n`;
+    const held = (real: string) => `#!/bin/sh\ntrap '' HUP\ntouch ${bin}/$$\nfor i in $(/usr/bin/seq 400); do [ -e ${bin}/go ] && exec ${real} "$@"; /bin/sleep 0.05; done\n`;
     for (const cmd of ['cat', 'sleep', 'zsh']) fs.writeFileSync(path.join(bin, cmd), held(`/bin/${cmd}`), { mode: 0o755 });
     // tmux looks a command up on the PATH of the client that asks for it
     vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
