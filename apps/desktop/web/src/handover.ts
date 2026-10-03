@@ -269,19 +269,27 @@ export function choiceFor(b: Blocker): Choice | undefined {
 export function chosen(choices: HandoverChoices, b: Blocker): boolean {
   switch (choiceFor(b)) {
     case 'interrupt': return choices.interruptAfterMs !== undefined;
-    case 'terminate': return choices.terminateShells === true;
+    case 'terminate': {
+      const { terminateShells } = choices;
+      return terminateShells === true || (b.entity?.kind === 'character' && Array.isArray(terminateShells) && terminateShells.includes(b.entity.id));
+    }
     case 'archive': return !!b.entity && !!choices.archiveRoots?.includes(b.entity.id);
     default: return false;
   }
 }
 
-/** Turns a blocker's choice on or off. Interrupting and terminating are one choice each, for every terminal they name. */
-export function withChoice(choices: HandoverChoices, b: Blocker): HandoverChoices {
+/** Turns a blocker's choice on or off: interrupting is one choice for every agent; terminating adds or drops each terminal `blockers` names. */
+export function withChoice(choices: HandoverChoices, b: Blocker, blockers: Blocker[]): HandoverChoices {
   const on = !chosen(choices, b);
   const { interruptAfterMs, terminateShells, archiveRoots, ...rest } = choices;
   switch (choiceFor(b)) {
     case 'interrupt': return { ...rest, ...(on && { interruptAfterMs: 0 }), ...(terminateShells !== undefined && { terminateShells }), ...(archiveRoots && { archiveRoots }) };
-    case 'terminate': return { ...rest, ...(interruptAfterMs !== undefined && { interruptAfterMs }), ...(on && { terminateShells: true }), ...(archiveRoots && { archiveRoots }) };
+    case 'terminate': {
+      const named = blockers.flatMap((x) => (choiceFor(x) === 'terminate' && x.entity?.kind === 'character' ? [x.entity.id] : []));
+      const held = Array.isArray(terminateShells) ? terminateShells : [];
+      const shells = on ? [...new Set([...held, ...named])] : held.filter((id) => !named.includes(id));
+      return { ...rest, ...(interruptAfterMs !== undefined && { interruptAfterMs }), ...(shells.length && { terminateShells: shells }), ...(archiveRoots && { archiveRoots }) };
+    }
     case 'archive': {
       const roots = on ? [...(archiveRoots ?? []), b.entity!.id] : (archiveRoots ?? []).filter((id) => id !== b.entity!.id);
       return { ...rest, ...(interruptAfterMs !== undefined && { interruptAfterMs }), ...(terminateShells !== undefined && { terminateShells }), ...(roots.length && { archiveRoots: roots }) };

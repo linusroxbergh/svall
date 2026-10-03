@@ -224,7 +224,7 @@ test('a pull the page already reconnected for still gives the terminals back onc
   await expect.poll(async () => (await sent(page)).slice(before).some((m) => m.type === 'term.show' && m.id === a.id), { timeout: 10_000 }).toBe(true);
 });
 
-test('a decision waits for its answer, which goes as one choose, and the sheet stays until it is given', async ({ page, svall }) => {
+test('a decision waits for its answer, which goes as one choose, while the sheet closes and opens again', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('decide') });
   const a = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'ada' });
   const b = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'bo' });
@@ -248,19 +248,21 @@ test('a decision waits for its answer, which goes as one choose, and the sheet s
   await expect(page.getByTestId('handover-blocker-agent_unsettled')).toContainText('ada');
   await expect(page.getByTestId('handover-blocker-agent_unsettled')).toContainText('a hook of your own');
   await expect(page.getByTestId('handover-blocker-shell_busy')).toContainText('npm test');
-  // nothing dismisses the sheet while the helper waits on it
-  await expect(page.getByTestId('handover-close')).toBeDisabled();
+  // closing leaves the decision waiting, and the Handover control, marked waiting, opens it again
   await page.keyboard.press('Escape');
+  await expect(page.getByTestId('handover-sheet')).toHaveCount(0);
+  await expect(page.getByTestId('handover-tab')).toHaveAttribute('data-state', 'waiting');
+  await page.getByTestId('handover-tab').click();
+  await expect(page.getByTestId('handover-section-rest')).toHaveAttribute('data-state', 'waiting');
   await page.mouse.click(5, 5);
-  await expect(page.getByTestId('handover-sheet')).toBeVisible();
-  await page.getByTestId('handover-tab').click({ force: true });
-  await expect(page.getByTestId('handover-sheet')).toBeVisible();
+  await expect(page.getByTestId('handover-sheet')).toHaveCount(0);
+  await page.getByTestId('handover-tab').click();
+  await expect(page.getByTestId('handover-blocker-shell_busy')).toBeVisible();
 
   await page.getByTestId('handover-blocker-shell_busy').getByTestId('handover-choice-terminate').click();
   await expect(page.getByTestId('handover-blocker-agent_unsettled').getByTestId('handover-choice-terminate')).toHaveAttribute('aria-pressed', 'true');
   await page.getByTestId('handover-go').click();
-  expect(await lastOf(page, 'handover.choose')).toEqual({ type: 'handover.choose', choices: { interruptAfterMs: 0, terminateShells: true } });
-  await expect(page.getByTestId('handover-close')).toBeEnabled();
+  expect(await lastOf(page, 'handover.choose')).toEqual({ type: 'handover.choose', choices: { interruptAfterMs: 0, terminateShells: [a.id, b.id] } });
 
   await say(page, { event: 'handover.blocked', data: { transactionId: 'tx1', phase: 'freeze', blockers: [
     { code: 'agent_working', message: "ada's terminal is still working", entity: { kind: 'character', id: a.id } },
@@ -361,7 +363,7 @@ test('preflight blockers name what they are about, and a new start carries the c
   await page.getByTestId('handover-choice-terminate').click();
   await page.getByTestId('handover-choice-archive').click();
   await page.getByTestId('handover-try-again').click();
-  expect(await lastOf(page, 'handover.start')).toEqual({ type: 'handover.start', to: 'local', choices: { terminateShells: true, archiveRoots: ['r_0a1b'] } });
+  expect(await lastOf(page, 'handover.start')).toEqual({ type: 'handover.start', to: 'local', choices: { terminateShells: [b.id], archiveRoots: ['r_0a1b'] } });
 
   await say(page, { event: 'handover.result', data: { status: 'blocked', phase: 'begin', blockers: [
     { code: 'character_pinned', message: 'ada is kept on this machine', entity: { kind: 'character', id: a.id } },

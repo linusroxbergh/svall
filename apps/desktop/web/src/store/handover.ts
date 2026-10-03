@@ -1,7 +1,7 @@
 import type { HandoverChoices } from '@svall/protocol';
 import type { StateCreator } from 'zustand/vanilla';
 import type { ConnectionState, HostArgs, HostOp, HostStep } from '../bridge.js';
-import { applyEvent, decisionPending, endFollow, followRun, needsUser, readable, type HandoverEvent, type HandoverRun } from '../handover.js';
+import { applyEvent, endFollow, followRun, needsUser, readable, type HandoverEvent, type HandoverRun } from '../handover.js';
 import { applyStep, beginRun, endRun, withoutTokens, type HostRun } from '../host.js';
 import type { App } from './index.js';
 
@@ -55,11 +55,7 @@ export const createHandoverSlice: StateCreator<App, [], [], HandoverState & Hand
   hostStep: (op, event) => set((s) => (s.host?.op === op ? { host: applyStep(s.host, event) } : {})),
   hostDone: (op, code) => set((s) => (s.host?.op === op ? { host: endRun(s.host, code) } : {})),
   confirmHost: (hostConfirm) => set({ hostConfirm }),
-  // a decision the helper is waiting on keeps the sheet up until it is answered
-  toggleHandover: (open) => set((s) => {
-    const next = open ?? !s.handoverOpen;
-    return !next && decisionPending(s.handover) ? {} : { handoverOpen: next };
-  }),
+  toggleHandover: (open) => set((s) => ({ handoverOpen: open ?? !s.handoverOpen })),
   handoverFollow: (to, choices) => set({ handover: followRun(to, choices) }),
   handoverEvent: (e) => set((s) => {
     if (!readable(e)) return {};

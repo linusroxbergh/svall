@@ -33,7 +33,13 @@ test('opened by hand, the sheet focuses its close button', () => {
 test('a decision that opens the sheet, or arrives while it is up, puts the focus on its answer', () => {
   render(<HandoverSheet />);
   act(() => { store.getState().handoverEvent(freeze); store.getState().handoverEvent(blocked); });
-  expect((screen.getByTestId('handover-close') as HTMLButtonElement).disabled).toBe(true);
+  expect(document.activeElement).toBe(screen.getByTestId('handover-go'));
+
+  // closing leaves the decision waiting, and opening the sheet again goes back to it
+  fireEvent.click(screen.getByTestId('handover-close'));
+  expect(screen.queryByTestId('handover-sheet')).toBeNull();
+  expect(store.getState().handover?.decision?.phase).toBe('freeze');
+  act(() => store.getState().toggleHandover());
   expect(document.activeElement).toBe(screen.getByTestId('handover-go'));
 
   fireEvent.click(screen.getByTestId('handover-go'));

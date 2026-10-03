@@ -717,8 +717,9 @@ describe('the machine that owns the fleet', () => {
 describe('the handover sheet', () => {
   const changed = (phase: 'begin' | 'freeze' | 'transfer' | 'activate' | 'complete') => ({ event: 'handover.changed' as const, data: { transactionId: 'tx', phase } });
 
-  it('follows the run the page started, and cannot be closed while a decision waits', () => {
+  it('follows the run the page started, and closes over a waiting decision without answering it', () => {
     const store = createAppStore();
+    store.getState().setFleet(fleet());
     store.getState().handoverFollow('studio');
     expect(store.getState().handover).toMatchObject({ to: 'studio', following: true, rows: [] });
     store.getState().toggleHandover(true);
@@ -726,10 +727,17 @@ describe('the handover sheet', () => {
     expect(store.getState().handoverOpen).toBe(false);
     store.getState().handoverEvent(changed('freeze'));
     store.getState().handoverEvent({ event: 'handover.blocked', data: { transactionId: 'tx', phase: 'freeze', blockers: [{ code: 'agent_working', message: "Ada's terminal is still working" }] } });
-    // a decision opens the sheet, and the sheet stays until it is answered
     expect(store.getState().handoverOpen).toBe(true);
+    const decision = store.getState().handover?.decision;
+    expect(decision?.phase).toBe('freeze');
+    // closed, the sheet lets the terminals show, and the dock's Handover control brings the same decision back
     store.getState().toggleHandover(false);
+    expect(store.getState().handoverOpen).toBe(false);
+    expect(isVeiled(store.getState())).toBe(false);
+    expect(store.getState().handover?.decision).toBe(decision);
+    store.getState().toggleHandover();
     expect(store.getState().handoverOpen).toBe(true);
+    expect(store.getState().handover?.decision).toBe(decision);
     store.getState().handoverChoose({ interruptAfterMs: 0 });
     expect(store.getState().handover?.decision).toBeUndefined();
     expect(store.getState().handover?.choices).toEqual({ interruptAfterMs: 0 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Blocker, HandoverPhase } from '@svall/protocol';
 import {
-  actionsOf, applyEvent, blockerHint, choiceFor, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, needsUser,
+  actionsOf, applyEvent, blockerHint, choiceFor, chosen, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, needsUser,
   rowText, sectionStates, withChoice, type HandoverEvent, type HandoverRun,
 } from '../src/handover.js';
 
@@ -219,12 +219,31 @@ describe('the choices a blocker takes', () => {
     expect(choiceFor(b('destination_diverged', { kind: 'root', id: 'r_a' }))).toBe('archive');
     expect(choiceFor(b('destination_occupied', { kind: 'root', id: 'r_a' }))).toBe('archive');
     expect(choiceFor(b('character_pinned'))).toBeUndefined();
-    let choices = withChoice({}, b('agent_working'));
-    choices = withChoice(choices, b('shell_busy'));
-    choices = withChoice(choices, b('destination_occupied', { kind: 'root', id: 'r_a' }));
-    expect(choices).toEqual({ interruptAfterMs: 0, terminateShells: true, archiveRoots: ['r_a'] });
-    choices = withChoice(choices, b('destination_occupied', { kind: 'root', id: 'r_a' }));
-    expect(choices).toEqual({ interruptAfterMs: 0, terminateShells: true });
+    const working = b('agent_working', { kind: 'character', id: 'c3' });
+    const unsettled = b('agent_unsettled', { kind: 'character', id: 'c1' });
+    const busy = b('shell_busy', { kind: 'character', id: 'c2' });
+    const occupied = b('destination_occupied', { kind: 'root', id: 'r_a' });
+    const shown = [working, unsettled, busy, occupied];
+    let choices = withChoice({}, working, shown);
+    choices = withChoice(choices, busy, shown);
+    // terminating names every terminal the blockers name, as the CLI answers
+    expect(chosen(choices, unsettled)).toBe(true);
+    choices = withChoice(choices, occupied, shown);
+    expect(choices).toEqual({ interruptAfterMs: 0, terminateShells: ['c1', 'c2'], archiveRoots: ['r_a'] });
+    choices = withChoice(choices, occupied, shown);
+    expect(choices).toEqual({ interruptAfterMs: 0, terminateShells: ['c1', 'c2'] });
+    choices = withChoice(choices, unsettled, shown);
+    expect(choices).toEqual({ interruptAfterMs: 0 });
+  });
+
+  it('adds the terminals named here to those chosen before, and holds a choice of every terminal as one', () => {
+    const busy = b('shell_busy', { kind: 'character', id: 'c2' });
+    expect(chosen({ terminateShells: ['c9'] }, busy)).toBe(false);
+    expect(withChoice({ terminateShells: ['c9'] }, busy, [busy])).toEqual({ terminateShells: ['c9', 'c2'] });
+    expect(withChoice({ terminateShells: ['c9', 'c2'] }, busy, [busy])).toEqual({ terminateShells: ['c9'] });
+    // `--terminate-shells` chose every terminal
+    expect(chosen({ terminateShells: true }, busy)).toBe(true);
+    expect(withChoice({ terminateShells: true }, busy, [busy])).toEqual({});
   });
 
   it('starts from the choices the run holds, in a sheet opened after the start that made them', () => {
@@ -233,7 +252,7 @@ describe('the choices a blocker takes', () => {
     // a relaunched sheet follows a resume with nothing chosen yet
     const run = play([...through('freeze'), { event: 'handover.blocked', data: { transactionId: tx, phase: 'freeze', blockers: [working], choices: held } }], followRun());
     expect(run.choices).toEqual(held);
-    expect(withChoice(run.choices, working)).toEqual({ ...held, interruptAfterMs: 0 });
+    expect(withChoice(run.choices, working, [working])).toEqual({ ...held, interruptAfterMs: 0 });
   });
 });
 

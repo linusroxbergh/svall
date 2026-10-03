@@ -33,7 +33,7 @@ function cancel(): void {
   app.bridge.send({ type: 'handover.cancel' });
 }
 
-function BlockerRow({ b, ctx, run, warning }: { b: Blocker; ctx: HintContext; run: HandoverRun; warning?: boolean }) {
+function BlockerRow({ b, ctx, run, warning, blockers = [b] }: { b: Blocker; ctx: HintContext; run: HandoverRun; warning?: boolean; blockers?: Blocker[] }) {
   const choice = warning ? undefined : choiceFor(b);
   const hint = blockerHint(b, ctx);
   const who = b.entity?.kind === 'character' ? b.entity.id : undefined;
@@ -46,7 +46,7 @@ function BlockerRow({ b, ctx, run, warning }: { b: Blocker; ctx: HintContext; ru
         {hint && <em>{hint}</em>}
         {choice && (
           <button className="btn ho-choice" data-testid={`handover-choice-${choice}`} aria-pressed={chosen(run.choices, b)}
-            onClick={() => store().setHandoverChoices(withChoice(run.choices, b))}>{CHOICE_LABEL[choice]}</button>
+            onClick={() => store().setHandoverChoices(withChoice(run.choices, b, blockers))}>{CHOICE_LABEL[choice]}</button>
         )}
         {b.code === 'character_pinned' && who && (
           <button className="btn ho-choice" data-testid="handover-open-card"
@@ -103,7 +103,7 @@ function Section({ id, label, state, run, ctx }: { id: SectionId; label: string;
       )}
       {pre?.warnings.map((w, i) => <BlockerRow key={`w${i}`} b={w} ctx={ctx} run={run} warning />)}
       {rows.map((row) => <EntityRow key={`${row.kind}:${row.id}`} row={row} ctx={ctx} run={run} />)}
-      {blockers.map((b, i) => <BlockerRow key={`b${i}`} b={b} ctx={ctx} run={run} />)}
+      {blockers.map((b, i) => <BlockerRow key={`b${i}`} b={b} ctx={ctx} run={run} blockers={blockers} />)}
       {interrupt && (
         <div className="acts">
           <button className="btn" data-testid="handover-interrupt" title={`Stops every agent still at work with Escape; each resumes from its transcript on ${ctx.destination}`}
@@ -145,7 +145,6 @@ function Footer({ run }: { run: HandoverRun }) {
     const go = picked ? 'Carry on' : blockers.length > 0 && blockers.every((b) => b.code === 'agent_working') ? 'Continue waiting' : 'Try again';
     return (
       <div className="acts">
-        {/* the close button is disabled while the helper waits, so the answer takes the focus */}
         <button className="btn pri" data-testid="handover-go" autoFocus onClick={() => choose(run.choices)}>{go}</button>
         <button className="btn dan" data-testid="handover-abort" onClick={cancel}>Abort</button>
       </div>
@@ -173,12 +172,12 @@ export function HandoverSheet() {
   const gateway = useApp((s) => s.shell?.gateway);
   const owner = useApp((s) => s.connection?.owner ?? 'local');
   const characters = useApp((s) => s.fleet.characters);
-  const pending = decisionPending(run);
   const shut = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    shut.current?.focus();
+    // a waiting decision keeps the focus its answer took
+    if (!decisionPending(store().handover)) shut.current?.focus();
     const key = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.stopPropagation();
@@ -204,8 +203,7 @@ export function HandoverSheet() {
         <div className="kicker">
           Handover
           <span className="spacer" />
-          {/* a decision the helper waits on is answered or aborted, never dismissed */}
-          <button ref={shut} className="side-x" data-testid="handover-close" title="Close" aria-label="Close" disabled={pending} onClick={close}>×</button>
+          <button ref={shut} className="side-x" data-testid="handover-close" title="Close" aria-label="Close" onClick={close}>×</button>
         </div>
         {actionsOf(run).start && <Destinations owner={owner} gateway={gateway} />}
         {!shown && (
