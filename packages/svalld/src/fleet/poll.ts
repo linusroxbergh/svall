@@ -86,8 +86,8 @@ export class Poll {
     if (!this.deps.writable()) return;
     const before = snapshot(this.deps.store.state);
     const live = await this.deps.listWindows();
-    // a stop while tmux answered has ended what the listing shows
-    if (this.stopped) return;
+    // a stop while tmux answered has ended what the listing shows, and a freeze leaves the fleet to the handover
+    if (this.stopped || !this.deps.writable()) return;
     const byName = new Map(live.map((w) => [w.name, w]));
     const cwdChanged: string[] = [];
     const closing: { key: string; windowId: string; error: string }[] = [];

@@ -246,7 +246,7 @@ export class Fleet extends EventEmitter<Events> {
     if (!this.writable()) return;
     const before = snapshot(this.deps.store.state);
     const live = await this.listWindows();
-    if (this.stopped) return;
+    if (this.stopped || !this.writable()) return;
     const { mutate, renames, unplaced } = reconcile(this.deps.store.state, live, Date.now(), before, this.carried);
     this.deps.store.update(mutate);
     for (const line of unplaced) this.deps.log.error(line);

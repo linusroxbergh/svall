@@ -14,6 +14,7 @@ import { startHookReceiver, type HookEvent } from '../src/hooks/receiver.js';
 import { aboveHome, placementOk } from '../src/layout.js';
 import type { Deps as LinkDeps } from '../src/links/refresh.js';
 import { silentLogger, type Logger } from '../src/log.js';
+import type { OwnershipState } from '../src/ownership/state.js';
 import { resolvePaths } from '../src/paths.js';
 import { Store } from '../src/store.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
@@ -656,6 +657,59 @@ runIf('Fleet', () => {
     await ending;
     expect(store.state.characters[c.id].tmux).toBeDefined();
     expect(store.state.characters[c.id].revive).toBeUndefined();
+  });
+
+  const OTHER = MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f');
+  const freeze = (o: OwnershipState) => o.freeze({ id: 'tx-1', fromMachineId: o.machineId, toMachineId: OTHER, phase: 'preparing', startedAt: 1 });
+
+  it('stops a frozen or a replica fleet for a quit without ending any terminal, and still says it stopped', async () => {
+    const handed: [string, (o: OwnershipState) => Promise<void>][] = [
+      ['frozen', freeze],
+      ['replica', (o) => o.installCommitted({ fleetId: o.record().fleetId, generation: 1, ownerMachineId: OTHER })],
+    ];
+    for (const [what, hand] of handed) {
+      const b = await boot();
+      const { fleet, store, tmux, ownership } = b;
+      const { c, pid } = await withAgent(b);
+      await hand(ownership);
+      const stopped = new Promise<void>((r) => fleet.once('stopped', r));
+      await fleet.stopAll();
+      await stopped;
+      expect(store.state.characters[c.id].tmux, what).toEqual(c.tmux);
+      expect(store.state.characters[c.id].agent?.sessionId, what).toBe(SID);
+      expect(store.state.characters[c.id].revive, what).toBeUndefined();
+      expect((await tmux.listWindows()).map((w) => w.name), what).toContain(c.id);
+      expect(() => process.kill(pid, 0), what).not.toThrow();
+    }
+  });
+
+  it('writes nothing, and starts no scribe pass, from a poll whose listing a freeze overtook', async () => {
+    const b = await boot();
+    const { fleet, store, tmux, ownership } = b;
+    const listing = holdListing(tmux);
+    await listing.listed;
+    const tick = fleet['poll']['ticking'];
+    await freeze(ownership);
+    const update = vi.spyOn(store, 'update');
+    const scribe = vi.spyOn(fleet['scribe'], 'tick');
+    listing.release();
+    await tick;
+    expect(update).not.toHaveBeenCalled();
+    expect(scribe).not.toHaveBeenCalled();
+  });
+
+  it('adopts no stray window from a reconcile whose listing a freeze overtook', async () => {
+    const b = await boot();
+    const { fleet, store, tmux, ownership } = b;
+    await tmux.newWindow('stray', '/tmp', {});
+    const listing = holdListing(tmux);
+    const reconciling = fleet.reconcileNow();
+    await listing.listed;
+    await freeze(ownership);
+    listing.release();
+    await reconciling;
+    expect(store.state.characters).toEqual({});
+    expect((await tmux.listWindows()).map((w) => w.name)).toContain('stray');
   });
 
   it('leaves an agent whose pid is gone or runs another program, or whose launch a resume would change', async () => {
