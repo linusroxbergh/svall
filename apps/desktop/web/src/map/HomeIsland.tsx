@@ -16,7 +16,7 @@ const stop = (e: React.PointerEvent) => e.stopPropagation();
 // the home island: sandbar land pinned to the bottom centre, its crew, and the label row with the buttons; the land and
 // crew shrink by `scale` towards the bottom centre, and the row stays full size above them
 export function Home({
-  island, crew, config, collapsed, selected, selectedId, drag, status, shift, rowShift, scale, extra,
+  island, crew, config, collapsed, selected, selectedId, drag, status, failed, shift, rowShift, scale, extra,
   onToggle, onAction, onArrange, onNewIsland, onNew, label, tokenPointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu, dropHover,
 }: {
   island: Island;
@@ -27,6 +27,7 @@ export function Home({
   selectedId?: string;
   drag?: Drag;
   status(c: Character): DisplayStatus;
+  failed?(c: Character): string | undefined;
   shift: number;
   // the shift the window's width alone gives home: the row wraps by it, so its height never follows the map's zoom
   rowShift: number;
@@ -88,7 +89,7 @@ export function Home({
             const at = dragging && over ? over.local : c.cell;
             return (
               <Token key={c.id} c={c} status={status(c)} world={{ x: at.x + PAD_CELLS, y: at.y + PAD_CELLS }}
-                selected={c.id === selectedId} dragging={dragging} hover={dropHover?.kind === 'char' && dropHover.id === c.id}
+                selected={c.id === selectedId} dragging={dragging} hover={dropHover?.kind === 'char' && dropHover.id === c.id} failed={failed?.(c)}
                 pointer={tokenPointer(c.id)} onHoverStart={() => onHoverStart(c.id)} onHoverEnd={onHoverEnd}
                 onOpen={() => onOpen(c.id)} onLink={onLink} onMenu={(e) => onMenu(c.id, e)} />
             );

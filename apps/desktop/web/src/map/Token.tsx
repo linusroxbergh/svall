@@ -1,6 +1,5 @@
 import type { Cell, Character, ContextItem } from '@svall/protocol';
-import { useApp } from '../hooks.js';
-import { contextPctOf, isUnread, resumeErrorOf, slotStatus, type DisplayStatus } from '../selectors.js';
+import { contextPctOf, isUnread, slotStatus, type DisplayStatus } from '../selectors.js';
 import { LinkIcon } from './LinkIcon.js';
 import { portraitTint, portraitUrl } from '../portraits.js';
 import { theme, tokenPx } from '../theme.js';
@@ -32,7 +31,7 @@ function gem(status: DisplayStatus, unread: boolean) {
 }
 
 export function Token({
-  c, status, world, selected, dragging, settling, hover, offset, pointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu,
+  c, status, world, selected, dragging, settling, hover, offset, failed, pointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu,
 }: {
   c: Character;
   status: DisplayStatus;
@@ -42,6 +41,8 @@ export function Token({
   settling?: boolean;
   hover: boolean;
   offset?: { x: number; y: number };
+  // why a handover could not resume this character, from the app's store; the landing page has none
+  failed?: string;
   pointer: PointerHandlers;
   onHoverStart(): void;
   onHoverEnd(): void;
@@ -50,7 +51,6 @@ export function Token({
   onMenu(e: React.MouseEvent): void;
 }) {
   const word = statusWord(status);
-  const failed = useApp((s) => resumeErrorOf(s, c));
   // the rail holds RAIL_MAX chips; past that the last one counts the rest
   const shown = c.context.length > RAIL_MAX ? c.context.slice(0, RAIL_MAX - 1) : c.context;
   const hidden = c.context.slice(shown.length);
