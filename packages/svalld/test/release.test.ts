@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { entriesOf, manifestDigest, signManifest, sshVerify, verifyRelease, writeManifest, type Entry } from '../../../scripts/release-manifest.mjs';
 import { allowedSigners, installRelease } from '../../../scripts/install-release.mjs';
 import { companionAssets, describeVersion, packageLicence, phonePackages, shimText, stageRelease } from '../../../scripts/release-stage.mjs';
-import { hooksDir, homeTemplateDir, isRelease, mobileDistDir, releaseRoot, releaseVersion, repoRoot } from '../src/release.js';
+import { isRelease, mobileDistDir, releaseRoot, releaseVersion, repoRoot } from '../src/release.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 afterEach(() => { delete process.env.SVALL_RELEASE_ROOT; cleanHomes(); });
@@ -18,14 +18,7 @@ describe('release root on the repository layout', () => {
     expect(isRelease()).toBe(false);
     expect(releaseRoot()).toBe(checkout);
     expect(repoRoot()).toBe(checkout);
-    expect(hooksDir()).toBe(path.join(checkout, 'packages/svalld/hooks'));
-    expect(homeTemplateDir()).toBe(path.join(checkout, 'packages/svalld/home'));
     expect(mobileDistDir()).toBe(path.join(checkout, 'apps/desktop/web/dist-mobile'));
-  });
-
-  it('points at hooks and templates that are really there', () => {
-    expect(fs.existsSync(path.join(hooksDir(), 'agent-hook.mjs'))).toBe(true);
-    expect(fs.existsSync(path.join(homeTemplateDir(), 'CLAUDE.md'))).toBe(true);
   });
 
   it('has no release version of its own', () => {
@@ -39,8 +32,6 @@ describe('release root on an installed release', () => {
     process.env.SVALL_RELEASE_ROOT = root;
     expect(isRelease()).toBe(true);
     expect(releaseRoot()).toBe(root);
-    expect(hooksDir()).toBe(path.join(root, 'hooks'));
-    expect(homeTemplateDir()).toBe(path.join(root, 'home'));
     expect(mobileDistDir()).toBe(path.join(root, 'web-mobile'));
   });
 

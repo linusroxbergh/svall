@@ -33,10 +33,6 @@ export function repoRoot(): string {
 const asset = (release: string, checkout: string): string =>
   (root() ? path.join(root()!, release) : path.join(CHECKOUT, checkout));
 
-export const hooksDir = (): string => asset('hooks', 'packages/svalld/hooks');
-
-export const homeTemplateDir = (): string => asset('home', 'packages/svalld/home');
-
 /** The systemd user unit templates a Linux setup renders. */
 export const systemdDir = (): string => asset('systemd', 'packages/svalld/systemd');
 
