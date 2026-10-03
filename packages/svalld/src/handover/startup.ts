@@ -9,6 +9,14 @@ import type { Authority } from './source.js';
 
 /** How long a starting daemon waits for its gateway before it starts on the record it holds. */
 const GATEWAY_START_MS = 10_000;
+const GATEWAY_RETRY_MS = 250;
+
+// only the gateway on this machine is asked over a socket: one missing or not listening is that gateway still starting,
+// as systemd starts its unit beside the daemon's at boot
+const unlistened = (e: unknown): boolean => {
+  const { code, syscall } = e as NodeJS.ErrnoException;
+  return syscall === 'connect' && (code === 'ENOENT' || code === 'ECONNREFUSED');
+};
 
 /** How this daemon comes up: which of them may reconcile, adopt tmux windows and accept mutations. */
 export type StartupMode = 'owner' | 'replica' | 'frozen-source' | 'receiving-destination' | 'quarantined';
@@ -60,24 +68,39 @@ export async function enterStartupMode(mode: StartupMode, { ownership, journal, 
 
 /**
  * On start a gateway that answers in time has the last word on who runs this fleet. One that cannot be asked, holds
- * no record of it, or is too slow leaves the daemon on owner.json and its journal.
+ * no record of it, or is too slow leaves the daemon on owner.json and its journal; the gateway on this machine is
+ * asked again until it listens or the wait is up.
  */
 export async function adoptAtStart(o: {
   handover: Pick<HandoverService, 'adopt'>; authority?: Authority; fleetId: FleetId; log: Logger; timeoutMs?: number;
 }): Promise<void> {
-  if (!o.authority) return;
+  const { authority } = o;
+  if (!authority) return;
   const ms = o.timeoutMs ?? GATEWAY_START_MS;
   let timer: NodeJS.Timeout | undefined;
+  let waiting = true;
+  const ask = async (): Promise<OwnerRecord> => {
+    for (;;) {
+      try {
+        return await authority.get(o.fleetId);
+      } catch (e) {
+        if (!unlistened(e)) throw e;
+      }
+      await new Promise((r) => setTimeout(r, GATEWAY_RETRY_MS));
+      if (!waiting) throw new Error('the wait is up');
+    }
+  };
   let record: OwnerRecord;
   try {
     record = await Promise.race([
-      o.authority.get(o.fleetId),
+      ask(),
       new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`no answer within ${ms} ms`)), ms); }),
     ]);
   } catch (e) {
     o.log.info(`the gateway did not say who owns this fleet (${(e as Error).message}); starting on the record this machine holds`);
     return;
   } finally {
+    waiting = false;
     clearTimeout(timer);
   }
   try {

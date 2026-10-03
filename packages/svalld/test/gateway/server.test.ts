@@ -8,6 +8,8 @@ import { gatewayPaths } from '../../src/gateway/authority.js';
 import { AuthorityClient, fleetAuthority, ownerAnswer, versionMachineId, type SshRun } from '../../src/gateway/client.js';
 import { startAuthorityServer, type AuthorityServer } from '../../src/gateway/server.js';
 import { armFailpoints } from '../../src/handover/failpoints.js';
+import { adoptAtStart } from '../../src/handover/startup.js';
+import { silentLogger } from '../../src/log.js';
 
 const FLEET = '3f1a0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as FleetId;
 const MAC = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId;
@@ -230,6 +232,20 @@ describe('a fleet authority as its daemon reaches it', () => {
     const here = fleetAuthority({ gatewayMachineId: TRIFT, machineId: TRIFT, prefix: dir });
     expect(await here.get(FLEET)).toEqual({ fleetId: FLEET, generation: 0, ownerMachineId: MAC });
     await expect(fleetAuthority({ gatewayMachineId: TRIFT, machineId: TRIFT, prefix: prefix() }).get(FLEET)).rejects.toThrow();
+  });
+
+  it('waits at boot for the gateway on this machine to start listening, and takes its record', async () => {
+    const dir = prefix();
+    const before = await startAuthorityServer({ prefix: dir });
+    await (await connect(dir)).create({ fleetId: FLEET, initialOwnerMachineId: MAC });
+    await before.close();
+    const took: unknown[] = [];
+    const handover = { adopt: async (record: unknown) => { took.push(record); return { adopted: false, ownership: {} as never }; } };
+    // the gateway's unit comes up after the daemon's
+    setTimeout(() => { void serve(dir); }, 300);
+    const here = fleetAuthority({ gatewayMachineId: TRIFT, machineId: TRIFT, prefix: dir });
+    await adoptAtStart({ handover, authority: here, fleetId: FLEET, log: silentLogger, timeoutMs: 5000 });
+    expect(took).toEqual([{ fleetId: FLEET, generation: 0, ownerMachineId: MAC }]);
   });
 
   it("asks another machine's gateway over ssh by the route the registry names, and reads its answer or its refusal", async () => {

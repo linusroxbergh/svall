@@ -477,6 +477,50 @@ describe('a start with a gateway', () => {
     }
   });
 
+  // what connecting to the gateway's own socket throws while that gateway, on this machine, has yet to listen
+  const unlistened = (code: 'ENOENT' | 'ECONNREFUSED') =>
+    Object.assign(new Error(`connect ${code} /home/linus/.local/share/svall/gateway/authority.sock`), { code, syscall: 'connect' });
+
+  it('asks the gateway on this machine again until it listens, and takes its record', async () => {
+    const b = boot({ record: { generation: 4, ownerMachineId: me } });
+    let calls = 0;
+    const get = async () => {
+      calls++;
+      if (calls === 1) throw unlistened('ENOENT');
+      if (calls === 2) throw unlistened('ECONNREFUSED');
+      return { fleetId, generation: 7, ownerMachineId: other };
+    };
+    await adoptAtStart({ handover: b.handover, authority: { get }, fleetId, log: silentLogger, timeoutMs: 5000 });
+    expect(calls).toBe(3);
+    expect(b.ownership.record()).toMatchObject({ generation: 7, ownerMachineId: other });
+  });
+
+  it('starts on the record it holds once the gateway on this machine has not listened in time, and asks no more', async () => {
+    const b = boot({ record: { generation: 4, ownerMachineId: me } });
+    let calls = 0;
+    await adoptAtStart({ handover: b.handover, authority: { get: async () => { calls++; throw unlistened('ECONNREFUSED'); } }, fleetId, log: silentLogger, timeoutMs: 600 });
+    expect(calls).toBeGreaterThan(1);
+    expect(b.ownership.record()).toMatchObject({ generation: 4, ownerMachineId: me });
+    const asked = calls;
+    await new Promise((r) => setTimeout(r, 600));
+    expect(calls).toBe(asked);
+  });
+
+  it('asks a far gateway, or one that fails any other way, once', async () => {
+    const failures = [
+      new Error('connect ECONNREFUSED'),
+      new AuthorityFailure('disconnected', 'ssh trift exited 255 without an answer: Connection refused'),
+      Object.assign(new Error('spawn ssh ENOENT'), { code: 'ENOENT', syscall: 'spawn ssh' }),
+    ];
+    for (const failure of failures) {
+      const b = boot({ record: { generation: 4, ownerMachineId: me } });
+      let calls = 0;
+      await adoptAtStart({ handover: b.handover, authority: { get: async () => { calls++; throw failure; } }, fleetId, log: silentLogger, timeoutMs: 5000 });
+      expect(calls, failure.message).toBe(1);
+      expect(b.ownership.record()).toMatchObject({ generation: 4, ownerMachineId: me });
+    }
+  });
+
   it('asks nothing for a fleet no gateway holds', async () => {
     const b = boot({ record: { generation: 4, ownerMachineId: me } });
     await adoptAtStart({ handover: b.handover, fleetId, log: silentLogger });
