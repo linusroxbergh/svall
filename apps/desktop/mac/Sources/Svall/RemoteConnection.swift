@@ -58,7 +58,8 @@ final class RemoteConnection {
         }
         do { try helper.start() } catch {
             NSLog("svall: could not start the connection helper: %@", "\(error)")
-            fallBack()
+            publish(State(state: "error", owner: owner, kind: "other", message: "the connection helper could not start (\(error.localizedDescription))"))
+            fallBackIfLocalOnly()
         }
     }
 

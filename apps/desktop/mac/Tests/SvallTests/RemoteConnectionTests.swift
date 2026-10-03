@@ -45,12 +45,24 @@ final class RemoteConnectionTests: XCTestCase {
         remote.stop()
     }
 
-    func testAHelperThatCannotBeStartedFallsBackToTheLocalConnection() {
+    func testAHelperThatCannotBeStartedLeavesAFleetWithNoGatewayOnThisMac() {
+        let helper = ControllerProcess(executable: "/nonexistent/svall", arguments: ["connect", "--json"])
+        let remote = connection(helper: helper, local: SvallConnection(host: "127.0.0.1", port: 8123, token: "t0ken"), localOnly: true)
+        remote.start()
+        XCTAssertEqual(transcript.last, "connection 127.0.0.1:8123:t0ken")
+        XCTAssertEqual(remote.route, .local)
+        remote.stop()
+    }
+
+    func testAHelperThatCannotBeStartedDoesNotShowAFleetWithAGatewayFromItsCopyHere() {
         let helper = ControllerProcess(executable: "/nonexistent/svall", arguments: ["connect", "--json"])
         let remote = connection(helper: helper, local: SvallConnection(host: "127.0.0.1", port: 8123, token: "t0ken"))
         remote.start()
-        XCTAssertEqual(transcript, ["connection 127.0.0.1:8123:t0ken"])
-        XCTAssertEqual(remote.route, .local)
+        XCTAssertEqual(remote.route, .pending)
+        XCTAssertNil(remote.connection)
+        XCTAssertFalse(transcript.contains { $0.hasPrefix("connection") })
+        XCTAssertEqual(remote.state?.state, "error")
+        XCTAssertEqual(remote.state?.kind, "other")
         remote.stop()
     }
 
