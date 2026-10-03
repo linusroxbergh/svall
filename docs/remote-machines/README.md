@@ -31,7 +31,6 @@ It is off until you turn it on for a fleet, with `"handover": { "enabled": true 
 
 ## How it is distributed
 
-The Mac app is built from source with `pnpm desktop:install`, which also builds the x86-64 Linux companion
-`svall host add` installs ([arm64](setup.md#the-companion-release) takes one more command). There is no signed, notarized download of the app yet, and no release signing key, so every companion
-installed today is unsigned; [the security notes](../security/fleet-handover.md) cover how releases are checked. A
-published app would install its release on first launch; that is not built yet.
+Svall.app carries the x86-64 Linux companion `svall host add` installs ([arm64](setup.md#the-companion-release) takes
+one more command). There is no release signing key yet, so every companion installed today is unsigned;
+[the security notes](../security/fleet-handover.md) cover how releases are checked.

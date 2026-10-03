@@ -56,8 +56,8 @@ now `ledger/`, and `docs/superpowers/{specs,plans}/…fleet-handover…` is now 
   and `release.yml` have run only as the same scripts on this Mac.
 - **Licence decisions** (`docs/security/fleet-handover.md`): GhosttyKit's dependency licence texts, the
   statically linked LGPL libintl, and the Flaticon art shipped as files.
-- **A published download** would need the app to install its bundled release on first launch; the app
-  ships from source today (`pnpm desktop:install`).
+- **Svall Dev.** `svall-dev` and its daemon run from the checkout, which carries no `release.json`, companion or
+  rsync, so only Svall.app, which carries its controller release, can hand a fleet over.
 - **Follow-ups** the final review deferred: `ledger/final-review.md` ("Deferred as follow-ups"), the
   triage's follow-up rows in `ledger/final-review-triage.md`, and `minor (deferred)` lines in the ledger.
 

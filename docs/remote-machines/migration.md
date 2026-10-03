@@ -1,7 +1,8 @@
 # Upgrading and downgrading
 
 What changes on your Mac when you install the release with remote machines over an older one, and how to go back.
-The upgrade happens by itself with `git pull && pnpm desktop:install`; nothing here needs doing unless you downgrade.
+The upgrade happens by itself when Svall updates, or with `git pull && pnpm desktop:install` for Svall Dev; nothing
+here needs doing unless you downgrade.
 
 ## What the upgrade changes
 
@@ -25,27 +26,9 @@ stops the split the same way, before anything is written.
 - On its first start, the daemon migrates `state.json` to version 8, where a second terminal has a folder of its own.
   The file as it was stays beside it as `state.json.v7-<time>`.
 - The app, `svall` and the daemons of one release speak protocol 19 to each other. An app or `svall` from an older
-  release cannot reach a newer daemon; `pnpm desktop:install` updates all of them together.
+  release cannot reach a newer daemon; an update installs all of them together.
 - Each daemon writes `owner.json` in its fleet home, which says this Mac owns the fleet, and `~/.config/svall/`
   gets `machine.json`, this Mac's id. Nothing asks a gateway until you [set one up](setup.md).
-
-### `svall` and the daemons run from an installed release
-
-Before, `~/.local/bin/svall` was a script that ran the clone through `tsx`, and launchd ran each fleet's daemon from
-the clone too. Now `pnpm desktop:install` installs a release and points everything at it:
-
-- the release goes to `~/.local/share/svall/releases/<version>`, with `current` naming the one in use;
-- `~/.local/bin/svall` becomes a link to `current/bin/svall`;
-- every fleet's launchd agent, the private one and each named fleet's, runs `current/bin/svalld`;
-- Claude Code's hooks keep the Node they already name while it is there, and otherwise run the release's own.
-
-The clone is needed only to update. Each install keeps the release before it and removes older ones; `svall setup
---rollback` puts the release before back and restarts every fleet's daemon on it. `svall setup` run from the
-installed release keeps everything on `current`; run from a clone without `--release`, it still points the shims and
-the daemon at that clone, for development.
-
-`svall setup` also no longer replaces a mission control `.claude/settings.json` you edited; `svall setup
---replace-settings` does, keeping a copy.
 
 ### Named fleets
 
@@ -68,12 +51,8 @@ migrated, in a temporary home:
 - **The older daemon does not start.** Its log says `state.json is version 8, newer than this svalld reads (7): …; or,
   to go back to the fleet as this version last saw it, move ~/.svall/state.json.v7-<time> to
   ~/.svall/state.json; svalld starts once it is fixed`, and it waits without touching the state.
-- **The older `svall setup`**, which its `pnpm desktop:install` runs, finds no `config.json` and writes an empty one,
-  so the fleet would start on the default port with default settings.
-- **It writes its `svall` script through the link** this release left in `~/.local/bin`, into the installed release's
-  own `bin/svall`, unless the link is removed first.
-- **It points the private fleet's launchd agent back at the clone**, but leaves each named fleet's agent running this
-  release from `~/.local/share/svall/current`, which would migrate that fleet again.
+- **The older `svall setup`** finds no `config.json` and writes an empty one, so the fleet would start on the default
+  port with default settings.
 
 With the steps below, the older build started both fleets as they were before the upgrade.
 
@@ -101,19 +80,9 @@ With the steps below, the older build started both fleets as they were before th
    any setting changed since in `fleet.json` or `node.json`, unless you copy it into `config.json`. A fleet first made
    on this release has no kept copies, and the older build cannot open it; move its fleet home aside instead.
 
-4. **Remove what the older setup would write through, or leave running this release:**
+4. **Install the older Svall**, or for Svall Dev run `pnpm desktop:install` in a clone at that version.
 
-   ```sh
-   rm ~/.local/bin/svall
-   rm ~/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld.*.plist    # named fleets' agents only
-   ```
-
-   Each named fleet gets its agent back the first time you open it with `svall <name>`.
-
-5. **Install the older release:** in a clone at that version, `pnpm desktop:install`.
-
-`~/.local/share/svall` and `~/.config/svall` are not read by the older build. Claude Code's hooks may still
-name the release's Node; if you delete `~/.local/share/svall`, run `svall setup` once more so they name yours.
+`~/.config/svall` is not read by the older build.
 
 A Linux machine you set up can stay as it is; the older build never contacts it. To remove it, run `svall host remove
 <name>` before step 2.

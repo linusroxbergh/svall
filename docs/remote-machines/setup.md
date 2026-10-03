@@ -9,7 +9,7 @@ machine needs, how to add it, and how to look after it.
 | | Mac | Linux machine |
 | --- | --- | --- |
 | System | macOS 15 or newer | Ubuntu LTS, x86-64 or arm64. Ubuntu 24.04 is the tested release; a release other than an LTS is a warning, and any other system is refused. |
-| Svall | The app, installed with `pnpm desktop:install` (see the [README](../../README.md#quickstart)) | Installed by `svall host add` from the Mac. It brings its own Node and needs no clone, pnpm or build tools. |
+| Svall | The app (see the [README](../../README.md#quickstart)) | Installed by `svall host add` from the Mac. It brings its own Node and needs no clone, pnpm or build tools. |
 | Services | launchd, as for any fleet | systemd user services, with lingering on so the fleet keeps running after you log out |
 | Tools | tmux, Git | tmux 3.x, Git, rsync 3.2.3 or newer, as Ubuntu 22.04 and later ship (`sudo apt install tmux git rsync`) |
 | Network | Tailscale, and OpenSSH to the Linux account (Tailscale SSH works) | Tailscale |
@@ -98,7 +98,7 @@ Adding the same machine again runs every check again and changes nothing that is
 `svall host add` installs the companion matching the Mac's release exactly: a handover needs the same release on both
 machines. It takes it from the list the Mac's release carries, downloads it and checks its digest.
 
-- A build made with `pnpm desktop:install` carries a companion for x86-64 Linux only. For an arm64 machine, build one
+- Svall.app carries a companion for x86-64 Linux only. For an arm64 machine, build one
   from the same checkout and name it:
 
   ```sh
@@ -134,7 +134,7 @@ once per fleet; `--fleet work` for a fleet named `work`. Then [hand the fleet ov
 | `svall host remove <name>` | Remove | Runs `svall uninstall` there and drops the machine from the registry. It refuses while the machine is the gateway of a fleet this Mac does not own, while it owns a fleet through any gateway, and while a handover holds any fleet here open, whatever its gateway; bring each back with `svall handover local` first. The uninstall there passes only the gateway records of this Mac's fleets, so the machine still refuses for anything else, such as another Mac's fleet. Its fleets and their files stay on that machine. |
 | `svall host remove <name> --forget` | Forget | Drops the machine from the registry without reaching it, when it is gone. |
 
-After you update Svall on the Mac (`git pull && pnpm desktop:install`), run `svall host upgrade <name>`: until
+After you update Svall on the Mac, run `svall host upgrade <name>`: until
 both machines run the same release, a handover stops with `incompatible_release`.
 
 On the Linux machine itself:

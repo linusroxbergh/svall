@@ -34,9 +34,6 @@ does not works exactly as before.
 - A fleet's settings are split into `fleet.json`, which travels with the fleet, and `node.json`, which stays with the
   machine. Your `config.json` is split on the daemon's first start and kept as `config.json.bak`.
 - The fleet state moves to schema 8 and the protocol to 19; the old state is kept beside it.
-- `pnpm desktop:install` installs a release under `~/.local/share/svall`, and `svall` and the daemons run from it
-  instead of the clone, keeping the release before for `svall setup --rollback` and removing older ones.
-- `svall setup` no longer replaces an edited mission control `.claude/settings.json`; `--replace-settings` does.
 - `host`, `handover`, `gateway`, `fleet`, `connect`, `connection-info` and `version` are commands now, and no longer
   name a fleet; `svall setup` names each fleet made under one of them and the `mv` that renames it.
 - `svall uninstall` refuses while it would strand a fleet: a handover open, a fleet this machine runs for its gateway,
