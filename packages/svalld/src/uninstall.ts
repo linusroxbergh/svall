@@ -236,11 +236,11 @@ export async function runUninstall(o: {
   return [...done, ...removeShims(o.shimDir)];
 }
 
-// a fleet home is one that holds a fleet.json, or the config.json it is split out of, so a folder
-// of the user's that happens to be named like one is never offered up for deletion
+// a fleet home is one that holds a fleet.json, the config.json it is split out of, or the config.json.bak a split
+// left, so a folder of the user's that happens to be named like one is never offered up for deletion
 const isFleetHome = (p: string): boolean =>
   fs.statSync(p, { throwIfNoEntry: false })?.isDirectory() === true
-  && [resolvePaths(p).fleetConfig, resolvePaths(p).legacyConfig].some((f) => fs.existsSync(f));
+  && [resolvePaths(p).fleetConfig, resolvePaths(p).legacyConfig, `${resolvePaths(p).legacyConfig}.bak`].some((f) => fs.existsSync(f));
 
 export const fleetHomes = (homedir: string): string[] => fs.readdirSync(homedir)
   .filter((f) => f === path.basename(profileHome(PRIVATE, homedir)) || (f.startsWith(homePrefix) && isProfileName(f.slice(homePrefix.length))))

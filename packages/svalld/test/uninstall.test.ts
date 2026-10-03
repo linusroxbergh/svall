@@ -75,6 +75,13 @@ describe('fleetHomes', () => {
     }
     expect(fleetHomes(u).map((h) => path.basename(h))).toEqual(['.svall', '.svall-work']);
   });
+
+  it('counts a home whose split stopped between moving config.json aside and writing fleet.json', () => {
+    const u = makeHome();
+    fs.mkdirSync(path.join(u, '.svall-work'));
+    fs.writeFileSync(path.join(u, '.svall-work', 'config.json.bak'), '{}');
+    expect(fleetHomes(u)).toEqual([path.join(u, '.svall-work')]);
+  });
 });
 
 describe('runUninstall', () => {
