@@ -26,6 +26,8 @@ export const theme = {
   card: { margin: 26, easeMs: 160 },
   // the little box that asks where a link should open, kept clear of the window's own edges
   linkAsk: { width: 200, height: 112, gap: 6, margin: 8 },
+  // a right-click menu keeps this far inside the window
+  menu: { margin: 8 },
   // card box in token units, unit one token unit in world px; a card keeps its screen size between map scales `floor`
   // and 1, above that taking `grow` of the growth. At .78 a card and its link rail stay inside the three cells between crew
   token: { w: 2.56, h: 3.32 * 1.05, unit: 34, floor: 0.78, grow: 0.3 },

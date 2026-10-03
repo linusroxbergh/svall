@@ -17,6 +17,9 @@ export type Webview = { tab: string; rect: Rect; url: string; title: string; loa
 export type Toast = { text: string; tone: 'error' | 'ok'; action?: { label: string; run(): void } };
 // a link waiting by the pointer for the user to say where it should open; one from a terminal names the surface the keys go back to
 export type LinkAsk = { url: string; charId: string; x: number; y: number; surface?: string };
+// a right-click's menu, by the pointer that asked for it; an entry without run shows greyed out
+export type MenuEntry = { title: string; run?: () => void; danger?: boolean };
+export type PageMenu = { x: number; y: number; items: MenuEntry[] };
 
 export type UiState = {
   view: View;
@@ -44,6 +47,7 @@ export type UiState = {
   arrangeAsk: 'key' | 'auto' | false;
   toast?: Toast;
   linkAsk?: LinkAsk;
+  menu?: PageMenu;
   configErrors: string[];
   shell?: ShellInfo;
   sidebarOpen: boolean;
@@ -101,6 +105,8 @@ export type UiActions = {
   clearToast(): void;
   askLink(ask: LinkAsk): void;
   closeLinkAsk(): void;
+  openMenu(menu: PageMenu): void;
+  closeMenu(): void;
   setConfigErrors(errors: string[]): void;
   setShell(info: ShellInfo): void;
   setNotifyPermission(p: NotifyPermission): void;
@@ -158,6 +164,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     arrangeAsk: false,
     toast: undefined,
     linkAsk: undefined,
+    menu: undefined,
     configErrors: [],
     notifyPermission: 'unknown',
     update: undefined,
@@ -221,6 +228,8 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     clearToast: () => set({ toast: undefined }),
     askLink: (linkAsk) => set({ linkAsk }),
     closeLinkAsk: () => set({ linkAsk: undefined }),
+    openMenu: (menu) => set({ menu }),
+    closeMenu: () => set({ menu: undefined }),
     setConfigErrors: (errors) => set({ configErrors: errors }),
     setCapturingKey: (capturingKey) => set({ capturingKey }),
     setShell: (shell) => set((s) => {
