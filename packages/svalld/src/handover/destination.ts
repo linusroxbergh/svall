@@ -32,7 +32,7 @@ import type { HandoverService } from './service.js';
 import { adapterFor, installSession, placeTranscripts, resumeFolder, sessionAdapter, type AgentProbe, type InstallFs } from './sessions/registry.js';
 import { SessionError, type SessionAdapter } from './sessions/types.js';
 import type { Authority } from './source.js';
-import { holds } from './portable-path.js';
+import { holds, realPath } from './portable-path.js';
 import { gitProblems, importState, landedProblem, linkProblem, manifestProblems, sessionProblems } from './validate.js';
 
 export type DestinationDeps = {
@@ -61,8 +61,9 @@ export type DestinationDeps = {
 };
 
 /**
- * What Complete seals: each carried root as the Git import left it, at the generation this machine prepared. A claim
- * writes it first without the files; a root prepare never read stays receiving when the handover is let go.
+ * What Complete seals: what landed in each carried root and what the Git import wrote there, at the generation this
+ * machine prepared. A claim writes it first without the files; a root prepare never read stays receiving when the
+ * handover is let go.
  */
 export const SealRecord = z.object({
   transactionId: TransactionId,
@@ -442,19 +443,33 @@ export class DestinationHandover {
     if (git.length) throw blocked(git);
     // verified once the import may have changed the roots, and not before: a retry until then compares what landed again
     if (!verified) boundary('destination.verify.record', () => this.journal.write({ ...this.open(tx)!, landedDigest, updatedAt: this.clock.now() }));
+    const registrations = carried.flatMap((r) => (stays.get(r.id) ?? []).map((rel) => path.posix.join(r.path, rel)));
+    const keptNames = Object.fromEntries(graphsHere(m).map((g) => [g.id, registrations
+      .filter((reg) => path.posix.dirname(reg) === path.posix.join(g.commonDir, 'worktrees')).map((reg) => path.posix.basename(reg))]));
+    // what the import writes, by real path: each graph's config, and the registrations it neither carries nor keeps, which it removes
+    const commons = graphsHere(m).map((g) => ({ common: realPath(g.commonDir), keep: new Set([...g.carried, ...keptNames[g.id]]) }));
+    const written = (file: string): boolean => commons.some(({ common, keep }) => {
+      const rel = path.posix.relative(common, file);
+      return rel === 'config' || (rel.startsWith('worktrees/') && !keep.has(rel.split('/')[1]));
+    });
+    // what landed in a root, with each path the import writes as it now stands there
+    const asImported = async (r: TransferRoot): Promise<TransferFile[]> => {
+      const root = at.get(r.id)!;
+      const there = (f: TransferFile): boolean => written(f.path ? path.posix.join(root, f.path) : root);
+      const read = commons.some(({ common }) => holds(root, common) || holds(common, root));
+      const scanned = read ? (await scanPath(root, rootMatcher(r.kind, m.excludes), this.d.scanFs))?.files ?? [] : [];
+      return [...p.landed.find((x) => x.id === r.id)!.files.filter((f) => !there(f)), ...scanned.filter(there)];
+    };
     let graphs: Blocker[];
     try {
-      const registrations = carried.flatMap((r) => (stays.get(r.id) ?? []).map((rel) => path.posix.join(r.path, rel)));
-      const keptNames = Object.fromEntries(graphsHere(m).map((g) => [g.id, registrations
-        .filter((reg) => path.posix.dirname(reg) === path.posix.join(g.commonDir, 'worktrees')).map((reg) => path.posix.basename(reg))]));
       graphs = await importGraphs(m, { ...(this.d.git && { git: this.d.git }), kept: keptNames });
     } finally {
-      // what Complete seals, or an abort leaves claimable: the roots as the import left them, however far it got. Read
-      // only after this call proved what landed; a prepare asked again keeps what the one that proved it recorded
+      // what Complete seals, or an abort leaves claimable: what landed, with what the import wrote however far it got and
+      // nothing else written there meanwhile; a prepare asked again keeps what the one that proved it recorded
       const earlier = verified ? this.recorded(tx, p.manifestDigest) : undefined;
       const roots: SealRecord['roots'] = [];
       for (const r of carried) {
-        const files = earlier?.roots.find((x) => x.id === r.id)?.files ?? (await scanPath(at.get(r.id)!, rootMatcher(r.kind, m.excludes), this.d.scanFs))?.files ?? [];
+        const files = earlier?.roots.find((x) => x.id === r.id)?.files ?? await asImported(r);
         roots.push({ id: r.id, kind: r.kind, entry: r.entry, path: r.path, files });
       }
       const seal = SealRecord.parse({ transactionId: tx, generation: p.generation, manifestDigest: p.manifestDigest, roots });
@@ -859,7 +874,7 @@ export class DestinationHandover {
 
   /**
    * Lets a prepared handover go once the gateway can no longer commit it: the prepared files go, each root
-   * the import touched is sealed as it now stands so the next handover can claim it, and the hold lifts.
+   * is sealed as prepare recorded it so the next handover can claim it, and the hold lifts.
    */
   private async runAbort(p: ParsedParams<'handover.abort'>): Promise<Result<'handover.abort'>> {
     const j = this.open(p.transactionId);

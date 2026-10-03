@@ -576,6 +576,56 @@ describe('destination prepare', () => {
     expect(r.roots.find((x) => x.id === bo.id)!.check).toMatchObject({ ok: false, blocker: { code: 'destination_diverged', message: expect.stringContaining('mine.txt') } });
   });
 
+  it('seals no edit made here while it was down after dying in the Git import, when the prepare is asked again', async () => {
+    const s = await scene({ tamper: strayGraph, before: ({ dst }) => { fs.symlinkSync(path.join(dst, 'work/ada'), path.join(dst, 'elsewhere')); } });
+    const git: GitRunner = async () => {
+      fs.writeFileSync(path.join(s.dst, 'elsewhere/config'), '[core]\n\tignorecase = false\n');
+      return { code: 128, stdout: '', stderr: 'fatal: not a git repository' };
+    };
+    const d = daemon(s, { git });
+    expect(blockersOf(await refusal(d.handover.prepare(params(s)))).map((b) => b.code)).toContain('worktree_unresolved');
+    expect(journalOf(s.paths).landedDigest).toBeDefined();
+    // the daemon died inside the import, before it recorded the roots: the seal record is still the claim's
+    const claimed = SealRecord.parse(JSON.parse(fs.readFileSync(s.paths.replicaSeal(TX), 'utf8')));
+    fs.writeFileSync(s.paths.replicaSeal(TX), JSON.stringify({ ...claimed, roots: claimed.roots.map(({ files: _f, ...r }) => r) }));
+    fs.appendFileSync(path.join(s.dst, 'work/bo/index.ts'), '// edited here\n');
+    fs.writeFileSync(path.join(s.dst, 'work/bo/mine.txt'), 'written here\n');
+    const again = daemon(s, { git });
+    expect(blockersOf(await refusal(again.handover.prepare(params(s)))).map((b) => b.code)).toContain('worktree_unresolved');
+
+    // tried again, the transfer claims each root first: ada holds only what landed and what the import wrote there
+    const bo = replicaRoots(s.manifest).find((x) => x.path === path.join(s.dst, 'work/bo'))!;
+    const r = await again.handover.claim({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest });
+    for (const root of replicaRoots(s.manifest).filter((x) => x.id !== bo.id)) expect(r.roots.find((x) => x.id === root.id)!.check, root.path).toMatchObject({ ok: true });
+    const refused = { ok: false, blocker: { code: 'destination_diverged', message: expect.stringMatching(/mine\.txt.*index\.ts/) } };
+    expect(r.roots.find((x) => x.id === bo.id)!.check).toMatchObject(refused);
+    // let go, it leaves bo for the next handover to refuse
+    again.gateway.record = { fleetId, generation: 4, ownerMachineId: mac };
+    expect(await again.handover.abort({ transactionId: TX, generation: 5 })).toEqual({});
+    const incoming = s.manifest.roots.find((x) => x.id === bo.id)!.files;
+    expect(await new ReplicaStore({ fleetId, paths: s.paths }).inspect(bo, { transactionId: 'tx-2', excludes: s.manifest.excludes, incoming })).toMatchObject(refused);
+  });
+
+  it('seals what landed and what the Git import wrote, and not a file written into a root while the import ran', async () => {
+    const s = await scene({ tamper: strayGraph, before: ({ dst }) => { fs.symlinkSync(path.join(dst, 'work/ada'), path.join(dst, 'elsewhere')); } });
+    const git: GitRunner = async () => {
+      fs.writeFileSync(path.join(s.dst, 'elsewhere/config'), '[core]\n\tignorecase = false\n');
+      fs.writeFileSync(path.join(s.dst, 'work/bo/mine.txt'), 'written meanwhile\n');
+      return { code: 128, stdout: '', stderr: 'fatal: not a git repository' };
+    };
+    const d = daemon(s, { git });
+    expect(blockersOf(await refusal(d.handover.prepare(params(s)))).map((b) => b.code)).toContain('worktree_unresolved');
+
+    const seal = SealRecord.parse(JSON.parse(fs.readFileSync(s.paths.replicaSeal(TX), 'utf8')));
+    const sealed = (dir: string) => seal.roots.find((x) => x.path === path.join(s.dst, dir))!.files!.map((f) => f.path).sort();
+    const landed = (dir: string) => s.landed.find((x) => x.id === replicaRoots(s.manifest).find((r) => r.path === path.join(s.dst, dir))!.id)!.files.map((f) => f.path);
+    expect(sealed('work/bo')).toEqual(landed('work/bo').sort());
+    expect(sealed('work/ada')).toEqual([...landed('work/ada'), 'config'].sort());
+    const r = await d.handover.claim({ transactionId: TX, generation: 5, manifest: { ...s.manifest, transactionId: TX }, manifestDigest: s.digest });
+    const bo = replicaRoots(s.manifest).find((x) => x.path === path.join(s.dst, 'work/bo'))!;
+    expect(r.roots.find((x) => x.id === bo.id)!.check).toMatchObject({ ok: false, blocker: { code: 'destination_diverged', message: expect.stringContaining('mine.txt') } });
+  });
+
   it('drops the session stage of a handover it never prepared once the gateway lets it go, and nothing else', async () => {
     const s = await scene();
     const d = daemon(s);
