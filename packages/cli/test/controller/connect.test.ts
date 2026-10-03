@@ -15,7 +15,7 @@ const GATEWAY = MachineId.parse('cccccccc-dddd-eeee-ffff-000000000000');
 const DENIED = MachineId.parse('dddddddd-eeee-ffff-0000-111111111111');
 const TOKEN = 'remote-token-never-on-disk';
 
-const description = (o: { port: number; generation?: number }) => ({
+const description = (o: { port: number; generation?: number; token?: string }) => ({
   fleetId: FLEET, machineId: REMOTE, release: 'dev', protocol: PROTOCOL_VERSION, host: '127.0.0.1', token: TOKEN, ...o,
 });
 
@@ -222,6 +222,59 @@ describe('svall connect', { timeout: 20_000 }, () => {
     expect(types(run.events)).toEqual(['connecting', 'connecting', 'online', 'connecting', 'online']);
   });
 
+  it('rebuilds the connection when the far daemon restarts on another port or with another token', async () => {
+    fleet(true);
+    holds(REMOTE);
+    ssh.answer(description({ port: 4711 }));
+    let restarts = 0;
+    const run = start((e, stop) => {
+      if (e.type !== 'online') return;
+      // systemd restarts a named fleet's daemon on a port of its own choosing
+      if (++restarts === 1) ssh.answer(description({ port: 4712 }));
+      else if (restarts === 2) ssh.answer(description({ port: 4712, token: 'restarted-token' }));
+      else stop();
+    });
+    expect(await run.code).toBe(0);
+    expect(types(run.events)).toEqual(['connecting', 'connecting', 'online', 'connecting', 'online', 'connecting', 'online']);
+    expect(run.events[6]).toMatchObject({ token: 'restarted-token' });
+    expect(ssh.calls().some((c) => c.includes('forward') && c.some((a) => a.endsWith(':127.0.0.1:4712')))).toBe(true);
+  });
+
+  it('keeps the connection while the far daemon is down, and follows it to the port it comes back on', async () => {
+    fleet(true);
+    holds(REMOTE);
+    ssh.answer(description({ port: 4711 }));
+    const asks = (): number => ssh.remoteCalls().filter((w) => w.includes('connection-info')).length;
+    let down = false;
+    const run = start((e, stop) => {
+      if (e.type !== 'online') return;
+      if (down) { stop(); return; }
+      down = true;
+      // with no answer set, the far `svall connection-info` says svalld is not running
+      delete process.env.SVALL_FAKE_SSH_INFO;
+    });
+    await waitFor(() => asks() >= 4, 10_000);
+    ssh.answer(description({ port: 4712 }));
+    expect(await run.code).toBe(0);
+    expect(types(run.events)).toEqual(['connecting', 'connecting', 'online', 'connecting', 'online']);
+  });
+
+  it('says once why and lets the forward go when the far daemon now runs another fleet', async () => {
+    fleet(true);
+    holds(REMOTE);
+    ssh.answer(description({ port: 4711 }));
+    const run = start((e) => {
+      if (e.type === 'online') ssh.answer({ ...description({ port: 4711 }), fleetId: FleetId.parse('99999999-2222-3333-4444-555555555555') });
+    });
+    await waitFor(() => run.events.some((e) => e.type === 'error'), 10_000);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(types(run.events)).toEqual(['connecting', 'connecting', 'online', 'error']);
+    expect((run.events[3] as Extract<ConnectEvent, { type: 'error' }>).message).toContain('runs another fleet there');
+    expect(ssh.calls().some((c) => c.includes('-O') && c.includes('cancel'))).toBe(true);
+    run.stop();
+    expect(await run.code).toBe(0);
+  });
+
   it('finds a gateway added to the registry after it started', async () => {
     const dir = path.join(ssh.dir, 'config-on-disk');
     const onDisk = MachineRegistry.load(dir);
@@ -388,8 +441,8 @@ describe('svall connect', { timeout: 20_000 }, () => {
     route(REMOTE, 4);
     ssh.answer(description({ port: 4711, generation: 4 }));
     const run = start();
-    // the attempt and the forward ask once each; two more are ticks that found the route still good
-    await waitFor(() => ssh.remoteCalls().filter((w) => w.includes('connection-info')).length >= 4, 15_000);
+    // the attempt and the forward ask once each; four more are two ticks that found the route and the daemon still good
+    await waitFor(() => ssh.remoteCalls().filter((w) => w.includes('connection-info')).length >= 6, 15_000);
     ssh.answer(description({ port: 4711, generation: 5 }));
     await waitFor(() => run.events.some((e) => e.type === 'error'), 15_000);
     await new Promise((resolve) => setTimeout(resolve, 200));

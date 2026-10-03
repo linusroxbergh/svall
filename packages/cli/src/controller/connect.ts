@@ -34,8 +34,9 @@ export type ConnectDeps = {
 };
 
 type Owner = typeof LOCAL | MachineEntry;
-type Live = { owner: Owner; online: ConnectEvent; alive(): Promise<boolean>; close(): Promise<void> };
-/** Why an online connection ended: the fleet moved, the transport died, or the owner could not be vouched for. */
+/** `current`: whether the far daemon still reports the port and token the forward was made for */
+type Live = { owner: Owner; online: ConnectEvent; alive(): Promise<boolean>; current(): Promise<boolean>; close(): Promise<void> };
+/** Why an online connection ended: the fleet moved, the transport or the daemon at its end went, or the owner could not be vouched for. */
 type Ended = { moved: Owner } | { dead: true } | { failed: unknown };
 
 const nameOf = (owner: Owner): string => (owner === LOCAL ? LOCAL : owner.record.name);
@@ -82,6 +83,7 @@ async function goOnline(owner: Owner, d: ConnectDeps): Promise<Live> {
       owner,
       online: { type: 'online', host: info.host, port: info.port, token: info.token },
       alive: () => Promise.resolve(true),
+      current: () => Promise.resolve(true),
       close: () => Promise.resolve(),
     };
   }
@@ -89,7 +91,8 @@ async function goOnline(owner: Owner, d: ConnectDeps): Promise<Live> {
   if (!destination) throw new SshError('other', `the machine ${owner.record.name} has no ssh destination in the registry`);
   const master = await d.openMaster(destination).catch((err: unknown) => { throw transport(err, owner.record.name); });
   try {
-    const info = await remoteConnectionInfo(master, owner, { fleetId: localFleetId(d.fleetHome), profile: d.profile });
+    const ask = { fleetId: localFleetId(d.fleetHome), profile: d.profile };
+    const info = await remoteConnectionInfo(master, owner, ask);
     const forward = await master.forward(info.port);
     return {
       owner,
@@ -99,6 +102,11 @@ async function goOnline(owner: Owner, d: ConnectDeps): Promise<Live> {
       },
       // a check that could not even be spawned says nothing about the master
       alive: async () => (await master.check().catch(() => true)) && accepts(forward.localPort),
+      // a daemon its unit restarted may listen on another port, as a named fleet's port 0 does, or hold another token
+      current: async () => {
+        const now = await remoteConnectionInfo(master, owner, ask).catch((err: unknown) => { throw transport(err, owner.record.name); });
+        return now.port === info.port && now.token === info.token;
+      },
       close: async () => {
         await forward.cancel().catch(() => undefined);
         await master.close().catch(() => undefined);
@@ -111,23 +119,23 @@ async function goOnline(owner: Owner, d: ConnectDeps): Promise<Live> {
 }
 
 /**
- * Holds an online connection until the fleet moves, the master under it dies, its owner can no longer
- * be vouched for, or the helper is let go.
+ * Holds an online connection until the fleet moves, the master under it dies, the daemon it reaches
+ * moves to another port or token, its owner can no longer be vouched for, or the helper is let go.
  */
 async function hold(live: Live, d: ConnectDeps, resolve: () => Promise<Owner>, state: { stopped: boolean }): Promise<Ended | undefined> {
   while (!state.stopped) {
     await d.sleep(d.resolveEveryMs ?? RESOLVE_EVERY);
     if (state.stopped) return undefined;
     if (!(await live.alive())) return { dead: true };
-    let owner: Owner;
     try {
-      owner = await resolve();
+      const owner = await resolve();
+      if (keyOf(owner) !== keyOf(live.owner)) return { moved: owner };
+      if (!(await live.current())) return { dead: true };
     } catch (err) {
       // a failure a transport comes back from leaves the connection in hand alone
       if (retryable(err)) continue;
       return { failed: err };
     }
-    if (keyOf(owner) !== keyOf(live.owner)) return { moved: owner };
   }
   return undefined;
 }
