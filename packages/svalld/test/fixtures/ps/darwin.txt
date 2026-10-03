@@ -18,8 +18,10 @@
 92650 41598 92650    0 Ss   /bin/zsh -c source /Users/ada/.claude/shell-snapshots/snapshot-zsh-1790100862789-r2p0hd.sh 2>/dev/null || true && eval 'npm test' < /dev/null && pwd -P >| /var/folders/xx/T/claude-5e1f-cwd
 92651 92650 92650    0 S    npm test
 41630 41598 41598 41598 S+   claude mcp serve
-41640 41598 41640    0 Ss   /opt/homebrew/bin/node /Users/ada/.svall/hooks/claude-status.mjs ccstatusline
-41641 41598 41641    0 Ss   /bin/sh -c [ -z "$SVALL_CHAR_ID" ] || { n='/Users/ada/.local/share/svall/current/node/bin/node'; [ -x "$n" ] || n=node; "$n" '/Users/ada/.svall/hooks/agent-hook.mjs' claude; }
+41640 41598 41640    0 Ss   /bin/sh -c svall_status() { if [ -n "$SVALL_CHAR_ID" ] && [ -x '/Users/ada/.svall/hooks/svall-hook' ]; then shift; '/Users/ada/.svall/hooks/svall-hook' status "$@"; elif [ -n "$SVALL_CHAR_ID" ] && [ -f "$1" ]; then n='/Applications/Svall.app/Contents/Helpers/node'; [ -x "$n" ] || n=node; "$n" "$@"; elif [ -n "$2" ]; then c=$2; shift 2; eval "$c"; fi; }; svall_status '/Users/ada/.svall/hooks/claude-status.mjs' 'ccstatusline'
+41642 41640 41640    0 S    /Users/ada/.svall/hooks/svall-hook status ccstatusline
+41641 41598 41641    0 Ss   /bin/sh -c [ -z "$SVALL_CHAR_ID" ] || { if [ -x '/Users/ada/.svall/hooks/svall-hook' ]; then '/Users/ada/.svall/hooks/svall-hook' claude "$PPID"; else n='/Applications/Svall.app/Contents/Helpers/node'; [ -x "$n" ] || n=node; "$n" '/Users/ada/.svall/hooks/agent-hook.mjs' claude "$PPID"; fi; }
+41643 41641 41641    0 S    /Users/ada/.svall/hooks/svall-hook claude 41598
 41650 41598 41650    0 Ss   /bin/zsh -c source /Users/ada/.claude/shell-snapshots/snapshot-zsh-1790100862789-r2p0hd.sh 2>/dev/null || true && eval 'node --watch packages/svalld/hooks/agent-hook.mjs --port 0' < /dev/null && pwd -P >| /var/folders/xx/T/claude-5e1f-cwd
 41651 41598 41651    0 Ss   /bin/zsh -c source /Users/ada/.claude/shell-snapshots/snapshot-zsh-1790100862789-r2p0hd.sh 2>/dev/null || true && eval 'node ~/tools/claude-status.mjs --serve' < /dev/null && pwd -P >| /var/folders/xx/T/claude-5e1f-cwd
 50001 37572 50001 50001 Ss+  vim notes.md

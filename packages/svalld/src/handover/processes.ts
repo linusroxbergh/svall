@@ -31,6 +31,8 @@ export function parsePs(stdout: string): Proc[] {
 }
 
 const AGENTS = new Set<string>(['claude', 'codex']);
+// the start of the statusline wrapper that agent-hooks.ts statusWrapper writes
+const STATUS_WRAPPER = 'svall_status() {';
 const zombie = (p: Proc): boolean => p.stat.startsWith('Z');
 const launcher = (p: Proc): boolean => path.basename(p.args.split(' ')[0]) === 'node';
 
@@ -43,7 +45,7 @@ function program(p: Proc): string {
 
 /**
  * A snapshot of this machine's processes, read one tmux pane at a time. `scripts` are the hook and
- * statusline scripts setup installed, whose processes run beside an agent rather than as its work.
+ * statusline scripts setup installed and their helper, whose processes run beside an agent rather than as its work.
  */
 export class ProcessTable {
   private byPid = new Map<number, Proc>();
@@ -96,11 +98,12 @@ export class ProcessTable {
     return { kind: kind as AgentKind, pid: agent.pid, commands };
   }
 
-  // exactly what setup installed: a shell running the guarded hook command, or a process running one of its scripts
+  // exactly what setup installed: a shell running the guarded hook command or the statusline wrapper, the helper, or
+  // node running one of its scripts
   private installed(p: Proc): boolean {
     const [bin, arg] = p.args.split(' ');
-    if (arg === '-c') return isShellCommand(path.basename(bin)) && p.args.slice(bin.length + 4).startsWith(HOOK_GUARD);
-    return this.scripts.includes(arg);
+    if (arg === '-c') return isShellCommand(path.basename(bin)) && [HOOK_GUARD, STATUS_WRAPPER].some((head) => p.args.slice(bin.length + 4).startsWith(head));
+    return this.scripts.includes(bin) || this.scripts.includes(arg);
   }
 
   /** These processes and every live one under them, whatever group or session each went to. */

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FleetId, MachineId, emptyState, type Agent, type Character } from '@svall/protocol';
+import { hookCommand, statusWrapper } from '../../src/agent-hooks.js';
 import { Config } from '../../src/config.js';
 import { Fleet } from '../../src/fleet.js';
 import { SourceJournal, openJournal } from '../../src/handover/journal.js';
@@ -649,11 +650,14 @@ describe('restTerminals', () => {
 
   it('still waits on a background job of an interrupted Claude, but not on its Svall statusline and hook', async () => {
     const { world, deps } = boot([char('c_ada', { tmux: win(1), agent: agent('claude', 'working') })]);
+    const node = '/Applications/Svall.app/Contents/Helpers/node';
+    const [script, status] = installedScripts('/Users/ada/.svall');
     const pane = world.pane(1, {
       job: ['claude'],
       tools: [
-        '/opt/homebrew/bin/node /Users/ada/.svall/hooks/claude-status.mjs ccstatusline',
-        `/bin/sh -c [ -z "$SVALL_CHAR_ID" ] || { "$n" '/Users/ada/.svall/hooks/agent-hook.mjs' claude; }`,
+        `/bin/sh -c ${statusWrapper(node, status)} 'ccstatusline'`,
+        `/bin/sh -c ${hookCommand(node, script, 'claude')}`,
+        '/Users/ada/.svall/hooks/svall-hook claude 1001',
         '/bin/zsh -c npm run dev',
       ],
     });
@@ -663,7 +667,7 @@ describe('restTerminals', () => {
     await world.settle();
     await world.advance(500);
     expect(result).toBeUndefined();
-    pane.tools = pane.tools!.slice(0, 2);
+    pane.tools = pane.tools!.slice(0, 3);
     await world.advance(500);
     await run;
     expect(result).toMatchObject({ ok: true });

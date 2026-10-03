@@ -20,8 +20,10 @@
 3530030 3530010 3530030      -1 Ss   /bin/bash -c source /home/ada/.claude/shell-snapshots/snapshot-bash-1790100862789-r2p0hd.sh 2>/dev/null || true && eval 'npm test' < /dev/null && pwd -P >| /tmp/claude-5e1f-cwd
 3530031 3530030 3530030      -1 S    npm test
 3530040 3530010 3530010 3530010 Sl+  claude mcp serve
-3530041 3530010 3530041      -1 Ssl  /home/ada/.local/share/svall/current/node/bin/node /home/ada/.svall/hooks/claude-status.mjs ccstatusline
-3530042 3530010 3530042      -1 Ss   /bin/sh -c [ -z "$SVALL_CHAR_ID" ] || { n='/home/ada/.local/share/svall/current/node/bin/node'; [ -x "$n" ] || n=node; "$n" '/home/ada/.svall/hooks/agent-hook.mjs' claude; }
+3530041 3530010 3530041      -1 Ss   /bin/sh -c svall_status() { if [ -n "$SVALL_CHAR_ID" ] && [ -x '/home/ada/.svall/hooks/svall-hook' ]; then shift; '/home/ada/.svall/hooks/svall-hook' status "$@"; elif [ -n "$SVALL_CHAR_ID" ] && [ -f "$1" ]; then n='/home/ada/.local/share/svall/current/node/bin/node'; [ -x "$n" ] || n=node; "$n" "$@"; elif [ -n "$2" ]; then c=$2; shift 2; eval "$c"; fi; }; svall_status '/home/ada/.svall/hooks/claude-status.mjs' 'ccstatusline'
+3530043 3530041 3530041      -1 Ssl  /home/ada/.local/share/svall/current/node/bin/node /home/ada/.svall/hooks/claude-status.mjs ccstatusline
+3530042 3530010 3530042      -1 Ss   /bin/sh -c [ -z "$SVALL_CHAR_ID" ] || { if [ -x '/home/ada/.svall/hooks/svall-hook' ]; then '/home/ada/.svall/hooks/svall-hook' claude "$PPID"; else n='/home/ada/.local/share/svall/current/node/bin/node'; [ -x "$n" ] || n=node; "$n" '/home/ada/.svall/hooks/agent-hook.mjs' claude "$PPID"; fi; }
+3530044 3530042 3530042      -1 Ssl  /home/ada/.local/share/svall/current/node/bin/node /home/ada/.svall/hooks/agent-hook.mjs claude 3530010
 3530050 3530010 3530050      -1 Ss   /bin/bash -c source /home/ada/.claude/shell-snapshots/snapshot-bash-1790100862789-r2p0hd.sh 2>/dev/null || true && eval 'node --watch packages/svalld/hooks/agent-hook.mjs --port 0' < /dev/null && pwd -P >| /tmp/claude-5e1f-cwd
 3530051 3530010 3530051      -1 Ss   /bin/bash -c source /home/ada/.claude/shell-snapshots/snapshot-bash-1790100862789-r2p0hd.sh 2>/dev/null || true && eval 'node ~/tools/claude-status.mjs --serve' < /dev/null && pwd -P >| /tmp/claude-5e1f-cwd
 3540001 3526505 3540001 3540001 Ss+  vim notes.md

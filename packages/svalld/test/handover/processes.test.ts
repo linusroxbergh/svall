@@ -2,6 +2,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { hookCommand, mergeStatusLine, statusWrapper } from '../../src/agent-hooks.js';
 import { Config } from '../../src/config.js';
 import { ProcessTable, killGroup, parsePs } from '../../src/handover/processes.js';
 import { installedScripts } from '../../src/paths.js';
@@ -14,12 +15,13 @@ const args = (rows: { args: string }[] | undefined): string[] | undefined => row
 
 // the same panes as each platform's ps prints them: a prompt, a pipeline, a background job, Claude with its MCP
 // servers (`claude mcp serve` among them), tool commands (two naming scripts like Svall's) and Svall's own
-// statusline and hook, a Claude that node runs, a shell that exec'd into vim, a job that exited but is not reaped, a standalone
+// statusline and hook, each a shell running the app's helper on macOS and node on Linux,
+// a Claude that node runs, a shell that exec'd into vim, a job that exited but is not reaped, a standalone
 // Codex and one behind npm's node launcher. The macOS standalone Codex follows one measured on this Mac, the
 // Linux one is an idle Codex 0.156.1 captured on Ubuntu; the npm layouts and Codex's tool commands are modelled.
 const platforms = [
   {
-    name: 'macOS', file: 'darwin.txt', rows: 43, shell: '-zsh', tool: /^\/bin\/zsh -c source/, home: '/Users/ada/.svall',
+    name: 'macOS', file: 'darwin.txt', rows: 45, shell: '-zsh', tool: /^\/bin\/zsh -c source/, home: '/Users/ada/.svall', node: '/Applications/Svall.app/Contents/Helpers/node',
     pane: { prompt: 88276, pipeline: 88278, pipelineGroup: 88486, background: 88283, agent: 41522, agentGroup: 41598, exec: 50001, reaping: 50100 },
     codex: { pane: 61000, pid: 61010, commands: ['/bin/zsh -lc npm test'] },
     npm: { pane: 62000, launcher: 62010, pid: 62011, commands: ['/bin/zsh -lc npm test'] },
@@ -37,7 +39,7 @@ const platforms = [
     },
   },
   {
-    name: 'Linux procps', file: 'linux.txt', rows: 41, shell: '-bash', tool: /^\/bin\/bash -c source/, home: '/home/ada/.svall',
+    name: 'Linux procps', file: 'linux.txt', rows: 43, shell: '-bash', tool: /^\/bin\/bash -c source/, home: '/home/ada/.svall', node: '/home/ada/.local/share/svall/current/node/bin/node',
     pane: { prompt: 3526506, pipeline: 3526520, pipelineGroup: 3527276, background: 3526538, agent: 3530001, agentGroup: 3530010, exec: 3540001, reaping: 3550000 },
     codex: { pane: 1519551, pid: 1519855, commands: [] },
     npm: { pane: 3560001, launcher: 3560010, pid: 3560011, commands: ['/bin/bash -lc npm test'] },
@@ -53,7 +55,7 @@ const platforms = [
   },
 ];
 
-describe.each(platforms)('ps as $name prints it', ({ file, rows, shell, tool, home, pane, codex, npm, nodeClaude, trees }) => {
+describe.each(platforms)('ps as $name prints it', ({ file, rows, shell, tool, home, node, pane, codex, npm, nodeClaude, trees }) => {
   const table = new ProcessTable(parsePs(fixture(file)), installedScripts(home));
 
   it('reads every row, with the command line whole and the ids as numbers', () => {
@@ -62,6 +64,14 @@ describe.each(platforms)('ps as $name prints it', ({ file, rows, shell, tool, ho
     expect(parsed.find((r) => r.pid === pane.prompt)).toMatchObject({ pgid: pane.prompt, tpgid: pane.prompt, args: shell });
     expect(parsed.find((r) => r.args.startsWith('npm exec'))?.args).toBe('npm exec @playwright/mcp@latest');
     expect(parsed.some((r) => r.tpgid < 1)).toBe(true);
+  });
+
+  it('holds the statusline and the hook as setup writes them, each in the shell Claude runs it in', () => {
+    const [script, status] = installedScripts(home);
+    const settings = mergeStatusLine({ statusLine: { type: 'command', command: 'ccstatusline' } }, statusWrapper(node, status), status) as { statusLine: { command: string } };
+    const argv = parsePs(fixture(file)).map((r) => r.args);
+    expect(argv).toContain(`/bin/sh -c ${settings.statusLine.command}`);
+    expect(argv).toContain(`/bin/sh -c ${hookCommand(node, script, 'claude')}`);
   });
 
   it('finds nothing holding a shell at its prompt, and leaves its background jobs out', () => {
@@ -100,10 +110,14 @@ describe.each(platforms)('ps as $name prints it', ({ file, rows, shell, tool, ho
     expect(args(p?.agent?.commands)).toEqual([expect.stringContaining("eval 'cargo build'")]);
   });
 
-  it("leaves Svall's scripts out only where setup installed them", () => {
-    const elsewhere = new ProcessTable(parsePs(fixture(file)), installedScripts('/opt/other'));
-    // the guarded hook command is setup's wherever it lives; a statusline script of another home is not
-    expect(elsewhere.pane(pane.agent)?.agent?.commands).toHaveLength(4);
+  it("leaves Svall's helper and scripts out only where setup installed them", () => {
+    // a shell that runs its last command in its own place, as dash does, leaves the helper or node straight under the agent
+    const ran = [`${home}/hooks/svall-hook claude ${pane.agentGroup}`, `${node} ${home}/hooks/agent-hook.mjs claude ${pane.agentGroup}`]
+      .map((args, i) => ({ pid: 4_100_000 + i, ppid: pane.agentGroup, pgid: 4_100_000 + i, tpgid: 0, stat: 'Ss', args }));
+    const ps = [...parsePs(fixture(file)), ...ran];
+    expect(new ProcessTable(ps, installedScripts(home)).pane(pane.agent)?.agent?.commands).toHaveLength(3);
+    // the guarded hook command and the statusline wrapper are setup's wherever they live; the helper and scripts of another home are not
+    expect(args(new ProcessTable(ps, installedScripts('/opt/other')).pane(pane.agent)?.agent?.commands)?.slice(3)).toEqual(ran.map((r) => r.args));
   });
 
   it("finds a standalone Codex, leaving out the MCP servers it keeps on the terminal in groups of their own", () => {

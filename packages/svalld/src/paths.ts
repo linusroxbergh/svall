@@ -26,9 +26,9 @@ export const helperOr = (script: string, args: string, fallback: string): string
 // every hook command setup installs starts here, so the hook costs nothing outside a character
 export const HOOK_GUARD = '[ -z "$SVALL_CHAR_ID" ] ||';
 
-/** The scripts setup points Claude and Codex at from this home: the hook and the statusline. */
+/** The scripts setup points Claude and Codex at from this home, the hook and the statusline, and the helper that stands in for them. */
 export const installedScripts = (home: string = svallHome()): string[] =>
-  [HOOK_SCRIPT, STATUS_SCRIPT].map((file) => path.join(home, 'hooks', file));
+  [HOOK_SCRIPT, STATUS_SCRIPT, HOOK_HELPER].map((file) => path.join(home, 'hooks', file));
 
 export function svallHome(): string {
   return process.env.SVALL_HOME ?? profileHome(PRIVATE);
