@@ -12,7 +12,7 @@ enum AppRuntime {
     /// No launchd agent for the private fleet: this variant was never set up on this Mac, or was uninstalled.
     static var needsSetup: Bool {
         guard cli != nil, let id = Bundle.main.bundleIdentifier else { return false }
-        return !FileManager.default.fileExists(atPath: NSHomeDirectory() + "/Library/LaunchAgents/\(id).svalld.plist")
+        return !FileManager.default.fileExists(atPath: FleetDaemon.plistPath(label: id + ".svalld"))
     }
 
     /// Runs the bundled CLI off the main thread and hands back its exit and stdout (stderr when it failed, else why it failed) on the main thread.

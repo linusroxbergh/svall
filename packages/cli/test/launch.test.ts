@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { ProtocolMismatch } from '@svall/svalld/fleets';
 import type { HomeSetup } from '@svall/svalld/setup';
 import { checkoutRuntime, bundleRuntime } from '@svall/svalld/runtime';
-import { ProtocolMismatch } from '../src/client.js';
 import { launch, type LaunchDeps } from '../src/launch.js';
 
 type Call = [string, string[]];

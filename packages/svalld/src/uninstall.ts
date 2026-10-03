@@ -153,14 +153,19 @@ export const fleetHomes = (homedir: string): string[] => fs.readdirSync(homedir)
   .map((f) => path.join(homedir, f))
   .filter(isFleetHome);
 
+// what macOS keeps by the app's bundle id rather than in a fleet home: every fleet's browser sign-ins, the caches,
+// the updater's HTTP storage and cookies, the saved window state and the defaults
+export const libraryData = (homedir: string): string[] =>
+  [path.join('WebKit', BUNDLE_ID), path.join('Caches', BUNDLE_ID), path.join('HTTPStorages', BUNDLE_ID),
+    path.join('HTTPStorages', `${BUNDLE_ID}.binarycookies`), path.join('Saved Application State', `${BUNDLE_ID}.savedState`),
+    path.join('Preferences', `${BUNDLE_ID}.plist`)]
+    .map((p) => path.join(homedir, 'Library', p));
+
 export function fleetData(o: { homedir: string; appDests: string[]; fromApp?: boolean }): string[] {
   if (o.fromApp) return fleetHomes(o.homedir);
   const appName = BUNDLE_ID.endsWith('.dev') ? 'Svall Dev.app' : 'Svall.app';
   const apps = [...new Set(o.appDests)].map((d) => path.join(d, appName)).filter((p) => fs.existsSync(p));
-  // what macOS keeps by the app's bundle id rather than in a fleet home: every fleet's browser sign-ins, the caches and the defaults
-  const library = [path.join('WebKit', BUNDLE_ID), path.join('Caches', BUNDLE_ID), path.join('Preferences', `${BUNDLE_ID}.plist`)]
-    .map((p) => path.join(o.homedir, 'Library', p)).filter((p) => fs.existsSync(p));
-  return [...fleetHomes(o.homedir), ...apps, ...library];
+  return [...fleetHomes(o.homedir), ...apps, ...libraryData(o.homedir).filter((p) => fs.existsSync(p))];
 }
 
 export async function purge(paths: string[]): Promise<string[]> {

@@ -7,3 +7,5 @@ export * from './shape.js';
 export * from './migrate.js';
 export * from './url.js';
 export * from './names.js';
+export * from './sessions.js';
+export * from './text.js';

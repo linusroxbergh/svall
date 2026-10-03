@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { codexHookCommand } from '../src/codex/install.js';
 import { normalizeHook, normalizeStatus, startHookReceiver, type SocketEvent } from '../src/hooks/receiver.js';
 import { silentLogger } from '../src/log.js';
+import { hookHelperSources } from '../src/runtime.js';
 import { hookCommand, mergeStatusLine, statusWrapper } from '../src/setup.js';
 import { cleanHomes, makeHome, waitFor } from './helpers.js';
 
@@ -275,7 +276,7 @@ const runners: Runner[] = [{
   status: (dir, ...args) => [path.join(dir, 'svall-hook'), ['status', ...args]],
 }];
 
-beforeAll(() => { execFileSync('swiftc', ['-O', '-o', helper, path.resolve(hooks, '../../../apps/desktop/mac/Sources/SvallHook/main.swift')]); }, 180_000);
+beforeAll(() => { execFileSync('swiftc', ['-O', '-wmo', '-o', helper, ...hookHelperSources().filter((f) => f.endsWith('.swift'))]); }, 180_000);
 afterAll(() => fs.rmSync(helperDir, { recursive: true, force: true }));
 
 describe.each(runners)('$name', (run) => {

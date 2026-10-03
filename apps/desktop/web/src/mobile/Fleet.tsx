@@ -3,20 +3,16 @@ import type { Character, Island } from '@svall/protocol';
 import { createCharacter } from '../actions.js';
 import { useApp } from '../hooks.js';
 import { portraitTint, portraitUrl } from '../portraits.js';
-import { startOf, statusOf, wantsUser, type DisplayStatus } from '../selectors.js';
+import { startOf, statusOf, wantsUser } from '../selectors.js';
 import { phone } from './boot.js';
 import { islandCwd } from './choices.js';
 import { CloseCharacter } from './CloseCharacter.js';
-import { sections, subtitle, waiting } from './list.js';
+import { sections, statusLabel, subtitle, waiting } from './list.js';
 import { dragOffset, isSwipe, REVEAL, settle } from './swipe.js';
 import { IslandSheet } from './IslandSheet.js';
 import { NewCharacter } from './NewCharacter.js';
 import { NewIsland } from './NewIsland.js';
 import { Settings } from './Settings.js';
-
-const LABEL: Record<DisplayStatus, string> = {
-  working: 'working', idle: 'idle', blocked: 'needs you', done: 'done', shell: 'shell',
-};
 
 type RowProps = { c: Character; revealed: boolean; onOpen(id: string): void; onReveal(id?: string): void; onClose(id: string): void };
 
@@ -71,9 +67,10 @@ function Row({ c, revealed, onOpen, onReveal, onClose }: RowProps): JSX.Element 
         </button>
         {c.unread
           ? <button type="button" className="row-read" aria-label={`Mark ${c.name} read`} onClick={() => phone.api().fire('char.seen', { id: c.id })}>✓</button>
-          : <span className="row-status">{LABEL[status]}</span>}
+          : <span className="row-status">{statusLabel(status)}</span>}
       </div>
-      <button type="button" className="row-close" aria-label={`Close ${c.name}`} tabIndex={revealed ? 0 : -1} aria-hidden={!revealed} onClick={() => onClose(c.id)}>close</button>
+      <button type="button" className="row-close" style={{ width: REVEAL }} aria-label={`Close ${c.name}`} tabIndex={revealed ? 0 : -1} aria-hidden={!revealed}
+        onClick={() => onClose(c.id)}>close</button>
     </div>
   );
 }
@@ -123,6 +120,7 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
           {status === 'online' ? (need ? `${need} waiting` : 'all quiet') : status}
         </span>
       </header>
+      {status === 'refused' && <p className="empty">This tailnet login can't open this fleet. On the Mac, add it to mobile.logins in the fleet's config.json, then quit and reopen Svall.</p>}
       {loaded && groups.length === 0 && <p className="empty">No islands yet. Tap + to make one.</p>}
       {groups.map(({ island, characters }) => (
         <section key={island.id}>

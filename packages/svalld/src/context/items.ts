@@ -3,6 +3,9 @@ import { isPathRef, itemUrl, type ContextItem } from '@svall/protocol';
 import { Invalid } from '../errors.js';
 import { expandHome } from '../paths.js';
 
+// every link refresh reads each ref over again
+export const MAX_REF = 4096;
+
 // a path item is stored absolute with the kind the filesystem says; a missing path is refused; a link
 // is stored at the level worth a chip, so a view inside a PR reads as the PR.
 // an item already in the stored list is kept as is, so one dead path never blocks the rest.
@@ -13,6 +16,7 @@ export function settleItems(items: ContextItem[], current: ContextItem[] = []): 
     const it = isPathRef(raw.ref) ? raw : { ...raw, ref: itemUrl(raw.ref) };
     const kept = stored.get(it.ref);
     if (kept) return { ...it, ref: kept.ref, kind: kept.kind };
+    if (it.ref.length > MAX_REF) throw new Invalid(`a context ref may run to ${MAX_REF} characters: ${it.ref.slice(0, 80)}…`);
     if (!isPathRef(it.ref) && it.kind !== 'file' && it.kind !== 'folder') return it;
     const ref = expandHome(it.ref.trim());
     let dir: boolean;

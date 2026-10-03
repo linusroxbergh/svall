@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { charOfKey, secondKey } from '@svall/protocol';
 
 // the shell decodes and encodes each message by hand, so a name changed on one side alone only shows up here
 const ts = fs.readFileSync(new URL('../src/bridge.ts', import.meta.url), 'utf8');
@@ -59,5 +60,22 @@ describe('bridge between the page and the shell', () => {
     const keys = swift.match(/enum Keys: String, CodingKey \{ case ([^}]*) \}/)![1]!.split(', ');
     const fields = Object.values(tsUnion('ToShell')).flat().map((f) => f.replace('?', ''));
     expect([...keys].sort()).toEqual([...new Set(['type', ...fields])].sort());
+  });
+});
+
+// the banner's click and the phone's notification tag spell the second terminal's key out themselves
+describe('a second terminal\'s key outside the protocol', () => {
+  it('the shell reads the character back off it as the protocol does', () => {
+    const notifier = fs.readFileSync(new URL('../../mac/Sources/Svall/Notifier.swift', import.meta.url), 'utf8');
+    const [, suffix, cut] = notifier.match(/func charId\(_ key: String\) -> String \{ key\.hasSuffix\("([^"]+)"\) \? String\(key\.dropLast\((\d+)\)\) : key \}/)!;
+    expect(`c_1${suffix}`).toBe(secondKey('c_1'));
+    expect(`c_1${suffix}`.slice(0, -Number(cut))).toBe(charOfKey(secondKey('c_1')));
+  });
+
+  it('the service worker tags a second terminal\'s notification with it', () => {
+    const sw = fs.readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
+    const tagOf = new Function('p', `return ${sw.match(/const tagOf = \(p\) => (.+);\n/)![1]}`) as (p: { id: string; term?: 2 }) => string;
+    expect(tagOf({ id: 'c_1', term: 2 })).toBe(secondKey('c_1'));
+    expect(tagOf({ id: 'c_1' })).toBe('c_1');
   });
 });

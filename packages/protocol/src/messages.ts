@@ -13,6 +13,9 @@ export const MAX_SIDE = 200;
 export const MAX_URL = 1024 * 1024;
 const NewSize = z.object({ w: Size.shape.w.max(MAX_SIDE), h: Size.shape.h.max(MAX_SIDE) });
 const Url = z.string().max(MAX_URL);
+// the brief cuts instructions here, so a request may not store more
+export const INSTRUCTIONS_MAX = 2_000;
+const Instructions = z.string().max(INSTRUCTIONS_MAX);
 
 // one plan rate-limit window: the five-hour session, the week, or a model the week is scoped by
 export const UsageWindow = z.object({
@@ -64,9 +67,13 @@ const SWEEP_TIMEOUT_MS = 15 * 60_000;
 // how long starting another fleet may take: its daemon gets 15 s to answer, after its home is set up
 const FLEET_START_TIMEOUT_MS = 20_000;
 
+// how long char.wait waits when not told, and the most it may: past 2^31-1 ms a timer fires at once, and a client waits a little longer
+const WAIT_DEFAULT_MS = 600_000;
+const WAIT_MAX_MS = 2_000_000_000;
+
 // how long the daemon holds a call before it answers: char.wait blocks for its timeout, char.create with a run until the agent attaches
 export const serverWait = (method: MethodName, params: unknown): number => {
-  if (method === 'char.wait') return (params as { timeoutMs?: number }).timeoutMs ?? 600_000;
+  if (method === 'char.wait') return (params as { timeoutMs?: number }).timeoutMs ?? WAIT_DEFAULT_MS;
   if (method === 'char.create' && (params as { run?: string }).run) return RUN_TIMEOUT_MS;
   if (method === 'scribe.sweep') return SWEEP_TIMEOUT_MS;
   if (method === 'mobile.set') return MOBILE_SET_TIMEOUT_MS;
@@ -116,11 +123,11 @@ export type FleetEntry = z.infer<typeof FleetEntry>;
 export const methods = {
   'state.get': { params: z.object({}), result: FleetState },
   'island.create': {
-    params: z.object({ name: z.string(), position: Cell.optional(), size: NewSize.optional(), seed: z.number().int().optional(), description: z.string().optional(), context: z.array(ContextItem).optional(), instructions: z.string().optional() }),
+    params: z.object({ name: z.string(), position: Cell.optional(), size: NewSize.optional(), seed: z.number().int().optional(), description: z.string().optional(), context: z.array(ContextItem).optional(), instructions: Instructions.optional() }),
     result: Island,
   },
   'island.update': {
-    params: z.object({ id: z.string(), name: z.string().optional(), description: z.string().optional(), context: z.array(ContextItem).optional(), instructions: z.string().optional(), position: Cell.optional(), size: NewSize.optional(), collapsed: z.boolean().optional() }),
+    params: z.object({ id: z.string(), name: z.string().optional(), description: z.string().optional(), context: z.array(ContextItem).optional(), instructions: Instructions.optional(), position: Cell.optional(), size: NewSize.optional(), collapsed: z.boolean().optional() }),
     result: Island,
   },
   'island.delete': { params: Id, result: z.object({}) },
@@ -139,7 +146,7 @@ export const methods = {
   'char.update': {
     params: z.object({
       id: z.string(), name: z.string().optional(), note: z.string().optional(),
-      islandId: z.string().optional(), context: z.array(ContextItem).optional(), instructions: z.string().optional(),
+      islandId: z.string().optional(), context: z.array(ContextItem).optional(), instructions: Instructions.optional(),
       // '' clears it
       agentProfile: z.string().optional(), portrait: Portrait.optional(),
     }),
@@ -163,7 +170,7 @@ export const methods = {
   },
   'char.show': { params: Id, result: z.object({ text: z.string() }) },
   'char.wait': {
-    params: z.object({ id: z.string(), until: z.array(AgentStatus).min(1), timeoutMs: z.number().default(600_000), term: Term }),
+    params: z.object({ id: z.string(), until: z.array(AgentStatus).min(1), timeoutMs: z.number().int().min(0).max(WAIT_MAX_MS).default(WAIT_DEFAULT_MS), term: Term }),
     result: z.object({ status: z.union([AgentStatus, z.enum(['timeout', 'gone'])]) }),
   },
   // Enter takes the permission dialog's highlighted "Yes"; Esc is its "No". promptId is the agent's promptId the answer was
@@ -235,9 +242,17 @@ export type Result<M extends MethodName> = z.infer<(typeof methods)[M]['result']
 export const Request = z.object({ id: z.number(), method: z.string(), params: z.unknown().optional() });
 export type Request = z.infer<typeof Request>;
 
+// what a failed call names its failure by; anything else a handler throws answers internal
+export const ERROR_CODES = ['unknown_method', 'forbidden', 'invalid_params', 'internal', 'invalid', 'not_found', 'dormant', 'gone', 'exists', 'too_large', 'binary', 'no_repo'] as const;
+export type ErrorCode = (typeof ERROR_CODES)[number];
+
+export class ApiError extends Error {
+  constructor(public code: ErrorCode, message: string) { super(message); }
+}
+
 export type Response =
   | { id: number; result: unknown }
-  | { id: number; error: { code: string; message: string } };
+  | { id: number; error: { code: ErrorCode; message: string } };
 
 export type Event =
   | { event: 'state.patch'; data: { ops: Operation[] } }
@@ -247,6 +262,11 @@ export type Event =
   | { event: 'mobile.phones'; data: { phones: PhoneSession[] } };
 
 export const Hello = z.object({ token: z.string() });
+// the daemon's answer to a socket it admits, which a client checks the protocol by
+export const HelloReply = z.object({ id: z.literal(0), result: z.object({ ok: z.literal(true), protocol: z.number() }) });
+export type HelloReply = z.infer<typeof HelloReply>;
+// the close code for a socket the proxy brought from a tailnet login the fleet does not accept
+export const LOGIN_REFUSED = 4403;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
 export const PROTOCOL_VERSION = 17;

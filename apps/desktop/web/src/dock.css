@@ -1,0 +1,50 @@
+/* map furniture */
+.wordmark { position: absolute; top: 22px; left: 26px; z-index: var(--z-furniture); pointer-events: none; font-size: var(--text-2xl); font-weight: var(--w-semibold); letter-spacing: var(--track-tight); color: var(--ink); }
+
+/* the utility dock under the island list; its popover shares the dock's bottom edge */
+.use { position: absolute; bottom: 0; left: 0; z-index: var(--z-usage); display: flex; align-items: flex-end; pointer-events: none; }
+.use-tabs { flex: none; box-sizing: border-box; display: flex; gap: var(--sp-xs); width: var(--sb-w); height: var(--utility-dock-h);
+  padding: var(--sp-md) var(--sp-xl); border-top: 1px solid var(--line-soft); border-right: 1px solid var(--line-soft); background: var(--surface-2); pointer-events: auto; }
+.use-tab { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-2xs);
+  padding: var(--sp-xs) var(--sp-2xs); border: 1px solid transparent; border-radius: var(--r-sm); color: var(--ink-2); background: none;
+  font-size: var(--text-sm); font-weight: var(--w-medium); line-height: 1.1; white-space: nowrap; }
+.use-glyph { flex: none; width: 18px; height: 18px; }
+.use-tab-label { overflow: hidden; max-width: 100%; text-overflow: ellipsis; }
+.use-tab:hover { color: var(--ink); background: var(--fill-1); }
+.use-tab[aria-expanded="true"] { color: var(--sand); background: var(--fill-2); border-color: var(--line-soft); }
+.use-tab:focus-visible { outline: 1px solid var(--sand); outline-offset: -2px; }
+.use-tab[data-off] .use-glyph { opacity: .65; }
+.use-status { position: absolute; top: 5px; left: calc(50% + 7px); width: 5px; height: 5px; border-radius: var(--r-pill); background: var(--idle); }
+.use-status[data-on="true"] { background: var(--done); }
+.use-status[data-update] { background: var(--sel); }
+.use[data-collapsed="true"] .use-tabs { width: var(--cell); height: auto; flex-direction: column; gap: var(--sp-xs); padding: var(--sp-sm);
+  border: 1px solid var(--line); border-left: 0; border-bottom: 0; border-radius: 0 var(--r-md) 0 0; background: var(--glass-hi); backdrop-filter: blur(7px); }
+.use[data-collapsed="true"] .use-tab { flex: none; width: 100%; height: 36px; }
+.use[data-collapsed="true"] .use-tab-label { display: none; }
+.use-panel { flex: none; box-sizing: border-box; width: 330px; max-height: calc(100vh - 24px); overflow: auto; margin: 0 0 var(--sp-md) var(--sp-lg);
+  padding: var(--sp-2xl) var(--sp-3xl); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); backdrop-filter: blur(9px); box-shadow: var(--shadow-2); pointer-events: auto; }
+.use-panel-title { margin-bottom: var(--sp-xl); font-size: var(--text-lg); font-weight: var(--w-semibold); color: var(--ink); }
+@media (max-width: 620px) {
+  .use { flex-direction: column-reverse; align-items: flex-start; }
+  .use-panel { width: min(330px, calc(100vw - 16px)); margin: 0 0 var(--sp-md) var(--sp-md); }
+}
+.use-wins { display: flex; flex-direction: column; gap: var(--sp-2xl); }
+.use-win { display: flex; flex-direction: column; gap: var(--sp-sm); }
+.use-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-lg); }
+.use-label { font-size: var(--text-lg); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.use-head b { font-size: var(--text-xl); font-weight: var(--w-semibold); color: var(--ink); }
+.use-win .meter { margin: 0; }
+.use-win .meter > span { height: 7px; }
+.use-reset { font-size: var(--text-sm); color: var(--ink-3); }
+.use-note { font-size: var(--text-md); line-height: 1.45; color: var(--ink-2); }
+
+/* the phone link shares the utility dock with the usage meter */
+.mob { display: flex; flex-direction: column; gap: var(--sp-xl); }
+.mob-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-lg); }
+.mob-qr { width: 100%; border-radius: var(--r-sm); background: var(--white); }
+.mob-url { padding: var(--sp-sm) var(--sp-md); border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--fill-1);
+  font-family: var(--mono); font-size: var(--text-sm); color: var(--ink-2); word-break: break-all; text-align: left; }
+.mob-url:hover { color: var(--ink); background: var(--fill-2); }
+.mob-here { display: flex; align-items: center; gap: var(--sp-md); font-size: var(--text-md); color: var(--ink-2); overflow-wrap: anywhere; }
+.mob-here::before { content: ''; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--idle); }
+.mob-here[data-live]::before { background: var(--done); }

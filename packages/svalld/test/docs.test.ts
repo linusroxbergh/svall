@@ -78,6 +78,12 @@ describe('listDocs', () => {
   it('is empty for a folder that is not there', () => {
     expect(listDocs('/nowhere/at/all')).toEqual([]);
   });
+  // every prompt lists the docs in scope, so a long one is read only as far as its frontmatter can reach
+  it('reads a long doc only at its head', () => {
+    const dir = path.join(makeHome(), 'd');
+    put(path.join(dir, 'log.md'), `${doc('A pasted log.')}${'x'.repeat(1024 * 1024)}\u0000`);
+    expect(listDocs(dir)).toEqual([{ name: 'log', path: path.join(dir, 'log.md'), description: 'A pasted log.', modifiedAt: expect.any(Number) }]);
+  });
 });
 
 describe('docFolders', () => {

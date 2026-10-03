@@ -1,5 +1,6 @@
-import { useEffect, useState, type JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
 import type { PushStatus } from '@svall/protocol';
+import { useApp } from '../hooks.js';
 import { phone } from './boot.js';
 import { disablePush, enablePush, readPush, setPushStatuses, type PushState } from './push.js';
 import { Sheet } from './Sheet.js';
@@ -9,9 +10,17 @@ const ABOUT: Record<PushStatus, string> = { blocked: 'an agent needs you', done:
 export function Settings({ onClose }: { onClose(): void }): JSX.Element {
   const [push, setPush] = useState<PushState>();
   const [error, setError] = useState<string>();
-  const apply = (p: Promise<PushState>) => { setError(undefined); p.then(setPush, (e: Error) => setError(e.message)); };
+  const online = useApp((s) => s.status === 'online');
+  const latest = useRef(0);
+  // a slower answer to an earlier read or tap must not undo a later one
+  const apply = (p: Promise<PushState>) => {
+    const n = ++latest.current;
+    setError(undefined);
+    p.then((s) => { if (n === latest.current) setPush(s); }, (e: Error) => { if (n === latest.current) setError(e.message); });
+  };
 
-  useEffect(() => { apply(readPush(phone.api())); }, []);
+  // reading the phone's push state asks svalld, so a sheet opened while it is away reads again once it is back
+  useEffect(() => { apply(readPush(phone.api())); }, [online]);
 
   const toggle = (s: PushStatus) => {
     if (push?.kind !== 'on') return;
@@ -24,7 +33,7 @@ export function Settings({ onClose }: { onClose(): void }): JSX.Element {
         {push?.kind === 'unsupported' && <p className="sheet-note">This browser cannot receive notifications.</p>}
         {push?.kind === 'install' && <p className="sheet-note">Notifications need the Home Screen app: Share → Add to Home Screen.</p>}
         {push?.kind === 'denied' && <p className="sheet-note">Turn on notifications for Svall in the phone's Settings.</p>}
-        {push?.kind === 'off' && <button type="button" className="pri" onClick={() => apply(enablePush(phone.api()))}>Notify this phone</button>}
+        {push?.kind === 'off' && <button type="button" className="pri" onClick={() => apply(enablePush(phone.api(), push.publicKey))}>Notify this phone</button>}
         {push?.kind === 'on' && (
           <>
             {(Object.keys(ABOUT) as PushStatus[]).map((s) => (

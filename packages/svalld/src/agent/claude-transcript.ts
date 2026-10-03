@@ -1,3 +1,4 @@
+import { trimEnd } from '@svall/protocol';
 import { LINK, MAX_URLS, clip, clipLine, jsonLines, orSkip } from './jsonl.js';
 
 type Block = { type: string; text?: string; name?: string; input?: unknown; content?: unknown };
@@ -8,7 +9,7 @@ const entries = (text: string): Entry[] => jsonLines<Entry>(text);
 // the URLs a tool call was given or printed, which the prose around it may never repeat
 function toolUrls(blocks: Block[]): string[] {
   const raw = blocks.map((b) => (b.type === 'tool_use' ? JSON.stringify(b.input ?? '') : b.type === 'tool_result' ? JSON.stringify(b.content ?? '') : '')).join(' ');
-  return [...new Set((raw.match(LINK) ?? []).map((u) => u.replace(/[.,;:!?]+$/, '')))].slice(0, MAX_URLS);
+  return [...new Set((raw.match(LINK) ?? []).map((u) => trimEnd(u, '.,;:!?')))].slice(0, MAX_URLS);
 }
 
 function render(e: Entry, toolLinks: boolean): string | undefined {

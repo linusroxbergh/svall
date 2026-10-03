@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket, { WebSocketServer } from 'ws';
-import { PROTOCOL_VERSION } from '@svall/protocol';
+import { LOGIN_REFUSED, PROTOCOL_VERSION } from '@svall/protocol';
 import { Api, ApiError, type Status } from '../src/api.js';
 
 type Server = { wss: WebSocketServer; port: number; close(): Promise<void> };
@@ -178,10 +178,10 @@ describe('Api', () => {
   it('ignores a socket a reconnect has already replaced', async () => {
     const sockets: Fake[] = [];
     class Fake {
-      onopen?: () => void; onmessage?: (ev: { data: string }) => void; onerror?: () => void; onclose?: () => void;
+      onopen?: () => void; onmessage?: (ev: { data: string }) => void; onerror?: () => void; onclose?: (ev: { code: number }) => void;
       constructor() { sockets.push(this); }
       send(): void {}
-      close(): void { this.onclose?.(); }
+      close(): void { this.onclose?.({ code: 1000 }); }
     }
     const api = new Api({ url: 'ws://127.0.0.1:1' }, { WS: Fake as unknown as typeof globalThis.WebSocket, minDelay: 1, maxDelay: 1 });
     cleanup.push(() => api.stop());
@@ -193,14 +193,35 @@ describe('Api', () => {
     const hello = { data: JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } }) };
     sockets[0].onmessage?.(hello);
     expect(opens).toBe(1);
-    sockets[0].onclose?.();
+    sockets[0].onclose?.({ code: 1006 });
     await until(() => sockets.length === 2);
     sockets[0].onmessage?.(hello);
-    sockets[0].onclose?.();
+    sockets[0].onclose?.({ code: 1006 });
     await new Promise((r) => setTimeout(r, 20));
     expect(opens).toBe(1);
     expect(statuses.at(-1)).toBe('connecting');
     expect(sockets).toHaveLength(2);
+  });
+
+  // the proxy brought the page from a tailnet login the fleet does not take; the owner's login may still be on its way
+  it('reports a refused login as such across retries, and comes online once the login is taken', async () => {
+    let accepted = false;
+    const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+    await new Promise((r) => wss.once('listening', r));
+    cleanup.push(() => new Promise<void>((r) => { for (const c of wss.clients) c.terminate(); wss.close(() => r()); }));
+    wss.on('connection', (ws) => {
+      if (accepted) ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } }));
+      else ws.close(LOGIN_REFUSED, 'tailnet login not accepted');
+    });
+    const api = new Api({ url: `ws://127.0.0.1:${(wss.address() as { port: number }).port}` }, { WS: WebSocket as unknown as typeof globalThis.WebSocket, minDelay: 20, maxDelay: 50 });
+    cleanup.push(() => api.stop());
+    const statuses: Status[] = [];
+    api.onStatus = (s) => statuses.push(s);
+    api.start();
+    await until(() => statuses.filter((s) => s === 'refused').length >= 2);
+    expect(statuses.slice(1).every((s) => s === 'refused')).toBe(true);
+    accepted = true;
+    await until(() => statuses.at(-1) === 'online');
   });
 
   it('reports offline once the daemon on another protocol stops answering', async () => {

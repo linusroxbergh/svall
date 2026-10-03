@@ -69,6 +69,12 @@ describe('acceptLinks', () => {
     ]);
   });
 
+  // a link refresh reads every held ref again
+  it('takes no link past the length a request may store', () => {
+    const long = `https://docs.example/${'x'.repeat(5000)}`;
+    expect(acceptLinks([{ url: long, label: 'long' }], `see ${long}`, [])).toEqual([]);
+  });
+
   it('links a comment or file view in a PR or issue to the PR or issue itself', () => {
     const t = 'see https://github.com/o/r/pull/5#discussion_r9 and https://github.com/o/r/issues/7/files';
     expect(acceptLinks([
@@ -148,6 +154,12 @@ describe('prEvidence', () => {
   });
   it('resolves a numbered PR mentioned before the condensed turns', () => {
     expect(prEvidence(char({ context: [repo] }), 'AGENT: continuing review', 'USER: Please review pull request #42')).toEqual(['https://github.com/o/r/pull/42']);
+  });
+  // a /[.,;:!?]+$/ over a long run of dots backtracks from every one of them
+  it('reads a tail with a URL of tens of thousands of dots in one pass', () => {
+    const started = performance.now();
+    expect(prEvidence(char(), '', `https://github.com/o/r/pull/7 https://x.test/${'.'.repeat(40_000)}a`)).toEqual(['https://github.com/o/r/pull/7']);
+    expect(performance.now() - started).toBeLessThan(500);
   });
   it('keeps a second PR that the first is named far more often than', () => {
     const urls = ['https://github.com/o/r/pull/41', ...Array<string>(9).fill('https://github.com/o/r/pull/42')].join(' ');

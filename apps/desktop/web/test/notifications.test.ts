@@ -182,12 +182,13 @@ describe('followNotifications', () => {
     expect(store.getState().focusedId).toBe('c1');
   });
 
-  it('answers from the banner', async () => {
+  it('answers from the banner the question it named, and drops an answer that names none', async () => {
     const api = answering(() => Promise.resolve({}));
     const { bridge } = setup({ api });
-    // the shell sends an empty promptId for a banner that named no question
     bridge.emit({ type: 'notify.action', key: 'c1', action: 'approve', promptId: '' });
-    await vi.waitFor(() => expect(api.call).toHaveBeenCalledWith('char.answer', { id: 'c1', answer: 'approve' }));
+    bridge.emit({ type: 'notify.action', key: 'c1', action: 'deny', promptId: 'q1' });
+    await vi.waitFor(() => expect(api.call).toHaveBeenCalledWith('char.answer', { id: 'c1', answer: 'deny', promptId: 'q1' }));
+    expect(api.call).toHaveBeenCalledTimes(1);
   });
 
   it('puts a new question up in place of the last, and answers each banner for the question it showed', async () => {
@@ -210,7 +211,7 @@ describe('followNotifications', () => {
   it('says so when the answer did not reach the daemon', async () => {
     const failed = { type: 'notify.post', key: 'c1', title: "c1: answer didn't send", subtitle: '', body: '', sound: true, actions: false };
     const refused = setup({ api: answering(() => Promise.reject(new Error('refused'))) });
-    refused.bridge.emit({ type: 'notify.action', key: 'c1', action: 'deny' });
+    refused.bridge.emit({ type: 'notify.action', key: 'c1', action: 'deny', promptId: 'q1' });
     await vi.waitFor(() => expect(refused.bridge.sent).toContainEqual(failed));
   });
 
@@ -224,12 +225,12 @@ describe('followNotifications', () => {
       store.getState().setFleet(working);
       store.getState().setSettings({ notifications: ON });
       bridge.emit({ type: 'notify.permission', state: 'granted' });
-      bridge.emit({ type: 'notify.action', key: 'c1', action: 'approve' });
+      bridge.emit({ type: 'notify.action', key: 'c1', action: 'approve', promptId: 'q1' });
       await vi.advanceTimersByTimeAsync(1000);
       expect(api.call).not.toHaveBeenCalled();
       store.getState().setStatus('online');
       await vi.advanceTimersByTimeAsync(0);
-      expect(api.call).toHaveBeenCalledWith('char.answer', { id: 'c1', answer: 'approve' });
+      expect(api.call).toHaveBeenCalledWith('char.answer', { id: 'c1', answer: 'approve', promptId: 'q1' });
     } finally {
       vi.useRealTimers();
     }
@@ -245,7 +246,7 @@ describe('followNotifications', () => {
       store.getState().setFleet(working);
       store.getState().setSettings({ notifications: ON });
       bridge.emit({ type: 'notify.permission', state: 'granted' });
-      bridge.emit({ type: 'notify.action', key: 'c1', action: 'approve' });
+      bridge.emit({ type: 'notify.action', key: 'c1', action: 'approve', promptId: 'q1' });
       await vi.advanceTimersByTimeAsync(5000);
       expect(bridge.sent).toContainEqual(failed);
     } finally {

@@ -162,6 +162,16 @@ describe('briefReply', () => {
   it('ignores other events', () => {
     expect(briefReply('Stop', 'B', undefined)).toEqual({});
   });
+  // two briefs that each fit can differ by nearly twice the cap, as for a character moved between busy islands
+  it('sends the whole brief, said to replace the one before, when the change runs past the cap', () => {
+    const links = (host: string) => Array.from({ length: 60 }, (_, n) => ({ kind: 'other' as const, ref: `https://${host}/${'p'.repeat(150)}/${n}`, label: '', source: 'manual' as const }));
+    const before = renderBrief(island({ id: 'a', context: links('a.test') }), char());
+    const after = renderBrief(island({ id: 'b', context: links('b.test') }), char());
+    const { reply } = briefReply('UserPromptSubmit', after, before);
+    expect(reply).toBe(['# Svall context, in place of the one before', ...after.split('\n').slice(1)].join('\n'));
+    expect(reply!.length).toBeLessThan(10_000);
+    expect(briefReply('UserPromptSubmit', '', before).reply).toMatch(/^# Svall context changed\n- /);
+  });
 });
 
 describe('brief item marks', () => {
@@ -318,6 +328,25 @@ describe('renderBrief with docs', () => {
     expect(listed[0]).toMatch(new RegExp(`^- note-${60 - listed.length} `));
     expect(lines).toContain(`- …and ${60 - listed.length} more in /d/repos/app-12345678`);
     expect(lines).toContain('- plan (/d/characters/c/plan.md)');
+  });
+
+  it('stays within 9,000 characters once the docs are gone: tabs but the active one go, then unpinned links from the end, the leading PR last', () => {
+    const link = (n: number, pinned?: true) => ({ kind: 'other' as const, ref: `https://example.com/${'p'.repeat(150)}/${n}`, label: '', source: 'scribe' as const, ...(pinned && { pinned }) });
+    const pr = { kind: 'pr' as const, ref: 'https://github.com/o/r/pull/7', label: '#7', source: 'auto' as const, prState: 'open' as const };
+    const tabs = Array.from({ length: 40 }, (_, n) => ({ id: `t${n}`, url: `https://example.com/${'t'.repeat(150)}/${n}`, title: '' }));
+    const text = renderBrief(
+      island({ context: [link(0, true), ...Array.from({ length: 30 }, (_, n) => link(n + 1))], instructions: 'i'.repeat(5000) }),
+      char({ context: [pr, ...Array.from({ length: 30 }, (_, n) => link(n + 100))], browser: { tabs, active: 't39' } }),
+      folders({ repo: [{ name: 'plan', path: '/d/repos/app-12345678/plan.md', description: 'x'.repeat(150), modifiedAt: 0 }] }),
+    );
+    const lines = text.split('\n');
+    expect(text.length).toBeLessThanOrEqual(9_000);
+    expect(lines).toEqual(expect.arrayContaining([...CREW, '- …and 1 more in /d/repos/app-12345678', '- …and 15 more island links', '- …and 15 more character links', '- …and 39 more tabs', `- https://example.com/${'t'.repeat(150)}/39 (active)`]));
+    expect(lines.find((l) => l.startsWith('Island instructions: '))).toHaveLength('Island instructions: '.length + 2000);
+    expect(text).toContain(`/${'p'.repeat(150)}/0 (pinned)`);
+    expect(text).toContain(`/${'p'.repeat(150)}/1\n`);
+    expect(text).not.toContain(`/${'p'.repeat(150)}/30\n`);
+    expect(lines).toContain('- PR #7 https://github.com/o/r/pull/7 (open)');
   });
 
   it('reports a doc added to a tier that already has one as a single added line', () => {

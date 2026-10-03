@@ -11,6 +11,14 @@ apps/desktop/web/dist/
 apps/desktop/web/dist-mobile/
 site/map/
 site/shots-in/
+# the app's fonts and art, copied beside the landing page by site:build
+site/fonts/
+site/animals/
+site/icon.svg
+site/icon-180.png
+site/lighthouse.svg
+# the tunnel's token
+site/deploy/
 apps/desktop/web/test-results/
 apps/desktop/web/playwright-report/
 apps/desktop/mac/.build/

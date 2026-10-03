@@ -1,5 +1,7 @@
 import { z, type ZodType } from 'zod';
-import { bareUrl, itemUrl, linkKind, type Character, type ContextItem, type Island } from '@svall/protocol';
+import { bareUrl, itemUrl, linkKind, trimEnd, type Character, type ContextItem, type Island } from '@svall/protocol';
+import { LINK } from '../agent/jsonl.js';
+import { MAX_REF } from '../context/items.js';
 import { isGeneratedName } from '../names.js';
 import { oneLine } from '../text.js';
 
@@ -67,8 +69,8 @@ const lastDistinct = (xs: string[], n: number): string[] => [...new Set([...xs].
 // The condensed transcript can lose a PR URL in an older tool result. An explicit "PR #42"
 // also names a PR without spelling out its URL; the known GitHub repository supplies that part.
 export function prEvidence(c: Character, transcript: string, tail: string): string[] {
-  const urls = [...(tail.match(/https?:\/\/[^\s"'<>()[\]{}`\\]+/g) ?? [])]
-    .map((url) => itemUrl(url.replace(/[.,;:!?]+$/, '')))
+  const urls = [...(tail.match(LINK) ?? [])]
+    .map((url) => itemUrl(trimEnd(url, '.,;:!?')))
     .filter((url) => /^https?:\/\/(?:www\.)?github\.com\/[^/]+\/[^/]+\/pull\/\d+$/i.test(url));
   const found = new Set(lastDistinct(urls, 8));
   const repo = c.context.map((it) => it.ref.replace(/\/pull\/\d+\/?$/i, ''))
@@ -155,7 +157,7 @@ export function acceptLinks(proposed: NonNullable<CharacterAnswer['links']>, tex
   const out: ContextItem[] = [];
   for (const { url, label } of proposed) {
     const ref = itemUrl(url.trim());
-    if (!/^https?:\/\/\S+$/.test(ref)) continue;
+    if (ref.length > MAX_REF || !/^https?:\/\/\S+$/.test(ref)) continue;
     const key = bareUrl(ref);
     if (seen.has(key) || !(text.includes(ref) || held.has(key) || branchPrs.has(key))) continue;
     seen.add(key);

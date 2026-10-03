@@ -89,3 +89,20 @@ describe('the fleets beside this one', () => {
     expect(await dispatch({ id: 5, method: 'fleet.stop', params: {} }, ctx('app'))).toEqual({ id: 5, result: {} });
   });
 });
+
+describe('a failed call', () => {
+  // agents read the CLI's output, which prints the message as it comes
+  it('names the params it refused in a line or two, not a JSON dump', async () => {
+    const res = await dispatch({ id: 1, method: 'char.wait', params: { id: 'c', until: ['foo'] } }, {} as Ctx);
+    expect(res).toMatchObject({ error: { code: 'invalid_params' } });
+    const { message } = (res as { error: { message: string } }).error;
+    expect(message).toMatch(/until/);
+    expect(message).not.toMatch(/^\s*\[/);
+  });
+
+  it('answers internal for a code no client knows, such as an errno', async () => {
+    const fleet = { renameFleet() { throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }); } };
+    expect(await dispatch({ id: 1, method: 'fleet.rename', params: { name: 'x' } }, { fleet, viewer: { kind: 'app' } } as unknown as Ctx))
+      .toEqual({ id: 1, error: { code: 'internal', message: 'EACCES: permission denied' } });
+  });
+});

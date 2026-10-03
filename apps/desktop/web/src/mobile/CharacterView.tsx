@@ -5,6 +5,7 @@ import { useApp } from '../hooks.js';
 import { statusOf } from '../selectors.js';
 import { phone } from './boot.js';
 import { CharacterMenu } from './CharacterMenu.js';
+import { statusLabel } from './list.js';
 import { dragToScroll, holdScroll } from './scroll.js';
 import { linkTerminal, type TerminalLink } from './term.js';
 
@@ -77,11 +78,9 @@ export function CharacterView({ id, onBack }: { id: string; onBack(): void }): J
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(host.current!);
-    visualViewport?.addEventListener('resize', resize);
     return () => {
       stopScroll();
       observer.disconnect();
-      visualViewport?.removeEventListener('resize', resize);
       l.close();
       term.dispose();
       link.current = undefined;
@@ -174,7 +173,7 @@ export function CharacterView({ id, onBack }: { id: string; onBack(): void }): J
         </span>
         {/* without svalld the character's status is stale, so the header says so instead */}
         <span className="conn" data-status={!online ? status : character ? statusOf(character) : 'gone'}>
-          {!online ? status : character ? statusOf(character) : 'gone'}
+          {!online ? status : character ? statusLabel(statusOf(character)) : 'gone'}
         </span>
         <button type="button" className="ahead" aria-haspopup="dialog" onClick={() => setMenu(true)}>context ›</button>
       </header>

@@ -1,0 +1,100 @@
+/* the shelf the islet opens: a tree of sources, the list, the file, and one line under all three. it stands centred
+   in the room over mission control's row, at the size it was dragged to, easing as the terminal card does */
+.res-room{position:absolute;left:26px;right:26px;top:34px;bottom:calc(var(--home-row-top, 212px));z-index:var(--z-shelf);pointer-events:none}
+.res-shelf{--rail-w:min(var(--rail),24%);--list-w:min(var(--list),30%);position:absolute;box-sizing:border-box;pointer-events:auto;
+  background:var(--glass-hi);border:1px solid var(--line-strong);border-radius:var(--r-lg);box-shadow:var(--shadow-3);backdrop-filter:blur(10px);
+  transition:left var(--dur) var(--ease),top var(--dur) var(--ease),width var(--dur) var(--ease),height var(--dur) var(--ease)}
+.res-shelf[data-resizing="true"]{transition:none}
+.res-shelf::after{content:"";position:absolute;bottom:-8px;left:var(--tip);width:14px;height:14px;background:var(--surface-2);
+  border-right:1px solid var(--line-strong);border-bottom:1px solid var(--line-strong);transform:translateX(-50%) rotate(45deg)}
+/* only a full shelf reaches down to the islet it points at */
+.res-shelf[data-full="false"]::after{display:none}
+.res-in{position:absolute;inset:0;border-radius:inherit;overflow:hidden;display:flex;flex-direction:column}
+.res-panes{flex:1;min-height:0;display:flex}
+.res-tree{width:var(--rail-w);flex:none;padding:var(--sp-xl) var(--sp-lg) var(--sp-xl) var(--sp-2xl);display:flex;flex-direction:column;gap:var(--sp-2xs);overflow:hidden auto}
+.res-tree section{display:flex;flex-direction:column;gap:var(--sp-2xs)}
+/* a node's depth is a custom property, so a source stands one step in from its tier */
+.res-node{display:flex;align-items:center;gap:var(--sp-sm);width:100%;padding:var(--sp-xs) var(--sp-md);padding-left:calc(var(--sp-md) + var(--depth, 0) * var(--sp-2xl));border:0;border-radius:var(--r-sm);background:none;font:inherit;font-size:var(--text-md);color:var(--ink);text-align:left;cursor:pointer;min-width:0}
+.res-node:hover{background:var(--fill-1)}
+.res-node[aria-expanded]{font-weight:var(--w-medium)}
+.res-car{flex:none;width:10px;font-style:normal;font-size:var(--text-2xs);color:var(--ink-3);text-align:center}
+.res-node-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.res-node .n{flex:none;font-size:var(--text-xs);color:var(--ink-3);font-variant-numeric:tabular-nums}
+.res-subh{padding:var(--sp-sm) var(--sp-md) var(--sp-2xs) calc(var(--sp-md) + var(--sp-2xl));font-size:var(--text-xs);letter-spacing:var(--track-caps);text-transform:uppercase;color:var(--ink-3)}
+.res-glyph{flex:none;width:12px;text-align:center;font-style:normal}
+/* one pick a column: bright in the column that has the keys, plain in one the walk came through */
+.res-node[aria-pressed="true"],.res-item[data-active="true"]{background:var(--fill-2)}
+.res-tree:focus-within .res-node[aria-pressed="true"],.res-list:focus-within .res-item[data-active="true"]{background:var(--sand-fill)}
+.res-kinds{display:flex;flex-wrap:wrap;gap:var(--sp-xs);margin:0 0 var(--sp-md)}
+.res-chip{display:inline-flex;align-items:center;gap:var(--sp-xs);padding:var(--sp-2xs) var(--sp-md);border:1px solid var(--line);border-radius:var(--r-pill);background:var(--fill-1);font:inherit;font-size:var(--text-xs);color:var(--ink-2);cursor:pointer}
+.res-chip i{font-style:normal}
+.res-chip .n{color:var(--ink-3);font-variant-numeric:tabular-nums}
+.res-chip[aria-pressed="true"]{background:var(--sand-fill);border-color:transparent;color:var(--ink)}
+.res-chip[aria-pressed="true"] .n{color:var(--ink-2)}
+.res-chip[data-none="true"]{opacity:.55}
+.res-dot{width:8px;height:8px;border-radius:50%;flex:none}
+/* the dragged widths give way on a small map, so the file keeps a readable pane */
+.res-list{width:var(--list-w);flex:none;border-left:1px solid var(--line-soft);padding:var(--sp-xl) var(--sp-lg) 0 var(--sp-xl);display:flex;flex-direction:column;min-height:0}
+.res-find{padding:var(--sp-sm) var(--sp-lg);border-radius:var(--r-sm);background:var(--glass);border:1px solid var(--line-soft);color:var(--ink);font:var(--text-md) var(--sans);margin-bottom:var(--sp-sm)}
+.res-find:focus{outline:none;border-color:var(--sand)}
+.res-rows{flex:1;min-height:0;overflow:hidden auto;padding-bottom:var(--sp-xl)}
+.res-list h4{display:flex;align-items:center;gap:var(--sp-md);margin:var(--sp-xl) var(--sp-md) var(--sp-xs);font-size:var(--text-xs);font-weight:var(--w-semibold);letter-spacing:var(--track-caps);text-transform:uppercase;color:var(--ink-2)}
+.res-list h4 .n{margin-left:auto;font-weight:var(--w-medium);letter-spacing:0;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.res-item{display:block;width:100%;padding:var(--sp-sm) var(--sp-md);border-radius:var(--r-sm);border:0;background:none;text-align:left;font-family:inherit;color:inherit;cursor:pointer;min-width:0}
+.res-item:hover{background:var(--fill-1)}.res-item[data-off="true"] b{color:var(--ink-3)}
+.res-item b{display:flex;align-items:center;gap:var(--sp-sm);font-size:var(--text-md);font-weight:var(--w-medium)}
+.res-item b em{font-style:normal;font-size:var(--text-2xs);font-weight:var(--w-semibold);letter-spacing:var(--track-caps);text-transform:uppercase;color:var(--ink-3);border:1px solid var(--line);border-radius:var(--r-xs);padding:0 var(--sp-xs)}
+/* the agent folder a row came from, and a memory row's own word: both sit in the row's right column */
+.res-item b em.res-tag{margin-left:auto;font:var(--w-regular) var(--text-xs) var(--mono);letter-spacing:0;text-transform:none;border:0;padding:0}
+.res-item b em.res-tag + em.res-bdg{margin-left:0}
+em.res-bdg{margin-left:auto;font-family:var(--mono);font-size:var(--text-xs);font-weight:var(--w-regular);font-style:normal;letter-spacing:var(--track-caps);text-transform:none;border:0;border-radius:var(--r-xs);padding:0 var(--sp-xs)}
+em.res-bdg[data-kind="attached"]{background:var(--fill-3);color:var(--ink)}
+em.res-bdg[data-kind="lookup"]{border:1px solid var(--line);color:var(--ink-3)}
+.res-list h4 em.res-bdg{margin-left:0}
+.res-item span{display:block;font-size:var(--text-sm);color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.res-item span[data-error="true"]{color:var(--blocked)}
+.res-row{position:relative}
+/* see-through until the row is hovered or a control takes focus, so the keyboard reaches them; out of sight they let a click through to the row */
+.res-doc-acts{position:absolute;right:6px;top:6px;display:flex;gap:var(--sp-2xs);opacity:0;pointer-events:none}
+.res-row:hover .res-doc-acts,.res-doc-acts:focus-within{opacity:1;pointer-events:auto}
+.res-doc-acts button{width:20px;height:20px;padding:0;border-radius:var(--r-sm);background:var(--fill-2);color:var(--ink-2);font-size:var(--text-sm);line-height:1}
+.res-doc-acts button:hover{background:var(--fill-3);color:var(--ink)}
+.res-new{margin:var(--sp-sm) var(--sp-md);padding:var(--sp-2xs) var(--sp-md);border:1px dashed var(--line);border-radius:var(--r-xs);background:none;font:inherit;font-size:var(--text-xs);font-weight:var(--w-medium);color:var(--ink-cool)}
+.res-name{margin:var(--sp-xs) var(--sp-md);width:calc(100% - 16px);box-sizing:border-box}
+.res-newdoc{display:flex;flex-direction:column;gap:var(--sp-2xs);margin:var(--sp-xs) var(--sp-md) var(--sp-sm)}
+.res-newdoc span{font-size:var(--text-xs);font-weight:var(--w-medium);color:var(--ink-cool)}
+.res-newdoc input{padding:var(--sp-sm) var(--sp-lg);border-radius:var(--r-sm);background:var(--surface-0);border:1px solid var(--sand);color:var(--ink);font:var(--text-md) var(--sans)}
+.res-newdoc input:focus{outline:none}
+.res-drag{position:relative;flex:none;width:8px;margin:0 calc(-1 * var(--sp-xs));z-index:3;cursor:col-resize;touch-action:none}
+.res-drag:hover::after,.res-drag:active::after{content:"";position:absolute;inset:0 3px;background:var(--line-strong)}
+.res-unsaved{width:7px;height:7px;border-radius:50%;background:var(--working)}
+.res-files{padding:0 0 var(--sp-xs) var(--sp-md)}.res-none{padding:var(--sp-xl) var(--sp-md);color:var(--ink-3);font-size:var(--text-md)}
+.res-editor{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--surface-1);border-left:1px solid var(--line-soft)}
+.res-editor header{flex:none;display:flex;align-items:center;gap:var(--sp-xl);min-height:21px;padding:var(--sp-md) var(--sp-xl);border-bottom:1px solid var(--line-soft);font-size:var(--text-sm);color:var(--ink-3)}
+.res-desc{flex:none;display:flex;flex-direction:column;gap:var(--sp-xs);padding:var(--sp-md) var(--sp-xl);border-bottom:1px solid var(--line-soft)}
+.res-desc span{font-size:var(--text-xs);color:var(--ink-3)}
+.res-desc input{padding:var(--sp-sm) var(--sp-lg);border-radius:var(--r-sm);background:var(--glass);border:1px solid var(--line-soft);color:var(--ink);font:var(--text-md) var(--sans)}
+.res-desc input:focus{outline:none;border-color:var(--sand)}
+.res-crumb{flex:1;min-width:0;font-size:var(--text-sm);color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.res-crumb b{font-size:var(--text-xs);font-weight:var(--w-semibold);letter-spacing:var(--track-caps);text-transform:uppercase}
+.res-crumb i{font-style:normal;color:var(--ink-3);padding:0 var(--sp-xs)}
+.res-ctl{flex:none;display:flex;align-self:stretch;margin:calc(-1 * var(--sp-md)) calc(-1 * var(--sp-xl)) calc(-1 * var(--sp-md)) 0}
+.res-x{background:none;color:var(--ink-3)}
+.res-x:hover{color:var(--ink);background:var(--fill-2)}
+.res-size{font-size:var(--text-3xl)}
+.res-editor .editor{flex:1;min-height:0}
+.res-editor .ide-empty{position:static;flex:1}
+.res-field{flex:1;min-height:0;resize:none;padding:var(--sp-xl) var(--sp-2xl);border:0;background:none;color:var(--ink);font:var(--text-md)/1.55 var(--sans)}
+.res-field:focus{outline:none}
+/* the line under the panes: the file's path, clipped at its head so the name stays, then the actions on it */
+.res-foot{position:relative;flex:none;display:flex;align-items:center;gap:var(--sp-xl);min-height:30px;padding:var(--sp-sm) var(--sp-2xl);border-top:1px solid var(--line-soft);background:var(--surface-2);font:var(--w-regular) var(--text-xs) var(--mono);color:var(--ink-3)}
+.res-foot:has(.card-grip){padding-right:var(--sp-3xl)}
+.res-path{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
+.res-chain{flex:none;display:flex;align-items:center;gap:var(--sp-xs);font-family:var(--sans)}
+.res-chain-h{margin-right:var(--sp-xs);font-size:var(--text-xs);color:var(--ink-3)}
+.res-unsaved-word{flex:none;font-family:var(--sans);color:var(--working);white-space:nowrap}
+.res-save-word{flex:none;font-family:var(--sans);color:var(--ink-3);white-space:nowrap}
+.res-link{flex:none;padding:0;border:0;background:none;font:var(--w-medium) var(--text-xs) var(--sans);color:var(--ink-2);cursor:pointer;white-space:nowrap}.res-link:hover{color:var(--ink)}
+/* the arrows walk the columns, so a row must say where the keyboard stands */
+.res-shelf:focus{outline:none}
+.res-shelf :is(.res-node,.res-chip,.res-item,.res-field,.res-link):focus-visible{outline:1px solid var(--sand);outline-offset:-1px}

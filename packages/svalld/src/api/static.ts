@@ -16,8 +16,10 @@ const TYPES: Record<string, string> = {
 };
 
 const NOT_BUILT = `The phone bundle is not built. Run \`${SHIM} mobile\` on the Mac.`;
-// no other page may frame this one and steer a tap into it
-const NO_FRAMING = { 'content-security-policy': "frame-ancestors 'none'", 'x-frame-options': 'DENY' };
+// the page holds a socket that can run commands on the Mac, so it runs only its own code, and no other page may frame it
+// and steer a tap into it. xterm and React set inline styles; an older WebKit does not count wss: as 'self'
+const CSP = "default-src 'self'; script-src 'self'; connect-src 'self' wss:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'";
+const HEADERS = { 'content-security-policy': CSP, 'x-frame-options': 'DENY' };
 
 /** The file `pathname` names, or index.html for a route the single page owns; never anything outside dir. */
 export function resolveFile(dir: string, pathname: string): string | undefined {
@@ -42,7 +44,7 @@ export function brand(file: string, text: string, fleet: string): string {
 export function serveBundle(req: IncomingMessage, res: ServerResponse, dir: string, fleetName?: string): void {
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405).end(); return; }
   const file = resolveFile(dir, new URL(req.url ?? '/', 'http://svalld').pathname);
-  if (!file) { res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end(NOT_BUILT); return; }
+  if (!file) { res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end(fs.existsSync(path.join(dir, 'index.html')) ? 'Not found' : NOT_BUILT); return; }
   // only Vite's assets/ carries a content hash, so only it can be pinned; everything else revalidates
   const hashed = path.relative(dir, file).startsWith(`assets${path.sep}`);
   const cache = hashed ? 'public, max-age=31536000, immutable' : 'no-cache';
@@ -50,7 +52,7 @@ export function serveBundle(req: IncomingMessage, res: ServerResponse, dir: stri
   if (fleetName && BRANDED.has(path.basename(file))) {
     try { branded = brand(file, fs.readFileSync(file, 'utf8'), fleetName); } catch { /* served as built below */ }
   }
-  res.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream', 'cache-control': cache, ...NO_FRAMING });
+  res.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream', 'cache-control': cache, ...HEADERS });
   if (req.method === 'HEAD') { res.end(); return; }
   if (branded !== undefined) { res.end(branded); return; }
   fs.createReadStream(file).on('error', () => res.destroy()).pipe(res);

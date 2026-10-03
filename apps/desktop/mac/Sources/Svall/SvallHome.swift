@@ -17,8 +17,13 @@ enum SvallHome {
         (try? String(contentsOfFile: path + "/" + file, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// The tmux the daemon runs, as it names it in the home.
-    static var tmux: String? { read("tmux-binary") }
+    /// The tmux the daemon names in the home, else a search: an app opened from Finder has no Homebrew on PATH, so the search adds it.
+    static var tmuxBinary: String {
+        if let named = read("tmux-binary"), FileManager.default.isExecutableFile(atPath: named) { return named }
+        let path = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map(String.init)
+        let dirs = path + [NSHomeDirectory() + "/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"]
+        return dirs.map { $0 + "/tmux" }.first { FileManager.default.isExecutableFile(atPath: $0) } ?? "tmux"
+    }
 
     /// The fleet's config.json, created empty when the fleet has none so there is something to edit.
     static func configPath() -> String? {
@@ -79,18 +84,30 @@ enum SvallHome {
 
     private static var pidFile: String { path + "/app.pid" }
     private static var pid: Int32 { ProcessInfo.processInfo.processIdentifier }
+    // app.pid, locked for as long as this process runs; the kernel lets go of it however the process ends
+    private static var held: Int32 = -1
 
     // false when another instance of this app already owns the home; that one is brought to the front.
-    // the home travels with the pid so a recycled pid belonging to another fleet is taken over, not obeyed
+    // the file names the home beside the pid for the daemon and other fleets, which read it unlocked
     static func claim() -> Bool {
-        let parts = (read("app.pid") ?? "").split(separator: "\t", maxSplits: 1)
-        if let other = parts.first.flatMap({ Int32($0) }), other != pid, parts.count == 2, String(parts[1]) == path,
-           let app = NSRunningApplication(processIdentifier: other), app.bundleIdentifier == Bundle.main.bundleIdentifier {
-            app.activate()
-            return false
+        if held >= 0 { return true }
+        let fd = open(pidFile, O_RDWR | O_CREAT | O_CLOEXEC, 0o644)
+        guard fd >= 0 else { NSLog("svall: could not claim %@: %@", pidFile, String(cString: strerror(errno))); return true }
+        if flock(fd, LOCK_EX | LOCK_NB) != 0 {
+            guard errno != EWOULDBLOCK else {
+                close(fd)
+                NSLog("svall: another window holds %@", path)
+                if let other = appPid(of: path), let app = NSRunningApplication(processIdentifier: other),
+                   app.bundleIdentifier == Bundle.main.bundleIdentifier { app.activate() }
+                return false
+            }
+            // a file system without locks, a network one say, leaves the home unguarded
+            NSLog("svall: could not lock %@: %@", pidFile, String(cString: strerror(errno)))
         }
-        do { try "\(pid)\t\(path)".write(toFile: pidFile, atomically: true, encoding: .utf8) }
-        catch { NSLog("svall: could not claim %@: %@", pidFile, "\(error)") }
+        held = fd
+        // written in place: a new file would carry no lock
+        let line = Array("\(pid)\t\(path)".utf8)
+        if ftruncate(fd, 0) != 0 || pwrite(fd, line, line.count, 0) != line.count { NSLog("svall: could not write %@: %@", pidFile, String(cString: strerror(errno))) }
         return true
     }
 
@@ -102,9 +119,10 @@ enum SvallHome {
         return Date().timeIntervalSince(made) < 60
     }
 
+    // emptied rather than removed, so a launch that opened the file as this one quit locks the one the next launch sees
     static func release() {
-        guard read("app.pid")?.split(separator: "\t").first.flatMap({ Int32($0) }) == pid else { return }
-        try? FileManager.default.removeItem(atPath: pidFile)
+        guard held >= 0, read("app.pid")?.split(separator: "\t").first.flatMap({ Int32($0) }) == pid else { return }
+        ftruncate(held, 0)
     }
 
     /// The pid of the instance that holds another fleet's home, as that home's app.pid names it.

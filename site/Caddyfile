@@ -7,6 +7,9 @@
 	# against a newer page breaks the page
 	@page path / /index.html /map/*
 	header @page Cache-Control "no-cache"
+	# the screenshots and the app's art keep their names when refreshed, so they cache for minutes, not Cloudflare's hours
+	@art path /shots/* /animals/* /icon* /lighthouse.svg
+	header @art Cache-Control "public, max-age=300"
 	# only a DMG on disk: a 404 marked immutable stays cached after the release uploads it
 	@dmg {
 		path_regexp ^/releases/Svall-.+\.dmg$

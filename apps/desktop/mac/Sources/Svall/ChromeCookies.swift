@@ -33,7 +33,7 @@ enum ChromeCookies {
         return derive(password: password)
     }
 
-    static func derive(password: Data) -> [UInt8] {
+    private static func derive(password: Data) -> [UInt8] {
         var key = [UInt8](repeating: 0, count: 16)
         let salt = Array("saltysalt".utf8)
         password.withUnsafeBytes { p in
@@ -44,7 +44,7 @@ enum ChromeCookies {
     }
 
     // "v10" + AES-128-CBC under sixteen spaces; newer profiles lead the plaintext with the host's SHA-256
-    static func decrypt(_ blob: Data, host: String, key: [UInt8]) -> String? {
+    private static func decrypt(_ blob: Data, host: String, key: [UInt8]) -> String? {
         guard blob.count > 3, blob.prefix(3) == Data("v10".utf8) else { return nil }
         let body = [UInt8](blob.dropFirst(3))
         let iv = [UInt8](repeating: 0x20, count: 16)

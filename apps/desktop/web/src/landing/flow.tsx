@@ -1,4 +1,4 @@
-import { crewGrid, type Cell, type Character, type ContextItem, type Island as IslandModel, type Portrait } from '@svall/protocol';
+import { crewGrid, type Cell, type ContextItem, type Island as IslandModel } from '@svall/protocol';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { coastPath } from '../map/coast.js';
@@ -9,11 +9,10 @@ import { Seabed, Waterline } from '../map/Relief.js';
 import { ISLET, placeIslet, type Placement } from '../map/resources.js';
 import { Token } from '../map/Token.js';
 import { theme } from '../theme.js';
+import { character, hold, islandModel, none, pointer, type Member } from './demo.js';
 
 // The landing page's ⌘G scene: mission control is asked for a review island, makes it, and its crew sets to work.
 
-type Status = 'working' | 'idle' | 'blocked' | 'done';
-type Member = { id: string; name: string; portrait: Portrait; status: Status; ctx: number; links: ContextItem[] };
 type Scene = { keys: boolean; modal: boolean; typed: number; send: boolean; mc?: Member; island: boolean; crew: Member[]; shore: Member[]; picked?: string };
 
 const PROMPT = 'Create an island to review the 3 open PRs in the storefront repo';
@@ -45,19 +44,7 @@ const HOME_CONFIG = { cwd: '', command: '', actions: [{ label: 'update info', pr
 
 const START: Scene = { keys: false, modal: false, typed: 0, send: false, island: false, crew: [], shore: SHORE_CREW };
 
-const none = () => {};
-const pointer = { onPointerDown: none };
-const hold = { onPointerEnter: none, onPointerLeave: none };
 const asyncNone = async () => {};
-
-const islandModel = (i: typeof SHORE, at: Cell, size: IslandModel['size']): IslandModel =>
-  ({ id: i.id, name: i.name, description: '', instructions: '', context: [], position: at, size, seed: i.seed });
-
-const character = (m: Member, islandId: string, cell: Cell = { x: 0, y: 0 }): Character => ({
-  id: m.id, islandId, cell, name: m.name, note: '', portrait: m.portrait, instructions: '', cwd: '~',
-  context: m.links, shell: { lastOutputAt: 0 }, unread: m.status === 'done',
-  agent: { kind: 'claude', sessionId: '', status: m.status, contextPct: m.ctx, lastActivityAt: 0 },
-});
 
 const grow = (crew: Member[], beat: number) =>
   crew.map((m, i) => (m.status === 'working' ? { ...m, ctx: Math.min(90, m.ctx + [5, 7, 4, 6][(beat + i) % 4]) } : m));

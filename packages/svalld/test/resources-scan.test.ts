@@ -3,7 +3,8 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { emptyState, HOME_ISLAND, type FleetState, type ResourceSource } from '@svall/protocol';
 import { docsDir, repoSlug } from '../src/docs.js';
-import { claudePaths, fleetRoots, resourceRoot, rootIdOf, scanResources } from '../src/resources/scan.js';
+import { claudePaths } from '../src/paths.js';
+import { fleetRoots, resourceRoot, rootIdOf, scanResources } from '../src/resources/scan.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 const put = (file: string, text: string) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
@@ -186,6 +187,19 @@ describe('scanResources', () => {
     // ~/.claude.json is the user's own and is read whatever its size
     put(claude.json, JSON.stringify({ mcpServers: { linear: { type: 'http', url: 'https://mcp.linear.app/mcp' } }, pad: 'x'.repeat(2 * 1024 * 1024) }));
     expect(kinds(scanResources(state, claude)[0]).mcp).toEqual(['linear']);
+  });
+
+  // it runs to megabytes, and every listing change asks for the resources again
+  it('parses ~/.claude.json again only once it changes', () => {
+    const { claude, state } = disk();
+    // the same size and time each, so only a reread could tell them apart
+    const write = (name: string, at = 1_700_000_000) => { put(claude.json, JSON.stringify({ mcpServers: { [name]: { command: 'x' } } })); fs.utimesSync(claude.json, at, at); };
+    write('aaaa');
+    expect(kinds(scanResources(state, claude)[0]).mcp).toEqual(['aaaa']);
+    write('bbbb');
+    expect(kinds(scanResources(state, claude)[0]).mcp).toEqual(['aaaa']);
+    write('bbbb', 1_700_000_001);
+    expect(kinds(scanResources(state, claude)[0]).mcp).toEqual(['bbbb']);
   });
 
   it('lists a skill installed as a link, to be shown in Finder and opened nowhere else', () => {

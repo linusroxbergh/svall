@@ -21,15 +21,8 @@ final class ShellRouter {
     private var pendingNotify: [FromShell] = []
     // the menu's Quit, which shows the chord the page quits with
     private let quitItem: NSMenuItem
-    // where the page's answer goes while a quit waits on it, and what quits anyway if it never comes
-    private var quitAnswer: ((Bool) -> Void)?
-    private var quitTimeout: DispatchWorkItem?
-    // whether the quit waiting on the page also waits on the user's yes
-    private var userQuit = false
-    // while the question is up, the user's answer is the only one: a late reply or a reload waits on it
-    private var confirming = false
-    // once the fleet is being stopped for a quit, a page that loses the daemon must not start it again
-    private var stopping = false
+    private lazy var quitFlow = QuitFlow(send: { [weak self] in self?.bridge.send($0) }, isListening: { [weak self] in self?.listening ?? false },
+                                         hideWindow: { [weak self] in self?.webView.window?.orderOut(nil) })
 
     init(runtime: GhosttyRuntime, bridge: Bridge, container: NSView, webView: DropWebView, quitItem: NSMenuItem) {
         self.runtime = runtime
@@ -115,97 +108,16 @@ final class ShellRouter {
         notifier.clearAll()
         listening = false
         pendingNotify = []
-        // the page a quit was waiting on is gone with nothing of it left to save: the user still answers a quit of theirs,
-        // and the fleet is ended from here
-        if quitAnswer != nil, !confirming {
-            if stopping { fleetStopped(ok: false) } else { answerQuit(unsaved: [], working: 0) }
-        }
+        quitFlow.pageGone()
     }
 
     /// Quits, unless a quit already waits on the page: AppKit takes a second terminate as a yes to the first.
     func quit() {
-        if quitAnswer == nil { NSApp.terminate(nil) }
+        if !quitFlow.pending { NSApp.terminate(nil) }
     }
 
-    /// Asks the page to save its docs and name the files a quit would drop, then the user when `confirm` or a file would be lost,
-    /// then stops the fleet: every character sleeps until it is opened again.
     func askToQuit(confirm: Bool, _ answer: @escaping (Bool) -> Void) -> NSApplication.TerminateReply {
-        guard quitAnswer == nil else { return .terminateNow }
-        // a page that is not up has nothing to save and no daemon to ask
-        guard listening else {
-            guard !confirm || confirmQuit(unsaved: [], working: 0) else { return .terminateCancel }
-            stopping = true
-            FleetDaemon.kill()
-            return .terminateNow
-        }
-        // a page that is up names its unsaved files first, so the one question can name them too
-        userQuit = confirm
-        quitAnswer = answer
-        // longer than the page gives its saves, so only a page that is stuck or gone runs it out
-        let timeout = DispatchWorkItem { [weak self] in self?.answerQuit(unsaved: [], working: 0) }
-        quitTimeout = timeout
-        DispatchQueue.main.asyncAfter(deadline: .now() + 6, execute: timeout)
-        bridge.send(.quitAsk)
-        return .terminateLater
-    }
-
-    private func finishQuit(_ ok: Bool) {
-        guard !confirming else { return }
-        userQuit = false
-        guard let answer = quitAnswer else { return }
-        quitAnswer = nil
-        quitTimeout?.cancel()
-        quitTimeout = nil
-        answer(ok)
-    }
-
-    private func answerQuit(unsaved: [String], working: Int) {
-        guard quitAnswer != nil, !confirming, !stopping else { return }
-        quitTimeout?.cancel()
-        if userQuit || !unsaved.isEmpty {
-            confirming = true
-            let ok = confirmQuit(unsaved: unsaved, working: working)
-            confirming = false
-            guard ok else { return finishQuit(false) }
-        }
-        stopFleet()
-    }
-
-    // the page has the daemon put every character to sleep and exit; what it cannot reach is ended from here
-    private func stopFleet() {
-        guard listening else { return fleetStopped(ok: false) }
-        stopping = true
-        webView.window?.orderOut(nil)
-        let timeout = DispatchWorkItem { [weak self] in self?.fleetStopped(ok: false) }
-        quitTimeout = timeout
-        DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: timeout)
-        bridge.send(.quitStop)
-    }
-
-    private func fleetStopped(ok: Bool) {
-        guard quitAnswer != nil else { return }
-        stopping = true
-        if !ok { FleetDaemon.kill() }
-        finishQuit(true)
-    }
-
-    private func confirmQuit(unsaved: [String], working: Int) -> Bool {
-        let alert = NSAlert()
-        let busy = working == 0 ? "" : "\(working) \(working == 1 ? "character is" : "characters are") working and will stop."
-        if unsaved.isEmpty {
-            alert.messageText = "Quit Svall?"
-            alert.informativeText = working == 0
-                ? "Your characters stop and pick up where they left off when you open Svall again."
-                : busy + " Everything picks up where it left off when you open Svall again."
-        } else {
-            alert.messageText = "Quit with unsaved changes?"
-            let names = unsaved.count > 4 ? unsaved.prefix(3).joined(separator: ", ") + " and \(unsaved.count - 3) more" : ListFormatter.localizedString(byJoining: unsaved)
-            alert.informativeText = "\(names) \(unsaved.count == 1 ? "has" : "have") changes that were not saved. Quitting drops them." + (busy.isEmpty ? "" : " " + busy)
-        }
-        alert.addButton(withTitle: "Quit")
-        alert.addButton(withTitle: "Cancel")
-        NSApp.activate()
-        return alert.runModal() == .alertFirstButtonReturn
+        quitFlow.ask(confirm: confirm, answer: answer)
     }
 
     // the page names the chord it quits with, for the menu and for the monitor that takes it on a stuck page
@@ -243,7 +155,7 @@ final class ShellRouter {
         switch msg {
         case .connection:
             // the daemon runs while the window is open: started with it, and again if it stops on its own
-            if !stopping { FleetDaemon.start() }
+            if !quitFlow.stopping { FleetDaemon.start() }
             bridge.send(.shellInfo(home: SvallHome.path, log: SvallHome.logTail(), op: OnePassword.path != nil, ghosttyKeys: GhosttyKeybinds.userChords()))
             bridge.send(.connection(SvallHome.connection()))
             sendAppActive()
@@ -274,9 +186,9 @@ final class ShellRouter {
         case .keysQuit(let chord):
             setQuit(chord)
         case .quitAnswer(let unsaved, let working):
-            answerQuit(unsaved: unsaved, working: working)
+            quitFlow.answered(unsaved: unsaved, working: working)
         case .quitStopped(let ok):
-            if stopping { fleetStopped(ok: ok) }
+            quitFlow.stopped(ok: ok)
         case .openUrl(let url):
             ExternalURL.open(url)
         case .openFolder(let path):
@@ -371,7 +283,7 @@ final class ShellRouter {
     // a fleet whose window is open is brought up; any other opens in a new instance of this app
     private func openFleet(_ home: String, quit: Bool) {
         // the picker gives way to the fleet it opened without asking
-        let done = { [weak self] in if quit, self?.quitAnswer == nil { NSApp.terminateQuietly() } }
+        let done = { [weak self] in if quit, self?.quitFlow.pending != true { NSApp.terminateQuietly() } }
         if let pid = SvallHome.appPid(of: home), let app = NSRunningApplication(processIdentifier: pid), app.bundleIdentifier == Bundle.main.bundleIdentifier {
             app.activate()
             return done()

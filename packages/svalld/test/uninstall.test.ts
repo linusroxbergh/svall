@@ -385,15 +385,21 @@ describe('purge', () => {
     const webkit = ids.map((id) => path.join(library, 'WebKit', id));
     const caches = ids.map((id) => path.join(library, 'Caches', id));
     const prefs = ids.map((id) => path.join(library, 'Preferences', `${id}.plist`));
-    for (const d of [...webkit, ...caches, path.join(library, 'Caches', 'com.other')]) fs.mkdirSync(d, { recursive: true });
+    const http = ids.map((id) => path.join(library, 'HTTPStorages', id));
+    const saved = ids.map((id) => path.join(library, 'Saved Application State', `${id}.savedState`));
+    for (const d of [...webkit, ...caches, ...http, ...saved, path.join(library, 'Caches', 'com.other')]) fs.mkdirSync(d, { recursive: true });
     fs.mkdirSync(path.join(library, 'Preferences'));
     for (const f of [...prefs, path.join(library, 'Preferences', 'com.other.plist')]) fs.writeFileSync(f, '<plist/>');
+    const cookies = ids.map((id) => path.join(library, 'HTTPStorages', `${id}.binarycookies`));
+    for (const f of cookies) fs.writeFileSync(f, '');
 
     const data = fleetData({ homedir: root, appDests: [appDest] });
-    expect(data).toEqual([path.join(root, '.svall'), path.join(root, '.svall-work'), path.join(appDest, 'Svall.app'), webkit[0], caches[0], prefs[0]]);
+    expect(data).toEqual([path.join(root, '.svall'), path.join(root, '.svall-work'), path.join(appDest, 'Svall.app'), webkit[0], caches[0], http[0], cookies[0], saved[0], prefs[0]]);
     await purge(data);
     expect(fs.readdirSync(root).sort()).toEqual(['.svalls', 'Applications', 'Library', 'other']);
     expect(fs.readdirSync(path.join(library, 'WebKit'))).toEqual([]);
+    expect(fs.readdirSync(path.join(library, 'HTTPStorages'))).toEqual([]);
+    expect(fs.readdirSync(path.join(library, 'Saved Application State'))).toEqual([]);
     expect(fs.readdirSync(path.join(library, 'Caches'))).toEqual(['com.other']);
     expect(fs.readdirSync(path.join(library, 'Preferences'))).toEqual(['com.other.plist']);
     expect(fs.readdirSync(appDest)).toEqual([]);
