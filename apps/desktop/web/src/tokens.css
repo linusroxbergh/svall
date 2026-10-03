@@ -72,6 +72,7 @@
   --text-xl: 15px;      /* icon glyphs */
   --text-2xl: 17px;     /* the wordmark and the card's own marks */
   --text-3xl: 25px;     /* names in a modal or the side card */
+  --text-input: 16px;   /* a phone's fields: iOS zooms the page onto any smaller one */
 
   /* the room an icon control gets either side of its glyph */
   --ctl-pad: 16px;      /* an icon control in a header or tab bar */
@@ -79,6 +80,7 @@
 
   --r-lg: 16px; --r-md: 10px; --r-sm: 8px;
   --ease: cubic-bezier(.22,.7,.24,1);
+  --ease-out: cubic-bezier(.16,1,.3,1);   /* a settle or a landing: fast out, long tail */
   --cell: 44px;
   --card-w: calc(var(--cell) * 2.56);
   --card-h: calc(var(--cell) * 2.90 * 1.05);
@@ -86,10 +88,6 @@
   --side-w: 320px;
   --disc-side: 52px;    /* the portrait disc in the side card's header */
   --utility-dock-h: 64px;
-
-  --bg: var(--surface-1);
-  --fg: var(--ink);
-  --dim: var(--ink-3);
 
   /* spacing: every gap and padding is one of these rungs */
   --sp-2xs: 2px; --sp-xs: 4px; --sp-sm: 6px; --sp-md: 8px;

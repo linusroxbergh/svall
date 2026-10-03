@@ -1,5 +1,5 @@
 import type { Character, FleetState, Island } from '@svall/protocol';
-import { charactersByPriority, islandsSorted, wantsUser } from '../selectors.js';
+import { charactersByPriority, islandsSorted, wantsUser, type DisplayStatus } from '../selectors.js';
 
 export type Section = { island: Island; characters: Character[] };
 
@@ -25,3 +25,9 @@ export const waiting = (f: FleetState): number => Object.values(f.characters).fi
 
 /** The line under a character's name: its note flattened to one line, or nothing. */
 export const subtitle = (c: Character): string => c.note.trim().replace(/\s*\n+\s*/g, ' · ');
+
+const LABEL: Record<DisplayStatus, string> = {
+  working: 'working', idle: 'idle', blocked: 'needs you', done: 'done', shell: 'shell',
+};
+/** A status as the phone words it, in the list and over the terminal alike. */
+export const statusLabel = (s: DisplayStatus): string => LABEL[s];

@@ -23,12 +23,12 @@ const pr: ContextItem = { kind: 'pr', ref: 'https://github.com/o/r/pull/7', labe
 const plan: ContextItem = { kind: 'file', ref: '~/work/plan.md', label: '', source: 'manual' };
 const updates = () => calls.filter(([m]) => m === 'char.update').map(([, p]) => p);
 
-function open(extra: Parameters<typeof chr>[3] = {}) {
+function open(extra: Parameters<typeof chr>[3] = {}, onClosed = () => {}) {
   const f = fleet();
   f.characters.c0 = chr('c0', 'i_b', { x: 1, y: 1 }, { context: [pr, plan], note: 'old note', ...extra });
   store.getState().setFleet(f);
   const onClose = vi.fn();
-  render(<CharacterMenu id="c0" onClose={onClose} onClosed={() => {}} />);
+  render(<CharacterMenu id="c0" onClose={onClose} onClosed={onClosed} />);
   return onClose;
 }
 
@@ -113,4 +113,14 @@ test('reads the prompts sent, newest first, and steps back through them', async 
   fireEvent.click(screen.getByRole('button', { name: 'Earlier command' }));
   expect(screen.getByText('first ask')).toBeTruthy();
   expect(screen.getByText('2/2')).toBeTruthy();
+});
+
+test('closing the character asks once, says what goes with it, then closes it', async () => {
+  const onClosed = vi.fn();
+  open({}, onClosed);
+  fireEvent.click(screen.getByRole('button', { name: 'Close character' }));
+  expect(screen.getByText('Closing kills its terminal and deletes its docs.')).toBeTruthy();
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Close c0' })); });
+  expect(calls.filter(([m]) => m === 'char.close')).toEqual([['char.close', { id: 'c0' }]]);
+  expect(onClosed).toHaveBeenCalled();
 });

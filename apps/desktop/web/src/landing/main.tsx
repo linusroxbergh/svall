@@ -1,4 +1,4 @@
-import type { Cell, Character, ContextItem, Island as IslandModel, Portrait } from '@svall/protocol';
+import type { Cell, ContextItem } from '@svall/protocol';
 import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
@@ -7,27 +7,29 @@ import { Island } from '../map/Island.js';
 import { cardScale, labelScale } from '../map/layout.js';
 import { Token } from '../map/Token.js';
 import { theme } from '../theme.js';
+import { character, hold, islandModel, none, pointer, type Member, type Status } from './demo.js';
 import '../tokens.css';
+import '../fonts.css';
 import '../map/map.css';
 
 // The landing page's demo map: the app's own islands and cards, holding a made-up crew whose statuses move on a beat.
 
-type Status = 'working' | 'idle' | 'blocked' | 'done';
-type Member = { name: string; portrait: Portrait; status: Status; ctx: number; links: ContextItem[]; since: number };
+// since is when, on the beat's clock, the member's status last changed
+type Crew = Member & { since: number };
 
 const pr = (repo: string, n: number): ContextItem => ({ kind: 'pr', ref: `https://github.com/linusroxbergh/${repo}/pull/${n}`, label: '', source: 'auto' });
 const issue = (repo: string, n: number): ContextItem => ({ kind: 'issue', ref: `https://github.com/linusroxbergh/${repo}/issues/${n}`, label: '', source: 'auto' });
 const linear = (n: number): ContextItem => ({ kind: 'linear', ref: `https://linear.app/acme/issue/SHOP-${n}`, label: `SHOP-${n}`, source: 'scribe' });
 
-const CAST: Member[] = [
-  { name: 'checkout redesign', portrait: 'fox', status: 'working', ctx: 46, links: [issue('storefront', 6)], since: 0 },
-  { name: 'fix cart total', portrait: 'deer', status: 'working', ctx: 58, links: [issue('storefront', 5), linear(150)], since: 0 },
-  { name: 'a11y audit', portrait: 'owl', status: 'done', ctx: 71, links: [linear(133)], since: 0 },
-  { name: 'flaky e2e', portrait: 'frog', status: 'idle', ctx: 12, links: [], since: 0 },
-  { name: 'refund webhooks', portrait: 'elephant', status: 'working', ctx: 33, links: [pr('payments-api', 1)], since: 0 },
-  { name: 'review #1', portrait: 'lemur', status: 'working', ctx: 62, links: [pr('payments-api', 1)], since: 0 },
-  { name: 'changelog', portrait: 'penguin', status: 'working', ctx: 27, links: [], since: 0 },
-];
+const CAST: Crew[] = ([
+  { name: 'checkout redesign', portrait: 'fox', status: 'working', ctx: 46, links: [issue('storefront', 6)] },
+  { name: 'fix cart total', portrait: 'deer', status: 'working', ctx: 58, links: [issue('storefront', 5), linear(150)] },
+  { name: 'a11y audit', portrait: 'owl', status: 'done', ctx: 71, links: [linear(133)] },
+  { name: 'flaky e2e', portrait: 'frog', status: 'idle', ctx: 12, links: [] },
+  { name: 'refund webhooks', portrait: 'elephant', status: 'working', ctx: 33, links: [pr('payments-api', 1)] },
+  { name: 'review #1', portrait: 'lemur', status: 'working', ctx: 62, links: [pr('payments-api', 1)] },
+  { name: 'changelog', portrait: 'penguin', status: 'working', ctx: 27, links: [] },
+] satisfies Omit<Member, 'id'>[]).map((m) => ({ ...m, id: m.name, since: 0 }));
 
 const ISLANDS = [
   { id: 'storefront', name: 'storefront', seed: 568461961, crew: [0, 1, 2, 3] },
@@ -44,21 +46,6 @@ const LAYOUTS: Record<'wide' | 'narrow', { w: number; h: number; k: number; at: 
   narrow: { w: 748, h: 866, k: 0.72, at: [{ x: 5, y: 10 }, { x: 0, y: 2 }, { x: 10, y: 3 }] },
 };
 
-const none = () => {};
-const pointer = { onPointerDown: none };
-const hold = { onPointerEnter: none, onPointerLeave: none };
-
-const islandModel = (i: number, at: Cell): IslandModel => ({
-  id: ISLANDS[i].id, name: ISLANDS[i].name, description: '', instructions: '', context: [],
-  position: at, size: GRIDS[i].size, seed: ISLANDS[i].seed,
-});
-
-const character = (m: Member, islandId: string): Character => ({
-  id: m.name, islandId, cell: { x: 0, y: 0 }, name: m.name, note: '', portrait: m.portrait, instructions: '', cwd: '~',
-  context: m.links, shell: { lastOutputAt: 0 }, unread: m.status === 'done',
-  agent: { kind: 'claude', sessionId: '', status: m.status, contextPct: m.ctx, lastActivityAt: 0 },
-});
-
 const stage = document.querySelector<HTMLElement>('.stage')!;
 const hero = document.querySelector<HTMLElement>('.stage .hero')!;
 const features = document.querySelector<HTMLElement>('.features')!;
@@ -71,14 +58,14 @@ new IntersectionObserver(([e]) => { inView = e.isIntersecting; }).observe(world)
 
 // one beat every 2.4 s: working cards fill their context, one agent at a time blocks and is answered
 // a few beats later, the rest finish or start again
-function useBeat(): Member[] {
+function useBeat(): Crew[] {
   const [crew, setCrew] = useState(CAST);
   useEffect(() => {
     const cast = CAST.map((m) => ({ ...m }));
     const asks = [5, 1, 6, 4, 0];
-    let clock = 0, resolvedAt = -1e9, next = 0, asking: Member | undefined;
-    const set = (m: Member, status: Status) => { m.status = status; m.since = clock; };
-    const pick = (fn: (m: Member) => boolean) => cast.filter(fn).sort(() => Math.random() - 0.5)[0];
+    let clock = 0, resolvedAt = -1e9, next = 0, asking: Crew | undefined;
+    const set = (m: Crew, status: Status) => { m.status = status; m.since = clock; };
+    const pick = (fn: (m: Crew) => boolean) => cast.filter(fn).sort(() => Math.random() - 0.5)[0];
     const step = () => {
       if (asking && clock - asking.since >= 7200) { set(asking, 'working'); asking = undefined; resolvedAt = clock; return; }
       if (!asking && clock - resolvedAt > 4800) {
@@ -112,7 +99,7 @@ function DemoMap({ at }: { at: Cell[] }) {
   return (
     <>
       {ISLANDS.map((isl, i) => (
-        <Island key={isl.id} island={islandModel(i, at[i])} count={isl.crew.length} hot={false} selected={false}
+        <Island key={isl.id} island={islandModel(isl, at[i], GRIDS[i].size)} count={isl.crew.length} hot={false} selected={false}
           dragging={false} settling={false} hover={false} onNew={none} onToggle={none} onMenu={none}
           land={pointer} label={pointer} handle={pointer} hold={hold} />
       ))}
