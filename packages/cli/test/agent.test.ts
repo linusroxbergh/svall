@@ -1,9 +1,11 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { WebSocketServer } from 'ws';
+import { PROTOCOL_VERSION } from '@svall/protocol';
 import { resolvePaths } from '@svall/svalld/paths';
-import { setMainAgentCli, type AgentDeps } from '../src/commands/agent.js';
+import { agentCommand, setMainAgentCli, type AgentDeps } from '../src/commands/agent.js';
 
 function deps(o: Partial<AgentDeps> = {}) {
   const paths = resolvePaths(fs.mkdtempSync(path.join(os.tmpdir(), 'svall-agent-')));
@@ -33,5 +35,29 @@ describe('setMainAgentCli', () => {
     const { d, saved } = deps({ found: ['claude'] });
     await expect(setMainAgentCli(d, 'codex')).rejects.toThrow('codex is not on PATH; install Codex first');
     expect(saved()).toBeUndefined();
+  });
+});
+
+describe('svall agent <name>', () => {
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  it('names the daemon that speaks another protocol, and leaves the config to it', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-agent-'));
+    const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-agent-bin-'));
+    fs.writeFileSync(path.join(bin, 'codex'), '#!/bin/sh\n', { mode: 0o755 });
+    vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
+    // an older svalld, as an app update leaves running until Svall reopens
+    const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+    await new Promise((r) => wss.once('listening', r));
+    wss.on('connection', (ws) => ws.once('message', () => ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION - 1 } }))));
+    fs.writeFileSync(path.join(home, 'port'), String((wss.address() as { port: number }).port));
+    fs.writeFileSync(path.join(home, 'token'), 't');
+    try {
+      await expect(agentCommand(() => ({ name: 'private', home, managed: true }), () => true).parseAsync(['codex'], { from: 'user' }))
+        .rejects.toThrow(`speaks protocol ${PROTOCOL_VERSION - 1}`);
+      expect(fs.existsSync(resolvePaths(home).fleetConfig)).toBe(false);
+    } finally {
+      await new Promise((r) => wss.close(r));
+    }
   });
 });

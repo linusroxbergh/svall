@@ -3,7 +3,7 @@ import { AGENTS, findAgents, mainAgent } from '@svall/svalld/agents';
 import { configuredMainAgent, fleetMainAgent, saveMainAgent } from '@svall/svalld/config';
 import { resolvePaths, type Paths } from '@svall/svalld/paths';
 import { AgentKind, type FleetState } from '@svall/protocol';
-import { Client } from '../client.js';
+import { Client, ProtocolMismatch } from '../client.js';
 import { printResult } from '../format.js';
 import type { Target } from '../target.js';
 
@@ -46,8 +46,8 @@ export function agentCommand(target: () => Target, json: () => boolean): Command
         paths, found,
         apply: async (a) => {
           let c: Client;
-          // no svalld, or one speaking another protocol, cannot take it; its next start reads fleet.json
-          try { c = await Client.connect(t.home); } catch { return false; }
+          // with no svalld its next start reads fleet.json; under one on another protocol, saving would split the config.json it still writes
+          try { c = await Client.connect(t.home); } catch (e) { if (e instanceof ProtocolMismatch) throw e; return false; }
           try { await c.call('mainAgent.set', { agent: a }); return true; } finally { c.close(); }
         },
       }, agent.data);
