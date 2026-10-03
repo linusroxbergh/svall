@@ -187,6 +187,31 @@ runIf('Tmux', () => {
     await expect(t.attachSession('v-c_gone', '@999')).rejects.toThrow(/can't find window/);
   });
 
+  // link-window -k can close the placeholder's pty before tmux's child holds it, so no SIGHUP ever comes:
+  // stand-ins hold the placeholder until its session is gone, ignoring SIGHUP, then start it on the dead pty
+  it('leaves no viewer placeholder running once its pty is gone, even one that never got SIGHUP', async () => {
+    const t = await boot();
+    const bin = path.join(lastHome, 'bin');
+    fs.mkdirSync(bin);
+    const held = (real: string) => `#!/bin/sh\ntrap '' HUP\ntouch ${bin}/ready\nwhile [ ! -e ${bin}/go ]; do /bin/sleep 0.05; done\nexec ${real} "$@"\n`;
+    for (const cmd of ['cat', 'sleep']) fs.writeFileSync(path.join(bin, cmd), held(`/bin/${cmd}`), { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'zsh'), held('/bin/zsh'), { mode: 0o755 });
+    // tmux looks a command up on the PATH of the client that asks for it
+    vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
+    cleanup.push(async () => { vi.unstubAllEnvs(); });
+    await t.run('set-option', '-g', 'default-shell', path.join(bin, 'zsh'));
+    // a link that fails leaves the placeholder's session up
+    await expect(t.attachSession('v-c_held', '@999')).rejects.toThrow(/can't find window/);
+    const pid = Number((await t.run('display', '-p', '-t', '=v-c_held:', '#{pane_pid}')).trim());
+    await waitFor(() => fs.existsSync(path.join(bin, 'ready')));
+    await t.killSession('v-c_held');
+    fs.writeFileSync(path.join(bin, 'go'), '');
+    const alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    const ended = await waitFor(() => !alive(), 2000).then(() => true, () => false);
+    if (!ended) process.kill(pid, 'SIGKILL');
+    expect(ended).toBe(true);
+  });
+
   it('control client streams output for panes turned on and stays quiet for panes turned off', async () => {
     const t = await boot();
     const w = await t.newWindow('c_one', '/tmp', {});
