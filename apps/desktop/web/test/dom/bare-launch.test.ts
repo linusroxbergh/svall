@@ -32,15 +32,21 @@ beforeEach(() => {
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); delete window.webkit; delete window.__svallBare; });
 
-test('a bare launch offers the fleets once there are two, and asks again after a list that went unanswered', async () => {
+test('a bare launch offers the fleets once there are two, and asks again after a list that failed or went unanswered', async () => {
   port = 47001;
   window.__svallBare = true;
   const { initApp } = await import('../../src/boot.js');
   const { store } = initApp();
   await vi.advanceTimersByTimeAsync(1);
   Socket.all[0].hello();
-  Socket.all[0].asked('fleets.list');
+  Socket.all[0].reply({ id: Socket.all[0].asked('fleets.list'), error: { code: 'internal', message: 'busy' } });
+  await vi.advanceTimersByTimeAsync(1);
   Socket.all[0].close();
+  await vi.advanceTimersByTimeAsync(1000);
+  const second = Socket.all.at(-1)!;
+  second.hello();
+  expect(second.sent.some((m) => m.method === 'fleets.list')).toBe(true);
+  second.close();
   await vi.advanceTimersByTimeAsync(1);
   expect(store.getState().fleetPicker).toBeUndefined();
 

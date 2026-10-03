@@ -58,8 +58,8 @@ function createApp(): AppContext {
       if (e.event === 'mobile.phones') { store.getState().setPhones(e.data.phones); return; }
       if (e.event === 'state.patch') fleet.patch(e.data.ops);
     };
-    // a launch that named no fleet offers the others, once, when there are any; svalld's first answer settles it,
-    // a refusal from a daemon off the Mac included, and only a list that went unanswered is asked again
+    // a launch that named no fleet offers the others, once, when there are any; svalld's list settles it, and so does
+    // its refusal off the Mac, while a list that failed or went unanswered is asked again
     let offerFleets = window.__svallBare === true;
     const offer = () => {
       a.call('fleets.list', {}).then((r) => {
@@ -67,7 +67,7 @@ function createApp(): AppContext {
         offerFleets = false;
         if (r.fleets.length > 1) store.getState().setFleetPicker('bare');
       }).catch((e: Error) => {
-        if (e instanceof ApiError) offerFleets = false;
+        if (e instanceof ApiError && e.code === 'forbidden') offerFleets = false;
         console.warn(`fleets.list: ${e.message}`);
       });
     };
