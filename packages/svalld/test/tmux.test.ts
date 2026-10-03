@@ -187,28 +187,30 @@ runIf('Tmux', () => {
     await expect(t.attachSession('v-c_gone', '@999')).rejects.toThrow(/can't find window/);
   });
 
-  // link-window -k can close the placeholder's pty before tmux's child holds it, so no SIGHUP ever comes:
-  // stand-ins hold the placeholder until its session is gone, ignoring SIGHUP, then start it on the dead pty
-  it('leaves no viewer placeholder running once its pty is gone, even one that never got SIGHUP', async () => {
-    const t = await boot();
-    const bin = path.join(lastHome, 'bin');
+  // stand-ins ignore SIGHUP until their pty is gone, then start the real command on it, as a child that lost the race would
+  it('leaves no keeper or viewer placeholder running once its pty is gone, even one that never got SIGHUP', async () => {
+    const home = makeHome();
+    const bin = path.join(home, 'bin');
     fs.mkdirSync(bin);
-    const held = (real: string) => `#!/bin/sh\ntrap '' HUP\ntouch ${bin}/ready\nwhile [ ! -e ${bin}/go ]; do /bin/sleep 0.05; done\nexec ${real} "$@"\n`;
-    for (const cmd of ['cat', 'sleep']) fs.writeFileSync(path.join(bin, cmd), held(`/bin/${cmd}`), { mode: 0o755 });
-    fs.writeFileSync(path.join(bin, 'zsh'), held('/bin/zsh'), { mode: 0o755 });
+    const held = (real: string) => `#!/bin/sh\ntrap '' HUP\ntouch ${bin}/$$\nuntil [ -e ${bin}/go ]; do [ -d ${bin} ] || exit; /bin/sleep 0.05; done\nexec ${real} "$@"\n`;
+    for (const cmd of ['cat', 'sleep', 'zsh']) fs.writeFileSync(path.join(bin, cmd), held(`/bin/${cmd}`), { mode: 0o755 });
     // tmux looks a command up on the PATH of the client that asks for it
     vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
     cleanup.push(async () => { vi.unstubAllEnvs(); });
-    await t.run('set-option', '-g', 'default-shell', path.join(bin, 'zsh'));
+    fs.writeFileSync(`${home}/tmux.conf`, tmuxConfText(Config.parse({ shell: path.join(bin, 'zsh') })));
+    const t = new Tmux(`${home}/tmux.sock`, `${home}/tmux.conf`);
+    cleanup.push(() => t.killServer());
+    await t.ensureServer();
     // a link that fails leaves the placeholder's session up
     await expect(t.attachSession('v-c_held', '@999')).rejects.toThrow(/can't find window/);
-    const pid = Number((await t.run('display', '-p', '-t', '=v-c_held:', '#{pane_pid}')).trim());
-    await waitFor(() => fs.existsSync(path.join(bin, 'ready')));
-    await t.killSession('v-c_held');
+    const pids = (await t.run('list-panes', '-a', '-F', '#{pane_pid}')).trim().split('\n').map(Number);
+    expect(pids).toHaveLength(2);
+    await waitFor(() => pids.every((p) => fs.existsSync(path.join(bin, String(p)))));
+    await t.killServer();
     fs.writeFileSync(path.join(bin, 'go'), '');
-    const alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
-    const ended = await waitFor(() => !alive(), 2000).then(() => true, () => false);
-    if (!ended) process.kill(pid, 'SIGKILL');
+    const alive = (p: number) => { try { process.kill(p, 0); return true; } catch { return false; } };
+    const ended = await waitFor(() => !pids.some(alive), 2000).then(() => true, () => false);
+    for (const p of pids.filter(alive)) process.kill(p, 'SIGKILL');
     expect(ended).toBe(true);
   });
 

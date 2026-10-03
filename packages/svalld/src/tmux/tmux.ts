@@ -111,7 +111,8 @@ export class Tmux {
     try {
       await this.run('has-session', '-t', SESSION);
     } catch {
-      await this.run('new-session', '-d', '-s', SESSION, '-n', KEEP_WINDOW, 'sleep 2147483647');
+      // cat as in attachSession: a server killed as it starts can close this pty before its child holds it
+      await this.run('new-session', '-d', '-s', SESSION, '-n', KEEP_WINDOW, 'cat', '-');
     }
   }
 
