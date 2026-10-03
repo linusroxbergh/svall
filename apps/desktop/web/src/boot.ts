@@ -11,10 +11,11 @@ import { followNotifications } from './notifications.js';
 import { followQuit } from './quit.js';
 import { followResources } from './resources/load.js';
 import { applyZoom } from './settings.js';
+import { followFleet } from './store/fleet.js';
 import { createAppStore, localAppStorage, type AppStore } from './store/index.js';
 import { createTerminalManager, type TerminalManager } from './terminals.js';
 
-export type AppContext = { bridge: Bridge; store: AppStore; api(): Api; manager(): TerminalManager; browser(): BrowserManager; repoWatch(): RepoWatch };
+type AppContext = { bridge: Bridge; store: AppStore; api(): Api; manager(): TerminalManager; browser(): BrowserManager; repoWatch(): RepoWatch };
 
 // the shell names the fleet's home before the page runs, so each fleet's window keeps its own settings,
 // and says when the app was opened without naming one
@@ -49,13 +50,11 @@ function createApp(): AppContext {
       // the shell re-reads the port file, so a daemon that came back elsewhere is found
       if (status === 'offline' || status === 'outdated') bridge.send({ type: 'connection' });
     };
-    const load = () => { a.call('state.get', {}).then((f) => store.getState().setFleet(f)).catch(() => {}); };
+    const fleet = followFleet(a, store);
     a.onEvent = (e) => {
       if (e.event === 'repo.changed') { repoWatch?.emit(e.data.id); return; }
       if (e.event === 'mobile.phones') { store.getState().setPhones(e.data.phones); return; }
-      if (e.event !== 'state.patch') return;
-      // a patch that does not apply means the mirror has drifted; a fresh snapshot resets it
-      try { store.getState().applyPatch(e.data.ops); } catch { load(); }
+      if (e.event === 'state.patch') fleet.patch(e.data.ops);
     };
     // a launch that named no fleet offers the others, once, when there are any
     let offerFleets = window.__svallBare === true;
@@ -67,7 +66,7 @@ function createApp(): AppContext {
       }).catch((e: Error) => console.warn(`fleets.list: ${e.message}`));
     };
     // the phone tab in the corner reads the mobile status, and `svall mobile` can change it while the page is offline
-    a.onOpen = () => { load(); loadMobileStatus({ api: a, store }); repoWatch?.resend(); if (offerFleets) offer(); };
+    a.onOpen = () => { fleet.load(); loadMobileStatus({ api: a, store }); repoWatch?.resend(); if (offerFleets) offer(); };
     installKeyHandlers({ store, api: a, bridge, browser });
     a.start();
   }

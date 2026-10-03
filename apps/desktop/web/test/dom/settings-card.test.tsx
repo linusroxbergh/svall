@@ -1,28 +1,17 @@
 // @vitest-environment jsdom
-import './setup.js';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import type { ToShell } from '../../src/bridge.js';
-import { setAppStore } from '../../src/hooks.js';
-import { createAppStore, type AppStore } from '../../src/store/index.js';
 import { fleet } from '../fixtures.js';
+import { bridge, call, freshStore, sent, store } from './harness.js';
 
-const call = vi.fn((_method: string, _params?: unknown) => Promise.resolve({ serving: false, logins: [], phones: [] }));
-const sent: ToShell[] = [];
-const bridge = { present: true, send: (m: ToShell) => { sent.push(m); }, onMessage: () => () => {} };
-let store: AppStore;
-vi.mock('../../src/boot.js', () => ({
-  app: { get store() { return store; }, bridge, api: () => ({ call }) },
-  deps: () => ({ api: { call }, store, bridge }),
-}));
+call.mockImplementation(() => Promise.resolve({ serving: false, logins: [], phones: [] }));
+bridge.present = true;
+vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
 const { SettingsCard } = await import('../../src/SettingsCard.js');
 
 beforeEach(() => {
-  sent.length = 0;
-  store = createAppStore();
-  setAppStore(store);
-  store.getState().setFleet(fleet());
+  freshStore();
 });
 
 // the app's webview refuses to navigate away from the app, so an outside link goes through the shell

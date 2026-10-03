@@ -1,40 +1,22 @@
 // @vitest-environment jsdom
-import './setup.js';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import type { FromShell, ToShell } from '../../src/bridge.js';
-import { setAppStore } from '../../src/hooks.js';
-import { createAppStore, type AppStore } from '../../src/store/index.js';
+import type { ToShell } from '../../src/bridge.js';
 import { chr, fleet } from '../fixtures.js';
+import { bridge, call, freshStore, sent, shell, store } from './harness.js';
 
 window.matchMedia ??= ((q: string) => ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} })) as never;
 Element.prototype.setPointerCapture ??= function () {};
 Element.prototype.hasPointerCapture ??= function () { return true; };
 
-const call = vi.fn((_method: string, _params?: unknown) => Promise.resolve({}));
-const sent: ToShell[] = [];
-const handlers = new Set<(m: FromShell) => void>();
-const shell = (m: FromShell) => { for (const h of handlers) h(m); };
-const bridge = {
-  present: true,
-  send: (m: ToShell) => { sent.push(m); },
-  onMessage: (h: (m: FromShell) => void) => { handlers.add(h); return () => { handlers.delete(h); }; },
-};
-let store: AppStore;
-vi.mock('../../src/boot.js', () => ({
-  app: { get store() { return store; }, bridge, api: () => ({ call }), manager: () => ({ move() {}, show: () => Promise.resolve(), hide() {} }), browser: () => ({ move() {} }) },
-  deps: () => ({ api: { call }, store, bridge }),
-}));
+bridge.present = true;
+vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 vi.mock('../../src/resources/Shelf.js', () => ({ ResourcesLayer: () => null }));
 
 const { Map } = await import('../../src/map/Map.js');
 
 beforeEach(async () => {
-  call.mockClear();
-  sent.length = 0;
-  handlers.clear();
-  store = createAppStore();
-  setAppStore(store);
+  freshStore();
   const f = fleet();
   f.islands.home.position = { x: 0, y: 20 };
   f.characters.h0 = chr('h0', 'home', { x: 0, y: 0 });

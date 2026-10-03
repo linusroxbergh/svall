@@ -3,7 +3,7 @@ import type { Portrait } from '@svall/protocol';
 export const portraitUrl = (p: Portrait): string => `./animals/${p}.svg`;
 
 // the disc behind each animal, chosen to contrast its body
-export type Tint = 'sky' | 'sun' | 'coral' | 'earth' | 'moss' | 'slate';
+type Tint = 'sky' | 'sun' | 'coral' | 'earth' | 'moss' | 'slate';
 
 const TINTS: Record<Tint, readonly Portrait[]> = {
   sky: ['beaver', 'cat', 'eagle', 'hamster', 'horse', 'owl', 'penguin', 'shark', 'sheep', 'tiger', 'walrus'],

@@ -1,35 +1,27 @@
 // @vitest-environment jsdom
-import './setup.js';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { setAppStore } from '../../src/hooks.js';
 import { fitWithHome } from '../../src/map/home.js';
-import { crewOf, mapIslands } from '../../src/map/layout.js';
-import { createAppStore, type AppStore } from '../../src/store/index.js';
+import { crewOf } from '../../src/map/layout.js';
+import { mapIslands } from '../../src/selectors.js';
 import { theme } from '../../src/theme.js';
 import { fleet, isl } from '../fixtures.js';
+import { call, freshStore, store } from './harness.js';
 
 // reduced motion: a refit lands at once, so nothing waits on animation frames
 window.matchMedia ??= ((q: string) => ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} })) as never;
 Element.prototype.setPointerCapture ??= function () {};
 Element.prototype.hasPointerCapture ??= function () { return true; };
 
-const call = vi.fn((method: string, _params?: unknown) => Promise.resolve(method === 'island.create' ? { id: 'i_new' } : {}));
-const bridge = { present: false, send() {}, onMessage: () => () => {} };
-let store: AppStore;
-vi.mock('../../src/boot.js', () => ({
-  app: { get store() { return store; }, bridge, api: () => ({ call }), manager: () => ({ move() {}, show: () => Promise.resolve(), hide() {} }), browser: () => ({ move() {} }) },
-  deps: () => ({ api: { call }, store, bridge }),
-}));
+call.mockImplementation((method: string) => Promise.resolve(method === 'island.create' ? { id: 'i_new' } : {}));
+vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 vi.mock('../../src/resources/Shelf.js', () => ({ ResourcesLayer: () => null }));
 
 const { Map } = await import('../../src/map/Map.js');
 const { DBL_CLICK_MS } = await import('../../src/map/interactions.js');
 
 beforeEach(() => {
-  call.mockClear();
-  store = createAppStore();
-  setAppStore(store);
+  freshStore();
   const f = fleet();
   // mission control well below the islands, so a drag to the right is always legal
   f.islands.home.position = { x: 0, y: 20 };
@@ -52,6 +44,56 @@ test('a double click on a map button makes no island, even right after a press o
   press(crew);
   fireEvent.doubleClick(crew);
   expect(methods()).not.toContain('island.create');
+});
+
+test('a drag whose release the map never heard ends when the map loses the pointer', async () => {
+  render(<Map />);
+  await act(async () => {});
+  const map = screen.getByTestId('map');
+  act(() => {
+    fireEvent.pointerDown(screen.getByTestId('token-c0'), { pointerId: 1, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(map, { pointerId: 1, clientX: 400, clientY: 400 });
+  });
+  await act(async () => { await new Promise((r) => requestAnimationFrame(r)); });
+  expect(map.getAttribute('data-dragging')).toBe('true');
+  act(() => { fireEvent.lostPointerCapture(map, { pointerId: 1 }); });
+  expect(map.getAttribute('data-dragging')).toBe('false');
+  press(document.querySelector('.map-sea')!);
+  expect(methods()).toEqual([]);
+});
+
+test('a press on an island whose release the map never heard lets the camera go when the map loses the pointer', async () => {
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 1200 });
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 800 });
+  try {
+    render(<Map />);
+    await act(async () => {});
+    const map = screen.getByTestId('map');
+    act(() => { fireEvent.pointerDown(screen.getByTestId('island-label-i_e'), { pointerId: 1, clientX: 100, clientY: 100 }); });
+    act(() => { fireEvent.lostPointerCapture(map, { pointerId: 1 }); });
+    const refits = window.__map!.refits();
+    act(() => { store.getState().applyPatch([{ op: 'add', path: '/islands/i_far', value: isl('i_far', 'far', 60) }]); });
+    expect(window.__map!.refits()).toBeGreaterThan(refits);
+  } finally {
+    delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+  }
+});
+
+test('a crew member moved where its card changes what the map must show refits the map, though no island moved', async () => {
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 1200 });
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 800 });
+  try {
+    render(<Map />);
+    await act(async () => {});
+    const refits = window.__map!.refits();
+    // a card on the island's bottom row hangs below its ground
+    await act(async () => { store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/cell', value: { x: 1, y: 3 } }]); });
+    expect(window.__map!.refits()).toBeGreaterThan(refits);
+  } finally {
+    delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+  }
 });
 
 test('a double click on open water makes an island there', async () => {
@@ -263,6 +305,24 @@ test('an island dropped while the last one is still settling settles, and so doe
   land(dragRight('i_a'));
   await settled();
   expect(held('i_a')).toBe('false');
+});
+
+test('an island made elsewhere while a drop settles is fitted once it has', async () => {
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 1200 });
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 800 });
+  try {
+    render(<Map />);
+    await act(async () => {});
+    land(dragRight('i_e'));
+    const refits = window.__map!.refits();
+    act(() => { store.getState().applyPatch([{ op: 'add', path: '/islands/i_far', value: isl('i_far', 'far', 60) }]); });
+    expect(window.__map!.refits()).toBe(refits);
+    await settled();
+    expect(window.__map!.refits()).toBeGreaterThan(refits);
+  } finally {
+    delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+  }
 });
 
 test('the map holds its animation still while the app is in the background or a full card covers it', async () => {

@@ -1,6 +1,6 @@
 import { PUSH_STATUSES, type PushStatus } from '@svall/protocol';
 import type { Bridge } from './bridge.js';
-import { ACTIONS, LEGACY_BINDINGS, type ActionId, type Bindings } from './keys.js';
+import { ACTIONS, type ActionId, type Bindings } from './keys.js';
 
 // macOS banners for a character that turns blocked or done
 export type NotifySettings = { on: boolean; sound: boolean; statuses: PushStatus[] };
@@ -34,7 +34,7 @@ export const canFill = (s: { settings: Settings; shell?: { op: boolean } }): boo
 // the gap CSS leaves between a settings row and the tip that belongs to it
 const TIP_GAP = 5;
 
-export type Box = { top: number; bottom: number };
+type Box = { top: number; bottom: number };
 
 // a tip hangs under its row, and flips over it when the floor is nearer than the tip is tall;
 // either way it is capped at the room on the side it lands on, so all of it stays in the panel
@@ -54,7 +54,7 @@ const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.m
 const num = (v: unknown, fallback: number, lo: number, hi: number): number =>
   typeof v === 'number' && Number.isFinite(v) ? clamp(v, lo, hi) : fallback;
 
-// a zoom off the ladder — an older build's, or a hand-edited one — is read as the step nearest it
+// a zoom off the ladder, a hand-edited one say, is read as the step nearest it
 const nearest = (zoom: number): number => ZOOMS.reduce((a, b) => (Math.abs(b - zoom) < Math.abs(a - zoom) ? b : a));
 
 export const zoomBy = (zoom: number, steps: number): number =>
@@ -86,8 +86,7 @@ function readNotify(v: unknown): NotifySettings {
 }
 
 export function readSettings(v: unknown): Settings {
-  const stored = typeof v === 'object' && v !== null;
-  const o = (stored ? v : {}) as Partial<Settings>;
+  const o = (typeof v === 'object' && v !== null ? v : {}) as Partial<Settings>;
   return {
     cardOpacity: num(o.cardOpacity, DEFAULT_SETTINGS.cardOpacity, OPACITY.min, OPACITY.max),
     fullOpacity: num(o.fullOpacity, DEFAULT_SETTINGS.fullOpacity, OPACITY.min, OPACITY.max),
@@ -95,8 +94,7 @@ export function readSettings(v: unknown): Settings {
     onePassword: o.onePassword === true,
     usageTab: o.usageTab !== false,
     autoArrange: o.autoArrange !== false,
-    // settings stored before the chords could be changed: that machine has been used, so it keeps the set it learned
-    bindings: !stored || 'bindings' in o ? readBindings(o.bindings) : { ...LEGACY_BINDINGS },
+    bindings: readBindings(o.bindings),
     notifications: readNotify(o.notifications),
   };
 }

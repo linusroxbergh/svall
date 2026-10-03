@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { pillWidth, type Island } from '@svall/protocol';
-import { cardScale, cellOwner, characterAt, clampPan, crewOf, drawnBox, fitAll, labelScale, limitAt, mapIslands, onBlocks, roomOf, screenToCell, worldBounds, worldCell, worldToScreen, type Below, type Layout } from '../src/map/layout.js';
+import { cardScale, cellOwner, characterAt, clampPan, crewOf, drawnBox, fitAll, labelScale, limitAt, onBlocks, roomOf, screenToCell, worldBounds, worldCell, worldToScreen, type Below, type Layout } from '../src/map/layout.js';
+import { mapIslands } from '../src/selectors.js';
 import { theme, tokenPx } from '../src/theme.js';
 import { fleet } from './fixtures.js';
 

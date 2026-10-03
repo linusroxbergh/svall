@@ -1,25 +1,15 @@
 // @vitest-environment jsdom
-import './setup.js';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { setAppStore } from '../../src/hooks.js';
-import { createAppStore, type AppStore } from '../../src/store/index.js';
-import { fleet } from '../fixtures.js';
+import { call, freshStore, store } from './harness.js';
 
-const call = vi.fn(() => new Promise(() => {}));
-const bridge = { present: false, send() {}, onMessage: () => () => {} };
-let store: AppStore;
-vi.mock('../../src/boot.js', () => ({
-  app: { get store() { return store; }, bridge, api: () => ({ call }) },
-  deps: () => ({ api: { call }, store, bridge }),
-}));
+call.mockImplementation(() => new Promise(() => {}));
+vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
 const { UtilityDock } = await import('../../src/UtilityDock.js');
 
 beforeEach(() => {
-  store = createAppStore();
-  setAppStore(store);
-  store.getState().setFleet(fleet());
+  freshStore();
 });
 
 // the map calls preventDefault on its presses, and WebKit then sends no mousedown

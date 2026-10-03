@@ -1,6 +1,7 @@
 import type { Event } from '@svall/protocol';
 import { Api, type Status } from '../api.js';
 import { setAppStore } from '../hooks.js';
+import { followFleet } from '../store/fleet.js';
 import { createAppStore, localAppStorage, type AppStore } from '../store/index.js';
 import type { TermEvent } from './term.js';
 
@@ -31,15 +32,13 @@ function createPhone(): PhoneContext {
   const termHandlers = new Set<(e: TermEvent) => void>();
   setAppStore(store);
 
-  const load = () => { api.call('state.get', {}).then((f) => store.getState().setFleet(f)).catch(() => {}); };
+  const fleet = followFleet(api, store);
   api.onStatus = (s) => { store.getState().setStatus(s); reloadOnce(s); };
   api.onEvent = (e) => {
     if (isTermEvent(e)) { for (const h of termHandlers) h(e); return; }
-    if (e.event !== 'state.patch') return;
-    // a patch that does not apply means the mirror has drifted; a fresh snapshot resets it
-    try { store.getState().applyPatch(e.data.ops); } catch { load(); }
+    if (e.event === 'state.patch') fleet.patch(e.data.ops);
   };
-  api.onOpen = load;
+  api.onOpen = fleet.load;
   api.start();
 
   // a network change can leave the socket open here and dead at the Mac: back in view or online, one that hears

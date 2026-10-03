@@ -1,35 +1,30 @@
 // @vitest-environment jsdom
-import './setup.js';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { FromShell } from '../../src/bridge.js';
-import { setAppStore, useApp } from '../../src/hooks.js';
-import { createAppStore, type AppStore } from '../../src/store/index.js';
+import { useApp } from '../../src/hooks.js';
 import { isVeiled } from '../../src/selectors.js';
 import { chr, fleet, isl } from '../fixtures.js';
+import { bridge, call, freshStore, store } from './harness.js';
 
 window.matchMedia ??= ((q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} })) as never;
 Element.prototype.setPointerCapture ??= function () {};
 Element.prototype.hasPointerCapture ??= function () { return true; };
 
-const calls: [string, Record<string, unknown>][] = [];
 let refuse: ((method: string, params: Record<string, unknown>) => string | undefined) | undefined;
-const call = (method: string, params: Record<string, unknown>) => {
-  calls.push([method, params]);
-  const why = refuse?.(method, params);
+call.mockImplementation((method: string, params?: unknown) => {
+  const why = refuse?.(method, params as Record<string, unknown>);
   return why ? Promise.reject(new Error(why)) : Promise.resolve(method === 'char.prompts' ? { prompts: [] } : {});
-};
-const bridge = { present: false, send() {}, onMessage: () => () => {} };
-let store: AppStore;
-vi.mock('../../src/boot.js', () => ({
-  app: { get store() { return store; }, bridge, api: () => ({ call }), manager: () => ({ move() {} }), browser: () => ({ move() {} }) },
-  deps: () => ({ api: { call }, store, bridge }),
-}));
+});
+const calls = () => call.mock.calls as [string, Record<string, unknown>][];
+vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 vi.mock('../../src/resources/Shelf.js', () => ({ ResourcesLayer: () => null }));
 
 const { Map } = await import('../../src/map/Map.js');
-const { IslandCard, SideCard } = await import('../../src/SideCard.js');
+const { SideCard } = await import('../../src/SideCard.js');
+const { IslandCard } = await import('../../src/IslandCard.js');
 const { ConfirmDeleteIsland } = await import('../../src/ConfirmDeleteIsland.js');
+const { ConfirmClose } = await import('../../src/ConfirmClose.js');
 const { dispatchKey } = await import('../../src/keyboard.js');
 const { FleetSummary } = await import('../../src/FleetSummary.js');
 const { followQuit } = await import('../../src/quit.js');
@@ -49,16 +44,13 @@ function IslandSide() {
   return id ? <IslandCard id={id} /> : null;
 }
 
-const updates = () => calls.filter(([m]) => m === 'char.update' || m === 'island.update');
+const updates = () => calls().filter(([m]) => m === 'char.update' || m === 'island.update');
 const field = (testId: string) => screen.getByTestId(testId) as HTMLTextAreaElement;
 const type = (el: HTMLTextAreaElement, value: string) => { el.focus(); fireEvent.change(el, { target: { value } }); };
 
 beforeEach(() => {
-  calls.length = 0;
   refuse = undefined;
-  store = createAppStore();
-  setAppStore(store);
-  store.getState().setFleet(fleet());
+  freshStore();
   store.getState().select('c0', true);
 });
 
@@ -152,7 +144,7 @@ test('the last command is read again for a new prompt, a turn\'s end and a new s
   store.getState().setFleet(f);
   render(<Side />);
   await act(async () => {});
-  const reads = () => calls.filter(([m]) => m === 'char.prompts').length;
+  const reads = () => calls().filter(([m]) => m === 'char.prompts').length;
   expect(reads()).toBe(1);
   act(() => store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/agent/lastActivityAt', value: 2 }]));
   await act(async () => {});
@@ -283,7 +275,19 @@ test('the fleet summary counts one character on one island in the singular', () 
   expect(screen.getByRole('heading').textContent).toMatch(/^1 character\s*on 1 island$/);
 });
 
-const deletes = () => calls.filter(([m]) => m === 'island.delete');
+test('Delete character asks first, naming the unsaved files, and moves the selection on before the character goes', async () => {
+  store.getState().markFile('c0', '/tmp/a.ts', { dirty: true });
+  render(<><Side /><ConfirmClose /></>);
+  fireEvent.click(screen.getByTestId('side-close'));
+  expect(screen.getByTestId('confirm-close-note').textContent).toContain('1 unsaved file goes with it');
+  expect(calls().filter(([m]) => m === 'char.close')).toEqual([]);
+  fireEvent.click(screen.getByTestId('confirm-close-delete'));
+  await act(async () => {});
+  expect(calls().filter(([m]) => m === 'char.close')).toEqual([['char.close', { id: 'c0' }]]);
+  expect(store.getState().selectedId).toBe('c1');
+});
+
+const deletes = () => calls().filter(([m]) => m === 'island.delete');
 
 test('an island delete asks in a dialog, and Cancel, Esc or a press outside keep the island', () => {
   store.getState().selectIsland('i_e');

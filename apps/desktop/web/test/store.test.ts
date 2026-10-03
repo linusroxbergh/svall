@@ -34,6 +34,44 @@ describe('store', () => {
     expect(store.getState().fleet.characters.c9.name).toBe('c9');
     expect(store.getState().fleet.characters.c0.unread).toBe(true);
   });
+  it('a patch leaves what it does not touch as it was: the islands, the other characters, the editors', () => {
+    const store = createAppStore();
+    store.getState().setFleet(fleet());
+    store.getState().openFile('c1', 'src/a.ts');
+    const before = store.getState();
+    store.getState().applyPatch([
+      { op: 'replace', path: '/characters/c0/shell/lastOutputAt', value: 5 },
+      { op: 'add', path: '/characters/c0/context/-', value: { kind: 'folder', ref: '/tmp', label: '', source: 'manual' } },
+    ]);
+    const after = store.getState();
+    expect(after.fleet.characters.c0.shell.lastOutputAt).toBe(5);
+    expect(after.fleet.characters.c0.context).toHaveLength(1);
+    expect(before.fleet.characters.c0.shell.lastOutputAt).toBe(0);
+    expect(before.fleet.characters.c0.context).toEqual([]);
+    expect(after.fleet.islands).toBe(before.fleet.islands);
+    expect(after.fleet.characters.c1).toBe(before.fleet.characters.c1);
+    expect(after.fleet.characters.c0.tmux).toBe(before.fleet.characters.c0.tmux);
+    expect(after.ide).toBe(before.ide);
+  });
+  it('a patch that does not apply leaves the mirror as it was, for the snapshot to replace', () => {
+    const store = createAppStore();
+    store.getState().setFleet(fleet());
+    const before = store.getState().fleet;
+    expect(() => store.getState().applyPatch([
+      { op: 'replace', path: '/characters/c0/unread', value: true },
+      { op: 'replace', path: '/characters/gone/name', value: 'x' },
+    ])).toThrow();
+    expect(store.getState().fleet).toBe(before);
+    expect(before.characters.c0.unread).toBe(false);
+  });
+  it('takes a patch on the whole fleet for drift, for the snapshot to replace', () => {
+    const store = createAppStore();
+    store.getState().setFleet(fleet());
+    const before = store.getState().fleet;
+    expect(() => store.getState().applyPatch([{ op: 'move', from: '/characters/c0', path: '' }])).toThrow();
+    expect(store.getState().fleet).toBe(before);
+    expect(before.characters.c0).toBeDefined();
+  });
   it('ignores patches until the snapshot has loaded', () => {
     const store = createAppStore();
     store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/unread', value: true }]);
@@ -220,6 +258,24 @@ describe('store', () => {
     delete next.characters.c0;
     s.getState().setFleet(next);
     expect(s.getState().selectedId).toBeUndefined();
+  });
+
+  it('clears the island selection and the remembered focus when what they name goes elsewhere', () => {
+    const s = createAppStore();
+    s.getState().setFleet(fleet());
+    s.getState().selectIsland('i_e');
+    s.getState().applyPatch([{ op: 'remove', path: '/islands/i_e' }]);
+    expect(s.getState()).toMatchObject({ selectedIslandId: undefined, sideCardOpen: false });
+    s.getState().selectIsland('i_a');
+    const next = fleet();
+    delete next.islands.i_a;
+    s.getState().setFleet(next);
+    expect(s.getState().selectedIslandId).toBeUndefined();
+    s.getState().setFleet(fleet());
+    s.getState().setView('board');
+    s.getState().focus('c1');
+    s.getState().applyPatch([{ op: 'remove', path: '/characters/c1' }]);
+    expect(s.getState().focusedId).toBeUndefined();
   });
 
   it('remembers the sidebar and the half card', () => {

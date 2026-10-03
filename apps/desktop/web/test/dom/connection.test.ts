@@ -1,17 +1,19 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { PROTOCOL_VERSION } from '@svall/protocol';
+import { fleet } from '../fixtures.js';
 
 class Socket {
   static all: Socket[] = [];
   static dead = false;
   onopen?: () => void; onmessage?: (ev: { data: string }) => void; onerror?: () => void; onclose?: (ev: { code: number }) => void;
+  sent: { id: number; method: string }[] = [];
   constructor(public url: string) {
     Socket.all.push(this);
     // a daemon that went away: nothing listens on the port
     if (Socket.dead) setTimeout(() => this.onclose?.({ code: 1006 }), 0);
   }
-  send(): void {}
+  send(json: string): void { this.sent.push(JSON.parse(json)); }
   close(): void { this.onclose?.({ code: 1000 }); }
 }
 
@@ -76,4 +78,26 @@ test('while svalld stays down the shell is asked at a steady pace', async () => 
   }
   expect(perMinute[4]).toBeLessThanOrEqual(perMinute[0]);
   expect(perMinute[4]).toBeLessThanOrEqual(60);
+});
+
+test('a patch the mirror cannot apply asks for a fresh snapshot, which replaces it', async () => {
+  port = 47001;
+  const { initApp } = await import('../../src/boot.js');
+  const { store } = initApp();
+  await vi.advanceTimersByTimeAsync(1);
+  const ws = Socket.all[0];
+  const deliver = (msg: unknown) => ws.onmessage?.({ data: JSON.stringify(msg) });
+  const snapshots = () => ws.sent.filter((m) => m.method === 'state.get');
+  deliver({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } });
+  deliver({ id: snapshots()[0].id, result: fleet() });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(Object.keys(store.getState().fleet.characters)).toHaveLength(3);
+
+  deliver({ event: 'state.patch', data: { ops: [{ op: 'replace', path: '/characters/gone/name', value: 'x' }] } });
+  expect(snapshots()).toHaveLength(2);
+  const fresh = fleet();
+  delete fresh.characters.c0;
+  deliver({ id: snapshots()[1].id, result: fresh });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(store.getState().fleet.characters.c0).toBeUndefined();
 });

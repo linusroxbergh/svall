@@ -7,6 +7,7 @@ import { ConfirmDeleteIsland } from './ConfirmDeleteIsland.js';
 import { FleetPicker } from './FleetPicker.js';
 import { FleetSummary } from './FleetSummary.js';
 import { useApp } from './hooks.js';
+import { IslandCard } from './IslandCard.js';
 import { Keybindings } from './Keybindings.js';
 import { keyTip } from './keys.js';
 import { LinkAsk } from './LinkAsk.js';
@@ -16,7 +17,7 @@ import { NewCharacter } from './NewCharacter.js';
 import { ScribeAsk } from './ScribeAsk.js';
 import { SettingsCard } from './SettingsCard.js';
 import { boardViewed } from './selectors.js';
-import { Collapse, IslandCard, SideCard } from './SideCard.js';
+import { Collapse, SideCard } from './SideCard.js';
 import { SideGrip } from './SideGrip.js';
 import { Sidebar } from './Sidebar.js';
 import { UtilityDock } from './UtilityDock.js';
@@ -37,7 +38,7 @@ export function App() {
   const settingsOpen = useApp((s) => s.settingsOpen);
   // the side card edits the board's viewed character, and on the map the explicit selection
   const selectedId = useApp((s) => (s.view === 'board' ? boardViewed(s) : s.selectedId && s.fleet.characters[s.selectedId] ? s.selectedId : undefined));
-  const selectedIslandId = useApp((s) => (s.selectedIslandId && s.fleet.islands[s.selectedIslandId] ? s.selectedIslandId : undefined));
+  const selectedIslandId = useApp((s) => s.selectedIslandId);
   const toast = useApp((s) => s.toast);
   const sideWidths = useApp((s) => s.sideWidths);
   const bindings = useApp((s) => s.settings.bindings);

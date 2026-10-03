@@ -18,7 +18,7 @@ export type Intent =
   | { type: 'moveIsland'; id: string; position: Cell }
   | { type: 'resize'; id: string; size: Size };
 
-export type Interactions = { handle(ev: CellEv, fleet: FleetState, selectedId?: string): Intent | undefined; drag(): Drag | undefined; cancel(): void };
+type Interactions = { handle(ev: CellEv, fleet: FleetState, selectedId?: string): Intent | undefined; drag(): Drag | undefined; cancel(): void };
 
 const same = (a: Cell, b: Cell) => a.x === b.x && a.y === b.y;
 
@@ -92,7 +92,9 @@ export function createInteractions(opts: { dblClickMs?: number } = {}): Interact
           const target = ev.target ?? { kind: 'water' };
           const key = clicked(target);
           const again = Boolean(key && lastClick?.key === key && ev.time - lastClick.time <= dbl);
-          // the second press opens, and still starts a drag: a label is also the island's grip
+          // the second press opens, and still starts a drag: a label is also the island's grip. A drag whose release
+          // never arrived ends here rather than being dropped by this press's release
+          drag = undefined;
           pending = { target, cell: ev.cell, time: ev.time, opened: again, screen: ev.screen, scale: ev.scale };
           if (again) {
             lastClick = undefined;

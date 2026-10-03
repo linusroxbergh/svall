@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyState } from '@svall/protocol';
-import { boardIsland, boardViewed, charactersByPriority, charactersOf, contextPctOf, countsByStatus, DISPLAY_STATUSES, firstOfNextIsland, homeIsland, islandStatus, islandsSorted, isUnread, isVeiled, neighbor, selectedOf, slotStatus, statusOf, stripOrder, tabsOf, wantsUser } from '../src/selectors.js';
+import { boardIsland, boardViewed, charactersByPriority, charactersOf, contextPctOf, countsByStatus, DISPLAY_STATUSES, firstOfNextIsland, homeIsland, islandStatus, islandsSorted, isUnread, isVeiled, neighbor, selectedOf, slotStatus, statusOf, stripOrder, wantsUser } from '../src/selectors.js';
 import { chr, fleet } from './fixtures.js';
 
 describe('selectors', () => {
@@ -16,10 +16,11 @@ describe('selectors', () => {
     expect(islandsSorted(f).map((i) => i.id)).toEqual(['i_e', 'i_b', 'i_a', 'home']);
     expect(stripOrder(f).map((c) => c.id)).toEqual(['c0', 'c1', 'c2']);
   });
-  it('tabs are the characters of the same island', () => {
-    expect(tabsOf(fleet(), 'c1').map((c) => c.id)).toEqual(['c0', 'c1']);
-    expect(tabsOf(fleet(), 'c2').map((c) => c.id)).toEqual(['c2']);
-    expect(tabsOf(fleet(), undefined)).toEqual([]);
+  it('works out a crew and the strip once per fleet', () => {
+    const f = fleet();
+    expect(charactersOf(f, 'i_b')).toBe(charactersOf(f, 'i_b'));
+    expect(stripOrder(f)).toBe(stripOrder(f));
+    expect(charactersOf({ ...f }, 'i_b')).not.toBe(charactersOf(f, 'i_b'));
   });
   it('walks neighbours across the fleet in strip order with wrap-around', () => {
     expect(neighbor(fleet(), 'c1', 1)?.id).toBe('c2');

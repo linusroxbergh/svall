@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Cell } from '@svall/protocol';
 import { createInteractions, type CellEv } from '../src/map/interactions.js';
-import { cellOwner, islandNear, mapIslands } from '../src/map/layout.js';
+import { cellOwner, islandNear } from '../src/map/layout.js';
+import { mapIslands } from '../src/selectors.js';
 import type { Target } from '../src/map/types.js';
 import { chr, fleet } from './fixtures.js';
 
@@ -35,6 +36,14 @@ describe('interactions', () => {
     i.handle(ev('down', 1, 1, fig('c0')), f, 'c0');
     i.handle(ev('move', 1, 3), f, 'c0');
     expect(i.handle(ev('up', 1, 3), f, 'c0')).toEqual({ type: 'move', id: 'c0', islandId: 'i_b', cell: { x: 1, y: 3 } });
+  });
+  it('a drag whose release never arrived is dropped by nothing the next press does', () => {
+    const f = fleet(), i = createInteractions();
+    i.handle(ev('down', 1, 1, fig('c0')), f);
+    i.handle(ev('move', 30, 30), f);
+    expect(i.handle(ev('down', 40, 40, undefined, 1000), f)).toBeUndefined();
+    expect(i.drag()).toBeUndefined();
+    expect(i.handle(ev('up', 40, 40, undefined, 1050), f)).toEqual({ type: 'deselect' });
   });
   it('a press that stays in its cell is a click, not a drag', () => {
     const f = fleet(), i = createInteractions();

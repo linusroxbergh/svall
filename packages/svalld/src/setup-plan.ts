@@ -1,21 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { DEFAULT_CWD, type AgentKind } from '@svall/protocol';
+import { DEFAULT_CWD, type AgentKind, type FoundAgent, type SetupPlan } from '@svall/protocol';
 import { AGENTS, AGENT_KINDS } from './agents.js';
 import { loadConfig } from './config.js';
 import { expandHome, resolvePaths } from './paths.js';
 import { LOGIN_SHELL_TIMEOUT_MS } from './login-env.js';
 import { LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from './profile.js';
 import type { Runtime } from './runtime.js';
-
-// an agent found only by its folder gets hooks and a toggle, but cannot be the main agent
-export type FoundAgent = { kind: AgentKind; path: string; version?: string; folderOnly?: boolean };
-export type SetupPlan = {
-  agents: FoundAgent[]; integrations?: AgentKind[]; writes: { what: string; path: string; agent?: AgentKind }[];
-  shimDir: string; shimOnPath: boolean; blockers: string[]; projects: string;
-  // how to install each agent's CLI, while setup found none
-  install?: { kind: AgentKind; command: string; url: string }[];
-};
 
 /** What the app's setup screen shows before anything is written: the screen leaves out the files of the agents it turns off. */
 export function setupPlan(o: {

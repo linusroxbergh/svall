@@ -112,7 +112,11 @@ export type Bridge = { present: boolean; send(msg: ToShell): void; onMessage(h: 
 export function createBridge(win: Window = window): Bridge {
   const handlers = new Set<Handler>();
   const port = win.webkit?.messageHandlers?.svall;
-  win.__svall = { receive: (json) => { const msg = JSON.parse(json) as FromShell; for (const h of handlers) h(msg); } };
+  // a handler that throws leaves the ones after it their message
+  win.__svall = { receive: (json) => {
+    const msg = JSON.parse(json) as FromShell;
+    for (const h of handlers) { try { h(msg); } catch (e) { console.error(e); } }
+  } };
   return {
     present: Boolean(port),
     send: (msg) => port?.postMessage(JSON.stringify(msg)),

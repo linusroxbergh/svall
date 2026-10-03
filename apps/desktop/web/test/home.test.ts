@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Cell, FleetState, Island } from '@svall/protocol';
 import { fitWithHome, homeBlocks, homeBox, homeCap, homeCellToScreen, homeCrew, homeFull, homeReserve, homeSlotAt, inHomeBox } from '../src/map/home.js';
-import { cardScale, crewOf, mapIslands } from '../src/map/layout.js';
+import { cardScale, crewOf } from '../src/map/layout.js';
+import { mapIslands } from '../src/selectors.js';
 import { placeIslet } from '../src/map/resources.js';
 import type { Drag } from '../src/map/types.js';
 import { theme } from '../src/theme.js';

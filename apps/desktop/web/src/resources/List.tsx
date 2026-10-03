@@ -8,7 +8,7 @@ import { followLink } from '../LinkAsk.js';
 import { LinkIcon } from '../map/LinkIcon.js';
 import { createDoc, deleteDoc, renameDoc } from './docs.js';
 import { chooseResource } from './choose.js';
-import { badgeOf, countOf, isCard, isField, kindLabel, kindOf, kindRows, qualifierOf, shelfSource, tierOf, visible, whereGroups, whereTier, withCard, type CardItem, type Item, type Kind, type Source, type Tier, type What } from './model.js';
+import { badgeOf, countsBySource, isCard, isField, kindLabel, kindOf, kindRows, qualifierOf, shelfSource, tierOf, visible, whereGroups, whereTier, type CardItem, type Item, type Kind, type Source, type Tier, type What } from './model.js';
 
 const NONE: string[] = [];
 
@@ -125,7 +125,7 @@ function TierRows({ tier, query }: { tier: Tier; query: string }) {
   const sources = useApp((s) => s.resources);
   const fleet = useApp((s) => s.fleet);
   const group = whereGroups(sources, fleet, query).find((g) => g.tier === tier);
-  const counts = useMemo(() => new Map(sources.map((s) => [s.rootId, countOf(withCard(s, fleet), 'all')])), [sources, fleet]);
+  const counts = useMemo(() => countsBySource(sources, fleet), [sources, fleet]);
   const t = tierOf(tier);
   if (!group || group.count === 0) return <div className="res-none">Nothing here.</div>;
   return group.sections.map((sec) => (

@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { app, deps } from '../boot.js';
 import { useApp } from '../hooks.js';
+import { useWidthGrip } from '../widthGrip.js';
 import { Editor } from './Editor.js';
 import { checkDisk, openFile } from './files.js';
 import { FileTabs } from './FileTabs.js';
@@ -8,27 +9,12 @@ import { Tree } from './Tree.js';
 
 /** The handle on the tree's edge; the width follows the pointer and is written to storage on release. */
 function TreeGrip() {
-  const drag = useRef<{ x: number; from: number }>(undefined);
-  const end = () => {
-    if (!drag.current) return;
-    drag.current = undefined;
-    const { filesTree, setFilesTreeWidth } = app.store.getState();
-    if (filesTree.width !== undefined) setFilesTreeWidth(filesTree.width);
-  };
-  return (
-    <i className="ide-drag" data-testid="files-tree-drag" role="separator" aria-orientation="vertical" aria-label="Resize the files" title="Drag to resize"
-      onPointerDown={(e) => {
-        // a narrow area draws the tree below its stored width, so a drag starts from what is on screen
-        drag.current = { x: e.clientX, from: e.currentTarget.previousElementSibling!.getBoundingClientRect().width };
-        e.currentTarget.setPointerCapture(e.pointerId);
-      }}
-      onPointerMove={(e) => {
-        const d = drag.current;
-        if (!d || e.buttons === 0) return;
-        app.store.getState().setFilesTreeWidth(d.from + e.clientX - d.x, false);
-      }}
-      onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end} />
-  );
+  const grip = useWidthGrip(
+    // a narrow area draws the tree below its stored width, so a drag starts from what is on screen
+    (el) => el.previousElementSibling!.getBoundingClientRect().width,
+    (from, dx) => app.store.getState().setFilesTreeWidth(from + dx, false),
+    () => { const { filesTree, setFilesTreeWidth } = app.store.getState(); if (filesTree.width !== undefined) setFilesTreeWidth(filesTree.width); });
+  return <i className="ide-drag" data-testid="files-tree-drag" role="separator" aria-orientation="vertical" aria-label="Resize the files" title="Drag to resize" {...grip} />;
 }
 
 export function FilesArea({ id }: { id: string }) {

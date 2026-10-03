@@ -18,9 +18,8 @@ export async function loadResources(d: ResourcesDeps): Promise<void> {
 
 export function followResources(d: ResourcesDeps): () => void {
   let key: string | undefined;
-  const check = () => {
-    const s = d.store.getState();
-    if (!s.loaded) return;
+  const check = (s = d.store.getState(), prev?: typeof s) => {
+    if (!s.loaded || s.fleet === prev?.fleet) return;
     const next = listingKey(s.fleet);
     if (next === key) return;
     key = next;

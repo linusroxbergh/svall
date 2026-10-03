@@ -1,12 +1,8 @@
 // @vitest-environment jsdom
-import './setup.js';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { FleetEntry } from '@svall/protocol';
-import type { ToShell } from '../../src/bridge.js';
-import { setAppStore } from '../../src/hooks.js';
-import { createAppStore, type AppStore } from '../../src/store/index.js';
-import { fleet } from '../fixtures.js';
+import { bridge, call, freshStore, sent, store } from './harness.js';
 
 const FLEETS: FleetEntry[] = [
   { home: '/u/.svall', name: 'home', current: true, running: true, windowOpen: true },
@@ -14,29 +10,21 @@ const FLEETS: FleetEntry[] = [
   { home: '/u/.svall-side', name: 'side', current: false, running: false, windowOpen: false },
 ];
 let startFails: string | undefined;
-const call = vi.fn(async (method: string, params?: { home?: string; name?: string }) => {
+call.mockImplementation(async (method: string, p?: unknown) => {
+  const params = p as { home?: string; name?: string } | undefined;
   if (method === 'fleets.list') return { fleets: FLEETS };
   if (method === 'fleets.start') { if (startFails) throw new Error(startFails); return { home: params?.home }; }
   if (method === 'fleets.create') return { home: `/u/.svall-${params?.name}` };
   return {};
 });
-const sent: ToShell[] = [];
-const bridge = { present: true, send: (m: ToShell) => { sent.push(m); }, onMessage: () => () => {} };
-let store: AppStore;
-vi.mock('../../src/boot.js', () => ({
-  app: { get store() { return store; }, bridge, api: () => ({ call }) },
-  deps: () => ({ api: { call }, store, bridge }),
-}));
+bridge.present = true;
+vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
 const { FleetPicker } = await import('../../src/FleetPicker.js');
 
 beforeEach(() => {
-  call.mockClear();
-  sent.length = 0;
   startFails = undefined;
-  store = createAppStore();
-  setAppStore(store);
-  store.getState().setFleet(fleet());
+  freshStore();
   store.getState().setStatus('online');
 });
 
@@ -90,7 +78,7 @@ test('a fleet that will not start says why and where its log is, nothing opens, 
 test('a pick still starting when the picker is dismissed opens nothing, and the picker opens fresh', async () => {
   let started!: () => void;
   call.mockImplementationOnce(async () => ({ fleets: FLEETS }));
-  call.mockImplementationOnce(async (_m, p) => { await new Promise<void>((r) => { started = r; }); return { home: p?.home }; });
+  call.mockImplementationOnce(async (_m, p) => { await new Promise<void>((r) => { started = r; }); return { home: (p as { home?: string } | undefined)?.home }; });
   store.getState().setFleetPicker('bare');
   render(<FleetPicker />);
   await rows();

@@ -95,6 +95,19 @@ test('a one-tap character whose crew mate\'s directory is gone starts in the fle
   call.mockImplementation(() => Promise.resolve({}));
 });
 
+test('a character made in the sheet on a directory that is gone starts in the fleet default', async () => {
+  store.getState().setFleet(fleet());
+  call.mockImplementation(((_m: string, p: { cwd: string }) => (p.cwd === DEFAULT_CWD
+    ? Promise.resolve({ id: 'c_new' }) : Promise.reject(new ApiError('invalid', 'cwd /tmp is not a directory')))) as never);
+  const onCreated = vi.fn();
+  render(<NewCharacter islandId="i_b" onClose={() => {}} onCreated={onCreated} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+  await act(async () => {});
+  expect(call.mock.calls).toEqual([['char.create', { islandId: 'i_b', cwd: '/tmp' }], ['char.create', { islandId: 'i_b', cwd: DEFAULT_CWD }]]);
+  expect(onCreated).toHaveBeenCalledWith('c_new');
+  call.mockImplementation(() => Promise.resolve({}));
+});
+
 test('a character made on mission control from the phone starts the home command, by one tap or the sheet', async () => {
   store.getState().setFleet(fleet());
   call.mockImplementation((() => Promise.resolve({ id: 'c_new' })) as never);

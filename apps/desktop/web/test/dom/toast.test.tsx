@@ -1,22 +1,15 @@
 // @vitest-environment jsdom
-import './setup.js';
 import { act, render } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import type { ToShell } from '../../src/bridge.js';
-import { setAppStore } from '../../src/hooks.js';
-import { createAppStore, type AppStore } from '../../src/store/index.js';
+import { bridge, freshStore, sent, store } from './harness.js';
 
-const sent: ToShell[] = [];
-const bridge = { present: true, send: (m: ToShell) => { sent.push(m); }, onMessage: () => () => {} };
-let store: AppStore;
-vi.mock('../../src/boot.js', () => ({ app: { get store() { return store; }, bridge } }));
+bridge.present = true;
+vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
 const { Toast } = await import('../../src/Toast.js');
 
 beforeEach(() => {
-  sent.length = 0;
-  store = createAppStore();
-  setAppStore(store);
+  freshStore();
   // jsdom lays nothing out, and a hole that measures as nothing is left out
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 26, top: 700, width: 200, height: 40 } as DOMRect);
 });

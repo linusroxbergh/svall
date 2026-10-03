@@ -8,7 +8,7 @@ import { drawSelection, EditorView, highlightActiveLine, highlightActiveLineGutt
 import { tags as t } from '@lezer/highlight';
 
 // the app's palette, so the editor sits on the board like the terminal does
-export const editorTheme: Extension = [
+const editorTheme: Extension = [
   EditorView.theme({
     '&': { height: '100%', backgroundColor: 'var(--surface-0)', color: 'var(--ink)' },
     '.cm-scroller': { fontFamily: 'var(--mono)', fontSize: 'var(--text-md)', lineHeight: '1.5' },

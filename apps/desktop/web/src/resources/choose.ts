@@ -4,7 +4,7 @@ import { openFile, placeCursor } from '../ide/files.js';
 import type { ResourcesDeps } from './load.js';
 import { isCard, isField, type Item } from './model.js';
 
-export type ChooseDeps = ResourcesDeps & { bridge: Bridge };
+type ChooseDeps = ResourcesDeps & { bridge: Bridge };
 
 const showInFinder = (bridge: Bridge, i: Pick<ResourceItem, 'reveal' | 'target'>): void =>
   (i.target === 'folder' ? openFolder(bridge, i.reveal) : revealFile(bridge, i.reveal));

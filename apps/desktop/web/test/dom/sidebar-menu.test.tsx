@@ -1,37 +1,16 @@
 // @vitest-environment jsdom
-import './setup.js';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import type { FromShell, ToShell } from '../../src/bridge.js';
-import { setAppStore } from '../../src/hooks.js';
-import { createAppStore, type AppStore } from '../../src/store/index.js';
-import { fleet } from '../fixtures.js';
+import type { ToShell } from '../../src/bridge.js';
+import { bridge, call, freshStore, sent, shell, store } from './harness.js';
 
-const call = vi.fn((_method: string, _params: unknown) => Promise.resolve({}));
-const sent: ToShell[] = [];
-const handlers = new Set<(m: FromShell) => void>();
-const shell = (m: FromShell) => { for (const h of handlers) h(m); };
-const bridge = {
-  present: true,
-  send: (m: ToShell) => { sent.push(m); },
-  onMessage: (h: (m: FromShell) => void) => { handlers.add(h); return () => { handlers.delete(h); }; },
-};
-let store: AppStore;
-vi.mock('../../src/boot.js', () => ({
-  app: { get store() { return store; }, bridge, api: () => ({ call }) },
-  deps: () => ({ api: { call }, store, bridge }),
-}));
+vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
 const { Sidebar } = await import('../../src/Sidebar.js');
 
 beforeEach(() => {
-  call.mockClear();
-  sent.length = 0;
-  handlers.clear();
   bridge.present = true;
-  store = createAppStore();
-  setAppStore(store);
-  store.getState().setFleet(fleet());
+  freshStore();
   render(<Sidebar />);
 });
 

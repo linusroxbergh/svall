@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CWD, emptyState } from '@svall/protocol';
-import { deleteCharacter, deleteIsland, moveCharacterTo, newCharacterOn, newCharacterTarget, newIsland, newIslandAround, newNamedCharacter, openSecondTerminal, reviveCharacter, saveCharacter, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeCharacter } from '../src/actions.js';
+import { deleteIsland, moveCharacterTo, newCharacterOn, newCharacterTarget, newIsland, newIslandAround, newNamedCharacter, openSecondTerminal, reviveCharacter, saveCharacter, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeCharacter } from '../src/actions.js';
 import { ApiError, type Api } from '../src/api.js';
 import { createAppStore } from '../src/store/index.js';
 import { chr, fleet, isl } from './fixtures.js';
@@ -162,7 +162,7 @@ describe('a write the fleet refuses', () => {
   it('is reported on a toast when it saves, revives or deletes', async () => {
     type D = ReturnType<typeof refusing>;
     for (const act of [(d: D) => saveCharacter(d, 'c0', { name: 'x' }), (d: D) => saveIsland(d, 'i_a', { name: 'x' }),
-      (d: D) => reviveCharacter(d, 'c0'), (d: D) => deleteCharacter(d, 'c0'), (d: D) => deleteIsland(d, 'i_e')]) {
+      (d: D) => reviveCharacter(d, 'c0'), (d: D) => deleteIsland(d, 'i_e')]) {
       const d = refusing();
       act(d);
       await new Promise((r) => setTimeout(r, 0));
@@ -270,9 +270,15 @@ describe('deleteIsland', () => {
 
     const c = ctx();
     c.store.getState().selectIsland('i_e');
+    // svalld sends the fleet's patch before it answers the call
+    const call = c.api.call;
+    c.api.call = ((method: string, params: unknown) => {
+      if (method === 'island.delete') c.store.getState().applyPatch([{ op: 'remove', path: '/islands/i_e' }]);
+      return call(method as never, params as never);
+    }) as Api['call'];
     deleteIsland(c, 'i_e');
     await new Promise((r) => setTimeout(r, 0));
-    expect(c.store.getState().selectedIslandId).toBeUndefined();
+    expect(c.store.getState()).toMatchObject({ selectedIslandId: undefined, sideCardOpen: false });
   });
 });
 

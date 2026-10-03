@@ -1,10 +1,10 @@
-import { AgentKind, contextKind, DEFAULT_SIZE, HOME_ISLAND, type Cell, type Character, type ContextItem, type HomeAction, type Params, type Result, type Size } from '@svall/protocol';
+import { AgentKind, contextKind, DEFAULT_SIZE, HOME_ISLAND, type Cell, type ContextItem, type HomeAction, type Params, type Result, type Size } from '@svall/protocol';
 import { ApiError, type Api } from './api.js';
 import { shim, type Bridge } from './bridge.js';
 import type { DropTarget } from './drop.js';
 import { withoutSecond } from './panes.js';
 import type { FieldRef } from './resources/model.js';
-import { boardViewed, charactersOf, islandsSorted, mapIslandsSorted, panesOf, selectedOf, startOf } from './selectors.js';
+import { boardViewed, charactersOf, islandCwd, islandsSorted, mapIslandsSorted, panesOf, selectedOf, startCwd, startOf } from './selectors.js';
 import type { AppStore } from './store/index.js';
 
 // what it takes to act on the fleet: the socket, the mirror, and the shell
@@ -16,9 +16,6 @@ const toast = (d: ActionDeps) => (e: Error) => d.store.getState().showToast(e.me
 
 // Settings stands where the side card would show a new island or character, so making one puts Settings away
 const closeSettings = (d: ActionDeps): void => { if (d.store.getState().settingsOpen) d.store.getState().toggleSettings(false); };
-
-// where a new character starts when it takes another one's directory: the repo itself, never the worktree that one sits in
-const startCwd = (c: Character | undefined): string | undefined => (c?.repo?.isWorktree ? c.repo.mainRoot : c?.cwd);
 
 // a cwd taken from another character can be gone (a removed worktree), so one the fleet refuses as not a
 // directory gives way once to the fleet's default; an agent's start command only runs where it was meant to
@@ -48,12 +45,10 @@ function warnUnfound(d: ActionDeps, command: string): boolean {
   return unfound;
 }
 
-// without an explicit cwd a new character inherits the one of the island's first character; home crew
-// start in the home cwd, and an island with no crew to inherit from starts in the fleet's default cwd
 export async function newCharacterOn(d: ActionDeps, islandId: string, cwd?: string): Promise<void> {
   closeSettings(d);
   const f = d.store.getState().fleet;
-  const dir = cwd ?? (f.islands[islandId]?.kind === 'home' ? f.home.cwd : startCwd(charactersOf(f, islandId)[0]) ?? f.defaultCwd);
+  const dir = cwd ?? islandCwd(f, islandId);
   const start = startOf(f, islandId);
   if (start.command) warnUnfound(d, start.command);
   try {
@@ -139,7 +134,7 @@ export async function newCharacterTarget(d: ActionDeps): Promise<{ islandId: str
   const current = s.view === 'map' ? (s.selectedId ?? s.card ?? selectedOf(s)) : boardViewed(s);
   const islandSel = s.selectedIslandId;
   const base = islandSel ? charactersOf(s.fleet, islandSel)[0] : current ? s.fleet.characters[current] : undefined;
-  const start = startCwd(base) ?? s.fleet.defaultCwd;
+  const start = base ? startCwd(base) : s.fleet.defaultCwd;
   const islandId = islandSel || base?.islandId || mapIslandsSorted(s.fleet)[0]?.id
     || islandsSorted(s.fleet).find((i) => i.kind !== 'home')?.id
     || (await d.api.call('island.create', { name: islandName(start) })).id;
@@ -238,8 +233,6 @@ export const saveCharacterContext = (d: ActionDeps, id: string, context: Context
 export const reviveCharacter = (d: ActionDeps, id: string): Promise<boolean> =>
   d.api.call('char.revive', { id }).then(() => true, (e: Error) => { toast(d)(e); return false; });
 
-export const deleteCharacter = (d: ActionDeps, id: string): void => { d.api.call('char.close', { id }).catch(toast(d)); };
-
 // the pane waits on the terminal it asked for, so a refusal closes that pane again and says why
 export const openSecondTerminal = (d: ActionDeps, id: string): void => {
   d.api.call('char.second', { id }).catch((e: Error) => {
@@ -260,9 +253,7 @@ export const saveIslandContext = (d: ActionDeps, id: string, context: ContextIte
 
 // the island goes and the card that showed it goes with it; a refused delete leaves both
 export const deleteIsland = (d: ActionDeps, id: string): void => {
-  d.api.call('island.delete', { id })
-    .then(() => { if (d.store.getState().selectedIslandId === id) d.store.getState().selectIsland(undefined); })
-    .catch(toast(d));
+  d.api.call('island.delete', { id }).catch(toast(d));
 };
 
 // an island's or a character's own field, written straight back to the fleet

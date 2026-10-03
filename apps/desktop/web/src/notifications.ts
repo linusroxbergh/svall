@@ -6,10 +6,10 @@ import type { App, AppStore } from './store/index.js';
 import { viewedId } from './terminals.js';
 
 // what a banner says; its key is the session's terminal surface key
-export type Notice = Omit<Extract<ToShell, { type: 'notify.post' }>, 'type'>;
+type Notice = Omit<Extract<ToShell, { type: 'notify.post' }>, 'type'>;
 export type NoticeView = { fleet: FleetState; loaded: boolean; active: boolean; viewed?: string; settings: NotifySettings; permission: NotifyPermission };
 // the status each banner still up announced, by session key
-export type Posted = Map<string, PushStatus>;
+type Posted = Map<string, PushStatus>;
 
 // how long an answer waits for the daemon to come back online before giving up
 const ANSWER_WAIT_MS = 5000;

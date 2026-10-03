@@ -2,8 +2,8 @@
 const COLS = ['.res-tree', '.res-list'] as const;
 const ROWS = ['.res-node', '.res-item'] as const;
 
-export type At = { col: number; row: number };
-export type Step = At | 'editor' | undefined;
+type At = { col: number; row: number };
+type Step = At | 'editor' | undefined;
 
 // A row the arrows picked shows its file without sending the keys after it, so the walk can go on; a row
 // the pointer picked hands them to the editor as it always has. The pane asks once, as it opens the file.

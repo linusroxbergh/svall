@@ -1,26 +1,13 @@
 import { spacedCells } from '@svall/protocol';
-import { expect, test, type Svall } from './fixtures.js';
+import { expect, settleMap, test, type Svall } from './fixtures.js';
 import type { Page } from '@playwright/test';
 
-type MapHandle = {
-  screenOf(cell: { x: number; y: number }): { x: number; y: number };
-  layout(): { scale: number; tile: number };
-  dump(): { islands: { id: string; x: number; y: number }[] };
-};
 // where the map has actually drawn an island, which trails the daemon's state by a patch and a refit
 const drawnAt = (page: Page, id: string) =>
-  page.evaluate((i) => (window as unknown as { __map: MapHandle }).__map.dump().islands.find((x) => x.id === i), id);
+  page.evaluate((i) => window.__map!.dump().islands.find((x) => x.id === i), id);
 const screenOf = (page: Page, cell: { x: number; y: number }) =>
-  page.evaluate((c) => (window as unknown as { __map: MapHandle }).__map.screenOf(c), cell);
-const cellPx = (page: Page) => page.evaluate(() => { const l = (window as unknown as { __map: MapHandle }).__map.layout(); return l.scale * l.tile; });
-
-// the fit ease keeps shifting the layout for a few frames after the view opens
-const settle = (page: Page) => page.waitForFunction(() => {
-  const m = (window as unknown as { __map: MapHandle }).__map;
-  const before = JSON.stringify(m.layout());
-  // a frame can lag past the wait, so the layout is read again two frames on
-  return new Promise<boolean>((done) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => done(before === JSON.stringify(m.layout())))), 100));
-});
+  page.evaluate((c) => window.__map!.screenOf(c), cell);
+const cellPx = (page: Page) => page.evaluate(() => { const l = window.__map!.layout(); return l.scale * l.tile; });
 
 // a token card is centred on its cell; press the cell centre
 async function centre(page: Page, cell: { x: number; y: number }) {
@@ -30,7 +17,7 @@ async function centre(page: Page, cell: { x: number; y: number }) {
   return { x: box!.x + p.x + cs / 2, y: box!.y + p.y + cs / 2 };
 }
 async function dragTo(page: Page, from: { x: number; y: number }, to: { x: number; y: number }) {
-  await settle(page);
+  await settleMap(page);
   const a = await centre(page, from), b = await centre(page, to);
   await page.mouse.move(a.x, a.y);
   await page.mouse.down();
@@ -87,7 +74,7 @@ test('islands move by label and resize by handle', async ({ page, svall }) => {
   await svall.open('map');
   await expect(page.getByTestId(`token-${c.id}`)).toBeVisible();
   const label = page.getByTestId(`island-label-${right.id}`);
-  await settle(page);
+  await settleMap(page);
   const box = (await label.boundingBox())!;
   const cs = await cellPx(page);
   await page.mouse.move(box.x + 4, box.y + box.height / 2);
@@ -99,7 +86,7 @@ test('islands move by label and resize by handle', async ({ page, svall }) => {
 
   // the move refits the world, so the cell is a different size than it was for the label drag
   await expect.poll(async () => (await drawnAt(page, right.id))?.x).toBe(15);
-  await settle(page);
+  await settleMap(page);
   const rcs = await cellPx(page);
   await label.hover();
   const handle = page.getByTestId(`handle-${right.id}`);
@@ -124,7 +111,7 @@ test('a rejected island drop returns to its saved position and leaves the next d
   await svall.api.call('island.create', { name: svall.uniq('fixed'), seed: 1, position: { x: 0, y: 60 } });
   const moving = await svall.api.call('island.create', { name: svall.uniq('moving'), seed: 1, position: { x: 10, y: 60 } });
   await svall.open('map');
-  await settle(page);
+  await settleMap(page);
   const label = page.getByTestId(`island-label-${moving.id}`);
   const land = page.getByTestId(`island-${moving.id}`);
   const before = (await land.boundingBox())!;
@@ -149,7 +136,7 @@ test('Escape cancels a sub-cell island drag without moving the fleet', async ({ 
   const island = await svall.api.call('island.create', { name: svall.uniq('cancel'), seed: 1, position: { x: 0, y: 60 } });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await svall.open('map');
-  await settle(page);
+  await settleMap(page);
   const label = page.getByTestId(`island-label-${island.id}`);
   const land = page.getByTestId(`island-${island.id}`);
   const before = (await land.boundingBox())!, box = (await label.boundingBox())!, cs = await cellPx(page);
@@ -170,14 +157,11 @@ test('an island and its cards follow the pointer before snapping, without an unn
   const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'on board' });
   await svall.open('map');
   await expect(page.getByTestId(`token-${c.id}`)).toBeVisible();
-  // the fleet's first look at the new shell's pane lands as a patch, and a patch after the drop refits the map
-  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].shell.lastOutputAt).not.toBe(c.shell.lastOutputAt);
-  await settle(page);
+  await settleMap(page);
   const land = page.getByTestId(`island-${island.id}`), token = page.getByTestId(`token-${c.id}`);
   const label = page.getByTestId(`island-label-${island.id}`);
   const origin = (await land.boundingBox())!, card = (await token.boundingBox())!;
   const box = (await label.boundingBox())!, cs = await cellPx(page);
-  const layout = await page.evaluate(() => JSON.stringify((window as unknown as { __map: MapHandle }).__map.layout()));
   const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
@@ -188,11 +172,13 @@ test('an island and its cards follow the pointer before snapping, without an unn
   await page.mouse.move(start.x + cs * 3.2, start.y);
   await expect.poll(async () => (await land.boundingBox())!.x - origin.x).toBeCloseTo(cs * 3.2, 0);
   expect((await token.boundingBox())!.x - card.x).toBeCloseTo(cs * 3.2, 0);
+  const refits = await page.evaluate(() => window.__map!.refits());
   await page.mouse.up();
   await expect.poll(async () => (await svall.api.call('state.get', {})).islands[island.id].position).toEqual({ x: 3, y: 60 });
   await expect.poll(async () => (await land.boundingBox())!.x - origin.x).toBeCloseTo(cs * 3, 0);
   expect((await token.boundingBox())!.x - card.x).toBeCloseTo(cs * 3, 0);
-  expect(await page.evaluate(() => JSON.stringify((window as unknown as { __map: MapHandle }).__map.layout()))).toBe(layout);
+  // the island stays where it was put down: the camera neither moved for the drop nor for its arrival
+  expect(await page.evaluate(() => window.__map!.refits())).toBe(refits);
 });
 
 test('a drop in the gap between two islands lands clear of both', async ({ page, svall }) => {
@@ -222,7 +208,7 @@ test('a hidden island gives up its ground, and takes it back when the sidebar sh
   // the fit jumps rather than eases, so the label is pressed where it was measured
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await svall.open('map');
-  await settle(page);
+  await settleMap(page);
 
   const unfolded = await cellPx(page);
   await page.getByTestId(`island-toggle-${left.id}`).click();
@@ -232,7 +218,7 @@ test('a hidden island gives up its ground, and takes it back when the sidebar sh
   // the fit waits out the click before it zooms into the narrower world
   await expect.poll(() => cellPx(page)).not.toBe(unfolded);
   // every cell the folded island stood on is free: drag the other one onto them
-  await settle(page);
+  await settleMap(page);
   const label = page.getByTestId(`island-label-${right.id}`);
   const box = (await label.boundingBox())!;
   const cs = await cellPx(page);
@@ -271,7 +257,7 @@ test('an island dragged into the water beside mission control stays beside it', 
   await page.setViewportSize({ width: 1700, height: 800 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await svall.open('map');
-  await settle(page);
+  await settleMap(page);
 
   const home = await landOf(page, 'island-home');
   const label = (await page.getByTestId(`island-label-${left.id}`).boundingBox())!;
@@ -286,7 +272,7 @@ test('an island dragged into the water beside mission control stays beside it', 
   await page.mouse.up();
 
   await expect.poll(async () => (await svall.api.call('state.get', {})).islands[left.id].position.y).toBeGreaterThan(3);
-  await settle(page);
+  await settleMap(page);
   const after = await landOf(page, `island-${left.id}`), sand = await landOf(page, 'island-home');
   expect(after.y + after.height).toBeGreaterThan(sand.y);
   expect(overlaps(after, sand)).toBe(false);
@@ -299,7 +285,7 @@ test('an island put down on mission control goes back where it stood', async ({ 
   const mid = await svall.api.call('island.create', { name: svall.uniq('om'), seed: 1, position: { x: 8, y: 0 }, size: small });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await svall.open('map');
-  await settle(page);
+  await settleMap(page);
 
   const home = await landOf(page, 'island-home');
   const label = (await page.getByTestId(`island-label-${mid.id}`).boundingBox())!;
@@ -318,8 +304,8 @@ test('an island moved towards mission control closes the gap instead of refittin
   const mid = await svall.api.call('island.create', { name: svall.uniq('mm'), seed: 1, position: { x: 0, y: 7 }, size: small });
   await svall.api.call('island.create', { name: svall.uniq('mb'), seed: 1, position: { x: 0, y: 14 }, size: small });
   await svall.open('map');
-  await settle(page);
-  const layoutOf = () => page.evaluate(() => JSON.stringify((window as unknown as { __map: MapHandle }).__map.layout()));
+  await settleMap(page);
+  const layoutOf = () => page.evaluate(() => JSON.stringify(window.__map!.layout()));
   const before = await layoutOf();
   const homeTop = (await page.getByTestId('island-home').boundingBox())!.y;
 

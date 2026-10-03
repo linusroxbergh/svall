@@ -4,7 +4,7 @@ import { useApp } from './hooks.js';
 import { CharPanes } from './CharPanes.js';
 import { keyLabel, keyTip } from './keys.js';
 import { boardIsland, boardViewed, charactersOf, statusOf } from './selectors.js';
-import { DeleteIsland } from './SideCard.js';
+import { DeleteIsland } from './IslandCard.js';
 import { Toast } from './Toast.js';
 
 const view = (id: string) => app.store.getState().focus(id);

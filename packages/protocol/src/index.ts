@@ -9,3 +9,4 @@ export * from './url.js';
 export * from './names.js';
 export * from './sessions.js';
 export * from './text.js';
+export * from './setup.js';

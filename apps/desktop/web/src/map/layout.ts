@@ -1,8 +1,9 @@
 import { SPACING, isLand, pillWidth, type Cell, type Character, type FleetState, type Island } from '@svall/protocol';
+import { mapIslands } from '../selectors.js';
 import { theme, tokenPx } from '../theme.js';
 
 export type Layout = { scale: number; tile: number; ox: number; oy: number };
-export type Bounds = { x: number; y: number; w: number; h: number };
+type Bounds = { x: number; y: number; w: number; h: number };
 
 // the row an island's ground ends on
 const foot = (i: Island): number => i.position.y + i.size.h;
@@ -61,10 +62,8 @@ export const landSpan = (i: Island, l: Layout): [number, number] => {
   return [l.ox + i.position.x * s, l.ox + (i.position.x + i.size.w) * s];
 };
 
-// the largest scale in [theme.scale.min, theme.scale.max] at which what the islands draw fits inside the fit margins,
-// centred both ways in the room they leave over mission control. With `below`, a step down beside mission control (the
-// lowest islands all clear of its blocks, another standing higher) lets the fleet rest on mission control instead, at
-// whatever larger scale the water beside it allows, and still in the middle of the height when there is height to spare
+// the largest scale in [theme.scale.min, theme.scale.max] that fits the islands in the margins, centred over mission control;
+// with `below`, a fleet whose lowest islands clear its blocks may rest on it instead, at the larger scale that allows
 export function fitAll(islands: Island[], win: { w: number; h: number }, crew: Crew = {}, below?: Below): Layout {
   const cell = theme.cell, { x, top, bottom } = theme.fit;
   const boxes = new Map<number, Bounds>();
@@ -157,9 +156,6 @@ export const cellSize = (l: Layout): number => l.tile * l.scale;
 export const worldToScreen = (l: Layout, c: Cell) => ({ x: l.ox + c.x * cellSize(l), y: l.oy + c.y * cellSize(l) });
 export const screenToCell = (l: Layout, p: { x: number; y: number }): Cell => ({ x: Math.floor((p.x - l.ox) / cellSize(l)), y: Math.floor((p.y - l.oy) / cellSize(l)) });
 export const worldCell = (origin: Cell, local: Cell): Cell => ({ x: origin.x + local.x, y: origin.y + local.y });
-
-// the islands that live in the panned world; home is drawn in screen space, and a folded island not at all
-export const mapIslands = (f: FleetState): Island[] => Object.values(f.islands).filter((i) => i.kind !== 'home' && !i.collapsed);
 
 export function cellOwner(f: FleetState, cell: Cell): { island: Island; local: Cell; land: boolean } | undefined {
   for (const island of mapIslands(f)) {
