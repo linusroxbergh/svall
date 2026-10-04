@@ -441,8 +441,8 @@ to every site the Chrome profile is signed in to.
     pnpm typecheck
     pnpm e2e             # Playwright against a temporary daemon
     pnpm desktop:dev     # Vite dev server plus a debug app; SVALL_HOME picks the daemon, unless it names a release fleet
-    pnpm desktop:build   # an ad-hoc signed apps/desktop/mac/build/Svall Dev.app
-    pnpm app:build       # apps/desktop/mac/build/Svall.app, with its own node, tmux, daemon and CLI
+    pnpm desktop:build   # an ad-hoc signed apps/desktop/mac/build.noindex/Svall Dev.app
+    pnpm app:build       # apps/desktop/mac/build.noindex/Svall.app, with its own node, tmux, daemon and CLI
     pnpm ghostty:build   # GhosttyKit from vendor/ghostty into vendor/ghostty-kit
     pnpm ghostty:publish # build GhosttyKit and upload it for installs to download
     mkdir -p /tmp/svall-dev && echo '{ "port": 0 }' > /tmp/svall-dev/config.json
