@@ -74,6 +74,17 @@ describe('userPrompts', () => {
     expect(userPrompts(noise, 10)).toEqual([]);
     expect(userPrompts(typed('mine') + noise, 10)).toEqual(['mine']);
   });
+  it('lists the questions the agent asked with what the user answered, in turn with what they typed', () => {
+    const result = (toolUseResult: unknown) =>
+      line({ type: 'user', toolUseResult, message: { role: 'user', content: [{ type: 'tool_result', content: 'answered' }] } });
+    const asked = result({
+      questions: [{ question: 'Which port?' }, { question: 'Keep logs?' }],
+      answers: { 'Which port?': '8080', 'Keep logs?': 'No' },
+    });
+    const declined = result('User rejected tool use');
+    expect(userPrompts(typed('first') + asked + declined + typed('second'), 10))
+      .toEqual(['second', 'Which port?\n→ 8080\n\nKeep logs?\n→ No', 'first']);
+  });
   it('keeps only the last N and truncates a long one', () => {
     expect(userPrompts(typed('a') + typed('b') + typed('c'), 2)).toEqual(['c', 'b']);
     expect(userPrompts(typed('x'.repeat(5000)), 1)[0]).toHaveLength(2001);
