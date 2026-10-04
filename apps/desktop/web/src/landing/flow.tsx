@@ -53,10 +53,10 @@ const grow = (crew: Member[], beat: number) =>
 function script(): [number, (s: Scene) => Scene][] {
   const ev: [number, (s: Scene) => Scene][] = [];
   const at = (t: number, f: (s: Scene) => Partial<Scene>) => ev.push([t, (s) => ({ ...s, ...f(s) })]);
-  at(1800, () => ({ keys: true }));
-  at(2400, () => ({ modal: true }));
-  at(2700, () => ({ keys: false }));
-  const typing = 3200, per = 36;
+  at(800, () => ({ keys: true }));
+  at(1400, () => ({ modal: true }));
+  at(1700, () => ({ keys: false }));
+  const typing = 2200, per = 36;
   for (let i = 1; i <= PROMPT.length; i++) at(typing + i * per, () => ({ typed: i }));
   const sent = typing + PROMPT.length * per + 1200;
   at(sent, () => ({ send: true }));
