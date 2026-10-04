@@ -5,7 +5,8 @@ SRC="$1"
 # node names its own paths with symlinks resolved, and mktemp's /var is a link to /private/var
 D="$(mktemp -d)" || exit 1
 T="$(cd "$D" && pwd -P)" || exit 1
-trap 'rm -rf "$T"' EXIT
+# macOS may register the copies with LaunchServices, which would keep listing them in Open With once they are gone
+trap '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u -R "$T/Apps/Svall.app" "$T/Other/Svall.app" 2>/dev/null; rm -rf "$T"' EXIT
 mkdir -p "$T/home/.local/bin" "$T/home/.claude" "$T/bin" "$T/Apps" "$T/Other"
 cp -R "$SRC" "$T/Apps/Svall.app"
 cp -R "$SRC" "$T/Other/Svall.app"

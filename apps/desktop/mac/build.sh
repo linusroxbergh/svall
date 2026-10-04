@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds the shell with SwiftPM and assembles build/Svall Dev.app, or build/Svall.app with SVALL_VARIANT=release.
+# Builds the shell with SwiftPM and assembles build.noindex/Svall Dev.app, or build.noindex/Svall.app with SVALL_VARIANT=release.
 set -eu
 MAC="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$MAC/../../.." && pwd)"
@@ -23,7 +23,8 @@ swift build -c release --arch "$ARCH" -Xcc -Wno-incomplete-umbrella --product sv
 HOOK="$(swift build -c release --arch "$ARCH" --show-bin-path)/svall-hook"
 
 NAME="$([ "$VARIANT" = release ] && echo Svall || echo 'Svall Dev')"
-APP="$MAC/build/$NAME.app"
+# Spotlight skips a .noindex folder, so it never registers a build with LaunchServices, which lists it in Launchpad and Open With
+APP="$MAC/build.noindex/$NAME.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Helpers"
 cp "$BIN" "$APP/Contents/MacOS/Svall"

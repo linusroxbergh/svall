@@ -156,7 +156,7 @@ function install(stubs: Record<string, string>, old = 'Applications/Svall Dev.ap
     fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
     fs.writeFileSync(path.join(root, file), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
   }
-  for (const [app, build] of [[old, 'old'], ['apps/desktop/mac/build/Svall Dev.app', 'new']]) {
+  for (const [app, build] of [[old, 'old'], ['apps/desktop/mac/build.noindex/Svall Dev.app', 'new']]) {
     fs.mkdirSync(path.join(root, app, 'Contents'), { recursive: true });
     fs.writeFileSync(path.join(root, app, 'Contents/build'), build);
   }

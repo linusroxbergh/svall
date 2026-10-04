@@ -1,4 +1,4 @@
-// Bundles svalld and the svall CLI, with the files they read, into apps/desktop/mac/build/runtime for Svall.app.
+// Bundles svalld and the svall CLI, with the files they read, into apps/desktop/mac/build.noindex/runtime for Svall.app.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const out = path.join(root, 'apps/desktop/mac/build/runtime');
+const out = path.join(root, 'apps/desktop/mac/build.noindex/runtime');
 const mobile = path.join(root, 'apps/desktop/web/dist-mobile');
 if (!fs.existsSync(mobile)) throw new Error('apps/desktop/web/dist-mobile is missing: pnpm --filter @svall/desktop-web build:mobile');
 
