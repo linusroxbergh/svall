@@ -28,7 +28,9 @@ const client = (parents: Record<string, string> = {}) => ({
   session: {
     get: vi.fn(async ({ path: p }: { path: { id: string } }) => ({ data: { id: p.id, parentID: parents[p.id] } })),
     promptAsync: vi.fn(async () => ({})),
+    command: vi.fn(async () => ({})),
   },
+  command: { list: vi.fn(async () => ({ data: [{ name: 'svall-status' }] })) },
 });
 const load = async (c = client()) => (await import(PLUGIN)).SvallPlugin({ client: c, directory: '/repo' });
 const event = (type: string, properties: Record<string, unknown>) => ({ event: { id: 'e', type, properties } });
@@ -112,6 +114,49 @@ describe('the OpenCode plugin', () => {
     expect(names()).toEqual(['SessionStart']);
   });
 
+  it('runs a /command left for it as that command, as the TUI does with one typed', async () => {
+    fs.writeFileSync(path.join(home, 'c_1.prompt'), '/svall-status now');
+    const argv = process.argv;
+    process.argv = [...argv, '-s', SID];
+    const c = client();
+    try {
+      await load(c);
+      await waitFor(() => c.session.command.mock.calls.length === 1);
+      expect(c.session.command).toHaveBeenCalledWith({ path: { id: SID }, body: { command: 'svall-status', arguments: 'now' } });
+      expect(c.session.promptAsync).not.toHaveBeenCalled();
+    } finally {
+      process.argv = argv;
+    }
+  });
+
+  it('takes -s only for a session id ahead of the prompt', async () => {
+    const argv = process.argv;
+    process.argv = [...argv, '--prompt', 'run', 'ls', '-s', '../x'];
+    try {
+      await load();
+      await new Promise((r) => setTimeout(r, 100));
+      expect(names()).toEqual([]);
+      expect(fs.existsSync(path.join(home, 'transcripts', 'x.jsonl'))).toBe(false);
+    } finally {
+      process.argv = argv;
+    }
+  });
+
+  it("keeps the character blocked while a subagent's question is open, though another subagent runs tools meanwhile", async () => {
+    const OTHER = 'ses_0f3a5b7c9d20AbCdEfGhIjKlMn';
+    const h = await load(client({ [CHILD]: SID, [OTHER]: SID }));
+    await h.event(event('session.created', { sessionID: SID, info: { id: SID } }));
+    await h.event(event('permission.asked', { id: 'per_1', sessionID: CHILD, permission: 'external_directory', patterns: ['/etc/*'], metadata: { filepath: '/etc/hosts' } }));
+    await h['tool.execute.before']({ tool: 'grep', sessionID: OTHER, callID: 'c' }, { args: {} });
+    await h['tool.execute.after']({ tool: 'grep', sessionID: OTHER, callID: 'c', args: {} }, { title: '', output: '', metadata: {} });
+    await h.event(event('question.asked', { id: 'que_1', sessionID: OTHER, questions: [{ question: 'which file?' }] }));
+    await h.event(event('permission.replied', { sessionID: CHILD, requestID: 'per_1', reply: 'once' }));
+    await h.event(event('question.rejected', { sessionID: OTHER, requestID: 'que_1' }));
+    await waitFor(() => names().length >= 4);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(names()).toEqual(['SessionStart', 'PermissionRequest', 'PermissionRequest', 'PreToolUse']);
+  });
+
   it("lets a subagent's questions block the character, under the top-level session, and nothing else of it", async () => {
     const h = await load(client({ [CHILD]: SID }));
     await h.event(event('session.created', { sessionID: SID, info: { id: SID } }));
@@ -177,10 +222,11 @@ describe('the OpenCode plugin', () => {
     }
   });
 
-  it('ends the session when OpenCode disposes of the plugin', async () => {
+  it('says nothing when OpenCode disposes of the plugin, as it also does on a reload', async () => {
     const h = await load();
     await h.event(event('session.created', { sessionID: SID, info: { id: SID } }));
     await h.dispose();
-    await waitFor(() => names().includes('SessionEnd'));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(names()).toEqual(['SessionStart']);
   });
 });

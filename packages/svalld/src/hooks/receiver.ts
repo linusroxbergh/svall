@@ -10,8 +10,9 @@ export const CLAUDE_HOOKS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', '
 // codex asks permission through an event of its own, where Claude Code sends a notification, and says
 // when the tool it asked about has run, which is the only word that the wait is over. An Esc ends its turn with Interrupt
 export const CODEX_HOOKS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'Stop', 'Interrupt', 'SessionEnd'] as const;
-// Svall's OpenCode plugin names OpenCode's events after these hooks: an Esc ends a turn with Interrupt, an error with StopFailure
-export const OPENCODE_HOOKS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'Stop', 'StopFailure', 'Interrupt', 'SessionEnd'] as const;
+// Svall's OpenCode plugin names OpenCode's events after these hooks: an Esc ends a turn with Interrupt, an error with StopFailure.
+// It sends no SessionEnd, so a quit OpenCode is gone once its pane is back at a shell
+export const OPENCODE_HOOKS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'Stop', 'StopFailure', 'Interrupt'] as const;
 export type HookName = (typeof CLAUDE_HOOKS)[number] | (typeof CODEX_HOOKS)[number] | (typeof OPENCODE_HOOKS)[number];
 
 const HOOKS: Record<AgentKind, readonly HookName[]> = { claude: CLAUDE_HOOKS, codex: CODEX_HOOKS, opencode: OPENCODE_HOOKS };

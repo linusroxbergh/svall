@@ -22,10 +22,11 @@ const MAX_TOOL = 2000;
 const clip = (v, n) => (typeof v === 'string' ? v : JSON.stringify(v ?? '')).slice(0, n);
 
 // Svall resumes a dormant character with `opencode -s <id>`. The TUI runs plugins in a worker whose argv is the
-// worker's own, so the command line is read from ps
+// worker's own, so the command line is read from ps, where a prompt's words pass for flags
 const resumedFrom = (argv) => {
-  const i = argv.findIndex((a) => a === '-s' || a === '--session');
-  return i === -1 ? undefined : argv[i + 1];
+  const end = argv.indexOf('--prompt');
+  const i = argv.findIndex((a, j) => (a === '-s' || a === '--session') && (end === -1 || j < end));
+  return i !== -1 && /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/.test(argv[i + 1] ?? '') ? argv[i + 1] : undefined;
 };
 const commandLine = () => {
   try { return execFileSync('ps', ['-o', 'args=', '-p', String(process.pid)], { encoding: 'utf8', timeout: 2000 }).trim().split(/\s+/); } catch { return []; }
@@ -96,11 +97,11 @@ export const SvallPlugin = async ({ client, directory }) => {
   const ending = new Map();
   const replying = new Set();
   const logged = new Set();
-  let current;
+  // questions open anywhere in the session tree; a tool another subagent runs meanwhile does not answer them
+  const asking = new Set();
 
   // a top-level session reports in once per process, and its log exists from then on
   const start = (id, model) => {
-    current = id;
     if (!started.has(id)) {
       parents.set(id, '');
       started.set(id, (async () => {
@@ -119,8 +120,17 @@ export const SvallPlugin = async ({ client, directory }) => {
     const file = path.join(home, `${charId}.prompt`);
     let text = '';
     try { text = fs.readFileSync(file, 'utf8'); fs.rmSync(file); } catch { return; }
-    if (text.trim()) client.session.promptAsync({ path: { id: resumed }, body: { parts: [{ type: 'text', text }] } }).catch(() => {});
+    if (text.trim()) void wake(resumed, text);
   });
+
+  // a /command runs as the TUI runs one typed; sent as a prompt, the model would read it as text
+  const wake = async (id, text) => {
+    const [, command, args = ''] = /^\/(\S+)\s*([\s\S]*)$/.exec(text.trim()) ?? [];
+    const known = command && (await client.command.list().catch(() => undefined))?.data?.some((c) => c.name === command);
+    const sent = known ? client.session.command({ path: { id }, body: { command, arguments: args } })
+      : client.session.promptAsync({ path: { id }, body: { parts: [{ type: 'text', text }] } });
+    await sent.catch(() => {});
+  };
 
   // the TUI's own reading: the newest reply's tokens over the model's context window
   const context = (m) => {
@@ -152,14 +162,18 @@ export const SvallPlugin = async ({ client, directory }) => {
         case 'message.part.updated':
           return said(p.part);
         case 'permission.asked': {
+          asking.add(p.id);
           const why = p.metadata?.command ?? p.metadata?.filepath ?? p.patterns?.join(' ') ?? p.permission;
           return void hook('PermissionRequest', await rootOf(p.sessionID), { tool_name: p.permission, message: clip(why, 500) });
         }
         case 'question.asked':
+          asking.add(p.id);
           return void hook('PermissionRequest', await rootOf(p.sessionID), { message: clip(p.questions?.[0]?.question ?? 'a question', 500) });
-        // an answer sets the agent going again: the tool runs, or a refusal ends the turn
+        // the last answer sets the agent going again: the tool runs, or a refusal ends the turn
         case 'permission.replied':
         case 'question.replied':
+        case 'question.rejected':
+          if (!asking.delete(p.requestID) || asking.size) return;
           return void hook('PreToolUse', await rootOf(p.sessionID));
         case 'session.error':
           if (busy.has(p.sessionID)) {
@@ -169,6 +183,7 @@ export const SvallPlugin = async ({ client, directory }) => {
           return;
         case 'session.status': {
           if (p.status?.type !== 'idle' || !busy.delete(p.sessionID)) return;
+          asking.clear();
           const [name, fields] = ending.get(p.sessionID) ?? ['Stop'];
           ending.delete(p.sessionID);
           return void hook(name, p.sessionID, fields);
@@ -189,7 +204,7 @@ export const SvallPlugin = async ({ client, directory }) => {
     'tool.execute.before': async (input, output) => {
       const root = await rootOf(input.sessionID);
       if (root === input.sessionID && input.tool === 'bash' && typeof output.args?.workdir === 'string') workdir = path.resolve(directory, output.args.workdir);
-      void hook('PreToolUse', root, { tool_name: input.tool });
+      if (!asking.size) void hook('PreToolUse', root, { tool_name: input.tool });
     },
     'tool.execute.after': async (input, output) => {
       const root = await rootOf(input.sessionID);
@@ -197,7 +212,7 @@ export const SvallPlugin = async ({ client, directory }) => {
         log(root, { kind: 'tool', name: input.tool, given: clip(input.args, MAX_TOOL) });
         log(root, { kind: 'output', printed: clip(output?.output, MAX_TOOL) });
       }
-      void hook('PostToolUse', root, { tool_name: input.tool });
+      if (!asking.size) void hook('PostToolUse', root, { tool_name: input.tool });
     },
     // the same brief rides on every request of the session, so the prompt cache holds until it changes
     'experimental.chat.system.transform': async (input, output) => {
@@ -206,6 +221,7 @@ export const SvallPlugin = async ({ client, directory }) => {
       const text = brief.get(input.sessionID);
       if (text) output.system.push(text);
     },
-    dispose: async () => { if (current) await hook('SessionEnd', current); },
+    // OpenCode disposes of the plugin on a reload too, so svalld learns the agent has gone from the pane's shell
+    dispose: async () => { conn?.end(); },
   };
 };

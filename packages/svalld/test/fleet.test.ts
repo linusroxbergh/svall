@@ -19,9 +19,9 @@ import { Store } from '../src/store.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { ControlClient } from '../src/tmux/control.js';
 import { SESSION, Tmux } from '../src/tmux/tmux.js';
+import { cleanHomes, hasTmux, makeHome, waitFor, waitForPolls } from './helpers.js';
 
 const OSID = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
-import { cleanHomes, hasTmux, makeHome, waitFor, waitForPolls } from './helpers.js';
 
 const runIf = hasTmux() ? describe : describe.skip;
 
@@ -1455,6 +1455,16 @@ runIf('Fleet', () => {
     expect(b.fleet.readPrompts(c.id, 5)).toEqual(['fix the flaky test']);
     expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-opencode', `${c.id}.argv`), 'utf8'))).toEqual(['--prompt', 'fix the flaky test']);
     expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-opencode', `${c.id}.system`), 'utf8'))).toEqual([agent.brief]);
+  });
+
+  it('drops an opencode agent once its pane is back at a shell', async () => {
+    vi.stubEnv('PATH', `${path.join(import.meta.dirname, 'fixtures/bin')}:${process.env.PATH}`);
+    cleanup.push(async () => { vi.unstubAllEnvs(); });
+    const b = await boot({ pollMs: 100 });
+    const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'opencode' }).id, cwd: '/tmp', command: 'opencode', run: 'first' });
+    await waitFor(() => b.store.state.characters[c.id].agent?.status === 'done');
+    await b.tmux.run('send-keys', '-t', c.tmux!.paneId, 'C-d');
+    await waitFor(() => b.store.state.characters[c.id].agent === undefined, 10_000);
   });
 
   it('wakes a dormant opencode character with a prompt its plugin submits', async () => {
