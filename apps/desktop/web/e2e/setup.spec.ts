@@ -33,6 +33,7 @@ const NOTHING: Plan = { ...PLAN, agents: [], writes: PLAN.writes.slice(2),
 test('lists the agents and files, and sets up the agents left on', async ({ page }) => {
   await fakeShell(page, PLAN);
   await page.goto('/?setup=1');
+  await page.getByText('Review changes').click();
   await expect(page.getByText('/u/.claude/settings.json')).toBeVisible();
   await expect(page.getByText('export PATH="$HOME/.local/bin:$PATH"')).toBeVisible();
   await page.getByRole('checkbox', { name: 'Codex' }).uncheck();
@@ -59,6 +60,7 @@ test('offers a projects folder, takes one picked in the native picker or typed, 
 test('starts an agent turned off at an earlier setup unchecked, with its file left out until it is checked', async ({ page }) => {
   await fakeShell(page, { ...PLAN, integrations: ['claude'] });
   await page.goto('/?setup=1');
+  await page.getByText('Review changes').click();
   await expect(page.getByRole('checkbox', { name: 'Codex' })).not.toBeChecked();
   await expect(page.getByText('/u/.codex/hooks.json')).toHaveCount(0);
   await page.getByRole('checkbox', { name: 'Codex' }).check();
@@ -96,6 +98,7 @@ test('gives each agent\'s install command to select or copy, and its other ways 
   await fakeShell(page, NOTHING);
   await page.goto('/?setup=1');
   for (const [label, i] of [['Claude Code', NOTHING.install![0]!], ['Codex', NOTHING.install![1]!]] as const) {
+    await page.getByRole('radio', { name: label }).check();
     const command = page.getByText(i.command);
     await expect(command).toHaveCSS('user-select', 'text');
     const box = page.locator('.setup-code', { has: command });
@@ -111,7 +114,7 @@ test('gives each agent\'s install command to select or copy, and its other ways 
 test('gives the PATH line with the installers when their folder is not on PATH, and only there', async ({ page }) => {
   await fakeShell(page, NOTHING);
   await page.goto('/?setup=1');
-  await expect(page.getByText('Both install to /u/.local/bin, which is not on your PATH')).toBeVisible();
+  await expect(page.getByText('The installer puts the command in /u/.local/bin, which is not on your PATH')).toBeVisible();
   await expect(page.getByText('export PATH="$HOME/.local/bin:$PATH"')).toHaveCount(1);
   await expect(page.getByRole('heading', { name: 'The svall command' })).toHaveCount(0);
 });
@@ -119,7 +122,7 @@ test('gives the PATH line with the installers when their folder is not on PATH, 
 test('says an agent found only by its folder has no command, as a desktop app leaves one', async ({ page }) => {
   await fakeShell(page, { ...NOTHING, agents: [{ kind: 'claude', path: '/u/.claude', folderOnly: true }] });
   await page.goto('/?setup=1');
-  await expect(page.getByText('/u/.claude · no claude command')).toBeVisible();
+  await expect(page.getByText('CLI not found')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Set up' })).toBeDisabled();
 });
 
@@ -128,5 +131,6 @@ test('shows a failed first ask inline and retries it', async ({ page }) => {
   await page.goto('/?setup=1');
   await expect(page.getByText('svall: something went wrong')).toBeVisible();
   await page.getByRole('button', { name: 'Check again' }).click();
+  await page.getByText('Review changes').click();
   await expect(page.getByText('/u/.claude/settings.json')).toBeVisible();
 });
