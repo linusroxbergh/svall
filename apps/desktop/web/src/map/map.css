@@ -80,7 +80,7 @@
   transition:transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease)}
 .tok .card::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:8;
   border-radius:inherit;
-  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--cream) 55%, transparent),
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--cream) 46%, transparent),
              inset 0 calc(var(--tok)*.2) calc(var(--tok)*.24) calc(var(--tok)*-.12) var(--shade-1)}
 .tok:hover .card{transform:translateY(-6px);
   box-shadow:0 2px 0 color-mix(in srgb, var(--card-tint) 12%, transparent),
