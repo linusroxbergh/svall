@@ -143,7 +143,7 @@ describe('doctor', () => {
     const r = await doctor(priv, f.deps);
     const c = byName(r);
     expect(c.tmux).toMatchObject({ status: 'fail', detail: expect.stringMatching(/brew install tmux/) });
-    expect(c.agents).toMatchObject({ status: 'fail', detail: expect.stringContaining('neither claude nor codex is on PATH') });
+    expect(c.agents).toMatchObject({ status: 'fail', detail: expect.stringContaining('no agent CLI (claude, codex or opencode) is on PATH') });
     expect(c.gh).toMatchObject({ status: 'warn', detail: expect.stringMatching(/gh auth login/) });
     expect(c.svalld).toMatchObject({ status: 'warn', detail: expect.stringMatching(/not running .*: it starts when Svall opens on this fleet$/) });
     expect(c['hook receiver']).toMatchObject({ status: 'skip', detail: 'svalld is not running' });
@@ -352,7 +352,7 @@ describe('agent checks', () => {
 
   it('fails when neither is installed', async () => {
     const got = await agents({ commands: { 'claude --version': undefined as never } });
-    expect(got).toEqual([{ name: 'agents', status: 'fail', detail: expect.stringContaining('neither claude nor codex is on PATH') }]);
+    expect(got).toEqual([{ name: 'agents', status: 'fail', detail: expect.stringContaining('no agent CLI (claude, codex or opencode) is on PATH') }]);
     expect(got[0]!.detail).toContain('run curl -fsSL https://claude.ai/install.sh | bash (Claude Code) or curl -fsSL https://chatgpt.com/codex/install.sh | sh (Codex)');
     expect(() => requireReady(got)).toThrow(/nothing was changed/);
   });

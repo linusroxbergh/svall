@@ -52,6 +52,10 @@ describe('agentFor', () => {
     expect(agentFor({ run: 'hi', command: 'node x.mjs' }, 'codex')).toBeUndefined();
     expect(agentFor({}, 'codex')).toBeUndefined();
   });
+  it('starts opencode for --opencode', () => {
+    expect(agentFor({ opencode: true }, 'claude')).toBe('opencode');
+    expect(agentFor({ agent: 'opencode' }, 'claude')).toBe('opencode');
+  });
 });
 
 describe('char new', () => {

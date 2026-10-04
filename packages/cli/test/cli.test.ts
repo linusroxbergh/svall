@@ -499,7 +499,7 @@ runIf('svall CLI', () => {
     expect(list).toMatch(/home\s+mission control/);
     const unknown = await svall('char', 'new', '--island', 'home', '--cwd', '/tmp', '--agent', 'cursor');
     expect(unknown.code).not.toBe(0);
-    expect(unknown.stderr).toContain('claude or codex');
+    expect(unknown.stderr).toContain('claude, codex or opencode');
     expect((await svall('char', 'list', '--island', 'home', '--json')).stdout.trim()).toBe('[]');
   });
 
