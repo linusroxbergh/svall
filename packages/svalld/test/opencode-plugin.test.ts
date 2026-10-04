@@ -34,6 +34,8 @@ const client = (parents: Record<string, string> = {}) => ({
 });
 const load = async (c = client()) => (await import(PLUGIN)).SvallPlugin({ client: c, directory: '/repo' });
 const event = (type: string, properties: Record<string, unknown>) => ({ event: { id: 'e', type, properties } });
+// the plugin shows a question on the card half a second after it changes
+const shown = () => new Promise((r) => setTimeout(r, 700));
 
 beforeEach(async () => {
   home = makeHome();
@@ -156,21 +158,42 @@ describe('the OpenCode plugin', () => {
     }
   });
 
-  it("keeps the character blocked while a subagent's question is open, though another subagent runs tools meanwhile", async () => {
+  it("shows the question OpenCode's TUI shows, and keeps the character blocked while one is open", async () => {
     const OTHER = 'ses_0f3a5b7c9d20AbCdEfGhIjKlMn';
     const h = await load(client({ [CHILD]: SID, [OTHER]: SID }));
     await h.event(event('session.created', { sessionID: SID, info: { id: SID } }));
+    // the TUI shows permissions before questions, an older session's first
+    await h.event(event('question.asked', { id: 'que_1', sessionID: OTHER, questions: [{ question: 'which file?' }] }));
+    await h.event(event('permission.asked', { id: 'per_2', sessionID: OTHER, permission: 'bash', patterns: ['ls'], metadata: { command: 'ls' } }));
     await h.event(event('permission.asked', { id: 'per_1', sessionID: CHILD, permission: 'external_directory', patterns: ['/etc/*'], metadata: { filepath: '/etc/hosts' } }));
+    await shown();
     await h['tool.execute.before']({ tool: 'grep', sessionID: OTHER, callID: 'c' }, { args: {} });
     await h['tool.execute.after']({ tool: 'grep', sessionID: OTHER, callID: 'c', args: {} }, { title: '', output: '', metadata: {} });
-    await h.event(event('question.asked', { id: 'que_1', sessionID: OTHER, questions: [{ question: 'which file?' }] }));
     await h.event(event('permission.replied', { sessionID: CHILD, requestID: 'per_1', reply: 'once' }));
+    await shown();
+    await h.event(event('permission.replied', { sessionID: OTHER, requestID: 'per_2', reply: 'once' }));
+    await shown();
     await h.event(event('question.rejected', { sessionID: OTHER, requestID: 'que_1' }));
     await waitFor(() => names().length >= 5);
-    await new Promise((r) => setTimeout(r, 100));
     expect(names()).toEqual(['SessionStart', 'PermissionRequest', 'PermissionRequest', 'PermissionRequest', 'PreToolUse']);
-    // once one is answered, the card shows the one still open
-    expect((got[3] as { hook: Record<string, unknown> }).hook).toMatchObject({ sessionId: SID, message: 'which file?' });
+    expect(got.slice(1, 4).map((e) => (e as { hook: { sessionId: string; message: string } }).hook))
+      .toMatchObject([{ sessionId: SID, message: '/etc/hosts' }, { sessionId: SID, message: 'ls' }, { sessionId: SID, message: 'which file?' }]);
+  });
+
+  it('leaves the character working through a question OpenCode answers at once, as with --auto, and a refusal that answers several', async () => {
+    const h = await load();
+    await h.event(event('session.created', { sessionID: SID, info: { id: SID } }));
+    await h.event(event('permission.asked', { id: 'per_1', sessionID: SID, permission: 'external_directory', patterns: ['/etc/*'] }));
+    await h.event(event('permission.replied', { sessionID: SID, requestID: 'per_1', reply: 'once' }));
+    await h.event(event('permission.asked', { id: 'per_2', sessionID: SID, permission: 'bash', patterns: ['ls'] }));
+    await h.event(event('permission.asked', { id: 'per_3', sessionID: SID, permission: 'bash', patterns: ['pwd'] }));
+    await shown();
+    // a refusal turns down the session's other questions too, each with a reply of its own
+    await h.event(event('permission.replied', { sessionID: SID, requestID: 'per_2', reply: 'reject' }));
+    await h.event(event('permission.replied', { sessionID: SID, requestID: 'per_3', reply: 'reject' }));
+    await waitFor(() => names().length >= 3);
+    await shown();
+    expect(names()).toEqual(['SessionStart', 'PermissionRequest', 'PreToolUse']);
   });
 
   it("lets a subagent's questions block the character, under the top-level session, and nothing else of it", async () => {
@@ -179,6 +202,7 @@ describe('the OpenCode plugin', () => {
     await h.event(event('session.created', { sessionID: CHILD, info: { id: CHILD, parentID: SID } }));
     await h['chat.message']({ sessionID: CHILD }, { message: { id: 'm' }, parts: [{ type: 'text', text: 'explore' }] });
     await h.event(event('permission.asked', { id: 'per_1', sessionID: CHILD, permission: 'bash', patterns: ['rm -rf build'], metadata: { command: 'rm -rf build' } }));
+    await shown();
     await h.event(event('permission.replied', { sessionID: CHILD, requestID: 'per_1', reply: 'once' }));
     await h.event(event('session.status', { sessionID: CHILD, status: { type: 'idle' } }));
     await waitFor(() => names().length >= 3);

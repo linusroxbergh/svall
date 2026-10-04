@@ -17,6 +17,7 @@ const variantOf = (h) => {
 };
 
 const WAIT_MS = 1500;
+const SHOW_MS = 500;
 const MAX_PROMPT = 4000;
 const MAX_TOOL = 2000;
 const clip = (v, n) => (typeof v === 'string' ? v : JSON.stringify(v ?? '')).slice(0, n);
@@ -101,10 +102,24 @@ export const SvallPlugin = async ({ client, directory }) => {
   // questions open anywhere in the session tree, each with what it asks; a tool another subagent runs meanwhile does not
   // answer them
   const asking = new Map();
-  const ask = async (id, session, fields) => {
-    asking.set(id, [session, fields]);
-    void hook('PermissionRequest', await rootOf(session), fields);
+  // the TUI shows one, permissions before questions, each by session and then by when it was asked, and Enter answers it
+  const rank = ([id, a]) => `${a.question ? 1 : 0} ${a.session} ${id}`;
+  // the card shows the same one a moment late, so a question the TUI answers by itself, as with --auto, never blocks it
+  let shown;
+  let showing;
+  const show = () => {
+    clearTimeout(showing);
+    showing = setTimeout(async () => {
+      const [id, a] = [...asking].sort((x, y) => (rank(x) < rank(y) ? -1 : 1))[0] ?? [];
+      if (id === shown?.id) return;
+      const last = shown;
+      shown = id && { id, session: a.session };
+      // the last answer sets the agent going again: the tool runs, or a refusal ends the turn
+      if (id) void hook('PermissionRequest', await rootOf(a.session), a.fields);
+      else void hook('PreToolUse', await rootOf(last.session));
+    }, SHOW_MS);
   };
+  const ask = (id, session, fields, question = false) => { asking.set(id, { session, fields, question }); show(); };
 
   // a top-level session reports in once per process, and its log exists from then on
   const start = (id, model) => {
@@ -172,16 +187,12 @@ export const SvallPlugin = async ({ client, directory }) => {
           return ask(p.id, p.sessionID, { tool_name: p.permission, message: clip(why, 500) });
         }
         case 'question.asked':
-          return ask(p.id, p.sessionID, { message: clip(p.questions?.[0]?.question ?? 'a question', 500) });
-        // the last answer sets the agent going again: the tool runs, or a refusal ends the turn. Until then the card
-        // shows a question still open, under a new id the app can answer
+          return ask(p.id, p.sessionID, { message: clip(p.questions?.[0]?.question ?? 'a question', 500) }, true);
         case 'permission.replied':
         case 'question.replied':
-        case 'question.rejected': {
-          if (!asking.delete(p.requestID)) return;
-          const [session, fields] = asking.values().next().value ?? [p.sessionID];
-          return void hook(asking.size ? 'PermissionRequest' : 'PreToolUse', await rootOf(session), fields);
-        }
+        case 'question.rejected':
+          if (asking.delete(p.requestID)) show();
+          return;
         case 'session.error':
           if (busy.has(p.sessionID)) {
             ending.set(p.sessionID, p.error?.name === 'MessageAbortedError' ? ['Interrupt']
@@ -193,6 +204,8 @@ export const SvallPlugin = async ({ client, directory }) => {
           if (p.status?.type === 'busy') ending.delete(p.sessionID);
           if (p.status?.type !== 'idle' || !busy.delete(p.sessionID)) return;
           asking.clear();
+          clearTimeout(showing);
+          shown = undefined;
           const [name, fields] = ending.get(p.sessionID) ?? ['Stop'];
           ending.delete(p.sessionID);
           return void hook(name, p.sessionID, fields);
@@ -231,6 +244,6 @@ export const SvallPlugin = async ({ client, directory }) => {
       if (text) output.system.push(text);
     },
     // OpenCode disposes of the plugin on a reload too, so svalld learns the agent has gone from the pane's shell
-    dispose: async () => { conn?.end(); },
+    dispose: async () => { clearTimeout(showing); conn?.end(); },
   };
 };
