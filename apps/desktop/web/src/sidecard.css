@@ -5,12 +5,14 @@
 .side .sec > .kicker { height: var(--sec-head); color: var(--ink-3); letter-spacing: var(--track-caps); }
 /* the sections share what the card's head and foot leave and never scroll it: a fitted one gives way before a pinned one,
    and one squeezed under its content scrolls inside */
-.side-secs { flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: var(--sp-2xl); }
-.side .sec[data-open="true"] { flex: 0 1 auto; min-height: calc(var(--sec-head) + var(--sp-sm) + 40px); }
+.side-secs { flex: 1 1 0; min-height: 0; overflow: clip; container-type: size; display: flex; flex-direction: column; gap: var(--sp-2xl); }
+/* an open section keeps 40px under its title, or a sixth of the room when that is less, so six titles always fit */
+.side .sec[data-open="true"] { flex: 0 1 auto;
+  min-height: clamp(calc(var(--sec-head) + var(--sp-sm)), calc((100cqh - 5 * var(--sp-2xl)) / 6), calc(var(--sec-head) + var(--sp-sm) + 40px)); }
 .side .sec:has(> .sec-body:empty) { min-height: auto; }
 .side .sec[data-fit="true"] { flex-shrink: 1000; }
 .sec-body { flex: 1 1 auto; min-height: 0; overflow: hidden auto; display: flex; flex-direction: column; gap: var(--sp-sm); }
-.sec-body > textarea.desc { flex: 1 1 auto; min-height: 36px; resize: none; }
+.sec-body > textarea.desc { flex: 1 1 auto; min-height: 36px; resize: none; field-sizing: content; }
 .sec-fold { display: flex; align-items: center; gap: var(--sp-xs); padding: 0; border: 0; border-radius: 0; background: none;
   font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; cursor: pointer; }
 .sec-fold:hover { background: none; color: var(--ink); }
@@ -61,11 +63,11 @@
 .side .opens .btn { flex: 1; }
 .btn.sm, .side .opens .btn { padding: var(--sp-sm) var(--sp-lg); border-radius: var(--r-sm); font-size: var(--text-sm); font-weight: var(--w-medium); }
 .side .addlink { display: flex; gap: var(--sp-md); align-items: center; }
-.side .addlink .fld { padding: var(--sp-sm) var(--sp-lg); }
+.side .addlink .fld { padding: var(--sp-sm) var(--sp-lg); font-size: var(--text-md); }
 .side .addlink .btn { flex: none; }
-.side-profile { position: relative; display: flex; gap: var(--sp-md); align-items: center; }
+.side-profile { display: flex; gap: var(--sp-md); align-items: center; }
 .side .side-profile .fld { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-md); min-width: 0;
-  padding: var(--sp-sm) var(--sp-lg); text-align: left; cursor: pointer; transition: background var(--dur-fast) var(--ease); }
+  padding: var(--sp-sm) var(--sp-lg); font-size: var(--text-md); text-align: left; cursor: pointer; transition: background var(--dur-fast) var(--ease); }
 .side .side-profile .fld:hover { background: var(--fill-2); }
 .side .side-profile .fld[data-none="true"] { color: var(--ink-3); }
 .side-profile .fld span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

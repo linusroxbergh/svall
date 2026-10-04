@@ -7,8 +7,8 @@ import type { Section as Fold } from './store/index.js';
 import { useWidthGrip } from './widthGrip.js';
 
 const OPEN: Fold = {};
-// how short a section can be squeezed; one whose floor is its content cannot be squeezed at all
-const floor = (sec: HTMLElement) => { const m = getComputedStyle(sec).minHeight; return m === 'auto' ? sec.offsetHeight : parseFloat(m) || 0; };
+// how short a section can be squeezed; an empty one is only its title
+const floor = (sec: HTMLElement) => { const m = getComputedStyle(sec).minHeight; return m === 'auto' ? (sec.firstElementChild as HTMLElement).offsetHeight : parseFloat(m) || 0; };
 
 // the most a section can grow to at the press: the free room and what the fitted sections can give up; a pinned one keeps its height
 function room(sec: HTMLElement): number {
@@ -30,6 +30,8 @@ export function Section({ name, title, head, testid, children }: { name: string;
     range.current = { min: floor(sec), max: room(sec) };
     return sec.offsetHeight;
   }, (from, dy) => {
+    // a press that hardly moves leaves a fitted section fitted
+    if (now().height === undefined && Math.abs(dy) < 3) return;
     const { min, max } = range.current;
     set({ ...now(), height: Math.round(Math.max(min, Math.min(max, from + dy))) }, false);
   }, () => set(now()), 'y');

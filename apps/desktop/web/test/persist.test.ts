@@ -113,6 +113,8 @@ describe('localAppStorage', () => {
     expect(s.getFilesTree()).toBeUndefined();
     expect(s.getSections()).toBeUndefined();
     expect(s.getSettings()).toBeUndefined();
+    mem.setItem('svall.side.sections', '{"character.note":{"height":-5},"island.docs":{"height":1e400}}');
+    expect(store().getSections()).toBeUndefined();
   });
 
   it('carries on when the store is full', () => {

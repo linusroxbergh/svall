@@ -77,7 +77,7 @@ const isTree = (v: unknown): v is FilesTree =>
   typeof v === 'object' && v !== null && typeof (v as FilesTree).open === 'boolean' && ['number', 'undefined'].includes(typeof (v as FilesTree).width);
 const isSections = (v: unknown): v is Sections =>
   typeof v === 'object' && v !== null && Object.values(v).every((x: Section) => typeof x === 'object' && x !== null
-    && ['boolean', 'undefined'].includes(typeof x.shut) && ['number', 'undefined'].includes(typeof x.height));
+    && ['boolean', 'undefined'].includes(typeof x.shut) && (x.height === undefined || (Number.isFinite(x.height) && x.height > 0)));
 
 // every fleet's window shares one localStorage, so a fleet keeps its keys under its home and reads
 // the unscoped key until it has written its own
