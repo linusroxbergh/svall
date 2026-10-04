@@ -1502,6 +1502,20 @@ runIf('Fleet', () => {
     expect(fs.existsSync(path.join(b.home, `${c.id}.prompt`))).toBe(false);
   });
 
+  it('resumes an opencode character a restart cut off mid-turn, its plugin submitting what was lost', async () => {
+    vi.stubEnv('PATH', `${path.join(import.meta.dirname, 'fixtures/bin')}:${process.env.PATH}`);
+    cleanup.push(async () => { vi.unstubAllEnvs(); });
+    const b = await boot();
+    const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'opencode' }).id, cwd: '/tmp', command: 'opencode', run: 'first' });
+    await waitFor(() => b.store.state.characters[c.id].agent?.status === 'done');
+    b.store.update((d) => { d.characters[c.id].agent!.status = 'working'; markDormant(d.characters[c.id]); });
+    await b.tmux.killWindow(c.tmux!.windowId);
+    expect(b.store.state.characters[c.id].revive).toEqual({ command: `opencode -s ${OSID}`, interrupted: true });
+    await b.fleet.resumeInterrupted();
+    await waitFor(() => b.fleet.readPrompts(c.id, 5).length === 2);
+    expect(b.fleet.readPrompts(c.id, 5)[0]).toBe(RESUME_NOTE);
+  });
+
   it('refuses a cwd that is relative or not a directory before any window opens', async () => {
     const { fleet, store, tmux, home } = await boot();
     const islandId = fleet.createIsland({ name: 'x' }).id;
