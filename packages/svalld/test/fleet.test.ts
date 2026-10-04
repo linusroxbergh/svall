@@ -1491,7 +1491,7 @@ runIf('Fleet', () => {
     const b = await boot();
     const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'opencode' }).id, cwd: '/tmp', command: 'opencode', run: 'first' });
     await waitFor(() => b.store.state.characters[c.id].agent?.status === 'done');
-    // dormant before the kill, as svalld ends an agent, so the SessionEnd the plugin sends on its way out clears nothing
+    // dormant before the kill, as svalld ends an agent, so its revive is set at once
     b.store.update((d) => { markDormant(d.characters[c.id]); });
     await b.tmux.killWindow(c.tmux!.windowId);
     expect(b.store.state.characters[c.id].revive?.command).toBe(`opencode -s ${OSID}`);

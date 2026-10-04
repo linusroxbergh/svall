@@ -346,10 +346,11 @@ Its `config.json` takes:
 | `defaultCwd` | Where a new character starts when no character beside it gives it a directory (default `~`). Set by the setup screen's projects folder or `svall setup --projects`. |
 | `shell` | The shell a terminal runs, if not your login shell. |
 | `linear` | `{ "workspace": "acme", "teamKeys": ["ENG"] }` links a branch named after a Linear issue to that issue. |
-| `mainAgent` | `claude` or `codex`: what the scribe, mission control's crew and `svall char new --run` run by default. Absent, the private fleet's, else the only CLI installed, else `claude`. Set from the app or with `svall agent <name>`. |
-| `integrations` | The private fleet's list of agents, `claude` and `codex`, whose hooks setup installs. Absent, every agent found. Set by the setup screen or `svall setup --agents`. |
-| `home` | Mission control: `cwd` for its crew, the `command` that starts an agent (default the main agent's: `claude --model sonnet`, or `codex`), and `actions`, one `{ "label", "prompt" }` per button. A button's `/name` prompt reaches a Codex crew as `$name`. |
-| `scribe` | `agent` (default the main agent) and `model`, a model of `agent`'s CLI, or of Claude's when `agent` is unset (default `sonnet` for Claude, Codex's own for Codex). |
+| `mainAgent` | `claude`, `codex` or `opencode`: what the scribe, mission control's crew and `svall char new --run` run by default. Absent, the private fleet's, else `claude` when it is installed or no CLI is, else the first CLI found. Set from the app or with `svall agent <name>`. |
+| `agentsOff` | The agents the private fleet's setup leaves off, writing no hooks or plugin for them. Every other agent found is on. Set by the setup screen or `svall setup --agents`. |
+| `integrations` | The agents left on, of `claude` and `codex`, read when there is no `agentsOff`; `opencode` counts as on. Setup replaces it with `agentsOff`. |
+| `home` | Mission control: `cwd` for its crew, the `command` that starts an agent (default the main agent's: `claude --model sonnet`, `codex` or `opencode`), and `actions`, one `{ "label", "prompt" }` per button. A button's `/name` prompt reaches a Codex crew as `$name`. |
+| `scribe` | `agent` (default the main agent) and `model`, a model of `agent`'s CLI, or of Claude's when `agent` is unset (default `sonnet` for Claude, the CLI's own for Codex and OpenCode). |
 | `mobile` | `logins` to let in (only yours when empty), extra page `origins` allowed to open a socket, a `pushContact` (https: or mailto:) for push services, and the `httpsPort` it is served on, which Svall saves. |
 
 - The daemon reads `config.json` when it starts. To restart the private

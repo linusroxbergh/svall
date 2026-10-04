@@ -158,7 +158,7 @@ function daemonNode(t: Target, d: DoctorDeps): Check {
 }
 
 // launchd runs the plist's program with only the plist's PATH, and logs nothing to svalld.log when it cannot:
-// a checkout or app moved or deleted since setup, or a claude or codex installed since outside that PATH
+// a checkout or app moved or deleted since setup, or an agent CLI installed since outside that PATH
 function daemonPath(t: Target, d: DoctorDeps): Check {
   if (!t.managed) return { name: 'daemon path', status: 'skip', detail: 'not managed' };
   const { plist, fix } = plistOf(t, d);
@@ -171,7 +171,7 @@ function daemonPath(t: Target, d: DoctorDeps): Check {
   const lacks = AGENT_KINDS.map((k) => AGENTS[k].bin).filter((bin) => finds(d.pathEnv.split(':'), bin) && !finds(run.path, bin));
   return lacks.length
     ? { name: 'daemon path', status: 'warn', detail: `the PATH in ${plist} has no ${lacks.join(' or ')}, which this shell finds: ${fix}` }
-    : { name: 'daemon path', status: 'ok', detail: 'its program is there, and it finds claude and codex as this shell does' };
+    : { name: 'daemon path', status: 'ok', detail: 'its program is there, and it finds the agent CLIs as this shell does' };
 }
 
 // launchd gives svalld only the plist's environment, which setup took from the shell it ran in

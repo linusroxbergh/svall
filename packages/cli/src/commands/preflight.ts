@@ -60,8 +60,7 @@ async function agentCheck(d: PreflightDeps, kind: AgentKind, version: string | E
   }
   if (version instanceof Error) return { name: kind, status: 'warn', detail: firstLine(version.message) };
   if (!versionOk(a, version)) {
-    const [x, y] = a.minVersion!;
-    return { name: kind, status: 'warn', detail: `${version}: Svall needs ${x}.${y} or newer; update ${a.label}` };
+    return { name: kind, status: 'warn', detail: `${version}: Svall needs ${a.minVersion!.join('.')} or newer; update ${a.label}` };
   }
   try {
     // the fleet's API keys ride along, as they do into a character's shell

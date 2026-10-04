@@ -19,9 +19,9 @@ export const Config = z.object({
   // the agent the scribe, mission control's crew and `svall char new --run` use by default; absent, the private fleet's, else
   // claude, unless only other agents are installed
   mainAgent: AgentKind.optional(),
-  // the agents setup leaves alone, so one Svall supports from a later release on is on
+  // the agents setup turned off; any other agent found is on
   agentsOff: z.array(AgentKind).optional(),
-  // the agents whose hooks setup installs; absent, every agent found. Read from agentsOff, or from the list setup saved before it
+  // the agents whose hooks setup installs; absent, every agent found. Read from agentsOff, else from an integrations list
   integrations: z.array(AgentKind).optional(),
   // which plan a scribe pass spends; absent, the main agent's. model names a model of scribe.agent's CLI, else of claude's
   scribe: z.object({ agent: AgentKind.optional(), model: z.string().optional() }).prefault({}),
@@ -43,8 +43,8 @@ export const scribeModel = (s: Config['scribe'], agent: AgentKind): string | und
 
 export class InvalidConfig extends Error {}
 
-// the agents an integrations list setup saved could name
-const LISTED_BEFORE: AgentKind[] = ['claude', 'codex'];
+// an integrations list in config.json leaves any agent but these on
+const LISTED: AgentKind[] = ['claude', 'codex'];
 
 /** The main agent of the fleet at `home`, whose own config names `own`: absent, the private fleet's, which setup switches
  *  when the user turns one off. */
@@ -64,7 +64,7 @@ export function parseConfig(text: string, file: string): Config {
   try {
     const c = Config.parse(JSON.parse(text));
     const integrations = c.agentsOff ? AgentKind.options.filter((k) => !c.agentsOff!.includes(k))
-      : c.integrations && AgentKind.options.filter((k) => c.integrations!.includes(k) || !LISTED_BEFORE.includes(k));
+      : c.integrations && AgentKind.options.filter((k) => c.integrations!.includes(k) || !LISTED.includes(k));
     return { ...c, integrations };
   } catch (err) {
     const why = err instanceof z.ZodError
@@ -89,7 +89,7 @@ export function saveConfig(file: string, patch: Partial<Pick<Config, 'mainAgent'
   const mode = there ? fs.statSync(real).mode & 0o777 : undefined;
   const { integrations, ...rest } = patch;
   const json = JSON.parse(text) as { mobile?: object; integrations?: unknown };
-  // integrations are saved as the agents left off, in place of the list setup saved before
+  // integrations are saved as agentsOff, which replaces an integrations list
   if (integrations) delete json.integrations;
   const off = integrations && { agentsOff: AgentKind.options.filter((k) => !integrations.includes(k)) };
   // mobile is merged a level down, so a saved port keeps the logins beside it
