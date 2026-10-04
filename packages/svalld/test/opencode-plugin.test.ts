@@ -142,6 +142,20 @@ describe('the OpenCode plugin', () => {
     }
   });
 
+  it('reads a resumed session given as --session=<id>', async () => {
+    fs.writeFileSync(path.join(home, 'c_1.prompt'), 'wake up');
+    const argv = process.argv;
+    process.argv = [...argv, `--session=${SID}`];
+    const c = client();
+    try {
+      await load(c);
+      await waitFor(() => c.session.promptAsync.mock.calls.length === 1);
+      expect(names()).toEqual(['SessionStart']);
+    } finally {
+      process.argv = argv;
+    }
+  });
+
   it("keeps the character blocked while a subagent's question is open, though another subagent runs tools meanwhile", async () => {
     const OTHER = 'ses_0f3a5b7c9d20AbCdEfGhIjKlMn';
     const h = await load(client({ [CHILD]: SID, [OTHER]: SID }));

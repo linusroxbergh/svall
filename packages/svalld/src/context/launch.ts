@@ -2,9 +2,12 @@ import path from 'node:path';
 import type { AgentKind, ContextItem } from '@svall/protocol';
 import { shq } from '../text.js';
 
-// the agent a command starts, as config.json may write it with a stray leading space, past the folder access an OpenCode launch sets
+// the folder access an OpenCode launch sets ahead of its command
+const ACCESS = /^\s*OPENCODE_PERMISSION='(?:[^']|'\\'')*'\s+/;
+
+// the agent a command starts, as config.json may write it with a stray leading space
 export const agentKindOf = (command: string): AgentKind | undefined =>
-  /^\s*(?:OPENCODE_PERMISSION='(?:[^']|'\\'')*'\s+)?(claude|codex|opencode)(\s|$)/.exec(command)?.[1] as AgentKind | undefined;
+  /^\s*(claude|codex|opencode)(\s|$)/.exec(command.replace(ACCESS, ''))?.[1] as AgentKind | undefined;
 
 export const isAgentCommand = (command: string): boolean => agentKindOf(command) !== undefined;
 
@@ -15,7 +18,8 @@ export function withAddDirs(command: string, items: ContextItem[]): string {
   const dirs = [...new Set(items.flatMap((it) => (it.kind === 'folder' ? [it.ref] : it.kind === 'file' ? [path.dirname(it.ref)] : [])))];
   if (!kind || !dirs.length) return command;
   if (kind === 'opencode') {
-    const rules = Object.fromEntries(dirs.map((d) => [`${d}/*`, 'allow']));
+    // OpenCode reads * and ? in a rule as wildcards, with no way to escape one, so such a folder is left to ask
+    const rules = Object.fromEntries(dirs.filter((d) => !/[*?]/.test(d)).map((d) => [path.join(path.resolve(d), '*'), 'allow']));
     return `OPENCODE_PERMISSION=${shq(JSON.stringify({ external_directory: rules }))} ${command}`;
   }
   return dirs.reduce((cmd, d) => `${cmd} --add-dir ${shq(d)}`, command);
@@ -30,5 +34,5 @@ export const promptText = (command: string, prompt: string): string =>
 export function withPromptFile(command: string, file: string): string {
   const read = `"$(cat ${shq(file)}; rm -f ${shq(file)})"`;
   if (agentKindOf(command) !== 'opencode') return `${command} -- ${read}`;
-  return /\s(-s|--session)(\s|=)/.test(command) ? command : `${command} --prompt ${read}`;
+  return /\s(-s|--session)(\s|=)/.test(command.replace(ACCESS, '')) ? command : `${command} --prompt ${read}`;
 }

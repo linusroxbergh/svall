@@ -29,6 +29,11 @@ describe('withAddDirs for opencode', () => {
     expect(withAddDirs('opencode', [])).toBe('opencode');
     expect(withPromptFile(withAddDirs('opencode', [item('folder', '/a')]), '/h/p')).toContain(' opencode --prompt "$(cat');
   });
+  it('allows a folder by its resolved path, leaves one named with a wildcard to ask, and reads no flag in a folder name', () => {
+    expect(withAddDirs('opencode', [item('folder', '/a/b/'), item('folder', '/c/*'), item('folder', '/d/e?')]))
+      .toBe(`OPENCODE_PERMISSION='{"external_directory":{"/a/b/*":"allow"}}' opencode`);
+    expect(withPromptFile(withAddDirs('opencode', [item('folder', '/notes -s draft')]), '/h/p')).toContain(' opencode --prompt "$(cat');
+  });
 });
 
 describe('promptText', () => {
