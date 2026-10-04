@@ -19,6 +19,8 @@ import { Store } from '../src/store.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { ControlClient } from '../src/tmux/control.js';
 import { SESSION, Tmux } from '../src/tmux/tmux.js';
+
+const OSID = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
 import { cleanHomes, hasTmux, makeHome, waitFor, waitForPolls } from './helpers.js';
 
 const runIf = hasTmux() ? describe : describe.skip;
@@ -1439,6 +1441,36 @@ runIf('Fleet', () => {
     expect(b.store.state.characters[c.id].agent).toMatchObject({ kind: 'codex', model: 'gpt-fake' });
     expect(b.fleet.readPrompts(c.id, 5)).toEqual(['fix the flaky test']);
     expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-codex', `${c.id}.argv`), 'utf8'))).toEqual(['--', 'fix the flaky test']);
+  });
+
+  it('hands opencode its first prompt with --prompt and follows its plugin', async () => {
+    vi.stubEnv('PATH', `${path.join(import.meta.dirname, 'fixtures/bin')}:${process.env.PATH}`);
+    cleanup.push(async () => { vi.unstubAllEnvs(); });
+    const b = await boot();
+    const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'opencode' }).id, cwd: '/tmp', command: 'opencode', run: 'fix the flaky test' });
+    expect(c.runSent).toBe(true);
+    await waitFor(() => b.store.state.characters[c.id].agent?.status === 'done');
+    const agent = b.store.state.characters[c.id].agent!;
+    expect(agent).toMatchObject({ kind: 'opencode', sessionId: OSID, contextPct: 10, model: 'big-pickle' });
+    expect(b.fleet.readPrompts(c.id, 5)).toEqual(['fix the flaky test']);
+    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-opencode', `${c.id}.argv`), 'utf8'))).toEqual(['--prompt', 'fix the flaky test']);
+    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-opencode', `${c.id}.system`), 'utf8'))).toEqual([agent.brief]);
+  });
+
+  it('wakes a dormant opencode character with a prompt its plugin submits', async () => {
+    vi.stubEnv('PATH', `${path.join(import.meta.dirname, 'fixtures/bin')}:${process.env.PATH}`);
+    cleanup.push(async () => { vi.unstubAllEnvs(); });
+    const b = await boot();
+    const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'opencode' }).id, cwd: '/tmp', command: 'opencode', run: 'first' });
+    await waitFor(() => b.store.state.characters[c.id].agent?.status === 'done');
+    await b.tmux.killWindow(c.tmux!.windowId);
+    await waitFor(() => b.store.state.characters[c.id].tmux === undefined);
+    expect(b.store.state.characters[c.id].revive?.command).toBe(`opencode -s ${OSID}`);
+    await b.fleet.run(c.id, 'second', true);
+    await waitFor(() => b.fleet.readPrompts(c.id, 5).length === 2);
+    expect(b.fleet.readPrompts(c.id, 5)).toEqual(['second', 'first']);
+    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-opencode', `${c.id}.argv`), 'utf8'))).toEqual(['-s', OSID]);
+    expect(fs.existsSync(path.join(b.home, `${c.id}.prompt`))).toBe(false);
   });
 
   it('refuses a cwd that is relative or not a directory before any window opens', async () => {
