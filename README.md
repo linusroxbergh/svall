@@ -12,22 +12,24 @@ you or done.
 - Islands group your characters, say one per project, on a map or a board.
   Each card shows its agent's status, context use, model and links such as its
   PR and ticket.
-- Each terminal is a tmux window. Quitting the app stops them all; opening a
-  character again resumes its session with `claude --resume` or `codex resume`.
-- Context carries over. Give an island or character instructions, links, files
-  or folders, and agents leave notes for the next agent. Each session starts
-  with a short brief of all of it, plus its repository, PR and ticket, and gets
+- Each terminal is a tmux window. Quitting a fleet's window stops its
+  terminals; opening a character again resumes its session with
+  `claude --resume` or `codex resume`.
+- Give an island or character instructions, links, files or folders, and
+  agents leave notes for the next agent. Each session starts with a short brief
+  of all of it, plus its repository, PR and ticket, and gets
   a diff when any of it changes. The brief also tells the agent when to hand
   work to a new character.
-- Resources lists the instructions, skills, MCP servers, plugins and hooks
-  that Claude Code and Codex give your agents, and opens each in an editor.
+- Resources lists the instructions, skills, subagents, commands, MCP servers,
+  plugins, hooks and settings that Claude Code and Codex give your agents, and
+  opens each in an editor.
 - Every terminal has a browser, a file editor and the working tree's changes
   beside it.
 - The scribe names each character and keeps its note up to date.
 - Mission control's buttons start a helper agent that updates or reports on
   the fleet.
-- A macOS banner tells you when an agent is blocked or done, with Approve and
-  Deny on it.
+- A macOS banner tells you when an agent is blocked or done. A blocked one has
+  Approve and Deny on it.
 - Your phone gets the fleet and any terminal over Tailscale, with push
   notifications.
 - The `svall` CLI scripts the fleet: make characters, send prompts, wait for
@@ -51,13 +53,12 @@ CLIs.
 
    The script installs to `/Applications`, or `~/Applications` when that isn't
    writable, or `$SVALL_INSTALL_DIR`. It checks the download's checksum,
-   developer signature and Apple notarization, then opens the app. Interrupted
-   replacements restore the previous app when the installer is stopped normally.
+   developer signature and Apple notarization, then opens the app.
 
 3. Open Svall. The setup screen lists the agents it found and asks for your
-   projects folder. **Review changes** lists the files it will write. If
-   an agent is missing, install it in Terminal; Svall checks again when you return.
-   Its hooks do nothing outside Svall;
+   projects folder. **Review changes** lists the files it will write. If it
+   finds neither CLI, it shows how to install one and checks again when you
+   return. Its hooks do nothing outside Svall;
    [What setup changes](#what-setup-changes) has the details. If
    `~/.local/bin` isn't on your PATH, it shows the line to add to your shell
    profile so the `svall` command works.
@@ -85,10 +86,10 @@ fleet's `.env` (another fleet's is `~/.svall-<fleet>/.env`):
 
 Add `ANTHROPIC_API_KEY=your-key` on its own line, and keep the key out of this
 repository and your shell history. New character shells and the Claude scribe
-read it, and it signs Claude Code in; `svall doctor` reports it. A shell that is
-already running keeps its old environment, so after changing the file, create a
-new character or revive a dormant one. Claude Code may ask once before it uses
-the key; see its
+read it, and it signs Claude Code in; `svall doctor` shows whether it did. A
+shell that is already running keeps its old environment, so after changing the
+file, create a new character or revive a dormant one. Claude Code may ask once
+before it uses the key; see its
 [environment variable reference](https://code.claude.com/docs/en/env-vars).
 
 For Codex, sign the CLI in with an
@@ -103,24 +104,24 @@ Codex doesn't log in from it. See the
 [Codex authentication guide](https://learn.chatgpt.com/docs/auth).
 
 The scribe and mission control run the main agent's CLI, so a Codex-only
-install needs no Claude login. The Usage panel shows Claude's subscription
+install needs no Claude login. The Usage panel shows Claude and Codex plan
 limits, not API spending.
 
 ### Updating
 
 Svall checks for updates on its own. When one is out, the private fleet's window
 shows a blue dot on the sidebar's Settings button, and Settings ends with an
-Update button. Svall → Check for Updates… checks now. Installing quits every
-Svall window, which stops each fleet; a character picks up where it left off
-when you open it.
+Update button. In that window, Svall → Check for Updates… checks now. Installing
+quits every Svall window, which stops each fleet; a character picks up where it
+left off when you open it.
 
 ### Uninstalling
 
 Svall → Uninstall Svall… stops every fleet and its tmux server, removes the
 hooks (your own statusline stays), the launchd agents, the `svall` command and
 each fleet's phone link, and moves the app to the Trash. The settings backups
-stay. "Also delete fleet data" also deletes `~/.svall`, the other fleets' homes
-and the app's preferences, sign-ins and caches in `~/Library`.
+stay. With "Also delete fleet data" ticked, it deletes `~/.svall`, the other
+fleets' homes and the app's preferences, sign-ins and caches in `~/Library` too.
 
 `svall uninstall` does the same from a terminal, but deletes the app instead of
 moving it to the Trash, and asks before deleting it or the fleets. `--purge`
@@ -171,8 +172,12 @@ newer. An Intel Mac also needs Xcode; see
        pnpm desktop:install
 
    The installer lists anything missing before it builds. Without admin rights,
-   run `SVALL_APP_DEST=~/Applications pnpm desktop:install` instead. If your
-   shell can't find `svall-dev` afterwards, add `~/.local/bin` to your PATH:
+   run this instead:
+
+       mkdir -p ~/Applications && SVALL_APP_DEST=~/Applications pnpm desktop:install
+
+   If your shell can't find `svall-dev` afterwards, add `~/.local/bin` to your
+   PATH:
 
        echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc   # then open a new terminal
 
@@ -181,7 +186,7 @@ newer. An Intel Mac also needs Xcode; see
 
 `svall-dev` and the daemon run from the clone, so run `pnpm desktop:install`
 again after moving it. Run `svall-dev uninstall` before you delete the clone, or
-its launchd agents stay behind.
+its hooks, command and launchd agents stay behind.
 
 ### Updating Svall Dev
 
@@ -201,43 +206,44 @@ newer from the App Store. Open Xcode once to accept its license, then run:
     xcodebuild -downloadComponent MetalToolchain
     brew install zig@0.15
 
-The first build takes several minutes and about 1.2 GB of disk.
+The first build takes several minutes and about 1.5 GB of disk.
 
 ## Concepts
 
 - **Fleet**: one daemon, one tmux server, one window. `svall` opens the
   private fleet, and `svall work` opens a separate fleet named `work`, offering
-  to create it the first time. File → Open Fleet… (Cmd+Shift+O) does the same from the
-  app, and Settings renames a fleet.
+  to create it the first time. File → Open Fleet… (Cmd+Shift+O) does the same
+  from the app, and Settings renames a fleet.
 - **Island**: a group of characters. Mission control is the fixed one at the
   bottom.
 - **Character**: one terminal. Type `claude` or `codex` in it and the map
   tracks the agent: `working`, `idle`, `blocked` (waiting on you) or `done`.
-  An agent left idle for 12 hours is closed to free its memory and resumes
+  An agent idle or done for 12 hours is closed to free its memory and resumes
   when you open its terminal; Settings → close idle agents after changes the
   wait or turns it off.
 - **Scribe**: a minute after an agent stops with new work, and about every ten
   minutes while it keeps working, a headless `claude -p` or `codex exec` writes
-  the character's name, note and links, and the island's description. Names
-  and notes you wrote stay. Passes start at most once a minute, so a busy fleet
-  can run 60 an hour, and each costs money on an API key. A new fleet asks
-  before turning the scribe on, and you can turn it off in Settings.
+  the character's name, note and links, and the island's description. Notes
+  you wrote stay, and a name you gave only gains a PR or ticket id. Passes
+  start at most once a minute, so a busy fleet can run 60 an hour, and each
+  costs money on an API key. A new fleet asks before turning the scribe on, and
+  you can turn it off in Settings.
 
 ## The desktop app
 
 - **Map**: double-click a card to open its terminal; Cmd+Enter switches
-  between half and full size. Drag cards between islands, or onto water to make
-  a new island. Drag an island's label to move it and its corner to resize it.
-  On mission control, `arrange` packs the fleet into the window, and the other
-  buttons start a helper agent on the main agent's usage.
+  between half and full size. Drag cards between islands, onto another card to
+  swap them, or onto water to make a new island. Drag an island's label to move
+  it and its corner to resize it. On mission control, `arrange` packs the fleet
+  into the window, and `update info` and `status` start a helper agent.
 - **Board** (Cmd+M): islands as a folder tree, with the selected character's
-  terminal beside it. Drag a character onto an island to move it, or onto
-  another character to swap them.
+  terminal beside it. Drag characters and islands to move or reorder them.
 - **Side card** (Cmd+I): the character's note, agent profile, instructions,
   context, docs, last prompts, model, directory and context use.
-- **Browser** (Cmd+2): tabs survive a relaunch, and the agent can read them.
-  Sign in once per fleet by importing Chrome's cookies, or fill logins from
-  1Password (Cmd+Shift+P; needs the 1Password CLI).
+- **Browser** (Cmd+2): tabs survive a relaunch, and the agent sees their
+  addresses. Sign in once per fleet by importing Chrome's cookies, or fill
+  logins from 1Password with Cmd+Shift+P once you turn it on in Settings and
+  install the 1Password CLI.
 - **Files** (Cmd+3): an editor for the character's directory. A file the agent
   rewrites reloads unless you have changed it.
 - **Changes** (Cmd+4): each file's diff against HEAD, or against the point
@@ -245,32 +251,33 @@ The first build takes several minutes and about 1.2 GB of disk.
 - **Resources** (Cmd+Shift+R, or the lighthouse islet): what `~/.claude`,
   `~/.codex`, the fleet's docs and each repository give your agents.
   `~/.claude.json` and `~/.codex/auth.json` hold tokens and never open.
-- **Settings** (Cmd+,): zoom, terminal opacity, scribe, notifications, phone,
-  browser and keyboard. `Usage`, next to it, shows your Claude plan's session
-  and weekly limits without using any.
+- **Settings** (Cmd+,): display, browser, keyboard, notifications, phone, and
+  the fleet's name, main agent, scribe and idle timeout. `Usage`, next to it,
+  shows the plan limits of your running agents without using any.
 
 ### Keyboard
 
-Terminals are Ghostty surfaces and read `~/.config/ghostty/config`. The app
-takes the chords below and passes everything else to the terminal. Rebind or
-clear any of them under *The keyboard* in Settings. A chord your Ghostty config
-binds stays with Ghostty until you claim it there.
+Terminals are Ghostty surfaces and read your Ghostty config. The app takes the
+chords below and passes everything else to the terminal. Rebind or clear any of
+them under *The keyboard* in Settings. A chord your Ghostty config binds when
+Svall first launches stays with Ghostty until you claim it there.
 
 | Keys | Action | Keys | Action |
 | --- | --- | --- | --- |
-| Cmd+T | New character | Cmd+W | Close it (asks first) |
+| Cmd+T | New character | Cmd+W | Close the card or character |
 | Cmd+J | Next character | Cmd+K | Previous character |
 | Cmd+Shift+J | Next island | Cmd+M | Map or board |
 | Cmd+I | Side card | Cmd+Enter | Card size |
 | Cmd+1 to 4 | Terminal, browser, files, changes | Cmd+B | Browser beside the terminal |
-| Cmd+L | Address bar | Cmd+G | Mission control |
+| Cmd+L | Address bar | Cmd+G | Prompt mission control |
 | Cmd+Shift+R | Resources | Cmd+Shift+P | Fill a login from 1Password |
 | Cmd+, | Settings | Cmd+- / = / 0 | Zoom |
 | Cmd+Shift+A | Arrange the fleet | Cmd+U | First link beside the terminal |
+| Cmd+Shift+O | Open a fleet | Cmd+Q | Quit |
 
-Ctrl+click opens a link in the character's browser, and selecting text copies
-it. Terminals attach to tmux, so Ghostty's `initial-command` and `input` are
-ignored.
+Ctrl+click on a link asks whether to open it in the character's browser or
+yours, and selecting text copies it. Terminals attach to tmux, so Ghostty's
+`initial-command` and `input` are ignored.
 
 ## The `svall` CLI
 
@@ -281,19 +288,19 @@ ignored.
     svall char wait <id> --until done,blocked     # exits 0 on a match, 2 on timeout, 3 when gone
     svall char read <id> --transcript --lines 20
     svall char revive <id>                        # a dormant character, resumed
-    svall char show <id>                          # everything, and the brief its agent gets
+    svall char show <id>                          # the brief its agent gets
 
 - A name works wherever an id does. `--json` prints machine-readable output,
   `-p <fleet>` targets another fleet, and `--term 2` a split character's second
   terminal.
-- `--instructions` on an island or character is for the agent only, such as
-  "merge without asking".
+- `island create`, `island update` and `char update` take `--instructions`,
+  for the agent only, such as "merge without asking", and
+  `--context "<url or ~/path>[ label]"`, which sets the links, files or folders
+  it gets; `--pin <ref>` marks one to read first.
 - `--agent-profile <name>` gives a character's agent a role from the fleet's
   `agent-profiles` folder. Six ship with a new fleet (architect, debugger,
   explorer, planner, reviewer, verifier); edit them or add your own in
   Resources.
-- `--context "<url or path>[ label]"` attaches links, files or folders, and
-  `--pin` marks one to read first.
 - `svall <command> --help` lists the rest.
 
 ## Phone
@@ -326,15 +333,15 @@ Its `config.json` takes:
 
 | Key | What it does |
 | --- | --- |
-| `name` | What the window title and `svall <name>` call the fleet: lowercase letters, digits and dashes, starting with a letter, and not an `svall` command. Absent, the directory names it. Set from Settings. |
-| `port`, `host` | Where the daemon listens, `47800` on `127.0.0.1` by default. Any address off loopback sends the API token in plain text. |
+| `name` | What the window title and `svall <name>` call the fleet: lowercase letters, digits and dashes, starting with a letter, not an `svall` command, and not `dev` or `dev-…`. Absent, the directory names it. Set from Settings. |
+| `port`, `host` | Where the daemon listens: `127.0.0.1`, on `47800` for the private fleet and any free port for the others. Any address off loopback sends the API token in plain text. |
 | `defaultCwd` | Where a new character starts when no character beside it gives it a directory (default `~`). Set by the setup screen's projects folder or `svall setup --projects`. |
 | `shell` | The shell a terminal runs, if not your login shell. |
 | `linear` | `{ "workspace": "acme", "teamKeys": ["ENG"] }` links a branch named after a Linear issue to that issue. |
 | `mainAgent` | `claude` or `codex`: what the scribe, mission control's crew and `svall char new --run` run by default. Absent, the private fleet's, else the only CLI installed, else `claude`. Set from the app or with `svall agent <name>`. |
 | `integrations` | The private fleet's list of agents, `claude` and `codex`, whose hooks setup installs. Absent, every agent found. Set by the setup screen or `svall setup --agents`. |
 | `home` | Mission control: `cwd` for its crew, the `command` that starts an agent (default the main agent's: `claude --model sonnet`, or `codex`), and `actions`, one `{ "label", "prompt" }` per button. A button's `/name` prompt reaches a Codex crew as `$name`. |
-| `scribe` | `agent` (default the main agent) and `model`, a model of `agent`'s CLI, or of Claude's when `agent` is unset (default `sonnet`). |
+| `scribe` | `agent` (default the main agent) and `model`, a model of `agent`'s CLI, or of Claude's when `agent` is unset (default `sonnet` for Claude, Codex's own for Codex). |
 | `mobile` | `logins` to let in (only yours when empty), extra page `origins` allowed to open a socket, a `pushContact` (https: or mailto:) for push services, and the `httpsPort` it is served on, which Svall saves. |
 
 - The daemon reads `config.json` when it starts. To restart the private
@@ -343,12 +350,12 @@ Its `config.json` takes:
   adding `.<name>` for another fleet. While the file doesn't parse, the daemon
   logs why and waits for it to change; `svall doctor` shows the error too.
 - Mission control's folder, `~/.svall/home`, is shared by every fleet and
-  rewritten on each daemon start, apart from `CLAUDE.md` and
-  `.claude/settings.json`, which are yours to edit. A Codex crew reads your
-  `CLAUDE.md` through the `AGENTS.md` built from it. The skills behind the
-  buttons live there too; list `/svall-organise` or `/svall-rename` in
-  `home.actions` to give them a button. Claude Code and Codex each ask once
-  whether to trust the folder.
+  rewritten on each daemon start, apart from `CLAUDE.md`, which is yours, and
+  `.claude/settings.json`, which only `svall setup` resets, keeping a `.bak`
+  copy. A Codex crew reads your `CLAUDE.md` through the `AGENTS.md` built from
+  it. The skills behind the buttons live there too; list `/svall-organise` or
+  `/svall-rename` in `home.actions` to give them a button. Claude Code and
+  Codex each ask once whether to trust the folder.
 - The daemon runs under launchd, without your shell's environment. The fleet's
   `.env` gives the Claude scribe every value in it, and gives new character
   shells only `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`.
@@ -392,13 +399,15 @@ send:
 
 - The scribe sends the end of each agent's transcript to Claude or Codex on
   your login or API key, with the names, notes, links, directories and branches
-  of the character and its island.
+  of its island's characters, and the names of the fleet's other characters.
 - Mission control's buttons start the main agent, and the Usage panel asks
   Claude Code for your plan's limits. The Claude scribe and the Usage panel get
   every value in the fleet's `.env`.
 - For each character in a repository, the daemon runs `gh pr view` to find its
   branch's PR.
 - `svall mobile` serves the fleet to your tailnet with `tailscale serve`.
+- A character's browser starts on google.com, and `svall doctor` runs
+  `gh auth status`.
 - Svall checks `https://svall.dev/appcast.xml` for updates, which tells
   svall.dev your IP address and the version you run. Svall Dev doesn't.
 - Push notifications go through your phone's push service: Apple's, Google's
@@ -412,8 +421,9 @@ to every site the Chrome profile is signed in to.
 ## How it works
 
 - A daemon, `svalld`, runs each fleet while its window is open. It owns one
-  private tmux server with a window per character, drives it over a single
-  control-mode client and is the only writer of the fleet's `state.json`.
+  private tmux server holding every character's terminals, follows their output
+  over a single control-mode client and is the only writer of the fleet's
+  `state.json`.
 - The app, the CLI and the phone talk to the daemon over one loopback
   WebSocket: a full snapshot, then JSON-patch events. The app and the CLI
   present a token; the phone comes through `tailscale serve`, which vouches for
@@ -441,13 +451,6 @@ to every site the Chrome profile is signed in to.
 The first `pnpm e2e` needs
 `pnpm --filter @svall/desktop-web exec playwright install chromium`.
 
-Run `pnpm ghostty:publish` after committing a `vendor/ghostty` bump, then commit
-the `PINNED` and `SHA256` lines it prints into `scripts/ghostty-kit.sh`, or
-installs of that commit need Xcode: the installer downloads only the kit pinned
-there. When a change to `scripts/ghostty-build.sh` changes what it builds, also
-bump `REV` in `scripts/ghostty-kit.sh` before publishing. Publishing needs the
-Metal toolchain and zig.
-
 - `packages/protocol`: state types and message schemas (zod).
 - `packages/svalld`: the daemon (tmux, state, hooks, transcripts, API).
 - `packages/cli`: the `svall` client.
@@ -457,12 +460,5 @@ Metal toolchain and zig.
 
 ## License
 
-The code is MIT (`LICENSE`). The animal portraits in
-`apps/desktop/web/public/animals` and the lighthouse in
-`apps/desktop/web/public/resources` are Flaticon icons by Magnific under a
-Flaticon Premium licence, not MIT, and may not be redistributed: don't copy
-them out of this repository (see the `LICENSE` in each folder). The fonts in
-`apps/desktop/web/public/fonts` are SIL OFL 1.1 (`OFL.txt`), and Ghostty is
-MIT under its own notice (`apps/desktop/mac/LICENSE.ghostty`). `Svall.app`
-carries the licences of everything bundled in `Contents/Resources/Licenses`
-(`scripts/licenses.mjs`).
+MIT, see [`LICENSE`](LICENSE). The animal portraits, the lighthouse icon and
+the fonts are not MIT: each folder has its own licence file.
