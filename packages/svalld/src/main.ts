@@ -144,6 +144,7 @@ async function start(opts: Options): Promise<Daemon> {
     teardown.push(() => api.close());
     const hooks = await startHookReceiver(paths.hooksSock, (e) => fleet.onSocketEvent(e), log);
     teardown.push(() => hooks.close());
+    await fleet.resumeInterrupted();
     fs.writeFileSync(paths.port, String(api.port));
     // gone last: whoever waits for it to go may read state.json next
     teardown.unshift(() => fs.rmSync(paths.port, { force: true }));

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Agent, Character } from '@svall/protocol';
-import { drowsy, reviveCommand, runsInBackground, startFlags } from '../src/dormancy.js';
+import { drowsy, markDormant, reviveCommand, runsInBackground, startFlags } from '../src/dormancy.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
 const HOUR = 3_600_000;
@@ -116,5 +116,21 @@ describe('reviveCommand', () => {
     expect(reviveCommand(char({ agent: agent({ kind: 'codex' }) }), ['-m', "'gpt-5.5'"]))
       .toBe(`codex resume -c tui.resume_cwd=session -m 'gpt-5.5' ${SID}`);
     expect(reviveCommand(char())).toBe(`claude --resume ${SID}`);
+  });
+});
+
+describe('markDormant', () => {
+  it('marks an agent ended mid-turn or on a question interrupted, and one at rest not', () => {
+    for (const status of ['working', 'blocked'] as const) {
+      const c = char({ agent: agent({ status }) });
+      markDormant(c);
+      expect(c.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
+      expect(c.agent?.status).toBe('idle');
+    }
+    for (const status of ['idle', 'done'] as const) {
+      const c = char({ agent: agent({ status }) });
+      markDormant(c);
+      expect(c.revive).toEqual({ command: `claude --resume ${SID}` });
+    }
   });
 });
