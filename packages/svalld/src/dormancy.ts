@@ -19,12 +19,18 @@ export function reviveCommand(c: Character, flags: string[] = []): string {
   return [...words, c.agent.sessionId].join(' ');
 }
 
+// a resumed session sits at its prompt, and its subagents, background agents and commands died with the process
+export const RESUME_NOTE = 'A restart ended this session mid-turn. Subagents, background agents and background commands '
+  + 'you had running were stopped and will not report back. Check what they finished, rerun what is still needed, '
+  + 'and carry on with the task.';
+
 export function markDormant(c: Character, flags?: string[]): void {
   delete c.tmux;
   delete c.hint;
   c.revive = { command: reviveCommand(c, flags) };
   // nothing runs until the revive, so no question is left open and no turn goes on; a finished result stays
   if (c.agent && (c.agent.status === 'blocked' || c.agent.status === 'working')) {
+    if (c.revive.command) c.revive.interrupted = true;
     settle(c.agent, 'idle');
     delete c.agent.asking;
   }

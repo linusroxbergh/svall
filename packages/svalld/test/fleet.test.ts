@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SPACING, crewGrid, emptyState, isLand, landCells, sizeForCrew, type AgentKind, type FleetState } from '@svall/protocol';
 import { Config } from '../src/config.js';
 import { docsDir } from '../src/docs.js';
-import type { Proc } from '../src/dormancy.js';
+import { RESUME_NOTE, type Proc } from '../src/dormancy.js';
 import { Dormant, Invalid, NotFound } from '../src/errors.js';
 import { Fleet } from '../src/fleet.js';
 import { startHookReceiver, type HookEvent } from '../src/hooks/receiver.js';
@@ -519,6 +519,24 @@ runIf('Fleet', () => {
     await new Promise((r) => setTimeout(r, 1500));
     await expect(tmux.run('list-sessions')).rejects.toThrow();
     await expect(fleet.reviveCharacter(c.id)).rejects.toThrow('the fleet is stopping');
+  });
+
+  it('resumes an agent a quit stopped mid-turn as the fleet starts again, telling it what was lost', async () => {
+    const b = await boot();
+    const { c } = await withAgent(b);
+    b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', sessionId: SID } });
+    await b.fleet.stopAll();
+    expect(b.store.state.characters[c.id].revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
+
+    const again = await boot({ opening: true, state: structuredClone(b.store.state) });
+    // what would be typed is kept, so no real claude starts
+    const typed: string[] = [];
+    vi.spyOn(again.tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
+    await again.fleet.resumeInterrupted();
+    expect(again.store.state.characters[c.id].tmux).toBeDefined();
+    const file = path.join(again.home, `${c.id}.prompt`);
+    expect(typed).toEqual([`claude --resume ${SID} -- "$(cat '${file}'; rm -f '${file}')"`]);
+    expect(fs.readFileSync(file, 'utf8')).toBe(RESUME_NOTE);
   });
 
   it('has every change on disk once it has stopped', async () => {

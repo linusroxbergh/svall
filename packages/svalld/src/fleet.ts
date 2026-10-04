@@ -13,7 +13,7 @@ import { renderBrief } from './context/brief.js';
 import { isAgentCommand, withAddDirs, withPromptFile } from './context/launch.js';
 import { settleItems } from './context/items.js';
 import { docFolders, removeDocs } from './docs.js';
-import { endAll, endIdleAgents, processes, type Proc, type Sleep } from './dormancy.js';
+import { endAll, endIdleAgents, processes, RESUME_NOTE, type Proc, type Sleep } from './dormancy.js';
 import { Dormant, Invalid, NotFound } from './errors.js';
 import { takenNames } from './fleets.js';
 import { AgentEvents } from './fleet/agent-events.js';
@@ -469,6 +469,12 @@ export class Fleet extends EventEmitter<Events> {
     removeDocs(this.deps.paths.docs, 'character', id, this.deps.log);
   }
 
+  /** Revives every character whose agent a quit, reboot or crash ended mid-turn; called once hooks can reach the fleet. */
+  async resumeInterrupted(): Promise<void> {
+    const ids = Object.values(this.deps.store.state.characters).filter((c) => c.revive?.interrupted).map((c) => c.id);
+    await Promise.all(ids.map((id) => this.reviveCharacter(id).catch((e) => this.deps.log.error(`resume ${id}: ${String(e)}`))));
+  }
+
   // concurrent revives would each spawn a window and orphan all but the last.
   reviveCharacter(id: string, prompt?: string): Promise<Character> {
     // a page still open on a character that the stop has just put to sleep would wake it again
@@ -501,6 +507,7 @@ export class Fleet extends EventEmitter<Events> {
       throw new NotFound(`no character ${id}`);
     }
     const island = this.deps.store.state.islands[c.islandId];
+    if (c.revive?.interrupted) prompt = prompt ? `${RESUME_NOTE}\n\n${prompt}` : RESUME_NOTE;
     const command = this.launchLine(id, withAddDirs(c.revive?.command ?? '', [...(island?.context ?? []), ...c.context]), prompt);
     this.deps.store.update((d) => {
       const cur = d.characters[id];
