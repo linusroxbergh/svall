@@ -50,12 +50,15 @@ CLIs.
        curl -fsSL https://svall.dev/install.sh | sh
 
    The script installs to `/Applications`, or `~/Applications` when that isn't
-   writable, or `$SVALL_INSTALL_DIR`. It checks the download's checksum and
-   opens the app.
+   writable, or `$SVALL_INSTALL_DIR`. It checks the download's checksum,
+   developer signature and Apple notarization, then opens the app. Interrupted
+   replacements restore the previous app when the installer is stopped normally.
 
-3. Open Svall. The setup screen lists the agents it found, asks for your
-   projects folder and shows the files it will write. Its hooks do nothing
-   outside Svall; [What setup changes](#what-setup-changes) has the details. If
+3. Open Svall. The setup screen lists the agents it found and asks for your
+   projects folder. **Review changes** lists the files it will write. If
+   an agent is missing, install it in Terminal; Svall checks again when you return.
+   Its hooks do nothing outside Svall;
+   [What setup changes](#what-setup-changes) has the details. If
    `~/.local/bin` isn't on your PATH, it shows the line to add to your shell
    profile so the `svall` command works.
 
