@@ -101,7 +101,7 @@
 
   --dur-fast: .12s; --dur: .16s; --dur-slow: .2s;
   /* the periods of the looping animations */
-  --pulse-fast: 1.2s; --pulse: 2.2s; --pulse-slow: 3.2s; --swell: 48s; --swell-2: 67s;
+  --pulse-fast: 1.2s; --pulse: 1.8s; --pulse-slow: 3.2s; --swell: 48s; --swell-2: 67s;
 
   --w-light: 300; --w-regular: 400; --w-medium: 500; --w-semibold: 600; --w-bold: 700;
   --track-tight: -.02em; --track-loose: .06em; --track-caps: .12em; --track-wide: .18em;
