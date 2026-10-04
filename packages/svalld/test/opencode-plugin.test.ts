@@ -187,6 +187,16 @@ describe('the OpenCode plugin', () => {
     expect((got[4] as { hook: Record<string, unknown> }).hook).toMatchObject({ message: 'overloaded' });
   });
 
+  it('ends with Stop a turn that compacted an overflowed context and went on', async () => {
+    const h = await load();
+    await h['chat.message']({ sessionID: SID }, { message: { id: 'm' }, parts: [{ type: 'text', text: 'go' }] });
+    await h.event(event('session.error', { sessionID: SID, error: { name: 'ContextOverflowError', data: { message: 'too long' } } }));
+    await h.event(event('session.status', { sessionID: SID, status: { type: 'busy' } }));
+    await h.event(event('session.status', { sessionID: SID, status: { type: 'idle' } }));
+    await waitFor(() => names().includes('Stop'));
+    expect(names()).toEqual(['SessionStart', 'UserPromptSubmit', 'Stop']);
+  });
+
   it('reaches a daemon that restarted, on the next event', async () => {
     const h = await load();
     await h.event(event('session.created', { sessionID: SID, info: { id: SID } }));

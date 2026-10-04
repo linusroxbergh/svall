@@ -25,8 +25,9 @@ const clip = (v, n) => (typeof v === 'string' ? v : JSON.stringify(v ?? '')).sli
 // worker's own, so the command line is read from ps, where a prompt's words pass for flags
 const resumedFrom = (argv) => {
   const end = argv.indexOf('--prompt');
-  const i = argv.findIndex((a, j) => (a === '-s' || a === '--session') && (end === -1 || j < end));
-  return i !== -1 && /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/.test(argv[i + 1] ?? '') ? argv[i + 1] : undefined;
+  const i = argv.findIndex((a, j) => /^(-s|--session)(=|$)/.test(a) && (end === -1 || j < end));
+  const id = i === -1 ? undefined : argv[i].split('=')[1] ?? argv[i + 1];
+  return /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/.test(id ?? '') ? id : undefined;
 };
 const commandLine = () => {
   try { return execFileSync('ps', ['-o', 'args=', '-p', String(process.pid)], { encoding: 'utf8', timeout: 2000 }).trim().split(/\s+/); } catch { return []; }
@@ -188,6 +189,8 @@ export const SvallPlugin = async ({ client, directory }) => {
           }
           return;
         case 'session.status': {
+          // a turn that errs and goes on, as one does once an overflowed context is compacted, has not failed
+          if (p.status?.type === 'busy') ending.delete(p.sessionID);
           if (p.status?.type !== 'idle' || !busy.delete(p.sessionID)) return;
           asking.clear();
           const [name, fields] = ending.get(p.sessionID) ?? ['Stop'];
