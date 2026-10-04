@@ -13,7 +13,7 @@ describe('setupPlan', () => {
     const home = makeHome();
     const plan = setupPlan({
       home, projects: '~/Developer', found: [{ kind: 'claude', path: '/u/.local/bin/claude', version: '2.1.0' }], folders: [], integrations: undefined,
-      settingsPath: '/u/.claude/settings.json', codexHooks: '/u/.codex/hooks.json', launchAgentsDir: '/u/Library/LaunchAgents',
+      settingsPath: '/u/.claude/settings.json', codexHooks: '/u/.codex/hooks.json', opencodePlugin: '/u/.config/opencode/plugins/svall.js', launchAgentsDir: '/u/Library/LaunchAgents',
       fleets: [], shimDir: '/u/.local/bin', pathEnv: '/usr/bin:/u/.local/bin', answered: true, cli: 'svall',
     });
     expect(plan.agents.map((a) => a.kind)).toEqual(['claude']);
@@ -28,14 +28,14 @@ describe('setupPlan', () => {
   });
 
   it('says what blocks setup when only an agent\'s folder is here', () => {
-    const plan = setupPlan({ projects: '~/Developer', home: makeHome(), found: [], folders: [{ kind: 'codex', path: '/u/.codex' }], integrations: undefined, settingsPath: '/s', codexHooks: '/c',
+    const plan = setupPlan({ projects: '~/Developer', home: makeHome(), found: [], folders: [{ kind: 'codex', path: '/u/.codex' }], integrations: undefined, settingsPath: '/s', codexHooks: '/c', opencodePlugin: '/u/.config/opencode/plugins/svall.js',
       launchAgentsDir: '/l', fleets: [], shimDir: '/b', pathEnv: '', answered: true, cli: 'svall' });
     expect(plan.blockers).toEqual([expect.stringContaining('needs the claude or codex or opencode command')]);
     expect(plan.install?.map((i) => i.kind)).toEqual(['claude', 'codex', 'opencode']);
   });
 
   it('says the CLI is what setup needs when no agent is installed, and how to install each', () => {
-    const plan = setupPlan({ projects: '~/Developer', home: makeHome(), found: [], folders: [], integrations: undefined, settingsPath: '/s', codexHooks: '/c',
+    const plan = setupPlan({ projects: '~/Developer', home: makeHome(), found: [], folders: [], integrations: undefined, settingsPath: '/s', codexHooks: '/c', opencodePlugin: '/u/.config/opencode/plugins/svall.js',
       launchAgentsDir: '/l', fleets: [], shimDir: '/u/.local/bin', pathEnv: '/usr/bin', answered: true, cli: 'svall' });
     expect(plan.blockers).toEqual(["Svall runs Claude Code or Codex or OpenCode in its terminals, so it needs the claude or codex or opencode command. The desktop apps don't install it. Install one in Terminal, then check again."]);
     expect(plan.install).toEqual([
@@ -46,8 +46,14 @@ describe('setupPlan', () => {
     expect(plan.shimOnPath).toBe(false);
   });
 
+  it('lists the OpenCode plugin when OpenCode is found', () => {
+    const plan = setupPlan({ projects: '~/Developer', home: makeHome(), found: [{ kind: 'opencode', path: '/u/.opencode/bin/opencode' }], folders: [], integrations: undefined,
+      settingsPath: '/s', codexHooks: '/c', opencodePlugin: '/u/.config/opencode/plugins/svall.js', launchAgentsDir: '/l', fleets: [], shimDir: '/b', pathEnv: '', answered: true, cli: 'svall' });
+    expect(plan.writes).toContainEqual({ what: 'OpenCode plugin', path: '/u/.config/opencode/plugins/svall.js', agent: 'opencode' });
+  });
+
   it('says the login shell did not answer rather than that nothing is installed', () => {
-    const plan = setupPlan({ projects: '~/Developer', home: makeHome(), found: [], folders: [], integrations: undefined, settingsPath: '/s', codexHooks: '/c',
+    const plan = setupPlan({ projects: '~/Developer', home: makeHome(), found: [], folders: [], integrations: undefined, settingsPath: '/s', codexHooks: '/c', opencodePlugin: '/u/.config/opencode/plugins/svall.js',
       launchAgentsDir: '/l', fleets: [], shimDir: '/b', pathEnv: '', answered: false, cli: "'/A/node' '/A/svall.mjs'" });
     expect(plan.blockers).toEqual([expect.stringContaining('login shell did not answer')]);
     expect(plan.blockers[0]).toContain("run '/A/node' '/A/svall.mjs' setup in a terminal");
@@ -56,7 +62,7 @@ describe('setupPlan', () => {
 
   it('lists a turned-off agent\'s file with the choice saved, for the screen to leave out while it stays off', () => {
     const plan = setupPlan({ projects: '~/Developer', home: makeHome(), found: [{ kind: 'claude', path: '/c' }, { kind: 'codex', path: '/x' }], folders: [], integrations: ['codex'],
-      settingsPath: '/u/.claude/settings.json', codexHooks: '/u/.codex/hooks.json', launchAgentsDir: '/l', fleets: [], shimDir: '/b', pathEnv: '', answered: true, cli: 'svall' });
+      settingsPath: '/u/.claude/settings.json', codexHooks: '/u/.codex/hooks.json', opencodePlugin: '/u/.config/opencode/plugins/svall.js', launchAgentsDir: '/l', fleets: [], shimDir: '/b', pathEnv: '', answered: true, cli: 'svall' });
     expect(plan.integrations).toEqual(['codex']);
     expect(plan.writes.filter((w) => w.agent)).toEqual([
       { what: 'Claude Code hooks and status line', path: '/u/.claude/settings.json', agent: 'claude' },
@@ -66,7 +72,7 @@ describe('setupPlan', () => {
 
   it('lists an agent whose folder is here without its CLI, with its hooks, and the plists of the other fleets', () => {
     const plan = setupPlan({ projects: '~/Developer', home: makeHome(), found: [{ kind: 'claude', path: '/c' }], folders: [{ kind: 'claude', path: '/u/.claude' }, { kind: 'codex', path: '/u/.codex' }], integrations: undefined,
-      settingsPath: '/u/.claude/settings.json', codexHooks: '/u/.codex/hooks.json', launchAgentsDir: '/l', fleets: ['/u/.svall-work'],
+      settingsPath: '/u/.claude/settings.json', codexHooks: '/u/.codex/hooks.json', opencodePlugin: '/u/.config/opencode/plugins/svall.js', launchAgentsDir: '/l', fleets: ['/u/.svall-work'],
       shimDir: '/b', pathEnv: '', answered: true, cli: 'svall' });
     expect(plan.agents).toEqual([{ kind: 'claude', path: '/c' }, { kind: 'codex', path: '/u/.codex', folderOnly: true }]);
     expect(plan.writes.map((w) => w.path)).toContain('/u/.codex/hooks.json');

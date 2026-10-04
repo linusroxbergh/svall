@@ -3,8 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 
 const MARK = '__SVALL_ENV__';
-// where agents are found, and where Claude Code and Codex keep their files
-const NAMES = ['PATH', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME'] as const;
+// where agents are found, and where Claude Code, Codex and OpenCode keep their files
+const NAMES = ['PATH', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME'] as const;
 // printenv reads exported values, which fish joins with colons like every other shell; an unset one prints nothing
 const COMMAND = `echo ${MARK}; ${NAMES.map((n) => `/usr/bin/printenv ${n}; echo ${MARK}`).join('; ')}`;
 

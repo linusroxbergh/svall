@@ -8,6 +8,7 @@ import { AGENTS, AGENT_KINDS, findAgents } from '@svall/svalld/agents';
 import { codexPaths, type CodexPaths } from '@svall/svalld/codex/install';
 import { loadConfig, parseConfig } from '@svall/svalld/config';
 import { launchdEnv, plistEnv, plistRun } from '@svall/svalld/launchd';
+import { opencodePaths, opencodePluginCurrent, type OpencodePaths } from '@svall/svalld/opencode/install';
 import { resolvePaths, userPaths } from '@svall/svalld/paths';
 import { PRIVATE, SHIM, profileHome, profileLabel } from '@svall/svalld/profile';
 import { ownRuntime } from '@svall/svalld/runtime';
@@ -36,6 +37,7 @@ export type DoctorDeps = PreflightDeps & {
   // what setup would hand a fleet's daemon from this shell
   daemonEnv: Record<string, string>;
   codex: CodexPaths;
+  opencode: OpencodePaths;
   exists(path: string): boolean;
   // agent CLIs on PATH, as setup finds them
   found: AgentKind[];
@@ -176,7 +178,7 @@ function daemonPath(t: Target, d: DoctorDeps): Check {
 function daemonEnv(t: Target, d: DoctorDeps): Check {
   if (!t.managed) return { name: 'daemon env', status: 'skip', detail: 'not managed' };
   const keys = Object.keys(d.daemonEnv);
-  if (!keys.length) return { name: 'daemon env', status: 'ok', detail: 'this shell sets no CLAUDE_CONFIG_DIR or CODEX_HOME' };
+  if (!keys.length) return { name: 'daemon env', status: 'ok', detail: 'this shell sets none of CLAUDE_CONFIG_DIR, CODEX_HOME, XDG_CONFIG_HOME or XDG_DATA_HOME' };
   const { plist, fix } = plistOf(t, d);
   const text = d.read(plist);
   if (text === undefined) return { name: 'daemon env', status: 'skip', detail: `no ${plist}` };
@@ -227,6 +229,16 @@ export async function codexCheck(d: Pick<DoctorDeps, 'codex' | 'exists' | 'read'
     : { name: 'codex hooks', status: 'ok', detail: `installed in ${d.codex.hooks}; trusted` };
 }
 
+export function opencodeCheck(d: Pick<DoctorDeps, 'opencode' | 'exists' | 'read' | 'found' | 'integrations'>): Check {
+  if (d.integrations && !d.integrations.includes('opencode')) return { name: 'opencode plugin', status: 'skip', detail: 'turned off in setup' };
+  if (!d.found.includes('opencode') && !d.exists(d.opencode.dir)) return { name: 'opencode plugin', status: 'skip', detail: 'not installed' };
+  const text = d.read(d.opencode.plugin);
+  if (text === undefined) return { name: 'opencode plugin', status: 'fail', detail: `not installed in ${d.opencode.plugin}: ${SHIM} setup` };
+  return opencodePluginCurrent(text)
+    ? { name: 'opencode plugin', status: 'ok', detail: `installed in ${d.opencode.plugin}` }
+    : { name: 'opencode plugin', status: 'warn', detail: `out of date in ${d.opencode.plugin}: run ${SHIM} setup` };
+}
+
 function shims(d: DoctorDeps): Check {
   return d.shimsCurrent
     ? { name: 'shims', status: 'ok', detail: `${SHIM} in ${d.shimDir} runs this build` }
@@ -258,6 +270,7 @@ export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
     daemonEnv(t, d),
     hooks(d),
     await codexCheck(d),
+    opencodeCheck(d),
     shims(d),
     plistCheck(t, d),
   ];
@@ -291,6 +304,7 @@ export function doctorCommand(target: () => Target, json: () => boolean): Comman
       launchAgentsDir: launchAgents,
       daemonEnv: launchdEnv(),
       codex: codexPaths(),
+      opencode: opencodePaths(),
       exists: fs.existsSync,
       found: findAgents(process.env.PATH ?? ''),
       integrations,

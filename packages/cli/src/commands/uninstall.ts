@@ -2,6 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Command } from 'commander';
 import { codexPaths } from '@svall/svalld/codex/install';
+import { opencodePaths } from '@svall/svalld/opencode/install';
 import { realDeps } from '@svall/svalld/mobile';
 import { LOGIN_SHELL_TIMEOUT_MS, takeLoginEnv } from '@svall/svalld/login-env';
 import { userPaths } from '@svall/svalld/paths';
@@ -36,7 +37,7 @@ export function uninstallCommand(json: () => boolean): Command {
     .description('remove what svall setup added and stop every fleet; asks before deleting the fleets and the app')
     .option('--purge', 'also delete every fleet and the app, without asking')
     .option('--from-app', 'run by the app itself: leave it open and in place')
-    .option('--login-shell', 'take PATH, CLAUDE_CONFIG_DIR and CODEX_HOME from the login shell, as an app opened from Finder has none')
+    .option('--login-shell', 'take PATH and where the agents keep their files from the login shell, as an app opened from Finder has none')
     .option('--no-launchctl', 'leave the launchd agents running, only delete their plists')
     .action(async (o: { purge?: boolean; fromApp?: boolean; launchctl: boolean; loginShell?: boolean }) => {
       // stand-in folders would leave the hooks in the folders the user's own agents read
@@ -49,6 +50,7 @@ export function uninstallCommand(json: () => boolean): Command {
           homes: fleetHomes(os.homedir()),
           settingsPaths: userPaths().claudeSettingsFiles,
           codex: codexPaths(),
+          opencode: opencodePaths(),
           launchAgentsDir: userPaths().launchAgents,
           shimDir: userPaths().shimDir,
           launchctl: o.launchctl && process.platform === 'darwin',

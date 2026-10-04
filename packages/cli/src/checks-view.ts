@@ -5,9 +5,9 @@ const COLOR = { ok: 'green', warn: 'yellow', fail: 'red', skip: 'dim' } as const
 
 const GROUPS: [string, string[]][] = [
   ['Tools', ['tmux', 'node', 'path', 'gh']],
-  ['Agents', ['claude', 'codex', 'agents']],
+  ['Agents', ['claude', 'codex', 'opencode', 'agents']],
   ['Fleet', ['config', 'svalld', 'hook receiver', 'launchd', 'daemon node', 'daemon path', 'daemon env']],
-  ['Setup', ['hooks', 'codex hooks', 'shims', 'launchd plist']],
+  ['Setup', ['hooks', 'codex hooks', 'opencode plugin', 'shims', 'launchd plist']],
 ];
 
 /** `checks` under the titles they show with, each group in the order its names come, and any check no group names last. */

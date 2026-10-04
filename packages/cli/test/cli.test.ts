@@ -127,7 +127,7 @@ describe('svall uninstall --login-shell', () => {
     const settings = path.join(cfg, 'settings.json');
     fs.writeFileSync(settings, JSON.stringify(mergeHooks({}, `[ -z "$SVALL_CHAR_ID" ] || { node '${script}' claude; }`, script)));
     const shell = path.join(home, 'fake-shell');
-    fs.writeFileSync(shell, `#!/bin/sh\necho __SVALL_ENV__; echo /usr/bin:/bin; echo __SVALL_ENV__; echo ${cfg}; echo __SVALL_ENV__; echo __SVALL_ENV__\n`, { mode: 0o755 });
+    fs.writeFileSync(shell, `#!/bin/sh\necho __SVALL_ENV__; echo /usr/bin:/bin; echo __SVALL_ENV__; echo ${cfg}; echo __SVALL_ENV__; echo __SVALL_ENV__; echo __SVALL_ENV__; echo __SVALL_ENV__\n`, { mode: 0o755 });
     const env = { HOME: home, SHELL: shell, PATH: `${DOUBLES}:${path.dirname(process.execPath)}:/usr/bin:/bin`, SVALL_HOME: '', TMUX: '' };
     try {
       const r = await run(env, '--json', 'uninstall', '--from-app', '--no-launchctl', '--login-shell');
@@ -264,11 +264,11 @@ describe('svall setup --agents', () => {
       expect(JSON.parse(plan.stdout).agents).toContainEqual({ kind: 'codex', path: path.join(home, '.codex'), folderOnly: true });
       const r = await run(env, 'setup', '--no-launchctl', '--agents', 'claude');
       expect(r.code).toBe(0);
-      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ integrations: ['claude'] });
+      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ integrations: ['claude', 'opencode'] });
       expect(fs.existsSync(path.join(home, '.codex', 'hooks.json'))).toBe(false);
       fs.rmSync(path.join(home, '.codex'), { recursive: true });
       expect((await run(env, 'setup', '--no-launchctl', '--agents', 'claude')).code).toBe(0);
-      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ integrations: ['claude'] });
+      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ integrations: ['claude', 'opencode'] });
     } finally {
       cleanHomes();
     }

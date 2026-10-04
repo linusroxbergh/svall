@@ -23,10 +23,12 @@ const unxml = (s: string): string =>
 /** The plist entry that sets `key` for the daemon. */
 export const plistEnv = (key: string, value: string): string => `<key>${xml(key)}</key><string>${xml(value)}</string>`;
 
-/** Where this shell keeps Claude's and Codex's files, when it says; launchd gives the daemon no shell environment. */
+/** Where this shell keeps the agents' files, when it says; launchd gives the daemon no shell environment. */
 export const launchdEnv = (): Record<string, string> => ({
   ...(process.env.CLAUDE_CONFIG_DIR ? { CLAUDE_CONFIG_DIR: claudePaths().dir } : {}),
   ...(process.env.CODEX_HOME ? { CODEX_HOME: codexPaths().dir } : {}),
+  ...(process.env.XDG_CONFIG_HOME ? { XDG_CONFIG_HOME: path.resolve(process.env.XDG_CONFIG_HOME) } : {}),
+  ...(process.env.XDG_DATA_HOME ? { XDG_DATA_HOME: path.resolve(process.env.XDG_DATA_HOME) } : {}),
 });
 
 export function launchdPlist(o: { label: string; program: string[]; home: string; log: string; pathEnv: string; bundleId?: string; env?: Record<string, string> }): string {

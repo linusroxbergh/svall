@@ -12,6 +12,7 @@ import { fleetControl, realFleetDeps } from './fleets.js';
 import { startHookReceiver } from './hooks/receiver.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
+import { installOpencodePlugin, opencodePaths } from './opencode/install.js';
 import { claudePaths, fleetKeys, resolvePaths } from './paths.js';
 import { Phones } from './phones.js';
 import { DEFAULT_PORT, isProfileName, PRIVATE, profileOf, variantOf } from './profile.js';
@@ -99,6 +100,12 @@ async function start(opts: Options): Promise<Daemon> {
     try { for (const line of installCodexHooks(paths.hookScript, readCodexHooks(codex, agentsFound.includes('codex') || fs.existsSync(codex.dir)))) log.info(line); }
     catch (e) { log.error(`codex hooks: ${(e as Error).message}`); }
   }
+  // an OpenCode installed after `svall setup` still gets the plugin; only the private fleet writes it, as it serves every fleet
+  const opencode = opencodePaths();
+  if (profile === PRIVATE && (config.integrations?.includes('opencode') ?? true) && (agentsFound.includes('opencode') || fs.existsSync(opencode.dir))) {
+    try { for (const line of installOpencodePlugin(opencode)) log.info(line); }
+    catch (e) { log.error(`opencode plugin: ${(e as Error).message}`); }
+  }
 
   const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
   const tmuxVersion = await tmux.version();
@@ -114,6 +121,7 @@ async function start(opts: Options): Promise<Daemon> {
   // counts, set up or not
   const homes = () => [paths.home, ...fs.readdirSync(os.homedir()).filter((f) => f.startsWith('.svall')).map((f) => path.join(os.homedir(), f))];
   const refused = () => [claude.json, path.join(claude.dir, '.credentials.json'), path.join(codex.dir, 'auth.json'),
+    path.join(opencode.data, 'auth.json'), path.join(opencode.data, 'mcp-auth.json'),
     ...homes().flatMap((h) => fleetKeys(resolvePaths(h)))];
   const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs, paths.agentProfiles), log, refused, [paths.docs, paths.agentProfiles], paths.trash);
   const phones = new Phones();
