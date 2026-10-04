@@ -20,7 +20,10 @@ export function withAddDirs(command: string, items: ContextItem[]): string {
   if (kind === 'opencode') {
     // OpenCode reads * and ? in a rule as wildcards, with no way to escape one, so such a folder is left to ask
     const rules = Object.fromEntries(dirs.filter((d) => !/[*?]/.test(d)).map((d) => [path.join(path.resolve(d), '*'), 'allow']));
-    return `OPENCODE_PERMISSION=${shq(JSON.stringify({ external_directory: rules }))} ${command}`;
+    if (!Object.keys(rules).length) return command;
+    // OpenCode matches a permission's name as a wildcard too, so this key adds the rules after a user's own
+    // external_directory rule, where they win, rather than replacing it
+    return `OPENCODE_PERMISSION=${shq(JSON.stringify({ 'external_director?': rules }))} ${command}`;
   }
   return dirs.reduce((cmd, d) => `${cmd} --add-dir ${shq(d)}`, command);
 }
