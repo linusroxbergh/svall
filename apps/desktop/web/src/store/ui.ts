@@ -6,7 +6,7 @@ import { declineTaken, type ActionId } from '../keys.js';
 import { boardViewed } from '../selectors.js';
 import { DEFAULT_SETTINGS, type Settings } from '../settings.js';
 import type { App } from './index.js';
-import { clampSides, clampTree, DEFAULT_HALF_CARD, DEFAULT_SIDE_WIDTHS, type AppStorage, type FilesTree, type HalfCard, type SideWidths } from './persist.js';
+import { clampSides, clampTree, DEFAULT_HALF_CARD, DEFAULT_SIDE_WIDTHS, type AppStorage, type FilesTree, type HalfCard, type Section, type Sections, type SideWidths } from './persist.js';
 
 export type View = 'map' | 'board';
 export type CardSize = 'half' | 'full';
@@ -66,6 +66,7 @@ export type UiState = {
   halfCard: HalfCard;
   sideWidths: SideWidths;
   filesTree: FilesTree;
+  sections: Sections;
   dropHover?: DropTarget;
   // what macOS allows for banners, as the shell last read it
   notifyPermission: NotifyPermission;
@@ -125,6 +126,7 @@ export type UiActions = {
   setSideWidths(widths: SideWidths, persist?: boolean): void;
   toggleFilesTree(open?: boolean): void;
   setFilesTreeWidth(width: number, persist?: boolean): void;
+  setSection(name: string, section: Section, persist?: boolean): void;
   setDropHover(t?: DropTarget): void;
 };
 
@@ -180,6 +182,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     halfCard: storage?.getHalfCard() ?? DEFAULT_HALF_CARD,
     sideWidths: storage?.getSideWidths() ?? DEFAULT_SIDE_WIDTHS,
     filesTree: storage?.getFilesTree() ?? { open: true },
+    sections: storage?.getSections() ?? {},
     dropHover: undefined,
     setActive: (active) => set({ active }),
     // the board's character comes to the map in its card
@@ -263,6 +266,11 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     setSideWidths: (widths, persist = true) => set(() => { const w = clampSides(widths); if (persist) storage?.setSideWidths(w); return { sideWidths: w }; }),
     toggleFilesTree: (open) => set((s) => { const t = { ...s.filesTree, open: open ?? !s.filesTree.open }; storage?.setFilesTree(t); return { filesTree: t }; }),
     setFilesTreeWidth: (width, persist = true) => set((s) => { const t = { ...s.filesTree, width: clampTree(width) }; if (persist) storage?.setFilesTree(t); return { filesTree: t }; }),
+    setSection: (name, section, persist = true) => set((s) => {
+      const sections = { ...s.sections, [name]: section };
+      if (persist) storage?.setSections(sections);
+      return { sections };
+    }),
     // a Finder drag fires this on every mouse move; skip the render when the target has not changed
     setDropHover: (t) => set((s) => (s.dropHover?.kind === t?.kind && s.dropHover?.id === t?.id && s.dropHover?.after === t?.after ? {} : { dropHover: t })),
   };

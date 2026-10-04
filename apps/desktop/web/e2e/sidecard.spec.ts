@@ -121,6 +121,15 @@ test('edits an island from the side card on the map', async ({ page, svall }) =>
   await expect.poll(async () => (await svall.api.call('state.get', {})).islands[island.id].context[0]?.kind).toBe('linear');
   await card.getByTestId('island-context-remove').first().click();
   await expect(card.getByTestId('side-island-context')).not.toContainText('ENG-1');
+  const fold = card.getByTestId('sec-fold-island.description');
+  await fold.click();
+  await expect(card.getByTestId('side-island-description')).toHaveCount(0);
+  await page.setViewportSize({ width: 1280, height: 520 });
+  expect(await card.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(false);
+  await expect(card.getByTestId('side-island-resources')).toBeInViewport({ ratio: 1 });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await fold.click();
+  await expect(card.getByTestId('side-island-description')).toHaveValue('what this island is for');
   await card.getByTestId('side-island-new').click();
   await expect(page.getByTestId('terminal-card')).toBeVisible();
   await expect(card.getByTestId('side-island-delete')).toHaveCount(0);
@@ -287,6 +296,10 @@ test('a character takes an agent profile in the side card, and the shelf shows w
 
   const pick = card.getByTestId('side-agent-profile');
   await pick.click();
+  await expect(card.getByRole('listbox')).toBeVisible();
+  await pick.click();
+  await expect(card.getByRole('listbox')).toHaveCount(0);
+  await pick.click();
   await card.getByTestId('side-agent-profile-opt-reviewer').click();
   await expect(pick).toHaveText('reviewer');
   await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].agentProfile).toBe('reviewer');
@@ -327,4 +340,73 @@ test('a profile whose file is gone is named missing, and the brief goes without 
   await expect(card.getByTestId('side-agent-profile-hint')).toHaveText('fleeting.md is not in the agent profiles folder');
   await expect(card.getByTestId('side-agent-profile-view')).toHaveCount(0);
   expect((await svall.api.call('char.show', { id: c.id })).text).not.toContain('Agent profile');
+});
+
+test('the card never scrolls: a section folds, a dragged one keeps its height, and a double-click fits it again', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('sections') });
+  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'sections' });
+  const context = Array.from({ length: 40 }, (_, i) => ({ kind: 'other' as const, ref: `https://example.com/${i}`, label: `link ${i}`, source: 'manual' as const }));
+  await svall.api.call('char.update', { id: c.id, note: 'line\n'.repeat(30), context });
+  await svall.open();
+  await page.getByTestId(`sb-char-${c.id}`).click();
+  const card = page.getByTestId('side-card');
+  const scrolls = () => card.evaluate((el) => el.scrollHeight > el.clientHeight);
+
+  // more than fits: the sections share the card, and Finder and Resources stay in sight
+  expect(await scrolls()).toBe(false);
+  await expect(card.getByTestId('side-finder')).toBeInViewport({ ratio: 1 });
+  await expect(card.getByTestId('side-resources')).toBeInViewport({ ratio: 1 });
+  await expect(card.getByTestId('side-close')).toBeInViewport({ ratio: 1 });
+  await page.setViewportSize({ width: 1280, height: 520 });
+  expect(await scrolls()).toBe(false);
+  await expect(card.getByTestId('side-finder')).toBeInViewport({ ratio: 1 });
+  // in a short window every title and edge is still in sight, and the island field at the bottom is still reachable
+  for (const el of await card.locator('[data-testid^="sec-fold-"], [data-testid^="sec-grip-"]').all()) await expect(el).toBeInViewport();
+  await card.getByTestId('side-island').focus();
+  await expect(card.getByTestId('side-island')).toBeInViewport();
+  await expect(card.getByTestId('sec-fold-character.note')).toBeInViewport({ ratio: 1 });
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  const details = card.getByTestId('sec-fold-character.details');
+  await details.click();
+  await expect(details).toHaveAttribute('aria-expanded', 'false');
+  await expect(card.getByTestId('side-island')).toHaveCount(0);
+  await expect(card.getByTestId('side-finder')).toBeInViewport({ ratio: 1 });
+
+  const grip = card.getByTestId('sec-grip-character.note');
+  const note = grip.locator('..');
+  const before = (await note.boundingBox())!.height;
+  const at = (await grip.boundingBox())!;
+  await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2 + 80, { steps: 4 });
+  await page.mouse.up();
+  await expect.poll(async () => (await note.boundingBox())!.height).toBeCloseTo(before + 80, -1);
+  await expect(note).toHaveAttribute('data-fit', 'false');
+  expect(await scrolls()).toBe(false);
+
+  // the fold and the height outlive a reload
+  await svall.open();
+  await page.getByTestId(`sb-char-${c.id}`).click();
+  await expect(details).toHaveAttribute('aria-expanded', 'false');
+  expect((await note.boundingBox())!.height).toBeCloseTo(before + 80, -1);
+
+  await grip.dblclick();
+  await expect(note).toHaveAttribute('data-fit', 'true');
+  await expect.poll(async () => (await note.boundingBox())!.height).toBeCloseTo(before, -1);
+});
+
+test('a text section is as tall as its text', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('fit') });
+  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'fit' });
+  await svall.api.call('char.update', { id: c.id, note: 'one line' });
+  await page.setViewportSize({ width: 1280, height: 1200 });
+  await svall.open();
+  await page.getByTestId(`sb-char-${c.id}`).click();
+  const note = page.getByTestId('side-note');
+  const short = (await note.boundingBox())!.height;
+  await svall.api.call('char.update', { id: c.id, note: 'line\n'.repeat(8) });
+  await expect(note).toHaveValue('line\n'.repeat(8));
+  await expect.poll(async () => (await note.boundingBox())!.height).toBeGreaterThan(short + 80);
+  expect(await note.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
 });
