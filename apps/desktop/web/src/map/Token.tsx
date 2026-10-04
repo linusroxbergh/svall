@@ -16,8 +16,8 @@ function footInner(c: Character, status: DisplayStatus, word: string | undefined
           <i className="pip" data-status={slotStatus(c, 1)} /><i className="pip" data-status={slotStatus(c, 2)} />
         </span>
       )}
-      {word && <span className="sw" style={{ background: `var(--${status})` }}>{word}</span>}
-      {c.hint && <span className="sw" data-testid={`token-hint-${c.id}`} title={hintText(c)} style={{ background: 'var(--blocked)' }}>/hooks</span>}
+      {word && <span className="sw" style={{ background: `var(--${status})`, color: `var(--ink-on-${status})` }}>{word}</span>}
+      {c.hint && <span className="sw" data-testid={`token-hint-${c.id}`} title={hintText(c)} style={{ background: 'var(--blocked)', color: 'var(--ink-on-blocked)' }}>/hooks</span>}
     </>
   );
 }
