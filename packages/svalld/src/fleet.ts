@@ -10,7 +10,7 @@ import { condenseTurns, readTail, userPrompts } from './agent/transcript.js';
 import { characterKeyEnv } from './claude.js';
 import { saveConfig, scribeModel, type Config } from './config.js';
 import { renderBrief } from './context/brief.js';
-import { isAgentCommand, withAddDirs, withPromptFile } from './context/launch.js';
+import { isAgentCommand, promptText, withAddDirs, withPromptFile } from './context/launch.js';
 import { settleItems } from './context/items.js';
 import { docFolders, removeDocs } from './docs.js';
 import { endAll, endIdleAgents, processes, RESUME_NOTE, type Proc, type Sleep } from './dormancy.js';
@@ -373,7 +373,7 @@ export class Fleet extends EventEmitter<Events> {
     // a prompt file an OpenCode plugin never took must not reach the next resume
     if (!prompt) fs.rmSync(this.promptFile(id), { force: true });
     if (!prompt || !isAgentCommand(command)) return command;
-    fs.writeFileSync(this.promptFile(id), prompt, { mode: 0o600 });
+    fs.writeFileSync(this.promptFile(id), promptText(command, prompt), { mode: 0o600 });
     return withPromptFile(command, this.promptFile(id));
   }
 

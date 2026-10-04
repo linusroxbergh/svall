@@ -103,6 +103,8 @@ describe('startFlags', () => {
       .toEqual(['-m', "'opencode/big-pickle'", '--agent', "'build'", '--auto']);
     expect(startFlags(`opencode.exe -s ${OSID}`, 'opencode')).toEqual([]);
     expect(startFlags('opencode --port 4096', 'opencode')).toBeUndefined();
+    // svalld puts the prompt last, where a bullet or a flag in its text is no option
+    expect(startFlags('opencode -m opencode/big-pickle --prompt fix these: - the --force flag', 'opencode')).toEqual(['-m', "'opencode/big-pickle'"]);
   });
 });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ContextItem } from '@svall/protocol';
-import { agentKindOf, isAgentCommand, withAddDirs, withPromptFile } from '../src/context/launch.js';
+import { agentKindOf, isAgentCommand, promptText, withAddDirs, withPromptFile } from '../src/context/launch.js';
 
 const item = (kind: ContextItem['kind'], ref: string): ContextItem => ({ kind, ref, label: '', source: 'manual' });
 
@@ -28,6 +28,15 @@ describe('withAddDirs for opencode', () => {
     expect(agentKindOf(cmd)).toBe('opencode');
     expect(withAddDirs('opencode', [])).toBe('opencode');
     expect(withPromptFile(withAddDirs('opencode', [item('folder', '/a')]), '/h/p')).toContain(' opencode --prompt "$(cat');
+  });
+});
+
+describe('promptText', () => {
+  it("ends a bare /command for opencode with a space, which closes the TUI's command menu that holds back a submit", () => {
+    expect(promptText('opencode', '/svall-status')).toBe('/svall-status ');
+    expect(promptText('opencode', '/svall-status now')).toBe('/svall-status now');
+    expect(promptText('opencode', 'fix it')).toBe('fix it');
+    expect(promptText('claude', '/svall-status')).toBe('/svall-status');
   });
 });
 

@@ -87,7 +87,8 @@ export function startFlags(args: string, kind: AgentKind): string[] | undefined 
   // options end at `--` or the first bare word, past which no word may look like a flag
   for (; i < words.length; i++) {
     const w = words[i];
-    if (w === '--') return out;
+    // svalld puts an OpenCode prompt last, and its words can pass for flags
+    if (w === '--' || (kind === 'opencode' && w === '--prompt')) return out;
     // codex resume takes its session as a word among the options
     if (resume && isSessionId(w)) continue;
     if (!w.startsWith('-')) return words.slice(i).some((x) => x.startsWith('-')) ? undefined : out;

@@ -21,6 +21,10 @@ export function withAddDirs(command: string, items: ContextItem[]): string {
   return dirs.reduce((cmd, d) => `${cmd} --add-dir ${shq(d)}`, command);
 }
 
+// OpenCode's TUI holds back the submit of a /command while its command menu is open, which a space after the name closes
+export const promptText = (command: string, prompt: string): string =>
+  agentKindOf(command) === 'opencode' && /^\/\S+$/.test(prompt.trim()) ? `${prompt.trim()} ` : prompt;
+
 // an agent submits a prompt given as its argument once it is up. The shell reads it from a file: typed in before the
 // shell is reading, a line past 1024 bytes is cut. OpenCode reads none on a resume, so its plugin takes the file then
 export function withPromptFile(command: string, file: string): string {
