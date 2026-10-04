@@ -29,7 +29,7 @@ export function setupPlan(o: {
   let install: SetupPlan['install'];
   if (!o.answered) blockers = [`Your login shell did not answer within ${LOGIN_SHELL_TIMEOUT_MS / 1000} seconds, so Svall cannot see where your agent CLIs are. Check again, or run ${o.cli} setup in a terminal.`];
   else if (!o.found.length) {
-    const either = (f: (k: AgentKind) => string) => AGENT_KINDS.map(f).join(' or ');
+    const either = (f: (k: AgentKind) => string) => `${AGENT_KINDS.slice(0, -1).map(f).join(', ')} or ${f(AGENT_KINDS.at(-1)!)}`;
     blockers = [`Svall runs ${either((k) => AGENTS[k].label)} in its terminals, so it needs the ${either((k) => AGENTS[k].bin)} command. The desktop apps don't install it. Install one in Terminal, then check again.`];
     install = AGENT_KINDS.map((kind) => ({ kind, command: AGENTS[kind].installCommand, url: AGENTS[kind].installUrl }));
   }

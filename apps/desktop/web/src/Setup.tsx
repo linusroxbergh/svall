@@ -115,7 +115,8 @@ export function Setup() {
           )}
           <p>Svall checks again when you return to this window.</p>
           {!plan.shimOnPath && <div className="setup-install">
-            <p>The installer puts the command in {shortPath(plan.shimDir)}, which is not on your PATH; add this line to ~/.zshrc, or your shell's startup file, then check again.</p>
+            {/* OpenCode's installer uses ~/.opencode/bin and puts that on PATH itself */}
+            <p>{installer?.kind === 'opencode' ? "Svall's command goes" : 'The installer puts the command'} in {shortPath(plan.shimDir)}, which is not on your PATH; add this line to ~/.zshrc, or your shell's startup file, then check again.</p>
             <Command bridge={bridge} text={line} />
           </div>}
         </section>}
