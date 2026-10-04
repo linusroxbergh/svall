@@ -61,7 +61,7 @@ export const SvallPlugin = async ({ client, directory }) => {
       }
     });
     // a restarting daemon drops the connection; the next line opens another
-    const drop = () => { if (conn === s) conn = undefined; for (const r of replies.splice(0)) r(''); };
+    const drop = () => { if (conn === s) conn = undefined; for (const r of replies.splice(0)) r(undefined); };
     s.on('error', drop);
     s.on('close', drop);
     s.unref();
@@ -221,7 +221,8 @@ export const SvallPlugin = async ({ client, directory }) => {
       const text = (output.parts ?? []).filter((x) => x.type === 'text' && !x.synthetic).map((x) => x.text).join('\n').trim();
       if (text) log(id, { kind: 'user', text });
       const reply = await hook('UserPromptSubmit', id, { prompt: text.slice(0, MAX_PROMPT), prompt_id: input.messageID ?? output.message?.id, ...(model && { model }) });
-      if (reply) brief.set(id, reply);
+      // svalld answers each prompt with the brief there is, an empty one included; a lost answer changes nothing
+      if (reply !== undefined) brief.set(id, reply);
     },
     'tool.execute.before': async (input, output) => {
       const root = await rootOf(input.sessionID);

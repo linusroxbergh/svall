@@ -16,11 +16,13 @@ const CHILD = 'ses_0f3a5b7c9d1fZyXwVuTsRqPoNm';
 let home: string;
 let got: SocketEvent[];
 let receiver: { close(): Promise<void> };
+// what svalld answers SessionStart and each prompt with, for an agent that holds the brief as system text
+let brief: string;
 const listen = async () => {
   receiver = await startHookReceiver(path.join(home, 'hooks.sock'), (e) => {
     got.push(e);
     if (!('hook' in e)) return undefined;
-    return e.hook.name === 'SessionStart' ? 'BRIEF' : undefined;
+    return e.hook.name === 'SessionStart' || e.hook.name === 'UserPromptSubmit' ? brief : undefined;
   }, silentLogger);
 };
 const names = () => got.flatMap((e) => ('hook' in e ? [e.hook.name] : ['status']));
@@ -40,6 +42,7 @@ const shown = () => new Promise((r) => setTimeout(r, 700));
 beforeEach(async () => {
   home = makeHome();
   got = [];
+  brief = 'BRIEF';
   vi.stubEnv('SVALL_HOME', home);
   vi.stubEnv('SVALL_CHAR_ID', 'c_1');
   await listen();
@@ -209,6 +212,25 @@ describe('the OpenCode plugin', () => {
     await new Promise((r) => setTimeout(r, 100));
     expect(names()).toEqual(['SessionStart', 'PermissionRequest', 'PreToolUse']);
     expect((got[1] as { hook: Record<string, unknown> }).hook).toMatchObject({ sessionId: SID, message: 'rm -rf build', toolName: 'bash' });
+  });
+
+  it('holds the brief each prompt is answered with, an empty one included, and keeps it through a lost answer', async () => {
+    const h = await load();
+    await h.event(event('session.created', { sessionID: SID, info: { id: SID } }));
+    const prompt = () => h['chat.message']({ sessionID: SID }, { message: { id: 'm' }, parts: [{ type: 'text', text: 'go' }] });
+    const system = async () => {
+      const s: string[] = [];
+      await h['experimental.chat.system.transform']({ sessionID: SID, model: { limit: { context: 1 } } }, { system: s });
+      return s;
+    };
+    await receiver.close();
+    await prompt();
+    expect(await system()).toEqual(['BRIEF']);
+    await listen();
+    brief = '';
+    // a line sent as the old connection closes is lost with it; a later one lands
+    await waitFor(async () => { await prompt(); return names().includes('UserPromptSubmit'); });
+    expect(await system()).toEqual([]);
   });
 
   it('ends a turn an Esc stopped with Interrupt, and one an error stopped with StopFailure', async () => {
