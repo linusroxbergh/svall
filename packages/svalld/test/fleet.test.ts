@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SPACING, crewGrid, emptyState, isLand, landCells, sizeForCrew, type AgentKind, type FleetState } from '@svall/protocol';
 import { Config } from '../src/config.js';
 import { docsDir } from '../src/docs.js';
-import { RESUME_NOTE, type Proc } from '../src/dormancy.js';
+import { markDormant, RESUME_NOTE, type Proc } from '../src/dormancy.js';
 import { Dormant, Invalid, NotFound } from '../src/errors.js';
 import { Fleet } from '../src/fleet.js';
 import { startHookReceiver, type HookEvent } from '../src/hooks/receiver.js';
@@ -1463,8 +1463,9 @@ runIf('Fleet', () => {
     const b = await boot();
     const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'opencode' }).id, cwd: '/tmp', command: 'opencode', run: 'first' });
     await waitFor(() => b.store.state.characters[c.id].agent?.status === 'done');
+    // dormant before the kill, as svalld ends an agent, so the SessionEnd the plugin sends on its way out clears nothing
+    b.store.update((d) => { markDormant(d.characters[c.id]); });
     await b.tmux.killWindow(c.tmux!.windowId);
-    await waitFor(() => b.store.state.characters[c.id].tmux === undefined);
     expect(b.store.state.characters[c.id].revive?.command).toBe(`opencode -s ${OSID}`);
     await b.fleet.run(c.id, 'second', true);
     await waitFor(() => b.fleet.readPrompts(c.id, 5).length === 2);
