@@ -23,7 +23,6 @@ import { ISLET, placeIslet } from './resources.js';
 import { ResourcesIsland, ResourcesPill } from './ResourcesIsland.js';
 import { TerminalCard } from './TerminalCard.js';
 import { Token } from './Token.js';
-import { Wordmark } from './Wordmark.js';
 
 export function Map() {
   const host = useRef<HTMLDivElement>(null);
@@ -134,7 +133,6 @@ export function Map() {
         )}
       </div>
       <div className="map-overlay">
-        <Wordmark />
         {hi && (
           <Home island={hi} crew={crew} config={fleet.home} collapsed={Boolean(hi.collapsed)}
             selected={selectedIslandId === HOME_ISLAND} selectedId={selectedId} drag={drag} status={statusOf}

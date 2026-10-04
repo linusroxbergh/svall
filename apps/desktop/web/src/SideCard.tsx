@@ -87,7 +87,7 @@ export function SideCard({ id }: { id: string }) {
       {c.hint && <div className="side-hint" data-testid="side-hint">{hintText(c)}</div>}
       <div className="side-secs">
         <Section name="character.note" title="Note" head={<Info id="char-note">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. The scribe fills it in until you write one.</Info>}>
-          <FollowTextarea className="fld desc" rows={4} placeholder="What this character is doing" key={`note-${id}`} value={c.note} data-testid="side-note"
+          <FollowTextarea className="fld desc" rows={6} placeholder="What this character is doing" key={`note-${id}`} value={c.note} data-testid="side-note"
             onSave={(v) => { if (v !== c.note) save({ note: v }); }} />
         </Section>
         <Section name="character.instructions" title="Agent instructions" head={<Info id="char-instructions">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. A new profile is sent whole.</Info>}>

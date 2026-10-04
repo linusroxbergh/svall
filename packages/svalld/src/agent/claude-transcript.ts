@@ -2,7 +2,10 @@ import { trimEnd } from '@svall/protocol';
 import { LINK, MAX_URLS, clip, clipLine, jsonLines, orSkip } from './jsonl.js';
 
 type Block = { type: string; text?: string; name?: string; input?: unknown; content?: unknown };
-type Entry = { type?: string; isSidechain?: boolean; isMeta?: boolean; promptId?: string; timestamp?: string; origin?: { kind?: string }; message?: { content?: string | Block[] } };
+type Entry = {
+  type?: string; isSidechain?: boolean; isMeta?: boolean; promptId?: string; timestamp?: string; origin?: { kind?: string }; message?: { content?: string | Block[] };
+  toolUseResult?: { questions?: unknown; answers?: Record<string, string> };
+};
 
 const entries = (text: string): Entry[] => jsonLines<Entry>(text);
 
@@ -46,6 +49,13 @@ function submitted(e: Entry): string | undefined {
   return e.origin?.kind === 'human' ? text : undefined;
 }
 
+// the questions AskUserQuestion put to the person, each over what they picked or wrote; a declined one has no answers
+function answered(e: Entry): string | undefined {
+  const r = e.toolUseResult;
+  if (e.type !== 'user' || !Array.isArray(r?.questions) || !r.answers) return undefined;
+  return Object.entries(r.answers).map(([q, a]) => `${q}\n→ ${a}`).join('\n\n') || undefined;
+}
+
 export type Pending = { id: string; text: string; at: number };
 
 // a turn Claude Code opened by itself — a finished background agent, a continuation — carries an origin
@@ -61,8 +71,9 @@ function leads(all: Entry[], sent: { e: Entry }[], pending: Pending): boolean {
 
 export function userPromptsClaude(text: string, limit: number, pending?: Pending): string[] {
   const all = entries(text);
-  const sent = all.map((e) => ({ e, text: orSkip(() => submitted(e)) })).filter((r): r is { e: Entry; text: string } => Boolean(r.text));
-  const list = sent.slice(-limit).reverse().map((r) => clip(r.text));
+  const said = all.map((e) => ({ e, text: orSkip(() => submitted(e)), answers: orSkip(() => answered(e)) }));
+  const sent = said.filter((r) => r.text);
+  const list = said.flatMap((r) => r.text ?? r.answers ?? []).slice(-limit).reverse().map(clip);
   if (pending && leads(all, sent, pending)) list.unshift(clip(pending.text));
   return list.slice(0, limit);
 }

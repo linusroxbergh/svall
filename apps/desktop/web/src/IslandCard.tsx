@@ -38,7 +38,7 @@ export function IslandCard({ id }: { id: string }) {
       </div>
       <div className="side-secs">
         <Section name="island.description" title="Description">
-          <FollowTextarea className="fld desc" rows={4} placeholder="What this island is for" key={`description-${id}`} value={i.description} data-testid="side-island-description"
+          <FollowTextarea className="fld desc" rows={6} placeholder="What this island is for" key={`description-${id}`} value={i.description} data-testid="side-island-description"
             onSave={(v) => { if (v !== i.description) save({ description: v }); }} />
         </Section>
         <Section name="island.instructions" title="Instructions">
