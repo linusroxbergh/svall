@@ -150,7 +150,7 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
 .keycap[data-on="true"] kbd { translate: 0 2px; box-shadow: 0 1px 0 var(--shade-2); }
 
 /* one character in six views, shown one at a time; a view fades in over the last */
-.tabs { display: flex; gap: 2px; width: max-content; max-width: 100%; margin: 0 0 20px; padding: 3px; border-radius: 12px;
+.tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; width: max-content; max-width: 100%; margin: 0 0 20px; padding: 3px; border-radius: 12px;
   background: var(--glass); border: 1px solid var(--line-soft); }
 .tabs button { padding: 7px 14px; border: 0; border-radius: 9px; background: none; cursor: pointer;
   font: 500 .875rem/1 var(--sans); color: var(--ink-2); transition: background .16s var(--ease), color .16s var(--ease); }
@@ -230,7 +230,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
   .dl { margin-top: 22px; }
   .install pre { padding: 10px 4px 10px 12px; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .gh span { display: none; }
-  .tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
+  .tabs { grid-auto-flow: row; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
   .shelf { grid-template-columns: minmax(0, 1fr); }
   .tree { border-right: 0; border-bottom: 1px solid var(--line-soft); }
 }
