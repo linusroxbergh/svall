@@ -22,7 +22,8 @@ async function site(o: { sha?: string; team?: string; retry?: boolean } = {}) {
   dirs.push(dir);
   fs.mkdirSync(path.join(dir, 'stage/Svall.app/Contents'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'stage/Svall.app/Contents/Info.plist'), '<plist/>');
-  execFileSync('hdiutil', ['create', '-quiet', '-volname', 'Svall', '-srcfolder', path.join(dir, 'stage'), '-format', 'UDZO', '-ov', path.join(dir, 'Svall.dmg')]);
+  // not named Svall: a release can't build its own DMG while a volume of that name is mounted
+  execFileSync('hdiutil', ['create', '-quiet', '-volname', 'svall-install-test', '-srcfolder', path.join(dir, 'stage'), '-format', 'UDZO', '-ov', path.join(dir, 'Svall.dmg')]);
   const dmg = fs.readFileSync(path.join(dir, 'Svall.dmg'));
   const sha = o.sha ?? crypto.createHash('sha256').update(dmg).digest('hex');
   const hits = { metadata: 0, download: 0 };
