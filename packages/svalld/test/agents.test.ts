@@ -65,4 +65,7 @@ describe('mainAgent', () => {
     // a configured CLI that is gone stays the choice; doctor says so
     expect(mainAgent('claude', ['codex'])).toBe('claude');
   });
+  it('is the first one found when claude is not among several', () => {
+    expect(mainAgent(undefined, ['codex', 'opencode'])).toBe('codex');
+  });
 });

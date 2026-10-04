@@ -17,7 +17,7 @@ export const Config = z.object({
   home: Home.extend({ cwd: z.string().default(HOME_CWD), command: z.string().optional() }).prefault({}),
   defaultCwd: z.string().default(DEFAULT_CWD),
   // the agent the scribe, mission control's crew and `svall char new --run` use by default; absent, the private fleet's, else
-  // the only one installed, else claude
+  // claude, unless only other agents are installed
   mainAgent: AgentKind.optional(),
   // the agents setup leaves alone, so one Svall supports from a later release on is on
   agentsOff: z.array(AgentKind).optional(),

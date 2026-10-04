@@ -73,4 +73,4 @@ export function versionOk(a: AgentAdapter, text: string): boolean {
 }
 
 export const mainAgent = (configured: AgentKind | undefined, found: AgentKind[]): AgentKind =>
-  configured ?? (found.length === 1 ? found[0] : 'claude');
+  configured ?? (!found.length || found.includes('claude') ? 'claude' : found[0]);
