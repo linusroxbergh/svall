@@ -1,6 +1,3 @@
-/* map furniture */
-.wordmark { position: absolute; top: 22px; left: 26px; z-index: var(--z-furniture); pointer-events: none; font-size: var(--text-2xl); font-weight: var(--w-semibold); letter-spacing: var(--track-tight); color: var(--ink); }
-
 /* the utility dock under the island list; its popover shares the dock's bottom edge */
 .use { position: absolute; bottom: 0; left: 0; z-index: var(--z-usage); display: flex; align-items: flex-end; pointer-events: none; }
 .use-tabs { flex: none; box-sizing: border-box; display: flex; gap: var(--sp-xs); width: var(--sb-w); height: var(--utility-dock-h);

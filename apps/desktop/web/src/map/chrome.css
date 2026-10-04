@@ -15,7 +15,7 @@
   background-size: var(--cell) var(--cell); background-position: var(--gx, 0) var(--gy, 0); }
 /* Dim only the scenery, including home and resources; terminal/browser surfaces and popovers
    in map-overlay must not inherit a filter or a new compositing layer from the map itself. */
-.map-sea, .map-world, .home, .res-islet, .wordmark { filter: brightness(var(--map-tone, 1)); }
+.map-sea, .map-world, .home, .res-islet { filter: brightness(var(--map-tone, 1)); }
 .map[data-dragging="true"] { cursor: grabbing; }
 .drop-cell { position: absolute; border-radius: var(--r-sm); pointer-events: none;
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--done) 95%, transparent); background: color-mix(in srgb, var(--done) 18%, transparent); }

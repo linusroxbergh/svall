@@ -4,8 +4,8 @@ export const theme = {
   coast: { n: 4.5, wobble: 0.08 },
   pad: 132,                       // 3 * cell, drawing room around an island
   scale: { min: 0.42, max: 1.5 },
-  // screen px the fit keeps between what the world draws and the map's edges: the top clears the wordmark, the sides
-  // match it, and so does the bottom with the water mission control keeps above its row
+  // screen px the fit keeps between what the world draws and the map's edges: the top and sides match, and so does
+  // the bottom with the water mission control keeps above its row
   fit: { x: 56, top: 56, bottom: 34 },
   bounds: { top: 1.3 },           // cells; the island label's band over its land
   panMargin: 40,

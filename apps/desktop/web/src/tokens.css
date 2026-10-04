@@ -70,7 +70,7 @@
   --text-md: 12.5px;    /* buttons and tabs */
   --text-lg: 13.5px;    /* body */
   --text-xl: 15px;      /* icon glyphs */
-  --text-2xl: 17px;     /* the wordmark and the card's own marks */
+  --text-2xl: 17px;     /* the card's own marks */
   --text-3xl: 25px;     /* names in a modal or the side card */
   --text-input: 16px;   /* a phone's fields: iOS zooms the page onto any smaller one */
 
