@@ -20,7 +20,7 @@ export class Prompts {
   async run(id: string, text: string, enter: boolean, term?: 2): Promise<void> {
     const { fleet } = this.deps;
     const c = fleet.char(id);
-    // a dormant claude or codex wakes with the text as its launch prompt; typed while it boots, a prompt can lose its Enter
+    // a dormant agent wakes with the text as its launch prompt; typed while it boots, a prompt can lose its Enter
     if (!term && enter && !c.tmux && !this.deps.reviving.has(id) && isAgentCommand(c.revive?.command ?? '')) {
       await fleet.reviveCharacter(id, text);
       return;

@@ -34,6 +34,13 @@ describe('withPromptFile', () => {
     expect(isAgentCommand('codexx')).toBe(false);
     expect(isAgentCommand('node fake.mjs')).toBe(false);
   });
+  it('hands opencode its prompt with --prompt, and leaves the file to the plugin on a resume', () => {
+    expect(isAgentCommand('opencode')).toBe(true);
+    expect(isAgentCommand('opencodex')).toBe(false);
+    expect(withPromptFile('opencode -m opencode/big-pickle', '/h/c_1.prompt'))
+      .toBe(`opencode -m opencode/big-pickle --prompt "$(cat '/h/c_1.prompt'; rm -f '/h/c_1.prompt')"`);
+    expect(withPromptFile('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn', '/h/c_1.prompt')).toBe('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn');
+  });
   it('passes the file as the last argument, after the options, and removes it once read', () => {
     expect(withPromptFile("claude --add-dir '/a'", "/h/it's.prompt"))
       .toBe(`claude --add-dir '/a' -- "$(cat '/h/it'\\''s.prompt'; rm -f '/h/it'\\''s.prompt')"`);

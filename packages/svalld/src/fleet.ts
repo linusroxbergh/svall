@@ -347,7 +347,7 @@ export class Fleet extends EventEmitter<Events> {
     if (!p.run) return this.char(id);
     const timeoutMs = this.deps.runTimeoutMs ?? RUN_TIMEOUT_MS;
     let runSent = await this.prompts.waitForAgent(id, timeoutMs);
-    // claude and codex have their prompt already, and submit it once they are up
+    // an agent has its prompt already, and submits it once it is up
     if (prompt) return { ...this.char(id), runSent: true };
     if (runSent) {
       // the window can die between the agent attaching and the send; the character stays, without its prompt
@@ -367,9 +367,11 @@ export class Fleet extends EventEmitter<Events> {
     return path.join(this.deps.paths.home, `${id}.prompt`);
   }
 
-  // claude and codex take a first prompt as their argument, which the shell reads from a file: typed into a composer
+  // an agent takes a first prompt as its argument, which the shell reads from a file: typed into a composer
   // that is still booting, a long prompt can arrive in pieces that swallow the Enter
   private launchLine(id: string, command: string, prompt?: string): string {
+    // a prompt file an OpenCode plugin never took must not reach the next resume
+    if (!prompt) fs.rmSync(this.promptFile(id), { force: true });
     if (!prompt || !isAgentCommand(command)) return command;
     fs.writeFileSync(this.promptFile(id), prompt, { mode: 0o600 });
     return withPromptFile(command, this.promptFile(id));

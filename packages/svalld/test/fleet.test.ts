@@ -447,6 +447,16 @@ runIf('Fleet', () => {
     await waitFor(async () => (await fleet.readScreen(c.id, 20)).includes('revived'));
   });
 
+  it('takes away a prompt file left over when a character starts without a prompt', async () => {
+    const { fleet, store, tmux, home } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    await tmux.killWindow(c.tmux!.windowId);
+    await waitFor(() => store.state.characters[c.id].tmux === undefined);
+    fs.writeFileSync(path.join(home, `${c.id}.prompt`), 'stale');
+    await fleet.reviveCharacter(c.id);
+    expect(fs.existsSync(path.join(home, `${c.id}.prompt`))).toBe(false);
+  });
+
   const SID = '9d1e4c2a-7b3f-4a6e-8c5d-2f1a0b9c8d7e';
   const HOUR = 3_600_000;
 
