@@ -97,7 +97,7 @@ export function Setup() {
         <h1>Set up Svall</h1>
         <p>Connect your agents and choose where new characters start.</p>
       </header>
-      <fieldset className="setup-fields" disabled={busy} aria-busy={busy} aria-label="Setup options">
+      <fieldset className="setup-fields" disabled={running} aria-busy={busy} aria-label="Setup options">
         {plan.blockers.map((b) => <p key={b} className="setup-blocker">{b}</p>)}
         {plan.install && <section>
           <h2>Choose an agent to install</h2>
@@ -115,7 +115,7 @@ export function Setup() {
           )}
           <p>Svall checks again when you return to this window.</p>
           {!plan.shimOnPath && <div className="setup-install">
-            <p>Both install to {shortPath(plan.shimDir)}, which is not on your PATH; add this line to ~/.zshrc, or your shell's startup file, then check again.</p>
+            <p>The installer puts the command in {shortPath(plan.shimDir)}, which is not on your PATH; add this line to ~/.zshrc, or your shell's startup file, then check again.</p>
             <Command bridge={bridge} text={line} />
           </div>}
         </section>}

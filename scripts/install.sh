@@ -33,6 +33,7 @@ pgrep -f "$DEST/Svall.app/Contents/MacOS/Svall" >/dev/null && fail "quit Svall f
 TMP="$(mktemp -d)"
 LOCK=
 cleanup() {
+  set +e
   stop_spinner
   hdiutil detach -quiet "$TMP/mnt" 2>/dev/null || true
   if [ -n "$LOCK" ]; then
@@ -49,7 +50,11 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 trap 'exit 129' HUP
-mkdir "$DEST/.Svall.install-lock" 2>/dev/null || fail "another install is using $DEST; if it was interrupted, remove $DEST/.Svall.install-lock and try again"
+trap 'exit 131' QUIT
+mkdir "$DEST/.Svall.install-lock" 2>/dev/null || {
+  [ -d "$DEST/.Svall.install-lock" ] && fail "another install is using $DEST; if it was interrupted, remove $DEST/.Svall.install-lock and try again"
+  fail "could not write to $DEST; choose a writable folder with SVALL_INSTALL_DIR"
+}
 LOCK=1
 LOG="$TMP/install.log"
 task() {
@@ -84,7 +89,7 @@ URL="$(field url)"; SHA="$(field sha256)"; VERSION="$(field version)"
 step "Downloading Svall ${VERSION:-release}"
 PROGRESS=--silent
 [ -z "$TTY" ] || PROGRESS=--progress-bar
-curl -fL "$PROGRESS" --show-error --retry 3 --connect-timeout 15 --max-time 900 "$URL" -o "$TMP/Svall.dmg" || fail "could not download Svall; check your connection and try again"
+curl -fL "$PROGRESS" --show-error --retry 3 --connect-timeout 15 --speed-limit 1024 --speed-time 60 "$URL" -o "$TMP/Svall.dmg" || fail "could not download Svall; check your connection and try again"
 checksum() { echo "$SHA  $TMP/Svall.dmg" | shasum -a 256 -c - >/dev/null 2>&1 || { printf 'The download does not match its sha256; try again to download a fresh copy.\n' >&2; return 1; }; }
 task "Checking the download" checksum
 mkdir "$TMP/mnt"
@@ -100,13 +105,16 @@ install_app() {
   if [ ! -e "$DEST/Svall.app" ] && [ -e "$DEST/.Svall.app.old" ]; then mv "$DEST/.Svall.app.old" "$DEST/Svall.app" || return 1; fi
   rm -rf "$DEST/.Svall.app.new" || return 1
   ditto "$APP" "$DEST/.Svall.app.new" || return 1
-  rm -rf "$DEST/.Svall.app.old" || return 1
+  rm -rf "$DEST/.Svall.app.old" || {
+    printf 'Remove %s/.Svall.app.old, a copy of the previous app, then try again.\n' "$DEST" >&2
+    return 1
+  }
   [ ! -e "$DEST/Svall.app" ] || mv "$DEST/Svall.app" "$DEST/.Svall.app.old" || {
     printf 'macOS may ask to let your terminal manage apps; allow it, then try again.\n' >&2
     return 1
   }
   mv "$DEST/.Svall.app.new" "$DEST/Svall.app" || return 1
-  rm -rf "$DEST/.Svall.app.old"
+  rm -rf "$DEST/.Svall.app.old" || true
 }
 task "Installing to $DEST" install_app
 bar

@@ -139,6 +139,24 @@ test('replaces an existing app and removes its backup only after the new one is 
   expect(fs.existsSync(path.join(dest, '.Svall.app.old'))).toBe(false);
 }, 30_000);
 
+test('a backup it cannot delete leaves the new app installed, and the next run says what to remove', async () => {
+  const s = await site();
+  const dest = path.join(s.dir, 'Apps');
+  fs.mkdirSync(path.join(dest, 'Svall.app'), { recursive: true });
+  fs.writeFileSync(path.join(s.bin, 'rm'), `#!/bin/sh
+case "$2" in */.Svall.app.old) [ -e "$2" ] && { echo "Operation not permitted" >&2; exit 1; } ;; esac
+exec /bin/rm "$@"
+`, { mode: 0o755 });
+  expect((await run(s.env)).status).toBe(0);
+  expect(fs.existsSync(path.join(dest, 'Svall.app/Contents/Info.plist'))).toBe(true);
+  expect(fs.existsSync(s.opened)).toBe(true);
+  const again = await run(s.env);
+  expect(again.status).toBe(1);
+  expect(again.stderr).toContain(`Remove ${dest}/.Svall.app.old`);
+  expect(fs.existsSync(path.join(dest, 'Svall.app/Contents/Info.plist'))).toBe(true);
+  expect(fs.existsSync(path.join(dest, '.Svall.install-lock'))).toBe(false);
+}, 60_000);
+
 test('refuses concurrent installs without disturbing another run’s staged app or lock', async () => {
   const s = await site();
   const dest = path.join(s.dir, 'Apps');
@@ -150,6 +168,16 @@ test('refuses concurrent installs without disturbing another run’s staged app 
   expect(r.stderr).toContain('another install');
   expect(fs.readFileSync(path.join(dest, '.Svall.app.new/other-install'), 'utf8')).toBe('keep');
   expect(fs.existsSync(path.join(dest, '.Svall.install-lock'))).toBe(true);
+}, 30_000);
+
+test('says a folder it cannot write to is not writable, rather than held by another install', async () => {
+  const s = await site();
+  const dest = path.join(s.dir, 'Apps');
+  fs.mkdirSync(dest, { mode: 0o555 });
+  const r = await run(s.env);
+  fs.chmodSync(dest, 0o755);
+  expect(r.status).toBe(1);
+  expect(r.stderr).toContain(`could not write to ${dest}`);
 }, 30_000);
 
 test('a failure to open the installed app is not reported as an installation failure', async () => {

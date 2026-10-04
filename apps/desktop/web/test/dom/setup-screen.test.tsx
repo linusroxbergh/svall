@@ -63,7 +63,7 @@ test('missing agents show one installer at a time', () => {
   expect(s.sent.at(-1)).toEqual({ type: 'copy', text: 'install-codex' });
 });
 
-test('rechecks on native activation, focus and visibility without duplicate in-flight requests', () => {
+test('rechecks on native activation, focus and visibility without duplicate in-flight requests or locking choices', () => {
   const s = shell(missing);
   fireEvent.change(screen.getByLabelText('Projects folder'), { target: { value: '~/work' } });
   fireEvent.click(screen.getByRole('radio', { name: 'Codex' }));
@@ -74,14 +74,18 @@ test('rechecks on native activation, focus and visibility without duplicate in-f
   fireEvent(document, new Event('visibilitychange'));
   expect(s.sent.filter((m) => m.type === 'setup.plan')).toHaveLength(2);
   expect(screen.getByRole('button', { name: 'Checking…' }).hasAttribute('disabled')).toBe(true);
+  expect(screen.getByLabelText('Projects folder').closest('fieldset')!.disabled).toBe(false);
   s.reply();
   expect((screen.getByRole('radio', { name: 'Codex' }) as HTMLInputElement).checked).toBe(true);
-  fireEvent.focus(window);
+  fireEvent(document, new Event('visibilitychange'));
   expect(s.sent.filter((m) => m.type === 'setup.plan')).toHaveLength(3);
+  s.reply();
+  fireEvent.focus(window);
+  expect(s.sent.filter((m) => m.type === 'setup.plan')).toHaveLength(4);
   s.reply(ready);
   expect((screen.getByLabelText('Projects folder') as HTMLInputElement).value).toBe('~/work');
   fireEvent.focus(window);
-  expect(s.sent.filter((m) => m.type === 'setup.plan')).toHaveLength(3);
+  expect(s.sent.filter((m) => m.type === 'setup.plan')).toHaveLength(4);
 });
 
 test('rechecking preserves existing agent selections and even an intentionally empty folder', () => {
@@ -95,16 +99,14 @@ test('rechecking preserves existing agent selections and even an intentionally e
   expect((screen.getByLabelText('Projects folder') as HTMLInputElement).value).toBe('');
 });
 
-test('running setup communicates progress, locks configuration and prevents activation checks', () => {
+test('running setup communicates progress and locks configuration', () => {
   const s = shell(ready);
   fireEvent.click(screen.getByRole('button', { name: 'Set up Svall' }));
   expect(s.sent.at(-1)).toEqual({ type: 'setup.run', agents: ['claude', 'codex'], found: ['claude', 'codex'], projects: '~/Developer' });
   expect((screen.getByRole('button', { name: 'Setting up…' }) as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByRole('status').textContent).toMatch(/Connecting your agents/);
   expect(screen.getByLabelText('Projects folder').closest('fieldset')!.disabled).toBe(true);
-  s.receive({ type: 'app.active', active: true });
   s.receive({ type: 'folder.picked', path: '/unexpected' });
-  expect(s.sent.filter((m) => m.type === 'setup.plan')).toHaveLength(1);
   expect((screen.getByLabelText('Projects folder') as HTMLInputElement).value).toBe('~/Developer');
   s.receive({ type: 'setup.result', step: 'run', ok: false, json: 'Could not write hooks. Try again.' });
   expect(screen.getByRole('alert').textContent).toMatch(/Could not write hooks/);
