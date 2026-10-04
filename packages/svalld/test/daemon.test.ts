@@ -72,11 +72,11 @@ runIf('startDaemon', () => {
     await first;
   });
 
-  it('writes the version it runs as, which a launch refresh compares with the app\'s', async () => {
+  it('writes the version it runs as and its pid, which a launch refresh compares with the app\'s', async () => {
     const home = makeHome();
     homes.push(home);
     await (await start({ home, port: 0, log: silentLogger })).stop();
-    expect(fs.readFileSync(path.join(home, 'version'), 'utf8')).toBe(runtimeVersion());
+    expect(fs.readFileSync(path.join(home, 'version'), 'utf8')).toBe(`${runtimeVersion()}\n${process.pid}\n`);
   });
 
   it('writes no codex hooks when the private fleet starts with Codex turned off in setup', async () => {

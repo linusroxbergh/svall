@@ -9,7 +9,7 @@ import { CODEX_TRUST } from '@svall/svalld/agent-hooks';
 import { AGENTS, AGENT_KINDS, findAgents, mainAgent, onPath } from '@svall/svalld/agents';
 import { codexPaths } from '@svall/svalld/codex/install';
 import { loadConfig, saveConfig } from '@svall/svalld/config';
-import { isRunning, kickstart, plistCurrent, takenOverBy } from '@svall/svalld/launchd';
+import { kickstart, plistCurrent, runningPid, takenOverBy } from '@svall/svalld/launchd';
 import { expandHome, resolvePaths, userPaths } from '@svall/svalld/paths';
 import { LOGIN_SHELL_TIMEOUT_MS, takeLoginEnv } from '@svall/svalld/login-env';
 import { LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from '@svall/svalld/profile';
@@ -95,15 +95,15 @@ async function checkAction(r: Run, state: SetupState): Promise<void> {
   if (checks.some((c) => c.status === 'fail')) process.exitCode = 1;
 }
 
-type Daemons = { ours: string[]; running: Set<string>; stale: string[] };
+type Daemons = { ours: string[]; running: Map<string, number>; stale: string[] };
 
 // a fleet another copy on disk runs keeps its daemon, whatever version it is; only a fleet whose window is open runs,
 // and the rest start on the new build with their window
 async function daemons(r: Run, system: boolean): Promise<Daemons> {
   const ours = r.homes.filter((h) => !takenOverBy(plistOf(r, h), r.runtime));
-  const running = new Set<string>();
-  if (system) for (const h of ours) if (await isRunning(label(h))) running.add(label(h));
-  return { ours, running, stale: staleFleets(r.homes, runtimeVersion(), (l) => running.has(l)) };
+  const running = new Map<string, number>();
+  if (system) for (const h of ours) { const pid = await runningPid(label(h)); if (pid !== undefined) running.set(label(h), pid); }
+  return { ours, running, stale: staleFleets(r.homes, runtimeVersion(), (l) => running.get(l)) };
 }
 
 // --if-needed with nothing to set up, or nothing it may set up, still restarts old daemons
