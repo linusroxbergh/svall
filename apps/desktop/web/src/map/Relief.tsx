@@ -16,8 +16,8 @@ export function Seabed({ id, sand, cx, cy, bank }: { id: string; sand: string; c
         <filter id={wash} x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="11" /></filter>
         <filter id={sharp} x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="5" /></filter>
       </defs>
-      <path d={sand} fill="rgba(140,190,215,.13)" filter={`url(#${soft})`} transform={around(1.38, cx, cy)} />
-      <path d={sand} fill="rgba(205,225,230,.09)" filter={`url(#${wash})`} transform={around(1.16, cx, cy)} />
+      <path d={sand} fill="rgba(140,190,215,.11)" filter={`url(#${soft})`} transform={around(1.38, cx, cy)} />
+      <path d={sand} fill="rgba(205,225,230,.08)" filter={`url(#${wash})`} transform={around(1.16, cx, cy)} />
       <path d={sand} fill="rgba(8,14,22,.22)" filter={`url(#${sharp})`} transform="translate(2,8)" />
       {CONTOURS.map(([k, colour], i) => (
         <path key={i} d={sand} fill="none" stroke={colour} strokeWidth={(1 / k).toFixed(3)} strokeDasharray="7 9" strokeLinecap="round" transform={around(k, cx, cy)} />
@@ -29,5 +29,5 @@ export function Seabed({ id, sand, cx, cy, bank }: { id: string; sand: string; c
 }
 
 export function Waterline({ sand }: { sand: string }) {
-  return <path d={sand} fill="none" stroke="rgba(252,246,230,.38)" strokeWidth="1.4" />;
+  return <path d={sand} fill="none" stroke="rgba(252,246,230,.3)" strokeWidth="1.4" />;
 }
