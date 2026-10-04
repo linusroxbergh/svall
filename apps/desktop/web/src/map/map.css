@@ -64,6 +64,8 @@
   transform:translate(-50%,-48%);filter:brightness(var(--map-tone, 1))}
 /* cards keep their screen size whatever the map zoom, so they rasterise crisp */
 .map-world .tok{transform-origin:0 0;transform:scale(var(--k,1)) translate(-50%,-48%)}
+/* on the card's paper a status prints in its ink; the chrome around the map keeps the lit tokens */
+.tok{--working:var(--working-ink);--blocked:var(--blocked-ink);--done:var(--done-ink);--ink-on-blocked:var(--cream)}
 .tok:hover,.tok.sel{z-index:30}
 /* the card sits pressed into the ground: a soft darker patch behind it, left in place when the card lifts */
 .tok::before{content:'';position:absolute;z-index:-1;pointer-events:none;
@@ -181,7 +183,7 @@
 .tok .foot .pip[data-status=idle]{background:var(--idle)}
 .tok .foot .sw{font-size:calc(var(--tok)*.225);font-weight:var(--w-bold);letter-spacing:var(--track-caps);
   text-transform:uppercase;padding:calc(var(--tok)*.02) calc(var(--tok)*.13);
-  border-radius:var(--r-xs);color:var(--ink-land-deep)}
+  border-radius:var(--r-xs)}
 .tok button.foot{border:0;border-radius:0;font:inherit;color:inherit;text-align:inherit;cursor:pointer;
   transition:background var(--dur) var(--ease)}
 .tok button.foot:hover{background:linear-gradient(color-mix(in srgb, var(--card-tint) 6%, transparent),color-mix(in srgb, var(--card-tint) 10%, transparent))}
