@@ -42,7 +42,7 @@ describe('messages', () => {
     }
     expect(methods['island.update'].params.parse({ id: 'i', size: { w: MAX_SIDE, h: MAX_SIDE } }).size).toEqual({ w: MAX_SIDE, h: MAX_SIDE });
     const island = { id: 'i', name: 'x', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 1000, h: 1000 }, seed: 1 };
-    expect(FleetState.safeParse({ version: 7, islands: { i: island }, characters: {} }).success).toBe(true);
+    expect(FleetState.safeParse({ version: 8, islands: { i: island }, characters: {} }).success).toBe(true);
   });
   // arranging for a window of no width at all would push every island out to Infinity, which the state cannot hold
   it('arranges for the shape of a real window, and refuses one of no width or no height', () => {
@@ -57,7 +57,7 @@ describe('messages', () => {
     expect(methods['char.update'].params.safeParse({ id: 'c', instructions: long }).success).toBe(false);
     expect(methods['char.update'].params.safeParse({ id: 'c', instructions: long.slice(1) }).success).toBe(true);
     const island = { id: 'i', name: 'x', description: '', instructions: long, context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
-    expect(FleetState.safeParse({ version: 7, islands: { i: island }, characters: {} }).success).toBe(true);
+    expect(FleetState.safeParse({ version: 8, islands: { i: island }, characters: {} }).success).toBe(true);
   });
   // past 2^31-1 ms a timer fires at once, so a wait that long would answer timeout straight away
   it('waits a whole number of milliseconds a timer can hold', () => {
@@ -138,8 +138,12 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 18 with shelf rows set aside and put back', () => {
-    expect(PROTOCOL_VERSION).toBe(18);
+  it('is 19 with OpenCode as an agent kind', () => {
+    expect(PROTOCOL_VERSION).toBe(19);
+    expect(methods['mainAgent.set'].params.safeParse({ agent: 'opencode' }).success).toBe(true);
+  });
+
+  it('was 18 with shelf rows set aside and put back', () => {
     expect(methods['resources.delete'].params.safeParse({ id: 'r:/u/.claude', path: 'skills/tidy' }).success).toBe(true);
     expect(methods['resources.delete'].result.safeParse({ token: 't' }).success).toBe(true);
     expect(methods['resources.restore'].params.safeParse({ token: 't' }).success).toBe(true);

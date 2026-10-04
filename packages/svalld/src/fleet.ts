@@ -31,6 +31,7 @@ import { expandHome, type Paths } from './paths.js';
 import { SHIM } from './profile.js';
 import { reconcile, secondName, snapshot } from './reconcile.js';
 import { codexRunner } from './scribe/codex.js';
+import { opencodeRunner } from './scribe/opencode.js';
 import { claudeRunner, perPass, type RunScribe } from './scribe/run.js';
 import { Scribe, type SweepOptions } from './scribe/scribe.js';
 import { installHomeTemplate } from './setup.js';
@@ -72,6 +73,7 @@ export class Fleet extends EventEmitter<Events> {
     const run = deps.runScribe ?? perPass({
       claude: claudeRunner({ model: scribeModel(config.scribe, 'claude') ?? 'sonnet', cwd, envFile: paths.env }),
       codex: codexRunner({ model: scribeModel(config.scribe, 'codex'), cwd }),
+      opencode: opencodeRunner({ model: scribeModel(config.scribe, 'opencode'), cwd }),
     }, () => store.state.scribeAgent ?? 'claude');
     this.scribe = new Scribe({ store, log, run, brief: (island, c) => this.render(island, c) });
     this.sleep = { store, tmux: deps.tmux, log, processes: deps.processes ?? processes, ending: this.ending };

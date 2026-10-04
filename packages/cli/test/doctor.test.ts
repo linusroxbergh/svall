@@ -99,7 +99,7 @@ describe('doctor', () => {
   it('reports a healthy fleet and the last 20 log lines', async () => {
     const r = await doctor(priv, fake().deps);
     const c = byName(r);
-    expect(r.checks.every((x) => x.status === 'ok' || x === c.codex || x === c['codex hooks'])).toBe(true);
+    expect(r.checks.every((x) => x.status === 'ok' || x === c.codex || x === c.opencode || x === c['codex hooks'])).toBe(true);
     expect(c.codex).toMatchObject({ status: 'skip', detail: 'not installed' });
     expect(c['codex hooks']).toMatchObject({ status: 'skip', detail: 'not installed' });
     expect(c.tmux.detail).toBe('tmux 3.5a');
@@ -307,9 +307,9 @@ describe('preflight', () => {
   it('checks what setup needs without asking the daemon, launchd or gh', async () => {
     const f = fake({ up: false, files: { '/u/.claude/settings.json': undefined as never } });
     const checks = await preflight(f.deps);
-    expect(checks.map((c) => c.name)).toEqual(['tmux', 'node', 'claude', 'codex', 'path']);
+    expect(checks.map((c) => c.name)).toEqual(['tmux', 'node', 'claude', 'codex', 'opencode', 'path']);
     expect(checks.every((c) => c.status === 'ok' || c.status === 'skip')).toBe(true);
-    expect(f.calls).toEqual(['tmux -V', 'claude --version', 'codex --version', 'claude auth status --json']);
+    expect(f.calls).toEqual(['tmux -V', 'claude --version', 'codex --version', 'opencode --version', 'claude auth status --json']);
   });
 
   it('warns when the shim directory is not on PATH', async () => {
@@ -355,7 +355,7 @@ describe('agent checks', () => {
   it('asks each CLI for its version once', async () => {
     const f = fake({ commands: codexOk });
     await preflight(f.deps);
-    expect(f.calls.filter((c) => c.endsWith('--version'))).toEqual(['claude --version', 'codex --version']);
+    expect(f.calls.filter((c) => c.endsWith('--version'))).toEqual(['claude --version', 'codex --version', 'opencode --version']);
   });
 
   it('warns about an old codex and a missing login, never failing', async () => {

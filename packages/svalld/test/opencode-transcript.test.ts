@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { condenseTurnsOpencode, userPromptsOpencode } from '../src/agent/opencode-transcript.js';
+import { condenseTurns, userPrompts } from '../src/agent/transcript.js';
 
 const log = (...lines: unknown[]): string => lines.map((l) => JSON.stringify(l)).join('\n') + '\n';
 const turn = log(
@@ -22,5 +23,9 @@ describe('the OpenCode session log', () => {
   it('skips a partial first line and lines of another shape', () => {
     const tail = '{"kind":"us' + '\n' + log({ kind: 'user' }, { kind: 'tool' }, { kind: 'agent', text: 'ok' });
     expect(condenseTurnsOpencode(tail, 10)).toBe('AGENT: ok');
+  });
+  it('is the reader for an opencode agent', () => {
+    expect(condenseTurns('opencode', turn, 10)).toBe('USER: fix the flaky test\nAGENT: [tool: bash] fixed');
+    expect(userPrompts('opencode', turn, 5)).toEqual(['fix the flaky test']);
   });
 });

@@ -67,7 +67,7 @@ describe('char new', () => {
 describe('a char command that stops on an error', () => {
   it('closes its connection to the fleet', async () => {
     const close = vi.fn();
-    const client = { call: async () => ({ version: 7, islands: {}, characters: { c_a: base } }), close };
+    const client = { call: async () => ({ version: 8, islands: {}, characters: { c_a: base } }), close };
     await expect(charCommands(async () => client as unknown as Client, () => false).parseAsync(['node', 'char', 'show', 'nobody'])).rejects.toThrow('no character "nobody"');
     expect(close).toHaveBeenCalledOnce();
   });
@@ -78,7 +78,7 @@ describe('char wait', () => {
   const wait = async (ref: string, characters: Record<string, Character>, flags: string[] = []) => {
     vi.spyOn(process.stdout, 'write').mockReturnValue(true);
     const calls: string[] = [];
-    const client = { call: async (m: string) => { calls.push(m); return m === 'state.get' ? { version: 7, islands: {}, characters } : { status: 'gone' }; }, close() {} };
+    const client = { call: async (m: string) => { calls.push(m); return m === 'state.get' ? { version: 8, islands: {}, characters } : { status: 'gone' }; }, close() {} };
     await charCommands(async () => client as unknown as Client, () => false).parseAsync(['node', 'char', 'wait', ref, '--until', 'idle', ...flags]);
     return calls;
   };

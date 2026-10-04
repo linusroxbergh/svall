@@ -144,6 +144,8 @@ export function fleetUsage(o: { state: () => FleetState; claude: FetchUsage; rea
       .sort((a, b) => b.at - a.at)[0];
     const codex = newest ? codexWindows(newest.limits) : [];
     if (!agents.length) return { available: true, idle: true, windows: [] };
+    // OpenCode runs on any provider and reports no plan's limits
+    if (agents.every((a) => a.kind === 'opencode')) return { available: false, windows: [] };
     if (!agents.some((a) => a.kind === 'claude')) return { available: true, windows: codex };
     // a claude that is logged out or slow must not take the codex windows down with it
     const claude = await o.claude().catch((e: unknown): UsageSnapshot => { if (!codex.length) throw e; return { available: false, windows: [] }; });

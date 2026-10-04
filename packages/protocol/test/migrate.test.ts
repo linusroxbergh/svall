@@ -8,11 +8,19 @@ const char = (id: string, islandId: string) => ({
 });
 
 describe('migrateState', () => {
-  it('passes a version 7 file through', () => {
+  it('passes a version 8 file through', () => {
     const { state, migrated, dropped } = migrateState(emptyState());
     expect(migrated).toBe(false);
     expect(dropped).toEqual([]);
-    expect(state.version).toBe(7);
+    expect(state.version).toBe(8);
+  });
+
+  it('lifts a version 7 file to 8 as it is', () => {
+    const raw = { ...emptyState(), version: 7, islands: { i_a: island('i_a') }, characters: { c_a: char('c_a', 'i_a') } };
+    const { state, migrated, dropped } = migrateState(raw);
+    expect(migrated).toBe(true);
+    expect(dropped).toEqual([]);
+    expect(state).toEqual({ ...raw, version: 8 });
   });
 
   it('refuses a file older than version 7 and says so', () => {
@@ -23,7 +31,7 @@ describe('migrateState', () => {
   });
 
   it('refuses a file from a newer svalld', () => {
-    expect(() => migrateState({ version: 8, islands: {}, characters: {} })).toThrow(NewerStateVersion);
+    expect(() => migrateState({ version: 9, islands: {}, characters: {} })).toThrow(NewerStateVersion);
   });
 
   it('rejects garbage', () => {

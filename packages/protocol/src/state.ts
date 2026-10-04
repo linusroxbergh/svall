@@ -28,13 +28,15 @@ export const ContextItem = z.object({
 });
 export type ContextItem = z.infer<typeof ContextItem>;
 
-// a revive types the session id into a shell, so only the id shape Claude Code and Codex both use is trusted
-export const isSessionId = (v: string): boolean => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+// a revive types the session id into a shell, so only the id shapes the agents make are trusted: Claude Code's and
+// Codex's UUIDs, OpenCode's ses_ ids
+export const isSessionId = (v: string): boolean =>
+  /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|ses_[0-9a-f]{12}[0-9A-Za-z]{14})$/i.test(v);
 
-export const AgentKind = z.enum(['claude', 'codex']);
+export const AgentKind = z.enum(['claude', 'codex', 'opencode']);
 export type AgentKind = z.infer<typeof AgentKind>;
 
-export const AGENT_LABEL: Record<AgentKind, string> = { claude: 'Claude Code', codex: 'Codex' };
+export const AGENT_LABEL: Record<AgentKind, string> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode' };
 
 export const Agent = z.object({
   kind: AgentKind,
@@ -161,7 +163,7 @@ export const Character = z.object({
 export type Character = z.infer<typeof Character>;
 
 export const FleetState = z.object({
-  version: z.literal(7),
+  version: z.literal(8),
   // the name config.json gives the fleet; absent, its directory names it
   name: z.string().optional(),
   islands: z.record(z.string(), Island),
@@ -188,4 +190,4 @@ export type FleetState = z.infer<typeof FleetState>;
 
 export const DORMANT_AFTER_HOURS = 12;
 
-export const emptyState = (): FleetState => ({ version: 7, islands: {}, characters: {}, home: defaultHome(), defaultCwd: DEFAULT_CWD, scribeAsk: true });
+export const emptyState = (): FleetState => ({ version: 8, islands: {}, characters: {}, home: defaultHome(), defaultCwd: DEFAULT_CWD, scribeAsk: true });

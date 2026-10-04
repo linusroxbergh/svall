@@ -13,6 +13,11 @@ describe('findAgents', () => {
   it('skips relative PATH entries', () => {
     expect(onPath('claude', 'bin:/usr/bin', exec(['bin/claude']))).toBeUndefined();
   });
+  it('finds opencode and holds it to 1.18.34', () => {
+    expect(findAgents('/b', exec(['/b/opencode']))).toEqual(['opencode']);
+    expect(versionOk(AGENTS.opencode, '1.18.34')).toBe(true);
+    expect(versionOk(AGENTS.opencode, '1.18.33')).toBe(false);
+  });
 });
 
 describe('versions', () => {

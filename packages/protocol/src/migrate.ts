@@ -41,7 +41,8 @@ export function migrateState(raw: unknown): { state: FleetState; migrated: boole
   const version = (raw as { version?: unknown } | null)?.version;
   if (typeof version === 'number' && version > CURRENT) throw new NewerStateVersion(version);
   if (typeof version === 'number' && version < OLDEST) throw new OlderStateVersion(version);
+  // version 8 only adds OpenCode as an agent kind, so a version 7 file lifts as it is
+  if (version === 7) return { ...salvage({ ...(raw as object), version: CURRENT }), migrated: true };
   if (version !== CURRENT) throw new Error(`unsupported state version ${String(version)}`);
-  // the oldest version this reads is the current one, so no file is lifted to it
   return { ...salvage(raw as object), migrated: false };
 }
