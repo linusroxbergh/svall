@@ -328,3 +328,55 @@ test('a profile whose file is gone is named missing, and the brief goes without 
   await expect(card.getByTestId('side-agent-profile-view')).toHaveCount(0);
   expect((await svall.api.call('char.show', { id: c.id })).text).not.toContain('Agent profile');
 });
+
+test('the card never scrolls: a section folds, a dragged one keeps its height, and a double-click fits it again', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('sections') });
+  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'sections' });
+  const context = Array.from({ length: 40 }, (_, i) => ({ kind: 'other' as const, ref: `https://example.com/${i}`, label: `link ${i}`, source: 'manual' as const }));
+  await svall.api.call('char.update', { id: c.id, note: 'line\n'.repeat(30), context });
+  await svall.open();
+  await page.getByTestId(`sb-char-${c.id}`).click();
+  const card = page.getByTestId('side-card');
+  const scrolls = () => card.evaluate((el) => el.scrollHeight > el.clientHeight);
+  await page.screenshot({ path: process.env.SHOT_DIR && `${process.env.SHOT_DIR}/1-crowded.png` });
+
+  // more than fits: the sections share the card, and Finder and Resources stay in sight
+  expect(await scrolls()).toBe(false);
+  await expect(card.getByTestId('side-finder')).toBeInViewport({ ratio: 1 });
+  await expect(card.getByTestId('side-resources')).toBeInViewport({ ratio: 1 });
+  await expect(card.getByTestId('side-close')).toBeInViewport({ ratio: 1 });
+  await page.setViewportSize({ width: 1280, height: 520 });
+  expect(await scrolls()).toBe(false);
+  await expect(card.getByTestId('side-finder')).toBeInViewport({ ratio: 1 });
+  await page.screenshot({ path: process.env.SHOT_DIR && `${process.env.SHOT_DIR}/1b-short.png` });
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  const details = card.getByTestId('sec-fold-character.details');
+  await details.click();
+  await expect(details).toHaveAttribute('aria-expanded', 'false');
+  await expect(card.getByTestId('side-island')).toHaveCount(0);
+  await expect(card.getByTestId('side-finder')).toBeInViewport({ ratio: 1 });
+
+  const grip = card.getByTestId('sec-grip-character.note');
+  const note = grip.locator('..');
+  const before = (await note.boundingBox())!.height;
+  const at = (await grip.boundingBox())!;
+  await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2 + 80, { steps: 4 });
+  await page.mouse.up();
+  await expect.poll(async () => (await note.boundingBox())!.height).toBeCloseTo(before + 80, -1);
+  await expect(note).toHaveAttribute('data-fit', 'false');
+  await page.screenshot({ path: process.env.SHOT_DIR && `${process.env.SHOT_DIR}/2-pinned.png` });
+  expect(await scrolls()).toBe(false);
+
+  // the fold and the height outlive a reload
+  await svall.open();
+  await page.getByTestId(`sb-char-${c.id}`).click();
+  await expect(details).toHaveAttribute('aria-expanded', 'false');
+  expect((await note.boundingBox())!.height).toBeCloseTo(before + 80, -1);
+
+  await grip.dblclick();
+  await expect(note).toHaveAttribute('data-fit', 'true');
+  await expect.poll(async () => (await note.boundingBox())!.height).toBeCloseTo(before, -1);
+});

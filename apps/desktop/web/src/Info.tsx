@@ -21,7 +21,7 @@ export function Info({ id, children }: { id: string; children: ReactNode }) {
     const row = el?.offsetParent as HTMLElement | null;
     if (!open || !el || !row) return;
     const measure = () => {
-      const panel = el.closest('.side')?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight };
+      const panel = el.closest('.side-secs, .side')?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight };
       setPlace(placeTip(row.getBoundingClientRect(), el.scrollHeight, panel));
     };
     measure();

@@ -3,10 +3,10 @@ import type { ResourceSource } from '@svall/protocol';
 import { isVeiled, panesOf } from '../src/selectors.js';
 import type { Tier } from '../src/resources/model.js';
 import { DEFAULT_SETTINGS, type Settings } from '../src/settings.js';
-import { createAppStore, FILES_TREE_RANGE, RESOURCE_COL_RANGE, SIDE_WIDTH_RANGE, type AppStorage, type FilesTree, type HalfCard, type ResourceCols, type SideWidths, type View } from '../src/store/index.js';
+import { createAppStore, FILES_TREE_RANGE, RESOURCE_COL_RANGE, SIDE_WIDTH_RANGE, type AppStorage, type FilesTree, type HalfCard, type ResourceCols, type Section, type SideWidths, type View } from '../src/store/index.js';
 import { chr, fleet } from './fixtures.js';
 
-type Mem = AppStorage & { focus?: string; view?: View; sidebar?: boolean; half?: HalfCard; cols?: ResourceCols; size?: HalfCard; sides?: SideWidths; tree?: FilesTree; settings?: Settings; groups?: Tier[] };
+type Mem = AppStorage & { focus?: string; view?: View; sidebar?: boolean; half?: HalfCard; cols?: ResourceCols; size?: HalfCard; sides?: SideWidths; tree?: FilesTree; settings?: Settings; groups?: Tier[]; sections?: Record<string, Section> };
 
 const memStorage = (): Mem => {
   const s: Mem = {
@@ -19,6 +19,7 @@ const memStorage = (): Mem => {
     getFilesTree: () => s.tree, setFilesTree: (v) => { s.tree = v; },
     getSettings: () => s.settings, setSettings: (v) => { s.settings = v; },
     getResourceGroups: () => s.groups, setResourceGroups: (v) => { s.groups = v; },
+    getSections: () => s.sections, setSections: (v) => { s.sections = v; },
   };
   return s;
 };
@@ -323,6 +324,18 @@ describe('store', () => {
     store.getState().setFilesTreeWidth(300);
     store.getState().toggleFilesTree(false);
     expect(createAppStore(storage).getState().filesTree).toEqual({ open: false, width: 300 });
+  });
+
+  it('remembers each side card section folded or pinned, and writes a height only when asked', () => {
+    const storage = memStorage();
+    const store = createAppStore(storage);
+    expect(store.getState().sections).toEqual({});
+    store.getState().setSection('character.details', { shut: true });
+    store.getState().setSection('character.note', { height: 180 }, false);
+    expect(store.getState().sections['character.note']).toEqual({ height: 180 });
+    expect(storage.sections).toEqual({ 'character.details': { shut: true } });
+    store.getState().setSection('character.note', { height: 180 });
+    expect(createAppStore(storage).getState().sections).toEqual({ 'character.details': { shut: true }, 'character.note': { height: 180 } });
   });
 
   it('remembers the settings', () => {
