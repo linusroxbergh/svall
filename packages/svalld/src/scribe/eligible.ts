@@ -1,9 +1,11 @@
-import type { Character } from '@svall/protocol';
+import type { AgentKind, Character } from '@svall/protocol';
 
 export const REST_MS = 45_000;
 export const REST_BYTES = 2 * 1024;
 export const BACKSTOP_MS = 10 * 60_000;
 export const BACKSTOP_BYTES = 20 * 1024;
+// Svall's OpenCode log holds only what was said and each tool call, clipped: a turn adds a sixteenth of a transcript's bytes
+const SMALLER: Partial<Record<AgentKind, number>> = { opencode: 16 };
 
 // what the scribe remembers of its last pass on a character; retryAt holds off a character whose last `failures` passes failed
 export type Seen = { lastPassAt: number; path: string; bytes: number; retryAt?: number; failures?: number };
@@ -15,7 +17,7 @@ export function eligible(c: Character, seen: Seen | undefined, bytes: number, no
   if (seen?.retryAt !== undefined && now < seen.retryAt) return false;
   const last = seen?.path === a.transcriptPath ? seen : undefined;
   const lastPassAt = last?.lastPassAt ?? 0;
-  const grown = bytes - (last?.bytes ?? 0);
+  const grown = (bytes - (last?.bytes ?? 0)) * (SMALLER[a.kind] ?? 1);
   if (a.status === 'done' || a.status === 'idle') return now - a.lastActivityAt >= REST_MS && grown >= REST_BYTES;
   if (a.status === 'working') return now - lastPassAt >= BACKSTOP_MS && grown >= BACKSTOP_BYTES;
   return false;
