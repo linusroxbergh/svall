@@ -6,16 +6,20 @@ import type { RunScribe } from './run.js';
 
 type Line = { type?: string; sessionID?: string; part?: { text?: string }; error?: { name?: string; data?: { message?: string } } };
 
+// no tool may run on what a transcript says: this agent's ask comes after any rule the user's config sets, and `opencode
+// run` turns every ask down. Tools denied outright would leave the request, which Zen's free models refuse
+const AGENT = JSON.stringify({ agent: { 'svall-scribe': { mode: 'primary', permission: { '*': 'ask' } } } });
+
 // `opencode run` takes one prompt on stdin and has no system prompt of its own, so the system text leads it. --pure
-// keeps plugins, Svall's among them, out of the pass, and no tool may run on what a transcript says
+// keeps plugins, Svall's among them, out of the pass
 export function opencodeRunner(o: { model?: string; cwd: string; bin?: string; timeoutMs?: number }): RunScribe {
   return async (system, prompt) => {
     fs.mkdirSync(o.cwd, { recursive: true });
     const bin = o.bin ?? 'opencode';
     const { SVALL_CHAR_ID: _id, ...rest } = process.env;
-    const env = { ...rest, OPENCODE_PERMISSION: '"deny"' };
+    const env = { ...rest, OPENCODE_CONFIG_CONTENT: AGENT };
     const { code, out, err } = await runChild(
-      () => spawn(bin, ['run', '--format', 'json', '--pure', ...(o.model ? ['-m', o.model] : [])], { cwd: o.cwd, env, stdio: ['pipe', 'pipe', 'pipe'] }),
+      () => spawn(bin, ['run', '--format', 'json', '--pure', '--agent', 'svall-scribe', ...(o.model ? ['-m', o.model] : [])], { cwd: o.cwd, env, stdio: ['pipe', 'pipe', 'pipe'] }),
       { label: 'opencode run', stdin: `${system}\n\n---\n\n${prompt}`, timeoutMs: o.timeoutMs },
     );
     const lines = jsonLines<Line>(out);

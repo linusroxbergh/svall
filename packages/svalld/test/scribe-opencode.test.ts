@@ -9,7 +9,7 @@ afterEach(cleanHomes);
 // a stand-in for `opencode`: it records each run's arguments, its stdin and its env, then does what `body` says
 const fakeOpencode = (dir: string, body: string): string => {
   const bin = path.join(dir, 'opencode');
-  fs.writeFileSync(bin, `#!/bin/sh\necho "$@" >> "${dir}/args"\nif [ "$1" = run ]; then cat > "${dir}/stdin"; echo "$OPENCODE_PERMISSION" > "${dir}/permission"; ${body}; fi\n`, { mode: 0o755 });
+  fs.writeFileSync(bin, `#!/bin/sh\necho "$@" >> "${dir}/args"\nif [ "$1" = run ]; then cat > "${dir}/stdin"; echo "$OPENCODE_CONFIG_CONTENT" > "${dir}/config"; ${body}; fi\n`, { mode: 0o755 });
   return bin;
 };
 const line = (o: unknown) => `echo '${JSON.stringify(o)}'`;
@@ -21,15 +21,15 @@ describe('opencodeRunner', () => {
     const run = opencodeRunner({ cwd: path.join(dir, 'scribe'), bin: fakeOpencode(dir, answers) });
     expect(await run('be brief', 'name this')).toBe('{"note":"ok"}');
     expect(fs.readFileSync(path.join(dir, 'stdin'), 'utf8')).toBe('be brief\n\n---\n\nname this');
-    expect(fs.readFileSync(path.join(dir, 'args'), 'utf8').split('\n')[0]).toBe('run --format json --pure');
-    // the transcript a pass reads is untrusted text, so no tool may run
-    expect(fs.readFileSync(path.join(dir, 'permission'), 'utf8').trim()).toBe('"deny"');
+    expect(fs.readFileSync(path.join(dir, 'args'), 'utf8').split('\n')[0]).toBe('run --format json --pure --agent svall-scribe');
+    // the transcript a pass reads is untrusted text, so its agent asks before every tool, which `opencode run` turns down
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'config'), 'utf8'))).toEqual({ agent: { 'svall-scribe': { mode: 'primary', permission: { '*': 'ask' } } } });
   });
 
   it('passes a model only when one is configured', async () => {
     const dir = makeHome();
     await opencodeRunner({ model: 'opencode/big-pickle', cwd: dir, bin: fakeOpencode(dir, answers) })('s', 'p');
-    expect(fs.readFileSync(path.join(dir, 'args'), 'utf8')).toContain('run --format json --pure -m opencode/big-pickle');
+    expect(fs.readFileSync(path.join(dir, 'args'), 'utf8')).toContain('run --format json --pure --agent svall-scribe -m opencode/big-pickle');
   });
 
   it('deletes the session the run left behind', async () => {
