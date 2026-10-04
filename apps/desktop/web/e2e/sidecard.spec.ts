@@ -25,8 +25,6 @@ test('a note written elsewhere shows in the side card, but not over one being ty
   await svall.open();
   await page.getByTestId(`sb-char-${c.id}`).click();
   const note = page.getByTestId('side-card').getByTestId('side-note');
-  // the note is the character's description: as tall as an island's
-  await expect(note).toHaveAttribute('rows', '4');
   await svall.api.call('char.update', { id: c.id, note: 'from the fleet' });
   await expect(note).toHaveValue('from the fleet');
 
@@ -405,8 +403,26 @@ test('a text section is as tall as its text', async ({ page, svall }) => {
   await page.getByTestId(`sb-char-${c.id}`).click();
   const note = page.getByTestId('side-note');
   const short = (await note.boundingBox())!.height;
-  await svall.api.call('char.update', { id: c.id, note: 'line\n'.repeat(8) });
-  await expect(note).toHaveValue('line\n'.repeat(8));
+  await svall.api.call('char.update', { id: c.id, note: 'line\n'.repeat(12) });
+  await expect(note).toHaveValue('line\n'.repeat(12));
   await expect.poll(async () => (await note.boundingBox())!.height).toBeGreaterThan(short + 80);
   expect(await note.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
+});
+
+test('an empty note or description opens six lines tall, and instructions three', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('rows'), position: { x: 0, y: 100 } });
+  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'rows' });
+  await page.setViewportSize({ width: 1280, height: 1200 });
+  const lines = (id: string) => page.getByTestId(id).evaluate((el) => {
+    const s = getComputedStyle(el);
+    return Math.round((el.clientHeight - parseFloat(s.paddingTop) - parseFloat(s.paddingBottom)) / parseFloat(s.lineHeight));
+  });
+  await svall.open();
+  await page.getByTestId(`sb-char-${c.id}`).click();
+  expect(await lines('side-note')).toBe(6);
+  expect(await lines('side-instructions')).toBe(3);
+  await svall.open('map');
+  await page.getByTestId(`island-label-${island.id}`).click();
+  expect(await lines('side-island-description')).toBe(6);
+  expect(await lines('side-island-instructions')).toBe(3);
 });
