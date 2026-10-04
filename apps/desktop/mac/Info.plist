@@ -24,6 +24,7 @@
   <key>SUFeedURL</key><string>https://svall.dev/appcast.xml</string>
   <key>SUPublicEDKey</key><string>aUfbLrSJ4kd1j9gi0OTR8I7IXakd8ShTDd2MQpSQq4Y=</string>
   <key>SUEnableAutomaticChecks</key><true/>
+  <key>SUScheduledCheckInterval</key><integer>3600</integer>
   <key>SUAutomaticallyUpdate</key><false/>
 </dict>
 </plist>
