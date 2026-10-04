@@ -228,6 +228,7 @@ describe('renderBrief with docs', () => {
   ];
   const NOTE = [
     'Leave a note only for what a later agent will need again, not a record of this task (that goes in its PR or ticket). Update or delete a note before adding one, and hold memories to the same bar.',
+    'A note only this task needs, like a handover, goes in the character folder; throwaway notes go in a temp folder.',
     'Write a note as <name>.md with a `description:` frontmatter line, in the narrowest folder it applies to:',
   ];
   const WRITE = [
@@ -319,6 +320,7 @@ describe('renderBrief with docs', () => {
     const text = renderBrief(island(), undefined, [{ tier: 'island', dir: '/d/islands/i', docs: [] }]);
     expect(text).toContain('- island: /d/islands/i');
     expect(text).not.toContain('- character:');
+    expect(text).not.toContain('character folder');
   });
 
   it('stays within 9,000 characters, the longest list giving up its oldest notes first', () => {
@@ -345,7 +347,7 @@ describe('renderBrief with docs', () => {
     );
     const lines = text.split('\n');
     expect(text.length).toBeLessThanOrEqual(9_000);
-    expect(lines).toEqual(expect.arrayContaining([...CREW, '- …and 1 more in /d/repos/app-12345678', '- …and 16 more island links', '- …and 15 more character links', '- …and 39 more tabs', `- https://example.com/${'t'.repeat(150)}/39 (active)`]));
+    expect(lines).toEqual(expect.arrayContaining([...CREW, '- …and 1 more in /d/repos/app-12345678', '- …and 16 more island links', '- …and 16 more character links', '- …and 39 more tabs', `- https://example.com/${'t'.repeat(150)}/39 (active)`]));
     expect(lines.find((l) => l.startsWith('Island instructions: '))).toHaveLength('Island instructions: '.length + 2000);
     expect(text).toContain(`/${'p'.repeat(150)}/0 (pinned)`);
     expect(text).toContain(`/${'p'.repeat(150)}/1\n`);
