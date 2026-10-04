@@ -19,7 +19,7 @@ export const theme = {
   autoArrangeMs: 320,
   toastMs: 2600,
   // how long launch waits on svalld before the connect screen shows the log
-  connectGraceMs: 2500,
+  connectGraceMs: 10_000,
   // a toast offering to take something back stands long enough to be read and acted on
   toastActionMs: 9000,
   docSaveMs: 800,                 // a doc is written this long after the last edit

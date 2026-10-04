@@ -70,15 +70,23 @@ export function requireInstalledApp(r: Runtime): void {
   }
 }
 
-const readVersion = (home: string): string | undefined => {
-  try { return fs.readFileSync(path.join(home, 'version'), 'utf8').trim(); } catch { return undefined; }
+// the version and pid a daemon wrote as it started; a build before the pid wrote the version alone
+const readStamp = (home: string): { version: string; pid?: number } | undefined => {
+  try {
+    const [version, pid] = fs.readFileSync(path.join(home, 'version'), 'utf8').trim().split('\n');
+    return { version, pid: pid ? Number(pid) : undefined };
+  } catch { return undefined; }
 };
 
-/** The launchd labels of the running fleets whose daemon started as another version than `version`, or wrote none. */
-export function staleFleets(homes: string[], version: string, running: (label: string) => boolean,
+/** The launchd labels of the running fleets whose daemon started as another version than `version`. One whose stamp is
+ * missing or names another pid has not written its own yet: it is starting, on the program its plist names now. */
+export function staleFleets(homes: string[], version: string, pidOf: (label: string) => number | undefined,
   label: (home: string) => string = (h) => profileLabel(profileOf(h))): string[] {
   return homes.map((h) => [h, label(h)] as const)
-    .filter(([h, l]) => running(l) && readVersion(h) !== version)
+    .filter(([h, l]) => {
+      const pid = pidOf(l), stamp = readStamp(h);
+      return pid !== undefined && stamp !== undefined && stamp.version !== version && (stamp.pid === undefined || stamp.pid === pid);
+    })
     .map(([, l]) => l);
 }
 

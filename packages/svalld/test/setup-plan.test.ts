@@ -125,14 +125,16 @@ describe('requireInstalledApp', () => {
 });
 
 describe('staleFleets', () => {
-  it('names the loaded fleets whose daemon runs another version or wrote none, and leaves the rest', () => {
-    const a = makeHome(), b = makeHome(), c = makeHome(), d = makeHome();
+  it('names the running fleets whose daemon wrote another version, and leaves one still starting and the rest', () => {
+    const a = makeHome(), b = makeHome(), c = makeHome(), d = makeHome(), e = makeHome(), f = makeHome();
     fs.writeFileSync(path.join(a, 'version'), '0.1.0 (10)\n');
-    fs.writeFileSync(path.join(b, 'version'), '0.1.1 (12)\n');
-    fs.writeFileSync(path.join(c, 'version'), '0.1.0 (10)\n');
-    const loaded = (label: string) => !label.endsWith(path.basename(c));
+    fs.writeFileSync(path.join(b, 'version'), '0.1.1 (12)\n7\n');
+    fs.writeFileSync(path.join(c, 'version'), '0.1.0 (10)\n7\n');
+    fs.writeFileSync(path.join(e, 'version'), '0.1.0 (10)\n6\n');
+    fs.writeFileSync(path.join(f, 'version'), '0.1.0 (10)\n7\n');
+    const pidOf = (label: string) => (label.endsWith(path.basename(c)) ? undefined : 7);
     const label = (home: string) => `L.${path.basename(home)}`;
-    expect(staleFleets([a, b, c, d], '0.1.1 (12)', loaded, label)).toEqual([label(a), label(d)]);
+    expect(staleFleets([a, b, c, d, e, f], '0.1.1 (12)', pidOf, label)).toEqual([label(a), label(f)]);
   });
 });
 

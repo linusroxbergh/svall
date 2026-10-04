@@ -106,7 +106,7 @@ export async function bootstrapAgent(launchAgentsDir: string, label: string): Pr
   const domain = `gui/${os.userInfo().uid}`;
   const plist = path.join(launchAgentsDir, `${label}.plist`);
   // launchd starts the daemon only when the app asks, so one that ran before the reload is started again on the new plist
-  const running = await isRunning(label);
+  const running = await runningPid(label) !== undefined;
   await exec('launchctl', ['bootout', domain, plist]).catch(() => {});
   const bootstrap = () => exec('launchctl', ['bootstrap', domain, plist]);
   // launchd refuses a bootstrap while the job it booted out is still going away, so a refusal is tried once more
@@ -131,8 +131,11 @@ export const isLoaded = (label: string): Promise<boolean> =>
   exec('launchctl', ['print', `gui/${os.userInfo().uid}/${label}`]).then(() => true, () => false);
 
 /** Whether `label`'s daemon runs: a loaded job runs only while its fleet's window is open. */
-export const isRunning = (label: string): Promise<boolean> =>
-  exec('launchctl', ['print', `gui/${os.userInfo().uid}/${label}`]).then(({ stdout }) => /\bstate = running\b/.test(stdout), () => false);
+export const runningPid = (label: string): Promise<number | undefined> =>
+  exec('launchctl', ['print', `gui/${os.userInfo().uid}/${label}`]).then(({ stdout }) => {
+    const pid = /\bstate = running\b/.test(stdout) ? /^\tpid = (\d+)$/m.exec(stdout)?.[1] : undefined;
+    return pid ? Number(pid) : undefined;
+  }, () => undefined);
 
 /** The program of another copy of Svall, still on disk, whose fleets these are: only an explicit setup takes them from it. */
 export const takenOverBy = (plist: string | undefined, runtime: Runtime, exists: (p: string) => boolean = fs.existsSync): string | undefined => {

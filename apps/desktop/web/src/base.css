@@ -5,6 +5,15 @@ textarea { overflow-x: hidden; }
 .app { display: flex; flex-direction: column; height: 100%; }
 .main { position: relative; display: flex; flex: 1; min-height: 0; }
 .connect { display: grid; place-items: center; height: 100%; color: var(--ink-3); text-align: center; }
+/* shown after a beat, so a quick start never flashes it; with motion reduced the contours rest in rings */
+.starting { display: grid; justify-items: center; gap: var(--sp-md); animation: starting-in var(--dur-slow) var(--dur-slow) both; }
+.starting-wave { fill: none; stroke: color-mix(in srgb, var(--sand) 40%, transparent); stroke-dasharray: 3 4; stroke-linecap: round;
+  transform-box: fill-box; transform-origin: center; transform: scale(var(--k)); animation: wash var(--pulse-slow) var(--ease-out) infinite; }
+.starting-wave:nth-child(1) { --k: 1.2; }
+.starting-wave:nth-child(2) { --k: 1.4; opacity: .6; animation-delay: calc(var(--pulse-slow) / -3); }
+.starting-wave:nth-child(3) { --k: 1.6; opacity: .3; animation-delay: calc(var(--pulse-slow) / -1.5); }
+@keyframes wash { from { transform: scale(1); opacity: 0; } 20% { opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
+@keyframes starting-in { from { opacity: 0; } }
 .connect-log { max-width: min(90vw, 900px); max-height: 40vh; overflow: auto; margin-top: var(--sp-xl); padding: var(--sp-md) var(--sp-xl); text-align: left; font: var(--text-sm)/1.5 var(--mono); background: var(--shade-1); border: 1px solid var(--line); border-radius: var(--r-sm); white-space: pre-wrap; }
 .setup { display: flex; height: 100%; overflow: auto; color: var(--ink); font-size: var(--text-lg); }
 .setup-body { display: flex; flex-direction: column; gap: var(--sp-3xl); width: min(90vw, 600px); margin: auto; padding: calc(var(--sp-3xl) * 2) 0; }

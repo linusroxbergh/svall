@@ -105,7 +105,7 @@ async function start(opts: Options): Promise<Daemon> {
   if (tmuxTooOld(tmuxVersion)) log.error(`${tmuxVersion} is older than 3.5: Shift+Enter will not reach Claude Code; brew upgrade tmux`);
   // the app attaches its terminals with this tmux, which an app opened from Finder may not find on its own PATH
   fs.writeFileSync(path.join(paths.home, 'tmux-binary'), tmux.binary);
-  fs.writeFileSync(path.join(paths.home, 'version'), runtimeVersion());
+  fs.writeFileSync(path.join(paths.home, 'version'), `${runtimeVersion()}\n${process.pid}\n`);
   const fleet = new Fleet({ store, tmux, paths, config, log, agentsFound });
   const terminals = new TerminalHub(fleet, tmux, store, log);
   const claude = claudePaths();

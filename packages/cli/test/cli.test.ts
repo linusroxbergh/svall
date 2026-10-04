@@ -299,7 +299,7 @@ describe('svall setup --agents', () => {
       const log = path.join(home, 'launchctl.log');
       fs.writeFileSync(path.join(bin, 'claude'), '#!/bin/sh\necho 2.1.0\n', { mode: 0o755 });
       // every daemon counts as loaded and running
-      fs.writeFileSync(path.join(bin, 'launchctl'), `#!/bin/sh\necho "$@" >> '${log}'\necho '\tstate = running'\n`, { mode: 0o755 });
+      fs.writeFileSync(path.join(bin, 'launchctl'), `#!/bin/sh\necho "$@" >> '${log}'\necho '\tstate = running'\necho '\tpid = 4242'\n`, { mode: 0o755 });
       for (const [name, config] of [['work', {}], ['own', { mainAgent: 'claude' }]] as const) {
         fs.mkdirSync(path.join(home, `.svall-${name}`));
         fs.writeFileSync(path.join(home, `.svall-${name}`, 'config.json'), JSON.stringify(config));
@@ -325,7 +325,7 @@ describe('svall setup --agents', () => {
       const log = path.join(home, 'launchctl.log');
       fs.writeFileSync(path.join(bin, 'claude'), '#!/bin/sh\necho 2.1.0\n', { mode: 0o755 });
       // every daemon is loaded; only the open fleet's runs
-      fs.writeFileSync(path.join(bin, 'launchctl'), `#!/bin/sh\necho "$@" >> '${log}'\ncase "$*" in *svalld.shut*) echo '\tstate = not running' ;; *) echo '\tstate = running' ;; esac\n`, { mode: 0o755 });
+      fs.writeFileSync(path.join(bin, 'launchctl'), `#!/bin/sh\necho "$@" >> '${log}'\ncase "$*" in *svalld.shut*) echo '\tstate = not running' ;; *) echo '\tstate = running'; echo '\tpid = 4242' ;; esac\n`, { mode: 0o755 });
       for (const name of ['open', 'shut']) {
         fs.mkdirSync(path.join(home, `.svall-${name}`));
         fs.writeFileSync(path.join(home, `.svall-${name}`, 'config.json'), '{}');
