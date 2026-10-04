@@ -8,6 +8,8 @@ import type { Tmux } from '../tmux/tmux.js';
 
 export type WaitResult = AgentStatus | 'timeout' | 'gone';
 
+const STEP_MS = 1000;
+
 type Deps = { fleet: Fleet; store: Store; tmux: Tmux; reviving: ReadonlyMap<string, unknown> };
 
 /** What is typed into a character's terminals, the answers to its agent's questions, and waits on that agent. */
@@ -54,8 +56,12 @@ export class Prompts {
     try { await this.deps.tmux.sendBytes(c.tmux.paneId, Buffer.from(answer === 'approve' ? '\r' : '\x1b')); }
     catch (e) { release(); throw e; }
     // OpenCode's plugin reports each answer, and a key may only open a further step, as Esc on a subagent's question
-    // does; the hold stays until the plugin moves the card on
-    if (c.agent.kind === 'opencode') return;
+    // does; the hold stays until the plugin moves the card on. Enter may only move a question on to its next part,
+    // which takes an Enter of its own once the plugin has had time to report an answer
+    if (c.agent.kind === 'opencode') {
+      if (answer === 'approve') setTimeout(release, STEP_MS).unref();
+      return;
+    }
     release();
     this.settleAnswer(id, asked, answer);
   }

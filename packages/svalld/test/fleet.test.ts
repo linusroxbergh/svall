@@ -1053,12 +1053,17 @@ runIf('Fleet', () => {
     // Esc on a subagent's question asks for a reason before it turns the question down
     await fleet.answerPrompt(c.id, 'deny');
     expect(store.state.characters[c.id].agent).toMatchObject({ status: 'blocked', prompt: 'rm -rf build' });
+    await new Promise((r) => setTimeout(r, 1100));
     await expect(fleet.answerPrompt(c.id, 'deny')).rejects.toThrow('already in');
     hook({ message: 'which file?' });
     await fleet.answerPrompt(c.id, 'approve');
+    await expect(fleet.answerPrompt(c.id, 'approve')).rejects.toThrow('already in');
+    // Enter on a question of several parts moves on to the next, which takes an answer of its own
+    await new Promise((r) => setTimeout(r, 1100));
+    await fleet.answerPrompt(c.id, 'approve');
     hook({ name: 'PreToolUse' });
     expect(store.state.characters[c.id].agent!.status).toBe('working');
-    expect(sent).toHaveBeenCalledTimes(2);
+    expect(sent).toHaveBeenCalledTimes(3);
   });
 
   it('keeps an agent with background agents out working when its question is denied', async () => {
