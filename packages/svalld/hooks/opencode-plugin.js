@@ -97,8 +97,13 @@ export const SvallPlugin = async ({ client, directory }) => {
   const ending = new Map();
   const replying = new Set();
   const logged = new Set();
-  // questions open anywhere in the session tree; a tool another subagent runs meanwhile does not answer them
-  const asking = new Set();
+  // questions open anywhere in the session tree, each with what it asks; a tool another subagent runs meanwhile does not
+  // answer them
+  const asking = new Map();
+  const ask = async (id, session, fields) => {
+    asking.set(id, [session, fields]);
+    void hook('PermissionRequest', await rootOf(session), fields);
+  };
 
   // a top-level session reports in once per process, and its log exists from then on
   const start = (id, model) => {
@@ -162,19 +167,20 @@ export const SvallPlugin = async ({ client, directory }) => {
         case 'message.part.updated':
           return said(p.part);
         case 'permission.asked': {
-          asking.add(p.id);
           const why = p.metadata?.command ?? p.metadata?.filepath ?? p.patterns?.join(' ') ?? p.permission;
-          return void hook('PermissionRequest', await rootOf(p.sessionID), { tool_name: p.permission, message: clip(why, 500) });
+          return ask(p.id, p.sessionID, { tool_name: p.permission, message: clip(why, 500) });
         }
         case 'question.asked':
-          asking.add(p.id);
-          return void hook('PermissionRequest', await rootOf(p.sessionID), { message: clip(p.questions?.[0]?.question ?? 'a question', 500) });
-        // the last answer sets the agent going again: the tool runs, or a refusal ends the turn
+          return ask(p.id, p.sessionID, { message: clip(p.questions?.[0]?.question ?? 'a question', 500) });
+        // the last answer sets the agent going again: the tool runs, or a refusal ends the turn. Until then the card
+        // shows a question still open, under a new id the app can answer
         case 'permission.replied':
         case 'question.replied':
-        case 'question.rejected':
-          if (!asking.delete(p.requestID) || asking.size) return;
-          return void hook('PreToolUse', await rootOf(p.sessionID));
+        case 'question.rejected': {
+          if (!asking.delete(p.requestID)) return;
+          const [session, fields] = asking.values().next().value ?? [p.sessionID];
+          return void hook(asking.size ? 'PermissionRequest' : 'PreToolUse', await rootOf(session), fields);
+        }
         case 'session.error':
           if (busy.has(p.sessionID)) {
             ending.set(p.sessionID, p.error?.name === 'MessageAbortedError' ? ['Interrupt']

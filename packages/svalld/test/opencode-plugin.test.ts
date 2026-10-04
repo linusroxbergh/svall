@@ -152,9 +152,11 @@ describe('the OpenCode plugin', () => {
     await h.event(event('question.asked', { id: 'que_1', sessionID: OTHER, questions: [{ question: 'which file?' }] }));
     await h.event(event('permission.replied', { sessionID: CHILD, requestID: 'per_1', reply: 'once' }));
     await h.event(event('question.rejected', { sessionID: OTHER, requestID: 'que_1' }));
-    await waitFor(() => names().length >= 4);
+    await waitFor(() => names().length >= 5);
     await new Promise((r) => setTimeout(r, 100));
-    expect(names()).toEqual(['SessionStart', 'PermissionRequest', 'PermissionRequest', 'PreToolUse']);
+    expect(names()).toEqual(['SessionStart', 'PermissionRequest', 'PermissionRequest', 'PermissionRequest', 'PreToolUse']);
+    // once one is answered, the card shows the one still open
+    expect((got[3] as { hook: Record<string, unknown> }).hook).toMatchObject({ sessionId: SID, message: 'which file?' });
   });
 
   it("lets a subagent's questions block the character, under the top-level session, and nothing else of it", async () => {

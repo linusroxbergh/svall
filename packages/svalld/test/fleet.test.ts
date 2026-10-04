@@ -1043,6 +1043,24 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id].agent).toMatchObject({ status: 'blocked', prompt: 'the next one' });
   });
 
+  it('leaves an OpenCode card blocked until its plugin reports the answer, and takes one answer per question', async () => {
+    const { fleet, store, tmux } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'opencode', name: 'PermissionRequest', sessionId: OSID, ...h } });
+    hook({ name: 'SessionStart', transcriptPath: '/nope' });
+    hook({ message: 'rm -rf build' });
+    const sent = vi.spyOn(tmux, 'sendBytes');
+    // Esc on a subagent's question asks for a reason before it turns the question down
+    await fleet.answerPrompt(c.id, 'deny');
+    expect(store.state.characters[c.id].agent).toMatchObject({ status: 'blocked', prompt: 'rm -rf build' });
+    await expect(fleet.answerPrompt(c.id, 'deny')).rejects.toThrow('already in');
+    hook({ message: 'which file?' });
+    await fleet.answerPrompt(c.id, 'approve');
+    hook({ name: 'PreToolUse' });
+    expect(store.state.characters[c.id].agent!.status).toBe('working');
+    expect(sent).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps an agent with background agents out working when its question is denied', async () => {
     const { fleet, store } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
