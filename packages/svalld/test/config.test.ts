@@ -109,6 +109,19 @@ describe('saveConfig', () => {
   });
 });
 
+describe('the agents setup turns off', () => {
+  it('leaves an agent Svall supports after a setup on', () => {
+    const home = makeHome();
+    const file = path.join(home, 'config.json');
+    // the list setup saved before OpenCode, which could name only Claude Code and Codex
+    fs.writeFileSync(file, JSON.stringify({ integrations: ['claude'] }));
+    expect(loadConfig(file).integrations).toEqual(['claude', 'opencode']);
+    saveConfig(file, { integrations: ['claude', 'opencode'] });
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ agentsOff: ['codex'] });
+    expect(loadConfig(file).integrations).toEqual(['claude', 'opencode']);
+  });
+});
+
 describe('keptPorts', () => {
   it('lists the phone ports the fleets keep, past a fleet that keeps none or whose config does not parse', () => {
     const [kept, none, broken] = [makeHome(), makeHome(), makeHome()];

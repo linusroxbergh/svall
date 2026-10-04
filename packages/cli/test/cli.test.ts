@@ -177,7 +177,7 @@ describe('svall setup --agents', () => {
     try {
       const r = await run({ HOME: home, PATH: tools(home) }, 'setup', '--no-launchctl', '--agents', 'codex', '--found', 'claude,codex');
       expect(r.code).toBe(0);
-      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ integrations: ['codex', 'opencode'], mainAgent: 'codex' });
+      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ agentsOff: ['claude'], mainAgent: 'codex' });
     } finally {
       cleanHomes();
     }
@@ -218,7 +218,7 @@ describe('svall setup --agents', () => {
       fs.writeFileSync(path.join(home, '.svall', 'config.json'), JSON.stringify({ mainAgent: 'claude' }));
       const r = await run({ HOME: home, PATH: tools(home) }, 'setup', '--no-launchctl', '--agents', 'codex', '--found', 'claude,codex');
       expect(r.code).toBe(0);
-      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toMatchObject({ integrations: ['codex', 'opencode'], mainAgent: 'codex' });
+      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toMatchObject({ agentsOff: ['claude'], mainAgent: 'codex' });
     } finally {
       cleanHomes();
     }
@@ -264,11 +264,11 @@ describe('svall setup --agents', () => {
       expect(JSON.parse(plan.stdout).agents).toContainEqual({ kind: 'codex', path: path.join(home, '.codex'), folderOnly: true });
       const r = await run(env, 'setup', '--no-launchctl', '--agents', 'claude');
       expect(r.code).toBe(0);
-      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ integrations: ['claude', 'opencode'] });
+      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ agentsOff: ['codex'] });
       expect(fs.existsSync(path.join(home, '.codex', 'hooks.json'))).toBe(false);
       fs.rmSync(path.join(home, '.codex'), { recursive: true });
       expect((await run(env, 'setup', '--no-launchctl', '--agents', 'claude')).code).toBe(0);
-      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ integrations: ['claude', 'opencode'] });
+      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ agentsOff: ['codex'] });
     } finally {
       cleanHomes();
     }
