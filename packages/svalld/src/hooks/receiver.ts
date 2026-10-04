@@ -10,9 +10,12 @@ export const CLAUDE_HOOKS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', '
 // codex asks permission through an event of its own, where Claude Code sends a notification, and says
 // when the tool it asked about has run, which is the only word that the wait is over. An Esc ends its turn with Interrupt
 export const CODEX_HOOKS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'Stop', 'Interrupt', 'SessionEnd'] as const;
-export type HookName = (typeof CLAUDE_HOOKS)[number] | (typeof CODEX_HOOKS)[number];
+// Svall's OpenCode plugin names OpenCode's events after these hooks: an Esc ends a turn with Interrupt, an error with StopFailure
+export const OPENCODE_HOOKS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'Stop', 'StopFailure', 'Interrupt', 'SessionEnd'] as const;
+export type HookName = (typeof CLAUDE_HOOKS)[number] | (typeof CODEX_HOOKS)[number] | (typeof OPENCODE_HOOKS)[number];
 
-export const hooksFor = (backend: AgentKind): readonly HookName[] => (backend === 'codex' ? CODEX_HOOKS : CLAUDE_HOOKS);
+const HOOKS: Record<AgentKind, readonly HookName[]> = { claude: CLAUDE_HOOKS, codex: CODEX_HOOKS, opencode: OPENCODE_HOOKS };
+export const hooksFor = (backend: AgentKind): readonly HookName[] => HOOKS[backend];
 
 const MAX_LINE = 256 * 1024;
 

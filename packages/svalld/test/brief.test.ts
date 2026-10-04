@@ -150,6 +150,11 @@ describe('briefDiff', () => {
 });
 
 describe('briefReply', () => {
+  it('sends a changed brief whole, for an agent that holds it as system text', () => {
+    expect(briefReply('UserPromptSubmit', 'B\nC', 'B', true)).toEqual({ reply: 'B\nC', delivered: 'B\nC' });
+    expect(briefReply('UserPromptSubmit', 'B', 'B', true)).toEqual({});
+  });
+
   it('sends the whole brief at session start and remembers it', () => {
     expect(briefReply('SessionStart', 'B', undefined)).toEqual({ reply: 'B', delivered: 'B' });
     expect(briefReply('SessionStart', '', undefined)).toEqual({});

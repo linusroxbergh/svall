@@ -20,6 +20,16 @@ const statusScript = path.resolve(hooks, '../hooks/claude-status.mjs');
 afterEach(cleanHomes);
 
 describe('normalizeHook', () => {
+  it("maps OpenCode's events, its ses_ ids and its log", () => {
+    const OSID = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
+    const oc = (hook: Record<string, unknown>) => normalizeHook({ charId: 'c_1', backend: 'opencode', pid: 42, hook: { session_id: OSID, ...hook } });
+    expect(oc({ hook_event_name: 'SessionStart', transcript_path: '/h/transcripts/opencode/x.jsonl', cwd: '/r' }))
+      .toEqual({ charId: 'c_1', backend: 'opencode', name: 'SessionStart', sessionId: OSID, transcriptPath: '/h/transcripts/opencode/x.jsonl', cwd: '/r', pid: 42 });
+    expect(oc({ hook_event_name: 'UserPromptSubmit', prompt: 'go', prompt_id: 'msg_1' })?.prompt).toEqual({ id: 'msg_1', text: 'go' });
+    expect(oc({ hook_event_name: 'StopFailure', message: 'rate limited' })).toMatchObject({ name: 'StopFailure', message: 'rate limited' });
+    expect(oc({ hook_event_name: 'Notification' })).toBeUndefined();
+  });
+
   it('maps SessionStart with ids', () => {
     expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'SessionStart', session_id: SID, transcript_path: '/t.jsonl' } }))
       .toEqual({ charId: 'c_1', backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/t.jsonl' });
