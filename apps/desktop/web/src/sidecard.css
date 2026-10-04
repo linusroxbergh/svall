@@ -43,7 +43,7 @@
 .side .fld:focus, .side textarea.h2:focus { outline: none; border-color: var(--sand); }
 .side .desc { color: var(--ink-2); font-size: var(--text-md); line-height: 1.45; }
 .side textarea.desc { resize: vertical; }
-.side .fld.inline { width: auto; text-align: right; padding: 0; border: 0; background: none; color: var(--ink); font-size: var(--text-sm); font-weight: var(--w-medium); }
+.side .fld.inline { width: auto; text-align: right; padding: 0; border: 0; background: none; color: var(--ink); font-size: var(--text-sm); font-weight: var(--w-medium); appearance: none; cursor: pointer; }
 .side .opens { display: flex; gap: var(--sp-md); }
 .side .opens .btn { flex: 1; }
 .btn.sm, .side .opens .btn { padding: var(--sp-sm) var(--sp-lg); border-radius: var(--r-sm); font-size: var(--text-sm); font-weight: var(--w-medium); }
