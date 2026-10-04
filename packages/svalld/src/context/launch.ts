@@ -2,17 +2,22 @@ import path from 'node:path';
 import type { AgentKind, ContextItem } from '@svall/protocol';
 import { shq } from '../text.js';
 
-// the agent a command starts, as config.json may write it with a stray leading space
+// the agent a command starts, as config.json may write it with a stray leading space, past the folder access an OpenCode launch sets
 export const agentKindOf = (command: string): AgentKind | undefined =>
-  /^\s*(claude|codex|opencode)(\s|$)/.exec(command)?.[1] as AgentKind | undefined;
+  /^\s*(?:OPENCODE_PERMISSION='(?:[^']|'\\'')*'\s+)?(claude|codex|opencode)(\s|$)/.exec(command)?.[1] as AgentKind | undefined;
 
 export const isAgentCommand = (command: string): boolean => agentKindOf(command) !== undefined;
 
-// claude and codex gain access to every folder item and every file item's folder
+// an agent command gains access to every folder item and every file item's folder: claude and codex as --add-dir,
+// opencode, which has no such flag, as permission rules
 export function withAddDirs(command: string, items: ContextItem[]): string {
   const kind = agentKindOf(command);
-  if (kind !== 'claude' && kind !== 'codex') return command;
   const dirs = [...new Set(items.flatMap((it) => (it.kind === 'folder' ? [it.ref] : it.kind === 'file' ? [path.dirname(it.ref)] : [])))];
+  if (!kind || !dirs.length) return command;
+  if (kind === 'opencode') {
+    const rules = Object.fromEntries(dirs.map((d) => [`${d}/*`, 'allow']));
+    return `OPENCODE_PERMISSION=${shq(JSON.stringify({ external_directory: rules }))} ${command}`;
+  }
   return dirs.reduce((cmd, d) => `${cmd} --add-dir ${shq(d)}`, command);
 }
 

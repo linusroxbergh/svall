@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ContextItem } from '@svall/protocol';
-import { isAgentCommand, withAddDirs, withPromptFile } from '../src/context/launch.js';
+import { agentKindOf, isAgentCommand, withAddDirs, withPromptFile } from '../src/context/launch.js';
 
 const item = (kind: ContextItem['kind'], ref: string): ContextItem => ({ kind, ref, label: '', source: 'manual' });
 
@@ -18,6 +18,16 @@ describe('withAddDirs', () => {
     expect(withAddDirs('codexx', [item('folder', '/a')])).toBe('codexx');
     expect(withAddDirs('vim', [item('folder', '/a')])).toBe('vim');
     expect(withAddDirs('claudette', [item('folder', '/a')])).toBe('claudette');
+  });
+});
+
+describe('withAddDirs for opencode', () => {
+  it('allows each folder through OPENCODE_PERMISSION, which the prompt and kind still read past', () => {
+    const cmd = withAddDirs('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn', [item('folder', '/a/b'), item('file', "/c'd/y.md")]);
+    expect(cmd).toBe(`OPENCODE_PERMISSION='{"external_directory":{"/a/b/*":"allow","/c'\\''d/*":"allow"}}' opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn`);
+    expect(agentKindOf(cmd)).toBe('opencode');
+    expect(withAddDirs('opencode', [])).toBe('opencode');
+    expect(withPromptFile(withAddDirs('opencode', [item('folder', '/a')]), '/h/p')).toContain(' opencode --prompt "$(cat');
   });
 });
 
