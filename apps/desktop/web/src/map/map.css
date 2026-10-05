@@ -1,24 +1,29 @@
 /* the map's sea, islands, character cards, mission control and lighthouse, shared by the app and the landing page */
 /* only tokens and an island's own children take pointer events, so the island's three-cell padding stays sea */
 .map-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; }
-/* the world's card and label scales change every frame of a zoom; not inherited, they restyle only the cards
-   and labels that take them. typed, not '*': WebKit lags an arrange while the cards hold an untyped one */
+/* the world's map, card and label scales change every frame of a zoom; not inherited, they restyle only the islands,
+   cards and labels that take them. typed, not '*': WebKit lags an arrange while the cards hold an untyped one */
+@property --ms { syntax: '<number>'; inherits: false; initial-value: 1; }
+/* a drag or settle offset in world px; a settle eases the offset itself, so a zoom meanwhile does not restart it */
+@property --ox { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --oy { syntax: '<length>'; inherits: false; initial-value: 0px; }
 @property --k { syntax: '<number>'; inherits: false; initial-value: 1; }
 @property --lk { syntax: '<number>'; inherits: false; initial-value: 1; }
+.map-world .island, .map-world .tok { --ms: inherit; translate: calc(var(--ox) * var(--ms)) calc(var(--oy) * var(--ms)); }
 .map-world .tok { --k: inherit; }
 .map-world .island, .map-world .ilabel, .map-world .inew[data-empty="true"] { --lk: inherit; }
 .map-world .island { pointer-events: none; }
 .map-world .tok, .map-world .island > * { pointer-events: auto; }
 
 /* islands */
-.map-world .island{position:absolute}
+.map-world .island{position:absolute;transform-origin:0 0;transform:scale(var(--ms))}
 .map-world .island svg{display:block;overflow:visible;pointer-events:none}
 .map-world .island .land{cursor:grab}
 .island .grass{filter:brightness(var(--map-tone, 1)) drop-shadow(0 1px 1px color-mix(in srgb, var(--ink-land) 22%, transparent))}
 .island .land-texture{opacity:.22}
 .map-world .island[data-dragging="true"]{opacity:.7}
 .map-world .island[data-dragging="true"] .land{cursor:grabbing}
-.map-world .island[data-settling="true"],.map-world .tok[data-settling="true"]{transition:translate var(--dur-fast) var(--ease-out)}
+.map-world .island[data-settling="true"],.map-world .tok[data-settling="true"]{transition:--ox var(--dur-fast) var(--ease-out),--oy var(--dur-fast) var(--ease-out)}
 .island-landing{position:absolute;box-sizing:border-box;pointer-events:none;z-index:1;
   border:1px dashed color-mix(in srgb,var(--sand) 55%,transparent);border-radius:42%;
   background:color-mix(in srgb,var(--sand) 5%,transparent)}
@@ -168,13 +173,15 @@
 .tok .foot .pip[data-status=blocked]{background:var(--blocked)}
 .tok .foot .pip[data-status=done]{background:var(--done)}
 .tok .foot .pip[data-status=idle]{background:var(--idle)}
-/* a working agent's three dots rise in turn, as a chat app shows someone typing */
+/* a working agent's three dots rise in turn, as a chat app shows someone typing. They animate top and colour, not
+   transform or opacity: a compositor animation lifts the whole card into a layer of its own, which WebKit draws blurred */
 .tok .foot .dots{display:inline-flex;align-items:center;gap:calc(var(--tok)*.07);height:calc(var(--tok)*.24)}
-.tok .foot .dots i{width:calc(var(--tok)*.11);height:calc(var(--tok)*.11);border-radius:50%;background:var(--working);
+.tok .foot .dots i{position:relative;width:calc(var(--tok)*.11);height:calc(var(--tok)*.11);border-radius:50%;background:var(--working);
   animation:typing var(--pulse) ease-in-out infinite}
 .tok .foot .dots i:nth-child(2){animation-delay:calc(var(--pulse) / 8)}
 .tok .foot .dots i:nth-child(3){animation-delay:calc(var(--pulse) / 4)}
-@keyframes typing{0%,60%,100%{opacity:.35;transform:translateY(0)}30%{opacity:1;transform:translateY(-30%)}}
+@keyframes typing{0%,60%,100%{top:0;background-color:color-mix(in srgb, var(--working) 35%, transparent)}
+  30%{top:calc(var(--tok)*-.033);background-color:var(--working)}}
 .tok .foot .sw{font-size:calc(var(--tok)*.225);font-weight:var(--w-bold);letter-spacing:var(--track-caps);
   text-transform:uppercase;padding:calc(var(--tok)*.02) calc(var(--tok)*.13);
   border-radius:var(--r-xs)}

@@ -47,7 +47,7 @@ export const test = base.extend<{ svall: Svall }>({
         }
         await page.goto(`/?port=${info.port}&token=${info.token}&view=${view}`);
         await expect(page.getByTestId(view)).toBeVisible();
-        // the world transform lands a frame after the view; window.__map appears with it
+        // the world's layout lands a frame after the view; window.__map appears with it
         if (view === 'map') await page.waitForFunction(() => '__map' in window);
       },
       nativeShell: async () => {
