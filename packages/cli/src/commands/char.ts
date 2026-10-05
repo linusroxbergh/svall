@@ -51,7 +51,7 @@ Handing work to a new character:
   svall char new --island <id> --cwd <path> --name "<name>" --run "<prompt>"
   - In a git repo, a fresh worktree: --command "claude -w <worktree>" (Codex: git worktree add, then --cwd), or one on its branch no agent works in.
   - The prompt is all it knows: goal, paths, links, what done looks like.
-  - Names: at most 24 characters, lower case, ticket first: "#472 review auth".
+  - Names: at most 24 characters, lower case: PR or ticket id, area, task, one or two words each: "#472 auth review", not "#472 deep review r3".
   - New island: svall island create "<name>" --description "<one line>".
   - Wait (svall char wait <id> --until done,blocked) only when you need the result; closing is the user's call.
   - Write ids out: a command holding $SVALL_CHAR_ID asks the user for permission.`)
