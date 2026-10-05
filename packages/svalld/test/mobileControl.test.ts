@@ -239,9 +239,19 @@ describe('mobileControl', () => {
     expect(await control(deps({ tcp: [8443] })).set(true)).toMatchObject({ serving: true, port: 8444 });
   });
 
-  it('refuses an on where something else holds a port the fleet keeps, or the private fleet\'s, and leaves the key alone', async () => {
+  it('gives the private fleet a free port while something else serves its default, and keeps it there', async () => {
+    const site = 'http://127.0.0.1:5199';
+    const d = deps({ web: { 443: site } });
+    const saved: number[] = [];
+    const control_ = mobileControl(d, { home: HOME, profile: 'private', logins: ['me@example.com'], phones: new Phones(), rotateKey: () => {}, kept: () => [8443], savePort: (p) => saved.push(p) > 0 });
+    expect(await control_.set(true)).toMatchObject({ serving: true, port: 8444, url: 'https://mac.tailnet.ts.net:8444/' });
+    expect(d.web).toEqual({ 443: site, 8444: TARGET });
+    expect(saved).toEqual([8444]);
+  });
+
+  it('refuses an on where something else holds a port the fleet keeps, and leaves the key alone', async () => {
     const theirs = 'http://127.0.0.1:47900/theirs';
-    for (const o of [{ profile: 'work', httpsPort: 8443 }, { profile: 'private' }]) {
+    for (const o of [{ profile: 'work', httpsPort: 8443 }, { profile: 'private', httpsPort: 443 }]) {
       const d = deps({ web: { 8443: theirs, 443: theirs } });
       let made = 0;
       const control_ = mobileControl(d, { ...NONE, home: HOME, logins: ['me@example.com'], phones: new Phones(), rotateKey: () => { made++; }, ...o });

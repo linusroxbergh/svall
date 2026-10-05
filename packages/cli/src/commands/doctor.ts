@@ -71,15 +71,33 @@ function config(t: Target, d: DoctorDeps): Check {
   }
 }
 
+// the process listening on the port, as lsof names it
+async function heldBy(d: DoctorDeps, port: number): Promise<string | undefined> {
+  try {
+    const out = await d.run('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Fpc']);
+    const pid = /^p(\d+)$/m.exec(out)?.[1];
+    return pid && `${/^c(.+)$/m.exec(out)?.[1] ?? 'a process'} (pid ${pid})`;
+  } catch { return undefined; }
+}
+
 async function svalld(t: Target, d: DoctorDeps): Promise<Check> {
-  const port = d.read(resolvePaths(t.home).port)?.trim();
-  // the daemon runs while Svall is open on the fleet; one that stopped otherwise says why in the log below
-  if (!port) return { name: 'svalld', status: 'warn', detail: `not running (no port file in ${t.home}): it starts when Svall opens on this fleet` };
+  const paths = resolvePaths(t.home);
+  const port = d.read(paths.port)?.trim();
+  if (!port) {
+    // svalld does not start while another process holds the port config.json sets
+    let set: number | undefined;
+    try { set = parseConfig(d.read(paths.config) ?? '{}', paths.config).port; } catch { /* the config check reports it */ }
+    const by = set ? await heldBy(d, set) : undefined;
+    if (by) return { name: 'svalld', status: 'fail', detail: `not running: ${by} holds port ${set}, which ${paths.config} sets; stop it, or take port out of config.json` };
+    // the daemon runs while Svall is open on the fleet; one that stopped otherwise says why in the log below
+    return { name: 'svalld', status: 'warn', detail: `not running (no port file in ${t.home}): it starts when Svall opens on this fleet` };
+  }
   try {
     (await d.connect(t.home)).close();
     return { name: 'svalld', status: 'ok', detail: `running on port ${port}` };
   } catch (e) {
-    return { name: 'svalld', status: 'fail', detail: `port ${port} does not answer: ${(e as Error).message}` };
+    const by = await heldBy(d, Number(port));
+    return { name: 'svalld', status: 'fail', detail: `port ${port} does not answer: ${(e as Error).message}${by ? `; ${by} holds it` : ''}` };
   }
 }
 
