@@ -159,10 +159,12 @@ describe('doctor', () => {
     const holder = 'p4242\ncnc\nf3\n';
     const stale = byName(await doctor(priv, fake({ up: false, commands: { 'lsof -nP -iTCP:47800 -sTCP:LISTEN -Fpc': holder } }).deps));
     expect(stale.svalld).toMatchObject({ status: 'fail', detail: expect.stringMatching(/^port 47800 does not answer: .*; nc \(pid 4242\) holds it$/) });
-    const set = fake({ commands: { 'lsof -nP -iTCP:47801 -sTCP:LISTEN -Fpc': holder }, files: { '/u/.svall/port': undefined, '/u/.svall/config.json': '{"port":47801}' } });
+    const files = { '/u/.svall/port': undefined, '/u/.svall/config.json': '{"port":47801}' };
+    const set = fake({ commands: { 'lsof -nP -iTCP@127.0.0.1:47801 -sTCP:LISTEN -Fpc': holder }, files });
     expect(byName(await doctor(priv, set.deps)).svalld).toEqual({ name: 'svalld', status: 'fail', detail: 'not running: nc (pid 4242) holds port 47801, which /u/.svall/config.json sets; stop it, or take port out of config.json' });
-    const free = fake({ files: { '/u/.svall/port': undefined, '/u/.svall/config.json': '{"port":47801}' } });
-    expect(byName(await doctor(priv, free.deps)).svalld.status).toBe('warn');
+    // a listener on another address, as on *:47801, leaves svalld's bind on 127.0.0.1 free
+    const elsewhere = fake({ commands: { 'lsof -nP -iTCP:47801 -sTCP:LISTEN -Fpc': holder }, files });
+    expect(byName(await doctor(priv, elsewhere.deps)).svalld.status).toBe('warn');
   });
 
   it('reports a missing hook receiver even when the API is answering, and how to restart that fleet', async () => {

@@ -239,6 +239,17 @@ describe('mobileControl', () => {
     expect(await control(deps({ tcp: [8443] })).set(true)).toMatchObject({ serving: true, port: 8444 });
   });
 
+  it('keeps the private fleet on 443 while it is free or serves this fleet from an earlier daemon port', async () => {
+    for (const web of [{}, { 443: 'http://127.0.0.1:51000/abcdef' }] as Record<number, string>[]) {
+      const d = deps({ web });
+      const saved: number[] = [];
+      const control_ = mobileControl(d, { home: HOME, profile: 'private', logins: ['me@example.com'], phones: new Phones(), rotateKey: () => {}, kept: () => [], savePort: (p) => saved.push(p) > 0 });
+      expect(await control_.set(true)).toMatchObject({ serving: true, port: 443, url: 'https://mac.tailnet.ts.net/' });
+      expect(d.web).toEqual({ 443: TARGET });
+      expect(saved).toEqual([443]);
+    }
+  });
+
   it('gives the private fleet a free port while something else serves its default, and keeps it there', async () => {
     const site = 'http://127.0.0.1:5199';
     const d = deps({ web: { 443: site } });

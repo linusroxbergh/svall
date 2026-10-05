@@ -71,10 +71,10 @@ function config(t: Target, d: DoctorDeps): Check {
   }
 }
 
-// the process listening on the port, as lsof names it
-async function heldBy(d: DoctorDeps, port: number): Promise<string | undefined> {
+// the process listening on the port, on `host` alone when given, as lsof names it
+async function heldBy(d: DoctorDeps, port: number, host?: string): Promise<string | undefined> {
   try {
-    const out = await d.run('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Fpc']);
+    const out = await d.run('lsof', ['-nP', `-iTCP${host ? `@${host}` : ''}:${port}`, '-sTCP:LISTEN', '-Fpc']);
     const pid = /^p(\d+)$/m.exec(out)?.[1];
     return pid && `${/^c(.+)$/m.exec(out)?.[1] ?? 'a process'} (pid ${pid})`;
   } catch { return undefined; }
@@ -84,10 +84,12 @@ async function svalld(t: Target, d: DoctorDeps): Promise<Check> {
   const paths = resolvePaths(t.home);
   const port = d.read(paths.port)?.trim();
   if (!port) {
-    // svalld does not start while another process holds the port config.json sets
+    // svalld does not start while another process listens on the port config.json sets, on its host: one on another
+    // address, even a wildcard, leaves that bind free
     let set: number | undefined;
-    try { set = parseConfig(d.read(paths.config) ?? '{}', paths.config).port; } catch { /* the config check reports it */ }
-    const by = set ? await heldBy(d, set) : undefined;
+    let host: string | undefined;
+    try { ({ port: set, host } = parseConfig(d.read(paths.config) ?? '{}', paths.config)); } catch { /* the config check reports it */ }
+    const by = set ? await heldBy(d, set, host) : undefined;
     if (by) return { name: 'svalld', status: 'fail', detail: `not running: ${by} holds port ${set}, which ${paths.config} sets; stop it, or take port out of config.json` };
     // the daemon runs while Svall is open on the fleet; one that stopped otherwise says why in the log below
     return { name: 'svalld', status: 'warn', detail: `not running (no port file in ${t.home}): it starts when Svall opens on this fleet` };
