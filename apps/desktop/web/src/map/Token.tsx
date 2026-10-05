@@ -64,9 +64,9 @@ export function Token({
       data-drop-hover={hover}
       data-settling={settling}
       style={{
-        left: (world.x + 0.5) * theme.cell,
-        top: (world.y + 0.5) * theme.cell,
-        translate: offset ? `${offset.x}px ${offset.y}px` : undefined,
+        left: `calc(${(world.x + 0.5) * theme.cell}px * var(--ms))`,
+        top: `calc(${(world.y + 0.5) * theme.cell}px * var(--ms))`,
+        translate: offset ? `calc(${offset.x}px * var(--ms)) calc(${offset.y}px * var(--ms))` : undefined,
         ['--tok' as string]: `${theme.token.unit}px`,
         ['--card-w' as string]: `${tokenPx.w}px`,
         ['--card-h' as string]: `${tokenPx.h}px`,

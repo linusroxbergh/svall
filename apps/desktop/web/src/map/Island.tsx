@@ -49,8 +49,8 @@ export function Island({
       data-drop={`island:${island.id}`}
       data-drop-hover={hover}
       onContextMenu={onMenu}
-      style={{ left: island.position.x * cell - pad, top: island.position.y * cell - pad, width: bw, height: bh,
-        translate: offset ? `${offset.x}px ${offset.y}px` : undefined }}
+      style={{ left: `calc(${island.position.x * cell - pad}px * var(--ms))`, top: `calc(${island.position.y * cell - pad}px * var(--ms))`, width: bw, height: bh,
+        translate: offset ? `calc(${offset.x}px * var(--ms)) calc(${offset.y}px * var(--ms))` : undefined }}
     >
       <svg data-testid={`island-${island.id}`} width={bw} height={bh} viewBox={`0 0 ${bw} ${bh}`}>
         <defs>
