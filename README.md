@@ -321,9 +321,10 @@ yours, and selecting text copies it. Terminals attach to tmux, so Ghostty's
   others in, list their logins and yours in `mobile.logins` and restart the
   daemon.
 - Each fleet is its own Home Screen app on its own port: 443 for the private
-  fleet, and for each other fleet the first free port from 8443 up, kept in
-  `mobile.httpsPort`. If something else already serves that port, turning the
-  link on says so.
+  fleet, and for each other fleet the first free port from 8443 up, which the
+  private fleet takes too while something else serves 443. The port is kept in
+  `mobile.httpsPort`; if something else serves a kept port, turning the link on
+  says so.
 
 ## Configuration
 
@@ -334,7 +335,7 @@ Its `config.json` takes:
 | Key | What it does |
 | --- | --- |
 | `name` | What the window title and `svall <name>` call the fleet: lowercase letters, digits and dashes, starting with a letter, not an `svall` command, and not `dev` or `dev-…`. Absent, the directory names it. Set from Settings. |
-| `port`, `host` | Where the daemon listens: `127.0.0.1`, on `47800` for the private fleet and any free port for the others. Any address off loopback sends the API token in plain text. |
+| `port`, `host` | Where the daemon listens: `127.0.0.1`, on `47800` for the private fleet and any free port for the others. Absent, a free port stands in while another program holds `47800`; a port set here that is taken keeps the daemon from starting. Any address off loopback sends the API token in plain text. |
 | `defaultCwd` | Where a new character starts when no character beside it gives it a directory (default `~`). Set by the setup screen's projects folder or `svall setup --projects`. |
 | `shell` | The shell a terminal runs, if not your login shell. |
 | `linear` | `{ "workspace": "acme", "teamKeys": ["ENG"] }` links a branch named after a Linear issue to that issue. |

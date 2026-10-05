@@ -3,12 +3,13 @@ import { z } from 'zod';
 import { AgentKind, DEFAULT_CWD, Home, isProfileName } from '@svall/protocol';
 import { writeAtomic } from './jsonfile.js';
 import { resolvePaths } from './paths.js';
-import { DEFAULT_PORT, HOME_CWD, PRIVATE, profileHome, profileOf } from './profile.js';
+import { HOME_CWD, PRIVATE, profileHome, profileOf } from './profile.js';
 
 export const Config = z.object({
   // what the app and `svall <name>` call the fleet; absent, its directory names it
   name: z.string().refine(isProfileName, 'use lowercase letters, digits and dashes, starting with a letter, and no svall command or dev name, which Svall Dev keeps').optional(),
-  port: z.number().int().default(DEFAULT_PORT),
+  // absent, DEFAULT_PORT, or a free port while another program holds that
+  port: z.number().int().optional(),
   host: z.string().default('127.0.0.1'),
   shell: z.string().optional(),
   linear: z.object({ workspace: z.string(), teamKeys: z.array(z.string()) }).optional(),

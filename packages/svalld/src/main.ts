@@ -14,7 +14,7 @@ import { createLogger, rotateLog, type Logger } from './log.js';
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
 import { claudePaths, fleetKeys, resolvePaths } from './paths.js';
 import { Phones } from './phones.js';
-import { isProfileName, PRIVATE, profileOf, variantOf } from './profile.js';
+import { DEFAULT_PORT, isProfileName, PRIVATE, profileOf, variantOf } from './profile.js';
 import { runtimeVersion, variant } from './runtime.js';
 import { startPusher, webPushSender } from './push/pusher.js';
 import { PushStore } from './push/store.js';
@@ -136,10 +136,17 @@ async function start(opts: Options): Promise<Daemon> {
     teardown.push(startPusher({ store, push, send: webPushSender(vapid), log, logins: mobile.logins, served: mobile.served, contact: config.mobile.pushContact }));
     // a running server keeps its old options if the new conf has a line this tmux rejects
     await tmux.sourceConf().catch((e: Error) => log.error(`tmux source-file: ${e.message}`));
-    const api = await startApi({
-      host: opts.host ?? config.host, port: opts.port ?? config.port, token, store, fleet, fleets: fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, mobileControl: mobile, log,
+    const port = opts.port ?? config.port;
+    const listen = (at: number) => startApi({
+      host: opts.host ?? config.host, port: at, token, store, fleet, fleets: fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, mobileControl: mobile, log,
       origins: config.mobile.origins, logins: mobile.logins, key: key.get, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles,
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined),
+    });
+    // clients find the daemon by its port file, so one that names no port takes a free one while its default is held
+    const api = await listen(port ?? DEFAULT_PORT).catch((e: NodeJS.ErrnoException) => {
+      if (port !== undefined || e.code !== 'EADDRINUSE') throw e;
+      log.info(`port ${DEFAULT_PORT} is taken: listening on a free one`);
+      return listen(0);
     });
     teardown.push(() => api.close());
     const hooks = await startHookReceiver(paths.hooksSock, (e) => fleet.onSocketEvent(e), log);

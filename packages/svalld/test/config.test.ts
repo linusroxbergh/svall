@@ -11,7 +11,8 @@ afterEach(() => { cleanHomes(); vi.unstubAllEnvs(); });
 
 describe('config and paths', () => {
   it('defaults when the file is missing', () => {
-    expect(loadConfig('/nonexistent/config.json')).toMatchObject({ port: 47800, host: '127.0.0.1' });
+    const c = loadConfig('/nonexistent/config.json');
+    expect([c.port, c.host]).toEqual([undefined, '127.0.0.1']);
   });
   it('merges a partial file', () => {
     const home = makeHome();
