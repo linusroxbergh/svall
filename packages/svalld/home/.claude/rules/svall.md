@@ -78,9 +78,9 @@ character's agent gets at SessionStart; `svall char show <name>` prints it.
   pass its path as `--cwd`.
 - Starting a character to continue, review or take over work ends your part. Do
   not wait on or watch it unless the user asked you to report back.
-- Names are at most 24 characters, lower case, any PR or ticket first, then what
-  a character is doing and what on: `#1907 review auth tests`, not `#1907 review`
-  or `claude-2`.
+- Names are at most 24 characters, lower case: PR or ticket id, area, task, one
+  or two words each: `#1907 auth review`, not `#1907 deep review r3` or
+  `claude-2`.
 - Leave notes and descriptions to `svall scribe sweep` unless the user asks. One
   you write counts as hand-written, and the scribe stops updating it.
 - `svall scribe sweep` refuses while the scribe is off. Pass on what it says and
