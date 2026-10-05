@@ -50,7 +50,7 @@ export function Island({
       data-drop-hover={hover}
       onContextMenu={onMenu}
       style={{ left: `calc(${island.position.x * cell - pad}px * var(--ms))`, top: `calc(${island.position.y * cell - pad}px * var(--ms))`, width: bw, height: bh,
-        translate: offset ? `calc(${offset.x}px * var(--ms)) calc(${offset.y}px * var(--ms))` : undefined }}
+        '--ox': offset && `${offset.x}px`, '--oy': offset && `${offset.y}px` } as React.CSSProperties}
     >
       <svg data-testid={`island-${island.id}`} width={bw} height={bh} viewBox={`0 0 ${bw} ${bh}`}>
         <defs>

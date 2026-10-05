@@ -4,9 +4,12 @@
 /* the world's map, card and label scales change every frame of a zoom; not inherited, they restyle only the islands,
    cards and labels that take them. typed, not '*': WebKit lags an arrange while the cards hold an untyped one */
 @property --ms { syntax: '<number>'; inherits: false; initial-value: 1; }
+/* a drag or settle offset in world px; a settle eases the offset itself, so a zoom meanwhile does not restart it */
+@property --ox { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --oy { syntax: '<length>'; inherits: false; initial-value: 0px; }
 @property --k { syntax: '<number>'; inherits: false; initial-value: 1; }
 @property --lk { syntax: '<number>'; inherits: false; initial-value: 1; }
-.map-world .island, .map-world .tok { --ms: inherit; }
+.map-world .island, .map-world .tok { --ms: inherit; translate: calc(var(--ox) * var(--ms)) calc(var(--oy) * var(--ms)); }
 .map-world .tok { --k: inherit; }
 .map-world .island, .map-world .ilabel, .map-world .inew[data-empty="true"] { --lk: inherit; }
 .map-world .island { pointer-events: none; }
@@ -20,7 +23,7 @@
 .island .land-texture{opacity:.22}
 .map-world .island[data-dragging="true"]{opacity:.7}
 .map-world .island[data-dragging="true"] .land{cursor:grabbing}
-.map-world .island[data-settling="true"],.map-world .tok[data-settling="true"]{transition:translate var(--dur-fast) var(--ease-out)}
+.map-world .island[data-settling="true"],.map-world .tok[data-settling="true"]{transition:--ox var(--dur-fast) var(--ease-out),--oy var(--dur-fast) var(--ease-out)}
 .island-landing{position:absolute;box-sizing:border-box;pointer-events:none;z-index:1;
   border:1px dashed color-mix(in srgb,var(--sand) 55%,transparent);border-radius:42%;
   background:color-mix(in srgb,var(--sand) 5%,transparent)}
