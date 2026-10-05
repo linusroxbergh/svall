@@ -227,8 +227,10 @@ describe('renderBrief with docs', () => {
     { tier: 'character', dir: '/d/characters/c', docs: over.character ?? [] },
   ];
   const NOTE = [
-    'Leave a note only for what a later agent will need again, not a record of this task (that goes in its PR or ticket). Update or delete a note before adding one, and hold memories to the same bar.',
-    'A note only this task needs, like a handover, goes in the character folder; throwaway notes go in a temp folder.',
+    'A plan or scratch file that helps the work in progress goes in a temp folder.',
+    'Finished work gets no note: its record goes in the PR or ticket, a trap it found in a comment at the code.',
+    "Leave a note only for what a later agent will need again and can't get from the code, PR or ticket, in at most 30 lines. Update or delete a note before adding one, and hold memories to the same bar.",
+    'A handover goes in the character folder.',
     'Write a note as <name>.md with a `description:` frontmatter line, in the narrowest folder it applies to:',
   ];
   const WRITE = [
