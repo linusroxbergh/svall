@@ -998,6 +998,28 @@ describe('source abort', () => {
     expect(again.ownership.writable()).toBe(true);
   });
 
+  it('revives a working agent whose window a rest that died closed without telling it a restart cut it off', async () => {
+    const b = boot();
+    b.store.update((d) => { d.characters.c_bo.agent!.status = 'working'; });
+    b.gateway.begin();
+    // the rest killed bo's window and died before it laid bo dormant
+    b.handover.write(SourceJournal.parse({
+      role: 'source', transactionId: TX, generation: 4, fleetId, fromMachineId: me, toMachineId: trift, phase: 'freeze',
+      stoppedTerminals: [{ characterId: 'c_bo' }], updatedAt: 1,
+    }));
+    b.world.panes.delete('@3');
+    await b.ownership.freeze(b.gateway.record.transaction!);
+    const again = await b.restart();
+    b.gateway.abort();
+    const revives: unknown[] = [];
+    const revive = b.deps.fleet.reviveCharacter;
+    b.deps.fleet.reviveCharacter = async (id) => { revives.push(structuredClone(b.store.state.characters[id].revive)); return revive(id); };
+
+    await again.handover.abort({ transactionId: TX, generation: 4 });
+
+    expect(revives).toEqual([{ command: `claude --resume ${SID}` }]);
+  });
+
   it('finishes an abort a crash cut short after the journal closed and before the fleet was unfrozen', async () => {
     const b = await frozen();
     b.gateway.abort();

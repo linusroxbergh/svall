@@ -515,7 +515,7 @@ export class SourceHandover {
         const slot = t.term === 2 ? c?.second : c;
         if (!c || !slot?.tmux || live.has(slot.tmux.windowId)) continue;
         if (t.term === 2) markSlotDormant(slot, t.flags);
-        else markDormant(c, t.flags);
+        else { markDormant(c, t.flags); delete c.revive?.interrupted; }
       }
     });
     for (const t of stopped) {
