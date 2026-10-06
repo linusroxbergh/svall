@@ -5,7 +5,7 @@ import type { Store } from '../store.js';
 import type { TerminalHub } from '../terminals.js';
 import { noServer, type LiveWindow, type Tmux } from '../tmux/tmux.js';
 import { boundary } from './failpoints.js';
-import { ProcessTable, killGroup, type PaneProcesses } from './processes.js';
+import { ProcessTable, killGroup, type PaneProcesses, type Proc } from './processes.js';
 import type { SourceJournal } from './journal.js';
 import type { HandoverService } from './service.js';
 
@@ -249,7 +249,7 @@ export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<Set
     if (blockers.length) return { ok: false, blockers };
     for (const { t, c } of steps) if (c && t.terminatedAt === undefined) { t.agent = c.agent; t.flags = launchFlags(c); }
     if (settled) {
-      const gone = (groups: number[]) => serversGone(groups, () => bounded('ps', processes), kill, clock, x.settleMs, x.pollMs);
+      const gone = (servers: Server[]) => serversGone(servers, { read: () => bounded('ps', processes), kill, clock, journal: deps.journal, state: () => deps.store.state }, x);
       return layToRest(deps, o, bounded, tracks, current, clock.now(), gone);
     }
     for (const { t, c, s } of steps) {
@@ -276,16 +276,36 @@ export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<Set
 type Bounded = <T>(what: string, work: (signal: AbortSignal) => Promise<T>) => Promise<T>;
 
 // an OpenCode TUI's private server writes its session's database until it exits, and the export reads that database;
-// one that outlasts the settle time is killed
+// one that outlasts the settle time is killed with everything it runs, journaled first as a terminated job is, and the
+// rest fails if any of it still runs a settle time later
+type Server = { t: TerminalRef; server: Proc };
 async function serversGone(
-  groups: number[], read: () => Promise<ProcessTable>, kill: NonNullable<RestDeps['kill']>, clock: Clock, settleMs: number, pollMs: number,
+  servers: Server[],
+  d: { read: () => Promise<ProcessTable>; kill: NonNullable<RestDeps['kill']>; clock: Clock; journal: RestDeps['journal']; state: () => FleetState },
+  x: Pick<Moment, 'settleMs' | 'pollMs'>,
 ): Promise<void> {
-  const end = clock.now() + settleMs;
-  while (groups.length) {
-    const table = await read();
-    groups = groups.filter((g) => table.alive(g));
-    if (groups.length && clock.now() >= end) { for (const g of groups) kill(g, 'SIGKILL'); return; }
-    if (groups.length) await clock.sleep(pollMs);
+  const until = async (groups: number[]): Promise<{ table: ProcessTable; left: number[] }> => {
+    for (const end = d.clock.now() + x.settleMs; ;) {
+      const table = await d.read();
+      const left = groups.filter((g) => table.alive(g));
+      if (!left.length || d.clock.now() >= end) return { table, left };
+      await d.clock.sleep(x.pollMs);
+    }
+  };
+  if (!servers.length) return;
+  const { table, left } = await until(servers.map((s) => s.server.pgid));
+  if (!left.length) return;
+  const trees = servers.filter((s) => left.includes(s.server.pgid)).map((s) => ({ ...s, tree: table.tree([s.server]) }));
+  const groups = [...new Set(trees.flatMap((s) => s.tree.map((p) => p.pgid)))];
+  boundary('source.rest.terminated', () => recordJournal(d.journal, d.clock.now(), (j) => ({
+    terminated: [...j.terminated, ...trees.map((s) => ({ ...refOf(s.t), processes: s.tree.map((p) => p.args) }))],
+  })));
+  boundary('source.rest.forcekill', () => { for (const g of groups) d.kill(g, 'SIGKILL'); });
+  const after = await until(groups);
+  const stuck = trees.filter((s) => s.tree.some((p) => after.left.includes(p.pgid)));
+  if (stuck.length) {
+    const name = (t: TerminalRef) => `${d.state().characters[t.characterId]?.name ?? t.characterId}'s ${t.term === 2 ? 'second ' : ''}terminal`;
+    throw new Error(stuck.map((s) => `${name(s.t)}: ${s.tree.filter((p) => after.left.includes(p.pgid)).map((p) => p.args).join(', ')} still runs after SIGKILL`).join('; '));
   }
 }
 
@@ -323,7 +343,7 @@ function wake(store: RestDeps['store'], clock: Clock, ms: number, cancel?: Abort
 
 async function layToRest(
   deps: RestDeps, o: RestOptions, bounded: Bounded, tracks: Track[], current: Map<string, Classified>, now: number,
-  gone: (groups: number[]) => Promise<void>,
+  gone: (servers: Server[]) => Promise<void>,
 ): Promise<SettleResult> {
   o.cancel?.throwIfAborted();
   const open = tracks.flatMap((t) => { const c = current.get(t.key); return c ? [{ t, c }] : []; });
@@ -366,6 +386,6 @@ async function layToRest(
   deps.store.update((d) => {
     for (const id of Object.keys(d.characters)) for (const t of [{ characterId: id }, { characterId: id, term: 2 as const }]) lay(d, t, stopped.has(keyOf(t)));
   });
-  await gone(open.flatMap(({ c }) => (c.processes.agent?.server ? [c.processes.agent.server.pgid] : [])));
+  await gone(open.flatMap(({ t, c }) => (c.processes.agent?.server ? [{ t, server: c.processes.agent.server }] : [])));
   return { ok: true, terminals: open.map(({ t }) => refOf(t)) };
 }

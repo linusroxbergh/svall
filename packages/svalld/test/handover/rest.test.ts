@@ -48,6 +48,8 @@ type Pane = {
   // an OpenCode TUI's private server, off the terminal, which runs the tools and Svall's plugin; it exits with the
   // job, or that long after the window closes
   server?: string; serverLingersMs?: number;
+  // what a lingering server starts after its window closed, in a group of its own
+  lateChild?: string;
 };
 
 class World {
@@ -60,6 +62,8 @@ class World {
   hangKill = new Set<string>();
   // processes a closed window left running until `until`
   orphans: { row: Proc; until: number }[] = [];
+  // orphans SIGKILL does not end, as a process stuck in the kernel
+  stuck = false;
   // windows a kill leaves open without a word, as tmux's kill-window failing does
   keepOnKill = new Set<string>();
   onSignal?: () => void;
@@ -98,6 +102,7 @@ class World {
       const p = this.panes.get(windowId);
       if (p?.server && p.serverLingersMs) {
         this.orphans.push({ row: { pid: p.pid + 60, ppid: 1, pgid: p.pid + 60, tpgid: 0, stat: 'Ss', args: p.server }, until: this.now + p.serverLingersMs });
+        if (p.lateChild) this.orphans.push({ row: { pid: p.pid + 80, ppid: p.pid + 60, pgid: p.pid + 80, tpgid: 0, stat: 'Ss', args: p.lateChild }, until: Infinity });
       }
       if (!this.keepOnKill.has(windowId)) this.panes.delete(windowId);
     },
@@ -115,7 +120,7 @@ class World {
   kill = (group: number, signal: NodeJS.Signals): void => {
     this.onSignal?.();
     this.log.push(`${signal} ${group}`);
-    if (signal === 'SIGKILL') this.orphans = this.orphans.filter((o) => o.row.pgid !== group);
+    if (signal === 'SIGKILL' && !this.stuck) this.orphans = this.orphans.filter((o) => o.row.pgid !== group);
     for (const p of this.panes.values()) {
       if (p.job && p.pid + 1 === group && !p.unkillable && (signal === 'SIGKILL' || !p.ignoresTerm)) {
         delete p.job;
@@ -479,9 +484,11 @@ describe('restTerminals', () => {
     expect(world.log).toEqual(['detach c_ada', 'kill @1']);
   });
 
-  it('kills a private OpenCode server that outlasts its closed window by the settle time', async () => {
-    const { world, deps } = boot([char('c_ada', { tmux: win(1), agent: agent('opencode', 'done', OSID) })]);
-    world.pane(1, { job: [`opencode --standalone -s ${OSID}`], server: OC_SERVER, serverLingersMs: 60_000 });
+  it('kills a private OpenCode server that outlasts its closed window by the settle time, with what it runs, journaled first, and sees them gone', async () => {
+    const { world, deps, paths } = boot([char('c_ada', { tmux: win(1), agent: agent('opencode', 'done', OSID) })]);
+    world.pane(1, { job: [`opencode --standalone -s ${OSID}`], server: OC_SERVER, serverLingersMs: 60_000, lateChild: 'node /mcp/server.js' });
+    let journaled: unknown;
+    world.onSignal = () => { journaled ??= journalOf(paths).terminated; };
     let result: unknown;
     const run = restTerminals(deps, { choices: {}, pollMs: 500, settleMs: 1000 }).then((r) => { result = r; });
 
@@ -492,7 +499,23 @@ describe('restTerminals', () => {
     await run;
 
     expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada' }] });
-    expect(world.log).toEqual(['detach c_ada', 'kill @1', 'SIGKILL 1060']);
+    expect(world.log).toEqual(['detach c_ada', 'kill @1', 'SIGKILL 1060', 'SIGKILL 1080']);
+    expect(journaled).toEqual([{ characterId: 'c_ada', processes: [OC_SERVER, 'node /mcp/server.js'] }]);
+    expect(world.orphans).toEqual([]);
+  });
+
+  it('fails the rest when a private OpenCode server outlives its SIGKILL', async () => {
+    const { world, deps } = boot([char('c_ada', { tmux: win(1), agent: agent('opencode', 'done', OSID) })]);
+    world.pane(1, { job: [`opencode --standalone -s ${OSID}`], server: OC_SERVER, serverLingersMs: 60_000 });
+    world.stuck = true;
+    let failed: unknown;
+    const run = restTerminals(deps, { choices: {}, pollMs: 500, settleMs: 1000 }).catch((e: Error) => { failed = e.message; });
+
+    await world.settle();
+    for (let t = 0; t < 4; t++) await world.advance(500);
+    await run;
+
+    expect(failed).toMatch(/ada's terminal: .*serve --stdio.* still runs after SIGKILL/);
   });
 
   it('refuses an idle OpenCode whose server still runs a command, and ends the TUI, its server and the command when chosen', async () => {
