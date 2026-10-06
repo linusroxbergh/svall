@@ -191,11 +191,23 @@ describe.each([
     expect(args(p?.agent?.commands)).toEqual([`${OC} run --format json hello`]);
   });
 
-  it('takes the TUI as the agent and its private server and the plugin as its own, counting what the server runs in other groups as commands', () => {
+  it('takes the TUI as the agent and its private server, the plugin and what the server runs directly as its own', () => {
     const p = new ProcessTable(pane, installedScripts('/Users/ada/.svall')).pane(65132);
     expect(args(p?.foreground)).toEqual([`${OC} --standalone -s ses_eeda388f0ffeOB6E6MBZswShKL`]);
-    expect(p?.agent).toMatchObject({ kind: 'opencode', pid: 66006, server: { pid: 66078, pgid: 66078 } });
-    expect(args(p?.agent?.commands)).toEqual(['sleep 300', 'node /Users/ada/.cache/opencode/node_modules/typescript-language-server/lib/cli.mjs --stdio']);
+    expect(p?.agent).toMatchObject({ kind: 'opencode', pid: 66006, server: { pid: 66078, pgid: 66078 }, commands: [] });
+  });
+
+  it("counts a job left outside the server's tree in one of the agent's live groups as a command, and cannot see one whose group leader has exited", () => {
+    const left = [
+      ...pane,
+      // a background job of the shell command still running, reparented once the shell between them exited
+      row(76920, 1, 76905, none, 'sleep 501'),
+      row(76921, 1, 66078, none, 'node /tmp/watch.js'),
+      row(76922, 1, 66006, none, 'tail -f log'),
+      // its group's leader exited too, so nothing ties it to the agent
+      row(76930, 1, 76929, none, 'sleep 502'),
+    ];
+    expect(args(new ProcessTable(left).pane(65132)?.agent?.commands)).toEqual(['sleep 501', 'node /tmp/watch.js', 'tail -f log']);
   });
 
   it("finds the agent in npm's opencode.exe", () => {
@@ -207,7 +219,7 @@ describe.each([
     const started = [...pane, row(31200, 66006, 31200, none, `${OC} serve --service`)];
     const table = new ProcessTable(started);
     const p = table.pane(65132);
-    expect(args(p?.agent?.commands)).toEqual(['sleep 300', 'node /Users/ada/.cache/opencode/node_modules/typescript-language-server/lib/cli.mjs --stdio']);
+    expect(p?.agent?.commands).toEqual([]);
     expect(table.tree(p?.foreground ?? []).map((r) => r.pid).sort()).toEqual([66006, 66078, 66080, 76905, 76910]);
   });
 

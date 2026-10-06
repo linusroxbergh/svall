@@ -120,7 +120,7 @@ class World {
   kill = (group: number, signal: NodeJS.Signals): void => {
     this.onSignal?.();
     this.log.push(`${signal} ${group}`);
-    if (signal === 'SIGKILL' && !this.stuck) this.orphans = this.orphans.filter((o) => o.row.pgid !== group);
+    if (!this.stuck) this.orphans = this.orphans.filter((o) => o.row.pgid !== group);
     for (const p of this.panes.values()) {
       if (p.job && p.pid + 1 === group && !p.unkillable && (signal === 'SIGKILL' || !p.ignoresTerm)) {
         delete p.job;
@@ -518,21 +518,32 @@ describe('restTerminals', () => {
     expect(failed).toMatch(/ada's terminal: .*serve --stdio.* still runs after SIGKILL/);
   });
 
-  it('refuses an idle OpenCode whose server still runs a command, and ends the TUI, its server and the command when chosen', async () => {
-    const idle = () => boot([char('c_ada', { tmux: win(1), agent: agent('opencode', 'idle', OSID) })]);
+  it("rests an idle OpenCode whose server still runs its MCP and language servers, which close with it", async () => {
+    const { world, deps } = boot([char('c_ada', { tmux: win(1), agent: agent('opencode', 'idle', OSID) })]);
+    world.pane(1, { job: [`opencode --standalone -s ${OSID}`], server: OC_SERVER, tools: ['node /mcp/server.js', 'typescript-language-server --stdio'] });
+    expect(await restTerminals(deps, { choices: {} })).toEqual({ ok: true, terminals: [{ characterId: 'c_ada' }] });
+    expect(world.log).toEqual(['detach c_ada', 'kill @1']);
+  });
+
+  it("refuses an idle OpenCode whose job outlived the shell command that started it, and ends it with its group when chosen", async () => {
+    const idle = () => {
+      const b = boot([char('c_ada', { tmux: win(1), agent: agent('opencode', 'idle', OSID) })]);
+      b.world.pane(1, { job: [`opencode --standalone -s ${OSID}`], server: OC_SERVER, tools: ['sleep 300'] });
+      // reparented, still in the group of the command the server runs
+      b.world.orphans.push({ row: { pid: 1090, ppid: 1, pgid: 1050, tpgid: 0, stat: 'S', args: 'sleep 501' }, until: Infinity });
+      return b;
+    };
     const kept = idle();
-    kept.world.pane(1, { job: [`opencode --standalone -s ${OSID}`], server: OC_SERVER, tools: ['sleep 300'] });
     expect(await restTerminals(kept.deps, { choices: {} })).toEqual({
       ok: false,
       blockers: [{
-        code: 'agent_unsettled', message: "ada's terminal is idle with work still running in the background: sleep 300 still runs",
+        code: 'agent_unsettled', message: "ada's terminal is idle with work still running in the background: sleep 501 still runs",
         entity: { kind: 'character', id: 'c_ada' },
       }],
     });
     expect(kept.world.log).toEqual([]);
 
     const ended = idle();
-    ended.world.pane(1, { job: [`opencode --standalone -s ${OSID}`], server: OC_SERVER, tools: ['sleep 300'] });
     let result: unknown;
     const run = restTerminals(ended.deps, { choices: { terminate: true }, pollMs: 500, settleMs: 1000 }).then((r) => { result = r; });
     await ended.world.settle();
@@ -540,9 +551,7 @@ describe('restTerminals', () => {
     await run;
     expect(result).toMatchObject({ ok: true });
     expect(ended.world.log).toEqual(['SIGTERM 1001', 'SIGTERM 1060', 'SIGTERM 1050', 'detach c_ada', 'kill @1']);
-    expect(journalOf(ended.paths).terminated).toEqual([
-      { characterId: 'c_ada', processes: [`opencode --standalone -s ${OSID}`, OC_SERVER, 'ps -o args= -p 1001', 'sleep 300'] },
-    ]);
+    expect(ended.world.orphans).toEqual([]);
     expect(ended.store.state.characters.c_ada.revive).toEqual({ command: `opencode -s ${OSID}` });
   });
 

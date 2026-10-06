@@ -100,9 +100,14 @@ export class ProcessTable {
     // an OpenCode TUI runs its session in a private server off the terminal, which runs each shell command, MCP and
     // language server in a group of its own and Svall's plugin in its own: ps can't tell a command from a server
     const server = kind === 'opencode' ? children.find((c) => c.pgid !== group && program(c) === kind && PRIVATE_SERVER.test(c.args)) : undefined;
-    const served = server ? (this.children.get(server.pid) ?? []).filter((c) => c.pgid !== server.pgid && !zombie(c) && !SHARED_SERVICE.test(c.args)) : [];
+    // what the server runs directly is its own, as it closes them on exit; a job outside the tree in a live group is work
+    // gap: a reparented job whose group leader has exited is unseen, as for Claude and Codex
+    const served = server ? (this.children.get(server.pid) ?? []).filter((c) => c.pgid !== server.pgid && !zombie(c)) : [];
+    const groups = new Set([group, ...(server ? [server.pgid] : []), ...served.map((c) => c.pgid)]);
+    const tree = new Set(this.tree([leader]));
+    const strays = server ? [...this.byPid.values()].filter((p) => groups.has(p.pgid) && !tree.has(p) && !zombie(p) && !this.installed(p)) : [];
     // a tool command leaves the terminal; an MCP server in a group of its own stays on it
-    const commands = [...children.filter((c) => c !== server && c.tpgid !== group), ...served];
+    const commands = [...children.filter((c) => c !== server && c.tpgid !== group), ...strays];
     return { kind: kind as AgentKind, pid: agent.pid, commands, ...(server && { server }) };
   }
 
