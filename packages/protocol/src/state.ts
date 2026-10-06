@@ -144,6 +144,8 @@ export const Character = z.object({
   // a file's name, without .md, in the fleet's agent-profiles folder; its text rides in the brief
   agentProfile: z.string().optional(),
   cwd: z.string(),
+  // made with a task to run, so its brief says to work in a worktree; one a person opens is left where it is
+  worktree: z.literal(true).optional(),
   // the tmux pane's own path when last read; cwd moves with it only when it changes, so a restart keeps where the hooks put it
   panePath: z.string().optional(),
   repo: Repo.optional(),
@@ -176,6 +178,8 @@ export const FleetState = z.object({
   scribeAsk: z.literal(true).optional(),
   // the last automatic or swept pass that failed, cleared by the next one that succeeds
   scribeError: z.object({ message: z.string(), at: z.number() }).optional(),
+  // a character made with a task is not told to work in a worktree
+  worktreesOff: z.literal(true).optional(),
   // an agent idle this many hours is ended and its character left dormant, to be resumed on revive;
   // 0 keeps every agent running, and absent is DORMANT_AFTER_HOURS
   dormantAfterHours: z.number().int().min(0).optional(),

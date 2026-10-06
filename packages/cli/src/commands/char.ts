@@ -50,7 +50,7 @@ export function charCommands(connect: () => Promise<Client>, json: () => boolean
     .addHelpText('after', `
 Handing work to a new character:
   svall char new --island <id> --cwd <path> --name "<name>" --run "<prompt>"
-  - In a git repo, a fresh worktree: --command "claude -w <worktree>" (Codex, OpenCode: git worktree add, then --cwd), or one on its branch no agent works in.
+  - In a git repo, a character given --run moves into a worktree of its own unless Settings turns that off; --cwd can name one no agent works in.
   - The prompt is all it knows: goal, paths, links, what done looks like.
   - Names: at most 24 characters, lower case: PR or ticket id, area, task, one or two words each: "#472 auth review", not "#472 deep review r3".
   - New island: svall island create "<name>" --description "<one line>".

@@ -99,6 +99,19 @@ test('the zoom tip names the keys as bound, and leaves out one that is unbound',
   expect(tip()).toBe('Scales the map, panels and terminal text. ⌘0 sets 100%.');
 });
 
+test('the worktree switch reads the fleet and flips it', () => {
+  call.mockClear();
+  render(<SettingsCard />);
+  const sw = () => screen.getByTestId('set-worktrees');
+  expect(sw().getAttribute('aria-checked')).toBe('true');
+  fireEvent.click(sw());
+  expect(call).toHaveBeenCalledWith('worktrees.set', { enabled: false });
+  act(() => store.getState().setFleet({ ...fleet(), worktreesOff: true }));
+  expect(sw().getAttribute('aria-checked')).toBe('false');
+  fireEvent.click(sw());
+  expect(call).toHaveBeenCalledWith('worktrees.set', { enabled: true });
+});
+
 test('dormancy steps two hours at a time from 2 to 48, then never', () => {
   call.mockClear();
   render(<SettingsCard />);

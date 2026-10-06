@@ -121,7 +121,7 @@ export class Fleet extends EventEmitter<Events> {
   // a profile that is missing or cannot be used is left out, and the side card says why
   private render(island: Island, c?: Character): string {
     const p = c?.agentProfile ? readAgentProfile(this.deps.paths.agentProfiles, c.agentProfile) : undefined;
-    return renderBrief(island, c, docFolders(this.deps.paths.docs, island, c), p && !('error' in p) ? p : undefined);
+    return renderBrief(island, c, docFolders(this.deps.paths.docs, island, c), p && !('error' in p) ? p : undefined, !!c?.worktree && !this.deps.store.state.worktreesOff);
   }
 
   // a profile given by name must be one that can be used now; one that goes later is shown as missing
@@ -230,6 +230,10 @@ export class Fleet extends EventEmitter<Events> {
     setImmediate(() => this.emit('stopped'));
   }
 
+  setWorktrees(enabled: boolean): void {
+    this.deps.store.update((d) => { if (enabled) delete d.worktreesOff; else d.worktreesOff = true; });
+  }
+
   setDormancy(hours: number): void {
     this.deps.store.update((d) => { d.dormantAfterHours = hours; });
   }
@@ -327,7 +331,7 @@ export class Fleet extends EventEmitter<Events> {
           id, islandId: p.islandId, cell: p.cell ?? placeOnIsland(d, p.islandId, undefined, this.deps.log),
           name: uniqueName(names, p.name ?? randomName(new Set(names))),
           portrait: randomPortrait(new Set(Object.values(d.characters).map((c) => c.portrait))),
-          note: '', instructions: '', ...(p.agentProfile && { agentProfile: p.agentProfile }), cwd, panePath, context: [],
+          note: '', instructions: '', ...(p.agentProfile && { agentProfile: p.agentProfile }), ...(p.run && { worktree: true as const }), cwd, panePath, context: [],
           tmux: { windowId: w.windowId, paneId: w.paneId },
           shell: { lastOutputAt: Date.now() }, unread: false,
         };

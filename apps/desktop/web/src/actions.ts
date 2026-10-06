@@ -270,6 +270,10 @@ export const setScribe = (d: ActionDeps, enabled: boolean): void => {
   d.api.call('scribe.set', { enabled }).catch(toast(d));
 };
 
+export const setWorktrees = (d: ActionDeps, enabled: boolean): void => {
+  d.api.call('worktrees.set', { enabled }).catch(toast(d));
+};
+
 export const setMainAgent = (d: ActionDeps, agent: AgentKind): void => {
   d.api.call('mainAgent.set', { agent }).catch(toast(d));
 };
