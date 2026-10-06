@@ -634,6 +634,30 @@ runIf('Fleet', () => {
     expect(fs.readFileSync(file, 'utf8')).toBe(RESUME_NOTE);
   });
 
+  it('resumes an interrupted agent a closed handover once rested, and leaves one an open handover carries', async () => {
+    const b = await boot();
+    const { c } = await withAgent(b);
+    b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', sessionId: SID } });
+    await b.fleet.stopAll();
+    const state = structuredClone(b.store.state);
+    state.characters[c.id].restedBy = 'tx-old';
+
+    const carried = await boot({ opening: true, state: structuredClone(state) });
+    carried.fleet.carries((id) => id === c.id);
+    const typed: string[] = [];
+    vi.spyOn(carried.tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
+    await carried.fleet.resumeInterrupted();
+    expect(carried.store.state.characters[c.id].tmux).toBeUndefined();
+    expect(typed).toEqual([]);
+
+    const again = await boot({ opening: true, state });
+    vi.spyOn(again.tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
+    await again.fleet.resumeInterrupted();
+    expect(again.store.state.characters[c.id].tmux).toBeDefined();
+    expect(typed).toHaveLength(1);
+    expect(fs.readFileSync(path.join(again.home, `${c.id}.prompt`), 'utf8')).toBe(RESUME_NOTE);
+  });
+
   it('has every change on disk once it has stopped', async () => {
     const { fleet, home } = await boot();
     fleet.setDormancy(5);

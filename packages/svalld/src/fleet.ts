@@ -579,10 +579,10 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   /** Revives every character whose agent a quit, reboot or crash ended mid-turn; called once hooks can reach the fleet.
-   *  Only the owner opens windows, and a terminal a handover laid to rest is the handover's to reopen. */
+   *  Only the owner opens windows, and a terminal an open handover carries is that handover's to reopen. */
   async resumeInterrupted(): Promise<void> {
     if (!this.writable()) return;
-    const ids = Object.values(this.deps.store.state.characters).filter((c) => c.revive?.interrupted && !c.restedBy).map((c) => c.id);
+    const ids = Object.values(this.deps.store.state.characters).filter((c) => c.revive?.interrupted && !this.carried(c.id)).map((c) => c.id);
     await Promise.all(ids.map((id) => this.reviveCharacter(id).catch((e) => this.deps.log.error(`resume ${id}: ${String(e)}`))));
   }
 
