@@ -1,7 +1,7 @@
 # Fleet handover — pick-up guide
 
 Fleet handover moves a whole fleet from one machine to another: its characters, terminals, repos,
-worktrees and Claude/Codex sessions. It runs between a Mac and a Linux gateway machine over SSH, and
+worktrees and Claude/Codex/OpenCode sessions. It runs between a Mac and a Linux gateway machine over SSH, and
 the Linux account has the Mac's home path, so nothing the fleet records is rewritten. One machine owns
 the fleet at a time, and a small gateway service on the Linux machine keeps the ownership record.
 Everything sits behind `handover.enabled` in fleet.json, which is off by default.
@@ -16,7 +16,8 @@ Everything sits behind `handover.enabled` in fleet.json, which is off by default
   every one of 94 failpoints and fault every controller request; the container harness
   (`docs/integration.md`) hands a fleet over real sshd/rsync/tmux, and a release installs fresh on x86-64
   and arm64; real Claude and Codex sessions resumed both ways on test-server, and the spec's manual
-  acceptance passed there from release artifacts (`ledger/task-39b-report.md`).
+  acceptance passed there from release artifacts (`ledger/task-39b-report.md`). OpenCode characters
+  hand over too, from 2.0.22, as their session's export (`ledger/opencode-*.md`).
 - **Not done on purpose:** `handover.enabled` is still in place (Task 39's last box). It goes in one
   small commit once the items under "Owed" below exist.
 - **After version 1:** Phase E, Tasks 30–33 (stable phone gateway), and Phase F, Tasks 34–35 (remote

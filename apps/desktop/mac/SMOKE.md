@@ -80,7 +80,11 @@ Select the Claude character and open its side card.
 3. Give an agent a task that takes a few minutes and start a handover.
    - Resting characters shows it resting, with **Interrupt and carry**.
    - Choose it: the agent is interrupted, and on the other side it resumes with its conversation.
-4. Turn on **keep on this machine** on a character's card and start a handover: `character_pinned` stops it, with a
+4. Give the OpenCode character a local MCP server (an `mcp` entry in `opencode.json` in its folder), let it finish a
+   turn, and start a handover.
+   - Resting characters rests it at once: the MCP server it runs does not block.
+   - Once the handover completes, `pgrep -fl opencode` on the machine it left lists nothing of that character.
+5. Turn on **keep on this machine** on a character's card and start a handover: `character_pinned` stops it, with a
    button to the card.
 
 ## 6. A copy changed on the other machine

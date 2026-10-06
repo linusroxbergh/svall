@@ -92,7 +92,7 @@ listed with what to do about it.
 | Browser tab URLs | Browser cookies and logins, and each Mac's own layout |
 | Every folder a character works in, a file or folder named in its context, and mission control's folder (`home.cwd`), which no other fleet on the same machine may use | Folders left out by the excludes below |
 | Each repository a character works in: its Git directory, the main checkout, every worktree a character uses, and their staged, unstaged, untracked and ignored changes, stash, branches and refs | The registration of a worktree no character uses (its branch and stash still move) |
-| Each agent's session: Claude Code's transcript with the session's own folder (subagents and saved tool output), Codex's rollout file | Agent logins, user-wide settings, skills, MCP servers and hooks; Claude's file history, which `/rewind` uses, and session environment |
+| Each agent's session: Claude Code's transcript with the session's own folder (subagents and saved tool output), Codex's rollout file, OpenCode's session export with Svall's log of it | Agent logins, user-wide settings, skills, MCP servers and hooks; Claude's file history, which `/rewind` uses, and session environment; OpenCode's own folders (`~/.local/share/opencode`, `~/.config/opencode`, `~/.local/state/opencode`, `~/.cache/opencode`), its undo snapshots, subagent sessions, and shell and tool-output files |
 | `.env` files inside the folders that move | The fleet's own `.env`, unless `handover.transferFleetEnv` is on in `fleet.json` |
 | | Every running process, its pid, its tmux window and its scrollback |
 
@@ -112,10 +112,12 @@ blocks a move to Linux while a character works in it. An Xcode project in a fold
 
 ## Agents
 
-A handover carries Claude Code sessions from release 2.1.251 on and Codex sessions from 0.155.0 on, with no upper
-limit: a session's files are copied byte for byte to the same place on the other machine, so a newer release works as
-long as it keeps its sessions where it did. Each machine checks its own CLI before anything moves: installed, recent
-enough, logged in and with Svall's hooks, as the daemon finds it. A login never moves; log in on each machine.
+A handover carries Claude Code sessions from release 2.1.251 on, Codex sessions from 0.155.0 on and OpenCode sessions
+from 2.0.22 on, with no upper limit: a Claude or Codex session's files are copied byte for byte to the same place on
+the other machine, so a newer release works as long as it keeps its sessions where it did. An OpenCode session travels
+as its `opencode session export`, which the other machine's OpenCode imports in the terminal's folder before the
+character resumes. Each machine checks its own CLI before anything moves: installed, recent enough, logged in and
+with Svall's hooks, as the daemon finds it. A login never moves; log in on each machine.
 
 When a new Claude Code or Codex release comes out:
 
@@ -146,6 +148,7 @@ character, and after the move its row says that it waits.
 - **Claude** asks whether to trust the folder, with "No, exit" preselected: choose "Yes, I trust this folder".
 - **Claude in Bypass Permissions mode** asks once per machine: choose "Yes, I accept".
 - **Codex** asks whether to trust the folder: answer it in that terminal.
+- **OpenCode** asks nothing.
 
 Svall never writes an agent's own settings to answer these for you.
 
@@ -155,6 +158,7 @@ Nothing that runs moves; the handover brings each terminal to rest first.
 
 - An idle or finished agent, and a shell at its prompt, are ready at once.
 - An idle agent that left a command running in the background blocks until the command ends or you terminate it.
+  An idle OpenCode's MCP and language servers do not count: they stop with it.
 - An agent still in its turn is waited for, up to three minutes (or as long as `--interrupt-after` says, if longer),
   then shows as a blocker you can keep waiting on or interrupt. Interrupting sends Escape and waits up to ten seconds
   for the agent and whatever it started to stop.
@@ -163,10 +167,10 @@ Nothing that runs moves; the handover brings each terminal to rest first.
 
 On the other machine:
 
-- Each agent terminal the handover rested resumes as a new process in its folder, with `claude --resume <id>` or
-  `codex resume <id>` and the launch flags it had, such as its model or permission mode. Codex's `-p`/`--profile` and
-  `--local-provider` are dropped, because they name configuration on the machine it came from. It has its whole
-  conversation; an interrupted turn does not go on by itself, so tell it to continue.
+- Each agent terminal the handover rested resumes as a new process in its folder, with `claude --resume <id>`,
+  `codex resume <id>` or `opencode --standalone -s <id>` and the launch flags it had, such as its model or permission
+  mode. Codex's `-p`/`--profile` and `--local-provider` are dropped, because they name configuration on the machine
+  it came from. It has its whole conversation; an interrupted turn does not go on by itself, so tell it to continue.
 - A plain shell opens in its folder and prints: *Svall restarted this shell after a handover; whatever ran here
   before did not move.*
 - A character that was dormant before the handover stays dormant.
@@ -279,6 +283,11 @@ svall host remove studio --forget
 ```
 
 ## Known limitations
+
+- **OpenCode leaves its undo snapshots and subagent sessions behind.** On the other machine, undoing a step from
+  before the handover does not work, and a subagent's own session is not there; its result is in the conversation.
+- **A background job an agent started can go unseen** once the command that started it has exited, for Claude, Codex
+  and OpenCode alike. It keeps running on the machine the fleet left.
 
 - **Two controllers can drive one handover.** Starting a handover of the same fleet from two Macs at once can have
   both drive the same handover, since the gateway accepts the second start as the first. The gateway still commits

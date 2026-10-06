@@ -52,7 +52,7 @@ the first failed step. The output folder holds:
 - **One account.** Both machines have `svall` with home `/home/svall`. Local reaches remote with its own key, made
   when the run starts.
 - **Node.** Neither machine has Node on PATH. The release brings its own. The harness keeps a copy of the release's
-  node at `/opt/it/node`, which the mocked agent and the in-machine checks run on.
+  node at `/opt/it/node`, which the mocked agents and the in-machine checks run on.
 - **Tailscale.** The containers have no tailnet, so `tailscale` is a double that answers its version and nothing else.
 - **Mocked Claude.** `scripts/integration/claude.mjs` is the hook-speaking Claude the on-machine passes used. It posts
   its hooks to `$SVALL_HOME/hooks.sock`, keeps a Claude Code 2.1.x transcript, and resumes only a session whose
@@ -60,6 +60,14 @@ the first failed step. The output folder holds:
   - `~/.local/bin/claude` execs node on it, so `ps` shows `node …/claude.mjs`, which the rest classifier reads as
     Claude.
   - There is no Codex, so `host add` advises installing it.
+- **Mocked OpenCode.** `scripts/integration/opencode.mjs` answers as OpenCode 2.0.22: `--version`, `auth list`, and
+  `session export|import|delete --standalone`, where an import of an id it already holds says so on stderr and exits
+  0. It keeps each session as a JSON file under `~/.local/share/opencode/mock-sessions`, where the real one keeps its
+  database.
+  - `~/.local/bin/opencode` execs node on it as `opencode`, so `ps` reads it as the native binary.
+  - In a terminal, `opencode --standalone [-s <id>]` runs a private `serve --stdio` server in a group of its own and
+    posts the hook lines Svall's plugin would. `-s` on an id it does not hold starts an empty session, as the real
+    one does.
 
 ### What it checks
 
@@ -74,21 +82,24 @@ the first failed step. The output folder holds:
    - an ignored `data/` of 16 MiB;
    - a default-excluded `node_modules/`.
 
-   A mocked-Claude character runs in the worktree with one turn, and a shell character runs in the main checkout.
+   A mocked-Claude character runs in the worktree, a mocked-OpenCode character `oc` in the main checkout, each with
+   one turn, and a shell character runs in the main checkout.
 3. **local → remote, then remote → local**, each with a turn on the new owner, all through the controller on local.
    Each handover checks:
-   - **The manifest:** four roots (the two checkouts, mission control's folder and the agent profiles) and one
-     session, no blockers, and each root and session verified in full.
+   - **The manifest:** four roots (the two checkouts, mission control's folder and the agent profiles) and two
+     sessions, Claude's and OpenCode's, no blockers, and each root and session verified in full.
    - **Git:** on the new owner, each checkout's HEAD, branch, `status --porcelain=v2`, index (`ls-files --stage`),
      stash, worktree list, refs and `fsck` equal the source's before the handover. Every file of both working
      trees, ignored ones included, has the same content and mode. `node_modules/` never reaches remote.
    - **The state:** the same characters, names, cwds and islands, and the shell character's terminal runs bash.
-   - **The agent:** it runs as `claude --resume <its session id>` in its cwd, under the same session id and pid the
-     state records. The transcript is identical, and the next turn appends to the same file.
+   - **The agents:** Claude runs as `claude --resume <its session id>` and OpenCode as
+     `opencode --standalone -s <its session id>`, each in its cwd, under the same session id and pid the state records. Claude's transcript is identical, and the
+     next turn appends to the same file. OpenCode runs one private server, and holds its session with the same
+     messages, in the terminal's folder, never as an empty session a resume made up; the next turn adds to it.
    - **Ownership:** the new owner's daemon owns the fleet at the next generation and is not frozen. The old one is
-     fenced to the new owner and runs no agent and no window: it has stopped the fleet's tmux server. The gateway's
-     record names the new owner with no transaction. No handover journal is left on either machine or in the
-     controller.
+     fenced to the new owner and runs no agent, OpenCode server or window: it has stopped the fleet's tmux server.
+     The gateway's record names the new owner with no transaction. No handover journal is left on either machine or
+     in the controller.
 4. **Faults.** A fault at each boundary, in both directions. After each, `svall handover status` must offer what the
    spec says, and the harness takes that action: `--abort` before the commit, `--resume` after it. Then every check
    of step 3 runs against the owner the fleet should have. Before recovering, the harness also snapshots both
@@ -96,7 +107,7 @@ the first failed step. The output folder holds:
 
 | Boundary | Faults | The fault lands when | Commit | Checked where it stopped |
 | --- | --- | --- | --- | --- |
-| before Freeze | kill, drop | the ssh carrying the gateway's Begin appears | pre | Begin landed (kill); the source never froze, and its agent keeps its pid through the abort |
+| before Freeze | kill, drop | the ssh carrying the gateway's Begin appears | pre | Begin landed (kill); the source never froze, and its agents keep their pids through the abort |
 | during transfer | kill, drop | the first rsync that copies appears | pre | the source is frozen and its agents rested |
 | after Ready | kill, drop | the ssh carrying Ready appears | pre | Ready landed (kill); the source is frozen |
 | right after Commit | kill | the ssh carrying Commit appears | post | the gateway committed; neither machine runs the fleet |
@@ -115,7 +126,7 @@ Every pre-commit stop is also checked for a gateway that has not committed and a
   controller's session every 2 ms and reads its event stream.
 - **Pre-commit, after the abort:** the source runs the fleet as before, the destination runs nothing, and the
   gateway has no transaction.
-- **Post-commit, after the resume:** the destination runs the fleet with the agent resumed under its session id, and
+- **Post-commit, after the resume:** the destination runs the fleet with each agent resumed under its session id, and
   the source never runs a terminal or an agent again.
 
 ### The CI job
@@ -137,8 +148,10 @@ x86-64 Docker host, such as a full-system x86-64 VM (see [x86-64 on an Apple Sil
   on the real machines (Task 37c).
 - **The app's helper.** The harness runs `svall handover` in the foreground with `--json`, not the app's
   `--detach` and `attach`.
-- **Real agents.** Real Claude Code and Codex need logins. The mocked Claude speaks the same hooks and transcript
-  layout, and the live probes cover the real CLIs (`packages/svalld/test/handover/sessions-live.test.ts`).
+- **Real agents.** Real Claude Code, Codex and OpenCode need logins. The mocked Claude speaks the same hooks and
+  transcript layout, and the live probes cover the real Claude and Codex CLIs
+  (`packages/svalld/test/handover/sessions-live.test.ts`). Nothing runs a real OpenCode's export and import; the mock
+  starts its session at launch, where the real one does at the first prompt.
 - **Tailscale.** The containers talk over the docker network.
 - **Fresh installs.** Installing on a clean machine with no Node, `host upgrade` and `setup --rollback` are the
   fresh-install run's, below. `host upgrade --rollback` runs in neither.
@@ -192,9 +205,9 @@ logs.
      the controller looks the companion up in its manifest, downloads it from the run's server, checks its digest and
      caches it. The release step names that URL, and the cached file is the pinned companion.
    - Any other release is installed by path, with `--release` and `--allow-unsigned` only for an unsigned build.
-   - Every step is `ok`, except the advice a fresh machine gets: tmux 3.4, Claude Code and Codex not installed, and
-     lingering off, which both the linger and the service steps name.
-   - The result lists exactly three things to do: the lingering command and the two installs.
+   - Every step is `ok`, except the advice a fresh machine gets: tmux 3.4, Claude Code, Codex and OpenCode not
+     installed, and lingering off, which both the linger and the service steps name.
+   - The result lists exactly four things to do: the lingering command and the three installs.
 4. **Lingering, as host add asks, and a second fleet.** The run turns lingering on, then runs `svall host enable
    --fleet work` from a controller-side fleet `work`: the machine provisions its own copy under
    `svall-svalld@work.service`.

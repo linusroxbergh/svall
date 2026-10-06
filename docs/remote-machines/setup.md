@@ -13,7 +13,7 @@ machine needs, how to add it, and how to look after it.
 | Services | launchd, as for any fleet | systemd user services, with lingering on so the fleet keeps running after you log out |
 | Tools | tmux, Git | tmux 3.x, Git, rsync 3.2.3 or newer, as Ubuntu 22.04 and later ship (`sudo apt install tmux git rsync`) |
 | Network | Tailscale, and OpenSSH to the Linux account (Tailscale SSH works) | Tailscale |
-| Agents | Claude Code 2.1.251 or newer and Codex 0.155.0 or newer, for the agents your fleet runs, each logged in on each machine | the same |
+| Agents | Claude Code 2.1.251 or newer, Codex 0.155.0 or newer and OpenCode 2.0.22 or newer, for the agents your fleet runs, each logged in on each machine | the same |
 
 tmux 3.5 or newer is recommended on both, because Shift+Enter needs it; Ubuntu 24.04 ships 3.4, which works otherwise.
 
@@ -73,8 +73,9 @@ Both run the same steps and show each as it finishes:
 3. **Companion.** The Linux release matching this Mac's own release, checked against the digest this Mac's release
    pins and against its signature, copied over ssh and installed under `~/.local/share/svall` there.
 4. **Service.** `svall-gateway.service` and `svall-svalld@private.service` as systemd user units, started.
-5. **Agent logins.** Claude Code and Codex on the machine: installed, Claude Code 2.1.251 or newer and Codex 0.155.0
-   or newer, logged in, and with Svall's hooks in place, as the machine's own `svall doctor` finds them.
+5. **Agent logins.** Claude Code, Codex and OpenCode on the machine: installed, Claude Code 2.1.251 or newer, Codex
+   0.155.0 or newer and OpenCode 2.0.22 or newer, logged in (for OpenCode, `opencode auth list` answers), and with
+   Svall's hooks in place (for OpenCode, Svall's plugin), as the machine's own `svall doctor` finds them.
 6. **Final probe.** The machine's own fleet answers through a forwarded port, its gateway answers, and tmux opens and
    closes a window there.
 7. **Registry.** The machine is added to this Mac's list in `~/.config/svall/machines.json`.
@@ -85,7 +86,8 @@ never copies a login, so these are yours:
 - A missing package: the action names the `apt` command, as `ssh ada@studio, then sudo apt install rsync`. An rsync
   older than 3.2.3 needs a newer one, which Ubuntu 22.04 and later ship.
 - Lingering off: `ssh ada@studio, then loginctl enable-linger ada`. Without it the fleet stops when you log out.
-- An agent not installed or not logged in: `ssh ada@studio`, install it, then `claude auth login` or `codex login`.
+- An agent not installed or not logged in: `ssh ada@studio`, install it, then `claude auth login`, `codex login` or
+  `opencode auth login`.
   Codex also asks once to trust Svall's hooks: start `codex` there and choose "Trust all and continue", or trust
   them with `/hooks`.
 - Svall's hooks not installed, out of date, turned off or not trusted: the action names what the machine's own
@@ -160,7 +162,10 @@ On the Linux machine, all under the account:
 
 - `~/.local/share/svall/releases/<version>` and `current`, the release; `~/.local/bin/svall` points into it.
   Each install keeps the release before it, for a rollback, and removes older ones.
-- `~/.config/systemd/user/svall-gateway.service`, and one `svall-svalld@<fleet>.service` per fleet.
+- `~/.config/systemd/user/svall-gateway.service`, and one `svall-svalld@<fleet>.service` per fleet. Each unit
+  carries the `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` the account's login shell sets.
+- `~/.config/opencode/plugins/svall.js` (under `XDG_CONFIG_HOME` when the login shell sets it), Svall's OpenCode
+  plugin, when OpenCode is installed and the fleet does not turn it off.
 - `~/.local/share/svall/gateway/fleets/<fleet id>.json`, the ownership record of each fleet it is the gateway
   for, and `gateway/recoveries.ndjson`, the audit of every forced recovery.
 - `~/.local/share/svall/log`, the units' logs.

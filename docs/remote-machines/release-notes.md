@@ -16,8 +16,8 @@ does not works exactly as before.
 - **Hand the fleet over** with the Handover button or `svall handover <name>`, and back with **This Mac** or
   `svall handover local`. Characters, islands, notes, browser tab URLs, entity docs and agent profiles move; so do the
   repositories the characters work in, with their worktrees, staged and unstaged changes, untracked files and
-  stashes, and each Claude Code and Codex conversation. Agents resume from their transcripts, shells reopen in their
-  folders, and the app reconnects to the fleet where it now runs.
+  stashes, and each Claude Code, Codex and OpenCode conversation. Agents resume from their transcripts, shells reopen
+  in their folders, and the app reconnects to the fleet where it now runs.
 - **The checks come first.** Nothing moves until they pass, and each blocker says what to do: finish or interrupt a
   working agent, end a busy shell's command, archive a folder in the way. A folder changed on the other machine while
   it did not own the fleet is never overwritten.
@@ -47,7 +47,8 @@ See [Upgrading and downgrading](migration.md) for the details and the way back.
 - macOS 15 or newer, and Ubuntu LTS on x86-64 or arm64 with systemd user services and lingering.
 - The Linux account's home must be the same path as yours on the Mac, such as `/Users/ada`.
 - Tailscale and ssh between the two, and tmux, Git and rsync 3.2.3 or newer on the Linux machine.
-- Claude Code 2.1.251 or newer and Codex 0.155.0 or newer, logged in on each machine. Logins never move.
+- Claude Code 2.1.251 or newer, Codex 0.155.0 or newer and OpenCode 2.0.22 or newer, logged in on each machine.
+  Logins never move.
 
 ## Not yet
 

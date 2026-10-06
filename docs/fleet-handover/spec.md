@@ -21,7 +21,7 @@ It preserves:
 - islands, characters, placement, notes, instructions, links, browser tab URLs and entity docs;
 - tracked, untracked, ignored and staged working-tree changes, subject to configured excludes;
 - linked Git worktrees and their indexes;
-- supported Claude Code and Codex conversations;
+- supported Claude Code, Codex and OpenCode conversations;
 - the selected character and open card in the Mac that initiated the handover.
 
 A handover does **not** migrate a running Unix process. A build, REPL, server, foreground shell
@@ -72,7 +72,7 @@ The first published release supports:
 - rsync 3.2.3 or newer on both machines. Ubuntu 22.04 and later ship it; macOS ships openrsync,
   which cannot protect remote arguments or report byte progress, so the desktop release bundles
   its own rsync and the system binary is only a fallback the doctor flags;
-- Claude Code and Codex CLI at or above each session adapter's minimum version.
+- Claude Code, Codex and OpenCode CLI at or above each session adapter's minimum version.
 
 The Mac app is distributed as a signed and notarized direct download. Mac App Store distribution,
 whose sandbox is incompatible with the required SSH, subprocess and filesystem integration, is not
@@ -330,14 +330,17 @@ rollback (after a reinstall under the same name, the newest other release) and r
 4. Upload and verify the matching companion release.
 5. Install `svall-gateway.service` and an `svall-svalld@<fleet>.service` template as
    systemd user units. Units use absolute paths through `current`, a resolved PATH, the
-   `CLAUDE_CONFIG_DIR` and `CODEX_HOME` the account's login shell sets, `Restart=always` and logs
-   under the Svall data directory.
+   `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` the account's login
+   shell sets, `Restart=always` and logs under the Svall data directory. Setup writes Svall's
+   OpenCode plugin into the OpenCode config folder that environment names, and removes it when the
+   fleet turns OpenCode off.
 6. Enable and start the gateway. If user lingering is disabled, show the exact
    `loginctl enable-linger <user>` action; `host add` run again and `host doctor` check it again.
 7. Create the stable machine id and add the controller registry entry.
-8. Check Claude Code and Codex installation, supported versions, login and Svall hooks. Each
-   finding names the ssh and login or install command for the user to run in a terminal; the app
-   opens none. Credentials are never copied from the Mac.
+8. Check Claude Code, Codex and OpenCode installation, supported versions, login and Svall hooks;
+   OpenCode's login is `opencode auth list` and its hooks are Svall's plugin. Each finding names
+   the ssh and login or install command for the user to run in a terminal; the app opens none.
+   Credentials are never copied from the Mac.
 9. Run an end-to-end probe: gateway authority, API tunnel, temporary tmux window, home path and
    free space.
 10. For each existing local fleet the user enables for this machine, create the gateway's initial
@@ -367,7 +370,7 @@ Connection and handover negotiate:
 - gateway authority version, which a handover reads from the gateway's `svall version --json`
   before its first ownership operation, so preflight blocks with `incompatible_protocol` when it
   differs;
-- installed Claude Code and Codex versions against each session adapter's minimum.
+- installed Claude Code, Codex and OpenCode versions against each session adapter's minimum.
 
 Ordinary remote viewing may allow a documented compatible version range. A handover requires an
 exact companion release match and a supported agent-session adapter. The app offers to upgrade the
@@ -508,14 +511,32 @@ unrelated session from the project directory.
 For Codex, the adapter copies the rollout file, which is all the destination needs: it finds the
 session by scanning `sessions/` for the id and rebuilds its own thread index from the rollout.
 
+OpenCode keeps sessions in a database of its own, so its session is the exception to placing files:
+it travels as `opencode session export` JSON, carried and hashed byte for byte beside Svall's plugin
+log of the session (`<fleet home>/transcripts/opencode/<id>.jsonl`), which is its transcript.
+Preflight proves the source's OpenCode holds the session, and Freeze exports it once the agent is
+at rest. Before activation, the destination exports any copy of that id its own OpenCode holds and
+blocks with `destination_diverged` unless that copy's messages are a prefix of the incoming
+export's; it then deletes that copy, imports the export with `--directory` set to the terminal's
+cwd, and blocks the prepare unless the import's output names the id, since `-s` on an id OpenCode
+lacks starts an empty session. The source keeps its copy until a later handover back
+replaces it. Each OpenCode call runs with `--standalone` in the daemon's environment, so
+`XDG_DATA_HOME` finds the database the agents use. Undo snapshots, subagent child sessions and
+shell and tool-output files do not travel. The adapter's minimum is OpenCode 2.0.22.
+
 Session files are copied byte for byte. An adapter therefore depends only on where its CLI keeps a
-session's files, not on the record format, and has a minimum supported version but no maximum.
+session's files, or for OpenCode on its export and import, not on the record format, and has a
+minimum supported version but no maximum.
 The imported `agent.transcriptPath` always points at the destination file before activation.
 Preflight blocks an agent below its adapter's minimum or a session whose required file is missing.
 A separate repair action may start a fresh agent with a generated transcript summary, but this is
 visibly a new session and is never the automatic handover path.
 
 Global agent credentials, user-wide skills, MCP configuration and shell dotfiles are machine-local.
+OpenCode's data, config, state and cache folders (`~/.local/share/opencode`, `~/.config/opencode`,
+`~/.local/state/opencode`, `~/.cache/opencode`, and the data and config folders where
+`XDG_DATA_HOME` and `XDG_CONFIG_HOME` put them) are machine-local whole: a handover never carries a
+root in or holding one, nor lands on one.
 Host doctor checks installation, login and hooks. Preflight reads the destination's agent logins
 afresh, and warns (`config_difference`) when an agent CLI the fleet runs is at different versions
 on the two machines; the warning names the settings, skills and MCP servers each machine keeps,
@@ -529,10 +550,11 @@ optional live tmux ids, optional agent, and optional revive command. A second te
 disappears merely because its tmux window is absent.
 
 Before export, all `tmux.windowId`, `paneId` and agent pid fields are removed. For a supported
-agent, `revive.command` is `claude --resume <id>` or `codex resume <id>` with the launch flags an
-idle close keeps, whether the handover rested the terminal or it was already dormant, less the Codex
-flags whose values name the source's own config (`-p`/`--profile`, `--local-provider`). A plain shell has no
-command and reopens at its cwd. Terminal scrollback is neither saved nor carried.
+agent, `revive.command` is `claude --resume <id>`, `codex resume <id>` or
+`opencode --standalone -s <id>` with the launch flags an idle close keeps, whether the handover
+rested the terminal or it was already dormant, less the Codex flags whose values name the source's
+own config (`-p`/`--profile`, `--local-provider`). A plain shell has no command and reopens at its
+cwd. Terminal scrollback is neither saved nor carried.
 
 ---
 
@@ -595,6 +617,17 @@ working agent is waited for up to three minutes, or until an `--interrupt-after`
 After an interrupt, Svall waits for the agent hook or process tree to confirm rest. Failure to
 settle is a blocker unless the user explicitly terminates that terminal. Only then are tmux windows
 killed and terminal records made dormant.
+
+An OpenCode TUI runs its session in a private `serve --stdio` server, which runs each tool command,
+MCP server and language server in a process group of its own. For an idle OpenCode, the server's
+direct children are its own and do not block; a running shell tool, or a process still in one of
+the agent's live groups but outside the server's tree, blocks as a background command. A job whose
+group leader has exited cannot be tied back to its agent and is not seen, as for Claude and Codex,
+so it stays running on the source. An interrupted OpenCode rests only once its plugin
+reports the turn over. The server writes the database the export reads, so after the windows close
+the rest waits up to ten seconds for each server to exit; one that outlasts that is journaled as a
+terminated job and killed with everything it runs, and the rest fails, naming what survives, if
+any of it still runs ten seconds later.
 
 ## State machine
 
@@ -861,7 +894,7 @@ without cloning Svall or installing a JavaScript toolchain.
 1. Implement gateway ownership compare-and-swap and recovery inspection.
 2. Implement preflight inventory, same-path checks and destination replica markers.
 3. Implement Git graph transfer and source/destination verification.
-4. Implement Claude/Codex session adapters.
+4. Implement Claude/Codex/OpenCode session adapters.
 5. Implement freeze/rest choices, durable transfer progress, prepare, commit and activation.
 6. Implement handover CLI and sheet, including crash reconstruction.
 
