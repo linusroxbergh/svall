@@ -43,15 +43,15 @@ describe('applyHook', () => {
     expect(again.unread).toBe(false);
   });
   it('stays working when a turn ends with background agents still running', () => {
-    const w = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Stop', backgroundAgents: 2 }, 8);
+    const w = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Stop', backgroundTasks: 2 }, 8);
     expect(w.agent?.status).toBe('working');
     expect(w.unread).toBe(false);
   });
   it('settles once a hook lists no background agent left, as when they were killed rather than finished', () => {
-    const w = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Stop', backgroundAgents: 1 }, 8);
+    const w = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Stop', backgroundTasks: 1 }, 8);
     expect(w.agent).toMatchObject({ status: 'working', background: true });
     expect(applyHook(w, { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'idle_prompt' }, 9).agent?.background).toBe(true);
-    const idle = applyHook(w, { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'idle_prompt', backgroundAgents: 0 }, 9);
+    const idle = applyHook(w, { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'idle_prompt', backgroundTasks: 0 }, 9);
     expect(idle.agent?.status).toBe('idle');
     expect(idle.agent?.background).toBeUndefined();
   });
@@ -104,7 +104,7 @@ describe('applyHook', () => {
     expect(idle(withAgent('blocked'))).toBe('idle');
     expect(idle(withAgent('done'))).toBe('done');
     // the turn ended with background agents out; Claude Code's notice does not count them
-    const waiting = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Stop', backgroundAgents: 1 }, 2);
+    const waiting = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Stop', backgroundTasks: 1 }, 2);
     expect(idle(waiting)).toBe('working');
     // a question put while they run and dismissed in the terminal is gone, and the work goes on
     const asked = applyHook(waiting, { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'worker_permission_prompt', message: 'may I' }, 3);
@@ -150,7 +150,7 @@ describe("applyHook for a Claude subagent's question", () => {
   const ev = (o: Partial<HookEvent>): HookEvent => ({ charId: 'c_a', backend: 'claude', name: 'PreToolUse', ...o });
   const notify = ev({ name: 'Notification', notificationType: 'permission_prompt', message: 'Claude needs your permission to use Bash' });
   // the turn ended with a background subagent out, and that subagent then asked
-  const asked = (by = 'a1', from = applyHook(withAgent('working'), ev({ name: 'Stop', backgroundAgents: 1 }), 1)) =>
+  const asked = (by = 'a1', from = applyHook(withAgent('working'), ev({ name: 'Stop', backgroundTasks: 1 }), 1)) =>
     applyHook(applyHook(from, ev({ name: 'PermissionRequest', agentId: by }), 2), notify, 3);
 
   it('waits on the notification before blocking, and leaves the status alone otherwise', () => {
@@ -163,7 +163,7 @@ describe("applyHook for a Claude subagent's question", () => {
     let c = asked();
     c = applyHook(c, ev({ name: 'UserPromptSubmit' }), 4);
     c = applyHook(c, ev({}), 5);
-    c = applyHook(c, ev({ name: 'Stop', backgroundAgents: 1 }), 6);
+    c = applyHook(c, ev({ name: 'Stop', backgroundTasks: 1 }), 6);
     expect(c.agent).toMatchObject({ status: 'blocked', background: true });
     expect(c.unread).toBe(false);
     const moved = applyHook(c, ev({ agentId: 'a1' }), 7);
@@ -172,7 +172,7 @@ describe("applyHook for a Claude subagent's question", () => {
     expect(moved.agent?.asking).toBeUndefined();
   });
   it('keeps a question the main thread passed before the notification came', () => {
-    const requested = applyHook(applyHook(withAgent('working'), ev({ name: 'Stop', backgroundAgents: 1 }), 1), ev({ name: 'PermissionRequest', agentId: 'a1' }), 2);
+    const requested = applyHook(applyHook(withAgent('working'), ev({ name: 'Stop', backgroundTasks: 1 }), 1), ev({ name: 'PermissionRequest', agentId: 'a1' }), 2);
     const blocked = applyHook(applyHook(requested, ev({ name: 'UserPromptSubmit' }), 3), notify, 4);
     expect(applyHook(blocked, ev({}), 5).agent?.status).toBe('blocked');
     expect(applyHook(blocked, ev({ agentId: 'a1' }), 5).agent?.status).toBe('working');
