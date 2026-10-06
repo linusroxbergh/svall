@@ -3,6 +3,7 @@ import type { Agent, Character } from '@svall/protocol';
 import { drowsy, markDormant, reviveCommand, runsInBackground, startFlags } from '../src/dormancy.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
+const OSID = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
 const HOUR = 3_600_000;
 const agent = (over: Partial<Agent> = {}): Agent => ({ kind: 'claude', sessionId: SID, status: 'idle', lastActivityAt: 0, ...over });
 const char = (over: Partial<Character> = {}): Character => ({
@@ -96,6 +97,15 @@ describe('startFlags', () => {
     expect(startFlags('node /Users/x/.claude/plugins/helper/claude.js --model x', 'claude')).toBeUndefined();
     expect(startFlags('claude --model opus', 'codex')).toBeUndefined();
   });
+
+  it("keeps an opencode agent's model, agent and --auto, and drops its session and prompt", () => {
+    expect(startFlags('opencode -m opencode/big-pickle --agent build --auto --prompt fix it', 'opencode'))
+      .toEqual(['-m', "'opencode/big-pickle'", '--agent', "'build'", '--auto']);
+    expect(startFlags(`opencode.exe -s ${OSID}`, 'opencode')).toEqual([]);
+    expect(startFlags('opencode --port 4096', 'opencode')).toBeUndefined();
+    // svalld puts the prompt last, where a bullet or a flag in its text is no option
+    expect(startFlags('opencode -m opencode/big-pickle --prompt fix these: - the --force flag', 'opencode')).toEqual(['-m', "'opencode/big-pickle'"]);
+  });
 });
 
 describe('runsInBackground', () => {
@@ -116,6 +126,11 @@ describe('reviveCommand', () => {
     expect(reviveCommand(char({ agent: agent({ kind: 'codex' }) }), ['-m', "'gpt-5.5'"]))
       .toBe(`codex resume -c tui.resume_cwd=session -m 'gpt-5.5' ${SID}`);
     expect(reviveCommand(char())).toBe(`claude --resume ${SID}`);
+  });
+
+  it('resumes an opencode session with -s', () => {
+    expect(reviveCommand(char({ agent: agent({ kind: 'opencode', sessionId: OSID }) }), ['-m', "'opencode/big-pickle'"]))
+      .toBe(`opencode -m 'opencode/big-pickle' -s ${OSID}`);
   });
 });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ContextItem } from '@svall/protocol';
-import { isAgentCommand, withAddDirs, withPromptFile } from '../src/context/launch.js';
+import { agentKindOf, isAgentCommand, promptText, withAddDirs, withPromptFile } from '../src/context/launch.js';
 
 const item = (kind: ContextItem['kind'], ref: string): ContextItem => ({ kind, ref, label: '', source: 'manual' });
 
@@ -21,6 +21,31 @@ describe('withAddDirs', () => {
   });
 });
 
+describe('withAddDirs for opencode', () => {
+  it('allows each folder through OPENCODE_PERMISSION, which the prompt and kind still read past', () => {
+    const cmd = withAddDirs('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn', [item('folder', '/a/b'), item('file', "/c'd/y.md")]);
+    expect(cmd).toBe(`OPENCODE_PERMISSION='{"external_director?":{"/a/b/*":"allow","/c'\\''d/*":"allow"}}' opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn`);
+    expect(agentKindOf(cmd)).toBe('opencode');
+    expect(withAddDirs('opencode', [])).toBe('opencode');
+    expect(withPromptFile(withAddDirs('opencode', [item('folder', '/a')]), '/h/p')).toContain(' opencode --prompt "$(cat');
+  });
+  it('allows a folder by its resolved path, leaves one named with a wildcard to ask, and reads no flag in a folder name', () => {
+    expect(withAddDirs('opencode', [item('folder', '/a/b/'), item('folder', '/c/*'), item('folder', '/d/e?')]))
+      .toBe(`OPENCODE_PERMISSION='{"external_director?":{"/a/b/*":"allow"}}' opencode`);
+    expect(withAddDirs('opencode', [item('folder', '/c/*')])).toBe('opencode');
+    expect(withPromptFile(withAddDirs('opencode', [item('folder', '/notes -s draft')]), '/h/p')).toContain(' opencode --prompt "$(cat');
+  });
+});
+
+describe('promptText', () => {
+  it("ends a bare /command for opencode with a space, which closes the TUI's command menu that holds back a submit", () => {
+    expect(promptText('opencode', '/svall-status')).toBe('/svall-status ');
+    expect(promptText('opencode', '/svall-status now')).toBe('/svall-status now');
+    expect(promptText('opencode', 'fix it')).toBe('fix it');
+    expect(promptText('claude', '/svall-status')).toBe('/svall-status');
+  });
+});
+
 describe('withPromptFile', () => {
   it('is for claude and codex', () => {
     expect(isAgentCommand('claude')).toBe(true);
@@ -33,6 +58,13 @@ describe('withPromptFile', () => {
     expect(isAgentCommand('claudette')).toBe(false);
     expect(isAgentCommand('codexx')).toBe(false);
     expect(isAgentCommand('node fake.mjs')).toBe(false);
+  });
+  it('hands opencode its prompt with --prompt, and leaves the file to the plugin on a resume', () => {
+    expect(isAgentCommand('opencode')).toBe(true);
+    expect(isAgentCommand('opencodex')).toBe(false);
+    expect(withPromptFile('opencode -m opencode/big-pickle', '/h/c_1.prompt'))
+      .toBe(`opencode -m opencode/big-pickle --prompt "$(cat '/h/c_1.prompt'; rm -f '/h/c_1.prompt')"`);
+    expect(withPromptFile('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn', '/h/c_1.prompt')).toBe('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn');
   });
   it('passes the file as the last argument, after the options, and removes it once read', () => {
     expect(withPromptFile("claude --add-dir '/a'", "/h/it's.prompt"))

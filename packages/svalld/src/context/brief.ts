@@ -170,10 +170,12 @@ export function carryBrief(delivered: string | undefined, before: string, after:
   return [...lines, ...added].join('\n');
 }
 
-// what the session gets for this hook, and what to remember as delivered
-export function briefReply(name: HookName, brief: string, delivered: string | undefined): { reply?: string; delivered?: string } {
+// what the session gets for this hook, and what to remember as delivered. `whole` is for an agent that holds the
+// brief as system text, which a diff cannot patch: each prompt gets the brief there is, an empty one included
+export function briefReply(name: HookName, brief: string, delivered: string | undefined, whole = false): { reply?: string; delivered?: string } {
   if (name !== 'SessionStart' && name !== 'UserPromptSubmit') return {};
   if (name === 'SessionStart' || delivered === undefined) return brief ? { reply: brief, delivered: brief } : {};
+  if (whole) return { reply: brief, delivered: brief };
   if (delivered === brief) return {};
   const diff = briefDiff(delivered, brief);
   // two briefs under the cap can differ by nearly twice it, so a change past the cap goes out as the brief whole

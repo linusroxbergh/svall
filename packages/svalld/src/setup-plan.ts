@@ -10,7 +10,7 @@ import type { Runtime } from './runtime.js';
 
 /** What the app's setup screen shows before anything is written: the screen leaves out the files of the agents it turns off. */
 export function setupPlan(o: {
-  home: string; projects: string; found: FoundAgent[]; folders: FoundAgent[]; integrations?: AgentKind[]; settingsPath: string; codexHooks: string;
+  home: string; projects: string; found: FoundAgent[]; folders: FoundAgent[]; integrations?: AgentKind[]; settingsPath: string; codexHooks: string; opencodePlugin: string;
   launchAgentsDir: string; fleets: string[]; shimDir: string; pathEnv: string; answered: boolean; cli: string;
 }): SetupPlan {
   // setup writes an agent's hooks when its CLI is on PATH or its own folder is here
@@ -19,6 +19,7 @@ export function setupPlan(o: {
   const writes = [
     ...(has('claude') ? [{ what: 'Claude Code hooks and status line', path: o.settingsPath, agent: 'claude' as const }] : []),
     ...(has('codex') ? [{ what: 'Codex hooks', path: o.codexHooks, agent: 'codex' as const }] : []),
+    ...(has('opencode') ? [{ what: 'OpenCode plugin', path: o.opencodePlugin, agent: 'opencode' as const }] : []),
     { what: 'Service that keeps fleets running', path: path.join(o.launchAgentsDir, `${LAUNCHD_LABEL}.plist`) },
     ...o.fleets.map((h) => ({ what: `Service for the ${profileOf(h)} fleet`, path: path.join(o.launchAgentsDir, `${profileLabel(profileOf(h))}.plist`) })),
     { what: `The ${SHIM} command`, path: path.join(o.shimDir, SHIM) },
@@ -26,9 +27,9 @@ export function setupPlan(o: {
   ];
   let blockers: string[] = [];
   let install: SetupPlan['install'];
-  if (!o.answered) blockers = [`Your login shell did not answer within ${LOGIN_SHELL_TIMEOUT_MS / 1000} seconds, so Svall cannot see where Claude Code and Codex are. Check again, or run ${o.cli} setup in a terminal.`];
+  if (!o.answered) blockers = [`Your login shell did not answer within ${LOGIN_SHELL_TIMEOUT_MS / 1000} seconds, so Svall cannot see where your agent CLIs are. Check again, or run ${o.cli} setup in a terminal.`];
   else if (!o.found.length) {
-    const either = (f: (k: AgentKind) => string) => AGENT_KINDS.map(f).join(' or ');
+    const either = (f: (k: AgentKind) => string) => `${AGENT_KINDS.slice(0, -1).map(f).join(', ')} or ${f(AGENT_KINDS.at(-1)!)}`;
     blockers = [`Svall runs ${either((k) => AGENTS[k].label)} in its terminals, so it needs the ${either((k) => AGENTS[k].bin)} command. The desktop apps don't install it. Install one in Terminal, then check again.`];
     install = AGENT_KINDS.map((kind) => ({ kind, command: AGENTS[kind].installCommand, url: AGENTS[kind].installUrl }));
   }

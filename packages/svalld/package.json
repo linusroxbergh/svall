@@ -13,6 +13,7 @@
     "./test-helpers": "./test/helpers.ts",
     "./config": "./src/config.ts",
     "./codex/install": "./src/codex/install.ts",
+    "./opencode/install": "./src/opencode/install.ts",
     "./agent-hooks": "./src/agent-hooks.ts",
     "./launchd": "./src/launchd.ts",
     "./settings-file": "./src/settings-file.ts",

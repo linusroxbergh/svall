@@ -15,7 +15,8 @@ const exec = promisify(execFile);
 export function reviveCommand(c: Character, flags: string[] = []): string {
   if (!c.agent || !isSessionId(c.agent.sessionId)) return '';
   // a codex character's cwd follows its commands into worktrees; resumed from one, codex would stop to ask which directory
-  const words = c.agent.kind === 'codex' ? ['codex', 'resume', '-c', 'tui.resume_cwd=session', ...flags] : ['claude', ...flags, '--resume'];
+  const words = c.agent.kind === 'codex' ? ['codex', 'resume', '-c', 'tui.resume_cwd=session', ...flags]
+    : c.agent.kind === 'opencode' ? ['opencode', ...flags, '-s'] : ['claude', ...flags, '--resume'];
   return [...words, c.agent.sessionId].join(' ');
 }
 
@@ -60,6 +61,12 @@ const FLAGS: Record<AgentKind, { kept: string[]; keptSwitches: string[]; dropped
     dropped: ['-c', '--config', '-C', '--cd', '--add-dir'],
     droppedSwitches: [],
   },
+  opencode: {
+    kept: ['-m', '--model', '--agent'],
+    keptSwitches: ['--auto'],
+    dropped: ['-s', '--session', '--prompt'],
+    droppedSwitches: ['-c', '--continue', '--fork'],
+  },
 };
 // the flags whose value may be left out
 const OPTIONAL = ['-w', '--worktree', '-r', '--resume'];
@@ -80,7 +87,8 @@ export function startFlags(args: string, kind: AgentKind): string[] | undefined 
   // options end at `--` or the first bare word, past which no word may look like a flag
   for (; i < words.length; i++) {
     const w = words[i];
-    if (w === '--') return out;
+    // svalld puts an OpenCode prompt last, and its words can pass for flags
+    if (w === '--' || (kind === 'opencode' && w === '--prompt')) return out;
     // codex resume takes its session as a word among the options
     if (resume && isSessionId(w)) continue;
     if (!w.startsWith('-')) return words.slice(i).some((x) => x.startsWith('-')) ? undefined : out;
@@ -106,7 +114,9 @@ export function startFlags(args: string, kind: AgentKind): string[] | undefined 
 export function runsAgent(args: string, kind: AgentKind): boolean {
   const words = args.trim().split(/\s+/);
   const script = kind === 'claude' && path.basename(words[0]) === 'node' && (!!words[1]?.endsWith('/claude-code/cli.js') || path.basename(words[1] ?? '') === 'claude');
-  return path.basename(words[0]) === kind || script;
+  // npm installs OpenCode's binary as opencode.exe
+  const bin = path.basename(words[0]);
+  return bin === kind || (kind === 'opencode' && bin === 'opencode.exe') || script;
 }
 
 export type Proc = { pid: number; ppid: number; pgid: number; args: string };

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { FleetState, UsageSnapshot } from '@svall/protocol';
+import type { AgentKind, FleetState, UsageSnapshot } from '@svall/protocol';
 import { dispatch, type Ctx } from '../src/api/methods.js';
 import { cachedUsage, codexWindows, fleetUsage, usageFetcher } from '../src/usage/usage.js';
 import { cleanHomes, makeHome } from './helpers.js';
@@ -157,7 +157,7 @@ describe('usage.get', () => {
 describe('fleetUsage', () => {
   const rate = (pct: number) => ({ primary: { used_percent: pct, window_minutes: 300, resets_at: 1784729990 }, secondary: { used_percent: 40, window_minutes: 10080, resets_at: 1784729990 }, plan_type: 'plus' });
   const tokenLine = (at: string, pct: number) => JSON.stringify({ timestamp: at, type: 'event_msg', payload: { type: 'token_count', info: { last_token_usage: { total_tokens: 10 }, model_context_window: 100 }, rate_limits: rate(pct) } }) + '\n';
-  const char = (id: string, kind: 'claude' | 'codex', o: { live?: boolean; transcriptPath?: string } = {}) => ({
+  const char = (id: string, kind: AgentKind, o: { live?: boolean; transcriptPath?: string } = {}) => ({
     id, ...(o.live === false ? {} : { tmux: { windowId: '@1', paneId: '%1' } }),
     agent: { kind, sessionId: 's', status: 'idle', lastActivityAt: 0, ...(o.transcriptPath && { transcriptPath: o.transcriptPath }) },
   });
@@ -171,6 +171,12 @@ describe('fleetUsage', () => {
       { key: 'codex:secondary', label: 'Codex 7 days', pct: 40, resetsAt: '2026-07-22T14:19:50.000Z' },
     ]);
     expect(codexWindows({ primary: { used_percent: 1, window_minutes: 43200 }, secondary: null })).toEqual([{ key: 'codex:primary', label: 'Codex 30 days', pct: 1 }]);
+  });
+
+  it('reports no plan limits while only opencode characters run', async () => {
+    const claude = vi.fn(async () => claudeSnapshot);
+    expect(await fleetUsage({ state: stateOf(char('a', 'opencode')), claude })()).toEqual({ available: false, windows: [] });
+    expect(claude).not.toHaveBeenCalled();
   });
 
   it('does not ask claude when no claude character is running', async () => {

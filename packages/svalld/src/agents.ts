@@ -36,6 +36,14 @@ export const AGENTS: Record<AgentKind, AgentAdapter> = {
     loginHint: 'codex login',
     crewCommand: 'codex',
   },
+  opencode: {
+    label: AGENT_LABEL.opencode, bin: 'opencode', installUrl: 'https://opencode.ai/docs/', minVersion: [1, 18, 34],
+    installCommand: 'curl -fsSL https://opencode.ai/install | bash',
+    // a fresh install runs on OpenCode Zen's free model without a login
+    loginArgs: ['auth', 'list'], loggedIn: () => true,
+    loginHint: 'opencode auth login',
+    crewCommand: 'opencode',
+  },
 };
 export const AGENT_KINDS = Object.keys(AGENTS) as AgentKind[];
 
@@ -65,4 +73,4 @@ export function versionOk(a: AgentAdapter, text: string): boolean {
 }
 
 export const mainAgent = (configured: AgentKind | undefined, found: AgentKind[]): AgentKind =>
-  configured ?? (found.length === 1 ? found[0] : 'claude');
+  configured ?? (!found.length || found.includes('claude') ? 'claude' : found[0]);

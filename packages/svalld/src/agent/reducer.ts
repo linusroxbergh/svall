@@ -135,13 +135,14 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
       if (e.name === 'StopFailure' && e.message) agent.prompt = e.message;
       next.unread = true;
       break;
-    // codex's word that an Esc ended the turn
+    // Codex's and OpenCode's word that an Esc ended the turn
     case 'Interrupt':
       settle(agent, 'idle');
       break;
-    // Claude Code shows its question first and notifies of it only if it is still up a few seconds on, naming no tool
+    // Claude Code shows its question first and notifies of it only if it is still up a few seconds on, naming no tool;
+    // Codex and OpenCode ask at once
     case 'PermissionRequest':
-      if (e.backend === 'codex') ask();
+      if (e.backend !== 'claude') ask();
       else if (e.toolName) agent.askedTool = e.toolName;
       else delete agent.askedTool;
       break;

@@ -256,6 +256,21 @@ describe('applyHook for codex', () => {
   });
 });
 
+describe('applyHook for opencode', () => {
+  const ev = (o: Partial<HookEvent>): HookEvent => ({ charId: 'c_a', backend: 'opencode', name: 'Stop', sessionId: 's', ...o });
+  const at = (status: Parameters<typeof withAgent>[0]) => ({ ...withAgent(status), agent: { ...withAgent(status).agent!, kind: 'opencode' as const } });
+
+  it('blocks on a permission ask at once, with what it asked', () => {
+    const c = applyHook(at('working'), ev({ name: 'PermissionRequest', message: 'rm -rf build' }), 5);
+    expect(c.agent).toMatchObject({ status: 'blocked', prompt: 'rm -rf build' });
+  });
+  it('works again once the question is answered, and rests after an Esc', () => {
+    const asked = applyHook(at('working'), ev({ name: 'PermissionRequest' }), 5);
+    expect(applyHook(asked, ev({ name: 'PreToolUse' }), 6).agent?.status).toBe('working');
+    expect(applyHook(at('working'), ev({ name: 'Interrupt' }), 6).agent?.status).toBe('idle');
+  });
+});
+
 // a `claude -p` or `codex exec` run from inside a character inherits SVALL_CHAR_ID, so its hooks reach the same slot
 describe('applyHook with a nested session', () => {
   const S1 = '11111111-1111-4111-8111-111111111111';

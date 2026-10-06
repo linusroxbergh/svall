@@ -11,6 +11,11 @@ const char = (status: AgentStatus, quietMs: number, extra: Partial<Character> = 
   ...extra,
 });
 
+const opencode = (status: AgentStatus, quietMs: number): Character => {
+  const c = char(status, quietMs);
+  return { ...c, agent: { ...c.agent!, kind: 'opencode' } };
+};
+
 describe('eligible', () => {
   const cases: [string, Character, Seen | undefined, number, boolean][] = [
     ['at rest with enough new transcript', char('done', REST_MS), undefined, REST_BYTES, true],
@@ -27,6 +32,9 @@ describe('eligible', () => {
     ['no agent', char('done', REST_MS, { agent: undefined }), undefined, 1e6, false],
     ['holding off after a failure', char('done', REST_MS), { lastPassAt: 0, path: T, bytes: 0, retryAt: NOW + 1 }, 1e6, false],
     ['retry once the hold is over', char('done', REST_MS), { lastPassAt: 0, path: T, bytes: 0, retryAt: NOW }, 1e6, true],
+    // Svall's OpenCode log holds only what was said and each tool call, so one exchange adds a few hundred bytes
+    ['an OpenCode exchange at rest', opencode('done', REST_MS), undefined, 200, true],
+    ['an OpenCode log barely grown', opencode('done', REST_MS), undefined, 100, false],
   ];
   it.each(cases)('%s', (_name, c, seen, bytes, expected) => {
     expect(eligible(c, seen, bytes, NOW)).toBe(expected);

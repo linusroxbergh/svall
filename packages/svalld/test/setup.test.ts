@@ -8,15 +8,18 @@ import {
   claudeHooksCurrent, codexHooksCurrent, hookCommand, hooksInstalled, mergeCodexHooks, mergeHooks, mergeStatusLine, nodeRun, statusWrapper, unmergeHooks, unmergeStatusLine,
 } from '../src/agent-hooks.js';
 import { codexHookCommand, codexPaths } from '../src/codex/install.js';
+import { opencodePaths } from '../src/opencode/install.js';
 import { CLAUDE_HOOKS } from '../src/hooks/receiver.js';
 import { launchdPlist, plistCurrent, plistRun, takenOverBy } from '../src/launchd.js';
 import { isOurs, resolvePaths } from '../src/paths.js';
 import { BUNDLE_ID, LAUNCHD_LABEL, PRIVATE, profileHome, profileLabel } from '../src/profile.js';
 import { bundleRuntime, checkoutRuntime, type Runtime } from '../src/runtime.js';
 import { readJsonSettings, writeJsonSettings } from '../src/settings-file.js';
-import { installHomeTemplate, installHookScripts, refreshFleetPlists, runSetup, setupHome, shimText, shimsCurrent } from '../src/setup.js';
+import { installHomeTemplate, installHookScripts, refreshFleetPlists, runSetup, setupHome, setupState, shimText, shimsCurrent } from '../src/setup.js';
 import { shq } from '../src/text.js';
 import { cleanHomes, makeHome } from './helpers.js';
+
+const opencodeIn = (home: string) => opencodePaths({ XDG_CONFIG_HOME: path.join(home, 'xdg'), XDG_DATA_HOME: path.join(home, 'xdg-data') });
 
 afterEach(() => { cleanHomes(); vi.unstubAllEnvs(); });
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -377,17 +380,28 @@ describe('runSetup', () => {
     const home = makeHome();
     const settingsPath = path.join(home, 'claude', 'settings.json'); // its folder does not exist
     const codex = codexPaths({ CODEX_HOME: path.join(home, 'codex') }); // nor does this one
-    const lines = await runSetup({ home, settingsPath, launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex, agents: ['codex'] });
+    const lines = await runSetup({ home, settingsPath, launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex, opencode: opencodeIn(home), agents: ['codex'] });
     expect(fs.existsSync(settingsPath)).toBe(false);
     expect(JSON.parse(fs.readFileSync(codex.hooks, 'utf8')).hooks.SessionStart).toBeDefined();
     expect(lines.join('\n')).toContain('Trust all and continue');
+  });
+
+  it("writes the OpenCode plugin when OpenCode is here, and takes it back once it is turned off", async () => {
+    const home = makeHome();
+    const opencode = opencodeIn(home);
+    const o = { home, settingsPath: path.join(home, 'claude-settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), opencode };
+    expect(await runSetup({ ...o, agents: ['opencode'] })).toContain(`opencode plugin -> ${opencode.plugin}`);
+    expect(setupState({ ...o, agents: ['opencode'] }).hooksStale).toBe(false);
+    expect(setupState({ ...o, agents: ['opencode'], integrations: ['claude'] }).hooksStale).toBe(true);
+    await runSetup({ ...o, agents: ['opencode'], integrations: ['claude'] });
+    expect(fs.existsSync(opencode.plugin)).toBe(false);
   });
 
   it('keeps writing Claude settings when its folder exists without the CLI', async () => {
     const home = makeHome();
     const settingsPath = path.join(home, 'claude', 'settings.json');
     fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
-    await runSetup({ home, settingsPath, launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), agents: ['codex'] });
+    await runSetup({ home, settingsPath, launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), opencode: opencodeIn(home), agents: ['codex'] });
     expect(fs.existsSync(settingsPath)).toBe(true);
   });
 
@@ -398,7 +412,7 @@ describe('runSetup', () => {
     fs.writeFileSync(settingsPath, JSON.stringify({ hooks: { Stop: [{ matcher: '', hooks: [{ type: 'command', command: 'keep.sh' }] }] } }));
     const launchAgentsDir = path.join(home, 'LaunchAgents');
     const shimDir = path.join(home, 'bin');
-    const lines = await runSetup({ home, settingsPath, launchAgentsDir, shimDir, runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }) });
+    const lines = await runSetup({ home, settingsPath, launchAgentsDir, shimDir, runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), opencode: opencodeIn(home) });
     expect(lines.length).toBeGreaterThan(3);
     expect(fs.existsSync(path.join(home, 'hooks/agent-hook.mjs'))).toBe(true);
     expect(fs.existsSync(path.join(home, 'hooks/claude-status.mjs'))).toBe(true);
@@ -419,7 +433,7 @@ describe('runSetup', () => {
   it('runs the cli against its own checkout from inside another one', async () => {
     const home = makeHome();
     const shimDir = path.join(home, 'bin');
-    await runSetup({ home, settingsPath: path.join(home, 'claude-settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir, runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }) });
+    await runSetup({ home, settingsPath: path.join(home, 'claude-settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir, runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), opencode: opencodeIn(home) });
     const other = path.join(home, 'other-checkout');
     fs.mkdirSync(other);
     fs.writeFileSync(path.join(other, 'protocol.ts'), "throw new Error('the other checkout');\n");
@@ -431,7 +445,7 @@ describe('runSetup', () => {
     const home = makeHome();
     const shimDir = path.join(home, 'bin');
     expect(shimsCurrent(shimDir, runtime)).toBe(false);
-    await runSetup({ home, settingsPath: path.join(home, 'claude-settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir, runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }) });
+    await runSetup({ home, settingsPath: path.join(home, 'claude-settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir, runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), opencode: opencodeIn(home) });
     expect(shimsCurrent(shimDir, runtime)).toBe(true);
     // the app desktop:install puts in place is this checkout's, so shims that run another one, moved or not, are out of date
     const shim = path.join(shimDir, 'svall');
@@ -449,7 +463,7 @@ describe('runSetup', () => {
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ home: { cwd: path.join(home, 'mc') } }));
     const settingsPath = path.join(home, 'claude-settings.json');
     fs.writeFileSync(settingsPath, JSON.stringify({ statusLine: { type: 'command', command: 'echo mine' } }));
-    await runSetup({ home, settingsPath, launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }) });
+    await runSetup({ home, settingsPath, launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), opencode: opencodeIn(home) });
     const line = JSON.parse(fs.readFileSync(settingsPath, 'utf8')).statusLine.command;
     // a preload that leaves a mark shows whether node started at all
     const mark = path.join(home, 'node-ran');
@@ -484,7 +498,7 @@ esac
     };
     const setup = () => {
       const home = makeHome();
-      return runSetup({ home, settingsPath: path.join(home, 'claude-settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: true, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }) });
+      return runSetup({ home, settingsPath: path.join(home, 'claude-settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: true, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), opencode: opencodeIn(home) });
     };
 
     it('tries a bootstrap launchd refuses once more, as the job it booted out may still be going away', async () => {
@@ -503,7 +517,7 @@ esac
     const home = makeHome();
     const settingsPath = path.join(home, 'claude-settings.json');
     fs.writeFileSync(settingsPath, '{ "hooks": ');
-    const o = { home, settingsPath, launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }) };
+    const o = { home, settingsPath, launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), opencode: opencodeIn(home) };
     await expect(runSetup(o)).rejects.toThrow(`${settingsPath} is not valid JSON`);
     expect(fs.readdirSync(home)).toEqual(['claude-settings.json']);
   });
@@ -519,7 +533,7 @@ esac
     const codex = codexPaths({ CODEX_HOME: path.join(home, 'codex') });
     fs.mkdirSync(path.join(home, 'claude'));
     fs.mkdirSync(codex.dir);
-    const o = { home, settingsPath: path.join(home, 'claude', 'settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex };
+    const o = { home, settingsPath: path.join(home, 'claude', 'settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex, opencode: opencodeIn(home) };
     try {
       for (const [link, name] of [[o.settingsPath, 'settings.json'], [codex.hooks, 'hooks.json']]) {
         fs.symlinkSync(path.join(store, name), link);
@@ -539,7 +553,7 @@ esac
     const codex = codexPaths({ CODEX_HOME: path.join(home, 'codex') });
     fs.mkdirSync(codex.dir);
     fs.mkdirSync(path.join(home, 'claude'));
-    const o = { home, settingsPath: path.join(home, 'claude', 'settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex };
+    const o = { home, settingsPath: path.join(home, 'claude', 'settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex, opencode: opencodeIn(home) };
     await runSetup(o);
     // what setup wrote, moved into a read-only store and linked back, as a user of home-manager would declare it
     const store = path.join(home, 'store');
@@ -563,7 +577,7 @@ esac
     const codex = codexPaths({ CODEX_HOME: path.join(home, 'codex') });
     fs.mkdirSync(codex.dir);
     const settingsPath = path.join(home, 'claude-settings.json');
-    await runSetup({ home, settingsPath, launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex });
+    await runSetup({ home, settingsPath, launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex, opencode: opencodeIn(home) });
     const hookScript = path.join(home, 'hooks/agent-hook.mjs');
     const claude = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     const codexHooks = JSON.parse(fs.readFileSync(codex.hooks, 'utf8'));
@@ -579,7 +593,7 @@ esac
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ home: { cwd: path.join(home, 'mc') } }));
     const settingsPath = path.join(home, 'claude-settings.json');
     fs.writeFileSync(settingsPath, JSON.stringify({ model: 'x' }));
-    const o = { home, settingsPath, launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }) };
+    const o = { home, settingsPath, launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), opencode: opencodeIn(home) };
     await runSetup(o);
     const second = await runSetup(o);
     expect(fs.readdirSync(home).filter((f) => f.startsWith('claude-settings.json.bak-'))).toHaveLength(1);
@@ -591,7 +605,7 @@ esac
     // home.cwd sits under a regular file, so the folder can never be made
     fs.writeFileSync(path.join(home, 'blocker'), 'x');
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ home: { cwd: path.join(home, 'blocker', 'mc') } }));
-    const o = { home, settingsPath: path.join(home, 'claude-settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }) };
+    const o = { home, settingsPath: path.join(home, 'claude-settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), opencode: opencodeIn(home) };
     const lines = await runSetup(o);
     expect(lines.some((l) => l.startsWith('home folder skipped:'))).toBe(true);
     expect(fs.existsSync(path.join(home, 'bin/svall'))).toBe(true);
@@ -602,7 +616,7 @@ esac
     const home = makeHome();
     const settingsPath = path.join(home, 'claude', 'settings.json');
     fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
-    const paths = { home, settingsPath, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), launchAgentsDir: path.join(home, 'la'), shimDir: path.join(home, 'bin'), runtime: checkoutRuntime(repoRoot), launchctl: false };
+    const paths = { home, settingsPath, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), opencode: opencodeIn(home), launchAgentsDir: path.join(home, 'la'), shimDir: path.join(home, 'bin'), runtime: checkoutRuntime(repoRoot), launchctl: false };
     await runSetup({ ...paths, agents: ['claude', 'codex'] });
     expect(fs.readFileSync(settingsPath, 'utf8')).toContain('agent-hook.mjs');
     await runSetup({ ...paths, agents: ['claude', 'codex'], integrations: ['codex'] });
@@ -613,7 +627,7 @@ esac
     const home = makeHome();
     const codex = codexPaths({ CODEX_HOME: path.join(home, 'codex') });
     fs.mkdirSync(codex.dir);
-    const paths = { home, settingsPath: path.join(home, 'claude-settings.json'), codex, launchAgentsDir: path.join(home, 'la'), shimDir: path.join(home, 'bin'), runtime, launchctl: false };
+    const paths = { home, settingsPath: path.join(home, 'claude-settings.json'), codex, opencode: opencodeIn(home), launchAgentsDir: path.join(home, 'la'), shimDir: path.join(home, 'bin'), runtime, launchctl: false };
     await runSetup({ ...paths, agents: ['claude', 'codex'], integrations: ['claude'] });
     expect(fs.existsSync(codex.hooks)).toBe(false);
     await runSetup({ ...paths, agents: ['claude', 'codex'] });
@@ -625,7 +639,7 @@ esac
   it('creates no hooks file for an agent the integrations name but that is not installed', async () => {
     const home = makeHome();
     const codex = codexPaths({ CODEX_HOME: path.join(home, 'codex') });
-    await runSetup({ home, settingsPath: path.join(home, 'claude-settings.json'), codex, launchAgentsDir: path.join(home, 'la'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, agents: ['claude'], integrations: ['claude', 'codex'] });
+    await runSetup({ home, settingsPath: path.join(home, 'claude-settings.json'), codex, opencode: opencodeIn(home), launchAgentsDir: path.join(home, 'la'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, agents: ['claude'], integrations: ['claude', 'codex'] });
     expect(fs.existsSync(codex.hooks)).toBe(false);
   });
 
@@ -633,7 +647,7 @@ esac
     const home = makeHome();
     const mc = path.join(home, 'mc');
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ home: { cwd: mc } }));
-    const paths = { home, settingsPath: path.join(home, 'claude-settings.json'), codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), launchAgentsDir: path.join(home, 'la'), shimDir: path.join(home, 'bin'), runtime: checkoutRuntime(repoRoot), launchctl: false };
+    const paths = { home, settingsPath: path.join(home, 'claude-settings.json'), codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), opencode: opencodeIn(home), launchAgentsDir: path.join(home, 'la'), shimDir: path.join(home, 'bin'), runtime: checkoutRuntime(repoRoot), launchctl: false };
     await runSetup(paths);
     const edited = path.join(mc, '.claude', 'settings.json');
     fs.writeFileSync(edited, '{"mine":true}\n');
@@ -645,7 +659,7 @@ esac
     const home = makeHome();
     const mc = path.join(home, 'mc');
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ home: { cwd: mc } }));
-    const o = { home, settingsPath: path.join(home, 'claude-settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }) };
+    const o = { home, settingsPath: path.join(home, 'claude-settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), opencode: opencodeIn(home) };
     const first = await runSetup(o);
     const md = path.join(mc, 'CLAUDE.md');
     expect(first.some((l) => l.startsWith('home CLAUDE.md ->'))).toBe(true);
@@ -661,7 +675,7 @@ esac
     const home = makeHome();
     const mc = path.join(home, 'mc');
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ home: { cwd: mc } }));
-    const o = { home, settingsPath: path.join(home, 'claude-settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }) };
+    const o = { home, settingsPath: path.join(home, 'claude-settings.json'), launchAgentsDir: path.join(home, 'LaunchAgents'), shimDir: path.join(home, 'bin'), runtime, launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(home, 'codex') }), opencode: opencodeIn(home) };
     const first = await runSetup(o);
     expect(first.some((l) => l.startsWith('home skills ->'))).toBe(true);
     const settings = path.join(mc, '.claude/settings.json');

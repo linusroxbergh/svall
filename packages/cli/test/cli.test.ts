@@ -127,7 +127,7 @@ describe('svall uninstall --login-shell', () => {
     const settings = path.join(cfg, 'settings.json');
     fs.writeFileSync(settings, JSON.stringify(mergeHooks({}, `[ -z "$SVALL_CHAR_ID" ] || { node '${script}' claude; }`, script)));
     const shell = path.join(home, 'fake-shell');
-    fs.writeFileSync(shell, `#!/bin/sh\necho __SVALL_ENV__; echo /usr/bin:/bin; echo __SVALL_ENV__; echo ${cfg}; echo __SVALL_ENV__; echo __SVALL_ENV__\n`, { mode: 0o755 });
+    fs.writeFileSync(shell, `#!/bin/sh\necho __SVALL_ENV__; echo /usr/bin:/bin; echo __SVALL_ENV__; echo ${cfg}; echo __SVALL_ENV__; echo __SVALL_ENV__; echo __SVALL_ENV__; echo __SVALL_ENV__\n`, { mode: 0o755 });
     const env = { HOME: home, SHELL: shell, PATH: `${DOUBLES}:${path.dirname(process.execPath)}:/usr/bin:/bin`, SVALL_HOME: '', TMUX: '' };
     try {
       const r = await run(env, '--json', 'uninstall', '--from-app', '--no-launchctl', '--login-shell');
@@ -177,7 +177,7 @@ describe('svall setup --agents', () => {
     try {
       const r = await run({ HOME: home, PATH: tools(home) }, 'setup', '--no-launchctl', '--agents', 'codex', '--found', 'claude,codex');
       expect(r.code).toBe(0);
-      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ integrations: ['codex'], mainAgent: 'codex' });
+      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ agentsOff: ['claude'], mainAgent: 'codex' });
     } finally {
       cleanHomes();
     }
@@ -218,7 +218,7 @@ describe('svall setup --agents', () => {
       fs.writeFileSync(path.join(home, '.svall', 'config.json'), JSON.stringify({ mainAgent: 'claude' }));
       const r = await run({ HOME: home, PATH: tools(home) }, 'setup', '--no-launchctl', '--agents', 'codex', '--found', 'claude,codex');
       expect(r.code).toBe(0);
-      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toMatchObject({ integrations: ['codex'], mainAgent: 'codex' });
+      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toMatchObject({ agentsOff: ['claude'], mainAgent: 'codex' });
     } finally {
       cleanHomes();
     }
@@ -264,11 +264,11 @@ describe('svall setup --agents', () => {
       expect(JSON.parse(plan.stdout).agents).toContainEqual({ kind: 'codex', path: path.join(home, '.codex'), folderOnly: true });
       const r = await run(env, 'setup', '--no-launchctl', '--agents', 'claude');
       expect(r.code).toBe(0);
-      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ integrations: ['claude'] });
+      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ agentsOff: ['codex'] });
       expect(fs.existsSync(path.join(home, '.codex', 'hooks.json'))).toBe(false);
       fs.rmSync(path.join(home, '.codex'), { recursive: true });
       expect((await run(env, 'setup', '--no-launchctl', '--agents', 'claude')).code).toBe(0);
-      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ integrations: ['claude'] });
+      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ agentsOff: ['codex'] });
     } finally {
       cleanHomes();
     }
@@ -499,7 +499,7 @@ runIf('svall CLI', () => {
     expect(list).toMatch(/home\s+mission control/);
     const unknown = await svall('char', 'new', '--island', 'home', '--cwd', '/tmp', '--agent', 'cursor');
     expect(unknown.code).not.toBe(0);
-    expect(unknown.stderr).toContain('claude or codex');
+    expect(unknown.stderr).toContain('claude, codex or opencode');
     expect((await svall('char', 'list', '--island', 'home', '--json')).stdout.trim()).toBe('[]');
   });
 

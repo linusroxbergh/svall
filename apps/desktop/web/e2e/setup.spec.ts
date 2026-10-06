@@ -26,9 +26,10 @@ async function fakeShell(page: Page, plan: Plan, failFirst = false, warnings: st
 const sent = (page: Page) => page.evaluate(() => (window as unknown as { __sent: { type: string; agents?: string[]; text?: string; url?: string }[] }).__sent);
 
 const NOTHING: Plan = { ...PLAN, agents: [], writes: PLAN.writes.slice(2),
-  blockers: ["Svall runs Claude Code or Codex in its terminals, so it needs the claude or codex command. The desktop apps don't install it. Install one in Terminal, then check again."],
+  blockers: ["Svall runs Claude Code, Codex or OpenCode in its terminals, so it needs the claude, codex or opencode command. The desktop apps don't install it. Install one in Terminal, then check again."],
   install: [{ kind: 'claude', command: 'curl -fsSL https://claude.ai/install.sh | bash', url: 'https://code.claude.com/docs/en/setup' },
-    { kind: 'codex', command: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh', url: 'https://learn.chatgpt.com/docs/codex/cli' }] };
+    { kind: 'codex', command: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh', url: 'https://learn.chatgpt.com/docs/codex/cli' },
+    { kind: 'opencode', command: 'curl -fsSL https://opencode.ai/install | bash', url: 'https://opencode.ai/docs/' }] };
 
 test('lists the agents and files, and sets up the agents left on', async ({ page }) => {
   await fakeShell(page, PLAN);
@@ -88,7 +89,7 @@ test('shows what setup asks of the user before it opens the map', async ({ page 
 test('says what to install when no agent is found, and asks again', async ({ page }) => {
   await fakeShell(page, NOTHING);
   await page.goto('/?setup=1');
-  await expect(page.getByText('needs the claude or codex command')).toBeVisible();
+  await expect(page.getByText('needs the claude, codex or opencode command')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Set up' })).toBeDisabled();
   await page.getByRole('button', { name: 'Check again' }).click();
   expect((await sent(page)).filter((m) => m.type === 'setup.plan')).toHaveLength(2);
@@ -116,6 +117,8 @@ test('gives the PATH line with the installers when their folder is not on PATH, 
   await page.goto('/?setup=1');
   await expect(page.getByText('The installer puts the command in /u/.local/bin, which is not on your PATH')).toBeVisible();
   await expect(page.getByText('export PATH="$HOME/.local/bin:$PATH"')).toHaveCount(1);
+  await page.getByRole('radio', { name: 'OpenCode' }).check();
+  await expect(page.getByText("Svall's command goes in /u/.local/bin, which is not on your PATH")).toBeVisible();
   await expect(page.getByRole('heading', { name: 'The svall command' })).toHaveCount(0);
 });
 

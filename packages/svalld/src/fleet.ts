@@ -10,7 +10,7 @@ import { condenseTurns, readTail, userPrompts } from './agent/transcript.js';
 import { characterKeyEnv } from './claude.js';
 import { saveConfig, scribeModel, type Config } from './config.js';
 import { renderBrief } from './context/brief.js';
-import { isAgentCommand, withAddDirs, withPromptFile } from './context/launch.js';
+import { isAgentCommand, promptText, withAddDirs, withPromptFile } from './context/launch.js';
 import { settleItems } from './context/items.js';
 import { docFolders, removeDocs } from './docs.js';
 import { endAll, endIdleAgents, processes, RESUME_NOTE, type Proc, type Sleep } from './dormancy.js';
@@ -31,6 +31,7 @@ import { expandHome, type Paths } from './paths.js';
 import { SHIM } from './profile.js';
 import { reconcile, secondName, snapshot } from './reconcile.js';
 import { codexRunner } from './scribe/codex.js';
+import { opencodeRunner } from './scribe/opencode.js';
 import { claudeRunner, perPass, type RunScribe } from './scribe/run.js';
 import { Scribe, type SweepOptions } from './scribe/scribe.js';
 import { installHomeTemplate } from './setup.js';
@@ -72,6 +73,7 @@ export class Fleet extends EventEmitter<Events> {
     const run = deps.runScribe ?? perPass({
       claude: claudeRunner({ model: scribeModel(config.scribe, 'claude') ?? 'sonnet', cwd, envFile: paths.env }),
       codex: codexRunner({ model: scribeModel(config.scribe, 'codex'), cwd }),
+      opencode: opencodeRunner({ model: scribeModel(config.scribe, 'opencode'), cwd }),
     }, () => store.state.scribeAgent ?? 'claude');
     this.scribe = new Scribe({ store, log, run, brief: (island, c) => this.render(island, c) });
     this.sleep = { store, tmux: deps.tmux, log, processes: deps.processes ?? processes, ending: this.ending };
@@ -345,7 +347,7 @@ export class Fleet extends EventEmitter<Events> {
     if (!p.run) return this.char(id);
     const timeoutMs = this.deps.runTimeoutMs ?? RUN_TIMEOUT_MS;
     let runSent = await this.prompts.waitForAgent(id, timeoutMs);
-    // claude and codex have their prompt already, and submit it once they are up
+    // an agent has its prompt already, and submits it once it is up
     if (prompt) return { ...this.char(id), runSent: true };
     if (runSent) {
       // the window can die between the agent attaching and the send; the character stays, without its prompt
@@ -365,11 +367,13 @@ export class Fleet extends EventEmitter<Events> {
     return path.join(this.deps.paths.home, `${id}.prompt`);
   }
 
-  // claude and codex take a first prompt as their argument, which the shell reads from a file: typed into a composer
+  // an agent takes a first prompt as its argument, which the shell reads from a file: typed into a composer
   // that is still booting, a long prompt can arrive in pieces that swallow the Enter
   private launchLine(id: string, command: string, prompt?: string): string {
+    // a prompt file an OpenCode plugin never took must not reach the next resume
+    if (!prompt) fs.rmSync(this.promptFile(id), { force: true });
     if (!prompt || !isAgentCommand(command)) return command;
-    fs.writeFileSync(this.promptFile(id), prompt, { mode: 0o600 });
+    fs.writeFileSync(this.promptFile(id), promptText(command, prompt), { mode: 0o600 });
     return withPromptFile(command, this.promptFile(id));
   }
 

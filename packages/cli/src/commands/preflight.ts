@@ -60,8 +60,7 @@ async function agentCheck(d: PreflightDeps, kind: AgentKind, version: string | E
   }
   if (version instanceof Error) return { name: kind, status: 'warn', detail: firstLine(version.message) };
   if (!versionOk(a, version)) {
-    const [x, y] = a.minVersion!;
-    return { name: kind, status: 'warn', detail: `${version}: Svall needs ${x}.${y} or newer; update ${a.label}` };
+    return { name: kind, status: 'warn', detail: `${version}: Svall needs ${a.minVersion!.join('.')} or newer; update ${a.label}` };
   }
   try {
     // the fleet's API keys ride along, as they do into a character's shell
@@ -84,7 +83,7 @@ async function agentChecks(d: PreflightDeps): Promise<Check[]> {
   }
   if (!versions.size) {
     const how = AGENT_KINDS.map((k) => `${AGENTS[k].installCommand} (${AGENTS[k].label})`).join(' or ');
-    return [{ name: 'agents', status: 'fail', detail: `neither claude nor codex is on PATH, and the desktop apps don't install them: run ${how}` }];
+    return [{ name: 'agents', status: 'fail', detail: `no agent CLI (claude, codex or opencode) is on PATH, and the desktop apps don't install them: run ${how}` }];
   }
   const found = [...versions.keys()];
   return Promise.all(AGENT_KINDS.map((k) => agentCheck(d, k, versions.get(k), found)));

@@ -104,7 +104,7 @@ runIf('API', () => {
     const good = await TestClient.connect(api.port, 'secret');
     const snap = (await good.call('state.get')) as { id: number; result: { version: number; islands: Record<string, { kind?: string }>; characters: unknown; home: { command: string } } };
     expect(snap.id).toBe(1);
-    expect(snap.result.version).toBe(7);
+    expect(snap.result.version).toBe(8);
     expect(snap.result.characters).toEqual({});
     expect(snap.result.islands.home.kind).toBe('home');
     expect(snap.result.home.command).toBe('claude --model sonnet');

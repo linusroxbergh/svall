@@ -76,7 +76,7 @@ export function ScribeAsk() {
         <div className="modal-note">Runs a headless {AGENT_LABEL[scribeAgent]} call after an agent stops, which may cost API credits.</div>
         {found.length > 1 && (
           <>
-            <div className="modal-note">{found.map((k) => AGENT_LABEL[k]).join(' and ')} are both installed. Mission control and the scribe run:</div>
+            <div className="modal-note">{[found.slice(0, -1).map((k) => AGENT_LABEL[k]).join(', '), AGENT_LABEL[found.at(-1)!]].join(' and ')} are installed. Mission control and the scribe run:</div>
             <select className="fld" aria-label="Main agent" data-testid="scribe-ask-agent" value={main}
               onChange={(e) => setMainAgent(deps(), e.target.value as AgentKind)}>
               {found.map((k) => <option key={k} value={k}>{AGENT_LABEL[k]}</option>)}

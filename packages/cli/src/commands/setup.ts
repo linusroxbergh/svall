@@ -8,6 +8,7 @@ import type { AgentKind } from '@svall/protocol';
 import { CODEX_TRUST } from '@svall/svalld/agent-hooks';
 import { AGENTS, AGENT_KINDS, findAgents, mainAgent, onPath } from '@svall/svalld/agents';
 import { codexPaths } from '@svall/svalld/codex/install';
+import { opencodePaths } from '@svall/svalld/opencode/install';
 import { loadConfig, saveConfig } from '@svall/svalld/config';
 import { kickstart, plistCurrent, runningPid, takenOverBy } from '@svall/svalld/launchd';
 import { expandHome, resolvePaths, userPaths } from '@svall/svalld/paths';
@@ -35,7 +36,7 @@ const label = (home: string): string => profileLabel(profileOf(home));
 const plistOf = (r: Run, home: string): string | undefined => readOrUndefined(path.join(r.launchAgentsDir, `${label(home)}.plist`));
 
 // setup takes an agent whose own folder is here as installed, even when its CLI is not on PATH
-const folderOf = (r: Run, k: AgentKind): string => (k === 'claude' ? path.dirname(r.settingsPath) : r.codex.dir);
+const folderOf = (r: Run, k: AgentKind): string => (k === 'claude' ? path.dirname(r.settingsPath) : k === 'codex' ? r.codex.dir : r.opencode.dir);
 const hasFolder = (r: Run, k: AgentKind): boolean => fs.existsSync(folderOf(r, k));
 
 // the choices are saved only once setup is about to write, so a run that stops has changed nothing
@@ -73,7 +74,7 @@ async function planAction(r: Run, integrations: AgentKind[] | undefined): Promis
   }));
   // the stand-in folders say nothing of whether the user's own PATH holds the shim
   const plan = setupPlan({
-    home: r.home, projects: suggestProjects(os.homedir(), loadConfig(r.configFile).defaultCwd), found, folders: AGENT_KINDS.filter((k) => hasFolder(r, k)).map((kind) => ({ kind, path: folderOf(r, kind) })), integrations, settingsPath: r.settingsPath, codexHooks: r.codex.hooks, launchAgentsDir: r.launchAgentsDir,
+    home: r.home, projects: suggestProjects(os.homedir(), loadConfig(r.configFile).defaultCwd), found, folders: AGENT_KINDS.filter((k) => hasFolder(r, k)).map((kind) => ({ kind, path: folderOf(r, kind) })), integrations, settingsPath: r.settingsPath, codexHooks: r.codex.hooks, opencodePlugin: r.opencode.plugin, launchAgentsDir: r.launchAgentsDir,
     // the plists a setup from this screen writes for the other fleets, taking over any another copy runs
     fleets: r.homes.filter((h) => profileOf(h) !== PRIVATE && !plistCurrent({ home: h, label: label(h), launchAgentsDir: r.launchAgentsDir, runtime: r.runtime })),
     shimDir: r.shimDir, pathEnv: r.answered ? process.env.PATH ?? '' : '', answered: r.answered, cli: cliCommand(r.runtime),
@@ -146,7 +147,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
     .option('--found <list>', 'the agents the setup screen showed; those left out of --agents stay off (default: the agents found now)')
     .option('--projects <dir>', 'where new characters start, made if missing; saved as defaultCwd')
     .option('--if-needed', 'set up only what is missing or out of date, and restart daemons of another version')
-    .option('--login-shell', 'take PATH, CLAUDE_CONFIG_DIR and CODEX_HOME from the login shell, as an app opened from Finder has none')
+    .option('--login-shell', 'take PATH and where the agents keep their files from the login shell, as an app opened from Finder has none')
     .action(async (o: Flags) => {
       const answered = o.loginShell ? await takeLoginEnv() : true;
       // setup owns the per-user half — the Claude hooks and the shims — so it only ever means private
@@ -160,7 +161,7 @@ export function setupCommand(target: () => Target, json: () => boolean): Command
       }
       const { claudeSettings, launchAgents, shimDir } = userPaths();
       const r: Run = {
-        home: t.home, runtime, answered, json: json(), configFile: resolvePaths(t.home).config, settingsPath: claudeSettings, codex: codexPaths(),
+        home: t.home, runtime, answered, json: json(), configFile: resolvePaths(t.home).config, settingsPath: claudeSettings, codex: codexPaths(), opencode: opencodePaths(),
         launchAgentsDir: launchAgents, shimDir, homes: fleetHomes(os.homedir()),
       };
       const choices = parseChoices(o, r);

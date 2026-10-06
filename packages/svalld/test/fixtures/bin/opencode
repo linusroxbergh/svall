@@ -1,0 +1,51 @@
+#!/usr/bin/env node
+// Test double for `opencode`: loads Svall's real plugin and feeds it the events of one turn per prompt.
+import fs from 'node:fs';
+import path from 'node:path';
+import readline from 'node:readline';
+
+const args = process.argv.slice(2);
+if (args[0] === '--version') { process.stdout.write('1.18.34\n'); process.exit(0); }
+if (args[0] === 'auth') process.exit(0);
+const charId = process.env.SVALL_CHAR_ID;
+if (!charId) process.exit(0);
+
+const dir = path.join(process.env.SVALL_HOME, 'fake-opencode');
+fs.mkdirSync(dir, { recursive: true });
+fs.writeFileSync(path.join(dir, `${charId}.argv`), JSON.stringify(args));
+
+const sessionID = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
+let chain = Promise.resolve();
+const queue = (text) => (chain = chain.then(() => turn(text)));
+const client = {
+  session: {
+    get: async () => ({ data: { id: sessionID } }),
+    promptAsync: async ({ body }) => { queue(body.parts.map((p) => p.text).join('\n')); return {}; },
+  },
+};
+const { SvallPlugin } = await import(path.resolve(import.meta.dirname, '../../../hooks/opencode-plugin.js'));
+const hooks = await SvallPlugin({ client, directory: process.cwd() });
+const event = (type, properties) => hooks.event({ event: { id: type, type, properties } });
+
+let n = 0;
+async function turn(text) {
+  n++;
+  if (n === 1 && !args.includes('-s')) await event('session.created', { sessionID, info: { id: sessionID, directory: process.cwd() } });
+  await hooks['chat.message']({ sessionID, messageID: `msg_u${n}` }, { message: { id: `msg_u${n}` }, parts: [{ type: 'text', text }] });
+  const system = [];
+  await hooks['experimental.chat.system.transform']({ sessionID, model: { limit: { context: 200_000 } } }, { system });
+  fs.writeFileSync(path.join(dir, `${charId}.system`), JSON.stringify(system));
+  await hooks['tool.execute.before']({ tool: 'bash', sessionID, callID: `c${n}` }, { args: { command: 'ls' } });
+  await hooks['tool.execute.after']({ tool: 'bash', sessionID, callID: `c${n}`, args: { command: 'ls' } }, { title: 'ls', output: 'ok', metadata: {} });
+  await event('message.updated', { sessionID, info: { id: `msg_a${n}`, sessionID, role: 'assistant', modelID: 'big-pickle', tokens: { input: 19_000, output: 1000, reasoning: 0, cache: { read: 0, write: 0 } } } });
+  await event('message.part.updated', { part: { id: `prt_${n}`, sessionID, messageID: `msg_a${n}`, type: 'text', text: `did: ${text}`, time: { start: 1, end: 2 } } });
+  await event('session.status', { sessionID, status: { type: 'idle' } });
+}
+
+const i = args.indexOf('--prompt');
+if (i !== -1) queue(args[i + 1]);
+const rl = readline.createInterface({ input: process.stdin });
+for await (const line of rl) queue(line);
+await chain;
+await hooks.dispose();
+process.exit(0);

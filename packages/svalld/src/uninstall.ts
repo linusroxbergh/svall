@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { unmergeHooks, unmergeStatusLine } from './agent-hooks.js';
 import type { CodexPaths } from './codex/install.js';
 import { fleetOrigin, portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
+import { removeOpencodePlugin, type OpencodePaths } from './opencode/install.js';
 import { resolvePaths } from './paths.js';
 import { BUNDLE_ID, homePrefix, isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome, SHIM } from './profile.js';
 import { readJsonSettings, readOrUndefined, requireWritable, writeJsonSettings, type JsonSettings } from './settings-file.js';
@@ -88,9 +89,9 @@ export async function quitApp(homes: string[], app: AppQuit, command: string, sk
   return open.length ? ['quit Svall'] : [];
 }
 
-// takes back what setup put outside the fleet homes: the Claude hooks and statusline and the Codex hooks that run
-// `home`'s scripts, every fleet's phone link, launchd agent and tmux server, and the shims. The fleets' own data stays for purge.
-export async function runUninstall(o: { home: string; homes: string[]; settingsPaths: string[]; codex: CodexPaths; launchAgentsDir: string; shimDir: string; launchctl: boolean; mobile: MobileDeps; app: AppQuit; tmux?: string; skipPid?: number }): Promise<string[]> {
+// takes back what setup put outside the fleet homes: the Claude hooks and statusline, the Codex hooks and the OpenCode
+// plugin that run `home`'s scripts, every fleet's phone link, launchd agent and tmux server, and the shims. The fleets' own data stays for purge.
+export async function runUninstall(o: { home: string; homes: string[]; settingsPaths: string[]; codex: CodexPaths; opencode: OpencodePaths; launchAgentsDir: string; shimDir: string; launchctl: boolean; mobile: MobileDeps; app: AppQuit; tmux?: string; skipPid?: number }): Promise<string[]> {
   // $TMUX names the server the caller's terminal runs in; stopping it would end this run before the shims and the report
   const inside = o.homes.find((h) => resolvePaths(h).tmuxSock === o.tmux?.split(',')[0]);
   if (inside) throw new Error(`this terminal runs inside the tmux server of ${inside}, which uninstall stops; run ${SHIM} uninstall from a terminal outside Svall`);
@@ -112,6 +113,7 @@ export async function runUninstall(o: { home: string; homes: string[]; settingsP
       done.push(`removed ${current.file}`);
     } else done.push(...writeJsonSettings(current, next, what));
   }
+  done.push(...removeOpencodePlugin(o.opencode));
   done.push(...await unserveFleets(o.homes, o.mobile));
 
   const agents = fs.existsSync(o.launchAgentsDir) ? fs.readdirSync(o.launchAgentsDir).filter(isAgentPlist).sort() : [];
