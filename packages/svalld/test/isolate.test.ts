@@ -32,6 +32,7 @@ describe('test isolation', () => {
     await expect(run('codex', ['resume', '-c', 'tui.resume_cwd=session', sid])).rejects.toMatchObject({ code: 1, stderr: `no rollout found for thread id ${sid}\n` });
   });
 
+  // a whole vitest run of sessions.test.ts: a few seconds alone, several times that beside the full suite
   it('leaves the HOME a runner that does not move it gives the tests that write a Claude config', async () => {
     const home = fs.mkdtempSync('/tmp/svall-sentinel-');
     try {
@@ -51,5 +52,5 @@ describe('test isolation', () => {
     } finally {
       fs.rmSync(home, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 });
