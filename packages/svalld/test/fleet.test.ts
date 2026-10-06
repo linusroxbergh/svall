@@ -1394,6 +1394,24 @@ runIf('Fleet', () => {
     expect(store.state).not.toHaveProperty('scribeOff');
   });
 
+  it('tells a character made with a task, not one opened by hand, to work in a worktree until the setting turns it off', async () => {
+    const { fleet, store } = await boot({ runTimeoutMs: 300 });
+    const islandId = fleet.createIsland({ name: 'feature' }).id;
+    const manual = await fleet.createCharacter({ islandId, cwd: '/tmp' });
+    const c = await fleet.createCharacter({ islandId, cwd: '/tmp', command: 'echo started', run: 'hello' });
+    const rule = '- In a git repo, work in a worktree';
+    expect(fleet.brief(manual.id)).not.toContain(rule);
+    expect(fleet.brief(c.id)).toContain(rule);
+    fleet.setWorktrees(false);
+    expect(store.state.worktreesOff).toBe(true);
+    expect(fleet.brief(c.id)).not.toContain(rule);
+    fleet.setWorktrees(true);
+    expect(store.state).not.toHaveProperty('worktreesOff');
+    expect(fleet.brief(c.id)).toContain(rule);
+    await fleet.closeCharacter(manual.id);
+    await fleet.closeCharacter(c.id);
+  });
+
   it('reports the prompt unsent when the window dies while the run waits', async () => {
     const { fleet, store, tmux, home } = await boot({ runTimeoutMs: 5000 });
     const ran = `${home}/ran`;

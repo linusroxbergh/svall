@@ -125,6 +125,15 @@ describe('renderBrief', () => {
     expect(renderBrief(island({ instructions: 'x' }))).not.toContain('You are Svall character');
   });
 
+  it('tells a character to work in a worktree after the hand-on lines, even with nothing else to say', () => {
+    const rule = '- In a git repo, work in a worktree no other agent works in, a fitting one or a new one. Change the main checkout only when the user says so.';
+    const lines = renderBrief(island(), char(), [], undefined, true).split('\n');
+    expect(lines.slice(3, 8)).toEqual([...CREW, rule]);
+    expect(renderBrief(island(), char({ note: 'x' }))).not.toContain(rule);
+    expect(renderBrief(island({ kind: 'home', instructions: 'x' }), char(), [], undefined, true)).not.toContain(rule);
+    expect(renderBrief(island({ instructions: 'x' }), undefined, [], undefined, true)).not.toContain(rule);
+  });
+
   it('keeps a tab line short however long the path', () => {
     const text = renderBrief(island(), char({ browser: { tabs: [{ id: 't_1', url: `https://a.test/${'x'.repeat(5000)}`, title: 'Search' }] } }));
     const line = text.split('\n').find((l) => l.startsWith('- https://a.test/'))!;

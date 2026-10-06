@@ -47,7 +47,7 @@ control buttons; each finishes its task and stays `done` until closed.
 | tidy the map | `svall island arrange` |
 | start an agent on an island (the main agent; `--agent claude`, `codex` or `opencode` picks one) | `svall char new --island review --cwd ~/repo --run "review PR 472"` |
 | start one in a role (a file in the fleet's agent-profiles folder) | `svall char new --island review --cwd ~/repo --agent-profile reviewer --run "review PR 472"` |
-| start a Claude one in a fresh worktree, on another model | `svall char new --island review --cwd ~/repo --command "claude -w pr-472 --model opus" --run "review PR 472"` |
+| start a Claude one on another model | `svall char new --island review --cwd ~/repo --command "claude --model opus" --run "review PR 472"` |
 
 `svall char wait` exits 0 on a matched state, 2 on timeout and 3 when the
 character is gone, so a loop can branch on the exit code.
@@ -72,10 +72,9 @@ character's agent gets at SessionStart; `svall char show <name>` prints it.
   answers to is refused.
 - Never guess a cell. Omit `--cell` and the daemon places the character; a
   guessed cell fails or swaps somebody else off the island.
-- A new task or PR review in a git repository gets a fresh worktree, never a
-  checkout another agent works in. `claude -w <name>` makes one under the
-  repository's `.claude/worktrees/`; for Codex or OpenCode, `git worktree add` one first and
-  pass its path as `--cwd`.
+- A character started with `--run` in a git repository is told to work in a
+  worktree no other agent works in, unless the user turned that off in Settings.
+  `--cwd` is the repository or such a worktree, never a checkout another agent works in.
 - Starting a character to continue, review or take over work ends your part. Do
   not wait on or watch it unless the user asked you to report back.
 - Names are at most 24 characters, lower case: PR or ticket id, area, task, one

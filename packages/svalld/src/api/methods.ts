@@ -46,6 +46,7 @@ const handlers: Handlers = {
   'char.answer': async (p, { fleet }) => { await fleet.answerPrompt(p.id, p.answer, p.promptId); return {}; },
   'scribe.sweep': async (p, { fleet }) => ({ lines: await fleet.sweep(p) }),
   'scribe.set': (p, { fleet }) => { fleet.setScribe(p.enabled); return {}; },
+  'worktrees.set': (p, { fleet }) => { fleet.setWorktrees(p.enabled); return {}; },
   'dormancy.set': (p, { fleet }) => { fleet.setDormancy(p.hours); return {}; },
   'mainAgent.set': (p, { fleet }) => { fleet.setMainAgent(p.agent); return {}; },
   'fleets.list': async (_p, { fleets }) => ({ fleets: await fleets.list() }),

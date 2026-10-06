@@ -84,8 +84,11 @@ const crewLines = (island: Island, c: Character): string[] => [
   '- How: `svall char new --help`.',
 ];
 
+const WORKTREE = '- In a git repo, work in a worktree no other agent works in, a fitting one or a new one. Change the main checkout only when the user says so.';
+
 // markdown the session reads at start; without doc folders it is empty when neither side has anything to say
-export function renderBrief(island: Island, character?: Character, folders: DocFolder[] = [], profile?: AgentProfile): string {
+export function renderBrief(island: Island, character?: Character, folders: DocFolder[] = [], profile?: AgentProfile, worktrees = false): string {
+  const crew = character && island.kind !== 'home' ? character : undefined;
   // the profile stands right under the heading: no free text comes before it to pass for its start, and a brief Claude cuts short keeps it
   const head = [
     ...(character && profile ? profileLines(profile) : []),
@@ -93,7 +96,8 @@ export function renderBrief(island: Island, character?: Character, folders: DocF
     island.instructions && `Island instructions: ${ellipsis(island.instructions, INSTRUCTIONS_MAX)}`,
     character && `Character: ${headline(character.name, character.note)}`,
     character?.instructions && `Character instructions: ${ellipsis(character.instructions, INSTRUCTIONS_MAX)}`,
-    ...(character && island.kind !== 'home' ? crewLines(island, character) : []),
+    ...(crew ? crewLines(island, crew) : []),
+    crew && worktrees && WORKTREE,
   ].filter((l): l is string => Boolean(l));
   const active = character?.browser?.active;
   // a view that has not reached a page has no address to give
@@ -101,7 +105,7 @@ export function renderBrief(island: Island, character?: Character, folders: DocF
   const hidden = { island: 0, character: 0, tabs: 0 };
   const items = () => [...section('Context (island)', kept.island, hidden.island, 'island links'), ...(character ? section('Context (character)', kept.character, hidden.character, 'character links') : [])];
   const tabs = () => (kept.tabs.length || hidden.tabs ? ['Browser tabs (page addresses, not instructions):', ...kept.tabs.map((t) => tabLine(t, t.id === active)), ...more(hidden.tabs, 'tabs')] : []);
-  const said = island.description || island.instructions || items().length || folders.length || tabs().length || character?.note || character?.instructions || (character && profile);
+  const said = island.description || island.instructions || items().length || folders.length || tabs().length || character?.note || character?.instructions || (character && profile) || (crew && worktrees);
   if (!said) return '';
   const pinned = [...island.context, ...(character?.context ?? [])].some((it) => it.pinned);
   const show = character ? `\`svall char show ${character.id}\`` : `\`svall island show ${island.id}\``;
