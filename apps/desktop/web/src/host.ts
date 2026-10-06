@@ -14,7 +14,7 @@ const PHASES = [
   { phase: 'prerequisites', label: 'Prerequisites', steps: ['os', 'home', 'tools', 'tmux', 'rsync', 'space', 'linger'] },
   { phase: 'companion', label: 'Companion', steps: ['release', 'upload', 'install', 'uninstall'] },
   { phase: 'service', label: 'Service', steps: ['service', 'identity', 'authority', 'fleet'] },
-  { phase: 'agents', label: 'Agent logins', steps: ['claude', 'codex'] },
+  { phase: 'agents', label: 'Agent logins', steps: ['claude', 'codex', 'opencode'] },
   // an upgrade puts the release before back when its probe fails
   { phase: 'probe', label: 'Final probe', steps: ['probe', 'rollback'] },
   // an add writes the registry after its final probe, and a removal after its uninstall

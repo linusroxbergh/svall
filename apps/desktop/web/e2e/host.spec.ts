@@ -9,6 +9,7 @@ const ADD_STEPS = [
   { step: 'master', status: 'ok', detail: 'one control master to linus@studio' },
   { step: 'tmux', status: 'warn', detail: 'tmux 3.4: Shift+Enter needs tmux 3.5 or newer' },
   { step: 'claude', status: 'warn', detail: '1.2.3, not logged in', action: 'ssh linus@studio, then claude auth status and log in' },
+  { step: 'opencode', status: 'warn', detail: 'opencode is not installed on this machine', action: 'ssh linus@studio, then install OpenCode' },
   { step: 'probe', status: 'fail', detail: 'ws://127.0.0.1:47800 refused token=s3cr3t', action: 'ssh linus@studio and run svall doctor' },
 ] as const;
 
@@ -66,6 +67,7 @@ test('the machines panel waits for the fleet to ask for handover, then reports e
   await expect(page.getByTestId('host-phase')).toHaveText(['Connect', 'Prerequisites', 'Agent logins', 'Final probe']);
   await expect(page.getByTestId('host-step-tmux')).toHaveAttribute('data-status', 'warn');
   await expect(page.getByTestId('host-action-claude')).toHaveText('ssh linus@studio, then claude auth status and log in');
+  await expect(page.getByTestId('host-action-opencode')).toHaveText('ssh linus@studio, then install OpenCode');
   // what the step said is kept, without the token it carried
   await expect(page.getByTestId('host-step-probe')).toContainText('ws://127.0.0.1:47800 refused token=…');
   await expect(page.getByTestId('host-step-probe')).not.toContainText('s3cr3t');

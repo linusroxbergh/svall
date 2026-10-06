@@ -82,12 +82,12 @@ describe('the end of a run', () => {
 describe('the attended checklist', () => {
   it('names the phase each step belongs to, in the order the steps arrived', () => {
     const steps = [step('ssh', 'ok'), step('master', 'ok'), step('tmux', 'ok'), step('release', 'ok'),
-                   step('claude', 'warn'), step('probe', 'ok')];
+                   step('claude', 'warn'), step('codex', 'ok'), step('opencode', 'ok'), step('probe', 'ok')];
     expect(groupSteps(steps).map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
       ['Connect', ['ssh', 'master']],
       ['Prerequisites', ['tmux']],
       ['Companion', ['release']],
-      ['Agent logins', ['claude']],
+      ['Agent logins', ['claude', 'codex', 'opencode']],
       ['Final probe', ['probe']],
     ]);
   });
@@ -99,7 +99,7 @@ describe('the attended checklist', () => {
 
   it('shows every phase of an add, and of a removal, as one run', () => {
     const add = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'tmux', 'rsync', 'space', 'linger', 'release', 'upload',
-      'install', 'service', 'identity', 'claude', 'codex', 'probe', 'registry'];
+      'install', 'service', 'identity', 'claude', 'codex', 'opencode', 'probe', 'registry'];
     const remove = ['machine', 'fleet', 'uninstall', 'registry'];
     for (const steps of [add, remove]) {
       const labels = groupSteps(steps.map((s) => step(s, 'ok'))).map((g) => g.label);
