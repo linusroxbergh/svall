@@ -207,6 +207,17 @@ describe('host add', () => {
     expect(agentCalls.every((w) => w[0] === 'env' && w[1] === UNIT_PATH)).toBe(true);
   });
 
+  it('names an OpenCode whose auth list fails as not logged in', async () => {
+    healthy({ agents: false });
+    ssh.reply([UNIT_PATH, 'opencode', '--version'], { stdout: '2.0.22\n' });
+    ssh.reply([UNIT_PATH, 'opencode', 'auth', 'list', '--standalone'], { stderr: 'Error: no credentials\n', code: 1 });
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+    await d.close();
+    expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: '2.0.22, not logged in', action: 'ssh trift.test, then opencode auth login' });
+  });
+
   it('names an agent CLI the unit\'s PATH does not hold as one to install', async () => {
     healthy({ agents: false });
     const d = await daemon();

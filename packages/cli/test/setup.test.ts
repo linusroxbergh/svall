@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -5,6 +6,7 @@ import { WebSocketServer } from 'ws';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
 import { PROTOCOL_VERSION } from '@svall/protocol';
 import { installOpencodePlugin, opencodePaths } from '@svall/svalld/opencode/install';
+import { resolvePaths } from '@svall/svalld/paths';
 import { daemonRuns, setupCommand } from '../src/commands/setup.js';
 
 describe('the probe after a Linux upgrade', () => {
@@ -61,6 +63,30 @@ describe('svall setup on Linux', () => {
     };
     expect(await check()).toContain('! opencode plugin  missing or out of date: run svall setup');
     installOpencodePlugin(opencodePaths({ XDG_CONFIG_HOME: config }, home));
+    expect(await check()).not.toContain('! opencode plugin  missing or out of date: run svall setup');
+  });
+
+  it('reports an OpenCode plugin that is out of date, and none for a fleet that turned OpenCode off', async () => {
+    const home = makeHome();
+    vi.stubEnv('HOME', home);
+    vi.stubEnv('XDG_CONFIG_HOME', '');
+    vi.stubEnv('SHELL', '/usr/bin/true');
+    vi.stubEnv('PATH', '/usr/bin:/bin');
+    const opencode = opencodePaths({}, home);
+    fs.mkdirSync(path.dirname(opencode.plugin), { recursive: true });
+    fs.writeFileSync(opencode.plugin, '// an older build\'s plugin\n');
+    const fleet = path.join(home, '.svall');
+    const check = async () => {
+      const out: string[] = [];
+      const write = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { out.push(String(chunk)); return true; });
+      await setupCommand(() => ({ name: 'private', home: fleet, managed: true }), () => true, 'linux').parseAsync(['--check'], { from: 'user' });
+      write.mockRestore();
+      return JSON.parse(out.join('')).warnings as string[];
+    };
+    expect(await check()).toContain('! opencode plugin  missing or out of date: run svall setup');
+    fs.mkdirSync(fleet, { recursive: true });
+    fs.writeFileSync(path.join(fleet, 'fleet.json'), JSON.stringify({ id: crypto.randomUUID() }));
+    fs.writeFileSync(resolvePaths(fleet).nodeConfig, JSON.stringify({ agentsOff: ['opencode'] }));
     expect(await check()).not.toContain('! opencode plugin  missing or out of date: run svall setup');
   });
 
