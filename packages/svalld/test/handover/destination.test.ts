@@ -2117,6 +2117,17 @@ describe('destination claim', () => {
     expect(taken.check).toEqual({ ok: true, path: tool(s.manifest), kind: 'absent' });
   });
 
+  it("refuses a claim of a root in this machine's OpenCode state folder, wherever XDG_STATE_HOME puts it", async () => {
+    const state = (m: { home: string }) => path.join(path.dirname(m.home), 'xdg-state');
+    const s = await scene({ land: false, tamper: (m) => { m.roots.push({ id: 'r_oc', kind: 'cwd', entry: 'dir', path: path.join(state(m), 'opencode/log'), files: [] }); } });
+    fs.mkdirSync(path.join(state(s.manifest), 'opencode'), { recursive: true });
+    vi.stubEnv('XDG_STATE_HOME', state(s.manifest));
+    const r = await daemon(s).handover.claim(claimParams(s)).finally(() => vi.unstubAllEnvs());
+    expect(r.roots.find((x) => x.id === 'r_oc')!.check).toMatchObject({
+      ok: false, blocker: { code: 'path_unsupported', message: expect.stringMatching(/xdg-state\/opencode\/log lies in .*xdg-state\/opencode, which stays on this machine$/) },
+    });
+  });
+
   it('will not take a root again once it has prepared from it, since a second copy would undo its Git import', async () => {
     const s = await scene();
     const d = daemon(s);

@@ -873,6 +873,16 @@ describe('source freeze', () => {
     expect(r.blockers).toContainEqual(expect.objectContaining({ code: 'path_unsupported', message: `${config} holds ${path.join(config, '.credentials.json')}, which stays on its machine` }));
   });
 
+  it("blocks a character working in this daemon's OpenCode data folder, wherever XDG_DATA_HOME puts it", async () => {
+    const b = boot();
+    const data = path.join(b.work, 'xdg-data/opencode');
+    fs.mkdirSync(data, { recursive: true });
+    vi.stubEnv('XDG_DATA_HOME', path.dirname(data));
+    b.store.update((d) => { d.characters.c_cy.cwd = data; });
+    const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() }).finally(() => vi.unstubAllEnvs());
+    expect(r.blockers).toContainEqual(expect.objectContaining({ code: 'path_unsupported', message: `${data} stays on its machine` }));
+  });
+
   it('refuses a cwd the fence finds reached through a link before it touches a terminal, and lets the fleet run again', async () => {
     const b = boot();
     b.gateway.begin();

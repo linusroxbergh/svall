@@ -12,6 +12,7 @@ import { markDormant, markSlotDormant, reviveCommand } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
 import type { GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
+import { opencodeFolders } from '../opencode/install.js';
 import type { OwnershipState } from '../ownership/state.js';
 import { codexPaths } from '../codex/install.js';
 import { claudePaths, expandHome, installedScripts, type Paths } from '../paths.js';
@@ -176,7 +177,7 @@ export class DestinationHandover {
     // a home this machine cannot read refuses every claim, as homeProblem says
     try { home = (d.homedir ?? os.homedir)(); } catch { home = undefined; }
     const local = home === undefined ? undefined
-      : machineLocal({ home, agentHomes: { claude: claudePaths(process.env, home).dir, codex: codexPaths(process.env, home).dir } });
+      : machineLocal({ home, agentHomes: { claude: claudePaths(process.env, home).dir, codex: codexPaths(process.env, home).dir }, opencode: opencodeFolders(process.env, home) });
     this.replicas = new ReplicaStore({ fleetId: d.config.id, paths: d.paths, scanFs: d.scanFs, ...(local && { local }) });
     this.clock = d.clock ?? realClock;
     d.fleet.onSessionStart((id, term, sessionId) => this.sessionStarted({ characterId: id, ...(term && { term }) }, sessionId));

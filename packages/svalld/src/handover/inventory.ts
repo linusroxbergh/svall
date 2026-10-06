@@ -9,8 +9,9 @@ import type { GitDiscovery } from './git-graph.js';
 import { byCodeUnit, canonicalJson, sha256Hex } from './hash.js';
 import { exportSnapshot, holds, portablePathValues, realPath, type PathValue } from './portable-path.js';
 
-/** Where one machine keeps what a handover moves: its home, this fleet's own home, and where each agent CLI keeps its sessions. */
-export type MachineMap = { machineId: MachineId; home: string; fleetHome: string; agentHomes?: Partial<Record<AgentKind, string>> };
+/** Where one machine keeps what a handover moves: its home, this fleet's own home, where each agent's carried sessions land, and
+ *  OpenCode's own folders where its environment puts them. */
+export type MachineMap = { machineId: MachineId; home: string; fleetHome: string; agentHomes?: Partial<Record<AgentKind, string>>; opencode?: string[] };
 export type MachineMaps = { source: MachineMap; destination: MachineMap };
 export type InventoryConfigs = { fleet: FleetConfig };
 
@@ -161,7 +162,7 @@ export type MachineLocal = { files: string[]; dirs: string[] };
  * environment puts them and where the default does, OpenCode's database, snapshots, config, state and cache whole, its ssh keys,
  * and Svall's own install, units and shims.
  */
-export function machineLocal(m: Pick<MachineMap, 'home' | 'agentHomes'>): MachineLocal {
+export function machineLocal(m: Pick<MachineMap, 'home' | 'agentHomes' | 'opencode'>): MachineLocal {
   const at = (...p: string[]): string => path.posix.join(m.home, ...p);
   const claudes = [...new Set([at('.claude'), m.agentHomes?.claude ?? at('.claude')])];
   const codexes = [...new Set([at('.codex'), m.agentHomes?.codex ?? at('.codex')])];
@@ -174,7 +175,7 @@ export function machineLocal(m: Pick<MachineMap, 'home' | 'agentHomes'>): Machin
       at('.ssh'), at('.local', 'share', 'svall'), at('.config', 'svall'), at('.config', 'systemd', 'user'),
       ...new Set([
         at('.local', 'share', 'opencode'), at('.config', 'opencode'), at('.local', 'state', 'opencode'), at('.cache', 'opencode'),
-        ...(m.agentHomes?.opencode ? [m.agentHomes.opencode] : []),
+        ...(m.opencode ?? []),
       ]),
     ],
   };

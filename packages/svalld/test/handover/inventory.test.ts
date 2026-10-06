@@ -452,14 +452,19 @@ describe('buildInventory', () => {
     ].sort());
   });
 
-  it("blocks a root that holds or lies in OpenCode's data, config, state or cache folder, the default ones and the one its home names, on either machine", () => {
+  it("blocks a root that holds or lies in OpenCode's data, config, state or cache folder, the default ones and those its environment names, on either machine, but not where its carried sessions land", () => {
     const s = seed();
     const data = path.join(s.mac, '.local/share/opencode');
     const config = path.join(s.mac, '.config/opencode');
     const named = path.join(s.mac, 'oc-data/opencode');
     for (const d of [path.join(data, 'snapshot'), config, named]) fs.mkdirSync(d, { recursive: true });
     for (const f of ['opencode.db', 'opencode.db-wal', 'opencode.db-shm']) fs.writeFileSync(path.join(data, f), '');
-    s.maps.destination.agentHomes = { opencode: named };
+    const landing = path.join(s.mac, 'oc-sessions');
+    fs.mkdirSync(landing);
+    s.maps.destination.opencode = [named];
+    s.maps.source.agentHomes = { opencode: landing };
+    s.maps.destination.agentHomes = { opencode: landing };
+    s.state.characters.landing = char('landing', { cwd: landing });
     s.state.characters.local = char('local', { cwd: path.join(s.mac, '.local/state') });
     s.state.characters.cache = char('cache', { cwd: path.join(s.mac, '.cache/opencode/node_modules') });
     s.state.characters.other = char('other', { cwd: path.join(s.mac, '.local/state/other') });
@@ -478,6 +483,7 @@ describe('buildInventory', () => {
     ].sort());
     expect(inv.roots.filter((r) => r.path.includes('opencode') || r.path.endsWith('/oc-data'))).toEqual([]);
     expect(inv.roots.some((r) => r.path === path.join(s.mac, '.local/state/other'))).toBe(true);
+    expect(inv.roots.some((r) => r.path === landing)).toBe(true);
   });
 
   it('follows the fleet home to its real path before deciding a root is clear of it', () => {

@@ -15,6 +15,7 @@ import { AuthorityFailure } from '../gateway/authority.js';
 import type { Fleet } from '../fleet.js';
 import { runGit, type GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
+import { opencodeFolders } from '../opencode/install.js';
 import type { OwnershipState } from '../ownership/state.js';
 import { claudePaths, expandHome, installedScripts, type Paths } from '../paths.js';
 import { releaseVersion } from '../release.js';
@@ -588,7 +589,7 @@ export class SourceHandover {
   private maps(p: HandoverMachines): MachineMaps {
     const { info, home, fleetHome } = p.destination;
     return {
-      source: { machineId: this.ownership.machineId, home: p.source.home, fleetHome: this.d.paths.home, agentHomes: { claude: claudePaths().dir, codex: codexPaths().dir } },
+      source: { machineId: this.ownership.machineId, home: p.source.home, fleetHome: this.d.paths.home, agentHomes: { claude: claudePaths().dir, codex: codexPaths().dir }, opencode: opencodeFolders() },
       destination: {
         machineId: info.machineId, home, fleetHome,
         agentHomes: Object.fromEntries(info.agentAdapters.flatMap((a) => (a.home ? [[a.kind, a.home]] : []))),
