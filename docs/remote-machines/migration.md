@@ -47,17 +47,19 @@ move what you want from it into the new files and delete it; the daemon's log an
 ## Downgrading
 
 An older release refuses a fleet this release has migrated, and its install would put a fresh configuration in place
-of yours. Going back therefore means putting back the copies the upgrade kept. This was checked by running a build
-from before remote machines (protocol 16, state schema 7) against a private fleet and a named fleet this release had
+of yours. Going back therefore means putting back the copies the upgrade kept. This was checked by running Svall 0.5.1
+(protocol 19, state schema 8) and Svall 0.3.2 (protocol 18, state schema 7) against a fleet this release had
 migrated, in a temporary home:
 
-- **The older daemon does not start.** Its log says `state.json is version 8, newer than this svalld reads (7): …; or,
-  to go back to the fleet as this version last saw it, move ~/.svall/state.json.v7-<time> to
-  ~/.svall/state.json; svalld starts once it is fixed`, and it waits without touching the state.
+- **The older daemon does not start.** Svall 0.5.1's log says `state.json is version 9, newer than this svalld reads
+  (8): …; or, to go back to the fleet as this version last saw it, move ~/.svall/state.json.v8-<time> to
+  ~/.svall/state.json; svalld starts once it is fixed`, and it waits without touching the state. A release before
+  OpenCode support says `newer than this svalld reads (7)`, and names a `state.json.v7-<time>` copy only when there is
+  one.
 - **The older `svall setup`** finds no `config.json` and writes an empty one, so the fleet would start on the default
   port with default settings.
 
-With the steps below, the older build started both fleets as they were before the upgrade.
+With the steps below, Svall 0.5.1 started the fleet as it was before the upgrade.
 
 1. **Bring every fleet home.** A fleet that has a gateway must be on this Mac with no handover open:
    `svall [-p <fleet>] handover local`, then `svall handover status` shows none. An older build knows nothing of
@@ -76,8 +78,11 @@ With the steps below, the older build started both fleets as they were before th
    cd ~/.svall
    mkdir handover-aside && mv fleet.json node.json owner.json handover-aside/
    mv config.json.bak config.json
-   cp "$(ls -t state.json.v7-* | head -1)" state.json
+   cp "$(ls -t state.json.v[78]-* | head -1)" state.json
    ```
+
+   That takes the newest kept copy. Going back to a release before OpenCode support (0.3.x or earlier) after
+   upgrading through 0.5, copy the newest `state.json.v7-*` instead.
 
    The fleet comes back as it was when you upgraded. Islands, characters and notes changed since are lost, and so is
    any setting changed since in `fleet.json` or `node.json`, unless you copy it into `config.json`. A fleet first made
@@ -90,16 +95,19 @@ With the steps below, the older build started both fleets as they were before th
 A Linux machine you set up can stay as it is; the older build never contacts it. To remove it, run `svall host remove
 <name>` before step 2.
 
-To keep what changed since the upgrade instead of going back to the kept copy, set `"version": 8` at the top of
-`state.json` to `7` in step 3 rather than copying `state.json.v7-*`. The older build read this release's state that way
-in the same test. It leaves out any island or character it cannot read, and keeps the file as it read it beside
-`state.json` as `state.json.broken-<time>`. A character whose second terminal is dormant (a `second` with no `tmux`)
-is one, since the older build has no dormant second terminal; remove each such `second` as you relabel, and the
-character comes back without it:
+To keep what changed since the upgrade instead of going back to the kept copy, set `"version": 9` at the top of
+`state.json` to `8` in step 3 rather than copying a kept one. Svall 0.5.1 read this release's state that way in the
+same test. It leaves out any island or character it cannot read, and keeps the file as it read it beside `state.json`
+as `state.json.broken-<time>`. A character whose second terminal is dormant (a `second` with no `tmux`) is one, since
+the older build has no dormant second terminal; remove each such `second` as you relabel, and the character comes back
+without it:
 
 ```sh
-jq '.version = 7 | del(.characters[].second | select(.tmux == null))' state.json > state.json.7 && mv state.json.7 state.json
+jq '.version = 8 | del(.characters[].second | select(.tmux == null))' state.json > state.json.8 && mv state.json.8 state.json
 ```
+
+For a release before OpenCode support, relabel to `7` instead. That release also leaves out every OpenCode character,
+which it cannot read; Svall 0.3.2 started the rest of the fleet that way.
 
 ### Upgrading again
 
