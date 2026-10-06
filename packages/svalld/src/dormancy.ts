@@ -15,7 +15,8 @@ const exec = promisify(execFile);
 export function reviveCommand(t: TerminalSlot, flags: string[] = []): string {
   if (!t.agent || !isSessionId(t.agent.sessionId)) return '';
   // a codex character's cwd follows its commands into worktrees; resumed from one, codex would stop to ask which directory
-  const words = t.agent.kind === 'codex' ? ['codex', 'resume', '-c', 'tui.resume_cwd=session', ...flags] : ['claude', ...flags, '--resume'];
+  const words = t.agent.kind === 'codex' ? ['codex', 'resume', '-c', 'tui.resume_cwd=session', ...flags]
+    : t.agent.kind === 'opencode' ? ['opencode', ...flags, '-s'] : ['claude', ...flags, '--resume'];
   return [...words, t.agent.sessionId].join(' ');
 }
 
@@ -30,9 +31,16 @@ export function markSlotDormant(t: TerminalSlot, flags?: string[]): void {
   }
 }
 
+// a resumed session sits at its prompt, and its subagents, background agents and commands died with the process
+export const RESUME_NOTE = 'A restart ended this session mid-turn. Subagents, background agents and background commands '
+  + 'you had running were stopped and will not report back. Check what they finished, rerun what is still needed, '
+  + 'and carry on with the task.';
+
 export function markDormant(c: Character, flags?: string[]): void {
   delete c.hint;
+  const interrupted = c.agent?.status === 'blocked' || c.agent?.status === 'working';
   markSlotDormant(c, flags);
+  if (interrupted && c.revive?.command) c.revive.interrupted = true;
 }
 
 // a plain side shell goes with its window; a second that ran an agent stays behind to be revived
@@ -65,6 +73,12 @@ const FLAGS: Record<AgentKind, { kept: string[]; keptSwitches: string[]; dropped
     dropped: ['-c', '--config', '-C', '--cd', '--add-dir'],
     droppedSwitches: [],
   },
+  opencode: {
+    kept: [],
+    keptSwitches: ['--auto', '--yolo', '--dangerously-skip-permissions'],
+    dropped: ['-s', '--session', '--prompt'],
+    droppedSwitches: ['-c', '--continue', '--standalone'],
+  },
 };
 // the flags whose value may be left out
 const OPTIONAL = ['-w', '--worktree', '-r', '--resume'];
@@ -87,7 +101,8 @@ export function startFlags(args: string, kind: AgentKind): string[] | undefined 
   // options end at `--` or the first bare word, past which no word may look like a flag
   for (; i < words.length; i++) {
     const w = words[i];
-    if (w === '--') return out;
+    // svalld puts an OpenCode prompt last, and its words can pass for flags
+    if (w === '--' || (kind === 'opencode' && w === '--prompt')) return out;
     // codex resume takes its session as a word among the options
     if (resume && isSessionId(w)) continue;
     if (!w.startsWith('-')) return words.slice(i).some((x) => x.startsWith('-')) ? undefined : out;
@@ -113,7 +128,9 @@ export function startFlags(args: string, kind: AgentKind): string[] | undefined 
 export function runsAgent(args: string, kind: AgentKind): boolean {
   const words = args.trim().split(/\s+/);
   const script = kind === 'claude' && path.basename(words[0]) === 'node' && (!!words[1]?.endsWith('/claude-code/cli.js') || path.basename(words[1] ?? '') === 'claude');
-  return path.basename(words[0]) === kind || script;
+  // npm installs OpenCode's binary as opencode.exe
+  const bin = path.basename(words[0]);
+  return bin === kind || (kind === 'opencode' && bin === 'opencode.exe') || script;
 }
 
 /** A revive command, as `reviveCommand` builds it, without the flags that mean something only on the machine it was made on. */
@@ -137,14 +154,19 @@ export async function processes(): Promise<Proc[]> {
 }
 
 // the Bash tool starts each command in a process group of its own, while MCP servers share the agent's: a descendant
-// outside the agent's group is a background shell, monitor or server it still runs
+// outside the agent's group is a background shell, monitor or server it still runs. OpenCode's TUI runs its private
+// server in a group of its own, and the server gives each shell command and each MCP or language server one too. A
+// shell execs a lone command, so ps can't tell a shell from a server, and either holds off dormancy
 export function runsInBackground(pid: number, procs: Proc[]): boolean {
-  const own = procs.find((p) => p.pid === pid)?.pgid;
+  const own = new Set([procs.find((p) => p.pid === pid)?.pgid]);
   const below = [pid];
   for (let i = 0; i < below.length; i++) {
     for (const p of procs) {
       if (p.ppid !== below[i]) continue;
-      if (p.pgid !== own) return true;
+      if (!own.has(p.pgid)) {
+        if (below[i] !== pid || !runsAgent(p.args, 'opencode') || !/\sserve\s+--stdio(\s|$)/.test(p.args)) return true;
+        own.add(p.pgid);
+      }
       below.push(p.pid);
     }
   }

@@ -86,8 +86,8 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
   // the hook carries the prompt before the transcript holds it, so this is the newest one there is
   if (e.prompt && (!e.sessionId || e.sessionId === next.agent.sessionId)) next.agent.lastPrompt = { ...e.prompt, at: now };
   const agent = next.agent;
-  // background agents that never re-invoke the session, killed or crashed, are over once a hook lists none
-  if (e.backgroundAgents === 0) delete agent.background;
+  // background agents or shells that never re-invoke the session, killed or crashed, are over once a hook lists none
+  if (e.backgroundTasks === 0) delete agent.background;
   // the main thread moving on leaves a question a subagent still has open, unless the user typed a prompt past it
   if (agent.asking && e.backend === 'claude') {
     const stop = e.name === 'Stop' || e.name === 'StopFailure';
@@ -124,8 +124,8 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     }
     case 'Stop':
     case 'StopFailure':
-      // the turn ended but background agents are still going; their completion starts a new turn
-      if (e.backgroundAgents) {
+      // the turn ended but background agents or shells are still going; their completion starts a new turn
+      if (e.backgroundTasks) {
         settle(agent, 'working');
         agent.background = true;
         break;
@@ -135,20 +135,21 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
       if (e.name === 'StopFailure' && e.message) agent.prompt = e.message;
       next.unread = true;
       break;
-    // codex's word that an Esc ended the turn
+    // Codex's and OpenCode's word that an Esc ended the turn
     case 'Interrupt':
       settle(agent, 'idle');
       break;
-    // Claude Code shows its question first and notifies of it only if it is still up a few seconds on, naming no tool
+    // Claude Code shows its question first and notifies of it only if it is still up a few seconds on, naming no tool;
+    // Codex and OpenCode ask at once
     case 'PermissionRequest':
-      if (e.backend === 'codex') ask();
+      if (e.backend !== 'claude') ask();
       else if (e.toolName) agent.askedTool = e.toolName;
       else delete agent.askedTool;
       break;
     case 'Notification':
       if (e.notificationType && BLOCKING.has(e.notificationType)) ask();
-      // Claude Code fires nothing on an Esc; a minute on, it says it sits at its prompt, background agents or not.
-      // With background agents out, the question is gone but the work goes on
+      // Claude Code fires nothing on an Esc; a minute on, it says it sits at its prompt, background work or not.
+      // With background work out, the question is gone but the work goes on
       else if (e.notificationType === 'idle_prompt' && (agent.status === 'blocked' || agent.status === 'working')) {
         const background = agent.background;
         settle(agent, background ? 'working' : 'idle');

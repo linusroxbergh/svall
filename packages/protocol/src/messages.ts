@@ -210,6 +210,7 @@ export const methods = {
     result: z.object({ lines: z.array(z.string()) }),
   },
   'scribe.set': { params: z.object({ enabled: z.boolean() }), result: z.object({}) },
+  'worktrees.set': { params: z.object({ enabled: z.boolean() }), result: z.object({}) },
   'dormancy.set': { params: z.object({ hours: z.number().int().min(0) }), result: z.object({}) },
   'mainAgent.set': { params: z.object({ agent: AgentKind }), result: z.object({}) },
   // the fleets beside this one; a phone is refused them
@@ -398,4 +399,4 @@ export type HelloReply = z.infer<typeof HelloReply>;
 export const LOGIN_REFUSED = 4403;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 19;
+export const PROTOCOL_VERSION = 20;

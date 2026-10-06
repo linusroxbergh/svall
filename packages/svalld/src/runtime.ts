@@ -35,7 +35,7 @@ export const helper = (name: string): string | undefined => bundled ? path.resol
 
 /** The compiled hook helper: the app's, or for Svall Dev the one apps/desktop/mac/build.sh put in its checkout's Svall Dev.app. */
 export const hookHelperSource = (): string | undefined =>
-  helper('svall-hook') ?? (variant === 'dev' ? path.resolve(here, '../../../apps/desktop/mac/build/Svall Dev.app/Contents/Helpers/svall-hook') : undefined);
+  helper('svall-hook') ?? (variant === 'dev' ? path.resolve(here, '../../../apps/desktop/mac/build.noindex/Svall Dev.app/Contents/Helpers/svall-hook') : undefined);
 
 const hookSwift = path.resolve(here, '../../../apps/desktop/mac/Sources/SvallHook');
 

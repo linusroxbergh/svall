@@ -17,6 +17,13 @@ import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
 const runIf = hasTmux() ? describe : describe.skip;
 
+// a port the test holds stands in for the default, which a running fleet may hold
+const defaults = vi.hoisted(() => ({ port: 0 }));
+vi.mock('../src/profile.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/profile.js')>();
+  return { ...actual, get DEFAULT_PORT() { return defaults.port; } };
+});
+
 runIf('startDaemon', () => {
   const homes: string[] = [];
   // a start still under way when its test ends is stopped once it lands, before its tmux server is killed
@@ -106,11 +113,11 @@ runIf('startDaemon', () => {
     await first;
   });
 
-  it('writes the version it runs as, which a launch refresh compares with the app\'s', async () => {
+  it('writes the version it runs as and its pid, which a launch refresh compares with the app\'s', async () => {
     const home = makeHome();
     homes.push(home);
     await (await start({ home, port: 0, log: silentLogger })).stop();
-    expect(fs.readFileSync(path.join(home, 'version'), 'utf8')).toBe(runtimeVersion());
+    expect(fs.readFileSync(path.join(home, 'version'), 'utf8')).toBe(`${runtimeVersion()}\n${process.pid}\n`);
   });
 
   it('writes no codex hooks when the private fleet starts with Codex turned off in setup', async () => {
@@ -198,12 +205,35 @@ runIf('startDaemon', () => {
     await new Promise<void>((r) => blocker.listen(0, '127.0.0.1', r));
     const port = (blocker.address() as net.AddressInfo).port;
     try {
-      await expect(start({ home, port, host: '127.0.0.1', log: silentLogger })).rejects.toThrow(/EADDRINUSE/);
+      await expect(start({ home, port, host: '127.0.0.1', log: silentLogger })).rejects.toThrow(`EADDRINUSE: address already in use 127.0.0.1:${port}`);
       expect(fs.existsSync(paths.hooksSock)).toBe(false);
       expect(fs.existsSync(paths.port)).toBe(false);
       await waitFor(async () => (await new Tmux(paths.tmuxSock, paths.tmuxConf).run('list-clients')).trim() === '');
     } finally {
       await new Promise((r) => blocker.close(r));
+    }
+  });
+
+  it('listens on the default port while it is free, and on a free one while another process holds it', async () => {
+    const home = makeHome();
+    homes.push(home);
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
+    const paths = resolvePaths(home);
+    const blocker = net.createServer();
+    await new Promise<void>((r) => blocker.listen(0, '127.0.0.1', r));
+    defaults.port = (blocker.address() as net.AddressInfo).port;
+    try {
+      const d = await start({ home, log: silentLogger });
+      expect(d.port).not.toBe(defaults.port);
+      expect(fs.readFileSync(paths.port, 'utf8')).toBe(String(d.port));
+      await d.stop();
+      await new Promise((r) => blocker.close(r));
+      const again = await start({ home, log: silentLogger });
+      expect(again.port).toBe(defaults.port);
+      await again.stop();
+    } finally {
+      defaults.port = 0;
+      if (blocker.listening) await new Promise((r) => blocker.close(r));
     }
   });
 

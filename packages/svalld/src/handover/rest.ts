@@ -327,7 +327,8 @@ async function layToRest(
     const { agent, flags } = byKey.get(keyOf(t)) ?? { agent: undefined, flags: stopped.get(keyOf(t))?.flags };
     if (agent) slot.agent = agent;
     if (closed) slot.restedBy = transactionId;
-    if (t.term !== 2) { markDormant(c, flags); return; }
+    // a rest the handover chose is no crash: the agent resumes as the handover carries it, without the note on what was lost
+    if (t.term !== 2) { markDormant(c, flags); delete c.revive?.interrupted; return; }
     const path = current.get(keyOf(t))?.window.path;
     if (path) slot.cwd = path;
     markSlotDormant(slot, flags);

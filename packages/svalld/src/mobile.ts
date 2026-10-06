@@ -215,11 +215,11 @@ export function mobileControl(d: MobileDeps, opts: {
     owner = self.owner;
     if (enable === true && logins().length === 0) throw new Error(`tailscale reports no login for this Mac: set mobile.logins in fleet.json, then restart the daemon with launchctl kickstart -k gui/$(id -u)/${profileLabel(opts.profile)}`);
     const dist = mobileDist();
-    // tailscale serve holds one mapping per port for the whole Mac, so a port another holds stays theirs. A named fleet that
-    // keeps no port yet takes a free one; a kept port, or the private fleet's, is the address a phone app already has
+    // tailscale serve holds one mapping per port for the whole Mac, so a port another holds stays theirs. A fleet that
+    // keeps no port yet takes a free one in place of its default; a kept port is the address a phone app already has
     const before = enable === undefined ? undefined : await d.run(bin, ['serve', 'status', '--json']);
     const other = !!before && servesOther(before, host, port, key, fleetOrigin(d, opts.home));
-    const picks = enable === true && saved === undefined && opts.profile !== PRIVATE;
+    const picks = enable === true && saved === undefined;
     const kept = picks ? opts.kept() : [];
     // the port this attempt serves on, which becomes the fleet's only once it is served
     let at = port;

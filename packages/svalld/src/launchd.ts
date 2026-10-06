@@ -23,10 +23,12 @@ const unxml = (s: string): string =>
 /** The plist entry that sets `key` for the daemon. */
 export const plistEnv = (key: string, value: string): string => `<key>${xml(key)}</key><string>${xml(value)}</string>`;
 
-/** Where this shell keeps Claude's and Codex's files, when it says; launchd gives the daemon no shell environment. */
+/** Where this shell keeps the agents' files, when it says; launchd gives the daemon no shell environment. */
 export const launchdEnv = (): Record<string, string> => ({
   ...(process.env.CLAUDE_CONFIG_DIR ? { CLAUDE_CONFIG_DIR: claudePaths().dir } : {}),
   ...(process.env.CODEX_HOME ? { CODEX_HOME: codexPaths().dir } : {}),
+  ...(process.env.XDG_CONFIG_HOME ? { XDG_CONFIG_HOME: path.resolve(process.env.XDG_CONFIG_HOME) } : {}),
+  ...(process.env.XDG_DATA_HOME ? { XDG_DATA_HOME: path.resolve(process.env.XDG_DATA_HOME) } : {}),
 });
 
 export function launchdPlist(o: { label: string; program: string[]; home: string; log: string; pathEnv: string; bundleId?: string; env?: Record<string, string> }): string {
@@ -106,7 +108,7 @@ export async function bootstrapAgent(launchAgentsDir: string, label: string): Pr
   const domain = `gui/${os.userInfo().uid}`;
   const plist = path.join(launchAgentsDir, `${label}.plist`);
   // launchd starts the daemon only when the app asks, so one that ran before the reload is started again on the new plist
-  const running = await isRunning(label);
+  const running = await runningPid(label) !== undefined;
   await exec('launchctl', ['bootout', domain, plist]).catch(() => {});
   const bootstrap = () => exec('launchctl', ['bootstrap', domain, plist]);
   // launchd refuses a bootstrap while the job it booted out is still going away, so a refusal is tried once more
@@ -131,8 +133,11 @@ export const isLoaded = (label: string): Promise<boolean> =>
   exec('launchctl', ['print', `gui/${os.userInfo().uid}/${label}`]).then(() => true, () => false);
 
 /** Whether `label`'s daemon runs: a loaded job runs only while its fleet's window is open. */
-export const isRunning = (label: string): Promise<boolean> =>
-  exec('launchctl', ['print', `gui/${os.userInfo().uid}/${label}`]).then(({ stdout }) => /\bstate = running\b/.test(stdout), () => false);
+export const runningPid = (label: string): Promise<number | undefined> =>
+  exec('launchctl', ['print', `gui/${os.userInfo().uid}/${label}`]).then(({ stdout }) => {
+    const pid = /\bstate = running\b/.test(stdout) ? /^\tpid = (\d+)$/m.exec(stdout)?.[1] : undefined;
+    return pid ? Number(pid) : undefined;
+  }, () => undefined);
 
 /** The program of another copy of Svall, still on disk, whose fleets these are: only an explicit setup takes them from it. */
 export const takenOverBy = (plist: string | undefined, runtime: Runtime, exists: (p: string) => boolean = fs.existsSync): string | undefined => {

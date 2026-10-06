@@ -13,6 +13,7 @@ import { portraitTint, portraitUrl } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
 import { ResourcesButton } from './ResourcesButton.js';
+import { Section } from './Section.js';
 import { contextPctOf, islandsSorted, isUnread, resumeErrorOf, statusOf } from './selectors.js';
 
 type Patch = Omit<Params<'char.update'>, 'id'>;
@@ -30,19 +31,15 @@ function LastCommand({ id, agent }: { id: string; agent: Character['agent'] }) {
   const { list, at, step } = usePromptHistory(app.api, id, agent);
   if (!agent) return null;
   return (
-    <div className="sec cmd" data-testid="side-prompt">
-      <div className="kicker cmd-head">
-        Last command
-        {list.length > 0 && (
-          <span className="cmd-nav">
-            <button data-testid="side-prompt-prev" aria-label="Earlier command" disabled={at >= list.length - 1} onClick={() => step(1)}>‹</button>
-            <b className="tnum" data-testid="side-prompt-pos">{at + 1}/{list.length}</b>
-            <button data-testid="side-prompt-next" aria-label="Later command" disabled={at === 0} onClick={() => step(-1)}>›</button>
-          </span>
-        )}
-      </div>
+    <Section name="character.command" title="Last command" testid="side-prompt" head={list.length > 0 && (
+      <span className="cmd-nav">
+        <button data-testid="side-prompt-prev" aria-label="Earlier command" disabled={at >= list.length - 1} onClick={() => step(1)}>‹</button>
+        <b className="tnum" data-testid="side-prompt-pos">{at + 1}/{list.length}</b>
+        <button data-testid="side-prompt-next" aria-label="Later command" disabled={at === 0} onClick={() => step(-1)}>›</button>
+      </span>
+    )}>
       <p className="cmd-text" data-testid="side-prompt-text">{list[at] ?? 'nothing sent yet'}</p>
-    </div>
+    </Section>
   );
 }
 
@@ -90,60 +87,58 @@ export function SideCard({ id }: { id: string }) {
         </div>
       )}
       {c.hint && <div className="side-hint" data-testid="side-hint">{hintText(c)}</div>}
-      <div className="sec">
-        <div className="kicker"><span>Note</span><Info id="char-note">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. The scribe fills it in until you write one.</Info></div>
-        <FollowTextarea className="fld desc" rows={4} placeholder="What this character is doing" key={`note-${id}`} value={c.note} data-testid="side-note"
-          onSave={(v) => { if (v !== c.note) save({ note: v }); }} />
-      </div>
-      <div className="sec">
-        <div className="kicker"><span>Agent instructions</span><Info id="char-instructions">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. A new profile is sent whole.</Info></div>
-        <AgentProfilePick id={id} />
-        <FollowTextarea className="fld desc" rows={3} placeholder="Anything else this agent should know" key={`instructions-${id}`} value={c.instructions} data-testid="side-instructions"
-          onSave={(v) => { if (v !== c.instructions) save({ instructions: v }); }} />
-      </div>
-      <div className="sec">
-        <div className="kicker"><span>Context</span><Info id="char-context">Listed for the agent when it starts, pinned items to read first; your change mid-session reaches it with your next prompt.</Info></div>
-        <ContextPills items={c.context} ids={{ list: 'side-context', remove: 'context-remove', pin: 'context-pin' }}
-          charId={id} onChange={saveContext} />
-        <AddLink id={id} ids={{ ref: 'context-ref', add: 'context-add' }} onAdd={(item) => saveContext([...c.context, item])} />
-      </div>
-      <DocsList tier="character" id={id} />
-      <LastCommand key={id} id={id} agent={c.agent} />
-      <div className="sec">
-        <div className="kicker">Details</div>
-        <div className="rows">
-          <div className="row"><span>island</span>
-            <b><select className="fld inline" aria-label="Island" value={c.islandId} data-testid="side-island" onChange={(e) => save({ islandId: e.target.value })}>
-              {islandsSorted(fleet).map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-            </select></b>
-          </div>
-          <div className="row"><span>model</span><b className="mono">{c.agent?.model ?? 'no agent'}</b></div>
-          <div className="row"><span>cwd</span><b className="mono">
-            <button className="copy clip-head" title={`Copy ${c.cwd}`} data-testid="side-cwd"
-              onClick={() => { copyText(app.bridge, c.cwd); app.store.getState().showToast('Copied', 'ok'); }}><bdi>{c.cwd}</bdi></button>
-          </b></div>
-          {pct !== undefined && (
-            <div className="row"><span>context</span>
-              <div className="meter" data-testid="side-meter">
-                <span><i style={{ width: `${Math.min(100, Math.max(0, pct))}%`, background: accent }} /></span>
-                <b className="tnum">{Math.round(pct)}%</b>
-              </div>
+      <div className="side-secs">
+        <Section name="character.note" title="Note" head={<Info id="char-note">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. The scribe fills it in until you write one.</Info>}>
+          <FollowTextarea className="fld desc" rows={6} placeholder="What this character is doing" key={`note-${id}`} value={c.note} data-testid="side-note"
+            onSave={(v) => { if (v !== c.note) save({ note: v }); }} />
+        </Section>
+        <Section name="character.instructions" title="Agent instructions" head={<Info id="char-instructions">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. A new profile is sent whole.</Info>}>
+          <AgentProfilePick id={id} />
+          <FollowTextarea className="fld desc" rows={3} placeholder="Anything else this agent should know" key={`instructions-${id}`} value={c.instructions} data-testid="side-instructions"
+            onSave={(v) => { if (v !== c.instructions) save({ instructions: v }); }} />
+        </Section>
+        <Section name="character.context" title="Context" head={<Info id="char-context">Listed for the agent when it starts, pinned items to read first; your change mid-session reaches it with your next prompt.</Info>}>
+          <ContextPills items={c.context} ids={{ list: 'side-context', remove: 'context-remove', pin: 'context-pin' }}
+            charId={id} onChange={saveContext} />
+          <AddLink id={id} ids={{ ref: 'context-ref', add: 'context-add' }} onAdd={(item) => saveContext([...c.context, item])} />
+        </Section>
+        <DocsList tier="character" id={id} />
+        <LastCommand key={id} id={id} agent={c.agent} />
+        <Section name="character.details" title="Details">
+          <div className="rows">
+            <div className="row"><span>island</span>
+              <b><select className="fld inline" aria-label="Island" value={c.islandId} data-testid="side-island" onChange={(e) => save({ islandId: e.target.value })}>
+                {islandsSorted(fleet).map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+              </select></b>
             </div>
-          )}
-          <div className="row"><span>last activity</span><b className="tnum">{ago(c.agent?.lastActivityAt ?? c.shell.lastOutputAt)} ago</b></div>
-          {failed && <div className="row" data-testid="side-resume-error"><span>resume failed</span><b>{failed}</b></div>}
-          {handover && (
-            <label className="row" title="A handover of this fleet waits until this is off">
-              <span>keep on this machine</span>
-              <b><input type="checkbox" data-testid="side-keep-here" checked={!!c.keepHere} onChange={(e) => save({ keepHere: e.target.checked })} /></b>
-            </label>
-          )}
-        </div>
-        <div className="opens">
-          <button className="btn" data-testid="side-finder" title={`Reveal ${c.cwd} in Finder`}
-            onClick={() => openFolder(app.bridge, c.cwd)}>Finder</button>
-          <ResourcesButton root={c.repo?.mainRoot ?? c.cwd} testid="side-resources" />
-        </div>
+            <div className="row"><span>model</span><b className="mono">{c.agent?.model ?? 'no agent'}</b></div>
+            <div className="row"><span>cwd</span><b className="mono">
+              <button className="copy clip-head" title={`Copy ${c.cwd}`} data-testid="side-cwd"
+                onClick={() => { copyText(app.bridge, c.cwd); app.store.getState().showToast('Copied', 'ok'); }}><bdi>{c.cwd}</bdi></button>
+            </b></div>
+            {pct !== undefined && (
+              <div className="row"><span>context</span>
+                <div className="meter" data-testid="side-meter">
+                  <span><i style={{ width: `${Math.min(100, Math.max(0, pct))}%`, background: accent }} /></span>
+                  <b className="tnum">{Math.round(pct)}%</b>
+                </div>
+              </div>
+            )}
+            <div className="row"><span>last activity</span><b className="tnum">{ago(c.agent?.lastActivityAt ?? c.shell.lastOutputAt)} ago</b></div>
+            {failed && <div className="row" data-testid="side-resume-error"><span>resume failed</span><b>{failed}</b></div>}
+            {handover && (
+              <label className="row" title="A handover of this fleet waits until this is off">
+                <span>keep on this machine</span>
+                <b><input type="checkbox" data-testid="side-keep-here" checked={!!c.keepHere} onChange={(e) => save({ keepHere: e.target.checked })} /></b>
+              </label>
+            )}
+          </div>
+        </Section>
+      </div>
+      <div className="opens">
+        <button className="btn" data-testid="side-finder" title={`Reveal ${c.cwd} in Finder`}
+          onClick={() => openFolder(app.bridge, c.cwd)}>Finder</button>
+        <ResourcesButton root={c.repo?.mainRoot ?? c.cwd} testid="side-resources" />
       </div>
       <div className="acts">
         {!onBoard && <button className="btn pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>}

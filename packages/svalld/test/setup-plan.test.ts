@@ -13,7 +13,7 @@ describe('setupPlan', () => {
     const home = makeHome();
     const plan = setupPlan({
       home, projects: '~/Developer', found: [{ kind: 'claude', path: '/u/.local/bin/claude', version: '2.1.0' }], folders: [], integrations: undefined,
-      settingsPath: '/u/.claude/settings.json', codexHooks: '/u/.codex/hooks.json', launchAgentsDir: '/u/Library/LaunchAgents',
+      settingsPath: '/u/.claude/settings.json', codexHooks: '/u/.codex/hooks.json', opencodePlugin: '/u/.config/opencode/plugins/svall.js', launchAgentsDir: '/u/Library/LaunchAgents',
       fleets: [], shimDir: '/u/.local/bin', pathEnv: '/usr/bin:/u/.local/bin', answered: true, cli: 'svall',
     });
     expect(plan.agents.map((a) => a.kind)).toEqual(['claude']);
@@ -28,25 +28,32 @@ describe('setupPlan', () => {
   });
 
   it('says what blocks setup when only an agent\'s folder is here', () => {
-    const plan = setupPlan({ projects: '~/Developer', home: makeHome(), found: [], folders: [{ kind: 'codex', path: '/u/.codex' }], integrations: undefined, settingsPath: '/s', codexHooks: '/c',
+    const plan = setupPlan({ projects: '~/Developer', home: makeHome(), found: [], folders: [{ kind: 'codex', path: '/u/.codex' }], integrations: undefined, settingsPath: '/s', codexHooks: '/c', opencodePlugin: '/u/.config/opencode/plugins/svall.js',
       launchAgentsDir: '/l', fleets: [], shimDir: '/b', pathEnv: '', answered: true, cli: 'svall' });
-    expect(plan.blockers).toEqual([expect.stringContaining('needs the claude or codex command')]);
-    expect(plan.install?.map((i) => i.kind)).toEqual(['claude', 'codex']);
+    expect(plan.blockers).toEqual([expect.stringContaining('needs the claude, codex or opencode command')]);
+    expect(plan.install?.map((i) => i.kind)).toEqual(['claude', 'codex', 'opencode']);
   });
 
   it('says the CLI is what setup needs when no agent is installed, and how to install each', () => {
-    const plan = setupPlan({ projects: '~/Developer', home: makeHome(), found: [], folders: [], integrations: undefined, settingsPath: '/s', codexHooks: '/c',
+    const plan = setupPlan({ projects: '~/Developer', home: makeHome(), found: [], folders: [], integrations: undefined, settingsPath: '/s', codexHooks: '/c', opencodePlugin: '/u/.config/opencode/plugins/svall.js',
       launchAgentsDir: '/l', fleets: [], shimDir: '/u/.local/bin', pathEnv: '/usr/bin', answered: true, cli: 'svall' });
-    expect(plan.blockers).toEqual(["Svall runs Claude Code or Codex in its terminals, so it needs the claude or codex command. The desktop apps don't install it. Install one in Terminal, then check again."]);
+    expect(plan.blockers).toEqual(["Svall runs Claude Code, Codex or OpenCode in its terminals, so it needs the claude, codex or opencode command. The desktop apps don't install it. Install one in Terminal, then check again."]);
     expect(plan.install).toEqual([
       { kind: 'claude', command: 'curl -fsSL https://claude.ai/install.sh | bash', url: 'https://code.claude.com/docs/en/setup' },
       { kind: 'codex', command: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh', url: 'https://learn.chatgpt.com/docs/codex/cli' },
+      { kind: 'opencode', command: 'curl -fsSL https://opencode.ai/install | bash', url: 'https://opencode.ai/docs/' },
     ]);
     expect(plan.shimOnPath).toBe(false);
   });
 
+  it('lists the OpenCode plugin when OpenCode is found', () => {
+    const plan = setupPlan({ projects: '~/Developer', home: makeHome(), found: [{ kind: 'opencode', path: '/u/.opencode/bin/opencode' }], folders: [], integrations: undefined,
+      settingsPath: '/s', codexHooks: '/c', opencodePlugin: '/u/.config/opencode/plugins/svall.js', launchAgentsDir: '/l', fleets: [], shimDir: '/b', pathEnv: '', answered: true, cli: 'svall' });
+    expect(plan.writes).toContainEqual({ what: 'OpenCode plugin', path: '/u/.config/opencode/plugins/svall.js', agent: 'opencode' });
+  });
+
   it('says the login shell did not answer rather than that nothing is installed', () => {
-    const plan = setupPlan({ projects: '~/Developer', home: makeHome(), found: [], folders: [], integrations: undefined, settingsPath: '/s', codexHooks: '/c',
+    const plan = setupPlan({ projects: '~/Developer', home: makeHome(), found: [], folders: [], integrations: undefined, settingsPath: '/s', codexHooks: '/c', opencodePlugin: '/u/.config/opencode/plugins/svall.js',
       launchAgentsDir: '/l', fleets: [], shimDir: '/b', pathEnv: '', answered: false, cli: "'/A/node' '/A/svall.mjs'" });
     expect(plan.blockers).toEqual([expect.stringContaining('login shell did not answer')]);
     expect(plan.blockers[0]).toContain("run '/A/node' '/A/svall.mjs' setup in a terminal");
@@ -55,7 +62,7 @@ describe('setupPlan', () => {
 
   it('lists a turned-off agent\'s file with the choice saved, for the screen to leave out while it stays off', () => {
     const plan = setupPlan({ projects: '~/Developer', home: makeHome(), found: [{ kind: 'claude', path: '/c' }, { kind: 'codex', path: '/x' }], folders: [], integrations: ['codex'],
-      settingsPath: '/u/.claude/settings.json', codexHooks: '/u/.codex/hooks.json', launchAgentsDir: '/l', fleets: [], shimDir: '/b', pathEnv: '', answered: true, cli: 'svall' });
+      settingsPath: '/u/.claude/settings.json', codexHooks: '/u/.codex/hooks.json', opencodePlugin: '/u/.config/opencode/plugins/svall.js', launchAgentsDir: '/l', fleets: [], shimDir: '/b', pathEnv: '', answered: true, cli: 'svall' });
     expect(plan.integrations).toEqual(['codex']);
     expect(plan.writes.filter((w) => w.agent)).toEqual([
       { what: 'Claude Code hooks and status line', path: '/u/.claude/settings.json', agent: 'claude' },
@@ -65,7 +72,7 @@ describe('setupPlan', () => {
 
   it('lists an agent whose folder is here without its CLI, with its hooks, and the plists of the other fleets', () => {
     const plan = setupPlan({ projects: '~/Developer', home: makeHome(), found: [{ kind: 'claude', path: '/c' }], folders: [{ kind: 'claude', path: '/u/.claude' }, { kind: 'codex', path: '/u/.codex' }], integrations: undefined,
-      settingsPath: '/u/.claude/settings.json', codexHooks: '/u/.codex/hooks.json', launchAgentsDir: '/l', fleets: ['/u/.svall-work'],
+      settingsPath: '/u/.claude/settings.json', codexHooks: '/u/.codex/hooks.json', opencodePlugin: '/u/.config/opencode/plugins/svall.js', launchAgentsDir: '/l', fleets: ['/u/.svall-work'],
       shimDir: '/b', pathEnv: '', answered: true, cli: 'svall' });
     expect(plan.agents).toEqual([{ kind: 'claude', path: '/c' }, { kind: 'codex', path: '/u/.codex', folderOnly: true }]);
     expect(plan.writes.map((w) => w.path)).toContain('/u/.codex/hooks.json');
@@ -106,8 +113,8 @@ describe('projectsFolder', () => {
 
 describe('integrationsFor', () => {
   it('keeps every agent not found on, so only one found and left out stays off', () => {
-    expect(integrationsFor(['claude'], ['claude'])).toEqual(['claude', 'codex']);
-    expect(integrationsFor(['claude'], ['claude', 'codex'])).toEqual(['claude']);
+    expect(integrationsFor(['claude'], ['claude'])).toEqual(['claude', 'codex', 'opencode']);
+    expect(integrationsFor(['claude'], ['claude', 'codex'])).toEqual(['claude', 'opencode']);
   });
   it('keeps an agent turned off before off while no setup shows it', () => {
     expect(integrationsFor(['claude'], ['claude'], ['claude'])).toEqual(['claude']);
@@ -125,14 +132,16 @@ describe('requireInstalledApp', () => {
 });
 
 describe('staleFleets', () => {
-  it('names the loaded fleets whose daemon runs another version or wrote none, and leaves the rest', () => {
-    const a = makeHome(), b = makeHome(), c = makeHome(), d = makeHome();
+  it('names the running fleets whose daemon wrote another version, and leaves one still starting and the rest', () => {
+    const a = makeHome(), b = makeHome(), c = makeHome(), d = makeHome(), e = makeHome(), f = makeHome();
     fs.writeFileSync(path.join(a, 'version'), '0.1.0 (10)\n');
-    fs.writeFileSync(path.join(b, 'version'), '0.1.1 (12)\n');
-    fs.writeFileSync(path.join(c, 'version'), '0.1.0 (10)\n');
-    const loaded = (label: string) => !label.endsWith(path.basename(c));
+    fs.writeFileSync(path.join(b, 'version'), '0.1.1 (12)\n7\n');
+    fs.writeFileSync(path.join(c, 'version'), '0.1.0 (10)\n7\n');
+    fs.writeFileSync(path.join(e, 'version'), '0.1.0 (10)\n6\n');
+    fs.writeFileSync(path.join(f, 'version'), '0.1.0 (10)\n7\n');
+    const pidOf = (label: string) => (label.endsWith(path.basename(c)) ? undefined : 7);
     const label = (home: string) => `L.${path.basename(home)}`;
-    expect(staleFleets([a, b, c, d], '0.1.1 (12)', loaded, label)).toEqual([label(a), label(d)]);
+    expect(staleFleets([a, b, c, d, e, f], '0.1.1 (12)', pidOf, label)).toEqual([label(a), label(f)]);
   });
 });
 

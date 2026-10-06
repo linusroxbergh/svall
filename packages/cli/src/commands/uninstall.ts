@@ -3,6 +3,7 @@ import path from 'node:path';
 import { Command } from 'commander';
 import { codexPaths } from '@svall/svalld/codex/install';
 import { unitDirOf } from '@svall/svalld/linux/setup';
+import { opencodePaths } from '@svall/svalld/opencode/install';
 import { realDeps } from '@svall/svalld/mobile';
 import { LOGIN_SHELL_TIMEOUT_MS, takeLoginEnv } from '@svall/svalld/login-env';
 import { userPaths } from '@svall/svalld/paths';
@@ -40,7 +41,7 @@ export function uninstallCommand(json: () => boolean, run: typeof runUninstall =
     .description('remove what svall setup added and stop every fleet; asks before deleting the fleets and the app')
     .option('--purge', 'also delete every fleet and the app, without asking')
     .option('--from-app', 'run by the app itself: leave it open and in place')
-    .option('--login-shell', 'take PATH, CLAUDE_CONFIG_DIR and CODEX_HOME from the login shell, as an app opened from Finder has none')
+    .option('--login-shell', 'take PATH and where the agents keep their files from the login shell, as an app opened from Finder has none')
     .option('--no-launchctl', 'leave the daemons running, only delete the files that start them')
     .option('--force', 'uninstall even where a fleet this machine owns, gateways or holds a handover of would be stranded; svall host remove checks all of this first')
     .option('--force-fleet <id...>', 'uninstall though this machine is the gateway of these fleets; svall host remove passes the ones it checked')
@@ -57,6 +58,7 @@ export function uninstallCommand(json: () => boolean, run: typeof runUninstall =
             homes: fleetHomes(os.homedir()),
             settingsPaths: userPaths().claudeSettingsFiles,
             codex: codexPaths(),
+            opencode: opencodePaths(),
             launchAgentsDir: userPaths().launchAgents,
             shimDir: userPaths().shimDir,
             launchctl: o.launchctl,

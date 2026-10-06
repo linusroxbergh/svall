@@ -1,24 +1,29 @@
 /* the map's sea, islands, character cards, mission control and lighthouse, shared by the app and the landing page */
 /* only tokens and an island's own children take pointer events, so the island's three-cell padding stays sea */
 .map-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; }
-/* the world's card and label scales change every frame of a zoom; not inherited, they restyle only the cards
-   and labels that take them. typed, not '*': WebKit lags an arrange while the cards hold an untyped one */
+/* the world's map, card and label scales change every frame of a zoom; not inherited, they restyle only the islands,
+   cards and labels that take them. typed, not '*': WebKit lags an arrange while the cards hold an untyped one */
+@property --ms { syntax: '<number>'; inherits: false; initial-value: 1; }
+/* a drag or settle offset in world px; a settle eases the offset itself, so a zoom meanwhile does not restart it */
+@property --ox { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --oy { syntax: '<length>'; inherits: false; initial-value: 0px; }
 @property --k { syntax: '<number>'; inherits: false; initial-value: 1; }
 @property --lk { syntax: '<number>'; inherits: false; initial-value: 1; }
+.map-world .island, .map-world .tok { --ms: inherit; translate: calc(var(--ox) * var(--ms)) calc(var(--oy) * var(--ms)); }
 .map-world .tok { --k: inherit; }
 .map-world .island, .map-world .ilabel, .map-world .inew[data-empty="true"] { --lk: inherit; }
 .map-world .island { pointer-events: none; }
 .map-world .tok, .map-world .island > * { pointer-events: auto; }
 
 /* islands */
-.map-world .island{position:absolute}
+.map-world .island{position:absolute;transform-origin:0 0;transform:scale(var(--ms))}
 .map-world .island svg{display:block;overflow:visible;pointer-events:none}
 .map-world .island .land{cursor:grab}
 .island .grass{filter:brightness(var(--map-tone, 1)) drop-shadow(0 1px 1px color-mix(in srgb, var(--ink-land) 22%, transparent))}
 .island .land-texture{opacity:.22}
 .map-world .island[data-dragging="true"]{opacity:.7}
 .map-world .island[data-dragging="true"] .land{cursor:grabbing}
-.map-world .island[data-settling="true"],.map-world .tok[data-settling="true"]{transition:translate var(--dur-fast) var(--ease-out)}
+.map-world .island[data-settling="true"],.map-world .tok[data-settling="true"]{transition:--ox var(--dur-fast) var(--ease-out),--oy var(--dur-fast) var(--ease-out)}
 .island-landing{position:absolute;box-sizing:border-box;pointer-events:none;z-index:1;
   border:1px dashed color-mix(in srgb,var(--sand) 55%,transparent);border-radius:42%;
   background:color-mix(in srgb,var(--sand) 5%,transparent)}
@@ -64,6 +69,8 @@
   transform:translate(-50%,-48%);filter:brightness(var(--map-tone, 1))}
 /* cards keep their screen size whatever the map zoom, so they rasterise crisp */
 .map-world .tok{transform-origin:0 0;transform:scale(var(--k,1)) translate(-50%,-48%)}
+/* on the card's paper a status prints in its ink; the chrome around the map keeps the lit tokens */
+.tok{--working:var(--working-ink);--blocked:var(--blocked-ink);--done:var(--done-ink);--ink-on-blocked:var(--cream)}
 .tok:hover,.tok.sel{z-index:30}
 /* the card sits pressed into the ground: a soft darker patch behind it, left in place when the card lifts */
 .tok::before{content:'';position:absolute;z-index:-1;pointer-events:none;
@@ -80,7 +87,7 @@
   transition:transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease)}
 .tok .card::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:8;
   border-radius:inherit;
-  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--cream) 55%, transparent),
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--cream) 46%, transparent),
              inset 0 calc(var(--tok)*.2) calc(var(--tok)*.24) calc(var(--tok)*-.12) var(--shade-1)}
 .tok:hover .card{transform:translateY(-6px);
   box-shadow:0 2px 0 color-mix(in srgb, var(--card-tint) 12%, transparent),
@@ -93,11 +100,7 @@
              0 0 0 3px var(--cream), 0 0 0 6px var(--sel), 0 0 28px 8px color-mix(in srgb, var(--sel) 38%, transparent)}
 
 .tok .edge{flex:none;height:calc(var(--tok)*.09);background:var(--card-band);z-index:7}
-/* the band brightens as a brightened copy fades in over it, so only opacity animates */
-.tok.s-working .edge{position:relative;background:var(--working)}
-.tok.s-working .edge::after{content:'';position:absolute;inset:0;background:var(--working);filter:brightness(1.28);
-  opacity:0;animation:edgepulse var(--pulse-slow) ease-in-out infinite}
-@keyframes edgepulse{0%,100%{opacity:0}55%{opacity:1}}
+.tok.s-working .edge{background:var(--working)}
 .tok.s-blocked .edge{background:var(--blocked)}
 .tok.s-done    .edge{background:var(--done)}
 .tok.s-shell   .edge{background:var(--shell-dim)}
@@ -149,16 +152,7 @@
 .tok .gem.blocked{background:var(--blocked);color:var(--ink-on-blocked)}
 .tok .gem.done{background:var(--done);color:var(--ink-on-done)}
 .tok .gem.working{width:calc(var(--tok)*.28);height:calc(var(--tok)*.28);
-  top:calc(var(--tok)*-.04);background:var(--working);box-shadow:none}
-/* the ring is a disc that grows and fades behind the cream rim; it paints over the gem's own shadow, so the rim
-   is drawn above it */
-.tok .gem.working::before{content:'';position:absolute;inset:0;z-index:-1;border-radius:50%;
-  background:color-mix(in srgb, var(--working) 75%, transparent);
-  animation:gempulse var(--pulse) ease-in-out infinite}
-.tok .gem.working::after{content:'';position:absolute;inset:0;border-radius:50%;
-  box-shadow:0 0 0 calc(var(--tok)*.055) var(--cream)}
-/* 2.571: the gem's .14 radius grown by .22 */
-@keyframes gempulse{0%,100%{transform:scale(1);opacity:1}60%{transform:scale(2.571);opacity:0}}
+  top:calc(var(--tok)*-.04);background:var(--working);box-shadow:0 0 0 calc(var(--tok)*.055) var(--cream)}
 
 .tok .nm{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;text-align:center;
   padding:0 calc(var(--tok)*.15) calc(var(--tok)*.04);
@@ -179,9 +173,18 @@
 .tok .foot .pip[data-status=blocked]{background:var(--blocked)}
 .tok .foot .pip[data-status=done]{background:var(--done)}
 .tok .foot .pip[data-status=idle]{background:var(--idle)}
+/* a working agent's three dots rise in turn, as a chat app shows someone typing. They animate top and colour, not
+   transform or opacity: a compositor animation lifts the whole card into a layer of its own, which WebKit draws blurred */
+.tok .foot .dots{display:inline-flex;align-items:center;gap:calc(var(--tok)*.07);height:calc(var(--tok)*.24)}
+.tok .foot .dots i{position:relative;width:calc(var(--tok)*.11);height:calc(var(--tok)*.11);border-radius:50%;background:var(--working);
+  animation:typing var(--pulse) ease-in-out infinite}
+.tok .foot .dots i:nth-child(2){animation-delay:calc(var(--pulse) / 8)}
+.tok .foot .dots i:nth-child(3){animation-delay:calc(var(--pulse) / 4)}
+@keyframes typing{0%,60%,100%{top:0;background-color:color-mix(in srgb, var(--working) 35%, transparent)}
+  30%{top:calc(var(--tok)*-.033);background-color:var(--working)}}
 .tok .foot .sw{font-size:calc(var(--tok)*.225);font-weight:var(--w-bold);letter-spacing:var(--track-caps);
   text-transform:uppercase;padding:calc(var(--tok)*.02) calc(var(--tok)*.13);
-  border-radius:var(--r-xs);color:var(--ink-land-deep)}
+  border-radius:var(--r-xs)}
 .tok button.foot{border:0;border-radius:0;font:inherit;color:inherit;text-align:inherit;cursor:pointer;
   transition:background var(--dur) var(--ease)}
 .tok button.foot:hover{background:linear-gradient(color-mix(in srgb, var(--card-tint) 6%, transparent),color-mix(in srgb, var(--card-tint) 10%, transparent))}

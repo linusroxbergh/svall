@@ -28,13 +28,15 @@ export const ContextItem = z.object({
 });
 export type ContextItem = z.infer<typeof ContextItem>;
 
-// a revive types the session id into a shell, so only the id shape Claude Code and Codex both use is trusted
-export const isSessionId = (v: string): boolean => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+// a revive types the session id into a shell, so only the id shapes the agents make are trusted: Claude Code's and
+// Codex's UUIDs, OpenCode's ses_ ids
+export const isSessionId = (v: string): boolean =>
+  /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|ses_[0-9a-f]{12}[0-9A-Za-z]{14})$/i.test(v);
 
-export const AgentKind = z.enum(['claude', 'codex']);
+export const AgentKind = z.enum(['claude', 'codex', 'opencode']);
 export type AgentKind = z.infer<typeof AgentKind>;
 
-export const AGENT_LABEL: Record<AgentKind, string> = { claude: 'Claude Code', codex: 'Codex' };
+export const AGENT_LABEL: Record<AgentKind, string> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode' };
 
 export const Agent = z.object({
   kind: AgentKind,
@@ -49,7 +51,7 @@ export const Agent = z.object({
   prompt: z.string().optional(),
   // names the question a blocked agent is on, so an answer meant for an earlier one is refused
   promptId: z.string().optional(),
-  // the turn ended with background agents still running; the agent works on until they report back
+  // the turn ended with background agents or shells still running; the agent works on until they report back
   background: z.literal(true).optional(),
   // Claude Code subagents with a permission request open; the notification that blocks never says whose it is
   asking: z.array(z.string()).optional(),
@@ -132,7 +134,8 @@ export const TerminalSlot = z.object({
   tmux: z.object({ windowId: z.string(), paneId: z.string() }).optional(),
   agent: Agent.optional(),
   unread: z.boolean(),
-  revive: z.object({ command: z.string() }).optional(),
+  // interrupted: the agent was ended mid-turn or on a question, so it resumes as the fleet starts and is told what was lost
+  revive: z.object({ command: z.string(), interrupted: z.literal(true).optional() }).optional(),
   restedBy: RestedBy,
   resumeError: ResumeError,
 });
@@ -151,6 +154,8 @@ export const Character = TerminalSlot.extend({
   instructions: z.string(),
   // a file's name, without .md, in the fleet's agent-profiles folder; its text rides in the brief
   agentProfile: z.string().optional(),
+  // made with a task to run, so its brief says to work in a worktree; one a person opens is left where it is
+  worktree: z.literal(true).optional(),
   // the tmux pane's own path when last read; cwd moves with it only when it changes, so a restart keeps where the hooks put it
   panePath: z.string().optional(),
   repo: Repo.optional(),
@@ -167,7 +172,7 @@ export const Character = TerminalSlot.extend({
 export type Character = z.infer<typeof Character>;
 
 /** The state.json schema this release reads and writes, which both machines of a handover have to share. */
-export const STATE_SCHEMA_VERSION = 8;
+export const STATE_SCHEMA_VERSION = 9;
 
 export const FleetState = z.object({
   version: z.literal(STATE_SCHEMA_VERSION),
@@ -183,6 +188,8 @@ export const FleetState = z.object({
   scribeAsk: z.literal(true).optional(),
   // the last automatic or swept pass that failed, cleared by the next one that succeeds
   scribeError: z.object({ message: z.string(), at: z.number() }).optional(),
+  // a character made with a task is not told to work in a worktree
+  worktreesOff: z.literal(true).optional(),
   // an agent idle this many hours is ended and its character left dormant, to be resumed on revive;
   // 0 keeps every agent running, and absent is DORMANT_AFTER_HOURS
   dormantAfterHours: z.number().int().min(0).optional(),

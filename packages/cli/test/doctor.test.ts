@@ -13,7 +13,7 @@ import type { AgentKind } from '@svall/protocol';
 import { DEFAULT_PREFIX } from '../../../scripts/install-release.mjs';
 import { grouped } from '../src/checks-view.js';
 import type { HookTrust } from '../src/codex-trust.js';
-import { codexCheck, doctor, doctorCommand, reportLines, type DoctorDeps } from '../src/commands/doctor.js';
+import { codexCheck, doctor, doctorCommand, opencodeCheck, reportLines, type DoctorDeps } from '../src/commands/doctor.js';
 import { preflight, realPreflightDeps, requireReady } from '../src/commands/preflight.js';
 
 const priv = { name: 'private', home: '/u/.svall', managed: true };
@@ -87,6 +87,7 @@ function fake(o: {
     unitDir: '/u/.config/systemd/user',
     daemonEnv: o.daemonEnv ?? {},
     codex: CODEX,
+    opencode: OPENCODE,
     exists: (p) => p in files,
     node: o.node ?? 'v24.13.0',
     pathEnv: o.pathEnv ?? '/opt/homebrew/bin:/u/.local/bin:/usr/bin',
@@ -107,6 +108,8 @@ function fake(o: {
 
 const CODEX = { dir: '/u/.codex', config: '/u/.codex/config.toml', hooks: '/u/.codex/hooks.json' };
 const RSYNC = '/u/svall/vendor/rsync/3.4.4-arm64/rsync';
+const OPENCODE = { dir: '/u/.config/opencode', plugin: '/u/.config/opencode/plugins/svall.js', data: '/u/.local/share/opencode' };
+const PLUGIN_SOURCE = path.resolve(import.meta.dirname, '../../svalld/hooks/opencode-plugin.js');
 const codexHooks = JSON.stringify(mergeCodexHooks({}, codexHookCommand(SCRIPT), SCRIPT));
 
 const byName = (r: Awaited<ReturnType<typeof doctor>>) => Object.fromEntries(r.checks.map((c) => [c.name, c]));
@@ -115,7 +118,7 @@ describe('doctor', () => {
   it('reports a healthy fleet and the last 20 log lines', async () => {
     const r = await doctor(priv, fake().deps);
     const c = byName(r);
-    expect(r.checks.every((x) => x.status === 'ok' || x === c.codex || x === c['codex hooks'])).toBe(true);
+    expect(r.checks.every((x) => x.status === 'ok' || x === c.codex || x === c.opencode || x === c['codex hooks'] || x === c['opencode plugin'])).toBe(true);
     expect(c.codex).toMatchObject({ status: 'skip', detail: 'not installed' });
     expect(c['codex hooks']).toMatchObject({ status: 'skip', detail: 'not installed' });
     expect(c.tmux.detail).toBe('tmux 3.5a');
@@ -157,7 +160,7 @@ describe('doctor', () => {
     const r = await doctor(priv, f.deps);
     const c = byName(r);
     expect(c.tmux).toMatchObject({ status: 'fail', detail: expect.stringMatching(/brew install tmux/) });
-    expect(c.agents).toMatchObject({ status: 'fail', detail: expect.stringContaining('neither claude nor codex is on PATH') });
+    expect(c.agents).toMatchObject({ status: 'fail', detail: expect.stringContaining('no agent CLI (claude, codex or opencode) is on PATH') });
     expect(c.gh).toMatchObject({ status: 'warn', detail: expect.stringMatching(/gh auth login/) });
     expect(c.svalld).toMatchObject({ status: 'warn', detail: expect.stringMatching(/not running .*: it starts when Svall opens on this fleet$/) });
     expect(c['hook receiver']).toMatchObject({ status: 'skip', detail: 'svalld is not running' });
@@ -172,6 +175,18 @@ describe('doctor', () => {
     expect(c.node).toMatchObject({ status: 'fail', detail: expect.stringMatching(/node 24/) });
     expect(c.tmux).toMatchObject({ status: 'warn', detail: expect.stringMatching(/3\.5/) });
     expect(c.svalld).toMatchObject({ status: 'fail', detail: expect.stringMatching(/47800.*ECONNREFUSED/) });
+  });
+
+  it('names the process holding a port svalld does not answer on, or one config.json sets while svalld is down', async () => {
+    const holder = 'p4242\ncnc\nf3\n';
+    const stale = byName(await doctor(priv, fake({ up: false, commands: { 'lsof -nP -iTCP:47800 -sTCP:LISTEN -Fpc': holder } }).deps));
+    expect(stale.svalld).toMatchObject({ status: 'fail', detail: expect.stringMatching(/^port 47800 does not answer: .*; nc \(pid 4242\) holds it$/) });
+    const files = { '/u/.svall/port': undefined, '/u/.svall/config.json': '{"port":47801}' };
+    const set = fake({ commands: { 'lsof -nP -iTCP@127.0.0.1:47801 -sTCP:LISTEN -Fpc': holder }, files });
+    expect(byName(await doctor(priv, set.deps)).svalld).toEqual({ name: 'svalld', status: 'fail', detail: 'not running: nc (pid 4242) holds port 47801, which /u/.svall/config.json sets; stop it, or take port out of config.json' });
+    // a listener on another address, as on *:47801, leaves svalld's bind on 127.0.0.1 free
+    const elsewhere = fake({ commands: { 'lsof -nP -iTCP:47801 -sTCP:LISTEN -Fpc': holder }, files });
+    expect(byName(await doctor(priv, elsewhere.deps)).svalld.status).toBe('warn');
   });
 
   it('reports a missing hook receiver even when the API is answering, and how to restart that fleet', async () => {
@@ -245,7 +260,7 @@ describe('doctor', () => {
     const running = (pathEnv: string) => runs([TSX, '/old/R&amp;D/svall/packages/svalld/src/bin.ts'], pathEnv);
     const there = { '/old/R&D/svall/node_modules/.bin/tsx': '', '/old/R&D/svall/packages/svalld/src/bin.ts': '', '/opt/homebrew/opt/node/bin/node': '' };
     expect(byName(await doctor(priv, fake({ files: { [PLIST]: running('/opt/homebrew/opt/node/bin:/usr/bin'), ...there } }).deps))['daemon path'])
-      .toMatchObject({ status: 'ok', detail: 'its program is there, and it finds claude and codex as this shell does' });
+      .toMatchObject({ status: 'ok', detail: 'its program is there, and it finds the agent CLIs as this shell does' });
     const gone = byName(await doctor(priv, fake({ files: { [PLIST]: running('/opt/homebrew/opt/node/bin:/usr/bin') } }).deps));
     expect(gone['daemon path']).toMatchObject({ status: 'fail', detail: '/old/R&D/svall/node_modules/.bin/tsx is gone, so launchd cannot start svalld: svall setup' });
     const SVALLD = '/u/.local/share/svall/current/bin/svalld';
@@ -450,7 +465,7 @@ describe('doctor on Linux', () => {
 
   it('warns rather than fails when no agent CLI is installed, so setup runs on a fresh box', async () => {
     const f = linux({ 'claude --version': undefined as never });
-    expect(byName(await doctor(priv, f.deps)).agents).toMatchObject({ status: 'warn', detail: expect.stringMatching(/neither claude nor codex/) });
+    expect(byName(await doctor(priv, f.deps)).agents).toMatchObject({ status: 'warn', detail: expect.stringMatching(/no agent CLI \(claude, codex or opencode\)/) });
     expect(requireReady(await preflight(f.deps))).toEqual(expect.arrayContaining([expect.stringMatching(/^! agents/)]));
   });
 });
@@ -485,9 +500,9 @@ describe('preflight', () => {
   it('checks what setup needs without asking the daemon, launchd or gh', async () => {
     const f = fake({ up: false, files: { '/u/.claude/settings.json': undefined as never } });
     const checks = await preflight(f.deps);
-    expect(checks.map((c) => c.name)).toEqual(['tmux', 'node', 'claude', 'codex', 'path']);
+    expect(checks.map((c) => c.name)).toEqual(['tmux', 'node', 'claude', 'codex', 'opencode', 'path']);
     expect(checks.every((c) => c.status === 'ok' || c.status === 'skip')).toBe(true);
-    expect(f.calls).toEqual(['tmux -V', 'claude --version', 'codex --version', 'claude auth status --json']);
+    expect(f.calls).toEqual(['tmux -V', 'claude --version', 'codex --version', 'opencode --version', 'claude auth status --json']);
   });
 
   it('warns when the shim directory is not on PATH', async () => {
@@ -525,7 +540,7 @@ describe('agent checks', () => {
 
   it('fails when neither is installed', async () => {
     const got = await agents({ commands: { 'claude --version': undefined as never } });
-    expect(got).toEqual([{ name: 'agents', status: 'fail', detail: expect.stringContaining('neither claude nor codex is on PATH') }]);
+    expect(got).toEqual([{ name: 'agents', status: 'fail', detail: expect.stringContaining('no agent CLI (claude, codex or opencode) is on PATH') }]);
     expect(got[0]!.detail).toContain('run curl -fsSL https://claude.ai/install.sh | bash (Claude Code) or curl -fsSL https://chatgpt.com/codex/install.sh | sh (Codex)');
     expect(() => requireReady(got)).toThrow(/nothing was changed/);
   });
@@ -533,7 +548,7 @@ describe('agent checks', () => {
   it('asks each CLI for its version once', async () => {
     const f = fake({ commands: codexOk });
     await preflight(f.deps);
-    expect(f.calls.filter((c) => c.endsWith('--version'))).toEqual(['claude --version', 'codex --version']);
+    expect(f.calls.filter((c) => c.endsWith('--version'))).toEqual(['claude --version', 'codex --version', 'opencode --version']);
   });
 
   it('warns about an old codex and a missing login, never failing', async () => {
@@ -562,6 +577,21 @@ describe('agent checks', () => {
   it('warns when the configured main agent is gone', async () => {
     const got = await agents({ commands: { 'claude --version': undefined as never, ...codexOk }, mainAgent: 'claude' });
     expect(got.find((c) => c.name === 'claude')).toEqual({ name: 'claude', status: 'warn', detail: 'not installed, but it is the main agent: svall agent codex' });
+  });
+});
+
+describe('opencodeCheck', () => {
+  const d = (o: { found?: AgentKind[]; files?: Record<string, string>; integrations?: AgentKind[] }) => ({
+    opencode: OPENCODE, found: o.found ?? ['opencode'], integrations: o.integrations,
+    exists: (p: string) => p in (o.files ?? {}) || Object.keys(o.files ?? {}).some((f) => f.startsWith(`${p}/`)),
+    read: (p: string) => o.files?.[p],
+  });
+  it('skips an OpenCode not installed or turned off, fails without the plugin, warns on an old one', () => {
+    expect(opencodeCheck(d({ found: [] })).status).toBe('skip');
+    expect(opencodeCheck(d({ integrations: ['claude'] })).status).toBe('skip');
+    expect(opencodeCheck(d({})).status).toBe('fail');
+    expect(opencodeCheck(d({ files: { [OPENCODE.plugin]: '// old' } })).status).toBe('warn');
+    expect(opencodeCheck(d({ files: { [OPENCODE.plugin]: fs.readFileSync(PLUGIN_SOURCE, 'utf8') } })).status).toBe('ok');
   });
 });
 

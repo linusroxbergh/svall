@@ -23,6 +23,7 @@ import { SettingsCard } from './SettingsCard.js';
 import { boardViewed } from './selectors.js';
 import { Collapse, SideCard } from './SideCard.js';
 import { SideGrip } from './SideGrip.js';
+import { Starting } from './Starting.js';
 import { Sidebar } from './Sidebar.js';
 import { UtilityDock } from './UtilityDock.js';
 import { theme } from './theme.js';
@@ -58,7 +59,7 @@ export function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  if (!loaded && waiting && status !== 'outdated') return <div className="connect" data-testid="connect-screen">Connecting to svalld…</div>;
+  if (!loaded && waiting && status !== 'outdated') return <div className="connect" data-testid="connect-screen"><Starting /></div>;
   if (!loaded) {
     const log = shell && `${shell.home}/svalld.log`;
     return (

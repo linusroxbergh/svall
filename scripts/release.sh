@@ -62,7 +62,7 @@ fi
 pnpm install --frozen-lockfile
 # the controller the app carries is named the tag its companions are published under
 SVALL_RELEASE_NAME="v$VERSION" pnpm app:build
-APP=apps/desktop/mac/build/Svall.app
+APP=apps/desktop/mac/build.noindex/Svall.app
 scripts/sign.sh "$APP" "$ID"
 # the app, hardened and entitled as it ships, sets itself up, refreshes and uninstalls in a throwaway home
 scripts/app-smoke.sh "$APP"

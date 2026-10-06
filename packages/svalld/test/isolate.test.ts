@@ -4,9 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
-import { AgentKind } from '@svall/protocol';
 import { onPath } from '../src/agents.js';
-import { agentAdapters, probeAgent, realProbeDeps } from '../src/handover/sessions/registry.js';
+import { HANDOVER_KINDS, agentAdapters, probeAgent, realProbeDeps } from '../src/handover/sessions/registry.js';
 import { claudePaths } from '../src/paths.js';
 
 describe('test isolation', () => {
@@ -21,7 +20,7 @@ describe('test isolation', () => {
   });
 
   it('gives claude and codex doubles of a supported release, logged in, that hold no session to resume', async () => {
-    const probes = await Promise.all(AgentKind.options.map((kind) => probeAgent(kind, realProbeDeps())));
+    const probes = await Promise.all(HANDOVER_KINDS.map((kind) => probeAgent(kind, realProbeDeps())));
     expect(agentAdapters(probes)).toEqual([
       expect.objectContaining({ kind: 'claude', version: '2.1.283', adapter: 1, loggedIn: true }),
       expect.objectContaining({ kind: 'codex', version: '0.156.1', adapter: 1, loggedIn: true }),

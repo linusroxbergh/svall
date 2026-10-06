@@ -8,6 +8,8 @@ import type { Tmux } from '../tmux/tmux.js';
 
 export type WaitResult = AgentStatus | 'timeout' | 'gone';
 
+const STEP_MS = 1000;
+
 type Deps = { fleet: Fleet; store: Store; tmux: Tmux; reviving: ReadonlyMap<string, unknown> };
 
 /** What is typed into a character's terminals, the answers to its agent's questions, and waits on that agent. */
@@ -20,7 +22,7 @@ export class Prompts {
   async run(id: string, text: string, enter: boolean, term?: 2): Promise<void> {
     const { fleet } = this.deps;
     const c = fleet.char(id);
-    // a dormant claude or codex wakes with the text as its launch prompt; typed while it boots, a prompt can lose its Enter
+    // a dormant agent wakes with the text as its launch prompt; typed while it boots, a prompt can lose its Enter
     if (!term && enter && !c.tmux && !this.deps.reviving.has(id) && isAgentCommand(c.revive?.command ?? '')) {
       await fleet.reviveCharacter(id, text);
       return;
@@ -52,7 +54,15 @@ export class Prompts {
     // an answer to a newer question may have been typed meanwhile; its hold stays
     const release = () => { if (this.answering.get(id) === asked) this.answering.delete(id); };
     try { await this.deps.tmux.sendBytes(c.tmux.paneId, Buffer.from(answer === 'approve' ? '\r' : '\x1b')); }
-    finally { release(); }
+    catch (e) { release(); throw e; }
+    // OpenCode's plugin reports each answer, and a key may only open a further step, as Esc on a subagent's question
+    // does; the hold stays until the plugin moves the card on. Enter may only move a question on to its next part,
+    // which takes an Enter of its own once the plugin has had time to report an answer
+    if (c.agent.kind === 'opencode') {
+      if (answer === 'approve') setTimeout(release, STEP_MS).unref();
+      return;
+    }
+    release();
     this.settleAnswer(id, asked, answer);
   }
 
@@ -93,7 +103,7 @@ export class Prompts {
   private settleAnswer(id: string, asked: string | undefined, answer: 'approve' | 'deny'): void {
     this.deps.store.update((d) => {
       const a = d.characters[id]?.agent;
-      if (a?.status !== 'blocked' || a.promptId !== asked) return;
+      if (a?.status !== 'blocked' || a.promptId !== asked || a.kind === 'opencode') return;
       a.status = answer === 'approve' || a.background ? 'working' : 'idle';
       delete a.prompt;
       delete a.promptId;

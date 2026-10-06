@@ -1,11 +1,11 @@
-// Collects the licences of everything Svall.app carries into apps/desktop/mac/build/licenses.
+// Collects the licences of everything Svall.app carries into apps/desktop/mac/build.noindex/licenses.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const out = path.join(root, 'apps/desktop/mac/build/licenses');
+const out = path.join(root, 'apps/desktop/mac/build.noindex/licenses');
 const one = (dir, pattern) => {
   const hit = fs.existsSync(dir) ? fs.readdirSync(dir).find((f) => pattern.test(f)) : undefined;
   if (!hit) throw new Error(`no licence matching ${pattern} in ${dir}: run pnpm app:build first`);

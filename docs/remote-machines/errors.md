@@ -301,7 +301,8 @@ and adds what only this Mac can check. A check that fails makes the command exit
 | `node` | both | Node 24 or newer runs `svall`. |
 | `claude` | both | Claude Code's version and login. |
 | `codex` | both | Codex's version and login. |
-| `agents` | both | Neither agent CLI is installed (a failure on a Mac, a warning on Linux). |
+| `opencode` | both | OpenCode's version and login. A handover does not carry OpenCode sessions. |
+| `agents` | both | No agent CLI is installed (a failure on a Mac, a warning on Linux). |
 | `path` | both | `~/.local/bin` is on your PATH. |
 | `shims` | both | The `svall` in `~/.local/bin` runs this build. |
 | `gh` | both | The GitHub CLI is logged in, for pull request links. |
@@ -310,6 +311,7 @@ and adds what only this Mac can check. A check that fails makes the command exit
 | `hook receiver` | both | The daemon's hook socket answers. |
 | `hooks` | both | Claude Code's settings hold Svall's hooks. |
 | `codex hooks` | both | Codex's hooks are installed, current and trusted. |
+| `opencode plugin` | both | Svall's OpenCode plugin is installed and current. |
 | `systemd` | Linux | The fleet's `svall-svalld@<fleet>` unit runs. |
 | `gateway` | Linux | The `svall-gateway` unit runs, and names the cause when a home too long for its socket keeps it restarting. |
 | `linger` | Linux, host doctor | The account's services keep running after you log out. |
@@ -317,7 +319,7 @@ and adds what only this Mac can check. A check that fails makes the command exit
 | `launchd plist` | Mac | The fleet's launchd plist runs this build. |
 | `daemon node` | Mac | The Node the launchd agent runs is still there. |
 | `daemon path` | Mac | The launchd agent's program is there and its PATH finds the agents. |
-| `daemon env` | both | The fleet's launchd agent, or on Linux its systemd unit, has the `CLAUDE_CONFIG_DIR` and `CODEX_HOME` your login shell sets. |
+| `daemon env` | both | The fleet's launchd agent, or on Linux its systemd unit, has the `CLAUDE_CONFIG_DIR` and `CODEX_HOME` your login shell sets, and on a Mac its `XDG_CONFIG_HOME` and `XDG_DATA_HOME`. |
 | `rsync` | Mac | The rsync the release bundles, which a handover needs. |
 | `doctor` | host doctor | The companion's doctor answered. |
 | `release` | host doctor | The machine runs this Mac's release and protocol. |

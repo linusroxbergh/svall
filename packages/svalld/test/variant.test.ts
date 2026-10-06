@@ -33,7 +33,7 @@ describe('variant names', () => {
 
   it("hands a checkout's Svall Dev.app helper to Svall Dev only", async () => {
     vi.stubEnv('SVALL_VARIANT', 'dev');
-    expect((await import('../src/runtime.js')).hookHelperSource()).toMatch(/\/build\/Svall Dev\.app\/Contents\/Helpers\/svall-hook$/);
+    expect((await import('../src/runtime.js')).hookHelperSource()).toMatch(/\/build\.noindex\/Svall Dev\.app\/Contents\/Helpers\/svall-hook$/);
     vi.resetModules();
     vi.stubEnv('SVALL_VARIANT', 'release');
     expect((await import('../src/runtime.js')).hookHelperSource()).toBeUndefined();

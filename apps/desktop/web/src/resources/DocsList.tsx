@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { app, deps } from '../boot.js';
 import { useApp } from '../hooks.js';
+import { Section } from '../Section.js';
 import { chooseResource } from './choose.js';
 import { deleteDoc } from './docs.js';
 import { loadResources } from './load.js';
@@ -15,8 +16,8 @@ export function DocsList({ tier, id }: { tier: 'island' | 'character'; id: strin
   if (!source) return null;
   const open = (naming: boolean) => app.store.getState().toggleResources(true, { where: source.rootId, what: 'docs', naming });
   return (
-    <div className="sec side-docs" data-testid="side-docs">
-      <div className="kicker">Docs<button className="side-docs-new res-open" data-testid="side-docs-new" title="Write a doc in the shelf" onClick={() => open(true)}>+ new doc</button></div>
+    <Section name={`${tier}.docs`} title="Docs" testid="side-docs"
+      head={<button className="side-docs-new res-open" data-testid="side-docs-new" title="Write a doc in the shelf" onClick={() => open(true)}>+ new doc</button>}>
       {items.map((i) => {
         const o = i.open;
         return (
@@ -32,6 +33,6 @@ export function DocsList({ tier, id }: { tier: 'island' | 'character'; id: strin
           </div>
         );
       })}
-    </div>
+    </Section>
   );
 }

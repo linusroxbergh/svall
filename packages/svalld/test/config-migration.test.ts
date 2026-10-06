@@ -238,7 +238,9 @@ describe('a fleet with nothing to split', () => {
   it('writes both files with the defaults', () => {
     const p = resolvePaths(makeHome());
     const config = loadConfig(p);
-    expect(config).toMatchObject({ port: 47800, host: '127.0.0.1', defaultCwd: '~' });
+    expect(config).toMatchObject({ host: '127.0.0.1', defaultCwd: '~' });
+    // no port: the daemon takes its default, or a free one while that is held
+    expect(config.port).toBeUndefined();
     expect(config.handover).toEqual({ enabled: false, exclude: [], excludeDefaults: true, transferFleetEnv: false });
     expect(config.mobile).toEqual({ logins: [], origins: [] });
     // the defaults apply as the files are read, so a later release's defaults reach this fleet
@@ -248,7 +250,7 @@ describe('a fleet with nothing to split', () => {
 
   it('defaults without writing when the home does not exist', () => {
     const p = resolvePaths(path.join(makeHome(), 'gone'));
-    expect(loadConfig(p).port).toBe(47800);
+    expect(loadConfig(p)).toMatchObject({ host: '127.0.0.1', defaultCwd: '~' });
     expect(fs.existsSync(p.home)).toBe(false);
   });
 

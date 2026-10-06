@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { HANDOVER_PHASES, HandoverError, HandoverIssueCode } from '@svall/protocol';
 import { AGENT_KINDS } from '@svall/svalld/agents';
+import { HANDOVER_KINDS } from '@svall/svalld/handover/sessions/registry';
 import { AUTHORITY_ERROR_CODES } from '@svall/svalld/gateway/authority';
 
 const read = (rel: string): string => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
@@ -75,8 +76,8 @@ const CODES: Record<string, () => string[]> = {
   '## Events': () => named.events(EVENTS),
   '## Connection errors': () => union(SSH, 'export type SshErrorKind ='),
   '### Step statuses': () => union(HOST, 'export type StepStatus ='),
-  // an agent's step and check are named by its kind
-  '### Steps': () => [...named.steps(HOST), ...AGENT_KINDS],
+  // an agent's step and check are named by its kind; Add Machine checks only the agents a handover carries
+  '### Steps': () => [...named.steps(HOST), ...HANDOVER_KINDS],
   '### Doctor checks': () => [...named.checks(DOCTOR), ...named.checks(PREFLIGHT), ...named.checks(HOST), ...AGENT_KINDS],
   '### What the gateway holds': () => fieldValues(RECOVER.slice(RECOVER.indexOf('export type Held ='), RECOVER.indexOf('/** What one machine holds')), 'state'),
   '### Results': () => fieldValues(RECOVER, 'result'),

@@ -61,7 +61,7 @@ test('the app\'s NOTICE names every component GhosttyKit links, and the build sh
 test('the release build keeps those texts beside the licences it collects, in the one Licenses folder', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-app-notice-'));
   try {
-    const collected = path.join(dir, 'apps/desktop/mac/build/licenses');
+    const collected = path.join(dir, 'apps/desktop/mac/build.noindex/licenses');
     fs.mkdirSync(collected, { recursive: true });
     fs.writeFileSync(path.join(collected, 'node.txt'), 'node');
     // build.sh's copy, then app-build.sh's, as each writes the app's licences

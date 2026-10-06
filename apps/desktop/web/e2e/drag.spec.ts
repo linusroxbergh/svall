@@ -176,7 +176,7 @@ test('an island and its cards follow the pointer before snapping, without an unn
   await page.mouse.up();
   await expect.poll(async () => (await svall.api.call('state.get', {})).islands[island.id].position).toEqual({ x: 3, y: 60 });
   await expect.poll(async () => (await land.boundingBox())!.x - origin.x).toBeCloseTo(cs * 3, 0);
-  expect((await token.boundingBox())!.x - card.x).toBeCloseTo(cs * 3, 0);
+  await expect.poll(async () => (await token.boundingBox())!.x - card.x).toBeCloseTo(cs * 3, 0);
   // the island stays where it was put down: the camera neither moved for the drop nor for its arrival
   expect(await page.evaluate(() => window.__map!.refits())).toBe(refits);
 });

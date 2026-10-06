@@ -20,6 +20,16 @@ const statusScript = path.resolve(hooks, '../hooks/claude-status.mjs');
 afterEach(cleanHomes);
 
 describe('normalizeHook', () => {
+  it("maps OpenCode's events, its ses_ ids and its log", () => {
+    const OSID = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
+    const oc = (hook: Record<string, unknown>) => normalizeHook({ charId: 'c_1', backend: 'opencode', pid: 42, hook: { session_id: OSID, ...hook } });
+    expect(oc({ hook_event_name: 'SessionStart', transcript_path: '/h/transcripts/opencode/x.jsonl', cwd: '/r' }))
+      .toEqual({ charId: 'c_1', backend: 'opencode', name: 'SessionStart', sessionId: OSID, transcriptPath: '/h/transcripts/opencode/x.jsonl', cwd: '/r', pid: 42 });
+    expect(oc({ hook_event_name: 'UserPromptSubmit', prompt: 'go', prompt_id: 'msg_1' })?.prompt).toEqual({ id: 'msg_1', text: 'go' });
+    expect(oc({ hook_event_name: 'StopFailure', message: 'rate limited' })).toMatchObject({ name: 'StopFailure', message: 'rate limited' });
+    expect(oc({ hook_event_name: 'Notification' })).toBeUndefined();
+  });
+
   it('maps SessionStart with ids', () => {
     expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'SessionStart', session_id: SID, transcript_path: '/t.jsonl' } }))
       .toEqual({ charId: 'c_1', backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/t.jsonl' });
@@ -113,18 +123,18 @@ describe('normalizeHook', () => {
     expect(h?.message).toHaveLength(500);
     expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Notification', message: '' } })?.message).toBeUndefined();
   });
-  it('counts the background agents still running at Stop, not shells or monitors', () => {
+  it('counts the background agents and shells still running at Stop, not monitors', () => {
     const stop = (background_tasks: unknown) => normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Stop', background_tasks } });
     expect(stop([
       { id: 'a1', type: 'subagent', status: 'running' },
       { id: 'w1', type: 'workflow', status: 'pending' },
       { id: 'b1', type: 'shell', status: 'running' },
       { id: 'm1', type: 'monitor', status: 'running' },
-    ])?.backgroundAgents).toBe(2);
-    // a list with no agent in it says none is left
-    expect(stop([{ id: 'b1', type: 'shell', status: 'running' }])?.backgroundAgents).toBe(0);
-    expect(stop([])?.backgroundAgents).toBe(0);
-    expect(stop('junk')?.backgroundAgents).toBeUndefined();
+    ])).toMatchObject({ backgroundTasks: 3, backgroundAgents: 2 });
+    // a list with only monitors in it says none is left
+    expect(stop([{ id: 'm1', type: 'monitor', status: 'running' }])?.backgroundTasks).toBe(0);
+    expect(stop([])?.backgroundTasks).toBe(0);
+    expect(stop('junk')?.backgroundTasks).toBeUndefined();
   });
   it('drops subagent events, unknown events and malformed input', () => {
     expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Stop', agent_id: 'sub' } })).toBeUndefined();

@@ -10,6 +10,7 @@ import { initConfig, loadConfig, reservedFleetNames } from './config.js';
 import { writeAtomic } from './jsonfile.js';
 import { bootstrapAgent, isLoaded, plistCurrent, takenOverBy, writePlist } from './launchd.js';
 import { machineId } from './machine.js';
+import { installOpencodePlugin, opencodePluginCurrent, removeOpencodePlugin, type OpencodePaths } from './opencode/install.js';
 import { LAUNCHD_LABEL, PRIVATE, SHIM, homePrefix, profileLabel, profileOf, reservedProfileHomes } from './profile.js';
 import { HOOK_SCRIPT, expandHome, realPath, resolvePaths, type Paths } from './paths.js';
 import { assetDir, hookHelperSource, hookHelperSources, variant, type Runtime } from './runtime.js';
@@ -216,12 +217,12 @@ export function setupUser(o: { home: string; settings?: JsonSettings; codexHooks
 }
 
 export type SetupOptions = {
-  home: string; settingsPath: string; codex: CodexPaths; launchAgentsDir: string; shimDir: string; runtime: Runtime;
+  home: string; settingsPath: string; codex: CodexPaths; opencode: OpencodePaths; launchAgentsDir: string; shimDir: string; runtime: Runtime;
   // the agent CLIs on PATH; absent, Claude counts as installed
   agents?: AgentKind[]; integrations?: AgentKind[];
 };
 
-export type SetupState = { settings?: JsonSettings; codexHooks?: JsonSettings; removals: Removal[]; hooksStale: boolean; shimsStale: boolean; plistStale: boolean };
+export type SetupState = { settings?: JsonSettings; codexHooks?: JsonSettings; opencodeWanted: boolean; removals: Removal[]; hooksStale: boolean; shimsStale: boolean; plistStale: boolean };
 
 /** What setup finds for the private fleet at `o.home`: the agent files it would write, read and checked before anything
  *  is written, and which of the hooks, the shims and the plist it would change. Throws on a file it could not write back. */
@@ -231,12 +232,14 @@ export function setupState(o: SetupOptions): SetupState {
   const codexWanted = wants('codex', !!o.agents?.includes('codex') || fs.existsSync(o.codex.dir));
   const settings = claudeWanted ? readJsonSettings(o.settingsPath) : undefined;
   const codexHooks = readCodexHooks(o.codex, codexWanted);
+  const opencodeWanted = wants('opencode', !!o.agents?.includes('opencode') || fs.existsSync(o.opencode.dir));
+  const opencodeStale = opencodeWanted ? !opencodePluginCurrent(readOrUndefined(o.opencode.plugin)) : fs.existsSync(o.opencode.plugin);
   requireWritableHooks(o.home, settings, codexHooks);
   const removals = hookRemovals({ ...o, claudeWanted, codexWanted });
   return {
-    settings, codexHooks, removals,
+    settings, codexHooks, opencodeWanted, removals,
     hooksStale: !!settings && !claudeHooksCurrent(settings.settings, o.home)
-      || !!codexHooks && !codexHooksCurrent(codexHooks.settings, resolvePaths(o.home).hookScript) || removals.length > 0,
+      || !!codexHooks && !codexHooksCurrent(codexHooks.settings, resolvePaths(o.home).hookScript) || removals.length > 0 || opencodeStale,
     shimsStale: !shimsCurrent(o.shimDir, o.runtime),
     plistStale: !plistCurrent({ home: o.home, label: LAUNCHD_LABEL, launchAgentsDir: o.launchAgentsDir, runtime: o.runtime }),
   };
@@ -248,6 +251,7 @@ export async function runSetup(o: SetupOptions & { launchctl: boolean; replaceSe
   const home = await setupHome({ ...o, label: LAUNCHD_LABEL, launchctl: false });
   const user = setupUser({ ...o, settings: state.settings, codexHooks: state.codexHooks, replaceSettings: o.replaceSettings ?? true });
   for (const [current, next, what] of state.removals) user.push(...writeJsonSettings(current, next, what));
+  user.push(...(state.opencodeWanted ? installOpencodePlugin(o.opencode) : removeOpencodePlugin(o.opencode)));
   if (!o.launchctl) return [...home, ...user];
   return [...home, ...user, await bootstrapAgent(o.launchAgentsDir, LAUNCHD_LABEL)];
 }

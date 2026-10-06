@@ -315,7 +315,7 @@ test('an arranged fleet leaves as much water over it as under it, at every windo
       const bottoms = Array.from(document.querySelectorAll('.map-world .tok .card, .map-world .island .land'), (el) => el.getBoundingClientRect().bottom);
       return { top: Math.min(...tops) - map.top, bottom: row.top - Math.max(...bottoms) };
     });
-    // the top clears the wordmark by the same margin the water over mission control's row keeps
+    // the top keeps the same margin the water over mission control's row keeps
     await expect.poll(async () => { const g = await gaps(); return Math.abs(g.top - g.bottom); }, { message: `${size.width}x${size.height}` }).toBeLessThanOrEqual(8);
     await settleMap(page);
     const g = await gaps();

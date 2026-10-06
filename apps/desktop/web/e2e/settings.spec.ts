@@ -32,11 +32,11 @@ test('each control keeps its explanation behind the mark until it is hovered', a
   await svall.open();
   await page.getByTestId('settings-open').click();
 
-  const tip = page.locator('#set-tip-scribe');
+  const tip = page.locator('#set-tip-dormancy');
   await expect(tip).toBeHidden();
-  await page.getByTestId('set-info-scribe').hover();
+  await page.getByTestId('set-info-dormancy').hover();
   await expect(tip).toBeVisible();
-  await expect(tip).toContainText('may cost API credits');
+  await expect(tip).toContainText('Frees memory');
   // the last row has no room under it, so its tip stands over the row instead
   await expect(tip).toHaveAttribute('data-place', 'up');
   const panel = (await page.getByTestId('settings').boundingBox())!;

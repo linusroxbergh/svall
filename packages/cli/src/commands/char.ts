@@ -12,8 +12,8 @@ import { int, point } from './parse.js';
 import { charId, islandId, NoMatch } from './resolve.js';
 
 /** The agent `svall char new` starts: a named one, or the main agent for a bare --agent or a --run with no --command. */
-export function agentFor(o: { agent?: string | true; claude?: boolean; codex?: boolean; command?: string; run?: string }, main: AgentKind): string | undefined {
-  const named = o.agent === true ? main : o.agent ?? (o.claude ? 'claude' : o.codex ? 'codex' : undefined);
+export function agentFor(o: { agent?: string | true; claude?: boolean; codex?: boolean; opencode?: boolean; command?: string; run?: string }, main: AgentKind): string | undefined {
+  const named = o.agent === true ? main : o.agent ?? (o.claude ? 'claude' : o.codex ? 'codex' : o.opencode ? 'opencode' : undefined);
   return named ?? (o.run && !o.command ? main : undefined);
 }
 
@@ -40,23 +40,24 @@ export function charCommands(connect: () => Promise<Client>, json: () => boolean
   cmd.command('new').description('make a character: a terminal on an island')
     .requiredOption('--island <id>').requiredOption('--cwd <path>')
     .option('--name <name>')
-    .addOption(new Option('--agent [name]', 'start claude or codex in its terminal; without a name, the main agent').conflicts(['claude', 'codex', 'command']))
-    .addOption(new Option('--claude', 'the same as --agent claude').conflicts(['codex', 'command']))
-    .addOption(new Option('--codex', 'the same as --agent codex').conflicts('command'))
+    .addOption(new Option('--agent [name]', 'start claude, codex or opencode in its terminal; without a name, the main agent').conflicts(['claude', 'codex', 'opencode', 'command']))
+    .addOption(new Option('--claude', 'the same as --agent claude').conflicts(['codex', 'opencode', 'command']))
+    .addOption(new Option('--codex', 'the same as --agent codex').conflicts(['opencode', 'command']))
+    .addOption(new Option('--opencode', 'the same as --agent opencode').conflicts('command'))
     .option('--command <cmd>').option('--cell <x,y>')
     .option('--run <text>', 'type text and Enter once the agent has started; starts the main agent unless --agent or --command says otherwise')
     .option('--agent-profile <name>', 'a role from the fleet\'s agent-profiles folder, e.g. reviewer')
     .addHelpText('after', `
 Handing work to a new character:
   svall char new --island <id> --cwd <path> --name "<name>" --run "<prompt>"
-  - In a git repo, a fresh worktree: --command "claude -w <worktree>" (Codex: git worktree add, then --cwd), or one on its branch no agent works in.
+  - In a git repo, a character given --run is told to work in a worktree no other agent works in, unless Settings turns that off; --cwd can name one no agent works in.
   - The prompt is all it knows: goal, paths, links, what done looks like.
-  - Names: at most 24 characters, lower case, ticket first: "#472 review auth".
+  - Names: at most 24 characters, lower case: PR or ticket id, area, task, one or two words each: "#472 auth review", not "#472 deep review r3".
   - New island: svall island create "<name>" --description "<one line>".
   - Wait (svall char wait <id> --until done,blocked) only when you need the result; closing is the user's call.
   - Write ids out: a command holding $SVALL_CHAR_ID asks the user for permission.`)
-    .action(async (o: { island: string; cwd: string; name?: string; agent?: string | true; claude?: boolean; codex?: boolean; command?: string; cell?: string; run?: string; agentProfile?: string }) => {
-      if (typeof o.agent === 'string' && !AgentKind.safeParse(o.agent).success) throw new Error(`unknown agent ${o.agent}; use claude or codex`);
+    .action(async (o: { island: string; cwd: string; name?: string; agent?: string | true; claude?: boolean; codex?: boolean; opencode?: boolean; command?: string; cell?: string; run?: string; agentProfile?: string }) => {
+      if (typeof o.agent === 'string' && !AgentKind.safeParse(o.agent).success) throw new Error(`unknown agent ${o.agent}; use claude, codex or opencode`);
       const cell = point(o.cell, '--cell');
       await withFleet(connect, async (c, state) => {
         const agent = agentFor(o, state.mainAgent ?? 'claude');

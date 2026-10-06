@@ -241,7 +241,7 @@ test('a side panel opened inside a click sequence refits the map once the sequen
   try {
     render(<Map />);
     await act(async () => {});
-    const world = () => document.querySelector<HTMLElement>('.map-world')!.style.transform;
+    const world = () => document.querySelector<HTMLElement>('.map-world')!.getAttribute('style');
     const before = world();
     press(document.querySelector('.map-sea')!);
     width = 700;
@@ -267,7 +267,7 @@ test('mission control unfolds at the size its fit kept room for, though the map 
   try {
     render(<Map />);
     await act(async () => {});
-    const world = () => document.querySelector<HTMLElement>('.map-world')!.style.transform;
+    const world = () => document.querySelector<HTMLElement>('.map-world')!.getAttribute('style');
     const before = world();
     const open = { ...f, islands: { ...f.islands, home: { ...f.islands.home, collapsed: false } } };
     await act(async () => { store.getState().setFleet(open); });

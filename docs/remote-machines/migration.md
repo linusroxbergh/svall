@@ -24,11 +24,11 @@ The [README's configuration table](../../README.md#configuration) says which key
 move what you want from it into the new files and delete it; the daemon's log and `svall doctor` both say so. A
 `config.json.bak` already in the way stops the split the same way, before anything is written.
 
-### State schema 8 and protocol 19
+### State schema 9 and protocol 20
 
-- On its first start, the daemon migrates `state.json` to version 8, where a second terminal has a folder of its own.
-  The file as it was stays beside it as `state.json.v7-<time>`.
-- The app, `svall` and the daemons of one release speak protocol 19 to each other. An app or `svall` from an older
+- On its first start, the daemon migrates `state.json` to version 9, where a second terminal has a folder of its own.
+  The file as it was stays beside it as `state.json.v8-<time>`, or `.v7-` from a release before OpenCode support.
+- The app, `svall` and the daemons of one release speak protocol 20 to each other. An app or `svall` from an older
   release cannot reach a newer daemon; an update installs all of them together.
 - Each daemon writes `owner.json` in its fleet home, which says this Mac owns the fleet, and `~/.config/svall/`
   gets `machine.json`, this Mac's id. Nothing asks a gateway until you [set one up](setup.md).

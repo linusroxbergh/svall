@@ -9,7 +9,7 @@
   <key>CFBundleExecutable</key><string>Svall</string>
   <key>CFBundleIconFile</key><string>Svall</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.2.1</string>
+  <key>CFBundleShortVersionString</key><string>0.5.1</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>15.0</string>
   <key>NSPrincipalClass</key><string>NSApplication</string>
@@ -23,7 +23,8 @@
   <key>NSDownloadsFolderUsageDescription</key><string>A character's browser saves the files you download there.</string>
   <key>SUFeedURL</key><string>https://svall.dev/appcast.xml</string>
   <key>SUPublicEDKey</key><string>aUfbLrSJ4kd1j9gi0OTR8I7IXakd8ShTDd2MQpSQq4Y=</string>
-  <key>SUEnableAutomaticChecks</key><true/>
+  <key>SUEnableAutomaticChecks</key><false/>
+  <key>SUScheduledCheckInterval</key><integer>3600</integer>
   <key>SUAutomaticallyUpdate</key><false/>
 </dict>
 </plist>

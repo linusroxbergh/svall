@@ -242,7 +242,7 @@ describe('svall uninstall --login-shell', () => {
     const settings = path.join(cfg, 'settings.json');
     fs.writeFileSync(settings, JSON.stringify(mergeHooks({}, `[ -z "$SVALL_CHAR_ID" ] || { node '${script}' claude; }`, script)));
     const shell = path.join(home, 'fake-shell');
-    fs.writeFileSync(shell, `#!/bin/sh\necho __SVALL_ENV__; echo /usr/bin:/bin; echo __SVALL_ENV__; echo ${cfg}; echo __SVALL_ENV__; echo __SVALL_ENV__\n`, { mode: 0o755 });
+    fs.writeFileSync(shell, `#!/bin/sh\necho __SVALL_ENV__; echo /usr/bin:/bin; echo __SVALL_ENV__; echo ${cfg}; echo __SVALL_ENV__; echo __SVALL_ENV__; echo __SVALL_ENV__; echo __SVALL_ENV__\n`, { mode: 0o755 });
     const env = { HOME: home, SHELL: shell, PATH: `${DOUBLES}:${path.dirname(process.execPath)}:/usr/bin:/bin`, SVALL_HOME: '', TMUX: '' };
     try {
       const r = await run(env, '--json', 'uninstall', '--from-app', '--no-launchctl', '--login-shell');
@@ -294,7 +294,7 @@ describe('svall setup --agents', () => {
     try {
       const r = await run({ HOME: home, PATH: tools(home) }, 'setup', '--no-launchctl', '--agents', 'codex', '--found', 'claude,codex');
       expect(r.code).toBe(0);
-      expect(nodeJson(home)).toEqual({ integrations: ['codex'] });
+      expect(nodeJson(home)).toEqual({ agentsOff: ['claude'] });
       expect(fleetJson(home)).toEqual({ id: expect.any(String), mainAgent: 'codex' });
     } finally {
       cleanHomes();
@@ -336,7 +336,7 @@ describe('svall setup --agents', () => {
       fs.writeFileSync(path.join(home, '.svall', 'fleet.json'), JSON.stringify({ id: crypto.randomUUID(), mainAgent: 'claude' }));
       const r = await run({ HOME: home, PATH: tools(home) }, 'setup', '--no-launchctl', '--agents', 'codex', '--found', 'claude,codex');
       expect(r.code).toBe(0);
-      expect(nodeJson(home)).toMatchObject({ integrations: ['codex'] });
+      expect(nodeJson(home)).toMatchObject({ agentsOff: ['claude'] });
       expect(fleetJson(home)).toMatchObject({ mainAgent: 'codex' });
     } finally {
       cleanHomes();
@@ -383,12 +383,12 @@ describe('svall setup --agents', () => {
       expect(JSON.parse(plan.stdout).agents).toContainEqual({ kind: 'codex', path: path.join(home, '.codex'), folderOnly: true });
       const r = await run(env, 'setup', '--no-launchctl', '--agents', 'claude');
       expect(r.code).toBe(0);
-      expect(nodeJson(home)).toEqual({ integrations: ['claude'] });
+      expect(nodeJson(home)).toEqual({ agentsOff: ['codex'] });
       expect(fleetJson(home).mainAgent).toBeUndefined();
       expect(fs.existsSync(path.join(home, '.codex', 'hooks.json'))).toBe(false);
       fs.rmSync(path.join(home, '.codex'), { recursive: true });
       expect((await run(env, 'setup', '--no-launchctl', '--agents', 'claude')).code).toBe(0);
-      expect(nodeJson(home)).toEqual({ integrations: ['claude'] });
+      expect(nodeJson(home)).toEqual({ agentsOff: ['codex'] });
       expect(fleetJson(home).mainAgent).toBeUndefined();
     } finally {
       cleanHomes();
@@ -420,7 +420,7 @@ describe('svall setup --agents', () => {
       const log = path.join(home, 'launchctl.log');
       fs.writeFileSync(path.join(bin, 'claude'), '#!/bin/sh\necho 2.1.0\n', { mode: 0o755 });
       // every daemon counts as loaded and running
-      fs.writeFileSync(path.join(bin, 'launchctl'), `#!/bin/sh\necho "$@" >> '${log}'\necho '\tstate = running'\n`, { mode: 0o755 });
+      fs.writeFileSync(path.join(bin, 'launchctl'), `#!/bin/sh\necho "$@" >> '${log}'\necho '\tstate = running'\necho '\tpid = 4242'\n`, { mode: 0o755 });
       for (const [name, config] of [['work', {}], ['own', { mainAgent: 'claude' }]] as const) {
         fs.mkdirSync(path.join(home, `.svall-${name}`));
         fs.writeFileSync(path.join(home, `.svall-${name}`, 'config.json'), JSON.stringify(config));
@@ -446,7 +446,7 @@ describe('svall setup --agents', () => {
       const log = path.join(home, 'launchctl.log');
       fs.writeFileSync(path.join(bin, 'claude'), '#!/bin/sh\necho 2.1.0\n', { mode: 0o755 });
       // every daemon is loaded; only the open fleet's runs
-      fs.writeFileSync(path.join(bin, 'launchctl'), `#!/bin/sh\necho "$@" >> '${log}'\ncase "$*" in *svalld.shut*) echo '\tstate = not running' ;; *) echo '\tstate = running' ;; esac\n`, { mode: 0o755 });
+      fs.writeFileSync(path.join(bin, 'launchctl'), `#!/bin/sh\necho "$@" >> '${log}'\ncase "$*" in *svalld.shut*) echo '\tstate = not running' ;; *) echo '\tstate = running'; echo '\tpid = 4242' ;; esac\n`, { mode: 0o755 });
       for (const name of ['open', 'shut']) {
         fs.mkdirSync(path.join(home, `.svall-${name}`));
         fs.writeFileSync(path.join(home, `.svall-${name}`, 'config.json'), '{}');
@@ -646,7 +646,7 @@ runIf('svall CLI', () => {
     expect(list).toMatch(/home\s+mission control/);
     const unknown = await svall('char', 'new', '--island', 'home', '--cwd', '/tmp', '--agent', 'cursor');
     expect(unknown.code).not.toBe(0);
-    expect(unknown.stderr).toContain('claude or codex');
+    expect(unknown.stderr).toContain('claude, codex or opencode');
     expect((await svall('char', 'list', '--island', 'home', '--json')).stdout.trim()).toBe('[]');
   });
 

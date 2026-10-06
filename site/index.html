@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Svall</title>
 <meta name="description" content="A macOS map of your Claude Code and Codex agents. One look shows which are working, which need you and which are done.">
-<meta name="theme-color" content="#2C3847">
+<meta name="theme-color" content="#2B3645">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="preload" href="fonts/Outfit-Variable.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/FunnelSans-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/JetBrainsMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <!-- the app's tokens, fonts, sea, islands and cards, built by `pnpm site:build` -->
 <link rel="stylesheet" href="map/map.css">
@@ -27,6 +27,7 @@ html { font-size: 93.75%; -webkit-text-size-adjust: 100%; scrollbar-color: var(-
 body { position: relative; margin: 0; font: 400 1rem/1.55 var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; }
 ::selection { background: color-mix(in srgb, var(--sand) 32%, transparent); color: var(--white); }
 a { color: inherit; text-underline-offset: .22em; text-decoration-thickness: 1px; }
+:is(p, li) code { font-family: var(--mono); font-size: .875em; color: var(--ink); }
 :focus-visible { outline: 2px solid var(--sel); outline-offset: 3px; border-radius: 6px; }
 .wrap { max-width: 1280px; margin: 0 auto; padding: 0 var(--gutter); }
 
@@ -40,7 +41,7 @@ a { color: inherit; text-underline-offset: .22em; text-decoration-thickness: 1px
 .gh svg { width: 14px; height: 14px; }
 
 .hero { position: relative; padding-top: clamp(32px, 7vh, 80px); }
-h1 { margin: 0; max-width: 13ch; font-size: clamp(2.3rem, 1.4rem + 3vw, 3.5rem); font-weight: 600; line-height: 1.04; letter-spacing: -.03em; text-wrap: balance; }
+h1 { margin: 0; max-width: 20ch; font-size: clamp(2.3rem, 1.4rem + 3vw, 3.5rem); font-weight: 600; line-height: 1.04; letter-spacing: -.03em; text-wrap: balance; }
 .lede { margin: 16px 0 0; max-width: 31em; font-size: 1.0625rem; line-height: 1.55; color: var(--body); text-wrap: pretty; }
 /* the app's primary button: sand, as on its setup screen */
 .dl { display: inline-flex; align-items: center; gap: 9px; margin-top: 28px; padding: 11px 18px 11px 15px; border-radius: var(--r-md);
@@ -89,9 +90,10 @@ main { overflow-x: clip; }
 .narrow .hero, .narrow .features { max-width: 520px; }
 .narrow .features { margin-top: 64px; }
 .features h2 { margin: 0 0 14px; font-size: 1.0625rem; font-weight: 600; letter-spacing: -.01em; }
-.features ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
-.features li { position: relative; padding-left: 20px; color: var(--body); line-height: 1.5; text-wrap: pretty; }
-.features li::before { content: ''; position: absolute; left: 2px; top: .62em; width: 7px; height: 7px; border-radius: 50%;
+:is(.features, .how) ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.how ul { max-width: 560px; }
+:is(.features, .how) li { position: relative; padding-left: 20px; color: var(--body); line-height: 1.5; text-wrap: pretty; }
+:is(.features, .how) li::before { content: ''; position: absolute; left: 2px; top: .62em; width: 7px; height: 7px; border-radius: 50%;
   background: var(--grass-hi); box-shadow: 0 0 0 2px color-mix(in srgb, var(--sand) 55%, transparent); }
 .features b { font-weight: 600; color: var(--ink); }
 
@@ -148,7 +150,7 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
 .keycap[data-on="true"] kbd { translate: 0 2px; box-shadow: 0 1px 0 var(--shade-2); }
 
 /* one character in six views, shown one at a time; a view fades in over the last */
-.tabs { display: flex; gap: 2px; width: max-content; max-width: 100%; margin: 0 0 20px; padding: 3px; border-radius: 12px;
+.tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; width: max-content; max-width: 100%; margin: 0 0 20px; padding: 3px; border-radius: 12px;
   background: var(--glass); border: 1px solid var(--line-soft); }
 .tabs button { padding: 7px 14px; border: 0; border-radius: 9px; background: none; cursor: pointer;
   font: 500 .875rem/1 var(--sans); color: var(--ink-2); transition: background .16s var(--ease), color .16s var(--ease); }
@@ -200,6 +202,9 @@ span.src { color: var(--ink-3); }
 .brief-cap { margin-bottom: 10px; font-size: .75rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-cool); }
 .brief pre { margin: 0; display: grid; gap: 12px; font: 11.5px/1.6 var(--mono); color: var(--ink-2); white-space: normal; overflow-wrap: anywhere; }
 .brief pre i { display: block; font-style: normal; }
+/* a level's heading reads "Global: ~/.claude"; on a phone, where the tree is hidden, it takes the tree's icon instead */
+.brief .lvl b { display: none; }
+.brief .lvl span::after { content: ':'; }
 /* an item: its name, then its kind with the shelf's colour for it */
 .brief pre i.in { display: flex; align-items: baseline; gap: 1ch; padding-left: 2ch; }
 .brief pre em { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-style: normal; color: var(--ink-3); }
@@ -215,7 +220,6 @@ span.src { color: var(--ink-3); }
 .tier i { color: var(--c); }
 
 .close { text-align: center; }
-.close h2 { max-width: 20ch; margin: 0 auto; }
 .close .install { margin-left: auto; margin-right: auto; text-align: left; }
 
 footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-bottom: 36px; font-size: .8125rem; color: var(--ink-3); }
@@ -229,9 +233,13 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
   .dl { margin-top: 22px; }
   .install pre { padding: 10px 4px 10px 12px; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .gh span { display: none; }
-  .tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
+  .tabs { grid-auto-flow: row; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
   .shelf { grid-template-columns: minmax(0, 1fr); }
-  .tree { border-right: 0; border-bottom: 1px solid var(--line-soft); }
+  .tree { display: none; }
+  .brief .lvl { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; font: 500 .875rem/1.3 var(--sans); color: var(--ink); }
+  .brief .lvl b { display: block; flex: none; width: 14px; font-weight: 400; text-align: center; color: var(--c); }
+  .brief .lvl span { font-size: .6875rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+  .brief .lvl span::after { content: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -251,8 +259,8 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
 <main>
 <div class="stage wrap">
   <section class="hero">
-    <h1>Every agent you run, on one map.</h1>
-    <p class="lede">Svall puts each agent on an island, so one look shows which are working, waiting on you or done. Every agent is your own Claude Code or Codex harness, running in a real terminal.</p>
+    <h1>Your coding agents, on one map.</h1>
+    <p class="lede">Svall puts each of your Claude Code and Codex agents on an island, so you have a clear overview of their work and easy access to relevant context &amp; resources. Each one runs in a real terminal on Svall’s own tmux server.</p>
     <a class="dl" href="/download">
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.5v9"/><path d="M6 9l4 4 4-4"/><path d="M4 15.5h12"/></svg>
       Download for Mac
@@ -264,7 +272,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
         <svg class="ok" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8"/></svg>
       </button>
     </div>
-    <p class="meta">Apple silicon, macOS 15 or newer, with the Claude Code or Codex CLI. <a href="https://github.com/linusroxbergh/svall#build-from-source-svall-dev">Build from source</a></p>
+    <p class="meta">Works with the Claude Code or Codex CLI. <a href="https://github.com/linusroxbergh/svall#build-from-source-svall-dev">Build from source</a></p>
   </section>
   <div class="map"><div class="world map-world" inert></div></div>
   <section class="features">
@@ -272,7 +280,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     <ul>
       <li><b>Clear overview:</b> the map keeps track of every agent, so you don't have to</li>
       <li><b>Layered context:</b> per repo, island and agent, kept current for you</li>
-      <li><b>Persistence:</b> quit or reboot, and sessions pick up where they left off</li>
+      <li><b>Persistence:</b> quit or reboot. Each agent resumes when you re-open</li>
       <li><b>Built-in browser:</b> PRs, previews and docs beside the terminal</li>
       <li><b>Built-in editor:</b> edit files and review the diff in place</li>
       <li><b>On your phone:</b> every agent and terminal, over Tailscale</li>
@@ -282,15 +290,15 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
 
 <section class="sec wrap" aria-labelledby="flow-h">
   <div class="sec-head">
-    <h2 id="flow-h">One prompt, a whole island.</h2>
-    <p class="sub">Ask mission control, or any agent, and it creates islands and characters that run your harness.</p>
+    <h2 id="flow-h">One prompt sets up a whole island.</h2>
+    <p class="sub">Press ⌘G and ask mission control, or ask any agent. It makes the island and its characters with the <code>svall</code> CLI, and each one starts your own Claude Code or Codex.</p>
   </div>
   <div class="scene" role="img" aria-label="Pressing Command G opens mission control's prompt. The prompt asks for an island to review three open PRs. A new island appears and three review characters land on it and start working."><div class="scene-map" inert></div></div>
 </section>
 
 <section class="sec wrap" aria-labelledby="views-h">
   <div class="sec-head">
-    <h2 id="views-h">Terminal, browser and files for every agent, on your phone too.</h2>
+    <h2 id="views-h">Terminal, browser and files beside every agent.</h2>
   </div>
   <div class="tabs" role="tablist" aria-label="Views">
     <button type="button" role="tab" aria-selected="true" aria-controls="shot">Map</button>
@@ -301,15 +309,15 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Phone</button>
   </div>
   <div class="frame" id="shot" role="tabpanel">
-    <img class="on" src="shots/map.avif" loading="lazy" alt="The map: islands in the middle, the island list on the left, a character's settings on the right">
-    <img src="shots/terminal.avif" loading="lazy" alt="A character's Claude Code session across the whole window">
-    <img src="shots/browser.avif" loading="lazy" alt="Claude Code on the left, the character's browser on the right">
-    <img src="shots/files.avif" loading="lazy" alt="Claude Code on the left, the character's files on the right">
-    <img src="shots/markdown.avif" loading="lazy" alt="Claude Code on the left, the repo's README as formatted text on the right">
+    <img class="on" src="shots/map.avif?v=5e164cb0" loading="lazy" alt="The map: islands in the middle, the island list on the left, a character's settings on the right">
+    <img src="shots/terminal.avif?v=78f58b2c" loading="lazy" alt="A character's Claude Code session across the whole window">
+    <img src="shots/browser.avif?v=1dc4418f" loading="lazy" alt="Claude Code on the left, the character's browser on the right">
+    <img src="shots/files.avif?v=d9c2a73e" loading="lazy" alt="Claude Code on the left, the character's files on the right">
+    <img src="shots/markdown.avif?v=92c7856b" loading="lazy" alt="Claude Code on the left, the repo's README as formatted text on the right">
     <div class="view-phone" role="img" aria-label="The map on the Mac with the phone's QR code open, and a phone beside it showing the fleet, then an agent's terminal">
-      <img src="shots/phone.avif" loading="lazy" alt="">
+      <img src="shots/phone.avif?v=9dde80e6" loading="lazy" alt="">
       <div class="phone">
-        <div class="phone-screen"><img src="shots/phone-list.avif" loading="lazy" alt=""><img src="shots/phone-terminal.avif" loading="lazy" alt=""></div>
+        <div class="phone-screen"><img src="shots/phone-list.avif?v=62044f50" loading="lazy" alt=""><img src="shots/phone-terminal.avif?v=962308d4" loading="lazy" alt=""></div>
       </div>
     </div>
   </div>
@@ -320,7 +328,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
       <span>A browser beside it, for the PR</span>
       <span>Its files and the working tree’s changes</span>
       <span>Markdown as formatted text</span>
-      <span>The fleet on your phone over Tailscale, with a notification when an agent is done</span>
+      <span>Every terminal on your phone over Tailscale, with a notification when an agent is done or needs you</span>
     </p>
   </div>
 </section>
@@ -328,8 +336,8 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
 <section class="sec wrap ctx" aria-labelledby="ctx-h">
   <div>
     <div class="sec-head">
-      <h2 id="ctx-h">Context at every level.</h2>
-      <p class="sub">Instructions, docs and links per fleet, repo, island or character. Each agent starts with what applies to it.</p>
+      <h2 id="ctx-h">Every agent starts with a brief.</h2>
+      <p class="sub">Instructions and links for each island and character, and notes agents leave for the next one. An agent gets what applies to it when it starts, and an update when something changes.</p>
     </div>
     <div class="lh">
       <span class="lh-img"><img src="lighthouse.svg" alt=""></span>
@@ -368,18 +376,29 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     <div class="brief">
       <div class="brief-cap">#10 review search starts with</div>
       <pre>
-        <span data-tier="global"><i>Global: ~/.claude</i><i class="in">CLAUDE.md<em data-k="instructions">instructions</em></i><i class="in">code-review<em data-k="skill">skill</em></i><i class="in">github<em data-k="mcp">mcp</em></i><i class="in">format-on-save<em data-k="hook">hook</em></i></span>
-        <span data-tier="fleet"><i>Fleet: demo</i><i class="in">ticket-tracking<em data-k="doc">doc</em></i><i class="in">reviewer<em data-k="profile">profile</em></i></span>
-        <span data-tier="repo"><i>Repo: storefront</i><i class="in">CLAUDE.md<em data-k="instructions">instructions</em></i><i class="in">e2e-flakes<em data-k="doc">doc</em></i></span>
-        <span data-tier="island"><i>Island: storefront reviews</i><i class="in">comment, never push<em data-k="instructions">instructions</em></i><i class="in">GH storefront<em data-k="link">link</em></i><i class="in">review-checklist<em data-k="doc">doc</em></i></span>
-        <span data-tier="character"><i>Character: #10 review search</i><i class="in">PR #10<em data-k="link">link</em></i><i class="in">focus on ranking<em data-k="note">note</em></i></span>
+        <span data-tier="global"><i class="lvl"><b>◎</b><span>Global</span> ~/.claude</i><i class="in">CLAUDE.md<em data-k="instructions">instructions</em></i><i class="in">code-review<em data-k="skill">skill</em></i><i class="in">github<em data-k="mcp">mcp</em></i><i class="in">format-on-save<em data-k="hook">hook</em></i></span>
+        <span data-tier="fleet"><i class="lvl"><b>◆</b><span>Fleet</span> demo</i><i class="in">ticket-tracking<em data-k="doc">doc</em></i></span>
+        <span data-tier="repo"><i class="lvl"><b>▣</b><span>Repo</span> storefront</i><i class="in">CLAUDE.md<em data-k="instructions">instructions</em></i><i class="in">e2e-flakes<em data-k="doc">doc</em></i></span>
+        <span data-tier="island"><i class="lvl"><b>▲</b><span>Island</span> storefront reviews</i><i class="in">comment, never push<em data-k="instructions">instructions</em></i><i class="in">GH storefront<em data-k="link">link</em></i><i class="in">review-checklist<em data-k="doc">doc</em></i></span>
+        <span data-tier="character"><i class="lvl"><b>●</b><span>Character</span> #10 review search</i><i class="in">reviewer<em data-k="profile">profile</em></i><i class="in">PR #10<em data-k="link">link</em></i><i class="in">focus on ranking<em data-k="note">note</em></i></span>
       </pre>
     </div>
   </div>
 </section>
 
-<section class="sec wrap close" aria-labelledby="close-h">
-  <h2 id="close-h">Quit or reboot. Every session picks up where it left off.</h2>
+<section class="sec wrap how" aria-labelledby="how-h">
+  <div class="sec-head">
+    <h2 id="how-h">How it works</h2>
+  </div>
+  <ul>
+    <li>Claude Code and Codex report to Svall through their own hooks, so a card changes the moment its agent starts, asks or finishes.</li>
+    <li>Each agent runs in a real terminal on Svall’s own tmux server, apart from yours.</li>
+    <li>Quitting stops the agents. Opening a character again resumes its conversation with <code>claude --resume</code> or <code>codex resume</code>.</li>
+    <li>No account and no telemetry. Setup adds Svall’s hook to Claude Code and Codex, and <code>svall uninstall</code> takes it out.</li>
+  </ul>
+</section>
+
+<section class="sec wrap close" aria-label="Download">
   <a class="dl" href="/download">
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.5v9"/><path d="M6 9l4 4 4-4"/><path d="M4 15.5h12"/></svg>
     Download for Mac
@@ -394,7 +413,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
 </section>
 </main>
 
-<footer class="wrap">Svall. MIT licensed.</footer>
+<footer class="wrap">Svall. Code MIT licensed. <a href="https://github.com/linusroxbergh/svall">Source</a> · <a href="https://github.com/linusroxbergh/svall/issues">Issues</a></footer>
 
 <div class="vignette" aria-hidden="true"></div>
 

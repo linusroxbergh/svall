@@ -125,6 +125,15 @@ describe('renderBrief', () => {
     expect(renderBrief(island({ instructions: 'x' }))).not.toContain('You are Svall character');
   });
 
+  it('tells a character to work in a worktree after the hand-on lines, even with nothing else to say', () => {
+    const rule = '- In a git repo, work in a worktree no other agent works in, a fitting one or a new one. Change the main checkout only when the user says so.';
+    const lines = renderBrief(island(), char(), [], undefined, true).split('\n');
+    expect(lines.slice(3, 8)).toEqual([...CREW, rule]);
+    expect(renderBrief(island(), char({ note: 'x' }))).not.toContain(rule);
+    expect(renderBrief(island({ kind: 'home', instructions: 'x' }), char(), [], undefined, true)).not.toContain(rule);
+    expect(renderBrief(island({ instructions: 'x' }), undefined, [], undefined, true)).not.toContain(rule);
+  });
+
   it('keeps a tab line short however long the path', () => {
     const text = renderBrief(island(), char({ browser: { tabs: [{ id: 't_1', url: `https://a.test/${'x'.repeat(5000)}`, title: 'Search' }] } }));
     const line = text.split('\n').find((l) => l.startsWith('- https://a.test/'))!;
@@ -150,6 +159,12 @@ describe('briefDiff', () => {
 });
 
 describe('briefReply', () => {
+  it('sends the brief whole on every prompt, an empty one included, for an agent that holds it as system text', () => {
+    expect(briefReply('UserPromptSubmit', 'B\nC', 'B', true)).toEqual({ reply: 'B\nC', delivered: 'B\nC' });
+    expect(briefReply('UserPromptSubmit', 'B', 'B', true)).toEqual({ reply: 'B', delivered: 'B' });
+    expect(briefReply('UserPromptSubmit', '', 'B', true)).toEqual({ reply: '', delivered: '' });
+  });
+
   it('sends the whole brief at session start and remembers it', () => {
     expect(briefReply('SessionStart', 'B', undefined)).toEqual({ reply: 'B', delivered: 'B' });
     expect(briefReply('SessionStart', '', undefined)).toEqual({});
@@ -227,7 +242,10 @@ describe('renderBrief with docs', () => {
     { tier: 'character', dir: '/d/characters/c', docs: over.character ?? [] },
   ];
   const NOTE = [
-    'Leave a note only for what a later agent will need again, not a record of this task (that goes in its PR or ticket). Update or delete a note before adding one, and hold memories to the same bar.',
+    'A plan or scratch file that helps the work in progress goes in a temp folder.',
+    'Finished work gets no note: its record goes in the PR or ticket, a trap it found in a comment at the code.',
+    "Leave a note only for what a later agent will need again and can't get from the code, PR or ticket, in at most 30 lines. Update or delete a note before adding one, and hold memories to the same bar.",
+    'A handover goes in the character folder.',
     'Write a note as <name>.md with a `description:` frontmatter line, in the narrowest folder it applies to:',
   ];
   const WRITE = [
@@ -319,6 +337,7 @@ describe('renderBrief with docs', () => {
     const text = renderBrief(island(), undefined, [{ tier: 'island', dir: '/d/islands/i', docs: [] }]);
     expect(text).toContain('- island: /d/islands/i');
     expect(text).not.toContain('- character:');
+    expect(text).not.toContain('character folder');
   });
 
   it('stays within 9,000 characters, the longest list giving up its oldest notes first', () => {
@@ -345,7 +364,7 @@ describe('renderBrief with docs', () => {
     );
     const lines = text.split('\n');
     expect(text.length).toBeLessThanOrEqual(9_000);
-    expect(lines).toEqual(expect.arrayContaining([...CREW, '- …and 1 more in /d/repos/app-12345678', '- …and 16 more island links', '- …and 15 more character links', '- …and 39 more tabs', `- https://example.com/${'t'.repeat(150)}/39 (active)`]));
+    expect(lines).toEqual(expect.arrayContaining([...CREW, '- …and 1 more in /d/repos/app-12345678', '- …and 16 more island links', '- …and 16 more character links', '- …and 39 more tabs', `- https://example.com/${'t'.repeat(150)}/39 (active)`]));
     expect(lines.find((l) => l.startsWith('Island instructions: '))).toHaveLength('Island instructions: '.length + 2000);
     expect(text).toContain(`/${'p'.repeat(150)}/0 (pinned)`);
     expect(text).toContain(`/${'p'.repeat(150)}/1\n`);

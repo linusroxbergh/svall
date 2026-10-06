@@ -44,7 +44,7 @@ export class AgentEvents {
         if ('hook' in e && next.agent && (e.hook.name === 'SessionStart' || e.hook.name === 'UserPromptSubmit')
           && (!e.hook.sessionId || e.hook.sessionId === next.agent.sessionId)) {
           const island = d.islands[c.islandId];
-          const r = briefReply(e.hook.name, island ? this.deps.render(island, c) : '', next.agent.brief);
+          const r = briefReply(e.hook.name, island ? this.deps.render(island, c) : '', next.agent.brief, e.hook.backend === 'opencode');
           if (r.delivered !== undefined) next.agent.brief = r.delivered;
           reply = r.reply;
         }

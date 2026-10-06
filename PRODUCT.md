@@ -12,7 +12,7 @@ Marketing site: a static page in `site/`, with a demo map `pnpm site:build` buil
 
 ## Users
 
-Developers on a Mac who run several Claude Code or Codex agents at once, across projects, and lose track of which one is working, which is waiting on them and which is done.
+Developers on a Mac who run several Claude Code, Codex or OpenCode agents at once, across projects, and lose track of which one is working, which is waiting on them and which is done.
 
 ## Product Purpose
 
@@ -24,12 +24,12 @@ The fleet is a place, not a list: islands per project, characters per terminal, 
 
 ## Operating Context
 
-Runs on macOS 15+ on Apple silicon. Wraps the Claude Code and Codex CLIs the user already has; no AI account or billing of its own. Phone access over Tailscale. `svall` CLI scripts the fleet.
+Runs on macOS 15+ on Apple silicon. Wraps the Claude Code, Codex and OpenCode CLIs the user already has; no AI account or billing of its own. Phone access over Tailscale. `svall` CLI scripts the fleet.
 
 ## Capabilities and Constraints
 
 - Islands group characters; each card shows status, context use, model, PR and ticket links.
-- Terminals are tmux windows; revive resumes with `claude --resume` or `codex resume`.
+- Terminals are tmux windows; revive resumes with `claude --resume`, `codex resume` or `opencode -s`.
 - Briefs carry instructions, links and agents' notes into every new session.
 - Browser, file editor and working-tree diff beside each terminal.
 - macOS banners with Approve and Deny; phone app with push notifications.

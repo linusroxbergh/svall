@@ -7,14 +7,14 @@
   --contour-2: rgba(236,220,186,.05);
 
   --sand: #E6D8B8;
-  --sand-deep: #C9B992;
-  --sand-lite: #E9DBB8;
-  --bank: #A2905F;
-  --home-sand: #D6C5A0;
-  --home-sand-deep: #B3A078;
-  --home-bank: #978660;
-  --grass: #7B9376;
-  --grass-hi: #98AD92;
+  --sand-deep: #B9AA86;
+  --sand-lite: #D7CAA9;
+  --bank: #958457;
+  --home-sand: #C5B593;
+  --home-sand-deep: #A5936E;
+  --home-bank: #8B7B58;
+  --grass: #71876C;
+  --grass-hi: #8C9F86;
   /* the darker ground a card stands pressed into */
   --grass-press: color-mix(in srgb, var(--grass) 45%, var(--ink-land));
   --home-sand-press: color-mix(in srgb, var(--home-sand-deep) 55%, var(--home-bank));
@@ -60,7 +60,7 @@
   --pt-moss: #8CAE68;
   --pt-slate: #4E6A6E;
 
-  --sans: 'Outfit', ui-sans-serif, -apple-system, 'Segoe UI', sans-serif;
+  --sans: 'Funnel Sans', ui-sans-serif, -apple-system, 'Segoe UI', sans-serif;
   --mono: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, monospace;
 
   /* type: every size in the app is one of these rungs */
@@ -70,7 +70,7 @@
   --text-md: 12.5px;    /* buttons and tabs */
   --text-lg: 13.5px;    /* body */
   --text-xl: 15px;      /* icon glyphs */
-  --text-2xl: 17px;     /* the wordmark and the card's own marks */
+  --text-2xl: 17px;     /* the card's own marks */
   --text-3xl: 25px;     /* names in a modal or the side card */
   --text-input: 16px;   /* a phone's fields: iOS zooms the page onto any smaller one */
 
@@ -101,7 +101,7 @@
 
   --dur-fast: .12s; --dur: .16s; --dur-slow: .2s;
   /* the periods of the looping animations */
-  --pulse-fast: 1.2s; --pulse: 2.2s; --pulse-slow: 3.2s; --swell: 48s; --swell-2: 67s;
+  --pulse-fast: 1.2s; --pulse: 1.8s; --pulse-slow: 3.2s; --swell: 48s; --swell-2: 67s;
 
   --w-light: 300; --w-regular: 400; --w-medium: 500; --w-semibold: 600; --w-bold: 700;
   --track-tight: -.02em; --track-loose: .06em; --track-caps: .12em; --track-wide: .18em;
@@ -120,17 +120,18 @@
 
   /* ink on a status fill */
   --ink-on-blocked: #3A0E09; --ink-on-done: #06231E;
+  /* the statuses printed on a card's cream paper: darker than the lit ones so they hold contrast there */
+  --working-ink: #EB992E; --blocked-ink: #C94A45; --done-ink: #4BB3A1;
 
   /* islands: the cream card, its disc, the sea and the lamp */
   --cream: #FFFDF4;
   --white: #FFFFFF;     /* a disc's shine, and the ground a QR code needs */
-  --card-0: #F6EFDE; --card-1: #ECE2CA; --card-2: #DFD2B4;
-  --card-tint: #786844; --card-band: #B9A578;
-  --disc-0: #FFFEF8; --disc-1: #F7F0DE; --disc-2: #DCCFB2;
-  --ink-land-deep: #15211A;
+  --card-0: #F0E9D8; --card-1: #E6DCC5; --card-2: #D9CCAF;
+  --card-tint: #786844; --card-band: #B4A175;
+  --disc-0: #F8F7F1; --disc-1: #F0EAD8; --disc-2: #D6C9AD;
   --shell-dim: #9AA7B2;
   --lamp: #FFE28C;
-  --map-0: #53687C; --map-1: #3E5061; --map-2: #2C3847;
+  --map-0: #516579; --map-1: #3C4E5E; --map-2: #2B3645;
 
   /* code */
   --syntax-string: #9BBA86; --syntax-op: #BAD1A2;

@@ -67,5 +67,7 @@ for i in 1 2 3 4 5 6 7 8 9 10; do [ -f "$MNT/.DS_Store" ] && break; sleep 1; don
 # the event log macOS keeps on a writable volume is this machine's, not part of the image
 rm -rf "$MNT/.fseventsd" 2>/dev/null || true
 sync
+# Finder registers the app it shows with LaunchServices, which would list the ejected image's copy in Open With
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u -R "$MNT/$NAME.app" 2>/dev/null || true
 hdiutil detach "$MNT" -quiet || { sleep 3; hdiutil detach "$MNT" -force -quiet; }
 hdiutil convert "$WORK/rw.dmg" -format UDZO -imagekey zlib-level=9 -ov -o "$DMG" >/dev/null

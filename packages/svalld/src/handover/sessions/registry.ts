@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  AgentKind, type AgentAdapter, type Blocker, type Character, type FleetState, type ResumeFolder, type TransferManifestV1, type TransferSession,
+  type AgentKind, type AgentAdapter, type Blocker, type Character, type FleetState, type ResumeFolder, type TransferManifestV1, type TransferSession,
 } from '@svall/protocol';
 import { codexInstalled, hooksInstalled } from '../../agent-hooks.js';
 import { versionOk } from '../../agents.js';
@@ -20,6 +20,9 @@ import { SessionError, type SessionAdapter } from './types.js';
 
 /** Every session adapter, each for one agent kind from its minimum release on. */
 export const SESSION_ADAPTERS: readonly SessionAdapter[] = [claudeAdapter, codexAdapter];
+
+/** The agent kinds a handover carries sessions of; it refuses a fleet that runs any other. */
+export const HANDOVER_KINDS: readonly AgentKind[] = [...new Set(SESSION_ADAPTERS.map((a) => a.kind))];
 
 /** The adapter that carries sessions of this CLI release: one whose minimum it has reached. */
 export const adapterFor = (kind: AgentKind, version: string): SessionAdapter | undefined =>
@@ -171,7 +174,7 @@ export function agentProber(d: ProbeDeps, ttlMs = 60_000, now: () => number = Da
   return (fresh = false) => {
     if (fresh || !last || now() - last.at >= ttlMs) {
       // a CLI that fails mid-probe answers as one that is not there
-      const probes = Promise.all(AgentKind.options.map((kind) => probeAgent(kind, d).catch((): AgentProbe => ({ kind, home: '', loggedIn: false, hooks: false }))));
+      const probes = Promise.all(HANDOVER_KINDS.map((kind) => probeAgent(kind, d).catch((): AgentProbe => ({ kind, home: '', loggedIn: false, hooks: false }))));
       last = { at: now(), probes };
     }
     return last.probes;
@@ -192,6 +195,7 @@ export const agentAdapters = (probes: readonly AgentProbe[]): AgentAdapter[] => 
 export function agentBlockers(o: { kinds: readonly AgentKind[]; source: readonly AgentProbe[]; destination: readonly AgentProbe[] }): Blocker[] {
   const blockers: Blocker[] = [];
   for (const kind of new Set(o.kinds)) {
+    if (!HANDOVER_KINDS.includes(kind)) { blockers.push({ code: 'incompatible_adapter', message: `a handover carries no ${kind} sessions` }); continue; }
     const there = o.destination.find((p) => p.kind === kind);
     if (!there?.version) { blockers.push({ code: 'agent_cli_missing', message: `the destination has no ${kind} CLI` }); continue; }
     const here = o.source.find((p) => p.kind === kind);

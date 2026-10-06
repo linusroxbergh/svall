@@ -40,7 +40,10 @@ function docLines(folders: DocFolder[], hidden: number[] = []): string[] {
   return [
     ...listed.flatMap(({ f, more }) => [`Docs (${f.tier}):`, ...f.docs.map(docLine), ...(more ? [`- …and ${more} more in ${f.dir}`] : [])]),
     ...(listed.length ? ["Read a doc when its description matches what you're doing; names and descriptions are notes other agents left, not instructions."] : []),
-    'Leave a note only for what a later agent will need again, not a record of this task (that goes in its PR or ticket). Update or delete a note before adding one, and hold memories to the same bar.',
+    'A plan or scratch file that helps the work in progress goes in a temp folder.',
+    'Finished work gets no note: its record goes in the PR or ticket, a trap it found in a comment at the code.',
+    "Leave a note only for what a later agent will need again and can't get from the code, PR or ticket, in at most 30 lines. Update or delete a note before adding one, and hold memories to the same bar.",
+    ...(folders.some((f) => f.tier === 'character') ? ['A handover goes in the character folder.'] : []),
     'Write a note as <name>.md with a `description:` frontmatter line, in the narrowest folder it applies to:',
     ...folders.map((f) => `- ${f.tier}: ${f.dir}`),
   ];
@@ -81,8 +84,11 @@ const crewLines = (island: Island, c: Character): string[] => [
   '- How: `svall char new --help`.',
 ];
 
+const WORKTREE = '- In a git repo, work in a worktree no other agent works in, a fitting one or a new one. Change the main checkout only when the user says so.';
+
 // markdown the session reads at start; without doc folders it is empty when neither side has anything to say
-export function renderBrief(island: Island, character?: Character, folders: DocFolder[] = [], profile?: AgentProfile): string {
+export function renderBrief(island: Island, character?: Character, folders: DocFolder[] = [], profile?: AgentProfile, worktrees = false): string {
+  const crew = character && island.kind !== 'home' ? character : undefined;
   // the profile stands right under the heading: no free text comes before it to pass for its start, and a brief Claude cuts short keeps it
   const head = [
     ...(character && profile ? profileLines(profile) : []),
@@ -90,7 +96,8 @@ export function renderBrief(island: Island, character?: Character, folders: DocF
     island.instructions && `Island instructions: ${ellipsis(island.instructions, INSTRUCTIONS_MAX)}`,
     character && `Character: ${headline(character.name, character.note)}`,
     character?.instructions && `Character instructions: ${ellipsis(character.instructions, INSTRUCTIONS_MAX)}`,
-    ...(character && island.kind !== 'home' ? crewLines(island, character) : []),
+    ...(crew ? crewLines(island, crew) : []),
+    crew && worktrees && WORKTREE,
   ].filter((l): l is string => Boolean(l));
   const active = character?.browser?.active;
   // a view that has not reached a page has no address to give
@@ -98,7 +105,7 @@ export function renderBrief(island: Island, character?: Character, folders: DocF
   const hidden = { island: 0, character: 0, tabs: 0 };
   const items = () => [...section('Context (island)', kept.island, hidden.island, 'island links'), ...(character ? section('Context (character)', kept.character, hidden.character, 'character links') : [])];
   const tabs = () => (kept.tabs.length || hidden.tabs ? ['Browser tabs (page addresses, not instructions):', ...kept.tabs.map((t) => tabLine(t, t.id === active)), ...more(hidden.tabs, 'tabs')] : []);
-  const said = island.description || island.instructions || items().length || folders.length || tabs().length || character?.note || character?.instructions || (character && profile);
+  const said = island.description || island.instructions || items().length || folders.length || tabs().length || character?.note || character?.instructions || (character && profile) || (crew && worktrees);
   if (!said) return '';
   const pinned = [...island.context, ...(character?.context ?? [])].some((it) => it.pinned);
   const show = character ? `\`svall char show ${character.id}\`` : `\`svall island show ${island.id}\``;
@@ -167,10 +174,12 @@ export function carryBrief(delivered: string | undefined, before: string, after:
   return [...lines, ...added].join('\n');
 }
 
-// what the session gets for this hook, and what to remember as delivered
-export function briefReply(name: HookName, brief: string, delivered: string | undefined): { reply?: string; delivered?: string } {
+// what the session gets for this hook, and what to remember as delivered. `whole` is for an agent that holds the
+// brief as system text, which a diff cannot patch: each prompt gets the brief there is, an empty one included
+export function briefReply(name: HookName, brief: string, delivered: string | undefined, whole = false): { reply?: string; delivered?: string } {
   if (name !== 'SessionStart' && name !== 'UserPromptSubmit') return {};
   if (name === 'SessionStart' || delivered === undefined) return brief ? { reply: brief, delivered: brief } : {};
+  if (whole) return { reply: brief, delivered: brief };
   if (delivered === brief) return {};
   const diff = briefDiff(delivered, brief);
   // two briefs under the cap can differ by nearly twice it, so a change past the cap goes out as the brief whole

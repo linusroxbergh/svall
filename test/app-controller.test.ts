@@ -36,7 +36,7 @@ describe('the controller release build.sh carries', () => {
   // build.sh's controller block, with node and rsync logging what they are asked; the release name still comes from git
   function carry(config: string, variant: string, env: Record<string, string> = {}) {
     const mac = temp();
-    fs.mkdirSync(path.join(mac, 'build'));
+    fs.mkdirSync(path.join(mac, 'build.noindex'));
     const s = stubs(mac, ['node', 'rsync'], { node: `[ "$1" = -e ] && exec "${process.execPath}" "$@"` });
     const r = spawnSync('sh', ['-c', `set -eu\nMAC="${mac}"\nROOT="${ROOT}"\nAPP="${mac}/Svall.app"\nCONFIG=${config}\nVARIANT=${variant}\n${block}`], {
       env: { ...s.env, ...env }, encoding: 'utf8',
@@ -56,7 +56,7 @@ describe('the controller release build.sh carries', () => {
     const { mac, calls } = carry('release', 'release');
     const controller = calls.find((c) => c.includes('build-controller.mjs'));
     expect(controller).toContain(' --companion-url-base companions ');
-    expect(controller).toContain(` --companions ${mac}/build/companions`);
+    expect(controller).toContain(` --companions ${mac}/build.noindex/companions`);
     expect(calls.join('\n')).not.toContain('file:');
   });
 

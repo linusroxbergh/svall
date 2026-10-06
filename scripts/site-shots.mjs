@@ -2,6 +2,7 @@
 // phone; then two phone screenshots, the fleet list and a terminal, for the phone standing over the last view.
 // `pnpm site:shots [eight .png files]`; with none, the eight PNGs in site/shots-in, oldest first. Needs ImageMagick.
 import { execFileSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -61,3 +62,12 @@ fs.mkdirSync(out, { recursive: true });
 VIEWS.forEach((view, i) => avif(view, windows[i], files[i], WIDTH));
 SCREENS.forEach((screen, i) => avif(screen, screens[i], screens[i], SCREEN_WIDTH));
 fs.rmSync(tmp, { recursive: true });
+
+// a shot keeps its name, so the page asks for it by its content's hash and no cache serves the old one
+const page = path.join(root, 'site/index.html');
+let html = fs.readFileSync(page, 'utf8');
+for (const name of NAMES) {
+  const v = crypto.createHash('sha256').update(fs.readFileSync(path.join(out, `${name}.avif`))).digest('hex').slice(0, 8);
+  html = html.replace(new RegExp(`shots/${name}\\.avif(\\?v=\\w+)?"`), `shots/${name}.avif?v=${v}"`);
+}
+fs.writeFileSync(page, html);

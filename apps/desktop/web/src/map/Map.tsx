@@ -23,7 +23,6 @@ import { ISLET, placeIslet } from './resources.js';
 import { ResourcesIsland, ResourcesPill } from './ResourcesIsland.js';
 import { TerminalCard } from './TerminalCard.js';
 import { Token } from './Token.js';
-import { Wordmark } from './Wordmark.js';
 
 export function Map() {
   const host = useRef<HTMLDivElement>(null);
@@ -75,7 +74,9 @@ export function Map() {
       {/* the camera's values sit on the one element that reads them: set on the map, every frame of a zoom would restyle all of it */}
       <div className="map-grid" style={{ '--cell': `${cs}px`, '--gx': `${layout.ox % cs}px`, '--gy': `${layout.oy % cs}px` } as React.CSSProperties} />
       <div className="map-sea" {...sea} />
-      <div className="map-world" style={{ transform: `translate(${Math.round(layout.ox)}px, ${Math.round(layout.oy)}px) scale(${layout.scale})`, '--cell': `${theme.cell}px`, '--k': cardScale(layout.scale) / layout.scale, '--lk': labelScale(layout.scale) / layout.scale } as React.CSSProperties}>
+      {/* the world is only placed; each island and card scales itself, as mission control's island does. WebKit draws a scaled
+          world as one layer at 1:1 and stretches the bitmap, which blurs every island */}
+      <div className="map-world" style={{ left: Math.round(layout.ox), top: Math.round(layout.oy), '--cell': `${theme.cell}px`, '--ms': layout.scale, '--k': cardScale(layout.scale), '--lk': labelScale(layout.scale) / layout.scale } as React.CSSProperties}>
         {mapIslandsSorted(fleet).map((i) => {
           const preview = previewFor(i.id);
           const shown = preview?.kind === 'island' && preview === pendingIsland ? { ...i, position: pendingIsland.from }
@@ -103,14 +104,13 @@ export function Map() {
         {drag?.kind === 'island' && fleet.islands[drag.id] && (() => {
           const { size } = fleet.islands[drag.id];
           return <div className="island-landing" aria-hidden="true"
-            style={{ left: drag.position.x * theme.cell, top: drag.position.y * theme.cell,
-              width: size.w * theme.cell, height: size.h * theme.cell }} />;
+            style={{ left: drag.position.x * cs, top: drag.position.y * cs, width: size.w * cs, height: size.h * cs }} />;
         })()}
         {drag?.kind === 'figure' && drag.over && (() => {
           const i = fleet.islands[drag.over.islandId];
           if (!i || i.kind === 'home') return null;
           return <div className="drop-cell" data-testid="drop-cell" data-free={drag.over.free}
-            style={{ left: (i.position.x + drag.over.local.x) * theme.cell, top: (i.position.y + drag.over.local.y) * theme.cell, width: theme.cell, height: theme.cell }} />;
+            style={{ left: (i.position.x + drag.over.local.x) * cs, top: (i.position.y + drag.over.local.y) * cs, width: cs, height: cs }} />;
         })()}
         {mapIslandsSorted(fleet).flatMap((i) => charactersOf(fleet, i.id).map((c) => {
           const dragging = drag?.kind === 'figure' && drag.id === c.id;
@@ -136,7 +136,6 @@ export function Map() {
         )}
       </div>
       <div className="map-overlay">
-        <Wordmark />
         {hi && (
           <Home island={hi} crew={crew} config={fleet.home} collapsed={Boolean(hi.collapsed)}
             selected={selectedIslandId === HOME_ISLAND} selectedId={selectedId} drag={drag} status={statusOf}

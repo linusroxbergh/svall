@@ -10,14 +10,14 @@ export function seedNum(s: string): number {
   return (h >>> 0) / 4294967296;
 }
 
-// A seeded squircle (superellipse, theme.coast.n) sampled at 96 points, perturbed by four sine
+// A seeded squircle (superellipse, shape.n) sampled at 96 points, perturbed by four sine
 // harmonics and joined with Catmull-Rom cubics. Points sit in a box padded by theme.pad;
 // grow offsets the radius in world px, so 0 draws the sand rim and -4 the grass inset.
-export function coastPath(w: number, h: number, seed: string, grow: number): string {
-  const a = w / 2, b = h / 2, n = theme.coast.n, N = 96;
+export function coastPath(w: number, h: number, seed: string, grow: number, shape = theme.coast): string {
+  const a = w / 2, b = h / 2, n = shape.n, N = 96;
   const pad = theme.pad;
   const s1 = seedNum(seed), s2 = seedNum(seed + '~'), s3 = seedNum(seed + '~~');
-  const amp = Math.min(a, b) * theme.coast.wobble;
+  const amp = Math.min(a, b) * shape.wobble;
   const pts: [number, number][] = [];
   for (let i = 0; i < N; i++) {
     const t = (i / N) * Math.PI * 2;

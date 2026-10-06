@@ -8,6 +8,7 @@ import {
   codexInstalled, hookCommand, mergeHooks, mergeStatusLine, statusWrapper, unmergeHooks, unmergeStatusLine,
 } from '../src/agent-hooks.js';
 import { codexPaths } from '../src/codex/install.js';
+import { installOpencodePlugin, opencodePaths } from '../src/opencode/install.js';
 import { realDeps } from '../src/mobile.js';
 import type { Run } from '../src/linux/service.js';
 import { machineId } from '../src/machine.js';
@@ -64,7 +65,7 @@ function installed() {
   fs.writeFileSync(settingsPath, JSON.stringify(mine));
   const launchAgentsDir = path.join(root, 'LaunchAgents');
   const shimDir = path.join(root, 'bin');
-  return { root, home, settingsPath, mine, launchAgentsDir, shimDir, o: { home, homes: [home], settingsPath, settingsPaths: [settingsPath], launchAgentsDir, shimDir, runtime: checkoutRuntime(repoRoot), launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(root, '.codex') }), mobile: noTailscale, app: noApp } };
+  return { root, home, settingsPath, mine, launchAgentsDir, shimDir, o: { home, homes: [home], settingsPath, settingsPaths: [settingsPath], launchAgentsDir, shimDir, runtime: checkoutRuntime(repoRoot), launchctl: false, codex: codexPaths({ CODEX_HOME: path.join(root, '.codex') }), opencode: opencodePaths({ XDG_CONFIG_HOME: path.join(root, '.config'), XDG_DATA_HOME: path.join(root, '.local/share') }), mobile: noTailscale, app: noApp } };
 }
 
 describe('fleetHomes', () => {
@@ -85,6 +86,13 @@ describe('fleetHomes', () => {
 });
 
 describe('runUninstall', () => {
+  it('removes the OpenCode plugin', async () => {
+    const { o } = installed();
+    installOpencodePlugin(o.opencode);
+    expect(await runUninstall(o)).toContain(`removed ${o.opencode.plugin}`);
+    expect(fs.existsSync(o.opencode.plugin)).toBe(false);
+  });
+
   it('writes the codex hooks beside the user own, once, and takes back only its own', async () => {
     const f = installed();
     const hooksFile = f.o.codex.hooks;

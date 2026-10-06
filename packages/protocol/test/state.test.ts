@@ -1,10 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { Agent, Character, ContextItem, DEFAULT_CWD, FleetState, Home, Island, STATE_SCHEMA_VERSION, defaultHome, emptyState } from '../src/index.js';
+import { Agent, Character, ContextItem, DEFAULT_CWD, FleetState, Home, Island, STATE_SCHEMA_VERSION, defaultHome, emptyState, isSessionId } from '../src/index.js';
 
 describe('state schemas', () => {
+  it("trusts OpenCode's session ids as well as UUIDs, and nothing a shell would read more into", () => {
+    expect(isSessionId('ses_0f3a5b7c9d1eAbCdEfGhIjKlMn')).toBe(true);
+    expect(isSessionId('3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d')).toBe(true);
+    expect(isSessionId('ses_0f3a5b7c9d1eAbCdEfGhIjKl;rm')).toBe(false);
+    expect(isSessionId('ses_short')).toBe(false);
+    expect(Agent.safeParse({ kind: 'opencode', sessionId: 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn', status: 'idle', lastActivityAt: 1 }).success).toBe(true);
+  });
+
   it('accepts an empty fleet', () => {
     expect(FleetState.parse(emptyState())).toEqual({
-      version: 8, islands: {}, characters: {},
+      version: 9, islands: {}, characters: {},
       home: {
         cwd: '~/.svall/home', command: 'claude --model sonnet',
         actions: [
@@ -17,7 +25,7 @@ describe('state schemas', () => {
   });
 
   it('fills home from defaults when a state file has none', () => {
-    const s = FleetState.parse({ version: 8, islands: {}, characters: {} });
+    const s = FleetState.parse({ version: 9, islands: {}, characters: {} });
     expect(s.home.command).toBe('claude --model sonnet');
     expect(s.defaultCwd).toBe(DEFAULT_CWD);
     expect(s.home.actions.map((a) => a.label)).toEqual(['update info', 'status']);
@@ -53,8 +61,8 @@ describe('state schemas', () => {
     expect(ContextItem.parse(item)).toEqual(item);
     expect(Island.parse({ id: 'i', name: 'n', description: '', instructions: 'never touch src/legacy', context: [item], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 }).instructions)
       .toBe('never touch src/legacy');
-    expect(emptyState().version).toBe(8);
-    expect(STATE_SCHEMA_VERSION).toBe(8);
+    expect(emptyState().version).toBe(9);
+    expect(STATE_SCHEMA_VERSION).toBe(9);
   });
 
   it('keeps both terminals of an imported state that carries no tmux ids', () => {
@@ -63,7 +71,7 @@ describe('state schemas', () => {
       cwd: '/work', shell: { lastOutputAt: 0 }, unread: false, revive: { command: 'claude --resume a' },
       second: { cwd: '/work/side', unread: false, revive: { command: 'codex resume b' } },
     });
-    const s = FleetState.parse({ version: 8, islands: {}, characters: { c } });
+    const s = FleetState.parse({ version: 9, islands: {}, characters: { c } });
     expect(s.characters.c.revive).toEqual({ command: 'claude --resume a' });
     expect(s.characters.c.second).toEqual({ cwd: '/work/side', unread: false, revive: { command: 'codex resume b' } });
   });

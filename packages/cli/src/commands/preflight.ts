@@ -99,7 +99,7 @@ async function agentChecks(d: PreflightDeps): Promise<Check[]> {
   if (!versions.size) {
     const how = AGENT_KINDS.map((k) => `${AGENTS[k].installCommand} (${AGENTS[k].label})`).join(' or ');
     // a companion is provisioned before anyone logs an agent in on it, so Linux only warns
-    return [{ name: 'agents', status: d.platform === 'linux' ? 'warn' : 'fail', detail: `neither claude nor codex is on PATH, and the desktop apps don't install them: run ${how}` }];
+    return [{ name: 'agents', status: d.platform === 'linux' ? 'warn' : 'fail', detail: `no agent CLI (claude, codex or opencode) is on PATH, and the desktop apps don't install them: run ${how}` }];
   }
   const found = [...versions.keys()];
   return Promise.all(AGENT_KINDS.map((k) => agentCheck(d, k, versions.get(k), found)));

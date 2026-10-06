@@ -758,6 +758,10 @@ describe('agent preflight', () => {
     // a fleet running no Codex does not care how Codex is on either machine
     expect(codes([ok('claude')], [ok('claude'), ok('codex', { version: '0.1.0', loggedIn: false })])).toEqual([]);
     expect(codes([ok('claude'), ok('codex')], [ok('claude'), ok('codex', { loggedIn: false })], ['claude', 'codex'])).toEqual(['agent_logged_out']);
+    // a fleet running OpenCode is refused, however OpenCode stands on either machine
+    const oc: AgentProbe = { kind: 'opencode', version: '2.0.22', home: '/h/.config/opencode', loggedIn: true, hooks: true };
+    expect(agentBlockers({ kinds: ['claude', 'opencode'], source: [ok('claude'), oc], destination: [ok('claude'), oc] }))
+      .toEqual([{ code: 'incompatible_adapter', message: 'a handover carries no opencode sessions' }]);
   });
 });
 

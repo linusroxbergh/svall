@@ -140,7 +140,7 @@ step "Installing to $DEST"
 # the new copy is whole before the old one is renamed aside, so a failed copy or move, or a ^C, leaves a whole app
 keep_app
 rm -rf "$DEST/.Svall Dev.app.new" "$DEST/.Svall Dev.app.old"
-quiet ditto "apps/desktop/mac/build/Svall Dev.app" "$DEST/.Svall Dev.app.new"
+quiet ditto "apps/desktop/mac/build.noindex/Svall Dev.app" "$DEST/.Svall Dev.app.new"
 [ ! -e "$DEST/Svall Dev.app" ] || mv "$DEST/Svall Dev.app" "$DEST/.Svall Dev.app.old" ||
   fail "could not replace $DEST/Svall Dev.app (macOS may ask to let your terminal manage apps); move it to the Trash and run pnpm desktop:install again"
 mv "$DEST/.Svall Dev.app.new" "$DEST/Svall Dev.app"
@@ -148,7 +148,7 @@ rm -rf "$DEST/.Svall Dev.app.old"
 # Finder caches icons per bundle path; touching the bundle makes it re-read this build's
 touch "$DEST/Svall Dev.app"
 # the build LaunchServices knows could stand for the bundle id in place of the installed app
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "apps/desktop/mac/build/Svall Dev.app" 2>/dev/null || true
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "apps/desktop/mac/build.noindex/Svall Dev.app" 2>/dev/null || true
 
 if [ -n "$SETUP" ]; then
   step "Setting up hooks, the daemon and the svall command"

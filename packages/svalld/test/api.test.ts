@@ -33,7 +33,7 @@ const other = MachineId.parse('9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f');
 const machines = {
   source: { home: '/Users/linus' },
   destination: {
-    info: { machineId: other, release: 'dev', protocol: PROTOCOL_VERSION, stateSchema: 8, transferSchema: 1, platform: 'linux', arch: 'x64', agentAdapters: [] },
+    info: { machineId: other, release: 'dev', protocol: PROTOCOL_VERSION, stateSchema: 9, transferSchema: 1, platform: 'linux', arch: 'x64', agentAdapters: [] },
     home: '/Users/linus', fleetHome: '/Users/linus/.svall',
   },
 };
@@ -132,7 +132,7 @@ runIf('API', () => {
     const good = await TestClient.connect(api.port, 'secret');
     const snap = (await good.call('state.get')) as { id: number; result: { version: number; islands: Record<string, { kind?: string }>; characters: unknown; home: { command: string } } };
     expect(snap.id).toBe(1);
-    expect(snap.result.version).toBe(8);
+    expect(snap.result.version).toBe(9);
     expect(snap.result.characters).toEqual({});
     expect(snap.result.islands.home.kind).toBe('home');
     expect(snap.result.home.command).toBe('claude --model sonnet');
@@ -173,8 +173,8 @@ runIf('API', () => {
     for (let index = 0; index < count; index++) {
       c.ws.send(JSON.stringify({ part: { id: 7, index, count, data: bytes.subarray(index * PART_BYTES, (index + 1) * PART_BYTES).toString('base64') } }));
     }
-    expect(await answered).toMatchObject({ id: 7, result: { version: 8 } });
-    expect(await c.call('state.get')).toMatchObject({ result: { version: 8 } });
+    expect(await answered).toMatchObject({ id: 7, result: { version: 9 } });
+    expect(await c.call('state.get')).toMatchObject({ result: { version: 9 } });
     c.ws.close();
   });
 

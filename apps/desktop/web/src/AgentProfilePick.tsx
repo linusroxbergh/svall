@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { app, deps } from './boot.js';
 import { useApp } from './hooks.js';
 import { chooseResource } from './resources/choose.js';
@@ -21,7 +21,7 @@ export function AgentProfilePick({ id }: { id: string }) {
   const current = picked === undefined ? undefined : items.find((i) => i.name === picked);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const [place, setPlace] = useState({ above: false, maxHeight: 0 });
+  const [place, setPlace] = useState<CSSProperties>();
   const row = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const shelf = () => { if (fleet) app.store.getState().toggleResources(true, { where: fleet.rootId, what: 'agentProfiles' }); };
@@ -70,22 +70,33 @@ export function AgentProfilePick({ id }: { id: string }) {
     act();
   };
 
-  // the side card scrolls, so the menu hangs under the field or flips over it, capped at the room the card has there
+  // the menu hangs under the field or flips over it, capped at the room the card has there; it is fixed to the window,
+  // so the section it sits in does not clip it, and placed again when that section scrolls
   useLayoutEffect(() => {
     const at = row.current, el = menu.current;
     if (!open || !at || !el) return;
-    const panel = at.closest('.side')?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight };
-    setPlace(placeTip(at.getBoundingClientRect(), el.scrollHeight, panel));
+    const measure = () => {
+      const r = at.getBoundingClientRect();
+      const panel = at.closest('.side')?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight };
+      const { above, maxHeight } = placeTip(r, el.scrollHeight, panel);
+      setPlace({ left: r.left, width: r.width, maxHeight: maxHeight || undefined,
+        ...(above ? { bottom: window.innerHeight - r.top + 5 } : { top: r.bottom + 5 }) });
+    };
+    measure();
+    window.addEventListener('scroll', measure, true);
+    window.addEventListener('resize', measure);
+    return () => { window.removeEventListener('scroll', measure, true); window.removeEventListener('resize', measure); };
   }, [open]);
   useEffect(() => { if (open) menu.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' }); }, [open, active]);
 
   return (
     <>
       <div className="side-profile" ref={row}>
-        {/* WebKit leaves a clicked button unfocused, so the click focuses it: the keys and the blur that closes the menu come to it */}
+        {/* WebKit leaves a clicked button unfocused, so the click focuses it: the keys and the blur that closes the menu come to it;
+            the press keeps focus where it is, or WebKit's blur would close the menu just before the click opens it again */}
         <button type="button" className="fld" role="combobox" aria-label="Agent profile" aria-haspopup="listbox" aria-expanded={open}
           aria-controls={`side-profile-menu-${id}`} aria-activedescendant={open ? `side-profile-${id}-${active}` : undefined}
-          data-none={picked === undefined} data-testid="side-agent-profile"
+          data-none={picked === undefined} data-testid="side-agent-profile" onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => { e.currentTarget.focus(); if (open) setOpen(false); else show(); }} onKeyDown={onKey} onBlur={() => setOpen(false)}>
           <span>{opts[chosen].name}</span><Caret open />
         </button>
@@ -95,7 +106,7 @@ export function AgentProfilePick({ id }: { id: string }) {
         )}
         {open && (
           <div ref={menu} className="side-profile-menu" role="listbox" id={`side-profile-menu-${id}`} aria-label="Agent profile"
-            data-place={place.above ? 'up' : 'down'} style={place.maxHeight ? { maxHeight: place.maxHeight } : undefined}
+            style={place}
             onMouseDown={(e) => e.preventDefault()}>
             {opts.map((o, i) => (
               <Fragment key={o.value}>

@@ -122,10 +122,10 @@ runIf('Tmux', () => {
   });
 
   // a pane running a recorder that asks for modified keys, as Claude Code does, and logs every byte it gets as hex
-  async function recorder(t: Tmux) {
+  async function recorder(t: Tmux, mode = '') {
     const w = await t.newWindow('c_keys', '/tmp', {});
     const log = path.join(lastHome, 'keys.log');
-    await t.run('send-keys', '-t', w.paneId, `${process.execPath} ${path.join(import.meta.dirname, 'fixtures')}/kitty-keys.cjs ${log}`, 'Enter');
+    await t.run('send-keys', '-t', w.paneId, `${process.execPath} ${path.join(import.meta.dirname, 'fixtures')}/kitty-keys.cjs ${log} ${mode}`, 'Enter');
     // it asks only once its terminal is raw, where Ctrl-C is a byte and not a signal
     await waitFor(async () => (await t.run('display', '-p', '-t', w.paneId, '#{pane_key_mode}')).trim() !== 'VT10x');
     const recorded = () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').replaceAll('\n', '') : '');
@@ -167,6 +167,16 @@ runIf('Tmux', () => {
     await t.sendBytes(paneId, Buffer.from('\x03'));
     await waitFor(() => recorded().length >= 2, 2000).catch(() => {});
     expect(recorded()).toBe('03');
+  });
+
+  it('pastes a line as one bracketed paste to an app that asks for it, its Enter and other bytes outside', async () => {
+    const t = await boot();
+    const { paneId, recorded } = await recorder(t, 'paste');
+    await t.sendLine(paneId, 'a\nb', true);
+    await t.sendBytes(paneId, Buffer.from('\x1b'));
+    const sent = Buffer.from('\x1b[200~a\nb\x1b[201~\r\x1b').toString('hex');
+    await waitFor(() => recorded().length >= sent.length, 2000).catch(() => {});
+    expect(recorded()).toBe(sent);
   });
 
   it('submits a line to a pane scrolled back into copy mode', async () => {

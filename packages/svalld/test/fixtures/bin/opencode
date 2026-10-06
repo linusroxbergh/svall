@@ -1,0 +1,87 @@
+#!/usr/bin/env node
+// Test double for `opencode`: as OpenCode 2's TUI does with --standalone, it runs a private server as a child process,
+// and the server loads Svall's real plugin and feeds it the events of one turn per prompt.
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import readline from 'node:readline';
+
+const args = process.argv.slice(2);
+if (args[0] === '--version') { process.stdout.write('opencode v2.0.22\n'); process.exit(0); }
+if (args[0] === 'auth') process.exit(0);
+const charId = process.env.SVALL_CHAR_ID;
+if (!charId) process.exit(0);
+
+if (args[0] !== 'serve') {
+  const dir = path.join(process.env.SVALL_HOME, 'fake-opencode');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${charId}.argv`), JSON.stringify(args));
+  const i = args.indexOf('--prompt');
+  const server = spawn(process.execPath, [import.meta.filename, 'serve', '--stdio'], {
+    stdio: ['pipe', 'inherit', 'inherit'], env: { ...process.env, ...(i !== -1 && { FAKE_PROMPT: args[i + 1] }), ...(args.includes('-s') && { FAKE_RESUMED: '1' }) },
+  });
+  process.stdin.pipe(server.stdin);
+  server.on('exit', (code) => process.exit(code ?? 0));
+} else {
+  const dir = path.join(process.env.SVALL_HOME, 'fake-opencode');
+  const sessionID = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
+  const model = { providerID: 'opencode', id: 'big-pickle' };
+  let chain = Promise.resolve();
+  const queue = (text) => (chain = chain.then(() => turn(text)));
+  const pending = [];
+  let wake;
+  const event = (type, data) => { pending.push({ type, data }); wake?.(); };
+  const hooks = {};
+  const hook = (domain) => async (name, cb) => { hooks[`${domain}.${name}`] = cb; };
+  const ctx = {
+    location: { directory: process.cwd() },
+    session: {
+      hook: hook('session'),
+      get: async () => ({ id: sessionID }),
+      prompt: async ({ text }) => { queue(text); return {}; },
+      command: async ({ name, text }) => { queue(`/${name} ${text}`); return {}; },
+    },
+    tool: { hook: hook('tool') },
+    command: { list: async () => ({ data: [] }) },
+    model: { list: async () => ({ data: [{ ...model, limit: { context: 200_000 } }] }) },
+    event: {
+      subscribe: () => ({
+        async *[Symbol.asyncIterator]() {
+          for (;;) {
+            while (pending.length) yield pending.shift();
+            await new Promise((r) => { wake = r; });
+          }
+        },
+      }),
+    },
+  };
+  const { default: plugin } = await import(path.resolve(import.meta.dirname, '../../../hooks/opencode-plugin.js'));
+  const cleanup = await plugin.setup(ctx);
+
+  let n = 0;
+  async function turn(text) {
+    n++;
+    if (n === 1 && !process.env.FAKE_RESUMED) {
+      event('session.created', { sessionID, model });
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    await hooks['session.prompt']({ sessionID, messageID: `msg_u${n}`, prompt: { text } });
+    event('session.execution.started', { sessionID });
+    const request = { sessionID, system: [] };
+    await hooks['session.context'](request);
+    fs.writeFileSync(path.join(dir, `${charId}.system`), JSON.stringify(request.system.map((s) => s.text)));
+    await hooks['tool.execute.before']({ tool: 'shell', sessionID, input: { command: 'ls' } });
+    await hooks['tool.execute.after']({ tool: 'shell', sessionID, input: { command: 'ls' }, status: 'completed', result: { content: [{ type: 'text', text: 'ok' }] } });
+    event('session.step.started', { sessionID, model });
+    event('session.step.ended', { sessionID, tokens: { input: 19_000, output: 1000, reasoning: 0, cache: { read: 0, write: 0 } } });
+    event('session.text.ended', { sessionID, text: `did: ${text}` });
+    event('session.execution.succeeded', { sessionID });
+  }
+
+  if (process.env.FAKE_PROMPT) queue(process.env.FAKE_PROMPT);
+  const rl = readline.createInterface({ input: process.stdin });
+  for await (const line of rl) queue(line);
+  await chain;
+  cleanup?.();
+  process.exit(0);
+}

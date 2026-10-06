@@ -12,7 +12,8 @@ afterEach(() => { cleanHomes(); vi.unstubAllEnvs(); });
 
 describe('config and paths', () => {
   it('defaults when the fleet has no home', () => {
-    expect(loadConfig(resolvePaths('/nonexistent'))).toMatchObject({ port: 47800, host: '127.0.0.1' });
+    const c = loadConfig(resolvePaths('/nonexistent'));
+    expect([c.port, c.host]).toEqual([undefined, '127.0.0.1']);
   });
   it('merges a partial file', () => {
     const home = makeHome();
@@ -175,6 +176,18 @@ describe('patchFleetConfig', () => {
     expect(JSON.parse(fs.readFileSync(real, 'utf8'))).toEqual({ id, scribe: { model: 'haiku' }, laterKey: 1, gatewayMachineId: GATEWAY });
     expect(config.gatewayMachineId).toBe(GATEWAY);
     expect(fs.lstatSync(p.fleetConfig).isSymbolicLink()).toBe(true);
+  });
+});
+
+describe('the agents setup turns off', () => {
+  it('leaves an agent Svall supports after a setup on', () => {
+    const p = resolvePaths(makeHome());
+    // the list setup saved before OpenCode, which could name only Claude Code and Codex
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ integrations: ['claude'] }));
+    expect(loadConfig(p).integrations).toEqual(['claude', 'opencode']);
+    saveConfig(p, { integrations: ['claude', 'opencode'] });
+    expect(JSON.parse(fs.readFileSync(p.nodeConfig, 'utf8'))).toEqual({ agentsOff: ['codex'] });
+    expect(loadConfig(p).integrations).toEqual(['claude', 'opencode']);
   });
 });
 

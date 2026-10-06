@@ -16,6 +16,7 @@ import { gatewayPrefix } from '@svall/svalld/gateway/bin';
 import { launchdEnv, plistEnv, plistRun } from '@svall/svalld/launchd';
 import { lingerState, unitStatus, type Run } from '@svall/svalld/linux/service';
 import { agentHomesEnv, svalldUnitName, GATEWAY_UNIT, unitDirOf, unitEnv } from '@svall/svalld/linux/setup';
+import { opencodePaths, opencodePluginCurrent, type OpencodePaths } from '@svall/svalld/opencode/install';
 import { claudePaths, resolvePaths, userPaths } from '@svall/svalld/paths';
 import { PRIVATE, SHIM, profileHome, profileLabel } from '@svall/svalld/profile';
 import { isRelease } from '@svall/svalld/release';
@@ -47,6 +48,7 @@ export type DoctorDeps = PreflightDeps & {
   // what setup would hand a fleet's daemon from this account
   daemonEnv: Record<string, string>;
   codex: CodexPaths;
+  opencode: OpencodePaths;
   exists(path: string): boolean;
   // agent CLIs on PATH, as setup finds them
   found: AgentKind[];
@@ -93,15 +95,41 @@ function config(t: Target, d: DoctorDeps): Check {
   }
 }
 
+// the process listening on the port, on `host` alone when given, as lsof names it
+async function heldBy(d: DoctorDeps, port: number, host?: string): Promise<string | undefined> {
+  try {
+    const out = await d.run('lsof', ['-nP', `-iTCP${host ? `@${host}` : ''}:${port}`, '-sTCP:LISTEN', '-Fpc']);
+    const pid = /^p(\d+)$/m.exec(out)?.[1];
+    return pid && `${/^c(.+)$/m.exec(out)?.[1] ?? 'a process'} (pid ${pid})`;
+  } catch { return undefined; }
+}
+
 async function svalld(t: Target, d: DoctorDeps): Promise<Check> {
-  const port = d.read(resolvePaths(t.home).port)?.trim();
-  // the daemon runs while Svall is open on the fleet; one that stopped otherwise says why in the log below
-  if (!port) return { name: 'svalld', status: 'warn', detail: `not running (no port file in ${t.home}): it starts when Svall opens on this fleet` };
+  const paths = resolvePaths(t.home);
+  const port = d.read(paths.port)?.trim();
+  if (!port) {
+    // svalld does not start while another process listens on the port node.json sets, on its host: one on another
+    // address, even a wildcard, leaves that bind free
+    const [file, schema]: [string, z.ZodTypeAny] = d.read(paths.fleetConfig) === undefined && d.read(paths.legacyConfig) !== undefined
+      ? [paths.legacyConfig, Config] : [paths.nodeConfig, NodeConfig];
+    let set: number | undefined;
+    let host: string | undefined;
+    try {
+      const text = d.read(file) ?? '{}';
+      parseConfig(text, file, schema);
+      ({ port: set, host = '127.0.0.1' } = JSON.parse(text) as { port?: number; host?: string });
+    } catch { /* the config check reports it */ }
+    const by = set ? await heldBy(d, set, host) : undefined;
+    if (by) return { name: 'svalld', status: 'fail', detail: `not running: ${by} holds port ${set}, which ${file} sets; stop it, or take port out of ${path.basename(file)}` };
+    // the daemon runs while Svall is open on the fleet; one that stopped otherwise says why in the log below
+    return { name: 'svalld', status: 'warn', detail: `not running (no port file in ${t.home}): it starts when Svall opens on this fleet` };
+  }
   try {
     (await d.connect(t.home)).close();
     return { name: 'svalld', status: 'ok', detail: `running on port ${port}` };
   } catch (e) {
-    return { name: 'svalld', status: 'fail', detail: `port ${port} does not answer: ${(e as Error).message}` };
+    const by = await heldBy(d, Number(port));
+    return { name: 'svalld', status: 'fail', detail: `port ${port} does not answer: ${(e as Error).message}${by ? `; ${by} holds it` : ''}` };
   }
 }
 
@@ -158,7 +186,7 @@ function daemonNode(t: Target, d: DoctorDeps): Check {
 }
 
 // launchd runs the plist's program with only the plist's PATH, and logs nothing to svalld.log when it cannot:
-// a checkout, app or release moved or deleted since setup, or a claude or codex installed since outside that PATH
+// a checkout, app or release moved or deleted since setup, or an agent CLI installed since outside that PATH
 function daemonPath(t: Target, d: DoctorDeps): Check {
   if (!t.managed) return { name: 'daemon path', status: 'skip', detail: 'not managed' };
   const { plist, fix } = plistOf(t, d);
@@ -171,15 +199,17 @@ function daemonPath(t: Target, d: DoctorDeps): Check {
   const lacks = AGENT_KINDS.map((k) => AGENTS[k].bin).filter((bin) => finds(d.pathEnv.split(':'), bin) && !finds(run.path, bin));
   return lacks.length
     ? { name: 'daemon path', status: 'warn', detail: `the PATH in ${plist} has no ${lacks.join(' or ')}, which this shell finds: ${fix}` }
-    : { name: 'daemon path', status: 'ok', detail: 'its program is there, and it finds claude and codex as this shell does' };
+    : { name: 'daemon path', status: 'ok', detail: 'its program is there, and it finds the agent CLIs as this shell does' };
 }
 
 // launchd and systemd give svalld only the environment its plist or unit holds, which setup took from this account
 function daemonEnv(t: Target, d: DoctorDeps): Check {
   if (!t.managed) return { name: 'daemon env', status: 'skip', detail: 'not managed' };
   const keys = Object.keys(d.daemonEnv);
-  if (!keys.length) return { name: 'daemon env', status: 'ok', detail: 'this account sets no CLAUDE_CONFIG_DIR or CODEX_HOME' };
   const linux = d.platform === 'linux';
+  if (!keys.length) {
+    return { name: 'daemon env', status: 'ok', detail: linux ? 'this account sets no CLAUDE_CONFIG_DIR or CODEX_HOME' : 'this account sets none of CLAUDE_CONFIG_DIR, CODEX_HOME, XDG_CONFIG_HOME or XDG_DATA_HOME' };
+  }
   const { plist: file, fix } = linux
     ? { plist: path.join(d.unitDir, svalldUnitName(t.name)), fix: t.name === PRIVATE ? `${SHIM} setup` : `${SHIM} host enable <this machine> --fleet ${t.name} from the controller` }
     : plistOf(t, d);
@@ -281,6 +311,16 @@ export async function codexCheck(d: Pick<DoctorDeps, 'codex' | 'exists' | 'read'
     : { name: 'codex hooks', status: 'ok', detail: `installed in ${d.codex.hooks}; trusted` };
 }
 
+export function opencodeCheck(d: Pick<DoctorDeps, 'opencode' | 'exists' | 'read' | 'found' | 'integrations'>): Check {
+  if (d.integrations && !d.integrations.includes('opencode')) return { name: 'opencode plugin', status: 'skip', detail: 'turned off in setup' };
+  if (!d.found.includes('opencode') && !d.exists(d.opencode.dir)) return { name: 'opencode plugin', status: 'skip', detail: 'not installed' };
+  const text = d.read(d.opencode.plugin);
+  if (text === undefined) return { name: 'opencode plugin', status: 'fail', detail: `not installed in ${d.opencode.plugin}: ${SHIM} setup` };
+  return opencodePluginCurrent(text)
+    ? { name: 'opencode plugin', status: 'ok', detail: `installed in ${d.opencode.plugin}` }
+    : { name: 'opencode plugin', status: 'warn', detail: `out of date in ${d.opencode.plugin}: run ${SHIM} setup` };
+}
+
 function shims(d: DoctorDeps): Check {
   return d.shimsCurrent
     ? { name: 'shims', status: 'ok', detail: `${SHIM} in ${d.shimDir} runs this build` }
@@ -312,6 +352,7 @@ export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
       : [await launchd(t, d), daemonNode(t, d), daemonPath(t, d), daemonEnv(t, d), await rsync(d)]),
     hooks(d),
     await codexCheck(d),
+    opencodeCheck(d),
     shims(d),
     ...(linux ? [] : [plistCheck(t, d)]),
   ];
@@ -377,6 +418,7 @@ export function doctorCommand(target: () => Target, json: () => boolean, platfor
       unitDir: unitDirOf(os.homedir()),
       daemonEnv,
       codex,
+      opencode: opencodePaths(),
       exists: fs.existsSync,
       found: findAgents(pre.agentPath ?? pre.pathEnv),
       integrations,

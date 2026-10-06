@@ -1,7 +1,7 @@
 import type { AgentKind } from '@svall/protocol';
 import { condenseTurns } from '../../agent/transcript.js';
 
-const NAMES: Record<AgentKind, string> = { claude: 'Claude Code', codex: 'Codex' };
+const NAMES: Record<AgentKind, string> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode' };
 
 /**
  * A brief to start a fresh agent with when a session cannot be resumed. It is a new conversation that

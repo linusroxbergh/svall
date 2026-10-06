@@ -18,11 +18,11 @@ keyed by id, not lists.
 Names work wherever an id does, for characters and islands, in any letter case.
 An ambiguous name is refused with the ids to pick from.
 
-A character is one tmux window: a plain shell, or a Claude Code or Codex
-session. States: `working`, `idle`, `blocked` (waiting on a permission or a
+A character is one tmux window: a plain shell, or a Claude Code, Codex or
+OpenCode session. States: `working`, `idle`, `blocked` (waiting on a permission or a
 question), `done` (`*` means nobody has looked at it yet), `shell`, `dormant`
 (its window is gone, because its agent sat idle past the wait set in Settings,
-the app was quit, or the Mac restarted; `svall char run` wakes a Claude or Codex one with the prompt, and
+the app was quit, or the Mac restarted; `svall char run` wakes a Claude, Codex or OpenCode one with the prompt, and
 `svall char revive <name>` brings any back).
 
 This island has kind `home`. Its crew are agents started from the mission
@@ -45,9 +45,9 @@ control buttons; each finishes its task and stays `done` until closed.
 | new island (the scribe describes and links it) | `svall island create review` |
 | describe an island | `svall island update review --description "PRs waiting on a human"` |
 | tidy the map | `svall island arrange` |
-| start an agent on an island (the main agent; `--agent claude` or `--agent codex` picks one) | `svall char new --island review --cwd ~/repo --run "review PR 472"` |
+| start an agent on an island (the main agent; `--agent claude`, `codex` or `opencode` picks one) | `svall char new --island review --cwd ~/repo --run "review PR 472"` |
 | start one in a role (a file in the fleet's agent-profiles folder) | `svall char new --island review --cwd ~/repo --agent-profile reviewer --run "review PR 472"` |
-| start a Claude one in a fresh worktree, on another model | `svall char new --island review --cwd ~/repo --command "claude -w pr-472 --model opus" --run "review PR 472"` |
+| start a Claude one on another model | `svall char new --island review --cwd ~/repo --command "claude --model opus" --run "review PR 472"` |
 
 `svall char wait` exits 0 on a matched state, 2 on timeout and 3 when the
 character is gone, so a loop can branch on the exit code.
@@ -72,15 +72,14 @@ character's agent gets at SessionStart; `svall char show <name>` prints it.
   answers to is refused.
 - Never guess a cell. Omit `--cell` and the daemon places the character; a
   guessed cell fails or swaps somebody else off the island.
-- A new task or PR review in a git repository gets a fresh worktree, never a
-  checkout another agent works in. `claude -w <name>` makes one under the
-  repository's `.claude/worktrees/`; for Codex, `git worktree add` one first and
-  pass its path as `--cwd`.
+- A character started with `--run` in a git repository is told to work in a
+  worktree no other agent works in, unless the user turned that off in Settings.
+  `--cwd` is the repository or such a worktree, never a checkout another agent works in.
 - Starting a character to continue, review or take over work ends your part. Do
   not wait on or watch it unless the user asked you to report back.
-- Names are at most 24 characters, lower case, any PR or ticket first, then what
-  a character is doing and what on: `#1907 review auth tests`, not `#1907 review`
-  or `claude-2`.
+- Names are at most 24 characters, lower case: PR or ticket id, area, task, one
+  or two words each: `#1907 auth review`, not `#1907 deep review r3` or
+  `claude-2`.
 - Leave notes and descriptions to `svall scribe sweep` unless the user asks. One
   you write counts as hand-written, and the scribe stops updating it.
 - `svall scribe sweep` refuses while the scribe is off. Pass on what it says and

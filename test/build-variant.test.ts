@@ -24,3 +24,10 @@ test('the release variant keeps the repo Info.plist as it is', () => {
   expect(read(plist, 'CFBundleIdentifier')).toBe('io.github.linusroxbergh.svall');
   expect(read(plist, 'SvallHomeName')).toBe('.svall');
 });
+
+// a scheduled check that finds an update holds it until the app quits, so the app probes the feed on the interval itself
+test("Sparkle's own scheduled checks stay off, and the interval the app probes on is set", () => {
+  const plist = path.join(ROOT, 'apps/desktop/mac/Info.plist');
+  expect(read(plist, 'SUEnableAutomaticChecks')).toBe('false');
+  expect(Number(read(plist, 'SUScheduledCheckInterval'))).toBeGreaterThan(0);
+});

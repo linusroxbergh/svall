@@ -27,6 +27,7 @@
     "./handover/replicas": "./src/handover/replicas.ts",
     "./handover/sessions/registry": "./src/handover/sessions/registry.ts",
     "./codex/install": "./src/codex/install.ts",
+    "./opencode/install": "./src/opencode/install.ts",
     "./agent-hooks": "./src/agent-hooks.ts",
     "./launchd": "./src/launchd.ts",
     "./settings-file": "./src/settings-file.ts",

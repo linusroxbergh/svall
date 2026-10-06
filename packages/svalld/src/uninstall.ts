@@ -10,6 +10,7 @@ import { SystemdError, daemonReload, disableUnit, realRun, type Run } from './li
 import { agentHomesEnv, ourUnits } from './linux/setup.js';
 import { configDir, machineId } from './machine.js';
 import { fleetOrigin, portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
+import { removeOpencodePlugin, type OpencodePaths } from './opencode/install.js';
 import { resolvePaths } from './paths.js';
 import { BUNDLE_ID, homePrefix, isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome, SHIM } from './profile.js';
 import { readJsonSettings, readOrUndefined, requireWritable, writeJsonSettings, type JsonSettings } from './settings-file.js';
@@ -170,12 +171,12 @@ export function stranded(homes: string[], prefix?: string, released: string[] = 
 /** The refusal of an uninstall that would strand a fleet. */
 export class UninstallRefused extends Error {}
 
-// takes back what setup put outside the fleet homes: the Claude hooks and statusline and the Codex hooks that run
-// `home`'s scripts, every fleet's phone link, service and tmux server, the installed releases and the shims. The
+// takes back what setup put outside the fleet homes: the Claude hooks and statusline, the Codex hooks and the OpenCode
+// plugin that run `home`'s scripts, every fleet's phone link, service and tmux server, the installed releases and the shims. The
 // fleets' own data stays for purge. Unless forced, it refuses where that would strand a fleet; `forceFleets` passes
 // only the gateway records of those fleets.
 export async function runUninstall(o: {
-  home: string; homes: string[]; settingsPaths: string[]; codex: CodexPaths; launchAgentsDir: string; shimDir: string; launchctl: boolean;
+  home: string; homes: string[]; settingsPaths: string[]; codex: CodexPaths; opencode: OpencodePaths; launchAgentsDir: string; shimDir: string; launchctl: boolean;
   mobile: MobileDeps; app: AppQuit; tmux?: string; skipPid?: number; platform?: NodeJS.Platform; unitDir?: string; prefix?: string; run?: Run;
   force?: boolean; forceFleets?: string[];
 }): Promise<string[]> {
@@ -209,6 +210,7 @@ export async function runUninstall(o: {
       done.push(`removed ${current.file}`);
     } else done.push(...writeJsonSettings(current, next, what));
   }
+  done.push(...removeOpencodePlugin(o.opencode));
   done.push(...await unserveFleets(o.homes, o.mobile));
 
   if (linux) done.push(...await removeUnits({ unitDir: o.unitDir!, systemctl: o.launchctl, run: o.run ?? realRun }));

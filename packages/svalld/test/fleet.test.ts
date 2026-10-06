@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MachineId, SPACING, crewGrid, emptyState, isLand, landCells, sizeForCrew, type AgentKind, type FleetState } from '@svall/protocol';
 import { Config } from '../src/config.js';
 import { docsDir } from '../src/docs.js';
-import type { Proc } from '../src/dormancy.js';
+import { markDormant, RESUME_NOTE, type Proc } from '../src/dormancy.js';
 import { Dormant, Invalid, NotFound } from '../src/errors.js';
 import { Fleet } from '../src/fleet.js';
 import { startHookReceiver, type HookEvent } from '../src/hooks/receiver.js';
@@ -21,6 +21,8 @@ import { tmuxConfText } from '../src/tmux/conf.js';
 import { ControlClient } from '../src/tmux/control.js';
 import { SESSION, Tmux } from '../src/tmux/tmux.js';
 import { cleanHomes, hasTmux, makeHome, ownerOf, waitFor, waitForPolls } from './helpers.js';
+
+const OSID = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
 
 const runIf = hasTmux() ? describe : describe.skip;
 
@@ -530,6 +532,16 @@ runIf('Fleet', () => {
     await waitFor(async () => (await fleet.readScreen(c.id, 20)).includes('revived'));
   });
 
+  it('takes away a prompt file left over when a character starts without a prompt', async () => {
+    const { fleet, store, tmux, home } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    await tmux.killWindow(c.tmux!.windowId);
+    await waitFor(() => store.state.characters[c.id].tmux === undefined);
+    fs.writeFileSync(path.join(home, `${c.id}.prompt`), 'stale');
+    await fleet.reviveCharacter(c.id);
+    expect(fs.existsSync(path.join(home, `${c.id}.prompt`))).toBe(false);
+  });
+
   const SID = '9d1e4c2a-7b3f-4a6e-8c5d-2f1a0b9c8d7e';
   const HOUR = 3_600_000;
 
@@ -602,6 +614,24 @@ runIf('Fleet', () => {
     await new Promise((r) => setTimeout(r, 1500));
     await expect(tmux.run('list-sessions')).rejects.toThrow();
     await expect(fleet.reviveCharacter(c.id)).rejects.toThrow('the fleet is stopping');
+  });
+
+  it('resumes an agent a quit stopped mid-turn as the fleet starts again, telling it what was lost', async () => {
+    const b = await boot();
+    const { c } = await withAgent(b);
+    b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', sessionId: SID } });
+    await b.fleet.stopAll();
+    expect(b.store.state.characters[c.id].revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
+
+    const again = await boot({ opening: true, state: structuredClone(b.store.state) });
+    // what would be typed is kept, so no real claude starts
+    const typed: string[] = [];
+    vi.spyOn(again.tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
+    await again.fleet.resumeInterrupted();
+    expect(again.store.state.characters[c.id].tmux).toBeDefined();
+    const file = path.join(again.home, `${c.id}.prompt`);
+    expect(typed).toEqual([`claude --resume ${SID} -- "$(cat '${file}'; rm -f '${file}')"`]);
+    expect(fs.readFileSync(file, 'utf8')).toBe(RESUME_NOTE);
   });
 
   it('has every change on disk once it has stopped', async () => {
@@ -1257,12 +1287,35 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id].agent).toMatchObject({ status: 'blocked', prompt: 'the next one' });
   });
 
+  it('leaves an OpenCode card blocked until its plugin reports the answer, and takes one answer per question', async () => {
+    const { fleet, store, tmux } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'opencode', name: 'PermissionRequest', sessionId: OSID, ...h } });
+    hook({ name: 'SessionStart', transcriptPath: '/nope' });
+    hook({ message: 'rm -rf build' });
+    const sent = vi.spyOn(tmux, 'sendBytes');
+    // Esc on a subagent's question asks for a reason before it turns the question down
+    await fleet.answerPrompt(c.id, 'deny');
+    expect(store.state.characters[c.id].agent).toMatchObject({ status: 'blocked', prompt: 'rm -rf build' });
+    await new Promise((r) => setTimeout(r, 1100));
+    await expect(fleet.answerPrompt(c.id, 'deny')).rejects.toThrow('already in');
+    hook({ message: 'which file?' });
+    await fleet.answerPrompt(c.id, 'approve');
+    await expect(fleet.answerPrompt(c.id, 'approve')).rejects.toThrow('already in');
+    // Enter on a question of several parts moves on to the next, which takes an answer of its own
+    await new Promise((r) => setTimeout(r, 1100));
+    await fleet.answerPrompt(c.id, 'approve');
+    hook({ name: 'PreToolUse' });
+    expect(store.state.characters[c.id].agent!.status).toBe('working');
+    expect(sent).toHaveBeenCalledTimes(3);
+  });
+
   it('keeps an agent with background agents out working when its question is denied', async () => {
     const { fleet, store } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
     const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', sessionId: 'sess', ...h } });
     hook({ name: 'SessionStart', transcriptPath: '/nope' });
-    hook({ name: 'Stop', backgroundAgents: 1 });
+    hook({ name: 'Stop', backgroundTasks: 1, backgroundAgents: 1 });
     hook({ notificationType: 'worker_permission_prompt' });
     await fleet.answerPrompt(c.id, 'deny');
     expect(store.state.characters[c.id].agent).toMatchObject({ status: 'working', background: true });
@@ -1711,6 +1764,24 @@ runIf('Fleet', () => {
     expect(store.state).not.toHaveProperty('scribeOff');
   });
 
+  it('tells a character made with a task, not one opened by hand, to work in a worktree until the setting turns it off', async () => {
+    const { fleet, store } = await boot({ runTimeoutMs: 300 });
+    const islandId = fleet.createIsland({ name: 'feature' }).id;
+    const manual = await fleet.createCharacter({ islandId, cwd: '/tmp' });
+    const c = await fleet.createCharacter({ islandId, cwd: '/tmp', command: 'echo started', run: 'hello' });
+    const rule = '- In a git repo, work in a worktree';
+    expect(fleet.brief(manual.id)).not.toContain(rule);
+    expect(fleet.brief(c.id)).toContain(rule);
+    fleet.setWorktrees(false);
+    expect(store.state.worktreesOff).toBe(true);
+    expect(fleet.brief(c.id)).not.toContain(rule);
+    fleet.setWorktrees(true);
+    expect(store.state).not.toHaveProperty('worktreesOff');
+    expect(fleet.brief(c.id)).toContain(rule);
+    await fleet.closeCharacter(manual.id);
+    await fleet.closeCharacter(c.id);
+  });
+
   it('reports the prompt unsent when the window dies while the run waits', async () => {
     const { fleet, store, tmux, home } = await boot({ runTimeoutMs: 5000 });
     const ran = `${home}/ran`;
@@ -1781,6 +1852,61 @@ runIf('Fleet', () => {
     expect(b.store.state.characters[c.id].agent).toMatchObject({ kind: 'codex', model: 'gpt-fake' });
     expect(b.fleet.readPrompts(c.id, 5)).toEqual(['fix the flaky test']);
     expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-codex', `${c.id}.argv`), 'utf8'))).toEqual(['--', 'fix the flaky test']);
+  });
+
+  it('hands opencode its first prompt with --prompt and follows its plugin', async () => {
+    vi.stubEnv('PATH', `${path.join(import.meta.dirname, 'fixtures/bin')}:${process.env.PATH}`);
+    cleanup.push(async () => { vi.unstubAllEnvs(); });
+    const b = await boot();
+    const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'opencode' }).id, cwd: '/tmp', command: 'opencode', run: 'fix the flaky test' });
+    expect(c.runSent).toBe(true);
+    await waitFor(() => b.store.state.characters[c.id].agent?.status === 'done');
+    const agent = b.store.state.characters[c.id].agent!;
+    expect(agent).toMatchObject({ kind: 'opencode', sessionId: OSID, contextPct: 10, model: 'big-pickle' });
+    expect(b.fleet.readPrompts(c.id, 5)).toEqual(['fix the flaky test']);
+    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-opencode', `${c.id}.argv`), 'utf8'))).toEqual(['--standalone', '--prompt', 'fix the flaky test']);
+    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-opencode', `${c.id}.system`), 'utf8'))).toEqual([agent.brief]);
+  });
+
+  it('drops an opencode agent once its pane is back at a shell', async () => {
+    vi.stubEnv('PATH', `${path.join(import.meta.dirname, 'fixtures/bin')}:${process.env.PATH}`);
+    cleanup.push(async () => { vi.unstubAllEnvs(); });
+    const b = await boot({ pollMs: 100 });
+    const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'opencode' }).id, cwd: '/tmp', command: 'opencode', run: 'first' });
+    await waitFor(() => b.store.state.characters[c.id].agent?.status === 'done');
+    await b.tmux.run('send-keys', '-t', c.tmux!.paneId, 'C-d');
+    await waitFor(() => b.store.state.characters[c.id].agent === undefined, 10_000);
+  });
+
+  it('wakes a dormant opencode character with a prompt its plugin submits', async () => {
+    vi.stubEnv('PATH', `${path.join(import.meta.dirname, 'fixtures/bin')}:${process.env.PATH}`);
+    cleanup.push(async () => { vi.unstubAllEnvs(); });
+    const b = await boot();
+    const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'opencode' }).id, cwd: '/tmp', command: 'opencode', run: 'first' });
+    await waitFor(() => b.store.state.characters[c.id].agent?.status === 'done');
+    // dormant before the kill, as svalld ends an agent, so its revive is set at once
+    b.store.update((d) => { markDormant(d.characters[c.id]); });
+    await b.tmux.killWindow(c.tmux!.windowId);
+    expect(b.store.state.characters[c.id].revive?.command).toBe(`opencode -s ${OSID}`);
+    await b.fleet.run(c.id, 'second', true);
+    await waitFor(() => b.fleet.readPrompts(c.id, 5).length === 2);
+    expect(b.fleet.readPrompts(c.id, 5)).toEqual(['second', 'first']);
+    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-opencode', `${c.id}.argv`), 'utf8'))).toEqual(['--standalone', '-s', OSID]);
+    expect(fs.existsSync(path.join(b.home, `${c.id}.prompt`))).toBe(false);
+  });
+
+  it('resumes an opencode character a restart cut off mid-turn, its plugin submitting what was lost', async () => {
+    vi.stubEnv('PATH', `${path.join(import.meta.dirname, 'fixtures/bin')}:${process.env.PATH}`);
+    cleanup.push(async () => { vi.unstubAllEnvs(); });
+    const b = await boot();
+    const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'opencode' }).id, cwd: '/tmp', command: 'opencode', run: 'first' });
+    await waitFor(() => b.store.state.characters[c.id].agent?.status === 'done');
+    b.store.update((d) => { d.characters[c.id].agent!.status = 'working'; markDormant(d.characters[c.id]); });
+    await b.tmux.killWindow(c.tmux!.windowId);
+    expect(b.store.state.characters[c.id].revive).toEqual({ command: `opencode -s ${OSID}`, interrupted: true });
+    await b.fleet.resumeInterrupted();
+    await waitFor(() => b.fleet.readPrompts(c.id, 5).length === 2);
+    expect(b.fleet.readPrompts(c.id, 5)[0]).toBe(RESUME_NOTE);
   });
 
   it('refuses a cwd that is relative or not a directory before any window opens', async () => {

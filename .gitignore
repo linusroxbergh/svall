@@ -22,7 +22,7 @@ site/deploy/
 apps/desktop/web/test-results/
 apps/desktop/web/playwright-report/
 apps/desktop/mac/.build/
-apps/desktop/mac/build/
+apps/desktop/mac/build.noindex/
 apps/desktop/mac/GhosttyKit.xcframework
 vendor/ghostty-kit/
 vendor/node/

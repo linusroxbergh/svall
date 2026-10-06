@@ -2,14 +2,21 @@ import fs from 'node:fs';
 import type { AgentKind } from '@svall/protocol';
 import { condenseTurnsClaude, userPromptsClaude, type Pending } from './claude-transcript.js';
 import { condenseTurnsCodex, userPromptsCodex } from './codex-transcript.js';
+import { condenseTurnsOpencode, userPromptsOpencode } from './opencode-transcript.js';
 
-// each agent writes its own transcript format, and either parser reads nothing out of the other's file
+// each agent writes its own transcript format, and no parser reads anything out of another's file
+const READERS: Record<AgentKind, { prompts: typeof userPromptsClaude; condense: typeof condenseTurnsClaude }> = {
+  claude: { prompts: userPromptsClaude, condense: condenseTurnsClaude },
+  codex: { prompts: userPromptsCodex, condense: condenseTurnsCodex },
+  opencode: { prompts: userPromptsOpencode, condense: condenseTurnsOpencode },
+};
+
 export function userPrompts(kind: AgentKind, text: string, limit: number, pending?: Pending): string[] {
-  return kind === 'codex' ? userPromptsCodex(text, limit, pending) : userPromptsClaude(text, limit, pending);
+  return READERS[kind].prompts(text, limit, pending);
 }
 
 export function condenseTurns(kind: AgentKind, text: string, turns: number, opts: { toolLinks?: boolean } = {}): string {
-  return kind === 'codex' ? condenseTurnsCodex(text, turns, opts) : condenseTurnsClaude(text, turns, opts);
+  return READERS[kind].condense(text, turns, opts);
 }
 
 export function readTail(file: string, maxBytes = 512 * 1024): string {

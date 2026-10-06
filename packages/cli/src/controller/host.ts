@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { FleetConfig, FleetId, MachineId, MachineRecord, type AgentKind } from '@svall/protocol';
-import { AGENTS, AGENT_KINDS, versionOk } from '@svall/svalld/agents';
+import { AGENTS, versionOk } from '@svall/svalld/agents';
 import { patchFleetConfig } from '@svall/svalld/config';
 import { gatewayPaths, socketTooLong } from '@svall/svalld/gateway/authority';
 import { homeCommands } from '@svall/svalld/handover/inventory';
@@ -217,8 +217,9 @@ function serviceOutcome(report: RemoteDoctor, destination: string): Outcome<Remo
   return { value: report, detail: units.join('; '), ...(action ? { status: 'warn' as const, action } : {}) };
 }
 
-// the companion doctor's check of each agent's Svall hooks, whose detail ends with what to do there
-const HOOK_CHECKS: Record<AgentKind, string> = { claude: 'hooks', codex: 'codex hooks' };
+// the companion doctor's check of each agent's Svall hooks, whose detail ends with what to do there; a handover
+// carries no OpenCode session, so OpenCode is not checked for
+const HOOK_CHECKS = { claude: 'hooks', codex: 'codex hooks' } as const satisfies Partial<Record<AgentKind, string>>;
 
 /**
  * The agent checks, on the PATH the companion's units run with, which a login over ssh does not see all of, and the
@@ -226,7 +227,7 @@ const HOOK_CHECKS: Record<AgentKind, string> = { claude: 'hooks', codex: 'codex 
  */
 async function agentChecks(master: SshMaster, o: { destination: string; home: string; svallBase: string; report: RemoteDoctor }, run: Runner): Promise<void> {
   const PATH = unitPath({ runtime: releaseRuntime(path.posix.join(o.svallBase, 'current')), homedir: o.home, prefix: o.svallBase });
-  for (const kind of AGENT_KINDS) {
+  for (const kind of Object.keys(HOOK_CHECKS) as (keyof typeof HOOK_CHECKS)[]) {
     await run.step(kind, async () => {
       const a = AGENTS[kind];
       const call = (args: string[]) => master.run(['env', shq(`PATH=${PATH}`), a.bin, ...args], { timeoutMs: PROBE_TIMEOUT });

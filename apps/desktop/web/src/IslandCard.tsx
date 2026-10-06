@@ -6,6 +6,7 @@ import { FollowLine, FollowTextarea } from './Field.js';
 import { useApp } from './hooks.js';
 import { DocsList } from './resources/DocsList.js';
 import { ResourcesButton } from './ResourcesButton.js';
+import { Section } from './Section.js';
 import { charactersOf } from './selectors.js';
 
 export function DeleteIsland({ id, testid, label }: { id: string; testid: string; label: string }) {
@@ -35,23 +36,22 @@ export function IslandCard({ id }: { id: string }) {
           onSave={(v) => { const name = v.trim(); if (!name || name === i.name) return false; save({ name }); }} />
         <button className="btn pri sm" data-testid="side-island-new" onClick={() => newCharacterOn(deps(), id)}>+ New character</button>
       </div>
-      <div className="sec">
-        <div className="kicker">Description</div>
-        <FollowTextarea className="fld desc" rows={4} placeholder="What this island is for" key={`description-${id}`} value={i.description} data-testid="side-island-description"
-          onSave={(v) => { if (v !== i.description) save({ description: v }); }} />
+      <div className="side-secs">
+        <Section name="island.description" title="Description">
+          <FollowTextarea className="fld desc" rows={6} placeholder="What this island is for" key={`description-${id}`} value={i.description} data-testid="side-island-description"
+            onSave={(v) => { if (v !== i.description) save({ description: v }); }} />
+        </Section>
+        <Section name="island.instructions" title="Instructions">
+          <FollowTextarea className="fld desc" rows={3} placeholder="How agents on this island should work" key={`instructions-${id}`} value={i.instructions} data-testid="side-island-instructions"
+            onSave={(v) => { if (v !== i.instructions) save({ instructions: v }); }} />
+        </Section>
+        <Section name="island.context" title="Context">
+          <ContextPills items={i.context} ids={{ list: 'side-island-context', remove: 'island-context-remove', pin: 'island-context-pin' }}
+            charId={chars[0]?.id} onChange={saveContext} />
+          <AddLink id={id} ids={{ ref: 'island-context-ref', add: 'island-context-add' }} onAdd={(item) => saveContext([...i.context, item])} />
+        </Section>
+        <DocsList tier="island" id={id} />
       </div>
-      <div className="sec">
-        <div className="kicker">Instructions</div>
-        <FollowTextarea className="fld desc" rows={3} placeholder="How agents on this island should work" key={`instructions-${id}`} value={i.instructions} data-testid="side-island-instructions"
-          onSave={(v) => { if (v !== i.instructions) save({ instructions: v }); }} />
-      </div>
-      <div className="sec">
-        <div className="kicker">Context</div>
-        <ContextPills items={i.context} ids={{ list: 'side-island-context', remove: 'island-context-remove', pin: 'island-context-pin' }}
-          charId={chars[0]?.id} onChange={saveContext} />
-        <AddLink id={id} ids={{ ref: 'island-context-ref', add: 'island-context-add' }} onAdd={(item) => saveContext([...i.context, item])} />
-      </div>
-      <DocsList tier="island" id={id} />
       <div className="opens"><ResourcesButton root={commonRoot(chars)} testid="side-island-resources" /></div>
       {chars.length === 0 && i.kind !== 'home' && <div className="acts">
         <DeleteIsland id={id} testid="side-island-delete" label="Delete" />

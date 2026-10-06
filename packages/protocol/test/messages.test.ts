@@ -52,7 +52,7 @@ describe('messages', () => {
     }
     expect(methods['island.update'].params.parse({ id: 'i', size: { w: MAX_SIDE, h: MAX_SIDE } }).size).toEqual({ w: MAX_SIDE, h: MAX_SIDE });
     const island = { id: 'i', name: 'x', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 1000, h: 1000 }, seed: 1 };
-    expect(FleetState.safeParse({ version: 8, islands: { i: island }, characters: {} }).success).toBe(true);
+    expect(FleetState.safeParse({ version: 9, islands: { i: island }, characters: {} }).success).toBe(true);
   });
   // arranging for a window of no width at all would push every island out to Infinity, which the state cannot hold
   it('arranges for the shape of a real window, and refuses one of no width or no height', () => {
@@ -67,7 +67,7 @@ describe('messages', () => {
     expect(methods['char.update'].params.safeParse({ id: 'c', instructions: long }).success).toBe(false);
     expect(methods['char.update'].params.safeParse({ id: 'c', instructions: long.slice(1) }).success).toBe(true);
     const island = { id: 'i', name: 'x', description: '', instructions: long, context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
-    expect(FleetState.safeParse({ version: 8, islands: { i: island }, characters: {} }).success).toBe(true);
+    expect(FleetState.safeParse({ version: 9, islands: { i: island }, characters: {} }).success).toBe(true);
   });
   // past 2^31-1 ms a timer fires at once, so a wait that long would answer timeout straight away
   it('waits a whole number of milliseconds a timer can hold', () => {
@@ -150,8 +150,12 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 19 with ownership and handover', () => {
-    expect(PROTOCOL_VERSION).toBe(19);
+  it('is 20 with ownership and handover', () => {
+    expect(PROTOCOL_VERSION).toBe(20);
+  });
+
+  it('was 19 with OpenCode as an agent kind', () => {
+    expect(methods['mainAgent.set'].params.safeParse({ agent: 'opencode' }).success).toBe(true);
   });
 
   it('was 18 with shelf rows set aside and put back', () => {
@@ -185,7 +189,7 @@ const MACHINES = {
   source: { home: '/Users/linus' },
   destination: {
     info: {
-      machineId: UUID_B, release: '0.9.0', protocol: PROTOCOL_VERSION, stateSchema: 8, transferSchema: TRANSFER_SCHEMA_VERSION,
+      machineId: UUID_B, release: '0.9.0', protocol: PROTOCOL_VERSION, stateSchema: 9, transferSchema: TRANSFER_SCHEMA_VERSION,
       platform: 'linux', arch: 'x64', agentAdapters: [{ kind: 'claude', version: '2.1.280', adapter: 1, home: '/Users/linus/.claude', loggedIn: true, hooks: true }],
     },
     home: '/Users/linus',
@@ -220,7 +224,7 @@ describe('ownership and handover methods', () => {
 
   it('says what a machine is and what it can run', () => {
     const info = {
-      machineId: UUID_A, release: '0.9.0', protocol: PROTOCOL_VERSION, stateSchema: 8, transferSchema: TRANSFER_SCHEMA_VERSION,
+      machineId: UUID_A, release: '0.9.0', protocol: PROTOCOL_VERSION, stateSchema: 9, transferSchema: TRANSFER_SCHEMA_VERSION,
       platform: 'darwin', arch: 'arm64',
       agentAdapters: [{ kind: 'claude', version: '2.0.1', adapter: 1, home: '/Users/linus/.claude', loggedIn: true, hooks: false }, { kind: 'codex', adapter: 1 }],
     };

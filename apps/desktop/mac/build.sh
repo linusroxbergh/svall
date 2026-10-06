@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds the shell with SwiftPM and assembles build/Svall Dev.app, or build/Svall.app with SVALL_VARIANT=release.
+# Builds the shell with SwiftPM and assembles build.noindex/Svall Dev.app, or build.noindex/Svall.app with SVALL_VARIANT=release.
 set -eu
 MAC="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$MAC/../../.." && pwd)"
@@ -23,7 +23,8 @@ swift build -c release --arch "$ARCH" -Xcc -Wno-incomplete-umbrella --product sv
 HOOK="$(swift build -c release --arch "$ARCH" --show-bin-path)/svall-hook"
 
 NAME="$([ "$VARIANT" = release ] && echo Svall || echo 'Svall Dev')"
-APP="$MAC/build/$NAME.app"
+# Spotlight skips a .noindex folder, so it never registers a build with LaunchServices, which lists it in Launchpad and Open With
+APP="$MAC/build.noindex/$NAME.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Helpers"
 cp "$BIN" "$APP/Contents/MacOS/Svall"
@@ -48,13 +49,13 @@ fi
 # Node runtime, the phone page, the rsync 3.x macOS does not have, and the linux-x64 companion Add Machine
 # installs, pinned by its path in the release. pnpm release names it by the tag it pushes, other builds by git describe
 if [ "$CONFIG" = release ] && [ "$VARIANT" = release ]; then
-  RELEASE="$MAC/build/release"
-  COMPANIONS="$MAC/build/companions"
+  RELEASE="$MAC/build.noindex/release"
+  COMPANIONS="$MAC/build.noindex/companions"
   VERSION="${SVALL_RELEASE_NAME:-$(node -e 'import(process.argv[1]).then((m) => console.log(m.describeVersion()))' "$ROOT/scripts/release-stage.mjs")}"
   rm -rf "$RELEASE" "$COMPANIONS"
-  node "$ROOT/scripts/build-companion.mjs" --out "$COMPANIONS" --arch x64 --version "$VERSION" >"$MAC/build/companions.json"
+  node "$ROOT/scripts/build-companion.mjs" --out "$COMPANIONS" --arch x64 --version "$VERSION" >"$MAC/build.noindex/companions.json"
   node "$ROOT/scripts/build-controller.mjs" --out "$RELEASE" --version "$VERSION" \
-    --companion-url-base companions --companions "$COMPANIONS" >"$MAC/build/release.json"
+    --companion-url-base companions --companions "$COMPANIONS" >"$MAC/build.noindex/release.json"
   rsync -a --delete "$RELEASE/releases/"*/ "$APP/Contents/Resources/release/"
 fi
 # the commit count orders builds for the updater

@@ -75,7 +75,7 @@ export const FleetConfig = z.object({
   home: Home.extend({ command: z.string().optional() }).prefault({}),
   defaultCwd: z.string().default(DEFAULT_CWD),
   // the agent the scribe, mission control's crew and `svall char new --run` use by default; absent, the private fleet's, else
-  // the only one installed, else claude
+  // claude, unless only other agents are installed
   mainAgent: AgentKind.optional(),
   // which plan a scribe pass spends; absent, the main agent's. model names a model of scribe.agent's CLI, else of claude's
   scribe: z.object({ agent: AgentKind.optional(), model: z.string().optional() }).prefault({}),
@@ -103,7 +103,9 @@ export const NodeConfig = z.object({
   port: z.number().int().default(47800),
   host: z.string().default('127.0.0.1'),
   shell: z.string().optional(),
-  // the agents whose hooks setup installs; absent, every agent found
+  // the agents setup turned off; any other agent found is on
+  agentsOff: z.array(AgentKind).optional(),
+  // the agents whose hooks setup installs; absent, every agent found. Read from agentsOff, else from an integrations list
   integrations: z.array(AgentKind).optional(),
   mobile: z.object({
     // the https port this fleet is reached on, which svalld saves once it serves there

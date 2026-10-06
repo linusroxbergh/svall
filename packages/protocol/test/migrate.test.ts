@@ -8,11 +8,11 @@ const char = (id: string, islandId: string) => ({
 });
 
 describe('migrateState', () => {
-  it('passes a version 8 file through', () => {
+  it('passes a version 9 file through', () => {
     const { state, migrated, dropped } = migrateState(emptyState());
     expect(migrated).toBe(false);
     expect(dropped).toEqual([]);
-    expect(state.version).toBe(8);
+    expect(state.version).toBe(9);
   });
 
   const agent = { kind: 'claude', sessionId: 's', transcriptPath: '/t', status: 'idle', lastActivityAt: 3 };
@@ -26,13 +26,25 @@ describe('migrateState', () => {
     },
   });
 
-  it('lifts a version 7 file to 8: a second terminal gets its character\'s cwd, and an absent one stays absent', () => {
-    const { state, migrated, dropped } = migrateState(withSecond(7));
+  for (const version of [7, 8]) {
+    it(`lifts a version ${version} file to 9: a second terminal gets its character's cwd, and an absent one stays absent`, () => {
+      const { state, migrated, dropped } = migrateState(withSecond(version));
+      expect(migrated).toBe(true);
+      expect(dropped).toEqual([]);
+      expect(state.version).toBe(9);
+      expect(state.characters.c0.second).toEqual({ cwd: '/work', tmux: { windowId: '@2', paneId: '%2' }, unread: true, agent });
+      expect(state.characters.c1.second).toBeUndefined();
+    });
+  }
+
+  it('lifts a version 8 file with an OpenCode agent and an interrupted revive as it is', () => {
+    const oc = { kind: 'opencode', sessionId: 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn', status: 'idle', lastActivityAt: 3 };
+    const c = { ...char('c_a', 'i_a'), worktree: true, agent: oc, revive: { command: 'opencode -s x', interrupted: true } };
+    const raw = { ...emptyState(), version: 8, islands: { i_a: island('i_a') }, characters: { c_a: c } };
+    const { state, migrated, dropped } = migrateState(raw);
     expect(migrated).toBe(true);
     expect(dropped).toEqual([]);
-    expect(state.version).toBe(8);
-    expect(state.characters.c0.second).toEqual({ cwd: '/work', tmux: { windowId: '@2', paneId: '%2' }, unread: true, agent });
-    expect(state.characters.c1.second).toBeUndefined();
+    expect(state).toEqual({ ...raw, version: 9 });
   });
 
   it('refuses a file older than version 7 and says so', () => {
@@ -43,8 +55,8 @@ describe('migrateState', () => {
   });
 
   it('refuses a file from a newer svalld', () => {
-    expect(() => migrateState({ version: 9, islands: {}, characters: {} })).toThrow(NewerStateVersion);
-    expect(() => migrateState({ version: 9, islands: {}, characters: {} })).toThrow(/newer than this svalld reads \(8\)/);
+    expect(() => migrateState({ version: 10, islands: {}, characters: {} })).toThrow(NewerStateVersion);
+    expect(() => migrateState({ version: 10, islands: {}, characters: {} })).toThrow(/newer than this svalld reads \(9\)/);
   });
 
   it('rejects garbage', () => {

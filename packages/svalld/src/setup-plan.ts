@@ -10,7 +10,7 @@ import type { Runtime } from './runtime.js';
 
 /** What the app's setup screen shows before anything is written: the screen leaves out the files of the agents it turns off. */
 export function setupPlan(o: {
-  home: string; projects: string; found: FoundAgent[]; folders: FoundAgent[]; integrations?: AgentKind[]; settingsPath: string; codexHooks: string;
+  home: string; projects: string; found: FoundAgent[]; folders: FoundAgent[]; integrations?: AgentKind[]; settingsPath: string; codexHooks: string; opencodePlugin: string;
   launchAgentsDir: string; fleets: string[]; shimDir: string; pathEnv: string; answered: boolean; cli: string;
 }): SetupPlan {
   // setup writes an agent's hooks when its CLI is on PATH or its own folder is here
@@ -19,6 +19,7 @@ export function setupPlan(o: {
   const writes = [
     ...(has('claude') ? [{ what: 'Claude Code hooks and status line', path: o.settingsPath, agent: 'claude' as const }] : []),
     ...(has('codex') ? [{ what: 'Codex hooks', path: o.codexHooks, agent: 'codex' as const }] : []),
+    ...(has('opencode') ? [{ what: 'OpenCode plugin', path: o.opencodePlugin, agent: 'opencode' as const }] : []),
     { what: 'Service that keeps fleets running', path: path.join(o.launchAgentsDir, `${LAUNCHD_LABEL}.plist`) },
     ...o.fleets.map((h) => ({ what: `Service for the ${profileOf(h)} fleet`, path: path.join(o.launchAgentsDir, `${profileLabel(profileOf(h))}.plist`) })),
     { what: `The ${SHIM} command`, path: path.join(o.shimDir, SHIM) },
@@ -26,9 +27,9 @@ export function setupPlan(o: {
   ];
   let blockers: string[] = [];
   let install: SetupPlan['install'];
-  if (!o.answered) blockers = [`Your login shell did not answer within ${LOGIN_SHELL_TIMEOUT_MS / 1000} seconds, so Svall cannot see where Claude Code and Codex are. Check again, or run ${o.cli} setup in a terminal.`];
+  if (!o.answered) blockers = [`Your login shell did not answer within ${LOGIN_SHELL_TIMEOUT_MS / 1000} seconds, so Svall cannot see where your agent CLIs are. Check again, or run ${o.cli} setup in a terminal.`];
   else if (!o.found.length) {
-    const either = (f: (k: AgentKind) => string) => AGENT_KINDS.map(f).join(' or ');
+    const either = (f: (k: AgentKind) => string) => `${AGENT_KINDS.slice(0, -1).map(f).join(', ')} or ${f(AGENT_KINDS.at(-1)!)}`;
     blockers = [`Svall runs ${either((k) => AGENTS[k].label)} in its terminals, so it needs the ${either((k) => AGENTS[k].bin)} command. The desktop apps don't install it. Install one in Terminal, then check again.`];
     install = AGENT_KINDS.map((kind) => ({ kind, command: AGENTS[kind].installCommand, url: AGENTS[kind].installUrl }));
   }
@@ -70,15 +71,23 @@ export function requireInstalledApp(r: Runtime): void {
   }
 }
 
-const readVersion = (home: string): string | undefined => {
-  try { return fs.readFileSync(path.join(home, 'version'), 'utf8').trim(); } catch { return undefined; }
+// the version and pid a daemon wrote as it started; a build before the pid wrote the version alone
+const readStamp = (home: string): { version: string; pid?: number } | undefined => {
+  try {
+    const [version, pid] = fs.readFileSync(path.join(home, 'version'), 'utf8').trim().split('\n');
+    return { version, pid: pid ? Number(pid) : undefined };
+  } catch { return undefined; }
 };
 
-/** The launchd labels of the running fleets whose daemon started as another version than `version`, or wrote none. */
-export function staleFleets(homes: string[], version: string, running: (label: string) => boolean,
+/** The launchd labels of the running fleets whose daemon started as another version than `version`. One whose stamp is
+ * missing or names another pid has not written its own yet: it is starting, on the program its plist names now. */
+export function staleFleets(homes: string[], version: string, pidOf: (label: string) => number | undefined,
   label: (home: string) => string = (h) => profileLabel(profileOf(h))): string[] {
   return homes.map((h) => [h, label(h)] as const)
-    .filter(([h, l]) => running(l) && readVersion(h) !== version)
+    .filter(([h, l]) => {
+      const pid = pidOf(l), stamp = readStamp(h);
+      return pid !== undefined && stamp !== undefined && stamp.version !== version && (stamp.pid === undefined || stamp.pid === pid);
+    })
     .map(([, l]) => l);
 }
 

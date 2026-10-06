@@ -10,10 +10,10 @@ import { condenseTurns, readTail, userPrompts } from './agent/transcript.js';
 import { characterKeyEnv } from './claude.js';
 import { initConfig, patchFleetConfig, saveMainAgent, scribeModel, type Config } from './config.js';
 import { renderBrief } from './context/brief.js';
-import { isAgentCommand, withAddDirs, withPromptFile } from './context/launch.js';
+import { isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from './context/launch.js';
 import { settleItems } from './context/items.js';
 import { docFolders, removeDocs } from './docs.js';
-import { endAll, endIdleAgents, processes, type Proc, type Sleep } from './dormancy.js';
+import { endAll, endIdleAgents, processes, RESUME_NOTE, type Proc, type Sleep } from './dormancy.js';
 import { Dormant, Invalid, NotFound } from './errors.js';
 import { takenNames } from './fleets.js';
 import { AgentEvents } from './fleet/agent-events.js';
@@ -32,6 +32,7 @@ import { expandHome, type Paths } from './paths.js';
 import { SHIM } from './profile.js';
 import { reconcile, secondName, snapshot, type Carried } from './reconcile.js';
 import { codexRunner } from './scribe/codex.js';
+import { opencodeRunner } from './scribe/opencode.js';
 import { claudeRunner, perPass, type RunScribe } from './scribe/run.js';
 import { Scribe, type SweepOptions } from './scribe/scribe.js';
 import { installHomeTemplate } from './setup.js';
@@ -85,6 +86,7 @@ export class Fleet extends EventEmitter<Events> {
     const run = deps.runScribe ?? perPass({
       claude: claudeRunner({ model: scribeModel(config.scribe, 'claude') ?? 'sonnet', cwd, envFile: paths.env }),
       codex: codexRunner({ model: scribeModel(config.scribe, 'codex'), cwd }),
+      opencode: opencodeRunner({ model: scribeModel(config.scribe, 'opencode'), cwd }),
     }, () => store.state.scribeAgent ?? 'claude');
     this.scribe = new Scribe({ store, log, run, brief: (island, c) => this.render(island, c) });
     this.sleep = { store, tmux: deps.tmux, log, processes: deps.processes ?? processes, ending: this.ending };
@@ -187,7 +189,7 @@ export class Fleet extends EventEmitter<Events> {
   // a profile that is missing or cannot be used is left out, and the side card says why
   private render(island: Island, c?: Character): string {
     const p = c?.agentProfile ? readAgentProfile(this.deps.paths.agentProfiles, c.agentProfile) : undefined;
-    return renderBrief(island, c, docFolders(this.deps.paths.docs, island, c), p && !('error' in p) ? p : undefined);
+    return renderBrief(island, c, docFolders(this.deps.paths.docs, island, c), p && !('error' in p) ? p : undefined, !!c?.worktree && !this.deps.store.state.worktreesOff);
   }
 
   // a profile given by name must be one that can be used now; one that goes later is shown as missing
@@ -304,6 +306,10 @@ export class Fleet extends EventEmitter<Events> {
     setImmediate(() => this.emit('stopped'));
   }
 
+  setWorktrees(enabled: boolean): void {
+    this.deps.store.update((d) => { if (enabled) delete d.worktreesOff; else d.worktreesOff = true; });
+  }
+
   setDormancy(hours: number): void {
     this.deps.store.update((d) => { d.dormantAfterHours = hours; });
   }
@@ -408,7 +414,7 @@ export class Fleet extends EventEmitter<Events> {
     if (!p.run) return this.char(id);
     const timeoutMs = this.deps.runTimeoutMs ?? RUN_TIMEOUT_MS;
     let runSent = await this.prompts.waitForAgent(id, timeoutMs);
-    // claude and codex have their prompt already, and submit it once they are up
+    // an agent has its prompt already, and submits it once it is up
     if (prompt) return { ...this.char(id), runSent: true };
     if (runSent && !this.writable()) {
       this.deps.log.error(`character ${id}: the fleet froze for a handover, prompt not sent`);
@@ -426,7 +432,7 @@ export class Fleet extends EventEmitter<Events> {
 
   // the window, the record and the start command of a new character; neither an orphan window nor a half-made character outlives a failure
   private async openCharacter(
-    id: string, cwd: string, panePath: string, p: { islandId: string; name?: string; command?: string; cell?: Cell; agentProfile?: string }, prompt: string | undefined,
+    id: string, cwd: string, panePath: string, p: { islandId: string; name?: string; command?: string; cell?: Cell; run?: string; agentProfile?: string }, prompt: string | undefined,
   ): Promise<void> {
     const w = await this.deps.tmux.newWindow(id, cwd, this.charEnv(id));
     try {
@@ -437,7 +443,7 @@ export class Fleet extends EventEmitter<Events> {
           id, islandId: p.islandId, cell: p.cell ?? placeOnIsland(d, p.islandId, undefined, this.deps.log),
           name: uniqueName(names, p.name ?? randomName(new Set(names))),
           portrait: randomPortrait(new Set(Object.values(d.characters).map((c) => c.portrait))),
-          note: '', instructions: '', ...(p.agentProfile && { agentProfile: p.agentProfile }), cwd, panePath, context: [],
+          note: '', instructions: '', ...(p.agentProfile && { agentProfile: p.agentProfile }), ...(p.run && { worktree: true as const }), cwd, panePath, context: [],
           tmux: { windowId: w.windowId, paneId: w.paneId },
           shell: { lastOutputAt: Date.now() }, unread: false,
         };
@@ -463,11 +469,14 @@ export class Fleet extends EventEmitter<Events> {
     return path.join(this.deps.paths.home, `${id}.prompt`);
   }
 
-  // claude and codex take a first prompt as their argument, which the shell reads from a file: typed into a composer
+  // an agent takes a first prompt as its argument, which the shell reads from a file: typed into a composer
   // that is still booting, a long prompt can arrive in pieces that swallow the Enter
-  private launchLine(id: string, command: string, prompt?: string): string {
+  private launchLine(id: string, launch: string, prompt?: string): string {
+    const command = withStandalone(launch);
+    // a prompt file an OpenCode plugin never took must not reach the next resume
+    if (!prompt) fs.rmSync(this.promptFile(id), { force: true });
     if (!prompt || !isAgentCommand(command)) return command;
-    fs.writeFileSync(this.promptFile(id), prompt, { mode: 0o600 });
+    fs.writeFileSync(this.promptFile(id), promptText(command, prompt), { mode: 0o600 });
     return withPromptFile(command, this.promptFile(id));
   }
 
@@ -569,6 +578,14 @@ export class Fleet extends EventEmitter<Events> {
     removeDocs(this.deps.paths.docs, 'character', id, this.deps.log);
   }
 
+  /** Revives every character whose agent a quit, reboot or crash ended mid-turn; called once hooks can reach the fleet.
+   *  Only the owner opens windows, and a terminal a handover laid to rest is the handover's to reopen. */
+  async resumeInterrupted(): Promise<void> {
+    if (!this.writable()) return;
+    const ids = Object.values(this.deps.store.state.characters).filter((c) => c.revive?.interrupted && !c.restedBy).map((c) => c.id);
+    await Promise.all(ids.map((id) => this.reviveCharacter(id).catch((e) => this.deps.log.error(`resume ${id}: ${String(e)}`))));
+  }
+
   // concurrent revives would each spawn a window and orphan all but the last.
   reviveCharacter(id: string, prompt?: string): Promise<Character> {
     // a page still open on a character that the stop has just put to sleep would wake it again
@@ -605,7 +622,8 @@ export class Fleet extends EventEmitter<Events> {
       throw new NotFound(`no character ${id}`);
     }
     const island = this.deps.store.state.islands[c.islandId];
-    const command = this.launchLine(id, withAddDirs(c.revive?.command ?? '', [...(island?.context ?? []), ...c.context]), prompt);
+    if (c.revive?.interrupted) prompt = prompt ? `${RESUME_NOTE}\n\n${prompt}` : RESUME_NOTE;
+    const command = this.launchLine(id, withAddDirs(withoutV1Flags(c.revive?.command ?? ''), [...(island?.context ?? []), ...c.context]), prompt);
     const resuming = resumeOf(this.deps.store.state.characters[id], this.carried(id), id);
     this.deps.store.update((d) => {
       const cur = d.characters[id];
@@ -639,7 +657,7 @@ export class Fleet extends EventEmitter<Events> {
     if (c.second?.tmux) return c;
     const cwd = c.second?.cwd ?? c.cwd;
     const island = this.deps.store.state.islands[c.islandId];
-    const command = withAddDirs(c.second?.revive?.command ?? '', [...(island?.context ?? []), ...c.context]);
+    const command = withStandalone(withAddDirs(withoutV1Flags(c.second?.revive?.command ?? ''), [...(island?.context ?? []), ...c.context]));
     const w = await this.deps.tmux.newWindow(secondName(id), cwd, this.charEnv(id, { SVALL_TERM: '2' }));
     if (!this.deps.store.state.characters[id]) {
       await this.deps.tmux.killWindow(w.windowId);

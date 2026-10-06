@@ -2,18 +2,19 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { FleetConfig, FleetId, NodeConfig, RESERVED, type AgentKind, type MachineId } from '@svall/protocol';
+import { AgentKind, FleetConfig, FleetId, NodeConfig, RESERVED, type MachineId } from '@svall/protocol';
 import { writeJsonAtomic } from './atomic.js';
 import { writeDurable } from './handover/durable.js';
 import { resolvePaths, type Paths } from './paths.js';
-import { DEFAULT_PORT, HOME_CWD, PRIVATE, profileHome, profileOf, variantOf } from './profile.js';
+import { HOME_CWD, PRIVATE, profileHome, profileOf, variantOf } from './profile.js';
 import { variant } from './runtime.js';
 
 const newFleetId = (): FleetId => FleetId.parse(crypto.randomUUID());
 
 // Svall Dev keeps a port and a mission control folder of its own beside the release's
 const FleetFile = FleetConfig.extend({ home: FleetConfig.shape.home.unwrap().extend({ cwd: z.string().default(HOME_CWD) }).prefault({}) });
-const NodeFile = NodeConfig.extend({ port: z.number().int().default(DEFAULT_PORT) });
+// absent, DEFAULT_PORT, or a free port while another program holds that
+const NodeFile = NodeConfig.extend({ port: z.number().int().optional() });
 
 type Raw = Record<string, unknown>;
 
@@ -43,6 +44,9 @@ export const scribeModel = (s: Config['scribe'], agent: AgentKind): string | und
 
 export class InvalidConfig extends Error {}
 
+// an integrations list in config.json leaves any agent but these on
+const LISTED: AgentKind[] = ['claude', 'codex'];
+
 /** The main agent of the fleet at `home`, whose own config names `own`: absent, the private fleet's, which setup switches
  *  when the user turns one off. */
 export function fleetMainAgent(home: string, own: AgentKind | undefined): AgentKind | undefined {
@@ -51,8 +55,15 @@ export function fleetMainAgent(home: string, own: AgentKind | undefined): AgentK
   try { return configuredMainAgent(resolvePaths(profileHome(PRIVATE))); } catch { return undefined; }
 }
 
-export const mergeConfig = (fleet: FleetConfig, node: NodeConfig): Config =>
-  ({ ...fleet, ...node, mobile: { ...fleet.mobile, ...node.mobile } });
+// the agents left on: those agentsOff leaves out, else an integrations list's and any it never listed
+const withIntegrations = <T extends Pick<Config, 'agentsOff' | 'integrations'>>(c: T): T => ({
+  ...c,
+  integrations: c.agentsOff ? AgentKind.options.filter((k) => !c.agentsOff!.includes(k))
+    : c.integrations && AgentKind.options.filter((k) => c.integrations!.includes(k) || !LISTED.includes(k)),
+});
+
+export const mergeConfig = (fleet: FleetConfig, node: z.infer<typeof NodeFile>): Config =>
+  withIntegrations({ ...fleet, ...node, mobile: { ...fleet.mobile, ...node.mobile } });
 
 /** What `text` holds under `schema`; throws an InvalidConfig that says, on one line, what in `file` is wrong. */
 export function parseConfig<T extends z.ZodTypeAny>(text: string, file: string, schema: T): z.infer<T> {
@@ -67,6 +78,8 @@ export function parseConfig<T extends z.ZodTypeAny>(text: string, file: string, 
 }
 
 const read = <T extends z.ZodTypeAny>(file: string, schema: T): z.infer<T> => parseConfig(fs.readFileSync(file, 'utf8'), file, schema);
+
+const readLegacy = (file: string): Config => withIntegrations(read(file, Config));
 
 const only = (from: Raw, keys: string[]): Raw => Object.fromEntries(Object.entries(from).filter(([k]) => keys.includes(k)));
 
@@ -143,7 +156,7 @@ export function loadConfig(paths: Paths): Config {
 
 /** What fleet.json and node.json hold, or the config.json they are still to be split out of; nothing is split or written. */
 export function peekConfig(paths: Paths): Config {
-  if (!fs.existsSync(paths.fleetConfig)) return fs.existsSync(paths.legacyConfig) ? read(paths.legacyConfig, Config) : Config.parse({});
+  if (!fs.existsSync(paths.fleetConfig)) return fs.existsSync(paths.legacyConfig) ? readLegacy(paths.legacyConfig) : Config.parse({});
   return mergeConfig(read(paths.fleetConfig, FleetFile), fs.existsSync(paths.nodeConfig) ? read(paths.nodeConfig, NodeFile) : NodeFile.parse({}));
 }
 
@@ -202,7 +215,9 @@ export function saveConfig(paths: Paths, patch: ConfigPatch): void {
   initConfig(paths);
   const { integrations, mobile, ...fleet } = patch;
   if (Object.keys(fleet).length) patchFleetConfig(paths.fleetConfig, fleet);
-  const node = { ...('integrations' in patch && { integrations }), ...(mobile && { mobile }) };
+  // integrations are saved as agentsOff, which replaces an integrations list
+  const off = integrations && AgentKind.options.filter((k) => !integrations.includes(k));
+  const node = { ...('integrations' in patch && { integrations: undefined, agentsOff: off }), ...(mobile && { mobile }) };
   if (Object.keys(node).length) patchConfigFile(paths.nodeConfig, NodeConfig, node);
 }
 

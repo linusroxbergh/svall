@@ -39,8 +39,9 @@ function salvage(raw: object): { state: FleetState; dropped: string[] } {
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
-// up to v7 a second terminal had no directory of its own, so it starts where its character stands
-function liftV8(raw: object): object {
+// up to v8 a second terminal had no directory of its own, so it starts where its character stands;
+// v8 only added OpenCode as an agent kind, so a v7 file lifts the same way
+function liftV9(raw: object): object {
   const { characters } = raw as { characters?: unknown };
   if (!isRecord(characters)) return raw;
   return {
@@ -54,7 +55,7 @@ export function migrateState(raw: unknown): { state: FleetState; migrated: boole
   const version = (raw as { version?: unknown } | null)?.version;
   if (typeof version === 'number' && version > CURRENT) throw new NewerStateVersion(version);
   if (typeof version === 'number' && version < OLDEST) throw new OlderStateVersion(version);
-  if (version !== 7 && version !== 8) throw new Error(`unsupported state version ${String(version)}`);
-  if (version === 8) return { ...salvage(raw as object), migrated: false };
-  return { ...salvage({ ...liftV8(raw as object), version: 8 }), migrated: true };
+  if (version !== 7 && version !== 8 && version !== CURRENT) throw new Error(`unsupported state version ${String(version)}`);
+  if (version === CURRENT) return { ...salvage(raw as object), migrated: false };
+  return { ...salvage({ ...liftV9(raw as object), version: CURRENT }), migrated: true };
 }

@@ -434,6 +434,20 @@ describe('source preflight', () => {
     expect(await codes({ agentAdapters: [claude, { kind: 'codex', adapter: 0 }] })).toEqual([]);
   });
 
+  it('blocks a fleet with an OpenCode session, which no adapter carries, rather than failing its preflight', async () => {
+    const b = boot();
+    const sessionId = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
+    b.store.update((d) => {
+      const c = d.characters.c_ada;
+      delete c.tmux;
+      c.agent = { kind: 'opencode', sessionId, transcriptPath: path.join(b.work, 'ada.log'), status: 'idle', lastActivityAt: 1 };
+      c.revive = { command: `opencode -s ${sessionId}` };
+    });
+    const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() });
+    expect(r.blockers.map((x) => x.code)).toContain('incompatible_adapter');
+    expect(r.blockers).toContainEqual({ code: 'incompatible_adapter', message: 'a handover carries no opencode sessions' });
+  });
+
   it('blocks a character kept on this machine', async () => {
     const b = boot();
     b.store.update((d) => { d.characters.c_ada.keepHere = true; });

@@ -10,7 +10,7 @@ import { byCodeUnit, canonicalDigest, canonicalJson, hashStream } from './hash.j
 import { CONTROL, rootMatcher, settle, type Inventory, type InventorySession } from './inventory.js';
 import { holds } from './portable-path.js';
 import { sessionAdapter } from './sessions/registry.js';
-import { SessionError, type FoundSession } from './sessions/types.js';
+import { SessionError, type FoundSession, type SessionAdapter } from './sessions/types.js';
 
 type Stat = Pick<fs.Stats, 'isFile' | 'isDirectory' | 'isSymbolicLink' | 'mode' | 'size' | 'mtimeMs'>;
 
@@ -202,10 +202,14 @@ async function scanRoots(inventory: Inventory, sfs: ScanFs, hash: boolean): Prom
  */
 async function scanSession(session: InventorySession, sfs: ScanFs, read: boolean): Promise<{ session?: TransferSession; blockers: Blocker[]; listed: Listed }> {
   const entity: HandoverEntity = { kind: 'character', id: session.characterId };
-  const adapter = sessionAdapter(session.agent);
   const counted: Listed = { files: 0, bytes: 0 };
+  let adapter: SessionAdapter;
   let found: FoundSession;
-  try { found = await adapter.discover(session.sourcePath, session.sessionId, sfs); } catch (e) {
+  // a kind no adapter carries, such as OpenCode, is a blocker like any session that cannot be found
+  try {
+    adapter = sessionAdapter(session.agent);
+    found = await adapter.discover(session.sourcePath, session.sessionId, sfs);
+  } catch (e) {
     if (e instanceof SessionError) return { blockers: [{ code: e.code, message: e.message, entity }], listed: counted };
     throw e;
   }

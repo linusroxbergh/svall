@@ -31,6 +31,9 @@ export const clampSides = (w: SideWidths): SideWidths => ({
 export type FilesTree = { open: boolean; width?: number };
 export const FILES_TREE_RANGE = { min: 140, max: 560 };
 export const clampTree = (w: number): number => Math.round(Math.min(FILES_TREE_RANGE.max, Math.max(FILES_TREE_RANGE.min, w)));
+// a side card section, by name: folded shut, and the height in pixels it was dragged to; no height fits its content
+export type Section = { shut?: boolean; height?: number };
+export type Sections = Record<string, Section>;
 
 export type AppStorage = {
   getFocus(): string | undefined; setFocus(id: string): void;
@@ -43,6 +46,7 @@ export type AppStorage = {
   getResourceGroups(): Tier[] | undefined; setResourceGroups(v: Tier[]): void;
   getSideWidths(): SideWidths | undefined; setSideWidths(v: SideWidths): void;
   getFilesTree(): FilesTree | undefined; setFilesTree(v: FilesTree): void;
+  getSections(): Sections | undefined; setSections(v: Sections): void;
 };
 
 const FOCUS_KEY = 'svall.focused';
@@ -54,6 +58,7 @@ const SIZE_KEY = 'svall.resources.size';
 const GROUPS_KEY = 'svall.resources.tiers';
 const SIDES_KEY = 'svall.side.widths';
 const TREE_KEY = 'svall.files.tree';
+const SECTIONS_KEY = 'svall.side.sections';
 export const SETTINGS_KEY = 'svall.settings';
 
 const isView = (v: unknown): v is View => v === 'map' || v === 'board';
@@ -70,6 +75,9 @@ const isSides = (v: unknown): v is SideWidths =>
   typeof v === 'object' && v !== null && typeof (v as SideWidths).sidebar === 'number' && typeof (v as SideWidths).card === 'number';
 const isTree = (v: unknown): v is FilesTree =>
   typeof v === 'object' && v !== null && typeof (v as FilesTree).open === 'boolean' && ['number', 'undefined'].includes(typeof (v as FilesTree).width);
+const isSections = (v: unknown): v is Sections =>
+  typeof v === 'object' && v !== null && Object.values(v).every((x: Section) => typeof x === 'object' && x !== null
+    && ['boolean', 'undefined'].includes(typeof x.shut) && (x.height === undefined || (Number.isFinite(x.height) && x.height > 0)));
 
 // every fleet's window shares one localStorage, so a fleet keeps its keys under its home and reads
 // the unscoped key until it has written its own
@@ -100,6 +108,8 @@ export function localAppStorage(fleet?: string): AppStorage | undefined {
       setSideWidths: (v) => write(SIDES_KEY, JSON.stringify(v)),
       getFilesTree: () => { const t = readJson(read(TREE_KEY), isTree); return t?.width === undefined ? t : { ...t, width: clampTree(t.width) }; },
       setFilesTree: (v) => write(TREE_KEY, JSON.stringify(v)),
+      getSections: () => readJson(read(SECTIONS_KEY), isSections),
+      setSections: (v) => write(SECTIONS_KEY, JSON.stringify(v)),
       getSettings: () => { const raw = read(SETTINGS_KEY); if (raw === null) return undefined; try { return readSettings(JSON.parse(raw)); } catch { return undefined; } },
       setSettings: (v) => write(SETTINGS_KEY, JSON.stringify(v)),
     };

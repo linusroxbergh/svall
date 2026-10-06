@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { Agent, Character } from '@svall/protocol';
-import { drowsy, reviveCommand, runsInBackground, startFlags } from '../src/dormancy.js';
+import { drowsy, markDormant, reviveCommand, runsInBackground, startFlags } from '../src/dormancy.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
+const OSID = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
 const HOUR = 3_600_000;
 const agent = (over: Partial<Agent> = {}): Agent => ({ kind: 'claude', sessionId: SID, status: 'idle', lastActivityAt: 0, ...over });
 const char = (over: Partial<Character> = {}): Character => ({
@@ -96,10 +97,19 @@ describe('startFlags', () => {
     expect(startFlags('node /Users/x/.claude/plugins/helper/claude.js --model x', 'claude')).toBeUndefined();
     expect(startFlags('claude --model opus', 'codex')).toBeUndefined();
   });
+
+  it("keeps an opencode agent's --auto, and drops its session, prompt and private server, which svalld adds back", () => {
+    expect(startFlags('opencode --standalone --auto --prompt fix it', 'opencode')).toEqual(['--auto']);
+    expect(startFlags('opencode --standalone --yolo', 'opencode')).toEqual(['--yolo']);
+    expect(startFlags(`opencode.exe --standalone -s ${OSID}`, 'opencode')).toEqual([]);
+    expect(startFlags('opencode --server http://localhost:4096', 'opencode')).toBeUndefined();
+    // svalld puts the prompt last, where a bullet or a flag in its text is no option
+    expect(startFlags('opencode --standalone --prompt fix these: - the --force flag', 'opencode')).toEqual([]);
+  });
 });
 
 describe('runsInBackground', () => {
-  const proc = (pid: number, ppid: number, pgid: number) => ({ pid, ppid, pgid, args: '' });
+  const proc = (pid: number, ppid: number, pgid: number, args = '') => ({ pid, ppid, pgid, args });
 
   it('is true while a descendant runs outside the agent\'s process group, as the Bash tool starts it', () => {
     const agentTree = [proc(10, 1, 10), proc(11, 10, 10), proc(12, 11, 10)];
@@ -107,6 +117,15 @@ describe('runsInBackground', () => {
     expect(runsInBackground(10, [...agentTree, proc(20, 10, 20), proc(21, 20, 20)])).toBe(true);
     expect(runsInBackground(10, [...agentTree, proc(30, 12, 30)])).toBe(true);
     expect(runsInBackground(10, [...agentTree, proc(40, 1, 40)])).toBe(false);
+  });
+
+  it("counts OpenCode's private server, in a group of its own, as the agent, and a shell or MCP server it runs as background", () => {
+    const tree = [proc(10, 1, 10, 'opencode --standalone'), proc(11, 10, 11, '/u/.opencode/bin/opencode serve --stdio --port 0')];
+    expect(runsInBackground(10, tree)).toBe(false);
+    // the shell has exec'd its lone command
+    expect(runsInBackground(10, [...tree, proc(13, 11, 13, 'npm run dev')])).toBe(true);
+    expect(runsInBackground(10, [...tree, proc(12, 11, 12, 'npx -y mcp-server')])).toBe(true);
+    expect(runsInBackground(10, [proc(10, 1, 10), proc(11, 10, 11, 'serve --stdio')])).toBe(true);
   });
 });
 
@@ -116,5 +135,25 @@ describe('reviveCommand', () => {
     expect(reviveCommand(char({ agent: agent({ kind: 'codex' }) }), ['-m', "'gpt-5.5'"]))
       .toBe(`codex resume -c tui.resume_cwd=session -m 'gpt-5.5' ${SID}`);
     expect(reviveCommand(char())).toBe(`claude --resume ${SID}`);
+  });
+
+  it('resumes an opencode session with -s', () => {
+    expect(reviveCommand(char({ agent: agent({ kind: 'opencode', sessionId: OSID }) }), ['--auto'])).toBe(`opencode --auto -s ${OSID}`);
+  });
+});
+
+describe('markDormant', () => {
+  it('marks an agent ended mid-turn or on a question interrupted, and one at rest not', () => {
+    for (const status of ['working', 'blocked'] as const) {
+      const c = char({ agent: agent({ status }) });
+      markDormant(c);
+      expect(c.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
+      expect(c.agent?.status).toBe('idle');
+    }
+    for (const status of ['idle', 'done'] as const) {
+      const c = char({ agent: agent({ status }) });
+      markDormant(c);
+      expect(c.revive).toEqual({ command: `claude --resume ${SID}` });
+    }
   });
 });

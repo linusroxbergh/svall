@@ -22,10 +22,11 @@ import { startHookReceiver } from './hooks/receiver.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
 import { machineId } from './machine.js';
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
+import { installOpencodePlugin, opencodePaths } from './opencode/install.js';
 import { OwnershipState } from './ownership/state.js';
 import { claudePaths, fleetKeys, installedScripts, resolvePaths } from './paths.js';
 import { Phones } from './phones.js';
-import { isProfileName, PRIVATE, profileOf, variantOf } from './profile.js';
+import { DEFAULT_PORT, isProfileName, PRIVATE, profileOf, variantOf } from './profile.js';
 import { runtimeVersion, variant } from './runtime.js';
 import { startPusher, webPushSender } from './push/pusher.js';
 import { PushStore } from './push/store.js';
@@ -132,6 +133,12 @@ async function start(opts: Options): Promise<Daemon> {
     try { for (const line of installCodexHooks(paths.hookScript, readCodexHooks(codex, agentsFound.includes('codex') || fs.existsSync(codex.dir)))) log.info(line); }
     catch (e) { log.error(`codex hooks: ${(e as Error).message}`); }
   }
+  // an OpenCode installed after `svall setup` still gets the plugin; only the private fleet writes it, as it serves every fleet
+  const opencode = opencodePaths();
+  if (profile === PRIVATE && (config.integrations?.includes('opencode') ?? true) && (agentsFound.includes('opencode') || fs.existsSync(opencode.dir))) {
+    try { for (const line of installOpencodePlugin(opencode)) log.info(line); }
+    catch (e) { log.error(`opencode plugin: ${(e as Error).message}`); }
+  }
 
   const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
   // the conf leaves out what this tmux would refuse, so the version is read before it is written
@@ -140,7 +147,7 @@ async function start(opts: Options): Promise<Daemon> {
   if (tmuxTooOld(tmuxVersion)) log.error(`${tmuxVersion} is older than 3.5: Shift+Enter will not reach Claude Code; ${process.platform === 'linux' ? 'Ubuntu 24.04 ships 3.4' : 'brew upgrade tmux'}`);
   // the app attaches its terminals with this tmux, which an app opened from Finder may not find on its own PATH
   fs.writeFileSync(path.join(paths.home, 'tmux-binary'), tmux.binary);
-  fs.writeFileSync(path.join(paths.home, 'version'), runtimeVersion());
+  fs.writeFileSync(path.join(paths.home, 'version'), `${runtimeVersion()}\n${process.pid}\n`);
   // without a gateway no other machine can hold this fleet, so a record this one cannot read is repaired
   const me = machineId();
   const ownership = OwnershipState.load({ paths, fleetId: config.id, machineId: me, log, standalone: !config.gatewayMachineId });
@@ -173,6 +180,7 @@ async function start(opts: Options): Promise<Daemon> {
   // counts, set up or not
   const homes = () => [paths.home, ...fs.readdirSync(os.homedir()).filter((f) => f.startsWith('.svall')).map((f) => path.join(os.homedir(), f))];
   const refused = () => [claude.json, path.join(claude.dir, '.credentials.json'), path.join(codex.dir, 'auth.json'),
+    path.join(opencode.data, 'auth.json'), path.join(opencode.data, 'mcp-auth.json'),
     ...homes().flatMap((h) => fleetKeys(resolvePaths(h)))];
   const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs, paths.agentProfiles), log, refused, [paths.docs, paths.agentProfiles], paths.trash);
   const phones = new Phones();
@@ -196,14 +204,22 @@ async function start(opts: Options): Promise<Daemon> {
     // a running server keeps its old options if the new conf has a line this tmux rejects; a replica
     // has no server to source into
     if (ownership.writable()) await tmux.sourceConf().catch((e: Error) => log.error(`tmux source-file: ${e.message}`));
-    const api = await startApi({
-      host: opts.host ?? config.host, port: opts.port ?? config.port, token, store, fleet, fleets: fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, mobileControl: mobile, log,
+    const port = opts.port ?? config.port;
+    const listen = (at: number) => startApi({
+      host: opts.host ?? config.host, port: at, token, store, fleet, fleets: fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, mobileControl: mobile, log,
       origins: () => config.mobile.origins, logins: mobile.logins, key: key.get, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles, ownership, handover,
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined),
+    });
+    // clients find the daemon by its port file, so one that names no port takes a free one while its default is held
+    const api = await listen(port ?? DEFAULT_PORT).catch((e: NodeJS.ErrnoException) => {
+      if (port !== undefined || e.code !== 'EADDRINUSE') throw e;
+      log.info(`port ${DEFAULT_PORT} is taken: listening on a free one`);
+      return listen(0);
     });
     teardown.push(() => api.close());
     const hooks = await startHookReceiver(paths.hooksSock, (e) => fleet.onSocketEvent(e), log);
     teardown.push(() => hooks.close());
+    await fleet.resumeInterrupted();
     fs.writeFileSync(paths.port, String(api.port));
     // gone last: whoever waits for it to go may read state.json next
     teardown.unshift(() => fs.rmSync(paths.port, { force: true }));

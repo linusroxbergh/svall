@@ -136,13 +136,14 @@ export const NOT_BOUND: readonly string[] = [
   'FleetState.islands.*.context[].kind', 'FleetState.islands.*.context[].source', 'FleetState.islands.*.context[].pinned', 'FleetState.islands.*.context[].prState',
   'FleetState.characters.*.cell', 'FleetState.characters.*.noteSource', 'FleetState.characters.*.portrait', 'FleetState.characters.*.repo.isWorktree',
   'FleetState.characters.*.context[].kind', 'FleetState.characters.*.context[].source', 'FleetState.characters.*.context[].pinned', 'FleetState.characters.*.context[].prState',
-  'FleetState.characters.*.shell.lastOutputAt', 'FleetState.characters.*.unread', 'FleetState.characters.*.keepHere',
+  'FleetState.characters.*.shell.lastOutputAt', 'FleetState.characters.*.unread', 'FleetState.characters.*.keepHere', 'FleetState.characters.*.worktree',
+  'FleetState.characters.*.revive.interrupted', 'FleetState.characters.*.second.revive.interrupted',
   'FleetState.characters.*.agent.kind', 'FleetState.characters.*.agent.status', 'FleetState.characters.*.agent.contextPct', 'FleetState.characters.*.agent.background',
   'FleetState.characters.*.agent.lastPrompt.at', 'FleetState.characters.*.agent.lastActivityAt',
   'FleetState.characters.*.second.unread', 'FleetState.characters.*.second.agent.kind', 'FleetState.characters.*.second.agent.status',
   'FleetState.characters.*.second.agent.contextPct', 'FleetState.characters.*.second.agent.background', 'FleetState.characters.*.second.agent.lastPrompt.at',
   'FleetState.characters.*.second.agent.lastActivityAt',
-  'FleetState.scribeOff', 'FleetState.scribeAsk', 'FleetState.scribeError.at', 'FleetState.dormantAfterHours', 'FleetState.mainAgent', 'FleetState.scribeAgent',
+  'FleetState.scribeOff', 'FleetState.scribeAsk', 'FleetState.scribeError.at', 'FleetState.worktreesOff', 'FleetState.dormantAfterHours', 'FleetState.mainAgent', 'FleetState.scribeAgent',
   'FleetConfig.mainAgent', 'FleetConfig.scribe.agent', 'FleetConfig.handover.enabled', 'FleetConfig.handover.excludeDefaults', 'FleetConfig.handover.transferFleetEnv',
 ];
 

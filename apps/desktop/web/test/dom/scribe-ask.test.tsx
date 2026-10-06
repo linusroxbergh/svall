@@ -80,6 +80,17 @@ test('asks for the main agent when svalld finds both CLIs, and only then', () =>
   expect(screen.queryByTestId('scribe-ask-agent')).toBeNull();
 });
 
+test('names every agent svalld found when it asks which one runs', () => {
+  act(() => store.getState().setFleet({ ...fleet(), scribeAsk: true, mainAgent: 'claude', agentsFound: ['claude', 'codex', 'opencode'] }));
+  const { unmount } = render(<ScribeAsk />);
+  expect(screen.getByText(/are installed/).textContent).toBe('Claude Code, Codex and OpenCode are installed. Mission control and the scribe run:');
+  expect([...(screen.getByTestId('scribe-ask-agent') as HTMLSelectElement).options].map((o) => o.value)).toEqual(['claude', 'codex', 'opencode']);
+  unmount();
+  act(() => store.getState().setFleet({ ...fleet(), scribeAsk: true, mainAgent: 'claude', agentsFound: ['claude', 'codex'] }));
+  render(<ScribeAsk />);
+  expect(screen.getByText(/are installed/).textContent).toBe('Claude Code and Codex are installed. Mission control and the scribe run:');
+});
+
 // the dialog's Escape means Keep off wherever focus sits, including the agent select
 test('Escape on the agent select keeps the scribe off, same as elsewhere in the dialog', () => {
   act(() => store.getState().setFleet({ ...fleet(), scribeAsk: true, mainAgent: 'claude', agentsFound: ['claude', 'codex'] }));

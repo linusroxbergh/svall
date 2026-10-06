@@ -76,10 +76,12 @@ const SCANS: [glob: string, patterns: RegExp[]][] = [
   ['apps/desktop/mac/Sources/Svall/SvallHome.swift', [/\b(?:path|home) \+ "\/([^"/]+)/g, /\bread\("([^"]+)"\)/g]],
   ['scripts/*.sh', [/\$\{?home\}?\/([\w.-]+)/g]],
 ];
-// literals the scan finds joined onto a `home` that is no fleet home: a user's home, Claude's config folder, or CODEX_HOME
+// literals the scan finds joined onto a `home` that is no fleet home: a user's home, Claude's config folder, CODEX_HOME,
+// or OpenCode's XDG folders
 const ELSEWHERE: Record<string, string[]> = {
   'packages/svalld/src/paths.ts': ['.claude', '.claude.json'],
   'packages/svalld/src/codex/install.ts': ['.codex'],
+  'packages/svalld/src/opencode/install.ts': ['.config'],
   'packages/svalld/src/handover/inventory.ts': ['.claude', '.codex', '.claude.json', '.ssh'],
   'packages/svalld/src/handover/sessions/claude.ts': ['.config.json', '.claude.json', 'settings.json'],
   'packages/svalld/src/handover/sessions/codex.ts': ['config.toml'],
