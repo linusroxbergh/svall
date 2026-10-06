@@ -217,9 +217,8 @@ function serviceOutcome(report: RemoteDoctor, destination: string): Outcome<Remo
   return { value: report, detail: units.join('; '), ...(action ? { status: 'warn' as const, action } : {}) };
 }
 
-// the companion doctor's check of each agent's Svall hooks, whose detail ends with what to do there; a handover
-// carries no OpenCode session, so OpenCode is not checked for
-const HOOK_CHECKS = { claude: 'hooks', codex: 'codex hooks' } as const satisfies Partial<Record<AgentKind, string>>;
+// the companion doctor's check of each agent's Svall hooks, whose detail ends with what to do there
+const HOOK_CHECKS = { claude: 'hooks', codex: 'codex hooks', opencode: 'opencode plugin' } as const satisfies Record<AgentKind, string>;
 
 /**
  * The agent checks, on the PATH the companion's units run with, which a login over ssh does not see all of, and the

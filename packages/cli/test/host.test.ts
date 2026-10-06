@@ -112,6 +112,8 @@ function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doc
   ssh.reply([UNIT_PATH, 'claude', 'auth', 'status', '--json'], { stdout: '{"loggedIn":true}\n' });
   ssh.reply([UNIT_PATH, 'codex', '--version'], { stdout: 'codex-cli 0.155.1\n' });
   ssh.reply([UNIT_PATH, 'codex', 'login', 'status'], { stdout: 'Logged in using ChatGPT\n' });
+  ssh.reply([UNIT_PATH, 'opencode', '--version'], { stdout: '2.0.22\n' });
+  ssh.reply([UNIT_PATH, 'opencode', 'auth', 'list', '--standalone'], { stdout: 'Credentials ~/.local/share/opencode/auth.json\n' });
 }
 
 /** A daemon on the far side of the forward, so the end-to-end probe has something to answer it: from `release`, while it `accepts`. */
@@ -159,7 +161,7 @@ describe('host add', () => {
     expect(order.slice(8)).toEqual([
       'mkdir -p', 'cat > "$1"', 'mkdir -p', 'PATH=/usr/bin:/bin:/', 'svall setup', 'rm -rf',
       'svall doctor', 'svall version',
-      'claude --version', 'claude auth', 'codex --version', 'codex login',
+      'claude --version', 'claude auth', 'codex --version', 'codex login', 'opencode --version', 'opencode auth',
       'svall connection-info', 'svall gateway', 'sh -c',
     ]);
     expect(step('probe').at(-1)).toMatchObject({ status: 'ok', detail: 'trift answers on its own private fleet, its gateway authority answers, and tmux opens and closes a window there' });
@@ -185,21 +187,23 @@ describe('host add', () => {
     }
   });
 
-  it('finds claude and codex on the PATH the companion\'s unit runs with, and holds each to its version floor and login', async () => {
-    // over ssh the login shell finds neither CLI; their installers put them in ~/.local/bin
+  it('finds claude, codex and opencode on the PATH the companion\'s unit runs with, and holds each to its version floor and login', async () => {
+    // over ssh the login shell finds none of the CLIs; their installers put them in ~/.local/bin
     healthy({ agents: false });
     ssh.reply([UNIT_PATH, 'claude', '--version'], { stdout: '2.1.278 (Claude Code)\n' });
     ssh.reply([UNIT_PATH, 'claude', 'auth', 'status', '--json'], { stdout: '{"loggedIn":false}\n', code: 1 });
     ssh.reply([UNIT_PATH, 'codex', '--version'], { stdout: 'codex-cli 0.154.2\n' });
+    ssh.reply([UNIT_PATH, 'opencode', '--version'], { stdout: '2.0.21\n' });
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     expect(step('claude').at(-1)).toMatchObject({ status: 'warn', detail: '2.1.278 (Claude Code), not logged in', action: 'ssh trift.test, then claude auth login' });
     expect(step('codex').at(-1)).toMatchObject({ status: 'warn', detail: 'codex-cli 0.154.2: Svall needs 0.155.0 or newer', action: 'ssh trift.test, then update Codex' });
-    expect(out.actions).toEqual(['ssh trift.test, then claude auth login', 'ssh trift.test, then update Codex']);
-    const agentCalls = ssh.remoteCalls().filter((w) => w.includes('claude') || w.includes('codex'));
-    expect(agentCalls.length).toBe(3);
+    expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: '2.0.21: Svall needs 2.0.22 or newer', action: 'ssh trift.test, then update OpenCode' });
+    expect(out.actions).toEqual(['ssh trift.test, then claude auth login', 'ssh trift.test, then update Codex', 'ssh trift.test, then update OpenCode']);
+    const agentCalls = ssh.remoteCalls().filter((w) => w.includes('claude') || w.includes('codex') || w.includes('opencode'));
+    expect(agentCalls.length).toBe(4);
     expect(agentCalls.every((w) => w[0] === 'env' && w[1] === UNIT_PATH)).toBe(true);
   });
 
@@ -211,12 +215,14 @@ describe('host add', () => {
     await d.close();
     expect(step('claude').at(-1)).toMatchObject({ status: 'warn', detail: 'claude is not installed on this machine', action: 'ssh trift.test, then install Claude Code' });
     expect(step('codex').at(-1)).toMatchObject({ status: 'warn', detail: 'codex is not installed on this machine', action: 'ssh trift.test, then install Codex' });
+    expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: 'opencode is not installed on this machine', action: 'ssh trift.test, then install OpenCode' });
   });
 
   it('names what Svall\'s hooks there still need, from the companion\'s own doctor, without stopping setup', async () => {
     const untrusted = 'not trusted yet: start codex and choose "Trust all and continue", or trust them in /hooks';
     const disabled = `${HOME}/.claude/settings.json sets disableAllHooks, so no character gets a status; remove it`;
-    healthy({ doctor: JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'hooks', status: 'fail', detail: disabled }, { name: 'codex hooks', status: 'warn', detail: untrusted }] }) });
+    const plugin = `not installed in ${HOME}/.config/opencode/plugins/svall.js: svall setup`;
+    healthy({ doctor: JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'hooks', status: 'fail', detail: disabled }, { name: 'codex hooks', status: 'warn', detail: untrusted }, { name: 'opencode plugin', status: 'fail', detail: plugin }] }) });
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
     const registry = MachineRegistry.load(path.join(work, 'config'));
@@ -227,6 +233,7 @@ describe('host add', () => {
       status: 'warn', detail: `codex-cli 0.155.1, logged in; the codex hooks check there says ${untrusted}`,
       action: 'ssh trift.test, then start codex and choose "Trust all and continue", or trust them in /hooks',
     });
+    expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: `2.0.22, logged in; the opencode plugin check there says ${plugin}`, action: 'ssh trift.test, then svall setup' });
     expect(out.result).toBe('actions');
     expect(registry.get('trift')?.id).toBe(REMOTE);
   });
@@ -383,7 +390,7 @@ describe('host add', () => {
     const names = events.filter((e) => e.status !== 'start').map((e) => e.step);
     expect(names).toEqual([
       'name', 'ssh', 'master', 'os', 'home', 'tools', 'tmux', 'rsync', 'space', 'linger',
-      'release', 'upload', 'install', 'service', 'identity', 'claude', 'codex', 'probe', 'registry',
+      'release', 'upload', 'install', 'service', 'identity', 'claude', 'codex', 'opencode', 'probe', 'registry',
     ]);
   });
 
