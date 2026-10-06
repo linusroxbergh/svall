@@ -12,8 +12,8 @@
 .side .sec:has(> .sec-body:empty) { min-height: auto; }
 .side .sec[data-fit="true"] { flex-shrink: 1000; }
 .sec-body { flex: 1 1 auto; min-height: 0; overflow: hidden auto; display: flex; flex-direction: column; gap: var(--sp-sm); }
-/* as tall as its text, and no shorter than its rows, which field-sizing would otherwise ignore */
-.sec-body > textarea.desc { flex: 1 1 auto; min-height: calc(var(--rows) * 1lh + 2 * var(--sp-md) + 2px); resize: none; field-sizing: content; }
+/* its rows tall, or its text when longer, and gives up the empty rows before its section scrolls */
+.sec-body > textarea.desc { flex: 1 1 calc(var(--rows) * 1lh + 2 * var(--sp-md) + 2px); min-height: min-content; resize: none; field-sizing: content; }
 .sec-body > textarea.desc[rows="3"] { --rows: 3; }
 .sec-body > textarea.desc[rows="6"] { --rows: 6; }
 .sec-fold { display: flex; align-items: center; gap: var(--sp-xs); padding: 0; border: 0; border-radius: 0; background: none;
