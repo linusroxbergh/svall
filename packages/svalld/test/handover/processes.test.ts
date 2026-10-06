@@ -163,18 +163,33 @@ describe.each(platforms)('ps as $name prints it', ({ file, rows, shell, tool, ho
 
 // an OpenCode TUI as measured on this Mac with 2.0.22: its private server in a session of its own, which runs a shell
 // command and an MCP or language server each in one more, and Svall's plugin reading the TUI's command line in its own
-describe('an OpenCode pane', () => {
-  const OC = '/Users/ada/.opencode/bin/opencode';
+// off a terminal, macOS prints a tpgid of 0 and procps one of -1
+describe.each([
+  { name: 'macOS', none: 0, OC: '/Users/ada/.opencode/bin/opencode', shell: '-zsh' },
+  { name: 'Linux procps', none: -1, OC: '/home/ada/.opencode/bin/opencode', shell: '-bash' },
+])('an OpenCode pane as $name prints it', ({ none, OC, shell }) => {
   const row = (pid: number, ppid: number, pgid: number, tpgid: number, args: string) => ({ pid, ppid, pgid, tpgid, stat: 'S', args });
-  const pane = [
-    row(65132, 1, 65132, 66006, '-zsh'),
-    row(66006, 65132, 66006, 66006, `${OC} --standalone -s ses_eeda388f0ffeOB6E6MBZswShKL`),
-    row(66078, 66006, 66078, 0, `${OC} serve --stdio --port 0`),
-    row(66080, 66078, 66078, 0, 'ps -o args= -p 66006'),
-    row(76905, 66078, 76905, 0, 'sleep 300'),
-    row(76910, 66078, 76910, 0, 'node /Users/ada/.cache/opencode/node_modules/typescript-language-server/lib/cli.mjs --stdio'),
-    row(31187, 1, 31187, 0, `${OC} serve --service`),
-  ];
+  const pane = parsePs([
+    `65132     1 65132 66006 Ss   ${shell}`,
+    `66006 65132 66006 66006 S+   ${OC} --standalone -s ses_eeda388f0ffeOB6E6MBZswShKL`,
+    `66078 66006 66078 ${none} Ss   ${OC} serve --stdio --port 0`,
+    `66080 66078 66078 ${none} S    ps -o args= -p 66006`,
+    `76905 66078 76905 ${none} Ss   sleep 300`,
+    `76910 66078 76910 ${none} Ss   node /Users/ada/.cache/opencode/node_modules/typescript-language-server/lib/cli.mjs --stdio`,
+    `31187     1 31187 ${none} Ss   ${OC} serve --service`,
+  ].join('\n'));
+
+  it('reads every row', () => {
+    expect(pane).toHaveLength(7);
+    expect(pane.filter((r) => r.tpgid === none)).toHaveLength(5);
+  });
+
+  it('counts a command of another group named like the server, but not serving over stdio, as a command', () => {
+    const run = [...pane.filter((r) => r.ppid !== 66078 && r.pid !== 66078), row(66090, 66006, 66090, none, `${OC} run --format json hello`)];
+    const p = new ProcessTable(run).pane(65132);
+    expect(p?.agent?.server).toBeUndefined();
+    expect(args(p?.agent?.commands)).toEqual([`${OC} run --format json hello`]);
+  });
 
   it('takes the TUI as the agent and its private server and the plugin as its own, counting what the server runs in other groups as commands', () => {
     const p = new ProcessTable(pane, installedScripts('/Users/ada/.svall')).pane(65132);
@@ -189,7 +204,7 @@ describe('an OpenCode pane', () => {
   });
 
   it("neither waits on nor reaches the user's shared service, even one the TUI started", () => {
-    const started = [...pane, row(31200, 66006, 31200, 0, `${OC} serve --service`)];
+    const started = [...pane, row(31200, 66006, 31200, none, `${OC} serve --service`)];
     const table = new ProcessTable(started);
     const p = table.pane(65132);
     expect(args(p?.agent?.commands)).toEqual(['sleep 300', 'node /Users/ada/.cache/opencode/node_modules/typescript-language-server/lib/cli.mjs --stdio']);
