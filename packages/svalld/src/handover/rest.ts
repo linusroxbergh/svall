@@ -247,7 +247,10 @@ export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<Set
     }
     if (blockers.length) return { ok: false, blockers };
     for (const { t, c } of steps) if (c && t.terminatedAt === undefined) { t.agent = c.agent; t.flags = launchFlags(c); }
-    if (settled) return layToRest(deps, o, bounded, tracks, current, clock.now());
+    if (settled) {
+      const gone = (groups: number[]) => serversGone(groups, () => bounded('ps', processes), kill, clock, x.settleMs, x.pollMs);
+      return layToRest(deps, o, bounded, tracks, current, clock.now(), gone);
+    }
     for (const { t, c, s } of steps) {
       if (s === 'interrupt' && c) {
         await bounded('tmux send-keys', (signal) => deps.tmux.sendBytes(c.window.paneId, ESCAPE, signal));
@@ -270,6 +273,20 @@ export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<Set
 }
 
 type Bounded = <T>(what: string, work: (signal: AbortSignal) => Promise<T>) => Promise<T>;
+
+// an OpenCode TUI's private server writes its session's database until it exits, and the export reads that database;
+// one that outlasts the settle time is killed
+async function serversGone(
+  groups: number[], read: () => Promise<ProcessTable>, kill: NonNullable<RestDeps['kill']>, clock: Clock, settleMs: number, pollMs: number,
+): Promise<void> {
+  const end = clock.now() + settleMs;
+  while (groups.length) {
+    const table = await read();
+    groups = groups.filter((g) => table.alive(g));
+    if (groups.length && clock.now() >= end) { for (const g of groups) kill(g, 'SIGKILL'); return; }
+    if (groups.length) await clock.sleep(pollMs);
+  }
+}
 
 // a server that died took every window with it, so there is none left to rest
 const windows = (deps: RestDeps) => (signal: AbortSignal): Promise<LiveWindow[]> =>
@@ -305,6 +322,7 @@ function wake(store: RestDeps['store'], clock: Clock, ms: number, cancel?: Abort
 
 async function layToRest(
   deps: RestDeps, o: RestOptions, bounded: Bounded, tracks: Track[], current: Map<string, Classified>, now: number,
+  gone: (groups: number[]) => Promise<void>,
 ): Promise<SettleResult> {
   o.cancel?.throwIfAborted();
   const open = tracks.flatMap((t) => { const c = current.get(t.key); return c ? [{ t, c }] : []; });
@@ -347,5 +365,6 @@ async function layToRest(
   deps.store.update((d) => {
     for (const id of Object.keys(d.characters)) for (const t of [{ characterId: id }, { characterId: id, term: 2 as const }]) lay(d, t, stopped.has(keyOf(t)));
   });
+  await gone(open.flatMap(({ c }) => (c.processes.agent?.server ? [c.processes.agent.server.pgid] : [])));
   return { ok: true, terminals: open.map(({ t }) => refOf(t)) };
 }

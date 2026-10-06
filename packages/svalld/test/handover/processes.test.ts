@@ -161,6 +161,47 @@ describe.each(platforms)('ps as $name prints it', ({ file, rows, shell, tool, ho
   });
 });
 
+// an OpenCode TUI as measured on this Mac with 2.0.22: its private server in a session of its own, which runs a shell
+// command and an MCP or language server each in one more, and Svall's plugin reading the TUI's command line in its own
+describe('an OpenCode pane', () => {
+  const OC = '/Users/ada/.opencode/bin/opencode';
+  const row = (pid: number, ppid: number, pgid: number, tpgid: number, args: string) => ({ pid, ppid, pgid, tpgid, stat: 'S', args });
+  const pane = [
+    row(65132, 1, 65132, 66006, '-zsh'),
+    row(66006, 65132, 66006, 66006, `${OC} --standalone -s ses_eeda388f0ffeOB6E6MBZswShKL`),
+    row(66078, 66006, 66078, 0, `${OC} serve --stdio --port 0`),
+    row(66080, 66078, 66078, 0, 'ps -o args= -p 66006'),
+    row(76905, 66078, 76905, 0, 'sleep 300'),
+    row(76910, 66078, 76910, 0, 'node /Users/ada/.cache/opencode/node_modules/typescript-language-server/lib/cli.mjs --stdio'),
+    row(31187, 1, 31187, 0, `${OC} serve --service`),
+  ];
+
+  it('takes the TUI as the agent and its private server and the plugin as its own, counting what the server runs in other groups as commands', () => {
+    const p = new ProcessTable(pane, installedScripts('/Users/ada/.svall')).pane(65132);
+    expect(args(p?.foreground)).toEqual([`${OC} --standalone -s ses_eeda388f0ffeOB6E6MBZswShKL`]);
+    expect(p?.agent).toMatchObject({ kind: 'opencode', pid: 66006, server: { pid: 66078, pgid: 66078 } });
+    expect(args(p?.agent?.commands)).toEqual(['sleep 300', 'node /Users/ada/.cache/opencode/node_modules/typescript-language-server/lib/cli.mjs --stdio']);
+  });
+
+  it("finds the agent in npm's opencode.exe", () => {
+    const npm = pane.map((r) => (r.pid === 66006 ? { ...r, args: '/usr/local/lib/node_modules/opencode-ai/bin/opencode.exe --standalone' } : r));
+    expect(new ProcessTable(npm).pane(65132)?.agent).toMatchObject({ kind: 'opencode', pid: 66006, server: { pid: 66078 } });
+  });
+
+  it("neither waits on nor reaches the user's shared service, even one the TUI started", () => {
+    const started = [...pane, row(31200, 66006, 31200, 0, `${OC} serve --service`)];
+    const table = new ProcessTable(started);
+    const p = table.pane(65132);
+    expect(args(p?.agent?.commands)).toEqual(['sleep 300', 'node /Users/ada/.cache/opencode/node_modules/typescript-language-server/lib/cli.mjs --stdio']);
+    expect(table.tree(p?.foreground ?? []).map((r) => r.pid).sort()).toEqual([66006, 66078, 66080, 76905, 76910]);
+  });
+
+  it('has no server for a TUI that talks to the shared service', () => {
+    const shared = pane.filter((r) => r.ppid !== 66078 && r.pid !== 66078).map((r) => (r.pid === 66006 ? { ...r, args: OC } : r));
+    expect(new ProcessTable(shared).pane(65132)?.agent).toEqual({ kind: 'opencode', pid: 66006, commands: [] });
+  });
+});
+
 describe('ProcessTable.read', () => {
   it('ends the ps it started when the signal it was given aborts', async () => {
     await expect(ProcessTable.read({ signal: AbortSignal.abort() })).rejects.toThrow(/abort/i);

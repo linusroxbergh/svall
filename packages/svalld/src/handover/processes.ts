@@ -10,8 +10,8 @@ const exec = promisify(execFile);
 /** One process as `ps` printed it. */
 export type Proc = { pid: number; ppid: number; pgid: number; tpgid: number; stat: string; args: string };
 
-/** The agent holding a terminal, and the tool commands it runs off that terminal. */
-export type AgentProcess = { kind: AgentKind; pid: number; commands: Proc[] };
+/** The agent holding a terminal, the tool commands it runs off that terminal, and an OpenCode TUI's private server. */
+export type AgentProcess = { kind: AgentKind; pid: number; commands: Proc[]; server?: Proc };
 
 /** What holds a pane's terminal: the foreground process group, its processes, and the agent among them. */
 export type PaneProcesses = { group: number; foreground: Proc[]; agent?: AgentProcess };
@@ -30,16 +30,19 @@ export function parsePs(stdout: string): Proc[] {
   return rows;
 }
 
-const AGENTS = new Set<string>(['claude', 'codex']);
+const AGENTS = new Set<string>(['claude', 'codex', 'opencode']);
+const PRIVATE_SERVER = /\sserve\s+--stdio(\s|$)/;
+// the user's one background OpenCode, which serves every session they open and is never a handover's to wait on or end
+const SHARED_SERVICE = /\sserve\s+--service(\s|$)/;
 // the start of the statusline wrapper that agent-hooks.ts statusWrapper writes
 const STATUS_WRAPPER = 'svall_status() {';
 const zombie = (p: Proc): boolean => p.stat.startsWith('Z');
 const launcher = (p: Proc): boolean => path.basename(p.args.split(' ')[0]) === 'node';
 
-// what a process runs: argv[0] without a login shell's dash, or the script a node launcher runs
+// what a process runs: argv[0] without a login shell's dash or npm's .exe, or the script a node launcher runs
 function program(p: Proc): string {
   const [bin, script] = p.args.split(' ');
-  const name = path.basename(bin).replace(/^-/, '');
+  const name = path.basename(bin).replace(/^-/, '').replace(/\.exe$/, '');
   return name === 'node' && script ? path.basename(script).replace(/\.[cm]?js$/, '') : name;
 }
 
@@ -93,9 +96,14 @@ export class ProcessTable {
       ? (this.children.get(leader.pid) ?? []).find((c) => c.pgid === group && !zombie(c) && !launcher(c) && program(c) === kind)
       : undefined;
     const agent = inner ?? leader;
+    const children = (this.children.get(agent.pid) ?? []).filter((c) => !zombie(c) && !this.installed(c) && !SHARED_SERVICE.test(c.args));
+    // an OpenCode TUI runs its session in a private server off the terminal, which runs each shell command, MCP and
+    // language server in a group of its own and Svall's plugin in its own: ps can't tell a command from a server
+    const server = kind === 'opencode' ? children.find((c) => c.pgid !== group && program(c) === kind && PRIVATE_SERVER.test(c.args)) : undefined;
+    const served = server ? (this.children.get(server.pid) ?? []).filter((c) => c.pgid !== server.pgid && !zombie(c) && !SHARED_SERVICE.test(c.args)) : [];
     // a tool command leaves the terminal; an MCP server in a group of its own stays on it
-    const commands = (this.children.get(agent.pid) ?? []).filter((c) => c.tpgid !== group && !zombie(c) && !this.installed(c));
-    return { kind: kind as AgentKind, pid: agent.pid, commands };
+    const commands = [...children.filter((c) => c !== server && c.tpgid !== group), ...served];
+    return { kind: kind as AgentKind, pid: agent.pid, commands, ...(server && { server }) };
   }
 
   // exactly what setup installed: a shell running the guarded hook command or the statusline wrapper, the helper, or
@@ -111,7 +119,7 @@ export class ProcessTable {
     const found = new Map<number, Proc>();
     for (const queue = [...roots]; queue.length;) {
       const p = queue.shift()!;
-      if (found.has(p.pid) || zombie(p)) continue;
+      if (found.has(p.pid) || zombie(p) || SHARED_SERVICE.test(p.args)) continue;
       found.set(p.pid, p);
       queue.push(...(this.children.get(p.pid) ?? []));
     }
