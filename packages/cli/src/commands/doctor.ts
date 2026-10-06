@@ -208,7 +208,7 @@ function daemonEnv(t: Target, d: DoctorDeps): Check {
   const keys = Object.keys(d.daemonEnv);
   const linux = d.platform === 'linux';
   if (!keys.length) {
-    return { name: 'daemon env', status: 'ok', detail: linux ? 'this account sets no CLAUDE_CONFIG_DIR or CODEX_HOME' : 'this account sets none of CLAUDE_CONFIG_DIR, CODEX_HOME, XDG_CONFIG_HOME or XDG_DATA_HOME' };
+    return { name: 'daemon env', status: 'ok', detail: 'this account sets none of CLAUDE_CONFIG_DIR, CODEX_HOME, XDG_CONFIG_HOME or XDG_DATA_HOME' };
   }
   const { plist: file, fix } = linux
     ? { plist: path.join(d.unitDir, svalldUnitName(t.name)), fix: t.name === PRIVATE ? `${SHIM} setup` : `${SHIM} host enable <this machine> --fleet ${t.name} from the controller` }
@@ -418,7 +418,7 @@ export function doctorCommand(target: () => Target, json: () => boolean, platfor
       unitDir: unitDirOf(os.homedir()),
       daemonEnv,
       codex,
-      opencode: opencodePaths(),
+      opencode: opencodePaths(daemonEnv),
       exists: fs.existsSync,
       found: findAgents(pre.agentPath ?? pre.pathEnv),
       integrations,

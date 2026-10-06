@@ -386,6 +386,15 @@ describe('doctor on Linux', () => {
     expect(byName(await doctor(adhoc, linux({}, { daemonEnv: env }).deps))['daemon env'].status).toBe('skip');
   });
 
+  it('names OpenCode\'s config and data homes beside Claude\'s and Codex\'s', async () => {
+    const file = `/u/.config/systemd/user/${unit}`;
+    expect(byName(await doctor(priv, linux({}, { files: { [file]: '[Service]\n' } }).deps))['daemon env'])
+      .toMatchObject({ status: 'ok', detail: 'this account sets none of CLAUDE_CONFIG_DIR, CODEX_HOME, XDG_CONFIG_HOME or XDG_DATA_HOME' });
+    const env = { XDG_CONFIG_HOME: '/x/config', XDG_DATA_HOME: '/x/data' };
+    expect(byName(await doctor(priv, linux({}, { daemonEnv: env, files: { [file]: '[Service]\n' } }).deps))['daemon env'])
+      .toMatchObject({ status: 'warn', detail: `${file} lacks XDG_CONFIG_HOME and XDG_DATA_HOME, which this account sets: svall setup` });
+  });
+
   it('checks the machine\'s gateway unit beside the fleet\'s', async () => {
     expect(byName(await doctor(priv, linux().deps)).gateway)
       .toMatchObject({ status: 'ok', detail: expect.stringContaining('svall-gateway.service: loaded, active (running), enabled') });
@@ -493,6 +502,24 @@ describe('svall doctor on Linux', () => {
     const c = byName(JSON.parse(out.join('')));
     expect(c.hooks).toMatchObject({ status: 'fail', detail: `not installed in ${claudeDir}/settings.json: svall setup` });
     expect(c['codex hooks']).toMatchObject({ status: 'fail', detail: `not installed in ${codexDir}/hooks.json: svall setup` });
+  });
+
+  it('checks the OpenCode plugin where the unit\'s XDG_CONFIG_HOME points, which only the login shell names', async () => {
+    const home = makeHome();
+    vi.stubEnv('HOME', home);
+    vi.stubEnv('XDG_CONFIG_HOME', '');
+    const local = path.join(home, '.local', 'bin');
+    fs.mkdirSync(local, { recursive: true });
+    fs.writeFileSync(path.join(local, 'opencode'), '#!/bin/sh\necho "2.0.22"\n', { mode: 0o755 });
+    const config = path.join(home, 'dotfiles');
+    const bin = makeHome();
+    fs.writeFileSync(path.join(bin, 'login-shell'), `#!/bin/sh\nexport XDG_CONFIG_HOME='${config}'\nexec /bin/sh -c "$2"\n`, { mode: 0o755 });
+    vi.stubEnv('SHELL', path.join(bin, 'login-shell'));
+    vi.stubEnv('PATH', `${bin}:/usr/bin:/bin`);
+    const out: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { out.push(String(chunk)); return true; });
+    await doctorCommand(() => ({ name: 'private', home: path.join(home, '.svall'), managed: true }), () => true, 'linux').parseAsync([], { from: 'user' });
+    expect(byName(JSON.parse(out.join('')))['opencode plugin']).toMatchObject({ status: 'fail', detail: `not installed in ${config}/opencode/plugins/svall.js: svall setup` });
   });
 });
 
