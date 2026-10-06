@@ -68,7 +68,7 @@ function up() {
     sh(m, 'cd /opt/it && tar -xzf svall-companion-*.tar.gz --wildcards "releases/*/node" && mv releases/*/node node && rm -rf releases && chmod -R a+rX /opt/it', { root: true });
     // a wrapper that execs node on the mock, so ps shows `node …/claude.mjs` as the rest classifier reads a Claude
     sh(m, 'mkdir -p ~/.local/bin && printf \'#!/bin/sh\\nexec /opt/it/node/bin/node /opt/it/claude.mjs "$@"\\n\' > ~/.local/bin/claude && chmod 755 ~/.local/bin/claude');
-    // OpenCode's is a native binary, so its mock runs under that name
+    // OpenCode's is a native binary, so its mock runs under that name and retitles itself to drop the script's path
     sh(m, 'printf \'#!/bin/bash\\nexec -a opencode /opt/it/node/bin/node /opt/it/opencode.mjs "$@"\\n\' > ~/.local/bin/opencode && chmod 755 ~/.local/bin/opencode');
   }
   sh(L, 'mkdir -m 700 -p ~/.ssh && ssh-keygen -q -t ed25519 -N "" -f ~/.ssh/id_ed25519');
@@ -212,6 +212,8 @@ function runsFleet(label, s, base, owner, generation, fx) {
     const args = procs[0]?.args ?? [];
     check(`${label} ${kind} resumed`, args.includes(resume) && args[args.indexOf(resume) + 1] === b?.agent?.sessionId, () => brief(args));
     if (kind === 'opencode') {
+      // ps reads the flags right after the binary's name, as the resume's launch flags are read
+      check(`${label} opencode command line`, args[0] === 'opencode' && args[1]?.startsWith('-'), () => brief(args));
       check(`${label} opencode server`, s.servers.length === 1 && s.servers[0].ppid === procs[0]?.pid, () => brief(s.servers));
       // an import lands in the terminal's folder, and never as an empty session a resume made up
       check(`${label} opencode session`, same(s.opencode[b?.agent?.sessionId], base.opencode[b?.agent?.sessionId])

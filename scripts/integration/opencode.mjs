@@ -15,6 +15,8 @@ import { fileURLToPath } from 'node:url';
 
 const VERSION = '2.0.22';
 const args = process.argv.slice(2);
+// ps then reads `opencode <args>`, as for the native binary, with no script path for startFlags to stop at
+process.title = ['opencode', ...args].join(' ');
 const data = path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'opencode', 'mock-sessions');
 const fileOf = (id) => path.join(data, `${id}.json`);
 const read = (id) => { try { return JSON.parse(fs.readFileSync(fileOf(id), 'utf8')); } catch { return undefined; } };

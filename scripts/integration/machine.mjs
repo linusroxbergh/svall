@@ -17,7 +17,6 @@ import readline from 'node:readline';
 const HOME = os.homedir();
 const FLEET = path.join(HOME, '.svall');
 const MOCK = '/opt/it/claude.mjs';
-const OPENCODE = '/opt/it/opencode.mjs';
 const REPOS = ['src/app', 'src/app-wt'];
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
 const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
@@ -121,6 +120,9 @@ function processes(needle) {
   return out;
 }
 
+// the mocked OpenCode retitles itself, so its command line is one string of the words the native binary's would hold
+const opencodes = () => processes('opencode').map((p) => ({ ...p, args: p.args.join(' ').split(' ') })).filter((p) => p.args[0] === 'opencode');
+
 /** The sessions the mocked OpenCode holds, where the real one keeps its database: messages and folder, by id. */
 function opencodeSessions() {
   const root = path.join(HOME, '.local', 'share', 'opencode', 'mock-sessions');
@@ -166,9 +168,9 @@ async function snap(o) {
     windows,
     agents: [
       ...processes(MOCK).filter((p) => !p.args.includes('--version') && !p.args.includes('auth')).map((p) => ({ kind: 'claude', ...p })),
-      ...processes(OPENCODE).filter((p) => !['serve', 'session', 'auth', 'run', '--version', '--help'].includes(p.args[2])).map((p) => ({ kind: 'opencode', ...p })),
+      ...opencodes().filter((p) => !['serve', 'session', 'auth', 'run', '--version', '--help'].includes(p.args[1])).map((p) => ({ kind: 'opencode', ...p })),
     ],
-    servers: processes(OPENCODE).filter((p) => p.args[2] === 'serve').map((p) => ({ ...p, ppid: ppidOf(p.pid) })),
+    servers: opencodes().filter((p) => p.args[1] === 'serve').map((p) => ({ ...p, ppid: ppidOf(p.pid) })),
     controllerJournal: fs.existsSync(controller) ? JSON.parse(fs.readFileSync(controller, 'utf8')) : null,
     git: Object.fromEntries(REPOS.map((r) => [r, gitOf(path.join(HOME, r))])),
     trees: Object.fromEntries(REPOS.map((r) => [r, walk(path.join(HOME, r), new Set(['.git']))])),
