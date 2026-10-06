@@ -951,6 +951,8 @@ describe('destination activate', () => {
     expect(Store.readSnapshot(s.paths.state).characters.c_ada.cwd).toBe(path.join(s.dst, 'work/ada'));
     expect(FleetConfig.parse(JSON.parse(fs.readFileSync(s.paths.fleetConfig, 'utf8'))).home.cwd).toBe('~/mc');
     expect(d.config.home.cwd).toBe('~/mc');
+    // a node.json that names no port leaves the daemon on the one it took
+    expect(d.config.port).toBeUndefined();
     expect(JSON.parse(fs.readFileSync(s.paths.owner, 'utf8'))).toMatchObject({ generation: 5, ownerMachineId: trift });
     expect(d.ownership.writable()).toBe(true);
 

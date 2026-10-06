@@ -3,11 +3,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
 import {
-  FleetState, Generation, NodeConfig, Sha256, TransactionId, TransferFile, TransferRoot, handoverError,
+  FleetState, Generation, Sha256, TransactionId, TransferFile, TransferRoot, handoverError,
   type AgentKind, type Blocker, type Character, type FleetConfig, type KeptCommit, type OwnerRecord, type ParsedParams, type ReceivedGraph, type ReplicaCheck as WireCheck,
   type ResumeFolder, type Result, type TerminalSlot, type TransferManifestV1,
 } from '@svall/protocol';
-import { mergeConfig, namedGateway, type Config } from '../config.js';
+import { NodeFile, mergeConfig, namedGateway, type Config } from '../config.js';
 import { markDormant, markSlotDormant, reviveCommand } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
 import type { GitRunner } from '../links/git.js';
@@ -149,7 +149,7 @@ function replaceIn(into: Record<string, unknown>, from: Record<string, unknown>)
 
 // the daemon's config and its mobile lists are shared by reference, so they take the imported fleet.json in place
 function adopt(config: Config, fleet: FleetConfig): void {
-  const { mobile, ...rest } = mergeConfig(fleet, NodeConfig.parse(config));
+  const { mobile, ...rest } = mergeConfig(fleet, NodeFile.parse(config));
   replaceIn(config.mobile, mobile);
   replaceIn(config, { ...rest, mobile: config.mobile });
 }

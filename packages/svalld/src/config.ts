@@ -14,7 +14,7 @@ const newFleetId = (): FleetId => FleetId.parse(crypto.randomUUID());
 // Svall Dev keeps a port and a mission control folder of its own beside the release's
 const FleetFile = FleetConfig.extend({ home: FleetConfig.shape.home.unwrap().extend({ cwd: z.string().default(HOME_CWD) }).prefault({}) });
 // absent, DEFAULT_PORT, or a free port while another program holds that
-const NodeFile = NodeConfig.extend({ port: z.number().int().optional() });
+export const NodeFile = NodeConfig.extend({ port: z.number().int().optional() });
 
 type Raw = Record<string, unknown>;
 
