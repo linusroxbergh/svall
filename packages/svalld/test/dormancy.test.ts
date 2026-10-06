@@ -98,18 +98,17 @@ describe('startFlags', () => {
     expect(startFlags('claude --model opus', 'codex')).toBeUndefined();
   });
 
-  it("keeps an opencode agent's model, agent and --auto, and drops its session and prompt", () => {
-    expect(startFlags('opencode -m opencode/big-pickle --agent build --auto --prompt fix it', 'opencode'))
-      .toEqual(['-m', "'opencode/big-pickle'", '--agent', "'build'", '--auto']);
-    expect(startFlags(`opencode.exe -s ${OSID}`, 'opencode')).toEqual([]);
-    expect(startFlags('opencode --port 4096', 'opencode')).toBeUndefined();
+  it("keeps an opencode agent's --auto, and drops its session, prompt and private server, which svalld adds back", () => {
+    expect(startFlags('opencode --standalone --auto --prompt fix it', 'opencode')).toEqual(['--auto']);
+    expect(startFlags(`opencode.exe --standalone -s ${OSID}`, 'opencode')).toEqual([]);
+    expect(startFlags('opencode --server http://localhost:4096', 'opencode')).toBeUndefined();
     // svalld puts the prompt last, where a bullet or a flag in its text is no option
-    expect(startFlags('opencode -m opencode/big-pickle --prompt fix these: - the --force flag', 'opencode')).toEqual(['-m', "'opencode/big-pickle'"]);
+    expect(startFlags('opencode --standalone --prompt fix these: - the --force flag', 'opencode')).toEqual([]);
   });
 });
 
 describe('runsInBackground', () => {
-  const proc = (pid: number, ppid: number, pgid: number) => ({ pid, ppid, pgid, args: '' });
+  const proc = (pid: number, ppid: number, pgid: number, args = '') => ({ pid, ppid, pgid, args });
 
   it('is true while a descendant runs outside the agent\'s process group, as the Bash tool starts it', () => {
     const agentTree = [proc(10, 1, 10), proc(11, 10, 10), proc(12, 11, 10)];
@@ -117,6 +116,13 @@ describe('runsInBackground', () => {
     expect(runsInBackground(10, [...agentTree, proc(20, 10, 20), proc(21, 20, 20)])).toBe(true);
     expect(runsInBackground(10, [...agentTree, proc(30, 12, 30)])).toBe(true);
     expect(runsInBackground(10, [...agentTree, proc(40, 1, 40)])).toBe(false);
+  });
+
+  it("counts OpenCode's private server, in a group of its own, as the agent, and a shell it runs as background", () => {
+    const tree = [proc(10, 1, 10, 'opencode --standalone'), proc(11, 10, 11, '/u/.opencode/bin/opencode serve --stdio --port 0'), proc(12, 11, 11, 'mcp-server')];
+    expect(runsInBackground(10, tree)).toBe(false);
+    expect(runsInBackground(10, [...tree, proc(13, 11, 13, 'sleep 60')])).toBe(true);
+    expect(runsInBackground(10, [proc(10, 1, 10), proc(11, 10, 11, 'serve --stdio')])).toBe(true);
   });
 });
 
@@ -129,8 +135,7 @@ describe('reviveCommand', () => {
   });
 
   it('resumes an opencode session with -s', () => {
-    expect(reviveCommand(char({ agent: agent({ kind: 'opencode', sessionId: OSID }) }), ['-m', "'opencode/big-pickle'"]))
-      .toBe(`opencode -m 'opencode/big-pickle' -s ${OSID}`);
+    expect(reviveCommand(char({ agent: agent({ kind: 'opencode', sessionId: OSID }) }), ['--auto'])).toBe(`opencode --auto -s ${OSID}`);
   });
 });
 

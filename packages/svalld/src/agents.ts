@@ -37,10 +37,11 @@ export const AGENTS: Record<AgentKind, AgentAdapter> = {
     crewCommand: 'codex',
   },
   opencode: {
-    label: AGENT_LABEL.opencode, bin: 'opencode', installUrl: 'https://opencode.ai/docs/', minVersion: [1, 18, 34],
+    label: AGENT_LABEL.opencode, bin: 'opencode', installUrl: 'https://opencode.ai/docs/', minVersion: [2, 0, 22],
     installCommand: 'curl -fsSL https://opencode.ai/install | bash',
-    // a fresh install runs on OpenCode Zen's free model without a login
-    loginArgs: ['auth', 'list'], loggedIn: () => true,
+    // a fresh install runs on OpenCode Zen's free model without a login; a private server leaves the user's shared
+    // background service unstarted
+    loginArgs: ['auth', 'list', '--standalone'], loggedIn: () => true,
     loginHint: 'opencode auth login',
     crewCommand: 'opencode',
   },

@@ -1476,7 +1476,7 @@ runIf('Fleet', () => {
     const agent = b.store.state.characters[c.id].agent!;
     expect(agent).toMatchObject({ kind: 'opencode', sessionId: OSID, contextPct: 10, model: 'big-pickle' });
     expect(b.fleet.readPrompts(c.id, 5)).toEqual(['fix the flaky test']);
-    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-opencode', `${c.id}.argv`), 'utf8'))).toEqual(['--prompt', 'fix the flaky test']);
+    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-opencode', `${c.id}.argv`), 'utf8'))).toEqual(['--standalone', '--prompt', 'fix the flaky test']);
     expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-opencode', `${c.id}.system`), 'utf8'))).toEqual([agent.brief]);
   });
 
@@ -1503,7 +1503,7 @@ runIf('Fleet', () => {
     await b.fleet.run(c.id, 'second', true);
     await waitFor(() => b.fleet.readPrompts(c.id, 5).length === 2);
     expect(b.fleet.readPrompts(c.id, 5)).toEqual(['second', 'first']);
-    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-opencode', `${c.id}.argv`), 'utf8'))).toEqual(['-s', OSID]);
+    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-opencode', `${c.id}.argv`), 'utf8'))).toEqual(['--standalone', '-s', OSID]);
     expect(fs.existsSync(path.join(b.home, `${c.id}.prompt`))).toBe(false);
   });
 

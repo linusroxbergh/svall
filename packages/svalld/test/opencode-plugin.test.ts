@@ -12,6 +12,7 @@ import { cleanHomes, makeHome, waitFor } from './helpers.js';
 const PLUGIN = path.resolve(import.meta.dirname, '../hooks/opencode-plugin.js');
 const SID = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
 const CHILD = 'ses_0f3a5b7c9d1fZyXwVuTsRqPoNm';
+const MODEL = { providerID: 'opencode', id: 'big-pickle' };
 
 let home: string;
 let got: SocketEvent[];
@@ -26,16 +27,47 @@ const listen = async () => {
   }, silentLogger);
 };
 const names = () => got.flatMap((e) => ('hook' in e ? [e.hook.name] : ['status']));
-const client = (parents: Record<string, string> = {}) => ({
-  session: {
-    get: vi.fn(async ({ path: p }: { path: { id: string } }) => ({ data: { id: p.id, parentID: parents[p.id] } })),
-    promptAsync: vi.fn(async () => ({})),
-    command: vi.fn(async () => ({})),
-  },
-  command: { list: vi.fn(async () => ({ data: [{ name: 'svall-status' }] })) },
-});
-const load = async (c = client()) => (await import(PLUGIN)).SvallPlugin({ client: c, directory: '/repo' });
-const event = (type: string, properties: Record<string, unknown>) => ({ event: { id: 'e', type, properties } });
+
+type Hook = (e: Record<string, unknown>) => Promise<void> | void;
+// the plugin context OpenCode hands setup: its hooks are kept by name, and emit resolves once the plugin has taken the event
+const fakeContext = (parents: Record<string, string> = {}) => {
+  const hooks: Record<string, Hook> = {};
+  const register = (domain: string) => vi.fn(async (name: string, cb: Hook) => { hooks[`${domain}.${name}`] = cb; return { dispose: async () => {} }; });
+  let pull: ((r: IteratorResult<unknown>) => void) | undefined;
+  let taken: (() => void) | undefined;
+  const ctx = {
+    location: { directory: '/repo' },
+    session: {
+      hook: register('session'),
+      get: vi.fn(async ({ sessionID }: { sessionID: string }) => ({ id: sessionID, parentID: parents[sessionID] })),
+      prompt: vi.fn(async () => ({})),
+      command: vi.fn(async () => ({})),
+    },
+    tool: { hook: register('tool') },
+    command: { list: vi.fn(async () => ({ data: [{ name: 'svall-status' }] })) },
+    model: { list: vi.fn(async () => ({ data: [{ ...MODEL, limit: { context: 200_000 } }] })) },
+    event: {
+      subscribe: () => ({
+        [Symbol.asyncIterator]: () => ({
+          next: () => { taken?.(); taken = undefined; return new Promise<IteratorResult<unknown>>((r) => { pull = r; }); },
+          return: async () => ({ done: true, value: undefined }),
+        }),
+      }),
+    },
+  };
+  const emit = async (type: string, properties: Record<string, unknown>) => {
+    await waitFor(() => !!pull);
+    await new Promise<void>((r) => { taken = r; const p = pull!; pull = undefined; p({ done: false, value: { type, data: properties } }); });
+  };
+  return { ctx, hooks, emit };
+};
+const load = async (f = fakeContext()) => ({ ...f, cleanup: await (await import(PLUGIN)).default.setup(f.ctx) });
+const prompt = (h: Record<string, Hook>, sessionID: string, text = 'go') => h['session.prompt']({ sessionID, messageID: 'msg_u1', prompt: { text } });
+const system = async (h: Record<string, Hook>, sessionID: string) => {
+  const e = { sessionID, system: [] as { text: string }[] };
+  await h['session.context'](e);
+  return e.system.map((s) => s.text);
+};
 // the plugin shows a question on the card half a second after it changes
 const shown = () => new Promise((r) => setTimeout(r, 700));
 
@@ -50,72 +82,76 @@ beforeEach(async () => {
 afterEach(async () => { await receiver.close(); vi.unstubAllEnvs(); cleanHomes(); });
 
 describe('the OpenCode plugin', () => {
-  it('exports one function, as OpenCode requires of a plugin file', async () => {
+  it('exports a default definition with an id and a setup, as OpenCode 2 requires of a plugin file', async () => {
     const mod = await import(PLUGIN);
-    expect(Object.keys(mod)).toEqual(['SvallPlugin']);
-    expect(typeof mod.SvallPlugin).toBe('function');
+    expect(Object.keys(mod)).toEqual(['default']);
+    expect(mod.default.id).toBe('svall');
+    expect(typeof mod.default.setup).toBe('function');
   });
 
-  it('does nothing outside a character, or for the other build\'s fleet', async () => {
+  it('does nothing outside a character, for the other build\'s fleet, or in the shared background service', async () => {
     vi.stubEnv('SVALL_CHAR_ID', '');
-    expect(await load()).toEqual({});
+    expect((await load()).hooks).toEqual({});
     vi.stubEnv('SVALL_CHAR_ID', 'c_1');
     vi.stubEnv('SVALL_HOME', '/u/.svall');
-    expect(await load()).toEqual({});
+    expect((await load()).hooks).toEqual({});
+    vi.stubEnv('SVALL_HOME', home);
+    const argv = process.argv;
+    process.argv = [...argv, 'serve', '--service'];
+    try { expect((await load()).hooks).toEqual({}); } finally { process.argv = argv; }
   });
 
   it('reports a turn, gives the agent its brief, reads its context and logs the session', async () => {
-    const h = await load();
-    await h.event(event('session.created', { sessionID: SID, info: { id: SID, directory: '/repo' } }));
-    await h['chat.message']({ sessionID: SID, messageID: 'msg_u1', model: { providerID: 'opencode', modelID: 'big-pickle' } },
-      { message: { id: 'msg_u1' }, parts: [{ type: 'text', text: 'fix the flaky test' }] });
-    const system: string[] = [];
-    await h['experimental.chat.system.transform']({ sessionID: SID, model: { limit: { context: 200_000 } } }, { system });
-    expect(system).toEqual(['BRIEF']);
-    await h['tool.execute.before']({ tool: 'bash', sessionID: SID, callID: 'c1' }, { args: { command: 'pnpm test', workdir: '/repo/wt' } });
-    await h['tool.execute.after']({ tool: 'bash', sessionID: SID, callID: 'c1', args: { command: 'pnpm test' } }, { title: '', output: 'ok', metadata: {} });
-    await h.event(event('message.updated', { sessionID: SID, info: { id: 'msg_a1', sessionID: SID, role: 'assistant', modelID: 'big-pickle', tokens: { input: 19_000, output: 1000, reasoning: 0, cache: { read: 0, write: 0 } } } }));
-    await h.event(event('message.part.updated', { part: { id: 'prt_1', sessionID: SID, messageID: 'msg_a1', type: 'text', text: 'fixed', time: { start: 1, end: 2 } } }));
-    await h.event(event('session.status', { sessionID: SID, status: { type: 'idle' } }));
+    const { hooks: h, emit } = await load();
+    await emit('session.created', { sessionID: SID, model: MODEL });
+    await prompt(h, SID, 'fix the flaky test');
+    await emit('session.execution.started', { sessionID: SID });
+    expect(await system(h, SID)).toEqual(['BRIEF']);
+    await h['tool.execute.before']({ tool: 'shell', sessionID: SID, input: { command: 'pnpm test', workdir: '/repo/wt' } });
+    await h['tool.execute.after']({ tool: 'shell', sessionID: SID, input: { command: 'pnpm test' }, status: 'completed', result: { content: [{ type: 'text', text: 'ok' }] } });
+    await emit('session.step.started', { sessionID: SID, model: { ...MODEL, variant: 'default' } });
+    await emit('session.step.ended', { sessionID: SID, tokens: { input: 19_000, output: 1000, reasoning: 0, cache: { read: 0, write: 0 } } });
+    await emit('session.text.ended', { sessionID: SID, text: 'fixed' });
+    await emit('session.execution.succeeded', { sessionID: SID });
     await waitFor(() => names().includes('Stop'));
     expect(names()).toEqual(['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'status', 'Stop']);
-    const [start, prompt, tool] = got as { hook: Record<string, unknown> }[];
-    expect(start.hook).toMatchObject({ backend: 'opencode', sessionId: SID, cwd: '/repo', transcriptPath: path.join(home, 'transcripts/opencode', `${SID}.jsonl`) });
-    expect(prompt.hook).toMatchObject({ prompt: { id: 'msg_u1', text: 'fix the flaky test' }, model: 'big-pickle' });
-    expect(tool.hook).toMatchObject({ toolName: 'bash', cwd: '/repo/wt' });
+    const [start, submitted, tool] = got as { hook: Record<string, unknown> }[];
+    expect(start.hook).toMatchObject({ backend: 'opencode', pid: process.ppid, sessionId: SID, cwd: '/repo', model: 'big-pickle', transcriptPath: path.join(home, 'transcripts/opencode', `${SID}.jsonl`) });
+    expect(submitted.hook).toMatchObject({ prompt: { id: 'msg_u1', text: 'fix the flaky test' }, model: 'big-pickle' });
+    expect(tool.hook).toMatchObject({ toolName: 'shell', cwd: '/repo/wt' });
     expect(got[4]).toEqual({ status: { charId: 'c_1', sessionId: SID, contextPct: 10, model: 'big-pickle' } });
     expect(condenseTurnsOpencode(fs.readFileSync(path.join(home, 'transcripts/opencode', `${SID}.jsonl`), 'utf8'), 10))
-      .toBe('USER: fix the flaky test\nAGENT: [tool: bash] fixed');
+      .toBe('USER: fix the flaky test\nAGENT: [tool: shell] fixed');
   });
 
   it('starts a resumed session from its -s, brief in hand before the first request, and submits the prompt left for it', async () => {
     fs.writeFileSync(path.join(home, 'c_1.prompt'), 'wake up');
     const argv = process.argv;
     process.argv = [...argv, '-s', SID];
-    const c = client();
     try {
-      const h = await load(c);
-      await waitFor(() => c.session.promptAsync.mock.calls.length === 1);
-      expect(c.session.promptAsync).toHaveBeenCalledWith({ path: { id: SID }, body: { parts: [{ type: 'text', text: 'wake up' }] } });
+      const { ctx, hooks: h } = await load();
+      await waitFor(() => ctx.session.prompt.mock.calls.length === 1);
+      expect(ctx.session.prompt).toHaveBeenCalledWith({ sessionID: SID, text: 'wake up' });
       expect(fs.existsSync(path.join(home, 'c_1.prompt'))).toBe(false);
-      const system: string[] = [];
-      await h['experimental.chat.system.transform']({ sessionID: SID, model: { limit: { context: 1 } } }, { system });
-      expect(system).toEqual(['BRIEF']);
+      expect(await system(h, SID)).toEqual(['BRIEF']);
       expect(names()).toEqual(['SessionStart']);
     } finally {
       process.argv = argv;
     }
   });
 
-  it("reads -s off the command line ps prints, as OpenCode's worker has an argv of its own", async () => {
+  it("reads -s off the TUI's command line, as the plugin runs in its private server", async () => {
     fs.writeFileSync(path.join(home, 'c_1.prompt'), 'wake up');
-    const script = `process.argv = process.argv.slice(0, 1);
-      setTimeout(() => process.exit(1), 4000);
-      const { SvallPlugin } = await import(${JSON.stringify(PLUGIN)});
-      await SvallPlugin({ directory: '/repo', client: { session: {
-        get: async () => ({ data: {} }), promptAsync: async (o) => { console.log(JSON.stringify(o)); process.exit(0); } } } });`;
-    const { stdout } = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', script, '--', '-s', SID], { env: process.env });
-    expect(JSON.parse(stdout)).toEqual({ path: { id: SID }, body: { parts: [{ type: 'text', text: 'wake up' }] } });
+    const child = `setTimeout(() => process.exit(1), 4000);
+      const { default: plugin } = await import(${JSON.stringify(PLUGIN)});
+      const on = { hook: async () => {} };
+      await plugin.setup({ location: { directory: '/repo' }, tool: on, event: { subscribe: () => [] },
+        session: { ...on, get: async () => ({}), prompt: async (o) => { console.log(JSON.stringify(o)); process.exit(0); } } });`;
+    // the TUI starts its server as a child, which takes none of its arguments
+    const tui = `const c = require('node:child_process').spawn(process.execPath, ['--input-type=module', '-e', ${JSON.stringify(child)}], { stdio: 'inherit' });
+      c.on('exit', (code) => process.exit(code));`;
+    const { stdout } = await promisify(execFile)(process.execPath, ['-e', tui, '--', '--standalone', '-s', SID], { env: process.env });
+    expect(JSON.parse(stdout)).toEqual({ sessionID: SID, text: 'wake up' });
     expect(names()).toEqual(['SessionStart']);
   });
 
@@ -123,12 +159,11 @@ describe('the OpenCode plugin', () => {
     fs.writeFileSync(path.join(home, 'c_1.prompt'), '/svall-status now');
     const argv = process.argv;
     process.argv = [...argv, '-s', SID];
-    const c = client();
     try {
-      await load(c);
-      await waitFor(() => c.session.command.mock.calls.length === 1);
-      expect(c.session.command).toHaveBeenCalledWith({ path: { id: SID }, body: { command: 'svall-status', arguments: 'now' } });
-      expect(c.session.promptAsync).not.toHaveBeenCalled();
+      const { ctx } = await load();
+      await waitFor(() => ctx.session.command.mock.calls.length === 1);
+      expect(ctx.session.command).toHaveBeenCalledWith({ sessionID: SID, command: 'svall-status', arguments: 'now' });
+      expect(ctx.session.prompt).not.toHaveBeenCalled();
     } finally {
       process.argv = argv;
     }
@@ -151,10 +186,9 @@ describe('the OpenCode plugin', () => {
     fs.writeFileSync(path.join(home, 'c_1.prompt'), 'wake up');
     const argv = process.argv;
     process.argv = [...argv, `--session=${SID}`];
-    const c = client();
     try {
-      await load(c);
-      await waitFor(() => c.session.promptAsync.mock.calls.length === 1);
+      const { ctx } = await load();
+      await waitFor(() => ctx.session.prompt.mock.calls.length === 1);
       expect(names()).toEqual(['SessionStart']);
     } finally {
       process.argv = argv;
@@ -163,109 +197,104 @@ describe('the OpenCode plugin', () => {
 
   it("shows the question OpenCode's TUI shows, and keeps the character blocked while one is open", async () => {
     const OTHER = 'ses_0f3a5b7c9d20AbCdEfGhIjKlMn';
-    const h = await load(client({ [CHILD]: SID, [OTHER]: SID }));
-    await h.event(event('session.created', { sessionID: SID, info: { id: SID } }));
+    const { hooks: h, emit } = await load(fakeContext({ [CHILD]: SID, [OTHER]: SID }));
+    await emit('session.created', { sessionID: SID });
     // the TUI shows permissions before questions, an older session's first
-    await h.event(event('question.asked', { id: 'que_1', sessionID: OTHER, questions: [{ question: 'which file?' }] }));
-    await h.event(event('permission.asked', { id: 'per_2', sessionID: OTHER, permission: 'bash', patterns: ['ls'], metadata: { command: 'ls' } }));
-    await h.event(event('permission.asked', { id: 'per_1', sessionID: CHILD, permission: 'external_directory', patterns: ['/etc/*'], metadata: { filepath: '/etc/hosts' } }));
+    await emit('question.asked', { id: 'que_1', sessionID: OTHER, questions: [{ question: 'which file?' }] });
+    await emit('permission.asked', { id: 'per_2', sessionID: OTHER, action: 'shell', resources: ['ls'] });
+    await emit('permission.asked', { id: 'per_1', sessionID: CHILD, action: 'external_directory', resources: ['/etc/*'] });
     await shown();
-    await h['tool.execute.before']({ tool: 'grep', sessionID: OTHER, callID: 'c' }, { args: {} });
-    await h['tool.execute.after']({ tool: 'grep', sessionID: OTHER, callID: 'c', args: {} }, { title: '', output: '', metadata: {} });
-    await h.event(event('permission.replied', { sessionID: CHILD, requestID: 'per_1', reply: 'once' }));
+    await h['tool.execute.before']({ tool: 'grep', sessionID: OTHER, input: {} });
+    await h['tool.execute.after']({ tool: 'grep', sessionID: OTHER, input: {}, status: 'completed', result: { content: [] } });
+    await emit('permission.replied', { sessionID: CHILD, requestID: 'per_1', reply: 'once' });
     await shown();
-    await h.event(event('permission.replied', { sessionID: OTHER, requestID: 'per_2', reply: 'once' }));
+    await emit('permission.replied', { sessionID: OTHER, requestID: 'per_2', reply: 'once' });
     await shown();
-    await h.event(event('question.rejected', { sessionID: OTHER, requestID: 'que_1' }));
+    await emit('question.rejected', { sessionID: OTHER, requestID: 'que_1' });
     await waitFor(() => names().length >= 5);
     expect(names()).toEqual(['SessionStart', 'PermissionRequest', 'PermissionRequest', 'PermissionRequest', 'PreToolUse']);
     expect(got.slice(1, 4).map((e) => (e as { hook: { sessionId: string; message: string } }).hook))
-      .toMatchObject([{ sessionId: SID, message: '/etc/hosts' }, { sessionId: SID, message: 'ls' }, { sessionId: SID, message: 'which file?' }]);
+      .toMatchObject([{ sessionId: SID, message: '/etc/*', toolName: 'external_directory' }, { sessionId: SID, message: 'ls' }, { sessionId: SID, message: 'which file?' }]);
   });
 
   it('leaves the character working through a question OpenCode answers at once, as with --auto, and a refusal that answers several', async () => {
-    const h = await load();
-    await h.event(event('session.created', { sessionID: SID, info: { id: SID } }));
-    await h.event(event('permission.asked', { id: 'per_1', sessionID: SID, permission: 'external_directory', patterns: ['/etc/*'] }));
-    await h.event(event('permission.replied', { sessionID: SID, requestID: 'per_1', reply: 'once' }));
-    await h.event(event('permission.asked', { id: 'per_2', sessionID: SID, permission: 'bash', patterns: ['ls'] }));
-    await h.event(event('permission.asked', { id: 'per_3', sessionID: SID, permission: 'bash', patterns: ['pwd'] }));
+    const { emit } = await load();
+    await emit('session.created', { sessionID: SID });
+    await emit('permission.asked', { id: 'per_1', sessionID: SID, action: 'external_directory', resources: ['/etc/*'] });
+    await emit('permission.replied', { sessionID: SID, requestID: 'per_1', reply: 'once' });
+    await emit('permission.asked', { id: 'per_2', sessionID: SID, action: 'shell', resources: ['ls'] });
+    await emit('permission.asked', { id: 'per_3', sessionID: SID, action: 'shell', resources: ['pwd'] });
     await shown();
     // a refusal turns down the session's other questions too, each with a reply of its own
-    await h.event(event('permission.replied', { sessionID: SID, requestID: 'per_2', reply: 'reject' }));
-    await h.event(event('permission.replied', { sessionID: SID, requestID: 'per_3', reply: 'reject' }));
+    await emit('permission.replied', { sessionID: SID, requestID: 'per_2', reply: 'reject' });
+    await emit('permission.replied', { sessionID: SID, requestID: 'per_3', reply: 'reject' });
     await waitFor(() => names().length >= 3);
     await shown();
     expect(names()).toEqual(['SessionStart', 'PermissionRequest', 'PreToolUse']);
   });
 
   it("lets a subagent's questions block the character, under the top-level session, and nothing else of it", async () => {
-    const h = await load(client({ [CHILD]: SID }));
-    await h.event(event('session.created', { sessionID: SID, info: { id: SID } }));
-    await h.event(event('session.created', { sessionID: CHILD, info: { id: CHILD, parentID: SID } }));
-    await h['chat.message']({ sessionID: CHILD }, { message: { id: 'm' }, parts: [{ type: 'text', text: 'explore' }] });
-    await h.event(event('permission.asked', { id: 'per_1', sessionID: CHILD, permission: 'bash', patterns: ['rm -rf build'], metadata: { command: 'rm -rf build' } }));
+    const { hooks: h, emit } = await load(fakeContext({ [CHILD]: SID }));
+    await emit('session.created', { sessionID: SID });
+    await emit('session.created', { sessionID: CHILD, parentID: SID });
+    await prompt(h, CHILD, 'explore');
+    await emit('session.execution.started', { sessionID: CHILD });
+    await emit('permission.asked', { id: 'per_1', sessionID: CHILD, action: 'shell', resources: ['rm -rf build'] });
     await shown();
-    await h.event(event('permission.replied', { sessionID: CHILD, requestID: 'per_1', reply: 'once' }));
-    await h.event(event('session.status', { sessionID: CHILD, status: { type: 'idle' } }));
+    await emit('permission.replied', { sessionID: CHILD, requestID: 'per_1', reply: 'once' });
+    await emit('session.execution.succeeded', { sessionID: CHILD });
     await waitFor(() => names().length >= 3);
     await new Promise((r) => setTimeout(r, 100));
     expect(names()).toEqual(['SessionStart', 'PermissionRequest', 'PreToolUse']);
-    expect((got[1] as { hook: Record<string, unknown> }).hook).toMatchObject({ sessionId: SID, message: 'rm -rf build', toolName: 'bash' });
+    expect((got[1] as { hook: Record<string, unknown> }).hook).toMatchObject({ sessionId: SID, message: 'rm -rf build', toolName: 'shell' });
   });
 
   it('holds the brief each prompt is answered with, an empty one included, and keeps it through a lost answer', async () => {
-    const h = await load();
-    await h.event(event('session.created', { sessionID: SID, info: { id: SID } }));
-    const prompt = () => h['chat.message']({ sessionID: SID }, { message: { id: 'm' }, parts: [{ type: 'text', text: 'go' }] });
-    const system = async () => {
-      const s: string[] = [];
-      await h['experimental.chat.system.transform']({ sessionID: SID, model: { limit: { context: 1 } } }, { system: s });
-      return s;
-    };
+    const { hooks: h, emit } = await load();
+    await emit('session.created', { sessionID: SID });
     await receiver.close();
-    await prompt();
-    expect(await system()).toEqual(['BRIEF']);
+    await prompt(h, SID);
+    expect(await system(h, SID)).toEqual(['BRIEF']);
     await listen();
     brief = '';
     // a line sent as the old connection closes is lost with it; a later one lands
-    await waitFor(async () => { await prompt(); return names().includes('UserPromptSubmit'); });
-    expect(await system()).toEqual([]);
+    await waitFor(async () => { await prompt(h, SID); return names().includes('UserPromptSubmit'); });
+    expect(await system(h, SID)).toEqual([]);
   });
 
-  it('ends a turn an Esc stopped with Interrupt, and one an error stopped with StopFailure', async () => {
-    const h = await load();
-    const turn = async (error: unknown) => {
-      await h['chat.message']({ sessionID: SID }, { message: { id: 'm' }, parts: [{ type: 'text', text: 'go' }] });
-      await h.event(event('session.error', { sessionID: SID, error }));
-      await h.event(event('session.status', { sessionID: SID, status: { type: 'idle' } }));
+  it('ends a turn an Esc or a refusal stopped with Interrupt, and one an error stopped with StopFailure', async () => {
+    const { hooks: h, emit } = await load();
+    const turn = async (type: string, fields: Record<string, unknown> = {}) => {
+      await prompt(h, SID);
+      await emit('session.execution.started', { sessionID: SID });
+      await emit(type, { sessionID: SID, ...fields });
     };
-    await turn({ name: 'MessageAbortedError', data: { message: 'aborted' } });
-    await turn({ name: 'APIError', data: { message: 'overloaded' } });
-    await waitFor(() => names().includes('StopFailure'));
-    expect(names()).toEqual(['SessionStart', 'UserPromptSubmit', 'Interrupt', 'UserPromptSubmit', 'StopFailure']);
-    expect((got[4] as { hook: Record<string, unknown> }).hook).toMatchObject({ message: 'overloaded' });
+    await turn('session.execution.interrupted', { reason: 'user' });
+    await turn('session.execution.failed', { error: { type: 'provider.auth', message: 'not available in your country' } });
+    // a refused permission interrupts with no reason given, which OpenCode reports as shutdown
+    await turn('session.execution.interrupted', { reason: 'shutdown' });
+    await waitFor(() => names().length === 7);
+    expect(names()).toEqual(['SessionStart', 'UserPromptSubmit', 'Interrupt', 'UserPromptSubmit', 'StopFailure', 'UserPromptSubmit', 'Interrupt']);
+    expect((got[4] as { hook: Record<string, unknown> }).hook).toMatchObject({ message: 'not available in your country' });
   });
 
-  it('ends with Stop a turn that compacted an overflowed context and went on', async () => {
-    const h = await load();
-    await h['chat.message']({ sessionID: SID }, { message: { id: 'm' }, parts: [{ type: 'text', text: 'go' }] });
-    await h.event(event('session.error', { sessionID: SID, error: { name: 'ContextOverflowError', data: { message: 'too long' } } }));
-    await h.event(event('session.status', { sessionID: SID, status: { type: 'busy' } }));
-    await h.event(event('session.status', { sessionID: SID, status: { type: 'idle' } }));
+  it('picks up a turn under way that it never saw start, as after OpenCode reloads it, brief and all', async () => {
+    const { hooks: h, emit } = await load();
+    expect(await system(h, SID)).toEqual(['BRIEF']);
+    await emit('session.execution.succeeded', { sessionID: SID });
     await waitFor(() => names().includes('Stop'));
-    expect(names()).toEqual(['SessionStart', 'UserPromptSubmit', 'Stop']);
+    expect(names()).toEqual(['SessionStart', 'Stop']);
   });
 
   it('reaches a daemon that restarted, on the next event', async () => {
-    const h = await load();
-    await h.event(event('session.created', { sessionID: SID, info: { id: SID } }));
+    const { hooks: h, emit } = await load();
+    await emit('session.created', { sessionID: SID });
     await waitFor(() => names().length === 1);
     await receiver.close();
     await listen();
     // an event sent before the plugin sees the old connection close is lost with it; a later one lands
     await waitFor(async () => {
-      await h['tool.execute.before']({ tool: 'read', sessionID: SID, callID: 'c' }, { args: {} });
+      await h['tool.execute.before']({ tool: 'read', sessionID: SID, input: {} });
       return names().includes('PreToolUse');
     });
   });
@@ -281,23 +310,21 @@ describe('the OpenCode plugin', () => {
     });
     await new Promise<void>((r) => server.listen(path.join(home, 'hooks.sock'), r));
     try {
-      const h = await load();
+      const { hooks: h, emit } = await load();
       const OTHER = 'ses_0f3a5b7c9d20AbCdEfGhIjKlMn';
-      await h.event(event('session.created', { sessionID: SID, info: { id: SID } }));
-      await h.event(event('session.created', { sessionID: OTHER, info: { id: OTHER } }));
-      const system: string[] = [];
-      await h['experimental.chat.system.transform']({ sessionID: OTHER, model: { limit: { context: 1 } } }, { system });
-      expect(system).toEqual(['BRIEF']);
+      await emit('session.created', { sessionID: SID });
+      await emit('session.created', { sessionID: OTHER });
+      expect(await system(h, OTHER)).toEqual(['BRIEF']);
     } finally {
       server.close();
       await listen();
     }
   });
 
-  it('says nothing when OpenCode disposes of the plugin, as it also does on a reload', async () => {
-    const h = await load();
-    await h.event(event('session.created', { sessionID: SID, info: { id: SID } }));
-    await h.dispose();
+  it('says nothing when OpenCode unloads the plugin', async () => {
+    const { emit, cleanup } = await load();
+    await emit('session.created', { sessionID: SID });
+    cleanup();
     await new Promise((r) => setTimeout(r, 100));
     expect(names()).toEqual(['SessionStart']);
   });

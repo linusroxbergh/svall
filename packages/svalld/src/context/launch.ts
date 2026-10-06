@@ -3,7 +3,7 @@ import type { AgentKind, ContextItem } from '@svall/protocol';
 import { shq } from '../text.js';
 
 // the folder access an OpenCode launch sets ahead of its command
-const ACCESS = /^\s*OPENCODE_PERMISSION='(?:[^']|'\\'')*'\s+/;
+const ACCESS = /^\s*OPENCODE_CONFIG_CONTENT='(?:[^']|'\\'')*'\s+/;
 
 // the agent a command starts, as config.json may write it with a stray leading space
 export const agentKindOf = (command: string): AgentKind | undefined =>
@@ -19,13 +19,20 @@ export function withAddDirs(command: string, items: ContextItem[]): string {
   if (!kind || !dirs.length) return command;
   if (kind === 'opencode') {
     // OpenCode reads * and ? in a rule as wildcards, with no way to escape one, so such a folder is left to ask
-    const rules = Object.fromEntries(dirs.filter((d) => !/[*?]/.test(d)).map((d) => [path.join(path.resolve(d), '*'), 'allow']));
-    if (!Object.keys(rules).length) return command;
-    // OpenCode matches a permission's name as a wildcard too, so this key adds the rules after a user's own
-    // external_directory rule, where they win, rather than replacing it
-    return `OPENCODE_PERMISSION=${shq(JSON.stringify({ 'external_director?': rules }))} ${command}`;
+    const rules = dirs.filter((d) => !/[*?]/.test(d)).map((d) => ({ action: 'external_directory', resource: path.join(path.resolve(d), '*'), effect: 'allow' }));
+    if (!rules.length) return command;
+    // this config loads last, so its rules follow the user's own and win
+    return `OPENCODE_CONFIG_CONTENT=${shq(JSON.stringify({ permissions: rules }))} ${command}`;
   }
   return dirs.reduce((cmd, d) => `${cmd} --add-dir ${shq(d)}`, command);
+}
+
+// OpenCode's TUI otherwise runs on the user's shared background service, whose plugins can't tell which character a
+// session belongs to; a private server inherits the character's environment
+export function withStandalone(command: string): string {
+  if (agentKindOf(command) !== 'opencode' || /\s--standalone(\s|$)/.test(command)) return command;
+  const access = ACCESS.exec(command)?.[0] ?? '';
+  return access + command.slice(access.length).replace(/^\s*opencode/, '$& --standalone');
 }
 
 // OpenCode's TUI holds back the submit of a /command while its command menu is open, which a space after the name closes

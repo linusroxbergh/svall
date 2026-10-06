@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ContextItem } from '@svall/protocol';
-import { agentKindOf, isAgentCommand, promptText, withAddDirs, withPromptFile } from '../src/context/launch.js';
+import { agentKindOf, isAgentCommand, promptText, withAddDirs, withPromptFile, withStandalone } from '../src/context/launch.js';
 
 const item = (kind: ContextItem['kind'], ref: string): ContextItem => ({ kind, ref, label: '', source: 'manual' });
 
@@ -22,18 +22,29 @@ describe('withAddDirs', () => {
 });
 
 describe('withAddDirs for opencode', () => {
-  it('allows each folder through OPENCODE_PERMISSION, which the prompt and kind still read past', () => {
+  const rule = (resource: string) => `{"action":"external_directory","resource":"${resource}","effect":"allow"}`;
+  it('allows each folder through OPENCODE_CONFIG_CONTENT, which the prompt and kind still read past', () => {
     const cmd = withAddDirs('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn', [item('folder', '/a/b'), item('file', "/c'd/y.md")]);
-    expect(cmd).toBe(`OPENCODE_PERMISSION='{"external_director?":{"/a/b/*":"allow","/c'\\''d/*":"allow"}}' opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn`);
+    expect(cmd).toBe(`OPENCODE_CONFIG_CONTENT='{"permissions":[${rule('/a/b/*')},${rule("/c'\\''d/*")}]}' opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn`);
     expect(agentKindOf(cmd)).toBe('opencode');
     expect(withAddDirs('opencode', [])).toBe('opencode');
     expect(withPromptFile(withAddDirs('opencode', [item('folder', '/a')]), '/h/p')).toContain(' opencode --prompt "$(cat');
   });
   it('allows a folder by its resolved path, leaves one named with a wildcard to ask, and reads no flag in a folder name', () => {
     expect(withAddDirs('opencode', [item('folder', '/a/b/'), item('folder', '/c/*'), item('folder', '/d/e?')]))
-      .toBe(`OPENCODE_PERMISSION='{"external_director?":{"/a/b/*":"allow"}}' opencode`);
+      .toBe(`OPENCODE_CONFIG_CONTENT='{"permissions":[${rule('/a/b/*')}]}' opencode`);
     expect(withAddDirs('opencode', [item('folder', '/c/*')])).toBe('opencode');
     expect(withPromptFile(withAddDirs('opencode', [item('folder', '/notes -s draft')]), '/h/p')).toContain(' opencode --prompt "$(cat');
+  });
+});
+
+describe('withStandalone', () => {
+  it('runs opencode on a private server, past the folder access set ahead of it, and leaves other agents be', () => {
+    expect(withStandalone('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn')).toBe('opencode --standalone -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn');
+    const access = withAddDirs('opencode', [item('folder', '/a')]);
+    expect(withStandalone(access)).toBe(`${access} --standalone`);
+    expect(withStandalone('opencode --standalone')).toBe('opencode --standalone');
+    expect(withStandalone('claude')).toBe('claude');
   });
 });
 
