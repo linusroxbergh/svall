@@ -54,32 +54,36 @@ const MARK = 'svall-agent-homes';
 
 /**
  * Where this account keeps Claude's, Codex's and OpenCode's files, when it says: this process's CLAUDE_CONFIG_DIR,
- * CODEX_HOME, XDG_CONFIG_HOME and XDG_DATA_HOME, else its login shell's, since a setup over ssh runs in a shell that read
+ * CODEX_HOME, XDG_CONFIG_HOME, XDG_DATA_HOME and OPENCODE_DB, else its login shell's, since a setup over ssh runs in a shell that read
  * no profile. systemd gives a unit none of them.
  */
 export async function agentHomesEnv(run: Run): Promise<Record<string, string>> {
   let said: string[] = [];
   try {
-    const out = (await run(process.env.SHELL || '/bin/sh', ['-lic', `printf '\\n%s\\n%s\\n%s\\n%s\\n%s\\n' ${MARK} "$CLAUDE_CONFIG_DIR" "$CODEX_HOME" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME"`])).stdout.split('\n');
+    const out = (await run(process.env.SHELL || '/bin/sh', ['-lic', `printf '\\n%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n' ${MARK} "$CLAUDE_CONFIG_DIR" "$CODEX_HOME" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$OPENCODE_DB"`])).stdout.split('\n');
     const at = out.lastIndexOf(MARK);
-    if (at >= 0) said = out.slice(at + 1, at + 5);
+    if (at >= 0) said = out.slice(at + 1, at + 6);
   } catch { /* a shell that cannot be asked sets none */ }
   const claude = process.env.CLAUDE_CONFIG_DIR || said[0];
   const codex = process.env.CODEX_HOME || said[1];
   const config = process.env.XDG_CONFIG_HOME || said[2];
   const data = process.env.XDG_DATA_HOME || said[3];
+  // OpenCode reads a relative one against its data folder
+  const db = process.env.OPENCODE_DB || said[4];
   return {
     ...(claude && { CLAUDE_CONFIG_DIR: claudePaths({ CLAUDE_CONFIG_DIR: claude }).dir }),
     ...(codex && { CODEX_HOME: codexPaths({ CODEX_HOME: codex }).dir }),
     ...(config && { XDG_CONFIG_HOME: path.resolve(config) }),
     ...(data && { XDG_DATA_HOME: path.resolve(data) }),
+    ...(db && { OPENCODE_DB: db }),
   };
 }
 
-// the release's own runtime first, so the daemon starts the node it was built against
+// the release's own runtime first, so the daemon starts the node it was built against; OpenCode's installer puts it in
+// ~/.opencode/bin, which the Mac's plist reaches through the login shell's PATH
 export const unitPath = (o: UnitOptions): string => [
   o.runtime.release ? path.join(o.runtime.release, 'node', 'bin') : path.dirname(process.execPath),
-  path.join(o.homedir, '.local', 'bin'), '/usr/local/bin', '/usr/bin', '/bin',
+  path.join(o.homedir, '.local', 'bin'), path.join(o.homedir, '.opencode', 'bin'), '/usr/local/bin', '/usr/bin', '/bin',
 ].join(':');
 
 const logFile = (o: UnitOptions, unit: string): string =>

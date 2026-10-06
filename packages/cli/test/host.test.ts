@@ -29,7 +29,7 @@ const ELSEWHERE = `${HOME}-elsewhere`;
 const BASE = `${HOME}/.local/share/svall`;
 const SVALL = `${BASE}/current/bin/svall`;
 // the PATH the companion's units run with, and so the one its daemon finds the agent CLIs on
-const UNIT_PATH = `PATH=${BASE}/current/node/bin:${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin`;
+const UNIT_PATH = `PATH=${BASE}/current/node/bin:${HOME}/.local/bin:${HOME}/.opencode/bin:/usr/local/bin:/usr/bin:/bin`;
 
 const OS_RELEASE = 'NAME="Ubuntu"\nID=ubuntu\nVERSION_ID="24.04"\nVERSION="24.04.1 LTS (Noble Numbat)"\n';
 const DF = 'Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/root 60000000 20000000 40000000 34% /\n';
