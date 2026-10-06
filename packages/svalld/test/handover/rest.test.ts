@@ -523,7 +523,7 @@ describe('restTerminals', () => {
     expect(ended.store.state.characters.c_ada.revive).toEqual({ command: `opencode -s ${OSID}` });
   });
 
-  it('interrupts a working OpenCode and rests it once its plugin reports the turn over and the command it ran has ended', async () => {
+  it('interrupts a working OpenCode and rests it only once its plugin reports the turn over, not when its command ends alone', async () => {
     const { store, world, deps } = boot([char('c_ada', { tmux: win(1), agent: agent('opencode', 'working', OSID) })]);
     const pane = world.pane(1, { job: [`opencode --standalone -s ${OSID}`], server: OC_SERVER, tools: ['sleep 300'] });
     let result: unknown;
@@ -531,10 +531,12 @@ describe('restTerminals', () => {
 
     await world.settle();
     expect(world.log).toEqual(['keys %1 1b']);
-    store.update((d) => { d.characters.c_ada.agent!.status = 'idle'; });
+    // unlike Claude Code, OpenCode reports the interrupted turn, so a command gone alone does not settle it
+    delete pane.tools;
+    await world.advance(500);
     await world.advance(500);
     expect(result).toBeUndefined();
-    delete pane.tools;
+    store.update((d) => { d.characters.c_ada.agent!.status = 'idle'; });
     await world.advance(500);
     await run;
 

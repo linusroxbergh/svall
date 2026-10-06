@@ -162,8 +162,9 @@ function step(t: Track, c: Classified | undefined, x: Moment): Step {
   if (c.class === 'agent-ready' && !c.processes.agent?.commands.length) return 'rest';
   if (c.class === 'foreground') return terminates(t, x.choices) ? 'terminate' : blocker('shell_busy', c, x.state, `is running ${job(c)}`);
   if (t.interruptedAt !== undefined) {
-    // Claude Code sends no hook for an interrupted turn, so rest shows as its tool commands having ended
-    if (x.now - t.interruptedAt >= x.pollMs && !c.processes.agent?.commands.length) return 'rest';
+    // Claude Code sends no hook for an interrupted turn, so rest shows as its tool commands having ended; OpenCode's plugin reports it
+    const reported = c.agent?.kind !== 'opencode' || c.class !== 'agent-working';
+    if (x.now - t.interruptedAt >= x.pollMs && reported && !c.processes.agent?.commands.length) return 'rest';
     if (x.now < t.interruptedAt + x.settleMs) return 'wait';
     return terminates(t, x.choices) ? 'terminate' : blocker('agent_unsettled', c, x.state, `did not come to rest after it was interrupted${lingering(c)}`);
   }
