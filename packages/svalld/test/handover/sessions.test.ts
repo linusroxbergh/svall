@@ -626,6 +626,11 @@ describe('OpenCode sessions', () => {
   const ID = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
   const session = (directory: string, texts: string[]): Exported => ({ info: { id: ID, location: { directory } }, messages: texts.map((text, i) => ({ id: `msg_${i}`, text })) });
   const turn = (text: string): string => `${JSON.stringify({ kind: 'user', text })}\n`;
+  // as prepare reads a session in: any copy here goes first, then the incoming one is imported
+  const readIn = async (file: string, cwd: string, run: CliRun): Promise<void> => {
+    await opencodeAdapter.dropSession!(ID, file, cwd, run);
+    await opencodeAdapter.importSession!(ID, file, cwd, run);
+  };
 
   /** One machine: its OpenCode, keeping sessions in a database of its own, and the folder Svall's plugin logs each session in. */
   function side(base: string, name: string): { env: NodeJS.ProcessEnv; run: CliRun; logs: string } {
@@ -637,7 +642,7 @@ describe('OpenCode sessions', () => {
 
   /** The session leaving `from` for `to`: written out of `from`'s OpenCode, read into a manifest and staged as rsync stages it. */
   async function leaving(from: ReturnType<typeof side>, to: ReturnType<typeof side>, work: string, transcriptPath: string) {
-    await opencodeAdapter.exportSession!(ID, path.join(from.logs, opencodeAdapter.exportFile!(ID)), from.run);
+    await opencodeAdapter.exportSession!(ID, path.join(from.logs, opencodeAdapter.exportFile!(ID)), from.run, work);
     const state = emptyState();
     state.characters.c1 = char('c1', { cwd: work, agent: { kind: 'opencode', sessionId: ID, transcriptPath, status: 'idle', lastActivityAt: 0 } });
     const at = { home: work, fleetHome: path.dirname(path.dirname(from.logs)) };
@@ -673,10 +678,10 @@ describe('OpenCode sessions', () => {
     const [mac, other] = [side(base, 'mac'), side(base, 'other')];
     hold(mac.env, session('/w', ['remember PELICAN-42']));
     const file = path.join(mac.logs, opencodeAdapter.exportFile!(ID));
-    await opencodeAdapter.exportSession!(ID, file, mac.run);
+    await opencodeAdapter.exportSession!(ID, file, mac.run, base);
     expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual(session('/w', ['remember PELICAN-42']));
     expect(fs.statSync(file).mode & 0o777).toBe(0o600);
-    await expect(opencodeAdapter.exportSession!(ID, path.join(other.logs, opencodeAdapter.exportFile!(ID)), other.run))
+    await expect(opencodeAdapter.exportSession!(ID, path.join(other.logs, opencodeAdapter.exportFile!(ID)), other.run, base))
       .rejects.toMatchObject({ code: 'transcript_missing', message: expect.stringContaining('Session not found') });
   });
 
@@ -694,7 +699,7 @@ describe('OpenCode sessions', () => {
     expect(installSession(away.session, away.stage)).toEqual({ transcriptPath: path.join(linux.logs, `${ID}.jsonl`) });
     // the export is read back in, never placed
     expect(fs.readdirSync(linux.logs)).toEqual([`${ID}.jsonl`]);
-    await opencodeAdapter.importSession!(ID, away.exported, work, linux.run);
+    await readIn(away.exported, work, linux.run);
     expect(held(linux.env)[ID]).toEqual(session(work, ['remember PELICAN-42']));
 
     // the session goes on there, and comes back to a Mac that still holds the copy it handed away
@@ -703,10 +708,10 @@ describe('OpenCode sessions', () => {
     const back = await leaving(linux, mac, work, path.join(linux.logs, `${ID}.jsonl`));
     expect(installSession(back.session, back.stage)).toEqual({ transcriptPath: macLog });
     expect(fs.readFileSync(macLog, 'utf8')).toBe(turn('remember PELICAN-42') + turn('what was the codeword?'));
-    await opencodeAdapter.importSession!(ID, back.exported, work, mac.run);
+    await readIn(back.exported, work, mac.run);
     expect(held(mac.env)[ID]).toEqual(session(work, ['remember PELICAN-42', 'what was the codeword?']));
     // and again, as a retried prepare would
-    await opencodeAdapter.importSession!(ID, back.exported, work, mac.run);
+    await readIn(back.exported, work, mac.run);
     expect(Object.keys(held(mac.env))).toEqual([ID]);
   });
 
@@ -720,10 +725,41 @@ describe('OpenCode sessions', () => {
     const { exported } = await leaving(mac, linux, work, path.join(mac.logs, `${ID}.jsonl`));
     hold(linux.env, session(work, ['one']));
     const keeping: CliRun = (cmd, args, o) => (args[1] === 'delete' ? Promise.resolve({ code: 0, stdout: '', stderr: '' }) : linux.run(cmd, args, o));
-    await expect(opencodeAdapter.importSession!(ID, exported, work, keeping))
+    await expect(readIn(exported, work, keeping))
       .rejects.toMatchObject({ code: 'transcript_missing', message: expect.stringContaining('Session already exists') });
     expect(held(linux.env)[ID]).toEqual(session(work, ['one']));
     await expect(opencodeAdapter.importSession!(ID, exported, path.join(base, 'gone'), linux.run)).rejects.toMatchObject({ code: 'transcript_missing' });
+  });
+
+  it('refuses to replace a copy this machine went on with outside Svall, and keeps it', async () => {
+    const base = tmp();
+    const [mac, linux] = [side(base, 'mac'), side(base, 'linux')];
+    const work = path.join(base, 'work');
+    fs.mkdirSync(work);
+    hold(mac.env, session(work, ['one', 'two']));
+    fs.writeFileSync(path.join(mac.logs, `${ID}.jsonl`), turn('one'));
+    const { exported } = await leaving(mac, linux, work, path.join(mac.logs, `${ID}.jsonl`));
+    // resumed there with a plain `opencode -s`, which Svall's log never saw
+    const went = { ...session(work, ['one']), messages: [{ id: 'msg_0', text: 'one' }, { id: 'msg_x', text: 'asked by hand' }] };
+    hold(linux.env, went);
+    await expect(readIn(exported, work, linux.run)).rejects.toMatchObject({ code: 'destination_diverged' });
+    expect(held(linux.env)[ID]).toEqual(went);
+  });
+
+  it('names an OpenCode it cannot run apart from a session it does not hold', async () => {
+    const run = cliRunner({ PATH: '/nonexistent' });
+    await expect(opencodeAdapter.exportSession!(ID, os.devNull, run, tmp())).rejects.toMatchObject({ code: 'agent_cli_missing' });
+    await expect(opencodeAdapter.importSession!(ID, os.devNull, tmp(), run)).rejects.toMatchObject({ code: 'agent_cli_missing' });
+  });
+
+  it('runs the CLI where it is told, or in the home, never the daemon\'s folder, and without the variables that make Svall\'s hooks act', async () => {
+    const env = { ...process.env, SVALL_CHAR_ID: 'c_ada', SVALL_TERM: '2', KEPT: 'yes' };
+    const printed = (await cliRunner(env)('env', [])).stdout;
+    expect(printed).toContain('KEPT=yes');
+    expect(printed).not.toMatch(/^SVALL_(CHAR_ID|TERM)=/m);
+    const dir = tmp();
+    expect((await cliRunner(env)('pwd', [], { cwd: dir })).stdout.trim()).toBe(dir);
+    expect(fs.realpathSync((await cliRunner(env)('pwd', [])).stdout.trim())).toBe(fs.realpathSync(os.homedir()));
   });
 
   it('refuses a session that came without its export, and writes nothing', async () => {
@@ -912,6 +948,8 @@ describe('agent preflight', () => {
     expect(fleet(oc({ version: '2.0.21' }))).toEqual(['incompatible_adapter']);
     expect(fleet(oc({ loggedIn: false }))).toEqual(['agent_logged_out']);
     expect(fleet(oc({ hooks: false }))).toEqual(['agent_hooks_missing']);
+    expect(agentBlockers({ kinds: ['opencode'], source: [oc()], destination: [oc({ hooks: false })] })[0].message)
+      .toBe(`Svall's plugin is not installed for OpenCode on the destination (${opencodePaths({}, '~').plugin}, or under its XDG_CONFIG_HOME): run svall setup there`);
   });
 });
 

@@ -315,7 +315,7 @@ async function scene(o: { tamper?: Tamper; before?: (s: { src: string; dst: stri
     fs.mkdirSync(ocLogs, { recursive: true });
     fs.writeFileSync(path.join(ocLogs, `${OC}.jsonl`), `${JSON.stringify({ kind: 'user', text: 'remember PELICAN-42' })}\n`);
     hold(oc.mac, oc.session);
-    await opencodeAdapter.exportSession!(OC, path.join(ocLogs, `exports/${OC}.json`), cliRunner(oc.mac));
+    await opencodeAdapter.exportSession!(OC, path.join(ocLogs, `exports/${OC}.json`), cliRunner(oc.mac), path.join(dst, 'work/eve'));
     state.characters.c_eve = rested(char('c_eve', path.join(dst, 'work/eve'), {
       agent: { kind: 'opencode', sessionId: OC, transcriptPath: path.join(ocLogs, `${OC}.jsonl`), status: 'idle', lastActivityAt: 0 }, revive: { command: `opencode -s ${OC}` },
     }));
@@ -440,6 +440,7 @@ describe('destination prepare', () => {
     expect(held(s.oc.trift)).toEqual({ [OC]: { ...s.oc.session, info: { ...s.oc.session.info, location: { directory: eve } } } });
     const i = s.manifest.sessions.findIndex((x) => x.agent === 'opencode');
     expect(asked).toEqual([
+      `opencode session export --standalone ${OC}`,
       `opencode session delete --standalone ${OC}`,
       `opencode session import --standalone --directory ${eve} ${path.join(s.paths.sessionStage(TX, i), `exports/${OC}.json`)}`,
     ]);

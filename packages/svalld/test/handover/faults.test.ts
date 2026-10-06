@@ -71,7 +71,8 @@ describe('the failpoint registry', () => {
  * crash that has to come first for the step to run at all, with what changes while that party is down. A failpoint
  * without an entry here does not typecheck.
  */
-type Reach = { scenario: Scenario; times: number; after?: Target; setup?: (w: World) => void };
+/** `resumes`: a crash there that is resumed has to finish the move, as a step that is idempotent does. */
+type Reach = { scenario: Scenario; times: number; after?: Target; setup?: (w: World) => void; resumes?: true };
 const REACH: Record<Failpoint, Reach> = {
   'source.freeze.journal': { scenario: 'move', times: 1 },
   'source.freeze.surrender': { scenario: 'move', times: 1 },
@@ -103,8 +104,9 @@ const REACH: Record<Failpoint, Reach> = {
   'destination.verify.landed': { scenario: 'move', times: 1 },
   'destination.verify.record': { scenario: 'move', times: 1 },
   'destination.prepare.seal': { scenario: 'move', times: 1 },
-  'destination.prepare.import': { scenario: 'move', times: 1 },
-  'destination.prepare.state': { scenario: 'move', times: 1 },
+  'destination.prepare.delete': { scenario: 'move', times: 1, resumes: true },
+  'destination.prepare.import': { scenario: 'move', times: 1, resumes: true },
+  'destination.prepare.state': { scenario: 'move', times: 1, resumes: true },
   'destination.prepare.journal': { scenario: 'move', times: 1 },
   'destination.prepare.stage': { scenario: 'move', times: 1 },
   'destination.activate.install': { scenario: 'move', times: 1 },
@@ -209,7 +211,7 @@ describe('a crash at every failpoint', () => {
         expect(w.violations, why()).toEqual([]);
         let where: string;
         try { where = settledOn(w); } catch (e) { throw new Error(`${(e as Error).message}\n${why()}`); }
-        if (w.everMoved) expect(where, why()).toBe('destination');
+        if (w.everMoved || (k.resumes && prefer === 'resume')) expect(where, why()).toBe('destination');
       });
     }
   }

@@ -40,6 +40,7 @@ export const FAILPOINTS = {
   'destination.verify.landed': 'destination',
   'destination.verify.record': 'destination',
   'destination.prepare.seal': 'destination',
+  'destination.prepare.delete': 'destination',
   'destination.prepare.import': 'destination',
   'destination.prepare.state': 'destination',
   'destination.prepare.journal': 'destination',

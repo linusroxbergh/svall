@@ -16,7 +16,7 @@ import type { Fleet } from '../fleet.js';
 import { runGit, type GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
 import type { OwnershipState } from '../ownership/state.js';
-import { claudePaths, installedScripts, type Paths } from '../paths.js';
+import { claudePaths, expandHome, installedScripts, type Paths } from '../paths.js';
 import { releaseVersion } from '../release.js';
 import type { Tmux } from '../tmux/tmux.js';
 import { boundary } from './failpoints.js';
@@ -446,7 +446,9 @@ export class SourceHandover {
         throw e;
       }
       try {
-        await adapter.exportSession(s.sessionId, dry ? os.devNull : path.join(home, adapter.exportFile(s.sessionId)), this.d.cli ?? cliRunner());
+        const c = inventory.snapshot.characters[s.characterId];
+        const cwd = (s.term === 2 ? c?.second?.cwd : undefined) ?? c?.cwd ?? os.homedir();
+        await adapter.exportSession(s.sessionId, dry ? os.devNull : path.join(home, adapter.exportFile(s.sessionId)), this.d.cli ?? cliRunner(), expandHome(cwd));
       } catch (e) {
         if (!(e instanceof SessionError)) throw e;
         blockers.push({ code: e.code, message: e.message, entity: { kind: 'character', id: s.characterId } });

@@ -176,12 +176,12 @@ const runAgent = (timeoutMs = 10_000): AgentRun => (cmd, args) => new Promise((r
 
 /**
  * Runs an agent CLI with this daemon's env, which places its files as the agents it starts find them, less the
- * variables that would make Svall's own hooks take the run for a character's.
+ * variables that would make Svall's own hooks take the run for a character's, in the home unless told where.
  */
 export const cliRunner = (env: NodeJS.ProcessEnv = process.env, timeoutMs = 120_000): CliRun => (cmd, args, o = {}) => new Promise((resolve, reject) => {
   const { SVALL_CHAR_ID: _id, SVALL_TERM: _term, ...rest } = env;
   const out = o.stdout === undefined ? 'pipe' : fs.openSync(o.stdout, 'w', 0o600);
-  const child = spawn(cmd, args, { env: rest, stdio: ['ignore', out, 'pipe'], timeout: timeoutMs });
+  const child = spawn(cmd, args, { env: rest, cwd: o.cwd ?? os.homedir(), stdio: ['ignore', out, 'pipe'], timeout: timeoutMs });
   if (typeof out === 'number') fs.closeSync(out);
   const read = (s: NodeJS.ReadableStream | null): (() => string) => {
     const chunks: Buffer[] = [];
@@ -239,7 +239,14 @@ export function agentBlockers(o: { kinds: readonly AgentKind[]; source: readonly
     }
     if (a && b && a !== b) blockers.push({ code: 'incompatible_adapter', message: `${kind} sessions are read by adapter ${a.adapter} here and ${b.adapter} on the destination` });
     if (!there.loggedIn) blockers.push({ code: 'agent_logged_out', message: `${kind} is not logged in on the destination` });
-    if (!there.hooks) blockers.push({ code: 'agent_hooks_missing', message: `Svall's hooks are not installed for ${kind} on the destination (${there.home}): run svall setup there` });
+    if (!there.hooks) {
+      blockers.push({
+        code: 'agent_hooks_missing',
+        message: kind === 'opencode'
+          ? `Svall's plugin is not installed for OpenCode on the destination (${opencodePaths({}, '~').plugin}, or under its XDG_CONFIG_HOME): run svall setup there`
+          : `Svall's hooks are not installed for ${kind} on the destination (${there.home}): run svall setup there`,
+      });
+    }
   }
   return blockers;
 }

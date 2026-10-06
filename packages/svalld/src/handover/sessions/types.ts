@@ -12,10 +12,10 @@ export type SessionFs = {
   readdir(p: string): Promise<Buffer[]>;
 };
 
-/** Runs an agent CLI to its exit, its stdout into the file `stdout` names when it names one; rejects only when it cannot start. */
-export type CliRun = (cmd: string, args: string[], o?: { stdout?: string }) => Promise<{ code: number; stdout: string; stderr: string }>;
+/** Runs an agent CLI in `cwd` to its exit, its stdout into the file `stdout` names when it names one; rejects only when it cannot start. */
+export type CliRun = (cmd: string, args: string[], o?: { stdout?: string; cwd?: string }) => Promise<{ code: number; stdout: string; stderr: string }>;
 
-export type SessionIssueCode = Extract<HandoverIssueCode, 'transcript_missing' | 'incompatible_adapter' | 'path_unsupported' | 'destination_diverged'>;
+export type SessionIssueCode = Extract<HandoverIssueCode, 'transcript_missing' | 'incompatible_adapter' | 'path_unsupported' | 'destination_diverged' | 'agent_cli_missing'>;
 
 /** Why a session cannot move as it is, with the blocker code a handover reports it under. */
 export class SessionError extends Error {
@@ -53,8 +53,10 @@ export interface SessionAdapter {
    * session out to, which travels with its files and is read back in on the destination rather than placed.
    */
   exportFile?(sessionId: string): string;
-  /** Writes the session out of this machine's CLI into `file`. */
-  exportSession?(sessionId: string, file: string, run: CliRun): Promise<void>;
-  /** Puts the session written out at `file` into this machine's CLI in place of any copy it holds, to resume in `cwd`. */
+  /** Writes the session out of this machine's CLI into `file`, running the CLI in `cwd`. */
+  exportSession?(sessionId: string, file: string, run: CliRun, cwd: string): Promise<void>;
+  /** Removes this machine's copy of the session, unless it went on past the one written out at `file`. */
+  dropSession?(sessionId: string, file: string, cwd: string, run: CliRun): Promise<void>;
+  /** Puts the session written out at `file` into this machine's CLI, which holds no copy of it, to resume in `cwd`. */
   importSession?(sessionId: string, file: string, cwd: string, run: CliRun): Promise<void>;
 }

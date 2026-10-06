@@ -507,11 +507,13 @@ export class DestinationHandover {
     for (const [i, s] of m.sessions.entries()) {
       const adapter = sessionAdapter(s.agent, s.adapter);
       const c = m.snapshot.characters[s.characterId];
-      if (!adapter.exportFile || !adapter.importSession || !c) continue;
+      if (!adapter.exportFile || !adapter.dropSession || !adapter.importSession || !c) continue;
       const file = path.join(this.d.paths.sessionStage(tx, i), adapter.exportFile(s.sessionId));
       const { cwd } = resumeFolder(c, s.term, at);
+      const run = this.d.cli ?? cliRunner();
       try {
-        await boundary('destination.prepare.import', () => adapter.importSession!(s.sessionId, file, cwd, this.d.cli ?? cliRunner()));
+        await boundary('destination.prepare.delete', () => adapter.dropSession!(s.sessionId, file, cwd, run));
+        await boundary('destination.prepare.import', () => adapter.importSession!(s.sessionId, file, cwd, run));
       } catch (e) {
         if (!(e instanceof SessionError)) throw e;
         blockers.push({ code: e.code, message: e.message, entity: { kind: 'character', id: s.characterId } });

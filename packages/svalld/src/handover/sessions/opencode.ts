@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { AGENTS } from '../../agents.js';
 import { transcriptFile } from './records.js';
@@ -11,11 +12,22 @@ const exportFile = (sessionId: string): string => `exports/${sessionId}.json`;
 // the first line OpenCode gave for itself, or why it could not be asked
 const said = (r: { stdout: string; stderr: string }): string => (r.stderr.trim() || r.stdout.trim()).split('\n')[0].slice(0, 300);
 
-async function ask(run: CliRun, args: string[], o?: { stdout?: string }): Promise<{ code: number; stdout: string; stderr: string }> {
-  try { return await run('opencode', args, o); } catch (e) {
-    return { code: -1, stdout: '', stderr: (e as Error).message };
+async function ask(run: CliRun, args: string[], o: { stdout?: string; cwd: string }): Promise<{ code: number; stdout: string; stderr: string }> {
+  // a folder gone here would read as an OpenCode that cannot be run
+  try { return await run('opencode', args, { ...o, cwd: fs.existsSync(o.cwd) ? o.cwd : os.homedir() }); } catch (e) {
+    throw new SessionError('agent_cli_missing', `OpenCode could not be run on this machine: ${(e as Error).message}`);
   }
 }
+
+const notFound = (r: { stdout: string; stderr: string }): boolean => /Session not found/.test(r.stderr + r.stdout);
+
+// the message ids of an export, in order
+const ids = (file: string): string[] | undefined => {
+  try {
+    const messages = (JSON.parse(fs.readFileSync(file, 'utf8')) as { messages?: unknown }).messages;
+    return Array.isArray(messages) ? messages.map((m) => String((m as { id?: unknown }).id)) : undefined;
+  } catch { return undefined; }
+};
 
 export const opencodeAdapter: SessionAdapter = {
   kind: 'opencode',
@@ -45,20 +57,38 @@ export const opencodeAdapter: SessionAdapter = {
 
   exportFile,
 
-  async exportSession(sessionId, file, run) {
+  async exportSession(sessionId, file, run, cwd) {
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-    const r = await ask(run, ['session', 'export', '--standalone', sessionId], { stdout: file });
+    const r = await ask(run, ['session', 'export', '--standalone', sessionId], { stdout: file, cwd });
     if (r.code !== 0) throw new SessionError('transcript_missing', `OpenCode holds no session ${sessionId} to carry: ${said(r)}`);
   },
 
-  // the incoming copy replaces one an earlier handover left here, which this machine's log proved it did not go on with.
-  // Import exits 0 on an id it already holds, and a resume with -s on an id it does not hold starts an empty session
-  async importSession(sessionId, file, cwd, run) {
-    const gone = await ask(run, ['session', 'delete', '--standalone', sessionId]);
-    if (gone.code !== 0 && !/Session not found/.test(gone.stderr + gone.stdout)) {
+  // a copy an earlier handover left here goes, unless it holds a message the incoming session lacks: it went on here,
+  // whether in Svall or in a plain `opencode -s`, which Svall's log never sees
+  async dropSession(sessionId, file, cwd, run) {
+    const here = `${file}.here`;
+    try {
+      const r = await ask(run, ['session', 'export', '--standalone', sessionId], { stdout: here, cwd });
+      if (r.code !== 0) {
+        if (notFound(r)) return;
+        throw new SessionError('transcript_missing', `OpenCode could not read its copy of session ${sessionId}: ${said(r)}`);
+      }
+      const [held, incoming] = [ids(here), ids(file)];
+      if (!held || !incoming || held.some((id, i) => incoming[i] !== id)) {
+        throw new SessionError('destination_diverged', `this machine's OpenCode went on with session ${sessionId} past the copy coming in`);
+      }
+    } finally {
+      fs.rmSync(here, { force: true });
+    }
+    const gone = await ask(run, ['session', 'delete', '--standalone', sessionId], { cwd });
+    if (gone.code !== 0 && !notFound(gone)) {
       throw new SessionError('transcript_missing', `OpenCode could not remove its earlier copy of session ${sessionId}: ${said(gone)}`);
     }
-    const r = await ask(run, ['session', 'import', '--standalone', '--directory', cwd, file]);
+  },
+
+  // import exits 0 on an id it already holds, and a resume with -s on an id it does not hold starts an empty session
+  async importSession(sessionId, file, cwd, run) {
+    const r = await ask(run, ['session', 'import', '--standalone', '--directory', cwd, file], { cwd });
     if (r.code !== 0 || !r.stdout.split('\n').some((l) => l.trim() === `Imported session: ${sessionId}`)) {
       throw new SessionError('transcript_missing', `OpenCode did not import session ${sessionId}: ${said(r)}`);
     }
