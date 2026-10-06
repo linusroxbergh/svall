@@ -23,7 +23,11 @@ const L = `${prefix}-local`;
 const R = `${prefix}-remote`;
 const NET = `${prefix}-it`;
 const HOME = '/home/svall';
-const AGENT_CWD = `${HOME}/src/app-wt`;
+// each agent character: the flag its revive names its session with, and where it works
+const AGENTS = [
+  { key: 'agent', kind: 'claude', resume: '--resume', cwd: `${HOME}/src/app-wt` },
+  { key: 'oc', kind: 'opencode', resume: '-s', cwd: `${HOME}/src/app` },
+];
 const USER_ENV = ['HOME=/home/svall', 'USER=svall', 'LOGNAME=svall', 'XDG_RUNTIME_DIR=/run/user/1000',
   'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus', 'LANG=C.UTF-8'].flatMap((e) => ['-e', e]);
 // pre-commit boundaries abort back to the source; post-commit ones resume onto the destination
@@ -57,13 +61,15 @@ function up() {
   for (const m of [L, R]) {
     booted(m);
     sh(m, 'mkdir -p /opt/it', { root: true });
-    for (const f of [archive, path.join(HERE, 'claude.mjs'), path.join(HERE, 'machine.mjs')]) {
+    for (const f of [archive, path.join(HERE, 'claude.mjs'), path.join(HERE, 'opencode.mjs'), path.join(HERE, 'machine.mjs')]) {
       if (docker(['cp', f, `${m}:/opt/it/`]).code !== 0) throw new Error(`docker cp ${f} to ${m} failed`);
     }
     // the harness's own node, from the release under test: the mocked agent and the in-machine checks run on it
     sh(m, 'cd /opt/it && tar -xzf svall-companion-*.tar.gz --wildcards "releases/*/node" && mv releases/*/node node && rm -rf releases && chmod -R a+rX /opt/it', { root: true });
     // a wrapper that execs node on the mock, so ps shows `node …/claude.mjs` as the rest classifier reads a Claude
     sh(m, 'mkdir -p ~/.local/bin && printf \'#!/bin/sh\\nexec /opt/it/node/bin/node /opt/it/claude.mjs "$@"\\n\' > ~/.local/bin/claude && chmod 755 ~/.local/bin/claude');
+    // OpenCode's is a native binary, so its mock runs under that name
+    sh(m, 'printf \'#!/bin/bash\\nexec -a opencode /opt/it/node/bin/node /opt/it/opencode.mjs "$@"\\n\' > ~/.local/bin/opencode && chmod 755 ~/.local/bin/opencode');
   }
   sh(L, 'mkdir -m 700 -p ~/.ssh && ssh-keygen -q -t ed25519 -N "" -f ~/.ssh/id_ed25519');
   const key = sh(L, 'cat ~/.ssh/id_ed25519.pub').stdout;
@@ -87,7 +93,7 @@ function install() {
     const advice = s.status === 'warn' && (s.step === 'tmux' || s.step === 'codex');
     check(`host add ${s.step}`, s.status === 'ok' || advice, `${s.status}: ${s.detail ?? ''} ${s.action ?? ''}`);
   }
-  for (const want of ['os', 'home', 'tools', 'linger', 'release', 'upload', 'install', 'service', 'identity', 'claude', 'probe', 'registry']) {
+  for (const want of ['os', 'home', 'tools', 'linger', 'release', 'upload', 'install', 'service', 'identity', 'claude', 'opencode', 'probe', 'registry']) {
     check(`host add ${want}`, steps.some((s) => s.step === want), 'step missing');
   }
 
@@ -136,25 +142,33 @@ function fixture(ids) {
   sh(L, GIT_FIXTURE);
   const island = JSON.parse(sh(L, 'svall --json island create integration').stdout).id;
   const agent = JSON.parse(sh(L, `svall --json char new --island ${island} --cwd ~/src/app-wt --name agent --claude`).stdout).id;
+  const oc = JSON.parse(sh(L, `svall --json char new --island ${island} --cwd ~/src/app --name oc --opencode`).stdout).id;
   const shell = JSON.parse(sh(L, `svall --json char new --island ${island} --cwd ~/src/app --name shell`).stdout).id;
-  sh(L, `svall char wait ${agent} --until idle --timeout 60`);
-  const fx = { island, agent, shell };
+  for (const id of [agent, oc]) sh(L, `svall char wait ${id} --until idle --timeout 60`);
+  const fx = { island, agent, oc, shell };
   turn(ids, fx, 'first turn on local');
   return fx;
 }
 
+// the sessions of one agent kind on a machine: Claude's transcripts by file, and OpenCode's by id, each with a count
+// of its records
+const held = (s, kind) => Object.fromEntries(Object.entries(kind === 'claude' ? s.sessions : s.opencode)
+  .map(([k, v]) => [k, v.lines ?? v.messages]));
+
 /**
- * One prompt to the agent through the controller's `svall`, which reaches whichever machine owns the fleet, and the
- * two records it appends to the one transcript the agent keeps there.
+ * One prompt to each agent through the controller's `svall`, which reaches whichever machine owns the fleet, and the
+ * two records it appends to the one session that agent keeps there.
  */
 function turn(ids, fx, text) {
   const owner = ctx.owner === 'remote' ? R : L;
-  const before = snap(owner, ids).sessions;
-  sh(L, `svall char run ${fx.agent} '${text}' && svall char wait ${fx.agent} --until done,idle --timeout 60`);
-  const after = snap(owner, ids).sessions;
-  const [file] = Object.keys(after);
-  check('same transcript', Object.keys(after).length === 1 && Object.keys(before).every((k) => k === file)
-    && after[file].lines === (before[file]?.lines ?? 0) + 2, () => `${brief(before)} -> ${brief(after)}`);
+  for (const a of AGENTS) {
+    const before = held(snap(owner, ids), a.kind);
+    sh(L, `svall char run ${fx[a.key]} '${text}' && svall char wait ${fx[a.key]} --until done,idle --timeout 60`);
+    const after = held(snap(owner, ids), a.kind);
+    const [id] = Object.keys(after);
+    check(`same ${a.kind} session`, Object.keys(after).length === 1 && Object.keys(before).every((k) => k === id)
+      && after[id] === (before[id] ?? 0) + 2, () => `${brief(before)} -> ${brief(after)}`);
+  }
 }
 
 function snap(machine, ids) {
@@ -179,22 +193,32 @@ function noJournals(label, local, remote) {
   }
 }
 
-/** The machine that runs the fleet: its record, and every character up as the baseline had it, the agent on its session. */
+/** The machine that runs the fleet: its record, and every character up as the baseline had it, each agent on its session. */
 function runsFleet(label, s, base, owner, generation, fx) {
   check(`${label} ownership`, s.ownership.ownerMachineId === owner && s.ownership.generation === generation && s.ownership.frozen === false,
     () => brief(s.ownership));
   const names = s.windows.map((w) => w.name);
-  check(`${label} windows`, names.includes(fx.agent) && names.includes(fx.shell), () => brief(s.windows));
+  check(`${label} windows`, [fx.agent, fx.oc, fx.shell].every((id) => names.includes(id)), () => brief(s.windows));
   check(`${label} shell`, s.windows.find((w) => w.name === fx.shell)?.command === 'bash', () => brief(s.windows));
-  const a = s.characters.find((c) => c.id === fx.agent);
-  const b = base.characters.find((c) => c.id === fx.agent);
-  check(`${label} session id`, a?.agent?.sessionId && a.agent.sessionId === b?.agent?.sessionId, () => `${a?.agent?.sessionId} vs ${b?.agent?.sessionId}`);
-  check(`${label} agent up`, a?.agent && ['idle', 'done'].includes(a.agent.status), () => brief(a?.agent));
-  const procs = s.agents.filter((p) => p.cwd === AGENT_CWD);
-  check(`${label} one agent process`, procs.length === 1 && s.agents.length === 1, () => brief(s.agents));
-  check(`${label} agent pid`, procs[0] && a?.agent?.pid === procs[0].pid, () => `state ${a?.agent?.pid}, running ${brief(procs)}`);
-  const args = procs[0]?.args ?? [];
-  check(`${label} resumed`, args.includes('--resume') && args[args.indexOf('--resume') + 1] === b?.agent?.sessionId, () => brief(args));
+  check(`${label} agent processes`, s.agents.length === AGENTS.length, () => brief(s.agents));
+  for (const { key, kind, resume, cwd } of AGENTS) {
+    const a = s.characters.find((c) => c.id === fx[key]);
+    const b = base.characters.find((c) => c.id === fx[key]);
+    check(`${label} ${kind} session id`, a?.agent?.sessionId && a.agent.sessionId === b?.agent?.sessionId, () => `${a?.agent?.sessionId} vs ${b?.agent?.sessionId}`);
+    check(`${label} ${kind} up`, a?.agent && ['idle', 'done'].includes(a.agent.status), () => brief(a?.agent));
+    const procs = s.agents.filter((p) => p.kind === kind && p.cwd === cwd);
+    check(`${label} one ${kind} process`, procs.length === 1, () => brief(s.agents));
+    check(`${label} ${kind} pid`, procs[0] && a?.agent?.pid === procs[0].pid, () => `state ${a?.agent?.pid}, running ${brief(procs)}`);
+    const args = procs[0]?.args ?? [];
+    check(`${label} ${kind} resumed`, args.includes(resume) && args[args.indexOf(resume) + 1] === b?.agent?.sessionId, () => brief(args));
+    if (kind === 'opencode') {
+      check(`${label} opencode server`, s.servers.length === 1 && s.servers[0].ppid === procs[0]?.pid, () => brief(s.servers));
+      // an import lands in the terminal's folder, and never as an empty session a resume made up
+      check(`${label} opencode session`, same(s.opencode[b?.agent?.sessionId], base.opencode[b?.agent?.sessionId])
+        && s.opencode[b?.agent?.sessionId]?.directory === cwd && s.opencode[b?.agent?.sessionId]?.messages > 0,
+      () => `${brief(s.opencode)} vs ${brief(base.opencode)}`);
+    }
+  }
   check(`${label} characters`, same(s.characters.map((c) => [c.id, c.name, c.cwd, c.islandId]), base.characters.map((c) => [c.id, c.name, c.cwd, c.islandId])),
     () => brief(s.characters));
   for (const repo of Object.keys(base.git)) {
@@ -214,22 +238,23 @@ function treeDiff(a = {}, b = {}) {
 function holdsNothing(label, s, owner, generation) {
   check(`${label} ownership`, s.ownership.ownerMachineId === owner && s.ownership.generation === generation, () => brief(s.ownership));
   check(`${label} windows`, s.windows.every((w) => w.name === '_keep'), () => brief(s.windows));
-  check(`${label} agents`, s.agents.length === 0, () => brief(s.agents));
+  check(`${label} agents`, s.agents.length === 0 && s.servers.length === 0, () => brief([s.agents, s.servers]));
 }
 
 const MANIFEST_ROOTS = ['.svall/agent-profiles', '.svall/home', 'src/app', 'src/app-wt'].map((r) => `${HOME}/${r}`);
 
-/** The preflight manifest: the four carried roots, the one session, and nothing that blocks. */
+/** The preflight manifest: the four carried roots, a session for each agent, and nothing that blocks. */
 function manifestIs(label, driven) {
   const pre = lines(driven.log).find((e) => e.event === 'handover.preflight')?.data;
   check(`${label} preflight`, pre && pre.blockers.length === 0, () => brief(pre?.blockers));
   check(`${label} manifest roots`, same(Object.values(pre?.names?.roots ?? {}).sort(), MANIFEST_ROOTS), () => brief(pre?.names?.roots));
-  check(`${label} manifest sessions`, pre?.summary?.sessions === 1 && same(Object.values(pre?.names?.sessions ?? {}), ['agent']), () => brief(pre?.summary));
+  check(`${label} manifest sessions`, pre?.summary?.sessions === AGENTS.length
+    && same(Object.values(pre?.names?.sessions ?? {}).sort(), AGENTS.map((a) => a.key).sort()), () => brief([pre?.summary, pre?.names?.sessions]));
   // every root and session the manifest carries was verified in full
   const verified = new Set(lines(driven.log).filter((e) => e.event === 'handover.entity' && e.data.phase === 'verify' && e.data.done === e.data.total && e.data.total > 0)
     .map((e) => e.data.id));
   const carried = [...Object.keys(pre?.names?.roots ?? {}), ...Object.keys(pre?.names?.sessions ?? {})];
-  check(`${label} verified`, carried.length === 5 && carried.every((id) => verified.has(id)), () => `verified ${[...verified]} of ${carried}`);
+  check(`${label} verified`, carried.length === MANIFEST_ROOTS.length + AGENTS.length && carried.every((id) => verified.has(id)), () => `verified ${[...verified]} of ${carried}`);
 }
 
 // ---------------------------------------------------------------------------------------------- handovers
@@ -264,7 +289,7 @@ function clean(ids, fx, to) {
   const base = snap(from, ids);
   const d = drive(to);
   check('result', d.summary.result?.status === 'complete' && d.summary.exit.code === 0, () => brief(d.summary.result));
-  check('characters ok', d.summary.result?.characters?.length === 2 && d.summary.result.characters.every((c) => c.ok), () => brief(d.summary.result?.characters));
+  check('characters ok', d.summary.result?.characters?.length === 3 && d.summary.result.characters.every((c) => c.ok), () => brief(d.summary.result?.characters));
   manifestIs('clean', d);
   ctx.owner = to;
   ctx.generation += 1;
@@ -286,7 +311,8 @@ function scenario(ids, fx, fault, at, to) {
   const [srcId, dstId] = to === 'remote' ? [ids.local, ids.remote] : [ids.remote, ids.local];
   const g = ctx.generation;
   const base = snap(src, ids);
-  const agentBefore = base.agents[0]?.pid;
+  const agentsBefore = base.agents.map((p) => p.pid).sort();
+  const untouched = (s) => same(s.agents.map((p) => p.pid).sort(), agentsBefore);
   const d = drive(to, fault, at);
   check('fault landed', d.summary.trigger !== null, () => `the ${at} boundary was never reached: ${brief(d.summary)}`);
 
@@ -299,15 +325,15 @@ function scenario(ids, fx, fault, at, to) {
   say(`   stopped: gateway ${rec?.ownerMachineId === dstId ? 'destination' : 'source'} at ${rec?.generation}${phase ? ` (${phase})` : ''}; source ${mSrc.ownership.frozen ? 'frozen' : 'not frozen'}, ${mSrc.agents.length} agent(s); destination ${mDst.agents.length} agent(s)`);
   if (post) {
     check('committed', rec?.ownerMachineId === dstId && rec.generation === g + 1, () => brief(rec));
-    check('source stays down', mSrc.agents.length === 0 && mSrc.windows.every((w) => w.name === '_keep'), () => brief([mSrc.agents, mSrc.windows]));
+    check('source stays down', mSrc.agents.length === 0 && mSrc.servers.length === 0 && mSrc.windows.every((w) => w.name === '_keep'), () => brief([mSrc.agents, mSrc.servers, mSrc.windows]));
     // with its controller gone, nothing but a resume activates the destination
     if (at === 'commit') check('destination waits', mDst.agents.length === 0 && mDst.windows.every((w) => w.name === '_keep'), () => brief([mDst.agents, mDst.windows]));
   } else {
     check('not committed', rec?.ownerMachineId === srcId && rec.generation === g, () => brief(rec));
     check('destination not started', mDst.agents.length === 0 && mDst.windows.every((w) => w.name === '_keep'), () => brief([mDst.agents, mDst.windows]));
     if (fault === 'kill' && at === 'begin') check('Begin landed', phase === 'preparing', () => brief(rec));
-    if (at === 'begin') check('source never froze', !mSrc.ownership.frozen && mSrc.agents[0]?.pid === agentBefore, () => `${brief(mSrc.ownership)} agent ${brief(mSrc.agents)} was ${agentBefore}`);
-    if (at === 'transfer' || at === 'ready') check('source frozen', mSrc.ownership.frozen === true && mSrc.agents.length === 0, () => brief([mSrc.ownership, mSrc.agents]));
+    if (at === 'begin') check('source never froze', !mSrc.ownership.frozen && untouched(mSrc), () => `${brief(mSrc.ownership)} agents ${brief(mSrc.agents)} were ${agentsBefore}`);
+    if (at === 'transfer' || at === 'ready') check('source frozen', mSrc.ownership.frozen === true && mSrc.agents.length === 0 && mSrc.servers.length === 0, () => brief([mSrc.ownership, mSrc.agents, mSrc.servers]));
     if (fault === 'kill' && at === 'ready') check('Ready landed', phase === 'ready-to-commit', () => brief(rec));
   }
   if (fault === 'drop') check('controller gave up', ['interrupted', 'complete', 'blocked'].includes(d.summary.result?.status) && !d.summary.capped, () => brief(d.summary));
@@ -337,7 +363,7 @@ function scenario(ids, fx, fault, at, to) {
   holdsNothing(post ? 'source' : 'destination', other, ownerId, ctx.generation);
   gatewayIs('after', r, ownerId, ctx.generation);
   noJournals('after', l, r);
-  if (at === 'begin') check('agent untouched', owner.agents[0]?.pid === agentBefore, () => `${brief(owner.agents)} was ${agentBefore}`);
+  if (at === 'begin') check('agents untouched', untouched(owner), () => `${brief(owner.agents)} were ${agentsBefore}`);
 }
 
 // ---------------------------------------------------------------------------------------------- the run

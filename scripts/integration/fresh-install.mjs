@@ -243,9 +243,9 @@ function runs(label, rel, releases) {
 
 // ---------------------------------------------------------------------------------------------- the provisioning
 
-const ADVICE = new Set(['tmux', 'claude', 'codex', 'linger', 'service']);
+const ADVICE = new Set(['tmux', 'claude', 'codex', 'opencode', 'linger', 'service']);
 const ADD_STEPS = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'tmux', 'rsync', 'space', 'linger', 'release', 'upload', 'install', 'service',
-  'identity', 'claude', 'codex', 'probe', 'registry'];
+  'identity', 'claude', 'codex', 'opencode', 'probe', 'registry'];
 
 // with no --release the controller downloads the companion its manifest pins, checks its digest and caches it
 const named = (rel) => (rel.served ? [] : ['--release', rel.companion, ...(rel.unsigned ? ['--allow-unsigned'] : [])]);
@@ -276,7 +276,8 @@ function hostAdd(a) {
   check('host add home', at('home')?.detail === `${HOME} for ${USER}`, () => brief(at('home')));
   const result = events.at(-1);
   check('host add result', result?.result === 'actions'
-    && JSON.stringify(result.actions) === JSON.stringify([lingerOn, 'ssh fresh, then install Claude Code', 'ssh fresh, then install Codex']), () => brief(result));
+    && JSON.stringify(result.actions) === JSON.stringify([lingerOn, 'ssh fresh, then install Claude Code', 'ssh fresh, then install Codex',
+      'ssh fresh, then install OpenCode']), () => brief(result));
 }
 
 function linger() {

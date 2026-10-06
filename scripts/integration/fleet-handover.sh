@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The fleet handover integration run: two Ubuntu 24.04 containers, real sshd, rsync, tmux, Git and systemd, and a mocked
-# Claude. It builds the Linux companion archive for the docker host's architecture from this checkout (unless
+# Claude and OpenCode. It builds the Linux companion archive for the docker host's architecture from this checkout (unless
 # --archive names one), builds the machine image, and runs fleet-handover.mjs, which says what it checks.
 #
 #   scripts/integration/fleet-handover.sh [--archive <companion.tar.gz>] [--out <dir>]

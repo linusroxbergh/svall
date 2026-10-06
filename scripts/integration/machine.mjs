@@ -1,7 +1,7 @@
 // The in-machine half of the fleet handover integration run, run inside each container with the release's own node:
 //
 //   snap [--gateway <fleetId>]            one JSON document: this machine's view of the fleet, its repos, sessions,
-//                                         terminals and agent processes (and, on the gateway, its record)
+//                                         terminals, agent processes and OpenCode servers (and, on the gateway, its record)
 //   drive <host|local> [--fault kill|drop --at begin|transfer|ready|commit|activate] --log <file> [--cap <s>]
 //                                         runs `svall handover <host|local> --json`, injects the fault at that boundary,
 //                                         and prints what happened as one JSON document
@@ -17,6 +17,7 @@ import readline from 'node:readline';
 const HOME = os.homedir();
 const FLEET = path.join(HOME, '.svall');
 const MOCK = '/opt/it/claude.mjs';
+const OPENCODE = '/opt/it/opencode.mjs';
 const REPOS = ['src/app', 'src/app-wt'];
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
 const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
@@ -120,6 +121,16 @@ function processes(needle) {
   return out;
 }
 
+/** The sessions the mocked OpenCode holds, where the real one keeps its database: messages and folder, by id. */
+function opencodeSessions() {
+  const root = path.join(HOME, '.local', 'share', 'opencode', 'mock-sessions');
+  if (!fs.existsSync(root)) return {};
+  return Object.fromEntries(fs.readdirSync(root).filter((n) => n.endsWith('.json')).map((f) => {
+    const s = JSON.parse(fs.readFileSync(path.join(root, f), 'utf8'));
+    return [s.info.id, { messages: s.messages.length, sha: sha(JSON.stringify(s.messages)), directory: s.info.location.directory }];
+  }));
+}
+
 function sessions() {
   const root = path.join(HOME, '.claude', 'projects');
   const out = {};
@@ -153,11 +164,16 @@ async function snap(o) {
       agent: c.agent ? { kind: c.agent.kind, sessionId: c.agent.sessionId, status: c.agent.status, pid: c.agent.pid ?? null } : null,
     })).sort((a, b) => a.id.localeCompare(b.id)) : state,
     windows,
-    agents: processes(MOCK).filter((p) => !p.args.includes('--version') && !p.args.includes('auth')),
+    agents: [
+      ...processes(MOCK).filter((p) => !p.args.includes('--version') && !p.args.includes('auth')).map((p) => ({ kind: 'claude', ...p })),
+      ...processes(OPENCODE).filter((p) => !['serve', 'session', 'auth', 'run', '--version', '--help'].includes(p.args[2])).map((p) => ({ kind: 'opencode', ...p })),
+    ],
+    servers: processes(OPENCODE).filter((p) => p.args[2] === 'serve').map((p) => ({ ...p, ppid: ppidOf(p.pid) })),
     controllerJournal: fs.existsSync(controller) ? JSON.parse(fs.readFileSync(controller, 'utf8')) : null,
     git: Object.fromEntries(REPOS.map((r) => [r, gitOf(path.join(HOME, r))])),
     trees: Object.fromEntries(REPOS.map((r) => [r, walk(path.join(HOME, r), new Set(['.git']))])),
     sessions: sessions(),
+    opencode: opencodeSessions(),
   };
   if (o.gateway) {
     const said = run(path.join(HOME, '.local', 'bin', 'svall'), ['gateway', 'owner', 'get', '--fleet', o.gateway]).trim().split('\n').at(-1);
@@ -180,6 +196,10 @@ function session(sid) {
     out.push({ pid: Number(pid), args });
   }
   return out;
+}
+
+function ppidOf(pid) {
+  try { const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8'); return Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1]); } catch { return null; }
 }
 
 const alive = (pid) => fs.existsSync(`/proc/${pid}`);
