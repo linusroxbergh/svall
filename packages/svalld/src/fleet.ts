@@ -10,7 +10,7 @@ import { condenseTurns, readTail, userPrompts } from './agent/transcript.js';
 import { characterKeyEnv } from './claude.js';
 import { saveConfig, scribeModel, type Config } from './config.js';
 import { renderBrief } from './context/brief.js';
-import { isAgentCommand, promptText, withAddDirs, withPromptFile } from './context/launch.js';
+import { isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from './context/launch.js';
 import { settleItems } from './context/items.js';
 import { docFolders, removeDocs } from './docs.js';
 import { endAll, endIdleAgents, processes, RESUME_NOTE, type Proc, type Sleep } from './dormancy.js';
@@ -369,7 +369,8 @@ export class Fleet extends EventEmitter<Events> {
 
   // an agent takes a first prompt as its argument, which the shell reads from a file: typed into a composer
   // that is still booting, a long prompt can arrive in pieces that swallow the Enter
-  private launchLine(id: string, command: string, prompt?: string): string {
+  private launchLine(id: string, launch: string, prompt?: string): string {
+    const command = withStandalone(launch);
     // a prompt file an OpenCode plugin never took must not reach the next resume
     if (!prompt) fs.rmSync(this.promptFile(id), { force: true });
     if (!prompt || !isAgentCommand(command)) return command;
@@ -512,7 +513,7 @@ export class Fleet extends EventEmitter<Events> {
     }
     const island = this.deps.store.state.islands[c.islandId];
     if (c.revive?.interrupted) prompt = prompt ? `${RESUME_NOTE}\n\n${prompt}` : RESUME_NOTE;
-    const command = this.launchLine(id, withAddDirs(c.revive?.command ?? '', [...(island?.context ?? []), ...c.context]), prompt);
+    const command = this.launchLine(id, withAddDirs(withoutV1Flags(c.revive?.command ?? ''), [...(island?.context ?? []), ...c.context]), prompt);
     this.deps.store.update((d) => {
       const cur = d.characters[id];
       cur.tmux = { windowId: w.windowId, paneId: w.paneId };

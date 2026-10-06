@@ -45,7 +45,7 @@ CLIs.
    works with a Claude subscription or an Anthropic API key, or the
    [Codex CLI](https://learn.chatgpt.com/docs/codex/cli) 0.155 or newer, which
    works with an OpenAI API key alone, or [OpenCode](https://opencode.ai/docs/)
-   1.18.34 or newer, which runs on OpenCode Zen's free models without an account
+   2.0.22 or newer, which runs on OpenCode Zen's free models without an account
    or on any provider you sign in to. See [Using API keys](#using-api-keys).
 
 2. Download Svall from [svall.dev](https://svall.dev) and drag `Svall.app` to

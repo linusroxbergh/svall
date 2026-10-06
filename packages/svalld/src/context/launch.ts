@@ -3,7 +3,7 @@ import type { AgentKind, ContextItem } from '@svall/protocol';
 import { shq } from '../text.js';
 
 // the folder access an OpenCode launch sets ahead of its command
-const ACCESS = /^\s*OPENCODE_PERMISSION='(?:[^']|'\\'')*'\s+/;
+const ACCESS = /^\s*OPENCODE_CONFIG_CONTENT='(?:[^']|'\\'')*'\s+/;
 
 // the agent a command starts, as config.json may write it with a stray leading space
 export const agentKindOf = (command: string): AgentKind | undefined =>
@@ -19,14 +19,30 @@ export function withAddDirs(command: string, items: ContextItem[]): string {
   if (!kind || !dirs.length) return command;
   if (kind === 'opencode') {
     // OpenCode reads * and ? in a rule as wildcards, with no way to escape one, so such a folder is left to ask
-    const rules = Object.fromEntries(dirs.filter((d) => !/[*?]/.test(d)).map((d) => [path.join(path.resolve(d), '*'), 'allow']));
-    if (!Object.keys(rules).length) return command;
-    // OpenCode matches a permission's name as a wildcard too, so this key adds the rules after a user's own
-    // external_directory rule, where they win, rather than replacing it
-    return `OPENCODE_PERMISSION=${shq(JSON.stringify({ 'external_director?': rules }))} ${command}`;
+    const rules = dirs.filter((d) => !/[*?]/.test(d)).map((d) => ({ action: 'external_directory', resource: path.join(path.resolve(d), '*'), effect: 'allow' }));
+    if (!rules.length) return command;
+    // this config loads last, so its rules follow the user's top-level ones and win; an agent's own rules still come after
+    return `OPENCODE_CONFIG_CONTENT=${shq(JSON.stringify({ permissions: rules }))} ${command}`;
   }
   return dirs.reduce((cmd, d) => `${cmd} --add-dir ${shq(d)}`, command);
 }
+
+// a command with its quoted words emptied, so a flag inside one is no flag
+const unquoted = (command: string): string => command.replace(/\\.|'[^']*'|"(?:[^"\\]|\\.)*"/g, "''");
+
+// OpenCode's TUI otherwise runs on the user's shared background service, whose plugins can't tell which character a
+// session belongs to; a private server inherits the character's environment. A TUI on a server the user names can't
+// have one
+export function withStandalone(command: string): string {
+  if (agentKindOf(command) !== 'opencode') return command;
+  const access = ACCESS.exec(command)?.[0] ?? '';
+  const rest = command.slice(access.length);
+  return access + (/\s--(standalone|server)(\s|=|$)/.test(unquoted(rest)) ? rest : rest.replace(/^\s*opencode/, '$& --standalone'));
+}
+
+// a revive saved under OpenCode 1 may carry -m or --agent, which 2's TUI refuses; dormancy saved their values plain
+export const withoutV1Flags = (revive: string): string =>
+  agentKindOf(revive) === 'opencode' ? revive.replace(/\s(?:-m|--model|--agent)(?:=\S+|\s+\S+)/g, '') : revive;
 
 // OpenCode's TUI holds back the submit of a /command while its command menu is open, which a space after the name closes
 export const promptText = (command: string, prompt: string): string =>
@@ -37,5 +53,5 @@ export const promptText = (command: string, prompt: string): string =>
 export function withPromptFile(command: string, file: string): string {
   const read = `"$(cat ${shq(file)}; rm -f ${shq(file)})"`;
   if (agentKindOf(command) !== 'opencode') return `${command} -- ${read}`;
-  return /\s(-s|--session)(\s|=)/.test(command.replace(ACCESS, '')) ? command : `${command} --prompt ${read}`;
+  return /\s(-s|--session)(\s|=)/.test(unquoted(command.replace(ACCESS, ''))) ? command : `${command} --prompt ${read}`;
 }

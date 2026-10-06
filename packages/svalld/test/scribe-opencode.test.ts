@@ -21,28 +21,28 @@ describe('opencodeRunner', () => {
     const run = opencodeRunner({ cwd: path.join(dir, 'scribe'), bin: fakeOpencode(dir, answers) });
     expect(await run('be brief', 'name this')).toBe('{"note":"ok"}');
     expect(fs.readFileSync(path.join(dir, 'stdin'), 'utf8')).toBe('be brief\n\n---\n\nname this');
-    expect(fs.readFileSync(path.join(dir, 'args'), 'utf8').split('\n')[0]).toBe('run --format json --pure --agent svall-scribe');
+    expect(fs.readFileSync(path.join(dir, 'args'), 'utf8').split('\n')[0]).toBe('run --standalone --format json --agent svall-scribe');
     // the transcript a pass reads is untrusted text, so its agent asks before every tool, which `opencode run` turns down,
     // and other characters' work never leaves the machine through a share
     expect(JSON.parse(fs.readFileSync(path.join(dir, 'config'), 'utf8')))
-      .toEqual({ share: 'disabled', agent: { 'svall-scribe': { mode: 'primary', permission: { '*': 'ask' } } } });
+      .toEqual({ share: 'disabled', agents: { 'svall-scribe': { mode: 'primary', permissions: [{ action: '*', resource: '*', effect: 'ask' }] } } });
   });
 
   it('passes a model only when one is configured', async () => {
     const dir = makeHome();
     await opencodeRunner({ model: 'opencode/big-pickle', cwd: dir, bin: fakeOpencode(dir, answers) })('s', 'p');
-    expect(fs.readFileSync(path.join(dir, 'args'), 'utf8')).toContain('run --format json --pure --agent svall-scribe -m opencode/big-pickle');
+    expect(fs.readFileSync(path.join(dir, 'args'), 'utf8')).toContain('run --standalone --format json --agent svall-scribe -m opencode/big-pickle');
   });
 
   it('deletes the session the run left behind', async () => {
     const dir = makeHome();
     await opencodeRunner({ cwd: dir, bin: fakeOpencode(dir, answers) })('s', 'p');
-    await waitFor(() => fs.readFileSync(path.join(dir, 'args'), 'utf8').includes('session delete ses_1'));
+    await waitFor(() => fs.readFileSync(path.join(dir, 'args'), 'utf8').includes('session delete --standalone ses_1'));
   });
 
   it('names the error the run printed when it gave no answer', async () => {
     const dir = makeHome();
-    const failed = line({ type: 'error', sessionID: 'ses_1', error: { name: 'ProviderAuthError', data: { message: 'no key for anthropic' } } });
+    const failed = line({ type: 'error', sessionID: 'ses_1', error: { type: 'provider.auth', message: 'no key for anthropic' } });
     const run = opencodeRunner({ cwd: dir, bin: fakeOpencode(dir, `${failed}; exit 1`) });
     await expect(run('s', 'p')).rejects.toThrow('opencode run failed: no key for anthropic');
   });

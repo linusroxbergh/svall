@@ -62,10 +62,10 @@ const FLAGS: Record<AgentKind, { kept: string[]; keptSwitches: string[]; dropped
     droppedSwitches: [],
   },
   opencode: {
-    kept: ['-m', '--model', '--agent'],
-    keptSwitches: ['--auto'],
+    kept: [],
+    keptSwitches: ['--auto', '--yolo', '--dangerously-skip-permissions'],
     dropped: ['-s', '--session', '--prompt'],
-    droppedSwitches: ['-c', '--continue', '--fork'],
+    droppedSwitches: ['-c', '--continue', '--standalone'],
   },
 };
 // the flags whose value may be left out
@@ -133,14 +133,19 @@ export async function processes(): Promise<Proc[]> {
 }
 
 // the Bash tool starts each command in a process group of its own, while MCP servers share the agent's: a descendant
-// outside the agent's group is a background shell, monitor or server it still runs
+// outside the agent's group is a background shell, monitor or server it still runs. OpenCode's TUI runs its private
+// server in a group of its own, and the server gives each shell command and each MCP or language server one too. A
+// shell execs a lone command, so ps can't tell a shell from a server, and either holds off dormancy
 export function runsInBackground(pid: number, procs: Proc[]): boolean {
-  const own = procs.find((p) => p.pid === pid)?.pgid;
+  const own = new Set([procs.find((p) => p.pid === pid)?.pgid]);
   const below = [pid];
   for (let i = 0; i < below.length; i++) {
     for (const p of procs) {
       if (p.ppid !== below[i]) continue;
-      if (p.pgid !== own) return true;
+      if (!own.has(p.pgid)) {
+        if (below[i] !== pid || !runsAgent(p.args, 'opencode') || !/\sserve\s+--stdio(\s|$)/.test(p.args)) return true;
+        own.add(p.pgid);
+      }
       below.push(p.pid);
     }
   }
