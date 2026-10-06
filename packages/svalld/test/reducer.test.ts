@@ -150,7 +150,7 @@ describe("applyHook for a Claude subagent's question", () => {
   const ev = (o: Partial<HookEvent>): HookEvent => ({ charId: 'c_a', backend: 'claude', name: 'PreToolUse', ...o });
   const notify = ev({ name: 'Notification', notificationType: 'permission_prompt', message: 'Claude needs your permission to use Bash' });
   // the turn ended with a background subagent out, and that subagent then asked
-  const asked = (by = 'a1', from = applyHook(withAgent('working'), ev({ name: 'Stop', backgroundTasks: 1 }), 1)) =>
+  const asked = (by = 'a1', from = applyHook(withAgent('working'), ev({ name: 'Stop', backgroundTasks: 1, backgroundAgents: 1 }), 1)) =>
     applyHook(applyHook(from, ev({ name: 'PermissionRequest', agentId: by }), 2), notify, 3);
 
   it('waits on the notification before blocking, and leaves the status alone otherwise', () => {
@@ -163,7 +163,7 @@ describe("applyHook for a Claude subagent's question", () => {
     let c = asked();
     c = applyHook(c, ev({ name: 'UserPromptSubmit' }), 4);
     c = applyHook(c, ev({}), 5);
-    c = applyHook(c, ev({ name: 'Stop', backgroundTasks: 1 }), 6);
+    c = applyHook(c, ev({ name: 'Stop', backgroundTasks: 1, backgroundAgents: 1 }), 6);
     expect(c.agent).toMatchObject({ status: 'blocked', background: true });
     expect(c.unread).toBe(false);
     const moved = applyHook(c, ev({ agentId: 'a1' }), 7);
@@ -172,7 +172,7 @@ describe("applyHook for a Claude subagent's question", () => {
     expect(moved.agent?.asking).toBeUndefined();
   });
   it('keeps a question the main thread passed before the notification came', () => {
-    const requested = applyHook(applyHook(withAgent('working'), ev({ name: 'Stop', backgroundTasks: 1 }), 1), ev({ name: 'PermissionRequest', agentId: 'a1' }), 2);
+    const requested = applyHook(applyHook(withAgent('working'), ev({ name: 'Stop', backgroundTasks: 1, backgroundAgents: 1 }), 1), ev({ name: 'PermissionRequest', agentId: 'a1' }), 2);
     const blocked = applyHook(applyHook(requested, ev({ name: 'UserPromptSubmit' }), 3), notify, 4);
     expect(applyHook(blocked, ev({}), 5).agent?.status).toBe('blocked');
     expect(applyHook(blocked, ev({ agentId: 'a1' }), 5).agent?.status).toBe('working');
@@ -181,6 +181,11 @@ describe("applyHook for a Claude subagent's question", () => {
     const c = withAgent('working');
     expect(applyHook(c, ev({ agentId: 'a1' }), 9)).toBe(c);
     expect(applyHook(c, ev({ name: 'SubagentStop', agentId: 'a1' }), 9)).toBe(c);
+  });
+  it('drops a question whose subagent is gone when the turn ends with only a shell left', () => {
+    const stopped = applyHook(asked(), ev({ name: 'Stop', backgroundTasks: 1, backgroundAgents: 0 }), 4);
+    expect(stopped.agent?.asking).toBeUndefined();
+    expect(stopped.agent).toMatchObject({ status: 'working', background: true });
   });
   it("is not cleared by another subagent's tool call", () => {
     expect(applyHook(asked(), ev({ agentId: 'a2' }), 4).agent?.status).toBe('blocked');

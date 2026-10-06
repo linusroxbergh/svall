@@ -130,7 +130,7 @@ describe('normalizeHook', () => {
       { id: 'w1', type: 'workflow', status: 'pending' },
       { id: 'b1', type: 'shell', status: 'running' },
       { id: 'm1', type: 'monitor', status: 'running' },
-    ])?.backgroundTasks).toBe(3);
+    ])).toMatchObject({ backgroundTasks: 3, backgroundAgents: 2 });
     // a list with only monitors in it says none is left
     expect(stop([{ id: 'm1', type: 'monitor', status: 'running' }])?.backgroundTasks).toBe(0);
     expect(stop([])?.backgroundTasks).toBe(0);

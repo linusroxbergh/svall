@@ -1071,7 +1071,7 @@ runIf('Fleet', () => {
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
     const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', sessionId: 'sess', ...h } });
     hook({ name: 'SessionStart', transcriptPath: '/nope' });
-    hook({ name: 'Stop', backgroundTasks: 1 });
+    hook({ name: 'Stop', backgroundTasks: 1, backgroundAgents: 1 });
     hook({ notificationType: 'worker_permission_prompt' });
     await fleet.answerPrompt(c.id, 'deny');
     expect(store.state.characters[c.id].agent).toMatchObject({ status: 'working', background: true });

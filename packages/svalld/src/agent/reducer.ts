@@ -91,7 +91,7 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
   // the main thread moving on leaves a question a subagent still has open, unless the user typed a prompt past it
   if (agent.asking && e.backend === 'claude') {
     const stop = e.name === 'Stop' || e.name === 'StopFailure';
-    const over = e.prompt || (stop && !e.backgroundTasks) || (e.name === 'Notification' && e.notificationType === 'idle_prompt');
+    const over = e.prompt || (stop && !e.backgroundAgents) || (e.name === 'Notification' && e.notificationType === 'idle_prompt');
     if (over) delete agent.asking;
     else if (agent.status === 'blocked' && e.name !== 'Notification') {
       if (stop) agent.background = true;
@@ -148,8 +148,8 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
       break;
     case 'Notification':
       if (e.notificationType && BLOCKING.has(e.notificationType)) ask();
-      // Claude Code fires nothing on an Esc; a minute on, it says it sits at its prompt, background agents or not.
-      // With background agents out, the question is gone but the work goes on
+      // Claude Code fires nothing on an Esc; a minute on, it says it sits at its prompt, background work or not.
+      // With background work out, the question is gone but the work goes on
       else if (e.notificationType === 'idle_prompt' && (agent.status === 'blocked' || agent.status === 'working')) {
         const background = agent.background;
         settle(agent, background ? 'working' : 'idle');
