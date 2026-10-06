@@ -10,7 +10,7 @@ import { SystemdError, daemonReload, disableUnit, realRun, type Run } from './li
 import { agentHomesEnv, ourUnits } from './linux/setup.js';
 import { configDir, machineId } from './machine.js';
 import { fleetOrigin, portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
-import { removeOpencodePlugin, type OpencodePaths } from './opencode/install.js';
+import { opencodePaths, removeOpencodePlugin, type OpencodePaths } from './opencode/install.js';
 import { resolvePaths } from './paths.js';
 import { BUNDLE_ID, homePrefix, isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome, SHIM } from './profile.js';
 import { readJsonSettings, readOrUndefined, requireWritable, writeJsonSettings, type JsonSettings } from './settings-file.js';
@@ -211,6 +211,7 @@ export async function runUninstall(o: {
     } else done.push(...writeJsonSettings(current, next, what));
   }
   done.push(...removeOpencodePlugin(o.opencode));
+  if (agentHomes.XDG_CONFIG_HOME) done.push(...removeOpencodePlugin(opencodePaths(agentHomes)));
   done.push(...await unserveFleets(o.homes, o.mobile));
 
   if (linux) done.push(...await removeUnits({ unitDir: o.unitDir!, systemctl: o.launchctl, run: o.run ?? realRun }));

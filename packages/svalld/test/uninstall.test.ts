@@ -341,6 +341,19 @@ describe('runUninstall', () => {
     expect(fs.readdirSync(f.o.codex.dir)).toEqual([]);
   });
 
+  it('on Linux removes the OpenCode plugin from the XDG_CONFIG_HOME the login shell names, as well as the default', async () => {
+    const f = installed();
+    const there = opencodePaths({ XDG_CONFIG_HOME: path.join(f.root, 'dotfiles') });
+    installOpencodePlugin(f.o.opencode);
+    installOpencodePlugin(there);
+    const run: Run = async (cmd) => ({ stdout: cmd === 'systemctl' ? '' : `svall-agent-homes\n\n\n${path.join(f.root, 'dotfiles')}\n\n`, stderr: '' });
+
+    const lines = await runUninstall({ ...f.o, platform: 'linux', unitDir: path.join(f.root, 'units'), run });
+    expect(lines).toEqual(expect.arrayContaining([`removed ${f.o.opencode.plugin}`, `removed ${there.plugin}`]));
+    expect(fs.existsSync(f.o.opencode.plugin)).toBe(false);
+    expect(fs.existsSync(there.plugin)).toBe(false);
+  });
+
   it('on Linux takes the codex hooks back once when ~/.codex links to the folder the login shell names', async () => {
     const f = installed();
     const codex = codexPaths({ CODEX_HOME: path.join(f.root, 'dotfiles', 'codex') });
