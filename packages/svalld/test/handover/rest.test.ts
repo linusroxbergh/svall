@@ -875,6 +875,27 @@ describe('a frozen fleet', () => {
     expect(store.state.characters.c_ada.second?.agent?.sessionId).toBe(SID2);
     expect(store.state.characters.c_bo.agent?.status).toBe('done');
   });
+
+  it("keeps the session of an OpenCode terminal the handover closed whatever its plugin reports as its server shuts down, and still hears a live one", async () => {
+    const paths = resolvePaths(makeHome());
+    const store = Store.load(paths.state, () => {});
+    const ownership = OwnershipState.load({ paths, fleetId, machineId: me, log: silentLogger, standalone: true });
+    const fleet = new Fleet({ store, tmux: new Tmux(paths.tmuxSock, paths.tmuxConf), paths, config: Config.parse({ id: fleetId }), ownership, log: silentLogger });
+    const other = 'ses_0123456789abCDEFGHIJKLMNop';
+    store.update((d) => {
+      d.characters.c_ada = char('c_ada', { agent: agent('opencode', 'idle', OSID), revive: { command: `opencode -s ${OSID}` } });
+      d.characters.c_bo = char('c_bo', { tmux: win(3), agent: agent('opencode', 'working', other) });
+    });
+    await ownership.freeze(tx);
+
+    fleet.onSocketEvent({ hook: { charId: 'c_ada', backend: 'opencode', name: 'Interrupt', sessionId: OSID } });
+    fleet.onSocketEvent({ hook: { charId: 'c_ada', backend: 'opencode', name: 'SessionStart', sessionId: other } });
+    fleet.onSocketEvent({ hook: { charId: 'c_bo', backend: 'opencode', name: 'Stop', sessionId: other } });
+
+    expect(store.state.characters.c_ada.agent).toMatchObject({ sessionId: OSID, status: 'idle' });
+    expect(store.state.characters.c_ada.revive).toEqual({ command: `opencode -s ${OSID}` });
+    expect(store.state.characters.c_bo.agent?.status).toBe('done');
+  });
 });
 
 const runIf = hasTmux() ? describe : describe.skip;
