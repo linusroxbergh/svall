@@ -128,8 +128,11 @@ export function importState(m: TransferManifestV1): Imported {
   for (const c of Object.values(state.characters)) {
     // a terminal keeps the resume it went dormant with, launch flags and all, while it still has the agent whose session travels
     const [kept, keptSecond] = [c, c.second].map((t) => (t?.agent && t.revive?.command ? { command: portableRevive(t.revive.command) } : undefined));
+    // a crash that cut its turn short travels with it; the handover's own rest is no crash
+    const interrupted = kept && c.revive?.interrupted;
     markDormant(c);
-    if (kept) c.revive = kept;
+    delete c.revive?.interrupted;
+    if (kept) c.revive = interrupted ? { ...kept, interrupted } : kept;
     if (c.second) markSlotDormant(c.second);
     if (c.second && keptSecond) c.second.revive = keptSecond;
   }

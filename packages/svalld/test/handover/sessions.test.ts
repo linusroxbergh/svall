@@ -694,6 +694,19 @@ describe('the resume a carried terminal keeps', () => {
     expect(characters.c2.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session ${SID}` });
     expect(characters.c3.revive).toEqual({ command: `claude --effort 'high' --resume ${SID}` });
   });
+
+  it('keeps a resume a crash left interrupted, and marks none the handover rested', () => {
+    const state = emptyState();
+    const agent = (status: 'idle' | 'working'): Character['agent'] => ({ kind: 'claude', sessionId: SID, transcriptPath: '/h/.claude/r.jsonl', status, lastActivityAt: 0 });
+    state.characters.c1 = char('c1', { cwd: '/h', agent: agent('idle'), revive: { command: `claude --resume ${SID}`, interrupted: true } });
+    state.characters.c2 = char('c2', { cwd: '/h', agent: agent('working') });
+    const { characters } = importState({
+      version: 1, transactionId: 't1', generation: 1, fromMachineId: MAC, toMachineId: TRIFT, home: '/h',
+      fleet: FLEET, snapshot: state, excludes: [], roots: [], sessions: [],
+    }).state;
+    expect(characters.c1.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
+    expect(characters.c2.revive).toEqual({ command: `claude --resume ${SID}` });
+  });
 });
 
 describe('agent preflight', () => {
