@@ -795,7 +795,7 @@ export class DestinationHandover {
     // dormant first, so the fleet hears the window close for a terminal that no longer holds it
     this.d.store.update((d) => {
       const cur = d.characters[s.characterId];
-      if (s.term !== 2) { if (cur) markDormant(cur); } else if (cur?.second) markSlotDormant(cur.second);
+      if (s.term !== 2) { if (cur) { markDormant(cur); delete cur.revive?.interrupted; } } else if (cur?.second) markSlotDormant(cur.second);
       const slot = s.term === 2 ? cur?.second : cur;
       if (slot && carried && slot.agent?.sessionId === carried.sessionId) slot.revive = { ...carried.revive };
     });

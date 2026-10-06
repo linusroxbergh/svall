@@ -1018,6 +1018,20 @@ describe('destination activate', () => {
     expect(s.store.state.characters.c_dee).toMatchObject({ revive: { command: dee }, agent: { sessionId: CODEX_ID } });
   });
 
+  it('lays a terminal whose wake fails mid-turn in another session dormant without marking it cut off by a crash', async () => {
+    const { s, d, preparedDigest } = await prepared();
+    d.gateway.commit(preparedDigest);
+    d.crew.exiting.add('c_bo');
+    const run = d.handover.activate({ transactionId: TX, generation: 5 });
+    await waitFor(() => !!d.crew.window('c_bo'));
+    s.store.update((st) => { Object.assign(st.characters.c_bo.agent!, { sessionId: '99999999-9999-4999-8999-999999999999', status: 'working' }); });
+    let done = false;
+    void run.finally(() => { done = true; });
+    for (let i = 0; i < 10 && !done; i++) await d.clock.advance(60_000);
+    expect((await run).characters.find((c) => c.id === 'c_bo')?.ok).toBe(false);
+    expect(s.store.state.characters.c_bo.revive).toEqual({ command: 'claude --resume 99999999-9999-4999-8999-999999999999' });
+  });
+
   /** Activates with the clock moving half a second at a time for twenty seconds, a minute at a time after that, and says how far it had moved when the activation answered. */
   async function activateBy(d: Awaited<ReturnType<typeof prepared>>['d']) {
     const run = d.handover.activate({ transactionId: TX, generation: 5 });
