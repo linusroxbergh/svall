@@ -19,11 +19,12 @@ describe('test isolation', () => {
     for (const bin of ['claude', 'codex', 'tailscale', 'gh', 'launchctl']) expect(doubles, bin).toContain(onPath(bin, process.env.PATH!));
   });
 
-  it('gives claude and codex doubles of a supported release, logged in, that hold no session to resume', async () => {
+  it('gives claude, codex and opencode doubles of a supported release, logged in, and claude and codex ones that hold no session to resume', async () => {
     const probes = await Promise.all(HANDOVER_KINDS.map((kind) => probeAgent(kind, realProbeDeps())));
     expect(agentAdapters(probes)).toEqual([
       expect.objectContaining({ kind: 'claude', version: '2.1.283', adapter: 1, loggedIn: true }),
       expect.objectContaining({ kind: 'codex', version: '0.156.1', adapter: 1, loggedIn: true }),
+      expect.objectContaining({ kind: 'opencode', version: '2.0.22', adapter: 1, loggedIn: true }),
     ]);
     const run = promisify(execFile);
     const sid = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';

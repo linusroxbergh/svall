@@ -12,6 +12,9 @@ export type SessionFs = {
   readdir(p: string): Promise<Buffer[]>;
 };
 
+/** Runs an agent CLI to its exit, its stdout into the file `stdout` names when it names one; rejects only when it cannot start. */
+export type CliRun = (cmd: string, args: string[], o?: { stdout?: string }) => Promise<{ code: number; stdout: string; stderr: string }>;
+
 export type SessionIssueCode = Extract<HandoverIssueCode, 'transcript_missing' | 'incompatible_adapter' | 'path_unsupported' | 'destination_diverged'>;
 
 /** Why a session cannot move as it is, with the blocker code a handover reports it under. */
@@ -45,4 +48,13 @@ export interface SessionAdapter {
   asksBypass?(command: string): boolean;
   /** Whether the CLI, keeping its files in `home`, starts in bypass mode in `folder` without first warning about it. */
   acceptsBypass?(home: string, folder: Omit<ResumeFolder, 'kind'>): boolean;
+  /**
+   * For a CLI that keeps its sessions in a database of its own: the file under the agent home a handover writes the
+   * session out to, which travels with its files and is read back in on the destination rather than placed.
+   */
+  exportFile?(sessionId: string): string;
+  /** Writes the session out of this machine's CLI into `file`. */
+  exportSession?(sessionId: string, file: string, run: CliRun): Promise<void>;
+  /** Puts the session written out at `file` into this machine's CLI in place of any copy it holds, to resume in `cwd`. */
+  importSession?(sessionId: string, file: string, cwd: string, run: CliRun): Promise<void>;
 }

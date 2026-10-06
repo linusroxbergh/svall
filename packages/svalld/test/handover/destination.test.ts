@@ -24,7 +24,9 @@ import { ProcessTable, type Proc } from '../../src/handover/processes.js';
 import { ReplicaStore, replicaRoots } from '../../src/handover/replicas.js';
 import type { Clock } from '../../src/handover/rest.js';
 import { HandoverService } from '../../src/handover/service.js';
-import type { AgentProbe } from '../../src/handover/sessions/registry.js';
+import { opencodeAdapter } from '../../src/handover/sessions/opencode.js';
+import { cliRunner, type AgentProbe } from '../../src/handover/sessions/registry.js';
+import type { CliRun } from '../../src/handover/sessions/types.js';
 import type { Authority } from '../../src/handover/source.js';
 import { adoptAtStart, enterStartupMode, startupMode } from '../../src/handover/startup.js';
 import { linkProblem } from '../../src/handover/validate.js';
@@ -37,6 +39,7 @@ import { runGit, type GitRunner } from '../../src/links/git.js';
 import { tmuxConfText } from '../../src/tmux/conf.js';
 import { Tmux } from '../../src/tmux/tmux.js';
 import { cleanHomes, hasTmux, idleSides, makeHome, stubMobile, stubUsage, waitFor } from '../helpers.js';
+import { fakeEnv, held, hold, type Exported } from './fake-opencode.js';
 import { crew as gitCrew, git, hasGit, park, parkedAt, seedHere, unpark, type Layout } from './git-fixture.js';
 
 const made: string[] = [];
@@ -47,6 +50,8 @@ afterEach(() => {
 });
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
+const OC = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
+const ocSession = (directory: string, texts: string[]): Exported => ({ info: { id: OC, location: { directory } }, messages: texts.map((text, i) => ({ id: `msg_${i}`, text })) });
 const CODEX_ID = '01a0cd02-8ea0-75c1-89b3-89718ecbd91f';
 const ROLLOUT = `sessions/2026/09/23/rollout-2026-09-23T08-44-52-${CODEX_ID}.jsonl`;
 const fleetId = FleetId.parse(crypto.randomUUID());
@@ -254,7 +259,7 @@ type Tamper = (m: TransferManifestV1) => void;
  * second terminal, file context and a file: tab, a Claude session, a Codex session, and a shell standing at the
  * home itself. `before` sets this machine up before anything lands.
  */
-async function scene(o: { tamper?: Tamper; before?: (s: { src: string; dst: string; base: string }) => void; land?: false } = {}) {
+async function scene(o: { tamper?: Tamper; before?: (s: { src: string; dst: string; base: string }) => void; land?: false; opencode?: true } = {}) {
   const base = fs.realpathSync(makeHome());
   const src = path.join(base, 'mac');
   const dst = path.join(base, 'home');
@@ -301,7 +306,22 @@ async function scene(o: { tamper?: Tamper; before?: (s: { src: string; dst: stri
     char('c_old', dst, { restedBy: 'tx-0', second: { cwd: dst, unread: false, revive: { command: '' } } }),
   ]) state.characters[c.id] = c;
 
-  const agentHomes = { claude: path.join(dst, '.claude'), codex: path.join(dst, '.codex') };
+  // with `opencode`, eve's OpenCode session: the Mac's OpenCode holds it, and the Mac's fleet logs it and wrote it out
+  const oc = { mac: fakeEnv(path.join(base, 'oc-mac')), trift: fakeEnv(path.join(base, 'oc-trift')), session: ocSession('/Users/ada/work/eve', ['remember PELICAN-42']) };
+  const ocLogs = path.join(base, 'mac-svall/transcripts/opencode');
+  if (o.opencode) {
+    fs.mkdirSync(path.join(dst, 'work/eve'), { recursive: true });
+    fs.writeFileSync(path.join(dst, 'work/eve/plan.md'), 'eve\n');
+    fs.mkdirSync(ocLogs, { recursive: true });
+    fs.writeFileSync(path.join(ocLogs, `${OC}.jsonl`), `${JSON.stringify({ kind: 'user', text: 'remember PELICAN-42' })}\n`);
+    hold(oc.mac, oc.session);
+    await opencodeAdapter.exportSession!(OC, path.join(ocLogs, `exports/${OC}.json`), cliRunner(oc.mac));
+    state.characters.c_eve = rested(char('c_eve', path.join(dst, 'work/eve'), {
+      agent: { kind: 'opencode', sessionId: OC, transcriptPath: path.join(ocLogs, `${OC}.jsonl`), status: 'idle', lastActivityAt: 0 }, revive: { command: `opencode -s ${OC}` },
+    }));
+  }
+
+  const agentHomes = { claude: path.join(dst, '.claude'), codex: path.join(dst, '.codex'), ...(o.opencode && { opencode: path.join(home, 'transcripts/opencode') }) };
   const inventory = buildInventory(state, { fleet }, {
     source: { machineId: mac, home: dst, fleetHome: path.join(base, 'mac-svall') },
     destination: { machineId: trift, home: dst, fleetHome: home, agentHomes },
@@ -322,8 +342,9 @@ async function scene(o: { tamper?: Tamper; before?: (s: { src: string; dst: stri
   const probes: AgentProbe[] = [
     { kind: 'claude', version: '2.1.280', home: agentHomes.claude, loggedIn: true, hooks: true },
     { kind: 'codex', version: '0.156.1', home: agentHomes.codex, loggedIn: true, hooks: true },
+    ...(agentHomes.opencode ? [{ kind: 'opencode' as const, version: '2.0.22', home: agentHomes.opencode, loggedIn: true, hooks: true }] : []),
   ];
-  return { base, src, dst, home, paths, store, manifest, digest: manifestDigest(manifest), landed, probes, tab };
+  return { base, src, dst, home, paths, store, manifest, digest: manifestDigest(manifest), landed, probes, tab, oc };
 }
 type Scene = Awaited<ReturnType<typeof scene>>;
 
@@ -334,7 +355,7 @@ const params = (s: Scene, over: Partial<Prepare> = {}): Prepare =>
 /** This destination's daemon, as main wires it, over the scene's home, in an account whose home is the fleet's unless `homedir` says otherwise. */
 function daemon(
   s: { paths: Paths; store: Store; probes: AgentProbe[]; manifest: Pick<TransferManifestV1, 'home'> },
-  o: { concurrency?: number; failWrite?: (j: HandoverJournal) => boolean; git?: GitRunner; homedir?: () => string; agents?: () => Promise<AgentProbe[]> } = {},
+  o: { concurrency?: number; failWrite?: (j: HandoverJournal) => boolean; git?: GitRunner; homedir?: () => string; agents?: () => Promise<AgentProbe[]>; cli?: CliRun } = {},
 ) {
   const gateway = new Gateway();
   const clock = new Hands();
@@ -350,7 +371,7 @@ function daemon(
       source: idleSides(s.paths, { store: s.store }).source,
       destination: {
         paths: s.paths, config, store: s.store, fleet: crew.fleet, tmux: crew.tmux, processes: crew.processes, authority: () => gateway, clock, ...(o.git && { git: o.git }),
-        sessionStartMs: 60_000, concurrency: over.concurrency ?? o.concurrency ?? 2, homedir: o.homedir ?? (() => s.manifest.home), log: silentLogger,
+        sessionStartMs: 60_000, concurrency: over.concurrency ?? o.concurrency ?? 2, homedir: o.homedir ?? (() => s.manifest.home), ...(o.cli && { cli: o.cli }), log: silentLogger,
       },
     });
     const events: Event[] = [];
@@ -405,6 +426,51 @@ describe('destination prepare', () => {
     expect(s.store.state.characters).toEqual({});
     expect([...d.crew.log, ...d.crew.lines]).toEqual([]);
     expect(d.ownership.writable()).toBe(false);
+  });
+
+  it("imports an OpenCode session into this machine's OpenCode, in the folder its terminal resumes in and over the copy an earlier handover left, before it prepares anything to revive", async () => {
+    const s = await scene({ opencode: true });
+    hold(s.oc.trift, ocSession(path.join(s.dst, 'work/eve'), []));
+    const asked: string[] = [];
+    const run = cliRunner(s.oc.trift);
+    const d = daemon(s, { cli: (cmd, args, o) => { asked.push([cmd, ...args].join(' ')); return run(cmd, args, o); } });
+    const { preparedDigest } = await d.handover.prepare(params(s));
+
+    const eve = path.join(s.dst, 'work/eve');
+    expect(held(s.oc.trift)).toEqual({ [OC]: { ...s.oc.session, info: { ...s.oc.session.info, location: { directory: eve } } } });
+    const i = s.manifest.sessions.findIndex((x) => x.agent === 'opencode');
+    expect(asked).toEqual([
+      `opencode session delete --standalone ${OC}`,
+      `opencode session import --standalone --directory ${eve} ${path.join(s.paths.sessionStage(TX, i), `exports/${OC}.json`)}`,
+    ]);
+    // Svall's log of the session is placed where this machine's plugin goes on writing it; the export is not
+    const logs = path.join(s.home, 'transcripts/opencode');
+    expect(fs.readdirSync(logs)).toEqual([`${OC}.jsonl`]);
+    const prepared = FleetState.parse(JSON.parse(fs.readFileSync(s.paths.preparedState(TX), 'utf8')));
+    expect(prepared.characters.c_eve).toMatchObject({ revive: { command: `opencode -s ${OC}` }, agent: { transcriptPath: path.join(logs, `${OC}.jsonl`) } });
+
+    d.gateway.commit(preparedDigest);
+    const r = await d.handover.activate({ transactionId: TX, generation: 5 });
+    expect(r.characters.find((c) => c.id === 'c_eve')).toEqual({ id: 'c_eve', ok: true });
+  });
+
+  it('refuses to prepare while OpenCode has not imported the session, so nothing revives it with -s, and imports it once asked again', async () => {
+    const s = await scene({ opencode: true });
+    hold(s.oc.trift, ocSession('/elsewhere', []));
+    const run = cliRunner(s.oc.trift);
+    // a copy that will not go: OpenCode keeps it and answers the import with "Session already exists", exiting 0
+    const keeping: CliRun = (cmd, args, o) => (args[1] === 'delete' ? Promise.resolve({ code: 1, stdout: '', stderr: 'Error: database is locked\n' }) : run(cmd, args, o));
+    const r = await refusal(daemon(s, { cli: keeping }).handover.prepare(params(s)));
+    expect(blockersOf(r)).toEqual([{ code: 'transcript_missing', message: expect.stringContaining('database is locked'), entity: { kind: 'character', id: 'c_eve' } }]);
+    expect(fs.existsSync(s.paths.preparedState(TX))).toBe(false);
+    const quiet: CliRun = (cmd, args, o) => (args[1] === 'delete' ? Promise.resolve({ code: 0, stdout: '', stderr: '' }) : run(cmd, args, o));
+    expect(blockersOf(await refusal(daemon(s, { cli: quiet }).handover.prepare(params(s))))[0].message).toContain('Session already exists');
+    expect(held(s.oc.trift)[OC].info.location.directory).toBe('/elsewhere');
+    expect(fs.existsSync(s.paths.preparedState(TX))).toBe(false);
+
+    await daemon(s, { cli: run }).handover.prepare(params(s));
+    expect(held(s.oc.trift)[OC].messages).toEqual(s.oc.session.messages);
+    expect(fs.existsSync(s.paths.preparedState(TX))).toBe(true);
   });
 
   it('answers a repeated prepare with the proof it gave, and writes nothing again', async () => {

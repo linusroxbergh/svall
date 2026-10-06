@@ -80,6 +80,7 @@ const REACH: Record<Failpoint, Reach> = {
   'source.rest.forcekill': { scenario: 'move', times: 1 },
   'source.rest.stopped': { scenario: 'move', times: 1 },
   'source.rest.kill': { scenario: 'move', times: 4 },
+  'source.freeze.export': { scenario: 'move', times: 1 },
   'source.freeze.manifest': { scenario: 'move', times: 1 },
   'source.freeze.digest': { scenario: 'move', times: 1 },
   // only a source that died between its journal and its surrender starts by surrendering
@@ -102,6 +103,7 @@ const REACH: Record<Failpoint, Reach> = {
   'destination.verify.landed': { scenario: 'move', times: 1 },
   'destination.verify.record': { scenario: 'move', times: 1 },
   'destination.prepare.seal': { scenario: 'move', times: 1 },
+  'destination.prepare.import': { scenario: 'move', times: 1 },
   'destination.prepare.state': { scenario: 'move', times: 1 },
   'destination.prepare.journal': { scenario: 'move', times: 1 },
   'destination.prepare.stage': { scenario: 'move', times: 1 },
@@ -135,8 +137,8 @@ const REACH: Record<Failpoint, Reach> = {
   'controller.manifest': { scenario: 'move', times: 1 },
   'controller.landed': { scenario: 'move', times: 1 },
   'controller.clear': { scenario: 'move', times: 1 },
-  'controller.rsync': { scenario: 'move', times: 6 },
-  'controller.verify': { scenario: 'move', times: 6 },
+  'controller.rsync': { scenario: 'move', times: 7 },
+  'controller.verify': { scenario: 'move', times: 7 },
   'controller.commit': { scenario: 'move', times: 1 },
 };
 

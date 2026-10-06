@@ -17,6 +17,7 @@ import { ReplicaStore } from '../../src/handover/replicas.js';
 import type { Clock } from '../../src/handover/rest.js';
 import { HandoverService } from '../../src/handover/service.js';
 import { adoptAtStart, enterStartupMode, startupMode } from '../../src/handover/startup.js';
+import type { CliRun } from '../../src/handover/sessions/types.js';
 import type { GitRunner } from '../../src/links/git.js';
 import type { Logger } from '../../src/log.js';
 import { guardMethod } from '../../src/ownership/guard.js';
@@ -31,6 +32,7 @@ import type { RunRsync } from '../../../cli/src/controller/rsync.js';
 import { transfer as runTransfer, type Master } from '../../../cli/src/controller/transfer.js';
 import { callSite } from '../../../cli/test/controller/world.js';
 import { makeHome } from '../helpers.js';
+import { held, hold, opencode } from './fake-opencode.js';
 
 export const fleetId = FleetId.parse(crypto.randomUUID());
 export const MAC = MachineId.parse(crypto.randomUUID());
@@ -40,6 +42,8 @@ export const G = 0;
 const SID = crypto.randomUUID();
 const DI_LAUNCH = 'claude --effort high';
 const DI_RESUME = `claude --effort 'high' --resume ${SID}`;
+// cy's OpenCode session, dormant since before the handover
+const CY_SESSION = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
 
 /** What a process that dies at a failpoint throws: nothing after it runs. */
 export class Crash extends Error {
@@ -77,7 +81,20 @@ export class Machine {
   current?: Instance;
   private next = 1;
 
-  constructor(private w: World, readonly name: 'mac' | 'trift', readonly id: MachineId, readonly side: 'source' | 'destination', readonly paths: Paths) {}
+  /** this machine's OpenCode, which keeps its sessions in a database of its own */
+  readonly opencode: NodeJS.ProcessEnv;
+
+  constructor(private w: World, readonly name: 'mac' | 'trift', readonly id: MachineId, readonly side: 'source' | 'destination', readonly paths: Paths) {
+    this.opencode = { XDG_DATA_HOME: path.join(w.base, `opencode-${name}`) };
+  }
+
+  /** The OpenCode double run in this process, as a crash may cut it off between any two commands. */
+  cli: CliRun = async (_cmd, args, o) => {
+    const r = opencode(args, this.opencode);
+    if (o?.stdout === undefined) return r;
+    fs.writeFileSync(o.stdout, r.stdout, { mode: 0o600 });
+    return { ...r, stdout: '' };
+  };
 
   window(name: string, cwd: string, job?: string[]): Win {
     const n = this.next++;
@@ -229,6 +246,8 @@ export class World {
   readonly prefix = path.join(this.base, 'gw');
   readonly ctlDir = path.join(this.base, 'ctl');
   readonly claudeHome = path.join(this.home, '.claude');
+  /** where Svall's plugin logs OpenCode sessions, in the one home both machines share */
+  readonly opencodeLogs = path.join(this.home, '.svall/transcripts/opencode');
   readonly cy = path.join(this.home, 'work/cy');
   readonly mac: Machine;
   readonly trift: Machine;
@@ -285,6 +304,10 @@ export class World {
     const transcript = path.join(w.claudeHome, 'projects/-work-di', `${SID}.jsonl`);
     fs.writeFileSync(transcript, `${JSON.stringify({ type: 'user', sessionId: SID, cwd: path.join(w.home, 'work/di') })}\n`);
     fs.writeFileSync(path.join(w.claudeHome, '.claude.json'), JSON.stringify({ projects: { [path.join(w.home, 'work/di')]: { hasTrustDialogAccepted: true } } }));
+    const cyLog = path.join(w.opencodeLogs, `${CY_SESSION}.jsonl`);
+    fs.mkdirSync(w.opencodeLogs, { recursive: true });
+    fs.writeFileSync(cyLog, `${JSON.stringify({ kind: 'user', text: 'remember PELICAN-42' })}\n`);
+    hold(w.mac.opencode, { info: { id: CY_SESSION, location: { directory: w.cy } }, messages: [{ id: 'msg_0', text: 'remember PELICAN-42' }] });
     fs.mkdirSync(w.ctlDir, { recursive: true });
     for (const m of [w.mac, w.trift]) {
       fs.mkdirSync(m.paths.home, { recursive: true });
@@ -307,7 +330,9 @@ export class World {
       for (const c of [
         char('c_ada', work('ada'), { tmux: { windowId: ada.windowId, paneId: ada.paneId }, second: { cwd: work('ada'), unread: false, tmux: { windowId: adaSecond.windowId, paneId: adaSecond.paneId } } }),
         char('c_bo', work('bo'), { tmux: { windowId: bo.windowId, paneId: bo.paneId } }),
-        char('c_cy', work('cy'), { revive: { command: '' } }),
+        char('c_cy', work('cy'), {
+          agent: { kind: 'opencode', sessionId: CY_SESSION, transcriptPath: cyLog, status: 'idle', lastActivityAt: 0 }, revive: { command: `opencode -s ${CY_SESSION}` },
+        }),
         char('c_di', work('di'), {
           tmux: { windowId: di.windowId, paneId: di.paneId }, agent: { kind: 'claude', sessionId: SID, transcriptPath: transcript, status: 'idle', lastActivityAt: 0 },
         }),
@@ -496,14 +521,17 @@ export class World {
       const authority = () => ({ get: (id: FleetId) => this.authorityGet(id) });
       const handover = new HandoverService({
         ownership, journal: new MortalJournal(paths, life), fleet,
-        agents: async () => [{ kind: 'claude', version: '2.1.280', home: this.claudeHome, loggedIn: true, hooks: true }],
+        agents: async () => [
+          { kind: 'claude', version: '2.1.280', home: this.claudeHome, loggedIn: true, hooks: true },
+          { kind: 'opencode', version: '2.0.22', home: this.opencodeLogs, loggedIn: true, hooks: true },
+        ],
         source: {
           paths, store: mortal, fleet, tmux: m.tmux, viewers: { detach: async () => {} }, processes: m.processes, kill: m.kill, clock, authority, git: noGit,
-          rest: { pollMs: 500, settleMs: 1000, waitMs: 5000 }, log,
+          rest: { pollMs: 500, settleMs: 1000, waitMs: 5000 }, cli: m.cli, log,
         },
         destination: {
           paths, config, store: mortal, fleet, tmux: m.tmux, processes: m.processes, authority, clock, git: noGit,
-          homedir: () => this.home, sessionStartMs: 60_000, concurrency: 1, log,
+          homedir: () => this.home, sessionStartMs: 60_000, concurrency: 1, cli: m.cli, log,
         },
       });
       instance = { life, ownership, handover, store, active: false, ctx: { ownership, handover, viewer: { kind: 'app' } } as unknown as Ctx };
@@ -773,6 +801,8 @@ export function settledOn(w: World): 'source' | 'destination' {
   // di's Claude runs as it was launched, or resumed with the flags it was launched with
   expect([DI_LAUNCH, DI_RESUME]).toContain([...owner.windows.values()].find((x) => x.name === 'c_di')?.job?.join(' | '));
   expect(other.windows.size).toBe(0);
+  // cy's OpenCode session is in the OpenCode of the machine running the fleet, in cy's folder
+  expect(held(owner.opencode)[CY_SESSION]?.info.location.directory).toBe(w.cy);
   // the folder that holds each transaction's own may stay, empty, and a journal a controller could not read stays for a person to look at
   for (const dir of w.dirs) expect(entries(dir).filter((e) => e !== 'handover' && !e.startsWith('handover.json.broken-')), dir).toEqual([]);
   expect(entries(w.base).filter((e) => [...w.transactions].some((tx) => e.includes(tx)))).toEqual([]);

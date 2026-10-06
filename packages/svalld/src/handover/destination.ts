@@ -29,8 +29,8 @@ import { probeFolders, type ProbeFs } from './probe.js';
 import { ARCHIVABLE, kept, ReplicaError, ReplicaStore, replicaRoots, type ReplicaCheck } from './replicas.js';
 import type { Clock } from './rest.js';
 import type { HandoverService } from './service.js';
-import { adapterFor, installSession, placeTranscripts, resumeFolder, sessionAdapter, type AgentProbe, type InstallFs } from './sessions/registry.js';
-import { SessionError, type SessionAdapter } from './sessions/types.js';
+import { adapterFor, cliRunner, installSession, placeTranscripts, resumeFolder, sessionAdapter, type AgentProbe, type InstallFs } from './sessions/registry.js';
+import { SessionError, type CliRun, type SessionAdapter } from './sessions/types.js';
 import type { Authority } from './source.js';
 import { holds, realPath } from './portable-path.js';
 import { gitProblems, importState, landedProblem, linkProblem, manifestProblems, sessionProblems } from './validate.js';
@@ -57,6 +57,8 @@ export type DestinationDeps = {
   sessionStartMs?: number;
   /** How many terminals start at once. */
   concurrency?: number;
+  /** How to run an agent CLI that reads a session into its own database. */
+  cli?: CliRun;
   log: Logger;
 };
 
@@ -484,6 +486,8 @@ export class DestinationHandover {
       }
     });
     if (placed.length) throw blocked(placed);
+    const unread = await this.importSessions(tx, m);
+    if (unread.length) throw blocked(unread);
 
     const preparedDigest = canonicalDigest(state);
     const preparedPath = this.d.paths.preparedState(tx);
@@ -491,6 +495,29 @@ export class DestinationHandover {
     boundary('destination.prepare.journal', () => this.journal.write({ ...this.open(tx)!, phase: 'prepare', preparedPath, preparedDigest, fleet: imported.fleet, updatedAt: this.clock.now() }));
     boundary('destination.prepare.stage', () => fs.rmSync(path.dirname(this.d.paths.sessionStage(tx, 0)), { recursive: true, force: true }));
     return { preparedDigest };
+  }
+
+  /**
+   * Reads each carried session a CLI keeps in a database of its own into this machine's CLI from its stage, to resume
+   * in its terminal's folder. Nothing revives a session it could not read in, as a resume would start an empty one.
+   */
+  private async importSessions(tx: string, m: TransferManifestV1): Promise<Blocker[]> {
+    const blockers: Blocker[] = [];
+    const at = (p: string) => (p === '~' || p.startsWith('~/') ? path.posix.join(m.home, p.slice(1)) : p);
+    for (const [i, s] of m.sessions.entries()) {
+      const adapter = sessionAdapter(s.agent, s.adapter);
+      const c = m.snapshot.characters[s.characterId];
+      if (!adapter.exportFile || !adapter.importSession || !c) continue;
+      const file = path.join(this.d.paths.sessionStage(tx, i), adapter.exportFile(s.sessionId));
+      const { cwd } = resumeFolder(c, s.term, at);
+      try {
+        await boundary('destination.prepare.import', () => adapter.importSession!(s.sessionId, file, cwd, this.d.cli ?? cliRunner()));
+      } catch (e) {
+        if (!(e instanceof SessionError)) throw e;
+        blockers.push({ code: e.code, message: e.message, entity: { kind: 'character', id: s.characterId } });
+      }
+    }
+    return blockers;
   }
 
   /** The prepare or claim meant for this machine, this fleet and this manifest, at the generation after the source's. */

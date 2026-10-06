@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import v8 from 'node:v8';
 import { z } from 'zod';
@@ -29,7 +30,8 @@ import { ProcessTable } from './processes.js';
 import { ReplicaStore, replicaRoots } from './replicas.js';
 import { classifyTerminals, launchFlags, restChoices, restTerminals, unapproved, type Clock, type RestDeps, type RestOptions } from './rest.js';
 import type { HandoverService } from './service.js';
-import { agentBlockers, type AgentProbe } from './sessions/registry.js';
+import { agentBlockers, cliRunner, sessionAdapter, type AgentProbe } from './sessions/registry.js';
+import { SessionError, type CliRun } from './sessions/types.js';
 
 /** The gateway's record for this fleet. Rejects when the gateway cannot be reached or will not say. */
 export type Authority = { get(fleetId: FleetId): Promise<OwnerRecord> };
@@ -52,6 +54,8 @@ export type SourceDeps = {
   manifestBytes?: number;
   /** This daemon's heap as V8 bounds it, in bytes. */
   heapLimit?: number;
+  /** How to run an agent CLI that writes a session out of its own database. */
+  cli?: CliRun;
   log: Logger;
 };
 
@@ -314,6 +318,8 @@ export class SourceHandover {
 
     // the snapshot is taken with every terminal dormant and its resume command recorded
     const inventory = await this.inventory(this.d.store.state, p);
+    const unexported = await boundary('source.freeze.export', () => this.exportSessions(inventory, false));
+    if (unexported.length) return this.refuse(tx.id, unexported);
     const built = await buildManifest(inventory, { transactionId: tx.id, generation: p.generation }, this.d.scanFs);
     const big = this.limits(built.manifest, p.destination.info);
     if (built.blockers.length || big.length) return this.refuse(tx.id, [...built.blockers, ...big]);
@@ -419,9 +425,34 @@ export class SourceHandover {
       if (c.keepHere) blockers.push({ code: 'character_pinned', message: `${c.name} is kept on this machine`, entity: { kind: 'character', id: c.id } });
     }
     const inventory = await this.inventory(state, p);
+    blockers.push(...await this.exportSessions(inventory, true));
     blockers.push(...await platformBlockers(inventory.roots, info.platform, this.d.scanFs ?? realScanFs));
     blockers.push(...await this.gitBlockers(inventory, info));
     return { blockers: [...blockers, ...inventory.blockers], inventory };
+  }
+
+  /**
+   * Writes each session a CLI keeps in a database of its own out to its export file, or with `dry`, only proves the CLI
+   * holds it. A session its adapter cannot find is the manifest's to report.
+   */
+  private async exportSessions(inventory: Inventory, dry: boolean): Promise<Blocker[]> {
+    const blockers: Blocker[] = [];
+    for (const s of inventory.sessions) {
+      const adapter = sessionAdapter(s.agent);
+      if (!adapter.exportFile || !adapter.exportSession) continue;
+      let home: string;
+      try { ({ home } = await adapter.discover(s.sourcePath, s.sessionId, this.d.scanFs ?? realScanFs)); } catch (e) {
+        if (e instanceof SessionError) continue;
+        throw e;
+      }
+      try {
+        await adapter.exportSession(s.sessionId, dry ? os.devNull : path.join(home, adapter.exportFile(s.sessionId)), this.d.cli ?? cliRunner());
+      } catch (e) {
+        if (!(e instanceof SessionError)) throw e;
+        blockers.push({ code: e.code, message: e.message, entity: { kind: 'character', id: s.characterId } });
+      }
+    }
+    return blockers;
   }
 
   /** Each carried repository using a Git extension the destination's git cannot open, found before anything moves. */

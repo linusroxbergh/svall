@@ -205,7 +205,7 @@ async function scanSession(session: InventorySession, sfs: ScanFs, read: boolean
   const counted: Listed = { files: 0, bytes: 0 };
   let adapter: SessionAdapter;
   let found: FoundSession;
-  // a kind no adapter carries, such as OpenCode, is a blocker like any session that cannot be found
+  // a kind no adapter carries is a blocker like any session that cannot be found
   try {
     adapter = sessionAdapter(session.agent);
     found = await adapter.discover(session.sourcePath, session.sessionId, sfs);

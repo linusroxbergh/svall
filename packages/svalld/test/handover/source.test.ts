@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -17,17 +18,19 @@ import { ProcessTable, type Proc } from '../../src/handover/processes.js';
 import { ReplicaStore, replicaRoots } from '../../src/handover/replicas.js';
 import type { Clock } from '../../src/handover/rest.js';
 import { HandoverService } from '../../src/handover/service.js';
-import { agentProber, resumeFolders, type AgentProbe, type AgentRun } from '../../src/handover/sessions/registry.js';
+import { agentProber, cliRunner, resumeFolders, type AgentProbe, type AgentRun } from '../../src/handover/sessions/registry.js';
 import { HEAP_PER_FILE, type Authority, type SourceDeps } from '../../src/handover/source.js';
 import { adoptAtStart, enterStartupMode, startupMode } from '../../src/handover/startup.js';
 import { silentLogger } from '../../src/log.js';
 import { OwnershipState } from '../../src/ownership/state.js';
 import { installedScripts, resolvePaths, type Paths } from '../../src/paths.js';
+import { PRIVATE, profileHome } from '../../src/profile.js';
 import { releaseVersion } from '../../src/release.js';
 import { Store } from '../../src/store.js';
 import type { GitRunner } from '../../src/links/git.js';
 import type { LiveWindow } from '../../src/tmux/tmux.js';
 import { cleanHomes, idleSides, makeHome, waitFor } from '../helpers.js';
+import { fakeEnv, hold } from './fake-opencode.js';
 
 afterEach(cleanHomes);
 
@@ -257,6 +260,46 @@ const journalOf = (paths: Paths): SourceJournal | undefined => {
 };
 const ownerFile = (paths: Paths): Record<string, unknown> => JSON.parse(fs.readFileSync(paths.owner, 'utf8'));
 
+const OC = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
+const blockersOf = (r: { data: Record<string, unknown> }): { code: string; message: string }[] => (r.data.blockers ?? []) as { code: string; message: string }[];
+
+/**
+ * A fleet whose ada left an OpenCode session dormant, logged where Svall's plugin logs it, beside bo's running Claude,
+ * on a machine whose `opencode` is the double, and a destination that has OpenCode too.
+ */
+function opencodeBoot() {
+  let logs = '';
+  const b = boot({
+    probes: [
+      { kind: 'claude', version: '2.1.280', home: '/home/linus/.claude', loggedIn: true, hooks: true },
+      { kind: 'opencode', version: '2.0.22', home: '/home/linus/.svall/transcripts/opencode', loggedIn: true, hooks: true },
+    ],
+    characters: (work) => {
+      logs = path.join(work, '.svall/transcripts/opencode');
+      fs.mkdirSync(logs, { recursive: true });
+      fs.writeFileSync(path.join(logs, `${OC}.jsonl`), `${JSON.stringify({ kind: 'user', text: 'remember PELICAN-42' })}\n`);
+      return [
+        char('c_ada', path.join(work, 'ada'), {
+          agent: { kind: 'opencode', sessionId: OC, transcriptPath: path.join(logs, `${OC}.jsonl`), status: 'idle', lastActivityAt: 0 }, revive: { command: `opencode -s ${OC}` },
+        }),
+        char('c_bo', path.join(work, 'bo'), {
+          tmux: win(3), agent: { kind: 'claude', sessionId: SID, transcriptPath: path.join(work, `.claude/projects/-bo/${SID}.jsonl`), status: 'idle', lastActivityAt: 0 },
+        }),
+      ];
+    },
+  });
+  const env = fakeEnv(path.join(b.work, 'opencode'));
+  const run = cliRunner(env);
+  b.deps.cli = async (cmd, args, o) => {
+    if (args[1] === 'export') b.world.log.push(`export ${o?.stdout === os.devNull ? 'checked' : 'written'}`);
+    return run(cmd, args, o);
+  };
+  const info = destinationInfo({
+    agentAdapters: [...destinationInfo().agentAdapters, { kind: 'opencode', version: '2.0.22', adapter: 1, home: path.join(b.work, 'trift/transcripts/opencode'), loggedIn: true, hooks: true }],
+  });
+  return { ...b, env, logs, info };
+}
+
 describe('source preflight', () => {
   it('reports what would stop the move without writing, fencing or signalling, and only reads who the gateway says owns it', async () => {
     const b = boot({
@@ -434,18 +477,14 @@ describe('source preflight', () => {
     expect(await codes({ agentAdapters: [claude, { kind: 'codex', adapter: 0 }] })).toEqual([]);
   });
 
-  it('blocks a fleet with an OpenCode session, which no adapter carries, rather than failing its preflight', async () => {
-    const b = boot();
-    const sessionId = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
-    b.store.update((d) => {
-      const c = d.characters.c_ada;
-      delete c.tmux;
-      c.agent = { kind: 'opencode', sessionId, transcriptPath: path.join(b.work, 'ada.log'), status: 'idle', lastActivityAt: 1 };
-      c.revive = { command: `opencode -s ${sessionId}` };
-    });
-    const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines() });
-    expect(r.blockers.map((x) => x.code)).toContain('incompatible_adapter');
-    expect(r.blockers).toContainEqual({ code: 'incompatible_adapter', message: 'a handover carries no opencode sessions' });
+  it('blocks an OpenCode session its CLI does not hold, at preflight and at freeze before any terminal rests', async () => {
+    const b = opencodeBoot();
+    const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines({ info: b.info }) });
+    expect(r.blockers).toEqual([{ code: 'transcript_missing', message: expect.stringContaining(`Session not found: ${OC}`), entity: { kind: 'character', id: 'c_ada' } }]);
+    expect(fs.existsSync(path.join(b.logs, 'exports'))).toBe(false);
+    b.gateway.begin();
+    expect(blockersOf(await refusal(b.handover.freeze(b.freezeParams({ destination: b.machines({ info: b.info }).destination })))).map((x) => x.code)).toEqual(['transcript_missing']);
+    expect(b.world.log.filter((l) => l.startsWith('kill'))).toEqual([]);
   });
 
   it('blocks a character kept on this machine', async () => {
@@ -684,6 +723,22 @@ describe('source freeze', () => {
       { transactionId: TX, kind: 'character', id: 'c_bo', phase: 'freeze', done: 1, total: 1 },
       { transactionId: TX, kind: 'character', id: 'c_cy', phase: 'freeze', done: 0, total: 0 },
     ]);
+  });
+
+  it('writes each OpenCode session out once its terminal rests, and carries that export with the log Svall keeps of it', async () => {
+    const b = opencodeBoot();
+    const session = { info: { id: OC, location: { directory: path.join(b.work, 'ada') } }, messages: [{ id: 'msg_0', text: 'remember PELICAN-42' }] };
+    hold(b.env, session);
+    b.gateway.begin();
+    const { manifest } = await b.handover.freeze(b.freezeParams({ destination: b.machines({ info: b.info }).destination }));
+    expect(b.world.log).toEqual(['settle', 'export checked', 'detach c_bo', 'kill @3', 'export written']);
+    const [s] = manifest.sessions;
+    expect(s).toMatchObject({ agent: 'opencode', sessionId: OC, adapter: 1, sourceHome: b.logs, destinationPath: path.join(b.work, `trift/transcripts/opencode/${OC}.jsonl`) });
+    const exported = path.join(b.logs, `exports/${OC}.json`);
+    expect(s.files.map((f) => f.path)).toEqual([`${OC}.jsonl`, `exports/${OC}.json`]);
+    expect(s.files[1]).toMatchObject({ size: fs.statSync(exported).size });
+    expect(JSON.parse(fs.readFileSync(exported, 'utf8'))).toEqual(session);
+    expect(manifest.snapshot.characters.c_ada.revive).toEqual({ command: `opencode -s ${OC}` });
   });
 
   it('answers a freeze asked again, at once or after a restart, from what it kept, without resting or asking again', async () => {
@@ -1228,6 +1283,7 @@ describe("this machine's agent CLIs", () => {
     expect(info.agentAdapters).toEqual([
       { kind: 'claude', version: '2.1.280', adapter: 1, home: '/cfg/claude', loggedIn: true, hooks: false },
       { kind: 'codex', adapter: 0, home: '/home/t/.codex', loggedIn: false, hooks: false },
+      { kind: 'opencode', adapter: 0, home: path.join(profileHome(PRIVATE, '/home/t'), 'transcripts/opencode'), loggedIn: false, hooks: false },
     ]);
   });
 });

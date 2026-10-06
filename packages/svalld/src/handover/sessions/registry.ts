@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -9,17 +9,19 @@ import {
 import { codexInstalled, hooksInstalled } from '../../agent-hooks.js';
 import { versionOk } from '../../agents.js';
 import { codexPaths } from '../../codex/install.js';
+import { opencodePaths } from '../../opencode/install.js';
 import { claudePaths, resolvePaths } from '../../paths.js';
 import { PRIVATE, profileHome } from '../../profile.js';
 import { writeDurable, type DurableStages } from '../durable.js';
 import { holds } from '../portable-path.js';
 import { claudeAdapter } from './claude.js';
 import { codexAdapter } from './codex.js';
+import { opencodeAdapter } from './opencode.js';
 import { versionOf } from './records.js';
-import { SessionError, type SessionAdapter } from './types.js';
+import { SessionError, type CliRun, type SessionAdapter } from './types.js';
 
 /** Every session adapter, each for one agent kind from its minimum release on. */
-export const SESSION_ADAPTERS: readonly SessionAdapter[] = [claudeAdapter, codexAdapter];
+export const SESSION_ADAPTERS: readonly SessionAdapter[] = [claudeAdapter, codexAdapter, opencodeAdapter];
 
 /** The agent kinds a handover carries sessions of; it refuses a fleet that runs any other. */
 export const HANDOVER_KINDS: readonly AgentKind[] = [...new Set(SESSION_ADAPTERS.map((a) => a.kind))];
@@ -65,6 +67,10 @@ export function installSession(session: TransferSession, staged: string, io: Ins
     ...session.files.map((f) => f.path).filter((p) => !adapter.carries(p, transcript, session.sessionId)),
   ];
   if (foreign.length) throw new SessionError('path_unsupported', `session ${session.sessionId} names ${foreign.join(', ')}, which is no file of that session`);
+  const exported = adapter.exportFile?.(session.sessionId);
+  if (exported !== undefined && !session.files.some((f) => f.path === exported)) {
+    throw new SessionError('transcript_missing', `session ${session.sessionId} came without ${exported}, which its CLI reads it back in from`);
+  }
 
   const writes: { file: string; data: Buffer }[] = [];
   const diverged: string[] = [];
@@ -74,6 +80,7 @@ export function installSession(session: TransferSession, staged: string, io: Ins
     if (!data || data.length !== f.size || crypto.createHash('sha256').update(data).digest('hex') !== f.sha256) {
       throw new Error(`the staged ${f.path} is not the file the manifest names`);
     }
+    if (f.path === exported) continue;
     const file = path.posix.join(destinationHome, f.path);
     const held = io.read(file);
     if (held?.equals(data)) continue;
@@ -134,11 +141,13 @@ const json = (text: string | undefined): Record<string, unknown> | undefined => 
 
 /**
  * Probes this machine's CLI for one agent. Claude Code names its own config folder, which is where its hooks must be;
- * the hooks are the ones setup points at the private fleet's scripts.
+ * the hooks are the ones setup points at the private fleet's scripts. OpenCode's sessions travel as the logs the
+ * private fleet keeps of them, and its hooks are Svall's plugin.
  */
 export async function probeAgent(kind: AgentKind, d: ProbeDeps): Promise<AgentProbe> {
-  const home = kind === 'claude' ? claudePaths(d.env, d.homedir).dir : codexPaths(d.env, d.homedir).dir;
   const hooksHome = profileHome(PRIVATE, d.homedir);
+  const home = kind === 'claude' ? claudePaths(d.env, d.homedir).dir
+    : kind === 'codex' ? codexPaths(d.env, d.homedir).dir : path.join(hooksHome, 'transcripts', 'opencode');
   let version: string | undefined;
   try { version = versionOf((await d.run(kind, ['--version'])).stdout); } catch { return { kind, home, loggedIn: false, hooks: false }; }
   if (kind === 'claude') {
@@ -146,6 +155,10 @@ export async function probeAgent(kind: AgentKind, d: ProbeDeps): Promise<AgentPr
     const dir = typeof status?.configDirectory === 'string' ? status.configDirectory : home;
     const settings = json(await d.read(path.join(dir, 'settings.json')));
     return { kind, version, home: dir, loggedIn: status?.loggedIn === true, hooks: !!settings && hooksInstalled(settings, hooksHome) };
+  }
+  if (kind === 'opencode') {
+    const login = await d.run('opencode', ['auth', 'list', '--standalone']);
+    return { kind, version, home, loggedIn: login.code === 0, hooks: (await d.read(opencodePaths(d.env, d.homedir).plugin)) !== undefined };
   }
   const login = await d.run('codex', ['login', 'status']);
   const hooks = json(await d.read(codexPaths(d.env, d.homedir).hooks));
@@ -159,6 +172,25 @@ const runAgent = (timeoutMs = 10_000): AgentRun => (cmd, args) => new Promise((r
     if (typeof code === 'string') reject(err);
     else resolve({ code: err ? (typeof code === 'number' ? code : -1) : 0, stdout: String(stdout) });
   });
+});
+
+/**
+ * Runs an agent CLI with this daemon's env, which places its files as the agents it starts find them, less the
+ * variables that would make Svall's own hooks take the run for a character's.
+ */
+export const cliRunner = (env: NodeJS.ProcessEnv = process.env, timeoutMs = 120_000): CliRun => (cmd, args, o = {}) => new Promise((resolve, reject) => {
+  const { SVALL_CHAR_ID: _id, SVALL_TERM: _term, ...rest } = env;
+  const out = o.stdout === undefined ? 'pipe' : fs.openSync(o.stdout, 'w', 0o600);
+  const child = spawn(cmd, args, { env: rest, stdio: ['ignore', out, 'pipe'], timeout: timeoutMs });
+  if (typeof out === 'number') fs.closeSync(out);
+  const read = (s: NodeJS.ReadableStream | null): (() => string) => {
+    const chunks: Buffer[] = [];
+    s?.on('data', (c: Buffer) => { if (chunks.length < 1024) chunks.push(c); });
+    return () => Buffer.concat(chunks).toString('utf8');
+  };
+  const [stdout, stderr] = [read(child.stdout), read(child.stderr)];
+  child.on('error', reject);
+  child.on('close', (code) => resolve({ code: code ?? -1, stdout: stdout(), stderr: stderr() }));
 });
 
 export const realProbeDeps = (): ProbeDeps => ({
