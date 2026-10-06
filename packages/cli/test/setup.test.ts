@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WebSocketServer } from 'ws';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
 import { PROTOCOL_VERSION } from '@svall/protocol';
+import { installOpencodePlugin, opencodePaths } from '@svall/svalld/opencode/install';
 import { daemonRuns, setupCommand } from '../src/commands/setup.js';
 
 describe('the probe after a Linux upgrade', () => {
@@ -38,6 +39,29 @@ describe('svall setup on Linux', () => {
       .parseAsync(['--check'], { from: 'user' });
     // with no ~/.claude yet, only a claude found makes setup write its hooks
     expect(JSON.parse(out.join('')).warnings).toContain('! hooks  missing or out of date: run svall setup');
+  });
+
+  it('reports an OpenCode plugin setup would write, where the unit\'s XDG_CONFIG_HOME points', async () => {
+    const home = makeHome();
+    vi.stubEnv('HOME', home);
+    vi.stubEnv('XDG_CONFIG_HOME', '');
+    fs.mkdirSync(path.join(home, '.local', 'bin'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.local', 'bin', 'opencode'), '#!/bin/sh\necho "2.0.22"\n', { mode: 0o755 });
+    const bin = makeHome();
+    const config = path.join(home, 'dotfiles');
+    fs.writeFileSync(path.join(bin, 'login-shell'), `#!/bin/sh\nexport XDG_CONFIG_HOME='${config}'\nexec /bin/sh -c "$2"\n`, { mode: 0o755 });
+    vi.stubEnv('SHELL', path.join(bin, 'login-shell'));
+    vi.stubEnv('PATH', `${bin}:/usr/bin:/bin`);
+    const check = async () => {
+      const out: string[] = [];
+      const write = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { out.push(String(chunk)); return true; });
+      await setupCommand(() => ({ name: 'private', home: path.join(home, '.svall'), managed: true }), () => true, 'linux').parseAsync(['--check'], { from: 'user' });
+      write.mockRestore();
+      return JSON.parse(out.join('')).warnings as string[];
+    };
+    expect(await check()).toContain('! opencode plugin  missing or out of date: run svall setup');
+    installOpencodePlugin(opencodePaths({ XDG_CONFIG_HOME: config }, home));
+    expect(await check()).not.toContain('! opencode plugin  missing or out of date: run svall setup');
   });
 
   it('writes the hooks where the unit\'s CLAUDE_CONFIG_DIR and CODEX_HOME point, which only the login shell names', async () => {

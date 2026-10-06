@@ -8,7 +8,7 @@ import type { AgentKind } from '@svall/protocol';
 import { CODEX_TRUST, claudeHooksCurrent, codexHooksCurrent, readCodexHooks, requireWritableHooks } from '@svall/svalld/agent-hooks';
 import { AGENTS, AGENT_KINDS, findAgents, mainAgent, onPath } from '@svall/svalld/agents';
 import { codexPaths } from '@svall/svalld/codex/install';
-import { opencodePaths } from '@svall/svalld/opencode/install';
+import { opencodePaths, opencodePluginCurrent } from '@svall/svalld/opencode/install';
 import { peekConfig, saveConfig } from '@svall/svalld/config';
 import { kickstart, plistCurrent, runningPid, takenOverBy } from '@svall/svalld/launchd';
 import { realRun } from '@svall/svalld/linux/service';
@@ -226,6 +226,11 @@ async function linuxSetup(t: Target, o: LinuxFlags, json: boolean): Promise<void
     const script = resolvePaths(t.home).hookScript;
     if ((settings && !claudeHooksCurrent(settings.settings, t.home)) || (codexHooks && !codexHooksCurrent(codexHooks.settings, script))) {
       notes.push({ name: 'hooks', status: 'warn', detail: `missing or out of date: run ${SHIM} setup` });
+    }
+    const opencode = opencodePaths(env, os.homedir());
+    const opencodeWanted = (peekConfig(resolvePaths(t.home)).integrations?.includes('opencode') ?? true) && (agents.includes('opencode') || fs.existsSync(opencode.dir));
+    if (opencodeWanted && !opencodePluginCurrent(readOrUndefined(opencode.plugin))) {
+      notes.push({ name: 'opencode plugin', status: 'warn', detail: `missing or out of date: run ${SHIM} setup` });
     }
     // shims that run another checkout or release, moved or not, are out of date
     const runtime = o.release ? releaseRuntime(path.join(DEFAULT_PREFIX, 'current')) : ownRuntime();
