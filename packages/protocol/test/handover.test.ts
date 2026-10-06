@@ -20,7 +20,11 @@ const MANIFEST = {
     { id: 'r_1', kind: 'repo', entry: 'dir', path: '/Users/linus/p', files: [FILE, { type: 'symlink', path: 'docs', target: 'README.md' }] },
     { id: 'r_2', kind: 'worktree', entry: 'dir', path: '/Users/linus/p/.claude/worktrees/w', foldedInto: 'r_1', files: [] },
   ],
-  sessions: [{ characterId: 'c_1', agent: 'claude', sessionId: 's1', sourcePath: '/Users/linus/.claude/projects/p/s1.jsonl', files: [{ ...FILE, path: 's1.jsonl' }] }],
+  sessions: [
+    { characterId: 'c_1', agent: 'claude', sessionId: 's1', sourcePath: '/Users/linus/.claude/projects/p/s1.jsonl', files: [{ ...FILE, path: 's1.jsonl' }] },
+    { characterId: 'c_2', agent: 'opencode', sessionId: 'ses_eeda388f0ffeOB6E6MBZswShKL', sourcePath: '/Users/linus/.svall/transcripts/opencode/ses_eeda388f0ffeOB6E6MBZswShKL.jsonl',
+      files: [{ ...FILE, path: 'ses_eeda388f0ffeOB6E6MBZswShKL.json' }] },
+  ],
 };
 
 describe('identities', () => {
