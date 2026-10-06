@@ -452,7 +452,7 @@ describe('buildInventory', () => {
     ].sort());
   });
 
-  it("blocks a root that holds or lies in OpenCode's data or config folder, the default ones and the one its home names, on either machine", () => {
+  it("blocks a root that holds or lies in OpenCode's data, config, state or cache folder, the default ones and the one its home names, on either machine", () => {
     const s = seed();
     const data = path.join(s.mac, '.local/share/opencode');
     const config = path.join(s.mac, '.config/opencode');
@@ -461,6 +461,8 @@ describe('buildInventory', () => {
     for (const f of ['opencode.db', 'opencode.db-wal', 'opencode.db-shm']) fs.writeFileSync(path.join(data, f), '');
     s.maps.destination.agentHomes = { opencode: named };
     s.state.characters.local = char('local', { cwd: path.join(s.mac, '.local/state') });
+    s.state.characters.cache = char('cache', { cwd: path.join(s.mac, '.cache/opencode/node_modules') });
+    s.state.characters.other = char('other', { cwd: path.join(s.mac, '.local/state/other') });
     s.state.characters.under = char('under', { cwd: path.join(s.mac, 'oc-data') });
     s.state.characters.snap = char('snap', { cwd: path.join(data, 'snapshot') });
     s.state.characters.config = char('config', { cwd: config });
@@ -469,11 +471,13 @@ describe('buildInventory', () => {
     expect(inv.blockers.filter((b) => b.code === 'path_unsupported').map((b) => b.message).sort()).toEqual([
       `${path.join(data, 'snapshot')} lies in ${data}, which stays on its machine`,
       `${config} stays on its machine`,
+      `${path.join(s.mac, '.local/state')} holds ${path.join(s.mac, '.local/state/opencode')}, which stays on its machine`,
+      `${path.join(s.mac, '.cache/opencode/node_modules')} lies in ${path.join(s.mac, '.cache/opencode')}, which stays on its machine`,
       `${path.join(data, 'opencode.db-wal')} lies in ${data}, which stays on its machine`,
       `${path.join(s.mac, 'oc-data')} holds ${named}, which stays on its machine`,
     ].sort());
     expect(inv.roots.filter((r) => r.path.includes('opencode') || r.path.endsWith('/oc-data'))).toEqual([]);
-    expect(inv.roots.some((r) => r.path === path.join(s.mac, '.local/state'))).toBe(true);
+    expect(inv.roots.some((r) => r.path === path.join(s.mac, '.local/state/other'))).toBe(true);
   });
 
   it('follows the fleet home to its real path before deciding a root is clear of it', () => {

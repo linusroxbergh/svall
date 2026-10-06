@@ -158,7 +158,7 @@ export type MachineLocal = { files: string[]; dirs: string[] };
 
 /**
  * What an account keeps for itself and a handover never carries or lands on: each agent's login and config, where the
- * environment puts them and where the default does, OpenCode's database, snapshots and config whole, its ssh keys,
+ * environment puts them and where the default does, OpenCode's database, snapshots, config, state and cache whole, its ssh keys,
  * and Svall's own install, units and shims.
  */
 export function machineLocal(m: Pick<MachineMap, 'home' | 'agentHomes'>): MachineLocal {
@@ -172,7 +172,10 @@ export function machineLocal(m: Pick<MachineMap, 'home' | 'agentHomes'>): Machin
     ],
     dirs: [
       at('.ssh'), at('.local', 'share', 'svall'), at('.config', 'svall'), at('.config', 'systemd', 'user'),
-      ...new Set([at('.local', 'share', 'opencode'), at('.config', 'opencode'), ...(m.agentHomes?.opencode ? [m.agentHomes.opencode] : [])]),
+      ...new Set([
+        at('.local', 'share', 'opencode'), at('.config', 'opencode'), at('.local', 'state', 'opencode'), at('.cache', 'opencode'),
+        ...(m.agentHomes?.opencode ? [m.agentHomes.opencode] : []),
+      ]),
     ],
   };
 }
