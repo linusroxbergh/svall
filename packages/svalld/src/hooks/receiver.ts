@@ -30,6 +30,8 @@ export type HookEvent = {
   message?: string;
   model?: string;
   prompt?: { id: string; text: string };
+  backgroundTasks?: number;
+  // the background agents and workflows among them, the only ones that can ask a question
   backgroundAgents?: number;
   // the Claude Code subagent the event came from
   agentId?: string;
@@ -82,11 +84,12 @@ const prompt = (h: Record<string, unknown>): { id: string; text: string } | unde
   return id && text ? { id, text } : undefined;
 };
 
-// a finished background agent or workflow re-invokes the session; a shell or monitor may never finish.
+// a finished background agent, workflow or shell re-invokes the session; a monitor watches on and rarely ends.
 // A list with none of them says none is left, which no list at all does not
 const AGENT_TASKS = new Set(['subagent', 'workflow']);
-const backgroundAgents = (v: unknown): number | undefined =>
-  Array.isArray(v) ? v.filter((t) => AGENT_TASKS.has((t as { type?: unknown } | null)?.type as string)).length : undefined;
+const WORKING_TASKS = new Set([...AGENT_TASKS, 'shell']);
+const count = (v: unknown, types: Set<string>): number | undefined =>
+  Array.isArray(v) ? v.filter((t) => types.has((t as { type?: unknown } | null)?.type as string)).length : undefined;
 
 export function normalizeStatus(raw: unknown): StatusEvent | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
@@ -132,7 +135,8 @@ export function normalizeHook(raw: unknown): HookEvent | undefined {
   const transcriptPath = transcript(h.transcript_path);
   const notificationType = str(h.notification_type);
   const message = str(h.message);
-  const agents = backgroundAgents(h.background_tasks);
+  const tasks = count(h.background_tasks, WORKING_TASKS);
+  const agents = count(h.background_tasks, AGENT_TASKS);
   if (id) ev.sessionId = id;
   if (transcriptPath) ev.transcriptPath = transcriptPath;
   if (notificationType) ev.notificationType = notificationType;
@@ -141,6 +145,7 @@ export function normalizeHook(raw: unknown): HookEvent | undefined {
   if (model) ev.model = model.slice(0, 100);
   const toolName = str(h.tool_name);
   if (toolName) ev.toolName = toolName.slice(0, 200);
+  if (tasks !== undefined) ev.backgroundTasks = tasks;
   if (agents !== undefined) ev.backgroundAgents = agents;
   if (ev.name === 'UserPromptSubmit') {
     const submitted = prompt(h);

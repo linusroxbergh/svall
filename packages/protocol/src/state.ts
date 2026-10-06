@@ -51,7 +51,7 @@ export const Agent = z.object({
   prompt: z.string().optional(),
   // names the question a blocked agent is on, so an answer meant for an earlier one is refused
   promptId: z.string().optional(),
-  // the turn ended with background agents still running; the agent works on until they report back
+  // the turn ended with background agents or shells still running; the agent works on until they report back
   background: z.literal(true).optional(),
   // Claude Code subagents with a permission request open; the notification that blocks never says whose it is
   asking: z.array(z.string()).optional(),
