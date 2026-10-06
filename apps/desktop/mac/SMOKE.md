@@ -10,7 +10,7 @@ this pass covers what only the app and real machines show. What each step should
 - The app built from the commit under test with `pnpm desktop:install`, and `svall doctor` showing its `rsync` check ok.
 - An Ubuntu 24.04 machine on your tailnet with a throwaway account whose home is your Mac home's path
   ([how](../../../docs/remote-machines/setup.md#the-same-home-path)), reachable with `ssh <account>@<machine>`.
-- Claude Code and Codex installed and logged in on both machines.
+- Claude Code, Codex and OpenCode (2.0.22 or newer) installed and logged in on both machines.
 - A test fleet, so your own stays untouched: `svall smoke` offers to create one named `smoke`. Set
   `"handover": { "enabled": true }` in `~/.svall-smoke/fleet.json`, then quit and reopen its window with
   `svall smoke`. Every `svall` command below takes `-p smoke`.
@@ -40,6 +40,7 @@ In the `smoke` fleet, make:
   change, an unstaged change, an untracked file and a stash;
 - a character running Claude Code in the main checkout, with one finished turn that names a code word;
 - a character running Codex in the worktree, with one finished turn;
+- a character running OpenCode in the main checkout, with one finished turn that names another code word;
 - a plain shell character with a second terminal open (Split, then Terminal in the right pane), and a browser tab on
   a `file:` URL;
 - a character with a file in its context.
@@ -55,7 +56,8 @@ Select the Claude character and open its side card.
 2. When it completes:
    - The sidebar's foot names `studio`. The same character is selected with its card open.
    - A terminal of the Claude character answers its trust prompt once ("Yes, I trust this folder"), then shows its
-     earlier turn. Ask it for the code word: it remembers it. The Codex character does the same.
+     earlier turn. Ask it for the code word: it remembers it. The Codex character does the same, and the OpenCode one
+     remembers its code word without asking about the folder.
    - The plain shell prints *Svall restarted this shell after a handover…*, in the same folder. `hostname` names
      the Linux machine. Its second terminal is there too.
    - In the worktree: `git status`, `git diff --cached`, `git stash list` and `git worktree list` match what you left.
