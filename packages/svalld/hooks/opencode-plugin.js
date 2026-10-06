@@ -198,7 +198,8 @@ async function setup(ctx) {
       case 'permission.asked':
         return ask(p.id, p.sessionID, { tool_name: p.action, message: clip(p.resources?.join(' ') || p.action, 500) });
       case 'form.created':
-        if (p.form?.metadata?.kind !== 'question') return;
+        // an MCP server's form belongs to no session
+        if (p.form?.metadata?.kind !== 'question' && p.form?.metadata?.kind !== 'websearch.provider') return;
         return ask(p.form.id, p.form.sessionID, { message: clip(p.form.fields?.[0]?.description ?? 'a question', 500) }, true);
       case 'permission.replied':
         if (asking.delete(p.requestID)) show();

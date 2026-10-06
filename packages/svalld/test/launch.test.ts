@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ContextItem } from '@svall/protocol';
-import { agentKindOf, isAgentCommand, promptText, withAddDirs, withPromptFile, withStandalone } from '../src/context/launch.js';
+import { agentKindOf, isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from '../src/context/launch.js';
 
 const item = (kind: ContextItem['kind'], ref: string): ContextItem => ({ kind, ref, label: '', source: 'manual' });
 
@@ -35,6 +35,7 @@ describe('withAddDirs for opencode', () => {
       .toBe(`OPENCODE_CONFIG_CONTENT='{"permissions":[${rule('/a/b/*')}]}' opencode`);
     expect(withAddDirs('opencode', [item('folder', '/c/*')])).toBe('opencode');
     expect(withPromptFile(withAddDirs('opencode', [item('folder', '/notes -s draft')]), '/h/p')).toContain(' opencode --prompt "$(cat');
+    expect(withPromptFile("opencode '/notes -s draft'", '/h/p')).toContain(` '/notes -s draft' --prompt "$(cat`);
   });
 });
 
@@ -45,10 +46,18 @@ describe('withStandalone', () => {
     expect(withStandalone(access)).toBe(`${access} --standalone`);
     expect(withStandalone('opencode --standalone')).toBe('opencode --standalone');
     expect(withStandalone('opencode --server http://localhost:4096')).toBe('opencode --server http://localhost:4096');
-    expect(withStandalone(`opencode -m 'opencode/big-pickle' --agent 'build' -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn`))
-      .toBe('opencode --standalone -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn');
     expect(withStandalone(withAddDirs('opencode', [item('folder', '/x --standalone')]))).toContain(' opencode --standalone');
+    expect(withStandalone("opencode '/w/a --server b'")).toBe("opencode --standalone '/w/a --server b'");
+    expect(withStandalone("opencode '/w/a -m b'")).toBe("opencode --standalone '/w/a -m b'");
     expect(withStandalone('claude')).toBe('claude');
+  });
+});
+
+describe('withoutV1Flags', () => {
+  it('sheds the -m and --agent a revive saved under OpenCode 1 carries', () => {
+    expect(withoutV1Flags(`opencode -m 'opencode/big-pickle' --agent 'build' -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn`))
+      .toBe('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn');
+    expect(withoutV1Flags("codex resume -c tui.resume_cwd=session -m 'gpt-5.5' s1")).toBe("codex resume -c tui.resume_cwd=session -m 'gpt-5.5' s1");
   });
 });
 

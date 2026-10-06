@@ -27,15 +27,22 @@ export function withAddDirs(command: string, items: ContextItem[]): string {
   return dirs.reduce((cmd, d) => `${cmd} --add-dir ${shq(d)}`, command);
 }
 
+// a command with its quoted words emptied, so a flag inside one is no flag
+const unquoted = (command: string): string => command.replace(/\\.|'[^']*'|"(?:[^"\\]|\\.)*"/g, "''");
+
 // OpenCode's TUI otherwise runs on the user's shared background service, whose plugins can't tell which character a
 // session belongs to; a private server inherits the character's environment. A TUI on a server the user names can't
-// have one, and a revive saved under OpenCode 1 may carry -m or --agent, which 2's TUI refuses
+// have one
 export function withStandalone(command: string): string {
   if (agentKindOf(command) !== 'opencode') return command;
   const access = ACCESS.exec(command)?.[0] ?? '';
-  const rest = command.slice(access.length).replace(/\s(?:-m|--model|--agent)(?:=\S+|\s+\S+)/g, '');
-  return access + (/\s--(standalone|server)(\s|=|$)/.test(rest) ? rest : rest.replace(/^\s*opencode/, '$& --standalone'));
+  const rest = command.slice(access.length);
+  return access + (/\s--(standalone|server)(\s|=|$)/.test(unquoted(rest)) ? rest : rest.replace(/^\s*opencode/, '$& --standalone'));
 }
+
+// a revive saved under OpenCode 1 may carry -m or --agent, which 2's TUI refuses; dormancy saved their values plain
+export const withoutV1Flags = (revive: string): string =>
+  agentKindOf(revive) === 'opencode' ? revive.replace(/\s(?:-m|--model|--agent)(?:=\S+|\s+\S+)/g, '') : revive;
 
 // OpenCode's TUI holds back the submit of a /command while its command menu is open, which a space after the name closes
 export const promptText = (command: string, prompt: string): string =>
@@ -46,5 +53,5 @@ export const promptText = (command: string, prompt: string): string =>
 export function withPromptFile(command: string, file: string): string {
   const read = `"$(cat ${shq(file)}; rm -f ${shq(file)})"`;
   if (agentKindOf(command) !== 'opencode') return `${command} -- ${read}`;
-  return /\s(-s|--session)(\s|=)/.test(command.replace(ACCESS, '')) ? command : `${command} --prompt ${read}`;
+  return /\s(-s|--session)(\s|=)/.test(unquoted(command.replace(ACCESS, ''))) ? command : `${command} --prompt ${read}`;
 }

@@ -10,7 +10,7 @@ import { condenseTurns, readTail, userPrompts } from './agent/transcript.js';
 import { characterKeyEnv } from './claude.js';
 import { saveConfig, scribeModel, type Config } from './config.js';
 import { renderBrief } from './context/brief.js';
-import { isAgentCommand, promptText, withAddDirs, withPromptFile, withStandalone } from './context/launch.js';
+import { isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from './context/launch.js';
 import { settleItems } from './context/items.js';
 import { docFolders, removeDocs } from './docs.js';
 import { endAll, endIdleAgents, processes, RESUME_NOTE, type Proc, type Sleep } from './dormancy.js';
@@ -513,7 +513,7 @@ export class Fleet extends EventEmitter<Events> {
     }
     const island = this.deps.store.state.islands[c.islandId];
     if (c.revive?.interrupted) prompt = prompt ? `${RESUME_NOTE}\n\n${prompt}` : RESUME_NOTE;
-    const command = this.launchLine(id, withAddDirs(c.revive?.command ?? '', [...(island?.context ?? []), ...c.context]), prompt);
+    const command = this.launchLine(id, withAddDirs(withoutV1Flags(c.revive?.command ?? ''), [...(island?.context ?? []), ...c.context]), prompt);
     this.deps.store.update((d) => {
       const cur = d.characters[id];
       cur.tmux = { windowId: w.windowId, paneId: w.paneId };

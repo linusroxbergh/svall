@@ -248,6 +248,18 @@ describe('the OpenCode plugin', () => {
     expect(names()).toEqual(['SessionStart', 'PermissionRequest', 'PreToolUse']);
   });
 
+  it('blocks the character on the web search picker until it is answered, and not on an MCP server\'s form', async () => {
+    const { emit } = await load();
+    await emit('session.created', { sessionID: SID });
+    await emit('form.created', { form: { id: 'frm_m', sessionID: 'global', title: 'Login', metadata: { kind: 'mcp-elicitation' }, fields: [] } });
+    await emit('form.created', { form: { id: 'frm_1', sessionID: SID, title: 'Web Search', metadata: { kind: 'websearch.provider' }, fields: [{ key: 'choice', type: 'string', description: 'Allow OpenCode to search the web?' }] } });
+    await shown();
+    await emit('form.replied', { id: 'frm_1', sessionID: SID, answer: { choice: 'allow' } });
+    await waitFor(() => names().length >= 3);
+    expect(names()).toEqual(['SessionStart', 'PermissionRequest', 'PreToolUse']);
+    expect((got[1] as { hook: { message: string } }).hook.message).toBe('Allow OpenCode to search the web?');
+  });
+
   it("lets a subagent's questions block the character, under the top-level session, and nothing else of it", async () => {
     const { hooks: h, emit } = await load(fakeContext({ [CHILD]: SID }));
     await emit('session.created', { sessionID: SID });

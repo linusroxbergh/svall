@@ -119,11 +119,12 @@ describe('runsInBackground', () => {
     expect(runsInBackground(10, [...agentTree, proc(40, 1, 40)])).toBe(false);
   });
 
-  it("counts OpenCode's private server and its MCP servers, each in a group of its own, as the agent, and a shell it runs as background", () => {
-    const tree = [proc(10, 1, 10, 'opencode --standalone'), proc(11, 10, 11, '/u/.opencode/bin/opencode serve --stdio --port 0'), proc(12, 11, 12, 'npx -y mcp-server'), proc(14, 12, 12, 'node mcp.js')];
+  it("counts OpenCode's private server, in a group of its own, as the agent, and a shell or MCP server it runs as background", () => {
+    const tree = [proc(10, 1, 10, 'opencode --standalone'), proc(11, 10, 11, '/u/.opencode/bin/opencode serve --stdio --port 0')];
     expect(runsInBackground(10, tree)).toBe(false);
-    expect(runsInBackground(10, [...tree, proc(13, 11, 13, '/bin/zsh -c sleep 60')])).toBe(true);
-    expect(runsInBackground(10, [...tree, proc(15, 14, 15, 'sleep 60')])).toBe(true);
+    // the shell has exec'd its lone command
+    expect(runsInBackground(10, [...tree, proc(13, 11, 13, 'npm run dev')])).toBe(true);
+    expect(runsInBackground(10, [...tree, proc(12, 11, 12, 'npx -y mcp-server')])).toBe(true);
     expect(runsInBackground(10, [proc(10, 1, 10), proc(11, 10, 11, 'serve --stdio')])).toBe(true);
   });
 });
