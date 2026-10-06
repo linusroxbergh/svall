@@ -44,6 +44,7 @@ const DI_LAUNCH = 'claude --effort high';
 const DI_RESUME = `claude --effort 'high' --resume ${SID}`;
 // cy's OpenCode session, dormant since before the handover
 const CY_SESSION = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
+const CY_MESSAGES = [{ id: 'msg_0', text: 'remember PELICAN-42' }, { id: 'msg_1', text: 'PELICAN-42' }];
 
 /** What a process that dies at a failpoint throws: nothing after it runs. */
 export class Crash extends Error {
@@ -307,7 +308,9 @@ export class World {
     const cyLog = path.join(w.opencodeLogs, `${CY_SESSION}.jsonl`);
     fs.mkdirSync(w.opencodeLogs, { recursive: true });
     fs.writeFileSync(cyLog, `${JSON.stringify({ kind: 'user', text: 'remember PELICAN-42' })}\n`);
-    hold(w.mac.opencode, { info: { id: CY_SESSION, location: { directory: w.cy } }, messages: [{ id: 'msg_0', text: 'remember PELICAN-42' }] });
+    hold(w.mac.opencode, { info: { id: CY_SESSION, location: { directory: w.cy } }, messages: CY_MESSAGES });
+    // trift keeps the copy an earlier handover left there, which the session has gone on past since
+    hold(w.trift.opencode, { info: { id: CY_SESSION, location: { directory: w.cy } }, messages: CY_MESSAGES.slice(0, 1) });
     fs.mkdirSync(w.ctlDir, { recursive: true });
     for (const m of [w.mac, w.trift]) {
       fs.mkdirSync(m.paths.home, { recursive: true });
@@ -802,7 +805,7 @@ export function settledOn(w: World): 'source' | 'destination' {
   expect([DI_LAUNCH, DI_RESUME]).toContain([...owner.windows.values()].find((x) => x.name === 'c_di')?.job?.join(' | '));
   expect(other.windows.size).toBe(0);
   // cy's OpenCode session is in the OpenCode of the machine running the fleet, in cy's folder
-  expect(held(owner.opencode)[CY_SESSION]?.info.location.directory).toBe(w.cy);
+  expect(held(owner.opencode)[CY_SESSION]).toEqual({ info: { id: CY_SESSION, location: { directory: w.cy } }, messages: CY_MESSAGES });
   // the folder that holds each transaction's own may stay, empty, and a journal a controller could not read stays for a person to look at
   for (const dir of w.dirs) expect(entries(dir).filter((e) => e !== 'handover' && !e.startsWith('handover.json.broken-')), dir).toEqual([]);
   expect(entries(w.base).filter((e) => [...w.transactions].some((tx) => e.includes(tx)))).toEqual([]);
