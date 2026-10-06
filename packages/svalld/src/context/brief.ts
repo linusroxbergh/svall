@@ -88,7 +88,7 @@ const WORKTREE = '- In a git repo, work in a worktree no other agent works in, a
 
 // markdown the session reads at start; without doc folders it is empty when neither side has anything to say
 export function renderBrief(island: Island, character?: Character, folders: DocFolder[] = [], profile?: AgentProfile, worktrees = false): string {
-  const crew = !!character && island.kind !== 'home';
+  const crew = character && island.kind !== 'home' ? character : undefined;
   // the profile stands right under the heading: no free text comes before it to pass for its start, and a brief Claude cuts short keeps it
   const head = [
     ...(character && profile ? profileLines(profile) : []),
@@ -96,7 +96,7 @@ export function renderBrief(island: Island, character?: Character, folders: DocF
     island.instructions && `Island instructions: ${ellipsis(island.instructions, INSTRUCTIONS_MAX)}`,
     character && `Character: ${headline(character.name, character.note)}`,
     character?.instructions && `Character instructions: ${ellipsis(character.instructions, INSTRUCTIONS_MAX)}`,
-    ...(crew ? crewLines(island, character!) : []),
+    ...(crew ? crewLines(island, crew) : []),
     crew && worktrees && WORKTREE,
   ].filter((l): l is string => Boolean(l));
   const active = character?.browser?.active;

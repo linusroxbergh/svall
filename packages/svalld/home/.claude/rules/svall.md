@@ -72,9 +72,9 @@ character's agent gets at SessionStart; `svall char show <name>` prints it.
   answers to is refused.
 - Never guess a cell. Omit `--cell` and the daemon places the character; a
   guessed cell fails or swaps somebody else off the island.
-- A character started with `--run` in a git repository moves into a worktree of
-  its own unless the user turned that off in Settings, so `--cwd` is the
-  repository or a worktree no agent works in, never a checkout another agent works in.
+- A character started with `--run` in a git repository is told to work in a
+  worktree no other agent works in, unless the user turned that off in Settings.
+  `--cwd` is the repository or such a worktree, never a checkout another agent works in.
 - Starting a character to continue, review or take over work ends your part. Do
   not wait on or watch it unless the user asked you to report back.
 - Names are at most 24 characters, lower case: PR or ticket id, area, task, one
