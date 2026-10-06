@@ -12,6 +12,7 @@ import { ReplicaStore } from '../src/handover/replicas.js';
 import { agentHomesEnv, svalldUnit, gatewayUnit, probeOrRollback, restartUnits, setupLinux, setupLinuxRelease, unitDirOf } from '../src/linux/setup.js';
 import { SystemdError, daemonReload, enableUnit, lingerState, unitStatus, type Run } from '../src/linux/service.js';
 import { machineId } from '../src/machine.js';
+import { opencodePaths } from '../src/opencode/install.js';
 import { resolvePaths } from '../src/paths.js';
 import { checkoutRuntime, releaseRuntime } from '../src/runtime.js';
 import { cleanHomes, makeHome } from './helpers.js';
@@ -144,10 +145,11 @@ describe('the agent homes a daemon is given', () => {
     return { stdout: out, stderr: 'bash: no job control in this shell\n' };
   };
 
+  const unset = () => { for (const k of ['CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME']) vi.stubEnv(k, undefined); };
+
   it("reads CLAUDE_CONFIG_DIR and CODEX_HOME from the account's login shell, which a setup over ssh does not run in", async () => {
     vi.stubEnv('SHELL', '/bin/bash');
-    vi.stubEnv('CLAUDE_CONFIG_DIR', undefined);
-    vi.stubEnv('CODEX_HOME', undefined);
+    unset();
     expect(await agentHomesEnv(shell('Welcome\nsvall-agent-homes\n/home/linus/.config/claude\n/home/linus/codex home\n')))
       .toEqual({ CLAUDE_CONFIG_DIR: '/home/linus/.config/claude', CODEX_HOME: '/home/linus/codex home' });
     expect(await agentHomesEnv(shell('svall-agent-homes\n\n\n'))).toEqual({});
@@ -158,6 +160,22 @@ describe('the agent homes a daemon is given', () => {
       .toEqual({ CLAUDE_CONFIG_DIR: '/home/linus/.config/claude', CODEX_HOME: '/srv/codex' });
   });
 
+  it("reads where OpenCode keeps its config and data the same way, and puts Svall's plugin in that config", async () => {
+    vi.stubEnv('SHELL', '/bin/bash');
+    unset();
+    const said = 'svall-agent-homes\n\n\n/home/linus/xdg/config\n/home/linus/xdg/data\n';
+    expect(await agentHomesEnv(shell(said))).toEqual({ XDG_CONFIG_HOME: '/home/linus/xdg/config', XDG_DATA_HOME: '/home/linus/xdg/data' });
+    vi.stubEnv('XDG_DATA_HOME', '/srv/data');
+    expect(await agentHomesEnv(shell(said))).toEqual({ XDG_CONFIG_HOME: '/home/linus/xdg/config', XDG_DATA_HOME: '/srv/data' });
+    unset();
+    const f = installed();
+    const config = path.join(f.root, 'xdg config');
+    await setupLinux({ ...f.o, agents: ['opencode'], run: shell(`svall-agent-homes\n\n\n${config}\n\n`) });
+    expect(fs.readFileSync(path.join(f.unitDir, 'svall-svalld@private.service'), 'utf8')).toContain(`Environment="XDG_CONFIG_HOME=${config}"\n`);
+    expect(fs.existsSync(opencodePaths({ XDG_CONFIG_HOME: config }).plugin)).toBe(true);
+    expect(fs.existsSync(opencodePaths({}, f.root).plugin)).toBe(false);
+  });
+
   it("puts them in the fleet daemon's unit, as the Mac's plist carries them", async () => {
     const unit = svalldUnit({
       runtime: releaseRuntime('/r'), homedir: '/home/linus', prefix: '/p', fleet: 'private', home: '/home/linus/.svall',
@@ -165,8 +183,7 @@ describe('the agent homes a daemon is given', () => {
     });
     expect(unit.text).toContain('Environment=LANG=C.UTF-8\nEnvironment="CLAUDE_CONFIG_DIR=/home/linus/.config/claude"\nEnvironment="CODEX_HOME=/home/linus/codex %%home"\nRestart=always\n');
     vi.stubEnv('SHELL', '/bin/bash');
-    vi.stubEnv('CLAUDE_CONFIG_DIR', undefined);
-    vi.stubEnv('CODEX_HOME', undefined);
+    unset();
     const f = installed();
     await setupLinux({ ...f.o, run: shell('svall-agent-homes\n/home/linus/.config/claude\n\n') });
     expect(fs.readFileSync(path.join(f.unitDir, 'svall-svalld@private.service'), 'utf8')).toContain('Environment="CLAUDE_CONFIG_DIR=/home/linus/.config/claude"\n');
@@ -230,6 +247,26 @@ describe('setupLinux', () => {
     await setupLinux({ ...f.o, agents: ['codex'] });
     expect(fs.existsSync(f.o.settingsPath)).toBe(false);
     expect(JSON.parse(fs.readFileSync(f.o.codex.hooks, 'utf8')).hooks.SessionStart).toBeDefined();
+  });
+
+  it('installs the OpenCode plugin where OpenCode is found or keeps its folder, and takes it back once the fleet turns OpenCode off', async () => {
+    const f = installed();
+    const { plugin, dir } = opencodePaths({}, f.root);
+    expect((await setupLinux({ ...f.o, agents: ['opencode'] })).done).toContain(`opencode plugin -> ${plugin}`);
+    expect(fs.readFileSync(plugin, 'utf8')).toContain('export default');
+
+    const node = path.join(f.home, 'node.json');
+    fs.writeFileSync(node, JSON.stringify({ ...JSON.parse(fs.readFileSync(node, 'utf8')), agentsOff: ['opencode'] }));
+    expect((await setupLinux({ ...f.o, agents: ['opencode'] })).done).toContain(`removed ${plugin}`);
+    expect(fs.existsSync(plugin)).toBe(false);
+
+    const bare = installed();
+    await setupLinux({ ...bare.o, agents: ['claude'] });
+    expect(fs.existsSync(opencodePaths({}, bare.root).dir)).toBe(false);
+    fs.mkdirSync(opencodePaths({}, bare.root).dir, { recursive: true });
+    await setupLinux({ ...bare.o, agents: ['claude'] });
+    expect(fs.existsSync(opencodePaths({}, bare.root).plugin)).toBe(true);
+    expect(dir).toBe(path.join(f.root, '.config', 'opencode'));
   });
 
   it('rewrites nothing on a repeat run', async () => {

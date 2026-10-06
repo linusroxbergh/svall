@@ -3,7 +3,9 @@ import path from 'node:path';
 import type { AgentKind } from '@svall/protocol';
 import { readCodexHooks, requireWritableHooks } from '../agent-hooks.js';
 import { codexPaths, type CodexPaths } from '../codex/install.js';
-import { claudePaths } from '../paths.js';
+import { peekConfig } from '../config.js';
+import { installOpencodePlugin, opencodePaths, removeOpencodePlugin } from '../opencode/install.js';
+import { claudePaths, resolvePaths } from '../paths.js';
 import { systemdDir } from '../release.js';
 import { writeAtomic } from '../jsonfile.js';
 import type { Runtime } from '../runtime.js';
@@ -51,21 +53,26 @@ export const unitEnv = (key: string, value: string): string => `Environment="${k
 const MARK = 'svall-agent-homes';
 
 /**
- * Where this account keeps Claude's and Codex's files, when it says: this process's CLAUDE_CONFIG_DIR and CODEX_HOME,
- * else its login shell's, since a setup over ssh runs in a shell that read no profile. systemd gives a unit neither.
+ * Where this account keeps Claude's, Codex's and OpenCode's files, when it says: this process's CLAUDE_CONFIG_DIR,
+ * CODEX_HOME, XDG_CONFIG_HOME and XDG_DATA_HOME, else its login shell's, since a setup over ssh runs in a shell that read
+ * no profile. systemd gives a unit none of them.
  */
 export async function agentHomesEnv(run: Run): Promise<Record<string, string>> {
   let said: string[] = [];
   try {
-    const out = (await run(process.env.SHELL || '/bin/sh', ['-lic', `printf '\\n%s\\n%s\\n%s\\n' ${MARK} "$CLAUDE_CONFIG_DIR" "$CODEX_HOME"`])).stdout.split('\n');
+    const out = (await run(process.env.SHELL || '/bin/sh', ['-lic', `printf '\\n%s\\n%s\\n%s\\n%s\\n%s\\n' ${MARK} "$CLAUDE_CONFIG_DIR" "$CODEX_HOME" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME"`])).stdout.split('\n');
     const at = out.lastIndexOf(MARK);
-    if (at >= 0) said = out.slice(at + 1, at + 3);
-  } catch { /* a shell that cannot be asked sets neither */ }
+    if (at >= 0) said = out.slice(at + 1, at + 5);
+  } catch { /* a shell that cannot be asked sets none */ }
   const claude = process.env.CLAUDE_CONFIG_DIR || said[0];
   const codex = process.env.CODEX_HOME || said[1];
+  const config = process.env.XDG_CONFIG_HOME || said[2];
+  const data = process.env.XDG_DATA_HOME || said[3];
   return {
     ...(claude && { CLAUDE_CONFIG_DIR: claudePaths({ CLAUDE_CONFIG_DIR: claude }).dir }),
     ...(codex && { CODEX_HOME: codexPaths({ CODEX_HOME: codex }).dir }),
+    ...(config && { XDG_CONFIG_HOME: path.resolve(config) }),
+    ...(data && { XDG_DATA_HOME: path.resolve(data) }),
   };
 }
 
@@ -169,8 +176,13 @@ export async function setupLinux(o: LinuxSetup): Promise<LinuxSetupResult> {
   const codexHooks = readCodexHooks(o.codex, codexWanted);
   requireWritableHooks(o.home, settings, codexHooks);
   const env = o.env ?? await agentHomesEnv(o.run);
+  // the plugin goes where the daemon's own OpenCode paths say, as the daemon rewrites it at every start
+  const opencode = opencodePaths(env, o.homedir);
+  const opencodeWanted = (peekConfig(resolvePaths(o.home)).integrations?.includes('opencode') ?? true)
+    && (!!o.agents?.includes('opencode') || fs.existsSync(opencode.dir));
   const done = setupFleetHome(o);
   done.push(...setupUser({ ...o, settings, codexHooks, replaceSettings: o.replaceSettings === true }));
+  done.push(...(opencodeWanted ? installOpencodePlugin(opencode) : removeOpencodePlugin(opencode)));
   const units = [svalldUnitName(o.fleet), GATEWAY_UNIT];
   const unitText = (u: string) => readOrUndefined(path.join(o.unitDir, u));
   const before = units.map(unitText);
