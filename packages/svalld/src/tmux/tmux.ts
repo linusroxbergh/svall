@@ -138,13 +138,13 @@ export class Tmux {
   }
 
   // the bytes go in on stdin: as arguments tmux caps them at about 16 KB and reads a trailing ; as syntax
-  private async paste(paneId: string, data: Buffer | string): Promise<void> {
+  private async paste(paneId: string, data: Buffer | string, bracketed = false): Promise<void> {
     // an answer tmux failed to give is asked for again on the next paste
     this.rawPaste ??= this.run('list-commands', 'paste-buffer').then(rawPasteArgs)
       .catch((e: unknown) => { this.rawPaste = undefined; throw e; });
     const raw = await this.rawPaste;
     const name = `svall-${crypto.randomUUID()}`;
-    const p = exec(this.binary, ['-S', this.socket, '-f', this.conf, 'load-buffer', '-b', name, '-', ';', 'paste-buffer', '-d', '-r', ...raw, '-b', name, '-t', paneId], CALL);
+    const p = exec(this.binary, ['-S', this.socket, '-f', this.conf, 'load-buffer', '-b', name, '-', ';', 'paste-buffer', '-d', '-r', ...raw, ...(bracketed ? ['-p'] : []), '-b', name, '-t', paneId], CALL);
     // a tmux that fails before reading closes the pipe; its exit status carries the error
     p.child.stdin!.on('error', () => {}).end(data);
     // a pane gone before the paste leaves the buffer behind
@@ -157,7 +157,9 @@ export class Tmux {
   }
 
   async sendLine(paneId: string, text: string, enter: boolean): Promise<void> {
-    if (text) await this.paste(paneId, text);
+    // bracketed, an app that asked for it takes the text as one paste: a busy Claude Code cuts raw text into
+    // pieces, and an Enter landing among them submits only some
+    if (text) await this.paste(paneId, text, true);
     // Claude Code's composer truncates a submit that arrives in the same breath as the text.
     if (text && enter) await new Promise((r) => setTimeout(r, 100));
     // the same CR a key press sends, but pasted it reaches the app while the pane is in copy mode too
