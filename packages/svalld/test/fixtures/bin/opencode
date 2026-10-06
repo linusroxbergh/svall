@@ -39,7 +39,7 @@ if (args[0] !== 'serve') {
       hook: hook('session'),
       get: async () => ({ id: sessionID }),
       prompt: async ({ text }) => { queue(text); return {}; },
-      command: async ({ command, arguments: a }) => { queue(`/${command} ${a}`); return {}; },
+      command: async ({ name, text }) => { queue(`/${name} ${text}`); return {}; },
     },
     tool: { hook: hook('tool') },
     command: { list: async () => ({ data: [] }) },

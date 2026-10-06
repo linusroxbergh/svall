@@ -21,18 +21,20 @@ export function withAddDirs(command: string, items: ContextItem[]): string {
     // OpenCode reads * and ? in a rule as wildcards, with no way to escape one, so such a folder is left to ask
     const rules = dirs.filter((d) => !/[*?]/.test(d)).map((d) => ({ action: 'external_directory', resource: path.join(path.resolve(d), '*'), effect: 'allow' }));
     if (!rules.length) return command;
-    // this config loads last, so its rules follow the user's own and win
+    // this config loads last, so its rules follow the user's top-level ones and win; an agent's own rules still come after
     return `OPENCODE_CONFIG_CONTENT=${shq(JSON.stringify({ permissions: rules }))} ${command}`;
   }
   return dirs.reduce((cmd, d) => `${cmd} --add-dir ${shq(d)}`, command);
 }
 
 // OpenCode's TUI otherwise runs on the user's shared background service, whose plugins can't tell which character a
-// session belongs to; a private server inherits the character's environment
+// session belongs to; a private server inherits the character's environment. A TUI on a server the user names can't
+// have one, and a revive saved under OpenCode 1 may carry -m or --agent, which 2's TUI refuses
 export function withStandalone(command: string): string {
-  if (agentKindOf(command) !== 'opencode' || /\s--standalone(\s|$)/.test(command)) return command;
+  if (agentKindOf(command) !== 'opencode') return command;
   const access = ACCESS.exec(command)?.[0] ?? '';
-  return access + command.slice(access.length).replace(/^\s*opencode/, '$& --standalone');
+  const rest = command.slice(access.length).replace(/\s(?:-m|--model|--agent)(?:=\S+|\s+\S+)/g, '');
+  return access + (/\s--(standalone|server)(\s|=|$)/.test(rest) ? rest : rest.replace(/^\s*opencode/, '$& --standalone'));
 }
 
 // OpenCode's TUI holds back the submit of a /command while its command menu is open, which a space after the name closes

@@ -82,11 +82,14 @@ beforeEach(async () => {
 afterEach(async () => { await receiver.close(); vi.unstubAllEnvs(); cleanHomes(); });
 
 describe('the OpenCode plugin', () => {
-  it('exports a default definition with an id and a setup, as OpenCode 2 requires of a plugin file', async () => {
+  it('exports a default definition with an id and a setup, as OpenCode 2 requires of a plugin file, each build its own id', async () => {
     const mod = await import(PLUGIN);
     expect(Object.keys(mod)).toEqual(['default']);
-    expect(mod.default.id).toBe('svall');
+    expect(mod.default.id).toBe('svall-dev');
     expect(typeof mod.default.setup).toBe('function');
+    const release = path.join(home, 'svall.js');
+    fs.copyFileSync(PLUGIN, release);
+    expect((await import(release)).default.id).toBe('svall');
   });
 
   it('does nothing outside a character, for the other build\'s fleet, or in the shared background service', async () => {
@@ -122,6 +125,18 @@ describe('the OpenCode plugin', () => {
     expect(got[4]).toEqual({ status: { charId: 'c_1', sessionId: SID, contextPct: 10, model: 'big-pickle' } });
     expect(condenseTurnsOpencode(fs.readFileSync(path.join(home, 'transcripts/opencode', `${SID}.jsonl`), 'utf8'), 10))
       .toBe('USER: fix the flaky test\nAGENT: [tool: shell] fixed');
+  });
+
+  it("reads the models again for one missing from the list, as one from a provider signed in to since", async () => {
+    const f = fakeContext();
+    f.ctx.model.list.mockResolvedValueOnce({ data: [] });
+    const { emit } = await load(f);
+    await emit('session.created', { sessionID: SID, model: MODEL });
+    const step = () => emit('session.step.ended', { sessionID: SID, tokens: { input: 19_000, output: 1000, reasoning: 0, cache: { read: 0, write: 0 } } });
+    await step();
+    await step();
+    await waitFor(() => names().includes('status'));
+    expect(f.ctx.model.list).toHaveBeenCalledTimes(2);
   });
 
   it('starts a resumed session from its -s, brief in hand before the first request, and submits the prompt left for it', async () => {
@@ -162,7 +177,7 @@ describe('the OpenCode plugin', () => {
     try {
       const { ctx } = await load();
       await waitFor(() => ctx.session.command.mock.calls.length === 1);
-      expect(ctx.session.command).toHaveBeenCalledWith({ sessionID: SID, command: 'svall-status', arguments: 'now' });
+      expect(ctx.session.command).toHaveBeenCalledWith({ sessionID: SID, name: 'svall-status', text: 'now' });
       expect(ctx.session.prompt).not.toHaveBeenCalled();
     } finally {
       process.argv = argv;
@@ -200,7 +215,7 @@ describe('the OpenCode plugin', () => {
     const { hooks: h, emit } = await load(fakeContext({ [CHILD]: SID, [OTHER]: SID }));
     await emit('session.created', { sessionID: SID });
     // the TUI shows permissions before questions, an older session's first
-    await emit('question.asked', { id: 'que_1', sessionID: OTHER, questions: [{ question: 'which file?' }] });
+    await emit('form.created', { form: { id: 'frm_1', sessionID: OTHER, title: 'Questions', metadata: { kind: 'question' }, fields: [{ key: 'q0', type: 'string', title: 'File', description: 'which file?' }] } });
     await emit('permission.asked', { id: 'per_2', sessionID: OTHER, action: 'shell', resources: ['ls'] });
     await emit('permission.asked', { id: 'per_1', sessionID: CHILD, action: 'external_directory', resources: ['/etc/*'] });
     await shown();
@@ -210,7 +225,7 @@ describe('the OpenCode plugin', () => {
     await shown();
     await emit('permission.replied', { sessionID: OTHER, requestID: 'per_2', reply: 'once' });
     await shown();
-    await emit('question.rejected', { sessionID: OTHER, requestID: 'que_1' });
+    await emit('form.cancelled', { id: 'frm_1', sessionID: OTHER });
     await waitFor(() => names().length >= 5);
     expect(names()).toEqual(['SessionStart', 'PermissionRequest', 'PermissionRequest', 'PermissionRequest', 'PreToolUse']);
     expect(got.slice(1, 4).map((e) => (e as { hook: { sessionId: string; message: string } }).hook))

@@ -139,7 +139,7 @@ async function setup(ctx) {
   const wake = async (id, text) => {
     const [, command, args = ''] = /^\/(\S+)\s*([\s\S]*)$/.exec(text.trim()) ?? [];
     const known = command && (await ctx.command.list().catch(() => undefined))?.data?.some((c) => c.name === command);
-    const sent = known ? ctx.session.command({ sessionID: id, command, arguments: args }) : ctx.session.prompt({ sessionID: id, text });
+    const sent = known ? ctx.session.command({ sessionID: id, name: command, text: args }) : ctx.session.prompt({ sessionID: id, text });
     await sent.catch(() => {});
   };
 
@@ -153,11 +153,14 @@ async function setup(ctx) {
     if (text.trim()) void wake(resumed, text);
   });
 
-  // the TUI's own reading: the last step's tokens over the model's context window
+  // the TUI's own reading: the last step's tokens over the model's context window; a model the list lacks, as one from
+  // a provider signed in to since, has the list read again
   let limits;
   const limitOf = async (m) => {
     limits ??= ctx.model.list().then((r) => new Map((r?.data ?? []).map((x) => [`${x.providerID}/${x.id}`, x.limit?.context])), () => undefined);
-    return (await limits)?.get(`${m.providerID}/${m.id}`);
+    const max = (await limits)?.get(`${m.providerID}/${m.id}`);
+    if (!max) limits = undefined;
+    return max;
   };
   const context = async (id, t) => {
     const model = models.get(id);
@@ -194,12 +197,15 @@ async function setup(ctx) {
         return;
       case 'permission.asked':
         return ask(p.id, p.sessionID, { tool_name: p.action, message: clip(p.resources?.join(' ') || p.action, 500) });
-      case 'question.asked':
-        return ask(p.id, p.sessionID, { message: clip(p.questions?.[0]?.question ?? 'a question', 500) }, true);
+      case 'form.created':
+        if (p.form?.metadata?.kind !== 'question') return;
+        return ask(p.form.id, p.form.sessionID, { message: clip(p.form.fields?.[0]?.description ?? 'a question', 500) }, true);
       case 'permission.replied':
-      case 'question.replied':
-      case 'question.rejected':
         if (asking.delete(p.requestID)) show();
+        return;
+      case 'form.replied':
+      case 'form.cancelled':
+        if (asking.delete(p.id)) show();
         return;
       case 'session.execution.succeeded':
         return end(p.sessionID, 'Stop');
@@ -251,4 +257,5 @@ async function setup(ctx) {
   return () => { quit.abort(); clearTimeout(showing); conn?.end(); };
 }
 
-export default { id: 'svall', setup };
+// OpenCode keeps only the first of two plugins with one id, so each build has its own
+export default { id: VARIANT === 'release' ? 'svall' : 'svall-dev', setup };

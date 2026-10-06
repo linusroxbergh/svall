@@ -44,6 +44,10 @@ describe('withStandalone', () => {
     const access = withAddDirs('opencode', [item('folder', '/a')]);
     expect(withStandalone(access)).toBe(`${access} --standalone`);
     expect(withStandalone('opencode --standalone')).toBe('opencode --standalone');
+    expect(withStandalone('opencode --server http://localhost:4096')).toBe('opencode --server http://localhost:4096');
+    expect(withStandalone(`opencode -m 'opencode/big-pickle' --agent 'build' -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn`))
+      .toBe('opencode --standalone -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn');
+    expect(withStandalone(withAddDirs('opencode', [item('folder', '/x --standalone')]))).toContain(' opencode --standalone');
     expect(withStandalone('claude')).toBe('claude');
   });
 });

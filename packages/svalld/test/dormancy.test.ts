@@ -100,6 +100,7 @@ describe('startFlags', () => {
 
   it("keeps an opencode agent's --auto, and drops its session, prompt and private server, which svalld adds back", () => {
     expect(startFlags('opencode --standalone --auto --prompt fix it', 'opencode')).toEqual(['--auto']);
+    expect(startFlags('opencode --standalone --yolo', 'opencode')).toEqual(['--yolo']);
     expect(startFlags(`opencode.exe --standalone -s ${OSID}`, 'opencode')).toEqual([]);
     expect(startFlags('opencode --server http://localhost:4096', 'opencode')).toBeUndefined();
     // svalld puts the prompt last, where a bullet or a flag in its text is no option
@@ -118,10 +119,11 @@ describe('runsInBackground', () => {
     expect(runsInBackground(10, [...agentTree, proc(40, 1, 40)])).toBe(false);
   });
 
-  it("counts OpenCode's private server, in a group of its own, as the agent, and a shell it runs as background", () => {
-    const tree = [proc(10, 1, 10, 'opencode --standalone'), proc(11, 10, 11, '/u/.opencode/bin/opencode serve --stdio --port 0'), proc(12, 11, 11, 'mcp-server')];
+  it("counts OpenCode's private server and its MCP servers, each in a group of its own, as the agent, and a shell it runs as background", () => {
+    const tree = [proc(10, 1, 10, 'opencode --standalone'), proc(11, 10, 11, '/u/.opencode/bin/opencode serve --stdio --port 0'), proc(12, 11, 12, 'npx -y mcp-server'), proc(14, 12, 12, 'node mcp.js')];
     expect(runsInBackground(10, tree)).toBe(false);
-    expect(runsInBackground(10, [...tree, proc(13, 11, 13, 'sleep 60')])).toBe(true);
+    expect(runsInBackground(10, [...tree, proc(13, 11, 13, '/bin/zsh -c sleep 60')])).toBe(true);
+    expect(runsInBackground(10, [...tree, proc(15, 14, 15, 'sleep 60')])).toBe(true);
     expect(runsInBackground(10, [proc(10, 1, 10), proc(11, 10, 11, 'serve --stdio')])).toBe(true);
   });
 });
