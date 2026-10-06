@@ -64,7 +64,8 @@ the first failed step. The output folder holds:
   `session export|import|delete --standalone`, where an import of an id it already holds says so on stderr and exits
   0. It keeps each session as a JSON file under `~/.local/share/opencode/mock-sessions`, where the real one keeps its
   database.
-  - `~/.local/bin/opencode` execs node on it as `opencode`, so `ps` reads it as the native binary.
+  - `~/.local/bin/opencode` execs node on it as `opencode`, and it sets its process title to `opencode <args>`, so `ps`
+    reads it as the native binary, launch flags and all.
   - In a terminal, `opencode --standalone [-s <id>]` runs a private `serve --stdio` server in a group of its own and
     posts the hook lines Svall's plugin would. `-s` on an id it does not hold starts an empty session, as the real
     one does.

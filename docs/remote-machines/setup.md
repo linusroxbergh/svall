@@ -162,8 +162,10 @@ On the Linux machine, all under the account:
 
 - `~/.local/share/svall/releases/<version>` and `current`, the release; `~/.local/bin/svall` points into it.
   Each install keeps the release before it, for a rollback, and removes older ones.
-- `~/.config/systemd/user/svall-gateway.service`, and one `svall-svalld@<fleet>.service` per fleet. Each unit
-  carries the `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` the account's login shell sets.
+- `~/.config/systemd/user/svall-gateway.service`, and one `svall-svalld@<fleet>.service` per fleet. Each fleet's
+  unit carries the `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `OPENCODE_DB` the
+  account's login shell sets. Both units' `PATH` holds `~/.local/bin` and `~/.opencode/bin`, where OpenCode's
+  installer puts it.
 - `~/.config/opencode/plugins/svall.js` (under `XDG_CONFIG_HOME` when the login shell sets it), Svall's OpenCode
   plugin, when OpenCode is installed and the fleet does not turn it off.
 - `~/.local/share/svall/gateway/fleets/<fleet id>.json`, the ownership record of each fleet it is the gateway

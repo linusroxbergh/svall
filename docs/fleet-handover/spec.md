@@ -329,9 +329,10 @@ rollback (after a reinstall under the same name, the newest other release) and r
    action names the command for the user to run in a terminal of their own.
 4. Upload and verify the matching companion release.
 5. Install `svall-gateway.service` and an `svall-svalld@<fleet>.service` template as
-   systemd user units. Units use absolute paths through `current`, a resolved PATH, the
-   `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` the account's login
-   shell sets, `Restart=always` and logs under the Svall data directory. Setup writes Svall's
+   systemd user units. Units use absolute paths through `current`, a resolved PATH that holds
+   `~/.opencode/bin`, `Restart=always` and logs under the Svall data directory; each fleet's unit
+   carries the `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and
+   `OPENCODE_DB` the account's login shell sets. Setup writes Svall's
    OpenCode plugin into the OpenCode config folder that environment names, and removes it when the
    fleet turns OpenCode off.
 6. Enable and start the gateway. If user lingering is disabled, show the exact
@@ -534,9 +535,9 @@ visibly a new session and is never the automatic handover path.
 
 Global agent credentials, user-wide skills, MCP configuration and shell dotfiles are machine-local.
 OpenCode's data, config, state and cache folders (`~/.local/share/opencode`, `~/.config/opencode`,
-`~/.local/state/opencode`, `~/.cache/opencode`, and the data and config folders where
-`XDG_DATA_HOME` and `XDG_CONFIG_HOME` put them) are machine-local whole: a handover never carries a
-root in or holding one, nor lands on one.
+`~/.local/state/opencode`, `~/.cache/opencode`, and where `XDG_DATA_HOME`, `XDG_CONFIG_HOME`,
+`XDG_STATE_HOME` and `XDG_CACHE_HOME` put them on each machine) are machine-local whole: a handover never
+carries a root in or holding one, nor lands on one.
 Host doctor checks installation, login and hooks. Preflight reads the destination's agent logins
 afresh, and warns (`config_difference`) when an agent CLI the fleet runs is at different versions
 on the two machines; the warning names the settings, skills and MCP servers each machine keeps,
@@ -551,7 +552,7 @@ disappears merely because its tmux window is absent.
 
 Before export, all `tmux.windowId`, `paneId` and agent pid fields are removed. For a supported
 agent, `revive.command` is `claude --resume <id>`, `codex resume <id>` or
-`opencode --standalone -s <id>` with the launch flags an idle close keeps, whether the handover
+`opencode -s <id>` (launched with `--standalone`) with the launch flags an idle close keeps, whether the handover
 rested the terminal or it was already dormant, less the Codex flags whose values name the source's
 own config (`-p`/`--profile`, `--local-provider`). A plain shell has no command and reopens at its
 cwd. Terminal scrollback is neither saved nor carried.
