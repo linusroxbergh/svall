@@ -191,7 +191,7 @@ const TRUST = {
 
 /** Svall never writes the destination's agent settings, so each agent asks to trust these folders the first time it resumes there. */
 function trustWarnings(m: TransferManifestV1, untrusted: { characterId: string; kind: AgentKind }[], where: string): Warning[] {
-  // a handover carries no OpenCode session, so none resumes there to ask
+  // OpenCode resumes in any folder without asking
   return untrusted.flatMap((f) => (f.kind === 'opencode' ? [] : [{
     code: TRUST[f.kind].code,
     message: `${TRUST[f.kind].agent} asks whether to trust its folder the first time ${m.snapshot.characters[f.characterId]?.name ?? f.characterId} resumes on ${where}${TRUST[f.kind].answer}`,

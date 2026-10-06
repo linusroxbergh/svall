@@ -23,7 +23,7 @@ import type { RunRsync } from '../../src/controller/rsync.js';
 import { transfer as runTransfer, type RootEntry, type SessionEntry, type TransferOptions } from '../../src/controller/transfer.js';
 import { cleanHomes, makeHome } from '../../../svalld/test/helpers.js';
 import {
-  CODEX, FLEET_HOME, G, HOME, SID, TOKEN, World, at, controller, file, fleetId, info, keptCommit, mac, manifestFor, opIndex, phases, recover, settledOn, trift,
+  CODEX, FLEET_HOME, G, HOME, SID, TOKEN, World, at, char, controller, file, fleetId, info, keptCommit, mac, manifestFor, opIndex, phases, recover, settledOn, trift,
   type Probe,
 } from './world.js';
 
@@ -243,6 +243,23 @@ describe('preflight', () => {
     // the source is told where the destination keeps its fleet
     expect(w.sent[0].destination.fleetHome).toBe(FLEET_HOME);
     expect(w.store.j).toBeUndefined();
+  });
+
+  it('says the fleet\'s OpenCode runs at another release on each machine', async () => {
+    const w = new World();
+    const preflight = w.source.answers['handover.preflight'] as (p: unknown) => { manifest: FrozenManifest };
+    w.source.answers['handover.preflight'] = ((p: unknown) => {
+      const r = preflight(p);
+      r.manifest.snapshot.characters.c_cy = char('c_cy', 'cy', at('app'), {
+        agent: { kind: 'opencode', sessionId: 'ses_0123456789abcdefghijABCDEFGH', status: 'idle', lastActivityAt: 0 },
+      });
+      return r;
+    }) as never;
+    const opencode = (version: string) => ({ kind: 'opencode' as const, version, adapter: 1, home: at('.local/share/opencode'), loggedIn: true, hooks: true });
+    w.infos[mac] = { agentAdapters: [...info(mac).agentAdapters, opencode('2.0.22')] };
+    w.infos[trift] = { agentAdapters: [...info(trift).agentAdapters, opencode('2.0.30')] };
+    const r = await controller(w).preflight(trift, {});
+    expect(r.warnings.filter((x) => x.code === 'config_difference').map((x) => x.message)).toEqual([expect.stringMatching(/^opencode 2\.0\.22 runs on .* and 2\.0\.30 on /)]);
   });
 
   it('names a few of a root\'s names that differ only by case, each with the names it clashes with, and counts the rest, however many there are', async () => {

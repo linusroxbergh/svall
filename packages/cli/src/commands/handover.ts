@@ -591,7 +591,7 @@ export function handoverCommand(o: {
     .description('move this fleet to another machine, or bring it to this one')
     .argument('[machine]', 'a machine in the registry, or local for this one')
     .option('--interrupt-after <duration>', 'interrupt the agents still working after this long, e.g. 30s or 2m')
-    .option('--terminate-shells', "terminate what keeps a terminal busy: a shell's foreground process, and an interrupted agent that will not settle; a Claude agent with a background command still running counts as not settled")
+    .option('--terminate-shells', "terminate what keeps a terminal busy: a shell's foreground process, and an interrupted agent that will not settle; an agent with a background command still running counts as not settled")
     .option('--archive <root>', 'move a destination root that diverged or is occupied to a timestamped sibling first, by the root id a blocker names or its path; repeatable', (v: string, acc: string[]) => [...acc, v], [] as string[])
     .option('--resume', 'go the one safe way on with the handover left open')
     .option('--abort', 'take the fleet back to the machine it came from; before the commit only')
