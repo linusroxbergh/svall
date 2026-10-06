@@ -47,6 +47,16 @@ describe('migrateState', () => {
     expect(state).toEqual({ ...raw, version: 9 });
   });
 
+  it('lifts a version 8 file a handover wrote, with a dormant second and what a handover keeps on a character, as it is', () => {
+    const second = { cwd: '/work/sub', unread: false, agent, revive: { command: 'claude --resume s' }, restedBy: 'tx-1', resumeError: 'it did not come up' };
+    const c = { ...char('c_a', 'i_a'), keepHere: true, restedBy: 'tx-1', resumeError: 'it did not come up', revive: { command: '' }, second };
+    const raw = { ...emptyState(), version: 8, islands: { i_a: island('i_a') }, characters: { c_a: c } };
+    const { state, migrated, dropped } = migrateState(raw);
+    expect(migrated).toBe(true);
+    expect(dropped).toEqual([]);
+    expect(state).toEqual({ ...raw, version: 9 });
+  });
+
   it('refuses a file older than version 7 and says so', () => {
     for (const version of [1, 6]) {
       expect(() => migrateState({ version, islands: {}, characters: {} })).toThrow(OlderStateVersion);
