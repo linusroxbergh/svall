@@ -34,14 +34,17 @@ describe('the controller release build.sh carries', () => {
   const block = build.slice(build.indexOf(from) + from.length, build.indexOf('# the commit count'));
 
   // build.sh's controller block, with node and rsync logging what they are asked; the release name still comes from git
-  function carry(config: string, variant: string, env: Record<string, string> = {}) {
+  // SCAN_EXIT in `env` is what release-scan exits with
+  function carry(config: string, variant: string, env: Record<string, string> = {}, status = 0) {
     const mac = temp();
     fs.mkdirSync(path.join(mac, 'build.noindex'));
-    const s = stubs(mac, ['node', 'rsync'], { node: `[ "$1" = -e ] && exec "${process.execPath}" "$@"` });
+    const s = stubs(mac, ['node', 'rsync'], {
+      node: `[ "$1" = -e ] && exec "${process.execPath}" "$@"\n[ "\${1##*/}" = release-scan.mjs ] && [ -n "\${SCAN_EXIT:-}" ] && exit "$SCAN_EXIT"`,
+    });
     const r = spawnSync('sh', ['-c', `set -eu\nMAC="${mac}"\nROOT="${ROOT}"\nAPP="${mac}/Svall.app"\nCONFIG=${config}\nVARIANT=${variant}\n${block}`], {
       env: { ...s.env, ...env }, encoding: 'utf8',
     });
-    expect(r.status, r.stderr).toBe(0);
+    expect(r.status, r.stderr).toBe(status);
     return { mac, calls: s.log() };
   }
 
@@ -60,11 +63,19 @@ describe('the controller release build.sh carries', () => {
     expect(calls.join('\n')).not.toContain('file:');
   });
 
+  it('scans the release tree and the companion archive before it copies them into the app, and stops on a finding', () => {
+    const { mac, calls } = carry('release', 'release');
+    const scan = calls.findIndex((c) => c.includes('release-scan.mjs'));
+    expect(calls[scan]).toBe(`node ${ROOT}/scripts/release-scan.mjs ${mac}/build.noindex/release/releases/*/ ${mac}/build.noindex/companions/*.tar.gz`);
+    expect(scan).toBeLessThan(calls.findIndex((c) => c.startsWith('rsync ')));
+    expect(carry('release', 'release', { SCAN_EXIT: '1' }, 1).calls.filter((c) => c.startsWith('rsync '))).toEqual([]);
+  });
+
   it('is named what pnpm release tags, or what git describes for any other build', () => {
-    const named = carry('release', 'release', { SVALL_RELEASE_NAME: 'v9.9.9' }).calls.filter((c) => c.startsWith('node '));
+    const named = carry('release', 'release', { SVALL_RELEASE_NAME: 'v9.9.9' }).calls.filter((c) => c.startsWith('node ') && !c.includes('release-scan.mjs'));
     expect(named).toHaveLength(2);
     for (const c of named) expect(c).toContain(' --version v9.9.9');
-    const described = carry('release', 'release').calls.filter((c) => c.startsWith('node '));
+    const described = carry('release', 'release').calls.filter((c) => c.startsWith('node ') && !c.includes('release-scan.mjs'));
     for (const c of described) expect(c).toContain(` --version ${describeVersion()}`);
 
     const release = read('scripts/release.sh');

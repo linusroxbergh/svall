@@ -56,6 +56,7 @@ if [ "$CONFIG" = release ] && [ "$VARIANT" = release ]; then
   node "$ROOT/scripts/build-companion.mjs" --out "$COMPANIONS" --arch x64 --version "$VERSION" >"$MAC/build.noindex/companions.json"
   node "$ROOT/scripts/build-controller.mjs" --out "$RELEASE" --version "$VERSION" \
     --companion-url-base companions --companions "$COMPANIONS" >"$MAC/build.noindex/release.json"
+  node "$ROOT/scripts/release-scan.mjs" "$RELEASE/releases/"*/ "$COMPANIONS"/*.tar.gz
   rsync -a --delete "$RELEASE/releases/"*/ "$APP/Contents/Resources/release/"
 fi
 # the commit count orders builds for the updater
