@@ -369,8 +369,14 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   private opencodeEnv(): Record<string, string> {
-    if (!(this.deps.config.integrations?.includes('opencode') ?? true)) return {};
-    try { return { OPENCODE_CONFIG_DIR: linkOpencodeConfig(this.deps.paths.opencodeConfig, opencodePaths()) }; } catch (e) {
+    const o = opencodePaths();
+    // only where OpenCode is, as for the plugin: a config folder made here would pass for an install
+    if (!(this.deps.config.integrations?.includes('opencode') ?? true) || !(this.deps.agentsFound?.includes('opencode') || fs.existsSync(o.dir))) return {};
+    const { opencodeConfig, opencodeReplaced } = this.deps.paths;
+    try {
+      for (const f of linkOpencodeConfig(opencodeConfig, o, opencodeReplaced)) this.deps.log.error(`opencode config: ${f}`);
+      return { OPENCODE_CONFIG_DIR: opencodeConfig };
+    } catch (e) {
       this.deps.log.error(`opencode config: ${(e as Error).message}`);
       return {};
     }

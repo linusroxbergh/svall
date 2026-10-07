@@ -38,29 +38,42 @@ export function removeOpencodePlugin(o: OpencodePaths): string[] {
 
 const SERVICE = 'service.json';
 const SERVICE_OFF = '{"disabled":true}\n';
+// the temporary a save writes before renaming it into place, OpenCode's or Svall's own
+const SAVING = /\.tmp(-\d+)?$/;
 
-/** Fills `dir` as OpenCode's config dir for characters: links to each entry of the user's config beside a service.json
- *  that turns the shared server off, so a typed `opencode` runs its own server with the character's env. */
-export function linkOpencodeConfig(dir: string, o: OpencodePaths): string {
+/** Fills `dir` as OpenCode's config dir for characters: links to the user's config beside a service.json that turns the
+ *  shared server off, so a typed `opencode` runs its own server with the character's env. A setting OpenCode saved over
+ *  a link goes back to the user's config if it is newer; the copy it beats is kept in `replaced`. Answers what failed. */
+export function linkOpencodeConfig(dir: string, o: OpencodePaths, replaced: string): string[] {
+  const failed: string[] = [];
+  const each = (names: string[], f: (name: string) => void) => {
+    for (const name of names) {
+      if (name === SERVICE || SAVING.test(name)) continue;
+      try { f(name); } catch (e) { failed.push(`${name}: ${(e as Error).message}`); }
+    }
+  };
   fs.mkdirSync(dir, { recursive: true });
   fs.mkdirSync(o.dir, { recursive: true });
-  for (const name of fs.readdirSync(dir)) {
-    if (name === SERVICE) continue;
+  each(fs.readdirSync(dir), (name) => {
     const here = path.join(dir, name);
     const there = path.join(o.dir, name);
     const st = fs.lstatSync(here);
-    // OpenCode saves a setting by renaming over the link: the newer file goes back to the user's config
     if (st.isFile()) {
-      if (!fs.existsSync(there) || st.mtimeMs >= fs.statSync(there).mtimeMs) fs.renameSync(here, there);
-      else fs.rmSync(here);
-    } else if (st.isSymbolicLink() && !fs.existsSync(there)) fs.rmSync(here);
-  }
-  for (const name of fs.readdirSync(o.dir)) {
+      const theirs = fs.statSync(there, { throwIfNoEntry: false });
+      fs.mkdirSync(replaced, { recursive: true });
+      if (theirs && theirs.mtimeMs > st.mtimeMs) fs.renameSync(here, path.join(replaced, name));
+      else {
+        if (theirs) fs.copyFileSync(there, path.join(replaced, name));
+        fs.renameSync(here, there);
+      }
+    } else if (st.isSymbolicLink() && (fs.readlinkSync(here) !== there || !fs.existsSync(there))) fs.rmSync(here);
+  });
+  each(fs.readdirSync(o.dir), (name) => {
     const here = path.join(dir, name);
-    if (name === SERVICE || fs.existsSync(here)) continue;
+    if (fs.existsSync(here)) return;
     fs.rmSync(here, { force: true });
     fs.symlinkSync(path.join(o.dir, name), here);
-  }
-  if (readOrUndefined(path.join(dir, SERVICE)) !== SERVICE_OFF) writeAtomic(path.join(dir, SERVICE), SERVICE_OFF);
-  return dir;
+  });
+  if (readOrUndefined(path.join(dir, SERVICE)) !== SERVICE_OFF) writeAtomic(path.join(dir, SERVICE), SERVICE_OFF, { perProcess: true });
+  return failed;
 }
