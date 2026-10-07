@@ -150,8 +150,13 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 20 with ownership and handover', () => {
+  it('is 20 with ownership, handover and characters starred', () => {
     expect(PROTOCOL_VERSION).toBe(20);
+    expect(methods['char.star'].params.safeParse({ id: 'c_a' }).success).toBe(true);
+    expect(methods['char.star'].params.safeParse({ id: 'c_a', targetId: 'c_b', after: true }).success).toBe(true);
+    expect(methods['char.unstar'].params.safeParse({ id: 'c_a' }).success).toBe(true);
+    const c = { id: 'c_1', islandId: 'home', cell: { x: 1, y: 1 }, name: 'n', portrait: 'owl', note: '', instructions: '', cwd: '/tmp', context: [], shell: { lastOutputAt: 0 }, unread: false };
+    expect(methods['char.star'].result.parse({ ...c, star: 0 }).star).toBe(0);
   });
 
   it('was 19 with OpenCode as an agent kind', () => {

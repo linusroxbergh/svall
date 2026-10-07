@@ -31,9 +31,9 @@ const pick = () => fireEvent.click(screen.getByTestId('menu-delete'));
 const entries = () => screen.getAllByRole('menuitem').map((el) => [el.textContent, el.getAttribute('aria-disabled') !== 'true']);
 const menu = (deletable: boolean) => [['Delete', deletable], ['Reload', true]];
 
-test('a character on the map offers Delete, which opens the delete confirmation', () => {
+test('a character on the map offers Star and Delete, which opens the delete confirmation', () => {
   expect(rightClick('token-c0')).toBe(true);
-  expect(entries()).toEqual(menu(true));
+  expect(entries()).toEqual([['Star', true], ...menu(true)]);
   pick();
   expect(store.getState().closingCharacter).toBe('c0');
   expect(call).not.toHaveBeenCalled();

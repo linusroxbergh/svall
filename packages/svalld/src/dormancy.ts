@@ -25,6 +25,7 @@ export function reviveCommand(t: TerminalSlot, flags: string[] = []): string {
 export function markSlotDormant(t: TerminalSlot, flags?: string[]): void {
   delete t.tmux;
   t.revive = { command: reviveCommand(t, flags) };
+  delete t.agent?.monitors;
   // nothing runs until the revive, so no question is left open and no turn goes on; a finished result stays
   if (t.agent && (t.agent.status === 'blocked' || t.agent.status === 'working')) {
     settle(t.agent, 'idle');
@@ -39,7 +40,8 @@ export const RESUME_NOTE = 'A restart ended this session mid-turn. Subagents, ba
 
 export function markDormant(c: Character, flags?: string[]): void {
   delete c.hint;
-  const interrupted = c.agent?.status === 'blocked' || c.agent?.status === 'working';
+  // its monitors die with it, which a finished turn says nothing of
+  const interrupted = !!c.agent?.monitors || c.agent?.status === 'blocked' || c.agent?.status === 'working';
   markSlotDormant(c, flags);
   if (interrupted && c.revive?.command) c.revive.interrupted = true;
 }
@@ -56,7 +58,7 @@ export function loseSecond(c: Character, flags?: string[], atShell = false): voi
 // the user has yet to see. A failed turn keeps its error, and one a usage limit stopped carries on once it resets
 export function drowsy(c: Character, now: number, afterMs: number, seenAt = 0): boolean {
   const a = c.agent;
-  if (!c.tmux || !a || c.unread || a.background || a.prompt || !isSessionId(a.sessionId)) return false;
+  if (!c.tmux || !a || c.unread || a.background || a.monitors || a.prompt || !isSessionId(a.sessionId)) return false;
   return (a.status === 'idle' || a.status === 'done') && now - Math.max(a.lastActivityAt, seenAt) >= afterMs;
 }
 

@@ -33,6 +33,24 @@ test('every island and its crew are listed once the fleet arrives', () => {
   expect(screen.getAllByText('c2')).toHaveLength(1);
 });
 
+test('starred characters lead the list in star order, and stay on their islands too', () => {
+  const f = fleet();
+  f.characters.c2 = chr('c2', 'i_a', { x: 1, y: 1 }, { star: 0 });
+  f.characters.c0 = chr('c0', 'i_b', { x: 1, y: 1 }, { star: 1 });
+  store.getState().setFleet(f);
+  render(<Fleet onOpen={() => {}} />);
+  const starred = screen.getByRole('region', { name: 'Starred' });
+  expect([...starred.querySelectorAll('.row-name')].map((el) => el.textContent)).toEqual(['c2', 'c0']);
+  expect(document.querySelector('.fleet > section')).toBe(starred);
+  expect(screen.getAllByText('c0')).toHaveLength(2);
+});
+
+test('no Starred section while nothing is starred', () => {
+  store.getState().setFleet(fleet());
+  render(<Fleet onOpen={() => {}} />);
+  expect(screen.queryByRole('region', { name: 'Starred' })).toBeNull();
+});
+
 test('a collapsed island keeps its crew out of the list', () => {
   const f = fleet();
   f.islands.i_b = isl('i_b', 'beta', 0, { collapsed: true });

@@ -6,8 +6,8 @@ import { FleetState } from '../src/state.js';
 // the persisted shape of each state version, as a digest of every key, type, check and optionality
 const SHAPES: Record<number, string> = {
   7: '67857c366a165d29',
-  8: '42618fecc473abc7',
-  9: '6943f4f9b60984a4',
+  8: 'a7f1e8e67c31d23a',
+  9: 'c5d2b1dec186af10',
 };
 
 // a refine is a custom check, and its function cannot be read

@@ -11,7 +11,7 @@ const CREW = [
   'You are Svall character c on island i; other characters are agent sessions the user can watch.',
   '- Give self-contained work outside your task (another ticket, a PR review) to a new character instead of a subagent. Keep small or coupled work here; ask if unsure.',
   '- Ask before starting more than two characters or a new island. Past ~50% context (`ctx` in `svall status`), suggest a new character for new work.',
-  '- How: `svall char new --help`.',
+  '- How: `svall char new --help`. Name it PR or ticket id, area, task: "#472 auth review", not "#472 deep review".',
 ];
 
 describe('renderBrief', () => {
@@ -364,7 +364,7 @@ describe('renderBrief with docs', () => {
     );
     const lines = text.split('\n');
     expect(text.length).toBeLessThanOrEqual(9_000);
-    expect(lines).toEqual(expect.arrayContaining([...CREW, '- …and 1 more in /d/repos/app-12345678', '- …and 16 more island links', '- …and 16 more character links', '- …and 39 more tabs', `- https://example.com/${'t'.repeat(150)}/39 (active)`]));
+    expect(lines).toEqual(expect.arrayContaining([...CREW, '- …and 1 more in /d/repos/app-12345678', '- …and 17 more island links', '- …and 16 more character links', '- …and 39 more tabs', `- https://example.com/${'t'.repeat(150)}/39 (active)`]));
     expect(lines.find((l) => l.startsWith('Island instructions: '))).toHaveLength('Island instructions: '.length + 2000);
     expect(text).toContain(`/${'p'.repeat(150)}/0 (pinned)`);
     expect(text).toContain(`/${'p'.repeat(150)}/1\n`);

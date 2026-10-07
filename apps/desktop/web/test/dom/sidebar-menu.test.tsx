@@ -20,10 +20,11 @@ const rightClick = (testid: string): boolean => !fireEvent.contextMenu(screen.ge
 const pick = (title: string) => fireEvent.click(screen.getByTestId(`menu-${title}`));
 const entries = () => screen.getAllByRole('menuitem').map((el) => [el.textContent, el.getAttribute('aria-disabled') !== 'true']);
 const menu = (deletable: boolean) => [['Rename', true], ['Delete', deletable], ['Reload', true]];
+const charMenu = [['Rename', true], ['Star', true], ['Delete', true], ['Reload', true]];
 
 test('a character row opens the app menu at the pointer, and Delete opens the delete confirmation', () => {
   expect(rightClick('sb-char-c0')).toBe(true);
-  expect(entries()).toEqual(menu(true));
+  expect(entries()).toEqual(charMenu);
   pick('delete');
   expect(store.getState().closingCharacter).toBe('c0');
   expect(call).not.toHaveBeenCalled();
@@ -87,7 +88,7 @@ test('mission control and a row being renamed keep the default menu', () => {
 test('a page without the shell draws the same menu', () => {
   bridge.present = false;
   expect(rightClick('sb-char-c2')).toBe(true);
-  expect(entries()).toEqual(menu(true));
+  expect(entries()).toEqual(charMenu);
 });
 
 test('a second right-click replaces the menu, and a pick answers that one', () => {

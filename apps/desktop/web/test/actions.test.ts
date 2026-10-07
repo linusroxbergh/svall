@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CWD, emptyState } from '@svall/protocol';
-import { deleteIsland, moveCharacterTo, newCharacterOn, newCharacterTarget, newIsland, newIslandAround, newNamedCharacter, openSecondTerminal, reviveCharacter, saveCharacter, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeCharacter } from '../src/actions.js';
+import { deleteIsland, moveCharacterTo, setStar, starCharacterAt, newCharacterOn, newCharacterTarget, newIsland, newIslandAround, newNamedCharacter, openSecondTerminal, reviveCharacter, saveCharacter, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeCharacter } from '../src/actions.js';
 import { ApiError, type Api } from '../src/api.js';
 import { createAppStore } from '../src/store/index.js';
 import { chr, fleet, isl } from './fixtures.js';
@@ -104,6 +104,32 @@ describe('moveCharacterTo', () => {
     const c = ctx();
     moveCharacterTo(c, 'c1', { kind: 'char', id: 'c0' }, false);
     expect(c.calls).toEqual([{ method: 'char.reorder', params: { id: 'c1', targetId: 'c0', after: false } }]);
+  });
+});
+
+describe('stars', () => {
+  it('stars or unstars as asked, and sends nothing for the state a character already has', () => {
+    const c = ctx();
+    setStar(c, 'c1', false);
+    setStar(c, 'c1', true);
+    c.store.getState().applyPatch([{ op: 'add', path: '/characters/c1/star', value: 0 }]);
+    setStar(c, 'c1', true);
+    setStar(c, 'c1', false);
+    expect(c.calls).toEqual([
+      { method: 'char.star', params: { id: 'c1' } },
+      { method: 'char.unstar', params: { id: 'c1' } },
+    ]);
+  });
+
+  it('places a star beside the starred one it is dropped on, first without one, and not on itself', () => {
+    const c = ctx();
+    starCharacterAt(c, 'c1', 'c2', true);
+    starCharacterAt(c, 'c1');
+    starCharacterAt(c, 'c1', 'c1', false);
+    expect(c.calls).toEqual([
+      { method: 'char.star', params: { id: 'c1', targetId: 'c2', after: true } },
+      { method: 'char.star', params: { id: 'c1' } },
+    ]);
   });
 });
 

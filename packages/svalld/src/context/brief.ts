@@ -81,7 +81,7 @@ const crewLines = (island: Island, c: Character): string[] => [
   `You are Svall character ${c.id} on island ${island.id}; other characters are agent sessions the user can watch.`,
   '- Give self-contained work outside your task (another ticket, a PR review) to a new character instead of a subagent. Keep small or coupled work here; ask if unsure.',
   '- Ask before starting more than two characters or a new island. Past ~50% context (`ctx` in `svall status`), suggest a new character for new work.',
-  '- How: `svall char new --help`.',
+  '- How: `svall char new --help`. Name it PR or ticket id, area, task: "#472 auth review", not "#472 deep review".',
 ];
 
 const WORKTREE = '- In a git repo, work in a worktree no other agent works in, a fitting one or a new one. Change the main checkout only when the user says so.';

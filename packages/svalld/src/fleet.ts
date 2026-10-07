@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Character, type ContextItem, type FleetState, type Island, type Portrait } from '@svall/protocol';
+import { HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Character, type ContextItem, type FleetState, type Island, type Portrait } from '@svall/protocol';
 import { AGENTS, mainAgent } from './agents.js';
 import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
 import { markSeen as markSeenPure, settle } from './agent/reducer.js';
@@ -27,6 +27,7 @@ import { blockedCells, crewOf, defaultPosition, freePosition, occupiedCells, pla
 import { refreshLinks, type Deps as LinkDeps } from './links/refresh.js';
 import type { Logger } from './log.js';
 import { randomName } from './names.js';
+import { linkOpencodeConfig, opencodePaths } from './opencode/install.js';
 import type { OwnershipState } from './ownership/state.js';
 import { expandHome, type Paths } from './paths.js';
 import { SHIM } from './profile.js';
@@ -462,7 +463,21 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   private charEnv(id: string, extra: Record<string, string> = {}): Record<string, string> {
-    return { ...characterKeyEnv(this.deps.paths.env), SVALL_CHAR_ID: id, SVALL_HOME: this.deps.paths.home, ...extra };
+    return { ...characterKeyEnv(this.deps.paths.env), SVALL_CHAR_ID: id, SVALL_HOME: this.deps.paths.home, ...this.opencodeEnv(), ...extra };
+  }
+
+  private opencodeEnv(): Record<string, string> {
+    const o = opencodePaths();
+    // only where OpenCode is, as for the plugin: a config folder made here would pass for an install
+    if (!(this.deps.config.integrations?.includes('opencode') ?? true) || !(this.deps.agentsFound?.includes('opencode') || fs.existsSync(o.dir))) return {};
+    const { opencodeConfig, opencodeReplaced } = this.deps.paths;
+    try {
+      for (const f of linkOpencodeConfig(opencodeConfig, o, opencodeReplaced)) this.deps.log.error(`opencode config: ${f}`);
+      return { OPENCODE_CONFIG_DIR: opencodeConfig };
+    } catch (e) {
+      this.deps.log.error(`opencode config: ${(e as Error).message}`);
+      return {};
+    }
   }
 
   private promptFile(id: string): string {
@@ -563,6 +578,23 @@ export class Fleet extends EventEmitter<Events> {
       order.splice(order.indexOf(targetId) + Number(after), 0, id);
       order.forEach((charId, index) => { d.characters[charId].cell = cells[index]; });
     });
+    return this.char(id);
+  }
+
+  // without a target the star goes first; every starred character is numbered anew in one update
+  starCharacter(id: string, targetId?: string, after = false): Character {
+    this.char(id);
+    if (targetId !== undefined && this.char(targetId).star === undefined) throw new Invalid(`${this.char(targetId).name} is not starred`);
+    if (id === targetId) return this.char(id);
+    const order = starredOf(this.deps.store.state).map((c) => c.id).filter((x) => x !== id);
+    order.splice(targetId === undefined ? 0 : order.indexOf(targetId) + Number(after), 0, id);
+    this.deps.store.update((d) => { order.forEach((x, n) => { d.characters[x].star = n; }); });
+    return this.char(id);
+  }
+
+  unstarCharacter(id: string): Character {
+    this.char(id);
+    this.deps.store.update((d) => { delete d.characters[id].star; });
     return this.char(id);
   }
 

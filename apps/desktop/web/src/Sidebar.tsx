@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import type { Character, Island } from '@svall/protocol';
-import { moveCharacterTo, newCharacterOn, newIsland, reorderIsland, saveCharacter, saveIsland, toggleIsland } from './actions.js';
+import { starredOf, type Character, type Island } from '@svall/protocol';
+import { moveCharacterTo, newCharacterOn, newIsland, reorderIsland, saveCharacter, saveIsland, setStar, starCharacterAt, toggleIsland } from './actions.js';
 import { app, deps } from './boot.js';
 import type { DropTarget } from './drop.js';
 import { useApp } from './hooks.js';
@@ -15,6 +15,9 @@ const stop = (e: React.MouseEvent) => e.stopPropagation();
 // a character dragged out of the list; the type alone is readable while the drag is in flight, the id only on the drop
 const CHAR_DRAG = 'application/x-svall-character';
 const ISLAND_DRAG = 'application/x-svall-island';
+// a starred row dragged within its section; the islands below do not take it
+const STAR_DRAG = 'application/x-svall-star';
+const STARRED = 'sidebar.starred';
 
 const lowerHalf = (e: React.DragEvent) => { const r = e.currentTarget.getBoundingClientRect(); return e.clientY >= r.top + r.height / 2; };
 
@@ -60,6 +63,26 @@ export function Caret({ open }: { open: boolean }) {
     <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
       <path d={open ? 'M2 3.6 5 6.6l3-3' : 'M3.6 2l3 3-3 3'} />
     </svg>
+  );
+}
+
+// the board shows the terminal it selects; on the map that takes a card, so a click reads and a click on the
+// row already selected opens — as does any click once a card is open, which the selection then moves to
+const pick = (id: string) => { const s = app.store.getState(); if (s.view === 'board' || s.card || s.selectedId === id) s.focus(id); else s.select(id); };
+
+export function StarIcon({ on }: { on: boolean }) {
+  return (
+    <svg width="11" height="11" viewBox="0 0 12 12" fill={on ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round">
+      <path d="M6 1.4 7.18 4.78l3.58.08-2.86 2.16 1.04 3.43L6 8.4l-2.94 2.05 1.04-3.43-2.86-2.16 3.58-.08z" />
+    </svg>
+  );
+}
+
+function StarButton({ c, testid }: { c: Character; testid: string }) {
+  const on = c.star !== undefined;
+  return (
+    <button className="sb-star" data-testid={testid} aria-pressed={on} aria-label={`Star ${c.name}`} title={on ? 'Unstar' : 'Star'}
+      onClick={(e) => { stop(e); setStar(deps(), c.id, !on); }}><StarIcon on={on} /></button>
   );
 }
 
@@ -110,7 +133,6 @@ function IslandRow({ i, chars, editing, setEditing, dragging, setDragging }: {
 }
 
 function CharacterRow({ c, editing, setEditing }: { c: Character; editing: boolean; setEditing(id?: string): void }) {
-  const onBoard = useApp((s) => s.view === 'board');
   const selected = useApp((s) => (s.view === 'board' ? boardViewed(s) === c.id : s.selectedId === c.id));
   const hover = useApp((s) => s.dropHover?.kind === 'char' && s.dropHover.id === c.id);
   const reorderHover = useApp((s) => s.dropHover?.kind === 'char' && s.dropHover.id === c.id && s.dropHover.after !== undefined);
@@ -118,9 +140,6 @@ function CharacterRow({ c, editing, setEditing }: { c: Character; editing: boole
   const failed = useApp((s) => resumeErrorOf(s, c));
   const [dragging, setDragging] = useState(false);
   const status = statusOf(c);
-  // the board shows the terminal it selects; on the map that takes a card, so a click reads and a click on the
-  // row already selected opens — as does any click once a card is open, which the selection then moves to
-  const click = () => { const s = app.store.getState(); if (onBoard || s.card || s.selectedId === c.id) s.focus(c.id); else s.select(c.id); };
   return (
     <div
       className="sb-row sb-child" data-testid={`sb-char-${c.id}`} data-status={status} data-unread={isUnread(c)}
@@ -129,7 +148,7 @@ function CharacterRow({ c, editing, setEditing }: { c: Character; editing: boole
       draggable={!editing} data-dragging={dragging}
       onDragStart={(e) => { e.dataTransfer.setData(CHAR_DRAG, c.id); e.dataTransfer.effectAllowed = 'move'; setDragging(true); }}
       onDragEnd={() => { setDragging(false); app.store.getState().setDropHover(undefined); }}
-      onClick={click}
+      onClick={() => pick(c.id)}
       onContextMenu={editing ? undefined : (e) => characterMenu(e, c.id, () => setEditing(c.id))}
     >
       <i className="sdot" data-status={status} />
@@ -144,6 +163,83 @@ function CharacterRow({ c, editing, setEditing }: { c: Character; editing: boole
           {failed && <span className="sb-sub mono" data-testid={`sb-resume-error-${c.id}`} title={failed}>resume failed</span>}
         </>
       )}
+      {!editing && <StarButton c={c} testid={`sb-char-star-${c.id}`} />}
+    </div>
+  );
+}
+
+// a row in Starred drops before or after its midpoint; the header, or a folded section, takes it first
+type StarHover = { id?: string; after: boolean };
+
+function StarredRow({ c, hover, zone }: { c: Character; hover?: StarHover; zone: ReturnType<typeof starZone> }) {
+  const selected = useApp((s) => (s.view === 'board' ? boardViewed(s) === c.id : s.selectedId === c.id));
+  const island = useApp((s) => s.fleet.islands[c.islandId]?.name);
+  // a Finder file over this character; a reorder over its tree row carries `after` and leaves this row be
+  const fileHover = useApp((s) => s.dropHover?.kind === 'char' && s.dropHover.id === c.id && s.dropHover.after === undefined);
+  const [dragging, setDragging] = useState(false);
+  const status = statusOf(c);
+  return (
+    <div className="sb-row sb-child sb-starred-row" data-testid={`sb-star-${c.id}`} data-status={status} data-unread={isUnread(c)}
+      data-attention={wantsUser(c)} data-selected={selected} data-drop={`char:${c.id}`} data-drop-hover={fileHover}
+      data-drop-reorder={hover?.id === c.id} data-drop-after={hover?.id === c.id && hover.after}
+      draggable data-dragging={dragging} {...zone}
+      onDragStart={(e) => { e.dataTransfer.setData(STAR_DRAG, c.id); e.dataTransfer.effectAllowed = 'move'; setDragging(true); }}
+      onDragEnd={() => setDragging(false)}
+      onClick={() => pick(c.id)} onContextMenu={(e) => characterMenu(e, c.id)}>
+      <i className="sdot" data-status={status} />
+      <span className="sb-name">{c.name}</span>
+      <span className="sb-where">{island}</span>
+      <StarButton c={c} testid={`sb-star-toggle-${c.id}`} />
+    </div>
+  );
+}
+
+const draggedStar = (e: React.DragEvent) => e.dataTransfer.types.includes(STAR_DRAG) || e.dataTransfer.types.includes(CHAR_DRAG);
+
+// a starred row or a tree character dropped here is starred at that spot
+function starZone(id: string | undefined, setHover: (f: (h?: StarHover) => StarHover | undefined) => void) {
+  return {
+    onDragOver: (e: React.DragEvent) => {
+      if (!draggedStar(e)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const after = id !== undefined && lowerHalf(e);
+      setHover((h) => (h && h.id === id && h.after === after ? h : { id, after }));
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+      setHover((h) => (h?.id === id ? undefined : h));
+    },
+    onDrop: (e: React.DragEvent) => {
+      const moving = e.dataTransfer.getData(STAR_DRAG) || e.dataTransfer.getData(CHAR_DRAG);
+      if (!moving) return;
+      e.preventDefault();
+      setHover(() => undefined);
+      starCharacterAt(deps(), moving, id, id !== undefined && lowerHalf(e));
+    },
+  };
+}
+
+function Starred() {
+  const fleet = useApp((s) => s.fleet);
+  const shut = useApp((s) => s.sections[STARRED]?.shut ?? false);
+  const [hover, setHover] = useState<StarHover>();
+  const chars = starredOf(fleet);
+  if (chars.length === 0) return null;
+  const attention = attentionIn(chars);
+  const fold = () => app.store.getState().setSection(STARRED, { shut: !shut });
+  return (
+    <div className="sb-folder" data-testid="sb-starred">
+      <div className="sb-row sb-isle" data-testid="sb-starred-head" data-open={!shut} data-drop-hover={hover !== undefined && hover.id === undefined}
+        {...starZone(undefined, setHover)} onClick={fold}>
+        <button className="sb-caret" data-testid="sb-starred-toggle" aria-expanded={!shut} aria-label={shut ? 'Expand starred' : 'Collapse starred'}
+          onClick={(e) => { stop(e); fold(); }}><Caret open={!shut} /></button>
+        <span className="sb-name">Starred</span>
+        {shut && attention > 0 && <span className="sb-attn" data-testid="sb-starred-attention">{attention}</span>}
+        <span className="sb-ct tnum">{chars.length}</span>
+        <i className="sb-star-mark"><StarIcon on /></i>
+      </div>
+      {!shut && <div className="sb-kids">{chars.map((c) => <StarredRow key={c.id} c={c} hover={hover} zone={starZone(c.id, setHover)} />)}</div>}
     </div>
   );
 }
@@ -186,6 +282,7 @@ export function Sidebar() {
       <button className="sb-collapse" data-testid="sidebar-hide" title="Hide the islands" aria-label="Hide the islands"
         onClick={() => app.store.getState().toggleSidebar(false)}>‹</button>
       <div className="sb-list">
+        <Starred />
         {islandsSorted(fleet).map((i) => {
           const chars = charactersOf(fleet, i.id);
           return (

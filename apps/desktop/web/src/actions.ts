@@ -71,6 +71,18 @@ export function moveCharacterTo(d: ActionDeps, id: string, target: DropTarget, a
   d.api.call('char.move', { id, islandId: target.id }).catch(toast(d));
 }
 
+// asking for the state a character already has sends nothing; char.star would move a starred one first
+export function setStar(d: ActionDeps, id: string, on: boolean): void {
+  const c = d.store.getState().fleet.characters[id];
+  if (!c || on === (c.star !== undefined)) return;
+  (on ? d.api.call('char.star', { id }) : d.api.call('char.unstar', { id })).catch(toast(d));
+}
+
+// without a target the character goes first among the starred
+export function starCharacterAt(d: ActionDeps, id: string, targetId?: string, after?: boolean): void {
+  if (id !== targetId) d.api.call('char.star', { id, targetId, after }).catch(toast(d));
+}
+
 // dropped on a free cell a character keeps that spot; without one the fleet stands it in the first free one
 export const moveCharacterToCell = (d: ActionDeps, id: string, islandId: string, cell?: Cell): void => {
   d.api.call('char.move', { id, islandId, cell }).catch(toast(d));
