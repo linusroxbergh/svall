@@ -55,6 +55,17 @@ describe('applyHook', () => {
     expect(idle.agent?.status).toBe('idle');
     expect(idle.agent?.background).toBeUndefined();
   });
+  it("finishes a turn that leaves only the session's monitors running, and forgets a monitor once no Stop lists it", () => {
+    const ev = (e: Partial<HookEvent>): HookEvent => ({ charId: 'c_a', backend: 'claude', name: 'Stop', ...e });
+    const m = applyHook(withAgent('working'), ev({ name: 'PostToolUse', toolName: 'Monitor', monitor: 'b1' }), 7);
+    expect(m.agent?.monitors).toEqual(['b1']);
+    const done = applyHook(m, ev({ backgroundTasks: 1, backgroundAgents: 0, backgroundShells: ['b1'] }), 8);
+    expect(done.agent).toMatchObject({ status: 'done', monitors: ['b1'] });
+    expect(done.agent?.background).toBeUndefined();
+    const shell = applyHook(m, ev({ backgroundTasks: 2, backgroundAgents: 0, backgroundShells: ['b1', 'b2'] }), 8);
+    expect(shell.agent).toMatchObject({ status: 'working', background: true });
+    expect(applyHook(shell, ev({ backgroundTasks: 0, backgroundAgents: 0, backgroundShells: [] }), 9).agent?.monitors).toBeUndefined();
+  });
   it('blocks on permission prompts only', () => {
     expect(applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'permission_prompt' }, 1).agent?.status).toBe('blocked');
     expect(applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'worker_permission_prompt' }, 1).agent?.status).toBe('blocked');

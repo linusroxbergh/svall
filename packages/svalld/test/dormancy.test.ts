@@ -28,6 +28,7 @@ describe('drowsy', () => {
     expect(drowsy(char({ agent: agent({ status: 'working' }) }), late, HOUR)).toBe(false);
     expect(drowsy(char({ agent: agent({ status: 'blocked' }) }), late, HOUR)).toBe(false);
     expect(drowsy(char({ agent: agent({ status: 'done', background: true }) }), late, HOUR)).toBe(false);
+    expect(drowsy(char({ agent: agent({ status: 'done', monitors: ['b1'] }) }), late, HOUR)).toBe(false);
     expect(drowsy(char({ unread: true }), late, HOUR)).toBe(false);
     expect(drowsy(char({ agent: agent({ status: 'idle', prompt: "You've hit your limit · resets 9pm" }) }), late, HOUR)).toBe(false);
   });

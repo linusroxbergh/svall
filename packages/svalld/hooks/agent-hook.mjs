@@ -29,7 +29,7 @@ safety.unref();
 const WAITS = new Set(['SessionStart', 'UserPromptSubmit']);
 
 // only what the daemon reads: a whole payload carries tool_input, which can run past the receiver's line limit
-const KEEP = ['hook_event_name', 'agent_id', 'session_id', 'transcript_path', 'notification_type', 'message', 'background_tasks', 'cwd', 'model', 'prompt', 'prompt_id', 'turn_id', 'tool_name'];
+const KEEP = ['hook_event_name', 'agent_id', 'session_id', 'transcript_path', 'notification_type', 'message', 'background_tasks', 'cwd', 'model', 'prompt', 'prompt_id', 'turn_id', 'tool_name', 'task_id'];
 // a pasted prompt runs to megabytes; only its head is ever shown, and the whole line must stay under the limit
 const clip = (k, v) => (k === 'prompt' && typeof v === 'string' ? v.slice(0, 4000) : v);
 const fields = (h) => Object.fromEntries(KEEP.filter((k) => h[k] !== undefined).map((k) => [k, clip(k, h[k])]));
@@ -46,6 +46,9 @@ const failed = (h) => {
   const text = h.last_assistant_message || h.error;
   return typeof text === 'string' && text ? { ...h, message: text.slice(0, 500) } : h;
 };
+// a Monitor's task is listed at Stop as a shell like any other, so the id it started is what tells them apart
+const monitored = (h) => (h.hook_event_name === 'PostToolUse' && h.tool_name === 'Monitor' && typeof h.tool_response?.taskId === 'string'
+  ? { ...h, task_id: h.tool_response.taskId } : h);
 
 // a refused connect is tried again for up to 2 s, as a restarting daemon has no socket for a second or two; a tool call's is
 // not, as the next one says the same, nor any within a minute of giving up, so a daemon that stays down holds up one hook a minute
@@ -72,7 +75,7 @@ function send(hook, tries) {
     else { safety.refresh(); setTimeout(() => send(hook, tries + 1), RETRY_MS); }
   });
   sock.on('connect', () => {
-    sock.write(JSON.stringify({ charId, term, backend, pid, hook: fields(failed(asked(hook))) }) + '\n');
+    sock.write(JSON.stringify({ charId, term, backend, pid, hook: fields(monitored(failed(asked(hook)))) }) + '\n');
     // the exit waits for the write to drain, or a large payload is truncated mid-line and dropped
     if (!WAITS.has(hook.hook_event_name)) { sock.end(done); return; }
     let buf = '';
