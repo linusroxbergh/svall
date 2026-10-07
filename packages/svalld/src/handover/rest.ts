@@ -365,12 +365,17 @@ async function layToRest(
   const open = tracks.flatMap((t) => { const c = current.get(t.key); return c ? [{ t, c }] : []; });
   // before any window closes, so an abort knows which terminals the handover stopped and which servers to wait for
   boundary('source.rest.stopped', () => recordJournal(deps.journal, now, (j) => {
-    const known = new Set(j.stoppedTerminals.map(keyOf));
-    const added = open.filter(({ t }) => !known.has(t.key)).map(({ t, c }) => {
-      const server = c.processes.agent?.server;
-      return { ...refOf(t), ...(t.flags?.length && { flags: t.flags }), ...(server && { server: { pid: server.pid, pgid: server.pgid, args: server.args } }) };
+    const live = new Map(open.map(({ t, c }) => [t.key, c.processes.agent?.server]));
+    const server = (s?: Proc) => s && { server: { pid: s.pid, pgid: s.pgid, args: s.args } };
+    // a terminal journaled before is live again only once the revive that reopened it waited for the server it had
+    const known = j.stoppedTerminals.map((s) => {
+      if (!live.has(keyOf(s))) return s;
+      const { server: _had, ...rest } = s;
+      return { ...rest, ...server(live.get(keyOf(s))) };
     });
-    return { stoppedTerminals: [...j.stoppedTerminals, ...added] };
+    const keys = new Set(known.map(keyOf));
+    const added = open.filter(({ t }) => !keys.has(t.key)).map(({ t, c }) => ({ ...refOf(t), ...(t.flags?.length && { flags: t.flags }), ...server(c.processes.agent?.server) }));
+    return { stoppedTerminals: [...known, ...added] };
   }));
   for (const id of new Set(open.map(({ t }) => t.characterId))) await bounded('tmux detach-client', (signal) => deps.viewers.detach(id, signal));
   const byKey = new Map(tracks.map((t) => [t.key, t]));

@@ -539,6 +539,29 @@ describe('restTerminals', () => {
     expect(world.orphans).toEqual([]);
   });
 
+  for (const [what, stopped] of [
+    ['with the server it had before an abort reopened it', { characterId: 'c_ada', server: { pid: 5060, pgid: 5060, args: OC_SERVER } }],
+    ['with no server', { characterId: 'c_ada' }],
+  ] as const) {
+    it(`journals and waits for the live server of a terminal the journal already names ${what}`, async () => {
+      const { world, deps, paths } = boot([char('c_ada', { tmux: win(1), agent: agent('opencode', 'done', OSID) })]);
+      deps.journal.write({ ...journalOf(paths), stoppedTerminals: [stopped] });
+      world.pane(1, { job: [`opencode --standalone -s ${OSID}`], server: OC_SERVER, serverLingersMs: 60_000 });
+      let result: unknown;
+      const run = restTerminals(deps, { choices: {}, pollMs: 500, settleMs: 1000 }).then((r) => { result = r; });
+
+      await world.settle();
+      await world.advance(500);
+      expect(result).toBeUndefined();
+      await world.advance(500);
+      await run;
+
+      expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada' }] });
+      expect(world.log).toEqual(['detach c_ada', 'kill @1', 'SIGKILL 1060']);
+      expect(journalOf(paths).stoppedTerminals).toEqual([{ characterId: 'c_ada', server: { pid: 1060, pgid: 1060, args: OC_SERVER } }]);
+    });
+  }
+
   it('takes a journaled server whose pid now runs another command for gone, signalling nothing', async () => {
     const { world, deps, paths } = boot([char('c_ada', { agent: agent('opencode', 'done', OSID), revive: { command: `opencode -s ${OSID}` } })]);
     deps.journal.write({ ...journalOf(paths), stoppedTerminals: [{ characterId: 'c_ada', server: { pid: 1060, pgid: 1060, args: OC_SERVER } }] });
