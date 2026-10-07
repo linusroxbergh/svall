@@ -304,6 +304,21 @@ describe('what each blocker and warning is explained with', () => {
     expect(blockerHint({ ...release, code: 'incompatible_schema' }, ctx)).toBe(blockerHint(release, ctx));
   });
 
+  it('sends a session the destination went on with to that machine, with OpenCode\'s commands, and a folder to Archive', () => {
+    const id = 'ses_0123456789abABCDEFGHIJKLMN';
+    const session = (message: string): Blocker => ({ code: 'destination_diverged', message, entity: { kind: 'character', id: 'c1' } });
+    const opencode = blockerHint(session(`this machine's OpenCode went on with session ${id} past the copy coming in`), ctx);
+    expect(opencode).toMatch(/studio/);
+    expect(opencode).toContain(`opencode session export --standalone ${id} > keep.json`);
+    expect(opencode).toContain(`opencode session delete --standalone ${id}`);
+    expect(opencode).toMatch(/then Try again/);
+    expect(opencode).not.toMatch(/Archive/);
+    const claude = blockerHint(session('this machine continued session 3f2b: /Users/ada/.claude/projects/-app/3f2b.jsonl'), ctx);
+    expect(claude).toMatch(/studio.*aside.*then Try again/);
+    expect(claude).not.toMatch(/Archive|opencode/);
+    expect(blockerHint({ code: 'destination_diverged', message: '/w/app changed', entity: { kind: 'root', id: 'r_a' } }, ctx)).toMatch(/^Archive and carry/);
+  });
+
   it('says where an agent is to be installed, logged in or set up, and that a login never moves', () => {
     expect(blockerHint({ code: 'agent_cli_missing', message: 'the destination has no codex CLI' }, ctx)).toMatch(/Install it on studio/);
     expect(blockerHint({ code: 'agent_logged_out', message: 'claude is not logged in on the destination' }, ctx)).toMatch(/on studio.*never moves/);

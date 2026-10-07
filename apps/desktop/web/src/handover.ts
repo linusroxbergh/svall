@@ -302,6 +302,9 @@ export const CHOICE_LABEL: Record<Choice, string> = { interrupt: 'Interrupt and 
 
 export type HintContext = { destination: string; source: string; pull: boolean; name(id: string): string };
 
+// the OpenCode session a divergence names; other agents' sessions are files the message names
+const OPENCODE_SESSION = /\bsession (ses_[0-9A-Za-z]+)/;
+
 /** What a blocker or warning means for the user, beside what the helper said. */
 export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
   const who = b.entity?.kind === 'character' ? ctx.name(b.entity.id) : 'it';
@@ -315,8 +318,13 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
         + `${ctx.destination}.`;
     case 'shell_busy':
       return `Terminate and carry ends the command it names, in every terminal named here; the shell opens again in its folder on ${ctx.destination}.`;
-    case 'destination_diverged': case 'destination_occupied':
-      return `Archive and carry first moves what is there on ${ctx.destination} aside, to a timestamped folder beside it; nothing is deleted.`;
+    case 'destination_diverged': case 'destination_occupied': {
+      if (b.code === 'destination_occupied' || b.entity?.kind !== 'character') return `Archive and carry first moves what is there on ${ctx.destination} aside, to a timestamped folder beside it; nothing is deleted.`;
+      const id = OPENCODE_SESSION.exec(b.message)?.[1];
+      return `The copy of this session on ${ctx.destination} went on there. ` + (id
+        ? `To keep it, run opencode session export --standalone ${id} > keep.json on ${ctx.destination}, then opencode session delete --standalone ${id}, then Try again.`
+        : `Move the file the message names aside on ${ctx.destination}, then Try again.`);
+    }
     case 'character_pinned':
       return `${who} is marked Keep on this machine: turn that off on ${who}'s card to hand the fleet over.`;
     case 'external_writer':

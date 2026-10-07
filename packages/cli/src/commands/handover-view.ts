@@ -45,6 +45,18 @@ function issueLine(names: Names, b: Blocker, mark: string): string {
   return `  ${mark} ${says ? '' : `${who}: `}${b.message} (${b.code})`;
 }
 
+// the OpenCode session a divergence names; other agents' sessions are files the message names
+const OPENCODE_SESSION = /\bsession (ses_[0-9A-Za-z]+)/;
+
+/** The way out of a session the destination went on with, which no choice clears. */
+function sessionHint(b: Blocker, at = 'the destination'): string | undefined {
+  if (b.code !== 'destination_diverged' || b.entity?.kind !== 'character') return undefined;
+  const id = OPENCODE_SESSION.exec(b.message)?.[1];
+  return `    The copy of this session on ${at} went on there. ` + (id
+    ? `To keep it, run \`opencode session export --standalone ${id} > keep.json\` on ${at}, then \`opencode session delete --standalone ${id}\`, then try again.`
+    : `Move the file named above aside on ${at}, then try again.`);
+}
+
 const characters = (blockers: Blocker[], codes: (c: string) => boolean): string[] =>
   unique(blockers.flatMap((b) => (codes(b.code) && b.entity?.kind === 'character' ? [b.entity.id] : [])));
 const roots = (blockers: Blocker[]): string[] =>
@@ -114,6 +126,11 @@ export class View {
 
   constructor(private print: (line: string) => void, private words: Words, private interactive = false) {}
 
+  private issue(b: Blocker, mark: string): string[] {
+    const hint = sessionHint(b, this.about.destination);
+    return [issueLine(this.names, b, mark), ...(hint ? [hint] : [])];
+  }
+
   show(e: HandoverEvent): void {
     switch (e.event) {
       case 'handover.preflight': {
@@ -168,7 +185,7 @@ export class View {
       }
       case 'handover.blocked':
         this.print(`Blocked while ${HEADINGS[e.data.phase].toLowerCase()}:`);
-        for (const b of e.data.blockers) this.print(issueLine(this.names, b, '✗'));
+        for (const b of e.data.blockers) for (const l of this.issue(b, '✗')) this.print(l);
         return;
       case 'handover.retry':
         this.print(`  … ${e.data.phase}: ${e.data.error}; asking again (attempt ${e.data.attempt})`);
@@ -204,7 +221,7 @@ export class View {
         return [`Nothing to do: ${o.reason}.`];
       case 'blocked': {
         const lines = [`Nothing moved: the handover is blocked${o.phase === 'begin' ? '' : ` while ${HEADINGS[o.phase].toLowerCase()}`}, and the fleet stays where it was.`];
-        if (o.phase !== 'begin' || !this.checked) for (const b of o.blockers) lines.push(issueLine(this.names, b, '✗'));
+        if (o.phase !== 'begin' || !this.checked) for (const b of o.blockers) lines.push(...this.issue(b, '✗'));
         const ways = flags(o.blockers, this.names);
         if (ways.length) lines.push(...['Without a person to ask, a run takes these instead:', ...ways.map((w) => `  ${w}`)]);
         if (this.about.destination) lines.push(`\`${svall(`handover ${this.about.destination}`)}\` tries again.`);

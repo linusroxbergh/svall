@@ -1035,6 +1035,32 @@ describe('the human reading of what a row names', () => {
   });
 });
 
+describe('the human reading of a session the destination went on with', () => {
+  it('names the destination and the way out under the blocker, with OpenCode\'s commands, and leaves a folder to --archive', () => {
+    const printed: string[] = [];
+    const view = new View((l) => printed.push(l), { svall: (a) => `svall ${a}`, machine: (id) => id ?? '?' });
+    view.show(pre());
+    view.about.destination = 'trift';
+    const id = 'ses_0123456789abABCDEFGHIJKLMN';
+    const blockers: Blocker[] = [
+      { code: 'destination_diverged', message: `this machine's OpenCode went on with session ${id} past the copy coming in`, entity: { kind: 'character', id: 'c_ada' } },
+      { code: 'destination_diverged', message: 'this machine continued session 3f2b: /home/ada/.claude/projects/-app/3f2b.jsonl', entity: { kind: 'character', id: 'c_bo' } },
+      { code: 'destination_diverged', message: '/home/ada/app changed', entity: { kind: 'root', id: 'r_app' } },
+    ];
+    view.show({ event: 'handover.blocked', data: { transactionId: 'tx-1', phase: 'prepare', blockers } });
+    const opencode = `    The copy of this session on trift went on there. To keep it, run \`opencode session export --standalone ${id} > keep.json\` on trift, then \`opencode session delete --standalone ${id}\`, then try again.`;
+    const claude = '    The copy of this session on trift went on there. Move the file named above aside on trift, then try again.';
+    expect(printed.slice(-5)).toEqual([
+      `  ✗ ada: this machine's OpenCode went on with session ${id} past the copy coming in (destination_diverged)`, opencode,
+      '  ✗ bo: this machine continued session 3f2b: /home/ada/.claude/projects/-app/3f2b.jsonl (destination_diverged)', claude,
+      '  ✗ /home/ada/app changed (destination_diverged)',
+    ]);
+    const outcome = view.outcome({ status: 'blocked', transactionId: 'tx-1', phase: 'prepare', blockers });
+    expect(outcome).toContain(opencode);
+    expect(outcome).toContain(claude);
+  });
+});
+
 describe('the human reading of sizes', () => {
   it('counts bytes in thousands, as the sheet does', () => {
     const printed: string[] = [];
