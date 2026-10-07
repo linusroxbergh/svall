@@ -292,8 +292,7 @@ svall host remove studio --forget
   machine's copy of the session still holds the unfinished turn, and OpenCode's shared background service resumes it
   there; any `opencode` command run outside Svall without `--standalone` starts that service. Until the fleet comes
   back, run OpenCode there only with `--standalone`, or first remove the copy with `opencode session delete
-  --standalone <id>`, taking the id from the handover's messages or from `opencode session list --standalone` in the
-  character's folder.
+  --standalone <id>`, taking the id from `opencode session list --standalone` in the character's folder.
 
 - **Two controllers can drive one handover.** Starting a handover of the same fleet from two Macs at once can have
   both drive the same handover, since the gateway accepts the second start as the first. The gateway still commits
