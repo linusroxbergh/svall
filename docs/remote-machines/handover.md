@@ -289,9 +289,11 @@ svall host remove studio --forget
 - **A background job an agent started can go unseen** once the command that started it has exited, for Claude, Codex
   and OpenCode alike. It keeps running on the machine the fleet left.
 - **OpenCode's shared service can finish a turn Terminate and carry cut off, on the machine the fleet left.** That
-  machine's copy of the session still holds the unfinished turn, and OpenCode's shared background service, which a
-  plain `opencode` run outside Svall starts, resumes it there. Until the fleet comes back, don't run plain `opencode`
-  on that machine, or first remove its copy with `opencode session delete --standalone <id>`.
+  machine's copy of the session still holds the unfinished turn, and OpenCode's shared background service resumes it
+  there; any `opencode` command run outside Svall without `--standalone` starts that service. Until the fleet comes
+  back, run OpenCode there only with `--standalone`, or first remove the copy with `opencode session delete
+  --standalone <id>`, taking the id from the handover's messages or from `opencode session list --standalone` in the
+  character's folder.
 
 - **Two controllers can drive one handover.** Starting a handover of the same fleet from two Macs at once can have
   both drive the same handover, since the gateway accepts the second start as the first. The gateway still commits
