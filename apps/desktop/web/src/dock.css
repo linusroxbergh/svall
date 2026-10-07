@@ -14,9 +14,21 @@
 .use-status { position: absolute; top: 5px; left: calc(50% + 7px); width: 5px; height: 5px; border-radius: var(--r-pill); background: var(--idle); }
 .use-status[data-on="true"] { background: var(--done); }
 .use-status[data-update] { background: var(--sel); }
+/* the machine the fleet runs on, named in the dock beside the utilities; never for a local fleet */
+.use-owner { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; padding: var(--sp-xs) var(--sp-2xs);
+  border: 1px solid transparent; border-radius: var(--r-sm); background: none; color: var(--sand);
+  font-size: var(--text-sm); font-weight: var(--w-semibold); letter-spacing: var(--track-loose); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.use-owner[data-state="connecting"], .use-owner[data-state="owner-changed"] { color: var(--working); }
+.use-owner[data-state="error"] { color: var(--blocked); }
+/* the Handover control stands beside the owner's name, and says when a move waits on the user or stopped part way */
+.use-handover { cursor: pointer; }
+.use-handover:hover { background: var(--fill-1); }
+.use-handover:focus-visible { outline: 1px solid var(--sand); outline-offset: -2px; }
+.use-handover[data-state="live"] { color: var(--working); }
+.use-handover[data-state="waiting"], .use-handover[data-state="stopped"] { color: var(--blocked); }
 .use[data-collapsed="true"] .use-tabs { width: var(--cell); height: auto; flex-direction: column; gap: var(--sp-xs); padding: var(--sp-sm);
   border: 1px solid var(--line); border-left: 0; border-bottom: 0; border-radius: 0 var(--r-md) 0 0; background: var(--glass-hi); backdrop-filter: blur(7px); }
-.use[data-collapsed="true"] .use-tab { flex: none; width: 100%; height: 36px; }
+.use[data-collapsed="true"] .use-tab, .use[data-collapsed="true"] .use-owner { flex: none; width: 100%; height: 36px; }
 .use[data-collapsed="true"] .use-tab-label { display: none; }
 .use-panel { flex: none; box-sizing: border-box; width: 330px; max-height: calc(100vh - 24px); overflow: auto; margin: 0 0 var(--sp-md) var(--sp-lg);
   padding: var(--sp-2xl) var(--sp-3xl); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); backdrop-filter: blur(9px); box-shadow: var(--shadow-2); pointer-events: auto; }

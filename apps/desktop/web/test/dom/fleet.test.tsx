@@ -146,3 +146,9 @@ test('an empty fleet says so', () => {
   render(<Fleet onOpen={() => {}} />);
   expect(screen.getByText('No islands yet. Tap + to make one.')).toBeTruthy();
 });
+
+test('a refused login is pointed at fleet.json, where the fleet keeps its logins', () => {
+  store.getState().setStatus('refused');
+  render(<Fleet onOpen={() => {}} />);
+  expect(screen.getByText(/can't open this fleet/).textContent).toContain('mobile.logins in fleet.json');
+});

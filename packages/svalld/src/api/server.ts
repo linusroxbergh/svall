@@ -1,28 +1,31 @@
 import crypto from 'node:crypto';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { Hello, LOGIN_REFUSED, PROTOCOL_VERSION, Request, type Event, type HelloReply } from '@svall/protocol';
+import { Hello, LOGIN_REFUSED, MAX_REQUEST_BYTES, PART_BYTES, PROTOCOL_VERSION, Request, RequestPart, type Event, type HelloReply } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
+import type { HandoverService } from '../handover/service.js';
 import type { Logger } from '../log.js';
 import type { Mobile } from '../mobile.js';
 import type { Phones } from '../phones.js';
+import type { OwnershipState } from '../ownership/state.js';
 import type { PushStore } from '../push/store.js';
 import type { CodexPaths } from '../codex/install.js';
 import type { ClaudePaths } from '../paths.js';
-import { mobileDist } from '../runtime.js';
 import type { Store } from '../store.js';
 import type { TerminalHub, Viewer } from '../terminals.js';
 import type { FetchUsage } from '../usage/usage.js';
 import type { Workspace } from '../workspace/workspace.js';
+import { mobileDist } from '../runtime.js';
 import { dispatch, type Ctx } from './methods.js';
 import { serveBundle } from './static.js';
 
 type Opts = {
   host: string; port: number; token: string;
-  store: Store; fleet: Fleet; fleets: Fleets; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; mobileControl: Mobile; log: Logger;
-  push: PushStore; vapidPublicKey: string; phones: Phones; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string;
-  origins?: string[]; logins?: () => string[]; dist?: string; key?: () => string; fleetName?: () => string | undefined; heartbeatMs?: number;
+  store: Store; fleet: Fleet; fleets: Fleets; handover: HandoverService; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; mobileControl: Mobile; log: Logger;
+  push: PushStore; vapidPublicKey: string; phones: Phones; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState;
+  // read on every request: activating a handover replaces them in the config they come from
+  origins?: () => string[]; logins?: () => string[]; dist?: string; key?: () => string; fleetName?: () => string | undefined; heartbeatMs?: number;
 };
 
 const MAX_PAYLOAD = 8 * 1024 * 1024;
@@ -67,6 +70,20 @@ export function originAllowed(req: IncomingMessage, extra: string[] = [], proxie
   try { const u = new URL(origin); return u.host === req.headers.host && (proxied || LOOPBACK.has(u.hostname)); } catch { return false; }
 }
 
+type Parts = { id: number; count: number; chunks: Buffer[]; bytes: number };
+
+/** Takes one part of a request: the whole once its last part is in, the parts so far, or why the socket closes. */
+function gather(held: Parts | undefined, p: RequestPart['part']): { held?: Parts; whole?: string } | { close: [number, string] } {
+  const tooLarge: { close: [number, string] } = { close: [1009, 'request too large'] };
+  if (p.count > Math.ceil(MAX_REQUEST_BYTES / PART_BYTES)) return tooLarge;
+  if (p.index !== (held?.chunks.length ?? 0) || (held && (held.id !== p.id || held.count !== p.count))) return { close: [4400, 'bad request'] };
+  const chunk = Buffer.from(p.data, 'base64');
+  const bytes = (held?.bytes ?? 0) + chunk.length;
+  if (chunk.length > PART_BYTES || bytes > MAX_REQUEST_BYTES) return tooLarge;
+  const next = { id: p.id, count: p.count, chunks: [...(held?.chunks ?? []), chunk], bytes };
+  return next.chunks.length < p.count ? { held: next } : { whole: Buffer.concat(next.chunks).toString('utf8') };
+}
+
 /** The tailnet login the proxy vouches for, when the fleet accepts it. An empty list accepts no one. */
 export function identityOf(req: IncomingMessage, logins: string[] = []): string | undefined {
   const login = req.headers[IDENTITY_HEADER];
@@ -75,10 +92,10 @@ export function identityOf(req: IncomingMessage, logins: string[] = []): string 
 }
 
 export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<void> }> {
-  const { host, port, token, store, fleet, fleets, terminals, workspace, usage, mobileControl, log, push, vapidPublicKey, phones, claude, codex, docs, agentProfiles } = opts;
+  const { host, port, token, store, fleet, fleets, handover, terminals, workspace, usage, mobileControl, log, push, vapidPublicKey, phones, claude, codex, docs, agentProfiles, ownership } = opts;
   const logins = opts.logins ?? (() => []);
-  const origins = opts.origins ?? [];
-  const dist = opts.dist ?? mobileDist;
+  const origins = opts.origins ?? (() => []);
+  const dist = opts.dist ?? mobileDist();
   // a page can retry forever, so each origin or login is named once rather than once per attempt
   const refused = new Set<string>();
   // the desktop panel is the one surface that asks who is on the phone page, so the answer goes only there
@@ -93,10 +110,15 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       return status;
     },
   };
-  const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, terminals, workspace, usage, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles };
-  const unwatchPhones = phones.onChange((list) => {
-    for (const v of desktops) v.send({ event: 'mobile.phones', data: { phones: list } });
-  });
+  const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, handover, terminals, workspace, usage, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles, ownership };
+  // who the fleet belongs to and how far a handover has come reaches every screen watching it
+  const viewers = new Set<Viewer>();
+  const broadcast = (ev: Event): void => { for (const v of viewers) v.send(ev); };
+  const unwatch = [
+    phones.onChange((list) => { for (const v of desktops) v.send({ event: 'mobile.phones', data: { phones: list } }); }),
+    ownership.onChange((r) => broadcast({ event: 'ownership.changed', data: { generation: r.generation, ownerMachineId: r.ownerMachineId } })),
+    handover.onEvent(broadcast),
+  ];
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD });
   // a phone that drops off the network sends no FIN: a socket that misses a whole beat without a pong is ended
   const answered = new WeakSet<WebSocket>();
@@ -136,7 +158,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
   // a worker answering a notification has no socket; it posts one call, vouched for the way a phone socket is
   async function rpc(req: IncomingMessage, res: ServerResponse, login: string | undefined): Promise<void> {
     if (!login) { res.writeHead(401).end(); return; }
-    if (!originAllowed(req, origins, true)) { res.writeHead(403).end(); return; }
+    if (!originAllowed(req, origins(), true)) { res.writeHead(403).end(); return; }
     const chunks: Buffer[] = [];
     let size = 0;
     for await (const chunk of req as AsyncIterable<Buffer>) {
@@ -154,7 +176,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
   }
   server.on('upgrade', (req, socket, head) => {
     const proxied = behindKey(req) !== undefined;
-    if (!originAllowed(req, origins, proxied)) {
+    if (!originAllowed(req, origins(), proxied)) {
       const origin = req.headers.origin ?? '';
       if (!refused.has(origin)) { refused.add(origin); log.error(`api: refused a socket from origin ${origin}`); }
       socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
@@ -178,23 +200,33 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
     let unsub: (() => void) | undefined;
     let left: (() => void) | undefined;
     const aborter = new AbortController();
+    // a phone's login answers to the fleet's list for as long as its socket lasts, and activating a handover can change the list
+    const revoked = (): boolean => {
+      if (!login || logins().includes(login)) return false;
+      if (ws.readyState === ws.OPEN) ws.close(4401, 'unauthorized');
+      return true;
+    };
     const viewer: Viewer = {
       kind: login ? 'phone' : 'app', login,
-      send: (ev: Event) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(ev)); },
+      send: (ev: Event) => { if (!revoked() && ws.readyState === ws.OPEN) ws.send(JSON.stringify(ev)); },
       backlog: () => ws.bufferedAmount,
     };
     const admit = () => {
       unsub = store.subscribe((ops) => viewer.send({ event: 'state.patch', data: { ops } }));
+      viewers.add(viewer);
       if (login) { left = phones.add(login); phoneSockets.add(ws); } else desktops.add(viewer);
       ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } } satisfies HelloReply));
     };
 
     // the proxy has already proved who this is; a socket without that identity still has to say the token
     let authed = Boolean(login);
+    // a request too large for one message, as far as its parts have come; only a socket that said the token sends one
+    let parts: Parts | undefined;
     const authTimer = authed ? undefined : setTimeout(() => ws.close(4401, 'unauthorized'), AUTH_TIMEOUT);
     if (login) { log.info('api: phone socket'); admit(); }
 
     ws.on('message', async (raw) => {
+      if (revoked()) return;
       let msg: unknown;
       try { msg = JSON.parse(raw.toString()); } catch { ws.close(4400, 'bad json'); return; }
       if (!authed) {
@@ -205,18 +237,26 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
         admit();
         return;
       }
+      const piece = RequestPart.safeParse(msg);
+      if (piece.success) {
+        const got = login ? { close: [4400, 'bad request'] as [number, string] } : gather(parts, piece.data.part);
+        if ('close' in got) { ws.close(...got.close); return; }
+        parts = got.held;
+        if (got.whole === undefined) return;
+        try { msg = JSON.parse(got.whole); } catch { ws.close(4400, 'bad json'); return; }
+      }
       const req = Request.safeParse(msg);
       if (!req.success) { ws.close(4400, 'bad request'); return; }
       const res = await dispatch(req.data, { ...base, viewer, signal: aborter.signal });
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(res));
     });
 
-    ws.on('close', () => { clearTimeout(authTimer); aborter.abort(); unsub?.(); left?.(); desktops.delete(viewer); phoneSockets.delete(ws); terminals.closeAll(viewer); workspace.unwatchAll(viewer); });
+    ws.on('close', () => { clearTimeout(authTimer); aborter.abort(); unsub?.(); left?.(); viewers.delete(viewer); desktops.delete(viewer); phoneSockets.delete(ws); terminals.closeAll(viewer); workspace.unwatchAll(viewer); });
     ws.on('error', (e) => log.error(`ws: ${String(e)}`));
   }
 
   return new Promise((resolve, reject) => {
-    const failed = (e: Error) => { unwatchPhones(); clearInterval(heartbeat); reject(e); };
+    const failed = (e: Error) => { for (const off of unwatch) off(); clearInterval(heartbeat); reject(e); };
     server.once('error', failed);
     server.listen(port, host, () => {
       const addr = server.address();
@@ -227,7 +267,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       resolve({
         port: bound,
         close: () => new Promise((r) => {
-          unwatchPhones();
+          for (const off of unwatch) off();
           clearInterval(heartbeat);
           for (const c of wss.clients) c.terminate();
           wss.close();

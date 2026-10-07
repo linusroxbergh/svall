@@ -1,25 +1,27 @@
 import { execFileSync, spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SPACING, crewGrid, emptyState, isLand, landCells, sizeForCrew, type AgentKind, type FleetState } from '@svall/protocol';
+import { MachineId, SPACING, crewGrid, emptyState, isLand, landCells, sizeForCrew, type AgentKind, type FleetState } from '@svall/protocol';
 import { Config } from '../src/config.js';
 import { docsDir } from '../src/docs.js';
-import { markDormant, RESUME_NOTE, type Proc } from '../src/dormancy.js';
+import { markDormant, markSlotDormant, RESUME_NOTE, type Proc } from '../src/dormancy.js';
 import { Dormant, Invalid, NotFound } from '../src/errors.js';
 import { Fleet } from '../src/fleet.js';
 import { startHookReceiver, type HookEvent } from '../src/hooks/receiver.js';
 import { aboveHome, placementOk } from '../src/layout.js';
 import type { Deps as LinkDeps } from '../src/links/refresh.js';
 import { silentLogger, type Logger } from '../src/log.js';
+import type { OwnershipState } from '../src/ownership/state.js';
 import { resolvePaths } from '../src/paths.js';
 import { Store } from '../src/store.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { ControlClient } from '../src/tmux/control.js';
 import { SESSION, Tmux } from '../src/tmux/tmux.js';
-import { cleanHomes, hasTmux, makeHome, waitFor, waitForPolls } from './helpers.js';
+import { cleanHomes, hasTmux, makeHome, ownerOf, waitFor, waitForPolls } from './helpers.js';
 
 const OSID = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
 
@@ -29,7 +31,7 @@ runIf('Fleet', () => {
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 
-  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind; name?: string; state?: FleetState; opening?: boolean } = {}) {
+  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; resumeMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind; name?: string; state?: FleetState; opening?: boolean } = {}) {
     const { homeCwd, homeCommand, mainAgent, name, state, opening, ...deps } = extra;
     // what ps shows the dormancy sweep
     const procs: Proc[] = [];
@@ -41,7 +43,8 @@ runIf('Fleet', () => {
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
-    const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 150, processes: async () => procs, ...deps });
+    const ownership = ownerOf(home, config.id);
+    const fleet = new Fleet({ store, tmux, paths, config, ownership, log: silentLogger, pollMs: 150, processes: async () => procs, ...deps });
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
@@ -50,7 +53,7 @@ runIf('Fleet', () => {
     // a spawned stand-in agent reaches the fleet the way a real one does: over the hooks socket
     const hooks = await startHookReceiver(paths.hooksSock, (e) => fleet.onSocketEvent(e), silentLogger);
     cleanup.push(() => hooks.close());
-    return { fleet, store, tmux, home, procs };
+    return { fleet, store, tmux, home, procs, ownership };
   }
 
   // the next listing tmux gives is handed back only once released
@@ -93,10 +96,29 @@ runIf('Fleet', () => {
 
     fs.writeFileSync(path.join(home, '.env'), 'ANTHROPIC_API_KEY=second\n');
     await fleet.openSecond(c.id);
-    const second = fleet.char(c.id).second!.tmux.paneId;
+    const second = fleet.char(c.id).second!.tmux!.paneId;
     await tmux.sendLine(second, 'echo key:$ANTHROPIC_API_KEY', true);
     await waitFor(async () => (await tmux.capture(second, 20)).toString().includes('key:second'));
     await fleet.closeCharacter(c.id);
+  });
+
+  it('ends every window and its tmux server once deactivated, keeps it down, and brings it back when activated again', async () => {
+    const { fleet, tmux } = await boot();
+    const island = fleet.createIsland({ name: 'handed' });
+    await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
+    await fleet.deactivate();
+    await expect(tmux.run('list-sessions')).rejects.toThrow();
+    // a lost control client would have brought a server back by now
+    await new Promise((r) => setTimeout(r, 1500));
+    await expect(tmux.run('list-sessions')).rejects.toThrow();
+    await fleet.activate();
+    await expect(tmux.run('list-sessions')).resolves.toBeDefined();
+
+    // a server lost just before the fleet lets go is not brought back by the recovery its loss scheduled
+    await tmux.killServer();
+    await fleet.deactivate();
+    await new Promise((r) => setTimeout(r, 1500));
+    await expect(tmux.run('list-sessions')).rejects.toThrow();
   });
 
   it('gives character shells an OpenCode config dir only where OpenCode is', async () => {
@@ -121,7 +143,7 @@ runIf('Fleet', () => {
     const [a, b] = await Promise.all([fleet.openSecond(c.id), fleet.openSecond(c.id)]);
     expect(a.second?.tmux).toEqual(b.second?.tmux);
     expect((await tmux.listWindows()).map((w) => w.name).sort()).toEqual([c.id, `${c.id}-2`]);
-    const paneId = store.state.characters[c.id].second!.tmux.paneId;
+    const paneId = store.state.characters[c.id].second!.tmux!.paneId;
     await tmux.sendLine(paneId, 'echo term-$SVALL_TERM-$SVALL_CHAR_ID', true);
     await waitFor(async () => (await tmux.capture(paneId, 20)).toString().includes(`term-2-${c.id}`));
     // several polls pass and the record stays
@@ -148,8 +170,108 @@ runIf('Fleet', () => {
     store.update((d) => { d.characters[c.id].second!.agent = { kind: 'claude', sessionId: 's', transcriptPath: '/t', status: 'blocked', lastActivityAt: 1 }; });
     expect(await fleet.waitFor(c.id, ['blocked'], 1000, undefined, 2)).toBe('blocked');
     expect(await fleet.waitFor(c.id, ['blocked'], 50)).toBe('timeout');
-    store.update((d) => { delete d.characters[c.id].second; });
+    store.update((d) => { delete d.characters[c.id].second!.tmux; });
     expect(await fleet.waitFor(c.id, ['blocked'], 1000, undefined, 2)).toBe('gone');
+    await expect(fleet.run(c.id, 'echo nope', true, 2)).rejects.toThrow(Dormant);
+    await expect(fleet.readScreen(c.id, 20, 2)).rejects.toThrow(/second terminal of .* is dormant/);
+  });
+
+  it('keeps a second terminal that ran an agent, and revives it in its own cwd with the command that brings its session back', async () => {
+    const { fleet, store, tmux, home } = await boot();
+    const island = fleet.createIsland({ name: 'again', context: [{ kind: 'folder', ref: '/tmp', label: 'tmp', source: 'manual' }] });
+    const c = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
+    await fleet.openSecond(c.id);
+    const paneId = store.state.characters[c.id].second!.tmux!.paneId;
+    const sessionId = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
+    store.update((d) => { d.characters[c.id].second!.agent = { kind: 'claude', sessionId, transcriptPath: '/t', status: 'idle', lastActivityAt: 1 }; });
+    // typed at once: two polls of the pane at a shell would take the agent as ended before the window goes
+    await tmux.run('send-keys', '-t', paneId, 'exit', 'Enter');
+    await waitFor(() => store.state.characters[c.id].second?.tmux === undefined);
+    expect(store.state.characters[c.id].second?.revive).toEqual({ command: `claude --resume ${sessionId}` });
+    // the end its closing window sends leaves the agent the revive resumes
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', term: 2, name: 'SessionEnd', sessionId } });
+    expect(store.state.characters[c.id].second?.agent?.sessionId).toBe(sessionId);
+    const dir = fs.realpathSync(home);
+    store.update((d) => { d.characters[c.id].second!.cwd = dir; });
+    const typed = vi.spyOn(tmux, 'sendLine');
+    const back = await fleet.openSecond(c.id);
+    expect(back.second?.tmux).toBeDefined();
+    expect(back.second?.revive).toBeUndefined();
+    // the resume is typed into the new pane, carrying the island's context folders as the main revive does
+    expect(typed.mock.calls).toEqual([[back.second!.tmux!.paneId, `claude --resume ${sessionId} --add-dir '/tmp'`, true]]);
+    typed.mockRestore();
+    expect((await tmux.listWindows()).find((w) => w.name === `${c.id}-2`)?.path).toBe(dir);
+  });
+
+  it('lets a second terminal go with its window once a poll has seen its OpenCode, which sends no SessionEnd, quit to the shell', async () => {
+    // one poll in a second, so the exit lands before a second poll would let the agent go
+    const { fleet, store, tmux } = await boot({ pollMs: 1000 });
+    const island = fleet.createIsland({ name: 'quit' });
+    const quitThenExit = async (id: string) => {
+      await fleet.openSecond(id);
+      const paneId = store.state.characters[id].second!.tmux!.paneId;
+      store.update((d) => { d.characters[id].second!.agent = { kind: 'opencode', sessionId: OSID, transcriptPath: '/t', status: 'idle', lastActivityAt: 1 }; });
+      await waitForPolls(fleet, 1);
+      await tmux.run('send-keys', '-t', paneId, 'exit', 'Enter');
+      await waitFor(() => store.state.characters[id].second === undefined);
+    };
+    // the control client hears the window close
+    await quitThenExit((await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' })).id);
+    // the poll finds it gone
+    await fleet['link'].stop();
+    await quitThenExit((await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' })).id);
+  });
+
+  it('judges a revived second terminal by what a poll saw in its own window, not in the one closed before it', async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 1000 });
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'again' }).id, cwd: '/tmp' });
+    await fleet.openSecond(c.id);
+    const first = store.state.characters[c.id].second!.tmux!.windowId;
+    store.update((d) => { d.characters[c.id].second!.agent = { kind: 'opencode', sessionId: OSID, transcriptPath: '/t', status: 'idle', lastActivityAt: 1 }; });
+    // a poll sees the shell in the pane, then the terminal is laid dormant the way a quit does, reading no sighting
+    await waitForPolls(fleet, 1);
+    store.update((d) => { markSlotDormant(d.characters[c.id].second!); });
+    await tmux.killWindow(first);
+    await waitForPolls(fleet, 1);
+    // revived, with nothing typed, and its window killed before any poll has looked at it
+    vi.spyOn(tmux, 'sendLine').mockResolvedValue();
+    await fleet.openSecond(c.id);
+    await tmux.killWindow(store.state.characters[c.id].second!.tmux!.windowId);
+    await waitFor(() => store.state.characters[c.id].second?.tmux === undefined);
+    expect(store.state.characters[c.id].second?.revive).toEqual({ command: `opencode -s ${OSID}` });
+  });
+
+  it('keeps a second terminal whose resume never brought its OpenCode up, though a poll saw only the shell there', async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 1000 });
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'resume' }).id, cwd: '/tmp' });
+    // a resume that failed once, so its revive is watched until the session starts
+    store.update((d) => {
+      d.characters[c.id].second = {
+        cwd: '/tmp', unread: false, agent: { kind: 'opencode', sessionId: OSID, transcriptPath: '/t', status: 'idle', lastActivityAt: 1 },
+        revive: { command: `opencode -s ${OSID}` }, resumeError: 'opencode did not come up',
+      };
+    });
+    vi.spyOn(tmux, 'sendLine').mockResolvedValue();
+    await fleet.openSecond(c.id);
+    await waitForPolls(fleet, 1);
+    await tmux.killWindow(store.state.characters[c.id].second!.tmux!.windowId);
+    await waitFor(() => store.state.characters[c.id].second?.tmux === undefined);
+    expect(store.state.characters[c.id].second?.revive).toEqual({ command: `opencode -s ${OSID}` });
+  });
+
+  it('keeps a second terminal whose OpenCode still held its pane when the window was killed, to be revived', async () => {
+    const { fleet, store, tmux } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'held' }).id, cwd: '/tmp' });
+    await fleet.openSecond(c.id);
+    const { windowId, paneId } = store.state.characters[c.id].second!.tmux!;
+    // what holds the pane in OpenCode's place
+    await tmux.sendLine(paneId, 'sleep 30', true);
+    await waitFor(async () => (await tmux.listWindows()).find((w) => w.paneId === paneId)?.command === 'sleep');
+    store.update((d) => { d.characters[c.id].second!.agent = { kind: 'opencode', sessionId: OSID, transcriptPath: '/t', status: 'idle', lastActivityAt: 1 }; });
+    await waitForPolls(fleet, 1);
+    await tmux.killWindow(windowId);
+    await waitFor(() => store.state.characters[c.id].second?.tmux === undefined);
+    expect(store.state.characters[c.id].second?.revive).toEqual({ command: `opencode -s ${OSID}` });
   });
 
   it('arranges the fleet into legal ground and leaves mission control under it', async () => {
@@ -230,6 +352,39 @@ runIf('Fleet', () => {
     expect(await fleet.waitFor(c.id, ['idle'], 100)).toBe('gone');
   });
 
+  it('activates again after an activation that failed', async () => {
+    const home = makeHome();
+    const paths = resolvePaths(home);
+    const config = Config.parse({ shell: '/bin/sh', home: { cwd: path.join(home, 'mc') } });
+    fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
+    const store = Store.load(paths.state, () => {});
+    const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
+    const fleet = new Fleet({ store, tmux, paths, config, ownership: ownerOf(home, config.id), log: silentLogger, pollMs: 150 });
+    cleanup.push(async () => { fleet.stop(); await tmux.killServer(); });
+    vi.spyOn(tmux, 'ensureServer').mockRejectedValueOnce(new Error('tmux server would not start'));
+    await expect(fleet.activate()).rejects.toThrow('would not start');
+    await fleet.activate();
+    expect(store.state.islands.home.kind).toBe('home');
+  });
+
+  it('says which terminal a session started in, once the hook has landed there', async () => {
+    const { fleet, store } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    store.update((d) => { d.characters[c.id].second = { cwd: '/tmp', tmux: { windowId: '@99', paneId: '%99' }, unread: false }; });
+    const seen: unknown[] = [];
+    const off = fleet.onSessionStart((...a) => seen.push(a));
+    const sid = '11111111-1111-4111-8111-111111111111';
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: sid, transcriptPath: '/t/a.jsonl' } });
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', term: 2, name: 'SessionStart', sessionId: sid } });
+    // no session to name, or no character for it to land on
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart' } });
+    fleet.onSocketEvent({ hook: { charId: 'c_nobody', backend: 'claude', name: 'SessionStart', sessionId: sid } });
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Stop', sessionId: sid } });
+    off();
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: sid } });
+    expect(seen).toEqual([[c.id, undefined, sid], [c.id, 2, sid]]);
+  });
+
   it('routes a hook from the second terminal to the second record, and drops it when there is none', async () => {
     const { fleet, store } = await boot();
     const island = fleet.createIsland({ name: 'two' });
@@ -239,7 +394,7 @@ runIf('Fleet', () => {
     fleet.onSocketEvent({ hook: start });
     expect(store.state.characters[c.id].agent).toBeUndefined();
     expect(store.state.characters[c.id].second).toBeUndefined();
-    store.update((d) => { d.characters[c.id].second = { tmux: { windowId: '@99', paneId: '%99' }, unread: false }; });
+    store.update((d) => { d.characters[c.id].second = { cwd: '/tmp', tmux: { windowId: '@99', paneId: '%99' }, unread: false }; });
     fleet.onSocketEvent({ hook: start });
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', term: 2, name: 'Stop' } });
     expect(store.state.characters[c.id].agent).toBeUndefined();
@@ -259,7 +414,7 @@ runIf('Fleet', () => {
     await fleet.stop();
     store.update((d) => {
       d.characters[c.id].unread = true;
-      d.characters[c.id].second = { tmux: { windowId: '@99', paneId: '%99' }, unread: true };
+      d.characters[c.id].second = { cwd: '/tmp', tmux: { windowId: '@99', paneId: '%99' }, unread: true };
     });
     fleet.markSeen(c.id);
     expect(store.state.characters[c.id].unread).toBe(false);
@@ -566,6 +721,52 @@ runIf('Fleet', () => {
     expect(fs.readFileSync(file, 'utf8')).toBe(RESUME_NOTE);
   });
 
+  it('resumes an interrupted agent a closed handover once rested, and leaves one an open handover carries', async () => {
+    const b = await boot();
+    const { c } = await withAgent(b);
+    b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PreToolUse', sessionId: SID } });
+    await b.fleet.stopAll();
+    const state = structuredClone(b.store.state);
+    state.characters[c.id].restedBy = 'tx-old';
+
+    const carried = await boot({ opening: true, state: structuredClone(state) });
+    carried.fleet.carries((id) => id === c.id);
+    const typed: string[] = [];
+    vi.spyOn(carried.tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
+    await carried.fleet.resumeInterrupted();
+    expect(carried.store.state.characters[c.id].tmux).toBeUndefined();
+    expect(typed).toEqual([]);
+
+    const again = await boot({ opening: true, state });
+    vi.spyOn(again.tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
+    await again.fleet.resumeInterrupted();
+    expect(again.store.state.characters[c.id].tmux).toBeDefined();
+    expect(typed).toHaveLength(1);
+    expect(fs.readFileSync(path.join(again.home, `${c.id}.prompt`), 'utf8')).toBe(RESUME_NOTE);
+  });
+
+  it('leaves an agent whose monitors a quit stopped dormant on a frozen fleet and while an open handover carries it', async () => {
+    const b = await boot();
+    const { c } = await withAgent(b);
+    b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PostToolUse', sessionId: SID, toolName: 'Monitor', monitor: 'b1' } });
+    b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Stop', sessionId: SID, backgroundTasks: 1, backgroundShells: ['b1'] } });
+    expect(b.store.state.characters[c.id].agent).toMatchObject({ status: 'done', monitors: ['b1'] });
+    await b.fleet.stopAll();
+    expect(b.store.state.characters[c.id].revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
+
+    const typed: string[] = [];
+    const carried = await boot({ opening: true, state: structuredClone(b.store.state) });
+    carried.fleet.carries((id) => id === c.id);
+    const frozen = await boot({ opening: true, state: structuredClone(b.store.state) });
+    await frozen.ownership.freeze({ id: 'tx-1', fromMachineId: MachineId.parse(crypto.randomUUID()), toMachineId: MachineId.parse(crypto.randomUUID()), phase: 'preparing', startedAt: 1 });
+    for (const f of [carried, frozen]) {
+      vi.spyOn(f.tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
+      await f.fleet.resumeInterrupted();
+      expect(f.store.state.characters[c.id].tmux).toBeUndefined();
+    }
+    expect(typed).toEqual([]);
+  });
+
   it('has every change on disk once it has stopped', async () => {
     const { fleet, home } = await boot();
     fleet.setDormancy(5);
@@ -603,6 +804,75 @@ runIf('Fleet', () => {
     fleet.setDormancy(1);
     await fleet['endIdleAgents']();
     expect(store.state.characters[c.id].tmux).toBeUndefined();
+  });
+
+  it('ends no agent once a handover freezes the fleet, one found idle before ps answered included', async () => {
+    const b = await boot();
+    const { fleet, store, ownership } = b;
+    const { c } = await withAgent(b);
+    store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
+    let answer!: () => void;
+    const listed = new Promise<void>((r) => { answer = r; });
+    fleet['deps'].processes = async () => { await listed; return b.procs; };
+    const ending = fleet['endIdleAgents']();
+    await ownership.freeze({ id: 'tx-1', fromMachineId: ownership.machineId, toMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'), phase: 'preparing', startedAt: 1 });
+    answer();
+    await ending;
+    expect(store.state.characters[c.id].tmux).toBeDefined();
+    expect(store.state.characters[c.id].revive).toBeUndefined();
+  });
+
+  const OTHER = MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f');
+  const freeze = (o: OwnershipState) => o.freeze({ id: 'tx-1', fromMachineId: o.machineId, toMachineId: OTHER, phase: 'preparing', startedAt: 1 });
+
+  it('stops a frozen or a replica fleet for a quit without ending any terminal, and still says it stopped', async () => {
+    const handed: [string, (o: OwnershipState) => Promise<void>][] = [
+      ['frozen', freeze],
+      ['replica', (o) => o.installCommitted({ fleetId: o.record().fleetId, generation: 1, ownerMachineId: OTHER })],
+    ];
+    for (const [what, hand] of handed) {
+      const b = await boot();
+      const { fleet, store, tmux, ownership } = b;
+      const { c, pid } = await withAgent(b);
+      await hand(ownership);
+      const stopped = new Promise<void>((r) => fleet.once('stopped', r));
+      await fleet.stopAll();
+      await stopped;
+      expect(store.state.characters[c.id].tmux, what).toEqual(c.tmux);
+      expect(store.state.characters[c.id].agent?.sessionId, what).toBe(SID);
+      expect(store.state.characters[c.id].revive, what).toBeUndefined();
+      expect((await tmux.listWindows()).map((w) => w.name), what).toContain(c.id);
+      expect(() => process.kill(pid, 0), what).not.toThrow();
+    }
+  });
+
+  it('writes nothing, and starts no scribe pass, from a poll whose listing a freeze overtook', async () => {
+    const b = await boot();
+    const { fleet, store, tmux, ownership } = b;
+    const listing = holdListing(tmux);
+    await listing.listed;
+    const tick = fleet['poll']['ticking'];
+    await freeze(ownership);
+    const update = vi.spyOn(store, 'update');
+    const scribe = vi.spyOn(fleet['scribe'], 'tick');
+    listing.release();
+    await tick;
+    expect(update).not.toHaveBeenCalled();
+    expect(scribe).not.toHaveBeenCalled();
+  });
+
+  it('adopts no stray window from a reconcile whose listing a freeze overtook', async () => {
+    const b = await boot();
+    const { fleet, store, tmux, ownership } = b;
+    await tmux.newWindow('stray', '/tmp', {});
+    const listing = holdListing(tmux);
+    const reconciling = fleet.reconcileNow();
+    await listing.listed;
+    await freeze(ownership);
+    listing.release();
+    await reconciling;
+    expect(store.state.characters).toEqual({});
+    expect((await tmux.listWindows()).map((w) => w.name)).toContain('stray');
   });
 
   it('leaves an agent whose pid is gone or runs another program, or whose launch a resume would change', async () => {
@@ -710,6 +980,74 @@ runIf('Fleet', () => {
     release();
     await ending;
     expect((await revived).tmux?.windowId).not.toBe(windowId);
+  });
+
+  it('opens no window for a revive admitted before a freeze, and settles only once that revive has answered', async () => {
+    const b = await boot();
+    const { fleet, store, tmux, ownership } = b;
+    const { c } = await withAgent(b);
+    store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
+    const real = tmux.killWindow.bind(tmux);
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    vi.spyOn(tmux, 'killWindow').mockImplementation(async (id) => { await held; return real(id); });
+    const ending = fleet['endIdleAgents']();
+    await waitFor(() => !store.state.characters[c.id].tmux);
+    // admitted while the fleet was writable, it waits on the idle close past the freeze
+    const revived = fleet.reviveCharacter(c.id).then(() => 'opened', (e: Error & { code?: string }) => e.code);
+    await ownership.freeze({ id: 'tx-1', fromMachineId: ownership.machineId, toMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'), phase: 'preparing', startedAt: 1 });
+    let settled = false;
+    const settling = fleet.settle().then(() => { settled = true; });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(settled).toBe(false);
+    release();
+    await ending;
+    await settling;
+    expect(await revived).toBe('frozen');
+    expect((await tmux.listWindows()).filter((w) => w.name === c.id)).toEqual([]);
+    expect(store.state.characters[c.id].tmux).toBeUndefined();
+  });
+
+  it('settles only once a character created before a freeze holds its window, and opens no window for one asked once frozen', async () => {
+    const b = await boot();
+    const { fleet, store, tmux, ownership } = b;
+    const islandId = fleet.createIsland({ name: 'x' }).id;
+    const real = tmux.newWindow.bind(tmux);
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    const spy = vi.spyOn(tmux, 'newWindow').mockImplementationOnce(async (...a) => { const w = await real(...a); await held; return w; });
+    // admitted while the fleet was writable, its window is open and not yet on its record when the freeze comes
+    const created = fleet.createCharacter({ islandId, cwd: '/tmp', command: 'sleep 600' });
+    await waitFor(() => spy.mock.calls.length === 1);
+    await ownership.freeze({ id: 'tx-1', fromMachineId: ownership.machineId, toMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'), phase: 'preparing', startedAt: 1 });
+    let settled = false;
+    const settling = fleet.settle().then(() => { settled = true; });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(settled).toBe(false);
+    release();
+    await settling;
+    // what the rest lists next is what the state holds
+    const c = Object.values(store.state.characters)[0];
+    expect((await tmux.listWindows()).map((w) => w.windowId)).toEqual([c.tmux!.windowId]);
+    await created;
+
+    await expect(fleet.createCharacter({ islandId, cwd: '/tmp' })).rejects.toMatchObject({ code: 'frozen' });
+    expect(await tmux.listWindows()).toHaveLength(1);
+  });
+
+  it('types no prompt into a character created before a freeze whose agent reports in after it', async () => {
+    const b = await boot({ runTimeoutMs: 5000 });
+    const { fleet, store, tmux, ownership } = b;
+    const typed: string[] = [];
+    const send = tmux.sendLine.bind(tmux);
+    vi.spyOn(tmux, 'sendLine').mockImplementation(async (pane, text, enter) => { typed.push(text); return send(pane, text, enter); });
+    const created = fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600', run: 'fix the tests' });
+    await waitFor(() => Object.keys(store.state.characters).length === 1 && typed.length === 1);
+    const id = Object.keys(store.state.characters)[0];
+    await ownership.freeze({ id: 'tx-1', fromMachineId: ownership.machineId, toMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'), phase: 'preparing', startedAt: 1 });
+    fleet.onSocketEvent({ hook: { charId: id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
+    expect((await created).runSent).toBe(false);
+    expect(typed).toEqual(['sleep 600']);
   });
 
   it('goes back to a window whose kill failed, rather than start a second agent', async () => {
@@ -919,6 +1257,30 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id].tmux).toBeUndefined();
   });
 
+  it('keeps why a resume failed on a terminal while it lies dormant, and lets it go once that terminal comes up', async () => {
+    const { fleet, store, tmux } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    await fleet.openSecond(c.id);
+    const agent = { kind: 'claude' as const, sessionId: '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d', transcriptPath: '/t', status: 'idle' as const, lastActivityAt: 1 };
+    store.update((d) => { d.characters[c.id].second!.agent = agent; });
+    for (const w of [c.tmux!.windowId, store.state.characters[c.id].second!.tmux!.windowId]) await tmux.killWindow(w);
+    await waitFor(() => !store.state.characters[c.id].tmux && !store.state.characters[c.id].second?.tmux);
+    const failed = "x's terminal resumed claude session 3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d, which did not report its SessionStart within 60 s";
+    store.update((d) => { d.characters[c.id].resumeError = failed; d.characters[c.id].second!.resumeError = failed; });
+    // polls that find no window leave it
+    await new Promise((r) => setTimeout(r, 450));
+    expect([store.state.characters[c.id].resumeError, store.state.characters[c.id].second!.resumeError]).toEqual([failed, failed]);
+
+    await fleet.reviveCharacter(c.id);
+    expect([store.state.characters[c.id].resumeError, store.state.characters[c.id].second!.resumeError]).toEqual([undefined, failed]);
+    await fleet.openSecond(c.id);
+    expect(store.state.characters[c.id].second!.resumeError).toBeUndefined();
+    // a window found still running for a terminal marked dormant is that terminal come up
+    store.update((d) => { delete d.characters[c.id].tmux; d.characters[c.id].revive = { command: '' }; d.characters[c.id].resumeError = failed; });
+    await waitFor(() => store.state.characters[c.id].tmux !== undefined);
+    expect(store.state.characters[c.id].resumeError).toBeUndefined();
+  });
+
   it('re-attaches a character whose window is still alive', async () => {
     const { fleet, store } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
@@ -1107,6 +1469,132 @@ runIf('Fleet', () => {
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope' } });
     await waitFor(() => store.state.characters[c.id].agent === undefined, 3000);
+  });
+
+  it('keeps the agent and resume command of a terminal a handover has yet to start while its pane sits at a shell prompt', async () => {
+    const { fleet, store } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    const second = await fleet.openSecond(c.id);
+    let carried = true;
+    fleet.carries(() => carried);
+    for (const term of [undefined, 2 as const]) {
+      fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: `sess-${term ?? 1}`, transcriptPath: '/nope', ...(term && { term }) } });
+    }
+    // a window its activation opened before the daemon that opened it could record it: the poll leaves it to the
+    // handover, and the reconcile an activation runs finds it
+    const { tmux: window } = store.state.characters[c.id];
+    store.update((d) => { delete d.characters[c.id].tmux; d.characters[c.id].revive = { command: 'claude --resume sess-1' }; });
+    await new Promise((r) => { setTimeout(r, 1000); });
+    expect(store.state.characters[c.id]).toMatchObject({ agent: { sessionId: 'sess-1' }, revive: { command: 'claude --resume sess-1' } });
+    expect(store.state.characters[c.id].tmux).toBeUndefined();
+    expect(store.state.characters[c.id].second).toMatchObject({ tmux: second.second!.tmux, agent: { sessionId: 'sess-2' } });
+    await fleet.reconcileNow();
+    expect(store.state.characters[c.id]).toMatchObject({ tmux: window, agent: { sessionId: 'sess-1' }, revive: { command: 'claude --resume sess-1' } });
+    await new Promise((r) => { setTimeout(r, 1000); });
+    expect(store.state.characters[c.id]).toMatchObject({ agent: { sessionId: 'sess-1' } });
+
+    carried = false;
+    await waitFor(() => store.state.characters[c.id].agent === undefined && store.state.characters[c.id].second?.agent === undefined, 3000);
+  });
+
+  it('keeps the resume command of a terminal a handover has yet to answer for when it opens it, so a retry lays it dormant with it again', async () => {
+    const { fleet, store, tmux } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    let carried = true;
+    fleet.carries(() => carried);
+    const main = { command: 'echo main' };
+    const second = { command: 'echo second' };
+    const dormant = () => store.update((d) => { delete d.characters[c.id].tmux; d.characters[c.id].revive = main; });
+    // dormant while its window lives on, then with that window gone, and a dormant second
+    dormant();
+    store.update((d) => { d.characters[c.id].second = { cwd: '/tmp', unread: false, revive: second }; });
+    expect((await fleet.reviveCharacter(c.id)).revive).toEqual(main);
+    await tmux.killWindow(store.state.characters[c.id].tmux!.windowId);
+    dormant();
+    expect((await fleet.reviveCharacter(c.id)).revive).toEqual(main);
+    expect((await fleet.openSecond(c.id)).second?.revive).toEqual(second);
+    // one the handover has answered for opens as any other
+    carried = false;
+    await tmux.killWindow(store.state.characters[c.id].tmux!.windowId);
+    dormant();
+    expect((await fleet.reviveCharacter(c.id)).revive).toBeUndefined();
+  });
+
+  it('drops the resume command a live terminal kept for its handover once the handover has answered for it', async () => {
+    const { fleet, store } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    let carried = true;
+    fleet.carries(() => carried);
+    store.update((d) => { d.characters[c.id].revive = { command: 'claude --resume sess-1' }; });
+    await waitForPolls(fleet, 2);
+    expect(store.state.characters[c.id].revive).toEqual({ command: 'claude --resume sess-1' });
+    carried = false;
+    await waitFor(() => store.state.characters[c.id].revive === undefined, 3000);
+    expect(store.state.characters[c.id].tmux).toBeDefined();
+  });
+
+  it('leaves a terminal whose ordinary revive exits back to its shell at that shell, and drops its agent', async () => {
+    const { fleet, store, tmux } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
+    await tmux.killWindow(c.tmux!.windowId);
+    await waitFor(() => store.state.characters[c.id].tmux === undefined);
+    // a resume of a session that is gone, as Claude's is once it has cleaned up the transcript
+    store.update((d) => { d.characters[c.id].revive = { command: `sleep 1; : --resume ${SID}` }; });
+
+    const { tmux: window } = await fleet.reviveCharacter(c.id);
+    await waitFor(() => store.state.characters[c.id].agent === undefined, 5000);
+    await waitForPolls(fleet, 3);
+    expect(store.state.characters[c.id].tmux).toEqual(window);
+    expect(store.state.characters[c.id].revive).toBeUndefined();
+    expect(store.state.characters[c.id].resumeError).toBeUndefined();
+    expect((await tmux.listWindows()).some((w) => w.windowId === window!.windowId && !w.dead)).toBe(true);
+  });
+
+  it('lays a revived terminal dormant again with its session and resume when its agent leaves before that session starts, and not once it has', async () => {
+    const { fleet, store, tmux } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
+    await tmux.killWindow(c.tmux!.windowId);
+    await waitFor(() => store.state.characters[c.id].tmux === undefined);
+    // a Retry of a terminal a handover could not resume, whose resume runs a moment and exits, as a Claude without its login does
+    const revive = { command: `sleep 1; : --resume ${SID}` };
+    store.update((d) => { d.characters[c.id].revive = revive; d.characters[c.id].resumeError = 'the handover could not resume it'; });
+
+    await fleet.reviveCharacter(c.id);
+    await waitFor(() => store.state.characters[c.id].tmux === undefined, 5000);
+    expect(store.state.characters[c.id]).toMatchObject({
+      agent: { sessionId: SID }, revive,
+      resumeError: `${c.name}'s terminal resumed claude session ${SID}, but claude exited back to its shell before that session started, so it is dormant again with that session; revive it to see`,
+    });
+    await waitFor(async () => !(await tmux.listWindows()).some((w) => w.name === c.id));
+
+    // one whose session started is an agent that ended, and leaves its shell
+    const back = await fleet.reviveCharacter(c.id);
+    expect(back.resumeError).toBeUndefined();
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
+    await waitFor(() => store.state.characters[c.id].agent === undefined, 5000);
+    expect(store.state.characters[c.id].tmux).toBeDefined();
+  });
+
+  it('lays a revived terminal whose agent never comes up dormant again with its session once the wait for it runs out', async () => {
+    const { fleet, store, tmux } = await boot({ resumeMs: 1000 });
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
+    await tmux.killWindow(c.tmux!.windowId);
+    await waitFor(() => store.state.characters[c.id].tmux === undefined);
+    const revive = { command: `: --resume ${SID}` };
+    store.update((d) => { d.characters[c.id].revive = revive; });
+
+    // a terminal a handover carries, opened by that handover, which answers for it straight after
+    let carried = true;
+    fleet.carries(() => carried);
+    await fleet.reviveCharacter(c.id);
+    carried = false;
+    await waitForPolls(fleet, 3);
+    expect(store.state.characters[c.id]).toMatchObject({ tmux: expect.anything(), agent: { sessionId: SID } });
+    await waitFor(() => store.state.characters[c.id].tmux === undefined, 5000);
+    expect(store.state.characters[c.id]).toMatchObject({ agent: { sessionId: SID }, revive, resumeError: expect.stringMatching(/claude did not come up within 1 s before that session started/) });
   });
 
   it('creates the home island on start, copies config into state, and protects it', async () => {
@@ -1699,7 +2187,7 @@ runIf('Fleet', () => {
     expect(store.state.islands[island.id]).toBeUndefined();
   });
 
-  it('mirrors the main agent into the fleet, and sets it in config.json', async () => {
+  it('mirrors the main agent into the fleet, and sets it in fleet.json', async () => {
     const { fleet, store, home } = await boot({ agentsFound: ['claude', 'codex'] });
     expect(store.state.mainAgent).toBe('claude');
     expect(store.state.agentsFound).toEqual(['claude', 'codex']);
@@ -1707,15 +2195,15 @@ runIf('Fleet', () => {
     fleet.setMainAgent('codex');
     expect(store.state.mainAgent).toBe('codex');
     expect(store.state.scribeAgent).toBe('codex');
-    expect(JSON.parse(fs.readFileSync(resolvePaths(home).config, 'utf8')).mainAgent).toBe('codex');
+    expect(JSON.parse(fs.readFileSync(resolvePaths(home).fleetConfig, 'utf8')).mainAgent).toBe('codex');
   });
 
-  it('mirrors the fleet name into the fleet, and renames it in config.json unless another fleet goes by it', async () => {
+  it('mirrors the fleet name into the fleet, and renames it in fleet.json unless another fleet goes by it', async () => {
     const { fleet, store, home } = await boot({ name: 'home' });
     expect(store.state.name).toBe('home');
     fleet.renameFleet('base');
     expect(store.state.name).toBe('base');
-    expect(JSON.parse(fs.readFileSync(resolvePaths(home).config, 'utf8')).name).toBe('base');
+    expect(JSON.parse(fs.readFileSync(resolvePaths(home).fleetConfig, 'utf8')).name).toBe('base');
     const work = path.join(os.homedir(), '.svall-work');
     fs.mkdirSync(work, { recursive: true });
     fs.writeFileSync(path.join(work, 'config.json'), '{}');
@@ -1730,6 +2218,6 @@ runIf('Fleet', () => {
     expect(store.state.mainAgent).toBe('codex');
     expect(() => fleet.setMainAgent('claude')).toThrow("svalld doesn't find claude; install Claude Code, then run svall setup");
     expect(store.state.mainAgent).toBe('codex');
-    expect(fs.existsSync(resolvePaths(home).config)).toBe(false);
+    expect(fs.existsSync(resolvePaths(home).fleetConfig)).toBe(false);
   });
 });

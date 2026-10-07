@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AGENTS, findAgents, mainAgent, onPath, parseVersion, versionOk } from '../src/agents.js';
+import { sessionAdapter } from '../src/handover/sessions/registry.js';
 
 const exec = (files: string[]) => (f: string) => files.includes(f);
 
@@ -27,13 +28,15 @@ describe('versions', () => {
     expect(parseVersion('2.1.283 (Claude Code)')).toEqual([2, 1, 283]);
     expect(parseVersion('nonsense')).toBeUndefined();
   });
-  it('holds codex to 0.155 and claude to nothing', () => {
+  it('holds codex to 0.155, and claude to 2.1.251, the oldest release whose sessions a handover carries', () => {
     expect(versionOk(AGENTS.codex, 'codex-cli 0.155.0')).toBe(true);
     expect(versionOk(AGENTS.codex, 'codex-cli 0.142.0-alpha.6')).toBe(false);
     expect(versionOk(AGENTS.codex, 'codex-cli 0.155.0-alpha.3')).toBe(false);
     expect(versionOk(AGENTS.codex, 'codex-cli 0.156.0-alpha.1')).toBe(true);
     expect(versionOk(AGENTS.codex, 'unparseable')).toBe(true);
-    expect(versionOk(AGENTS.claude, '0.0.1 (Claude Code)')).toBe(true);
+    expect(versionOk(AGENTS.claude, '2.1.250 (Claude Code)')).toBe(false);
+    expect(versionOk(AGENTS.claude, '2.1.251 (Claude Code)')).toBe(true);
+    expect(sessionAdapter('claude').min).toEqual(AGENTS.claude.minVersion);
   });
 });
 

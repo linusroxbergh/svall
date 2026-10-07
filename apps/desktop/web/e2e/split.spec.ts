@@ -1,4 +1,6 @@
-import { expect, test } from './fixtures.js';
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
+import { FAKE_CLAUDE, expect, test } from './fixtures.js';
 
 async function openCard(page: import('@playwright/test').Page, id: string) {
   // the first click selects the token, the second opens its card
@@ -45,6 +47,24 @@ test('a split starts the second terminal, and it shows on the token and ends wit
   await svall.api.call('char.run', { id: c.id, text: 'exit', term: 2 });
   await expect(card.getByTestId('pane-right')).toHaveCount(0);
   await expect(page.getByTestId(`token-pips-${c.id}`)).toHaveCount(0);
+});
+
+test('a second terminal that ran an agent stays dormant when its window goes, and revives', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('two') });
+  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'twin' });
+  await svall.open('map');
+  const card = await openCard(page, c.id);
+  await card.getByTestId('pane-split').click();
+  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].second).toBeTruthy();
+  await svall.api.call('char.run', { id: c.id, text: FAKE_CLAUDE, term: 2 });
+  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].second?.agent?.status, { timeout: 15_000 }).toBe('idle');
+  const state = await svall.api.call('state.get', {});
+  execFileSync('tmux', ['-S', path.join(svall.home, 'tmux.sock'), 'kill-window', '-t', state.characters[c.id].second!.tmux!.windowId]);
+  const right = card.getByTestId('pane-right');
+  await expect(right.getByTestId('revive')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId(`token-pips-${c.id}`)).toBeVisible();
+  await right.getByTestId('revive').click();
+  await expect(right.getByTestId('surface')).toBeVisible({ timeout: 15_000 });
 });
 
 test('the board shows the same panes as the card', async ({ page, svall }) => {

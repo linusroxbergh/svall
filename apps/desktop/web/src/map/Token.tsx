@@ -8,7 +8,7 @@ import type { PointerHandlers } from './types.js';
 
 const RAIL_MAX = 4;
 
-function footInner(c: Character, status: DisplayStatus, word: string | undefined) {
+function footInner(c: Character, status: DisplayStatus, word: string | undefined, failed: string | undefined) {
   return (
     <>
       {c.second && (
@@ -18,6 +18,7 @@ function footInner(c: Character, status: DisplayStatus, word: string | undefined
       )}
       {status === 'working' && <span className="dots" aria-hidden="true"><i /><i /><i /></span>}
       {word &&<span className="sw" style={{ background: `var(--${status})`, color: `var(--ink-on-${status})` }}>{word}</span>}
+      {failed && <span className="sw" data-testid={`token-resume-error-${c.id}`} title={failed} style={{ background: 'var(--blocked)', color: 'var(--ink-on-blocked)' }}>resume failed</span>}
       {c.hint && <span className="sw" data-testid={`token-hint-${c.id}`} title={hintText(c)} style={{ background: 'var(--blocked)', color: 'var(--ink-on-blocked)' }}>/hooks</span>}
     </>
   );
@@ -31,7 +32,7 @@ function gem(status: DisplayStatus, unread: boolean) {
 }
 
 export function Token({
-  c, status, world, selected, dragging, settling, hover, offset, pointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu,
+  c, status, world, selected, dragging, settling, hover, offset, failed, pointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu,
 }: {
   c: Character;
   status: DisplayStatus;
@@ -41,6 +42,8 @@ export function Token({
   settling?: boolean;
   hover: boolean;
   offset?: { x: number; y: number };
+  // why a handover could not resume this character, from the app's store; the landing page has none
+  failed?: string;
   pointer: PointerHandlers;
   onHoverStart(): void;
   onHoverEnd(): void;
@@ -101,7 +104,7 @@ export function Token({
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); onOpen(); }}
         >
-          {footInner(c, status, word)}
+          {footInner(c, status, word, failed)}
           <svg className="tg" viewBox="0 0 10 9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M1.4 1.6 4 4.4 1.4 7.2" />
             <path d="M5.8 7.2h2.8" />

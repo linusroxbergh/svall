@@ -1,16 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { AgentKind } from '@svall/protocol';
+import { OwnerRecord, type AgentKind, type MachineId } from '@svall/protocol';
 import {
   claudeHooksCurrent, codexHooksCurrent, hookRemovals, installClaudeHooks, installCodexHooks, readCodexHooks, requireWritableHooks, type Removal,
 } from './agent-hooks.js';
 import { isExecutable } from './agents.js';
 import type { CodexPaths } from './codex/install.js';
-import { loadConfig } from './config.js';
+import { initConfig, loadConfig, reservedFleetNames } from './config.js';
 import { writeAtomic } from './jsonfile.js';
 import { bootstrapAgent, isLoaded, plistCurrent, takenOverBy, writePlist } from './launchd.js';
+import { machineId } from './machine.js';
 import { installOpencodePlugin, opencodePluginCurrent, removeOpencodePlugin, type OpencodePaths } from './opencode/install.js';
-import { LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from './profile.js';
+import { LAUNCHD_LABEL, PRIVATE, SHIM, homePrefix, profileLabel, profileOf, reservedProfileHomes } from './profile.js';
 import { HOOK_SCRIPT, expandHome, realPath, resolvePaths, type Paths } from './paths.js';
 import { assetDir, hookHelperSource, hookHelperSources, variant, type Runtime } from './runtime.js';
 import { readJsonSettings, readOrUndefined, writeJsonSettings, type JsonSettings } from './settings-file.js';
@@ -98,22 +99,23 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }
   return done;
 }
 
-export type HomeSetup = {
-  home: string; label: string; runtime: Runtime; launchAgentsDir: string; launchctl: boolean; port?: number;
-};
+export type FleetHome = { home: string; port?: number };
 
-export async function setupHome(o: HomeSetup): Promise<string[]> {
+/** What a fleet home needs before its daemon starts: the hook scripts and the config. */
+export function setupFleetHome(o: FleetHome): string[] {
   const done: string[] = [];
   const paths = resolvePaths(o.home);
   installHookScripts(paths);
   done.push(`hook script -> ${paths.hookScript}`);
   done.push(`statusline script -> ${paths.statusScript}`);
+  for (const file of initConfig(paths, { port: o.port })) done.push(`config -> ${file}`);
+  return done;
+}
 
-  if (!fs.existsSync(paths.config)) {
-    fs.writeFileSync(paths.config, JSON.stringify(o.port === undefined ? {} : { port: o.port }) + '\n');
-    done.push(`config -> ${paths.config}`);
-  }
+export type HomeSetup = FleetHome & { label: string; runtime: Runtime; launchAgentsDir: string; launchctl: boolean };
 
+export async function setupHome(o: HomeSetup): Promise<string[]> {
+  const done = setupFleetHome(o);
   done.push(`launchd plist -> ${writePlist(o)}`);
 
   if (o.launchctl) done.push(await bootstrapAgent(o.launchAgentsDir, o.label));
@@ -130,11 +132,16 @@ export async function refreshFleetPlists(o: { homes: string[]; runtime: Runtime;
     if (name === PRIVATE || plistCurrent({ home, label, launchAgentsDir: o.launchAgentsDir, runtime: o.runtime })) continue;
     const owner = o.takeOver ? undefined : takenOverBy(readOrUndefined(path.join(o.launchAgentsDir, `${label}.plist`)), o.runtime);
     if (owner) { done.push(`left ${home}, which ${owner} runs`); continue; }
-    done.push(...await setupHome({ home, label, runtime: o.runtime, launchAgentsDir: o.launchAgentsDir, launchctl: false }));
-    // a fleet the user left stopped stays stopped
-    if (o.launchctl && await isLoaded(label)) {
-      done.push(await bootstrapAgent(o.launchAgentsDir, label));
-      restarted.push(label);
+    // one fleet that cannot be set up, such as one whose config svalld would refuse, must not cost the others their refresh
+    try {
+      done.push(...await setupHome({ home, label, runtime: o.runtime, launchAgentsDir: o.launchAgentsDir, launchctl: false }));
+      // a fleet the user left stopped stays stopped
+      if (o.launchctl && await isLoaded(label)) {
+        done.push(await bootstrapAgent(o.launchAgentsDir, label));
+        restarted.push(label);
+      }
+    } catch (e) {
+      done.push(`left ${home}: ${(e as Error).message}`);
     }
   }
   return { done, restarted };
@@ -153,28 +160,58 @@ export const cliCommand = (r: Runtime): string => r.cli.map(shq).join(' ');
 
 export const shimText = (r: Runtime): string => `#!/bin/sh\nexec ${cliCommand(r)} "$@"\n`;
 
+// a companion release's shim links to its svall through `current`, by the full path: the kernel resolves a relative
+// link from the folder a linked ~/.local/bin really is
+const releaseLink = (release: string): string => path.join(release, 'bin', 'svall');
+
 /** Whether the shims hold what setup would write now to run `runtime`. */
-export const shimsCurrent = (shimDir: string, runtime: Runtime): boolean =>
-  shimNames(shimDir).every((name) => fs.existsSync(path.join(shimDir, name)) && fs.readFileSync(path.join(shimDir, name), 'utf8') === shimText(runtime));
+export const shimsCurrent = (shimDir: string, runtime: Runtime): boolean => shimNames(shimDir).every((name) => {
+  const file = path.join(shimDir, name);
+  if (runtime.release) return fs.lstatSync(file, { throwIfNoEntry: false })?.isSymbolicLink() === true && fs.readlinkSync(file) === releaseLink(runtime.release);
+  return fs.existsSync(file) && fs.readFileSync(file, 'utf8') === shimText(runtime);
+});
 
-function setupUser(o: { home: string; settings?: JsonSettings; codexHooks?: JsonSettings; shimDir: string; runtime: Runtime; replaceSettings: boolean }): string[] {
+// a companion release is reached through `current`, so an upgrade that moves it needs no new shim
+function writeShims(shimDir: string, runtime: Runtime): string[] {
+  fs.mkdirSync(shimDir, { recursive: true });
+  return shimNames(shimDir).map((name) => {
+    const shim = path.join(shimDir, name);
+    fs.rmSync(shim, { force: true });
+    if (runtime.release) fs.symlinkSync(releaseLink(runtime.release), shim);
+    else fs.writeFileSync(shim, shimText(runtime), { mode: 0o755 });
+    return `shim -> ${shim}`;
+  });
+}
+
+// the machine this fleet's ownership record names, when it is not this one
+function ownedElsewhere(paths: Paths): MachineId | undefined {
+  let owner: MachineId;
+  try { owner = OwnerRecord.parse(JSON.parse(fs.readFileSync(paths.owner, 'utf8'))).ownerMachineId; } catch { return undefined; }
+  return owner === machineId() ? undefined : owner;
+}
+
+export function setupUser(o: { home: string; settings?: JsonSettings; codexHooks?: JsonSettings; shimDir: string; runtime: Runtime; replaceSettings: boolean }): string[] {
   const paths = resolvePaths(o.home);
-  const done = installClaudeHooks(o.home, o.settings);
+  // a first install runs from a staging copy that is deleted after it, so the hooks name the installed node
+  const done = installClaudeHooks(o.home, o.settings, o.runtime.release && path.join(o.runtime.release, 'node', 'bin', 'node'));
   done.push(...installCodexHooks(paths.hookScript, o.codexHooks));
-
-  fs.mkdirSync(o.shimDir, { recursive: true });
-  for (const name of shimNames(o.shimDir)) {
-    const shim = path.join(o.shimDir, name);
-    fs.writeFileSync(shim, shimText(o.runtime), { mode: 0o755 });
-    done.push(`shim -> ${shim}`);
-  }
+  done.push(...writeShims(o.shimDir, o.runtime));
 
   // the home folder comes last and never fails the run: an unreadable config or an unwritable cwd
   // must not cost the user the hooks, the plist and the shim
   try {
-    done.push(...installHomeTemplate(loadConfig(paths.config).home.cwd, { replaceSettings: o.replaceSettings }));
+    // mission control's folder travels with the fleet, so only the machine that owns it writes there
+    const owner = ownedElsewhere(paths);
+    if (owner) done.push(`home folder left as it is, as ${owner} owns this fleet`);
+    else done.push(...installHomeTemplate(loadConfig(paths).home.cwd, { replaceSettings: o.replaceSettings }));
   } catch (e) {
     done.push(`home folder skipped: ${(e as Error).message}`);
+  }
+  for (const r of reservedProfileHomes(path.dirname(o.home))) {
+    done.push(`${r.home} holds a fleet named ${r.name}, a name ${SHIM} now keeps for its own command, so no -p reaches it: mv ${r.home} ${path.join(path.dirname(r.home), `${homePrefix}${r.rename}`)}, then ${SHIM} ${r.rename}`);
+  }
+  for (const r of reservedFleetNames(path.dirname(o.home))) {
+    done.push(`${r.home} holds a fleet named ${r.name}, a name ${SHIM} now keeps for its own command, so the fleet goes without it; give it another in Settings`);
   }
   return done;
 }

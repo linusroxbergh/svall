@@ -6,7 +6,7 @@ import { silentLogger } from '../src/log.js';
 import { resolvePaths } from '../src/paths.js';
 import { Store } from '../src/store.js';
 import type { Tmux } from '../src/tmux/tmux.js';
-import { cleanHomes, makeHome } from './helpers.js';
+import { cleanHomes, makeHome, ownerOf } from './helpers.js';
 
 afterEach(cleanHomes);
 
@@ -16,10 +16,12 @@ const character = (id: string, x: number): Character => ({
 
 describe('stars', () => {
   function boot() {
-    const paths = resolvePaths(makeHome());
+    const home = makeHome();
+    const paths = resolvePaths(home);
     const store = Store.load(paths.state, () => {});
     store.update((d) => { for (const [n, id] of ['a', 'b', 'c', 'd'].entries()) d.characters[id] = character(id, n); });
-    const fleet = new Fleet({ store, tmux: {} as Tmux, paths, config: Config.parse({}), log: silentLogger });
+    const config = Config.parse({});
+    const fleet = new Fleet({ store, tmux: {} as Tmux, paths, config, ownership: ownerOf(home, config.id), log: silentLogger });
     const starred = () => starredOf(store.state).map((c) => c.id);
     return { fleet, store, starred };
   }

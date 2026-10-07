@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { startHomeCharacter } from './actions.js';
 import { app, deps } from './boot.js';
 import { useApp } from './hooks.js';
+import { covered } from './keyboard.js';
 
 // one prompt is the whole form: Enter sends it to a fresh mission control agent, Shift+Enter breaks the line
 export function MissionPrompt() {
@@ -25,6 +26,7 @@ export function MissionPrompt() {
     void startHomeCharacter(deps(), { prompt }).then((ok) => {
       if (ok) return;
       setText((t) => t || prompt);
+      if (covered(app.store.getState())) return;
       app.store.getState().setNamingCharacter(false);
       app.store.getState().setClosingCharacter(undefined);
       app.store.getState().toggleKeys(false);

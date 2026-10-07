@@ -1,12 +1,16 @@
 import { styleText } from 'node:util';
-import { MARK, type Check } from './commands/preflight.js';
+
+/** One thing a doctor checked, and what it found. */
+export type Check = { name: string; status: 'ok' | 'warn' | 'fail' | 'skip'; detail: string };
+
+export const MARK = { ok: '✓', warn: '!', fail: '✗', skip: '–' };
 
 const COLOR = { ok: 'green', warn: 'yellow', fail: 'red', skip: 'dim' } as const;
 
 const GROUPS: [string, string[]][] = [
-  ['Tools', ['tmux', 'node', 'path', 'gh']],
+  ['Tools', ['tmux', 'node', 'path', 'gh', 'rsync']],
   ['Agents', ['claude', 'codex', 'opencode', 'agents']],
-  ['Fleet', ['config', 'svalld', 'hook receiver', 'launchd', 'daemon node', 'daemon path', 'daemon env']],
+  ['Fleet', ['config', 'svalld', 'hook receiver', 'launchd', 'systemd', 'gateway', 'linger', 'daemon node', 'daemon path', 'daemon env']],
   ['Setup', ['hooks', 'codex hooks', 'opencode plugin', 'shims', 'launchd plist']],
 ];
 

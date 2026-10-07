@@ -83,6 +83,36 @@ describe('Api', () => {
     expect(statuses).toEqual(['connecting', 'online', 'offline', 'connecting', 'online']);
   });
 
+  it('leaves the daemon it is still connected to when the shell names another', async () => {
+    const [a, b] = [await serve(), await serve()];
+    cleanup.push(a.close, b.close);
+    const api = new Api({ url: `ws://127.0.0.1:${a.port}`, token: 'tok' }, { WS: WebSocket as unknown as typeof globalThis.WebSocket, minDelay: 20, maxDelay: 50 });
+    cleanup.push(() => api.stop());
+    let opens = 0;
+    api.onOpen = () => { opens++; };
+    api.start();
+    await until(() => opens === 1);
+    api.setEndpoint({ url: `ws://127.0.0.1:${a.port}`, token: 'tok' });
+    api.setEndpoint({ url: `ws://127.0.0.1:${b.port}`, token: 'tok' });
+    await until(() => opens === 2);
+    expect(b.wss.clients.size).toBe(1);
+    await until(() => a.wss.clients.size === 0);
+  });
+
+  it('reads a fleet that has just moved again, from the daemon it already reaches when the shell names that one', async () => {
+    const server = await serve();
+    cleanup.push(server.close);
+    const endpoint = { url: `ws://127.0.0.1:${server.port}`, token: 'tok' };
+    const api = new Api(endpoint, { WS: WebSocket as unknown as typeof globalThis.WebSocket, minDelay: 20, maxDelay: 50 });
+    cleanup.push(() => api.stop());
+    let opens = 0;
+    api.onOpen = () => { opens++; };
+    api.start();
+    await until(() => opens === 1);
+    api.setEndpoint(endpoint, true);
+    await until(() => opens === 2);
+  });
+
   it('rejects a call the daemon never answers', async () => {
     const server = await serve();
     cleanup.push(server.close);

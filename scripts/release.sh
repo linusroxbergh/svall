@@ -60,7 +60,8 @@ fi
 
 # the runtime bundles node_modules, which must be what the lockfile names
 pnpm install --frozen-lockfile
-pnpm app:build
+# the controller the app carries is named the tag its companions are published under
+SVALL_RELEASE_NAME="v$VERSION" pnpm app:build
 APP=apps/desktop/mac/build.noindex/Svall.app
 scripts/sign.sh "$APP" "$ID"
 # the app, hardened and entitled as it ships, sets itself up, refreshes and uninstalls in a throwaway home

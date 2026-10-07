@@ -31,7 +31,7 @@ export function charCommands(connect: () => Promise<Client>, json: () => boolean
     const island = o.island ? islandId(state, o.island) : undefined;
     const chars = Object.values(state.characters).filter((ch) => !island || ch.islandId === island);
     printResult(chars, json(), () => table(chars.map((ch) => ({
-      id: ch.id, island: state.islands[ch.islandId]?.name ?? ch.islandId, name: ch.name, state: stateOf(ch),
+      id: ch.id, island: state.islands[ch.islandId]?.name ?? ch.islandId, name: ch.keepHere ? `${ch.name} (kept here)` : ch.name, state: stateOf(ch),
       ctx: contextOf(ch), branch: ch.repo?.branch ?? '', cwd: ch.cwd,
       cell: `${ch.cell.x},${ch.cell.y}`,
     }))));
@@ -110,23 +110,26 @@ Handing work to a new character:
 
   contextOptions(cmd.command('update <id>').description("change a character's name, note, island, context, instructions or agent profile")
     .option('--name <n>').option('--note <n>').option('--note-file <path>', 'read the note from a file, for text a shell would mangle')
-    .option('--island <id>').option('--agent-profile <name>', 'a role from the fleet\'s agent-profiles folder; \'\' clears it'))
-    .action(async (id: string, o: { name?: string; note?: string; noteFile?: string; island?: string; agentProfile?: string } & ContextFlags & { instructions?: string }) => {
+    .option('--island <id>').option('--agent-profile <name>', 'a role from the fleet\'s agent-profiles folder; \'\' clears it')
+    .option('--keep-here', 'keep this character on this machine: a handover is blocked until it is cleared')
+    .option('--no-keep-here', 'let a handover carry this character again'))
+    .action(async (id: string, o: { name?: string; note?: string; noteFile?: string; island?: string; agentProfile?: string; keepHere?: boolean } & ContextFlags & { instructions?: string }) => {
       if (o.note !== undefined && o.noteFile) throw new Error('use --note or --note-file, not both');
       await withFleet(connect, async (c, state) => {
         const current = state.characters[charId(state, id)];
         const ch = await c.call('char.update', {
           id: current.id, name: o.name,
           note: o.noteFile ? fs.readFileSync(expandHome(o.noteFile), 'utf8').trim() : o.note,
-          islandId: o.island && islandId(state, o.island), context: editContext(current.context, o), instructions: o.instructions, agentProfile: o.agentProfile,
+          islandId: o.island && islandId(state, o.island), context: editContext(current.context, o), instructions: o.instructions, agentProfile: o.agentProfile, keepHere: o.keepHere,
         });
         printResult(ch, json(), () => `${ch.id} ${ch.name}`);
       });
     });
 
   cmd.command('show <id>').description('print the brief the agent gets').action((id: string) => withFleet(connect, async (c, state) => {
-    const r = await c.call('char.show', { id: charId(state, id) });
-    printResult(r, json(), () => r.text);
+    const ch = state.characters[charId(state, id)];
+    const r = await c.call('char.show', { id: ch.id });
+    printResult(r, json(), () => (ch.keepHere ? `${ch.name} is kept on this machine, so a handover is blocked until that is cleared\n${r.text}` : r.text));
   }));
 
   for (const [name, method, what] of [

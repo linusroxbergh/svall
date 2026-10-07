@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { Character, FleetState, Island } from './state.js';
+import { Character, FleetState, Island, STATE_SCHEMA_VERSION } from './state.js';
 
-const CURRENT = FleetState.shape.version.value;
+const CURRENT = STATE_SCHEMA_VERSION;
 const OLDEST = 7;
 
 export class NewerStateVersion extends Error {
@@ -37,12 +37,25 @@ function salvage(raw: object): { state: FleetState; dropped: string[] } {
   return { state: FleetState.parse({ ...kept, islands: each('island', Island, islands), characters: each('character', Character, characters) }), dropped };
 }
 
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+// up to v8 a second terminal had no directory of its own, so it starts where its character stands;
+// v8 only added OpenCode as an agent kind, so a v7 file lifts the same way
+function liftV9(raw: object): object {
+  const { characters } = raw as { characters?: unknown };
+  if (!isRecord(characters)) return raw;
+  return {
+    ...raw,
+    characters: Object.fromEntries(Object.entries(characters).map(([id, c]) =>
+      [id, isRecord(c) && isRecord(c.second) && c.second.cwd === undefined ? { ...c, second: { cwd: c.cwd, ...c.second } } : c])),
+  };
+}
+
 export function migrateState(raw: unknown): { state: FleetState; migrated: boolean; dropped: string[] } {
   const version = (raw as { version?: unknown } | null)?.version;
   if (typeof version === 'number' && version > CURRENT) throw new NewerStateVersion(version);
   if (typeof version === 'number' && version < OLDEST) throw new OlderStateVersion(version);
-  // version 8 only adds OpenCode as an agent kind, so a version 7 file lifts as it is
-  if (version === 7) return { ...salvage({ ...(raw as object), version: CURRENT }), migrated: true };
-  if (version !== CURRENT) throw new Error(`unsupported state version ${String(version)}`);
-  return { ...salvage(raw as object), migrated: false };
+  if (version !== 7 && version !== 8 && version !== CURRENT) throw new Error(`unsupported state version ${String(version)}`);
+  if (version === CURRENT) return { ...salvage(raw as object), migrated: false };
+  return { ...salvage({ ...liftV9(raw as object), version: CURRENT }), migrated: true };
 }

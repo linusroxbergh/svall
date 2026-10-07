@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DEFAULT_CWD, type AgentKind, type FoundAgent, type SetupPlan } from '@svall/protocol';
 import { AGENTS, AGENT_KINDS } from './agents.js';
-import { loadConfig } from './config.js';
+import { configuredMainAgent } from './config.js';
 import { expandHome, resolvePaths } from './paths.js';
 import { LOGIN_SHELL_TIMEOUT_MS } from './login-env.js';
 import { LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from './profile.js';
@@ -95,6 +95,6 @@ export function staleFleets(homes: string[], version: string, pidOf: (label: str
 export function inheritingFleets(homes: string[], running: (label: string) => boolean,
   label: (home: string) => string = (h) => profileLabel(profileOf(h))): string[] {
   // a config that does not parse stops its daemon at start anyway
-  const namesOwn = (h: string) => { try { return loadConfig(resolvePaths(h).config).mainAgent !== undefined; } catch { return true; } };
+  const namesOwn = (h: string) => { try { return configuredMainAgent(resolvePaths(h)) !== undefined; } catch { return true; } };
   return homes.filter((h) => profileOf(h) !== PRIVATE && running(label(h)) && !namesOwn(h)).map(label);
 }

@@ -1,5 +1,5 @@
 import { loadMobileStatus, type Deps } from './actions.js';
-import { Api } from './api.js';
+import { Api, ApiError } from './api.js';
 import { connectionFromUrl, createBridge, type Bridge, type Connection } from './bridge.js';
 import { createBrowserManager, type BrowserManager } from './browser.js';
 import { installDropHandlers } from './drop.js';
@@ -28,6 +28,8 @@ function createApp(): AppContext {
   let repoWatch: RepoWatch | undefined;
   let manager: TerminalManager | undefined;
   let browser: BrowserManager | undefined;
+  // a handover the app was closed during is found again once per page
+  let followedHandover = false;
   const bridge = createBridge();
   const query = new URLSearchParams(window.location.search);
   const initialView = (['map', 'board'] as const).find((v) => v === query.get('view'));
@@ -56,14 +58,18 @@ function createApp(): AppContext {
       if (e.event === 'mobile.phones') { store.getState().setPhones(e.data.phones); return; }
       if (e.event === 'state.patch') fleet.patch(e.data.ops);
     };
-    // a launch that named no fleet offers the others, once, when there are any
+    // a launch that named no fleet offers the others, once, when there are any; svalld's list settles it, and so does
+    // its refusal off the Mac, while a list that failed or went unanswered is asked again
     let offerFleets = window.__svallBare === true;
     const offer = () => {
       a.call('fleets.list', {}).then((r) => {
         if (!offerFleets) return;
         offerFleets = false;
         if (r.fleets.length > 1) store.getState().setFleetPicker('bare');
-      }).catch((e: Error) => console.warn(`fleets.list: ${e.message}`));
+      }).catch((e: Error) => {
+        if (e instanceof ApiError && e.code === 'forbidden') offerFleets = false;
+        console.warn(`fleets.list: ${e.message}`);
+      });
     };
     // the phone tab in the corner reads the mobile status, and `svall mobile` can change it while the page is offline
     a.onOpen = () => { fleet.load(); loadMobileStatus({ api: a, store }); repoWatch?.resend(); if (offerFleets) offer(); };
@@ -82,12 +88,28 @@ function createApp(): AppContext {
     bridge.onMessage((m) => {
       if (m.type === 'app.active') { store.getState().setActive(m.active); return; }
       if (m.type === 'ghostty.configErrors') { store.getState().setConfigErrors(m.errors); return; }
-      if (m.type === 'shell.info') { store.getState().setShell({ home: m.home, log: m.log, op: m.op, ghosttyKeys: m.ghosttyKeys }); return; }
+      if (m.type === 'shell.info') {
+        store.getState().setShell({ home: m.home, log: m.log, op: m.op, ghosttyKeys: m.ghosttyKeys, handoverEnabled: m.handoverEnabled, gateway: m.gateway });
+        if (m.handoverEnabled && !followedHandover) {
+          followedHandover = true;
+          store.getState().handoverFollow();
+          bridge.send({ type: 'handover.attach' });
+        }
+        return;
+      }
       if (m.type === 'update.available') { store.getState().setUpdate(m.version || undefined); return; }
       // the menu's Open Fleet…, which works whatever chord the action is on and before svalld first answers
       if (m.type === 'fleets') { openFleetPicker(store); return; }
       // the toast sits below a dialog, and this window is where the user stays
       if (m.type === 'openFleet.failed') { store.getState().setFleetPicker(undefined); store.getState().showToast(`Could not open ${m.home}: ${m.reason}`); return; }
+      if (m.type === 'handover.event') { store.getState().handoverEvent(m.event); return; }
+      if (m.type === 'handover.replay') { store.getState().handoverReplay(m.events); return; }
+      if (m.type === 'handover.exit') { store.getState().handoverExit(m.code, m.error); return; }
+      if (m.type === 'connection.state') { store.getState().setConnectionState({ state: m.state, owner: m.owner, kind: m.kind, message: m.message }); return; }
+      // something only the machine the fleet runs on can do, which this Mac cannot
+      if (m.type === 'notice') { store.getState().showToast(m.text); return; }
+      if (m.type === 'host.step') { store.getState().hostStep(m.op, m.event); return; }
+      if (m.type === 'host.done') { store.getState().hostDone(m.op, m.code); return; }
       if (m.type !== 'connection') return;
       if (!m.port) {
         portlessSince ??= Date.now();
@@ -96,7 +118,8 @@ function createApp(): AppContext {
         return;
       }
       portlessSince = undefined;
-      if (api) api.setEndpoint(endpointOf(m));
+      // a fleet that has just moved is read again wherever it runs now, even from the daemon the page already reaches
+      if (api) api.setEndpoint(endpointOf(m), !!store.getState().handover?.awaitingOwner);
       else start(m);
     });
     bridge.send({ type: 'connection' });

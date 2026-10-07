@@ -12,7 +12,7 @@ export const mapIslandsSorted = (f: FleetState): Island[] => mapIslands(f).sort(
 
 export const homeIsland = (f: FleetState): Island | undefined => Object.values(f.islands).find((i) => i.kind === 'home');
 
-// mission control's crew start with the home command, the main agent's unless config.json names another; anywhere
+// mission control's crew start with the home command, the main agent's unless fleet.json names another; anywhere
 // else a new character is a shell
 export const startOf = (f: FleetState, islandId: string): { command?: string } =>
   (f.islands[islandId]?.kind === 'home' ? { command: f.home.command } : {});
@@ -73,12 +73,16 @@ export function firstOfNextIsland(f: FleetState, id: string | undefined): Charac
   return undefined;
 }
 
+// why a handover could not resume a terminal that lies dormant, shown only while the fleet asks for handover
+export const resumeErrorOf = (s: { shell?: { handoverEnabled?: boolean } }, slot: { tmux?: unknown; resumeError?: string } | undefined): string | undefined =>
+  (s.shell?.handoverEnabled && slot && !slot.tmux ? slot.resumeError : undefined);
+
 // one terminal's status: 1 is the main terminal, 2 the second
 export const slotStatus = (c: Character, term: 1 | 2): DisplayStatus => {
-  if (term === 2) return c.second?.agent?.status ?? 'shell';
-  const s = c.agent?.status ?? 'shell';
+  const slot = term === 2 ? c.second : c;
+  const s = slot?.agent?.status ?? 'shell';
   // with its window gone nothing runs and nothing waits on the user, whatever the agent last reported
-  return !c.tmux && (s === 'working' || s === 'blocked') ? 'idle' : s;
+  return slot && !slot.tmux && (s === 'working' || s === 'blocked') ? 'idle' : s;
 };
 
 // what the character shows when its sessions differ: the one that needs the user soonest
@@ -148,9 +152,9 @@ export const panesOf = (s: { ide: Record<string, { panes: Panes }> }, id: string
 
 // the shell draws terminals and browser tabs above the page, so anything the page spreads over one
 // only reads as on top once that surface is hidden. An overlay that covers a rect takes a cutout instead
-export const isVeiled = (s: { namingCharacter: boolean; missionPrompt: boolean; closingCharacter?: string; deletingIsland?: string; fleetPicker?: string; keysOpen: boolean; resourcesOpen: boolean; fleet: FleetState }): boolean =>
+export const isVeiled = (s: { namingCharacter: boolean; missionPrompt: boolean; closingCharacter?: string; deletingIsland?: string; fleetPicker?: string; keysOpen: boolean; resourcesOpen: boolean; hostOpen: boolean; handoverOpen: boolean; fleet: FleetState }): boolean =>
   s.namingCharacter || s.missionPrompt || s.closingCharacter !== undefined || s.deletingIsland !== undefined || s.fleetPicker !== undefined
-  || s.keysOpen || s.resourcesOpen || !!s.fleet.scribeAsk;
+  || s.keysOpen || s.resourcesOpen || s.hostOpen || s.handoverOpen || !!s.fleet.scribeAsk;
 
 // the name a fleet's home directory gives it: ~/.svall (or ~/.svall-dev) is the private fleet, ~/.svall-work is work
 export const directoryName = (home: string): string => {

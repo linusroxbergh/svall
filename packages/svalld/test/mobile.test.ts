@@ -8,6 +8,8 @@ import { identityOf, originAllowed, startApi, stripKey } from '../src/api/server
 import { brand, resolveFile, serveBundle } from '../src/api/static.js';
 import { Config } from '../src/config.js';
 import { Fleet } from '../src/fleet.js';
+import { openJournal } from '../src/handover/journal.js';
+import { HandoverService } from '../src/handover/service.js';
 import type { Mobile } from '../src/mobile.js';
 import { silentLogger, type Logger } from '../src/log.js';
 import { resolvePaths } from '../src/paths.js';
@@ -18,7 +20,7 @@ import { TerminalHub } from '../src/terminals.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { Tmux } from '../src/tmux/tmux.js';
 import { Workspace } from '../src/workspace/workspace.js';
-import { cleanHomes, hasTmux, makeHome, stubFleets, stubMobile, stubUsage, waitFor, waitForPolls } from './helpers.js';
+import { cleanHomes, hasTmux, idleSides, makeHome, ownerOf, stubFleets, stubMobile, stubUsage, waitFor, waitForPolls } from './helpers.js';
 
 const req = (headers: Record<string, string>) => ({ headers }) as unknown as IncomingMessage;
 
@@ -122,17 +124,19 @@ runIf('phone sockets', () => {
     fs.writeFileSync(path.join(dist, 'assets', 'app.js'), 'code');
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
-    const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 200 });
+    const ownership = ownerOf(home, config.id);
+    const fleet = new Fleet({ store, tmux, paths, config, ownership, log: silentLogger, pollMs: 200 });
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
     const terminals = new TerminalHub(fleet, tmux, store, silentLogger);
     const workspace = new Workspace((id) => { const c = store.state.characters[id]; if (!c) throw new Error(id); return c.repo?.root ?? c.cwd; }, silentLogger);
     const current = { key, logins: ['me@example.com'] };
+    const handover = new HandoverService({ ownership, journal: openJournal(paths), ...idleSides(paths, { store }) });
     const api = await startApi({
       host: '127.0.0.1', port: 0, token: 'secret', store, fleet, fleets: stubFleets, terminals, workspace, usage: stubUsage, mobileControl, log,
-      origins: [], logins: () => current.logins, dist, key: () => current.key, fleetName,
-      push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(),
+      origins: () => [], logins: () => current.logins, dist, key: () => current.key, fleetName,
+      push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(), ownership, handover,
       claude: { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') },
     });
     cleanup.unshift(async () => { await api.close(); });
@@ -290,6 +294,17 @@ runIf('phone sockets', () => {
       await answered;
       expect(app.readyState).toBe(WebSocket.OPEN);
     }
+  });
+
+  it('closes a phone socket at its next call once the fleet no longer lists its login', async () => {
+    const api = await boot();
+    const ws = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, { headers: { 'Tailscale-User-Login': 'me@example.com' } });
+    cleanup.push(async () => ws.close());
+    await hello(ws);
+    api.current.logins = ['them@example.com'];
+    const closed = new Promise<number>((r) => ws.once('close', r));
+    ws.send(JSON.stringify({ id: 1, method: 'state.get', params: {} }));
+    expect(await closed).toBe(4401);
   });
 
   // anything on the machine reaches the port; only tailscaled knows the key, so a header without it proves nothing

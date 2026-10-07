@@ -134,6 +134,12 @@ fleets' homes and the app's preferences, sign-ins and caches in `~/Library` too.
 moving it to the Trash, and asks before deleting it or the fleets. `--purge`
 deletes them without asking.
 
+With [remote machines](docs/remote-machines/README.md), `svall uninstall` first
+refuses while that would strand a fleet: a handover is open, this Mac runs a
+fleet that has a gateway, or it holds a gateway's records. Bring each fleet home
+and remove the other machine with `svall host remove <name>`; `--force`
+uninstalls anyway.
+
 ### When something breaks
 
 Run `svall doctor`. It checks what the fleet needs and prints the end of the
@@ -336,30 +342,43 @@ yours, and selecting text copies it. Terminals attach to tmux, so Ghostty's
   `mobile.httpsPort`; if something else serves a kept port, turning the link on
   says so.
 
+## Remote machines
+
+A fleet can also run on an always-on Linux machine, and move between it and
+the Mac with its repositories, worktrees and agent conversations. It is off
+until a fleet turns it on with `"handover": { "enabled": true }` in its
+`fleet.json`. [docs/remote-machines](docs/remote-machines/README.md) covers the
+machine it needs (Ubuntu, with the same home path as your Mac), adding it with
+`svall host add`, moving the fleet with `svall handover`, and what to do when a
+handover stops part way.
+
 ## Configuration
 
 A fleet keeps everything in its home: `~/.svall` for the private fleet
 and `~/.svall-<name>` for the others, unless `SVALL_HOME` says otherwise.
-Its `config.json` takes:
+Its `fleet.json` holds what travels with the fleet wherever it runs, and
+`node.json` what belongs to this machine alone:
 
-| Key | What it does |
-| --- | --- |
-| `name` | What the window title and `svall <name>` call the fleet: lowercase letters, digits and dashes, starting with a letter, not an `svall` command, and not `dev` or `dev-…`. Absent, the directory names it. Set from Settings. |
-| `port`, `host` | Where the daemon listens: `127.0.0.1`, on `47800` for the private fleet and any free port for the others. Absent, a free port stands in while another program holds `47800`; a port set here that is taken keeps the daemon from starting. Any address off loopback sends the API token in plain text. |
-| `defaultCwd` | Where a new character starts when no character beside it gives it a directory (default `~`). Set by the setup screen's projects folder or `svall setup --projects`. |
-| `shell` | The shell a terminal runs, if not your login shell. |
-| `linear` | `{ "workspace": "acme", "teamKeys": ["ENG"] }` links a branch named after a Linear issue to that issue. |
-| `mainAgent` | `claude`, `codex` or `opencode`: what the scribe, mission control's crew and `svall char new --run` run by default. Absent, the private fleet's, else `claude` when it is installed or no CLI is, else the first CLI found. Set from the app or with `svall agent <name>`. |
-| `agentsOff` | The agents the private fleet's setup leaves off, writing no hooks or plugin for them. Every other agent found is on. Set by the setup screen or `svall setup --agents`. |
-| `integrations` | The agents left on, of `claude` and `codex`, read when there is no `agentsOff`; `opencode` counts as on. Setup replaces it with `agentsOff`. |
-| `home` | Mission control: `cwd` for its crew, the `command` that starts an agent (default the main agent's: `claude --model sonnet`, `codex` or `opencode`), and `actions`, one `{ "label", "prompt" }` per button. A button's `/name` prompt reaches a Codex crew as `$name`. |
-| `scribe` | `agent` (default the main agent) and `model`, a model of `agent`'s CLI, or of Claude's when `agent` is unset (default `sonnet` for Claude, the CLI's own for Codex and OpenCode). |
-| `mobile` | `logins` to let in (only yours when empty), extra page `origins` allowed to open a socket, a `pushContact` (https: or mailto:) for push services, and the `httpsPort` it is served on, which Svall saves. |
+| Key | File | What it does |
+| --- | --- | --- |
+| `name` | `fleet.json` | What the window title and `svall <name>` call the fleet: lowercase letters, digits and dashes, starting with a letter, not an `svall` command, and not `dev` or `dev-…`. Absent, the directory names it. Set from Settings. |
+| `port`, `host` | `node.json` | Where the daemon listens: `127.0.0.1`, on `47800` for the private fleet and any free port for the others. Absent, a free port stands in while another program holds `47800`; a port set here that is taken keeps the daemon from starting. Any address off loopback sends the API token in plain text. |
+| `defaultCwd` | `fleet.json` | Where a new character starts when no character beside it gives it a directory (default `~`). Set by the setup screen's projects folder or `svall setup --projects`. |
+| `shell` | `node.json` | The shell a terminal runs, if not your login shell. |
+| `linear` | `fleet.json` | `{ "workspace": "acme", "teamKeys": ["ENG"] }` links a branch named after a Linear issue to that issue. |
+| `mainAgent` | `fleet.json` | `claude`, `codex` or `opencode`: what the scribe, mission control's crew and `svall char new --run` run by default. Absent, the private fleet's, else `claude` when it is installed or no CLI is, else the first CLI found. Set from the app or with `svall agent <name>`. |
+| `agentsOff` | `node.json` | The agents the private fleet's setup leaves off, writing no hooks or plugin for them. Every other agent found is on. Set by the setup screen or `svall setup --agents`. |
+| `integrations` | `node.json` | The agents left on, of `claude` and `codex`, read when there is no `agentsOff`; `opencode` counts as on. Setup replaces it with `agentsOff`. |
+| `home` | `fleet.json` | Mission control: `cwd` for its crew, the `command` that starts an agent (default the main agent's: `claude --model sonnet`, `codex` or `opencode`), and `actions`, one `{ "label", "prompt" }` per button. A button's `/name` prompt reaches a Codex crew as `$name`. |
+| `scribe` | `fleet.json` | `agent` (default the main agent) and `model`, a model of `agent`'s CLI, or of Claude's when `agent` is unset (default `sonnet` for Claude, the CLI's own for Codex and OpenCode). |
+| `mobile` | `fleet.json` | `logins` to let in (only yours when empty), extra page `origins` allowed to open a socket, and a `pushContact` (https: or mailto:) for push services. |
+| `mobile.httpsPort` | `node.json` | The tailscale serve port this fleet is reached on, which Svall saves. |
+| `handover` | `fleet.json` | [Remote machines](docs/remote-machines/README.md): `enabled` turns them on, `exclude` adds patterns a handover leaves out, `excludeDefaults: false` drops the defaults, and `transferFleetEnv: true` carries the fleet's `.env`. |
 
-- The daemon reads `config.json` when it starts. To restart the private
+- The daemon reads both files when it starts. To restart the private
   fleet's daemon, run
   `launchctl kickstart -k gui/$(id -u)/io.github.linusroxbergh.svall.svalld`,
-  adding `.<name>` for another fleet. While the file doesn't parse, the daemon
+  adding `.<name>` for another fleet. While either file doesn't parse, the daemon
   logs why and waits for it to change; `svall doctor` shows the error too.
 - Mission control's folder, `~/.svall/home`, is shared by every fleet and
   rewritten on each daemon start, apart from `CLAUDE.md`, which is yours, and
@@ -402,10 +421,11 @@ The setup screen runs `svall setup`, which also works without the app
 (`--check` only checks). It changes nothing while something it needs is
 missing. For each agent you leave on, it writes:
 
-- `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`): a hook on
-  Claude Code's session, prompt, tool, permission, notification and stop
-  events, which exits before starting Node outside a character, and a
-  statusline wrapper that keeps your own statusline running inside it.
+- `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`, on Linux
+  the one your login shell sets): a hook on Claude Code's session, prompt,
+  tool, permission, notification and stop events, which exits before starting
+  Node outside a character, and a statusline wrapper that keeps your own
+  statusline running inside it.
 - `~/.codex/hooks.json` (or `$CODEX_HOME/hooks.json`): the same hook.
 - `~/.config/opencode/plugins/svall.js` (or under `$XDG_CONFIG_HOME`): Svall's
   OpenCode plugin.
@@ -441,6 +461,8 @@ send:
   `gh auth status`.
 - Svall checks `https://svall.dev/appcast.xml` for updates, which tells
   svall.dev your IP address and the version you run. Svall Dev doesn't.
+- A handover copies the fleet's folders and agent sessions over ssh to the
+  Linux machine you added.
 - Push notifications go through your phone's push service: Apple's, Google's
   or Mozilla's. The character's name and prompt are encrypted for your phone;
   the service sees when a push is sent, and the page's address unless
@@ -470,13 +492,14 @@ to every site the Chrome profile is signed in to.
 
     pnpm test            # needs tmux and swiftc (the Command Line Tools) on PATH
     pnpm typecheck
+    swift test --package-path apps/desktop/mac   # the app's Swift tests, once a build has linked GhosttyKit
     pnpm e2e             # Playwright against a temporary daemon
     pnpm desktop:dev     # Vite dev server plus a debug app; SVALL_HOME picks the daemon, unless it names a release fleet
     pnpm desktop:build   # an ad-hoc signed apps/desktop/mac/build.noindex/Svall Dev.app
     pnpm app:build       # apps/desktop/mac/build.noindex/Svall.app, with its own node, tmux, daemon and CLI
     pnpm ghostty:build   # GhosttyKit from vendor/ghostty into vendor/ghostty-kit
     pnpm ghostty:publish # build GhosttyKit and upload it for installs to download
-    mkdir -p /tmp/svall-dev && echo '{ "port": 0 }' > /tmp/svall-dev/config.json
+    mkdir -p /tmp/svall-dev && echo '{ "port": 0 }' > /tmp/svall-dev/node.json
     SVALL_HOME=/tmp/svall-dev pnpm svalld   # port 0 keeps it off the private fleets' 47800 and 47900
 
 The first `pnpm e2e` needs

@@ -9,7 +9,7 @@ import { Store } from '../src/store.js';
 import { TerminalHub, type Viewer } from '../src/terminals.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { Tmux } from '../src/tmux/tmux.js';
-import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
+import { cleanHomes, hasTmux, makeHome, ownerOf, waitFor } from './helpers.js';
 
 const runIf = hasTmux() ? describe : describe.skip;
 
@@ -31,7 +31,8 @@ runIf('TerminalHub', () => {
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
-    const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 200 });
+    const ownership = ownerOf(home, config.id);
+    const fleet = new Fleet({ store, tmux, paths, config, ownership, log: silentLogger, pollMs: 200 });
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
@@ -72,6 +73,60 @@ runIf('TerminalHub', () => {
     await waitFor(() => cont.mock.calls.length === 1);
     fleet.emit('continue', c.id);
     await waitFor(() => v.events.some((e) => e.event === 'term.resync'));
+  });
+
+  it('sends a viewer no more output once a megabyte waits unsent on its socket, and the screen afresh once it drains', async () => {
+    const { hub, c } = await boot();
+    // a socket that reads nothing: everything sent to it waits
+    let backlog = 0;
+    let reading = false;
+    const v: Viewer & { events: Event[] } = {
+      kind: 'app', events: [], backlog: () => backlog,
+      send: (ev) => { v.events.push(ev); if (!reading) backlog += JSON.stringify(ev).length; },
+    };
+    const w = viewer();
+    await hub.open(c.id, 100, 30, 100, v);
+    await hub.open(c.id, 100, 30, 100, w);
+    await hub.input(c.id, Buffer.from('yes 0123456789abcdef0123456789abcdef | head -c 3000000; echo flood-$((1+1))\n'));
+    await waitFor(() => outputText(w).includes('flood-2'), 40_000);
+    // one chunk past the megabyte, and nothing held back from the viewer that keeps up
+    expect(backlog).toBeLessThan(1_000_000 + 256 * 1024);
+    expect(outputText(w).length).toBeGreaterThan(3_000_000);
+    reading = true;
+    backlog = 0;
+    await waitFor(() => v.events.some((e) => e.event === 'term.resync'));
+  }, 60_000);
+
+  it('resumes a paused pane for the viewers that keep up, whatever one that fell behind still holds unsent', async () => {
+    const { hub, fleet, c } = await boot();
+    const v = viewer(5_000_000);
+    const w = viewer();
+    await hub.open(c.id, 80, 24, 100, v);
+    await hub.open(c.id, 80, 24, 100, w);
+    fleet.emit('output', c.id, Buffer.from('more than v can take'));
+    const cont = vi.spyOn(fleet, 'continuePane');
+    fleet.emit('pause', c.id);
+    await waitFor(() => cont.mock.calls.length === 1, 1000);
+    hub.closeAll(v);
+  });
+
+  it('lets a viewer that fell behind back in once a quarter of a megabyte or less waits, not as soon as it dips under one', async () => {
+    const { hub, fleet, c } = await boot();
+    let backlog = 1_000_000;
+    const v: Viewer & { events: Event[] } = { kind: 'app', events: [], send: (ev) => { v.events.push(ev); }, backlog: () => backlog };
+    await hub.open(c.id, 80, 24, 100, v);
+    const seen = () => v.events.filter((e) => e.event === 'term.output' || e.event === 'term.resync').map((e) => e.event);
+    fleet.emit('output', c.id, Buffer.from('past the mark'));
+    backlog = 999_999;
+    await new Promise((r) => setTimeout(r, 300));
+    fleet.emit('output', c.id, Buffer.from('still behind'));
+    expect(seen()).toEqual([]);
+    backlog = 250_001;
+    await new Promise((r) => setTimeout(r, 300));
+    expect(seen()).toEqual([]);
+    backlog = 250_000;
+    await waitFor(() => seen().includes('term.resync'));
+    hub.closeAll(v);
   });
 
   it('resyncs open terminals after a control reset', async () => {

@@ -1,6 +1,6 @@
 import AppKit
 
-struct SvallConnection: Encodable {
+struct SvallConnection: Encodable, Equatable {
     let host: String
     let port: Int
     let token: String
@@ -25,14 +25,46 @@ enum SvallHome {
         return dirs.map { $0 + "/tmux" }.first { FileManager.default.isExecutableFile(atPath: $0) } ?? "tmux"
     }
 
-    /// The fleet's config.json, created empty when the fleet has none so there is something to edit.
+    /// The fleet's portable settings, if the daemon has written them; an empty one it would refuse.
     static func configPath() -> String? {
-        let file = path + "/config.json"
-        if !FileManager.default.fileExists(atPath: file), !FileManager.default.createFile(atPath: file, contents: Data("{}\n".utf8)) {
-            NSLog("svall: could not create %@", file)
-            return nil
-        }
-        return file
+        let file = path + "/fleet.json"
+        return FileManager.default.fileExists(atPath: file) ? file : nil
+    }
+
+    /// Whether this fleet's config asks for handover: what every control for another machine waits on.
+    static func handoverEnabled(at home: String = path) -> Bool {
+        guard let data = FileManager.default.contents(atPath: home + "/fleet.json"),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let handover = json["handover"] as? [String: Any] else { return false }
+        return handover["enabled"] as? Bool ?? false
+    }
+
+    /// Whether a handover of this fleet is open here: the controller keeps its journal from Begin until every side has let go,
+    /// and the daemon its own while it is the source or destination of one.
+    static func handoverOpen(at home: String = path) -> Bool {
+        ["/controller/handover.json", "/handover/journal.json"].contains { FileManager.default.fileExists(atPath: home + $0) }
+    }
+
+    /// Where this Mac keeps its machine id and the registry of the machines it reaches.
+    static var configDir: String {
+        ProcessInfo.processInfo.environment["SVALL_CONFIG_DIR"] ?? NSHomeDirectory() + "/.config/svall"
+    }
+
+    /// Whether fleet.json names a gateway at all: a fleet with none has only ever run on this Mac.
+    static func namesGateway(home: String = path) -> Bool {
+        guard let data = FileManager.default.contents(atPath: home + "/fleet.json"),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = json["gatewayMachineId"] as? String else { return false }
+        return !id.isEmpty
+    }
+
+    /// The registry name of the machine fleet.json names as its gateway, which a handover can move the fleet to.
+    static func gatewayName(home: String = path, configDir: String = configDir) -> String? {
+        let json = { (file: String) in FileManager.default.contents(atPath: file).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } }
+        guard let id = json(home + "/fleet.json")?["gatewayMachineId"] as? String,
+              let machines = json(configDir + "/machines.json")?["machines"] as? [String: Any],
+              let record = machines[id] as? [String: Any] else { return nil }
+        return record["name"] as? String
     }
 
     /// The last lines of the daemon log, read from its end so a large log costs no more than a small one.
@@ -45,17 +77,34 @@ enum SvallHome {
         return Array(text.split(separator: "\n").suffix(lines).map(String.init))
     }
 
-    private static var config: [String: Any]? {
-        FileManager.default.contents(atPath: path + "/config.json").flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+    private static func json(_ file: String) -> [String: Any]? {
+        FileManager.default.contents(atPath: path + "/" + file).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
     }
 
     static func connection() -> SvallConnection? {
         guard let port = read("port").flatMap(Int.init), let token = read("token"), !token.isEmpty else { return nil }
-        return SvallConnection(host: config?["host"] as? String ?? "127.0.0.1", port: port, token: token)
+        return SvallConnection(host: json("node.json")?["host"] as? String ?? "127.0.0.1", port: port, token: token)
     }
 
     /// Opened from Finder, Spotlight or the Dock, which name no fleet.
     static var bare: Bool { ProcessInfo.processInfo.environment["SVALL_HOME"] == nil }
+
+    /// The profile whose home this is, or nil for the private one and for an ad-hoc $SVALL_HOME.
+    static func profileName(of path: String, in homeDirectory: String) -> String? {
+        let home = (path as NSString).standardizingPath
+        guard (home as NSString).deletingLastPathComponent == homeDirectory else { return nil }
+        let prefix = root + "-"
+        let base = (home as NSString).lastPathComponent
+        guard base.hasPrefix(prefix), base.count > prefix.count else { return nil }
+        return String(base.dropFirst(prefix.count))
+    }
+
+    static var profile: String? { profileName(of: path, in: NSHomeDirectory()) }
+
+    /// The profile `svall` names this home by, the private one included; nil for an ad-hoc $SVALL_HOME.
+    static func fleetProfile(of path: String, in homeDirectory: String) -> String? {
+        (path as NSString).standardizingPath == homeDirectory + "/" + root ? "private" : profileName(of: path, in: homeDirectory)
+    }
 
     static var isPrivate: Bool {
         (path as NSString).standardizingPath == NSHomeDirectory() + "/" + root
@@ -69,9 +118,9 @@ enum SvallHome {
         return base.hasPrefix(prefix) ? String(base.dropFirst(prefix.count)) : base
     }
 
-    /// The fleet's own name: config.json's, else its directory's; nil for a private fleet with neither.
+    /// The fleet's own name: fleet.json's, else its directory's; nil for a private fleet with neither.
     static var fleetName: String? {
-        (config?["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? directoryName
+        (json("fleet.json")?["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? directoryName
     }
 
     static var displayName: String {

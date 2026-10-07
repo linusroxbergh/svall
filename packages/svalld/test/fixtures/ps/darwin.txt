@@ -1,0 +1,45 @@
+    1     0     1    0 Ss   /sbin/launchd
+  531     1   531    0 Ss   /usr/libexec/logd
+  533     1   533    0 Ss   /usr/libexec/UserEventAgent (System)
+37572     1 37572    0 Ss   /opt/homebrew/bin/tmux -S /Users/ada/.svall/tmux.sock -f /Users/ada/.svall/tmux.conf new-session -d -s fleet -n _keep sleep 2147483647
+37573 37572 37573 37573 Ss+  sleep 2147483647
+88276 37572 88276 88276 Ss+  -zsh
+88278 37572 88278 88486 Ss   -zsh
+88486 88278 88486 88486 S+   sleep 300
+88487 88278 88486 88486 S+   cat
+88283 37572 88283 88283 Ss+  -zsh
+88489 88283 88489 88283 SN   sleep 301
+41522 37572 41522 41598 Ss   -zsh
+41598 41522 41598 41598 S+   claude --resume 3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d
+41624 41598 41598 41598 S+   /Users/ada/mcp/.venv/bin/python /Users/ada/mcp/server.py
+41626 41598 41598 41598 S+   npm exec @playwright/mcp@latest  
+41854 41626 41598 41598 S+   node /Users/ada/.npm/_npx/9833c18b2d85bc59/node_modules/.bin/playwright-mcp
+41700 41854 41700    0 Ss   /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --remote-debugging-pipe
+92650 41598 92650    0 Ss   /bin/zsh -c source /Users/ada/.claude/shell-snapshots/snapshot-zsh-1790100862789-r2p0hd.sh 2>/dev/null || true && eval 'npm test' < /dev/null && pwd -P >| /var/folders/xx/T/claude-5e1f-cwd
+92651 92650 92650    0 S    npm test
+41630 41598 41598 41598 S+   claude mcp serve
+41640 41598 41640    0 Ss   /bin/sh -c svall_status() { if [ -n "$SVALL_CHAR_ID" ] && [ -x '/Users/ada/.svall/hooks/svall-hook' ]; then shift; '/Users/ada/.svall/hooks/svall-hook' status "$@"; elif [ -n "$SVALL_CHAR_ID" ] && [ -f "$1" ]; then n='/Applications/Svall.app/Contents/Helpers/node'; [ -x "$n" ] || n=node; "$n" "$@"; elif [ -n "$2" ]; then c=$2; shift 2; eval "$c"; fi; }; svall_status '/Users/ada/.svall/hooks/claude-status.mjs' 'ccstatusline'
+41642 41640 41640    0 S    /Users/ada/.svall/hooks/svall-hook status ccstatusline
+41641 41598 41641    0 Ss   /bin/sh -c [ -z "$SVALL_CHAR_ID" ] || { if [ -x '/Users/ada/.svall/hooks/svall-hook' ]; then '/Users/ada/.svall/hooks/svall-hook' claude "$PPID"; else n='/Applications/Svall.app/Contents/Helpers/node'; [ -x "$n" ] || n=node; "$n" '/Users/ada/.svall/hooks/agent-hook.mjs' claude "$PPID"; fi; }
+41643 41641 41641    0 S    /Users/ada/.svall/hooks/svall-hook claude 41598
+41650 41598 41650    0 Ss   /bin/zsh -c source /Users/ada/.claude/shell-snapshots/snapshot-zsh-1790100862789-r2p0hd.sh 2>/dev/null || true && eval 'node --watch packages/svalld/hooks/agent-hook.mjs --port 0' < /dev/null && pwd -P >| /var/folders/xx/T/claude-5e1f-cwd
+41651 41598 41651    0 Ss   /bin/zsh -c source /Users/ada/.claude/shell-snapshots/snapshot-zsh-1790100862789-r2p0hd.sh 2>/dev/null || true && eval 'node ~/tools/claude-status.mjs --serve' < /dev/null && pwd -P >| /var/folders/xx/T/claude-5e1f-cwd
+50001 37572 50001 50001 Ss+  vim notes.md
+50100 37572 50100 50101 Ss   -zsh
+50101 50100 50101 50101 Z+   <defunct>
+99078 99076 99074    0 ZN   <defunct>
+61000 37572 61000 61010 Ss   -zsh
+61010 61000 61010 61010 S+   codex
+61011 61010 61011 61010 S    /Users/ada/.codex/packages/standalone/current/codex-path/node_repl
+61012 61010 61012 61010 S    node /opt/homebrew/bin/adlc mcp-server
+61013 61010 61013 61010 S    /Users/ada/.codex/packages/standalone/current/bin/codex-code-mode-host
+61020 61010 61020    0 Ss   /bin/zsh -lc npm test
+62000 37572 62000 62010 Ss   -zsh
+62010 62000 62010 62010 S+   node /opt/homebrew/bin/codex
+62011 62010 62010 62010 S+   /opt/homebrew/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/codex/codex
+62012 62011 62012 62010 S    node /opt/homebrew/bin/adlc mcp-server
+62020 62011 62020    0 Ss   /bin/zsh -lc npm test
+63000 37572 63000 63010 Ss   -zsh
+63010 63000 63010 63010 S+   node /opt/homebrew/bin/claude
+63011 63010 63010 63010 S+   node /opt/homebrew/bin/claude mcp serve
+63020 63010 63020    0 Ss   /bin/zsh -c source /Users/ada/.claude/shell-snapshots/snapshot-zsh-1790100862789-r2p0hd.sh 2>/dev/null || true && eval 'cargo build' < /dev/null && pwd -P >| /var/folders/xx/T/claude-5e1f-cwd

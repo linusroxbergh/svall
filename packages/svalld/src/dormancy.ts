@@ -2,8 +2,9 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { DORMANT_AFTER_HOURS, isSessionId, type Agent, type AgentKind, type Character } from '@svall/protocol';
+import { DORMANT_AFTER_HOURS, isSessionId, type Agent, type AgentKind, type Character, type TerminalSlot } from '@svall/protocol';
 import { running, settle } from './agent/reducer.js';
+import { hooksFor } from './hooks/receiver.js';
 import type { Logger } from './log.js';
 import type { Store } from './store.js';
 import { shq } from './text.js';
@@ -12,12 +13,24 @@ import type { Tmux } from './tmux/tmux.js';
 const exec = promisify(execFile);
 
 // flags are the launch flags to resume with, already quoted
-export function reviveCommand(c: Character, flags: string[] = []): string {
-  if (!c.agent || !isSessionId(c.agent.sessionId)) return '';
+export function reviveCommand(t: TerminalSlot, flags: string[] = []): string {
+  if (!t.agent || !isSessionId(t.agent.sessionId)) return '';
   // a codex character's cwd follows its commands into worktrees; resumed from one, codex would stop to ask which directory
-  const words = c.agent.kind === 'codex' ? ['codex', 'resume', '-c', 'tui.resume_cwd=session', ...flags]
-    : c.agent.kind === 'opencode' ? ['opencode', ...flags, '-s'] : ['claude', ...flags, '--resume'];
-  return [...words, c.agent.sessionId].join(' ');
+  const words = t.agent.kind === 'codex' ? ['codex', 'resume', '-c', 'tui.resume_cwd=session', ...flags]
+    : t.agent.kind === 'opencode' ? ['opencode', ...flags, '-s'] : ['claude', ...flags, '--resume'];
+  return [...words, t.agent.sessionId].join(' ');
+}
+
+// a terminal without a window keeps its directory and the command that brings its session back
+export function markSlotDormant(t: TerminalSlot, flags?: string[]): void {
+  delete t.tmux;
+  t.revive = { command: reviveCommand(t, flags) };
+  delete t.agent?.monitors;
+  // nothing runs until the revive, so no question is left open and no turn goes on; a finished result stays
+  if (t.agent && (t.agent.status === 'blocked' || t.agent.status === 'working')) {
+    settle(t.agent, 'idle');
+    delete t.agent.asking;
+  }
 }
 
 // a resumed session sits at its prompt, and its subagents, background agents and commands died with the process
@@ -26,20 +39,19 @@ export const RESUME_NOTE = 'A restart ended this session mid-turn. Subagents, ba
   + 'and carry on with the task.';
 
 export function markDormant(c: Character, flags?: string[]): void {
-  delete c.tmux;
   delete c.hint;
-  c.revive = { command: reviveCommand(c, flags) };
   // its monitors die with it, which a finished turn says nothing of
-  if (c.agent?.monitors) {
-    if (c.revive.command) c.revive.interrupted = true;
-    delete c.agent.monitors;
-  }
-  // nothing runs until the revive, so no question is left open and no turn goes on; a finished result stays
-  if (c.agent && (c.agent.status === 'blocked' || c.agent.status === 'working')) {
-    if (c.revive.command) c.revive.interrupted = true;
-    settle(c.agent, 'idle');
-    delete c.agent.asking;
-  }
+  const interrupted = !!c.agent?.monitors || c.agent?.status === 'blocked' || c.agent?.status === 'working';
+  markSlotDormant(c, flags);
+  if (interrupted && c.revive?.command) c.revive.interrupted = true;
+}
+
+// a plain side shell goes with its window; a second that ran an agent stays behind to be revived, unless the agent
+// sends no SessionEnd and the last poll saw it quit `atShell`
+export function loseSecond(c: Character, flags?: string[], atShell = false): void {
+  const a = c.second?.agent;
+  if (a && !(atShell && !hooksFor(a.kind).includes('SessionEnd'))) markSlotDormant(c.second!, flags);
+  else delete c.second;
 }
 
 // an agent resting this long, since its last turn or the user's last look, with nothing running for it and nothing
@@ -75,6 +87,8 @@ const FLAGS: Record<AgentKind, { kept: string[]; keptSwitches: string[]; dropped
 };
 // the flags whose value may be left out
 const OPTIONAL = ['-w', '--worktree', '-r', '--resume'];
+// kept codex flags whose values name entries in the launching machine's own config.toml
+const MACHINE_LOCAL = ['-p', '--profile', '--local-provider'];
 // a value is typed into a shell on revive, so only a plain word is carried
 const PLAIN = /^[\w.:@/[\]-]+$/;
 
@@ -122,6 +136,13 @@ export function runsAgent(args: string, kind: AgentKind): boolean {
   // npm installs OpenCode's binary as opencode.exe
   const bin = path.basename(words[0]);
   return bin === kind || (kind === 'opencode' && bin === 'opencode.exe') || script;
+}
+
+/** A revive command, as `reviveCommand` builds it, without the flags that mean something only on the machine it was made on. */
+export function portableRevive(command: string): string {
+  const words = command.split(' ');
+  if (words[0] !== 'codex') return command;
+  return words.filter((w, i) => !MACHINE_LOCAL.includes(w) && !MACHINE_LOCAL.includes(words[i - 1])).join(' ');
 }
 
 export type Proc = { pid: number; ppid: number; pgid: number; args: string };
@@ -216,7 +237,7 @@ export async function endAll(o: Sleep, reviving: ReadonlyMap<string, Promise<unk
     for (const c of Object.values(d.characters)) {
       const second = agentProc(c.second?.agent);
       if (second) pids.push(second.pid);
-      delete c.second;
+      if (c.second?.tmux) loseSecond(c, second ? startFlags(second.args, c.second.agent!.kind) : undefined);
       if (!c.tmux) continue;
       const proc = agentProc(c.agent);
       if (proc) pids.push(proc.pid);

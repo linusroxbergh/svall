@@ -4,9 +4,10 @@ import fs from 'node:fs';
 import { promisify } from 'node:util';
 import QRCode from 'qrcode';
 import type { MobileStatus } from '@svall/protocol';
-import { repoRoot, resolvePaths } from './paths.js';
+import { resolvePaths } from './paths.js';
 import type { Phones } from './phones.js';
 import { PRIVATE, PRIVATE_HTTPS_PORT, SHIM, profileLabel } from './profile.js';
+import { isRelease, repoRoot } from './release.js';
 import { mobileDist } from './runtime.js';
 
 export type MobileDeps = {
@@ -71,6 +72,16 @@ export function phoneKey(file: string, initial: string): { get(): string; rotate
 
 const buildBundle = (d: MobileDeps): Promise<string> =>
   d.run('pnpm', ['--filter', '@svall/desktop-web', 'build:mobile'], repoRoot());
+
+/**
+ * Where the phone page is, built from the checkout first when it can be. A release ships it built
+ * and has no checkout or pnpm to reach for, so there it is only ever reported present or missing.
+ */
+export async function ensureBundle(d: MobileDeps, o: { rebuild?: boolean } = {}): Promise<{ dist: string; missing: boolean }> {
+  const dist = mobileDist();
+  if (!isRelease() && (o.rebuild || !d.exists(dist))) await buildBundle(d);
+  return { dist, missing: !d.exists(dist) };
+}
 
 // a port is part of the origin, so each fleet on its own port is its own app on the phone
 export const servePort = (profile: string, configured?: number): number => configured ?? (profile === PRIVATE ? PRIVATE_HTTPS_PORT : 8443);
@@ -173,7 +184,8 @@ export function watchServed(mobile: Pick<Mobile, 'get'>, wanted: () => boolean, 
  * a rejection, because the panel that shows the switch is also where the reason belongs.
  */
 export function mobileControl(d: MobileDeps, opts: {
-  home: string; profile: string; logins: string[]; phones: Phones; httpsPort?: number; rotateKey: () => void;
+  // read at each look, since activating a handover replaces the configured list
+  home: string; profile: string; logins: () => string[]; phones: Phones; httpsPort?: number; rotateKey: () => void;
   // the ports other fleets keep, and where this fleet keeps the one it serves on, saying whether that worked
   kept: () => number[]; savePort: (port: number) => boolean;
 }): Mobile & Served & { logins: () => string[] } {
@@ -183,7 +195,7 @@ export function mobileControl(d: MobileDeps, opts: {
 
   // who a phone socket and a push are let through for: the configured logins, else the Mac's own once tailscale named it
   let owner: string | undefined;
-  const logins = (): string[] => (opts.logins.length ? opts.logins : owner ? [owner] : []);
+  const logins = (): string[] => { const configured = opts.logins(); return configured.length ? configured : owner ? [owner] : []; };
 
   // the commands carry the phone key in their target, and a failed one repeats its whole command line
   const reason = (e: unknown): string => {
@@ -201,7 +213,8 @@ export function mobileControl(d: MobileDeps, opts: {
     const self = await tailnetSelf(d, bin);
     const { host } = self;
     owner = self.owner;
-    if (enable === true && logins().length === 0) throw new Error(`tailscale reports no login for this Mac: set mobile.logins in config.json, then restart the daemon with launchctl kickstart -k gui/$(id -u)/${profileLabel(opts.profile)}`);
+    if (enable === true && logins().length === 0) throw new Error(`tailscale reports no login for this Mac: set mobile.logins in fleet.json, then restart the daemon with launchctl kickstart -k gui/$(id -u)/${profileLabel(opts.profile)}`);
+    const dist = mobileDist();
     // tailscale serve holds one mapping per port for the whole Mac, so a port another holds stays theirs. A fleet that
     // keeps no port yet takes a free one in place of its default; a kept port is the address a phone app already has
     const before = enable === undefined ? undefined : await d.run(bin, ['serve', 'status', '--json']);
@@ -211,10 +224,10 @@ export function mobileControl(d: MobileDeps, opts: {
     // the port this attempt serves on, which becomes the fleet's only once it is served
     let at = port;
     if (picks && before && (other || kept.includes(port))) at = freePort(before, kept);
-    else if (enable === true && other) throw new Error(`https port ${port} already serves another fleet or site: turn that one off with tailscale serve --https=${port} off, or set mobile.httpsPort to a free port in this fleet's config.json and restart it`);
+    else if (enable === true && other) throw new Error(`https port ${port} already serves another fleet or site: turn that one off with tailscale serve --https=${port} off, or set mobile.httpsPort to a free port in this fleet's node.json and restart it`);
     // an on turns the key over only once tailscale and the page are ready, so one that fails leaves a working link alone
     if (enable === true) {
-      if (!d.exists(mobileDist)) await buildBundle(d);
+      await ensureBundle(d);
       opts.rotateKey();
     }
     const target = fleetTarget(d, opts.home);
@@ -238,7 +251,7 @@ export function mobileControl(d: MobileDeps, opts: {
       qr: await QRCode.toDataURL(url, { margin: 1, width: 320 }),
     };
     // the mapping outlives the checkout it was made from: a page cleaned away leaves the switch on over nothing
-    if (serving && !d.exists(mobileDist)) status.pageMissing = true;
+    if (serving && !d.exists(dist)) status.pageMissing = true;
     return status;
   };
 

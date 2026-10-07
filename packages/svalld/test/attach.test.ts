@@ -11,7 +11,7 @@ import { Store } from '../src/store.js';
 import { TerminalHub, type Viewer } from '../src/terminals.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { Tmux } from '../src/tmux/tmux.js';
-import { cleanHomes, ghosttyTermEnv, hasTmux, makeHome, waitFor, waitForPolls } from './helpers.js';
+import { cleanHomes, ghosttyTermEnv, hasTmux, makeHome, ownerOf, waitFor, waitForPolls } from './helpers.js';
 
 const runIf = hasTmux() ? describe : describe.skip;
 const viewer = (): Viewer => ({ kind: 'app', send() {}, backlog: () => 0 });
@@ -49,7 +49,8 @@ runIf('desktop terminal attach', () => {
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
-    const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 200, staleSessionMs });
+    const ownership = ownerOf(home, config.id);
+    const fleet = new Fleet({ store, tmux, paths, config, ownership, log: silentLogger, pollMs: 200, staleSessionMs });
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;

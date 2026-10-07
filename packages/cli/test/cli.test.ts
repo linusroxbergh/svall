@@ -1,18 +1,25 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { AUTHORITY_SCHEMA_VERSION, emptyState, PROTOCOL_VERSION, TRANSFER_SCHEMA_VERSION } from '@svall/protocol';
 import { startDaemon, type Daemon } from '@svall/svalld';
 import { mergeHooks } from '@svall/svalld/agent-hooks';
+import { startAuthorityServer } from '@svall/svalld/gateway/server';
 import { silentLogger } from '@svall/svalld/log';
 import { resolvePaths } from '@svall/svalld/paths';
 import { BUNDLE_ID, isProfileName, LAUNCHD_LABEL, profileLabel } from '@svall/svalld/profile';
 import { cleanHomes, hasTmux, makeHome, waitFor } from '@svall/svalld/test-helpers';
 import { Tmux } from '@svall/svalld/tmux';
+import { DEFAULT_PREFIX } from '../../../scripts/install-release.mjs';
+import { setupCommand } from '../src/commands/setup.js';
+import { MachineRegistry } from '../src/controller/registry.js';
 import { buildProgram, typo } from '../src/program.js';
+import { installFakeSsh } from './controller/fake-ssh.js';
 
 const exec = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -61,6 +68,28 @@ describe('svall argument parsing', () => {
     const r = await run({ SVALL_HOME: '/tmp/svall-should-be-ignored' }, '-p', 'svall-probe', 'status');
     expect(r.code).toBe(1);
     expect(r.stderr).toContain('.svall-svall-probe');
+  });
+
+  it('asks a far machine for the named fleet SVALL_HOME selects, as it does for -p', async () => {
+    const ssh = installFakeSsh();
+    try {
+      const home = fs.mkdtempSync(path.join(ssh.dir, 'home-'));
+      const fleet = path.join(home, '.svall-work');
+      fs.mkdirSync(fleet);
+      fs.writeFileSync(path.join(fleet, 'fleet.json'), JSON.stringify({ id: '11111111-2222-3333-4444-555555555555' }));
+      const config = path.join(home, 'config');
+      const registry = MachineRegistry.load(config);
+      registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, svallBase: '/opt/svall', gateway: false }, '66666666-7777-8888-9999-aaaaaaaaaaaa');
+      registry.save();
+      // a companion running another fleet refuses at once, so the command ends after one ask
+      ssh.answer({ fleetId: '77777777-2222-3333-4444-555555555555', machineId: '66666666-7777-8888-9999-aaaaaaaaaaaa', release: 'dev', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: 1, token: 't' });
+      const r = await run({ HOME: home, SVALL_HOME: fleet, SVALL_CONFIG_DIR: config }, '--host', 'trift', 'status');
+      expect(r.code).toBe(1);
+      expect(ssh.remoteCalls().filter((w) => w.includes('connection-info'))).toEqual([['/opt/svall/current/bin/svall', 'connection-info', '--json', '-p', 'work']]);
+      expect(r.stderr).toContain('--fleet work');
+    } finally {
+      ssh.clean();
+    }
   });
 
   it('takes a mistyped command for a typo, not a fleet to create', async () => {
@@ -115,6 +144,92 @@ describe('svall argument parsing', () => {
     } finally {
       fs.rmSync(path.dirname(settings), { recursive: true });
     }
+  });
+
+  it('reports its versions rather than reading `version` as a profile', async () => {
+    const r = await run({}, 'version', '--json');
+    expect(r.code).toBe(0);
+    const v = JSON.parse(r.stdout);
+    expect(v).toMatchObject({
+      release: 'dev',
+      protocol: PROTOCOL_VERSION,
+      stateSchema: emptyState().version,
+      transferSchema: TRANSFER_SCHEMA_VERSION,
+      authoritySchema: AUTHORITY_SCHEMA_VERSION,
+      runtime: { node: process.version, platform: process.platform, arch: process.arch },
+    });
+    expect((await run({}, 'version')).stdout).toContain('protocol');
+  });
+
+  it('answers an ownership question on the gateway socket under the prefix it was given', async () => {
+    const prefix = makeHome();
+    const server = await startAuthorityServer({ prefix });
+    const env = { SVALL_GATEWAY_PREFIX: prefix };
+    const fleet = '3f1a0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
+    const owner = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
+    try {
+      const created = await run(env, 'gateway', 'owner', 'create', '--fleet', fleet, '--params', JSON.stringify({ initialOwnerMachineId: owner }));
+      expect(created.code).toBe(0);
+      expect(JSON.parse(created.stdout)).toEqual({ result: { record: { fleetId: fleet, generation: 0, ownerMachineId: owner } } });
+      const missing = await run(env, 'gateway', 'owner', 'get', '--fleet', '7c2b0b1c-2d3e-4f50-8617-9a0b1c2d3e4f');
+      expect(missing.code).not.toBe(0);
+      expect(JSON.parse(missing.stdout)).toMatchObject({ error: { code: 'not_found' } });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('mints the machine id a controller registers this installation under', async () => {
+    const dir = makeHome();
+    const first = JSON.parse((await run({ SVALL_CONFIG_DIR: dir }, 'version', '--json')).stdout);
+    expect(first.machineId).toMatch(/^[0-9a-f-]{36}$/);
+    const second = JSON.parse((await run({ SVALL_CONFIG_DIR: dir }, 'version', '--json')).stdout);
+    expect(second.machineId).toBe(first.machineId);
+  });
+});
+
+describe('svall setup on a Linux release', () => {
+  afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); process.exitCode = 0; fs.rmSync(DEFAULT_PREFIX, { recursive: true, force: true }); });
+
+  const releases = (...versions: string[]) => {
+    for (const v of versions) fs.mkdirSync(path.join(DEFAULT_PREFIX, 'releases', v), { recursive: true });
+    fs.symlinkSync(path.join(DEFAULT_PREFIX, 'releases', versions.at(-1)!), path.join(DEFAULT_PREFIX, 'current'));
+  };
+  const setup = async (...args: string[]): Promise<string> => {
+    const out: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { out.push(String(chunk)); return true; });
+    await setupCommand(() => ({ name: 'private', home: path.join(os.homedir(), '.svall'), managed: true }), () => true, 'linux').parseAsync(args, { from: 'user' });
+    return out.join('');
+  };
+
+  it('--check --release judges the shims against the installed release, not this checkout', async () => {
+    vi.stubEnv('SHELL', '/usr/bin/true');
+    // the link setup makes for a release, into it through `current`
+    const shimDir = path.join(os.homedir(), '.local', 'bin');
+    fs.mkdirSync(shimDir, { recursive: true });
+    fs.symlinkSync(path.join(DEFAULT_PREFIX, 'current', 'bin', 'svall'), path.join(shimDir, 'svall'));
+    try {
+      expect(JSON.parse(await setup('--check', '--release', '/nowhere')).warnings).not.toContain('! shims  missing or out of date: run svall setup');
+      expect(JSON.parse(await setup('--check')).warnings).toContain('! shims  missing or out of date: run svall setup');
+    } finally {
+      fs.rmSync(path.join(shimDir, 'svall'));
+    }
+  });
+
+  it('puts current back on the release before it without asking anything else of the machine', async () => {
+    releases('1.0.0', '1.1.0');
+    const done = JSON.parse(await setup('--no-launchctl', '--rollback')).done as string[];
+    expect(fs.readlinkSync(path.join(DEFAULT_PREFIX, 'current'))).toBe(path.join(DEFAULT_PREFIX, 'releases', '1.0.0'));
+    expect(done[0]).toContain('1.0.0');
+    expect(done.at(-1)).toMatch(/next start/);
+  });
+
+  it('puts current back on the release it names, whichever release is newest', async () => {
+    releases('1.0.0', '1.1.0', '1.2.0');
+    await setup('--no-launchctl', '--rollback', '1.0.0');
+    expect(fs.readlinkSync(path.join(DEFAULT_PREFIX, 'current'))).toBe(path.join(DEFAULT_PREFIX, 'releases', '1.0.0'));
+    await expect(setup('--no-launchctl', '--rollback', '../releases')).rejects.toThrow('names no release');
+    expect(fs.readlinkSync(path.join(DEFAULT_PREFIX, 'current'))).toBe(path.join(DEFAULT_PREFIX, 'releases', '1.0.0'));
   });
 });
 
@@ -171,13 +286,16 @@ describe('svall setup --agents', () => {
     fs.writeFileSync(path.join(bin, 'codex'), '#!/bin/sh\necho codex-cli 0.160.0\n', { mode: 0o755 });
     return `${bin}:${DOUBLES}:${path.dirname(process.execPath)}:/usr/bin:/bin`;
   };
+  const fleetJson = (home: string) => JSON.parse(fs.readFileSync(path.join(home, '.svall', 'fleet.json'), 'utf8'));
+  const nodeJson = (home: string) => JSON.parse(fs.readFileSync(path.join(home, '.svall', 'node.json'), 'utf8'));
 
   it('keeps off an agent the setup screen showed and the user left out, and makes the one left on the main agent', async () => {
     const home = makeHome();
     try {
       const r = await run({ HOME: home, PATH: tools(home) }, 'setup', '--no-launchctl', '--agents', 'codex', '--found', 'claude,codex');
       expect(r.code).toBe(0);
-      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ agentsOff: ['claude'], mainAgent: 'codex' });
+      expect(nodeJson(home)).toEqual({ agentsOff: ['claude'] });
+      expect(fleetJson(home)).toEqual({ id: expect.any(String), mainAgent: 'codex' });
     } finally {
       cleanHomes();
     }
@@ -192,7 +310,7 @@ describe('svall setup --agents', () => {
       const r = await run(env, 'setup', '--no-launchctl', '--agents', 'codex', '--projects', '~/Developer');
       expect(r.code).toBe(0);
       expect(fs.statSync(path.join(home, 'Developer')).isDirectory()).toBe(true);
-      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toMatchObject({ defaultCwd: '~/Developer' });
+      expect(fleetJson(home)).toMatchObject({ defaultCwd: '~/Developer' });
       expect(JSON.parse((await run(env, 'setup', '--plan')).stdout).projects).toBe('~/Developer');
     } finally {
       cleanHomes();
@@ -215,10 +333,11 @@ describe('svall setup --agents', () => {
     const home = makeHome();
     try {
       fs.mkdirSync(path.join(home, '.svall'));
-      fs.writeFileSync(path.join(home, '.svall', 'config.json'), JSON.stringify({ mainAgent: 'claude' }));
+      fs.writeFileSync(path.join(home, '.svall', 'fleet.json'), JSON.stringify({ id: crypto.randomUUID(), mainAgent: 'claude' }));
       const r = await run({ HOME: home, PATH: tools(home) }, 'setup', '--no-launchctl', '--agents', 'codex', '--found', 'claude,codex');
       expect(r.code).toBe(0);
-      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toMatchObject({ agentsOff: ['claude'], mainAgent: 'codex' });
+      expect(nodeJson(home)).toMatchObject({ agentsOff: ['claude'] });
+      expect(fleetJson(home)).toMatchObject({ mainAgent: 'codex' });
     } finally {
       cleanHomes();
     }
@@ -264,11 +383,13 @@ describe('svall setup --agents', () => {
       expect(JSON.parse(plan.stdout).agents).toContainEqual({ kind: 'codex', path: path.join(home, '.codex'), folderOnly: true });
       const r = await run(env, 'setup', '--no-launchctl', '--agents', 'claude');
       expect(r.code).toBe(0);
-      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ agentsOff: ['codex'] });
+      expect(nodeJson(home)).toEqual({ agentsOff: ['codex'] });
+      expect(fleetJson(home).mainAgent).toBeUndefined();
       expect(fs.existsSync(path.join(home, '.codex', 'hooks.json'))).toBe(false);
       fs.rmSync(path.join(home, '.codex'), { recursive: true });
       expect((await run(env, 'setup', '--no-launchctl', '--agents', 'claude')).code).toBe(0);
-      expect(JSON.parse(fs.readFileSync(path.join(home, '.svall', 'config.json'), 'utf8'))).toEqual({ agentsOff: ['codex'] });
+      expect(nodeJson(home)).toEqual({ agentsOff: ['codex'] });
+      expect(fleetJson(home).mainAgent).toBeUndefined();
     } finally {
       cleanHomes();
     }
@@ -391,6 +512,30 @@ describe('svall setup --if-needed --login-shell', () => {
   });
 });
 
+describe('svall connect', () => {
+  afterEach(() => cleanHomes());
+
+  it('streams the local connection as NDJSON and lets go when its input ends', async () => {
+    const home = makeHome();
+    fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: '11111111-2222-3333-4444-555555555555' }));
+    fs.writeFileSync(path.join(home, 'node.json'), JSON.stringify({}));
+    fs.writeFileSync(path.join(home, 'port'), '4711');
+    fs.writeFileSync(path.join(home, 'token'), 'local-token\n');
+
+    const child = spawn(tsx, [main, 'connect', '--json'], { env: { ...process.env, SVALL_HOME: home } });
+    let out = '';
+    child.stdout.on('data', (chunk: Buffer) => { out += chunk.toString(); });
+    child.stdin.end();
+    const code = await new Promise((resolve) => child.on('close', resolve));
+
+    expect(code).toBe(0);
+    expect(out.trim().split('\n').map((line) => JSON.parse(line))).toEqual([
+      { type: 'connecting', owner: 'local' },
+      { type: 'online', host: '127.0.0.1', port: 4711, token: 'local-token' },
+    ]);
+  });
+});
+
 runIf('svall CLI', () => {
   let daemon: Daemon | undefined;
   let home = '';
@@ -413,10 +558,12 @@ runIf('svall CLI', () => {
     const config = { shell: '/bin/sh', mainAgent: 'claude' };
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify(config));
     daemon = await start({ home, port: 0, log: silentLogger });
-    // svall agent tells what the running fleet uses, not a config.json edited since it started
-    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ ...config, mainAgent: 'codex' }));
+    // svall agent tells what the running fleet uses, not a fleet.json edited since it started
+    const fleetJson = resolvePaths(home).fleetConfig;
+    const split = fs.readFileSync(fleetJson, 'utf8');
+    fs.writeFileSync(fleetJson, JSON.stringify({ ...JSON.parse(split), mainAgent: 'codex' }));
     expect(JSON.parse((await svall('agent', '--json')).stdout).agent).toBe('claude');
-    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify(config));
+    fs.writeFileSync(fleetJson, split);
 
     const island = JSON.parse((await svall('island', 'create', 'feature', '--json')).stdout);
     expect(island.name).toBe('feature');

@@ -19,7 +19,8 @@ cp "$NODE" "$TMUX" "$APP/Contents/Helpers/"
 rsync -a --delete apps/desktop/mac/build.noindex/runtime/ "$APP/Contents/Resources/runtime/"
 SPARKLE="$(scripts/sparkle-tools.sh)"
 node scripts/licenses.mjs "$(dirname "$NODE")" "$(dirname "$TMUX")" "$(dirname "$SPARKLE")" >/dev/null
-rsync -a --delete apps/desktop/mac/build.noindex/licenses/ "$APP/Contents/Resources/Licenses/"
+# beside the NOTICE and licence texts build.sh put there
+rsync -a apps/desktop/mac/build.noindex/licenses/ "$APP/Contents/Resources/Licenses/"
 # nested code is signed before the bundle that seals it
 codesign --force --sign - "$APP/Contents/Helpers/node" "$APP/Contents/Helpers/tmux"
 codesign --force --sign - "$APP"
