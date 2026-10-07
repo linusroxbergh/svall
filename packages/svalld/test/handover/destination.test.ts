@@ -538,6 +538,32 @@ describe('destination prepare', () => {
     expect(fs.readdirSync(s.paths.handoverDir).filter((f) => f.startsWith('held-'))).toEqual([]);
   });
 
+  it('keeps the OpenCode session a prepare imported before it died, not the copy it kept aside, once the handover is aborted', async () => {
+    const s = await scene({ opencode: true });
+    const eve = path.join(s.dst, 'work/eve');
+    hold(s.oc.trift, ocSession(eve, []));
+    const run = cliRunner(s.oc.trift);
+    const stage = path.dirname(s.paths.sessionStage(TX, 0));
+    // svalld dies as OpenCode finishes the import, and nothing it asks after that is answered
+    let dead = false;
+    const cli: CliRun = async (cmd, args, o) => {
+      if (dead) throw new Error('svalld died');
+      const r = await run(cmd, args, o);
+      if (args[1] === 'import' && args.at(-1)!.startsWith(stage)) { dead = true; throw new Error('svalld died'); }
+      return r;
+    };
+    const d = daemon(s, { cli });
+    await refusal(d.handover.prepare(params(s)));
+    const kept = path.join(s.paths.handoverDir, `held-${TX}`);
+    expect(fs.existsSync(kept)).toBe(true);
+
+    dead = false;
+    d.gateway.record = { fleetId, generation: 4, ownerMachineId: mac };
+    expect(await d.start().handover.abort({ transactionId: TX, generation: 5 })).toEqual({});
+    expect(held(s.oc.trift)).toEqual({ [OC]: { ...s.oc.session, info: { ...s.oc.session.info, location: { directory: eve } } } });
+    expect(fs.existsSync(kept)).toBe(false);
+  });
+
   it('puts back the copy of an OpenCode session it held once a forced record supersedes a prepare that died between removing it and the import', async () => {
     const s = await scene({ opencode: true });
     const mine = ocSession(path.join(s.dst, 'work/eve'), []);
