@@ -53,6 +53,8 @@
   --shell: #EAF1EE;
   --sel: #8ED0FF;
   --star: var(--pt-sun);
+  /* a PR waiting on its reviewers */
+  --review: #C3A8C9; --ink-on-review: #33253A;
 
   --pt-sky: #78B0C4;
   --pt-sun: #E0BB55;

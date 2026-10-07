@@ -61,3 +61,8 @@
   animation: pulse var(--pulse-fast) ease-in-out infinite; }
 /* 2.714: the 7px dot grown 6px a side */
 @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(2.714); opacity: 0; } }
+/* a PR in review and a running monitor, as glyphs after the name */
+.sb-ind { flex: none; display: inline-flex; align-items: center; gap: var(--sp-xs); color: var(--ink-3); }
+.sb-ind i { display: grid; place-items: center; font-style: normal; }
+.sb-ind .ind-glyph { width: 11px; height: 11px; display: block; }
+.sb-ind [data-kind="review"] { color: var(--review); }

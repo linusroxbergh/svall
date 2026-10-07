@@ -1,4 +1,4 @@
-import { byCell, byIslandOrder, type Character, type FleetState, type Island } from '@svall/protocol';
+import { byCell, byIslandOrder, type Character, type ContextItem, type FleetState, type Island } from '@svall/protocol';
 import { SINGLE, type Panes } from './panes.js';
 
 export type DisplayStatus = 'working' | 'idle' | 'blocked' | 'done' | 'shell';
@@ -109,6 +109,12 @@ export function charactersByPriority(f: FleetState): Character[] {
 
 // a character wants the user when it is stuck, or when it has news nobody has read
 export const wantsUser = (c: Character): boolean => isUnread(c) || statusOf(c) === 'blocked';
+
+// the PR the work is on: the branch's own, the one svalld reads a state for, else the first among the links
+export const mainPr = (c: Character): ContextItem | undefined =>
+  c.context.find((it) => it.kind === 'pr' && it.prState) ?? c.context.find((it) => it.kind === 'pr');
+export const inReview = (c: Character): boolean => mainPr(c)?.prState === 'open';
+export const isMonitoring = (c: Character): boolean => Boolean(c.agent?.monitors?.length || c.second?.agent?.monitors?.length);
 
 // the island wears the status of its most pressing character
 export function islandStatus(f: FleetState, islandId: string): DisplayStatus | undefined {

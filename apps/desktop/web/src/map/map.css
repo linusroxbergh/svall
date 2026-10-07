@@ -209,6 +209,12 @@
 .tok .chip:hover{background:var(--ink);color:var(--surface-0)}
 .tok .chip.more{cursor:inherit;font-size:calc(var(--tok)*.28);font-variant-numeric:tabular-nums;letter-spacing:var(--track-tight)}
 .tok .chip.more:hover{background:var(--surface-2);color:var(--ink)}
+/* a PR in review and a running monitor hang on the left edge, as the links do on the right */
+.tok .rail.left{right:auto;left:calc(var(--tok)*-.36)}
+.tok .chip.review{background:var(--review);color:var(--ink-on-review)}
+.tok .chip.review:hover{background:var(--ink);color:var(--surface-0)}
+.tok .chip.monitor{cursor:inherit}
+.tok .chip.monitor:hover{background:var(--surface-2);color:var(--ink)}
 
 .tok.s-shell .disc{box-shadow:0 4px 7px var(--shade-1), inset 0 0 0 1.4px color-mix(in srgb, var(--cream) 28%, transparent)}
 .tok.s-shell .disc::after{opacity:.18}
