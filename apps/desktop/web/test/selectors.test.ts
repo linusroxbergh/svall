@@ -197,4 +197,9 @@ describe('the PR in review', () => {
   it('goes by the main PR alone', () => {
     expect(inReview(withLinks(pr(7, 'draft'), pr(8, 'open')))).toBe(false);
   });
+  it('is the branch PR the user added by hand, ahead of a PR the scribe found', () => {
+    const found = { ...pr(5), source: 'scribe' as const }, added = { ...pr(7, 'open'), source: 'manual' as const };
+    expect(mainPr(withLinks(found, added))).toBe(added);
+    expect(inReview(withLinks(found, added))).toBe(true);
+  });
 });

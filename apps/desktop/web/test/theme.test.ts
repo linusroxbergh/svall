@@ -12,9 +12,10 @@ describe('theme', () => {
   it('reserves room above the footprint for the island label', () => {
     expect(theme.bounds.top * theme.cell).toBeGreaterThanOrEqual(tokenPx.h * 0.48);
   });
-  it('holds a counter-scaled card inside the crew pitch at the zoom floor', () => {
+  it('holds a counter-scaled card and a rail on each side inside the crew pitch at the zoom floor', () => {
     const w = tokenPx.w / theme.token.floor, h = tokenPx.h / theme.token.floor;
     expect(w).toBeLessThan(3 * theme.cell);
+    expect((tokenPx.w + 2 * 0.36 * theme.token.unit) / theme.token.floor).toBeLessThan(3 * theme.cell);
     expect(h).toBeLessThan(4 * theme.cell);
     // half a card, so a crew member two cells in from the coast stands on visible land
     expect(w / 2).toBeLessThan(2 * theme.cell);
