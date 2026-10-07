@@ -1096,7 +1096,7 @@ describe('source abort', () => {
     // the rest closed bo's window and died while its server lingered; ada's second window it never closed
     b.handover.write(SourceJournal.parse({
       role: 'source', transactionId: TX, generation: 4, fleetId, fromMachineId: me, toMachineId: trift, phase: 'freeze', updatedAt: 1,
-      stoppedTerminals: [{ characterId: 'c_bo', server: { pid: 3060, pgid: 3060, args, at: 0 } }, { characterId: 'c_ada', term: 2, server: { pid: 2060, pgid: 2060, args, at: 0 } }],
+      stoppedTerminals: [{ characterId: 'c_bo', server: { pid: 3060, pgid: 3060, args } }, { characterId: 'c_ada', term: 2, server: { pid: 2060, pgid: 2060, args } }],
     }));
     b.world.panes.delete('@3');
     b.world.extra.push({ pid: 3060, ppid: 1, pgid: 3060, tpgid: 0, stat: 'Ss', args }, { pid: 2060, ppid: 2001, pgid: 2060, tpgid: 0, stat: 'Ss', args });

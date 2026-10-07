@@ -187,7 +187,7 @@ function boot(characters: Character[]) {
   }));
   const world = new World();
   const deps: RestDeps = {
-    store, tmux: world.tmux, viewers: world.viewers, journal: handover, processes: world.processes, kill: world.kill, clock: world.clock,
+    store, tmux: world.tmux, viewers: world.viewers, journal: handover, processes: world.processes, kill: world.kill, clock: world.clock, bootId: () => 'boot-1',
   };
   return { store, world, deps, paths, ownership };
 }
@@ -504,9 +504,9 @@ describe('restTerminals', () => {
     expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada' }] });
     expect(world.log).toEqual(['detach c_ada', 'kill @1', 'SIGKILL 1060', 'SIGKILL 1080']);
     // the server is journaled with its terminal before the window closes, so a rest or an abort after a crash finds it
-    expect(stopped).toEqual([{ characterId: 'c_ada', server: { pid: 1060, pgid: 1060, args: OC_SERVER, at: 0 } }]);
+    expect(stopped).toEqual([{ characterId: 'c_ada', server: { pid: 1060, pgid: 1060, args: OC_SERVER, boot: 'boot-1' } }]);
     expect(journaled).toEqual([{
-      characterId: 'c_ada', at: 1000, processes: [{ pid: 1060, pgid: 1060, args: OC_SERVER }, { pid: 1080, pgid: 1080, args: 'node /mcp/server.js' }],
+      characterId: 'c_ada', boot: 'boot-1', processes: [{ pid: 1060, pgid: 1060, args: OC_SERVER }, { pid: 1080, pgid: 1080, args: 'node /mcp/server.js' }],
     }]);
     expect(journalOf(paths).terminated).toEqual([]);
     expect(world.orphans).toEqual([]);
@@ -535,12 +535,12 @@ describe('restTerminals', () => {
 
     expect(result).toEqual({ ok: true, terminals: [] });
     expect(world.log).toEqual(['detach c_ada', 'kill @1', 'SIGKILL 1060']);
-    expect(journalOf(paths).serverKills).toEqual([{ characterId: 'c_ada', at: 2000, processes: [{ pid: 1060, pgid: 1060, args: OC_SERVER }] }]);
+    expect(journalOf(paths).serverKills).toEqual([{ characterId: 'c_ada', boot: 'boot-1', processes: [{ pid: 1060, pgid: 1060, args: OC_SERVER }] }]);
     expect(world.orphans).toEqual([]);
   });
 
   for (const [what, stopped] of [
-    ['with the server it had before an abort reopened it', { characterId: 'c_ada', server: { pid: 5060, pgid: 5060, args: OC_SERVER, at: 0 } }],
+    ['with the server it had before an abort reopened it', { characterId: 'c_ada', server: { pid: 5060, pgid: 5060, args: OC_SERVER, boot: 'boot-1' } }],
     ['with no server', { characterId: 'c_ada' }],
   ] as const) {
     it(`journals and waits for the live server of a terminal the journal already names ${what}`, async () => {
@@ -558,33 +558,52 @@ describe('restTerminals', () => {
 
       expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada' }] });
       expect(world.log).toEqual(['detach c_ada', 'kill @1', 'SIGKILL 1060']);
-      expect(journalOf(paths).stoppedTerminals).toEqual([{ characterId: 'c_ada', server: { pid: 1060, pgid: 1060, args: OC_SERVER, at: 0 } }]);
+      expect(journalOf(paths).stoppedTerminals).toEqual([{ characterId: 'c_ada', server: { pid: 1060, pgid: 1060, args: OC_SERVER, boot: 'boot-1' } }]);
     });
   }
 
-  it('takes a server or a kill journaled before this machine last started for gone, though its pid now runs the same command line', async () => {
-    const { world, deps, paths } = boot([char('c_ada', { agent: agent('opencode', 'done', OSID), revive: { command: `opencode -s ${OSID}` } })]);
-    deps.journal.write({
-      ...journalOf(paths),
-      stoppedTerminals: [{ characterId: 'c_ada', server: { pid: 1060, pgid: 1060, args: OC_SERVER, at: 4 } }],
-      serverKills: [{ characterId: 'c_ada', at: 4, processes: [{ pid: 1080, pgid: 1080, args: 'node /mcp/server.js' }] }],
+  // a server and a kill journaled under boot-0, whose pids now run the same command lines
+  const rebooted = () => {
+    const b = boot([char('c_ada', { agent: agent('opencode', 'done', OSID), revive: { command: `opencode -s ${OSID}` } })]);
+    b.deps.journal.write({
+      ...journalOf(b.paths),
+      stoppedTerminals: [{ characterId: 'c_ada', server: { pid: 1060, pgid: 1060, args: OC_SERVER, boot: 'boot-0' } }],
+      serverKills: [{ characterId: 'c_ada', boot: 'boot-0', processes: [{ pid: 1080, pgid: 1080, args: 'node /mcp/server.js' }] }],
     });
-    world.orphans.push(
+    b.world.orphans.push(
       { row: { pid: 1060, ppid: 1, pgid: 1060, tpgid: 0, stat: 'Ss', args: OC_SERVER }, until: Infinity },
       { row: { pid: 1080, ppid: 1, pgid: 1080, tpgid: 0, stat: 'Ss', args: 'node /mcp/server.js' }, until: Infinity },
     );
-    world.now = 10;
+    return b;
+  };
+
+  it('takes a server or a kill journaled under another boot of this machine for gone, though its pid now runs the same command line', async () => {
+    const { world, deps } = rebooted();
     let result: unknown;
-    void restTerminals({ ...deps, bootedAt: () => 5 }, { choices: {}, pollMs: 500, settleMs: 1000 }).then((r) => { result = r; });
+    void restTerminals(deps, { choices: {}, pollMs: 500, settleMs: 1000 }).then((r) => { result = r; });
 
     await world.settle();
     expect(result).toEqual({ ok: true, terminals: [] });
     expect(world.log).toEqual([]);
   });
 
+  it('matches a journaled server by its pid and command line alone when this boot cannot be read', async () => {
+    const { world, deps } = rebooted();
+    let result: unknown;
+    const run = restTerminals({ ...deps, bootId: () => undefined }, { choices: {}, pollMs: 500, settleMs: 1000 }).then((r) => { result = r; });
+
+    await world.settle();
+    await world.advance(500);
+    expect(result).toBeUndefined();
+    await world.advance(500);
+    await run;
+    expect(result).toEqual({ ok: true, terminals: [] });
+    expect(world.log).toEqual(['SIGKILL 1060', 'SIGKILL 1080']);
+  });
+
   it('takes a journaled server whose pid now runs another command for gone, signalling nothing', async () => {
     const { world, deps, paths } = boot([char('c_ada', { agent: agent('opencode', 'done', OSID), revive: { command: `opencode -s ${OSID}` } })]);
-    deps.journal.write({ ...journalOf(paths), stoppedTerminals: [{ characterId: 'c_ada', server: { pid: 1060, pgid: 1060, args: OC_SERVER, at: 0 } }] });
+    deps.journal.write({ ...journalOf(paths), stoppedTerminals: [{ characterId: 'c_ada', server: { pid: 1060, pgid: 1060, args: OC_SERVER } }] });
     world.orphans.push({ row: { pid: 1060, ppid: 1, pgid: 1060, tpgid: 0, stat: 'Ss', args: 'vim notes.md' }, until: Infinity });
 
     expect(await restTerminals(deps, { choices: {} })).toEqual({ ok: true, terminals: [] });

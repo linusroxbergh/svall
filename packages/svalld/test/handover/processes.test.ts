@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { hookCommand, mergeStatusLine, statusWrapper } from '../../src/agent-hooks.js';
 import { Config } from '../../src/config.js';
-import { ProcessTable, killGroup, parsePs } from '../../src/handover/processes.js';
+import { ProcessTable, bootId, killGroup, parsePs } from '../../src/handover/processes.js';
 import { installedScripts } from '../../src/paths.js';
 import { tmuxConfText } from '../../src/tmux/conf.js';
 import { Tmux } from '../../src/tmux/tmux.js';
@@ -259,6 +259,14 @@ describe('parsePs', () => {
       { pid: 12, ppid: 1, pgid: 12, tpgid: 12, stat: 'Ss+', args: '-zsh' },
       { pid: 13, ppid: 12, pgid: 13, tpgid: 12, stat: 'S', args: '' },
     ]);
+  });
+});
+
+describe('bootId', () => {
+  it("reads this machine's boot id, the same on every call", () => {
+    const id = bootId();
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+    expect(bootId()).toBe(id);
   });
 });
 

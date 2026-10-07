@@ -1,4 +1,5 @@
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { AgentKind } from '@svall/protocol';
@@ -147,6 +148,25 @@ export class ProcessTable {
       for (const child of this.children.get(queue.shift()!) ?? []) { out.push(child); queue.push(child.pid); }
     }
     return out;
+  }
+}
+
+let boot: [string | undefined] | undefined;
+
+/** This machine's boot id, read once per process; none where it cannot be read. */
+export function bootId(): string | undefined {
+  boot ??= [readBootId()];
+  return boot[0];
+}
+
+function readBootId(): string | undefined {
+  try {
+    const id = process.platform === 'darwin'
+      ? execFileSync('sysctl', ['-n', 'kern.bootsessionuuid'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] })
+      : fs.readFileSync('/proc/sys/kernel/random/boot_id', 'utf8');
+    return id.trim() || undefined;
+  } catch {
+    return undefined;
   }
 }
 
