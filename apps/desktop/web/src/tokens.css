@@ -52,6 +52,7 @@
   --idle: #7C8F9F;
   --shell: #EAF1EE;
   --sel: #8ED0FF;
+  --star: var(--pt-sun);
 
   --pt-sky: #78B0C4;
   --pt-sun: #E0BB55;

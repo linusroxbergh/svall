@@ -33,7 +33,8 @@
 .side-head { display: flex; align-items: center; gap: var(--sp-xl); }
 .side-star { flex: none; width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border-radius: var(--r-xs); background: none; color: var(--ink-3); }
 .side-star:hover { background: var(--fill-2); color: var(--sand-hi); }
-.side-star[aria-pressed="true"] { color: var(--sand); }
+.side-star svg { width: 20px; height: 20px; }
+.side-star[aria-pressed="true"] { color: var(--star); }
 .side-branch { display: flex; align-items: center; min-width: 0; color: var(--ink-3); font-size: var(--text-sm); }
 .side-branch .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side-branch .badge { flex: none; }
