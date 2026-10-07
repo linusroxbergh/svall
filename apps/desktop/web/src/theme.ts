@@ -29,8 +29,8 @@ export const theme = {
   // a right-click menu keeps this far inside the window
   menu: { margin: 8 },
   // card box in token units, unit one token unit in world px; a card keeps its screen size between map scales `floor`
-  // and 1, above that taking `grow` of the growth. At .78 a card and its link rail stay inside the three cells between crew
-  token: { w: 2.56, h: 3.32 * 1.05, unit: 34, floor: 0.78, grow: 0.3 },
+  // and 1, above that taking `grow` of the growth. At .87 a card and the rails on both its sides stay inside the three cells between crew
+  token: { w: 2.56, h: 3.32 * 1.05, unit: 34, floor: 0.87, grow: 0.3 },
   // an island's label pill scales with the map up to 1, then takes `grow` of the map's growth
   label: { grow: 0.2 },
   // the home island: visible land above the bottom edge, gap to its label row, the row's own height and

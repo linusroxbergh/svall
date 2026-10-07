@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { emptyState } from '@svall/protocol';
-import { boardIsland, boardViewed, charactersByPriority, charactersOf, contextPctOf, countsByStatus, DISPLAY_STATUSES, firstOfNextIsland, homeIsland, islandStatus, islandsSorted, isUnread, isVeiled, neighbor, selectedOf, slotStatus, statusOf, stripOrder, wantsUser } from '../src/selectors.js';
+import { emptyState, type ContextItem } from '@svall/protocol';
+import { boardIsland, boardViewed, charactersByPriority, charactersOf, contextPctOf, countsByStatus, DISPLAY_STATUSES, firstOfNextIsland, homeIsland, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, isVeiled, mainPr, neighbor, selectedOf, slotStatus, statusOf, stripOrder, wantsUser } from '../src/selectors.js';
 import { chr, fleet } from './fixtures.js';
 
 describe('selectors', () => {
@@ -172,5 +172,29 @@ describe('a character with two sessions', () => {
     expect(contextPctOf(chr('c', 'i', at))).toBeUndefined();
     expect(isUnread(c)).toBe(true);
     expect(wantsUser(c)).toBe(true);
+  });
+  it('monitors in either session count', () => {
+    expect(isMonitoring(chr('c', 'i', at, { agent: { ...agent('idle'), monitors: ['m1'] } }))).toBe(true);
+    expect(isMonitoring(chr('c', 'i', at, { agent: agent('idle'), second: { ...second(), agent: { ...agent('idle'), monitors: ['m1'] } } }))).toBe(true);
+    expect(isMonitoring(chr('c', 'i', at, { agent: agent('idle'), second: second(agent('working')) }))).toBe(false);
+  });
+});
+
+describe('the PR in review', () => {
+  const pr = (n: number, prState?: ContextItem['prState']): ContextItem =>
+    ({ kind: 'pr', ref: `https://github.com/o/r/pull/${n}`, label: `#${n}`, source: 'auto', prState });
+  const issue: ContextItem = { kind: 'issue', ref: 'https://github.com/o/r/issues/3', label: '#3', source: 'auto' };
+  const withLinks = (...context: ContextItem[]) => chr('c', 'i', { x: 0, y: 0 }, { context });
+
+  it('is the first PR among the links, wherever the PR stands', () => {
+    expect(mainPr(withLinks(issue, pr(7, 'open'), pr(8, 'open')))?.ref).toBe('https://github.com/o/r/pull/7');
+    expect(mainPr(withLinks(issue))).toBeUndefined();
+  });
+  it('is in review only while open: not a draft, approved, sent back, merged, closed or unread', () => {
+    expect(inReview(withLinks(pr(7, 'open')))).toBe(true);
+    for (const s of ['draft', 'approved', 'changes', 'merged', 'closed', undefined] as const) expect(inReview(withLinks(pr(7, s)))).toBe(false);
+  });
+  it('goes by the main PR alone', () => {
+    expect(inReview(withLinks(pr(7, 'draft'), pr(8, 'open')))).toBe(false);
   });
 });

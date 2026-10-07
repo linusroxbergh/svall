@@ -1,5 +1,6 @@
 import type { Cell, Character, ContextItem } from '@svall/protocol';
-import { contextPctOf, isUnread, slotStatus, type DisplayStatus } from '../selectors.js';
+import { EyeGlyph, PrGlyph, reviewText } from '../indicators.js';
+import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, slotStatus, type DisplayStatus } from '../selectors.js';
 import { LinkIcon } from './LinkIcon.js';
 import { portraitTint, portraitUrl } from '../portraits.js';
 import { theme, tokenPx } from '../theme.js';
@@ -53,6 +54,8 @@ export function Token({
   const shown = c.context.length > RAIL_MAX ? c.context.slice(0, RAIL_MAX - 1) : c.context;
   const hidden = c.context.slice(shown.length);
   const cls = ['tok', `s-${status}`, selected ? 'sel' : '', dragging ? 'drag' : ''].filter(Boolean).join(' ');
+  const review = inReview(c) ? mainPr(c) : undefined;
+  const monitor = isMonitoring(c);
   return (
     <div
       className={cls}
@@ -108,6 +111,27 @@ export function Token({
           </svg>
         </button>
       </div>
+      {(review || monitor) && (
+        <div className="rail left">
+          {review && (
+            <button
+              type="button"
+              className="chip review"
+              data-testid={`token-review-${c.id}`}
+              title={reviewText(review)}
+              aria-label={reviewText(review)}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onLink(review, c.id, { x: e.clientX, y: e.clientY });
+              }}
+            >
+              <PrGlyph />
+            </button>
+          )}
+          {monitor && <span className="chip monitor" title="Monitoring" data-testid={`token-monitor-${c.id}`}><EyeGlyph /></span>}
+        </div>
+      )}
       {c.context.length > 0 && (
         <div className="rail">
           {shown.map((l, i) => (
