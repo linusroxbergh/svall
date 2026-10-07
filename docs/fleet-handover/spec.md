@@ -625,10 +625,11 @@ direct children are its own and do not block; a running shell tool, or a process
 the agent's live groups but outside the server's tree, blocks as a background command. A job whose
 group leader has exited cannot be tied back to its agent and is not seen, as for Claude and Codex,
 so it stays running on the source. An interrupted OpenCode rests only once its plugin
-reports the turn over. The server writes the database the export reads, so after the windows close
-the rest waits up to ten seconds for each server to exit; one that outlasts that is journaled as a
-terminated job and killed with everything it runs, and the rest fails, naming what survives, if
-any of it still runs ten seconds later.
+reports the turn over. The server writes the database the export reads, so the source journals
+each server with its stopped terminal before the windows close, and after they close the rest
+waits up to ten seconds for each server to exit; one that outlasts that is recorded among the
+source journal's server kills, then killed with everything it runs, and the rest fails, naming what
+survives, if any of it still runs ten seconds later.
 
 ## State machine
 
