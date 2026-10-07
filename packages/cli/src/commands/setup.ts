@@ -231,6 +231,8 @@ async function linuxSetup(t: Target, o: LinuxFlags, json: boolean): Promise<void
     const opencodeWanted = (peekConfig(resolvePaths(t.home)).integrations?.includes('opencode') ?? true) && (agents.includes('opencode') || fs.existsSync(opencode.dir));
     if (opencodeWanted && !opencodePluginCurrent(readOrUndefined(opencode.plugin))) {
       notes.push({ name: 'opencode plugin', status: 'warn', detail: `missing or out of date: run ${SHIM} setup` });
+    } else if (!opencodeWanted && fs.existsSync(opencode.plugin)) {
+      notes.push({ name: 'opencode plugin', status: 'warn', detail: `turned off, and left in ${opencode.plugin}: run ${SHIM} setup to remove it` });
     }
     // shims that run another checkout or release, moved or not, are out of date
     const runtime = o.release ? releaseRuntime(path.join(DEFAULT_PREFIX, 'current')) : ownRuntime();

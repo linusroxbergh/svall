@@ -66,7 +66,7 @@ describe('svall setup on Linux', () => {
     expect(await check()).not.toContain('! opencode plugin  missing or out of date: run svall setup');
   });
 
-  it('reports an OpenCode plugin that is out of date, and none for a fleet that turned OpenCode off', async () => {
+  it('reports an OpenCode plugin that is out of date, and for a fleet that turned OpenCode off, the plugin setup would remove', async () => {
     const home = makeHome();
     vi.stubEnv('HOME', home);
     vi.stubEnv('XDG_CONFIG_HOME', '');
@@ -87,7 +87,10 @@ describe('svall setup on Linux', () => {
     fs.mkdirSync(fleet, { recursive: true });
     fs.writeFileSync(path.join(fleet, 'fleet.json'), JSON.stringify({ id: crypto.randomUUID() }));
     fs.writeFileSync(resolvePaths(fleet).nodeConfig, JSON.stringify({ agentsOff: ['opencode'] }));
+    expect(await check()).toEqual(expect.arrayContaining([`! opencode plugin  turned off, and left in ${opencode.plugin}: run svall setup to remove it`]));
     expect(await check()).not.toContain('! opencode plugin  missing or out of date: run svall setup');
+    fs.rmSync(opencode.plugin);
+    expect((await check()).filter((w) => w.includes('opencode plugin'))).toEqual([]);
   });
 
   it('writes the hooks where the unit\'s CLAUDE_CONFIG_DIR and CODEX_HOME point, which only the login shell names', async () => {
