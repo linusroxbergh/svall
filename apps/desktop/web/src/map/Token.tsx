@@ -4,6 +4,7 @@ import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, slotStatus, typ
 import { LinkIcon } from './LinkIcon.js';
 import { portraitTint, portraitUrl } from '../portraits.js';
 import { theme, tokenPx } from '../theme.js';
+import { seedNum } from './coast.js';
 import { GAUGE_R, gaugeDash, hintText, statusWord } from './tokenText.js';
 import type { PointerHandlers } from './types.js';
 
@@ -74,6 +75,7 @@ export function Token({
         ['--tok' as string]: `${theme.token.unit}px`,
         ['--card-w' as string]: `${tokenPx.w}px`,
         ['--card-h' as string]: `${tokenPx.h}px`,
+        ['--grain' as string]: `${Math.round(seedNum(c.id) * 96)}px ${Math.round(seedNum(c.id + '~') * 96)}px`,
       }}
       {...pointer}
       onPointerEnter={onHoverStart}

@@ -82,7 +82,9 @@
 .tok .card{position:relative;width:var(--card-w);height:var(--card-h);
   border-radius:calc(var(--tok)*.21);
   display:flex;flex-direction:column;overflow:hidden;
-  background:linear-gradient(var(--card-0) 0%, var(--card-1) 62%, var(--card-2) 100%);
+  /* the map's grain inked in the card's tint; --grain offsets it so neighbours differ */
+  background:url('../assets/card-grain.png') var(--grain, 0 0)/96px 96px,
+             linear-gradient(var(--card-0) 0%, var(--card-1) 62%, var(--card-2) 100%);
   box-shadow:0 1px 0 color-mix(in srgb, var(--card-tint) 16%, transparent), 0 1px 2px var(--shade-1);
   transition:transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease)}
 .tok .card::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:8;
@@ -280,9 +282,9 @@
   filter:saturate(.9) contrast(.96) drop-shadow(0 2px 2px var(--shade-1));transition:transform var(--dur) var(--ease)}
 .res-tower:hover img,.res-tower[data-selected="true"] img,
 .res-tower:hover .res-tower-grain,.res-tower[data-selected="true"] .res-tower-grain{transform:translateY(-3px)}
-/* the map's grain over the drawing alone, fainter than on land */
-.res-tower-grain{position:absolute;z-index:9;inset:0;pointer-events:none;opacity:.14;
-  background:url('../assets/map-grain.png') repeat;background-size:128px 128px;mask-size:100% 100%;mask-repeat:no-repeat;
+/* the cards' grain over the drawing alone */
+.res-tower-grain{position:absolute;z-index:9;inset:0;pointer-events:none;
+  background:url('../assets/card-grain.png') repeat;background-size:96px 96px;mask-size:100% 100%;mask-repeat:no-repeat;
   transition:transform var(--dur) var(--ease)}
 /* a contact shadow where the tower meets the footing, tight enough to read as touching it */
 .res-tower-shadow{position:absolute;z-index:7;left:50%;bottom:calc(var(--lh)*.005);width:calc(var(--lh)*.42);height:calc(var(--lh)*.05);

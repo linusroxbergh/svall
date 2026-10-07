@@ -142,6 +142,7 @@ function Islet({ place, count }: { place: Placement; count: number }) {
         <span className="res-tower-glow" />
         <span className="res-tower-shadow" />
         <img src="lighthouse.svg" alt="" draggable={false} />
+        <span className="res-tower-grain" style={{ maskImage: 'url(lighthouse.svg)' }} />
       </div>
     </div>
   );
