@@ -14,6 +14,7 @@ import { SystemdError, daemonReload, enableUnit, lingerState, unitStatus, type R
 import { machineId } from '../src/machine.js';
 import { opencodePaths } from '../src/opencode/install.js';
 import { resolvePaths } from '../src/paths.js';
+import { profileHome } from '../src/profile.js';
 import { checkoutRuntime, releaseRuntime } from '../src/runtime.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -322,6 +323,30 @@ describe('setupLinux', () => {
     expect(systemctl(again.calls).some(([, , verb]) => verb === 'restart')).toBe(false);
   });
 
+  it('renders every named fleet\'s unit afresh too, and restarts each it rewrote', async () => {
+    const f = installed();
+    fs.mkdirSync(f.unitDir, { recursive: true });
+    const env = { XDG_DATA_HOME: '/home/linus/.data', OPENCODE_DB: 'oc.db' };
+    const work = path.join(f.unitDir, 'svall-svalld@work.service');
+    // an earlier template's unit, whose PATH has no ~/.opencode/bin and which sets none of the agent homes
+    const old = svalldUnit({ ...f.o, fleet: 'work', home: profileHome('work', f.root) }).text.replace(`:${path.join(f.root, '.opencode', 'bin')}`, '');
+    fs.writeFileSync(work, old);
+    const fake = fakeRun({ 'loginctl show-user linus --property=Linger': 'Linger=yes\n' });
+    const { done } = await setupLinux({ ...f.o, systemctl: true, run: fake.run, env });
+    expect(fs.readFileSync(work, 'utf8')).toBe(svalldUnit({ ...f.o, env, fleet: 'work', home: profileHome('work', f.root) }).text);
+    expect(done).toContain(`systemd unit -> ${work}`);
+    expect(fake.calls.filter(([cmd]) => cmd === 'systemctl')).toEqual([
+      ['systemctl', '--user', 'daemon-reload'],
+      ['systemctl', '--user', 'restart', 'svall-svalld@work.service'],
+      ['systemctl', '--user', 'enable', '--now', 'svall-svalld@private.service'],
+      ['systemctl', '--user', 'enable', '--now', 'svall-gateway.service'],
+    ]);
+
+    const again = fakeRun({ 'loginctl show-user linus --property=Linger': 'Linger=yes\n' });
+    await setupLinux({ ...f.o, systemctl: true, run: again.run, env });
+    expect(again.calls.some(([cmd, , verb]) => cmd === 'systemctl' && verb === 'restart')).toBe(false);
+  });
+
   it('leaves mission control\'s folder as it is where the fleet is owned elsewhere, so the next handover takes it as it stands', async () => {
     const f = installed();
     const mc = path.join(f.root, 'mc');
@@ -402,7 +427,8 @@ describe('setupLinuxRelease', () => {
       probe: async () => { seenAtProbe = [...fake.calls]; return true; },
       rollback: rollbackRelease,
     });
-    expect(seenAtProbe.filter((c) => c[2] === 'restart')).toEqual([
+    // the work unit setup rewrote was restarted once already
+    expect(seenAtProbe.filter((c) => c[2] === 'restart').slice(-3)).toEqual([
       ['systemctl', '--user', 'restart', 'svall-svalld@private.service'],
       ['systemctl', '--user', 'restart', 'svall-svalld@work.service'],
       ['systemctl', '--user', 'restart', 'svall-gateway.service'],

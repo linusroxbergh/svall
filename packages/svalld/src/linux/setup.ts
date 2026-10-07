@@ -6,6 +6,7 @@ import { codexPaths, type CodexPaths } from '../codex/install.js';
 import { peekConfig } from '../config.js';
 import { installOpencodePlugin, opencodePaths, removeOpencodePlugin } from '../opencode/install.js';
 import { claudePaths, resolvePaths } from '../paths.js';
+import { profileHome } from '../profile.js';
 import { systemdDir } from '../release.js';
 import { writeAtomic } from '../jsonfile.js';
 import type { Runtime } from '../runtime.js';
@@ -187,10 +188,13 @@ export async function setupLinux(o: LinuxSetup): Promise<LinuxSetupResult> {
   const done = setupFleetHome(o);
   done.push(...setupUser({ ...o, settings, codexHooks, replaceSettings: o.replaceSettings === true }));
   done.push(...(opencodeWanted ? installOpencodePlugin(opencode) : removeOpencodePlugin(opencode)));
-  const units = [svalldUnitName(o.fleet), GATEWAY_UNIT];
+  // each fleet's unit `fleet provision` wrote here takes the same template, PATH and env as this fleet's
+  const named = ourUnits(o.unitDir).map(fleetOf).filter((f): f is string => f !== undefined && f !== o.fleet);
+  const units = [svalldUnitName(o.fleet), ...named.map(svalldUnitName), GATEWAY_UNIT];
   const unitText = (u: string) => readOrUndefined(path.join(o.unitDir, u));
   const before = units.map(unitText);
   done.push(...writeUnits({ ...o, env }));
+  for (const fleet of named) done.push(...writeUnits({ ...o, env, fleet, home: profileHome(fleet, o.homedir) }, true));
   if (!o.systemctl) return { done, started: false };
   const start = await startUnit(o, units.filter((u, i) => before[i] !== undefined && before[i] !== unitText(u)));
   if (!start.started) return { done: [...done, start.reason], started: false };
