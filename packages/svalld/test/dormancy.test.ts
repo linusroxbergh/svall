@@ -157,4 +157,11 @@ describe('markDormant', () => {
       expect(c.revive).toEqual({ command: `claude --resume ${SID}` });
     }
   });
+  it('marks an agent whose monitors were still watching interrupted, and forgets them', () => {
+    const c = char({ agent: agent({ status: 'done', monitors: ['b1'] }) });
+    markDormant(c);
+    expect(c.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
+    expect(c.agent).toMatchObject({ status: 'done' });
+    expect(c.agent?.monitors).toBeUndefined();
+  });
 });
