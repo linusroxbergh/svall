@@ -52,6 +52,10 @@ export function updateIsland({ store, log }: Deps, id: string, patch: IslandPatc
   const context = p.context && settleItems(p.context, current.context);
   store.update((d) => {
     const i = d.islands[id];
+    // an island without a number sorts by name, so numbering the list first keeps a renamed island in its place
+    if (p.name !== undefined && i.order === undefined && i.kind !== 'home') {
+      Object.values(d.islands).filter((x) => x.kind !== 'home').sort(byIslandOrder).forEach((x, n) => { x.order = n; });
+    }
     if (p.name !== undefined) i.name = p.name;
     if (p.description !== undefined) setDescription(i, p.description);
     if (p.instructions !== undefined) i.instructions = p.instructions;

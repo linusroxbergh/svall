@@ -34,6 +34,16 @@ describe('island order', () => {
     expect(listed()).toEqual(['a', 'b', 'c', '0', 'mission control']);
   });
 
+  it('keeps a renamed island in its place', () => {
+    const { fleet, listed } = boot();
+    const [a] = ['a', 'b', 'c'].map((name) => fleet.createIsland({ name }));
+    fleet.updateIsland(a.id, { name: 'z' });
+    expect(listed()).toEqual(['z', 'b', 'c', 'mission control']);
+    const d = fleet.createIsland({ name: 'd' });
+    fleet.updateIsland(d.id, { name: '0' });
+    expect(listed()).toEqual(['z', 'b', 'c', '0', 'mission control']);
+  });
+
   it('keeps mission control last', () => {
     const { fleet, listed } = boot();
     const a = fleet.createIsland({ name: 'a' });
