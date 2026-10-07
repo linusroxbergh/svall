@@ -918,12 +918,16 @@ describe('the resume a carried terminal keeps', () => {
     const agent = (status: 'idle' | 'working'): Character['agent'] => ({ kind: 'claude', sessionId: SID, transcriptPath: '/h/.claude/r.jsonl', status, lastActivityAt: 0 });
     state.characters.c1 = char('c1', { cwd: '/h', agent: agent('idle'), revive: { command: `claude --resume ${SID}`, interrupted: true } });
     state.characters.c2 = char('c2', { cwd: '/h', agent: agent('working') });
+    // monitors a rest found listed but not running
+    state.characters.c3 = char('c3', { cwd: '/h', agent: { ...agent('idle')!, monitors: ['b1'] }, revive: { command: `claude --resume ${SID}` } });
     const { characters } = importState({
       version: 1, transactionId: 't1', generation: 1, fromMachineId: MAC, toMachineId: TRIFT, home: '/h',
       fleet: FLEET, snapshot: state, excludes: [], roots: [], sessions: [],
     }).state;
     expect(characters.c1.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
     expect(characters.c2.revive).toEqual({ command: `claude --resume ${SID}` });
+    expect(characters.c3.revive).toEqual({ command: `claude --resume ${SID}` });
+    expect(characters.c3.agent?.monitors).toBeUndefined();
   });
 });
 

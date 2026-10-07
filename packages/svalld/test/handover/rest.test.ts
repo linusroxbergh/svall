@@ -466,6 +466,49 @@ describe('restTerminals', () => {
     expect(ended.store.state.characters.c_ada.revive).toEqual({ command: `claude --resume ${SID}` });
   });
 
+  it('holds up a Claude Code agent whose monitor still watches as one with a command left running, and rests it once ended without the note a crash leaves', async () => {
+    const watching = () => boot([char('c_ada', { tmux: win(1), agent: { ...agent('claude', 'done'), monitors: ['b1'] } })]);
+    const kept = watching();
+    kept.world.pane(1, { job: ['claude'], tools: ['/bin/zsh -c tail -f build.log'] });
+    expect(await restTerminals(kept.deps, { choices: {} })).toEqual({
+      ok: false,
+      blockers: [{
+        code: 'agent_unsettled', message: "ada's terminal is idle with work still running in the background: /bin/zsh -c tail -f build.log still runs",
+        entity: { kind: 'character', id: 'c_ada' },
+      }],
+    });
+    expect(kept.world.log).toEqual([]);
+
+    const ended = watching();
+    ended.world.pane(1, { job: ['claude'], tools: ['/bin/zsh -c tail -f build.log'] });
+    let result: unknown;
+    const run = restTerminals(ended.deps, { choices: { terminate: [{ characterId: 'c_ada' }] }, pollMs: 500, settleMs: 1000 }).then((r) => { result = r; });
+    await ended.world.settle();
+    await ended.world.advance(500);
+    await run;
+    expect(result).toMatchObject({ ok: true });
+    expect(ended.world.log).toEqual(['SIGTERM 1001', 'SIGTERM 1050', 'detach c_ada', 'kill @1']);
+    expect(ended.store.state.characters.c_ada.revive).toEqual({ command: `claude --resume ${SID}` });
+    expect(ended.store.state.characters.c_ada.agent?.monitors).toBeUndefined();
+  });
+
+  it('rests a Claude Code agent whose monitors the hooks still list though nothing of theirs runs, on either terminal, keeping neither their ids nor the note a crash leaves', async () => {
+    const { store, world, deps } = boot([char('c_ada', {
+      tmux: win(1), agent: { ...agent('claude', 'done'), monitors: ['b1'] },
+      second: { cwd: '/side', unread: false, tmux: win(2), agent: { ...agent('claude', 'idle', SID2), monitors: ['b2'] } },
+    })]);
+    world.pane(1, { job: ['claude'] });
+    world.pane(2, { job: ['claude'] });
+
+    expect((await restTerminals(deps, { choices: {} })).ok).toBe(true);
+
+    const ada = store.state.characters.c_ada;
+    expect(ada.revive).toEqual({ command: `claude --resume ${SID}` });
+    expect(ada.agent?.monitors).toBeUndefined();
+    expect(ada.second?.revive).toEqual({ command: `claude --resume ${SID2}` });
+    expect(ada.second?.agent?.monitors).toBeUndefined();
+  });
+
   it('rests an idle OpenCode, its private server and Svall\'s plugin its own, and waits for that server to exit once its window closes', async () => {
     const { store, world, deps } = boot([char('c_ada', { tmux: win(1), agent: agent('opencode', 'idle', OSID) })]);
     world.pane(1, { job: [`opencode --standalone -s ${OSID}`], server: OC_SERVER, serverLingersMs: 300 });
