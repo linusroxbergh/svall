@@ -1,7 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -298,14 +297,20 @@ function opencodeBoot() {
   });
   const env = fakeEnv(path.join(b.work, 'opencode'));
   const run = cliRunner(env);
+  // where each export only checked, not carried, was written
+  const checked: string[] = [];
   b.deps.cli = async (cmd, args, o) => {
-    if (args[1] === 'export') b.world.log.push(`export ${o?.stdout === os.devNull ? 'checked' : 'written'}`);
+    if (args[1] === 'export') {
+      const carried = o?.stdout?.startsWith(`${logs}/`);
+      if (!carried && o?.stdout) checked.push(o.stdout);
+      b.world.log.push(`export ${carried ? 'written' : 'checked'}`);
+    }
     return run(cmd, args, o);
   };
   const info = destinationInfo({
     agentAdapters: [...destinationInfo().agentAdapters, { kind: 'opencode', version: '2.0.22', adapter: 1, home: path.join(b.work, 'trift/transcripts/opencode'), loggedIn: true, hooks: true }],
   });
-  return { ...b, env, logs, info };
+  return { ...b, env, logs, info, checked };
 }
 
 describe('source preflight', () => {
@@ -492,6 +497,19 @@ describe('source preflight', () => {
     expect(fs.existsSync(path.join(b.logs, 'exports'))).toBe(false);
     b.gateway.begin();
     expect(blockersOf(await refusal(b.handover.freeze(b.freezeParams({ destination: b.machines({ info: b.info }).destination })))).map((x) => x.code)).toEqual(['transcript_missing']);
+    expect(b.world.log.filter((l) => l.startsWith('kill'))).toEqual([]);
+  });
+
+  it('blocks an OpenCode session with an undo pending, at preflight and at freeze before any terminal rests, and keeps no copy of it', async () => {
+    const b = opencodeBoot();
+    hold(b.env, { info: { id: OC, location: { directory: path.join(b.work, 'ada') }, revert: { messageID: 'msg_1' } }, messages: [{ id: 'msg_0', text: 'one' }, { id: 'msg_1', text: 'two' }] });
+    const pending = { code: 'transcript_missing', message: expect.stringMatching(/^ada: .*an undo pending: send a message or \/redo, then hand over$/), entity: { kind: 'character', id: 'c_ada' } };
+    const r = await b.handover.preflight({ toMachineId: trift, choices: {}, ...b.machines({ info: b.info }) });
+    expect(r.blockers).toEqual([pending]);
+    expect(b.checked.length).toBe(1);
+    expect(b.checked.filter((f) => fs.existsSync(f))).toEqual([]);
+    b.gateway.begin();
+    expect(blockersOf(await refusal(b.handover.freeze(b.freezeParams({ destination: b.machines({ info: b.info }).destination }))))).toEqual([pending]);
     expect(b.world.log.filter((l) => l.startsWith('kill'))).toEqual([]);
   });
 

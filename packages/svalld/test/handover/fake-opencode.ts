@@ -8,7 +8,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export type Ran = { code: number; stdout: string; stderr: string };
-export type Exported = { info: { id: string; location: { directory: string } }; messages: { id: string; text: string }[] };
+/** A session as `session export` writes it; `revert` is the undo it has pending, which `session import` drops. */
+export type Exported = { info: { id: string; location: { directory: string }; revert?: object }; messages: { id: string; text: string }[] };
 
 const dataDir = (env: NodeJS.ProcessEnv): string => path.join(env.XDG_DATA_HOME ?? path.join(env.HOME ?? os.homedir(), '.local/share'), 'opencode', 'fake-sessions');
 const fileOf = (env: NodeJS.ProcessEnv, id: string): string => path.join(dataDir(env), `${id}.json`);
@@ -58,7 +59,8 @@ export function opencode(args: string[], env: NodeJS.ProcessEnv): Ran {
       const session = JSON.parse(fs.readFileSync(file, 'utf8')) as Exported;
       if (sessions[session.info.id]) return { code: 0, stdout: '', stderr: 'Session already exists\n' };
       if (!fs.existsSync(directory)) return { code: 1, stdout: '', stderr: 'Error: Internal server error\n' };
-      hold(env, { ...session, info: { ...session.info, location: { directory: fs.realpathSync(directory) } } });
+      const { revert: _, ...info } = session.info;
+      hold(env, { ...session, info: { ...info, location: { directory: fs.realpathSync(directory) } } });
       return { code: 0, stdout: `Imported session: ${session.info.id}\n`, stderr: '' };
     }
   }

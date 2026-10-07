@@ -446,13 +446,18 @@ export class SourceHandover {
         if (e instanceof SessionError) continue;
         throw e;
       }
+      const c = inventory.snapshot.characters[s.characterId];
+      // a dry export is read, then removed
+      const checking = dry ? fs.mkdtempSync(path.join(os.tmpdir(), 'svall-export-')) : undefined;
       try {
-        const c = inventory.snapshot.characters[s.characterId];
         const cwd = (s.term === 2 ? c?.second?.cwd : undefined) ?? c?.cwd ?? os.homedir();
-        await adapter.exportSession(s.sessionId, dry ? os.devNull : path.join(home, adapter.exportFile(s.sessionId)), this.d.cli ?? cliRunner(), expandHome(cwd));
+        const file = checking ? path.join(checking, 'export.json') : path.join(home, adapter.exportFile(s.sessionId));
+        await adapter.exportSession(s.sessionId, file, this.d.cli ?? cliRunner(), expandHome(cwd));
       } catch (e) {
         if (!(e instanceof SessionError)) throw e;
-        blockers.push({ code: e.code, message: e.message, entity: { kind: 'character', id: s.characterId } });
+        blockers.push({ code: e.code, message: `${c?.name ?? s.characterId}: ${e.message}`, entity: { kind: 'character', id: s.characterId } });
+      } finally {
+        if (checking) fs.rmSync(checking, { recursive: true, force: true });
       }
     }
     return blockers;

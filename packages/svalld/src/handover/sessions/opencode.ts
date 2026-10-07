@@ -32,12 +32,14 @@ const ids = (file: string): string[] | undefined => {
   } catch { return undefined; }
 };
 
-// the folder an export's session ran in on the machine that wrote it out
+// the session an export describes: the folder it ran in on the machine that wrote it out, and any undo it has pending
+const infoOf = (file: string): { location?: { directory?: unknown }; revert?: unknown } | undefined => {
+  try { return (JSON.parse(fs.readFileSync(file, 'utf8')) as { info?: { location?: { directory?: unknown }; revert?: unknown } }).info; } catch { return undefined; }
+};
+
 const folderOf = (file: string): string | undefined => {
-  try {
-    const directory = (JSON.parse(fs.readFileSync(file, 'utf8')) as { info?: { location?: { directory?: unknown } } }).info?.location?.directory;
-    return typeof directory === 'string' ? directory : undefined;
-  } catch { return undefined; }
+  const directory = infoOf(file)?.location?.directory;
+  return typeof directory === 'string' ? directory : undefined;
 };
 
 // writes this machine's copy of a session out to `to`, answering false when it holds none; a copy holding a message the
@@ -88,6 +90,10 @@ export const opencodeAdapter: SessionAdapter = {
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
     const r = await ask(run, ['session', 'export', '--standalone', sessionId], { stdout: file, cwd });
     if (r.code !== 0) throw new SessionError('transcript_missing', `OpenCode holds no session ${sessionId} to carry: ${said(r)}`);
+    // import drops a pending undo, so the turns it hides would come back to life on the destination
+    if (infoOf(file)?.revert) {
+      throw new SessionError('transcript_missing', `OpenCode session ${sessionId} has an undo pending: send a message or /redo, then hand over`);
+    }
   },
 
   async checkSession(sessionId, file, cwd, run) {
