@@ -1,7 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, expect, vi } from 'vitest';
 import { FleetConfig, FleetId, MachineId, OwnerRecord, type Character, type MethodName, type Outcome } from '@svall/protocol';
@@ -100,8 +99,9 @@ export class Machine {
 
   /** The OpenCode double run in this process, as a crash may cut it off between any two commands. */
   cli: CliRun = async (_cmd, args, o) => {
-    // what a lingering server writes after the export reads its database never travels
-    if (args.includes('export') && o?.stdout !== os.devNull && this.servers.length) {
+    // what a lingering server writes after the export that travels reads its database never travels; a dry export only reads
+    const travels = o?.stdout !== undefined && path.dirname(o.stdout) === path.join(this.w.opencodeLogs, 'exports');
+    if (args.includes('export') && travels && this.servers.length) {
       this.w.fail(`${this.name} wrote out an OpenCode session while the server ${this.servers.map((x) => x.name).join(', ')} left still ran`);
     }
     const r = opencode(args, this.opencode);
