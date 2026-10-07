@@ -96,7 +96,7 @@ export const Island = z.object({
   kind: z.literal('home').optional(),
   // set by a person's edit; absent, the scribe may rewrite it
   descriptionSource: z.literal('manual').optional(),
-  // its place in the list, set by a sidebar drag; islands without one follow, by name
+  // its place in the list, set by a sidebar drag or a rename; islands without one follow, by name
   order: z.number().int().optional(),
 });
 export type Island = z.infer<typeof Island>;
