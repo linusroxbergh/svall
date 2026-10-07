@@ -743,6 +743,7 @@ describe('OpenCode sessions', () => {
     // resumed there with a plain `opencode -s`, which Svall's log never saw
     const went = { ...session(work, ['one']), messages: [{ id: 'msg_0', text: 'one' }, { id: 'msg_x', text: 'asked by hand' }] };
     hold(linux.env, went);
+    await expect(opencodeAdapter.checkSession!(ID, exported, work, linux.run)).rejects.toMatchObject({ code: 'destination_diverged' });
     await expect(readIn(exported, work, linux.run)).rejects.toMatchObject({ code: 'destination_diverged' });
     expect(held(linux.env)[ID]).toEqual(went);
   });

@@ -40,6 +40,22 @@ const folderOf = (file: string): string | undefined => {
   } catch { return undefined; }
 };
 
+// writes this machine's copy of a session out to `to`, answering false when it holds none; a copy holding a message the
+// one coming in at `file` lacks went on here, whether in Svall or in a plain `opencode -s`, which Svall's log never sees
+async function heldCopy(sessionId: string, file: string, to: string, cwd: string, run: CliRun): Promise<boolean> {
+  const r = await ask(run, ['session', 'export', '--standalone', sessionId], { stdout: to, cwd });
+  if (r.code !== 0) {
+    if (notFound(r)) return false;
+    throw new SessionError('transcript_missing', `OpenCode could not read its copy of session ${sessionId}: ${said(r)}`);
+  }
+  const [held, incoming] = [ids(to), ids(file)];
+  if (!incoming) throw new SessionError('transcript_missing', `the export of session ${sessionId} that came is not one OpenCode wrote`);
+  if (!held || held.some((id, i) => incoming[i] !== id)) {
+    throw new SessionError('destination_diverged', `this machine's OpenCode went on with session ${sessionId} past the copy coming in`);
+  }
+  return true;
+}
+
 export const opencodeAdapter: SessionAdapter = {
   kind: 'opencode',
   adapter: 1,
@@ -74,20 +90,16 @@ export const opencodeAdapter: SessionAdapter = {
     if (r.code !== 0) throw new SessionError('transcript_missing', `OpenCode holds no session ${sessionId} to carry: ${said(r)}`);
   },
 
-  // a copy an earlier handover left here goes, unless it holds a message the incoming session lacks: it went on here,
-  // whether in Svall or in a plain `opencode -s`, which Svall's log never sees
+  async checkSession(sessionId, file, cwd, run) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-opencode-'));
+    try { await heldCopy(sessionId, file, path.join(dir, 'held.json'), cwd, run); } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  },
+
+  // a copy an earlier handover left here goes, unless it went on past the incoming session
   async dropSession(sessionId, file, cwd, run, keep) {
     const here = `${file}.here`;
     try {
-      const r = await ask(run, ['session', 'export', '--standalone', sessionId], { stdout: here, cwd });
-      if (r.code !== 0) {
-        if (notFound(r)) return;
-        throw new SessionError('transcript_missing', `OpenCode could not read its copy of session ${sessionId}: ${said(r)}`);
-      }
-      const [held, incoming] = [ids(here), ids(file)];
-      if (!held || !incoming || held.some((id, i) => incoming[i] !== id)) {
-        throw new SessionError('destination_diverged', `this machine's OpenCode went on with session ${sessionId} past the copy coming in`);
-      }
+      if (!(await heldCopy(sessionId, file, here, cwd, run))) return;
       if (!fs.existsSync(keep)) {
         fs.mkdirSync(path.dirname(keep), { recursive: true, mode: 0o700 });
         writeDurable(keep, fs.readFileSync(here), { mode: 0o600 });

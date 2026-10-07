@@ -444,7 +444,9 @@ describe('destination prepare', () => {
     const eve = path.join(s.dst, 'work/eve');
     expect(held(s.oc.trift)).toEqual({ [OC]: { ...s.oc.session, info: { ...s.oc.session.info, location: { directory: eve } } } });
     const i = s.manifest.sessions.findIndex((x) => x.agent === 'opencode');
+    // its copy here proved a prefix of the incoming one before anything is placed, and again as it is kept aside and removed
     expect(asked).toEqual([
+      `opencode session export --standalone ${OC}`,
       `opencode session export --standalone ${OC}`,
       `opencode session delete --standalone ${OC}`,
       `opencode session import --standalone --directory ${eve} ${path.join(s.paths.sessionStage(TX, i), `exports/${OC}.json`)}`,
@@ -477,6 +479,19 @@ describe('destination prepare', () => {
     await daemon(s, { cli: run }).handover.prepare(params(s));
     expect(held(s.oc.trift)[OC].messages).toEqual(s.oc.session.messages);
     expect(fs.existsSync(s.paths.preparedState(TX))).toBe(true);
+  });
+
+  it('refuses an OpenCode session this machine went on with outside Svall before it places anything, leaving its log and its copy as they were', async () => {
+    const s = await scene({ opencode: true });
+    // resumed here with a plain `opencode -s`, which never wrote the log Svall's plugin keeps
+    const went = { ...ocSession(path.join(s.dst, 'work/eve'), []), messages: [{ id: 'msg_x', text: 'asked by hand' }] };
+    hold(s.oc.trift, went);
+    const log = path.join(s.home, 'transcripts/opencode', `${OC}.jsonl`);
+    fs.writeFileSync(log, '');
+    const r = await refusal(daemon(s, { cli: cliRunner(s.oc.trift) }).handover.prepare(params(s)));
+    expect(blockersOf(r)).toEqual([{ code: 'destination_diverged', message: expect.stringContaining(`session ${OC}`), entity: { kind: 'character', id: 'c_eve' } }]);
+    expect(fs.readFileSync(log, 'utf8')).toBe('');
+    expect(held(s.oc.trift)).toEqual({ [OC]: went });
   });
 
   it('puts the copy of an OpenCode session this machine held back in when the incoming one does not import, and refuses', async () => {

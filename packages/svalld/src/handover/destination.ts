@@ -5,7 +5,7 @@ import { z } from 'zod';
 import {
   FleetState, Generation, Sha256, TransactionId, TransferFile, TransferRoot, handoverError,
   type AgentKind, type Blocker, type Character, type FleetConfig, type KeptCommit, type OwnerRecord, type ParsedParams, type ReceivedGraph, type ReplicaCheck as WireCheck,
-  type ResumeFolder, type Result, type TerminalSlot, type TransferManifestV1,
+  type ResumeFolder, type Result, type TerminalSlot, type TransferManifestV1, type TransferSession,
 } from '@svall/protocol';
 import { NodeFile, mergeConfig, namedGateway, type Config } from '../config.js';
 import { markDormant, markSlotDormant, reviveCommand } from '../dormancy.js';
@@ -480,6 +480,10 @@ export class DestinationHandover {
     }
     if (graphs.length) throw blocked(graphs);
 
+    const run = this.d.cli ?? cliRunner();
+    // a copy a CLI here went on with blocks before any session file is placed
+    const ahead = await this.databased(tx, m, (s, adapter, file, cwd) => adapter.checkSession!(s.sessionId, file, cwd, run));
+    if (ahead.length) throw blocked(ahead);
     const placed: Blocker[] = [];
     m.sessions.forEach((s, i) => {
       try { installSession(s, this.d.paths.sessionStage(tx, i), this.d.install); } catch (e) {
@@ -487,7 +491,7 @@ export class DestinationHandover {
       }
     });
     if (placed.length) throw blocked(placed);
-    const unread = await this.importSessions(tx, m);
+    const unread = await this.importSessions(tx, m, run);
     if (unread.length) throw blocked(unread);
 
     const preparedDigest = canonicalDigest(state);
@@ -512,26 +516,32 @@ export class DestinationHandover {
    * in its terminal's folder, in place of any copy held here, which is kept until the import succeeds and put back if it
    * fails. Nothing revives a session it could not read in, as a resume would start an empty one.
    */
-  private async importSessions(tx: string, m: TransferManifestV1): Promise<Blocker[]> {
+  private importSessions(tx: string, m: TransferManifestV1, run: CliRun): Promise<Blocker[]> {
+    return this.databased(tx, m, async (s, adapter, file, cwd) => {
+      const keep = path.join(this.heldDir(tx), s.agent, `${s.sessionId}.json`);
+      await boundary('destination.prepare.delete', () => adapter.dropSession!(s.sessionId, file, cwd, run, keep));
+      await boundary('destination.prepare.import', async () => {
+        try { await adapter.importSession!(s.sessionId, file, cwd, run); } catch (e) {
+          await this.restoreHeld(tx);
+          throw e;
+        }
+        fs.rmSync(keep, { force: true });
+      });
+    });
+  }
+
+  /** Runs `step` for each carried session a CLI keeps in a database of its own, with its staged export and the folder its terminal resumes in, and answers each refusal. */
+  private async databased(
+    tx: string, m: TransferManifestV1, step: (s: TransferSession, adapter: SessionAdapter, file: string, cwd: string) => Promise<void>,
+  ): Promise<Blocker[]> {
     const blockers: Blocker[] = [];
     const at = (p: string) => (p === '~' || p.startsWith('~/') ? path.posix.join(m.home, p.slice(1)) : p);
     for (const [i, s] of m.sessions.entries()) {
       const adapter = sessionAdapter(s.agent, s.adapter);
       const c = m.snapshot.characters[s.characterId];
-      if (!adapter.exportFile || !adapter.dropSession || !adapter.importSession || !c) continue;
-      const file = path.join(this.d.paths.sessionStage(tx, i), adapter.exportFile(s.sessionId));
-      const keep = path.join(this.heldDir(tx), s.agent, `${s.sessionId}.json`);
-      const { cwd } = resumeFolder(c, s.term, at);
-      const run = this.d.cli ?? cliRunner();
+      if (!adapter.exportFile || !c) continue;
       try {
-        await boundary('destination.prepare.delete', () => adapter.dropSession!(s.sessionId, file, cwd, run, keep));
-        await boundary('destination.prepare.import', async () => {
-          try { await adapter.importSession!(s.sessionId, file, cwd, run); } catch (e) {
-            await this.restoreHeld(tx);
-            throw e;
-          }
-          fs.rmSync(keep, { force: true });
-        });
+        await step(s, adapter, path.join(this.d.paths.sessionStage(tx, i), adapter.exportFile(s.sessionId)), resumeFolder(c, s.term, at).cwd);
       } catch (e) {
         if (!(e instanceof SessionError)) throw e;
         blockers.push({ code: e.code, message: e.message, entity: { kind: 'character', id: s.characterId } });
