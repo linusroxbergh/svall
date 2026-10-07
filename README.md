@@ -385,6 +385,14 @@ scribe as a Claude Code one. OpenCode has no hooks; Svall's plugin in
 nothing outside a character. The brief rides along as system text. OpenCode
 reports no plan limits, so the Usage panel shows none for it.
 
+A character's terminals run OpenCode with `OPENCODE_CONFIG_DIR` set to
+`~/.svall/opencode-config`: links to your config beside a `service.json` that
+turns OpenCode's shared background server off, so a plain `opencode` reports
+too. A setting OpenCode saves there moves to `~/.config/opencode` when the next
+character window opens, and the copy it replaces, or the older one when yours
+is newer, is kept in `~/.svall/opencode-config-replaced`. Run `opencode service`
+and `opencode pair` outside a character.
+
 ## What setup changes
 
 The setup screen runs `svall setup`, which also works without the app

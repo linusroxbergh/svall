@@ -99,6 +99,21 @@ runIf('Fleet', () => {
     await fleet.closeCharacter(c.id);
   });
 
+  it('gives character shells an OpenCode config dir only where OpenCode is', async () => {
+    const { fleet, tmux, home } = await boot();
+    vi.stubEnv('XDG_CONFIG_HOME', path.join(home, 'xdg'));
+    cleanup.push(async () => { vi.unstubAllEnvs(); });
+    const open = vi.spyOn(tmux, 'newWindow');
+    const island = fleet.createIsland({ name: 'oc' });
+    await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
+    expect(open.mock.calls[0][2]).not.toHaveProperty('OPENCODE_CONFIG_DIR');
+    expect(fs.existsSync(path.join(home, 'xdg'))).toBe(false);
+
+    fs.mkdirSync(path.join(home, 'xdg/opencode'), { recursive: true });
+    await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
+    expect(open.mock.calls[1][2]).toMatchObject({ OPENCODE_CONFIG_DIR: resolvePaths(home).opencodeConfig });
+  });
+
   it('opens one second terminal beside the main one, and ends it with its shell or with the character', async () => {
     const { fleet, store, tmux } = await boot();
     const island = fleet.createIsland({ name: 'pair' });
