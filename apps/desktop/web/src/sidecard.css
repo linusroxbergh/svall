@@ -31,6 +31,9 @@
 .side-show { right: 0; border-right: 0; border-radius: var(--r-md) 0 0 var(--r-md); }
 /* the portrait beside the name, and the branch on a line of its own so both get the full width */
 .side-head { display: flex; align-items: center; gap: var(--sp-xl); }
+.side-star { flex: none; width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border-radius: var(--r-xs); background: none; color: var(--ink-3); }
+.side-star:hover { background: var(--fill-2); color: var(--sand-hi); }
+.side-star[aria-pressed="true"] { color: var(--sand); }
 .side-branch { display: flex; align-items: center; min-width: 0; color: var(--ink-3); font-size: var(--text-sm); }
 .side-branch .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side-branch .badge { flex: none; }

@@ -43,6 +43,13 @@
 .sb-caret { margin: calc(-1 * var(--sp-sm)) 0; background: none; color: var(--ink-3); }
 .sb-caret:hover { background: var(--fill-3); color: var(--ink); }
 .sb-row .sdot[data-empty="true"] { background: none; box-shadow: inset 0 0 0 1.5px var(--ink-3); }
+/* a starred tree row keeps its star; any other star shows only under the pointer */
+.sb-star { flex: none; width: 18px; height: 18px; display: grid; place-items: center; margin: calc(-1 * var(--sp-2xs)) 0; padding: 0; border-radius: var(--r-xs);
+  background: none; color: var(--ink-3); opacity: 0; pointer-events: none; transition: opacity var(--dur-fast) var(--ease); }
+.sb-row:is(:hover, :focus-within) .sb-star, .sb-child:not(.sb-starred-row) .sb-star[aria-pressed="true"] { opacity: 1; pointer-events: auto; }
+.sb-star:hover { background: var(--fill-3); color: var(--sand-hi); }
+.sb-star-mark { flex: none; display: grid; place-items: center; width: 7px; color: var(--ink-3); font-style: normal; }
+.sb-where { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); font-weight: var(--w-regular); color: var(--ink-3); }
 .sb-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sb-ct { flex: none; font-size: var(--text-xs); color: var(--ink-3); }
 .sb-attn { flex: none; min-width: 9px; text-align: center; padding: var(--sp-2xs) var(--sp-sm); border-radius: var(--r-pill); background: var(--blocked); color: var(--surface-0); font-size: var(--text-2xs); font-weight: var(--w-bold); line-height: 1.3; }

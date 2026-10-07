@@ -1,5 +1,5 @@
 import { useRef, useState, type PointerEvent, type JSX } from 'react';
-import type { Character, Island } from '@svall/protocol';
+import { starredOf, type Character, type Island } from '@svall/protocol';
 import { createCharacter } from '../actions.js';
 import { useApp } from '../hooks.js';
 import { portraitTint, portraitUrl } from '../portraits.js';
@@ -82,6 +82,7 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
   const status = useApp((s) => s.status);
   const [sheet, setSheet] = useState<Open>();
   const groups = sections(fleet);
+  const starred = starredOf(fleet);
   const need = waiting(fleet);
   const close = () => setSheet(undefined);
 
@@ -121,6 +122,16 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
       </header>
       {status === 'refused' && <p className="empty">This tailnet login can't open this fleet. On the Mac, add it to mobile.logins in the fleet's config.json, then quit and reopen Svall.</p>}
       {loaded && groups.length === 0 && <p className="empty">No islands yet. Tap + to make one.</p>}
+      {starred.length > 0 && (
+        <section aria-label="Starred">
+          <h2><span className="starred">Starred</span></h2>
+          {/* a starred row swipes on its own, not with its twin on the island */}
+          {starred.map((c) => (
+            <Row key={c.id} c={c} revealed={revealed === `star:${c.id}`} onOpen={onOpen} onReveal={(id) => setRevealed(id && `star:${id}`)}
+              onClose={(id) => { setRevealed(undefined); setSheet({ kind: 'close', id }); }} />
+          ))}
+        </section>
+      )}
       {groups.map(({ island, characters }) => (
         <section key={island.id}>
           <h2>

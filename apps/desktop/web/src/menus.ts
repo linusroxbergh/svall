@@ -1,4 +1,5 @@
-import { app } from './boot.js';
+import { setStar } from './actions.js';
+import { app, deps } from './boot.js';
 import type { MenuEntry } from './store/ui.js';
 
 type Press = Pick<MouseEvent, 'clientX' | 'clientY' | 'preventDefault'>;
@@ -13,8 +14,11 @@ const showMenu = (e: Press, items: MenuEntry[]): void => {
 const renameFirst = (rename?: () => void) => (rename ? [{ title: 'Rename', run: rename }] : []);
 
 // the right-click menus the sidebar and the map share; Delete only asks, and the confirmation does the deleting
-export const characterMenu = (e: Press, id: string, rename?: () => void): void =>
-  showMenu(e, [...renameFirst(rename), { title: 'Delete', danger: true, run: () => app.store.getState().setClosingCharacter(id) }]);
+export const characterMenu = (e: Press, id: string, rename?: () => void): void => {
+  const starred = app.store.getState().fleet.characters[id]?.star !== undefined;
+  showMenu(e, [...renameFirst(rename), { title: starred ? 'Unstar' : 'Star', run: () => setStar(deps(), id, !starred) },
+    { title: 'Delete', danger: true, run: () => app.store.getState().setClosingCharacter(id) }]);
+};
 
 // the daemon deletes only an empty island, so one with a crew shows Delete greyed out
 export const islandMenu = (e: Press, id: string, empty: boolean, rename?: () => void): void =>

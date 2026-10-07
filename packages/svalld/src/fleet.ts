@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Character, type ContextItem, type FleetState, type Island, type Portrait } from '@svall/protocol';
+import { HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Character, type ContextItem, type FleetState, type Island, type Portrait } from '@svall/protocol';
 import { AGENTS, mainAgent } from './agents.js';
 import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
 import { markSeen as markSeenPure, settle } from './agent/reducer.js';
@@ -478,6 +478,23 @@ export class Fleet extends EventEmitter<Events> {
       order.splice(order.indexOf(targetId) + Number(after), 0, id);
       order.forEach((charId, index) => { d.characters[charId].cell = cells[index]; });
     });
+    return this.char(id);
+  }
+
+  // without a target the star goes first; every starred character is numbered anew in one update
+  starCharacter(id: string, targetId?: string, after = false): Character {
+    this.char(id);
+    if (targetId !== undefined && this.char(targetId).star === undefined) throw new Invalid(`${this.char(targetId).name} is not starred`);
+    if (id === targetId) return this.char(id);
+    const order = starredOf(this.deps.store.state).map((c) => c.id).filter((x) => x !== id);
+    order.splice(targetId === undefined ? 0 : order.indexOf(targetId) + Number(after), 0, id);
+    this.deps.store.update((d) => { order.forEach((x, n) => { d.characters[x].star = n; }); });
+    return this.char(id);
+  }
+
+  unstarCharacter(id: string): Character {
+    this.char(id);
+    this.deps.store.update((d) => { delete d.characters[id].star; });
     return this.char(id);
   }
 

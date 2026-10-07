@@ -157,6 +157,9 @@ export const methods = {
   },
   'char.move': { params: z.object({ id: z.string(), islandId: z.string(), cell: Cell.optional() }), result: Character },
   'char.reorder': { params: z.object({ id: z.string(), targetId: z.string(), after: z.boolean() }), result: Character },
+  // without a target the character goes first among the starred
+  'char.star': { params: z.object({ id: z.string(), targetId: z.string().optional(), after: z.boolean().optional() }), result: Character },
+  'char.unstar': { params: Id, result: Character },
   'char.close': { params: Id, result: z.object({}) },
   'char.revive': { params: Id, result: Character },
   'char.seen': { params: Id.extend({ term: Term }), result: Character },
@@ -276,4 +279,4 @@ export type HelloReply = z.infer<typeof HelloReply>;
 export const LOGIN_REFUSED = 4403;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 19;
+export const PROTOCOL_VERSION = 20;

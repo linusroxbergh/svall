@@ -161,6 +161,8 @@ export const Character = z.object({
   revive: z.object({ command: z.string(), interrupted: z.literal(true).optional() }).optional(),
   browser: Browser.optional(),
   second: Second.optional(),
+  // its place among the starred, lowest first; absent, it is not starred
+  star: z.number().int().optional(),
 });
 export type Character = z.infer<typeof Character>;
 
@@ -191,6 +193,9 @@ export const FleetState = z.object({
   scribeAgent: AgentKind.optional(),
 });
 export type FleetState = z.infer<typeof FleetState>;
+
+export const starredOf = (f: FleetState): Character[] =>
+  Object.values(f.characters).filter((c) => c.star !== undefined).sort((a, b) => a.star! - b.star!);
 
 export const DORMANT_AFTER_HOURS = 12;
 
