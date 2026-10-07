@@ -161,6 +161,10 @@ class Crew {
   fleet: DestinationDeps['fleet'] = {
     activate: async () => { this.log.push('activate'); },
     reconcileNow: async () => { this.log.push('reconcile'); },
+    // as the fleet does: each terminal a crash cut off mid-turn that no open handover carries is revived
+    resumeInterrupted: async () => {
+      for (const c of Object.values(this.store.state.characters)) if (c.revive?.interrupted && !this.carried(c.id)) await this.open(c.id);
+    },
     reviveCharacter: (id) => this.open(id),
     openSecond: (id) => this.open(id, 2),
     onSessionStart: (fn) => { this.starts.add(fn); return () => { this.starts.delete(fn); }; },
@@ -968,6 +972,18 @@ describe('destination activate', () => {
     const { preparedDigest } = await d.handover.prepare(params(s));
     return { s, d, preparedDigest };
   }
+
+  it('resumes a terminal a crash cut off mid-turn before the freeze once the fleet runs here', async () => {
+    // bo was already dormant, cut off mid-turn, when the source froze, so the handover's rest never touched it
+    const s = await scene({ tamper: (m) => { const bo = m.snapshot.characters.c_bo; delete bo.restedBy; bo.revive = { ...bo.revive!, interrupted: true }; } });
+    const d = daemon(s);
+    const { preparedDigest } = await d.handover.prepare(params(s));
+    d.gateway.commit(preparedDigest);
+
+    await d.handover.activate({ transactionId: TX, generation: 5 });
+
+    expect(d.crew.log.slice(0, 3)).toEqual(['activate', 'reconcile', 'open c_bo']);
+  });
 
   it('waits for the gateway to commit this handover at the next generation before it touches anything', async () => {
     const { s, d, preparedDigest } = await prepared();

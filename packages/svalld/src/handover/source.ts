@@ -40,7 +40,7 @@ export type Authority = { get(fleetId: FleetId): Promise<OwnerRecord> };
 export type SourceDeps = {
   paths: Paths;
   store: RestDeps['store'];
-  fleet: Pick<Fleet, 'settle' | 'activate' | 'deactivate' | 'reconcileNow' | 'reviveCharacter' | 'openSecond'>;
+  fleet: Pick<Fleet, 'settle' | 'activate' | 'deactivate' | 'reconcileNow' | 'resumeInterrupted' | 'reviveCharacter' | 'openSecond'>;
   tmux: RestDeps['tmux'] & Pick<Tmux, 'ensureServer'>;
   viewers: RestDeps['viewers'];
   processes?: NonNullable<RestDeps['processes']>;
@@ -576,6 +576,7 @@ export class SourceHandover {
     await boundary('source.release.activate', async () => {
       await this.d.fleet.activate();
       await this.d.fleet.reconcileNow();
+      await this.d.fleet.resumeInterrupted();
     });
   }
 

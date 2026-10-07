@@ -25,6 +25,7 @@ import { silentLogger } from '../../src/log.js';
 import { OwnershipState } from '../../src/ownership/state.js';
 import { installedScripts, resolvePaths, type Paths } from '../../src/paths.js';
 import { PRIVATE, profileHome } from '../../src/profile.js';
+import { reconcile } from '../../src/reconcile.js';
 import { releaseVersion } from '../../src/release.js';
 import { Store } from '../../src/store.js';
 import type { GitRunner } from '../../src/links/git.js';
@@ -212,6 +213,10 @@ function boot(o: Boot = {}) {
     deactivate: async () => { world.log.push('deactivate'); },
     activate: async () => { world.log.push('activate'); },
     reconcileNow: async () => { world.log.push('reconcile'); },
+    // as the fleet does: each terminal a crash cut off mid-turn is revived
+    resumeInterrupted: async () => {
+      for (const c of Object.values(store.state.characters)) if (c.revive?.interrupted) await fleet.reviveCharacter(c.id);
+    },
     reviveCharacter: async (id) => {
       world.log.push(`revive ${id}`);
       store.update((d) => { d.characters[id].tmux = win(9); delete d.characters[id].revive; });
@@ -1083,6 +1088,34 @@ describe('source abort', () => {
     await again.handover.abort({ transactionId: TX, generation: 4 });
 
     expect(revives).toEqual([{ command: `claude --resume ${SID}` }]);
+  });
+
+  it('resumes an agent a lost tmux cut off mid-turn during the freeze once the abort lets the fleet run again', async () => {
+    const b = boot({ characters: (work) => [char('c_bo', path.join(work, 'bo'), { tmux: win(3) })] });
+    b.store.update((d) => { d.characters.c_bo.agent = b.agent('working'); });
+    b.gateway.begin();
+    b.handover.write(SourceJournal.parse({
+      role: 'source', transactionId: TX, generation: 4, fleetId, fromMachineId: me, toMachineId: trift, phase: 'freeze', updatedAt: 1,
+    }));
+    await b.ownership.freeze(b.gateway.record.transaction!);
+    // the machine restarted frozen, and bo's window went with its tmux server
+    b.world.panes.delete('@3');
+    const again = await b.restart();
+    b.gateway.abort();
+    // the fleet's own reconcile, which lays a terminal whose window went mid-turn dormant as interrupted
+    b.deps.fleet.reconcileNow = async () => {
+      b.world.log.push('reconcile');
+      b.store.update(reconcile(b.store.state, await b.world.tmux.listWindows(), 0).mutate);
+    };
+    const revives: unknown[] = [];
+    const revive = b.deps.fleet.reviveCharacter;
+    b.deps.fleet.reviveCharacter = async (id) => { revives.push(structuredClone(b.store.state.characters[id].revive)); return revive(id); };
+
+    await again.handover.abort({ transactionId: TX, generation: 4 });
+
+    expect(b.world.log).toEqual(['activate', 'reconcile', 'revive c_bo']);
+    // interrupted, so the fleet's revive hands the agent RESUME_NOTE
+    expect(revives).toEqual([{ command: `claude --resume ${SID}`, interrupted: true }]);
   });
 
   it('finishes an abort a crash cut short after the journal closed and before the fleet was unfrozen', async () => {

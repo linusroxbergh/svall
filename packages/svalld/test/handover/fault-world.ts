@@ -203,6 +203,8 @@ export class Machine {
         this.windows.clear();
       },
       reconcileNow,
+      // every agent here is idle, so none is ever cut off mid-turn
+      resumeInterrupted: async () => {},
       reviveCharacter: (id: string) => open(id),
       openSecond: (id: string) => open(id, 2),
       onSessionStart: (fn: (id: string, term: 2 | undefined, sessionId: string) => void) => {

@@ -65,6 +65,7 @@ function boot(opts: { record?: object; journal?: unknown; home?: string; gateway
   const log: string[] = [];
   const fleet = {
     activate: async () => { log.push('activate'); }, reconcileNow: async () => { log.push('reconcile'); }, deactivate: async () => { log.push('deactivate'); },
+    resumeInterrupted: async () => { log.push('resume'); },
   };
   const asked: MachineId[] = [];
   const handover = new HandoverService({
@@ -312,7 +313,8 @@ describe('a gateway record newer than the one held', () => {
     });
     expect(ownerFile(b)).toEqual({ fleetId, generation: 6, ownerMachineId: me });
     expect(b.ownership.writable()).toBe(true);
-    expect(b.log).toEqual(['activate', 'reconcile']);
+    // and resumes what a crash cut off mid-turn, as a start does
+    expect(b.log).toEqual(['activate', 'reconcile', 'resume']);
 
     const surrendered = boot({ record: { generation: 4, ownerMachineId: me, frozen: true, surrendered: true } });
     await surrendered.handover.adopt({ fleetId, generation: 5, ownerMachineId: me });
@@ -443,7 +445,7 @@ describe('a record a recovery relays', () => {
     for (const gateway of unasked) {
       const b = boot({ record: { generation: 4, ownerMachineId: other }, ...(gateway && { gateway }) });
       expect(await b.handover.relay({ record: relayed, gatewayMachineId: third })).toMatchObject({ adopted: true, ownership: { generation: 9, ownerMachineId: me } });
-      expect(b.log).toEqual(['activate', 'reconcile', `gateway ${third}`]);
+      expect(b.log).toEqual(['activate', 'reconcile', 'resume', `gateway ${third}`]);
     }
   });
 
@@ -461,6 +463,13 @@ describe('a start with a gateway', () => {
     await adoptAtStart({ handover: b.handover, authority: { get: async () => ({ fleetId, generation: 7, ownerMachineId: other }) }, fleetId, log: silentLogger });
     expect(b.ownership.record()).toMatchObject({ generation: 7, ownerMachineId: other });
     expect(b.log).toEqual(['deactivate']);
+  });
+
+  it('runs the fleet a record naming this machine gives it, and leaves what a crash cut off to the resume after the hook receiver starts', async () => {
+    const b = boot({ record: { generation: 4, ownerMachineId: other } });
+    await adoptAtStart({ handover: b.handover, authority: { get: async () => ({ fleetId, generation: 7, ownerMachineId: me }) }, fleetId, log: silentLogger });
+    expect(b.ownership.writable()).toBe(true);
+    expect(b.log).toEqual(['activate', 'reconcile']);
   });
 
   it('starts on the record it holds when the gateway cannot say, holds none, or does not answer in time', async () => {

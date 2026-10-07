@@ -22,7 +22,7 @@ export type HandoverDeps = {
   /** What the destination phases run on. */
   destination: DestinationDeps;
   /** What a record naming this machine starts, and one naming another stops. */
-  fleet?: Pick<Fleet, 'activate' | 'reconcileNow' | 'deactivate'>;
+  fleet?: Pick<Fleet, 'activate' | 'reconcileNow' | 'deactivate' | 'resumeInterrupted'>;
   /** Names another machine this fleet's gateway, in fleet.json and in the running config. */
   setGateway?(id: MachineId): void;
   /** How to ask a given machine's gateway, before it is this fleet's. */
@@ -119,8 +119,9 @@ export class HandoverService {
    * Takes a gateway record that outranks the one held. A handover it supersedes is let go without activating; then the
    * record decides whether this machine runs the fleet or holds a read-only replica. A record that does not outrank it,
    * that an open handover still answers to, or that belongs to a handover whose journal here is gone, changes nothing.
+   * `starting`: the daemon resumes interrupted agents itself once hooks can reach it.
    */
-  async adopt(record: OwnerRecord): Promise<Result<'ownership.adopt'>> {
+  async adopt(record: OwnerRecord, starting = false): Promise<Result<'ownership.adopt'>> {
     const { ownership, fleet } = this.deps;
     const held = ownership.record();
     if (record.fleetId !== held.fleetId) {
@@ -146,6 +147,7 @@ export class HandoverService {
       ownership.unhold();
       await fleet?.activate();
       await fleet?.reconcileNow();
+      if (!starting) await fleet?.resumeInterrupted();
     } else if (ran) {
       await fleet?.deactivate();
     }

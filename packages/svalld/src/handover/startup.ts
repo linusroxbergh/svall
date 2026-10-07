@@ -104,7 +104,7 @@ export async function adoptAtStart(o: {
     clearTimeout(timer);
   }
   try {
-    const r = await o.handover.adopt(record);
+    const r = await o.handover.adopt(record, true);
     if (r.adopted) {
       o.log.info(`took the gateway's record: ${record.ownerMachineId} owns this fleet at generation ${record.generation}${r.superseded ? `, past handover ${r.superseded}` : ''}`);
     }

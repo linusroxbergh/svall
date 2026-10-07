@@ -41,7 +41,7 @@ export type DestinationDeps = {
   /** The daemon's settings, shared by reference: activation puts the imported fleet.json into them. */
   config: Config;
   store: Pick<Store, 'state' | 'update' | 'promote' | 'reload'>;
-  fleet: Pick<Fleet, 'activate' | 'reconcileNow' | 'reviveCharacter' | 'openSecond' | 'onSessionStart' | 'carries'>;
+  fleet: Pick<Fleet, 'activate' | 'reconcileNow' | 'resumeInterrupted' | 'reviveCharacter' | 'openSecond' | 'onSessionStart' | 'carries'>;
   tmux: Pick<Tmux, 'sendLine' | 'listWindows' | 'killWindow' | 'capture'>;
   /** This machine's processes, which say what holds a pane an activation finds open. */
   processes?: (signal?: AbortSignal) => Promise<ProcessTable>;
@@ -578,6 +578,7 @@ export class DestinationHandover {
       this.ownership.unhold();
       await this.d.fleet.activate();
       await this.d.fleet.reconcileNow();
+      await this.d.fleet.resumeInterrupted();
     });
   }
 
