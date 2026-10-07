@@ -550,7 +550,7 @@ State schema v8 makes both terminal slots explicitly resumable. A terminal recor
 optional live tmux ids, optional agent, and optional revive command. A second terminal no longer
 disappears merely because its tmux window is absent.
 
-Before export, all `tmux.windowId`, `paneId` and agent pid fields are removed. For a supported
+Before export, all `tmux.windowId`, `paneId`, agent pid and monitor fields are removed. For a supported
 agent, `revive.command` is `claude --resume <id>`, `codex resume <id>` or
 `opencode -s <id>` (launched with `--standalone`) with the launch flags an idle close keeps, whether the handover
 rested the terminal or it was already dormant, less the Codex flags whose values name the source's

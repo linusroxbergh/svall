@@ -54,6 +54,9 @@ const ENTRIES: Record<string, Handling> = {
   version: 'machine-local',
   trash: 'machine-local',
   'quit-quietly': 'machine-local',
+  // links to this machine's OpenCode config for its character shells, and the copies of it a saved setting replaced
+  'opencode-config': 'machine-local',
+  'opencode-config-replaced': 'machine-local',
 };
 
 // what a write, a repair, a migration or an archive leaves beside an entry, named by the helper from the entry's own name
