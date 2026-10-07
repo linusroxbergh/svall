@@ -1,7 +1,7 @@
 import { stepPortrait, type Character, type ContextItem, type Params, type Portrait } from '@svall/protocol';
 import { AgentProfilePick } from './AgentProfilePick.js';
 import { app, deps } from './boot.js';
-import { saveCharacter, saveCharacterContext, toggleStar } from './actions.js';
+import { saveCharacter, saveCharacterContext, setStar } from './actions.js';
 import { copyText, openFolder } from './bridge.js';
 import { AddLink, ContextPills } from './ContextList.js';
 import { FollowLine, FollowTextarea } from './Field.js';
@@ -81,7 +81,7 @@ export function SideCard({ id }: { id: string }) {
         <FollowLine className="h2" aria-label="Name" key={`name-${id}`} value={c.name} data-testid="side-name"
           onSave={(v) => { const name = v.trim(); if (!name || name === c.name) return false; save({ name }); }} />
         <button className="side-star" data-testid="side-star" aria-pressed={starred} title={starred ? 'Unstar' : 'Star'}
-          aria-label={starred ? 'Unstar' : 'Star'} onClick={() => toggleStar(deps(), id)}><StarIcon on={starred} /></button>
+          aria-label="Star" onClick={() => setStar(deps(), id, !starred)}><StarIcon on={starred} /></button>
       </div>
       {c.repo && (
         <div className="side-branch" data-testid="side-branch">

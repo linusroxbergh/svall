@@ -245,6 +245,8 @@ The first build takes several minutes and about 1.5 GB of disk.
   into the window, and `update info` and `status` start a helper agent.
 - **Board** (Cmd+M): islands as a folder tree, with the selected character's
   terminal beside it. Drag characters and islands to move or reorder them.
+  A starred character also stands in Starred at the top, newest first; drag
+  there to star one at a spot or to reorder.
 - **Side card** (Cmd+I): the character's note, agent profile, instructions,
   context, docs, last prompts, model, directory and context use.
 - **Browser** (Cmd+2): tabs survive a relaunch, and the agent sees their
@@ -316,8 +318,9 @@ yours, and selecting text copies it. Terminals attach to tmux, so Ghostty's
     svall mobile off
 
 - Open the link on your phone, then choose Share → Add to Home Screen. You get
-  every island and character as a list, and a character's terminal full screen
-  with Esc, Tab, Ctrl-C and arrow keys above the keyboard.
+  every island and character as a list, the starred ones also first, and a
+  character's terminal full screen with Esc, Tab, Ctrl-C and arrow keys above
+  the keyboard.
 - `⚙` → *Notify this phone* sends a push when an agent is blocked or done. Tap
   a blocked one to approve or deny it.
 - The page and its pushes work while Svall is open on that fleet, since its

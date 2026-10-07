@@ -1,4 +1,4 @@
-import { toggleStar } from './actions.js';
+import { setStar } from './actions.js';
 import { app, deps } from './boot.js';
 import type { MenuEntry } from './store/ui.js';
 
@@ -16,7 +16,7 @@ const renameFirst = (rename?: () => void) => (rename ? [{ title: 'Rename', run: 
 // the right-click menus the sidebar and the map share; Delete only asks, and the confirmation does the deleting
 export const characterMenu = (e: Press, id: string, rename?: () => void): void => {
   const starred = app.store.getState().fleet.characters[id]?.star !== undefined;
-  showMenu(e, [...renameFirst(rename), { title: starred ? 'Unstar' : 'Star', run: () => toggleStar(deps(), id) },
+  showMenu(e, [...renameFirst(rename), { title: starred ? 'Unstar' : 'Star', run: () => setStar(deps(), id, !starred) },
     { title: 'Delete', danger: true, run: () => app.store.getState().setClosingCharacter(id) }]);
 };
 

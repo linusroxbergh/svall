@@ -6,7 +6,6 @@ test('a character is starred from the side card, the tree and a drop, where it w
   const [a, b, c] = await Promise.all(['sa', 'sb', 'sc'].map((name) => svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name })));
   const ours = new Set([a.id, b.id, c.id]);
   const starred = async () => starredOf(await svall.api.call('state.get', {})).map((x) => x.id).filter((id) => ours.has(id));
-  const rows = page.getByTestId('sb-starred').locator('.sb-starred-row');
   const row = (id: string) => page.getByTestId(`sb-star-${id}`);
   await svall.open('map');
 
@@ -28,7 +27,7 @@ test('a character is starred from the side card, the tree and a drop, where it w
 
   // a starred row dropped on the islands is not moved there
   await row(a.id).dragTo(page.getByTestId('sb-island-home'));
-  await expect(rows.filter({ hasText: 'sa' })).toHaveCount(1);
+  await expect(row(a.id)).toHaveCount(1);
   expect((await svall.api.call('state.get', {})).characters[a.id].islandId).toBe(island.id);
 
   await row(a.id).hover();
@@ -36,4 +35,9 @@ test('a character is starred from the side card, the tree and a drop, where it w
   await expect.poll(starred).toEqual([c.id, b.id]);
   await expect(row(a.id)).toHaveCount(0);
   await expect(page.getByTestId(`sb-char-${a.id}`)).toBeVisible();
+
+  // folded, Starred takes a drop on its header, first
+  await page.getByTestId('sb-starred-toggle').click();
+  await page.getByTestId(`sb-char-${a.id}`).dragTo(page.getByTestId('sb-starred-head'));
+  await expect.poll(starred).toEqual([a.id, c.id, b.id]);
 });

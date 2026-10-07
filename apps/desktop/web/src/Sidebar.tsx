@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { starredOf, type Character, type Island } from '@svall/protocol';
-import { moveCharacterTo, newCharacterOn, newIsland, reorderIsland, saveCharacter, saveIsland, starCharacterAt, toggleIsland, toggleStar } from './actions.js';
+import { moveCharacterTo, newCharacterOn, newIsland, reorderIsland, saveCharacter, saveIsland, setStar, starCharacterAt, toggleIsland } from './actions.js';
 import { app, deps } from './boot.js';
 import type { DropTarget } from './drop.js';
 import { useApp } from './hooks.js';
@@ -81,8 +81,8 @@ export function StarIcon({ on }: { on: boolean }) {
 function StarButton({ c, testid }: { c: Character; testid: string }) {
   const on = c.star !== undefined;
   return (
-    <button className="sb-star" data-testid={testid} aria-pressed={on} aria-label={`${on ? 'Unstar' : 'Star'} ${c.name}`} title={on ? 'Unstar' : 'Star'}
-      onClick={(e) => { stop(e); toggleStar(deps(), c.id); }} onDoubleClick={stop}><StarIcon on={on} /></button>
+    <button className="sb-star" data-testid={testid} aria-pressed={on} aria-label={`Star ${c.name}`} title={on ? 'Unstar' : 'Star'}
+      onClick={(e) => { stop(e); setStar(deps(), c.id, !on); }}><StarIcon on={on} /></button>
   );
 }
 
@@ -170,11 +170,14 @@ type StarHover = { id?: string; after: boolean };
 function StarredRow({ c, hover, zone }: { c: Character; hover?: StarHover; zone: ReturnType<typeof starZone> }) {
   const selected = useApp((s) => (s.view === 'board' ? boardViewed(s) === c.id : s.selectedId === c.id));
   const island = useApp((s) => s.fleet.islands[c.islandId]?.name);
+  // a Finder file over this character; a reorder over its tree row carries `after` and leaves this row be
+  const fileHover = useApp((s) => s.dropHover?.kind === 'char' && s.dropHover.id === c.id && s.dropHover.after === undefined);
   const [dragging, setDragging] = useState(false);
   const status = statusOf(c);
   return (
     <div className="sb-row sb-child sb-starred-row" data-testid={`sb-star-${c.id}`} data-status={status} data-unread={isUnread(c)}
-      data-attention={wantsUser(c)} data-selected={selected} data-drop-reorder={hover?.id === c.id} data-drop-after={hover?.id === c.id && hover.after}
+      data-attention={wantsUser(c)} data-selected={selected} data-drop={`char:${c.id}`} data-drop-hover={fileHover}
+      data-drop-reorder={hover?.id === c.id} data-drop-after={hover?.id === c.id && hover.after}
       draggable data-dragging={dragging} {...zone}
       onDragStart={(e) => { e.dataTransfer.setData(STAR_DRAG, c.id); e.dataTransfer.effectAllowed = 'move'; setDragging(true); }}
       onDragEnd={() => setDragging(false)}

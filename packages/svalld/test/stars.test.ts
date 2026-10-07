@@ -32,6 +32,13 @@ describe('stars', () => {
     expect(starred()).toEqual(['c', 'b', 'a']);
   });
 
+  it('moves a starred character first when it is starred again without a target', () => {
+    const { fleet, starred } = boot();
+    for (const id of ['a', 'b', 'c']) fleet.starCharacter(id);
+    fleet.starCharacter('a');
+    expect(starred()).toEqual(['a', 'c', 'b']);
+  });
+
   it('places a star dropped on another before or after it', () => {
     const { fleet, starred } = boot();
     for (const id of ['a', 'b', 'c']) fleet.starCharacter(id);

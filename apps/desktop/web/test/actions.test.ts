@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CWD, emptyState } from '@svall/protocol';
-import { deleteIsland, moveCharacterTo, starCharacterAt, toggleStar, newCharacterOn, newCharacterTarget, newIsland, newIslandAround, newNamedCharacter, openSecondTerminal, reviveCharacter, saveCharacter, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeCharacter } from '../src/actions.js';
+import { deleteIsland, moveCharacterTo, setStar, starCharacterAt, newCharacterOn, newCharacterTarget, newIsland, newIslandAround, newNamedCharacter, openSecondTerminal, reviveCharacter, saveCharacter, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeCharacter } from '../src/actions.js';
 import { ApiError, type Api } from '../src/api.js';
 import { createAppStore } from '../src/store/index.js';
 import { chr, fleet, isl } from './fixtures.js';
@@ -108,11 +108,13 @@ describe('moveCharacterTo', () => {
 });
 
 describe('stars', () => {
-  it('stars an unstarred character first and unstars a starred one', () => {
+  it('stars or unstars as asked, and sends nothing for the state a character already has', () => {
     const c = ctx();
-    toggleStar(c, 'c1');
+    setStar(c, 'c1', false);
+    setStar(c, 'c1', true);
     c.store.getState().applyPatch([{ op: 'add', path: '/characters/c1/star', value: 0 }]);
-    toggleStar(c, 'c1');
+    setStar(c, 'c1', true);
+    setStar(c, 'c1', false);
     expect(c.calls).toEqual([
       { method: 'char.star', params: { id: 'c1' } },
       { method: 'char.unstar', params: { id: 'c1' } },

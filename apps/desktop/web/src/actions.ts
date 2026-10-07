@@ -71,10 +71,11 @@ export function moveCharacterTo(d: ActionDeps, id: string, target: DropTarget, a
   d.api.call('char.move', { id, islandId: target.id }).catch(toast(d));
 }
 
-export function toggleStar(d: ActionDeps, id: string): void {
+// asking for the state a character already has sends nothing; char.star would move a starred one first
+export function setStar(d: ActionDeps, id: string, on: boolean): void {
   const c = d.store.getState().fleet.characters[id];
-  if (!c) return;
-  (c.star === undefined ? d.api.call('char.star', { id }) : d.api.call('char.unstar', { id })).catch(toast(d));
+  if (!c || on === (c.star !== undefined)) return;
+  (on ? d.api.call('char.star', { id }) : d.api.call('char.unstar', { id })).catch(toast(d));
 }
 
 // without a target the character goes first among the starred

@@ -75,3 +75,20 @@ test('the character menu offers Star, or Unstar once starred', () => {
   fireEvent.click(screen.getByTestId('menu-unstar'));
   expect(call).toHaveBeenLastCalledWith('char.unstar', { id: 'c0' });
 });
+
+test('a Star picked after the character was starred elsewhere sends nothing', () => {
+  fireEvent.contextMenu(screen.getByTestId('sb-char-c0'), { clientX: 40, clientY: 90 });
+  star('c0', 0);
+  fireEvent.click(screen.getByTestId('menu-star'));
+  expect(call).not.toHaveBeenCalledWith('char.star', expect.anything());
+});
+
+test('a Finder file over a starred character outlines its starred row, and a reorder over its tree row does not', () => {
+  star('c2', 0);
+  const row = screen.getByTestId('sb-star-c2');
+  expect(row.getAttribute('data-drop')).toBe('char:c2');
+  act(() => store.getState().setDropHover({ kind: 'char', id: 'c2' }));
+  expect(row.getAttribute('data-drop-hover')).toBe('true');
+  act(() => store.getState().setDropHover({ kind: 'char', id: 'c2', after: true }));
+  expect(row.getAttribute('data-drop-hover')).toBe('false');
+});
