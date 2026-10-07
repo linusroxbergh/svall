@@ -555,14 +555,26 @@ describe('restTerminals', () => {
     expect(ended.store.state.characters.c_ada.revive).toEqual({ command: `opencode -s ${OSID}` });
   });
 
-  it('interrupts a working OpenCode and rests it only once its plugin reports the turn over, not when its command ends alone', async () => {
-    const { store, world, deps } = boot([char('c_ada', { tmux: win(1), agent: agent('opencode', 'working', OSID) })]);
+  it('interrupts a working or blocked OpenCode with two Escapes sent 200 ms apart, and rests a working one only once its plugin reports the turn over, not when its command ends alone', async () => {
+    const OSID2 = 'ses_0123456789abCDEFGHIJKLMNop';
+    const { store, world, deps } = boot([
+      char('c_ada', { tmux: win(1), agent: agent('opencode', 'working', OSID) }),
+      char('c_bo', { tmux: win(3), agent: agent('opencode', 'blocked', OSID2, 'Allow rm -rf build?') }),
+    ]);
     const pane = world.pane(1, { job: [`opencode --standalone -s ${OSID}`], server: OC_SERVER, tools: ['sleep 300'] });
+    world.pane(3, { job: [`opencode --standalone -s ${OSID2}`], server: OC_SERVER });
     let result: unknown;
     const run = restTerminals(deps, { choices: { interruptAfterMs: 0 }, pollMs: 500, settleMs: 10_000 }).then((r) => { result = r; });
 
     await world.settle();
+    // OpenCode interrupts only on a second Escape within 5 s, and reads two in one write as one
     expect(world.log).toEqual(['keys %1 1b']);
+    await world.advance(199);
+    expect(world.log).toEqual(['keys %1 1b']);
+    await world.advance(1);
+    expect(world.log).toEqual(['keys %1 1b', 'keys %1 1b', 'keys %3 1b']);
+    await world.advance(200);
+    expect(world.log).toEqual(['keys %1 1b', 'keys %1 1b', 'keys %3 1b', 'keys %3 1b']);
     // unlike Claude Code, OpenCode reports the interrupted turn, so a command gone alone does not settle it
     delete pane.tools;
     await world.advance(500);
@@ -572,8 +584,8 @@ describe('restTerminals', () => {
     await world.advance(500);
     await run;
 
-    expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada' }] });
-    expect(world.log).toEqual(['keys %1 1b', 'detach c_ada', 'kill @1']);
+    expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada' }, { characterId: 'c_bo' }] });
+    expect(world.log.slice(4)).toEqual(['detach c_ada', 'detach c_bo', 'kill @1', 'kill @3']);
   });
 
   it('waits for an interrupt chosen for later than the wait would last, and interrupts then', async () => {

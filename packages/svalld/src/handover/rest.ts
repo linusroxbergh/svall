@@ -67,6 +67,8 @@ const SETTLE_MS = 10_000;
 const POLL_MS = 500;
 const CALL_TIMEOUT_MS = 10_000;
 const ESCAPE = Buffer.from('\x1b');
+// OpenCode interrupts on a second Escape within 5 s, and reads two in one write as one
+const ESCAPE_GAP_MS = 200;
 
 /** A protocol choice that names a character covers both of its terminals. */
 export function restChoices(c: HandoverChoices): RestChoices {
@@ -254,7 +256,9 @@ export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<Set
     }
     for (const { t, c, s } of steps) {
       if (s === 'interrupt' && c) {
-        await bounded('tmux send-keys', (signal) => deps.tmux.sendBytes(c.window.paneId, ESCAPE, signal));
+        const escape = () => bounded('tmux send-keys', (signal) => deps.tmux.sendBytes(c.window.paneId, ESCAPE, signal));
+        await escape();
+        if (c.agent?.kind === 'opencode') { await clock.sleep(ESCAPE_GAP_MS); await escape(); }
         t.interruptedAt = x.now;
       } else if (s === 'terminate' && c) {
         // an agent's tool commands and helpers run in groups and sessions of their own, so the job's group alone would leave them running
