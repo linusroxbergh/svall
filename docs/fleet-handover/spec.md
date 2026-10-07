@@ -535,8 +535,8 @@ visibly a new session and is never the automatic handover path.
 
 Global agent credentials, user-wide skills, MCP configuration and shell dotfiles are machine-local.
 OpenCode's data, config, state and cache folders (`~/.local/share/opencode`, `~/.config/opencode`,
-`~/.local/state/opencode`, `~/.cache/opencode`, and where `XDG_DATA_HOME`, `XDG_CONFIG_HOME`,
-`XDG_STATE_HOME` and `XDG_CACHE_HOME` put them on each machine) are machine-local whole: a handover never
+`~/.local/state/opencode`, `~/.cache/opencode`, and where the daemon's `XDG_DATA_HOME` and
+`XDG_CONFIG_HOME` put them on each machine) are machine-local whole: a handover never
 carries a root in or holding one, nor lands on one.
 Host doctor checks installation, login and hooks. Preflight reads the destination's agent logins
 afresh, and warns (`config_difference`) when an agent CLI the fleet runs is at different versions
@@ -939,7 +939,7 @@ honest remapped URL when its preferred local port is occupied.
 - Test case-colliding paths, symlinked cwds and a destination whose home path differs.
 - Keep real-session fixtures for Claude Code and Codex plus a live probe against the installed
   release; copy each unchanged and run its resume command in an isolated account with the same home
-  path.
+  path. OpenCode has neither; the container run's mock follows 2.0.22's export and import.
 - Test source changes during rsync and bounded stabilization retry.
 - Test protocol/release/adapter mismatch before freeze.
 - Integration-test local-to-Linux and Linux-to-local with two disposable machines or containers,
