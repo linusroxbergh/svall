@@ -3,7 +3,7 @@ import { openBeside, opensInside, type BrowserManager } from './browser.js';
 import { commitFocused } from './Field.js';
 import { chordOf, resolve, type KeyAction } from './keys.js';
 import { isTerminal, mainLeft, showBrowser, shows, toggleBrowserRight } from './panes.js';
-import { boardViewed, firstOfNextIsland, isVeiled, neighbor, panesOf, selectedOf } from './selectors.js';
+import { boardViewed, firstOfNextIsland, isVeiled, neighbor, panesOf, selectedOf, STARRED } from './selectors.js';
 import { canFill, zoomBy } from './settings.js';
 import type { AppState, AppStore } from './store/index.js';
 import { secondKey, viewedId } from './terminals.js';
@@ -37,11 +37,13 @@ function goTo({ store }: Deps, id?: string): void {
 // the character the keys act on: the selection on the map, the viewed one on the board
 const currentOf = (s: AppState): string | undefined => (s.view === 'map' ? (s.selectedId ?? s.card ?? selectedOf(s)) : boardViewed(s));
 
+const nextOf = (s: AppState, id: string | undefined, step: 1 | -1) => neighbor(s.fleet, id, step, !s.sections[STARRED]?.shut);
+
 export async function closeCharacter(ctx: Deps, id: string): Promise<void> {
   const s = ctx.store.getState();
   // closing the current character moves on first, so the removal patch never catches the terminal view without one
   if (id === currentOf(s)) {
-    const next = neighbor(s.fleet, id, 1);
+    const next = nextOf(s, id, 1);
     if (next && next.id !== id) goTo(ctx, next.id);
     else s.select(undefined);
   }
@@ -86,8 +88,8 @@ export async function dispatchKey(action: KeyAction, ctx: KeyDeps): Promise<void
       store.getState().setClosingCharacter(current);
       return;
     }
-    case 'prevCharacter': go(neighbor(f, current, -1)?.id); return;
-    case 'nextCharacter': go(neighbor(f, current, 1)?.id); return;
+    case 'prevCharacter': go(nextOf(s, current, -1)?.id); return;
+    case 'nextCharacter': go(nextOf(s, current, 1)?.id); return;
     case 'toggleView': commitFocused(); store.getState().setView(s.view === 'map' ? 'board' : 'map'); return;
     case 'toggleCardSize': if (s.view === 'map') store.getState().toggleCardSize(); return;
     case 'toggleSettings':

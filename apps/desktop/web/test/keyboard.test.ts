@@ -131,6 +131,19 @@ describe('dispatchKey', () => {
     await dispatchKey({ type: 'toggleView' }, c);
     expect(c.store.getState()).toMatchObject({ view: 'map', selectedId: 'c1' });
   });
+  it('walks a starred character on a collapsed island until the starred section folds', async () => {
+    const c = ctx();
+    const f = fleet();
+    f.characters.c1.star = 0;
+    f.islands.i_b.collapsed = true;
+    c.store.getState().setFleet(f);
+    c.store.getState().select('c2');
+    await dispatchKey({ type: 'nextCharacter' }, c);
+    expect(c.store.getState().selectedId).toBe('c1');
+    c.store.getState().setSection('sidebar.starred', { shut: true }, false);
+    await dispatchKey({ type: 'nextCharacter' }, c);
+    expect(c.store.getState().selectedId).toBe('c2');
+  });
   it('walks the whole fleet with the card open', async () => {
     const c = ctx();
     c.store.getState().focus('c0');
