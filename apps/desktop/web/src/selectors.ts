@@ -12,7 +12,7 @@ export const mapIslandsSorted = (f: FleetState): Island[] => mapIslands(f).sort(
 
 export const homeIsland = (f: FleetState): Island | undefined => Object.values(f.islands).find((i) => i.kind === 'home');
 
-// mission control's crew start with the home command, the main agent's unless config.json names another; anywhere
+// mission control's crew start with the home command, the main agent's unless fleet.json names another; anywhere
 // else a new character is a shell
 export const startOf = (f: FleetState, islandId: string): { command?: string } =>
   (f.islands[islandId]?.kind === 'home' ? { command: f.home.command } : {});

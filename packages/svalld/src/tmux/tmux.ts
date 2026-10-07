@@ -46,7 +46,7 @@ export type LiveWindow = {
   dead: boolean;
 };
 
-// `shell` is the one config.json names, whatever it is
+// `shell` is the one node.json names, whatever it is
 export function isShellCommand(command: string, shell?: string): boolean {
   const name = command.replace(/^-/, '');
   return SHELLS.has(name) || (!!shell && name === path.basename(shell));
