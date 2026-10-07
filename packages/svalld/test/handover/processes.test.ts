@@ -210,6 +210,23 @@ describe.each([
     expect(args(new ProcessTable(left).pane(65132)?.agent?.commands)).toEqual(['sleep 501', 'node /tmp/watch.js', 'tail -f log']);
   });
 
+  it("counts what runs in a terminal pane under the server's opencode-pty daemon as commands, an idle pane shell too, while an MCP server stays its own", () => {
+    const panes = [
+      ...pane,
+      row(76940, 66078, 76940, none, '/Users/ada/.cache/opencode/bin/opencode-pty daemon'),
+      row(76941, 76940, 76941, 76950, '/bin/zsh -l'),
+      row(76950, 76941, 76950, 76950, 'npm run dev'),
+      row(76951, 76950, 76950, 76950, 'node vite'),
+      row(76960, 76940, 76960, 76960, '/bin/zsh -l'),
+      row(76970, 66078, 76970, none, 'node /Users/ada/mcp/server.js'),
+    ];
+    const table = new ProcessTable(panes, installedScripts('/Users/ada/.svall'));
+    const p = table.pane(65132);
+    expect(args(p?.agent?.commands)).toEqual(['/bin/zsh -l', '/bin/zsh -l', 'npm run dev', 'node vite']);
+    // and terminating the terminal reaches them through the server
+    expect(table.tree(p?.foreground ?? []).map((r) => r.pid)).toEqual(expect.arrayContaining([76940, 76941, 76950, 76951, 76960]));
+  });
+
   it("finds the agent in npm's opencode.exe", () => {
     const npm = pane.map((r) => (r.pid === 66006 ? { ...r, args: '/usr/local/lib/node_modules/opencode-ai/bin/opencode.exe --standalone' } : r));
     expect(new ProcessTable(npm).pane(65132)?.agent).toMatchObject({ kind: 'opencode', pid: 66006, server: { pid: 66078 } });

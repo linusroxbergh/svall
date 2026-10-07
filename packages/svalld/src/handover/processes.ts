@@ -34,6 +34,8 @@ const AGENTS = new Set<string>(['claude', 'codex', 'opencode']);
 const PRIVATE_SERVER = /\sserve\s+--stdio(\s|$)/;
 // the user's one background OpenCode, which serves every session they open and is never a handover's to wait on or end
 const SHARED_SERVICE = /\sserve\s+--service(\s|$)/;
+// the daemon a private server runs its session's terminal panes under
+const PTY_DAEMON = /(^|\/)opencode-pty(\.exe)?(\s|$)/;
 // the start of the statusline wrapper that agent-hooks.ts statusWrapper writes
 const STATUS_WRAPPER = 'svall_status() {';
 const zombie = (p: Proc): boolean => p.stat.startsWith('Z');
@@ -106,8 +108,10 @@ export class ProcessTable {
     const groups = new Set([group, ...(server ? [server.pgid] : []), ...served.map((c) => c.pgid)]);
     const tree = new Set(this.tree([leader]));
     const strays = server ? [...this.byPid.values()].filter((p) => groups.has(p.pgid) && !tree.has(p) && !zombie(p) && !this.installed(p)) : [];
+    // a terminal pane's shell and its jobs are the user's work, an idle shell included
+    const panes = served.filter((c) => PTY_DAEMON.test(c.args)).flatMap((d) => this.tree(this.children.get(d.pid) ?? []));
     // a tool command leaves the terminal; an MCP server in a group of its own stays on it
-    const commands = [...children.filter((c) => c !== server && c.tpgid !== group), ...strays];
+    const commands = [...children.filter((c) => c !== server && c.tpgid !== group), ...strays, ...panes];
     return { kind: kind as AgentKind, pid: agent.pid, commands, ...(server && { server }) };
   }
 
