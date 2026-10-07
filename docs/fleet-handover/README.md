@@ -89,6 +89,7 @@ now `ledger/`, and `docs/superpowers/{specs,plans}/…fleet-handover…` is now 
 - Known load flakes; rerun them alone:
   - svalld `fleet.test.ts`: the revive tests, "marks the agent working", "deactivate timeout";
   - svalld e2e "two turns against a fake claude";
+  - svalld `terminals.test.ts` "seeds, streams to every viewer…" and "resumes a paused pane once viewers drained" (real tmux timing);
   - the `processes.test.ts` real-ps case and the `source.test.ts` FIFO timer;
   - cli `cli.test.ts` browser and `ssh.test.ts` spawn-count, `transfer.test.ts` "keeps a dropped link's partial copy";
   - web `e2e/ide.spec.ts:136`, `e2e/keys.spec.ts:3` and `e2e/card.spec.ts:122`.
