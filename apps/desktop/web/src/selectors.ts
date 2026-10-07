@@ -1,4 +1,4 @@
-import { byCell, byIslandOrder, type Character, type ContextItem, type FleetState, type Island } from '@svall/protocol';
+import { byCell, byIslandOrder, starredOf, type Character, type ContextItem, type FleetState, type Island } from '@svall/protocol';
 import { SINGLE, type Panes } from './panes.js';
 
 export type DisplayStatus = 'working' | 'idle' | 'blocked' | 'done' | 'shell';
@@ -47,10 +47,14 @@ export const stripOrder = (f: FleetState): Character[] => {
 
 const islandOf = (f: FleetState, id: string | undefined): Island | undefined => (id ? f.islands[f.characters[id]?.islandId ?? ''] : undefined);
 
-// the previous or next character across the whole fleet, in strip order, wrapping past collapsed islands
-export function neighbor(f: FleetState, id: string | undefined, step: 1 | -1): Character | undefined {
-  const all = stripOrder(f);
-  const open = (c: Character) => !f.islands[c.islandId]?.collapsed;
+export const STARRED = 'sidebar.starred';
+
+// the previous or next character in the sidebar's order: the starred while their section is open, then the rest by island,
+// wrapping past collapsed islands
+export function neighbor(f: FleetState, id: string | undefined, step: 1 | -1, starsOpen = false): Character | undefined {
+  const starred = starsOpen ? starredOf(f) : [];
+  const all = [...starred, ...stripOrder(f).filter((c) => !starred.includes(c))];
+  const open = (c: Character) => starred.includes(c) || !f.islands[c.islandId]?.collapsed;
   const i = all.findIndex((c) => c.id === id);
   if (i < 0) return all.find(open);
   const n = all.length;

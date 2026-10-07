@@ -46,6 +46,19 @@ describe('selectors', () => {
     expect(neighbor(f, 'c2', -1)).toBeUndefined();
     expect(firstOfNextIsland(f, undefined)).toBeUndefined();
   });
+  it('walks the starred first while their section is open, also off a collapsed island, and each character once', () => {
+    const f = fleet();
+    f.characters.c1.star = 0;
+    f.islands.i_b.collapsed = true;
+    expect(neighbor(f, undefined, 1, true)?.id).toBe('c1');
+    expect(neighbor(f, 'c1', 1, true)?.id).toBe('c2');
+    expect(neighbor(f, 'c2', 1, true)?.id).toBe('c1');
+    expect(neighbor(f, 'c2', 1)?.id).toBe('c2');
+    f.islands.i_b.collapsed = false;
+    expect(neighbor(f, 'c1', 1, true)?.id).toBe('c2');
+    expect(neighbor(f, 'c2', 1, true)?.id).toBe('c0');
+    expect(neighbor(f, 'c0', 1, true)?.id).toBe('c1');
+  });
   it('derives a display status', () => {
     expect(statusOf(chr('x', 'i', { x: 0, y: 0 }))).toBe('shell');
     expect(statusOf(chr('x', 'i', { x: 0, y: 0 }, { tmux: undefined, agent: { kind: 'claude', sessionId: 's', transcriptPath: 't', status: 'done', lastActivityAt: 0 } }))).toBe('done');

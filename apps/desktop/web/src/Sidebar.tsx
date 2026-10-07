@@ -6,7 +6,7 @@ import type { DropTarget } from './drop.js';
 import { useApp } from './hooks.js';
 import { characterMenu, islandMenu } from './menus.js';
 import { EyeGlyph, PrGlyph, reviewText } from './indicators.js';
-import { boardIsland, boardViewed, charactersOf, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, mainPr, statusOf, wantsUser } from './selectors.js';
+import { boardIsland, boardViewed, charactersOf, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, mainPr, STARRED, statusOf, wantsUser } from './selectors.js';
 
 // what a folded island would hide: the characters that want the user
 const attentionIn = (chars: Character[]): number => chars.filter(wantsUser).length;
@@ -18,7 +18,6 @@ const CHAR_DRAG = 'application/x-svall-character';
 const ISLAND_DRAG = 'application/x-svall-island';
 // a starred row dragged within its section; the islands below do not take it
 const STAR_DRAG = 'application/x-svall-star';
-const STARRED = 'sidebar.starred';
 
 const lowerHalf = (e: React.DragEvent) => { const r = e.currentTarget.getBoundingClientRect(); return e.clientY >= r.top + r.height / 2; };
 
