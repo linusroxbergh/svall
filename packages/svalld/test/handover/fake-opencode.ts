@@ -43,6 +43,8 @@ export function opencode(args: string[], env: NodeJS.ProcessEnv): Ran {
   if (words[0] === '--version') return { code: 0, stdout: '2.0.22\n', stderr: '' };
   if (words[0] === 'auth' && words[1] === 'list') return { code: 0, stdout: '0 credentials\n', stderr: '' };
   const sessions = held(env);
+  // a session command without --standalone goes through the user's shared service, which a handover never asks
+  if (words[0] === 'session' && !args.includes('--standalone')) return { code: 1, stdout: '', stderr: `the fake refuses ${args.join(' ')} without --standalone\n` };
   if (words[0] === 'session') {
     const [, verb, ...rest] = words;
     if (verb === 'export' || verb === 'delete') {

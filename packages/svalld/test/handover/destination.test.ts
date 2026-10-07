@@ -264,7 +264,7 @@ type Tamper = (m: TransferManifestV1) => void;
  * second terminal, file context and a file: tab, a Claude session, a Codex session, and a shell standing at the
  * home itself. `before` sets this machine up before anything lands.
  */
-async function scene(o: { tamper?: Tamper; before?: (s: { src: string; dst: string; base: string }) => void; land?: false; opencode?: true } = {}) {
+async function scene(o: { tamper?: Tamper; before?: (s: { src: string; dst: string; base: string }) => void; land?: false; opencode?: true | 'second' } = {}) {
   const base = fs.realpathSync(makeHome());
   const src = path.join(base, 'mac');
   const dst = path.join(base, 'home');
@@ -311,19 +311,21 @@ async function scene(o: { tamper?: Tamper; before?: (s: { src: string; dst: stri
     char('c_old', dst, { restedBy: 'tx-0', second: { cwd: dst, unread: false, revive: { command: '' } } }),
   ]) state.characters[c.id] = c;
 
-  // with `opencode`, eve's OpenCode session: the Mac's OpenCode holds it, and the Mac's fleet logs it and wrote it out
+  // with `opencode`, eve's OpenCode session, in her second terminal's own folder with 'second': the Mac's OpenCode holds
+  // it, and the Mac's fleet logs it and wrote it out
   const oc = { mac: fakeEnv(path.join(base, 'oc-mac')), trift: fakeEnv(path.join(base, 'oc-trift')), session: ocSession('/Users/ada/work/eve', ['remember PELICAN-42']) };
   const ocLogs = path.join(base, 'mac-svall/transcripts/opencode');
   if (o.opencode) {
-    fs.mkdirSync(path.join(dst, 'work/eve'), { recursive: true });
+    fs.mkdirSync(path.join(dst, 'work/eve/sub'), { recursive: true });
     fs.writeFileSync(path.join(dst, 'work/eve/plan.md'), 'eve\n');
     fs.mkdirSync(ocLogs, { recursive: true });
     fs.writeFileSync(path.join(ocLogs, `${OC}.jsonl`), `${JSON.stringify({ kind: 'user', text: 'remember PELICAN-42' })}\n`);
     hold(oc.mac, oc.session);
     await opencodeAdapter.exportSession!(OC, path.join(ocLogs, `exports/${OC}.json`), cliRunner(oc.mac), path.join(dst, 'work/eve'));
-    state.characters.c_eve = rested(char('c_eve', path.join(dst, 'work/eve'), {
-      agent: { kind: 'opencode', sessionId: OC, transcriptPath: path.join(ocLogs, `${OC}.jsonl`), status: 'idle', lastActivityAt: 0 }, revive: { command: `opencode -s ${OC}` },
-    }));
+    const terminal = {
+      agent: { kind: 'opencode' as const, sessionId: OC, transcriptPath: path.join(ocLogs, `${OC}.jsonl`), status: 'idle' as const, lastActivityAt: 0 }, revive: { command: `opencode -s ${OC}` },
+    };
+    state.characters.c_eve = rested(char('c_eve', path.join(dst, 'work/eve'), o.opencode === 'second' ? { second: { cwd: path.join(dst, 'work/eve/sub'), unread: false, ...terminal } } : terminal));
   }
 
   const agentHomes = { claude: path.join(dst, '.claude'), codex: path.join(dst, '.codex'), ...(o.opencode && { opencode: path.join(home, 'transcripts/opencode') }) };
@@ -460,6 +462,16 @@ describe('destination prepare', () => {
     d.gateway.commit(preparedDigest);
     const r = await d.handover.activate({ transactionId: TX, generation: 5 });
     expect(r.characters.find((c) => c.id === 'c_eve')).toEqual({ id: 'c_eve', ok: true });
+  });
+
+  it("imports a second terminal's OpenCode session in that terminal's own folder", async () => {
+    const s = await scene({ opencode: 'second' });
+    const asked: string[] = [];
+    const run = cliRunner(s.oc.trift);
+    await daemon(s, { cli: (cmd, args, o) => { asked.push([cmd, ...args].join(' ')); return run(cmd, args, o); } }).handover.prepare(params(s));
+    const sub = path.join(s.dst, 'work/eve/sub');
+    expect(asked.at(-1)!.startsWith(`opencode session import --standalone --directory ${sub} `)).toBe(true);
+    expect(held(s.oc.trift)[OC].info.location.directory).toBe(sub);
   });
 
   it('refuses to prepare while OpenCode has not imported the session, so nothing revives it with -s, and imports it once asked again', async () => {

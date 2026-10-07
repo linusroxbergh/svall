@@ -674,6 +674,18 @@ describe('OpenCode sessions', () => {
     for (const f of ['opencode.db', `exports/ses_111111111111AbCdEfGhIjKlMn.json`, `../${ID}.jsonl`]) expect(opencodeAdapter.carries(f, `${ID}.jsonl`, ID), f).toBe(false);
   });
 
+  it("refuses a session id that is not OpenCode's own, as one a peer's manifest names", async () => {
+    const logs = path.join(tmp(), '.svall/transcripts/opencode');
+    fs.mkdirSync(logs, { recursive: true });
+    for (const id of ['-x', 'x', 'ses_short']) {
+      fs.writeFileSync(path.join(logs, `${id}.jsonl`), turn('hi'));
+      await expect(opencodeAdapter.discover(path.join(logs, `${id}.jsonl`), id, fsOf), id).rejects.toMatchObject({ code: 'transcript_missing' });
+    }
+    for (const id of ['../x', '-x', 'x']) {
+      for (const f of [`${id}.jsonl`, `exports/${id}.json`]) expect(opencodeAdapter.carries(f, `${id}.jsonl`, id), f).toBe(false);
+    }
+  });
+
   it('writes a session out of the database its machine keeps by XDG_DATA_HOME, and finds a session it does not hold missing', async () => {
     const base = tmp();
     const [mac, other] = [side(base, 'mac'), side(base, 'other')];
@@ -746,6 +758,21 @@ describe('OpenCode sessions', () => {
     await expect(opencodeAdapter.checkSession!(ID, exported, work, linux.run)).rejects.toMatchObject({ code: 'destination_diverged' });
     await expect(readIn(exported, work, linux.run)).rejects.toMatchObject({ code: 'destination_diverged' });
     expect(held(linux.env)[ID]).toEqual(went);
+  });
+
+  it('refuses to replace a copy here that holds every message of the incoming one and more, and keeps it', async () => {
+    const base = tmp();
+    const [mac, linux] = [side(base, 'mac'), side(base, 'linux')];
+    const work = path.join(base, 'work');
+    fs.mkdirSync(work);
+    hold(mac.env, session(work, ['one', 'two']));
+    fs.writeFileSync(path.join(mac.logs, `${ID}.jsonl`), turn('one'));
+    const { exported } = await leaving(mac, linux, work, path.join(mac.logs, `${ID}.jsonl`));
+    const longer = session(work, ['one', 'two', 'three']);
+    hold(linux.env, longer);
+    await expect(opencodeAdapter.checkSession!(ID, exported, work, linux.run)).rejects.toMatchObject({ code: 'destination_diverged' });
+    await expect(readIn(exported, work, linux.run)).rejects.toMatchObject({ code: 'destination_diverged' });
+    expect(held(linux.env)[ID]).toEqual(longer);
   });
 
   it('names an OpenCode it cannot run apart from a session it does not hold', async () => {
