@@ -538,7 +538,9 @@ describe('a session arriving on the destination', () => {
     const meta = path.join(path.dirname(placed), CLAUDE[0].id, 'subagents', `${CLAUDE[0].agent}.meta.json`);
     fs.rmSync(meta);
     const before = fs.readFileSync(placed);
-    expect(() => installSession(claude, staged)).toThrow(expect.objectContaining({ code: 'destination_diverged' }));
+    expect(() => installSession(claude, staged)).toThrow(expect.objectContaining({
+      code: 'destination_diverged', message: `the destination's Claude Code went on with session ${CLAUDE[0].id} past the copy coming in: ${placed}`,
+    }));
     expect(fs.readFileSync(placed)).toEqual(before);
     expect(fs.existsSync(meta)).toBe(false);
   });
@@ -755,8 +757,9 @@ describe('OpenCode sessions', () => {
     // resumed there with a plain `opencode -s`, which Svall's log never saw
     const went = { ...session(work, ['one']), messages: [{ id: 'msg_0', text: 'one' }, { id: 'msg_x', text: 'asked by hand' }] };
     hold(linux.env, went);
-    await expect(opencodeAdapter.checkSession!(ID, exported, work, linux.run)).rejects.toMatchObject({ code: 'destination_diverged' });
-    await expect(readIn(exported, work, linux.run)).rejects.toMatchObject({ code: 'destination_diverged' });
+    const diverged = { code: 'destination_diverged', message: `the destination's OpenCode went on with session ${ID} past the copy coming in` };
+    await expect(opencodeAdapter.checkSession!(ID, exported, work, linux.run)).rejects.toMatchObject(diverged);
+    await expect(readIn(exported, work, linux.run)).rejects.toMatchObject(diverged);
     expect(held(linux.env)[ID]).toEqual(went);
   });
 
@@ -781,6 +784,14 @@ describe('OpenCode sessions', () => {
     await expect(opencodeAdapter.importSession!(ID, os.devNull, tmp(), run)).rejects.toMatchObject({ code: 'agent_cli_missing' });
   });
 
+  it('names an export file it cannot write as that, not as an OpenCode it cannot run', async () => {
+    const dir = tmp();
+    const sealed = path.join(dir, 'sealed');
+    fs.mkdirSync(sealed, { mode: 0o500 });
+    await expect(opencodeAdapter.exportSession!(ID, path.join(sealed, 'out.json'), cliRunner(fakeEnv(path.join(dir, 'oc'))), dir))
+      .rejects.toMatchObject({ code: 'transcript_missing', message: expect.stringContaining('EACCES') });
+  });
+
   it('gives up on an OpenCode still running at its deadline, saying so, and kills it soon after though it ignores SIGTERM', async () => {
     const dir = tmp();
     const bin = path.join(dir, 'bin');
@@ -788,17 +799,16 @@ describe('OpenCode sessions', () => {
     fs.mkdirSync(bin);
     fs.writeFileSync(path.join(bin, 'opencode'), `#!/bin/sh\ntrap '' TERM\necho $$ > ${shq(pidFile)}\nexec sleep 20\n`, { mode: 0o755 });
     const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    const pid = (): number => Number(fs.readFileSync(pidFile, 'utf8'));
     const started = Date.now();
-    let pid = 0;
     try {
       await expect(opencodeAdapter.exportSession!(ID, path.join(dir, 'out.json'), cliRunner({ ...process.env, PATH: `${bin}:${process.env.PATH}` }, 500), dir))
-        .rejects.toMatchObject({ message: expect.stringContaining('did not finish within 0.5 s') });
+        .rejects.toMatchObject({ code: 'transcript_missing', message: expect.stringContaining('did not finish within 0.5 s') });
       expect(Date.now() - started).toBeLessThan(2000);
-      pid = Number(fs.readFileSync(pidFile, 'utf8'));
-      expect(alive(pid)).toBe(true);
-      await vi.waitFor(() => expect(alive(pid)).toBe(false), { timeout: 5000, interval: 100 });
+      expect(alive(pid())).toBe(true);
+      await vi.waitFor(() => expect(alive(pid())).toBe(false), { timeout: 5000, interval: 100 });
     } finally {
-      if (pid) try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ }
+      try { process.kill(pid(), 'SIGKILL'); } catch { /* gone */ }
     }
   }, 15_000);
 

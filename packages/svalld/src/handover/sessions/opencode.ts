@@ -16,7 +16,12 @@ const said = (r: { stdout: string; stderr: string }): string => (r.stderr.trim()
 async function ask(run: CliRun, args: string[], o: { stdout?: string; cwd: string }): Promise<{ code: number; stdout: string; stderr: string }> {
   // a folder gone here would read as an OpenCode that cannot be run
   try { return await run('opencode', args, { ...o, cwd: fs.existsSync(o.cwd) ? o.cwd : os.homedir() }); } catch (e) {
-    throw new SessionError('agent_cli_missing', `OpenCode could not be run on this machine: ${(e as Error).message}`);
+    const err = e as NodeJS.ErrnoException;
+    // only OpenCode itself failing to start is a missing OpenCode; a file it could not write, or its deadline, is not
+    if ((err.code === 'ENOENT' || err.code === 'EACCES') && err.syscall?.startsWith('spawn')) {
+      throw new SessionError('agent_cli_missing', `OpenCode could not be run on this machine: ${err.message}`);
+    }
+    throw new SessionError('transcript_missing', `opencode ${args.slice(0, 2).join(' ')} failed: ${err.message}`);
   }
 }
 
@@ -53,7 +58,7 @@ async function heldCopy(sessionId: string, file: string, to: string, cwd: string
   const [held, incoming] = [ids(to), ids(file)];
   if (!incoming) throw new SessionError('transcript_missing', `the export of session ${sessionId} that came is not one OpenCode wrote`);
   if (!held || held.some((id, i) => incoming[i] !== id)) {
-    throw new SessionError('destination_diverged', `this machine's OpenCode went on with session ${sessionId} past the copy coming in`);
+    throw new SessionError('destination_diverged', `the destination's OpenCode went on with session ${sessionId} past the copy coming in`);
   }
   return true;
 }

@@ -7,7 +7,7 @@ import {
   type AgentKind, type AgentAdapter, type Blocker, type Character, type FleetState, type ResumeFolder, type TransferManifestV1, type TransferSession,
 } from '@svall/protocol';
 import { codexInstalled, hooksInstalled } from '../../agent-hooks.js';
-import { versionOk } from '../../agents.js';
+import { AGENTS, versionOk } from '../../agents.js';
 import { codexPaths } from '../../codex/install.js';
 import { opencodePaths } from '../../opencode/install.js';
 import { claudePaths, resolvePaths } from '../../paths.js';
@@ -87,7 +87,9 @@ export function installSession(session: TransferSession, staged: string, io: Ins
     if (held && !(held.length < data.length && data.subarray(0, held.length).equals(held))) { diverged.push(file); continue; }
     writes.push({ file, data });
   }
-  if (diverged.length) throw new SessionError('destination_diverged', `this machine continued session ${session.sessionId}: ${diverged.join(', ')}`);
+  if (diverged.length) {
+    throw new SessionError('destination_diverged', `the destination's ${AGENTS[session.agent].label} went on with session ${session.sessionId} past the copy coming in: ${diverged.join(', ')}`);
+  }
   // the transcript goes last, so a CLI that finds it finds everything beside it too
   for (const w of writes.sort((a, b) => Number(a.file === destinationPath) - Number(b.file === destinationPath))) {
     io.mkdir(path.dirname(w.file));
