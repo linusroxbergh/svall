@@ -178,11 +178,14 @@ export class HandoverService {
     return this.destination.claim(p);
   }
 
-  /** Each side finishes the journal it holds; with none, only a session stage a second controller's late transfer left there goes. */
+  /**
+   * Each side finishes the journal it holds; with none, it drops the session stage and seal record left here for a
+   * handover the gateway has let go. A quarantined journal leaves everything as it is.
+   */
   async complete(p: ParsedParams<'handover.complete'>): Promise<Result<'handover.complete'>> {
     const j = this.open();
     if (!j) {
-      await this.destination.dropStage(p.transactionId);
+      if (this.state.kind === 'none') await this.destination.dropStage(p.transactionId);
       return {};
     }
     this.match(p.transactionId, p.generation);

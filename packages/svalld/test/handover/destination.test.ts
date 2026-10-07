@@ -2522,6 +2522,30 @@ describe('destination complete', () => {
     expect(roots.map((r) => fs.readFileSync(s.paths.replicaRecord(fleetId, r.path), 'utf8'))).toEqual(sealed);
     expect(d.ownership.writable()).toBe(true);
   });
+
+  it('leaves its roots, seal record and session stage alone on a Complete while its journal is quarantined, though the gateway let the handover go', async () => {
+    const s = await scene();
+    const d = daemon(s);
+    const { preparedDigest } = await d.handover.prepare(params(s));
+    d.gateway.commit(preparedDigest);
+    await d.handover.activate({ transactionId: TX, generation: 5 });
+    const late = path.join(s.paths.sessionStage(TX, 0), s.manifest.sessions[0].files[0].path);
+    fs.mkdirSync(path.dirname(late), { recursive: true });
+    fs.writeFileSync(late, 'a late copy\n');
+    fs.writeFileSync(s.paths.journal, '{ not json');
+    const restarted = d.start();
+    expect(restarted.handover.journalState().kind).toBe('quarantined');
+    const roots = replicaRoots(s.manifest);
+    const records = () => roots.map((r) => fs.readFileSync(s.paths.replicaRecord(fleetId, r.path), 'utf8'));
+    const before = records();
+    const seal = fs.readFileSync(s.paths.replicaSeal(TX), 'utf8');
+
+    d.gateway.record = { fleetId, generation: 5, ownerMachineId: trift };
+    expect(await restarted.handover.complete({ transactionId: TX, generation: 5 })).toEqual({});
+    expect(records()).toEqual(before);
+    expect(fs.readFileSync(s.paths.replicaSeal(TX), 'utf8')).toBe(seal);
+    expect(fs.existsSync(late)).toBe(true);
+  });
 });
 
 describe("a moved fleet's docs and agent profiles", () => {
