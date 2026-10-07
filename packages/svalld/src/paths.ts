@@ -47,6 +47,7 @@ export function resolvePaths(home: string = svallHome()) {
     docs: path.join(home, 'docs'),
     agentProfiles: path.join(home, 'agent-profiles'),
     trash: path.join(home, 'trash'),
+    opencodeConfig: path.join(home, 'opencode-config'),
   };
 }
 export type Paths = ReturnType<typeof resolvePaths>;

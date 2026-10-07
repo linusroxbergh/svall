@@ -27,6 +27,7 @@ import { blockedCells, crewOf, defaultPosition, freePosition, occupiedCells, pla
 import { refreshLinks, type Deps as LinkDeps } from './links/refresh.js';
 import type { Logger } from './log.js';
 import { randomName } from './names.js';
+import { linkOpencodeConfig, opencodePaths } from './opencode/install.js';
 import { expandHome, type Paths } from './paths.js';
 import { SHIM } from './profile.js';
 import { reconcile, secondName, snapshot } from './reconcile.js';
@@ -364,7 +365,15 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   private charEnv(id: string, extra: Record<string, string> = {}): Record<string, string> {
-    return { ...characterKeyEnv(this.deps.paths.env), SVALL_CHAR_ID: id, SVALL_HOME: this.deps.paths.home, ...extra };
+    return { ...characterKeyEnv(this.deps.paths.env), SVALL_CHAR_ID: id, SVALL_HOME: this.deps.paths.home, ...this.opencodeEnv(), ...extra };
+  }
+
+  private opencodeEnv(): Record<string, string> {
+    if (!(this.deps.config.integrations?.includes('opencode') ?? true)) return {};
+    try { return { OPENCODE_CONFIG_DIR: linkOpencodeConfig(this.deps.paths.opencodeConfig, opencodePaths()) }; } catch (e) {
+      this.deps.log.error(`opencode config: ${(e as Error).message}`);
+      return {};
+    }
   }
 
   private promptFile(id: string): string {
