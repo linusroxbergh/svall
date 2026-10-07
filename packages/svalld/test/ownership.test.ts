@@ -265,6 +265,15 @@ describe('the mutation fence', () => {
     }
   });
 
+  it('refuses starring a character, and unstarring one, on an inactive replica and while frozen', async () => {
+    for (const [o, code] of [[inactive(), 'not_owner'], [await frozen(), 'frozen']] as const) {
+      for (const method of ['char.star', 'char.unstar'] as const) {
+        const res = await call(o, method);
+        expect('error' in res && res.error.code, method).toBe(code);
+      }
+    }
+  });
+
   it('takes a forced record only from a client that said the token, on a replica and a frozen fleet alike', async () => {
     const phone = { kind: 'phone' as const, login: 'me@example.com', send: () => {}, backlog: () => 0 };
     for (const o of [inactive(), await frozen()]) {
