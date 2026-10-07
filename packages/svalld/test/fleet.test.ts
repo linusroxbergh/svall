@@ -1,4 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -742,6 +743,28 @@ runIf('Fleet', () => {
     expect(again.store.state.characters[c.id].tmux).toBeDefined();
     expect(typed).toHaveLength(1);
     expect(fs.readFileSync(path.join(again.home, `${c.id}.prompt`), 'utf8')).toBe(RESUME_NOTE);
+  });
+
+  it('leaves an agent whose monitors a quit stopped dormant on a frozen fleet and while an open handover carries it', async () => {
+    const b = await boot();
+    const { c } = await withAgent(b);
+    b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'PostToolUse', sessionId: SID, toolName: 'Monitor', monitor: 'b1' } });
+    b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Stop', sessionId: SID, backgroundTasks: 1, backgroundShells: ['b1'] } });
+    expect(b.store.state.characters[c.id].agent).toMatchObject({ status: 'done', monitors: ['b1'] });
+    await b.fleet.stopAll();
+    expect(b.store.state.characters[c.id].revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
+
+    const typed: string[] = [];
+    const carried = await boot({ opening: true, state: structuredClone(b.store.state) });
+    carried.fleet.carries((id) => id === c.id);
+    const frozen = await boot({ opening: true, state: structuredClone(b.store.state) });
+    await frozen.ownership.freeze({ id: 'tx-1', fromMachineId: MachineId.parse(crypto.randomUUID()), toMachineId: MachineId.parse(crypto.randomUUID()), phase: 'preparing', startedAt: 1 });
+    for (const f of [carried, frozen]) {
+      vi.spyOn(f.tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
+      await f.fleet.resumeInterrupted();
+      expect(f.store.state.characters[c.id].tmux).toBeUndefined();
+    }
+    expect(typed).toEqual([]);
   });
 
   it('has every change on disk once it has stopped', async () => {
