@@ -781,6 +781,27 @@ describe('OpenCode sessions', () => {
     await expect(opencodeAdapter.importSession!(ID, os.devNull, tmp(), run)).rejects.toMatchObject({ code: 'agent_cli_missing' });
   });
 
+  it('gives up on an OpenCode still running at its deadline, saying so, and kills it soon after though it ignores SIGTERM', async () => {
+    const dir = tmp();
+    const bin = path.join(dir, 'bin');
+    const pidFile = path.join(dir, 'pid');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, 'opencode'), `#!/bin/sh\ntrap '' TERM\necho $$ > ${shq(pidFile)}\nexec sleep 20\n`, { mode: 0o755 });
+    const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    const started = Date.now();
+    let pid = 0;
+    try {
+      await expect(opencodeAdapter.exportSession!(ID, path.join(dir, 'out.json'), cliRunner({ ...process.env, PATH: `${bin}:${process.env.PATH}` }, 500), dir))
+        .rejects.toMatchObject({ message: expect.stringContaining('did not finish within 0.5 s') });
+      expect(Date.now() - started).toBeLessThan(2000);
+      pid = Number(fs.readFileSync(pidFile, 'utf8'));
+      expect(alive(pid)).toBe(true);
+      await vi.waitFor(() => expect(alive(pid)).toBe(false), { timeout: 5000, interval: 100 });
+    } finally {
+      if (pid) try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ }
+    }
+  }, 15_000);
+
   it('runs the CLI where it is told, or in the home, never the daemon\'s folder, and without the variables that make Svall\'s hooks act', async () => {
     const env = { ...process.env, SVALL_CHAR_ID: 'c_ada', SVALL_TERM: '2', KEPT: 'yes' };
     const printed = (await cliRunner(env)('env', [])).stdout;

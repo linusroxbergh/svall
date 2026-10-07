@@ -174,14 +174,18 @@ const runAgent = (timeoutMs = 10_000): AgentRun => (cmd, args) => new Promise((r
   });
 });
 
+// how long a CLI sent SIGTERM at its deadline has before SIGKILL
+const KILL_GRACE = 2000;
+
 /**
  * Runs an agent CLI with this daemon's env, which places its files as the agents it starts find them, less the
- * variables that would make Svall's own hooks take the run for a character's, in the home unless told where.
+ * variables that would make Svall's own hooks take the run for a character's, in the home unless told where. One
+ * still running at `timeoutMs` is sent SIGTERM, then SIGKILL, and the run rejects at once.
  */
 export const cliRunner = (env: NodeJS.ProcessEnv = process.env, timeoutMs = 120_000): CliRun => (cmd, args, o = {}) => new Promise((resolve, reject) => {
   const { SVALL_CHAR_ID: _id, SVALL_TERM: _term, ...rest } = env;
   const out = o.stdout === undefined ? 'pipe' : fs.openSync(o.stdout, 'w', 0o600);
-  const child = spawn(cmd, args, { env: rest, cwd: o.cwd ?? os.homedir(), stdio: ['ignore', out, 'pipe'], timeout: timeoutMs });
+  const child = spawn(cmd, args, { env: rest, cwd: o.cwd ?? os.homedir(), stdio: ['ignore', out, 'pipe'] });
   if (typeof out === 'number') fs.closeSync(out);
   const read = (s: NodeJS.ReadableStream | null): (() => string) => {
     const chunks: Buffer[] = [];
@@ -189,8 +193,19 @@ export const cliRunner = (env: NodeJS.ProcessEnv = process.env, timeoutMs = 120_
     return () => Buffer.concat(chunks).toString('utf8');
   };
   const [stdout, stderr] = [read(child.stdout), read(child.stderr)];
-  child.on('error', reject);
-  child.on('close', (code) => resolve({ code: code ?? -1, stdout: stdout(), stderr: stderr() }));
+  let killer: NodeJS.Timeout | undefined;
+  const timer = setTimeout(() => {
+    child.kill('SIGTERM');
+    killer = setTimeout(() => child.kill('SIGKILL'), KILL_GRACE);
+    killer.unref();
+    reject(new Error(`${cmd} did not finish within ${timeoutMs / 1000} s`));
+  }, timeoutMs);
+  child.on('error', (e) => { clearTimeout(timer); reject(e); });
+  child.on('close', (code) => {
+    clearTimeout(timer);
+    clearTimeout(killer);
+    resolve({ code: code ?? -1, stdout: stdout(), stderr: stderr() });
+  });
 });
 
 export const realProbeDeps = (): ProbeDeps => ({
