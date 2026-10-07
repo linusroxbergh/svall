@@ -187,6 +187,40 @@ runIf('Fleet', () => {
     expect((await tmux.listWindows()).find((w) => w.name === `${c.id}-2`)?.path).toBe(dir);
   });
 
+  it('lets a second terminal go with its window once a poll has seen its OpenCode, which sends no SessionEnd, quit to the shell', async () => {
+    // one poll in a second, so the exit lands before a second poll would let the agent go
+    const { fleet, store, tmux } = await boot({ pollMs: 1000 });
+    const island = fleet.createIsland({ name: 'quit' });
+    const quitThenExit = async (id: string) => {
+      await fleet.openSecond(id);
+      const paneId = store.state.characters[id].second!.tmux!.paneId;
+      store.update((d) => { d.characters[id].second!.agent = { kind: 'opencode', sessionId: OSID, transcriptPath: '/t', status: 'idle', lastActivityAt: 1 }; });
+      await waitForPolls(fleet, 1);
+      await tmux.run('send-keys', '-t', paneId, 'exit', 'Enter');
+      await waitFor(() => store.state.characters[id].second === undefined);
+    };
+    // the control client hears the window close
+    await quitThenExit((await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' })).id);
+    // the poll finds it gone
+    await fleet['link'].stop();
+    await quitThenExit((await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' })).id);
+  });
+
+  it('keeps a second terminal whose OpenCode still held its pane when the window was killed, to be revived', async () => {
+    const { fleet, store, tmux } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'held' }).id, cwd: '/tmp' });
+    await fleet.openSecond(c.id);
+    const { windowId, paneId } = store.state.characters[c.id].second!.tmux!;
+    // what holds the pane in OpenCode's place
+    await tmux.sendLine(paneId, 'sleep 30', true);
+    await waitFor(async () => (await tmux.listWindows()).find((w) => w.paneId === paneId)?.command === 'sleep');
+    store.update((d) => { d.characters[c.id].second!.agent = { kind: 'opencode', sessionId: OSID, transcriptPath: '/t', status: 'idle', lastActivityAt: 1 }; });
+    await waitForPolls(fleet, 1);
+    await tmux.killWindow(windowId);
+    await waitFor(() => store.state.characters[c.id].second?.tmux === undefined);
+    expect(store.state.characters[c.id].second?.revive).toEqual({ command: `opencode -s ${OSID}` });
+  });
+
   it('arranges the fleet into legal ground and leaves mission control under it', async () => {
     const { fleet, store } = await boot();
     const a = fleet.createIsland({ name: 'one', position: { x: 0, y: 0 }, size: { w: 12, h: 9 } });

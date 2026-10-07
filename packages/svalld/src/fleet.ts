@@ -92,7 +92,7 @@ export class Fleet extends EventEmitter<Events> {
     this.sleep = { store, tmux: deps.tmux, log, processes: deps.processes ?? processes, ending: this.ending };
     const writable = () => this.writable();
     const track = (work: Promise<unknown>, what: string) => this.track(work, what);
-    this.link = new ControlLink({ store, tmux: deps.tmux, log, events: this, reconcile: () => this.reconcileNow(), writable, track });
+    this.link = new ControlLink({ store, tmux: deps.tmux, log, events: this, reconcile: () => this.reconcileNow(), writable, track, atShell: (key) => this.poll.atShell(key) });
     this.poll = new Poll({
       ...deps, scribe: this.scribe, listWindows: () => this.listWindows(), endIdleAgents: () => this.endIdleAgents(),
       writable, carried: (id, term) => this.carried(id, term), resuming: this.resuming, ending: this.ending, track,

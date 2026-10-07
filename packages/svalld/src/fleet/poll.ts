@@ -82,6 +82,11 @@ export class Poll {
     this.codexStreak.delete(id);
   }
 
+  /** Whether the last poll saw the agent in window `key` quit to its shell's prompt, with no resume there waiting on its session. */
+  atShell(key: string): boolean {
+    return this.shellStreak.has(key) && !this.deps.resuming.has(key);
+  }
+
   private async tick(): Promise<void> {
     if (!this.deps.writable()) return;
     const before = snapshot(this.deps.store.state);
@@ -121,7 +126,7 @@ export class Poll {
     this.deps.store.update((d) => {
       for (const c of Object.values(d.characters)) {
         const cwd = c.cwd;
-        const w = syncWindow(c, byName, before, { carried: this.deps.carried, settle: settleAgent });
+        const w = syncWindow(c, byName, before, { carried: this.deps.carried, settle: settleAgent, atShell: (key) => this.atShell(key) });
         if (c.cwd !== cwd) cwdChanged.push(c.id);
         if (!w) continue;
         // Codex should report promptly; three polls without an event means delivery needs attention.
@@ -135,6 +140,8 @@ export class Poll {
         }
       }
     });
+    // what a poll saw in a window says nothing of the next window opened under its name
+    for (const key of this.shellStreak.keys()) if (!byName.has(key)) this.shellStreak.delete(key);
     for (const { key, windowId, error } of closing) {
       this.deps.log.error(error);
       const done: Promise<void> = this.deps.tmux.killWindow(windowId).finally(() => { if (this.deps.ending.get(key) === done) this.deps.ending.delete(key); });

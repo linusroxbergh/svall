@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SIZE, HOME_ISLAND, HOME_SEED, cellKey, crewGrid, emptyState, homeSizeFor, isLand, landCells, type Cell, type Character, type Island } from '@svall/protocol';
+import { DEFAULT_SIZE, HOME_ISLAND, HOME_SEED, cellKey, crewGrid, emptyState, homeSizeFor, isLand, landCells, type AgentKind, type Cell, type Character, type Island } from '@svall/protocol';
 import { markDormant, reviveCommand } from '../src/dormancy.js';
 import { aboveHome, placeOnIsland, placementOk, trimHome } from '../src/layout.js';
-import { RECOVERED_ISLAND, reconcile, snapshot } from '../src/reconcile.js';
+import { RECOVERED_ISLAND, reconcile, snapshot, syncWindow } from '../src/reconcile.js';
 import type { LiveWindow } from '../src/tmux/tmux.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
+const OSID = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
 const live = (name: string, windowId = '@1', paneId = '%1'): LiveWindow =>
   ({ windowId, paneId, panePid: 100, name, command: 'zsh', path: '/repo', activity: 1000, dead: false });
 
@@ -207,6 +208,19 @@ describe('reconcile', () => {
       agent: { kind: 'codex', sessionId: SID, status: 'idle', lastActivityAt: 0 },
       revive: { command: `codex resume -c tui.resume_cwd=session ${SID}` },
     });
+  });
+
+  it('lets an OpenCode second terminal last seen at its shell go with its window; a Claude or Codex one, and a main terminal, stay dormant', () => {
+    const agent = (kind: AgentKind) => ({ kind, sessionId: kind === 'opencode' ? OSID : SID, status: 'idle' as const, lastActivityAt: 0 });
+    const gone = (kind: AgentKind) => {
+      const c = char({ tmux: { windowId: '@1', paneId: '%1' }, agent: agent(kind), second: { cwd: '/side', tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: agent(kind) } });
+      syncWindow(c, new Map(), snapshot({ ...emptyState(), characters: { c_a: c } }), { atShell: () => true });
+      return c;
+    };
+    expect(gone('opencode').second).toBeUndefined();
+    expect(gone('opencode').revive).toEqual({ command: `opencode -s ${OSID}` });
+    expect(gone('claude').second?.revive).toEqual({ command: `claude --resume ${SID}` });
+    expect(gone('codex').second?.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session ${SID}` });
   });
 
   it('keeps the resume command of a terminal a handover has yet to start when it finds the window opened for it', () => {

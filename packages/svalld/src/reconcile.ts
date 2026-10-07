@@ -30,13 +30,13 @@ export type Carried = (id: string, term?: 2) => boolean;
 type Settle = (key: string, slot: TerminalSlot, command: string, carried: boolean, dormant: (s: TerminalSlot) => void) => void;
 
 // without `adoptCarried`, as in the poll, a dormant terminal a handover has yet to start is the handover's to open,
-// whatever window is listed for it
-type Sync = { carried?: Carried; adoptCarried?: boolean; settle?: Settle };
+// whatever window is listed for it. `atShell` says, by window name, whether the last poll saw the agent quit to its shell
+type Sync = { carried?: Carried; adoptCarried?: boolean; settle?: Settle; atShell?: (key: string) => boolean };
 
 /** Matches a character's second terminal, main window and pane directory to a listing taken after `before`; a slot the
  *  fleet changed while tmux answered is left as it stands. Returns the main window the character stands on, when listed. */
 export function syncWindow(c: Character, byName: ReadonlyMap<string, LiveWindow>, before: Before, o: Sync = {}): LiveWindow | undefined {
-  const { carried = () => false, adoptCarried = false, settle } = o;
+  const { carried = () => false, adoptCarried = false, settle, atShell } = o;
   const was = before.get(c.id);
   if (was?.second === c.second?.tmux?.windowId) {
     const w2 = byName.get(secondName(c.id));
@@ -47,7 +47,7 @@ export function syncWindow(c: Character, byName: ReadonlyMap<string, LiveWindow>
         settle?.(secondName(c.id), c.second, w2.command, held, (s) => markSlotDormant(s));
       }
     } else if (c.second?.tmux) {
-      loseSecond(c);
+      loseSecond(c, undefined, atShell?.(secondName(c.id)));
     }
   }
   if (was?.main !== c.tmux?.windowId) return undefined;

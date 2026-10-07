@@ -1,6 +1,7 @@
 import type { EventEmitter } from 'node:events';
 import { loseSecond, markDormant } from '../dormancy.js';
 import type { Logger } from '../log.js';
+import { secondName } from '../reconcile.js';
 import type { Store } from '../store.js';
 import type { ControlClient } from '../tmux/control.js';
 import type { Tmux } from '../tmux/tmux.js';
@@ -16,6 +17,8 @@ export type PaneEvents = {
 type Deps = {
   store: Store; tmux: Tmux; log: Logger; events: Pick<EventEmitter<PaneEvents>, 'emit'>; reconcile: () => Promise<void>;
   writable: () => boolean; track: (work: Promise<unknown>, what: string) => void;
+  // whether the last poll saw the agent in a window, by name, quit to its shell
+  atShell: (key: string) => boolean;
 };
 
 /** The fleet's tmux control client: pane output for the terminals, windows that close, and a client attached afresh
@@ -98,7 +101,7 @@ export class ControlLink {
     const id = this.charByWindow(windowId);
     if (id) { this.deps.store.update((d) => { const ch = d.characters[id]; if (ch) markDormant(ch); }); return; }
     const owner = Object.values(this.deps.store.state.characters).find((ch) => ch.second?.tmux?.windowId === windowId)?.id;
-    if (owner) this.deps.store.update((d) => { const ch = d.characters[owner]; if (ch) loseSecond(ch); });
+    if (owner) this.deps.store.update((d) => { const ch = d.characters[owner]; if (ch) loseSecond(ch, undefined, this.deps.atShell(secondName(owner))); });
   }
 
   // a stop at any step ends the recovery there, or it would start the server the stop just ended

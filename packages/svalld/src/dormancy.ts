@@ -4,6 +4,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { DORMANT_AFTER_HOURS, isSessionId, type Agent, type AgentKind, type Character, type TerminalSlot } from '@svall/protocol';
 import { running, settle } from './agent/reducer.js';
+import { hooksFor } from './hooks/receiver.js';
 import type { Logger } from './log.js';
 import type { Store } from './store.js';
 import { shq } from './text.js';
@@ -43,9 +44,11 @@ export function markDormant(c: Character, flags?: string[]): void {
   if (interrupted && c.revive?.command) c.revive.interrupted = true;
 }
 
-// a plain side shell goes with its window; a second that ran an agent stays behind to be revived
-export function loseSecond(c: Character, flags?: string[]): void {
-  if (c.second?.agent) markSlotDormant(c.second, flags);
+// a plain side shell goes with its window; a second that ran an agent stays behind to be revived, unless the agent
+// sends no SessionEnd and the last poll saw it quit `atShell`
+export function loseSecond(c: Character, flags?: string[], atShell = false): void {
+  const a = c.second?.agent;
+  if (a && !(atShell && !hooksFor(a.kind).includes('SessionEnd'))) markSlotDormant(c.second!, flags);
   else delete c.second;
 }
 
