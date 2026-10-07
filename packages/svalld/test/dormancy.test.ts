@@ -28,6 +28,7 @@ describe('drowsy', () => {
     expect(drowsy(char({ agent: agent({ status: 'working' }) }), late, HOUR)).toBe(false);
     expect(drowsy(char({ agent: agent({ status: 'blocked' }) }), late, HOUR)).toBe(false);
     expect(drowsy(char({ agent: agent({ status: 'done', background: true }) }), late, HOUR)).toBe(false);
+    expect(drowsy(char({ agent: agent({ status: 'done', monitors: ['b1'] }) }), late, HOUR)).toBe(false);
     expect(drowsy(char({ unread: true }), late, HOUR)).toBe(false);
     expect(drowsy(char({ agent: agent({ status: 'idle', prompt: "You've hit your limit · resets 9pm" }) }), late, HOUR)).toBe(false);
   });
@@ -155,5 +156,12 @@ describe('markDormant', () => {
       markDormant(c);
       expect(c.revive).toEqual({ command: `claude --resume ${SID}` });
     }
+  });
+  it('marks an agent whose monitors were still watching interrupted, and forgets them', () => {
+    const c = char({ agent: agent({ status: 'done', monitors: ['b1'] }) });
+    markDormant(c);
+    expect(c.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
+    expect(c.agent).toMatchObject({ status: 'done' });
+    expect(c.agent?.monitors).toBeUndefined();
   });
 });

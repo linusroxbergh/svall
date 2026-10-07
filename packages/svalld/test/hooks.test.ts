@@ -136,6 +136,14 @@ describe('normalizeHook', () => {
     expect(stop([])?.backgroundTasks).toBe(0);
     expect(stop('junk')?.backgroundTasks).toBeUndefined();
   });
+  it("names the background shells at Stop, and the task a Monitor started, which Claude Code lists as a shell", () => {
+    const stop = normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Stop', background_tasks: [{ id: 'a1', type: 'subagent' }, { id: 'b1', type: 'shell' }, { type: 'shell' }] } });
+    expect(stop).toMatchObject({ backgroundTasks: 3, backgroundShells: ['b1'] });
+    const started = (hook_event_name: string, tool_name: string) => normalizeHook({ charId: 'c_1', hook: { hook_event_name, tool_name, task_id: 'b1' } })?.monitor;
+    expect(started('PostToolUse', 'Monitor')).toBe('b1');
+    expect(started('PostToolUse', 'Bash')).toBeUndefined();
+    expect(started('PreToolUse', 'Monitor')).toBeUndefined();
+  });
   it('drops subagent events, unknown events and malformed input', () => {
     expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Stop', agent_id: 'sub' } })).toBeUndefined();
     expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'SubagentStop' } })).toBeUndefined();
@@ -367,6 +375,22 @@ describe.each(runners)('$name', (run) => {
     });
     await waitFor(() => events.length === 1);
     expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'codex', name: 'PermissionRequest', sessionId: SID, message: 'remove the build folder', toolName: 'Bash' } });
+    await r.close();
+  });
+
+  it('hands on the task a Monitor started, which its payload keeps inside tool_response', async () => {
+    const home = makeHome();
+    const events: SocketEvent[] = [];
+    const r = await startHookReceiver(path.join(home, 'hooks.sock'), (e) => { events.push(e); }, silentLogger);
+    await new Promise<void>((resolve, reject) => {
+      const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+      p.stdin!.end(JSON.stringify({
+        hook_event_name: 'PostToolUse', session_id: SID, tool_name: 'Monitor',
+        tool_input: { command: 'tail -f log', description: 'log' }, tool_response: { taskId: 'b9x', timeoutMs: 0, persistent: true },
+      }));
+    });
+    await waitFor(() => events.length === 1);
+    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'claude', name: 'PostToolUse', sessionId: SID, toolName: 'Monitor', monitor: 'b9x' } });
     await r.close();
   });
 

@@ -33,6 +33,10 @@ export type HookEvent = {
   backgroundTasks?: number;
   // the background agents and workflows among them, the only ones that can ask a question
   backgroundAgents?: number;
+  // the task ids of the background shells among them, which take in the session's monitors
+  backgroundShells?: string[];
+  // the task a Monitor tool call started
+  monitor?: string;
   // the Claude Code subagent the event came from
   agentId?: string;
   // the tool a tool or permission event is about
@@ -90,6 +94,9 @@ const AGENT_TASKS = new Set(['subagent', 'workflow']);
 const WORKING_TASKS = new Set([...AGENT_TASKS, 'shell']);
 const count = (v: unknown, types: Set<string>): number | undefined =>
   Array.isArray(v) ? v.filter((t) => types.has((t as { type?: unknown } | null)?.type as string)).length : undefined;
+const shellIds = (v: unknown): string[] | undefined => Array.isArray(v)
+  ? v.flatMap((t) => { const { type, id } = (t ?? {}) as { type?: unknown; id?: unknown }; return type === 'shell' && typeof id === 'string' ? [id.slice(0, 64)] : []; })
+  : undefined;
 
 export function normalizeStatus(raw: unknown): StatusEvent | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
@@ -147,6 +154,10 @@ export function normalizeHook(raw: unknown): HookEvent | undefined {
   if (toolName) ev.toolName = toolName.slice(0, 200);
   if (tasks !== undefined) ev.backgroundTasks = tasks;
   if (agents !== undefined) ev.backgroundAgents = agents;
+  const shells = shellIds(h.background_tasks);
+  if (shells) ev.backgroundShells = shells;
+  const monitor = ev.name === 'PostToolUse' && toolName === 'Monitor' ? str(h.task_id) : undefined;
+  if (monitor) ev.monitor = monitor.slice(0, 64);
   if (ev.name === 'UserPromptSubmit') {
     const submitted = prompt(h);
     if (submitted) ev.prompt = submitted;

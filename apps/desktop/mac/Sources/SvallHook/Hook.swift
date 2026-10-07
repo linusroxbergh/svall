@@ -2,7 +2,7 @@ import Darwin
 
 // MARK: agent-hook.mjs
 
-let KEEP = ["hook_event_name", "agent_id", "session_id", "transcript_path", "notification_type", "message", "background_tasks", "cwd", "model", "prompt", "prompt_id", "turn_id", "tool_name"]
+let KEEP = ["hook_event_name", "agent_id", "session_id", "transcript_path", "notification_type", "message", "background_tasks", "cwd", "model", "prompt", "prompt_id", "turn_id", "tool_name", "task_id"]
 let WAITS = [text("SessionStart"), text("UserPromptSubmit")]
 let ONCE = [text("PreToolUse"), text("PostToolUse"), text("PostToolUseFailure")]
 let RETRIES = 8
@@ -29,9 +29,14 @@ func hookLine(_ h: JSON, charId: Text, term: Bool, backend: String, pid: Double?
         let last = h["last_assistant_message"]
         if let said = ((last?.truthy ?? false) ? last : h["error"])?.string, !said.isEmpty { message = .string(Array(said.prefix(500))) }
     }
+    // a Monitor's task is listed at Stop as a shell like any other, so the id it started is what tells them apart
+    var taskId = h["task_id"]
+    if event == text("PostToolUse") && h["tool_name"]?.string == text("Monitor"), case .string? = h["tool_response"]?["taskId"] {
+        taskId = h["tool_response"]?["taskId"]
+    }
     var hook: [(key: Text, value: JSON)] = []
     for k in KEEP {
-        guard var v = k == "message" ? message : h[k] else { continue }
+        guard var v = k == "message" ? message : k == "task_id" ? taskId : h[k] else { continue }
         if k == "prompt", case .string(let s) = v { v = .string(Array(s.prefix(4000))) }
         hook.append((text(k), v))
     }

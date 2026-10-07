@@ -86,8 +86,16 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
   // the hook carries the prompt before the transcript holds it, so this is the newest one there is
   if (e.prompt && (!e.sessionId || e.sessionId === next.agent.sessionId)) next.agent.lastPrompt = { ...e.prompt, at: now };
   const agent = next.agent;
+  if (e.monitor) agent.monitors = [...(agent.monitors ?? []), e.monitor].slice(-20);
+  // the session's monitors are listed among its shells but watch on without a turn; one the list lacks is over
+  let tasks = e.backgroundTasks;
+  if (tasks !== undefined && e.backgroundShells && agent.monitors) {
+    const live = agent.monitors.filter((m) => e.backgroundShells!.includes(m));
+    tasks -= live.length;
+    if (live.length) agent.monitors = live; else delete agent.monitors;
+  }
   // background agents or shells that never re-invoke the session, killed or crashed, are over once a hook lists none
-  if (e.backgroundTasks === 0) delete agent.background;
+  if (tasks === 0) delete agent.background;
   // the main thread moving on leaves a question a subagent still has open, unless the user typed a prompt past it
   if (agent.asking && e.backend === 'claude') {
     const stop = e.name === 'Stop' || e.name === 'StopFailure';
@@ -125,7 +133,7 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     case 'Stop':
     case 'StopFailure':
       // the turn ended but background agents or shells are still going; their completion starts a new turn
-      if (e.backgroundTasks) {
+      if (tasks) {
         settle(agent, 'working');
         agent.background = true;
         break;

@@ -53,6 +53,8 @@ export const Agent = z.object({
   promptId: z.string().optional(),
   // the turn ended with background agents or shells still running; the agent works on until they report back
   background: z.literal(true).optional(),
+  // task ids of the Claude Code monitors the session started, which are listed as background shells but watch on without a turn
+  monitors: z.array(z.string()).optional(),
   // Claude Code subagents with a permission request open; the notification that blocks never says whose it is
   asking: z.array(z.string()).optional(),
   // the tool Claude Code's main thread last asked permission for, whose run alone answers the question
@@ -94,7 +96,7 @@ export const Island = z.object({
   kind: z.literal('home').optional(),
   // set by a person's edit; absent, the scribe may rewrite it
   descriptionSource: z.literal('manual').optional(),
-  // its place in the list, set by a sidebar drag; islands without one follow, by name
+  // its place in the list, set by a sidebar drag or a rename; islands without one follow, by name
   order: z.number().int().optional(),
 });
 export type Island = z.infer<typeof Island>;
