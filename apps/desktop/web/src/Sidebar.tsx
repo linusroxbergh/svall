@@ -193,9 +193,9 @@ function StarredRow({ c, hover, zone }: { c: Character; hover?: StarHover; zone:
       onDragEnd={() => setDragging(false)}
       onClick={() => pick(c.id)} onContextMenu={(e) => characterMenu(e, c.id)}>
       <i className="sdot" data-status={status} />
-      <span className="sb-name">{c.name}</span>
+      <span className="sb-name" title={c.name}>{c.name}</span>
+      <span className="sb-where"><span>{island}</span></span>
       <Marks c={c} />
-      <span className="sb-where">{island}</span>
       <StarButton c={c} testid={`sb-star-toggle-${c.id}`} />
     </div>
   );
