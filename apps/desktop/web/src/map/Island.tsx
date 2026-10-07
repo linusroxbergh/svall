@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { theme } from '../theme.js';
 import { Chevron } from './Chevron.js';
 import { coastPath } from './coast.js';
+import { GrassTexture } from './GrassTexture.js';
 import { LandTexture } from './LandTexture.js';
 import { Seabed, Waterline } from './Relief.js';
 import type { HoldHandlers, PointerHandlers } from './types.js';
@@ -67,6 +68,7 @@ export function Island({
         <g {...land} {...hold} style={{ pointerEvents: 'visiblePainted' }}>
           <path className="land" d={sand} fill={`url(#${sid})`} />
           <path className="land grass" d={grass} fill={`url(#${gid})`} stroke="var(--shore)" strokeWidth="1" />
+          <GrassTexture id={island.id} seed={seed} shape={grass} w={fw} h={fh} />
           <LandTexture id={island.id} shape={sand} />
         </g>
         <Waterline sand={sand} />
