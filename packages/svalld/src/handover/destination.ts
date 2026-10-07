@@ -540,11 +540,18 @@ export class DestinationHandover {
       const adapter = sessionAdapter(s.agent, s.adapter);
       const c = m.snapshot.characters[s.characterId];
       if (!adapter.exportFile || !c) continue;
+      const entity = { kind: 'character' as const, id: s.characterId };
+      const { cwd } = resumeFolder(c, s.term, at);
+      // the folder goes to the CLI as an argument
+      if (!path.posix.isAbsolute(cwd)) {
+        blockers.push({ code: 'path_unsupported', message: `session ${s.sessionId} resumes in ${cwd}, which is no absolute path`, entity });
+        continue;
+      }
       try {
-        await step(s, adapter, path.join(this.d.paths.sessionStage(tx, i), adapter.exportFile(s.sessionId)), resumeFolder(c, s.term, at).cwd);
+        await step(s, adapter, path.join(this.d.paths.sessionStage(tx, i), adapter.exportFile(s.sessionId)), cwd);
       } catch (e) {
         if (!(e instanceof SessionError)) throw e;
-        blockers.push({ code: e.code, message: e.message, entity: { kind: 'character', id: s.characterId } });
+        blockers.push({ code: e.code, message: e.message, entity });
       }
     }
     return blockers;

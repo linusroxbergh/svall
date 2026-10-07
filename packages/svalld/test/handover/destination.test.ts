@@ -464,6 +464,24 @@ describe('destination prepare', () => {
     expect(r.characters.find((c) => c.id === 'c_eve')).toEqual({ id: 'c_eve', ok: true });
   });
 
+  it('refuses an OpenCode session id or folder the manifest names that could pass for an option, before it runs OpenCode at all', async () => {
+    const forged = '--server=http://127.0.0.1:9';
+    for (const tamper of [
+      (m: TransferManifestV1) => {
+        m.sessions.find((x) => x.agent === 'opencode')!.sessionId = forged;
+        m.snapshot.characters.c_eve.agent!.sessionId = forged;
+      },
+      (m: TransferManifestV1) => { m.snapshot.characters.c_eve.cwd = forged; },
+    ]) {
+      const s = await scene({ opencode: true, tamper });
+      const asked: string[] = [];
+      const cli: CliRun = async (cmd, args) => { asked.push([cmd, ...args].join(' ')); return { code: 1, stdout: '', stderr: '' }; };
+      const r = await refusal(daemon(s, { cli }).handover.prepare(params(s)));
+      expect(blockersOf(r)).toContainEqual(expect.objectContaining({ code: 'path_unsupported', message: expect.stringContaining(forged), entity: { kind: 'character', id: 'c_eve' } }));
+      expect(asked).toEqual([]);
+    }
+  });
+
   it("imports a second terminal's OpenCode session in that terminal's own folder", async () => {
     const s = await scene({ opencode: 'second' });
     const asked: string[] = [];

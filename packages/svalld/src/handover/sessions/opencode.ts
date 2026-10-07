@@ -10,6 +10,12 @@ const SESSION = /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
 
 const exportFile = (sessionId: string): string => `exports/${sessionId}.json`;
 
+// a session id OpenCode is given as an argument, which a peer's manifest may have named
+const sessionArg = (sessionId: string): string => {
+  if (!SESSION.test(sessionId)) throw new SessionError('path_unsupported', `${sessionId} is not an OpenCode session id`);
+  return sessionId;
+};
+
 // the first line OpenCode gave for itself, or why it could not be asked
 const said = (r: { stdout: string; stderr: string }): string => (r.stderr.trim() || r.stdout.trim()).split('\n')[0].slice(0, 300);
 
@@ -50,7 +56,7 @@ const folderOf = (file: string): string | undefined => {
 // writes this machine's copy of a session out to `to`, answering false when it holds none; a copy holding a message the
 // one coming in at `file` lacks went on here, whether in Svall or in a plain `opencode -s`, which Svall's log never sees
 async function heldCopy(sessionId: string, file: string, to: string, cwd: string, run: CliRun): Promise<boolean> {
-  const r = await ask(run, ['session', 'export', '--standalone', sessionId], { stdout: to, cwd });
+  const r = await ask(run, ['session', 'export', '--standalone', sessionArg(sessionId)], { stdout: to, cwd });
   if (r.code !== 0) {
     if (notFound(r)) return false;
     throw new SessionError('transcript_missing', `OpenCode could not read its copy of session ${sessionId}: ${said(r)}`);
@@ -93,7 +99,7 @@ export const opencodeAdapter: SessionAdapter = {
 
   async exportSession(sessionId, file, run, cwd) {
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-    const r = await ask(run, ['session', 'export', '--standalone', sessionId], { stdout: file, cwd });
+    const r = await ask(run, ['session', 'export', '--standalone', sessionArg(sessionId)], { stdout: file, cwd });
     if (r.code !== 0) throw new SessionError('transcript_missing', `OpenCode holds no session ${sessionId} to carry: ${said(r)}`);
     // import drops a pending undo, so the turns it hides would come back to life on the destination
     if (infoOf(file)?.revert) {
@@ -118,7 +124,7 @@ export const opencodeAdapter: SessionAdapter = {
     } finally {
       fs.rmSync(here, { force: true });
     }
-    const gone = await ask(run, ['session', 'delete', '--standalone', sessionId], { cwd });
+    const gone = await ask(run, ['session', 'delete', '--standalone', sessionArg(sessionId)], { cwd });
     if (gone.code !== 0 && !notFound(gone)) {
       throw new SessionError('transcript_missing', `OpenCode could not remove its earlier copy of session ${sessionId}: ${said(gone)}`);
     }
