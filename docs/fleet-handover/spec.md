@@ -602,8 +602,9 @@ status` offers Resume or Abort.
 Each primary and second terminal is classified:
 
 - `idle` or `done` agent with no command still running: ready;
-- `idle` or `done` agent whose background command still runs: blocker until the command ends or
-  the user chooses **Terminate and carry**;
+- `idle` or `done` agent whose background command still runs, a Claude Code monitor included, as the
+  process tree shows it rather than the hook's list of monitors: blocker until the command ends or the
+  user chooses **Terminate and carry**;
 - `working` agent: wait for `done`, `idle` or `blocked`;
 - `blocked` agent: the user may answer it, choose **Interrupt and carry**, or cancel;
 - plain shell at its prompt: ready;

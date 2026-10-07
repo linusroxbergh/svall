@@ -158,6 +158,7 @@ Nothing that runs moves; the handover brings each terminal to rest first.
 
 - An idle or finished agent, and a shell at its prompt, are ready at once.
 - An idle agent that left a command running in the background blocks until the command ends or you terminate it.
+  A Claude Code monitor still running counts, going by the processes that run, not by the monitors its hooks listed.
   An idle OpenCode's MCP and language servers do not count: they stop with it.
 - An agent still in its turn is waited for, up to three minutes (or as long as `--interrupt-after` says, if longer),
   then shows as a blocker you can keep waiting on or interrupt. Interrupting sends Escape and waits up to ten seconds
