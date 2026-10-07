@@ -375,7 +375,7 @@ export class DestinationHandover {
     const unsealed = await boundary('destination.complete.seal', () => this.sealAs(j.transactionId, false));
     if (unsealed.length) throw notReady(`handover ${j.transactionId} could not seal ${unsealed.join('; ')}; complete it again once that is put right`);
     boundary('destination.complete.clear', () => {
-      for (const f of [this.d.paths.replicaSeal(j.transactionId), this.d.paths.preparedState(j.transactionId), path.dirname(this.d.paths.sessionStage(j.transactionId, 0))]) {
+      for (const f of [this.d.paths.replicaSeal(j.transactionId), this.d.paths.preparedState(j.transactionId), ...this.staged(j.transactionId)]) {
         fs.rmSync(f, { recursive: true, force: true });
       }
     });
@@ -397,7 +397,7 @@ export class DestinationHandover {
       throw handoverError({ code: 'transaction_mismatch', message: `this machine prepares handover ${tx} from manifest ${held.manifestDigest}, not ${p.manifestDigest}` });
     }
     if (held?.preparedDigest) {
-      boundary('destination.prepare.stage', () => fs.rmSync(path.dirname(this.d.paths.sessionStage(tx, 0)), { recursive: true, force: true }));
+      boundary('destination.prepare.stage', () => { for (const f of this.staged(tx)) fs.rmSync(f, { recursive: true, force: true }); });
       return { preparedDigest: held.preparedDigest };
     }
     const carried = m.roots.filter((r) => !r.foldedInto);
@@ -494,13 +494,23 @@ export class DestinationHandover {
     const preparedPath = this.d.paths.preparedState(tx);
     boundary('destination.prepare.state', () => writeDurable(preparedPath, state, { mode: 0o600 }));
     boundary('destination.prepare.journal', () => this.journal.write({ ...this.open(tx)!, phase: 'prepare', preparedPath, preparedDigest, fleet: imported.fleet, updatedAt: this.clock.now() }));
-    boundary('destination.prepare.stage', () => fs.rmSync(path.dirname(this.d.paths.sessionStage(tx, 0)), { recursive: true, force: true }));
+    boundary('destination.prepare.stage', () => { for (const f of this.staged(tx)) fs.rmSync(f, { recursive: true, force: true }); });
     return { preparedDigest };
+  }
+
+  // a handover's session stage, and beside it the copies of sessions this machine held that its prepare took out
+  private staged(tx: string): string[] {
+    return [path.dirname(this.d.paths.sessionStage(tx, 0)), this.heldDir(tx)];
+  }
+
+  private heldDir(tx: string): string {
+    return path.join(this.d.paths.handoverDir, `held-${encodeURIComponent(tx)}`);
   }
 
   /**
    * Reads each carried session a CLI keeps in a database of its own into this machine's CLI from its stage, to resume
-   * in its terminal's folder. Nothing revives a session it could not read in, as a resume would start an empty one.
+   * in its terminal's folder, in place of any copy held here, which is kept until the import succeeds and put back if it
+   * fails. Nothing revives a session it could not read in, as a resume would start an empty one.
    */
   private async importSessions(tx: string, m: TransferManifestV1): Promise<Blocker[]> {
     const blockers: Blocker[] = [];
@@ -510,17 +520,51 @@ export class DestinationHandover {
       const c = m.snapshot.characters[s.characterId];
       if (!adapter.exportFile || !adapter.dropSession || !adapter.importSession || !c) continue;
       const file = path.join(this.d.paths.sessionStage(tx, i), adapter.exportFile(s.sessionId));
+      const keep = path.join(this.heldDir(tx), s.agent, `${s.sessionId}.json`);
       const { cwd } = resumeFolder(c, s.term, at);
       const run = this.d.cli ?? cliRunner();
       try {
-        await boundary('destination.prepare.delete', () => adapter.dropSession!(s.sessionId, file, cwd, run));
-        await boundary('destination.prepare.import', () => adapter.importSession!(s.sessionId, file, cwd, run));
+        await boundary('destination.prepare.delete', () => adapter.dropSession!(s.sessionId, file, cwd, run, keep));
+        await boundary('destination.prepare.import', async () => {
+          try { await adapter.importSession!(s.sessionId, file, cwd, run); } catch (e) {
+            await this.restoreHeld(tx);
+            throw e;
+          }
+          fs.rmSync(keep, { force: true });
+        });
       } catch (e) {
         if (!(e instanceof SessionError)) throw e;
         blockers.push({ code: e.code, message: e.message, entity: { kind: 'character', id: s.characterId } });
       }
     }
     return blockers;
+  }
+
+  /**
+   * Puts back each copy of a session this machine held that the handover's prepare took out and did not replace, then
+   * lets it go, and answers each it could not put back, which stays for another try.
+   */
+  private async restoreHeld(tx: string): Promise<string[]> {
+    const dir = this.heldDir(tx);
+    const list = (d: string): string[] => {
+      try { return fs.readdirSync(d); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return []; throw e; }
+    };
+    const run = this.d.cli ?? cliRunner();
+    const failed: string[] = [];
+    for (const kind of list(dir)) {
+      for (const name of list(path.join(dir, kind)).filter((n) => n.endsWith('.json'))) {
+        const kept = path.join(dir, kind, name);
+        try {
+          await sessionAdapter(kind as AgentKind).restoreSession!(name.slice(0, -'.json'.length), kept, run);
+          fs.rmSync(kept);
+        } catch (e) {
+          this.d.log.error(`handover ${tx}: ${kept} is kept for another try: ${(e as Error).message}`);
+          failed.push(`${kept} (${(e as Error).message})`);
+        }
+      }
+    }
+    if (!failed.length) fs.rmSync(dir, { recursive: true, force: true });
+    return failed;
   }
 
   /** The prepare or claim meant for this machine, this fleet and this manifest, at the generation after the source's. */
@@ -926,7 +970,10 @@ export class DestinationHandover {
     // the content is the source's at the generation it keeps; a root sealed or archived since is left alone
     const unsealed = await boundary('destination.abort.seal', () => this.sealAs(j.transactionId, true));
     if (strict && unsealed.length) throw notReady(`handover ${j.transactionId} could not seal ${unsealed.join('; ')}; abort it again once that is put right`);
-    boundary('destination.abort.clear', () => {
+    await boundary('destination.abort.clear', async () => {
+      // what this machine held goes back before the stage holding what would have replaced it
+      const unrestored = await this.restoreHeld(j.transactionId);
+      if (strict && unrestored.length) throw notReady(`handover ${j.transactionId} could not put back ${unrestored.join('; ')}; abort it again once that is put right`);
       for (const f of [this.d.paths.preparedState(j.transactionId), this.d.paths.replicaSeal(j.transactionId), path.dirname(this.d.paths.sessionStage(j.transactionId, 0))]) {
         fs.rmSync(f, { recursive: true, force: true });
       }

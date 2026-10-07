@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { AGENTS } from '../../agents.js';
+import { writeDurable } from '../durable.js';
 import { transcriptFile } from './records.js';
 import { SessionError, type CliRun, type SessionAdapter, type SessionFs } from './types.js';
 
@@ -21,11 +22,21 @@ async function ask(run: CliRun, args: string[], o: { stdout?: string; cwd: strin
 
 const notFound = (r: { stdout: string; stderr: string }): boolean => /Session not found/.test(r.stderr + r.stdout);
 
+const imported = (r: { stdout: string }, sessionId: string): boolean => r.stdout.split('\n').some((l) => l.trim() === `Imported session: ${sessionId}`);
+
 // the message ids of an export, in order
 const ids = (file: string): string[] | undefined => {
   try {
     const messages = (JSON.parse(fs.readFileSync(file, 'utf8')) as { messages?: unknown }).messages;
     return Array.isArray(messages) ? messages.map((m) => String((m as { id?: unknown }).id)) : undefined;
+  } catch { return undefined; }
+};
+
+// the folder an export's session ran in on the machine that wrote it out
+const folderOf = (file: string): string | undefined => {
+  try {
+    const directory = (JSON.parse(fs.readFileSync(file, 'utf8')) as { info?: { location?: { directory?: unknown } } }).info?.location?.directory;
+    return typeof directory === 'string' ? directory : undefined;
   } catch { return undefined; }
 };
 
@@ -65,7 +76,7 @@ export const opencodeAdapter: SessionAdapter = {
 
   // a copy an earlier handover left here goes, unless it holds a message the incoming session lacks: it went on here,
   // whether in Svall or in a plain `opencode -s`, which Svall's log never sees
-  async dropSession(sessionId, file, cwd, run) {
+  async dropSession(sessionId, file, cwd, run, keep) {
     const here = `${file}.here`;
     try {
       const r = await ask(run, ['session', 'export', '--standalone', sessionId], { stdout: here, cwd });
@@ -76,6 +87,10 @@ export const opencodeAdapter: SessionAdapter = {
       const [held, incoming] = [ids(here), ids(file)];
       if (!held || !incoming || held.some((id, i) => incoming[i] !== id)) {
         throw new SessionError('destination_diverged', `this machine's OpenCode went on with session ${sessionId} past the copy coming in`);
+      }
+      if (!fs.existsSync(keep)) {
+        fs.mkdirSync(path.dirname(keep), { recursive: true, mode: 0o700 });
+        writeDurable(keep, fs.readFileSync(here), { mode: 0o600 });
       }
     } finally {
       fs.rmSync(here, { force: true });
@@ -89,8 +104,17 @@ export const opencodeAdapter: SessionAdapter = {
   // import exits 0 on an id it already holds, and a resume with -s on an id it does not hold starts an empty session
   async importSession(sessionId, file, cwd, run) {
     const r = await ask(run, ['session', 'import', '--standalone', '--directory', cwd, file], { cwd });
-    if (r.code !== 0 || !r.stdout.split('\n').some((l) => l.trim() === `Imported session: ${sessionId}`)) {
+    if (r.code !== 0 || !imported(r, sessionId)) {
       throw new SessionError('transcript_missing', `OpenCode did not import session ${sessionId}: ${said(r)}`);
+    }
+  },
+
+  async restoreSession(sessionId, kept, run) {
+    const folder = folderOf(kept);
+    if (!folder) throw new SessionError('transcript_missing', `${kept} is not the copy of session ${sessionId} this machine's OpenCode held`);
+    const r = await ask(run, ['session', 'import', '--standalone', '--directory', folder, kept], { cwd: folder });
+    if (r.code !== 0 || !(imported(r, sessionId) || /Session already exists/.test(r.stderr))) {
+      throw new SessionError('transcript_missing', `OpenCode could not take back its copy of session ${sessionId}, kept at ${kept}: ${said(r)}`);
     }
   },
 };

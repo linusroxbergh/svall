@@ -626,9 +626,10 @@ describe('OpenCode sessions', () => {
   const ID = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
   const session = (directory: string, texts: string[]): Exported => ({ info: { id: ID, location: { directory } }, messages: texts.map((text, i) => ({ id: `msg_${i}`, text })) });
   const turn = (text: string): string => `${JSON.stringify({ kind: 'user', text })}\n`;
-  // as prepare reads a session in: any copy here goes first, then the incoming one is imported
+  // as prepare reads a session in: any copy here is kept aside and goes first, then the incoming one is imported
   const readIn = async (file: string, cwd: string, run: CliRun): Promise<void> => {
-    await opencodeAdapter.dropSession!(ID, file, cwd, run);
+    const keep = path.join(tmp(), 'kept.json');
+    await opencodeAdapter.dropSession!(ID, file, cwd, run, keep);
     await opencodeAdapter.importSession!(ID, file, cwd, run);
   };
 

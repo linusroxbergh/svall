@@ -13,6 +13,7 @@ import { startApi } from '../../src/api/server.js';
 import { Config, loadConfig } from '../../src/config.js';
 import { docFolders, docsDir, fleetDir, repoSlug } from '../../src/docs.js';
 import { Fleet } from '../../src/fleet.js';
+import { armFailpoints } from '../../src/handover/failpoints.js';
 import { DestinationJournal, openJournal, type HandoverJournal } from '../../src/handover/journal.js';
 import { SealRecord, type DestinationDeps } from '../../src/handover/destination.js';
 import { discoverGit } from '../../src/handover/git-graph.js';
@@ -476,6 +477,35 @@ describe('destination prepare', () => {
     await daemon(s, { cli: run }).handover.prepare(params(s));
     expect(held(s.oc.trift)[OC].messages).toEqual(s.oc.session.messages);
     expect(fs.existsSync(s.paths.preparedState(TX))).toBe(true);
+  });
+
+  it('puts the copy of an OpenCode session this machine held back in when the incoming one does not import, and refuses', async () => {
+    const s = await scene({ opencode: true });
+    const mine = ocSession(path.join(s.dst, 'work/eve'), []);
+    hold(s.oc.trift, mine);
+    const run = cliRunner(s.oc.trift);
+    const stage = path.dirname(s.paths.sessionStage(TX, 0));
+    // OpenCode cannot read in what came, and reads in its own copy again
+    const failing: CliRun = (cmd, args, o) => (args[1] === 'import' && args.at(-1)!.startsWith(stage) ? Promise.resolve({ code: 1, stdout: '', stderr: 'Error: disk I/O error\n' }) : run(cmd, args, o));
+    const r = await refusal(daemon(s, { cli: failing }).handover.prepare(params(s)));
+    expect(blockersOf(r)).toEqual([{ code: 'transcript_missing', message: expect.stringContaining('disk I/O error'), entity: { kind: 'character', id: 'c_eve' } }]);
+    expect(held(s.oc.trift)).toEqual({ [OC]: mine });
+    expect(fs.readdirSync(s.paths.handoverDir).filter((f) => f.startsWith('held-'))).toEqual([]);
+  });
+
+  it('puts back the copy of an OpenCode session it held once a forced record supersedes a prepare that died between removing it and the import', async () => {
+    const s = await scene({ opencode: true });
+    const mine = ocSession(path.join(s.dst, 'work/eve'), []);
+    hold(s.oc.trift, mine);
+    const d = daemon(s, { cli: cliRunner(s.oc.trift) });
+    const disarm = armFailpoints((name, edge) => { if (name === 'destination.prepare.import' && edge === 'before') throw new Error('svalld died'); });
+    try { await expect(d.handover.prepare(params(s))).rejects.toThrow('svalld died'); } finally { disarm(); }
+    expect(held(s.oc.trift)).toEqual({});
+
+    const restarted = d.start();
+    expect(await restarted.handover.adopt({ fleetId, generation: 7, ownerMachineId: trift })).toMatchObject({ adopted: true, superseded: TX });
+    expect(held(s.oc.trift)).toEqual({ [OC]: mine });
+    expect(fs.readdirSync(s.paths.handoverDir).filter((f) => f.startsWith('held-') || f.startsWith('sessions-'))).toEqual([]);
   });
 
   it('answers a repeated prepare with the proof it gave, and writes nothing again', async () => {

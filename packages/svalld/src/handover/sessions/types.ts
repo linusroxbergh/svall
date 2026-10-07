@@ -55,8 +55,13 @@ export interface SessionAdapter {
   exportFile?(sessionId: string): string;
   /** Writes the session out of this machine's CLI into `file`, running the CLI in `cwd`. */
   exportSession?(sessionId: string, file: string, run: CliRun, cwd: string): Promise<void>;
-  /** Removes this machine's copy of the session, unless it went on past the one written out at `file`. */
-  dropSession?(sessionId: string, file: string, cwd: string, run: CliRun): Promise<void>;
+  /**
+   * Removes this machine's copy of the session, unless it went on past the one written out at `file`, once that copy is
+   * written out to `keep`; a copy an earlier attempt kept there is the one this machine held, and stays.
+   */
+  dropSession?(sessionId: string, file: string, cwd: string, run: CliRun, keep: string): Promise<void>;
   /** Puts the session written out at `file` into this machine's CLI, which holds no copy of it, to resume in `cwd`. */
   importSession?(sessionId: string, file: string, cwd: string, run: CliRun): Promise<void>;
+  /** Puts the copy dropSession kept at `kept` back where it was, unless this machine's CLI holds the session again. */
+  restoreSession?(sessionId: string, kept: string, run: CliRun): Promise<void>;
 }
