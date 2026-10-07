@@ -302,8 +302,8 @@ export const CHOICE_LABEL: Record<Choice, string> = { interrupt: 'Interrupt and 
 
 export type HintContext = { destination: string; source: string; pull: boolean; name(id: string): string };
 
-// the OpenCode session a divergence names; other agents' sessions are files the message names
-const OPENCODE_SESSION = /\bsession (ses_[0-9A-Za-z]+)/;
+// a session OpenCode's database went on with; a divergence of files, whatever the agent, ends with the files
+const OPENCODE_SESSION = /OpenCode went on with session (ses_[0-9a-f]{12}[0-9A-Za-z]{14}) past the copy coming in$/;
 
 /** What a blocker or warning means for the user, beside what the helper said. */
 export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {

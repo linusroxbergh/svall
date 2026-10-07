@@ -307,15 +307,18 @@ describe('what each blocker and warning is explained with', () => {
   it('sends a session the destination went on with to that machine, with OpenCode\'s commands, and a folder to Archive', () => {
     const id = 'ses_0123456789abABCDEFGHIJKLMN';
     const session = (message: string): Blocker => ({ code: 'destination_diverged', message, entity: { kind: 'character', id: 'c1' } });
-    const opencode = blockerHint(session(`this machine's OpenCode went on with session ${id} past the copy coming in`), ctx);
+    const opencode = blockerHint(session(`the destination's OpenCode went on with session ${id} past the copy coming in`), ctx);
     expect(opencode).toMatch(/studio/);
     expect(opencode).toContain(`opencode session export --standalone ${id} > keep.json`);
     expect(opencode).toContain(`opencode session delete --standalone ${id}`);
     expect(opencode).toMatch(/then Try again/);
     expect(opencode).not.toMatch(/Archive/);
-    const claude = blockerHint(session('this machine continued session 3f2b: /Users/ada/.claude/projects/-app/3f2b.jsonl'), ctx);
+    const claude = blockerHint(session("the destination's Claude Code went on with session 3f2b past the copy coming in: /Users/ada/.claude/projects/-app/3f2b.jsonl"), ctx);
     expect(claude).toMatch(/studio.*aside.*then Try again/);
     expect(claude).not.toMatch(/Archive|opencode/);
+    // Svall's log of an OpenCode session is a file like any other agent's
+    const log = blockerHint(session(`the destination's OpenCode went on with session ${id} past the copy coming in: /Users/ada/.svall/transcripts/opencode/${id}.jsonl`), ctx);
+    expect(log).toBe(claude);
     expect(blockerHint({ code: 'destination_diverged', message: '/w/app changed', entity: { kind: 'root', id: 'r_a' } }, ctx)).toMatch(/^Archive and carry/);
   });
 

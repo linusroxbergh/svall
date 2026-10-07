@@ -1043,16 +1043,18 @@ describe('the human reading of a session the destination went on with', () => {
     view.about.destination = 'trift';
     const id = 'ses_0123456789abABCDEFGHIJKLMN';
     const blockers: Blocker[] = [
-      { code: 'destination_diverged', message: `this machine's OpenCode went on with session ${id} past the copy coming in`, entity: { kind: 'character', id: 'c_ada' } },
-      { code: 'destination_diverged', message: 'this machine continued session 3f2b: /home/ada/.claude/projects/-app/3f2b.jsonl', entity: { kind: 'character', id: 'c_bo' } },
+      { code: 'destination_diverged', message: `the destination's OpenCode went on with session ${id} past the copy coming in`, entity: { kind: 'character', id: 'c_ada' } },
+      { code: 'destination_diverged', message: "the destination's Claude Code went on with session 3f2b past the copy coming in: /home/ada/.claude/projects/-app/3f2b.jsonl", entity: { kind: 'character', id: 'c_bo' } },
+      { code: 'destination_diverged', message: `the destination's OpenCode went on with session ${id} past the copy coming in: /home/ada/.svall/transcripts/opencode/${id}.jsonl`, entity: { kind: 'character', id: 'c_ada' } },
       { code: 'destination_diverged', message: '/home/ada/app changed', entity: { kind: 'root', id: 'r_app' } },
     ];
     view.show({ event: 'handover.blocked', data: { transactionId: 'tx-1', phase: 'prepare', blockers } });
     const opencode = `    The copy of this session on trift went on there. To keep it, run \`opencode session export --standalone ${id} > keep.json\` on trift, then \`opencode session delete --standalone ${id}\`, then try again.`;
     const claude = '    The copy of this session on trift went on there. Move the file named above aside on trift, then try again.';
-    expect(printed.slice(-5)).toEqual([
-      `  ✗ ada: this machine's OpenCode went on with session ${id} past the copy coming in (destination_diverged)`, opencode,
-      '  ✗ bo: this machine continued session 3f2b: /home/ada/.claude/projects/-app/3f2b.jsonl (destination_diverged)', claude,
+    expect(printed.slice(-7)).toEqual([
+      `  ✗ ada: the destination's OpenCode went on with session ${id} past the copy coming in (destination_diverged)`, opencode,
+      "  ✗ bo: the destination's Claude Code went on with session 3f2b past the copy coming in: /home/ada/.claude/projects/-app/3f2b.jsonl (destination_diverged)", claude,
+      `  ✗ ada: the destination's OpenCode went on with session ${id} past the copy coming in: /home/ada/.svall/transcripts/opencode/${id}.jsonl (destination_diverged)`, claude,
       '  ✗ /home/ada/app changed (destination_diverged)',
     ]);
     const outcome = view.outcome({ status: 'blocked', transactionId: 'tx-1', phase: 'prepare', blockers });

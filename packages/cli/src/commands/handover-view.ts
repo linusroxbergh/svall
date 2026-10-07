@@ -45,8 +45,8 @@ function issueLine(names: Names, b: Blocker, mark: string): string {
   return `  ${mark} ${says ? '' : `${who}: `}${b.message} (${b.code})`;
 }
 
-// the OpenCode session a divergence names; other agents' sessions are files the message names
-const OPENCODE_SESSION = /\bsession (ses_[0-9A-Za-z]+)/;
+// a session OpenCode's database went on with; a divergence of files, whatever the agent, ends with the files
+const OPENCODE_SESSION = /OpenCode went on with session (ses_[0-9a-f]{12}[0-9A-Za-z]{14}) past the copy coming in$/;
 
 /** The way out of a session the destination went on with, which no choice clears. */
 function sessionHint(b: Blocker, at = 'the destination'): string | undefined {
