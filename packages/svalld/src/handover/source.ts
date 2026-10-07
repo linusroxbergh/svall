@@ -29,7 +29,7 @@ import { SourceJournal } from './journal.js';
 import { buildManifest, readManifest, realScanFs, summarize, writeManifest, type ScanFs } from './manifest.js';
 import { ProcessTable } from './processes.js';
 import { ReplicaStore, replicaRoots } from './replicas.js';
-import { classifyTerminals, launchFlags, restChoices, restTerminals, unapproved, type Clock, type RestDeps, type RestOptions } from './rest.js';
+import { classifyTerminals, launchFlags, restChoices, restTerminals, serversGone, unapproved, type Clock, type RestDeps, type RestOptions } from './rest.js';
 import type { HandoverService } from './service.js';
 import { agentBlockers, cliRunner, sessionAdapter, type AgentProbe } from './sessions/registry.js';
 import { SessionError, type CliRun } from './sessions/types.js';
@@ -543,6 +543,13 @@ export class SourceHandover {
     await this.d.tmux.ensureServer();
     // a terminal whose window a rest that died closed still names that window, and reopens only once it names none
     const live = new Set((await this.d.tmux.listWindows()).map((w) => w.windowId));
+    const { store, kill, clock } = this.d;
+    // an OpenCode resumed beside the server its closed window left would share its database with it
+    await serversGone({ store, journal: this.journal, processes: this.processes, kill, clock }, this.d.rest ?? {}, (t) => {
+      const c = store.state.characters[t.characterId];
+      const window = (t.term === 2 ? c?.second : c)?.tmux?.windowId;
+      return !window || !live.has(window);
+    });
     this.d.store.update((d) => {
       for (const t of stopped) {
         const c = d.characters[t.characterId];

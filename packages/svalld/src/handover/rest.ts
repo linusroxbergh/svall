@@ -208,7 +208,7 @@ function recordJournal(journal: RestDeps['journal'], now: number, change: (j: So
  */
 export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<SettleResult> {
   const clock = deps.clock ?? realClock;
-  const processes = deps.processes ?? ((signal?: AbortSignal) => ProcessTable.read({ signal, scripts: installedScripts() }));
+  const processes = tableOf(deps);
   const kill = deps.kill ?? killGroup;
   const bounded = boundBy(clock, o.callTimeoutMs ?? CALL_TIMEOUT_MS);
   sourceJournal(deps.journal);
@@ -250,10 +250,7 @@ export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<Set
     }
     if (blockers.length) return { ok: false, blockers };
     for (const { t, c } of steps) if (c && t.terminatedAt === undefined) { t.agent = c.agent; t.flags = launchFlags(c); }
-    if (settled) {
-      const gone = (servers: Server[]) => serversGone(servers, { read: () => bounded('ps', processes), kill, clock, journal: deps.journal, state: () => deps.store.state }, x);
-      return layToRest(deps, o, bounded, tracks, current, clock.now(), gone);
-    }
+    if (settled) return layToRest(deps, o, bounded, tracks, current, clock.now(), () => serversGone(deps, o));
     for (const { t, c, s } of steps) {
       if (s === 'interrupt' && c) {
         const escape = () => bounded('tmux send-keys', (signal) => deps.tmux.sendBytes(c.window.paneId, ESCAPE, signal));
@@ -279,38 +276,54 @@ export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<Set
 
 type Bounded = <T>(what: string, work: (signal: AbortSignal) => Promise<T>) => Promise<T>;
 
-// an OpenCode TUI's private server writes its session's database until it exits, and the export reads that database;
-// one that outlasts the settle time is killed with everything it runs, journaled first as a terminated job is, and the
-// rest fails if any of it still runs a settle time later
-type Server = { t: TerminalRef; server: Proc };
-async function serversGone(
-  servers: Server[],
-  d: { read: () => Promise<ProcessTable>; kill: NonNullable<RestDeps['kill']>; clock: Clock; journal: RestDeps['journal']; state: () => FleetState },
-  x: Pick<Moment, 'settleMs' | 'pollMs'>,
+const tableOf = (deps: Pick<RestDeps, 'processes'>): NonNullable<RestDeps['processes']> =>
+  deps.processes ?? ((signal?: AbortSignal) => ProcessTable.read({ signal, scripts: installedScripts() }));
+
+type Owned<P> = { t: TerminalRef; p: P };
+
+/**
+ * Waits for the journaled private OpenCode server of each terminal this handover stopped that `closed` picks to exit, as the
+ * export reads the database it writes. One that outlasts the settle time is killed with all it runs, journaled first, as is
+ * what an earlier kill journaled that still runs; it throws if any of that still runs a settle time after its SIGKILL.
+ */
+export async function serversGone(
+  deps: Pick<RestDeps, 'store' | 'journal' | 'processes' | 'kill' | 'clock'>,
+  o: Pick<RestOptions, 'settleMs' | 'pollMs' | 'callTimeoutMs'>,
+  closed: (t: TerminalRef) => boolean = () => true,
 ): Promise<void> {
-  const until = async (groups: number[]): Promise<{ table: ProcessTable; left: number[] }> => {
-    for (const end = d.clock.now() + x.settleMs; ;) {
-      const table = await d.read();
-      const left = groups.filter((g) => table.alive(g));
-      if (!left.length || d.clock.now() >= end) return { table, left };
-      await d.clock.sleep(x.pollMs);
+  const clock = deps.clock ?? realClock;
+  const kill = deps.kill ?? killGroup;
+  const read = () => boundBy(clock, o.callTimeoutMs ?? CALL_TIMEOUT_MS)('ps', tableOf(deps));
+  const j = sourceJournal(deps.journal);
+  const servers = j.stoppedTerminals.flatMap((s) => (s.server && closed(s) ? [{ t: refOf(s), p: s.server }] : []));
+  const killed = j.serverKills.filter(closed).flatMap((k) => k.processes.map((p) => ({ t: refOf(k), p })));
+  if (!servers.length && !killed.length) return;
+  const running = (table: ProcessTable, of: Owned<Pick<Proc, 'pid' | 'args'>>[]): Owned<Proc>[] =>
+    of.flatMap(({ t, p }) => { const live = table.same(p); return live ? [{ t, p: live }] : []; });
+  const until = async (done: (table: ProcessTable) => boolean): Promise<ProcessTable> => {
+    for (const end = clock.now() + (o.settleMs ?? SETTLE_MS); ;) {
+      const table = await read();
+      if (done(table) || clock.now() >= end) return table;
+      await clock.sleep(o.pollMs ?? POLL_MS);
     }
   };
-  if (!servers.length) return;
-  const { table, left } = await until(servers.map((s) => s.server.pgid));
-  if (!left.length) return;
-  const trees = servers.filter((s) => left.includes(s.server.pgid)).map((s) => ({ ...s, tree: table.tree([s.server]) }));
-  const groups = [...new Set(trees.flatMap((s) => s.tree.map((p) => p.pgid)))];
-  boundary('source.rest.terminated', () => recordJournal(d.journal, d.clock.now(), (j) => ({
-    terminated: [...j.terminated, ...trees.map((s) => ({ ...refOf(s.t), processes: s.tree.map((p) => p.args) }))],
-  })));
-  boundary('source.rest.forcekill', () => { for (const g of groups) d.kill(g, 'SIGKILL'); });
-  const after = await until(groups);
-  const stuck = trees.filter((s) => s.tree.some((p) => after.left.includes(p.pgid)));
-  if (stuck.length) {
-    const name = (t: TerminalRef) => `${d.state().characters[t.characterId]?.name ?? t.characterId}'s ${t.term === 2 ? 'second ' : ''}terminal`;
-    throw new Error(stuck.map((s) => `${name(s.t)}: ${s.tree.filter((p) => after.left.includes(p.pgid)).map((p) => p.args).join(', ')} still runs after SIGKILL`).join('; '));
+  const table = await until((t) => !running(t, servers).length);
+  const trees = running(table, servers).map(({ t, p }) => ({ t, tree: table.tree([p]) }));
+  if (trees.length) {
+    boundary('source.rest.server.journal', () => recordJournal(deps.journal, clock.now(), (j) => ({
+      serverKills: [...j.serverKills, ...trees.map(({ t, tree }) => ({ ...t, processes: tree.map(({ pid, pgid, args }) => ({ pid, pgid, args })) }))],
+    })));
   }
+  const doomed = [...new Map([...trees.flatMap(({ t, tree }) => tree.map((p) => ({ t, p }))), ...running(table, killed)].map((x) => [x.p.pid, x])).values()];
+  if (!doomed.length) return;
+  const groups = [...new Set(doomed.map(({ p }) => p.pgid))];
+  boundary('source.rest.server.kill', () => { for (const g of groups) kill(g, 'SIGKILL'); });
+  const after = await until((t) => !groups.some((g) => t.alive(g)));
+  const stuck = doomed.filter(({ p }) => after.alive(p.pgid));
+  if (!stuck.length) return;
+  const name = (t: TerminalRef) => `${deps.store.state.characters[t.characterId]?.name ?? t.characterId}'s ${t.term === 2 ? 'second ' : ''}terminal`;
+  const terminals = [...new Map(stuck.map(({ t }) => [keyOf(t), t])).values()];
+  throw new Error(terminals.map((t) => `${name(t)}: ${stuck.filter((s) => keyOf(s.t) === keyOf(t)).map(({ p }) => p.args).join(', ')} still runs after SIGKILL`).join('; '));
 }
 
 // a server that died took every window with it, so there is none left to rest
@@ -346,15 +359,17 @@ function wake(store: RestDeps['store'], clock: Clock, ms: number, cancel?: Abort
 }
 
 async function layToRest(
-  deps: RestDeps, o: RestOptions, bounded: Bounded, tracks: Track[], current: Map<string, Classified>, now: number,
-  gone: (servers: Server[]) => Promise<void>,
+  deps: RestDeps, o: RestOptions, bounded: Bounded, tracks: Track[], current: Map<string, Classified>, now: number, gone: () => Promise<void>,
 ): Promise<SettleResult> {
   o.cancel?.throwIfAborted();
   const open = tracks.flatMap((t) => { const c = current.get(t.key); return c ? [{ t, c }] : []; });
-  // before any window closes, so an abort knows which terminals the handover stopped
+  // before any window closes, so an abort knows which terminals the handover stopped and which servers to wait for
   boundary('source.rest.stopped', () => recordJournal(deps.journal, now, (j) => {
     const known = new Set(j.stoppedTerminals.map(keyOf));
-    const added = open.filter(({ t }) => !known.has(t.key)).map(({ t }) => ({ ...refOf(t), ...(t.flags?.length && { flags: t.flags }) }));
+    const added = open.filter(({ t }) => !known.has(t.key)).map(({ t, c }) => {
+      const server = c.processes.agent?.server;
+      return { ...refOf(t), ...(t.flags?.length && { flags: t.flags }), ...(server && { server: { pid: server.pid, pgid: server.pgid, args: server.args } }) };
+    });
     return { stoppedTerminals: [...j.stoppedTerminals, ...added] };
   }));
   for (const id of new Set(open.map(({ t }) => t.characterId))) await bounded('tmux detach-client', (signal) => deps.viewers.detach(id, signal));
@@ -390,6 +405,6 @@ async function layToRest(
   deps.store.update((d) => {
     for (const id of Object.keys(d.characters)) for (const t of [{ characterId: id }, { characterId: id, term: 2 as const }]) lay(d, t, stopped.has(keyOf(t)));
   });
-  await gone(open.flatMap(({ t, c }) => (c.processes.agent?.server ? [{ t, server: c.processes.agent.server }] : [])));
+  await gone();
   return { ok: true, terminals: open.map(({ t }) => refOf(t)) };
 }

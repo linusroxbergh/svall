@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, expect, vi } from 'vitest';
 import { FleetConfig, FleetId, MachineId, OwnerRecord, type Character, type MethodName, type Outcome } from '@svall/protocol';
@@ -45,6 +46,11 @@ const DI_RESUME = `claude --effort 'high' --resume ${SID}`;
 // cy's OpenCode session, dormant since before the handover
 const CY_SESSION = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
 const CY_MESSAGES = [{ id: 'msg_0', text: 'remember PELICAN-42' }, { id: 'msg_1', text: 'PELICAN-42' }];
+// ed's OpenCode runs in its terminal, and its private server lingers once its window closes until it is killed
+const ED_SESSION = 'ses_1a2b3c4d5e6fAbCdEfGhIjKlMn';
+const ED_MESSAGES = [{ id: 'msg_0', text: 'remember HERON-7' }, { id: 'msg_1', text: 'HERON-7' }];
+const ED_RESUME = `opencode -s ${ED_SESSION}`;
+const OC_SERVER = 'opencode serve --stdio';
 
 /** What a process that dies at a failpoint throws: nothing after it runs. */
 export class Crash extends Error {
@@ -67,6 +73,7 @@ const wire = <T>(v: T): T => (v === undefined ? v : JSON.parse(JSON.stringify(v)
 const noGit: GitRunner = async () => ({ code: 128, stdout: '', stderr: 'fatal: not a git repository (or any of the parent directories): .git' });
 
 type Win = { windowId: string; paneId: string; pid: number; name: string; path: string; job?: string[]; ignoresTerm?: true };
+const runsOpenCode = (x: Win): boolean => psArgs(x.job?.[0] ?? '').split(' ')[0] === 'opencode';
 type Instance = { life: Life; ownership: OwnershipState; handover: HandoverService; store: Store; active: boolean; ctx: Ctx };
 
 /** A daemon's journal that dies with it. */
@@ -79,6 +86,8 @@ class MortalJournal extends JournalFile {
 /** A machine: its tmux server and processes, which outlive any daemon, and the daemon running there now. */
 export class Machine {
   windows = new Map<string, Win>();
+  /** the private server an OpenCode TUI left running when its window closed, by that window's name */
+  servers: { name: string; row: Proc }[] = [];
   current?: Instance;
   private next = 1;
 
@@ -91,6 +100,10 @@ export class Machine {
 
   /** The OpenCode double run in this process, as a crash may cut it off between any two commands. */
   cli: CliRun = async (_cmd, args, o) => {
+    // what a lingering server writes after the export reads its database never travels
+    if (args.includes('export') && o?.stdout !== os.devNull && this.servers.length) {
+      this.w.fail(`${this.name} wrote out an OpenCode session while the server ${this.servers.map((x) => x.name).join(', ')} left still ran`);
+    }
     const r = opencode(args, this.opencode);
     if (o?.stdout === undefined) return r;
     fs.writeFileSync(o.stdout, r.stdout, { mode: 0o600 });
@@ -133,6 +146,8 @@ export class Machine {
     ensureServer: async () => {},
     killWindow: async (windowId: string) => {
       this.acting(`kill ${windowId}`);
+      const x = this.windows.get(windowId);
+      if (x && runsOpenCode(x)) this.servers.push({ name: x.name, row: { ...this.server(x), ppid: 1 } });
       this.windows.delete(windowId);
       this.w.check(`${this.name} kill ${windowId}`);
     },
@@ -141,12 +156,20 @@ export class Machine {
   processes = async (): Promise<ProcessTable> => new ProcessTable([...this.windows.values()].flatMap((p): Proc[] => {
     const group = p.job ? p.pid + 1 : p.pid;
     const shell = { pid: p.pid, ppid: 1, pgid: p.pid, tpgid: group, stat: 'Ss', args: '-zsh' };
-    return [shell, ...(p.job ?? []).map((job, i) => ({ pid: group + i, ppid: i ? group + i - 1 : p.pid, pgid: group, tpgid: group, stat: 'S+', args: psArgs(job) }))];
-  }), installedScripts(this.paths.home));
+    const job = (p.job ?? []).map((job, i) => ({ pid: group + i, ppid: i ? group + i - 1 : p.pid, pgid: group, tpgid: group, stat: 'S+', args: psArgs(job) }));
+    return [shell, ...job, ...(runsOpenCode(p) ? [this.server(p)] : [])];
+  }).concat(this.servers.map((x) => x.row)), installedScripts(this.paths.home));
+
+  // an OpenCode TUI's private server, in a group of its own off the terminal
+  private server(p: Win): Proc {
+    return { pid: p.pid + 60, ppid: p.pid + p.job!.length, pgid: p.pid + 60, tpgid: 0, stat: 'Ss', args: OC_SERVER };
+  }
 
   kill = (group: number, signal: NodeJS.Signals): void => {
     this.acting(`signal ${group}`);
     for (const p of this.windows.values()) if (p.job && p.pid + 1 === group && (signal === 'SIGKILL' || !p.ignoresTerm)) delete p.job;
+    // a lingering server, stuck shutting down, ends only on SIGKILL
+    if (signal === 'SIGKILL') this.servers = this.servers.filter((x) => x.row.pgid !== group);
   };
 
   /**
@@ -167,6 +190,7 @@ export class Machine {
       const key = term ? `${id}-2` : id;
       this.w.guarded(life, `${this.name} open ${key}`);
       this.w.opened(this, key);
+      if (this.servers.some((x) => x.name === key)) this.w.fail(`${this.name} opened ${key} beside the OpenCode server its closed window left running`);
       const c = store.state.characters[id];
       const slot = term ? c.second : c;
       if (slot?.tmux) return c;
@@ -252,6 +276,7 @@ export class World {
   /** where Svall's plugin logs OpenCode sessions, in the one home both machines share */
   readonly opencodeLogs = path.join(this.home, '.svall/transcripts/opencode');
   readonly cy = path.join(this.home, 'work/cy');
+  readonly ed = path.join(this.home, 'work/ed');
   readonly mac: Machine;
   readonly trift: Machine;
   violations: string[] = [];
@@ -299,7 +324,7 @@ export class World {
 
   static async create(): Promise<World> {
     const w = new World();
-    for (const d of ['work/ada', 'work/bo', 'work/cy', 'work/di', 'mc', '.claude/projects/-work-di']) fs.mkdirSync(path.join(w.home, d), { recursive: true });
+    for (const d of ['work/ada', 'work/bo', 'work/cy', 'work/di', 'work/ed', 'mc', '.claude/projects/-work-di']) fs.mkdirSync(path.join(w.home, d), { recursive: true });
     fs.writeFileSync(path.join(w.home, 'work/ada/notes.md'), 'ada\n');
     fs.writeFileSync(path.join(w.home, 'work/bo/index.ts'), 'export {};\n');
     fs.writeFileSync(path.join(w.home, 'work/di/plan.md'), 'di\n');
@@ -311,6 +336,9 @@ export class World {
     fs.mkdirSync(w.opencodeLogs, { recursive: true });
     fs.writeFileSync(cyLog, `${JSON.stringify({ kind: 'user', text: 'remember PELICAN-42' })}\n`);
     hold(w.mac.opencode, { info: { id: CY_SESSION, location: { directory: w.cy } }, messages: CY_MESSAGES });
+    const edLog = path.join(w.opencodeLogs, `${ED_SESSION}.jsonl`);
+    fs.writeFileSync(edLog, `${JSON.stringify({ kind: 'user', text: 'remember HERON-7' })}\n`);
+    hold(w.mac.opencode, { info: { id: ED_SESSION, location: { directory: w.ed } }, messages: ED_MESSAGES });
     // trift keeps the copy an earlier handover left there, which the session has gone on past since
     hold(w.trift.opencode, { info: { id: CY_SESSION, location: { directory: w.cy } }, messages: CY_MESSAGES.slice(0, 1) });
     fs.mkdirSync(w.ctlDir, { recursive: true });
@@ -320,8 +348,9 @@ export class World {
       fs.writeFileSync(m.paths.owner, JSON.stringify({ fleetId, generation: G, ownerMachineId: MAC }));
     }
     const work = (p: string) => path.join(w.home, 'work', p);
-    const [ada, adaSecond, bo, di] = [
+    const [ada, adaSecond, bo, di, ed] = [
       w.mac.window('c_ada', work('ada')), w.mac.window('c_ada-2', work('ada')), w.mac.window('c_bo', work('bo'), ['npm run dev']), w.mac.window('c_di', work('di'), [DI_LAUNCH]),
+      w.mac.window('c_ed', work('ed'), ['opencode']),
     ];
     // bo's dev server holds on through a SIGTERM
     bo.ignoresTerm = true;
@@ -340,6 +369,9 @@ export class World {
         }),
         char('c_di', work('di'), {
           tmux: { windowId: di.windowId, paneId: di.paneId }, agent: { kind: 'claude', sessionId: SID, transcriptPath: transcript, status: 'idle', lastActivityAt: 0 },
+        }),
+        char('c_ed', work('ed'), {
+          tmux: { windowId: ed.windowId, paneId: ed.paneId }, agent: { kind: 'opencode', sessionId: ED_SESSION, transcriptPath: edLog, status: 'idle', lastActivityAt: 0 },
         }),
       ]) d.characters[c.id] = c;
     });
@@ -802,12 +834,15 @@ export function settledOn(w: World): 'source' | 'destination' {
   // a fleet coming back to it later starts afresh there
   expect(other.current!.active).toBe(false);
   expect(other.current!.ownership.record()).toMatchObject({ generation: record.generation, ownerMachineId: owner.id });
-  expect([...owner.windows.values()].map((x) => x.name).sort()).toEqual(['c_ada', 'c_ada-2', 'c_bo', 'c_di']);
+  expect([...owner.windows.values()].map((x) => x.name).sort()).toEqual(['c_ada', 'c_ada-2', 'c_bo', 'c_di', 'c_ed']);
   // di's Claude runs as it was launched, or resumed with the flags it was launched with
   expect([DI_LAUNCH, DI_RESUME]).toContain([...owner.windows.values()].find((x) => x.name === 'c_di')?.job?.join(' | '));
+  expect(['opencode', ED_RESUME]).toContain([...owner.windows.values()].find((x) => x.name === 'c_ed')?.job?.join(' | '));
   expect(other.windows.size).toBe(0);
-  // cy's OpenCode session is in the OpenCode of the machine running the fleet, in cy's folder
+  for (const m of [w.mac, w.trift]) expect(m.servers, m.name).toEqual([]);
+  // cy's and ed's OpenCode sessions are in the OpenCode of the machine running the fleet, each in its character's folder
   expect(held(owner.opencode)[CY_SESSION]).toEqual({ info: { id: CY_SESSION, location: { directory: w.cy } }, messages: CY_MESSAGES });
+  expect(held(owner.opencode)[ED_SESSION]).toEqual({ info: { id: ED_SESSION, location: { directory: w.ed } }, messages: ED_MESSAGES });
   // the folder that holds each transaction's own may stay, empty, and a journal a controller could not read stays for a person to look at
   for (const dir of w.dirs) expect(entries(dir).filter((e) => e !== 'handover' && !e.startsWith('handover.json.broken-')), dir).toEqual([]);
   expect(entries(w.base).filter((e) => [...w.transactions].some((tx) => e.includes(tx)))).toEqual([]);

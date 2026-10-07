@@ -9,6 +9,7 @@ import { Config } from '../../src/config.js';
 import { Fleet } from '../../src/fleet.js';
 import { SourceJournal, openJournal } from '../../src/handover/journal.js';
 import { ProcessTable, type Proc } from '../../src/handover/processes.js';
+import { armFailpoints } from '../../src/handover/failpoints.js';
 import { classifyTerminals, restChoices, restTerminals, unapproved, type Clock, type RestDeps } from '../../src/handover/rest.js';
 import { HandoverService } from '../../src/handover/service.js';
 import { silentLogger } from '../../src/log.js';
@@ -62,8 +63,8 @@ class World {
   hangKill = new Set<string>();
   // processes a closed window left running until `until`
   orphans: { row: Proc; until: number }[] = [];
-  // orphans SIGKILL does not end, as a process stuck in the kernel
-  stuck = false;
+  // orphans SIGKILL does not end, as a process stuck in the kernel: every one, or those running these command lines
+  stuck: boolean | string[] = false;
   // windows a kill leaves open without a word, as tmux's kill-window failing does
   keepOnKill = new Set<string>();
   onSignal?: () => void;
@@ -120,7 +121,7 @@ class World {
   kill = (group: number, signal: NodeJS.Signals): void => {
     this.onSignal?.();
     this.log.push(`${signal} ${group}`);
-    if (!this.stuck) this.orphans = this.orphans.filter((o) => o.row.pgid !== group);
+    this.orphans = this.orphans.filter((o) => o.row.pgid !== group || this.stuck === true || (Array.isArray(this.stuck) && this.stuck.includes(o.row.args)));
     for (const p of this.panes.values()) {
       if (p.job && p.pid + 1 === group && !p.unkillable && (signal === 'SIGKILL' || !p.ignoresTerm)) {
         delete p.job;
@@ -487,8 +488,10 @@ describe('restTerminals', () => {
   it('kills a private OpenCode server that outlasts its closed window by the settle time, with what it runs, journaled first, and sees them gone', async () => {
     const { world, deps, paths } = boot([char('c_ada', { tmux: win(1), agent: agent('opencode', 'done', OSID) })]);
     world.pane(1, { job: [`opencode --standalone -s ${OSID}`], server: OC_SERVER, serverLingersMs: 60_000, lateChild: 'node /mcp/server.js' });
+    let stopped: unknown;
+    world.onKill = () => { stopped ??= journalOf(paths).stoppedTerminals; };
     let journaled: unknown;
-    world.onSignal = () => { journaled ??= journalOf(paths).terminated; };
+    world.onSignal = () => { journaled ??= journalOf(paths).serverKills; };
     let result: unknown;
     const run = restTerminals(deps, { choices: {}, pollMs: 500, settleMs: 1000 }).then((r) => { result = r; });
 
@@ -500,7 +503,69 @@ describe('restTerminals', () => {
 
     expect(result).toEqual({ ok: true, terminals: [{ characterId: 'c_ada' }] });
     expect(world.log).toEqual(['detach c_ada', 'kill @1', 'SIGKILL 1060', 'SIGKILL 1080']);
-    expect(journaled).toEqual([{ characterId: 'c_ada', processes: [OC_SERVER, 'node /mcp/server.js'] }]);
+    // the server is journaled with its terminal before the window closes, so a rest or an abort after a crash finds it
+    expect(stopped).toEqual([{ characterId: 'c_ada', server: { pid: 1060, pgid: 1060, args: OC_SERVER } }]);
+    expect(journaled).toEqual([{
+      characterId: 'c_ada', processes: [{ pid: 1060, pgid: 1060, args: OC_SERVER }, { pid: 1080, pgid: 1080, args: 'node /mcp/server.js' }],
+    }]);
+    expect(journalOf(paths).terminated).toEqual([]);
+    expect(world.orphans).toEqual([]);
+  });
+
+  it('waits for, and kills, a private OpenCode server a rest that died left running once it rests again, before it answers', async () => {
+    const { world, deps, paths } = boot([char('c_ada', { tmux: win(1), agent: agent('opencode', 'done', OSID) })]);
+    world.pane(1, { job: [`opencode --standalone -s ${OSID}`], server: OC_SERVER, serverLingersMs: 60_000 });
+    // the daemon dies as the wait for the server ends
+    const disarm = armFailpoints((name, edge) => { if (name === 'source.rest.server.journal' && edge === 'before') throw new Error('crashed'); });
+    let failed: unknown;
+    const first = restTerminals(deps, { choices: {}, pollMs: 500, settleMs: 1000 }).catch((e: Error) => { failed = e.message; });
+    await world.settle();
+    for (let t = 0; t < 2; t++) await world.advance(500);
+    await first;
+    disarm();
+    expect(failed).toBe('crashed');
+
+    let result: unknown;
+    const again = restTerminals(deps, { choices: {}, pollMs: 500, settleMs: 1000 }).then((r) => { result = r; });
+    await world.settle();
+    await world.advance(500);
+    expect(result).toBeUndefined();
+    await world.advance(500);
+    await again;
+
+    expect(result).toEqual({ ok: true, terminals: [] });
+    expect(world.log).toEqual(['detach c_ada', 'kill @1', 'SIGKILL 1060']);
+    expect(journalOf(paths).serverKills).toEqual([{ characterId: 'c_ada', processes: [{ pid: 1060, pgid: 1060, args: OC_SERVER }] }]);
+    expect(world.orphans).toEqual([]);
+  });
+
+  it('takes a journaled server whose pid now runs another command for gone, signalling nothing', async () => {
+    const { world, deps, paths } = boot([char('c_ada', { agent: agent('opencode', 'done', OSID), revive: { command: `opencode -s ${OSID}` } })]);
+    deps.journal.write({ ...journalOf(paths), stoppedTerminals: [{ characterId: 'c_ada', server: { pid: 1060, pgid: 1060, args: OC_SERVER } }] });
+    world.orphans.push({ row: { pid: 1060, ppid: 1, pgid: 1060, tpgid: 0, stat: 'Ss', args: 'vim notes.md' }, until: Infinity });
+
+    expect(await restTerminals(deps, { choices: {} })).toEqual({ ok: true, terminals: [] });
+    expect(world.log).toEqual([]);
+  });
+
+  it('kills again what the kill of a lingering server journaled and still runs when it rests again, and fails while any of it survives', async () => {
+    const { world, deps } = boot([char('c_ada', { tmux: win(1), agent: agent('opencode', 'done', OSID) })]);
+    world.pane(1, { job: [`opencode --standalone -s ${OSID}`], server: OC_SERVER, serverLingersMs: 60_000, lateChild: 'node /mcp/server.js' });
+    world.stuck = ['node /mcp/server.js'];
+    const rest = async (advances: number): Promise<unknown> => {
+      const run = restTerminals(deps, { choices: {}, pollMs: 500, settleMs: 1000 }).catch((e: Error) => e.message);
+      await world.settle();
+      for (let t = 0; t < advances; t++) await world.advance(500);
+      return run;
+    };
+
+    expect(await rest(4)).toBe("ada's terminal: node /mcp/server.js still runs after SIGKILL");
+    // the server is gone, so only the journal still leads to what it ran
+    expect(await rest(2)).toBe("ada's terminal: node /mcp/server.js still runs after SIGKILL");
+    expect(world.log.slice(2)).toEqual(['SIGKILL 1060', 'SIGKILL 1080', 'SIGKILL 1080']);
+    world.stuck = false;
+    expect(await rest(0)).toEqual({ ok: true, terminals: [] });
+    expect(world.log.slice(5)).toEqual(['SIGKILL 1080']);
     expect(world.orphans).toEqual([]);
   });
 

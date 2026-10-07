@@ -17,6 +17,8 @@ export const FAILPOINTS = {
   'source.rest.forcekill': 'source',
   'source.rest.stopped': 'source',
   'source.rest.kill': 'source',
+  'source.rest.server.journal': 'source',
+  'source.rest.server.kill': 'source',
   'source.freeze.export': 'source',
   'source.freeze.manifest': 'source',
   'source.freeze.digest': 'source',

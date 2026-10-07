@@ -250,7 +250,7 @@ runIf('API', () => {
     await ownership.freeze({ id: 'tx-1', fromMachineId: machineId(), toMachineId: other, phase: 'preparing', startedAt: 1 });
     handover.write({
       role: 'source', transactionId: 'tx-1', generation: 0, fleetId: config.id, fromMachineId: machineId(), toMachineId: other,
-      phase: 'freeze', stoppedTerminals: [], terminated: [], updatedAt: 1,
+      phase: 'freeze', stoppedTerminals: [], terminated: [], serverKills: [], updatedAt: 1,
     });
     handover.emitEntity({ transactionId: 'tx-1', kind: 'character', id: 'c1', phase: 'freeze' });
 

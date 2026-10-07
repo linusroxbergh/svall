@@ -76,6 +76,12 @@ export class ProcessTable {
     return false;
   }
 
+  /** The process `p` names while its pid still runs the same command line: a pid alone may name another process since. */
+  same(p: Pick<Proc, 'pid' | 'args'>): Proc | undefined {
+    const live = this.byPid.get(p.pid);
+    return live && !zombie(live) && live.args === p.args ? live : undefined;
+  }
+
   /** The terminal of the pane whose process tmux started as `panePid`; undefined once that process is gone. */
   pane(panePid: number): PaneProcesses | undefined {
     const root = this.byPid.get(panePid);

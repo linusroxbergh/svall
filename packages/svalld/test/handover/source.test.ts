@@ -83,6 +83,8 @@ type Pane = { windowId: string; paneId: string; pid: number; path: string; job?:
 
 class World {
   panes = new Map<string, Pane>();
+  // processes outside any pane, each running until its group is killed
+  extra: Proc[] = [];
   log: string[] = [];
   now = 0;
   onKill?: () => void;
@@ -119,11 +121,12 @@ class World {
     const shell = { pid: p.pid, ppid: 1, pgid: p.pid, tpgid: group, stat: 'Ss', args: '-zsh' };
     const job = (p.job ?? []).map((args, i) => ({ pid: group + i, ppid: i ? group + i - 1 : p.pid, pgid: group, tpgid: group, stat: 'S+', args }));
     return [shell, ...job];
-  }), installedScripts('/Users/ada/.svall'));
+  }).concat(this.extra), installedScripts('/Users/ada/.svall'));
 
   kill = (group: number, signal: NodeJS.Signals): void => {
     this.log.push(`${signal} ${group}`);
     for (const p of this.panes.values()) if (p.job && p.pid + 1 === group) delete p.job;
+    this.extra = this.extra.filter((p) => p.pgid !== group);
   };
 
   // timers still set: a rest waiting on a terminal holds one
@@ -1066,6 +1069,32 @@ describe('source abort', () => {
     expect(b.store.state.characters.c_ada.second?.tmux).toEqual(win(2));
     expect(b.world.log.filter((l) => l.startsWith('second'))).toEqual([]);
     expect(again.ownership.writable()).toBe(true);
+  });
+
+  it('waits for, and kills, the OpenCode server a window a rest that died closed left running before it reopens that terminal, and leaves one whose window is open', async () => {
+    const b = boot();
+    b.gateway.begin();
+    const args = '/Users/ada/.opencode/bin/opencode serve --stdio --port 0';
+    // the rest closed bo's window and died while its server lingered; ada's second window it never closed
+    b.handover.write(SourceJournal.parse({
+      role: 'source', transactionId: TX, generation: 4, fleetId, fromMachineId: me, toMachineId: trift, phase: 'freeze', updatedAt: 1,
+      stoppedTerminals: [{ characterId: 'c_bo', server: { pid: 3060, pgid: 3060, args } }, { characterId: 'c_ada', term: 2, server: { pid: 2060, pgid: 2060, args } }],
+    }));
+    b.world.panes.delete('@3');
+    b.world.extra.push({ pid: 3060, ppid: 1, pgid: 3060, tpgid: 0, stat: 'Ss', args }, { pid: 2060, ppid: 2001, pgid: 2060, tpgid: 0, stat: 'Ss', args });
+    await b.ownership.freeze(b.gateway.record.transaction!);
+    const again = await b.restart();
+    b.gateway.abort();
+
+    const abort = again.handover.abort({ transactionId: TX, generation: 4 });
+    await b.world.settle();
+    await b.world.advance(500);
+    expect(b.world.log).toEqual(['ensure-server']);
+    await b.world.advance(500);
+    await abort;
+
+    expect(b.world.log).toEqual(['ensure-server', 'SIGKILL 3060', 'revive c_bo', 'activate', 'reconcile']);
+    expect(b.world.extra.map((p) => p.pid)).toEqual([2060]);
   });
 
   it('revives a working agent whose window a rest that died closed without telling it a restart cut it off', async () => {

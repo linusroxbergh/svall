@@ -5,6 +5,7 @@ import type { Paths } from '../paths.js';
 import { DurableJson, cleanupDurableTemps, realStages, syncDir, type DurableOptions } from './durable.js';
 
 const Terminal = z.object({ characterId: z.string().min(1), term: Term });
+const Process = z.object({ pid: z.number().int(), pgid: z.number().int(), args: z.string() });
 
 const Common = {
   transactionId: TransactionId,
@@ -21,10 +22,12 @@ export const SourceJournal = z.object({
   ...Common,
   role: z.literal('source'),
   manifestDigest: Sha256.optional(),
-  // with the launch flags its agent resumes with, where it has any
-  stoppedTerminals: z.array(Terminal.extend({ flags: z.array(z.string()).optional() })).default([]),
+  // with the launch flags its agent resumes with, where it has any, and its OpenCode's private server
+  stoppedTerminals: z.array(Terminal.extend({ flags: z.array(z.string()).optional(), server: Process.optional() })).default([]),
   // foreground jobs the user chose to end, each written before its signal was sent
   terminated: z.array(Terminal.extend({ processes: z.array(z.string()) })).default([]),
+  // what a private OpenCode server that outlasted its closed window ran, each written before it was killed
+  serverKills: z.array(Terminal.extend({ processes: z.array(Process) })).default([]),
   error: z.string().optional(),
 });
 export type SourceJournal = z.infer<typeof SourceJournal>;

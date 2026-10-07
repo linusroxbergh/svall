@@ -80,14 +80,16 @@ const REACH: Record<Failpoint, Reach> = {
   'source.rest.terminate': { scenario: 'move', times: 1 },
   'source.rest.forcekill': { scenario: 'move', times: 1 },
   'source.rest.stopped': { scenario: 'move', times: 1 },
-  'source.rest.kill': { scenario: 'move', times: 4 },
+  'source.rest.kill': { scenario: 'move', times: 5 },
+  'source.rest.server.journal': { scenario: 'move', times: 1 },
+  'source.rest.server.kill': { scenario: 'move', times: 1 },
   'source.freeze.export': { scenario: 'move', times: 1 },
   'source.freeze.manifest': { scenario: 'move', times: 1 },
   'source.freeze.digest': { scenario: 'move', times: 1 },
   // only a source that died between its journal and its surrender starts by surrendering
   'source.startup.surrender': { scenario: 'move', times: 0, after: { name: 'source.freeze.journal', edge: 'after', nth: 1 } },
   'source.abort.journal': { scenario: 'abort', times: 1 },
-  'source.revive': { scenario: 'abort', times: 4 },
+  'source.revive': { scenario: 'abort', times: 5 },
   'source.release.manifest': { scenario: 'abort', times: 1 },
   'source.release.journal': { scenario: 'abort', times: 1 },
   'source.release.unfreeze': { scenario: 'abort', times: 1 },
@@ -98,14 +100,14 @@ const REACH: Record<Failpoint, Reach> = {
   'source.complete.manifest': { scenario: 'move', times: 1 },
   'source.complete.journal': { scenario: 'move', times: 1 },
   'destination.claim.seal': { scenario: 'move', times: 1 },
-  'destination.claim.root': { scenario: 'move', times: 6 },
+  'destination.claim.root': { scenario: 'move', times: 7 },
   'destination.claim.archive': { scenario: 'move', times: 1 },
   'destination.verify.journal': { scenario: 'move', times: 1 },
   'destination.verify.landed': { scenario: 'move', times: 1 },
   'destination.verify.record': { scenario: 'move', times: 1 },
   'destination.prepare.seal': { scenario: 'move', times: 1 },
-  'destination.prepare.delete': { scenario: 'move', times: 1, resumes: true },
-  'destination.prepare.import': { scenario: 'move', times: 1, resumes: true },
+  'destination.prepare.delete': { scenario: 'move', times: 2, resumes: true },
+  'destination.prepare.import': { scenario: 'move', times: 2, resumes: true },
   'destination.prepare.state': { scenario: 'move', times: 1, resumes: true },
   'destination.prepare.journal': { scenario: 'move', times: 1 },
   'destination.prepare.stage': { scenario: 'move', times: 1 },
@@ -120,8 +122,8 @@ const REACH: Record<Failpoint, Reach> = {
     scenario: 'move', times: 0, after: { name: 'destination.activate.open', edge: 'after', nth: 4 },
     setup: (w) => { for (const x of w.trift.windows.values()) if (x.name === 'c_di') delete x.job; },
   },
-  'destination.activate.open': { scenario: 'move', times: 4 },
-  'destination.activate.record': { scenario: 'move', times: 4 },
+  'destination.activate.open': { scenario: 'move', times: 5 },
+  'destination.activate.record': { scenario: 'move', times: 5 },
   'destination.complete.seal': { scenario: 'move', times: 1 },
   'destination.complete.clear': { scenario: 'move', times: 1 },
   'destination.complete.journal': { scenario: 'move', times: 1 },
@@ -139,8 +141,8 @@ const REACH: Record<Failpoint, Reach> = {
   'controller.manifest': { scenario: 'move', times: 1 },
   'controller.landed': { scenario: 'move', times: 1 },
   'controller.clear': { scenario: 'move', times: 1 },
-  'controller.rsync': { scenario: 'move', times: 7 },
-  'controller.verify': { scenario: 'move', times: 7 },
+  'controller.rsync': { scenario: 'move', times: 9 },
+  'controller.verify': { scenario: 'move', times: 9 },
   'controller.commit': { scenario: 'move', times: 1 },
 };
 
@@ -485,7 +487,7 @@ describe('a stale owner.json beside a surrendered journal', () => {
       await w.boot(w.mac);
       expect(w.mac.can()).toBe(false);
       expect(surrendered(w).surrendered).toBe(true);
-      expect(w.mac.windows.size).toBe(4);
+      expect(w.mac.windows.size).toBe(5);
       if (w.away) await w.startGateway();
       await w.recover('resume');
       expect(w.violations).toEqual([]);
