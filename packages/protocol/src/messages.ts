@@ -402,4 +402,4 @@ export type HelloReply = z.infer<typeof HelloReply>;
 export const LOGIN_REFUSED = 4403;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 20;
+export const PROTOCOL_VERSION = 21;

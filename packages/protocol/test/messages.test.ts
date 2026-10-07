@@ -150,8 +150,11 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 20 with ownership, handover and characters starred', () => {
-    expect(PROTOCOL_VERSION).toBe(20);
+  it('is 21 with ownership and handover', () => {
+    expect(PROTOCOL_VERSION).toBe(21);
+  });
+
+  it('was 20 with characters starred', () => {
     expect(methods['char.star'].params.safeParse({ id: 'c_a' }).success).toBe(true);
     expect(methods['char.star'].params.safeParse({ id: 'c_a', targetId: 'c_b', after: true }).success).toBe(true);
     expect(methods['char.unstar'].params.safeParse({ id: 'c_a' }).success).toBe(true);

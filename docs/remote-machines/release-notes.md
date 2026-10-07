@@ -34,7 +34,7 @@ does not works exactly as before.
 
 - A fleet's settings are split into `fleet.json`, which travels with the fleet, and `node.json`, which stays with the
   machine. Your `config.json` is split on the daemon's first start and kept as `config.json.bak`.
-- The fleet state moves to schema 9 and the protocol to 20; the old state is kept beside it.
+- The fleet state moves to schema 9 and the protocol to 21; the old state is kept beside it.
 - `host`, `handover`, `gateway`, `fleet`, `connect`, `connection-info` and `version` are commands now, and no longer
   name a fleet; `svall setup` names each fleet made under one of them and the `mv` that renames it.
 - `svall uninstall` refuses while it would strand a fleet: a handover open, a fleet this machine runs for its gateway,
