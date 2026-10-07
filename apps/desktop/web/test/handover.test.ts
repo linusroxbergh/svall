@@ -323,7 +323,10 @@ describe('what each blocker and warning is explained with', () => {
   });
 
   it('says where an agent is to be installed, logged in or set up, and that a login never moves', () => {
-    expect(blockerHint({ code: 'agent_cli_missing', message: 'the destination has no codex CLI' }, ctx)).toMatch(/Install it on studio/);
+    // either machine raises a missing CLI, as the source's OpenCode export can
+    const missing = blockerHint({ code: 'agent_cli_missing', message: 'OpenCode could not be run on this machine: spawn opencode ENOENT' }, ctx);
+    expect(missing).toMatch(/Install it on the machine the message names/);
+    expect(missing).not.toMatch(/studio/);
     expect(blockerHint({ code: 'agent_logged_out', message: 'claude is not logged in on the destination' }, ctx)).toMatch(/on studio.*never moves/);
     expect(blockerHint({ code: 'agent_hooks_missing', message: "Svall's hooks are not installed for codex" }, ctx)).toMatch(/svall setup on studio/);
   });

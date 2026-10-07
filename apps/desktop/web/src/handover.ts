@@ -344,7 +344,7 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
       return `Both machines need the same Svall release: Upgrade ${linux} under Settings → Machines. If it runs a newer release than this Mac, update this Mac first.`;
     }
     case 'agent_cli_missing':
-      return `Install it on ${ctx.destination}, where Svall's daemon finds it, then try again.`;
+      return "Install it on the machine the message names, where Svall's daemon finds it, then try again.";
     case 'agent_logged_out':
       return `Log it in on ${ctx.destination}, in a terminal there. A login never moves with the fleet.`;
     case 'agent_hooks_missing':
