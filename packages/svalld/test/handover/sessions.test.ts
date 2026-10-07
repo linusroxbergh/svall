@@ -802,9 +802,9 @@ describe('OpenCode sessions', () => {
     const pid = (): number => Number(fs.readFileSync(pidFile, 'utf8'));
     const started = Date.now();
     try {
-      await expect(opencodeAdapter.exportSession!(ID, path.join(dir, 'out.json'), cliRunner({ ...process.env, PATH: `${bin}:${process.env.PATH}` }, 500), dir))
-        .rejects.toMatchObject({ code: 'transcript_missing', message: expect.stringContaining('did not finish within 0.5 s') });
-      expect(Date.now() - started).toBeLessThan(2000);
+      await expect(opencodeAdapter.exportSession!(ID, path.join(dir, 'out.json'), cliRunner({ ...process.env, PATH: `${bin}:${process.env.PATH}` }, 2000), dir))
+        .rejects.toMatchObject({ code: 'transcript_missing', message: expect.stringContaining('did not finish within 2 s') });
+      expect(Date.now() - started).toBeLessThan(3500);
       expect(alive(pid())).toBe(true);
       await vi.waitFor(() => expect(alive(pid())).toBe(false), { timeout: 5000, interval: 100 });
     } finally {
