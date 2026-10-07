@@ -64,6 +64,18 @@ test('a draft in one character\'s instructions never shows or saves on the next 
   expect(updates()).not.toContainEqual(['char.update', { id: 'c1', instructions: 'run the tests first' }]);
 });
 
+test('the star beside the name stars the character, and unstars it once starred', () => {
+  render(<Side />);
+  const button = () => screen.getByTestId('side-star');
+  expect(button().getAttribute('aria-pressed')).toBe('false');
+  fireEvent.click(button());
+  expect(calls()).toContainEqual(['char.star', { id: 'c0' }]);
+  act(() => store.getState().applyPatch([{ op: 'add', path: '/characters/c0/star', value: 0 }]));
+  expect(button().getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(button());
+  expect(calls()).toContainEqual(['char.unstar', { id: 'c0' }]);
+});
+
 test('a draft in one island\'s instructions never shows or saves on the next one', () => {
   store.getState().selectIsland('i_a');
   render(<IslandSide />);
