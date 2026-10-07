@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -31,7 +32,7 @@ import type { CliRun } from '../../src/handover/sessions/types.js';
 import type { Authority } from '../../src/handover/source.js';
 import { adoptAtStart, enterStartupMode, startupMode } from '../../src/handover/startup.js';
 import { linkProblem } from '../../src/handover/validate.js';
-import { silentLogger } from '../../src/log.js';
+import { silentLogger, type Logger } from '../../src/log.js';
 import { OwnershipState } from '../../src/ownership/state.js';
 import { resolvePaths, type Paths } from '../../src/paths.js';
 import { Phones } from '../../src/phones.js';
@@ -362,7 +363,7 @@ const params = (s: Scene, over: Partial<Prepare> = {}): Prepare =>
 /** This destination's daemon, as main wires it, over the scene's home, in an account whose home is the fleet's unless `homedir` says otherwise. */
 function daemon(
   s: { paths: Paths; store: Store; probes: AgentProbe[]; manifest: Pick<TransferManifestV1, 'home'> },
-  o: { concurrency?: number; failWrite?: (j: HandoverJournal) => boolean; git?: GitRunner; homedir?: () => string; agents?: () => Promise<AgentProbe[]>; cli?: CliRun } = {},
+  o: { concurrency?: number; failWrite?: (j: HandoverJournal) => boolean; git?: GitRunner; homedir?: () => string; agents?: () => Promise<AgentProbe[]>; cli?: CliRun; log?: Logger } = {},
 ) {
   const gateway = new Gateway();
   const clock = new Hands();
@@ -378,7 +379,7 @@ function daemon(
       source: idleSides(s.paths, { store: s.store }).source,
       destination: {
         paths: s.paths, config, store: s.store, fleet: crew.fleet, tmux: crew.tmux, processes: crew.processes, authority: () => gateway, clock, ...(o.git && { git: o.git }),
-        sessionStartMs: 60_000, concurrency: over.concurrency ?? o.concurrency ?? 2, homedir: o.homedir ?? (() => s.manifest.home), ...(o.cli && { cli: o.cli }), log: silentLogger,
+        sessionStartMs: 60_000, concurrency: over.concurrency ?? o.concurrency ?? 2, homedir: o.homedir ?? (() => s.manifest.home), ...(o.cli && { cli: o.cli }), log: o.log ?? silentLogger,
       },
     });
     const events: Event[] = [];
@@ -536,6 +537,28 @@ describe('destination prepare', () => {
     expect(blockersOf(r)).toEqual([{ code: 'transcript_missing', message: expect.stringContaining('disk I/O error'), entity: { kind: 'character', id: 'c_eve' } }]);
     expect(held(s.oc.trift)).toEqual({ [OC]: mine });
     expect(fs.readdirSync(s.paths.handoverDir).filter((f) => f.startsWith('held-'))).toEqual([]);
+  });
+
+  it('logs the command that puts back an OpenCode copy it could not, once a forced record wins, and keeps that copy for it', async () => {
+    const s = await scene({ opencode: true });
+    const eve = path.join(s.dst, 'work/eve');
+    const mine = ocSession(eve, []);
+    hold(s.oc.trift, mine);
+    const run = cliRunner(s.oc.trift);
+    // this machine's OpenCode removes what it is asked to, and imports nothing
+    const cli: CliRun = (cmd, args, o) => (args[1] === 'import' ? Promise.resolve({ code: 1, stdout: '', stderr: 'Error: database disk image is malformed\n' }) : run(cmd, args, o));
+    const errors: string[] = [];
+    const d = daemon(s, { cli, log: { info() {}, error: (m) => errors.push(m) } });
+    await refusal(d.handover.prepare(params(s)));
+    expect(await d.handover.adopt({ fleetId, generation: 7, ownerMachineId: trift })).toMatchObject({ adopted: true, superseded: TX });
+
+    const kept = path.join(s.paths.handoverDir, `held-${TX}`, 'opencode', `${OC}.json`);
+    const by = `opencode session import --standalone --directory '${eve}' '${kept}'`;
+    expect(errors.at(-1)).toContain(by);
+    expect(held(s.oc.trift)).toEqual({});
+    // run by hand, it does
+    execFileSync('sh', ['-c', by], { env: s.oc.trift });
+    expect(held(s.oc.trift)).toEqual({ [OC]: mine });
   });
 
   it('keeps the OpenCode session a prepare imported before it died, not the copy it kept aside, once the handover is aborted', async () => {

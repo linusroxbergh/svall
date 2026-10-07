@@ -575,7 +575,7 @@ export class DestinationHandover {
           await sessionAdapter(kind as AgentKind).restoreSession!(name.slice(0, -'.json'.length), kept, run);
           fs.rmSync(kept);
         } catch (e) {
-          this.d.log.error(`handover ${tx}: ${kept} is kept for another try: ${(e as Error).message}`);
+          this.d.log.error(`handover ${tx}: ${kept} stays on this machine: ${(e as Error).message}`);
           failed.push(`${kept} (${(e as Error).message})`);
         }
       }

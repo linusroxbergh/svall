@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { AGENTS } from '../../agents.js';
+import { shq } from '../../text.js';
 import { writeDurable } from '../durable.js';
 import { transcriptFile } from './records.js';
 import { SessionError, type CliRun, type SessionAdapter, type SessionFs } from './types.js';
@@ -141,9 +142,13 @@ export const opencodeAdapter: SessionAdapter = {
   async restoreSession(sessionId, kept, run) {
     const folder = folderOf(kept);
     if (!folder) throw new SessionError('transcript_missing', `${kept} is not the copy of session ${sessionId} this machine's OpenCode held`);
-    const r = await ask(run, ['session', 'import', '--standalone', '--directory', folder, kept], { cwd: folder });
+    const by = `put it back with: opencode session import --standalone --directory ${shq(folder)} ${shq(kept)}`;
+    let r: { code: number; stdout: string; stderr: string };
+    try { r = await ask(run, ['session', 'import', '--standalone', '--directory', folder, kept], { cwd: folder }); } catch (e) {
+      throw new SessionError((e as SessionError).code, `${(e as Error).message}; ${by}`);
+    }
     if (r.code !== 0 || !(imported(r, sessionId) || /Session already exists/.test(r.stderr))) {
-      throw new SessionError('transcript_missing', `OpenCode could not take back its copy of session ${sessionId}, kept at ${kept}: ${said(r)}`);
+      throw new SessionError('transcript_missing', `OpenCode could not take back its copy of session ${sessionId}, kept at ${kept}: ${said(r)}; ${by}`);
     }
   },
 };
