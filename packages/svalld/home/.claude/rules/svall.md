@@ -34,7 +34,7 @@ control buttons; each finishes its task and stays `done` until closed.
 | --- | --- |
 | move a character | `svall char move bob --island review` |
 | refresh names, notes and links, and island descriptions and links | `svall scribe sweep` |
-| rename one | `svall char update bob --name "#472 review login"` |
+| rename one | `svall char update bob --name "#472 login review"` |
 | close one | `svall char close bob` |
 | note what it is doing | `svall char update bob --note "rewriting the auth helpers"` |
 | add links | `svall char update bob --context "https://github.com/x/y/pull/472 PR 472"` |
@@ -78,7 +78,7 @@ character's agent gets at SessionStart; `svall char show <name>` prints it.
 - Starting a character to continue, review or take over work ends your part. Do
   not wait on or watch it unless the user asked you to report back.
 - Names are at most 24 characters, lower case: PR or ticket id, area, task, one
-  or two words each: `#1907 auth review`, not `#1907 deep review r3` or
+  or two words each: `#1907 auth review`, not `#1907 deep review` or
   `claude-2`.
 - Leave notes and descriptions to `svall scribe sweep` unless the user asks. One
   you write counts as hand-written, and the scribe stops updating it.
