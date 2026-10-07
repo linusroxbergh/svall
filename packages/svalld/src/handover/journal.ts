@@ -22,12 +22,12 @@ export const SourceJournal = z.object({
   ...Common,
   role: z.literal('source'),
   manifestDigest: Sha256.optional(),
-  // with the launch flags its agent resumes with, where it has any, and its OpenCode's private server
-  stoppedTerminals: z.array(Terminal.extend({ flags: z.array(z.string()).optional(), server: Process.optional() })).default([]),
+  // with the launch flags its agent resumes with, where it has any, and its OpenCode's private server, with the time it was journaled
+  stoppedTerminals: z.array(Terminal.extend({ flags: z.array(z.string()).optional(), server: Process.extend({ at: z.number() }).optional() })).default([]),
   // foreground jobs the user chose to end, each written before its signal was sent
   terminated: z.array(Terminal.extend({ processes: z.array(z.string()) })).default([]),
-  // what a private OpenCode server that outlasted its closed window ran, each written before it was killed
-  serverKills: z.array(Terminal.extend({ processes: z.array(Process) })).default([]),
+  // what a private OpenCode server that outlasted its closed window ran, each written with its time before it was killed
+  serverKills: z.array(Terminal.extend({ at: z.number(), processes: z.array(Process) })).default([]),
   error: z.string().optional(),
 });
 export type SourceJournal = z.infer<typeof SourceJournal>;

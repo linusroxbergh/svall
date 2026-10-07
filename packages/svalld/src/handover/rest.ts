@@ -1,3 +1,4 @@
+import os from 'node:os';
 import type { Agent, Blocker, FleetState, HandoverChoices, HandoverIssueCode, TerminalSlot } from '@svall/protocol';
 import { markDormant, markSlotDormant, startFlags } from '../dormancy.js';
 import { installedScripts } from '../paths.js';
@@ -45,6 +46,8 @@ export type RestDeps = {
   processes?: (signal?: AbortSignal) => Promise<ProcessTable>;
   kill?: (group: number, signal: NodeJS.Signals) => void;
   clock?: Clock;
+  /** When this machine last started, by the clock: a process journaled before then has ended. */
+  bootedAt?: () => number;
 };
 
 export type RestOptions = {
@@ -287,7 +290,7 @@ type Owned<P> = { t: TerminalRef; p: P };
  * what an earlier kill journaled that still runs; it throws if any of that still runs a settle time after its SIGKILL.
  */
 export async function serversGone(
-  deps: Pick<RestDeps, 'store' | 'journal' | 'processes' | 'kill' | 'clock'>,
+  deps: Pick<RestDeps, 'store' | 'journal' | 'processes' | 'kill' | 'clock' | 'bootedAt'>,
   o: Pick<RestOptions, 'settleMs' | 'pollMs' | 'callTimeoutMs'>,
   closed: (t: TerminalRef) => boolean = () => true,
 ): Promise<void> {
@@ -295,8 +298,10 @@ export async function serversGone(
   const kill = deps.kill ?? killGroup;
   const read = () => boundBy(clock, o.callTimeoutMs ?? CALL_TIMEOUT_MS)('ps', tableOf(deps));
   const j = sourceJournal(deps.journal);
-  const servers = j.stoppedTerminals.flatMap((s) => (s.server && closed(s) ? [{ t: refOf(s), p: s.server }] : []));
-  const killed = j.serverKills.filter(closed).flatMap((k) => k.processes.map((p) => ({ t: refOf(k), p })));
+  // a pid this boot reuses may run OpenCode's same generic command line
+  const booted = (deps.bootedAt ?? (() => clock.now() - os.uptime() * 1000))();
+  const servers = j.stoppedTerminals.flatMap((s) => (s.server && s.server.at >= booted && closed(s) ? [{ t: refOf(s), p: s.server }] : []));
+  const killed = j.serverKills.filter((k) => k.at >= booted && closed(k)).flatMap((k) => k.processes.map((p) => ({ t: refOf(k), p })));
   if (!servers.length && !killed.length) return;
   const running = (table: ProcessTable, of: Owned<Pick<Proc, 'pid' | 'args'>>[]): Owned<Proc>[] =>
     of.flatMap(({ t, p }) => { const live = table.same(p); return live ? [{ t, p: live }] : []; });
@@ -311,7 +316,7 @@ export async function serversGone(
   const trees = running(table, servers).map(({ t, p }) => ({ t, tree: table.tree([p]) }));
   if (trees.length) {
     boundary('source.rest.server.journal', () => recordJournal(deps.journal, clock.now(), (j) => ({
-      serverKills: [...j.serverKills, ...trees.map(({ t, tree }) => ({ ...t, processes: tree.map(({ pid, pgid, args }) => ({ pid, pgid, args })) }))],
+      serverKills: [...j.serverKills, ...trees.map(({ t, tree }) => ({ ...t, at: clock.now(), processes: tree.map(({ pid, pgid, args }) => ({ pid, pgid, args })) }))],
     })));
   }
   const doomed = [...new Map([...trees.flatMap(({ t, tree }) => tree.map((p) => ({ t, p }))), ...running(table, killed)].map((x) => [x.p.pid, x])).values()];
@@ -366,7 +371,7 @@ async function layToRest(
   // before any window closes, so an abort knows which terminals the handover stopped and which servers to wait for
   boundary('source.rest.stopped', () => recordJournal(deps.journal, now, (j) => {
     const live = new Map(open.map(({ t, c }) => [t.key, c.processes.agent?.server]));
-    const server = (s?: Proc) => s && { server: { pid: s.pid, pgid: s.pgid, args: s.args } };
+    const server = (s?: Proc) => s && { server: { pid: s.pid, pgid: s.pgid, args: s.args, at: now } };
     // a terminal journaled before is live again only once the revive that reopened it waited for the server it had
     const known = j.stoppedTerminals.map((s) => {
       if (!live.has(keyOf(s))) return s;
