@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MachineId, SPACING, crewGrid, emptyState, isLand, landCells, sizeForCrew, type AgentKind, type FleetState } from '@svall/protocol';
 import { Config } from '../src/config.js';
 import { docsDir } from '../src/docs.js';
-import { markDormant, RESUME_NOTE, type Proc } from '../src/dormancy.js';
+import { markDormant, markSlotDormant, RESUME_NOTE, type Proc } from '../src/dormancy.js';
 import { Dormant, Invalid, NotFound } from '../src/errors.js';
 import { Fleet } from '../src/fleet.js';
 import { startHookReceiver, type HookEvent } from '../src/hooks/receiver.js';
@@ -204,6 +204,43 @@ runIf('Fleet', () => {
     // the poll finds it gone
     await fleet['link'].stop();
     await quitThenExit((await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' })).id);
+  });
+
+  it('judges a revived second terminal by what a poll saw in its own window, not in the one closed before it', async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 1000 });
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'again' }).id, cwd: '/tmp' });
+    await fleet.openSecond(c.id);
+    const first = store.state.characters[c.id].second!.tmux!.windowId;
+    store.update((d) => { d.characters[c.id].second!.agent = { kind: 'opencode', sessionId: OSID, transcriptPath: '/t', status: 'idle', lastActivityAt: 1 }; });
+    // a poll sees the shell in the pane, then the terminal is laid dormant the way a quit does, reading no sighting
+    await waitForPolls(fleet, 1);
+    store.update((d) => { markSlotDormant(d.characters[c.id].second!); });
+    await tmux.killWindow(first);
+    await waitForPolls(fleet, 1);
+    // revived, with nothing typed, and its window killed before any poll has looked at it
+    vi.spyOn(tmux, 'sendLine').mockResolvedValue();
+    await fleet.openSecond(c.id);
+    await tmux.killWindow(store.state.characters[c.id].second!.tmux!.windowId);
+    await waitFor(() => store.state.characters[c.id].second?.tmux === undefined);
+    expect(store.state.characters[c.id].second?.revive).toEqual({ command: `opencode -s ${OSID}` });
+  });
+
+  it('keeps a second terminal whose resume never brought its OpenCode up, though a poll saw only the shell there', async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 1000 });
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'resume' }).id, cwd: '/tmp' });
+    // a resume that failed once, so its revive is watched until the session starts
+    store.update((d) => {
+      d.characters[c.id].second = {
+        cwd: '/tmp', unread: false, agent: { kind: 'opencode', sessionId: OSID, transcriptPath: '/t', status: 'idle', lastActivityAt: 1 },
+        revive: { command: `opencode -s ${OSID}` }, resumeError: 'opencode did not come up',
+      };
+    });
+    vi.spyOn(tmux, 'sendLine').mockResolvedValue();
+    await fleet.openSecond(c.id);
+    await waitForPolls(fleet, 1);
+    await tmux.killWindow(store.state.characters[c.id].second!.tmux!.windowId);
+    await waitFor(() => store.state.characters[c.id].second?.tmux === undefined);
+    expect(store.state.characters[c.id].second?.revive).toEqual({ command: `opencode -s ${OSID}` });
   });
 
   it('keeps a second terminal whose OpenCode still held its pane when the window was killed, to be revived', async () => {
