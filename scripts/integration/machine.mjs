@@ -184,18 +184,21 @@ async function snap(o) {
   process.stdout.write(`${JSON.stringify(out)}\n`);
 }
 
-/** The process table of one session: each process's pid and arguments. */
-function session(sid) {
-  const out = [];
+/** Each process descended from `root`, which runs its ssh and rsync in sessions of their own: pid and arguments. */
+function descendants(root) {
+  const children = new Map();
   for (const pid of fs.readdirSync('/proc').filter((f) => /^\d+$/.test(f))) {
     let stat;
     try { stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8'); } catch { continue; }
     // the fields after the command name, which may itself hold spaces and parentheses
-    const rest = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
-    if (Number(rest[3]) !== sid) continue;
-    let args;
-    try { args = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0').filter(Boolean); } catch { continue; }
-    out.push({ pid: Number(pid), args });
+    const ppid = Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1]);
+    children.set(ppid, [...(children.get(ppid) ?? []), Number(pid)]);
+  }
+  const out = [];
+  for (const queue = [...(children.get(root) ?? [])]; queue.length;) {
+    const pid = queue.shift();
+    queue.push(...(children.get(pid) ?? []));
+    try { out.push({ pid, args: fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0').filter(Boolean) }); } catch { /* gone */ }
   }
   return out;
 }
@@ -227,7 +230,7 @@ async function link(cmd) {
 /**
  * One handover, with a controller kill or a dropped ssh link at a boundary. A kill at a gateway operation takes the
  * controller alone, so the ssh already carrying that operation still lands it, as a helper killed mid-call leaves it;
- * a kill during the transfer takes its whole session, rsync and ssh with it, as a crash of the machine would.
+ * a kill during the transfer takes it and everything it started, rsync and ssh with it, as a crash of the machine would.
  */
 async function drive(o) {
   const to = o._[0];
@@ -256,7 +259,7 @@ async function drive(o) {
   let watching = fault !== 'none' && MARKS[at];
   const watch = async () => {
     while (watching) {
-      const hit = session(child.pid).find((p) => MARKS[at](p.args));
+      const hit = descendants(child.pid).find((p) => MARKS[at](p.args));
       if (hit) { fire({ by: hit.args.join(' ').slice(0, 300), pid: hit.pid }); return; }
       if (!alive(child.pid)) return;
       await sleep(2);
@@ -270,7 +273,8 @@ async function drive(o) {
     watching = false;
     summary.trigger = hit ? { ...hit, ms: Date.now() - t0 } : null;
     if (hit && fault === 'kill') {
-      process.kill(at === 'transfer' ? -child.pid : child.pid, 'SIGKILL');
+      const doomed = [child.pid, ...(at === 'transfer' ? descendants(child.pid).map((p) => p.pid) : [])];
+      for (const pid of doomed) { try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ } }
       // the operation already on its way lands before anyone looks
       if (hit.pid) for (const end = Date.now() + 60_000; alive(hit.pid) && Date.now() < end;) await sleep(20);
     }
