@@ -178,10 +178,13 @@ export class HandoverService {
     return this.destination.claim(p);
   }
 
-  /** Each side finishes the journal it holds; with none, there is nothing left to finish. */
+  /** Each side finishes the journal it holds; with none, only a session stage a second controller's late transfer left there goes. */
   async complete(p: ParsedParams<'handover.complete'>): Promise<Result<'handover.complete'>> {
     const j = this.open();
-    if (!j) return {};
+    if (!j) {
+      await this.destination.dropStage(p.transactionId);
+      return {};
+    }
     this.match(p.transactionId, p.generation);
     if (j.role === 'destination') return this.destination.complete(p);
     return this.source.complete(p);

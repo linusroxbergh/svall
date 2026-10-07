@@ -2496,6 +2496,32 @@ describe('destination complete', () => {
       expect(await replicas.inspect(r, { transactionId: 'tx-2', excludes: s.manifest.excludes }), r.path).toMatchObject({ ok: true, kind: 'replica' });
     }
   });
+
+  it('drops the session stage a second controller copied in after it completed, once the gateway lets the handover go, and nothing else', async () => {
+    const s = await scene();
+    const d = daemon(s);
+    const { preparedDigest } = await d.handover.prepare(params(s));
+    d.gateway.commit(preparedDigest);
+    await d.handover.activate({ transactionId: TX, generation: 5 });
+    await d.handover.complete({ transactionId: TX, generation: 5 });
+    const roots = replicaRoots(s.manifest);
+    const sealed = roots.map((r) => fs.readFileSync(s.paths.replicaRecord(fleetId, r.path), 'utf8'));
+    // the other controller's transfer lands a session file now, and its prepare is refused
+    const stage = path.dirname(s.paths.sessionStage(TX, 0));
+    const late = path.join(s.paths.sessionStage(TX, 0), s.manifest.sessions[0].files[0].path);
+    fs.mkdirSync(path.dirname(late), { recursive: true });
+    fs.writeFileSync(late, 'a late copy\n');
+    expect((await refusal(d.handover.prepare(params(s)))).code).toBe('not_owner');
+
+    // its Complete keeps the stage while the gateway still holds the handover, and drops it once the gateway let it go
+    expect(await d.handover.complete({ transactionId: TX, generation: 5 })).toEqual({});
+    expect(fs.existsSync(stage)).toBe(true);
+    d.gateway.record = { fleetId, generation: 5, ownerMachineId: trift };
+    expect(await d.handover.complete({ transactionId: TX, generation: 5 })).toEqual({});
+    expect(fs.existsSync(stage)).toBe(false);
+    expect(roots.map((r) => fs.readFileSync(s.paths.replicaRecord(fleetId, r.path), 'utf8'))).toEqual(sealed);
+    expect(d.ownership.writable()).toBe(true);
+  });
 });
 
 describe("a moved fleet's docs and agent profiles", () => {
