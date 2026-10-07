@@ -156,6 +156,9 @@ const CASES: Case[] = NAMES.flatMap((name) => {
 
 const label = (k: Target): string => `${k.name}:${k.edge}#${k.nth}`;
 
+// a move run's crash before the gateway holds its Begin or the controller has journaled one leaves nothing to resume
+const UNRESUMABLE = new Set(['gateway.begin.write:before#1', 'controller.journal:before#1', 'controller.journal:after#1']);
+
 describe('the guard on steps outside every failpoint', () => {
   const world = worlds();
 
@@ -205,6 +208,7 @@ describe('a crash at every failpoint', () => {
         const w = world();
         w.targets = [...(k.after ? [k.after] : []), { name: k.name, edge: k.edge, nth: k.nth }];
         const first = await play(w, k.scenario);
+        const committed = w.moved();
         k.setup?.(w);
         await w.heal(heal);
         const said = await w.recover(prefer);
@@ -214,6 +218,16 @@ describe('a crash at every failpoint', () => {
         let where: string;
         try { where = settledOn(w); } catch (e) { throw new Error(`${(e as Error).message}\n${why()}`); }
         if (w.everMoved || (k.resumes && prefer === 'resume')) expect(where, why()).toBe('destination');
+        // before the commit, status offers a resume wherever a move run can still finish, and that resume finishes it
+        if (prefer === 'resume' && !committed) {
+          const offered = said[0].split(':')[1].split('+').includes('resume');
+          if (k.scenario === 'move') expect(offered, why()).toBe(!UNRESUMABLE.has(label(k)));
+          if (offered) {
+            expect(said[1], why()).toMatch(/^resume->/);
+            expect(said.filter((s) => s.startsWith('abort->')), why()).toEqual([]);
+            expect(where, why()).toBe('destination');
+          }
+        }
       });
     }
   }
