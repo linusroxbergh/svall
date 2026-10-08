@@ -1,54 +1,136 @@
-<svg width="292" height="412" viewBox="110 66 292 412" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="jukebox-title jukebox-desc">
+<svg width="292" height="412" viewBox="110 66 292 412" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="jukebox-title jukebox-desc" class="r63" data-idle="blink blink listen listen wave" data-work="groove groove thump thump wave blink"><style>
+.r63[data-act=groove] .body{animation:r63-bop 2s ease-in-out}
+.r63[data-act=groove] .arm-l,.r63[data-act=groove] .arm-r{animation:r63-swing 2s ease-in-out}
+.r63[data-act=groove] .fore-l,.r63[data-act=groove] .fore-r{animation:r63-lag 2s ease-in-out}
+.r63[data-act=groove] .leg-l{animation:r63-tap-l 2s ease-in-out}
+.r63[data-act=groove] .leg-r{animation:r63-tap-r 2s ease-in-out}
+.r63[data-act=groove] .disc{animation:r63-spin 2s ease-in-out}
+.r63[data-act=groove] .gleam{animation:r63-gleam 2s ease-in-out}
+.r63[data-act=groove] .fin{animation:r63-fin 2s ease-in-out}
+.r63[data-act=listen] .body{animation:r63-cock 1.8s ease-in-out}
+.r63[data-act=listen] .eyes{animation:r63-look 1.8s ease-in-out}
+.r63[data-act=listen] .fin{animation:r63-fin-lag 1.8s ease-in-out}
+.r63[data-act=listen] .arm-l,.r63[data-act=listen] .arm-r{animation:r63-hang 1.8s ease-in-out}
+.r63[data-act=wave] .body{animation:r63-brace 2s ease-in-out}
+.r63[data-act=wave] .arm-r{animation:r63-raise 2s ease-in-out}
+.r63[data-act=wave] .fore-r{animation:r63-wave 2s ease-in-out}
+.r63[data-act=wave] .eyes{animation:r63-peek 2s ease-in-out}
+.r63[data-act=wave] .fin{animation:r63-fin-wave 2s ease-in-out}
+.r63[data-act=thump] .body{animation:r63-dip 1.4s ease-in-out}
+.r63[data-act=thump] .grille{animation:r63-pump 1.4s ease-in-out}
+.r63[data-act=thump] .arm-l{animation:r63-flap-l 1.4s ease-in-out}
+.r63[data-act=thump] .arm-r{animation:r63-flap-r 1.4s ease-in-out}
+.r63[data-act=thump] .tube{animation:r63-glow 1.4s ease-in-out}
+.r63[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r63-blink .4s ease-in-out}
+/* the cabinet sinks at least 51 units x angle so its bottom never lifts off the legs */
+@keyframes r63-bop{0%,25%,50%,75%,100%{transform:none}12%{transform:translateY(2.5px) rotate(-1.5deg)}37%{transform:translateY(2.5px) rotate(1.5deg)}62%{transform:translateY(2px) rotate(-1.1deg)}87%{transform:translateY(1px) rotate(.6deg)}}
+@keyframes r63-swing{0%,100%{transform:none}15%{transform:rotate(-7deg)}40%{transform:rotate(7deg)}65%{transform:rotate(-5deg)}89%{transform:rotate(2deg)}}
+@keyframes r63-lag{0%,100%{transform:none}20%{transform:rotate(-5deg)}45%{transform:rotate(5deg)}70%{transform:rotate(-3.5deg)}92%{transform:rotate(1.2deg)}}
+@keyframes r63-tap-l{0%,25%,50%,75%,100%{transform:none}37%{transform:translateY(-5px)}87%{transform:translateY(-2px)}}
+@keyframes r63-tap-r{0%,25%,50%,75%,100%{transform:none}12%{transform:translateY(-5px)}62%{transform:translateY(-4px)}}
+@keyframes r63-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+@keyframes r63-gleam{0%,100%{fill:#262d36}12%,88%{fill:#56636f}}
+@keyframes r63-fin{0%,100%{transform:none}17%{transform:rotate(7deg)}41%{transform:rotate(-7deg)}66%{transform:rotate(5deg)}90%{transform:rotate(-2deg)}}
+@keyframes r63-cock{0%,100%{transform:none}28%,62%{transform:translateY(.8px) rotate(.8deg)}84%{transform:translateY(.3px) rotate(-.3deg)}}
+@keyframes r63-look{0%,100%{transform:none}22%,66%{transform:translate(8px,-3px)}}
+@keyframes r63-fin-lag{0%,64%,100%{transform:none}20%{transform:rotate(-8deg)}38%{transform:rotate(4deg)}54%{transform:rotate(-1deg)}76%{transform:rotate(6deg)}91%{transform:rotate(-2deg)}}
+@keyframes r63-hang{0%,100%{transform:none}30%{transform:rotate(-5deg)}48%{transform:rotate(-2deg)}62%{transform:rotate(-3.5deg)}80%{transform:rotate(2.5deg)}92%{transform:rotate(-1deg)}}
+@keyframes r63-brace{0%,100%{transform:none}24%,76%{transform:translateY(.8px) rotate(-.8deg)}}
+@keyframes r63-raise{0%,100%{transform:none}24%,76%{transform:rotate(-80deg)}92%{transform:rotate(4deg)}}
+@keyframes r63-wave{0%,100%{transform:none}26%{transform:rotate(-92deg)}38%{transform:rotate(-112deg)}50%{transform:rotate(-88deg)}62%{transform:rotate(-110deg)}76%{transform:rotate(-92deg)}86%{transform:rotate(10deg)}95%{transform:rotate(-3deg)}}
+@keyframes r63-peek{0%,100%{transform:none}20%,80%{transform:translate(7px,-2px)}}
+@keyframes r63-fin-wave{0%,76%,100%{transform:none}22%{transform:rotate(5deg)}40%{transform:rotate(-2deg)}88%{transform:rotate(-4deg)}}
+@keyframes r63-dip{0%,34%,70%,100%{transform:none}16%{transform:translateY(2.5px)}52%{transform:translateY(2px)}84%{transform:translateY(.8px)}}
+@keyframes r63-pump{0%,34%,70%,100%{transform:none}16%{transform:scale(1.05)}52%{transform:scale(1.04)}84%{transform:scale(1.015)}}
+@keyframes r63-flap-l{0%,34%,70%,100%{transform:none}18%{transform:rotate(5deg)}54%{transform:rotate(4deg)}86%{transform:rotate(1.5deg)}}
+@keyframes r63-flap-r{0%,34%,70%,100%{transform:none}18%{transform:rotate(-5deg)}54%{transform:rotate(-4deg)}86%{transform:rotate(-1.5deg)}}
+@keyframes r63-glow{0%,34%,70%,100%{fill:#f6c354}16%,52%{fill:#fbd581}}
+@keyframes r63-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+</style>
   <title id="jukebox-title">Jukebox — record player robot</title>
   <desc id="jukebox-desc">A cherry robot built as an arched jukebox, with two round eyes in a band under the arch, yellow and cyan light tubes around a window showing a record, a row of selector buttons, a speaker grille, short ring jointed arms with pincers and short legs on round feet.</desc>
   <!-- Short arms with pincers -->
-  <path d="m166 240-34 30v42m214-72 34 30v42" fill="none" stroke="#697785" stroke-width="13" stroke-linejoin="round"/>
-  <path d="M124 322l-6 16M140 322l6 16M372 322l-6 16M388 322l6 16" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
-  <rect x="120" y="308" width="24" height="14" rx="5" fill="#9a405e"/>
-  <rect x="368" y="308" width="24" height="14" rx="5" fill="#9a405e"/>
-  <circle cx="132" cy="270" r="11" fill="#3d4853"/>
-  <circle cx="380" cy="270" r="11" fill="#3d4853"/>
-  <circle cx="132" cy="270" r="5" fill="#92a1b2"/>
-  <circle cx="380" cy="270" r="5" fill="#92a1b2"/>
+  <g class="body" style="transform-origin:256px 414px">
+  <g class="arm-l" style="transform-origin:166px 240px">
+    <path d="M166 240 132 270" stroke="#697785" stroke-width="13"/>
+    <g class="fore-l" style="transform-origin:132px 270px">
+      <path d="M132 270v42" stroke="#697785" stroke-width="13"/>
+      <path d="M124 322l-6 16M140 322l6 16" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+      <rect x="120" y="308" width="24" height="14" rx="5" fill="#9a405e"/>
+    </g>
+    <circle cx="132" cy="270" r="11" fill="#3d4853"/>
+    <circle cx="132" cy="270" r="5" fill="#92a1b2"/>
+  </g>
+  <g class="arm-r" style="transform-origin:346px 240px">
+    <path d="M346 240l34 30" stroke="#697785" stroke-width="13"/>
+    <g class="fore-r" style="transform-origin:380px 270px">
+      <path d="M380 270v42" stroke="#697785" stroke-width="13"/>
+      <path d="M372 322l-6 16M388 322l6 16" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+      <rect x="368" y="308" width="24" height="14" rx="5" fill="#9a405e"/>
+    </g>
+    <circle cx="380" cy="270" r="11" fill="#3d4853"/>
+    <circle cx="380" cy="270" r="5" fill="#92a1b2"/>
+  </g>
   <circle cx="166" cy="240" r="16" fill="#3d4853"/>
   <circle cx="346" cy="240" r="16" fill="#3d4853"/>
   <circle cx="166" cy="240" r="7" fill="#92a1b2"/>
   <circle cx="346" cy="240" r="7" fill="#92a1b2"/>
+  </g>
   <!-- Short legs on round feet -->
-  <path d="M214 410v32m84-32v32" stroke="#697785" stroke-width="18"/>
-  <path d="M202 424h24v6h-24Zm84 0h24v6h-24Z" fill="#3d4853"/>
-  <path d="M184 470v-4q0-28 30-28t30 28v4Zm84 0v-4q0-28 30-28t30 28v4Z" fill="#c25a7c"/>
-  <path d="M228 442q16 8 16 24v4h-14v-4q0-14-2-24Zm84 0q16 8 16 24v4h-14v-4q0-14-2-24Z" fill="#9a405e"/>
-  <path d="M180 466h68v10h-68Zm84 0h68v10h-68Z" fill="#3d4853"/>
+  <g class="leg-l">
+    <path d="M214 410v32" stroke="#697785" stroke-width="18"/>
+    <path d="M202 424h24v6h-24Z" fill="#3d4853"/>
+    <path d="M184 470v-4q0-28 30-28t30 28v4Z" fill="#c25a7c"/>
+    <path d="M228 442q16 8 16 24v4h-14v-4q0-14-2-24Z" fill="#9a405e"/>
+    <path d="M180 466h68v10h-68Z" fill="#3d4853"/>
+  </g>
+  <g class="leg-r">
+    <path d="M298 410v32" stroke="#697785" stroke-width="18"/>
+    <path d="M286 424h24v6h-24Z" fill="#3d4853"/>
+    <path d="M268 470v-4q0-28 30-28t30 28v4Z" fill="#c25a7c"/>
+    <path d="M312 442q16 8 16 24v4h-14v-4q0-14-2-24Z" fill="#9a405e"/>
+    <path d="M264 466h68v10h-68Z" fill="#3d4853"/>
+  </g>
+  <g class="body" style="transform-origin:256px 414px">
   <!-- Finial -->
-  <rect x="253" y="80" width="6" height="18" fill="#697785"/>
-  <circle cx="256" cy="78" r="8" fill="#f6c354"/>
+  <g class="fin" style="transform-origin:256px 98px">
+    <rect x="253" y="80" width="6" height="18" fill="#697785"/>
+    <circle cx="256" cy="78" r="8" fill="#f6c354"/>
+  </g>
   <!-- Arched cabinet -->
   <path d="M166 400V186a90 90 0 0 1 180 0v214q0 14-14 14H180q-14 0-14-14Z" fill="#c25a7c"/>
   <path d="M184 196a72 72 0 0 1 46-64" fill="none" stroke="#e07a9a" stroke-width="12" stroke-linecap="round"/>
   <path d="M324.9 128.1A90 90 0 0 1 346 186v214q0 14-14 14h-6V186a70 70 0 0 0-1.1-57.9Z" fill="#9a405e"/>
   <!-- Eyes in a band under the arch -->
   <rect x="198" y="130" width="116" height="40" rx="20" fill="#3d4853"/>
-  <circle cx="230" cy="150" r="13" fill="#79d6eb"/>
-  <circle cx="282" cy="150" r="13" fill="#79d6eb"/>
-  <path d="M240 140a13 13 0 0 1-10 23 13 13 0 0 0 10-23Zm52 0a13 13 0 0 1-10 23 13 13 0 0 0 10-23Z" fill="#4fb0c5"/>
-  <circle cx="234" cy="145" r="4" fill="#fffae0"/>
-  <circle cx="286" cy="145" r="4" fill="#fffae0"/>
+  <g class="eyes">
+    <circle cx="230" cy="150" r="13" fill="#79d6eb"/>
+    <circle cx="282" cy="150" r="13" fill="#79d6eb"/>
+    <path d="M240 140a13 13 0 0 1-10 23 13 13 0 0 0 10-23Zm52 0a13 13 0 0 1-10 23 13 13 0 0 0 10-23Z" fill="#4fb0c5"/>
+    <circle cx="234" cy="145" r="4" fill="#fffae0"/>
+    <circle cx="286" cy="145" r="4" fill="#fffae0"/>
+  </g>
   <!-- Light tubes around the record window -->
-  <rect x="182" y="194" width="12" height="104" rx="6" fill="#f6c354"/>
-  <rect x="318" y="194" width="12" height="104" rx="6" fill="#f6c354"/>
+  <rect class="tube" x="182" y="194" width="12" height="104" rx="6" fill="#f6c354"/>
+  <rect class="tube" x="318" y="194" width="12" height="104" rx="6" fill="#f6c354"/>
   <rect x="198" y="204" width="10" height="94" rx="5" fill="#79d6eb"/>
   <rect x="304" y="204" width="10" height="94" rx="5" fill="#79d6eb"/>
   <path d="M214 296v-70a42 42 0 0 1 84 0v70Z" fill="#3d4853"/>
-  <circle cx="256" cy="246" r="34" fill="#262d36"/>
-  <circle cx="256" cy="246" r="26" fill="none" stroke="#3d4853" stroke-width="2"/>
-  <circle cx="256" cy="246" r="18" fill="none" stroke="#3d4853" stroke-width="2"/>
-  <circle cx="256" cy="246" r="10" fill="#f6c354"/>
-  <circle cx="256" cy="246" r="3" fill="#3d4853"/>
+  <g class="disc" style="transform-origin:256px 246px">
+    <circle cx="256" cy="246" r="34" fill="#262d36"/>
+    <path class="gleam" d="M262.65 214.7A32 32 0 0 1 279.78 224.59L264.92 237.97A12 12 0 0 0 258.49 234.26ZM249.35 277.3A32 32 0 0 1 232.22 267.41L247.08 254.03A12 12 0 0 0 253.51 257.74Z" fill="#262d36"/>
+    <circle cx="256" cy="246" r="26" fill="none" stroke="#3d4853" stroke-width="2"/>
+    <circle cx="256" cy="246" r="18" fill="none" stroke="#3d4853" stroke-width="2"/>
+    <circle cx="256" cy="246" r="10" fill="#f6c354"/>
+    <circle cx="256" cy="246" r="3" fill="#3d4853"/>
+  </g>
   <!-- Selector buttons and speaker grille -->
   <rect x="186" y="306" width="140" height="30" rx="8" fill="#3d4853"/>
   <path d="M195 313h18v16h-18Zm26 0h18v16h-18Zm52 0h18v16h-18Zm26 0h18v16h-18Z" fill="#fff8de"/>
   <rect x="247" y="313" width="18" height="16" fill="#f6c354"/>
-  <rect x="198" y="346" width="116" height="50" rx="10" fill="#3d4853"/>
-  <path d="M212 358h88m-88 12h88m-88 12h88" stroke="#697785" stroke-width="5" stroke-linecap="round"/>
+  <g class="grille" style="transform-origin:256px 371px">
+    <rect x="198" y="346" width="116" height="50" rx="10" fill="#3d4853"/>
+    <path d="M212 358h88m-88 12h88m-88 12h88" stroke="#697785" stroke-width="5" stroke-linecap="round"/>
+  </g>
+  </g>
 </svg>

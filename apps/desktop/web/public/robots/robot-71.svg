@@ -1,28 +1,86 @@
-<svg width="340" height="418" viewBox="86 60 340 418" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="boombox-title boombox-desc">
+<svg width="340" height="418" viewBox="86 60 340 418" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="boombox-title boombox-desc" class="r71" data-idle="blink blink scan scan hush signal" data-work="strut strut signal signal hush blink"><style>
+.r71[data-act=signal] .all{animation:r71-lean 2s ease-in-out}
+.r71[data-act=signal] .arm-r{animation:r71-reach 2s ease-in-out}
+.r71[data-act=signal] .fore-r{animation:r71-unfold 2s ease-in-out}
+.r71[data-act=signal] .arm-l{animation:r71-plumb 2s ease-in-out}
+.r71[data-act=signal] .aerial{animation:r71-aerial 2s ease-in-out}
+.r71[data-act=signal] .head{animation:r71-cock 2s ease-in-out}
+.r71[data-act=signal] .eyes{animation:r71-up 2s ease-in-out}
+.r71[data-act=scan] .box{animation:r71-lean-lr 1.6s ease-in-out}
+.r71[data-act=scan] .head{animation:r71-look 1.6s ease-in-out}
+.r71[data-act=scan] .eyes{animation:r71-glance-lr 1.6s ease-in-out}
+.r71[data-act=scan] .cursor{animation:r71-tune 1.6s ease-in-out}
+.r71[data-act=scan] .aerial{animation:r71-lag 1.6s ease-in-out}
+.r71[data-act=scan] .arm-l,.r71[data-act=scan] .arm-r{animation:r71-hang 1.6s ease-in-out}
+.r71[data-act=strut] .box{animation:r71-step 1.8s ease-in-out}
+.r71[data-act=strut] .leg-l{animation:r71-lift-l 1.8s ease-in-out}
+.r71[data-act=strut] .leg-r{animation:r71-lift-r 1.8s ease-in-out}
+.r71[data-act=strut] .arm-l,.r71[data-act=strut] .arm-r{animation:r71-swing-arm 1.8s ease-in-out}
+.r71[data-act=strut] .fore-l,.r71[data-act=strut] .fore-r{animation:r71-swing-fore 1.8s ease-in-out}
+.r71[data-act=strut] .head{animation:r71-nod-lag 1.8s ease-in-out}
+.r71[data-act=strut] .aerial{animation:r71-whip 1.8s ease-in-out}
+.r71[data-act=hush] .arm-l{animation:r71-elbow-l 1.8s ease-in-out}
+.r71[data-act=hush] .arm-r{animation:r71-elbow-r 1.8s ease-in-out}
+.r71[data-act=hush] .fore-l{animation:r71-cover-l 1.8s ease-in-out}
+.r71[data-act=hush] .fore-r{animation:r71-cover-r 1.8s ease-in-out}
+.r71[data-act=hush] .head{animation:r71-duck 1.8s ease-in-out}
+.r71[data-act=hush] .eyes{transform-box:fill-box;transform-origin:center;animation:r71-squint 1.8s ease-in-out}
+.r71[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r71-blink .4s ease-in-out}
+/* the box sinks 44 units x angle so its hips stay on the legs */
+@keyframes r71-lean{0%,8%,100%{transform:none}34%,58%{transform:rotate(-1deg)}80%{transform:none}90%{transform:rotate(-.3deg)}}
+@keyframes r71-reach{0%,100%{transform:none}8%{transform:rotate(4deg)}36%,46%{transform:rotate(-118deg)}54%{transform:rotate(-114deg)}82%{transform:rotate(5deg)}92%{transform:rotate(-1.5deg)}}
+@keyframes r71-unfold{0%,8%,100%{transform:none}36%{transform:rotate(290deg)}46%{transform:rotate(300deg)}54%{transform:rotate(292deg)}82%{transform:rotate(-7deg)}92%{transform:rotate(2deg)}}
+@keyframes r71-plumb{0%,100%{transform:none}36%{transform:rotate(2.5deg)}60%{transform:rotate(1deg)}78%{transform:rotate(-1.2deg)}90%{transform:rotate(.4deg)}}
+@keyframes r71-aerial{0%,100%{transform:none}22%{transform:rotate(6deg)}36%{transform:rotate(2deg)}48%{transform:rotate(-26deg)}60%{transform:rotate(14deg)}72%{transform:rotate(-7deg)}85%{transform:rotate(3deg)}}
+@keyframes r71-cock{0%,24%,100%{transform:none}40%,62%{transform:rotate(9deg)}78%{transform:rotate(-2deg)}90%{transform:rotate(.6deg)}}
+@keyframes r71-up{0%,22%,100%{transform:none}34%,64%{transform:translate(3px,-3px)}80%{transform:none}}
+@keyframes r71-lean-lr{0%,100%{transform:none}24%,40%{transform:translateY(.8px) rotate(-1deg)}64%{transform:translateY(.8px) rotate(1deg)}82%{transform:translateY(.3px) rotate(-.3deg)}}
+@keyframes r71-look{0%,100%{transform:none}26%,42%{transform:rotate(-6deg)}66%{transform:rotate(6deg)}84%{transform:rotate(-1.5deg)}}
+@keyframes r71-glance-lr{0%,100%{transform:none}22%,44%{transform:translateX(-4px)}60%,70%{transform:translateX(4px)}88%{transform:none}}
+@keyframes r71-tune{0%,100%{transform:none}26%,40%{transform:translateX(-22px)}66%{transform:translateX(12px)}84%{transform:translateX(-3px)}}
+@keyframes r71-lag{0%,100%{transform:none}30%{transform:rotate(5deg)}50%{transform:rotate(-2deg)}72%{transform:rotate(-5deg)}88%{transform:rotate(2deg)}}
+@keyframes r71-hang{0%,100%{transform:none}30%{transform:rotate(3deg)}72%{transform:rotate(-3deg)}90%{transform:rotate(1deg)}}
+@keyframes r71-step{0%,100%{transform:none}20%{transform:translateY(1px) rotate(-1.2deg)}50%{transform:translateY(1px) rotate(1.2deg)}76%{transform:translateY(.4px) rotate(-.5deg)}}
+@keyframes r71-lift-r{0%,36%,62%,90%,100%{transform:none}20%{transform:translateY(-6px)}76%{transform:translateY(-3px)}}
+@keyframes r71-lift-l{0%,36%,64%,100%{transform:none}50%{transform:translateY(-6px)}}
+@keyframes r71-swing-arm{0%,100%{transform:none}28%{transform:rotate(6deg)}58%{transform:rotate(-6deg)}84%{transform:rotate(2.5deg)}}
+@keyframes r71-swing-fore{0%,100%{transform:none}34%{transform:rotate(6deg)}64%{transform:rotate(-6deg)}90%{transform:rotate(2deg)}}
+@keyframes r71-nod-lag{0%,100%{transform:none}26%{transform:rotate(3deg)}56%{transform:rotate(-3deg)}82%{transform:rotate(1deg)}}
+@keyframes r71-whip{0%,100%{transform:none}28%{transform:rotate(8deg)}58%{transform:rotate(-8deg)}84%{transform:rotate(3deg)}}
+@keyframes r71-elbow-l{0%,100%{transform:none}12%{transform:rotate(12deg)}36%,62%{transform:rotate(6deg)}80%{transform:rotate(-3deg)}92%{transform:rotate(1deg)}}
+@keyframes r71-elbow-r{0%,100%{transform:none}12%{transform:rotate(-12deg)}36%,62%{transform:rotate(-6deg)}80%{transform:rotate(3deg)}92%{transform:rotate(-1deg)}}
+@keyframes r71-cover-l{0%,100%{transform:none}36%,62%{transform:rotate(-100deg)}80%{transform:rotate(6deg)}92%{transform:rotate(-2deg)}}
+@keyframes r71-cover-r{0%,100%{transform:none}36%,62%{transform:rotate(100deg)}80%{transform:rotate(-6deg)}92%{transform:rotate(2deg)}}
+@keyframes r71-duck{0%,100%{transform:none}38%,62%{transform:translateY(3px) rotate(-4deg)}80%{transform:rotate(1deg)}}
+@keyframes r71-squint{0%,30%,68%,100%{transform:none}38%,60%{transform:scaleY(.35)}}
+@keyframes r71-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+</style>
   <title id="boombox-title">Boombox — portable stereo robot</title>
   <desc id="boombox-desc">A mustard robot whose body is a wide 1980s boombox with two speaker cones either side of a cassette window, a tuner strip and a row of keys, a carry handle arching over the top holding a small square head with two round eyes, a telescopic aerial, ring jointed arms with pincers, and short legs on flat feet.</desc>
+  <g class="all" style="transform-origin:182px 476px">
   <!-- Telescopic aerial -->
+  <g class="box" style="transform-origin:256px 336px"><g class="aerial" style="transform-origin:372px 198px">
   <path d="m372 198 14-86" stroke="#92a1b2" stroke-width="4"/>
   <circle cx="386" cy="110" r="4.5" fill="#3d4853"/>
-  <!-- Ring jointed arms with pincers -->
-  <path d="m124 262-18 20v52m282-72 18 20v52" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
-  <path d="M98 344q-10 14 2 26m16-26q10 14-2 26M397 344q-10 14 2 26m16-26q10 14-2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
-  <rect x="94" y="330" width="24" height="16" rx="4" fill="#daac49"/>
-  <rect x="394" y="330" width="24" height="16" rx="4" fill="#daac49"/>
-  <path d="M112 330h1q5 0 5 5v6q0 5-5 5h-1Zm300 0h1q5 0 5 5v6q0 5-5 5h-1Z" fill="#bc943d"/>
-  <circle cx="106" cy="282" r="10" fill="#3d4853"/>
-  <circle cx="406" cy="282" r="10" fill="#3d4853"/>
-  <circle cx="106" cy="282" r="4" fill="#92a1b2"/>
-  <circle cx="406" cy="282" r="4" fill="#92a1b2"/>
-  <!-- Short legs on flat feet -->
-  <path d="M212 336v104m88-104v104" stroke="#697785" stroke-width="14"/>
+  </g></g>
+  <!-- Short legs on flat feet; the trailing h0 keeps Chromium from antialiasing a foot as a convex shape -->
+  <g class="leg-l" style="transform-origin:212px 470px">
+  <path d="M212 336v104" stroke="#697785" stroke-width="14"/>
   <circle cx="212" cy="388" r="12" fill="#3d4853"/>
-  <circle cx="300" cy="388" r="12" fill="#3d4853"/>
   <circle cx="212" cy="388" r="5" fill="#92a1b2"/>
+  <path d="M186 470v-14q0-12 12-12h28q12 0 12 12v14Zh0" fill="#daac49"/>
+  <path d="M226 444q12 0 12 12v14h-10v-26Z" fill="#bc943d"/>
+  <path d="M182 466h60v10h-60Z" fill="#3d4853"/>
+  </g>
+  <g class="leg-r" style="transform-origin:300px 470px">
+  <path d="M300 336v104" stroke="#697785" stroke-width="14"/>
+  <circle cx="300" cy="388" r="12" fill="#3d4853"/>
   <circle cx="300" cy="388" r="5" fill="#92a1b2"/>
-  <path d="M186 470v-14q0-12 12-12h28q12 0 12 12v14Zm88 0v-14q0-12 12-12h28q12 0 12 12v14Z" fill="#daac49"/>
-  <path d="M226 444q12 0 12 12v14h-10v-26Zm88 0q12 0 12 12v14h-10v-26Z" fill="#bc943d"/>
-  <path d="M182 466h60v10h-60Zm88 0h60v10h-60Z" fill="#3d4853"/>
+  <path d="M274 470v-14q0-12 12-12h28q12 0 12 12v14Zh0" fill="#daac49"/>
+  <path d="M314 444q12 0 12 12v14h-10v-26Z" fill="#bc943d"/>
+  <path d="M270 466h60v10h-60Z" fill="#3d4853"/>
+  </g>
+  <g class="box" style="transform-origin:256px 336px">
   <!-- Carry handle and head mount -->
   <path d="M150 200v-32q0-16 16-16h180q16 0 16 16v32" fill="none" stroke="#3d4853" stroke-width="12"/>
   <rect x="246" y="126" width="20" height="30" fill="#3d4853"/>
@@ -43,7 +101,7 @@
   <circle cx="330" cy="266" r="4" fill="#3d4853"/>
   <rect x="230" y="220" width="52" height="12" rx="3" fill="#3d4853"/>
   <path d="M236 226h40" stroke="#697785" stroke-width="2"/>
-  <rect x="261" y="222" width="3" height="8" fill="#f6c354"/>
+  <g class="cursor"><rect x="261" y="222" width="3" height="8" fill="#f6c354"/></g>
   <rect x="230" y="238" width="52" height="50" rx="5" fill="#3d4853"/>
   <rect x="235" y="246" width="42" height="34" rx="3" fill="#fff8de"/>
   <rect x="244" y="256" width="24" height="14" rx="3" fill="#697785"/>
@@ -55,11 +113,35 @@
   <rect x="244" y="296" width="10" height="10" rx="2" fill="#3d4853"/>
   <rect x="257" y="296" width="10" height="10" rx="2" fill="#3d4853"/>
   <rect x="270" y="296" width="10" height="10" rx="2" fill="#f6c354"/>
+  <!-- Ring jointed arms with pincers -->
+  <g class="arm-l" style="transform-origin:124px 262px">
+  <path d="M124 262l-18 20" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+  <g class="fore-l" style="transform-origin:106px 282px">
+  <path d="M106 282v52" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M98 344q-10 14 2 26m16-26q10 14-2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+  <rect x="94" y="330" width="24" height="16" rx="4" fill="#daac49"/>
+  <path d="M112 330h1q5 0 5 5v6q0 5-5 5h-1Z" fill="#bc943d"/>
+  </g>
+  <circle cx="106" cy="282" r="10" fill="#3d4853"/>
+  <circle cx="106" cy="282" r="4" fill="#92a1b2"/>
+  </g>
+  <g class="arm-r" style="transform-origin:388px 262px">
+  <path d="M388 262l18 20" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+  <g class="fore-r" style="transform-origin:406px 282px">
+  <path d="M406 282v52" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M397 344q-10 14 2 26m16-26q10 14-2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+  <rect x="394" y="330" width="24" height="16" rx="4" fill="#daac49"/>
+  <path d="M412 330h1q5 0 5 5v6q0 5-5 5h-1Z" fill="#bc943d"/>
+  </g>
+  <circle cx="406" cy="282" r="10" fill="#3d4853"/>
+  <circle cx="406" cy="282" r="4" fill="#92a1b2"/>
+  </g>
   <circle cx="124" cy="262" r="15" fill="#3d4853"/>
   <circle cx="388" cy="262" r="15" fill="#3d4853"/>
   <circle cx="124" cy="262" r="6" fill="#92a1b2"/>
   <circle cx="388" cy="262" r="6" fill="#92a1b2"/>
   <!-- Small square head with two round eyes -->
+  <g class="head" style="transform-origin:256px 130px">
   <rect x="210" y="86" width="10" height="26" rx="3" fill="#3d4853"/>
   <rect x="292" y="86" width="10" height="26" rx="3" fill="#3d4853"/>
   <rect x="218" y="64" width="76" height="66" rx="10" fill="#daac49"/>
@@ -67,9 +149,14 @@
   <path d="M280 64h4q10 0 10 10v46q0 10-10 10h-4Z" fill="#bc943d"/>
   <circle cx="240" cy="100" r="13" fill="#3d4853"/>
   <circle cx="272" cy="100" r="13" fill="#3d4853"/>
+  <g class="eyes">
   <circle cx="240" cy="100" r="8" fill="#88dbea"/>
   <circle cx="272" cy="100" r="8" fill="#88dbea"/>
   <path d="M245 94a8 8 0 0 1-6 14 8 8 0 0 0 6-14Zm32 0a8 8 0 0 1-6 14 8 8 0 0 0 6-14Z" fill="#4fb0c5"/>
   <circle cx="242" cy="97" r="2.8" fill="#fffae0"/>
   <circle cx="274" cy="97" r="2.8" fill="#fffae0"/>
+  </g>
+  </g>
+  </g>
+  </g>
 </svg>

@@ -1,15 +1,80 @@
-<svg width="232" height="420" viewBox="140 58 232 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="mic-title mic-desc">
+<svg width="232" height="420" viewBox="140 58 232 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="mic-title mic-desc" class="r68" data-idle="blink blink tune tune bow croon" data-work="croon croon buzz buzz bow blink"><style>
+.r68[data-act=croon] .body{animation:r68-sway 2s ease-in-out}
+.r68[data-act=croon] .head{animation:r68-lean 2s ease-in-out}
+.r68[data-act=croon] .cap{animation:r68-cant 2s ease-in-out}
+.r68[data-act=croon] .eyes{animation:r68-dream 2s ease-in-out}
+.r68[data-act=croon] .arm-r{animation:r68-flourish 2s ease-in-out}
+.r68[data-act=croon] .fore-r{animation:r68-unfurl 2s ease-in-out}
+.r68[data-act=croon] .arm-l{animation:r68-hang 2s ease-in-out}
+.r68[data-act=croon] .lamp{animation:r68-onair 2s ease-in-out}
+.r68[data-act=bow] .body{animation:r68-dip 1.8s ease-in-out}
+.r68[data-act=bow] .cap{animation:r68-tip 1.8s ease-in-out}
+.r68[data-act=bow] .face{animation:r68-drop 1.8s ease-in-out}
+.r68[data-act=bow] .arm-l{animation:r68-open-l 1.8s ease-in-out}
+.r68[data-act=bow] .arm-r{animation:r68-open-r 1.8s ease-in-out}
+.r68[data-act=bow] .fore-l{animation:r68-lag-l 1.8s ease-in-out}
+.r68[data-act=bow] .fore-r{animation:r68-lag-r 1.8s ease-in-out}
+.r68[data-act=buzz] .body{animation:r68-start 1.4s ease-in-out}
+.r68[data-act=buzz] .head{animation:r68-jolt 1.4s ease-in-out}
+.r68[data-act=buzz] .cap{animation:r68-shiver 1.4s ease-in-out}
+.r68[data-act=buzz] .eyes{animation:r68-wince 1.4s ease-in-out}
+.r68[data-act=buzz] .arm-l{animation:r68-flinch-l 1.4s ease-in-out}
+.r68[data-act=buzz] .arm-r{animation:r68-flinch-r 1.4s ease-in-out}
+.r68[data-act=buzz] .needle{animation:r68-peak-needle 1.4s ease-in-out}
+.r68[data-act=tune] .body{animation:r68-lean-in 1.8s ease-in-out}
+.r68[data-act=tune] .head{animation:r68-peer 1.8s ease-in-out}
+.r68[data-act=tune] .cap{animation:r68-cock 1.8s ease-in-out}
+.r68[data-act=tune] .eyes{animation:r68-down 1.8s ease-in-out}
+.r68[data-act=tune] .fore-r{animation:r68-knob 1.8s ease-in-out}
+.r68[data-act=tune] .needle{animation:r68-level 1.8s ease-in-out}
+.r68[data-act=blink] .eyes{animation:r68-blink .4s ease-in-out}
+@keyframes r68-sway{0%,100%{transform:none}12%{transform:rotate(1deg)}38%,58%{transform:rotate(-3deg)}78%{transform:rotate(1.2deg)}91%{transform:rotate(-.5deg)}}
+@keyframes r68-lean{0%,100%{transform:none}14%{transform:rotate(2deg)}42%,60%{transform:rotate(-9deg)}80%{transform:rotate(3deg)}93%{transform:rotate(-1deg)}}
+@keyframes r68-cant{0%,100%{transform:none}18%{transform:rotate(1.5deg)}46%,62%{transform:rotate(-7deg)}82%{transform:rotate(2.5deg)}94%{transform:rotate(-1deg)}}
+@keyframes r68-dream{0%,100%{transform:none}40%,64%{transform:scaleY(.2)}}
+@keyframes r68-flourish{0%,100%{transform:none}14%{transform:rotate(5deg)}42%,60%{transform:rotate(-80deg)}82%{transform:rotate(6deg)}93%{transform:rotate(-2deg)}}
+@keyframes r68-unfurl{0%,100%{transform:none}20%{transform:rotate(8deg)}46%,62%{transform:rotate(-45deg)}85%{transform:rotate(8deg)}95%{transform:rotate(-2deg)}}
+@keyframes r68-hang{0%,100%{transform:none}40%,58%{transform:rotate(5deg)}78%{transform:rotate(-2.5deg)}92%{transform:rotate(1deg)}}
+@keyframes r68-onair{30%,70%{fill:#ffe39a}}
+@keyframes r68-dip{0%,100%{transform:none}30%,58%{transform:translateY(4px)}76%{transform:translateY(-.8px)}90%{transform:translateY(.3px)}}
+@keyframes r68-tip{0%,100%{transform:none}32%,58%{transform:scaleY(.86)}78%{transform:scaleY(1.02)}}
+@keyframes r68-drop{0%,100%{transform:none}32%,58%{transform:translateY(13px)}78%{transform:translateY(-2.5px)}}
+@keyframes r68-open-l{0%,100%{transform:none}30%,56%{transform:rotate(12deg)}76%{transform:rotate(-3deg)}90%{transform:rotate(1deg)}}
+@keyframes r68-open-r{0%,100%{transform:none}30%,56%{transform:rotate(-12deg)}76%{transform:rotate(3deg)}90%{transform:rotate(-1deg)}}
+@keyframes r68-lag-l{0%,100%{transform:none}36%,58%{transform:rotate(8deg)}80%{transform:rotate(-3deg)}93%{transform:rotate(1deg)}}
+@keyframes r68-lag-r{0%,100%{transform:none}36%,58%{transform:rotate(-8deg)}80%{transform:rotate(3deg)}93%{transform:rotate(-1deg)}}
+@keyframes r68-start{0%,100%{transform:none}10%{transform:translateY(-3px)}26%{transform:translateY(.5px)}40%{transform:translateY(-1px)}56%{transform:none}}
+@keyframes r68-jolt{0%,100%{transform:none}10%{transform:rotate(-2deg)}30%{transform:rotate(1.5deg)}50%{transform:rotate(-.8deg)}70%{transform:rotate(.3deg)}}
+@keyframes r68-shiver{0%,84%,100%{transform:none}8%{transform:rotate(5deg)}16%{transform:rotate(-5deg)}24%{transform:rotate(4deg)}32%{transform:rotate(-3.5deg)}40%{transform:rotate(2.5deg)}50%{transform:rotate(-1.8deg)}60%{transform:rotate(1deg)}72%{transform:rotate(-.4deg)}}
+@keyframes r68-wince{0%,100%{transform:none}8%,44%{transform:scaleY(.35)}}
+@keyframes r68-flinch-l{0%,100%{transform:none}10%{transform:rotate(14deg)}30%{transform:rotate(-4deg)}50%{transform:rotate(2deg)}68%{transform:rotate(-.6deg)}}
+@keyframes r68-flinch-r{0%,100%{transform:none}12%{transform:rotate(-14deg)}32%{transform:rotate(4deg)}52%{transform:rotate(-2deg)}70%{transform:rotate(.6deg)}}
+@keyframes r68-peak-needle{0%,100%{transform:none}10%{transform:rotate(95deg)}30%{transform:rotate(70deg)}50%{transform:rotate(90deg)}75%{transform:rotate(-5deg)}}
+@keyframes r68-lean-in{0%,100%{transform:none}28%,66%{transform:rotate(-1deg)}}
+@keyframes r68-peer{0%,100%{transform:none}26%,68%{transform:rotate(-5deg)}86%{transform:rotate(1.5deg)}}
+@keyframes r68-cock{0%,100%{transform:none}30%,66%{transform:rotate(-6deg)}86%{transform:rotate(2deg)}}
+@keyframes r68-down{0%,100%{transform:none}22%,72%{transform:translate(-4px,5px)}}
+@keyframes r68-knob{0%,100%{transform:none}30%,64%{transform:rotate(22deg)}84%{transform:rotate(-4deg)}}
+@keyframes r68-level{0%,100%{transform:none}34%{transform:rotate(75deg)}48%{transform:rotate(45deg)}62%{transform:rotate(85deg)}82%{transform:rotate(-6deg)}}
+@keyframes r68-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+</style>
   <title id="mic-title">Mic — microphone robot</title>
   <desc id="mic-desc">A chrome robot whose head is a vintage capsule microphone, an upright oval slotted grille held in a ring yoke with two eyes on a slate band, a rounded body with an on air lamp, a dial and knobs, ring jointed arms with three finger hands, and legs on round feet.</desc>
   <!-- Ring jointed arms with three finger hands -->
-  <path d="m190 250-28 40v44m160-84 28 40v44" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+  <g class="body" style="transform-origin:256px 352px">
+  <g class="arm-l" style="transform-origin:190px 250px"><path d="M190 250l-28 40" fill="none" stroke="#697785" stroke-width="12"/>
+  <g class="fore-l" style="transform-origin:162px 290px"><path d="M162 290v44" fill="none" stroke="#697785" stroke-width="12"/>
   <rect x="150" y="328" width="24" height="14" rx="4" fill="#3d4853"/>
-  <rect x="338" y="328" width="24" height="14" rx="4" fill="#3d4853"/>
-  <path d="M154 342l-4 16M162 344v18M170 342l4 16M342 342l-4 16M350 344v18M358 342l4 16" stroke="#3d4853" stroke-width="6" stroke-linecap="round"/>
+  <path d="M154 342l-4 16M162 344v18M170 342l4 16" stroke="#3d4853" stroke-width="6" stroke-linecap="round"/></g>
   <circle cx="162" cy="290" r="11" fill="#3d4853"/>
+  <circle cx="162" cy="290" r="5" fill="#92a1b2"/></g>
+  <g class="arm-r" style="transform-origin:322px 250px"><path d="M322 250l28 40" fill="none" stroke="#697785" stroke-width="12"/>
+  <g class="fore-r" style="transform-origin:350px 290px"><path d="M350 290v44" fill="none" stroke="#697785" stroke-width="12"/>
+  <rect x="338" y="328" width="24" height="14" rx="4" fill="#3d4853"/>
+  <path d="M342 342l-4 16M350 344v18M358 342l4 16" stroke="#3d4853" stroke-width="6" stroke-linecap="round"/></g>
   <circle cx="350" cy="290" r="11" fill="#3d4853"/>
-  <circle cx="162" cy="290" r="5" fill="#92a1b2"/>
-  <circle cx="350" cy="290" r="5" fill="#92a1b2"/>
+  <circle cx="350" cy="290" r="5" fill="#92a1b2"/></g>
+  </g>
   <!-- Legs on round feet -->
   <path d="M230 350v96m52-96v96" stroke="#697785" stroke-width="12"/>
   <circle cx="230" cy="398" r="12" fill="#3d4853"/>
@@ -20,15 +85,16 @@
   <path d="M242 440q14 6 14 22v6h-10v-6q0-14-4-22Zm52 0q14 6 14 22v6h-10v-6q0-14-4-22Z" fill="#a7b4c1"/>
   <rect x="200" y="466" width="112" height="10" rx="2" fill="#3d4853"/>
   <!-- Rounded body with an on air lamp -->
-  <rect x="246" y="208" width="20" height="26" fill="#3d4853"/>
+  <g class="body" style="transform-origin:256px 352px">
+  <g class="head" style="transform-origin:256px 228px"><rect x="246" y="208" width="20" height="26" fill="#3d4853"/></g>
   <rect x="190" y="228" width="132" height="124" rx="30" fill="#d3dbe3"/>
   <path d="M220 228h72q30 0 30 30H190q0-30 30-30Z" fill="#eef2f6"/>
   <path d="M298 232q24 8 24 34v56q0 26-24 30Z" fill="#a7b4c1"/>
   <rect x="226" y="246" width="60" height="22" rx="11" fill="#3d4853"/>
-  <rect x="232" y="251" width="48" height="12" rx="6" fill="#f6c354"/>
+  <rect class="lamp" x="232" y="251" width="48" height="12" rx="6" fill="#f6c354"/>
   <circle cx="236" cy="300" r="14" fill="#3d4853"/>
   <circle cx="236" cy="300" r="10" fill="#fff8de"/>
-  <path d="m236 300-5-6" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/>
+  <g class="needle" style="transform-origin:236px 300px"><path d="m236 300-5-6" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/></g>
   <circle cx="276" cy="300" r="8" fill="#3d4853"/>
   <circle cx="298" cy="300" r="8" fill="#3d4853"/>
   <circle cx="276" cy="300" r="3" fill="#92a1b2"/>
@@ -40,20 +106,29 @@
   <circle cx="190" cy="250" r="7" fill="#92a1b2"/>
   <circle cx="322" cy="250" r="7" fill="#92a1b2"/>
   <!-- Ring yoke -->
+  <g class="head" style="transform-origin:256px 228px">
   <path d="M196 128v40q0 46 60 46t60-46v-40" fill="none" stroke="#697785" stroke-width="10"/>
   <!-- Capsule microphone head with a slotted grille -->
+  <g class="cap" style="transform-origin:256px 128px">
   <ellipse cx="256" cy="128" rx="52" ry="66" fill="#d3dbe3"/>
   <path d="M234 72h44M220 86h72M213 100h86M214 160h84M222 174h68M234 186h44" stroke="#a7b4c1" stroke-width="5" stroke-linecap="round"/>
   <path d="M212 96a52 66 0 0 1 32-30" fill="none" stroke="#eef2f6" stroke-width="9" stroke-linecap="round"/>
   <path d="M290 78.1a52 66 0 0 1 0 99.8 30 66 0 0 0 0-99.8Z" fill="#a7b4c1"/>
+  <g class="face">
   <rect x="208" y="114" width="96" height="34" rx="17" fill="#3d4853"/>
+  <g class="eyes" style="transform-box:fill-box;transform-origin:center">
   <circle cx="236" cy="131" r="10" fill="#80d4ef"/>
   <circle cx="276" cy="131" r="10" fill="#80d4ef"/>
   <path d="M242 123a10 10 0 0 1-8 18 10 10 0 0 0 8-18Zm40 0a10 10 0 0 1-8 18 10 10 0 0 0 8-18Z" fill="#4fb0c5"/>
   <circle cx="239" cy="127" r="3.5" fill="#fffae0"/>
   <circle cx="279" cy="127" r="3.5" fill="#fffae0"/>
+  </g>
+  </g>
+  </g>
   <circle cx="196" cy="128" r="10" fill="#3d4853"/>
   <circle cx="316" cy="128" r="10" fill="#3d4853"/>
   <circle cx="196" cy="128" r="4" fill="#92a1b2"/>
   <circle cx="316" cy="128" r="4" fill="#92a1b2"/>
+  </g>
+  </g>
 </svg>
