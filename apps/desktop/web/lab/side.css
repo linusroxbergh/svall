@@ -1,0 +1,92 @@
+/* the lab page */
+html, body, #root{height:auto}
+body{overflow:auto;user-select:auto}
+.lab{padding:24px 28px 60px}
+.lab header{display:flex;align-items:baseline;gap:10px 24px;flex-wrap:wrap;margin-bottom:22px}
+.lab h1{margin:0;font-size:22px;font-weight:600}
+.lab .ctl{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:13px}
+.lab .ctl span{margin:0 4px 0 12px;color:var(--ink-3)}
+.lab .ctl > b{min-width:2ch;text-align:center}
+.lab .ctl button{padding:3px 9px;border-radius:6px;font-size:13px;font-weight:500}
+.lab .ctl button[aria-pressed=true]{background:var(--ink);color:var(--surface-1)}
+.panels{display:flex;flex-wrap:wrap;gap:32px 28px}
+.opt{width:320px}
+.opt h2{margin:0 0 4px;font-size:15px;font-weight:600}
+.opt h2 b{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 5px;box-sizing:border-box;border-radius:11px;margin-right:4px;
+  background:var(--ink);color:var(--surface-1);font-size:13px}
+.opt > p{margin:0 0 12px;min-height:54px;font-size:12.5px;line-height:1.4;color:var(--ink-3)}
+.frame{height:760px;display:flex;border-radius:10px;overflow:hidden;border:1px solid var(--line-soft)}
+.frame .side{height:100%;border-left:0}
+.side .head-wrap{display:contents}
+.side .sname2{flex:1;min-width:0;font-size:var(--text-2xl);line-height:1.3}
+
+/* the cells: five, lit for the context left; on cream they print in the status inks */
+.scells{display:flex;gap:3px;height:4px}
+.scells i{flex:1;border-radius:2px;background:var(--fill-3)}
+.scells i[data-on=true]{background:var(--st)}
+.on-cream{--st:var(--idle)}
+.on-cream.s-working{--st:var(--working-ink)}
+.on-cream.s-blocked{--st:var(--blocked-ink)}
+.on-cream.s-done{--st:var(--done-ink)}
+.on-cream.s-shell{--st:var(--shell-dim)}
+.on-cream .scells i{background:color-mix(in srgb, var(--ink-land) 15%, transparent)}
+.on-cream .scells i[data-on=true]{background:var(--st)}
+
+/* the robot stands at the bottom of whatever box holds it */
+.side-portrait:has(.srobo){display:flex;justify-content:center;align-items:flex-end}
+.srobo{position:relative;display:block;height:100%;width:auto;object-fit:contain;object-position:center bottom}
+
+/* A: where the disc was */
+.side-portrait.stand{width:var(--disc-side);height:var(--disc-side)}
+.stand .srobo{max-width:var(--disc-side)}
+
+/* B: the 4f card on cream */
+.mini{position:relative;display:flex;flex-direction:column;border-radius:12px;overflow:hidden;
+  background:linear-gradient(var(--card-0) 0%, var(--card-1) 62%, var(--card-2) 100%);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--cream) 46%, transparent), 0 2px 8px var(--shade-2)}
+.mini .edge{height:4px;background:var(--st)}
+.mini-top{display:flex;align-items:flex-start;gap:8px;padding:12px 10px 0 16px}
+.mini .sname2{color:var(--ink-land)}
+.mini .side-star{color:color-mix(in srgb, var(--ink-land) 55%, transparent)}
+.mini .side-star:hover{background:color-mix(in srgb, var(--ink-land) 8%, transparent);color:var(--ink-land)}
+.side-portrait.mini-stage{height:118px;margin-top:6px}
+.mini-stage .srobo{max-width:190px;z-index:1}
+.mini-stage::after{content:'';position:absolute;left:50%;bottom:-3px;translate:-50% 0;width:110px;height:10px;border-radius:50%;
+  background:radial-gradient(closest-side, color-mix(in srgb, var(--ink-land) 24%, transparent), transparent)}
+.mini-cells.scells{height:5px;gap:4px;margin:12px 16px 16px}
+
+/* C: a band in the robot's pale colour across the panel's top */
+.banner{position:relative;display:flex;flex-direction:column;gap:6px;height:200px;box-sizing:border-box;
+  margin:calc(-1 * (var(--sp-2xl) + var(--sp-xs))) calc(-1 * var(--sp-lg)) 0 calc(-1 * var(--sp-xl));
+  padding:14px var(--sp-lg) 14px var(--sp-xl);
+  background:linear-gradient(color-mix(in srgb, var(--tint) 22%, var(--card-0)), color-mix(in srgb, var(--tint) 38%, var(--card-1)))}
+.banner .kicker{align-self:flex-start;padding:4px 9px;border-radius:var(--r-pill);background:var(--surface-2)}
+.side-portrait.banner-stage{flex:1;min-height:0}
+.banner-stage .srobo{max-width:220px}
+.banner-cells.scells{height:5px;gap:4px}
+
+/* D: a taller robot beside the name, both on one row of cells */
+.rowhead{display:flex;align-items:flex-end;gap:14px}
+.side-portrait.row-stage{flex:none;width:78px;height:96px}
+.row-stage .srobo{max-width:78px}
+.row-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;padding-bottom:4px}
+.side[data-opt=row] .row-cells{margin-top:calc(-1 * var(--sp-2xl) + 6px)}
+
+/* E: the cells on the status line, the robot in a small tile */
+.kick-cells.scells{width:76px}
+.kick-pct{min-width:3.5ch;text-align:right;font-weight:var(--w-semibold);letter-spacing:0;color:var(--ink-2)}
+.tile-bg{position:absolute;inset:0;border-radius:inherit;
+  background:linear-gradient(color-mix(in srgb, var(--tint) 30%, var(--card-0)), color-mix(in srgb, var(--tint) 50%, var(--card-1)));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--cream) 30%, transparent)}
+.side-portrait.small-tile{width:52px;height:52px;border-radius:12px}
+.small-tile .srobo{height:44px;max-width:44px;margin-bottom:3px}
+
+/* F: a larger tile, the cells and what is left under the head */
+.side-portrait.big-tile{width:76px;height:76px;border-radius:16px}
+.big-tile .srobo{height:66px;max-width:66px;margin-bottom:4px}
+.tile-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.side[data-opt=tile] .side-head{align-items:center;gap:var(--sp-lg)}
+.side[data-opt=tile] .side-head .side-star{align-self:flex-start}
+.tile-meter{display:flex;align-items:center;gap:10px;margin-top:calc(-1 * var(--sp-lg))}
+.tile-meter .scells{flex:1}
+.tile-meter span{flex:none;font-size:var(--text-xs);color:var(--ink-3)}

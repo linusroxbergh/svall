@@ -1,0 +1,153 @@
+/* the lab page */
+body{margin:0;background:var(--sea-0);color:var(--cream);font-family:var(--sans)}
+main{padding:24px 28px 60px}
+header{display:flex;align-items:baseline;gap:10px 24px;flex-wrap:wrap;margin-bottom:22px}
+h1{margin:0;font-size:22px;font-weight:600}
+.ctl{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:13px;opacity:.9}
+.ctl span{margin:0 4px 0 12px;opacity:.7}
+.ctl button{font:inherit;color:inherit;background:transparent;border:1px solid color-mix(in srgb, var(--cream) 30%, transparent);
+  border-radius:6px;padding:3px 9px;cursor:pointer}
+.ctl button[aria-pressed=true]{background:var(--cream);color:var(--sea-0)}
+.pal-note{flex-basis:100%;margin:0;font-size:13px;opacity:.75}
+.grid{display:flex;flex-wrap:wrap;gap:28px 36px}
+section h2{margin:0 0 4px;font-size:16px;font-weight:600}
+section h2 b{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 5px;box-sizing:border-box;border-radius:11px;margin-right:4px;
+  background:var(--cream);color:var(--sea-0);font-size:13px}
+section p{margin:0 0 22px;max-width:420px;font-size:13px;line-height:1.4;opacity:.75}
+.scene{position:relative}
+
+/* every card: the robot is a mask painted in --robo-ink; --st is the status colour */
+.tok{--st:var(--idle);--robo-ink:var(--ink-land)}
+.tok.s-working{--st:var(--working)}
+.tok.s-blocked{--st:var(--blocked)}
+.tok.s-done{--st:var(--done)}
+.tok.s-shell{--st:var(--shell-dim)}
+.tok .robo{position:absolute;left:50%;translate:-50% 0;aspect-ratio:var(--ar);background:var(--robo-ink);
+  -webkit-mask:var(--art) center bottom / contain no-repeat;mask:var(--art) center bottom / contain no-repeat}
+.tok .robo.shade{display:none}
+.tok .chip.lk{cursor:default}
+
+/* palettes: --deep is the robot on the cream card, --pale its light partner on the LCD; the dark screen keeps the tints */
+.tok{--deep:color-mix(in srgb, var(--tint) 62%, var(--ink-land));--pale:var(--tint)}
+[data-pal=ink] .tok,[data-pal=riso] .tok{--deep:var(--ink-land)}
+[data-pal=jewel] .tok,[data-pal=cool] .tok{--pale:var(--deep)}
+[data-pal=jewel] .tok[data-tint=sky]{--deep:#34408A}
+[data-pal=jewel] .tok[data-tint=coral]{--deep:#6B3570}
+[data-pal=jewel] .tok[data-tint=sun]{--deep:#7A2E4A}
+[data-pal=jewel] .tok[data-tint=moss]{--deep:#2E5B3C}
+[data-pal=jewel] .tok[data-tint=earth]{--deep:#1D4F5E}
+[data-pal=cool] .tok[data-tint=sky]{--deep:#23395B}
+[data-pal=cool] .tok[data-tint=coral]{--deep:#4A3B66}
+[data-pal=cool] .tok[data-tint=sun]{--deep:#1D4F5E}
+[data-pal=cool] .tok[data-tint=moss]{--deep:#2E5B3C}
+[data-pal=cool] .tok[data-tint=earth]{--deep:#3A3F7A}
+.tok img.robo{display:none;-webkit-mask:none;mask:none;background:none;object-fit:contain;object-position:center bottom}
+[data-pal=art] .tok img.robo{display:block}
+[data-pal=art] .tok i.robo{display:none}
+[data-pal=riso] .standing .robo.shade{display:block;translate:calc(-50% + 2px) 1.5px;
+  --robo-ink:color-mix(in srgb, var(--tint) 88%, var(--card-0))}
+
+/* battery cells, lit for the context left, with a nub on the right */
+.tok .cells{flex:none;display:flex;gap:calc(var(--tok)*.05);height:calc(var(--tok)*.13);margin:calc(var(--tok)*.12) calc(var(--tok)*.62) 0}
+.tok .cells i{flex:1;border-radius:1.5px;background:color-mix(in srgb, var(--ink-land) 16%, transparent)}
+.tok .cells i[data-on=true]{background:var(--st)}
+.tok .cells::after{content:'';flex:none;width:calc(var(--tok)*.06);margin:22% 0;border-radius:0 1px 1px 0;
+  background:color-mix(in srgb, var(--ink-land) 30%, transparent)}
+
+/* one battery: an outline with a nub, its charge in the status colour, red when low */
+.tok .pack{position:relative;flex:none;display:flex;box-sizing:border-box;padding:1.5px;border-radius:2.5px;
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--ink-land) 55%, transparent)}
+.tok .pack i{display:block;border-radius:1px;background:var(--st)}
+.tok .pack[data-low=true] i{background:var(--blocked)}
+.tok .pack::after{content:'';position:absolute;right:-2.5px;top:30%;bottom:30%;width:2px;border-radius:0 1px 1px 0;
+  background:color-mix(in srgb, var(--ink-land) 55%, transparent)}
+
+/* 4: name on top, the robot standing below it; the status gem sits on the card's corner */
+.standing .nm{flex:none;height:calc(var(--tok)*.78);padding-top:calc(var(--tok)*.12)}
+.standing .stage{position:relative;flex:1;min-height:0}
+.standing .robo{z-index:1;bottom:calc(var(--tok)*.16);height:84%;max-width:82%;--robo-ink:var(--deep)}
+.standing .stage::after{content:'';position:absolute;left:50%;bottom:calc(var(--tok)*.1);translate:-50% 0;
+  width:calc(var(--tok)*1.3);height:calc(var(--tok)*.14);border-radius:50%;
+  background:radial-gradient(closest-side, color-mix(in srgb, var(--ink-land) 24%, transparent), transparent)}
+.tok .corner{position:absolute;z-index:10;top:0;right:0}
+.tok .corner .gem{top:calc(var(--tok)*-.12);left:auto;right:calc(var(--tok)*-.12);transform:none}
+.tok .corner .gem.working{top:calc(var(--tok)*-.06);right:calc(var(--tok)*-.06)}
+
+/* 4e: five cells under the robot's feet */
+.rv-cells .robo{height:88%;bottom:calc(var(--tok)*.1)}
+.rv-cells .stage::after{bottom:calc(var(--tok)*.04)}
+.rv-cells .cells{margin:calc(var(--tok)*.06) calc(var(--tok)*.62) calc(var(--tok)*.16)}
+
+/* 4f: short cells across the card's full width */
+.rv-wide .robo{height:88%;bottom:calc(var(--tok)*.1)}
+.rv-wide .stage::after{bottom:calc(var(--tok)*.04)}
+.rv-wide .cells.wide{height:calc(var(--tok)*.08);gap:calc(var(--tok)*.04);margin:calc(var(--tok)*.06) calc(var(--tok)*.16) calc(var(--tok)*.16)}
+.rv-wide .cells.wide i{border-radius:2px}
+.rv-wide .cells.wide::after{display:none}
+
+/* 4g: the status band at the top is the battery */
+.tok.rv-band .edge{height:calc(var(--tok)*.15);background:color-mix(in srgb, var(--st) 22%, var(--card-1))}
+.tok.rv-band .edge i{display:block;height:100%;background:var(--st)}
+.rv-band .nm{padding-top:calc(var(--tok)*.08)}
+
+/* 4h: a small battery in the footer, in quiet ink */
+.rv-footer .pack.in-foot{width:calc(var(--tok)*.54);height:calc(var(--tok)*.25);margin-left:auto;margin-right:calc(var(--tok)*.08)}
+.rv-footer .pack.in-foot i{background:color-mix(in srgb, var(--ink-land) 62%, transparent)}
+.rv-footer .pack.in-foot[data-low=true] i{background:var(--blocked)}
+
+/* 4i: an upright battery beside the robot, draining from the top */
+.rv-pole .robo{left:57%;max-width:64%}
+.rv-pole .cells.pole{position:absolute;left:calc(var(--tok)*.26);bottom:calc(var(--tok)*.18);margin:0;
+  flex-direction:column-reverse;width:calc(var(--tok)*.18);height:58%;gap:calc(var(--tok)*.04)}
+.rv-pole .cells.pole::after{width:auto;height:calc(var(--tok)*.05);margin:0 24%;border-radius:1px 1px 0 0}
+
+/* 4j: four rising bars in the top left */
+.rv-signal .robo{max-width:68%}
+.rv-signal .cells.signal{position:absolute;z-index:2;left:calc(var(--tok)*.24);top:calc(var(--tok)*.02);margin:0;
+  height:calc(var(--tok)*.34);align-items:flex-end;gap:calc(var(--tok)*.04)}
+.rv-signal .cells.signal i{flex:none;width:calc(var(--tok)*.075);border-radius:1px}
+.rv-signal .cells.signal i:nth-child(1){height:30%}
+.rv-signal .cells.signal i:nth-child(2){height:53%}
+.rv-signal .cells.signal i:nth-child(3){height:76%}
+.rv-signal .cells.signal i:nth-child(4){height:100%}
+.rv-signal .cells.signal::after{display:none}
+
+/* 4k: the robot stands on a long battery */
+.rv-pack .stage::after{display:none}
+.rv-pack .robo{bottom:calc(var(--tok)*.04);height:88%}
+.rv-pack .pack.floor{align-self:center;width:calc(var(--tok)*1.6);height:calc(var(--tok)*.24);margin:0 0 calc(var(--tok)*.16)}
+
+/* 4l: the footer's top edge is the bar, and the robot stands on it */
+.rv-seam .robo{bottom:calc(var(--tok)*.02);height:90%}
+.rv-seam .stage::after{bottom:calc(var(--tok)*-.04)}
+.rv-seam .seam{flex:none;position:relative;z-index:2;height:calc(var(--tok)*.09);background:color-mix(in srgb, var(--card-tint) 24%, transparent)}
+.rv-seam .seam i{display:block;height:100%;background:var(--st)}
+.rv-seam .foot{box-shadow:none}
+
+/* 5: the robot glows on a screen; the status gem lights in its corner */
+.screened .screen{flex:none;position:relative;height:calc(var(--tok)*1.52);margin:calc(var(--tok)*.2) calc(var(--tok)*.26) 0;
+  border-radius:calc(var(--tok)*.18);overflow:hidden;
+  background:radial-gradient(70% 70% at 50% 60%, color-mix(in srgb, var(--tint) 34%, var(--ink-land)), color-mix(in srgb, var(--tint) 12%, var(--ink-land)));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--ink-land) 70%, transparent), inset 0 2px 5px var(--shade-2)}
+.screened .screen::after{content:'';position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(transparent 0 2px, color-mix(in srgb, var(--ink-land) 22%, transparent) 2px 3px)}
+.screened .robo{bottom:calc(var(--tok)*.08);height:86%;max-width:80%;
+  --robo-ink:color-mix(in srgb, var(--tint) 45%, var(--cream))}
+.screened .screen .gem{z-index:2;top:calc(var(--tok)*.08);right:calc(var(--tok)*.08);left:auto;transform:none}
+.screened .nm{padding-top:calc(var(--tok)*.02)}
+
+/* 5c: a light screen in the robot's pale colour, the robot printed dark, a battery glyph in the corner */
+.rv-lcd .screen{background:linear-gradient(color-mix(in srgb, var(--pale) 34%, var(--card-0)), color-mix(in srgb, var(--pale) 50%, var(--card-1)));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--ink-land) 30%, transparent), inset 0 2px 4px color-mix(in srgb, var(--ink-land) 22%, transparent)}
+.rv-lcd .screen::after{background:repeating-linear-gradient(transparent 0 2px, color-mix(in srgb, var(--ink-land) 5%, transparent) 2px 3px)}
+.rv-lcd .robo{--robo-ink:color-mix(in srgb, var(--deep) 70%, var(--ink-land))}
+.rv-lcd .batt{position:absolute;z-index:2;top:calc(var(--tok)*.1);left:calc(var(--tok)*.1);display:flex;gap:1px;padding:1px;
+  width:calc(var(--tok)*.4);height:calc(var(--tok)*.2);box-sizing:border-box;border-radius:2px;
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--ink-land) 70%, transparent)}
+.rv-lcd .batt i{flex:1;margin:1px 0;border-radius:.5px}
+.rv-lcd .batt i:first-child{margin-left:1px}
+.rv-lcd .batt i:last-child{margin-right:1px}
+.rv-lcd .batt i[data-on=true]{background:color-mix(in srgb, var(--ink-land) 80%, transparent)}
+.rv-lcd.s-blocked .batt i[data-on=true]{background:var(--blocked)}
+.rv-lcd .batt::after{content:'';position:absolute;right:-2.5px;top:30%;bottom:30%;width:2px;border-radius:0 1px 1px 0;
+  background:color-mix(in srgb, var(--ink-land) 70%, transparent)}
