@@ -104,7 +104,7 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
 .sub { margin: 14px 0 0; font-size: 1.0625rem; color: var(--body); text-wrap: pretty; }
 
 
-/* ⌘G: a scene drawn with the app's own map, one short caption under it for the beat on screen */
+/* ⌘G: a scene drawn with the app's own map */
 .scene { position: relative; }
 /* it stands on the page's own sea: its edges fade into it, and mission control and the lighthouse stand up from the
    foot so their land fades out rather than ends */
@@ -116,11 +116,6 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
 .scene-map .home, .scene-map .res-islet { bottom: 64px; }
 .scene-map .res-islet { --lh: 100px; }
 .scene-map > .world { position: absolute; transform-origin: 0 0; filter: brightness(var(--map-tone)); }
-.cap { display: grid; margin: 0; font-size: .875rem; color: var(--ink-2); }
-.cap span { grid-area: 1 / 1; display: flex; align-items: center; gap: 10px; opacity: 0; translate: 0 3px; transition: opacity .35s var(--ease), translate .35s var(--ease); }
-.cap span[data-on] { opacity: 1; translate: 0 0; }
-.cap span::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--sand); }
-.cap span:empty { visibility: hidden; }
 /* a new island rises out of the sea; a new card drops onto it */
 .rise, .pop { --k: inherit; --lk: inherit; }
 .rise > .island { animation: rise .9s var(--ease-out) both; }
@@ -166,7 +161,6 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
 .frame > * { grid-area: 1 / 1; visibility: hidden; opacity: 0; transition: opacity .3s var(--ease), visibility 0s .3s; }
 .frame > .on { visibility: visible; opacity: 1; transition: opacity .3s var(--ease); }
 .frame > img, .view-phone > img { display: block; width: 100%; height: auto; filter: drop-shadow(0 24px 40px var(--shade-2)); }
-.views-foot { margin-top: 16px; }
 
 /* the phone view: the window, and the phone the fleet opens on standing over it, sized off the frame */
 .view-phone { position: relative; }
@@ -319,15 +313,6 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
       </div>
     </div>
   </div>
-  <div class="views-foot">
-    <p class="cap" aria-live="polite">
-      <span data-on>A browser beside it, for the PR</span>
-      <span>Its files and the working tree’s changes</span>
-      <span>Markdown as formatted text</span>
-      <span>Claude Code or Codex in a real terminal</span>
-      <span>Every terminal on your phone over Tailscale, with a notification when an agent is done or needs you</span>
-    </p>
-  </div>
 </section>
 
 <section class="sec wrap" aria-labelledby="flow-h">
@@ -434,14 +419,12 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     });
   }
 
-  // a tab shows its view and its caption; the arrow keys walk the tabs
+  // a tab shows its view; the arrow keys walk the tabs
   const tabs = [...document.querySelectorAll('.tabs [role=tab]')], views = [...document.querySelector('.frame').children];
-  const caps = [...document.querySelectorAll('.views-foot .cap span')];
   const show = (i) => tabs.forEach((t, k) => {
     t.setAttribute('aria-selected', String(k === i));
     t.tabIndex = k === i ? 0 : -1;
     views[k].classList.toggle('on', k === i);
-    caps[k].toggleAttribute('data-on', k === i);
   });
   tabs.forEach((t, i) => {
     t.addEventListener('click', () => { stop(); show(i); });
@@ -455,13 +438,12 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
   });
 
   // the views turn by themselves while on screen, each for its tab's line; hovering pauses them, and a tab clicked or
-  // focused stops them for good. The caption stays quiet to screen readers until then.
-  const list = document.querySelector('.tabs'), cap = document.querySelector('.views-foot .cap');
+  // focused stops them for good
+  const list = document.querySelector('.tabs');
   let auto = !matchMedia('(prefers-reduced-motion: reduce)').matches, onScreen = false, hovered = false;
   const sync = () => { if (auto) list.dataset.auto = onScreen && !hovered ? 'on' : 'paused'; };
-  const stop = () => { auto = false; delete list.dataset.auto; cap.setAttribute('aria-live', 'polite'); };
+  const stop = () => { auto = false; delete list.dataset.auto; };
   if (auto) {
-    cap.setAttribute('aria-live', 'off');
     sync();
     tabs.forEach((t, i) => t.addEventListener('animationend', (e) => { if (auto && e.animationName === 'dwell') show((i + 1) % tabs.length); }));
     new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; sync(); }, { threshold: .5 }).observe(document.querySelector('.frame'));
