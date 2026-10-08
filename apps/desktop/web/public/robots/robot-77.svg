@@ -1,0 +1,71 @@
+<svg width="304" height="456" viewBox="104 22 304 456" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="piston-title piston-desc">
+  <title id="piston-title">Piston — hydraulic arm robot</title>
+  <desc id="piston-desc">A teal tin-toy robot with a rounded head, two eyes on a slate band and an antenna knob, a barrel body with a chest dial, heavy hydraulic arms with big shoulder housings, thick cylinders, hose loops and chunky three finger hands held low, on a wide drum base riding two low rollers.</desc>
+  <!-- Two low rollers -->
+  <rect x="174" y="440" width="76" height="36" rx="18" fill="#3d4853"/>
+  <rect x="262" y="440" width="76" height="36" rx="18" fill="#3d4853"/>
+  <path d="M200 444v28m24-28v28m64-28v28m24-28v28" stroke="#697785" stroke-width="3"/>
+  <!-- Wide drum base -->
+  <rect x="228" y="312" width="56" height="18" fill="#3d4853"/>
+  <rect x="172" y="324" width="168" height="120" rx="20" fill="#3f8c94"/>
+  <ellipse cx="256" cy="330" rx="82" ry="9" fill="#5ea9b0"/>
+  <path d="M314 326q26 4 26 22v76q0 20-22 20h-8V326Z" fill="#2c6b72"/>
+  <circle cx="192" cy="352" r="4" fill="#2c6b72"/>
+  <circle cx="213" cy="352" r="4" fill="#2c6b72"/>
+  <circle cx="234" cy="352" r="4" fill="#2c6b72"/>
+  <circle cx="255" cy="352" r="4" fill="#2c6b72"/>
+  <circle cx="276" cy="352" r="4" fill="#2c6b72"/>
+  <circle cx="297" cy="352" r="4" fill="#2c6b72"/>
+  <rect x="226" y="372" width="60" height="40" rx="6" fill="#3d4853"/>
+  <path d="M238 384h36m-36 16h36" stroke="#92a1b2" stroke-width="5" stroke-linecap="round"/>
+  <!-- Barrel body with a chest dial -->
+  <rect x="234" y="126" width="44" height="22" fill="#3d4853"/>
+  <path d="M234 136h44" stroke="#697785" stroke-width="4"/>
+  <rect x="196" y="144" width="120" height="172" rx="26" fill="#3f8c94"/>
+  <ellipse cx="256" cy="152" rx="54" ry="8" fill="#5ea9b0"/>
+  <path d="M292 146q24 4 24 24v120q0 24-24 26h-4V146Z" fill="#2c6b72"/>
+  <path d="M200 186h112m-112 104h112" stroke="#2c6b72" stroke-width="5"/>
+  <circle cx="256" cy="234" r="27" fill="#3d4853"/>
+  <circle cx="256" cy="234" r="20" fill="#fff8de"/>
+  <path d="M243 222l-4-3m17-5v-5m13 13 4-3" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/>
+  <path d="m256 234 10-12" stroke="#2c6b72" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="256" cy="234" r="4.5" fill="#3d4853"/>
+  <circle cx="226" cy="272" r="6" fill="#f6c354"/>
+  <circle cx="286" cy="272" r="6" fill="#79d6eb"/>
+  <!-- Hydraulic arms with hose loops and chunky hands -->
+  <path d="M140 204q-34 48 4 92m228-92q34 48-4 92" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+  <path d="m164 208-18 88m202-88 18 88" stroke="#3d4853" stroke-width="30"/>
+  <path d="M148.2 285.4 146 296m217.8-10.6L366 296" stroke="#697785" stroke-width="36"/>
+  <path d="m146 296-10 50m230-50 10 50" stroke="#92a1b2" stroke-width="14"/>
+  <path d="M122 362l-8 36M136 364v40M150 362l8 36M362 362l-8 36M376 364v40M390 362l8 36" stroke="#3d4853" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="118" cy="380" r="4" fill="#92a1b2"/>
+  <circle cx="136" cy="384" r="4" fill="#92a1b2"/>
+  <circle cx="154" cy="380" r="4" fill="#92a1b2"/>
+  <circle cx="358" cy="380" r="4" fill="#92a1b2"/>
+  <circle cx="376" cy="384" r="4" fill="#92a1b2"/>
+  <circle cx="394" cy="380" r="4" fill="#92a1b2"/>
+  <rect x="114" y="340" width="44" height="24" rx="8" fill="#2c6b72"/>
+  <rect x="354" y="340" width="44" height="24" rx="8" fill="#2c6b72"/>
+  <!-- Big shoulder housings -->
+  <circle cx="170" cy="184" r="32" fill="#3f8c94"/>
+  <circle cx="342" cy="184" r="32" fill="#3f8c94"/>
+  <path d="M146 170a32 32 0 0 1 22-18m150 18a32 32 0 0 1 22-18" fill="none" stroke="#5ea9b0" stroke-width="7" stroke-linecap="round"/>
+  <path d="M186 157a32 32 0 0 1 0 54 38 38 0 0 0 0-54Zm172 0a32 32 0 0 1 0 54 38 38 0 0 0 0-54Z" fill="#2c6b72"/>
+  <circle cx="170" cy="184" r="10" fill="#3d4853"/>
+  <circle cx="342" cy="184" r="10" fill="#3d4853"/>
+  <circle cx="170" cy="184" r="4" fill="#92a1b2"/>
+  <circle cx="342" cy="184" r="4" fill="#92a1b2"/>
+  <!-- Antenna knob -->
+  <path d="M256 50V38" stroke="#697785" stroke-width="5"/>
+  <circle cx="256" cy="32" r="8" fill="#f6c354"/>
+  <!-- Rounded head with an eye band -->
+  <rect x="208" y="50" width="96" height="82" rx="32" fill="#3f8c94"/>
+  <path d="M218 84q4-26 30-30" fill="none" stroke="#5ea9b0" stroke-width="8" stroke-linecap="round"/>
+  <path d="M282 52q22 6 22 34v14q0 28-22 32h-4q14-8 14-32v-14q0-26-10-34Z" fill="#2c6b72"/>
+  <rect x="218" y="78" width="76" height="32" rx="16" fill="#3d4853"/>
+  <circle cx="240" cy="94" r="10" fill="#86dcef"/>
+  <circle cx="272" cy="94" r="10" fill="#86dcef"/>
+  <path d="M246 86a10 10 0 0 1-8 18 10 10 0 0 0 8-18Zm32 0a10 10 0 0 1-8 18 10 10 0 0 0 8-18Z" fill="#4fb0c5"/>
+  <circle cx="243" cy="90" r="3.5" fill="#fffae0"/>
+  <circle cx="275" cy="90" r="3.5" fill="#fffae0"/>
+</svg>
