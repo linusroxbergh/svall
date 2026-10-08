@@ -8,7 +8,7 @@ import { seedNum } from './coast.js';
 import { GAUGE_R, gaugeDash, hintText, statusWord } from './tokenText.js';
 import type { PointerHandlers } from './types.js';
 
-const RAIL_MAX = 4;
+const RAIL_MAX = 3;
 
 function footInner(c: Character, status: DisplayStatus, word: string | undefined) {
   return (
