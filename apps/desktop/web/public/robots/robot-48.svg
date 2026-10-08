@@ -1,0 +1,42 @@
+<svg width="336" height="430" viewBox="88 46 336 430" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="rotor-title rotor-desc">
+  <title id="rotor-title">Rotor — flying delivery robot</title>
+  <desc id="rotor-desc">A round silver robot held aloft by a rotor, with a wide visor, a yellow belly band, ear lights, and two arms carrying a taped parcel above a puff of downwash.</desc>
+  <!-- Rotor -->
+  <rect x="248" y="60" width="16" height="44" fill="#697785"/>
+  <path d="M256 54c-60-4-118-2-160 4q-6 2 0 4c42 6 100 8 160 4Z" fill="#697785"/>
+  <path d="M256 54c60-4 118-2 160 4q6 2 0 4c-42 6-100 8-160 4Z" fill="#92a1b2"/>
+  <ellipse cx="256" cy="60" rx="22" ry="11" fill="#3d4853"/>
+  <circle cx="256" cy="54" r="7" fill="#f6c354"/>
+  <!-- Arms carrying a parcel -->
+  <path d="m204 296-24 40 18 36m110-76 24 40-18 36" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
+  <rect x="200" y="358" width="112" height="72" rx="6" fill="#c9a386"/>
+  <path d="M286 358h20q6 0 6 6v60q0 6-6 6h-20Z" fill="#9c795c"/>
+  <rect x="244" y="358" width="24" height="72" fill="#f0e7ce"/>
+  <path d="M214 376h18m-18 12h12" stroke="#9c795c" stroke-width="4" stroke-linecap="round"/>
+  <rect x="186" y="364" width="24" height="32" rx="6" fill="#3d4853"/>
+  <rect x="302" y="364" width="24" height="32" rx="6" fill="#3d4853"/>
+  <circle cx="204" cy="296" r="16" fill="#3d4853"/>
+  <circle cx="308" cy="296" r="16" fill="#3d4853"/>
+  <circle cx="204" cy="296" r="7" fill="#92a1b2"/>
+  <circle cx="308" cy="296" r="7" fill="#92a1b2"/>
+  <!-- Downwash -->
+  <path d="M206 450h30m40 0h30m-78 18h50" stroke="#92a1b2" stroke-width="6" stroke-linecap="round"/>
+  <!-- Ear lights -->
+  <rect x="132" y="176" width="28" height="60" rx="10" fill="#3d4853"/>
+  <rect x="352" y="176" width="28" height="60" rx="10" fill="#3d4853"/>
+  <circle cx="146" cy="206" r="7" fill="#f6c354"/>
+  <circle cx="366" cy="206" r="7" fill="#f6c354"/>
+  <!-- Round silver body -->
+  <circle cx="256" cy="200" r="104" fill="#d3dbe3"/>
+  <path d="M192 118a104 104 0 0 1 132-6 94 94 0 0 0-132 6Z" fill="#eef2f6"/>
+  <path d="M312 113a104 104 0 0 1 0 174 118 118 0 0 0 0-174Z" fill="#a7b4c1"/>
+  <path d="M157.6 233H354.4A104 104 0 0 1 342.3 258H169.7A104 104 0 0 1 157.6 233Z" fill="#f6c354"/>
+  <path d="M332 233h22.4a104 104 0 0 1-12.1 25H318Z" fill="#bc943d"/>
+  <path d="M180 270h152" stroke="#a7b4c1" stroke-width="4" stroke-linecap="round"/>
+  <rect x="180" y="148" width="152" height="64" rx="32" fill="#3d4853"/>
+  <circle cx="226" cy="180" r="15" fill="#79d6eb"/>
+  <circle cx="286" cy="180" r="15" fill="#79d6eb"/>
+  <path d="M236 168a15 15 0 0 1-12 26 15 15 0 0 0 12-26Zm60 0a15 15 0 0 1-12 26 15 15 0 0 0 12-26Z" fill="#4fb0c5"/>
+  <circle cx="231" cy="174" r="5" fill="#fffae0"/>
+  <circle cx="291" cy="174" r="5" fill="#fffae0"/>
+</svg>
