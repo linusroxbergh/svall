@@ -77,15 +77,15 @@ test('the star beside the name stars the character, and unstars it once starred'
   expect(calls()).toContainEqual(['char.unstar', { id: 'c0' }]);
 });
 
-test('with robots on, the portrait is the character\'s robot and the steppers page through the robots', () => {
+test('the portrait is the character\'s robot, its steppers page through the robots, and with robots off it is the animal', () => {
   const src = () => screen.getByTestId('side-portrait').querySelector('img')!.getAttribute('src');
   render(<Side />);
-  expect(src()).toBe(portraitUrl('fox'));
-  act(() => store.getState().setFleet({ ...fleet(), robots: true }));
   const robot = robotOf({ portrait: 'fox' });
   expect(src()).toBe(robotUrl(robot));
   fireEvent.click(screen.getByTestId('portrait-prev'));
   expect(updates().at(-1)).toEqual(['char.update', { id: 'c0', robot: stepRobot(robot, -1) }]);
+  act(() => store.getState().setFleet({ ...fleet(), animals: true }));
+  expect(src()).toBe(portraitUrl('fox'));
 });
 
 test('a draft in one island\'s instructions never shows or saves on the next one', () => {

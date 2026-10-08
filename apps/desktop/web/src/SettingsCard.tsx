@@ -133,7 +133,7 @@ function Scribe() {
   const scribeAgent = useApp((s) => s.fleet.scribeAgent ?? 'claude');
   const flip = () => setScribe(deps(), !on);
   const worktrees = useApp((s) => !s.fleet.worktreesOff);
-  const robots = useApp((s) => !!s.fleet.robots);
+  const robots = useApp((s) => !s.fleet.animals);
   return (
     <>
       <div className="kicker">The fleet</div>

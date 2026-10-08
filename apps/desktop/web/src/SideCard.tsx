@@ -45,7 +45,7 @@ function LastCommand({ id, agent }: { id: string; agent: Character['agent'] }) {
 }
 
 function PortraitPicker({ id, portrait, robot }: Pick<Character, 'id' | 'portrait' | 'robot'>) {
-  const robots = useApp((s) => !!s.fleet.robots);
+  const robots = useApp((s) => !s.fleet.animals);
   const kind = robots ? 'robot' : 'animal';
   const step = (by: 1 | -1) => saveCharacter(deps(), id,
     robots ? { robot: stepRobot(robotOf({ portrait, robot }), by) } : { portrait: stepPortrait(portrait, by) });

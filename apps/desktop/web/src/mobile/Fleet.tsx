@@ -16,7 +16,7 @@ import { Settings } from './Settings.js';
 type RowProps = { c: Character; revealed: boolean; onOpen(id: string): void; onReveal(id?: string): void; onClose(id: string): void };
 
 function Row({ c, revealed, onOpen, onReveal, onClose }: RowProps): JSX.Element {
-  const robots = useApp((s) => !!s.fleet.robots);
+  const robots = useApp((s) => !s.fleet.animals);
   const status = statusOf(c);
   const sub = subtitle(c);
   const [drag, setDrag] = useState<number>();

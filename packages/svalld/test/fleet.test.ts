@@ -1427,12 +1427,13 @@ runIf('Fleet', () => {
     await fleet.closeCharacter(c.id);
   });
 
-  it('keeps the robots switch in the fleet, absent while off, and a character\'s robot apart from its animal', async () => {
+  it('keeps the robots switch in the fleet, on unless turned off, and a character\'s robot apart from its animal', async () => {
     const { fleet, store } = await boot();
-    fleet.setRobots(true);
-    expect(store.state.robots).toBe(true);
+    expect(store.state).not.toHaveProperty('animals');
     fleet.setRobots(false);
-    expect(store.state).not.toHaveProperty('robots');
+    expect(store.state.animals).toBe(true);
+    fleet.setRobots(true);
+    expect(store.state).not.toHaveProperty('animals');
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'robots' }).id, cwd: '/tmp' });
     expect(fleet.updateCharacter(c.id, { robot: 42 })).toMatchObject({ robot: 42, portrait: c.portrait });
     await fleet.closeCharacter(c.id);

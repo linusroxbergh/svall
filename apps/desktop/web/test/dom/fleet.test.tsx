@@ -34,13 +34,13 @@ test('every island and its crew are listed once the fleet arrives', () => {
   expect(screen.getAllByText('c2')).toHaveLength(1);
 });
 
-test('a row shows the character\'s robot while the fleet has robots on', () => {
+test('a row shows the character\'s robot, and its animal while the fleet has robots off', () => {
   store.getState().setFleet(fleet());
   const { container } = render(<Fleet onOpen={() => {}} />);
   const faces = () => [...container.querySelectorAll('.face img')].map((img) => img.getAttribute('src'));
-  expect(faces()).toContain(portraitUrl('fox'));
-  act(() => store.getState().setFleet({ ...fleet(), robots: true }));
   expect(new Set(faces())).toEqual(new Set([robotUrl(robotOf({ portrait: 'fox' }))]));
+  act(() => store.getState().setFleet({ ...fleet(), animals: true }));
+  expect(faces()).toContain(portraitUrl('fox'));
 });
 
 test('starred characters lead the list in star order, and stay on their islands too', () => {

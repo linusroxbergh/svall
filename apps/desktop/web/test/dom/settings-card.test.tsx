@@ -112,17 +112,17 @@ test('the worktree switch reads the fleet and flips it', () => {
   expect(call).toHaveBeenCalledWith('worktrees.set', { enabled: true });
 });
 
-test('the robots switch reads the fleet and flips it', () => {
+test('the robots switch reads the fleet, on by default, and flips it', () => {
   call.mockClear();
   render(<SettingsCard />);
   const sw = () => screen.getByTestId('set-robots');
-  expect(sw().getAttribute('aria-checked')).toBe('false');
-  fireEvent.click(sw());
-  expect(call).toHaveBeenCalledWith('robots.set', { enabled: true });
-  act(() => store.getState().setFleet({ ...fleet(), robots: true }));
   expect(sw().getAttribute('aria-checked')).toBe('true');
   fireEvent.click(sw());
   expect(call).toHaveBeenCalledWith('robots.set', { enabled: false });
+  act(() => store.getState().setFleet({ ...fleet(), animals: true }));
+  expect(sw().getAttribute('aria-checked')).toBe('false');
+  fireEvent.click(sw());
+  expect(call).toHaveBeenCalledWith('robots.set', { enabled: true });
 });
 
 test('dormancy steps two hours at a time from 2 to 48, then never', () => {
