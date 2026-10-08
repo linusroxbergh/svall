@@ -477,19 +477,19 @@ test('an arranged fleet keeps every label pill clear of the cards around it', as
   }
 });
 
-test('a token shows four links, and past that three and a count of the rest', async ({ page, svall }) => {
+test('a token shows three links, and past that two and a count of the rest', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('rail'), seed: 3 });
   const links = (n: number) => Array.from({ length: n }, (_, i) => ({ kind: 'other' as const, ref: `https://example.com/${i}`, label: `link ${i}`, source: 'manual' as const }));
-  const four = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'four' });
+  const three = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'three' });
   const ten = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'ten' });
-  await svall.api.call('char.update', { id: four.id, context: links(4) });
+  await svall.api.call('char.update', { id: three.id, context: links(3) });
   await svall.api.call('char.update', { id: ten.id, context: links(10) });
   await svall.open('map');
 
-  await expect(page.getByTestId(`token-${four.id}`).locator('.chip.lk')).toHaveCount(4);
-  await expect(page.getByTestId(`token-more-${four.id}`)).toHaveCount(0);
-  await expect(page.getByTestId(`token-${ten.id}`).locator('.chip.lk')).toHaveCount(3);
-  await expect(page.getByTestId(`token-more-${ten.id}`)).toHaveText('+7');
+  await expect(page.getByTestId(`token-${three.id}`).locator('.chip.lk')).toHaveCount(3);
+  await expect(page.getByTestId(`token-more-${three.id}`)).toHaveCount(0);
+  await expect(page.getByTestId(`token-${ten.id}`).locator('.chip.lk')).toHaveCount(2);
+  await expect(page.getByTestId(`token-more-${ten.id}`)).toHaveText('+8');
 });
 
 test('a crowded crew never covers the card beside it, link rails and all', async ({ page, svall }) => {
