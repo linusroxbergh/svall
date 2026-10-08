@@ -18,6 +18,7 @@ import { Home } from './HomeIsland.js';
 import { HoverLayer, useHover } from './hover.js';
 import { Island } from './Island.js';
 import { cardScale, cellSize, crewOf, labelScale, worldCell } from './layout.js';
+import { useRobotMotion } from './motion.js';
 import { useMapPointer, type IslandDrag, type PendingIsland } from './pointer.js';
 import { ISLET, placeIslet } from './resources.js';
 import { ResourcesIsland, ResourcesPill } from './ResourcesIsland.js';
@@ -49,6 +50,7 @@ export function Map() {
     useMapPointer({ host, camera, hover: hov, place: placeRef, lastPressAt, islands: fleet.islands, crewCells });
   const { arrange, covered } = useAutoArrange({ host, islands: fleet.islands, card, cardSize, lastPressAt, reserveAt: camera.reserveAt });
   useDevHook(camera.layoutRef, camera.refits);
+  useRobotMotion();
 
   const cs = cellSize(layout);
   const hovered = hov.hover && !drag && !card ? fleet.characters[hov.hover] : undefined;

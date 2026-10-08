@@ -1,7 +1,7 @@
 import { FAKE_CLAUDE, expect, settleMap, test } from './fixtures.js';
 import type { Page } from '@playwright/test';
 import { cardScale, labelScale } from '../src/map/layout.js';
-import { robotOf, robotUrl } from '../src/portraits.js';
+import { robotOf } from '../src/portraits.js';
 import type { MapDump } from '../src/map/types.js';
 import { theme } from '../src/theme.js';
 
@@ -72,7 +72,8 @@ test('with robots on, a card stands its robot under the name and wears its gem o
   await svall.open('map');
 
   const tok = page.getByTestId(`token-${agent.id}`);
-  await expect(tok.locator('.portrait')).toHaveAttribute('src', robotUrl(robotOf(agent)));
+  await expect(tok.locator('.stage')).toHaveAttribute('data-robot', String(robotOf(agent)));
+  await expect(tok.locator('.stage > svg.portrait')).toBeVisible();
   await expect(tok).toHaveAttribute('data-status', 'idle', { timeout: 15_000 });
   await expect(tok.locator('.edge i')).toHaveCount(0);
 
@@ -118,15 +119,31 @@ test('with robots on, mission control\'s crew stand as robots, and so does one d
   await svall.api.call('robots.set', { enabled: true });
   await svall.open('map');
   await settleMap(page);
-  const robot = robotUrl(robotOf(mc));
-  await expect(page.getByTestId(`token-${mc.id}`).locator('.portrait')).toHaveAttribute('src', robot);
+  const robot = String(robotOf(mc));
+  await expect(page.getByTestId(`token-${mc.id}`).locator('.stage')).toHaveAttribute('data-robot', robot);
 
   const box = (await page.getByTestId(`token-${mc.id}`).locator('.card').boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width / 2, box.y - 240, { steps: 6 });
-  await expect.poll(() => page.locator('.tok.drag .portrait').evaluateAll((els) => els.map((e) => e.getAttribute('src')))).toEqual([robot]);
+  await expect.poll(() => page.locator('.tok.drag .stage').evaluateAll((els) => els.map((e) => e.getAttribute('data-robot')))).toEqual([robot]);
   await page.mouse.up();
+});
+
+test('with robots on, a robot card plays one of its actions now and then and comes back to still', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('robots'), seed: 3 });
+  const agent = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'agent', command: FAKE_CLAUDE });
+  await svall.api.call('char.update', { id: agent.id, robot: 8 });
+  await svall.api.call('robots.set', { enabled: true });
+  await svall.open('map');
+  const bot = page.getByTestId(`token-${agent.id}`).locator('.stage > svg.portrait');
+  await expect(bot).toHaveClass(/\br08\b/);
+
+  // an idle robot rests up to 5s first, and an action lasts under 2s
+  await expect(bot).toHaveAttribute('data-act', /\w/, { timeout: 10_000 });
+  expect(await bot.evaluate((el) => el.getAnimations({ subtree: true }).length)).toBeGreaterThan(0);
+  await expect(bot).not.toHaveAttribute('data-act', { timeout: 5_000 });
+  expect(await bot.evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(0);
 });
 
 test('pans by dragging water and by wheel, clamped', async ({ page, svall }) => {

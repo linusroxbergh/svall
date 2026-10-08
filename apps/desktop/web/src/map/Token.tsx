@@ -2,7 +2,8 @@ import type { Cell, Character, ContextItem } from '@svall/protocol';
 import { EyeGlyph, PrGlyph, reviewText } from '../indicators.js';
 import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, slotStatus, type DisplayStatus } from '../selectors.js';
 import { LinkIcon } from './LinkIcon.js';
-import { portraitTint, portraitUrl, robotOf, robotUrl } from '../portraits.js';
+import { Robot } from './Robot.js';
+import { portraitTint, portraitUrl, robotOf } from '../portraits.js';
 import { theme, tokenPx } from '../theme.js';
 import { seedNum } from './coast.js';
 import { GAUGE_R, gaugeDash, hintText, statusWord } from './tokenText.js';
@@ -90,7 +91,7 @@ export function Token({
         {robots ? (
           <>
             <div className="nm"><span>{c.name}</span></div>
-            <div className="stage"><img className="portrait robot" src={robotUrl(robotOf(c))} alt="" draggable={false} /></div>
+            <Robot n={robotOf(c)} />
           </>
         ) : (
           <>
