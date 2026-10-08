@@ -353,7 +353,7 @@ Its `config.json` takes:
 | `agentsOff` | The agents the private fleet's setup leaves off, writing no hooks or plugin for them. Every other agent found is on. Set by the setup screen or `svall setup --agents`. |
 | `integrations` | The agents left on, of `claude` and `codex`, read when there is no `agentsOff`; `opencode` counts as on. Setup replaces it with `agentsOff`. |
 | `home` | Mission control: `cwd` for its crew, the `command` that starts an agent (default the main agent's: `claude --model sonnet`, `codex` or `opencode`), and `actions`, one `{ "label", "prompt" }` per button. A button's `/name` prompt reaches a Codex crew as `$name`. |
-| `scribe` | `agent` (default the main agent) and `model`, a model of `agent`'s CLI, or of Claude's when `agent` is unset (default `sonnet` for Claude, the CLI's own for Codex and OpenCode). |
+| `scribe` | `agent` (default the main agent) and `model`, a model of `agent`'s CLI, or of Claude's when `agent` is unset (default `haiku` for Claude, `gpt-6-luna` at low effort for Codex, the CLI's own for OpenCode). |
 | `mobile` | `logins` to let in (only yours when empty), extra page `origins` allowed to open a socket, a `pushContact` (https: or mailto:) for push services, and the `httpsPort` it is served on, which Svall saves. |
 
 - The daemon reads `config.json` when it starts. To restart the private
