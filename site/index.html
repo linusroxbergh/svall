@@ -176,12 +176,6 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
 /* context: the lighthouse's tree of levels beside the brief an agent starts with */
 .ctx { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 56px; align-items: center; }
 .ctx .sec-head { margin: 0; }
-.lh { display: flex; gap: 18px; align-items: flex-end; margin-top: 30px; color: var(--ink-2); font-size: .9375rem; }
-.lh-img { position: relative; flex: none; height: 116px; }
-.lh-img img { position: relative; height: 100%; filter: saturate(.9) contrast(.96) drop-shadow(0 2px 2px var(--shade-1)); }
-.lh-img::before { content: ''; position: absolute; left: 50%; top: 28%; width: 110px; height: 110px; translate: -50% -50%; border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--lamp) 42%, transparent) 0%, color-mix(in srgb, var(--lamp) 14%, transparent) 38%, transparent 68%); }
-.lh p { margin: 0; text-wrap: pretty; }
 .shelf { display: grid; grid-template-columns: 250px minmax(0, 1fr); border-radius: 14px; overflow: hidden;
   background: var(--surface-2); border: 1px solid var(--line); box-shadow: 0 30px 60px -20px var(--shade-2);
   zoom: .9; width: 90%; justify-self: end; }
@@ -326,12 +320,8 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
 <section class="sec wrap ctx" aria-labelledby="ctx-h">
   <div>
     <div class="sec-head">
-      <h2 id="ctx-h">Every agent starts with a brief.</h2>
-      <p class="sub">Instructions and links for each island and character, and notes agents leave for the next one. An agent gets what applies to it when it starts, and an update when something changes.</p>
-    </div>
-    <div class="lh">
-      <span class="lh-img"><img src="lighthouse.svg" alt=""></span>
-      <p>The lighthouse holds it all, with your skills, MCP servers and hooks, ready to edit.</p>
+      <h2 id="ctx-h">Easy overview of context &amp; docs.</h2>
+      <p class="sub">Instructions and links for each fleet, repo, island and character, and notes agents leave for the next one. An agent gets what applies to it when it starts, and an update when something changes.</p>
     </div>
   </div>
   <div class="shelf">
