@@ -1,0 +1,69 @@
+<svg width="236" height="452" viewBox="138 24 236 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="clerk-title clerk-desc">
+  <title id="clerk-title">Clerk — pedestal robot</title>
+  <desc id="clerk-desc">A cyan tin-toy robot with a square head, two ringed eyes and an antenna knob, a boxy torso with a chest dial and a row of switches, ring jointed arms with pincers, standing on a single column with a ring joint over a heavy domed base.</desc>
+  <!-- Domed base -->
+  <path d="M168 458a88 52 0 0 1 176 0Z" fill="#4fb0c5"/>
+  <path d="M182 436a88 52 0 0 1 46-26" fill="none" stroke="#79d6eb" stroke-width="8" stroke-linecap="round"/>
+  <path d="M300 413a88 52 0 0 1 44 45h-24a70 46 0 0 0-30-40Z" fill="#2e7a8a"/>
+  <circle cx="256" cy="434" r="6" fill="#f6c354"/>
+  <rect x="160" y="454" width="192" height="22" rx="8" fill="#3d4853"/>
+  <!-- Column with a ring joint -->
+  <rect x="245" y="326" width="22" height="88" fill="#697785"/>
+  <rect x="226" y="314" width="60" height="18" rx="6" fill="#3d4853"/>
+  <circle cx="256" cy="372" r="16" fill="#3d4853"/>
+  <circle cx="256" cy="372" r="7" fill="#92a1b2"/>
+  <!-- Ring jointed arms with pincers -->
+  <path d="m192 176-32 46v66m160-112 32 46v66" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+  <rect x="148" y="284" width="24" height="14" rx="4" fill="#2e7a8a"/>
+  <rect x="340" y="284" width="24" height="14" rx="4" fill="#2e7a8a"/>
+  <path d="M154 298q-10 16 2 30m12-30q10 16-2 30M346 298q-10 16 2 30m12-30q10 16-2 30" fill="none" stroke="#3d4853" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="160" cy="222" r="10" fill="#3d4853"/>
+  <circle cx="352" cy="222" r="10" fill="#3d4853"/>
+  <circle cx="160" cy="222" r="4.5" fill="#92a1b2"/>
+  <circle cx="352" cy="222" r="4.5" fill="#92a1b2"/>
+  <!-- Boxy torso with a dial and switches -->
+  <rect x="238" y="136" width="36" height="20" fill="#3d4853"/>
+  <rect x="190" y="152" width="132" height="166" rx="12" fill="#4fb0c5"/>
+  <path d="M202 152h108q12 0 12 12v4H190v-4q0-12 12-12Z" fill="#79d6eb"/>
+  <path d="M302 154h8q12 0 12 12v140q0 12-12 12h-8Z" fill="#2e7a8a"/>
+  <circle cx="236" cy="208" r="26" fill="#3d4853"/>
+  <circle cx="236" cy="208" r="20" fill="#fff8de"/>
+  <path d="M221 199l-4-3m19-8v-5m15 13 4-3" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/>
+  <path d="m236 208 11-10" stroke="#3d4853" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="236" cy="208" r="4" fill="#3d4853"/>
+  <circle cx="288" cy="196" r="7" fill="#f6c354"/>
+  <circle cx="288" cy="220" r="7" fill="#3d4853"/>
+  <circle cx="288" cy="220" r="3" fill="#92a1b2"/>
+  <rect x="206" y="252" width="100" height="32" rx="6" fill="#3d4853"/>
+  <rect x="216" y="260" width="10" height="16" rx="2" fill="#92a1b2"/>
+  <rect x="240" y="260" width="10" height="16" rx="2" fill="#92a1b2"/>
+  <rect x="264" y="260" width="10" height="16" rx="2" fill="#92a1b2"/>
+  <rect x="288" y="260" width="10" height="16" rx="2" fill="#92a1b2"/>
+  <circle cx="221" cy="262" r="4" fill="#f6c354"/>
+  <circle cx="245" cy="274" r="4" fill="#f6c354"/>
+  <circle cx="269" cy="262" r="4" fill="#f6c354"/>
+  <circle cx="293" cy="274" r="4" fill="#f6c354"/>
+  <path d="M206 300h100" stroke="#2e7a8a" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="190" cy="176" r="14" fill="#3d4853"/>
+  <circle cx="322" cy="176" r="14" fill="#3d4853"/>
+  <circle cx="190" cy="176" r="6" fill="#92a1b2"/>
+  <circle cx="322" cy="176" r="6" fill="#92a1b2"/>
+  <!-- Antenna knob -->
+  <path d="M256 54V38" stroke="#697785" stroke-width="5"/>
+  <circle cx="256" cy="32" r="8" fill="#f6c354"/>
+  <!-- Square head with ringed eyes -->
+  <circle cx="200" cy="96" r="9" fill="#3d4853"/>
+  <circle cx="312" cy="96" r="9" fill="#3d4853"/>
+  <circle cx="200" cy="96" r="3.5" fill="#92a1b2"/>
+  <circle cx="312" cy="96" r="3.5" fill="#92a1b2"/>
+  <rect x="202" y="52" width="108" height="88" rx="10" fill="#4fb0c5"/>
+  <path d="M212 52h88q10 0 10 10v4H202v-4q0-10 10-10Z" fill="#79d6eb"/>
+  <path d="M292 54h8q10 0 10 10v66q0 10-10 10h-8Z" fill="#2e7a8a"/>
+  <circle cx="236" cy="98" r="17" fill="#3d4853"/>
+  <circle cx="276" cy="98" r="17" fill="#3d4853"/>
+  <circle cx="236" cy="98" r="11" fill="#79d6eb"/>
+  <circle cx="276" cy="98" r="11" fill="#79d6eb"/>
+  <path d="M243 90a11 11 0 0 1-9 19 11 11 0 0 0 9-19Zm40 0a11 11 0 0 1-9 19 11 11 0 0 0 9-19Z" fill="#4fb0c5"/>
+  <circle cx="239" cy="94" r="3.5" fill="#fffae0"/>
+  <circle cx="279" cy="94" r="3.5" fill="#fffae0"/>
+</svg>

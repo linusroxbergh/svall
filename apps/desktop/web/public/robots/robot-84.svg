@@ -1,0 +1,114 @@
+<svg width="332" height="452" viewBox="92 24 332 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="fitter-title fitter-desc">
+  <title id="fitter-title">Fitter — plumbing robot</title>
+  <desc id="fitter-desc">A steel blue robot built from pipe fittings: a square bolted flange for a head with a pipe running through it, two tall oval eyes behind a round sight glass and a capped vent on top, a pipe cross for a torso with flanged ends and a yellow valve handwheel on the chest, pipe arms with elbow joints ending in a pipe wrench jaw and a two finger grip, and pipe legs with union nut knees standing on floor flanges.</desc>
+  <!-- Pipe legs with union nut knees on floor flanges -->
+  <rect x="196" y="360" width="32" height="92" fill="#6b90b6"/>
+  <rect x="196" y="360" width="7" height="92" fill="#8fb1d1"/>
+  <rect x="221" y="360" width="7" height="92" fill="#4e7096"/>
+  <rect x="190" y="398" width="44" height="18" rx="3" fill="#3d4853"/>
+  <path d="M202 401V413M222 401V413" stroke="#697785" stroke-width="3"/>
+  <rect x="192" y="444" width="40" height="14" fill="#4e7096"/>
+  <rect x="180" y="456" width="64" height="20" rx="6" fill="#3d4853"/>
+  <circle cx="190" cy="466" r="3.5" fill="#92a1b2"/><circle cx="234" cy="466" r="3.5" fill="#92a1b2"/>
+  <rect x="284" y="360" width="32" height="92" fill="#6b90b6"/>
+  <rect x="284" y="360" width="7" height="92" fill="#8fb1d1"/>
+  <rect x="309" y="360" width="7" height="92" fill="#4e7096"/>
+  <rect x="278" y="398" width="44" height="18" rx="3" fill="#3d4853"/>
+  <path d="M290 401V413M310 401V413" stroke="#697785" stroke-width="3"/>
+  <rect x="280" y="444" width="40" height="14" fill="#4e7096"/>
+  <rect x="268" y="456" width="64" height="20" rx="6" fill="#3d4853"/>
+  <circle cx="278" cy="466" r="3.5" fill="#92a1b2"/><circle cx="322" cy="466" r="3.5" fill="#92a1b2"/>
+  <!-- Hip pipe with elbows into the legs -->
+  <rect x="206" y="330" width="100" height="32" fill="#6b90b6"/>
+  <rect x="206" y="330" width="100" height="7" fill="#8fb1d1"/>
+  <rect x="206" y="355" width="100" height="7" fill="#4e7096"/>
+  <path d="M234 326H212A22 22 0 0 0 190 348V372H234Z" fill="#6b90b6"/>
+  <path d="M194 372V348A18 18 0 0 1 212 330H234" fill="none" stroke="#8fb1d1" stroke-width="7"/>
+  <path d="M278 326H300A22 22 0 0 1 322 348V372H278Z" fill="#6b90b6"/>
+  <path d="M278 329.5H300A18.5 18.5 0 0 1 318.5 348V372" fill="none" stroke="#4e7096" stroke-width="7"/>
+  <path d="M278 329.5H300" stroke="#8fb1d1" stroke-width="7"/>
+  <rect x="236" y="320" width="40" height="12" fill="#3d4853"/>
+  <!-- Left arm: pipe run with an elbow, ending in a pipe wrench jaw -->
+  <rect x="136" y="224" width="20" height="32" fill="#6b90b6"/>
+  <rect x="136" y="224" width="20" height="7" fill="#8fb1d1"/>
+  <rect x="136" y="249" width="20" height="7" fill="#4e7096"/>
+  <path d="M140 218H118A26 26 0 0 0 92 244V272H140Z" fill="#6b90b6"/>
+  <path d="M96 272V244A22 22 0 0 1 118 222H140" fill="none" stroke="#8fb1d1" stroke-width="7"/>
+  <rect x="100" y="272" width="32" height="68" fill="#6b90b6"/>
+  <rect x="100" y="272" width="7" height="68" fill="#8fb1d1"/>
+  <rect x="125" y="272" width="7" height="68" fill="#4e7096"/>
+  <rect x="94" y="292" width="44" height="16" rx="3" fill="#3d4853"/>
+  <path d="M106 295V305M126 295V305" stroke="#697785" stroke-width="3"/>
+  <rect x="102" y="336" width="28" height="64" rx="4" fill="#697785"/>
+  <rect x="102" y="336" width="7" height="64" fill="#92a1b2"/>
+  <path d="M128 338H158Q164 338 164 344V360H152V352H128Z" fill="#697785"/>
+  <path d="M128 384H154V376H166V394Q166 400 160 400H128Z" fill="#697785"/>
+  <rect x="96" y="356" width="40" height="16" rx="3" fill="#3d4853"/>
+  <path d="M104 359V369M111 359V369M118 359V369M125 359V369" stroke="#92a1b2" stroke-width="2.5"/>
+  <!-- Right arm: pipe run with an elbow, ending in a flanged two finger grip -->
+  <rect x="356" y="224" width="20" height="32" fill="#6b90b6"/>
+  <rect x="356" y="224" width="20" height="7" fill="#8fb1d1"/>
+  <rect x="356" y="249" width="20" height="7" fill="#4e7096"/>
+  <path d="M372 218H394A26 26 0 0 1 420 244V272H372Z" fill="#6b90b6"/>
+  <path d="M372 221.5H394A22.5 22.5 0 0 1 416.5 244V272" fill="none" stroke="#4e7096" stroke-width="7"/>
+  <path d="M372 221.5H392" stroke="#8fb1d1" stroke-width="7"/>
+  <rect x="380" y="272" width="32" height="62" fill="#6b90b6"/>
+  <rect x="380" y="272" width="7" height="62" fill="#8fb1d1"/>
+  <rect x="405" y="272" width="7" height="62" fill="#4e7096"/>
+  <rect x="374" y="292" width="44" height="16" rx="3" fill="#3d4853"/>
+  <path d="M386 295V305M406 295V305" stroke="#697785" stroke-width="3"/>
+  <path d="M382 346V368Q382 380 392 388M410 346V368Q410 380 400 388" fill="none" stroke="#3d4853" stroke-width="10" stroke-linecap="round"/>
+  <rect x="368" y="332" width="56" height="13" rx="2" fill="#4e7096"/>
+  <circle cx="376" cy="338.5" r="2.5" fill="#92a1b2"/><circle cx="416" cy="338.5" r="2.5" fill="#92a1b2"/>
+  <!-- Pipe cross torso with flanged ends and a valve handwheel -->
+  <rect x="160" y="202" width="192" height="76" fill="#6b90b6"/>
+  <rect x="160" y="202" width="192" height="7" fill="#8fb1d1"/>
+  <rect x="160" y="271" width="192" height="7" fill="#4e7096"/>
+  <rect x="208" y="176" width="96" height="140" fill="#6b90b6"/>
+  <rect x="208" y="176" width="7" height="140" fill="#8fb1d1"/>
+  <rect x="297" y="176" width="7" height="140" fill="#4e7096"/>
+  <circle cx="256" cy="240" r="36" fill="#4e7096"/>
+  <circle cx="256" cy="240" r="31" fill="#f6c354"/>
+  <circle cx="256" cy="240" r="24" fill="#4e7096"/>
+  <path d="M256 240L256 213M256 240L281.7 231.7M256 240L271.9 261.8M256 240L240.1 261.8M256 240L230.3 231.7" stroke="#f6c354" stroke-width="6"/>
+  <circle cx="256" cy="240" r="10" fill="#3d4853"/>
+  <circle cx="256" cy="240" r="4" fill="#92a1b2"/>
+  <rect x="196" y="168" width="120" height="12" rx="2" fill="#4e7096"/>
+  <circle cx="206" cy="174" r="3" fill="#92a1b2"/><circle cx="230" cy="174" r="3" fill="#92a1b2"/><circle cx="282" cy="174" r="3" fill="#92a1b2"/><circle cx="306" cy="174" r="3" fill="#92a1b2"/>
+  <rect x="196" y="312" width="120" height="12" rx="2" fill="#4e7096"/>
+  <circle cx="206" cy="318" r="3" fill="#92a1b2"/><circle cx="230" cy="318" r="3" fill="#92a1b2"/><circle cx="282" cy="318" r="3" fill="#92a1b2"/><circle cx="306" cy="318" r="3" fill="#92a1b2"/>
+  <rect x="150" y="190" width="12" height="100" rx="2" fill="#4e7096"/>
+  <circle cx="156" cy="200" r="3" fill="#92a1b2"/><circle cx="156" cy="224" r="3" fill="#92a1b2"/><circle cx="156" cy="256" r="3" fill="#92a1b2"/><circle cx="156" cy="280" r="3" fill="#92a1b2"/>
+  <rect x="350" y="190" width="12" height="100" rx="2" fill="#4e7096"/>
+  <circle cx="356" cy="200" r="3" fill="#92a1b2"/><circle cx="356" cy="224" r="3" fill="#92a1b2"/><circle cx="356" cy="256" r="3" fill="#92a1b2"/><circle cx="356" cy="280" r="3" fill="#92a1b2"/>
+  <!-- Hex nut neck -->
+  <rect x="232" y="150" width="48" height="20" rx="3" fill="#3d4853"/>
+  <!-- Capped vent on top -->
+  <rect x="247" y="29" width="18" height="11" fill="#3d4853"/>
+  <rect x="240" y="24" width="32" height="8" rx="4" fill="#f6c354"/>
+  <!-- Square flanged head with a through pipe and eyes behind a round sight glass -->
+  <rect x="178" y="84" width="20" height="26" fill="#6b90b6"/>
+  <rect x="178" y="84" width="20" height="6" fill="#8fb1d1"/>
+  <rect x="178" y="104" width="20" height="6" fill="#4e7096"/>
+  <rect x="170" y="79" width="20" height="36" rx="3" fill="#3d4853"/>
+  <path d="M180 82V112" stroke="#697785" stroke-width="3"/>
+  <rect x="314" y="84" width="20" height="26" fill="#6b90b6"/>
+  <rect x="314" y="84" width="20" height="6" fill="#8fb1d1"/>
+  <rect x="314" y="104" width="20" height="6" fill="#4e7096"/>
+  <rect x="322" y="79" width="20" height="36" rx="3" fill="#3d4853"/>
+  <path d="M332 82V112" stroke="#697785" stroke-width="3"/>
+  <rect x="196" y="38" width="120" height="118" rx="18" fill="#6b90b6"/>
+  <path d="M214 38H298Q316 38 316 54V56H196V54Q196 38 214 38Z" fill="#8fb1d1"/>
+  <path d="M298 44H300Q316 44 316 60V140Q316 156 300 156H298Z" fill="#4e7096"/>
+  <circle cx="213" cy="55" r="6.5" fill="#3d4853"/><circle cx="213" cy="55" r="2.5" fill="#92a1b2"/>
+  <circle cx="299" cy="55" r="6.5" fill="#3d4853"/><circle cx="299" cy="55" r="2.5" fill="#92a1b2"/>
+  <circle cx="213" cy="139" r="6.5" fill="#3d4853"/><circle cx="213" cy="139" r="2.5" fill="#92a1b2"/>
+  <circle cx="299" cy="139" r="6.5" fill="#3d4853"/><circle cx="299" cy="139" r="2.5" fill="#92a1b2"/>
+  <circle cx="256" cy="97" r="43" fill="#697785"/>
+  <circle cx="256" cy="97" r="38" fill="#3d4853"/>
+  <ellipse cx="238" cy="97" rx="9" ry="12" fill="#79d6eb"/>
+  <ellipse cx="274" cy="97" rx="9" ry="12" fill="#79d6eb"/>
+  <path d="M245 89a11 11 0 0 1-9 19 11 11 0 0 0 9-19Zm36 0a11 11 0 0 1-9 19 11 11 0 0 0 9-19Z" fill="#4fb0c5"/>
+  <circle cx="240.5" cy="92" r="3.2" fill="#fffae0"/>
+  <circle cx="276.5" cy="92" r="3.2" fill="#fffae0"/>
+</svg>

@@ -1,0 +1,79 @@
+<svg width="322" height="452" viewBox="128 24 322 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="crane-title crane-desc">
+  <title id="crane-title">Crane — crane arm robot</title>
+  <desc id="crane-desc">An orange tin-toy robot with a square head, two eyes on a slate band and an antenna knob, a boxy body with a dial and three levers, a short piston arm with a pincer on one side and a lattice crane boom with a cable and a three prong grab claw on the other, standing on two legs with ring knees and orange shoes.</desc>
+  <!-- Antenna knob -->
+  <path d="M256 60V40" stroke="#697785" stroke-width="5"/>
+  <circle cx="256" cy="34" r="8" fill="#f6c354"/>
+  <!-- Legs with ring knees and shoes -->
+  <rect x="230" y="326" width="52" height="26" fill="#3d4853"/>
+  <path d="M230 336h52" stroke="#697785" stroke-width="6"/>
+  <path d="M226 346v104M286 346v104" stroke="#697785" stroke-width="14"/>
+  <path d="M202 470v-8q0-14 14-14h20q14 0 14 14v8Zm60 0v-8q0-14 14-14h20q14 0 14 14v8Z" fill="#e27b31"/>
+  <path d="M238 449q12 3 12 13v8h-12Zm60 0q12 3 12 13v8h-12Z" fill="#b05d23"/>
+  <path d="M198 466h56v10h-56Zm60 0h56v10h-56Z" fill="#3d4853"/>
+  <circle cx="226" cy="348" r="14" fill="#3d4853"/>
+  <circle cx="286" cy="348" r="14" fill="#3d4853"/>
+  <circle cx="226" cy="348" r="6" fill="#92a1b2"/>
+  <circle cx="286" cy="348" r="6" fill="#92a1b2"/>
+  <circle cx="226" cy="402" r="13" fill="#3d4853"/>
+  <circle cx="286" cy="402" r="13" fill="#3d4853"/>
+  <circle cx="226" cy="402" r="5" fill="#92a1b2"/>
+  <circle cx="286" cy="402" r="5" fill="#92a1b2"/>
+  <!-- Short piston arm with a pincer -->
+  <path d="m182 206-20 34" stroke="#3d4853" stroke-width="22" stroke-linecap="round"/>
+  <path d="m166 233-4 7" stroke="#697785" stroke-width="24"/>
+  <path d="m162 240-12 24" stroke="#92a1b2" stroke-width="9"/>
+  <rect x="136" y="262" width="28" height="14" rx="4" fill="#b05d23"/>
+  <path d="M141 276q-10 16 2 30m14-30q10 16-2 30" fill="none" stroke="#3d4853" stroke-width="6" stroke-linecap="round"/>
+  <!-- Boxy body with a dial and levers -->
+  <rect x="238" y="154" width="36" height="20" fill="#3d4853"/>
+  <rect x="188" y="168" width="136" height="162" rx="14" fill="#e27b31"/>
+  <path d="M202 168h108q14 0 14 14v2H188v-2q0-14 14-14Z" fill="#f0995a"/>
+  <path d="M306 170q18 2 18 14v132q0 12-18 14Z" fill="#b05d23"/>
+  <circle cx="228" cy="216" r="24" fill="#3d4853"/>
+  <circle cx="228" cy="216" r="18" fill="#fff8de"/>
+  <path d="M215 208l-4-3m17-7v-5m13 12 4-3" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/>
+  <path d="m228 216 10-10" stroke="#3d4853" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="228" cy="216" r="4" fill="#3d4853"/>
+  <circle cx="284" cy="204" r="7" fill="#f6c354"/>
+  <circle cx="284" cy="228" r="7" fill="#3d4853"/>
+  <circle cx="284" cy="228" r="3" fill="#92a1b2"/>
+  <rect x="208" y="256" width="96" height="34" rx="6" fill="#3d4853"/>
+  <path d="m232 284-6-18m30 18v-20m24 20 6-18" stroke="#92a1b2" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="226" cy="264" r="5" fill="#f6c354"/>
+  <circle cx="256" cy="262" r="5" fill="#f6c354"/>
+  <circle cx="286" cy="264" r="5" fill="#f6c354"/>
+  <path d="M208 306h96" stroke="#b05d23" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="188" cy="196" r="15" fill="#3d4853"/>
+  <circle cx="188" cy="196" r="7" fill="#92a1b2"/>
+  <!-- Lattice crane boom with a cable and grab claw -->
+  <rect x="314" y="178" width="32" height="42" rx="8" fill="#3d4853"/>
+  <g transform="translate(330 198) rotate(-58)">
+    <path d="M4-9 18 9 32-9 46 9 60-9 74 9 88-9 102 9 116-9 130 9 144-9 156 9" fill="none" stroke="#697785" stroke-width="4"/>
+    <rect y="-15" width="162" height="8" rx="3" fill="#f0995a"/>
+    <rect y="7" width="162" height="8" rx="3" fill="#b05d23"/>
+    <rect x="152" y="-15" width="12" height="30" rx="3" fill="#e27b31"/>
+    <circle cx="164" r="11" fill="#3d4853"/>
+    <circle cx="164" r="4.5" fill="#92a1b2"/>
+  </g>
+  <circle cx="330" cy="198" r="12" fill="#3d4853"/>
+  <circle cx="330" cy="198" r="5" fill="#92a1b2"/>
+  <path d="M427 60v172" stroke="#3d4853" stroke-width="3"/>
+  <rect x="417" y="230" width="20" height="18" rx="4" fill="#3d4853"/>
+  <circle cx="427" cy="239" r="3" fill="#f6c354"/>
+  <path d="M420 248q-12 14-4 30m11-30v32m7-32q12 14 4 30" fill="none" stroke="#3d4853" stroke-width="6" stroke-linecap="round"/>
+  <!-- Square head with an eye band -->
+  <circle cx="204" cy="110" r="9" fill="#3d4853"/>
+  <circle cx="308" cy="110" r="9" fill="#3d4853"/>
+  <circle cx="204" cy="110" r="3.5" fill="#92a1b2"/>
+  <circle cx="308" cy="110" r="3.5" fill="#92a1b2"/>
+  <rect x="206" y="60" width="100" height="98" rx="12" fill="#e27b31"/>
+  <path d="M218 60h76q12 0 12 12v2H206v-2q0-12 12-12Z" fill="#f0995a"/>
+  <path d="M290 62q16 2 16 12v72q0 10-16 12Z" fill="#b05d23"/>
+  <rect x="216" y="94" width="80" height="32" rx="16" fill="#3d4853"/>
+  <circle cx="238" cy="110" r="11" fill="#80d4ef"/>
+  <circle cx="274" cy="110" r="11" fill="#80d4ef"/>
+  <path d="M244 101a11 11 0 0 1-8 20 11 11 0 0 0 8-20Zm36 0a11 11 0 0 1-8 20 11 11 0 0 0 8-20Z" fill="#4fb0c5"/>
+  <circle cx="241" cy="106" r="3.5" fill="#fffae0"/>
+  <circle cx="277" cy="106" r="3.5" fill="#fffae0"/>
+</svg>

@@ -1,0 +1,67 @@
+<svg width="316" height="452" viewBox="100 24 316 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="slots-title slots-desc">
+  <title id="slots-title">Slots — slot machine robot</title>
+  <desc id="slots-desc">A violet one-armed bandit robot with an arched marquee and a yellow lamp on top, a reel window whose two reel strips each show one eye near the payline, the right reel stopped a notch low, between cut-off symbol tiles, a tapering cabinet body with a yellow diamond panel, a pull lever with a yellow ball knob for a right arm, a ring jointed claw arm on the left, and short legs on flat feet.</desc>
+  <!-- Pull lever arm with a ball knob -->
+  <path d="m368 246 26-128" stroke="#697785" stroke-width="12" stroke-linecap="round"/>
+  <path d="m371 236 21-104" stroke="#92a1b2" stroke-width="4" stroke-linecap="round"/>
+  <rect x="383" y="146" width="18" height="12" rx="3" transform="rotate(11.5 392 152)" fill="#3d4853"/>
+  <circle cx="396" cy="106" r="17" fill="#f6c354"/>
+  <path d="M409 95a17 17 0 0 1-24 24 17 17 0 0 0 24-24Z" fill="#daac49"/>
+  <rect x="350" y="226" width="20" height="40" rx="6" fill="#634a96"/>
+  <circle cx="370" cy="246" r="16" fill="#3d4853"/>
+  <circle cx="370" cy="246" r="7" fill="#92a1b2"/>
+  <!-- Jointed claw arm -->
+  <path d="m156 246-34 34v54" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M114 344q-10 14 2 26m16-26q10 14-2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+  <rect x="110" y="330" width="24" height="16" rx="4" fill="#8668bb"/>
+  <path d="M128 330h1q5 0 5 5v6q0 5-5 5h-1Z" fill="#634a96"/>
+  <circle cx="122" cy="280" r="11" fill="#3d4853"/>
+  <circle cx="122" cy="280" r="4.5" fill="#92a1b2"/>
+  <circle cx="156" cy="246" r="14" fill="#3d4853"/>
+  <circle cx="156" cy="246" r="6" fill="#92a1b2"/>
+  <!-- Short legs on flat feet -->
+  <path d="M222 376v74m68-74v74" stroke="#697785" stroke-width="14"/>
+  <circle cx="222" cy="414" r="12" fill="#3d4853"/>
+  <circle cx="290" cy="414" r="12" fill="#3d4853"/>
+  <circle cx="222" cy="414" r="5" fill="#92a1b2"/>
+  <circle cx="290" cy="414" r="5" fill="#92a1b2"/>
+  <path d="M198 470v-12q0-12 12-12h24q12 0 12 12v12Zm68 0v-12q0-12 12-12h24q12 0 12 12v12Z" fill="#8668bb"/>
+  <path d="M234 446q12 0 12 12v12h-10v-24Zm68 0q12 0 12 12v12h-10v-24Z" fill="#634a96"/>
+  <path d="M194 466h56v10h-56Zm68 0h56v10h-56Z" fill="#3d4853"/>
+  <!-- Tapered cabinet with a diamond panel -->
+  <rect x="228" y="212" width="56" height="22" fill="#3d4853"/>
+  <path d="M164 228h184q14 0 13 14l-25 116q-2 12-14 12H190q-12 0-14-12l-25-116q-1-14 13-14Z" fill="#8668bb"/>
+  <path d="M164 228h184q14 0 13.4 12H150.6q-.6-12 13.4-12Z" fill="#a990d6"/>
+  <path d="M338 240h23.4l-25.4 118q-2 12-14 12h-8Z" fill="#634a96"/>
+  <rect x="210" y="258" width="92" height="82" rx="10" fill="#3d4853"/>
+  <path d="m256 270 22 29-22 29-22-29Z" fill="#f6c354"/>
+  <path d="m256 270 22 29-22 29Z" fill="#daac49"/>
+  <circle cx="224" cy="272" r="4.5" fill="#92a1b2"/>
+  <circle cx="288" cy="272" r="4.5" fill="#92a1b2"/>
+  <rect x="180" y="364" width="152" height="16" rx="5" fill="#3d4853"/>
+  <!-- Marquee arch and lamp -->
+  <rect x="251" y="36" width="10" height="14" fill="#3d4853"/>
+  <circle cx="256" cy="34" r="10" fill="#f6c354"/>
+  <path d="M184 104V86q0-38 72-38t72 38v18Z" fill="#8668bb"/>
+  <path d="M190 68q14-20 66-20t66 20Z" fill="#a990d6"/>
+  <path d="M308 54q20 12 20 32v18h-14V70q0-10-6-16Z" fill="#634a96"/>
+  <path d="M202 104V90q0-24 54-24t54 24v14Z" fill="#3d4853"/>
+  <path d="M214 100v-8q0-14 42-14t42 14v8Z" fill="#fff8de"/>
+  <!-- Head with two reel strip eyes -->
+  <rect x="168" y="94" width="176" height="124" rx="16" fill="#8668bb"/>
+  <path d="M184 94h144q16 0 16 16v2H168v-2q0-16 16-16Z" fill="#a990d6"/>
+  <path d="M324 96q20 2 20 16v88q0 16-20 16Z" fill="#634a96"/>
+  <rect x="184" y="112" width="144" height="90" rx="10" fill="#3d4853"/>
+  <path d="M194 120h56v72h-56Zm68 0h56v72h-56Z" fill="#fff8de"/>
+  <path d="M194 120h56v8h-56Zm68 0h56v8h-56ZM194 184h56v8h-56Zm68 0h56v8h-56Z" fill="#ebe0c2"/>
+  <path d="M210 120h26v8q0 3-3 3h-20q-3 0-3-3Zm66 0a13 13 0 0 0 26 0Z" fill="#634a96"/>
+  <path d="M218 192v-6a4 4 0 0 1 8 0v6Zm68 0v-6a4 4 0 0 1 8 0v6Z" fill="#634a96"/>
+  <rect x="200" y="137" width="44" height="38" rx="6" fill="#3d4853"/>
+  <rect x="268" y="142" width="44" height="38" rx="6" fill="#3d4853"/>
+  <path d="m184 150 8 6-8 6Zm144 0-8 6 8 6Z" fill="#f6c354"/>
+  <circle cx="222" cy="156" r="12" fill="#79d6eb"/>
+  <circle cx="290" cy="161" r="12" fill="#79d6eb"/>
+  <path d="M229.6 147.3a12 12 0 0 1-9.8 20.7 12 12 0 0 0 9.8-20.7ZM297.6 152.3a12 12 0 0 1-9.8 20.7 12 12 0 0 0 9.8-20.7Z" fill="#4fb0c5"/>
+  <circle cx="225.6" cy="151.7" r="3.8" fill="#fffae0"/>
+  <circle cx="293.6" cy="156.7" r="3.8" fill="#fffae0"/>
+</svg>

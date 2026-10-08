@@ -1,0 +1,62 @@
+<svg width="212" height="428" viewBox="150 50 212 428" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="valve-title valve-desc">
+  <title id="valve-title">Valve — vacuum tube robot</title>
+  <desc id="valve-desc">A slim burnt orange robot whose head is a tall glass vacuum tube on a pinned slate base, with a glowing filament grid and two small eyes inside the glass, a row of knobs and a meter on its chest, ring jointed arms with pincers and legs on round feet.</desc>
+  <!-- Ring jointed arms with pincers -->
+  <path d="m206 240-34 30v52m134-82 34 30v52" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+  <rect x="160" y="318" width="24" height="14" rx="4" fill="#b05d23"/>
+  <rect x="328" y="318" width="24" height="14" rx="4" fill="#b05d23"/>
+  <path d="M164 332q-8 14 2 26m16-26q8 14-2 26M332 332q-8 14 2 26m16-26q8 14-2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="172" cy="270" r="12" fill="#3d4853"/>
+  <circle cx="340" cy="270" r="12" fill="#3d4853"/>
+  <circle cx="172" cy="270" r="5" fill="#92a1b2"/>
+  <circle cx="340" cy="270" r="5" fill="#92a1b2"/>
+  <!-- Legs on round feet -->
+  <path d="M226 352v88m60-88v88" stroke="#697785" stroke-width="14"/>
+  <circle cx="226" cy="396" r="12" fill="#3d4853"/>
+  <circle cx="286" cy="396" r="12" fill="#3d4853"/>
+  <circle cx="226" cy="396" r="5" fill="#92a1b2"/>
+  <circle cx="286" cy="396" r="5" fill="#92a1b2"/>
+  <path d="M198 470v-4q0-28 28-28t28 28v4Zm60 0v-4q0-28 28-28t28 28v4Z" fill="#e27b31"/>
+  <path d="M238 441q16 8 16 25v4h-12v-4q0-16-4-25Zm60 0q16 8 16 25v4h-12v-4q0-16-4-25Z" fill="#b05d23"/>
+  <path d="M195 466h62v10h-62Zm60 0h62v10h-62Z" fill="#3d4853"/>
+  <!-- Slim body with knobs and a meter -->
+  <rect x="206" y="214" width="100" height="140" rx="18" fill="#e27b31"/>
+  <path d="M224 214h64q18 0 18 18H206q0-18 18-18Z" fill="#f0995a"/>
+  <path d="M286 216q20 4 20 22v98q0 16-20 18Z" fill="#b05d23"/>
+  <circle cx="226" cy="262" r="11" fill="#3d4853"/>
+  <circle cx="256" cy="262" r="11" fill="#3d4853"/>
+  <circle cx="286" cy="262" r="11" fill="#3d4853"/>
+  <circle cx="226" cy="262" r="6" fill="#697785"/>
+  <circle cx="256" cy="262" r="6" fill="#697785"/>
+  <circle cx="286" cy="262" r="6" fill="#697785"/>
+  <path d="M226 252v5m30-5v5m30-5v5" stroke="#fffae0" stroke-width="3" stroke-linecap="round"/>
+  <rect x="220" y="286" width="72" height="40" rx="6" fill="#3d4853"/>
+  <rect x="226" y="292" width="60" height="28" rx="3" fill="#fff8de"/>
+  <path d="m234 302 4 4m10-9 2 5m12-6v5m12-4-2 5m14 0-4 4" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/>
+  <path d="m256 318 14-14" stroke="#b05d23" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="256" cy="318" r="4" fill="#3d4853"/>
+  <circle cx="206" cy="240" r="16" fill="#3d4853"/>
+  <circle cx="306" cy="240" r="16" fill="#3d4853"/>
+  <circle cx="206" cy="240" r="7" fill="#92a1b2"/>
+  <circle cx="306" cy="240" r="7" fill="#92a1b2"/>
+  <!-- Socket and pins -->
+  <rect x="214" y="206" width="84" height="12" rx="4" fill="#3d4853"/>
+  <path d="M228 196v12m18-12v12m20-12v12m18-12v12" stroke="#92a1b2" stroke-width="6"/>
+  <!-- Vacuum tube head -->
+  <rect x="212" y="170" width="88" height="30" rx="8" fill="#3d4853"/>
+  <rect x="212" y="170" width="88" height="8" rx="4" fill="#697785"/>
+  <path d="M250 60q6-10 12 0Z" fill="#c9eef8"/>
+  <path d="M218 172V96q0-38 38-38t38 38v76Z" fill="#c9eef8"/>
+  <path d="M272 62q22 10 22 34v76h-14V96q0-22-8-34Z" fill="#a6dfee"/>
+  <path d="M236 90v70m40-70v70" stroke="#92a1b2" stroke-width="3"/>
+  <path d="M244 92v34m8-34v34m8-34v34m8-34v34" stroke="#f6c354" stroke-width="3"/>
+  <path d="M240 100h32m-32 12h32m-32 12h32" stroke="#bc943d" stroke-width="2"/>
+  <rect x="234" y="84" width="44" height="6" rx="2" fill="#3d4853"/>
+  <rect x="230" y="134" width="52" height="22" rx="11" fill="#3d4853"/>
+  <circle cx="245" cy="145" r="7" fill="#79d6eb"/>
+  <circle cx="267" cy="145" r="7" fill="#79d6eb"/>
+  <path d="M250 140a7 7 0 0 1-5 12 7 7 0 0 0 5-12Zm22 0a7 7 0 0 1-5 12 7 7 0 0 0 5-12Z" fill="#4fb0c5"/>
+  <circle cx="247" cy="143" r="2.5" fill="#fffae0"/>
+  <circle cx="269" cy="143" r="2.5" fill="#fffae0"/>
+  <path d="M227 152V100" stroke="#fffae0" stroke-width="6" stroke-linecap="round"/>
+</svg>

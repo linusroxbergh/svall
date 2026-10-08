@@ -1,0 +1,78 @@
+<svg width="252" height="452" viewBox="122 24 252 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="typist-title typist-desc">
+  <title id="typist-title">Typist — typewriter robot</title>
+  <desc id="typist-desc">An olive typewriter robot whose head is the carriage: a black platen roller with knobs at each end, a typed sheet of paper rising above it, and two ribbon spools as the eyes. A tall torso carries a nameplate and a bank of round keys with a space bar; the left arm is the long carriage return lever with a flat paddle, the right a jointed claw, on two legs with olive shoes.</desc>
+  <!-- Sheet of paper rising above the platen -->
+  <path d="M210 28h92v58h-92Z" fill="#fff8de"/>
+  <path d="M290 28h12v58h-12Z" fill="#e9dfc2"/>
+  <path d="M222 42h56m-56 10h62m-62 10h44" stroke="#92a1b2" stroke-width="3" stroke-linecap="round"/>
+  <rect x="200" y="70" width="112" height="7" rx="3.5" fill="#697785"/>
+  <!-- Legs with shoes -->
+  <rect x="226" y="324" width="60" height="24" fill="#3d4853"/>
+  <path d="M230 346v104M282 346v104" stroke="#697785" stroke-width="14"/>
+  <path d="M206 470v-8q0-14 14-14h20q14 0 14 14v8Zm52 0v-8q0-14 14-14h20q14 0 14 14v8Z" fill="#7f8440"/>
+  <path d="M242 449q12 3 12 13v8h-12Zm52 0q12 3 12 13v8h-12Z" fill="#5c6130"/>
+  <path d="M202 466h56v10h-56Zm52 0h56v10h-56Z" fill="#3d4853"/>
+  <circle cx="230" cy="350" r="13" fill="#3d4853"/>
+  <circle cx="282" cy="350" r="13" fill="#3d4853"/>
+  <circle cx="230" cy="350" r="5.5" fill="#92a1b2"/>
+  <circle cx="282" cy="350" r="5.5" fill="#92a1b2"/>
+  <circle cx="230" cy="400" r="12" fill="#3d4853"/>
+  <circle cx="282" cy="400" r="12" fill="#3d4853"/>
+  <circle cx="230" cy="400" r="5" fill="#92a1b2"/>
+  <circle cx="282" cy="400" r="5" fill="#92a1b2"/>
+  <!-- Carriage return lever arm with a flat paddle -->
+  <path d="m190 208-34 26-14 64" fill="none" stroke="#92a1b2" stroke-width="9" stroke-linejoin="round"/>
+  <circle cx="156" cy="234" r="8" fill="#3d4853"/>
+  <rect x="124" y="294" width="34" height="20" rx="10" transform="rotate(-12 141 304)" fill="#5c6130"/>
+  <rect x="128" y="294" width="26" height="6" rx="3" transform="rotate(-12 141 304)" fill="#a3a65c"/>
+  <!-- Jointed claw arm -->
+  <path d="m322 206 28 44" stroke="#697785" stroke-width="12"/>
+  <path d="m350 250 8 46" stroke="#697785" stroke-width="12"/>
+  <circle cx="350" cy="250" r="11" fill="#3d4853"/>
+  <circle cx="350" cy="250" r="4.5" fill="#92a1b2"/>
+  <rect x="344" y="292" width="28" height="14" rx="4" fill="#5c6130"/>
+  <path d="M349 306q-10 16 2 30m14-30q10 16-2 30" fill="none" stroke="#3d4853" stroke-width="6" stroke-linecap="round"/>
+  <!-- Tall torso with a nameplate, key bank and space bar -->
+  <rect x="236" y="158" width="40" height="22" fill="#3d4853"/>
+  <rect x="190" y="174" width="132" height="156" rx="14" fill="#7f8440"/>
+  <path d="M204 174h104q14 0 14 14v2H190v-2q0-14 14-14Z" fill="#a3a65c"/>
+  <path d="M304 176q18 2 18 14v126q0 12-18 14Z" fill="#5c6130"/>
+  <rect x="230" y="194" width="52" height="14" rx="3" fill="#f6c354"/>
+  <rect x="200" y="220" width="104" height="98" rx="10" fill="#5c6130"/>
+  <g fill="#3d4853">
+    <circle cx="214" cy="236" r="7.5"/><circle cx="229" cy="236" r="7.5"/><circle cx="244" cy="236" r="7.5"/><circle cx="259" cy="236" r="7.5"/><circle cx="274" cy="236" r="7.5"/><circle cx="289" cy="236" r="7.5"/>
+    <circle cx="221" cy="254" r="7.5"/><circle cx="236" cy="254" r="7.5"/><circle cx="251" cy="254" r="7.5"/><circle cx="266" cy="254" r="7.5"/><circle cx="281" cy="254" r="7.5"/>
+    <circle cx="214" cy="272" r="7.5"/><circle cx="229" cy="272" r="7.5"/><circle cx="244" cy="272" r="7.5"/><circle cx="259" cy="272" r="7.5"/><circle cx="274" cy="272" r="7.5"/><circle cx="289" cy="272" r="7.5"/>
+    <circle cx="221" cy="290" r="7.5"/><circle cx="236" cy="290" r="7.5"/><circle cx="251" cy="290" r="7.5"/><circle cx="266" cy="290" r="7.5"/><circle cx="281" cy="290" r="7.5"/>
+    <rect x="222" y="302" width="60" height="9" rx="4.5"/>
+  </g>
+  <g fill="#fff8de">
+    <circle cx="214" cy="236" r="4"/><circle cx="229" cy="236" r="4"/><circle cx="244" cy="236" r="4"/><circle cx="259" cy="236" r="4"/><circle cx="274" cy="236" r="4"/><circle cx="289" cy="236" r="4"/>
+    <circle cx="221" cy="254" r="4"/><circle cx="236" cy="254" r="4"/><circle cx="251" cy="254" r="4"/><circle cx="266" cy="254" r="4"/><circle cx="281" cy="254" r="4"/>
+    <circle cx="214" cy="272" r="4"/><circle cx="229" cy="272" r="4"/><circle cx="244" cy="272" r="4"/><circle cx="259" cy="272" r="4"/><circle cx="274" cy="272" r="4"/><circle cx="289" cy="272" r="4"/>
+    <circle cx="221" cy="290" r="4"/><circle cx="236" cy="290" r="4"/><circle cx="251" cy="290" r="4"/><circle cx="266" cy="290" r="4"/><circle cx="281" cy="290" r="4"/>
+  </g>
+  <circle cx="190" cy="206" r="14" fill="#3d4853"/>
+  <circle cx="322" cy="206" r="14" fill="#3d4853"/>
+  <circle cx="190" cy="206" r="6" fill="#92a1b2"/>
+  <circle cx="322" cy="206" r="6" fill="#92a1b2"/>
+  <!-- Carriage head: platen roller with knobs and ribbon spool eyes -->
+  <rect x="186" y="96" width="140" height="68" rx="12" fill="#7f8440"/>
+  <path d="M308 98q18 2 18 14v40q0 12-18 14Z" fill="#5c6130"/>
+  <rect x="170" y="80" width="172" height="26" rx="13" fill="#3d4853"/>
+  <path d="M180 87h152" stroke="#697785" stroke-width="4" stroke-linecap="round"/>
+  <rect x="152" y="74" width="20" height="38" rx="7" fill="#7f8440"/>
+  <rect x="340" y="74" width="20" height="38" rx="7" fill="#7f8440"/>
+  <rect x="156" y="78" width="6" height="30" rx="3" fill="#a3a65c"/>
+  <rect x="350" y="78" width="10" height="30" rx="5" fill="#5c6130"/>
+  <rect x="226" y="129" width="60" height="9" fill="#3d4853"/>
+  <circle cx="226" cy="134" r="22" fill="#3d4853"/>
+  <circle cx="286" cy="134" r="22" fill="#3d4853"/>
+  <circle cx="226" cy="134" r="13" fill="#79d6eb"/>
+  <circle cx="286" cy="134" r="13" fill="#79d6eb"/>
+  <path d="M234.3 124.6a13 13 0 0 1-10.6 22.4 13 13 0 0 0 10.6-22.4Zm60 0a13 13 0 0 1-10.6 22.4 13 13 0 0 0 10.6-22.4Z" fill="#4fb0c5"/>
+  <circle cx="229.5" cy="129.5" r="4" fill="#fffae0"/>
+  <circle cx="289.5" cy="129.5" r="4" fill="#fffae0"/>
+  <circle cx="221.5" cy="139" r="1.8" fill="#fffae0"/>
+  <circle cx="281.5" cy="139" r="1.8" fill="#fffae0"/>
+</svg>

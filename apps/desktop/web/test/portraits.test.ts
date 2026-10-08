@@ -7,7 +7,7 @@ import { robotOf, robotUrl, stepRobot } from '../src/portraits.js';
 const files = fs.readdirSync(path.join(__dirname, '../public/robots')).filter((f) => f.endsWith('.svg')).sort();
 const file = (n: number) => robotUrl(n).split('/').pop();
 // the robot each colourway recolours
-const SOURCE: Record<number, number> = { 34: 20, 35: 20, 36: 6, 37: 6, 38: 7, 39: 7, 40: 8, 41: 8, 42: 11, 43: 11, 44: 13, 45: 13 };
+const SOURCE: Record<number, number> = { 38: 7 };
 const family = (n: number) => SOURCE[n] ?? n;
 
 describe('robot portraits', () => {
@@ -22,7 +22,7 @@ describe('robot portraits', () => {
   });
 
   it('show a character its own robot, else a different one for each animal', () => {
-    expect(robotOf({ portrait: 'fox', robot: 42 })).toBe(42);
+    expect(robotOf({ portrait: 'fox', robot: 46 })).toBe(46);
     expect(new Set(PORTRAITS.map((portrait) => robotOf({ portrait }))).size).toBe(PORTRAITS.length);
     expect(robotOf({ portrait: 'fox', robot: 99 })).toBe(robotOf({ portrait: 'fox' }));
   });

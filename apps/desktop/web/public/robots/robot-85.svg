@@ -1,0 +1,82 @@
+<svg width="296" height="452" viewBox="132 24 296 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="signal-title signal-desc">
+  <title id="signal-title">Signal — level crossing robot</title>
+  <desc id="signal-desc">A mustard robot built like a railway level crossing: a slate signal backplate for a head with two hooded round lamps holding its eyes, the left one lit, a mustard crossbuck and a small bell dome on a mast above, a relay cabinet body with a door, hinges and rivets, a striped barrier boom arm with a counterweight at the shoulder, a jointed claw arm and two legs.</desc>
+  <!-- Mast, crossbuck and bell -->
+  <rect x="250" y="44" width="12" height="90" fill="#697785"/>
+  <rect x="180" y="62" width="152" height="28" rx="3" fill="#b5822c" transform="rotate(28 256 76)"/>
+  <rect x="183" y="65" width="146" height="22" rx="2" fill="#d9a441" transform="rotate(28 256 76)"/>
+  <rect x="180" y="62" width="152" height="28" rx="3" fill="#b5822c" transform="rotate(-28 256 76)"/>
+  <rect x="183" y="65" width="146" height="22" rx="2" fill="#d9a441" transform="rotate(-28 256 76)"/>
+  <circle cx="256" cy="76" r="6" fill="#3d4853"/>
+  <circle cx="256" cy="28" r="4" fill="#3d4853"/>
+  <path d="M238 48A18 18 0 0 1 274 48Z" fill="#697785"/>
+  <path d="M243 44A13 13 0 0 1 256 33V37A9 9 0 0 0 247 44Z" fill="#92a1b2"/>
+  <rect x="234" y="46" width="44" height="7" rx="3" fill="#3d4853"/>
+  <!-- Legs -->
+  <rect x="216" y="356" width="16" height="100" fill="#697785"/>
+  <rect x="280" y="356" width="16" height="100" fill="#697785"/>
+  <circle cx="224" cy="412" r="11" fill="#3d4853"/>
+  <circle cx="288" cy="412" r="11" fill="#3d4853"/>
+  <circle cx="224" cy="412" r="4.5" fill="#92a1b2"/>
+  <circle cx="288" cy="412" r="4.5" fill="#92a1b2"/>
+  <path d="M198 468v-6q0-16 16-16h20q16 0 16 16v6Z" fill="#d9a441"/>
+  <path d="M262 468v-6q0-16 16-16h20q16 0 16 16v6Z" fill="#d9a441"/>
+  <path d="M238 449q12 3 12 13v6h-10v-6q0-9-2-13Z" fill="#b5822c"/>
+  <path d="M302 449q12 3 12 13v6h-10v-6q0-9-2-13Z" fill="#b5822c"/>
+  <rect x="194" y="466" width="60" height="10" rx="3" fill="#3d4853"/>
+  <rect x="258" y="466" width="60" height="10" rx="3" fill="#3d4853"/>
+  <!-- Relay cabinet with a door, hinges and rivets -->
+  <rect x="212" y="350" width="88" height="16" rx="4" fill="#3d4853"/>
+  <rect x="192" y="216" width="128" height="142" rx="8" fill="#d9a441"/>
+  <path d="M304 218h8q8 0 8 8v124q0 8-8 8h-8Z" fill="#b5822c"/>
+  <path d="M198 202H314L330 218H182Z" fill="#ecc163"/>
+  <rect x="182" y="216" width="148" height="6" rx="2" fill="#b5822c"/>
+  <rect x="208" y="234" width="84" height="112" rx="6" fill="#b5822c"/>
+  <rect x="212" y="238" width="76" height="104" rx="4" fill="#d9a441"/>
+  <rect x="212" y="238" width="76" height="6" rx="3" fill="#ecc163"/>
+  <rect x="204" y="252" width="9" height="16" rx="2" fill="#3d4853"/>
+  <rect x="204" y="312" width="9" height="16" rx="2" fill="#3d4853"/>
+  <rect x="274" y="282" width="7" height="26" rx="3.5" fill="#3d4853"/>
+  <circle cx="246" cy="276" r="17" fill="#3d4853"/>
+  <circle cx="246" cy="276" r="13" fill="#fff8de"/>
+  <path d="m238 268 16 16m0-16-16 16" stroke="#3d4853" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="200" cy="232" r="3" fill="#b5822c"/>
+  <circle cx="200" cy="344" r="3" fill="#b5822c"/>
+  <circle cx="300" cy="232" r="3" fill="#b5822c"/>
+  <circle cx="300" cy="344" r="3" fill="#b5822c"/>
+  <!-- Claw arm -->
+  <path d="M188 240 160 298 154 350" fill="none" stroke="#697785" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="160" cy="298" r="10" fill="#3d4853"/>
+  <circle cx="160" cy="298" r="4" fill="#92a1b2"/>
+  <circle cx="154" cy="352" r="9" fill="#3d4853"/>
+  <path d="M146 360a15 15 0 0 0 2 28M162 360a15 15 0 0 1-2 28" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="192" cy="238" r="14" fill="#3d4853"/>
+  <circle cx="192" cy="238" r="6" fill="#92a1b2"/>
+  <!-- Striped barrier boom arm with a counterweight at the shoulder -->
+  <g transform="translate(320 238) rotate(-45)">
+    <rect x="-38" y="-15" width="34" height="30" rx="4" fill="#3d4853"/>
+    <rect x="-34" y="-11" width="10" height="22" rx="2" fill="#697785"/>
+    <rect x="4" y="-8" width="138" height="16" rx="8" fill="#fff8de"/>
+    <rect x="22" y="-8" width="16" height="16" fill="#3d4853"/>
+    <rect x="56" y="-8" width="16" height="16" fill="#3d4853"/>
+    <rect x="90" y="-8" width="16" height="16" fill="#3d4853"/>
+    <path d="M124-8h10a8 8 0 0 1 0 16h-10Z" fill="#3d4853"/>
+  </g>
+  <circle cx="320" cy="238" r="14" fill="#3d4853"/>
+  <circle cx="320" cy="238" r="6" fill="#92a1b2"/>
+  <!-- Neck mast -->
+  <rect x="248" y="190" width="16" height="16" fill="#3d4853"/>
+  <!-- Signal backplate head with hooded lamp eyes -->
+  <rect x="182" y="126" width="148" height="70" rx="35" fill="#3d4853"/>
+  <circle cx="219" cy="161" r="27" fill="#b5822c"/>
+  <circle cx="293" cy="161" r="27" fill="#b5822c"/>
+  <circle cx="217" cy="159" r="25" fill="#d9a441"/>
+  <circle cx="291" cy="159" r="25" fill="#d9a441"/>
+  <circle cx="219" cy="161" r="19" fill="#3d4853"/>
+  <circle cx="293" cy="161" r="19" fill="#3d4853"/>
+  <circle cx="219" cy="161" r="14" fill="#8fe0f0"/>
+  <circle cx="293" cy="161" r="14" fill="#79d6eb"/>
+  <path d="M228 150.3A14 14 0 0 1 216.5 174.8 14 14 0 0 0 228 150.3ZM302 150.3A14 14 0 0 1 290.5 174.8 14 14 0 0 0 302 150.3Z" fill="#4fb0c5"/>
+  <circle cx="223" cy="156" r="5.5" fill="#fffae0"/>
+  <circle cx="297" cy="156" r="4.5" fill="#fffae0"/>
+</svg>

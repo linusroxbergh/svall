@@ -1,0 +1,99 @@
+<svg width="324" height="452" viewBox="94 24 324 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bellows-title bellows-desc">
+  <title id="bellows-title">Bellows — accordion arm robot</title>
+  <desc id="bellows-desc">A sage tin toy robot with a square head, two eyes on a slate band and an antenna knob, a boxy torso with a chest dial, two lights and a vent, pleated accordion bellows arms curving out from the shoulders to round slate mitten hands, rolling on a single tread wheel held in a two tone fork.</desc>
+  <!-- Single wheel in a fork -->
+  <rect x="236" y="312" width="40" height="32" fill="#3d4853"/>
+  <rect x="190" y="400" width="132" height="20" rx="6" fill="#697785"/>
+  <path d="M197.2 410A60 60 0 1 1 314.8 410" fill="none" stroke="#5f7d4f" stroke-width="20"/>
+  <path d="M197.2 410A60 60 0 1 1 314.8 410" fill="none" stroke="#7d9c6a" stroke-width="11"/>
+  <path d="M204 368A60 60 0 0 1 256 338" fill="none" stroke="#9db88a" stroke-width="4" stroke-linecap="round"/>
+  <rect x="230" y="350" width="52" height="126" rx="26" fill="#3d4853"/>
+  <rect x="236" y="364" width="6" height="98" rx="3" fill="#556270"/>
+  <path d="M242 368h28M242 380h28M242 392h28M242 404h28M242 416h28M242 428h28M242 440h28M242 452h28M242 464h28" stroke="#697785" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="197" cy="410" r="11" fill="#3d4853"/>
+  <circle cx="315" cy="410" r="11" fill="#3d4853"/>
+  <circle cx="197" cy="410" r="4.5" fill="#92a1b2"/>
+  <circle cx="315" cy="410" r="4.5" fill="#92a1b2"/>
+  <!-- Pleated bellows arms with mitten hands -->
+  <path d="M178.8 171L170.5 178.2L173.9 195.8L181.2 201Z" fill="#92a1b2"/>
+  <path d="M170.5 178.2L160.2 174.8L169.1 203L173.9 195.8Z" fill="#697785"/>
+  <path d="M160.2 174.8L153.5 183.8L161 199.8L169.1 203Z" fill="#92a1b2"/>
+  <path d="M153.5 183.8L142.7 183.2L158.3 207.9L161 199.8Z" fill="#697785"/>
+  <path d="M142.7 183.2L138.6 193.5L149.7 206.8L158.3 207.9Z" fill="#92a1b2"/>
+  <path d="M138.6 193.5L127.9 195.7L149 215.4L149.7 206.8Z" fill="#697785"/>
+  <path d="M127.9 195.7L126.4 206.6L140.3 216.8L149 215.4Z" fill="#92a1b2"/>
+  <path d="M126.4 206.6L116.8 211L141.3 225.5L140.3 216.8Z" fill="#697785"/>
+  <path d="M116.8 211L117.8 221.6L133.1 228.7L141.3 225.5Z" fill="#92a1b2"/>
+  <path d="M117.8 221.6L109.3 227.4L135.7 237.1L133.1 228.7Z" fill="#697785"/>
+  <path d="M109.3 227.4L112 237.5L128.1 242.1L135.7 237.1Z" fill="#92a1b2"/>
+  <path d="M112 237.5L104.6 244.6L131.7 250.2L128.1 242.1Z" fill="#697785"/>
+  <path d="M104.6 244.6L108.7 253.9L125 256.2L131.7 250.2Z" fill="#92a1b2"/>
+  <path d="M108.7 253.9L102.3 261.8L129.6 264L125 256.2Z" fill="#697785"/>
+  <path d="M102.3 261.8L107.4 270.5L123.7 270.9L129.6 264Z" fill="#92a1b2"/>
+  <path d="M107.4 270.5L102.1 279L129 278.2L123.7 270.9Z" fill="#697785"/>
+  <path d="M102.1 279L108 287L124 285.7L129 278.2Z" fill="#92a1b2"/>
+  <path d="M108 287L103.6 295.9L130 292.5L124 285.7Z" fill="#697785"/>
+  <path d="M103.6 295.9L110.2 303.4L125.8 300.6L130 292.5Z" fill="#92a1b2"/>
+  <circle cx="133.5" cy="309.5" r="8" fill="#3d4853"/>
+  <circle cx="120.2" cy="314.8" r="17" fill="#3d4853"/>
+  <circle cx="115.2" cy="309.8" r="5" fill="#697785"/>
+  <path d="M330.8 201L338.1 195.8L341.5 178.2L333.2 171Z" fill="#92a1b2"/>
+  <path d="M338.1 195.8L342.9 203L351.8 174.8L341.5 178.2Z" fill="#697785"/>
+  <path d="M342.9 203L351 199.8L358.5 183.8L351.8 174.8Z" fill="#92a1b2"/>
+  <path d="M351 199.8L353.7 207.9L369.3 183.2L358.5 183.8Z" fill="#697785"/>
+  <path d="M353.7 207.9L362.3 206.8L373.4 193.5L369.3 183.2Z" fill="#92a1b2"/>
+  <path d="M362.3 206.8L363 215.4L384.1 195.7L373.4 193.5Z" fill="#697785"/>
+  <path d="M363 215.4L371.7 216.8L385.6 206.6L384.1 195.7Z" fill="#92a1b2"/>
+  <path d="M371.7 216.8L370.7 225.5L395.2 211L385.6 206.6Z" fill="#697785"/>
+  <path d="M370.7 225.5L378.9 228.7L394.2 221.6L395.2 211Z" fill="#92a1b2"/>
+  <path d="M378.9 228.7L376.3 237.1L402.7 227.4L394.2 221.6Z" fill="#697785"/>
+  <path d="M376.3 237.1L383.9 242.1L400 237.5L402.7 227.4Z" fill="#92a1b2"/>
+  <path d="M383.9 242.1L380.3 250.2L407.4 244.6L400 237.5Z" fill="#697785"/>
+  <path d="M380.3 250.2L387 256.2L403.3 253.9L407.4 244.6Z" fill="#92a1b2"/>
+  <path d="M387 256.2L382.4 264L409.7 261.8L403.3 253.9Z" fill="#697785"/>
+  <path d="M382.4 264L388.3 270.9L404.6 270.5L409.7 261.8Z" fill="#92a1b2"/>
+  <path d="M388.3 270.9L383 278.2L409.9 279L404.6 270.5Z" fill="#697785"/>
+  <path d="M383 278.2L388 285.7L404 287L409.9 279Z" fill="#92a1b2"/>
+  <path d="M388 285.7L382 292.5L408.4 295.9L404 287Z" fill="#697785"/>
+  <path d="M382 292.5L386.2 300.6L401.8 303.4L408.4 295.9Z" fill="#92a1b2"/>
+  <circle cx="378.5" cy="309.5" r="8" fill="#3d4853"/>
+  <circle cx="391.8" cy="314.8" r="17" fill="#3d4853"/>
+  <circle cx="386.8" cy="309.8" r="5" fill="#697785"/>
+  <!-- Boxy torso with a dial, lights and a vent -->
+  <rect x="236" y="134" width="40" height="22" fill="#3d4853"/>
+  <rect x="182" y="150" width="148" height="168" rx="12" fill="#7d9c6a"/>
+  <path d="M194 150h124q12 0 12 12v4H182v-4q0-12 12-12Z" fill="#9db88a"/>
+  <path d="M310 152h8q12 0 12 12v142q0 12-12 12h-8Z" fill="#5f7d4f"/>
+  <circle cx="228" cy="206" r="26" fill="#3d4853"/>
+  <circle cx="228" cy="206" r="20" fill="#fff8de"/>
+  <path d="M213 197l-4-3m19-8v-5m15 13 4-3" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/>
+  <path d="m228 206 11-10" stroke="#3d4853" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="228" cy="206" r="4" fill="#3d4853"/>
+  <circle cx="288" cy="192" r="7" fill="#f6c354"/>
+  <circle cx="288" cy="216" r="7" fill="#3d4853"/>
+  <circle cx="288" cy="216" r="3" fill="#92a1b2"/>
+  <rect x="202" y="250" width="104" height="40" rx="6" fill="#3d4853"/>
+  <path d="M214 262h80m-80 16h80" stroke="#697785" stroke-width="5" stroke-linecap="round"/>
+  <path d="M202 302h104" stroke="#5f7d4f" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="182" cy="182" r="14" fill="#3d4853"/>
+  <circle cx="330" cy="182" r="14" fill="#3d4853"/>
+  <circle cx="182" cy="182" r="6" fill="#92a1b2"/>
+  <circle cx="330" cy="182" r="6" fill="#92a1b2"/>
+  <!-- Antenna knob -->
+  <path d="M256 52V38" stroke="#697785" stroke-width="5"/>
+  <circle cx="256" cy="32" r="8" fill="#f6c354"/>
+  <!-- Square head with eyes on a slate band -->
+  <circle cx="198" cy="96" r="9" fill="#3d4853"/>
+  <circle cx="314" cy="96" r="9" fill="#3d4853"/>
+  <circle cx="198" cy="96" r="3.5" fill="#92a1b2"/>
+  <circle cx="314" cy="96" r="3.5" fill="#92a1b2"/>
+  <rect x="200" y="50" width="112" height="88" rx="10" fill="#7d9c6a"/>
+  <path d="M210 50h92q10 0 10 10v4H200v-4q0-10 10-10Z" fill="#9db88a"/>
+  <path d="M294 52h8q10 0 10 10v66q0 10-10 10h-8Z" fill="#5f7d4f"/>
+  <rect x="214" y="80" width="84" height="34" rx="17" fill="#3d4853"/>
+  <circle cx="238" cy="97" r="11" fill="#86dcef"/>
+  <circle cx="274" cy="97" r="11" fill="#86dcef"/>
+  <path d="M245 89a11 11 0 0 1-9 19 11 11 0 0 0 9-19Zm36 0a11 11 0 0 1-9 19 11 11 0 0 0 9-19Z" fill="#4fb0c5"/>
+  <circle cx="241" cy="93" r="3.5" fill="#fffae0"/>
+  <circle cx="277" cy="93" r="3.5" fill="#fffae0"/>
+</svg>

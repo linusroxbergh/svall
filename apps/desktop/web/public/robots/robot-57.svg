@@ -1,0 +1,60 @@
+<svg width="200" height="444" viewBox="156 34 200 444" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="wireless-title wireless-desc">
+  <title id="wireless-title">Wireless — radio cabinet robot</title>
+  <desc id="wireless-desc">A walnut robot whose head is an arched tabletop radio cabinet with two tuning dial eyes over a slatted speaker grille and a short aerial, a slim boxy body with a dial window and knobs, ring jointed arms with three finger hands, and long legs with ring knees on flat feet.</desc>
+  <!-- Ring jointed arms with three finger hands -->
+  <path d="m210 236-30 40v46m122-86 30 40v46" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+  <rect x="168" y="316" width="24" height="14" rx="4" fill="#3d4853"/>
+  <rect x="320" y="316" width="24" height="14" rx="4" fill="#3d4853"/>
+  <path d="m172 330-4 16m12-14v18m8-20 4 16m132-16-4 16m12-14v18m8-20 4 16" stroke="#3d4853" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="180" cy="276" r="11" fill="#3d4853"/>
+  <circle cx="332" cy="276" r="11" fill="#3d4853"/>
+  <circle cx="180" cy="276" r="5" fill="#92a1b2"/>
+  <circle cx="332" cy="276" r="5" fill="#92a1b2"/>
+  <!-- Long legs with ring knees and flat feet -->
+  <path d="M230 340v114m52-114v114" stroke="#697785" stroke-width="12"/>
+  <circle cx="230" cy="398" r="13" fill="#3d4853"/>
+  <circle cx="282" cy="398" r="13" fill="#3d4853"/>
+  <circle cx="230" cy="398" r="6" fill="#92a1b2"/>
+  <circle cx="282" cy="398" r="6" fill="#92a1b2"/>
+  <path d="M212 450h36q6 0 6 6v12h-48v-12q0-6 6-6Zm52 0h36q6 0 6 6v12h-48v-12q0-6 6-6Z" fill="#885a35"/>
+  <path d="M240 450h8q6 0 6 6v12h-14Zm52 0h8q6 0 6 6v12h-14Z" fill="#744b2a"/>
+  <path d="M205 468h50v8h-50Zm52 0h50v8h-50Z" fill="#3d4853"/>
+  <!-- Slim body with a dial window -->
+  <rect x="240" y="198" width="32" height="20" fill="#3d4853"/>
+  <rect x="210" y="214" width="92" height="128" rx="12" fill="#885a35"/>
+  <path d="M222 214h68q12 0 12 12H210q0-12 12-12Z" fill="#af784e"/>
+  <path d="M286 216q16 2 16 14v100q0 12-16 12Z" fill="#744b2a"/>
+  <rect x="222" y="236" width="68" height="26" rx="5" fill="#3d4853"/>
+  <rect x="227" y="241" width="58" height="16" rx="3" fill="#fff8de"/>
+  <path d="M234 245v8m10-8v5m10-5v8m10-8v5m10-5v8" stroke="#3d4853" stroke-width="2"/>
+  <path d="M260 243v12" stroke="#c2443a" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="236" cy="284" r="9" fill="#3d4853"/>
+  <circle cx="276" cy="284" r="9" fill="#3d4853"/>
+  <circle cx="236" cy="284" r="4" fill="#92a1b2"/>
+  <circle cx="276" cy="284" r="4" fill="#92a1b2"/>
+  <circle cx="256" cy="316" r="6" fill="#f6c354"/>
+  <circle cx="210" cy="236" r="15" fill="#3d4853"/>
+  <circle cx="302" cy="236" r="15" fill="#3d4853"/>
+  <circle cx="210" cy="236" r="7" fill="#92a1b2"/>
+  <circle cx="302" cy="236" r="7" fill="#92a1b2"/>
+  <!-- Short aerial -->
+  <path d="m296 72 16-30" stroke="#697785" stroke-width="5"/>
+  <circle cx="313" cy="40" r="6" fill="#f6c354"/>
+  <!-- Arched radio cabinet head -->
+  <path d="M186 186V122q0-64 70-64t70 64v64q0 8-8 8H194q-8 0-8-8Z" fill="#885a35"/>
+  <path d="M296 66q30 18 30 56v64q0 8-8 8h-12v-72q0-36-10-56Z" fill="#744b2a"/>
+  <path d="M202 122q2-46 48-50" fill="none" stroke="#af784e" stroke-width="8" stroke-linecap="round"/>
+  <rect x="180" y="190" width="152" height="12" rx="4" fill="#744b2a"/>
+  <circle cx="232" cy="110" r="19" fill="#e6b650"/>
+  <circle cx="280" cy="110" r="19" fill="#e6b650"/>
+  <circle cx="232" cy="110" r="14" fill="#3d4853"/>
+  <circle cx="280" cy="110" r="14" fill="#3d4853"/>
+  <circle cx="232" cy="110" r="10" fill="#79d6eb"/>
+  <circle cx="280" cy="110" r="10" fill="#79d6eb"/>
+  <path d="M238 102a10 10 0 0 1-8 18 10 10 0 0 0 8-18Zm48 0a10 10 0 0 1-8 18 10 10 0 0 0 8-18Z" fill="#4fb0c5"/>
+  <circle cx="235" cy="106" r="3.5" fill="#fffae0"/>
+  <circle cx="283" cy="106" r="3.5" fill="#fffae0"/>
+  <path d="M232 83v4m48-4v4" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/>
+  <rect x="204" y="140" width="104" height="44" rx="8" fill="#c9a386"/>
+  <path d="M204 148h104m-104 10h104m-104 10h104m-104 10h104" stroke="#744b2a" stroke-width="5"/>
+</svg>

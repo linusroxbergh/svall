@@ -1,0 +1,50 @@
+<svg width="308" height="450" viewBox="102 26 308 450" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="capsule-title capsule-desc">
+  <title id="capsule-title">Capsule — jet capsule robot</title>
+  <desc id="capsule-desc">A plum capsule robot shaped like a tall rounded pod, with a teal visor across its upper body holding two eyes on a slate band, three vent lines and a panel of lights on its front, short jointed arms with plum cuffs and two finger grippers at its sides, and a flared collar over a jet nozzle that keeps it floating on three flat yellow flames.</desc>
+  <!-- Jointed arms with grippers -->
+  <path d="M180 222 136 248 122 306M332 222 376 248 390 306" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M113 320q-11 20 3 36m15-36q11 20-3 36M381 320q-11 20 3 36m15-36q11 20-3 36" fill="none" stroke="#3d4853" stroke-width="8" stroke-linecap="round"/>
+  <rect x="108" y="304" width="28" height="18" rx="5" fill="#7e4a5f"/>
+  <rect x="376" y="304" width="28" height="18" rx="5" fill="#7e4a5f"/>
+  <circle cx="136" cy="248" r="13" fill="#3d4853"/>
+  <circle cx="376" cy="248" r="13" fill="#3d4853"/>
+  <circle cx="136" cy="248" r="5.5" fill="#92a1b2"/>
+  <circle cx="376" cy="248" r="5.5" fill="#92a1b2"/>
+  <!-- Jet flames under the nozzle -->
+  <path d="M243 422h26q0 24-13 54-13-30-13-54Z" fill="#f6c354"/>
+  <path d="M250 422h12q0 14-6 32-6-18-6-32Z" fill="#fff8de"/>
+  <path d="M221 422h18q0 16-9 36-9-20-9-36Zm52 0h18q0 16-9 36-9-20-9-36Z" fill="#f6c354"/>
+  <!-- Capsule body -->
+  <path d="M256 26q80 0 80 80v178c0 46-36 72-80 72s-80-26-80-72V106q0-80 80-80Z" fill="#7e4a5f"/>
+  <path d="M311 50q25 24 25 56v178c0 46-36 72-80 72 34-8 57-32 57-72V106q0-29-2-56Z" fill="#623145"/>
+  <path d="M191 60q22-34 65-34t65 34Z" fill="#b27a8f"/>
+  <!-- Flared collar and nozzle -->
+  <path d="M206 364h100l-12 44h-76Z" fill="#7e4a5f"/>
+  <path d="M290 364h16l-12 44h-14Z" fill="#623145"/>
+  <rect x="194" y="348" width="124" height="20" rx="10" fill="#b27a8f"/>
+  <path d="M300 348h8q10 0 10 10t-10 10h-8Z" fill="#7e4a5f"/>
+  <rect x="216" y="404" width="80" height="18" rx="5" fill="#3d4853"/>
+  <path d="M226 413h60" stroke="#697785" stroke-width="4" stroke-linecap="round"/>
+  <!-- Shoulder joints -->
+  <circle cx="180" cy="222" r="15" fill="#3d4853"/>
+  <circle cx="332" cy="222" r="15" fill="#3d4853"/>
+  <circle cx="180" cy="222" r="6.5" fill="#92a1b2"/>
+  <circle cx="332" cy="222" r="6.5" fill="#92a1b2"/>
+  <!-- Vent lines -->
+  <path d="M216 178h80m-80 16h80m-80 16h80" stroke="#b27a8f" stroke-width="7" stroke-linecap="round"/>
+  <!-- Chest panel of lights -->
+  <rect x="214" y="238" width="84" height="40" rx="8" fill="#3d4853"/>
+  <circle cx="236" cy="258" r="7" fill="#f6c354"/>
+  <circle cx="258" cy="258" r="7" fill="#697785"/>
+  <circle cx="258" cy="258" r="3" fill="#92a1b2"/>
+  <circle cx="279" cy="258" r="6" fill="#b27a8f"/>
+  <!-- Teal visor with eyes on a slate band -->
+  <rect x="184" y="90" width="144" height="58" rx="14" fill="#4fb0c5"/>
+  <path d="M310 90h4q14 0 14 14v30q0 14-14 14h-4Z" fill="#2e7a8a"/>
+  <rect x="198" y="101" width="116" height="36" rx="18" fill="#3d4853"/>
+  <circle cx="234" cy="119" r="12" fill="#79d6eb"/>
+  <circle cx="278" cy="119" r="12" fill="#79d6eb"/>
+  <path d="M241.6 109.8a12 12 0 0 1-9.8 21a12 12 0 0 0 9.8-21Zm44 0a12 12 0 0 1-9.8 21a12 12 0 0 0 9.8-21Z" fill="#4fb0c5"/>
+  <circle cx="237.5" cy="114.5" r="3.8" fill="#fffae0"/>
+  <circle cx="281.5" cy="114.5" r="3.8" fill="#fffae0"/>
+</svg>
