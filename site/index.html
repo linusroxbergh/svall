@@ -152,15 +152,20 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
   font: 500 .875rem/1 var(--sans); color: var(--ink-2); transition: background .16s var(--ease), color .16s var(--ease); }
 .tabs button:hover { color: var(--ink); }
 .tabs button[aria-selected="true"] { background: var(--fill-2); color: var(--ink); }
-/* while the views turn by themselves, a line fills under the open tab for as long as it stays */
+/* while the views turn by themselves, the open tab's pill fills from a shade dimmer to its tint for as long as it stays,
+   and the pills hand over slowly */
 .tabs button { position: relative; }
-.tabs button::after { content: ''; position: absolute; left: 12px; right: 12px; bottom: 3px; height: 2px; border-radius: 1px; background: var(--sand); opacity: .75; scale: 0 1; transform-origin: left; }
-.tabs[data-auto] button[aria-selected="true"]::after { animation: dwell var(--dwell, 6s) linear forwards; }
+.tabs[data-auto] button { transition-duration: .6s; }
+.tabs[data-auto] button[aria-selected="true"] { background: var(--fill-1); }
+.tabs button::after { content: ''; position: absolute; inset: 0; border-radius: 9px; background: color-mix(in srgb, var(--fill-1) 72%, transparent);
+  opacity: 0; transition: opacity .6s var(--ease); }
+.tabs[data-auto] button[aria-selected="true"]::after { opacity: 1; clip-path: inset(0 100% 0 0 round 9px); animation: dwell var(--dwell, 6s) linear forwards; }
 .tabs[data-auto="paused"] button[aria-selected="true"]::after { animation-play-state: paused; }
-@keyframes dwell { to { scale: 1 1; } }
+@keyframes dwell { to { clip-path: inset(0 0 0 0 round 9px); } }
 .frame { display: grid; container-type: inline-size; }
-.frame > * { grid-area: 1 / 1; visibility: hidden; opacity: 0; transition: opacity .3s var(--ease), visibility 0s .3s; }
-.frame > .on { visibility: visible; opacity: 1; transition: opacity .3s var(--ease); }
+/* the old view stays opaque under the new one until it is covered, so the sea never shows through both */
+.frame > * { grid-area: 1 / 1; visibility: hidden; opacity: 0; transition: opacity 0s .6s, visibility 0s .6s; }
+.frame > .on { z-index: 1; visibility: visible; opacity: 1; transition: opacity .6s var(--ease); }
 .frame > img, .view-phone > img { display: block; width: 100%; height: auto; filter: drop-shadow(0 24px 40px var(--shade-2)); }
 
 /* the phone view: the window, and the phone the fleet opens on standing over it, sized off the frame */
