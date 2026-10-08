@@ -28,15 +28,15 @@ const WORLD_W = (REVIEWS_AT.x + RG.size.w) * theme.cell;
 // the scene is drawn at this size and scaled to its column; k is the map's zoom inside it
 const SIZE = { w: 900, h: 600, k: 0.8, top: 74 };
 
-const MC: Member = { id: 'mc', name: 'review open PRs', portrait: 'monkey', status: 'working', ctx: 4, links: [] };
+const MC: Member = { id: 'mc', name: 'review open PRs', portrait: 'monkey', robot: 13, status: 'working', ctx: 4, links: [] };
 const CREW: Member[] = [
-  { id: '9', name: '#9 review cart persist', portrait: 'raccoon', status: 'idle', ctx: 0, links: [link('pr', 9)] },
-  { id: '10', name: '#10 review search', portrait: 'rabbit', status: 'idle', ctx: 0, links: [link('pr', 10)] },
-  { id: '11', name: '#11 review free ship', portrait: 'koala', status: 'idle', ctx: 0, links: [link('pr', 11)] },
+  { id: '9', name: '#9 review cart persist', portrait: 'raccoon', robot: 39, status: 'idle', ctx: 0, links: [link('pr', 9)] },
+  { id: '10', name: '#10 review search', portrait: 'rabbit', robot: 36, status: 'idle', ctx: 0, links: [link('pr', 10)] },
+  { id: '11', name: '#11 review free ship', portrait: 'koala', robot: 43, status: 'idle', ctx: 0, links: [link('pr', 11)] },
 ];
 const SHORE_CREW: Member[] = [
-  { id: 'cr', name: 'checkout redesign', portrait: 'fox', status: 'working', ctx: 41, links: [link('issue', 6)] },
-  { id: 'ct', name: 'fix cart total', portrait: 'deer', status: 'working', ctx: 57, links: [link('issue', 5)] },
+  { id: 'cr', name: 'checkout redesign', portrait: 'fox', robot: 20, status: 'working', ctx: 41, links: [link('issue', 6)] },
+  { id: 'ct', name: 'fix cart total', portrait: 'deer', robot: 6, status: 'working', ctx: 57, links: [link('issue', 5)] },
 ];
 
 const HOME: IslandModel = { id: 'home', name: 'mission control', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 8, h: 4 }, seed: 7 };
@@ -170,7 +170,7 @@ function FlowScene() {
   const place = placeIslet(SIZE.w, HOME.size.w * theme.cell, false, cardScale(k));
   const left = (SIZE.w - WORLD_W * k) / 2;
   const tok = (m: Member, islandId: string, at: Cell, cell: Cell) => (
-    <Token c={character(m, islandId)} status={m.status} world={{ x: at.x + cell.x, y: at.y + cell.y }}
+    <Token c={character(m, islandId)} status={m.status} robots world={{ x: at.x + cell.x, y: at.y + cell.y }}
       selected={s.picked === m.id} dragging={false} hover={false} pointer={pointer}
       onHoverStart={none} onHoverEnd={none} onOpen={none} onLink={none} onMenu={none} />
   );
@@ -191,7 +191,7 @@ function FlowScene() {
         {s.crew.map((m, i) => <div key={m.id} className="pop">{tok(m, REVIEWS.id, REVIEWS_AT, RG.cells[i])}</div>)}
       </div>
       <Home island={HOME} crew={s.mc ? [character(s.mc, 'home', { x: 1, y: 1 })] : []} config={HOME_CONFIG} collapsed={false} selected={false}
-        status={(c) => c.agent!.status} shift={place.homeShift} rowShift={place.homeShift} scale={place.homeScale}
+        status={(c) => c.agent!.status} robots shift={place.homeShift} rowShift={place.homeShift} scale={place.homeScale}
         onToggle={none} onAction={asyncNone} onArrange={none} onNewIsland={none} onNew={none} label={pointer}
         tokenPointer={() => pointer} onHoverStart={none} onHoverEnd={none} onOpen={none} onLink={none} onMenu={none} />
       <Islet place={place} count={31} />

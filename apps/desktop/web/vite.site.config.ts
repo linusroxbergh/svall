@@ -7,6 +7,7 @@ import { defineConfig, type Plugin } from 'vite';
 const ASSETS: Record<string, string> = {
   fonts: 'public/fonts',
   animals: 'public/animals',
+  robots: 'public/robots',
   'icon.svg': 'public/icons/icon.svg',
   'icon-180.png': 'public/icons/icon-180.png',
   'lighthouse.svg': 'public/resources/lighthouse2.svg',

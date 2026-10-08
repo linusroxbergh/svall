@@ -21,13 +21,13 @@ const issue = (repo: string, n: number): ContextItem => ({ kind: 'issue', ref: `
 const linear = (n: number): ContextItem => ({ kind: 'linear', ref: `https://linear.app/acme/issue/SHOP-${n}`, label: `SHOP-${n}`, source: 'scribe' });
 
 const CAST: Crew[] = ([
-  { name: 'checkout redesign', portrait: 'fox', status: 'working', ctx: 46, links: [issue('storefront', 6)] },
-  { name: 'fix cart total', portrait: 'deer', status: 'working', ctx: 58, links: [issue('storefront', 5), linear(150)] },
-  { name: 'a11y audit', portrait: 'owl', status: 'done', ctx: 71, links: [linear(133)] },
-  { name: 'flaky e2e', portrait: 'frog', status: 'idle', ctx: 12, links: [] },
-  { name: 'refund webhooks', portrait: 'elephant', status: 'working', ctx: 33, links: [pr('payments-api', 1)] },
-  { name: 'review #1', portrait: 'lemur', status: 'working', ctx: 62, links: [pr('payments-api', 1)] },
-  { name: 'changelog', portrait: 'penguin', status: 'working', ctx: 27, links: [] },
+  { name: 'checkout redesign', portrait: 'fox', robot: 20, status: 'working', ctx: 46, links: [issue('storefront', 6)] },
+  { name: 'fix cart total', portrait: 'deer', robot: 6, status: 'working', ctx: 58, links: [issue('storefront', 5), linear(150)] },
+  { name: 'a11y audit', portrait: 'owl', robot: 44, status: 'done', ctx: 71, links: [linear(133)] },
+  { name: 'flaky e2e', portrait: 'frog', robot: 41, status: 'idle', ctx: 12, links: [] },
+  { name: 'refund webhooks', portrait: 'elephant', robot: 7, status: 'working', ctx: 33, links: [pr('payments-api', 1)] },
+  { name: 'review #1', portrait: 'lemur', robot: 42, status: 'working', ctx: 62, links: [pr('payments-api', 1)] },
+  { name: 'changelog', portrait: 'penguin', robot: 8, status: 'working', ctx: 27, links: [] },
 ] satisfies Omit<Member, 'id'>[]).map((m) => ({ ...m, id: m.name, since: 0 }));
 
 const ISLANDS = [
@@ -103,7 +103,7 @@ function DemoMap({ at }: { at: Cell[] }) {
           land={pointer} label={pointer} handle={pointer} hold={hold} />
       ))}
       {ISLANDS.flatMap((isl, i) => isl.crew.map((ci, k) => (
-        <Token key={ci} c={character(crew[ci], isl.id)} status={crew[ci].status}
+        <Token key={ci} c={character(crew[ci], isl.id)} status={crew[ci].status} robots
           world={{ x: at[i].x + GRIDS[i].cells[k].x, y: at[i].y + GRIDS[i].cells[k].y }}
           selected={false} dragging={false} hover={false} pointer={pointer}
           onHoverStart={none} onHoverEnd={none} onOpen={none} onLink={none} onMenu={none} />
