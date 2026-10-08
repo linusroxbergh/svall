@@ -3,9 +3,7 @@ import meadowUrl from '../assets/meadow.png';
 import { theme } from '../theme.js';
 import { seedNum } from './coast.js';
 
-const GRASS = { deep: '#55704F', dry: 'rgba(212,206,156,.038)' };
-// widths of the strokes stacked along the grass edge; each adds a little dry grass, so the rim fades inward
-const RIM = [44, 38, 32, 26, 21, 16, 12, 8, 5];
+const DEEP = '#55704F';
 // the meadow tile is a small blurred bitmap drawn large: soft patches cost one scaled image, not a gradient each
 const MEADOW = 640;
 
@@ -29,7 +27,7 @@ function scatter(seed: string, w: number, h: number) {
   return { box, meadow };
 }
 
-// Ground inside the grass edge: soft meadow patches and a deeper middle under drier grass at the rim.
+// Ground inside the grass edge: soft meadow patches and a deeper middle.
 // Drawn over the grass and under the land's own grain, out of hit testing.
 export function GrassTexture({ seed, shape, w, h }: { seed: string; shape: string; w: number; h: number }) {
   const { box, meadow } = useMemo(() => scatter(seed, w, h), [seed, w, h]);
@@ -44,14 +42,13 @@ export function GrassTexture({ seed, shape, w, h }: { seed: string; shape: strin
           <image href={meadowUrl} width={MEADOW} height={MEADOW} preserveAspectRatio="none" />
         </pattern>
         <radialGradient id={`grass-mid-${id}`}>
-          <stop offset="0" stopColor={GRASS.deep} stopOpacity=".22" />
-          <stop offset=".5" stopColor={GRASS.deep} stopOpacity=".12" />
-          <stop offset="1" stopColor={GRASS.deep} stopOpacity="0" />
+          <stop offset="0" stopColor={DEEP} stopOpacity=".22" />
+          <stop offset=".5" stopColor={DEEP} stopOpacity=".12" />
+          <stop offset="1" stopColor={DEEP} stopOpacity="0" />
         </radialGradient>
       </defs>
       <rect x={box.x} y={box.y} width={box.w} height={box.h} fill={`url(#grass-meadow-${id})`} />
       <ellipse cx={pad + w / 2} cy={pad + h / 2} rx={box.w * 0.48} ry={box.h * 0.46} fill={`url(#grass-mid-${id})`} />
-      {RIM.map((sw) => <path key={sw} d={shape} fill="none" stroke={GRASS.dry} strokeWidth={sw} />)}
     </g>
   );
 }
