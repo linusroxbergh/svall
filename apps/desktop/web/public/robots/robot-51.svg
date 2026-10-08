@@ -1,7 +1,43 @@
-<svg width="358" height="410" viewBox="80 66 358 410" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="octo-title octo-desc">
+<svg width="358" height="410" viewBox="80 66 358 410" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="octo-title octo-desc" class="r51" data-idle="blink blink peer peer bob beckon" data-work="wave wave beckon bob peer blink"><style>.r51[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r51-blink .4s ease-in-out}
+.r51[data-act=peer] .body{animation:r51-peer 1.6s ease-in-out}
+.r51[data-act=peer] .eyes{animation:r51-look 1.6s ease-in-out}
+.r51[data-act=peer] .ant{animation:r51-ant 1.6s ease-in-out}
+.r51[data-act=bob] .body{animation:r51-bob 1.6s ease-in-out}
+.r51[data-act=bob] .arm-l{animation:r51-trail-l 1.6s ease-in-out}
+.r51[data-act=bob] .arm-r{animation:r51-trail-r 1.6s ease-in-out}
+.r51[data-act=bob] .t1{animation:r51-push-l 1.6s ease-in-out}
+.r51[data-act=bob] .t2{animation:r51-push-r 1.6s ease-in-out}
+.r51[data-act=beckon] .arm-l{animation:r51-lift 1.8s ease-in-out}
+.r51[data-act=beckon] .curl-l{animation:r51-beckon 1.8s ease-in-out}
+.r51[data-act=beckon] .eyes{animation:r51-look 1.8s ease-in-out}
+.r51[data-act=wave] .body{animation:r51-dip 2s ease-in-out}
+.r51[data-act=wave] .arm-r{animation:r51-raise 2s ease-in-out}
+.r51[data-act=wave] .fore-r{animation:r51-wave 2s ease-in-out}
+.r51[data-act=wave] .hand-r{animation:r51-curl 2s ease-in-out}
+.r51[data-act=wave] .t1{animation:r51-ripple 1.2s ease-in-out .2s}
+.r51[data-act=wave] .t3{animation:r51-ripple 1.2s ease-in-out .3s}
+.r51[data-act=wave] .t4{animation:r51-ripple 1.2s ease-in-out .4s}
+.r51[data-act=wave] .t2{animation:r51-ripple 1.2s ease-in-out .5s}
+@keyframes r51-blink{0%,100%{transform:none}40%,55%{transform:scaleY(.1)}}
+@keyframes r51-peer{0%,100%{transform:none}25%,55%{transform:rotate(-3.5deg)}78%{transform:rotate(1deg)}}
+@keyframes r51-look{0%,100%{transform:none}20%,70%{transform:translateX(-7px)}}
+@keyframes r51-ant{0%,100%{transform:none}20%{transform:rotate(8deg)}38%{transform:rotate(-4deg)}52%{transform:rotate(1deg)}70%{transform:rotate(-5deg)}86%{transform:rotate(2.5deg)}}
+@keyframes r51-bob{0%,100%{transform:none}15%{transform:translateY(1px)}45%{transform:translateY(-2.5px)}68%{transform:translateY(.7px)}85%{transform:translateY(-.3px)}}
+@keyframes r51-trail-l{0%,100%{transform:none}15%{transform:rotate(1deg)}38%{transform:rotate(-3deg)}58%{transform:rotate(2.5deg)}78%{transform:rotate(-1.2deg)}92%{transform:rotate(.3deg)}}
+@keyframes r51-trail-r{0%,100%{transform:none}15%{transform:rotate(-1deg)}38%{transform:rotate(3deg)}58%{transform:rotate(-2.5deg)}78%{transform:rotate(1.2deg)}92%{transform:rotate(-.3deg)}}
+@keyframes r51-push-l{0%,100%{transform:none}15%{transform:rotate(1deg)}45%{transform:rotate(-2deg)}68%{transform:rotate(.8deg)}85%{transform:rotate(-.3deg)}}
+@keyframes r51-push-r{0%,100%{transform:none}15%{transform:rotate(-1deg)}45%{transform:rotate(2deg)}68%{transform:rotate(-.8deg)}85%{transform:rotate(.3deg)}}
+@keyframes r51-lift{0%,100%{transform:none}20%,70%{transform:rotate(4deg)}88%{transform:rotate(-1.2deg)}}
+@keyframes r51-beckon{0%,10%,100%{transform:none}30%{transform:rotate(-24deg)}46%{transform:rotate(-4deg)}62%{transform:rotate(-21deg)}80%{transform:rotate(3deg)}92%{transform:rotate(-.5deg)}}
+@keyframes r51-dip{0%,100%{transform:none}18%{transform:translateY(3px)}42%{transform:translateY(-3px)}64%{transform:translateY(1.5px)}84%{transform:translateY(-.5px)}}
+@keyframes r51-raise{0%,100%{transform:none}16%{transform:rotate(-6deg)}40%{transform:rotate(-4deg)}64%{transform:rotate(-5deg)}84%{transform:rotate(1.5deg)}}
+@keyframes r51-wave{0%,6%,100%{transform:none}24%{transform:rotate(-11deg)}44%{transform:rotate(13deg)}62%{transform:rotate(-8deg)}78%{transform:rotate(4deg)}90%{transform:rotate(-1.5deg)}}
+@keyframes r51-curl{0%,12%,100%{transform:none}32%{transform:rotate(-11deg)}52%{transform:rotate(13deg)}70%{transform:rotate(-8deg)}86%{transform:rotate(4deg)}96%{transform:rotate(-1deg)}}
+@keyframes r51-ripple{0%,100%{transform:none}25%{transform:rotate(3.5deg)}55%{transform:rotate(-2.5deg)}80%{transform:rotate(1deg)}}</style>
   <title id="octo-title">Octo — tentacle robot</title>
   <desc id="octo-desc">A sky blue robot with a domed head, big eyes behind a wide visor and a ring of lights, standing on four jointed tentacles with one more raised and curled and another curled down.</desc>
   <!-- Jointed tentacles -->
+  <g class="t1" style="transform-origin:200px 276px">
   <circle cx="112" cy="439" r="7.1" fill="#3d4853"/>
   <circle cx="109" cy="446" r="7.4" fill="#3a7fb3"/>
   <circle cx="107" cy="453" r="7.7" fill="#5aa6dc"/>
@@ -25,6 +61,8 @@
   <circle cx="195" cy="310" r="16.5" fill="#5aa6dc"/>
   <circle cx="197" cy="294" r="17.3" fill="#3a7fb3"/>
   <circle cx="200" cy="276" r="18.0" fill="#5aa6dc"/>
+  </g>
+  <g class="t2" style="transform-origin:312px 276px">
   <circle cx="400" cy="439" r="7.1" fill="#3d4853"/>
   <circle cx="403" cy="446" r="7.4" fill="#3a7fb3"/>
   <circle cx="405" cy="453" r="7.7" fill="#5aa6dc"/>
@@ -48,6 +86,8 @@
   <circle cx="317" cy="310" r="16.5" fill="#5aa6dc"/>
   <circle cx="315" cy="294" r="17.3" fill="#3a7fb3"/>
   <circle cx="312" cy="276" r="18.0" fill="#5aa6dc"/>
+  </g>
+  <g class="t3" style="transform-origin:236px 280px">
   <circle cx="216" cy="464" r="7.2" fill="#3d4853"/>
   <circle cx="217" cy="456" r="7.6" fill="#3a7fb3"/>
   <circle cx="218" cy="449" r="8.1" fill="#5aa6dc"/>
@@ -65,6 +105,8 @@
   <circle cx="235" cy="313" r="16.0" fill="#5aa6dc"/>
   <circle cx="235" cy="298" r="17.0" fill="#3a7fb3"/>
   <circle cx="236" cy="280" r="18.0" fill="#5aa6dc"/>
+  </g>
+  <g class="t4" style="transform-origin:276px 280px">
   <circle cx="296" cy="464" r="7.2" fill="#3d4853"/>
   <circle cx="295" cy="456" r="7.6" fill="#3a7fb3"/>
   <circle cx="294" cy="449" r="8.1" fill="#5aa6dc"/>
@@ -82,6 +124,10 @@
   <circle cx="277" cy="313" r="16.0" fill="#5aa6dc"/>
   <circle cx="277" cy="298" r="17.0" fill="#3a7fb3"/>
   <circle cx="276" cy="280" r="18.0" fill="#5aa6dc"/>
+  </g>
+  <g class="body" style="transform-origin:256px 268px">
+  <g class="arm-l" style="transform-origin:164px 240px">
+  <g class="curl-l" style="transform-origin:93px 329px">
   <circle cx="128" cy="332" r="6.0" fill="#3d4853"/>
   <circle cx="132" cy="337" r="6.3" fill="#5aa6dc"/>
   <circle cx="136" cy="342" r="6.6" fill="#3a7fb3"/>
@@ -93,6 +139,7 @@
   <circle cx="103" cy="353" r="8.7" fill="#3a7fb3"/>
   <circle cx="98" cy="347" r="9.2" fill="#5aa6dc"/>
   <circle cx="95" cy="338" r="9.6" fill="#3a7fb3"/>
+  </g>
   <circle cx="93" cy="329" r="10.0" fill="#5aa6dc"/>
   <circle cx="93" cy="319" r="10.5" fill="#3a7fb3"/>
   <circle cx="94" cy="308" r="11.0" fill="#5aa6dc"/>
@@ -104,6 +151,10 @@
   <circle cx="136" cy="251" r="14.6" fill="#5aa6dc"/>
   <circle cx="149" cy="246" r="15.3" fill="#3a7fb3"/>
   <circle cx="164" cy="240" r="16.0" fill="#5aa6dc"/>
+  </g>
+  <g class="arm-r" style="transform-origin:352px 236px">
+  <g class="fore-r" style="transform-origin:406px 233px">
+  <g class="hand-r" style="transform-origin:421px 173px">
   <circle cx="386" cy="176" r="6.2" fill="#3d4853"/>
   <circle cx="385" cy="170" r="6.5" fill="#3a7fb3"/>
   <circle cx="385" cy="164" r="6.9" fill="#5aa6dc"/>
@@ -112,29 +163,36 @@
   <circle cx="404" cy="155" r="8.1" fill="#3a7fb3"/>
   <circle cx="411" cy="159" r="8.5" fill="#5aa6dc"/>
   <circle cx="417" cy="165" r="9.0" fill="#3a7fb3"/>
+  </g>
   <circle cx="421" cy="173" r="9.5" fill="#5aa6dc"/>
   <circle cx="423" cy="183" r="10.0" fill="#3a7fb3"/>
   <circle cx="424" cy="193" r="10.5" fill="#5aa6dc"/>
   <circle cx="423" cy="203" r="11.1" fill="#3a7fb3"/>
   <circle cx="420" cy="213" r="11.7" fill="#5aa6dc"/>
   <circle cx="414" cy="224" r="12.3" fill="#3a7fb3"/>
+  </g>
   <circle cx="406" cy="233" r="13.0" fill="#5aa6dc"/>
   <circle cx="395" cy="240" r="13.7" fill="#3a7fb3"/>
   <circle cx="381" cy="241" r="14.4" fill="#5aa6dc"/>
   <circle cx="368" cy="239" r="15.2" fill="#3a7fb3"/>
   <circle cx="352" cy="236" r="16.0" fill="#5aa6dc"/>
+  </g>
   <!-- Domed head -->
+  <g class="ant" style="transform-origin:256px 102px">
   <path d="M256 102v-18" stroke="#697785" stroke-width="6"/>
   <circle cx="256" cy="78" r="9" fill="#f6c354"/>
+  </g>
   <path d="M150 262C150 160 196 102 256 102s106 58 106 160Z" fill="#5aa6dc"/>
   <path d="M300 112c40 18 62 70 62 150h-30c0-70-12-120-32-150Z" fill="#3a7fb3"/>
   <path d="M176 196c4-38 22-64 50-76" fill="none" stroke="#84c2ea" stroke-width="12" stroke-linecap="round"/>
   <rect x="176" y="176" width="160" height="62" rx="31" fill="#3d4853"/>
+  <g class="eyes">
   <circle cx="222" cy="207" r="18" fill="#79d6eb"/>
   <circle cx="290" cy="207" r="18" fill="#79d6eb"/>
   <path d="M234 193a18 18 0 0 1-14 32 18 18 0 0 0 14-32Zm68 0a18 18 0 0 1-14 32 18 18 0 0 0 14-32Z" fill="#4fb0c5"/>
   <circle cx="228" cy="200" r="6" fill="#fffae0"/>
   <circle cx="296" cy="200" r="6" fill="#fffae0"/>
+  </g>
   <!-- Ring of lights -->
   <rect x="144" y="254" width="224" height="28" rx="14" fill="#3d4853"/>
   <circle cx="180" cy="268" r="5" fill="#f6c354"/>
@@ -142,4 +200,5 @@
   <circle cx="256" cy="268" r="5" fill="#f6c354"/>
   <circle cx="294" cy="268" r="5" fill="#79d6eb"/>
   <circle cx="332" cy="268" r="5" fill="#f6c354"/>
+  </g>
 </svg>

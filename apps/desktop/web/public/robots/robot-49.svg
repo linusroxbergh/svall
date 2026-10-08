@@ -1,30 +1,96 @@
-<svg width="292" height="418" viewBox="110 58 292 418" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="strut-title strut-desc">
+<svg width="292" height="418" viewBox="110 58 292 418" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="strut-title strut-desc" class="r49" data-idle="blink blink peer peer snap" data-work="spring spring step step snap blink"><style>
+.r49[data-act=spring] .box{animation:r49-spring-box 1.8s ease-in-out}
+.r49[data-act=spring] .thigh-l{animation:r49-spring-tl 1.8s ease-in-out}
+.r49[data-act=spring] .thigh-r{animation:r49-spring-tr 1.8s ease-in-out}
+.r49[data-act=spring] .shin-l{animation:r49-spring-sl 1.8s ease-in-out}
+.r49[data-act=spring] .shin-r{animation:r49-spring-sr 1.8s ease-in-out}
+.r49[data-act=peer] .box{animation:r49-peer-box 1.9s ease-in-out}
+.r49[data-act=peer] .thigh-l{animation:r49-peer-tl 1.9s ease-in-out}
+.r49[data-act=peer] .thigh-r{animation:r49-peer-tr 1.9s ease-in-out}
+.r49[data-act=peer] .shin-l{animation:r49-peer-sl 1.9s ease-in-out}
+.r49[data-act=peer] .shin-r{animation:r49-peer-sr 1.9s ease-in-out}
+.r49[data-act=step] .box{animation:r49-step-box 1.7s ease-in-out}
+.r49[data-act=step] .thigh-l{animation:r49-step-tl 1.7s ease-in-out}
+.r49[data-act=step] .thigh-r{animation:r49-step-tr 1.7s ease-in-out}
+.r49[data-act=step] .shin-l{animation:r49-step-sl 1.7s ease-in-out}
+.r49[data-act=step] .shin-r{animation:r49-step-sr 1.7s ease-in-out}
+.r49[data-act=step] .foot-r{animation:r49-step-fr 1.7s ease-in-out}
+.r49[data-act=snap] .box{animation:r49-snap-box 1.6s ease-in-out}
+.r49[data-act=snap] .thigh-l{animation:r49-snap-tl 1.6s ease-in-out}
+.r49[data-act=snap] .thigh-r{animation:r49-snap-tr 1.6s ease-in-out}
+.r49[data-act=snap] .shin-l{animation:r49-snap-sl 1.6s ease-in-out}
+.r49[data-act=snap] .shin-r{animation:r49-snap-sr 1.6s ease-in-out}
+.r49[data-act=spring] .arm-l{animation:r49-flick-l 1.8s ease-in-out}
+.r49[data-act=spring] .arm-r{animation:r49-flick-r 1.8s ease-in-out}
+.r49[data-act=spring] .ant{animation:r49-spring-ant 1.8s ease-in-out}
+.r49[data-act=peer] .eyes{animation:r49-look 1.9s ease-in-out}
+.r49[data-act=peer] .ant{animation:r49-peer-ant 1.9s ease-in-out}
+.r49[data-act=step] .ant{animation:r49-step-ant 1.7s ease-in-out}
+.r49[data-act=step] .arm-l{animation:r49-balance-l 1.7s ease-in-out}
+.r49[data-act=step] .arm-r{animation:r49-balance-r 1.7s ease-in-out}
+.r49[data-act=snap] .arm-l{animation:r49-raise-l 1.6s ease-in-out}
+.r49[data-act=snap] .arm-r{animation:r49-raise-r 1.6s ease-in-out}
+.r49[data-act=snap] .po{animation:r49-snap-o 1.6s ease-in-out}
+.r49[data-act=snap] .pi{animation:r49-snap-i 1.6s ease-in-out}
+.r49[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r49-blink .4s ease-in-out}
+@keyframes r49-flick-l{0%,100%{transform:none}12%{transform:rotate(4deg)}29%{transform:rotate(16deg)}42%{transform:rotate(-14deg)}56%{transform:rotate(11deg)}70%{transform:rotate(-5deg)}84%{transform:rotate(2deg)}}
+@keyframes r49-flick-r{0%,100%{transform:none}12%{transform:rotate(-4deg)}29%{transform:rotate(-16deg)}42%{transform:rotate(14deg)}56%{transform:rotate(-11deg)}70%{transform:rotate(5deg)}84%{transform:rotate(-2deg)}}
+@keyframes r49-spring-ant{0%,100%{transform:none}14%{transform:rotate(-5deg)}30%{transform:rotate(10deg)}42%{transform:rotate(-12deg)}56%{transform:rotate(9deg)}70%{transform:rotate(-4deg)}84%{transform:rotate(1.5deg)}}
+@keyframes r49-look{0%,100%{transform:none}24%,66%{transform:translateX(-3px)}}
+@keyframes r49-peer-ant{0%,100%{transform:none}30%{transform:rotate(9deg)}48%{transform:rotate(-3deg)}62%{transform:rotate(1deg)}82%{transform:rotate(-7deg)}94%{transform:rotate(2deg)}}
+@keyframes r49-step-ant{0%,100%{transform:none}22%{transform:rotate(6deg)}40%{transform:rotate(-3deg)}58%{transform:rotate(7deg)}72%{transform:rotate(-5deg)}86%{transform:rotate(2deg)}}
+@keyframes r49-balance-l{0%,100%{transform:none}24%,44%{transform:rotate(-6deg)}60%{transform:rotate(4deg)}76%{transform:rotate(-1.5deg)}}
+@keyframes r49-balance-r{0%,100%{transform:none}24%,44%{transform:rotate(-18deg)}60%{transform:rotate(6deg)}76%{transform:rotate(-2deg)}}
+@keyframes r49-raise-l{0%,100%{transform:none}22%,62%{transform:rotate(34deg)}78%{transform:rotate(-6deg)}90%{transform:rotate(2deg)}}
+@keyframes r49-raise-r{0%,100%{transform:none}22%,62%{transform:rotate(-34deg)}78%{transform:rotate(6deg)}90%{transform:rotate(-2deg)}}
+@keyframes r49-snap-o{0%,100%{transform:none}22%{transform:rotate(26deg)}31%{transform:rotate(-4deg)}40%{transform:rotate(26deg)}49%{transform:rotate(-4deg)}58%{transform:rotate(20deg)}70%{transform:none}}
+@keyframes r49-snap-i{0%,100%{transform:none}22%{transform:rotate(-26deg)}31%{transform:rotate(4deg)}40%{transform:rotate(-26deg)}49%{transform:rotate(4deg)}58%{transform:rotate(-20deg)}70%{transform:none}}
+@keyframes r49-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+@keyframes r49-spring-box{0%{transform:translate(0px,0px) rotate(0deg)}26%{transform:translate(0px,11px) rotate(0deg)}38%{transform:translate(0px,-8px) rotate(0deg)}52%{transform:translate(0px,4.5px) rotate(0deg)}66%{transform:translate(0px,-2px) rotate(0deg)}80%{transform:translate(0px,.8px) rotate(0deg)}100%{transform:translate(0px,0px) rotate(0deg)}}
+@keyframes r49-spring-tl{0%{transform:rotate(0deg)}26%{transform:rotate(6.34deg)}38%{transform:rotate(-5.34deg)}52%{transform:rotate(2.7deg)}66%{transform:rotate(-1.26deg)}80%{transform:rotate(.49deg)}100%{transform:rotate(0deg)}}
+@keyframes r49-spring-tr{0%{transform:rotate(0deg)}26%{transform:rotate(-6.34deg)}38%{transform:rotate(5.34deg)}52%{transform:rotate(-2.7deg)}66%{transform:rotate(1.26deg)}80%{transform:rotate(-.49deg)}100%{transform:rotate(0deg)}}
+@keyframes r49-spring-sl{0%{transform:rotate(0deg)}26%{transform:rotate(-4.9deg)}38%{transform:rotate(4.28deg)}52%{transform:rotate(-2.11deg)}66%{transform:rotate(1deg)}80%{transform:rotate(-.39deg)}100%{transform:rotate(0deg)}}
+@keyframes r49-spring-sr{0%{transform:rotate(0deg)}26%{transform:rotate(4.9deg)}38%{transform:rotate(-4.28deg)}52%{transform:rotate(2.11deg)}66%{transform:rotate(-1deg)}80%{transform:rotate(.39deg)}100%{transform:rotate(0deg)}}
+@keyframes r49-peer-box{0%{transform:translate(0px,0px) rotate(0deg)}30%{transform:translate(-2.5px,2px) rotate(-3deg)}62%{transform:translate(-2.5px,2px) rotate(-3deg)}80%{transform:translate(.6px,-.3px) rotate(1deg)}92%{transform:translate(0px,0px) rotate(-.3deg)}100%{transform:translate(0px,0px) rotate(0deg)}}
+@keyframes r49-peer-tl{0%{transform:rotate(0deg)}30%{transform:rotate(5.07deg)}62%{transform:rotate(5.07deg)}80%{transform:rotate(-1.57deg)}92%{transform:rotate(.46deg)}100%{transform:rotate(0deg)}}
+@keyframes r49-peer-tr{0%{transform:rotate(0deg)}30%{transform:rotate(2.69deg)}62%{transform:rotate(2.69deg)}80%{transform:rotate(-1.19deg)}92%{transform:rotate(.46deg)}100%{transform:rotate(0deg)}}
+@keyframes r49-peer-sl{0%{transform:rotate(0deg)}30%{transform:rotate(-2.99deg)}62%{transform:rotate(-2.99deg)}80%{transform:rotate(.78deg)}92%{transform:rotate(-.13deg)}100%{transform:rotate(0deg)}}
+@keyframes r49-peer-sr{0%{transform:rotate(0deg)}30%{transform:rotate(-1.17deg)}62%{transform:rotate(-1.17deg)}80%{transform:rotate(.48deg)}92%{transform:rotate(-.13deg)}100%{transform:rotate(0deg)}}
+@keyframes r49-step-box{0%{transform:translate(0px,0px) rotate(0deg)}20%{transform:translate(-2px,1.5px) rotate(-1.2deg)}40%{transform:translate(-2px,1px) rotate(-1.5deg)}56%{transform:translate(-1.6px,3px) rotate(-.8deg)}70%{transform:translate(.6px,-.6px) rotate(.4deg)}84%{transform:translate(-.2px,0px) rotate(-.1deg)}100%{transform:translate(0px,0px) rotate(0deg)}}
+@keyframes r49-step-tl{0%{transform:rotate(0deg)}20%{transform:rotate(2.19deg)}40%{transform:rotate(2.35deg)}56%{transform:rotate(2.58deg)}70%{transform:rotate(-.83deg)}84%{transform:rotate(.1deg)}100%{transform:rotate(0deg)}}
+@keyframes r49-step-tr{0%{transform:rotate(0deg)}20%{transform:rotate(.37deg)}40%{transform:rotate(-9.57deg)}56%{transform:rotate(-1.05deg)}70%{transform:rotate(-.08deg)}84%{transform:rotate(.1deg)}100%{transform:rotate(0deg)}}
+@keyframes r49-step-sl{0%{transform:rotate(0deg)}20%{transform:rotate(-1.88deg)}40%{transform:rotate(-1.77deg)}56%{transform:rotate(-2.29deg)}70%{transform:rotate(.67deg)}84%{transform:rotate(-.11deg)}100%{transform:rotate(0deg)}}
+@keyframes r49-step-sr{0%{transform:rotate(0deg)}20%{transform:rotate(-.46deg)}40%{transform:rotate(6.04deg)}56%{transform:rotate(.56deg)}70%{transform:rotate(.08deg)}84%{transform:rotate(-.11deg)}100%{transform:rotate(0deg)}}
+@keyframes r49-step-fr{0%{transform:translate(0px,0px)}20%{transform:translate(0px,0px)}40%{transform:translate(2px,-18px)}56%{transform:translate(0px,0px)}70%{transform:translate(0px,0px)}84%{transform:translate(0px,0px)}100%{transform:translate(0px,0px)}}
+@keyframes r49-snap-box{0%{transform:translate(0px,0px) rotate(0deg)}22%{transform:translate(0px,-2.5px) rotate(0deg)}62%{transform:translate(0px,-2.5px) rotate(0deg)}78%{transform:translate(0px,2px) rotate(0deg)}90%{transform:translate(0px,-1px) rotate(0deg)}100%{transform:translate(0px,0px) rotate(0deg)}}
+@keyframes r49-snap-tl{0%{transform:rotate(0deg)}22%{transform:rotate(-1.58deg)}62%{transform:rotate(-1.58deg)}78%{transform:rotate(1.22deg)}90%{transform:rotate(-.63deg)}100%{transform:rotate(0deg)}}
+@keyframes r49-snap-tr{0%{transform:rotate(0deg)}22%{transform:rotate(1.58deg)}62%{transform:rotate(1.58deg)}78%{transform:rotate(-1.22deg)}90%{transform:rotate(.63deg)}100%{transform:rotate(0deg)}}
+@keyframes r49-snap-sl{0%{transform:rotate(0deg)}22%{transform:rotate(1.26deg)}62%{transform:rotate(1.26deg)}78%{transform:rotate(-.96deg)}90%{transform:rotate(.49deg)}100%{transform:rotate(0deg)}}
+@keyframes r49-snap-sr{0%{transform:rotate(0deg)}22%{transform:rotate(-1.26deg)}62%{transform:rotate(-1.26deg)}78%{transform:rotate(.96deg)}90%{transform:rotate(-.49deg)}100%{transform:rotate(0deg)}}
+</style>
   <title id="strut-title">Strut — reverse knee walker</title>
   <desc id="strut-desc">An indigo walker with a rounded cockpit hull, a mismatched pair of eyes behind a wide visor, a whip aerial, tiny arms, and backward-bending bird legs on three-toed feet.</desc>
   <!-- Bird legs -->
-  <path d="m206 248-56 82m156-82 56 82" stroke="#4f5296" stroke-width="34" stroke-linecap="round"/>
-  <path d="m201 258-44 64m154-64 44 64" stroke="#6c6fb8" stroke-width="14" stroke-linecap="round"/>
-  <path d="m150 330 46 102m166-102-46 102" stroke="#697785" stroke-width="16"/>
-  <path d="m158 346 20 44m176-44-20 44" stroke="#3d4853" stroke-width="28"/>
-  <path d="M196 440l-34 28m34-28v30m0-30 34 28m86-28-34 28m34-28v30m0-30 34 28" stroke="#6c6fb8" stroke-width="14" stroke-linecap="round"/>
-  <path d="M162 468h0m34 2h0m34-2h0m52 0h0m34 2h0m34-2h0" stroke="#3d4853" stroke-width="14" stroke-linecap="round"/>
+  <g class="box" style="transform-origin:256px 248px"><g class="thigh-l" style="transform-origin:206px 248px"><path d="m206 248-56 82" stroke="#4f5296" stroke-width="34" stroke-linecap="round"/><path d="m201 258-44 64" stroke="#6c6fb8" stroke-width="14" stroke-linecap="round"/></g><g class="thigh-r" style="transform-origin:306px 248px"><path d="m306 248 56 82" stroke="#4f5296" stroke-width="34" stroke-linecap="round"/><path d="m311 258 44 64" stroke="#6c6fb8" stroke-width="14" stroke-linecap="round"/></g></g>
+  <g class="shin-l" style="transform-origin:196px 434px"><path d="m150 330 46 102" stroke="#697785" stroke-width="16"/><path d="m158 346 20 44" stroke="#3d4853" stroke-width="28"/></g>
+  <g class="foot-r"><g class="shin-r" style="transform-origin:316px 434px"><path d="m362 330-46 102" stroke="#697785" stroke-width="16"/><path d="m354 346-20 44" stroke="#3d4853" stroke-width="28"/></g></g>
+  <path d="M196 440l-34 28m34-28v30m0-30 34 28" stroke="#6c6fb8" stroke-width="14" stroke-linecap="round"/>
+  <path d="M162 468h0m34 2h0m34-2h0" stroke="#3d4853" stroke-width="14" stroke-linecap="round"/>
   <circle cx="196" cy="434" r="13" fill="#3d4853"/>
-  <circle cx="316" cy="434" r="13" fill="#3d4853"/>
-  <circle cx="150" cy="330" r="21" fill="#3d4853"/>
-  <circle cx="362" cy="330" r="21" fill="#3d4853"/>
-  <circle cx="150" cy="330" r="9" fill="#92a1b2"/>
-  <circle cx="362" cy="330" r="9" fill="#92a1b2"/>
+  <g class="foot-r"><path d="M316 440l-34 28m34-28v30m0-30 34 28" stroke="#6c6fb8" stroke-width="14" stroke-linecap="round"/><path d="M282 468h0m34 2h0m34-2h0" stroke="#3d4853" stroke-width="14" stroke-linecap="round"/><circle cx="316" cy="434" r="13" fill="#3d4853"/></g>
+  <g class="shin-l" style="transform-origin:196px 434px"><circle cx="150" cy="330" r="21" fill="#3d4853"/><circle cx="150" cy="330" r="9" fill="#92a1b2"/></g>
+  <g class="foot-r"><g class="shin-r" style="transform-origin:316px 434px"><circle cx="362" cy="330" r="21" fill="#3d4853"/><circle cx="362" cy="330" r="9" fill="#92a1b2"/></g></g>
+  <g class="box" style="transform-origin:256px 248px">
   <circle cx="206" cy="248" r="24" fill="#3d4853"/>
   <circle cx="306" cy="248" r="24" fill="#3d4853"/>
   <circle cx="206" cy="248" r="11" fill="#92a1b2"/>
   <circle cx="306" cy="248" r="11" fill="#92a1b2"/>
   <!-- Whip aerial and hatch -->
-  <path d="m318 106 14-38" stroke="#697785" stroke-width="6"/>
-  <circle cx="333" cy="66" r="8" fill="#f6c354"/>
+  <g class="ant" style="transform-origin:318px 106px"><path d="m318 106 14-38" stroke="#697785" stroke-width="6"/><circle cx="333" cy="66" r="8" fill="#f6c354"/></g>
   <rect x="194" y="96" width="44" height="14" rx="5" fill="#3d4853"/>
   <!-- Tiny arms -->
-  <path d="m156 196-26 26v22m226-48 26 26v22" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
-  <path d="m122 244-4 14m16-14 4 14m236-14-4 14m16-14 4 14" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+  <g class="arm-l" style="transform-origin:156px 196px"><path d="m156 196-26 26v22" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/><g class="po" style="transform-origin:122px 244px"><path d="m122 244-4 14" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g><g class="pi" style="transform-origin:134px 244px"><path d="m134 244 4 14" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g></g>
+  <g class="arm-r" style="transform-origin:356px 196px"><path d="m356 196 26 26v22" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/><g class="po" style="transform-origin:374px 244px"><path d="m374 244-4 14" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g><g class="pi" style="transform-origin:386px 244px"><path d="m386 244 4 14" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g></g>
   <!-- Cockpit hull -->
   <path d="M150 196v-40q0-52 52-52h108q52 0 52 52v40q0 44-44 44H194q-44 0-44-44Z" fill="#6c6fb8"/>
   <path d="M202 104h108q34 0 46 24H156q12-24 46-24Z" fill="#8f92d4"/>
@@ -33,10 +99,11 @@
   <rect x="176" y="136" width="160" height="60" rx="26" fill="#3d4853"/>
   <circle cx="222" cy="166" r="22" fill="#f6c354"/>
   <circle cx="222" cy="166" r="16" fill="#3d4853"/>
-  <circle cx="222" cy="166" r="12" fill="#79d6eb"/>
+  <g class="eyes"><circle cx="222" cy="166" r="12" fill="#79d6eb"/>
   <circle cx="226" cy="162" r="4" fill="#fffae0"/>
   <circle cx="288" cy="166" r="10" fill="#79d6eb"/>
-  <circle cx="291" cy="163" r="3.5" fill="#fffae0"/>
+  <circle cx="291" cy="163" r="3.5" fill="#fffae0"/></g>
   <path d="M196 220h18m10 0h18" stroke="#8f92d4" stroke-width="5" stroke-linecap="round"/>
   <circle cx="306" cy="220" r="6" fill="#f6c354"/>
+  </g>
 </svg>

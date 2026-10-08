@@ -1,12 +1,49 @@
-<svg width="316" height="452" viewBox="118 24 316 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="relay-title relay-desc">
+<svg width="316" height="452" viewBox="118 24 316 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="relay-title relay-desc" class="r21" data-idle="blink blink track shift wave" data-work="wave wave track track shift blink"><style>.r21[data-act=blink] .eye{transform-box:fill-box;transform-origin:center;animation:r21-blink .45s ease-in-out}
+.r21[data-act=track] .dish{animation:r21-track 1.9s ease-in-out}
+.r21[data-act=track] .head{animation:r21-follow 1.9s ease-in-out}
+.r21[data-act=track] .eye{animation:r21-look 1.9s ease-in-out}
+.r21[data-act=shift] .tip-r{animation:r21-tip-r 1.8s ease-in-out}
+.r21[data-act=shift] .tip-l{animation:r21-tip-l 1.8s ease-in-out}
+.r21[data-act=shift] .head{animation:r21-level 1.8s ease-in-out}
+.r21[data-act=shift] .dish{animation:r21-lag 1.8s ease-in-out}
+.r21[data-act=shift] .arm-l{animation:r21-hang 1.8s ease-in-out}
+.r21[data-act=shift] .fore-l{animation:r21-hang-fore 1.8s ease-in-out}
+.r21[data-act=shift] .fore-r{animation:r21-hang-fore 1.8s ease-in-out}
+.r21[data-act=wave] .tip-r{animation:r21-lean 2.4s ease-in-out}
+.r21[data-act=wave] .arm-r{animation:r21-lift 2.4s ease-in-out}
+.r21[data-act=wave] .fore-r{animation:r21-wave 2.4s ease-in-out}
+.r21[data-act=wave] .jaw-a{animation:r21-open-a 2.4s ease-in-out}
+.r21[data-act=wave] .jaw-b{animation:r21-open-b 2.4s ease-in-out}
+.r21[data-act=wave] .head{animation:r21-cock 2.4s ease-in-out}
+.r21[data-act=wave] .dish{animation:r21-wobble 2.4s ease-in-out}
+@keyframes r21-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+@keyframes r21-track{0%,100%{transform:none}28%,46%{transform:rotate(-16deg)}66%,76%{transform:rotate(9deg)}90%{transform:rotate(-2deg)}}
+@keyframes r21-follow{0%,100%{transform:none}34%,50%{transform:rotate(-3deg)}70%,80%{transform:rotate(2deg)}93%{transform:rotate(-.5deg)}}
+@keyframes r21-look{0%,100%{transform:none}26%,48%{transform:translate(-4px,-5px)}64%,78%{transform:translate(5px,-3px)}}
+@keyframes r21-tip-r{0%,42%,74%,100%{transform:none}21%{transform:rotate(1.2deg)}87%{transform:rotate(.35deg)}}
+@keyframes r21-tip-l{0%,42%,74%,100%{transform:none}58%{transform:rotate(-.9deg)}}
+@keyframes r21-level{0%,100%{transform:none}26%{transform:rotate(-2deg)}60%{transform:rotate(1.6deg)}88%{transform:rotate(-.5deg)}}
+@keyframes r21-lag{0%,100%{transform:none}30%{transform:rotate(-7deg)}62%{transform:rotate(6deg)}86%{transform:rotate(-2deg)}}
+@keyframes r21-hang{0%,100%{transform:none}27%{transform:rotate(-4deg)}62%{transform:rotate(3deg)}90%{transform:rotate(-1deg)}}
+@keyframes r21-hang-fore{0%,100%{transform:none}34%{transform:rotate(-5deg)}68%{transform:rotate(4deg)}92%{transform:rotate(-1.5deg)}}
+@keyframes r21-lean{0%,100%{transform:none}16%,78%{transform:rotate(.5deg)}90%{transform:rotate(-.15deg)}}
+@keyframes r21-lift{0%,100%{transform:none}14%,76%{transform:rotate(-17deg)}89%{transform:rotate(2deg)}}
+@keyframes r21-wave{0%,100%{transform:none}7%{transform:rotate(5deg)}20%{transform:rotate(-17deg)}32%{transform:rotate(21deg)}43%{transform:rotate(-12deg)}54%{transform:rotate(14deg)}64%{transform:rotate(-6deg)}73%{transform:rotate(6deg)}85%{transform:rotate(-2deg)}}
+@keyframes r21-open-a{0%,100%{transform:none}16%,76%{transform:rotate(-6deg)}}
+@keyframes r21-open-b{0%,100%{transform:none}16%,76%{transform:rotate(14deg)}}
+@keyframes r21-cock{0%,100%{transform:none}18%,76%{transform:rotate(3deg)}88%{transform:rotate(-.8deg)}}
+@keyframes r21-wobble{0%,100%{transform:none}20%{transform:rotate(-7deg)}36%{transform:rotate(5deg)}52%{transform:rotate(-3deg)}80%{transform:rotate(4deg)}92%{transform:rotate(-1.5deg)}}</style>
   <title id="relay-title">Relay — communications robot</title>
   <desc id="relay-desc">A teal communications robot with a satellite dish, an offset circular amber lens, a sturdy tapered equipment chassis with a striped chest panel, thick jointed arms with one raised gripper, and strong legs on flat work feet.</desc>
+  <g class="tip-r" style="transform-origin:360px 476px"><g class="tip-l" style="transform-origin:152px 476px">
   <!-- Compact angled satellite dish -->
+  <g class="head" style="transform-origin:256px 206px"><g class="dish" style="transform-origin:298px 90px">
   <path d="m280 112 29-35" stroke="#697785" stroke-width="14"/>
   <path d="M287 33q-15 58 49 66Z" fill="#92a1b2"/>
   <path d="M287 33q34 21 49 66-28-19-49-66Z" fill="#697785"/>
   <path d="m304 66 28-31" stroke="#3d4853" stroke-width="6"/>
   <circle cx="335" cy="32" r="8" fill="#f6c354"/>
+  </g></g>
   <!-- Sturdy legs and flat work feet -->
   <path d="m228 372-10 40-8 36m74-76 10 40 8 36" fill="none" stroke="#697785" stroke-width="30" stroke-linejoin="round"/>
   <path d="m221 380-8 32-6 30m70-62 8 32 6 30" fill="none" stroke="#92a1b2" stroke-width="5" stroke-linecap="round"/>
@@ -18,19 +55,22 @@
   <path d="M184 444h38v6h-58q7-6 20-6Zm144 0h-38v6h58q-7-6-20-6Z" fill="#79d6eb"/>
   <path d="M152 466h70v10h-70Zm138 0h70v10h-70Z" fill="#3d4853"/>
   <!-- One resting arm and one raised arm -->
-  <path d="m184 236-42 52 2 64m184-116 44 36 32-58" fill="none" stroke="#4fb0c5" stroke-width="22" stroke-linejoin="round"/>
+  <g class="arm-l" style="transform-origin:184px 236px"><path d="M184 236l-42 52" fill="none" stroke="#4fb0c5" stroke-width="22" stroke-linejoin="round"/><g class="fore-l" style="transform-origin:142px 288px"><path d="M142 288l2 64" fill="none" stroke="#4fb0c5" stroke-width="22" stroke-linejoin="round"/></g></g>
+  <g class="arm-r" style="transform-origin:328px 236px"><path d="M328 236l44 36" fill="none" stroke="#4fb0c5" stroke-width="22" stroke-linejoin="round"/></g>
   <circle cx="184" cy="236" r="26" fill="#2e7a8a"/>
   <circle cx="328" cy="236" r="26" fill="#2e7a8a"/>
+  <g class="arm-l" style="transform-origin:184px 236px">
   <circle cx="142" cy="288" r="20" fill="#3d4853"/>
-  <circle cx="372" cy="272" r="20" fill="#3d4853"/>
   <circle cx="142" cy="288" r="9" fill="#f6c354"/>
-  <circle cx="372" cy="272" r="9" fill="#f6c354"/>
-  <path d="m126 384 6-26h24l6 26m229.4-174.6-9.2-25.3 19.6-13.8m15 13.8 9.2 25.3-19.6 13.8" fill="none" stroke="#3d4853" stroke-width="9" stroke-linejoin="round"/>
+  <g class="fore-l" style="transform-origin:142px 288px">
+  <path d="M126 384l6 -26h24l6 26" fill="none" stroke="#3d4853" stroke-width="9" stroke-linejoin="round"/>
   <circle cx="144" cy="352" r="16" fill="#2e7a8a"/>
-  <circle cx="404" cy="214" r="16" fill="#2e7a8a"/>
+  </g></g>
   <!-- Sturdy tapered chassis -->
+  <g class="head" style="transform-origin:256px 206px">
   <rect x="230" y="186" width="52" height="24" fill="#3d4853"/>
   <path d="M232 195h48m-48 9h48" stroke="#697785" stroke-width="4"/>
+  </g>
   <path d="M190 206h132l18 138-22 34H194l-22-34Z" fill="#4fb0c5"/>
   <path d="M190 206h132l2 15H188Z" fill="#79d6eb"/>
   <path d="M304 206h18l18 138-22 34h-18l22-34Z" fill="#2e7a8a"/>
@@ -40,15 +80,30 @@
   <path d="M231 340h28" stroke="#92a1b2" stroke-width="5"/>
   <circle cx="275" cy="340" r="5.5" fill="#f6c354"/>
   <!-- Rectangular head with asymmetric optical hardware -->
+  <g class="head" style="transform-origin:256px 206px">
   <rect x="158" y="108" width="34" height="68" rx="7" fill="#3d4853"/>
   <rect x="320" y="108" width="30" height="68" rx="7" fill="#3d4853"/>
   <rect x="176" y="90" width="160" height="100" rx="13" fill="#4fb0c5"/>
   <path d="M189 90h134q13 0 13 13v4H176v-4q0-13 13-13Z" fill="#79d6eb"/>
   <path d="M318 107h18v70q0 13-13 13h-5Z" fill="#2e7a8a"/>
   <circle cx="218" cy="140" r="36" fill="#2e7a8a"/>
+  <g class="eye">
   <circle cx="218" cy="140" r="27" fill="#f6c354"/>
   <path d="M235.6 120a27 27 0 0 1-34 41 27 27 0 0 0 34-41Z" fill="#bc943d"/>
   <circle cx="226" cy="131.5" r="7" fill="#fff8de"/>
+  </g>
   <rect x="268" y="122" width="32" height="17" rx="3" fill="#3d4853"/>
   <path d="M268 156h32m-32 12h32" stroke="#2e7a8a" stroke-width="4"/>
+  </g>
+  <!-- The raised forearm and gripper, over the head so a wave passes in front of it -->
+  <g class="arm-r" style="transform-origin:328px 236px">
+  <g class="fore-r" style="transform-origin:372px 272px"><path d="M372 272l32 -58" fill="none" stroke="#4fb0c5" stroke-width="22" stroke-linejoin="round"/></g>
+  <circle cx="372" cy="272" r="20" fill="#3d4853"/>
+  <circle cx="372" cy="272" r="9" fill="#f6c354"/>
+  <g class="fore-r" style="transform-origin:372px 272px">
+  <g class="jaw-a" style="transform-origin:404px 214px"><path d="M391.4 209.4l-9.2 -25.3l19.6 -13.8" fill="none" stroke="#3d4853" stroke-width="9" stroke-linejoin="round"/></g>
+  <g class="jaw-b" style="transform-origin:404px 214px"><path d="M416.8 184.1l9.2 25.3l-19.6 13.8" fill="none" stroke="#3d4853" stroke-width="9" stroke-linejoin="round"/></g>
+  <circle cx="404" cy="214" r="16" fill="#2e7a8a"/>
+  </g></g>
+  </g></g>
 </svg>
