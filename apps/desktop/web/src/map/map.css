@@ -236,10 +236,15 @@
 .tok.s-working .cells i[data-on=true]{background:var(--working)}
 .tok.s-blocked .cells i[data-on=true]{background:var(--blocked)}
 .tok.s-done    .cells i[data-on=true]{background:var(--done)}
-/* the status gem as a badge on the card's top-right corner */
-.tok .corner{position:absolute;z-index:10;top:0;right:0}
+/* the status gem as a badge on the card's top-right corner, on a layer over the card that lifts with it and lets clicks through */
+.tok .corner{position:absolute;z-index:10;inset:0;pointer-events:none;transition:transform var(--dur) var(--ease)}
+.tok:hover .corner{transform:translateY(-6px)}
+.tok.sel .corner{transform:translateY(-5px) scale(1.04)}
+.tok.drag .corner{transform:translateY(-12px)}
 .tok .corner .gem{top:calc(var(--tok)*-.12);left:auto;right:calc(var(--tok)*-.12);transform:none}
 .tok .corner .gem.working{top:calc(var(--tok)*-.06);right:calc(var(--tok)*-.06)}
+/* a full rail of links reaches the corner, so the gem steps in beside it */
+.tok:has(> .rail:not(.left) > :nth-child(4)) .corner .gem{right:calc(var(--tok)*.46)}
 
 .tok.drag{z-index:var(--z-popover);pointer-events:none}
 .tok.drag .card{transform:translateY(-12px);

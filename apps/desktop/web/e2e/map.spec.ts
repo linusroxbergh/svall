@@ -85,6 +85,51 @@ test('with robots on, a card stands its robot under the name and wears its gem o
   await expect(tok.locator('.cells')).toHaveCount(0);
 });
 
+test('with robots on, the corner gem lifts with its card and leaves a full rail of links to click', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('robots'), seed: 3 });
+  const agent = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'agent', command: FAKE_CLAUDE });
+  const links = Array.from({ length: 4 }, (_, i) => ({ kind: 'other' as const, ref: `https://example.com/${i}`, label: `link ${i}`, source: 'manual' as const }));
+  await svall.api.call('char.update', { id: agent.id, context: links });
+  await svall.api.call('robots.set', { enabled: true });
+  await svall.open('map');
+  const tok = page.getByTestId(`token-${agent.id}`);
+  await expect(tok).toHaveAttribute('data-status', 'idle', { timeout: 15_000 });
+  await svall.api.call('char.run', { id: agent.id, text: 'block', enter: true });
+  await expect(tok.locator('.corner .gem')).toHaveText('!', { timeout: 15_000 });
+
+  // the gem against the card's top-right corner, once the card's lift has run
+  const offset = () => tok.evaluate(async (el) => {
+    await Promise.all(el.getAnimations({ subtree: true }).filter((a) => a instanceof CSSTransition).map((a) => a.finished));
+    const c = el.querySelector('.card')!.getBoundingClientRect(), g = el.querySelector('.corner .gem')!.getBoundingClientRect();
+    return { x: g.right - c.right, y: g.top - c.top };
+  });
+  const rest = await offset();
+  await tok.locator('.card').hover();
+  for (const lifted of [await offset(), (await tok.locator('.card').click(), await offset())]) {
+    expect(Math.abs(lifted.x - rest.x)).toBeLessThan(1);
+    expect(Math.abs(lifted.y - rest.y)).toBeLessThan(1);
+  }
+
+  await tok.locator('.chip.lk').first().click({ position: { x: 14, y: 2 } });
+  await expect(page.getByTestId('link-ask')).toBeVisible();
+});
+
+test('with robots on, mission control\'s crew stand as robots, and so does one dragged out', async ({ page, svall }) => {
+  const mc = await svall.api.call('char.create', { islandId: 'home', cwd: '/tmp', name: 'mc' });
+  await svall.api.call('robots.set', { enabled: true });
+  await svall.open('map');
+  await settleMap(page);
+  const robot = robotUrl(robotOf(mc));
+  await expect(page.getByTestId(`token-${mc.id}`).locator('.portrait')).toHaveAttribute('src', robot);
+
+  const box = (await page.getByTestId(`token-${mc.id}`).locator('.card').boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y - 240, { steps: 6 });
+  await expect.poll(() => page.locator('.tok.drag .portrait').evaluateAll((els) => els.map((e) => e.getAttribute('src')))).toEqual([robot]);
+  await page.mouse.up();
+});
+
 test('pans by dragging water and by wheel, clamped', async ({ page, svall }) => {
   // five islands sixteen cells apart reach far wider than the map, so the fit hits theme.scale.min
   // and the world overflows on x, leaving something to pan
