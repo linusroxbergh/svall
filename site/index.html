@@ -162,11 +162,12 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
 .tabs[data-auto] button[aria-selected="true"]::after { opacity: 1; clip-path: inset(0 100% 0 0 round 9px); animation: dwell var(--dwell, 6s) linear forwards; }
 .tabs[data-auto="paused"] button[aria-selected="true"]::after { animation-play-state: paused; }
 @keyframes dwell { to { clip-path: inset(0 0 0 0 round 9px); } }
-.frame { display: grid; container-type: inline-size; }
+/* one shadow under whatever the frame shows, so two views mid-fade don't stack theirs */
+.frame { display: grid; container-type: inline-size; filter: drop-shadow(0 24px 40px var(--shade-2)); }
 /* the old view stays opaque under the new one until it is covered, so the sea never shows through both */
 .frame > * { grid-area: 1 / 1; visibility: hidden; opacity: 0; transition: opacity 0s .6s, visibility 0s .6s; }
 .frame > .on { z-index: 1; visibility: visible; opacity: 1; transition: opacity .6s var(--ease); }
-.frame > img, .view-phone > img { display: block; width: 100%; height: auto; filter: drop-shadow(0 24px 40px var(--shade-2)); }
+.frame > img, .view-phone > img { display: block; width: 100%; height: auto; }
 
 /* the phone view: the window, and the phone the fleet opens on standing over it, sized off the frame */
 .view-phone { position: relative; }
