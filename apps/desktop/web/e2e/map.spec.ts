@@ -1,6 +1,7 @@
 import { FAKE_CLAUDE, expect, settleMap, test } from './fixtures.js';
 import type { Page } from '@playwright/test';
 import { cardScale, labelScale } from '../src/map/layout.js';
+import { robotUrl } from '../src/portraits.js';
 import type { MapDump } from '../src/map/types.js';
 import { theme } from '../src/theme.js';
 
@@ -62,6 +63,26 @@ test('renders the fleet and follows agent status', async ({ page, svall }) => {
   const scale = (await dump(page)).scale;
   expect(scale).toBeGreaterThanOrEqual(0.5);
   expect(scale).toBeLessThanOrEqual(1.5);
+});
+
+test('with robots on, a card stands its robot under the name and wears its gem on the corner', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('robots'), seed: 3 });
+  const agent = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'agent', command: FAKE_CLAUDE });
+  await svall.api.call('robots.set', { enabled: true });
+  await svall.open('map');
+
+  const tok = page.getByTestId(`token-${agent.id}`);
+  await expect(tok.locator('.portrait')).toHaveAttribute('src', robotUrl(agent.portrait));
+  await expect(tok).toHaveAttribute('data-status', 'idle', { timeout: 15_000 });
+  await expect(tok.locator('.cells i')).toHaveCount(5);
+  await expect(tok.locator('.cells i[data-on="true"]')).toHaveCount(0);
+
+  await svall.api.call('char.run', { id: agent.id, text: 'block', enter: true });
+  await expect(tok.locator('.corner .gem')).toHaveText('!', { timeout: 15_000 });
+
+  await svall.api.call('robots.set', { enabled: false });
+  await expect(tok.locator('.portrait')).toHaveAttribute('src', `./animals/${agent.portrait}.svg`);
+  await expect(tok.locator('.cells')).toHaveCount(0);
 });
 
 test('pans by dragging water and by wheel, clamped', async ({ page, svall }) => {

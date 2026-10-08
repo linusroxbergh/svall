@@ -235,6 +235,10 @@ export class Fleet extends EventEmitter<Events> {
     this.deps.store.update((d) => { if (enabled) delete d.worktreesOff; else d.worktreesOff = true; });
   }
 
+  setRobots(enabled: boolean): void {
+    this.deps.store.update((d) => { if (enabled) d.robots = true; else delete d.robots; });
+  }
+
   setDormancy(hours: number): void {
     this.deps.store.update((d) => { d.dormantAfterHours = hours; });
   }

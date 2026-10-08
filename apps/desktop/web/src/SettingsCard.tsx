@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { AGENT_LABEL, AgentKind, DORMANT_AFTER_HOURS, fleetNameProblem, type PushStatus } from '@svall/protocol';
-import { loadMobileStatus, renameFleet, setDormancy, setMainAgent, setScribe, setWorktrees } from './actions.js';
+import { loadMobileStatus, renameFleet, setDormancy, setMainAgent, setRobots, setScribe, setWorktrees } from './actions.js';
 import { app, deps } from './boot.js';
 import { openConfig, openUrl, shim } from './bridge.js';
 import { AS_TYPED } from './Field.js';
@@ -133,6 +133,7 @@ function Scribe() {
   const scribeAgent = useApp((s) => s.fleet.scribeAgent ?? 'claude');
   const flip = () => setScribe(deps(), !on);
   const worktrees = useApp((s) => !s.fleet.worktreesOff);
+  const robots = useApp((s) => !!s.fleet.robots);
   return (
     <>
       <div className="kicker">The fleet</div>
@@ -152,6 +153,10 @@ function Scribe() {
         <div className="row">
           <span>work in worktrees<Info id="worktrees">A character started on a task in a git repo is told to work in a worktree no other agent works in, not the main checkout. One you open from the map stays where you open it.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={worktrees} data-testid="set-worktrees" onClick={() => setWorktrees(deps(), !worktrees)}>{worktrees ? 'on' : 'off'}</button></b>
+        </div>
+        <div className="row">
+          <span>robot portraits<Info id="robots">Robots stand in for the animals, here and on your phone.</Info></span>
+          <b><button className="set-switch" role="switch" aria-checked={robots} data-testid="set-robots" onClick={() => setRobots(deps(), !robots)}>{robots ? 'on' : 'off'}</button></b>
         </div>
         <Dormancy />
       </div>

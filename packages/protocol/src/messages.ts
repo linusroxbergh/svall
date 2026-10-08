@@ -189,6 +189,7 @@ export const methods = {
   },
   'scribe.set': { params: z.object({ enabled: z.boolean() }), result: z.object({}) },
   'worktrees.set': { params: z.object({ enabled: z.boolean() }), result: z.object({}) },
+  'robots.set': { params: z.object({ enabled: z.boolean() }), result: z.object({}) },
   'dormancy.set': { params: z.object({ hours: z.number().int().min(0) }), result: z.object({}) },
   'mainAgent.set': { params: z.object({ agent: AgentKind }), result: z.object({}) },
   // the fleets beside this one; a phone is refused them

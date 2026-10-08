@@ -9,7 +9,7 @@ import { useApp, useTick } from './hooks.js';
 import { Info } from './Info.js';
 import { keyTip } from './keys.js';
 import { ago, hintText } from './map/tokenText.js';
-import { portraitTint, portraitUrl } from './portraits.js';
+import { portraitTint, portraitUrl, robotUrl, stepRobot } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
 import { ResourcesButton } from './ResourcesButton.js';
@@ -45,12 +45,16 @@ function LastCommand({ id, agent }: { id: string; agent: Character['agent'] }) {
 }
 
 function PortraitPicker({ id, portrait }: { id: string; portrait: Portrait }) {
-  const step = (by: 1 | -1) => saveCharacter(deps(), id, { portrait: stepPortrait(portrait, by) });
+  const robots = useApp((s) => !!s.fleet.robots);
+  const kind = robots ? 'robot' : 'animal';
+  const step = (by: 1 | -1) => saveCharacter(deps(), id, { portrait: (robots ? stepRobot : stepPortrait)(portrait, by) });
   return (
     <div className="side-portrait" data-testid="side-portrait" data-portrait={portrait}>
-      <button className="pnav" data-testid="portrait-prev" aria-label="Previous animal" onClick={() => step(-1)}>‹</button>
-      <span className="pdisc" data-tint={portraitTint(portrait)}><img className="portrait-img" src={portraitUrl(portrait)} alt={portrait} draggable={false} /></span>
-      <button className="pnav" data-testid="portrait-next" aria-label="Next animal" onClick={() => step(1)}>›</button>
+      <button className="pnav" data-testid="portrait-prev" aria-label={`Previous ${kind}`} onClick={() => step(-1)}>‹</button>
+      {robots
+        ? <img className="side-robot" src={robotUrl(portrait)} alt="robot" draggable={false} />
+        : <span className="pdisc" data-tint={portraitTint(portrait)}><img className="portrait-img" src={portraitUrl(portrait)} alt={portrait} draggable={false} /></span>}
+      <button className="pnav" data-testid="portrait-next" aria-label={`Next ${kind}`} onClick={() => step(1)}>›</button>
     </div>
   );
 }

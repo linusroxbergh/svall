@@ -1,6 +1,19 @@
-import type { Portrait } from '@svall/protocol';
+import { PORTRAITS, stepPortrait, type Portrait } from '@svall/protocol';
 
 export const portraitUrl = (p: Portrait): string => `./animals/${p}.svg`;
+
+// robot-01..16 in public/robots; an animal stands for the robot at its place in the ring
+const ROBOTS = 16;
+const robotOf = (p: Portrait): number => PORTRAITS.indexOf(p) % ROBOTS;
+export const robotUrl = (p: Portrait): string => `./robots/robot-${String(robotOf(p) + 1).padStart(2, '0')}.svg`;
+
+// the nearest animal that way round the ring standing for the next robot, so the steppers page through the robots in turn
+export function stepRobot(p: Portrait, by: 1 | -1): Portrait {
+  const want = (robotOf(p) + by + ROBOTS) % ROBOTS;
+  let next = stepPortrait(p, by);
+  while (robotOf(next) !== want) next = stepPortrait(next, by);
+  return next;
+}
 
 // the disc behind each animal, chosen to contrast its body
 type Tint = 'sky' | 'sun' | 'coral' | 'earth' | 'moss' | 'slate';

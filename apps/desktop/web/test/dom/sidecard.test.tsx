@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { FromShell } from '../../src/bridge.js';
 import { useApp } from '../../src/hooks.js';
+import { portraitUrl, robotUrl, stepRobot } from '../../src/portraits.js';
 import { isVeiled } from '../../src/selectors.js';
 import { chr, fleet, isl } from '../fixtures.js';
 import { bridge, call, freshStore, store } from './harness.js';
@@ -74,6 +75,16 @@ test('the star beside the name stars the character, and unstars it once starred'
   expect(button().getAttribute('aria-pressed')).toBe('true');
   fireEvent.click(button());
   expect(calls()).toContainEqual(['char.unstar', { id: 'c0' }]);
+});
+
+test('with robots on, the portrait is the character\'s robot and the steppers page through the robots', () => {
+  const src = () => screen.getByTestId('side-portrait').querySelector('img')!.getAttribute('src');
+  render(<Side />);
+  expect(src()).toBe(portraitUrl('fox'));
+  act(() => store.getState().setFleet({ ...fleet(), robots: true }));
+  expect(src()).toBe(robotUrl('fox'));
+  fireEvent.click(screen.getByTestId('portrait-prev'));
+  expect(updates().at(-1)).toEqual(['char.update', { id: 'c0', portrait: stepRobot('fox', -1) }]);
 });
 
 test('a draft in one island\'s instructions never shows or saves on the next one', () => {

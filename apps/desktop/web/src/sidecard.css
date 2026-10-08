@@ -43,7 +43,9 @@
 .side-portrait .pdisc { position: relative; display: block; width: var(--disc-side); height: var(--disc-side); border-radius: 50%;
   box-shadow: var(--shadow-1), inset 0 0 0 1px var(--line); }
 .side-portrait .pdisc img { width: 100%; height: 100%; display: block; }
-/* the animal steppers lie over the disc's edges and show on hover */
+/* a robot stands in the disc's place, at the foot of its box */
+.side-portrait .side-robot { display: block; width: var(--disc-side); height: var(--disc-side); object-fit: contain; object-position: center bottom; }
+/* the steppers lie over the portrait's edges and show on hover */
 .side-portrait .pnav { position: absolute; z-index: 1; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; padding: 0; border-radius: 50%;
   display: grid; place-items: center; font-size: var(--text-xl); line-height: 1; cursor: pointer;
   color: var(--ink-2); background: var(--glass); border: 1px solid var(--line);

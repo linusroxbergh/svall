@@ -184,6 +184,8 @@ export const FleetState = z.object({
   scribeError: z.object({ message: z.string(), at: z.number() }).optional(),
   // a character made with a task is not told to work in a worktree
   worktreesOff: z.literal(true).optional(),
+  // characters show as robots, not animals
+  robots: z.literal(true).optional(),
   // an agent idle this many hours is ended and its character left dormant, to be resumed on revive;
   // 0 keeps every agent running, and absent is DORMANT_AFTER_HOURS
   dormantAfterHours: z.number().int().min(0).optional(),

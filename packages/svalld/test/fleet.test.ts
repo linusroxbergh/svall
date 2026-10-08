@@ -1427,6 +1427,14 @@ runIf('Fleet', () => {
     await fleet.closeCharacter(c.id);
   });
 
+  it('keeps the robots switch in the fleet, absent while off', async () => {
+    const { fleet, store } = await boot();
+    fleet.setRobots(true);
+    expect(store.state.robots).toBe(true);
+    fleet.setRobots(false);
+    expect(store.state).not.toHaveProperty('robots');
+  });
+
   it('reports the prompt unsent when the window dies while the run waits', async () => {
     const { fleet, store, tmux, home } = await boot({ runTimeoutMs: 5000 });
     const ran = `${home}/ran`;
