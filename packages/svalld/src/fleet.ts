@@ -72,8 +72,8 @@ export class Fleet extends EventEmitter<Events> {
     const { store, log, config, paths } = deps;
     const cwd = path.join(paths.home, 'scribe');
     const run = deps.runScribe ?? perPass({
-      claude: claudeRunner({ model: scribeModel(config.scribe, 'claude') ?? 'sonnet', cwd, envFile: paths.env }),
-      codex: codexRunner({ model: scribeModel(config.scribe, 'codex'), cwd }),
+      claude: claudeRunner({ model: scribeModel(config.scribe, 'claude') ?? 'haiku', cwd, envFile: paths.env }),
+      codex: codexRunner({ model: scribeModel(config.scribe, 'codex') ?? 'gpt-6-luna', cwd }),
       opencode: opencodeRunner({ model: scribeModel(config.scribe, 'opencode'), cwd }),
     }, () => store.state.scribeAgent ?? 'claude');
     this.scribe = new Scribe({ store, log, run, brief: (island, c) => this.render(island, c) });
