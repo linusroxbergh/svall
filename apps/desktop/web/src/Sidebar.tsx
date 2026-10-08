@@ -68,7 +68,11 @@ export function Caret({ open }: { open: boolean }) {
 
 // the board shows the terminal it selects; on the map that takes a card, so a click reads and a click on the
 // row already selected opens — as does any click once a card is open, which the selection then moves to
-const pick = (id: string) => { const s = app.store.getState(); if (s.view === 'board' || s.card || s.selectedId === id) s.focus(id); else s.select(id); };
+const pick = (id: string, starred = false) => {
+  const s = app.store.getState();
+  if (s.view === 'board' || s.card || s.selectedId === id) s.focus(id); else s.select(id);
+  s.setStarredRow(starred ? id : undefined);
+};
 
 export function StarIcon({ on }: { on: boolean }) {
   return (
@@ -191,7 +195,7 @@ function StarredRow({ c, hover, zone }: { c: Character; hover?: StarHover; zone:
       draggable data-dragging={dragging} {...zone}
       onDragStart={(e) => { e.dataTransfer.setData(STAR_DRAG, c.id); e.dataTransfer.effectAllowed = 'move'; setDragging(true); }}
       onDragEnd={() => setDragging(false)}
-      onClick={() => pick(c.id)} onContextMenu={(e) => characterMenu(e, c.id)}>
+      onClick={() => pick(c.id, true)} onContextMenu={(e) => characterMenu(e, c.id)}>
       <i className="sdot" data-status={status} />
       <span className="sb-name" title={c.name}>{c.name}</span>
       <span className="sb-where"><span>{island}</span></span>

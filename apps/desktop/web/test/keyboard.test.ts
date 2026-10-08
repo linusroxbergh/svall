@@ -144,6 +144,22 @@ describe('dispatchKey', () => {
     await dispatchKey({ type: 'nextCharacter' }, c);
     expect(c.store.getState().selectedId).toBe('c2');
   });
+  it('walks a starred character on its island row and on its Starred row', async () => {
+    const c = ctx();
+    const f = fleet();
+    f.characters.c0.star = 0;
+    c.store.getState().setFleet(f);
+    c.store.getState().select('c2');
+    const walk = async (type: 'nextCharacter' | 'prevCharacter') => { await dispatchKey({ type }, c); return c.store.getState().selectedId; };
+    expect(await walk('nextCharacter')).toBe('c0');
+    expect(await walk('nextCharacter')).toBe('c1');
+    expect(await walk('nextCharacter')).toBe('c0');
+    expect(c.store.getState().starredRow).toBe('c0');
+    expect(await walk('nextCharacter')).toBe('c2');
+    expect(c.store.getState().starredRow).toBeUndefined();
+    expect(await walk('prevCharacter')).toBe('c0');
+    expect(await walk('prevCharacter')).toBe('c1');
+  });
   it('walks the whole fleet with the card open', async () => {
     const c = ctx();
     c.store.getState().focus('c0');
@@ -486,6 +502,17 @@ describe('dispatchKey on the map', () => {
     expect(c.store.getState()).toMatchObject({ view: 'map', selectedId: 'c0', card: 'c0' });
     await dispatchKey({ type: 'nextIsland' }, c);
     expect(c.store.getState().card).toBe('c2');
+  });
+  it('from an island picked on the map the keys start at its first character', async () => {
+    const c = ctx();
+    c.store.getState().focus('c1');
+    c.store.getState().closeCard();
+    c.store.getState().selectIsland('i_b');
+    await dispatchKey({ type: 'nextCharacter' }, c);
+    expect(c.store.getState().selectedId).toBe('c0');
+    c.store.getState().selectIsland('i_b');
+    await dispatchKey({ type: 'prevCharacter' }, c);
+    expect(c.store.getState().selectedId).toBe('c2');
   });
   it('Cmd+W closes the card first, then the selected character', async () => {
     const c = ctx();

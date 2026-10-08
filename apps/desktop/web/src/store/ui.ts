@@ -26,6 +26,8 @@ export type UiState = {
   focusedId?: string;
   selectedId?: string;
   selectedIslandId?: string;
+  // the starred character picked or walked to on its Starred row, so the character keys go on from that row
+  starredRow?: string;
   sideCardOpen: boolean;
   sideCardCollapsed: boolean;
   namingCharacter: boolean;
@@ -80,6 +82,7 @@ export type UiActions = {
   select(id?: string, card?: boolean): void;
   selectIsland(id?: string): void;
   focus(id: string): void;
+  setStarredRow(id?: string): void;
   closeCard(): void;
   toggleCardSize(): void;
   toggleSideCard(open?: boolean): void;
@@ -205,6 +208,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
         ? { focusedId: id, selectedId: id, selectedIslandId: undefined }
         : { card: id, focusedId: id, selectedId: id, selectedIslandId: undefined });
     },
+    setStarredRow: (id) => set({ starredRow: id }),
     closeCard: () => set({ card: undefined }),
     toggleCardSize: () => set((s) => ({ cardSize: s.cardSize === 'half' ? 'full' : 'half' })),
     setNamingCharacter: (open) => set({ namingCharacter: open }),
