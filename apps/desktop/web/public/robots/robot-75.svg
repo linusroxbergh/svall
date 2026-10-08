@@ -1,18 +1,68 @@
-<svg width="232" height="454" viewBox="140 22 232 454" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="stack-title stack-desc">
+<svg width="232" height="454" viewBox="140 22 232 454" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="stack-title stack-desc" class="r75" data-idle="blink blink dial settle ripple" data-work="claw claw settle ripple dial blink"><style>.r75[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r75-blink .4s ease-in-out}
+.r75[data-act=dial] .needle{animation:r75-needle 1.8s ease-in-out}
+.r75[data-act=dial] .head{animation:r75-nod 1.8s ease-in-out}
+.r75[data-act=dial] .eyes{animation:r75-down 1.8s ease-in-out}
+.r75[data-act=claw] .arm-l{animation:r75-raise-l 1.6s ease-in-out}
+.r75[data-act=claw] .fore-l{animation:r75-level-l 1.6s ease-in-out}
+.r75[data-act=claw] .arm-r{animation:r75-raise-r 1.6s ease-in-out}
+.r75[data-act=claw] .fore-r{animation:r75-level-r 1.6s ease-in-out}
+.r75[data-act=claw] .jaw{animation:r75-snap 1.6s ease-in-out}
+.r75[data-act=settle] .chest{animation:r75-sink 1.5s ease-in-out}
+.r75[data-act=settle] .head{animation:r75-sink-head 1.5s ease-in-out}
+.r75[data-act=settle] .ant{animation:r75-jolt 1.5s ease-in-out}
+.r75[data-act=settle] .arm-l{animation:r75-flap-l 1.5s ease-in-out}
+.r75[data-act=settle] .arm-r{animation:r75-flap-r 1.5s ease-in-out}
+.r75[data-act=ripple] .chest{animation:r75-chest 2s ease-in-out}
+.r75[data-act=ripple] .head{animation:r75-head 2s ease-in-out}
+.r75[data-act=ripple] .ant{animation:r75-ant 2s ease-in-out}
+.r75[data-act=ripple] .arm-l,.r75[data-act=ripple] .arm-r{animation:r75-hang 2s ease-in-out}
+@keyframes r75-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+@keyframes r75-needle{0%,100%{transform:none}30%,55%{transform:rotate(-80deg)}78%{transform:rotate(8deg)}}
+@keyframes r75-nod{0%,100%{transform:none}20%,70%{transform:translateY(5px) rotate(-4deg)}}
+@keyframes r75-down{0%,100%{transform:none}15%,75%{transform:translateY(3px)}}
+@keyframes r75-raise-l{0%,100%{transform:none}22%,62%{transform:rotate(24deg)}82%{transform:rotate(-3deg)}}
+@keyframes r75-level-l{0%,4%,100%{transform:none}26%,62%{transform:rotate(-21deg)}84%{transform:rotate(3deg)}}
+@keyframes r75-raise-r{0%,6%,100%{transform:none}28%,66%{transform:rotate(-24deg)}86%{transform:rotate(3deg)}}
+@keyframes r75-level-r{0%,10%,100%{transform:none}32%,66%{transform:rotate(21deg)}90%{transform:rotate(-3deg)}}
+@keyframes r75-snap{0%,28%,42%,58%,100%{transform:none}35%,50%{transform:scaleX(1.3)}}
+@keyframes r75-sink{0%,100%{transform:none}24%{transform:translateY(5px)}48%{transform:translateY(-1.5px)}70%{transform:translateY(.5px)}}
+@keyframes r75-sink-head{0%,100%{transform:none}14%{transform:translateY(-1.5px)}36%{transform:translateY(4px)}60%{transform:translateY(-1.5px)}82%{transform:translateY(.5px)}}
+@keyframes r75-jolt{0%,100%{transform:none}30%{transform:rotate(8deg)}52%{transform:rotate(-5deg)}74%{transform:rotate(2deg)}}
+@keyframes r75-flap-l{0%,100%{transform:none}28%{transform:rotate(5deg)}54%{transform:rotate(-2.5deg)}78%{transform:rotate(1deg)}}
+@keyframes r75-flap-r{0%,100%{transform:none}28%{transform:rotate(-5deg)}54%{transform:rotate(2.5deg)}78%{transform:rotate(-1deg)}}
+@keyframes r75-chest{0%,100%{transform:none}18%{transform:rotate(4deg)}42%{transform:rotate(-2.6deg)}64%{transform:rotate(1.2deg)}84%{transform:rotate(-.4deg)}}
+@keyframes r75-head{0%,100%{transform:none}13%{transform:rotate(-2.6deg)}34.5%{transform:rotate(5.1deg)}58%{transform:rotate(-3.2deg)}78.5%{transform:rotate(1.45deg)}94%{transform:rotate(-.26deg)}}
+@keyframes r75-ant{0%,100%{transform:none}17.5%{transform:rotate(-1.5deg)}41%{transform:rotate(11deg)}63.5%{transform:rotate(-6.5deg)}82.5%{transform:rotate(3deg)}96.5%{transform:rotate(-.8deg)}}
+@keyframes r75-hang{0%,100%{transform:none}16%{transform:rotate(-3.45deg)}38%{transform:rotate(4deg)}61%{transform:rotate(-2.5deg)}82.5%{transform:rotate(1.1deg)}}
+</style>
   <title id="stack-title">Stack — stacked drum robot</title>
   <desc id="stack-desc">A terracotta tin toy robot built from three stacked drums that widen toward the ground, with two eyes on a slate band and an antenna knob on the head drum, a dial on the chest drum, ring jointed arms with pincers, slate neck rings, and a wide riveted base drum on a slate rim.</desc>
+  <g class="chest" style="transform-origin:256px 296px">
   <!-- Ring jointed arms with pincers -->
-  <path d="m192 196-34 30v40m162-70 34 30v40" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
-  <rect x="146" y="262" width="24" height="16" rx="4" fill="#b45a3a"/>
-  <rect x="342" y="262" width="24" height="16" rx="4" fill="#b45a3a"/>
-  <path d="M150 280q-10 16 2 28m16-28q10 16-2 28M346 280q-10 16 2 28m16-28q10 16-2 28" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
-  <circle cx="158" cy="226" r="10" fill="#3d4853"/>
-  <circle cx="354" cy="226" r="10" fill="#3d4853"/>
-  <circle cx="158" cy="226" r="4.5" fill="#92a1b2"/>
-  <circle cx="354" cy="226" r="4.5" fill="#92a1b2"/>
-  <!-- Wide riveted base drum on a slate rim -->
+  <g class="arm-l" style="transform-origin:192px 196px">
+    <path d="M192 196l-34 30" fill="none" stroke="#697785" stroke-width="12"/>
+    <g class="fore-l" style="transform-origin:158px 226px">
+      <path d="M158 226v40" fill="none" stroke="#697785" stroke-width="12"/>
+      <rect x="146" y="262" width="24" height="16" rx="4" fill="#b45a3a"/>
+      <g class="jaw" style="transform-origin:159px 280px"><path d="M150 280q-10 16 2 28m16-28q10 16-2 28" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
+    </g>
+    <circle cx="158" cy="226" r="10" fill="#3d4853"/>
+    <circle cx="158" cy="226" r="4.5" fill="#92a1b2"/>
+  </g>
+  <g class="arm-r" style="transform-origin:320px 196px">
+    <path d="M320 196l34 30" fill="none" stroke="#697785" stroke-width="12"/>
+    <g class="fore-r" style="transform-origin:354px 226px">
+      <path d="M354 226v40" fill="none" stroke="#697785" stroke-width="12"/>
+      <rect x="342" y="262" width="24" height="16" rx="4" fill="#b45a3a"/>
+      <g class="jaw" style="transform-origin:355px 280px"><path d="M346 280q-10 16 2 28m16-28q10 16-2 28" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
+    </g>
+    <circle cx="354" cy="226" r="10" fill="#3d4853"/>
+    <circle cx="354" cy="226" r="4.5" fill="#92a1b2"/>
+  </g>
   <rect x="222" y="282" width="68" height="20" fill="#3d4853"/>
   <path d="M222 290h68" stroke="#697785" stroke-width="4"/>
+  </g>
+  <!-- Wide riveted base drum on a slate rim -->
   <rect x="166" y="298" width="180" height="162" rx="24" fill="#d9734e"/>
   <ellipse cx="256" cy="304" rx="88" ry="12" fill="#ec9070"/>
   <path d="M318 300q28 4 28 22v114q0 22-24 24h-8V306Z" fill="#b45a3a"/>
@@ -27,16 +77,19 @@
   <circle cx="270" cy="392" r="5" fill="#f6c354"/>
   <rect x="160" y="450" width="192" height="26" rx="8" fill="#3d4853"/>
   <path d="M172 462h168" stroke="#697785" stroke-width="4" stroke-linecap="round"/>
+  <g class="chest" style="transform-origin:256px 296px">
   <!-- Middle chest drum with a dial -->
+  <g class="head" style="transform-origin:256px 146px">
   <rect x="232" y="132" width="48" height="18" fill="#3d4853"/>
   <path d="M232 140h48" stroke="#697785" stroke-width="4"/>
+  </g>
   <rect x="190" y="146" width="132" height="138" rx="20" fill="#d9734e"/>
   <ellipse cx="256" cy="152" rx="64" ry="10" fill="#ec9070"/>
   <path d="M300 148q22 4 22 20v96q0 20-20 20h-6V154Z" fill="#b45a3a"/>
   <circle cx="256" cy="214" r="27" fill="#3d4853"/>
   <circle cx="256" cy="214" r="20" fill="#fff8de"/>
   <path d="M242 202l-4-3m18-5v-5m14 13 4-3" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/>
-  <path d="m256 214 10-12" stroke="#b45a3a" stroke-width="4" stroke-linecap="round"/>
+  <g class="needle" style="transform-origin:256px 214px"><path d="m256 214 10-12" stroke="#b45a3a" stroke-width="4" stroke-linecap="round"/></g>
   <circle cx="256" cy="214" r="4.5" fill="#3d4853"/>
   <circle cx="230" cy="262" r="6" fill="#f6c354"/>
   <circle cx="282" cy="262" r="6" fill="#f6c354"/>
@@ -45,15 +98,22 @@
   <circle cx="192" cy="196" r="7" fill="#92a1b2"/>
   <circle cx="320" cy="196" r="7" fill="#92a1b2"/>
   <!-- Small head drum with an eye band and antenna knob -->
+  <g class="head" style="transform-origin:256px 146px">
+  <g class="ant" style="transform-origin:256px 54px">
   <path d="M256 54V38" stroke="#697785" stroke-width="5"/>
   <circle cx="256" cy="32" r="8" fill="#f6c354"/>
+  </g>
   <rect x="212" y="54" width="88" height="80" rx="16" fill="#d9734e"/>
   <ellipse cx="256" cy="60" rx="42" ry="8" fill="#ec9070"/>
   <path d="M282 56q18 2 18 16v46q0 16-16 16h-4V62Z" fill="#b45a3a"/>
   <rect x="220" y="80" width="72" height="32" rx="16" fill="#3d4853"/>
+  <g class="eyes">
   <circle cx="240" cy="96" r="10" fill="#80d4ef"/>
   <circle cx="272" cy="96" r="10" fill="#80d4ef"/>
   <path d="M246 88a10 10 0 0 1-8 18 10 10 0 0 0 8-18Zm32 0a10 10 0 0 1-8 18 10 10 0 0 0 8-18Z" fill="#4fb0c5"/>
   <circle cx="243" cy="92" r="3.5" fill="#fffae0"/>
   <circle cx="275" cy="92" r="3.5" fill="#fffae0"/>
+  </g>
+  </g>
+  </g>
 </svg>
