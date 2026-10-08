@@ -1,0 +1,95 @@
+<svg width="264" height="452" viewBox="134 24 264 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="welder-title welder-desc">
+  <title id="welder-title">Welder — welding robot</title>
+  <desc id="welder-desc">A safety orange robot with a dome head wearing a single round welding goggle over its one eye on a strap, two gas cylinders with valve caps on its back, a leather apron, a welding torch arm with a small flame fed by a hose and a flat jawed clamp arm, standing on two legs with short tank tread feet.</desc>
+  <!-- Twin gas cylinders on the back -->
+  <rect x="172" y="96" width="16" height="18" fill="#3d4853"/>
+  <rect x="166" y="90" width="28" height="7" rx="3" fill="#697785"/>
+  <rect x="160" y="110" width="40" height="196" rx="16" fill="#697785"/>
+  <rect x="166" y="124" width="7" height="168" rx="3.5" fill="#92a1b2"/>
+  <rect x="160" y="132" width="40" height="10" fill="#f6c354"/>
+  <rect x="324" y="96" width="16" height="18" fill="#3d4853"/>
+  <rect x="318" y="90" width="28" height="7" rx="3" fill="#697785"/>
+  <rect x="312" y="110" width="40" height="196" rx="16" fill="#697785"/>
+  <path d="M340 111q12 3 12 15v164q0 12-12 15Z" fill="#556270"/>
+  <rect x="312" y="132" width="40" height="10" fill="#f6c354"/>
+  <!-- Hose from the valve to the torch -->
+  <path d="M344 104c44 10 56 120 36 196" fill="none" stroke="#3d4853" stroke-width="5" stroke-linecap="round"/>
+  <!-- Legs with tank tread feet -->
+  <rect x="216" y="312" width="80" height="24" fill="#3d4853"/>
+  <path d="M222 336v100M290 336v100" stroke="#697785" stroke-width="14"/>
+  <circle cx="222" cy="340" r="13" fill="#3d4853"/>
+  <circle cx="290" cy="340" r="13" fill="#3d4853"/>
+  <circle cx="222" cy="340" r="5.5" fill="#92a1b2"/>
+  <circle cx="290" cy="340" r="5.5" fill="#92a1b2"/>
+  <circle cx="222" cy="388" r="12" fill="#3d4853"/>
+  <circle cx="290" cy="388" r="12" fill="#3d4853"/>
+  <circle cx="222" cy="388" r="5" fill="#92a1b2"/>
+  <circle cx="290" cy="388" r="5" fill="#92a1b2"/>
+  <rect x="188" y="442" width="68" height="34" rx="17" fill="#3d4853"/>
+  <rect x="256" y="442" width="68" height="34" rx="17" fill="#3d4853"/>
+  <rect x="193" y="447" width="58" height="24" rx="12" fill="none" stroke="#697785" stroke-width="3" stroke-dasharray="4 4"/>
+  <rect x="261" y="447" width="58" height="24" rx="12" fill="none" stroke="#697785" stroke-width="3" stroke-dasharray="4 4"/>
+  <circle cx="203" cy="459" r="7" fill="#697785"/>
+  <circle cx="222" cy="459" r="7" fill="#697785"/>
+  <circle cx="241" cy="459" r="7" fill="#697785"/>
+  <circle cx="271" cy="459" r="7" fill="#697785"/>
+  <circle cx="290" cy="459" r="7" fill="#697785"/>
+  <circle cx="309" cy="459" r="7" fill="#697785"/>
+  <circle cx="203" cy="459" r="3" fill="#92a1b2"/>
+  <circle cx="222" cy="459" r="3" fill="#92a1b2"/>
+  <circle cx="241" cy="459" r="3" fill="#92a1b2"/>
+  <circle cx="271" cy="459" r="3" fill="#92a1b2"/>
+  <circle cx="290" cy="459" r="3" fill="#92a1b2"/>
+  <circle cx="309" cy="459" r="3" fill="#92a1b2"/>
+  <rect x="204" y="428" width="36" height="18" rx="5" fill="#ec7430"/>
+  <rect x="272" y="428" width="36" height="18" rx="5" fill="#ec7430"/>
+  <path d="M230 428h5q5 0 5 5v8q0 5-5 5h-5Zm68 0h5q5 0 5 5v8q0 5-5 5h-5Z" fill="#b9541c"/>
+  <!-- Clamp arm -->
+  <path d="m184 202-24 46" stroke="#697785" stroke-width="14"/>
+  <path d="m160 248-8 46" stroke="#697785" stroke-width="14"/>
+  <circle cx="160" cy="248" r="12" fill="#3d4853"/>
+  <circle cx="160" cy="248" r="5" fill="#92a1b2"/>
+  <rect x="136" y="290" width="32" height="16" rx="4" fill="#b9541c"/>
+  <path d="M138 306h10v30h-10Zm18 0h10v30h-10Z" fill="#3d4853"/>
+  <path d="M138 328h16v8h-16Zm12 0h16v8h-16Z" fill="#3d4853"/>
+  <!-- Welding torch arm with a flame -->
+  <path d="m328 202 26 44" stroke="#697785" stroke-width="14"/>
+  <path d="m354 246 12 44" stroke="#697785" stroke-width="14"/>
+  <circle cx="354" cy="246" r="12" fill="#3d4853"/>
+  <circle cx="354" cy="246" r="5" fill="#92a1b2"/>
+  <path d="m366 292 14 32" stroke="#3d4853" stroke-width="18" stroke-linecap="round"/>
+  <circle cx="372" cy="306" r="5" fill="#f6c354"/>
+  <path d="m380 324 8 22 2 12" fill="none" stroke="#92a1b2" stroke-width="7"/>
+  <rect x="384" y="356" width="12" height="8" rx="2" fill="#3d4853"/>
+  <path d="M390 366c7 9 8 18 0 28-8-10-7-19 0-28Z" fill="#f6c354"/>
+  <!-- Torso with a leather apron -->
+  <rect x="236" y="150" width="40" height="18" fill="#3d4853"/>
+  <rect x="188" y="160" width="136" height="160" rx="16" fill="#ec7430"/>
+  <path d="M204 160h104q16 0 16 16v2H188v-2q0-16 16-16Z" fill="#f89a5c"/>
+  <path d="M306 162q18 2 18 16v126q0 14-18 16Z" fill="#b9541c"/>
+  <path d="M220 184h72v36l14 10v94q0 12-12 12h-76q-12 0-12-12v-94l14-10Z" fill="#b9541c"/>
+  <path d="M220 184h72v6h-72Z" fill="#9e4716"/>
+  <circle cx="228" cy="198" r="3.5" fill="#3d4853"/>
+  <circle cx="284" cy="198" r="3.5" fill="#3d4853"/>
+  <rect x="232" y="266" width="48" height="34" rx="5" fill="#9e4716"/>
+  <path d="M232 272h48" stroke="#3d4853" stroke-width="4"/>
+  <circle cx="188" cy="196" r="15" fill="#3d4853"/>
+  <circle cx="324" cy="196" r="15" fill="#3d4853"/>
+  <circle cx="188" cy="196" r="7" fill="#92a1b2"/>
+  <circle cx="324" cy="196" r="7" fill="#92a1b2"/>
+  <!-- Top knob -->
+  <path d="M256 50V38" stroke="#697785" stroke-width="5"/>
+  <circle cx="256" cy="32" r="8" fill="#f6c354"/>
+  <!-- Dome head with a strapped welding goggle over one eye -->
+  <path d="M202 156V100a54 54 0 0 1 108 0v56Z" fill="#ec7430"/>
+  <path d="M296 63.7A54 54 0 0 1 310 100v56h-14Z" fill="#b9541c"/>
+  <path d="M215 84a44 44 0 0 1 26-30" fill="none" stroke="#f89a5c" stroke-width="8" stroke-linecap="round"/>
+  <rect x="198" y="93" width="116" height="18" rx="4" fill="#3d4853"/>
+  <rect x="196" y="90" width="10" height="24" rx="3" fill="#697785"/>
+  <rect x="306" y="90" width="10" height="24" rx="3" fill="#697785"/>
+  <circle cx="256" cy="102" r="29" fill="#697785"/>
+  <circle cx="256" cy="102" r="22" fill="#3d4853"/>
+  <circle cx="256" cy="102" r="15" fill="#79d6eb"/>
+  <path d="M265.6 91.2a15 15 0 0 1-12.2 25.6 15 15 0 0 0 12.2-25.6Z" fill="#4fb0c5"/>
+  <circle cx="260" cy="96.5" r="4.6" fill="#fffae0"/>
+</svg>

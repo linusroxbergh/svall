@@ -1,0 +1,67 @@
+<svg width="276" height="448" viewBox="122 28 276 448" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="viewer-title viewer-desc">
+  <title id="viewer-title">Viewer — stereo viewer robot</title>
+  <desc id="viewer-desc">A brown bakelite robot whose head is a stereo slide viewer, its eyes looking out through two round eyepieces, with a slide reel standing upright in the slot on top and an advance lever on its side, a rounded torso with a pocket of spare reels, jointed arms with pincers and jointed legs on flat feet.</desc>
+  <!-- Slide reel standing in the head's slot -->
+  <circle cx="256" cy="92" r="64" fill="#6f4329"/>
+  <circle cx="256" cy="92" r="58" fill="#b98559"/>
+  <g fill="#6f4329">
+    <rect x="250" y="41" width="12" height="10" rx="2"/>
+    <rect x="270" y="45.6" width="12" height="10" rx="2" transform="rotate(25.7 276 50.6)"/>
+    <rect x="286" y="58.3" width="12" height="10" rx="2" transform="rotate(51.4 292 63.3)"/>
+    <rect x="294.8" y="76.8" width="12" height="10" rx="2" transform="rotate(77.1 300.8 81.8)"/>
+    <rect x="205.2" y="76.8" width="12" height="10" rx="2" transform="rotate(-77.1 211.2 81.8)"/>
+    <rect x="214" y="58.3" width="12" height="10" rx="2" transform="rotate(-51.4 220 63.3)"/>
+    <rect x="230" y="45.6" width="12" height="10" rx="2" transform="rotate(-25.7 236 50.6)"/>
+  </g>
+  <circle cx="256" cy="92" r="13" fill="#94603b"/>
+  <circle cx="256" cy="92" r="5" fill="#6f4329"/>
+  <rect x="190" y="100" width="132" height="12" rx="4" fill="#3d4853"/>
+  <!-- Jointed arms with pincers -->
+  <path d="m186 236-34 40v50m174-90 34 40v50" fill="none" stroke="#697785" stroke-width="13" stroke-linejoin="round"/>
+  <path d="M143 336q-11 20 3 36m15-36q11 20-3 36M351 336q-11 20 3 36m15-36q11 20-3 36" fill="none" stroke="#3d4853" stroke-width="8" stroke-linecap="round"/>
+  <rect x="138" y="322" width="28" height="16" rx="5" fill="#94603b"/>
+  <rect x="346" y="322" width="28" height="16" rx="5" fill="#94603b"/>
+  <circle cx="152" cy="276" r="12" fill="#3d4853"/>
+  <circle cx="360" cy="276" r="12" fill="#3d4853"/>
+  <circle cx="152" cy="276" r="5" fill="#92a1b2"/>
+  <circle cx="360" cy="276" r="5" fill="#92a1b2"/>
+  <!-- Jointed legs on flat feet -->
+  <rect x="209" y="320" width="26" height="134" fill="#94603b"/>
+  <rect x="277" y="320" width="26" height="134" fill="#94603b"/>
+  <path d="M226 320h9v134h-9Zm68 0h9v134h-9Z" fill="#6f4329"/>
+  <circle cx="222" cy="396" r="15" fill="#3d4853"/>
+  <circle cx="290" cy="396" r="15" fill="#3d4853"/>
+  <circle cx="222" cy="396" r="7" fill="#92a1b2"/>
+  <circle cx="290" cy="396" r="7" fill="#92a1b2"/>
+  <path d="M194 470v-8q0-12 12-12h34q12 0 12 12v8Zm66 0v-8q0-12 12-12h34q12 0 12 12v8Z" fill="#6f4329"/>
+  <path d="M190 466h66v10h-66Zm66 0h66v10h-66Z" fill="#3d4853"/>
+  <!-- Rounded bakelite torso with wrap-around bands -->
+  <rect x="238" y="188" width="36" height="18" fill="#3d4853"/>
+  <rect x="238" y="195" width="36" height="4" fill="#697785"/>
+  <rect x="186" y="202" width="140" height="128" rx="28" fill="#94603b"/>
+  <path d="M214 202h84a28 28 0 0 1 23 12H191a28 28 0 0 1 23-12Z" fill="#b98559"/>
+  <path d="M186 254h140v8H186Zm0 18h140v8H186Zm0 18h140v8H186Z" fill="#6f4329"/>
+  <path d="M310 204.7A28 28 0 0 1 326 230v72a28 28 0 0 1-16 25.3Z" fill="#6f4329"/>
+  <circle cx="286" cy="230" r="7" fill="#f6c354"/>
+  <circle cx="186" cy="232" r="15" fill="#3d4853"/>
+  <circle cx="326" cy="232" r="15" fill="#3d4853"/>
+  <circle cx="186" cy="232" r="6" fill="#92a1b2"/>
+  <circle cx="326" cy="232" r="6" fill="#92a1b2"/>
+  <!-- Stereo viewer head with eyes in the eyepieces -->
+  <rect x="158" y="104" width="196" height="88" rx="30" fill="#94603b"/>
+  <path d="M188 104h136a30 30 0 0 1 24 12H164a30 30 0 0 1 24-12Z" fill="#b98559"/>
+  <path d="M338 107.5A30 30 0 0 1 354 134v28a30 30 0 0 1-16 26.5Z" fill="#6f4329"/>
+  <circle cx="212" cy="148" r="30" fill="#3d4853"/>
+  <circle cx="300" cy="148" r="30" fill="#3d4853"/>
+  <circle cx="212" cy="148" r="22" fill="none" stroke="#697785" stroke-width="3"/>
+  <circle cx="300" cy="148" r="22" fill="none" stroke="#697785" stroke-width="3"/>
+  <circle cx="212" cy="148" r="12.5" fill="#79d6eb"/>
+  <circle cx="300" cy="148" r="12.5" fill="#79d6eb"/>
+  <path d="M220 138.4a12.5 12.5 0 0 1-10.2 21.9 12.5 12.5 0 0 0 10.2-21.9Zm88 0a12.5 12.5 0 0 1-10.2 21.9 12.5 12.5 0 0 0 10.2-21.9Z" fill="#4fb0c5"/>
+  <circle cx="207.5" cy="143.5" r="3.8" fill="#fffae0"/>
+  <circle cx="295.5" cy="143.5" r="3.8" fill="#fffae0"/>
+  <!-- Advance lever -->
+  <path d="m356 140 22 44" stroke="#697785" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="356" cy="140" r="9" fill="#3d4853"/>
+  <circle cx="379" cy="187" r="9" fill="#f6c354"/>
+</svg>

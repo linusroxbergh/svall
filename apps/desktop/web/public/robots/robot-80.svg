@@ -1,0 +1,75 @@
+<svg width="320" height="450" viewBox="106 26 320 450" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="register-title register-desc">
+  <title id="register-title">Register — cash register robot</title>
+  <desc id="register-desc">A burgundy cash register robot with brass trim, its rounded square eyes in the amount window of its display head under a row of pop-up tab flags, a sloped bank of round keys on its chest, a cash drawer with a brass knob, a jointed pincer arm, a crank handle for its other arm, and short stout legs.</desc>
+  <!-- Pop-up tab flags -->
+  <path d="M206 64h4v32h-4Zm24-16h4v48h-4Zm24 24h4v24h-4Zm24-16h4v40h-4Zm24 24h4v16h-4Z" fill="#3d4853"/>
+  <rect x="197" y="42" width="22" height="26" rx="3" fill="#3d4853"/>
+  <rect x="221" y="26" width="22" height="26" rx="3" fill="#3d4853"/>
+  <rect x="245" y="50" width="22" height="26" rx="3" fill="#3d4853"/>
+  <rect x="269" y="34" width="22" height="26" rx="3" fill="#3d4853"/>
+  <rect x="293" y="58" width="22" height="26" rx="3" fill="#3d4853"/>
+  <rect x="200" y="45" width="16" height="20" rx="2" fill="#fff8de"/>
+  <rect x="224" y="29" width="16" height="20" rx="2" fill="#fff8de"/>
+  <rect x="248" y="53" width="16" height="20" rx="2" fill="#f6c354"/>
+  <rect x="272" y="37" width="16" height="20" rx="2" fill="#fff8de"/>
+  <rect x="296" y="61" width="16" height="20" rx="2" fill="#fff8de"/>
+  <path d="M208 50v10m24-26v10m24 14v10m24-26v10m24 14v10" stroke="#3d4853" stroke-width="4" stroke-linecap="round"/>
+  <rect x="194" y="92" width="124" height="10" rx="3" fill="#3d4853"/>
+  <!-- Jointed pincer arm -->
+  <path d="m164 226-34 42v52" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M121 332q-11 20 3 36m15-36q11 20-3 36" fill="none" stroke="#3d4853" stroke-width="8" stroke-linecap="round"/>
+  <rect x="116" y="316" width="28" height="18" rx="5" fill="#913648"/>
+  <circle cx="130" cy="268" r="12" fill="#3d4853"/>
+  <circle cx="130" cy="268" r="5" fill="#92a1b2"/>
+  <!-- Crank handle arm -->
+  <path d="m348 226 32 36" stroke="#697785" stroke-width="14"/>
+  <path d="m380 262 14 74" stroke="#697785" stroke-width="14" stroke-linecap="round"/>
+  <rect x="394" y="326" width="28" height="20" rx="10" fill="#f6c354"/>
+  <circle cx="394" cy="336" r="9" fill="#3d4853"/>
+  <circle cx="380" cy="262" r="17" fill="#3d4853"/>
+  <circle cx="380" cy="262" r="7" fill="#f6c354"/>
+  <!-- Short stout legs -->
+  <rect x="194" y="384" width="40" height="66" fill="#913648"/>
+  <rect x="278" y="384" width="40" height="66" fill="#913648"/>
+  <path d="M220 384h14v66h-14Zm84 0h14v66h-14Z" fill="#6c2333"/>
+  <path d="M194 416h40m44 0h40" stroke="#f6c354" stroke-width="8"/>
+  <path d="M182 470v-8q0-14 14-14h36q14 0 14 14v8Zm84 0v-8q0-14 14-14h36q14 0 14 14v8Z" fill="#6c2333"/>
+  <path d="M178 466h72v10h-72Zm84 0h72v10h-72Z" fill="#3d4853"/>
+  <!-- Register body with keys and a cash drawer -->
+  <rect x="234" y="176" width="44" height="18" fill="#3d4853"/>
+  <rect x="164" y="188" width="184" height="204" rx="16" fill="#913648"/>
+  <path d="M180 188h152q16 0 16 16v2H164v-2q0-16 16-16Z" fill="#b65463"/>
+  <path d="M330 189q18 1 18 17v170q0 16-18 16Z" fill="#6c2333"/>
+  <path d="M190 210h132l10 96H180Z" fill="#3d4853"/>
+  <g fill="#fff8de">
+    <circle cx="206" cy="226" r="7.5"/><circle cx="226" cy="226" r="7.5"/><circle cx="246" cy="226" r="7.5"/><circle cx="266" cy="226" r="7.5"/><circle cx="286" cy="226" r="7.5"/><circle cx="306" cy="226" r="7.5"/>
+    <circle cx="206" cy="270" r="7.5"/><circle cx="226" cy="270" r="7.5"/><circle cx="246" cy="270" r="7.5"/><circle cx="266" cy="270" r="7.5"/><circle cx="286" cy="270" r="7.5"/><circle cx="306" cy="270" r="7.5"/>
+  </g>
+  <g fill="#f6c354">
+    <circle cx="196" cy="248" r="7.5"/><circle cx="216" cy="248" r="7.5"/><circle cx="236" cy="248" r="7.5"/><circle cx="256" cy="248" r="7.5"/><circle cx="276" cy="248" r="7.5"/><circle cx="296" cy="248" r="7.5"/><circle cx="316" cy="248" r="7.5"/>
+    <circle cx="196" cy="292" r="7.5"/><circle cx="216" cy="292" r="7.5"/><circle cx="236" cy="292" r="7.5"/><circle cx="256" cy="292" r="7.5"/><circle cx="276" cy="292" r="7.5"/><circle cx="296" cy="292" r="7.5"/><circle cx="316" cy="292" r="7.5"/>
+  </g>
+  <path d="M164 316h184" stroke="#f6c354" stroke-width="5"/>
+  <rect x="172" y="326" width="168" height="50" rx="6" fill="#3d4853"/>
+  <rect x="177" y="331" width="158" height="40" rx="4" fill="#913648"/>
+  <path d="M181 331h150q4 0 4 4v2H177v-2q0-4 4-4Z" fill="#b65463"/>
+  <circle cx="256" cy="351" r="9" fill="#f6c354"/>
+  <circle cx="256" cy="351" r="3.5" fill="#3d4853"/>
+  <circle cx="164" cy="222" r="16" fill="#3d4853"/>
+  <circle cx="348" cy="222" r="16" fill="#3d4853"/>
+  <circle cx="164" cy="222" r="7" fill="#92a1b2"/>
+  <circle cx="348" cy="222" r="7" fill="#92a1b2"/>
+  <!-- Display head with eyes in the amount window -->
+  <rect x="184" y="100" width="144" height="80" rx="12" fill="#913648"/>
+  <path d="M196 100h120q12 0 12 12v2H184v-2q0-12 12-12Z" fill="#b65463"/>
+  <path d="M312 101q16 1 16 13v54q0 12-16 12Z" fill="#6c2333"/>
+  <circle cx="190" cy="100" r="8" fill="#f6c354"/>
+  <circle cx="322" cy="100" r="8" fill="#f6c354"/>
+  <path d="M200 166v-30q0-18 18-18h76q18 0 18 18v30Z" fill="#f6c354"/>
+  <path d="M206 160v-24q0-12 12-12h76q12 0 12 12v24Z" fill="#3d4853"/>
+  <rect x="225" y="131" width="22" height="22" rx="7" fill="#79d6eb"/>
+  <rect x="265" y="131" width="22" height="22" rx="7" fill="#79d6eb"/>
+  <path d="M243.6 132.8a12 12 0 0 1-9.8 21a12 12 0 0 0 9.8-21Zm40 0a12 12 0 0 1-9.8 21a12 12 0 0 0 9.8-21Z" fill="#4fb0c5"/>
+  <circle cx="239.5" cy="137.5" r="3.8" fill="#fffae0"/>
+  <circle cx="279.5" cy="137.5" r="3.8" fill="#fffae0"/>
+</svg>
