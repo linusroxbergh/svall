@@ -1,0 +1,75 @@
+<svg width="340" height="418" viewBox="86 60 340 418" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="boombox-title boombox-desc">
+  <title id="boombox-title">Boombox — portable stereo robot</title>
+  <desc id="boombox-desc">A mustard robot whose body is a wide 1980s boombox with two speaker cones either side of a cassette window, a tuner strip and a row of keys, a carry handle arching over the top holding a small square head with two round eyes, a telescopic aerial, ring jointed arms with pincers, and short legs on flat feet.</desc>
+  <!-- Telescopic aerial -->
+  <path d="m372 198 14-86" stroke="#92a1b2" stroke-width="4"/>
+  <circle cx="386" cy="110" r="4.5" fill="#3d4853"/>
+  <!-- Ring jointed arms with pincers -->
+  <path d="m124 262-18 20v52m282-72 18 20v52" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M98 344q-10 14 2 26m16-26q10 14-2 26M397 344q-10 14 2 26m16-26q10 14-2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+  <rect x="94" y="330" width="24" height="16" rx="4" fill="#daac49"/>
+  <rect x="394" y="330" width="24" height="16" rx="4" fill="#daac49"/>
+  <path d="M112 330h1q5 0 5 5v6q0 5-5 5h-1Zm300 0h1q5 0 5 5v6q0 5-5 5h-1Z" fill="#bc943d"/>
+  <circle cx="106" cy="282" r="10" fill="#3d4853"/>
+  <circle cx="406" cy="282" r="10" fill="#3d4853"/>
+  <circle cx="106" cy="282" r="4" fill="#92a1b2"/>
+  <circle cx="406" cy="282" r="4" fill="#92a1b2"/>
+  <!-- Short legs on flat feet -->
+  <path d="M212 336v104m88-104v104" stroke="#697785" stroke-width="14"/>
+  <circle cx="212" cy="388" r="12" fill="#3d4853"/>
+  <circle cx="300" cy="388" r="12" fill="#3d4853"/>
+  <circle cx="212" cy="388" r="5" fill="#92a1b2"/>
+  <circle cx="300" cy="388" r="5" fill="#92a1b2"/>
+  <path d="M186 470v-14q0-12 12-12h28q12 0 12 12v14Zm88 0v-14q0-12 12-12h28q12 0 12 12v14Z" fill="#daac49"/>
+  <path d="M226 444q12 0 12 12v14h-10v-26Zm88 0q12 0 12 12v14h-10v-26Z" fill="#bc943d"/>
+  <path d="M182 466h60v10h-60Zm88 0h60v10h-60Z" fill="#3d4853"/>
+  <!-- Carry handle and head mount -->
+  <path d="M150 200v-32q0-16 16-16h180q16 0 16 16v32" fill="none" stroke="#3d4853" stroke-width="12"/>
+  <rect x="246" y="126" width="20" height="30" fill="#3d4853"/>
+  <!-- Boombox body -->
+  <rect x="124" y="196" width="264" height="134" rx="16" fill="#daac49"/>
+  <path d="M140 196h232q16 0 16 16v2H124v-2q0-16 16-16Z" fill="#f6c354"/>
+  <path d="M368 198q20 2 20 16v100q0 16-20 16Z" fill="#bc943d"/>
+  <rect x="140" y="326" width="232" height="10" rx="4" fill="#3d4853"/>
+  <circle cx="182" cy="266" r="42" fill="#3d4853"/>
+  <circle cx="330" cy="266" r="42" fill="#3d4853"/>
+  <circle cx="182" cy="266" r="34" fill="#697785"/>
+  <circle cx="330" cy="266" r="34" fill="#697785"/>
+  <circle cx="182" cy="266" r="26" fill="#3d4853"/>
+  <circle cx="330" cy="266" r="26" fill="#3d4853"/>
+  <circle cx="182" cy="266" r="11" fill="#697785"/>
+  <circle cx="330" cy="266" r="11" fill="#697785"/>
+  <circle cx="182" cy="266" r="4" fill="#3d4853"/>
+  <circle cx="330" cy="266" r="4" fill="#3d4853"/>
+  <rect x="230" y="220" width="52" height="12" rx="3" fill="#3d4853"/>
+  <path d="M236 226h40" stroke="#697785" stroke-width="2"/>
+  <rect x="261" y="222" width="3" height="8" fill="#f6c354"/>
+  <rect x="230" y="238" width="52" height="50" rx="5" fill="#3d4853"/>
+  <rect x="235" y="246" width="42" height="34" rx="3" fill="#fff8de"/>
+  <rect x="244" y="256" width="24" height="14" rx="3" fill="#697785"/>
+  <circle cx="246" cy="263" r="7" fill="#3d4853"/>
+  <circle cx="266" cy="263" r="7" fill="#3d4853"/>
+  <circle cx="246" cy="263" r="3" fill="#92a1b2"/>
+  <circle cx="266" cy="263" r="3" fill="#92a1b2"/>
+  <rect x="231" y="296" width="10" height="10" rx="2" fill="#3d4853"/>
+  <rect x="244" y="296" width="10" height="10" rx="2" fill="#3d4853"/>
+  <rect x="257" y="296" width="10" height="10" rx="2" fill="#3d4853"/>
+  <rect x="270" y="296" width="10" height="10" rx="2" fill="#f6c354"/>
+  <circle cx="124" cy="262" r="15" fill="#3d4853"/>
+  <circle cx="388" cy="262" r="15" fill="#3d4853"/>
+  <circle cx="124" cy="262" r="6" fill="#92a1b2"/>
+  <circle cx="388" cy="262" r="6" fill="#92a1b2"/>
+  <!-- Small square head with two round eyes -->
+  <rect x="210" y="86" width="10" height="26" rx="3" fill="#3d4853"/>
+  <rect x="292" y="86" width="10" height="26" rx="3" fill="#3d4853"/>
+  <rect x="218" y="64" width="76" height="66" rx="10" fill="#daac49"/>
+  <path d="M228 64h56q10 0 10 10v4H218v-4q0-10 10-10Z" fill="#f6c354"/>
+  <path d="M280 64h4q10 0 10 10v46q0 10-10 10h-4Z" fill="#bc943d"/>
+  <circle cx="240" cy="100" r="13" fill="#3d4853"/>
+  <circle cx="272" cy="100" r="13" fill="#3d4853"/>
+  <circle cx="240" cy="100" r="8" fill="#88dbea"/>
+  <circle cx="272" cy="100" r="8" fill="#88dbea"/>
+  <path d="M245 94a8 8 0 0 1-6 14 8 8 0 0 0 6-14Zm32 0a8 8 0 0 1-6 14 8 8 0 0 0 6-14Z" fill="#4fb0c5"/>
+  <circle cx="242" cy="97" r="2.8" fill="#fffae0"/>
+  <circle cx="274" cy="97" r="2.8" fill="#fffae0"/>
+</svg>

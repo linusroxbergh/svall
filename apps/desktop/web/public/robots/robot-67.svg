@@ -1,0 +1,66 @@
+<svg width="244" height="420" viewBox="134 58 244 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="reel-title reel-desc">
+  <title id="reel-title">Reel — film projector robot</title>
+  <desc id="reel-desc">A forest green robot whose head is a film projector with two spoked reels standing on top and two round lens eyes, a boxy body with a dial, a lever switch and vent slats, ring jointed arms with pincers, and legs with ring knees on flat feet.</desc>
+  <!-- Film reels -->
+  <rect x="208" y="96" width="12" height="26" fill="#697785"/>
+  <rect x="292" y="96" width="12" height="26" fill="#697785"/>
+  <circle cx="214" cy="90" r="30" fill="#3d4853"/>
+  <circle cx="298" cy="90" r="30" fill="#3d4853"/>
+  <path d="M214 90v-24m0 24 20.8 12M214 90l-20.8 12M298 90v-24m0 24 20.8 12M298 90l-20.8 12" stroke="#92a1b2" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="214" cy="90" r="7" fill="#92a1b2"/>
+  <circle cx="298" cy="90" r="7" fill="#92a1b2"/>
+  <circle cx="214" cy="90" r="3" fill="#3d4853"/>
+  <circle cx="298" cy="90" r="3" fill="#3d4853"/>
+  <!-- Ring jointed arms with pincers -->
+  <path d="m180 232-30 44v48m182-92 30 44v48" fill="none" stroke="#697785" stroke-width="13" stroke-linejoin="round"/>
+  <rect x="138" y="318" width="24" height="14" rx="4" fill="#3f8a55"/>
+  <rect x="350" y="318" width="24" height="14" rx="4" fill="#3f8a55"/>
+  <path d="M142 332q-8 16 3 28m14-28q8 16-3 28M354 332q-8 16 3 28m14-28q8 16-3 28" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="150" cy="276" r="12" fill="#3d4853"/>
+  <circle cx="362" cy="276" r="12" fill="#3d4853"/>
+  <circle cx="150" cy="276" r="5" fill="#92a1b2"/>
+  <circle cx="362" cy="276" r="5" fill="#92a1b2"/>
+  <!-- Legs with ring knees and flat feet -->
+  <path d="M226 344v108m60-108v108" stroke="#697785" stroke-width="13"/>
+  <circle cx="226" cy="398" r="13" fill="#3d4853"/>
+  <circle cx="286" cy="398" r="13" fill="#3d4853"/>
+  <circle cx="226" cy="398" r="6" fill="#92a1b2"/>
+  <circle cx="286" cy="398" r="6" fill="#92a1b2"/>
+  <path d="M206 452h40q6 0 6 6v10h-52v-10q0-6 6-6Zm60 0h40q6 0 6 6v10h-52v-10q0-6 6-6Z" fill="#3f8a55"/>
+  <path d="M238 452h8q6 0 6 6v10h-14Zm60 0h8q6 0 6 6v10h-14Z" fill="#2c6b40"/>
+  <path d="M198 468h56v8h-56Zm60 0h56v8h-56Z" fill="#3d4853"/>
+  <!-- Boxy body with a dial and a lever switch -->
+  <rect x="238" y="194" width="36" height="20" fill="#3d4853"/>
+  <rect x="180" y="210" width="152" height="136" rx="14" fill="#3f8a55"/>
+  <path d="M194 210h124q14 0 14 14v4H180v-4q0-14 14-14Z" fill="#5aa06a"/>
+  <path d="M314 210h4q14 0 14 14v108q0 14-14 14h-4Z" fill="#2c6b40"/>
+  <circle cx="222" cy="254" r="14" fill="#3d4853"/>
+  <circle cx="222" cy="254" r="10" fill="#fff8de"/>
+  <path d="m222 254 6-6" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/>
+  <rect x="274" y="236" width="12" height="40" rx="6" fill="#3d4853"/>
+  <path d="m280 264 12-24" stroke="#697785" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="293" cy="238" r="6" fill="#f6c354"/>
+  <circle cx="214" cy="292" r="5" fill="#f6c354"/>
+  <circle cx="232" cy="292" r="5" fill="#79d6eb"/>
+  <path d="M206 312h100m-100 12h100" stroke="#2c6b40" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="192" cy="222" r="3.5" fill="#2c6b40"/>
+  <circle cx="320" cy="222" r="3.5" fill="#2c6b40"/>
+  <rect x="192" y="340" width="128" height="12" rx="4" fill="#3d4853"/>
+  <circle cx="180" cy="232" r="18" fill="#3d4853"/>
+  <circle cx="332" cy="232" r="18" fill="#3d4853"/>
+  <circle cx="180" cy="232" r="8" fill="#92a1b2"/>
+  <circle cx="332" cy="232" r="8" fill="#92a1b2"/>
+  <!-- Projector head with two lens eyes -->
+  <rect x="196" y="118" width="120" height="80" rx="12" fill="#3f8a55"/>
+  <path d="M208 118h96q12 0 12 12v4H196v-4q0-12 12-12Z" fill="#5aa06a"/>
+  <path d="M300 118h4q12 0 12 12v56q0 12-12 12h-4Z" fill="#2c6b40"/>
+  <circle cx="234" cy="158" r="18" fill="#3d4853"/>
+  <circle cx="278" cy="158" r="18" fill="#3d4853"/>
+  <circle cx="234" cy="158" r="14" fill="#697785"/>
+  <circle cx="278" cy="158" r="14" fill="#697785"/>
+  <circle cx="234" cy="158" r="10" fill="#7fd9e3"/>
+  <circle cx="278" cy="158" r="10" fill="#7fd9e3"/>
+  <path d="M240 150a10 10 0 0 1-8 18 10 10 0 0 0 8-18Zm44 0a10 10 0 0 1-8 18 10 10 0 0 0 8-18Z" fill="#4fb0c5"/>
+  <circle cx="237" cy="154" r="3.5" fill="#fffae0"/>
+  <circle cx="281" cy="154" r="3.5" fill="#fffae0"/>
+</svg>

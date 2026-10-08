@@ -1,0 +1,91 @@
+<svg width="272" height="426" viewBox="120 52 272 426" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="mainframe-title mainframe-desc">
+  <title id="mainframe-title">Mainframe — computer cabinet robot</title>
+  <desc id="mainframe-desc">A steel blue robot whose body is a tall 1960s computer cabinet with two tape reels behind a window and a panel of yellow and cyan lights, a small square head with two round eyes and a short antenna, ring jointed arms with three finger hands, and short legs on flat feet.</desc>
+  <!-- Antenna -->
+  <path d="M256 92V70" stroke="#697785" stroke-width="6"/>
+  <circle cx="256" cy="64" r="9" fill="#f6c354"/>
+  <circle cx="253" cy="61" r="3" fill="#fffae0"/>
+  <!-- Ring jointed arms with three finger hands -->
+  <path d="m172 214-30 48v50m198-98 30 48v50" fill="none" stroke="#697785" stroke-width="13" stroke-linejoin="round"/>
+  <path d="M134 330l-5 20M142 332v22M150 330l5 20M378 330l5 20M370 332v22M362 330l-5 20" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+  <rect x="128" y="310" width="28" height="22" rx="5" fill="#6f86a0"/>
+  <rect x="356" y="310" width="28" height="22" rx="5" fill="#6f86a0"/>
+  <path d="M148 310h3q5 0 5 5v12q0 5-5 5h-3Zm228 0h3q5 0 5 5v12q0 5-5 5h-3Z" fill="#536a83"/>
+  <circle cx="142" cy="262" r="12" fill="#3d4853"/>
+  <circle cx="370" cy="262" r="12" fill="#3d4853"/>
+  <circle cx="142" cy="262" r="5" fill="#92a1b2"/>
+  <circle cx="370" cy="262" r="5" fill="#92a1b2"/>
+  <!-- Short legs on flat feet -->
+  <rect x="206" y="404" width="32" height="46" fill="#6f86a0"/>
+  <rect x="274" y="404" width="32" height="46" fill="#6f86a0"/>
+  <path d="M228 404h10v46h-10Zm68 0h10v46h-10Z" fill="#536a83"/>
+  <path d="M206 424h32v9h-32Zm68 0h32v9h-32Z" fill="#3d4853"/>
+  <path d="M194 468v-12q0-10 10-10h36q10 0 10 10v12Zm68 0v-12q0-10 10-10h36q10 0 10 10v12Z" fill="#6f86a0"/>
+  <path d="M236 446h4q10 0 10 10v12h-14Zm68 0h4q10 0 10 10v12h-14Z" fill="#536a83"/>
+  <path d="M190 466h64v10h-64Zm68 0h64v10h-64Z" fill="#3d4853"/>
+  <!-- Square head with two round eyes -->
+  <rect x="238" y="156" width="36" height="22" fill="#3d4853"/>
+  <rect x="232" y="166" width="48" height="7" rx="3" fill="#697785"/>
+  <rect x="204" y="110" width="12" height="30" rx="4" fill="#3d4853"/>
+  <rect x="296" y="110" width="12" height="30" rx="4" fill="#3d4853"/>
+  <rect x="214" y="92" width="84" height="68" rx="10" fill="#6f86a0"/>
+  <path d="M224 92h64q10 0 10 10v6H214v-6q0-10 10-10Z" fill="#8fa3b8"/>
+  <path d="M282 92h6q10 0 10 10v48q0 10-10 10h-6Z" fill="#536a83"/>
+  <circle cx="237" cy="128" r="15" fill="#3d4853"/>
+  <circle cx="275" cy="128" r="15" fill="#3d4853"/>
+  <circle cx="237" cy="128" r="9" fill="#70d0e8"/>
+  <circle cx="275" cy="128" r="9" fill="#70d0e8"/>
+  <path d="M243 122a9 9 0 0 1-7 15 9 9 0 0 0 7-15Zm38 0a9 9 0 0 1-7 15 9 9 0 0 0 7-15Z" fill="#4fb0c5"/>
+  <circle cx="240" cy="124" r="3" fill="#fffae0"/>
+  <circle cx="278" cy="124" r="3" fill="#fffae0"/>
+  <!-- Computer cabinet body -->
+  <rect x="172" y="172" width="168" height="236" rx="12" fill="#6f86a0"/>
+  <path d="M184 172h144q12 0 12 12v4H172v-4q0-12 12-12Z" fill="#8fa3b8"/>
+  <path d="M322 172h6q12 0 12 12v212q0 12-12 12h-6Z" fill="#536a83"/>
+  <!-- Tape reels behind a window -->
+  <rect x="188" y="196" width="136" height="82" rx="8" fill="#3d4853"/>
+  <path d="M222 263h68" stroke="#697785" stroke-width="3"/>
+  <circle cx="222" cy="236" r="27" fill="#c9d3dc"/>
+  <circle cx="290" cy="236" r="27" fill="#c9d3dc"/>
+  <circle cx="222" cy="222" r="6" fill="#3d4853"/>
+  <circle cx="234.1" cy="243" r="6" fill="#3d4853"/>
+  <circle cx="209.9" cy="243" r="6" fill="#3d4853"/>
+  <circle cx="290" cy="222" r="6" fill="#3d4853"/>
+  <circle cx="302.1" cy="243" r="6" fill="#3d4853"/>
+  <circle cx="277.9" cy="243" r="6" fill="#3d4853"/>
+  <circle cx="222" cy="236" r="5" fill="#697785"/>
+  <circle cx="290" cy="236" r="5" fill="#697785"/>
+  <rect x="249" y="258" width="14" height="10" rx="2" fill="#f6c354"/>
+  <!-- Panel of blinking lights -->
+  <rect x="188" y="290" width="136" height="58" rx="6" fill="#3d4853"/>
+  <circle cx="202" cy="304" r="4.5" fill="#f6c354"/>
+  <circle cx="224" cy="304" r="4.5" fill="#79d6eb"/>
+  <circle cx="246" cy="304" r="4.5" fill="#697785"/>
+  <circle cx="268" cy="304" r="4.5" fill="#f6c354"/>
+  <circle cx="290" cy="304" r="4.5" fill="#697785"/>
+  <circle cx="312" cy="304" r="4.5" fill="#79d6eb"/>
+  <circle cx="202" cy="319" r="4.5" fill="#697785"/>
+  <circle cx="224" cy="319" r="4.5" fill="#f6c354"/>
+  <circle cx="246" cy="319" r="4.5" fill="#79d6eb"/>
+  <circle cx="268" cy="319" r="4.5" fill="#697785"/>
+  <circle cx="290" cy="319" r="4.5" fill="#79d6eb"/>
+  <circle cx="312" cy="319" r="4.5" fill="#f6c354"/>
+  <circle cx="202" cy="334" r="4.5" fill="#79d6eb"/>
+  <circle cx="224" cy="334" r="4.5" fill="#697785"/>
+  <circle cx="246" cy="334" r="4.5" fill="#f6c354"/>
+  <circle cx="268" cy="334" r="4.5" fill="#79d6eb"/>
+  <circle cx="290" cy="334" r="4.5" fill="#f6c354"/>
+  <circle cx="312" cy="334" r="4.5" fill="#697785"/>
+  <!-- Knobs and vents -->
+  <circle cx="208" cy="374" r="10" fill="#3d4853"/>
+  <circle cx="238" cy="374" r="10" fill="#3d4853"/>
+  <circle cx="208" cy="374" r="4" fill="#92a1b2"/>
+  <circle cx="238" cy="374" r="4" fill="#92a1b2"/>
+  <path d="M266 366h50m-50 10h50m-50 10h50" stroke="#536a83" stroke-width="4" stroke-linecap="round"/>
+  <rect x="180" y="398" width="152" height="12" rx="4" fill="#3d4853"/>
+  <!-- Shoulder ring joints -->
+  <circle cx="172" cy="214" r="18" fill="#3d4853"/>
+  <circle cx="340" cy="214" r="18" fill="#3d4853"/>
+  <circle cx="172" cy="214" r="8" fill="#92a1b2"/>
+  <circle cx="340" cy="214" r="8" fill="#92a1b2"/>
+</svg>

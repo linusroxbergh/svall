@@ -1,0 +1,59 @@
+<svg width="232" height="420" viewBox="140 58 232 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="mic-title mic-desc">
+  <title id="mic-title">Mic — microphone robot</title>
+  <desc id="mic-desc">A chrome robot whose head is a vintage capsule microphone, an upright oval slotted grille held in a ring yoke with two eyes on a slate band, a rounded body with an on air lamp, a dial and knobs, ring jointed arms with three finger hands, and legs on round feet.</desc>
+  <!-- Ring jointed arms with three finger hands -->
+  <path d="m190 250-28 40v44m160-84 28 40v44" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+  <rect x="150" y="328" width="24" height="14" rx="4" fill="#3d4853"/>
+  <rect x="338" y="328" width="24" height="14" rx="4" fill="#3d4853"/>
+  <path d="M154 342l-4 16M162 344v18M170 342l4 16M342 342l-4 16M350 344v18M358 342l4 16" stroke="#3d4853" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="162" cy="290" r="11" fill="#3d4853"/>
+  <circle cx="350" cy="290" r="11" fill="#3d4853"/>
+  <circle cx="162" cy="290" r="5" fill="#92a1b2"/>
+  <circle cx="350" cy="290" r="5" fill="#92a1b2"/>
+  <!-- Legs on round feet -->
+  <path d="M230 350v96m52-96v96" stroke="#697785" stroke-width="12"/>
+  <circle cx="230" cy="398" r="12" fill="#3d4853"/>
+  <circle cx="282" cy="398" r="12" fill="#3d4853"/>
+  <circle cx="230" cy="398" r="5" fill="#92a1b2"/>
+  <circle cx="282" cy="398" r="5" fill="#92a1b2"/>
+  <path d="M204 468v-6q0-24 26-24t26 24v6Zm52 0v-6q0-24 26-24t26 24v6Z" fill="#d3dbe3"/>
+  <path d="M242 440q14 6 14 22v6h-10v-6q0-14-4-22Zm52 0q14 6 14 22v6h-10v-6q0-14-4-22Z" fill="#a7b4c1"/>
+  <rect x="200" y="466" width="112" height="10" rx="2" fill="#3d4853"/>
+  <!-- Rounded body with an on air lamp -->
+  <rect x="246" y="208" width="20" height="26" fill="#3d4853"/>
+  <rect x="190" y="228" width="132" height="124" rx="30" fill="#d3dbe3"/>
+  <path d="M220 228h72q30 0 30 30H190q0-30 30-30Z" fill="#eef2f6"/>
+  <path d="M298 232q24 8 24 34v56q0 26-24 30Z" fill="#a7b4c1"/>
+  <rect x="226" y="246" width="60" height="22" rx="11" fill="#3d4853"/>
+  <rect x="232" y="251" width="48" height="12" rx="6" fill="#f6c354"/>
+  <circle cx="236" cy="300" r="14" fill="#3d4853"/>
+  <circle cx="236" cy="300" r="10" fill="#fff8de"/>
+  <path d="m236 300-5-6" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="276" cy="300" r="8" fill="#3d4853"/>
+  <circle cx="298" cy="300" r="8" fill="#3d4853"/>
+  <circle cx="276" cy="300" r="3" fill="#92a1b2"/>
+  <circle cx="298" cy="300" r="3" fill="#92a1b2"/>
+  <path d="M214 326h84m-84 10h84" stroke="#a7b4c1" stroke-width="4" stroke-linecap="round"/>
+  <rect x="204" y="346" width="104" height="12" rx="4" fill="#3d4853"/>
+  <circle cx="190" cy="250" r="16" fill="#3d4853"/>
+  <circle cx="322" cy="250" r="16" fill="#3d4853"/>
+  <circle cx="190" cy="250" r="7" fill="#92a1b2"/>
+  <circle cx="322" cy="250" r="7" fill="#92a1b2"/>
+  <!-- Ring yoke -->
+  <path d="M196 128v40q0 46 60 46t60-46v-40" fill="none" stroke="#697785" stroke-width="10"/>
+  <!-- Capsule microphone head with a slotted grille -->
+  <ellipse cx="256" cy="128" rx="52" ry="66" fill="#d3dbe3"/>
+  <path d="M234 72h44M220 86h72M213 100h86M214 160h84M222 174h68M234 186h44" stroke="#a7b4c1" stroke-width="5" stroke-linecap="round"/>
+  <path d="M212 96a52 66 0 0 1 32-30" fill="none" stroke="#eef2f6" stroke-width="9" stroke-linecap="round"/>
+  <path d="M290 78.1a52 66 0 0 1 0 99.8 30 66 0 0 0 0-99.8Z" fill="#a7b4c1"/>
+  <rect x="208" y="114" width="96" height="34" rx="17" fill="#3d4853"/>
+  <circle cx="236" cy="131" r="10" fill="#80d4ef"/>
+  <circle cx="276" cy="131" r="10" fill="#80d4ef"/>
+  <path d="M242 123a10 10 0 0 1-8 18 10 10 0 0 0 8-18Zm40 0a10 10 0 0 1-8 18 10 10 0 0 0 8-18Z" fill="#4fb0c5"/>
+  <circle cx="239" cy="127" r="3.5" fill="#fffae0"/>
+  <circle cx="279" cy="127" r="3.5" fill="#fffae0"/>
+  <circle cx="196" cy="128" r="10" fill="#3d4853"/>
+  <circle cx="316" cy="128" r="10" fill="#3d4853"/>
+  <circle cx="196" cy="128" r="4" fill="#92a1b2"/>
+  <circle cx="316" cy="128" r="4" fill="#92a1b2"/>
+</svg>

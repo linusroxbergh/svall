@@ -1,0 +1,59 @@
+<svg width="260" height="422" viewBox="134 56 260 422" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pump-title pump-desc">
+  <title id="pump-title">Pump — petrol pump robot</title>
+  <desc id="pump-desc">An emerald robot whose body is a vintage petrol pump cabinet with a number window, whose head is a round green glass globe with two eyes on a band inside, with a ribbed hose arm ending in a nozzle, a ring jointed arm with a pincer, and short legs on flat feet.</desc>
+  <!-- Ribbed hose arm with a nozzle -->
+  <path d="M322 252c42 4 54 40 50 88" fill="none" stroke="#3d4853" stroke-width="18"/>
+  <path d="M322 252c42 4 54 40 50 88" fill="none" stroke="#697785" stroke-width="18" stroke-dasharray="6 6"/>
+  <path d="M366 372h12l-3 24h-6Z" fill="#697785"/>
+  <rect x="358" y="340" width="28" height="34" rx="6" fill="#3d4853"/>
+  <rect x="364" y="348" width="16" height="6" rx="3" fill="#f6c354"/>
+  <circle cx="372" cy="340" r="11" fill="#3d4853"/>
+  <circle cx="372" cy="340" r="5" fill="#92a1b2"/>
+  <!-- Ring jointed arm with a pincer -->
+  <path d="m186 240-32 40v40" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M148 332q-10 18 4 30m8-30q10 18-4 30" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+  <rect x="142" y="316" width="24" height="16" rx="4" fill="#3f9a6e"/>
+  <path d="M158 316h4q4 0 4 4v8q0 4-4 4h-4Z" fill="#2c7752"/>
+  <circle cx="154" cy="280" r="11" fill="#3d4853"/>
+  <circle cx="154" cy="280" r="5" fill="#92a1b2"/>
+  <!-- Short legs on flat feet -->
+  <path d="M226 404v48m60-48v48" stroke="#697785" stroke-width="13"/>
+  <circle cx="226" cy="428" r="11" fill="#3d4853"/>
+  <circle cx="286" cy="428" r="11" fill="#3d4853"/>
+  <circle cx="226" cy="428" r="5" fill="#92a1b2"/>
+  <circle cx="286" cy="428" r="5" fill="#92a1b2"/>
+  <path d="M200 466v-10q0-8 8-8h36q8 0 8 8v10Zm60 0v-10q0-8 8-8h36q8 0 8 8v10Z" fill="#3f9a6e"/>
+  <path d="M238 448h6q8 0 8 8v10h-14Zm60 0h6q8 0 8 8v10h-14Z" fill="#2c7752"/>
+  <path d="M196 464h60v12h-60Zm60 0h60v12h-60Z" fill="#3d4853"/>
+  <!-- Petrol pump cabinet -->
+  <path d="M186 404V206q0-40 40-40h60q40 0 40 40v198Z" fill="#3f9a6e"/>
+  <path d="M306 172q20 12 20 34v198h-20Z" fill="#2c7752"/>
+  <path d="M198 206q2-26 30-30" fill="none" stroke="#5ab88a" stroke-width="8" stroke-linecap="round"/>
+  <rect x="200" y="204" width="112" height="64" rx="8" fill="#3d4853"/>
+  <rect x="206" y="210" width="100" height="52" rx="5" fill="#fff8de"/>
+  <path d="M217 218h14v16h-14Zm22 0h14v16h-14Zm22 0h14v16h-14Zm22 0h14v16h-14ZM217 240h14v16h-14Zm22 0h14v16h-14Zm22 0h14v16h-14Zm22 0h14v16h-14Z" fill="#3d4853"/>
+  <rect x="186" y="286" width="140" height="14" fill="#5ab88a"/>
+  <rect x="306" y="286" width="20" height="14" fill="#3f9a6e"/>
+  <circle cx="224" cy="332" r="11" fill="#3d4853"/>
+  <circle cx="224" cy="332" r="5" fill="#92a1b2"/>
+  <circle cx="256" cy="332" r="6" fill="#f6c354"/>
+  <circle cx="282" cy="332" r="6" fill="#79d6eb"/>
+  <path d="M208 362h96m-96 12h96" stroke="#2c7752" stroke-width="4" stroke-linecap="round"/>
+  <rect x="186" y="392" width="140" height="14" rx="3" fill="#3d4853"/>
+  <!-- Joints where the arms meet the cabinet -->
+  <circle cx="186" cy="240" r="16" fill="#3d4853"/>
+  <circle cx="186" cy="240" r="7" fill="#92a1b2"/>
+  <circle cx="324" cy="252" r="14" fill="#3d4853"/>
+  <circle cx="324" cy="252" r="6" fill="#92a1b2"/>
+  <!-- Glass globe head -->
+  <rect x="226" y="152" width="60" height="16" rx="4" fill="#3d4853"/>
+  <circle cx="256" cy="110" r="50" fill="#5ab88a"/>
+  <path d="M276 64a50 50 0 0 1-20 96 50 50 0 0 0 20-96Z" fill="#3f9a6e"/>
+  <path d="M218 92a42 42 0 0 1 22-26" fill="none" stroke="#9bdcbb" stroke-width="7" stroke-linecap="round"/>
+  <rect x="214" y="98" width="84" height="28" rx="14" fill="#3d4853"/>
+  <circle cx="238" cy="112" r="9" fill="#79d6eb"/>
+  <circle cx="274" cy="112" r="9" fill="#79d6eb"/>
+  <path d="M244 106a9 9 0 0 1-7 15 9 9 0 0 0 7-15Zm36 0a9 9 0 0 1-7 15 9 9 0 0 0 7-15Z" fill="#4fb0c5"/>
+  <circle cx="241" cy="108" r="3.6" fill="#fffae0"/>
+  <circle cx="277" cy="108" r="3.6" fill="#fffae0"/>
+</svg>
