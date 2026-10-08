@@ -1,0 +1,50 @@
+<svg width="320" height="356" viewBox="96 122 320 356" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="brute-title brute-desc">
+  <title id="brute-title">Brute — heavy lifting robot</title>
+  <desc id="brute-desc">A broad teal lifting robot with a small head sunk between big shoulder housings, a single visor slit, exhaust stacks, a chest grille over a hazard striped waist, long arms ending in heavy three finger claws, and short stout legs.</desc>
+  <!-- Exhaust stacks -->
+  <rect x="176" y="128" width="16" height="44" fill="#3d4853"/>
+  <rect x="320" y="128" width="16" height="44" fill="#3d4853"/>
+  <rect x="172" y="122" width="24" height="10" rx="3" fill="#697785"/>
+  <rect x="316" y="122" width="24" height="10" rx="3" fill="#697785"/>
+  <!-- Long arms with heavy claws -->
+  <path d="m150 226-18 76m230-76 18 76" stroke="#697785" stroke-width="28"/>
+  <path d="m130 318-4 60m256-60 4 60" stroke="#3f8c94" stroke-width="46" stroke-linecap="round"/>
+  <path d="m144 318-4 60m256-60 4 60" stroke="#2c6b72" stroke-width="10"/>
+  <path d="M112 404l-6 32M126 406v36M140 404l6 32M400 404l6 32M386 406v36M372 404l-6 32" stroke="#3d4853" stroke-width="13" stroke-linecap="round"/>
+  <rect x="104" y="394" width="44" height="24" rx="8" fill="#3d4853"/>
+  <rect x="364" y="394" width="44" height="24" rx="8" fill="#3d4853"/>
+  <circle cx="132" cy="302" r="22" fill="#3d4853"/>
+  <circle cx="380" cy="302" r="22" fill="#3d4853"/>
+  <circle cx="132" cy="302" r="10" fill="#92a1b2"/>
+  <circle cx="380" cy="302" r="10" fill="#92a1b2"/>
+  <!-- Stout legs -->
+  <path d="m212 340-6 56m94-56 6 56" stroke="#697785" stroke-width="26"/>
+  <rect x="186" y="404" width="40" height="46" fill="#3f8c94"/>
+  <rect x="286" y="404" width="40" height="46" fill="#3f8c94"/>
+  <path d="M212 404h14v46h-14Zm100 0h14v46h-14Z" fill="#2c6b72"/>
+  <rect x="182" y="384" width="48" height="28" rx="10" fill="#5ea9b0"/>
+  <rect x="282" y="384" width="48" height="28" rx="10" fill="#5ea9b0"/>
+  <path d="M168 476v-16q0-14 14-14h44q14 0 14 14v16Zm104 0v-16q0-14 14-14h44q14 0 14 14v16Z" fill="#3d4853"/>
+  <circle cx="212" cy="340" r="18" fill="#3d4853"/>
+  <circle cx="300" cy="340" r="18" fill="#3d4853"/>
+  <!-- Small sunk head with a visor slit -->
+  <rect x="222" y="126" width="68" height="52" rx="14" fill="#3f8c94"/>
+  <path d="M236 126h40q14 0 14 14H222q0-14 14-14Z" fill="#5ea9b0"/>
+  <rect x="230" y="146" width="52" height="14" rx="7" fill="#3d4853"/>
+  <rect x="236" y="150" width="40" height="6" rx="3" fill="#79d6eb"/>
+  <!-- Broad torso -->
+  <path d="M176 168h160q22 0 22 22l-18 124q-4 22-26 22H198q-22 0-26-22l-18-124q0-22 22-22Z" fill="#3f8c94"/>
+  <path d="M176 168h160q22 0 22 22H154q0-22 22-22Z" fill="#5ea9b0"/>
+  <path d="M332 190h26l-18 124q-4 22-26 22h-6q16-6 18-22Z" fill="#2c6b72"/>
+  <rect x="214" y="212" width="84" height="62" rx="10" fill="#3d4853"/>
+  <path d="M228 230h56m-56 14h56m-56 14h56" stroke="#697785" stroke-width="6" stroke-linecap="round"/>
+  <rect x="186" y="294" width="140" height="22" fill="#f6c354"/>
+  <path d="M186 316l10-22h10l-10 22Zm20 0 10-22h10l-10 22Zm20 0 10-22h10l-10 22Zm20 0 10-22h10l-10 22Zm20 0 10-22h10l-10 22Zm20 0 10-22h10l-10 22Zm20 0 10-22h10l-10 22Z" fill="#3d4853"/>
+  <!-- Shoulder housings -->
+  <circle cx="156" cy="206" r="44" fill="#3f8c94"/>
+  <circle cx="356" cy="206" r="44" fill="#3f8c94"/>
+  <path d="M120 186a44 44 0 0 1 64-14 40 40 0 0 0-64 14Zm200 0a44 44 0 0 1 64-14 40 40 0 0 0-64 14Z" fill="#5ea9b0"/>
+  <path d="M180 170a44 44 0 0 1 0 72 52 52 0 0 0 0-72Zm200 0a44 44 0 0 1 0 72 52 52 0 0 0 0-72Z" fill="#2c6b72"/>
+  <circle cx="156" cy="206" r="12" fill="#3d4853"/>
+  <circle cx="356" cy="206" r="12" fill="#3d4853"/>
+</svg>
