@@ -1,0 +1,58 @@
+<svg width="260" height="428" viewBox="126 52 260 428" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="atomic-title atomic-desc">
+  <title id="atomic-title">Atomic — space age robot</title>
+  <desc id="atomic-desc">A turquoise 1950s space age robot with a finned bullet head, a chrome stripe and two round eyes on a slate band, an atom emblem on its rounded chest, ring jointed arms with pincers and legs on swept fin feet.</desc>
+  <!-- Ring jointed arms with pincers -->
+  <path d="m180 236-34 34v44m186-78 34 34v44" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
+  <rect x="132" y="312" width="28" height="14" rx="5" fill="#2f95a9"/>
+  <rect x="352" y="312" width="28" height="14" rx="5" fill="#2f95a9"/>
+  <path d="M138 326q-10 18 4 30m12-30q10 18-4 30M358 326q-10 18 4 30m12-30q10 18-4 30" fill="none" stroke="#3d4853" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="146" cy="270" r="13" fill="#3d4853"/>
+  <circle cx="366" cy="270" r="13" fill="#3d4853"/>
+  <circle cx="146" cy="270" r="6" fill="#92a1b2"/>
+  <circle cx="366" cy="270" r="6" fill="#92a1b2"/>
+  <!-- Legs on swept fin feet -->
+  <path d="M224 360v68m64-68v68" stroke="#697785" stroke-width="16"/>
+  <circle cx="224" cy="394" r="12" fill="#3d4853"/>
+  <circle cx="288" cy="394" r="12" fill="#3d4853"/>
+  <circle cx="224" cy="394" r="5" fill="#92a1b2"/>
+  <circle cx="288" cy="394" r="5" fill="#92a1b2"/>
+  <path d="M238 424v48h-64q8-34 46-48Zm36 0v48h64q-8-34-46-48Z" fill="#2f95a9"/>
+  <path d="M238 424v48h-20v-44Zm36 0h18q38 14 46 48h-22q-8-30-42-40Z" fill="#006377"/>
+  <path d="M172 468h68v10h-68Zm100 0h68v10h-68Z" fill="#3d4853"/>
+  <!-- Rounded body with an atom emblem -->
+  <rect x="206" y="340" width="100" height="22" rx="6" fill="#3d4853"/>
+  <circle cx="224" cy="360" r="14" fill="#3d4853"/>
+  <circle cx="288" cy="360" r="14" fill="#3d4853"/>
+  <circle cx="224" cy="360" r="6" fill="#92a1b2"/>
+  <circle cx="288" cy="360" r="6" fill="#92a1b2"/>
+  <rect x="180" y="206" width="152" height="140" rx="34" fill="#2f95a9"/>
+  <path d="M214 206h84q34 0 34 30H180q0-30 34-30Z" fill="#62c1d7"/>
+  <path d="M306 210q26 10 26 36v66q0 26-26 34Z" fill="#006377"/>
+  <circle cx="256" cy="276" r="36" fill="#3d4853"/>
+  <g fill="none" stroke="#92a1b2" stroke-width="3">
+    <ellipse cx="256" cy="276" rx="27" ry="9"/>
+    <ellipse cx="256" cy="276" rx="27" ry="9" transform="rotate(60 256 276)"/>
+    <ellipse cx="256" cy="276" rx="27" ry="9" transform="rotate(-60 256 276)"/>
+  </g>
+  <circle cx="256" cy="276" r="7" fill="#f6c354"/>
+  <circle cx="236" cy="328" r="5" fill="#f6c354"/>
+  <circle cx="256" cy="328" r="5" fill="#79d6eb"/>
+  <circle cx="276" cy="328" r="5" fill="#f6c354"/>
+  <circle cx="180" cy="236" r="20" fill="#3d4853"/>
+  <circle cx="332" cy="236" r="20" fill="#3d4853"/>
+  <circle cx="180" cy="236" r="9" fill="#92a1b2"/>
+  <circle cx="332" cy="236" r="9" fill="#92a1b2"/>
+  <!-- Finned bullet head -->
+  <rect x="230" y="192" width="52" height="16" rx="4" fill="#3d4853"/>
+  <path d="m218 148-24 32v22h24Zm76 0 24 32v22h-24Z" fill="#006377"/>
+  <path d="M216 196v-56c0-44 20-74 40-84 20 10 40 40 40 84v56Z" fill="#2f95a9"/>
+  <path d="M216 196v-56c0-44 20-74 40-84-12 14-22 44-22 84v56Z" fill="#62c1d7"/>
+  <path d="M296 196v-56c0-44-20-74-40-84 12 14 22 44 22 84v56Z" fill="#006377"/>
+  <path d="M250 66q6-6 12 0v130h-12Z" fill="#d3dbe3"/>
+  <rect x="220" y="128" width="72" height="30" rx="15" fill="#3d4853"/>
+  <circle cx="240" cy="143" r="10" fill="#79d6eb"/>
+  <circle cx="272" cy="143" r="10" fill="#79d6eb"/>
+  <path d="M247 136a10 10 0 0 1-8 17 10 10 0 0 0 8-17Zm32 0a10 10 0 0 1-8 17 10 10 0 0 0 8-17Z" fill="#4fb0c5"/>
+  <circle cx="243" cy="139" r="3.5" fill="#fffae0"/>
+  <circle cx="275" cy="139" r="3.5" fill="#fffae0"/>
+</svg>

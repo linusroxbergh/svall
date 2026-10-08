@@ -1,0 +1,56 @@
+<svg width="216" height="430" viewBox="148 46 216 430" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="keeper-title keeper-desc">
+  <title id="keeper-title">Keeper — lighthouse robot</title>
+  <desc id="keeper-desc">A red lighthouse robot with a tapered tower body banded in pale grey, a porthole dial and a door, a glass lantern room for a head with a lit lamp and two eyes behind a gallery rail, a domed cap with a vent ball, short arms with pincers, and a wide round base on two feet.</desc>
+  <!-- Short arms with pincers -->
+  <path d="m204 214-34 26v40m138-66 34 26v40" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M162 292q-8 14 2 26m14-26q8 14-2 26m158-26q-8 14 2 26m14-26q8 14-2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+  <rect x="158" y="278" width="24" height="16" rx="4" fill="#a83b32"/>
+  <rect x="330" y="278" width="24" height="16" rx="4" fill="#a83b32"/>
+  <!-- Feet and round base -->
+  <path d="M190 476v-8q0-12 12-12h32q12 0 12 12v8Zm76 0v-8q0-12 12-12h32q12 0 12 12v8Z" fill="#3d4853"/>
+  <rect x="168" y="426" width="176" height="34" rx="15" fill="#c2443a"/>
+  <path d="M183 426h146q15 0 15 12H168q0-12 15-12Z" fill="#d84d43"/>
+  <path d="M322 427q22 2 22 15v3q0 15-22 15Z" fill="#a83b32"/>
+  <!-- Tapered tower with pale bands -->
+  <path d="M206 188h100l30 244H176Z" fill="#c2443a"/>
+  <path d="M206 188h22l-14 244h-38Z" fill="#d84d43"/>
+  <path d="M286 188h20l30 244h-38Z" fill="#a83b32"/>
+  <path d="M198.4 250h115.2l3.7 30H194.7Z" fill="#e2e9f0"/>
+  <path d="M289 250h24.6l3.7 30H290.5Z" fill="#c9d3dc"/>
+  <path d="M187.3 340h137.4l3.7 30H183.6Z" fill="#e2e9f0"/>
+  <path d="M293.5 340h31.2l3.7 30H295Z" fill="#c9d3dc"/>
+  <circle cx="256" cy="310" r="22" fill="#3d4853"/>
+  <circle cx="256" cy="310" r="16" fill="#fff8de"/>
+  <path d="M244 302l-4-3m16-5v-5m12 8 4-3" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/>
+  <path d="m256 310 9-9" stroke="#a83b32" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="256" cy="310" r="4" fill="#3d4853"/>
+  <path d="M238 432v-26q0-18 18-18t18 18v26Z" fill="#3d4853"/>
+  <circle cx="266" cy="412" r="3" fill="#f6c354"/>
+  <circle cx="204" cy="214" r="16" fill="#3d4853"/>
+  <circle cx="308" cy="214" r="16" fill="#3d4853"/>
+  <circle cx="204" cy="214" r="7" fill="#92a1b2"/>
+  <circle cx="308" cy="214" r="7" fill="#92a1b2"/>
+  <!-- Glass lantern room with lamp and eyes -->
+  <rect x="214" y="104" width="84" height="74" fill="#c9eef8"/>
+  <rect x="284" y="104" width="14" height="74" fill="#a6dfee"/>
+  <circle cx="256" cy="121" r="11" fill="#f6c354"/>
+  <circle cx="253" cy="118" r="3.5" fill="#fffae0"/>
+  <rect x="220" y="136" width="72" height="24" rx="12" fill="#3d4853"/>
+  <circle cx="238" cy="148" r="8" fill="#79d6eb"/>
+  <circle cx="274" cy="148" r="8" fill="#79d6eb"/>
+  <circle cx="240" cy="145" r="3" fill="#fffae0"/>
+  <circle cx="276" cy="145" r="3" fill="#fffae0"/>
+  <rect x="208" y="104" width="8" height="74" fill="#3d4853"/>
+  <rect x="296" y="104" width="8" height="74" fill="#3d4853"/>
+  <!-- Gallery rail -->
+  <rect x="186" y="178" width="140" height="12" rx="3" fill="#3d4853"/>
+  <path d="M196 178v-12m20 12v-12m20 12v-12m40 12v-12m20 12v-12m20 12v-12" stroke="#3d4853" stroke-width="4"/>
+  <path d="M192 166h128" stroke="#3d4853" stroke-width="5" stroke-linecap="round"/>
+  <!-- Domed cap with vent ball -->
+  <path d="M256 74v-10" stroke="#3d4853" stroke-width="6"/>
+  <circle cx="256" cy="58" r="9" fill="#3d4853"/>
+  <path d="M206 106a50 34 0 0 1 100 0Z" fill="#c2443a"/>
+  <path d="M206 106a50 34 0 0 1 30-31.2 60 40 0 0 0-14 31.2Z" fill="#d84d43"/>
+  <path d="M284 77.8a50 34 0 0 1 22 28.2h-14a40 30 0 0 0-8-28.2Z" fill="#a83b32"/>
+  <rect x="202" y="102" width="108" height="8" rx="3" fill="#3d4853"/>
+</svg>

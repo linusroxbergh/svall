@@ -1,0 +1,65 @@
+<svg width="280" height="422" viewBox="116 56 280 422" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="meter-title meter-desc">
+  <title id="meter-title">Meter — gauge robot</title>
+  <desc id="meter-desc">A sage boxy robot whose eyes are two analogue VU meters with matching needles, with ear knobs, a row of dials and a toggle switch on its chest, ring jointed arms with three finger hands, and legs with ring knees on flat feet.</desc>
+  <!-- Arms with three finger hands -->
+  <path d="m176 232-38 48v50m198-98 38 48v50" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M130 342l-6 24M138 344v26M146 342l6 24M382 342l6 24M374 344v26M366 342l-6 24" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+  <rect x="124" y="326" width="28" height="16" rx="5" fill="#7d9c6a"/>
+  <rect x="360" y="326" width="28" height="16" rx="5" fill="#7d9c6a"/>
+  <circle cx="138" cy="280" r="13" fill="#3d4853"/>
+  <circle cx="374" cy="280" r="13" fill="#3d4853"/>
+  <circle cx="138" cy="280" r="6" fill="#92a1b2"/>
+  <circle cx="374" cy="280" r="6" fill="#92a1b2"/>
+  <circle cx="176" cy="232" r="18" fill="#3d4853"/>
+  <circle cx="336" cy="232" r="18" fill="#3d4853"/>
+  <circle cx="176" cy="232" r="8" fill="#92a1b2"/>
+  <circle cx="336" cy="232" r="8" fill="#92a1b2"/>
+  <!-- Legs with ring knees and flat feet -->
+  <rect x="200" y="352" width="28" height="98" fill="#7d9c6a"/>
+  <rect x="284" y="352" width="28" height="98" fill="#7d9c6a"/>
+  <path d="M218 352h10v98h-10Zm84 0h10v98h-10Z" fill="#5f7d4f"/>
+  <circle cx="214" cy="404" r="16" fill="#3d4853"/>
+  <circle cx="298" cy="404" r="16" fill="#3d4853"/>
+  <circle cx="214" cy="404" r="8" fill="#92a1b2"/>
+  <circle cx="298" cy="404" r="8" fill="#92a1b2"/>
+  <path d="M186 470v-8q0-12 12-12h36q12 0 12 12v8Zm80 0v-8q0-12 12-12h36q12 0 12 12v8Z" fill="#5f7d4f"/>
+  <path d="M182 466h68v10h-68Zm80 0h68v10h-68Z" fill="#3d4853"/>
+  <!-- Body with dials and a toggle switch -->
+  <rect x="236" y="182" width="40" height="20" fill="#3d4853"/>
+  <rect x="236" y="190" width="40" height="4" fill="#697785"/>
+  <rect x="176" y="198" width="160" height="160" rx="18" fill="#7d9c6a"/>
+  <path d="M194 198h124q18 0 18 18v4H176v-4q0-18 18-18Z" fill="#9db88a"/>
+  <path d="M312 200q24 2 24 22v118q0 18-24 18Z" fill="#5f7d4f"/>
+  <circle cx="214" cy="252" r="14" fill="#3d4853"/>
+  <circle cx="256" cy="252" r="14" fill="#3d4853"/>
+  <circle cx="298" cy="252" r="14" fill="#3d4853"/>
+  <circle cx="214" cy="252" r="9" fill="#92a1b2"/>
+  <circle cx="256" cy="252" r="9" fill="#92a1b2"/>
+  <circle cx="298" cy="252" r="9" fill="#92a1b2"/>
+  <path d="m214 252-6-6m48 6v-9m42 9 7-5" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/>
+  <rect x="234" y="282" width="44" height="44" rx="6" fill="#3d4853"/>
+  <path d="m256 306 10-18" stroke="#92a1b2" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="266" cy="288" r="5" fill="#f6c354"/>
+  <circle cx="212" cy="304" r="7" fill="#f6c354"/>
+  <circle cx="300" cy="304" r="7" fill="#79d6eb"/>
+  <path d="M204 342h104" stroke="#5f7d4f" stroke-width="5" stroke-linecap="round"/>
+  <!-- Aerial and ear knobs -->
+  <rect x="252" y="70" width="8" height="24" fill="#697785"/>
+  <circle cx="256" cy="68" r="9" fill="#f6c354"/>
+  <rect x="154" y="116" width="16" height="44" rx="5" fill="#3d4853"/>
+  <rect x="342" y="116" width="16" height="44" rx="5" fill="#3d4853"/>
+  <!-- Wide head with VU meter eyes -->
+  <rect x="166" y="92" width="180" height="92" rx="16" fill="#7d9c6a"/>
+  <path d="M182 92h148q16 0 16 16v2H166v-2q0-16 16-16Z" fill="#9db88a"/>
+  <path d="M326 94q20 2 20 16v58q0 14-20 16Z" fill="#5f7d4f"/>
+  <rect x="182" y="112" width="68" height="54" rx="8" fill="#3d4853"/>
+  <rect x="262" y="112" width="68" height="54" rx="8" fill="#3d4853"/>
+  <rect x="188" y="118" width="56" height="42" rx="4" fill="#fff8de"/>
+  <rect x="268" y="118" width="56" height="42" rx="4" fill="#fff8de"/>
+  <path d="M191.5 137.4a32 32 0 0 1 49 0m31 0a32 32 0 0 1 49 0" fill="none" stroke="#3d4853" stroke-width="2"/>
+  <path d="M191.5 137.4l4.6 3.9M202.5 129l2.5 5.4M216 126v6M229.5 129l-2.5 5.4M271.5 137.4l4.6 3.9M282.5 129l2.5 5.4M296 126v6M309.5 129l-2.5 5.4" stroke="#3d4853" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="m240.5 137.4-4.6 3.9m84.6-3.9-4.6 3.9" stroke="#c2443a" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="m216 158-7.8-29m87.8 29-7.8-29" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="216" cy="158" r="5" fill="#3d4853"/>
+  <circle cx="296" cy="158" r="5" fill="#3d4853"/>
+</svg>
