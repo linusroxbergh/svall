@@ -1,11 +1,62 @@
-<svg width="252" height="452" viewBox="122 24 252 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="typist-title typist-desc">
+<svg width="252" height="452" viewBox="122 24 252 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="typist-title typist-desc" class="r82" data-idle="blink blink tilt shrug return" data-work="type type return return tilt"><style>
+.r82[data-act=blink] .spool{animation:r82-blink .4s ease-in-out}
+.r82[data-act=tilt] .head{animation:r82-tilt 1.6s ease-in-out}
+.r82[data-act=tilt] .spool{animation:r82-look 1.6s ease-in-out}
+.r82[data-act=tilt] .ub{animation:r82-lean 1.6s ease-in-out}
+.r82[data-act=tilt] .lever,.r82[data-act=tilt] .claw{animation:r82-hang 1.6s ease-in-out}
+.r82[data-act=shrug] .ub{animation:r82-lift 1.6s ease-in-out}
+.r82[data-act=shrug] .head{animation:r82-sink 1.6s ease-in-out}
+.r82[data-act=shrug] .lever{animation:r82-shrug-l 1.6s ease-in-out}
+.r82[data-act=shrug] .lfore{animation:r82-palm-l 1.6s ease-in-out}
+.r82[data-act=shrug] .claw{animation:r82-shrug-r 1.6s ease-in-out}
+.r82[data-act=shrug] .cfore{animation:r82-palm-r 1.6s ease-in-out}
+.r82[data-act=type] .claw{animation:r82-reach 1.8s ease-in-out}
+.r82[data-act=type] .cfore{animation:r82-tap 1.8s ease-in-out}
+.r82[data-act=type] .spool{animation:r82-watch 1.8s ease-in-out}
+.r82[data-act=type] .ub{animation:r82-lean-in 1.8s ease-in-out}
+.r82[data-act=return] .head{animation:r82-carriage 2s ease-in-out}
+.r82[data-act=return] .paper{animation:r82-flutter 2s ease-in-out}
+.r82[data-act=return] .lever{animation:r82-pull 2s ease-in-out}
+.r82[data-act=return] .lfore{animation:r82-pull-lag 2s ease-in-out}
+.r82[data-act=return] .claw{animation:r82-jolt 2s ease-in-out}
+.r82[data-act=return] .ub{animation:r82-brace 2s ease-in-out}
+.r82[data-act=return] .key{animation:r82-key .3s ease-in-out .1s}
+.r82[data-act=return] .k2{animation-delay:.3s}
+.r82[data-act=return] .k3{animation-delay:.5s}
+@keyframes r82-blink{0%,100%{transform:none}40%,60%{transform:scaleY(.1)}}
+@keyframes r82-tilt{0%,100%{transform:none}25%,55%{transform:rotate(4.5deg)}78%{transform:rotate(-1deg)}90%{transform:rotate(.3deg)}}
+@keyframes r82-look{0%,100%{transform:none}20%,62%{transform:translate(4px,1px)}}
+@keyframes r82-lean{0%,100%{transform:none}25%,55%{transform:rotate(.6deg)}80%{transform:rotate(-.25deg)}}
+@keyframes r82-hang{0%,100%{transform:none}32%{transform:rotate(-3deg)}62%{transform:rotate(2deg)}86%{transform:rotate(-.6deg)}}
+@keyframes r82-lift{0%,100%{transform:none}25%,55%{transform:translate(0,-2px)}76%{transform:translate(0,1px)}}
+@keyframes r82-sink{0%,100%{transform:none}25%,55%{transform:translate(0,5px)}76%{transform:translate(0,-1.2px)}90%{transform:translate(0,.4px)}}
+@keyframes r82-shrug-l{0%,100%{transform:none}25%,55%{transform:translate(0,-4px) rotate(6deg)}76%{transform:translate(0,1px) rotate(-2deg)}}
+@keyframes r82-palm-l{0%,100%{transform:none}30%,55%{transform:rotate(14deg)}78%{transform:rotate(-4deg)}}
+@keyframes r82-shrug-r{0%,100%{transform:none}25%,55%{transform:translate(0,-4px) rotate(-6deg)}76%{transform:translate(0,1px) rotate(2deg)}}
+@keyframes r82-palm-r{0%,100%{transform:none}30%,55%{transform:rotate(-14deg)}78%{transform:rotate(4deg)}}
+@keyframes r82-reach{0%,100%{transform:none}22%,70%{transform:rotate(-8deg)}86%{transform:rotate(1.5deg)}}
+@keyframes r82-tap{0%,100%{transform:none}22%{transform:rotate(68deg)}30%{transform:rotate(75deg)}36%{transform:rotate(68deg)}44%{transform:rotate(75deg)}50%{transform:rotate(68deg)}58%{transform:rotate(75deg)}64%,70%{transform:rotate(68deg)}87%{transform:rotate(-5deg)}}
+@keyframes r82-watch{0%,100%{transform:none}18%,72%{transform:translate(3px,3px)}}
+@keyframes r82-lean-in{0%,100%{transform:none}24%,70%{transform:rotate(.6deg)}86%{transform:rotate(-.2deg)}}
+@keyframes r82-carriage{0%,6%{transform:none}10%,16%{transform:translate(-11px)}20%,26%{transform:translate(-22px)}30%,36%{transform:translate(-33px)}44%{transform:translate(-36px)}55%{transform:translate(10px)}67%{transform:translate(-4px)}79%{transform:translate(1.4px)}90%{transform:translate(-.4px)}100%{transform:none}}
+@keyframes r82-flutter{0%,48%,100%{transform:none}57%{transform:rotate(-4deg)}69%{transform:rotate(2.5deg)}81%{transform:rotate(-1deg)}92%{transform:rotate(.3deg)}}
+@keyframes r82-pull{0%,32%,100%{transform:none}43%{transform:rotate(26deg)}54%{transform:rotate(-4deg)}66%{transform:rotate(2deg)}80%{transform:rotate(-.6deg)}}
+@keyframes r82-pull-lag{0%,34%,100%{transform:none}43%{transform:rotate(-7deg)}52%{transform:rotate(12deg)}64%{transform:rotate(-4deg)}78%{transform:rotate(1.2deg)}}
+@keyframes r82-jolt{0%,48%,100%{transform:none}58%{transform:rotate(-4deg)}72%{transform:rotate(2deg)}86%{transform:rotate(-.6deg)}}
+@keyframes r82-brace{0%,34%,100%{transform:none}44%{transform:rotate(-1.8deg)}56%{transform:rotate(1.6deg)}70%{transform:rotate(-.6deg)}84%{transform:rotate(.2deg)}}
+@keyframes r82-key{0%,100%{fill:#fff8de}35%,65%{fill:#92a1b2}}
+</style>
   <title id="typist-title">Typist — typewriter robot</title>
   <desc id="typist-desc">An olive typewriter robot whose head is the carriage: a black platen roller with knobs at each end, a typed sheet of paper rising above it, and two ribbon spools as the eyes. A tall torso carries a nameplate and a bank of round keys with a space bar; the left arm is the long carriage return lever with a flat paddle, the right a jointed claw, on two legs with olive shoes.</desc>
   <!-- Sheet of paper rising above the platen -->
+  <g class="ub" style="transform-origin:256px 330px"><g class="head" style="transform-origin:276px 164px">
+  <g class="paper" style="transform-origin:256px 86px">
   <path d="M210 28h92v58h-92Z" fill="#fff8de"/>
   <path d="M290 28h12v58h-12Z" fill="#e9dfc2"/>
   <path d="M222 42h56m-56 10h62m-62 10h44" stroke="#92a1b2" stroke-width="3" stroke-linecap="round"/>
+  </g>
   <rect x="200" y="70" width="112" height="7" rx="3.5" fill="#697785"/>
+  </g></g>
   <!-- Legs with shoes -->
   <rect x="226" y="324" width="60" height="24" fill="#3d4853"/>
   <path d="M230 346v104M282 346v104" stroke="#697785" stroke-width="14"/>
@@ -20,18 +71,17 @@
   <circle cx="282" cy="400" r="12" fill="#3d4853"/>
   <circle cx="230" cy="400" r="5" fill="#92a1b2"/>
   <circle cx="282" cy="400" r="5" fill="#92a1b2"/>
+  <g class="ub" style="transform-origin:256px 330px">
   <!-- Carriage return lever arm with a flat paddle -->
-  <path d="m190 208-34 26-14 64" fill="none" stroke="#92a1b2" stroke-width="9" stroke-linejoin="round"/>
+  <g class="lever" style="transform-origin:190px 206px">
+  <path d="m190 208-34 26" fill="none" stroke="#92a1b2" stroke-width="9"/>
+  <g class="lfore" style="transform-origin:156px 234px">
+  <path d="m156 234-14 64" fill="none" stroke="#92a1b2" stroke-width="9"/>
   <circle cx="156" cy="234" r="8" fill="#3d4853"/>
   <rect x="124" y="294" width="34" height="20" rx="10" transform="rotate(-12 141 304)" fill="#5c6130"/>
   <rect x="128" y="294" width="26" height="6" rx="3" transform="rotate(-12 141 304)" fill="#a3a65c"/>
-  <!-- Jointed claw arm -->
-  <path d="m322 206 28 44" stroke="#697785" stroke-width="12"/>
-  <path d="m350 250 8 46" stroke="#697785" stroke-width="12"/>
-  <circle cx="350" cy="250" r="11" fill="#3d4853"/>
-  <circle cx="350" cy="250" r="4.5" fill="#92a1b2"/>
-  <rect x="344" y="292" width="28" height="14" rx="4" fill="#5c6130"/>
-  <path d="M349 306q-10 16 2 30m14-30q10 16-2 30" fill="none" stroke="#3d4853" stroke-width="6" stroke-linecap="round"/>
+  </g>
+  </g>
   <!-- Tall torso with a nameplate, key bank and space bar -->
   <rect x="236" y="158" width="40" height="22" fill="#3d4853"/>
   <rect x="190" y="174" width="132" height="156" rx="14" fill="#7f8440"/>
@@ -47,16 +97,30 @@
     <rect x="222" y="302" width="60" height="9" rx="4.5"/>
   </g>
   <g fill="#fff8de">
-    <circle cx="214" cy="236" r="4"/><circle cx="229" cy="236" r="4"/><circle cx="244" cy="236" r="4"/><circle cx="259" cy="236" r="4"/><circle cx="274" cy="236" r="4"/><circle cx="289" cy="236" r="4"/>
-    <circle cx="221" cy="254" r="4"/><circle cx="236" cy="254" r="4"/><circle cx="251" cy="254" r="4"/><circle cx="266" cy="254" r="4"/><circle cx="281" cy="254" r="4"/>
-    <circle cx="214" cy="272" r="4"/><circle cx="229" cy="272" r="4"/><circle cx="244" cy="272" r="4"/><circle cx="259" cy="272" r="4"/><circle cx="274" cy="272" r="4"/><circle cx="289" cy="272" r="4"/>
+    <circle cx="214" cy="236" r="4"/><circle cx="229" cy="236" r="4"/><circle cx="244" cy="236" r="4"/><circle class="key k3" cx="259" cy="236" r="4"/><circle cx="274" cy="236" r="4"/><circle cx="289" cy="236" r="4"/>
+    <circle cx="221" cy="254" r="4"/><circle class="key" cx="236" cy="254" r="4"/><circle cx="251" cy="254" r="4"/><circle cx="266" cy="254" r="4"/><circle cx="281" cy="254" r="4"/>
+    <circle cx="214" cy="272" r="4"/><circle cx="229" cy="272" r="4"/><circle cx="244" cy="272" r="4"/><circle cx="259" cy="272" r="4"/><circle class="key k2" cx="274" cy="272" r="4"/><circle cx="289" cy="272" r="4"/>
     <circle cx="221" cy="290" r="4"/><circle cx="236" cy="290" r="4"/><circle cx="251" cy="290" r="4"/><circle cx="266" cy="290" r="4"/><circle cx="281" cy="290" r="4"/>
   </g>
-  <circle cx="190" cy="206" r="14" fill="#3d4853"/>
+  <!-- Jointed claw arm, in front of the torso so it can reach the keys -->
+  <g class="claw" style="transform-origin:322px 206px">
+  <path d="m322 206 28 44" stroke="#697785" stroke-width="12"/>
+  <g class="cfore" style="transform-origin:350px 250px">
+  <path d="m350 250 8 46" stroke="#697785" stroke-width="12"/>
+  <circle cx="350" cy="250" r="11" fill="#3d4853"/>
+  <circle cx="350" cy="250" r="4.5" fill="#92a1b2"/>
+  <rect x="344" y="292" width="28" height="14" rx="4" fill="#5c6130"/>
+  <path d="M349 306q-10 16 2 30m14-30q10 16-2 30" fill="none" stroke="#3d4853" stroke-width="6" stroke-linecap="round"/>
+  </g>
   <circle cx="322" cy="206" r="14" fill="#3d4853"/>
-  <circle cx="190" cy="206" r="6" fill="#92a1b2"/>
   <circle cx="322" cy="206" r="6" fill="#92a1b2"/>
+  </g>
+  <g class="lever" style="transform-origin:190px 206px">
+  <circle cx="190" cy="206" r="14" fill="#3d4853"/>
+  <circle cx="190" cy="206" r="6" fill="#92a1b2"/>
+  </g>
   <!-- Carriage head: platen roller with knobs and ribbon spool eyes -->
+  <g class="head" style="transform-origin:276px 164px">
   <rect x="186" y="96" width="140" height="68" rx="12" fill="#7f8440"/>
   <path d="M308 98q18 2 18 14v40q0 12-18 14Z" fill="#5c6130"/>
   <rect x="170" y="80" width="172" height="26" rx="13" fill="#3d4853"/>
@@ -68,11 +132,18 @@
   <rect x="226" y="129" width="60" height="9" fill="#3d4853"/>
   <circle cx="226" cy="134" r="22" fill="#3d4853"/>
   <circle cx="286" cy="134" r="22" fill="#3d4853"/>
+  <g class="spool" style="transform-origin:226px 134px">
   <circle cx="226" cy="134" r="13" fill="#79d6eb"/>
-  <circle cx="286" cy="134" r="13" fill="#79d6eb"/>
-  <path d="M234.3 124.6a13 13 0 0 1-10.6 22.4 13 13 0 0 0 10.6-22.4Zm60 0a13 13 0 0 1-10.6 22.4 13 13 0 0 0 10.6-22.4Z" fill="#4fb0c5"/>
+  <path d="M234.3 124.6a13 13 0 0 1-10.6 22.4 13 13 0 0 0 10.6-22.4Z" fill="#4fb0c5"/>
   <circle cx="229.5" cy="129.5" r="4" fill="#fffae0"/>
-  <circle cx="289.5" cy="129.5" r="4" fill="#fffae0"/>
   <circle cx="221.5" cy="139" r="1.8" fill="#fffae0"/>
+  </g>
+  <g class="spool" style="transform-origin:286px 134px">
+  <circle cx="286" cy="134" r="13" fill="#79d6eb"/>
+  <path d="M294.3 124.6a13 13 0 0 1-10.6 22.4 13 13 0 0 0 10.6-22.4Z" fill="#4fb0c5"/>
+  <circle cx="289.5" cy="129.5" r="4" fill="#fffae0"/>
   <circle cx="281.5" cy="139" r="1.8" fill="#fffae0"/>
+  </g>
+  </g>
+  </g>
 </svg>
