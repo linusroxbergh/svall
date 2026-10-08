@@ -23,11 +23,11 @@ describe('selectors', () => {
     expect(charactersOf({ ...f }, 'i_b')).not.toBe(charactersOf(f, 'i_b'));
   });
   it('walks neighbours across the fleet in strip order with wrap-around', () => {
-    expect(neighbor(fleet(), 'c1', 1)?.id).toBe('c2');
-    expect(neighbor(fleet(), 'c0', -1)?.id).toBe('c2');
-    expect(neighbor(fleet(), 'c2', 1)?.id).toBe('c0');
-    expect(neighbor(fleet(), 'c2', -1)?.id).toBe('c1');
-    expect(neighbor(fleet(), undefined, 1)?.id).toBe('c2');
+    expect(neighbor(fleet(), 'c1', 1)?.c.id).toBe('c2');
+    expect(neighbor(fleet(), 'c0', -1)?.c.id).toBe('c2');
+    expect(neighbor(fleet(), 'c2', 1)?.c.id).toBe('c0');
+    expect(neighbor(fleet(), 'c2', -1)?.c.id).toBe('c1');
+    expect(neighbor(fleet(), undefined, 1)?.c.id).toBe('c2');
     expect(neighbor(emptyState(), undefined, 1)).toBeUndefined();
   });
   it('jumps to the first character of the next non-empty island', () => {
@@ -38,26 +38,30 @@ describe('selectors', () => {
   it('skips collapsed islands when walking and jumping', () => {
     const f = fleet();
     f.islands.i_b.collapsed = true;
-    expect(neighbor(f, 'c2', 1)?.id).toBe('c2');
-    expect(neighbor(f, 'c0', 1)?.id).toBe('c2');
+    expect(neighbor(f, 'c2', 1)).toBeUndefined();
+    expect(neighbor(f, 'c0', 1)?.c.id).toBe('c2');
     expect(firstOfNextIsland(f, 'c2')?.id).toBe('c2');
     expect(firstOfNextIsland(f, 'c0')?.id).toBe('c2');
     f.islands.i_a.collapsed = true;
     expect(neighbor(f, 'c2', -1)).toBeUndefined();
     expect(firstOfNextIsland(f, undefined)).toBeUndefined();
   });
-  it('walks the starred first while their section is open, also off a collapsed island, and each character once', () => {
+  it('walks the sidebar rows: the starred while their section is open, then each open island, a starred character in both', () => {
     const f = fleet();
-    f.characters.c1.star = 0;
+    f.characters.c0.star = 0;
+    const walk = (id: string, step: 1 | -1, onStar = false) => { const r = neighbor(f, id, step, true, onStar); return r && `${r.c.id}${r.starred ? '*' : ''}`; };
+    expect(walk('c2', 1)).toBe('c0');
+    expect(walk('c0', 1)).toBe('c1');
+    expect(walk('c1', 1)).toBe('c0*');
+    expect(walk('c0', 1, true)).toBe('c2');
+    expect(walk('c2', -1)).toBe('c0*');
+    expect(walk('c0', -1, true)).toBe('c1');
+    expect(walk('c1', -1)).toBe('c0');
+    expect(neighbor(f, 'c2', 1)?.c.id).toBe('c0');
     f.islands.i_b.collapsed = true;
-    expect(neighbor(f, undefined, 1, true)?.id).toBe('c1');
-    expect(neighbor(f, 'c1', 1, true)?.id).toBe('c2');
-    expect(neighbor(f, 'c2', 1, true)?.id).toBe('c1');
-    expect(neighbor(f, 'c2', 1)?.id).toBe('c2');
-    f.islands.i_b.collapsed = false;
-    expect(neighbor(f, 'c1', 1, true)?.id).toBe('c2');
-    expect(neighbor(f, 'c2', 1, true)?.id).toBe('c0');
-    expect(neighbor(f, 'c0', 1, true)?.id).toBe('c1');
+    expect(walk('c2', 1)).toBe('c0*');
+    expect(walk('c0', 1)).toBe('c2');
+    expect(neighbor(f, 'c2', 1)).toBeUndefined();
   });
   it('derives a display status', () => {
     expect(statusOf(chr('x', 'i', { x: 0, y: 0 }))).toBe('shell');

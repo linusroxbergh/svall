@@ -3,7 +3,7 @@ import { openBeside, opensInside, type BrowserManager } from './browser.js';
 import { commitFocused } from './Field.js';
 import { chordOf, resolve, type KeyAction } from './keys.js';
 import { isTerminal, mainLeft, showBrowser, shows, toggleBrowserRight } from './panes.js';
-import { boardViewed, firstOfNextIsland, isVeiled, neighbor, panesOf, selectedOf, STARRED } from './selectors.js';
+import { boardViewed, charactersOf, firstOfNextIsland, isVeiled, neighbor, panesOf, selectedOf, STARRED } from './selectors.js';
 import { canFill, zoomBy } from './settings.js';
 import type { AppState, AppStore } from './store/index.js';
 import { secondKey, viewedId } from './terminals.js';
@@ -27,24 +27,32 @@ export function refocusSurface({ store, bridge }: Pick<Deps, 'store' | 'bridge'>
 }
 
 // navigation moves the selection; the board's terminal and the map's open card follow it
-function goTo({ store }: Deps, id?: string): void {
+function goTo({ store }: Deps, id?: string, starred = false): void {
   if (!id) return;
   commitFocused();
   const st = store.getState();
   if (st.view === 'board' || st.card) st.focus(id); else st.select(id, st.sideCardOpen);
+  st.setStarredRow(starred ? id : undefined);
 }
 
 // the character the keys act on: the selection on the map, the viewed one on the board
 const currentOf = (s: AppState): string | undefined => (s.view === 'map' ? (s.selectedId ?? s.card ?? selectedOf(s)) : boardViewed(s));
 
-const nextOf = (s: AppState, id: string | undefined, step: 1 | -1) => neighbor(s.fleet, id, step, !s.sections[STARRED]?.shut);
+const nextOf = (s: AppState, id: string | undefined, step: 1 | -1) =>
+  neighbor(s.fleet, id, step, !s.sections[STARRED]?.shut, s.starredRow === id);
+
+// an island picked on the map selects no character, so the walk starts at its first
+const islandFirst = (s: AppState): string | undefined => {
+  const i = s.view === 'map' && !s.selectedId && s.selectedIslandId ? s.fleet.islands[s.selectedIslandId] : undefined;
+  return i && !i.collapsed ? charactersOf(s.fleet, i.id)[0]?.id : undefined;
+};
 
 export async function closeCharacter(ctx: Deps, id: string): Promise<void> {
   const s = ctx.store.getState();
   // closing the current character moves on first, so the removal patch never catches the terminal view without one
   if (id === currentOf(s)) {
     const next = nextOf(s, id, 1);
-    if (next && next.id !== id) goTo(ctx, next.id);
+    if (next) goTo(ctx, next.c.id, next.starred);
     else s.select(undefined);
   }
   await ctx.api.call('char.close', { id });
@@ -66,6 +74,12 @@ export async function dispatchKey(action: KeyAction, ctx: KeyDeps): Promise<void
   const f = s.fleet;
   const current = currentOf(s);
   const go = (id?: string) => goTo(ctx, id);
+  const walk = (step: 1 | -1) => {
+    const first = islandFirst(s);
+    if (first && step === 1) return goTo(ctx, first);
+    const r = nextOf(s, first ?? current, step);
+    goTo(ctx, r?.c.id, r?.starred);
+  };
   const closeModals = () => closeAllModals(store);
 
   switch (action.type) {
@@ -88,8 +102,8 @@ export async function dispatchKey(action: KeyAction, ctx: KeyDeps): Promise<void
       store.getState().setClosingCharacter(current);
       return;
     }
-    case 'prevCharacter': go(nextOf(s, current, -1)?.id); return;
-    case 'nextCharacter': go(nextOf(s, current, 1)?.id); return;
+    case 'prevCharacter': walk(-1); return;
+    case 'nextCharacter': walk(1); return;
     case 'toggleView': commitFocused(); store.getState().setView(s.view === 'map' ? 'board' : 'map'); return;
     case 'toggleCardSize': if (s.view === 'map') store.getState().toggleCardSize(); return;
     case 'toggleSettings':

@@ -49,18 +49,25 @@ const islandOf = (f: FleetState, id: string | undefined): Island | undefined => 
 
 export const STARRED = 'sidebar.starred';
 
-// the previous or next character in the sidebar's order: the starred while their section is open, then the rest by island,
-// wrapping past collapsed islands
-export function neighbor(f: FleetState, id: string | undefined, step: 1 | -1, starsOpen = false): Character | undefined {
-  const starred = starsOpen ? starredOf(f) : [];
-  const all = [...starred, ...stripOrder(f).filter((c) => !starred.includes(c))];
-  const open = (c: Character) => starred.includes(c) || !f.islands[c.islandId]?.collapsed;
-  const i = all.findIndex((c) => c.id === id);
-  if (i < 0) return all.find(open);
-  const n = all.length;
-  for (let k = 1; k <= n; k++) {
-    const c = all[(((i + step * k) % n) + n) % n];
-    if (open(c)) return c;
+type SidebarRow = { c: Character; starred: boolean };
+
+// the character rows the sidebar shows, top to bottom: the starred while their section is open, then each open island's crew
+const sidebarRows = (f: FleetState, starsOpen: boolean): SidebarRow[] => [
+  ...(starsOpen ? starredOf(f).map((c) => ({ c, starred: true })) : []),
+  ...islandsSorted(f).filter((i) => !i.collapsed).flatMap((i) => charactersOf(f, i.id).map((c) => ({ c, starred: false }))),
+];
+
+// the row before or after the selection's, wrapping around; a starred character has a row in Starred and one on its island,
+// `onStar` says which it is on, and the walk passes its other one
+export function neighbor(f: FleetState, id: string | undefined, step: 1 | -1, starsOpen = false, onStar = false): SidebarRow | undefined {
+  const rows = sidebarRows(f, starsOpen);
+  const own = rows.findIndex((r) => r.c.id === id && r.starred === onStar);
+  const i = own >= 0 ? own : rows.findIndex((r) => r.c.id === id);
+  if (i < 0) return rows[0];
+  const n = rows.length;
+  for (let k = 1; k < n; k++) {
+    const r = rows[(((i + step * k) % n) + n) % n];
+    if (r.c.id !== id) return r;
   }
   return undefined;
 }
