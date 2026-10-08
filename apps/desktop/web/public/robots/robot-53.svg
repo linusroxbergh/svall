@@ -1,10 +1,64 @@
-<svg width="300" height="436" viewBox="106 42 300 436" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="mantis-title mantis-desc">
+<svg width="300" height="436" viewBox="106 42 300 436" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="mantis-title mantis-desc" class="r53" data-idle="blink blink cock cock preen shift" data-work="strike strike preen shift cock blink"><style>
+.r53[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r53-blink .4s ease-in-out}
+.r53[data-act=cock] .body{animation:r53-brace 1.4s ease-in-out}
+.r53[data-act=cock] .head{animation:r53-cock 1.4s ease-in-out}
+.r53[data-act=cock] .ant-l,.r53[data-act=cock] .ant-r{animation:r53-cock-ant 1.4s ease-in-out}
+.r53[data-act=preen] .arm-l{animation:r53-fold-l 1.8s ease-in-out}
+.r53[data-act=preen] .arm-r{animation:r53-fold-r 1.8s ease-in-out}
+.r53[data-act=preen] .fore-l{animation:r53-rub-l 1.8s ease-in-out}
+.r53[data-act=preen] .fore-r{animation:r53-rub-r 1.8s ease-in-out}
+.r53[data-act=preen] .head{animation:r53-peer 1.8s ease-in-out}
+.r53[data-act=preen] .eyes{animation:r53-down 1.8s ease-in-out}
+.r53[data-act=shift] .body{animation:r53-sway 1.7s ease-in-out}
+.r53[data-act=shift] .head{animation:r53-level 1.7s ease-in-out}
+.r53[data-act=shift] .arm-l,.r53[data-act=shift] .arm-r{animation:r53-lag 1.7s ease-in-out}
+.r53[data-act=shift] .ant-l,.r53[data-act=shift] .ant-r{animation:r53-shift-ant 1.7s ease-in-out}
+.r53[data-act=shift] .abdomen{animation:r53-swing 1.7s ease-in-out}
+.r53[data-act=shift] .leg-l{animation:r53-lift 1.7s ease-in-out}
+.r53[data-act=shift] .shin-l{animation:r53-plant 1.7s ease-in-out}
+.r53[data-act=strike] .body{animation:r53-lunge 1.6s ease-in-out}
+.r53[data-act=strike] .head{animation:r53-dip 1.6s ease-in-out}
+.r53[data-act=strike] .arm-l{animation:r53-strike-l 1.6s ease-in-out}
+.r53[data-act=strike] .arm-r{animation:r53-strike-r 1.6s ease-in-out}
+.r53[data-act=strike] .fore-l{animation:r53-snap-l 1.6s ease-in-out}
+.r53[data-act=strike] .fore-r{animation:r53-snap-r 1.6s ease-in-out}
+.r53[data-act=strike] .ant-l{animation:r53-flick-l 1.6s ease-in-out}
+.r53[data-act=strike] .ant-r{animation:r53-flick-r 1.6s ease-in-out}
+@keyframes r53-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+@keyframes r53-brace{0%,100%{transform:none}12%,38%{transform:rotate(-1.2deg)}50%,72%{transform:rotate(.8deg)}86%{transform:rotate(-.3deg)}}
+@keyframes r53-cock{0%,100%{transform:none}12%,38%{transform:rotate(8deg)}50%,72%{transform:rotate(-5deg)}84%{transform:rotate(1.5deg)}93%{transform:rotate(-.5deg)}}
+@keyframes r53-cock-ant{0%,100%{transform:none}10%{transform:rotate(-10deg)}22%{transform:rotate(6deg)}34%{transform:rotate(-2deg)}48%{transform:rotate(10deg)}60%{transform:rotate(-5deg)}70%{transform:rotate(1.5deg)}82%{transform:rotate(-5deg)}92%{transform:rotate(2deg)}}
+@keyframes r53-fold-l{0%,100%{transform:none}22%,70%{transform:rotate(-14deg)}84%{transform:rotate(2deg)}94%{transform:rotate(-.6deg)}}
+@keyframes r53-fold-r{0%,100%{transform:none}22%,70%{transform:rotate(14deg)}84%{transform:rotate(-2deg)}94%{transform:rotate(.6deg)}}
+@keyframes r53-rub-l{0%,100%{transform:none}24%{transform:rotate(48deg)}33%{transform:rotate(42deg)}42%{transform:rotate(50deg)}51%{transform:rotate(42deg)}60%,70%{transform:rotate(47deg)}84%{transform:rotate(-5deg)}94%{transform:rotate(1.5deg)}}
+@keyframes r53-rub-r{0%,100%{transform:none}24%{transform:rotate(-48deg)}33%{transform:rotate(-50deg)}42%{transform:rotate(-42deg)}51%{transform:rotate(-50deg)}60%,70%{transform:rotate(-47deg)}84%{transform:rotate(5deg)}94%{transform:rotate(-1.5deg)}}
+@keyframes r53-peer{0%,86%,100%{transform:none}20%,72%{transform:translateY(5px)}93%{transform:translateY(1px)}}
+@keyframes r53-down{0%,100%{transform:none}18%,74%{transform:translateY(4px)}}
+@keyframes r53-sway{0%,100%{transform:none}28%,52%{transform:rotate(3deg)}70%{transform:rotate(-1deg)}85%{transform:rotate(.3deg)}}
+@keyframes r53-level{0%,100%{transform:none}30%{transform:rotate(-2deg)}55%{transform:rotate(-1.5deg)}74%{transform:rotate(1.2deg)}88%{transform:rotate(-.4deg)}}
+@keyframes r53-lag{0%,100%{transform:none}30%{transform:rotate(-3deg)}56%{transform:rotate(-1.5deg)}74%{transform:rotate(2.2deg)}88%{transform:rotate(-.8deg)}}
+@keyframes r53-shift-ant{0%,100%{transform:none}30%{transform:rotate(-8deg)}55%{transform:rotate(4deg)}75%{transform:rotate(-3deg)}90%{transform:rotate(1deg)}}
+@keyframes r53-swing{0%,100%{transform:none}32%{transform:rotate(-3deg)}58%{transform:rotate(2deg)}78%{transform:rotate(-.8deg)}}
+@keyframes r53-lift{0%,16%,58%,70%,100%{transform:none}32%,44%{transform:rotate(9deg)}64%{transform:rotate(1deg)}}
+@keyframes r53-plant{0%,16%,58%,70%,100%{transform:none}32%,44%{transform:rotate(-7.5deg)}64%{transform:rotate(-.8deg)}}
+@keyframes r53-lunge{0%,100%{transform:none}16%{transform:translateY(-3px)}27%{transform:translateY(7px)}44%{transform:translateY(6px)}62%{transform:translateY(-1.5px)}78%{transform:translateY(.5px)}}
+@keyframes r53-dip{0%,16%,62%,100%{transform:none}28%,46%{transform:translateY(3px)}}
+@keyframes r53-strike-l{0%,100%{transform:none}16%{transform:rotate(-6deg)}26%{transform:rotate(46deg)}32%{transform:rotate(48deg)}44%{transform:rotate(44deg)}60%{transform:rotate(-4deg)}74%{transform:rotate(1.5deg)}88%{transform:rotate(-.5deg)}}
+@keyframes r53-strike-r{0%,100%{transform:none}16%{transform:rotate(6deg)}26%{transform:rotate(-46deg)}32%{transform:rotate(-48deg)}44%{transform:rotate(-44deg)}60%{transform:rotate(4deg)}74%{transform:rotate(-1.5deg)}88%{transform:rotate(.5deg)}}
+@keyframes r53-snap-l{0%,100%{transform:none}16%{transform:rotate(12deg)}28%{transform:rotate(-82deg)}34%{transform:rotate(-86deg)}46%{transform:rotate(-80deg)}62%{transform:rotate(8deg)}76%{transform:rotate(-3deg)}90%{transform:rotate(1deg)}}
+@keyframes r53-snap-r{0%,100%{transform:none}16%{transform:rotate(-12deg)}28%{transform:rotate(82deg)}34%{transform:rotate(86deg)}46%{transform:rotate(80deg)}62%{transform:rotate(-8deg)}76%{transform:rotate(3deg)}90%{transform:rotate(-1deg)}}
+@keyframes r53-flick-l{0%,100%{transform:none}16%{transform:rotate(-6deg)}28%{transform:rotate(14deg)}40%{transform:rotate(-8deg)}54%{transform:rotate(4deg)}68%{transform:rotate(-2deg)}}
+@keyframes r53-flick-r{0%,100%{transform:none}16%{transform:rotate(6deg)}28%{transform:rotate(-14deg)}40%{transform:rotate(8deg)}54%{transform:rotate(-4deg)}68%{transform:rotate(2deg)}}
+</style>
   <title id="mantis-title">Mantis — insect robot</title>
   <desc id="mantis-desc">A slender olive insect robot with a triangular head and two wide set eyes, long aerials, folded front arms ending in pincers, a narrow thorax over a segmented abdomen and four thin jointed legs.</desc>
   <!-- Aerials -->
-  <path d="M244 98q-14-34-46-50m70 50q14-34 46-50" fill="none" stroke="#697785" stroke-width="4" stroke-linecap="round"/>
-  <circle cx="198" cy="48" r="5" fill="#8c8f42"/>
-  <circle cx="314" cy="48" r="5" fill="#8c8f42"/>
+  <g class="body" style="transform-origin:256px 300px"><g class="head" style="transform-origin:256px 176px">
+  <g class="ant-l" style="transform-origin:244px 98px"><path d="M244 98q-14-34-46-50" fill="none" stroke="#697785" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="198" cy="48" r="5" fill="#8c8f42"/></g>
+  <g class="ant-r" style="transform-origin:268px 98px"><path d="M268 98q14-34 46-50" fill="none" stroke="#697785" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="314" cy="48" r="5" fill="#8c8f42"/></g>
+  </g></g>
   <!-- Rear legs -->
   <path d="m242 300-46 30m74-30 46 30" stroke="#6d7030" stroke-width="12" stroke-linecap="round"/>
   <path d="m196 330-12 140m132-140 12 140" stroke="#556270" stroke-width="8"/>
@@ -13,15 +67,22 @@
   <rect x="174" y="466" width="20" height="10" rx="4" fill="#3d4853"/>
   <rect x="318" y="466" width="20" height="10" rx="4" fill="#3d4853"/>
   <!-- Middle legs -->
-  <path d="m238 284-76-40m112 40 76-40" stroke="#8c8f42" stroke-width="12" stroke-linecap="round"/>
-  <path d="m162 244-38 224m226-224 38 224" stroke="#697785" stroke-width="8"/>
+  <g class="leg-l" style="transform-origin:238px 284px">
+  <path d="m238 284-76-40" stroke="#8c8f42" stroke-width="12" stroke-linecap="round"/>
+  <g class="shin-l" style="transform-origin:162px 244px"><path d="m162 244-38 224" stroke="#697785" stroke-width="8"/>
+  <rect x="112" y="464" width="22" height="12" rx="4" fill="#3d4853"/></g>
   <circle cx="162" cy="244" r="9" fill="#3d4853"/>
+  </g>
+  <path d="m274 284 76-40" stroke="#8c8f42" stroke-width="12" stroke-linecap="round"/>
+  <path d="m350 244 38 224" stroke="#697785" stroke-width="8"/>
   <circle cx="350" cy="244" r="9" fill="#3d4853"/>
-  <rect x="112" y="464" width="22" height="12" rx="4" fill="#3d4853"/>
   <rect x="378" y="464" width="22" height="12" rx="4" fill="#3d4853"/>
   <!-- Segmented abdomen -->
+  <g class="abdomen" style="transform-origin:256px 296px">
   <ellipse cx="256" cy="330" rx="36" ry="40" fill="#6d7030"/>
   <path d="M226 334q30 12 60 0m-54 18q24 10 48 0" fill="none" stroke="#8c8f42" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  <g class="body" style="transform-origin:256px 300px">
   <!-- Narrow thorax -->
   <path d="M256 176v24" stroke="#3d4853" stroke-width="12"/>
   <rect x="232" y="196" width="48" height="110" rx="22" fill="#8c8f42"/>
@@ -30,22 +91,34 @@
   <rect x="250" y="222" width="12" height="52" rx="6" fill="#3d4853"/>
   <rect x="253" y="228" width="6" height="18" rx="3" fill="#79d6eb"/>
   <!-- Folded front arms with pincers -->
-  <path d="m238 214-52 54m88-54 52 54" stroke="#8c8f42" stroke-width="16" stroke-linecap="round"/>
-  <path d="m186 268 10-70m130 70-10-70" stroke="#697785" stroke-width="10"/>
-  <path d="m196 198-8-12m8 12 6-13m114 13 8-12m-8 12-6-13" stroke="#3d4853" stroke-width="5" stroke-linecap="round"/>
-  <circle cx="186" cy="268" r="10" fill="#3d4853"/>
-  <circle cx="326" cy="268" r="10" fill="#3d4853"/>
+  <g class="arm-l" style="transform-origin:238px 214px">
+  <path d="m238 214-52 54" stroke="#8c8f42" stroke-width="16" stroke-linecap="round"/>
   <circle cx="238" cy="214" r="9" fill="#3d4853"/>
+  <g class="fore-l" style="transform-origin:186px 268px"><path d="m186 268 10-70" stroke="#697785" stroke-width="10"/>
+  <path d="m196 198-8-12m8 12 6-13" stroke="#3d4853" stroke-width="5" stroke-linecap="round"/></g>
+  <circle cx="186" cy="268" r="10" fill="#3d4853"/>
+  </g>
+  <g class="arm-r" style="transform-origin:274px 214px">
+  <path d="m274 214 52 54" stroke="#8c8f42" stroke-width="16" stroke-linecap="round"/>
   <circle cx="274" cy="214" r="9" fill="#3d4853"/>
+  <g class="fore-r" style="transform-origin:326px 268px"><path d="m326 268-10-70" stroke="#697785" stroke-width="10"/>
+  <path d="m316 198 8-12m-8 12-6-13" stroke="#3d4853" stroke-width="5" stroke-linecap="round"/></g>
+  <circle cx="326" cy="268" r="10" fill="#3d4853"/>
+  </g>
   <!-- Triangular head with wide set eyes -->
+  <g class="head" style="transform-origin:256px 176px">
   <path d="M196 96h120q14 0 8 14l-48 62q-12 14-24 0l-48-62q-6-14 8-14Z" fill="#8c8f42"/>
   <path d="M196 96h120q14 0 8 14H188q-6-14 8-14Z" fill="#a9ac5a"/>
   <path d="M310 110h14l-48 62q-6 7-12 7Z" fill="#6d7030"/>
   <circle cx="208" cy="112" r="22" fill="#3d4853"/>
   <circle cx="304" cy="112" r="22" fill="#3d4853"/>
+  <g class="eyes">
   <circle cx="208" cy="112" r="15" fill="#79d6eb"/>
   <circle cx="304" cy="112" r="15" fill="#79d6eb"/>
   <path d="M218 100a15 15 0 0 1-12 27 15 15 0 0 0 12-27Zm96 0a15 15 0 0 1-12 27 15 15 0 0 0 12-27Z" fill="#4fb0c5"/>
   <circle cx="212" cy="107" r="5" fill="#fffae0"/>
   <circle cx="308" cy="107" r="5" fill="#fffae0"/>
+  </g>
+  </g>
+  </g>
 </svg>

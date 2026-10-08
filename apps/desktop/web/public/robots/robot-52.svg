@@ -1,22 +1,74 @@
-<svg width="320" height="356" viewBox="96 122 320 356" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="brute-title brute-desc">
+<svg width="320" height="356" viewBox="96 122 320 356" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="brute-title brute-desc" class="r52" data-idle="look look rock shrug" data-work="heave heave flex flex shrug"><style>
+.r52[data-act=heave] .body{animation:r52-heave-body 2s ease-in-out}
+.r52[data-act=heave] .arm-l{animation:r52-heave-arm-l 2s ease-in-out}
+.r52[data-act=heave] .arm-r{animation:r52-heave-arm-r 2s ease-in-out}
+.r52[data-act=heave] .fore-l{animation:r52-heave-fore-l 2s ease-in-out}
+.r52[data-act=heave] .fore-r{animation:r52-heave-fore-r 2s ease-in-out}
+.r52[data-act=heave] .fl{animation:r52-heave-fl 2s ease-in-out}
+.r52[data-act=heave] .fr{animation:r52-heave-fr 2s ease-in-out}
+.r52[data-act=heave] .pipe{animation:r52-pipe 2s ease-in-out}
+.r52[data-act=heave] .cap{animation:r52-cap 2s ease-in-out}
+.r52[data-act=rock] .body{animation:r52-rock 2s ease-in-out}
+.r52[data-act=rock] .arm-l,.r52[data-act=rock] .arm-r{animation:r52-rock-arm 2s ease-in-out}
+.r52[data-act=flex] .arm-l{animation:r52-flex-arm-l 1.6s ease-in-out}
+.r52[data-act=flex] .arm-r{animation:r52-flex-arm-r 1.6s ease-in-out}
+.r52[data-act=flex] .fore-l{animation:r52-flex-fore-l 1.6s ease-in-out}
+.r52[data-act=flex] .fore-r{animation:r52-flex-fore-r 1.6s ease-in-out}
+.r52[data-act=flex] .fl{animation:r52-flex-fl 1.6s ease-in-out}
+.r52[data-act=flex] .fr{animation:r52-flex-fr 1.6s ease-in-out}
+.r52[data-act=flex] .rc{animation-delay:.15s}
+.r52[data-act=shrug] .sh{animation:r52-shrug-sh 1.6s ease-in-out}
+.r52[data-act=shrug] .head{animation:r52-shrug-head 1.6s ease-in-out}
+.r52[data-act=shrug] .fore-l{animation:r52-shrug-fore-l 1.6s ease-in-out}
+.r52[data-act=shrug] .fore-r{animation:r52-shrug-fore-r 1.6s ease-in-out}
+.r52[data-act=shrug] .fl{animation:r52-shrug-fl 1.6s ease-in-out}
+.r52[data-act=shrug] .fr{animation:r52-shrug-fr 1.6s ease-in-out}
+.r52[data-act=look] .body{animation:r52-look-body 1.8s ease-in-out}
+.r52[data-act=look] .head{animation:r52-look-head 1.8s ease-in-out}
+.r52[data-act=look] .visor{animation:r52-look-visor 1.8s ease-in-out}
+.r52[data-act=look] .arm-l,.r52[data-act=look] .arm-r{animation:r52-look-arm 1.8s ease-in-out}
+@keyframes r52-flex-arm-l{0%,100%{transform:none}26%{transform:rotate(-1deg)}50%{transform:rotate(1deg)}72%{transform:rotate(-.4deg)}}
+@keyframes r52-flex-arm-r{0%,100%{transform:none}26%{transform:rotate(1deg)}50%{transform:rotate(-1deg)}72%{transform:rotate(.4deg)}}
+@keyframes r52-flex-fore-l{0%,100%{transform:none}22%{transform:rotate(-5deg)}46%{transform:rotate(3.5deg)}68%{transform:rotate(-1.5deg)}86%{transform:rotate(.6deg)}}
+@keyframes r52-flex-fore-r{0%,100%{transform:none}22%{transform:rotate(5deg)}46%{transform:rotate(-3.5deg)}68%{transform:rotate(1.5deg)}86%{transform:rotate(-.6deg)}}
+@keyframes r52-flex-fl{0%,100%{transform:none}22%{transform:rotate(-12deg)}46%{transform:rotate(14deg)}68%{transform:rotate(-4deg)}}
+@keyframes r52-flex-fr{0%,100%{transform:none}22%{transform:rotate(12deg)}46%{transform:rotate(-14deg)}68%{transform:rotate(4deg)}}
+@keyframes r52-shrug-sh{0%,100%{transform:none}24%,44%{transform:translateY(-4.5px)}58%{transform:translateY(1.5px)}72%{transform:translateY(-.8px)}86%{transform:translateY(.3px)}}
+@keyframes r52-shrug-head{0%,62%,100%{transform:none}26%,44%{transform:translateY(3px)}}
+@keyframes r52-shrug-fore-l{0%,100%{transform:none}26%,44%{transform:rotate(3deg)}62%{transform:rotate(-2.5deg)}78%{transform:rotate(1deg)}90%{transform:rotate(-.3deg)}}
+@keyframes r52-shrug-fore-r{0%,100%{transform:none}26%,44%{transform:rotate(-3deg)}62%{transform:rotate(2.5deg)}78%{transform:rotate(-1deg)}90%{transform:rotate(.3deg)}}
+@keyframes r52-shrug-fl{0%,62%,100%{transform:none}26%,44%{transform:rotate(10deg)}}
+@keyframes r52-shrug-fr{0%,62%,100%{transform:none}26%,44%{transform:rotate(-10deg)}}
+@keyframes r52-look-body{0%,100%{transform:none}24%,40%{transform:rotate(-.3deg)}62%,76%{transform:rotate(.25deg)}}
+@keyframes r52-look-head{0%,100%{transform:none}20%,40%{transform:translateX(-5px) rotate(-5deg)}60%,76%{transform:translateX(4px) rotate(4deg)}}
+@keyframes r52-look-visor{0%,100%{transform:none}18%,40%{transform:translateX(-6px)}58%,76%{transform:translateX(6px)}}
+@keyframes r52-look-arm{0%,100%{transform:none}28%{transform:rotate(1.2deg)}48%{transform:rotate(-.5deg)}66%{transform:rotate(-1.2deg)}86%{transform:rotate(.5deg)}}
+@keyframes r52-heave-body{0%,100%{transform:none}16%,26%{transform:translateY(4px)}48%,62%{transform:translateY(-.5px)}78%{transform:translateY(3px)}90%{transform:translateY(-.4px)}}
+@keyframes r52-heave-arm-l{0%,100%{transform:none}16%,26%{transform:rotate(2deg)}46%{transform:rotate(15deg)}64%{transform:rotate(14deg)}80%{transform:rotate(-2deg)}91%{transform:rotate(.6deg)}}
+@keyframes r52-heave-arm-r{0%,100%{transform:none}16%,26%{transform:rotate(-2deg)}46%{transform:rotate(-15deg)}64%{transform:rotate(-14deg)}80%{transform:rotate(2deg)}91%{transform:rotate(-.6deg)}}
+@keyframes r52-heave-fore-l{0%,100%{transform:none}18%,28%{transform:rotate(-2deg)}50%{transform:rotate(-45deg)}64%{transform:rotate(-42deg)}82%{transform:rotate(3deg)}93%{transform:rotate(-1deg)}}
+@keyframes r52-heave-fore-r{0%,100%{transform:none}18%,28%{transform:rotate(2deg)}50%{transform:rotate(45deg)}64%{transform:rotate(42deg)}82%{transform:rotate(-3deg)}93%{transform:rotate(1deg)}}
+@keyframes r52-heave-fl{0%,100%{transform:none}14%,22%{transform:rotate(14deg)}34%,64%{transform:rotate(-8deg)}82%{transform:rotate(4deg)}}
+@keyframes r52-heave-fr{0%,100%{transform:none}14%,22%{transform:rotate(-14deg)}34%,64%{transform:rotate(8deg)}82%{transform:rotate(-4deg)}}
+@keyframes r52-pipe{0%,44%,82%,100%{transform:none}54%{transform:scaleY(1.182)}68%{transform:scaleY(1.045)}}
+@keyframes r52-cap{0%,44%,82%,100%{transform:none;fill:#697785}54%{transform:translateY(-8px);fill:#95a2b0}68%{transform:translateY(-2px)}}
+@keyframes r52-rock{0%,100%{transform:none}22%{transform:translate(0,1.5px) rotate(2deg)}50%{transform:translate(0,1.2px) rotate(-1.6deg)}76%{transform:translate(0,.5px) rotate(.6deg)}}
+@keyframes r52-rock-arm{0%,100%{transform:none}26%{transform:rotate(-3deg)}54%{transform:rotate(2.5deg)}80%{transform:rotate(-1deg)}}
+</style>
   <title id="brute-title">Brute — heavy lifting robot</title>
   <desc id="brute-desc">A broad teal lifting robot with a small head sunk between big shoulder housings, a single visor slit, exhaust stacks, a chest grille over a hazard striped waist, long arms ending in heavy three finger claws, and short stout legs.</desc>
+  <g class="body" style="transform-origin:256px 340px">
   <!-- Exhaust stacks -->
-  <rect x="176" y="128" width="16" height="44" fill="#3d4853"/>
-  <rect x="320" y="128" width="16" height="44" fill="#3d4853"/>
-  <rect x="172" y="122" width="24" height="10" rx="3" fill="#697785"/>
-  <rect x="316" y="122" width="24" height="10" rx="3" fill="#697785"/>
+  <rect class="pipe" style="transform-origin:184px 172px" x="176" y="128" width="16" height="44" fill="#3d4853"/>
+  <rect class="pipe" style="transform-origin:328px 172px" x="320" y="128" width="16" height="44" fill="#3d4853"/>
+  <rect class="cap" x="172" y="122" width="24" height="10" rx="3" fill="#697785"/>
+  <rect class="cap" x="316" y="122" width="24" height="10" rx="3" fill="#697785"/>
   <!-- Long arms with heavy claws -->
-  <path d="m150 226-18 76m230-76 18 76" stroke="#697785" stroke-width="28"/>
-  <path d="m130 318-4 60m256-60 4 60" stroke="#3f8c94" stroke-width="46" stroke-linecap="round"/>
-  <path d="m144 318-4 60m256-60 4 60" stroke="#2c6b72" stroke-width="10"/>
-  <path d="M112 404l-6 32M126 406v36M140 404l6 32M400 404l6 32M386 406v36M372 404l-6 32" stroke="#3d4853" stroke-width="13" stroke-linecap="round"/>
-  <rect x="104" y="394" width="44" height="24" rx="8" fill="#3d4853"/>
-  <rect x="364" y="394" width="44" height="24" rx="8" fill="#3d4853"/>
-  <circle cx="132" cy="302" r="22" fill="#3d4853"/>
-  <circle cx="380" cy="302" r="22" fill="#3d4853"/>
-  <circle cx="132" cy="302" r="10" fill="#92a1b2"/>
-  <circle cx="380" cy="302" r="10" fill="#92a1b2"/>
+  <g class="sh">
+  <g class="arm-l" style="transform-origin:156px 206px"><path d="m150 226-18 76" stroke="#697785" stroke-width="28"/></g>
+  <g class="arm-r" style="transform-origin:356px 206px"><path d="m362 226 18 76" stroke="#697785" stroke-width="28"/></g>
+  </g>
+  </g>
   <!-- Stout legs -->
   <path d="m212 340-6 56m94-56 6 56" stroke="#697785" stroke-width="26"/>
   <rect x="186" y="404" width="40" height="46" fill="#3f8c94"/>
@@ -25,13 +77,18 @@
   <rect x="182" y="384" width="48" height="28" rx="10" fill="#5ea9b0"/>
   <rect x="282" y="384" width="48" height="28" rx="10" fill="#5ea9b0"/>
   <path d="M168 476v-16q0-14 14-14h44q14 0 14 14v16Zm104 0v-16q0-14 14-14h44q14 0 14 14v16Z" fill="#3d4853"/>
+  <g class="body" style="transform-origin:256px 340px">
   <circle cx="212" cy="340" r="18" fill="#3d4853"/>
   <circle cx="300" cy="340" r="18" fill="#3d4853"/>
   <!-- Small sunk head with a visor slit -->
+  <g class="head" style="transform-origin:256px 178px">
   <rect x="222" y="126" width="68" height="52" rx="14" fill="#3f8c94"/>
   <path d="M236 126h40q14 0 14 14H222q0-14 14-14Z" fill="#5ea9b0"/>
+  <g class="visor">
   <rect x="230" y="146" width="52" height="14" rx="7" fill="#3d4853"/>
   <rect x="236" y="150" width="40" height="6" rx="3" fill="#79d6eb"/>
+  </g>
+  </g>
   <!-- Broad torso -->
   <path d="M176 168h160q22 0 22 22l-18 124q-4 22-26 22H198q-22 0-26-22l-18-124q0-22 22-22Z" fill="#3f8c94"/>
   <path d="M176 168h160q22 0 22 22H154q0-22 22-22Z" fill="#5ea9b0"/>
@@ -41,10 +98,40 @@
   <rect x="186" y="294" width="140" height="22" fill="#f6c354"/>
   <path d="M186 316l10-22h10l-10 22Zm20 0 10-22h10l-10 22Zm20 0 10-22h10l-10 22Zm20 0 10-22h10l-10 22Zm20 0 10-22h10l-10 22Zm20 0 10-22h10l-10 22Zm20 0 10-22h10l-10 22Z" fill="#3d4853"/>
   <!-- Shoulder housings -->
+  <g class="sh">
   <circle cx="156" cy="206" r="44" fill="#3f8c94"/>
   <circle cx="356" cy="206" r="44" fill="#3f8c94"/>
   <path d="M120 186a44 44 0 0 1 64-14 40 40 0 0 0-64 14Zm200 0a44 44 0 0 1 64-14 40 40 0 0 0-64 14Z" fill="#5ea9b0"/>
   <path d="M180 170a44 44 0 0 1 0 72 52 52 0 0 0 0-72Zm200 0a44 44 0 0 1 0 72 52 52 0 0 0 0-72Z" fill="#2c6b72"/>
   <circle cx="156" cy="206" r="12" fill="#3d4853"/>
   <circle cx="356" cy="206" r="12" fill="#3d4853"/>
+  </g>
+  <!-- Forearms and elbows overlap nothing at rest, so they paint in front of the body -->
+  <g class="sh">
+  <g class="arm-l" style="transform-origin:156px 206px">
+  <g class="fore-l" style="transform-origin:132px 302px">
+  <path d="m130 318-4 60" stroke="#3f8c94" stroke-width="46" stroke-linecap="round"/>
+  <path d="m144 318-4 60" stroke="#2c6b72" stroke-width="10"/>
+  <path class="fl" style="transform-origin:112px 404px" d="M112 404l-6 32" stroke="#3d4853" stroke-width="13" stroke-linecap="round"/>
+  <path d="M126 406v36" stroke="#3d4853" stroke-width="13" stroke-linecap="round"/>
+  <path class="fr" style="transform-origin:140px 404px" d="M140 404l6 32" stroke="#3d4853" stroke-width="13" stroke-linecap="round"/>
+  <rect x="104" y="394" width="44" height="24" rx="8" fill="#3d4853"/>
+  </g>
+  <circle cx="132" cy="302" r="22" fill="#3d4853"/>
+  <circle cx="132" cy="302" r="10" fill="#92a1b2"/>
+  </g>
+  <g class="arm-r" style="transform-origin:356px 206px">
+  <g class="fore-r rc" style="transform-origin:380px 302px">
+  <path d="m382 318 4 60" stroke="#3f8c94" stroke-width="46" stroke-linecap="round"/>
+  <path d="m396 318 4 60" stroke="#2c6b72" stroke-width="10"/>
+  <path class="fr rc" style="transform-origin:400px 404px" d="M400 404l6 32" stroke="#3d4853" stroke-width="13" stroke-linecap="round"/>
+  <path d="M386 406v36" stroke="#3d4853" stroke-width="13" stroke-linecap="round"/>
+  <path class="fl rc" style="transform-origin:372px 404px" d="M372 404l-6 32" stroke="#3d4853" stroke-width="13" stroke-linecap="round"/>
+  <rect x="364" y="394" width="44" height="24" rx="8" fill="#3d4853"/>
+  </g>
+  <circle cx="380" cy="302" r="22" fill="#3d4853"/>
+  <circle cx="380" cy="302" r="10" fill="#92a1b2"/>
+  </g>
+  </g>
+  </g>
 </svg>
