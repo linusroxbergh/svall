@@ -1,0 +1,61 @@
+<svg width="264" height="452" viewBox="124 24 264 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="cycle-title cycle-desc">
+  <title id="cycle-title">Cycle — single wheel robot</title>
+  <desc id="cycle-desc">A mustard tin-toy robot riding one big spoked wheel, with a rounded head, two eyes on a slate band and an antenna knob, a torso with a chest dial, ring jointed arms with three finger hands held out for balance, and a slate fork down to the wheel hub.</desc>
+  <!-- Big spoked wheel -->
+  <path d="M256 396v-64m0 64 32-55m-32 55 55-32m-55 32h64m-64 0 55 32m-55-32 32 55m-32-55v64m0-64-32 55m32-55-55 32m55-32h-64m64 0-55-32m55 32-32-55" stroke="#92a1b2" stroke-width="3"/>
+  <circle cx="256" cy="396" r="66" fill="none" stroke="#697785" stroke-width="6"/>
+  <circle cx="256" cy="396" r="74" fill="none" stroke="#3d4853" stroke-width="12"/>
+  <path d="M181.5 353a86 86 0 0 1 149 0" fill="none" stroke="#daac49" stroke-width="10" stroke-linecap="round"/>
+  <path d="M300 322a86 86 0 0 1 30.5 31" fill="none" stroke="#bc943d" stroke-width="10" stroke-linecap="round"/>
+  <!-- Fork and hub -->
+  <path d="m236 292 8 104m32-104-8 104" stroke="#3d4853" stroke-width="10"/>
+  <rect x="236" y="390" width="40" height="12" rx="4" fill="#3d4853"/>
+  <circle cx="256" cy="396" r="14" fill="#bc943d"/>
+  <circle cx="256" cy="396" r="11" fill="#f6c354"/>
+  <circle cx="256" cy="396" r="4" fill="#3d4853"/>
+  <!-- Arms held out for balance -->
+  <path d="m204 180-36 22-26 30m166-52 36 22 26 30" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+  <rect x="130" y="228" width="24" height="14" rx="4" fill="#3d4853"/>
+  <rect x="358" y="228" width="24" height="14" rx="4" fill="#3d4853"/>
+  <path d="M134 242l-4 14M142 244v16M150 242l4 14M378 242l4 14M370 244v16M362 242l-4 14" stroke="#3d4853" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="168" cy="202" r="10" fill="#3d4853"/>
+  <circle cx="344" cy="202" r="10" fill="#3d4853"/>
+  <circle cx="168" cy="202" r="4.5" fill="#92a1b2"/>
+  <circle cx="344" cy="202" r="4.5" fill="#92a1b2"/>
+  <!-- Torso with a chest dial -->
+  <rect x="240" y="138" width="32" height="20" fill="#3d4853"/>
+  <rect x="226" y="282" width="60" height="18" rx="6" fill="#3d4853"/>
+  <rect x="204" y="152" width="104" height="138" rx="22" fill="#daac49"/>
+  <path d="M226 152h60q22 0 22 20H204q0-20 22-20Z" fill="#f6c354"/>
+  <path d="M286 154q22 4 22 22v92q0 18-22 22Z" fill="#bc943d"/>
+  <circle cx="256" cy="212" r="22" fill="#3d4853"/>
+  <circle cx="256" cy="212" r="16" fill="#fff8de"/>
+  <path d="M245 204l3 2m8-9v4m11 3-3 2" stroke="#3d4853" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="m256 212 8-8" stroke="#c2443a" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="256" cy="212" r="3.5" fill="#3d4853"/>
+  <circle cx="236" cy="260" r="8" fill="#3d4853"/>
+  <circle cx="276" cy="260" r="8" fill="#3d4853"/>
+  <circle cx="236" cy="260" r="4" fill="#79d6eb"/>
+  <circle cx="276" cy="260" r="4" fill="#f6c354"/>
+  <circle cx="204" cy="180" r="14" fill="#3d4853"/>
+  <circle cx="308" cy="180" r="14" fill="#3d4853"/>
+  <circle cx="204" cy="180" r="6.5" fill="#92a1b2"/>
+  <circle cx="308" cy="180" r="6.5" fill="#92a1b2"/>
+  <!-- Rounded head with an antenna knob -->
+  <path d="M256 56V38" stroke="#3d4853" stroke-width="5"/>
+  <circle cx="256" cy="33" r="8" fill="#3d4853"/>
+  <circle cx="256" cy="33" r="4" fill="#f6c354"/>
+  <circle cx="204" cy="98" r="9" fill="#3d4853"/>
+  <circle cx="308" cy="98" r="9" fill="#3d4853"/>
+  <circle cx="204" cy="98" r="4" fill="#92a1b2"/>
+  <circle cx="308" cy="98" r="4" fill="#92a1b2"/>
+  <rect x="206" y="54" width="100" height="88" rx="32" fill="#daac49"/>
+  <path d="M238 54h36q32 0 32 30H206q0-30 32-30Z" fill="#f6c354"/>
+  <path d="M284 56q22 8 22 28v26q0 24-22 30Z" fill="#bc943d"/>
+  <rect x="216" y="82" width="80" height="32" rx="16" fill="#3d4853"/>
+  <circle cx="238" cy="98" r="11" fill="#88dbea"/>
+  <circle cx="274" cy="98" r="11" fill="#88dbea"/>
+  <path d="M244 89a11 11 0 0 1-8 20 11 11 0 0 0 8-20Zm36 0a11 11 0 0 1-8 20 11 11 0 0 0 8-20Z" fill="#4fb0c5"/>
+  <circle cx="241" cy="94" r="3.5" fill="#fffae0"/>
+  <circle cx="277" cy="94" r="3.5" fill="#fffae0"/>
+</svg>

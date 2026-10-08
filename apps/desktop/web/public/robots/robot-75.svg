@@ -1,0 +1,59 @@
+<svg width="232" height="454" viewBox="140 22 232 454" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="stack-title stack-desc">
+  <title id="stack-title">Stack — stacked drum robot</title>
+  <desc id="stack-desc">A terracotta tin toy robot built from three stacked drums that widen toward the ground, with two eyes on a slate band and an antenna knob on the head drum, a dial on the chest drum, ring jointed arms with pincers, slate neck rings, and a wide riveted base drum on a slate rim.</desc>
+  <!-- Ring jointed arms with pincers -->
+  <path d="m192 196-34 30v40m162-70 34 30v40" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+  <rect x="146" y="262" width="24" height="16" rx="4" fill="#b45a3a"/>
+  <rect x="342" y="262" width="24" height="16" rx="4" fill="#b45a3a"/>
+  <path d="M150 280q-10 16 2 28m16-28q10 16-2 28M346 280q-10 16 2 28m16-28q10 16-2 28" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="158" cy="226" r="10" fill="#3d4853"/>
+  <circle cx="354" cy="226" r="10" fill="#3d4853"/>
+  <circle cx="158" cy="226" r="4.5" fill="#92a1b2"/>
+  <circle cx="354" cy="226" r="4.5" fill="#92a1b2"/>
+  <!-- Wide riveted base drum on a slate rim -->
+  <rect x="222" y="282" width="68" height="20" fill="#3d4853"/>
+  <path d="M222 290h68" stroke="#697785" stroke-width="4"/>
+  <rect x="166" y="298" width="180" height="162" rx="24" fill="#d9734e"/>
+  <ellipse cx="256" cy="304" rx="88" ry="12" fill="#ec9070"/>
+  <path d="M318 300q28 4 28 22v114q0 22-24 24h-8V306Z" fill="#b45a3a"/>
+  <circle cx="186" cy="330" r="4" fill="#b45a3a"/>
+  <circle cx="206" cy="330" r="4" fill="#b45a3a"/>
+  <circle cx="226" cy="330" r="4" fill="#b45a3a"/>
+  <circle cx="246" cy="330" r="4" fill="#b45a3a"/>
+  <circle cx="266" cy="330" r="4" fill="#b45a3a"/>
+  <circle cx="286" cy="330" r="4" fill="#b45a3a"/>
+  <circle cx="306" cy="330" r="4" fill="#b45a3a"/>
+  <rect x="230" y="348" width="52" height="88" rx="8" fill="#b45a3a"/>
+  <circle cx="270" cy="392" r="5" fill="#f6c354"/>
+  <rect x="160" y="450" width="192" height="26" rx="8" fill="#3d4853"/>
+  <path d="M172 462h168" stroke="#697785" stroke-width="4" stroke-linecap="round"/>
+  <!-- Middle chest drum with a dial -->
+  <rect x="232" y="132" width="48" height="18" fill="#3d4853"/>
+  <path d="M232 140h48" stroke="#697785" stroke-width="4"/>
+  <rect x="190" y="146" width="132" height="138" rx="20" fill="#d9734e"/>
+  <ellipse cx="256" cy="152" rx="64" ry="10" fill="#ec9070"/>
+  <path d="M300 148q22 4 22 20v96q0 20-20 20h-6V154Z" fill="#b45a3a"/>
+  <circle cx="256" cy="214" r="27" fill="#3d4853"/>
+  <circle cx="256" cy="214" r="20" fill="#fff8de"/>
+  <path d="M242 202l-4-3m18-5v-5m14 13 4-3" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/>
+  <path d="m256 214 10-12" stroke="#b45a3a" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="256" cy="214" r="4.5" fill="#3d4853"/>
+  <circle cx="230" cy="262" r="6" fill="#f6c354"/>
+  <circle cx="282" cy="262" r="6" fill="#f6c354"/>
+  <circle cx="192" cy="196" r="15" fill="#3d4853"/>
+  <circle cx="320" cy="196" r="15" fill="#3d4853"/>
+  <circle cx="192" cy="196" r="7" fill="#92a1b2"/>
+  <circle cx="320" cy="196" r="7" fill="#92a1b2"/>
+  <!-- Small head drum with an eye band and antenna knob -->
+  <path d="M256 54V38" stroke="#697785" stroke-width="5"/>
+  <circle cx="256" cy="32" r="8" fill="#f6c354"/>
+  <rect x="212" y="54" width="88" height="80" rx="16" fill="#d9734e"/>
+  <ellipse cx="256" cy="60" rx="42" ry="8" fill="#ec9070"/>
+  <path d="M282 56q18 2 18 16v46q0 16-16 16h-4V62Z" fill="#b45a3a"/>
+  <rect x="220" y="80" width="72" height="32" rx="16" fill="#3d4853"/>
+  <circle cx="240" cy="96" r="10" fill="#80d4ef"/>
+  <circle cx="272" cy="96" r="10" fill="#80d4ef"/>
+  <path d="M246 88a10 10 0 0 1-8 18 10 10 0 0 0 8-18Zm32 0a10 10 0 0 1-8 18 10 10 0 0 0 8-18Z" fill="#4fb0c5"/>
+  <circle cx="243" cy="92" r="3.5" fill="#fffae0"/>
+  <circle cx="275" cy="92" r="3.5" fill="#fffae0"/>
+</svg>
