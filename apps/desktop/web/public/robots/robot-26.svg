@@ -1,0 +1,35 @@
+<svg width="268" height="424" viewBox="122 58 268 424" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="hopper-title hopper-desc">
+  <title id="hopper-title">Hopper — industrial robot</title>
+  <desc id="hopper-desc">An orange maintenance robot with a squared optical head, angular chest, two manipulators, and one central spring suspension leg ending in a broad stabilizing foot.</desc>
+
+  <!-- Single spring and stabilizing foot -->
+  <path d="M256 323v132" stroke="#697785" stroke-width="16"/>
+  <path d="m234 348 44 17-44 18 44 18-44 18 44 18" fill="none" stroke="#3d4853" stroke-width="10" stroke-linejoin="round"/>
+  <rect x="226" y="326" width="60" height="22" rx="5" fill="#697785"/>
+  <path d="M211 446h90l37 24H174Z" fill="#697785"/>
+  <path d="M174 470h164v10H174Z" fill="#3d4853"/>
+  <!-- Two compact arms -->
+  <path d="m192 216-49 39 12 54m165-93 49 39-12 54" fill="none" stroke="#697785" stroke-width="17" stroke-linejoin="round"/>
+  <g fill="#3d4853"><circle cx="144" cy="256" r="20"/><circle cx="368" cy="256" r="20"/></g>
+  <g fill="#92a1b2"><circle cx="144" cy="256" r="10"/><circle cx="368" cy="256" r="10"/></g>
+  <path d="m138 339 4-23h26l4 23m168 0 4-23h26l4 23" fill="none" stroke="#3d4853" stroke-width="8" stroke-linejoin="round"/>
+  <g fill="#e27b31"><circle cx="155" cy="309" r="14"/><circle cx="357" cy="309" r="14"/></g>
+  <!-- Angular orange body -->
+  <rect x="233" y="144" width="46" height="42" fill="#697785"/>
+  <path d="M211 179h90l31 49-31 98h-90l-31-98Z" fill="#e27b31"/>
+  <path d="m301 179 31 49-31 98h-16l31-98-31-49Z" fill="#b05d23"/>
+  <circle cx="256" cy="235" r="29" fill="#3d4853"/>
+  <circle cx="256" cy="235" r="18" fill="#f6c354"/>
+  <path d="M251 222h10v26h-10Z" fill="#bc943d"/>
+  <path d="M220 284h72m-68 14h64" stroke="#b05d23" stroke-width="6"/>
+  <!-- Block head and single offset lens -->
+  <rect x="191" y="60" width="130" height="97" rx="8" fill="#e27b31"/>
+  <path d="M199 60h114q8 0 8 8v8H191v-8q0-8 8-8Z" fill="#f6c354"/>
+  <rect x="203" y="89" width="106" height="43" rx="5" fill="#3d4853"/>
+  <circle cx="228" cy="110" r="19" fill="#2e7a8a"/>
+  <circle cx="228" cy="110" r="12" fill="#79d6eb"/>
+  <circle cx="232" cy="106" r="4" fill="#fffae0"/>
+  <rect x="271" y="102" width="24" height="14" rx="2" fill="#79d6eb"/>
+  <path d="M241 145h30" stroke="#b05d23" stroke-width="4"/>
+
+</svg>

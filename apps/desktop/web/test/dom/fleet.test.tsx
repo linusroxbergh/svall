@@ -6,6 +6,7 @@ import { ApiError } from '../../src/api.js';
 import { setAppStore } from '../../src/hooks.js';
 import { createAppStore, type AppStore } from '../../src/store/index.js';
 import { DEFAULT_CWD } from '@svall/protocol';
+import { portraitUrl, robotOf, robotUrl } from '../../src/portraits.js';
 import { chr, fleet, isl } from '../fixtures.js';
 
 const call = vi.fn(() => Promise.resolve({}));
@@ -31,6 +32,15 @@ test('every island and its crew are listed once the fleet arrives', () => {
   expect(screen.getByRole('button', { name: 'empty' })).toBeTruthy();
   expect(screen.getAllByText('c0')).toHaveLength(1);
   expect(screen.getAllByText('c2')).toHaveLength(1);
+});
+
+test('a row shows the character\'s robot, and its animal while the fleet has robots off', () => {
+  store.getState().setFleet(fleet());
+  const { container } = render(<Fleet onOpen={() => {}} />);
+  const faces = () => [...container.querySelectorAll('.face img')].map((img) => img.getAttribute('src'));
+  expect(new Set(faces())).toEqual(new Set([robotUrl(robotOf({ portrait: 'fox' }))]));
+  act(() => store.getState().setFleet({ ...fleet(), animals: true }));
+  expect(faces()).toContain(portraitUrl('fox'));
 });
 
 test('starred characters lead the list in star order, and stay on their islands too', () => {

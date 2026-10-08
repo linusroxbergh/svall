@@ -286,6 +286,10 @@ export const setWorktrees = (d: ActionDeps, enabled: boolean): void => {
   d.api.call('worktrees.set', { enabled }).catch(toast(d));
 };
 
+export const setRobots = (d: ActionDeps, enabled: boolean): void => {
+  d.api.call('robots.set', { enabled }).catch(toast(d));
+};
+
 export const setMainAgent = (d: ActionDeps, agent: AgentKind): void => {
   d.api.call('mainAgent.set', { agent }).catch(toast(d));
 };

@@ -2,7 +2,7 @@ import type { Cell, Character, ContextItem } from '@svall/protocol';
 import { EyeGlyph, PrGlyph, reviewText } from '../indicators.js';
 import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, slotStatus, type DisplayStatus } from '../selectors.js';
 import { LinkIcon } from './LinkIcon.js';
-import { portraitTint, portraitUrl } from '../portraits.js';
+import { portraitTint, portraitUrl, robotOf, robotUrl } from '../portraits.js';
 import { theme, tokenPx } from '../theme.js';
 import { seedNum } from './coast.js';
 import { GAUGE_R, gaugeDash, hintText, statusWord } from './tokenText.js';
@@ -32,11 +32,22 @@ function gem(status: DisplayStatus, unread: boolean) {
   return null;
 }
 
+// five cells lit for the context left, all off with no agent
+function Cells({ pct }: { pct: number | undefined }) {
+  return (
+    <div className="cells" aria-hidden="true">
+      {[0, 1, 2, 3, 4].map((i) => <i key={i} data-on={pct !== undefined && 100 - pct > i * 20 + 4} />)}
+    </div>
+  );
+}
+
 export function Token({
-  c, status, world, selected, dragging, settling, hover, offset, pointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu,
+  c, status, world, robots, selected, dragging, settling, hover, offset, pointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu,
 }: {
   c: Character;
   status: DisplayStatus;
+  // the robot stands under the name and the gem moves to the card's corner
+  robots?: boolean;
   world: Cell;
   selected: boolean;
   dragging: boolean;
@@ -54,7 +65,7 @@ export function Token({
   // the rail holds RAIL_MAX chips; past that the last one counts the rest
   const shown = c.context.length > RAIL_MAX ? c.context.slice(0, RAIL_MAX - 1) : c.context;
   const hidden = c.context.slice(shown.length);
-  const cls = ['tok', `s-${status}`, selected ? 'sel' : '', dragging ? 'drag' : ''].filter(Boolean).join(' ');
+  const cls = ['tok', `s-${status}`, robots ? 'bot' : '', selected ? 'sel' : '', dragging ? 'drag' : ''].filter(Boolean).join(' ');
   const review = inReview(c) ? mainPr(c) : undefined;
   const monitor = isMonitoring(c);
   return (
@@ -84,19 +95,29 @@ export function Token({
     >
       <div className="card">
         <div className="edge" />
-        <div className="pf">
-          <div className="disc-wrap">
-            <svg className="gauge" viewBox="0 0 72 72" aria-hidden="true">
-              <circle className="track" cx="36" cy="36" r={GAUGE_R} />
-              <circle className="arc" cx="36" cy="36" r={GAUGE_R} strokeDasharray={gaugeDash(contextPctOf(c))} />
-            </svg>
-            <div className="disc" data-tint={portraitTint(c.portrait)}>
-              <img className="portrait portrait-img" src={portraitUrl(c.portrait)} alt="" draggable={false} />
+        {robots ? (
+          <>
+            <div className="nm"><span>{c.name}</span></div>
+            <div className="stage"><img className="portrait robot" src={robotUrl(robotOf(c))} alt="" draggable={false} /></div>
+            <Cells pct={contextPctOf(c)} />
+          </>
+        ) : (
+          <>
+            <div className="pf">
+              <div className="disc-wrap">
+                <svg className="gauge" viewBox="0 0 72 72" aria-hidden="true">
+                  <circle className="track" cx="36" cy="36" r={GAUGE_R} />
+                  <circle className="arc" cx="36" cy="36" r={GAUGE_R} strokeDasharray={gaugeDash(contextPctOf(c))} />
+                </svg>
+                <div className="disc" data-tint={portraitTint(c.portrait)}>
+                  <img className="portrait portrait-img" src={portraitUrl(c.portrait)} alt="" draggable={false} />
+                </div>
+                {gem(status, isUnread(c))}
+              </div>
             </div>
-            {gem(status, isUnread(c))}
-          </div>
-        </div>
-        <div className="nm"><span>{c.name}</span></div>
+            <div className="nm"><span>{c.name}</span></div>
+          </>
+        )}
         <button
           type="button"
           className="foot"
@@ -113,6 +134,7 @@ export function Token({
           </svg>
         </button>
       </div>
+      {robots && <span className="corner">{gem(status, isUnread(c))}</span>}
       {(review || monitor) && (
         <div className="rail left">
           {review && (

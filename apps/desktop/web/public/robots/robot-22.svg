@@ -1,0 +1,40 @@
+<svg width="280" height="433" viewBox="116 47 280 433" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pivot-title pivot-desc">
+  <title id="pivot-title">Pivot — single wheel robot</title>
+  <desc id="pivot-desc">A teal robot with a narrow angular head, one amber optical sensor, articulated grippers, and a large single balancing wheel held in a fork.</desc>
+  <!-- Single wheel and supporting fork -->
+  <circle cx="256" cy="417" r="61" fill="#26303a"/>
+  <circle cx="256" cy="417" r="47" fill="#697785"/>
+  <circle cx="256" cy="417" r="34" fill="#3d4853"/>
+  <path d="M251 361h10m-10 112h10m-60-61v10m100-10v10" stroke="#697785" stroke-width="5"/>
+  <path d="M209 325v42l33 48h28l33-48v-42h-17v36l-23 34h-14l-23-34v-36Z" fill="#3a4973"/>
+  <circle cx="256" cy="417" r="19" fill="#6378b0"/>
+  <circle cx="256" cy="417" r="9" fill="#f6c354"/>
+  <!-- Bent arms -->
+  <path d="m179 211-44 47 14 51m184-98 44 47-14 51" fill="none" stroke="#697785" stroke-width="17" stroke-linejoin="round"/>
+  <circle cx="178" cy="212" r="21" fill="#3a4973"/>
+  <circle cx="334" cy="212" r="21" fill="#3a4973"/>
+  <circle cx="136" cy="259" r="18" fill="#3d4853"/>
+  <circle cx="376" cy="259" r="18" fill="#3d4853"/>
+  <circle cx="136" cy="259" r="9" fill="#92a1b2"/>
+  <circle cx="376" cy="259" r="9" fill="#92a1b2"/>
+  <path d="m132 340 4-24h26l4 24m180 0 4-24h26l4 24" fill="none" stroke="#3d4853" stroke-width="8" stroke-linejoin="round"/>
+  <circle cx="149" cy="312" r="15" fill="#6378b0"/>
+  <circle cx="363" cy="312" r="15" fill="#6378b0"/>
+  <!-- Narrow tapered body -->
+  <rect x="231" y="146" width="50" height="44" fill="#3d4853"/>
+  <path d="M194 184h124l18 91-30 61H206l-30-61Z" fill="#6378b0"/>
+  <path d="M300 184h18l18 91-30 61h-18l30-61Z" fill="#3a4973"/>
+  <path d="M209 202h94l8 54H201Z" fill="#3a4973"/>
+  <path d="M217 218h69m-71 15h54" stroke="#79d6eb" stroke-width="5"/>
+  <path d="M216 281h80m-75 14h70" stroke="#3a4973" stroke-width="6"/>
+  <circle cx="256" cy="317" r="7" fill="#f6c354"/>
+  <!-- Chamfered head with a single level optical module -->
+  <path d="M214 49h84l30 33-18 78H202l-18-78Z" fill="#6378b0"/>
+  <path d="M214 49h84l13 14H201Z" fill="#79d6eb"/>
+  <path d="m310 82 18 0-18 78H202l-4-15h97Z" fill="#3a4973"/>
+  <rect x="207" y="78" width="98" height="48" rx="8" fill="#3d4853"/>
+  <rect x="222" y="87" width="68" height="30" rx="6" fill="#f6c354"/>
+  <path d="M228 110h56v7h-56Z" fill="#bc943d"/>
+  <rect x="231" y="94" width="13" height="7" rx="2" fill="#fff8de"/>
+  <path d="M241 138h30" stroke="#3d4853" stroke-width="4"/>
+</svg>

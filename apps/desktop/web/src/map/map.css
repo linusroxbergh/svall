@@ -221,6 +221,31 @@
 .tok.s-shell .disc{box-shadow:0 4px 7px var(--shade-1), inset 0 0 0 1.4px color-mix(in srgb, var(--cream) 28%, transparent)}
 .tok.s-shell .disc::after{opacity:.18}
 
+/* robot portraits: the name on top, the robot standing under it on a soft shadow, the context left as cells above the foot */
+.tok.bot .nm{flex:none;height:calc(var(--tok)*.78);padding-top:calc(var(--tok)*.12)}
+.tok.bot .stage{position:relative;flex:1;min-height:0}
+.tok.bot .stage::after{content:'';position:absolute;left:50%;bottom:calc(var(--tok)*.04);transform:translateX(-50%);
+  width:calc(var(--tok)*1.3);height:calc(var(--tok)*.14);border-radius:50%;
+  background:radial-gradient(closest-side, color-mix(in srgb, var(--ink-land) 24%, transparent), transparent)}
+.tok .portrait.robot{position:absolute;z-index:1;left:50%;bottom:calc(var(--tok)*.1);transform:translateX(-50%);
+  width:auto;height:88%;max-width:82%;object-fit:contain;object-position:center bottom}
+.tok .cells{flex:none;display:flex;gap:calc(var(--tok)*.04);height:calc(var(--tok)*.08);
+  margin:calc(var(--tok)*.06) calc(var(--tok)*.16) calc(var(--tok)*.16)}
+.tok .cells i{flex:1;border-radius:calc(var(--tok)*.06);background:color-mix(in srgb, var(--ink-land) 16%, transparent)}
+.tok .cells i[data-on=true]{background:var(--idle)}
+.tok.s-working .cells i[data-on=true]{background:var(--working)}
+.tok.s-blocked .cells i[data-on=true]{background:var(--blocked)}
+.tok.s-done    .cells i[data-on=true]{background:var(--done)}
+/* the status gem as a badge on the card's top-right corner, on a layer over the card that lifts with it and lets clicks through */
+.tok .corner{position:absolute;z-index:10;inset:0;pointer-events:none;transition:transform var(--dur) var(--ease)}
+.tok:hover .corner{transform:translateY(-6px)}
+.tok.sel .corner{transform:translateY(-5px) scale(1.04)}
+.tok.drag .corner{transform:translateY(-12px)}
+.tok .corner .gem{top:calc(var(--tok)*-.12);left:auto;right:calc(var(--tok)*-.12);transform:none}
+.tok .corner .gem.working{top:calc(var(--tok)*-.06);right:calc(var(--tok)*-.06)}
+/* a full rail of links reaches the corner, so the gem steps in beside it */
+.tok:has(> .rail:not(.left) > :nth-child(4)) .corner .gem{right:calc(var(--tok)*.46)}
+
 .tok.drag{z-index:var(--z-popover);pointer-events:none}
 .tok.drag .card{transform:translateY(-12px);
   box-shadow:0 3px 0 color-mix(in srgb, var(--card-tint) 16%, transparent),0 26px 30px -10px var(--shade-3)}

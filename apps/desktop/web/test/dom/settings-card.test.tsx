@@ -112,6 +112,21 @@ test('the worktree switch reads the fleet and flips it', () => {
   expect(call).toHaveBeenCalledWith('worktrees.set', { enabled: true });
 });
 
+test('the characters toggle reads the fleet, robots by default, and picks animals or robots', () => {
+  call.mockClear();
+  render(<SettingsCard />);
+  const pick = (name: string) => screen.getByRole('radiogroup', { name: 'Characters' }).querySelector(`[role="radio"][data-pick="${name}"]`)!;
+  expect(pick('robots').getAttribute('aria-checked')).toBe('true');
+  expect(pick('animals').getAttribute('aria-checked')).toBe('false');
+  fireEvent.click(pick('animals'));
+  expect(call).toHaveBeenCalledWith('robots.set', { enabled: false });
+  act(() => store.getState().setFleet({ ...fleet(), animals: true }));
+  expect(pick('animals').getAttribute('aria-checked')).toBe('true');
+  expect(pick('robots').getAttribute('aria-checked')).toBe('false');
+  fireEvent.click(pick('robots'));
+  expect(call).toHaveBeenCalledWith('robots.set', { enabled: true });
+});
+
 test('dormancy steps two hours at a time from 2 to 48, then never', () => {
   call.mockClear();
   render(<SettingsCard />);

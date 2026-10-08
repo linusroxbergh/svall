@@ -75,6 +75,8 @@ export const test = base.extend<{ svall: Svall }>({
     for (const [id, island] of Object.entries(state.islands)) if (island.kind !== 'home') await svall.api.call('island.delete', { id });
     // answers a new fleet's scribe question, which would otherwise cover the page
     await svall.api.call('scribe.set', { enabled: false });
+    // the specs read the animals; one about robots turns them on itself
+    await svall.api.call('robots.set', { enabled: false });
     await use(svall);
     svall.api.close();
   },

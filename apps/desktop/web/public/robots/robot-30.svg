@@ -1,0 +1,28 @@
+<svg width="394" height="383" viewBox="59 89 394 383" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="quadrant-title quadrant-desc">
+  <title id="quadrant-title">Quadrant — industrial robot</title>
+  <desc id="quadrant-desc">A round teal quadruped with integrated amber optics, a segmented circular body, and four articulated support legs of two different lengths.</desc>
+
+  <!-- Short inner pair of support legs -->
+  <path d="m225 295-27 63 18 57m71-120 27 63-18 57" fill="none" stroke="#697785" stroke-width="20" stroke-linejoin="round"/>
+  <g fill="#3d4853"><circle cx="198" cy="358" r="20"/><circle cx="314" cy="358" r="20"/></g>
+  <g fill="#92a1b2"><circle cx="198" cy="358" r="10"/><circle cx="314" cy="358" r="10"/></g>
+  <path d="M197 411h32v26h-54v-8q0-18 22-18Zm86 0h32q22 0 22 18v8h-54Z" fill="#3d4853"/>
+  <!-- Longer front legs -->
+  <path d="m161 247-52 93 4 105m238-198 52 93-4 105" fill="none" stroke="#744b2a" stroke-width="23" stroke-linejoin="round"/>
+  <g fill="#3d4853"><circle cx="109" cy="340" r="28"/><circle cx="403" cy="340" r="28"/></g>
+  <g fill="#af784e"><circle cx="109" cy="340" r="16"/><circle cx="403" cy="340" r="16"/></g>
+  <path d="M87 438h43v32H61v-9q0-23 26-23Zm295 0h43q26 0 26 23v9h-69Z" fill="#af784e"/>
+  <path d="M61 460h69v10H61Zm321 0h69v10h-69Z" fill="#3d4853"/>
+  <!-- A single circular shell, without a separate humanoid head -->
+  <circle cx="256" cy="204" r="113" fill="#af784e"/>
+  <path d="M256 91a113 113 0 0 1 0 226c80-33 99-154 0-226Z" fill="#744b2a"/>
+  <path d="M163 140a113 113 0 0 1 186 0Z" fill="#79d6eb"/>
+  <rect x="160" y="157" width="192" height="59" rx="29" fill="#3d4853"/>
+  <g fill="#f6c354"><circle cx="201" cy="187" r="19"/><circle cx="311" cy="187" r="19"/></g>
+  <g fill="#fff8de"><circle cx="207" cy="181" r="5"/><circle cx="317" cy="181" r="5"/></g>
+  <path d="M238 186h36" stroke="#697785" stroke-width="5"/>
+  <path d="M256 223v74m-55-45h110" stroke="#744b2a" stroke-width="6"/>
+  <path d="M211 271h24m42 0h24" stroke="#3d4853" stroke-width="5"/>
+  <circle cx="256" cy="251" r="10" fill="#3d4853"/>
+
+</svg>

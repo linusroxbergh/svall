@@ -151,7 +151,7 @@ export const methods = {
       id: z.string(), name: z.string().optional(), note: z.string().optional(),
       islandId: z.string().optional(), context: z.array(ContextItem).optional(), instructions: Instructions.optional(),
       // '' clears it
-      agentProfile: z.string().optional(), portrait: Portrait.optional(),
+      agentProfile: z.string().optional(), portrait: Portrait.optional(), robot: z.number().int().min(1).optional(),
     }),
     result: Character,
   },
@@ -189,6 +189,7 @@ export const methods = {
   },
   'scribe.set': { params: z.object({ enabled: z.boolean() }), result: z.object({}) },
   'worktrees.set': { params: z.object({ enabled: z.boolean() }), result: z.object({}) },
+  'robots.set': { params: z.object({ enabled: z.boolean() }), result: z.object({}) },
   'dormancy.set': { params: z.object({ hours: z.number().int().min(0) }), result: z.object({}) },
   'mainAgent.set': { params: z.object({ agent: AgentKind }), result: z.object({}) },
   // the fleets beside this one; a phone is refused them
@@ -279,4 +280,4 @@ export type HelloReply = z.infer<typeof HelloReply>;
 export const LOGIN_REFUSED = 4403;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 20;
+export const PROTOCOL_VERSION = 21;

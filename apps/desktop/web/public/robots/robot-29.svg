@@ -1,0 +1,28 @@
+<svg width="410" height="394.5" viewBox="51 77.5 410 394.5" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="caddy-title caddy-desc">
+  <title id="caddy-title">Caddy — industrial robot</title>
+  <desc id="caddy-desc">A graphite mobile utility robot with an overhead handle, an integrated yellow sensor panel, telescoping side arms, and four small wheels beneath a broad squared body.</desc>
+
+  <!-- Four wheels -->
+  <g fill="#303c63"><circle cx="142" cy="438" r="32"/><circle cx="218" cy="438" r="32"/><circle cx="294" cy="438" r="32"/><circle cx="370" cy="438" r="32"/></g>
+  <g fill="#7685b2"><circle cx="142" cy="438" r="20"/><circle cx="218" cy="438" r="20"/><circle cx="294" cy="438" r="20"/><circle cx="370" cy="438" r="20"/></g>
+  <g fill="#a0b0df"><circle cx="142" cy="438" r="8"/><circle cx="218" cy="438" r="8"/><circle cx="294" cy="438" r="8"/><circle cx="370" cy="438" r="8"/></g>
+  <!-- Overhead handle and horizontal extending arms -->
+  <path d="M191 180v-64q0-28 28-28h74q28 0 28 28v64" fill="none" stroke="#7685b2" stroke-width="17"/>
+  <path d="M136 283H73v54m303-54h63v54" fill="none" stroke="#7685b2" stroke-width="17" stroke-linejoin="round"/>
+  <path d="M98 273v20m316-20v20" stroke="#48557e" stroke-width="8"/>
+  <g fill="#48557e"><circle cx="73" cy="284" r="18"/><circle cx="439" cy="284" r="18"/></g>
+  <g fill="#f6c354"><circle cx="73" cy="284" r="9"/><circle cx="439" cy="284" r="9"/></g>
+  <path d="m57 367 3-24h26l3 24m334 0 3-24h26l3 24" fill="none" stroke="#48557e" stroke-width="8" stroke-linejoin="round"/>
+  <g fill="#a0b0df"><circle cx="73" cy="336" r="14"/><circle cx="439" cy="336" r="14"/></g>
+  <!-- Toolbox chassis with the optics integrated into its front -->
+  <rect x="130" y="172" width="252" height="242" rx="22" fill="#48557e"/>
+  <path d="M152 172h208q22 0 22 17H130q0-17 22-17Z" fill="#7685b2"/>
+  <path d="M363 189h19v203q0 22-22 22h-16l19-22Z" fill="#303c63"/>
+  <rect x="156" y="204" width="200" height="65" rx="8" fill="#f6c354"/>
+  <path d="M170 259h172q14 0 14-14v16q0 8-8 8H164q-8 0-8-8v-16q0 14 14 14Z" fill="#bc943d"/>
+  <path d="M181 223h39v22h-39Zm111 0h39v22h-39Z" fill="#48557e"/>
+  <rect x="158" y="292" width="196" height="86" rx="6" fill="#7685b2"/>
+  <path d="M176 310h160m-160 23h160m-160 23h117" stroke="#48557e" stroke-width="6"/>
+  <path d="M244 394h24" stroke="#a0b0df" stroke-width="5"/>
+
+</svg>
