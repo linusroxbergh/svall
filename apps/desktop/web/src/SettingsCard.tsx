@@ -155,8 +155,13 @@ function Scribe() {
           <b><button className="set-switch" role="switch" aria-checked={worktrees} data-testid="set-worktrees" onClick={() => setWorktrees(deps(), !worktrees)}>{worktrees ? 'on' : 'off'}</button></b>
         </div>
         <div className="row">
-          <span>robot portraits<Info id="robots">Robots stand in for the animals, here and on your phone.</Info></span>
-          <b><button className="set-switch" role="switch" aria-checked={robots} data-testid="set-robots" onClick={() => setRobots(deps(), !robots)}>{robots ? 'on' : 'off'}</button></b>
+          <span>characters<Info id="robots">How characters look, here and on your phone.</Info></span>
+          <b className="set-pick" role="radiogroup" aria-label="Characters">
+            {(['animals', 'robots'] as const).map((k) => (
+              <button key={k} className="set-switch" role="radio" aria-checked={robots === (k === 'robots')} data-pick={k}
+                onClick={() => setRobots(deps(), k === 'robots')}>{k}</button>
+            ))}
+          </b>
         </div>
         <Dormancy />
       </div>

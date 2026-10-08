@@ -141,6 +141,8 @@
 .set-switch { width: 44px; height: 22px; padding: 0; border-radius: var(--r-sm); font-size: var(--text-sm); font-weight: var(--w-medium); }
 .set-switch[aria-checked="true"] { background: var(--sand); color: var(--ink-sand); }
 .set-switch[aria-checked="true"]:hover { background: var(--sand-hi); }
+.side .row b.set-pick { display: flex; gap: var(--sp-xs); }
+.set-pick .set-switch { width: auto; padding: 0 var(--sp-md); }
 .row b.set-keys { display: flex; align-items: center; gap: var(--sp-xs); }
 .key-chord { min-width: 52px; height: 22px; padding: 0 var(--sp-md); border-radius: var(--r-sm); font-family: var(--mono); font-size: var(--text-sm); }
 .key-chord[data-listening="true"] { background: var(--sand); color: var(--ink-sand); }
