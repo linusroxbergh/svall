@@ -32,21 +32,12 @@ function gem(status: DisplayStatus, unread: boolean) {
   return null;
 }
 
-// five cells lit for the context used, all off with no agent
-function Cells({ pct }: { pct: number | undefined }) {
-  return (
-    <div className="cells" aria-hidden="true">
-      {[0, 1, 2, 3, 4].map((i) => <i key={i} data-on={pct !== undefined && pct > i * 20 + 4} />)}
-    </div>
-  );
-}
-
 export function Token({
   c, status, world, robots, selected, dragging, settling, hover, offset, pointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu,
 }: {
   c: Character;
   status: DisplayStatus;
-  // the robot stands under the name and the gem moves to the card's corner
+  // the robot stands under the name, the top edge fills with the context used and the gem moves to the card's corner
   robots?: boolean;
   world: Cell;
   selected: boolean;
@@ -68,6 +59,7 @@ export function Token({
   const cls = ['tok', `s-${status}`, robots ? 'bot' : '', selected ? 'sel' : '', dragging ? 'drag' : ''].filter(Boolean).join(' ');
   const review = inReview(c) ? mainPr(c) : undefined;
   const monitor = isMonitoring(c);
+  const pct = contextPctOf(c);
   return (
     <div
       className={cls}
@@ -94,12 +86,11 @@ export function Token({
       onContextMenu={onMenu}
     >
       <div className="card">
-        <div className="edge" />
+        <div className="edge">{robots && pct !== undefined && <i style={{ width: `${pct}%` }} />}</div>
         {robots ? (
           <>
             <div className="nm"><span>{c.name}</span></div>
             <div className="stage"><img className="portrait robot" src={robotUrl(robotOf(c))} alt="" draggable={false} /></div>
-            <Cells pct={contextPctOf(c)} />
           </>
         ) : (
           <>
@@ -107,7 +98,7 @@ export function Token({
               <div className="disc-wrap">
                 <svg className="gauge" viewBox="0 0 72 72" aria-hidden="true">
                   <circle className="track" cx="36" cy="36" r={GAUGE_R} />
-                  <circle className="arc" cx="36" cy="36" r={GAUGE_R} strokeDasharray={gaugeDash(contextPctOf(c))} />
+                  <circle className="arc" cx="36" cy="36" r={GAUGE_R} strokeDasharray={gaugeDash(pct)} />
                 </svg>
                 <div className="disc" data-tint={portraitTint(c.portrait)}>
                   <img className="portrait portrait-img" src={portraitUrl(c.portrait)} alt="" draggable={false} />

@@ -74,15 +74,14 @@ test('with robots on, a card stands its robot under the name and wears its gem o
   const tok = page.getByTestId(`token-${agent.id}`);
   await expect(tok.locator('.portrait')).toHaveAttribute('src', robotUrl(robotOf(agent)));
   await expect(tok).toHaveAttribute('data-status', 'idle', { timeout: 15_000 });
-  await expect(tok.locator('.cells i')).toHaveCount(5);
-  await expect(tok.locator('.cells i[data-on="true"]')).toHaveCount(0);
+  await expect(tok.locator('.edge i')).toHaveCount(0);
 
   await svall.api.call('char.run', { id: agent.id, text: 'block', enter: true });
   await expect(tok.locator('.corner .gem')).toHaveText('!', { timeout: 15_000 });
 
   await svall.api.call('robots.set', { enabled: false });
   await expect(tok.locator('.portrait')).toHaveAttribute('src', `./animals/${agent.portrait}.svg`);
-  await expect(tok.locator('.cells')).toHaveCount(0);
+  await expect(tok.locator('.edge i')).toHaveCount(0);
 });
 
 test('with robots on, the corner gem lifts with its card and leaves a full rail of links to click', async ({ page, svall }) => {
