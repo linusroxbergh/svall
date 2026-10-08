@@ -96,14 +96,14 @@ test('a crew member moved where its card changes what the map must show refits t
   }
 });
 
-test('a card lights a cell for each fifth of context used, and none without an agent', () => {
+test('a card fills its top edge with the context used, and leaves it empty without an agent', () => {
   const f = store.getState().fleet;
   store.getState().setFleet({ ...f, characters: { ...f.characters,
     c0: { ...f.characters.c0, agent: { kind: 'claude', sessionId: 's', status: 'working', contextPct: 70, lastActivityAt: 0 } } } });
   render(<Map />);
-  const lit = (id: string) => screen.getByTestId(`token-${id}`).querySelectorAll('.cells i[data-on="true"]').length;
-  expect(lit('c0')).toBe(4);
-  expect(lit('c1')).toBe(0);
+  const fill = (id: string) => screen.getByTestId(`token-${id}`).querySelector<HTMLElement>('.edge i');
+  expect(fill('c0')?.style.width).toBe('70%');
+  expect(fill('c1')).toBeNull();
 });
 
 test('a double click on open water makes an island there', async () => {
