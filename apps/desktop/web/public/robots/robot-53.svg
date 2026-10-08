@@ -1,0 +1,51 @@
+<svg width="300" height="436" viewBox="106 42 300 436" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="mantis-title mantis-desc">
+  <title id="mantis-title">Mantis — insect robot</title>
+  <desc id="mantis-desc">A slender olive insect robot with a triangular head and two wide set eyes, long aerials, folded front arms ending in pincers, a narrow thorax over a segmented abdomen and four thin jointed legs.</desc>
+  <!-- Aerials -->
+  <path d="M244 98q-14-34-46-50m70 50q14-34 46-50" fill="none" stroke="#697785" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="198" cy="48" r="5" fill="#8c8f42"/>
+  <circle cx="314" cy="48" r="5" fill="#8c8f42"/>
+  <!-- Rear legs -->
+  <path d="m242 300-46 30m74-30 46 30" stroke="#6d7030" stroke-width="12" stroke-linecap="round"/>
+  <path d="m196 330-12 140m132-140 12 140" stroke="#556270" stroke-width="8"/>
+  <circle cx="196" cy="330" r="8" fill="#3d4853"/>
+  <circle cx="316" cy="330" r="8" fill="#3d4853"/>
+  <rect x="174" y="466" width="20" height="10" rx="4" fill="#3d4853"/>
+  <rect x="318" y="466" width="20" height="10" rx="4" fill="#3d4853"/>
+  <!-- Middle legs -->
+  <path d="m238 284-76-40m112 40 76-40" stroke="#8c8f42" stroke-width="12" stroke-linecap="round"/>
+  <path d="m162 244-38 224m226-224 38 224" stroke="#697785" stroke-width="8"/>
+  <circle cx="162" cy="244" r="9" fill="#3d4853"/>
+  <circle cx="350" cy="244" r="9" fill="#3d4853"/>
+  <rect x="112" y="464" width="22" height="12" rx="4" fill="#3d4853"/>
+  <rect x="378" y="464" width="22" height="12" rx="4" fill="#3d4853"/>
+  <!-- Segmented abdomen -->
+  <ellipse cx="256" cy="330" rx="36" ry="40" fill="#6d7030"/>
+  <path d="M226 334q30 12 60 0m-54 18q24 10 48 0" fill="none" stroke="#8c8f42" stroke-width="4" stroke-linecap="round"/>
+  <!-- Narrow thorax -->
+  <path d="M256 176v24" stroke="#3d4853" stroke-width="12"/>
+  <rect x="232" y="196" width="48" height="110" rx="22" fill="#8c8f42"/>
+  <path d="M254 196h-2q-20 0-20 22v66q0 22 20 22h2Z" fill="#a9ac5a"/>
+  <path d="M266 198q14 6 14 20v66q0 16-14 20Z" fill="#6d7030"/>
+  <rect x="250" y="222" width="12" height="52" rx="6" fill="#3d4853"/>
+  <rect x="253" y="228" width="6" height="18" rx="3" fill="#79d6eb"/>
+  <!-- Folded front arms with pincers -->
+  <path d="m238 214-52 54m88-54 52 54" stroke="#8c8f42" stroke-width="16" stroke-linecap="round"/>
+  <path d="m186 268 10-70m130 70-10-70" stroke="#697785" stroke-width="10"/>
+  <path d="m196 198-8-12m8 12 6-13m114 13 8-12m-8 12-6-13" stroke="#3d4853" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="186" cy="268" r="10" fill="#3d4853"/>
+  <circle cx="326" cy="268" r="10" fill="#3d4853"/>
+  <circle cx="238" cy="214" r="9" fill="#3d4853"/>
+  <circle cx="274" cy="214" r="9" fill="#3d4853"/>
+  <!-- Triangular head with wide set eyes -->
+  <path d="M196 96h120q14 0 8 14l-48 62q-12 14-24 0l-48-62q-6-14 8-14Z" fill="#8c8f42"/>
+  <path d="M196 96h120q14 0 8 14H188q-6-14 8-14Z" fill="#a9ac5a"/>
+  <path d="M310 110h14l-48 62q-6 7-12 7Z" fill="#6d7030"/>
+  <circle cx="208" cy="112" r="22" fill="#3d4853"/>
+  <circle cx="304" cy="112" r="22" fill="#3d4853"/>
+  <circle cx="208" cy="112" r="15" fill="#79d6eb"/>
+  <circle cx="304" cy="112" r="15" fill="#79d6eb"/>
+  <path d="M218 100a15 15 0 0 1-12 27 15 15 0 0 0 12-27Zm96 0a15 15 0 0 1-12 27 15 15 0 0 0 12-27Z" fill="#4fb0c5"/>
+  <circle cx="212" cy="107" r="5" fill="#fffae0"/>
+  <circle cx="308" cy="107" r="5" fill="#fffae0"/>
+</svg>

@@ -4,7 +4,7 @@ export const portraitUrl = (p: Portrait): string => `./animals/${p}.svg`;
 
 // robot-NN.svg in public/robots, in stepping order. 34–45 recolour 20, 06, 07, 08, 11 and 13 two ways each,
 // so they come last and take turns, never beside their own robot or each other
-const ROBOTS = [...Array.from({ length: 33 }, (_, i) => i + 1), 46, 47, 48, 49, 50, 34, 36, 38, 40, 42, 44, 35, 37, 39, 41, 43, 45];
+const ROBOTS = [...Array.from({ length: 33 }, (_, i) => i + 1), 46, 47, 48, 49, 50, 51, 52, 53, 34, 36, 38, 40, 42, 44, 35, 37, 39, 41, 43, 45];
 
 // the character's own robot, else the one at its animal's place in the ring
 export const robotOf = (c: Pick<Character, 'portrait' | 'robot'>): number =>
