@@ -32,11 +32,11 @@ function gem(status: DisplayStatus, unread: boolean) {
   return null;
 }
 
-// five cells lit for the context left, all off with no agent
+// five cells lit for the context used, all off with no agent
 function Cells({ pct }: { pct: number | undefined }) {
   return (
     <div className="cells" aria-hidden="true">
-      {[0, 1, 2, 3, 4].map((i) => <i key={i} data-on={pct !== undefined && 100 - pct > i * 20 + 4} />)}
+      {[0, 1, 2, 3, 4].map((i) => <i key={i} data-on={pct !== undefined && pct > i * 20 + 4} />)}
     </div>
   );
 }
