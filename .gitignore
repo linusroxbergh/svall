@@ -14,6 +14,7 @@ site/shots-in/
 # the app's fonts and art, copied beside the landing page by site:build
 site/fonts/
 site/animals/
+site/robots/
 site/icon.svg
 site/icon-180.png
 site/lighthouse.svg
