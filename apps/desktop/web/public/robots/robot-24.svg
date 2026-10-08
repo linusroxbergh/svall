@@ -1,0 +1,47 @@
+<svg width="414" height="385" viewBox="49 82 414 385" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="outrigger-title outrigger-desc">
+  <title id="outrigger-title">Outrigger — four leg robot</title>
+  <desc id="outrigger-desc">A broad teal field robot with a rectangular sensor head, an amber circular equipment hatch, two small manipulators, and four independently articulated support legs.</desc>
+  <!-- Rear pair of legs -->
+  <path d="m220 302-27 54 10 68m89-122 27 54-10 68" fill="none" stroke="#697785" stroke-width="19" stroke-linejoin="round"/>
+  <circle cx="193" cy="356" r="18" fill="#3d4853"/>
+  <circle cx="319" cy="356" r="18" fill="#3d4853"/>
+  <circle cx="193" cy="356" r="9" fill="#92a1b2"/>
+  <circle cx="319" cy="356" r="9" fill="#92a1b2"/>
+  <path d="M184 416h30v24h-53v-7q0-17 23-17Zm114 0h30q23 0 23 17v7h-53Z" fill="#3d4853"/>
+  <path d="M161 432h53v8h-53Zm137 0h53v8h-53Z" fill="#26303a"/>
+  <!-- Front pair spreads into a stable stance -->
+  <path d="m183 287-62 58-27 94m235-152 62 58 27 94" fill="none" stroke="#2e7a8a" stroke-width="25" stroke-linejoin="round"/>
+  <circle cx="121" cy="345" r="26" fill="#3d4853"/>
+  <circle cx="391" cy="345" r="26" fill="#3d4853"/>
+  <circle cx="121" cy="345" r="15" fill="#4fb0c5"/>
+  <circle cx="391" cy="345" r="15" fill="#4fb0c5"/>
+  <circle cx="121" cy="345" r="6" fill="#2e7a8a"/>
+  <circle cx="391" cy="345" r="6" fill="#2e7a8a"/>
+  <path d="M75 431h42v34H51v-10q0-24 24-24Zm320 0h42q24 0 24 24v10h-66Z" fill="#4fb0c5"/>
+  <path d="M51 455h66v10H51Zm344 0h66v10h-66Z" fill="#3d4853"/>
+  <!-- Small service manipulators above the legs -->
+  <path d="m166 227-57 5-19 45m256-50 57 5 19 45" fill="none" stroke="#697785" stroke-width="13" stroke-linejoin="round"/>
+  <circle cx="110" cy="232" r="16" fill="#3d4853"/>
+  <circle cx="402" cy="232" r="16" fill="#3d4853"/>
+  <circle cx="110" cy="232" r="8" fill="#92a1b2"/>
+  <circle cx="402" cy="232" r="8" fill="#92a1b2"/>
+  <path d="m73 307 4-22h26l4 22m298 0 4-22h26l4 22" fill="none" stroke="#3d4853" stroke-width="8" stroke-linejoin="round"/>
+  <circle cx="90" cy="277" r="13" fill="#2e7a8a"/>
+  <circle cx="422" cy="277" r="13" fill="#2e7a8a"/>
+  <!-- Wide diamond chassis and circular access hatch -->
+  <rect x="224" y="161" width="64" height="46" fill="#3d4853"/>
+  <path d="M182 199h148l36 53-51 67H197l-51-67Z" fill="#4fb0c5"/>
+  <path d="m330 199 36 53-51 67h-19l51-67-36-53Z" fill="#2e7a8a"/>
+  <circle cx="256" cy="254" r="41" fill="#2e7a8a"/>
+  <circle cx="256" cy="254" r="30" fill="#f6c354"/>
+  <path d="M256 224a30 30 0 0 1 0 60Z" fill="#bc943d"/>
+  <path d="M250 238h12v32h-12Z" fill="#fff8de"/>
+  <path d="M168 245h23m129 0h23m-148 52h28m66 0h28" stroke="#2e7a8a" stroke-width="5"/>
+  <!-- A shallow rectangular head with two level sensors -->
+  <rect x="153" y="84" width="206" height="92" rx="13" fill="#4fb0c5"/>
+  <path d="M166 84h180q13 0 13 13v3H153v-3q0-13 13-13Z" fill="#79d6eb"/>
+  <path d="M343 100h16v63q0 13-13 13h-3Z" fill="#2e7a8a"/>
+  <rect x="171" y="112" width="170" height="35" rx="5" fill="#3d4853"/>
+  <path d="M190 121h40v16h-40Zm92 0h40v16h-40Z" fill="#79d6eb"/>
+  <path d="M239 160h34" stroke="#2e7a8a" stroke-width="4"/>
+</svg>

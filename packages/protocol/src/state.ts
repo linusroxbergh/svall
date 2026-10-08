@@ -142,6 +142,8 @@ export const Character = z.object({
   // set by a person's edit; absent, the scribe may rewrite it
   noteSource: z.literal('manual').optional(),
   portrait: Portrait,
+  // the number of its robot-NN.svg in the desktop app's public/robots; absent, its animal picks one
+  robot: z.number().int().min(1).optional(),
   instructions: z.string(),
   // a file's name, without .md, in the fleet's agent-profiles folder; its text rides in the brief
   agentProfile: z.string().optional(),

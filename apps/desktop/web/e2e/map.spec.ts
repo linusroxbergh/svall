@@ -1,7 +1,7 @@
 import { FAKE_CLAUDE, expect, settleMap, test } from './fixtures.js';
 import type { Page } from '@playwright/test';
 import { cardScale, labelScale } from '../src/map/layout.js';
-import { robotUrl } from '../src/portraits.js';
+import { robotOf, robotUrl } from '../src/portraits.js';
 import type { MapDump } from '../src/map/types.js';
 import { theme } from '../src/theme.js';
 
@@ -72,7 +72,7 @@ test('with robots on, a card stands its robot under the name and wears its gem o
   await svall.open('map');
 
   const tok = page.getByTestId(`token-${agent.id}`);
-  await expect(tok.locator('.portrait')).toHaveAttribute('src', robotUrl(agent.portrait));
+  await expect(tok.locator('.portrait')).toHaveAttribute('src', robotUrl(robotOf(agent)));
   await expect(tok).toHaveAttribute('data-status', 'idle', { timeout: 15_000 });
   await expect(tok.locator('.cells i')).toHaveCount(5);
   await expect(tok.locator('.cells i[data-on="true"]')).toHaveCount(0);

@@ -1,0 +1,51 @@
+<svg width="282" height="456" viewBox="127 17 282 456" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="relay-title relay-desc">
+  <title id="relay-title">Relay — communications robot</title>
+  <desc id="relay-desc">A tall teal communications robot with a satellite dish, an offset circular amber lens, a narrow equipment chassis, long jointed legs, and one raised gripper.</desc>
+  <!-- Compact angled satellite dish -->
+  <path d="m270 110 29-35" stroke="#697785" stroke-width="13"/>
+  <path d="M279 28q-15 58 49 66Z" fill="#92a1b2"/>
+  <path d="M279 28q34 21 49 66-28-19-49-66Z" fill="#697785"/>
+  <path d="m296 61 28-31" stroke="#3d4853" stroke-width="6"/>
+  <circle cx="327" cy="27" r="8" fill="#f6c354"/>
+  <!-- Long legs and flat work feet -->
+  <path d="m223 335-15 59-13 53m79-112 17 59 12 53" fill="none" stroke="#697785" stroke-width="19" stroke-linejoin="round"/>
+  <circle cx="208" cy="395" r="20" fill="#2e7a8a"/>
+  <circle cx="291" cy="395" r="20" fill="#2e7a8a"/>
+  <circle cx="208" cy="395" r="10" fill="#4fb0c5"/>
+  <circle cx="291" cy="395" r="10" fill="#4fb0c5"/>
+  <path d="M180 443h32v28h-58v-8q0-20 26-20Zm103 0h32q26 0 26 20v8h-58Z" fill="#4fb0c5"/>
+  <path d="M154 461h58v10h-58Zm129 0h58v10h-58Z" fill="#3d4853"/>
+  <!-- One resting arm and one raised arm -->
+  <path d="m190 232-44 45 3 60m163-105 42 34 31-55" fill="none" stroke="#4fb0c5" stroke-width="14" stroke-linejoin="round"/>
+  <circle cx="189" cy="232" r="20" fill="#2e7a8a"/>
+  <circle cx="312" cy="232" r="20" fill="#2e7a8a"/>
+  <circle cx="146" cy="278" r="17" fill="#3d4853"/>
+  <circle cx="354" cy="266" r="17" fill="#3d4853"/>
+  <circle cx="146" cy="278" r="8" fill="#f6c354"/>
+  <circle cx="354" cy="266" r="8" fill="#f6c354"/>
+  <path d="m133 364 5-23h23l5 23m207-165-8-22 17-12m13 12 8 22-17 12" fill="none" stroke="#3d4853" stroke-width="8" stroke-linejoin="round"/>
+  <circle cx="149" cy="339" r="14" fill="#2e7a8a"/>
+  <circle cx="384" cy="203" r="14" fill="#2e7a8a"/>
+  <!-- Slim central chassis -->
+  <rect x="227" y="170" width="46" height="42" fill="#3d4853"/>
+  <path d="M229 184h42m-42 10h42" stroke="#697785" stroke-width="4"/>
+  <path d="M211 205h79l16 114-17 30h-78l-17-30Z" fill="#4fb0c5"/>
+  <path d="M277 205h13l16 114-17 30h-14l14-30Z" fill="#2e7a8a"/>
+  <path d="M219 218h57l8 65h-73Z" fill="#2e7a8a"/>
+  <path d="M223 234h45m-47 14h49m-51 14h53" stroke="#79d6eb" stroke-width="4"/>
+  <rect x="221" y="299" width="51" height="28" rx="4" fill="#3d4853"/>
+  <path d="M230 313h22" stroke="#92a1b2" stroke-width="5"/>
+  <circle cx="263" cy="313" r="4" fill="#f6c354"/>
+  <!-- Rectangular head with asymmetric optical hardware -->
+  <rect x="164" y="107" width="31" height="61" rx="7" fill="#3d4853"/>
+  <rect x="305" y="107" width="26" height="61" rx="7" fill="#3d4853"/>
+  <rect x="181" y="93" width="137" height="87" rx="11" fill="#4fb0c5"/>
+  <path d="M192 93h115q11 0 11 11v4H181v-4q0-11 11-11Z" fill="#79d6eb"/>
+  <path d="M303 108h15v61q0 11-11 11h-4Z" fill="#2e7a8a"/>
+  <circle cx="221" cy="137" r="31" fill="#2e7a8a"/>
+  <circle cx="221" cy="137" r="23" fill="#f6c354"/>
+  <path d="M236 120a23 23 0 0 1-29 35 23 23 0 0 0 29-35Z" fill="#bc943d"/>
+  <circle cx="228" cy="130" r="6" fill="#fff8de"/>
+  <rect x="265" y="120" width="27" height="15" rx="3" fill="#3d4853"/>
+  <path d="M265 150h27m-27 10h27" stroke="#2e7a8a" stroke-width="4"/>
+</svg>

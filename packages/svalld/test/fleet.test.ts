@@ -1427,12 +1427,15 @@ runIf('Fleet', () => {
     await fleet.closeCharacter(c.id);
   });
 
-  it('keeps the robots switch in the fleet, absent while off', async () => {
+  it('keeps the robots switch in the fleet, absent while off, and a character\'s robot apart from its animal', async () => {
     const { fleet, store } = await boot();
     fleet.setRobots(true);
     expect(store.state.robots).toBe(true);
     fleet.setRobots(false);
     expect(store.state).not.toHaveProperty('robots');
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'robots' }).id, cwd: '/tmp' });
+    expect(fleet.updateCharacter(c.id, { robot: 42 })).toMatchObject({ robot: 42, portrait: c.portrait });
+    await fleet.closeCharacter(c.id);
   });
 
   it('reports the prompt unsent when the window dies while the run waits', async () => {

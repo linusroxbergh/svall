@@ -151,7 +151,7 @@ export const methods = {
       id: z.string(), name: z.string().optional(), note: z.string().optional(),
       islandId: z.string().optional(), context: z.array(ContextItem).optional(), instructions: Instructions.optional(),
       // '' clears it
-      agentProfile: z.string().optional(), portrait: Portrait.optional(),
+      agentProfile: z.string().optional(), portrait: Portrait.optional(), robot: z.number().int().min(1).optional(),
     }),
     result: Character,
   },

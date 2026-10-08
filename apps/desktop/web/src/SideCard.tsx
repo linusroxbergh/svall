@@ -1,4 +1,4 @@
-import { stepPortrait, type Character, type ContextItem, type Params, type Portrait } from '@svall/protocol';
+import { stepPortrait, type Character, type ContextItem, type Params } from '@svall/protocol';
 import { AgentProfilePick } from './AgentProfilePick.js';
 import { app, deps } from './boot.js';
 import { saveCharacter, saveCharacterContext, setStar } from './actions.js';
@@ -9,7 +9,7 @@ import { useApp, useTick } from './hooks.js';
 import { Info } from './Info.js';
 import { keyTip } from './keys.js';
 import { ago, hintText } from './map/tokenText.js';
-import { portraitTint, portraitUrl, robotUrl, stepRobot } from './portraits.js';
+import { portraitTint, portraitUrl, robotOf, robotUrl, stepRobot } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
 import { ResourcesButton } from './ResourcesButton.js';
@@ -44,15 +44,16 @@ function LastCommand({ id, agent }: { id: string; agent: Character['agent'] }) {
   );
 }
 
-function PortraitPicker({ id, portrait }: { id: string; portrait: Portrait }) {
+function PortraitPicker({ id, portrait, robot }: Pick<Character, 'id' | 'portrait' | 'robot'>) {
   const robots = useApp((s) => !!s.fleet.robots);
   const kind = robots ? 'robot' : 'animal';
-  const step = (by: 1 | -1) => saveCharacter(deps(), id, { portrait: (robots ? stepRobot : stepPortrait)(portrait, by) });
+  const step = (by: 1 | -1) => saveCharacter(deps(), id,
+    robots ? { robot: stepRobot(robotOf({ portrait, robot }), by) } : { portrait: stepPortrait(portrait, by) });
   return (
     <div className="side-portrait" data-testid="side-portrait" data-portrait={portrait}>
       <button className="pnav" data-testid="portrait-prev" aria-label={`Previous ${kind}`} onClick={() => step(-1)}>‹</button>
       {robots
-        ? <img className="side-robot" src={robotUrl(portrait)} alt="robot" draggable={false} />
+        ? <img className="side-robot" src={robotUrl(robotOf({ portrait, robot }))} alt="robot" draggable={false} />
         : <span className="pdisc" data-tint={portraitTint(portrait)}><img className="portrait-img" src={portraitUrl(portrait)} alt={portrait} draggable={false} /></span>}
       <button className="pnav" data-testid="portrait-next" aria-label={`Next ${kind}`} onClick={() => step(1)}>›</button>
     </div>
@@ -81,7 +82,7 @@ export function SideCard({ id }: { id: string }) {
         <i className="sdot" data-status={status} />{status}{isUnread(c) ? ' · unread' : ''}
       </div>
       <div className="side-head">
-        <PortraitPicker id={id} portrait={c.portrait} />
+        <PortraitPicker id={id} portrait={c.portrait} robot={c.robot} />
         <FollowLine className="h2" aria-label="Name" key={`name-${id}`} value={c.name} data-testid="side-name"
           onSave={(v) => { const name = v.trim(); if (!name || name === c.name) return false; save({ name }); }} />
         <button className="side-star" data-testid="side-star" aria-pressed={starred} title={starred ? 'Unstar' : 'Star'}

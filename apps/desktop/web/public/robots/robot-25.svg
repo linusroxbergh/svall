@@ -1,0 +1,45 @@
+<svg width="246" height="451" viewBox="133 25 246 451" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="sentinel-title sentinel-desc">
+  <title id="sentinel-title">Sentinel — two leg monitoring robot</title>
+  <desc id="sentinel-desc">A tall lime monitoring robot with an elongated single lens head, short aerials, an asymmetrical chest panel, straight articulated legs, and squared mechanical hands.</desc>
+  <!-- Short aerials -->
+  <path d="m226 67-20-30m80 30 20-30" stroke="#697785" stroke-width="7"/>
+  <circle cx="204" cy="34" r="7" fill="#f6c354"/>
+  <circle cx="308" cy="34" r="7" fill="#f6c354"/>
+  <!-- Two legs and feet -->
+  <path d="M215 316v122m82-122v122" stroke="#697785" stroke-width="24"/>
+  <rect x="194" y="372" width="42" height="42" rx="7" fill="#3d4853"/>
+  <rect x="276" y="372" width="42" height="42" rx="7" fill="#3d4853"/>
+  <circle cx="215" cy="393" r="12" fill="#a3c655"/>
+  <circle cx="297" cy="393" r="12" fill="#a3c655"/>
+  <path d="M183 433h53v41h-81v-14q0-27 28-27Zm93 0h53q28 0 28 27v14h-81Z" fill="#8ead48"/>
+  <path d="M155 463h81v11h-81Zm121 0h81v11h-81Z" fill="#3d4853"/>
+  <!-- Vertical arms with chunky fingers -->
+  <path d="m193 207-39 37 1 76m164-113 39 37-1 76" fill="none" stroke="#697785" stroke-width="17" stroke-linejoin="round"/>
+  <circle cx="193" cy="207" r="22" fill="#3d4853"/>
+  <circle cx="319" cy="207" r="22" fill="#3d4853"/>
+  <circle cx="154" cy="254" r="19" fill="#3d4853"/>
+  <circle cx="358" cy="254" r="19" fill="#3d4853"/>
+  <circle cx="154" cy="254" r="10" fill="#92a1b2"/>
+  <circle cx="358" cy="254" r="10" fill="#92a1b2"/>
+  <rect x="139" y="309" width="32" height="30" rx="5" fill="#8ead48"/>
+  <rect x="341" y="309" width="32" height="30" rx="5" fill="#8ead48"/>
+  <path d="M142 334v19m13-19v19m13-19v19m176-19v19m13-19v19m13-19v19" stroke="#3d4853" stroke-width="6"/>
+  <!-- Vertical equipment body -->
+  <rect x="233" y="147" width="46" height="40" fill="#697785"/>
+  <path d="M214 176h84l25 38-12 112H201l-12-112Z" fill="#8ead48"/>
+  <path d="M214 176h84l9 14H205Z" fill="#a3c655"/>
+  <path d="m298 176 25 38-12 112h-17l12-112-25-38Z" fill="#77913a"/>
+  <rect x="215" y="206" width="44" height="66" rx="4" fill="#3d4853"/>
+  <path d="M225 221h24m-24 15h24m-24 15h15" stroke="#92a1b2" stroke-width="4"/>
+  <path d="M274 219h20m-20 14h20m-20 14h20m-79 41h79m-76 13h73" stroke="#77913a" stroke-width="5"/>
+  <circle cx="284" cy="266" r="6" fill="#f6c354"/>
+  <!-- Vertical octagonal head with one central optical lens -->
+  <path d="M229 56h54l22 22v63l-17 22h-64l-17-22V78Z" fill="#8ead48"/>
+  <path d="M229 56h54l12 12h-78Z" fill="#a3c655"/>
+  <path d="M291 78h14v63l-17 22h-13l16-22Z" fill="#77913a"/>
+  <circle cx="256" cy="103" r="34" fill="#3d4853"/>
+  <circle cx="256" cy="103" r="25" fill="#79d6eb"/>
+  <path d="M270 82a25 25 0 0 1-28 41 25 25 0 0 0 28-41Z" fill="#4fb0c5"/>
+  <circle cx="265" cy="95" r="6" fill="#fffae0"/>
+  <path d="M240 146h32" stroke="#3d4853" stroke-width="4"/>
+</svg>

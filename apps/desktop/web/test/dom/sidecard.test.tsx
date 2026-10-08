@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { FromShell } from '../../src/bridge.js';
 import { useApp } from '../../src/hooks.js';
-import { portraitUrl, robotUrl, stepRobot } from '../../src/portraits.js';
+import { portraitUrl, robotOf, robotUrl, stepRobot } from '../../src/portraits.js';
 import { isVeiled } from '../../src/selectors.js';
 import { chr, fleet, isl } from '../fixtures.js';
 import { bridge, call, freshStore, store } from './harness.js';
@@ -82,9 +82,10 @@ test('with robots on, the portrait is the character\'s robot and the steppers pa
   render(<Side />);
   expect(src()).toBe(portraitUrl('fox'));
   act(() => store.getState().setFleet({ ...fleet(), robots: true }));
-  expect(src()).toBe(robotUrl('fox'));
+  const robot = robotOf({ portrait: 'fox' });
+  expect(src()).toBe(robotUrl(robot));
   fireEvent.click(screen.getByTestId('portrait-prev'));
-  expect(updates().at(-1)).toEqual(['char.update', { id: 'c0', portrait: stepRobot('fox', -1) }]);
+  expect(updates().at(-1)).toEqual(['char.update', { id: 'c0', robot: stepRobot(robot, -1) }]);
 });
 
 test('a draft in one island\'s instructions never shows or saves on the next one', () => {

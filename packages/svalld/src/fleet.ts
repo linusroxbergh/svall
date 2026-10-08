@@ -414,7 +414,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   updateCharacter(id: string, patch: {
-    name?: string; note?: string; instructions?: string; agentProfile?: string; islandId?: string; context?: ContextItem[]; portrait?: Portrait;
+    name?: string; note?: string; instructions?: string; agentProfile?: string; islandId?: string; context?: ContextItem[]; portrait?: Portrait; robot?: number;
   }): Character {
     const current = this.char(id);
     if (patch.islandId) this.island(patch.islandId);
@@ -428,6 +428,7 @@ export class Fleet extends EventEmitter<Events> {
       const c = d.characters[id];
       if (patch.name !== undefined) c.name = patch.name;
       if (patch.portrait !== undefined) c.portrait = patch.portrait;
+      if (patch.robot !== undefined) c.robot = patch.robot;
       if (patch.note !== undefined) setNote(c, patch.note);
       if (patch.instructions !== undefined) c.instructions = patch.instructions;
       if (patch.agentProfile) c.agentProfile = patch.agentProfile;
