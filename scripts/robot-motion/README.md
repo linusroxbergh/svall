@@ -2,8 +2,8 @@
 
 Each robot SVG in `apps/desktop/web/public/robots` carries its own motion. The map inlines the SVG and, between
 rests, sets `data-act="<action>"` on its root; the action is the CSS animation that attribute triggers, and the
-attribute goes away when all of it has finished. Idle robots rest 2–5s between actions, working ones 1–3s, so most
-of the time a robot is still. As an `<img>` (fleet list, pickers) the file stays a still picture.
+attribute goes away when all of it has finished. Idle robots rest about 3.5s between actions, working ones about 2s,
+each rest and each action's speed varied by ±10%. As an `<img>` (fleet list, pickers) the file stays a still picture.
 
 ## What the motion should feel like
 - Short single events, never loops. Each action 0.4–2s, starting and ending on the still pose.
