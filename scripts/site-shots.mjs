@@ -1,6 +1,6 @@
-// Turns six window screenshots into the landing page's views, in order: map, terminal, browser, files, markdown,
-// phone; then two phone screenshots, the fleet list and a terminal, for the phone standing over the last view.
-// `pnpm site:shots [eight .png files]`; with none, the eight PNGs in site/shots-in, oldest first. Needs ImageMagick.
+// Turns five window screenshots into the landing page's views, in order: terminal, browser, files, markdown, phone;
+// then two phone screenshots, the fleet list and a terminal, for the phone standing over the last view.
+// `pnpm site:shots [seven .png files]`; with none, the seven PNGs in site/shots-in, oldest first. Needs ImageMagick.
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const inbox = path.join(root, 'site/shots-in');
 const out = path.join(root, 'site/shots');
-const VIEWS = ['map', 'terminal', 'browser', 'files', 'markdown', 'phone'];
+const VIEWS = ['terminal', 'browser', 'files', 'markdown', 'phone'];
 const SCREENS = ['phone-list', 'phone-terminal'];
 // twice the widest the page shows a view or a phone screen, so it stays sharp on a retina screen
 const WIDTH = 2400, SCREEN_WIDTH = 600;

@@ -149,13 +149,19 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
   background: var(--glass-hi); border: 1px solid var(--line-strong); box-shadow: 0 3px 0 var(--shade-2); transition: translate .1s, box-shadow .1s; }
 .keycap[data-on="true"] kbd { translate: 0 2px; box-shadow: 0 1px 0 var(--shade-2); }
 
-/* one character in six views, shown one at a time; a view fades in over the last */
+/* one character in five views, shown one at a time; a view fades in over the last */
 .tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; width: max-content; max-width: 100%; margin: 0 0 20px; padding: 3px; border-radius: 12px;
   background: var(--glass); border: 1px solid var(--line-soft); }
 .tabs button { padding: 7px 14px; border: 0; border-radius: 9px; background: none; cursor: pointer;
   font: 500 .875rem/1 var(--sans); color: var(--ink-2); transition: background .16s var(--ease), color .16s var(--ease); }
 .tabs button:hover { color: var(--ink); }
 .tabs button[aria-selected="true"] { background: var(--fill-2); color: var(--ink); }
+/* while the views turn by themselves, a line fills under the open tab for as long as it stays */
+.tabs button { position: relative; }
+.tabs button::after { content: ''; position: absolute; left: 12px; right: 12px; bottom: 3px; height: 2px; border-radius: 1px; background: var(--sand); opacity: .75; scale: 0 1; transform-origin: left; }
+.tabs[data-auto] button[aria-selected="true"]::after { animation: dwell var(--dwell, 6s) linear forwards; }
+.tabs[data-auto="paused"] button[aria-selected="true"]::after { animation-play-state: paused; }
+@keyframes dwell { to { scale: 1 1; } }
 .frame { display: grid; container-type: inline-size; }
 .frame > * { grid-area: 1 / 1; visibility: hidden; opacity: 0; transition: opacity .3s var(--ease), visibility 0s .3s; }
 .frame > .on { visibility: visible; opacity: 1; transition: opacity .3s var(--ease); }
@@ -233,7 +239,9 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
   .dl { margin-top: 22px; }
   .install pre { padding: 10px 4px 10px 12px; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .gh span { display: none; }
-  .tabs { grid-auto-flow: row; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
+  .tabs { grid-auto-flow: row; grid-template-columns: repeat(6, minmax(0, 1fr)); width: 100%; }
+  .tabs button { grid-column: span 2; }
+  .tabs button:nth-child(n + 4) { grid-column: span 3; }
   .shelf { grid-template-columns: minmax(0, 1fr); }
   .tree { display: none; }
   .brief .lvl { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; font: 500 .875rem/1.3 var(--sans); color: var(--ink); }
@@ -288,32 +296,22 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
   </section>
 </div>
 
-<section class="sec wrap" aria-labelledby="flow-h">
-  <div class="sec-head">
-    <h2 id="flow-h">One prompt sets up a whole island.</h2>
-    <p class="sub">Press ⌘G and ask mission control, or ask any agent. It makes the island and its characters with the <code>svall</code> CLI, and each one starts your own Claude Code or Codex.</p>
-  </div>
-  <div class="scene" role="img" aria-label="Pressing Command G opens mission control's prompt. The prompt asks for an island to review three open PRs. A new island appears and three review characters land on it and start working."><div class="scene-map" inert></div></div>
-</section>
-
 <section class="sec wrap" aria-labelledby="views-h">
   <div class="sec-head">
     <h2 id="views-h">Terminal, browser and files beside every agent.</h2>
   </div>
   <div class="tabs" role="tablist" aria-label="Views">
-    <button type="button" role="tab" aria-selected="true" aria-controls="shot">Map</button>
-    <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Terminal</button>
-    <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Browser</button>
+    <button type="button" role="tab" aria-selected="true" aria-controls="shot">Browser</button>
     <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Files</button>
     <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Markdown</button>
-    <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Phone</button>
+    <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Terminal</button>
+    <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1" style="--dwell: 8s">Phone</button>
   </div>
   <div class="frame" id="shot" role="tabpanel">
-    <img class="on" src="shots/map.avif?v=5e164cb0" loading="lazy" alt="The map: islands in the middle, the island list on the left, a character's settings on the right">
-    <img src="shots/terminal.avif?v=78f58b2c" loading="lazy" alt="A character's Claude Code session across the whole window">
-    <img src="shots/browser.avif?v=1dc4418f" loading="lazy" alt="Claude Code on the left, the character's browser on the right">
+    <img class="on" src="shots/browser.avif?v=1dc4418f" loading="lazy" alt="Claude Code on the left, the character's browser on the right">
     <img src="shots/files.avif?v=d9c2a73e" loading="lazy" alt="Claude Code on the left, the character's files on the right">
     <img src="shots/markdown.avif?v=92c7856b" loading="lazy" alt="Claude Code on the left, the repo's README as formatted text on the right">
+    <img src="shots/terminal.avif?v=78f58b2c" loading="lazy" alt="A character's Claude Code session across the whole window">
     <div class="view-phone" role="img" aria-label="The map on the Mac with the phone's QR code open, and a phone beside it showing the fleet, then an agent's terminal">
       <img src="shots/phone.avif?v=9dde80e6" loading="lazy" alt="">
       <div class="phone">
@@ -323,14 +321,21 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
   </div>
   <div class="views-foot">
     <p class="cap" aria-live="polite">
-      <span data-on></span>
-      <span>Claude Code or Codex in a real terminal</span>
-      <span>A browser beside it, for the PR</span>
+      <span data-on>A browser beside it, for the PR</span>
       <span>Its files and the working tree’s changes</span>
       <span>Markdown as formatted text</span>
+      <span>Claude Code or Codex in a real terminal</span>
       <span>Every terminal on your phone over Tailscale, with a notification when an agent is done or needs you</span>
     </p>
   </div>
+</section>
+
+<section class="sec wrap" aria-labelledby="flow-h">
+  <div class="sec-head">
+    <h2 id="flow-h">One prompt sets up a whole island.</h2>
+    <p class="sub">Press ⌘G and ask mission control, or ask any agent. It makes the island and its characters with the <code>svall</code> CLI, and each one starts your own Claude Code or Codex.</p>
+  </div>
+  <div class="scene" role="img" aria-label="Pressing Command G opens mission control's prompt. The prompt asks for an island to review three open PRs. A new island appears and three review characters land on it and start working."><div class="scene-map" inert></div></div>
 </section>
 
 <section class="sec wrap ctx" aria-labelledby="ctx-h">
@@ -439,7 +444,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     caps[k].toggleAttribute('data-on', k === i);
   });
   tabs.forEach((t, i) => {
-    t.addEventListener('click', () => show(i));
+    t.addEventListener('click', () => { stop(); show(i); });
     t.addEventListener('keydown', (e) => {
       const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
       if (!step) return;
@@ -448,6 +453,24 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
       tabs[n].focus();
     });
   });
+
+  // the views turn by themselves while on screen, each for its tab's line; hovering pauses them, and a tab clicked or
+  // focused stops them for good. The caption stays quiet to screen readers until then.
+  const list = document.querySelector('.tabs'), cap = document.querySelector('.views-foot .cap');
+  let auto = !matchMedia('(prefers-reduced-motion: reduce)').matches, onScreen = false, hovered = false;
+  const sync = () => { if (auto) list.dataset.auto = onScreen && !hovered ? 'on' : 'paused'; };
+  const stop = () => { auto = false; delete list.dataset.auto; cap.setAttribute('aria-live', 'polite'); };
+  if (auto) {
+    cap.setAttribute('aria-live', 'off');
+    sync();
+    tabs.forEach((t, i) => t.addEventListener('animationend', (e) => { if (auto && e.animationName === 'dwell') show((i + 1) % tabs.length); }));
+    new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; sync(); }, { threshold: .5 }).observe(document.querySelector('.frame'));
+    for (const el of [list, document.querySelector('.frame')]) {
+      el.addEventListener('pointerenter', () => { hovered = true; sync(); });
+      el.addEventListener('pointerleave', () => { hovered = false; sync(); });
+    }
+    list.addEventListener('focusin', stop);
+  }
 
   // a row hovered or picked in the tree lights its level's lines in the brief; picking it again lets go
   const shelf = document.querySelector('.shelf'), rows = [...shelf.querySelectorAll('.tier')];
