@@ -2,8 +2,9 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { useApp } from '../hooks.js';
 
 // Each robot rests, then plays one action from its own list (data-work while its card is working, else data-idle);
-// an action is the CSS animations its SVG keys on data-act, and it ends when they all finish
-export const REST = { idle: [2000, 5000], working: [1000, 3000] } as const;
+// an action is the CSS animations its SVG keys on data-act. Rests and action lengths vary up to a tenth either way
+export const REST = { idle: 3500, working: 2000 } as const;
+const jitter = () => 0.9 + Math.random() * 0.2;
 
 type Run = { timer?: ReturnType<typeof setTimeout> };
 const bots = new Map<SVGElement, Run>();
@@ -13,15 +14,20 @@ const working = (bot: SVGElement) => bot.closest('[data-status]')?.getAttribute(
 
 function rest(bot: SVGElement, first = false): void {
   const run = bots.get(bot)!;
-  const [lo, hi] = REST[working(bot) ? 'working' : 'idle'];
-  run.timer = setTimeout(() => void play(bot, run), first ? Math.random() * hi : lo + Math.random() * (hi - lo));
+  const centre = REST[working(bot) ? 'working' : 'idle'];
+  // the first rest starts robots out of step
+  run.timer = setTimeout(() => void play(bot, run), centre * (first ? Math.random() : jitter()));
 }
 
 async function play(bot: SVGElement, run: Run): Promise<void> {
   const acts = ((working(bot) ? bot.dataset.work : bot.dataset.idle) ?? '').split(' ').filter(Boolean);
   if (acts.length) {
     bot.dataset.act = acts[Math.floor(Math.random() * acts.length)];
-    await Promise.all(bot.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {})));
+    const parts = bot.getAnimations({ subtree: true });
+    // one rate for every part, so they stay in step
+    const rate = 1 / jitter();
+    for (const a of parts) a.playbackRate = rate;
+    await Promise.all(parts.map((a) => a.finished.catch(() => {})));
     // stopped or removed while it played
     if (bots.get(bot) !== run) return;
     delete bot.dataset.act;

@@ -16,25 +16,33 @@ window.matchMedia = ((media: string) => ({
 
 const removes: (() => void)[] = [];
 
-// a robot on a card with the given status; an action it plays lasts until end() is called
+// a robot on a card with the given status; an action it plays moves two parts and lasts until end() is called
 function robot(status: string) {
   const card = document.createElement('div');
   card.dataset.status = status;
   card.innerHTML = '<svg data-idle="blink" data-work="type"></svg>';
   document.body.append(card);
   const bot = card.firstElementChild as SVGElement;
-  let end = () => {};
-  Object.assign(bot, { getAnimations: () => (bot.dataset.act ? [{ finished: new Promise<void>((r) => { end = r; }) }] : []) });
+  const r = { bot, parts: [] as { finished: Promise<void>; playbackRate: number }[], end: () => {} };
+  Object.assign(bot, {
+    getAnimations: () => {
+      if (!bot.dataset.act) return [];
+      const finished = new Promise<void>((done) => { r.end = done; });
+      r.parts = [{ finished, playbackRate: 1 }, { finished, playbackRate: 1 }];
+      return r.parts;
+    },
+  });
   removes.push(addRobot(bot));
-  return { bot, end: () => end() };
+  return r;
 }
 
 const tick = (ms = 0) => act(() => vi.advanceTimersByTimeAsync(ms));
+const LONGEST = REST.idle * 1.1;
 
 describe('the robot scheduler', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    // the shortest rest, and the first action on each list
+    // the shortest rests and quickest actions, and the first action on each list
     vi.spyOn(Math, 'random').mockReturnValue(0);
     freshStore();
     store.getState().setView('map');
@@ -60,15 +68,60 @@ describe('the robot scheduler', () => {
     const r = robot('idle');
     setMotion(true);
     await tick();
-    await tick(REST.idle[1] * 2);
+    await tick(LONGEST * 2);
     expect(r.bot.dataset.act).toBe('blink');
     r.end();
     await tick();
     expect(r.bot.dataset.act).toBeUndefined();
-    await tick(REST.idle[0] - 1);
+    await tick(REST.idle * 0.9 - 1);
     expect(r.bot.dataset.act).toBeUndefined();
-    await tick(1);
+    await tick(2);
     expect(r.bot.dataset.act).toBe('blink');
+  });
+
+  it('rests its centre give or take a tenth, after a first rest anywhere up to the centre', async () => {
+    const random = vi.mocked(Math.random);
+    random.mockReturnValue(0.5);
+    const idle = robot('idle'), busy = robot('working');
+    setMotion(true);
+    await tick(REST.working / 2 - 1);
+    expect(busy.bot.dataset.act).toBeUndefined();
+    await tick(2);
+    expect(busy.bot.dataset.act).toBe('type');
+    await tick(REST.idle / 2 - REST.working / 2 - 2);
+    expect(idle.bot.dataset.act).toBeUndefined();
+    await tick(2);
+    expect(idle.bot.dataset.act).toBe('blink');
+    for (const [r, scale] of [[0.9999, 1.1], [0, 0.9]] as const) {
+      random.mockReturnValue(r);
+      idle.end();
+      await tick();
+      await tick(REST.idle * scale - 2);
+      expect(idle.bot.dataset.act).toBeUndefined();
+      await tick(4);
+      expect(idle.bot.dataset.act).toBe('blink');
+    }
+  });
+
+  it('plays every part of an action at one rate, its length give or take a tenth', async () => {
+    const random = vi.mocked(Math.random);
+    const r = robot('idle');
+    setMotion(true);
+    await tick();
+    expect(r.parts[0].playbackRate).toBeCloseTo(1 / 0.9);
+    expect(r.parts[1].playbackRate).toBe(r.parts[0].playbackRate);
+    random.mockReturnValue(0.9999);
+    r.end();
+    await tick(LONGEST + 1);
+    expect(r.parts[0].playbackRate).toBeCloseTo(1 / 1.1);
+    expect(r.parts[1].playbackRate).toBe(r.parts[0].playbackRate);
+    // a fresh draw on every call, and the parts still share one
+    let draw = 0;
+    random.mockImplementation(() => (draw = (draw + 0.37) % 1));
+    r.end();
+    await tick(LONGEST + 1);
+    expect(r.bot.dataset.act).toBe('blink');
+    expect(r.parts[1].playbackRate).toBe(r.parts[0].playbackRate);
   });
 
   it('stills every robot while the map is paused, a character window is open or the switch is off', async () => {
@@ -84,7 +137,7 @@ describe('the robot scheduler', () => {
     ]) {
       act(stop);
       expect(r.bot.dataset.act).toBeUndefined();
-      await tick(REST.idle[1]);
+      await tick(LONGEST);
       expect(r.bot.dataset.act).toBeUndefined();
       act(go);
       await tick();
@@ -94,7 +147,7 @@ describe('the robot scheduler', () => {
     r.end();
     await tick();
     act(() => s.setActive(false));
-    await tick(REST.idle[1]);
+    await tick(LONGEST);
     expect(r.bot.dataset.act).toBeUndefined();
   });
 
@@ -102,7 +155,7 @@ describe('the robot scheduler', () => {
     reduce.matches = true;
     const r = robot('idle');
     renderHook(() => useRobotMotion());
-    await tick(REST.idle[1]);
+    await tick(LONGEST);
     expect(r.bot.dataset.act).toBeUndefined();
     act(() => { reduce.matches = false; reduce.change?.(); });
     await tick();

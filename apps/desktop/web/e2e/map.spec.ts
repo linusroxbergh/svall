@@ -139,9 +139,14 @@ test('with robots on, a robot card plays one of its actions now and then and com
   const bot = page.getByTestId(`token-${agent.id}`).locator('.stage > svg.portrait');
   await expect(bot).toHaveClass(/\br08\b/);
 
-  // an idle robot rests up to 5s first, and an action lasts under 2s
+  // an idle robot first rests up to 3.5s, and an action lasts under 2.2s
   await expect(bot).toHaveAttribute('data-act', /\w/, { timeout: 10_000 });
-  expect(await bot.evaluate((el) => el.getAnimations({ subtree: true }).length)).toBeGreaterThan(0);
+  // every part at one rate, so the action takes its length give or take a tenth
+  const rates = await bot.evaluate((el) => el.getAnimations({ subtree: true }).map((a) => a.playbackRate));
+  expect(rates.length).toBeGreaterThan(0);
+  expect(new Set(rates).size).toBe(1);
+  expect(rates[0]).toBeGreaterThanOrEqual(1 / 1.1);
+  expect(rates[0]).toBeLessThanOrEqual(1 / 0.9);
   await expect(bot).not.toHaveAttribute('data-act', { timeout: 5_000 });
   expect(await bot.evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(0);
 });
