@@ -1,51 +1,54 @@
-<svg width="282" height="456" viewBox="127 17 282 456" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="relay-title relay-desc">
+<svg width="316" height="452" viewBox="118 24 316 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="relay-title relay-desc">
   <title id="relay-title">Relay — communications robot</title>
-  <desc id="relay-desc">A tall teal communications robot with a satellite dish, an offset circular amber lens, a narrow equipment chassis, long jointed legs, and one raised gripper.</desc>
+  <desc id="relay-desc">A teal communications robot with a satellite dish, an offset circular amber lens, a sturdy tapered equipment chassis with a striped chest panel, thick jointed arms with one raised gripper, and strong legs on flat work feet.</desc>
   <!-- Compact angled satellite dish -->
-  <path d="m270 110 29-35" stroke="#697785" stroke-width="13"/>
-  <path d="M279 28q-15 58 49 66Z" fill="#92a1b2"/>
-  <path d="M279 28q34 21 49 66-28-19-49-66Z" fill="#697785"/>
-  <path d="m296 61 28-31" stroke="#3d4853" stroke-width="6"/>
-  <circle cx="327" cy="27" r="8" fill="#f6c354"/>
-  <!-- Long legs and flat work feet -->
-  <path d="m223 335-15 59-13 53m79-112 17 59 12 53" fill="none" stroke="#697785" stroke-width="19" stroke-linejoin="round"/>
-  <circle cx="208" cy="395" r="20" fill="#2e7a8a"/>
-  <circle cx="291" cy="395" r="20" fill="#2e7a8a"/>
-  <circle cx="208" cy="395" r="10" fill="#4fb0c5"/>
-  <circle cx="291" cy="395" r="10" fill="#4fb0c5"/>
-  <path d="M180 443h32v28h-58v-8q0-20 26-20Zm103 0h32q26 0 26 20v8h-58Z" fill="#4fb0c5"/>
-  <path d="M154 461h58v10h-58Zm129 0h58v10h-58Z" fill="#3d4853"/>
+  <path d="m280 112 29-35" stroke="#697785" stroke-width="14"/>
+  <path d="M287 33q-15 58 49 66Z" fill="#92a1b2"/>
+  <path d="M287 33q34 21 49 66-28-19-49-66Z" fill="#697785"/>
+  <path d="m304 66 28-31" stroke="#3d4853" stroke-width="6"/>
+  <circle cx="335" cy="32" r="8" fill="#f6c354"/>
+  <!-- Sturdy legs and flat work feet -->
+  <path d="m228 372-10 40-8 36m74-76 10 40 8 36" fill="none" stroke="#697785" stroke-width="30" stroke-linejoin="round"/>
+  <path d="m221 380-8 32-6 30m70-62 8 32 6 30" fill="none" stroke="#92a1b2" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="218" cy="412" r="24" fill="#2e7a8a"/>
+  <circle cx="294" cy="412" r="24" fill="#2e7a8a"/>
+  <circle cx="218" cy="412" r="12" fill="#4fb0c5"/>
+  <circle cx="294" cy="412" r="12" fill="#4fb0c5"/>
+  <path d="M184 444h38v28h-70v-6q0-22 32-22Zm144 0h-38v28h70v-6q0-22-32-22Z" fill="#4fb0c5"/>
+  <path d="M184 444h38v6h-58q7-6 20-6Zm144 0h-38v6h58q-7-6-20-6Z" fill="#79d6eb"/>
+  <path d="M152 466h70v10h-70Zm138 0h70v10h-70Z" fill="#3d4853"/>
   <!-- One resting arm and one raised arm -->
-  <path d="m190 232-44 45 3 60m163-105 42 34 31-55" fill="none" stroke="#4fb0c5" stroke-width="14" stroke-linejoin="round"/>
-  <circle cx="189" cy="232" r="20" fill="#2e7a8a"/>
-  <circle cx="312" cy="232" r="20" fill="#2e7a8a"/>
-  <circle cx="146" cy="278" r="17" fill="#3d4853"/>
-  <circle cx="354" cy="266" r="17" fill="#3d4853"/>
-  <circle cx="146" cy="278" r="8" fill="#f6c354"/>
-  <circle cx="354" cy="266" r="8" fill="#f6c354"/>
-  <path d="m133 364 5-23h23l5 23m207-165-8-22 17-12m13 12 8 22-17 12" fill="none" stroke="#3d4853" stroke-width="8" stroke-linejoin="round"/>
-  <circle cx="149" cy="339" r="14" fill="#2e7a8a"/>
-  <circle cx="384" cy="203" r="14" fill="#2e7a8a"/>
-  <!-- Slim central chassis -->
-  <rect x="227" y="170" width="46" height="42" fill="#3d4853"/>
-  <path d="M229 184h42m-42 10h42" stroke="#697785" stroke-width="4"/>
-  <path d="M211 205h79l16 114-17 30h-78l-17-30Z" fill="#4fb0c5"/>
-  <path d="M277 205h13l16 114-17 30h-14l14-30Z" fill="#2e7a8a"/>
-  <path d="M219 218h57l8 65h-73Z" fill="#2e7a8a"/>
-  <path d="M223 234h45m-47 14h49m-51 14h53" stroke="#79d6eb" stroke-width="4"/>
-  <rect x="221" y="299" width="51" height="28" rx="4" fill="#3d4853"/>
-  <path d="M230 313h22" stroke="#92a1b2" stroke-width="5"/>
-  <circle cx="263" cy="313" r="4" fill="#f6c354"/>
+  <path d="m184 236-42 52 2 64m184-116 44 36 32-58" fill="none" stroke="#4fb0c5" stroke-width="22" stroke-linejoin="round"/>
+  <circle cx="184" cy="236" r="26" fill="#2e7a8a"/>
+  <circle cx="328" cy="236" r="26" fill="#2e7a8a"/>
+  <circle cx="142" cy="288" r="20" fill="#3d4853"/>
+  <circle cx="372" cy="272" r="20" fill="#3d4853"/>
+  <circle cx="142" cy="288" r="9" fill="#f6c354"/>
+  <circle cx="372" cy="272" r="9" fill="#f6c354"/>
+  <path d="m126 384 6-26h24l6 26m229.4-174.6-9.2-25.3 19.6-13.8m15 13.8 9.2 25.3-19.6 13.8" fill="none" stroke="#3d4853" stroke-width="9" stroke-linejoin="round"/>
+  <circle cx="144" cy="352" r="16" fill="#2e7a8a"/>
+  <circle cx="404" cy="214" r="16" fill="#2e7a8a"/>
+  <!-- Sturdy tapered chassis -->
+  <rect x="230" y="186" width="52" height="24" fill="#3d4853"/>
+  <path d="M232 195h48m-48 9h48" stroke="#697785" stroke-width="4"/>
+  <path d="M190 206h132l18 138-22 34H194l-22-34Z" fill="#4fb0c5"/>
+  <path d="M190 206h132l2 15H188Z" fill="#79d6eb"/>
+  <path d="M304 206h18l18 138-22 34h-18l22-34Z" fill="#2e7a8a"/>
+  <path d="M213 226h80l10 80h-100Z" fill="#2e7a8a"/>
+  <path d="M219 246h62m-64 18h66m-68 18h70" stroke="#79d6eb" stroke-width="4"/>
+  <rect x="220" y="322" width="66" height="36" rx="6" fill="#3d4853"/>
+  <path d="M231 340h28" stroke="#92a1b2" stroke-width="5"/>
+  <circle cx="275" cy="340" r="5.5" fill="#f6c354"/>
   <!-- Rectangular head with asymmetric optical hardware -->
-  <rect x="164" y="107" width="31" height="61" rx="7" fill="#3d4853"/>
-  <rect x="305" y="107" width="26" height="61" rx="7" fill="#3d4853"/>
-  <rect x="181" y="93" width="137" height="87" rx="11" fill="#4fb0c5"/>
-  <path d="M192 93h115q11 0 11 11v4H181v-4q0-11 11-11Z" fill="#79d6eb"/>
-  <path d="M303 108h15v61q0 11-11 11h-4Z" fill="#2e7a8a"/>
-  <circle cx="221" cy="137" r="31" fill="#2e7a8a"/>
-  <circle cx="221" cy="137" r="23" fill="#f6c354"/>
-  <path d="M236 120a23 23 0 0 1-29 35 23 23 0 0 0 29-35Z" fill="#bc943d"/>
-  <circle cx="228" cy="130" r="6" fill="#fff8de"/>
-  <rect x="265" y="120" width="27" height="15" rx="3" fill="#3d4853"/>
-  <path d="M265 150h27m-27 10h27" stroke="#2e7a8a" stroke-width="4"/>
+  <rect x="158" y="108" width="34" height="68" rx="7" fill="#3d4853"/>
+  <rect x="320" y="108" width="30" height="68" rx="7" fill="#3d4853"/>
+  <rect x="176" y="90" width="160" height="100" rx="13" fill="#4fb0c5"/>
+  <path d="M189 90h134q13 0 13 13v4H176v-4q0-13 13-13Z" fill="#79d6eb"/>
+  <path d="M318 107h18v70q0 13-13 13h-5Z" fill="#2e7a8a"/>
+  <circle cx="218" cy="140" r="36" fill="#2e7a8a"/>
+  <circle cx="218" cy="140" r="27" fill="#f6c354"/>
+  <path d="M235.6 120a27 27 0 0 1-34 41 27 27 0 0 0 34-41Z" fill="#bc943d"/>
+  <circle cx="226" cy="131.5" r="7" fill="#fff8de"/>
+  <rect x="268" y="122" width="32" height="17" rx="3" fill="#3d4853"/>
+  <path d="M268 156h32m-32 12h32" stroke="#2e7a8a" stroke-width="4"/>
 </svg>
