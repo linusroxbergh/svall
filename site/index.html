@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Svall</title>
-<meta name="description" content="A macOS map of your Claude Code and Codex agents. One look shows which are working, which need you and which are done.">
+<meta name="description" content="A macOS map of your Claude Code, Codex and OpenCode agents. One look shows which are working, which need you and which are done.">
 <meta name="theme-color" content="#2B3645">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -90,10 +90,11 @@ main { overflow-x: clip; }
 .narrow .hero, .narrow .features { max-width: 520px; }
 .narrow .features { margin-top: 64px; }
 .features h2 { margin: 0 0 14px; font-size: 1.0625rem; font-weight: 600; letter-spacing: -.01em; }
-:is(.features, .how) ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+:is(.features, .how, .ctx) ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
 .how ul { max-width: 560px; }
-:is(.features, .how) li { position: relative; padding-left: 20px; color: var(--body); line-height: 1.5; text-wrap: pretty; }
-:is(.features, .how) li::before { content: ''; position: absolute; left: 2px; top: .62em; width: 7px; height: 7px; border-radius: 50%;
+.ctx ul { margin-top: 18px; }
+:is(.features, .how, .ctx) li { position: relative; padding-left: 20px; color: var(--body); line-height: 1.5; text-wrap: pretty; }
+:is(.features, .how, .ctx) li::before { content: ''; position: absolute; left: 2px; top: .62em; width: 7px; height: 7px; border-radius: 50%;
   background: var(--grass-hi); box-shadow: 0 0 0 2px color-mix(in srgb, var(--sand) 55%, transparent); }
 .features b { font-weight: 600; color: var(--ink); }
 
@@ -256,7 +257,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
 <div class="stage wrap">
   <section class="hero">
     <h1>Your coding agents, on one map.</h1>
-    <p class="lede">Svall puts each of your Claude Code and Codex agents on an island, so you have a clear overview of their work and easy access to relevant context &amp; resources. Each one runs in a real terminal on Svall’s own tmux server.</p>
+    <p class="lede">Svall puts each of your Claude Code, Codex and OpenCode agents on an island, so you have a clear overview of their work and easy access to relevant context &amp; resources. Each one runs in a real terminal on Svall’s own tmux server.</p>
     <a class="dl" href="/download">
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.5v9"/><path d="M6 9l4 4 4-4"/><path d="M4 15.5h12"/></svg>
       Download for Mac
@@ -268,7 +269,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
         <svg class="ok" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8"/></svg>
       </button>
     </div>
-    <p class="meta">Works with the Claude Code or Codex CLI. <a href="https://github.com/linusroxbergh/svall#build-from-source-svall-dev">Build from source</a></p>
+    <p class="meta">Works with the Claude Code CLI, the Codex CLI or OpenCode. <a href="https://github.com/linusroxbergh/svall#build-from-source-svall-dev">Build from source</a></p>
   </section>
   <div class="map"><div class="world map-world" inert></div></div>
   <section class="features">
@@ -312,7 +313,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
 <section class="sec wrap" aria-labelledby="flow-h">
   <div class="sec-head">
     <h2 id="flow-h">One prompt sets up a whole island.</h2>
-    <p class="sub">Press ⌘G and ask mission control, or ask any agent. It makes the island and its characters with the <code>svall</code> CLI, and each one starts your own Claude Code or Codex.</p>
+    <p class="sub">Press ⌘G and ask mission control, or ask any agent. It makes the island and its characters with the <code>svall</code> CLI, and each one starts your own Claude Code, Codex or OpenCode.</p>
   </div>
   <div class="scene" role="img" aria-label="Pressing Command G opens mission control's prompt. The prompt asks for an island to review three open PRs. A new island appears and three review characters land on it and start working."><div class="scene-map" inert></div></div>
 </section>
@@ -321,7 +322,10 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
   <div>
     <div class="sec-head">
       <h2 id="ctx-h">Easy overview of context &amp; docs.</h2>
-      <p class="sub">Instructions and links for each fleet, repo, island and character, and notes agents leave for the next one. An agent gets what applies to it when it starts, and an update when something changes.</p>
+      <ul>
+        <li>Instructions and links for each fleet, repo, island and character, and notes agents leave for the next one.</li>
+        <li>An agent gets what applies to it when it starts, and an update when something changes.</li>
+      </ul>
     </div>
   </div>
   <div class="shelf">
@@ -371,10 +375,11 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     <h2 id="how-h">How it works</h2>
   </div>
   <ul>
-    <li>Claude Code and Codex report to Svall through their own hooks, so a card changes the moment its agent starts, asks or finishes.</li>
+    <li>Claude Code and Codex report to Svall through their own hooks and OpenCode through a plugin, so a card changes the moment its agent starts, asks or finishes.</li>
     <li>Each agent runs in a real terminal on Svall’s own tmux server, apart from yours.</li>
-    <li>Quitting stops the agents. Opening a character again resumes its conversation with <code>claude --resume</code> or <code>codex resume</code>.</li>
-    <li>No account and no telemetry. Setup adds Svall’s hook to Claude Code and Codex, and <code>svall uninstall</code> takes it out.</li>
+    <li>Quitting stops the agents. Opening a character again resumes its conversation with <code>claude --resume</code>, <code>codex resume</code> or <code>opencode -s</code>.</li>
+    <li>No account and no telemetry. Setup adds Svall’s hook to Claude Code and Codex and its plugin to OpenCode, and <code>svall uninstall</code> takes them out.</li>
+    <li>Setup, the <code>svall</code> CLI and every file Svall writes are covered in the README on <a href="https://github.com/linusroxbergh/svall">GitHub</a>.</li>
   </ul>
 </section>
 
