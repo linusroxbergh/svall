@@ -7,7 +7,7 @@ import { robotOf, robotUrl, stepRobot } from '../src/portraits.js';
 const files = fs.readdirSync(path.join(__dirname, '../public/robots')).filter((f) => f.endsWith('.svg')).sort();
 const file = (n: number) => robotUrl(n).split('/').pop();
 // the robot each colourway recolours
-const SOURCE: Record<number, number> = { 34: 20, 35: 20, 36: 6, 37: 6, 38: 7, 39: 7 };
+const SOURCE: Record<number, number> = { 38: 7, 39: 7 };
 const family = (n: number) => SOURCE[n] ?? n;
 
 describe('robot portraits', () => {

@@ -21,8 +21,8 @@ const issue = (repo: string, n: number): ContextItem => ({ kind: 'issue', ref: `
 const linear = (n: number): ContextItem => ({ kind: 'linear', ref: `https://linear.app/acme/issue/SHOP-${n}`, label: `SHOP-${n}`, source: 'scribe' });
 
 const CAST: Crew[] = ([
-  { name: 'checkout redesign', portrait: 'fox', robot: 20, status: 'working', ctx: 46, links: [issue('storefront', 6)] },
-  { name: 'fix cart total', portrait: 'deer', robot: 6, status: 'working', ctx: 58, links: [issue('storefront', 5), linear(150)] },
+  { name: 'checkout redesign', portrait: 'fox', robot: 89, status: 'working', ctx: 46, links: [issue('storefront', 6)] },
+  { name: 'fix cart total', portrait: 'deer', robot: 88, status: 'working', ctx: 58, links: [issue('storefront', 5), linear(150)] },
   { name: 'a11y audit', portrait: 'owl', robot: 62, status: 'done', ctx: 71, links: [linear(133)] },
   { name: 'flaky e2e', portrait: 'frog', robot: 65, status: 'idle', ctx: 12, links: [] },
   { name: 'refund webhooks', portrait: 'elephant', robot: 7, status: 'working', ctx: 33, links: [pr('payments-api', 1)] },

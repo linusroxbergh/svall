@@ -1,0 +1,54 @@
+<svg width="344" height="452" viewBox="84 24 344 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="hoop-title hoop-desc">
+  <title id="hoop-title">Hoop — ring wheel robot</title>
+  <desc id="hoop-desc">A cyan tin toy robot with a short round topped head, two wide pill eyes and an antenna knob, a boxy torso with a yellow half dome window in a cream rim, dark round shoulder caps, arms that arc up and out over slate ball joints to two prong claws, and a neck block down into a two tone arc over a single tall tread wheel on a slate axle.</desc>
+  <!-- Arcing arms with ball joints and two prong claws -->
+  <path d="M184 160C160 150 128 160 122 196L104 262M328 160C352 150 384 160 390 196L408 262" fill="none" stroke="#4fb0c5" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M98 272l-8 26M110 272l8 26M402 272l-8 26M414 272l8 26" stroke="#4fb0c5" stroke-width="11"/>
+  <circle cx="122" cy="196" r="17" fill="#3d4853"/>
+  <circle cx="390" cy="196" r="17" fill="#3d4853"/>
+  <circle cx="104" cy="262" r="17" fill="#3d4853"/>
+  <circle cx="408" cy="262" r="17" fill="#3d4853"/>
+  <circle cx="122" cy="196" r="7" fill="#f6c354"/>
+  <circle cx="390" cy="196" r="7" fill="#f6c354"/>
+  <circle cx="104" cy="262" r="7" fill="#f6c354"/>
+  <circle cx="408" cy="262" r="7" fill="#f6c354"/>
+  <circle cx="184" cy="166" r="22" fill="#3d4853"/>
+  <circle cx="328" cy="166" r="22" fill="#3d4853"/>
+  <!-- Single tread wheel under a two tone arc -->
+  <rect x="176" y="400" width="160" height="20" rx="6" fill="#697785"/>
+  <path d="M185 410A72 72 0 1 1 327 410" fill="none" stroke="#2e8a9c" stroke-width="22"/>
+  <path d="M185 410A72 72 0 1 1 327 410" fill="none" stroke="#4fb0c5" stroke-width="12"/>
+  <path d="M193.6 362A72 72 0 0 1 256 326" fill="none" stroke="#79c8d9" stroke-width="4" stroke-linecap="round"/>
+  <rect x="224" y="330" width="64" height="146" rx="32" fill="#3d4853"/>
+  <rect x="231" y="346" width="6" height="116" rx="3" fill="#556270"/>
+  <path d="M243 350h34M243 362h34M243 374h34M243 386h34M243 398h34M243 410h34M243 422h34M243 434h34M243 446h34M243 458h34" stroke="#697785" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="185" cy="410" r="12" fill="#3d4853"/>
+  <circle cx="327" cy="410" r="12" fill="#3d4853"/>
+  <circle cx="185" cy="410" r="5" fill="#92a1b2"/>
+  <circle cx="327" cy="410" r="5" fill="#92a1b2"/>
+  <!-- Neck block down into the arc -->
+  <rect x="218" y="266" width="76" height="62" rx="6" fill="#4fb0c5"/>
+  <rect x="280" y="268" width="14" height="60" fill="#2e8a9c"/>
+  <rect x="240" y="270" width="32" height="68" fill="#2e8a9c"/>
+  <!-- Boxy torso with a half dome window -->
+  <rect x="184" y="136" width="144" height="138" rx="12" fill="#4fb0c5"/>
+  <path d="M196 136h120q12 0 12 12v4H184v-4q0-12 12-12Z" fill="#79c8d9"/>
+  <path d="M312 138h4q12 0 12 12v112q0 12-12 12h-4Z" fill="#2e8a9c"/>
+  <path d="M204 228v-6a52 52 0 0 1 104 0v6Z" fill="#fff8de"/>
+  <path d="M212 222a44 44 0 0 1 88 0Z" fill="#f6c354"/>
+  <path d="M256 178a44 44 0 0 1 44 44h-12a32 44 0 0 0-32-44Z" fill="#e6b650"/>
+  <rect x="204" y="246" width="104" height="4" rx="2" fill="#79c8d9"/>
+  <!-- Antenna knob -->
+  <path d="M256 52V38" stroke="#697785" stroke-width="5"/>
+  <circle cx="256" cy="32" r="8" fill="#f6c354"/>
+  <!-- Short round topped head with wide pill eyes -->
+  <rect x="236" y="120" width="40" height="18" fill="#3d4853"/>
+  <path d="M194 122V64q0-14 14-14h96q14 0 14 14v58Z" fill="#4fb0c5"/>
+  <path d="M208 50h96q14 0 14 14v4H194v-4q0-14 14-14Z" fill="#79c8d9"/>
+  <path d="M302 52h2q14 0 14 14v56h-16Z" fill="#2e8a9c"/>
+  <rect x="194" y="112" width="124" height="10" fill="#3d4853"/>
+  <rect x="205" y="72" width="44" height="26" rx="13" fill="#79d6eb"/>
+  <rect x="263" y="72" width="44" height="26" rx="13" fill="#79d6eb"/>
+  <circle cx="236" cy="80" r="3.6" fill="#fffae0"/>
+  <circle cx="294" cy="80" r="3.6" fill="#fffae0"/>
+</svg>

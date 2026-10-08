@@ -1,0 +1,57 @@
+<svg width="338" height="452" viewBox="87 24 338 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="hook-title hook-desc">
+  <title id="hook-title">Hook — cyclops robot</title>
+  <desc id="hook-desc">An orange cyclops robot with a tall dome head holding one large eye in a slate ring, side bolts and a slate collar, a wide rounded pill body with a chest dial and two lights, slate shoulder pads with jointed arms reaching down to hooks near the ground, and two straight legs on round slate feet.</desc>
+  <!-- Shoulder pads and jointed arms ending in hooks -->
+  <rect x="98" y="196" width="40" height="128" rx="20" fill="#3d4853"/>
+  <rect x="374" y="196" width="40" height="128" rx="20" fill="#3d4853"/>
+  <rect x="103" y="206" width="8" height="104" rx="4" fill="#556270"/>
+  <rect x="379" y="206" width="8" height="104" rx="4" fill="#556270"/>
+  <rect x="107" y="324" width="22" height="82" fill="#ec8436"/>
+  <rect x="383" y="324" width="22" height="82" fill="#ec8436"/>
+  <rect x="107" y="324" width="7" height="82" fill="#f6a560"/>
+  <rect x="398" y="324" width="7" height="82" fill="#c9661f"/>
+  <circle cx="118" cy="324" r="13" fill="#3d4853"/>
+  <circle cx="394" cy="324" r="13" fill="#3d4853"/>
+  <circle cx="118" cy="324" r="5.5" fill="#92a1b2"/>
+  <circle cx="394" cy="324" r="5.5" fill="#92a1b2"/>
+  <rect x="105" y="400" width="26" height="14" rx="4" fill="#697785"/>
+  <rect x="381" y="400" width="26" height="14" rx="4" fill="#697785"/>
+  <path d="M118 414A22 22 0 1 0 139.7 439.8M394 414A22 22 0 1 1 372.3 439.8" fill="none" stroke="#3d4853" stroke-width="18" stroke-linecap="round"/>
+  <!-- Straight legs on round feet -->
+  <rect x="200" y="270" width="38" height="186" fill="#ec8436"/>
+  <rect x="274" y="270" width="38" height="186" fill="#ec8436"/>
+  <rect x="228" y="270" width="10" height="186" fill="#c9661f"/>
+  <rect x="302" y="270" width="10" height="186" fill="#c9661f"/>
+  <rect x="196" y="272" width="46" height="22" rx="5" fill="#3d4853"/>
+  <rect x="270" y="272" width="46" height="22" rx="5" fill="#3d4853"/>
+  <rect x="197" y="368" width="44" height="12" rx="4" fill="#3d4853"/>
+  <rect x="271" y="368" width="44" height="12" rx="4" fill="#3d4853"/>
+  <path d="M188 476a31 31 0 0 1 62 0ZM262 476a31 31 0 0 1 62 0Z" fill="#3d4853"/>
+  <path d="M198 462a21 21 0 0 1 12-11M272 462a21 21 0 0 1 12-11" fill="none" stroke="#697785" stroke-width="5" stroke-linecap="round"/>
+  <!-- Wide pill body with a dial and two lights -->
+  <rect x="104" y="134" width="304" height="146" rx="73" fill="#ec8436"/>
+  <path d="M124.8 156A73 73 0 0 1 177 134H335A73 73 0 0 1 387.2 156Z" fill="#f6a560"/>
+  <path d="M370 156H387.2A73 73 0 0 1 370 271.1Z" fill="#c9661f"/>
+  <circle cx="228" cy="208" r="26" fill="#3d4853"/>
+  <circle cx="228" cy="208" r="20" fill="#fff8de"/>
+  <path d="M213 199l-4-3m19-8v-5m15 13 4-3" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/>
+  <path d="m228 208 11-10" stroke="#3d4853" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="228" cy="208" r="4" fill="#3d4853"/>
+  <circle cx="290" cy="196" r="7" fill="#f6c354"/>
+  <circle cx="290" cy="220" r="7" fill="#3d4853"/>
+  <circle cx="290" cy="220" r="3" fill="#92a1b2"/>
+  <!-- Dome head with one eye -->
+  <circle cx="204" cy="104" r="9" fill="#3d4853"/>
+  <circle cx="308" cy="104" r="9" fill="#3d4853"/>
+  <circle cx="204" cy="104" r="3.5" fill="#92a1b2"/>
+  <circle cx="308" cy="104" r="3.5" fill="#92a1b2"/>
+  <path d="M204 134V76a52 52 0 0 1 104 0v58Z" fill="#ec8436"/>
+  <path d="M292 38.5A52 52 0 0 1 308 76v58h-16Z" fill="#c9661f"/>
+  <path d="M216.5 61.6A42 42 0 0 1 235 39.6" fill="none" stroke="#f6a560" stroke-width="8" stroke-linecap="round"/>
+  <rect x="198" y="126" width="116" height="14" rx="5" fill="#3d4853"/>
+  <circle cx="256" cy="80" r="34" fill="#697785"/>
+  <circle cx="256" cy="80" r="28" fill="#3d4853"/>
+  <circle cx="256" cy="80" r="19" fill="#79d6eb"/>
+  <path d="M268.1 66.2a19 19 0 0 1-15.5 32.8 19 19 0 0 0 15.5-32.8Z" fill="#4fb0c5"/>
+  <circle cx="261.5" cy="73" r="5.8" fill="#fffae0"/>
+</svg>
