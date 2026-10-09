@@ -217,14 +217,26 @@ describe('arrangeFleet', () => {
     for (const id of ['a', 'c', 'home']) expect(st.islands[id]).toEqual(bare.islands[id]);
   });
 
-  it('spreads the rows apart to fill the height a window has to spare', () => {
-    const drop = (aspect: number): number => {
+  it('shares the height a window has to spare between the rows and the water above and below the fleet', () => {
+    const spread = (aspect: number) => {
       const st = withIslands(island('a', 0, 0), island('b', 20, 0), home(99));
       arrangeFleet(st, aspect);
-      return Math.abs(st.islands.a.position.y - st.islands.b.position.y);
+      const [top, bottom] = [st.islands.a, st.islands.b].sort((p, q) => p.position.y - q.position.y);
+      const extra = bottom.position.y - (top.position.y + top.size.h + ROW_GAP);
+      const height = 1.3 + bottom.position.y + bottom.size.h - top.position.y;
+      return { extra, outside: Math.max(top.size.w, bottom.size.w) / aspect - height };
     };
-    expect(drop(0.6)).toBeGreaterThan(0);
-    expect(drop(0.3)).toBeGreaterThan(drop(0.6));
+    expect(spread(0.3).extra).toBeGreaterThan(spread(0.6).extra);
+    expect(spread(0.3).outside).toBeGreaterThanOrEqual(2 * spread(0.3).extra);
+  });
+
+  it('stands an island shorter than its row in the middle of it', () => {
+    const st = withIslands(island('a', 0, 0), island('b', 20, 0), home(99));
+    crew(st, 'a', 6);
+    arrangeFleet(st, 4);
+    const { a, b } = st.islands;
+    expect(a.size.h - b.size.h).toBeGreaterThan(1);
+    expect(b.position.y - a.position.y).toBe(Math.round((a.size.h - b.size.h) / 2));
   });
 
   it('stands a crew abreast for a wide window and deeper for a tall one', () => {
