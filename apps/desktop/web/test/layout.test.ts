@@ -173,10 +173,10 @@ describe('fitting around mission control', () => {
     const level = mapIslands(fleet()).map((i) => ({ ...i, position: { x: i.id === 'i_e' ? 40 : i.position.x - 40, y: 0 } }));
     const l = fitAll(level, win, crew, below);
     expect(level.every((i) => limitAt(below, ...span(i, l)) === 900 - theme.home.water)).toBe(true);
-    expect(l).toEqual(fitAll(level, win));
+    expect(l).toEqual(fitAll(level, win, crew));
     // the room over mission control short of their height makes no difference
     const tall = [0, 20].map((x, n) => ({ ...mapIslands(fleet())[n], position: { x, y: 0 }, size: { w: 6, h: 14 } }));
-    expect(fitAll(tall, win, crew, below)).toEqual(fitAll(tall, win));
+    expect(fitAll(tall, win, crew, below)).toEqual(fitAll(tall, win, crew));
   });
 
   it('splits the water over and under a fleet resting on mission control', () => {
