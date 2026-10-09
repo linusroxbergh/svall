@@ -227,9 +227,10 @@ export function arrangeFleet(draft: FleetState, aspect = 4 / 3, homeRoom?: numbe
     if (!best || next.scale > best.scale) best = { ...next, abreast };
   }
   const { abreast, rows, width, height } = best!;
-  // the height the window has to spare at that width is shared between the rows, so the fleet fills it
+  // the height the window has to spare at that width is shared evenly between the rows and the water above and below
+  // the fleet, which the view centres, so the fleet keeps together in the middle
   const gaps = rows.length - 1;
-  const extra = gaps > 0 ? Math.floor(Math.max(0, (width + FRAME.w) / aspect - height) / gaps) : 0;
+  const extra = gaps > 0 ? Math.floor(Math.max(0, (width + FRAME.w) / aspect - height) / (gaps + 2)) : 0;
   for (const { id } of islands) {
     const { size, cells } = roundGrid(crews.get(id)!.length, abreast);
     draft.islands[id].size = size;
@@ -238,14 +239,15 @@ export function arrangeFleet(draft: FleetState, aspect = 4 / 3, homeRoom?: numbe
 
   let y = origin.y;
   for (const r of rows) {
+    const h = Math.max(...r.map((b) => b.size.h));
     let x = origin.x + Math.round((width - span(r, GAP)) / 2);
     for (const b of r) {
-      // an island narrower than its label stands centred under it
+      // an island narrower than its label stands centred under it, and one shorter than its row centred in it
       const island = draft.islands[b.id];
-      island.position = { x: x + Math.round((b.size.w - island.size.w) / 2), y };
+      island.position = { x: x + Math.round((b.size.w - island.size.w) / 2), y: y + Math.round((h - island.size.h) / 2) };
       x += b.size.w + GAP;
     }
-    y += Math.max(...r.map((b) => b.size.h)) + ROW_GAP + extra;
+    y += h + ROW_GAP + extra;
   }
   settleHome(draft);
 }
