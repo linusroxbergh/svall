@@ -236,14 +236,15 @@
 .tok:hover .corner{transform:translateY(-6px)}
 .tok.sel .corner{transform:translateY(-5px) scale(1.04)}
 .tok.drag .corner{transform:translateY(-12px)}
-.tok .corner .marks{position:absolute;top:calc(var(--tok)*-.12);right:calc(var(--tok)*-.12);display:flex;gap:calc(var(--tok)*.07)}
-.tok .mark{flex:none;box-sizing:border-box;width:calc(var(--tok)*.42);height:calc(var(--tok)*.42);padding:0;border:0;border-radius:50%;
+.tok .corner .marks{position:absolute;top:calc(var(--tok)*-.12);right:calc(var(--tok)*-.12);display:flex;gap:calc(var(--tok)*.22)}
+.tok .mark{flex:none;box-sizing:border-box;width:calc(var(--tok)*.54);height:calc(var(--tok)*.54);padding:0;border:0;border-radius:50%;
   display:grid;place-items:center;pointer-events:auto;cursor:inherit;
   background:var(--card-1);color:color-mix(in srgb, var(--ink-land) 70%, transparent);
-  box-shadow:0 1px 3px var(--shade-1), 0 0 0 calc(var(--tok)*.055) var(--cream)}
+  box-shadow:0 1px 3px var(--shade-1), 0 0 0 calc(var(--tok)*.055) var(--ink-3)}
 .tok .mark svg{width:62%;height:62%;display:block}
 .tok .mark.review{cursor:pointer;background:var(--review);color:var(--ink-on-review);transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
 .tok .mark.review:hover{background:var(--ink-on-review);color:var(--review)}
+.tok .mark.monitor{background:var(--pt-sky);color:var(--map-2)}
 
 .tok.drag{z-index:var(--z-popover);pointer-events:none}
 .tok.drag .card{transform:translateY(-12px);
