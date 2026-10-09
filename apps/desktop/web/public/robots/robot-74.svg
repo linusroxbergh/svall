@@ -1,10 +1,38 @@
-<svg width="264" height="452" viewBox="124 24 264 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="cycle-title cycle-desc">
+<svg width="264" height="452" viewBox="124 24 264 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="cycle-title cycle-desc" class="r74" data-idle="blink blink wobble wobble dial" data-work="roll roll spin dial wobble blink"><style>
+.r74[data-act=roll] .wheel{animation:r74-roll 1.8s ease-in-out}
+.r74[data-act=roll] .body{animation:r74-rock 1.8s ease-in-out}
+.r74[data-act=roll] .arm-l,.r74[data-act=roll] .arm-r{animation:r74-counter 1.8s ease-in-out}
+.r74[data-act=spin] .wheel{animation:r74-spin 1.6s ease-in-out}
+.r74[data-act=spin] .body{animation:r74-brace 1.6s ease-in-out}
+.r74[data-act=spin] .arm-l{animation:r74-fling-l 1.6s ease-in-out}
+.r74[data-act=spin] .arm-r{animation:r74-fling-r 1.6s ease-in-out}
+.r74[data-act=wobble] .head{animation:r74-tilt 1.4s ease-in-out}
+.r74[data-act=wobble] .ant{animation:r74-ant 1.4s ease-in-out}
+.r74[data-act=dial] .needle{animation:r74-needle 1.6s ease-in-out}
+.r74[data-act=dial] .head{animation:r74-nod 1.6s ease-in-out}
+.r74[data-act=dial] .eyes{animation:r74-down 1.6s ease-in-out}
+.r74[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r74-blink .4s ease-in-out}
+@keyframes r74-roll{0%,100%{transform:none}35%{transform:rotate(40deg)}70%{transform:rotate(-12deg)}}
+@keyframes r74-rock{0%,100%{transform:none}25%{transform:rotate(3deg)}55%{transform:rotate(-2deg)}80%{transform:rotate(.8deg)}}
+@keyframes r74-counter{0%,100%{transform:none}30%{transform:rotate(-6deg)}60%{transform:rotate(4deg)}85%{transform:rotate(-1.5deg)}}
+@keyframes r74-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+@keyframes r74-brace{0%,100%{transform:none}30%{transform:rotate(-3deg)}68%{transform:rotate(2.5deg)}86%{transform:rotate(-.8deg)}}
+@keyframes r74-fling-l{0%,100%{transform:none}30%,58%{transform:rotate(8deg)}82%{transform:rotate(-2deg)}}
+@keyframes r74-fling-r{0%,100%{transform:none}30%,58%{transform:rotate(-8deg)}82%{transform:rotate(2deg)}}
+@keyframes r74-tilt{0%,100%{transform:none}22%,52%{transform:rotate(-5.5deg)}78%{transform:rotate(1.5deg)}}
+@keyframes r74-ant{0%,100%{transform:none}28%{transform:rotate(20deg)}46%{transform:rotate(-8deg)}68%{transform:rotate(-14deg)}86%{transform:rotate(5deg)}}
+@keyframes r74-needle{0%,100%{transform:none}30%,55%{transform:rotate(-60deg)}75%{transform:rotate(8deg)}}
+@keyframes r74-nod{0%,100%{transform:none}20%,70%{transform:translateY(4px)}}
+@keyframes r74-down{0%,100%{transform:none}15%,75%{transform:translateY(3px)}}
+@keyframes r74-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+</style>
   <title id="cycle-title">Cycle — single wheel robot</title>
   <desc id="cycle-desc">A mustard tin-toy robot riding one big spoked wheel, with a rounded head, two eyes on a slate band and an antenna knob, a torso with a chest dial, ring jointed arms with three finger hands held out for balance, and a slate fork down to the wheel hub.</desc>
   <!-- Big spoked wheel -->
-  <path d="M256 396v-64m0 64 32-55m-32 55 55-32m-55 32h64m-64 0 55 32m-55-32 32 55m-32-55v64m0-64-32 55m32-55-55 32m55-32h-64m64 0-55-32m55 32-32-55" stroke="#92a1b2" stroke-width="3"/>
+  <g class="wheel" style="transform-origin:256px 396px"><path d="M256 396v-64m0 64 32-55m-32 55 55-32m-55 32h64m-64 0 55 32m-55-32 32 55m-32-55v64m0-64-32 55m32-55-55 32m55-32h-64m64 0-55-32m55 32-32-55" stroke="#92a1b2" stroke-width="3"/></g>
   <circle cx="256" cy="396" r="66" fill="none" stroke="#697785" stroke-width="6"/>
   <circle cx="256" cy="396" r="74" fill="none" stroke="#3d4853" stroke-width="12"/>
+  <g class="body" style="transform-origin:256px 396px">
   <path d="M181.5 353a86 86 0 0 1 149 0" fill="none" stroke="#daac49" stroke-width="10" stroke-linecap="round"/>
   <path d="M300 322a86 86 0 0 1 30.5 31" fill="none" stroke="#bc943d" stroke-width="10" stroke-linecap="round"/>
   <!-- Fork and hub -->
@@ -14,14 +42,16 @@
   <circle cx="256" cy="396" r="11" fill="#f6c354"/>
   <circle cx="256" cy="396" r="4" fill="#3d4853"/>
   <!-- Arms held out for balance -->
-  <path d="m204 180-36 22-26 30m166-52 36 22 26 30" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
-  <rect x="130" y="228" width="24" height="14" rx="4" fill="#3d4853"/>
-  <rect x="358" y="228" width="24" height="14" rx="4" fill="#3d4853"/>
-  <path d="M134 242l-4 14M142 244v16M150 242l4 14M378 242l4 14M370 244v16M362 242l-4 14" stroke="#3d4853" stroke-width="6" stroke-linecap="round"/>
-  <circle cx="168" cy="202" r="10" fill="#3d4853"/>
-  <circle cx="344" cy="202" r="10" fill="#3d4853"/>
-  <circle cx="168" cy="202" r="4.5" fill="#92a1b2"/>
-  <circle cx="344" cy="202" r="4.5" fill="#92a1b2"/>
+  <g class="arm-l" style="transform-origin:204px 180px"><path d="m204 180-36 22-26 30" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/></g>
+  <g class="arm-r" style="transform-origin:308px 180px"><path d="M308 180l36 22 26 30" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/></g>
+  <g class="arm-l" style="transform-origin:204px 180px"><rect x="130" y="228" width="24" height="14" rx="4" fill="#3d4853"/></g>
+  <g class="arm-r" style="transform-origin:308px 180px"><rect x="358" y="228" width="24" height="14" rx="4" fill="#3d4853"/></g>
+  <g class="arm-l" style="transform-origin:204px 180px"><path d="M134 242l-4 14M142 244v16M150 242l4 14" stroke="#3d4853" stroke-width="6" stroke-linecap="round"/></g>
+  <g class="arm-r" style="transform-origin:308px 180px"><path d="M378 242l4 14M370 244v16M362 242l-4 14" stroke="#3d4853" stroke-width="6" stroke-linecap="round"/></g>
+  <g class="arm-l" style="transform-origin:204px 180px"><circle cx="168" cy="202" r="10" fill="#3d4853"/></g>
+  <g class="arm-r" style="transform-origin:308px 180px"><circle cx="344" cy="202" r="10" fill="#3d4853"/></g>
+  <g class="arm-l" style="transform-origin:204px 180px"><circle cx="168" cy="202" r="4.5" fill="#92a1b2"/></g>
+  <g class="arm-r" style="transform-origin:308px 180px"><circle cx="344" cy="202" r="4.5" fill="#92a1b2"/></g>
   <!-- Torso with a chest dial -->
   <rect x="240" y="138" width="32" height="20" fill="#3d4853"/>
   <rect x="226" y="282" width="60" height="18" rx="6" fill="#3d4853"/>
@@ -31,7 +61,7 @@
   <circle cx="256" cy="212" r="22" fill="#3d4853"/>
   <circle cx="256" cy="212" r="16" fill="#fff8de"/>
   <path d="M245 204l3 2m8-9v4m11 3-3 2" stroke="#3d4853" stroke-width="2.5" stroke-linecap="round"/>
-  <path d="m256 212 8-8" stroke="#c2443a" stroke-width="3" stroke-linecap="round"/>
+  <g class="needle" style="transform-origin:256px 212px"><path d="m256 212 8-8" stroke="#c2443a" stroke-width="3" stroke-linecap="round"/></g>
   <circle cx="256" cy="212" r="3.5" fill="#3d4853"/>
   <circle cx="236" cy="260" r="8" fill="#3d4853"/>
   <circle cx="276" cy="260" r="8" fill="#3d4853"/>
@@ -42,9 +72,12 @@
   <circle cx="204" cy="180" r="6.5" fill="#92a1b2"/>
   <circle cx="308" cy="180" r="6.5" fill="#92a1b2"/>
   <!-- Rounded head with an antenna knob -->
+  <g class="head" style="transform-origin:256px 142px">
+  <g class="ant" style="transform-origin:256px 56px">
   <path d="M256 56V38" stroke="#3d4853" stroke-width="5"/>
   <circle cx="256" cy="33" r="8" fill="#3d4853"/>
   <circle cx="256" cy="33" r="4" fill="#f6c354"/>
+  </g>
   <circle cx="204" cy="98" r="9" fill="#3d4853"/>
   <circle cx="308" cy="98" r="9" fill="#3d4853"/>
   <circle cx="204" cy="98" r="4" fill="#92a1b2"/>
@@ -53,9 +86,13 @@
   <path d="M238 54h36q32 0 32 30H206q0-30 32-30Z" fill="#f6c354"/>
   <path d="M284 56q22 8 22 28v26q0 24-22 30Z" fill="#bc943d"/>
   <rect x="216" y="82" width="80" height="32" rx="16" fill="#3d4853"/>
+  <g class="eyes">
   <circle cx="238" cy="98" r="11" fill="#88dbea"/>
   <circle cx="274" cy="98" r="11" fill="#88dbea"/>
   <path d="M244 89a11 11 0 0 1-8 20 11 11 0 0 0 8-20Zm36 0a11 11 0 0 1-8 20 11 11 0 0 0 8-20Z" fill="#4fb0c5"/>
   <circle cx="241" cy="94" r="3.5" fill="#fffae0"/>
   <circle cx="277" cy="94" r="3.5" fill="#fffae0"/>
+  </g>
+  </g>
+  </g>
 </svg>

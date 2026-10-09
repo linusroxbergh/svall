@@ -1,15 +1,50 @@
-<svg width="216" height="434" viewBox="148 44 216 434" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="breeze-title breeze-desc">
+<svg width="216" height="434" viewBox="148 44 216 434" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="breeze-title breeze-desc" class="r66" data-idle="blink blink sweep" data-work="spin spin swing swing press"><style>.r66[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r66-blink 1s ease-in-out}
+.r66[data-act=blink] .head{animation:r66-cock 1s ease-in-out}
+.r66[data-act=sweep] .head{animation:r66-sweep 2s ease-in-out}
+.r66[data-act=spin] .head{animation:r66-oscillate 2s ease-in-out}
+.r66[data-act=spin] .blades{animation:r66-spin 2s cubic-bezier(.5,0,.3,1)}
+.r66[data-act=swing] .arm-l{animation:r66-swing-l 1.8s ease-in-out}
+.r66[data-act=swing] .fore-l{animation:r66-fore-l 1.8s ease-in-out}
+.r66[data-act=swing] .arm-r{animation:r66-swing-r 1.8s ease-in-out}
+.r66[data-act=swing] .fore-r{animation:r66-fore-r 1.8s ease-in-out}
+.r66[data-act=press] .btn{animation:r66-press 1.6s ease-in-out}
+.r66[data-act=press] .lamp{animation:r66-glow 1.6s ease-in-out}
+.r66[data-act=press] .blades{animation:r66-whir 1.6s ease-in-out}
+@keyframes r66-blink{0%,30%,70%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+@keyframes r66-cock{0%,100%{transform:none}30%,65%{transform:rotate(2deg)}}
+@keyframes r66-sweep{0%,100%{transform:none}35%{transform:rotate(-4deg)}72%{transform:rotate(3deg)}}
+@keyframes r66-oscillate{0%,100%{transform:none}30%{transform:rotate(-5deg)}68%{transform:rotate(4deg)}}
+@keyframes r66-spin{0%{transform:rotate(0)}100%{transform:rotate(720deg)}}
+@keyframes r66-swing-l{0%,100%{transform:none}20%{transform:rotate(8deg)}45%{transform:rotate(-5deg)}70%{transform:rotate(2.5deg)}}
+@keyframes r66-fore-l{0%,8%,100%{transform:none}30%{transform:rotate(7deg)}55%{transform:rotate(-6deg)}80%{transform:rotate(3deg)}}
+@keyframes r66-swing-r{0%,100%{transform:none}20%{transform:rotate(-8deg)}45%{transform:rotate(5deg)}70%{transform:rotate(-2.5deg)}}
+@keyframes r66-fore-r{0%,8%,100%{transform:none}30%{transform:rotate(-7deg)}55%{transform:rotate(6deg)}80%{transform:rotate(-3deg)}}
+@keyframes r66-press{0%,100%{transform:none}12%,62%{transform:scale(.86)}}
+@keyframes r66-glow{0%,100%{fill:#f6c354}25%,65%{fill:#fadb98}}
+@keyframes r66-whir{0%,12%{transform:rotate(0)}100%{transform:rotate(360deg)}}</style>
   <title id="breeze-title">Breeze — desk fan robot</title>
   <desc id="breeze-desc">A sky blue robot whose head is a 1950s desk fan, with a round wire cage over three blades and two small eyes on a slate band across the hub, on a tilt joint and neck, a rounded body with three round speed buttons, ring jointed arms with three finger hands, and short legs on a heavy round base.</desc>
   <!-- Ring jointed arms with three finger hands -->
-  <path d="m198 270-32 30v42m148-72 32 30v42" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
-  <rect x="154" y="340" width="24" height="14" rx="4" fill="#3d4853"/>
-  <rect x="334" y="340" width="24" height="14" rx="4" fill="#3d4853"/>
-  <path d="m158 354-4 16m12-14v18m8-20 4 16m160-16-4 16m12-14v18m8-20 4 16" stroke="#3d4853" stroke-width="6" stroke-linecap="round"/>
-  <circle cx="166" cy="300" r="11" fill="#3d4853"/>
-  <circle cx="346" cy="300" r="11" fill="#3d4853"/>
-  <circle cx="166" cy="300" r="5" fill="#92a1b2"/>
-  <circle cx="346" cy="300" r="5" fill="#92a1b2"/>
+  <g class="arm-l" style="transform-origin:198px 270px">
+    <path d="M198 270l-32 30" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+    <g class="fore-l" style="transform-origin:166px 300px">
+      <path d="M166 300v42" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+      <rect x="154" y="340" width="24" height="14" rx="4" fill="#3d4853"/>
+      <path d="M158 354l-4 16m12-14v18m8-20 4 16" stroke="#3d4853" stroke-width="6" stroke-linecap="round"/>
+    </g>
+    <circle cx="166" cy="300" r="11" fill="#3d4853"/>
+    <circle cx="166" cy="300" r="5" fill="#92a1b2"/>
+  </g>
+  <g class="arm-r" style="transform-origin:314px 270px">
+    <path d="M314 270l32 30" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+    <g class="fore-r" style="transform-origin:346px 300px">
+      <path d="M346 300v42" fill="none" stroke="#697785" stroke-width="12" stroke-linejoin="round"/>
+      <rect x="334" y="340" width="24" height="14" rx="4" fill="#3d4853"/>
+      <path d="M338 354l-4 16m12-14v18m8-20 4 16" stroke="#3d4853" stroke-width="6" stroke-linecap="round"/>
+    </g>
+    <circle cx="346" cy="300" r="11" fill="#3d4853"/>
+    <circle cx="346" cy="300" r="5" fill="#92a1b2"/>
+  </g>
   <!-- Short legs on a heavy round base -->
   <path d="M228 362v52m56-52v52" stroke="#697785" stroke-width="14"/>
   <circle cx="228" cy="388" r="11" fill="#3d4853"/>
@@ -28,10 +63,10 @@
   <path d="M292 244q24 8 24 32v62q0 26-24 30Z" fill="#3a7fb3"/>
   <rect x="232" y="276" width="48" height="12" rx="4" fill="#3a7fb3"/>
   <circle cx="226" cy="318" r="12" fill="#3d4853"/>
-  <circle cx="256" cy="318" r="12" fill="#3d4853"/>
+  <g class="btn" style="transform-origin:256px 318px"><circle cx="256" cy="318" r="12" fill="#3d4853"/></g>
   <circle cx="286" cy="318" r="12" fill="#3d4853"/>
   <circle cx="226" cy="318" r="6" fill="#fff8de"/>
-  <circle cx="256" cy="318" r="6" fill="#f6c354"/>
+  <g class="btn" style="transform-origin:256px 318px"><circle class="lamp" cx="256" cy="318" r="6" fill="#f6c354"/></g>
   <circle cx="286" cy="318" r="6" fill="#fff8de"/>
   <circle cx="198" cy="270" r="15" fill="#3d4853"/>
   <circle cx="314" cy="270" r="15" fill="#3d4853"/>
@@ -40,23 +75,29 @@
   <!-- Tilt joint -->
   <circle cx="256" cy="220" r="13" fill="#3d4853"/>
   <circle cx="256" cy="220" r="5" fill="#92a1b2"/>
-  <!-- Fan blades -->
-  <g transform="translate(256 130)">
-    <path id="blade" d="M-8-28C-34-40-34-70-8-73 16-76 26-50 8-28Z" fill="#84c2ea"/>
-    <use href="#blade" transform="rotate(120)"/>
-    <use href="#blade" transform="rotate(240)"/>
+  <g class="head" style="transform-origin:256px 220px">
+    <!-- Fan blades -->
+    <g class="blades" style="transform-origin:256px 130px">
+      <g transform="translate(256 130)">
+        <path id="blade" d="M-8-28C-34-40-34-70-8-73 16-76 26-50 8-28Z" fill="#84c2ea"/>
+        <use href="#blade" transform="rotate(120)"/>
+        <use href="#blade" transform="rotate(240)"/>
+      </g>
+    </g>
+    <!-- Wire cage -->
+    <path d="M288.0 130.0L330.0 130.0M285.6 142.2L324.4 158.3M278.6 152.6L308.3 182.3M268.2 159.6L284.3 198.4M256.0 162.0L256.0 204.0M243.8 159.6L227.7 198.4M233.4 152.6L203.7 182.3M226.4 142.2L187.6 158.3M224.0 130.0L182.0 130.0M226.4 117.8L187.6 101.7M233.4 107.4L203.7 77.7M243.8 100.4L227.7 61.6M256.0 98.0L256.0 56.0M268.2 100.4L284.3 61.6M278.6 107.4L308.3 77.7M285.6 117.8L324.4 101.7" stroke="#697785" stroke-width="3"/>
+    <circle cx="256" cy="130" r="54" fill="none" stroke="#697785" stroke-width="3"/>
+    <circle cx="256" cy="130" r="78" fill="none" stroke="#3d4853" stroke-width="8"/>
+    <!-- Hub with two small eyes -->
+    <circle cx="256" cy="130" r="32" fill="#5aa6dc"/>
+    <path d="M230 120a28 28 0 0 1 20-17" fill="none" stroke="#84c2ea" stroke-width="5" stroke-linecap="round"/>
+    <path d="M274 106a32 32 0 0 1 0 48 38 38 0 0 0 0-48Z" fill="#3a7fb3"/>
+    <rect x="230" y="120" width="52" height="20" rx="10" fill="#3d4853"/>
+    <g class="eyes">
+      <circle cx="245" cy="130" r="6.5" fill="#86dcef"/>
+      <circle cx="267" cy="130" r="6.5" fill="#86dcef"/>
+      <circle cx="247" cy="127.5" r="2.5" fill="#fffae0"/>
+      <circle cx="269" cy="127.5" r="2.5" fill="#fffae0"/>
+    </g>
   </g>
-  <!-- Wire cage -->
-  <path d="M288.0 130.0L330.0 130.0M285.6 142.2L324.4 158.3M278.6 152.6L308.3 182.3M268.2 159.6L284.3 198.4M256.0 162.0L256.0 204.0M243.8 159.6L227.7 198.4M233.4 152.6L203.7 182.3M226.4 142.2L187.6 158.3M224.0 130.0L182.0 130.0M226.4 117.8L187.6 101.7M233.4 107.4L203.7 77.7M243.8 100.4L227.7 61.6M256.0 98.0L256.0 56.0M268.2 100.4L284.3 61.6M278.6 107.4L308.3 77.7M285.6 117.8L324.4 101.7" stroke="#697785" stroke-width="3"/>
-  <circle cx="256" cy="130" r="54" fill="none" stroke="#697785" stroke-width="3"/>
-  <circle cx="256" cy="130" r="78" fill="none" stroke="#3d4853" stroke-width="8"/>
-  <!-- Hub with two small eyes -->
-  <circle cx="256" cy="130" r="32" fill="#5aa6dc"/>
-  <path d="M230 120a28 28 0 0 1 20-17" fill="none" stroke="#84c2ea" stroke-width="5" stroke-linecap="round"/>
-  <path d="M274 106a32 32 0 0 1 0 48 38 38 0 0 0 0-48Z" fill="#3a7fb3"/>
-  <rect x="230" y="120" width="52" height="20" rx="10" fill="#3d4853"/>
-  <circle cx="245" cy="130" r="6.5" fill="#86dcef"/>
-  <circle cx="267" cy="130" r="6.5" fill="#86dcef"/>
-  <circle cx="247" cy="127.5" r="2.5" fill="#fffae0"/>
-  <circle cx="269" cy="127.5" r="2.5" fill="#fffae0"/>
 </svg>
