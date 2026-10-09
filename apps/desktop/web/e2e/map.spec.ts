@@ -3,10 +3,15 @@ import type { Page } from '@playwright/test';
 import { cardScale, labelScale } from '../src/map/layout.js';
 import { robotOf, robotUrl } from '../src/portraits.js';
 import type { MapDump } from '../src/map/types.js';
+import { DEFAULT_SETTINGS } from '../src/settings.js';
+import { SETTINGS_KEY } from '../src/store/index.js';
 import { theme } from '../src/theme.js';
 
 const layoutOf = (page: Page) => page.evaluate(() => window.__map!.layout());
 const dump = (page: Page) => page.evaluate(() => window.__map!.dump());
+// a machine keeps the link chips off its cards until its settings turn them on
+const showLinks = (page: Page) => page.addInitScript(({ key, value }) => localStorage.setItem(key, value),
+  { key: SETTINGS_KEY, value: JSON.stringify({ ...DEFAULT_SETTINGS, zoom: 1, cardLinks: true }) });
 
 test('the settle wait holds until the map stops moving, however long that takes', async ({ page }) => {
   await page.setContent('<p>map</p>');
@@ -65,7 +70,7 @@ test('renders the fleet and follows agent status', async ({ page, svall }) => {
   expect(scale).toBeLessThanOrEqual(1.5);
 });
 
-test('with robots on, a card stands its robot under the name and wears its gem on the corner', async ({ page, svall }) => {
+test('with robots on, a card stands its robot under the name and its foot alone says the status', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('robots'), seed: 3 });
   const agent = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'agent', command: FAKE_CLAUDE });
   await svall.api.call('robots.set', { enabled: true });
@@ -77,29 +82,31 @@ test('with robots on, a card stands its robot under the name and wears its gem o
   await expect(tok.locator('.edge i')).toHaveCount(0);
 
   await svall.api.call('char.run', { id: agent.id, text: 'block', enter: true });
-  await expect(tok.locator('.corner .gem')).toHaveText('!', { timeout: 15_000 });
+  await expect(tok.locator('.foot .sw')).toHaveText('blocked', { timeout: 15_000 });
+  await expect(tok.locator('.gem')).toHaveCount(0);
 
   await svall.api.call('robots.set', { enabled: false });
   await expect(tok.locator('.portrait')).toHaveAttribute('src', `./animals/${agent.portrait}.svg`);
   await expect(tok.locator('.edge i')).toHaveCount(0);
 });
 
-test('with robots on, the corner gem lifts with its card and leaves a full rail of links to click', async ({ page, svall }) => {
+test('with robots on, the corner marks lift with their card and leave a full rail of links to click', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('robots'), seed: 3 });
   const agent = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'agent', command: FAKE_CLAUDE });
   const links = Array.from({ length: 4 }, (_, i) => ({ kind: 'other' as const, ref: `https://example.com/${i}`, label: `link ${i}`, source: 'manual' as const }));
   await svall.api.call('char.update', { id: agent.id, context: links });
   await svall.api.call('robots.set', { enabled: true });
+  await showLinks(page);
   await svall.open('map');
   const tok = page.getByTestId(`token-${agent.id}`);
   await expect(tok).toHaveAttribute('data-status', 'idle', { timeout: 15_000 });
-  await svall.api.call('char.run', { id: agent.id, text: 'block', enter: true });
-  await expect(tok.locator('.corner .gem')).toHaveText('!', { timeout: 15_000 });
+  await svall.api.call('char.run', { id: agent.id, text: 'monitor', enter: true });
+  await expect(page.getByTestId(`token-monitor-${agent.id}`)).toBeVisible({ timeout: 15_000 });
 
-  // the gem against the card's top-right corner, once the card's lift has run
+  // the mark against the card's top-right corner, once the card's lift has run
   const offset = () => tok.evaluate(async (el) => {
     await Promise.all(el.getAnimations({ subtree: true }).filter((a) => a instanceof CSSTransition).map((a) => a.finished));
-    const c = el.querySelector('.card')!.getBoundingClientRect(), g = el.querySelector('.corner .gem')!.getBoundingClientRect();
+    const c = el.querySelector('.card')!.getBoundingClientRect(), g = el.querySelector('.corner .mark')!.getBoundingClientRect();
     return { x: g.right - c.right, y: g.top - c.top };
   });
   const rest = await offset();
@@ -484,12 +491,27 @@ test('a token shows three links, and past that two and a count of the rest', asy
   const ten = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'ten' });
   await svall.api.call('char.update', { id: three.id, context: links(3) });
   await svall.api.call('char.update', { id: ten.id, context: links(10) });
+  await showLinks(page);
   await svall.open('map');
 
   await expect(page.getByTestId(`token-${three.id}`).locator('.chip.lk')).toHaveCount(3);
   await expect(page.getByTestId(`token-more-${three.id}`)).toHaveCount(0);
   await expect(page.getByTestId(`token-${ten.id}`).locator('.chip.lk')).toHaveCount(2);
   await expect(page.getByTestId(`token-more-${ten.id}`)).toHaveText('+8');
+});
+
+test('a card keeps its links off until the settings show them', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('links'), seed: 3 });
+  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'linked' });
+  await svall.api.call('char.update', { id: c.id, context: [{ kind: 'other', ref: 'https://example.com/a', label: 'a', source: 'manual' }] });
+  await svall.open('map');
+
+  const tok = page.getByTestId(`token-${c.id}`);
+  await expect(tok.locator('.card')).toBeVisible();
+  await expect(tok.locator('.chip.lk')).toHaveCount(0);
+  await page.getByTestId('settings-open').click();
+  await page.getByTestId('set-card-links').click();
+  await expect(tok.locator('.chip.lk')).toHaveCount(1);
 });
 
 test('a crowded crew never covers the card beside it, link rails and all', async ({ page, svall }) => {
@@ -502,6 +524,7 @@ test('a crowded crew never covers the card beside it, link rails and all', async
   // a second island far down the map pushes the fit past the scale where cards stop shrinking, which is
   // where a card stands largest against the cells and two of them come closest to touching
   await svall.api.call('island.create', { name: svall.uniq('far'), seed: 2, position: { x: 0, y: 40 } });
+  await showLinks(page);
   await svall.open('map');
   await settleMap(page);
   expect((await layoutOf(page)).scale).toBeLessThanOrEqual(theme.token.floor);
