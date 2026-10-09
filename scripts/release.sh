@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds, signs, notarizes and packages Svall into dist/, writes its appcast and latest.json, and uploads them to svall.dev.
 # --adhoc does the same unsigned and stops before notarizing and uploading. SVALL_NOTES names a Markdown file the update
-# dialog shows as this version's notes.
+# dialog shows as this version's notes, above those of every release since the installed one.
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -100,9 +100,14 @@ printf '{"version":"%s","build":%s,"url":"https://svall.dev/releases/Svall-%s.dm
 if [ -z "$ADHOC" ]; then
   # the Svall.dmg link stays out while the appcast is made, so the latest release is listed once
   rm -f dist/releases/Svall.dmg
-  [ -z "$NOTES" ] || cp "$NOTES" "dist/releases/Svall-$VERSION.md"
+  # the appcast carries every release's notes under its version, newest first, and the app shows those above its own
+  rm -rf dist/notes && mkdir dist/notes
+  rsync -a --include='Svall-*.md' --exclude='*' "$SVALL_HOST:$SVALL_SITE_DIR/releases/" dist/notes/
+  if [ -n "$NOTES" ]; then cp "$NOTES" "dist/notes/Svall-$VERSION.md"; else echo '- Small fixes and improvements.' > "dist/notes/Svall-$VERSION.md"; fi
+  for f in $(ls dist/notes | sort -rV); do v="${f#Svall-}"; printf '## %s\n\n' "${v%.md}"; cat "dist/notes/$f"; echo; done > "dist/releases/Svall-$VERSION.md"
   "$(scripts/sparkle-tools.sh)/generate_appcast" --embed-release-notes --download-url-prefix https://svall.dev/releases/ dist/releases
   mv dist/releases/appcast.xml dist/appcast.xml
+  cp "dist/notes/Svall-$VERSION.md" dist/releases/
 fi
 ln -sf "Svall-$VERSION.dmg" dist/releases/Svall.dmg
 if [ -n "$ADHOC" ]; then

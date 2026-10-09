@@ -78,4 +78,18 @@ final class Updates: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate
     func install() { controller?.checkForUpdates(nil) }
 
     func standardUserDriverDidReceiveUserAttention(forUpdate update: SUAppcastItem) { waiting = nil }
+
+    /// The notes hold a heading per release, newest first; the dialog shows the releases above the installed version.
+    func standardUserDriverWillShowReleaseNotesText(_ notes: NSAttributedString, forUpdate update: SUAppcastItem, withBundleDisplayVersion installed: String, bundleVersion: String) -> NSAttributedString? {
+        let text = notes.string as NSString
+        var end = 0
+        text.enumerateSubstrings(in: NSRange(location: 0, length: text.length), options: .byLines) { line, range, _, stop in
+            guard let line, line.range(of: #"^\d+(\.\d+)+$"#, options: .regularExpression) != nil,
+                  SUStandardVersionComparator.default.compareVersion(installed, toVersion: line) != .orderedAscending else { return }
+            end = range.location
+            stop.pointee = true
+        }
+        // a heading starts its own line, after the newline that ends the release above it
+        return end > 0 ? notes.attributedSubstring(from: NSRange(location: 0, length: end - 1)) : nil
+    }
 }
