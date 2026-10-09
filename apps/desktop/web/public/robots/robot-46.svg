@@ -1,23 +1,74 @@
-<svg width="344" height="374" viewBox="84 104 344 374" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bubble-title bubble-desc">
+<svg width="344" height="374" viewBox="84 104 344 374" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bubble-title bubble-desc" class="r46" data-idle="blink blink peer peer shift vent" data-work="vent vent shift shift peer blink"><style>
+.r46[data-act=vent] .boiler{animation:r46-swell 2s ease-in-out}
+.r46[data-act=vent] .dome{animation:r46-rattle 2s ease-in-out}
+.r46[data-act=vent] .needle{animation:r46-needle 2s ease-in-out}
+.r46[data-act=vent] .lamp{animation:r46-glow 2s ease-in-out}
+.r46[data-act=vent] .arm-l{animation:r46-fling-l 2s ease-in-out}
+.r46[data-act=vent] .arm-r{animation:r46-fling-r 2s ease-in-out .1s}
+.r46[data-act=vent] .hose-l{animation:r46-spring 2s ease-in-out}
+.r46[data-act=vent] .hose-r{animation:r46-spring 2s ease-in-out .1s}
+.r46[data-act=vent] .hand-l{animation:r46-hand 2s ease-in-out}
+.r46[data-act=vent] .hand-r{animation:r46-hand 2s ease-in-out .1s}
+.r46[data-act=shift] .bot{animation:r46-shift 1.8s ease-in-out}
+.r46[data-act=shift] .arm-l,.r46[data-act=shift] .arm-r{animation:r46-counter 1.8s ease-in-out}
+.r46[data-act=peer] .dome{animation:r46-tilt 1.8s ease-in-out}
+.r46[data-act=peer] .eyes{animation:r46-look 1.8s ease-in-out}
+.r46[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r46-blink .4s ease-in-out}
+/* the dome rocks on one rim corner or the other: translate(±78px) moves the pivot from its centre to that corner */
+@keyframes r46-swell{0%,100%{transform:none}14%{transform:scale(1.008,.985)}40%{transform:scale(1.02,.979)}48%{transform:scale(1.026,.975)}58%{transform:scale(.988,1.016)}70%{transform:scale(1.01,.993)}81%{transform:scale(.997,1.003)}}
+@keyframes r46-rattle{0%,100%{transform:translate(0) rotate(0) translate(0)}16%{transform:translate(-78px) rotate(2deg) translate(78px)}22%{transform:translate(78px) rotate(-2deg) translate(-78px)}28%{transform:translate(-78px) rotate(2.5deg) translate(78px)}34%{transform:translate(78px) rotate(-2.5deg) translate(-78px)}40%{transform:translate(-78px) rotate(2.5deg) translate(78px)}46%{transform:translate(78px) rotate(-2deg) translate(-78px)}62%{transform:translate(-78px) rotate(2.5deg) translate(78px)}74%{transform:translate(78px) rotate(-1.6deg) translate(-78px)}86%{transform:translate(-78px) rotate(.8deg) translate(78px)}}
+@keyframes r46-needle{0%,100%{transform:none}14%{transform:rotate(8deg)}24%{transform:rotate(14deg)}29%{transform:rotate(11deg)}37%{transform:rotate(20deg)}41%{transform:rotate(17deg)}48%{transform:rotate(24deg)}58%{transform:rotate(-50deg)}72%{transform:rotate(10deg)}86%{transform:rotate(-4deg)}}
+@keyframes r46-glow{0%,22%,62%,100%{fill:#f6c354}38%,50%{fill:#fbe2ab}}
+@keyframes r46-fling-l{0%,48%,100%{transform:none}60%{transform:rotate(7deg)}71%{transform:rotate(-3.5deg)}83%{transform:rotate(1.2deg)}}
+@keyframes r46-fling-r{0%,48%,100%{transform:none}60%{transform:rotate(-7deg)}71%{transform:rotate(3.5deg)}83%{transform:rotate(-1.2deg)}}
+@keyframes r46-spring{0%,100%{transform:none}40%,48%{transform:scaleY(.94)}60%{transform:scaleY(1.06)}71%{transform:scaleY(.96)}83%{transform:scaleY(1.02)}}
+@keyframes r46-hand{0%,100%{transform:none}40%,48%{transform:translateY(-5.4px)}60%{transform:translateY(5.4px)}71%{transform:translateY(-3.6px)}83%{transform:translateY(1.8px)}}
+@keyframes r46-shift{0%,100%{transform:translate(0) rotate(0) translate(0)}24%{transform:translate(-80px) rotate(-1.2deg) translate(80px)}54%{transform:translate(80px) rotate(.9deg) translate(-80px)}80%{transform:translate(-80px) rotate(-.35deg) translate(80px)}}
+@keyframes r46-counter{0%,100%{transform:none}30%{transform:rotate(4deg)}60%{transform:rotate(-3deg)}85%{transform:rotate(1.2deg)}}
+@keyframes r46-tilt{0%,100%{transform:translate(0) rotate(0) translate(0)}18%,40%{transform:translate(78px) rotate(-4.5deg) translate(-78px)}58%,78%{transform:translate(-78px) rotate(4deg) translate(78px)}91%{transform:translate(78px) rotate(-.8deg) translate(-78px)}}
+@keyframes r46-look{0%,100%{transform:none}14%,40%{transform:translate(-9px,1px)}54%,78%{transform:translate(9px,1px)}}
+@keyframes r46-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+</style>
   <title id="bubble-title">Bubble — glass dome robot</title>
   <desc id="bubble-desc">A squat terracotta robot with a little face inside a glass dome, a gauge on its chest, ribbed hose arms with pincers and stubby legs on round feet.</desc>
+  <g class="bot" style="transform-origin:256px 468px">
+  <g class="boiler" style="transform-origin:256px 440px">
   <!-- Ribbed hose arms with pincers -->
-  <path d="M160 244c-38 8-54 40-52 90m244-90c38 8 54 40 52 90" fill="none" stroke="#92a1b2" stroke-width="26"/>
-  <path d="M160 244c-38 8-54 40-52 90m244-90c38 8 54 40 52 90" fill="none" stroke="#697785" stroke-width="26" stroke-dasharray="8 7"/>
+  <g class="arm-l" style="transform-origin:160px 244px">
+  <g class="hose-l" style="transform-origin:160px 244px">
+  <path d="M160 244c-38 8-54 40-52 90" fill="none" stroke="#92a1b2" stroke-width="26"/>
+  <path d="M160 244c-38 8-54 40-52 90" fill="none" stroke="#697785" stroke-width="26" stroke-dasharray="8 7"/>
+  </g>
+  <g class="hand-l">
   <rect x="88" y="326" width="40" height="20" rx="5" fill="#b45a3a"/>
-  <rect x="384" y="326" width="40" height="20" rx="5" fill="#b45a3a"/>
-  <path d="M98 346q-12 22 4 38m20-38q12 22-4 38M394 346q-12 22 4 38m20-38q12 22-4 38" fill="none" stroke="#3d4853" stroke-width="9" stroke-linecap="round"/>
+  <path d="M98 346q-12 22 4 38m20-38q12 22-4 38" fill="none" stroke="#3d4853" stroke-width="9" stroke-linecap="round"/>
+  </g>
   <circle cx="160" cy="244" r="22" fill="#3d4853"/>
-  <circle cx="352" cy="244" r="22" fill="#3d4853"/>
   <circle cx="160" cy="244" r="10" fill="#92a1b2"/>
+  </g>
+  <g class="arm-r" style="transform-origin:352px 244px">
+  <g class="hose-r" style="transform-origin:352px 244px">
+  <path d="M352 244c38 8 54 40 52 90" fill="none" stroke="#92a1b2" stroke-width="26"/>
+  <path d="M352 244c38 8 54 40 52 90" fill="none" stroke="#697785" stroke-width="26" stroke-dasharray="8 7"/>
+  </g>
+  <g class="hand-r">
+  <rect x="384" y="326" width="40" height="20" rx="5" fill="#b45a3a"/>
+  <path d="M394 346q-12 22 4 38m20-38q12 22-4 38" fill="none" stroke="#3d4853" stroke-width="9" stroke-linecap="round"/>
+  </g>
+  <circle cx="352" cy="244" r="22" fill="#3d4853"/>
   <circle cx="352" cy="244" r="10" fill="#92a1b2"/>
+  </g>
   <!-- Stubby legs and round feet -->
   <rect x="196" y="364" width="40" height="76" fill="#3d4853"/>
   <rect x="276" y="364" width="40" height="76" fill="#3d4853"/>
   <path d="M196 392h40v12h-40Zm80 0h40v12h-40Z" fill="#697785"/>
+  </g>
   <path d="M176 468v-6q0-34 40-34t40 34v6Zm80 0v-6q0-34 40-34t40 34v6Z" fill="#d9734e"/>
   <path d="M228 430q28 8 28 32v6h-16v-6q0-20-12-32Zm80 0q28 8 28 32v6h-16v-6q0-20-12-32Z" fill="#b45a3a"/>
+  </g>
   <rect x="170" y="464" width="172" height="12" rx="2" fill="#3d4853"/>
+  <g class="bot" style="transform-origin:256px 468px">
+  <g class="boiler" style="transform-origin:256px 440px">
   <!-- Squat barrel body -->
   <rect x="150" y="200" width="212" height="176" rx="40" fill="#d9734e"/>
   <path d="M190 200h132q40 0 40 40H150q0-40 40-40Z" fill="#ec9070"/>
@@ -26,21 +77,27 @@
   <circle cx="262" cy="292" r="42" fill="#3d4853"/>
   <circle cx="262" cy="292" r="31" fill="#fff8de"/>
   <path d="M240 280l-6-4m28-6v-8m22 14 6-4" stroke="#3d4853" stroke-width="4" stroke-linecap="round"/>
-  <path d="m262 292 18-18" stroke="#b45a3a" stroke-width="5" stroke-linecap="round"/>
+  <g class="needle" style="transform-origin:262px 292px"><path d="m262 292 18-18" stroke="#b45a3a" stroke-width="5" stroke-linecap="round"/></g>
   <circle cx="262" cy="292" r="7" fill="#3d4853"/>
-  <circle cx="190" cy="262" r="8" fill="#f6c354"/>
+  <circle class="lamp" cx="190" cy="262" r="8" fill="#f6c354"/>
   <circle cx="190" cy="288" r="8" fill="#79d6eb"/>
   <circle cx="190" cy="314" r="8" fill="#ec9070"/>
   <!-- Glass dome with a little face inside -->
   <rect x="160" y="184" width="192" height="24" rx="10" fill="#3d4853"/>
+  <g class="dome" style="transform-origin:256px 186px">
   <path d="M178 186a78 78 0 0 1 156 0Z" fill="#c9eef8"/>
   <path d="M256 108a78 78 0 0 1 78 78h-26a78 78 0 0 0-52-74Z" fill="#a6dfee"/>
   <path d="M196 150a66 66 0 0 1 44-34" fill="none" stroke="#fffae0" stroke-width="9" stroke-linecap="round"/>
   <path d="M256 142v-14" stroke="#697785" stroke-width="6"/>
   <circle cx="256" cy="126" r="8" fill="#f6c354"/>
   <rect x="206" y="140" width="100" height="44" rx="20" fill="#3d4853"/>
+  <g class="eyes">
   <circle cx="234" cy="162" r="11" fill="#79d6eb"/>
   <circle cx="278" cy="162" r="11" fill="#79d6eb"/>
   <circle cx="238" cy="158" r="4" fill="#fffae0"/>
   <circle cx="282" cy="158" r="4" fill="#fffae0"/>
+  </g>
+  </g>
+  </g>
+  </g>
 </svg>

@@ -1,31 +1,83 @@
-<svg width="336" height="430" viewBox="88 46 336 430" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="rotor-title rotor-desc">
+<svg width="336" height="430" viewBox="88 46 336 430" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="rotor-title rotor-desc" class="r48" data-idle="blink blink peer peer grip" data-work="haul haul bank bank grip blink"><style>
+.r48[data-act=haul] .drone{animation:r48-heave 2s ease-in-out}
+.r48[data-act=haul] .blades{animation:r48-whirl 2s ease-in-out}
+.r48[data-act=haul] .arm-l,.r48[data-act=haul] .arm-r{animation:r48-haul-arm 2s ease-in-out}
+.r48[data-act=haul] .box{animation:r48-haul-box 2s ease-in-out}
+.r48[data-act=haul] .wash{animation:r48-push 2s ease-in-out}
+.r48[data-act=haul] .lamp{animation:r48-glow 2s ease-in-out}
+.r48[data-act=bank] .drone{animation:r48-bank 2s ease-in-out}
+.r48[data-act=bank] .arm-l,.r48[data-act=bank] .arm-r{animation:r48-bank-arm 2s ease-in-out}
+.r48[data-act=bank] .box{animation:r48-bank-box 2s ease-in-out}
+.r48[data-act=bank] .wash{animation:r48-trail 2s ease-in-out}
+.r48[data-act=peer] .drone{animation:r48-peer 1.8s ease-in-out}
+.r48[data-act=peer] .arm-l,.r48[data-act=peer] .arm-r{animation:r48-hang 1.8s ease-in-out}
+.r48[data-act=peer] .box{animation:r48-hang-box 1.8s ease-in-out}
+.r48[data-act=peer] .face{animation:r48-lower 1.8s ease-in-out}
+.r48[data-act=peer] .eyes{animation:r48-down 1.8s ease-in-out}
+.r48[data-act=grip] .box{animation:r48-slip 1.5s ease-in-out}
+.r48[data-act=grip] .arm-l{animation:r48-grip-l 1.5s ease-in-out}
+.r48[data-act=grip] .arm-r{animation:r48-grip-r 1.5s ease-in-out}
+.r48[data-act=grip] .eyes{animation:r48-alarm 1.5s ease-in-out}
+.r48[data-act=grip] .drone{animation:r48-catch 1.5s ease-in-out}
+.r48[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r48-blink .4s ease-in-out}
+/* arms turn at the shoulders and the parcel follows the grabber pads: 84 units below the shoulder, so it shifts by (-84 sin a, 84 (cos a - 1)) */
+@keyframes r48-heave{0%,100%{transform:none}20%{transform:translate(0,6px) rotate(-1.2deg)}44%{transform:translate(0,-4px) rotate(.8deg)}64%{transform:translate(0,1.6px) rotate(-.3deg)}82%{transform:translate(0,-.5px) rotate(0deg)}}
+@keyframes r48-whirl{0%,10%{transform:none}17%{transform:scaleX(-1)}23%{transform:scaleX(1)}29%{transform:scaleX(-1)}35%{transform:scaleX(1)}42%{transform:scaleX(-1)}50%{transform:scaleX(1)}60%{transform:scaleX(-1)}74%,100%{transform:scaleX(1)}}
+@keyframes r48-haul-arm{0%,16%,100%{transform:none}36%{transform:rotate(6deg)}56%{transform:rotate(-4.5deg)}74%{transform:rotate(2.5deg)}90%{transform:rotate(-1deg)}}
+@keyframes r48-haul-box{0%,16%,100%{transform:none}36%{transform:translate(-8.78px,-.46px)}56%{transform:translate(6.59px,-.26px)}74%{transform:translate(-3.66px,-.08px)}90%{transform:translate(1.47px,-.01px)}}
+@keyframes r48-push{0%,100%{transform:none}22%{transform:translate(0,4px) scaleX(1.3)}46%{transform:translate(0,-2px) scaleX(.85)}66%{transform:translate(0,1px) scaleX(1.08)}}
+@keyframes r48-glow{0%,100%{fill:#f6c354}28%,58%{fill:#fadb98}}
+@keyframes r48-bank{0%,100%{transform:none}12%{transform:translate(1px,0) rotate(1.8deg)}42%{transform:translate(8px,0) rotate(-1.5deg)}68%{transform:translate(-2.5px,0) rotate(.7deg)}86%{transform:translate(.8px,0) rotate(-.25deg)}}
+@keyframes r48-bank-arm{0%,100%{transform:none}24%{transform:rotate(5deg)}50%{transform:rotate(-6deg)}72%{transform:rotate(3deg)}88%{transform:rotate(-1deg)}}
+@keyframes r48-bank-box{0%,100%{transform:none}24%{transform:translate(-7.32px,-.32px)}50%{transform:translate(8.78px,-.46px)}72%{transform:translate(-4.4px,-.12px)}88%{transform:translate(1.47px,-.01px)}}
+@keyframes r48-trail{0%,100%{transform:none}52%{transform:translateX(7px)}78%{transform:translateX(-2px)}}
+@keyframes r48-peer{0%,100%{transform:none}28%,60%{transform:rotate(3deg)}82%{transform:rotate(-.8deg)}}
+@keyframes r48-hang{0%,100%{transform:none}34%{transform:rotate(-2.5deg)}54%{transform:rotate(-1.5deg)}74%{transform:rotate(2deg)}90%{transform:rotate(-.6deg)}}
+@keyframes r48-hang-box{0%,100%{transform:none}34%{transform:translate(3.66px,-.08px)}54%{transform:translate(2.2px,-.03px)}74%{transform:translate(-2.93px,-.05px)}90%{transform:translate(.88px,0)}}
+@keyframes r48-lower{0%,100%{transform:none}26%,64%{transform:translateY(4px)}}
+@keyframes r48-down{0%,100%{transform:none}20%,68%{transform:translateY(6px)}}
+@keyframes r48-slip{0%,8%,74%,100%{transform:none}26%{transform:translateY(7px)}44%{transform:translateY(-3px)}60%{transform:translateY(1.2px)}}
+@keyframes r48-grip-l{0%,100%{transform:none}16%{transform:rotate(2.5deg)}34%,58%{transform:rotate(-3deg)}80%{transform:rotate(.8deg)}}
+@keyframes r48-grip-r{0%,100%{transform:none}16%{transform:rotate(-2.5deg)}34%,58%{transform:rotate(3deg)}80%{transform:rotate(-.8deg)}}
+@keyframes r48-alarm{0%,100%{transform:none}14%,62%{transform:translateY(7px)}}
+@keyframes r48-catch{0%,26%,100%{transform:none}42%{transform:translateY(4px)}62%{transform:translateY(-1.2px)}80%{transform:translateY(.4px)}}
+@keyframes r48-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+</style>
   <title id="rotor-title">Rotor — flying delivery robot</title>
   <desc id="rotor-desc">A round silver robot held aloft by a rotor, with a wide visor, a yellow belly band, ear lights, and two arms carrying a taped parcel above a puff of downwash.</desc>
+  <g class="drone" style="transform-origin:256px 200px">
   <!-- Rotor -->
   <rect x="248" y="60" width="16" height="44" fill="#697785"/>
+  <g class="blades" style="transform-origin:256px 60px">
   <path d="M256 54c-60-4-118-2-160 4q-6 2 0 4c42 6 100 8 160 4Z" fill="#697785"/>
   <path d="M256 54c60-4 118-2 160 4q6 2 0 4c-42 6-100 8-160 4Z" fill="#92a1b2"/>
+  </g>
   <ellipse cx="256" cy="60" rx="22" ry="11" fill="#3d4853"/>
   <circle cx="256" cy="54" r="7" fill="#f6c354"/>
   <!-- Arms carrying a parcel -->
-  <path d="m204 296-24 40 18 36m110-76 24 40-18 36" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
+  <g class="arm-l" style="transform-origin:204px 296px"><path d="M204 296l-24 40 18 36" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/></g>
+  <g class="arm-r" style="transform-origin:308px 296px"><path d="M308 296l24 40-18 36" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/></g>
+  <g class="box">
   <rect x="200" y="358" width="112" height="72" rx="6" fill="#c9a386"/>
   <path d="M286 358h20q6 0 6 6v60q0 6-6 6h-20Z" fill="#9c795c"/>
   <rect x="244" y="358" width="24" height="72" fill="#f0e7ce"/>
   <path d="M214 376h18m-18 12h12" stroke="#9c795c" stroke-width="4" stroke-linecap="round"/>
-  <rect x="186" y="364" width="24" height="32" rx="6" fill="#3d4853"/>
-  <rect x="302" y="364" width="24" height="32" rx="6" fill="#3d4853"/>
+  </g>
+  <g class="arm-l" style="transform-origin:204px 296px"><rect x="186" y="364" width="24" height="32" rx="6" fill="#3d4853"/></g>
+  <g class="arm-r" style="transform-origin:308px 296px"><rect x="302" y="364" width="24" height="32" rx="6" fill="#3d4853"/></g>
   <circle cx="204" cy="296" r="16" fill="#3d4853"/>
   <circle cx="308" cy="296" r="16" fill="#3d4853"/>
   <circle cx="204" cy="296" r="7" fill="#92a1b2"/>
   <circle cx="308" cy="296" r="7" fill="#92a1b2"/>
+  </g>
   <!-- Downwash -->
-  <path d="M206 450h30m40 0h30m-78 18h50" stroke="#92a1b2" stroke-width="6" stroke-linecap="round"/>
+  <g class="wash" style="transform-origin:256px 459px"><path d="M206 450h30m40 0h30m-78 18h50" stroke="#92a1b2" stroke-width="6" stroke-linecap="round"/></g>
+  <g class="drone" style="transform-origin:256px 200px">
   <!-- Ear lights -->
   <rect x="132" y="176" width="28" height="60" rx="10" fill="#3d4853"/>
   <rect x="352" y="176" width="28" height="60" rx="10" fill="#3d4853"/>
-  <circle cx="146" cy="206" r="7" fill="#f6c354"/>
-  <circle cx="366" cy="206" r="7" fill="#f6c354"/>
+  <circle class="lamp" cx="146" cy="206" r="7" fill="#f6c354"/>
+  <circle class="lamp" cx="366" cy="206" r="7" fill="#f6c354"/>
   <!-- Round silver body -->
   <circle cx="256" cy="200" r="104" fill="#d3dbe3"/>
   <path d="M192 118a104 104 0 0 1 132-6 94 94 0 0 0-132 6Z" fill="#eef2f6"/>
@@ -33,10 +85,15 @@
   <path d="M157.6 233H354.4A104 104 0 0 1 342.3 258H169.7A104 104 0 0 1 157.6 233Z" fill="#f6c354"/>
   <path d="M332 233h22.4a104 104 0 0 1-12.1 25H318Z" fill="#bc943d"/>
   <path d="M180 270h152" stroke="#a7b4c1" stroke-width="4" stroke-linecap="round"/>
+  <g class="face">
   <rect x="180" y="148" width="152" height="64" rx="32" fill="#3d4853"/>
+  <g class="eyes">
   <circle cx="226" cy="180" r="15" fill="#79d6eb"/>
   <circle cx="286" cy="180" r="15" fill="#79d6eb"/>
   <path d="M236 168a15 15 0 0 1-12 26 15 15 0 0 0 12-26Zm60 0a15 15 0 0 1-12 26 15 15 0 0 0 12-26Z" fill="#4fb0c5"/>
   <circle cx="231" cy="174" r="5" fill="#fffae0"/>
   <circle cx="291" cy="174" r="5" fill="#fffae0"/>
+  </g>
+  </g>
+  </g>
 </svg>

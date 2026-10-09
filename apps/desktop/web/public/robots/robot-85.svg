@@ -1,17 +1,65 @@
-<svg width="296" height="452" viewBox="132 24 296 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="signal-title signal-desc">
+<svg width="296" height="452" viewBox="132 24 296 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="signal-title signal-desc" class="r85" data-idle="blink blink tilt tilt dip" data-work="barrier barrier fold fold dip tilt blink"><style>
+.r85[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r85-blink .4s ease-in-out}
+.r85[data-act=tilt] .head{animation:r85-tilt 1.6s ease-in-out}
+.r85[data-act=tilt] .mast{animation:r85-lag 1.6s ease-in-out}
+.r85[data-act=tilt] .bell{animation:r85-jiggle 1.6s ease-in-out}
+.r85[data-act=tilt] .eyes{animation:r85-look-l 1.6s ease-in-out}
+.r85[data-act=dip] .body{animation:r85-dip 1.6s ease-in-out}
+.r85[data-act=dip] .head{animation:r85-bob 1.6s ease-in-out}
+.r85[data-act=dip] .arm,.r85[data-act=dip] .boom{animation:r85-hang 1.6s ease-in-out}
+.r85[data-act=dip] .fore{animation:r85-hang-fore 1.6s ease-in-out}
+.r85[data-act=fold] .arm{animation:r85-fold 1.8s ease-in-out}
+.r85[data-act=fold] .fore{animation:r85-fold-fore 1.8s ease-in-out}
+.r85[data-act=fold] .claw-l{animation:r85-snap-l 1.8s ease-in-out}
+.r85[data-act=fold] .claw-r{animation:r85-snap-r 1.8s ease-in-out}
+.r85[data-act=fold] .eyes{animation:r85-watch 1.8s ease-in-out}
+.r85[data-act=barrier] .boom{animation:r85-barrier 2s ease-in-out}
+.r85[data-act=barrier] .body{animation:r85-brace 2s ease-in-out}
+.r85[data-act=barrier] .mast{animation:r85-shake 2s ease-in-out}
+.r85[data-act=barrier] .bell{animation:r85-ring 2s ease-in-out}
+.r85[data-act=barrier] .head{animation:r85-heed 2s ease-in-out}
+.r85[data-act=barrier] .eyes{animation:r85-look-r 2s ease-in-out}
+.r85[data-act=barrier] .lamp-l{animation:r85-dim 2s ease-in-out}
+.r85[data-act=barrier] .lamp-r{animation:r85-light 2s ease-in-out}
+@keyframes r85-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+@keyframes r85-tilt{0%,100%{transform:none}24%,56%{transform:rotate(-4.5deg)}78%{transform:rotate(1.2deg)}91%{transform:rotate(-.3deg)}}
+@keyframes r85-lag{0%,8%,100%{transform:none}30%{transform:rotate(2.5deg)}50%{transform:rotate(-1.5deg)}70%{transform:rotate(1deg)}86%{transform:rotate(-.4deg)}}
+@keyframes r85-jiggle{0%,12%,100%{transform:none}34%{transform:rotate(6deg)}54%{transform:rotate(-4deg)}74%{transform:rotate(2deg)}88%{transform:rotate(-.6deg)}}
+@keyframes r85-look-l{0%,10%,82%,100%{transform:none}24%,64%{transform:translateX(-3.5px)}}
+@keyframes r85-dip{0%,100%{transform:none}30%,42%{transform:translateY(3px)}68%{transform:translateY(-.5px)}84%{transform:translateY(.2px)}}
+@keyframes r85-bob{0%,100%{transform:none}24%{transform:translateY(-1px)}50%{transform:translateY(1px)}74%{transform:translateY(-.4px)}}
+@keyframes r85-hang{0%,100%{transform:none}30%{transform:rotate(-3deg)}56%{transform:rotate(2.2deg)}80%{transform:rotate(-.8deg)}}
+@keyframes r85-hang-fore{0%,8%,100%{transform:none}38%{transform:rotate(-7deg)}64%{transform:rotate(5deg)}86%{transform:rotate(-1.5deg)}}
+@keyframes r85-fold{0%,100%{transform:none}26%,58%{transform:rotate(-12deg)}78%{transform:rotate(3deg)}91%{transform:rotate(-1deg)}}
+@keyframes r85-fold-fore{0%,6%,100%{transform:none}32%{transform:rotate(-58deg)}40%,56%{transform:rotate(-54deg)}80%{transform:rotate(6deg)}93%{transform:rotate(-2deg)}}
+@keyframes r85-snap-l{0%,22%,70%,100%{transform:none}34%{transform:rotate(18deg)}43%{transform:rotate(-7deg)}52%{transform:rotate(12deg)}61%{transform:rotate(-5deg)}}
+@keyframes r85-snap-r{0%,22%,70%,100%{transform:none}34%{transform:rotate(-18deg)}43%{transform:rotate(7deg)}52%{transform:rotate(-12deg)}61%{transform:rotate(5deg)}}
+@keyframes r85-watch{0%,12%,80%,100%{transform:none}30%,62%{transform:translate(-3px,2.5px)}}
+@keyframes r85-barrier{0%,100%{transform:none}10%{transform:rotate(-4deg)}30%{transform:rotate(24deg)}37%{transform:rotate(17deg)}44%{transform:rotate(22.5deg)}51%{transform:rotate(20deg)}57%,64%{transform:rotate(21deg)}82%{transform:rotate(-4deg)}91%{transform:rotate(1.5deg)}}
+@keyframes r85-brace{0%,18%,100%{transform:none}32%{transform:translateY(2.5px)}46%,62%{transform:translateY(1px)}80%{transform:translateY(-.4px)}}
+@keyframes r85-shake{0%,26%,64%,100%{transform:none}33%{transform:rotate(2.5deg)}42%{transform:rotate(-1.8deg)}52%{transform:rotate(.8deg)}}
+@keyframes r85-ring{0%,26%,76%,100%{transform:none}33%{transform:rotate(10deg)}41%{transform:rotate(-8deg)}49%{transform:rotate(6deg)}57%{transform:rotate(-4deg)}66%{transform:rotate(2deg)}}
+@keyframes r85-heed{0%,12%,100%{transform:none}30%,62%{transform:rotate(4deg)}80%{transform:rotate(-1deg)}92%{transform:rotate(.3deg)}}
+@keyframes r85-look-r{0%,10%,82%,100%{transform:none}26%,66%{transform:translateX(3.5px)}}
+@keyframes r85-dim{0%,34%,72%,100%{fill:#8fe0f0}42%,64%{fill:#79d6eb}}
+@keyframes r85-light{0%,34%,72%,100%{fill:#79d6eb}42%,64%{fill:#8fe0f0}}
+</style>
   <title id="signal-title">Signal — level crossing robot</title>
   <desc id="signal-desc">A mustard robot built like a railway level crossing: a slate signal backplate for a head with two hooded round lamps holding its eyes, the left one lit, a mustard crossbuck and a small bell dome on a mast above, a relay cabinet body with a door, hinges and rivets, a striped barrier boom arm with a counterweight at the shoulder, a jointed claw arm and two legs.</desc>
   <!-- Mast, crossbuck and bell -->
+  <g class="body" style="transform-origin:256px 476px"><g class="head" style="transform-origin:256px 196px"><g class="mast" style="transform-origin:256px 128px">
   <rect x="250" y="44" width="12" height="90" fill="#697785"/>
   <rect x="180" y="62" width="152" height="28" rx="3" fill="#b5822c" transform="rotate(28 256 76)"/>
   <rect x="183" y="65" width="146" height="22" rx="2" fill="#d9a441" transform="rotate(28 256 76)"/>
   <rect x="180" y="62" width="152" height="28" rx="3" fill="#b5822c" transform="rotate(-28 256 76)"/>
   <rect x="183" y="65" width="146" height="22" rx="2" fill="#d9a441" transform="rotate(-28 256 76)"/>
   <circle cx="256" cy="76" r="6" fill="#3d4853"/>
+  <g class="bell" style="transform-origin:256px 50px">
   <circle cx="256" cy="28" r="4" fill="#3d4853"/>
   <path d="M238 48A18 18 0 0 1 274 48Z" fill="#697785"/>
   <path d="M243 44A13 13 0 0 1 256 33V37A9 9 0 0 0 247 44Z" fill="#92a1b2"/>
   <rect x="234" y="46" width="44" height="7" rx="3" fill="#3d4853"/>
+  </g></g></g></g>
   <!-- Legs -->
   <rect x="216" y="356" width="16" height="100" fill="#697785"/>
   <rect x="280" y="356" width="16" height="100" fill="#697785"/>
@@ -25,6 +73,7 @@
   <path d="M302 449q12 3 12 13v6h-10v-6q0-9-2-13Z" fill="#b5822c"/>
   <rect x="194" y="466" width="60" height="10" rx="3" fill="#3d4853"/>
   <rect x="258" y="466" width="60" height="10" rx="3" fill="#3d4853"/>
+  <g class="body" style="transform-origin:256px 476px">
   <!-- Relay cabinet with a door, hinges and rivets -->
   <rect x="212" y="350" width="88" height="16" rx="4" fill="#3d4853"/>
   <rect x="192" y="216" width="128" height="142" rx="8" fill="#d9a441"/>
@@ -45,15 +94,20 @@
   <circle cx="300" cy="232" r="3" fill="#b5822c"/>
   <circle cx="300" cy="344" r="3" fill="#b5822c"/>
   <!-- Claw arm -->
-  <path d="M188 240 160 298 154 350" fill="none" stroke="#697785" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <g class="arm" style="transform-origin:192px 238px">
+  <path d="M188 240 160 298" fill="none" stroke="#697785" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <g class="fore" style="transform-origin:160px 298px">
+  <path d="M160 298 154 350" fill="none" stroke="#697785" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
   <circle cx="160" cy="298" r="10" fill="#3d4853"/>
   <circle cx="160" cy="298" r="4" fill="#92a1b2"/>
   <circle cx="154" cy="352" r="9" fill="#3d4853"/>
-  <path d="M146 360a15 15 0 0 0 2 28M162 360a15 15 0 0 1-2 28" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+  <g class="claw-l" style="transform-origin:146px 360px"><path d="M146 360a15 15 0 0 0 2 28" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
+  <g class="claw-r" style="transform-origin:162px 360px"><path d="M162 360a15 15 0 0 1-2 28" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
+  </g></g>
   <circle cx="192" cy="238" r="14" fill="#3d4853"/>
   <circle cx="192" cy="238" r="6" fill="#92a1b2"/>
   <!-- Striped barrier boom arm with a counterweight at the shoulder -->
-  <g transform="translate(320 238) rotate(-45)">
+  <g class="boom" style="transform-origin:320px 238px"><g transform="translate(320 238) rotate(-45)">
     <rect x="-38" y="-15" width="34" height="30" rx="4" fill="#3d4853"/>
     <rect x="-34" y="-11" width="10" height="22" rx="2" fill="#697785"/>
     <rect x="4" y="-8" width="138" height="16" rx="8" fill="#fff8de"/>
@@ -61,12 +115,13 @@
     <rect x="56" y="-8" width="16" height="16" fill="#3d4853"/>
     <rect x="90" y="-8" width="16" height="16" fill="#3d4853"/>
     <path d="M124-8h10a8 8 0 0 1 0 16h-10Z" fill="#3d4853"/>
-  </g>
+  </g></g>
   <circle cx="320" cy="238" r="14" fill="#3d4853"/>
   <circle cx="320" cy="238" r="6" fill="#92a1b2"/>
   <!-- Neck mast -->
   <rect x="248" y="190" width="16" height="16" fill="#3d4853"/>
   <!-- Signal backplate head with hooded lamp eyes -->
+  <g class="head" style="transform-origin:256px 196px">
   <rect x="182" y="126" width="148" height="70" rx="35" fill="#3d4853"/>
   <circle cx="219" cy="161" r="27" fill="#b5822c"/>
   <circle cx="293" cy="161" r="27" fill="#b5822c"/>
@@ -74,9 +129,12 @@
   <circle cx="291" cy="159" r="25" fill="#d9a441"/>
   <circle cx="219" cy="161" r="19" fill="#3d4853"/>
   <circle cx="293" cy="161" r="19" fill="#3d4853"/>
-  <circle cx="219" cy="161" r="14" fill="#8fe0f0"/>
-  <circle cx="293" cy="161" r="14" fill="#79d6eb"/>
+  <g class="eyes">
+  <circle class="lamp-l" cx="219" cy="161" r="14" fill="#8fe0f0"/>
+  <circle class="lamp-r" cx="293" cy="161" r="14" fill="#79d6eb"/>
   <path d="M228 150.3A14 14 0 0 1 216.5 174.8 14 14 0 0 0 228 150.3ZM302 150.3A14 14 0 0 1 290.5 174.8 14 14 0 0 0 302 150.3Z" fill="#4fb0c5"/>
   <circle cx="223" cy="156" r="5.5" fill="#fffae0"/>
   <circle cx="297" cy="156" r="4.5" fill="#fffae0"/>
+  </g></g>
+  </g>
 </svg>

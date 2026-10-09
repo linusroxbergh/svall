@@ -1,11 +1,49 @@
-<svg width="272" height="398" viewBox="134 80 272 398" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="lumen-title lumen-desc">
+<svg width="272" height="398" viewBox="134 80 272 398" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="lumen-title lumen-desc" class="r47" data-idle="blink blink tilt tilt shift peck" data-work="peck peck tap tap tilt blink"><style>.r47[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r47-blink .4s ease-in-out}
+.r47[data-act=tilt] .hd{animation:r47-cock 1.6s ease-in-out}
+.r47[data-act=tilt] .up{animation:r47-lift 1.6s ease-in-out}
+.r47[data-act=tilt] .eyes{animation:r47-look 1.6s ease-in-out}
+.r47[data-act=peck] .lo{animation:r47-peck-lo 2s ease-in-out}
+.r47[data-act=peck] .up{animation:r47-peck-up 2s ease-in-out}
+.r47[data-act=peck] .hd{animation:r47-peck-hd 2s ease-in-out}
+.r47[data-act=peck] .spr-lo{animation:r47-spring 2s ease-in-out .06s}
+.r47[data-act=peck] .spr-up{animation:r47-spring 2s ease-in-out .12s}
+.r47[data-act=peck] .bulb{animation:r47-glow 2s ease-in-out}
+.r47[data-act=shift] .all{animation:r47-shift 1.8s ease-in-out}
+.r47[data-act=shift] .lo{animation:r47-balance 1.8s ease-in-out}
+.r47[data-act=shift] .hd{animation:r47-lag 1.8s ease-in-out}
+.r47[data-act=shift] .arm-l{animation:r47-hang-l 1.8s ease-in-out}
+.r47[data-act=shift] .arm-r{animation:r47-hang-r 1.8s ease-in-out}
+.r47[data-act=tap] .arm-l{animation:r47-tap-l 1.6s ease-in-out}
+.r47[data-act=tap] .arm-r{animation:r47-tap-r 1.6s ease-in-out}
+.r47[data-act=tap] .up{animation:r47-bob 1.6s ease-in-out}
+/* shift rocks on the right sole's outer corner, 68 units from the origin: translate (68(1-cos), -68 sin) */
+@keyframes r47-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+@keyframes r47-cock{0%,100%{transform:none}24%{transform:rotate(-8deg)}52%{transform:rotate(3.5deg)}76%{transform:rotate(-1.2deg)}}
+@keyframes r47-lift{0%,100%{transform:none}22%,40%{transform:rotate(-3deg)}64%{transform:rotate(1deg)}}
+@keyframes r47-look{0%,100%{transform:none}18%,40%{transform:translateX(6px)}58%,74%{transform:translateX(-4px)}}
+@keyframes r47-peck-lo{0%,100%{transform:none}6%{transform:rotate(1deg)}19%{transform:rotate(-3deg)}31%{transform:rotate(-1deg)}43%{transform:rotate(-4deg)}61%{transform:rotate(2deg)}77%{transform:rotate(-.8deg)}}
+@keyframes r47-peck-up{0%,100%{transform:none}8%{transform:rotate(-3deg)}22%{transform:rotate(18deg)}33%{transform:rotate(7deg)}46%{transform:rotate(20deg)}64%{transform:rotate(-7deg)}80%{transform:rotate(3deg)}92%{transform:rotate(-1deg)}}
+@keyframes r47-peck-hd{0%,100%{transform:none}10%{transform:rotate(2deg)}25%{transform:rotate(-8deg)}36%{transform:rotate(-3deg)}50%{transform:rotate(-10deg)}68%{transform:rotate(5deg)}84%{transform:rotate(-2deg)}}
+@keyframes r47-spring{0%,100%{transform:none}24%{transform:scaleX(.9)}35%{transform:scaleX(.97)}48%{transform:scaleX(.88)}66%{transform:scaleX(1.08)}82%{transform:scaleX(.97)}}
+@keyframes r47-glow{0%,100%{fill:#f6c354}40%,58%{fill:#ffdc84}}
+@keyframes r47-shift{0%,100%{transform:none}30%,56%{transform:translate(.01px,-1.42px) rotate(1.2deg)}}
+@keyframes r47-balance{0%,100%{transform:none}34%,56%{transform:rotate(-2deg)}80%{transform:rotate(1deg)}92%{transform:rotate(-.4deg)}}
+@keyframes r47-lag{0%,100%{transform:none}38%{transform:rotate(-5deg)}62%{transform:rotate(-2deg)}84%{transform:rotate(2.5deg)}}
+@keyframes r47-hang-l{0%,100%{transform:none}34%{transform:rotate(-6deg)}60%{transform:rotate(-1deg)}82%{transform:rotate(3deg)}}
+@keyframes r47-hang-r{0%,100%{transform:none}38%{transform:rotate(-4deg)}64%{transform:rotate(-1deg)}86%{transform:rotate(2deg)}}
+@keyframes r47-tap-l{0%,100%{transform:none}14%{transform:rotate(12deg)}28%{transform:none}42%{transform:rotate(10.5deg)}56%{transform:rotate(-1.5deg)}68%{transform:none}}
+@keyframes r47-tap-r{0%,8%,100%{transform:none}22%{transform:rotate(-12deg)}36%{transform:none}50%{transform:rotate(-10.5deg)}64%{transform:rotate(1.5deg)}76%{transform:none}}
+@keyframes r47-bob{0%,100%{transform:none}30%{transform:rotate(3deg)}58%{transform:rotate(3.5deg)}82%{transform:rotate(-1deg)}}</style>
   <title id="lumen-title">Lumen — desk lamp robot</title>
   <desc id="lumen-desc">A mint robot whose head is a bell lamp shade on a sprung, jointed neck, tilted to one side with a lit bulb, a rocker switch on its chest and short arms with pincers.</desc>
+  <g class="all" style="transform-origin:256px 476px">
   <!-- Short arms with pincers -->
-  <path d="m190 338-36 30v36m168-66 36 30v36" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
-  <path d="m146 410-6 16m22-16 6 16m190-16-6 16m22-16 6 16" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
-  <rect x="142" y="398" width="24" height="16" rx="5" fill="#519b7f"/>
-  <rect x="346" y="398" width="24" height="16" rx="5" fill="#519b7f"/>
+  <g class="arm-l" style="transform-origin:190px 338px"><path d="m190 338-36 30v36" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/></g>
+  <g class="arm-r" style="transform-origin:322px 338px"><path d="m322 338 36 30v36" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/></g>
+  <g class="arm-l" style="transform-origin:190px 338px"><path d="m146 410-6 16m22-16 6 16" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
+  <g class="arm-r" style="transform-origin:322px 338px"><path d="m358 410-6 16m22-16 6 16" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
+  <g class="arm-l" style="transform-origin:190px 338px"><rect x="142" y="398" width="24" height="16" rx="5" fill="#519b7f"/></g>
+  <g class="arm-r" style="transform-origin:322px 338px"><rect x="346" y="398" width="24" height="16" rx="5" fill="#519b7f"/></g>
   <circle cx="190" cy="338" r="16" fill="#3d4853"/>
   <circle cx="322" cy="338" r="16" fill="#3d4853"/>
   <circle cx="190" cy="338" r="7" fill="#92a1b2"/>
@@ -24,27 +62,35 @@
   <path d="M220 384h72m-72 14h72" stroke="#519b7f" stroke-width="5" stroke-linecap="round"/>
   <!-- Sprung, jointed neck -->
   <rect x="212" y="282" width="40" height="18" rx="6" fill="#3d4853"/>
-  <path d="m232 290-54-94 84-92" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
-  <path d="M-28 0l4-11 8 22 8-22 8 22 8-22 8 22 8-22 4 11" transform="translate(205 243) rotate(60.1)" fill="none" stroke="#3d4853" stroke-width="4" stroke-linejoin="round"/>
-  <path d="M-28 0l4-11 8 22 8-22 8 22 8-22 8 22 8-22 4 11" transform="translate(220 150) rotate(-47.6)" fill="none" stroke="#3d4853" stroke-width="4" stroke-linejoin="round"/>
+  <g class="lo" style="transform-origin:232px 290px">
+    <path d="M232 290l-54-94" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
+    <g class="up" style="transform-origin:178px 196px"><path d="M178 196l84-92" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/></g>
+    <g transform="translate(205 243) rotate(60.1)"><g class="spr-lo"><path d="M-28 0l4-11 8 22 8-22 8 22 8-22 8 22 8-22 4 11" fill="none" stroke="#3d4853" stroke-width="4" stroke-linejoin="round"/></g></g>
+    <g class="up" style="transform-origin:178px 196px"><g transform="translate(220 150) rotate(-47.6)"><g class="spr-up"><path d="M-28 0l4-11 8 22 8-22 8 22 8-22 8 22 8-22 4 11" fill="none" stroke="#3d4853" stroke-width="4" stroke-linejoin="round"/></g></g></g>
+  </g>
   <circle cx="232" cy="290" r="16" fill="#3d4853"/>
-  <circle cx="178" cy="196" r="16" fill="#3d4853"/>
   <circle cx="232" cy="290" r="7" fill="#92a1b2"/>
+  <g class="lo" style="transform-origin:232px 290px">
+  <circle cx="178" cy="196" r="16" fill="#3d4853"/>
   <circle cx="178" cy="196" r="7" fill="#92a1b2"/>
   <!-- Bell shade head, tilted, with a lit bulb -->
-  <g transform="translate(268 119) rotate(-22)">
-    <path d="M-36 108a36 24 0 0 0 72 0Z" fill="#f6c354"/>
+  <g class="up" style="transform-origin:178px 196px"><g class="hd" style="transform-origin:262px 104px"><g transform="translate(268 119) rotate(-22)">
+    <path class="bulb" d="M-36 108a36 24 0 0 0 72 0Z" fill="#f6c354"/>
     <ellipse cx="-10" cy="116" rx="9" ry="4" fill="#fffae0"/>
     <path d="M-26 8q0-24 26-24t26 24l8 34q52 12 56 62H-90q4-50 56-62Z" fill="#74c3a2"/>
     <path d="M-26 8q0-24 26-24-14 6-16 24l-6 34q-40 14-46 62h-22q4-50 56-62Z" fill="#9ddbc0"/>
     <path d="M10 -15q16 6 16 23l8 34q52 12 56 62H64q-4-46-46-60l-6-36q-2-16-2-23Z" fill="#519b7f"/>
     <rect x="-44" y="56" width="88" height="34" rx="17" fill="#3d4853"/>
+    <g class="eyes">
     <circle cx="-20" cy="73" r="10" fill="#79d6eb"/>
     <circle cx="20" cy="73" r="10" fill="#79d6eb"/>
     <circle cx="-16" cy="69" r="3.5" fill="#fffae0"/>
     <circle cx="24" cy="69" r="3.5" fill="#fffae0"/>
+    </g>
     <rect x="-94" y="98" width="188" height="12" rx="6" fill="#3d4853"/>
     <circle cy="-16" r="13" fill="#3d4853"/>
     <circle cy="-16" r="5.5" fill="#92a1b2"/>
+  </g></g></g>
+  </g>
   </g>
 </svg>

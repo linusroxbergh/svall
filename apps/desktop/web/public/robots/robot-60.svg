@@ -1,20 +1,71 @@
-<svg width="292" height="426" viewBox="110 52 292 426" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="gearbox-title gearbox-desc">
+<svg width="292" height="426" viewBox="110 52 292 426" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="gearbox-title gearbox-desc" class="r60" data-idle="blink blink look look salute" data-work="windup windup tick tick salute blink"><style>
+.r60[data-act=windup] .bot{animation:r60-waddle 2s ease-in-out}
+.r60[data-act=windup] .arm-l,.r60[data-act=windup] .arm-r{animation:r60-swing 2s ease-in-out}
+.r60[data-act=windup] .ant{animation:r60-ant-waddle 2s ease-in-out}
+.r60[data-act=windup] .gear-a{animation:r60-run-a 2s cubic-bezier(.25,.55,.4,1)}
+.r60[data-act=windup] .gear-b{animation:r60-run-b 2s cubic-bezier(.25,.55,.4,1)}
+.r60[data-act=windup] .gear-c{animation:r60-run-c 2s cubic-bezier(.25,.55,.4,1)}
+.r60[data-act=look] .head{animation:r60-turn 1.8s ease-in-out}
+.r60[data-act=look] .eyes{animation:r60-glance 1.8s ease-in-out}
+.r60[data-act=look] .ant{animation:r60-ant-turn 1.8s ease-in-out}
+.r60[data-act=salute] .arm-l{animation:r60-raise 1.8s ease-in-out}
+.r60[data-act=salute] .fore-l{animation:r60-fold 1.8s ease-in-out}
+.r60[data-act=salute] .head{animation:r60-attend 1.8s ease-in-out}
+.r60[data-act=salute] .ant{animation:r60-ant-salute 1.8s ease-in-out}
+.r60[data-act=tick] .head{animation:r60-peer 1.6s ease-in-out}
+.r60[data-act=tick] .eyes{animation:r60-down 1.6s ease-in-out}
+.r60[data-act=tick] .ant{animation:r60-ant-peer 1.6s ease-in-out}
+.r60[data-act=tick] .gear-a{animation:r60-tick-a 1.6s ease-in-out}
+.r60[data-act=tick] .gear-b{animation:r60-tick-b 1.6s ease-in-out}
+.r60[data-act=tick] .gear-c{animation:r60-tick-c 1.6s ease-in-out}
+.r60[data-act=tick] .needle-a{animation:r60-needle-a 1.6s ease-in-out}
+.r60[data-act=tick] .needle-b{animation:r60-needle-b 1.6s ease-in-out}
+.r60[data-act=tick] .lamp{animation:r60-glow 1.6s ease-in-out}
+.r60[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r60-blink .4s ease-in-out}
+/* the body rocks on a sole's outer corner: translate (±84(1-cos a), -84|sin a|) about the mid-sole origin; gears turn by whole teeth (10:7:5) */
+@keyframes r60-waddle{0%,100%{transform:none}
+9%{transform:translate(-.16px,-5.13px) rotate(-3.5deg);animation-timing-function:ease-in}
+17%{transform:none;animation-timing-function:ease-out}
+26%{transform:translate(.16px,-5.13px) rotate(3.5deg);animation-timing-function:ease-in}
+34%{transform:none;animation-timing-function:ease-out}
+43%{transform:translate(-.13px,-4.69px) rotate(-3.2deg);animation-timing-function:ease-in}
+51%{transform:none;animation-timing-function:ease-out}
+60%{transform:translate(.09px,-3.81px) rotate(2.6deg);animation-timing-function:ease-in}
+68%{transform:none;animation-timing-function:ease-out}
+77%{transform:translate(-.03px,-2.35px) rotate(-1.6deg);animation-timing-function:ease-in}
+85%{transform:none}}
+@keyframes r60-swing{0%,100%{transform:none}13%{transform:rotate(8deg)}30%{transform:rotate(-8deg)}47%{transform:rotate(7.5deg)}64%{transform:rotate(-6deg)}81%{transform:rotate(3.5deg)}92%{transform:rotate(-1.2deg)}}
+@keyframes r60-ant-waddle{0%,100%{transform:none}12%{transform:rotate(9deg)}29%{transform:rotate(-10deg)}46%{transform:rotate(9deg)}63%{transform:rotate(-8deg)}80%{transform:rotate(6deg)}90%{transform:rotate(-3deg)}96%{transform:rotate(1deg)}}
+@keyframes r60-run-a{0%{transform:none}88%,100%{transform:rotate(360deg)}}
+@keyframes r60-run-b{0%{transform:none}88%{transform:rotate(-514.286deg);animation-timing-function:steps(1,start)}100%{transform:none}}
+@keyframes r60-run-c{0%{transform:none}88%,100%{transform:rotate(720deg)}}
+@keyframes r60-turn{0%,100%{transform:none}10%{transform:rotate(-5deg)}14%{transform:rotate(-4deg)}18%,42%{transform:rotate(-4.4deg)}52%{transform:rotate(5deg)}56%{transform:rotate(4deg)}60%,78%{transform:rotate(4.4deg)}88%{transform:rotate(-1deg)}94%{transform:rotate(.4deg)}}
+@keyframes r60-glance{0%,100%{transform:none}10%,42%{transform:translateX(-5px)}52%,78%{transform:translateX(5px)}88%{transform:none}}
+@keyframes r60-ant-turn{0%,100%{transform:none}13%{transform:rotate(12deg)}22%{transform:rotate(-6deg)}31%{transform:rotate(3deg)}40%{transform:none}55%{transform:rotate(-12deg)}64%{transform:rotate(6deg)}73%{transform:rotate(-3deg)}81%{transform:none}91%{transform:rotate(5deg)}97%{transform:rotate(-2deg)}}
+@keyframes r60-raise{0%,100%{transform:none}22%{transform:rotate(141deg)}28%,64%{transform:rotate(137deg)}88%{transform:rotate(-4deg)}94%{transform:rotate(1.5deg)}}
+@keyframes r60-fold{0%,100%{transform:none}22%{transform:rotate(-262deg)}28%,64%{transform:rotate(-257deg)}88%{transform:rotate(5deg)}94%{transform:rotate(-2deg)}}
+@keyframes r60-attend{0%,100%{transform:none}24%,66%{transform:rotate(-2.5deg)}}
+@keyframes r60-ant-salute{0%,100%{transform:none}27%{transform:rotate(10deg)}36%{transform:rotate(-6deg)}45%{transform:rotate(3deg)}54%{transform:none}86%{transform:rotate(-6deg)}94%{transform:rotate(3deg)}}
+@keyframes r60-peer{0%,100%{transform:none}20%,76%{transform:translateY(6px)}86%{transform:translateY(-1.5px)}}
+@keyframes r60-down{0%,100%{transform:none}16%,78%{transform:translateY(4px)}}
+@keyframes r60-ant-peer{0%,70%,100%{transform:none}80%{transform:rotate(-10deg)}88%{transform:rotate(6deg)}95%{transform:rotate(-2deg)}}
+@keyframes r60-tick-a{0%,28%{transform:none}34%,50%{transform:rotate(36deg)}56%{transform:rotate(72deg);animation-timing-function:steps(1,start)}100%{transform:none}}
+@keyframes r60-tick-b{0%,28%{transform:none}34%,50%{transform:rotate(-51.429deg)}56%{transform:rotate(-102.857deg);animation-timing-function:steps(1,start)}100%{transform:none}}
+@keyframes r60-tick-c{0%,28%{transform:none}34%,50%{transform:rotate(72deg)}56%{transform:rotate(144deg);animation-timing-function:steps(1,start)}100%{transform:none}}
+@keyframes r60-needle-a{0%,28%,100%{transform:none}34%{transform:rotate(50deg)}50%{transform:rotate(40deg)}56%,70%{transform:rotate(95deg)}}
+@keyframes r60-needle-b{0%,30%,100%{transform:none}36%{transform:rotate(-40deg)}52%{transform:rotate(-30deg)}58%,72%{transform:rotate(-80deg)}}
+@keyframes r60-glow{0%,30%,100%{fill:#79d6eb}40%,72%{fill:#c4f0f9}}
+@keyframes r60-blink{0%,100%{transform:none}40%,55%{transform:scaleY(.1)}}
+</style>
   <title id="gearbox-title">Gearbox — tin toy robot</title>
   <desc id="gearbox-desc">A coral 1950s tin toy robot with a square head, antenna knob and two round eyes, a big chest window of meshing yellow gears over a row of dials and lights, ring jointed arms with three finger hands, and sturdy legs on wide flat feet.</desc>
+  <g class="bot" style="transform-origin:256px 476px">
   <!-- Antenna -->
-  <path d="M256 92V70" stroke="#697785" stroke-width="6"/>
+  <g class="head" style="transform-origin:256px 186px"><g class="ant" style="transform-origin:256px 92px">
+  <path d="M256 100V70" stroke="#697785" stroke-width="6"/>
   <circle cx="256" cy="64" r="9" fill="#f6c354"/>
   <circle cx="253" cy="61" r="3" fill="#fffae0"/>
-  <!-- Arms with three finger hands -->
-  <path d="m164 212-30 46v52m214-98 30 46v52" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
-  <path d="m124 316-6 22m16-20v24m10-26 6 22m238-22 6 22m-16-20v24m-10-26-6 22" stroke="#3d4853" stroke-width="8" stroke-linecap="round"/>
-  <rect x="120" y="296" width="28" height="22" rx="5" fill="#cd6155"/>
-  <rect x="364" y="296" width="28" height="22" rx="5" fill="#cd6155"/>
-  <path d="M140 296h3q5 0 5 5v12q0 5-5 5h-3Zm244 0h3q5 0 5 5v12q0 5-5 5h-3Z" fill="#942f27"/>
-  <circle cx="134" cy="258" r="14" fill="#3d4853"/>
-  <circle cx="378" cy="258" r="14" fill="#3d4853"/>
-  <circle cx="134" cy="258" r="6" fill="#92a1b2"/>
-  <circle cx="378" cy="258" r="6" fill="#92a1b2"/>
+  </g></g>
   <!-- Sturdy legs and wide flat feet -->
   <rect x="192" y="348" width="44" height="98" fill="#cd6155"/>
   <rect x="276" y="348" width="44" height="98" fill="#cd6155"/>
@@ -23,6 +74,7 @@
   <path d="M176 468v-14q0-12 12-12h48q12 0 12 12v14Zm88 0v-14q0-12 12-12h48q12 0 12 12v14Z" fill="#942f27"/>
   <path d="M172 466h80v10h-80Zm88 0h80v10h-80Z" fill="#3d4853"/>
   <!-- Square head with two round eyes -->
+  <g class="head" style="transform-origin:256px 186px">
   <rect x="236" y="166" width="40" height="22" fill="#3d4853"/>
   <rect x="230" y="172" width="52" height="7" rx="3" fill="#697785"/>
   <rect x="200" y="114" width="12" height="32" rx="4" fill="#3d4853"/>
@@ -32,19 +84,22 @@
   <path d="M286 92h6q10 0 10 10v58q0 10-10 10h-6Z" fill="#942f27"/>
   <circle cx="236" cy="132" r="16" fill="#3d4853"/>
   <circle cx="276" cy="132" r="16" fill="#3d4853"/>
+  <g class="eyes">
   <circle cx="236" cy="132" r="10" fill="#79d6eb"/>
   <circle cx="276" cy="132" r="10" fill="#79d6eb"/>
   <path d="M243 125a10 10 0 0 1-8 17 10 10 0 0 0 8-17Zm40 0a10 10 0 0 1-8 17 10 10 0 0 0 8-17Z" fill="#4fb0c5"/>
   <circle cx="239" cy="128" r="3.5" fill="#fffae0"/>
   <circle cx="279" cy="128" r="3.5" fill="#fffae0"/>
+  </g>
+  </g>
   <!-- Chest with a window of meshing gears -->
   <rect x="168" y="184" width="176" height="158" rx="14" fill="#cd6155"/>
   <path d="M182 184h148q14 0 14 14v4H168v-4q0-14 14-14Z" fill="#fe8d7f"/>
   <path d="M326 184h4q14 0 14 14v130q0 14-14 14h-4Z" fill="#942f27"/>
   <rect x="192" y="212" width="112" height="80" rx="10" fill="#3d4853"/>
-  <path d="M248.1 238.4L255.6 239.3L255.6 248.7L248.1 249.6L248.0 250.1L253.4 255.2L247.9 262.8L241.4 259.2L241.0 259.5L242.4 266.9L233.5 269.8L230.2 263.0L229.8 263.0L226.5 269.8L217.6 266.9L219.0 259.5L218.6 259.2L212.1 262.8L206.6 255.2L212.0 250.1L211.9 249.6L204.4 248.7L204.4 239.3L211.9 238.4L212.0 237.9L206.6 232.8L212.1 225.2L218.6 228.8L219.0 228.5L217.6 221.1L226.5 218.2L229.8 225.0L230.2 225.0L233.5 218.2L242.4 221.1L241.0 228.5L241.4 228.8L247.9 225.2L253.4 232.8L248.0 237.9Z" fill="#f6c354"/>
-  <path d="M272.3 265.4L278.0 268.6L274.0 276.9L268.0 274.5L267.6 274.7L268.7 281.2L259.7 283.2L257.8 277.0L257.4 276.9L253.1 281.7L245.9 276.0L249.6 270.6L249.4 270.2L242.9 269.8L242.9 260.6L249.4 260.2L249.6 259.8L245.9 254.5L253.1 248.7L257.4 253.6L257.8 253.5L259.7 247.2L268.7 249.3L267.6 255.7L268.0 256.0L274.0 253.5L278.0 261.8L272.3 265.0Z" fill="#bc943d"/>
-  <path d="M279.7 240.8L284.5 242.4L281.9 250.8L277.0 249.4L276.7 249.7L276.6 254.8L267.8 254.9L267.6 249.8L267.3 249.6L262.4 251.1L259.6 242.7L264.3 241.0L264.5 240.6L261.5 236.4L268.6 231.1L271.7 235.2L272.1 235.1L275.2 231.0L282.4 236.1L279.6 240.4Z" fill="#f6c354"/>
+  <g class="gear-a" style="transform-origin:230px 244px"><path d="M248.1 238.4L255.6 239.3L255.6 248.7L248.1 249.6L248.0 250.1L253.4 255.2L247.9 262.8L241.4 259.2L241.0 259.5L242.4 266.9L233.5 269.8L230.2 263.0L229.8 263.0L226.5 269.8L217.6 266.9L219.0 259.5L218.6 259.2L212.1 262.8L206.6 255.2L212.0 250.1L211.9 249.6L204.4 248.7L204.4 239.3L211.9 238.4L212.0 237.9L206.6 232.8L212.1 225.2L218.6 228.8L219.0 228.5L217.6 221.1L226.5 218.2L229.8 225.0L230.2 225.0L233.5 218.2L242.4 221.1L241.0 228.5L241.4 228.8L247.9 225.2L253.4 232.8L248.0 237.9Z" fill="#f6c354"/></g>
+  <g class="gear-b" style="transform-origin:260.3px 265.2px"><path d="M272.3 265.4L278.0 268.6L274.0 276.9L268.0 274.5L267.6 274.7L268.7 281.2L259.7 283.2L257.8 277.0L257.4 276.9L253.1 281.7L245.9 276.0L249.6 270.6L249.4 270.2L242.9 269.8L242.9 260.6L249.4 260.2L249.6 259.8L245.9 254.5L253.1 248.7L257.4 253.6L257.8 253.5L259.7 247.2L268.7 249.3L267.6 255.7L268.0 256.0L274.0 253.5L278.0 261.8L272.3 265.0Z" fill="#bc943d"/></g>
+  <g class="gear-c" style="transform-origin:272px 243.1px"><path d="M279.7 240.8L284.5 242.4L281.9 250.8L277.0 249.4L276.7 249.7L276.6 254.8L267.8 254.9L267.6 249.8L267.3 249.6L262.4 251.1L259.6 242.7L264.3 241.0L264.5 240.6L261.5 236.4L268.6 231.1L271.7 235.2L272.1 235.1L275.2 231.0L282.4 236.1L279.6 240.4Z" fill="#f6c354"/></g>
   <circle cx="230" cy="244" r="9" fill="#bc943d"/>
   <circle cx="260.3" cy="265.2" r="6" fill="#f6c354"/>
   <circle cx="272.0" cy="243.1" r="4" fill="#bc943d"/>
@@ -54,17 +109,39 @@
   <circle cx="242" cy="318" r="11" fill="#3d4853"/>
   <circle cx="212" cy="318" r="7" fill="#fff8de"/>
   <circle cx="242" cy="318" r="7" fill="#fff8de"/>
-  <path d="m212 318 4-5m26 5-5-3" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/>
-  <circle cx="276" cy="318" r="6" fill="#79d6eb"/>
+  <g class="needle-a" style="transform-origin:212px 318px"><path d="M212 318l4-5" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/></g>
+  <g class="needle-b" style="transform-origin:242px 318px"><path d="M242 318l-5-3" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/></g>
+  <circle class="lamp" cx="276" cy="318" r="6" fill="#79d6eb"/>
   <circle cx="298" cy="318" r="6" fill="#f6c354"/>
   <circle cx="180" cy="198" r="3.5" fill="#942f27"/>
   <circle cx="314" cy="198" r="3.5" fill="#942f27"/>
   <circle cx="180" cy="330" r="3.5" fill="#942f27"/>
   <circle cx="314" cy="330" r="3.5" fill="#942f27"/>
   <rect x="180" y="338" width="152" height="12" rx="4" fill="#3d4853"/>
+  <!-- Arms with three finger hands -->
+  <g class="arm-l" style="transform-origin:164px 212px">
+  <path d="M164 212l-30 46" fill="none" stroke="#697785" stroke-width="14"/>
+  <g class="fore-l" style="transform-origin:134px 258px">
+  <path d="M134 258v52" fill="none" stroke="#697785" stroke-width="14"/>
+  <path d="M124 316l-6 22m16-20v24m10-26 6 22" stroke="#3d4853" stroke-width="8" stroke-linecap="round"/>
+  <rect x="120" y="296" width="28" height="22" rx="5" fill="#cd6155"/>
+  <path d="M140 296h3q5 0 5 5v12q0 5-5 5h-3Z" fill="#942f27"/>
+  </g>
+  <circle cx="134" cy="258" r="14" fill="#3d4853"/>
+  <circle cx="134" cy="258" r="6" fill="#92a1b2"/>
+  </g>
+  <g class="arm-r" style="transform-origin:348px 212px">
+  <path d="m348 212 30 46v52" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M388 316l6 22m-16-20v24m-10-26-6 22" stroke="#3d4853" stroke-width="8" stroke-linecap="round"/>
+  <rect x="364" y="296" width="28" height="22" rx="5" fill="#cd6155"/>
+  <path d="M384 296h3q5 0 5 5v12q0 5-5 5h-3Z" fill="#942f27"/>
+  <circle cx="378" cy="258" r="14" fill="#3d4853"/>
+  <circle cx="378" cy="258" r="6" fill="#92a1b2"/>
+  </g>
   <!-- Shoulder ring joints -->
   <circle cx="164" cy="212" r="20" fill="#3d4853"/>
   <circle cx="348" cy="212" r="20" fill="#3d4853"/>
   <circle cx="164" cy="212" r="9" fill="#92a1b2"/>
   <circle cx="348" cy="212" r="9" fill="#92a1b2"/>
+  </g>
 </svg>

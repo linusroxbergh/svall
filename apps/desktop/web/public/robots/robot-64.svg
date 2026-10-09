@@ -1,15 +1,49 @@
-<svg width="260" height="428" viewBox="126 52 260 428" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="atomic-title atomic-desc">
+<svg width="260" height="428" viewBox="126 52 260 428" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="atomic-title atomic-desc" class="r64" data-idle="blink blink tilt tilt orbit salute" data-work="fold fold orbit salute salute blink"><style>
+.r64[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r64-blink .4s ease-in-out}
+.r64[data-act=tilt] .head{animation:r64-tilt 1.5s ease-in-out}
+.r64[data-act=tilt] .eyes{animation:r64-look 1.5s ease-in-out}
+.r64[data-act=orbit] .orbit{animation:r64-orbit 1.8s cubic-bezier(.45,0,.25,1)}
+.r64[data-act=orbit] .core{animation:r64-glow 1.8s ease-in-out}
+.r64[data-act=orbit] .head{animation:r64-nod 1.8s ease-in-out}
+.r64[data-act=orbit] .eyes{animation:r64-down 1.8s ease-in-out}
+.r64[data-act=orbit] .arm-l{animation:r64-flare-l 1.8s ease-in-out}
+.r64[data-act=orbit] .fore-l{animation:r64-flare-fl 1.8s ease-in-out}
+.r64[data-act=orbit] .arm-r{animation:r64-flare-r 1.8s ease-in-out}
+.r64[data-act=orbit] .fore-r{animation:r64-flare-fr 1.8s ease-in-out}
+.r64[data-act=fold] .arm-l{animation:r64-fold-l 1.8s ease-in-out}
+.r64[data-act=fold] .fore-l{animation:r64-fold-fl 1.8s ease-in-out}
+.r64[data-act=fold] .arm-r{animation:r64-fold-r 1.8s ease-in-out}
+.r64[data-act=fold] .fore-r{animation:r64-fold-fr 1.8s ease-in-out}
+.r64[data-act=salute] .arm-l{animation:r64-salute 2s ease-in-out}
+.r64[data-act=salute] .fore-l{animation:r64-salute-f 2s ease-in-out}
+.r64[data-act=salute] .head{animation:r64-proud 2s ease-in-out}
+.r64[data-act=salute] .eyes{animation:r64-up 2s ease-in-out}
+.r64[data-act=salute] .arm-r{animation:r64-attention 2s ease-in-out}
+.r64[data-act=salute] .fore-r{animation:r64-attention-f 2s ease-in-out}
+@keyframes r64-blink{0%,100%{transform:none}40%,55%{transform:scaleY(.1)}}
+@keyframes r64-tilt{0%,100%{transform:none}24%,58%{transform:rotate(-6deg)}80%{transform:rotate(1.5deg)}}
+@keyframes r64-look{0%,100%{transform:none}18%,64%{transform:translateX(-5px)}}
+@keyframes r64-orbit{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+@keyframes r64-glow{0%,100%{fill:#f6c354}30%,70%{fill:#fbe3a0}}
+@keyframes r64-nod{0%,100%{transform:none}22%,72%{transform:translateY(5px)}88%{transform:translateY(-1px)}}
+@keyframes r64-down{0%,100%{transform:none}16%,76%{transform:translateY(3px)}}
+@keyframes r64-flare-l{0%,100%{transform:none}28%,62%{transform:rotate(6deg)}80%{transform:rotate(-2deg)}92%{transform:rotate(.6deg)}}
+@keyframes r64-flare-fl{0%,100%{transform:none}30%{transform:rotate(-5deg)}50%,64%{transform:rotate(-2deg)}84%{transform:rotate(3deg)}95%{transform:rotate(-1deg)}}
+@keyframes r64-flare-r{0%,5%,100%{transform:none}33%,67%{transform:rotate(-6deg)}85%{transform:rotate(2deg)}96%{transform:rotate(-.6deg)}}
+@keyframes r64-flare-fr{0%,5%,100%{transform:none}35%{transform:rotate(5deg)}55%,69%{transform:rotate(2deg)}88%{transform:rotate(-3deg)}97%{transform:rotate(1deg)}}
+@keyframes r64-fold-l{0%,100%{transform:none}28%,60%{transform:rotate(-16deg)}76%{transform:rotate(3deg)}88%{transform:rotate(-1deg)}}
+@keyframes r64-fold-fl{0%,6%,100%{transform:none}34%{transform:rotate(-52deg)}42%,62%{transform:rotate(-48deg)}80%{transform:rotate(5deg)}92%{transform:rotate(-2deg)}}
+@keyframes r64-fold-r{0%,5%,100%{transform:none}33%,65%{transform:rotate(16deg)}80%{transform:rotate(-3deg)}92%{transform:rotate(1deg)}}
+@keyframes r64-fold-fr{0%,11%,100%{transform:none}39%{transform:rotate(52deg)}47%,67%{transform:rotate(48deg)}84%{transform:rotate(-5deg)}95%{transform:rotate(2deg)}}
+@keyframes r64-salute{0%,100%{transform:none}6%{transform:rotate(-4deg)}24%{transform:rotate(122deg)}33%,60%{transform:rotate(118deg)}78%{transform:rotate(-8deg)}89%{transform:rotate(3deg)}96%{transform:rotate(-1deg)}}
+@keyframes r64-salute-f{0%,6%,100%{transform:none}24%{transform:rotate(-142deg)}37%{transform:rotate(-265deg)}46%,60%{transform:rotate(-255deg)}80%{transform:rotate(22deg)}91%{transform:rotate(-9deg)}97%{transform:rotate(3deg)}}
+@keyframes r64-attention{0%,6%,100%{transform:none}24%{transform:rotate(10deg)}33%,60%{transform:rotate(8deg)}78%{transform:rotate(-2deg)}89%{transform:rotate(.5deg)}}
+@keyframes r64-attention-f{0%,11%,100%{transform:none}31%{transform:rotate(5deg)}40%,63%{transform:rotate(3deg)}82%{transform:rotate(-2deg)}93%{transform:rotate(.5deg)}}
+@keyframes r64-proud{0%,35%,100%{transform:none}48%,62%{transform:translateY(-3px)}}
+@keyframes r64-up{0%,35%,100%{transform:none}48%,62%{transform:translateY(-2px)}}
+</style>
   <title id="atomic-title">Atomic — space age robot</title>
   <desc id="atomic-desc">A turquoise 1950s space age robot with a finned bullet head, a chrome stripe and two round eyes on a slate band, an atom emblem on its rounded chest, ring jointed arms with pincers and legs on swept fin feet.</desc>
-  <!-- Ring jointed arms with pincers -->
-  <path d="m180 236-34 34v44m186-78 34 34v44" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
-  <rect x="132" y="312" width="28" height="14" rx="5" fill="#2f95a9"/>
-  <rect x="352" y="312" width="28" height="14" rx="5" fill="#2f95a9"/>
-  <path d="M138 326q-10 18 4 30m12-30q10 18-4 30M358 326q-10 18 4 30m12-30q10 18-4 30" fill="none" stroke="#3d4853" stroke-width="8" stroke-linecap="round"/>
-  <circle cx="146" cy="270" r="13" fill="#3d4853"/>
-  <circle cx="366" cy="270" r="13" fill="#3d4853"/>
-  <circle cx="146" cy="270" r="6" fill="#92a1b2"/>
-  <circle cx="366" cy="270" r="6" fill="#92a1b2"/>
   <!-- Legs on swept fin feet -->
   <path d="M224 360v68m64-68v68" stroke="#697785" stroke-width="16"/>
   <circle cx="224" cy="394" r="12" fill="#3d4853"/>
@@ -29,30 +63,55 @@
   <path d="M214 206h84q34 0 34 30H180q0-30 34-30Z" fill="#62c1d7"/>
   <path d="M306 210q26 10 26 36v66q0 26-26 34Z" fill="#006377"/>
   <circle cx="256" cy="276" r="36" fill="#3d4853"/>
-  <g fill="none" stroke="#92a1b2" stroke-width="3">
+  <g class="orbit" style="transform-origin:256px 276px" fill="none" stroke="#92a1b2" stroke-width="3">
     <ellipse cx="256" cy="276" rx="27" ry="9"/>
     <ellipse cx="256" cy="276" rx="27" ry="9" transform="rotate(60 256 276)"/>
     <ellipse cx="256" cy="276" rx="27" ry="9" transform="rotate(-60 256 276)"/>
   </g>
-  <circle cx="256" cy="276" r="7" fill="#f6c354"/>
+  <circle class="core" cx="256" cy="276" r="7" fill="#f6c354"/>
   <circle cx="236" cy="328" r="5" fill="#f6c354"/>
   <circle cx="256" cy="328" r="5" fill="#79d6eb"/>
   <circle cx="276" cy="328" r="5" fill="#f6c354"/>
-  <circle cx="180" cy="236" r="20" fill="#3d4853"/>
-  <circle cx="332" cy="236" r="20" fill="#3d4853"/>
-  <circle cx="180" cy="236" r="9" fill="#92a1b2"/>
-  <circle cx="332" cy="236" r="9" fill="#92a1b2"/>
   <!-- Finned bullet head -->
   <rect x="230" y="192" width="52" height="16" rx="4" fill="#3d4853"/>
-  <path d="m218 148-24 32v22h24Zm76 0 24 32v22h-24Z" fill="#006377"/>
-  <path d="M216 196v-56c0-44 20-74 40-84 20 10 40 40 40 84v56Z" fill="#2f95a9"/>
-  <path d="M216 196v-56c0-44 20-74 40-84-12 14-22 44-22 84v56Z" fill="#62c1d7"/>
-  <path d="M296 196v-56c0-44-20-74-40-84 12 14 22 44 22 84v56Z" fill="#006377"/>
-  <path d="M250 66q6-6 12 0v130h-12Z" fill="#d3dbe3"/>
-  <rect x="220" y="128" width="72" height="30" rx="15" fill="#3d4853"/>
-  <circle cx="240" cy="143" r="10" fill="#79d6eb"/>
-  <circle cx="272" cy="143" r="10" fill="#79d6eb"/>
-  <path d="M247 136a10 10 0 0 1-8 17 10 10 0 0 0 8-17Zm32 0a10 10 0 0 1-8 17 10 10 0 0 0 8-17Z" fill="#4fb0c5"/>
-  <circle cx="243" cy="139" r="3.5" fill="#fffae0"/>
-  <circle cx="275" cy="139" r="3.5" fill="#fffae0"/>
+  <g class="head" style="transform-origin:256px 196px">
+    <path d="m218 148-24 32v22h24Zm76 0 24 32v22h-24Z" fill="#006377"/>
+    <path d="M216 196v-56c0-44 20-74 40-84 20 10 40 40 40 84v56Z" fill="#2f95a9"/>
+    <path d="M216 196v-56c0-44 20-74 40-84-12 14-22 44-22 84v56Z" fill="#62c1d7"/>
+    <path d="M296 196v-56c0-44-20-74-40-84 12 14 22 44 22 84v56Z" fill="#006377"/>
+    <path d="M250 66q6-6 12 0v130h-12Z" fill="#d3dbe3"/>
+    <rect x="220" y="128" width="72" height="30" rx="15" fill="#3d4853"/>
+    <g class="eyes">
+      <circle cx="240" cy="143" r="10" fill="#79d6eb"/>
+      <circle cx="272" cy="143" r="10" fill="#79d6eb"/>
+      <path d="M247 136a10 10 0 0 1-8 17 10 10 0 0 0 8-17Zm32 0a10 10 0 0 1-8 17 10 10 0 0 0 8-17Z" fill="#4fb0c5"/>
+      <circle cx="243" cy="139" r="3.5" fill="#fffae0"/>
+      <circle cx="275" cy="139" r="3.5" fill="#fffae0"/>
+    </g>
+  </g>
+  <!-- Ring jointed arms with pincers -->
+  <g class="arm-l" style="transform-origin:180px 236px">
+    <path d="M180 236l-34 34" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
+    <g class="fore-l" style="transform-origin:146px 270px">
+      <path d="M146 270v44" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
+      <rect x="132" y="312" width="28" height="14" rx="5" fill="#2f95a9"/>
+      <path d="M138 326q-10 18 4 30m12-30q10 18-4 30" fill="none" stroke="#3d4853" stroke-width="8" stroke-linecap="round"/>
+    </g>
+    <circle cx="146" cy="270" r="13" fill="#3d4853"/>
+    <circle cx="146" cy="270" r="6" fill="#92a1b2"/>
+  </g>
+  <circle cx="180" cy="236" r="20" fill="#3d4853"/>
+  <circle cx="180" cy="236" r="9" fill="#92a1b2"/>
+  <g class="arm-r" style="transform-origin:332px 236px">
+    <path d="M332 236l34 34" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
+    <g class="fore-r" style="transform-origin:366px 270px">
+      <path d="M366 270v44" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
+      <rect x="352" y="312" width="28" height="14" rx="5" fill="#2f95a9"/>
+      <path d="M358 326q-10 18 4 30m12-30q10 18-4 30" fill="none" stroke="#3d4853" stroke-width="8" stroke-linecap="round"/>
+    </g>
+    <circle cx="366" cy="270" r="13" fill="#3d4853"/>
+    <circle cx="366" cy="270" r="6" fill="#92a1b2"/>
+  </g>
+  <circle cx="332" cy="236" r="20" fill="#3d4853"/>
+  <circle cx="332" cy="236" r="9" fill="#92a1b2"/>
 </svg>

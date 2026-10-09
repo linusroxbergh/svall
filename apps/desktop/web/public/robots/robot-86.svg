@@ -1,9 +1,62 @@
-<svg width="258" height="452" viewBox="128 24 258 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="tinker-title tinker-desc">
+<svg width="258" height="452" viewBox="128 24 258 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="tinker-title tinker-desc" class="r86" data-idle="blink blink tilt tilt roll visor" data-work="drive drive pinch pinch visor roll"><style>
+.r86[data-act=visor] .visor{animation:r86-flip 2s ease-in-out}
+.r86[data-act=visor] .head{animation:r86-lift 2s ease-in-out}
+.r86[data-act=visor] .neck{animation:r86-stretch 2s ease-in-out}
+.r86[data-act=visor] .ant{animation:r86-ant-lift 2s ease-in-out}
+.r86[data-act=visor] .lens{animation:r86-peer 2s ease-in-out}
+.r86[data-act=drive] .arm-l{animation:r86-drive-arm 1.8s ease-in-out}
+.r86[data-act=drive] .fore-l{animation:r86-drive-fore 1.8s ease-in-out}
+.r86[data-act=drive] .tip{animation:r86-twist 1.8s ease-in-out}
+.r86[data-act=drive] .grip{animation:r86-turn 1.8s ease-in-out}
+.r86[data-act=drive] .head{animation:r86-look-down 1.8s ease-in-out}
+.r86[data-act=drive] .lens{animation:r86-glance-down 1.8s ease-in-out}
+.r86[data-act=pinch] .arm-r{animation:r86-pinch-arm 1.6s ease-in-out}
+.r86[data-act=pinch] .fore-r{animation:r86-pinch-fore 1.6s ease-in-out}
+.r86[data-act=pinch] .jaw-l{animation:r86-jaw-l 1.6s ease-in-out}
+.r86[data-act=pinch] .jaw-r{animation:r86-jaw-r 1.6s ease-in-out}
+.r86[data-act=pinch] .chest{animation:r86-tug 1.6s ease-in-out}
+.r86[data-act=roll] .bot{animation:r86-roll 1.8s ease-in-out}
+.r86[data-act=roll] .chest{animation:r86-rock 1.8s ease-in-out}
+.r86[data-act=roll] .arm-l,.r86[data-act=roll] .arm-r{animation:r86-lag 1.8s ease-in-out}
+.r86[data-act=roll] .ant{animation:r86-ant-roll 1.8s ease-in-out}
+.r86[data-act=tilt] .head{animation:r86-cock 1.6s ease-in-out}
+.r86[data-act=tilt] .lens{animation:r86-glance 1.6s ease-in-out}
+.r86[data-act=tilt] .ant{animation:r86-ant-tilt 1.6s ease-in-out}
+.r86[data-act=blink] .lens{animation:r86-blink .4s ease-in-out}
+/* the neck stretches 1/12 per unit the head lifts, so it stays tucked under the head */
+@keyframes r86-flip{0%,8%,84%,100%{transform:none}28%{transform:scaleY(-.62)}36%,66%{transform:scaleY(-.54)}91%{transform:scaleY(.9)}}
+@keyframes r86-lift{0%,12%,100%{transform:none}34%{transform:translateY(-8px) rotate(0deg)}48%{transform:translateY(-8px) rotate(-4deg)}62%{transform:translateY(-8px) rotate(3deg)}78%{transform:translateY(0) rotate(0deg)}}
+@keyframes r86-stretch{0%,12%,100%{transform:none}34%,62%{transform:scaleY(1.667)}78%{transform:scaleY(1)}}
+@keyframes r86-peer{0%,30%,76%,100%{transform:none}42%,50%{transform:translateX(-5px)}58%,66%{transform:translateX(5px)}}
+@keyframes r86-ant-lift{0%,100%{transform:none}36%{transform:rotate(7deg)}50%{transform:rotate(-8deg)}64%{transform:rotate(9deg)}80%{transform:rotate(-5deg)}92%{transform:rotate(2deg)}}
+@keyframes r86-drive-arm{0%,100%{transform:none}12%{transform:rotate(3deg)}32%,70%{transform:rotate(-5deg)}86%{transform:rotate(1.5deg)}}
+@keyframes r86-drive-fore{0%,100%{transform:none}12%{transform:rotate(5deg)}32%{transform:rotate(-21.5deg)}42%{transform:rotate(-19.5deg)}52%{transform:rotate(-21.5deg)}62%{transform:rotate(-19.5deg)}70%{transform:rotate(-21.5deg)}88%{transform:rotate(3deg)}}
+@keyframes r86-twist{0%,32%,46%,60%,100%{transform:none}39%,53%{transform:scaleX(.3)}}
+@keyframes r86-turn{0%,32%,46%,60%,100%{transform:none}39%,53%{transform:translateX(-12px)}}
+@keyframes r86-look-down{0%,100%{transform:none}28%,72%{transform:translateY(3px) rotate(-3deg)}}
+@keyframes r86-glance-down{0%,100%{transform:none}26%,74%{transform:translate(-5px,3px)}}
+@keyframes r86-pinch-arm{0%,100%{transform:none}24%,48%{transform:rotate(6deg)}62%{transform:rotate(-4deg)}82%{transform:rotate(1.5deg)}}
+@keyframes r86-pinch-fore{0%,100%{transform:none}24%,48%{transform:rotate(16deg)}62%{transform:rotate(-6deg)}82%{transform:rotate(2deg)}}
+@keyframes r86-jaw-l{0%,14%,46%,100%{transform:none}28%,36%{transform:rotate(14deg)}}
+@keyframes r86-jaw-r{0%,14%,46%,100%{transform:none}28%,36%{transform:rotate(-14deg)}}
+@keyframes r86-tug{0%,48%,100%{transform:none}62%{transform:rotate(1.2deg)}80%{transform:rotate(-.5deg)}}
+@keyframes r86-roll{0%,100%{transform:none}26%{transform:translateX(-7px)}56%{transform:translateX(4px)}80%{transform:translateX(-1.5px)}}
+@keyframes r86-rock{0%,100%{transform:none}20%{transform:rotate(1.2deg)}48%{transform:rotate(-1deg)}74%{transform:rotate(.4deg)}}
+@keyframes r86-lag{0%,100%{transform:none}24%{transform:rotate(-4deg)}52%{transform:rotate(3deg)}78%{transform:rotate(-1deg)}}
+@keyframes r86-ant-roll{0%,100%{transform:none}24%{transform:rotate(12deg)}52%{transform:rotate(-9deg)}78%{transform:rotate(3deg)}}
+@keyframes r86-cock{0%,100%{transform:none}24%,52%{transform:rotate(-6deg)}78%{transform:rotate(1.5deg)}}
+@keyframes r86-glance{0%,100%{transform:none}18%,56%{transform:translateX(-5px)}}
+@keyframes r86-ant-tilt{0%,100%{transform:none}30%{transform:rotate(-10deg)}56%{transform:rotate(5deg)}80%{transform:rotate(-2deg)}}
+@keyframes r86-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+</style>
   <title id="tinker-title">Tinker — repair robot</title>
   <desc id="tinker-desc">A seafoam repair robot with a magnifier visor flipped down over its eyes from a headband with hinge knobs at the temples, a tall rolling tool chest body with a lid and five drawers with slate handles, four caster wheels, and tool arms ending in a screwdriver and needle nose pliers.</desc>
+  <g class="bot" style="transform-origin:256px 476px">
   <!-- Antenna knob -->
+  <g class="chest" style="transform-origin:256px 410px"><g class="head" style="transform-origin:256px 150px"><g class="ant" style="transform-origin:256px 52px">
   <path d="M256 52V38" stroke="#697785" stroke-width="5"/>
   <circle cx="256" cy="31" r="7" fill="#f6c354"/>
+  </g></g></g>
   <!-- Rear casters -->
   <rect x="219" y="410" width="10" height="20" fill="#3d4853"/>
   <rect x="283" y="410" width="10" height="20" fill="#3d4853"/>
@@ -20,6 +73,7 @@
   <path d="M298 418h5l-5 40q0 9 6 12a14 14 0 0 1-12-12Z" fill="#92a1b2"/>
   <circle cx="206" cy="458" r="5" fill="#3d4853"/>
   <circle cx="306" cy="458" r="5" fill="#3d4853"/>
+  <g class="chest" style="transform-origin:256px 410px">
   <!-- Tool chest body with a lid and drawers -->
   <rect x="184" y="400" width="144" height="12" rx="4" fill="#3d4853"/>
   <rect x="188" y="170" width="136" height="234" rx="6" fill="#5a9f84"/>
@@ -37,46 +91,65 @@
   <rect x="234" y="306" width="36" height="6" rx="3" fill="#3d4853"/>
   <rect x="234" y="363" width="36" height="6" rx="3" fill="#3d4853"/>
   <!-- Screwdriver arm -->
-  <path d="M184 222 148 284 140 334" fill="none" stroke="#697785" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <g class="arm-l" style="transform-origin:188px 222px">
+  <path d="M184 222 148 284" fill="none" stroke="#697785" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <g class="fore-l" style="transform-origin:148px 284px"><path d="M148 284 140 334" fill="none" stroke="#697785" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></g>
   <circle cx="148" cy="284" r="10" fill="#3d4853"/>
   <circle cx="148" cy="284" r="4" fill="#92a1b2"/>
+  <g class="fore-l" style="transform-origin:148px 284px">
   <circle cx="140" cy="336" r="8" fill="#3d4853"/>
   <rect x="130" y="342" width="20" height="32" rx="7" fill="#7cc4a6"/>
-  <rect x="142" y="342" width="8" height="32" rx="4" fill="#5a9f84"/>
+  <g class="grip"><rect x="142" y="342" width="8" height="32" rx="4" fill="#5a9f84"/></g>
   <rect x="130" y="342" width="20" height="5" rx="2.5" fill="#a9dfc6"/>
   <rect x="134" y="372" width="12" height="6" fill="#92a1b2"/>
   <rect x="137" y="376" width="6" height="34" fill="#92a1b2"/>
-  <path d="M136 408h8l-1 10h-6Z" fill="#697785"/>
+  <g class="tip" style="transform-origin:140px 413px"><path d="M136 408h8l-1 10h-6Z" fill="#697785"/></g>
+  </g>
+  </g>
   <circle cx="188" cy="222" r="13" fill="#3d4853"/>
   <circle cx="188" cy="222" r="5" fill="#92a1b2"/>
   <!-- Pliers arm -->
-  <path d="M328 222 364 284 372 334" fill="none" stroke="#697785" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <g class="arm-r" style="transform-origin:324px 222px">
+  <path d="M328 222 364 284" fill="none" stroke="#697785" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <g class="fore-r" style="transform-origin:364px 284px"><path d="M364 284 372 334" fill="none" stroke="#697785" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></g>
   <circle cx="364" cy="284" r="10" fill="#3d4853"/>
   <circle cx="364" cy="284" r="4" fill="#92a1b2"/>
-  <path d="M364 350h7l-5 64-4-1ZM373 350h7l1 63-4 1Z" fill="#697785"/>
+  <g class="fore-r" style="transform-origin:364px 284px">
+  <g class="jaw-l" style="transform-origin:372px 344px"><path d="M364 350h7l-5 64-4-1Z" fill="#697785"/></g>
+  <g class="jaw-r" style="transform-origin:372px 344px"><path d="M373 350h7l1 63-4 1Z" fill="#697785"/></g>
   <rect x="360" y="334" width="24" height="20" rx="6" fill="#3d4853"/>
   <circle cx="372" cy="344" r="3.5" fill="#92a1b2"/>
+  </g>
+  </g>
   <circle cx="324" cy="222" r="13" fill="#3d4853"/>
   <circle cx="324" cy="222" r="5" fill="#92a1b2"/>
   <!-- Neck -->
-  <rect x="244" y="148" width="24" height="12" fill="#3d4853"/>
+  <g class="neck" style="transform-origin:256px 160px"><rect x="244" y="148" width="24" height="12" fill="#3d4853"/></g>
   <!-- Head with headband and flipped down magnifier visor -->
+  <g class="head" style="transform-origin:256px 150px">
   <rect x="202" y="50" width="108" height="100" rx="12" fill="#7cc4a6"/>
   <path d="M214 50h84q12 0 12 12v2H202v-2q0-12 12-12Z" fill="#a9dfc6"/>
   <path d="M294 52h4q12 0 12 12v74q0 12-12 12h-4Z" fill="#5a9f84"/>
   <rect x="196" y="70" width="120" height="12" rx="4" fill="#697785"/>
+  <g class="visor" style="transform-origin:256px 80px">
   <rect x="196" y="76" width="7" height="22" fill="#3d4853"/>
   <rect x="309" y="76" width="7" height="22" fill="#3d4853"/>
-  <rect x="198" y="90" width="116" height="48" rx="9" fill="#697785"/>
+  </g>
   <rect x="205" y="96" width="102" height="36" rx="5" fill="#3d4853"/>
-  <path d="M291 98h5l-12 32h-5ZM300 98h3l-12 32h-3Z" fill="#697785"/>
+  <g class="visor" style="transform-origin:256px 80px"><path d="M291 98h5l-12 32h-5ZM300 98h3l-12 32h-3Z" fill="#697785"/></g>
+  <g class="lens" style="transform-origin:256px 114px">
   <circle cx="234" cy="114" r="13.5" fill="#79d6eb"/>
   <circle cx="278" cy="114" r="13.5" fill="#79d6eb"/>
   <path d="M241.7 104.8A12 12 0 0 1 231.9 125.8 12 12 0 0 0 241.7 104.8ZM285.7 104.8A12 12 0 0 1 275.9 125.8 12 12 0 0 0 285.7 104.8Z" fill="#4fb0c5"/>
   <circle cx="238" cy="109" r="4.6" fill="#fffae0"/>
   <circle cx="282" cy="109" r="4.6" fill="#fffae0"/>
+  </g>
+  <g class="visor" style="transform-origin:256px 80px"><path d="M207 90h98a9 9 0 0 1 9 9v30a9 9 0 0 1-9 9H207a9 9 0 0 1-9-9V99a9 9 0 0 1 9-9ZM210 96h92a5 5 0 0 1 5 5v26a5 5 0 0 1-5 5h-92a5 5 0 0 1-5-5v-26a5 5 0 0 1 5-5Z" fill="#697785" fill-rule="evenodd"/></g>
   <circle cx="199" cy="80" r="10" fill="#3d4853"/>
   <circle cx="313" cy="80" r="10" fill="#3d4853"/>
   <circle cx="199" cy="80" r="4" fill="#92a1b2"/>
   <circle cx="313" cy="80" r="4" fill="#92a1b2"/>
+  </g>
+  </g>
+  </g>
 </svg>

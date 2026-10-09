@@ -1,33 +1,126 @@
-<svg width="320" height="450" viewBox="106 26 320 450" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="register-title register-desc">
+<svg width="320" height="450" viewBox="106 26 320 450" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="register-title register-desc" class="r80" data-idle="blink blink shift snip" data-work="ching ching crank crank snip blink"><style>
+.r80[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r80-blink .4s ease-in-out}
+.r80[data-act=snip] .arm-l{animation:r80-lift 2s ease-in-out}
+.r80[data-act=snip] .fore-l{animation:r80-hang 2s ease-in-out}
+.r80[data-act=snip] .claw{animation:r80-snip 2s ease-in-out}
+.r80[data-act=snip] .head{animation:r80-peer 2s ease-in-out}
+.r80[data-act=snip] .eyes{animation:r80-look-l 2s ease-in-out}
+.r80[data-act=snip] .flag{animation:r80-flag-snip 2s ease-in-out}
+.r80[data-act=crank] .handle{animation:r80-wind 2s cubic-bezier(.4,0,.3,1)}
+.r80[data-act=crank] .fore-r{animation:r80-pump 2s ease-in-out}
+.r80[data-act=crank] .arm-r{animation:r80-heave 2s ease-in-out}
+.r80[data-act=crank] .up{animation:r80-strain 2s ease-in-out}
+.r80[data-act=crank] .head{animation:r80-watch 2s ease-in-out}
+.r80[data-act=crank] .eyes{animation:r80-look-r 2s ease-in-out}
+.r80[data-act=crank] .flag{animation:r80-flag-crank 2s ease-in-out}
+.r80[data-act=shift] .tip-r{animation:r80-onto-r 2.6s ease-in-out}
+.r80[data-act=shift] .tip-l{animation:r80-onto-l 2.6s ease-in-out}
+.r80[data-act=shift] .up{animation:r80-thud 2.6s ease-in-out}
+.r80[data-act=shift] .arm-l,.r80[data-act=shift] .arm-r{animation:r80-dangle 2.6s ease-in-out}
+.r80[data-act=shift] .fore-l,.r80[data-act=shift] .fore-r{animation:r80-dangle-fore 2.6s ease-in-out}
+.r80[data-act=shift] .flag{animation:r80-flag-shift 2.6s ease-in-out}
+.r80[data-act=ching] .handle{animation:r80-turn 2s ease-in-out}
+.r80[data-act=ching] .fore-r{animation:r80-yank 2s ease-in-out}
+.r80[data-act=ching] .arm-r{animation:r80-brace 2s ease-in-out}
+.r80[data-act=ching] .up{animation:r80-squat 2s ease-in-out}
+.r80[data-act=ching] .tip-l{animation:r80-jolt 2s ease-in-out}
+.r80[data-act=ching] .arm-l{animation:r80-fling 2s ease-in-out}
+.r80[data-act=ching] .drawer{animation:r80-drawer 2s ease-in-out}
+.r80[data-act=ching] .tab{animation:r80-pop 1s ease-in-out .76s}
+.r80[data-act=ching] .stem{animation:r80-pop1 1s ease-in-out .76s}
+.r80[data-act=ching] .t2,.r80[data-act=ching] .s2{animation-delay:.81s}
+.r80[data-act=ching] .s2{animation-name:r80-pop2}
+.r80[data-act=ching] .t3,.r80[data-act=ching] .s3{animation-delay:.86s}
+.r80[data-act=ching] .s3{animation-name:r80-pop3}
+.r80[data-act=ching] .t4,.r80[data-act=ching] .s4{animation-delay:.91s}
+.r80[data-act=ching] .s4{animation-name:r80-pop4}
+.r80[data-act=ching] .t5,.r80[data-act=ching] .s5{animation-delay:.96s}
+.r80[data-act=ching] .s5{animation-name:r80-pop5}
+@keyframes r80-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+@keyframes r80-lift{0%,100%{transform:none}24%{transform:rotate(22deg)}62%{transform:rotate(20deg)}80%{transform:rotate(-3deg)}92%{transform:rotate(1deg)}}
+@keyframes r80-hang{0%,4%,100%{transform:none}22%{transform:rotate(-20deg)}36%{transform:rotate(-11deg)}62%{transform:rotate(-14deg)}82%{transform:rotate(6deg)}94%{transform:rotate(-1.5deg)}}
+@keyframes r80-snip{0%,30%,64%,100%{transform:none}38%,52%{transform:scaleX(1.4)}45%{transform:scaleX(.9)}}
+@keyframes r80-peer{0%,100%{transform:none}24%,66%{transform:rotate(-3deg)}84%{transform:rotate(.8deg)}}
+@keyframes r80-look-l{0%,100%{transform:none}18%,70%{transform:translateX(-7px)}}
+@keyframes r80-flag-snip{0%,8%,100%{transform:none}26%{transform:rotate(4deg)}46%{transform:rotate(-2deg)}66%{transform:rotate(1deg)}82%{transform:rotate(-2.5deg)}94%{transform:rotate(1deg)}}
+@keyframes r80-wind{0%{transform:rotate(0)}100%{transform:rotate(720deg)}}
+@keyframes r80-pump{0%,100%{transform:none}14%{transform:rotate(-6deg)}36%{transform:rotate(4deg)}60%{transform:rotate(-5deg)}80%{transform:rotate(2deg)}}
+@keyframes r80-heave{0%,100%{transform:none}20%{transform:rotate(-4deg)}44%{transform:rotate(2deg)}68%{transform:rotate(-3deg)}86%{transform:rotate(1deg)}}
+@keyframes r80-strain{0%,100%{transform:none}20%{transform:translateY(2px)}40%{transform:translateY(.5px)}62%{transform:translateY(2px)}84%{transform:translateY(.5px)}}
+@keyframes r80-watch{0%,100%{transform:none}18%,74%{transform:rotate(2.5deg)}}
+@keyframes r80-look-r{0%,100%{transform:none}12%,78%{transform:translateX(7px)}}
+@keyframes r80-flag-crank{0%,100%{transform:none}20%{transform:rotate(-3deg)}40%{transform:rotate(2deg)}60%{transform:rotate(-2deg)}80%{transform:rotate(1deg)}}
+@keyframes r80-onto-r{0%,48%,86%,100%{transform:none}24%{transform:rotate(2.1deg)}94%{transform:rotate(.3deg)}}
+@keyframes r80-onto-l{0%,48%,86%,100%{transform:none}68%{transform:rotate(-1.3deg)}}
+@keyframes r80-thud{0%,100%{transform:none}28%{transform:translateY(2.5px)}48%{transform:translateY(.5px)}70%{transform:translateY(2px)}88%{transform:none}95%{transform:translateY(.5px)}}
+@keyframes r80-dangle{0%,6%,100%{transform:none}30%{transform:rotate(-3.5deg)}52%{transform:rotate(1.5deg)}74%{transform:rotate(2.5deg)}92%{transform:rotate(-.6deg)}}
+@keyframes r80-dangle-fore{0%,12%,100%{transform:none}36%{transform:rotate(-2.5deg)}58%{transform:rotate(1.5deg)}80%{transform:rotate(2deg)}96%{transform:rotate(-.4deg)}}
+@keyframes r80-flag-shift{0%,8%,100%{transform:none}30%{transform:rotate(-5deg)}52%{transform:rotate(2.5deg)}74%{transform:rotate(4deg)}90%{transform:rotate(-1.2deg)}}
+@keyframes r80-turn{0%{transform:rotate(0)}40%,100%{transform:rotate(360deg)}}
+@keyframes r80-yank{0%,52%,100%{transform:none}12%{transform:rotate(-6deg)}26%{transform:rotate(5deg)}40%{transform:rotate(-3deg)}}
+@keyframes r80-brace{0%,56%,100%{transform:none}16%{transform:rotate(-4deg)}34%{transform:rotate(2deg)}46%{transform:rotate(-1deg)}}
+@keyframes r80-squat{0%,100%{transform:none}14%,34%{transform:translateY(3px)}44%{transform:translateY(-2px)}58%{transform:translateY(4px)}72%{transform:translateY(-1px)}86%{transform:translateY(1px)}}
+@keyframes r80-jolt{0%,36%,58%,100%{transform:none}46%{transform:translateY(-5px)}}
+@keyframes r80-fling{0%,42%,100%{transform:none}52%{transform:rotate(5deg)}66%{transform:rotate(-2.5deg)}80%{transform:rotate(1deg)}92%{transform:none}}
+@keyframes r80-drawer{0%,42%,84%,100%{transform:none}52%,70%{transform:translate(0,6px) scale(1.07)}}
+@keyframes r80-pop{0%,100%{transform:none}22%{transform:translateY(-20px)}34%,64%{transform:translateY(-16px)}84%{transform:translateY(2px)}}
+@keyframes r80-pop1{0%,100%{transform:none}22%{transform:scaleY(1.625)}34%,64%{transform:scaleY(1.5)}84%{transform:scaleY(.9375)}}
+@keyframes r80-pop2{0%,100%{transform:none}22%{transform:scaleY(1.4167)}34%,64%{transform:scaleY(1.3333)}84%{transform:scaleY(.9583)}}
+@keyframes r80-pop3{0%,100%{transform:none}22%{transform:scaleY(1.8333)}34%,64%{transform:scaleY(1.6667)}84%{transform:scaleY(.9167)}}
+@keyframes r80-pop4{0%,100%{transform:none}22%{transform:scaleY(1.5)}34%,64%{transform:scaleY(1.4)}84%{transform:scaleY(.95)}}
+@keyframes r80-pop5{0%,100%{transform:none}22%{transform:scaleY(2.25)}34%,64%{transform:scaleY(2)}84%{transform:scaleY(.875)}}
+</style>
   <title id="register-title">Register — cash register robot</title>
   <desc id="register-desc">A burgundy cash register robot with brass trim, its rounded square eyes in the amount window of its display head under a row of pop-up tab flags, a sloped bank of round keys on its chest, a cash drawer with a brass knob, a jointed pincer arm, a crank handle for its other arm, and short stout legs.</desc>
+  <g class="tip-r" style="transform-origin:334px 476px"><g class="tip-l" style="transform-origin:178px 476px">
+  <g class="up" style="transform-origin:256px 392px">
+  <g class="head" style="transform-origin:256px 180px">
   <!-- Pop-up tab flags -->
-  <path d="M206 64h4v32h-4Zm24-16h4v48h-4Zm24 24h4v24h-4Zm24-16h4v40h-4Zm24 24h4v16h-4Z" fill="#3d4853"/>
-  <rect x="197" y="42" width="22" height="26" rx="3" fill="#3d4853"/>
-  <rect x="221" y="26" width="22" height="26" rx="3" fill="#3d4853"/>
-  <rect x="245" y="50" width="22" height="26" rx="3" fill="#3d4853"/>
-  <rect x="269" y="34" width="22" height="26" rx="3" fill="#3d4853"/>
-  <rect x="293" y="58" width="22" height="26" rx="3" fill="#3d4853"/>
-  <rect x="200" y="45" width="16" height="20" rx="2" fill="#fff8de"/>
-  <rect x="224" y="29" width="16" height="20" rx="2" fill="#fff8de"/>
-  <rect x="248" y="53" width="16" height="20" rx="2" fill="#f6c354"/>
-  <rect x="272" y="37" width="16" height="20" rx="2" fill="#fff8de"/>
-  <rect x="296" y="61" width="16" height="20" rx="2" fill="#fff8de"/>
-  <path d="M208 50v10m24-26v10m24 14v10m24-26v10m24 14v10" stroke="#3d4853" stroke-width="4" stroke-linecap="round"/>
+  <g class="flag" style="transform-origin:208px 96px">
+    <g class="stem s1" style="transform-origin:208px 96px"><path d="M206 64h4v32h-4Z" fill="#3d4853"/></g>
+    <g class="tab t1"><rect x="197" y="42" width="22" height="26" rx="3" fill="#3d4853"/><rect x="200" y="45" width="16" height="20" rx="2" fill="#fff8de"/><path d="M208 50v10" stroke="#3d4853" stroke-width="4" stroke-linecap="round"/></g>
+  </g>
+  <g class="flag" style="transform-origin:232px 96px">
+    <g class="stem s2" style="transform-origin:232px 96px"><path d="M230 48h4v48h-4Z" fill="#3d4853"/></g>
+    <g class="tab t2"><rect x="221" y="26" width="22" height="26" rx="3" fill="#3d4853"/><rect x="224" y="29" width="16" height="20" rx="2" fill="#fff8de"/><path d="M232 34v10" stroke="#3d4853" stroke-width="4" stroke-linecap="round"/></g>
+  </g>
+  <g class="flag" style="transform-origin:256px 96px">
+    <g class="stem s3" style="transform-origin:256px 96px"><path d="M254 72h4v24h-4Z" fill="#3d4853"/></g>
+    <g class="tab t3"><rect x="245" y="50" width="22" height="26" rx="3" fill="#3d4853"/><rect x="248" y="53" width="16" height="20" rx="2" fill="#f6c354"/><path d="M256 58v10" stroke="#3d4853" stroke-width="4" stroke-linecap="round"/></g>
+  </g>
+  <g class="flag" style="transform-origin:280px 96px">
+    <g class="stem s4" style="transform-origin:280px 96px"><path d="M278 56h4v40h-4Z" fill="#3d4853"/></g>
+    <g class="tab t4"><rect x="269" y="34" width="22" height="26" rx="3" fill="#3d4853"/><rect x="272" y="37" width="16" height="20" rx="2" fill="#fff8de"/><path d="M280 42v10" stroke="#3d4853" stroke-width="4" stroke-linecap="round"/></g>
+  </g>
+  <g class="flag" style="transform-origin:304px 96px">
+    <g class="stem s5" style="transform-origin:304px 96px"><path d="M302 80h4v16h-4Z" fill="#3d4853"/></g>
+    <g class="tab t5"><rect x="293" y="58" width="22" height="26" rx="3" fill="#3d4853"/><rect x="296" y="61" width="16" height="20" rx="2" fill="#fff8de"/><path d="M304 66v10" stroke="#3d4853" stroke-width="4" stroke-linecap="round"/></g>
+  </g>
   <rect x="194" y="92" width="124" height="10" rx="3" fill="#3d4853"/>
+  </g>
   <!-- Jointed pincer arm -->
-  <path d="m164 226-34 42v52" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
-  <path d="M121 332q-11 20 3 36m15-36q11 20-3 36" fill="none" stroke="#3d4853" stroke-width="8" stroke-linecap="round"/>
-  <rect x="116" y="316" width="28" height="18" rx="5" fill="#913648"/>
-  <circle cx="130" cy="268" r="12" fill="#3d4853"/>
-  <circle cx="130" cy="268" r="5" fill="#92a1b2"/>
+  <g class="arm-l" style="transform-origin:164px 222px">
+    <path d="m164 226-34 42" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
+    <g class="fore-l" style="transform-origin:130px 268px">
+      <path d="M130 268v52" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
+      <g class="claw" style="transform-origin:130px 332px"><path d="M121 332q-11 20 3 36m15-36q11 20-3 36" fill="none" stroke="#3d4853" stroke-width="8" stroke-linecap="round"/></g>
+      <rect x="116" y="316" width="28" height="18" rx="5" fill="#913648"/>
+    </g>
+    <circle cx="130" cy="268" r="12" fill="#3d4853"/>
+    <circle cx="130" cy="268" r="5" fill="#92a1b2"/>
+  </g>
   <!-- Crank handle arm -->
-  <path d="m348 226 32 36" stroke="#697785" stroke-width="14"/>
-  <path d="m380 262 14 74" stroke="#697785" stroke-width="14" stroke-linecap="round"/>
-  <rect x="394" y="326" width="28" height="20" rx="10" fill="#f6c354"/>
-  <circle cx="394" cy="336" r="9" fill="#3d4853"/>
-  <circle cx="380" cy="262" r="17" fill="#3d4853"/>
-  <circle cx="380" cy="262" r="7" fill="#f6c354"/>
+  <g class="arm-r" style="transform-origin:348px 222px">
+    <path d="m348 226 32 36" stroke="#697785" stroke-width="14"/>
+    <g class="fore-r" style="transform-origin:380px 262px">
+      <path d="m380 262 14 74" stroke="#697785" stroke-width="14" stroke-linecap="round"/>
+      <g class="handle" style="transform-origin:394px 336px"><rect x="394" y="326" width="28" height="20" rx="10" fill="#f6c354"/></g>
+      <circle cx="394" cy="336" r="9" fill="#3d4853"/>
+    </g>
+    <circle cx="380" cy="262" r="17" fill="#3d4853"/>
+    <circle cx="380" cy="262" r="7" fill="#f6c354"/>
+  </g>
+  </g>
   <!-- Short stout legs -->
   <rect x="194" y="384" width="40" height="66" fill="#913648"/>
   <rect x="278" y="384" width="40" height="66" fill="#913648"/>
@@ -35,6 +128,7 @@
   <path d="M194 416h40m44 0h40" stroke="#f6c354" stroke-width="8"/>
   <path d="M182 470v-8q0-14 14-14h36q14 0 14 14v8Zm84 0v-8q0-14 14-14h36q14 0 14 14v8Z" fill="#6c2333"/>
   <path d="M178 466h72v10h-72Zm84 0h72v10h-72Z" fill="#3d4853"/>
+  <g class="up" style="transform-origin:256px 392px">
   <!-- Register body with keys and a cash drawer -->
   <rect x="234" y="176" width="44" height="18" fill="#3d4853"/>
   <rect x="164" y="188" width="184" height="204" rx="16" fill="#913648"/>
@@ -50,16 +144,19 @@
     <circle cx="196" cy="292" r="7.5"/><circle cx="216" cy="292" r="7.5"/><circle cx="236" cy="292" r="7.5"/><circle cx="256" cy="292" r="7.5"/><circle cx="276" cy="292" r="7.5"/><circle cx="296" cy="292" r="7.5"/><circle cx="316" cy="292" r="7.5"/>
   </g>
   <path d="M164 316h184" stroke="#f6c354" stroke-width="5"/>
-  <rect x="172" y="326" width="168" height="50" rx="6" fill="#3d4853"/>
-  <rect x="177" y="331" width="158" height="40" rx="4" fill="#913648"/>
-  <path d="M181 331h150q4 0 4 4v2H177v-2q0-4 4-4Z" fill="#b65463"/>
-  <circle cx="256" cy="351" r="9" fill="#f6c354"/>
-  <circle cx="256" cy="351" r="3.5" fill="#3d4853"/>
+  <g class="drawer" style="transform-origin:256px 351px">
+    <rect x="172" y="326" width="168" height="50" rx="6" fill="#3d4853"/>
+    <rect x="177" y="331" width="158" height="40" rx="4" fill="#913648"/>
+    <path d="M181 331h150q4 0 4 4v2H177v-2q0-4 4-4Z" fill="#b65463"/>
+    <circle cx="256" cy="351" r="9" fill="#f6c354"/>
+    <circle cx="256" cy="351" r="3.5" fill="#3d4853"/>
+  </g>
   <circle cx="164" cy="222" r="16" fill="#3d4853"/>
   <circle cx="348" cy="222" r="16" fill="#3d4853"/>
   <circle cx="164" cy="222" r="7" fill="#92a1b2"/>
   <circle cx="348" cy="222" r="7" fill="#92a1b2"/>
   <!-- Display head with eyes in the amount window -->
+  <g class="head" style="transform-origin:256px 180px">
   <rect x="184" y="100" width="144" height="80" rx="12" fill="#913648"/>
   <path d="M196 100h120q12 0 12 12v2H184v-2q0-12 12-12Z" fill="#b65463"/>
   <path d="M312 101q16 1 16 13v54q0 12-16 12Z" fill="#6c2333"/>
@@ -67,9 +164,14 @@
   <circle cx="322" cy="100" r="8" fill="#f6c354"/>
   <path d="M200 166v-30q0-18 18-18h76q18 0 18 18v30Z" fill="#f6c354"/>
   <path d="M206 160v-24q0-12 12-12h76q12 0 12 12v24Z" fill="#3d4853"/>
+  <g class="eyes">
   <rect x="225" y="131" width="22" height="22" rx="7" fill="#79d6eb"/>
   <rect x="265" y="131" width="22" height="22" rx="7" fill="#79d6eb"/>
   <path d="M243.6 132.8a12 12 0 0 1-9.8 21a12 12 0 0 0 9.8-21Zm40 0a12 12 0 0 1-9.8 21a12 12 0 0 0 9.8-21Z" fill="#4fb0c5"/>
   <circle cx="239.5" cy="137.5" r="3.8" fill="#fffae0"/>
   <circle cx="279.5" cy="137.5" r="3.8" fill="#fffae0"/>
+  </g>
+  </g>
+  </g>
+  </g></g>
 </svg>
