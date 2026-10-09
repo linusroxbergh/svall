@@ -1,6 +1,46 @@
-<svg width="324" height="452" viewBox="94 24 324 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bellows-title bellows-desc">
+<svg width="324" height="452" viewBox="94 24 324 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bellows-title bellows-desc" class="r76" data-idle="blink blink tilt dial squeeze" data-work="squeeze squeeze teeter teeter dial blink"><style>
+.r76[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r76-blink .4s ease-in-out}
+.r76[data-act=tilt] .body{animation:r76-lean 1.4s ease-in-out}
+.r76[data-act=tilt] .head{animation:r76-tilt 1.4s ease-in-out}
+.r76[data-act=tilt] .ant{animation:r76-ant 1.4s ease-in-out}
+.r76[data-act=tilt] .eyes{animation:r76-glance 1.4s ease-in-out}
+.r76[data-act=dial] .needle{animation:r76-needle 1.6s ease-in-out}
+.r76[data-act=dial] .body{animation:r76-sink 1.6s ease-in-out}
+.r76[data-act=dial] .head{animation:r76-nod 1.6s ease-in-out}
+.r76[data-act=dial] .eyes{animation:r76-down 1.6s ease-in-out}
+.r76[data-act=teeter] .all{animation:r76-teeter 1.8s ease-in-out}
+.r76[data-act=teeter] .arm-l{animation:r76-lag-l 1.8s ease-in-out}
+.r76[data-act=teeter] .arm-r{animation:r76-lag-r 1.8s ease-in-out}
+.r76[data-act=teeter] .tread{animation:r76-tread 1.8s ease-in-out}
+.r76[data-act=squeeze] .body{animation:r76-bob 2s ease-in-out}
+.r76[data-act=squeeze] .arm-l{animation:r76-hug-l 2s ease-in-out}
+.r76[data-act=squeeze] .arm-r{animation:r76-hug-r 2s ease-in-out}
+.r76[data-act=squeeze] .pl-l{animation:r76-curl-l 2s ease-in-out}
+.r76[data-act=squeeze] .pl-r{animation:r76-curl-r 2s ease-in-out}
+.r76[data-act=squeeze] .needle{animation:r76-gauge 2s ease-in-out}
+@keyframes r76-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+@keyframes r76-lean{0%,100%{transform:none}18%,56%{transform:rotate(-1.5deg)}80%{transform:rotate(.5deg)}}
+@keyframes r76-tilt{0%,100%{transform:none}22%,52%{transform:rotate(-5deg)}78%{transform:rotate(1.2deg)}}
+@keyframes r76-ant{0%,100%{transform:none}28%{transform:rotate(18deg)}46%{transform:rotate(-7deg)}66%{transform:rotate(-12deg)}86%{transform:rotate(4deg)}}
+@keyframes r76-glance{0%,100%{transform:none}20%,60%{transform:translateX(-4px)}}
+@keyframes r76-needle{0%,100%{transform:none}30%,55%{transform:rotate(-80deg)}75%{transform:rotate(8deg)}}
+@keyframes r76-sink{0%,100%{transform:none}18%,72%{transform:translateY(3px)}}
+@keyframes r76-nod{0%,100%{transform:none}22%,68%{transform:translateY(6px)}}
+@keyframes r76-down{0%,100%{transform:none}15%,75%{transform:translateY(3px)}}
+@keyframes r76-teeter{0%,100%{transform:none}22%{transform:rotate(1.3deg)}50%{transform:rotate(-1deg)}76%{transform:rotate(.4deg)}}
+@keyframes r76-lag-l{0%,100%{transform:none}28%{transform:rotate(-4deg)}56%{transform:translate(1px) rotate(3deg)}82%{transform:rotate(-1.2deg)}}
+@keyframes r76-lag-r{0%,100%{transform:none}28%{transform:translate(-1px) rotate(-4deg)}56%{transform:rotate(3deg)}82%{transform:translate(-.3px) rotate(-1.2deg)}}
+@keyframes r76-tread{0%,100%{transform:none}24%{transform:translateY(5px)}52%{transform:translateY(-4px)}78%{transform:translateY(1.5px)}}
+@keyframes r76-bob{0%,100%{transform:none}12%{transform:translateY(-1.5px)}42%,54%{transform:translateY(5px)}70%{transform:translateY(-1.5px)}86%{transform:translateY(.5px)}}
+@keyframes r76-hug-l{0%,100%{transform:none}12%{transform:translate(.5px) rotate(2deg)}42%,52%{transform:rotate(-3deg)}70%{transform:translate(.5px) rotate(2deg)}86%{transform:rotate(-.6deg)}}
+@keyframes r76-hug-r{0%,100%{transform:none}15%{transform:translate(-.5px) rotate(-2deg)}46%,56%{transform:rotate(3deg)}74%{transform:translate(-.5px) rotate(-2deg)}90%{transform:rotate(.6deg)}}
+@keyframes r76-curl-l{0%,100%{transform:none}12%{transform:rotate(.2deg)}42%,52%{transform:rotate(-1.3deg)}70%{transform:rotate(.25deg)}86%{transform:rotate(-.1deg)}}
+@keyframes r76-curl-r{0%,100%{transform:none}15%{transform:rotate(-.2deg)}46%,56%{transform:rotate(1.3deg)}74%{transform:rotate(-.25deg)}90%{transform:rotate(.1deg)}}
+@keyframes r76-gauge{0%,100%{transform:none}44%,56%{transform:rotate(-70deg)}74%{transform:rotate(10deg)}88%{transform:rotate(-3deg)}}
+</style>
   <title id="bellows-title">Bellows — accordion arm robot</title>
   <desc id="bellows-desc">A sage tin toy robot with a square head, two eyes on a slate band and an antenna knob, a boxy torso with a chest dial, two lights and a vent, pleated accordion bellows arms curving out from the shoulders to round slate mitten hands, rolling on a single tread wheel held in a two tone fork.</desc>
+  <g class="all" style="transform-origin:256px 476px">
   <!-- Single wheel in a fork -->
   <rect x="236" y="312" width="40" height="32" fill="#3d4853"/>
   <rect x="190" y="400" width="132" height="20" rx="6" fill="#697785"/>
@@ -9,56 +49,63 @@
   <path d="M204 368A60 60 0 0 1 256 338" fill="none" stroke="#9db88a" stroke-width="4" stroke-linecap="round"/>
   <rect x="230" y="350" width="52" height="126" rx="26" fill="#3d4853"/>
   <rect x="236" y="364" width="6" height="98" rx="3" fill="#556270"/>
-  <path d="M242 368h28M242 380h28M242 392h28M242 404h28M242 416h28M242 428h28M242 440h28M242 452h28M242 464h28" stroke="#697785" stroke-width="4" stroke-linecap="round"/>
+  <g class="tread"><path d="M242 368h28M242 380h28M242 392h28M242 404h28M242 416h28M242 428h28M242 440h28M242 452h28M242 464h28" stroke="#697785" stroke-width="4" stroke-linecap="round"/></g>
   <circle cx="197" cy="410" r="11" fill="#3d4853"/>
   <circle cx="315" cy="410" r="11" fill="#3d4853"/>
   <circle cx="197" cy="410" r="4.5" fill="#92a1b2"/>
   <circle cx="315" cy="410" r="4.5" fill="#92a1b2"/>
+  <g class="body" style="transform-origin:256px 318px">
   <!-- Pleated bellows arms with mitten hands -->
+  <g class="arm-l" style="transform-origin:182px 182px">
   <path d="M178.8 171L170.5 178.2L173.9 195.8L181.2 201Z" fill="#92a1b2"/>
-  <path d="M170.5 178.2L160.2 174.8L169.1 203L173.9 195.8Z" fill="#697785"/>
-  <path d="M160.2 174.8L153.5 183.8L161 199.8L169.1 203Z" fill="#92a1b2"/>
-  <path d="M153.5 183.8L142.7 183.2L158.3 207.9L161 199.8Z" fill="#697785"/>
-  <path d="M142.7 183.2L138.6 193.5L149.7 206.8L158.3 207.9Z" fill="#92a1b2"/>
-  <path d="M138.6 193.5L127.9 195.7L149 215.4L149.7 206.8Z" fill="#697785"/>
-  <path d="M127.9 195.7L126.4 206.6L140.3 216.8L149 215.4Z" fill="#92a1b2"/>
-  <path d="M126.4 206.6L116.8 211L141.3 225.5L140.3 216.8Z" fill="#697785"/>
-  <path d="M116.8 211L117.8 221.6L133.1 228.7L141.3 225.5Z" fill="#92a1b2"/>
-  <path d="M117.8 221.6L109.3 227.4L135.7 237.1L133.1 228.7Z" fill="#697785"/>
-  <path d="M109.3 227.4L112 237.5L128.1 242.1L135.7 237.1Z" fill="#92a1b2"/>
-  <path d="M112 237.5L104.6 244.6L131.7 250.2L128.1 242.1Z" fill="#697785"/>
-  <path d="M104.6 244.6L108.7 253.9L125 256.2L131.7 250.2Z" fill="#92a1b2"/>
-  <path d="M108.7 253.9L102.3 261.8L129.6 264L125 256.2Z" fill="#697785"/>
-  <path d="M102.3 261.8L107.4 270.5L123.7 270.9L129.6 264Z" fill="#92a1b2"/>
-  <path d="M107.4 270.5L102.1 279L129 278.2L123.7 270.9Z" fill="#697785"/>
-  <path d="M102.1 279L108 287L124 285.7L129 278.2Z" fill="#92a1b2"/>
-  <path d="M108 287L103.6 295.9L130 292.5L124 285.7Z" fill="#697785"/>
-  <path d="M103.6 295.9L110.2 303.4L125.8 300.6L130 292.5Z" fill="#92a1b2"/>
+  <g class="pl-l" style="transform-origin:170.5px 178.2px"><path d="M170.5 178.2L160.2 174.8L169.1 203L173.9 195.8Z" fill="#697785"/>
+  <g class="pl-l" style="transform-origin:160.2px 174.8px"><path d="M160.2 174.8L153.5 183.8L161 199.8L169.1 203Z" fill="#92a1b2"/>
+  <g class="pl-l" style="transform-origin:153.5px 183.8px"><path d="M153.5 183.8L142.7 183.2L158.3 207.9L161 199.8Z" fill="#697785"/>
+  <g class="pl-l" style="transform-origin:142.7px 183.2px"><path d="M142.7 183.2L138.6 193.5L149.7 206.8L158.3 207.9Z" fill="#92a1b2"/>
+  <g class="pl-l" style="transform-origin:138.6px 193.5px"><path d="M138.6 193.5L127.9 195.7L149 215.4L149.7 206.8Z" fill="#697785"/>
+  <g class="pl-l" style="transform-origin:127.9px 195.7px"><path d="M127.9 195.7L126.4 206.6L140.3 216.8L149 215.4Z" fill="#92a1b2"/>
+  <g class="pl-l" style="transform-origin:126.4px 206.6px"><path d="M126.4 206.6L116.8 211L141.3 225.5L140.3 216.8Z" fill="#697785"/>
+  <g class="pl-l" style="transform-origin:116.8px 211px"><path d="M116.8 211L117.8 221.6L133.1 228.7L141.3 225.5Z" fill="#92a1b2"/>
+  <g class="pl-l" style="transform-origin:117.8px 221.6px"><path d="M117.8 221.6L109.3 227.4L135.7 237.1L133.1 228.7Z" fill="#697785"/>
+  <g class="pl-l" style="transform-origin:109.3px 227.4px"><path d="M109.3 227.4L112 237.5L128.1 242.1L135.7 237.1Z" fill="#92a1b2"/>
+  <g class="pl-l" style="transform-origin:112px 237.5px"><path d="M112 237.5L104.6 244.6L131.7 250.2L128.1 242.1Z" fill="#697785"/>
+  <g class="pl-l" style="transform-origin:104.6px 244.6px"><path d="M104.6 244.6L108.7 253.9L125 256.2L131.7 250.2Z" fill="#92a1b2"/>
+  <g class="pl-l" style="transform-origin:108.7px 253.9px"><path d="M108.7 253.9L102.3 261.8L129.6 264L125 256.2Z" fill="#697785"/>
+  <g class="pl-l" style="transform-origin:102.3px 261.8px"><path d="M102.3 261.8L107.4 270.5L123.7 270.9L129.6 264Z" fill="#92a1b2"/>
+  <g class="pl-l" style="transform-origin:107.4px 270.5px"><path d="M107.4 270.5L102.1 279L129 278.2L123.7 270.9Z" fill="#697785"/>
+  <g class="pl-l" style="transform-origin:102.1px 279px"><path d="M102.1 279L108 287L124 285.7L129 278.2Z" fill="#92a1b2"/>
+  <g class="pl-l" style="transform-origin:108px 287px"><path d="M108 287L103.6 295.9L130 292.5L124 285.7Z" fill="#697785"/>
+  <g class="pl-l" style="transform-origin:103.6px 295.9px"><path d="M103.6 295.9L110.2 303.4L125.8 300.6L130 292.5Z" fill="#92a1b2"/>
   <circle cx="133.5" cy="309.5" r="8" fill="#3d4853"/>
   <circle cx="120.2" cy="314.8" r="17" fill="#3d4853"/>
   <circle cx="115.2" cy="309.8" r="5" fill="#697785"/>
+  </g></g></g></g></g></g></g></g></g></g></g></g></g></g></g></g></g></g>
+  </g>
+  <g class="arm-r" style="transform-origin:330px 182px">
   <path d="M330.8 201L338.1 195.8L341.5 178.2L333.2 171Z" fill="#92a1b2"/>
-  <path d="M338.1 195.8L342.9 203L351.8 174.8L341.5 178.2Z" fill="#697785"/>
-  <path d="M342.9 203L351 199.8L358.5 183.8L351.8 174.8Z" fill="#92a1b2"/>
-  <path d="M351 199.8L353.7 207.9L369.3 183.2L358.5 183.8Z" fill="#697785"/>
-  <path d="M353.7 207.9L362.3 206.8L373.4 193.5L369.3 183.2Z" fill="#92a1b2"/>
-  <path d="M362.3 206.8L363 215.4L384.1 195.7L373.4 193.5Z" fill="#697785"/>
-  <path d="M363 215.4L371.7 216.8L385.6 206.6L384.1 195.7Z" fill="#92a1b2"/>
-  <path d="M371.7 216.8L370.7 225.5L395.2 211L385.6 206.6Z" fill="#697785"/>
-  <path d="M370.7 225.5L378.9 228.7L394.2 221.6L395.2 211Z" fill="#92a1b2"/>
-  <path d="M378.9 228.7L376.3 237.1L402.7 227.4L394.2 221.6Z" fill="#697785"/>
-  <path d="M376.3 237.1L383.9 242.1L400 237.5L402.7 227.4Z" fill="#92a1b2"/>
-  <path d="M383.9 242.1L380.3 250.2L407.4 244.6L400 237.5Z" fill="#697785"/>
-  <path d="M380.3 250.2L387 256.2L403.3 253.9L407.4 244.6Z" fill="#92a1b2"/>
-  <path d="M387 256.2L382.4 264L409.7 261.8L403.3 253.9Z" fill="#697785"/>
-  <path d="M382.4 264L388.3 270.9L404.6 270.5L409.7 261.8Z" fill="#92a1b2"/>
-  <path d="M388.3 270.9L383 278.2L409.9 279L404.6 270.5Z" fill="#697785"/>
-  <path d="M383 278.2L388 285.7L404 287L409.9 279Z" fill="#92a1b2"/>
-  <path d="M388 285.7L382 292.5L408.4 295.9L404 287Z" fill="#697785"/>
-  <path d="M382 292.5L386.2 300.6L401.8 303.4L408.4 295.9Z" fill="#92a1b2"/>
+  <g class="pl-r" style="transform-origin:341.5px 178.2px"><path d="M338.1 195.8L342.9 203L351.8 174.8L341.5 178.2Z" fill="#697785"/>
+  <g class="pl-r" style="transform-origin:351.8px 174.8px"><path d="M342.9 203L351 199.8L358.5 183.8L351.8 174.8Z" fill="#92a1b2"/>
+  <g class="pl-r" style="transform-origin:358.5px 183.8px"><path d="M351 199.8L353.7 207.9L369.3 183.2L358.5 183.8Z" fill="#697785"/>
+  <g class="pl-r" style="transform-origin:369.3px 183.2px"><path d="M353.7 207.9L362.3 206.8L373.4 193.5L369.3 183.2Z" fill="#92a1b2"/>
+  <g class="pl-r" style="transform-origin:373.4px 193.5px"><path d="M362.3 206.8L363 215.4L384.1 195.7L373.4 193.5Z" fill="#697785"/>
+  <g class="pl-r" style="transform-origin:384.1px 195.7px"><path d="M363 215.4L371.7 216.8L385.6 206.6L384.1 195.7Z" fill="#92a1b2"/>
+  <g class="pl-r" style="transform-origin:385.6px 206.6px"><path d="M371.7 216.8L370.7 225.5L395.2 211L385.6 206.6Z" fill="#697785"/>
+  <g class="pl-r" style="transform-origin:395.2px 211px"><path d="M370.7 225.5L378.9 228.7L394.2 221.6L395.2 211Z" fill="#92a1b2"/>
+  <g class="pl-r" style="transform-origin:394.2px 221.6px"><path d="M378.9 228.7L376.3 237.1L402.7 227.4L394.2 221.6Z" fill="#697785"/>
+  <g class="pl-r" style="transform-origin:402.7px 227.4px"><path d="M376.3 237.1L383.9 242.1L400 237.5L402.7 227.4Z" fill="#92a1b2"/>
+  <g class="pl-r" style="transform-origin:400px 237.5px"><path d="M383.9 242.1L380.3 250.2L407.4 244.6L400 237.5Z" fill="#697785"/>
+  <g class="pl-r" style="transform-origin:407.4px 244.6px"><path d="M380.3 250.2L387 256.2L403.3 253.9L407.4 244.6Z" fill="#92a1b2"/>
+  <g class="pl-r" style="transform-origin:403.3px 253.9px"><path d="M387 256.2L382.4 264L409.7 261.8L403.3 253.9Z" fill="#697785"/>
+  <g class="pl-r" style="transform-origin:409.7px 261.8px"><path d="M382.4 264L388.3 270.9L404.6 270.5L409.7 261.8Z" fill="#92a1b2"/>
+  <g class="pl-r" style="transform-origin:404.6px 270.5px"><path d="M388.3 270.9L383 278.2L409.9 279L404.6 270.5Z" fill="#697785"/>
+  <g class="pl-r" style="transform-origin:409.9px 279px"><path d="M383 278.2L388 285.7L404 287L409.9 279Z" fill="#92a1b2"/>
+  <g class="pl-r" style="transform-origin:404px 287px"><path d="M388 285.7L382 292.5L408.4 295.9L404 287Z" fill="#697785"/>
+  <g class="pl-r" style="transform-origin:408.4px 295.9px"><path d="M382 292.5L386.2 300.6L401.8 303.4L408.4 295.9Z" fill="#92a1b2"/>
   <circle cx="378.5" cy="309.5" r="8" fill="#3d4853"/>
   <circle cx="391.8" cy="314.8" r="17" fill="#3d4853"/>
   <circle cx="386.8" cy="309.8" r="5" fill="#697785"/>
+  </g></g></g></g></g></g></g></g></g></g></g></g></g></g></g></g></g></g>
+  </g>
   <!-- Boxy torso with a dial, lights and a vent -->
   <rect x="236" y="134" width="40" height="22" fill="#3d4853"/>
   <rect x="182" y="150" width="148" height="168" rx="12" fill="#7d9c6a"/>
@@ -67,7 +114,7 @@
   <circle cx="228" cy="206" r="26" fill="#3d4853"/>
   <circle cx="228" cy="206" r="20" fill="#fff8de"/>
   <path d="M213 197l-4-3m19-8v-5m15 13 4-3" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/>
-  <path d="m228 206 11-10" stroke="#3d4853" stroke-width="4" stroke-linecap="round"/>
+  <g class="needle" style="transform-origin:228px 206px"><path d="m228 206 11-10" stroke="#3d4853" stroke-width="4" stroke-linecap="round"/></g>
   <circle cx="228" cy="206" r="4" fill="#3d4853"/>
   <circle cx="288" cy="192" r="7" fill="#f6c354"/>
   <circle cx="288" cy="216" r="7" fill="#3d4853"/>
@@ -79,9 +126,12 @@
   <circle cx="330" cy="182" r="14" fill="#3d4853"/>
   <circle cx="182" cy="182" r="6" fill="#92a1b2"/>
   <circle cx="330" cy="182" r="6" fill="#92a1b2"/>
+  <g class="head" style="transform-origin:236px 138px">
   <!-- Antenna knob -->
+  <g class="ant" style="transform-origin:256px 52px">
   <path d="M256 52V38" stroke="#697785" stroke-width="5"/>
   <circle cx="256" cy="32" r="8" fill="#f6c354"/>
+  </g>
   <!-- Square head with eyes on a slate band -->
   <circle cx="198" cy="96" r="9" fill="#3d4853"/>
   <circle cx="314" cy="96" r="9" fill="#3d4853"/>
@@ -91,9 +141,14 @@
   <path d="M210 50h92q10 0 10 10v4H200v-4q0-10 10-10Z" fill="#9db88a"/>
   <path d="M294 52h8q10 0 10 10v66q0 10-10 10h-8Z" fill="#5f7d4f"/>
   <rect x="214" y="80" width="84" height="34" rx="17" fill="#3d4853"/>
+  <g class="eyes">
   <circle cx="238" cy="97" r="11" fill="#86dcef"/>
   <circle cx="274" cy="97" r="11" fill="#86dcef"/>
   <path d="M245 89a11 11 0 0 1-9 19 11 11 0 0 0 9-19Zm36 0a11 11 0 0 1-9 19 11 11 0 0 0 9-19Z" fill="#4fb0c5"/>
   <circle cx="241" cy="93" r="3.5" fill="#fffae0"/>
   <circle cx="277" cy="93" r="3.5" fill="#fffae0"/>
+  </g>
+  </g>
+  </g>
+  </g>
 </svg>
