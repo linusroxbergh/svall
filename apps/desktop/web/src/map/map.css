@@ -175,18 +175,18 @@
 .tok .foot .pip[data-status=blocked]{background:var(--blocked)}
 .tok .foot .pip[data-status=done]{background:var(--done)}
 .tok .foot .pip[data-status=idle]{background:var(--idle)}
-/* a working agent's three dots rise in turn, as a chat app shows someone typing. They animate top and colour, not
-   transform or opacity: a compositor animation lifts the whole card into a layer of its own, which WebKit draws blurred */
-.tok .foot .dots{display:inline-flex;align-items:center;gap:calc(var(--tok)*.07);height:calc(var(--tok)*.24)}
-.tok .foot .dots i{position:relative;width:calc(var(--tok)*.11);height:calc(var(--tok)*.11);border-radius:50%;background:var(--working);
-  animation:typing var(--pulse) ease-in-out infinite}
-.tok .foot .dots i:nth-child(2){animation-delay:calc(var(--pulse) / 8)}
-.tok .foot .dots i:nth-child(3){animation-delay:calc(var(--pulse) / 4)}
-@keyframes typing{0%,60%,100%{top:0;background-color:color-mix(in srgb, var(--working) 35%, transparent)}
-  30%{top:calc(var(--tok)*-.033);background-color:var(--working)}}
 .tok .foot .sw{font-size:calc(var(--tok)*.225);font-weight:var(--w-bold);letter-spacing:var(--track-caps);
   text-transform:uppercase;padding:calc(var(--tok)*.02) calc(var(--tok)*.13);
   border-radius:var(--r-xs)}
+/* a sheen crosses a working pill now and then. It moves the background, not transform or opacity: a compositor
+   animation lifts the whole card into a layer of its own, which WebKit draws blurred */
+.tok .foot .sw[data-status=working]{background-repeat:no-repeat;background-size:300% 100%;
+  background-image:linear-gradient(105deg, transparent 38%, color-mix(in srgb, var(--cream) 42%, transparent) 50%, transparent 62%);
+  animation:sheen var(--sheen) ease-in-out infinite}
+@keyframes sheen{0%{background-position:100% 0}32%,100%{background-position:0 0}}
+/* a second agent's pips leave the word less room */
+.tok .foot:has(.pips){padding:0 calc(var(--tok)*.12)}
+.tok .foot .pips ~ .sw{letter-spacing:var(--track-loose)}
 .tok button.foot{border:0;border-radius:0;font:inherit;color:inherit;text-align:inherit;cursor:pointer;
   transition:background var(--dur) var(--ease)}
 .tok button.foot:hover{background:linear-gradient(color-mix(in srgb, var(--card-tint) 6%, transparent),color-mix(in srgb, var(--card-tint) 10%, transparent))}
@@ -211,12 +211,6 @@
 .tok .chip:hover{background:var(--ink);color:var(--surface-0)}
 .tok .chip.more{cursor:inherit;font-size:calc(var(--tok)*.28);font-variant-numeric:tabular-nums;letter-spacing:var(--track-tight)}
 .tok .chip.more:hover{background:var(--surface-2);color:var(--ink)}
-/* a PR in review and a running monitor hang on the left edge, as the links do on the right */
-.tok .rail.left{right:auto;left:calc(var(--tok)*-.36)}
-.tok .chip.review{background:var(--review);color:var(--ink-on-review)}
-.tok .chip.review:hover{background:var(--ink);color:var(--surface-0)}
-.tok .chip.monitor{cursor:inherit}
-.tok .chip.monitor:hover{background:var(--surface-2);color:var(--ink)}
 
 .tok.s-shell .disc{box-shadow:0 4px 7px var(--shade-1), inset 0 0 0 1.4px color-mix(in srgb, var(--cream) 28%, transparent)}
 .tok.s-shell .disc::after{opacity:.18}
@@ -235,13 +229,19 @@
   background:radial-gradient(closest-side, color-mix(in srgb, var(--ink-land) 24%, transparent), transparent)}
 .tok .portrait.robot{position:absolute;z-index:1;left:50%;bottom:calc(var(--tok)*.08);transform:translateX(-50%);
   width:auto;height:92%;max-width:88%;object-fit:contain;object-position:center bottom}
-/* the status gem as a badge on the card's top-right corner, on a layer over the card that lifts with it and lets clicks through */
+/* a PR in review and a running monitor as small round marks on the card's top-right corner, on a layer over the card that lifts with it and lets clicks through */
 .tok .corner{position:absolute;z-index:10;inset:0;pointer-events:none;transition:transform var(--dur) var(--ease)}
 .tok:hover .corner{transform:translateY(-6px)}
 .tok.sel .corner{transform:translateY(-5px) scale(1.04)}
 .tok.drag .corner{transform:translateY(-12px)}
-.tok .corner .gem{top:calc(var(--tok)*-.12);left:auto;right:calc(var(--tok)*-.12);transform:none}
-.tok .corner .gem.working{top:calc(var(--tok)*-.06);right:calc(var(--tok)*-.06)}
+.tok .corner .marks{position:absolute;top:calc(var(--tok)*-.12);right:calc(var(--tok)*-.12);display:flex;gap:calc(var(--tok)*.07)}
+.tok .mark{flex:none;box-sizing:border-box;width:calc(var(--tok)*.42);height:calc(var(--tok)*.42);padding:0;border:0;border-radius:50%;
+  display:grid;place-items:center;pointer-events:auto;cursor:inherit;
+  background:var(--card-1);color:color-mix(in srgb, var(--ink-land) 70%, transparent);
+  box-shadow:0 1px 3px var(--shade-1), 0 0 0 calc(var(--tok)*.055) var(--cream)}
+.tok .mark svg{width:62%;height:62%;display:block}
+.tok .mark.review{cursor:pointer;background:var(--review);color:var(--ink-on-review);transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
+.tok .mark.review:hover{background:var(--ink-on-review);color:var(--review)}
 
 .tok.drag{z-index:var(--z-popover);pointer-events:none}
 .tok.drag .card{transform:translateY(-12px);

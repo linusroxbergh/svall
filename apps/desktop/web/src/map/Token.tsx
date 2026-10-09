@@ -18,8 +18,7 @@ function footInner(c: Character, status: DisplayStatus, word: string | undefined
           <i className="pip" data-status={slotStatus(c, 1)} /><i className="pip" data-status={slotStatus(c, 2)} />
         </span>
       )}
-      {status === 'working' && <span className="dots" aria-hidden="true"><i /><i /><i /></span>}
-      {word &&<span className="sw" style={{ background: `var(--${status})`, color: `var(--ink-on-${status})` }}>{word}</span>}
+      {word && <span className="sw" data-status={status} style={{ backgroundColor: `var(--${status})`, color: `var(--ink-on-${status})` }}>{word}</span>}
       {c.hint && <span className="sw" data-testid={`token-hint-${c.id}`} title={hintText(c)} style={{ background: 'var(--blocked)', color: 'var(--ink-on-blocked)' }}>/hooks</span>}
     </>
   );
@@ -33,12 +32,14 @@ function gem(status: DisplayStatus, unread: boolean) {
 }
 
 export function Token({
-  c, status, world, robots, selected, dragging, settling, hover, offset, pointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu,
+  c, status, world, robots, links, selected, dragging, settling, hover, offset, pointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu,
 }: {
   c: Character;
   status: DisplayStatus;
-  // the robot stands under the name, the top edge fills with the context used and the gem moves to the card's corner
+  // the robot stands under the name and the top edge fills with the context used, with no gem: the foot says the status
   robots?: boolean;
+  // the link chips on the card's right edge
+  links?: boolean;
   world: Cell;
   selected: boolean;
   dragging: boolean;
@@ -125,29 +126,30 @@ export function Token({
           </svg>
         </button>
       </div>
-      {robots && <span className="corner">{gem(status, isUnread(c))}</span>}
       {(review || monitor) && (
-        <div className="rail left">
-          {review && (
-            <button
-              type="button"
-              className="chip review"
-              data-testid={`token-review-${c.id}`}
-              title={reviewText(review)}
-              aria-label={reviewText(review)}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                onLink(review, c.id, { x: e.clientX, y: e.clientY });
-              }}
-            >
-              <PrGlyph />
-            </button>
-          )}
-          {monitor && <span className="chip monitor" title="Monitoring" data-testid={`token-monitor-${c.id}`}><EyeGlyph /></span>}
-        </div>
+        <span className="corner">
+          <span className="marks">
+            {review && (
+              <button
+                type="button"
+                className="mark review"
+                data-testid={`token-review-${c.id}`}
+                title={reviewText(review)}
+                aria-label={reviewText(review)}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onLink(review, c.id, { x: e.clientX, y: e.clientY });
+                }}
+              >
+                <PrGlyph />
+              </button>
+            )}
+            {monitor && <span className="mark monitor" title="Monitoring" data-testid={`token-monitor-${c.id}`}><EyeGlyph /></span>}
+          </span>
+        </span>
       )}
-      {c.context.length > 0 && (
+      {links && c.context.length > 0 && (
         <div className="rail">
           {shown.map((l, i) => (
             <button

@@ -27,6 +27,7 @@ import { Token } from './Token.js';
 export function Map() {
   const host = useRef<HTMLDivElement>(null);
   const fleet = useApp((s) => s.fleet);
+  const links = useApp((s) => s.settings.cardLinks);
   const selectedId = useApp((s) => s.selectedId);
   const selectedIslandId = useApp((s) => s.selectedIslandId);
   const card = useApp((s) => s.card);
@@ -118,7 +119,7 @@ export function Map() {
           const base = preview?.kind === 'island' && preview === pendingIsland ? pendingIsland.from : i.position;
           const world = dragging ? drag.cell : worldCell(base, c.cell);
           return (
-            <Token key={c.id} c={c} status={statusOf(c)} world={world} robots={!fleet.animals} selected={c.id === selectedId} dragging={dragging}
+            <Token key={c.id} c={c} status={statusOf(c)} world={world} robots={!fleet.animals} links={links} selected={c.id === selectedId} dragging={dragging}
               offset={islandOffset(i, preview)} settling={Boolean(pendingIsland) && preview === pendingIsland}
               hover={dropHover?.kind === 'char' && dropHover.id === c.id}
               pointer={domPointer({ kind: 'figure', id: c.id })}
@@ -128,7 +129,7 @@ export function Map() {
           );
         }))}
         {drag?.kind === 'figure' && !overHome && fleet.characters[drag.id]?.islandId === HOME_ISLAND && (
-          <Token key={drag.id} c={fleet.characters[drag.id]} status={statusOf(fleet.characters[drag.id])} world={drag.cell} robots={!fleet.animals} selected={drag.id === selectedId} dragging
+          <Token key={drag.id} c={fleet.characters[drag.id]} status={statusOf(fleet.characters[drag.id])} world={drag.cell} robots={!fleet.animals} links={links} selected={drag.id === selectedId} dragging
             pointer={domPointer({ kind: 'figure', id: drag.id })} hover={false} onHoverStart={() => {}} onHoverEnd={endHover}
             onOpen={() => app.store.getState().focus(drag.id)} onLink={followLink} onMenu={(e) => characterMenu(e, drag.id)} />
         )}
@@ -136,7 +137,7 @@ export function Map() {
       <div className="map-overlay">
         {hi && (
           <Home island={hi} crew={crew} config={fleet.home} collapsed={Boolean(hi.collapsed)}
-            selected={selectedIslandId === HOME_ISLAND} selectedId={selectedId} drag={drag} status={statusOf} robots={!fleet.animals}
+            selected={selectedIslandId === HOME_ISLAND} selectedId={selectedId} drag={drag} status={statusOf} robots={!fleet.animals} links={links}
             shift={place.homeShift} rowShift={placeIslet(hostSize.w, hi.size.w * theme.cell, Boolean(hi.collapsed)).homeShift}
             scale={place.homeScale} extra={place.mode === 'pill' ? <ResourcesPill /> : undefined}
             onToggle={() => toggleIsland(deps(), HOME_ISLAND)}
