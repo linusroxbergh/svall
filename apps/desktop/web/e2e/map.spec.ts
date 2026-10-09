@@ -148,8 +148,18 @@ test('with robots on, a robot card plays one of its actions now and then and com
 
   // an idle robot first rests up to 3.5s, and an action lasts under 2.2s
   await expect(bot).toHaveAttribute('data-act', /\w/, { timeout: 10_000 });
-  // every part at one rate, so the action takes its length give or take a tenth
-  const rates = await bot.evaluate((el) => el.getAnimations({ subtree: true }).map((a) => a.playbackRate));
+  // every part at one rate, so the action takes its length give or take a tenth; read in the page while
+  // data-act is set, since a 0.4s blink can end before a second call, and then wait for the next action
+  const rates = await bot.evaluate(
+    (el) =>
+      new Promise<number[]>((done) => {
+        const read = () => {
+          if (el.dataset.act) done(el.getAnimations({ subtree: true }).map((a) => a.playbackRate));
+          return !!el.dataset.act;
+        };
+        if (!read()) new MutationObserver(read).observe(el, { attributeFilter: ['data-act'] });
+      }),
+  );
   expect(rates.length).toBeGreaterThan(0);
   expect(new Set(rates).size).toBe(1);
   expect(rates[0]).toBeGreaterThanOrEqual(1 / 1.1);
