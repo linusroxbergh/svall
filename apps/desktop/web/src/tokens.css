@@ -104,7 +104,7 @@
 
   --dur-fast: .12s; --dur: .16s; --dur-slow: .2s;
   /* the periods of the looping animations */
-  --pulse-fast: 1.2s; --pulse: 1.8s; --pulse-slow: 3.2s; --swell: 48s; --swell-2: 67s;
+  --pulse-fast: 1.2s; --pulse: 1.8s; --pulse-slow: 3.2s; --sheen: 4.5s; --swell: 48s; --swell-2: 67s;
 
   --w-light: 300; --w-regular: 400; --w-medium: 500; --w-semibold: 600; --w-bold: 700;
   --track-tight: -.02em; --track-loose: .06em; --track-caps: .12em; --track-wide: .18em;
@@ -122,7 +122,7 @@
   --ring: 0 0 0 3px color-mix(in srgb, var(--sel) 25%, transparent);
 
   /* ink on a status fill */
-  --ink-on-blocked: #3A0E09; --ink-on-done: #06231E;
+  --ink-on-working: #3A2406; --ink-on-blocked: #3A0E09; --ink-on-done: #06231E;
   /* the statuses printed on a card's cream paper: darker than the lit ones so they hold contrast there */
   --working-ink: #EB992E; --blocked-ink: #C94A45; --done-ink: #4BB3A1;
 

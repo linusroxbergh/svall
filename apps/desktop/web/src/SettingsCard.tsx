@@ -240,7 +240,7 @@ function Update() {
 }
 
 export function SettingsCard() {
-  const { cardOpacity, fullOpacity, zoom, onePassword, usageTab, autoArrange, robotMotion, bindings } = useApp((s) => s.settings);
+  const { cardOpacity, fullOpacity, zoom, onePassword, usageTab, autoArrange, cardLinks, robotMotion, bindings } = useApp((s) => s.settings);
   const zoomOut = keyLabel('zoomOut', bindings), zoomReset = keyLabel('zoomReset', bindings);
   // on its shipped chord zoom in also answers ⌘+, the name macOS gives the key
   const zoomIn = chordsOf('zoomIn', bindings).includes('cmd++') ? chordLabel('cmd++') : keyLabel('zoomIn', bindings);
@@ -278,6 +278,11 @@ export function SettingsCard() {
           <span>arrange on its own<Info id="auto-arrange">Arranges the fleet when you come back to the map, show a hidden island or resize the window.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={autoArrange} data-testid="set-auto-arrange"
             onClick={() => set({ autoArrange: !autoArrange })}>{autoArrange ? 'on' : 'off'}</button></b>
+        </div>
+        <div className="row">
+          <span>links on cards<Info id="card-links">Link chips beside each card on the map. Hovering a card lists its links either way.</Info></span>
+          <b><button className="set-switch" role="switch" aria-checked={cardLinks} data-testid="set-card-links"
+            onClick={() => set({ cardLinks: !cardLinks })}>{cardLinks ? 'on' : 'off'}</button></b>
         </div>
         <div className="row">
           <span>usage meter<Info id="usage">A sidebar button showing plan limits and when they reset.</Info></span>
