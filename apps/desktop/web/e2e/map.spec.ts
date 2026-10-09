@@ -1,11 +1,11 @@
-import { FAKE_CLAUDE, expect, settleMap, test } from './fixtures.js';
+import { FAKE_CLAUDE, expect, setMapWidth, settleMap, test } from './fixtures.js';
 import type { Page } from '@playwright/test';
-import { cardScale, labelScale } from '../src/map/layout.js';
+import { cardScale, labelScale, sharedCardScale } from '../src/map/layout.js';
 import { robotOf } from '../src/portraits.js';
 import type { MapDump } from '../src/map/types.js';
 import { DEFAULT_SETTINGS } from '../src/settings.js';
 import { SETTINGS_KEY } from '../src/store/index.js';
-import { theme } from '../src/theme.js';
+import { theme, tokenPx } from '../src/theme.js';
 
 const layoutOf = (page: Page) => page.evaluate(() => window.__map!.layout());
 const dump = (page: Page) => page.evaluate(() => window.__map!.dump());
@@ -578,19 +578,43 @@ test('a crowded crew never covers the card beside it, link rails and all', async
   }
 });
 
-test('mission control cards stand as big as island cards once the fleet zooms the map out', async ({ page, svall }) => {
+test('mission control cards stand as big as island cards however far the fleet zooms the map', async ({ page, svall }) => {
   const mc = await svall.api.call('char.create', { islandId: 'home', cwd: '/tmp', name: 'mc' });
   const island = await svall.api.call('island.create', { name: svall.uniq('near'), seed: 1, position: { x: 0, y: 0 } });
   const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'isl' });
-  // a far island zooms the map out past the scale where cards stop keeping their size
-  await svall.api.call('island.create', { name: svall.uniq('far'), seed: 2, position: { x: 0, y: 40 } });
+  const cards = () => Promise.all([mc.id, c.id].map(async (id) => (await page.getByTestId(`token-${id}`).locator('.card').boundingBox())!));
   await svall.open('map');
   await settleMap(page);
-  expect((await layoutOf(page)).scale).toBeLessThan(theme.token.floor);
-  const [home, own] = await Promise.all([mc.id, c.id].map(async (id) => (await page.getByTestId(`token-${id}`).locator('.card').boundingBox())!));
+  expect((await layoutOf(page)).scale).toBeGreaterThan(1);
+  const [homeUp, ownUp] = await cards();
+  expect(ownUp.width).toBeGreaterThan(tokenPx.w + 1);
+  expect(Math.abs(homeUp.width - ownUp.width)).toBeLessThan(1);
+  expect(Math.abs(homeUp.height - ownUp.height)).toBeLessThan(1);
+
+  // a far island zooms the map out past the scale where cards stop keeping their size
+  await svall.api.call('island.create', { name: svall.uniq('far'), seed: 2, position: { x: 0, y: 40 } });
+  await expect.poll(async () => (await layoutOf(page)).scale).toBeLessThan(theme.token.floor);
+  await settleMap(page);
+  const [home, own] = await cards();
   expect(own.width).toBeLessThan(80);
   expect(Math.abs(home.width - own.width)).toBeLessThan(1);
   expect(Math.abs(home.height - own.height)).toBeLessThan(1);
+});
+
+test('a mission control squeezed by a narrow map keeps its cards apart, and the island cards at their size', async ({ page, svall }) => {
+  // five crew make home 17 cells wide, too wide to stand beside the islet at full size
+  const crew: string[] = [];
+  for (let n = 0; n < 5; n++) crew.push((await svall.api.call('char.create', { islandId: 'home', cwd: '/tmp', name: `mc${n}` })).id);
+  const island = await svall.api.call('island.create', { name: svall.uniq('near'), seed: 1, position: { x: 0, y: 0 } });
+  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'isl' });
+  await svall.open('map');
+  await setMapWidth(page, 640);
+  await settleMap(page);
+  const box = async (id: string) => (await page.getByTestId(`token-${id}`).locator('.card').boundingBox())!;
+  await expect.poll(async () => (await box(crew[0])).width).toBeLessThan(tokenPx.w - 10);
+  const home = await Promise.all(crew.map(box)), own = await box(c.id);
+  for (let n = 1; n < home.length; n++) expect(home[n].x).toBeGreaterThan(home[n - 1].x + home[n - 1].width);
+  expect(Math.abs(home[0].width - own.width)).toBeLessThan(1);
 });
 
 test('a zoom rescales cards and label pills, and restyles nothing inside them', async ({ page, svall }) => {
@@ -617,7 +641,8 @@ test('a zoom rescales cards and label pills, and restyles nothing inside them', 
   const near = (await layoutOf(page)).scale;
   expect(near).toBeGreaterThan(1);
   const up = await read();
-  expect(up.card).toBeCloseTo(cardScale(near), 2);
+  // mission control stands at full size, and no card outgrows its slots
+  expect(up.card).toBeCloseTo(sharedCardScale(near, 1), 2);
   expect(up.pill).toBeCloseTo(labelScale(near), 2);
   expect(up.inside).toEqual(['1', '1']);
   expect(up.mapCell).toBe(up.rootCell);

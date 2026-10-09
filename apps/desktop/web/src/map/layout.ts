@@ -152,6 +152,11 @@ export const cardScale = (scale: number): number =>
 // the same for an island's label pill, which follows the map below 1
 export const labelScale = (scale: number): number => Math.min(scale, grown(scale, theme.label.grow));
 
+// the one scale every card on the map and on mission control stands at, held to what home's slots, drawn at
+// `homeScale`, have room for
+export const sharedCardScale = (scale: number, homeScale: number): number =>
+  Math.min(cardScale(scale), homeScale / theme.token.floor);
+
 export const cellSize = (l: Layout): number => l.tile * l.scale;
 export const worldToScreen = (l: Layout, c: Cell) => ({ x: l.ox + c.x * cellSize(l), y: l.oy + c.y * cellSize(l) });
 export const screenToCell = (l: Layout, p: { x: number; y: number }): Cell => ({ x: Math.floor((p.x - l.ox) / cellSize(l)), y: Math.floor((p.y - l.oy) / cellSize(l)) });

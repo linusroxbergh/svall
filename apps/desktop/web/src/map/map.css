@@ -10,7 +10,7 @@
 @property --k { syntax: '<number>'; inherits: false; initial-value: 1; }
 @property --lk { syntax: '<number>'; inherits: false; initial-value: 1; }
 .map-world .island, .map-world .tok { --ms: inherit; translate: calc(var(--ox) * var(--ms)) calc(var(--oy) * var(--ms)); }
-.map-world .tok { --k: inherit; }
+.map-world .tok, .home .tok { --k: inherit; }
 .map-world .island, .map-world .ilabel, .map-world .inew[data-empty="true"] { --lk: inherit; }
 .map-world .island { pointer-events: none; }
 .map-world .tok, .map-world .island > * { pointer-events: auto; }
@@ -68,7 +68,7 @@
 .tok{position:absolute;z-index:20;cursor:pointer;
   transform:translate(-50%,-48%);filter:brightness(var(--map-tone, 1))}
 /* cards keep their screen size whatever the map zoom, so they rasterise crisp */
-.map-world .tok{transform-origin:0 0;transform:scale(var(--k,1)) translate(-50%,-48%)}
+.map-world .tok,.home .tok{transform-origin:0 0;transform:scale(var(--k,1)) translate(-50%,-48%)}
 /* on the card's paper a status prints in its ink; the chrome around the map keeps the lit tokens */
 .tok{--working:var(--working-ink);--blocked:var(--blocked-ink);--done:var(--done-ink);--ink-on-blocked:var(--cream)}
 .tok:hover,.tok.sel{z-index:30}
