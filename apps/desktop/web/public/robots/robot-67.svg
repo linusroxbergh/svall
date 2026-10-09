@@ -1,25 +1,72 @@
-<svg width="244" height="420" viewBox="134 58 244 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="reel-title reel-desc">
+<svg width="244" height="420" viewBox="134 58 244 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="reel-title reel-desc" class="r67" data-idle="blink blink peer peer shift lever" data-work="crank crank crank lever shift peer"><style>
+.r67[data-act=blink] .lens{transform-box:fill-box;transform-origin:center;animation:r67-blink .4s ease-in-out}
+.r67[data-act=peer] .head{animation:r67-cock 1.6s ease-in-out}
+.r67[data-act=peer] .look{animation:r67-side 1.6s ease-in-out}
+.r67[data-act=peer] .reel{animation:r67-lag 1.6s ease-in-out}
+.r67[data-act=lever] .head{animation:r67-bow 1.8s ease-in-out}
+.r67[data-act=lever] .look{animation:r67-down 1.8s ease-in-out}
+.r67[data-act=lever] .lever{animation:r67-flip 1.8s ease-in-out}
+.r67[data-act=lever] .needle{animation:r67-needle 1.8s ease-in-out}
+.r67[data-act=shift] .tip-l{animation:r67-tip-l 1.8s ease-in-out}
+.r67[data-act=shift] .tip-r{animation:r67-tip-r 1.8s ease-in-out}
+.r67[data-act=shift] .arm-l,.r67[data-act=shift] .arm-r{animation:r67-hang 1.8s ease-in-out}
+.r67[data-act=shift] .fore-l,.r67[data-act=shift] .fore-r{animation:r67-hang-f 1.8s ease-in-out}
+.r67[data-act=crank] .arm-r{animation:r67-crank 2s ease-in-out}
+.r67[data-act=crank] .fore-r{animation:r67-crank-f 2s ease-in-out}
+.r67[data-act=crank] .reel{animation:r67-wind 2s ease-in-out}
+.r67[data-act=crank] .head{animation:r67-nod 2s ease-in-out}
+.r67[data-act=crank] .look{animation:r67-watch 2s ease-in-out}
+.r67[data-act=crank] .tip-r{animation:r67-heave 2s ease-in-out}
+@keyframes r67-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+@keyframes r67-cock{0%,100%{transform:none}26%,54%{transform:rotate(6deg)}74%{transform:rotate(-1.5deg)}88%{transform:rotate(.5deg)}}
+@keyframes r67-side{0%,100%{transform:none}20%,60%{transform:translate(3.5px,1px)}}
+@keyframes r67-lag{0%,8%,100%{transform:none}30%{transform:rotate(-24deg)}52%{transform:rotate(10deg)}74%{transform:rotate(-4deg)}}
+@keyframes r67-bow{0%,100%{transform:none}18%,70%{transform:translateY(5px)}84%{transform:translateY(-1px)}}
+@keyframes r67-down{0%,100%{transform:none}14%,72%{transform:translateY(3px)}}
+@keyframes r67-flip{0%,24%,68%,100%{transform:none}34%,58%{transform:rotate(-53deg)}}
+@keyframes r67-needle{0%,30%,100%{transform:none}46%{transform:rotate(80deg)}58%{transform:rotate(62deg)}76%{transform:rotate(-8deg)}88%{transform:rotate(3deg)}}
+@keyframes r67-tip-l{0%,46%,100%{transform:none}22%{transform:rotate(-1deg)}}
+@keyframes r67-tip-r{0%,46%,76%,100%{transform:none}61%{transform:rotate(.6deg)}}
+@keyframes r67-hang{0%,4%,100%{transform:none}24%{transform:rotate(4deg)}52%{transform:rotate(-3.5deg)}72%{transform:rotate(2deg)}88%{transform:rotate(-.8deg)}}
+@keyframes r67-hang-f{0%,8%,100%{transform:none}30%{transform:rotate(5deg)}58%{transform:rotate(-4deg)}78%{transform:rotate(2deg)}92%{transform:rotate(-.6deg)}}
+@keyframes r67-crank{0%,100%{transform:none}4%{transform:rotate(2deg)}16%{transform:rotate(-36deg)}40%{transform:rotate(17deg)}57%{transform:rotate(-40deg)}81%{transform:rotate(19deg)}88%{transform:rotate(-2.5deg)}95%{transform:rotate(.8deg)}}
+@keyframes r67-crank-f{0%,4%,100%{transform:none}21%{transform:rotate(80deg)}41.6%{transform:rotate(-12deg)}62%{transform:rotate(88deg)}82.6%{transform:rotate(-14deg)}89%{transform:rotate(3deg)}95%{transform:rotate(-1deg)}}
+@keyframes r67-wind{0%,4%{transform:rotate(0deg)}86%,100%{transform:rotate(-720deg)}}
+@keyframes r67-nod{0%,4%,100%{transform:none}20%{transform:translateY(4.5px) rotate(3deg)}41%{transform:translateY(-.5px)}61%{transform:translateY(5px) rotate(3.5deg)}82%{transform:translateY(-.5px)}91%{transform:translateY(.6px)}}
+@keyframes r67-heave{0%,4%,41%,82%,100%{transform:none}20%{transform:rotate(.6deg)}61%{transform:rotate(.7deg)}}
+@keyframes r67-watch{0%,100%{transform:none}12%,80%{transform:translate(3px,1.5px)}}
+</style>
   <title id="reel-title">Reel — film projector robot</title>
   <desc id="reel-desc">A forest green robot whose head is a film projector with two spoked reels standing on top and two round lens eyes, a boxy body with a dial, a lever switch and vent slats, ring jointed arms with pincers, and legs with ring knees on flat feet.</desc>
+  <g class="tip-r" style="transform-origin:314px 476px"><g class="tip-l" style="transform-origin:198px 476px">
   <!-- Film reels -->
-  <rect x="208" y="96" width="12" height="26" fill="#697785"/>
-  <rect x="292" y="96" width="12" height="26" fill="#697785"/>
-  <circle cx="214" cy="90" r="30" fill="#3d4853"/>
-  <circle cx="298" cy="90" r="30" fill="#3d4853"/>
-  <path d="M214 90v-24m0 24 20.8 12M214 90l-20.8 12M298 90v-24m0 24 20.8 12M298 90l-20.8 12" stroke="#92a1b2" stroke-width="6" stroke-linecap="round"/>
-  <circle cx="214" cy="90" r="7" fill="#92a1b2"/>
-  <circle cx="298" cy="90" r="7" fill="#92a1b2"/>
-  <circle cx="214" cy="90" r="3" fill="#3d4853"/>
-  <circle cx="298" cy="90" r="3" fill="#3d4853"/>
+  <g class="head" style="transform-origin:274px 198px">
+    <rect x="208" y="96" width="12" height="26" fill="#697785"/>
+    <rect x="292" y="96" width="12" height="26" fill="#697785"/>
+    <g class="reel" style="transform-origin:214px 90px">
+      <circle cx="214" cy="90" r="30" fill="#3d4853"/>
+      <path d="M214 90v-24m0 24 20.8 12M214 90l-20.8 12" stroke="#92a1b2" stroke-width="6" stroke-linecap="round"/>
+      <circle cx="214" cy="90" r="7" fill="#92a1b2"/>
+      <circle cx="214" cy="90" r="3" fill="#3d4853"/>
+    </g>
+    <g class="reel" style="transform-origin:298px 90px">
+      <circle cx="298" cy="90" r="30" fill="#3d4853"/>
+      <path d="M298 90v-24m0 24 20.8 12M298 90l-20.8 12" stroke="#92a1b2" stroke-width="6" stroke-linecap="round"/>
+      <circle cx="298" cy="90" r="7" fill="#92a1b2"/>
+      <circle cx="298" cy="90" r="3" fill="#3d4853"/>
+    </g>
+  </g>
   <!-- Ring jointed arms with pincers -->
-  <path d="m180 232-30 44v48m182-92 30 44v48" fill="none" stroke="#697785" stroke-width="13" stroke-linejoin="round"/>
-  <rect x="138" y="318" width="24" height="14" rx="4" fill="#3f8a55"/>
-  <rect x="350" y="318" width="24" height="14" rx="4" fill="#3f8a55"/>
-  <path d="M142 332q-8 16 3 28m14-28q8 16-3 28M354 332q-8 16 3 28m14-28q8 16-3 28" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
-  <circle cx="150" cy="276" r="12" fill="#3d4853"/>
-  <circle cx="362" cy="276" r="12" fill="#3d4853"/>
-  <circle cx="150" cy="276" r="5" fill="#92a1b2"/>
-  <circle cx="362" cy="276" r="5" fill="#92a1b2"/>
+  <g class="arm-l" style="transform-origin:180px 232px">
+    <path d="M180 232l-30 44" fill="none" stroke="#697785" stroke-width="13"/>
+    <g class="fore-l" style="transform-origin:150px 276px">
+      <path d="M150 276v48" fill="none" stroke="#697785" stroke-width="13"/>
+      <rect x="138" y="318" width="24" height="14" rx="4" fill="#3f8a55"/>
+      <path d="M142 332q-8 16 3 28m14-28q8 16-3 28" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+    </g>
+    <circle cx="150" cy="276" r="12" fill="#3d4853"/>
+    <circle cx="150" cy="276" r="5" fill="#92a1b2"/>
+  </g>
   <!-- Legs with ring knees and flat feet -->
   <path d="M226 344v108m60-108v108" stroke="#697785" stroke-width="13"/>
   <circle cx="226" cy="398" r="13" fill="#3d4853"/>
@@ -36,31 +83,50 @@
   <path d="M314 210h4q14 0 14 14v108q0 14-14 14h-4Z" fill="#2c6b40"/>
   <circle cx="222" cy="254" r="14" fill="#3d4853"/>
   <circle cx="222" cy="254" r="10" fill="#fff8de"/>
-  <path d="m222 254 6-6" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/>
+  <g class="needle" style="transform-origin:222px 254px"><path d="m222 254 6-6" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/></g>
   <rect x="274" y="236" width="12" height="40" rx="6" fill="#3d4853"/>
-  <path d="m280 264 12-24" stroke="#697785" stroke-width="5" stroke-linecap="round"/>
-  <circle cx="293" cy="238" r="6" fill="#f6c354"/>
+  <g class="lever" style="transform-origin:280px 264px">
+    <path d="m280 264 12-24" stroke="#697785" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="293" cy="238" r="6" fill="#f6c354"/>
+  </g>
   <circle cx="214" cy="292" r="5" fill="#f6c354"/>
   <circle cx="232" cy="292" r="5" fill="#79d6eb"/>
   <path d="M206 312h100m-100 12h100" stroke="#2c6b40" stroke-width="5" stroke-linecap="round"/>
   <circle cx="192" cy="222" r="3.5" fill="#2c6b40"/>
   <circle cx="320" cy="222" r="3.5" fill="#2c6b40"/>
   <rect x="192" y="340" width="128" height="12" rx="4" fill="#3d4853"/>
+  <g class="arm-r" style="transform-origin:332px 232px">
+    <path d="M332 232l30 44" fill="none" stroke="#697785" stroke-width="13"/>
+    <g class="fore-r" style="transform-origin:362px 276px">
+      <path d="M362 276v48" fill="none" stroke="#697785" stroke-width="13"/>
+      <rect x="350" y="318" width="24" height="14" rx="4" fill="#3f8a55"/>
+      <path d="M354 332q-8 16 3 28m14-28q8 16-3 28" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+    </g>
+    <circle cx="362" cy="276" r="12" fill="#3d4853"/>
+    <circle cx="362" cy="276" r="5" fill="#92a1b2"/>
+  </g>
   <circle cx="180" cy="232" r="18" fill="#3d4853"/>
   <circle cx="332" cy="232" r="18" fill="#3d4853"/>
   <circle cx="180" cy="232" r="8" fill="#92a1b2"/>
   <circle cx="332" cy="232" r="8" fill="#92a1b2"/>
   <!-- Projector head with two lens eyes -->
-  <rect x="196" y="118" width="120" height="80" rx="12" fill="#3f8a55"/>
-  <path d="M208 118h96q12 0 12 12v4H196v-4q0-12 12-12Z" fill="#5aa06a"/>
-  <path d="M300 118h4q12 0 12 12v56q0 12-12 12h-4Z" fill="#2c6b40"/>
-  <circle cx="234" cy="158" r="18" fill="#3d4853"/>
-  <circle cx="278" cy="158" r="18" fill="#3d4853"/>
-  <circle cx="234" cy="158" r="14" fill="#697785"/>
-  <circle cx="278" cy="158" r="14" fill="#697785"/>
-  <circle cx="234" cy="158" r="10" fill="#7fd9e3"/>
-  <circle cx="278" cy="158" r="10" fill="#7fd9e3"/>
-  <path d="M240 150a10 10 0 0 1-8 18 10 10 0 0 0 8-18Zm44 0a10 10 0 0 1-8 18 10 10 0 0 0 8-18Z" fill="#4fb0c5"/>
-  <circle cx="237" cy="154" r="3.5" fill="#fffae0"/>
-  <circle cx="281" cy="154" r="3.5" fill="#fffae0"/>
+  <g class="head" style="transform-origin:274px 198px">
+    <rect x="196" y="118" width="120" height="80" rx="12" fill="#3f8a55"/>
+    <path d="M208 118h96q12 0 12 12v4H196v-4q0-12 12-12Z" fill="#5aa06a"/>
+    <path d="M300 118h4q12 0 12 12v56q0 12-12 12h-4Z" fill="#2c6b40"/>
+    <circle cx="234" cy="158" r="18" fill="#3d4853"/>
+    <circle cx="278" cy="158" r="18" fill="#3d4853"/>
+    <g class="lens">
+      <circle cx="234" cy="158" r="14" fill="#697785"/>
+      <circle cx="278" cy="158" r="14" fill="#697785"/>
+      <g class="look">
+        <circle cx="234" cy="158" r="10" fill="#7fd9e3"/>
+        <circle cx="278" cy="158" r="10" fill="#7fd9e3"/>
+        <path d="M240 150a10 10 0 0 1-8 18 10 10 0 0 0 8-18Zm44 0a10 10 0 0 1-8 18 10 10 0 0 0 8-18Z" fill="#4fb0c5"/>
+        <circle cx="237" cy="154" r="3.5" fill="#fffae0"/>
+        <circle cx="281" cy="154" r="3.5" fill="#fffae0"/>
+      </g>
+    </g>
+  </g>
+  </g></g>
 </svg>

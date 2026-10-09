@@ -1,19 +1,79 @@
-<svg width="280" height="422" viewBox="116 56 280 422" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="meter-title meter-desc">
+<svg width="280" height="422" viewBox="116 56 280 422" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="meter-title meter-desc" class="r62" data-idle="tilt tilt shrug bob" data-work="bob bob peak shrug tilt"><style>
+.r62[data-act=tilt] .head{animation:r62-tilt 1.8s ease-in-out}
+.r62[data-act=tilt] .vu{animation:r62-glance 1.8s ease-in-out}
+.r62[data-act=tilt] .ant{animation:r62-ant 1.8s ease-in-out}
+.r62[data-act=shrug] .arm-l{animation:r62-shrug-l 1.6s ease-in-out}
+.r62[data-act=shrug] .arm-r{animation:r62-shrug-r 1.6s ease-in-out}
+.r62[data-act=shrug] .fore-l{animation:r62-palm-l 1.6s ease-in-out}
+.r62[data-act=shrug] .fore-r{animation:r62-palm-r 1.6s ease-in-out}
+.r62[data-act=shrug] .head{animation:r62-sink 1.6s ease-in-out}
+.r62[data-act=shrug] .vu{animation:r62-zero 1.6s ease-in-out}
+.r62[data-act=bob] .bot{animation:r62-dip 1.6s ease-in-out}
+.r62[data-act=bob] .head{animation:r62-bop 1.6s ease-in-out}
+.r62[data-act=bob] .vu{animation:r62-kick 1.6s ease-in-out}
+.r62[data-act=bob] .arm-l{animation:r62-bounce-l 1.6s ease-in-out}
+.r62[data-act=bob] .arm-r{animation:r62-bounce-r 1.6s ease-in-out}
+.r62[data-act=peak] .vu{animation:r62-slam 1.8s ease-in-out}
+.r62[data-act=peak] .pop{animation:r62-pop 1.8s ease-in-out}
+.r62[data-act=peak] .neck{animation:r62-neck 1.8s ease-in-out}
+.r62[data-act=peak] .ant{animation:r62-whip 1.8s ease-in-out}
+.r62[data-act=peak] .arm-l{animation:r62-jerk-l 1.8s ease-in-out}
+.r62[data-act=peak] .arm-r{animation:r62-jerk-r 1.8s ease-in-out}
+.r62[data-act=peak] .fore-l{animation:r62-flinch-l 1.8s ease-in-out}
+.r62[data-act=peak] .fore-r{animation:r62-flinch-r 1.8s ease-in-out}
+/* the neck stretches by (20 + pop) / 20 so the popped head stays on it */
+@keyframes r62-tilt{0%,100%{transform:none}28%,52%{transform:rotate(7deg)}74%{transform:rotate(-2deg)}88%{transform:rotate(.6deg)}}
+@keyframes r62-glance{0%,100%{transform:none}22%,56%{transform:rotate(28deg)}76%{transform:rotate(-6deg)}90%{transform:rotate(2deg)}}
+@keyframes r62-ant{0%,100%{transform:none}34%{transform:rotate(-9deg)}56%{transform:rotate(5deg)}76%{transform:rotate(-3deg)}90%{transform:rotate(1deg)}}
+@keyframes r62-shrug-l{0%,100%{transform:none}30%,56%{transform:translateY(-9px) rotate(-5deg)}76%{transform:translateY(1.5px) rotate(1deg)}90%{transform:translateY(-.5px) rotate(0deg)}}
+@keyframes r62-shrug-r{0%,100%{transform:none}30%,56%{transform:translateY(-9px) rotate(5deg)}76%{transform:translateY(1.5px) rotate(-1deg)}90%{transform:translateY(-.5px) rotate(0deg)}}
+@keyframes r62-palm-l{0%,100%{transform:none}34%,56%{transform:rotate(12deg)}78%{transform:rotate(-3deg)}92%{transform:rotate(1deg)}}
+@keyframes r62-palm-r{0%,100%{transform:none}34%,56%{transform:rotate(-12deg)}78%{transform:rotate(3deg)}92%{transform:rotate(-1deg)}}
+@keyframes r62-sink{0%,100%{transform:none}30%,56%{transform:translateY(3px) rotate(-4deg)}78%{transform:translateY(-.8px) rotate(1deg)}}
+@keyframes r62-zero{0%,100%{transform:none}30%,58%{transform:rotate(-30deg)}78%{transform:rotate(5deg)}90%{transform:rotate(-1.5deg)}}
+@keyframes r62-dip{0%,34%,68%,100%{transform:none}17%,51%{transform:translateY(3.5px)}84%{transform:translateY(1px)}}
+@keyframes r62-bop{0%,100%{transform:none}20%{transform:rotate(3deg)}37%{transform:rotate(0deg)}54%{transform:rotate(-3deg)}71%{transform:rotate(0deg)}86%{transform:rotate(1deg)}}
+@keyframes r62-kick{0%,100%{transform:none}12%{transform:rotate(40deg)}30%{transform:rotate(4deg)}46%{transform:rotate(46deg)}64%{transform:rotate(4deg)}80%{transform:rotate(14deg)}}
+@keyframes r62-bounce-l{0%,34%,68%,100%{transform:none}20%,54%{transform:rotate(5deg)}84%{transform:rotate(1.5deg)}}
+@keyframes r62-bounce-r{0%,34%,68%,100%{transform:none}20%,54%{transform:rotate(-5deg)}84%{transform:rotate(-1.5deg)}}
+@keyframes r62-slam{0%,100%{transform:none}6%{transform:rotate(-4deg)}14%{transform:rotate(64deg)}20%{transform:rotate(57deg)}26%,40%{transform:rotate(64deg)}64%{transform:rotate(-6deg)}80%{transform:rotate(2deg)}}
+@keyframes r62-pop{0%,100%{transform:none}6%{transform:translateY(1px)}14%,22%{transform:translateY(-8px)}40%{transform:translateY(2px)}56%{transform:translateY(-1px)}72%{transform:translateY(.4px)}}
+@keyframes r62-neck{0%,100%{transform:none}6%{transform:scaleY(.95)}14%,22%{transform:scaleY(1.4)}40%{transform:scaleY(.9)}56%{transform:scaleY(1.05)}72%{transform:scaleY(.98)}}
+@keyframes r62-whip{0%,12%,100%{transform:none}22%{transform:rotate(12deg)}38%{transform:rotate(-8deg)}54%{transform:rotate(4deg)}70%{transform:rotate(-1.5deg)}}
+@keyframes r62-jerk-l{0%,100%{transform:none}6%{transform:translateY(1px) rotate(-2deg)}14%{transform:translateY(-6px) rotate(22deg)}24%{transform:translateY(-5px) rotate(19deg)}44%{transform:translateY(1px) rotate(-4deg)}60%{transform:translateY(0) rotate(2deg)}76%{transform:translateY(0) rotate(-.8deg)}}
+@keyframes r62-jerk-r{0%,100%{transform:none}6%{transform:translateY(1px) rotate(2deg)}14%{transform:translateY(-6px) rotate(-22deg)}24%{transform:translateY(-5px) rotate(-19deg)}44%{transform:translateY(1px) rotate(4deg)}60%{transform:translateY(0) rotate(-2deg)}76%{transform:translateY(0) rotate(.8deg)}}
+@keyframes r62-flinch-l{0%,100%{transform:none}6%{transform:rotate(2deg)}16%{transform:rotate(-40deg)}26%{transform:rotate(-44deg)}48%{transform:rotate(8deg)}64%{transform:rotate(-4deg)}82%{transform:rotate(1.5deg)}}
+@keyframes r62-flinch-r{0%,100%{transform:none}6%{transform:rotate(-2deg)}16%{transform:rotate(40deg)}26%{transform:rotate(44deg)}48%{transform:rotate(-8deg)}64%{transform:rotate(4deg)}82%{transform:rotate(-1.5deg)}}
+</style>
   <title id="meter-title">Meter — gauge robot</title>
   <desc id="meter-desc">A sage boxy robot whose eyes are two analogue VU meters with matching needles, with ear knobs, a row of dials and a toggle switch on its chest, ring jointed arms with three finger hands, and legs with ring knees on flat feet.</desc>
+  <g class="bot">
   <!-- Arms with three finger hands -->
-  <path d="m176 232-38 48v50m198-98 38 48v50" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
-  <path d="M130 342l-6 24M138 344v26M146 342l6 24M382 342l6 24M374 344v26M366 342l-6 24" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
-  <rect x="124" y="326" width="28" height="16" rx="5" fill="#7d9c6a"/>
-  <rect x="360" y="326" width="28" height="16" rx="5" fill="#7d9c6a"/>
-  <circle cx="138" cy="280" r="13" fill="#3d4853"/>
-  <circle cx="374" cy="280" r="13" fill="#3d4853"/>
-  <circle cx="138" cy="280" r="6" fill="#92a1b2"/>
-  <circle cx="374" cy="280" r="6" fill="#92a1b2"/>
-  <circle cx="176" cy="232" r="18" fill="#3d4853"/>
-  <circle cx="336" cy="232" r="18" fill="#3d4853"/>
-  <circle cx="176" cy="232" r="8" fill="#92a1b2"/>
-  <circle cx="336" cy="232" r="8" fill="#92a1b2"/>
+  <g class="arm-l" style="transform-origin:176px 232px">
+    <path d="M176 232l-38 48" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
+    <g class="fore-l" style="transform-origin:138px 280px">
+      <path d="M138 280v50" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
+      <path d="M130 342l-6 24M138 344v26M146 342l6 24" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+      <rect x="124" y="326" width="28" height="16" rx="5" fill="#7d9c6a"/>
+    </g>
+    <circle cx="138" cy="280" r="13" fill="#3d4853"/>
+    <circle cx="138" cy="280" r="6" fill="#92a1b2"/>
+    <circle cx="176" cy="232" r="18" fill="#3d4853"/>
+    <circle cx="176" cy="232" r="8" fill="#92a1b2"/>
+  </g>
+  <g class="arm-r" style="transform-origin:336px 232px">
+    <path d="M336 232l38 48" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
+    <g class="fore-r" style="transform-origin:374px 280px">
+      <path d="M374 280v50" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
+      <path d="M382 342l6 24M374 344v26M366 342l-6 24" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+      <rect x="360" y="326" width="28" height="16" rx="5" fill="#7d9c6a"/>
+    </g>
+    <circle cx="374" cy="280" r="13" fill="#3d4853"/>
+    <circle cx="374" cy="280" r="6" fill="#92a1b2"/>
+    <circle cx="336" cy="232" r="18" fill="#3d4853"/>
+    <circle cx="336" cy="232" r="8" fill="#92a1b2"/>
+  </g>
+  </g>
   <!-- Legs with ring knees and flat feet -->
   <rect x="200" y="352" width="28" height="98" fill="#7d9c6a"/>
   <rect x="284" y="352" width="28" height="98" fill="#7d9c6a"/>
@@ -24,9 +84,12 @@
   <circle cx="298" cy="404" r="8" fill="#92a1b2"/>
   <path d="M186 470v-8q0-12 12-12h36q12 0 12 12v8Zm80 0v-8q0-12 12-12h36q12 0 12 12v8Z" fill="#5f7d4f"/>
   <path d="M182 466h68v10h-68Zm80 0h68v10h-68Z" fill="#3d4853"/>
+  <g class="bot">
+  <g class="head" style="transform-origin:256px 200px"><g class="neck" style="transform-origin:256px 202px">
+    <rect x="236" y="182" width="40" height="20" fill="#3d4853"/>
+    <rect x="236" y="190" width="40" height="4" fill="#697785"/>
+  </g></g>
   <!-- Body with dials and a toggle switch -->
-  <rect x="236" y="182" width="40" height="20" fill="#3d4853"/>
-  <rect x="236" y="190" width="40" height="4" fill="#697785"/>
   <rect x="176" y="198" width="160" height="160" rx="18" fill="#7d9c6a"/>
   <path d="M194 198h124q18 0 18 18v4H176v-4q0-18 18-18Z" fill="#9db88a"/>
   <path d="M312 200q24 2 24 22v118q0 18-24 18Z" fill="#5f7d4f"/>
@@ -43,9 +106,12 @@
   <circle cx="212" cy="304" r="7" fill="#f6c354"/>
   <circle cx="300" cy="304" r="7" fill="#79d6eb"/>
   <path d="M204 342h104" stroke="#5f7d4f" stroke-width="5" stroke-linecap="round"/>
+  <g class="head" style="transform-origin:256px 200px"><g class="pop">
   <!-- Aerial and ear knobs -->
-  <rect x="252" y="70" width="8" height="24" fill="#697785"/>
-  <circle cx="256" cy="68" r="9" fill="#f6c354"/>
+  <g class="ant" style="transform-origin:256px 93px">
+    <rect x="252" y="70" width="8" height="24" fill="#697785"/>
+    <circle cx="256" cy="68" r="9" fill="#f6c354"/>
+  </g>
   <rect x="154" y="116" width="16" height="44" rx="5" fill="#3d4853"/>
   <rect x="342" y="116" width="16" height="44" rx="5" fill="#3d4853"/>
   <!-- Wide head with VU meter eyes -->
@@ -59,7 +125,10 @@
   <path d="M191.5 137.4a32 32 0 0 1 49 0m31 0a32 32 0 0 1 49 0" fill="none" stroke="#3d4853" stroke-width="2"/>
   <path d="M191.5 137.4l4.6 3.9M202.5 129l2.5 5.4M216 126v6M229.5 129l-2.5 5.4M271.5 137.4l4.6 3.9M282.5 129l2.5 5.4M296 126v6M309.5 129l-2.5 5.4" stroke="#3d4853" stroke-width="2.5" stroke-linecap="round"/>
   <path d="m240.5 137.4-4.6 3.9m84.6-3.9-4.6 3.9" stroke="#c2443a" stroke-width="2.5" stroke-linecap="round"/>
-  <path d="m216 158-7.8-29m87.8 29-7.8-29" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/>
+  <g class="vu" style="transform-origin:216px 158px"><path d="M216 158l-7.8-29" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/></g>
+  <g class="vu" style="transform-origin:296px 158px"><path d="M296 158l-7.8-29" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/></g>
   <circle cx="216" cy="158" r="5" fill="#3d4853"/>
   <circle cx="296" cy="158" r="5" fill="#3d4853"/>
+  </g></g>
+  </g>
 </svg>

@@ -1,16 +1,68 @@
-<svg width="264" height="424" viewBox="124 54 264 424" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="beam-title beam-desc">
+<svg width="264" height="424" viewBox="124 54 264 424" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="beam-title beam-desc" class="r72" data-idle="blink blink dip dip switch beacon" data-work="snip snip switch switch beacon blink"><style>
+.r72[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r72-blink .4s ease-in-out}
+.r72[data-act=beacon] .up{animation:r72-lean 2s ease-in-out}
+.r72[data-act=beacon] .lens{animation:r72-skyward 2s ease-in-out}
+.r72[data-act=beacon] .glass{animation:r72-lit 2s ease-in-out}
+.r72[data-act=beacon] .eyes{animation:r72-up 2s ease-in-out}
+.r72[data-act=beacon] .arm-r{animation:r72-raise 2s ease-in-out}
+.r72[data-act=beacon] .fore-r{animation:r72-point 2s ease-in-out}
+.r72[data-act=beacon] .arm-l{animation:r72-ballast 2s ease-in-out}
+.r72[data-act=beacon] .fore-l{animation:r72-ballast-fore 2s ease-in-out}
+.r72[data-act=dip] .up{animation:r72-sink 1.6s ease-in-out}
+.r72[data-act=dip] .lens{animation:r72-down 1.6s ease-in-out}
+.r72[data-act=dip] .eyes{animation:r72-down-eyes 1.6s ease-in-out}
+.r72[data-act=dip] .fore-l{animation:r72-hang-l 1.6s ease-in-out}
+.r72[data-act=dip] .fore-r{animation:r72-hang-r 1.6s ease-in-out}
+.r72[data-act=switch] .up{animation:r72-lean-in 1.8s ease-in-out}
+.r72[data-act=switch] .arm-l{animation:r72-tuck 1.8s ease-in-out}
+.r72[data-act=switch] .fore-l{animation:r72-grab 1.8s ease-in-out}
+.r72[data-act=switch] .fore-l .nip-l{animation:r72-jaw-l 1.8s ease-in-out}
+.r72[data-act=switch] .fore-l .nip-r{animation:r72-jaw-r 1.8s ease-in-out}
+.r72[data-act=switch] .knob{animation:r72-pull 1.8s ease-in-out}
+.r72[data-act=switch] .stick{animation:r72-stick 1.8s ease-in-out}
+.r72[data-act=switch] .lens{animation:r72-watch 1.8s ease-in-out}
+.r72[data-act=switch] .eyes{animation:r72-watch-eyes 1.8s ease-in-out}
+.r72[data-act=snip] .arm-l{animation:r72-elbow-l 1.6s ease-in-out}
+.r72[data-act=snip] .arm-r{animation:r72-elbow-r 1.6s ease-in-out}
+.r72[data-act=snip] .fore-l{animation:r72-fold-l 1.6s ease-in-out}
+.r72[data-act=snip] .fore-r{animation:r72-fold-r 1.6s ease-in-out}
+.r72[data-act=snip] .nip-l{animation:r72-snap-l 1.6s ease-in-out}
+.r72[data-act=snip] .nip-r{animation:r72-snap-r 1.6s ease-in-out}
+.r72[data-act=snip] .up{animation:r72-bob 1.6s ease-in-out}
+/* the upper body leans over the hips and sinks 41 units x angle so the legs stay under it */
+@keyframes r72-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+@keyframes r72-lean{0%,100%{transform:none}10%{transform:translate(0,1px)}36%,56%{transform:translate(0,.5px) rotate(-1.2deg)}78%{transform:rotate(.35deg)}90%{transform:rotate(-.1deg)}}
+@keyframes r72-skyward{0%,100%{transform:none}10%{transform:translateY(2px) scaleY(.97)}36%,58%{transform:translateY(-12px) scaleY(.86)}76%{transform:translateY(2px) scaleY(.98)}90%{transform:translateY(-.6px) scaleY(.995)}}
+@keyframes r72-lit{0%,30%,74%,100%{fill:#fff8de}44%,58%{fill:#ffeea0}}
+@keyframes r72-up{0%,24%,100%{transform:none}36%,60%{transform:translateY(-3px)}78%{transform:none}}
+@keyframes r72-raise{0%,100%{transform:none}10%{transform:rotate(5deg)}36%,52%{transform:rotate(-110deg)}58%{transform:rotate(-106deg)}80%{transform:rotate(6deg)}92%{transform:rotate(-2deg)}}
+@keyframes r72-point{0%,12%,100%{transform:none}38%,54%{transform:rotate(-70deg)}60%{transform:rotate(-66deg)}84%{transform:rotate(9deg)}94%{transform:rotate(-2.5deg)}}
+@keyframes r72-ballast{0%,100%{transform:none}36%,56%{transform:rotate(9deg)}78%{transform:rotate(-3deg)}90%{transform:rotate(1deg)}}
+@keyframes r72-ballast-fore{0%,100%{transform:none}40%,58%{transform:rotate(10deg)}82%{transform:rotate(-4deg)}94%{transform:rotate(1.2deg)}}
+@keyframes r72-sink{0%,100%{transform:none}30%,56%{transform:translateY(2px)}76%{transform:translateY(-.5px)}}
+@keyframes r72-down{0%,100%{transform:none}28%,62%{transform:translateY(8px) scaleY(.91)}80%{transform:translateY(-1.5px) scaleY(.99)}}
+@keyframes r72-down-eyes{0%,100%{transform:none}24%,66%{transform:translateY(3px)}}
+@keyframes r72-hang-l{0%,100%{transform:none}34%{transform:rotate(-6deg)}58%{transform:rotate(4deg)}80%{transform:rotate(-1.5deg)}}
+@keyframes r72-hang-r{0%,100%{transform:none}38%{transform:rotate(6deg)}62%{transform:rotate(-4deg)}84%{transform:rotate(1.5deg)}}
+@keyframes r72-lean-in{0%,100%{transform:none}30%,64%{transform:translate(0,.7px) rotate(-1deg)}84%{transform:translate(0,.2px) rotate(.3deg)}}
+@keyframes r72-tuck{0%,100%{transform:none}6%{transform:rotate(4deg)}30%,38%{transform:rotate(-20deg)}56%,64%{transform:rotate(-12deg)}84%{transform:rotate(3deg)}94%{transform:rotate(-1deg)}}
+@keyframes r72-grab{0%,6%,100%{transform:none}30%,38%{transform:rotate(-104deg)}56%,64%{transform:rotate(-90deg)}84%{transform:rotate(8deg)}94%{transform:rotate(-2deg)}}
+@keyframes r72-jaw-l{0%,14%,100%{transform:none}26%{transform:rotate(18deg)}34%,64%{transform:rotate(-2deg)}72%{transform:rotate(14deg)}86%{transform:none}}
+@keyframes r72-jaw-r{0%,14%,100%{transform:none}26%{transform:rotate(-18deg)}34%,64%{transform:rotate(2deg)}72%{transform:rotate(-14deg)}86%{transform:none}}
+@keyframes r72-pull{0%,38%,100%{transform:none}56%,64%{transform:translateY(20px)}76%{transform:translateY(-3px)}86%{transform:translateY(1px)}}
+@keyframes r72-stick{0%,38%,100%{transform:none}56%,64%{transform:scaleY(.333)}76%{transform:scaleY(1.1)}86%{transform:scaleY(.97)}}
+@keyframes r72-watch{0%,100%{transform:none}28%,66%{transform:translateY(5px) scaleY(.95)}84%{transform:none}}
+@keyframes r72-watch-eyes{0%,100%{transform:none}24%,68%{transform:translate(-6px,3px)}86%{transform:none}}
+@keyframes r72-elbow-l{0%,100%{transform:none}26%,72%{transform:rotate(8deg)}88%{transform:rotate(-2deg)}}
+@keyframes r72-elbow-r{0%,100%{transform:none}30%,74%{transform:rotate(-8deg)}90%{transform:rotate(2deg)}}
+@keyframes r72-fold-l{0%,100%{transform:none}26%,72%{transform:rotate(-70deg)}86%{transform:rotate(6deg)}95%{transform:rotate(-1.5deg)}}
+@keyframes r72-fold-r{0%,100%{transform:none}30%,74%{transform:rotate(70deg)}88%{transform:rotate(-6deg)}96%{transform:rotate(1.5deg)}}
+@keyframes r72-snap-l{0%,18%,100%{transform:none}30%{transform:rotate(20deg)}40%{transform:rotate(-2deg)}52%{transform:rotate(20deg)}62%,74%{transform:rotate(-2deg)}84%{transform:none}}
+@keyframes r72-snap-r{0%,18%,100%{transform:none}30%{transform:rotate(-20deg)}40%{transform:rotate(2deg)}52%{transform:rotate(-20deg)}62%,74%{transform:rotate(2deg)}84%{transform:none}}
+@keyframes r72-bob{0%,100%{transform:none}40%{transform:translateY(2px)}50%{transform:translateY(.5px)}62%{transform:translateY(2px)}80%{transform:none}}
+</style>
   <title id="beam-title">Beam — searchlight robot</title>
   <desc id="beam-desc">A plum robot whose head is a big round searchlight in a slate yoke, with a thick rim, ringed pale glass and two eyes on a band across the lens, a sturdy boxy body with a power lever and vents, ring jointed arms with pincers, and legs with ring knees on flat feet.</desc>
-  <!-- Ring jointed arms with pincers -->
-  <path d="m182 276-36 42v40m184-82 36 42v40" fill="none" stroke="#697785" stroke-width="13" stroke-linejoin="round"/>
-  <rect x="134" y="354" width="24" height="14" rx="4" fill="#8a4f7d"/>
-  <rect x="354" y="354" width="24" height="14" rx="4" fill="#8a4f7d"/>
-  <path d="M152 354h2q4 0 4 4v6q0 4-4 4h-2Zm220 0h2q4 0 4 4v6q0 4-4 4h-2Z" fill="#6b3a60"/>
-  <path d="M138 368q-8 14 2 26m16-26q8 14-2 26m202-26q-8 14 2 26m16-26q8 14-2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
-  <circle cx="146" cy="318" r="11" fill="#3d4853"/>
-  <circle cx="366" cy="318" r="11" fill="#3d4853"/>
-  <circle cx="146" cy="318" r="5" fill="#92a1b2"/>
-  <circle cx="366" cy="318" r="5" fill="#92a1b2"/>
   <!-- Legs with ring knees and flat feet -->
   <path d="M222 362v86m68-86v86" stroke="#697785" stroke-width="14"/>
   <circle cx="222" cy="408" r="13" fill="#3d4853"/>
@@ -20,13 +72,17 @@
   <path d="M200 446h44q6 0 6 6v14h-56v-14q0-6 6-6Zm68 0h44q6 0 6 6v14h-56v-14q0-6 6-6Z" fill="#8a4f7d"/>
   <path d="M236 446h8q6 0 6 6v14h-14Zm68 0h8q6 0 6 6v14h-14Z" fill="#6b3a60"/>
   <path d="M190 466h64v10h-64Zm68 0h64v10h-64Z" fill="#3d4853"/>
+  <g class="up" style="transform-origin:256px 364px">
+  <!-- Ring jointed arms with pincers -->
+  <g class="arm-l" style="transform-origin:182px 276px"><path d="M182 276l-36 42" fill="none" stroke="#697785" stroke-width="13" stroke-linejoin="round"/></g>
+  <g class="arm-r" style="transform-origin:330px 276px"><path d="M330 276l36 42" fill="none" stroke="#697785" stroke-width="13" stroke-linejoin="round"/></g>
   <!-- Sturdy body with a power lever and vents -->
   <rect x="182" y="254" width="148" height="112" rx="14" fill="#8a4f7d"/>
   <path d="M196 254h120q14 0 14 14v2H182v-2q0-14 14-14Z" fill="#a96a9b"/>
   <path d="M312 256q18 2 18 14v82q0 12-18 14Z" fill="#6b3a60"/>
   <rect x="206" y="282" width="18" height="52" rx="9" fill="#3d4853"/>
-  <path d="M215 324v-30" stroke="#697785" stroke-width="5" stroke-linecap="round"/>
-  <circle cx="215" cy="292" r="8" fill="#f6c354"/>
+  <g class="stick" style="transform-origin:215px 324px"><path d="M215 324v-30" stroke="#697785" stroke-width="5" stroke-linecap="round"/></g>
+  <g class="knob"><circle cx="215" cy="292" r="8" fill="#f6c354"/></g>
   <path d="M244 288h56m-56 14h56m-56 14h56" stroke="#6b3a60" stroke-width="6" stroke-linecap="round"/>
   <circle cx="258" cy="344" r="6" fill="#79d6eb"/>
   <circle cx="282" cy="344" r="6" fill="#f6c354"/>
@@ -36,6 +92,28 @@
   <circle cx="330" cy="276" r="16" fill="#3d4853"/>
   <circle cx="182" cy="276" r="7" fill="#92a1b2"/>
   <circle cx="330" cy="276" r="7" fill="#92a1b2"/>
+  <g class="arm-l" style="transform-origin:182px 276px">
+  <g class="fore-l" style="transform-origin:146px 318px">
+  <path d="M146 318v40" fill="none" stroke="#697785" stroke-width="13" stroke-linejoin="round"/>
+  <rect x="134" y="354" width="24" height="14" rx="4" fill="#8a4f7d"/>
+  <path d="M152 354h2q4 0 4 4v6q0 4-4 4h-2Z" fill="#6b3a60"/>
+  <g class="nip-l" style="transform-origin:138px 368px"><path d="M138 368q-8 14 2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
+  <g class="nip-r" style="transform-origin:156px 368px"><path d="M156 368q8 14-2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
+  </g>
+  <circle cx="146" cy="318" r="11" fill="#3d4853"/>
+  <circle cx="146" cy="318" r="5" fill="#92a1b2"/>
+  </g>
+  <g class="arm-r" style="transform-origin:330px 276px">
+  <g class="fore-r" style="transform-origin:366px 318px">
+  <path d="M366 318v40" fill="none" stroke="#697785" stroke-width="13" stroke-linejoin="round"/>
+  <rect x="354" y="354" width="24" height="14" rx="4" fill="#8a4f7d"/>
+  <path d="M372 354h2q4 0 4 4v6q0 4-4 4h-2Z" fill="#6b3a60"/>
+  <g class="nip-l" style="transform-origin:356px 368px"><path d="M356 368q-8 14 2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
+  <g class="nip-r" style="transform-origin:374px 368px"><path d="M374 368q8 14-2 26" fill="none" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/></g>
+  </g>
+  <circle cx="366" cy="318" r="11" fill="#3d4853"/>
+  <circle cx="366" cy="318" r="5" fill="#92a1b2"/>
+  </g>
   <!-- Slate yoke and turntable -->
   <rect x="244" y="230" width="24" height="26" fill="#3d4853"/>
   <rect x="226" y="248" width="60" height="10" rx="4" fill="#697785"/>
@@ -49,19 +127,24 @@
   <circle cx="302.7" cy="93.3" r="4" fill="#a96a9b"/>
   <circle cx="209.3" cy="186.7" r="4" fill="#6b3a60"/>
   <circle cx="302.7" cy="186.7" r="4" fill="#a96a9b"/>
+  <g class="lens" style="transform-origin:256px 140px">
   <circle cx="256" cy="140" r="58" fill="#3d4853"/>
-  <circle cx="256" cy="140" r="52" fill="#fff8de"/>
+  <circle class="glass" cx="256" cy="140" r="52" fill="#fff8de"/>
   <circle cx="256" cy="140" r="42" fill="none" stroke="#f6c354" stroke-width="4"/>
   <circle cx="256" cy="140" r="30" fill="none" stroke="#f6c354" stroke-width="4"/>
   <path d="M222 108a46 46 0 0 1 22-12" fill="none" stroke="#fffae0" stroke-width="6" stroke-linecap="round"/>
   <rect x="208" y="125" width="96" height="30" rx="15" fill="#3d4853"/>
+  <g class="eyes">
   <circle cx="236" cy="140" r="10" fill="#74d3ec"/>
   <circle cx="276" cy="140" r="10" fill="#74d3ec"/>
   <path d="M242 132a10 10 0 0 1-8 18 10 10 0 0 0 8-18Zm40 0a10 10 0 0 1-8 18 10 10 0 0 0 8-18Z" fill="#4fb0c5"/>
   <circle cx="239" cy="136" r="3" fill="#fffae0"/>
   <circle cx="279" cy="136" r="3" fill="#fffae0"/>
+  </g>
+  </g>
   <circle cx="172" cy="140" r="14" fill="#3d4853"/>
   <circle cx="340" cy="140" r="14" fill="#3d4853"/>
   <circle cx="172" cy="140" r="6" fill="#92a1b2"/>
   <circle cx="340" cy="140" r="6" fill="#92a1b2"/>
+  </g>
 </svg>

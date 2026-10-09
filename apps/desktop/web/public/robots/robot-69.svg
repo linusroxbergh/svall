@@ -1,20 +1,73 @@
-<svg width="272" height="426" viewBox="120 52 272 426" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="mainframe-title mainframe-desc">
+<svg width="272" height="426" viewBox="120 52 272 426" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="mainframe-title mainframe-desc" class="r69" data-idle="blink blink peer peer sigh" data-work="compute compute knock knock peer blink"><style>
+.r69[data-act=compute] .cab{animation:r69-tip 2s ease-in-out}
+.r69[data-act=compute] .ua-l{animation:r69-reach 2s ease-in-out}
+.r69[data-act=compute] .fa-l{animation:r69-tap 2s ease-in-out}
+.r69[data-act=compute] .reel-l{animation:r69-reel-cw 2s ease-in-out}
+.r69[data-act=compute] .reel-r{animation:r69-reel-ccw 2s ease-in-out}
+.r69[data-act=compute] .ly{animation:r69-ly 2s ease-in-out}
+.r69[data-act=compute] .lc{animation:r69-lc 2s ease-in-out}
+.r69[data-act=compute] .lg{animation:r69-lg 2s ease-in-out}
+.r69[data-act=compute] .ant{animation:r69-ant-tip 2s ease-in-out}
+.r69[data-act=compute] .eyes{animation:r69-eyes-hand 2s ease-in-out}
+.r69[data-act=knock] .ua-r{animation:r69-knock-ua 1.8s ease-in-out}
+.r69[data-act=knock] .fa-r{animation:r69-knock-fa 1.8s ease-in-out}
+.r69[data-act=knock] .head{animation:r69-jolt 1.8s ease-in-out}
+.r69[data-act=knock] .ant{animation:r69-ant-jolt 1.8s ease-in-out}
+.r69[data-act=knock] .reel-l,.r69[data-act=knock] .reel-r{animation:r69-reel-kick 1.8s ease-in-out}
+.r69[data-act=knock] .eyes{animation:r69-eyes-r 1.8s ease-in-out}
+.r69[data-act=peer] .cab{animation:r69-lean 1.6s ease-in-out}
+.r69[data-act=peer] .head{animation:r69-cock 1.6s ease-in-out}
+.r69[data-act=peer] .ant{animation:r69-ant-cock 1.6s ease-in-out}
+.r69[data-act=peer] .eyes{animation:r69-look 1.6s ease-in-out}
+.r69[data-act=sigh] .up{animation:r69-sink 1.8s ease-in-out}
+.r69[data-act=sigh] .head{animation:r69-droop 1.8s ease-in-out}
+.r69[data-act=sigh] .ua-l{animation:r69-slump-l 1.8s ease-in-out}
+.r69[data-act=sigh] .ua-r{animation:r69-slump-r 1.8s ease-in-out}
+.r69[data-act=sigh] .ant{animation:r69-ant-sigh 1.8s ease-in-out}
+.r69[data-act=sigh] .eyes{animation:r69-eyes-down 1.8s ease-in-out}
+.r69[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r69-blink .4s ease-in-out}
+@keyframes r69-tip{0%,100%{transform:none}24%,60%{transform:rotate(1.3deg)}76%{transform:none}87%{transform:rotate(.35deg)}}
+@keyframes r69-reach{0%,100%{transform:none}22%,60%{transform:rotate(-8deg)}80%{transform:rotate(1.5deg)}92%{transform:rotate(-.4deg)}}
+@keyframes r69-tap{0%,100%{transform:none}22%{transform:rotate(-50deg)}31%{transform:rotate(-43deg)}38%{transform:rotate(-50deg)}46%{transform:rotate(-43deg)}54%,60%{transform:rotate(-50deg)}80%{transform:rotate(4deg)}91%{transform:rotate(-1deg)}}
+@keyframes r69-reel-cw{0%{transform:rotate(0deg)}100%{transform:rotate(720deg)}}
+@keyframes r69-reel-ccw{0%{transform:rotate(0deg)}100%{transform:rotate(-720deg)}}
+@keyframes r69-ly{0%,24%,70%,100%{fill:#f6c354}32%,62%{fill:#79d6eb}}
+@keyframes r69-lc{0%,24%,70%,100%{fill:#79d6eb}32%,62%{fill:#697785}}
+@keyframes r69-lg{0%,24%,70%,100%{fill:#697785}32%,62%{fill:#f6c354}}
+@keyframes r69-ant-tip{0%,60%,100%{transform:none}18%{transform:rotate(-6deg)}34%{transform:rotate(3deg)}48%{transform:rotate(-1deg)}74%{transform:rotate(7deg)}86%{transform:rotate(-3deg)}}
+@keyframes r69-eyes-hand{0%,100%{transform:none}16%,62%{transform:translate(-3px,3px)}}
+@keyframes r69-knock-ua{0%,100%{transform:none}16%{transform:rotate(-2deg)}28%{transform:rotate(3deg)}36%{transform:rotate(1deg)}44%{transform:rotate(3deg)}62%{transform:rotate(-1.5deg)}80%{transform:rotate(.5deg)}}
+@keyframes r69-knock-fa{0%,100%{transform:none}16%{transform:rotate(-5deg)}28%{transform:rotate(16deg)}36%{transform:rotate(7deg)}44%{transform:rotate(16deg)}62%{transform:rotate(-5deg)}80%{transform:rotate(1.5deg)}}
+@keyframes r69-jolt{0%,26%,100%{transform:none}31%{transform:rotate(-2.5deg)}39%{transform:rotate(.8deg)}47%{transform:rotate(-2.5deg)}60%{transform:rotate(1deg)}76%{transform:rotate(-.3deg)}}
+@keyframes r69-ant-jolt{0%,28%,100%{transform:none}34%{transform:rotate(10deg)}42%{transform:rotate(-6deg)}50%{transform:rotate(9deg)}60%{transform:rotate(-5deg)}72%{transform:rotate(2.5deg)}84%{transform:rotate(-1deg)}}
+@keyframes r69-reel-kick{0%,30%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+@keyframes r69-eyes-r{0%,100%{transform:none}10%,60%{transform:translateX(4px)}}
+@keyframes r69-lean{0%,100%{transform:none}26%,58%{transform:translate(0,-1.04px) rotate(-.45deg)}}
+@keyframes r69-cock{0%,100%{transform:none}26%,58%{transform:rotate(-6deg)}80%{transform:rotate(1.2deg)}}
+@keyframes r69-ant-cock{0%,100%{transform:none}24%{transform:rotate(8deg)}42%{transform:rotate(-3deg)}58%{transform:rotate(1deg)}74%{transform:rotate(-6deg)}88%{transform:rotate(2deg)}}
+@keyframes r69-look{0%,100%{transform:none}18%,40%{transform:translateX(-4px)}50%,66%{transform:translateX(3px)}84%{transform:none}}
+@keyframes r69-sink{0%,100%{transform:none}34%,48%{transform:translateY(4.5px)}70%{transform:translateY(-1px)}86%{transform:translateY(.4px)}}
+@keyframes r69-droop{0%,100%{transform:none}38%,50%{transform:translateY(2.5px)}72%{transform:translateY(-.8px)}}
+@keyframes r69-slump-l{0%,100%{transform:none}36%,48%{transform:rotate(4deg)}70%{transform:rotate(-1.5deg)}86%{transform:rotate(.5deg)}}
+@keyframes r69-slump-r{0%,100%{transform:none}40%,52%{transform:rotate(-4deg)}74%{transform:rotate(1.5deg)}90%{transform:rotate(-.5deg)}}
+@keyframes r69-ant-sigh{0%,100%{transform:none}30%{transform:rotate(-7deg)}54%{transform:rotate(4deg)}72%{transform:rotate(-2deg)}86%{transform:rotate(.8deg)}}
+@keyframes r69-eyes-down{0%,100%{transform:none}24%,56%{transform:translateY(3px)}}
+@keyframes r69-blink{0%,100%{transform:none}45%,55%{transform:scaleY(.1)}}
+</style>
   <title id="mainframe-title">Mainframe — computer cabinet robot</title>
   <desc id="mainframe-desc">A steel blue robot whose body is a tall 1960s computer cabinet with two tape reels behind a window and a panel of yellow and cyan lights, a small square head with two round eyes and a short antenna, ring jointed arms with three finger hands, and short legs on flat feet.</desc>
+  <g class="cab" style="transform-origin:322px 476px">
+  <g class="up">
   <!-- Antenna -->
+  <g class="head" style="transform-origin:238px 166px"><g class="ant" style="transform-origin:256px 92px">
   <path d="M256 92V70" stroke="#697785" stroke-width="6"/>
   <circle cx="256" cy="64" r="9" fill="#f6c354"/>
   <circle cx="253" cy="61" r="3" fill="#fffae0"/>
+  </g></g>
   <!-- Ring jointed arms with three finger hands -->
-  <path d="m172 214-30 48v50m198-98 30 48v50" fill="none" stroke="#697785" stroke-width="13" stroke-linejoin="round"/>
-  <path d="M134 330l-5 20M142 332v22M150 330l5 20M378 330l5 20M370 332v22M362 330l-5 20" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
-  <rect x="128" y="310" width="28" height="22" rx="5" fill="#6f86a0"/>
-  <rect x="356" y="310" width="28" height="22" rx="5" fill="#6f86a0"/>
-  <path d="M148 310h3q5 0 5 5v12q0 5-5 5h-3Zm228 0h3q5 0 5 5v12q0 5-5 5h-3Z" fill="#536a83"/>
-  <circle cx="142" cy="262" r="12" fill="#3d4853"/>
-  <circle cx="370" cy="262" r="12" fill="#3d4853"/>
-  <circle cx="142" cy="262" r="5" fill="#92a1b2"/>
-  <circle cx="370" cy="262" r="5" fill="#92a1b2"/>
+  <g class="ua-l" style="transform-origin:172px 214px"><path d="M172 214l-30 48" fill="none" stroke="#697785" stroke-width="13" stroke-linejoin="round"/></g>
+  <g class="ua-r" style="transform-origin:340px 214px"><path d="M340 214l30 48" fill="none" stroke="#697785" stroke-width="13" stroke-linejoin="round"/></g>
+  </g>
   <!-- Short legs on flat feet -->
   <rect x="206" y="404" width="32" height="46" fill="#6f86a0"/>
   <rect x="274" y="404" width="32" height="46" fill="#6f86a0"/>
@@ -23,9 +76,11 @@
   <path d="M194 468v-12q0-10 10-10h36q10 0 10 10v12Zm68 0v-12q0-10 10-10h36q10 0 10 10v12Z" fill="#6f86a0"/>
   <path d="M236 446h4q10 0 10 10v12h-14Zm68 0h4q10 0 10 10v12h-14Z" fill="#536a83"/>
   <path d="M190 466h64v10h-64Zm68 0h64v10h-64Z" fill="#3d4853"/>
+  <g class="up">
   <!-- Square head with two round eyes -->
-  <rect x="238" y="156" width="36" height="22" fill="#3d4853"/>
+  <g class="head" style="transform-origin:238px 166px"><rect x="238" y="156" width="36" height="22" fill="#3d4853"/></g>
   <rect x="232" y="166" width="48" height="7" rx="3" fill="#697785"/>
+  <g class="head" style="transform-origin:238px 166px">
   <rect x="204" y="110" width="12" height="30" rx="4" fill="#3d4853"/>
   <rect x="296" y="110" width="12" height="30" rx="4" fill="#3d4853"/>
   <rect x="214" y="92" width="84" height="68" rx="10" fill="#6f86a0"/>
@@ -33,11 +88,14 @@
   <path d="M282 92h6q10 0 10 10v48q0 10-10 10h-6Z" fill="#536a83"/>
   <circle cx="237" cy="128" r="15" fill="#3d4853"/>
   <circle cx="275" cy="128" r="15" fill="#3d4853"/>
+  <g class="eyes">
   <circle cx="237" cy="128" r="9" fill="#70d0e8"/>
   <circle cx="275" cy="128" r="9" fill="#70d0e8"/>
   <path d="M243 122a9 9 0 0 1-7 15 9 9 0 0 0 7-15Zm38 0a9 9 0 0 1-7 15 9 9 0 0 0 7-15Z" fill="#4fb0c5"/>
   <circle cx="240" cy="124" r="3" fill="#fffae0"/>
   <circle cx="278" cy="124" r="3" fill="#fffae0"/>
+  </g>
+  </g>
   <!-- Computer cabinet body -->
   <rect x="172" y="172" width="168" height="236" rx="12" fill="#6f86a0"/>
   <path d="M184 172h144q12 0 12 12v4H172v-4q0-12 12-12Z" fill="#8fa3b8"/>
@@ -47,35 +105,39 @@
   <path d="M222 263h68" stroke="#697785" stroke-width="3"/>
   <circle cx="222" cy="236" r="27" fill="#c9d3dc"/>
   <circle cx="290" cy="236" r="27" fill="#c9d3dc"/>
+  <g class="reel-l" style="transform-origin:222px 236px">
   <circle cx="222" cy="222" r="6" fill="#3d4853"/>
   <circle cx="234.1" cy="243" r="6" fill="#3d4853"/>
   <circle cx="209.9" cy="243" r="6" fill="#3d4853"/>
+  </g>
+  <g class="reel-r" style="transform-origin:290px 236px">
   <circle cx="290" cy="222" r="6" fill="#3d4853"/>
   <circle cx="302.1" cy="243" r="6" fill="#3d4853"/>
   <circle cx="277.9" cy="243" r="6" fill="#3d4853"/>
+  </g>
   <circle cx="222" cy="236" r="5" fill="#697785"/>
   <circle cx="290" cy="236" r="5" fill="#697785"/>
   <rect x="249" y="258" width="14" height="10" rx="2" fill="#f6c354"/>
   <!-- Panel of blinking lights -->
   <rect x="188" y="290" width="136" height="58" rx="6" fill="#3d4853"/>
-  <circle cx="202" cy="304" r="4.5" fill="#f6c354"/>
-  <circle cx="224" cy="304" r="4.5" fill="#79d6eb"/>
-  <circle cx="246" cy="304" r="4.5" fill="#697785"/>
-  <circle cx="268" cy="304" r="4.5" fill="#f6c354"/>
-  <circle cx="290" cy="304" r="4.5" fill="#697785"/>
-  <circle cx="312" cy="304" r="4.5" fill="#79d6eb"/>
-  <circle cx="202" cy="319" r="4.5" fill="#697785"/>
-  <circle cx="224" cy="319" r="4.5" fill="#f6c354"/>
-  <circle cx="246" cy="319" r="4.5" fill="#79d6eb"/>
-  <circle cx="268" cy="319" r="4.5" fill="#697785"/>
-  <circle cx="290" cy="319" r="4.5" fill="#79d6eb"/>
-  <circle cx="312" cy="319" r="4.5" fill="#f6c354"/>
-  <circle cx="202" cy="334" r="4.5" fill="#79d6eb"/>
-  <circle cx="224" cy="334" r="4.5" fill="#697785"/>
-  <circle cx="246" cy="334" r="4.5" fill="#f6c354"/>
-  <circle cx="268" cy="334" r="4.5" fill="#79d6eb"/>
-  <circle cx="290" cy="334" r="4.5" fill="#f6c354"/>
-  <circle cx="312" cy="334" r="4.5" fill="#697785"/>
+  <circle class="ly" cx="202" cy="304" r="4.5" fill="#f6c354"/>
+  <circle class="lc" cx="224" cy="304" r="4.5" fill="#79d6eb"/>
+  <circle class="lg" cx="246" cy="304" r="4.5" fill="#697785"/>
+  <circle class="ly" cx="268" cy="304" r="4.5" fill="#f6c354"/>
+  <circle class="lg" cx="290" cy="304" r="4.5" fill="#697785"/>
+  <circle class="lc" cx="312" cy="304" r="4.5" fill="#79d6eb"/>
+  <circle class="lg" cx="202" cy="319" r="4.5" fill="#697785"/>
+  <circle class="ly" cx="224" cy="319" r="4.5" fill="#f6c354"/>
+  <circle class="lc" cx="246" cy="319" r="4.5" fill="#79d6eb"/>
+  <circle class="lg" cx="268" cy="319" r="4.5" fill="#697785"/>
+  <circle class="lc" cx="290" cy="319" r="4.5" fill="#79d6eb"/>
+  <circle class="ly" cx="312" cy="319" r="4.5" fill="#f6c354"/>
+  <circle class="lc" cx="202" cy="334" r="4.5" fill="#79d6eb"/>
+  <circle class="lg" cx="224" cy="334" r="4.5" fill="#697785"/>
+  <circle class="ly" cx="246" cy="334" r="4.5" fill="#f6c354"/>
+  <circle class="lc" cx="268" cy="334" r="4.5" fill="#79d6eb"/>
+  <circle class="ly" cx="290" cy="334" r="4.5" fill="#f6c354"/>
+  <circle class="lg" cx="312" cy="334" r="4.5" fill="#697785"/>
   <!-- Knobs and vents -->
   <circle cx="208" cy="374" r="10" fill="#3d4853"/>
   <circle cx="238" cy="374" r="10" fill="#3d4853"/>
@@ -83,9 +145,28 @@
   <circle cx="238" cy="374" r="4" fill="#92a1b2"/>
   <path d="M266 366h50m-50 10h50m-50 10h50" stroke="#536a83" stroke-width="4" stroke-linecap="round"/>
   <rect x="180" y="398" width="152" height="12" rx="4" fill="#3d4853"/>
+  <!-- Forearms and hands, in front of the cabinet when they swing in -->
+  <g class="ua-l" style="transform-origin:172px 214px"><g class="fa-l" style="transform-origin:142px 262px">
+  <path d="M142 262v50" fill="none" stroke="#697785" stroke-width="13" stroke-linejoin="round"/>
+  <path d="M134 330l-5 20M142 332v22M150 330l5 20" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+  <rect x="128" y="310" width="28" height="22" rx="5" fill="#6f86a0"/>
+  <path d="M148 310h3q5 0 5 5v12q0 5-5 5h-3Z" fill="#536a83"/>
+  <circle cx="142" cy="262" r="12" fill="#3d4853"/>
+  <circle cx="142" cy="262" r="5" fill="#92a1b2"/>
+  </g></g>
+  <g class="ua-r" style="transform-origin:340px 214px"><g class="fa-r" style="transform-origin:370px 262px">
+  <path d="M370 262v50" fill="none" stroke="#697785" stroke-width="13" stroke-linejoin="round"/>
+  <path d="M378 330l5 20M370 332v22M362 330l-5 20" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
+  <rect x="356" y="310" width="28" height="22" rx="5" fill="#6f86a0"/>
+  <path d="M376 310h3q5 0 5 5v12q0 5-5 5h-3Z" fill="#536a83"/>
+  <circle cx="370" cy="262" r="12" fill="#3d4853"/>
+  <circle cx="370" cy="262" r="5" fill="#92a1b2"/>
+  </g></g>
   <!-- Shoulder ring joints -->
   <circle cx="172" cy="214" r="18" fill="#3d4853"/>
   <circle cx="340" cy="214" r="18" fill="#3d4853"/>
   <circle cx="172" cy="214" r="8" fill="#92a1b2"/>
   <circle cx="340" cy="214" r="8" fill="#92a1b2"/>
+  </g>
+  </g>
 </svg>
