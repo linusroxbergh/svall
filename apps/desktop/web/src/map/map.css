@@ -229,6 +229,8 @@
   background:radial-gradient(closest-side, color-mix(in srgb, var(--ink-land) 24%, transparent), transparent)}
 .tok .portrait.robot{position:absolute;z-index:1;left:50%;bottom:calc(var(--tok)*.08);transform:translateX(-50%);
   width:auto;height:92%;max-width:88%;object-fit:contain;object-position:center bottom}
+/* the inline robot lets its arms swing past its frame, and leaves the pointer to the card */
+.tok svg.portrait.robot{overflow:visible;pointer-events:none}
 /* a PR in review and a running monitor as small round marks on the card's top-right corner, on a layer over the card that lifts with it and lets clicks through */
 .tok .corner{position:absolute;z-index:10;inset:0;pointer-events:none;transition:transform var(--dur) var(--ease)}
 .tok:hover .corner{transform:translateY(-6px)}

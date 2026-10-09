@@ -240,7 +240,7 @@ function Update() {
 }
 
 export function SettingsCard() {
-  const { cardOpacity, fullOpacity, zoom, onePassword, usageTab, autoArrange, cardLinks, bindings } = useApp((s) => s.settings);
+  const { cardOpacity, fullOpacity, zoom, onePassword, usageTab, autoArrange, cardLinks, robotMotion, bindings } = useApp((s) => s.settings);
   const zoomOut = keyLabel('zoomOut', bindings), zoomReset = keyLabel('zoomReset', bindings);
   // on its shipped chord zoom in also answers ⌘+, the name macOS gives the key
   const zoomIn = chordsOf('zoomIn', bindings).includes('cmd++') ? chordLabel('cmd++') : keyLabel('zoomIn', bindings);
@@ -288,6 +288,11 @@ export function SettingsCard() {
           <span>usage meter<Info id="usage">A sidebar button showing plan limits and when they reset.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={usageTab} data-testid="set-usage-tab"
             onClick={() => { if (usageTab) app.store.getState().toggleUsage(false); set({ usageTab: !usageTab }); }}>{usageTab ? 'on' : 'off'}</button></b>
+        </div>
+        <div className="row">
+          <span>robot motion<Info id="robot-motion">Robots on the map act now and then, and stand still while a terminal is open.</Info></span>
+          <b><button className="set-switch" role="switch" aria-checked={robotMotion} data-testid="set-robot-motion"
+            onClick={() => set({ robotMotion: !robotMotion })}>{robotMotion ? 'on' : 'off'}</button></b>
         </div>
       </div>
       <div className="opens">

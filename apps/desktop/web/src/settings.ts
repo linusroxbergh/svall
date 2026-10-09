@@ -18,6 +18,8 @@ export type Settings = {
   autoArrange: boolean;
   // the link chips beside each card; the hover card lists the links either way
   cardLinks: boolean;
+  // robots on the map play their own short actions now and then
+  robotMotion: boolean;
   // only the chords the user changed; every other action keeps the one it ships with
   bindings: Bindings;
   // off until the user turns it on, since macOS asks too
@@ -25,7 +27,7 @@ export type Settings = {
 };
 
 export const DEFAULT_SETTINGS: Settings = {
-  cardOpacity: 0.65, fullOpacity: 1, zoom: 0.9, onePassword: false, usageTab: true, autoArrange: true, cardLinks: false, bindings: {},
+  cardOpacity: 0.65, fullOpacity: 1, zoom: 0.9, onePassword: false, usageTab: true, autoArrange: true, cardLinks: false, robotMotion: true, bindings: {},
   notifications: { on: false, sound: true, statuses: [...PUSH_STATUSES] },
 };
 export const OPACITY = { min: 0.3, max: 1, step: 0.05 };
@@ -97,6 +99,7 @@ export function readSettings(v: unknown): Settings {
     usageTab: o.usageTab !== false,
     autoArrange: o.autoArrange !== false,
     cardLinks: o.cardLinks === true,
+    robotMotion: o.robotMotion !== false,
     bindings: readBindings(o.bindings),
     notifications: readNotify(o.notifications),
   };

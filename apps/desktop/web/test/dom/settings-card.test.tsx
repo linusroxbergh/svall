@@ -188,3 +188,11 @@ test('the update section stands at the foot only while an update waits, and its 
   act(() => store.getState().setUpdate(undefined));
   expect(screen.queryByTestId('set-update')).toBeNull();
 });
+
+test('robot motion starts on, and its switch turns the stored setting off', () => {
+  render(<SettingsCard />);
+  expect(checked('set-robot-motion')).toBe('true');
+  fireEvent.click(screen.getByTestId('set-robot-motion'));
+  expect(store.getState().settings.robotMotion).toBe(false);
+  expect(checked('set-robot-motion')).toBe('false');
+});
