@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { pillWidth, type Island } from '@svall/protocol';
-import { cardScale, cellOwner, characterAt, clampPan, crewOf, drawnBox, fitAll, labelScale, limitAt, onBlocks, roomOf, screenToCell, worldBounds, worldCell, worldToScreen, type Below, type Layout } from '../src/map/layout.js';
+import { cardScale, cellOwner, characterAt, clampPan, crewOf, drawnBox, fitAll, labelScale, limitAt, onBlocks, roomOf, screenToCell, sharedCardScale, worldBounds, worldCell, worldToScreen, type Below, type Layout } from '../src/map/layout.js';
 import { mapIslands } from '../src/selectors.js';
 import { theme, tokenPx } from '../src/theme.js';
 import { fleet } from './fixtures.js';
@@ -109,6 +109,12 @@ describe('world layout', () => {
     expect(cardScale(theme.token.floor)).toBe(1);
     expect(cardScale(1)).toBe(1);
     expect(cardScale(1.5)).toBeCloseTo(1 + 0.5 * theme.token.grow, 10);
+  });
+
+  it('stands every card at the island cards\' scale, no bigger against home\'s cells than an island card against its own', () => {
+    expect(sharedCardScale(1.2, 1)).toBe(cardScale(1.2));
+    expect(sharedCardScale(0.5, 0.6)).toBe(cardScale(0.5));
+    expect(sharedCardScale(1, 0.6)).toBeCloseTo(0.6 / theme.token.floor, 10);
   });
 
   it('lets a label pill follow the map up to 1 and only a share of its growth past it', () => {

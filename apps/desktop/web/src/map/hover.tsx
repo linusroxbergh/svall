@@ -3,7 +3,7 @@ import type { Character, Island } from '@svall/protocol';
 import { theme, tokenPx } from '../theme.js';
 import { homeBox, homeCellToScreen } from './home.js';
 import { HoverCard } from './HoverCard.js';
-import { cardScale, cellSize, worldCell, worldToScreen, type Layout } from './layout.js';
+import { cellSize, sharedCardScale, worldCell, worldToScreen, type Layout } from './layout.js';
 import type { Placement } from './resources.js';
 
 // how far a hovered card rises, matching `.tok:hover .card` in map.css
@@ -43,8 +43,8 @@ export function HoverLayer({ c, island, layout, place, host }: { c: Character; i
   const p = box ? homeCellToScreen(box, c.cell) : worldToScreen(layout, worldCell(island.position, c.cell));
   const w = theme.hoverCardWidth;
   const cx = p.x + size / 2;
-  // a token is drawn at its card scale, or at home's, hover lift and all
-  const k = onHome ? place.homeScale : cardScale(layout.scale);
+  // a token is drawn at the cards' scale, hover lift and all
+  const k = sharedCardScale(layout.scale, place.homeScale);
   const top = p.y + size / 2 - (tokenPx.h * 0.48 + HOVER_LIFT) * k;   // the token's top edge on screen
   const bottom = p.y + size / 2 + (tokenPx.h * 0.52 - HOVER_LIFT) * k;
   const flip = top < 12 + theme.hoverCardMaxH;
