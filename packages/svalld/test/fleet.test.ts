@@ -661,6 +661,17 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id].tmux).toBeDefined();
   });
 
+  it('leaves an agent with a prompt held for it', async () => {
+    const b = await boot();
+    const { fleet, store } = b;
+    const { c } = await withAgent(b);
+    vi.spyOn(b.tmux, 'screen').mockResolvedValue(pane('claude-draft'));
+    expect(await fleet.run(c.id, 'go', true)).toBe('queued');
+    store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
+    await fleet['endIdleAgents']();
+    expect(store.state.characters[c.id].tmux).toBeDefined();
+  });
+
   it('gives a character the user has just looked at a whole rest before its agent is ended', async () => {
     const b = await boot();
     const { fleet, store } = b;
@@ -1070,7 +1081,8 @@ runIf('Fleet', () => {
       const { fleet, c, hook, screen, typed } = await agentPane('claude');
       hook({ name: 'PermissionRequest', toolName: 'Bash' });
       screen.mockResolvedValue(pane('claude-permission'));
-      await expect(fleet.run(c.id, 'go', true)).rejects.toMatchObject({ code: 'blocked' });
+      // Svall has no question to answer yet, so the terminal is where it is answered
+      await expect(fleet.run(c.id, 'go', true)).rejects.toMatchObject({ code: 'blocked', message: `${c.name} is waiting on an answer (Bash); answer it in its terminal, then send again` });
       // approved, the tool runs on with its prompt line back in view
       screen.mockResolvedValue(pane('claude-working'));
       expect(await fleet.run(c.id, 'go', true)).toBe('delivered');
@@ -1078,14 +1090,18 @@ runIf('Fleet', () => {
     });
 
     it.each(kinds)("is held while %s's prompt line has a draft, and goes in once it is cleared", async (kind) => {
-      const { fleet, c, screen, typed } = await agentPane(kind);
+      const { fleet, c, hook, screen, typed } = await agentPane(kind);
       screen.mockResolvedValue(pane(`${SCREENS[kind]}-draft`));
       expect(await fleet.run(c.id, 'first', true)).toBe('queued');
       await new Promise((r) => setTimeout(r, 1200));
       expect(typed).toEqual([]);
       screen.mockResolvedValue(pane(`${SCREENS[kind]}-empty${kind === 'opencode' ? '-session' : ''}`));
-      // one sent while another is held goes in after it
+      // one sent while another is held goes in after it, once the turn of the one before is over
       expect(await fleet.run(c.id, 'second', true)).toBe('queued');
+      await waitFor(() => typed.length === 1);
+      await new Promise((r) => setTimeout(r, 1200));
+      expect(typed).toEqual(['first']);
+      hook({ name: 'Stop' });
       await waitFor(() => typed.length === 2);
       expect(typed).toEqual(['first', 'second']);
     });
@@ -1147,6 +1163,103 @@ runIf('Fleet', () => {
       screen.mockResolvedValue(pane('claude-empty'));
       await new Promise((r) => setTimeout(r, 1200));
       expect(typed).toEqual([]);
+    });
+
+    it('is dropped when the fleet stops', async () => {
+      const { fleet, c, screen, typed } = await agentPane('claude');
+      screen.mockResolvedValue(pane('claude-draft'));
+      expect(await fleet.run(c.id, 'go', true)).toBe('queued');
+      await fleet.stop();
+      screen.mockResolvedValue(pane('claude-empty'));
+      await new Promise((r) => setTimeout(r, 1200));
+      expect(typed).toEqual([]);
+    });
+
+    it("is dropped when the agent's session ends, not typed into the next one", async () => {
+      const { fleet, c, hook, screen, typed } = await agentPane('claude');
+      screen.mockResolvedValue(pane('claude-draft'));
+      expect(await fleet.run(c.id, 'go', true)).toBe('queued');
+      hook({ name: 'SessionEnd' });
+      hook({ name: 'SessionStart', sessionId: 'other', transcriptPath: '/nope' });
+      screen.mockResolvedValue(pane('claude-empty'));
+      await new Promise((r) => setTimeout(r, 1200));
+      expect(typed).toEqual([]);
+    });
+
+    it('is dropped when the second terminal it waits on closes, not typed into the next one', async () => {
+      const { fleet, store, tmux, c, screen, typed } = await agentPane('claude');
+      const second = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', term: 2, name: 'SessionStart', sessionId: 's2', transcriptPath: '/nope', ...h } });
+      await fleet.openSecond(c.id);
+      second({});
+      screen.mockResolvedValue(pane('claude-draft'));
+      expect(await fleet.run(c.id, 'go', true, 2)).toBe('queued');
+      await tmux.killWindow(store.state.characters[c.id].second!.tmux.windowId);
+      await waitFor(() => !store.state.characters[c.id].second);
+      await fleet.openSecond(c.id);
+      second({ backend: 'codex', sessionId: 's3' });
+      screen.mockResolvedValue(pane('codex-empty'));
+      await new Promise((r) => setTimeout(r, 1200));
+      expect(typed).toEqual([]);
+    });
+
+    it("waits out the user's own turn, so a wait takes the end of the held prompt's turn", async () => {
+      const { fleet, c, hook, screen, typed } = await agentPane('codex');
+      hook({ name: 'Stop' });
+      screen.mockResolvedValue(pane('codex-draft'));
+      expect(await fleet.run(c.id, 'go', true)).toBe('queued');
+      let status: string | undefined;
+      const waited = fleet.waitFor(c.id, ['done'], 10_000).then((s) => { status = s; });
+      // the user sends their draft, and the agent works on it with its prompt line empty
+      hook({ name: 'UserPromptSubmit' });
+      screen.mockResolvedValue(pane('codex-working'));
+      await new Promise((r) => setTimeout(r, 1200));
+      expect(typed).toEqual([]);
+      hook({ name: 'Stop' });
+      screen.mockResolvedValue(pane('codex-empty'));
+      await waitFor(() => typed.length === 1);
+      expect(status).toBeUndefined();
+      hook({ name: 'Stop' });
+      await waited;
+      expect(status).toBe('done');
+    });
+
+    it('wakes a wait once the held prompts are in, though the agent did not change', async () => {
+      const { fleet, c, hook, screen, typed } = await agentPane('claude');
+      hook({ name: 'Stop' });
+      screen.mockResolvedValue(pane('claude-draft'));
+      expect(await fleet.run(c.id, 'note', false)).toBe('queued');
+      const waited = fleet.waitFor(c.id, ['done'], 3000);
+      screen.mockResolvedValue(pane('claude-empty'));
+      await waitFor(() => typed.length === 1);
+      expect(await waited).toBe('done');
+    });
+
+    it('is refused when the agent asks while its screen is read', async () => {
+      const { fleet, c, hook, screen, typed } = await agentPane('claude');
+      let shown: (() => void) | undefined;
+      screen.mockImplementation(() => new Promise((r) => { shown = () => r(pane('claude-empty')); }));
+      const run = fleet.run(c.id, 'go', true);
+      await waitFor(() => shown !== undefined);
+      hook({ notificationType: 'permission_prompt', message: 'may I' });
+      shown!();
+      await expect(run).rejects.toMatchObject({ code: 'blocked' });
+      expect(typed).toEqual([]);
+    });
+
+    it('says queued when a dormant agent wakes onto its window with a draft there', async () => {
+      const { fleet, store, c, screen, typed } = await agentPane('claude');
+      screen.mockResolvedValue(pane('claude-draft'));
+      store.update((d) => { delete d.characters[c.id].tmux; d.characters[c.id].revive = { command: 'claude --resume sess' }; });
+      expect(await fleet.run(c.id, 'go', true)).toBe('queued');
+      expect(typed).toEqual([]);
+    });
+
+    it('holds what follows text typed with no Enter until that text is sent or cleared', async () => {
+      const { fleet, c, screen, typed } = await agentPane('claude');
+      expect(await fleet.run(c.id, 'staged', false)).toBe('delivered');
+      screen.mockResolvedValue(pane('claude-draft'));
+      expect(await fleet.run(c.id, 'next', true)).toBe('queued');
+      expect(typed).toEqual(['staged']);
     });
   });
 

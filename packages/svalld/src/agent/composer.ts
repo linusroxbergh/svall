@@ -10,27 +10,33 @@ const OPENCODE_PLACEHOLDER = /^(Ask anything|Run a command)… "/;
 export function readComposer(kind: AgentKind, s: Screen): Composer {
   // all three hide the cursor while a dialog or a menu has the keys
   if (s.cursor === undefined) return 'hidden';
-  const row = s.rows[s.cursor] ?? '';
-  if (kind === 'opencode') return readOpencode(row, s.rows[s.cursor - 1] ?? '');
+  if (kind === 'opencode') return readOpencode(s.rows, s.cursor);
   // Claude Code and Codex start the prompt line with a marker and draw its placeholder faint. A row without the
   // marker has the cursor further down a draft, or in a field of their own. Claude Code follows its marker with a no-break space
-  const line = plain(row, false);
+  const line = plain(s.rows[s.cursor] ?? '', false);
   const marker = kind === 'claude' ? '❯' : '›';
   const rest = line.slice(marker.length);
-  if (!line.startsWith(marker) || /^\S/.test(rest)) return 'draft';
-  return rest.trim() ? 'draft' : 'empty';
+  if (!line.startsWith(marker) || /^\S/.test(rest) || rest.trim()) return 'draft';
+  // a draft's further lines sit under its first, down to Claude Code's rule or Codex's blank row
+  for (const r of s.rows.slice(s.cursor + 1)) {
+    const more = plain(r, false).trim();
+    if (kind === 'claude' ? plain(r).trimStart().startsWith('─') : !more) break;
+    if (more) return 'draft';
+  }
+  return 'empty';
 }
 
-// OpenCode's prompt box has a bar down its left side and a blank row at its top, so a row above the cursor's with text
-// in it is the draft's
-function readOpencode(row: string, above: string): Composer {
-  const line = plain(row);
-  const bar = line.indexOf('┃');
+// OpenCode's prompt box has a bar down its left side, a blank row at its top and the agent and model in its last row
+function readOpencode(rows: string[], cursor: number): Composer {
+  const bar = plain(rows[cursor] ?? '').indexOf('┃');
   if (bar < 0) return 'draft';
-  const prev = plain(above);
-  if (prev[bar] === '┃' && prev.slice(bar + 1).trim()) return 'draft';
-  const input = line.slice(bar + 1).trim();
-  return !input || OPENCODE_PLACEHOLDER.test(input) ? 'empty' : 'draft';
+  const inBox = (i: number) => plain(rows[i] ?? '')[bar] === '┃';
+  let top = cursor;
+  while (inBox(top - 1)) top--;
+  let end = cursor + 1;
+  while (inBox(end)) end++;
+  const input = rows.slice(top, Math.max(end - 1, cursor + 1)).map((r) => plain(r).slice(bar + 1).trim()).filter(Boolean);
+  return input.every((t) => OPENCODE_PLACEHOLDER.test(t)) ? 'empty' : 'draft';
 }
 
 // a row as capture-pane -e prints it, without its escapes, and without its faint text unless `faint`

@@ -39,8 +39,26 @@ describe('readComposer', () => {
     expect(readComposer(kind, screen(name))).toBe(want);
   });
 
+  // the cursor moved up to a multi-line draft's first line, emptied, with the rest of the draft below it
+  it.each([['claude', 'claude-multiline'], ['codex', 'codex-multiline'], ['opencode', 'oc-multiline']] as const)(
+    'reads %s with an empty first line over the rest of a draft as the draft', (kind, name) => {
+      const s = screen(name);
+      const first = s.rows.findIndex((r) => r.includes('half typed draft'));
+      s.rows[first] = s.rows[first].replace('half typed draft', '');
+      expect(readComposer(kind, { ...s, cursor: first })).toBe('draft');
+    });
+
+  it('reads the cursor on a blank line under another in an OpenCode draft as the draft', () => {
+    // a paragraph break: the draft's line, then two newlines
+    const s = screen('oc-multiline');
+    const two = s.rows.findIndex((r) => r.includes('line two'));
+    const blank = s.rows[two].replace('line two', '');
+    s.rows.splice(two, 1, blank, blank);
+    expect(readComposer('opencode', { ...s, cursor: two + 1 })).toBe('draft');
+  });
+
   it('takes a colour argument of 2 for no faint', () => {
-    expect(readComposer('claude', { rows: ['\x1b[38;5;2m❯ \x1b[39mtyped'], cursor: 0, command: 'claude' })).toBe('draft');
+    expect(readComposer('claude', { rows: ['\x1b[38;5;2m❯ \x1b[39m'], cursor: 0, command: 'claude' })).toBe('empty');
     expect(readComposer('claude', { rows: ['\x1b[38;2;2;2;2m❯ \x1b[2mplaceholder\x1b[0m'], cursor: 0, command: 'claude' })).toBe('empty');
   });
 });

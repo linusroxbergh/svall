@@ -173,12 +173,13 @@ export async function exited(pid: number, waitMs = 60_000): Promise<void> {
 export type Sleep = { store: Store; tmux: Tmux; log: Logger; processes: () => Promise<Proc[]>; ending: Map<string, Promise<void>> };
 
 // an agent idle past the fleet's limit is ended to free what it holds; its character goes dormant, and a revive
-// resumes the session with the launch flags it still needs. `seen` is when the user last looked at each character
-export async function endIdleAgents(o: Sleep, seen: ReadonlyMap<string, number>, stopped: () => boolean): Promise<void> {
+// resumes the session with the launch flags it still needs. `seen` is when the user last looked at each character, and
+// one `holding` a prompt for its agent has work still to come
+export async function endIdleAgents(o: Sleep, seen: ReadonlyMap<string, number>, stopped: () => boolean, holding: (id: string) => boolean): Promise<void> {
   const hours = o.store.state.dormantAfterHours ?? DORMANT_AFTER_HOURS;
   if (!hours) return;
   const afterMs = hours * 3_600_000;
-  const due = (c: Character) => drowsy(c, Date.now(), afterMs, seen.get(c.id));
+  const due = (c: Character) => !holding(c.id) && drowsy(c, Date.now(), afterMs, seen.get(c.id));
   const idle = Object.values(o.store.state.characters).filter(due);
   if (!idle.length) return;
   const procs = await o.processes();

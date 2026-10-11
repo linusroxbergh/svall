@@ -51,9 +51,11 @@ function setNote(c: Character, note: string): void {
 
 type Deps = { store: Store; tmux: Tmux; paths: Paths; config: Config; log: Logger; pollMs?: number; staleSessionMs?: number; runTimeoutMs?: number; runScribe?: RunScribe; linkDeps?: Partial<LinkDeps>; processes?: () => Promise<Proc[]>; agentsFound?: AgentKind[] };
 type LiveCharacter = Character & { tmux: NonNullable<Character['tmux']> };
+// a revive onto a window still alive sends its prompt as any send goes, which a draft there can hold
+type Revived = Character & { delivery?: Delivery };
 
 export class Fleet extends EventEmitter<Events> {
-  private reviving = new Map<string, Promise<Character>>();
+  private reviving = new Map<string, Promise<Revived>>();
   // the windows of agents ended for idleness, until tmux has closed them and the agent has exited
   private ending = new Map<string, Promise<void>>();
   // when the user last looked at each character's main terminal
@@ -221,7 +223,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   private endIdleAgents(): Promise<void> {
-    return endIdleAgents(this.sleep, this.seen, () => this.stopped);
+    return endIdleAgents(this.sleep, this.seen, () => this.stopped, (id) => this.prompts.holds(id));
   }
 
   /** Ends every terminal as the app quits: each character goes dormant with the revive that resumes it, then the
@@ -524,7 +526,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   // concurrent revives would each spawn a window and orphan all but the last.
-  reviveCharacter(id: string, prompt?: string): Promise<Character> {
+  reviveCharacter(id: string, prompt?: string): Promise<Revived> {
     // a page still open on a character that the stop has just put to sleep would wake it again
     if (this.stopped) return Promise.reject(new Invalid('the fleet is stopping'));
     const inFlight = this.reviving.get(id);
@@ -534,7 +536,7 @@ export class Fleet extends EventEmitter<Events> {
     return p;
   }
 
-  private async doRevive(id: string, prompt?: string): Promise<Character> {
+  private async doRevive(id: string, prompt?: string): Promise<Revived> {
     // a window still closing for idleness is not one to go back to
     await this.ending.get(id);
     const c = this.char(id);
@@ -546,8 +548,8 @@ export class Fleet extends EventEmitter<Events> {
         const cur = d.characters[id];
         if (cur) { cur.tmux = { windowId: alive.windowId, paneId: alive.paneId }; delete cur.revive; }
       });
-      if (prompt) await this.run(id, prompt, true);
-      return this.char(id);
+      const delivery = prompt ? await this.run(id, prompt, true) : undefined;
+      return { ...this.char(id), ...(delivery && { delivery }) };
     }
     const w = await this.deps.tmux.newWindow(id, c.cwd, this.charEnv(id));
     if (!this.deps.store.state.characters[id]) {

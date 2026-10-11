@@ -78,7 +78,7 @@ Handing work to a new robot:
       printResult(ch, json(), () => `${ch.id} ${stateOf(ch)}`);
     }));
 
-  cmd.command('run <id> <text...>').description("type text into a robot's terminal, then Enter; prints delivered or queued, exits 2 when refused").option('--no-enter').option('--term <n>', 'terminal to type into: 1 (default) or 2')
+  cmd.command('run <id> <text...>').description("type text into a robot's terminal, then Enter; prints delivered or queued, exits 2 when refused").option('--no-enter', 'leave the text in the prompt line, where runs after it queue until it is sent or cleared').option('--term <n>', 'terminal to type into: 1 (default) or 2')
     .action((id: string, text: string[], o: { enter: boolean; term?: string }) => withFleet(connect, async (c, state) => {
       try {
         const r = await c.call('char.run', { id: charId(state, id), text: text.join(' '), enter: o.enter, term: termOf(o.term) });
