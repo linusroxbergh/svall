@@ -88,10 +88,11 @@ const claude: Harness = {
     const pkg = Object.values((await sdk()).versions).find((v) => v.claudeCodeVersion === version);
     const tgz = pkg && (await fetchOk(pkg.dist.tarball));
     if (!tgz) return { [SDK_TYPES]: undefined };
+    const input = Buffer.from(await tgz.arrayBuffer());
     try {
-      const input = Buffer.from(await tgz.arrayBuffer());
       return { [SDK_TYPES]: execFileSync('tar', ['-xzOf', '-', `package/${SDK_TYPES}`], { input, encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['pipe', 'pipe', 'ignore'] }) };
     } catch {
+      // tar fails when the tarball no longer holds the file
       return { [SDK_TYPES]: undefined };
     }
   },

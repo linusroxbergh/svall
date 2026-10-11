@@ -1,7 +1,7 @@
 // `pnpm compat`: whether what Svall reads from Claude Code, Codex and OpenCode is still in each one's newest release,
 // and whether the installed CLIs still take the flags Svall passes. Exits 1 when anything is gone or couldn't be checked.
-// --update records the releases' event lists in snapshot.json; --notify posts a macOS notification when the report
-// needs a look and differs from the last one posted
+// --update records the releases' event lists in snapshot.json; --notify posts a macOS notification when a run finds
+// something the last run didn't
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -9,7 +9,7 @@ import path from 'node:path';
 import type { AgentKind } from '@svall/protocol';
 import { AGENTS, versionOk } from '../../packages/svalld/src/agents.js';
 import { helpHas } from './extract.js';
-import { HARNESSES, HELP, Unreachable, type Harness } from './harnesses.js';
+import { HARNESSES, HELP, type Harness } from './harnesses.js';
 
 export type Snapshot = Partial<Record<AgentKind, { version: string; events: string[] }>>;
 export type Report = { kind: AgentKind; version?: string; installed?: string; events: string[]; problems: string[]; added: string[]; notes: string[] };
@@ -17,7 +17,7 @@ export type Report = { kind: AgentKind; version?: string; installed?: string; ev
 const SNAPSHOT = path.join(import.meta.dirname, 'snapshot.json');
 const STATE = path.join(os.homedir(), 'Library/Caches/svall-compat');
 
-/** The newest release checked against what Svall reads; a vendor that can't be reached is a problem, never a pass. */
+/** The newest release checked against what Svall reads; a vendor that can't be checked is a problem, never a pass. */
 export async function checkRelease(kind: AgentKind, snap: Snapshot, h: Harness = HARNESSES[kind]): Promise<Report> {
   const r: Report = { kind, events: [], problems: [], added: [], notes: [] };
   try {
@@ -32,10 +32,22 @@ export async function checkRelease(kind: AgentKind, snap: Snapshot, h: Harness =
     const before = snap[kind]?.events;
     if (before) r.added = res.events.filter((e) => !before.includes(e));
   } catch (e) {
-    if (!(e instanceof Unreachable)) throw e;
-    r.problems.push(`couldn't check: ${e.message}`);
+    // a vendor that is down or rate-limits, or answers with a cut-off body or a captive portal's page
+    r.problems.push(`couldn't check: ${(e as Error).message}`);
   }
   return r;
+}
+
+const unreached = (r: Report) => r.problems.some((p) => p.startsWith("couldn't check"));
+
+/** Every CLI's release check; one that couldn't be checked is tried again after `retryMs`, as a run on waking may
+ * start before the network is up. */
+export async function checkAll(snap: Snapshot, retryMs: number, harnesses: Record<AgentKind, Harness> = HARNESSES): Promise<Report[]> {
+  const run = (k: AgentKind) => checkRelease(k, snap, harnesses[k]);
+  const first = await Promise.all((Object.keys(harnesses) as AgentKind[]).map(run));
+  if (!retryMs || !first.some(unreached)) return first;
+  await new Promise((done) => setTimeout(done, retryMs));
+  return Promise.all(first.map((r) => (unreached(r) ? run(r.kind) : r)));
 }
 
 function output(bin: string, args: string[]): string {
@@ -73,24 +85,30 @@ const post = (title: string, subtitle: string): void => {
   execFileSync('osascript', ['-e', 'on run argv', '-e', 'display notification (item 1 of argv) with title "Svall compat" subtitle (item 2 of argv)', '-e', 'end run', title, subtitle]);
 };
 
-/** Saves the report and posts its first finding, unless the same report was posted last; a clean run forgets it. */
-export function notify(text: string, needsLook: boolean, dir = STATE, send = post): boolean {
+/** What needs a look, by CLI: each problem and each new event. Notes and the versions checked stay out, so a release
+ * that changes nothing Svall reads isn't news. */
+export const findings = (reports: Report[]): string[] =>
+  reports.flatMap((r) => [...r.problems.map((p) => `${r.kind}: ${p}`), ...r.added.map((e) => `${r.kind}: new event ${e}`)]);
+
+/** Saves the report and posts the first finding the last run didn't have. Findings are remembered once posted, so one
+ * that goes away and comes back is posted again, and one whose post failed is tried on the next run. */
+export function notify(text: string, found: string[], dir = STATE, send = post): boolean {
   fs.mkdirSync(dir, { recursive: true });
   const report = path.join(dir, 'report.txt');
-  const last = path.join(dir, 'last-notified.txt');
+  const last = path.join(dir, 'findings.json');
   fs.writeFileSync(report, `${new Date().toISOString()}\n${text}\n`);
-  if (!needsLook) { fs.rmSync(last, { force: true }); return false; }
-  if (fs.existsSync(last) && fs.readFileSync(last, 'utf8') === text) return false;
-  fs.writeFileSync(last, text);
-  const first = text.split('\n').find((l) => l.startsWith('  - '))?.slice(4) ?? text.split('\n')[0];
-  send(first.slice(0, 200), `report: ${report}`);
-  return true;
+  let before: string[] = [];
+  try { before = JSON.parse(fs.readFileSync(last, 'utf8')) as string[]; } catch {}
+  const fresh = found.filter((f) => !before.includes(f));
+  if (fresh.length) send(fresh[0].slice(0, 200), `${fresh.length > 1 ? `and ${fresh.length - 1} more; ` : ''}report: ${report}`);
+  fs.writeFileSync(last, JSON.stringify(found));
+  return fresh.length > 0;
 }
 
 async function main(): Promise<void> {
   const args = new Set(process.argv.slice(2));
   const snap = (fs.existsSync(SNAPSHOT) ? JSON.parse(fs.readFileSync(SNAPSHOT, 'utf8')) : {}) as Snapshot;
-  const reports = await Promise.all((Object.keys(HARNESSES) as AgentKind[]).map((k) => checkRelease(k, snap)));
+  const reports = await checkAll(snap, args.has('--notify') ? 60_000 : 0);
   for (const r of reports) checkInstalled(r);
   const text = format(reports);
   console.log(text);
@@ -99,7 +117,7 @@ async function main(): Promise<void> {
     for (const r of reports) if (r.version && r.events.length) next[r.kind] = { version: r.version, events: r.events };
     fs.writeFileSync(SNAPSHOT, JSON.stringify(next, null, 2) + '\n');
   }
-  if (args.has('--notify')) notify(text, reports.some((r) => r.problems.length || r.added.length));
+  if (args.has('--notify')) notify(text, findings(reports));
   process.exitCode = reports.some((r) => r.problems.length) ? 1 : 0;
 }
 
