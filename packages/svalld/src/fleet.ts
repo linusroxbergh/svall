@@ -91,8 +91,12 @@ export class Fleet extends EventEmitter<Events> {
     // when the user last looked is not kept across a restart, so every agent awake now gets a whole rest from here
     const now = Date.now();
     for (const c of Object.values(this.deps.store.state.characters)) if (c.tmux) this.seen.set(c.id, now);
-    this.ensureHome();
+    const opening = this.ensureHome();
     this.syncAgents();
+    if (opening) {
+      await this.createCharacter({ islandId: opening, cwd: this.deps.config.defaultCwd })
+        .catch((e) => this.deps.log.error(`first character: ${String(e)}`));
+    }
     this.deps.store.update((d) => { if (this.deps.config.name) d.name = this.deps.config.name; else delete d.name; });
     try { if (seedAgentProfiles(this.deps.paths.agentProfiles)) this.deps.log.info(`agent profiles -> ${this.deps.paths.agentProfiles}`); }
     catch (e) { this.deps.log.error(`agent profiles: ${String(e)}`); }
@@ -187,7 +191,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   // one home island per fleet; its cwd, command and buttons, and the fleet's default cwd, come from config on every start
-  private ensureHome(): void {
+  private ensureHome(): string | undefined {
     const home = this.deps.config.home;
     // a character is refused a cwd that is not a directory, so mission control's crew needs this one;
     // make the folder the buttons promise, holding the skills they call
@@ -215,8 +219,8 @@ export class Fleet extends EventEmitter<Events> {
       // a start is the one moment mission control comes back up to the fleet; from here it only follows it down
       settleHome(d);
     });
-    // a new fleet opens with one empty island beside mission control; only its first start makes it, so a deleted one stays gone
-    if (first) this.createIsland({ name: 'Island 1' });
+    // a new fleet opens with one island beside mission control, for start to put a shell on; only its first start makes it, so a deleted one stays gone
+    return first ? this.createIsland({ name: 'Island 1' }).id : undefined;
   }
 
   private endIdleAgents(): Promise<void> {

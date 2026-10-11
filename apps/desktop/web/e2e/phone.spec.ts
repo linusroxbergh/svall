@@ -166,6 +166,7 @@ test('the settings carry the same answer, and the panel calls out a checkout wit
     fake.status = { ...SERVING, phones: [{ login: 'me@example.com', since }] };
     await open(page, fake.port);
     await page.getByTestId('settings-open').click();
+    await page.getByTestId('settings-tab-phone').click();
     await expect(page.getByTestId('set-mobile-here')).toHaveText(`me@example.com since ${hhmm(since)}`);
     fake.tell([]);
     await expect(page.getByTestId('set-mobile-here')).toHaveText('nobody');

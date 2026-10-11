@@ -116,7 +116,7 @@ test('a one-tap character whose crew mate\'s directory is gone starts in the fle
     ? Promise.resolve({ id: 'c_new' }) : Promise.reject(new ApiError('invalid', 'cwd /tmp is not a directory')))) as never);
   const onOpen = vi.fn();
   render(<Fleet onOpen={onOpen} />);
-  fireEvent.click(screen.getByRole('button', { name: 'New character on beta' }));
+  fireEvent.click(screen.getByRole('button', { name: 'New robot on beta' }));
   await act(async () => {});
   expect(call.mock.calls).toEqual([['char.create', { islandId: 'i_b', cwd: '/tmp' }], ['char.create', { islandId: 'i_b', cwd: DEFAULT_CWD }]]);
   expect(onOpen).toHaveBeenCalledWith('c_new');
@@ -140,7 +140,7 @@ test('a character made on mission control from the phone starts the home command
   store.getState().setFleet(fleet());
   call.mockImplementation((() => Promise.resolve({ id: 'c_new' })) as never);
   render(<Fleet onOpen={() => {}} />);
-  fireEvent.click(screen.getByRole('button', { name: 'New character on mission control' }));
+  fireEvent.click(screen.getByRole('button', { name: 'New robot on mission control' }));
   await act(async () => {});
   expect(call).toHaveBeenLastCalledWith('char.create', { islandId: 'home', cwd: '/mc', command: 'claude --model sonnet' });
 

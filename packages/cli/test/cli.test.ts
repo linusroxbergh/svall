@@ -474,7 +474,8 @@ runIf('svall CLI', () => {
     expect(JSON.parse((await svall('char', 'update', c.id, '--agent-profile', '', '--json')).stdout).agentProfile).toBeUndefined();
 
     const status = (await svall('status')).stdout;
-    expect(status).toMatch(/1 character/);
+    // worker, and the shell a new fleet opens with
+    expect(status).toMatch(/2 character/);
     expect(status).toContain('worker');
     expect(status).toContain('second');
     expect((await svall('char', 'close', c.id)).code).toBe(0);

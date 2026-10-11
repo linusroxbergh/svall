@@ -9,7 +9,6 @@ import { FleetPicker } from './FleetPicker.js';
 import { FleetSummary } from './FleetSummary.js';
 import { useApp } from './hooks.js';
 import { IslandCard } from './IslandCard.js';
-import { Keybindings } from './Keybindings.js';
 import { keyTip } from './keys.js';
 import { LinkAsk } from './LinkAsk.js';
 import { Map } from './map/Map.js';
@@ -22,6 +21,7 @@ import { Collapse, SideCard } from './SideCard.js';
 import { SideGrip } from './SideGrip.js';
 import { Starting } from './Starting.js';
 import { Sidebar } from './Sidebar.js';
+import { Tour } from './Tour.js';
 import { UtilityDock } from './UtilityDock.js';
 import { theme } from './theme.js';
 
@@ -91,15 +91,14 @@ export function App() {
             onClick={() => app.store.getState().toggleSidebar(true)}>›</button>
         )}
         {view === 'map' ? <Map /> : <Board />}
-        {(settingsOpen || sideCardOpen) && <SideGrip side="card" />}
-        {/* the settings take the side card's place, so the terminal they change stays in sight */}
-        {settingsOpen && <SettingsCard />}
-        {!settingsOpen && sideCardOpen && <Collapse />}
-        {!settingsOpen && sideCardOpen && selectedId && <SideCard id={selectedId} />}
-        {!settingsOpen && sideCardOpen && !selectedId && selectedIslandId && <IslandCard id={selectedIslandId} />}
-        {!settingsOpen && sideCardOpen && !selectedId && !selectedIslandId && <FleetSummary />}
+        {sideCardOpen && <SideGrip side="card" />}
+        {sideCardOpen && <Collapse />}
+        {sideCardOpen && selectedId && <SideCard id={selectedId} />}
+        {sideCardOpen && !selectedId && selectedIslandId && <IslandCard id={selectedIslandId} />}
+        {sideCardOpen && !selectedId && !selectedIslandId && <FleetSummary />}
         <UtilityDock />
-        {!settingsOpen && !sideCardOpen && view === 'map' && (
+        {settingsOpen && <SettingsCard />}
+        {!sideCardOpen && view === 'map' && (
           <button className="side-show" data-testid="side-show" title={keyTip('Show the side card', 'toggleSideCard', bindings)}
             aria-label="Show the side card" onClick={() => app.store.getState().toggleSideCard(true)}>‹</button>
         )}
@@ -108,11 +107,11 @@ export function App() {
       <MissionPrompt />
       <ConfirmClose />
       <ConfirmDeleteIsland />
-      <Keybindings />
       <ScribeAsk />
       <FleetPicker />
       <LinkAsk />
       <ContextMenu />
+      <Tour />
     </div>
   );
 }

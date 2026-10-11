@@ -20,7 +20,6 @@ export type Camera = ReturnType<typeof useCamera>;
 export function useCamera(host: RefObject<HTMLDivElement | null>, lastPressAt: RefObject<number>) {
   const sideCardOpen = useApp((s) => s.sideCardOpen);
   const sidebarOpen = useApp((s) => s.sidebarOpen);
-  const settingsOpen = useApp((s) => s.settingsOpen);
   const hasHome = useApp((s) => Boolean(homeIsland(s.fleet)));
   const [layout, setLayout] = useState<Layout>({ scale: 1, tile: theme.cell, ox: 0, oy: 0 });
   const hold = useRef(false);
@@ -157,7 +156,7 @@ export function useCamera(host: RefObject<HTMLDivElement | null>, lastPressAt: R
     const open = performance.now() - lastPressAt.current < DBL_CLICK_MS;
     holdUntil.current = open ? lastPressAt.current + DBL_CLICK_MS : 0;
     refit(true);
-  }, [sideCardOpen, sidebarOpen, settingsOpen]);
+  }, [sideCardOpen, sidebarOpen]);
 
   // before paint, so the row wraps to the map's real width from the first frame
   useLayoutEffect(() => {
