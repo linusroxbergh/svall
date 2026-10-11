@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { Agent, Character } from '@svall/protocol';
+import type { Agent, Character, FleetState } from '@svall/protocol';
 import { drowsy, markDormant, reviveCommand, runsInBackground, startFlags } from '../src/dormancy.js';
+import { snapshot, syncWindow } from '../src/reconcile.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
 const OSID = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
@@ -163,5 +164,14 @@ describe('markDormant', () => {
     expect(c.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
     expect(c.agent).toMatchObject({ status: 'done' });
     expect(c.agent?.monitors).toBeUndefined();
+  });
+  it('forgets the brief the session was told, going dormant or already dormant at a listing', () => {
+    const c = char({ agent: agent({ brief: '# Svall context' }) });
+    markDormant(c);
+    expect(c.agent).not.toHaveProperty('brief');
+    const asleep = char({ tmux: undefined, revive: { command: 'claude --resume x', interrupted: true }, agent: agent({ brief: '# Svall context' }) });
+    syncWindow(asleep, new Map(), snapshot({ islands: {}, characters: { [asleep.id]: asleep } } as unknown as FleetState));
+    expect(asleep.agent).not.toHaveProperty('brief');
+    expect(asleep.revive).toEqual({ command: 'claude --resume x', interrupted: true });
   });
 });
