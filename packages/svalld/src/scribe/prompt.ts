@@ -49,10 +49,23 @@ export const IslandAnswer = z.object({
 });
 export type IslandAnswer = z.infer<typeof IslandAnswer>;
 
-// the model may wrap its object in prose or a code fence
+// the index of the brace that closes the object opening at start, braces in strings aside; -1 when none does
+function objectEnd(text: string, start: number): number {
+  let depth = 0, inString = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) { if (ch === '\\') i++; else if (ch === '"') inString = false; }
+    else if (ch === '"') inString = true;
+    else if (ch === '{') depth++;
+    else if (ch === '}' && --depth === 0) return i;
+  }
+  return -1;
+}
+
+// the model may wrap its object in prose or a code fence, or write another after it
 export function parseAnswer<T>(schema: ZodType<T>, text: string): T {
-  const start = text.indexOf('{'), end = text.lastIndexOf('}');
-  if (start === -1 || end < start) throw new Error("the scribe's answer has no JSON object");
+  const start = text.indexOf('{'), end = start === -1 ? -1 : objectEnd(text, start);
+  if (end === -1) throw new Error("the scribe's answer has no JSON object");
   let parsed: unknown;
   // the parser's message quotes the text it choked on, and that text is the model's
   try { parsed = JSON.parse(text.slice(start, end + 1)); } catch { throw new Error("the scribe's answer is not valid JSON"); }

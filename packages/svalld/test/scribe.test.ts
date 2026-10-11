@@ -15,13 +15,13 @@ const settle = async () => { for (let n = 0; n < 5; n++) await new Promise((r) =
 
 type Call = { system: string; prompt: string };
 
-function world(answers: (call: Call) => string | Promise<string>, brief: (island: Island, character: Character) => string = (i, c) => renderBrief(i, c), log: Logger = silentLogger) {
+function world(answers: (call: Call) => string | Promise<string>, brief: (island: Island, character: Character) => string = (i, c) => renderBrief(i, c), log: Logger = silentLogger, awake?: () => Promise<boolean>) {
   const home = makeHome();
   const store = Store.load(path.join(home, 'state.json'), () => {});
   let now = T0;
   const calls: Call[] = [];
   const scribe = new Scribe({
-    store, log, now: () => now, brief,
+    store, log, now: () => now, brief, awake,
     run: async (system, prompt) => { calls.push({ system, prompt }); return answers({ system, prompt }); },
   });
   store.update((d) => { delete d.scribeAsk; });
@@ -278,6 +278,33 @@ describe('Scribe, automatically', () => {
     w.scribe.tick();
     await settle();
     expect(w.store.state.characters.a.note).toBe('third try');
+    expect(w.store.state).not.toHaveProperty('scribeError');
+  });
+
+  it('starts no pass while the Mac is in a dark wake, and runs it once the Mac is fully awake', async () => {
+    let full = false;
+    const w = world(({ system }) => JSON.stringify(system.includes('island') ? { description: 'the docs rewrite' } : { note: 'drafting the plan' }), undefined, undefined, async () => full);
+    w.island('i1');
+    w.char('a');
+    w.scribe.tick();
+    await settle();
+    expect(w.calls).toHaveLength(0);
+    full = true;
+    w.advance(SPACING_MS);
+    w.scribe.tick();
+    await settle();
+    expect(w.store.state.characters.a.note).toBe('drafting the plan');
+
+    full = false;
+    w.advance(SETTLE_MS);
+    w.scribe.tick();
+    await settle();
+    expect(w.calls).toHaveLength(1);
+    full = true;
+    w.advance(SPACING_MS);
+    w.scribe.tick();
+    await settle();
+    expect(w.store.state.islands.i1.description).toBe('the docs rewrite');
     expect(w.store.state).not.toHaveProperty('scribeError');
   });
 
