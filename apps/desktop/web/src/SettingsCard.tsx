@@ -151,7 +151,7 @@ function Scribe() {
           </div>
         )}
         <div className="row">
-          <span>work in worktrees<Info id="worktrees">A character started on a task in a git repo is told to work in a worktree no other agent works in, not the main checkout. One you open from the map stays where you open it.</Info></span>
+          <span>work in worktrees<Info id="worktrees">Each agent in a git repo is told to make a new worktree for its task and leave the main checkout alone unless you say so.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={worktrees} data-testid="set-worktrees" onClick={() => setWorktrees(deps(), !worktrees)}>{worktrees ? 'on' : 'off'}</button></b>
         </div>
         <div className="row">

@@ -87,7 +87,7 @@ const crewLines = (island: Island, c: Character): string[] => [
   '- How: `svall char new --help`. Name it PR or ticket id, area, task: "#472 auth review", not "#472 deep review".',
 ];
 
-const WORKTREE = '- In a git repo, work in a worktree no other agent works in, a fitting one or a new one. Change the main checkout only when the user says so.';
+const WORKTREE = '- In a git repo, every task and review gets a new worktree, made before you edit or check out anything; reuse one only when its branch is the work and no other agent is in it. Change the main checkout only when the user says so.';
 
 // markdown the session reads at start; without doc folders it is empty when neither side has anything to say
 export function renderBrief(island: Island, character?: Character, folders: DocFolder[] = [], profile?: AgentProfile, worktrees = false): string {

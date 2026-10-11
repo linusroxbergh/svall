@@ -74,9 +74,9 @@ robot's agent gets at SessionStart; `svall char show <name>` prints it.
   answers to is refused.
 - Never guess a cell. Omit `--cell` and the daemon places the robot; a
   guessed cell fails or swaps somebody else off the island.
-- A robot started with `--run` in a git repository is told to work in a
-  worktree no other agent works in, unless the user turned that off in Settings.
-  `--cwd` is the repository or such a worktree, never a checkout another agent works in.
+- A robot in a git repository is told to make a new worktree for its task,
+  unless the user turned that off in Settings. `--cwd` is the repository or a
+  worktree no other agent works in.
 - Starting a robot to continue, review or take over work ends your part. Do
   not wait on or watch it unless the user asked you to report back.
 - Names are at most 24 characters, lower case: PR or ticket id, area, task, one
