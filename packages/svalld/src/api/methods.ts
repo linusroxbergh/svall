@@ -38,7 +38,7 @@ const handlers: Handlers = {
   'char.revive': (p, { fleet }) => fleet.reviveCharacter(p.id),
   'char.seen': (p, { fleet }) => fleet.markSeen(p.id, p.term),
   'char.second': (p, { fleet }) => fleet.openSecond(p.id),
-  'char.run': async (p, { fleet }) => { await fleet.run(p.id, p.text, p.enter, p.term); return {}; },
+  'char.run': async (p, { fleet }) => ({ delivery: await fleet.run(p.id, p.text, p.enter, p.term) }),
   'char.read': async (p, { fleet }) => ({
     text: p.source === 'screen' ? await fleet.readScreen(p.id, p.lines, p.term) : fleet.readTranscript(p.id, p.lines, p.term),
   }),
