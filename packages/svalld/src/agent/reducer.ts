@@ -6,6 +6,8 @@ import type { HookEvent, StatusEvent } from '../hooks/receiver.js';
 export type Slot = { agent?: Agent; unread: boolean };
 
 const BLOCKING = new Set(['permission_prompt', 'worker_permission_prompt', 'elicitation_dialog', 'elicitation_url_dialog']);
+const TOOL_EVENTS = new Set(['PreToolUse', 'PostToolUse', 'PostToolUseFailure']);
+const TOOL_ACTIVITY_MS = 10_000;
 
 /** Puts the agent at `status` with no question open and no background work counted. */
 export function settle(agent: Agent, status: Agent['status']): void {
@@ -79,7 +81,8 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
   }
   // a session started before its hooks named their process learns it from its own events
   if (e.pid && !next.agent.pid && e.sessionId === next.agent.sessionId) next.agent.pid = e.pid;
-  next.agent.lastActivityAt = now;
+  // a tool call's hooks come several to a second, and each new mark is a patch the app redraws for
+  if (!TOOL_EVENTS.has(e.name) || now - next.agent.lastActivityAt >= TOOL_ACTIVITY_MS) next.agent.lastActivityAt = now;
   // Claude Code moves the transcript when a session enters or leaves a worktree; Codex names it only once it exists
   if (e.transcriptPath && e.sessionId === next.agent.sessionId) next.agent.transcriptPath = e.transcriptPath;
   if (e.model && e.sessionId === next.agent.sessionId) next.agent.model = e.model;

@@ -223,6 +223,27 @@ describe('hookCommand and nodeRun', () => {
     expect(sh(wrapped('echo mine'), { SVALL_CHAR_ID: 'c1' })).toBe('pinned\n');
   });
 
+  it("starts nothing for an agent of the other variant's fleet, and still runs the wrapped statusline", () => {
+    const root = makeHome();
+    const run = (variant: string, home: string) => {
+      const script = path.join(root, variant, 'hooks', 'agent-hook.mjs');
+      fs.mkdirSync(path.dirname(script), { recursive: true });
+      fs.writeFileSync(script, '');
+      const pinned = path.join(root, 'node');
+      fs.writeFileSync(pinned, '#!/bin/sh\necho pinned\n', { mode: 0o755 });
+      const status = (mergeStatusLine({ statusLine: { type: 'command', command: 'echo mine' } }, statusWrapper(pinned, script), script) as { statusLine: { command: string } }).statusLine.command;
+      const env = { SVALL_CHAR_ID: 'c1', SVALL_HOME: path.join(root, home) };
+      return [sh(hookCommand(pinned, script, 'claude'), env), sh(status, env)];
+    };
+    expect(run('.svall', '.svall-dev')).toEqual(['', 'mine\n']);
+    expect(run('.svall', '.svall-dev-x')).toEqual(['', 'mine\n']);
+    expect(run('.svall', '.svall-work')).toEqual(['pinned\n', 'pinned\n']);
+    expect(run('.svall-dev', '.svall')).toEqual(['', 'mine\n']);
+    expect(run('.svall-dev', '.svall-work')).toEqual(['', 'mine\n']);
+    expect(run('.svall-dev', '.svall-dev')).toEqual(['pinned\n', 'pinned\n']);
+    expect(run('.svall-dev', 'fleet')).toEqual(['pinned\n', 'pinned\n']);
+  });
+
   it('keeps the inner statusline when an earlier wrapper is rebuilt', () => {
     const once = mergeStatusLine({ statusLine: { type: 'command', command: "ccstatusline --it's" } }, nodeRun('/n/node', status), status);
     const moved = statusWrapper('/other/node', status);
