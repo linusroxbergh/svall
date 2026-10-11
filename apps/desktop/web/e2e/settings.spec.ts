@@ -31,14 +31,13 @@ test('the settings open from the sidebar, zoom the page and are remembered', asy
 test('each control keeps its explanation behind the mark until it is hovered', async ({ page, svall }) => {
   await svall.open();
   await page.getByTestId('settings-open').click();
+  await page.getByTestId('settings-tab-fleet').click();
 
   const tip = page.locator('#set-tip-dormancy');
   await expect(tip).toBeHidden();
   await page.getByTestId('set-info-dormancy').hover();
   await expect(tip).toBeVisible();
   await expect(tip).toContainText('Frees memory');
-  // the last row has no room under it, so its tip stands over the row instead
-  await expect(tip).toHaveAttribute('data-place', 'up');
   const panel = (await page.getByTestId('settings').boundingBox())!;
   const box = (await tip.boundingBox())!;
   expect(box.y).toBeGreaterThanOrEqual(panel.y);
@@ -47,7 +46,7 @@ test('each control keeps its explanation behind the mark until it is hovered', a
   await tip.hover();
   await expect(tip).toBeVisible();
 
-  await page.getByTestId('zoom-level').hover();
+  await page.getByTestId('dormancy-level').hover();
   await expect(tip).toBeHidden();
 });
 
@@ -74,6 +73,7 @@ test('a tip too tall for the room left to it is capped, not spilled', async ({ p
   await page.setViewportSize({ width: 1280, height: 200 });
   await svall.open();
   await page.getByTestId('settings-open').click();
+  await page.getByTestId('settings-tab-phone').click();
 
   const tip = page.locator('#set-tip-phone');
   await page.getByTestId('set-info-phone').hover();
@@ -106,6 +106,7 @@ test('the usage meter can leave the dock, and stays gone across a reload', async
 test('the scribe switches on and off for the whole fleet', async ({ page, svall }) => {
   await svall.open();
   await page.getByTestId('settings-open').click();
+  await page.getByTestId('settings-tab-fleet').click();
   const scribe = page.getByTestId('set-scribe');
   await expect(scribe).toHaveAttribute('aria-checked', 'false');
   await scribe.click();
@@ -132,6 +133,7 @@ test('a new fleet asks once before the scribe runs, and the settings show its la
   await expect(page.getByTestId('board')).toBeVisible();
   await expect(page.getByTestId('scribe-ask')).toHaveCount(0);
   await page.getByTestId('settings-open').click();
+  await page.getByTestId('settings-tab-fleet').click();
   await expect(page.getByTestId('set-scribe')).toHaveAttribute('aria-checked', 'true');
   await expect(page.getByTestId('set-scribe-error')).toContainText('Not logged in');
 });
@@ -147,6 +149,10 @@ test('the shell is told the opacity, the zoom and which config to open', async (
 
   await chord('cmd+,');
   await expect(page.getByTestId('settings')).toBeVisible();
+  // the terminals give up the window's rect, so it is seen and pressed over them
+  const win = (await page.getByTestId('settings').boundingBox())!;
+  await expect.poll(async () => (await sent()).filter((m) => m.type === 'shell.cutout').at(-1))
+    .toMatchObject({ rects: expect.arrayContaining([expect.objectContaining({ width: win.width, height: win.height })]) });
   await page.getByTestId('set-fullOpacity').fill('0.8');
   await expect.poll(async () => (await shown())?.opacity).toBe(0.8);
 
@@ -157,6 +163,7 @@ test('the shell is told the opacity, the zoom and which config to open', async (
   await page.getByTestId('settings-fleet').click();
   expect((await sent()).filter((m) => m.type === 'openConfig')).toEqual([{ type: 'openConfig', which: 'ghostty' }, { type: 'openConfig', which: 'fleet' }]);
 
+  await page.getByTestId('settings-tab-browser').click();
   await page.getByTestId('settings-cookies').click();
   expect((await sent()).at(-1)).toEqual({ type: 'browser.importCookies' });
 
@@ -165,6 +172,7 @@ test('the shell is told the opacity, the zoom and which config to open', async (
   await receive({ type: 'shell.info', home: '/tmp/fleet-x', log: [], op: true });
   await page.getByTestId('set-1password').click();
   await expect(page.getByTestId('set-1password')).toHaveAttribute('aria-checked', 'true');
+  await page.getByTestId('settings-close').click();
   await chord('cmd+b');
   await expect(page.getByTestId('browser-fill')).toBeDisabled();
   // with a tab under it the button asks the shell to fill that tab
@@ -200,6 +208,7 @@ test('the keyboard rows take a new chord, ask before a taken one, clear and put 
   await svall.open();
   await page.getByTestId('settings-open').click();
   await expect(page.getByTestId('key-toggleSideCard')).toHaveCount(0);
+  await page.getByTestId('settings-tab-keyboard').click();
   await page.getByTestId('settings-keys').click();
   await expect(page.getByTestId('keys-modal')).toBeVisible();
 
@@ -242,6 +251,7 @@ test('the keyboard rows take a new chord, ask before a taken one, clear and put 
 test('the fleet is renamed from the settings, and a name that will not do is never sent', async ({ page, svall }) => {
   await svall.open();
   await page.getByTestId('settings-open').click();
+  await page.getByTestId('settings-tab-fleet').click();
   const field = page.getByTestId('set-fleet-name');
   await field.fill('Big Base');
   await field.press('Enter');
@@ -259,6 +269,7 @@ test('the fleet is renamed from the settings, and a name that will not do is nev
 test('closing the settings while a row waits for a key leaves the other chords working', async ({ page, svall }) => {
   await svall.open();
   await page.getByTestId('settings-open').click();
+  await page.getByTestId('settings-tab-keyboard').click();
   await page.getByTestId('settings-keys').click();
   await page.getByTestId('key-quit').click();
   await expect(page.getByTestId('key-quit')).toHaveText('press a key');

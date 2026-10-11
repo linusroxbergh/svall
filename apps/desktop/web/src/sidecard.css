@@ -121,6 +121,19 @@
 .kicker .spacer { flex: 1; }
 .side-x { padding: 0 var(--sp-sm); background: none; font-size: var(--text-xl); line-height: 1; color: var(--ink-3); border-radius: var(--r-xs); }
 .side-x:hover { color: var(--ink); background: var(--fill-2); }
+/* the settings window: its panes listed down the left, the one picked beside them in a side card's dress */
+.set-win { position: fixed; inset: 0; margin: auto; z-index: var(--z-settings); box-sizing: border-box; overflow: hidden;
+  width: min(720px, calc(100vw - 40px)); height: min(560px, calc(100vh - 40px)); display: grid; grid-template: auto minmax(0, 1fr) / 180px minmax(0, 1fr);
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); box-shadow: var(--shadow-2); }
+.set-bar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; padding: var(--sp-lg) var(--sp-lg) var(--sp-lg) var(--sp-2xl); border-bottom: 1px solid var(--line-soft); }
+.set-bar h2 { margin: 0; font-size: var(--text-lg); font-weight: var(--w-semibold); color: var(--ink); }
+.set-nav { display: flex; flex-direction: column; gap: var(--sp-2xs); padding: var(--sp-lg) var(--sp-md); overflow: hidden auto; }
+.set-nav button { display: flex; align-items: center; gap: var(--sp-md); padding: var(--sp-sm) var(--sp-lg); border-radius: var(--r-sm); background: none; color: var(--ink-2); font-weight: var(--w-medium); text-align: left; }
+.set-nav button:hover { background: var(--fill-1); color: var(--ink); }
+.set-nav button[aria-selected="true"] { background: var(--fill-2); color: var(--sand); }
+.set-nav i { width: 5px; height: 5px; border-radius: var(--r-pill); background: var(--sel); }
+.set-win .side { width: auto; padding: var(--sp-2xl) var(--sp-3xl); }
+.set-win .side > .rows:first-child { border-top: 0; padding-top: 0; }
 /* the explanation waits behind the mark, so the panel reads as a list of controls rather than a page of prose */
 .side .row:has(.set-info), .side .opens:has(.set-info), .side .kicker:has(.set-info) { position: relative; }
 .side .opens:has(.set-info) { align-items: center; }

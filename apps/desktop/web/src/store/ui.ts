@@ -54,7 +54,7 @@ export type UiState = {
   shell?: ShellInfo;
   sidebarOpen: boolean;
   settingsOpen: boolean;
-  // the shortcut editor, over the middle of the screen, opened from the settings card
+  // the shortcut editor, over the middle of the screen, opened from the settings window
   keysOpen: boolean;
   // the action whose chord the shortcut editor is waiting for; while it is set, keys are read, not obeyed
   capturingKey?: ActionId;
@@ -216,7 +216,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     setClosingCharacter: (id) => set({ closingCharacter: id }),
     setDeletingIsland: (id) => set({ deletingIsland: id }),
     setFleetPicker: (mode) => set({ fleetPicker: mode }),
-    toggleSideCard: (open) => set((s) => { const next = open ?? (s.settingsOpen || !s.sideCardOpen); return { sideCardOpen: next, sideCardCollapsed: !next, settingsOpen: false, keysOpen: false, capturingKey: undefined }; }),
+    toggleSideCard: (open) => set((s) => { const next = open ?? !s.sideCardOpen; return { sideCardOpen: next, sideCardCollapsed: !next }; }),
     termOpened: (id, rect) => set((s) => ({ terminals: { ...s.terminals, [id]: { id, rect } } })),
     termMoved: (id, rect) => set((s) => (s.terminals[id] ? { terminals: { ...s.terminals, [id]: { ...s.terminals[id], rect } } } : {})),
     termGone: (id) => set((s) => { const terminals = { ...s.terminals }; delete terminals[id]; return { terminals }; }),

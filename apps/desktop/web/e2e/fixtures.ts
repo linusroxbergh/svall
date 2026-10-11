@@ -34,7 +34,7 @@ export const test = base.extend<{ svall: Svall }>({
       uniq: (prefix) => `${prefix}-${Math.random().toString(36).slice(2, 7)}`,
       cellOf: async (id) => (await svall.api.call('state.get', {})).characters[id].cell,
       open: async (view: 'board' | 'map' = 'board', opts?: { firstRun?: boolean }) => {
-        // the settings card opens by itself on a machine with no settings of its own, and would take the side card's place
+        // the settings window opens by itself on a machine with no settings of its own, and would stand over the map
         if (!opts?.firstRun) {
           await page.addInitScript(({ key, value }) => {
             // this runs again on every navigation, and a reload is where a spec reads back what it saved

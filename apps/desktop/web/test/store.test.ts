@@ -156,11 +156,6 @@ describe('store', () => {
     store.getState().setCapturingKey('quit');
     store.getState().toggleSettings(false);
     expect(store.getState().capturingKey).toBeUndefined();
-    store.getState().toggleSettings(true);
-    store.getState().setCapturingKey('quit');
-    // the side card takes the settings' place, which closes them the same way
-    store.getState().toggleSideCard(true);
-    expect(store.getState().capturingKey).toBeUndefined();
   });
   it('closes the shortcut editor with the card it was opened from, and stops listening with it', () => {
     const store = createAppStore(memStorage());
@@ -175,11 +170,6 @@ describe('store', () => {
     expect(store.getState().keysOpen).toBe(false);
     // and it does not come back with the card
     store.getState().toggleSettings(true);
-    expect(store.getState().keysOpen).toBe(false);
-
-    // the side card takes the settings' place, which takes the editor with them
-    store.getState().toggleKeys(true);
-    store.getState().toggleSideCard(true);
     expect(store.getState().keysOpen).toBe(false);
   });
   it('keeps the shell info whether or not the chords come with it', () => {
@@ -380,19 +370,14 @@ describe('store', () => {
     expect(store.getState().mobile?.phones).toEqual(here);
   });
 
-  it('the settings and the side card share one place, so opening the side card puts the settings away', () => {
-    const store = createAppStore();
-    store.getState().toggleSettings();
-    expect(store.getState().settingsOpen).toBe(true);
-    store.getState().toggleSideCard(true);
-    expect(store.getState()).toMatchObject({ settingsOpen: false, sideCardOpen: true });
-  });
-
-  it('toggling the side card over the settings shows it, even when it was open underneath', () => {
+  it('the settings window stands apart from the side card, so toggling the card leaves it and its editor open', () => {
     const store = createAppStore(undefined, 'board');
-    store.getState().toggleSettings();
+    store.getState().toggleSettings(true);
+    store.getState().toggleKeys(true);
     store.getState().toggleSideCard();
-    expect(store.getState()).toMatchObject({ settingsOpen: false, sideCardOpen: true, sideCardCollapsed: false });
+    expect(store.getState()).toMatchObject({ settingsOpen: true, keysOpen: true, sideCardOpen: false, sideCardCollapsed: true });
+    store.getState().toggleSideCard();
+    expect(store.getState()).toMatchObject({ settingsOpen: true, keysOpen: true, sideCardOpen: true, sideCardCollapsed: false });
   });
 
   it('the board opens the side card, and a collapse survives the switch', () => {

@@ -205,7 +205,7 @@ export function installKeyHandlers(ctx: KeyDeps, win: Window = window): () => vo
     }
     const s = ctx.store.getState();
     // behind an overlay or a popup the selection is out of sight, so Enter is theirs
-    if (e.key === 'Enter' && !control(e) && !e.metaKey && !isVeiled(s) && !s.linkAsk && !s.usageOpen && !s.mobileOpen) {
+    if (e.key === 'Enter' && !control(e) && !e.metaKey && !isVeiled(s) && !s.linkAsk && !s.usageOpen && !s.mobileOpen && !s.settingsOpen) {
       // the key is spent here: a control still holding the focus must not activate on it as well
       if (s.view === 'board') { e.preventDefault(); refocusSurface(ctx); return true; }
       if (s.view === 'map' && s.selectedId) { e.preventDefault(); s.focus(s.selectedId); return true; }
