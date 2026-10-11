@@ -44,7 +44,7 @@ CLIs.
 1. Install the [Claude Code CLI](https://code.claude.com/docs/en/setup), which
    works with a Claude subscription or an Anthropic API key, or the
    [Codex CLI](https://learn.chatgpt.com/docs/codex/cli) 0.155 or newer, which
-   works with an OpenAI API key alone, or [OpenCode](https://opencode.ai/docs/)
+   works with an OpenAI API key alone, or [OpenCode](https://opencode.ai/v2/docs/)
    2.0.22 or newer, which runs on OpenCode Zen's free models without an account
    or on any provider you sign in to. See [Using API keys](#using-api-keys).
 

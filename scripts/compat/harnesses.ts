@@ -191,23 +191,22 @@ export const OPENCODE_EVENTS = ['session.created', 'session.model.selected', 'se
   'session.execution.succeeded', 'session.execution.failed', 'session.execution.interrupted'];
 const OPENCODE_FIELDS = ['sessionID', 'parentID', 'model', 'tokens', 'text', 'id', 'action', 'resources', 'requestID', 'form', 'error', 'fields', 'description', 'metadata'];
 
-/** The OpenCode release to check, from its v2 and v3 tag refs and the tag of GitHub's latest release. A 3.x tag is a
+/** The OpenCode release to check, from its v2 and v3 tag refs and the version a fresh install gets. A 3.x tag is a
  * problem: the plugin and this check are written against OpenCode 2. */
-export function opencodeRelease(v2: string[], v3: string[], latestRelease: string): Release {
+export function opencodeRelease(v2: string[], v3: string[], fresh: string): Release {
   const version = newest(v2);
   if (!version) throw new Unreachable(`${OPENCODE}: no v2 tags`);
   const next = newest(v3);
-  const release: Release = { version, fresh: latestRelease.replace(/^v/, '') };
+  const release: Release = { version, fresh };
   return next ? { ...release, problem: `OpenCode ${next} is out, and Svall and this check cover 2.x only` } : release;
 }
 
 const opencode: Harness = {
   async latest() {
-    // OpenCode 2 ships through the anomalyco/tap Homebrew tap and v2.x tags; GitHub's latest release, which
-    // opencode.ai/install fetches, can be a 1.x one
+    // OpenCode 2 has v2.x tags but no GitHub releases, which are 1.x; opencode.ai/v2/install fetches the version here
     const refs = (major: number) => json<{ ref: string }[]>(`https://api.github.com/repos/${OPENCODE}/git/matching-refs/tags/v${major}.`);
-    const [v2, v3, release] = await Promise.all([refs(2), refs(3), json<{ tag_name: string }>(`https://api.github.com/repos/${OPENCODE}/releases/latest`)]);
-    return opencodeRelease(v2.map((t) => t.ref), v3.map((t) => t.ref), release.tag_name);
+    const [v2, v3, fresh] = await Promise.all([refs(2), refs(3), json<{ version: string }>('https://opencode.ai/update/api/latest/cli/npm')]);
+    return opencodeRelease(v2.map((t) => t.ref), v3.map((t) => t.ref), fresh.version);
   },
   files: (version) => rawAll(OPENCODE, `v${version}`, [...SCHEMA, ...Object.keys(PLUGIN_API)]),
   check(f) {
