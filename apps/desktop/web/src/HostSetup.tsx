@@ -63,9 +63,12 @@ export function HostSetup() {
   const enabled = useApp((s) => !!s.shell?.handoverEnabled);
   const run = useApp((s) => s.host);
   const confirm = useApp((s) => s.hostConfirm);
+  const machine = useApp((s) => s.hostMachine);
   const [name, setName] = useState('');
   const [ssh, setSsh] = useState('');
   const shut = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => { if (open && machine) setName(machine); }, [open, machine]);
 
   useEffect(() => {
     if (!open) return;

@@ -218,6 +218,42 @@ final class RemoteConnectionTests: XCTestCase {
         XCTAssertFalse(second.isRunning)
     }
 
+    func testAHelperThatGaveUpOnAnotherVersionIsAskedAfreshOnceTheMachineIsUpgraded() throws {
+        let first = ControllerProcess(executable: try fakeHelper(prints: [#"{"type":"connecting","owner":"studio"}"#,
+                                                                         #"{"type":"error","kind":"version","message":"studio answered with protocol 3, not 4"}"#]), arguments: [])
+        let remote = connection(helper: first)
+        remote.start()
+        waitForTranscript(of: 2)
+        XCTAssertTrue(remote.idle)
+        let second = ControllerProcess(executable: try fakeHelper(prints: [#"{"type":"connecting","owner":"studio"}"#, remoteOnline]), arguments: [])
+        remote.retryIfIdle(with: second)
+        XCTAssertFalse(first.isRunning)
+        waitForTranscript(of: 5)
+        XCTAssertEqual(Array(transcript.suffix(3)), ["state connecting studio - -",
+                                                     "connection 127.0.0.1:49321:other",
+                                                     "state online studio - -"])
+        XCTAssertFalse(remote.idle)
+        remote.stop()
+    }
+
+    func testAHelperOnlineOrStillRetryingIsLeftAloneByAnUpgrade() throws {
+        let cases = [([#"{"type":"connecting","owner":"studio"}"#, remoteOnline], 3),
+                     ([#"{"type":"connecting","owner":"studio"}"#, #"{"type":"error","kind":"unreachable","message":"ssh closed"}"#], 2)]
+        for (prints, said) in cases {
+            transcript = []
+            let first = ControllerProcess(executable: try fakeHelper(prints: prints), arguments: [])
+            let remote = connection(helper: first)
+            remote.start()
+            waitForTranscript(of: said)
+            XCTAssertFalse(remote.idle)
+            let second = ControllerProcess(executable: try fakeHelper(prints: []), arguments: [])
+            remote.retryIfIdle(with: second)
+            XCTAssertTrue(first.isRunning)
+            XCTAssertFalse(second.isRunning)
+            remote.stop()
+        }
+    }
+
     func testAHelperThatDiesWhileTheWindowIsOpenIsAnError() throws {
         let helper = try fakeHelper(prints: [#"{"type":"connecting","owner":"local"}"#], then: "exit 3")
         let remote = connection(helper: ControllerProcess(executable: helper, arguments: []))

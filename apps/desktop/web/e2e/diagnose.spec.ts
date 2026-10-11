@@ -76,6 +76,23 @@ test('a fleet on this Mac that asks for handover keeps the advice for its own da
   await expect(page.getByTestId('connect-screen')).toContainText('run svall-dev setup');
 });
 
+test('a fleet on a machine on another version opens the machines panel on it, and nothing runs until asked', async ({ page }) => {
+  const sent = await fakeShell(page, {
+    port: 0, token: '',
+    info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: true, gateway: 'studio' },
+    state: { type: 'connection.state', state: 'error', owner: 'studio', kind: 'version', message: 'studio answered with protocol 3, not 4' },
+  });
+  await page.goto('/');
+  const screen = page.getByTestId('connect-screen');
+  await expect(screen).toContainText('studio is on another version: studio answered with protocol 3, not 4');
+  await screen.getByTestId('connection-upgrade').click();
+  await expect(page.getByTestId('host-name')).toHaveValue('studio');
+  const starts = async () => (await sent()).filter((m) => m.type === 'host.start');
+  expect(await starts()).toEqual([]);
+  await page.getByTestId('host-upgrade').click();
+  expect(await starts()).toEqual([{ type: 'host.start', op: 'upgrade', args: { name: 'studio' } }]);
+});
+
 test('the connect screen says the fleet is starting at first, and shows the log once svalld is slow to answer', async ({ page }) => {
   // a daemon that took the socket and does not answer, as every launch sees for a moment
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });

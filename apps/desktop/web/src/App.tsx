@@ -9,7 +9,7 @@ import { FleetPicker } from './FleetPicker.js';
 import { FleetSummary } from './FleetSummary.js';
 import { HandoverSheet } from './HandoverSheet.js';
 import { useApp } from './hooks.js';
-import { connectionBanner, connectionText } from './host.js';
+import { connectionBanner, connectionText, upgradeFor } from './host.js';
 import { HostSetup } from './HostSetup.js';
 import { IslandCard } from './IslandCard.js';
 import { Keybindings } from './Keybindings.js';
@@ -31,6 +31,13 @@ import { theme } from './theme.js';
 const OUTDATED = () => (window.__svallVariant === 'release'
   ? 'Svall and svalld versions differ: quit and reopen Svall'
   : 'App and svalld versions differ: run pnpm desktop:install, then reopen the app');
+
+// the machines panel opens on the machine, and its Upgrade runs only once the user starts it
+function Upgrade() {
+  const name = useApp((s) => (s.shell?.handoverEnabled ? upgradeFor(s.connection) : undefined));
+  if (!name) return null;
+  return <button className="btn" data-testid="connection-upgrade" onClick={() => app.store.getState().toggleHost(true, name)}>Upgrade {name}…</button>;
+}
 
 export function App() {
   const loaded = useApp((s) => s.loaded);
@@ -61,7 +68,7 @@ export function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  if (!loaded && elsewhere) return <div className="connect" data-testid="connect-screen"><div>{elsewhere}</div></div>;
+  if (!loaded && elsewhere) return <div className="connect" data-testid="connect-screen"><div>{elsewhere}<br /><Upgrade /></div><HostSetup /></div>;
   if (!loaded && waiting && status !== 'outdated') return <div className="connect" data-testid="connect-screen"><Starting /></div>;
   if (!loaded) {
     const log = shell && `${shell.home}/svalld.log`;
@@ -83,7 +90,7 @@ export function App() {
   }
   return (
     <div className="app">
-      {away && <div className="banner" data-testid="connection-banner">{away}</div>}
+      {away && <div className="banner" data-testid="connection-banner">{away} <Upgrade /></div>}
       {!away && status !== 'online' && <div className="banner" data-testid="offline-banner">{status === 'outdated' ? OUTDATED() : 'svalld connection lost, reconnecting…'}</div>}
       {configErrors.length > 0 && (
         <div className="banner warn" data-testid="config-errors">

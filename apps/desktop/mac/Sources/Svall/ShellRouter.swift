@@ -388,6 +388,12 @@ final class ShellRouter {
             self?.hostRun = nil
             self?.bridge.send(.hostDone(op: op.rawValue, code: code))
             if op.rewritesFleetConfig { self?.sendShellInfo() }
+            // the version a helper gave up on may be the gateway's, which the upgrade has just changed
+            if op == .upgrade, code == 0, args.name == SvallHome.gatewayName() {
+                self?.remote.retryIfIdle(with: ControllerProcess.locate().map {
+                    ControllerProcess(executable: $0, arguments: ControllerProcess.connectArguments(profile: SvallHome.profile))
+                })
+            }
         }
         do { try child.start() } catch {
             hostRun = nil

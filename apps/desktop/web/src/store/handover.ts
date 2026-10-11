@@ -14,6 +14,8 @@ export type HandoverState = {
   // the host operation the machines panel is watching, and the panel itself
   host?: HostRun;
   hostOpen: boolean;
+  // the machine the panel opens on, when what opened it named one
+  hostMachine?: string;
   // the removal the user is being asked about before it runs: uninstalling there, or only forgetting the route
   hostConfirm?: HostConfirm;
   // the handover the sheet follows, and the sheet itself
@@ -23,7 +25,7 @@ export type HandoverState = {
 
 export type HandoverActions = {
   setConnectionState(connection: ConnectionState): void;
-  toggleHost(open?: boolean): void;
+  toggleHost(open?: boolean, machine?: string): void;
   hostStarted(op: HostOp, args: HostArgs): void;
   hostStep(op: HostOp, event: HostStep): void;
   hostDone(op: HostOp, code: number): void;
@@ -44,12 +46,13 @@ export const createHandoverSlice: StateCreator<App, [], [], HandoverState & Hand
   connection: undefined,
   host: undefined,
   hostOpen: false,
+  hostMachine: undefined,
   hostConfirm: undefined,
   handover: undefined,
   handoverOpen: false,
   // the fleet the page already holds stands while its machine is away: only the report changes
   setConnectionState: (connection) => set({ connection: { ...connection, ...(connection.message ? { message: withoutTokens(connection.message) } : {}) } }),
-  toggleHost: (open) => set((s) => { const next = open ?? !s.hostOpen; return { hostOpen: next, hostConfirm: next ? s.hostConfirm : undefined }; }),
+  toggleHost: (open, machine) => set((s) => { const next = open ?? !s.hostOpen; return { hostOpen: next, hostConfirm: next ? s.hostConfirm : undefined, hostMachine: next ? machine : undefined }; }),
   hostStarted: (op, args) => set({ host: beginRun(op, args), hostConfirm: undefined }),
   // a step from an operation the page is no longer watching belongs to a run it has forgotten
   hostStep: (op, event) => set((s) => (s.host?.op === op ? { host: applyStep(s.host, event) } : {})),

@@ -3,7 +3,7 @@ import type { Blocker, HandoverChoices } from '@svall/protocol';
 import { app } from './boot.js';
 import {
   actionsOf, blockerHint, blockersIn, CHOICE_LABEL, choiceFor, chosen, decisionPending, destinationName, entityLabel, formatBytes, fraction,
-  headline, rowText, sectionStates, withChoice, type HandoverRun, type HintContext, type Row, type SectionId, type SectionState,
+  headline, rowText, sectionStates, upgradeAsked, withChoice, type HandoverRun, type HintContext, type Row, type SectionId, type SectionState,
 } from './handover.js';
 import { useApp } from './hooks.js';
 
@@ -37,6 +37,7 @@ function BlockerRow({ b, ctx, run, warning, blockers = [b] }: { b: Blocker; ctx:
   const choice = warning ? undefined : choiceFor(b);
   const hint = blockerHint(b, ctx);
   const who = b.entity?.kind === 'character' ? b.entity.id : undefined;
+  const upgrade = upgradeAsked(b, ctx);
   return (
     <div className="host-step" data-testid={`handover-${warning ? 'warning' : 'blocker'}-${b.code}`} data-status={warning ? 'warn' : 'fail'}>
       <span className="host-mark">{warning ? '!' : '×'}</span>
@@ -51,6 +52,10 @@ function BlockerRow({ b, ctx, run, warning, blockers = [b] }: { b: Blocker; ctx:
         {b.code === 'character_pinned' && who && (
           <button className="btn ho-choice" data-testid="handover-open-card"
             onClick={() => { store().select(who, true); store().toggleHandover(false); }}>Open {ctx.name(who)}’s card</button>
+        )}
+        {upgrade && (
+          <button className="btn ho-choice" data-testid="handover-upgrade"
+            onClick={() => { store().toggleHandover(false); store().toggleHost(true, upgrade); }}>Upgrade {upgrade}…</button>
         )}
       </span>
     </div>

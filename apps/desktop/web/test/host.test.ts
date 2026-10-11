@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyStep, beginRun, connectionBanner, connectionText, endRun, groupSteps, machineName, readyForHandover,
-  runActions, sshDestination, withoutTokens,
+  runActions, sshDestination, upgradeFor, withoutTokens,
 } from '../src/host.js';
 
 const step = (s: string, status: 'start' | 'ok' | 'warn' | 'fail' | 'skip', extra: { detail?: string; action?: string } = {}) =>
@@ -153,6 +153,14 @@ describe('the connection state the shell reports', () => {
     expect(connectionBanner({ state: 'connecting', owner: 'local' }, false)).toBeUndefined();
     expect(connectionBanner(down, true)).toBe('this machine is not reachable: svalld is not running');
     expect(connectionBanner({ state: 'connecting', owner: 'studio' }, false)).toBe('connecting to studio…');
+  });
+
+  it('offers an upgrade only for a machine whose release the connection refused', () => {
+    expect(upgradeFor({ state: 'error', owner: 'studio', kind: 'version', message: 'studio answered with protocol 3, not 4' })).toBe('studio');
+    expect(upgradeFor({ state: 'error', owner: 'local', kind: 'version', message: 'companion 3, controller 4' })).toBeUndefined();
+    expect(upgradeFor({ state: 'error', owner: 'studio', kind: 'unreachable', message: 'ssh closed' })).toBeUndefined();
+    expect(upgradeFor({ state: 'connecting', owner: 'studio' })).toBeUndefined();
+    expect(upgradeFor(undefined)).toBeUndefined();
   });
 
   it('never repeats a token the shell passed on', () => {

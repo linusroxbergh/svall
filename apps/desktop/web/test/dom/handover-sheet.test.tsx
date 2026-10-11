@@ -12,6 +12,7 @@ let store: AppStore;
 vi.mock('../../src/boot.js', () => ({ app: { get store() { return store; }, bridge, api: () => ({ call: vi.fn() }) } }));
 
 const { HandoverSheet } = await import('../../src/HandoverSheet.js');
+const { HostSetup } = await import('../../src/HostSetup.js');
 
 const freeze: HandoverEvent = { event: 'handover.changed', data: { transactionId: 'tx', phase: 'freeze' } };
 const blocked: HandoverEvent = { event: 'handover.blocked', data: { transactionId: 'tx', phase: 'freeze', blockers: [{ code: 'agent_working', message: "Ada's terminal is still working" }] } };
@@ -46,4 +47,17 @@ test('a decision that opens the sheet, or arrives while it is up, puts the focus
   act(() => screen.getByTestId('handover-close').focus());
   act(() => store.getState().handoverEvent(blocked));
   expect(document.activeElement).toBe(screen.getByTestId('handover-go'));
+});
+
+test('a release blocker opens the machines panel on the Linux machine, in place of the sheet', () => {
+  render(<><HandoverSheet /><HostSetup /></>);
+  act(() => {
+    store.getState().toggleHandover(true);
+    store.getState().handoverEvent({ event: 'handover.result', data: { status: 'blocked', phase: 'begin', blockers: [
+      { code: 'incompatible_release', message: 'trift runs release 0.5.0, and this Mac 0.6.0' },
+    ] } });
+  });
+  fireEvent.click(screen.getByTestId('handover-upgrade'));
+  expect(screen.queryByTestId('handover-sheet')).toBeNull();
+  expect((screen.getByTestId('host-name') as HTMLInputElement).value).toBe('trift');
 });

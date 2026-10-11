@@ -169,6 +169,18 @@ test('the corner names the machine the fleet runs on, and the fleet stays on the
   await expect(page.getByTestId('toast')).toHaveText('/w/isle is on studio; open it there');
 });
 
+test('a machine on another version opens the machines panel on it from the banner, and nothing runs until asked', async ({ page, svall }) => {
+  await fakeShell(page, svall.port, svall.token);
+  await svall.open();
+  await handoverOn(page);
+  await receive(page, { type: 'connection.state', state: 'error', owner: 'studio', kind: 'version', message: 'studio answered with protocol 3, not 4' });
+  await expect(page.getByTestId('connection-banner')).toContainText('studio is on another version: studio answered with protocol 3, not 4');
+  await page.getByTestId('connection-upgrade').click();
+  await expect(page.getByTestId('host-setup')).toBeVisible();
+  await expect(page.getByTestId('host-name')).toHaveValue('studio');
+  expect((await sent(page)).filter((m) => m.type === 'host.start')).toEqual([]);
+});
+
 test('a fleet on this Mac keeps its one offline banner until it asks for handover', async ({ page, svall }) => {
   await fakeShell(page, svall.port, svall.token);
   await svall.open();

@@ -91,6 +91,10 @@ export function connectionText(c: ConnectionState): string | undefined {
   }
 }
 
+/** The machine whose release the connection refused, which its Upgrade under Settings → Machines can match; never this Mac. */
+export const upgradeFor = (c: ConnectionState | undefined): string | undefined =>
+  (c?.state === 'error' && c.kind === 'version' && c.owner !== 'local' ? c.owner : undefined);
+
 /** A fleet on this Mac reports its connection only once it asks for handover; a remote one always does. */
 export function connectionBanner(c: ConnectionState | undefined, handoverEnabled: boolean): string | undefined {
   return c && (c.owner !== 'local' || handoverEnabled) ? connectionText(c) : undefined;

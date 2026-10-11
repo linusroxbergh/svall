@@ -75,6 +75,19 @@ final class RemoteConnection {
         start()
     }
 
+    /// The helper retries only a transport that comes back on its own; after any other failure, another version
+    /// among them, it waits to be stopped.
+    var idle: Bool {
+        guard let state, state.state == "error" else { return false }
+        return state.kind != "unreachable" && state.kind != "daemon_down"
+    }
+
+    /// A machine was upgraded: a helper that gave up is replaced, and one online or still retrying goes on.
+    func retryIfIdle(with next: @autoclosure () -> ControllerProcess?) {
+        guard idle, let next = next() else { return }
+        reconnect(with: next)
+    }
+
     /// The window says which machine the fleet is on; a fleet on this Mac is just the fleet.
     static func windowTitle(base: String, owner: String) -> String {
         owner == "local" ? base : "\(base) — \(owner)"

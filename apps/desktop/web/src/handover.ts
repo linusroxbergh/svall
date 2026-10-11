@@ -2,7 +2,7 @@ import {
   HANDOVER_PHASES,
   type Blocker, type EntityData, type HandoverChoices, type HandoverEntityKind, type HandoverEvent, type HandoverPhase, type ManifestSummary, type Names, type Outcome, type SafeAction, type Verdict, type Warning,
 } from '@svall/protocol';
-import { withoutTokens } from './host.js';
+import { machineName, withoutTokens } from './host.js';
 
 // what `svall handover --json` prints
 export type { CharacterResult, EntityData, HandoverEvent, Names, Outcome, SafeAction, Standing, Verdict } from '@svall/protocol';
@@ -352,6 +352,13 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
     default:
       return undefined;
   }
+}
+
+/** The Linux machine a release blocker asks to have upgraded, by the name Settings → Machines knows it by. */
+export function upgradeAsked(b: Blocker, ctx: HintContext): string | undefined {
+  if (b.code !== 'incompatible_release' && b.code !== 'incompatible_protocol' && b.code !== 'incompatible_schema') return undefined;
+  const linux = ctx.pull ? ctx.source : ctx.destination;
+  return machineName(linux) ? linux : undefined;
 }
 
 /** Who or what an entity is for the user: a character's name, where a root lands and whose a session is, as preflight said, or else its id. */
