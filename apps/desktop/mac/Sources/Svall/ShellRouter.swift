@@ -11,6 +11,7 @@ final class ShellRouter {
     private let browsers: BrowserManager
     private let keys = KeyMonitor()
     private let notifier = Notifier()
+    private let awake = KeepAwake()
     private var sentConfigErrors = false
     // whether a page panel holds a rect of the surfaces
     private var holding = false
@@ -103,6 +104,8 @@ final class ShellRouter {
         setQuit(KeyMonitor.defaultQuit)
         // the page that posted the banners is gone, and the one loading has no record of them
         notifier.clearAll()
+        // the page that asked for the hold is gone, and the one loading asks again
+        awake.release()
         listening = false
         pendingNotify = []
         quitFlow.pageGone()
@@ -130,6 +133,7 @@ final class ShellRouter {
         browsers.closeAll()
         browsers.dropDownloads()
         notifier.clearAll()
+        awake.release()
     }
 
     // a banner's click brings this fleet's window up, restored if it sat in the Dock
@@ -267,6 +271,9 @@ final class ShellRouter {
             openFleet(home, quit: quit ?? false)
         case .retitle:
             webView.window?.title = SvallHome.displayName
+            awake.apply()
+        case .awake(let reason):
+            awake.hold(reason)
         }
     }
 

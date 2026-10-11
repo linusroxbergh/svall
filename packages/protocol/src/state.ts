@@ -53,6 +53,8 @@ export const Agent = z.object({
   promptId: z.string().optional(),
   // the turn ended with background agents or shells still running; the agent works on until they report back
   background: z.literal(true).optional(),
+  // the background work is shells alone, a server or a watcher that may never end
+  shellsOnly: z.literal(true).optional(),
   // task ids of the Claude Code monitors the session started, which are listed as background shells but watch on without a turn
   monitors: z.array(z.string()).optional(),
   // Claude Code subagents with a permission request open; the notification that blocks never says whose it is

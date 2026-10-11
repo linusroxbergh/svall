@@ -15,6 +15,7 @@ export function settle(agent: Agent, status: Agent['status']): void {
   delete agent.prompt;
   delete agent.promptId;
   delete agent.background;
+  delete agent.shellsOnly;
 }
 
 // a process of another user still counts as running
@@ -98,7 +99,7 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     if (live.length) agent.monitors = live; else delete agent.monitors;
   }
   // background agents or shells that never re-invoke the session, killed or crashed, are over once a hook lists none
-  if (tasks === 0) delete agent.background;
+  if (tasks === 0) { delete agent.background; delete agent.shellsOnly; }
   // the main thread moving on leaves a question a subagent still has open, unless the user typed a prompt past it
   if (agent.asking && e.backend === 'claude') {
     const stop = e.name === 'Stop' || e.name === 'StopFailure';
@@ -145,6 +146,7 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
       if (tasks) {
         settle(agent, 'working');
         agent.background = true;
+        if (e.backgroundAgents === 0) agent.shellsOnly = true;
         break;
       }
       settle(agent, 'done');
@@ -168,9 +170,10 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
       // a minute after a turn ends, Claude Code says it sits at its prompt, background work or not. With background
       // work out, the question is gone but the work goes on
       else if (e.notificationType === 'idle_prompt' && (agent.status === 'blocked' || agent.status === 'working')) {
-        const background = agent.background;
+        const { background, shellsOnly } = agent;
         settle(agent, background ? 'working' : 'idle');
         if (background) agent.background = true;
+        if (shellsOnly) agent.shellsOnly = true;
       }
       break;
   }
