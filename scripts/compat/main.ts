@@ -18,9 +18,10 @@ const SNAPSHOT = path.join(import.meta.dirname, 'snapshot.json');
 export async function checkRelease(kind: AgentKind, snap: Snapshot, h: Harness = HARNESSES[kind]): Promise<Report> {
   const r: Report = { kind, events: [], problems: [], added: [], notes: [] };
   try {
-    const { version, fresh, note } = await h.latest();
+    const { version, fresh, note, problem } = await h.latest();
     r.version = version;
     if (note) r.notes.push(note);
+    if (problem) r.problems.push(problem);
     const a = AGENTS[kind];
     if (!versionOk(a, fresh)) r.problems.push(`a fresh install (${a.installCommand}) gets ${fresh}, below the ${a.minVersion?.join('.')} Svall needs`);
     const res = h.check(await h.files(version));

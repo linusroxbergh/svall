@@ -8,11 +8,14 @@ export type Files = Record<string, string | undefined>;
 /** `missing`: what Svall reads that the release no longer declares. `events`: every hook or event the release has. */
 export type Result = { missing: string[]; events: string[] };
 export type Harness = {
-  // the release to check and the version a fresh install gets; `note` says why they differ from the newest
-  latest(): Promise<{ version: string; fresh: string; note?: string }>;
+  // the release to check and the version a fresh install gets; `note` says why they differ from the newest, and
+  // `problem` what about the releases needs a look
+  latest(): Promise<Release>;
   files(version: string): Promise<Files>;
   check(files: Files): Result;
 };
+
+export type Release = { version: string; fresh: string; note?: string; problem?: string };
 
 /** A vendor source that couldn't be reached, as opposed to one that answered without the file. */
 export class Unreachable extends Error {}
@@ -72,17 +75,24 @@ const sdk = () => (sdkDoc ??= json<SdkDoc>('https://registry.npmjs.org/@anthropi
 const SDK_TYPES = 'sdk.d.ts';
 
 /** The Claude Code release to check: the newest, or while its Agent SDK isn't out yet, the newest one an SDK types. */
-export function claudeRelease(latest: string, typed: string[]): { version: string; fresh: string; note?: string } {
+const DAY = 24 * 60 * 60 * 1000;
+
+/** The Claude Code release to check: the newest, or while its Agent SDK isn't out yet, the newest one an SDK types.
+ * The SDK follows within minutes to hours, so one missing for two days is a problem. */
+export function claudeRelease(latest: string, typed: string[], publishedAt: string, now = Date.now()): Release {
   if (typed.includes(latest)) return { version: latest, fresh: latest };
   const version = newest(typed);
   if (!version) throw new Unreachable('no Agent SDK names a Claude Code version');
-  return { version, fresh: latest, note: `no Agent SDK for ${latest} yet` };
+  const days = Math.floor((now - Date.parse(publishedAt)) / DAY);
+  if (days < 2) return { version, fresh: latest, note: `no Agent SDK for ${latest} yet` };
+  return { version, fresh: latest, problem: `Claude Code ${latest} has had no Agent SDK for ${days} days, so its hooks go unchecked` };
 }
 
 const claude: Harness = {
   async latest() {
-    const { version } = await json<{ version: string }>('https://registry.npmjs.org/@anthropic-ai/claude-code/latest');
-    return claudeRelease(version, Object.values((await sdk()).versions).flatMap((v) => v.claudeCodeVersion ?? []));
+    const doc = await json<{ 'dist-tags': { latest: string }; time: Record<string, string> }>('https://registry.npmjs.org/@anthropic-ai/claude-code');
+    const latest = doc['dist-tags'].latest;
+    return claudeRelease(latest, Object.values((await sdk()).versions).flatMap((v) => v.claudeCodeVersion ?? []), doc.time[latest]);
   },
   async files(version) {
     const pkg = Object.values((await sdk()).versions).find((v) => v.claudeCodeVersion === version);
@@ -181,15 +191,23 @@ export const OPENCODE_EVENTS = ['session.created', 'session.model.selected', 'se
   'session.execution.succeeded', 'session.execution.failed', 'session.execution.interrupted'];
 const OPENCODE_FIELDS = ['sessionID', 'parentID', 'model', 'tokens', 'text', 'id', 'action', 'resources', 'requestID', 'form', 'error', 'fields', 'description', 'metadata'];
 
+/** The OpenCode release to check, from its v2 and v3 tag refs and the tag of GitHub's latest release. A 3.x tag is a
+ * problem: the plugin and this check are written against OpenCode 2. */
+export function opencodeRelease(v2: string[], v3: string[], latestRelease: string): Release {
+  const version = newest(v2);
+  if (!version) throw new Unreachable(`${OPENCODE}: no v2 tags`);
+  const next = newest(v3);
+  const release: Release = { version, fresh: latestRelease.replace(/^v/, '') };
+  return next ? { ...release, problem: `OpenCode ${next} is out, and Svall and this check cover 2.x only` } : release;
+}
+
 const opencode: Harness = {
   async latest() {
     // OpenCode 2 ships through the anomalyco/tap Homebrew tap and v2.x tags; GitHub's latest release, which
     // opencode.ai/install fetches, can be a 1.x one
-    const tags = await json<{ ref: string }[]>(`https://api.github.com/repos/${OPENCODE}/git/matching-refs/tags/v2.`);
-    const release = await json<{ tag_name: string }>(`https://api.github.com/repos/${OPENCODE}/releases/latest`);
-    const version = newest(tags.map((t) => t.ref));
-    if (!version) throw new Unreachable(`${OPENCODE}: no v2 tags`);
-    return { version, fresh: release.tag_name.replace(/^v/, '') };
+    const refs = (major: number) => json<{ ref: string }[]>(`https://api.github.com/repos/${OPENCODE}/git/matching-refs/tags/v${major}.`);
+    const [v2, v3, release] = await Promise.all([refs(2), refs(3), json<{ tag_name: string }>(`https://api.github.com/repos/${OPENCODE}/releases/latest`)]);
+    return opencodeRelease(v2.map((t) => t.ref), v3.map((t) => t.ref), release.tag_name);
   },
   files: (version) => rawAll(OPENCODE, `v${version}`, [...SCHEMA, ...Object.keys(PLUGIN_API)]),
   check(f) {

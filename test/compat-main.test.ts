@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
-import { claudeRelease, HARNESSES, Unreachable, type Harness } from '../scripts/compat/harnesses.js';
+import { claudeRelease, HARNESSES, opencodeRelease, Unreachable, type Harness } from '../scripts/compat/harnesses.js';
 import { checkInstalled, checkRelease, findings, type Report } from '../scripts/compat/main.js';
 
 afterEach(() => { vi.unstubAllGlobals(); });
@@ -33,9 +33,29 @@ test('an Agent SDK tarball that breaks off mid-download can\'t be checked, rathe
   await expect(HARNESSES.claude.files('2.1.296')).rejects.toThrow('terminated');
 });
 
+const NOW = Date.parse('2026-10-11T10:00:00Z');
+
 test('a Claude Code release whose Agent SDK is not out yet checks the newest one that is', () => {
-  expect(claudeRelease('2.1.297', ['2.1.295', '2.1.296'])).toEqual({ version: '2.1.296', fresh: '2.1.297', note: 'no Agent SDK for 2.1.297 yet' });
-  expect(claudeRelease('2.1.296', ['2.1.296'])).toEqual({ version: '2.1.296', fresh: '2.1.296' });
+  expect(claudeRelease('2.1.297', ['2.1.295', '2.1.296'], '2026-10-11T08:00:00Z', NOW)).toEqual({ version: '2.1.296', fresh: '2.1.297', note: 'no Agent SDK for 2.1.297 yet' });
+  expect(claudeRelease('2.1.296', ['2.1.296'], '2026-10-01T08:00:00Z', NOW)).toEqual({ version: '2.1.296', fresh: '2.1.296' });
+});
+
+test('a Claude Code release still without an Agent SDK after two days is a problem', () => {
+  expect(claudeRelease('2.1.297', ['2.1.296'], '2026-10-08T08:00:00Z', NOW)).toEqual({
+    version: '2.1.296', fresh: '2.1.297', problem: 'Claude Code 2.1.297 has had no Agent SDK for 3 days, so its hooks go unchecked',
+  });
+});
+
+test('OpenCode is checked at its newest 2.x tag, and a 3.x tag is a problem', () => {
+  expect(opencodeRelease(['refs/tags/v2.0.9', 'refs/tags/v2.0.26'], [], 'v1.19.0')).toEqual({ version: '2.0.26', fresh: '1.19.0' });
+  expect(opencodeRelease(['refs/tags/v2.0.26'], ['refs/tags/v3.0.0-beta.1', 'refs/tags/v3.0.0'], 'v3.0.0')).toEqual({
+    version: '2.0.26', fresh: '3.0.0', problem: 'OpenCode 3.0.0 is out, and Svall and this check cover 2.x only',
+  });
+});
+
+test('a problem found while picking the release is reported', async () => {
+  const r = await checkRelease('claude', {}, harness({ latest: async () => ({ version: '1.0.0', fresh: '1.0.1', problem: 'no SDK' }) }));
+  expect(r.problems).toEqual(['no SDK']);
 });
 
 test('an installed CLI\'s help is read for each flag, and a help that prints nothing says so', () => {
