@@ -11,11 +11,10 @@ Everything sits behind `handover.enabled` in fleet.json, which is off by default
 - **Done:** version 1 — plan Tasks 1–29 and 36–42, milestones M0–M3, M3b's automated gate and M6. Every
   task was reviewed, M1–M3 each got a deep review, fix wave and on-machine pass, and the whole branch got a
   final review with one fix wave, then a PR review with its own fix wave, and a review of the branch on svall with
-  one more. The fault suites (`pnpm test:faults`) crash
-  every one of 65 failpoints and fault every controller request; the container harness
-  (`docs/integration.md`) hands a fleet over real sshd/rsync/tmux, and a release installs fresh on x86-64
-  and arm64; real Claude and Codex sessions resumed both ways on test-server, and the spec's manual
-  acceptance passed there from release artifacts. OpenCode characters hand over too, from 2.0.22, as their
+  one more. The fault suites (`pnpm test:faults`) crash every one of 65 failpoints and fault every controller
+  request; the container harness (`docs/integration.md`) hands a fleet over real sshd/rsync/tmux, and a release
+  installs fresh on x86-64 and arm64; real Claude and Codex sessions resumed both ways on test-server, and the spec's
+  manual acceptance passed there from release artifacts. OpenCode characters hand over too, from 2.0.22, as their
   session's export.
 - **Not done on purpose:** `handover.enabled` is still in place (Task 39's last box). It goes in one
   small commit once the items under "Owed" below exist.

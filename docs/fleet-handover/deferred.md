@@ -75,6 +75,8 @@ What the reviews found and left open, by area. Paths are from the repository roo
   (`packages/cli/src/controller/registry.ts:136`).
 - With the gateway unreachable and no journal found, status says no handover of this fleet is open anywhere
   (`packages/cli/src/controller/recovery.ts:159`).
+- Closing a master that `open()` already replaced sends `-O exit` on the shared socket, ending the new master
+  (`packages/cli/src/controller/ssh.ts:223`).
 
 ## Recovery
 
@@ -102,8 +104,6 @@ What the reviews found and left open, by area. Paths are from the repository roo
   running daemons nor probes them (`packages/cli/src/commands/setup.ts:249`).
 - `svall host` saves the machines.json it loaded when it started, so a registry change made meanwhile is lost
   (`packages/cli/src/controller/host.ts:415`).
-- Re-running `host add` writes the record with `gateway: false`, which clears the mark `host enable` set
-  (`packages/cli/src/controller/host.ts:407`).
 - `host add` under a second name for a registered machine uploads and installs, then fails at the registry step
   (`packages/cli/src/controller/host.ts:313`).
 - `remoteConnectionInfo` checks the fleet id before the machine id, so an alias that reaches another machine gets
@@ -115,8 +115,6 @@ What the reviews found and left open, by area. Paths are from the repository roo
   strips the `svall: ` prefix only from the first line (`packages/cli/src/controller/host.ts:664`).
 - An agent missing at `host add` gets "install <agent>" without saying to run `host add` again, which writes its
   hooks (`packages/cli/src/controller/host.ts:236`).
-- Closing a master that `open()` already replaced sends `-O exit` on the shared socket, ending the new master
-  (`packages/cli/src/controller/ssh.ts:223`).
 - Stopping Add Machine leaves its interactive ssh and askpass dialog running (`packages/cli/src/commands/host.ts:31`).
 - A `-N` dedup suffix can push an auto-created machine name past 32 characters, and the next load sets machines.json
   aside (`packages/cli/src/controller/registry.ts:26`).
@@ -222,30 +220,41 @@ What the reviews found and left open, by area. Paths are from the repository roo
 
 ## Code structure
 
-Behaviour-preserving refactors, left until after the merge.
+Behaviour-preserving refactors.
 
 - master → connection-info → forward → client is written four times, each with its own cleanup
-  (`packages/cli/src/controller/reach.ts:137`, `connection.ts:161`, `connect.ts:95`, `host.ts:257`).
-- Six CLI functions parse fleet.json themselves; `commands/handover.ts`'s `gatewayOf` repeats svalld's `namedGateway`
-  and shares its name with `reach.ts`'s.
-- `packages/cli/src/controller/host.ts` keeps its own `fleetHomes`, which disagrees with svalld's on what a fleet home
-  is.
-- Which blocker each choice clears is spelled out in three places: web `choiceFor`, CLI `handover-view.ts` and
-  svalld `ARCHIVABLE`.
+  (`packages/cli/src/controller/reach.ts:137`, `packages/cli/src/controller/connection.ts:161`,
+  `packages/cli/src/controller/connect.ts:95`, `packages/cli/src/controller/host.ts:257`).
+- Six CLI functions parse fleet.json themselves: `localFleetId` (`packages/cli/src/controller/connection.ts:91`),
+  `fleetConfig` (`packages/cli/src/controller/connection.ts:191`), `connectHandover`
+  (`packages/cli/src/controller/reach.ts:163`), `readFleet` (`packages/cli/src/controller/host.ts:686`), `recoverFleet`
+  (`packages/cli/src/commands/fleet-recover.ts:185`) and `gatewayOf` (`packages/cli/src/commands/handover.ts:70`),
+  which repeats svalld's `namedGateway` (`packages/svalld/src/config.ts:235`) and shares its name with
+  `packages/cli/src/controller/reach.ts:73`'s.
+- The CLI's `fleetHomes` (`packages/cli/src/controller/host.ts:592`) disagrees with svalld's
+  (`packages/svalld/src/uninstall.ts:248`) on what a fleet home is.
+- Which blocker each choice clears is spelled out in three places: `choiceFor` (`apps/desktop/web/src/handover.ts:262`),
+  `options` (`packages/cli/src/commands/handover-view.ts:71`) and `ARCHIVABLE`
+  (`packages/svalld/src/handover/replicas.ts:78`).
 - `scripts/bench/handover.mjs` and `scripts/integration/fleet-handover.mjs` copy `USER_ENV` and `sh()`.
-- `SvallHome.swift` derives the profile from the home path in overlapping ways.
-- `source.ts`, `destination.ts` and `rest.ts` each define their own `ask`, `processes`, `serial`, `realClock` and
-  `keyOf`.
-- The guard's token-only rule is written three ways (`packages/svalld/src/ownership/guard.ts:96`).
+- `profileName`, `profile`, `fleetProfile`, `isPrivate` and `directoryName` each derive the profile from the home path
+  (`apps/desktop/mac/Sources/Svall/SvallHome.swift:92-118`).
+- `packages/svalld/src/handover/source.ts`, `packages/svalld/src/handover/destination.ts` and
+  `packages/svalld/src/handover/rest.ts` each define their own `ask`, `processes`, `serial`, `realClock` and `keyOf`.
+- The guard's token-only rule is one condition over the `recovery` and `transaction` classes and the method name
+  `handover.inspect`, with `handover.reaches` classed `transaction` to fall under it
+  (`packages/svalld/src/ownership/guard.ts:96`, `packages/svalld/src/ownership/guard.ts:89`).
 - `resolveOwner` copies `rememberOwner`'s route write (`packages/cli/src/controller/connection.ts:302`).
-- `LineBuffer` and `StderrTail` live in `ControllerProcess.swift`, which does not use them.
-- `MachineRegistry.rename` throws when given the machine's own name, and only tests call it.
+- `LineBuffer` and `StderrTail` live in `apps/desktop/mac/Sources/Svall/ControllerProcess.swift`, which does not use
+  them.
+- `MachineRegistry.rename` throws when given the machine's own name, and only tests call it
+  (`packages/cli/src/controller/registry.ts:112`).
 - Unused: `repairBrief` and `AuthorityClient`'s typed wrappers (tests only), `SourceJournal.error`, `ensureBundle`'s
   `rebuild` option and result, `RunOptions` cwd/env/signal/maxOutputBytes, the per-surface fields of
   `SurfaceManager`'s `Attached`, `ERROR_CODES`/`ErrorCode`, and exports used only in their own files (`within`,
   `Imported`, `characterResults`, `PathList`, `label`, `Ran`).
 - Unreachable: `ready()`'s `handover_committed` branch and `forward()`'s `Moved` catch
-  (`packages/cli/src/controller/handover.ts:659`, `:398`).
+  (`packages/cli/src/controller/handover.ts:659`, `packages/cli/src/controller/handover.ts:398`).
 
 ## Docs
 

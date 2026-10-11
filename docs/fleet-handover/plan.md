@@ -19,7 +19,7 @@ post-commit operation destination-only.
 **Tech stack:** TypeScript, Node 22, zod, vitest, React, Zustand, Swift/AppKit/WebKit, GhosttyKit,
 tmux 3.5+, Git, rsync, OpenSSH, systemd user services, Tailscale Serve, Playwright, GitHub Actions.
 
-**Spec:** `docs/superpowers/specs/2026-09-20-fleet-handover-design.md`
+**Spec:** `docs/fleet-handover/spec.md`
 
 ## Delivery rules
 
@@ -218,7 +218,7 @@ normal daemon path. A failed spike is a design result, not an invitation to hide
 
 - Create: `scripts/spikes/build-companion.mjs`
 - Create: `packages/svalld/test/gateway/relay-contract.test.ts`
-- Create: `docs/superpowers/plans/fleet-handover-spike-results.md`
+- Create: `docs/fleet-handover/spike-results.md`
 - Modify if required: fleet handover spec and this plan
 
 **Steps:**
@@ -1060,7 +1060,7 @@ Then repeat with one supported real Claude session and one supported real Codex 
 - [x] Run one Mac→Linux→Mac round trip with mocked agents and one real Codex session on the rebased
   build, as the M3 on-machine pass ran it.
 
-**Verify:** the verification commands above, then the round trip's report in the ledger.
+**Verify:** the verification commands above, then the round trip's report.
 
 **Commit:** `The fleet handover branch runs on current main`
 

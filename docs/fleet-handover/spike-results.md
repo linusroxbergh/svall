@@ -66,8 +66,8 @@ on macOS only, on 0.155.1, with one account's `auth.json` copied by hand into ea
 Interactive `codex resume <id>` was not exercised. The 0.142 rollout shape is accepted by the probe
 on the strength of a checked-in fixture, but no 0.142 session was resumed live.
 
-Details and commands: `packages/svalld/test/fixtures/handover/codex/README.md` and
-`.superpowers/sdd/2026-09-20-fleet-handover/task-2-report.md`.
+Details and commands: `packages/svalld/test/fixtures/handover/codex/README.md`, and the Task 2 report in the
+ledger kept outside the repository.
 
 ---
 
@@ -122,7 +122,7 @@ its worktree, and handle a detached HEAD or a locked worktree — none of which 
 exercises. Measured on one git version (2.55.0) on macOS only; the destination target is Linux, and
 nothing observed here is macOS-specific beyond the fixture's own `/tmp` realpath handling.
 
-Details: `.superpowers/sdd/2026-09-20-fleet-handover/task-3-report.md`.
+Details: the Task 3 report, in the ledger kept outside the repository.
 
 ---
 
