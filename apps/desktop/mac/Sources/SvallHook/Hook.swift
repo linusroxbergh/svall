@@ -16,10 +16,18 @@ func given(_ a: JSON?, _ b: @autoclosure () -> JSON?) -> JSON? {
 func hookLine(_ h: JSON, charId: Text, term: Bool, backend: String, pid: Double?) -> Bytes {
     let event = h["hook_event_name"]?.string
     var message = h["message"]
-    // codex says what it asks permission for inside tool_input
-    if event == text("PermissionRequest") && !(message?.truthy ?? false) {
+    // codex says what it asks permission for inside tool_input, and its own questions are a tool's input
+    if !(message?.truthy ?? false) {
         let input = h["tool_input"]
-        let why = given(given(input?["description"], input?["command"]), h["tool_name"])
+        var why: JSON?
+        if event == text("PermissionRequest") {
+            why = given(given(input?["description"], input?["command"]), h["tool_name"])
+        } else if event == text("PreToolUse") && h["tool_name"]?.string == text("request_user_input") {
+            let questions = input?["questions"]
+            var first = questions?["0"]
+            if case .array(let items)? = questions { first = items.first }
+            why = first?["question"]
+        }
         var said = why?.string
         if case .array(let items)? = why { said = join(items, " ") }
         if let said, !said.isEmpty { message = .string(Array(said.prefix(500))) }

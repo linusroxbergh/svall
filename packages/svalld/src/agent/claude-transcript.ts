@@ -56,6 +56,16 @@ function answered(e: Entry): string | undefined {
   return Object.entries(r.answers).map(([q, a]) => `${q}\n→ ${a}`).join('\n\n') || undefined;
 }
 
+const INTERRUPT = '[Request interrupted by user';
+
+/** When an Esc or a "No" ended the turn, if that is the newest thing the user side wrote; Claude Code fires no hook for it. */
+export function interruptedAt(text: string): number | undefined {
+  const last = entries(text).filter((e) => e.type === 'user' && !e.isSidechain && !e.isMeta).at(-1);
+  const c = last?.message?.content;
+  const said = typeof c === 'string' ? c : c?.find((b) => b.type === 'text')?.text;
+  return said?.startsWith(INTERRUPT) ? Date.parse(last?.timestamp ?? '') || undefined : undefined;
+}
+
 export type Pending = { id: string; text: string; at: number };
 
 // a turn Claude Code opened by itself — a finished background agent, a continuation — carries an origin

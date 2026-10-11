@@ -51,6 +51,24 @@ describe('applyHook', () => {
     expect(tool(pre, 'PostToolUseFailure', 10_100).agent?.lastActivityAt).toBe(10_100);
     expect(tool(pre, 'Stop', 5_001).agent?.lastActivityAt).toBe(5_001);
   });
+  it("asks with Codex's own question tool until it runs or an Esc ends the turn; Claude's tools of that name do not ask", () => {
+    const codex = { ...withAgent('working'), agent: { ...withAgent('working').agent!, kind: 'codex' as const } };
+    const q = applyHook(codex, { charId: 'c_a', backend: 'codex', name: 'PreToolUse', toolName: 'request_user_input', message: 'Ship it?' }, 5);
+    expect(q.agent).toMatchObject({ status: 'blocked', prompt: 'Ship it?', askedTool: 'request_user_input' });
+    expect(applyHook(q, { charId: 'c_a', backend: 'codex', name: 'PostToolUse', toolName: 'exec_command' }, 6).agent?.status).toBe('blocked');
+    const answered = applyHook(q, { charId: 'c_a', backend: 'codex', name: 'PostToolUse', toolName: 'request_user_input' }, 6).agent!;
+    expect(answered.status).toBe('working');
+    expect(answered).not.toHaveProperty('askedTool');
+    expect(applyHook(q, { charId: 'c_a', backend: 'codex', name: 'Interrupt' }, 6).agent?.status).toBe('idle');
+    expect(applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'PreToolUse', toolName: 'request_user_input' }, 5).agent?.status).toBe('working');
+  });
+  it("ends a Claude subagent's open question with the interrupt that ended the turn", () => {
+    const asking = { ...withAgent('blocked'), agent: { ...withAgent('blocked').agent!, asking: ['a1'], promptId: 'q' } };
+    const c = applyHook(asking, { charId: 'c_a', backend: 'claude', name: 'Interrupt' }, 9).agent!;
+    expect(c.status).toBe('idle');
+    expect(c).not.toHaveProperty('asking');
+    expect(c).not.toHaveProperty('promptId');
+  });
   it('stays working when a turn ends with background agents still running', () => {
     const w = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Stop', backgroundTasks: 2 }, 8);
     expect(w.agent?.status).toBe('working');
