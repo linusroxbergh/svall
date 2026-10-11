@@ -15,6 +15,7 @@ export function settle(agent: Agent, status: Agent['status']): void {
   delete agent.prompt;
   delete agent.promptId;
   delete agent.background;
+  delete agent.shellsOnly;
 }
 
 // a process of another user still counts as running
@@ -110,7 +111,7 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     if (live.length) agent.monitors = live; else delete agent.monitors;
   }
   // background agents or shells that never re-invoke the session, killed or crashed, are over once a hook lists none
-  if (tasks === 0) delete agent.background;
+  if (tasks === 0) { delete agent.background; delete agent.shellsOnly; }
   // a killed subagent sends no SubagentStop. The main thread waits out one in the foreground, so at its Stop only the
   // background ones listed run on
   if ((e.name === 'Stop' || e.name === 'StopFailure') && e.backgroundAgentIds && agent.subagents) {
@@ -163,6 +164,7 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
       if (tasks) {
         settle(agent, 'working');
         agent.background = true;
+        if (e.backgroundAgents === 0) agent.shellsOnly = true;
         break;
       }
       settle(agent, 'done');
@@ -186,9 +188,10 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
       // a minute after a turn ends, Claude Code says it sits at its prompt, background work or not. With background
       // work out, the question is gone but the work goes on
       else if (e.notificationType === 'idle_prompt' && (agent.status === 'blocked' || agent.status === 'working')) {
-        const background = agent.background;
+        const { background, shellsOnly } = agent;
         settle(agent, background ? 'working' : 'idle');
         if (background) agent.background = true;
+        if (shellsOnly) agent.shellsOnly = true;
       }
       break;
   }

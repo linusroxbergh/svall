@@ -27,10 +27,10 @@ describe('settings', () => {
   it('reads stored settings back, and falls back to the defaults', () => {
     expect(readSettings(undefined)).toEqual(DEFAULT_SETTINGS);
     expect(readSettings({ cardOpacity: 0.5, fullOpacity: 0.9, zoom: 1.1, onePassword: true, usageTab: false, autoArrange: false, robotMotion: false, bindings: {} }))
-      .toEqual({ cardOpacity: 0.5, fullOpacity: 0.9, zoom: 1.1, onePassword: true, usageTab: false, autoArrange: false, cardLinks: false, robotMotion: false, bindings: {}, notifications: DEFAULT_SETTINGS.notifications });
+      .toEqual({ cardOpacity: 0.5, fullOpacity: 0.9, zoom: 1.1, onePassword: true, usageTab: false, autoArrange: false, cardLinks: false, robotMotion: false, bindings: {}, notifications: DEFAULT_SETTINGS.notifications, keepAwake: 'needs' });
     // out of range, the wrong type, or off the ladder
     expect(readSettings({ cardOpacity: 4, fullOpacity: 'x', zoom: 1.12, onePassword: 'yes', bindings: {} }))
-      .toEqual({ cardOpacity: 1, fullOpacity: 1, zoom: 1.1, onePassword: false, usageTab: true, autoArrange: true, cardLinks: false, robotMotion: true, bindings: {}, notifications: DEFAULT_SETTINGS.notifications });
+      .toEqual({ cardOpacity: 1, fullOpacity: 1, zoom: 1.1, onePassword: false, usageTab: true, autoArrange: true, cardLinks: false, robotMotion: true, bindings: {}, notifications: DEFAULT_SETTINGS.notifications, keepAwake: 'needs' });
   });
   it('starts a fresh install at 90% and keeps a stored zoom of 100%', () => {
     expect(readSettings(undefined).zoom).toBe(0.9);
@@ -50,6 +50,12 @@ describe('settings', () => {
     expect(DEFAULT_SETTINGS.robotMotion).toBe(true);
     expect(readSettings({ robotMotion: 'no' }).robotMotion).toBe(true);
     expect(readSettings({ robotMotion: false }).robotMotion).toBe(false);
+  });
+  it('keeps the Mac awake while agents work or need the user until the machine says otherwise', () => {
+    expect(DEFAULT_SETTINGS.keepAwake).toBe('needs');
+    expect(readSettings({ keepAwake: 'always' }).keepAwake).toBe('needs');
+    expect(readSettings({ keepAwake: 'off' }).keepAwake).toBe('off');
+    expect(readSettings({ keepAwake: 'working' }).keepAwake).toBe('working');
   });
   it('keeps notifications off until the machine turns them on, and reads back only what it can post', () => {
     expect(DEFAULT_SETTINGS.notifications).toEqual({ on: false, sound: true, statuses: ['blocked', 'done'] });

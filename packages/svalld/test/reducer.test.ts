@@ -82,6 +82,16 @@ describe('applyHook', () => {
     expect(idle.agent?.status).toBe('idle');
     expect(idle.agent?.background).toBeUndefined();
   });
+  it('marks the work left running as shells alone when no background agent is among it, until a turn or a list with none', () => {
+    const ev = (e: Partial<HookEvent>): HookEvent => ({ charId: 'c_a', backend: 'claude', name: 'Stop', ...e });
+    expect(applyHook(withAgent('working'), ev({ backgroundTasks: 2, backgroundAgents: 1 }), 8).agent).not.toHaveProperty('shellsOnly');
+    expect(applyHook(withAgent('working'), ev({ backgroundTasks: 2 }), 8).agent).not.toHaveProperty('shellsOnly');
+    const shells = applyHook(withAgent('working'), ev({ backgroundTasks: 1, backgroundAgents: 0 }), 8);
+    expect(shells.agent).toMatchObject({ status: 'working', background: true, shellsOnly: true });
+    expect(applyHook(shells, ev({ name: 'Notification', notificationType: 'idle_prompt' }), 9).agent).toMatchObject({ status: 'working', shellsOnly: true });
+    expect(applyHook(shells, ev({ name: 'UserPromptSubmit' }), 9).agent).not.toHaveProperty('shellsOnly');
+    expect(applyHook(shells, ev({ name: 'Notification', notificationType: 'idle_prompt', backgroundTasks: 0 }), 9).agent).not.toHaveProperty('shellsOnly');
+  });
   it("finishes a turn that leaves only the session's monitors running, and forgets a monitor once no Stop lists it", () => {
     const ev = (e: Partial<HookEvent>): HookEvent => ({ charId: 'c_a', backend: 'claude', name: 'Stop', ...e });
     const m = applyHook(withAgent('working'), ev({ name: 'PostToolUse', toolName: 'Monitor', monitor: 'b1' }), 7);

@@ -21,6 +21,7 @@ let package = Package(
                 .linkedFramework("Metal"),
                 .linkedFramework("QuartzCore"),
                 .linkedFramework("IOSurface"),
+                .linkedFramework("IOKit"),
                 .linkedFramework("UniformTypeIdentifiers"),
                 .linkedFramework("UserNotifications"),
             ]

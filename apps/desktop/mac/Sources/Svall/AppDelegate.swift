@@ -52,6 +52,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             self.assets = assets
             config.setURLSchemeHandler(assets, forURLScheme: WebAssets.scheme)
         }
+        // a hidden page, minimised or behind a sleeping display, is slowed rather than suspended, so it still follows the fleet
+        config.preferences.inactiveSchedulingPolicy = .throttle
 #if DEBUG
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
 #endif
