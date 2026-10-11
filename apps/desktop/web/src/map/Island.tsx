@@ -1,5 +1,6 @@
 import { type Island as IslandModel } from '@svall/protocol';
 import { useMemo } from 'react';
+import { memoByValue } from '../hooks.js';
 import { theme } from '../theme.js';
 import { Chevron } from './Chevron.js';
 import { coastPath } from './coast.js';
@@ -11,7 +12,7 @@ import type { HoldHandlers, PointerHandlers } from './types.js';
 // the pill sits at the top of the reserved band, clearing a selected card on the top row
 const LABEL_OFFSET = theme.bounds.top * theme.cell;
 
-export function Island({
+export const Island = memoByValue(function Island({
   island, count, hot, selected, dragging, settling, hover, offset, gripOffset, onNew, onToggle, onMenu, land, label, handle, hold,
 }: {
   island: IslandModel;
@@ -104,4 +105,4 @@ export function Island({
       />
     </div>
   );
-}
+});
