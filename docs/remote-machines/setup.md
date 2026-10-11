@@ -12,7 +12,7 @@ machine needs, how to add it, and how to look after it.
 | Svall | The app (see the [README](../../README.md#quickstart)) | Installed by `svall host add` from the Mac. It brings its own Node and needs no clone, pnpm or build tools. |
 | Services | launchd, as for any fleet | systemd user services, with lingering on so the fleet keeps running after you log out |
 | Tools | tmux, Git | tmux 3.x, Git, rsync 3.2.3 or newer, as Ubuntu 22.04 and later ship (`sudo apt install tmux git rsync`) |
-| Network | Tailscale, and OpenSSH to the Linux account (Tailscale SSH works) | Tailscale |
+| Network | Tailscale, and OpenSSH to the Linux account with a key ssh can use without asking (Tailscale SSH works); a password gets only past the first login | Tailscale |
 | Agents | Claude Code 2.1.251 or newer, Codex 0.155.0 or newer and OpenCode 2.0.22 or newer, for the agents your fleet runs, each logged in on each machine | the same |
 
 tmux 3.5 or newer is recommended on both, because Shift+Enter needs it; Ubuntu 24.04 ships 3.4, which works otherwise.
@@ -67,7 +67,7 @@ svall host add studio --ssh ada@studio
 Both run the same steps and show each as it finishes:
 
 1. **Connect.** One interactive ssh, so you can accept the host key and log in, then one control connection for the
-   rest. From the app, ssh asks in a dialog.
+   rest, which needs a key ssh can use without asking. From the app, ssh asks in a dialog.
 2. **Prerequisites.** Ubuntu (a release other than an LTS is a warning) and its architecture, the home path,
    Tailscale, tmux, Git, rsync (older than 3.2.3 is a warning), systemd, free space (5 GiB or more) and lingering.
 3. **Companion.** The Linux release matching this Mac's own release, checked against the digest this Mac's release

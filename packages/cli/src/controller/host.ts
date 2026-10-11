@@ -27,7 +27,7 @@ import { MIN_RSYNC, rsyncVersion } from './rsync.js';
 import { MachineRegistry, type MachineEntry } from './registry.js';
 import { fileStore } from './recovery.js';
 import { cachedOwner, readRoute } from './route.js';
-import type { SshMaster } from './ssh.js';
+import { SshError, type SshMaster } from './ssh.js';
 
 const PROBE_TIMEOUT = 30_000;
 // a fleet made or taken over there waits on systemd to stop and start its daemon
@@ -338,6 +338,10 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
       try {
         opened = await d.openMaster(o.ssh);
       } catch (err) {
+        if (err instanceof SshError && err.kind === 'auth') {
+          throw new StepError(`ssh refused the login to ${o.ssh}: every step from here logs in without a password or passphrase prompt`,
+            `install a key there with ssh-copy-id ${o.ssh} and keep its passphrase in the agent with ssh-add --apple-use-keychain, then add the machine again`);
+        }
         throw new StepError((err as Error).message, `ssh ${o.ssh} and see what it answers`);
       }
       if (held) await sameMachine(opened, held).catch(async (err: unknown) => { await opened.close().catch(() => undefined); throw err; });

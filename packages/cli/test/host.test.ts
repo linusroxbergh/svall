@@ -486,6 +486,16 @@ describe('host add', () => {
     expect(out.result).toBe('actions');
   });
 
+  it('says ssh refused a login without a prompt, and names how to give it a key, when the control master is refused', async () => {
+    const out = await addHost({ name: 'trift', ssh: 'denied.test', release: archive() }, deps());
+    const action = 'install a key there with ssh-copy-id denied.test and keep its passphrase in the agent with ssh-add --apple-use-keychain, then add the machine again';
+    expect(step('master').at(-1)).toEqual({
+      step: 'master', status: 'fail',
+      detail: 'ssh refused the login to denied.test: every step from here logs in without a password or passphrase prompt', action,
+    });
+    expect(out.actions).toEqual([action]);
+  });
+
   it('re-runs the probes for a machine already in the registry and keeps one record', async () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     const run = async () => {
