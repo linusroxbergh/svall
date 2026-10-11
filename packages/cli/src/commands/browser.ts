@@ -13,7 +13,7 @@ function target(state: FleetState, ref: string | undefined): string {
 }
 
 export function browserCommands(connect: () => Promise<Client>, json: () => boolean): Command {
-  const cmd = new Command('browser').description("a character's browser tabs");
+  const cmd = new Command('browser').description("a robot's browser tabs");
 
   cmd.command('open').description('open a url in a new tab').argument('<url>').option('--char <id>').action((url: string, o: { char?: string }) => withFleet(connect, async (c, state) => {
     const tab = await c.call('browser.open', { id: target(state, o.char), url });

@@ -40,8 +40,8 @@ describe('svall argument parsing', () => {
     expect((await run({}, 'help', 'status')).stdout).toMatch(/Usage: svall status/);
   });
 
-  it('tells an agent how to hand work to a new character in char new --help', async () => {
-    expect((await run({}, 'char', 'new', '--help')).stdout).toMatch(/Handing work to a new character:\n {2}svall char new --island <id>/);
+  it('tells an agent how to hand work to a new robot in char new --help', async () => {
+    expect((await run({}, 'char', 'new', '--help')).stdout).toMatch(/Handing work to a new robot:\n {2}svall char new --island <id>/);
   });
 
   it('prints the commit it runs from for --version', async () => {
@@ -465,7 +465,7 @@ runIf('svall CLI', () => {
     expect(updated.context).toEqual([{ kind: 'other', ref: 'https://x?a=b', label: 'Keep me', source: 'manual' }]);
 
     expect(JSON.parse((await svall('char', 'update', c.id, '--instructions', 'in Spanish', '--pin', 'https://x?a=b', '--json')).stdout)).toMatchObject({ instructions: 'in Spanish', context: [{ ref: 'https://x?a=b', pinned: true }] });
-    expect((await svall('char', 'show', c.id)).stdout).toContain('Character instructions: in Spanish');
+    expect((await svall('char', 'show', c.id)).stdout).toContain('Robot instructions: in Spanish');
     expect(JSON.parse((await svall('char', 'update', c.id, '--agent-profile', 'reviewer', '--json')).stdout).agentProfile).toBe('reviewer');
     expect((await svall('char', 'show', c.id)).stdout).toContain('Agent profile: reviewer — follow this role.\nYou are an independent code reviewer.');
     const unknown = await svall('char', 'update', c.id, '--agent-profile', 'nobody');

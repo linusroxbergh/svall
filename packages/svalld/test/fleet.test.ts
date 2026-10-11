@@ -1247,7 +1247,7 @@ runIf('Fleet', () => {
     expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } })).toBeUndefined();
     fleet.updateCharacter(c.id, { instructions: 'in Spanish' });
     const diff = fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } });
-    expect(diff).toContain('+ Character instructions: in Spanish');
+    expect(diff).toContain('+ Robot instructions: in Spanish');
     expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } })).toBeUndefined();
   });
 
@@ -1284,7 +1284,7 @@ runIf('Fleet', () => {
     expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: nested, pid: process.ppid } })).toBeUndefined();
     expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit', sessionId: nested, pid: process.ppid } })).toBeUndefined();
     expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit', sessionId: outer, pid: process.pid } }))
-      .toContain('+ Character instructions: in Spanish');
+      .toContain('+ Robot instructions: in Spanish');
   });
 
   it('says so when a window runs codex and no hook comes from it, until one does', async () => {
@@ -1656,7 +1656,7 @@ runIf('Fleet', () => {
     expect(brief).toContain(`- native-surfaces — "Native surfaces sit above the webview." (${path.join(dir, 'native-surfaces.md')})`);
     expect(brief).toContain(`- island: ${dir}`);
     expect(brief).toContain(`- fleet: ${path.join(docs, 'fleet')}`);
-    expect(brief).toContain(`- character: ${docsDir(docs, 'character', c.id)}`);
+    expect(brief).toContain(`- robot: ${docsDir(docs, 'character', c.id)}`);
     expect(brief).toMatch(/- repo: .*\/docs\/repos\/tmp-[0-9a-f]{8}/);
     expect(fleet.islandBrief(island.id)).toContain('- native-surfaces');
     await fleet.closeCharacter(c.id);
