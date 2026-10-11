@@ -1,43 +1,150 @@
-import type { AgentStatus } from '@svall/protocol';
+import type { Agent, AgentStatus, Delivery } from '@svall/protocol';
+import { readComposer } from '../agent/composer.js';
 import { settle } from '../agent/reducer.js';
+import type { Config } from '../config.js';
 import { isAgentCommand } from '../context/launch.js';
-import { Invalid } from '../errors.js';
+import { Blocked, Invalid } from '../errors.js';
 import type { Fleet } from '../fleet.js';
+import type { Logger } from '../log.js';
 import type { Store } from '../store.js';
-import type { Tmux } from '../tmux/tmux.js';
+import { isShellCommand, type Tmux } from '../tmux/tmux.js';
 
 export type WaitResult = AgentStatus | 'timeout' | 'gone';
 
 const STEP_MS = 1000;
+// how often a held prompt looks again at its agent's prompt line
+const HOLD_MS = 1000;
 
-type Deps = { fleet: Fleet; store: Store; tmux: Tmux; reviving: ReadonlyMap<string, unknown> };
+type Deps = { fleet: Fleet; store: Store; tmux: Tmux; config: Config; log: Logger; reviving: ReadonlyMap<string, unknown> };
+// the pane and the agent session a prompt was sent to, which alone may take it
+type Held = { text: string; enter: boolean; paneId: string; sessionId: string };
+
+const laneOf = (id: string, term?: 2) => (term === 2 ? `${id}/2` : id);
 
 /** What is typed into a character's terminals, the answers to its agent's questions, and waits on that agent. */
 export class Prompts {
   // the question each character's answer is being typed for, so a second answer to it is refused rather than typed too
   private answering = new Map<string, string | undefined>();
+  // the prompts each terminal holds until its agent's prompt line is free, oldest first
+  private held = new Map<string, Held[]>();
+  // one send at a time per terminal, so no paste lands between a look at the prompt line and the paste it allowed
+  private lanes = new Map<string, Promise<unknown>>();
+  // the waits under way, which look again when a terminal's held prompts run out, as no change to the fleet says so
+  private waiters = new Set<() => void>();
 
   constructor(private deps: Deps) {}
 
-  async run(id: string, text: string, enter: boolean, term?: 2): Promise<void> {
+  // Text goes into an agent's prompt line only while it shows empty: a draft or a dialog the agent did not report holds it,
+  // a question it reported refuses it. Each agent queues a prompt sent mid-turn itself. Keys typed into the terminal pass no gate
+  async run(id: string, text: string, enter: boolean, term?: 2): Promise<Delivery> {
     const { fleet } = this.deps;
     const c = fleet.char(id);
-    // a dormant agent wakes with the text as its launch prompt; typed while it boots, a prompt can lose its Enter
+    // a dormant agent wakes with the text as its launch prompt; typed while it boots, a prompt can lose its Enter.
+    // A window still alive takes it as a send of its own
     if (!term && enter && !c.tmux && !this.deps.reviving.has(id) && isAgentCommand(c.revive?.command ?? '')) {
-      await fleet.reviveCharacter(id, text);
+      return (await fleet.reviveCharacter(id, text)).delivery ?? 'delivered';
+    }
+    const lane = laneOf(id, term);
+    return this.inLane(lane, async () => {
+      const t = fleet.terminal(id, term);
+      // a shell takes the text as it comes
+      if (!t.agent) {
+        await this.send(id, text, enter, term);
+        return 'delivered';
+      }
+      const free = await this.free(c.name, id, term, t.tmux.paneId);
+      if (free && !this.held.has(lane)) {
+        await this.send(id, text, enter, term);
+        return 'delivered';
+      }
+      this.hold(lane, id, term, { text, enter, paneId: t.tmux.paneId, sessionId: t.agent.sessionId });
+      return 'queued';
+    });
+  }
+
+  // whether the agent's prompt line is in view and empty; throws while the agent waits on an answer, which a paste could give.
+  // The agent is looked at again once the screen is in, as a hook may have come while it was read
+  private async free(name: string, id: string, term: 2 | undefined, paneId: string): Promise<boolean> {
+    const live = () => (term === 2 ? this.deps.store.state.characters[id]?.second : this.deps.store.state.characters[id]);
+    const asked = (a?: Agent) => {
+      if (a?.status === 'blocked') throw new Blocked(`${name} is waiting on an answer${a.prompt ? ` (${a.prompt})` : ''}; answer it, then send again`);
+    };
+    asked(live()?.agent);
+    const screen = await this.deps.tmux.screen(paneId);
+    const t = live();
+    if (!t?.agent || t.tmux?.paneId !== paneId) return false;
+    const a = t.agent;
+    asked(a);
+    // the agent has not started yet, or has exited
+    if (isShellCommand(screen.command, this.deps.config.shell)) return false;
+    const composer = readComposer(a.kind, screen);
+    // Claude Code notifies of its dialog seconds after it shows it; a tool asked about with no prompt line in view is that
+    // dialog, which until then only its terminal can answer
+    if (composer === 'hidden' && a.kind === 'claude' && a.askedTool) {
+      throw new Blocked(`${name} is waiting on an answer (${a.askedTool}); answer it in its terminal, then send again`);
+    }
+    return composer === 'empty';
+  }
+
+  private hold(lane: string, id: string, term: 2 | undefined, p: Held): void {
+    const queue = this.held.get(lane);
+    if (queue) { queue.push(p); return; }
+    const mine = [p];
+    this.held.set(lane, mine);
+    const look = (): void => {
+      this.inLane(lane, () => this.deliverHeld(lane, id, term))
+        .catch((e) => this.deps.log.error(`held prompt ${id}: ${String(e)}`))
+        .finally(() => { if (this.held.get(lane) === mine) setTimeout(look, HOLD_MS).unref(); });
+    };
+    setTimeout(look, HOLD_MS).unref();
+  }
+
+  // the oldest held prompt goes in once the agent is between turns with its prompt line free, so a wait takes the end of its
+  // turn, not the user's; a pane or agent session other than the one they were sent to drops them all
+  private async deliverHeld(lane: string, id: string, term?: 2): Promise<void> {
+    const queue = this.held.get(lane);
+    if (!queue) return;
+    const c = this.deps.store.state.characters[id];
+    const t = term === 2 ? c?.second : c;
+    if (!c || !t?.tmux || !t.agent || t.tmux.paneId !== queue[0].paneId || t.agent.sessionId !== queue[0].sessionId) {
+      this.deps.log.info(`${queue.length} held prompt(s) for ${id} dropped: the terminal or its agent they were sent to is gone`);
+      this.drop(lane);
       return;
     }
-    const t = fleet.terminal(id, term);
+    if (t.agent.status === 'working') return;
+    const free = await this.free(c.name, id, term, t.tmux.paneId).catch((e: unknown) => { if (e instanceof Blocked) return false; throw e; });
+    if (!free) return;
+    await this.send(id, queue[0].text, queue[0].enter, term);
+    queue.shift();
+    if (!queue.length) this.drop(lane);
+  }
+
+  private drop(lane: string): void {
+    this.held.delete(lane);
+    for (const look of this.waiters) look();
+  }
+
+  private inLane<T>(lane: string, fn: () => Promise<T>): Promise<T> {
+    const run = (this.lanes.get(lane) ?? Promise.resolve()).then(fn);
+    const done = run.catch(() => {});
+    this.lanes.set(lane, done);
+    void done.then(() => { if (this.lanes.get(lane) === done) this.lanes.delete(lane); });
+    return run;
+  }
+
+  private async send(id: string, text: string, enter: boolean, term?: 2): Promise<void> {
+    const t = this.deps.fleet.terminal(id, term);
     const before = t.agent?.status;
     const asked = t.agent?.promptId;
+    const heard = t.agent?.lastActivityAt;
     await this.deps.tmux.sendLine(t.tmux.paneId, text, enter);
     // a submitted prompt makes the agent busy right away; the UserPromptSubmit hook only confirms it.
-    // If a hook already moved the status, or put a new question, while the send was in flight, that wins, unread included.
+    // A hook heard while the send was in flight wins, unread included: the turn may have begun, or begun and ended.
     if (enter && t.agent) {
       this.deps.store.update((d) => {
         const slot = term === 2 ? d.characters[id]?.second : d.characters[id];
         const a = slot?.agent;
-        if (!slot || !a || a.status !== before || a.promptId !== asked) return;
+        if (!slot || !a || a.status !== before || a.promptId !== asked || a.lastActivityAt !== heard) return;
         settle(a, 'working');
         slot.unread = false;
       });
@@ -80,7 +187,9 @@ export class Prompts {
       const t = term === 2 ? c?.second : c;
       // a terminal whose tmux window died will never reach the awaited status.
       if (!t?.tmux) return 'gone';
-      if (t.agent && until.includes(t.agent.status)) return t.agent.status;
+      // the turn of a prompt still held has not begun, so the end of the turn before it does not count
+      const ended = t.agent?.status === 'done' || t.agent?.status === 'idle';
+      if (t.agent && until.includes(t.agent.status) && !(ended && this.held.has(laneOf(id, term)))) return t.agent.status;
       return undefined;
     }, timeoutMs, 'timeout', signal);
   }
@@ -94,8 +203,18 @@ export class Prompts {
     }, timeoutMs, false);
   }
 
+  holds(id: string): boolean {
+    return this.held.has(laneOf(id)) || this.held.has(laneOf(id, 2));
+  }
+
   forget(id: string): void {
     this.answering.delete(id);
+    this.held.delete(laneOf(id));
+    this.held.delete(laneOf(id, 2));
+  }
+
+  stop(): void {
+    this.held.clear();
   }
 
   // Claude Code fires no hook when Esc ends the turn, though Esc on a question asked while background agents
@@ -115,9 +234,11 @@ export class Prompts {
     const now = check();
     if (now !== undefined) return Promise.resolve(now);
     return new Promise((resolve, reject) => {
-      const finish = (fn: () => void) => { unsub(); clearTimeout(timer); signal?.removeEventListener('abort', onAbort); fn(); };
+      const finish = (fn: () => void) => { unsub(); this.waiters.delete(look); clearTimeout(timer); signal?.removeEventListener('abort', onAbort); fn(); };
       const onAbort = () => finish(() => reject(new Error('wait cancelled')));
-      const unsub = this.deps.store.subscribe(() => { const r = check(); if (r !== undefined) finish(() => resolve(r)); });
+      const look = () => { const r = check(); if (r !== undefined) finish(() => resolve(r)); };
+      const unsub = this.deps.store.subscribe(look);
+      this.waiters.add(look);
       const timer = setTimeout(() => finish(() => resolve(timedOut)), timeoutMs);
       signal?.addEventListener('abort', onAbort, { once: true });
     });

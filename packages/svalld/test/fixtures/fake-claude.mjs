@@ -23,7 +23,11 @@ const append = (entry) => fs.appendFileSync(transcriptPath, JSON.stringify(entry
 
 await post({ hook_event_name: 'SessionStart' });
 let prompts = 0;
+// Claude Code's empty prompt line, which svalld waits for before it types
+const composer = () => process.stdout.write('❯ ');
+composer();
 const rl = readline.createInterface({ input: process.stdin });
+rl.on('line', composer);
 for await (const line of rl) {
   if (line === 'block') { await post({ hook_event_name: 'Notification', notification_type: 'permission_prompt' }); continue; }
   if (line === 'monitor') { await post({ hook_event_name: 'PostToolUse', tool_name: 'Monitor', task_id: 'm1' }); continue; }

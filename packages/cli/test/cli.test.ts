@@ -434,8 +434,16 @@ runIf('svall CLI', () => {
     expect((await svall('island', 'show', second.id)).stdout).toContain('Second https://x');
     const c = JSON.parse((await svall('char', 'new', '--island', island.id, '--cwd', '/tmp', '--name', 'worker', '--json')).stdout);
     expect(c.name).toBe('worker');
-    expect((await svall('char', 'run', c.id, 'echo', 'from-cli')).code).toBe(0);
+    expect(await svall('char', 'run', c.id, 'echo', 'from-cli')).toMatchObject({ code: 0, stdout: 'delivered\n' });
     await waitFor(async () => (await svall('char', 'read', c.id)).stdout.includes('from-cli'));
+    const asked = JSON.parse((await svall('char', 'new', '--island', island.id, '--cwd', '/tmp', '--name', 'asked', '--json')).stdout);
+    const hook = { charId: asked.id, backend: 'claude', sessionId: 'sess' } as const;
+    daemon.fleet.onSocketEvent({ hook: { ...hook, name: 'SessionStart', transcriptPath: '/nope' } });
+    // the pane runs a shell, so the agent's prompt line is never in view
+    expect(await svall('char', 'run', asked.id, 'go')).toMatchObject({ code: 0, stdout: 'queued: it goes in once the prompt line is clear\n' });
+    daemon.fleet.onSocketEvent({ hook: { ...hook, name: 'Notification', notificationType: 'permission_prompt', message: 'may I' } });
+    expect(await svall('char', 'run', asked.id, 'go')).toMatchObject({ code: 2, stdout: '', stderr: 'refused: asked is waiting on an answer (may I); answer it, then send again\n' });
+    expect((await svall('char', 'close', asked.id)).code).toBe(0);
 
     const list = (await svall('char', 'list')).stdout;
     expect(list).toContain('worker');
