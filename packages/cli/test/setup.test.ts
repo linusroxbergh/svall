@@ -120,11 +120,12 @@ describe('svall setup on Linux', () => {
       .toContain(`Environment="CLAUDE_CONFIG_DIR=${claudeDir}"\nEnvironment="CODEX_HOME=${codexDir}"\n`);
   });
 
-  it('restarts every fleet daemon and the gateway onto a release that replaced another, and asks each from it', async () => {
+  // under the same name the daemon still runs the tree the install replaced, and no other release may be kept
+  it.each(['1.0.0', '1.1.0'])('restarts every fleet daemon and the gateway onto a release installed over %s, and asks each from it', async (was) => {
     const home = process.env.HOME!;
     const prefix = path.join(home, '.local', 'share', 'svall');
-    fs.mkdirSync(path.join(prefix, 'releases', '1.0.0'), { recursive: true });
-    fs.symlinkSync(path.join(prefix, 'releases', '1.0.0'), path.join(prefix, 'current'));
+    fs.mkdirSync(path.join(prefix, 'releases', was), { recursive: true });
+    fs.symlinkSync(path.join(prefix, 'releases', was), path.join(prefix, 'current'));
     const unitDir = path.join(home, '.config', 'systemd', 'user');
     const bin = makeHome();
     const log = path.join(bin, 'systemctl.log');

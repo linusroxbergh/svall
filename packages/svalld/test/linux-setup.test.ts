@@ -457,6 +457,25 @@ describe('setupLinuxRelease', () => {
     expect(probed).toBe(false);
     expect(fs.readlinkSync(path.join(first.o.prefix, 'current'))).toBe(only.second);
   });
+
+  it('restarts and probes a release reinstalled under the name it replaced, though no other release is kept', async () => {
+    const f = installed();
+    const release = path.join(f.o.prefix, 'releases', '1.0.1');
+    fs.mkdirSync(release, { recursive: true });
+    fs.symlinkSync(release, path.join(f.o.prefix, 'current'));
+    const fake = fakeRun({ 'loginctl show-user linus --property=Linger': 'Linger=yes\n' });
+    let seenAtProbe: string[][] = [];
+    await setupLinuxRelease({
+      ...f.o, systemctl: true, run: fake.run, replaced: true,
+      probe: async () => { seenAtProbe = [...fake.calls]; return true; },
+      rollback: rollbackRelease,
+    });
+    // the daemon still runs the tree the reinstall removed, under the same release name
+    expect(seenAtProbe.filter((c) => c[2] === 'restart')).toEqual([
+      ['systemctl', '--user', 'restart', 'svall-svalld@private.service'],
+      ['systemctl', '--user', 'restart', 'svall-gateway.service'],
+    ]);
+  });
 });
 
 describe('systemctl and loginctl wrappers', () => {

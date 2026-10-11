@@ -144,7 +144,7 @@ async function runAction(r: Run, o: Daemons & { choices?: Choices; options: Setu
 
 type LinuxFlags = { launchctl: boolean; check?: boolean; release?: string; allowUnsigned?: boolean; replaceSettings?: boolean; rollback?: boolean | string };
 
-type From = { runtime: Runtime; rollbackTo?: string; version?: string };
+type From = { runtime: Runtime; rollbackTo?: string; replaced?: boolean; version?: string };
 
 // a release install replaces the checkout entirely: the units and the shims reach it through `current`
 function runFrom(o: LinuxFlags, done: string[]): From {
@@ -155,7 +155,7 @@ function runFrom(o: LinuxFlags, done: string[]): From {
     verify: sshVerify({ allowedSigners: allowedSigners() }),
   });
   done.push(`release ${installed.version} -> ${installed.release}`, `current -> ${installed.current}`);
-  return { runtime: releaseRuntime(installed.current), rollbackTo: installed.rollbackTo ?? undefined, version: installed.version };
+  return { runtime: releaseRuntime(installed.current), rollbackTo: installed.rollbackTo ?? undefined, replaced: installed.replaced, version: installed.version };
 }
 
 /** Whether a fleet's daemon answers from `release`. */
@@ -263,6 +263,7 @@ async function linuxSetup(t: Target, o: LinuxFlags, json: boolean): Promise<void
     run: realRun,
     systemctl: o.launchctl,
     rollbackTo: from.rollbackTo,
+    replaced: from.replaced,
     probe: (fleet) => daemonRuns(from.version ?? '', () => Client.connect(profileHome(fleet))),
     rollback: (p) => rollbackRelease(p, from.rollbackTo),
   }));

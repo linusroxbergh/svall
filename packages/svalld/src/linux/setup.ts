@@ -202,17 +202,18 @@ export async function setupLinux(o: LinuxSetup): Promise<LinuxSetupResult> {
 }
 
 /**
- * Setup, and for a release that replaced another the probe that can put it back. Only a daemon
+ * Setup, and for a release that replaced another, or a tree of its own name, the probe that can put it back. Only a daemon
  * this run really started says anything about the release: a machine with no systemd would
  * otherwise roll back a release that installed perfectly well.
  */
 export async function setupLinuxRelease(o: LinuxSetup & {
   rollbackTo?: string;
+  replaced?: boolean;
   probe: (fleet: string) => Promise<boolean>;
   rollback: (prefix: string) => Rollback;
 }): Promise<string[]> {
   const { done, started } = await setupLinux(o);
-  if (!started || !o.rollbackTo) return done;
+  if (!started || (!o.rollbackTo && !o.replaced)) return done;
   // `enable --now` leaves a running unit alone, so the old release would keep answering the probe
   done.push(...await restartUnits(o.run, o.unitDir));
   return [...done, ...await probeOrRollback({ prefix: o.prefix, unitDir: o.unitDir, run: o.run, probe: o.probe, rollback: o.rollback })];
