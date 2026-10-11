@@ -33,10 +33,10 @@ export const theme = {
   token: { w: 2.66, h: 3.66, unit: 35.4, floor: 0.88, grow: 0.3 },
   // an island's label pill scales with the map up to 1, then takes `grow` of the map's growth
   label: { grow: 0.2 },
-  // the home island: visible land above the bottom edge, gap to its label row, the row's own height and
-  // its height from the edge when collapsed. the map height kept clear of the world is that row plus
-  // `water`, so the fleet comes down to half a cell above the header pill
-  home: { visible: 132, rowGap: 28, row: 28, bar: 16, water: 22 },
+  // the home island: visible land above the bottom edge, tall enough that a crew card at its largest clears it, gap to
+  // its label row, the row's own height and its height from the edge when collapsed. the map height kept clear of the
+  // world is that row plus `water`, so the fleet comes down to half a cell above the header pill
+  home: { visible: 150, rowGap: 28, row: 28, bar: 16, water: 22 },
 };
 
 export const tokenPx = { w: theme.token.w * theme.token.unit, h: theme.token.h * theme.token.unit };
