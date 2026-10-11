@@ -14,7 +14,7 @@ import { startHookReceiver, type HookEvent } from '../src/hooks/receiver.js';
 import { aboveHome, placementOk } from '../src/layout.js';
 import type { Deps as LinkDeps } from '../src/links/refresh.js';
 import { silentLogger, type Logger } from '../src/log.js';
-import { resolvePaths } from '../src/paths.js';
+import { expandHome, resolvePaths } from '../src/paths.js';
 import { Store } from '../src/store.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { ControlClient } from '../src/tmux/control.js';
@@ -45,8 +45,11 @@ runIf('Fleet', () => {
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
-    // a test lays out from mission control alone unless it asks for the island a new fleet opens with
-    if (!opening) for (const i of Object.values(store.state.islands)) if (i.kind !== 'home') fleet.deleteIsland(i.id);
+    // a test lays out from mission control alone unless it asks for the island and shell a new fleet opens with
+    if (!opening) {
+      for (const c of Object.values(store.state.characters)) if (store.state.islands[c.islandId]?.kind !== 'home') await fleet.closeCharacter(c.id);
+      for (const i of Object.values(store.state.islands)) if (i.kind !== 'home') fleet.deleteIsland(i.id);
+    }
     // a spawned stand-in agent reaches the fleet the way a real one does: over the hooks socket
     const hooks = await startHookReceiver(paths.hooksSock, (e) => fleet.onSocketEvent(e), silentLogger);
     cleanup.push(() => hooks.close());
@@ -1152,12 +1155,15 @@ runIf('Fleet', () => {
     expect(Object.values(store.state.islands).filter((i) => i.kind === 'home')).toHaveLength(1);
   });
 
-  it('opens a new fleet with one empty island, and does not make it again once deleted', async () => {
+  it('opens a new fleet with one island holding a shell, and does not make them again once deleted', async () => {
     const { fleet, store } = await boot({ opening: true });
     const first = Object.values(store.state.islands).filter((i) => i.kind !== 'home');
     expect(first).toEqual([expect.objectContaining({ name: 'Island 1' })]);
-    expect(Object.keys(store.state.characters)).toEqual([]);
+    const shells = Object.values(store.state.characters);
+    expect(shells).toEqual([expect.objectContaining({ islandId: first[0].id, cwd: expandHome(store.state.defaultCwd) })]);
+    expect(shells[0].agent).toBeUndefined();
     expect(placementOk(store.state, first[0])).toBe(true);
+    await fleet.closeCharacter(shells[0].id);
     fleet.deleteIsland(first[0].id);
     // the next start reads the fleet the last one left
     const again = await boot({ opening: true, state: structuredClone(store.state) });

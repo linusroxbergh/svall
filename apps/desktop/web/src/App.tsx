@@ -22,6 +22,7 @@ import { Collapse, SideCard } from './SideCard.js';
 import { SideGrip } from './SideGrip.js';
 import { Starting } from './Starting.js';
 import { Sidebar } from './Sidebar.js';
+import { Tour } from './Tour.js';
 import { UtilityDock } from './UtilityDock.js';
 import { theme } from './theme.js';
 
@@ -113,6 +114,7 @@ export function App() {
       <FleetPicker />
       <LinkAsk />
       <ContextMenu />
+      <Tour />
     </div>
   );
 }

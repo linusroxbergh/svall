@@ -60,6 +60,8 @@ const SIDES_KEY = 'svall.side.widths';
 const TREE_KEY = 'svall.files.tree';
 const SECTIONS_KEY = 'svall.side.sections';
 export const SETTINGS_KEY = 'svall.settings';
+// the first-run tour's step, or 'done'
+export const TOUR_KEY = 'svall.tour';
 
 const isView = (v: unknown): v is View => v === 'map' || v === 'board';
 const readJson = <T,>(raw: string | null, ok: (v: unknown) => v is T): T | undefined => {

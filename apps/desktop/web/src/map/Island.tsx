@@ -85,14 +85,14 @@ export const Island = memoByValue(function Island({
         className="inew"
         data-testid={`island-new-${island.id}`}
         data-empty={count === 0}
-        aria-label={`New character on ${island.name}`}
+        aria-label={`New robot on ${island.name}`}
         style={count === 0 ? { left: pad + fw / 2, top: pad + fh / 2 } : { left: pad + fw - 8, top: pad - 4 }}
         onPointerDown={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
         onClick={onNew}
         {...hold}
       >
-        + New character
+        + New robot
       </button>
       <div
         className="ihandle"

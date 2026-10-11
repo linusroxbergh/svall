@@ -65,11 +65,12 @@ CLIs.
    `~/.local/bin` isn't on your PATH, it shows the line to add to your shell
    profile so the `svall` command works.
 
-4. `+ New island` on the sandbar at the bottom makes an island, and Cmd+T makes
-   a character on it: a shell that becomes an agent when you type `claude`,
-   `codex` or `opencode`. With more than one CLI installed, the app asks which
-   one the scribe and mission control run. Change it later in Settings or with
-   `svall agent codex`.
+4. A new fleet opens with Island 1 holding one character, a shell in your
+   projects folder, and a short tour of the map. The shell becomes an agent
+   when you type `claude`, `codex` or `opencode`. `+ New island` on the sandbar
+   at the bottom makes another island, and Cmd+T another character. With more
+   than one CLI installed, the app asks which one the scribe and mission
+   control run. Change it later in Settings or with `svall agent codex`.
 
 ## Using Svall
 
@@ -273,7 +274,7 @@ Svall first launches stays with Ghostty until you claim it there.
 
 | Keys | Action | Keys | Action |
 | --- | --- | --- | --- |
-| Cmd+T | New character | Cmd+W | Close the card or character |
+| Cmd+T | New robot | Cmd+W | Close the card or character |
 | Cmd+J | Next character | Cmd+K | Previous character |
 | Cmd+Shift+J | Next island | Cmd+M | Map or board |
 | Cmd+I | Side card | Cmd+Enter | Card size |

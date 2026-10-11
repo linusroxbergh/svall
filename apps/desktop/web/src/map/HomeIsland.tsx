@@ -115,7 +115,7 @@ export function Home({
         ))}
         <div className="home-create">
           <button className="hact dim" data-testid="home-new-island" onPointerDown={stop} onClick={onNewIsland}>+ New island</button>
-          <button className="hact dim" data-testid="home-new" onPointerDown={stop} onClick={onNew}>+ New character</button>
+          <button className="hact dim" data-testid="home-new" onPointerDown={stop} onClick={onNew}>+ New robot</button>
         </div>
         {extra}
       </div>
