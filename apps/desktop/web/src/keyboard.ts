@@ -60,7 +60,9 @@ export async function closeCharacter(ctx: Deps, id: string): Promise<void> {
 
 function closeAllModals(store: AppStore): void {
   const s = store.getState();
-  s.setNamingCharacter(false); s.setMissionPrompt(false); s.setClosingCharacter(undefined); s.setDeletingIsland(undefined); s.setFleetPicker(undefined); s.toggleKeys(false);
+  s.setNamingCharacter(false); s.setMissionPrompt(false); s.setClosingCharacter(undefined); s.setDeletingIsland(undefined); s.setFleetPicker(undefined);
+  // a dialog over the settings takes the keys from a shortcut row still waiting for one
+  s.setCapturingKey(undefined);
 }
 
 export function openFleetPicker(store: AppStore): void {
@@ -175,10 +177,11 @@ export function installKeyHandlers(ctx: KeyDeps, win: Window = window): () => vo
   const closeCard = () => {
     const st = ctx.store.getState();
     if (st.capturingKey) { st.setCapturingKey(undefined); return; }
+    // the settings window stands over the shelf
+    if (st.settingsOpen) { st.toggleSettings(false); refocusSurface(ctx); return; }
     if (st.resourcesOpen) { st.toggleResources(false); refocusSurface(ctx); return; }
     if (st.usageOpen) { st.toggleUsage(false); refocusSurface(ctx); return; }
     if (st.mobileOpen) { st.toggleMobile(false); refocusSurface(ctx); return; }
-    if (st.settingsOpen) { st.toggleSettings(false); refocusSurface(ctx); return; }
     if (st.view === 'map' && st.card) { st.closeCard(); return; }
     if (st.view === 'board') st.toggleSideCard(false);
     else { st.select(undefined); st.selectIsland(undefined); }
@@ -205,7 +208,7 @@ export function installKeyHandlers(ctx: KeyDeps, win: Window = window): () => vo
     }
     const s = ctx.store.getState();
     // behind an overlay or a popup the selection is out of sight, so Enter is theirs
-    if (e.key === 'Enter' && !control(e) && !e.metaKey && !isVeiled(s) && !s.linkAsk && !s.usageOpen && !s.mobileOpen) {
+    if (e.key === 'Enter' && !control(e) && !e.metaKey && !isVeiled(s) && !s.linkAsk && !s.usageOpen && !s.mobileOpen && !s.settingsOpen) {
       // the key is spent here: a control still holding the focus must not activate on it as well
       if (s.view === 'board') { e.preventDefault(); refocusSurface(ctx); return true; }
       if (s.view === 'map' && s.selectedId) { e.preventDefault(); s.focus(s.selectedId); return true; }

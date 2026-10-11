@@ -27,7 +27,6 @@ export function MissionPrompt() {
       setText((t) => t || prompt);
       app.store.getState().setNamingCharacter(false);
       app.store.getState().setClosingCharacter(undefined);
-      app.store.getState().toggleKeys(false);
       app.store.getState().setMissionPrompt(true);
     });
   };

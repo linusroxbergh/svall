@@ -95,7 +95,7 @@ export function Setup() {
     <Page>
       <header className="setup-intro">
         <h1>Set up Svall</h1>
-        <p>Connect your agents and choose where new characters start.</p>
+        <p>Connect your agents and choose where new robots start.</p>
       </header>
       <fieldset className="setup-fields" disabled={running} aria-busy={busy} aria-label="Setup options">
         {plan.blockers.map((b) => <p key={b} className="setup-blocker">{b}</p>)}
@@ -138,7 +138,7 @@ export function Setup() {
         </section>}
         <section>
           <h2>Projects folder</h2>
-          <p>New characters start here instead of your home folder.</p>
+          <p>New robots start here instead of your home folder.</p>
           <div className="setup-folder">
             <input type="text" value={projects} aria-label="Projects folder" spellCheck={false} onChange={(e) => setProjects(e.target.value)} />
             <button type="button" className="btn" onClick={() => bridge.send({ type: 'folder.pick', start: projects.trim() || '~' })}>Choose…</button>

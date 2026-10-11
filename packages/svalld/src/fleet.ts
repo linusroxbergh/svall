@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Character, type ContextItem, type FleetState, type Island, type Portrait } from '@svall/protocol';
+import { HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Character, type ContextItem, type Delivery, type FleetState, type Island, type Portrait } from '@svall/protocol';
 import { AGENTS, mainAgent } from './agents.js';
 import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
 import { markSeen as markSeenPure, settle } from './agent/reducer.js';
@@ -51,9 +51,11 @@ function setNote(c: Character, note: string): void {
 
 type Deps = { store: Store; tmux: Tmux; paths: Paths; config: Config; log: Logger; pollMs?: number; staleSessionMs?: number; runTimeoutMs?: number; runScribe?: RunScribe; linkDeps?: Partial<LinkDeps>; processes?: () => Promise<Proc[]>; agentsFound?: AgentKind[] };
 type LiveCharacter = Character & { tmux: NonNullable<Character['tmux']> };
+// a revive onto a window still alive sends its prompt as any send goes, which a draft there can hold
+type Revived = Character & { delivery?: Delivery };
 
 export class Fleet extends EventEmitter<Events> {
-  private reviving = new Map<string, Promise<Character>>();
+  private reviving = new Map<string, Promise<Revived>>();
   // the windows of agents ended for idleness, until tmux has closed them and the agent has exited
   private ending = new Map<string, Promise<void>>();
   // when the user last looked at each character's main terminal
@@ -82,7 +84,7 @@ export class Fleet extends EventEmitter<Events> {
     this.link = new ControlLink({ store, tmux: deps.tmux, log, events: this, reconcile: () => this.reconcileNow() });
     this.poll = new Poll({ ...deps, scribe: this.scribe, listWindows: () => this.listWindows(), endIdleAgents: () => this.endIdleAgents() });
     this.agentEvents = new AgentEvents({ store, config, log, render: (island, c) => this.render(island, c) });
-    this.prompts = new Prompts({ fleet: this, store, tmux: deps.tmux, reviving: this.reviving });
+    this.prompts = new Prompts({ fleet: this, store, tmux: deps.tmux, config, log, reviving: this.reviving });
   }
 
   async start(): Promise<void> {
@@ -91,8 +93,12 @@ export class Fleet extends EventEmitter<Events> {
     // when the user last looked is not kept across a restart, so every agent awake now gets a whole rest from here
     const now = Date.now();
     for (const c of Object.values(this.deps.store.state.characters)) if (c.tmux) this.seen.set(c.id, now);
-    this.ensureHome();
+    const opening = this.ensureHome();
     this.syncAgents();
+    if (opening) {
+      await this.createCharacter({ islandId: opening, cwd: this.deps.config.defaultCwd })
+        .catch((e) => this.deps.log.error(`first character: ${String(e)}`));
+    }
     this.deps.store.update((d) => { if (this.deps.config.name) d.name = this.deps.config.name; else delete d.name; });
     try { if (seedAgentProfiles(this.deps.paths.agentProfiles)) this.deps.log.info(`agent profiles -> ${this.deps.paths.agentProfiles}`); }
     catch (e) { this.deps.log.error(`agent profiles: ${String(e)}`); }
@@ -100,9 +106,10 @@ export class Fleet extends EventEmitter<Events> {
     this.poll.schedule();
   }
 
-  /** Stops polling and the control client; resolves once a poll under way has finished and the fleet is on disk. */
+  /** Stops polling, held prompts and the control client; resolves once a poll under way has finished and the fleet is on disk. */
   async stop(): Promise<void> {
     this.stopped = true;
+    this.prompts.stop();
     await this.link.stop();
     await this.poll.stop();
     this.deps.store.flush();
@@ -187,7 +194,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   // one home island per fleet; its cwd, command and buttons, and the fleet's default cwd, come from config on every start
-  private ensureHome(): void {
+  private ensureHome(): string | undefined {
     const home = this.deps.config.home;
     // a character is refused a cwd that is not a directory, so mission control's crew needs this one;
     // make the folder the buttons promise, holding the skills they call
@@ -215,12 +222,12 @@ export class Fleet extends EventEmitter<Events> {
       // a start is the one moment mission control comes back up to the fleet; from here it only follows it down
       settleHome(d);
     });
-    // a new fleet opens with one empty island beside mission control; only its first start makes it, so a deleted one stays gone
-    if (first) this.createIsland({ name: 'Island 1' });
+    // a new fleet opens with one island beside mission control, for start to put a shell on; only its first start makes it, so a deleted one stays gone
+    return first ? this.createIsland({ name: 'Island 1' }).id : undefined;
   }
 
   private endIdleAgents(): Promise<void> {
-    return endIdleAgents(this.sleep, this.seen, () => this.stopped);
+    return endIdleAgents(this.sleep, this.seen, () => this.stopped, (id) => this.prompts.holds(id));
   }
 
   /** Ends every terminal as the app quits: each character goes dormant with the revive that resumes it, then the
@@ -523,7 +530,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   // concurrent revives would each spawn a window and orphan all but the last.
-  reviveCharacter(id: string, prompt?: string): Promise<Character> {
+  reviveCharacter(id: string, prompt?: string): Promise<Revived> {
     // a page still open on a character that the stop has just put to sleep would wake it again
     if (this.stopped) return Promise.reject(new Invalid('the fleet is stopping'));
     const inFlight = this.reviving.get(id);
@@ -533,7 +540,7 @@ export class Fleet extends EventEmitter<Events> {
     return p;
   }
 
-  private async doRevive(id: string, prompt?: string): Promise<Character> {
+  private async doRevive(id: string, prompt?: string): Promise<Revived> {
     // a window still closing for idleness is not one to go back to
     await this.ending.get(id);
     const c = this.char(id);
@@ -545,8 +552,8 @@ export class Fleet extends EventEmitter<Events> {
         const cur = d.characters[id];
         if (cur) { cur.tmux = { windowId: alive.windowId, paneId: alive.paneId }; delete cur.revive; }
       });
-      if (prompt) await this.run(id, prompt, true);
-      return this.char(id);
+      const delivery = prompt ? await this.run(id, prompt, true) : undefined;
+      return { ...this.char(id), ...(delivery && { delivery }) };
     }
     const w = await this.deps.tmux.newWindow(id, c.cwd, this.charEnv(id));
     if (!this.deps.store.state.characters[id]) {
@@ -620,7 +627,7 @@ export class Fleet extends EventEmitter<Events> {
     updateTab(this.deps.store, this.char(id), tab, patch);
   }
 
-  run(id: string, text: string, enter: boolean, term?: 2): Promise<void> {
+  run(id: string, text: string, enter: boolean, term?: 2): Promise<Delivery> {
     return this.prompts.run(id, text, enter, term);
   }
 

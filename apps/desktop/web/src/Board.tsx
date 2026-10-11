@@ -34,7 +34,7 @@ export function Board() {
             <i className="sdot" data-status={statusOf(t)} />{t.name}
           </button>
         ))}
-        {island && <button className="tab tab-new" data-testid="island-new" title="New character here" onClick={() => newCharacterOn(deps(), island.id)}>+</button>}
+        {island && <button className="tab tab-new" data-testid="island-new" title="New robot here" onClick={() => newCharacterOn(deps(), island.id)}>+</button>}
         <span className="spacer" />
         <button className="tab tab-map" data-testid="board-map" onClick={() => app.store.getState().setView('map')}>Map {mapKey && <span className="meta">{mapKey}</span>}</button>
         {/* the board draws a native terminal over the card's edge, so its control lives here */}
@@ -49,7 +49,7 @@ export function Board() {
             <div className="kicker">{island ? island.name : 'The fleet'}</div>
             <div className="desc">{island ? 'No characters on this island yet.' : `No islands yet.${newKey ? ` Press ${newKey} to start.` : ''}`}</div>
             <div className="acts">
-              {island && <button className="btn pri" data-testid="empty-new" onClick={() => newCharacterOn(deps(), island.id)}>New character</button>}
+              {island && <button className="btn pri" data-testid="empty-new" onClick={() => newCharacterOn(deps(), island.id)}>New robot</button>}
               {island && island.kind !== 'home' && tabs.length === 0 && <DeleteIsland id={island.id} testid="island-delete" label="Delete island" />}
             </div>
           </div>

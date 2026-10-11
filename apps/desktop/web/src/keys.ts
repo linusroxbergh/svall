@@ -37,7 +37,7 @@ type ActionSpec = { label: string; action: KeyAction; chord: Chord; also?: Chord
 // Shipped chords stay on letters and digits: a bracket or a slash needs Option on many layouts,
 // and Option is what keeps a chord out of the terminal's reach.
 export const ACTIONS: Record<ActionId, ActionSpec> = {
-  newCharacter: { label: 'New character', action: { type: 'newCharacter' }, chord: 'cmd+t' },
+  newCharacter: { label: 'New robot', action: { type: 'newCharacter' }, chord: 'cmd+t' },
   missionControl: { label: 'Mission control', action: { type: 'missionControl' }, chord: 'cmd+g' },
   arrange: { label: 'Arrange the fleet', action: { type: 'arrange' }, chord: 'cmd+shift+a' },
   closeCharacter: { label: 'Close', action: { type: 'closeCharacter' }, chord: 'cmd+w' },

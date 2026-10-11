@@ -60,7 +60,7 @@ test('renders the fleet and follows agent status', async ({ page, svall }) => {
   await expect(agentTok).toHaveAttribute('data-status', 'blocked', { timeout: 15_000 });
   await expect(agentTok.locator('.gem')).toHaveText('!');
 
-  await svall.api.call('char.run', { id: agent.id, text: 'go', enter: true });
+  await svall.api.call('char.answer', { id: agent.id, answer: 'approve' });
   await expect(agentTok).toHaveAttribute('data-status', 'done', { timeout: 15_000 });
   await expect(agentTok).toHaveAttribute('data-unread', 'true');
   await expect(agentTok.locator('.gem')).toHaveText('✓');

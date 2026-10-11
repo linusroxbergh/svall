@@ -30,10 +30,13 @@ export function withAddDirs(command: string, items: ContextItem[]): string {
 // a command with its quoted words emptied, so a flag inside one is no flag
 const unquoted = (command: string): string => command.replace(/\\.|'[^']*'|"(?:[^"\\]|\\.)*"/g, "''");
 
-// OpenCode's TUI otherwise runs on the user's shared background service, whose plugins can't tell which character a
-// session belongs to; a private server inherits the character's environment. A TUI on a server the user names can't
-// have one
+// OpenCode's and Codex's TUIs otherwise run on the user's shared background server, whose plugins, hooks and commands
+// get the environment of whoever started it; a private server inherits the character's. A TUI on a server the user
+// names can't have one
 export function withStandalone(command: string): string {
+  if (agentKindOf(command) === 'codex') {
+    return /\s--(no-daemon|remote)(\s|=|$)/.test(unquoted(command)) ? command : command.replace(/^\s*codex(\s+(resume|fork)(?=\s|$))?/, '$& --no-daemon');
+  }
   if (agentKindOf(command) !== 'opencode') return command;
   const access = ACCESS.exec(command)?.[0] ?? '';
   const rest = command.slice(access.length);

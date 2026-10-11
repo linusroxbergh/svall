@@ -23,6 +23,9 @@ test('the first half card fills most of the map, a margin all round', async ({ p
   const island = await svall.api.call('island.create', { name: svall.uniq('first'), seed: 2, position: { x: 0, y: 80 } });
   const a = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
   await svall.open('map', { firstRun: true });
+  // the first-run settings stand over the map, and figurePoint reads the map at 100%
+  await page.getByTestId('settings-close').click();
+  await page.keyboard.press('Meta+0');
   const pa = await figurePoint(page, await worldCellOf(svall, island, a.id));
   await page.mouse.dblclick(pa.x, pa.y);
   const card = page.getByTestId('terminal-card');

@@ -89,6 +89,8 @@ const PushKeys = z.object({ p256dh: z.string(), auth: z.string() });
 
 export const DiffBase = z.enum(['head', 'main']);
 export type DiffBase = z.infer<typeof DiffBase>;
+export const Delivery = z.enum(['delivered', 'queued']);
+export type Delivery = z.infer<typeof Delivery>;
 export const FsEntry = z.object({ name: z.string(), kind: z.enum(['file', 'dir']), ignored: z.boolean().optional() });
 export type FsEntry = z.infer<typeof FsEntry>;
 // from is the old path of a rename
@@ -165,7 +167,8 @@ export const methods = {
   'char.seen': { params: Id.extend({ term: Term }), result: Character },
   // starts the character's second terminal when it has none
   'char.second': { params: Id, result: Character },
-  'char.run': { params: z.object({ id: z.string(), text: z.string(), enter: z.boolean().default(true), term: Term }), result: z.object({}) },
+  // an agent waiting on an answer refuses the text with `blocked`; one with a draft or a dialog on screen holds it, queued
+  'char.run': { params: z.object({ id: z.string(), text: z.string(), enter: z.boolean().default(true), term: Term }), result: z.object({ delivery: Delivery }) },
   'char.read': {
     params: z.object({ id: z.string(), source: z.enum(['screen', 'transcript']).default('screen'), lines: z.number().int().min(1).default(50), term: Term }),
     result: z.object({ text: z.string() }),
@@ -254,7 +257,7 @@ export const Request = z.object({ id: z.number(), method: z.string(), params: z.
 export type Request = z.infer<typeof Request>;
 
 // what a failed call names its failure by; anything else a handler throws answers internal
-export const ERROR_CODES = ['unknown_method', 'forbidden', 'invalid_params', 'internal', 'invalid', 'not_found', 'dormant', 'gone', 'exists', 'too_large', 'binary', 'no_repo'] as const;
+export const ERROR_CODES = ['unknown_method', 'forbidden', 'invalid_params', 'internal', 'invalid', 'not_found', 'dormant', 'blocked', 'gone', 'exists', 'too_large', 'binary', 'no_repo'] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
 export class ApiError extends Error {

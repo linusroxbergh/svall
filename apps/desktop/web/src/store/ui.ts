@@ -54,9 +54,7 @@ export type UiState = {
   shell?: ShellInfo;
   sidebarOpen: boolean;
   settingsOpen: boolean;
-  // the shortcut editor, over the middle of the screen, opened from the settings card
-  keysOpen: boolean;
-  // the action whose chord the shortcut editor is waiting for; while it is set, keys are read, not obeyed
+  // the action whose chord the settings' Keyboard pane is waiting for; while it is set, keys are read, not obeyed
   capturingKey?: ActionId;
   usageOpen: boolean;
   mobileOpen: boolean;
@@ -118,7 +116,6 @@ export type UiActions = {
   setCapturingKey(id?: ActionId): void;
   toggleSidebar(open?: boolean): void;
   toggleSettings(open?: boolean): void;
-  toggleKeys(open?: boolean): void;
   toggleUsage(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
   toggleMobile(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
   setMobile(status?: MobileStatus): void;
@@ -134,7 +131,7 @@ export type UiActions = {
 };
 
 export const createUiSlice = (storage: AppStorage | undefined, view: View): StateCreator<App, [], [], UiState & UiActions> => (set, get) => {
-  // a machine with no settings of its own has never had them in front of it: the card opens with the
+  // a machine with no settings of its own has never had them in front of it: the window opens with the
   // fleet, and closing it is what writes them and keeps the asking to that one launch
   const firstRun = storage !== undefined && storage.getSettings() === undefined;
   // the collision check belongs to that same launch: after it, what is written down is the user's answer
@@ -144,7 +141,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     const next = open ?? !s[which];
     if (next && s.settingsOpen && s.loaded) storage?.setSettings(s.settings);
     return { usageOpen: false, mobileOpen: false, [which]: next, settingsOpen: next ? false : s.settingsOpen,
-      keysOpen: next ? false : s.keysOpen, capturingKey: next ? undefined : s.capturingKey,
+      capturingKey: next ? undefined : s.capturingKey,
       resourcesOpen: next ? false : s.resourcesOpen, keepPageFocus: opts?.keepPageFocus ?? false };
   });
   return {
@@ -175,7 +172,6 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     update: undefined,
     sidebarOpen: storage?.getSidebarOpen() ?? true,
     settingsOpen: firstRun,
-    keysOpen: false,
     capturingKey: undefined,
     usageOpen: false,
     mobileOpen: false,
@@ -216,7 +212,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     setClosingCharacter: (id) => set({ closingCharacter: id }),
     setDeletingIsland: (id) => set({ deletingIsland: id }),
     setFleetPicker: (mode) => set({ fleetPicker: mode }),
-    toggleSideCard: (open) => set((s) => { const next = open ?? (s.settingsOpen || !s.sideCardOpen); return { sideCardOpen: next, sideCardCollapsed: !next, settingsOpen: false, keysOpen: false, capturingKey: undefined }; }),
+    toggleSideCard: (open) => set((s) => { const next = open ?? !s.sideCardOpen; return { sideCardOpen: next, sideCardCollapsed: !next }; }),
     termOpened: (id, rect) => set((s) => ({ terminals: { ...s.terminals, [id]: { id, rect } } })),
     termMoved: (id, rect) => set((s) => (s.terminals[id] ? { terminals: { ...s.terminals, [id]: { ...s.terminals[id], rect } } } : {})),
     termGone: (id) => set((s) => { const terminals = { ...s.terminals }; delete terminals[id]; return { terminals }; }),
@@ -249,15 +245,14 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     toggleSidebar: (open) => set((s) => { const next = open ?? !s.sidebarOpen; storage?.setSidebarOpen(next); return { sidebarOpen: next }; }),
     toggleSettings: (open) => set((s) => {
       const next = open ?? !s.settingsOpen;
-      // a card that closes has been answered, and what it leaves behind is this machine's settings;
+      // a window that closes has been answered, and what it leaves behind is this machine's settings;
       // before the fleet arrives the connect screen stands in its place, and closes nobody saw answer nothing
       if (!next && s.loaded) storage?.setSettings(s.settings);
-      // a card that goes takes the shortcut editor with it, and must not leave the keyboard listening
+      // a window that goes must not leave the keyboard listening
       return { settingsOpen: next, usageOpen: next ? false : s.usageOpen, mobileOpen: next ? false : s.mobileOpen,
         keepPageFocus: next && (s.usageOpen || s.mobileOpen) ? true : s.keepPageFocus,
-        keysOpen: next && s.keysOpen, capturingKey: next ? s.capturingKey : undefined };
+        capturingKey: next ? s.capturingKey : undefined };
     }),
-    toggleKeys: (open) => set((s) => { const next = open ?? !s.keysOpen; return { keysOpen: next, capturingKey: next ? s.capturingKey : undefined }; }),
     toggleUsage: (open, opts) => toggleUtility('usageOpen', open, opts),
     toggleMobile: (open, opts) => toggleUtility('mobileOpen', open, opts),
     // the panel carries the switch, so it stays open across turning the link off; only a link that cannot be made at all shuts it

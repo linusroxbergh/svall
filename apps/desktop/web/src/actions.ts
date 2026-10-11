@@ -14,7 +14,7 @@ type ActionDeps = Pick<Deps, 'api' | 'store'>;
 
 const toast = (d: ActionDeps) => (e: Error) => d.store.getState().showToast(e.message);
 
-// Settings stands where the side card would show a new island or character, so making one puts Settings away
+// making an island or character puts the settings window away, so what was made is in sight
 const closeSettings = (d: ActionDeps): void => { if (d.store.getState().settingsOpen) d.store.getState().toggleSettings(false); };
 
 // a cwd taken from another character can be gone (a removed worktree), so one the fleet refuses as not a

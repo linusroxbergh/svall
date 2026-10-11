@@ -11,7 +11,7 @@ test('shows the selected terminal on the board, switches with Cmd+J, marks seen,
   await svall.api.call('char.run', { id: b.id, text: 'block', enter: true });
   await expect(page.getByTestId(`sb-char-${b.id}`)).toHaveAttribute('data-status', 'blocked', { timeout: 15_000 });
   await expect(page.getByTestId(`sb-char-${b.id}`)).toHaveAttribute('data-attention', 'true');
-  await svall.api.call('char.run', { id: b.id, text: 'go', enter: true });
+  await svall.api.call('char.answer', { id: b.id, answer: 'approve' });
   await expect(page.getByTestId(`sb-char-${b.id}`)).toHaveAttribute('data-unread', 'true', { timeout: 15_000 });
 
   await page.getByTestId(`sb-char-${a.id}`).click();

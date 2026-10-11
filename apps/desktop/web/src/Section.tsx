@@ -37,7 +37,7 @@ export function Section({ name, title, head, testid, children }: { name: string;
   }, () => set(now()), 'y');
   const open = !fold.shut;
   return (
-    <section className="sec" data-testid={testid} data-open={open} data-fit={open && fold.height === undefined}
+    <section className="sec" data-testid={testid} data-section={name} data-open={open} data-fit={open && fold.height === undefined}
       style={open && fold.height !== undefined ? { flexBasis: fold.height } : undefined}>
       <div className="kicker">
         <button type="button" className="sec-fold" data-testid={`sec-fold-${name}`} aria-expanded={open}

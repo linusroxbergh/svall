@@ -129,7 +129,7 @@ const IslandRow = memoByValue(function IslandRow({ i, chars, editing, setEditing
       <span className="sb-ct tnum">{chars.length || '—'}</span>
       <i className="sdot" data-status={status} data-empty={chars.length === 0} />
       {chars.length > 0 && <button className="sb-char-add" data-testid={`sb-island-new-${i.id}`}
-        title={`New character on ${i.name}`} aria-label={`New character on ${i.name}`}
+        title={`New robot on ${i.name}`} aria-label={`New robot on ${i.name}`}
         onClick={(e) => { stop(e); void newCharacterOn(deps(), i.id); }} onDoubleClick={stop}>+</button>}
     </div>
   );
@@ -300,7 +300,7 @@ export function Sidebar() {
               data-drop-reorder={islandHover?.id === i.id} data-drop-after={islandHover?.id === i.id && islandHover.after}>
               <IslandRow i={i} chars={chars} editing={editing === i.id} setEditing={setEditing} dragging={dragIsland === i.id} setDragging={setDragging} />
               {!i.collapsed && chars.length === 0 && <div className="sb-kids"><button className="sb-row sb-char-empty" data-testid={`sb-island-new-${i.id}`}
-                aria-label={`New character on ${i.name}`} onClick={() => void newCharacterOn(deps(), i.id)}><i className="sb-plus" aria-hidden="true">+</i>New character</button></div>}
+                aria-label={`New robot on ${i.name}`} onClick={() => void newCharacterOn(deps(), i.id)}><i className="sb-plus" aria-hidden="true">+</i>New robot</button></div>}
               {!i.collapsed && chars.length > 0 && (
                 <div className="sb-kids">{chars.map((c) => <CharacterRow key={c.id} c={c} editing={editing === c.id} setEditing={setEditing} />)}</div>
               )}
