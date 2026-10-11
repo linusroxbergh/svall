@@ -15,9 +15,6 @@ this pass covers what only the app and real machines show. What each step should
   `"handover": { "enabled": true }` in `~/.svall-smoke/fleet.json`, then quit and reopen its window with
   `svall smoke`. Every `svall` command below takes `-p smoke`.
 
-To keep the whole pass off your own home too, run it under a test HOME as `docs/fleet-handover/ledger/m3b-env.md`
-describes.
-
 ## 1. Provisioning
 
 1. Settings → Machines → **Set up**. Name the machine `studio` and give its ssh destination. Choose **Add machine**.

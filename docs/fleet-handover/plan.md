@@ -1058,7 +1058,7 @@ Then repeat with one supported real Claude session and one supported real Codex 
   temp HOME `/private/tmp/claude-502/m3h2`, which holds a copied Codex `auth.json`. Reuse or remove
   it; anything on test-server needs the owner's yes.
 - [x] Run one Mac→Linux→Mac round trip with mocked agents and one real Codex session on the rebased
-  build, following `ledger/m3-onmachine-brief.md`.
+  build, as the M3 on-machine pass ran it.
 
 **Verify:** the verification commands above, then the round trip's report in the ledger.
 

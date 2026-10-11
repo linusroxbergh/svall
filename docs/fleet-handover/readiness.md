@@ -4,6 +4,8 @@ description: Fleet handover M0 spikes done on branch fleet-handover-task1; what 
 
 # Fleet handover handoff
 
+The record of the M0 spikes, not current status; `README.md` has that.
+
 As of 2026-09-21 the M0 spikes (plan Tasks 1–4) are complete on branch `fleet-handover-task1` in
 `.claude/worktrees/fleet-handover-task1`, 8 commits ahead of main (4101fde..bbcbe8e), unmerged.
 Canonical docs stay gitignored in the main checkout under `docs/superpowers/`: the spec

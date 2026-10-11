@@ -10,14 +10,13 @@ Everything sits behind `handover.enabled` in fleet.json, which is off by default
 
 - **Done:** version 1 — plan Tasks 1–29 and 36–42, milestones M0–M3, M3b's automated gate and M6. Every
   task was reviewed, M1–M3 each got a deep review, fix wave and on-machine pass, and the whole branch got a
-  final review (`ledger/final-review.md`) with one fix wave, then a PR review (`ledger/pr-review-2026-09-29.md`)
-  with its own fix wave, and a review of the branch on svall (`ledger/pr-review-2026-10-03.md`) with one more.
-  The fault suites (`pnpm test:faults`) crash
-  every one of 94 failpoints and fault every controller request; the container harness
+  final review with one fix wave, then a PR review with its own fix wave, and a review of the branch on svall with
+  one more. The fault suites (`pnpm test:faults`) crash
+  every one of 65 failpoints and fault every controller request; the container harness
   (`docs/integration.md`) hands a fleet over real sshd/rsync/tmux, and a release installs fresh on x86-64
   and arm64; real Claude and Codex sessions resumed both ways on test-server, and the spec's manual
-  acceptance passed there from release artifacts (`ledger/task-39b-report.md`). OpenCode characters
-  hand over too, from 2.0.22, as their session's export (`ledger/opencode-*.md`).
+  acceptance passed there from release artifacts. OpenCode characters hand over too, from 2.0.22, as their
+  session's export.
 - **Not done on purpose:** `handover.enabled` is still in place (Task 39's last box). It goes in one
   small commit once the items under "Owed" below exist.
 - **After version 1:** Phase E, Tasks 30–33 (stable phone gateway), and Phase F, Tasks 34–35 (remote
@@ -33,23 +32,18 @@ Everything sits behind `handover.enabled` in fleet.json, which is off by default
 | `spec.md` | The design. It is binding: when the plan and the spec disagree, the spec wins. |
 | `plan.md` | Tasks 1–42 with milestone gates. Boxes are ticked for every version-1 task; Task 39's flag removal and Phases E–F are open. |
 | `spike-results.md`, `readiness.md` | What the M0 spikes proved and what they changed in the spec. |
-| `ledger/progress.md` | **Read this before continuing.** Every dispatch, every `Ruling:` (a decision taken on the owner's behalf, with its cost if wrong), every deferred minor and parked finding, and every milestone gate. Grep it for `Ruling:`, `parked`, `minor (deferred)` and `carried`. |
-| `ledger/task-N-brief.md`, `task-N-report.md` | Each task's requirements and its implementer's report, with test evidence. |
-| `ledger/task-28-29-contract.md` | The fixed contract between the handover helper and the app: NDJSON events and exit codes. |
-| `ledger/review-constraints.md` | The delivery rules every reviewer was given. |
-| `ledger/m2-*`, `ledger/m3-*` | Milestone deep reviews, fix waves, and on-machine briefs and reports. The M3 on-machine reports are `m3-onmachine-{A,A2,B,C}-report.md`. |
-| `ledger/final-review*.md`, `ledger/final-fix-*.md` | The final whole-branch review (candidates, validation, triage of every ledgered minor), its fix waves A, C1, B, C2 and D with their reports and re-reviews, and the deferred follow-ups. |
-| `ledger/m3b-env.md` | The live test environment: the `svall-m3b` account on test-server and the Mac test HOME, both at `/Users/Shared/svall-m3b`, with its harness and teardown recipe. |
-| `spikes-ledger/` | The ledger and reports for the M0 spikes (Tasks 1–4). |
+| `deferred.md` | What the reviews found and left open, by area. |
+| `packages/protocol/src/handover-events.ts` | The contract between the handover helper and the app: the NDJSON events and outcomes `svall handover --json` prints. |
 
-Paths inside the ledger point at the old locations. `.superpowers/sdd/2026-09-20-fleet-handover/` is
-now `ledger/`, and `docs/superpowers/{specs,plans}/…fleet-handover…` is now `spec.md` / `plan.md`.
+The working ledger is kept outside the repository: every dispatch and ruling taken on the owner's behalf, each task's
+brief and its implementer's report with test evidence, the milestone and whole-branch reviews with their fix waves,
+the on-machine reports, the delivery rules every reviewer was given, the M0 spikes' own ledger, and the live test
+environment with how to open a test build against its test HOME.
 
 ## Owed before this can ship
 
 - **The by-eye pass in the built app:** Add Machine, the handover sheet (including the sheet rebuilding
-  after a relaunch), terminal re-attach after an SSH drop. `ledger/m3b-env.md` has the steps and how to
-  open the test build against the test HOME without touching the owner's own app or fleet.
+  after a relaunch), terminal re-attach after an SSH drop. `apps/desktop/mac/SMOKE.md` has the steps.
 - **A round trip on the real machines after the PR review's fix wave.** The last one ran at release d0602dc,
   before it; the fix wave changed claims, aborts, the transport's process groups and Linux setup.
 - **A release signing key.** `allowed_signers` holds only a comment until one exists, so every install
@@ -60,8 +54,7 @@ now `ledger/`, and `docs/superpowers/{specs,plans}/…fleet-handover…` is now 
   statically linked LGPL libintl, and the Flaticon art shipped as files.
 - **Svall Dev.** `svall-dev` and its daemon run from the checkout, which carries no `release.json`, companion or
   rsync, so only Svall.app, which carries its controller release, can hand a fleet over.
-- **Follow-ups** the final review deferred: `ledger/final-review.md` ("Deferred as follow-ups"), the
-  triage's follow-up rows in `ledger/final-review-triage.md`, and `minor (deferred)` lines in the ledger.
+- **Follow-ups** the reviews deferred: `deferred.md`.
 
 ## How the work was run
 
