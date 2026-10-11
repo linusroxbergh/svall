@@ -57,10 +57,9 @@ describe('dispatchKey', () => {
     const c = ctx();
     c.store.getState().select('c0');
     c.store.getState().setMissionPrompt(true);
-    c.store.getState().toggleKeys(true);
     await dispatchKey({ type: 'closeCharacter' }, c);
     expect(c.calls).toEqual([]);
-    expect(c.store.getState()).toMatchObject({ closingCharacter: 'c0', missionPrompt: false, keysOpen: false, selectedId: 'c0' });
+    expect(c.store.getState()).toMatchObject({ closingCharacter: 'c0', missionPrompt: false, selectedId: 'c0' });
     await dispatchKey({ type: 'newCharacter' }, c);
     expect(c.store.getState()).toMatchObject({ closingCharacter: undefined, namingCharacter: true });
   });

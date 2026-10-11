@@ -205,6 +205,17 @@ test('the updates pane is listed only while an update waits, its button asks the
   expect(screen.getByTestId('set-robot-motion')).toBeTruthy();
 });
 
+test('the keyboard pane lists the shortcuts in place, and leaving it while a row waits stops the listening', () => {
+  render(<SettingsCard />);
+  show('keyboard');
+  fireEvent.click(screen.getByTestId('key-quit'));
+  expect(store.getState().capturingKey).toBe('quit');
+  expect(screen.getByTestId('key-quit').textContent).toBe('press a key');
+  show('machine');
+  expect(screen.queryByTestId('key-quit')).toBeNull();
+  expect(store.getState().capturingKey).toBeUndefined();
+});
+
 test('robot motion starts on, and its switch turns the stored setting off', () => {
   render(<SettingsCard />);
   expect(checked('set-robot-motion')).toBe('true');

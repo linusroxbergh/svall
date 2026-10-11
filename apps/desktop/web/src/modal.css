@@ -24,8 +24,6 @@
 .modal .fld::placeholder { color: var(--ink-3); }
 .modal .fld:focus { outline: none; border-bottom-color: var(--sand); }
 .modal .fld.mission { min-height: 96px; }
-.modal.keys { width: 440px; max-height: min(78vh, 680px); overflow: hidden auto; }
-.modal.keys .desc { color: var(--ink-2); font-size: var(--text-md); line-height: 1.45; }
 .modal-name { color: var(--ink); font-size: var(--text-3xl); font-weight: var(--w-semibold); letter-spacing: var(--track-tight); overflow-wrap: anywhere; }
 .modal-note { color: var(--ink-3); font-size: var(--text-md); }
 .modal .acts { display: flex; gap: var(--sp-md); }

@@ -74,17 +74,16 @@ describe('selectors', () => {
     }
   });
   it('anything the page spreads over a surface hides it first', () => {
-    const base = { namingCharacter: false, missionPrompt: false, closingCharacter: undefined, keysOpen: false, resourcesOpen: false, fleet: fleet() };
+    const base = { namingCharacter: false, missionPrompt: false, closingCharacter: undefined, resourcesOpen: false, fleet: fleet() };
     expect(isVeiled(base)).toBe(false);
     expect(isVeiled({ ...base, missionPrompt: true })).toBe(true);
     expect(isVeiled({ ...base, namingCharacter: true })).toBe(true);
     expect(isVeiled({ ...base, closingCharacter: 'c0' })).toBe(true);
     expect(isVeiled({ ...base, deletingIsland: 'i_e' })).toBe(true);
-    expect(isVeiled({ ...base, keysOpen: true })).toBe(true);
     expect(isVeiled({ ...base, fleet: { ...fleet(), scribeAsk: true } })).toBe(true);
   });
   it('veils while the resources shelf is open', () => {
-    expect(isVeiled({ namingCharacter: false, missionPrompt: false, keysOpen: false, resourcesOpen: true, fleet: fleet() })).toBe(true);
+    expect(isVeiled({ namingCharacter: false, missionPrompt: false, resourcesOpen: true, fleet: fleet() })).toBe(true);
   });
 });
 

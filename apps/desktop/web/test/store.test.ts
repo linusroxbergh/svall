@@ -157,21 +157,6 @@ describe('store', () => {
     store.getState().toggleSettings(false);
     expect(store.getState().capturingKey).toBeUndefined();
   });
-  it('closes the shortcut editor with the card it was opened from, and stops listening with it', () => {
-    const store = createAppStore(memStorage());
-    store.getState().toggleSettings(true);
-    store.getState().toggleKeys(true);
-    store.getState().setCapturingKey('quit');
-    store.getState().toggleKeys(false);
-    expect(store.getState()).toMatchObject({ keysOpen: false, capturingKey: undefined });
-
-    store.getState().toggleKeys(true);
-    store.getState().toggleSettings(false);
-    expect(store.getState().keysOpen).toBe(false);
-    // and it does not come back with the card
-    store.getState().toggleSettings(true);
-    expect(store.getState().keysOpen).toBe(false);
-  });
   it('keeps the shell info whether or not the chords come with it', () => {
     const store = createAppStore(memStorage());
     store.getState().setShell(shellInfo());
@@ -370,14 +355,13 @@ describe('store', () => {
     expect(store.getState().mobile?.phones).toEqual(here);
   });
 
-  it('the settings window stands apart from the side card, so toggling the card leaves it and its editor open', () => {
+  it('the settings window stands apart from the side card, so toggling the card leaves it open', () => {
     const store = createAppStore(undefined, 'board');
     store.getState().toggleSettings(true);
-    store.getState().toggleKeys(true);
     store.getState().toggleSideCard();
-    expect(store.getState()).toMatchObject({ settingsOpen: true, keysOpen: true, sideCardOpen: false, sideCardCollapsed: true });
+    expect(store.getState()).toMatchObject({ settingsOpen: true, sideCardOpen: false, sideCardCollapsed: true });
     store.getState().toggleSideCard();
-    expect(store.getState()).toMatchObject({ settingsOpen: true, keysOpen: true, sideCardOpen: true, sideCardCollapsed: false });
+    expect(store.getState()).toMatchObject({ settingsOpen: true, sideCardOpen: true, sideCardCollapsed: false });
   });
 
   it('the board opens the side card, and a collapse survives the switch', () => {

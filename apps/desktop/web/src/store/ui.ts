@@ -54,9 +54,7 @@ export type UiState = {
   shell?: ShellInfo;
   sidebarOpen: boolean;
   settingsOpen: boolean;
-  // the shortcut editor, over the middle of the screen, opened from the settings window
-  keysOpen: boolean;
-  // the action whose chord the shortcut editor is waiting for; while it is set, keys are read, not obeyed
+  // the action whose chord the settings' Keyboard pane is waiting for; while it is set, keys are read, not obeyed
   capturingKey?: ActionId;
   usageOpen: boolean;
   mobileOpen: boolean;
@@ -118,7 +116,6 @@ export type UiActions = {
   setCapturingKey(id?: ActionId): void;
   toggleSidebar(open?: boolean): void;
   toggleSettings(open?: boolean): void;
-  toggleKeys(open?: boolean): void;
   toggleUsage(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
   toggleMobile(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
   setMobile(status?: MobileStatus): void;
@@ -144,7 +141,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     const next = open ?? !s[which];
     if (next && s.settingsOpen && s.loaded) storage?.setSettings(s.settings);
     return { usageOpen: false, mobileOpen: false, [which]: next, settingsOpen: next ? false : s.settingsOpen,
-      keysOpen: next ? false : s.keysOpen, capturingKey: next ? undefined : s.capturingKey,
+      capturingKey: next ? undefined : s.capturingKey,
       resourcesOpen: next ? false : s.resourcesOpen, keepPageFocus: opts?.keepPageFocus ?? false };
   });
   return {
@@ -175,7 +172,6 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     update: undefined,
     sidebarOpen: storage?.getSidebarOpen() ?? true,
     settingsOpen: firstRun,
-    keysOpen: false,
     capturingKey: undefined,
     usageOpen: false,
     mobileOpen: false,
@@ -252,12 +248,11 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
       // a card that closes has been answered, and what it leaves behind is this machine's settings;
       // before the fleet arrives the connect screen stands in its place, and closes nobody saw answer nothing
       if (!next && s.loaded) storage?.setSettings(s.settings);
-      // a card that goes takes the shortcut editor with it, and must not leave the keyboard listening
+      // a window that goes must not leave the keyboard listening
       return { settingsOpen: next, usageOpen: next ? false : s.usageOpen, mobileOpen: next ? false : s.mobileOpen,
         keepPageFocus: next && (s.usageOpen || s.mobileOpen) ? true : s.keepPageFocus,
-        keysOpen: next && s.keysOpen, capturingKey: next ? s.capturingKey : undefined };
+        capturingKey: next ? s.capturingKey : undefined };
     }),
-    toggleKeys: (open) => set((s) => { const next = open ?? !s.keysOpen; return { keysOpen: next, capturingKey: next ? s.capturingKey : undefined }; }),
     toggleUsage: (open, opts) => toggleUtility('usageOpen', open, opts),
     toggleMobile: (open, opts) => toggleUtility('mobileOpen', open, opts),
     // the panel carries the switch, so it stays open across turning the link off; only a link that cannot be made at all shuts it

@@ -7,6 +7,7 @@ import { holdCutout } from './cutout.js';
 import { AS_TYPED } from './Field.js';
 import { useApp } from './hooks.js';
 import { Info } from './Info.js';
+import { Keybindings } from './Keybindings.js';
 import { chordLabel, chordsOf, keyLabel, keyTip } from './keys.js';
 import { MobileSwitch } from './PhonePanel.js';
 import { NO_PAGE, phonesHere } from './phoneText.js';
@@ -317,19 +318,8 @@ function Browser() {
   );
 }
 
-function Keyboard() {
-  return (
-    <div className="rows">
-      <div className="row">
-        <span>keyboard shortcuts<Info id="keys">Unlisted ⌘ chords go to the terminal.</Info></span>
-        <b><button className="btn set-open" data-testid="settings-keys" onClick={() => app.store.getState().toggleKeys(true)}>Edit</button></b>
-      </div>
-    </div>
-  );
-}
-
 const PANES = [
-  ['machine', 'This machine', Machine], ['browser', 'Browser', Browser], ['keyboard', 'Keyboard', Keyboard],
+  ['machine', 'This machine', Machine], ['browser', 'Browser', Browser], ['keyboard', 'Keyboard', Keybindings],
   ['notifications', 'Notifications', Notifications], ['phone', 'Phone', Phone], ['fleet', 'The fleet', Scribe], ['updates', 'Updates', Update],
 ] as const;
 type Pane = (typeof PANES)[number][0];

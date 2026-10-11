@@ -9,7 +9,6 @@ import { FleetPicker } from './FleetPicker.js';
 import { FleetSummary } from './FleetSummary.js';
 import { useApp } from './hooks.js';
 import { IslandCard } from './IslandCard.js';
-import { Keybindings } from './Keybindings.js';
 import { keyTip } from './keys.js';
 import { LinkAsk } from './LinkAsk.js';
 import { Map } from './map/Map.js';
@@ -107,7 +106,6 @@ export function App() {
       <MissionPrompt />
       <ConfirmClose />
       <ConfirmDeleteIsland />
-      <Keybindings />
       <ScribeAsk />
       <FleetPicker />
       <LinkAsk />

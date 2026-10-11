@@ -209,8 +209,6 @@ test('the keyboard rows take a new chord, ask before a taken one, clear and put 
   await page.getByTestId('settings-open').click();
   await expect(page.getByTestId('key-toggleSideCard')).toHaveCount(0);
   await page.getByTestId('settings-tab-keyboard').click();
-  await page.getByTestId('settings-keys').click();
-  await expect(page.getByTestId('keys-modal')).toBeVisible();
 
   const side = page.getByTestId('key-toggleSideCard');
   await expect(side).toHaveText('⌘I');
@@ -219,8 +217,8 @@ test('the keyboard rows take a new chord, ask before a taken one, clear and put 
   await page.keyboard.press('Meta+y');
   await expect(side).toHaveText('⌘Y');
 
-  // the side card must not have flipped open under the rebind
-  await expect(page.getByTestId('keys-modal')).toBeVisible();
+  // the board's side card must not have flipped shut under the rebind
+  await expect(page.getByTestId('side-collapse')).toBeVisible();
   await page.getByTestId('key-reset-toggleSideCard').click();
   await expect(side).toHaveText('⌘I');
 
@@ -235,17 +233,14 @@ test('the keyboard rows take a new chord, ask before a taken one, clear and put 
   await page.getByTestId('key-clear-toggleSideCard').click();
   await expect(side).toHaveText('—');
 
-  // Escape answers the row that is waiting before it answers the dialog
+  // Escape answers the row that is waiting before it closes the settings
   await side.click();
   await expect(side).toHaveText('press a key');
   await page.keyboard.press('Escape');
   await expect(side).toHaveText('—');
-  await expect(page.getByTestId('keys-modal')).toBeVisible();
-
-  // Escape closes the editor and leaves the settings behind it
-  await page.keyboard.press('Escape');
-  await expect(page.getByTestId('keys-modal')).toHaveCount(0);
   await expect(page.getByTestId('settings')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('settings')).toHaveCount(0);
 });
 
 test('the fleet is renamed from the settings, and a name that will not do is never sent', async ({ page, svall }) => {
@@ -270,12 +265,9 @@ test('closing the settings while a row waits for a key leaves the other chords w
   await svall.open();
   await page.getByTestId('settings-open').click();
   await page.getByTestId('settings-tab-keyboard').click();
-  await page.getByTestId('settings-keys').click();
   await page.getByTestId('key-quit').click();
   await expect(page.getByTestId('key-quit')).toHaveText('press a key');
 
-  await page.getByTestId('keys-close').click();
-  await expect(page.getByTestId('keys-modal')).toHaveCount(0);
   await page.getByTestId('settings-close').click();
   await expect(page.getByTestId('settings')).toHaveCount(0);
   await page.keyboard.press('Meta+m');

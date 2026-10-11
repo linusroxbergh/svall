@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { app } from './boot.js';
 import { useApp } from './hooks.js';
 import { ACTIONS, actionIds, chordFor, chordLabel, chordOf, chordsOf, holderOf, resolve, type ActionId, type Bindings, type Chord } from './keys.js';
@@ -8,14 +8,12 @@ type Ask = { id: ActionId; chord: Chord; from?: ActionId; ghostty?: string };
 
 const write = (bindings: Bindings) => app.store.getState().setSettings({ bindings });
 
+// the settings window's Keyboard pane
 export function Keybindings() {
-  const open = useApp((s) => s.keysOpen);
   const bindings = useApp((s) => s.settings.bindings);
   const theirs = useApp((s) => s.shell?.ghosttyKeys) ?? {};
   const capturing = useApp((s) => s.capturingKey);
   const [ask, setAsk] = useState<Ask>();
-  const shut = useRef<HTMLButtonElement>(null);
-  const back = useRef<HTMLDivElement>(null);
 
   const listen = (id?: ActionId) => { setAsk(undefined); app.store.getState().setCapturingKey(id); };
   // read through the store rather than this render's copy: a key can arrive between renders
@@ -34,23 +32,8 @@ export function Keybindings() {
     if (from || ghostty) setAsk({ id, chord, from, ghostty }); else put(id, chord);
   };
 
-  useEffect(() => {
-    if (!open) { setAsk(undefined); return; }
-    shut.current?.focus();
-    // the card and the map both read Escape, so this one is taken before they see it
-    const key = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      const from = e.target as Element | null;
-      // a dialog standing over this one answers its own Escape
-      if (from?.closest?.('.modal-back') && !back.current?.contains(from)) return;
-      e.stopPropagation();
-      const s = app.store.getState();
-      // the row waiting for a key is answered first, the dialog after it
-      if (s.capturingKey) s.setCapturingKey(undefined); else s.toggleKeys(false);
-    };
-    window.addEventListener('keydown', key, true);
-    return () => window.removeEventListener('keydown', key, true);
-  }, [open]);
+  // another pane taking this one's place must not leave the keyboard listening
+  useEffect(() => () => app.store.getState().setCapturingKey(undefined), []);
 
   useEffect(() => {
     if (!capturing) return;
@@ -79,67 +62,56 @@ export function Keybindings() {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [capturing]);
 
-  if (!open) return null;
-  const close = () => app.store.getState().toggleKeys(false);
   const bound = resolve(bindings);
   return (
-    <div ref={back} className="modal-back" data-testid="keys-modal" onPointerDown={close}>
-      <div className="modal panel keys" onPointerDown={(e) => e.stopPropagation()}
-        role="dialog" aria-label="Keyboard shortcuts">
-        <div className="kicker">
-          Keyboard shortcuts
-          <span className="spacer" />
-          <button ref={shut} className="side-x" data-testid="keys-close" title="Close" aria-label="Close the shortcuts"
-            onClick={close}>×</button>
-        </div>
-        <div className="rows">
-          {actionIds().map((id) => {
-            const chord = chordFor(id, bindings);
-            const shipped = ACTIONS[id].chord;
-            // declined on this machine's first launch, or cleared by hand, while the user's own Ghostty answers it
-            const held = chord === null ? chordsOf(id).map((c) => theirs[c]).find(Boolean) : undefined;
-            return (
-              <div key={id}>
-                <div className="row">
-                  <span>{ACTIONS[id].label}</span>
+    <>
+      <div className="rows">
+        {actionIds().map((id) => {
+          const chord = chordFor(id, bindings);
+          const shipped = ACTIONS[id].chord;
+          // declined on this machine's first launch, or cleared by hand, while the user's own Ghostty answers it
+          const held = chord === null ? chordsOf(id).map((c) => theirs[c]).find(Boolean) : undefined;
+          return (
+            <div key={id}>
+              <div className="row">
+                <span>{ACTIONS[id].label}</span>
+                <b className="set-keys">
+                  <button className="key-chord" data-testid={`key-${id}`} data-listening={capturing === id}
+                    aria-label={capturing === id ? `Press a key for ${ACTIONS[id].label}` : `Change the key for ${ACTIONS[id].label}, now ${chordLabel(chord)}`}
+                    onClick={() => listen(capturing === id ? undefined : id)}>
+                    {capturing === id ? 'press a key' : chordLabel(chord)}
+                  </button>
+                  {chord && <button className="key-x" data-testid={`key-clear-${id}`} title="No key" aria-label={`Unbind ${ACTIONS[id].label}`}
+                    onClick={() => put(id, null)}>×</button>}
+                  {id in bindings && <button className="key-x" data-testid={`key-reset-${id}`} title={`Back to ${chordLabel(shipped)}`}
+                    aria-label={`Reset ${ACTIONS[id].label}`} onClick={() => reset(id)}>↺</button>}
+                </b>
+              </div>
+              {ask?.id === id && (
+                <div className="row key-ask" role="alert" data-testid={`key-ask-${id}`}>
+                  <span>{chordLabel(ask.chord)} {ask.from ? `is taken by ${ACTIONS[ask.from].label}` : `is taken by your Ghostty config (${ask.ghostty})`}</span>
                   <b className="set-keys">
-                    <button className="key-chord" data-testid={`key-${id}`} data-listening={capturing === id}
-                      aria-label={capturing === id ? `Press a key for ${ACTIONS[id].label}` : `Change the key for ${ACTIONS[id].label}, now ${chordLabel(chord)}`}
-                      onClick={() => listen(capturing === id ? undefined : id)}>
-                      {capturing === id ? 'press a key' : chordLabel(chord)}
-                    </button>
-                    {chord && <button className="key-x" data-testid={`key-clear-${id}`} title="No key" aria-label={`Unbind ${ACTIONS[id].label}`}
-                      onClick={() => put(id, null)}>×</button>}
-                    {id in bindings && <button className="key-x" data-testid={`key-reset-${id}`} title={`Back to ${chordLabel(shipped)}`}
-                      aria-label={`Reset ${ACTIONS[id].label}`} onClick={() => reset(id)}>↺</button>}
+                    <button className="btn" data-testid={`key-take-${id}`} onClick={() => put(id, ask.chord, ask.from)}>Override</button>
+                    <button className="btn" onClick={() => setAsk(undefined)}>Cancel</button>
                   </b>
                 </div>
-                {ask?.id === id && (
-                  <div className="row key-ask" role="alert" data-testid={`key-ask-${id}`}>
-                    <span>{chordLabel(ask.chord)} {ask.from ? `is taken by ${ACTIONS[ask.from].label}` : `is taken by your Ghostty config (${ask.ghostty})`}</span>
-                    <b className="set-keys">
-                      <button className="btn" data-testid={`key-take-${id}`} onClick={() => put(id, ask.chord, ask.from)}>Override</button>
-                      <button className="btn" onClick={() => setAsk(undefined)}>Cancel</button>
-                    </b>
-                  </div>
-                )}
-                {held && ask?.id !== id && (
-                  <div className="row key-ask" role="alert" data-testid={`key-held-${id}`}>
-                    <span>{chordLabel(shipped)} is taken by your Ghostty config ({held})</span>
-                    <b className="set-keys">
-                      <button className="btn" data-testid={`key-claim-${id}`} onClick={() => claim(id, shipped)}>Take it</button>
-                    </b>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-        <div className="desc">
-          Unlisted ⌘ chords go to the terminal.
-          {Object.keys(theirs).length > 0 && ` ${Object.keys(theirs).filter((c) => !bound[c]).length} of your Ghostty chords stay with Ghostty.`}
-        </div>
+              )}
+              {held && ask?.id !== id && (
+                <div className="row key-ask" role="alert" data-testid={`key-held-${id}`}>
+                  <span>{chordLabel(shipped)} is taken by your Ghostty config ({held})</span>
+                  <b className="set-keys">
+                    <button className="btn" data-testid={`key-claim-${id}`} onClick={() => claim(id, shipped)}>Take it</button>
+                  </b>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
-    </div>
+      <div className="desc">
+        Unlisted ⌘ chords go to the terminal.
+        {Object.keys(theirs).length > 0 && ` ${Object.keys(theirs).filter((c) => !bound[c]).length} of your Ghostty chords stay with Ghostty.`}
+      </div>
+    </>
   );
 }

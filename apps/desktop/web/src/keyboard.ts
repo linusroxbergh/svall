@@ -60,7 +60,7 @@ export async function closeCharacter(ctx: Deps, id: string): Promise<void> {
 
 function closeAllModals(store: AppStore): void {
   const s = store.getState();
-  s.setNamingCharacter(false); s.setMissionPrompt(false); s.setClosingCharacter(undefined); s.setDeletingIsland(undefined); s.setFleetPicker(undefined); s.toggleKeys(false);
+  s.setNamingCharacter(false); s.setMissionPrompt(false); s.setClosingCharacter(undefined); s.setDeletingIsland(undefined); s.setFleetPicker(undefined);
 }
 
 export function openFleetPicker(store: AppStore): void {
