@@ -6,7 +6,7 @@ import type { FromShell, ToShell } from '../src/bridge.js';
 import { theme } from '../src/theme.js';
 
 type Shell = { __sent: ToShell[]; __svall: { receive(json: string): void } };
-type Reply = { port: number; token: string; info: Extract<FromShell, { type: 'shell.info' }> };
+type Reply = { port: number; token: string; info: Extract<FromShell, { type: 'shell.info' }>; state?: Extract<FromShell, { type: 'connection.state' }> };
 
 // a stand-in for the native shell: it records what the page sends and answers the connection request
 async function fakeShell(page: Page, reply: Reply): Promise<() => Promise<ToShell[]>> {
@@ -20,6 +20,7 @@ async function fakeShell(page: Page, reply: Reply): Promise<() => Promise<ToShel
       setTimeout(() => {
         w.__svall.receive(JSON.stringify(r.info));
         w.__svall.receive(JSON.stringify({ type: 'connection', host: '127.0.0.1', port: r.port, token: r.token }));
+        if (r.state) w.__svall.receive(JSON.stringify(r.state));
       }, 0);
     } } } };
   }, reply);
@@ -46,6 +47,32 @@ test('the connect screen asks for svall setup while the daemon has never logged'
   await page.clock.install();
   await page.goto('/');
   await page.clock.fastForward(theme.connectGraceMs);
+  await expect(page.getByTestId('connect-screen')).toContainText('run svall-dev setup');
+});
+
+test('a fleet on another machine that cannot be reached says so in place of the advice for this Mac', async ({ page }) => {
+  await fakeShell(page, {
+    port: 0, token: '',
+    info: { type: 'shell.info', home: '/tmp/fleet-x', log: ['2026-09-14T10:00:00Z svalld stopped'], op: false, handoverEnabled: true, gateway: 'studio' },
+    state: { type: 'connection.state', state: 'error', owner: 'studio', kind: 'unreachable', message: 'ssh: connect to host studio port 22: Operation timed out' },
+  });
+  await page.clock.install();
+  await page.goto('/');
+  await page.clock.fastForward(theme.connectGraceMs);
+  await expect(page.getByTestId('connect-screen')).toHaveText('studio is not reachable: ssh: connect to host studio port 22: Operation timed out');
+});
+
+test('a fleet on this Mac that asks for handover keeps the advice for its own daemon', async ({ page }) => {
+  await fakeShell(page, {
+    port: 0, token: '',
+    info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: true, gateway: 'studio' },
+    state: { type: 'connection.state', state: 'error', owner: 'local', kind: 'daemon_down', message: 'svalld is not running' },
+  });
+  await page.clock.install();
+  await page.goto('/');
+  await expect(page.getByTestId('connect-screen')).toHaveText('Starting the fleet…');
+  await page.clock.fastForward(theme.connectGraceMs);
+  await expect(page.getByTestId('connect-screen')).toContainText('svalld not running');
   await expect(page.getByTestId('connect-screen')).toContainText('run svall-dev setup');
 });
 

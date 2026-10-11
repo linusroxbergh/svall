@@ -9,7 +9,7 @@ import { FleetPicker } from './FleetPicker.js';
 import { FleetSummary } from './FleetSummary.js';
 import { HandoverSheet } from './HandoverSheet.js';
 import { useApp } from './hooks.js';
-import { connectionBanner } from './host.js';
+import { connectionBanner, connectionText } from './host.js';
 import { HostSetup } from './HostSetup.js';
 import { IslandCard } from './IslandCard.js';
 import { Keybindings } from './Keybindings.js';
@@ -47,6 +47,8 @@ export function App() {
   const toast = useApp((s) => s.toast);
   // the fleet the page holds stays on the screen while its machine is away; only this line changes
   const away = useApp((s) => connectionBanner(s.connection, !!s.shell?.handoverEnabled));
+  // a fleet on another machine is waited for there, so this Mac's daemon, its log and its setup say nothing about it
+  const elsewhere = useApp((s) => (s.connection && s.connection.owner !== 'local' ? connectionText(s.connection) : undefined));
   const sideWidths = useApp((s) => s.sideWidths);
   const bindings = useApp((s) => s.settings.bindings);
   // a launch finds svalld in moments, even one still starting; the setup hint and the log wait out that grace
@@ -59,6 +61,7 @@ export function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  if (!loaded && elsewhere) return <div className="connect" data-testid="connect-screen"><div>{elsewhere}</div></div>;
   if (!loaded && waiting && status !== 'outdated') return <div className="connect" data-testid="connect-screen"><Starting /></div>;
   if (!loaded) {
     const log = shell && `${shell.home}/svalld.log`;
