@@ -42,6 +42,15 @@ describe('applyHook', () => {
     const again = applyHook(d, { charId: 'c_a', backend: 'claude', name: 'PreToolUse' }, 9);
     expect(again.unread).toBe(false);
   });
+  it('marks activity from tool calls at most every ten seconds, and from anything else at once', () => {
+    const w = applyHook(withAgent('idle'), { charId: 'c_a', backend: 'claude', name: 'UserPromptSubmit' }, 100);
+    const tool = (c: Character, name: HookEvent['name'], at: number) => applyHook(c, { charId: 'c_a', backend: 'claude', name }, at);
+    const pre = tool(w, 'PreToolUse', 5_000);
+    expect(pre).toEqual(w);
+    expect(tool(pre, 'PostToolUse', 10_099).agent?.lastActivityAt).toBe(100);
+    expect(tool(pre, 'PostToolUseFailure', 10_100).agent?.lastActivityAt).toBe(10_100);
+    expect(tool(pre, 'Stop', 5_001).agent?.lastActivityAt).toBe(5_001);
+  });
   it('stays working when a turn ends with background agents still running', () => {
     const w = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Stop', backgroundTasks: 2 }, 8);
     expect(w.agent?.status).toBe('working');
