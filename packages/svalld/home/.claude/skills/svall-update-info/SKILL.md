@@ -1,6 +1,6 @@
 ---
 name: svall-update-info
-description: Refresh every character's name, note and links, and every island's description and links, from what the agents are actually doing.
+description: Refresh every robot's name, note and links, and every island's description and links, from what the agents are actually doing.
 ---
 
 # Update the fleet's info

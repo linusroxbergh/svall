@@ -1,6 +1,6 @@
 ---
 name: svall-status
-description: Report what every character is doing and which ones need the user, and save the report as this character's note.
+description: Report what every robot is doing and which ones need the user, and save the report as this robot's note.
 ---
 
 # Report on the fleet
@@ -8,14 +8,14 @@ description: Report what every character is doing and which ones need the user, 
 Change nothing except your own note.
 
 1. `svall status` lists every id, name, island and state.
-2. For each character that is `blocked`, `done`, or otherwise seems to want
+2. For each robot that is `blocked`, `done`, or otherwise seems to want
    something, run `svall char read <name>`, and
    `svall char read <name> --transcript --lines 30` when the screen is not
    enough.
 3. Print a one-line count, then these sections in this order, skipping empty
    ones. Plain text, no markdown: the report is also your card note.
 
-       12 characters: 1 needs you, 2 to review, 2 working, 7 quiet
+       12 robots: 1 needs you, 2 to review, 2 working, 7 quiet
 
        Needs you
          bob — asks whether to drop the failing auth test (SV-41)
@@ -37,7 +37,7 @@ Change nothing except your own note.
    agents intact:
 
        svall char update c_abc123 --note-file /dev/stdin <<'EOF'
-       3 characters: 1 needs you, 1 to review, 1 quiet
+       3 robots: 1 needs you, 1 to review, 1 quiet
 
        Needs you
          bob — asks whether to drop the failing auth test (SV-41)

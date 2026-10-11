@@ -1270,7 +1270,7 @@ runIf('Fleet', () => {
     expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } })).toBeUndefined();
     fleet.updateCharacter(c.id, { instructions: 'in Spanish' });
     const diff = fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } });
-    expect(diff).toContain('+ Character instructions: in Spanish');
+    expect(diff).toContain('+ Robot instructions: in Spanish');
     expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } })).toBeUndefined();
   });
 
@@ -1307,7 +1307,7 @@ runIf('Fleet', () => {
     expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: nested, pid: process.ppid } })).toBeUndefined();
     expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit', sessionId: nested, pid: process.ppid } })).toBeUndefined();
     expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit', sessionId: outer, pid: process.pid } }))
-      .toContain('+ Character instructions: in Spanish');
+      .toContain('+ Robot instructions: in Spanish');
   });
 
   it('says so when a window runs codex and no hook comes from it, until one does', async () => {
@@ -1432,19 +1432,21 @@ runIf('Fleet', () => {
     expect(store.state).not.toHaveProperty('scribeOff');
   });
 
-  it('tells a character made with a task, not one opened by hand, to work in a worktree until the setting turns it off', async () => {
+  it('tells every character, made with a task or opened by hand, to work in a new worktree until the setting turns it off', async () => {
     const { fleet, store } = await boot({ runTimeoutMs: 300 });
     const islandId = fleet.createIsland({ name: 'feature' }).id;
     const manual = await fleet.createCharacter({ islandId, cwd: '/tmp' });
     const c = await fleet.createCharacter({ islandId, cwd: '/tmp', command: 'echo started', run: 'hello' });
-    const rule = '- In a git repo, work in a worktree';
-    expect(fleet.brief(manual.id)).not.toContain(rule);
+    const rule = '- In a git repo, start every task and review in a new worktree';
+    expect(fleet.brief(manual.id)).toContain(rule);
     expect(fleet.brief(c.id)).toContain(rule);
     fleet.setWorktrees(false);
     expect(store.state.worktreesOff).toBe(true);
+    expect(fleet.brief(manual.id)).not.toContain(rule);
     expect(fleet.brief(c.id)).not.toContain(rule);
     fleet.setWorktrees(true);
     expect(store.state).not.toHaveProperty('worktreesOff');
+    expect(fleet.brief(manual.id)).toContain(rule);
     expect(fleet.brief(c.id)).toContain(rule);
     await fleet.closeCharacter(manual.id);
     await fleet.closeCharacter(c.id);
@@ -1679,7 +1681,7 @@ runIf('Fleet', () => {
     expect(brief).toContain(`- native-surfaces — "Native surfaces sit above the webview." (${path.join(dir, 'native-surfaces.md')})`);
     expect(brief).toContain(`- island: ${dir}`);
     expect(brief).toContain(`- fleet: ${path.join(docs, 'fleet')}`);
-    expect(brief).toContain(`- character: ${docsDir(docs, 'character', c.id)}`);
+    expect(brief).toContain(`- robot: ${docsDir(docs, 'character', c.id)}`);
     expect(brief).toMatch(/- repo: .*\/docs\/repos\/tmp-[0-9a-f]{8}/);
     expect(fleet.islandBrief(island.id)).toContain('- native-surfaces');
     await fleet.closeCharacter(c.id);
