@@ -10,7 +10,7 @@ import { chordLabel, chordsOf, keyLabel, keyTip } from './keys.js';
 import { MobileSwitch } from './PhonePanel.js';
 import { NO_PAGE, phonesHere } from './phoneText.js';
 import { directoryName } from './selectors.js';
-import { canFill, OPACITY, zoomBy, type NotifySettings, type Settings } from './settings.js';
+import { canFill, OPACITY, zoomBy, type KeepAwake, type NotifySettings, type Settings } from './settings.js';
 
 const set = (patch: Partial<Settings>) => app.store.getState().setSettings(patch);
 
@@ -240,7 +240,7 @@ function Update() {
 }
 
 export function SettingsCard() {
-  const { cardOpacity, fullOpacity, zoom, onePassword, usageTab, autoArrange, cardLinks, robotMotion, bindings } = useApp((s) => s.settings);
+  const { cardOpacity, fullOpacity, zoom, onePassword, usageTab, autoArrange, cardLinks, robotMotion, bindings, keepAwake } = useApp((s) => s.settings);
   const zoomOut = keyLabel('zoomOut', bindings), zoomReset = keyLabel('zoomReset', bindings);
   // on its shipped chord zoom in also answers ⌘+, the name macOS gives the key
   const zoomIn = chordsOf('zoomIn', bindings).includes('cmd++') ? chordLabel('cmd++') : keyLabel('zoomIn', bindings);
@@ -294,6 +294,17 @@ export function SettingsCard() {
           <b><button className="set-switch" role="switch" aria-checked={robotMotion} data-testid="set-robot-motion"
             onClick={() => set({ robotMotion: !robotMotion })}>{robotMotion ? 'on' : 'off'}</button></b>
         </div>
+        {shell && (
+          <div className="row">
+            <span>keep Mac awake<Info id="keep-awake">Stops idle sleep so agents keep running and your phone reaches the fleet. The screen still dims and locks, and nothing is held on battery. A character waiting on you, or your phone, keeps it awake up to 30 minutes after the last change.</Info></span>
+            <b><select className="fld inline" aria-label="Keep Mac awake" value={keepAwake} data-testid="set-keep-awake"
+              onChange={(e) => set({ keepAwake: e.target.value as KeepAwake })}>
+              <option value="off">off</option>
+              <option value="working">while agents work</option>
+              <option value="needs">while agents work or need you</option>
+            </select></b>
+          </div>
+        )}
       </div>
       <div className="opens">
         <button className="btn" data-testid="settings-ghostty" disabled={!shell} title="Terminal font, colours and cursor"

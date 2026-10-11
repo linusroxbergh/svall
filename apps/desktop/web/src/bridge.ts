@@ -55,7 +55,9 @@ export type ToShell =
   | { type: 'setup.plan' }
   | { type: 'setup.run'; agents: AgentKind[]; found: AgentKind[]; projects: string }
   // a native folder picker opened at `start`, answered by folder.picked unless cancelled
-  | { type: 'folder.pick'; start: string };
+  | { type: 'folder.pick'; start: string }
+  // keeps the Mac from idle-sleeping under this reason; none lets go
+  | { type: 'awake'; reason?: string };
 
 export type FromShell =
   | { type: 'connection'; host: string; port: number; token: string }
@@ -91,7 +93,9 @@ export type FromShell =
   | { type: 'quit.stop' }
   // the menu's Open Fleet…
   | { type: 'fleets' }
-  | { type: 'openFleet.failed'; home: string; reason: string };
+  | { type: 'openFleet.failed'; home: string; reason: string }
+  // whether the Mac runs on battery, as the page loads and whenever it changes
+  | { type: 'power'; battery: boolean };
 
 type Handler = (msg: FromShell) => void;
 type Port = { postMessage(json: string): void };

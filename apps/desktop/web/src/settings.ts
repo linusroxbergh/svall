@@ -5,6 +5,10 @@ import { ACTIONS, type ActionId, type Bindings } from './keys.js';
 // macOS banners for a character that turns blocked or done
 export type NotifySettings = { on: boolean; sound: boolean; statuses: PushStatus[] };
 
+// when the Mac is kept from idle-sleeping: never, while an agent works, or also for a while when one waits on the user
+export const KEEP_AWAKE = ['off', 'working', 'needs'] as const;
+export type KeepAwake = (typeof KEEP_AWAKE)[number];
+
 export type Settings = {
   // the half card floats over the map; the full card and the board fill the view
   cardOpacity: number;
@@ -24,11 +28,12 @@ export type Settings = {
   bindings: Bindings;
   // off until the user turns it on, since macOS asks too
   notifications: NotifySettings;
+  keepAwake: KeepAwake;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
   cardOpacity: 0.65, fullOpacity: 1, zoom: 0.9, onePassword: false, usageTab: true, autoArrange: true, cardLinks: false, robotMotion: true, bindings: {},
-  notifications: { on: false, sound: true, statuses: [...PUSH_STATUSES] },
+  notifications: { on: false, sound: true, statuses: [...PUSH_STATUSES] }, keepAwake: 'needs',
 };
 export const OPACITY = { min: 0.3, max: 1, step: 0.05 };
 
@@ -102,6 +107,7 @@ export function readSettings(v: unknown): Settings {
     robotMotion: o.robotMotion !== false,
     bindings: readBindings(o.bindings),
     notifications: readNotify(o.notifications),
+    keepAwake: KEEP_AWAKE.find((k) => k === o.keepAwake) ?? DEFAULT_SETTINGS.keepAwake,
   };
 }
 

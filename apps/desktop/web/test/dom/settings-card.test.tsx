@@ -79,14 +79,23 @@ test('turned off in System Settings, the switch still asks macOS and the card po
   expect(sent).toContainEqual({ type: 'notify.settings' });
 });
 
-test('outside the app there is no shell to post banners, so the section is absent', () => {
+test('outside the app there is no shell to post banners or hold the Mac awake, so neither shows', () => {
   bridge.present = false;
   try {
     render(<SettingsCard />);
     expect(screen.queryByTestId('set-notify')).toBeNull();
+    expect(screen.queryByTestId('set-keep-awake')).toBeNull();
   } finally {
     bridge.present = true;
   }
+});
+
+test('keep Mac awake holds while agents work or need you until another is picked', () => {
+  render(<SettingsCard />);
+  const pick = screen.getByTestId('set-keep-awake') as HTMLSelectElement;
+  expect(pick.value).toBe('needs');
+  fireEvent.change(pick, { target: { value: 'off' } });
+  expect(store.getState().settings.keepAwake).toBe('off');
 });
 
 test('the zoom tip names the keys as bound, and leaves out one that is unbound', () => {

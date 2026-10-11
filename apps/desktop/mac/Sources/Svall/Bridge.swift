@@ -44,8 +44,9 @@ enum ToShell: Decodable {
     case setupPlan
     case setupRun(agents: [String], found: [String], projects: String)
     case folderPick(start: String)
+    case awake(reason: String?)
 
-    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, working, ok, home, quit, agents, found, projects, start }
+    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, subtitle, body, sound, actions, promptId, unsaved, working, ok, home, quit, agents, found, projects, start, reason }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -87,6 +88,7 @@ enum ToShell: Decodable {
         case "setup.plan": self = .setupPlan
         case "setup.run": self = .setupRun(agents: try c.decode([String].self, forKey: .agents), found: try c.decode([String].self, forKey: .found), projects: try c.decode(String.self, forKey: .projects))
         case "folder.pick": self = .folderPick(start: try c.decode(String.self, forKey: .start))
+        case "awake": self = .awake(reason: try c.decodeIfPresent(String.self, forKey: .reason))
         case let other: throw ShellError("unknown bridge message \(other)")
         }
     }
@@ -120,6 +122,7 @@ enum FromShell {
     case openFleetFailed(home: String, reason: String)
     case setupResult(step: String, ok: Bool, json: String)
     case folderPicked(path: String)
+    case power(battery: Bool)
 
     var json: [String: Any] {
         switch self {
@@ -149,6 +152,7 @@ enum FromShell {
         case .openFleetFailed(let home, let reason): return ["type": "openFleet.failed", "home": home, "reason": reason]
         case .setupResult(let step, let ok, let json): return ["type": "setup.result", "step": step, "ok": ok, "json": json]
         case .folderPicked(let path): return ["type": "folder.picked", "path": path]
+        case .power(let battery): return ["type": "power", "battery": battery]
         }
     }
 }

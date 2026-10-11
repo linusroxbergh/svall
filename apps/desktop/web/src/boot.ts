@@ -1,5 +1,6 @@
 import { loadMobileStatus, type Deps } from './actions.js';
 import { Api } from './api.js';
+import { followAwake } from './awake.js';
 import { connectionFromUrl, createBridge, type Bridge, type Connection } from './bridge.js';
 import { createBrowserManager, type BrowserManager } from './browser.js';
 import { installDropHandlers } from './drop.js';
@@ -79,6 +80,7 @@ function createApp(): AppContext {
   if (bridge.present) {
     followNotifications({ store, bridge, api: () => api });
     followQuit({ store, bridge, api: () => api });
+    followAwake({ store, bridge });
     bridge.onMessage((m) => {
       if (m.type === 'app.active') { store.getState().setActive(m.active); return; }
       if (m.type === 'ghostty.configErrors') { store.getState().setConfigErrors(m.errors); return; }

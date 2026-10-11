@@ -11,6 +11,7 @@ final class ShellRouter {
     private let browsers: BrowserManager
     private let keys = KeyMonitor()
     private let notifier = Notifier()
+    private let awake = KeepAwake()
     private var sentConfigErrors = false
     // whether a page panel holds a rect of the surfaces
     private var holding = false
@@ -53,6 +54,7 @@ final class ShellRouter {
         notifier.onOpen = { [weak self] key in self?.open(key) }
         notifier.onAction = { [weak self] key, action, promptId in self?.sendNotify(.notifyAction(key: key, action: action, promptId: promptId)) }
         Updates.shared.onWaiting = { [weak self] version in self?.bridge.send(.updateAvailable(version)) }
+        awake.watchPower { [weak self] battery in self?.bridge.send(.power(battery: battery)) }
 
         bridge.onMessage = { [weak self] msg in self?.handle(msg) }
         keys.onChord = { [weak self] chord in
@@ -103,6 +105,8 @@ final class ShellRouter {
         setQuit(KeyMonitor.defaultQuit)
         // the page that posted the banners is gone, and the one loading has no record of them
         notifier.clearAll()
+        // the page that asked for the hold is gone, and the one loading asks again
+        awake.release()
         listening = false
         pendingNotify = []
         quitFlow.pageGone()
@@ -130,6 +134,7 @@ final class ShellRouter {
         browsers.closeAll()
         browsers.dropDownloads()
         notifier.clearAll()
+        awake.release()
     }
 
     // a banner's click brings this fleet's window up, restored if it sat in the Dock
@@ -158,6 +163,7 @@ final class ShellRouter {
             sendAppActive()
             notifier.refreshPermission()
             bridge.send(.updateAvailable(Updates.shared.waiting))
+            bridge.send(.power(battery: KeepAwake.onBattery))
             if !sentConfigErrors, !runtime.configErrors.isEmpty {
                 sentConfigErrors = true
                 bridge.send(.ghosttyConfigErrors(runtime.configErrors))
@@ -267,6 +273,8 @@ final class ShellRouter {
             openFleet(home, quit: quit ?? false)
         case .retitle:
             webView.window?.title = SvallHome.displayName
+        case .awake(let reason):
+            awake.hold(reason)
         }
     }
 
