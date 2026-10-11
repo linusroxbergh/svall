@@ -36,7 +36,7 @@ export const test = base.extend<{ svall: Svall }>({
       open: async (view: 'board' | 'map' = 'board', opts?: { firstRun?: boolean; tour?: boolean }) => {
         // the first-run tour selects a character and covers the map, so only the spec about it sees it
         if (!opts?.tour) await page.addInitScript((key) => { try { localStorage.setItem(key, 'done'); } catch { /* seeded where there is a store */ } }, TOUR_KEY);
-        // the settings card opens by itself on a machine with no settings of its own, and would take the side card's place
+        // the settings window opens by itself on a machine with no settings of its own, and would stand over the map
         if (!opts?.firstRun) {
           await page.addInitScript(({ key, value }) => {
             // this runs again on every navigation, and a reload is where a spec reads back what it saved

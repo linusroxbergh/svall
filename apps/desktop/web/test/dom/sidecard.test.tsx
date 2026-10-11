@@ -35,9 +35,9 @@ function Side() {
   const id = useApp((s) => (s.selectedId && s.fleet.characters[s.selectedId] ? s.selectedId : undefined));
   return id ? <SideCard id={id} /> : null;
 }
-// on the map the settings take the card's place, and the board shows a card of its own
+// the board shows a card of its own
 function MapCard() {
-  const shown = useApp((s) => s.view === 'map' && s.sideCardOpen && !s.settingsOpen);
+  const shown = useApp((s) => s.view === 'map' && s.sideCardOpen);
   return shown ? <Side /> : null;
 }
 function IslandSide() {
@@ -120,7 +120,7 @@ test('the next-character key saves the draft to the character it was typed for',
 });
 
 // the shell swallows the chord, so the field is removed without the blur a click would have sent
-test.each(['toggleSideCard', 'toggleSettings', 'toggleView'] as const)('%s saves the draft before the card goes', async (chord) => {
+test.each(['toggleSideCard', 'toggleView'] as const)('%s saves the draft before the card goes', async (chord) => {
   render(<MapCard />);
   type(field('side-instructions'), 'never push to main');
   await act(() => dispatchKey({ type: chord }, { store, api: { call } as never, bridge }));
