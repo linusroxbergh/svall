@@ -483,6 +483,7 @@ describe('host add', () => {
     const out = await addHost({ name: 'trift', ssh: 'refused.test', release: archive() }, deps());
     expect(step('master').at(-1)).toMatchObject({ status: 'fail' });
     expect(step('master').at(-1)?.detail).toContain('refused.test');
+    expect(step('master').at(-1)?.action).toBe('ssh refused.test and see what it answers');
     expect(out.result).toBe('actions');
   });
 
@@ -566,6 +567,7 @@ describe('host add', () => {
         [['svall-tools'], ['tailscale', 'tmux', 'git', 'rsync', 'systemctl', 'loginctl'].map((t) => `${t} yes\n`).join('')],
         [['tmux', '-V'], 'tmux 3.4\n'], [['svall-rsync'], 'rsync  version 3.2.7  protocol version 31\n'], [['svall-space'], DF], [['svall-linger'], 'Linger=yes\n'],
       ] as [string[], string][]) ssh.reply(match, { stdout });
+      for (const bin of ['claude', 'codex', 'opencode']) ssh.reply([bin], { code: 127 });
       ssh.execute({ rsync: '/usr/bin/rsync' });
       const svall = `#!/bin/sh
 case "$1" in
@@ -862,6 +864,7 @@ esac
       [['svall-tools'], ['tailscale', 'tmux', 'git', 'rsync', 'systemctl', 'loginctl'].map((t) => `${t} yes\n`).join('')],
       [['tmux', '-V'], 'tmux 3.4\n'], [['svall-rsync'], 'rsync  version 3.2.7  protocol version 31\n'], [['svall-space'], DF], [['svall-linger'], 'Linger=yes\n'],
     ] as [string[], string][]) ssh.reply(match, { stdout });
+    for (const bin of ['claude', 'codex', 'opencode']) ssh.reply([bin], { code: 127 });
     const intruder = ephemeralSigner(work);
     const ran = path.join(work, 'staged-svall-ran');
     const archive = companionArchive(work, { signedBy: intruder.key, signersInside: intruder.signers, svall: `#!/bin/sh\ntouch '${ran}'\n` });
