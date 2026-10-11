@@ -131,7 +131,7 @@ export type UiActions = {
 };
 
 export const createUiSlice = (storage: AppStorage | undefined, view: View): StateCreator<App, [], [], UiState & UiActions> => (set, get) => {
-  // a machine with no settings of its own has never had them in front of it: the card opens with the
+  // a machine with no settings of its own has never had them in front of it: the window opens with the
   // fleet, and closing it is what writes them and keeps the asking to that one launch
   const firstRun = storage !== undefined && storage.getSettings() === undefined;
   // the collision check belongs to that same launch: after it, what is written down is the user's answer
@@ -245,7 +245,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     toggleSidebar: (open) => set((s) => { const next = open ?? !s.sidebarOpen; storage?.setSidebarOpen(next); return { sidebarOpen: next }; }),
     toggleSettings: (open) => set((s) => {
       const next = open ?? !s.settingsOpen;
-      // a card that closes has been answered, and what it leaves behind is this machine's settings;
+      // a window that closes has been answered, and what it leaves behind is this machine's settings;
       // before the fleet arrives the connect screen stands in its place, and closes nobody saw answer nothing
       if (!next && s.loaded) storage?.setSettings(s.settings);
       // a window that goes must not leave the keyboard listening

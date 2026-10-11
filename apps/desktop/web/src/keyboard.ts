@@ -61,6 +61,8 @@ export async function closeCharacter(ctx: Deps, id: string): Promise<void> {
 function closeAllModals(store: AppStore): void {
   const s = store.getState();
   s.setNamingCharacter(false); s.setMissionPrompt(false); s.setClosingCharacter(undefined); s.setDeletingIsland(undefined); s.setFleetPicker(undefined);
+  // a dialog over the settings takes the keys from a shortcut row still waiting for one
+  s.setCapturingKey(undefined);
 }
 
 export function openFleetPicker(store: AppStore): void {
@@ -175,10 +177,11 @@ export function installKeyHandlers(ctx: KeyDeps, win: Window = window): () => vo
   const closeCard = () => {
     const st = ctx.store.getState();
     if (st.capturingKey) { st.setCapturingKey(undefined); return; }
+    // the settings window stands over the shelf
+    if (st.settingsOpen) { st.toggleSettings(false); refocusSurface(ctx); return; }
     if (st.resourcesOpen) { st.toggleResources(false); refocusSurface(ctx); return; }
     if (st.usageOpen) { st.toggleUsage(false); refocusSurface(ctx); return; }
     if (st.mobileOpen) { st.toggleMobile(false); refocusSurface(ctx); return; }
-    if (st.settingsOpen) { st.toggleSettings(false); refocusSurface(ctx); return; }
     if (st.view === 'map' && st.card) { st.closeCard(); return; }
     if (st.view === 'board') st.toggleSideCard(false);
     else { st.select(undefined); st.selectIsland(undefined); }

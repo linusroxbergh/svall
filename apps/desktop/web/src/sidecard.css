@@ -118,7 +118,6 @@
 .side .acts { display: flex; gap: var(--sp-md); margin-top: auto; padding-top: var(--sp-2xl); }
 .side .acts .btn { flex: 1; }
 .side .sname { display: flex; align-items: center; gap: var(--sp-md); }
-.kicker .spacer { flex: 1; }
 .side-x { padding: 0 var(--sp-sm); background: none; font-size: var(--text-xl); line-height: 1; color: var(--ink-3); border-radius: var(--r-xs); }
 .side-x:hover { color: var(--ink); background: var(--fill-2); }
 /* the settings window: its panes listed down the left, the one picked beside them in a side card's dress */

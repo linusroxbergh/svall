@@ -37,6 +37,10 @@ export function Keybindings() {
 
   useEffect(() => {
     if (!capturing) return;
+    // a press anywhere but the waiting row has moved on, and must not leave the next chord to be taken
+    const stop = () => app.store.getState().setCapturingKey(undefined);
+    const away = (e: PointerEvent) => { if (!(e.target as Element | null)?.closest?.('[data-listening="true"]')) stop(); };
+    window.addEventListener('pointerdown', away, true);
     const take = (chord: Chord) => {
       const s = app.store.getState();
       const b = s.settings.bindings;
@@ -47,8 +51,9 @@ export function Keybindings() {
     // the shell hands over every Cmd chord while this is up, including the ones it normally swallows
     if (app.bridge.present) {
       app.bridge.send({ type: 'keys.capture', on: true });
-      const off = app.bridge.onMessage((m) => { if (m.type === 'key') take(m.chord); });
-      return () => { off(); app.bridge.send({ type: 'keys.capture', on: false }); };
+      // a press on a terminal never reaches the page; the shell answers for those
+      const off = app.bridge.onMessage((m) => { if (m.type === 'key') take(m.chord); else if (m.type === 'shell.pressedAway') stop(); });
+      return () => { window.removeEventListener('pointerdown', away, true); off(); app.bridge.send({ type: 'keys.capture', on: false }); };
     }
     const onKey = (e: KeyboardEvent) => {
       const chord = chordOf(e);
@@ -59,7 +64,7 @@ export function Keybindings() {
       take(chord);
     };
     window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
+    return () => { window.removeEventListener('pointerdown', away, true); window.removeEventListener('keydown', onKey, true); };
   }, [capturing]);
 
   const bound = resolve(bindings);

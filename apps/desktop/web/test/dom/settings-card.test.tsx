@@ -2,7 +2,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { fleet } from '../fixtures.js';
-import { bridge, call, freshStore, sent, store } from './harness.js';
+import { bridge, call, freshStore, sent, shell, store } from './harness.js';
 
 call.mockImplementation(() => Promise.resolve({ serving: false, logins: [], phones: [] }));
 bridge.present = true;
@@ -214,6 +214,20 @@ test('the keyboard pane lists the shortcuts in place, and leaving it while a row
   show('machine');
   expect(screen.queryByTestId('key-quit')).toBeNull();
   expect(store.getState().capturingKey).toBeUndefined();
+});
+
+test('a press anywhere but the waiting row stops the listening, so the next chord is not taken', () => {
+  render(<SettingsCard />);
+  show('keyboard');
+  const quit = screen.getByTestId('key-quit');
+  for (const away of [() => fireEvent.pointerDown(document.body), () => act(() => shell({ type: 'shell.pressedAway' }))]) {
+    fireEvent.click(quit);
+    fireEvent.pointerDown(quit);
+    expect(store.getState().capturingKey).toBe('quit');
+    away();
+    expect(store.getState().capturingKey).toBeUndefined();
+    expect(quit.textContent).not.toBe('press a key');
+  }
 });
 
 test('robot motion starts on, and its switch turns the stored setting off', () => {
