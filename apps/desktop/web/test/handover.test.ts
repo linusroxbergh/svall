@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Blocker, HandoverPhase } from '@svall/protocol';
 import {
   actionsOf, applyEvent, blockerHint, choiceFor, chosen, endFollow, entityLabel, followRun, formatBytes, headline, holdsTerminals, isCommitted, needsUser,
-  rowText, sectionStates, withChoice, type HandoverEvent, type HandoverRun,
+  rowText, sectionStates, upgradeAsked, withChoice, type HandoverEvent, type HandoverRun,
 } from '../src/handover.js';
 
 const tx = 'tx-1';
@@ -302,6 +302,15 @@ describe('what each blocker and warning is explained with', () => {
     expect(blockerHint(release, { ...ctx, destination: 'This Mac', source: 'studio', pull: true })).toMatch(/Upgrade studio/);
     expect(blockerHint({ ...release, code: 'incompatible_protocol' }, ctx)).toBe(blockerHint(release, ctx));
     expect(blockerHint({ ...release, code: 'incompatible_schema' }, ctx)).toBe(blockerHint(release, ctx));
+  });
+
+  it('names the Linux machine to upgrade by its registry name, and none it cannot name', () => {
+    const release: Blocker = { code: 'incompatible_release', message: 'the destination runs release a1, this machine b2' };
+    expect(upgradeAsked(release, ctx)).toBe('studio');
+    expect(upgradeAsked(release, { ...ctx, destination: 'This Mac', source: 'studio', pull: true })).toBe('studio');
+    expect(upgradeAsked(release, { ...ctx, destination: 'This Mac', source: 'the gateway', pull: true })).toBeUndefined();
+    expect(upgradeAsked(release, { ...ctx, destination: 'the other machine' })).toBeUndefined();
+    expect(upgradeAsked({ ...release, code: 'incompatible_adapter' }, ctx)).toBeUndefined();
   });
 
   it('sends a session the destination went on with to that machine, with OpenCode\'s commands, and a folder to Archive', () => {

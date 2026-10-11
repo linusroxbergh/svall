@@ -238,7 +238,8 @@ final class RemoteConnectionTests: XCTestCase {
 
     func testAHelperOnlineOrStillRetryingIsLeftAloneByAnUpgrade() throws {
         let cases = [([#"{"type":"connecting","owner":"studio"}"#, remoteOnline], 3),
-                     ([#"{"type":"connecting","owner":"studio"}"#, #"{"type":"error","kind":"unreachable","message":"ssh closed"}"#], 2)]
+                     ([#"{"type":"connecting","owner":"studio"}"#, #"{"type":"error","kind":"unreachable","message":"ssh closed"}"#], 2),
+                     ([#"{"type":"connecting","owner":"studio"}"#, #"{"type":"error","kind":"daemon_down","message":"svalld is not running on studio"}"#], 2)]
         for (prints, said) in cases {
             transcript = []
             let first = ControllerProcess(executable: try fakeHelper(prints: prints), arguments: [])
