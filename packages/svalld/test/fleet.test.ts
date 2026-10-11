@@ -1414,7 +1414,7 @@ runIf('Fleet', () => {
     const islandId = fleet.createIsland({ name: 'feature' }).id;
     const manual = await fleet.createCharacter({ islandId, cwd: '/tmp' });
     const c = await fleet.createCharacter({ islandId, cwd: '/tmp', command: 'echo started', run: 'hello' });
-    const rule = '- In a git repo, every task and review gets a new worktree';
+    const rule = '- In a git repo, start every task and review in a new worktree';
     expect(fleet.brief(manual.id)).toContain(rule);
     expect(fleet.brief(c.id)).toContain(rule);
     fleet.setWorktrees(false);

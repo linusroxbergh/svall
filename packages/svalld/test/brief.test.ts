@@ -126,7 +126,7 @@ describe('renderBrief', () => {
   });
 
   it('tells a character to work in a worktree after the hand-on lines, even with nothing else to say', () => {
-    const rule = '- In a git repo, every task and review gets a new worktree, made before you edit or check out anything; reuse one only when its branch is the work and no other agent is in it. Change the main checkout only when the user says so.';
+    const rule = '- In a git repo, start every task and review in a new worktree, before you edit or check out anything; reuse one only when its branch is the work and no other agent is in it. Change the main checkout only when the user says so.';
     const lines = renderBrief(island(), char(), [], undefined, true).split('\n');
     expect(lines.slice(3, 8)).toEqual([...CREW, rule]);
     expect(renderBrief(island(), char({ note: 'x' }))).not.toContain(rule);
