@@ -129,6 +129,7 @@ describe('svall setup on Linux', () => {
     const bin = makeHome();
     const log = path.join(bin, 'systemctl.log');
     fs.writeFileSync(path.join(bin, 'systemctl'), `#!/bin/sh\necho "$*" >> '${log}'\n`, { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'loginctl'), '#!/bin/sh\necho Linger=yes\n', { mode: 0o755 });
     fs.writeFileSync(path.join(bin, 'tmux'), '#!/bin/sh\necho "tmux 3.5a"\n', { mode: 0o755 });
     vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
     vi.stubEnv('SHELL', '/usr/bin/true');
