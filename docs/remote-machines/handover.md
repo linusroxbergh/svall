@@ -325,7 +325,9 @@ svall host remove studio --forget
   the same blockers again; choose again.
 - **More than ten terminals on a remote fleet** exceed sshd's default of ten sessions per connection. Each one past
   the tenth opens its own ssh login and shows one "Session open refused by peer" line. Like the app's own
-  connection, that login asks nothing, and logs in with the keys ssh already holds.
+  connection, that login asks nothing, and logs in with the keys ssh already holds; if none works, the terminal closes
+  with "ssh quit as soon as it started". While the connection is full, the app's check of where the fleet runs cannot
+  get through, so a window follows a move made outside it only once the connection has room again.
 - **A Codex terminal a handover reopened with its session, or one you open again after a handover could not resume
   it, and quit before its first prompt** goes dormant again, its window closed, saying Codex exited before that
   session started: Codex reports a session only once it takes a turn. The session is kept; open the terminal again.

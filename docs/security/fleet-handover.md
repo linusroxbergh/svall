@@ -363,9 +363,13 @@ Other caps: a notification's POST body 64 KiB, a gateway line and a helper contr
   file lists. It runs on one of the two machines with that machine's default heap, and grew by less a file than a
   daemon: its peak was at most 355.8 MiB for 50,000 files and at least 87.8 MiB for the small repository.
 - **More than ten terminals on one remote machine** go past sshd's default `MaxSessions 10` on the shared master.
-  Each one past the tenth prints one "Session open refused by peer" line and opens its own login, and while the master
-  is full the helper's 30-second check does too. That login runs with `BatchMode=yes`, as the master does, so it
-  asks for nothing and logs in only with the keys ssh can use without a prompt. Measured by hand between the
+  Each one past the tenth prints one "Session open refused by peer" line and opens its own login to the machine's ssh
+  destination. That login runs with `BatchMode=yes`, as the master does, so it asks for nothing and logs in only with
+  the keys ssh can use without a prompt; with none, ssh quits at once and the terminal shows "ssh quit as soon as it
+  started". The helper's 30-second check has no such login: its commands name `svall-remote.invalid`, which resolves
+  nowhere, so while the master is full each check fails as unreachable, and the helper keeps the connection it holds
+  without asking again which machine owns the fleet or which port its daemon listens on. Daemon fencing and the
+  gateway's generations do not depend on that check. Measured by hand between the
   containers, not by the benchmark: a command on the master 3–4 ms, a login 161–178 ms. A master per ten surfaces
   would need the app to choose a socket for each surface; one login per extra terminal does not justify that before
   the release.
