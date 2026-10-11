@@ -21,6 +21,10 @@ test('a button spawns a crew member on home and hands it the prompt', async ({ p
   await expect(page.getByTestId(`token-${crew!.id}`)).toHaveAttribute('data-status', 'done', { timeout: 15_000 });
   await expect.poll(async () => (await svall.api.call('char.read', { id: crew!.id, source: 'transcript', lines: 5 })).text, { timeout: 15_000 })
     .toContain('/svall-organise');
+  // on a map with no other islands home's cards stand at their largest, and still clear its bottom edge
+  await settleMap(page);
+  const map = (await page.getByTestId('map').boundingBox())!, card = (await page.getByTestId(`token-${crew!.id}`).locator('.card').boundingBox())!;
+  expect(card.y + card.height).toBeLessThan(map.y + map.height);
 
   await page.getByTestId('home-new').click();
   await expect(home.locator('.tok')).toHaveCount(2, { timeout: 15_000 });

@@ -14,7 +14,7 @@ const host = { w: 1280, h: 800 };
 describe('home geometry', () => {
   it('centres the land and shows the top three cells', () => {
     const b = homeBox(home, host);
-    expect(b).toEqual({ x: (1280 - 8 * 44) / 2, y: 800 - 132, w: 8 * 44, h: 132, cell: 44 });
+    expect(b).toEqual({ x: (1280 - 8 * 44) / 2, y: 800 - 150, w: 8 * 44, h: 150, cell: 44 });
     expect(inHomeBox(b, { x: 640, y: 700 })).toBe(true);
     expect(inHomeBox(b, { x: 640, y: 600 })).toBe(false);
     expect(inHomeBox(b, { x: 100, y: 700 })).toBe(false);
@@ -51,9 +51,9 @@ describe('home geometry', () => {
   it('shrinks about its bottom centre, and picks slots and maps cells at that scale', () => {
     const wide = { ...home, size: { w: 17, h: 4 } };
     const b = homeBox(wide, host, -40, 0.5);
-    expect(b).toEqual({ x: (1280 - 17 * 22) / 2 - 40, y: 800 - 66, w: 17 * 22, h: 66, cell: 22 });
+    expect(b).toEqual({ x: (1280 - 17 * 22) / 2 - 40, y: 800 - 75, w: 17 * 22, h: 75, cell: 22 });
     expect(inHomeBox(b, { x: b.x + b.w - 1, y: 799 })).toBe(true);
-    expect(inHomeBox(b, { x: b.x + b.w - 1, y: 800 - 70 })).toBe(false);
+    expect(inHomeBox(b, { x: b.x + b.w - 1, y: 800 - 80 })).toBe(false);
     // the middle of slot 10 at half size is the middle of slot 4 at full size
     expect(homeSlotAt(wide, b, { x: b.x + 10.5 * 22 })).toEqual({ x: 10, y: 1 });
     expect(homeSlotAt(wide, b, { x: b.x + 4.5 * 22 })).toEqual({ x: 4, y: 1 });
@@ -63,7 +63,7 @@ describe('home geometry', () => {
     const w = theme.home.water, place = placeIslet(host.w, 8 * 44, false);
     const land = homeBox(home, host, place.homeShift);
     const [row, ground, islet] = homeBlocks(home, host, { w: 300, h: 28 });
-    expect(row).toEqual({ x: host.w / 2 + place.homeShift - 150 - w, w: 300 + 2 * w, top: host.h - homeReserve(false), bottom: host.h - 132 - 28 + w });
+    expect(row).toEqual({ x: host.w / 2 + place.homeShift - 150 - w, w: 300 + 2 * w, top: host.h - homeReserve(false), bottom: host.h - 150 - 28 + w });
     expect(ground).toEqual({ x: land.x - w, w: land.w + 2 * w, top: land.y - w });
     expect(islet.x).toBeGreaterThan(ground.x + ground.w - 2 * w);
     expect(homeBlocks({ ...home, collapsed: true }, host, { w: 300, h: 28 })).toEqual([{ x: 640 - 150 - w, w: 300 + 2 * w, top: host.h - homeReserve(true), bottom: host.h - 16 + w }]);
@@ -76,7 +76,7 @@ describe('home geometry', () => {
     expect(place.homeScale).toBeLessThan(1);
     const land = homeBox(wide, narrow, place.homeShift, place.homeScale);
     const [row, ground, islet] = homeBlocks(wide, narrow, { w: 300, h: 28 });
-    expect(row).toMatchObject({ top: narrow.h - homeReserve(false, 28, place.homeScale), bottom: narrow.h - 132 * place.homeScale - 28 + w });
+    expect(row).toMatchObject({ top: narrow.h - homeReserve(false, 28, place.homeScale), bottom: narrow.h - 150 * place.homeScale - 28 + w });
     expect(ground).toEqual({ x: land.x - w, w: land.w + 2 * w, top: land.y - w });
     expect(islet.x).toBeGreaterThanOrEqual(ground.x + ground.w - 2 * w);
   });
@@ -84,7 +84,7 @@ describe('home geometry', () => {
     const w = theme.home.water, place = placeIslet(host.w, 8 * 44, false, 0.6);
     const [row, ground] = homeBlocks(home, host, { w: 300, h: 28 }, 0.6);
     expect(row.top).toBe(host.h - homeReserve(false, 28, 0.6));
-    expect(ground).toEqual({ x: homeBox(home, host, place.homeShift, 0.6).x - w, w: 8 * 44 * 0.6 + 2 * w, top: host.h - 132 * 0.6 - w });
+    expect(ground).toEqual({ x: homeBox(home, host, place.homeShift, 0.6).x - w, w: 8 * 44 * 0.6 + 2 * w, top: host.h - 150 * 0.6 - w });
   });
   it('settles the cap where home cards match the cards of the map it leaves room for', () => {
     // a map that zooms out as home grows
@@ -96,11 +96,11 @@ describe('home geometry', () => {
   });
   it('reserves the row plus half a cell of water, open or collapsed', () => {
     expect(theme.home.water).toBe(theme.cell / 2);
-    expect(homeReserve(false)).toBe(132 + 28 + 28 + theme.home.water);
+    expect(homeReserve(false)).toBe(150 + 28 + 28 + theme.home.water);
     expect(homeReserve(true)).toBe(16 + 28 + theme.home.water);
-    expect(homeReserve(false, 60)).toBe(132 + 28 + 60 + theme.home.water);
+    expect(homeReserve(false, 60)).toBe(150 + 28 + 60 + theme.home.water);
     // a shrunk home shows less land under its row
-    expect(homeReserve(false, 28, 0.5)).toBe(66 + 28 + 28 + theme.home.water);
+    expect(homeReserve(false, 28, 0.5)).toBe(75 + 28 + 28 + theme.home.water);
   });
 });
 
