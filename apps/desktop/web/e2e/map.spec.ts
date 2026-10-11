@@ -121,6 +121,22 @@ test('with robots on, the corner marks lift with their card and leave a full rai
   await expect(page.getByTestId('link-ask')).toBeVisible();
 });
 
+test('the subagents running stand counted on the card\'s top-left corner until they stop', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('subs'), seed: 3 });
+  const agent = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'agent', command: FAKE_CLAUDE });
+  await svall.open('map');
+  const tok = page.getByTestId(`token-${agent.id}`);
+  await expect(tok).toHaveAttribute('data-status', 'idle', { timeout: 15_000 });
+  await svall.api.call('char.run', { id: agent.id, text: 'subagent', enter: true });
+  const mark = page.getByTestId(`token-subs-${agent.id}`);
+  await expect(mark).toHaveText('1', { timeout: 15_000 });
+  await expect(mark).toHaveAttribute('title', '1 subagent running');
+  const left = await tok.evaluate((el) => el.querySelector('.mark.subs')!.getBoundingClientRect().left - el.querySelector('.card')!.getBoundingClientRect().left);
+  expect(left).toBeLessThan(0);
+  await svall.api.call('char.run', { id: agent.id, text: 'subagent done', enter: true });
+  await expect(mark).toBeHidden({ timeout: 15_000 });
+});
+
 test('with robots on, mission control\'s crew stand as robots, and so does one dragged out', async ({ page, svall }) => {
   const mc = await svall.api.call('char.create', { islandId: 'home', cwd: '/tmp', name: 'mc' });
   await svall.api.call('robots.set', { enabled: true });

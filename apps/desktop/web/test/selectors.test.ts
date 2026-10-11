@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyState, type ContextItem } from '@svall/protocol';
-import { boardIsland, boardViewed, charactersByPriority, charactersOf, contextPctOf, countsByStatus, DISPLAY_STATUSES, firstOfNextIsland, homeIsland, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, isVeiled, mainPr, neighbor, selectedOf, slotStatus, statusOf, stripOrder, wantsUser } from '../src/selectors.js';
+import { boardIsland, boardViewed, charactersByPriority, charactersOf, contextPctOf, countsByStatus, DISPLAY_STATUSES, firstOfNextIsland, homeIsland, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, isVeiled, mainPr, neighbor, selectedOf, slotStatus, statusOf, stripOrder, subagentCount, wantsUser } from '../src/selectors.js';
 import { chr, fleet } from './fixtures.js';
 
 describe('selectors', () => {
@@ -193,6 +193,10 @@ describe('a character with two sessions', () => {
     expect(isMonitoring(chr('c', 'i', at, { agent: { ...agent('idle'), monitors: ['m1'] } }))).toBe(true);
     expect(isMonitoring(chr('c', 'i', at, { agent: agent('idle'), second: { ...second(), agent: { ...agent('idle'), monitors: ['m1'] } } }))).toBe(true);
     expect(isMonitoring(chr('c', 'i', at, { agent: agent('idle'), second: second(agent('working')) }))).toBe(false);
+  });
+  it('counts the subagents of both sessions', () => {
+    expect(subagentCount(chr('c', 'i', at, { agent: agent('idle') }))).toBe(0);
+    expect(subagentCount(chr('c', 'i', at, { agent: { ...agent('working'), subagents: ['a1', 'a2'] }, second: { ...second(), agent: { ...agent('working'), subagents: ['b1'] } } }))).toBe(3);
   });
 });
 

@@ -1,7 +1,7 @@
 import type { Cell, Character, ContextItem } from '@svall/protocol';
 import { memoByValue } from '../hooks.js';
-import { EyeGlyph, PrGlyph, reviewText } from '../indicators.js';
-import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, slotStatus, type DisplayStatus } from '../selectors.js';
+import { BotGlyph, EyeGlyph, PrGlyph, reviewText, subagentsText } from '../indicators.js';
+import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, slotStatus, subagentCount, type DisplayStatus } from '../selectors.js';
 import { LinkIcon } from './LinkIcon.js';
 import { Robot } from './Robot.js';
 import { portraitTint, portraitUrl, robotOf } from '../portraits.js';
@@ -62,6 +62,7 @@ export const Token = memoByValue(function Token({
   const cls = ['tok', `s-${status}`, robots ? 'bot' : '', selected ? 'sel' : '', dragging ? 'drag' : ''].filter(Boolean).join(' ');
   const review = inReview(c) ? mainPr(c) : undefined;
   const monitor = isMonitoring(c);
+  const subs = subagentCount(c);
   const pct = contextPctOf(c);
   return (
     <div
@@ -128,7 +129,7 @@ export const Token = memoByValue(function Token({
           </svg>
         </button>
       </div>
-      {(review || monitor) && (
+      {(review || monitor || subs > 0) && (
         <span className="corner">
           <span className="marks">
             {review && (
@@ -149,6 +150,13 @@ export const Token = memoByValue(function Token({
             )}
             {monitor && <span className="mark monitor" title="Monitoring" data-testid={`token-monitor-${c.id}`}><EyeGlyph /></span>}
           </span>
+          {subs > 0 && (
+            <span className="marks left">
+              <span className="mark subs" role="img" title={subagentsText(subs)} aria-label={subagentsText(subs)} data-testid={`token-subs-${c.id}`}>
+                <BotGlyph /><b>{subs}</b>
+              </span>
+            </span>
+          )}
         </span>
       )}
       {links && c.context.length > 0 && (

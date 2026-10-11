@@ -231,7 +231,7 @@
   width:auto;height:92%;max-width:88%;object-fit:contain;object-position:center bottom}
 /* the inline robot lets its arms swing past its frame, and leaves the pointer to the card */
 .tok svg.portrait.robot{overflow:visible;pointer-events:none}
-/* a PR in review and a running monitor as small round marks on the card's top-right corner, on a layer over the card that lifts with it and lets clicks through */
+/* marks on the card's corners, on a layer over the card that lifts with it and lets clicks through */
 .tok .corner{position:absolute;z-index:10;inset:0;pointer-events:none;transition:transform var(--dur) var(--ease)}
 .tok:hover .corner{transform:translateY(-6px)}
 .tok.sel .corner{transform:translateY(-5px) scale(1.04)}
@@ -245,6 +245,12 @@
 .tok .mark.review{cursor:pointer;background:var(--review);color:var(--ink-on-review);transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
 .tok .mark.review:hover{background:var(--ink-on-review);color:var(--review)}
 .tok .mark.monitor{background:var(--pt-sky);color:var(--map-2)}
+/* the subagents running as a capsule on the top-left corner, clear of the other marks, their count as large as the name */
+.tok .corner .marks.left{right:auto;left:calc(var(--tok)*-.12)}
+.tok .mark.subs{width:auto;display:inline-flex;gap:calc(var(--tok)*.05);padding:0 calc(var(--tok)*.13) 0 calc(var(--tok)*.1);
+  border-radius:calc(var(--tok)*.27);color:var(--ink-land);
+  font-size:calc(var(--tok)*.32);font-weight:var(--w-bold);line-height:1;font-variant-numeric:tabular-nums}
+.tok .mark.subs svg{flex:none;width:calc(var(--tok)*.32);height:calc(var(--tok)*.32)}
 
 .tok.drag{z-index:var(--z-popover);pointer-events:none}
 .tok.drag .card{transform:translateY(-12px);

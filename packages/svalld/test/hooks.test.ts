@@ -28,6 +28,9 @@ describe('normalizeHook', () => {
     expect(oc({ hook_event_name: 'UserPromptSubmit', prompt: 'go', prompt_id: 'msg_1' })?.prompt).toEqual({ id: 'msg_1', text: 'go' });
     expect(oc({ hook_event_name: 'StopFailure', message: 'rate limited' })).toMatchObject({ name: 'StopFailure', message: 'rate limited' });
     expect(oc({ hook_event_name: 'Notification' })).toBeUndefined();
+    expect(oc({ hook_event_name: 'SubagentStart', agent_id: 'ses_0f3a5b7c9d1fAbCdEfGhIjKlMn' })).toMatchObject({ name: 'SubagentStart', agentId: 'ses_0f3a5b7c9d1fAbCdEfGhIjKlMn' });
+    expect(oc({ hook_event_name: 'SubagentStop', agent_id: 'ses_0f3a5b7c9d1fAbCdEfGhIjKlMn' })).toMatchObject({ name: 'SubagentStop', agentId: 'ses_0f3a5b7c9d1fAbCdEfGhIjKlMn' });
+    expect(oc({ hook_event_name: 'PreToolUse', agent_id: 'ses_0f3a5b7c9d1fAbCdEfGhIjKlMn' })).toBeUndefined();
   });
 
   it('maps SessionStart with ids', () => {
@@ -46,16 +49,25 @@ describe('normalizeHook', () => {
     const e = normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'UserPromptSubmit', prompt: 'go', turn_id: 't1' } });
     expect(e?.prompt).toEqual({ id: 't1', text: 'go' });
   });
-  it('lets a codex subagent work and ask for permission, and nothing else of a subagent', () => {
+  it('lets a codex subagent work, ask for permission, start and stop, and nothing else of a subagent', () => {
     const codex = (hook: Record<string, unknown>) => normalizeHook({ charId: 'c_1', backend: 'codex', hook: { session_id: SID, agent_id: 'a1', ...hook } });
     expect(codex({ hook_event_name: 'PermissionRequest', message: 'remove the build folder' })).toMatchObject({ name: 'PermissionRequest', message: 'remove the build folder' });
     expect(codex({ hook_event_name: 'PreToolUse' })?.name).toBe('PreToolUse');
+    expect(codex({ hook_event_name: 'SubagentStart' })).toMatchObject({ name: 'SubagentStart', agentId: 'a1', sessionId: SID });
+    expect(codex({ hook_event_name: 'SubagentStop' })).toMatchObject({ name: 'SubagentStop', agentId: 'a1' });
     expect(codex({ hook_event_name: 'UserPromptSubmit', prompt: 'p', turn_id: 't' })).toBeUndefined();
+  });
+  it("leaves a subagent's own transcript out, which codex names on its events", () => {
+    const hook = (h: Record<string, unknown>) => normalizeHook({ charId: 'c_1', backend: 'codex', hook: { session_id: SID, transcript_path: '/sub.jsonl', ...h } });
+    expect(hook({ hook_event_name: 'PreToolUse', agent_id: 'a1' })?.transcriptPath).toBeUndefined();
+    expect(hook({ hook_event_name: 'SubagentStart', agent_id: 'a1' })?.transcriptPath).toBeUndefined();
+    expect(hook({ hook_event_name: 'PreToolUse' })?.transcriptPath).toBe('/sub.jsonl');
   });
   it("keeps a claude subagent's tool calls, questions and stop, named by the subagent, and nothing else of it", () => {
     const sub = (hook: Record<string, unknown>) => normalizeHook({ charId: 'c_1', hook: { session_id: SID, agent_id: 'a95af83797c89a762', ...hook } });
     expect(sub({ hook_event_name: 'PreToolUse' })).toMatchObject({ name: 'PreToolUse', agentId: 'a95af83797c89a762' });
     expect(sub({ hook_event_name: 'PermissionRequest' })).toMatchObject({ name: 'PermissionRequest', agentId: 'a95af83797c89a762' });
+    expect(sub({ hook_event_name: 'SubagentStart' })).toMatchObject({ name: 'SubagentStart', agentId: 'a95af83797c89a762' });
     expect(sub({ hook_event_name: 'SubagentStop' })).toMatchObject({ name: 'SubagentStop', agentId: 'a95af83797c89a762' });
     expect(sub({ hook_event_name: 'Stop' })).toBeUndefined();
     expect(sub({ hook_event_name: 'StopFailure' })).toBeUndefined();
@@ -69,7 +81,6 @@ describe('normalizeHook', () => {
   });
   it('knows no event a backend does not send', () => {
     expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'Notification' } })).toBeUndefined();
-    expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'SubagentStop', agent_id: 'a1' } })).toBeUndefined();
     expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'PostToolUseFailure' } })).toBeUndefined();
     expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'PostToolUse', tool_name: 'Bash' } })).toMatchObject({ name: 'PostToolUse', toolName: 'Bash' });
     expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'PostToolUseFailure' } })?.name).toBe('PostToolUseFailure');
@@ -130,11 +141,12 @@ describe('normalizeHook', () => {
       { id: 'w1', type: 'workflow', status: 'pending' },
       { id: 'b1', type: 'shell', status: 'running' },
       { id: 'm1', type: 'monitor', status: 'running' },
-    ])).toMatchObject({ backgroundTasks: 3, backgroundAgents: 2 });
+    ])).toMatchObject({ backgroundTasks: 3, backgroundAgents: 2, backgroundAgentIds: ['a1', 'w1'] });
     // a list with only monitors in it says none is left
     expect(stop([{ id: 'm1', type: 'monitor', status: 'running' }])?.backgroundTasks).toBe(0);
-    expect(stop([])?.backgroundTasks).toBe(0);
+    expect(stop([])).toMatchObject({ backgroundTasks: 0, backgroundAgentIds: [] });
     expect(stop('junk')?.backgroundTasks).toBeUndefined();
+    expect(stop('junk')?.backgroundAgentIds).toBeUndefined();
   });
   it("names the background shells at Stop, and the task a Monitor started, which Claude Code lists as a shell", () => {
     const stop = normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Stop', background_tasks: [{ id: 'a1', type: 'subagent' }, { id: 'b1', type: 'shell' }, { type: 'shell' }] } });
@@ -147,6 +159,8 @@ describe('normalizeHook', () => {
   it('drops subagent events, unknown events and malformed input', () => {
     expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Stop', agent_id: 'sub' } })).toBeUndefined();
     expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'SubagentStop' } })).toBeUndefined();
+    expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'SubagentStart' } })).toBeUndefined();
+    expect(normalizeHook({ charId: 'c_1', backend: 'codex', hook: { hook_event_name: 'SubagentStart', agent_id: 'a 1' } })).toBeUndefined();
     expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Bogus', agent_id: 'a1' } })).toBeUndefined();
     expect(normalizeHook({ hook: { hook_event_name: 'Stop' } })).toBeUndefined();
     expect(normalizeHook('junk')).toBeUndefined();

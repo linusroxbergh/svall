@@ -52,8 +52,9 @@ describe('mergeHooks', () => {
     for (const ev of CLAUDE_HOOKS) expect(out.hooks[ev].some((g) => g.matcher === '*' && g.hooks.some((h) => h.command === cmd && h.timeout === 10))).toBe(true);
     expect(existing.hooks.Stop).toHaveLength(1);
   });
-  it('runs the hook that only tells which subagent stopped without holding the agent up', () => {
+  it('runs the hooks that only tell which subagent started or stopped without holding the agent up', () => {
     const out = mergeHooks({}, cmd, script) as { hooks: Record<string, { hooks: { async?: boolean }[] }[]> };
+    expect(out.hooks.SubagentStart[0].hooks[0].async).toBe(true);
     expect(out.hooks.SubagentStop[0].hooks[0].async).toBe(true);
     // a question must be on record before the tool call that follows its answer
     expect(out.hooks.PermissionRequest[0].hooks[0].async).toBeUndefined();

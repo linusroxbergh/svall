@@ -171,9 +171,12 @@ async function setup(ctx) {
     void send({ charId, term, status: { sessionId: id, contextPct: Math.round((used / max) * 100), model: model.id } });
   };
 
-  // a subagent's run ends inside its parent's turn
+  // a child session's runs report as a subagent's under the top-level session; one can run again and outlive its parent's turn
+  const subagent = async (id, name) => {
+    if (await parentOf(id)) void hook(name, await rootOf(id), { agent_id: id });
+  };
   const end = async (id, name, fields) => {
-    if (await parentOf(id)) return;
+    if (await parentOf(id)) return subagent(id, 'SubagentStop');
     asking.clear();
     clearTimeout(showing);
     shown = undefined;
@@ -192,6 +195,8 @@ async function setup(ctx) {
         return;
       case 'session.step.ended':
         return context(p.sessionID, p.tokens);
+      case 'session.execution.started':
+        return subagent(p.sessionID, 'SubagentStart');
       case 'session.text.ended':
         if (started.has(p.sessionID) && p.text?.trim()) log(p.sessionID, { kind: 'agent', text: p.text.trim() });
         return;
