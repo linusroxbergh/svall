@@ -366,13 +366,13 @@ Other caps: a notification's POST body 64 KiB, a gateway line and a helper contr
   Each one past the tenth prints one "Session open refused by peer" line and opens its own login to the machine's ssh
   destination. That login runs with `BatchMode=yes`, as the master does, so it asks for nothing and logs in only with
   the keys ssh can use without a prompt; with none, ssh quits at once and the terminal shows "ssh quit as soon as it
-  started". The helper's 30-second check has no such login: its commands name `svall-remote.invalid`, which resolves
-  nowhere, so while the master is full each check fails as unreachable, and the helper keeps the connection it holds
-  without asking again which machine owns the fleet or which port its daemon listens on. Daemon fencing and the
-  gateway's generations do not depend on that check. Measured by hand between the
-  containers, not by the benchmark: a command on the master 3–4 ms, a login 161–178 ms. A master per ten surfaces
-  would need the app to choose a socket for each surface; one login per extra terminal does not justify that before
-  the release.
+  started". Measured by hand between the containers, not by the benchmark: a command on the master 3–4 ms, a login
+  161–178 ms. A master per ten surfaces would need the app to choose a socket for each surface; one login per extra
+  terminal does not justify that before the release. The helper's 30-second check has no such login: its commands
+  name `svall-remote.invalid`, which resolves nowhere, so while the master is full each one it runs there fails as
+  unreachable. The helper then keeps the connection it holds without asking that machine's gateway again which
+  machine owns the fleet, or its daemon which port it listens on. Daemon fencing and the gateway's generations do not
+  depend on that check.
 - **Folders are not listed in the manifest.** rsync carries them, empty ones and their modes included (`-rlpt`), and
   its checksum compare itemizes a folder's mode as it does a file's, so a copy that differs there does not verify
   (`transfer.test.ts` "carries empty folders and each folder's mode…"). A folder made or re-moded on the destination

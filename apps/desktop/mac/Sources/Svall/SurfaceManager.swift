@@ -25,8 +25,7 @@ enum AttachCommand {
     }
 
     // libghostty runs the command through a shell, so each field is single-quoted; `=` matches the session's whole name.
-    // nil while the route is unknown, or its master is gone: a session is attached only where the helper says it lives,
-    // over the master it checked, or, once that master is at sshd's MaxSessions, over a login of ssh's own to the destination
+    // nil while the route is unknown, or its master is gone: a session is attached only where the helper says it lives
     static func build(route: ConnectionRoute, attach: WebAttach, tmux: String = SvallHome.tmuxBinary,
                       masterAnswers: (String) -> Bool = ControlSocket.answers) -> String? {
         let target = "=" + attach.session
