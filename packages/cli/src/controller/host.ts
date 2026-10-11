@@ -310,7 +310,7 @@ const remotePaths = (home: string, version: string) => ({
 });
 
 /** The one machine record this name may carry, and the ssh destination it is already reached at. */
-function claimName(registry: MachineRegistry, o: AddOptions): Outcome<MachineEntry | undefined> {
+function claimName(registry: MachineRegistry, o: AddOptions): Outcome<Registered | undefined> {
   const name = MachineRecord.shape.name.safeParse(o.name);
   if (!name.success) throw new StepError(`${o.name} is not a machine name: ${name.error.issues[0].message}`);
   const destination = MachineRecord.shape.ssh.unwrap().safeParse(o.ssh);
@@ -319,7 +319,7 @@ function claimName(registry: MachineRegistry, o: AddOptions): Outcome<MachineEnt
   if (held && held.record.ssh !== o.ssh) {
     throw new StepError(`${o.name} is already the machine at ${held.record.ssh}; remove it first or add this one under another name`);
   }
-  return { value: held, detail: held ? `${o.name} is already in the registry; its probes run again` : `${o.name} at ${o.ssh}` };
+  return { value: held as Registered | undefined, detail: held ? `${o.name} is already in the registry; its probes run again` : `${o.name} at ${o.ssh}` };
 }
 
 /** `svall host add`: the spec's Add Machine flow, from the first interactive ssh to the registry entry. */
@@ -334,11 +334,14 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
     });
 
     const master = await run.step('master', async () => {
+      let opened: SshMaster;
       try {
-        return { value: await d.openMaster(o.ssh), detail: `one control master to ${o.ssh}` };
+        opened = await d.openMaster(o.ssh);
       } catch (err) {
         throw new StepError((err as Error).message, `ssh ${o.ssh} and see what it answers`);
       }
+      if (held) await sameMachine(opened, held).catch(async (err: unknown) => { await opened.close().catch(() => undefined); throw err; });
+      return { value: opened, detail: `one control master to ${o.ssh}` };
     });
 
     try {
@@ -398,6 +401,11 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         const v = await remoteJson<RemoteVersion>(master, remote.svallBase, ['version', '--json'], 'svall version --json');
         const id = MachineId.safeParse(v.machineId);
         if (!id.success) throw new StepError('svall version --json did not report a machine id');
+        // a machine with no svall to ask at the master step answers only once it is installed
+        if (held && id.data !== held.id) {
+          throw new StepError(`${o.ssh} now reaches machine ${id.data}, not ${o.name} (${held.id})`,
+            `point ${o.ssh} back at ${o.name}, or svall host remove ${o.name} --forget and add it again`);
+        }
         if (v.protocol !== d.controller.protocol) throw new StepError(`the companion speaks protocol ${v.protocol}, not this controller's ${d.controller.protocol}`);
         return { value: id.data, detail: `${v.release}, machine ${id.data}` };
       });
@@ -406,7 +414,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
 
       const record: MachineRecord = {
         name: o.name, ssh: o.ssh, platform: 'linux', arch, home,
-        svallBase: remote.svallBase, gateway: false,
+        svallBase: remote.svallBase, gateway: held?.record.gateway ?? false,
       };
       await run.step('probe', () => addProbe(master, { id: machine, record }, home));
       await run.step('registry', () => {

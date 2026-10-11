@@ -515,6 +515,77 @@ describe('host add', () => {
     expect(out.result).toBe('actions');
     expect(ssh.calls()).toEqual([]);
   });
+
+  describe('again for a name in the registry', () => {
+    const gateway = (registry: MachineRegistry, home = HOME): void => {
+      registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, svallBase: `${home}/.local/share/svall`, gateway: true }, REMOTE);
+    };
+
+    it('installs nothing on a machine that answers as another than the registry names, and keeps its record', async () => {
+      const registry = MachineRegistry.load(path.join(work, 'config'));
+      gateway(registry);
+      ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: OTHER_MAC }, null, 2) });
+      healthy();
+      const d = await daemon();
+      ssh.answer({ fleetId: FLEET, machineId: OTHER_MAC, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+      const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
+      await d.close();
+      expect(out.result).toBe('actions');
+      expect(step('master').at(-1)).toMatchObject({
+        status: 'fail', detail: `trift.test now reaches machine ${OTHER_MAC}, not trift (${REMOTE})`,
+        action: 'point trift.test back at trift, or svall host remove trift --forget',
+      });
+      expect(ssh.remoteCalls().some((w) => w.includes('cat > "$1"') || w.includes('setup'))).toBe(false);
+      expect(registry.list().filter((m) => m.record.name === 'trift')).toEqual([{ id: REMOTE, record: expect.objectContaining({ gateway: true }) }]);
+    });
+
+    it('stops at identity on a machine with no svall to ask that installs as another, and keeps its record', async () => {
+      const far = path.join(work, 'far');
+      const base = `${far}/.local/share/svall`;
+      // this Mac's home is the far one, so the paths host add builds from it land in the far machine's
+      const config = path.join(work, 'config');
+      const file = path.join(config, 'machines.json');
+      const { localId } = MachineRegistry.load(config);
+      const saved = JSON.parse(fs.readFileSync(file, 'utf8')) as { machines: Record<string, { home: string }> };
+      saved.machines[localId].home = far;
+      fs.writeFileSync(file, JSON.stringify(saved));
+      const registry = MachineRegistry.load(config);
+      gateway(registry, far);
+      for (const [match, stdout] of [
+        [['uname', '-sm'], 'Linux aarch64\n'], [['cat', '/etc/os-release'], OS_RELEASE], [['svall-home'], `${far}\nlinus\n`],
+        [['svall-tools'], ['tailscale', 'tmux', 'git', 'rsync', 'systemctl', 'loginctl'].map((t) => `${t} yes\n`).join('')],
+        [['tmux', '-V'], 'tmux 3.4\n'], [['svall-rsync'], 'rsync  version 3.2.7  protocol version 31\n'], [['svall-space'], DF], [['svall-linger'], 'Linger=yes\n'],
+      ] as [string[], string][]) ssh.reply(match, { stdout });
+      ssh.execute({ rsync: '/usr/bin/rsync' });
+      const svall = `#!/bin/sh
+case "$1" in
+  version) printf '%s\\n' '${JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: OTHER_MAC })}' ;;
+  doctor) printf '%s\\n' '${DOCTOR}' ;;
+  setup) mkdir -p '${base}' && tar -xzf "$3" -C '${base}' && ln -sfn '${base}/releases/1.2.3' '${base}/current' ;;
+esac
+`;
+      const out = await addHost({ name: 'trift', ssh: 'trift.test', release: companionArchive(work, { signedBy: signer.key, svall }) }, deps({ registry }));
+      expect(out.result).toBe('actions');
+      expect(step('master').at(-1)).toMatchObject({ status: 'ok' });
+      expect(step('identity').at(-1)).toEqual({
+        step: 'identity', status: 'fail', detail: `trift.test now reaches machine ${OTHER_MAC}, not trift (${REMOTE})`,
+        action: 'point trift.test back at trift, or svall host remove trift --forget and add it again',
+      });
+      expect(registry.list().filter((m) => m.record.name === 'trift')).toEqual([{ id: REMOTE, record: expect.objectContaining({ gateway: true }) }]);
+    });
+
+    it('keeps the gateway mark of the machine it reaches', async () => {
+      const registry = MachineRegistry.load(path.join(work, 'config'));
+      gateway(registry);
+      healthy();
+      const d = await daemon();
+      ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+      const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
+      await d.close();
+      expect(out.result).toBe('ready');
+      expect(registry.list().filter((m) => m.record.name === 'trift')).toEqual([{ id: REMOTE, record: expect.objectContaining({ gateway: true }) }]);
+    });
+  });
 });
 
 describe('host doctor', () => {
