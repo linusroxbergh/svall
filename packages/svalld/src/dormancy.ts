@@ -68,7 +68,7 @@ const FLAGS: Record<AgentKind, { kept: string[]; keptSwitches: string[]; dropped
     kept: ['-m', '--model', '-p', '--profile', '-s', '--sandbox', '-a', '--ask-for-approval', '--local-provider'],
     keptSwitches: ['--dangerously-bypass-approvals-and-sandbox', '--yolo', '--oss', '--approve-for-me', '--dangerously-bypass-hook-trust'],
     dropped: ['-c', '--config', '-C', '--cd', '--add-dir'],
-    droppedSwitches: [],
+    droppedSwitches: ['--no-daemon'],
   },
   opencode: {
     kept: [],

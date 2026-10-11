@@ -30,7 +30,7 @@ export const AGENTS: Record<AgentKind, AgentAdapter> = {
     crewCommand: 'claude --model sonnet',
   },
   codex: {
-    label: AGENT_LABEL.codex, bin: 'codex', installUrl: 'https://learn.chatgpt.com/docs/codex/cli', minVersion: [0, 155, 0],
+    label: AGENT_LABEL.codex, bin: 'codex', installUrl: 'https://learn.chatgpt.com/docs/codex/cli', minVersion: [0, 156, 0],
     installCommand: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh',
     loginArgs: ['login', 'status'], loggedIn: () => true,
     loginHint: 'codex login',

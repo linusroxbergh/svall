@@ -726,7 +726,7 @@ runIf('Fleet', () => {
     vi.spyOn(tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
     await fleet.run(c.id, 'run the tests again', true);
     const file = path.join(home, `${c.id}.prompt`);
-    expect(typed).toEqual([`codex resume -c tui.resume_cwd=session ${SID} -- "$(cat '${file}'; rm -f '${file}')"`]);
+    expect(typed).toEqual([`codex resume --no-daemon -c tui.resume_cwd=session ${SID} -- "$(cat '${file}'; rm -f '${file}')"`]);
   });
 
   it('takes back no window still closing for idleness, from a poll, a reconcile or a revive', async () => {
@@ -1785,7 +1785,7 @@ runIf('Fleet', () => {
     await waitFor(() => b.store.state.characters[c.id].agent?.status === 'done');
     expect(b.store.state.characters[c.id].agent).toMatchObject({ kind: 'codex', model: 'gpt-fake' });
     expect(b.fleet.readPrompts(c.id, 5)).toEqual(['fix the flaky test']);
-    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-codex', `${c.id}.argv`), 'utf8'))).toEqual(['--', 'fix the flaky test']);
+    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-codex', `${c.id}.argv`), 'utf8'))).toEqual(['--no-daemon', '--', 'fix the flaky test']);
   });
 
   it('hands opencode its first prompt with --prompt and follows its plugin', async () => {

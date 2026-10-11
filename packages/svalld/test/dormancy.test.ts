@@ -90,6 +90,8 @@ describe('startFlags', () => {
     // woken with a prompt, or with the island's folders
     expect(startFlags(`codex resume -c tui.resume_cwd=session -m gpt-5.5 ${SID} -- look at --model haiku`, 'codex')).toEqual(['-m', "'gpt-5.5'"]);
     expect(startFlags(`codex resume -c tui.resume_cwd=session ${SID} --add-dir /x`, 'codex')).toEqual([]);
+    expect(startFlags(`codex resume --no-daemon -c tui.resume_cwd=session -m gpt-5.5 ${SID}`, 'codex')).toEqual(['-m', "'gpt-5.5'"]);
+    expect(startFlags('codex --no-daemon -m gpt-5.5 -- fix it', 'codex')).toEqual(['-m', "'gpt-5.5'"]);
   });
 
   it('reads an agent run by node, and nothing from a process that is not the agent', () => {
