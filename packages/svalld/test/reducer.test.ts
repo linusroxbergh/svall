@@ -291,6 +291,12 @@ describe('applyHook for the subagents running', () => {
     const c = applyHook(asked, ev({ name: 'Stop', backgroundTasks: 1, backgroundAgents: 1, backgroundAgentIds: ['a1'] }), 7);
     expect(c.agent).toMatchObject({ status: 'blocked', subagents: ['a1'] });
   });
+  it("leaves a subagent's question open when its start lands late", () => {
+    const asked = applyHook(applyHook(withAgent('working'), ev({ name: 'PermissionRequest', agentId: 'a1' }), 2),
+      ev({ name: 'Notification', notificationType: 'permission_prompt', message: 'rm -rf build' }), 3);
+    const c = applyHook(asked, ev({ agentId: 'a1' }), 4);
+    expect(c.agent).toMatchObject({ status: 'blocked', prompt: 'rm -rf build', asking: ['a1'], subagents: ['a1'] });
+  });
   it('keeps them through an Esc and a compaction, and drops them when another process resumes the session', () => {
     const c = { ...running('a1'), agent: { ...running('a1').agent!, pid: 10 } };
     expect(applyHook(c, ev({ name: 'Interrupt' }), 5).agent?.subagents).toEqual(['a1']);

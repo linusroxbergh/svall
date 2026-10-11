@@ -152,7 +152,7 @@ export const Token = memoByValue(function Token({
           </span>
           {subs > 0 && (
             <span className="marks left">
-              <span className="mark subs" title={subagentsText(subs)} aria-label={subagentsText(subs)} data-testid={`token-subs-${c.id}`}>
+              <span className="mark subs" role="img" title={subagentsText(subs)} aria-label={subagentsText(subs)} data-testid={`token-subs-${c.id}`}>
                 <BotGlyph /><b>{subs}</b>
               </span>
             </span>

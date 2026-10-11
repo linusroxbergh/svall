@@ -160,12 +160,15 @@ describe('markDormant', () => {
       expect(c.revive).toEqual({ command: `claude --resume ${SID}` });
     }
   });
-  it('marks an agent whose monitors were still watching interrupted, and forgets them', () => {
-    const c = char({ agent: agent({ status: 'done', monitors: ['b1'] }) });
-    markDormant(c);
-    expect(c.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
-    expect(c.agent).toMatchObject({ status: 'done' });
-    expect(c.agent?.monitors).toBeUndefined();
+  it('marks an agent whose monitors were still watching or subagents still running interrupted, and forgets them', () => {
+    for (const running of [{ monitors: ['b1'] }, { subagents: ['a1'] }]) {
+      const c = char({ agent: agent({ status: 'done', ...running }) });
+      markDormant(c);
+      expect(c.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
+      expect(c.agent).toMatchObject({ status: 'done' });
+      expect(c.agent?.monitors).toBeUndefined();
+      expect(c.agent?.subagents).toBeUndefined();
+    }
   });
   it('forgets the brief the session was told, going dormant or already dormant at a listing', () => {
     const c = char({ agent: agent({ brief: '# Svall context' }) });

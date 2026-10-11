@@ -71,15 +71,16 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
   // what blocks. One can stop and start again under its id, when a shell it left running ends
   if (e.agentId) {
     const agent = next.agent;
-    const running = agent.subagents ?? [];
-    const was = running.includes(e.agentId);
-    if (e.name === 'SubagentStart' && !was) agent.subagents = [...running, e.agentId].slice(-20);
-    if (e.name === 'SubagentStop' && was) {
-      const rest = running.filter((a) => a !== e.agentId);
+    const counted = agent.subagents ?? [];
+    const was = counted.includes(e.agentId);
+    const started = e.name === 'SubagentStart' && !was;
+    const stopped = e.name === 'SubagentStop' && was;
+    if (started) agent.subagents = [...counted, e.agentId].slice(-20);
+    if (stopped) {
+      const rest = counted.filter((a) => a !== e.agentId);
       if (rest.length) agent.subagents = rest; else delete agent.subagents;
     }
-    const changed = was !== Boolean(agent.subagents?.includes(e.agentId));
-    if (e.name !== 'PermissionRequest' && !agent.asking?.includes(e.agentId)) return changed ? next : c;
+    if (e.name === 'SubagentStart' || (e.name !== 'PermissionRequest' && !agent.asking?.includes(e.agentId))) return started || stopped ? next : c;
     const others = (agent.asking ?? []).filter((a) => a !== e.agentId);
     const asking = e.name === 'PermissionRequest' ? [...others, e.agentId] : others;
     if (asking.length) agent.asking = asking; else delete agent.asking;

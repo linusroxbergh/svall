@@ -33,10 +33,11 @@ export function markDormant(c: Character, flags?: string[]): void {
   delete c.hint;
   dropBrief(c);
   c.revive = { command: reviveCommand(c, flags) };
-  // its monitors die with it, which a finished turn says nothing of
-  if (c.agent?.monitors) {
+  // its monitors and subagents die with it, which a finished turn says nothing of
+  if (c.agent?.monitors || c.agent?.subagents) {
     if (c.revive.command) c.revive.interrupted = true;
     delete c.agent.monitors;
+    delete c.agent.subagents;
   }
   // nothing runs until the revive, so no question is left open and no turn goes on; a finished result stays
   if (c.agent && (c.agent.status === 'blocked' || c.agent.status === 'working')) {
