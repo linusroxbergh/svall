@@ -378,6 +378,22 @@ describe.each(runners)('$name', (run) => {
     await r.close();
   });
 
+  it("says what codex's own question asks, which its tool's input holds", async () => {
+    const home = makeHome();
+    const events: SocketEvent[] = [];
+    const r = await startHookReceiver(path.join(home, 'hooks.sock'), (e) => { events.push(e); }, silentLogger);
+    await new Promise<void>((resolve, reject) => {
+      const p = execFile(...hook('codex'), { env: { ...process.env, SVALL_HOME: home, SVALL_CHAR_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+      p.stdin!.end(JSON.stringify({
+        hook_event_name: 'PreToolUse', session_id: SID, tool_name: 'request_user_input',
+        tool_input: { questions: [{ id: 'ship', header: 'Ship', question: 'Ship it now?', options: [{ label: 'Yes', description: 'Go.' }] }] },
+      }));
+    });
+    await waitFor(() => events.length === 1);
+    expect(events[0]).toEqual({ hook: { charId: 'c_9', backend: 'codex', name: 'PreToolUse', sessionId: SID, message: 'Ship it now?', toolName: 'request_user_input' } });
+    await r.close();
+  });
+
   it('hands on the task a Monitor started, which its payload keeps inside tool_response', async () => {
     const home = makeHome();
     const events: SocketEvent[] = [];
@@ -634,6 +650,11 @@ describe('the compiled helper', () => {
       JSON.stringify({ hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { description: null, command: ['bash', '-lc', null, 3.5, [1, null, [2]], { a: 1 }] } }),
       JSON.stringify({ hook_event_name: 'PermissionRequest', tool_name: 'Bash', message: '', tool_input: 'str' }),
       JSON.stringify({ hook_event_name: 'PermissionRequest', message: 0, tool_input: { command: 'y'.repeat(499) + '😀' } }),
+      JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'request_user_input', tool_input: { questions: [{ question: 'q'.repeat(499) + '😀' }, { question: 'two' }] } }),
+      JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'request_user_input', tool_input: { questions: { 0: { question: ['a', null, 2] } } } }),
+      JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'request_user_input', tool_input: { questions: [] } }),
+      JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'request_user_input', message: 'kept', tool_input: { questions: 'abc' } }),
+      JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { questions: [{ question: 'not asked' }] } }),
       JSON.stringify({ hook_event_name: 'StopFailure', last_assistant_message: '', error: 'z'.repeat(600) }),
       JSON.stringify({ hook_event_name: 'StopFailure', last_assistant_message: 7, error: 'overloaded' }),
       ' \t\n{ "hook_event_name" : "Stop" , "cwd" : [ 1 , 2 ] }\r\n ', '', 'not json', '{"a":01}', '﻿{}', '[]', '"x"', '5',

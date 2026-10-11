@@ -301,6 +301,29 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id].agent).toBeUndefined();
   });
 
+  it('lets a Claude agent go once its transcript shows an Esc or a "No" ended the turn, which no hook reports', async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    await waitFor(async () => (await tmux.listWindows()).some((w) => w.name === c.id && w.command === 'sleep'));
+    const transcript = path.join(makeHome(), 't.jsonl');
+    const entry = (at: number, content: unknown) => JSON.stringify({ type: 'user', timestamp: new Date(at).toISOString(), message: { role: 'user', content } }) + '\n';
+    const esc = (at: number) => entry(at, [{ type: 'text', text: '[Request interrupted by user for tool use]' }]);
+    const asked = Date.now() - 10_000;
+    fs.writeFileSync(transcript, entry(asked - 1000, 'ask me'));
+    store.update((d) => { d.characters[c.id].agent = { kind: 'claude', sessionId: 's', transcriptPath: transcript, status: 'blocked', promptId: 'q', asking: ['a1'], lastActivityAt: asked }; });
+    await fleet['poll']['tick']();
+    expect(store.state.characters[c.id].agent?.status).toBe('blocked');
+    fs.appendFileSync(transcript, entry(asked + 2000, [{ type: 'tool_result', is_error: true, content: 'rejected' }]) + esc(asked + 2001));
+    await fleet['poll']['tick']();
+    expect(store.state.characters[c.id].agent).toMatchObject({ status: 'idle' });
+    expect(store.state.characters[c.id].agent).not.toHaveProperty('asking');
+    // an Esc from before the agent's last hook was answered by it, as a prompt typed straight after
+    store.update((d) => { d.characters[c.id].agent!.status = 'working'; d.characters[c.id].agent!.lastActivityAt = Date.now(); });
+    fs.appendFileSync(transcript, esc(Date.now() - 1000));
+    await fleet['poll']['tick']();
+    expect(store.state.characters[c.id].agent?.status).toBe('working');
+  });
+
   it('records shell activity when a SessionEnd hook ends the agent, without waiting for a poll', async () => {
     const { fleet, store } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
