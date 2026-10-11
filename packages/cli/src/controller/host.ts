@@ -550,7 +550,10 @@ export function upgradeHost(name: string, o: { release?: string; allowUnsigned?:
       await run.step('rollback', async () => {
         // a reinstall under the name it ran replaced that tree, so it goes back to whichever release is kept
         const replaced = before === companion.version;
-        const out = await remoteRollback(master, { svallBase: entry.record.svallBase, from: companion.version, ...(!replaced && { to: before }) }).catch((err: Error) => err);
+        // a far setup whose daemon did not answer has gone back already, and that release is restarted and probed again
+        const back = await currentRelease(master, entry.record.svallBase);
+        const to = back !== companion.version ? back : replaced ? undefined : before;
+        const out = await remoteRollback(master, { svallBase: entry.record.svallBase, from: companion.version, ...(to !== undefined && { to }) }).catch((err: Error) => err);
         const now = await currentRelease(master, entry.record.svallBase);
         const runs = !replaced ? `${name} runs release ${now}${now === before ? ', the one it ran before' : `, not ${before}, the one it ran before`}`
           : `${name} ran a release named ${before} before, which this install replaced; ${now === before ? 'no other release is kept there, so it runs the new one' : `it runs release ${now}, the newest one kept there`}`;

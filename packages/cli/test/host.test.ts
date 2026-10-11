@@ -739,7 +739,8 @@ describe('host upgrade', () => {
   /**
    * A companion on this machine: every far command runs here, `current` is a real link, and each release's svall is a
    * script that answers as that release. Its setup installs an archive and keeps it only while the new release's daemon
-   * comes up (no `down-<release>` file beside the releases) and speaks the protocol this svall's client does.
+   * comes up (no `down-<release>` file beside the releases) and speaks the protocol this svall's client does; else it goes
+   * back to the release it replaced, or after a reinstall under that name to the newest other kept, as a real setup does.
    */
   async function farMachine(o: { releases: [string, number][]; accepts?: (release: string) => boolean; pins?: string }) {
     const home = path.join(work, 'far');
@@ -765,7 +766,8 @@ case "$1" in
     new=$(tar -tzf "$3" | sed -n 's|^releases/\\([^/]*\\)/.*|\\1|p' | head -1)
     tar -xzf "$3" -C "$base" && ln -sfn "$base/releases/$new" "$base/current" && echo "release $new -> $base/releases/$new"
     if [ -e "$base/down-$new" ] || ! grep -q '"protocol": ${protocol},' "$base/releases/$new/release.json"; then
-      ln -sfn "$base/releases/$was" "$base/current" && echo "the daemon did not answer: current -> $base/releases/$was"
+      back=$was; [ "$was" != "$new" ] || back=$(ls -t "$base/releases" | grep -vx "$new" | head -1)
+      if [ -n "$back" ]; then ln -sfn "$base/releases/$back" "$base/current" && echo "the daemon did not answer: current -> $base/releases/$back"; fi
     fi ;;
 esac
 `;
@@ -999,6 +1001,17 @@ esac
     expect(ssh.remoteCalls()).toContainEqual([`${far.base}/releases/1.2.3/bin/svall`, 'setup', '--rollback']);
     const action = step('rollback').at(-1)?.action ?? '';
     expect(action).toMatch(/trift ran a release named 1\.2\.3 before, which this install replaced; it runs release 1\.2\.2, the newest one kept there$/);
+  });
+
+  it('after a reinstall under the name it ran that its own setup took back, stays on the release that setup went back to', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION], ['1.2.3', PROTOCOL_VERSION]], accepts: (r) => r !== '1.2.3' });
+    fs.writeFileSync(`${far.base}/down-1.2.3`, '');
+    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(out.result).toBe('actions');
+    expect(far.now()).toBe('1.2.2');
+    expect(ssh.remoteCalls()).toContainEqual([`${far.base}/releases/1.2.3/bin/svall`, 'setup', '--rollback', '1.2.2']);
+    expect(step('rollback').at(-1)).toMatchObject({ status: 'warn', action: expect.stringMatching(/it runs release 1\.2\.2, the newest one kept there$/) });
   });
 
   it('after a reinstall under the only name it had, says no other release is kept to go back to', async () => {
