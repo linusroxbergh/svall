@@ -74,9 +74,12 @@ enum SvallHome {
         (config?["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? directoryName
     }
 
+    static var appName: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Svall"
+    }
+
     static var displayName: String {
-        let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Svall"
-        return fleetName.map { "\(name) · \($0)" } ?? name
+        fleetName.map { "\(appName) · \($0)" } ?? appName
     }
 
     // one saved frame per fleet, so a second window does not land on the first one's; a rename keeps it

@@ -6,7 +6,7 @@ import { ACTIONS, type ActionId, type Bindings } from './keys.js';
 export type NotifySettings = { on: boolean; sound: boolean; statuses: PushStatus[] };
 
 // when the Mac is kept from idle-sleeping: never, while an agent works, or also for a while when one waits on the user
-export const KEEP_AWAKE = ['off', 'working', 'needs'] as const;
+const KEEP_AWAKE = ['off', 'working', 'needs'] as const;
 export type KeepAwake = (typeof KEEP_AWAKE)[number];
 
 export type Settings = {

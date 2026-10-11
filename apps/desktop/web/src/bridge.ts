@@ -93,9 +93,7 @@ export type FromShell =
   | { type: 'quit.stop' }
   // the menu's Open Fleet…
   | { type: 'fleets' }
-  | { type: 'openFleet.failed'; home: string; reason: string }
-  // whether the Mac runs on battery, as the page loads and whenever it changes
-  | { type: 'power'; battery: boolean };
+  | { type: 'openFleet.failed'; home: string; reason: string };
 
 type Handler = (msg: FromShell) => void;
 type Port = { postMessage(json: string): void };
