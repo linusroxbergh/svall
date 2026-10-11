@@ -47,8 +47,8 @@ test('a Claude Code release still without an Agent SDK after two days is a probl
 });
 
 test('OpenCode is checked at its newest 2.x tag, and a 3.x tag is a problem', () => {
-  expect(opencodeRelease(['refs/tags/v2.0.9', 'refs/tags/v2.0.26'], [], 'v1.19.0')).toEqual({ version: '2.0.26', fresh: '1.19.0' });
-  expect(opencodeRelease(['refs/tags/v2.0.26'], ['refs/tags/v3.0.0-beta.1', 'refs/tags/v3.0.0'], 'v3.0.0')).toEqual({
+  expect(opencodeRelease(['refs/tags/v2.0.9', 'refs/tags/v2.0.26'], [], '2.0.26')).toEqual({ version: '2.0.26', fresh: '2.0.26' });
+  expect(opencodeRelease(['refs/tags/v2.0.26'], ['refs/tags/v3.0.0-beta.1', 'refs/tags/v3.0.0'], '3.0.0')).toEqual({
     version: '2.0.26', fresh: '3.0.0', problem: 'OpenCode 3.0.0 is out, and Svall and this check cover 2.x only',
   });
 });
