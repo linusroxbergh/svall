@@ -8,6 +8,7 @@ import { PROTOCOL_VERSION } from '@svall/protocol';
 import { installOpencodePlugin, opencodePaths } from '@svall/svalld/opencode/install';
 import { resolvePaths } from '@svall/svalld/paths';
 import { daemonRuns, setupCommand } from '../src/commands/setup.js';
+import { companionArchive } from './controller/archive.js';
 
 describe('the probe after a Linux upgrade', () => {
   const daemon = (release: string) => () => Promise.resolve({ call: () => Promise.resolve({ release }), close: () => undefined });
@@ -118,6 +119,51 @@ describe('svall setup on Linux', () => {
     expect(fs.readFileSync(path.join(home, '.config', 'systemd', 'user', 'svall-svalld@private.service'), 'utf8'))
       .toContain(`Environment="CLAUDE_CONFIG_DIR=${claudeDir}"\nEnvironment="CODEX_HOME=${codexDir}"\n`);
   });
+
+  it('restarts every fleet daemon and the gateway onto a release that replaced another, and asks each from it', async () => {
+    const home = process.env.HOME!;
+    const prefix = path.join(home, '.local', 'share', 'svall');
+    fs.mkdirSync(path.join(prefix, 'releases', '1.0.0'), { recursive: true });
+    fs.symlinkSync(path.join(prefix, 'releases', '1.0.0'), path.join(prefix, 'current'));
+    const unitDir = path.join(home, '.config', 'systemd', 'user');
+    const bin = makeHome();
+    const log = path.join(bin, 'systemctl.log');
+    fs.writeFileSync(path.join(bin, 'systemctl'), `#!/bin/sh\necho "$*" >> '${log}'\n`, { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'tmux'), '#!/bin/sh\necho "tmux 3.5a"\n', { mode: 0o755 });
+    vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
+    vi.stubEnv('SHELL', '/usr/bin/true');
+    const asked: string[] = [];
+    const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+    await new Promise((r) => wss.once('listening', r));
+    wss.on('connection', (ws) => {
+      let authed = false;
+      ws.on('message', (raw) => {
+        if (!authed) { authed = true; ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } })); return; }
+        asked.push(fs.readFileSync(log, 'utf8'));
+        ws.send(JSON.stringify({ id: (JSON.parse(raw.toString()) as { id: number }).id, result: { release: '1.1.0' } }));
+      });
+    });
+    const fleet = path.join(home, '.svall');
+    fs.mkdirSync(fleet, { recursive: true });
+    fs.writeFileSync(path.join(fleet, 'port'), String((wss.address() as { port: number }).port));
+    fs.writeFileSync(path.join(fleet, 'token'), 't');
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      await setupCommand(() => ({ name: 'private', home: fleet, managed: true }), () => true, 'linux')
+        .parseAsync(['--release', companionArchive(makeHome(), { version: '1.1.0', unsigned: true }), '--allow-unsigned'], { from: 'user' });
+      expect(fs.readlinkSync(path.join(prefix, 'current'))).toBe(path.join(prefix, 'releases', '1.1.0'));
+      expect(fs.readdirSync(unitDir)).toContain('svall-gateway.service');
+      // `enable --now` leaves a daemon running on the release it replaced
+      expect(asked).toHaveLength(1);
+      expect(asked[0].trim().split('\n').slice(-2)).toEqual([
+        '--user restart svall-svalld@private.service',
+        '--user restart svall-gateway.service',
+      ]);
+    } finally {
+      await new Promise((r) => wss.close(r));
+      for (const d of [prefix, path.join(home, '.config'), fleet]) fs.rmSync(d, { recursive: true, force: true });
+    }
+  }, 30_000);
 
   it('restarts every fleet daemon and the gateway after a rollback, so none keeps running the release it left', async () => {
     const home = process.env.HOME!;

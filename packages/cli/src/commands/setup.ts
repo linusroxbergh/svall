@@ -262,6 +262,7 @@ async function linuxSetup(t: Target, o: LinuxFlags, json: boolean): Promise<void
     user: os.userInfo().username,
     run: realRun,
     systemctl: o.launchctl,
+    rollbackTo: from.rollbackTo,
     probe: (fleet) => daemonRuns(from.version ?? '', () => Client.connect(profileHome(fleet))),
     rollback: (p) => rollbackRelease(p, from.rollbackTo),
   }));
