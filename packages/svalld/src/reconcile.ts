@@ -1,5 +1,5 @@
 import { DEFAULT_SIZE, randomPortrait, type Agent, type Cell, type Character, type FleetState } from '@svall/protocol';
-import { markDormant } from './dormancy.js';
+import { dropBrief, markDormant } from './dormancy.js';
 import { isCharId, newId } from './ids.js';
 import { defaultPosition, placeOnIsland } from './layout.js';
 import type { LiveWindow } from './tmux/tmux.js';
@@ -34,7 +34,7 @@ export function syncWindow(c: Character, byName: ReadonlyMap<string, LiveWindow>
   const w = byName.get(c.id);
   if (!w || w.dead) {
     // one already dormant keeps the revive it was given, flags and all
-    if (c.tmux || !c.revive) markDormant(c);
+    if (c.tmux || !c.revive) markDormant(c); else dropBrief(c);
     return undefined;
   }
   const samePane = c.tmux?.paneId === w.paneId;

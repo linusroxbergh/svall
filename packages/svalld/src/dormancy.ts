@@ -25,9 +25,13 @@ export const RESUME_NOTE = 'A restart ended this session mid-turn. Subagents, ba
   + 'you had running were stopped and will not report back. Check what they finished, rerun what is still needed, '
   + 'and carry on with the task.';
 
+// a revive's SessionStart gets the whole brief, so what the session was told before is never read again
+export const dropBrief = (c: Character): void => { if (c.agent) delete c.agent.brief; };
+
 export function markDormant(c: Character, flags?: string[]): void {
   delete c.tmux;
   delete c.hint;
+  dropBrief(c);
   c.revive = { command: reviveCommand(c, flags) };
   // its monitors die with it, which a finished turn says nothing of
   if (c.agent?.monitors) {
