@@ -54,6 +54,10 @@ control buttons; each finishes its task and stays `done` until closed.
 `svall char wait` exits 0 on a matched state, 2 on timeout and 3 when the
 robot is gone, so a loop can branch on the exit code.
 
+`svall char run` prints `delivered`, or `queued` while the user has a draft or a
+dialog in that terminal, and it goes in once they are gone. It exits 2, refused,
+while the agent waits on a permission or a question, which is the user's to answer.
+
 A new agent that stays `shell`, or whose id comes back with `(prompt not sent)`,
 is most often asking whether to trust a folder it has not seen.
 `svall char read <id>` shows the question, which is the user's to answer. A

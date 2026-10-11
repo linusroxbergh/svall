@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Character, type ContextItem, type FleetState, type Island, type Portrait } from '@svall/protocol';
+import { HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Character, type ContextItem, type Delivery, type FleetState, type Island, type Portrait } from '@svall/protocol';
 import { AGENTS, mainAgent } from './agents.js';
 import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
 import { markSeen as markSeenPure, settle } from './agent/reducer.js';
@@ -82,7 +82,7 @@ export class Fleet extends EventEmitter<Events> {
     this.link = new ControlLink({ store, tmux: deps.tmux, log, events: this, reconcile: () => this.reconcileNow() });
     this.poll = new Poll({ ...deps, scribe: this.scribe, listWindows: () => this.listWindows(), endIdleAgents: () => this.endIdleAgents() });
     this.agentEvents = new AgentEvents({ store, config, log, render: (island, c) => this.render(island, c) });
-    this.prompts = new Prompts({ fleet: this, store, tmux: deps.tmux, reviving: this.reviving });
+    this.prompts = new Prompts({ fleet: this, store, tmux: deps.tmux, config, log, reviving: this.reviving });
   }
 
   async start(): Promise<void> {
@@ -100,9 +100,10 @@ export class Fleet extends EventEmitter<Events> {
     this.poll.schedule();
   }
 
-  /** Stops polling and the control client; resolves once a poll under way has finished and the fleet is on disk. */
+  /** Stops polling, held prompts and the control client; resolves once a poll under way has finished and the fleet is on disk. */
   async stop(): Promise<void> {
     this.stopped = true;
+    this.prompts.stop();
     await this.link.stop();
     await this.poll.stop();
     this.deps.store.flush();
@@ -620,7 +621,7 @@ export class Fleet extends EventEmitter<Events> {
     updateTab(this.deps.store, this.char(id), tab, patch);
   }
 
-  run(id: string, text: string, enter: boolean, term?: 2): Promise<void> {
+  run(id: string, text: string, enter: boolean, term?: 2): Promise<Delivery> {
     return this.prompts.run(id, text, enter, term);
   }
 
