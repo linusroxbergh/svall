@@ -129,7 +129,7 @@ export const isMonitoring = (c: Character): boolean => Boolean(c.agent?.monitors
 
 // the island wears the status of its most pressing character
 export function islandStatus(f: FleetState, islandId: string): DisplayStatus | undefined {
-  const first = charactersByPriority(f).find((c) => c.islandId === islandId);
+  const first = charactersOf(f, islandId).reduce<Character | undefined>((top, c) => (top && priorityOf(top) <= priorityOf(c) ? top : c), undefined);
   return first ? statusOf(first) : undefined;
 }
 

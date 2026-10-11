@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { starredOf, type Character, type Island } from '@svall/protocol';
 import { moveCharacterTo, newCharacterOn, newIsland, reorderIsland, saveCharacter, saveIsland, setStar, starCharacterAt, toggleIsland } from './actions.js';
 import { app, deps } from './boot.js';
 import type { DropTarget } from './drop.js';
-import { useApp } from './hooks.js';
+import { memoByValue, useApp } from './hooks.js';
 import { characterMenu, islandMenu } from './menus.js';
 import { EyeGlyph, PrGlyph, reviewText } from './indicators.js';
 import { boardIsland, boardViewed, charactersOf, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, mainPr, STARRED, statusOf, wantsUser } from './selectors.js';
@@ -90,15 +90,14 @@ function StarButton({ c, testid }: { c: Character; testid: string }) {
   );
 }
 
-function IslandRow({ i, chars, editing, setEditing, dragging, setDragging }: {
+const IslandRow = memoByValue(function IslandRow({ i, chars, editing, setEditing, dragging, setDragging }: {
   i: Island; chars: Character[]; editing: boolean; setEditing(id?: string): void; dragging: boolean; setDragging(id?: string): void;
 }) {
-  const fleet = useApp((s) => s.fleet);
+  const status = useApp((s) => islandStatus(s.fleet, i.id));
   const onBoard = useApp((s) => s.view === 'board');
   const selected = useApp((s) => (s.view === 'board' ? boardIsland(s)?.id === i.id : s.selectedIslandId === i.id));
   const hover = useApp((s) => s.dropHover?.kind === 'island' && s.dropHover.id === i.id);
   const open = !i.collapsed;
-  const status = islandStatus(fleet, i.id);
   const attention = attentionIn(chars);
   // on the board an island is a place to work, so it opens a character; on the map it is a thing to read
   const select = () => {
@@ -130,11 +129,11 @@ function IslandRow({ i, chars, editing, setEditing, dragging, setDragging }: {
       <span className="sb-ct tnum">{chars.length || '—'}</span>
       <i className="sdot" data-status={status} data-empty={chars.length === 0} />
       {chars.length > 0 && <button className="sb-char-add" data-testid={`sb-island-new-${i.id}`}
-        title={`New character on ${i.name}`} aria-label={`New character on ${i.name}`}
+        title={`New robot on ${i.name}`} aria-label={`New robot on ${i.name}`}
         onClick={(e) => { stop(e); void newCharacterOn(deps(), i.id); }} onDoubleClick={stop}>+</button>}
     </div>
   );
-}
+});
 
 // a PR in review and a running monitor, marked without words; the title spells them out
 function Marks({ c }: { c: Character }) {
@@ -145,7 +144,7 @@ function Marks({ c }: { c: Character }) {
   return <span className="sb-ind" title={title}>{pr && <i data-kind="review"><PrGlyph /></i>}{monitor && <i data-kind="monitor"><EyeGlyph /></i>}</span>;
 }
 
-function CharacterRow({ c, editing, setEditing }: { c: Character; editing: boolean; setEditing(id?: string): void }) {
+const CharacterRow = memo(function CharacterRow({ c, editing, setEditing }: { c: Character; editing: boolean; setEditing(id?: string): void }) {
   const selected = useApp((s) => (s.view === 'board' ? boardViewed(s) === c.id : s.selectedId === c.id));
   const hover = useApp((s) => s.dropHover?.kind === 'char' && s.dropHover.id === c.id);
   const reorderHover = useApp((s) => s.dropHover?.kind === 'char' && s.dropHover.id === c.id && s.dropHover.after !== undefined);
@@ -176,7 +175,7 @@ function CharacterRow({ c, editing, setEditing }: { c: Character; editing: boole
       {!editing && <StarButton c={c} testid={`sb-char-star-${c.id}`} />}
     </div>
   );
-}
+});
 
 // a row in Starred drops before or after its midpoint; the header, or a folded section, takes it first
 type StarHover = { id?: string; after: boolean };
@@ -301,7 +300,7 @@ export function Sidebar() {
               data-drop-reorder={islandHover?.id === i.id} data-drop-after={islandHover?.id === i.id && islandHover.after}>
               <IslandRow i={i} chars={chars} editing={editing === i.id} setEditing={setEditing} dragging={dragIsland === i.id} setDragging={setDragging} />
               {!i.collapsed && chars.length === 0 && <div className="sb-kids"><button className="sb-row sb-char-empty" data-testid={`sb-island-new-${i.id}`}
-                aria-label={`New character on ${i.name}`} onClick={() => void newCharacterOn(deps(), i.id)}><i className="sb-plus" aria-hidden="true">+</i>New character</button></div>}
+                aria-label={`New robot on ${i.name}`} onClick={() => void newCharacterOn(deps(), i.id)}><i className="sb-plus" aria-hidden="true">+</i>New robot</button></div>}
               {!i.collapsed && chars.length > 0 && (
                 <div className="sb-kids">{chars.map((c) => <CharacterRow key={c.id} c={c} editing={editing === c.id} setEditing={setEditing} />)}</div>
               )}

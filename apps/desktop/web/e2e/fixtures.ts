@@ -5,7 +5,7 @@ import { NodeClient } from './client.js';
 import { ROOT, readInfo, startDaemon, stopDaemon, type DaemonInfo } from './daemon.js';
 import type { FromShell, ToShell } from '../src/bridge.js';
 import { DEFAULT_SETTINGS } from '../src/settings.js';
-import { SETTINGS_KEY } from '../src/store/index.js';
+import { SETTINGS_KEY, TOUR_KEY } from '../src/store/index.js';
 
 export const FAKE_CLAUDE = `node ${path.join(ROOT, 'packages/svalld/test/fixtures/fake-claude.mjs')}`;
 
@@ -14,7 +14,7 @@ type NativeShell = { sent(): Promise<ToShell[]>; receive(m: FromShell): Promise<
 
 export type Svall = DaemonInfo & {
   api: NodeClient;
-  open(view?: 'board' | 'map', opts?: { firstRun?: boolean }): Promise<void>;
+  open(view?: 'board' | 'map', opts?: { firstRun?: boolean; tour?: boolean }): Promise<void>;
   stopDaemon(): Promise<void>;
   startDaemon(): Promise<void>;
   uniq(prefix: string): string;
@@ -33,7 +33,9 @@ export const test = base.extend<{ svall: Svall }>({
       api: await NodeClient.connect(info.port, info.token),
       uniq: (prefix) => `${prefix}-${Math.random().toString(36).slice(2, 7)}`,
       cellOf: async (id) => (await svall.api.call('state.get', {})).characters[id].cell,
-      open: async (view: 'board' | 'map' = 'board', opts?: { firstRun?: boolean }) => {
+      open: async (view: 'board' | 'map' = 'board', opts?: { firstRun?: boolean; tour?: boolean }) => {
+        // the first-run tour selects a character and covers the map, so only the spec about it sees it
+        if (!opts?.tour) await page.addInitScript((key) => { try { localStorage.setItem(key, 'done'); } catch { /* seeded where there is a store */ } }, TOUR_KEY);
         // the settings window opens by itself on a machine with no settings of its own, and would stand over the map
         if (!opts?.firstRun) {
           await page.addInitScript(({ key, value }) => {

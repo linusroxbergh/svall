@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { flushSync } from 'react-dom';
 import { app } from '../boot.js';
 import { useApp } from '../hooks.js';
 import { homeIsland, mapIslands } from '../selectors.js';
@@ -38,7 +39,8 @@ export function useCamera(host: RefObject<HTMLDivElement | null>, lastPressAt: R
   const holdUntil = useRef(0);
   const holdTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const refits = useRef(0);
-  useEffect(() => () => { cancelAnimationFrame(anim.current ?? 0); clearTimeout(holdTimer.current); }, []);
+  const wheel = useRef({ x: 0, y: 0, frame: 0 });
+  useEffect(() => () => { cancelAnimationFrame(anim.current ?? 0); cancelAnimationFrame(wheel.current.frame); clearTimeout(holdTimer.current); }, []);
 
   // the map under the room kept over mission control, and what mission control stands in it with
   const belowOf = (el: HTMLElement): Below | undefined => {
@@ -121,7 +123,15 @@ export function useCamera(host: RefObject<HTMLDivElement | null>, lastPressAt: R
   };
 
   const panTo = (p: { x: number; y: number }) => { holdUntil.current = 0; pan.current = p; refit(true); };
-  const onWheel = (e: React.WheelEvent) => panTo({ x: pan.current.x - e.deltaX, y: pan.current.y - e.deltaY });
+  // a trackpad sends several wheel events a frame; their sum pans once, drawn in that same frame
+  const onWheel = (e: React.WheelEvent) => {
+    const w = wheel.current;
+    w.x += e.deltaX; w.y += e.deltaY;
+    if (!w.frame) w.frame = requestAnimationFrame(() => {
+      wheel.current = { x: 0, y: 0, frame: 0 };
+      flushSync(() => panTo({ x: pan.current.x - w.x, y: pan.current.y - w.y }));
+    });
+  };
   // measured before any fit that could read it, and fitted again whenever the row changes size
   useLayoutEffect(() => {
     const el = host.current?.querySelector<HTMLElement>('.hrow');

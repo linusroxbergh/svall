@@ -40,7 +40,7 @@ export function NewCharacter() {
     <div className="modal-back" data-testid="new-character" onPointerDown={close}>
       <div className="modal panel" onPointerDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } }}>
-        <div className="kicker">New character</div>
+        <div className="kicker">New robot</div>
         <input ref={field} className="h2" placeholder="name" aria-label="Name" value={name} data-testid="new-character-name"
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void create(); } }} />

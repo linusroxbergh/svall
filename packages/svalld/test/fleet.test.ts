@@ -14,7 +14,7 @@ import { startHookReceiver, type HookEvent } from '../src/hooks/receiver.js';
 import { aboveHome, placementOk } from '../src/layout.js';
 import type { Deps as LinkDeps } from '../src/links/refresh.js';
 import { silentLogger, type Logger } from '../src/log.js';
-import { resolvePaths } from '../src/paths.js';
+import { expandHome, resolvePaths } from '../src/paths.js';
 import { Store } from '../src/store.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { ControlClient } from '../src/tmux/control.js';
@@ -45,8 +45,11 @@ runIf('Fleet', () => {
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
-    // a test lays out from mission control alone unless it asks for the island a new fleet opens with
-    if (!opening) for (const i of Object.values(store.state.islands)) if (i.kind !== 'home') fleet.deleteIsland(i.id);
+    // a test lays out from mission control alone unless it asks for the island and shell a new fleet opens with
+    if (!opening) {
+      for (const c of Object.values(store.state.characters)) if (store.state.islands[c.islandId]?.kind !== 'home') await fleet.closeCharacter(c.id);
+      for (const i of Object.values(store.state.islands)) if (i.kind !== 'home') fleet.deleteIsland(i.id);
+    }
     // a spawned stand-in agent reaches the fleet the way a real one does: over the hooks socket
     const hooks = await startHookReceiver(paths.hooksSock, (e) => fleet.onSocketEvent(e), silentLogger);
     cleanup.push(() => hooks.close());
@@ -299,6 +302,29 @@ runIf('Fleet', () => {
     fleet['deps'].config.shell = '/opt/homebrew/bin/sleep';
     await twice();
     expect(store.state.characters[c.id].agent).toBeUndefined();
+  });
+
+  it('lets a Claude agent go once its transcript shows an Esc or a "No" ended the turn, which no hook reports', async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    await waitFor(async () => (await tmux.listWindows()).some((w) => w.name === c.id && w.command === 'sleep'));
+    const transcript = path.join(makeHome(), 't.jsonl');
+    const entry = (at: number, content: unknown) => JSON.stringify({ type: 'user', timestamp: new Date(at).toISOString(), message: { role: 'user', content } }) + '\n';
+    const esc = (at: number) => entry(at, [{ type: 'text', text: '[Request interrupted by user for tool use]' }]);
+    const asked = Date.now() - 10_000;
+    fs.writeFileSync(transcript, entry(asked - 1000, 'ask me'));
+    store.update((d) => { d.characters[c.id].agent = { kind: 'claude', sessionId: 's', transcriptPath: transcript, status: 'blocked', promptId: 'q', asking: ['a1'], lastActivityAt: asked }; });
+    await fleet['poll']['tick']();
+    expect(store.state.characters[c.id].agent?.status).toBe('blocked');
+    fs.appendFileSync(transcript, entry(asked + 2000, [{ type: 'tool_result', is_error: true, content: 'rejected' }]) + esc(asked + 2001));
+    await fleet['poll']['tick']();
+    expect(store.state.characters[c.id].agent).toMatchObject({ status: 'idle' });
+    expect(store.state.characters[c.id].agent).not.toHaveProperty('asking');
+    // an Esc from before the agent's last hook was answered by it, as a prompt typed straight after
+    store.update((d) => { d.characters[c.id].agent!.status = 'working'; d.characters[c.id].agent!.lastActivityAt = Date.now(); });
+    fs.appendFileSync(transcript, esc(Date.now() - 1000));
+    await fleet['poll']['tick']();
+    expect(store.state.characters[c.id].agent?.status).toBe('working');
   });
 
   it('records shell activity when a SessionEnd hook ends the agent, without waiting for a poll', async () => {
@@ -1129,12 +1155,15 @@ runIf('Fleet', () => {
     expect(Object.values(store.state.islands).filter((i) => i.kind === 'home')).toHaveLength(1);
   });
 
-  it('opens a new fleet with one empty island, and does not make it again once deleted', async () => {
+  it('opens a new fleet with one island holding a shell, and does not make them again once deleted', async () => {
     const { fleet, store } = await boot({ opening: true });
     const first = Object.values(store.state.islands).filter((i) => i.kind !== 'home');
     expect(first).toEqual([expect.objectContaining({ name: 'Island 1' })]);
-    expect(Object.keys(store.state.characters)).toEqual([]);
+    const shells = Object.values(store.state.characters);
+    expect(shells).toEqual([expect.objectContaining({ islandId: first[0].id, cwd: expandHome(store.state.defaultCwd) })]);
+    expect(shells[0].agent).toBeUndefined();
     expect(placementOk(store.state, first[0])).toBe(true);
+    await fleet.closeCharacter(shells[0].id);
     fleet.deleteIsland(first[0].id);
     // the next start reads the fleet the last one left
     const again = await boot({ opening: true, state: structuredClone(store.state) });
@@ -1247,7 +1276,7 @@ runIf('Fleet', () => {
     expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } })).toBeUndefined();
     fleet.updateCharacter(c.id, { instructions: 'in Spanish' });
     const diff = fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } });
-    expect(diff).toContain('+ Character instructions: in Spanish');
+    expect(diff).toContain('+ Robot instructions: in Spanish');
     expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } })).toBeUndefined();
   });
 
@@ -1284,7 +1313,7 @@ runIf('Fleet', () => {
     expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: nested, pid: process.ppid } })).toBeUndefined();
     expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit', sessionId: nested, pid: process.ppid } })).toBeUndefined();
     expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit', sessionId: outer, pid: process.pid } }))
-      .toContain('+ Character instructions: in Spanish');
+      .toContain('+ Robot instructions: in Spanish');
   });
 
   it('says so when a window runs codex and no hook comes from it, until one does', async () => {
@@ -1409,19 +1438,21 @@ runIf('Fleet', () => {
     expect(store.state).not.toHaveProperty('scribeOff');
   });
 
-  it('tells a character made with a task, not one opened by hand, to work in a worktree until the setting turns it off', async () => {
+  it('tells every character, made with a task or opened by hand, to work in a new worktree until the setting turns it off', async () => {
     const { fleet, store } = await boot({ runTimeoutMs: 300 });
     const islandId = fleet.createIsland({ name: 'feature' }).id;
     const manual = await fleet.createCharacter({ islandId, cwd: '/tmp' });
     const c = await fleet.createCharacter({ islandId, cwd: '/tmp', command: 'echo started', run: 'hello' });
-    const rule = '- In a git repo, work in a worktree';
-    expect(fleet.brief(manual.id)).not.toContain(rule);
+    const rule = '- In a git repo, start every task and review in a new worktree';
+    expect(fleet.brief(manual.id)).toContain(rule);
     expect(fleet.brief(c.id)).toContain(rule);
     fleet.setWorktrees(false);
     expect(store.state.worktreesOff).toBe(true);
+    expect(fleet.brief(manual.id)).not.toContain(rule);
     expect(fleet.brief(c.id)).not.toContain(rule);
     fleet.setWorktrees(true);
     expect(store.state).not.toHaveProperty('worktreesOff');
+    expect(fleet.brief(manual.id)).toContain(rule);
     expect(fleet.brief(c.id)).toContain(rule);
     await fleet.closeCharacter(manual.id);
     await fleet.closeCharacter(c.id);
@@ -1656,7 +1687,7 @@ runIf('Fleet', () => {
     expect(brief).toContain(`- native-surfaces — "Native surfaces sit above the webview." (${path.join(dir, 'native-surfaces.md')})`);
     expect(brief).toContain(`- island: ${dir}`);
     expect(brief).toContain(`- fleet: ${path.join(docs, 'fleet')}`);
-    expect(brief).toContain(`- character: ${docsDir(docs, 'character', c.id)}`);
+    expect(brief).toContain(`- robot: ${docsDir(docs, 'character', c.id)}`);
     expect(brief).toMatch(/- repo: .*\/docs\/repos\/tmp-[0-9a-f]{8}/);
     expect(fleet.islandBrief(island.id)).toContain('- native-surfaces');
     await fleet.closeCharacter(c.id);

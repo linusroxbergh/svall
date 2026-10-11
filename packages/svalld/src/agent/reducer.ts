@@ -102,7 +102,7 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
   // the main thread moving on leaves a question a subagent still has open, unless the user typed a prompt past it
   if (agent.asking && e.backend === 'claude') {
     const stop = e.name === 'Stop' || e.name === 'StopFailure';
-    const over = e.prompt || (stop && !e.backgroundAgents) || (e.name === 'Notification' && e.notificationType === 'idle_prompt');
+    const over = e.prompt || (stop && !e.backgroundAgents) || e.name === 'Interrupt' || (e.name === 'Notification' && e.notificationType === 'idle_prompt');
     if (over) delete agent.asking;
     else if (agent.status === 'blocked' && e.name !== 'Notification') {
       if (stop) agent.background = true;
@@ -119,7 +119,13 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
   switch (e.name) {
     case 'UserPromptSubmit':
     case 'PreToolUse':
-      settle(agent, 'working');
+      // Codex asks its own questions with a tool, which no permission request comes before; its run is the answer
+      if (e.name === 'PreToolUse' && e.backend === 'codex' && e.toolName === 'request_user_input') {
+        ask();
+        agent.askedTool = e.toolName;
+      } else {
+        settle(agent, 'working');
+      }
       next.unread = false;
       break;
     // a tool is asked about between the two, so the answer it waited for is its run; another tool of the same batch
@@ -146,7 +152,7 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
       if (e.name === 'StopFailure' && e.message) agent.prompt = e.message;
       next.unread = true;
       break;
-    // Codex's and OpenCode's word that an Esc ended the turn
+    // Codex's and OpenCode's word that an Esc ended the turn; for Claude Code, the poll's, which reads it off the transcript
     case 'Interrupt':
       settle(agent, 'idle');
       break;
@@ -159,8 +165,8 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
       break;
     case 'Notification':
       if (e.notificationType && BLOCKING.has(e.notificationType)) ask();
-      // Claude Code fires nothing on an Esc; a minute on, it says it sits at its prompt, background work or not.
-      // With background work out, the question is gone but the work goes on
+      // a minute after a turn ends, Claude Code says it sits at its prompt, background work or not. With background
+      // work out, the question is gone but the work goes on
       else if (e.notificationType === 'idle_prompt' && (agent.status === 'blocked' || agent.status === 'working')) {
         const background = agent.background;
         settle(agent, background ? 'working' : 'idle');

@@ -31,7 +31,7 @@ export function IslandSheet({ islandId, onClose, onNewCharacter }: { islandId: s
       </form>
       <DocsList tier="island" id={islandId} />
       <div className="sheet-form">
-        <button type="button" onClick={onNewCharacter}>New character in another directory</button>
+        <button type="button" onClick={onNewCharacter}>New robot in another directory</button>
       </div>
       {island.kind !== 'home' && (
         <div className="sheet-form">

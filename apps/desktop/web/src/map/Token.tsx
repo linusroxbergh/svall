@@ -1,4 +1,5 @@
 import type { Cell, Character, ContextItem } from '@svall/protocol';
+import { memoByValue } from '../hooks.js';
 import { EyeGlyph, PrGlyph, reviewText } from '../indicators.js';
 import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, slotStatus, type DisplayStatus } from '../selectors.js';
 import { LinkIcon } from './LinkIcon.js';
@@ -32,7 +33,7 @@ function gem(status: DisplayStatus, unread: boolean) {
   return null;
 }
 
-export function Token({
+export const Token = memoByValue(function Token({
   c, status, world, robots, links, selected, dragging, settling, hover, offset, pointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu,
 }: {
   c: Character;
@@ -177,4 +178,4 @@ export function Token({
       )}
     </div>
   );
-}
+});

@@ -35,6 +35,7 @@ import { codexRunner } from './scribe/codex.js';
 import { opencodeRunner } from './scribe/opencode.js';
 import { claudeRunner, perPass, type RunScribe } from './scribe/run.js';
 import { Scribe, type SweepOptions } from './scribe/scribe.js';
+import { fullWake } from './scribe/wake.js';
 import { installHomeTemplate } from './setup.js';
 import type { Store } from './store.js';
 import { activateTab, closeTab, openTab, updateTab } from './tabs.js';
@@ -76,7 +77,7 @@ export class Fleet extends EventEmitter<Events> {
       codex: codexRunner({ model: scribeModel(config.scribe, 'codex') ?? 'gpt-6-luna', cwd }),
       opencode: opencodeRunner({ model: scribeModel(config.scribe, 'opencode'), cwd }),
     }, () => store.state.scribeAgent ?? 'claude');
-    this.scribe = new Scribe({ store, log, run, brief: (island, c) => this.render(island, c) });
+    this.scribe = new Scribe({ store, log, run, awake: fullWake, brief: (island, c) => this.render(island, c) });
     this.sleep = { store, tmux: deps.tmux, log, processes: deps.processes ?? processes, ending: this.ending };
     this.link = new ControlLink({ store, tmux: deps.tmux, log, events: this, reconcile: () => this.reconcileNow() });
     this.poll = new Poll({ ...deps, scribe: this.scribe, listWindows: () => this.listWindows(), endIdleAgents: () => this.endIdleAgents() });
@@ -90,8 +91,12 @@ export class Fleet extends EventEmitter<Events> {
     // when the user last looked is not kept across a restart, so every agent awake now gets a whole rest from here
     const now = Date.now();
     for (const c of Object.values(this.deps.store.state.characters)) if (c.tmux) this.seen.set(c.id, now);
-    this.ensureHome();
+    const opening = this.ensureHome();
     this.syncAgents();
+    if (opening) {
+      await this.createCharacter({ islandId: opening, cwd: this.deps.config.defaultCwd })
+        .catch((e) => this.deps.log.error(`first character: ${String(e)}`));
+    }
     this.deps.store.update((d) => { if (this.deps.config.name) d.name = this.deps.config.name; else delete d.name; });
     try { if (seedAgentProfiles(this.deps.paths.agentProfiles)) this.deps.log.info(`agent profiles -> ${this.deps.paths.agentProfiles}`); }
     catch (e) { this.deps.log.error(`agent profiles: ${String(e)}`); }
@@ -122,7 +127,7 @@ export class Fleet extends EventEmitter<Events> {
   // a profile that is missing or cannot be used is left out, and the side card says why
   private render(island: Island, c?: Character): string {
     const p = c?.agentProfile ? readAgentProfile(this.deps.paths.agentProfiles, c.agentProfile) : undefined;
-    return renderBrief(island, c, docFolders(this.deps.paths.docs, island, c), p && !('error' in p) ? p : undefined, !!c?.worktree && !this.deps.store.state.worktreesOff);
+    return renderBrief(island, c, docFolders(this.deps.paths.docs, island, c), p && !('error' in p) ? p : undefined, !this.deps.store.state.worktreesOff);
   }
 
   // a profile given by name must be one that can be used now; one that goes later is shown as missing
@@ -186,7 +191,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   // one home island per fleet; its cwd, command and buttons, and the fleet's default cwd, come from config on every start
-  private ensureHome(): void {
+  private ensureHome(): string | undefined {
     const home = this.deps.config.home;
     // a character is refused a cwd that is not a directory, so mission control's crew needs this one;
     // make the folder the buttons promise, holding the skills they call
@@ -214,8 +219,8 @@ export class Fleet extends EventEmitter<Events> {
       // a start is the one moment mission control comes back up to the fleet; from here it only follows it down
       settleHome(d);
     });
-    // a new fleet opens with one empty island beside mission control; only its first start makes it, so a deleted one stays gone
-    if (first) this.createIsland({ name: 'Island 1' });
+    // a new fleet opens with one island beside mission control, for start to put a shell on; only its first start makes it, so a deleted one stays gone
+    return first ? this.createIsland({ name: 'Island 1' }).id : undefined;
   }
 
   private endIdleAgents(): Promise<void> {
@@ -336,7 +341,7 @@ export class Fleet extends EventEmitter<Events> {
           id, islandId: p.islandId, cell: p.cell ?? placeOnIsland(d, p.islandId, undefined, this.deps.log),
           name: uniqueName(names, p.name ?? randomName(new Set(names))),
           portrait: randomPortrait(new Set(Object.values(d.characters).map((c) => c.portrait))),
-          note: '', instructions: '', ...(p.agentProfile && { agentProfile: p.agentProfile }), ...(p.run && { worktree: true as const }), cwd, panePath, context: [],
+          note: '', instructions: '', ...(p.agentProfile && { agentProfile: p.agentProfile }), cwd, panePath, context: [],
           tmux: { windowId: w.windowId, paneId: w.paneId },
           shell: { lastOutputAt: Date.now() }, unread: false,
         };

@@ -58,7 +58,7 @@ export function Map() {
   const hovered = hov.hover && !drag && !card ? fleet.characters[hov.hover] : undefined;
   const cardBox = card ? cardRect({ size: cardSize, win: hostSize, half: halfCard }) : undefined;
   const sea = domPointer({ kind: 'water' });
-  const startHover = (id: string) => { if (!card && !inDrag()) hov.start(id); };
+  const startHover = (id: string) => { if (!app.store.getState().card && !inDrag()) hov.start(id); };
   const endHover = hov.end;
   const overHome = drag?.kind === 'figure' && drag.over?.islandId === HOME_ISLAND ? drag : undefined;
   const crew = homeCrew(fleet, drag);

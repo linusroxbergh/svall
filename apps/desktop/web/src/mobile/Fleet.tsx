@@ -144,7 +144,7 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
               )}
             </button>
             <button type="button" className="icon" aria-label={`${island.name} options`} onClick={() => setSheet({ kind: 'islandMenu', islandId: island.id })}>…</button>
-            <button type="button" className="icon add" aria-label={`New character on ${island.name}`} disabled={adding} onClick={() => void add(island.id)}>+</button>
+            <button type="button" className="icon add" aria-label={`New robot on ${island.name}`} disabled={adding} onClick={() => void add(island.id)}>+</button>
           </h2>
           {failed?.islandId === island.id && <p className="sheet-error">{failed.message}</p>}
           {!island.collapsed && characters.map((c) => (
