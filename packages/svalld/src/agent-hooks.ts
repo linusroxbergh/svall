@@ -32,9 +32,9 @@ const holdsHook = (settings: Record<string, unknown>, events: readonly string[],
   return events.some((ev) => (hooks[ev] ?? []).some((g) => (g.hooks ?? []).some((h) => isOurs(h.command, script))));
 };
 
-// an event Claude Code need not wait on: it only says a subagent is gone. PermissionRequest waits, so a question
+// events Claude Code need not wait on: they only say a subagent started or is gone. PermissionRequest waits, so a question
 // is on record before the tool call its answer lets through
-const ASYNC_HOOKS = new Set(['SubagentStop']);
+const ASYNC_HOOKS = new Set(['SubagentStart', 'SubagentStop']);
 
 export const mergeHooks = (settings: Record<string, unknown>, command: string, script: string, events: readonly string[] = hooksFor('claude')): Record<string, unknown> =>
   mergeOurHooks(settings, events, (ev) => ({ type: 'command', command, timeout: 10, ...(ASYNC_HOOKS.has(ev) && { async: true }) }), script, { matcher: '*' });

@@ -30,6 +30,8 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     if (next.agent?.sessionId === e.sessionId) {
       if (e.transcriptPath) next.agent.transcriptPath = e.transcriptPath;
       if (e.model) next.agent.model = e.model;
+      // a resumed session's subagents died with the process before it
+      if (e.pid && next.agent.pid && e.pid !== next.agent.pid) delete next.agent.subagents;
       if (e.pid) next.agent.pid = e.pid;
       next.agent.lastActivityAt = now;
       return next;
@@ -65,10 +67,19 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     next.agent = { kind: e.backend, sessionId: e.sessionId, status: 'idle', lastActivityAt: now, pid: e.pid };
     next.unread = false;
   }
-  // a subagent's events say only whether the question it asked is still open; the notification is what blocks
+  // a subagent's events say only that it runs, and whether the question it asked is still open; the notification is
+  // what blocks. One can stop and start again under its id, when a shell it left running ends
   if (e.agentId) {
     const agent = next.agent;
-    if (e.name !== 'PermissionRequest' && !agent.asking?.includes(e.agentId)) return c;
+    const running = agent.subagents ?? [];
+    const was = running.includes(e.agentId);
+    if (e.name === 'SubagentStart' && !was) agent.subagents = [...running, e.agentId].slice(-20);
+    if (e.name === 'SubagentStop' && was) {
+      const rest = running.filter((a) => a !== e.agentId);
+      if (rest.length) agent.subagents = rest; else delete agent.subagents;
+    }
+    const changed = was !== Boolean(agent.subagents?.includes(e.agentId));
+    if (e.name !== 'PermissionRequest' && !agent.asking?.includes(e.agentId)) return changed ? next : c;
     const others = (agent.asking ?? []).filter((a) => a !== e.agentId);
     const asking = e.name === 'PermissionRequest' ? [...others, e.agentId] : others;
     if (asking.length) agent.asking = asking; else delete agent.asking;
@@ -99,6 +110,12 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
   }
   // background agents or shells that never re-invoke the session, killed or crashed, are over once a hook lists none
   if (tasks === 0) delete agent.background;
+  // a killed subagent sends no SubagentStop. The main thread waits out one in the foreground, so at its Stop only the
+  // background ones listed run on
+  if ((e.name === 'Stop' || e.name === 'StopFailure') && e.backgroundAgentIds && agent.subagents) {
+    const live = agent.subagents.filter((a) => e.backgroundAgentIds!.includes(a));
+    if (live.length) agent.subagents = live; else delete agent.subagents;
+  }
   // the main thread moving on leaves a question a subagent still has open, unless the user typed a prompt past it
   if (agent.asking && e.backend === 'claude') {
     const stop = e.name === 'Stop' || e.name === 'StopFailure';

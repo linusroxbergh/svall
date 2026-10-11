@@ -126,6 +126,7 @@ export const mainPr = (c: Character): ContextItem | undefined =>
   c.context.find((it) => it.kind === 'pr' && it.prState) ?? c.context.find((it) => it.kind === 'pr');
 export const inReview = (c: Character): boolean => mainPr(c)?.prState === 'open';
 export const isMonitoring = (c: Character): boolean => Boolean(c.agent?.monitors?.length || c.second?.agent?.monitors?.length);
+export const subagentCount = (c: Character): number => (c.agent?.subagents?.length ?? 0) + (c.second?.agent?.subagents?.length ?? 0);
 
 // the island wears the status of its most pressing character
 export function islandStatus(f: FleetState, islandId: string): DisplayStatus | undefined {

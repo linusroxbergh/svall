@@ -256,6 +256,58 @@ describe("applyHook for a Claude subagent's question", () => {
   });
 });
 
+describe('applyHook for the subagents running', () => {
+  const ev = (o: Partial<HookEvent>): HookEvent => ({ charId: 'c_a', backend: 'claude', name: 'SubagentStart', sessionId: 's', ...o });
+  const running = (...ids: string[]) => ids.reduce((c, id, i) => applyHook(c, ev({ agentId: id }), 2 + i), withAgent('working'));
+
+  it('counts a subagent from its start to its stop, and one that starts again under its id', () => {
+    const two = running('a1', 'a2');
+    expect(two.agent?.subagents).toEqual(['a1', 'a2']);
+    const one = applyHook(two, ev({ name: 'SubagentStop', agentId: 'a1' }), 5);
+    expect(one.agent?.subagents).toEqual(['a2']);
+    expect(applyHook(one, ev({ name: 'SubagentStop', agentId: 'a2' }), 6).agent?.subagents).toBeUndefined();
+    expect(applyHook(one, ev({ agentId: 'a1' }), 6).agent?.subagents).toEqual(['a2', 'a1']);
+    expect(two.agent?.status).toBe('working');
+  });
+  it('leaves the character as it was on a start it already counts or a stop it never counted', () => {
+    const c = running('a1');
+    expect(applyHook(c, ev({ agentId: 'a1' }), 5)).toBe(c);
+    expect(applyHook(c, ev({ name: 'SubagentStop', agentId: 'a9' }), 5)).toBe(c);
+  });
+  it('keeps the newest 20', () => {
+    const ids = Array.from({ length: 22 }, (_, i) => `a${i}`);
+    expect(running(...ids).agent?.subagents).toEqual(ids.slice(-20));
+  });
+  it('keeps only the background agents a Stop lists, as a killed one sends no stop', () => {
+    const c = running('a1', 'a2');
+    const stop = (o: Partial<HookEvent>) => applyHook(c, ev({ name: 'Stop', ...o }), 5).agent?.subagents;
+    expect(stop({ backgroundTasks: 1, backgroundAgents: 1, backgroundAgentIds: ['a2'] })).toEqual(['a2']);
+    expect(stop({ backgroundTasks: 0, backgroundAgents: 0, backgroundAgentIds: [] })).toBeUndefined();
+    expect(stop({})).toEqual(['a1', 'a2']);
+  });
+  it('reconciles a character blocked on a subagent at the Stop too', () => {
+    const asked = applyHook(applyHook(running('a1', 'a2'), ev({ name: 'PermissionRequest', agentId: 'a1' }), 5),
+      ev({ name: 'Notification', notificationType: 'permission_prompt' }), 6);
+    const c = applyHook(asked, ev({ name: 'Stop', backgroundTasks: 1, backgroundAgents: 1, backgroundAgentIds: ['a1'] }), 7);
+    expect(c.agent).toMatchObject({ status: 'blocked', subagents: ['a1'] });
+  });
+  it('keeps them through an Esc and a compaction, and drops them when another process resumes the session', () => {
+    const c = { ...running('a1'), agent: { ...running('a1').agent!, pid: 10 } };
+    expect(applyHook(c, ev({ name: 'Interrupt' }), 5).agent?.subagents).toEqual(['a1']);
+    expect(applyHook(c, ev({ name: 'SessionStart', pid: 10 }), 5).agent?.subagents).toEqual(['a1']);
+    expect(applyHook(c, ev({ name: 'SessionStart', pid: 11 }), 5).agent?.subagents).toBeUndefined();
+  });
+  it("counts a codex or OpenCode subagent that outlives its parent's turn, and none once the session is gone", () => {
+    for (const backend of ['codex', 'opencode'] as const) {
+      const done = applyHook(withAgent('working'), ev({ backend, name: 'Stop' }), 2);
+      const c = applyHook(done, ev({ backend, agentId: 'x1' }), 3);
+      expect(c.agent).toMatchObject({ status: 'done', subagents: ['x1'] });
+      const gone = applyHook(c, ev({ backend, name: 'SessionEnd' }), 4);
+      expect(applyHook(gone, ev({ backend, name: 'SubagentStop', agentId: 'x1' }), 5)).toBe(gone);
+    }
+  });
+});
+
 describe('applyHook for codex', () => {
   const ev = (o: Partial<HookEvent>): HookEvent => ({ charId: 'c_a', backend: 'codex', name: 'Stop', sessionId: 's1', ...o });
   const started = () => applyHook(base(), ev({ name: 'SessionStart' }), 100);
