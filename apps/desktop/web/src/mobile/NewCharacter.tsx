@@ -28,7 +28,7 @@ export function NewCharacter({ islandId, onClose, onCreated }: { islandId: strin
   };
 
   return (
-    <Sheet title={`New character on ${island?.name ?? 'island'}`} onClose={onClose}>
+    <Sheet title={`New robot on ${island?.name ?? 'island'}`} onClose={onClose}>
       <form className="sheet-form" onSubmit={(e) => { e.preventDefault(); void create(); }}>
         <input value={name} placeholder="name (optional)" aria-label="Name" enterKeyHint="done" autoCapitalize="off" onChange={(e) => setName(e.target.value)} />
         <div className="choices" role="radiogroup" aria-label="Directory">

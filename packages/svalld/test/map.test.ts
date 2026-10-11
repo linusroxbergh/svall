@@ -31,7 +31,8 @@ runIf('Fleet layout', () => {
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
-    // these layouts start from mission control alone, without the island a new fleet opens with
+    // these layouts start from mission control alone, without the island and shell a new fleet opens with
+    for (const c of Object.values(store.state.characters)) if (store.state.islands[c.islandId]?.kind !== 'home') await fleet.closeCharacter(c.id);
     for (const i of Object.values(store.state.islands)) if (i.kind !== 'home') fleet.deleteIsland(i.id);
     return { fleet, store, tmux };
   }
