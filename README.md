@@ -7,7 +7,9 @@ A macOS map of your Claude Code, Codex and OpenCode agents. Every terminal is a
 character on an island, so you can see at a glance which agents are working,
 waiting on you or done.
 
-![The map: islands of characters, the islands panel on the left and a character's side card on the right](assets/svall_overview.jpg)
+![The map: islands of characters, the islands panel and the phone's QR code on the left, and a phone showing the same fleet as a list](assets/svall_overview.jpg)
+
+![A character's Claude Code session on the left and its browser on a GitHub issue on the right](assets/svall_browser.jpg)
 
 - Islands group your characters, say one per project, on a map or a board.
   Each card shows its agent's status, context use, model and links such as its
@@ -59,8 +61,8 @@ CLIs.
 
 3. Open Svall. The setup screen lists the agents it found and asks for your
    projects folder. **Review changes** lists the files it will write. If it
-   finds neither CLI, it shows how to install one and checks again when you
-   return. Its hooks do nothing outside Svall;
+   finds none of the three CLIs, it shows how to install one and checks again
+   when you return. Its hooks do nothing outside Svall;
    [What setup changes](#what-setup-changes) has the details. If
    `~/.local/bin` isn't on your PATH, it shows the line to add to your shell
    profile so the `svall` command works.
@@ -107,9 +109,9 @@ An `OPENAI_API_KEY` in the fleet's `.env` reaches new character shells, but
 Codex doesn't log in from it. See the
 [Codex authentication guide](https://learn.chatgpt.com/docs/auth).
 
-For OpenCode, sign in to a provider with `opencode auth login`, or set the
-provider's key (such as `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`) in the fleet's
-`.env`. OpenCode reads both.
+For OpenCode, sign in to a provider with `opencode auth login`. An
+`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in the fleet's `.env` also reaches new
+character shells, but not the OpenCode scribe.
 
 The scribe and mission control run the main agent's CLI, so a Codex-only
 install needs no Claude login. The Usage panel shows Claude and Codex plan
@@ -229,10 +231,10 @@ The first build takes several minutes and about 1.5 GB of disk.
   `done`. An agent idle or done for 12 hours is closed to free its memory and
   resumes when you open its terminal; Settings → close idle agents after
   changes the wait or turns it off.
-- **Scribe**: a minute after an agent stops with new work, and about every ten
-  minutes while it keeps working, a headless `claude -p`, `codex exec` or
-  `opencode run` writes the character's name, note and links, and the island's
-  description. Notes you wrote stay, and a name you gave only gains a PR or
+- **Scribe**: about a minute after an agent stops with new work, and every ten
+  minutes or so while it keeps working, a headless `claude -p`, `codex exec`
+  or `opencode run` writes the character's name, note and links, and the
+  island's description. Notes you wrote stay, and a name you gave only gains a PR or
   ticket id. Passes start at most once a minute, so a busy fleet can run 60 an
   hour, and each costs money on an API key. A new fleet asks before turning the
   scribe on, and you can turn it off in Settings.
@@ -261,15 +263,15 @@ The first build takes several minutes and about 1.5 GB of disk.
 - **Resources** (Cmd+Shift+R, or the lighthouse islet): what `~/.claude`,
   `~/.codex`, the fleet's docs and each repository give your agents.
   `~/.claude.json` and `~/.codex/auth.json` hold tokens and never open.
-- **Settings** (Cmd+,): display, browser, keyboard, notifications, phone, and
-  the fleet's name, main agent, scribe and idle timeout. `Usage`, next to it,
-  shows the plan limits of your running agents without using any.
+- **Settings** (Cmd+,): this machine, browser, keyboard, notifications, phone,
+  and the fleet's name, main agent, scribe and idle timeout. `Usage`, next to
+  it, shows the plan limits of your running agents without using any.
 
 ### Keyboard
 
 Terminals are Ghostty surfaces and read your Ghostty config. The app takes the
 chords below and passes everything else to the terminal. Rebind or clear any of
-them under *The keyboard* in Settings. A chord your Ghostty config binds when
+them under *Keyboard* in Settings. A chord your Ghostty config binds when
 Svall first launches stays with Ghostty until you claim it there.
 
 | Keys | Action | Keys | Action |
@@ -401,17 +403,19 @@ and `opencode pair` outside a character.
 
 The setup screen runs `svall setup`, which also works without the app
 (`--check` only checks). It changes nothing while something it needs is
-missing. For each agent you leave on, it writes:
+missing. For each agent you leave on, it writes the files below, and for each
+one you turn off it takes them out:
 
 - `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`): a hook on
-  Claude Code's session, prompt, tool, permission, notification and stop
-  events, which exits before starting Node outside a character, and a
+  Claude Code's session, prompt, tool, permission, notification, subagent and
+  stop events, which exits before starting Node outside a character, and a
   statusline wrapper that keeps your own statusline running inside it.
 - `~/.codex/hooks.json` (or `$CODEX_HOME/hooks.json`): the same hook.
 - `~/.config/opencode/plugins/svall.js` (or under `$XDG_CONFIG_HOME`): Svall's
   OpenCode plugin.
 
-Every change keeps a `.bak-<time>` copy. Setup also writes:
+A change to the Claude Code or Codex file keeps a `.bak-<time>` copy. Setup
+also writes:
 
 - `~/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld*.plist`, one per
   fleet, which the app uses to start each daemon.
@@ -492,5 +496,6 @@ The first `pnpm e2e` needs
 
 ## License
 
-MIT, see [`LICENSE`](LICENSE). The animal portraits, the lighthouse icon and
-the fonts are not MIT: each folder has its own licence file.
+MIT, see [`LICENSE`](LICENSE). The animal and robot portraits, the lighthouse
+icon and the fonts are not MIT. The portraits' and fonts' folders each have a
+licence file, and the lighthouse is Flaticon art under the animals' licence.
