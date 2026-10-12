@@ -185,6 +185,8 @@ What the reviews found and left open, by area. Paths are from the repository roo
   run starts (`apps/desktop/mac/Sources/Svall/LineChild.swift:90`).
 - The sheet explains `agent_unsettled` as work still running after the interrupt, though it also covers an idle agent
   with a background command and no interrupt (`apps/desktop/web/src/handover.ts:317`).
+- Keep awake holds nothing for a handover under way, so once no agent works the Mac's idle sleep can cut a long
+  transfer short (`apps/desktop/web/src/awake.ts:57`).
 
 ## OpenCode
 
