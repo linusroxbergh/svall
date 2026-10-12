@@ -348,9 +348,11 @@ yours, and selecting text copies it. Terminals attach to tmux, so Ghostty's
 ## Remote machines
 
 A fleet can also run on an always-on Linux machine, and move between it and
-the Mac with its repositories, worktrees and agent conversations. It is off
-until a fleet turns it on with `"handover": { "enabled": true }` in its
-`fleet.json`. [docs/remote-machines](docs/remote-machines/README.md) covers the
+the Mac with its repositories, worktrees and agent conversations. The app
+shows it once a fleet turns it on with `"handover": { "enabled": true }` in its
+`fleet.json`; the `svall host`, `svall handover`, `svall gateway` and
+`svall fleet recover` commands work either way.
+[docs/remote-machines](docs/remote-machines/README.md) covers the
 machine it needs (Ubuntu, with the same home path as your Mac), adding it with
 `svall host add`, moving the fleet with `svall handover`, and what to do when a
 handover stops part way.
@@ -376,7 +378,7 @@ Its `fleet.json` holds what travels with the fleet wherever it runs, and
 | `scribe` | `fleet.json` | `agent` (default the main agent) and `model`, a model of `agent`'s CLI, or of Claude's when `agent` is unset (default `haiku` for Claude, `gpt-6-luna` at low effort for Codex, the CLI's own for OpenCode). |
 | `mobile` | `fleet.json` | `logins` to let in (only yours when empty), extra page `origins` allowed to open a socket, and a `pushContact` (https: or mailto:) for push services. |
 | `mobile.httpsPort` | `node.json` | The tailscale serve port this fleet is reached on, which Svall saves. |
-| `handover` | `fleet.json` | [Remote machines](docs/remote-machines/README.md): `enabled` turns them on, `exclude` adds patterns a handover leaves out, `excludeDefaults: false` drops the defaults, and `transferFleetEnv: true` carries the fleet's `.env`. |
+| `handover` | `fleet.json` | [Remote machines](docs/remote-machines/README.md): `enabled` shows them in the app (the `svall host`, `handover`, `gateway` and `fleet recover` commands work either way), `exclude` adds patterns a handover leaves out, `excludeDefaults: false` drops the defaults, and `transferFleetEnv: true` carries the fleet's `.env`. |
 
 - The daemon reads both files when it starts. To restart the private
   fleet's daemon, run

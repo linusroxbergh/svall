@@ -150,11 +150,12 @@ What the reviews found and left open, by area. Paths are from the repository roo
   helpers run, with the controller's own lib and the linux-x64 companion (about 45 MB) beside the Node it shares with
   `Helpers` (`apps/desktop/mac/build.sh:51`).
 - The app carries the linux-x64 companion Add Machine installs; fetching it there instead would take about 45 MB off
-  every update but needs the network (`apps/desktop/mac/build.sh:58`).
+  every update but needs a download at Add Machine (`apps/desktop/mac/build.sh:58`).
 - The bundled rsync is built without `MACOSX_DEPLOYMENT_TARGET`, so it targets the build Mac's macOS rather than the
   app's 15.0 and has not been tried on macOS 15 (`scripts/release-stage.mjs:122`).
 - A local release build signs with whatever `SVALL_RELEASE_KEY` names and never checks it against `allowed_signers`,
-  so an install of that build refuses its own companion (`scripts/release-stage.mjs:374`).
+  so an install of a build signed with a key it does not list refuses its own companion
+  (`scripts/release-stage.mjs:374`).
 - `release.yml` publishes without a job that runs the typecheck or the unit tests (`.github/workflows/release.yml`).
 - An install removes every release but `current` and the rollback target, one that a `--no-launchctl` daemon or a
   long-running `svall` still runs from included (`scripts/install-release.mjs:133`).
@@ -262,9 +263,9 @@ Behaviour-preserving refactors.
   `handover.inspect`, with `handover.reaches` classed `transaction` to fall under it
   (`packages/svalld/src/ownership/guard.ts:96`, `packages/svalld/src/ownership/guard.ts:89`).
 - `resolveOwner` copies `rememberOwner`'s route write (`packages/cli/src/controller/connection.ts:302`).
-- The machine-identity check is written out four times, three through `sameMachine` and one inline with another fix
-  text (`packages/cli/src/controller/host.ts:347`, `packages/cli/src/controller/host.ts:409`,
-  `packages/cli/src/controller/host.ts:521`, `packages/cli/src/controller/host.ts:579`).
+- Opening a master and checking its machine is written out three times (`packages/cli/src/controller/host.ts:347`,
+  `packages/cli/src/controller/host.ts:521`, `packages/cli/src/controller/host.ts:579`), and
+  `packages/cli/src/controller/host.ts:409` checks the id inline with another fix text.
 - `LineBuffer` and `StderrTail` live in `apps/desktop/mac/Sources/Svall/ControllerProcess.swift`, which does not use
   them.
 - `MachineRegistry.rename` throws when given the machine's own name, and only tests call it
