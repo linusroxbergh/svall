@@ -24,9 +24,16 @@ const append = (entry) => fs.appendFileSync(transcriptPath, JSON.stringify(entry
 
 await post({ hook_event_name: 'SessionStart' });
 let prompts = 0;
+// Claude Code's empty prompt line, which svalld waits for before it types
+const composer = () => process.stdout.write('❯ ');
+composer();
 const rl = readline.createInterface({ input: process.stdin });
+rl.on('line', composer);
 for await (const line of rl) {
   if (line === 'block') { await post({ hook_event_name: 'Notification', notification_type: 'permission_prompt' }); continue; }
+  if (line === 'monitor') { await post({ hook_event_name: 'PostToolUse', tool_name: 'Monitor', task_id: 'm1' }); continue; }
+  if (line === 'subagent') { await post({ hook_event_name: 'SubagentStart', agent_id: 'a1' }); continue; }
+  if (line === 'subagent done') { await post({ hook_event_name: 'SubagentStop', agent_id: 'a1' }); continue; }
   const promptId = `p_${++prompts}`;
   await post({ hook_event_name: 'UserPromptSubmit', prompt: line, prompt_id: promptId });
   append({ type: 'user', origin: { kind: 'human' }, promptId, message: { content: line } });

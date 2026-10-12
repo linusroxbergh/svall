@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { FromShell } from '../../src/bridge.js';
 import { useApp } from '../../src/hooks.js';
+import { portraitUrl, robotOf, robotUrl, stepRobot } from '../../src/portraits.js';
 import { isVeiled } from '../../src/selectors.js';
 import { chr, fleet, isl } from '../fixtures.js';
 import { bridge, call, freshStore, store } from './harness.js';
@@ -34,9 +35,9 @@ function Side() {
   const id = useApp((s) => (s.selectedId && s.fleet.characters[s.selectedId] ? s.selectedId : undefined));
   return id ? <SideCard id={id} /> : null;
 }
-// on the map the settings take the card's place, and the board shows a card of its own
+// the board shows a card of its own
 function MapCard() {
-  const shown = useApp((s) => s.view === 'map' && s.sideCardOpen && !s.settingsOpen);
+  const shown = useApp((s) => s.view === 'map' && s.sideCardOpen);
   return shown ? <Side /> : null;
 }
 function IslandSide() {
@@ -76,6 +77,17 @@ test('the star beside the name stars the character, and unstars it once starred'
   expect(calls()).toContainEqual(['char.unstar', { id: 'c0' }]);
 });
 
+test('the portrait is the character\'s robot, its steppers page through the robots, and with robots off it is the animal', () => {
+  const src = () => screen.getByTestId('side-portrait').querySelector('img')!.getAttribute('src');
+  render(<Side />);
+  const robot = robotOf({ portrait: 'fox' });
+  expect(src()).toBe(robotUrl(robot));
+  fireEvent.click(screen.getByTestId('portrait-prev'));
+  expect(updates().at(-1)).toEqual(['char.update', { id: 'c0', robot: stepRobot(robot, -1) }]);
+  act(() => store.getState().setFleet({ ...fleet(), animals: true }));
+  expect(src()).toBe(portraitUrl('fox'));
+});
+
 test('a draft in one island\'s instructions never shows or saves on the next one', () => {
   store.getState().selectIsland('i_a');
   render(<IslandSide />);
@@ -108,7 +120,7 @@ test('the next-character key saves the draft to the character it was typed for',
 });
 
 // the shell swallows the chord, so the field is removed without the blur a click would have sent
-test.each(['toggleSideCard', 'toggleSettings', 'toggleView'] as const)('%s saves the draft before the card goes', async (chord) => {
+test.each(['toggleSideCard', 'toggleView'] as const)('%s saves the draft before the card goes', async (chord) => {
   render(<MapCard />);
   type(field('side-instructions'), 'never push to main');
   await act(() => dispatchKey({ type: chord }, { store, api: { call } as never, bridge }));

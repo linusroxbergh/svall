@@ -64,9 +64,11 @@ export const PATH_FIELDS: Record<string, PathField> = {
   'FleetState.characters.*.second.tmux': FORBIDDEN,
   'FleetState.characters.*.agent.pid': FORBIDDEN,
   'FleetState.characters.*.second.agent.pid': FORBIDDEN,
-  // the tasks of the session's live monitors, which end with its process
+  // the tasks of the session's live monitors and the subagents it runs, which end with its process
   'FleetState.characters.*.agent.monitors': FORBIDDEN,
   'FleetState.characters.*.second.agent.monitors': FORBIDDEN,
+  'FleetState.characters.*.agent.subagents': FORBIDDEN,
+  'FleetState.characters.*.second.agent.subagents': FORBIDDEN,
   // what a live window shows: codex running there without a hook
   'FleetState.characters.*.hint': FORBIDDEN,
   // the agent CLIs this machine's svalld finds; the destination finds its own when it activates
@@ -139,15 +141,16 @@ export const NOT_BOUND: readonly string[] = [
   'FleetState.islands.*.context[].kind', 'FleetState.islands.*.context[].source', 'FleetState.islands.*.context[].pinned', 'FleetState.islands.*.context[].prState',
   'FleetState.characters.*.cell', 'FleetState.characters.*.noteSource', 'FleetState.characters.*.portrait', 'FleetState.characters.*.repo.isWorktree',
   'FleetState.characters.*.context[].kind', 'FleetState.characters.*.context[].source', 'FleetState.characters.*.context[].pinned', 'FleetState.characters.*.context[].prState',
-  'FleetState.characters.*.shell.lastOutputAt', 'FleetState.characters.*.unread', 'FleetState.characters.*.keepHere', 'FleetState.characters.*.worktree',
-  'FleetState.characters.*.star',
+  'FleetState.characters.*.shell.lastOutputAt', 'FleetState.characters.*.unread', 'FleetState.characters.*.keepHere',
+  'FleetState.characters.*.star', 'FleetState.characters.*.robot',
   'FleetState.characters.*.revive.interrupted', 'FleetState.characters.*.second.revive.interrupted',
   'FleetState.characters.*.agent.kind', 'FleetState.characters.*.agent.status', 'FleetState.characters.*.agent.contextPct', 'FleetState.characters.*.agent.background',
+  'FleetState.characters.*.agent.shellsOnly', 'FleetState.characters.*.second.agent.shellsOnly',
   'FleetState.characters.*.agent.lastPrompt.at', 'FleetState.characters.*.agent.lastActivityAt',
   'FleetState.characters.*.second.unread', 'FleetState.characters.*.second.agent.kind', 'FleetState.characters.*.second.agent.status',
   'FleetState.characters.*.second.agent.contextPct', 'FleetState.characters.*.second.agent.background', 'FleetState.characters.*.second.agent.lastPrompt.at',
   'FleetState.characters.*.second.agent.lastActivityAt',
-  'FleetState.scribeOff', 'FleetState.scribeAsk', 'FleetState.scribeError.at', 'FleetState.worktreesOff', 'FleetState.dormantAfterHours', 'FleetState.mainAgent', 'FleetState.scribeAgent',
+  'FleetState.scribeOff', 'FleetState.scribeAsk', 'FleetState.scribeError.at', 'FleetState.worktreesOff', 'FleetState.animals', 'FleetState.dormantAfterHours', 'FleetState.mainAgent', 'FleetState.scribeAgent',
   'FleetConfig.mainAgent', 'FleetConfig.scribe.agent', 'FleetConfig.handover.enabled', 'FleetConfig.handover.excludeDefaults', 'FleetConfig.handover.transferFleetEnv',
 ];
 

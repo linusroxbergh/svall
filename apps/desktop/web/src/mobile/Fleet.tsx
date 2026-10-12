@@ -2,7 +2,7 @@ import { useRef, useState, type PointerEvent, type JSX } from 'react';
 import { starredOf, type Character, type Island } from '@svall/protocol';
 import { createCharacter } from '../actions.js';
 import { useApp } from '../hooks.js';
-import { portraitTint, portraitUrl } from '../portraits.js';
+import { portraitTint, portraitUrl, robotOf, robotUrl } from '../portraits.js';
 import { islandCwd, startOf, statusOf, wantsUser } from '../selectors.js';
 import { phone } from './boot.js';
 import { CloseCharacter } from './CloseCharacter.js';
@@ -16,6 +16,7 @@ import { Settings } from './Settings.js';
 type RowProps = { c: Character; revealed: boolean; onOpen(id: string): void; onReveal(id?: string): void; onClose(id: string): void };
 
 function Row({ c, revealed, onOpen, onReveal, onClose }: RowProps): JSX.Element {
+  const robots = useApp((s) => !s.fleet.animals);
   const status = statusOf(c);
   const sub = subtitle(c);
   const [drag, setDrag] = useState<number>();
@@ -56,9 +57,9 @@ function Row({ c, revealed, onOpen, onReveal, onClose }: RowProps): JSX.Element 
       <div className="row-slide" data-dragging={drag !== undefined || undefined} style={{ transform: `translateX(${offset}px)` }}
         onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
         <button type="button" className="row-main" onClick={tap}>
-          <span className={`face tint-${portraitTint(c.portrait)}`}>
-            <img src={portraitUrl(c.portrait)} alt="" />
-          </span>
+          {robots
+            ? <span className="face robot"><img src={robotUrl(robotOf(c))} alt="" /></span>
+            : <span className={`face tint-${portraitTint(c.portrait)}`}><img src={portraitUrl(c.portrait)} alt="" /></span>}
           <span className="row-text">
             <span className="row-name">{c.name}{wantsUser(c) && <i className="pip" />}</span>
             {sub && <span className="row-sub">{sub}</span>}
@@ -143,7 +144,7 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
               )}
             </button>
             <button type="button" className="icon" aria-label={`${island.name} options`} onClick={() => setSheet({ kind: 'islandMenu', islandId: island.id })}>…</button>
-            <button type="button" className="icon add" aria-label={`New character on ${island.name}`} disabled={adding} onClick={() => void add(island.id)}>+</button>
+            <button type="button" className="icon add" aria-label={`New robot on ${island.name}`} disabled={adding} onClick={() => void add(island.id)}>+</button>
           </h2>
           {failed?.islandId === island.id && <p className="sheet-error">{failed.message}</p>}
           {!island.collapsed && characters.map((c) => (

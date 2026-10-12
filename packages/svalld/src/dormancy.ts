@@ -24,8 +24,10 @@ export function reviveCommand(t: TerminalSlot, flags: string[] = []): string {
 // a terminal without a window keeps its directory and the command that brings its session back
 export function markSlotDormant(t: TerminalSlot, flags?: string[]): void {
   delete t.tmux;
+  dropBrief(t);
   t.revive = { command: reviveCommand(t, flags) };
   delete t.agent?.monitors;
+  delete t.agent?.subagents;
   // nothing runs until the revive, so no question is left open and no turn goes on; a finished result stays
   if (t.agent && (t.agent.status === 'blocked' || t.agent.status === 'working')) {
     settle(t.agent, 'idle');
@@ -38,10 +40,13 @@ export const RESUME_NOTE = 'A restart ended this session mid-turn. Subagents, ba
   + 'you had running were stopped and will not report back. Check what they finished, rerun what is still needed, '
   + 'and carry on with the task.';
 
+// a revive's SessionStart gets the whole brief, so what the session was told before is never read again
+export const dropBrief = (t: TerminalSlot): void => { if (t.agent) delete t.agent.brief; };
+
 export function markDormant(c: Character, flags?: string[]): void {
   delete c.hint;
-  // its monitors die with it, which a finished turn says nothing of
-  const interrupted = !!c.agent?.monitors || c.agent?.status === 'blocked' || c.agent?.status === 'working';
+  // its monitors and subagents die with it, which a finished turn says nothing of
+  const interrupted = !!c.agent?.monitors || !!c.agent?.subagents || c.agent?.status === 'blocked' || c.agent?.status === 'working';
   markSlotDormant(c, flags);
   if (interrupted && c.revive?.command) c.revive.interrupted = true;
 }
@@ -76,7 +81,7 @@ const FLAGS: Record<AgentKind, { kept: string[]; keptSwitches: string[]; dropped
     kept: ['-m', '--model', '-p', '--profile', '-s', '--sandbox', '-a', '--ask-for-approval', '--local-provider'],
     keptSwitches: ['--dangerously-bypass-approvals-and-sandbox', '--yolo', '--oss', '--approve-for-me', '--dangerously-bypass-hook-trust'],
     dropped: ['-c', '--config', '-C', '--cd', '--add-dir'],
-    droppedSwitches: [],
+    droppedSwitches: ['--no-daemon'],
   },
   opencode: {
     kept: [],
@@ -190,12 +195,13 @@ export async function exited(pid: number, waitMs = 60_000): Promise<void> {
 export type Sleep = { store: Store; tmux: Tmux; log: Logger; processes: () => Promise<Proc[]>; ending: Map<string, Promise<void>> };
 
 // an agent idle past the fleet's limit is ended to free what it holds; its character goes dormant, and a revive
-// resumes the session with the launch flags it still needs. `seen` is when the user last looked at each character
-export async function endIdleAgents(o: Sleep, seen: ReadonlyMap<string, number>, stopped: () => boolean): Promise<void> {
+// resumes the session with the launch flags it still needs. `seen` is when the user last looked at each character, and
+// one `holding` a prompt for its agent has work still to come
+export async function endIdleAgents(o: Sleep, seen: ReadonlyMap<string, number>, stopped: () => boolean, holding: (id: string) => boolean): Promise<void> {
   const hours = o.store.state.dormantAfterHours ?? DORMANT_AFTER_HOURS;
   if (!hours) return;
   const afterMs = hours * 3_600_000;
-  const due = (c: Character) => drowsy(c, Date.now(), afterMs, seen.get(c.id));
+  const due = (c: Character) => !holding(c.id) && drowsy(c, Date.now(), afterMs, seen.get(c.id));
   const idle = Object.values(o.store.state.characters).filter(due);
   if (!idle.length) return;
   const procs = await o.processes();

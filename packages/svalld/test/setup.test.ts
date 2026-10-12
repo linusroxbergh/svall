@@ -52,8 +52,9 @@ describe('mergeHooks', () => {
     for (const ev of CLAUDE_HOOKS) expect(out.hooks[ev].some((g) => g.matcher === '*' && g.hooks.some((h) => h.command === cmd && h.timeout === 10))).toBe(true);
     expect(existing.hooks.Stop).toHaveLength(1);
   });
-  it('runs the hook that only tells which subagent stopped without holding the agent up', () => {
+  it('runs the hooks that only tell which subagent started or stopped without holding the agent up', () => {
     const out = mergeHooks({}, cmd, script) as { hooks: Record<string, { hooks: { async?: boolean }[] }[]> };
+    expect(out.hooks.SubagentStart[0].hooks[0].async).toBe(true);
     expect(out.hooks.SubagentStop[0].hooks[0].async).toBe(true);
     // a question must be on record before the tool call that follows its answer
     expect(out.hooks.PermissionRequest[0].hooks[0].async).toBeUndefined();
@@ -221,6 +222,27 @@ describe('hookCommand and nodeRun', () => {
     fs.chmodSync(helper, 0o644);
     expect(sh(hookCommand(pinned, script, 'claude'), { SVALL_CHAR_ID: 'c1' })).toBe('pinned\n');
     expect(sh(wrapped('echo mine'), { SVALL_CHAR_ID: 'c1' })).toBe('pinned\n');
+  });
+
+  it("starts nothing for an agent of the other variant's fleet, and still runs the wrapped statusline", () => {
+    const root = makeHome();
+    const run = (variant: string, home: string) => {
+      const script = path.join(root, variant, 'hooks', 'agent-hook.mjs');
+      fs.mkdirSync(path.dirname(script), { recursive: true });
+      fs.writeFileSync(script, '');
+      const pinned = path.join(root, 'node');
+      fs.writeFileSync(pinned, '#!/bin/sh\necho pinned\n', { mode: 0o755 });
+      const status = (mergeStatusLine({ statusLine: { type: 'command', command: 'echo mine' } }, statusWrapper(pinned, script), script) as { statusLine: { command: string } }).statusLine.command;
+      const env = { SVALL_CHAR_ID: 'c1', SVALL_HOME: path.join(root, home) };
+      return [sh(hookCommand(pinned, script, 'claude'), env), sh(status, env)];
+    };
+    expect(run('.svall', '.svall-dev')).toEqual(['', 'mine\n']);
+    expect(run('.svall', '.svall-dev-x')).toEqual(['', 'mine\n']);
+    expect(run('.svall', '.svall-work')).toEqual(['pinned\n', 'pinned\n']);
+    expect(run('.svall-dev', '.svall')).toEqual(['', 'mine\n']);
+    expect(run('.svall-dev', '.svall-work')).toEqual(['', 'mine\n']);
+    expect(run('.svall-dev', '.svall-dev')).toEqual(['pinned\n', 'pinned\n']);
+    expect(run('.svall-dev', 'fleet')).toEqual(['pinned\n', 'pinned\n']);
   });
 
   it('keeps the inner statusline when an earlier wrapper is rebuilt', () => {

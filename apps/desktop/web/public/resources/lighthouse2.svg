@@ -1,27 +1,54 @@
-<?xml version="1.0"?>
-<svg xmlns="http://www.w3.org/2000/svg" id="Capa_1" enable-background="new 0 0 512.012 512.012" height="512" viewBox="151.006 0 210 512.012" width="210">
-  <g>
-    <path d="m256.006.006c-8.291 0-15 6.709-15 15v30c0 8.291 6.709 15 15 15s15-6.709 15-15v-30c0-8.291-6.709-15-15-15z" fill="#4E6A6E"/>
-    <path d="m271.006 45.006v-30c0-8.291-6.709-15-15-15v60c8.291 0 15-6.709 15-15z" fill="#384948"/>
-    <path d="m256.006 30.006c-41.367 0-75 34.647-75 76h75 75c0-41.352-33.633-76-75-76z" fill="#E8766B"/>
-    <path d="m256.006 30.006v76h75c0-41.352-33.633-76-75-76z" fill="#D45E58"/>
-    <path d="m256.006 106.006h-75v90h75 75v-90z" fill="#FFC95C"/>
-    <path d="m256.006 106.006h75v90h-75z" fill="#E8A84C"/>
-    <path d="m330.918 194.512h-74.912-74.912l-7.65 76.494 30.851 30h51.711 55.58l26.982-30z" fill="#E8766B"/>
-    <path d="m338.568 271.006-7.65-76.494h-74.912v106.494h55.58z" fill="#D45E58"/>
-    <path d="m256.006 151.006c-8.291 0-15 6.709-15 15v30c0 8.291 6.709 15 15 15s15-6.709 15-15v-30c0-8.291-6.709-15-15-15z" fill="#4E6A6E"/>
-    <path d="m271.006 196.006v-30c0-8.291-6.709-15-15-15v60c8.291 0 15-6.709 15-15z" fill="#384948"/>
-    <path d="m338.568 271.006h-82.562-82.562l-5.999 60 34.008 30h54.553 52.026l36.535-30z" fill="#FFF9F1"/>
-    <path d="m344.567 331.006-5.999-60h-82.562v90h52.026z" fill="#E9E1D2"/>
-    <path d="m344.567 331.006h-88.561-88.561l-6 60 31.483 30h63.078 59.843l34.718-30z" fill="#E8766B"/>
-    <path d="m350.567 391.006-6-60h-88.561v90h59.843z" fill="#D45E58"/>
-    <path d="m350.567 391.006h-94.561-94.561l-10.351 104.506c-.439 4.219.938 8.423 3.779 11.558 2.842 3.149 6.885 4.937 11.133 4.937h45l30-15h15 15l30 15h45c4.248 0 8.291-1.787 11.133-4.937 2.842-3.135 4.219-7.339 3.779-11.558z" fill="#FFF9F1"/>
-    <path d="m301.006 512.006h45c4.248 0 8.291-1.787 11.133-4.937 2.842-3.135 4.219-7.339 3.779-11.558l-10.351-104.506h-94.561v106h15z" fill="#E9E1D2"/>
-    <path d="m256.006 421.006c-24.814 0-45 20.186-45 45v46h45 45v-46c0-24.814-20.185-45-45-45z" fill="#4E6A6E"/>
-    <path d="m301.006 466.006c0-24.814-20.186-45-45-45v91h45z" fill="#384948"/>
-    <path d="m346.006 181.006h-90-90c-8.291 0-15 6.709-15 15s6.709 15 15 15h90 90c8.291 0 15-6.709 15-15s-6.709-15-15-15z" fill="#4E6A6E"/>
-    <path d="m361.006 196.006c0-8.291-6.709-15-15-15h-90v30h90c8.291 0 15-6.709 15-15z" fill="#384948"/>
-    <path d="m346.006 91.006h-90-90c-8.291 0-15 6.709-15 15s6.709 15 15 15h90 90c8.291 0 15-6.709 15-15s-6.709-15-15-15z" fill="#4E6A6E"/>
-    <path d="m361.006 106.006c0-8.291-6.709-15-15-15h-90v30h90c8.291 0 15-6.709 15-15z" fill="#384948"/>
-  </g>
+<svg width="188" height="456" viewBox="162 24 188 456" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="lighthouse-a-title lighthouse-a-desc">
+  <title id="lighthouse-a-title">Lighthouse</title>
+  <desc id="lighthouse-a-desc">A tin toy lighthouse: a tapered tower in red and cream bands with a porthole and an arched slate door, a slate gallery with a railing, a lamp room glowing yellow behind slate mullions, and a red dome cap with a yellow finial, on a slate plinth.</desc>
+  <!-- Finial -->
+  <rect x="252" y="40" width="8" height="26" fill="#697785"/>
+  <rect x="246" y="58" width="20" height="6" rx="2" fill="#3d4853"/>
+  <circle cx="256" cy="33" r="9" fill="#f6c354"/>
+  <!-- Red dome cap on a slate rim -->
+  <path d="M214 108A42 46 0 0 1 298 108Z" fill="#d9564c"/>
+  <path d="M256 62A42 46 0 0 1 298 108H281A25 46 0 0 0 256 62Z" fill="#ad3f37"/>
+  <path d="M225 92A33 36 0 0 1 247 68" fill="none" stroke="#ec7a6e" stroke-width="7" stroke-linecap="round"/>
+  <rect x="206" y="106" width="100" height="12" rx="4" fill="#3d4853"/>
+  <rect x="210" y="106" width="92" height="4" rx="2" fill="#697785"/>
+  <!-- Lamp room glowing behind slate mullions -->
+  <rect x="216" y="118" width="80" height="70" fill="#3d4853"/>
+  <rect x="222" y="124" width="68" height="58" fill="#f6c354"/>
+  <rect x="276" y="124" width="14" height="58" fill="#e3a93c"/>
+  <circle cx="256" cy="153" r="12" fill="#fff8de"/>
+  <rect x="236" y="124" width="5" height="58" fill="#3d4853"/>
+  <rect x="271" y="124" width="5" height="58" fill="#3d4853"/>
+  <!-- Gallery railing, deck and corbel -->
+  <rect x="192" y="170" width="128" height="4" rx="2" fill="#3d4853"/>
+  <g fill="#3d4853"><rect x="194" y="172" width="4" height="16"/><rect x="211" y="172" width="4" height="16"/><rect x="228" y="172" width="4" height="16"/><rect x="245" y="172" width="4" height="16"/><rect x="263" y="172" width="4" height="16"/><rect x="280" y="172" width="4" height="16"/><rect x="297" y="172" width="4" height="16"/><rect x="314" y="172" width="4" height="16"/></g>
+  <path d="M196 200H316L304 212H208Z" fill="#3d4853"/>
+  <rect x="188" y="188" width="136" height="12" rx="3" fill="#3d4853"/>
+  <rect x="192" y="188" width="128" height="4" rx="2" fill="#697785"/>
+  <g fill="#92a1b2"><circle cx="200" cy="194" r="2"/><circle cx="216" cy="194" r="2"/><circle cx="232" cy="194" r="2"/><circle cx="248" cy="194" r="2"/><circle cx="264" cy="194" r="2"/><circle cx="280" cy="194" r="2"/><circle cx="296" cy="194" r="2"/><circle cx="312" cy="194" r="2"/></g>
+  <!-- Tapered tower in red and cream bands -->
+  <path d="M208 212L304 212L312 272L200 272Z" fill="#d9564c"/>
+  <path d="M208 212L222.4 212L216.8 272L200 272Z" fill="#ec7a6e"/>
+  <path d="M285.8 212L304 212L312 272L290.7 272Z" fill="#ad3f37"/>
+  <path d="M200 272L312 272L320 332L192 332Z" fill="#f1e6c8"/>
+  <path d="M200 272L216.8 272L211.2 332L192 332Z" fill="#fffbea"/>
+  <path d="M290.7 272L312 272L320 332L295.7 332Z" fill="#d6c7a2"/>
+  <path d="M192 332L320 332L328 392L184 392Z" fill="#d9564c"/>
+  <path d="M192 332L211.2 332L205.6 392L184 392Z" fill="#ec7a6e"/>
+  <path d="M295.7 332L320 332L328 392L300.6 392Z" fill="#ad3f37"/>
+  <path d="M184 392L328 392L336 452L176 452Z" fill="#f1e6c8"/>
+  <path d="M184 392L205.6 392L200 452L176 452Z" fill="#fffbea"/>
+  <path d="M300.6 392L328 392L336 452L305.6 452Z" fill="#d6c7a2"/>
+  <!-- Porthole -->
+  <circle cx="256" cy="302" r="11" fill="#3d4853"/>
+  <circle cx="256" cy="302" r="6.5" fill="#697785"/>
+  <circle cx="253.5" cy="299.5" r="2.2" fill="#92a1b2"/>
+  <!-- Arched door -->
+  <path d="M241 448V422a15 15 0 0 1 30 0V448Z" fill="#3d4853"/>
+  <path d="M246 448V424a10 10 0 0 1 20 0V448Z" fill="#697785"/>
+  <circle cx="261" cy="434" r="2.6" fill="#f6c354"/>
+  <!-- Slate plinth -->
+  <rect x="162" y="458" width="188" height="22" rx="4" fill="#3d4853"/>
+  <rect x="170" y="446" width="172" height="16" rx="3" fill="#697785"/>
+  <rect x="170" y="446" width="172" height="4" rx="2" fill="#92a1b2"/>
+  <g fill="#3d4853"><circle cx="180" cy="455" r="2"/><circle cx="200" cy="455" r="2"/><circle cx="220" cy="455" r="2"/><circle cx="240" cy="455" r="2"/><circle cx="260" cy="455" r="2"/><circle cx="280" cy="455" r="2"/><circle cx="300" cy="455" r="2"/><circle cx="320" cy="455" r="2"/></g>
 </svg>

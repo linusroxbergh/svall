@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { Agent, Character } from '@svall/protocol';
+import type { Agent, Character, FleetState } from '@svall/protocol';
 import { drowsy, markDormant, reviveCommand, runsInBackground, startFlags } from '../src/dormancy.js';
+import { snapshot, syncWindow } from '../src/reconcile.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
 const OSID = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
@@ -89,6 +90,8 @@ describe('startFlags', () => {
     // woken with a prompt, or with the island's folders
     expect(startFlags(`codex resume -c tui.resume_cwd=session -m gpt-5.5 ${SID} -- look at --model haiku`, 'codex')).toEqual(['-m', "'gpt-5.5'"]);
     expect(startFlags(`codex resume -c tui.resume_cwd=session ${SID} --add-dir /x`, 'codex')).toEqual([]);
+    expect(startFlags(`codex resume --no-daemon -c tui.resume_cwd=session -m gpt-5.5 ${SID}`, 'codex')).toEqual(['-m', "'gpt-5.5'"]);
+    expect(startFlags('codex --no-daemon -m gpt-5.5 -- fix it', 'codex')).toEqual(['-m', "'gpt-5.5'"]);
   });
 
   it('reads an agent run by node, and nothing from a process that is not the agent', () => {
@@ -157,11 +160,23 @@ describe('markDormant', () => {
       expect(c.revive).toEqual({ command: `claude --resume ${SID}` });
     }
   });
-  it('marks an agent whose monitors were still watching interrupted, and forgets them', () => {
-    const c = char({ agent: agent({ status: 'done', monitors: ['b1'] }) });
+  it('marks an agent whose monitors were still watching or subagents still running interrupted, and forgets them', () => {
+    for (const running of [{ monitors: ['b1'] }, { subagents: ['a1'] }]) {
+      const c = char({ agent: agent({ status: 'done', ...running }) });
+      markDormant(c);
+      expect(c.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
+      expect(c.agent).toMatchObject({ status: 'done' });
+      expect(c.agent?.monitors).toBeUndefined();
+      expect(c.agent?.subagents).toBeUndefined();
+    }
+  });
+  it('forgets the brief the session was told, going dormant or already dormant at a listing', () => {
+    const c = char({ agent: agent({ brief: '# Svall context' }) });
     markDormant(c);
-    expect(c.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
-    expect(c.agent).toMatchObject({ status: 'done' });
-    expect(c.agent?.monitors).toBeUndefined();
+    expect(c.agent).not.toHaveProperty('brief');
+    const asleep = char({ tmux: undefined, revive: { command: 'claude --resume x', interrupted: true }, agent: agent({ brief: '# Svall context' }) });
+    syncWindow(asleep, new Map(), snapshot({ islands: {}, characters: { [asleep.id]: asleep } } as unknown as FleetState));
+    expect(asleep.agent).not.toHaveProperty('brief');
+    expect(asleep.revive).toEqual({ command: 'claude --resume x', interrupted: true });
   });
 });

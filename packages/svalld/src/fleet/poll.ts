@@ -1,4 +1,8 @@
-import type { AgentKind, TerminalSlot } from '@svall/protocol';
+import fs from 'node:fs';
+import type { Agent, AgentKind, TerminalSlot } from '@svall/protocol';
+import { interruptedAt } from '../agent/claude-transcript.js';
+import { applyHook, type Slot } from '../agent/reducer.js';
+import { readTail } from '../agent/transcript.js';
 import type { Config } from '../config.js';
 import { refreshMany, slice, type Deps as LinkDeps } from '../links/refresh.js';
 import type { Logger } from '../log.js';
@@ -23,6 +27,8 @@ export function resumeOf(slot: TerminalSlot | undefined, carried: boolean, chara
   return { characterId, ...(term && { term }), sessionId: agent.sessionId, kind: agent.kind, revive: { ...revive }, at: Date.now(), ran: false };
 }
 
+const interrupt = <T extends Slot>(charId: string, slot: T): T => applyHook(slot, { charId, backend: 'claude', name: 'Interrupt' }, Date.now());
+
 type Deps = {
   store: Store; tmux: Tmux; config: Config; log: Logger; scribe: Scribe; pollMs?: number; staleSessionMs?: number; resumeMs?: number; linkDeps?: Partial<LinkDeps>;
   // the windows tmux has, less those still closing for idleness
@@ -46,6 +52,7 @@ export class Poll {
   private ticks = 0;
   private shellStreak = new Map<string, number>();
   private codexStreak = new Map<string, number>();
+  private transcriptSize = new Map<string, number>();
   // one link sweep at a time, so the cap on characters out asking holds across ticks; the characters a
   // tick found moved wait in `pendingLinks` for the sweep that follows the one running
   private sweeping = false;
@@ -78,13 +85,28 @@ export class Poll {
   }
 
   forget(id: string): void {
-    for (const key of [id, secondName(id)]) { this.shellStreak.delete(key); this.deps.resuming.delete(key); }
+    for (const key of [id, secondName(id)]) { this.shellStreak.delete(key); this.transcriptSize.delete(key); this.deps.resuming.delete(key); }
     this.codexStreak.delete(id);
   }
 
   /** Whether the last poll saw the agent in window `key` quit to its shell's prompt, with no resume there waiting on its session. */
   atShell(key: string): boolean {
     return this.shellStreak.has(key) && !this.deps.resuming.has(key);
+  }
+
+  // Claude Code fires no hook when an Esc or a "No" ends its turn, so a waiting or working agent's transcript is read
+  // for the mark it leaves, each time it grows; one older than the last hook was already answered
+  private interrupted(key: string, agent: Agent | undefined): boolean {
+    if (agent?.kind !== 'claude' || !agent.transcriptPath || (agent.status !== 'blocked' && agent.status !== 'working')) {
+      this.transcriptSize.delete(key);
+      return false;
+    }
+    let size: number;
+    try { size = fs.statSync(agent.transcriptPath).size; } catch { return false; }
+    if (size === this.transcriptSize.get(key)) return false;
+    this.transcriptSize.set(key, size);
+    const at = interruptedAt(readTail(agent.transcriptPath, 64 * 1024));
+    return at !== undefined && at > agent.lastActivityAt;
   }
 
   private async tick(): Promise<void> {
@@ -138,6 +160,9 @@ export class Poll {
           this.codexStreak.delete(c.id);
           delete c.hint;
         }
+        if (this.interrupted(c.id, c.agent)) d.characters[c.id] = interrupt(c.id, c);
+        const second = d.characters[c.id].second;
+        if (second && this.interrupted(secondName(c.id), second.agent)) d.characters[c.id].second = interrupt(c.id, second);
       }
     });
     // what a poll saw in a window says nothing of the next window opened under its name

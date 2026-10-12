@@ -33,10 +33,12 @@ const KEEP = ['hook_event_name', 'agent_id', 'session_id', 'transcript_path', 'n
 // a pasted prompt runs to megabytes; only its head is ever shown, and the whole line must stay under the limit
 const clip = (k, v) => (k === 'prompt' && typeof v === 'string' ? v.slice(0, 4000) : v);
 const fields = (h) => Object.fromEntries(KEEP.filter((k) => h[k] !== undefined).map((k) => [k, clip(k, h[k])]));
-// codex says what it asks permission for inside tool_input, which is otherwise left behind
+// codex says what it asks permission for inside tool_input, which is otherwise left behind, and its own questions
+// are a tool's input
 const asked = (h) => {
-  if (h.hook_event_name !== 'PermissionRequest' || h.message) return h;
-  const why = h.tool_input?.description ?? h.tool_input?.command ?? h.tool_name;
+  if (h.message) return h;
+  const why = h.hook_event_name === 'PermissionRequest' ? h.tool_input?.description ?? h.tool_input?.command ?? h.tool_name
+    : h.hook_event_name === 'PreToolUse' && h.tool_name === 'request_user_input' ? h.tool_input?.questions?.[0]?.question : undefined;
   const text = Array.isArray(why) ? why.join(' ') : why;
   return typeof text === 'string' && text ? { ...h, message: text.slice(0, 500) } : h;
 };

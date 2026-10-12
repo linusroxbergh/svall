@@ -29,7 +29,6 @@ export function MissionPrompt() {
       if (covered(app.store.getState())) return;
       app.store.getState().setNamingCharacter(false);
       app.store.getState().setClosingCharacter(undefined);
-      app.store.getState().toggleKeys(false);
       app.store.getState().setMissionPrompt(true);
     });
   };

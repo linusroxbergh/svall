@@ -36,9 +36,9 @@ export function linkText(l: ContextItem): string {
 export const hintText = (c: Character): string | undefined =>
   c.hint === 'codex-silent' ? 'No updates from Codex. Run svall doctor and check /hooks in Codex.' : undefined;
 
-// only blocked and done spell the status out; working and idle read from the ring
+// working, blocked and done spell the status out; idle and a bare shell read from the ring
 export function statusWord(status: DisplayStatus): string | undefined {
-  return status === 'blocked' || status === 'done' ? status : undefined;
+  return status === 'working' || status === 'blocked' || status === 'done' ? status : undefined;
 }
 
 export function ago(at: number, now = Date.now()): string {

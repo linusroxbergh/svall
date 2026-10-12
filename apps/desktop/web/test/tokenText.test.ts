@@ -42,9 +42,9 @@ describe('gaugeDash', () => {
 
 describe('statusWord', () => {
   it('names only the loud statuses', () => {
+    expect(statusWord('working')).toBe('working');
     expect(statusWord('blocked')).toBe('blocked');
     expect(statusWord('done')).toBe('done');
-    expect(statusWord('working')).toBeUndefined();
     expect(statusWord('idle')).toBeUndefined();
     expect(statusWord('shell')).toBeUndefined();
   });

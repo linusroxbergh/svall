@@ -515,7 +515,7 @@ runIf('a frozen fleet', () => {
     const snapshot = JSON.stringify(store.state);
 
     await tmux.killWindow(c.tmux!.windowId);
-    await waitFor(async () => (await tmux.listWindows()).length === 0);
+    await waitFor(async () => !(await tmux.listWindows()).some((w) => w.windowId === c.tmux!.windowId));
     await new Promise((r) => setTimeout(r, 400));
 
     expect(store.state.characters[c.id].tmux).toEqual(c.tmux);
@@ -583,11 +583,12 @@ runIf('a replica that becomes the owner', () => {
     await waitFor(async () => (await fleet.readScreen(c.id, 20)).includes('awake'));
 
     const before = store.state.characters[c.id];
+    const windows = (await tmux.listWindows()).length;
     await fleet.activate();
     await new Promise((r) => setTimeout(r, 300));
     // a second activate leaves no second control client behind, and so no second poll either
     expect(connect).toHaveBeenCalledTimes(1);
     expect(store.state.characters[c.id].tmux).toEqual(before.tmux);
-    expect((await tmux.listWindows()).length).toBe(1);
+    expect((await tmux.listWindows()).length).toBe(windows);
   });
 });

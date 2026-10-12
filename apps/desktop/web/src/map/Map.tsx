@@ -17,7 +17,8 @@ import { homeCrew } from './home.js';
 import { Home } from './HomeIsland.js';
 import { HoverLayer, useHover } from './hover.js';
 import { Island } from './Island.js';
-import { cardScale, cellSize, crewOf, labelScale, worldCell } from './layout.js';
+import { cellSize, crewOf, labelScale, sharedCardScale, worldCell } from './layout.js';
+import { useRobotMotion } from './motion.js';
 import { useMapPointer, type IslandDrag, type PendingIsland } from './pointer.js';
 import { ISLET, placeIslet } from './resources.js';
 import { ResourcesIsland, ResourcesPill } from './ResourcesIsland.js';
@@ -27,6 +28,7 @@ import { Token } from './Token.js';
 export function Map() {
   const host = useRef<HTMLDivElement>(null);
   const fleet = useApp((s) => s.fleet);
+  const links = useApp((s) => s.settings.cardLinks);
   const selectedId = useApp((s) => s.selectedId);
   const selectedIslandId = useApp((s) => s.selectedIslandId);
   const card = useApp((s) => s.card);
@@ -44,18 +46,20 @@ export function Map() {
   const place = placeIslet(hostSize.w, (hi?.size.w ?? 0) * theme.cell, Boolean(hi?.collapsed), camera.homeMost.current);
   const placeRef = useRef(place);
   placeRef.current = place;
+  const k = sharedCardScale(layout.scale, place.homeScale);
   // the fit reads where the crew stand, which a patch can change without touching an island
   const crewCells = useMemo(() => JSON.stringify(crewOf(fleet)), [fleet]);
   const { drag, pendingIsland, panning, inDrag, domPointer, hostPointer, onSeaDoubleClick } =
     useMapPointer({ host, camera, hover: hov, place: placeRef, lastPressAt, islands: fleet.islands, crewCells });
   const { arrange, covered } = useAutoArrange({ host, islands: fleet.islands, card, cardSize, lastPressAt, reserveAt: camera.reserveAt });
   useDevHook(camera.layoutRef, camera.refits);
+  useRobotMotion();
 
   const cs = cellSize(layout);
   const hovered = hov.hover && !drag && !card ? fleet.characters[hov.hover] : undefined;
   const cardBox = card ? cardRect({ size: cardSize, win: hostSize, half: halfCard }) : undefined;
   const sea = domPointer({ kind: 'water' });
-  const startHover = (id: string) => { if (!card && !inDrag()) hov.start(id); };
+  const startHover = (id: string) => { if (!app.store.getState().card && !inDrag()) hov.start(id); };
   const endHover = hov.end;
   const overHome = drag?.kind === 'figure' && drag.over?.islandId === HOME_ISLAND ? drag : undefined;
   const crew = homeCrew(fleet, drag);
@@ -76,7 +80,7 @@ export function Map() {
       <div className="map-sea" {...sea} />
       {/* the world is only placed; each island and card scales itself, as mission control's island does. WebKit draws a scaled
           world as one layer at 1:1 and stretches the bitmap, which blurs every island */}
-      <div className="map-world" style={{ left: Math.round(layout.ox), top: Math.round(layout.oy), '--cell': `${theme.cell}px`, '--ms': layout.scale, '--k': cardScale(layout.scale), '--lk': labelScale(layout.scale) / layout.scale } as React.CSSProperties}>
+      <div className="map-world" style={{ left: Math.round(layout.ox), top: Math.round(layout.oy), '--cell': `${theme.cell}px`, '--ms': layout.scale, '--k': k, '--lk': labelScale(layout.scale) / layout.scale } as React.CSSProperties}>
         {mapIslandsSorted(fleet).map((i) => {
           const preview = previewFor(i.id);
           const shown = preview?.kind === 'island' && preview === pendingIsland ? { ...i, position: pendingIsland.from }
@@ -119,7 +123,7 @@ export function Map() {
           const base = preview?.kind === 'island' && preview === pendingIsland ? pendingIsland.from : i.position;
           const world = dragging ? drag.cell : worldCell(base, c.cell);
           return (
-            <Token key={c.id} c={c} status={statusOf(c)} world={world} selected={c.id === selectedId} dragging={dragging}
+            <Token key={c.id} c={c} status={statusOf(c)} world={world} robots={!fleet.animals} links={links} selected={c.id === selectedId} dragging={dragging}
               offset={islandOffset(i, preview)} settling={Boolean(pendingIsland) && preview === pendingIsland} failed={resumeErrorOf({ shell }, c)}
               hover={dropHover?.kind === 'char' && dropHover.id === c.id}
               pointer={domPointer({ kind: 'figure', id: c.id })}
@@ -129,7 +133,7 @@ export function Map() {
           );
         }))}
         {drag?.kind === 'figure' && !overHome && fleet.characters[drag.id]?.islandId === HOME_ISLAND && (
-          <Token key={drag.id} c={fleet.characters[drag.id]} status={statusOf(fleet.characters[drag.id])} world={drag.cell} selected={drag.id === selectedId} dragging
+          <Token key={drag.id} c={fleet.characters[drag.id]} status={statusOf(fleet.characters[drag.id])} world={drag.cell} robots={!fleet.animals} links={links} selected={drag.id === selectedId} dragging
             failed={resumeErrorOf({ shell }, fleet.characters[drag.id])}
             pointer={domPointer({ kind: 'figure', id: drag.id })} hover={false} onHoverStart={() => {}} onHoverEnd={endHover}
             onOpen={() => app.store.getState().focus(drag.id)} onLink={followLink} onMenu={(e) => characterMenu(e, drag.id)} />
@@ -138,10 +142,10 @@ export function Map() {
       <div className="map-overlay">
         {hi && (
           <Home island={hi} crew={crew} config={fleet.home} collapsed={Boolean(hi.collapsed)}
-            selected={selectedIslandId === HOME_ISLAND} selectedId={selectedId} drag={drag} status={statusOf}
+            selected={selectedIslandId === HOME_ISLAND} selectedId={selectedId} drag={drag} status={statusOf} robots={!fleet.animals} links={links}
             failed={(c) => resumeErrorOf({ shell }, c)}
             shift={place.homeShift} rowShift={placeIslet(hostSize.w, hi.size.w * theme.cell, Boolean(hi.collapsed)).homeShift}
-            scale={place.homeScale} extra={place.mode === 'pill' ? <ResourcesPill /> : undefined}
+            scale={place.homeScale} cards={k} extra={place.mode === 'pill' ? <ResourcesPill /> : undefined}
             onToggle={() => toggleIsland(deps(), HOME_ISLAND)}
             onArrange={() => arrange()}
             onNewIsland={() => newIsland(deps())}

@@ -110,7 +110,7 @@ function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doc
   if (o.agents === false) return;
   ssh.reply([UNIT_PATH, 'claude', '--version'], { stdout: '2.1.278 (Claude Code)\n' });
   ssh.reply([UNIT_PATH, 'claude', 'auth', 'status', '--json'], { stdout: '{"loggedIn":true}\n' });
-  ssh.reply([UNIT_PATH, 'codex', '--version'], { stdout: 'codex-cli 0.155.1\n' });
+  ssh.reply([UNIT_PATH, 'codex', '--version'], { stdout: 'codex-cli 0.156.1\n' });
   ssh.reply([UNIT_PATH, 'codex', 'login', 'status'], { stdout: 'Logged in using ChatGPT\n' });
   ssh.reply([UNIT_PATH, 'opencode', '--version'], { stdout: '2.0.22\n' });
   ssh.reply([UNIT_PATH, 'opencode', 'auth', 'list', '--standalone'], { stdout: 'Credentials ~/.local/share/opencode/auth.json\n' });
@@ -199,7 +199,7 @@ describe('host add', () => {
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
     expect(step('claude').at(-1)).toMatchObject({ status: 'warn', detail: '2.1.278 (Claude Code), not logged in', action: 'ssh trift.test, then claude auth login' });
-    expect(step('codex').at(-1)).toMatchObject({ status: 'warn', detail: 'codex-cli 0.154.2: Svall needs 0.155.0 or newer', action: 'ssh trift.test, then update Codex' });
+    expect(step('codex').at(-1)).toMatchObject({ status: 'warn', detail: 'codex-cli 0.154.2: Svall needs 0.156.0 or newer', action: 'ssh trift.test, then update Codex' });
     expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: '2.0.21: Svall needs 2.0.22 or newer', action: 'ssh trift.test, then update OpenCode' });
     expect(out.actions).toEqual(['ssh trift.test, then claude auth login', 'ssh trift.test, then update Codex', 'ssh trift.test, then update OpenCode']);
     const agentCalls = ssh.remoteCalls().filter((w) => w.includes('claude') || w.includes('codex') || w.includes('opencode'));
@@ -241,7 +241,7 @@ describe('host add', () => {
     await d.close();
     expect(step('claude').at(-1)).toMatchObject({ status: 'warn', detail: `2.1.278 (Claude Code), logged in; the hooks check there says ${disabled}`, action: `ssh trift.test, then ${disabled}` });
     expect(step('codex').at(-1)).toMatchObject({
-      status: 'warn', detail: `codex-cli 0.155.1, logged in; the codex hooks check there says ${untrusted}`,
+      status: 'warn', detail: `codex-cli 0.156.1, logged in; the codex hooks check there says ${untrusted}`,
       action: 'ssh trift.test, then start codex and choose "Trust all and continue", or trust them in /hooks',
     });
     expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: `2.0.22, logged in; the opencode plugin check there says ${plugin}`, action: 'ssh trift.test, then svall setup' });

@@ -52,16 +52,17 @@ const CLAUDE = [
   { version: '2.1.251', id: '1fb0d1a7-29a9-4159-a932-5ffd2da8faba', slug: '-home-source-work-demo', agent: 'agent-aec6de8cd1d2df280' },
 ] as const;
 const CODEX = [
-  { version: '0.155.1', file: 'sessions/2026/09/23/rollout-2026-09-23T08-44-38-01a0cd02-5930-73f0-ad55-add2b1effa04.jsonl', id: '01a0cd02-5930-73f0-ad55-add2b1effa04' },
+  // written before the oldest Codex Svall runs, so the CLI that carries it has been updated since
+  { version: '0.155.1', cli: '0.156.0', file: 'sessions/2026/09/23/rollout-2026-09-23T08-44-38-01a0cd02-5930-73f0-ad55-add2b1effa04.jsonl', id: '01a0cd02-5930-73f0-ad55-add2b1effa04' },
   { version: '0.156.1', file: 'sessions/2026/09/23/rollout-2026-09-23T08-44-52-01a0cd02-8ea0-75c1-89b3-89718ecbd91f.jsonl', id: '01a0cd02-8ea0-75c1-89b3-89718ecbd91f' },
 ] as const;
 
 describe('the adapter registry', () => {
   it('reads every Claude Code and Codex release from its adapter\'s minimum on, and none before', () => {
     for (const v of ['2.1.251', '2.1.280', '2.1.283', '2.2.0', '3.0.0', '2.1.300-beta.1']) expect(adapterFor('claude', v), v).toBe(claudeAdapter);
-    for (const v of ['0.155.0', '0.156.1', '0.157.0', '1.0.0', '0.160.0-alpha.1']) expect(adapterFor('codex', v), v).toBe(codexAdapter);
+    for (const v of ['0.156.0', '0.156.1', '0.157.0', '1.0.0', '0.160.0-alpha.1']) expect(adapterFor('codex', v), v).toBe(codexAdapter);
     for (const v of ['2.1.250', '2.1.251-beta.1', '2.0.0']) expect(adapterFor('claude', v), v).toBeUndefined();
-    for (const v of ['0.142.0-alpha.6', '0.142.0', '0.155.0-alpha.3']) expect(adapterFor('codex', v), v).toBeUndefined();
+    for (const v of ['0.142.0-alpha.6', '0.142.0', '0.155.1', '0.156.0-alpha.3']) expect(adapterFor('codex', v), v).toBeUndefined();
     for (const v of ['2.0.22', '2.1.0', '3.0.0']) expect(adapterFor('opencode', v), v).toBe(opencodeAdapter);
     for (const v of ['2.0.21', '1.14.0', '2.0.22-beta.1']) expect(adapterFor('opencode', v), v).toBeUndefined();
     expect(HANDOVER_KINDS).toEqual(['claude', 'codex', 'opencode']);
@@ -442,11 +443,11 @@ describe('sessions in the transfer manifest', () => {
 
 // each fixture session, where its CLI keeps it under the agent home
 const FIXTURE_SESSIONS = [
-  ...CLAUDE.map((c) => ({ kind: 'claude' as AgentKind, version: c.version, id: c.id, agentHome: '.claude', transcript: `projects/${c.slug}/${c.id}.jsonl`, newer: '2.1.283' })),
-  ...CODEX.map((c) => ({ kind: 'codex' as AgentKind, version: c.version, id: c.id, agentHome: '.codex', transcript: c.file, newer: '0.157.0' })),
+  ...CLAUDE.map((c) => ({ kind: 'claude' as AgentKind, version: c.version, cli: c.version as string, id: c.id, agentHome: '.claude', transcript: `projects/${c.slug}/${c.id}.jsonl`, newer: '2.1.283' })),
+  ...CODEX.map((c) => ({ kind: 'codex' as AgentKind, version: c.version, cli: 'cli' in c ? c.cli : c.version, id: c.id, agentHome: '.codex', transcript: c.file, newer: '0.157.0' })),
 ];
 
-describe.each(FIXTURE_SESSIONS)('a $kind session as $version wrote it', ({ kind, version, id, agentHome, transcript, newer }) => {
+describe.each(FIXTURE_SESSIONS)('a $kind session as $version wrote it', ({ kind, version, cli, id, agentHome, transcript, newer }) => {
   it('arrives byte for byte at the transcript path its terminal recorded, for a newer CLI there to resume', async () => {
     const base = tmp();
     const mac = path.join(base, 'Users/source');
@@ -461,7 +462,7 @@ describe.each(FIXTURE_SESSIONS)('a $kind session as $version wrote it', ({ kind,
     }), { generation: 1 });
     expect(blockers).toEqual([]);
     const probe = (v: string): AgentProbe => ({ kind, version: v, home: agents, loggedIn: true, hooks: true });
-    expect(agentBlockers({ kinds: [kind], source: [probe(version)], destination: [probe(newer)] })).toEqual([]);
+    expect(agentBlockers({ kinds: [kind], source: [probe(cli)], destination: [probe(newer)] })).toEqual([]);
 
     // the source's tree set aside, as the other machine never had it, and its session staged as rsync stages it
     const parked = path.join(base, 'parked');

@@ -260,7 +260,7 @@ describe('the OpenCode plugin', () => {
     expect((got[1] as { hook: { message: string } }).hook.message).toBe('Allow OpenCode to search the web?');
   });
 
-  it("lets a subagent's questions block the character, under the top-level session, and nothing else of it", async () => {
+  it("lets a subagent's questions block the character, under the top-level session, and nothing else of its turn", async () => {
     const { hooks: h, emit } = await load(fakeContext({ [CHILD]: SID }));
     await emit('session.created', { sessionID: SID });
     await emit('session.created', { sessionID: CHILD, parentID: SID });
@@ -270,10 +270,26 @@ describe('the OpenCode plugin', () => {
     await shown();
     await emit('permission.replied', { sessionID: CHILD, requestID: 'per_1', reply: 'once' });
     await emit('session.execution.succeeded', { sessionID: CHILD });
-    await waitFor(() => names().length >= 3);
+    await waitFor(() => names().length >= 5);
     await new Promise((r) => setTimeout(r, 100));
-    expect(names()).toEqual(['SessionStart', 'PermissionRequest', 'PreToolUse']);
-    expect((got[1] as { hook: Record<string, unknown> }).hook).toMatchObject({ sessionId: SID, message: 'rm -rf build', toolName: 'shell' });
+    expect(names()).toEqual(['SessionStart', 'SubagentStart', 'PermissionRequest', 'SubagentStop', 'PreToolUse']);
+    expect((got[2] as { hook: Record<string, unknown> }).hook).toMatchObject({ sessionId: SID, message: 'rm -rf build', toolName: 'shell' });
+  });
+
+  it("reports each run of a child session as its subagent's, under the top-level session, however it ends", async () => {
+    const { emit } = await load(fakeContext({ [CHILD]: SID }));
+    await emit('session.created', { sessionID: SID });
+    await emit('session.created', { sessionID: CHILD, parentID: SID, agent: 'explore' });
+    for (const end of ['session.execution.succeeded', 'session.execution.failed', 'session.execution.interrupted']) {
+      await emit('session.execution.started', { sessionID: CHILD });
+      await emit(end, { sessionID: CHILD });
+    }
+    // the parent's own runs are its turns
+    await emit('session.execution.started', { sessionID: SID });
+    await waitFor(() => names().length >= 7);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(names()).toEqual(['SessionStart', 'SubagentStart', 'SubagentStop', 'SubagentStart', 'SubagentStop', 'SubagentStart', 'SubagentStop']);
+    for (const e of got.slice(1)) expect((e as { hook: Record<string, unknown> }).hook).toMatchObject({ sessionId: SID, agentId: CHILD });
   });
 
   it('holds the brief each prompt is answered with, an empty one included, and keeps it through a lost answer', async () => {

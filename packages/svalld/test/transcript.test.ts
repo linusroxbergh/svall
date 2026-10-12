@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { condenseTurnsClaude as condenseTurns, userPromptsClaude as userPrompts } from '../src/agent/claude-transcript.js';
+import { condenseTurnsClaude as condenseTurns, interruptedAt, userPromptsClaude as userPrompts } from '../src/agent/claude-transcript.js';
 import { readTail } from '../src/agent/transcript.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -156,5 +156,27 @@ describe('readTail', () => {
     expect(readTail(f, 3)).toBe('def');
     expect(readTail(f)).toBe('abcdef');
     expect(readTail('/nope')).toBe('');
+  });
+});
+
+describe('interruptedAt', () => {
+  const at = (iso: string, content: unknown, more = {}) => line({ type: 'user', timestamp: iso, message: { role: 'user', content }, ...more });
+  it('finds the Esc or "No" that ended a question or a turn, as the newest user entry', () => {
+    const asked = assistant([{ type: 'tool_use', name: 'AskUserQuestion', input: {} }]) +
+      at('2026-10-11T10:13:39.254Z', [{ type: 'tool_result', is_error: true, content: "The user doesn't want to proceed with this tool use." }]) +
+      at('2026-10-11T10:13:39.256Z', [{ type: 'text', text: '[Request interrupted by user for tool use]' }]) +
+      line({ type: 'system', subtype: 'turn_duration' });
+    expect(interruptedAt(asked)).toBe(Date.parse('2026-10-11T10:13:39.256Z'));
+    const cut = '{"partial":\n' + at('2026-10-11T10:20:17.868Z', [{ type: 'text', text: '[Request interrupted by user]' }]);
+    expect(interruptedAt(cut)).toBe(Date.parse('2026-10-11T10:20:17.868Z'));
+  });
+  it('finds none once anything else is the newest user entry, or the mark is a sidechain\'s; a meta entry after it is passed over', () => {
+    const esc = at('2026-10-11T10:13:39Z', [{ type: 'text', text: '[Request interrupted by user]' }]);
+    expect(interruptedAt(esc + at('2026-10-11T10:14:27Z', 'next prompt'))).toBeUndefined();
+    expect(interruptedAt(esc + at('2026-10-11T10:14:28Z', [{ type: 'tool_result', content: 'ok' }]))).toBeUndefined();
+    expect(interruptedAt(at('2026-10-11T10:13:39Z', [{ type: 'text', text: '[Request interrupted by user]' }], { isSidechain: true }))).toBeUndefined();
+    expect(interruptedAt(esc + at('2026-10-11T10:13:40Z', 'caveat', { isMeta: true }))).toBe(Date.parse('2026-10-11T10:13:39Z'));
+    expect(interruptedAt(user('[Request interrupted by user]'))).toBeUndefined();
+    expect(interruptedAt('')).toBeUndefined();
   });
 });

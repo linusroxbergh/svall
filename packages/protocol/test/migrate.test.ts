@@ -39,7 +39,7 @@ describe('migrateState', () => {
 
   it('lifts a version 8 file with an OpenCode agent and an interrupted revive as it is', () => {
     const oc = { kind: 'opencode', sessionId: 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn', status: 'idle', lastActivityAt: 3 };
-    const c = { ...char('c_a', 'i_a'), worktree: true, agent: oc, revive: { command: 'opencode -s x', interrupted: true } };
+    const c = { ...char('c_a', 'i_a'), agent: oc, revive: { command: 'opencode -s x', interrupted: true } };
     const raw = { ...emptyState(), version: 8, islands: { i_a: island('i_a') }, characters: { c_a: c } };
     const { state, migrated, dropped } = migrateState(raw);
     expect(migrated).toBe(true);
@@ -61,6 +61,16 @@ describe('migrateState', () => {
     const second = { tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: { ...agent, monitors: ['b2'] } };
     const c = { ...char('c_a', 'i_a'), cwd: '/work', tmux: { windowId: '@1', paneId: '%1' }, star: 1, agent: { ...agent, monitors: ['b1'] }, second };
     const raw = { ...emptyState(), version: 8, islands: { i_a: island('i_a') }, characters: { c_a: c, c_b: { ...char('c_b', 'i_a'), star: 0 } } };
+    const { state, migrated, dropped } = migrateState(raw);
+    expect(migrated).toBe(true);
+    expect(dropped).toEqual([]);
+    expect(state).toEqual({ ...raw, version: 9, characters: { ...raw.characters, c_a: { ...c, second: { ...second, cwd: '/work' } } } });
+  });
+
+  it('lifts a version 8 file Svall 0.9.0 wrote, with robots, animals and the subagents and shells of both terminals, losing nothing', () => {
+    const second = { tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: { ...agent, background: true, shellsOnly: true, subagents: ['a2'] } };
+    const c = { ...char('c_a', 'i_a'), cwd: '/work', robot: 42, agent: { ...agent, subagents: ['a1'] }, second };
+    const raw = { ...emptyState(), version: 8, animals: true, islands: { i_a: island('i_a') }, characters: { c_a: c, c_b: { ...char('c_b', 'i_a'), robot: 7 } } };
     const { state, migrated, dropped } = migrateState(raw);
     expect(migrated).toBe(true);
     expect(dropped).toEqual([]);

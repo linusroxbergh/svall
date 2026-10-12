@@ -1,11 +1,17 @@
-import { FAKE_CLAUDE, expect, settleMap, test } from './fixtures.js';
+import { FAKE_CLAUDE, expect, setMapWidth, settleMap, test } from './fixtures.js';
 import type { Page } from '@playwright/test';
-import { cardScale, labelScale } from '../src/map/layout.js';
+import { cardScale, labelScale, sharedCardScale } from '../src/map/layout.js';
+import { robotOf } from '../src/portraits.js';
 import type { MapDump } from '../src/map/types.js';
-import { theme } from '../src/theme.js';
+import { DEFAULT_SETTINGS } from '../src/settings.js';
+import { SETTINGS_KEY } from '../src/store/index.js';
+import { theme, tokenPx } from '../src/theme.js';
 
 const layoutOf = (page: Page) => page.evaluate(() => window.__map!.layout());
 const dump = (page: Page) => page.evaluate(() => window.__map!.dump());
+// a machine keeps the link chips off its cards until its settings turn them on
+const showLinks = (page: Page) => page.addInitScript(({ key, value }) => localStorage.setItem(key, value),
+  { key: SETTINGS_KEY, value: JSON.stringify({ ...DEFAULT_SETTINGS, zoom: 1, cardLinks: true }) });
 
 test('the settle wait holds until the map stops moving, however long that takes', async ({ page }) => {
   await page.setContent('<p>map</p>');
@@ -54,7 +60,7 @@ test('renders the fleet and follows agent status', async ({ page, svall }) => {
   await expect(agentTok).toHaveAttribute('data-status', 'blocked', { timeout: 15_000 });
   await expect(agentTok.locator('.gem')).toHaveText('!');
 
-  await svall.api.call('char.run', { id: agent.id, text: 'go', enter: true });
+  await svall.api.call('char.answer', { id: agent.id, answer: 'approve' });
   await expect(agentTok).toHaveAttribute('data-status', 'done', { timeout: 15_000 });
   await expect(agentTok).toHaveAttribute('data-unread', 'true');
   await expect(agentTok.locator('.gem')).toHaveText('✓');
@@ -62,6 +68,120 @@ test('renders the fleet and follows agent status', async ({ page, svall }) => {
   const scale = (await dump(page)).scale;
   expect(scale).toBeGreaterThanOrEqual(0.5);
   expect(scale).toBeLessThanOrEqual(1.5);
+});
+
+test('with robots on, a card stands its robot under the name and its foot alone says the status', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('robots'), seed: 3 });
+  const agent = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'agent', command: FAKE_CLAUDE });
+  await svall.api.call('robots.set', { enabled: true });
+  await svall.open('map');
+
+  const tok = page.getByTestId(`token-${agent.id}`);
+  await expect(tok.locator('.stage')).toHaveAttribute('data-robot', String(robotOf(agent)));
+  await expect(tok.locator('.stage > svg.portrait')).toBeVisible();
+  await expect(tok).toHaveAttribute('data-status', 'idle', { timeout: 15_000 });
+  await expect(tok.locator('.edge i')).toHaveCount(0);
+
+  await svall.api.call('char.run', { id: agent.id, text: 'block', enter: true });
+  await expect(tok.locator('.foot .sw')).toHaveText('blocked', { timeout: 15_000 });
+  await expect(tok.locator('.gem')).toHaveCount(0);
+
+  await svall.api.call('robots.set', { enabled: false });
+  await expect(tok.locator('.portrait')).toHaveAttribute('src', `./animals/${agent.portrait}.svg`);
+  await expect(tok.locator('.edge i')).toHaveCount(0);
+});
+
+test('with robots on, the corner marks lift with their card and leave a full rail of links to click', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('robots'), seed: 3 });
+  const agent = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'agent', command: FAKE_CLAUDE });
+  const links = Array.from({ length: 4 }, (_, i) => ({ kind: 'other' as const, ref: `https://example.com/${i}`, label: `link ${i}`, source: 'manual' as const }));
+  await svall.api.call('char.update', { id: agent.id, context: links });
+  await svall.api.call('robots.set', { enabled: true });
+  await showLinks(page);
+  await svall.open('map');
+  const tok = page.getByTestId(`token-${agent.id}`);
+  await expect(tok).toHaveAttribute('data-status', 'idle', { timeout: 15_000 });
+  await svall.api.call('char.run', { id: agent.id, text: 'monitor', enter: true });
+  await expect(page.getByTestId(`token-monitor-${agent.id}`)).toBeVisible({ timeout: 15_000 });
+
+  // the mark against the card's top-right corner, once the card's lift has run
+  const offset = () => tok.evaluate(async (el) => {
+    await Promise.all(el.getAnimations({ subtree: true }).filter((a) => a instanceof CSSTransition).map((a) => a.finished));
+    const c = el.querySelector('.card')!.getBoundingClientRect(), g = el.querySelector('.corner .mark')!.getBoundingClientRect();
+    return { x: g.right - c.right, y: g.top - c.top };
+  });
+  const rest = await offset();
+  await tok.locator('.card').hover();
+  for (const lifted of [await offset(), (await tok.locator('.card').click(), await offset())]) {
+    expect(Math.abs(lifted.x - rest.x)).toBeLessThan(1);
+    expect(Math.abs(lifted.y - rest.y)).toBeLessThan(1);
+  }
+
+  await tok.locator('.chip.lk').first().click({ position: { x: 14, y: 2 } });
+  await expect(page.getByTestId('link-ask')).toBeVisible();
+});
+
+test('the subagents running stand counted on the card\'s top-left corner until they stop', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('subs'), seed: 3 });
+  const agent = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'agent', command: FAKE_CLAUDE });
+  await svall.open('map');
+  const tok = page.getByTestId(`token-${agent.id}`);
+  await expect(tok).toHaveAttribute('data-status', 'idle', { timeout: 15_000 });
+  await svall.api.call('char.run', { id: agent.id, text: 'subagent', enter: true });
+  const mark = page.getByTestId(`token-subs-${agent.id}`);
+  await expect(mark).toHaveText('1', { timeout: 15_000 });
+  await expect(mark).toHaveAttribute('title', '1 subagent running');
+  const left = await tok.evaluate((el) => el.querySelector('.mark.subs')!.getBoundingClientRect().left - el.querySelector('.card')!.getBoundingClientRect().left);
+  expect(left).toBeLessThan(0);
+  await svall.api.call('char.run', { id: agent.id, text: 'subagent done', enter: true });
+  await expect(mark).toBeHidden({ timeout: 15_000 });
+});
+
+test('with robots on, mission control\'s crew stand as robots, and so does one dragged out', async ({ page, svall }) => {
+  const mc = await svall.api.call('char.create', { islandId: 'home', cwd: '/tmp', name: 'mc' });
+  await svall.api.call('robots.set', { enabled: true });
+  await svall.open('map');
+  await settleMap(page);
+  const robot = String(robotOf(mc));
+  await expect(page.getByTestId(`token-${mc.id}`).locator('.stage')).toHaveAttribute('data-robot', robot);
+
+  const box = (await page.getByTestId(`token-${mc.id}`).locator('.card').boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y - 240, { steps: 6 });
+  await expect.poll(() => page.locator('.tok.drag .stage').evaluateAll((els) => els.map((e) => e.getAttribute('data-robot')))).toEqual([robot]);
+  await page.mouse.up();
+});
+
+test('with robots on, a robot card plays one of its actions now and then and comes back to still', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('robots'), seed: 3 });
+  const agent = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'agent', command: FAKE_CLAUDE });
+  await svall.api.call('char.update', { id: agent.id, robot: 8 });
+  await svall.api.call('robots.set', { enabled: true });
+  await svall.open('map');
+  const bot = page.getByTestId(`token-${agent.id}`).locator('.stage > svg.portrait');
+  await expect(bot).toHaveClass(/\br08\b/);
+
+  // an idle robot first rests up to 3.5s, and an action lasts under 2.2s
+  await expect(bot).toHaveAttribute('data-act', /\w/, { timeout: 10_000 });
+  // every part at one rate, so the action takes its length give or take a tenth; read in the page while
+  // data-act is set, since a 0.4s blink can end before a second call, and then wait for the next action
+  const rates = await bot.evaluate(
+    (el) =>
+      new Promise<number[]>((done) => {
+        const read = () => {
+          if (el.dataset.act) done(el.getAnimations({ subtree: true }).map((a) => a.playbackRate));
+          return !!el.dataset.act;
+        };
+        if (!read()) new MutationObserver(read).observe(el, { attributeFilter: ['data-act'] });
+      }),
+  );
+  expect(rates.length).toBeGreaterThan(0);
+  expect(new Set(rates).size).toBe(1);
+  expect(rates[0]).toBeGreaterThanOrEqual(1 / 1.1);
+  expect(rates[0]).toBeLessThanOrEqual(1 / 0.9);
+  await expect(bot).not.toHaveAttribute('data-act', { timeout: 5_000 });
+  expect(await bot.evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(0);
 });
 
 test('pans by dragging water and by wheel, clamped', async ({ page, svall }) => {
@@ -412,19 +532,34 @@ test('an arranged fleet keeps every label pill clear of the cards around it', as
   }
 });
 
-test('a token shows four links, and past that three and a count of the rest', async ({ page, svall }) => {
+test('a token shows three links, and past that two and a count of the rest', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('rail'), seed: 3 });
   const links = (n: number) => Array.from({ length: n }, (_, i) => ({ kind: 'other' as const, ref: `https://example.com/${i}`, label: `link ${i}`, source: 'manual' as const }));
-  const four = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'four' });
+  const three = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'three' });
   const ten = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'ten' });
-  await svall.api.call('char.update', { id: four.id, context: links(4) });
+  await svall.api.call('char.update', { id: three.id, context: links(3) });
   await svall.api.call('char.update', { id: ten.id, context: links(10) });
+  await showLinks(page);
   await svall.open('map');
 
-  await expect(page.getByTestId(`token-${four.id}`).locator('.chip.lk')).toHaveCount(4);
-  await expect(page.getByTestId(`token-more-${four.id}`)).toHaveCount(0);
-  await expect(page.getByTestId(`token-${ten.id}`).locator('.chip.lk')).toHaveCount(3);
-  await expect(page.getByTestId(`token-more-${ten.id}`)).toHaveText('+7');
+  await expect(page.getByTestId(`token-${three.id}`).locator('.chip.lk')).toHaveCount(3);
+  await expect(page.getByTestId(`token-more-${three.id}`)).toHaveCount(0);
+  await expect(page.getByTestId(`token-${ten.id}`).locator('.chip.lk')).toHaveCount(2);
+  await expect(page.getByTestId(`token-more-${ten.id}`)).toHaveText('+8');
+});
+
+test('a card keeps its links off until the settings show them', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('links'), seed: 3 });
+  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'linked' });
+  await svall.api.call('char.update', { id: c.id, context: [{ kind: 'other', ref: 'https://example.com/a', label: 'a', source: 'manual' }] });
+  await svall.open('map');
+
+  const tok = page.getByTestId(`token-${c.id}`);
+  await expect(tok.locator('.card')).toBeVisible();
+  await expect(tok.locator('.chip.lk')).toHaveCount(0);
+  await page.getByTestId('settings-open').click();
+  await page.getByTestId('set-card-links').click();
+  await expect(tok.locator('.chip.lk')).toHaveCount(1);
 });
 
 test('a crowded crew never covers the card beside it, link rails and all', async ({ page, svall }) => {
@@ -437,6 +572,7 @@ test('a crowded crew never covers the card beside it, link rails and all', async
   // a second island far down the map pushes the fit past the scale where cards stop shrinking, which is
   // where a card stands largest against the cells and two of them come closest to touching
   await svall.api.call('island.create', { name: svall.uniq('far'), seed: 2, position: { x: 0, y: 40 } });
+  await showLinks(page);
   await svall.open('map');
   await settleMap(page);
   expect((await layoutOf(page)).scale).toBeLessThanOrEqual(theme.token.floor);
@@ -458,19 +594,43 @@ test('a crowded crew never covers the card beside it, link rails and all', async
   }
 });
 
-test('mission control cards stand as big as island cards once the fleet zooms the map out', async ({ page, svall }) => {
+test('mission control cards stand as big as island cards however far the fleet zooms the map', async ({ page, svall }) => {
   const mc = await svall.api.call('char.create', { islandId: 'home', cwd: '/tmp', name: 'mc' });
   const island = await svall.api.call('island.create', { name: svall.uniq('near'), seed: 1, position: { x: 0, y: 0 } });
   const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'isl' });
-  // a far island zooms the map out past the scale where cards stop keeping their size
-  await svall.api.call('island.create', { name: svall.uniq('far'), seed: 2, position: { x: 0, y: 40 } });
+  const cards = () => Promise.all([mc.id, c.id].map(async (id) => (await page.getByTestId(`token-${id}`).locator('.card').boundingBox())!));
   await svall.open('map');
   await settleMap(page);
-  expect((await layoutOf(page)).scale).toBeLessThan(theme.token.floor);
-  const [home, own] = await Promise.all([mc.id, c.id].map(async (id) => (await page.getByTestId(`token-${id}`).locator('.card').boundingBox())!));
+  expect((await layoutOf(page)).scale).toBeGreaterThan(1);
+  const [homeUp, ownUp] = await cards();
+  expect(ownUp.width).toBeGreaterThan(tokenPx.w + 1);
+  expect(Math.abs(homeUp.width - ownUp.width)).toBeLessThan(1);
+  expect(Math.abs(homeUp.height - ownUp.height)).toBeLessThan(1);
+
+  // a far island zooms the map out past the scale where cards stop keeping their size
+  await svall.api.call('island.create', { name: svall.uniq('far'), seed: 2, position: { x: 0, y: 40 } });
+  await expect.poll(async () => (await layoutOf(page)).scale).toBeLessThan(theme.token.floor);
+  await settleMap(page);
+  const [home, own] = await cards();
   expect(own.width).toBeLessThan(80);
   expect(Math.abs(home.width - own.width)).toBeLessThan(1);
   expect(Math.abs(home.height - own.height)).toBeLessThan(1);
+});
+
+test('a mission control squeezed by a narrow map keeps its cards apart, and the island cards at their size', async ({ page, svall }) => {
+  // five crew make home 17 cells wide, too wide to stand beside the islet at full size
+  const crew: string[] = [];
+  for (let n = 0; n < 5; n++) crew.push((await svall.api.call('char.create', { islandId: 'home', cwd: '/tmp', name: `mc${n}` })).id);
+  const island = await svall.api.call('island.create', { name: svall.uniq('near'), seed: 1, position: { x: 0, y: 0 } });
+  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'isl' });
+  await svall.open('map');
+  await setMapWidth(page, 640);
+  await settleMap(page);
+  const box = async (id: string) => (await page.getByTestId(`token-${id}`).locator('.card').boundingBox())!;
+  await expect.poll(async () => (await box(crew[0])).width).toBeLessThan(tokenPx.w - 10);
+  const home = await Promise.all(crew.map(box)), own = await box(c.id);
+  for (let n = 1; n < home.length; n++) expect(home[n].x).toBeGreaterThan(home[n - 1].x + home[n - 1].width);
+  expect(Math.abs(home[0].width - own.width)).toBeLessThan(1);
 });
 
 test('a zoom rescales cards and label pills, and restyles nothing inside them', async ({ page, svall }) => {
@@ -497,7 +657,8 @@ test('a zoom rescales cards and label pills, and restyles nothing inside them', 
   const near = (await layoutOf(page)).scale;
   expect(near).toBeGreaterThan(1);
   const up = await read();
-  expect(up.card).toBeCloseTo(cardScale(near), 2);
+  // mission control stands at full size, and no card outgrows its slots
+  expect(up.card).toBeCloseTo(sharedCardScale(near, 1), 2);
   expect(up.pill).toBeCloseTo(labelScale(near), 2);
   expect(up.inside).toEqual(['1', '1']);
   expect(up.mapCell).toBe(up.rootCell);

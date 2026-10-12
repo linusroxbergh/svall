@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Svall</title>
-<meta name="description" content="A macOS map of your Claude Code and Codex agents. One look shows which are working, which need you and which are done.">
+<meta name="description" content="A macOS map of your Claude Code, Codex and OpenCode agents. One look shows which are working, which need you and which are done.">
 <meta name="theme-color" content="#2B3645">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -90,10 +90,11 @@ main { overflow-x: clip; }
 .narrow .hero, .narrow .features { max-width: 520px; }
 .narrow .features { margin-top: 64px; }
 .features h2 { margin: 0 0 14px; font-size: 1.0625rem; font-weight: 600; letter-spacing: -.01em; }
-:is(.features, .how) ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+:is(.features, .how, .ctx) ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
 .how ul { max-width: 560px; }
-:is(.features, .how) li { position: relative; padding-left: 20px; color: var(--body); line-height: 1.5; text-wrap: pretty; }
-:is(.features, .how) li::before { content: ''; position: absolute; left: 2px; top: .62em; width: 7px; height: 7px; border-radius: 50%;
+.ctx ul { margin-top: 18px; }
+:is(.features, .how, .ctx) li { position: relative; padding-left: 20px; color: var(--body); line-height: 1.5; text-wrap: pretty; }
+:is(.features, .how, .ctx) li::before { content: ''; position: absolute; left: 2px; top: .62em; width: 7px; height: 7px; border-radius: 50%;
   background: var(--grass-hi); box-shadow: 0 0 0 2px color-mix(in srgb, var(--sand) 55%, transparent); }
 .features b { font-weight: 600; color: var(--ink); }
 
@@ -104,7 +105,7 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
 .sub { margin: 14px 0 0; font-size: 1.0625rem; color: var(--body); text-wrap: pretty; }
 
 
-/* ⌘G: a scene drawn with the app's own map, one short caption under it for the beat on screen */
+/* ⌘G: a scene drawn with the app's own map */
 .scene { position: relative; }
 /* it stands on the page's own sea: its edges fade into it, and mission control and the lighthouse stand up from the
    foot so their land fades out rather than ends */
@@ -116,11 +117,6 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
 .scene-map .home, .scene-map .res-islet { bottom: 64px; }
 .scene-map .res-islet { --lh: 100px; }
 .scene-map > .world { position: absolute; transform-origin: 0 0; filter: brightness(var(--map-tone)); }
-.cap { display: grid; margin: 0; font-size: .875rem; color: var(--ink-2); }
-.cap span { grid-area: 1 / 1; display: flex; align-items: center; gap: 10px; opacity: 0; translate: 0 3px; transition: opacity .35s var(--ease), translate .35s var(--ease); }
-.cap span[data-on] { opacity: 1; translate: 0 0; }
-.cap span::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--sand); }
-.cap span:empty { visibility: hidden; }
 /* a new island rises out of the sea; a new card drops onto it */
 .rise, .pop { --k: inherit; --lk: inherit; }
 .rise > .island { animation: rise .9s var(--ease-out) both; }
@@ -149,18 +145,29 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
   background: var(--glass-hi); border: 1px solid var(--line-strong); box-shadow: 0 3px 0 var(--shade-2); transition: translate .1s, box-shadow .1s; }
 .keycap[data-on="true"] kbd { translate: 0 2px; box-shadow: 0 1px 0 var(--shade-2); }
 
-/* one character in six views, shown one at a time; a view fades in over the last */
+/* one character in four views, shown one at a time; a view fades in over the last */
 .tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; width: max-content; max-width: 100%; margin: 0 0 20px; padding: 3px; border-radius: 12px;
   background: var(--glass); border: 1px solid var(--line-soft); }
 .tabs button { padding: 7px 14px; border: 0; border-radius: 9px; background: none; cursor: pointer;
   font: 500 .875rem/1 var(--sans); color: var(--ink-2); transition: background .16s var(--ease), color .16s var(--ease); }
 .tabs button:hover { color: var(--ink); }
 .tabs button[aria-selected="true"] { background: var(--fill-2); color: var(--ink); }
-.frame { display: grid; container-type: inline-size; }
-.frame > * { grid-area: 1 / 1; visibility: hidden; opacity: 0; transition: opacity .3s var(--ease), visibility 0s .3s; }
-.frame > .on { visibility: visible; opacity: 1; transition: opacity .3s var(--ease); }
-.frame > img, .view-phone > img { display: block; width: 100%; height: auto; filter: drop-shadow(0 24px 40px var(--shade-2)); }
-.views-foot { margin-top: 16px; }
+/* while the views turn by themselves, the open tab's pill fills from a shade dimmer to its tint for as long as it stays,
+   and the pills hand over slowly */
+.tabs button { position: relative; }
+.tabs[data-auto] button { transition-duration: .6s; }
+.tabs[data-auto] button[aria-selected="true"] { background: var(--fill-1); }
+.tabs button::after { content: ''; position: absolute; inset: 0; border-radius: 9px; background: color-mix(in srgb, var(--fill-1) 72%, transparent);
+  opacity: 0; transition: opacity .6s var(--ease); }
+.tabs[data-auto] button[aria-selected="true"]::after { opacity: 1; clip-path: inset(0 100% 0 0 round 9px); animation: dwell var(--dwell, 6s) linear forwards; }
+.tabs[data-auto="paused"] button[aria-selected="true"]::after { animation-play-state: paused; }
+@keyframes dwell { to { clip-path: inset(0 0 0 0 round 9px); } }
+/* one shadow under whatever the frame shows, so two views mid-fade don't stack theirs */
+.frame { display: grid; container-type: inline-size; filter: drop-shadow(0 24px 40px var(--shade-2)); }
+/* the old view stays opaque under the new one until it is covered, so the sea never shows through both */
+.frame > * { grid-area: 1 / 1; visibility: hidden; opacity: 0; transition: opacity 0s .6s, visibility 0s .6s; }
+.frame > .on { z-index: 1; visibility: visible; opacity: 1; transition: opacity .6s var(--ease); }
+.frame > img, .view-phone > img { display: block; width: 100%; height: auto; }
 
 /* the phone view: the window, and the phone the fleet opens on standing over it, sized off the frame */
 .view-phone { position: relative; }
@@ -176,12 +183,6 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
 /* context: the lighthouse's tree of levels beside the brief an agent starts with */
 .ctx { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 56px; align-items: center; }
 .ctx .sec-head { margin: 0; }
-.lh { display: flex; gap: 18px; align-items: flex-end; margin-top: 30px; color: var(--ink-2); font-size: .9375rem; }
-.lh-img { position: relative; flex: none; height: 116px; }
-.lh-img img { position: relative; height: 100%; filter: saturate(.9) contrast(.96) drop-shadow(0 2px 2px var(--shade-1)); }
-.lh-img::before { content: ''; position: absolute; left: 50%; top: 28%; width: 110px; height: 110px; translate: -50% -50%; border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--lamp) 42%, transparent) 0%, color-mix(in srgb, var(--lamp) 14%, transparent) 38%, transparent 68%); }
-.lh p { margin: 0; text-wrap: pretty; }
 .shelf { display: grid; grid-template-columns: 250px minmax(0, 1fr); border-radius: 14px; overflow: hidden;
   background: var(--surface-2); border: 1px solid var(--line); box-shadow: 0 30px 60px -20px var(--shade-2);
   zoom: .9; width: 90%; justify-self: end; }
@@ -233,7 +234,8 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
   .dl { margin-top: 22px; }
   .install pre { padding: 10px 4px 10px 12px; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .gh span { display: none; }
-  .tabs { grid-auto-flow: row; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
+  .tabs { width: 100%; }
+  .tabs button { padding-inline: 6px; }
   .shelf { grid-template-columns: minmax(0, 1fr); }
   .tree { display: none; }
   .brief .lvl { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; font: 500 .875rem/1.3 var(--sans); color: var(--ink); }
@@ -260,7 +262,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
 <div class="stage wrap">
   <section class="hero">
     <h1>Your coding agents, on one map.</h1>
-    <p class="lede">Svall puts each of your Claude Code and Codex agents on an island, so you have a clear overview of their work and easy access to relevant context &amp; resources. Each one runs in a real terminal on Svall’s own tmux server.</p>
+    <p class="lede">Svall puts your Claude Code, Codex and OpenCode agents on islands, so you have a clear overview of their work and easy access to relevant context &amp; resources. Each one runs in a real terminal on Svall’s own tmux server.</p>
     <a class="dl" href="/download">
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.5v9"/><path d="M6 9l4 4 4-4"/><path d="M4 15.5h12"/></svg>
       Download for Mac
@@ -272,7 +274,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
         <svg class="ok" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8"/></svg>
       </button>
     </div>
-    <p class="meta">Works with the Claude Code or Codex CLI. <a href="https://github.com/linusroxbergh/svall#build-from-source-svall-dev">Build from source</a></p>
+    <p class="meta">Works with the Claude Code CLI, the Codex CLI or OpenCode. <a href="https://github.com/linusroxbergh/svall#build-from-source-svall-dev">Build from source</a></p>
   </section>
   <div class="map"><div class="world map-world" inert></div></div>
   <section class="features">
@@ -288,60 +290,45 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
   </section>
 </div>
 
-<section class="sec wrap" aria-labelledby="flow-h">
-  <div class="sec-head">
-    <h2 id="flow-h">One prompt sets up a whole island.</h2>
-    <p class="sub">Press ⌘G and ask mission control, or ask any agent. It makes the island and its characters with the <code>svall</code> CLI, and each one starts your own Claude Code or Codex.</p>
-  </div>
-  <div class="scene" role="img" aria-label="Pressing Command G opens mission control's prompt. The prompt asks for an island to review three open PRs. A new island appears and three review characters land on it and start working."><div class="scene-map" inert></div></div>
-</section>
-
 <section class="sec wrap" aria-labelledby="views-h">
   <div class="sec-head">
     <h2 id="views-h">Terminal, browser and files beside every agent.</h2>
   </div>
   <div class="tabs" role="tablist" aria-label="Views">
-    <button type="button" role="tab" aria-selected="true" aria-controls="shot">Map</button>
-    <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Terminal</button>
-    <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Browser</button>
+    <button type="button" role="tab" aria-selected="true" aria-controls="shot">Browser</button>
     <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Files</button>
     <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Markdown</button>
-    <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Phone</button>
+    <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1" style="--dwell: 8s">Phone</button>
   </div>
   <div class="frame" id="shot" role="tabpanel">
-    <img class="on" src="shots/map.avif?v=5e164cb0" loading="lazy" alt="The map: islands in the middle, the island list on the left, a character's settings on the right">
-    <img src="shots/terminal.avif?v=78f58b2c" loading="lazy" alt="A character's Claude Code session across the whole window">
-    <img src="shots/browser.avif?v=1dc4418f" loading="lazy" alt="Claude Code on the left, the character's browser on the right">
-    <img src="shots/files.avif?v=d9c2a73e" loading="lazy" alt="Claude Code on the left, the character's files on the right">
-    <img src="shots/markdown.avif?v=92c7856b" loading="lazy" alt="Claude Code on the left, the repo's README as formatted text on the right">
+    <img class="on" src="shots/browser.avif?v=41ebe118" loading="lazy" alt="Claude Code on the left, the character's browser on the right">
+    <img src="shots/files.avif?v=2459eb7b" loading="lazy" alt="Claude Code on the left, the character's files on the right">
+    <img src="shots/markdown.avif?v=da41ad8b" loading="lazy" alt="Claude Code on the left, the repo's README as formatted text on the right">
     <div class="view-phone" role="img" aria-label="The map on the Mac with the phone's QR code open, and a phone beside it showing the fleet, then an agent's terminal">
-      <img src="shots/phone.avif?v=9dde80e6" loading="lazy" alt="">
+      <img src="shots/phone.avif?v=6e4dd86e" loading="lazy" alt="">
       <div class="phone">
-        <div class="phone-screen"><img src="shots/phone-list.avif?v=62044f50" loading="lazy" alt=""><img src="shots/phone-terminal.avif?v=962308d4" loading="lazy" alt=""></div>
+        <div class="phone-screen"><img src="shots/phone-list.avif?v=42165325" loading="lazy" alt=""><img src="shots/phone-terminal.avif?v=e63db485" loading="lazy" alt=""></div>
       </div>
     </div>
   </div>
-  <div class="views-foot">
-    <p class="cap" aria-live="polite">
-      <span data-on></span>
-      <span>Claude Code or Codex in a real terminal</span>
-      <span>A browser beside it, for the PR</span>
-      <span>Its files and the working tree’s changes</span>
-      <span>Markdown as formatted text</span>
-      <span>Every terminal on your phone over Tailscale, with a notification when an agent is done or needs you</span>
-    </p>
+</section>
+
+<section class="sec wrap" aria-labelledby="flow-h">
+  <div class="sec-head">
+    <h2 id="flow-h">One prompt sets up a whole island.</h2>
+    <p class="sub">Press ⌘G and ask mission control, or ask any agent. It makes the island and its characters with the <code>svall</code> CLI, and each one starts your own Claude Code, Codex or OpenCode.</p>
   </div>
+  <div class="scene" role="img" aria-label="Pressing Command G opens mission control's prompt. The prompt asks for an island to review three open PRs. A new island appears and three review characters land on it and start working."><div class="scene-map" inert></div></div>
 </section>
 
 <section class="sec wrap ctx" aria-labelledby="ctx-h">
   <div>
     <div class="sec-head">
-      <h2 id="ctx-h">Every agent starts with a brief.</h2>
-      <p class="sub">Instructions and links for each island and character, and notes agents leave for the next one. An agent gets what applies to it when it starts, and an update when something changes.</p>
-    </div>
-    <div class="lh">
-      <span class="lh-img"><img src="lighthouse.svg" alt=""></span>
-      <p>The lighthouse holds it all, with your skills, MCP servers and hooks, ready to edit.</p>
+      <h2 id="ctx-h">Easy overview of context &amp; docs.</h2>
+      <ul>
+        <li>Instructions and links for each fleet, repo, island and character, and notes agents leave for the next one.</li>
+        <li>An agent gets what applies to it when it starts, and an update when something changes.</li>
+      </ul>
     </div>
   </div>
   <div class="shelf">
@@ -391,10 +378,11 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     <h2 id="how-h">How it works</h2>
   </div>
   <ul>
-    <li>Claude Code and Codex report to Svall through their own hooks, so a card changes the moment its agent starts, asks or finishes.</li>
+    <li>Claude Code, Codex and OpenCode report to Svall through hooks, so a card changes the moment its agent starts, asks or finishes.</li>
     <li>Each agent runs in a real terminal on Svall’s own tmux server, apart from yours.</li>
-    <li>Quitting stops the agents. Opening a character again resumes its conversation with <code>claude --resume</code> or <code>codex resume</code>.</li>
-    <li>No account and no telemetry. Setup adds Svall’s hook to Claude Code and Codex, and <code>svall uninstall</code> takes it out.</li>
+    <li>Quitting stops the agents. Opening a character again resumes its conversation with <code>claude --resume</code>, <code>codex resume</code> or <code>opencode -s</code>.</li>
+    <li>No account and no telemetry. Setup adds Svall’s hook to Claude Code and Codex and its plugin to OpenCode, and <code>svall uninstall</code> takes them out.</li>
+    <li>Setup, the <code>svall</code> CLI and every file Svall writes are covered in the README on <a href="https://github.com/linusroxbergh/svall">GitHub</a>.</li>
   </ul>
 </section>
 
@@ -429,17 +417,15 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     });
   }
 
-  // a tab shows its view and its caption; the arrow keys walk the tabs
+  // a tab shows its view; the arrow keys walk the tabs
   const tabs = [...document.querySelectorAll('.tabs [role=tab]')], views = [...document.querySelector('.frame').children];
-  const caps = [...document.querySelectorAll('.views-foot .cap span')];
   const show = (i) => tabs.forEach((t, k) => {
     t.setAttribute('aria-selected', String(k === i));
     t.tabIndex = k === i ? 0 : -1;
     views[k].classList.toggle('on', k === i);
-    caps[k].toggleAttribute('data-on', k === i);
   });
   tabs.forEach((t, i) => {
-    t.addEventListener('click', () => show(i));
+    t.addEventListener('click', () => { stop(); show(i); });
     t.addEventListener('keydown', (e) => {
       const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
       if (!step) return;
@@ -448,6 +434,23 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
       tabs[n].focus();
     });
   });
+
+  // the views turn by themselves while on screen, each for its tab's line; hovering pauses them, and a tab clicked or
+  // focused stops them for good
+  const list = document.querySelector('.tabs');
+  let auto = !matchMedia('(prefers-reduced-motion: reduce)').matches, onScreen = false, hovered = false;
+  const sync = () => { if (auto) list.dataset.auto = onScreen && !hovered ? 'on' : 'paused'; };
+  const stop = () => { auto = false; delete list.dataset.auto; };
+  if (auto) {
+    sync();
+    tabs.forEach((t, i) => t.addEventListener('animationend', (e) => { if (auto && e.animationName === 'dwell') show((i + 1) % tabs.length); }));
+    new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; sync(); }, { threshold: .5 }).observe(document.querySelector('.frame'));
+    for (const el of [list, document.querySelector('.frame')]) {
+      el.addEventListener('pointerenter', () => { hovered = true; sync(); });
+      el.addEventListener('pointerleave', () => { hovered = false; sync(); });
+    }
+    list.addEventListener('focusin', stop);
+  }
 
   // a row hovered or picked in the tree lights its level's lines in the brief; picking it again lets go
   const shelf = document.querySelector('.shelf'), rows = [...shelf.querySelectorAll('.tier')];

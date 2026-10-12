@@ -3,7 +3,7 @@ import { emptyState, type ContextItem } from '@svall/protocol';
 import type { Api } from '../src/api.js';
 import type { Bridge, FromShell, ToShell } from '../src/bridge.js';
 import type { BrowserManager } from '../src/browser.js';
-import { closeCharacter, dispatchKey, installKeyHandlers } from '../src/keyboard.js';
+import { closeCharacter, dispatchKey, installKeyHandlers, openFleetPicker } from '../src/keyboard.js';
 import { panesOf } from '../src/selectors.js';
 import { createAppStore } from '../src/store/index.js';
 import { chr, fleet, isl } from './fixtures.js';
@@ -53,14 +53,20 @@ describe('dispatchKey', () => {
     await dispatchKey({ type: 'newCharacter' }, c);
     expect(c.store.getState()).toMatchObject({ fleetPicker: undefined, namingCharacter: true });
   });
+  it('the fleet picker from the menu stops a shortcut row waiting under it', () => {
+    const c = ctx();
+    c.store.getState().toggleSettings(true);
+    c.store.getState().setCapturingKey('quit');
+    openFleetPicker(c.store);
+    expect(c.store.getState()).toMatchObject({ fleetPicker: 'menu', settingsOpen: true, capturingKey: undefined });
+  });
   it('Cmd+W asks before closing the selected character, and takes the other dialogs down', async () => {
     const c = ctx();
     c.store.getState().select('c0');
     c.store.getState().setMissionPrompt(true);
-    c.store.getState().toggleKeys(true);
     await dispatchKey({ type: 'closeCharacter' }, c);
     expect(c.calls).toEqual([]);
-    expect(c.store.getState()).toMatchObject({ closingCharacter: 'c0', missionPrompt: false, keysOpen: false, selectedId: 'c0' });
+    expect(c.store.getState()).toMatchObject({ closingCharacter: 'c0', missionPrompt: false, selectedId: 'c0' });
     await dispatchKey({ type: 'newCharacter' }, c);
     expect(c.store.getState()).toMatchObject({ closingCharacter: undefined, namingCharacter: true });
   });
@@ -146,6 +152,35 @@ describe('dispatchKey', () => {
     expect(c.store.getState().view).toBe('board');
     await dispatchKey({ type: 'toggleView' }, c);
     expect(c.store.getState()).toMatchObject({ view: 'map', selectedId: 'c1' });
+  });
+  it('walks a starred character on a collapsed island until the starred section folds', async () => {
+    const c = ctx();
+    const f = fleet();
+    f.characters.c1.star = 0;
+    f.islands.i_b.collapsed = true;
+    c.store.getState().setFleet(f);
+    c.store.getState().select('c2');
+    await dispatchKey({ type: 'nextCharacter' }, c);
+    expect(c.store.getState().selectedId).toBe('c1');
+    c.store.getState().setSection('sidebar.starred', { shut: true }, false);
+    await dispatchKey({ type: 'nextCharacter' }, c);
+    expect(c.store.getState().selectedId).toBe('c2');
+  });
+  it('walks a starred character on its island row and on its Starred row', async () => {
+    const c = ctx();
+    const f = fleet();
+    f.characters.c0.star = 0;
+    c.store.getState().setFleet(f);
+    c.store.getState().select('c2');
+    const walk = async (type: 'nextCharacter' | 'prevCharacter') => { await dispatchKey({ type }, c); return c.store.getState().selectedId; };
+    expect(await walk('nextCharacter')).toBe('c0');
+    expect(await walk('nextCharacter')).toBe('c1');
+    expect(await walk('nextCharacter')).toBe('c0');
+    expect(c.store.getState().starredRow).toBe('c0');
+    expect(await walk('nextCharacter')).toBe('c2');
+    expect(c.store.getState().starredRow).toBeUndefined();
+    expect(await walk('prevCharacter')).toBe('c0');
+    expect(await walk('prevCharacter')).toBe('c1');
   });
   it('walks the whole fleet with the card open', async () => {
     const c = ctx();
@@ -490,6 +525,17 @@ describe('dispatchKey on the map', () => {
     await dispatchKey({ type: 'nextIsland' }, c);
     expect(c.store.getState().card).toBe('c2');
   });
+  it('from an island picked on the map the keys start at its first character', async () => {
+    const c = ctx();
+    c.store.getState().focus('c1');
+    c.store.getState().closeCard();
+    c.store.getState().selectIsland('i_b');
+    await dispatchKey({ type: 'nextCharacter' }, c);
+    expect(c.store.getState().selectedId).toBe('c0');
+    c.store.getState().selectIsland('i_b');
+    await dispatchKey({ type: 'prevCharacter' }, c);
+    expect(c.store.getState().selectedId).toBe('c2');
+  });
   it('Cmd+W closes the card first, then the selected character', async () => {
     const c = ctx();
     c.store.getState().focus('c0');
@@ -591,6 +637,8 @@ describe('dispatchKey on the map', () => {
     c.store.getState().toggleUsage(false);
     c.store.getState().toggleMobile(true);
     enter();
+    c.store.getState().toggleSettings(true);
+    enter();
     expect(c.store.getState().card).toBeUndefined();
   });
   it('Enter on the board behind an overlay leaves the keys with the overlay', () => {
@@ -607,8 +655,11 @@ describe('dispatchKey on the map', () => {
     c.store.getState().setMissionPrompt(false);
     c.store.getState().toggleUsage(true);
     enter();
-    expect(focused()).toEqual([]);
     c.store.getState().toggleUsage(false);
+    c.store.getState().toggleSettings(true);
+    enter();
+    expect(focused()).toEqual([]);
+    c.store.getState().toggleSettings(false);
     enter();
     expect(focused()).toEqual([{ type: 'term.focus', id: 'c1' }]);
   });
@@ -618,9 +669,10 @@ describe('dispatchKey on the map', () => {
     const win = { addEventListener: (t: string, h: (e: KeyboardEvent) => void) => { listeners[t] = h; }, removeEventListener() {} } as unknown as Window;
     installKeyHandlers(c, win);
     c.store.getState().focus('c1');
+    c.store.getState().toggleResources(true);
     c.store.getState().toggleSettings(true);
     listeners.keydown({ key: 'Escape', target: { tagName: 'DIV' }, preventDefault() {} } as unknown as KeyboardEvent);
-    expect(c.store.getState()).toMatchObject({ settingsOpen: false, card: 'c1' });
+    expect(c.store.getState()).toMatchObject({ settingsOpen: false, resourcesOpen: true, card: 'c1' });
   });
   it('Escape closes the card, then the side card', () => {
     const c = ctx(true);

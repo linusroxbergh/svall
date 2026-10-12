@@ -53,6 +53,8 @@
   --shell: #EAF1EE;
   --sel: #8ED0FF;
   --star: var(--pt-sun);
+  /* a PR waiting on its reviewers */
+  --review: #C3A8C9; --ink-on-review: #33253A;
 
   --pt-sky: #78B0C4;
   --pt-sun: #E0BB55;
@@ -102,14 +104,14 @@
 
   --dur-fast: .12s; --dur: .16s; --dur-slow: .2s;
   /* the periods of the looping animations */
-  --pulse-fast: 1.2s; --pulse: 1.8s; --pulse-slow: 3.2s; --swell: 48s; --swell-2: 67s;
+  --pulse-fast: 1.2s; --pulse: 1.8s; --pulse-slow: 3.2s; --sheen: 4.5s; --swell: 48s; --swell-2: 67s;
 
   --w-light: 300; --w-regular: 400; --w-medium: 500; --w-semibold: 600; --w-bold: 700;
   --track-tight: -.02em; --track-loose: .06em; --track-caps: .12em; --track-wide: .18em;
 
   /* app layers; the integers inside a token or island order its own parts */
   --z-scenery: 35; --z-furniture: 40; --z-popover: 60; --z-hover: 70;
-  --z-card: 80; --z-shelf: 82; --z-usage: 85; --z-ask: 88; --z-toast: 90; --z-modal: 200;
+  --z-card: 80; --z-shelf: 82; --z-settings: 84; --z-usage: 85; --z-ask: 88; --z-toast: 90; --z-modal: 200;
 
   /* one dark shade, light to heavy, for overlays and shadows */
   --shade-0: rgba(10,18,24,.15); --shade-1: rgba(10,18,24,.25);
@@ -120,7 +122,7 @@
   --ring: 0 0 0 3px color-mix(in srgb, var(--sel) 25%, transparent);
 
   /* ink on a status fill */
-  --ink-on-blocked: #3A0E09; --ink-on-done: #06231E;
+  --ink-on-working: #3A2406; --ink-on-blocked: #3A0E09; --ink-on-done: #06231E;
   /* the statuses printed on a card's cream paper: darker than the lit ones so they hold contrast there */
   --working-ink: #EB992E; --blocked-ink: #C94A45; --done-ink: #4BB3A1;
 

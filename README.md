@@ -7,7 +7,9 @@ A macOS map of your Claude Code, Codex and OpenCode agents. Every terminal is a
 character on an island, so you can see at a glance which agents are working,
 waiting on you or done.
 
-![The map: islands of characters, the islands panel on the left and a character's side card on the right](assets/svall_overview.jpg)
+![The map: islands of characters, the islands panel and the phone's QR code on the left, and a phone showing the same fleet as a list](assets/svall_overview.jpg)
+
+![A character's Claude Code session on the left and its browser on a GitHub issue on the right](assets/svall_browser.jpg)
 
 - Islands group your characters, say one per project, on a map or a board.
   Each card shows its agent's status, context use, model and links such as its
@@ -43,8 +45,8 @@ CLIs.
 
 1. Install the [Claude Code CLI](https://code.claude.com/docs/en/setup), which
    works with a Claude subscription or an Anthropic API key, or the
-   [Codex CLI](https://learn.chatgpt.com/docs/codex/cli) 0.155 or newer, which
-   works with an OpenAI API key alone, or [OpenCode](https://opencode.ai/docs/)
+   [Codex CLI](https://learn.chatgpt.com/docs/codex/cli) 0.156 or newer, which
+   works with an OpenAI API key alone, or [OpenCode](https://opencode.ai/v2/docs/)
    2.0.22 or newer, which runs on OpenCode Zen's free models without an account
    or on any provider you sign in to. See [Using API keys](#using-api-keys).
 
@@ -59,17 +61,18 @@ CLIs.
 
 3. Open Svall. The setup screen lists the agents it found and asks for your
    projects folder. **Review changes** lists the files it will write. If it
-   finds neither CLI, it shows how to install one and checks again when you
-   return. Its hooks do nothing outside Svall;
+   finds none of the three CLIs, it shows how to install one and checks again
+   when you return. Its hooks do nothing outside Svall;
    [What setup changes](#what-setup-changes) has the details. If
    `~/.local/bin` isn't on your PATH, it shows the line to add to your shell
    profile so the `svall` command works.
 
-4. `+ New island` on the sandbar at the bottom makes an island, and Cmd+T makes
-   a character on it: a shell that becomes an agent when you type `claude`,
-   `codex` or `opencode`. With more than one CLI installed, the app asks which
-   one the scribe and mission control run. Change it later in Settings or with
-   `svall agent codex`.
+4. A new fleet opens with Island 1 holding one character, a shell in your
+   projects folder, and a short tour of the map. The shell becomes an agent
+   when you type `claude`, `codex` or `opencode`. `+ New island` on the sandbar
+   at the bottom makes another island, and Cmd+T another character. With more
+   than one CLI installed, the app asks which one the scribe and mission
+   control run. Change it later in Settings or with `svall agent codex`.
 
 ## Using Svall
 
@@ -106,9 +109,9 @@ An `OPENAI_API_KEY` in the fleet's `.env` reaches new character shells, but
 Codex doesn't log in from it. See the
 [Codex authentication guide](https://learn.chatgpt.com/docs/auth).
 
-For OpenCode, sign in to a provider with `opencode auth login`, or set the
-provider's key (such as `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`) in the fleet's
-`.env`. OpenCode reads both.
+For OpenCode, sign in to a provider with `opencode auth login`. An
+`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in the fleet's `.env` also reaches new
+character shells, but not the OpenCode scribe.
 
 The scribe and mission control run the main agent's CLI, so a Codex-only
 install needs no Claude login. The Usage panel shows Claude and Codex plan
@@ -234,10 +237,10 @@ The first build takes several minutes and about 1.5 GB of disk.
   `done`. An agent idle or done for 12 hours is closed to free its memory and
   resumes when you open its terminal; Settings → close idle agents after
   changes the wait or turns it off.
-- **Scribe**: a minute after an agent stops with new work, and about every ten
-  minutes while it keeps working, a headless `claude -p`, `codex exec` or
-  `opencode run` writes the character's name, note and links, and the island's
-  description. Notes you wrote stay, and a name you gave only gains a PR or
+- **Scribe**: about a minute after an agent stops with new work, and every ten
+  minutes or so while it keeps working, a headless `claude -p`, `codex exec`
+  or `opencode run` writes the character's name, note and links, and the
+  island's description. Notes you wrote stay, and a name you gave only gains a PR or
   ticket id. Passes start at most once a minute, so a busy fleet can run 60 an
   hour, and each costs money on an API key. A new fleet asks before turning the
   scribe on, and you can turn it off in Settings.
@@ -266,20 +269,20 @@ The first build takes several minutes and about 1.5 GB of disk.
 - **Resources** (Cmd+Shift+R, or the lighthouse islet): what `~/.claude`,
   `~/.codex`, the fleet's docs and each repository give your agents.
   `~/.claude.json` and `~/.codex/auth.json` hold tokens and never open.
-- **Settings** (Cmd+,): display, browser, keyboard, notifications, phone, and
-  the fleet's name, main agent, scribe and idle timeout. `Usage`, next to it,
-  shows the plan limits of your running agents without using any.
+- **Settings** (Cmd+,): this machine, browser, keyboard, notifications, phone,
+  and the fleet's name, main agent, scribe and idle timeout. `Usage`, next to
+  it, shows the plan limits of your running agents without using any.
 
 ### Keyboard
 
 Terminals are Ghostty surfaces and read your Ghostty config. The app takes the
 chords below and passes everything else to the terminal. Rebind or clear any of
-them under *The keyboard* in Settings. A chord your Ghostty config binds when
+them under *Keyboard* in Settings. A chord your Ghostty config binds when
 Svall first launches stays with Ghostty until you claim it there.
 
 | Keys | Action | Keys | Action |
 | --- | --- | --- | --- |
-| Cmd+T | New character | Cmd+W | Close the card or character |
+| Cmd+T | New robot | Cmd+W | Close the card or character |
 | Cmd+J | Next character | Cmd+K | Previous character |
 | Cmd+Shift+J | Next island | Cmd+M | Map or board |
 | Cmd+I | Side card | Cmd+Enter | Card size |
@@ -370,7 +373,7 @@ Its `fleet.json` holds what travels with the fleet wherever it runs, and
 | `agentsOff` | `node.json` | The agents the private fleet's setup leaves off, writing no hooks or plugin for them. Every other agent found is on. Set by the setup screen or `svall setup --agents`. |
 | `integrations` | `node.json` | The agents left on, of `claude` and `codex`, read when there is no `agentsOff`; `opencode` counts as on. Setup replaces it with `agentsOff`. |
 | `home` | `fleet.json` | Mission control: `cwd` for its crew, the `command` that starts an agent (default the main agent's: `claude --model sonnet`, `codex` or `opencode`), and `actions`, one `{ "label", "prompt" }` per button. A button's `/name` prompt reaches a Codex crew as `$name`. |
-| `scribe` | `fleet.json` | `agent` (default the main agent) and `model`, a model of `agent`'s CLI, or of Claude's when `agent` is unset (default `sonnet` for Claude, the CLI's own for Codex and OpenCode). |
+| `scribe` | `fleet.json` | `agent` (default the main agent) and `model`, a model of `agent`'s CLI, or of Claude's when `agent` is unset (default `haiku` for Claude, `gpt-6-luna` at low effort for Codex, the CLI's own for OpenCode). |
 | `mobile` | `fleet.json` | `logins` to let in (only yours when empty), extra page `origins` allowed to open a socket, and a `pushContact` (https: or mailto:) for push services. |
 | `mobile.httpsPort` | `node.json` | The tailscale serve port this fleet is reached on, which Svall saves. |
 | `handover` | `fleet.json` | [Remote machines](docs/remote-machines/README.md): `enabled` turns them on, `exclude` adds patterns a handover leaves out, `excludeDefaults: false` drops the defaults, and `transferFleetEnv: true` carries the fleet's `.env`. |
@@ -419,18 +422,20 @@ and `opencode pair` outside a character.
 
 The setup screen runs `svall setup`, which also works without the app
 (`--check` only checks). It changes nothing while something it needs is
-missing. For each agent you leave on, it writes:
+missing. For each agent you leave on, it writes the files below, and for each
+one you turn off it takes them out:
 
 - `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`, on Linux
   the one your login shell sets): a hook on Claude Code's session, prompt,
-  tool, permission, notification and stop events, which exits before starting
-  Node outside a character, and a statusline wrapper that keeps your own
-  statusline running inside it.
+  tool, permission, notification, subagent and stop events, which exits before
+  starting Node outside a character, and a statusline wrapper that keeps your
+  own statusline running inside it.
 - `~/.codex/hooks.json` (or `$CODEX_HOME/hooks.json`): the same hook.
 - `~/.config/opencode/plugins/svall.js` (or under `$XDG_CONFIG_HOME`): Svall's
   OpenCode plugin.
 
-Every change keeps a `.bak-<time>` copy. Setup also writes:
+A change to the Claude Code or Codex file keeps a `.bak-<time>` copy. Setup
+also writes:
 
 - `~/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld*.plist`, one per
   fleet, which the app uses to start each daemon.
@@ -514,5 +519,6 @@ The first `pnpm e2e` needs
 
 ## License
 
-MIT, see [`LICENSE`](LICENSE). The animal portraits, the lighthouse icon and
-the fonts are not MIT: each folder has its own licence file.
+MIT, see [`LICENSE`](LICENSE). The animal and robot portraits, the lighthouse
+icon and the fonts are not MIT. The portraits' and fonts' folders each have a
+licence file, and the lighthouse is Flaticon art under the animals' licence.

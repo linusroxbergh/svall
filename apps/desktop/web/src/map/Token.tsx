@@ -1,12 +1,16 @@
 import type { Cell, Character, ContextItem } from '@svall/protocol';
-import { contextPctOf, isUnread, slotStatus, type DisplayStatus } from '../selectors.js';
+import { memoByValue } from '../hooks.js';
+import { BotGlyph, EyeGlyph, PrGlyph, reviewText, subagentsText } from '../indicators.js';
+import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, slotStatus, subagentCount, type DisplayStatus } from '../selectors.js';
 import { LinkIcon } from './LinkIcon.js';
-import { portraitTint, portraitUrl } from '../portraits.js';
+import { Robot } from './Robot.js';
+import { portraitTint, portraitUrl, robotOf } from '../portraits.js';
 import { theme, tokenPx } from '../theme.js';
+import { seedNum } from './coast.js';
 import { GAUGE_R, gaugeDash, hintText, statusWord } from './tokenText.js';
 import type { PointerHandlers } from './types.js';
 
-const RAIL_MAX = 4;
+const RAIL_MAX = 3;
 
 function footInner(c: Character, status: DisplayStatus, word: string | undefined, failed: string | undefined) {
   return (
@@ -16,8 +20,7 @@ function footInner(c: Character, status: DisplayStatus, word: string | undefined
           <i className="pip" data-status={slotStatus(c, 1)} /><i className="pip" data-status={slotStatus(c, 2)} />
         </span>
       )}
-      {status === 'working' && <span className="dots" aria-hidden="true"><i /><i /><i /></span>}
-      {word &&<span className="sw" style={{ background: `var(--${status})`, color: `var(--ink-on-${status})` }}>{word}</span>}
+      {word && <span className="sw" data-status={status} style={{ backgroundColor: `var(--${status})`, color: `var(--ink-on-${status})` }}>{word}</span>}
       {failed && <span className="sw" data-testid={`token-resume-error-${c.id}`} title={failed} style={{ background: 'var(--blocked)', color: 'var(--ink-on-blocked)' }}>resume failed</span>}
       {c.hint && <span className="sw" data-testid={`token-hint-${c.id}`} title={hintText(c)} style={{ background: 'var(--blocked)', color: 'var(--ink-on-blocked)' }}>/hooks</span>}
     </>
@@ -31,11 +34,15 @@ function gem(status: DisplayStatus, unread: boolean) {
   return null;
 }
 
-export function Token({
-  c, status, world, selected, dragging, settling, hover, offset, failed, pointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu,
+export const Token = memoByValue(function Token({
+  c, status, world, robots, links, selected, dragging, settling, hover, offset, failed, pointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu,
 }: {
   c: Character;
   status: DisplayStatus;
+  // the robot stands under the name and the top edge fills with the context used, with no gem: the foot says the status
+  robots?: boolean;
+  // the link chips on the card's right edge
+  links?: boolean;
   world: Cell;
   selected: boolean;
   dragging: boolean;
@@ -55,7 +62,11 @@ export function Token({
   // the rail holds RAIL_MAX chips; past that the last one counts the rest
   const shown = c.context.length > RAIL_MAX ? c.context.slice(0, RAIL_MAX - 1) : c.context;
   const hidden = c.context.slice(shown.length);
-  const cls = ['tok', `s-${status}`, selected ? 'sel' : '', dragging ? 'drag' : ''].filter(Boolean).join(' ');
+  const cls = ['tok', `s-${status}`, robots ? 'bot' : '', selected ? 'sel' : '', dragging ? 'drag' : ''].filter(Boolean).join(' ');
+  const review = inReview(c) ? mainPr(c) : undefined;
+  const monitor = isMonitoring(c);
+  const subs = subagentCount(c);
+  const pct = contextPctOf(c);
   return (
     <div
       className={cls}
@@ -74,6 +85,7 @@ export function Token({
         ['--tok' as string]: `${theme.token.unit}px`,
         ['--card-w' as string]: `${tokenPx.w}px`,
         ['--card-h' as string]: `${tokenPx.h}px`,
+        ['--grain' as string]: `${Math.round(seedNum(c.id) * 96)}px ${Math.round(seedNum(c.id + '~') * 96)}px`,
       }}
       {...pointer}
       onPointerEnter={onHoverStart}
@@ -81,20 +93,29 @@ export function Token({
       onContextMenu={onMenu}
     >
       <div className="card">
-        <div className="edge" />
-        <div className="pf">
-          <div className="disc-wrap">
-            <svg className="gauge" viewBox="0 0 72 72" aria-hidden="true">
-              <circle className="track" cx="36" cy="36" r={GAUGE_R} />
-              <circle className="arc" cx="36" cy="36" r={GAUGE_R} strokeDasharray={gaugeDash(contextPctOf(c))} />
-            </svg>
-            <div className="disc" data-tint={portraitTint(c.portrait)}>
-              <img className="portrait portrait-img" src={portraitUrl(c.portrait)} alt="" draggable={false} />
+        <div className="edge">{robots && pct !== undefined && <i style={{ width: `${pct}%` }} />}</div>
+        {robots ? (
+          <>
+            <div className="nm"><span>{c.name}</span></div>
+            <Robot n={robotOf(c)} />
+          </>
+        ) : (
+          <>
+            <div className="pf">
+              <div className="disc-wrap">
+                <svg className="gauge" viewBox="0 0 72 72" aria-hidden="true">
+                  <circle className="track" cx="36" cy="36" r={GAUGE_R} />
+                  <circle className="arc" cx="36" cy="36" r={GAUGE_R} strokeDasharray={gaugeDash(pct)} />
+                </svg>
+                <div className="disc" data-tint={portraitTint(c.portrait)}>
+                  <img className="portrait portrait-img" src={portraitUrl(c.portrait)} alt="" draggable={false} />
+                </div>
+                {gem(status, isUnread(c))}
+              </div>
             </div>
-            {gem(status, isUnread(c))}
-          </div>
-        </div>
-        <div className="nm"><span>{c.name}</span></div>
+            <div className="nm"><span>{c.name}</span></div>
+          </>
+        )}
         <button
           type="button"
           className="foot"
@@ -111,7 +132,37 @@ export function Token({
           </svg>
         </button>
       </div>
-      {c.context.length > 0 && (
+      {(review || monitor || subs > 0) && (
+        <span className="corner">
+          <span className="marks">
+            {review && (
+              <button
+                type="button"
+                className="mark review"
+                data-testid={`token-review-${c.id}`}
+                title={reviewText(review)}
+                aria-label={reviewText(review)}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onLink(review, c.id, { x: e.clientX, y: e.clientY });
+                }}
+              >
+                <PrGlyph />
+              </button>
+            )}
+            {monitor && <span className="mark monitor" title="Monitoring" data-testid={`token-monitor-${c.id}`}><EyeGlyph /></span>}
+          </span>
+          {subs > 0 && (
+            <span className="marks left">
+              <span className="mark subs" role="img" title={subagentsText(subs)} aria-label={subagentsText(subs)} data-testid={`token-subs-${c.id}`}>
+                <BotGlyph /><b>{subs}</b>
+              </span>
+            </span>
+          )}
+        </span>
+      )}
+      {links && c.context.length > 0 && (
         <div className="rail">
           {shown.map((l, i) => (
             <button
@@ -138,4 +189,4 @@ export function Token({
       )}
     </div>
   );
-}
+});

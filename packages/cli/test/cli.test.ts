@@ -47,8 +47,8 @@ describe('svall argument parsing', () => {
     expect((await run({}, 'help', 'status')).stdout).toMatch(/Usage: svall status/);
   });
 
-  it('tells an agent how to hand work to a new character in char new --help', async () => {
-    expect((await run({}, 'char', 'new', '--help')).stdout).toMatch(/Handing work to a new character:\n {2}svall char new --island <id>/);
+  it('tells an agent how to hand work to a new robot in char new --help', async () => {
+    expect((await run({}, 'char', 'new', '--help')).stdout).toMatch(/Handing work to a new robot:\n {2}svall char new --island <id>/);
   });
 
   it('prints the commit it runs from for --version', async () => {
@@ -581,8 +581,16 @@ runIf('svall CLI', () => {
     expect((await svall('island', 'show', second.id)).stdout).toContain('Second https://x');
     const c = JSON.parse((await svall('char', 'new', '--island', island.id, '--cwd', '/tmp', '--name', 'worker', '--json')).stdout);
     expect(c.name).toBe('worker');
-    expect((await svall('char', 'run', c.id, 'echo', 'from-cli')).code).toBe(0);
+    expect(await svall('char', 'run', c.id, 'echo', 'from-cli')).toMatchObject({ code: 0, stdout: 'delivered\n' });
     await waitFor(async () => (await svall('char', 'read', c.id)).stdout.includes('from-cli'));
+    const asked = JSON.parse((await svall('char', 'new', '--island', island.id, '--cwd', '/tmp', '--name', 'asked', '--json')).stdout);
+    const hook = { charId: asked.id, backend: 'claude', sessionId: 'sess' } as const;
+    daemon.fleet.onSocketEvent({ hook: { ...hook, name: 'SessionStart', transcriptPath: '/nope' } });
+    // the pane runs a shell, so the agent's prompt line is never in view
+    expect(await svall('char', 'run', asked.id, 'go')).toMatchObject({ code: 0, stdout: 'queued: it goes in once the prompt line is clear\n' });
+    daemon.fleet.onSocketEvent({ hook: { ...hook, name: 'Notification', notificationType: 'permission_prompt', message: 'may I' } });
+    expect(await svall('char', 'run', asked.id, 'go')).toMatchObject({ code: 2, stdout: '', stderr: 'refused: asked is waiting on an answer (may I); answer it, then send again\n' });
+    expect((await svall('char', 'close', asked.id)).code).toBe(0);
 
     const list = (await svall('char', 'list')).stdout;
     expect(list).toContain('worker');
@@ -612,7 +620,7 @@ runIf('svall CLI', () => {
     expect(updated.context).toEqual([{ kind: 'other', ref: 'https://x?a=b', label: 'Keep me', source: 'manual' }]);
 
     expect(JSON.parse((await svall('char', 'update', c.id, '--instructions', 'in Spanish', '--pin', 'https://x?a=b', '--json')).stdout)).toMatchObject({ instructions: 'in Spanish', context: [{ ref: 'https://x?a=b', pinned: true }] });
-    expect((await svall('char', 'show', c.id)).stdout).toContain('Character instructions: in Spanish');
+    expect((await svall('char', 'show', c.id)).stdout).toContain('Robot instructions: in Spanish');
     expect(JSON.parse((await svall('char', 'update', c.id, '--agent-profile', 'reviewer', '--json')).stdout).agentProfile).toBe('reviewer');
     expect((await svall('char', 'show', c.id)).stdout).toContain('Agent profile: reviewer — follow this role.\nYou are an independent code reviewer.');
     const unknown = await svall('char', 'update', c.id, '--agent-profile', 'nobody');
@@ -621,7 +629,8 @@ runIf('svall CLI', () => {
     expect(JSON.parse((await svall('char', 'update', c.id, '--agent-profile', '', '--json')).stdout).agentProfile).toBeUndefined();
 
     const status = (await svall('status')).stdout;
-    expect(status).toMatch(/1 character/);
+    // worker, and the shell a new fleet opens with
+    expect(status).toMatch(/2 character/);
     expect(status).toContain('worker');
     expect(status).toContain('second');
     expect((await svall('char', 'close', c.id)).code).toBe(0);

@@ -1,16 +1,18 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AGENT_LABEL, AgentKind, DORMANT_AFTER_HOURS, fleetNameProblem, type PushStatus } from '@svall/protocol';
-import { loadMobileStatus, renameFleet, setDormancy, setMainAgent, setScribe, setWorktrees } from './actions.js';
+import { loadMobileStatus, renameFleet, setDormancy, setMainAgent, setRobots, setScribe, setWorktrees } from './actions.js';
 import { app, deps } from './boot.js';
 import { openConfig, openUrl, shim } from './bridge.js';
+import { holdCutout } from './cutout.js';
 import { AS_TYPED } from './Field.js';
 import { useApp } from './hooks.js';
 import { Info } from './Info.js';
+import { Keybindings } from './Keybindings.js';
 import { chordLabel, chordsOf, keyLabel, keyTip } from './keys.js';
 import { MobileSwitch } from './PhonePanel.js';
 import { NO_PAGE, phonesHere } from './phoneText.js';
 import { directoryName } from './selectors.js';
-import { canFill, OPACITY, zoomBy, type NotifySettings, type Settings } from './settings.js';
+import { canFill, OPACITY, zoomBy, type KeepAwake, type NotifySettings, type Settings } from './settings.js';
 
 const set = (patch: Partial<Settings>) => app.store.getState().setSettings(patch);
 
@@ -33,7 +35,6 @@ function Phone() {
   useEffect(() => loadMobileStatus(deps()), []);
   return (
     <>
-      <div className="kicker">Your phone</div>
       <div className="rows">
         <div className="row">
           <span>serve this fleet<Info id="phone">Reachable only on your tailnet. Needs <a href="https://tailscale.com/download" target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); openUrl(app.bridge, e.currentTarget.href); }}>Tailscale</a> on this Mac and the phone.</Info></span>
@@ -127,20 +128,14 @@ function FleetName() {
   );
 }
 
-// every control for another machine waits on fleet.json's handover.enabled; the CLI is always there
 function Machines() {
-  const enabled = useApp((s) => !!s.shell?.handoverEnabled);
-  if (!enabled) return null;
   return (
-    <>
-      <div className="kicker">Machines</div>
-      <div className="rows">
-        <div className="row">
-          <span>another machine<Info id="hosts">Set a Linux machine up to run this fleet: Svall installs itself there over ssh, checks what it needs, and reports what is still to do. <code>svall host</code> does the same from a terminal.</Info></span>
-          <b><button className="btn set-open" data-testid="settings-hosts" onClick={() => app.store.getState().toggleHost(true)}>Set up</button></b>
-        </div>
+    <div className="rows">
+      <div className="row">
+        <span>another machine<Info id="hosts">Set a Linux machine up to run this fleet: Svall installs itself there over ssh, checks what it needs, and reports what is still to do. <code>svall host</code> does the same from a terminal.</Info></span>
+        <b><button className="btn set-open" data-testid="settings-hosts" onClick={() => app.store.getState().toggleHost(true)}>Set up</button></b>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -150,9 +145,9 @@ function Scribe() {
   const scribeAgent = useApp((s) => s.fleet.scribeAgent ?? 'claude');
   const flip = () => setScribe(deps(), !on);
   const worktrees = useApp((s) => !s.fleet.worktreesOff);
+  const robots = useApp((s) => !s.fleet.animals);
   return (
     <>
-      <div className="kicker">The fleet</div>
       <div className="rows">
         <FleetName />
         <MainAgent />
@@ -167,8 +162,17 @@ function Scribe() {
           </div>
         )}
         <div className="row">
-          <span>work in worktrees<Info id="worktrees">A character started on a task in a git repo is told to work in a worktree no other agent works in, not the main checkout. One you open from the map stays where you open it.</Info></span>
+          <span>work in worktrees<Info id="worktrees">Each agent in a git repo is told to make a new worktree for its task and leave the main checkout alone unless you say so.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={worktrees} data-testid="set-worktrees" onClick={() => setWorktrees(deps(), !worktrees)}>{worktrees ? 'on' : 'off'}</button></b>
+        </div>
+        <div className="row">
+          <span>characters<Info id="robots">How characters look, here and on your phone.</Info></span>
+          <b className="set-pick" role="radiogroup" aria-label="Characters">
+            {(['animals', 'robots'] as const).map((k) => (
+              <button key={k} className="set-switch" role="radio" aria-checked={robots === (k === 'robots')} data-pick={k}
+                onClick={() => setRobots(deps(), k === 'robots')}>{k}</button>
+            ))}
+          </b>
         </div>
         <Dormancy />
       </div>
@@ -201,7 +205,6 @@ function Notifications() {
   };
   return (
     <>
-      <div className="kicker">Notifications</div>
       <div className="rows">
         <div className="row">
           <span>notifications<Info id="notify">macOS banners when a character needs you or is done. Approve and Deny work from the banner.</Info></span>
@@ -235,7 +238,6 @@ function Update() {
   if (!version) return null;
   return (
     <>
-      <div className="kicker">Updates</div>
       <div className="rows">
         <div className="row">
           <span>Svall {version} is out</span>
@@ -246,25 +248,15 @@ function Update() {
   );
 }
 
-export function SettingsCard() {
-  const { cardOpacity, fullOpacity, zoom, onePassword, usageTab, autoArrange, bindings } = useApp((s) => s.settings);
+// kept in this window's storage, not the fleet's: another machine on the same fleet keeps its own
+function Machine() {
+  const { cardOpacity, fullOpacity, zoom, usageTab, autoArrange, cardLinks, robotMotion, bindings, keepAwake } = useApp((s) => s.settings);
   const zoomOut = keyLabel('zoomOut', bindings), zoomReset = keyLabel('zoomReset', bindings);
   // on its shipped chord zoom in also answers ⌘+, the name macOS gives the key
   const zoomIn = chordsOf('zoomIn', bindings).includes('cmd++') ? chordLabel('cmd++') : keyLabel('zoomIn', bindings);
-  const fillKey = keyLabel('fillLogin', bindings);
-  const op = useApp((s) => !!s.shell?.op);
-  const fills = useApp(canFill);
   const shell = app.bridge.present;
   return (
-    <aside className="side" data-testid="settings">
-      {/* kept in this window's storage, not the fleet's: another machine on the same fleet keeps its own */}
-      <div className="kicker">
-        This machine
-        <span className="spacer" />
-        <button className="side-x" data-testid="settings-close" title={keyTip('Close', 'toggleSettings', bindings)} aria-label="Close the settings"
-          onClick={() => app.store.getState().toggleSettings(false)}>×</button>
-      </div>
-      <h2 className="h2">Settings</h2>
+    <>
       <div className="rows">
         <div className="row">
           <span>zoom<Info id="zoom">{zoomOut && zoomIn ? `${zoomOut} and ${zoomIn} scale` : 'Scales'} the map, panels and terminal text.{zoomReset && ` ${zoomReset} sets 100%.`}</Info></span>
@@ -287,10 +279,31 @@ export function SettingsCard() {
             onClick={() => set({ autoArrange: !autoArrange })}>{autoArrange ? 'on' : 'off'}</button></b>
         </div>
         <div className="row">
+          <span>links on cards<Info id="card-links">Link chips beside each card on the map. Hovering a card lists its links either way.</Info></span>
+          <b><button className="set-switch" role="switch" aria-checked={cardLinks} data-testid="set-card-links"
+            onClick={() => set({ cardLinks: !cardLinks })}>{cardLinks ? 'on' : 'off'}</button></b>
+        </div>
+        <div className="row">
           <span>usage meter<Info id="usage">A sidebar button showing plan limits and when they reset.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={usageTab} data-testid="set-usage-tab"
             onClick={() => { if (usageTab) app.store.getState().toggleUsage(false); set({ usageTab: !usageTab }); }}>{usageTab ? 'on' : 'off'}</button></b>
         </div>
+        <div className="row">
+          <span>robot motion<Info id="robot-motion">Robots on the map act now and then, and stand still while a terminal is open.</Info></span>
+          <b><button className="set-switch" role="switch" aria-checked={robotMotion} data-testid="set-robot-motion"
+            onClick={() => set({ robotMotion: !robotMotion })}>{robotMotion ? 'on' : 'off'}</button></b>
+        </div>
+        {shell && (
+          <div className="row">
+            <span>keep Mac awake<Info id="keep-awake">Stops idle sleep so agents keep running and your phone reaches the fleet. The screen still dims and locks, and nothing is held on battery. A server an agent leaves running keeps it awake up to 30 minutes after an agent last did something, and so does a character waiting on you or your phone when set to need you. Each fleet sets its own.</Info></span>
+            <b><select className="fld inline" aria-label="Keep Mac awake" value={keepAwake} data-testid="set-keep-awake"
+              onChange={(e) => set({ keepAwake: e.target.value as KeepAwake })}>
+              <option value="off">off</option>
+              <option value="working">while agents work</option>
+              <option value="needs">while agents work or need you</option>
+            </select></b>
+          </div>
+        )}
       </div>
       <div className="opens">
         <button className="btn" data-testid="settings-ghostty" disabled={!shell} title="Terminal font, colours and cursor"
@@ -298,7 +311,18 @@ export function SettingsCard() {
         <button className="btn" data-testid="settings-fleet" disabled={!shell} title="Mission control, fleet defaults, scribe, phone logins and handover"
           onClick={() => openConfig(app.bridge, 'fleet')}>Fleet config</button>
       </div>
-      <div className="kicker">The browser</div>
+    </>
+  );
+}
+
+function Browser() {
+  const onePassword = useApp((s) => s.settings.onePassword);
+  const fillKey = keyLabel('fillLogin', useApp((s) => s.settings.bindings));
+  const op = useApp((s) => !!s.shell?.op);
+  const fills = useApp(canFill);
+  const shell = app.bridge.present;
+  return (
+    <>
       <div className="rows">
         <div className="row">
           <span>1Password<Info id="1password">The key button by the address bar{fillKey && `, or ${fillKey},`} fills the saved login or one-time code.</Info></span>
@@ -312,18 +336,47 @@ export function SettingsCard() {
           onClick={() => app.bridge.send({ type: 'browser.importCookies' })}>Import Chrome cookies</button>
         <Info id="cookies">A one-time copy, so your Chrome sign-ins work here too.</Info>
       </div>
-      <div className="kicker">The keyboard</div>
-      <div className="rows">
-        <div className="row">
-          <span>keyboard shortcuts<Info id="keys">Unlisted ⌘ chords go to the terminal.</Info></span>
-          <b><button className="btn set-open" data-testid="settings-keys" onClick={() => app.store.getState().toggleKeys(true)}>Edit</button></b>
-        </div>
+    </>
+  );
+}
+
+const PANES = [
+  ['machine', 'This machine', Machine], ['browser', 'Browser', Browser], ['keyboard', 'Keyboard', Keybindings],
+  ['notifications', 'Notifications', Notifications], ['phone', 'Phone', Phone], ['fleet', 'The fleet', Scribe], ['machines', 'Machines', Machines],
+  ['updates', 'Updates', Update],
+] as const;
+type Pane = (typeof PANES)[number][0];
+
+// a window of its own over the middle of the app, so the terminals its sliders change stay in sight around it
+export function SettingsCard() {
+  const bindings = useApp((s) => s.settings.bindings);
+  const update = useApp((s) => s.update);
+  const handover = useApp((s) => !!s.shell?.handoverEnabled);
+  const shell = app.bridge.present;
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => (box.current ? holdCutout(app.bridge, box.current) : undefined), []);
+  const [picked, pick] = useState<Pane>('machine');
+  // banners need the shell, Machines waits on fleet.json's handover.enabled, and Updates stands only while one waits;
+  // a pane that goes leaves the first in its place
+  const tabs = PANES.filter(([p]) => (p !== 'notifications' || shell) && (p !== 'machines' || handover) && (p !== 'updates' || update));
+  const [pane, , Shown] = tabs.find(([p]) => p === picked) ?? tabs[0];
+  return (
+    <div className="set-win" ref={box} data-testid="settings" role="dialog" aria-label="Settings">
+      <div className="set-bar">
+        <h2>Settings</h2>
+        <button className="side-x" data-testid="settings-close" title={keyTip('Close', 'toggleSettings', bindings)} aria-label="Close the settings"
+          onClick={() => app.store.getState().toggleSettings(false)}>×</button>
       </div>
-      {shell && <Notifications />}
-      <Phone />
-      <Scribe />
-      <Machines />
-      <Update />
-    </aside>
+      <nav className="set-nav" role="tablist" aria-orientation="vertical">
+        {tabs.map(([p, label]) => (
+          <button key={p} role="tab" aria-selected={p === pane} data-testid={`settings-tab-${p}`} onClick={() => pick(p)}>
+            {label}{p === 'updates' && <i aria-hidden="true" />}
+          </button>
+        ))}
+      </nav>
+      <div className="side" role="tabpanel">
+        <Shown />
+      </div>
+    </div>
   );
 }

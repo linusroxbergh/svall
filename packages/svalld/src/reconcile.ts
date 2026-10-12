@@ -1,5 +1,5 @@
 import { DEFAULT_SIZE, randomPortrait, type Cell, type Character, type FleetState, type TerminalSlot } from '@svall/protocol';
-import { loseSecond, markDormant, markSlotDormant } from './dormancy.js';
+import { dropBrief, loseSecond, markDormant, markSlotDormant } from './dormancy.js';
 import { isCharId, newId } from './ids.js';
 import { defaultPosition, placeOnIsland } from './layout.js';
 import type { LiveWindow } from './tmux/tmux.js';
@@ -54,7 +54,7 @@ export function syncWindow(c: Character, byName: ReadonlyMap<string, LiveWindow>
   const w = byName.get(c.id);
   if (!w || w.dead) {
     // one already dormant keeps the revive it was given, flags and all
-    if (c.tmux || !c.revive) markDormant(c);
+    if (c.tmux || !c.revive) markDormant(c); else dropBrief(c);
     return undefined;
   }
   const held = carried(c.id);

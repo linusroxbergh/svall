@@ -1,8 +1,10 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import type { AgentKind } from '@svall/protocol';
 import { codexHookCommand, type CodexPaths } from './codex/install.js';
 import { hooksFor } from './hooks/receiver.js';
 import { HOOK_GUARD, helperBeside, helperOr, isOurs, resolvePaths } from './paths.js';
+import { variantOf } from './profile.js';
 import { bundled } from './runtime.js';
 import { readJsonSettings, readOrUndefined, requireWritable, same, writeJsonSettings, type JsonSettings } from './settings-file.js';
 import { shq, unshq } from './text.js';
@@ -30,9 +32,9 @@ const holdsHook = (settings: Record<string, unknown>, events: readonly string[],
   return events.some((ev) => (hooks[ev] ?? []).some((g) => (g.hooks ?? []).some((h) => isOurs(h.command, script))));
 };
 
-// an event Claude Code need not wait on: it only says a subagent is gone. PermissionRequest waits, so a question
+// events Claude Code need not wait on: they only say a subagent started or is gone. PermissionRequest waits, so a question
 // is on record before the tool call its answer lets through
-const ASYNC_HOOKS = new Set(['SubagentStop']);
+const ASYNC_HOOKS = new Set(['SubagentStart', 'SubagentStop']);
 
 export const mergeHooks = (settings: Record<string, unknown>, command: string, script: string, events: readonly string[] = hooksFor('claude')): Record<string, unknown> =>
   mergeOurHooks(settings, events, (ev) => ({ type: 'command', command, timeout: 10, ...(ASYNC_HOOKS.has(ev) && { async: true }) }), script, { matcher: '*' });
@@ -149,17 +151,24 @@ export function unmergeStatusLine(settings: Record<string, unknown>, script: str
 // the node setup ran with, or the one on PATH once a version manager has removed it
 export const nodeRun = (node: string, script: string): string => `n=${shq(node)}; [ -x "$n" ] || n=node; "$n" ${shq(script)}`;
 
+// runs `then` for an agent whose fleet is the other variant's, so the release's and Svall Dev's commands start nothing
+// for each other's agents; a home named like neither is Svall Dev's, as the scripts and the helper decide
+const ifOtherVariant = (script: string, then: string): string =>
+  variantOf(path.dirname(path.dirname(script))) === 'release'
+    ? `case \${SVALL_HOME##*/} in .svall-dev|.svall-dev-*) ${then};; esac`
+    : `case \${SVALL_HOME##*/} in .svall-dev|.svall-dev-*) ;; .svall|.svall-[a-z]*) ${then};; esac`;
+
 // every Claude session on the machine runs the statusline, so outside a character, or once the script
 // is gone, the one the user had runs on its own; inside one, the helper wraps it, or node where there is none
 export const statusWrapper = (node: string, script: string): string => {
   const helper = helperBeside(script);
-  return `svall_status() { if [ -n "$SVALL_CHAR_ID" ] && [ -x ${helper} ]; then shift; ${helper} status "$@"; elif [ -n "$SVALL_CHAR_ID" ] && [ -f "$1" ]; then n=${shq(node)}; [ -x "$n" ] || n=node; "$n" "$@"; elif [ -n "$2" ]; then c=$2; shift 2; eval "$c"; fi; }; svall_status ${shq(script)}`;
+  return `svall_status() { svall_c=$SVALL_CHAR_ID; ${ifOtherVariant(script, 'svall_c=')}; if [ -n "$svall_c" ] && [ -x ${helper} ]; then shift; ${helper} status "$@"; elif [ -n "$svall_c" ] && [ -f "$1" ]; then n=${shq(node)}; [ -x "$n" ] || n=node; "$n" "$@"; elif [ -n "$2" ]; then c=$2; shift 2; eval "$c"; fi; }; svall_status ${shq(script)}`;
 };
 
 // outside a character the shell exits before anything starts, as every session on the machine runs this hook;
 // $PPID is the agent, which tells it apart from a `claude -p` or `codex exec` run inside it
 export const hookCommand = (node: string, script: string, backend: AgentKind): string =>
-  `${HOOK_GUARD} { ${helperOr(script, `${backend} "$PPID"`, nodeRun(node, script))}; }`;
+  `${HOOK_GUARD} { ${ifOtherVariant(script, 'exit 0')}; ${helperOr(script, `${backend} "$PPID"`, nodeRun(node, script))}; }`;
 
 /** Codex's hooks file when Codex is wanted here (on PATH, or its home exists); throws on one that is not JSON. */
 export const readCodexHooks = (codex: CodexPaths, wanted = fs.existsSync(codex.dir)): JsonSettings | undefined =>

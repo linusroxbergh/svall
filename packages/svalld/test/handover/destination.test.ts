@@ -1873,7 +1873,7 @@ withTmux('destination activate on real terminals', () => {
     });
     const send = tmux.sendLine.bind(tmux);
     tmux.sendLine = async (paneId, text, enter) => {
-      const resume = /^(claude --resume|codex resume)(?: -c \S+)* (\S+)/.exec(text);
+      const resume = /^(claude --resume|codex resume)(?: --no-daemon)?(?: -c \S+)* (\S+)/.exec(text);
       if (!resume) return send(paneId, text, enter);
       const kind = resume[1] === 'codex resume' ? 'codex' : 'claude';
       if (o.dies === 'typed') await send(paneId, text, false);

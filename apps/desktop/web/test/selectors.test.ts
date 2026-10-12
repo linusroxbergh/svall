@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { emptyState } from '@svall/protocol';
-import { boardIsland, boardViewed, charactersByPriority, charactersOf, contextPctOf, countsByStatus, DISPLAY_STATUSES, firstOfNextIsland, homeIsland, islandStatus, islandsSorted, isUnread, isVeiled, neighbor, resumeErrorOf, selectedOf, slotStatus, statusOf, stripOrder, wantsUser } from '../src/selectors.js';
+import { emptyState, type ContextItem } from '@svall/protocol';
+import { boardIsland, boardViewed, charactersByPriority, charactersOf, contextPctOf, countsByStatus, DISPLAY_STATUSES, firstOfNextIsland, homeIsland, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, isVeiled, mainPr, neighbor, resumeErrorOf, selectedOf, slotStatus, statusOf, stripOrder, subagentCount, wantsUser } from '../src/selectors.js';
 import { chr, fleet } from './fixtures.js';
 
 describe('selectors', () => {
@@ -23,11 +23,11 @@ describe('selectors', () => {
     expect(charactersOf({ ...f }, 'i_b')).not.toBe(charactersOf(f, 'i_b'));
   });
   it('walks neighbours across the fleet in strip order with wrap-around', () => {
-    expect(neighbor(fleet(), 'c1', 1)?.id).toBe('c2');
-    expect(neighbor(fleet(), 'c0', -1)?.id).toBe('c2');
-    expect(neighbor(fleet(), 'c2', 1)?.id).toBe('c0');
-    expect(neighbor(fleet(), 'c2', -1)?.id).toBe('c1');
-    expect(neighbor(fleet(), undefined, 1)?.id).toBe('c2');
+    expect(neighbor(fleet(), 'c1', 1)?.c.id).toBe('c2');
+    expect(neighbor(fleet(), 'c0', -1)?.c.id).toBe('c2');
+    expect(neighbor(fleet(), 'c2', 1)?.c.id).toBe('c0');
+    expect(neighbor(fleet(), 'c2', -1)?.c.id).toBe('c1');
+    expect(neighbor(fleet(), undefined, 1)?.c.id).toBe('c2');
     expect(neighbor(emptyState(), undefined, 1)).toBeUndefined();
   });
   it('jumps to the first character of the next non-empty island', () => {
@@ -38,13 +38,30 @@ describe('selectors', () => {
   it('skips collapsed islands when walking and jumping', () => {
     const f = fleet();
     f.islands.i_b.collapsed = true;
-    expect(neighbor(f, 'c2', 1)?.id).toBe('c2');
-    expect(neighbor(f, 'c0', 1)?.id).toBe('c2');
+    expect(neighbor(f, 'c2', 1)).toBeUndefined();
+    expect(neighbor(f, 'c0', 1)?.c.id).toBe('c2');
     expect(firstOfNextIsland(f, 'c2')?.id).toBe('c2');
     expect(firstOfNextIsland(f, 'c0')?.id).toBe('c2');
     f.islands.i_a.collapsed = true;
     expect(neighbor(f, 'c2', -1)).toBeUndefined();
     expect(firstOfNextIsland(f, undefined)).toBeUndefined();
+  });
+  it('walks the sidebar rows: the starred while their section is open, then each open island, a starred character in both', () => {
+    const f = fleet();
+    f.characters.c0.star = 0;
+    const walk = (id: string, step: 1 | -1, onStar = false) => { const r = neighbor(f, id, step, true, onStar); return r && `${r.c.id}${r.starred ? '*' : ''}`; };
+    expect(walk('c2', 1)).toBe('c0');
+    expect(walk('c0', 1)).toBe('c1');
+    expect(walk('c1', 1)).toBe('c0*');
+    expect(walk('c0', 1, true)).toBe('c2');
+    expect(walk('c2', -1)).toBe('c0*');
+    expect(walk('c0', -1, true)).toBe('c1');
+    expect(walk('c1', -1)).toBe('c0');
+    expect(neighbor(f, 'c2', 1)?.c.id).toBe('c0');
+    f.islands.i_b.collapsed = true;
+    expect(walk('c2', 1)).toBe('c0*');
+    expect(walk('c0', 1)).toBe('c2');
+    expect(neighbor(f, 'c2', 1)).toBeUndefined();
   });
   it('derives a display status', () => {
     expect(statusOf(chr('x', 'i', { x: 0, y: 0 }))).toBe('shell');
@@ -57,19 +74,18 @@ describe('selectors', () => {
     }
   });
   it('anything the page spreads over a surface hides it first', () => {
-    const base = { namingCharacter: false, missionPrompt: false, closingCharacter: undefined, keysOpen: false, resourcesOpen: false, hostOpen: false, handoverOpen: false, fleet: fleet() };
+    const base = { namingCharacter: false, missionPrompt: false, closingCharacter: undefined, resourcesOpen: false, hostOpen: false, handoverOpen: false, fleet: fleet() };
     expect(isVeiled(base)).toBe(false);
     expect(isVeiled({ ...base, missionPrompt: true })).toBe(true);
     expect(isVeiled({ ...base, namingCharacter: true })).toBe(true);
     expect(isVeiled({ ...base, closingCharacter: 'c0' })).toBe(true);
     expect(isVeiled({ ...base, deletingIsland: 'i_e' })).toBe(true);
-    expect(isVeiled({ ...base, keysOpen: true })).toBe(true);
     expect(isVeiled({ ...base, hostOpen: true })).toBe(true);
     expect(isVeiled({ ...base, handoverOpen: true })).toBe(true);
     expect(isVeiled({ ...base, fleet: { ...fleet(), scribeAsk: true } })).toBe(true);
   });
   it('veils while the resources shelf is open', () => {
-    expect(isVeiled({ namingCharacter: false, missionPrompt: false, keysOpen: false, resourcesOpen: true, hostOpen: false, handoverOpen: false, fleet: fleet() })).toBe(true);
+    expect(isVeiled({ namingCharacter: false, missionPrompt: false, resourcesOpen: true, hostOpen: false, handoverOpen: false, fleet: fleet() })).toBe(true);
   });
 });
 
@@ -180,6 +196,39 @@ describe('a character with two sessions', () => {
     expect(contextPctOf(chr('c', 'i', at))).toBeUndefined();
     expect(isUnread(c)).toBe(true);
     expect(wantsUser(c)).toBe(true);
+  });
+  it('monitors in either session count', () => {
+    expect(isMonitoring(chr('c', 'i', at, { agent: { ...agent('idle'), monitors: ['m1'] } }))).toBe(true);
+    expect(isMonitoring(chr('c', 'i', at, { agent: agent('idle'), second: { ...second(), agent: { ...agent('idle'), monitors: ['m1'] } } }))).toBe(true);
+    expect(isMonitoring(chr('c', 'i', at, { agent: agent('idle'), second: second(agent('working')) }))).toBe(false);
+  });
+  it('counts the subagents of both sessions', () => {
+    expect(subagentCount(chr('c', 'i', at, { agent: agent('idle') }))).toBe(0);
+    expect(subagentCount(chr('c', 'i', at, { agent: { ...agent('working'), subagents: ['a1', 'a2'] }, second: { ...second(), agent: { ...agent('working'), subagents: ['b1'] } } }))).toBe(3);
+  });
+});
+
+describe('the PR in review', () => {
+  const pr = (n: number, prState?: ContextItem['prState']): ContextItem =>
+    ({ kind: 'pr', ref: `https://github.com/o/r/pull/${n}`, label: `#${n}`, source: 'auto', prState });
+  const issue: ContextItem = { kind: 'issue', ref: 'https://github.com/o/r/issues/3', label: '#3', source: 'auto' };
+  const withLinks = (...context: ContextItem[]) => chr('c', 'i', { x: 0, y: 0 }, { context });
+
+  it('is the first PR among the links, wherever the PR stands', () => {
+    expect(mainPr(withLinks(issue, pr(7, 'open'), pr(8, 'open')))?.ref).toBe('https://github.com/o/r/pull/7');
+    expect(mainPr(withLinks(issue))).toBeUndefined();
+  });
+  it('is in review only while open: not a draft, approved, sent back, merged, closed or unread', () => {
+    expect(inReview(withLinks(pr(7, 'open')))).toBe(true);
+    for (const s of ['draft', 'approved', 'changes', 'merged', 'closed', undefined] as const) expect(inReview(withLinks(pr(7, s)))).toBe(false);
+  });
+  it('goes by the main PR alone', () => {
+    expect(inReview(withLinks(pr(7, 'draft'), pr(8, 'open')))).toBe(false);
+  });
+  it('is the branch PR the user added by hand, ahead of a PR the scribe found', () => {
+    const found = { ...pr(5), source: 'scribe' as const }, added = { ...pr(7, 'open'), source: 'manual' as const };
+    expect(mainPr(withLinks(found, added))).toBe(added);
+    expect(inReview(withLinks(found, added))).toBe(true);
   });
 });
 

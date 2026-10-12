@@ -130,10 +130,11 @@ runIf('API', () => {
     const bad = await TestClient.connect(api.port, 'nope');
     await waitFor(() => bad.closeCode === 4401);
     const good = await TestClient.connect(api.port, 'secret');
-    const snap = (await good.call('state.get')) as { id: number; result: { version: number; islands: Record<string, { kind?: string }>; characters: unknown; home: { command: string } } };
+    const snap = (await good.call('state.get')) as { id: number; result: { version: number; islands: Record<string, { kind?: string }>; characters: Record<string, unknown>; home: { command: string } } };
     expect(snap.id).toBe(1);
     expect(snap.result.version).toBe(9);
-    expect(snap.result.characters).toEqual({});
+    // the shell a new fleet opens with
+    expect(Object.keys(snap.result.characters)).toHaveLength(1);
     expect(snap.result.islands.home.kind).toBe('home');
     expect(snap.result.home.command).toBe('claude --model sonnet');
     good.ws.close();

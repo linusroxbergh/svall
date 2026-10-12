@@ -42,6 +42,33 @@ describe('applyHook', () => {
     const again = applyHook(d, { charId: 'c_a', backend: 'claude', name: 'PreToolUse' }, 9);
     expect(again.unread).toBe(false);
   });
+  it('marks activity from tool calls at most every ten seconds, and from anything else at once', () => {
+    const w = applyHook(withAgent('idle'), { charId: 'c_a', backend: 'claude', name: 'UserPromptSubmit' }, 100);
+    const tool = (c: Character, name: HookEvent['name'], at: number) => applyHook(c, { charId: 'c_a', backend: 'claude', name }, at);
+    const pre = tool(w, 'PreToolUse', 5_000);
+    expect(pre).toEqual(w);
+    expect(tool(pre, 'PostToolUse', 10_099).agent?.lastActivityAt).toBe(100);
+    expect(tool(pre, 'PostToolUseFailure', 10_100).agent?.lastActivityAt).toBe(10_100);
+    expect(tool(pre, 'Stop', 5_001).agent?.lastActivityAt).toBe(5_001);
+  });
+  it("asks with Codex's own question tool until it runs or an Esc ends the turn; Claude's tools of that name do not ask", () => {
+    const codex = { ...withAgent('working'), agent: { ...withAgent('working').agent!, kind: 'codex' as const } };
+    const q = applyHook(codex, { charId: 'c_a', backend: 'codex', name: 'PreToolUse', toolName: 'request_user_input', message: 'Ship it?' }, 5);
+    expect(q.agent).toMatchObject({ status: 'blocked', prompt: 'Ship it?', askedTool: 'request_user_input' });
+    expect(applyHook(q, { charId: 'c_a', backend: 'codex', name: 'PostToolUse', toolName: 'exec_command' }, 6).agent?.status).toBe('blocked');
+    const answered = applyHook(q, { charId: 'c_a', backend: 'codex', name: 'PostToolUse', toolName: 'request_user_input' }, 6).agent!;
+    expect(answered.status).toBe('working');
+    expect(answered).not.toHaveProperty('askedTool');
+    expect(applyHook(q, { charId: 'c_a', backend: 'codex', name: 'Interrupt' }, 6).agent?.status).toBe('idle');
+    expect(applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'PreToolUse', toolName: 'request_user_input' }, 5).agent?.status).toBe('working');
+  });
+  it("ends a Claude subagent's open question with the interrupt that ended the turn", () => {
+    const asking = { ...withAgent('blocked'), agent: { ...withAgent('blocked').agent!, asking: ['a1'], promptId: 'q' } };
+    const c = applyHook(asking, { charId: 'c_a', backend: 'claude', name: 'Interrupt' }, 9).agent!;
+    expect(c.status).toBe('idle');
+    expect(c).not.toHaveProperty('asking');
+    expect(c).not.toHaveProperty('promptId');
+  });
   it('stays working when a turn ends with background agents still running', () => {
     const w = applyHook(withAgent('working'), { charId: 'c_a', backend: 'claude', name: 'Stop', backgroundTasks: 2 }, 8);
     expect(w.agent?.status).toBe('working');
@@ -54,6 +81,16 @@ describe('applyHook', () => {
     const idle = applyHook(w, { charId: 'c_a', backend: 'claude', name: 'Notification', notificationType: 'idle_prompt', backgroundTasks: 0 }, 9);
     expect(idle.agent?.status).toBe('idle');
     expect(idle.agent?.background).toBeUndefined();
+  });
+  it('marks the work left running as shells alone when no background agent is among it, until a turn or a list with none', () => {
+    const ev = (e: Partial<HookEvent>): HookEvent => ({ charId: 'c_a', backend: 'claude', name: 'Stop', ...e });
+    expect(applyHook(withAgent('working'), ev({ backgroundTasks: 2, backgroundAgents: 1 }), 8).agent).not.toHaveProperty('shellsOnly');
+    expect(applyHook(withAgent('working'), ev({ backgroundTasks: 2 }), 8).agent).not.toHaveProperty('shellsOnly');
+    const shells = applyHook(withAgent('working'), ev({ backgroundTasks: 1, backgroundAgents: 0 }), 8);
+    expect(shells.agent).toMatchObject({ status: 'working', background: true, shellsOnly: true });
+    expect(applyHook(shells, ev({ name: 'Notification', notificationType: 'idle_prompt' }), 9).agent).toMatchObject({ status: 'working', shellsOnly: true });
+    expect(applyHook(shells, ev({ name: 'UserPromptSubmit' }), 9).agent).not.toHaveProperty('shellsOnly');
+    expect(applyHook(shells, ev({ name: 'Notification', notificationType: 'idle_prompt', backgroundTasks: 0 }), 9).agent).not.toHaveProperty('shellsOnly');
   });
   it("finishes a turn that leaves only the session's monitors running, and forgets a monitor once no Stop lists it", () => {
     const ev = (e: Partial<HookEvent>): HookEvent => ({ charId: 'c_a', backend: 'claude', name: 'Stop', ...e });
@@ -226,6 +263,64 @@ describe("applyHook for a Claude subagent's question", () => {
     expect(applyHook(c, ev({ agentId: 'a1' }), 3).agent?.status).toBe('blocked');
     expect(applyHook(c, ev({ name: 'SubagentStop', agentId: 'a1' }), 3).agent?.status).toBe('blocked');
     expect(applyHook(c, ev({}), 3).agent?.status).toBe('working');
+  });
+});
+
+describe('applyHook for the subagents running', () => {
+  const ev = (o: Partial<HookEvent>): HookEvent => ({ charId: 'c_a', backend: 'claude', name: 'SubagentStart', sessionId: 's', ...o });
+  const running = (...ids: string[]) => ids.reduce((c, id, i) => applyHook(c, ev({ agentId: id }), 2 + i), withAgent('working'));
+
+  it('counts a subagent from its start to its stop, and one that starts again under its id', () => {
+    const two = running('a1', 'a2');
+    expect(two.agent?.subagents).toEqual(['a1', 'a2']);
+    const one = applyHook(two, ev({ name: 'SubagentStop', agentId: 'a1' }), 5);
+    expect(one.agent?.subagents).toEqual(['a2']);
+    expect(applyHook(one, ev({ name: 'SubagentStop', agentId: 'a2' }), 6).agent?.subagents).toBeUndefined();
+    expect(applyHook(one, ev({ agentId: 'a1' }), 6).agent?.subagents).toEqual(['a2', 'a1']);
+    expect(two.agent?.status).toBe('working');
+  });
+  it('leaves the character as it was on a start it already counts or a stop it never counted', () => {
+    const c = running('a1');
+    expect(applyHook(c, ev({ agentId: 'a1' }), 5)).toBe(c);
+    expect(applyHook(c, ev({ name: 'SubagentStop', agentId: 'a9' }), 5)).toBe(c);
+  });
+  it('keeps the newest 20', () => {
+    const ids = Array.from({ length: 22 }, (_, i) => `a${i}`);
+    expect(running(...ids).agent?.subagents).toEqual(ids.slice(-20));
+  });
+  it('keeps only the background agents a Stop lists, as a killed one sends no stop', () => {
+    const c = running('a1', 'a2');
+    const stop = (o: Partial<HookEvent>) => applyHook(c, ev({ name: 'Stop', ...o }), 5).agent?.subagents;
+    expect(stop({ backgroundTasks: 1, backgroundAgents: 1, backgroundAgentIds: ['a2'] })).toEqual(['a2']);
+    expect(stop({ backgroundTasks: 0, backgroundAgents: 0, backgroundAgentIds: [] })).toBeUndefined();
+    expect(stop({})).toEqual(['a1', 'a2']);
+  });
+  it('reconciles a character blocked on a subagent at the Stop too', () => {
+    const asked = applyHook(applyHook(running('a1', 'a2'), ev({ name: 'PermissionRequest', agentId: 'a1' }), 5),
+      ev({ name: 'Notification', notificationType: 'permission_prompt' }), 6);
+    const c = applyHook(asked, ev({ name: 'Stop', backgroundTasks: 1, backgroundAgents: 1, backgroundAgentIds: ['a1'] }), 7);
+    expect(c.agent).toMatchObject({ status: 'blocked', subagents: ['a1'] });
+  });
+  it("leaves a subagent's question open when its start lands late", () => {
+    const asked = applyHook(applyHook(withAgent('working'), ev({ name: 'PermissionRequest', agentId: 'a1' }), 2),
+      ev({ name: 'Notification', notificationType: 'permission_prompt', message: 'rm -rf build' }), 3);
+    const c = applyHook(asked, ev({ agentId: 'a1' }), 4);
+    expect(c.agent).toMatchObject({ status: 'blocked', prompt: 'rm -rf build', asking: ['a1'], subagents: ['a1'] });
+  });
+  it('keeps them through an Esc and a compaction, and drops them when another process resumes the session', () => {
+    const c = { ...running('a1'), agent: { ...running('a1').agent!, pid: 10 } };
+    expect(applyHook(c, ev({ name: 'Interrupt' }), 5).agent?.subagents).toEqual(['a1']);
+    expect(applyHook(c, ev({ name: 'SessionStart', pid: 10 }), 5).agent?.subagents).toEqual(['a1']);
+    expect(applyHook(c, ev({ name: 'SessionStart', pid: 11 }), 5).agent?.subagents).toBeUndefined();
+  });
+  it("counts a codex or OpenCode subagent that outlives its parent's turn, and none once the session is gone", () => {
+    for (const backend of ['codex', 'opencode'] as const) {
+      const done = applyHook(withAgent('working'), ev({ backend, name: 'Stop' }), 2);
+      const c = applyHook(done, ev({ backend, agentId: 'x1' }), 3);
+      expect(c.agent).toMatchObject({ status: 'done', subagents: ['x1'] });
+      const gone = applyHook(c, ev({ backend, name: 'SessionEnd' }), 4);
+      expect(applyHook(gone, ev({ backend, name: 'SubagentStop', agentId: 'x1' }), 5)).toBe(gone);
+    }
   });
 });
 

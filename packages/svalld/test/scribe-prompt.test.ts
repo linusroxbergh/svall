@@ -119,6 +119,10 @@ describe('parseAnswer', () => {
     expect(parseAnswer(IslandAnswer, '{"description": "d"}')).toEqual({ description: 'd' });
     expect(parseAnswer(CharacterAnswer, '{"note": "x", "links": null}')).toEqual({ note: 'x', links: null });
   });
+  it('reads the first object of an answer that goes on after it', () => {
+    expect(parseAnswer(CharacterAnswer, '{"note": "a } in {it}"}\n\n{"links": []}')).toEqual({ note: 'a } in {it}' });
+    expect(parseAnswer(CharacterAnswer, '{"note": "say \\"}\\""}\n\nThat is all.}')).toEqual({ note: 'say "}"' });
+  });
   it('throws on prose, bad JSON and a wrong shape', () => {
     expect(() => parseAnswer(CharacterAnswer, 'I could not tell.')).toThrow(/^the scribe's answer has no JSON object$/);
     // the parser's own message would quote the answer, which is text from a transcript

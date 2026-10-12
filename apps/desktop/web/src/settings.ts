@@ -5,6 +5,10 @@ import { ACTIONS, type ActionId, type Bindings } from './keys.js';
 // macOS banners for a character that turns blocked or done
 export type NotifySettings = { on: boolean; sound: boolean; statuses: PushStatus[] };
 
+// when the Mac is kept from idle-sleeping: never, while an agent works, or also for a while when one waits on the user
+const KEEP_AWAKE = ['off', 'working', 'needs'] as const;
+export type KeepAwake = (typeof KEEP_AWAKE)[number];
+
 export type Settings = {
   // the half card floats over the map; the full card and the board fill the view
   cardOpacity: number;
@@ -16,15 +20,20 @@ export type Settings = {
   usageTab: boolean;
   // arrange the fleet on its own once the map is in full view again, or the window has settled
   autoArrange: boolean;
+  // the link chips beside each card; the hover card lists the links either way
+  cardLinks: boolean;
+  // robots on the map play their own short actions now and then
+  robotMotion: boolean;
   // only the chords the user changed; every other action keeps the one it ships with
   bindings: Bindings;
   // off until the user turns it on, since macOS asks too
   notifications: NotifySettings;
+  keepAwake: KeepAwake;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
-  cardOpacity: 0.65, fullOpacity: 1, zoom: 0.9, onePassword: false, usageTab: true, autoArrange: true, bindings: {},
-  notifications: { on: false, sound: true, statuses: [...PUSH_STATUSES] },
+  cardOpacity: 0.65, fullOpacity: 1, zoom: 0.9, onePassword: false, usageTab: true, autoArrange: true, cardLinks: false, robotMotion: true, bindings: {},
+  notifications: { on: false, sound: true, statuses: [...PUSH_STATUSES] }, keepAwake: 'needs',
 };
 export const OPACITY = { min: 0.3, max: 1, step: 0.05 };
 
@@ -94,8 +103,11 @@ export function readSettings(v: unknown): Settings {
     onePassword: o.onePassword === true,
     usageTab: o.usageTab !== false,
     autoArrange: o.autoArrange !== false,
+    cardLinks: o.cardLinks === true,
+    robotMotion: o.robotMotion !== false,
     bindings: readBindings(o.bindings),
     notifications: readNotify(o.notifications),
+    keepAwake: KEEP_AWAKE.find((k) => k === o.keepAwake) ?? DEFAULT_SETTINGS.keepAwake,
   };
 }
 

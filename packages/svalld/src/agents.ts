@@ -31,15 +31,15 @@ export const AGENTS: Record<AgentKind, AgentAdapter> = {
     crewCommand: 'claude --model sonnet',
   },
   codex: {
-    label: AGENT_LABEL.codex, bin: 'codex', installUrl: 'https://learn.chatgpt.com/docs/codex/cli', minVersion: [0, 155, 0],
+    label: AGENT_LABEL.codex, bin: 'codex', installUrl: 'https://learn.chatgpt.com/docs/codex/cli', minVersion: [0, 156, 0],
     installCommand: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh',
     loginArgs: ['login', 'status'], loggedIn: () => true,
     loginHint: 'codex login',
     crewCommand: 'codex',
   },
   opencode: {
-    label: AGENT_LABEL.opencode, bin: 'opencode', installUrl: 'https://opencode.ai/docs/', minVersion: [2, 0, 22],
-    installCommand: 'curl -fsSL https://opencode.ai/install | bash',
+    label: AGENT_LABEL.opencode, bin: 'opencode', installUrl: 'https://opencode.ai/v2/docs/', minVersion: [2, 0, 22],
+    installCommand: 'curl -fsSL https://opencode.ai/v2/install | bash',
     // a fresh install runs on OpenCode Zen's free model without a login; a private server leaves the user's shared
     // background service unstarted
     loginArgs: ['auth', 'list', '--standalone'], loggedIn: () => true,

@@ -27,6 +27,8 @@ const SCRIBE_OFF = 'the scribe is off, so nothing was swept; turn it on with the
 
 type Deps = {
   store: Store; log: Logger; run: RunScribe; now?: () => number;
+  // whether a pass started now could finish; absent, always
+  awake?: () => Promise<boolean>;
   // how a character's brief reads; the fleet's carries the docs in scope
   brief: (island: Island, character: Character) => string;
 };
@@ -104,7 +106,16 @@ export class Scribe {
     while (job?.kind === 'char' && !this.due(job.id, now)) job = this.queue.shift();
     if (!job) return;
     this.lastStart = now;
-    this.current = this.safe(job).finally(() => { this.current = undefined; });
+    this.current = this.start(job).finally(() => { this.current = undefined; });
+  }
+
+  // a pass started in a Mac's dark wake is cut off by its sleep; the job waits for a full wake
+  private async start(job: Job): Promise<unknown> {
+    if (this.deps.awake && !(await this.deps.awake())) {
+      if (!this.queued(job)) this.queue.unshift(job);
+      return;
+    }
+    return this.safe(job);
   }
 
   /** Resolves once the automatic pass and the sweep in flight have finished. */

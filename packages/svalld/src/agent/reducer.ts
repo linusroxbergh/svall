@@ -6,6 +6,8 @@ import type { HookEvent, StatusEvent } from '../hooks/receiver.js';
 export type Slot = { agent?: Agent; unread: boolean };
 
 const BLOCKING = new Set(['permission_prompt', 'worker_permission_prompt', 'elicitation_dialog', 'elicitation_url_dialog']);
+const TOOL_EVENTS = new Set(['PreToolUse', 'PostToolUse', 'PostToolUseFailure']);
+const TOOL_ACTIVITY_MS = 10_000;
 
 /** Puts the agent at `status` with no question open and no background work counted. */
 export function settle(agent: Agent, status: Agent['status']): void {
@@ -13,6 +15,7 @@ export function settle(agent: Agent, status: Agent['status']): void {
   delete agent.prompt;
   delete agent.promptId;
   delete agent.background;
+  delete agent.shellsOnly;
 }
 
 // a process of another user still counts as running
@@ -28,6 +31,8 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     if (next.agent?.sessionId === e.sessionId) {
       if (e.transcriptPath) next.agent.transcriptPath = e.transcriptPath;
       if (e.model) next.agent.model = e.model;
+      // a resumed session's subagents died with the process before it
+      if (e.pid && next.agent.pid && e.pid !== next.agent.pid) delete next.agent.subagents;
       if (e.pid) next.agent.pid = e.pid;
       next.agent.lastActivityAt = now;
       return next;
@@ -63,10 +68,20 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     next.agent = { kind: e.backend, sessionId: e.sessionId, status: 'idle', lastActivityAt: now, pid: e.pid };
     next.unread = false;
   }
-  // a subagent's events say only whether the question it asked is still open; the notification is what blocks
+  // a subagent's events say only that it runs, and whether the question it asked is still open; the notification is
+  // what blocks. One can stop and start again under its id, when a shell it left running ends
   if (e.agentId) {
     const agent = next.agent;
-    if (e.name !== 'PermissionRequest' && !agent.asking?.includes(e.agentId)) return c;
+    const counted = agent.subagents ?? [];
+    const was = counted.includes(e.agentId);
+    const started = e.name === 'SubagentStart' && !was;
+    const stopped = e.name === 'SubagentStop' && was;
+    if (started) agent.subagents = [...counted, e.agentId].slice(-20);
+    if (stopped) {
+      const rest = counted.filter((a) => a !== e.agentId);
+      if (rest.length) agent.subagents = rest; else delete agent.subagents;
+    }
+    if (e.name === 'SubagentStart' || (e.name !== 'PermissionRequest' && !agent.asking?.includes(e.agentId))) return started || stopped ? next : c;
     const others = (agent.asking ?? []).filter((a) => a !== e.agentId);
     const asking = e.name === 'PermissionRequest' ? [...others, e.agentId] : others;
     if (asking.length) agent.asking = asking; else delete agent.asking;
@@ -79,7 +94,8 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
   }
   // a session started before its hooks named their process learns it from its own events
   if (e.pid && !next.agent.pid && e.sessionId === next.agent.sessionId) next.agent.pid = e.pid;
-  next.agent.lastActivityAt = now;
+  // a tool call's hooks come several to a second, and each new mark is a patch the app redraws for
+  if (!TOOL_EVENTS.has(e.name) || now - next.agent.lastActivityAt >= TOOL_ACTIVITY_MS) next.agent.lastActivityAt = now;
   // Claude Code moves the transcript when a session enters or leaves a worktree; Codex names it only once it exists
   if (e.transcriptPath && e.sessionId === next.agent.sessionId) next.agent.transcriptPath = e.transcriptPath;
   if (e.model && e.sessionId === next.agent.sessionId) next.agent.model = e.model;
@@ -95,11 +111,17 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     if (live.length) agent.monitors = live; else delete agent.monitors;
   }
   // background agents or shells that never re-invoke the session, killed or crashed, are over once a hook lists none
-  if (tasks === 0) delete agent.background;
+  if (tasks === 0) { delete agent.background; delete agent.shellsOnly; }
+  // a killed subagent sends no SubagentStop. The main thread waits out one in the foreground, so at its Stop only the
+  // background ones listed run on
+  if ((e.name === 'Stop' || e.name === 'StopFailure') && e.backgroundAgentIds && agent.subagents) {
+    const live = agent.subagents.filter((a) => e.backgroundAgentIds!.includes(a));
+    if (live.length) agent.subagents = live; else delete agent.subagents;
+  }
   // the main thread moving on leaves a question a subagent still has open, unless the user typed a prompt past it
   if (agent.asking && e.backend === 'claude') {
     const stop = e.name === 'Stop' || e.name === 'StopFailure';
-    const over = e.prompt || (stop && !e.backgroundAgents) || (e.name === 'Notification' && e.notificationType === 'idle_prompt');
+    const over = e.prompt || (stop && !e.backgroundAgents) || e.name === 'Interrupt' || (e.name === 'Notification' && e.notificationType === 'idle_prompt');
     if (over) delete agent.asking;
     else if (agent.status === 'blocked' && e.name !== 'Notification') {
       if (stop) agent.background = true;
@@ -116,7 +138,13 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
   switch (e.name) {
     case 'UserPromptSubmit':
     case 'PreToolUse':
-      settle(agent, 'working');
+      // Codex asks its own questions with a tool, which no permission request comes before; its run is the answer
+      if (e.name === 'PreToolUse' && e.backend === 'codex' && e.toolName === 'request_user_input') {
+        ask();
+        agent.askedTool = e.toolName;
+      } else {
+        settle(agent, 'working');
+      }
       next.unread = false;
       break;
     // a tool is asked about between the two, so the answer it waited for is its run; another tool of the same batch
@@ -136,6 +164,7 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
       if (tasks) {
         settle(agent, 'working');
         agent.background = true;
+        if (e.backgroundAgents === 0) agent.shellsOnly = true;
         break;
       }
       settle(agent, 'done');
@@ -143,7 +172,7 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
       if (e.name === 'StopFailure' && e.message) agent.prompt = e.message;
       next.unread = true;
       break;
-    // Codex's and OpenCode's word that an Esc ended the turn
+    // Codex's and OpenCode's word that an Esc ended the turn; for Claude Code, the poll's, which reads it off the transcript
     case 'Interrupt':
       settle(agent, 'idle');
       break;
@@ -156,12 +185,13 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
       break;
     case 'Notification':
       if (e.notificationType && BLOCKING.has(e.notificationType)) ask();
-      // Claude Code fires nothing on an Esc; a minute on, it says it sits at its prompt, background work or not.
-      // With background work out, the question is gone but the work goes on
+      // a minute after a turn ends, Claude Code says it sits at its prompt, background work or not. With background
+      // work out, the question is gone but the work goes on
       else if (e.notificationType === 'idle_prompt' && (agent.status === 'blocked' || agent.status === 'working')) {
-        const background = agent.background;
+        const { background, shellsOnly } = agent;
         settle(agent, background ? 'working' : 'idle');
         if (background) agent.background = true;
+        if (shellsOnly) agent.shellsOnly = true;
       }
       break;
   }

@@ -16,7 +16,7 @@ export const crewOf = (f: FleetState): Crew => {
   return out;
 };
 
-// a card in cells at map scale 1, and the link rail standing off its right edge
+// a card in cells at map scale 1, and the rail standing off each of its sides
 const TOK = { w: tokenPx.w / theme.cell, h: tokenPx.h / theme.cell, rail: (0.36 * theme.token.unit) / theme.cell };
 
 // what an island draws at a map scale, in cells: its ground, the label band over it and the pill across it, and each
@@ -28,7 +28,7 @@ export function drawnBox(i: Island, crew: Cell[] = [], scale = 1): Bounds {
   const k = cardScale(scale) / scale;
   for (const c of crew) {
     const cx = i.position.x + c.x + 0.5, cy = i.position.y + c.y + 0.5;
-    x0 = Math.min(x0, cx - (TOK.w / 2) * k);
+    x0 = Math.min(x0, cx - (TOK.w / 2 + TOK.rail) * k);
     x1 = Math.max(x1, cx + (TOK.w / 2 + TOK.rail) * k);
     y1 = Math.max(y1, cy + 0.52 * TOK.h * k);
   }
@@ -151,6 +151,11 @@ export const cardScale = (scale: number): number =>
 
 // the same for an island's label pill, which follows the map below 1
 export const labelScale = (scale: number): number => Math.min(scale, grown(scale, theme.label.grow));
+
+// the one scale every card on the map and on mission control stands at, held to what home's slots, drawn at
+// `homeScale`, have room for
+export const sharedCardScale = (scale: number, homeScale: number): number =>
+  Math.min(cardScale(scale), homeScale / theme.token.floor);
 
 export const cellSize = (l: Layout): number => l.tile * l.scale;
 export const worldToScreen = (l: Layout, c: Cell) => ({ x: l.ox + c.x * cellSize(l), y: l.oy + c.y * cellSize(l) });

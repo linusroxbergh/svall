@@ -43,9 +43,10 @@ test('the machines panel waits for the fleet to ask for handover, then reports e
   await page.getByTestId('settings-open').click();
   await expect(page.getByTestId('settings')).toBeVisible();
   // fleet.json has not asked for handover: the controls are not there, and the CLI is where setup lives
-  await expect(page.getByTestId('settings-hosts')).toHaveCount(0);
+  await expect(page.getByTestId('settings-tab-machines')).toHaveCount(0);
 
   await handoverOn(page);
+  await page.getByTestId('settings-tab-machines').click();
   await page.getByTestId('settings-hosts').click();
   await expect(page.getByTestId('host-setup')).toBeVisible();
   // before any run, what the machine needs
@@ -83,6 +84,7 @@ test('a check says ready for handover when nothing failed or is left to do; an u
   await svall.open();
   await page.getByTestId('settings-open').click();
   await handoverOn(page);
+  await page.getByTestId('settings-tab-machines').click();
   await page.getByTestId('settings-hosts').click();
   await page.getByTestId('host-name').fill('studio');
 
@@ -112,6 +114,7 @@ test('a machine is only removed or forgotten once the page has asked', async ({ 
   await svall.open();
   await page.getByTestId('settings-open').click();
   await handoverOn(page);
+  await page.getByTestId('settings-tab-machines').click();
   await page.getByTestId('settings-hosts').click();
   await page.getByTestId('host-name').fill('studio');
   const starts = async () => (await sent(page)).filter((m) => m.type === 'host.start');

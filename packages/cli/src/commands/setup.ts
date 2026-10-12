@@ -303,7 +303,7 @@ export function setupCommand(target: () => Target, json: () => boolean, platform
     .option('--plan', 'print what setup would do, as the app shows it; change nothing')
     .option('--agents <list>', 'the agents to install hooks for, comma-separated; saved for later runs')
     .option('--found <list>', 'the agents the setup screen showed; those left out of --agents stay off (default: the agents found now)')
-    .option('--projects <dir>', 'where new characters start, made if missing; saved as defaultCwd')
+    .option('--projects <dir>', 'where new robots start, made if missing; saved as defaultCwd')
     .option('--if-needed', 'set up only what is missing or out of date, and restart daemons of another version')
     .option('--login-shell', 'take PATH and where the agents keep their files from the login shell, as an app opened from Finder has none')
     .action(async (o: Flags) => {

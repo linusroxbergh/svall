@@ -8,7 +8,7 @@ test('creation actions stay findable and create on the intended island', async (
   await expect(page.getByTestId('sidebar-new-island')).toHaveText('+ New island');
   const sidebarAction = page.getByTestId(`sb-island-new-${a.id}`);
   await expect(sidebarAction).toBeVisible();
-  await expect(sidebarAction).toHaveAccessibleName(`New character on ${a.name}`);
+  await expect(sidebarAction).toHaveAccessibleName(`New robot on ${a.name}`);
   await expect(page.getByTestId(`island-new-${a.id}`)).toHaveAttribute('data-empty', 'true');
 
   // An empty island's action folds away with it.
@@ -22,7 +22,7 @@ test('creation actions stay findable and create on the intended island', async (
 
   // An occupied row's add action shows only under the pointer or keyboard focus; an empty map island gets a land action.
   const rowAction = page.getByTestId(`sb-island-new-${a.id}`);
-  await expect(rowAction).toHaveAccessibleName(`New character on ${a.name}`);
+  await expect(rowAction).toHaveAccessibleName(`New robot on ${a.name}`);
   await expect(rowAction).toHaveCSS('opacity', '0');
   await expect(page.getByTestId(`island-new-${a.id}`)).toHaveAttribute('data-empty', 'false');
   await rowAction.focus();

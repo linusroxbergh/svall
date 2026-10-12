@@ -32,7 +32,8 @@ runIf('Fleet layout', () => {
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
-    // these layouts start from mission control alone, without the island a new fleet opens with
+    // these layouts start from mission control alone, without the island and shell a new fleet opens with
+    for (const c of Object.values(store.state.characters)) if (store.state.islands[c.islandId]?.kind !== 'home') await fleet.closeCharacter(c.id);
     for (const i of Object.values(store.state.islands)) if (i.kind !== 'home') fleet.deleteIsland(i.id);
     return { fleet, store, tmux };
   }
@@ -201,7 +202,7 @@ runIf('Fleet layout', () => {
     const upd = fleet.updateCharacter(c.id, { instructions: 'in Spanish', context: [{ kind: 'file', ref: '/tmp', label: '', source: 'manual' }] });
     expect(upd.instructions).toBe('in Spanish');
     expect(upd.context[0].kind).toBe('folder');
-    expect(fleet.brief(c.id)).toContain('Character instructions: in Spanish');
+    expect(fleet.brief(c.id)).toContain('Robot instructions: in Spanish');
   });
 
   it('char.update keeps a character on this machine, and lets it go again', async () => {

@@ -82,6 +82,16 @@ function listing(fields: string[]): { format: string; rows(out: string): string[
   };
 }
 
+/** A pane's rows as capture-pane -e prints them, the row its cursor is on while the app shows the cursor, and what runs in front. */
+export type Screen = { rows: string[]; cursor?: number; command: string };
+
+// what `screen` asks tmux for: the cursor and the command on the first line, the rows after it
+export function parseScreen(out: string): Screen {
+  const [head = '', ...rows] = out.replace(/\n$/, '').split('\n');
+  const [shown, y, ...command] = head.split(' ');
+  return { rows, ...(shown === '1' && { cursor: Number(y) }), command: command.join(' ') };
+}
+
 export class Tmux {
   readonly binary = resolveTmux();
   private rawPaste?: Promise<string[]>;
@@ -231,6 +241,10 @@ export class Tmux {
   async capture(paneId: string, lines: number, escapes = false, signal?: AbortSignal): Promise<Buffer> {
     const out = await this.call(['capture-pane', '-p', ...(escapes ? ['-e'] : []), '-t', paneId, '-S', `-${lines}`], signal);
     return Buffer.from(out.replace(/\n$/, '').replace(/\n/g, '\r\n'), 'utf8');
+  }
+
+  async screen(paneId: string): Promise<Screen> {
+    return parseScreen(await this.run('display', '-p', '-t', paneId, '#{cursor_flag} #{cursor_y} #{pane_current_command}', ';', 'capture-pane', '-p', '-e', '-t', paneId));
   }
 
   async listWindows(signal?: AbortSignal): Promise<LiveWindow[]> {

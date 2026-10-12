@@ -1,4 +1,4 @@
-import { byCell, byIslandOrder, type Character, type FleetState, type Island } from '@svall/protocol';
+import { byCell, byIslandOrder, starredOf, type Character, type ContextItem, type FleetState, type Island } from '@svall/protocol';
 import { SINGLE, type Panes } from './panes.js';
 
 export type DisplayStatus = 'working' | 'idle' | 'blocked' | 'done' | 'shell';
@@ -47,16 +47,27 @@ export const stripOrder = (f: FleetState): Character[] => {
 
 const islandOf = (f: FleetState, id: string | undefined): Island | undefined => (id ? f.islands[f.characters[id]?.islandId ?? ''] : undefined);
 
-// the previous or next character across the whole fleet, in strip order, wrapping past collapsed islands
-export function neighbor(f: FleetState, id: string | undefined, step: 1 | -1): Character | undefined {
-  const all = stripOrder(f);
-  const open = (c: Character) => !f.islands[c.islandId]?.collapsed;
-  const i = all.findIndex((c) => c.id === id);
-  if (i < 0) return all.find(open);
-  const n = all.length;
-  for (let k = 1; k <= n; k++) {
-    const c = all[(((i + step * k) % n) + n) % n];
-    if (open(c)) return c;
+export const STARRED = 'sidebar.starred';
+
+type SidebarRow = { c: Character; starred: boolean };
+
+// the character rows the sidebar shows, top to bottom: the starred while their section is open, then each open island's crew
+const sidebarRows = (f: FleetState, starsOpen: boolean): SidebarRow[] => [
+  ...(starsOpen ? starredOf(f).map((c) => ({ c, starred: true })) : []),
+  ...islandsSorted(f).filter((i) => !i.collapsed).flatMap((i) => charactersOf(f, i.id).map((c) => ({ c, starred: false }))),
+];
+
+// the row before or after the selection's, wrapping around; a starred character has a row in Starred and one on its island,
+// `onStar` says which it is on, and the walk passes its other one
+export function neighbor(f: FleetState, id: string | undefined, step: 1 | -1, starsOpen = false, onStar = false): SidebarRow | undefined {
+  const rows = sidebarRows(f, starsOpen);
+  const own = rows.findIndex((r) => r.c.id === id && r.starred === onStar);
+  const i = own >= 0 ? own : rows.findIndex((r) => r.c.id === id);
+  if (i < 0) return rows[0];
+  const n = rows.length;
+  for (let k = 1; k < n; k++) {
+    const r = rows[(((i + step * k) % n) + n) % n];
+    if (r.c.id !== id) return r;
   }
   return undefined;
 }
@@ -114,9 +125,16 @@ export function charactersByPriority(f: FleetState): Character[] {
 // a character wants the user when it is stuck, or when it has news nobody has read
 export const wantsUser = (c: Character): boolean => isUnread(c) || statusOf(c) === 'blocked';
 
+// the PR the work is on: the branch's own, the one svalld reads a state for, else the first among the links
+export const mainPr = (c: Character): ContextItem | undefined =>
+  c.context.find((it) => it.kind === 'pr' && it.prState) ?? c.context.find((it) => it.kind === 'pr');
+export const inReview = (c: Character): boolean => mainPr(c)?.prState === 'open';
+export const isMonitoring = (c: Character): boolean => Boolean(c.agent?.monitors?.length || c.second?.agent?.monitors?.length);
+export const subagentCount = (c: Character): number => (c.agent?.subagents?.length ?? 0) + (c.second?.agent?.subagents?.length ?? 0);
+
 // the island wears the status of its most pressing character
 export function islandStatus(f: FleetState, islandId: string): DisplayStatus | undefined {
-  const first = charactersByPriority(f).find((c) => c.islandId === islandId);
+  const first = charactersOf(f, islandId).reduce<Character | undefined>((top, c) => (top && priorityOf(top) <= priorityOf(c) ? top : c), undefined);
   return first ? statusOf(first) : undefined;
 }
 
@@ -152,9 +170,9 @@ export const panesOf = (s: { ide: Record<string, { panes: Panes }> }, id: string
 
 // the shell draws terminals and browser tabs above the page, so anything the page spreads over one
 // only reads as on top once that surface is hidden. An overlay that covers a rect takes a cutout instead
-export const isVeiled = (s: { namingCharacter: boolean; missionPrompt: boolean; closingCharacter?: string; deletingIsland?: string; fleetPicker?: string; keysOpen: boolean; resourcesOpen: boolean; hostOpen: boolean; handoverOpen: boolean; fleet: FleetState }): boolean =>
+export const isVeiled = (s: { namingCharacter: boolean; missionPrompt: boolean; closingCharacter?: string; deletingIsland?: string; fleetPicker?: string; resourcesOpen: boolean; hostOpen: boolean; handoverOpen: boolean; fleet: FleetState }): boolean =>
   s.namingCharacter || s.missionPrompt || s.closingCharacter !== undefined || s.deletingIsland !== undefined || s.fleetPicker !== undefined
-  || s.keysOpen || s.resourcesOpen || s.hostOpen || s.handoverOpen || !!s.fleet.scribeAsk;
+  || s.resourcesOpen || s.hostOpen || s.handoverOpen || !!s.fleet.scribeAsk;
 
 // the name a fleet's home directory gives it: ~/.svall (or ~/.svall-dev) is the private fleet, ~/.svall-work is work
 export const directoryName = (home: string): string => {

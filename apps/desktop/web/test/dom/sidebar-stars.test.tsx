@@ -55,6 +55,14 @@ test('a starred row selects its character, and the tree row shows it selected to
   expect(screen.getByTestId('sb-char-c2').getAttribute('data-selected')).toBe('true');
 });
 
+test('the keys walk on from the row that was clicked, the Starred one or the tree one', () => {
+  star('c2', 0);
+  fireEvent.click(screen.getByTestId('sb-star-c2'));
+  expect(store.getState().starredRow).toBe('c2');
+  fireEvent.click(screen.getByTestId('sb-char-c2'));
+  expect(store.getState().starredRow).toBeUndefined();
+});
+
 test('folding Starred hides its rows, keeps its count and what wants the user, and is remembered', () => {
   star('c1', 0);
   star('c2', 1);

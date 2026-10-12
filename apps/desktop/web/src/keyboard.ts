@@ -3,7 +3,7 @@ import { openBeside, opensInside, type BrowserManager } from './browser.js';
 import { commitFocused } from './Field.js';
 import { chordOf, resolve, type KeyAction } from './keys.js';
 import { isTerminal, mainLeft, showBrowser, shows, toggleBrowserRight } from './panes.js';
-import { boardViewed, firstOfNextIsland, isVeiled, neighbor, panesOf, selectedOf } from './selectors.js';
+import { boardViewed, charactersOf, firstOfNextIsland, isVeiled, neighbor, panesOf, selectedOf, STARRED } from './selectors.js';
 import { canFill, zoomBy } from './settings.js';
 import type { AppState, AppStore } from './store/index.js';
 import { secondKey, viewedId } from './terminals.js';
@@ -27,22 +27,32 @@ export function refocusSurface({ store, bridge }: Pick<Deps, 'store' | 'bridge'>
 }
 
 // navigation moves the selection; the board's terminal and the map's open card follow it
-function goTo({ store }: Deps, id?: string): void {
+function goTo({ store }: Deps, id?: string, starred = false): void {
   if (!id) return;
   commitFocused();
   const st = store.getState();
   if (st.view === 'board' || st.card) st.focus(id); else st.select(id, st.sideCardOpen);
+  st.setStarredRow(starred ? id : undefined);
 }
 
 // the character the keys act on: the selection on the map, the viewed one on the board
 const currentOf = (s: AppState): string | undefined => (s.view === 'map' ? (s.selectedId ?? s.card ?? selectedOf(s)) : boardViewed(s));
 
+const nextOf = (s: AppState, id: string | undefined, step: 1 | -1) =>
+  neighbor(s.fleet, id, step, !s.sections[STARRED]?.shut, s.starredRow === id);
+
+// an island picked on the map selects no character, so the walk starts at its first
+const islandFirst = (s: AppState): string | undefined => {
+  const i = s.view === 'map' && !s.selectedId && s.selectedIslandId ? s.fleet.islands[s.selectedIslandId] : undefined;
+  return i && !i.collapsed ? charactersOf(s.fleet, i.id)[0]?.id : undefined;
+};
+
 export async function closeCharacter(ctx: Deps, id: string): Promise<void> {
   const s = ctx.store.getState();
   // closing the current character moves on first, so the removal patch never catches the terminal view without one
   if (id === currentOf(s)) {
-    const next = neighbor(s.fleet, id, 1);
-    if (next && next.id !== id) goTo(ctx, next.id);
+    const next = nextOf(s, id, 1);
+    if (next) goTo(ctx, next.c.id, next.starred);
     else s.select(undefined);
   }
   await ctx.api.call('char.close', { id });
@@ -50,7 +60,9 @@ export async function closeCharacter(ctx: Deps, id: string): Promise<void> {
 
 function closeAllModals(store: AppStore): void {
   const s = store.getState();
-  s.setNamingCharacter(false); s.setMissionPrompt(false); s.setClosingCharacter(undefined); s.setDeletingIsland(undefined); s.setFleetPicker(undefined); s.toggleKeys(false);
+  s.setNamingCharacter(false); s.setMissionPrompt(false); s.setClosingCharacter(undefined); s.setDeletingIsland(undefined); s.setFleetPicker(undefined);
+  // a dialog over the settings takes the keys from a shortcut row still waiting for one
+  s.setCapturingKey(undefined);
 }
 
 // the machines panel and the handover sheet hold Esc and the focus, so no other dialog opens while either is up
@@ -68,6 +80,12 @@ export async function dispatchKey(action: KeyAction, ctx: KeyDeps): Promise<void
   const f = s.fleet;
   const current = currentOf(s);
   const go = (id?: string) => goTo(ctx, id);
+  const walk = (step: 1 | -1) => {
+    const first = islandFirst(s);
+    if (first && step === 1) return goTo(ctx, first);
+    const r = nextOf(s, first ?? current, step);
+    goTo(ctx, r?.c.id, r?.starred);
+  };
   const closeModals = () => closeAllModals(store);
   if (covered(s) && (action.type === 'newCharacter' || action.type === 'missionControl' || action.type === 'closeCharacter')) return;
 
@@ -91,8 +109,8 @@ export async function dispatchKey(action: KeyAction, ctx: KeyDeps): Promise<void
       store.getState().setClosingCharacter(current);
       return;
     }
-    case 'prevCharacter': go(neighbor(f, current, -1)?.id); return;
-    case 'nextCharacter': go(neighbor(f, current, 1)?.id); return;
+    case 'prevCharacter': walk(-1); return;
+    case 'nextCharacter': walk(1); return;
     case 'toggleView': commitFocused(); store.getState().setView(s.view === 'map' ? 'board' : 'map'); return;
     case 'toggleCardSize': if (s.view === 'map') store.getState().toggleCardSize(); return;
     case 'toggleSettings':
@@ -164,10 +182,11 @@ export function installKeyHandlers(ctx: KeyDeps, win: Window = window): () => vo
   const closeCard = () => {
     const st = ctx.store.getState();
     if (st.capturingKey) { st.setCapturingKey(undefined); return; }
+    // the settings window stands over the shelf
+    if (st.settingsOpen) { st.toggleSettings(false); refocusSurface(ctx); return; }
     if (st.resourcesOpen) { st.toggleResources(false); refocusSurface(ctx); return; }
     if (st.usageOpen) { st.toggleUsage(false); refocusSurface(ctx); return; }
     if (st.mobileOpen) { st.toggleMobile(false); refocusSurface(ctx); return; }
-    if (st.settingsOpen) { st.toggleSettings(false); refocusSurface(ctx); return; }
     if (st.view === 'map' && st.card) { st.closeCard(); return; }
     if (st.view === 'board') st.toggleSideCard(false);
     else { st.select(undefined); st.selectIsland(undefined); }
@@ -194,7 +213,7 @@ export function installKeyHandlers(ctx: KeyDeps, win: Window = window): () => vo
     }
     const s = ctx.store.getState();
     // behind an overlay or a popup the selection is out of sight, so Enter is theirs
-    if (e.key === 'Enter' && !control(e) && !e.metaKey && !isVeiled(s) && !s.linkAsk && !s.usageOpen && !s.mobileOpen) {
+    if (e.key === 'Enter' && !control(e) && !e.metaKey && !isVeiled(s) && !s.linkAsk && !s.usageOpen && !s.mobileOpen && !s.settingsOpen) {
       // the key is spent here: a control still holding the focus must not activate on it as well
       if (s.view === 'board') { e.preventDefault(); refocusSurface(ctx); return true; }
       if (s.view === 'map' && s.selectedId) { e.preventDefault(); s.focus(s.selectedId); return true; }

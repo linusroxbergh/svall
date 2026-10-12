@@ -53,10 +53,14 @@ export const Agent = z.object({
   promptId: z.string().optional(),
   // the turn ended with background agents or shells still running; the agent works on until they report back
   background: z.literal(true).optional(),
+  // the background work is shells alone, a server or a watcher that may never end
+  shellsOnly: z.literal(true).optional(),
   // task ids of the Claude Code monitors the session started, which are listed as background shells but watch on without a turn
   monitors: z.array(z.string()).optional(),
   // Claude Code subagents with a permission request open; the notification that blocks never says whose it is
   asking: z.array(z.string()).optional(),
+  // the subagents running, by id
+  subagents: z.array(z.string()).optional(),
   // the tool Claude Code's main thread last asked permission for, whose run alone answers the question
   askedTool: z.string().optional(),
   // the newest prompt Claude Code accepted, as its UserPromptSubmit hook reported it. The transcript
@@ -153,11 +157,11 @@ export const Character = TerminalSlot.extend({
   // set by a person's edit; absent, the scribe may rewrite it
   noteSource: z.literal('manual').optional(),
   portrait: Portrait,
+  // the number of its robot-NN.svg in the desktop app's public/robots; absent, its animal picks one
+  robot: z.number().int().min(1).optional(),
   instructions: z.string(),
   // a file's name, without .md, in the fleet's agent-profiles folder; its text rides in the brief
   agentProfile: z.string().optional(),
-  // made with a task to run, so its brief says to work in a worktree; one a person opens is left where it is
-  worktree: z.literal(true).optional(),
   // the tmux pane's own path when last read; cwd moves with it only when it changes, so a restart keeps where the hooks put it
   panePath: z.string().optional(),
   repo: Repo.optional(),
@@ -192,8 +196,10 @@ export const FleetState = z.object({
   scribeAsk: z.literal(true).optional(),
   // the last automatic or swept pass that failed, cleared by the next one that succeeds
   scribeError: z.object({ message: z.string(), at: z.number() }).optional(),
-  // a character made with a task is not told to work in a worktree
+  // no character is told to work in a worktree
   worktreesOff: z.literal(true).optional(),
+  // characters show as animals, not robots
+  animals: z.literal(true).optional(),
   // an agent idle this many hours is ended and its character left dormant, to be resumed on revive;
   // 0 keeps every agent running, and absent is DORMANT_AFTER_HOURS
   dormantAfterHours: z.number().int().min(0).optional(),

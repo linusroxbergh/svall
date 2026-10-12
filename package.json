@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/desktop/web/tsconfig.json",
     "svalld": "tsx packages/svalld/src/bin.ts",
     "svall": "tsx packages/cli/src/main.ts",
+    "compat": "tsx scripts/compat/main.ts",
     "ghostty:build": "scripts/ghostty-build.sh",
     "ghostty:publish": "scripts/ghostty-kit.sh publish",
     "web:dev": "pnpm --filter @svall/desktop-web dev",

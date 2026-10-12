@@ -150,8 +150,13 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 21 with ownership and handover', () => {
-    expect(PROTOCOL_VERSION).toBe(21);
+  it('is 22 with ownership and handover', () => {
+    expect(PROTOCOL_VERSION).toBe(22);
+  });
+
+  it('was 21 with robot portraits', () => {
+    expect(methods['robots.set'].params.safeParse({ enabled: false }).success).toBe(true);
+    expect(methods['char.update'].params.parse({ id: 'c_a', robot: 42 }).robot).toBe(42);
   });
 
   it('was 20 with characters starred', () => {

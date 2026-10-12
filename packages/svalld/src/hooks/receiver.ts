@@ -3,16 +3,16 @@ import net from 'node:net';
 import { AgentKind, isSessionId } from '@svall/protocol';
 import type { Logger } from '../log.js';
 
-// Claude Code ends a turn an API error cut short with StopFailure, in place of Stop. PermissionRequest and
-// SubagentStop only say which subagent asked and when it is gone. A tool that has run, or failed, was answered
-// if it asked, which is the first word that a picked choice gives
-export const CLAUDE_HOOKS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest', 'Notification', 'Stop', 'StopFailure', 'SubagentStop', 'SessionEnd'] as const;
+// Claude Code ends a turn an API error cut short with StopFailure, in place of Stop. PermissionRequest,
+// SubagentStart and SubagentStop only say which subagent asked, and when one starts and is gone. A tool that has run,
+// or failed, was answered if it asked, which is the first word that a picked choice gives
+export const CLAUDE_HOOKS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest', 'Notification', 'Stop', 'StopFailure', 'SubagentStart', 'SubagentStop', 'SessionEnd'] as const;
 // codex asks permission through an event of its own, where Claude Code sends a notification, and says
 // when the tool it asked about has run, which is the only word that the wait is over. An Esc ends its turn with Interrupt
-export const CODEX_HOOKS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'Stop', 'Interrupt', 'SessionEnd'] as const;
-// Svall's OpenCode plugin names OpenCode's events after these hooks: an Esc ends a turn with Interrupt, an error with StopFailure.
-// It sends no SessionEnd, so a quit OpenCode is gone once its pane is back at a shell
-export const OPENCODE_HOOKS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'Stop', 'StopFailure', 'Interrupt'] as const;
+export const CODEX_HOOKS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'Stop', 'Interrupt', 'SubagentStart', 'SubagentStop', 'SessionEnd'] as const;
+// Svall's OpenCode plugin names OpenCode's events after these hooks: an Esc ends a turn with Interrupt, an error with StopFailure,
+// and a child session's run is a subagent's. It sends no SessionEnd, so a quit OpenCode is gone once its pane is back at a shell
+export const OPENCODE_HOOKS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'Stop', 'StopFailure', 'Interrupt', 'SubagentStart', 'SubagentStop'] as const;
 export type HookName = (typeof CLAUDE_HOOKS)[number] | (typeof CODEX_HOOKS)[number] | (typeof OPENCODE_HOOKS)[number];
 
 const HOOKS: Record<AgentKind, readonly HookName[]> = { claude: CLAUDE_HOOKS, codex: CODEX_HOOKS, opencode: OPENCODE_HOOKS };
@@ -33,11 +33,13 @@ export type HookEvent = {
   backgroundTasks?: number;
   // the background agents and workflows among them, the only ones that can ask a question
   backgroundAgents?: number;
+  // their ids, which are the subagents' own
+  backgroundAgentIds?: string[];
   // the task ids of the background shells among them, which take in the session's monitors
   backgroundShells?: string[];
   // the task a Monitor tool call started
   monitor?: string;
-  // the Claude Code subagent the event came from
+  // the Claude Code subagent the event came from, or the subagent any agent says started or stopped
   agentId?: string;
   // the tool a tool or permission event is about
   toolName?: string;
@@ -94,9 +96,10 @@ const AGENT_TASKS = new Set(['subagent', 'workflow']);
 const WORKING_TASKS = new Set([...AGENT_TASKS, 'shell']);
 const count = (v: unknown, types: Set<string>): number | undefined =>
   Array.isArray(v) ? v.filter((t) => types.has((t as { type?: unknown } | null)?.type as string)).length : undefined;
-const shellIds = (v: unknown): string[] | undefined => Array.isArray(v)
-  ? v.flatMap((t) => { const { type, id } = (t ?? {}) as { type?: unknown; id?: unknown }; return type === 'shell' && typeof id === 'string' ? [id.slice(0, 64)] : []; })
+const taskIds = (v: unknown, types: Set<string>): string[] | undefined => Array.isArray(v)
+  ? v.flatMap((t) => { const { type, id } = (t ?? {}) as { type?: unknown; id?: unknown }; return types.has(type as string) && typeof id === 'string' ? [id.slice(0, 64)] : []; })
   : undefined;
+const SHELL_TASKS = new Set(['shell']);
 
 export function normalizeStatus(raw: unknown): StatusEvent | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
@@ -114,8 +117,14 @@ export function normalizeStatus(raw: unknown): StatusEvent | undefined {
   return ev;
 }
 
-const FROM_CODEX_SUBAGENT = new Set<unknown>(['PreToolUse', 'PermissionRequest', 'PostToolUse']);
-const FROM_CLAUDE_SUBAGENT = new Set<unknown>(['PreToolUse', 'PermissionRequest', 'SubagentStop']);
+// the events kept from a subagent. A codex subagent shares its parent's session, so its tool calls and permission
+// requests are the character working and waiting; a Claude subagent's say only whether the question it asked is still open
+const FROM_SUBAGENT: Record<AgentKind, Set<unknown>> = {
+  claude: new Set(['PreToolUse', 'PermissionRequest', 'SubagentStart', 'SubagentStop']),
+  codex: new Set(['PreToolUse', 'PermissionRequest', 'PostToolUse', 'SubagentStart', 'SubagentStop']),
+  opencode: new Set(['SubagentStart', 'SubagentStop']),
+};
+const SUBAGENT_LIFE = new Set<unknown>(['SubagentStart', 'SubagentStop']);
 const AGENT_ID = /^[\w-]{1,64}$/;
 
 export function normalizeHook(raw: unknown): HookEvent | undefined {
@@ -128,18 +137,18 @@ export function normalizeHook(raw: unknown): HookEvent | undefined {
   const h = hook as Record<string, unknown>;
   const name = h.hook_event_name;
   if (!(hooksFor(kind.data) as readonly unknown[]).includes(name)) return undefined;
-  // a subagent's hooks are not the character's turn. A codex subagent shares its parent's session,
-  // though, so its tool calls and permission requests are the character working and waiting. A Claude
-  // subagent's say only whether the question it asked is still open
-  const subagent = kind.data === 'claude' && typeof h.agent_id === 'string' && AGENT_ID.test(h.agent_id) ? h.agent_id : undefined;
-  if (h.agent_id && !(kind.data === 'codex' ? FROM_CODEX_SUBAGENT.has(name) : subagent && FROM_CLAUDE_SUBAGENT.has(name))) return undefined;
-  if (name === 'SubagentStop' && !subagent) return undefined;
+  // a subagent's hooks are not the character's turn
+  const valid = typeof h.agent_id === 'string' && AGENT_ID.test(h.agent_id) ? h.agent_id : undefined;
+  const subagent = kind.data === 'claude' || SUBAGENT_LIFE.has(name) ? valid : undefined;
+  if (h.agent_id && !(FROM_SUBAGENT[kind.data].has(name) && (subagent || kind.data === 'codex'))) return undefined;
+  if (SUBAGENT_LIFE.has(name) && !subagent) return undefined;
   const ev: HookEvent = { charId, backend: kind.data, name: name as HookName };
   if (subagent) ev.agentId = subagent;
   if (term === 2) ev.term = 2;
   if (Number.isInteger(pid) && (pid as number) > 0) ev.pid = pid as number;
   const id = sessionId(h.session_id);
-  const transcriptPath = transcript(h.transcript_path);
+  // a codex subagent's events name its own rollout
+  const transcriptPath = h.agent_id ? undefined : transcript(h.transcript_path);
   const notificationType = str(h.notification_type);
   const message = str(h.message);
   const tasks = count(h.background_tasks, WORKING_TASKS);
@@ -154,7 +163,9 @@ export function normalizeHook(raw: unknown): HookEvent | undefined {
   if (toolName) ev.toolName = toolName.slice(0, 200);
   if (tasks !== undefined) ev.backgroundTasks = tasks;
   if (agents !== undefined) ev.backgroundAgents = agents;
-  const shells = shellIds(h.background_tasks);
+  const agentIds = taskIds(h.background_tasks, AGENT_TASKS);
+  if (agentIds) ev.backgroundAgentIds = agentIds;
+  const shells = taskIds(h.background_tasks, SHELL_TASKS);
   if (shells) ev.backgroundShells = shells;
   const monitor = ev.name === 'PostToolUse' && toolName === 'Monitor' ? str(h.task_id) : undefined;
   if (monitor) ev.monitor = monitor.slice(0, 64);

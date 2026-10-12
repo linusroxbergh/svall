@@ -1,8 +1,10 @@
 import { type Island as IslandModel } from '@svall/protocol';
 import { useMemo } from 'react';
+import { memoByValue } from '../hooks.js';
 import { theme } from '../theme.js';
 import { Chevron } from './Chevron.js';
 import { coastPath } from './coast.js';
+import { GrassTexture } from './GrassTexture.js';
 import { LandTexture } from './LandTexture.js';
 import { Seabed, Waterline } from './Relief.js';
 import type { HoldHandlers, PointerHandlers } from './types.js';
@@ -10,7 +12,7 @@ import type { HoldHandlers, PointerHandlers } from './types.js';
 // the pill sits at the top of the reserved band, clearing a selected card on the top row
 const LABEL_OFFSET = theme.bounds.top * theme.cell;
 
-export function Island({
+export const Island = memoByValue(function Island({
   island, count, hot, selected, dragging, settling, hover, offset, gripOffset, onNew, onToggle, onMenu, land, label, handle, hold,
 }: {
   island: IslandModel;
@@ -67,6 +69,7 @@ export function Island({
         <g {...land} {...hold} style={{ pointerEvents: 'visiblePainted' }}>
           <path className="land" d={sand} fill={`url(#${sid})`} />
           <path className="land grass" d={grass} fill={`url(#${gid})`} stroke="var(--shore)" strokeWidth="1" />
+          <GrassTexture seed={seed} shape={grass} w={fw} h={fh} />
           <LandTexture id={island.id} shape={sand} />
         </g>
         <Waterline sand={sand} />
@@ -82,14 +85,14 @@ export function Island({
         className="inew"
         data-testid={`island-new-${island.id}`}
         data-empty={count === 0}
-        aria-label={`New character on ${island.name}`}
+        aria-label={`New robot on ${island.name}`}
         style={count === 0 ? { left: pad + fw / 2, top: pad + fh / 2 } : { left: pad + fw - 8, top: pad - 4 }}
         onPointerDown={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
         onClick={onNew}
         {...hold}
       >
-        + New character
+        + New robot
       </button>
       <div
         className="ihandle"
@@ -102,4 +105,4 @@ export function Island({
       />
     </div>
   );
-}
+});

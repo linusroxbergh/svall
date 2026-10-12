@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MachineId, SPACING, crewGrid, emptyState, isLand, landCells, sizeForCrew, type AgentKind, type FleetState } from '@svall/protocol';
+import { readComposer } from '../src/agent/composer.js';
 import { Config } from '../src/config.js';
 import { docsDir } from '../src/docs.js';
 import { markDormant, markSlotDormant, RESUME_NOTE, type Proc } from '../src/dormancy.js';
@@ -16,14 +17,16 @@ import { aboveHome, placementOk } from '../src/layout.js';
 import type { Deps as LinkDeps } from '../src/links/refresh.js';
 import { silentLogger, type Logger } from '../src/log.js';
 import type { OwnershipState } from '../src/ownership/state.js';
-import { resolvePaths } from '../src/paths.js';
+import { expandHome, resolvePaths } from '../src/paths.js';
 import { Store } from '../src/store.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { ControlClient } from '../src/tmux/control.js';
-import { SESSION, Tmux } from '../src/tmux/tmux.js';
+import { parseScreen, SESSION, Tmux } from '../src/tmux/tmux.js';
 import { cleanHomes, hasTmux, makeHome, ownerOf, waitFor, waitForPolls } from './helpers.js';
 
 const OSID = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
+// a pane of a real agent CLI as `Tmux.screen` reads it
+const pane = (name: string) => parseScreen(fs.readFileSync(path.join(import.meta.dirname, 'fixtures/composer', `${name}.txt`), 'utf8'));
 
 const runIf = hasTmux() ? describe : describe.skip;
 
@@ -48,8 +51,11 @@ runIf('Fleet', () => {
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
-    // a test lays out from mission control alone unless it asks for the island a new fleet opens with
-    if (!opening) for (const i of Object.values(store.state.islands)) if (i.kind !== 'home') fleet.deleteIsland(i.id);
+    // a test lays out from mission control alone unless it asks for the island and shell a new fleet opens with
+    if (!opening) {
+      for (const c of Object.values(store.state.characters)) if (store.state.islands[c.islandId]?.kind !== 'home') await fleet.closeCharacter(c.id);
+      for (const i of Object.values(store.state.islands)) if (i.kind !== 'home') fleet.deleteIsland(i.id);
+    }
     // a spawned stand-in agent reaches the fleet the way a real one does: over the hooks socket
     const hooks = await startHookReceiver(paths.hooksSock, (e) => fleet.onSocketEvent(e), silentLogger);
     cleanup.push(() => hooks.close());
@@ -454,6 +460,29 @@ runIf('Fleet', () => {
     fleet['deps'].config.shell = '/opt/homebrew/bin/sleep';
     await twice();
     expect(store.state.characters[c.id].agent).toBeUndefined();
+  });
+
+  it('lets a Claude agent go once its transcript shows an Esc or a "No" ended the turn, which no hook reports', async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    await waitFor(async () => (await tmux.listWindows()).some((w) => w.name === c.id && w.command === 'sleep'));
+    const transcript = path.join(makeHome(), 't.jsonl');
+    const entry = (at: number, content: unknown) => JSON.stringify({ type: 'user', timestamp: new Date(at).toISOString(), message: { role: 'user', content } }) + '\n';
+    const esc = (at: number) => entry(at, [{ type: 'text', text: '[Request interrupted by user for tool use]' }]);
+    const asked = Date.now() - 10_000;
+    fs.writeFileSync(transcript, entry(asked - 1000, 'ask me'));
+    store.update((d) => { d.characters[c.id].agent = { kind: 'claude', sessionId: 's', transcriptPath: transcript, status: 'blocked', promptId: 'q', asking: ['a1'], lastActivityAt: asked }; });
+    await fleet['poll']['tick']();
+    expect(store.state.characters[c.id].agent?.status).toBe('blocked');
+    fs.appendFileSync(transcript, entry(asked + 2000, [{ type: 'tool_result', is_error: true, content: 'rejected' }]) + esc(asked + 2001));
+    await fleet['poll']['tick']();
+    expect(store.state.characters[c.id].agent).toMatchObject({ status: 'idle' });
+    expect(store.state.characters[c.id].agent).not.toHaveProperty('asking');
+    // an Esc from before the agent's last hook was answered by it, as a prompt typed straight after
+    store.update((d) => { d.characters[c.id].agent!.status = 'working'; d.characters[c.id].agent!.lastActivityAt = Date.now(); });
+    fs.appendFileSync(transcript, esc(Date.now() - 1000));
+    await fleet['poll']['tick']();
+    expect(store.state.characters[c.id].agent?.status).toBe('working');
   });
 
   it('records shell activity when a SessionEnd hook ends the agent, without waiting for a poll', async () => {
@@ -905,6 +934,17 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id].tmux).toBeDefined();
   });
 
+  it('leaves an agent with a prompt held for it', async () => {
+    const b = await boot();
+    const { fleet, store } = b;
+    const { c } = await withAgent(b);
+    vi.spyOn(b.tmux, 'screen').mockResolvedValue(pane('claude-draft'));
+    expect(await fleet.run(c.id, 'go', true)).toBe('queued');
+    store.update((d) => { d.characters[c.id].agent!.lastActivityAt = 0; });
+    await fleet['endIdleAgents']();
+    expect(store.state.characters[c.id].tmux).toBeDefined();
+  });
+
   it('gives a character the user has just looked at a whole rest before its agent is ended', async () => {
     const b = await boot();
     const { fleet, store } = b;
@@ -956,7 +996,7 @@ runIf('Fleet', () => {
     vi.spyOn(tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
     await fleet.run(c.id, 'run the tests again', true);
     const file = path.join(home, `${c.id}.prompt`);
-    expect(typed).toEqual([`codex resume -c tui.resume_cwd=session ${SID} -- "$(cat '${file}'; rm -f '${file}')"`]);
+    expect(typed).toEqual([`codex resume --no-daemon -c tui.resume_cwd=session ${SID} -- "$(cat '${file}'; rm -f '${file}')"`]);
   });
 
   it('takes back no window still closing for idleness, from a poll, a reconcile or a revive', async () => {
@@ -1306,8 +1346,9 @@ runIf('Fleet', () => {
 
   it('marks the agent working when a prompt is submitted', async () => {
     // no poll runs: the pane sits at a shell prompt, where a poll drops the agent
-    const { fleet, store } = await boot({ pollMs: 60_000 });
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    vi.spyOn(tmux, 'screen').mockResolvedValue(pane('claude-empty'));
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope' } });
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Stop' } });
     await fleet.run(c.id, 'x', true);
@@ -1322,6 +1363,7 @@ runIf('Fleet', () => {
     const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope' } });
+    vi.spyOn(tmux, 'screen').mockResolvedValue(pane('claude-empty'));
     tmux.sendLine = async () => {
       store.update((d) => { d.characters[c.id].agent!.status = 'blocked'; });
     };
@@ -1334,9 +1376,13 @@ runIf('Fleet', () => {
     const { fleet, store, tmux } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope' } });
+    vi.spyOn(tmux, 'screen').mockResolvedValue(pane('claude-empty'));
     let sent!: () => void;
-    vi.spyOn(tmux, 'sendLine').mockImplementation(() => new Promise((r) => { sent = r; }));
+    let sending!: () => void;
+    const typing = new Promise<void>((r) => { sending = r; });
+    vi.spyOn(tmux, 'sendLine').mockImplementation(() => { sending(); return new Promise((r) => { sent = r; }); });
     const run = fleet.run(c.id, 'go', true);
+    await typing;
     // the agent takes the prompt and finishes the turn before the send returns
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } });
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Stop' } });
@@ -1345,15 +1391,241 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id]).toMatchObject({ agent: { status: 'done' }, unread: true });
   });
 
+  it('keeps the end of a turn that began and ended while the prompt was still being sent', async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    const hook = (name: HookEvent['name']) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name, sessionId: 'sess', transcriptPath: '/nope' } });
+    hook('SessionStart');
+    hook('Stop');
+    vi.spyOn(tmux, 'screen').mockResolvedValue(pane('claude-empty'));
+    // a fast agent: the turn ends before the Enter's paste returns, leaving the status it had before
+    vi.spyOn(tmux, 'sendLine').mockImplementation(async () => { await new Promise((r) => setTimeout(r, 5)); hook('UserPromptSubmit'); hook('Stop'); });
+    await fleet.run(c.id, 'quick', true);
+    expect(store.state.characters[c.id].agent?.status).toBe('done');
+  });
+
   it('leaves a question that came up while the line was sent', async () => {
     const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', sessionId: 'sess', ...h } });
     hook({ name: 'SessionStart', transcriptPath: '/nope' });
-    hook({ notificationType: 'permission_prompt', message: 'may I' });
+    vi.spyOn(tmux, 'screen').mockResolvedValue(pane('claude-empty'));
     tmux.sendLine = async () => { hook({ notificationType: 'permission_prompt', message: 'and may I' }); };
     await fleet.run(c.id, 'no', true);
     expect(store.state.characters[c.id].agent).toMatchObject({ status: 'blocked', prompt: 'and may I' });
+  });
+
+  describe('a prompt run into an agent', () => {
+    // the fixtures each CLI's panes were captured into
+    const SCREENS = { claude: 'claude', codex: 'codex', opencode: 'oc' } as const;
+    const DIALOG = { claude: 'claude-permission', codex: 'codex-approval', opencode: 'oc-permission' } as const;
+    const kinds = Object.keys(SCREENS) as AgentKind[];
+
+    // an agent of `kind` on a pane whose screen the test sets, and what reaches the pane
+    async function agentPane(kind: AgentKind) {
+      const b = await boot({ pollMs: 60_000 });
+      const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+      const hook = (h: Partial<HookEvent>) => b.fleet.onSocketEvent({ hook: { charId: c.id, backend: kind, name: 'Notification', sessionId: 'sess', ...h } });
+      hook({ name: 'SessionStart', transcriptPath: '/nope' });
+      const screen = vi.spyOn(b.tmux, 'screen').mockResolvedValue(pane(`${SCREENS[kind]}-empty${kind === 'opencode' ? '-session' : ''}`));
+      const typed: string[] = [];
+      vi.spyOn(b.tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
+      return { ...b, c, hook, screen, typed };
+    }
+
+    it.each(kinds)('is refused while %s waits on an answer', async (kind) => {
+      const { fleet, c, hook, screen, typed } = await agentPane(kind);
+      screen.mockResolvedValue(pane(DIALOG[kind]));
+      if (kind === 'claude') hook({ notificationType: 'permission_prompt', message: 'Claude needs your permission to use Bash' });
+      else hook({ name: 'PermissionRequest', toolName: 'shell' });
+      await expect(fleet.run(c.id, '1', true)).rejects.toMatchObject({ code: 'blocked', message: expect.stringContaining(`${c.name} is waiting on an answer`) });
+      expect(typed).toEqual([]);
+    });
+
+    it('is refused in the seconds Claude Code shows its dialog before it notifies of it', async () => {
+      const { fleet, c, hook, screen, typed } = await agentPane('claude');
+      hook({ name: 'PermissionRequest', toolName: 'Bash' });
+      screen.mockResolvedValue(pane('claude-permission'));
+      // Svall has no question to answer yet, so the terminal is where it is answered
+      await expect(fleet.run(c.id, 'go', true)).rejects.toMatchObject({ code: 'blocked', message: `${c.name} is waiting on an answer (Bash); answer it in its terminal, then send again` });
+      // approved, the tool runs on with its prompt line back in view
+      screen.mockResolvedValue(pane('claude-working'));
+      expect(await fleet.run(c.id, 'go', true)).toBe('delivered');
+      expect(typed).toEqual(['go']);
+    });
+
+    it.each(kinds)("is held while %s's prompt line has a draft, and goes in once it is cleared", async (kind) => {
+      const { fleet, c, hook, screen, typed } = await agentPane(kind);
+      screen.mockResolvedValue(pane(`${SCREENS[kind]}-draft`));
+      expect(await fleet.run(c.id, 'first', true)).toBe('queued');
+      await new Promise((r) => setTimeout(r, 1200));
+      expect(typed).toEqual([]);
+      screen.mockResolvedValue(pane(`${SCREENS[kind]}-empty${kind === 'opencode' ? '-session' : ''}`));
+      // one sent while another is held goes in after it, once the turn of the one before is over
+      expect(await fleet.run(c.id, 'second', true)).toBe('queued');
+      await waitFor(() => typed.length === 1);
+      await new Promise((r) => setTimeout(r, 1200));
+      expect(typed).toEqual(['first']);
+      hook({ name: 'Stop' });
+      await waitFor(() => typed.length === 2);
+      expect(typed).toEqual(['first', 'second']);
+    });
+
+    it.each(kinds)('goes in at once while %s works, as the agent queues it itself', async (kind) => {
+      const { fleet, store, c, hook, screen, typed } = await agentPane(kind);
+      hook({ name: 'UserPromptSubmit' });
+      screen.mockResolvedValue(pane(`${SCREENS[kind]}-working`));
+      expect(store.state.characters[c.id].agent?.status).toBe('working');
+      expect(await fleet.run(c.id, 'also this', true)).toBe('delivered');
+      expect(typed).toEqual(['also this']);
+    });
+
+    it('keeps a wait from taking the end of the turn before a held prompt for its own', async () => {
+      const { fleet, c, hook, screen, typed } = await agentPane('claude');
+      hook({ name: 'Stop' });
+      screen.mockResolvedValue(pane('claude-draft'));
+      expect(await fleet.run(c.id, 'go', true)).toBe('queued');
+      let status: string | undefined;
+      const waited = fleet.waitFor(c.id, ['done', 'blocked'], 10_000).then((s) => { status = s; });
+      screen.mockResolvedValue(pane('claude-empty'));
+      await waitFor(() => typed.length === 1);
+      expect(status).toBeUndefined();
+      hook({ name: 'Stop' });
+      await waited;
+      expect(status).toBe('done');
+    });
+
+    it('lets a wait see a question asked while a prompt is held', async () => {
+      const { fleet, c, hook, screen } = await agentPane('claude');
+      screen.mockResolvedValue(pane('claude-draft'));
+      expect(await fleet.run(c.id, 'go', true)).toBe('queued');
+      hook({ notificationType: 'permission_prompt' });
+      expect(await fleet.waitFor(c.id, ['done', 'blocked'], 1000)).toBe('blocked');
+    });
+
+    it('is held under a dialog the agent did not report, as a Codex question', async () => {
+      const { fleet, c, screen, typed } = await agentPane('codex');
+      screen.mockResolvedValue(pane('codex-question'));
+      expect(await fleet.run(c.id, 'go', true)).toBe('queued');
+      screen.mockResolvedValue(pane('codex-empty'));
+      await waitFor(() => typed.length === 1);
+    });
+
+    it("is held while a shell has the pane, as before the agent is up, though the shell's prompt looks like the agent's", async () => {
+      const { fleet, tmux, c, screen, typed } = await agentPane('claude');
+      screen.mockRestore();
+      await tmux.run('send-keys', '-t', c.tmux!.paneId, "PS1='❯ '", 'Enter');
+      await waitFor(async () => readComposer('claude', await tmux.screen(c.tmux!.paneId)) === 'empty');
+      expect(await fleet.run(c.id, 'go', true)).toBe('queued');
+      expect(typed).toEqual([]);
+    });
+
+    it('is dropped with its character', async () => {
+      const { fleet, c, screen, typed } = await agentPane('claude');
+      screen.mockResolvedValue(pane('claude-draft'));
+      expect(await fleet.run(c.id, 'go', true)).toBe('queued');
+      await fleet.closeCharacter(c.id);
+      screen.mockResolvedValue(pane('claude-empty'));
+      await new Promise((r) => setTimeout(r, 1200));
+      expect(typed).toEqual([]);
+    });
+
+    it('is dropped when the fleet stops', async () => {
+      const { fleet, c, screen, typed } = await agentPane('claude');
+      screen.mockResolvedValue(pane('claude-draft'));
+      expect(await fleet.run(c.id, 'go', true)).toBe('queued');
+      await fleet.stop();
+      screen.mockResolvedValue(pane('claude-empty'));
+      await new Promise((r) => setTimeout(r, 1200));
+      expect(typed).toEqual([]);
+    });
+
+    it("is dropped when the agent's session ends, not typed into the next one", async () => {
+      const { fleet, c, hook, screen, typed } = await agentPane('claude');
+      screen.mockResolvedValue(pane('claude-draft'));
+      expect(await fleet.run(c.id, 'go', true)).toBe('queued');
+      hook({ name: 'SessionEnd' });
+      hook({ name: 'SessionStart', sessionId: 'other', transcriptPath: '/nope' });
+      screen.mockResolvedValue(pane('claude-empty'));
+      await new Promise((r) => setTimeout(r, 1200));
+      expect(typed).toEqual([]);
+    });
+
+    it('is dropped when the second terminal it waits on closes, not typed into the next one', async () => {
+      const { fleet, store, tmux, c, screen, typed } = await agentPane('claude');
+      const second = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', term: 2, name: 'SessionStart', sessionId: 's2', transcriptPath: '/nope', ...h } });
+      await fleet.openSecond(c.id);
+      second({});
+      screen.mockResolvedValue(pane('claude-draft'));
+      expect(await fleet.run(c.id, 'go', true, 2)).toBe('queued');
+      await tmux.killWindow(store.state.characters[c.id].second!.tmux!.windowId);
+      await waitFor(() => !store.state.characters[c.id].second?.tmux);
+      await fleet.openSecond(c.id);
+      second({ backend: 'codex', sessionId: 's3' });
+      screen.mockResolvedValue(pane('codex-empty'));
+      await new Promise((r) => setTimeout(r, 1200));
+      expect(typed).toEqual([]);
+    });
+
+    it("waits out the user's own turn, so a wait takes the end of the held prompt's turn", async () => {
+      const { fleet, c, hook, screen, typed } = await agentPane('codex');
+      hook({ name: 'Stop' });
+      screen.mockResolvedValue(pane('codex-draft'));
+      expect(await fleet.run(c.id, 'go', true)).toBe('queued');
+      let status: string | undefined;
+      const waited = fleet.waitFor(c.id, ['done'], 10_000).then((s) => { status = s; });
+      // the user sends their draft, and the agent works on it with its prompt line empty
+      hook({ name: 'UserPromptSubmit' });
+      screen.mockResolvedValue(pane('codex-working'));
+      await new Promise((r) => setTimeout(r, 1200));
+      expect(typed).toEqual([]);
+      hook({ name: 'Stop' });
+      screen.mockResolvedValue(pane('codex-empty'));
+      await waitFor(() => typed.length === 1);
+      expect(status).toBeUndefined();
+      hook({ name: 'Stop' });
+      await waited;
+      expect(status).toBe('done');
+    });
+
+    it('wakes a wait once the held prompts are in, though the agent did not change', async () => {
+      const { fleet, c, hook, screen, typed } = await agentPane('claude');
+      hook({ name: 'Stop' });
+      screen.mockResolvedValue(pane('claude-draft'));
+      expect(await fleet.run(c.id, 'note', false)).toBe('queued');
+      const waited = fleet.waitFor(c.id, ['done'], 3000);
+      screen.mockResolvedValue(pane('claude-empty'));
+      await waitFor(() => typed.length === 1);
+      expect(await waited).toBe('done');
+    });
+
+    it('is refused when the agent asks while its screen is read', async () => {
+      const { fleet, c, hook, screen, typed } = await agentPane('claude');
+      let shown: (() => void) | undefined;
+      screen.mockImplementation(() => new Promise((r) => { shown = () => r(pane('claude-empty')); }));
+      const run = fleet.run(c.id, 'go', true);
+      await waitFor(() => shown !== undefined);
+      hook({ notificationType: 'permission_prompt', message: 'may I' });
+      shown!();
+      await expect(run).rejects.toMatchObject({ code: 'blocked' });
+      expect(typed).toEqual([]);
+    });
+
+    it('says queued when a dormant agent wakes onto its window with a draft there', async () => {
+      const { fleet, store, c, screen, typed } = await agentPane('claude');
+      screen.mockResolvedValue(pane('claude-draft'));
+      store.update((d) => { delete d.characters[c.id].tmux; d.characters[c.id].revive = { command: 'claude --resume sess' }; });
+      expect(await fleet.run(c.id, 'go', true)).toBe('queued');
+      expect(typed).toEqual([]);
+    });
+
+    it('holds what follows text typed with no Enter until that text is sent or cleared', async () => {
+      const { fleet, c, screen, typed } = await agentPane('claude');
+      expect(await fleet.run(c.id, 'staged', false)).toBe('delivered');
+      screen.mockResolvedValue(pane('claude-draft'));
+      expect(await fleet.run(c.id, 'next', true)).toBe('queued');
+      expect(typed).toEqual(['staged']);
+    });
   });
 
   it('answers a blocked agent with Enter to approve and Escape to deny', async () => {
@@ -1617,12 +1889,15 @@ runIf('Fleet', () => {
     expect(Object.values(store.state.islands).filter((i) => i.kind === 'home')).toHaveLength(1);
   });
 
-  it('opens a new fleet with one empty island, and does not make it again once deleted', async () => {
+  it('opens a new fleet with one island holding a shell, and does not make them again once deleted', async () => {
     const { fleet, store } = await boot({ opening: true });
     const first = Object.values(store.state.islands).filter((i) => i.kind !== 'home');
     expect(first).toEqual([expect.objectContaining({ name: 'Island 1' })]);
-    expect(Object.keys(store.state.characters)).toEqual([]);
+    const shells = Object.values(store.state.characters);
+    expect(shells).toEqual([expect.objectContaining({ islandId: first[0].id, cwd: expandHome(store.state.defaultCwd) })]);
+    expect(shells[0].agent).toBeUndefined();
     expect(placementOk(store.state, first[0])).toBe(true);
+    await fleet.closeCharacter(shells[0].id);
     fleet.deleteIsland(first[0].id);
     // the next start reads the fleet the last one left
     const again = await boot({ opening: true, state: structuredClone(store.state) });
@@ -1735,7 +2010,7 @@ runIf('Fleet', () => {
     expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } })).toBeUndefined();
     fleet.updateCharacter(c.id, { instructions: 'in Spanish' });
     const diff = fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } });
-    expect(diff).toContain('+ Character instructions: in Spanish');
+    expect(diff).toContain('+ Robot instructions: in Spanish');
     expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit' } })).toBeUndefined();
   });
 
@@ -1772,7 +2047,7 @@ runIf('Fleet', () => {
     expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: nested, pid: process.ppid } })).toBeUndefined();
     expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit', sessionId: nested, pid: process.ppid } })).toBeUndefined();
     expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'UserPromptSubmit', sessionId: outer, pid: process.pid } }))
-      .toContain('+ Character instructions: in Spanish');
+      .toContain('+ Robot instructions: in Spanish');
   });
 
   it('says so when a window runs codex and no hook comes from it, until one does', async () => {
@@ -1897,21 +2172,35 @@ runIf('Fleet', () => {
     expect(store.state).not.toHaveProperty('scribeOff');
   });
 
-  it('tells a character made with a task, not one opened by hand, to work in a worktree until the setting turns it off', async () => {
+  it('tells every character, made with a task or opened by hand, to work in a new worktree until the setting turns it off', async () => {
     const { fleet, store } = await boot({ runTimeoutMs: 300 });
     const islandId = fleet.createIsland({ name: 'feature' }).id;
     const manual = await fleet.createCharacter({ islandId, cwd: '/tmp' });
     const c = await fleet.createCharacter({ islandId, cwd: '/tmp', command: 'echo started', run: 'hello' });
-    const rule = '- In a git repo, work in a worktree';
-    expect(fleet.brief(manual.id)).not.toContain(rule);
+    const rule = '- In a git repo, start every task and review in a new worktree';
+    expect(fleet.brief(manual.id)).toContain(rule);
     expect(fleet.brief(c.id)).toContain(rule);
     fleet.setWorktrees(false);
     expect(store.state.worktreesOff).toBe(true);
+    expect(fleet.brief(manual.id)).not.toContain(rule);
     expect(fleet.brief(c.id)).not.toContain(rule);
     fleet.setWorktrees(true);
     expect(store.state).not.toHaveProperty('worktreesOff');
+    expect(fleet.brief(manual.id)).toContain(rule);
     expect(fleet.brief(c.id)).toContain(rule);
     await fleet.closeCharacter(manual.id);
+    await fleet.closeCharacter(c.id);
+  });
+
+  it('keeps the robots switch in the fleet, on unless turned off, and a character\'s robot apart from its animal', async () => {
+    const { fleet, store } = await boot();
+    expect(store.state).not.toHaveProperty('animals');
+    fleet.setRobots(false);
+    expect(store.state.animals).toBe(true);
+    fleet.setRobots(true);
+    expect(store.state).not.toHaveProperty('animals');
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'robots' }).id, cwd: '/tmp' });
+    expect(fleet.updateCharacter(c.id, { robot: 42 })).toMatchObject({ robot: 42, portrait: c.portrait });
     await fleet.closeCharacter(c.id);
   });
 
@@ -1984,7 +2273,7 @@ runIf('Fleet', () => {
     await waitFor(() => b.store.state.characters[c.id].agent?.status === 'done');
     expect(b.store.state.characters[c.id].agent).toMatchObject({ kind: 'codex', model: 'gpt-fake' });
     expect(b.fleet.readPrompts(c.id, 5)).toEqual(['fix the flaky test']);
-    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-codex', `${c.id}.argv`), 'utf8'))).toEqual(['--', 'fix the flaky test']);
+    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-codex', `${c.id}.argv`), 'utf8'))).toEqual(['--no-daemon', '--', 'fix the flaky test']);
   });
 
   it('hands opencode its first prompt with --prompt and follows its plugin', async () => {
@@ -2132,7 +2421,7 @@ runIf('Fleet', () => {
     expect(brief).toContain(`- native-surfaces — "Native surfaces sit above the webview." (${path.join(dir, 'native-surfaces.md')})`);
     expect(brief).toContain(`- island: ${dir}`);
     expect(brief).toContain(`- fleet: ${path.join(docs, 'fleet')}`);
-    expect(brief).toContain(`- character: ${docsDir(docs, 'character', c.id)}`);
+    expect(brief).toContain(`- robot: ${docsDir(docs, 'character', c.id)}`);
     expect(brief).toMatch(/- repo: .*\/docs\/repos\/tmp-[0-9a-f]{8}/);
     expect(fleet.islandBrief(island.id)).toContain('- native-surfaces');
     await fleet.closeCharacter(c.id);

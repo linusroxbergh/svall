@@ -86,7 +86,9 @@ export type ToShell =
   | { type: 'setup.plan' }
   | { type: 'setup.run'; agents: AgentKind[]; found: AgentKind[]; projects: string }
   // a native folder picker opened at `start`, answered by folder.picked unless cancelled
-  | { type: 'folder.pick'; start: string };
+  | { type: 'folder.pick'; start: string }
+  // keeps the Mac from idle-sleeping under this reason; none lets go
+  | { type: 'awake'; reason?: string };
 
 export type FromShell =
   | { type: 'connection'; host: string; port: number; token: string }

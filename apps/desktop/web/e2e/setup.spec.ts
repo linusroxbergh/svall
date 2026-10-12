@@ -29,7 +29,7 @@ const NOTHING: Plan = { ...PLAN, agents: [], writes: PLAN.writes.slice(2),
   blockers: ["Svall runs Claude Code, Codex or OpenCode in its terminals, so it needs the claude, codex or opencode command. The desktop apps don't install it. Install one in Terminal, then check again."],
   install: [{ kind: 'claude', command: 'curl -fsSL https://claude.ai/install.sh | bash', url: 'https://code.claude.com/docs/en/setup' },
     { kind: 'codex', command: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh', url: 'https://learn.chatgpt.com/docs/codex/cli' },
-    { kind: 'opencode', command: 'curl -fsSL https://opencode.ai/install | bash', url: 'https://opencode.ai/docs/' }] };
+    { kind: 'opencode', command: 'curl -fsSL https://opencode.ai/v2/install | bash', url: 'https://opencode.ai/v2/docs/' }] };
 
 test('lists the agents and files, and sets up the agents left on', async ({ page }) => {
   await fakeShell(page, PLAN);

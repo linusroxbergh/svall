@@ -10,7 +10,7 @@
 @property --k { syntax: '<number>'; inherits: false; initial-value: 1; }
 @property --lk { syntax: '<number>'; inherits: false; initial-value: 1; }
 .map-world .island, .map-world .tok { --ms: inherit; translate: calc(var(--ox) * var(--ms)) calc(var(--oy) * var(--ms)); }
-.map-world .tok { --k: inherit; }
+.map-world .tok, .home .tok { --k: inherit; }
 .map-world .island, .map-world .ilabel, .map-world .inew[data-empty="true"] { --lk: inherit; }
 .map-world .island { pointer-events: none; }
 .map-world .tok, .map-world .island > * { pointer-events: auto; }
@@ -68,7 +68,7 @@
 .tok{position:absolute;z-index:20;cursor:pointer;
   transform:translate(-50%,-48%);filter:brightness(var(--map-tone, 1))}
 /* cards keep their screen size whatever the map zoom, so they rasterise crisp */
-.map-world .tok{transform-origin:0 0;transform:scale(var(--k,1)) translate(-50%,-48%)}
+.map-world .tok,.home .tok{transform-origin:0 0;transform:scale(var(--k,1)) translate(-50%,-48%)}
 /* on the card's paper a status prints in its ink; the chrome around the map keeps the lit tokens */
 .tok{--working:var(--working-ink);--blocked:var(--blocked-ink);--done:var(--done-ink);--ink-on-blocked:var(--cream)}
 .tok:hover,.tok.sel{z-index:30}
@@ -82,7 +82,9 @@
 .tok .card{position:relative;width:var(--card-w);height:var(--card-h);
   border-radius:calc(var(--tok)*.21);
   display:flex;flex-direction:column;overflow:hidden;
-  background:linear-gradient(var(--card-0) 0%, var(--card-1) 62%, var(--card-2) 100%);
+  /* the map's grain inked in the card's tint; --grain offsets it so neighbours differ */
+  background:url('../assets/card-grain.png') var(--grain, 0 0)/96px 96px,
+             linear-gradient(var(--card-0) 0%, var(--card-1) 62%, var(--card-2) 100%);
   box-shadow:0 1px 0 color-mix(in srgb, var(--card-tint) 16%, transparent), 0 1px 2px var(--shade-1);
   transition:transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease)}
 .tok .card::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:8;
@@ -173,18 +175,18 @@
 .tok .foot .pip[data-status=blocked]{background:var(--blocked)}
 .tok .foot .pip[data-status=done]{background:var(--done)}
 .tok .foot .pip[data-status=idle]{background:var(--idle)}
-/* a working agent's three dots rise in turn, as a chat app shows someone typing. They animate top and colour, not
-   transform or opacity: a compositor animation lifts the whole card into a layer of its own, which WebKit draws blurred */
-.tok .foot .dots{display:inline-flex;align-items:center;gap:calc(var(--tok)*.07);height:calc(var(--tok)*.24)}
-.tok .foot .dots i{position:relative;width:calc(var(--tok)*.11);height:calc(var(--tok)*.11);border-radius:50%;background:var(--working);
-  animation:typing var(--pulse) ease-in-out infinite}
-.tok .foot .dots i:nth-child(2){animation-delay:calc(var(--pulse) / 8)}
-.tok .foot .dots i:nth-child(3){animation-delay:calc(var(--pulse) / 4)}
-@keyframes typing{0%,60%,100%{top:0;background-color:color-mix(in srgb, var(--working) 35%, transparent)}
-  30%{top:calc(var(--tok)*-.033);background-color:var(--working)}}
 .tok .foot .sw{font-size:calc(var(--tok)*.225);font-weight:var(--w-bold);letter-spacing:var(--track-caps);
   text-transform:uppercase;padding:calc(var(--tok)*.02) calc(var(--tok)*.13);
   border-radius:var(--r-xs)}
+/* a sheen crosses a working pill now and then. It moves the background, not transform or opacity: a compositor
+   animation lifts the whole card into a layer of its own, which WebKit draws blurred */
+.tok .foot .sw[data-status=working]{background-repeat:no-repeat;background-size:300% 100%;
+  background-image:linear-gradient(105deg, transparent 38%, color-mix(in srgb, var(--cream) 42%, transparent) 50%, transparent 62%);
+  animation:sheen var(--sheen) ease-in-out infinite}
+@keyframes sheen{0%{background-position:100% 0}32%,100%{background-position:0 0}}
+/* a second agent's pips leave the word less room */
+.tok .foot:has(.pips){padding:0 calc(var(--tok)*.12)}
+.tok .foot .pips ~ .sw{letter-spacing:var(--track-loose)}
 .tok button.foot{border:0;border-radius:0;font:inherit;color:inherit;text-align:inherit;cursor:pointer;
   transition:background var(--dur) var(--ease)}
 .tok button.foot:hover{background:linear-gradient(color-mix(in srgb, var(--card-tint) 6%, transparent),color-mix(in srgb, var(--card-tint) 10%, transparent))}
@@ -212,6 +214,43 @@
 
 .tok.s-shell .disc{box-shadow:0 4px 7px var(--shade-1), inset 0 0 0 1.4px color-mix(in srgb, var(--cream) 28%, transparent)}
 .tok.s-shell .disc::after{opacity:.18}
+
+/* robot portraits: the top edge a meter of the context used, the name under it in a band two lines tall, the robot standing below on a soft shadow */
+.tok.bot .edge{--st:var(--idle);position:relative;height:calc(var(--tok)*.17);background:color-mix(in srgb, var(--st) 26%, var(--card-band))}
+.tok.bot.s-working .edge{--st:var(--working)}
+.tok.bot.s-blocked .edge{--st:var(--blocked)}
+.tok.bot.s-done    .edge{--st:var(--done)}
+.tok.bot.s-shell   .edge{--st:var(--shell-dim)}
+.tok.bot .edge i{position:absolute;inset:0 auto 0 0;background:var(--st);box-shadow:1px 0 0 color-mix(in srgb, var(--cream) 70%, transparent)}
+.tok.bot .nm{flex:none;height:calc(var(--tok)*.7);padding-top:calc(var(--tok)*.14)}
+.tok.bot .stage{position:relative;flex:1;min-height:0}
+.tok.bot .stage::after{content:'';position:absolute;left:50%;bottom:calc(var(--tok)*.04);transform:translateX(-50%);
+  width:calc(var(--tok)*1.3);height:calc(var(--tok)*.14);border-radius:50%;
+  background:radial-gradient(closest-side, color-mix(in srgb, var(--ink-land) 24%, transparent), transparent)}
+.tok .portrait.robot{position:absolute;z-index:1;left:50%;bottom:calc(var(--tok)*.08);transform:translateX(-50%);
+  width:auto;height:92%;max-width:88%;object-fit:contain;object-position:center bottom}
+/* the inline robot lets its arms swing past its frame, and leaves the pointer to the card */
+.tok svg.portrait.robot{overflow:visible;pointer-events:none}
+/* marks on the card's corners, on a layer over the card that lifts with it and lets clicks through */
+.tok .corner{position:absolute;z-index:10;inset:0;pointer-events:none;transition:transform var(--dur) var(--ease)}
+.tok:hover .corner{transform:translateY(-6px)}
+.tok.sel .corner{transform:translateY(-5px) scale(1.04)}
+.tok.drag .corner{transform:translateY(-12px)}
+.tok .corner .marks{position:absolute;top:calc(var(--tok)*-.12);right:calc(var(--tok)*-.12);display:flex;gap:calc(var(--tok)*.22)}
+.tok .mark{flex:none;box-sizing:border-box;width:calc(var(--tok)*.54);height:calc(var(--tok)*.54);padding:0;border:0;border-radius:50%;
+  display:grid;place-items:center;pointer-events:auto;cursor:inherit;
+  background:var(--card-1);color:color-mix(in srgb, var(--ink-land) 70%, transparent);
+  box-shadow:0 1px 3px var(--shade-1), 0 0 0 calc(var(--tok)*.055) var(--ink-3)}
+.tok .mark svg{width:62%;height:62%;display:block}
+.tok .mark.review{cursor:pointer;background:var(--review);color:var(--ink-on-review);transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
+.tok .mark.review:hover{background:var(--ink-on-review);color:var(--review)}
+.tok .mark.monitor{background:var(--pt-sky);color:var(--map-2)}
+/* the subagents running as a capsule on the top-left corner, clear of the other marks, their count as large as the name */
+.tok .corner .marks.left{right:auto;left:calc(var(--tok)*-.12)}
+.tok .mark.subs{width:auto;display:inline-flex;gap:calc(var(--tok)*.05);padding:0 calc(var(--tok)*.13) 0 calc(var(--tok)*.1);
+  border-radius:calc(var(--tok)*.27);color:var(--ink-land);
+  font-size:calc(var(--tok)*.32);font-weight:var(--w-bold);line-height:1;font-variant-numeric:tabular-nums}
+.tok .mark.subs svg{flex:none;width:calc(var(--tok)*.32);height:calc(var(--tok)*.32)}
 
 .tok.drag{z-index:var(--z-popover);pointer-events:none}
 .tok.drag .card{transform:translateY(-12px);
@@ -274,9 +313,9 @@
   filter:saturate(.9) contrast(.96) drop-shadow(0 2px 2px var(--shade-1));transition:transform var(--dur) var(--ease)}
 .res-tower:hover img,.res-tower[data-selected="true"] img,
 .res-tower:hover .res-tower-grain,.res-tower[data-selected="true"] .res-tower-grain{transform:translateY(-3px)}
-/* the map's grain over the drawing alone, fainter than on land */
-.res-tower-grain{position:absolute;z-index:9;inset:0;pointer-events:none;opacity:.14;
-  background:url('../assets/map-grain.png') repeat;background-size:128px 128px;mask-size:100% 100%;mask-repeat:no-repeat;
+/* the cards' grain over the drawing alone */
+.res-tower-grain{position:absolute;z-index:9;inset:0;pointer-events:none;
+  background:url('../assets/card-grain.png') repeat;background-size:96px 96px;mask-size:100% 100%;mask-repeat:no-repeat;
   transition:transform var(--dur) var(--ease)}
 /* a contact shadow where the tower meets the footing, tight enough to read as touching it */
 .res-tower-shadow{position:absolute;z-index:7;left:50%;bottom:calc(var(--lh)*.005);width:calc(var(--lh)*.42);height:calc(var(--lh)*.05);
