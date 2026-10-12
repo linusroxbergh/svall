@@ -187,6 +187,50 @@ describe('host add', () => {
     }
   });
 
+  it('fails the probe on a daemon that answers from another release than the one installed, and registers nothing', async () => {
+    healthy();
+    const d = await daemon({ release: () => '1.2.2' });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
+    await d.close();
+    expect(out.result).toBe('actions');
+    expect(step('probe').at(-1)).toMatchObject({ status: 'fail', detail: 'trift answers from release 1.2.2, not 1.2.3' });
+    expect(step('registry')).toEqual([]);
+    expect(registry.get('trift')).toBeUndefined();
+  });
+
+  /** A far setup of 1.2.3 whose new daemon did not answer: it goes back to 1.2.2, and still exits 0. */
+  async function wentBack(registry: MachineRegistry) {
+    ssh.reply(['setup'], {
+      stdout: [
+        'release 1.2.3 installed', 'systemctl --user restart svall-svalld@private.service',
+        `the private fleet's daemon did not answer: current -> ${BASE}/releases/1.2.2`,
+        'systemctl --user restart svall-svalld@private.service', 'systemctl --user restart svall-gateway.service',
+      ].join('\n') + '\n',
+    });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.2', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });
+    healthy();
+    const d = await daemon({ release: () => '1.2.2' });
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.2', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN });
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
+    await d.close();
+    return out;
+  }
+
+  it('stops at identity over an install whose setup went back to the release it ran, naming that release, and registers nothing', async () => {
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    const out = await wentBack(registry);
+    const action = 'ssh trift.test and read the daemon log; trift runs release 1.2.2, the one its setup went back to; then add the machine again';
+    expect(out).toEqual({ result: 'actions', actions: [action] });
+    expect(step('identity').at(-1)).toEqual({
+      step: 'identity', status: 'fail',
+      detail: 'trift runs release 1.2.2, not 1.2.3: its setup went back, as the daemon of 1.2.3 did not answer', action,
+    });
+    expect(step('registry')).toEqual([]);
+    expect(registry.get('trift')).toBeUndefined();
+  });
+
   it('finds claude, codex and opencode on the PATH the companion\'s unit runs with, and holds each to its version floor and login', async () => {
     // over ssh the login shell finds none of the CLIs; their installers put them in ~/.local/bin
     healthy({ agents: false });
@@ -583,6 +627,17 @@ esac
         step: 'identity', status: 'fail', detail: `trift.test now reaches machine ${OTHER_MAC}, not trift (${REMOTE})`,
         action: 'point trift.test back at trift, or svall host remove trift --forget and add it again',
       });
+      expect(registry.list().filter((m) => m.record.name === 'trift')).toEqual([{ id: REMOTE, record: expect.objectContaining({ gateway: true }) }]);
+    });
+
+    it('stops at identity when its setup went back to the release the machine ran, naming that release, and keeps its record', async () => {
+      const registry = MachineRegistry.load(path.join(work, 'config'));
+      gateway(registry);
+      const out = await wentBack(registry);
+      const action = 'ssh trift.test and read the daemon log; trift runs release 1.2.2, the one its setup went back to; then svall host upgrade trift, or add the machine again';
+      expect(out).toEqual({ result: 'actions', actions: [action] });
+      expect(step('identity').at(-1)).toMatchObject({ status: 'fail', action });
+      expect(step('registry')).toEqual([]);
       expect(registry.list().filter((m) => m.record.name === 'trift')).toEqual([{ id: REMOTE, record: expect.objectContaining({ gateway: true }) }]);
     });
 

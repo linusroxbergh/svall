@@ -273,9 +273,9 @@ async function endToEnd(master: SshMaster, entry: MachineEntry, { release, anyPr
 // a window on a server of its own, which the probe takes down again whatever happened
 const TMUX_PROBE = 'sock="${TMPDIR:-/tmp}/svall-probe-$$"; tmux -S "$sock" new-session -d -s svall-probe sleep 30 && tmux -S "$sock" list-windows -t svall-probe >/dev/null; r=$?; tmux -S "$sock" kill-server 2>/dev/null; rm -f "$sock"; exit $r';
 
-/** Add Machine's end-to-end probe: the daemon over its tunnel, the machine's own gateway authority, and a tmux window on the PATH its units run with. */
-async function addProbe(master: SshMaster, entry: MachineEntry, home: string): Promise<Outcome<void>> {
-  await endToEnd(master, entry);
+/** Add Machine's end-to-end probe: the daemon over its tunnel from `release`, the machine's own gateway authority, and a tmux window on the PATH its units run with. */
+async function addProbe(master: SshMaster, entry: MachineEntry, home: string, release: string): Promise<Outcome<void>> {
+  await endToEnd(master, entry, { release });
   const answer = await remoteOwner({ master, exe: svallExe(entry.record.svallBase), op: 'get', fleetId: crypto.randomUUID() }).catch((e: Error) => ({ error: { code: 'disconnected', message: e.message } }));
   // any answer of the authority's own will do, as it knows no fleet this probe names
   if ('error' in answer && (answer.error.code === 'disconnected' || answer.error.code === 'timeout')) throw new StepError(answer.error.message);
@@ -410,6 +410,10 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
           throw new StepError(`${o.ssh} now reaches machine ${id.data}, not ${o.name} (${held.id})`,
             `point ${o.ssh} back at ${o.name}, or svall host remove ${o.name} --forget and add it again`);
         }
+        if (v.release !== companion.version) {
+          throw new StepError(`${o.name} runs release ${v.release}, not ${companion.version}: its setup went back, as the daemon of ${companion.version} did not answer`,
+            `ssh ${o.ssh} and read the daemon log; ${o.name} runs release ${v.release}, the one its setup went back to; then ${held ? `svall host upgrade ${o.name}, or ` : ''}add the machine again`);
+        }
         if (v.protocol !== d.controller.protocol) throw new StepError(`the companion speaks protocol ${v.protocol}, not this controller's ${d.controller.protocol}`);
         return { value: id.data, detail: `${v.release}, machine ${id.data}` };
       });
@@ -420,7 +424,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         name: o.name, ssh: o.ssh, platform: 'linux', arch, home,
         svallBase: remote.svallBase, gateway: held?.record.gateway ?? false,
       };
-      await run.step('probe', () => addProbe(master, { id: machine, record }, home));
+      await run.step('probe', () => addProbe(master, { id: machine, record }, home, companion.version));
       await run.step('registry', () => {
         if (held) d.registry.remove(held.id);
         const entry = d.registry.add(record, machine);
