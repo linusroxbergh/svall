@@ -48,6 +48,8 @@ environment with how to open a test build against its test HOME.
   before it; the fix wave changed claims, aborts, the transport's process groups and Linux setup.
 - **A release signing key.** `allowed_signers` holds only a comment until one exists, so every install
   needs `--allow-unsigned`; a release tag stops at once when the committed signers don't pin its key.
+- **A notarized `pnpm release`.** No release has been notarized with the controller release Svall.app carries, its
+  rsync and Linux companion tarball included.
 - **CI.** Actions jobs do not start on this repo because of billing. `ci.yml`'s integration and Swift jobs
   and `release.yml` have run only as the same scripts on this Mac.
 - **Licence decisions** (`docs/security/fleet-handover.md`): GhosttyKit's dependency licence texts, the
