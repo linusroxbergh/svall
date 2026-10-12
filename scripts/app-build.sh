@@ -16,6 +16,11 @@ apps/desktop/mac/build.sh release
 APP="$ROOT/apps/desktop/mac/build.noindex/Svall.app"
 mkdir -p "$APP/Contents/Helpers"
 cp "$NODE" "$TMUX" "$APP/Contents/Helpers/"
+# the carried controller runs the app's own node, through a link release-scan never sees, so the app holds one copy
+CARRIED="$APP/Contents/Resources/release/node/bin/node"
+cmp -s "$NODE" "$CARRIED" ||
+  { echo "the release carries another node than $NODE: pin one Node in scripts/node-fetch.sh and scripts/release/pins.json" >&2; exit 1; }
+ln -sf ../../../../Helpers/node "$CARRIED"
 rsync -a --delete apps/desktop/mac/build.noindex/runtime/ "$APP/Contents/Resources/runtime/"
 SPARKLE="$(scripts/sparkle-tools.sh)"
 node scripts/licenses.mjs "$(dirname "$NODE")" "$(dirname "$TMUX")" "$(dirname "$SPARKLE")" >/dev/null

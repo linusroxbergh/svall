@@ -13,7 +13,8 @@ sign "$S/Autoupdate" "$S/Updater.app"
 sign "$APP/Contents/Frameworks/Sparkle.framework"
 # signing rewrites these two, so the carried SHA256SUMS keeps their unsigned digests; nothing on the Mac reads it
 R="$APP/Contents/Resources/release"
-[ ! -e "$R/node/bin/node" ] || sign --entitlements "$MAC/node.entitlements" "$R/node/bin/node"
+# a carried node that links to Helpers/node is signed there, and codesign would sign it again through the link
+[ -L "$R/node/bin/node" ] || [ ! -e "$R/node/bin/node" ] || sign --entitlements "$MAC/node.entitlements" "$R/node/bin/node"
 [ ! -e "$R/bin/rsync" ] || sign "$R/bin/rsync"
 sign --entitlements "$MAC/app.entitlements" "$APP"
 codesign --verify --strict --deep "$APP"
