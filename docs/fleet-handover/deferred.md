@@ -44,6 +44,8 @@ What the reviews found and left open, by area. Paths are from the repository roo
   (`packages/svalld/src/fleet/control.ts:60`).
 - A revived Codex quit before its first prompt is laid dormant as a failed resume, since Codex reports no session
   until then (`packages/svalld/src/fleet/poll.ts:113`).
+- A prompt held for a busy agent (`char.run` answering `queued`) does not hold up a rest, and the fleet leaving this
+  machine drops it without a word, neither carried nor logged (`packages/svalld/src/fleet/prompts.ts:216`).
 
 ## Controller and transfer
 
