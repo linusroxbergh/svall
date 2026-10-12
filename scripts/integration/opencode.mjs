@@ -113,13 +113,17 @@ for (const sig of ['SIGHUP', 'SIGTERM']) process.on(sig, end);
 
 fs.mkdirSync(path.dirname(transcriptPath), { recursive: true });
 fs.appendFileSync(transcriptPath, '');
-process.stdout.write(`fake opencode ${VERSION} · session ${sessionId}${resume ? ' (resumed)' : ''} · ${cwd}\n> `);
+// OpenCode's prompt box, which svalld reads as clear before it types a prompt: a bar down its left, the cursor in its blank
+// top row, the placeholder under it and the agent and model in its last row
+const box = () => process.stdout.write('\r\x1b[J┃\n┃  Ask anything… "fix the tests"\n┃  build · fake\x1b[2A\x1b[3G');
+process.stdout.write(`fake opencode ${VERSION} · session ${sessionId}${resume ? ' (resumed)' : ''} · ${cwd}\n`);
+box();
 await post('SessionStart');
 
 let prompts = 0;
 for await (const line of readline.createInterface({ input: process.stdin })) {
   const text = line.trim();
-  if (!text) { process.stdout.write('> '); continue; }
+  if (!text) { process.stdout.write('\x1b[1A'); box(); continue; }
   if (text === 'block') { await post('PermissionRequest', { tool_name: 'shell', message: 'fake permission prompt' }); continue; }
   const messageId = `msg_${Date.now().toString(36)}${++prompts}`;
   await post('UserPromptSubmit', { prompt: text, prompt_id: messageId });
@@ -127,7 +131,8 @@ for await (const line of readline.createInterface({ input: process.stdin })) {
   session.messages.push({ id: messageId, role: 'user', text }, { id: `${messageId}a`, role: 'assistant', text: `did: ${text}`, time: { completed: Date.now() } });
   write(session);
   log({ kind: 'agent', text: `did: ${text}` });
-  process.stdout.write(`did: ${text}\n> `);
+  process.stdout.write(`\r\x1b[Jdid: ${text}\n`);
+  box();
   await post('Stop');
 }
 end();

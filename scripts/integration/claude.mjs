@@ -79,20 +79,22 @@ const end = async () => {
 };
 for (const sig of ['SIGHUP', 'SIGTERM']) process.on(sig, () => { void end(); });
 
-process.stdout.write(`fake claude ${VERSION} · session ${sessionId}${resume ? ' (resumed)' : ''} · ${cwd}\n> `);
+// Claude Code's prompt line, which svalld reads as clear before it types a prompt
+const PROMPT = '❯\u00a0';
+process.stdout.write(`fake claude ${VERSION} · session ${sessionId}${resume ? ' (resumed)' : ''} · ${cwd}\n${PROMPT}`);
 await post({ hook_event_name: 'SessionStart', source: resume ? 'resume' : 'startup' });
 
 let prompts = 0;
 const rl = readline.createInterface({ input: process.stdin });
 for await (const line of rl) {
   const text = line.trim();
-  if (!text) { process.stdout.write('> '); continue; }
+  if (!text) { process.stdout.write(PROMPT); continue; }
   if (text === 'block') { await post({ hook_event_name: 'Notification', notification_type: 'permission_prompt', message: 'fake permission prompt' }); continue; }
   const promptId = `p_${Date.now().toString(36)}_${++prompts}`;
   await post({ hook_event_name: 'UserPromptSubmit', prompt: text, prompt_id: promptId });
   append({ type: 'user', promptId, message: { role: 'user', content: text } });
   append({ type: 'assistant', message: { model: 'fake-model', role: 'assistant', content: [{ type: 'text', text: `did: ${text}` }], usage: { input_tokens: 1000, output_tokens: 10 } } });
-  process.stdout.write(`did: ${text}\n> `);
+  process.stdout.write(`did: ${text}\n${PROMPT}`);
   await post({ hook_event_name: 'Stop' });
 }
 await end();
