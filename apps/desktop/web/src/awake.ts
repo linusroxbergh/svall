@@ -46,7 +46,7 @@ export function awakeHold(need: Need, o: { mode: KeepAwake; now: number }): { re
 }
 
 /** Has the shell hold the Mac awake while the fleet needs it, under the reason why, and let go once it does not. Nothing is held
- * while the daemon is out of reach. */
+ * while the daemon is out of reach, or while the fleet runs on another machine. */
 export function followAwake({ store, bridge }: { store: AppStore; bridge: Pick<Bridge, 'send'> }): () => void {
   // null until the first word, which also lets go of a hold the page before this one left
   let held: string | null | undefined = null;
@@ -54,7 +54,8 @@ export function followAwake({ store, bridge }: { store: AppStore; bridge: Pick<B
   const update = () => {
     const s = store.getState();
     const now = Date.now();
-    const hold = s.status === 'online' ? awakeHold(needOf(s.fleet, s.mobile?.phones ?? []), { mode: s.settings.keepAwake, now }) : undefined;
+    const here = !s.connection || s.connection.owner === 'local';
+    const hold = s.status === 'online' && here ? awakeHold(needOf(s.fleet, s.mobile?.phones ?? []), { mode: s.settings.keepAwake, now }) : undefined;
     clearTimeout(timer);
     // looked at again at least each minute, as the window runs by the clock and a timer can stall while the Mac sleeps
     if (hold?.until) timer = setTimeout(update, Math.min(hold.until - now, 60_000));
@@ -62,7 +63,8 @@ export function followAwake({ store, bridge }: { store: AppStore; bridge: Pick<B
     if (reason !== held) { held = reason; bridge.send({ type: 'awake', reason }); }
   };
   const unwatch = store.subscribe((s, prev) => {
-    if (s.fleet !== prev.fleet || s.mobile !== prev.mobile || s.status !== prev.status || s.settings.keepAwake !== prev.settings.keepAwake) update();
+    if (s.fleet !== prev.fleet || s.mobile !== prev.mobile || s.status !== prev.status || s.connection !== prev.connection
+      || s.settings.keepAwake !== prev.settings.keepAwake) update();
   });
   update();
   return () => { unwatch(); clearTimeout(timer); };
