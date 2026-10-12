@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { WebSocketServer } from 'ws';
 import { emptyState, FleetId, MachineId, PROTOCOL_VERSION, type Blocker, type HandoverChoices, type HandoverEvent, type HandoverPhase, type Outcome, type OwnerRecord, type Verdict } from '@svall/protocol';
 import { handoverCommand, launchHelper, parseDuration, runAttach, runForget, runHandover, runStatus, spawnHelper, type CliDeps, type Job, type Transaction } from '../src/commands/handover.js';
-import { View } from '../src/commands/handover-view.js';
+import { options, View } from '../src/commands/handover-view.js';
 import { connectHelper, helperPaths, HelperServer, Live, probe, type Control } from '../src/controller/helper.js';
 import type { ControllerJournal, Observation } from '../src/controller/recovery.js';
 import { MachineRegistry } from '../src/controller/registry.js';
@@ -418,6 +418,9 @@ describe('svall handover', () => {
     h.type('u');
     expect(await run).toEqual({ code: 0 });
     expect(h.tx.calls.map((c) => c.choices)).toEqual([{}, { carryUnused: true }]);
+    const carry = (ids: string[]) => options(ids.map((id) => ({ ...unused[0], entity: { kind: 'character' as const, id } })), 'begin', { characters: { c_ada: 'ada', c_bo: 'bo' }, roots: {} }).find((o) => o.key === 'u')?.label;
+    expect(carry(['c_ada'])).toBe('Carry the folder ada is in whole, with the Git repositories there no character works in');
+    expect(carry(['c_ada', 'c_bo'])).toBe('Carry the folders ada and bo are in whole, with the Git repositories there no character works in');
   });
 
   it('never waits on a blocker after Begin without a person or a helper to answer it: the answer is cancel', async () => {

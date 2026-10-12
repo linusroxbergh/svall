@@ -98,8 +98,9 @@ export function options(blockers: Blocker[], phase: HandoverPhase, names: Names,
     });
   }
   if (unused.length) {
+    const who = unused.length > 1 ? `folders ${name(unused.slice(0, -1))} and ${name(unused.slice(-1))} are` : `folder ${name(unused)} is`;
     out.push({
-      key: 'u', label: `Carry the folder ${unused.length > 1 ? 'each of ' : ''}${name(unused)} is in whole, with the Git repositories there no character works in`,
+      key: 'u', label: `Carry the ${who} in whole, with the Git repositories there no character works in`,
       answer: { ...held, carryUnused: true },
     });
   }

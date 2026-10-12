@@ -76,6 +76,7 @@ test('a folder that holds repositories no character works in blocks on its chara
   const row = screen.getByTestId('handover-blocker-repository_unused');
   expect(row.querySelector('.ho-who')?.textContent).toBe('c1');
   expect(row.querySelector('.host-said')?.textContent).toContain(message);
+  expect(row.querySelector('em')?.textContent).toBe('Carry the folder whole copies those repositories to trift with it.');
   fireEvent.click(screen.getByTestId('handover-choice-carry'));
   expect(screen.getByTestId('handover-choice-carry').textContent).toBe('Carry the folder whole');
   expect(store.getState().handover?.choices).toEqual({ carryUnused: true });

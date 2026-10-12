@@ -926,6 +926,35 @@ describe('source freeze', () => {
     expect(manifest.roots.find((r) => r.path === dev)!.files.map((f) => f.path)).toEqual(expect.arrayContaining(['notes.md', 'old-stuff/a.txt', 'unrelated/vendor/lib/a.txt']));
   });
 
+  withGit('refuses a folder holding repositories no character works in that a second terminal moved into unseen, once the rest records it there', async () => {
+    const moved = () => {
+      const b = boot({
+        realGit: true,
+        characters: (work) => [char('c_app', path.join(work, 'Developer/app'), { tmux: win(3), second: { cwd: path.join(work, 'Developer/app'), unread: false, tmux: win(4) } })],
+      });
+      const dev = path.join(b.work, 'Developer');
+      for (const name of ['app', 'old-stuff']) {
+        fs.mkdirSync(path.join(dev, name), { recursive: true });
+        repo(path.join(dev, name), { 'a.txt': name });
+      }
+      // its shell went up to the projects folder since the fleet last read where it stands
+      b.world.panes.get('@4')!.path = dev;
+      b.gateway.begin();
+      return { b, dev };
+    };
+    const refused = moved();
+    const r = await refusal(refused.b.handover.freeze(refused.b.freezeParams()));
+    expect(r.data.blockers).toEqual([{
+      code: 'repository_unused', entity: { kind: 'character', id: 'c_app' },
+      message: expect.stringContaining(`app's second terminal is in ${refused.dev}, which holds 1 Git repository no character works in (old-stuff)`),
+    }]);
+    expect(refused.b.world.log).toContain('kill @4');
+
+    const carried = moved();
+    const { manifest } = await carried.b.handover.freeze(carried.b.freezeParams({ choices: { carryUnused: true } }));
+    expect(manifest.roots.find((x) => x.path === carried.dev)!.files.map((f) => f.path)).toContain('old-stuff/a.txt');
+  });
+
   it('finds a name it cannot carry, a transcript that is gone or a character kept here before it touches a terminal', async () => {
     const b = boot();
     b.gateway.begin();

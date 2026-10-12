@@ -323,7 +323,9 @@ export class SourceHandover {
     if (unexported.length) return this.refuse(tx.id, unexported);
     const built = await buildManifest(inventory, { transactionId: tx.id, generation: p.generation }, this.d.scanFs);
     const big = this.limits(built.manifest, p.destination.info);
-    if (built.blockers.length || big.length) return this.refuse(tx.id, [...built.blockers, ...big]);
+    // the rest records where each second terminal stands, which can be a folder holding repositories no character works in
+    const unused = p.choices.carryUnused ? [] : built.unused;
+    if (built.blockers.length || unused.length || big.length) return this.refuse(tx.id, [...built.blockers, ...unused, ...big]);
     const file = this.d.paths.manifest(tx.id);
     const manifestDigest = boundary('source.freeze.manifest', () => {
       // a manifest no journal names is left by an attempt that did not live to record it
