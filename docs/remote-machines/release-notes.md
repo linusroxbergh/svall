@@ -40,6 +40,12 @@ not it is on.
   name a fleet; `svall setup` names each fleet made under one of them and the `mv` that renames it.
 - `svall uninstall` refuses while it would strand a fleet: a handover open, a fleet this machine runs for its gateway,
   or fleets it is the gateway of. `--force` goes ahead anyway.
+- A second terminal running Claude Code, Codex or OpenCode stays when Svall quits or its window closes, and opening
+  Terminal 2 resumes that session; nothing reopens it by itself. Quit the agent and exit the shell to remove it.
+- The daemon keeps this Mac's id in `~/.config/svall/machine.json`. A fleet with no gateway starts even when that file
+  cannot be written or read.
+- Each window runs a small `svall connect` helper that reaches the fleet wherever it runs.
+- The app download is about 100 MB, twice 0.9.0's: it carries the Linux companion `svall host add` installs.
 
 See [Upgrading and downgrading](migration.md) for the details and the way back.
 
