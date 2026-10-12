@@ -116,13 +116,13 @@ describe('path classification', () => {
     const agent = { kind: 'claude' as const, sessionId: 's', transcriptPath: '/t.jsonl', status: 'idle' as const, lastActivityAt: 1 };
     state.characters.c1 = char('c1', {
       tmux, panePath: '/Users/linus/p', hint: 'codex-silent', star: 0,
-      agent: { ...agent, pid: 41, monitors: ['b1'] }, second: { cwd: '/x', tmux, unread: false, agent: { ...agent, pid: 42, monitors: ['b2'] } },
+      agent: { ...agent, pid: 41, monitors: ['b1'], subagents: ['a1'] }, second: { cwd: '/x', tmux, unread: false, agent: { ...agent, pid: 42, monitors: ['b2'], subagents: ['a2'] } },
     });
     const exported = exportSnapshot(state);
     expect(exported.characters.c1.tmux).toBeUndefined();
     expect(exported.characters.c1.panePath).toBeUndefined();
     expect(exported.characters.c1.hint).toBeUndefined();
-    // a pid, or a monitor's task, names a process on this machine only, and the destination finds its own agents
+    // a pid, a monitor's task or a subagent names a process on this machine only, and the destination finds its own agents
     expect(exported.characters.c1.agent).toEqual(agent);
     expect(exported.characters.c1.star).toBe(0);
     expect(exported.characters.c1.second).toEqual({ cwd: '/x', unread: false, agent });
