@@ -426,6 +426,55 @@ runIf('a daemon that may not write its fleet', () => {
   });
 });
 
+runIf('a daemon on a machine whose ~/.config/svall cannot be used', () => {
+  const homes: string[] = [];
+  afterEach(async () => {
+    delete process.env.SVALL_CONFIG_DIR;
+    for (const h of homes.splice(0)) { const p = resolvePaths(h); await new Tmux(p.tmuxSock, p.tmuxConf).killServer(); }
+    cleanHomes();
+  });
+
+  // a ~/.config whose machine id can be neither read nor made, and what the log says to do about it
+  function brokenConfig(how: 'read-only' | 'a file' | 'holding a corrupt machine.json'): string {
+    const config = path.join(makeHome(), '.config');
+    process.env.SVALL_CONFIG_DIR = path.join(config, 'svall');
+    if (how === 'read-only') { fs.mkdirSync(config, { mode: 0o555 }); return `sudo chown -R $USER ${config}`; }
+    if (how === 'a file') { fs.writeFileSync(config, ''); return 'move it aside'; }
+    fs.mkdirSync(path.join(config, 'svall'), { recursive: true });
+    fs.writeFileSync(path.join(config, 'svall', 'machine.json'), '{"id":');
+    return 'invalid machine file';
+  }
+
+  it.each(['read-only', 'a file', 'holding a corrupt machine.json'] as const)('starts a fleet no gateway holds with ~/.config %s, as the same machine each time', async (how) => {
+    const says = brokenConfig(how);
+    const home = makeHome();
+    homes.push(home);
+    const errors: string[] = [];
+    const log = { info() {}, error: (line: string) => { errors.push(line); } };
+    const owners: unknown[] = [];
+    for (let i = 0; i < 2; i++) {
+      const d = await startDaemon({ home, port: 0, log });
+      try {
+        expect(d.store.state.islands.home.kind).toBe('home');
+        owners.push(JSON.parse(fs.readFileSync(resolvePaths(home).owner, 'utf8')));
+      } finally {
+        await d.stop();
+      }
+    }
+    // a second start on another id would take the fleet back from the first, at generation 0 again
+    expect(owners[1]).toEqual(owners[0]);
+    expect(errors.filter((l) => l.includes(says))).toHaveLength(2);
+  });
+
+  it('refuses to start a fleet a gateway holds', async () => {
+    brokenConfig('read-only');
+    const home = makeHome();
+    homes.push(home);
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh', gatewayMachineId: crypto.randomUUID() }));
+    await expect(startDaemon({ home, port: 0, log: silentLogger })).rejects.toThrow('EACCES');
+  });
+});
+
 describe('readOrCreateToken', () => {
   afterEach(cleanHomes);
 

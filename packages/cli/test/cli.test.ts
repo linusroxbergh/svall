@@ -186,6 +186,18 @@ describe('svall argument parsing', () => {
     const second = JSON.parse((await run({ SVALL_CONFIG_DIR: dir }, 'version', '--json')).stdout);
     expect(second.machineId).toBe(first.machineId);
   });
+
+  it('names what keeps it from a machine id in place of one, and gives a controller none to register', async () => {
+    const config = path.join(makeHome(), '.config');
+    fs.mkdirSync(config, { mode: 0o555 });
+    const env = { SVALL_CONFIG_DIR: path.join(config, 'svall') };
+    const human = await run(env, 'version');
+    expect(human.code).toBe(0);
+    expect(human.stdout).toContain(`machine          unknown: EACCES: permission denied, mkdir '${env.SVALL_CONFIG_DIR}'; fix it with: sudo chown -R $USER ${config}\n`);
+    const json = await run(env, 'version', '--json');
+    expect(json.code).not.toBe(0);
+    expect(json.stdout).toBe('');
+  });
 });
 
 describe('svall setup on a Linux release', () => {

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import type { MachineId } from '@svall/protocol';
+import { MachineId, OwnerRecord } from '@svall/protocol';
 import { installCodexHooks, readCodexHooks } from './agent-hooks.js';
 import { startApi } from './api/server.js';
 import { findAgents } from './agents.js';
@@ -20,11 +20,11 @@ import type { Authority } from './handover/source.js';
 import { adoptAtStart, enterStartupMode, startupMode } from './handover/startup.js';
 import { startHookReceiver } from './hooks/receiver.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
-import { machineId } from './machine.js';
+import { machineId, machineIdFailure } from './machine.js';
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
 import { installOpencodePlugin, opencodePaths } from './opencode/install.js';
 import { OwnershipState } from './ownership/state.js';
-import { claudePaths, fleetKeys, installedScripts, resolvePaths } from './paths.js';
+import { claudePaths, fleetKeys, installedScripts, resolvePaths, type Paths } from './paths.js';
 import { Phones } from './phones.js';
 import { DEFAULT_PORT, isProfileName, PRIVATE, profileOf, variantOf } from './profile.js';
 import { runtimeVersion, variant } from './runtime.js';
@@ -108,6 +108,20 @@ export async function startDaemon(opts: Options): Promise<Daemon> {
   return { ...daemon, stop: async () => { await daemon.stop(); unlock(); } };
 }
 
+// a fleet no gateway holds needs no machine id of its own: without one it runs as its owner record's, or as a new one
+// that record keeps for the next start
+function fleetMachineId(paths: Paths, gateway: MachineId | undefined, log: Logger): MachineId {
+  try {
+    return machineId();
+  } catch (e) {
+    if (gateway) throw new Error(machineIdFailure(e), { cause: e });
+    let id: MachineId;
+    try { id = OwnerRecord.parse(JSON.parse(fs.readFileSync(paths.owner, 'utf8'))).ownerMachineId; } catch { id = MachineId.parse(crypto.randomUUID()); }
+    log.error(`${machineIdFailure(e)}; no gateway holds this fleet, so it runs as ${id}`);
+    return id;
+  }
+}
+
 async function start(opts: Options): Promise<Daemon> {
   const paths = resolvePaths(opts.home);
   fs.chmodSync(paths.home, 0o700);
@@ -149,7 +163,7 @@ async function start(opts: Options): Promise<Daemon> {
   fs.writeFileSync(path.join(paths.home, 'tmux-binary'), tmux.binary);
   fs.writeFileSync(path.join(paths.home, 'version'), `${runtimeVersion()}\n${process.pid}\n`);
   // without a gateway no other machine can hold this fleet, so a record this one cannot read is repaired
-  const me = machineId();
+  const me = fleetMachineId(paths, config.gatewayMachineId, log);
   const ownership = OwnershipState.load({ paths, fleetId: config.id, machineId: me, log, standalone: !config.gatewayMachineId });
   // a handover reads state.json back from disk, so a frozen, held or replica fleet writes each change at once
   store.batchWritesWhile(() => ownership.writable());

@@ -35,6 +35,16 @@ export function mintMachineId(dir: string): MachineId {
   return id;
 }
 
+/** Why `machineId()` threw, with the fix when ~/.config is not this account's to write. */
+export function machineIdFailure(err: unknown): string {
+  const dir = configDir();
+  const code = (err as NodeJS.ErrnoException).code;
+  const fix = code === 'EACCES' ? `; fix it with: sudo chown -R $USER ${path.dirname(dir)}`
+    : code === 'ENOTDIR' ? `; a file is in the way of the folder ${dir}: move it aside`
+    : '';
+  return `${(err as Error).message}${fix}`;
+}
+
 /** This installation's id, made on the first call and read back on every later one. */
 export function machineId(dir: string = configDir()): MachineId {
   const file = path.join(dir, 'machine.json');

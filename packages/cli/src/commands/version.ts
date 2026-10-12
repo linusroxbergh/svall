@@ -1,8 +1,18 @@
 import { Command } from 'commander';
 import { AUTHORITY_SCHEMA_VERSION, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, TRANSFER_SCHEMA_VERSION } from '@svall/protocol';
-import { machineId } from '@svall/svalld/machine';
+import { machineId, machineIdFailure } from '@svall/svalld/machine';
 import { releaseVersion } from '@svall/svalld/release';
 import { printResult } from '../format.js';
+
+// a controller registers a far machine by the id its --json names, so only the human view goes on without one
+function thisMachine(json: boolean): string {
+  try {
+    return machineId();
+  } catch (e) {
+    if (json) throw new Error(machineIdFailure(e), { cause: e });
+    return `unknown: ${machineIdFailure(e)}`;
+  }
+}
 
 export function versionCommand(json: () => boolean): Command {
   return new Command('version')
@@ -10,7 +20,7 @@ export function versionCommand(json: () => boolean): Command {
     .action(() => {
       const v = {
         release: releaseVersion(),
-        machineId: machineId(),
+        machineId: thisMachine(json()),
         protocol: PROTOCOL_VERSION,
         stateSchema: STATE_SCHEMA_VERSION,
         transferSchema: TRANSFER_SCHEMA_VERSION,
