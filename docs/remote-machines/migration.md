@@ -13,9 +13,11 @@ fleet's `config.json` in two:
 
 1. `config.json` is renamed `config.json.bak`, byte for byte (a link stays a link), before anything is read out of
    it.
-2. `node.json` gets what belongs to this machine: `port`, `host`, `shell`, `integrations` and `mobile.httpsPort`.
-3. `fleet.json` gets everything else and a new fleet `id`. It has no `handover` block, so handover stays off until you
-   [turn it on](setup.md#turning-it-on).
+2. `node.json` gets what belongs to this machine: `port`, `host`, `shell`, `agentsOff`, `integrations` and
+   `mobile.httpsPort`.
+3. `fleet.json` gets every other key it knows and a new fleet `id`. It has no `handover` block, so handover stays off
+   until you [turn it on](setup.md#turning-it-on).
+4. A key neither file knows stays only in `config.json.bak`.
 
 The [README's configuration table](../../README.md#configuration) says which key lives in which file. From then on
 `config.json` is not read. A dotfile manager such as stow or home-manager may link it back to the file
@@ -116,7 +118,7 @@ Put back the files you set aside before you install the newer release, in each f
 
 ```sh
 cd ~/.svall
-rm config.json && mv handover-aside/* . && rmdir handover-aside
+mv config.json config.json.bak && mv handover-aside/* . && rmdir handover-aside
 ```
 
 The fleet keeps its id, its gateway and its generation, and the state is migrated again. A setting changed in
