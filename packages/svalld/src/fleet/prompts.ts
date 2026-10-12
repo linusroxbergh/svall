@@ -53,7 +53,7 @@ export class Prompts {
         return 'delivered';
       }
       const free = await this.free(c.name, id, term, t.tmux.paneId);
-      if (free && !this.held.has(lane)) {
+      if (free && !this.held.has(lane) && this.deps.writable()) {
         await this.send(id, text, enter, term);
         return 'delivered';
       }

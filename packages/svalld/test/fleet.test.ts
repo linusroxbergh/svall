@@ -1569,6 +1569,20 @@ runIf('Fleet', () => {
       expect(typed).toEqual([]);
     });
 
+    it('is held when a freeze lands while its prompt line is being read, and goes in once it lifts', async () => {
+      const { fleet, store, ownership, c, screen, typed } = await agentPane('claude');
+      screen.mockImplementationOnce(async () => {
+        await ownership.freeze({ id: 'tx-1', fromMachineId: ownership.machineId, toMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'), phase: 'preparing', startedAt: 1 });
+        return pane('claude-empty');
+      });
+      expect(await fleet.run(c.id, 'go', true)).toBe('queued');
+      expect(typed).toEqual([]);
+      expect(store.state.characters[c.id].agent?.status).not.toBe('working');
+      await ownership.unfreeze();
+      await waitFor(() => typed.length === 1);
+      expect(typed).toEqual(['go']);
+    });
+
     it('is dropped when the fleet leaves this machine', async () => {
       const { fleet, c, screen, typed } = await agentPane('claude');
       screen.mockResolvedValue(pane('claude-draft'));
