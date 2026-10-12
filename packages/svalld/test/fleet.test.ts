@@ -1928,8 +1928,8 @@ runIf('Fleet', () => {
     expect(Object.values(store.state.islands).filter((i) => i.kind === 'home')).toHaveLength(1);
   });
 
-  it('opens a new fleet with one island holding a shell, and does not make them again once deleted', async () => {
-    const { fleet, store } = await boot({ opening: true });
+  it('opens a new fleet on a Mac with one island holding a shell, and does not make them again once deleted', async () => {
+    const { fleet, store } = await boot({ opening: true, platform: 'darwin' });
     const first = Object.values(store.state.islands).filter((i) => i.kind !== 'home');
     expect(first).toEqual([expect.objectContaining({ name: 'Island 1' })]);
     const shells = Object.values(store.state.characters);
