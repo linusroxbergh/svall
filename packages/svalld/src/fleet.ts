@@ -54,6 +54,7 @@ export type RefreshLinks = (store: Store, config: Config, charId: string) => Pro
 type Deps = {
   store: Store; tmux: Tmux; paths: Paths; config: Config; log: Logger; ownership: OwnershipState; pollMs?: number; staleSessionMs?: number; runTimeoutMs?: number; resumeMs?: number;
   runScribe?: RunScribe; linkDeps?: Partial<LinkDeps>; refreshLinks?: RefreshLinks; processes?: () => Promise<Proc[]>; agentsFound?: AgentKind[];
+  platform?: NodeJS.Platform;
 };
 type LiveCharacter = Character & { tmux: NonNullable<Character['tmux']> };
 // a revive onto a window still alive sends its prompt as any send goes, which a draft there can hold
@@ -144,7 +145,8 @@ export class Fleet extends EventEmitter<Events> {
     for (const c of Object.values(this.deps.store.state.characters)) if (c.tmux) this.seen.set(c.id, now);
     const opening = this.ensureHome();
     this.syncAgents();
-    if (opening) {
+    // the shell is for the Mac app's tour; a Linux machine's new fleet is the one host add starts, which enable replaces only unused
+    if (opening && (this.deps.platform ?? process.platform) === 'darwin') {
       await this.createCharacter({ islandId: opening, cwd: this.deps.config.defaultCwd })
         .catch((e) => this.deps.log.error(`first character: ${String(e)}`));
     }

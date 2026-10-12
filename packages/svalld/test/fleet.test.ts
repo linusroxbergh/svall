@@ -34,7 +34,7 @@ runIf('Fleet', () => {
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 
-  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; resumeMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind; name?: string; state?: FleetState; opening?: boolean } = {}) {
+  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; resumeMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind; name?: string; state?: FleetState; opening?: boolean; platform?: NodeJS.Platform } = {}) {
     const { homeCwd, homeCommand, mainAgent, name, state, opening, ...deps } = extra;
     // what ps shows the dormancy sweep
     const procs: Proc[] = [];
@@ -1925,6 +1925,12 @@ runIf('Fleet', () => {
     // the next start reads the fleet the last one left
     const again = await boot({ opening: true, state: structuredClone(store.state) });
     expect(Object.values(again.store.state.islands).map((i) => i.name)).toEqual(['mission control']);
+  });
+
+  it('opens a new fleet on a Linux machine with an empty island, so the fleet host add started there stays unused for enable', async () => {
+    const { store } = await boot({ opening: true, platform: 'linux' });
+    expect(Object.values(store.state.islands).map((i) => i.name).sort()).toEqual(['Island 1', 'mission control']);
+    expect(store.state.characters).toEqual({});
   });
 
   it('gives a fleet back its mission control, and no new island, when a start finds it missing', async () => {
