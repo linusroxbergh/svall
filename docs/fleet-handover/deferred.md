@@ -46,6 +46,10 @@ What the reviews found and left open, by area. Paths are from the repository roo
   until then (`packages/svalld/src/fleet/poll.ts:113`).
 - A prompt held for a busy agent (`char.run` answering `queued`) does not hold up a rest, and the fleet leaving this
   machine drops it without a word, neither carried nor logged (`packages/svalld/src/fleet/prompts.ts:216`).
+- A send's Enter goes 100 ms after its paste with no ownership check, so a freeze landing in between still submits
+  the prompt (`packages/svalld/src/tmux/tmux.ts:227`).
+- `Fleet.settle()` does not wait on the prompt lanes, so a send under way can type after a freeze has settled the fleet
+  (`packages/svalld/src/fleet.ts:168`).
 
 ## Controller and transfer
 
@@ -102,8 +106,6 @@ What the reviews found and left open, by area. Paths are from the repository roo
 
 ## Machines and setup
 
-- Linux `setup --release` never passes `rollbackTo`, so an install that replaces a release neither restarts the
-  running daemons nor probes them (`packages/cli/src/commands/setup.ts:249`).
 - `svall host` saves the machines.json it loaded when it started, so a registry change made meanwhile is lost
   (`packages/cli/src/controller/host.ts:415`).
 - `host add` under a second name for a registered machine uploads and installs, then fails at the registry step
@@ -120,14 +122,16 @@ What the reviews found and left open, by area. Paths are from the repository roo
 - Stopping Add Machine leaves its interactive ssh and askpass dialog running (`packages/cli/src/commands/host.ts:31`).
 - A `-N` dedup suffix can push an auto-created machine name past 32 characters, and the next load sets machines.json
   aside (`packages/cli/src/controller/registry.ts:26`).
-- svalld exits at start when `~/.config/svall` cannot be made or machine.json is bad, and the app or systemd restarts
-  it in a loop (`packages/svalld/src/main.ts:152`).
+- For a fleet that names a gateway, svalld exits at start when `~/.config/svall` cannot be made or machine.json is
+  bad, and the app or systemd restarts it in a loop (`packages/svalld/src/main.ts:152`).
 - `svall agent` talks to this machine's daemon, so for a fleet another machine owns it reads and sets the local copy
   (`packages/cli/src/commands/agent.ts:24`).
 - fleet.json's schema is not strict, so machine keys put there (`port`, `host`, `shell`, `integrations`) are dropped
   without a word (`packages/protocol/src/handover.ts:69`).
 - fleet.json is read without config.json's `unreserved` preprocess, so a reserved name there fails the name check
   (`packages/svalld/src/config.ts:154`).
+- A daemon and a hand-run `svall setup` splitting one config.json at once leave the loser with a raw ENOENT, and a
+  daemon exits on it (`packages/svalld/src/config.ts:131`).
 - The reserved-name notice shows only in a setup that runs; `setup --if-needed` and doctor never show it, and its `mv`
   advice neither stops the fleet first nor unloads the old launchd agent, whose daemon makes the old home again
   (`packages/svalld/src/setup.ts:210`).
@@ -142,8 +146,15 @@ What the reviews found and left open, by area. Paths are from the repository roo
 
 ## Release and install
 
-- Svall.app carries two controllers: the runtime bundle on `Helpers/node`, and `Resources/release` with its own Node,
-  which the window helpers run (`apps/desktop/mac/build.sh:51`).
+- Svall.app carries two controllers: the runtime bundle on `Helpers/node`, and `Resources/release`, which the window
+  helpers run, with the controller's own lib and the linux-x64 companion (about 45 MB) beside the Node it shares with
+  `Helpers` (`apps/desktop/mac/build.sh:51`).
+- The app carries the linux-x64 companion Add Machine installs; fetching it there instead would take about 45 MB off
+  every update but needs the network (`apps/desktop/mac/build.sh:58`).
+- The bundled rsync is built without `MACOSX_DEPLOYMENT_TARGET`, so it targets the build Mac's macOS rather than the
+  app's 15.0 and has not been tried on macOS 15 (`scripts/release-stage.mjs:122`).
+- A local release build signs with whatever `SVALL_RELEASE_KEY` names and never checks it against `allowed_signers`,
+  so an install of that build refuses its own companion (`scripts/release-stage.mjs:374`).
 - `release.yml` publishes without a job that runs the typecheck or the unit tests (`.github/workflows/release.yml`).
 - An install removes every release but `current` and the rollback target, one that a `--no-launchctl` daemon or a
   long-running `svall` still runs from included (`scripts/install-release.mjs:133`).
@@ -204,6 +215,8 @@ What the reviews found and left open, by area. Paths are from the repository roo
   (`packages/svalld/src/handover/sessions/opencode.ts:21`).
 - A held copy is deleted and imported again even when it equals the incoming export
   (`packages/svalld/src/handover/sessions/opencode.ts:117`).
+- `pnpm compat` does not check the `opencode session export` and `session import --standalone --directory` a handover
+  runs (`scripts/compat/harnesses.ts:244`).
 
 ## Tests
 
@@ -249,6 +262,9 @@ Behaviour-preserving refactors.
   `handover.inspect`, with `handover.reaches` classed `transaction` to fall under it
   (`packages/svalld/src/ownership/guard.ts:96`, `packages/svalld/src/ownership/guard.ts:89`).
 - `resolveOwner` copies `rememberOwner`'s route write (`packages/cli/src/controller/connection.ts:302`).
+- The machine-identity check is written out four times, three through `sameMachine` and one inline with another fix
+  text (`packages/cli/src/controller/host.ts:347`, `packages/cli/src/controller/host.ts:409`,
+  `packages/cli/src/controller/host.ts:521`, `packages/cli/src/controller/host.ts:579`).
 - `LineBuffer` and `StderrTail` live in `apps/desktop/mac/Sources/Svall/ControllerProcess.swift`, which does not use
   them.
 - `MachineRegistry.rename` throws when given the machine's own name, and only tests call it
