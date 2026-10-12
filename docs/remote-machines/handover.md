@@ -108,8 +108,9 @@ Paths are never rewritten: both machines have the same home path, so every path 
 either. A repository's `origin` that names a path on the Mac travels as it is, and the checks warn about it.
 
 A folder the fleet left on a machine stays there as a replica of what was last carried. Moving back copies only what
-changed. If something on that replica changed while the machine did not own the fleet, the handover stops rather than
-overwrite it: copy the changes back by hand, or archive the replica.
+changed. If something on that replica changed while the machine did not own the fleet, the checks before the copy stop
+the handover rather than overwrite it: copy the changes back by hand, or archive the replica. A change made there once
+the copy has started is overwritten.
 
 A repository can say where it runs with `.svall/handover.json`, such as `{ "platforms": ["darwin"] }`, which
 blocks a move to Linux while a character works in it. An Xcode project in a folder moving to Linux is only a warning.
@@ -225,8 +226,8 @@ What else to know:
   it then ends complete, and `svall handover --resume` finishes what they missed.
 - **An unreachable gateway** never stops the machine that owns the fleet: it goes on working. No handover can begin or
   commit until the gateway answers, and a machine frozen for a handover stays read-only until one of them does.
-- **Changes on the other machine** are never overwritten: a changed replica stops the handover until you copy the
-  changes back or archive it.
+- **Changes on the other machine** made before the copy starts are not overwritten: a changed replica stops the
+  handover until you copy the changes back or archive it. One made while the copy runs is lost.
 - **After the commit** a character that did not resume is retried on the machine the fleet went to, never by moving
   the fleet back.
 
@@ -299,6 +300,9 @@ svall host remove studio --forget
   back, run OpenCode there only with `--standalone`, or first remove the copy with `opencode session delete
   --standalone <id>`, taking the id from `opencode session list --standalone` in the character's folder.
 
+- **An edit on the other machine while the copy runs is lost.** The checks compare each folder there with what was
+  last carried before the copy starts; a change made there after that is overwritten. Leave the other machine's copies
+  alone until the handover ends.
 - **Two controllers can drive one handover.** Starting a handover of the same fleet from two Macs at once can have
   both drive the same handover, since the gateway accepts the second start as the first. The gateway still commits
   it once. On one Mac, the second start is refused.
