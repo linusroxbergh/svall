@@ -105,7 +105,7 @@ export class Fleet extends EventEmitter<Events> {
       store, config, render: (island, c) => this.render(island, c), refreshLinks: deps.refreshLinks ?? refreshLinks,
       writable, frozen: () => deps.ownership.isFrozen(), track,
     });
-    this.prompts = new Prompts({ fleet: this, store, tmux: deps.tmux, config, log, reviving: this.reviving });
+    this.prompts = new Prompts({ fleet: this, store, tmux: deps.tmux, config, log, reviving: this.reviving, writable });
   }
 
   /** Whether this daemon may write the fleet: the unfrozen owner, and nobody else. */
@@ -125,11 +125,12 @@ export class Fleet extends EventEmitter<Events> {
     return this.activated;
   }
 
-  /** Ends every window and the poll: a fleet another machine now runs keeps no terminal running here. */
+  /** Ends every window, held prompt and the poll: a fleet another machine now runs keeps no terminal running here. */
   async deactivate(): Promise<void> {
     const was = this.activated;
     this.activated = undefined;
     await was?.catch(() => {});
+    this.prompts.stop();
     await this.link.stop();
     await this.poll.stop();
     await this.deps.tmux.killServer();
