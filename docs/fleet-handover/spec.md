@@ -596,12 +596,13 @@ freeze. Freeze rejects every mutating RPC, stops scribe/background state changes
 requests and snapshots the known character set.
 
 Freeze repeats the process-tree and source-path checks because work may have started after
-preflight. It checks for repositories no character works in from names before the rest and again on
-the manifest built after it, as the rest records where each second terminal stands. A blocker Freeze
-finds, before, during or after the rest, reopens only the terminals the handover stopped and returns
-the source to normal ownership, while the gateway transaction stays open for the user's answer: an
-answer asks the source to freeze again without a new Begin, and Cancel aborts the transaction. If
-the controller dies meanwhile, `svall handover status` offers Resume or Abort.
+preflight. It checks for repositories no character works in from the file names alone before the
+rest and again on the manifest built after it, as the rest records where each second terminal
+stands. A blocker Freeze finds, before, during or after the rest, reopens only the terminals the
+handover stopped and returns the source to normal ownership, while the gateway transaction stays
+open for the user's answer: an answer asks the source to freeze again without a new Begin, and
+Cancel aborts the transaction. If the controller dies meanwhile, `svall handover status` offers
+Resume or Abort.
 
 Each primary and second terminal is classified:
 

@@ -20,7 +20,7 @@ not `handover.enabled` is on.
   stashes, and each Claude Code, Codex and OpenCode conversation. Agents resume from their transcripts, shells reopen
   in their folders, and the app reconnects to the fleet where it now runs.
 - **The checks come first.** Nothing moves until they pass, and each blocker says what to do: finish or interrupt a
-  working agent, end a busy shell's command, archive a folder in the way, carry whole a folder a terminal is in that
+  working agent, end a busy shell's command, archive a folder in the way, carry a terminal's folder whole when it
   holds repositories no character works in. A folder changed on the other machine while it did not own the fleet stops
   the handover before the copy starts; one changed there while the copy runs is overwritten.
 - **A handover survives interruptions.** It carries on while the app is closed, with this Mac's daemon and terminals

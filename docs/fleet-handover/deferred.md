@@ -98,7 +98,7 @@ What the reviews found and left open, by area. Paths are from the repository roo
 ## Ownership and local sockets
 
 - `OwnershipState.load` takes any readable owner.json without comparing its fleetId with fleet.json's
-  (`packages/svalld/src/ownership/state.ts:31`).
+  (`packages/svalld/src/ownership/state.ts:33`).
 - The Linux daemon lock is an abstract socket named by a hash of the home's path, so another account can bind it
   first and a bind-mounted home gets two names (`packages/svalld/src/main.ts:84`).
 - On Linux without TMPDIR, control sockets go under `/tmp/svall-<uid>`; another account can make that folder first,
@@ -107,7 +107,7 @@ What the reviews found and left open, by area. Paths are from the repository roo
   (`packages/cli/src/controller/host.ts:274`).
 - A gateway named with `svall host enable` while the daemon runs on a fallback machine id takes the CLI's own machine
   id as the owner, so the fleet starts read-only next time until the gateway answers
-  (`packages/svalld/src/main.ts:113`, `packages/cli/src/controller/host.ts:769`).
+  (`packages/svalld/src/main.ts:113`, `packages/cli/src/controller/host.ts:718`).
 
 ## Machines and setup
 
@@ -294,8 +294,8 @@ Behaviour-preserving refactors.
 ## Docs
 
 - The spec's protocol surface lists `handover.prepare` with a `snapshot` and leaves out `handover.claim`, `complete`,
-  `inspect` and `reaches`, `ownership.adopt` and `owner.force` (`docs/fleet-handover/spec.md:808`).
+  `inspect` and `reaches`, `ownership.adopt` and `owner.force` (`docs/fleet-handover/spec.md:809`).
 - The spec says a gateway record above the cached generation wins at start, but `adopt` changes nothing for a
   quarantined journal, or for a committed record naming this machine with no journal here
   (`docs/fleet-handover/spec.md:207`).
-- The README's uninstall section does not say `~/.config/svall` stays, even with `--purge` (`README.md:129`).
+- The README's uninstall section does not say `~/.config/svall` stays, even with `--purge` (`README.md:130`).
