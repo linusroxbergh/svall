@@ -575,6 +575,9 @@ Preflight is read-only and runs before any terminal is interrupted. It blocks wh
 - a character is marked **Keep on this machine**;
 - mission control's folder (`home.cwd`) is also another fleet's on the source machine;
 - a foreground shell process is still running;
+- a terminal's cwd root, outside every repository, holds Git repositories no character works in
+  (`repository_unused`), unless the user chooses **Carry the folder whole** (`carryUnused`,
+  `--carry-unused`) or `handover.exclude` leaves them out;
 - a worktree graph cannot be reconstructed and validated;
 - destination files diverged from the last replica manifest;
 - a destination path already exists without a matching replica marker;
@@ -593,11 +596,12 @@ freeze. Freeze rejects every mutating RPC, stops scribe/background state changes
 requests and snapshots the known character set.
 
 Freeze repeats the process-tree and source-path checks because work may have started after
-preflight. A blocker Freeze finds, before, during or after the rest, reopens only the
-terminals the handover stopped and returns the source to normal ownership, while the gateway
-transaction stays open for the user's answer: an answer asks the source to freeze again without a
-new Begin, and Cancel aborts the transaction. If the controller dies meanwhile, `svall handover
-status` offers Resume or Abort.
+preflight. It checks for repositories no character works in from names before the rest and again on
+the manifest built after it, as the rest records where each second terminal stands. A blocker Freeze
+finds, before, during or after the rest, reopens only the terminals the handover stopped and returns
+the source to normal ownership, while the gateway transaction stays open for the user's answer: an
+answer asks the source to freeze again without a new Begin, and Cancel aborts the transaction. If
+the controller dies meanwhile, `svall handover status` offers Resume or Abort.
 
 Each primary and second terminal is classified:
 
@@ -611,10 +615,10 @@ Each primary and second terminal is classified:
 - shell with a foreground process: blocker until it exits or the user chooses **Terminate and
   carry**.
 
-There is no automatic thirty-second Escape. The sheet offers **Continue waiting**,
-**Interrupt and carry**, and **Cancel**. CLI automation opts in with
-`--interrupt-after <duration>` and `--terminate-shells`; without them it exits with blockers. A
-working agent is waited for up to three minutes, or until an `--interrupt-after` that is longer.
+There is no automatic thirty-second Escape. The sheet offers **Continue waiting**, **Interrupt and
+carry**, and **Cancel**. CLI automation opts in with `--interrupt-after <duration>`,
+`--terminate-shells` and `--carry-unused`; without them it exits with blockers. A working agent is
+waited for up to three minutes, or until an `--interrupt-after` that is longer.
 
 After an interrupt, Svall waits for the agent hook or process tree to confirm rest. Failure to
 settle is a blocker unless the user explicitly terminates that terminal. Only then are tmux windows
@@ -790,6 +794,7 @@ svall handover --resume
 svall handover --abort
 svall handover <host> --interrupt-after 30s --terminate-shells
 svall handover <host> --archive <root>
+svall handover <host> --carry-unused
 svall handover <host> --detach
 svall handover attach
 svall handover --forget

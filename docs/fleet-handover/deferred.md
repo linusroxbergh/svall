@@ -83,6 +83,8 @@ What the reviews found and left open, by area. Paths are from the repository roo
   (`packages/cli/src/controller/recovery.ts:159`).
 - Closing a master that `open()` already replaced sends `-O exit` on the shared socket, ending the new master
   (`packages/cli/src/controller/ssh.ts:223`).
+- A preflight with no blocker goes straight on to Begin, so its warnings, such as `env_file` and `credential_file`,
+  scroll past as the handover starts (`packages/cli/src/controller/handover.ts:294`).
 
 ## Recovery
 
@@ -103,27 +105,34 @@ What the reviews found and left open, by area. Paths are from the repository roo
   and every master is then refused (`packages/cli/src/controller/ssh.ts:57`).
 - The `host add` tmux probe opens its server at a guessable `${TMPDIR:-/tmp}/svall-probe-$$`
   (`packages/cli/src/controller/host.ts:274`).
+- A gateway named with `svall host enable` while the daemon runs on a fallback machine id takes the CLI's own machine
+  id as the owner, so the fleet starts read-only next time until the gateway answers
+  (`packages/svalld/src/main.ts:113`, `packages/cli/src/controller/host.ts:769`).
 
 ## Machines and setup
 
 - `svall host` saves the machines.json it loaded when it started, so a registry change made meanwhile is lost
-  (`packages/cli/src/controller/host.ts:415`).
+  (`packages/cli/src/controller/host.ts:431`).
 - `host add` under a second name for a registered machine uploads and installs, then fails at the registry step
   (`packages/cli/src/controller/host.ts:313`).
 - `remoteConnectionInfo` checks the fleet id before the machine id, so an alias that reaches another machine gets
   `svall host enable` advice instead of a machine mismatch (`packages/cli/src/controller/connection.ts:128`).
-- `svall host doctor` never compares the far machine id with the registry's (`packages/cli/src/controller/host.ts:454`).
+- `svall host doctor` never compares the far machine id with the registry's (`packages/cli/src/controller/host.ts:481`).
 - `host upgrade --rollback` never compares the far release with this controller's, and prints "ready for handover"
-  for any ready outcome (`packages/cli/src/controller/host.ts:559`).
+  for any ready outcome (`packages/cli/src/controller/host.ts:578`).
 - `host remove`'s refusal always speaks of another Mac's fleet, even when this Mac's own stale cache caused it, and
-  strips the `svall: ` prefix only from the first line (`packages/cli/src/controller/host.ts:664`).
+  strips the `svall: ` prefix only from the first line (`packages/cli/src/controller/host.ts:682`).
 - An agent missing at `host add` gets "install <agent>" without saying to run `host add` again, which writes its
   hooks (`packages/cli/src/controller/host.ts:236`).
 - Stopping Add Machine leaves its interactive ssh and askpass dialog running (`packages/cli/src/commands/host.ts:31`).
 - A `-N` dedup suffix can push an auto-created machine name past 32 characters, and the next load sets machines.json
   aside (`packages/cli/src/controller/registry.ts:26`).
 - For a fleet that names a gateway, svalld exits at start when `~/.config/svall` cannot be made or machine.json is
-  bad, and the app or systemd restarts it in a loop (`packages/svalld/src/main.ts:152`).
+  bad, and the app or systemd restarts it in a loop (`packages/svalld/src/main.ts:117`).
+- A file at `~/.config/svall` gives EEXIST with no hint, and an unreadable machine.json gets "delete the file" in place
+  of the chown hint (`packages/svalld/src/machine.ts:20`, `packages/svalld/src/machine.ts:39`).
+- After a start on a fallback machine id, `svall setup` skips mission control's home template: it reads owner.json as
+  another machine's, or fails on the machine id itself (`packages/svalld/src/setup.ts:187`).
 - `svall agent` talks to this machine's daemon, so for a fleet another machine owns it reads and sets the local copy
   (`packages/cli/src/commands/agent.ts:24`).
 - fleet.json's schema is not strict, so machine keys put there (`port`, `host`, `shell`, `integrations`) are dropped
@@ -164,11 +173,16 @@ What the reviews found and left open, by area. Paths are from the repository roo
 - `--version` is not checked in `scripts/build-companion.mjs` and `scripts/build-controller.mjs`, and the stage
   deletes `<out>/releases/<version>`, so a `..` version deletes `--out` or a folder above it
   (`scripts/release-stage.mjs:337`).
+- `app-build.sh` blames the Node pins whenever the carried node differs from `Helpers/node`, also when the release
+  carries none or was built under an x64 Node (`scripts/app-build.sh:21`).
 
 ## App and web
 
 - Every window starts the Node connect helper and waits on it, even when fleet.json names no gateway
   (`apps/desktop/mac/Sources/Svall/RemoteConnection.swift:49`).
+- For a fleet no gateway holds, with handover on and `~/.config/svall` unusable, the connect helper fails on the
+  machine id and the banner says this Mac is not reachable while the fleet works
+  (`packages/cli/src/controller/connect.ts:81`, `packages/cli/src/controller/connection.ts:80`).
 - Add Machine shows each sudo or login step as a command to run by hand and never offers a terminal on the machine
   (`apps/desktop/web/src/HostSetup.tsx:48`).
 - The Machines panel has name and ssh inputs only, with no list of registered machines
@@ -182,7 +196,7 @@ What the reviews found and left open, by area. Paths are from the repository roo
 - A `detached` result holds every terminal at "Resting…" with no badge, even after the new owner's fleet has loaded;
   only Follow clears it (`apps/desktop/web/src/handover.ts:252`).
 - A sheet rebuilt after a relaunch has no destination, so it says "the other machine" even for This Mac and hides
-  Try again (`apps/desktop/web/src/handover.ts:429`).
+  Try again (`apps/desktop/web/src/handover.ts:444`).
 - A resume row counts as running once the main terminal has a window, so a failed second terminal shows "resumed"
   and hides Retry (`apps/desktop/web/src/HandoverSheet.tsx:65`).
 - A preflight block that arrives after the sheet closed neither reopens it nor badges it
@@ -190,13 +204,13 @@ What the reviews found and left open, by area. Paths are from the repository roo
 - `svall handover attach` exits 0 whenever the helper socket closes, mid-run included, and the sheet then offers Start
   (`packages/cli/src/commands/handover.ts:491`).
 - "Check again" on a finished move replays it as `moved` without `onMoved`, so the window stays on the old owner until
-  the connection re-routes (`apps/desktop/mac/Sources/Svall/Handover.swift:153`).
+  the connection re-routes (`apps/desktop/mac/Sources/Svall/Handover.swift:155`).
 - A launch made while a launcher or status command runs is dropped without an exit, leaving the sheet at "Starting…"
-  (`apps/desktop/mac/Sources/Svall/Handover.swift:124`).
+  (`apps/desktop/mac/Sources/Svall/Handover.swift:126`).
 - `LineChild.stop()` waits in the main run loop, so the child it stops can send a stray `handover.exit` as the next
   run starts (`apps/desktop/mac/Sources/Svall/LineChild.swift:90`).
 - The sheet explains `agent_unsettled` as work still running after the interrupt, though it also covers an idle agent
-  with a background command and no interrupt (`apps/desktop/web/src/handover.ts:317`).
+  with a background command and no interrupt (`apps/desktop/web/src/handover.ts:323`).
 - Keep awake holds nothing for a handover under way, so once no agent works the Mac's idle sleep can cut a long
   transfer short (`apps/desktop/web/src/awake.ts:57`).
 
@@ -209,7 +223,7 @@ What the reviews found and left open, by area. Paths are from the repository roo
 - An abort after a prepare that imported leaves the imported session in the destination's database, owned by no fleet
   (`packages/svalld/src/handover/destination.ts:528`).
 - The source's session exports stay in `transcripts/opencode/exports/` after complete or abort
-  (`packages/svalld/src/handover/source.ts:454`).
+  (`packages/svalld/src/handover/source.ts:456`).
 - Sessions are exported once, at freeze, so a change made by hand on the frozen source afterwards is neither carried
   nor caught (`packages/svalld/src/handover/source.ts:322`).
 - A CLI exit with no output gives a blank reason, and nothing retries it
@@ -225,7 +239,7 @@ What the reviews found and left open, by area. Paths are from the repository roo
   after unhold (`packages/svalld/test/handover/fault-world.ts:543`).
 - No test opens a second terminal across a freeze (`packages/svalld/src/fleet.ts:677`).
 - No test compares a names-only build's `listed` count with the read manifest, for links or a single-file root
-  (`packages/svalld/src/handover/manifest.ts:107`).
+  (`packages/svalld/src/handover/manifest.ts:112`).
 - The relay's malformed-frame test does not show the peer socket surviving the other's bad frame
   (`packages/svalld/test/gateway/relay-contract.test.ts:296`).
 - The `LineChild` ordering test does not force a line to arrive after the exit
@@ -245,11 +259,11 @@ Behaviour-preserving refactors.
   `packages/cli/src/controller/connect.ts:95`, `packages/cli/src/controller/host.ts:257`).
 - Six CLI functions parse fleet.json themselves: `localFleetId` (`packages/cli/src/controller/connection.ts:91`),
   `fleetConfig` (`packages/cli/src/controller/connection.ts:191`), `connectHandover`
-  (`packages/cli/src/controller/reach.ts:163`), `readFleet` (`packages/cli/src/controller/host.ts:686`), `recoverFleet`
+  (`packages/cli/src/controller/reach.ts:163`), `readFleet` (`packages/cli/src/controller/host.ts:705`), `recoverFleet`
   (`packages/cli/src/commands/fleet-recover.ts:185`) and `gatewayOf` (`packages/cli/src/commands/handover.ts:70`),
   which repeats svalld's `namedGateway` (`packages/svalld/src/config.ts:235`) and shares its name with
   `packages/cli/src/controller/reach.ts:73`'s.
-- The CLI's `fleetHomes` (`packages/cli/src/controller/host.ts:592`) disagrees with svalld's
+- The CLI's `fleetHomes` (`packages/cli/src/controller/host.ts:611`) disagrees with svalld's
   (`packages/svalld/src/uninstall.ts:248`) on what a fleet home is.
 - Which blocker each choice clears is spelled out in three places: `choiceFor` (`apps/desktop/web/src/handover.ts:262`),
   `options` (`packages/cli/src/commands/handover-view.ts:71`) and `ARCHIVABLE`
@@ -264,7 +278,7 @@ Behaviour-preserving refactors.
   (`packages/svalld/src/ownership/guard.ts:96`, `packages/svalld/src/ownership/guard.ts:89`).
 - `resolveOwner` copies `rememberOwner`'s route write (`packages/cli/src/controller/connection.ts:302`).
 - Opening a master and checking its machine is written out three times (`packages/cli/src/controller/host.ts:347`,
-  `packages/cli/src/controller/host.ts:521`, `packages/cli/src/controller/host.ts:579`), and
+  `packages/cli/src/controller/host.ts:525`, `packages/cli/src/controller/host.ts:583`), and
   `packages/cli/src/controller/host.ts:409` checks the id inline with another fix text.
 - `LineBuffer` and `StderrTail` live in `apps/desktop/mac/Sources/Svall/ControllerProcess.swift`, which does not use
   them.
@@ -280,7 +294,7 @@ Behaviour-preserving refactors.
 ## Docs
 
 - The spec's protocol surface lists `handover.prepare` with a `snapshot` and leaves out `handover.claim`, `complete`,
-  `inspect` and `reaches`, `ownership.adopt` and `owner.force` (`docs/fleet-handover/spec.md:803`).
+  `inspect` and `reaches`, `ownership.adopt` and `owner.force` (`docs/fleet-handover/spec.md:808`).
 - The spec says a gateway record above the cached generation wins at start, but `adopt` changes nothing for a
   quarantined journal, or for a committed record naming this machine with no journal here
   (`docs/fleet-handover/spec.md:207`).
