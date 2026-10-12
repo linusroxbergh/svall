@@ -47,7 +47,7 @@ See [Upgrading and downgrading](migration.md) for the details and the way back.
 - macOS 15 or newer, and Ubuntu LTS on x86-64 or arm64 with systemd user services and lingering.
 - The Linux account's home must be the same path as yours on the Mac, such as `/Users/ada`.
 - Tailscale and ssh between the two, and tmux, Git and rsync 3.2.3 or newer on the Linux machine.
-- Claude Code 2.1.251 or newer, Codex 0.155.0 or newer and OpenCode 2.0.22 or newer, logged in on each machine.
+- Claude Code 2.1.251 or newer, Codex 0.156.0 or newer and OpenCode 2.0.22 or newer, logged in on each machine.
   Logins never move.
 
 ## Not yet

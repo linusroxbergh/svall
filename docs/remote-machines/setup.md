@@ -13,7 +13,7 @@ machine needs, how to add it, and how to look after it.
 | Services | launchd, as for any fleet | systemd user services, with lingering on so the fleet keeps running after you log out |
 | Tools | tmux, Git | tmux 3.x, Git, rsync 3.2.3 or newer, as Ubuntu 22.04 and later ship (`sudo apt install tmux git rsync`) |
 | Network | Tailscale, and OpenSSH to the Linux account with a key ssh can use without asking (Tailscale SSH works); a password gets only past the first login | Tailscale |
-| Agents | Claude Code 2.1.251 or newer, Codex 0.155.0 or newer and OpenCode 2.0.22 or newer, for the agents your fleet runs, each logged in on each machine | the same |
+| Agents | Claude Code 2.1.251 or newer, Codex 0.156.0 or newer and OpenCode 2.0.22 or newer, for the agents your fleet runs, each logged in on each machine | the same |
 
 tmux 3.5 or newer is recommended on both, because Shift+Enter needs it; Ubuntu 24.04 ships 3.4, which works otherwise.
 
@@ -74,7 +74,7 @@ Both run the same steps and show each as it finishes:
    pins and against its signature, copied over ssh and installed under `~/.local/share/svall` there.
 4. **Service.** `svall-gateway.service` and `svall-svalld@private.service` as systemd user units, started.
 5. **Agent logins.** Claude Code, Codex and OpenCode on the machine: installed, Claude Code 2.1.251 or newer, Codex
-   0.155.0 or newer and OpenCode 2.0.22 or newer, logged in (for OpenCode, `opencode auth list` answers), and with
+   0.156.0 or newer and OpenCode 2.0.22 or newer, logged in (for OpenCode, `opencode auth list` answers), and with
    Svall's hooks in place (for OpenCode, Svall's plugin), as the machine's own `svall doctor` finds them.
 6. **Final probe.** The machine's own fleet answers through a forwarded port, its gateway answers, and tmux opens and
    closes a window there.

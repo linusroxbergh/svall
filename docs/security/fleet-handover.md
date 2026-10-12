@@ -254,7 +254,7 @@ has a new id and never meets them.
 
 ## Agent versions
 
-- **The range.** A session adapter has a minimum and no maximum: Claude Code 2.1.251, Codex 0.155.0, OpenCode 2.0.22.
+- **The range.** A session adapter has a minimum and no maximum: Claude Code 2.1.251, Codex 0.156.0, OpenCode 2.0.22.
   A handover copies session files byte for byte, so it depends only on where each CLI keeps a session and on its
   resume command; for OpenCode, on `session export`, `session import --directory`, the `Imported session: <id>` line
   that import prints, and `-s`.

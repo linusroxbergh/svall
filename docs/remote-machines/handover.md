@@ -112,7 +112,7 @@ blocks a move to Linux while a character works in it. An Xcode project in a fold
 
 ## Agents
 
-A handover carries Claude Code sessions from release 2.1.251 on, Codex sessions from 0.155.0 on and OpenCode sessions
+A handover carries Claude Code sessions from release 2.1.251 on, Codex sessions from 0.156.0 on and OpenCode sessions
 from 2.0.22 on, with no upper limit: a Claude or Codex session's files are copied byte for byte to the same place on
 the other machine, so a newer release works as long as it keeps its sessions where it did. An OpenCode session travels
 as its `opencode session export`, which the other machine's OpenCode imports in the terminal's folder before the
