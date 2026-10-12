@@ -546,12 +546,12 @@ roots.
 
 ## Terminal records
 
-State schema v8 makes both terminal slots explicitly resumable. A terminal record has its cwd,
+State schema v9 makes both terminal slots explicitly resumable. A terminal record has its cwd,
 optional live tmux ids, optional agent, and optional revive command. A second terminal no longer
 disappears merely because its tmux window is absent.
 
-Before export, all `tmux.windowId`, `paneId`, agent pid and monitor fields are removed. For a supported
-agent, `revive.command` is `claude --resume <id>`, `codex resume <id>` or
+Before export, all `tmux.windowId`, `paneId`, `panePath`, `hint`, agent pid, monitor and `agent.subagents` fields
+are removed. For a supported agent, `revive.command` is `claude --resume <id>`, `codex resume <id>` or
 `opencode -s <id>` (launched with `--standalone`) with the launch flags an idle close keeps, whether the handover
 rested the terminal or it was already dormant, less the Codex flags whose values name the source's
 own config (`-p`/`--profile`, `--local-provider`). A plain shell has no command and reopens at its
@@ -848,7 +848,7 @@ event handover.entity    { transactionId, kind, id, phase, done?, total?, error?
 
 Implementation follows these ownership boundaries:
 
-- `packages/protocol/src/state.ts`, `migrate.ts` and `messages.ts`: schema v8, ids, ownership,
+- `packages/protocol/src/state.ts`, `migrate.ts` and `messages.ts`: schema v9, ids, ownership,
   handover RPCs and events;
 - `packages/svalld/src/config.ts` and `paths.ts`: `fleet.json`/`node.json` migration and new durable
   paths;
@@ -872,7 +872,7 @@ CI rather than on ordinary local test runs.
 
 ## Phase 0 — schemas and ownership fencing
 
-1. Add `MachineId`, `FleetId`, schema-v8 resumable second terminals and path-field classification.
+1. Add `MachineId`, `FleetId`, schema-v9 resumable second terminals and path-field classification.
 2. Split and migrate portable `fleet.json` from machine-local `node.json`.
 3. Add machine registry and stable local machine identity.
 4. Add owner/generation checks around every mutating API and background state writer.
