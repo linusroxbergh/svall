@@ -53,7 +53,7 @@ keeping any other keys in the `handover` object as they are. Then quit and reope
 **Machines** section, the sidebar's foot a **Handover** button, and each character's card a **keep on this machine**
 switch.
 
-The `svall host`, `svall handover` and `svall fleet recover` commands work whether or not it is on.
+The `svall host`, `svall handover`, `svall gateway` and `svall fleet recover` commands work whether or not it is on.
 
 ## Adding the machine
 

@@ -5,7 +5,8 @@ repositories and worktrees they work in, and each Claude Code, Codex or OpenCode
 the fleet keeps working while the Mac sleeps, and the app on the Mac reaches it over ssh. Only one of the two runs
 the fleet at a time; the Linux machine, as the fleet's gateway, keeps the record of which.
 
-It is off until you turn it on for a fleet, with `"handover": { "enabled": true }` in that fleet's `fleet.json`.
+The app shows it once you turn it on for a fleet, with `"handover": { "enabled": true }` in that fleet's `fleet.json`.
+The `svall host`, `svall handover`, `svall gateway` and `svall fleet recover` commands work whether or not it is on.
 
 | Page | What it covers |
 | --- | --- |

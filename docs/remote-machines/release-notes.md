@@ -1,8 +1,9 @@
 # Release notes: remote machines
 
-This release lets a fleet run on an always-on Linux machine as well as on your Mac, and move between the two. It is
-off by default: each fleet turns it on with `"handover": { "enabled": true }` in its `fleet.json`, and a fleet that
-does not works exactly as before.
+This release lets a fleet run on an always-on Linux machine as well as on your Mac, and move between the two. The
+app's controls for it are off by default: each fleet turns them on with `"handover": { "enabled": true }` in its
+`fleet.json`. The `svall host`, `svall handover`, `svall gateway` and `svall fleet recover` commands work whether or
+not it is on.
 
 ## New
 

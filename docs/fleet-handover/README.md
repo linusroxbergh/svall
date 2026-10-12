@@ -4,7 +4,8 @@ Fleet handover moves a whole fleet from one machine to another: its characters, 
 worktrees and Claude/Codex/OpenCode sessions. It runs between a Mac and a Linux gateway machine over SSH, and
 the Linux account has the Mac's home path, so nothing the fleet records is rewritten. One machine owns
 the fleet at a time, and a small gateway service on the Linux machine keeps the ownership record.
-Everything sits behind `handover.enabled` in fleet.json, which is off by default.
+The app's controls for it sit behind `handover.enabled` in fleet.json, which is off by default; the `svall host`,
+`handover`, `gateway` and `fleet recover` commands work whether or not it is on.
 
 ## Status
 
