@@ -137,7 +137,7 @@ export const HandoverIssueCode = z.enum([
   'worktree_unresolved', 'destination_diverged', 'destination_occupied', 'destination_no_space', 'path_collision', 'path_unsupported', 'path_symlinked', 'mission_control_shared',
   'transcript_missing', 'ssh_interactive', 'platform_unsupported', 'platform_heuristic', 'env_file', 'credential_file', 'external_writer', 'rsync_unsupported',
   'git_mismatch', 'worktree_unused', 'remote_local', 'git_extension', 'codex_trust', 'claude_trust', 'claude_bypass', 'config_difference', 'symlink_dangling', 'manifest_too_large',
-  'too_many_files',
+  'too_many_files', 'repository_unused',
 ]);
 export type HandoverIssueCode = z.infer<typeof HandoverIssueCode>;
 
@@ -163,6 +163,8 @@ export const HandoverChoices = z.object({
   interruptAfterMs: z.number().int().nonnegative().optional(),
   terminateShells: z.union([z.boolean(), z.array(z.string().min(1))]).optional(),
   archiveRoots: z.array(z.string().min(1)).optional(),
+  // carries a folder a terminal is in whole, with the Git repositories in it no character works in
+  carryUnused: z.boolean().optional(),
 });
 export type HandoverChoices = z.infer<typeof HandoverChoices>;
 

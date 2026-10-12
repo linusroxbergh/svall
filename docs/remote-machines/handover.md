@@ -32,6 +32,7 @@ its terminal, and open it again from **Handover**, which is marked while a decis
 | Interrupt and carry | an agent working or waiting on an answer | Sends Escape to each such agent, waits for it to settle, and carries it. It resumes from its transcript on the other machine. |
 | Terminate and carry | a shell running a command, an agent that will not settle, or an idle agent whose background command still runs | Ends what runs in the terminals of each character named. The shell reopens in its folder on the other machine. |
 | Archive and carry | a folder on the other machine that is in the way or changed there | Moves that folder to a timestamped sibling first, then copies afresh. Nothing is deleted, and the folder's row says where the old copy is kept. |
+| Carry the folder whole | a terminal in a folder that holds Git repositories no character works in, such as a shell in `~/Developer` | Carries that folder with those repositories. |
 | Abort | anything before the commit | Nothing moves; the fleet stays where it was. |
 
 A character marked **keep on this machine** on its card blocks the handover until you turn that off.
@@ -79,6 +80,7 @@ One found later waits with the fleet frozen. These flags answer ahead:
 | `--interrupt-after <duration>` | Interrupt and carry the agents still working after this long: a number with `ms`, `s`, `m` or `h`, such as `1500ms`, `30s` or `2m`; `0` interrupts at once. A time past three minutes makes the rest wait that long. |
 | `--terminate-shells` | Terminate and carry every terminal kept busy by a command, or by an agent that will not settle. |
 | `--archive <root>` | Archive and carry this destination folder, by the root id a blocker names or its path. Repeat it for more. |
+| `--carry-unused` | Carry the folder whole: each folder a terminal is in moves with the Git repositories there that no character works in. |
 
 `svall handover` exits 0 when it did what it was asked and 1 otherwise. [Every code it can report](errors.md) is
 listed with what to do about it.
@@ -98,7 +100,9 @@ listed with what to do about it.
 
 Folders named `node_modules/`, `.venv/`, `__pycache__/`, `dist/`, `build/`, `target/` and `.next/`, and
 `*.tsbuildinfo` files, are left out by default, and each machine keeps its own. `handover.exclude` in `fleet.json`
-adds patterns; `"excludeDefaults": false` replaces the defaults with yours.
+adds patterns; `"excludeDefaults": false` replaces the defaults with yours. A folder a terminal is in moves whole, so a
+shell open in `~/Developer` would carry every repository there: the checks stop at the ones no character works in
+until you choose Carry the folder whole (`--carry-unused`), move the terminal, or leave them out.
 
 Paths are never rewritten: both machines have the same home path, so every path in the fleet means the same thing on
 either. A repository's `origin` that names a path on the Mac travels as it is, and the checks warn about it.
@@ -321,8 +325,8 @@ svall host remove studio --forget
 - **Agents ask to trust each moved folder** the first time they resume in it on a machine (see [Agents](#agents)).
   The character waits at that prompt until you answer it.
 - **A resume rebuilt without this Mac's journal forgets your choices.** If the controller's journal is lost,
-  `--resume` rebuilds it from the other three without your interrupt, terminate or archive choices, and may stop at
-  the same blockers again; choose again.
+  `--resume` rebuilds it from the other three without your interrupt, terminate, archive or carry choices, and may
+  stop at the same blockers again; choose again.
 - **More than ten terminals on a remote fleet** exceed sshd's default of ten sessions per connection. Each one past
   the tenth opens its own ssh login and shows one "Session open refused by peer" line. Like the app's own
   connection, that login asks nothing, and logs in with the keys ssh already holds; if none works, the terminal closes

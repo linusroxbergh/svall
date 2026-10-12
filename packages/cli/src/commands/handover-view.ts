@@ -74,6 +74,7 @@ export function options(blockers: Blocker[], phase: HandoverPhase, names: Names,
   const stuck = characters(blockers, (c) => c === 'shell_busy' || c === 'agent_unsettled');
   const unsettled = characters(blockers, (c) => c === 'agent_unsettled');
   const archive = roots(blockers);
+  const unused = characters(blockers, (c) => c === 'repository_unused');
   const out: Option[] = [];
   if (phase === 'freeze' && (working.length || unsettled.length)) {
     out.push({ key: 'w', label: `Continue waiting for ${name(unique([...working, ...unsettled]))}`, answer: { ...held } });
@@ -96,6 +97,12 @@ export function options(blockers: Blocker[], phase: HandoverPhase, names: Names,
       answer: { ...held, archiveRoots: union(held.archiveRoots, archive) },
     });
   }
+  if (unused.length) {
+    out.push({
+      key: 'u', label: `Carry the folder ${unused.length > 1 ? 'each of ' : ''}${name(unused)} is in whole, with the Git repositories there no character works in`,
+      answer: { ...held, carryUnused: true },
+    });
+  }
   if (!out.length && phase === 'begin') return [];
   if (!out.length) out.push({ key: 'r', label: 'Try again', answer: { ...held } });
   out.push({ key: 'c', label: 'Cancel: nothing moves, and the fleet stays where it is', answer: 'cancel' });
@@ -108,6 +115,7 @@ function flags(blockers: Blocker[], names: Names): string[] {
   if (characters(blockers, (c) => REST.has(c)).length) out.push('--interrupt-after <duration> interrupts the agents still working');
   if (characters(blockers, (c) => c === 'shell_busy' || c === 'agent_unsettled').length) out.push('--terminate-shells terminates what keeps a terminal busy');
   for (const id of roots(blockers)) out.push(`--archive ${names.roots[id] ?? id} moves what is there aside first`);
+  if (characters(blockers, (c) => c === 'repository_unused').length) out.push('--carry-unused carries the Git repositories a folder holds that no character works in');
   return out;
 }
 

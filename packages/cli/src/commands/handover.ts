@@ -556,15 +556,15 @@ export function realDeps(): CliDeps {
 }
 
 type Flags = {
-  interruptAfter?: string; terminateShells?: boolean; archive: string[];
+  interruptAfter?: string; terminateShells?: boolean; archive: string[]; carryUnused?: boolean;
   resume?: boolean; abort?: boolean; forget?: boolean; detach?: boolean; helper?: boolean;
 };
 
 function jobOf(machine: string | undefined, f: Flags): Job | 'forget' {
   const asked = [machine !== undefined, f.resume, f.abort, f.forget].filter(Boolean).length;
   if (asked !== 1) throw new Error('name one machine to hand the fleet to (a host, or local), or one of --resume, --abort and --forget');
-  if (machine === undefined && (f.interruptAfter !== undefined || f.terminateShells || f.archive.length)) {
-    throw new Error('--interrupt-after, --terminate-shells and --archive go with the machine a handover starts to');
+  if (machine === undefined && (f.interruptAfter !== undefined || f.terminateShells || f.archive.length || f.carryUnused)) {
+    throw new Error('--interrupt-after, --terminate-shells, --archive and --carry-unused go with the machine a handover starts to');
   }
   if (f.forget && f.detach) throw new Error('--forget runs in the foreground only');
   if (f.forget) return 'forget';
@@ -574,6 +574,7 @@ function jobOf(machine: string | undefined, f: Flags): Job | 'forget' {
     ...(f.interruptAfter !== undefined && { interruptAfterMs: parseDuration(f.interruptAfter) }),
     ...(f.terminateShells && { terminateShells: true }),
     ...(f.archive.length && { archiveRoots: f.archive }),
+    ...(f.carryUnused && { carryUnused: true }),
   };
   return { kind: 'start', to: machine as string, choices };
 }
@@ -593,6 +594,7 @@ export function handoverCommand(o: {
     .option('--interrupt-after <duration>', 'interrupt the agents still working after this long, e.g. 30s or 2m')
     .option('--terminate-shells', "terminate what keeps a terminal busy: a shell's foreground process, and an interrupted agent that will not settle; an agent with a background command still running counts as not settled")
     .option('--archive <root>', 'move a destination root that diverged or is occupied to a timestamped sibling first, by the root id a blocker names or its path; repeatable', (v: string, acc: string[]) => [...acc, v], [] as string[])
+    .option('--carry-unused', 'carry the Git repositories a folder holds that no character works in')
     .option('--resume', 'go the one safe way on with the handover left open')
     .option('--abort', 'take the fleet back to the machine it came from; before the commit only')
     .option('--forget', "drop this controller's journal of a handover the gateway has moved past")

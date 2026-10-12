@@ -97,6 +97,8 @@ final class HandoverTests: XCTestCase {
                                              gateway: "studio", profile: nil),
                        ["handover", "studio", "--json", "--detach", "--interrupt-after", "0ms", "--terminate-shells",
                         "--archive", "r_0a1b", "--archive", "/w/app"])
+        XCTAssertEqual(HandoverCommand.start(to: "studio", choices: HandoverChoices(carryUnused: true), gateway: "studio", profile: nil),
+                       ["handover", "studio", "--json", "--detach", "--carry-unused"])
         // the wait the page chose goes on as it chose it, not rounded to a second
         XCTAssertEqual(HandoverCommand.start(to: "studio", choices: HandoverChoices(interruptAfterMs: 1500), gateway: "studio", profile: nil),
                        ["handover", "studio", "--json", "--detach", "--interrupt-after", "1500ms"])
@@ -144,6 +146,11 @@ final class HandoverTests: XCTestCase {
             }
         }
         XCTAssertEqual(HandoverControl.choose(chosen).line, #"{"choose":{"terminateShells":true}}"#)
+        guard case .handoverStart(_, let carry) = try decode(#"{"type":"handover.start","to":"studio","choices":{"carryUnused":true}}"#) else {
+            return XCTFail("handover.start did not decode")
+        }
+        XCTAssertEqual(carry, HandoverChoices(carryUnused: true))
+        XCTAssertEqual(HandoverControl.choose(HandoverChoices(carryUnused: true)).line, #"{"choose":{"carryUnused":true}}"#)
         // the characters an answer names reach the helper as the page named them
         guard case .handoverChoose(let named) = try decode(#"{"type":"handover.choose","choices":{"terminateShells":["c_ada","c_bo"]}}"#) else {
             return XCTFail("handover.choose did not decode")

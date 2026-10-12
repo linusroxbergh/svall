@@ -61,3 +61,24 @@ test('a release blocker opens the machines panel on the Linux machine, in place 
   expect(screen.queryByTestId('handover-sheet')).toBeNull();
   expect((screen.getByTestId('host-name') as HTMLInputElement).value).toBe('trift');
 });
+
+test('a folder that holds repositories no character works in blocks on its character until Carry the folder whole is chosen, and the start again carries it', () => {
+  const send = vi.spyOn(bridge, 'send');
+  render(<HandoverSheet />);
+  const message = "c1's terminal is in /Users/ada/Developer, which holds 2 Git repositories no character works in (old-stuff, unrelated), so the handover would carry them too";
+  act(() => {
+    store.getState().toggleHandover(true);
+    store.getState().handoverEvent({ event: 'handover.result', data: { status: 'blocked', phase: 'begin', blockers: [
+      { code: 'repository_unused', message, entity: { kind: 'character', id: 'c1' } },
+    ] } });
+    store.getState().handoverExit(1);
+  });
+  const row = screen.getByTestId('handover-blocker-repository_unused');
+  expect(row.querySelector('.ho-who')?.textContent).toBe('c1');
+  expect(row.querySelector('.host-said')?.textContent).toContain(message);
+  fireEvent.click(screen.getByTestId('handover-choice-carry'));
+  expect(screen.getByTestId('handover-choice-carry').textContent).toBe('Carry the folder whole');
+  expect(store.getState().handover?.choices).toEqual({ carryUnused: true });
+  fireEvent.click(screen.getByTestId('handover-try-again'));
+  expect(send.mock.calls).toContainEqual([{ type: 'handover.start', to: 'trift', choices: { carryUnused: true } }]);
+});

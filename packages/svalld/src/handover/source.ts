@@ -234,7 +234,7 @@ export class SourceHandover {
       : built.manifest;
     return {
       manifestSummary: crowd ? { ...summarize(manifest), ...names.listed } : summarize(built.manifest),
-      blockers: settle([...blockers, ...built.blockers, ...big]),
+      blockers: settle([...blockers, ...built.blockers, ...(p.choices.carryUnused ? [] : built.unused), ...big]),
       warnings: settle([...built.warnings, ...platformWarnings(built.manifest, p.destination.info.platform)]),
       manifest,
     };
@@ -306,7 +306,7 @@ export class SourceHandover {
     // what the manifest would refuse, found from names alone while every terminal still runs
     const names = await buildManifest(found.inventory, { transactionId: tx.id, generation: p.generation }, this.d.scanFs, false);
     const crowd = this.crowded(names.listed.files, p.destination.info);
-    const before = [...found.blockers, ...names.blockers, ...(crowd ? [crowd] : [])];
+    const before = [...found.blockers, ...names.blockers, ...(p.choices.carryUnused ? [] : names.unused), ...(crowd ? [crowd] : [])];
     if (before.length) return this.refuse(tx.id, before);
     const ids = Object.keys(this.d.store.state.characters);
     for (const id of ids) this.progress(tx.id, id);

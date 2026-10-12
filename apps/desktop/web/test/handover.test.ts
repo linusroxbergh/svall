@@ -246,6 +246,18 @@ describe('the choices a blocker takes', () => {
     expect(withChoice({ terminateShells: true }, busy, [busy])).toEqual({});
   });
 
+  it('carries a folder whole with the repositories no character works in as one choice, kept beside the others', () => {
+    const unused = b('repository_unused', { kind: 'character', id: 'c1' });
+    expect(choiceFor(unused)).toBe('carry');
+    expect(chosen({}, unused)).toBe(false);
+    const held = { terminateShells: ['c2'], archiveRoots: ['r_a'] };
+    expect(withChoice(held, unused, [unused])).toEqual({ ...held, carryUnused: true });
+    expect(chosen({ carryUnused: true }, unused)).toBe(true);
+    expect(withChoice({ ...held, carryUnused: true }, unused, [unused])).toEqual(held);
+    // turning another choice on or off keeps it
+    expect(withChoice({ carryUnused: true }, b('agent_working'), [])).toEqual({ carryUnused: true, interruptAfterMs: 0 });
+  });
+
   it('starts from the choices the run holds, in a sheet opened after the start that made them', () => {
     const held = { terminateShells: true, archiveRoots: ['r_a'] };
     const working = b('agent_working', { kind: 'character', id: 'c1' });

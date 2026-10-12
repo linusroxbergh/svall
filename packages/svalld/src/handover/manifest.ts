@@ -7,7 +7,7 @@ import {
 import { writeDurable } from './durable.js';
 import { gitIndexDigest } from './git-graph.js';
 import { byCodeUnit, canonicalDigest, canonicalJson, hashStream } from './hash.js';
-import { CONTROL, rootMatcher, settle, type Inventory, type InventorySession } from './inventory.js';
+import { CONTROL, rootMatcher, settle, unusedRepositories, type Inventory, type InventorySession } from './inventory.js';
 import { holds } from './portable-path.js';
 import { sessionAdapter } from './sessions/registry.js';
 import { SessionError, type FoundSession, type SessionAdapter } from './sessions/types.js';
@@ -33,8 +33,11 @@ export const realScanFs: ScanFs = {
 
 /** A preflight's manifest names no transaction; a freeze's names the one it froze for. */
 export type ManifestHeader = { transactionId?: string; generation: number };
-/** `listed`: the carried files and their bytes as the walk found them, read or not. */
-export type BuiltManifest = { manifest: TransferManifestV1; digest: string; blockers: Blocker[]; warnings: Warning[]; listed: Listed };
+/**
+ * `listed`: the carried files and their bytes as the walk found them, read or not. `unused`: what blocks unless the
+ * choices carry the Git repositories no character works in.
+ */
+export type BuiltManifest = { manifest: TransferManifestV1; digest: string; blockers: Blocker[]; warnings: Warning[]; unused: Blocker[]; listed: Listed };
 type Listed = { files: number; bytes: number };
 
 const ENV_FILE = /^\.env(\..+)?$/;
@@ -48,7 +51,7 @@ const HASHING = 8;
 const gone = (e: unknown): boolean => (e as NodeJS.ErrnoException).code === 'ENOENT';
 const reason = (e: unknown): string => (e as NodeJS.ErrnoException).code ?? String(e);
 
-type Scan = { files: TransferFile[]; problems: string[]; envFiles: string[]; credentialFiles: string[]; listed: Listed };
+type Scan = { files: TransferFile[]; problems: string[]; envFiles: string[]; credentialFiles: string[]; repos: string[]; listed: Listed };
 
 async function* tap(chunks: AsyncIterable<Buffer>, into: Buffer[] | undefined): AsyncIterable<Buffer> {
   for await (const chunk of chunks) { into?.push(chunk); yield chunk; }
@@ -98,6 +101,8 @@ async function walk(scan: Scan, base: string, relative: string, excluded: (relat
       if (!gone(e)) scan.problems.push(`${rel}: ${reason(e)}`);
       continue;
     }
+    // a folder below the top that holds a `.git` is a repository's checkout
+    if (name === '.git' && relative) scan.repos.push(relative);
     if (st.isDirectory()) {
       if (!excluded(rel, true)) await walk(scan, base, rel, excluded, sfs, hashing);
     } else if (!excluded(rel, false) && st.isSymbolicLink()) {
@@ -132,7 +137,7 @@ const listed = (items: string[], limit: number): string => {
  * file: the manifest lists links only, and `listed` and the blockers are what a read would find from names.
  */
 export async function buildManifest(inventory: Inventory, header: ManifestHeader, sfs: ScanFs = realScanFs, read = true): Promise<BuiltManifest> {
-  const { roots, blockers, warnings, listed: counted } = await scanRoots(inventory, sfs, read);
+  const { roots, blockers, warnings, unused, listed: counted } = await scanRoots(inventory, sfs, read);
   const sessions: TransferSession[] = [];
   for (const session of inventory.sessions) {
     const carried = await scanSession(session, sfs, read);
@@ -156,12 +161,13 @@ export async function buildManifest(inventory: Inventory, header: ManifestHeader
     sessions,
     git: inventory.git,
   });
-  return { manifest, digest: manifestDigest(manifest), blockers: settle(blockers), warnings: settle(warnings), listed: counted };
+  return { manifest, digest: manifestDigest(manifest), blockers: settle(blockers), warnings: settle(warnings), unused: settle(unused), listed: counted };
 }
 
-async function scanRoots(inventory: Inventory, sfs: ScanFs, hash: boolean): Promise<{ roots: TransferRoot[]; blockers: Blocker[]; warnings: Warning[]; listed: Listed }> {
+async function scanRoots(inventory: Inventory, sfs: ScanFs, hash: boolean): Promise<{ roots: TransferRoot[]; blockers: Blocker[]; warnings: Warning[]; unused: Blocker[]; listed: Listed }> {
   const blockers = [...inventory.blockers];
   const warnings: Warning[] = [...inventory.warnings];
+  const unused: Blocker[] = [];
   const roots: TransferRoot[] = [];
   const counted: Listed = { files: 0, bytes: 0 };
   for (const root of inventory.roots) {
@@ -190,9 +196,10 @@ async function scanRoots(inventory: Inventory, sfs: ScanFs, hash: boolean): Prom
           : `${root.path} holds ${listed(credentialFiles, 3)}, logins other tools keep in plain text, copied to the destination with the rest of the tree`,
       });
     }
+    if (root.kind === 'cwd') unused.push(...unusedRepositories(inventory, root, scanned.repos));
     roots.push({ ...root, entry, files: files.sort((a, b) => byCodeUnit(a.path, b.path)) });
   }
-  return { roots, blockers, warnings, listed: counted };
+  return { roots, blockers, warnings, unused, listed: counted };
 }
 
 /**
@@ -249,9 +256,9 @@ export async function scanPath(
   const counted: Listed = { files: 0, bytes: 0 };
   try { st = await sfs.stat(top); } catch (e) {
     if (gone(e)) return undefined;
-    return { entry: 'dir', files: [], problems: [reason(e)], envFiles: [], credentialFiles: [], listed: counted };
+    return { entry: 'dir', files: [], problems: [reason(e)], envFiles: [], credentialFiles: [], repos: [], listed: counted };
   }
-  const scan: Scan & { entry: TransferRoot['entry'] } = { entry: st.isDirectory() ? 'dir' : 'file', files: [], problems: [], envFiles: [], credentialFiles: [], listed: counted };
+  const scan: Scan & { entry: TransferRoot['entry'] } = { entry: st.isDirectory() ? 'dir' : 'file', files: [], problems: [], envFiles: [], credentialFiles: [], repos: [], listed: counted };
   if (!contents) return scan;
   if (st.isDirectory()) {
     const hashing = hash ? pool(HASHING) : undefined;

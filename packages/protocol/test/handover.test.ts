@@ -157,6 +157,7 @@ describe('handover vocabulary', () => {
     expect(HandoverChoices.parse({})).toEqual({});
     expect(HandoverChoices.parse({ interruptAfterMs: 30_000, terminateShells: true, archiveRoots: ['r_1'] }).terminateShells).toBe(true);
     expect(HandoverChoices.parse({ terminateShells: ['c_1', 'c_2'] }).terminateShells).toEqual(['c_1', 'c_2']);
+    expect(HandoverChoices.parse({ carryUnused: true })).toEqual({ carryUnused: true });
     expect(() => HandoverChoices.parse({ interruptAfterMs: -1 })).toThrow();
   });
 });

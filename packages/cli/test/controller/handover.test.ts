@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { AUTHORITY_SCHEMA_VERSION, FleetId, MachineId, PROTOCOL_VERSION, type Blocker, type HandoverEvent, type OwnerRecord } from '@svall/protocol';
+import { AUTHORITY_SCHEMA_VERSION, FleetId, MachineId, PROTOCOL_VERSION, type Blocker, type HandoverChoices, type HandoverEvent, type OwnerRecord } from '@svall/protocol';
 import { AuthorityClient } from '@svall/svalld/gateway/client';
 import { startAuthorityServer } from '@svall/svalld/gateway/server';
 import { manifestDigest, spaceNeed, type ScanFs } from '@svall/svalld/handover/manifest';
@@ -687,6 +687,20 @@ describe('preflight', () => {
     w.destination.probe = { ...w.destination.probe, freeBytes: 1e12 };
     expect(await controller(w).start(trift, { archiveRoots: ['r_app'] })).toMatchObject({ status: 'complete' });
     expect(w.destination.archived).toEqual(['r_app']);
+  });
+
+  it('stops before Begin at a folder that holds repositories no character works in, asking no one, and carries it whole once chosen', async () => {
+    const w = new World();
+    const unused: Blocker = { code: 'repository_unused', message: "ada's terminal is in /Users/ada/Developer, which holds 2 Git repositories no character works in", entity: { kind: 'character', id: 'c_ada' } };
+    const preflight = w.source.answers['handover.preflight'] as (p: { choices: HandoverChoices }) => object;
+    w.source.answers['handover.preflight'] = ((p: { choices: HandoverChoices }) => ({ ...preflight(p), blockers: p.choices.carryUnused ? [] : [unused] })) as never;
+    const decided: Blocker[][] = [];
+    const decide = async (blockers: Blocker[]) => { decided.push(blockers); return 'cancel' as const; };
+    expect(await controller(w, { decide }).start(trift, {})).toEqual({ status: 'blocked', phase: 'begin', blockers: [unused] });
+    expect(w.ops).not.toContain('gateway:begin');
+    expect(await controller(w, { decide }).start(trift, { carryUnused: true })).toMatchObject({ status: 'complete' });
+    expect(decided).toEqual([]);
+    expect(w.source.freezes).toEqual([{ carryUnused: true }]);
   });
 
   it('blocks a root outside the home whose folder the destination lacks, naming that folder, and takes one whose folder is there', async () => {

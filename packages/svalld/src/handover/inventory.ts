@@ -381,6 +381,35 @@ function gitLeft(dir: string, from: string, excluded: (relative: string, dir: bo
   return left.sort(byCodeUnit);
 }
 
+/**
+ * A blocker for each terminal in `root` when that folder, outside any repository, holds Git repositories no character
+ * works in. `found`: the folders under it that hold a `.git`; one inside another counts with it.
+ */
+export function unusedRepositories(inventory: Pick<Inventory, 'home' | 'snapshot' | 'roots'>, root: InventoryRoot, found: readonly string[]): Blocker[] {
+  const git = inventory.roots.filter((r) => isGit(r.kind)).map((r) => r.path);
+  // with `/` read as the lowest character, a folder sorts right before everything inside it
+  const order = (p: string): string => p.replaceAll('/', '\0');
+  const outer: string[] = [];
+  for (const rel of [...found].sort((a, b) => byCodeUnit(order(a), order(b)))) {
+    if (outer.length && holds(outer[outer.length - 1], rel)) continue;
+    if (!git.some((g) => holds(g, path.posix.join(root.path, rel)))) outer.push(rel);
+  }
+  if (!outer.length) return [];
+  const shown = outer.slice(0, 5).join(', ') + (outer.length > 5 ? `, and ${outer.length - 5} more` : '');
+  const held = `${outer.length} Git ${outer.length === 1 ? 'repository' : 'repositories'} no character works in (${shown})`;
+  const terminals = portablePathValues({ FleetState: inventory.snapshot }, inventory.home).filter((v) => ROOT_OF[v.field] === 'cwd' && v.path === root.path);
+  return terminals.map((v) => {
+    const id = String(v.pointer[1]);
+    const { name } = inventory.snapshot.characters[id];
+    const terminal = v.field === 'FleetState.characters.*.second.cwd' ? 'second terminal' : 'terminal';
+    return {
+      code: 'repository_unused', entity: { kind: 'character', id },
+      message: `${name}'s ${terminal} is in ${root.path}, which holds ${held}, so the handover would carry them too; cd it to ~ or into the repository it works on, `
+        + `close ${name}, or leave them out with handover.exclude in fleet.json, such as /${outer[0]}/`,
+    };
+  });
+}
+
 /** Blockers or warnings once each, in an order that does not depend on how they were found. */
 export function settle<T extends Blocker>(issues: T[]): T[] {
   const once = new Map(issues.map((i) => [canonicalJson(i), i]));

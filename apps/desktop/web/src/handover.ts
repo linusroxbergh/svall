@@ -256,13 +256,14 @@ export function holdsTerminals(run: HandoverRun | undefined): boolean {
   return !!run.phase && step(run.phase) >= step('freeze');
 }
 
-export type Choice = 'interrupt' | 'terminate' | 'archive';
+export type Choice = 'interrupt' | 'terminate' | 'archive' | 'carry';
 
 /** The one choice that clears a blocker, if one does. */
 export function choiceFor(b: Blocker): Choice | undefined {
   if (b.code === 'agent_working' || b.code === 'agent_blocked') return 'interrupt';
   if (b.code === 'shell_busy' || b.code === 'agent_unsettled') return 'terminate';
   if ((b.code === 'destination_diverged' || b.code === 'destination_occupied') && b.entity?.kind === 'root') return 'archive';
+  if (b.code === 'repository_unused') return 'carry';
   return undefined;
 }
 
@@ -274,6 +275,7 @@ export function chosen(choices: HandoverChoices, b: Blocker): boolean {
       return terminateShells === true || (b.entity?.kind === 'character' && Array.isArray(terminateShells) && terminateShells.includes(b.entity.id));
     }
     case 'archive': return !!b.entity && !!choices.archiveRoots?.includes(b.entity.id);
+    case 'carry': return choices.carryUnused === true;
     default: return false;
   }
 }
@@ -294,11 +296,15 @@ export function withChoice(choices: HandoverChoices, b: Blocker, blockers: Block
       const roots = on ? [...(archiveRoots ?? []), b.entity!.id] : (archiveRoots ?? []).filter((id) => id !== b.entity!.id);
       return { ...rest, ...(interruptAfterMs !== undefined && { interruptAfterMs }), ...(terminateShells !== undefined && { terminateShells }), ...(roots.length && { archiveRoots: roots }) };
     }
+    case 'carry': {
+      const { carryUnused: _held, ...others } = choices;
+      return { ...others, ...(on && { carryUnused: true }) };
+    }
     default: return choices;
   }
 }
 
-export const CHOICE_LABEL: Record<Choice, string> = { interrupt: 'Interrupt and carry', terminate: 'Terminate and carry', archive: 'Archive and carry' };
+export const CHOICE_LABEL: Record<Choice, string> = { interrupt: 'Interrupt and carry', terminate: 'Terminate and carry', archive: 'Archive and carry', carry: 'Carry the folder whole' };
 
 export type HintContext = { destination: string; source: string; pull: boolean; name(id: string): string };
 
@@ -325,6 +331,8 @@ export function blockerHint(b: Blocker, ctx: HintContext): string | undefined {
         ? `To keep it, run opencode session export --standalone ${id} > keep.json on ${ctx.destination}, then opencode session delete --standalone ${id}, then Try again.`
         : `Move the file the message names aside on ${ctx.destination}, then Try again.`);
     }
+    case 'repository_unused':
+      return `Carry the folder whole copies those repositories to ${ctx.destination} with it.`;
     case 'character_pinned':
       return `${who} is marked Keep on this machine: turn that off on ${who}'s card to hand the fleet over.`;
     case 'external_writer':

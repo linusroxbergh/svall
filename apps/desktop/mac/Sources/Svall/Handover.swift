@@ -1,11 +1,12 @@
 import Foundation
 
-/// What the user picked about terminals that are not at rest and destination roots in the way: the only
-/// choices the page may pass on, in the shapes `HandoverChoices` has on the wire.
+/// What the user picked about terminals that are not at rest, destination roots in the way and repositories no
+/// character works in: the only choices the page may pass on, in the shapes `HandoverChoices` has on the wire.
 struct HandoverChoices: Codable, Equatable {
     var interruptAfterMs: Int?
     var terminateShells: TerminateShells?
     var archiveRoots: [String]?
+    var carryUnused: Bool?
 }
 
 /// `terminateShells` on the wire: every busy terminal or none, or the characters whose terminals it names.
@@ -48,6 +49,7 @@ enum HandoverCommand {
             guard root.allowed(by: "^(r_[0-9a-f]+|/[^\\x00\\n]*)$") else { return nil }
             flags += ["--archive", root]
         }
+        if choices?.carryUnused == true { flags.append("--carry-unused") }
         return prefix(profile) + ["handover", to, "--json", "--detach"] + flags
     }
 

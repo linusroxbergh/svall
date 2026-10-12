@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   FleetConfig, FleetId, MachineId, PROTOCOL_VERSION, TRANSFER_SCHEMA_VERSION, emptyState,
-  type Agent, type Character, type Event, type OwnerRecord, type ParsedParams, type SystemInfo, type TransactionRecord,
+  type Agent, type Character, type Event, type HandoverChoices, type OwnerRecord, type ParsedParams, type SystemInfo, type TransactionRecord,
 } from '@svall/protocol';
 import { handlers, type Ctx } from '../../src/api/methods.js';
 import { Config } from '../../src/config.js';
@@ -313,6 +313,33 @@ function opencodeBoot() {
   return { ...b, env, logs, info, checked };
 }
 
+/**
+ * A shell open in a projects folder, and a character working in one of its repositories with its second terminal in
+ * the folder; three others there no character works in, and a repository inside one of them and inside the character's.
+ */
+function developer() {
+  const b = boot({
+    realGit: true,
+    characters: (work) => [
+      char('c_shell', path.join(work, 'Developer'), { tmux: win(1) }),
+      char('c_app', path.join(work, 'Developer/app'), { tmux: win(3), second: { cwd: path.join(work, 'Developer'), unread: false, tmux: win(4) } }),
+    ],
+  });
+  const dev = path.join(b.work, 'Developer');
+  for (const name of ['app', 'unrelated', 'unrelated-2', 'old-stuff', 'unrelated/vendor/lib', 'app/vendor/kit']) {
+    fs.mkdirSync(path.join(dev, name), { recursive: true });
+    repo(path.join(dev, name), { 'a.txt': name });
+  }
+  fs.writeFileSync(path.join(dev, 'notes.md'), 'notes\n');
+  const holds = `is in ${dev}, which holds 3 Git repositories no character works in (old-stuff, unrelated, unrelated-2), so the handover would carry them too; cd it to ~ or into the repository it works on`;
+  const out = 'or leave them out with handover.exclude in fleet.json, such as /old-stuff/';
+  const unused = [
+    { code: 'repository_unused', entity: { kind: 'character', id: 'c_app' }, message: `app's second terminal ${holds}, close app, ${out}` },
+    { code: 'repository_unused', entity: { kind: 'character', id: 'c_shell' }, message: `shell's terminal ${holds}, close shell, ${out}` },
+  ];
+  return { b, dev, unused };
+}
+
 describe('source preflight', () => {
   it('reports what would stop the move without writing, fencing or signalling, and only reads who the gateway says owns it', async () => {
     const b = boot({
@@ -539,6 +566,21 @@ describe('source preflight', () => {
     expect((await ask('linux')).blockers).toEqual([['platform_unsupported', expect.stringContaining(`${file} is not a handover file`)]]);
     fs.writeFileSync(file, '{ "platforms": ["darwin", "linux"] }');
     expect((await ask('linux')).blockers).toEqual([]);
+  });
+
+  withGit('blocks a folder a terminal is in that holds repositories no character works in, naming each terminal, unless they are chosen to be carried', async () => {
+    const { b, dev, unused } = developer();
+    const ask = async (choices: HandoverChoices = {}) => (await b.handover.preflight({ toMachineId: trift, choices, ...b.machines() })).blockers;
+    expect(await ask()).toEqual(unused);
+    expect(await ask({ carryUnused: true })).toEqual([]);
+
+    // past the bound, the names alone find them
+    b.deps.heapLimit = 2 * HEAP_PER_FILE;
+    expect((await ask()).map((x) => x.code)).toEqual(['repository_unused', 'repository_unused', 'too_many_files']);
+    delete b.deps.heapLimit;
+
+    for (const name of ['unrelated', 'unrelated-2', 'old-stuff']) fs.rmSync(path.join(dev, name), { recursive: true });
+    expect(await ask()).toEqual([]);
   });
 
   withGit('reads a handover file only as a regular file of at most 64 KiB, and a file named .svall as none', async () => {
@@ -872,6 +914,16 @@ describe('source freeze', () => {
     const { manifest } = await b.handover.freeze(b.freezeParams());
     expect(manifest.git?.map((g) => ({ main: g.main?.path, characters: g.main?.characters }))).toEqual([{ main: bo, characters: ['c_bo'] }]);
     expect(manifest.roots.find((r) => r.path === bo)?.kind).toBe('repo');
+  });
+
+  withGit('refuses a folder that holds repositories no character works in before any terminal rests, and carries it whole when chosen', async () => {
+    const { b, dev, unused } = developer();
+    b.gateway.begin();
+    const refused = await refusal(b.handover.freeze(b.freezeParams()));
+    expect(refused.data.blockers).toEqual(unused);
+    expect(b.world.log).toEqual(['settle', 'activate', 'reconcile']);
+    const { manifest } = await b.handover.freeze(b.freezeParams({ choices: { carryUnused: true } }));
+    expect(manifest.roots.find((r) => r.path === dev)!.files.map((f) => f.path)).toEqual(expect.arrayContaining(['notes.md', 'old-stuff/a.txt', 'unrelated/vendor/lib/a.txt']));
   });
 
   it('finds a name it cannot carry, a transcript that is gone or a character kept here before it touches a terminal', async () => {

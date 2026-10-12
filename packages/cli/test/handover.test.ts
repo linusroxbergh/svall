@@ -373,6 +373,7 @@ describe('svall handover', () => {
         { code: 'incompatible_adapter', message: "a handover carries claude sessions from 2.1.251 on; update the destination's claude 2.1.200", entity: { kind: 'character', id: 'c_bo' } },
         { code: 'destination_diverged', message: 'the destination changed while this machine did not own the fleet', entity: { kind: 'root', id: 'r_app' } },
         { code: 'shell_busy', message: "bo's terminal is running npm run dev", entity: { kind: 'character', id: 'c_bo' } },
+        { code: 'repository_unused', message: "ada's terminal is in /Users/ada/Developer, which holds 2 Git repositories no character works in (old-stuff, unrelated)", entity: { kind: 'character', id: 'c_ada' } },
       ];
       const warnings: Blocker[] = [
         { code: 'config_difference', message: 'claude 2.1.280 runs on mac and 2.1.290 on trift' },
@@ -395,8 +396,28 @@ describe('svall handover', () => {
       for (const w of ['2.1.290 on trift', 'Codex asks whether to trust', 'an Xcode project']) expect(text).toContain(w);
       expect(text).toContain('--terminate-shells');
       expect(text).toContain('--archive /home/ada/app');
+      expect(text).toContain("  ✗ ada's terminal is in /Users/ada/Developer, which holds 2 Git repositories no character works in (old-stuff, unrelated) (repository_unused)\n");
+      expect(text).toContain('--carry-unused carries the Git repositories a folder holds that no character works in');
       expect(text).not.toMatch(/Choose/);
     }
+  });
+
+  it('offers at Begin to carry a folder whole with the repositories no character works in, and starts again with that choice', async () => {
+    const h = harness({ tty: true });
+    const unused: Blocker[] = [
+      { code: 'repository_unused', message: "ada's terminal is in /Users/ada/Developer, which holds 2 Git repositories no character works in", entity: { kind: 'character', id: 'c_ada' } },
+    ];
+    h.tx.script = async (_kind, n) => {
+      h.tx.record(pre(n === 1 ? unused : []));
+      if (n === 1) return { status: 'blocked', phase: 'begin', blockers: unused };
+      return { status: 'complete', transactionId: 'tx-1', generation: 5, characters: [] };
+    };
+    const run = runHandover(start(), h.ctx);
+    await waitFor(() => /Choose/.test(h.out()));
+    expect(h.out()).toMatch(/u\) Carry the folder ada is in whole, with the Git repositories there no character works in/);
+    h.type('u');
+    expect(await run).toEqual({ code: 0 });
+    expect(h.tx.calls.map((c) => c.choices)).toEqual([{}, { carryUnused: true }]);
   });
 
   it('never waits on a blocker after Begin without a person or a helper to answer it: the answer is cancel', async () => {
@@ -1233,6 +1254,7 @@ describe('svall handover arguments', () => {
       kind: 'start', to: 'trift', choices: { interruptAfterMs: 30_000, terminateShells: true, archiveRoots: ['/home/ada/app', '/home/ada/app.git'] },
     });
     expect((await parse(h, 'local', '--interrupt-after', '0')).job).toEqual({ kind: 'start', to: 'local', choices: { interruptAfterMs: 0 } });
+    expect((await parse(h, 'trift', '--carry-unused')).job).toEqual({ kind: 'start', to: 'trift', choices: { carryUnused: true } });
     // what the app sends: Interrupt and carry, and the root ids its blockers name
     expect((await parse(h, 'trift', '--interrupt-after', '0s', '--archive', 'r_1f2e')).job).toEqual({
       kind: 'start', to: 'trift', choices: { interruptAfterMs: 0, archiveRoots: ['r_1f2e'] },
@@ -1245,6 +1267,7 @@ describe('svall handover arguments', () => {
     await expect(parse(h, 'trift', '--resume')).rejects.toThrow();
     await expect(parse(h)).rejects.toThrow();
     await expect(parse(h, '--resume', '--terminate-shells')).rejects.toThrow();
+    await expect(parse(h, '--resume', '--carry-unused')).rejects.toThrow();
   });
 
   it('answers bad arguments with a handover.result under --json or --detach, and starts nothing', async () => {
