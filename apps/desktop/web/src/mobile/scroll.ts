@@ -37,6 +37,27 @@ export function holdScroll(term: HeldTerm): { write(bytes: Uint8Array): void; re
   };
 }
 
+/** The terminal a drag scrolls: enough of xterm to tell its two screens apart and to wheel the app on one. */
+export type DraggedTerm = {
+  readonly element?: Pick<HTMLElement, 'getBoundingClientRect' | 'dispatchEvent'>;
+  readonly buffer: { readonly active: { readonly type: 'normal' | 'alternate' } };
+  scrollLines(n: number): void;
+};
+
+/**
+ * On the alternate screen the app keeps the scrollback, so each line goes to it as a wheel step, which xterm reports
+ * the way the app asked for mouse input, as a desktop terminal hands it the wheel.
+ */
+export function scrollTerm(term: DraggedTerm, n: number): void {
+  const el = term.element;
+  if (term.buffer.active.type !== 'alternate' || !el) { term.scrollLines(n); return; }
+  const r = el.getBoundingClientRect();
+  const at = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
+  for (let i = 0; i < Math.abs(n); i++) {
+    el.dispatchEvent(new WheelEvent('wheel', { ...at, deltaY: Math.sign(n), deltaMode: WheelEvent.DOM_DELTA_LINE, bubbles: true, cancelable: true }));
+  }
+}
+
 /**
  * xterm scrolls on wheel events only, so a one-finger drag is turned into scrollLines here, and a flick
  * coasts to a stop. Dragging down moves back through the scrollback.

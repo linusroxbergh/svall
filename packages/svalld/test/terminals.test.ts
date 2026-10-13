@@ -113,9 +113,9 @@ runIf('TerminalHub', () => {
 
   it('seeds the scrollback the caller asked for', async () => {
     const { hub, tmux, c } = await boot();
-    const capture = vi.spyOn(tmux, 'capture');
+    const capture = vi.spyOn(tmux, 'viewerScreen');
     await hub.open(c.id, 100, 30, 120, viewer());
-    expect(capture).toHaveBeenCalledWith(c.tmux!.paneId, 120, true);
+    expect(capture).toHaveBeenCalledWith(c.tmux!.paneId, 120);
   });
 
   it('lets a phone size the window a desktop terminal is attached to, and an app yield to it', async () => {
@@ -168,7 +168,7 @@ runIf('TerminalHub', () => {
     const b = viewer(0, 'phone');
     await hub.open(c.id, 40, 20, 10, a);
     let release!: () => void;
-    const capture = vi.spyOn(tmux, 'capture').mockImplementationOnce(async () => { await new Promise<void>((r) => { release = r; }); return Buffer.from(''); });
+    const capture = vi.spyOn(tmux, 'viewerScreen').mockImplementationOnce(async () => { await new Promise<void>((r) => { release = r; }); return Buffer.from(''); });
     const opening = hub.open(c.id, 30, 15, 10, b);
     await waitFor(() => capture.mock.calls.length === 1);
     hub.closeAll(b);

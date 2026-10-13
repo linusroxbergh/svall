@@ -6,7 +6,7 @@ import { statusOf } from '../selectors.js';
 import { phone } from './boot.js';
 import { CharacterMenu } from './CharacterMenu.js';
 import { statusLabel } from './list.js';
-import { dragToScroll, holdScroll } from './scroll.js';
+import { dragToScroll, holdScroll, scrollTerm } from './scroll.js';
 import { linkTerminal, type TerminalLink } from './term.js';
 
 // smaller type means more columns; Claude Code's TUI only lays out narrow when the window itself is
@@ -70,7 +70,7 @@ export function CharacterView({ id, onBack }: { id: string; onBack(): void }): J
       ...holdScroll(term),
     });
     const lineHeight = () => (host.current?.querySelector('.xterm-screen')?.clientHeight ?? 0) / term.rows || 16;
-    const stopScroll = dragToScroll(host.current!, (n) => term.scrollLines(n), lineHeight);
+    const stopScroll = dragToScroll(host.current!, (n) => scrollTerm(term, n), lineHeight);
     link.current = l;
     term.onData((d) => l.input(d));
 

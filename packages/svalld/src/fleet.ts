@@ -7,7 +7,7 @@ import { AGENTS, mainAgent } from './agents.js';
 import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
 import { markSeen as markSeenPure, settle } from './agent/reducer.js';
 import { condenseTurns, readTail, userPrompts } from './agent/transcript.js';
-import { characterKeyEnv } from './claude.js';
+import { characterKeyEnv, rendererEnv } from './claude.js';
 import { saveConfig, scribeModel, type Config } from './config.js';
 import { renderBrief } from './context/brief.js';
 import { isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from './context/launch.js';
@@ -28,7 +28,7 @@ import { refreshLinks, type Deps as LinkDeps } from './links/refresh.js';
 import type { Logger } from './log.js';
 import { randomName } from './names.js';
 import { linkOpencodeConfig, opencodePaths } from './opencode/install.js';
-import { expandHome, type Paths } from './paths.js';
+import { expandHome, userPaths, type Paths } from './paths.js';
 import { SHIM } from './profile.js';
 import { reconcile, secondName, snapshot } from './reconcile.js';
 import { codexRunner } from './scribe/codex.js';
@@ -377,7 +377,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   private charEnv(id: string, extra: Record<string, string> = {}): Record<string, string> {
-    return { ...characterKeyEnv(this.deps.paths.env), SVALL_CHAR_ID: id, SVALL_HOME: this.deps.paths.home, ...this.opencodeEnv(), ...extra };
+    return { ...characterKeyEnv(this.deps.paths.env), ...rendererEnv(userPaths().claudeSettings), SVALL_CHAR_ID: id, SVALL_HOME: this.deps.paths.home, ...this.opencodeEnv(), ...extra };
   }
 
   private opencodeEnv(): Record<string, string> {

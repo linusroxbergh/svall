@@ -59,6 +59,24 @@ export function parseScreen(out: string): Screen {
   return { rows, ...(shown === '1' && { cursor: Number(y) }), command: command.join(' ') };
 }
 
+// what `viewerScreen` asks tmux for ahead of the rows; the mouse flags in the order of MOUSE_MODES
+const VIEWER_HEAD = '#{alternate_on} #{pane_height} #{cursor_x} #{cursor_y} #{mouse_standard_flag} #{mouse_button_flag} #{mouse_all_flag} #{mouse_utf8_flag} #{mouse_sgr_flag}';
+const MOUSE_MODES = [1000, 1002, 1003, 1005, 1006];
+
+/**
+ * A viewer's first screen. capture-pane carries no modes, so a pane on the alternate screen goes as that screen with its
+ * mouse modes and cursor: the viewer's terminal then hands its wheel to the app, which keeps its own scrollback.
+ */
+export function parseViewerScreen(out: string): Buffer {
+  const [head = '', ...rows] = out.replace(/\n$/, '').split('\n');
+  const [alt, height, x, y, ...mouse] = head.split(' ');
+  if (alt !== '1') return Buffer.from(rows.join('\r\n'), 'utf8');
+  const modes = MOUSE_MODES.filter((_, i) => mouse[i] === '1').map((m) => `\x1b[?${m}h`).join('');
+  // capture-pane puts the normal screen's history ahead of the alternate screen's rows
+  const screen = rows.slice(-Number(height)).join('\r\n');
+  return Buffer.from(`\x1b[?1049h${modes}${screen}\x1b[${Number(y) + 1};${Number(x) + 1}H`, 'utf8');
+}
+
 export class Tmux {
   readonly binary = resolveTmux();
   private rawPaste?: Promise<string[]>;
@@ -185,9 +203,13 @@ export class Tmux {
     await this.run('set-option', '-w', '-u', '-t', windowId, 'window-size').catch(() => {});
   }
 
-  async capture(paneId: string, lines: number, escapes = false): Promise<Buffer> {
-    const out = await this.run('capture-pane', '-p', ...(escapes ? ['-e'] : []), '-t', paneId, '-S', `-${lines}`);
+  async capture(paneId: string, lines: number): Promise<Buffer> {
+    const out = await this.run('capture-pane', '-p', '-t', paneId, '-S', `-${lines}`);
     return Buffer.from(out.replace(/\n$/, '').replace(/\n/g, '\r\n'), 'utf8');
+  }
+
+  async viewerScreen(paneId: string, lines: number): Promise<Buffer> {
+    return parseViewerScreen(await this.run('display', '-p', '-t', paneId, VIEWER_HEAD, ';', 'capture-pane', '-p', '-e', '-t', paneId, '-S', `-${lines}`));
   }
 
   async screen(paneId: string): Promise<Screen> {

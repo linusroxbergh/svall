@@ -10,7 +10,7 @@ import { cwdChoices } from '../src/mobile/choices.js';
 import { islandCwd } from '../src/selectors.js';
 import { disablePush, enablePush, keyBytes, needsInstall, readPush, sameApplicationServerKey, setPushStatuses, subscriptionParams } from '../src/mobile/push.js';
 import { dragOffset, isSwipe, REVEAL, settle } from '../src/mobile/swipe.js';
-import { dragToScroll, holdScroll, lineSteps, type TouchSurface } from '../src/mobile/scroll.js';
+import { dragToScroll, holdScroll, lineSteps, scrollTerm, type TouchSurface } from '../src/mobile/scroll.js';
 
 type TermEvent = Extract<Event, { event: `term.${string}` }>;
 
@@ -416,6 +416,42 @@ describe('phone terminal scrolling', () => {
       expect(live.size).toBe(1);
       dispose();
       expect(live.size).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('a drag on either screen', () => {
+  function term(type: 'normal' | 'alternate') {
+    const wheels: { deltaY: number; deltaMode: number; clientX: number; clientY: number }[] = [];
+    const scrolled: number[] = [];
+    const element = {
+      getBoundingClientRect: () => ({ left: 10, top: 20, width: 200, height: 100 }) as DOMRect,
+      dispatchEvent: (e: unknown) => { wheels.push(e as (typeof wheels)[number]); return true; },
+    };
+    return { t: { element, buffer: { active: { type } }, scrollLines: (n: number) => { scrolled.push(n); } }, wheels, scrolled };
+  }
+  class FakeWheel {
+    static DOM_DELTA_LINE = 1;
+    constructor(readonly type: string, init: Record<string, number>) { Object.assign(this, init); }
+  }
+
+  it('scrolls the normal screen through its own scrollback', () => {
+    const { t, wheels, scrolled } = term('normal');
+    scrollTerm(t, -3);
+    expect(scrolled).toEqual([-3]);
+    expect(wheels).toEqual([]);
+  });
+
+  it("hands the alternate screen's app one wheel step per line, at the middle of the terminal", () => {
+    vi.stubGlobal('WheelEvent', FakeWheel);
+    try {
+      const { t, wheels, scrolled } = term('alternate');
+      scrollTerm(t, -2);
+      scrollTerm(t, 1);
+      expect(scrolled).toEqual([]);
+      expect(wheels.map((w) => [w.deltaY, w.deltaMode, w.clientX, w.clientY])).toEqual([[-1, 1, 110, 70], [-1, 1, 110, 70], [1, 1, 110, 70]]);
     } finally {
       vi.unstubAllGlobals();
     }

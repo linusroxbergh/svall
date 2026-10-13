@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { characterKeyEnv, readEnvFile, spawnClaude } from '../src/claude.js';
+import { characterKeyEnv, readEnvFile, rendererEnv, spawnClaude } from '../src/claude.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 // a stand-in for `claude`, found first on PATH: it reports its own arguments and the environment it was given
@@ -82,5 +82,26 @@ describe('readEnvFile', () => {
     const file = path.join(makeHome(), '.env');
     fs.writeFileSync(file, 'ANTHROPIC_API_KEY=anthropic\nOPENAI_API_KEY=openai\nOTHER_SECRET=private\nSVALL_CHAR_ID=wrong\n');
     expect(characterKeyEnv(file)).toEqual({ ANTHROPIC_API_KEY: 'anthropic', OPENAI_API_KEY: 'openai' });
+  });
+});
+
+describe('rendererEnv', () => {
+  afterEach(cleanHomes);
+
+  it("turns on Claude Code's fullscreen renderer unless the user picked a renderer in its settings", () => {
+    const file = path.join(makeHome(), 'settings.json');
+    expect(rendererEnv(file)).toEqual({ CLAUDE_CODE_NO_FLICKER: '1' });
+    fs.writeFileSync(file, '{"model":"opus"}');
+    expect(rendererEnv(file)).toEqual({ CLAUDE_CODE_NO_FLICKER: '1' });
+    fs.writeFileSync(file, '{"tui":"default"}');
+    expect(rendererEnv(file)).toEqual({});
+    fs.writeFileSync(file, '{"tui":"fullscreen"}');
+    expect(rendererEnv(file)).toEqual({});
+  });
+
+  it('reads settings it cannot parse as no choice', () => {
+    const file = path.join(makeHome(), 'settings.json');
+    fs.writeFileSync(file, '{"tui":');
+    expect(rendererEnv(file)).toEqual({ CLAUDE_CODE_NO_FLICKER: '1' });
   });
 });

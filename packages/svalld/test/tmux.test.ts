@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Config } from '../src/config.js';
 import { tmuxConfText, tmuxTooOld } from '../src/tmux/conf.js';
 import { ControlClient } from '../src/tmux/control.js';
-import { SESSION, Tmux, isShellCommand, rawPasteArgs, resolveTmux } from '../src/tmux/tmux.js';
+import { SESSION, Tmux, isShellCommand, parseViewerScreen, rawPasteArgs, resolveTmux } from '../src/tmux/tmux.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
 const runIf = hasTmux() ? describe : describe.skip;
@@ -50,6 +50,17 @@ describe('hasWindow', () => {
     await expect(tmux.hasWindow('@1')).rejects.toThrow('timed out');
     vi.spyOn(tmux, 'run').mockRejectedValue(new Error("can't find window: @1"));
     expect(await tmux.hasWindow('@1')).toBe(false);
+  });
+});
+
+describe('parseViewerScreen', () => {
+  it('passes the normal screen through with its history, as rows a terminal can print', () => {
+    expect(parseViewerScreen('0 3 0 2 0 0 0 0 0\nold\none\ntwo\n').toString()).toBe('old\r\none\r\ntwo');
+  });
+
+  it('opens the alternate screen with the mouse modes the app asked for, its own rows only, and the cursor where it is', () => {
+    const out = parseViewerScreen('1 2 4 1 0 0 1 0 1\nshell history\nALT1\nALT2\n').toString();
+    expect(out).toBe('\x1b[?1049h\x1b[?1003h\x1b[?1006hALT1\r\nALT2\x1b[2;5H');
   });
 });
 
@@ -122,6 +133,18 @@ runIf('Tmux', () => {
     // nor does a tmux that gives up before reading the text take the daemon down
     await t.killServer();
     await expect(t.sendBytes(paneId, Buffer.alloc(1_000_000, 'a'))).rejects.toThrow();
+  });
+
+  it('hands a viewer an app on the alternate screen as that screen, with its mouse modes', async () => {
+    const t = await boot();
+    const w = await t.newWindow('c_alt', '/tmp', {});
+    await t.sendLine(w.paneId, "seq 1 200 && printf '\\033[?1049h\\033[?1003h\\033[?1006h\\033[HALT' && sleep 30", true);
+    await waitFor(async () => (await t.run('display', '-p', '-t', w.paneId, '#{alternate_on}')).trim() === '1');
+    const out = (await t.viewerScreen(w.paneId, 100)).toString();
+    expect(out.startsWith('\x1b[?1049h\x1b[?1003h\x1b[?1006h')).toBe(true);
+    expect(out).toContain('ALT');
+    expect(out).not.toContain('199');
+    expect(out.match(/\r\n/g)).toHaveLength(Number((await t.run('display', '-p', '-t', w.paneId, '#{pane_height}')).trim()) - 1);
   });
 
   it('hands a pane every byte it is sent, control bytes included', async () => {

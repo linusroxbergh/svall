@@ -53,7 +53,7 @@ export class TerminalHub {
       await this.resizeFor(viewer, id, c.tmux.windowId, cols, rows);
       if (!current()) throw new Gone(id);
       this.fleet.setPaneOutput(id, true);
-      const screen = (await this.tmux.capture(c.tmux.paneId, lines, true)).toString('base64');
+      const screen = (await this.tmux.viewerScreen(c.tmux.paneId, lines)).toString('base64');
       // joining only now: output emitted while capture ran is already in the screen, so it must not also stream.
       if (!current()) throw new Gone(id);
       set.add(viewer);
@@ -146,7 +146,7 @@ export class TerminalHub {
   private async resync(id: string): Promise<void> {
     const c = this.store.state.characters[id];
     if (!c?.tmux || !this.viewers.get(id)?.size) return;
-    const screen = (await this.tmux.capture(c.tmux.paneId, SCROLLBACK, true)).toString('base64');
+    const screen = (await this.tmux.viewerScreen(c.tmux.paneId, SCROLLBACK)).toString('base64');
     this.broadcast(id, { event: 'term.resync', data: { id, screen } });
   }
 }
