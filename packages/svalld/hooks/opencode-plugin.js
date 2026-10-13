@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 
 // the release's svall.js and Svall Dev's svall-dev.js both load, so each acts only for its own build's homes;
@@ -99,6 +100,8 @@ async function setup(ctx) {
   const brief = new Map();
   const started = new Map();
   const models = new Map();
+  // top-level sessions whose turn svalld has heard start and not end
+  const turns = new Set();
   // questions open anywhere in the session tree, each with what it asks; a tool another subagent runs meanwhile does not
   // answer them
   const asking = new Map();
@@ -120,6 +123,8 @@ async function setup(ctx) {
     }, SHOW_MS);
   };
   const ask = (id, session, fields, question = false) => { asking.set(id, { session, fields, question }); show(); };
+  // OpenCode forgets the questions of a run that stops before they are answered, and says nothing of it
+  const drop = (session) => { for (const [id, a] of asking) if (a.session === session && asking.delete(id)) show(); };
 
   // a top-level session reports in once per process, and its log exists from then on
   const start = (id) => {
@@ -176,7 +181,11 @@ async function setup(ctx) {
     if (await parentOf(id)) void hook(name, await rootOf(id), { agent_id: id });
   };
   const end = async (id, name, fields) => {
-    if (await parentOf(id)) return subagent(id, 'SubagentStop');
+    if (await parentOf(id)) {
+      drop(id);
+      return subagent(id, 'SubagentStop');
+    }
+    turns.delete(id);
     asking.clear();
     clearTimeout(showing);
     shown = undefined;
@@ -220,17 +229,45 @@ async function setup(ctx) {
       // an Esc, a refused permission and a quit all interrupt
       case 'session.execution.interrupted':
         return end(p.sessionID, 'Interrupt');
+      case 'session.deleted':
+        return drop(p.sessionID);
     }
   };
   const quit = new AbortController();
+  // what a new subscription can't hear: a turn that ended and permissions asked or answered before it; forms have no list.
+  // An idle session's turn ends a moment late, so an end the new subscription does hear comes first
+  const resync = async () => {
+    for (const id of turns) {
+      void ctx.session.wait({ sessionID: id }).then(() => sleep(SHOW_MS, undefined, { signal: quit.signal }))
+        .then(() => { if (turns.has(id)) return end(id, 'Stop'); }, () => {});
+    }
+    const open = (await Promise.all([...parents.keys()].map((id) => ctx.permission.list({ sessionID: id }).catch(() => [])))).flat();
+    for (const [id, a] of asking) if (!a.question) asking.delete(id);
+    for (const p of open) on('permission.asked', p);
+    show();
+  };
+  // OpenCode fails the stream of every plugin on one event it can't encode, as another plugin's malformed RPC event,
+  // and the hooks go on
   void (async () => {
-    try { for await (const e of ctx.event.subscribe({ signal: quit.signal })) await Promise.resolve(on(e.type, e.data ?? {})).catch(() => {}); } catch {}
+    for (let retry = 0; !quit.signal.aborted;) {
+      const events = ctx.event.subscribe({ signal: quit.signal });
+      if (retry) void resync().catch(() => {});
+      try {
+        for await (const e of events) {
+          retry = 0;
+          await Promise.resolve(on(e.type, e.data ?? {})).catch(() => {});
+        }
+      } catch {}
+      retry = Math.min(retry * 2 || 1000, 30_000);
+      await sleep(retry, undefined, { signal: quit.signal }).catch(() => {});
+    }
   })();
 
   await ctx.session.hook('prompt', async (e) => {
     const id = e.sessionID;
     if (await parentOf(id)) return;
     await start(id);
+    turns.add(id);
     const text = e.prompt?.text?.trim() ?? '';
     if (text) log(id, { kind: 'user', text });
     const model = models.get(id)?.id;
