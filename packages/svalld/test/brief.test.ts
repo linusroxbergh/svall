@@ -242,10 +242,11 @@ describe('renderBrief with docs', () => {
     { tier: 'character', dir: '/d/characters/c', docs: over.character ?? [] },
   ];
   const NOTE = [
-    'A plan or scratch file that helps the work in progress goes in a temp folder.',
+    'A plan, scratch file, research dump, script or screenshot goes in a temp folder, never beside a note.',
     'Finished work gets no note: its record goes in the PR or ticket, a trap it found in a comment at the code.',
     "Leave a note only for what a later agent will need again and can't get from the code, PR or ticket, in at most 30 lines. Update or delete a note before adding one, and hold memories to the same bar.",
-    'A handover goes in the robot folder.',
+    "A fleet, repo or island note must stay true and useful across many tasks for months; one task's research, plan, fix or results never goes there.",
+    "A handover or other note on this robot's task goes in the robot folder; anything narrower goes in a temp folder.",
     'Write a note as <name>.md with a `description:` frontmatter line, in the narrowest folder it applies to:',
   ];
   const WRITE = [
@@ -364,7 +365,7 @@ describe('renderBrief with docs', () => {
     );
     const lines = text.split('\n');
     expect(text.length).toBeLessThanOrEqual(9_000);
-    expect(lines).toEqual(expect.arrayContaining([...CREW, '- …and 1 more in /d/repos/app-12345678', '- …and 17 more island links', '- …and 16 more robot links', '- …and 39 more tabs', `- https://example.com/${'t'.repeat(150)}/39 (active)`]));
+    expect(lines).toEqual(expect.arrayContaining([...CREW, '- …and 1 more in /d/repos/app-12345678', '- …and 17 more island links', '- …and 17 more robot links', '- …and 39 more tabs', `- https://example.com/${'t'.repeat(150)}/39 (active)`]));
     expect(lines.find((l) => l.startsWith('Island instructions: '))).toHaveLength('Island instructions: '.length + 2000);
     expect(text).toContain(`/${'p'.repeat(150)}/0 (pinned)`);
     expect(text).toContain(`/${'p'.repeat(150)}/1\n`);
