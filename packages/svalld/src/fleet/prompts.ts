@@ -1,5 +1,5 @@
 import type { Agent, AgentStatus, Delivery } from '@svall/protocol';
-import { readComposer } from '../agent/composer.js';
+import { agentInFront, readComposer } from '../agent/composer.js';
 import { settle } from '../agent/reducer.js';
 import type { Config } from '../config.js';
 import { isAgentCommand } from '../context/launch.js';
@@ -17,7 +17,7 @@ const HOLD_MS = 1000;
 
 type Deps = { fleet: Fleet; store: Store; tmux: Tmux; config: Config; log: Logger; reviving: ReadonlyMap<string, unknown> };
 // the pane and the agent session a prompt was sent to, which alone may take it
-type Held = { text: string; enter: boolean; paneId: string; sessionId: string };
+type Held = { text: string; enter: boolean; paneId: string; sessionId?: string };
 
 const laneOf = (id: string, term?: 2) => (term === 2 ? `${id}/2` : id);
 
@@ -47,40 +47,39 @@ export class Prompts {
     const lane = laneOf(id, term);
     return this.inLane(lane, async () => {
       const t = fleet.terminal(id, term);
-      // a shell takes the text as it comes
-      if (!t.agent) {
-        await this.send(id, text, enter, term);
-        return 'delivered';
-      }
       const free = await this.free(c.name, id, term, t.tmux.paneId);
-      if (free && !this.held.has(lane)) {
+      // a shell, or a program other than an agent, takes the text as it comes
+      if (free === undefined || (free && !this.held.has(lane))) {
         await this.send(id, text, enter, term);
         return 'delivered';
       }
-      this.hold(lane, id, term, { text, enter, paneId: t.tmux.paneId, sessionId: t.agent.sessionId });
+      this.hold(lane, id, term, { text, enter, paneId: t.tmux.paneId, sessionId: t.agent?.sessionId });
       return 'queued';
     });
   }
 
-  // whether the agent's prompt line is in view and empty; throws while the agent waits on an answer, which a paste could give.
+  // whether the agent's prompt line is in view and empty, or undefined with no agent there, on record or running in front;
+  // throws while the agent waits on an answer, which a paste could give.
   // The agent is looked at again once the screen is in, as a hook may have come while it was read
-  private async free(name: string, id: string, term: 2 | undefined, paneId: string): Promise<boolean> {
+  private async free(name: string, id: string, term: 2 | undefined, paneId: string): Promise<boolean | undefined> {
     const live = () => (term === 2 ? this.deps.store.state.characters[id]?.second : this.deps.store.state.characters[id]);
     const asked = (a?: Agent) => {
       if (a?.status === 'blocked') throw new Blocked(`${name} is waiting on an answer${a.prompt ? ` (${a.prompt})` : ''}; answer it, then send again`);
     };
-    asked(live()?.agent);
+    const before = live()?.agent;
+    asked(before);
     const screen = await this.deps.tmux.screen(paneId);
     const t = live();
-    if (!t?.agent || t.tmux?.paneId !== paneId) return false;
+    if (!t || t.tmux?.paneId !== paneId || !t.agent !== !before) return false;
     const a = t.agent;
     asked(a);
-    // the agent has not started yet, or has exited
-    if (isShellCommand(screen.command, this.deps.config.shell)) return false;
-    const composer = readComposer(a.kind, screen);
+    // with an agent on record, a shell means it has not started yet, or has exited
+    const kind = isShellCommand(screen.command, this.deps.config.shell) ? undefined : a?.kind ?? agentInFront(screen.command);
+    if (!kind) return a ? false : undefined;
+    const composer = readComposer(kind, screen);
     // Claude Code notifies of its dialog seconds after it shows it; a tool asked about with no prompt line in view is that
     // dialog, which until then only its terminal can answer
-    if (composer === 'hidden' && a.kind === 'claude' && a.askedTool) {
+    if (composer === 'hidden' && a?.kind === 'claude' && a.askedTool) {
       throw new Blocked(`${name} is waiting on an answer (${a.askedTool}); answer it in its terminal, then send again`);
     }
     return composer === 'empty';
@@ -106,13 +105,16 @@ export class Prompts {
     if (!queue) return;
     const c = this.deps.store.state.characters[id];
     const t = term === 2 ? c?.second : c;
-    if (!c || !t?.tmux || !t.agent || t.tmux.paneId !== queue[0].paneId || t.agent.sessionId !== queue[0].sessionId) {
+    // prompts held before the agent reported in are for the first session it reports
+    if (t?.agent) for (const p of queue) p.sessionId ??= t.agent.sessionId;
+    const gone = () => {
       this.deps.log.info(`${queue.length} held prompt(s) for ${id} dropped: the terminal or its agent they were sent to is gone`);
       this.drop(lane);
-      return;
-    }
-    if (t.agent.status === 'working') return;
+    };
+    if (!c || !t?.tmux || t.tmux.paneId !== queue[0].paneId || t.agent?.sessionId !== queue[0].sessionId) return gone();
+    if (t.agent?.status === 'working') return;
     const free = await this.free(c.name, id, term, t.tmux.paneId).catch((e: unknown) => { if (e instanceof Blocked) return false; throw e; });
+    if (free === undefined) return gone();
     if (!free) return;
     await this.send(id, queue[0].text, queue[0].enter, term);
     queue.shift();

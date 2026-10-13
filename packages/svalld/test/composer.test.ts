@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { AgentKind } from '@svall/protocol';
 import { describe, expect, it } from 'vitest';
-import { readComposer } from '../src/agent/composer.js';
+import { agentInFront, readComposer } from '../src/agent/composer.js';
 import { parseScreen } from '../src/tmux/tmux.js';
 
 // panes of Claude Code 2.1.296, Codex 0.161–0.162 and OpenCode 2.0.26 as `Tmux.screen` read them, cut to their last rows
@@ -20,6 +20,9 @@ describe('readComposer', () => {
     ['claude', 'claude-working-draft', 'draft'],
     ['claude', 'claude-permission', 'hidden'],
     ['claude', 'claude-question', 'hidden'],
+    ['claude', 'claude-trust', 'hidden'],
+    // the free-text option's own field shows the cursor
+    ['claude', 'claude-question-field', 'draft'],
     ['codex', 'codex-empty', 'empty'],
     ['codex', 'codex-working', 'empty'],
     ['codex', 'codex-draft', 'draft'],
@@ -27,6 +30,7 @@ describe('readComposer', () => {
     ['codex', 'codex-multiline', 'draft'],
     ['codex', 'codex-approval', 'hidden'],
     ['codex', 'codex-question', 'hidden'],
+    ['codex', 'codex-hooks-review', 'hidden'],
     ['opencode', 'oc-empty-home', 'empty'],
     ['opencode', 'oc-empty-session', 'empty'],
     ['opencode', 'oc-working', 'empty'],
@@ -61,4 +65,11 @@ describe('readComposer', () => {
     expect(readComposer('claude', { rows: ['\x1b[38;5;2m❯ \x1b[39m'], cursor: 0, command: 'claude' })).toBe('empty');
     expect(readComposer('claude', { rows: ['\x1b[38;2;2;2;2m❯ \x1b[2mplaceholder\x1b[0m'], cursor: 0, command: 'claude' })).toBe('empty');
   });
+});
+
+describe('agentInFront', () => {
+  it.each([['2.1.296', 'claude'], ['claude', 'claude'], ['codex', 'codex'], ['opencode', 'opencode'], ['zsh', undefined], ['vim', undefined], ['node', undefined]])(
+    'takes a pane running %s for %s', (command, kind) => {
+      expect(agentInFront(command)).toBe(kind);
+    });
 });

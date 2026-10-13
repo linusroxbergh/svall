@@ -376,6 +376,37 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id].agent?.status).toBe('working');
   });
 
+  it("takes a Claude agent's question for answered once its empty prompt line is back, as while an approved command runs", async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    await waitFor(async () => (await tmux.listWindows()).some((w) => w.name === c.id && w.command === 'sleep'));
+    const hook = (h: Partial<HookEvent>) => fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'Notification', sessionId: 'sess', ...h } });
+    hook({ name: 'SessionStart', transcriptPath: '/nope' });
+    hook({ name: 'PreToolUse', toolName: 'Bash' });
+    hook({ name: 'PermissionRequest', toolName: 'Bash' });
+    hook({ notificationType: 'permission_prompt', message: 'Claude needs your permission to use Bash' });
+    const screen = vi.spyOn(tmux, 'screen').mockResolvedValue(pane('claude-permission'));
+    await fleet['poll']['tick']();
+    expect(store.state.characters[c.id].agent?.status).toBe('blocked');
+    // a field of the dialog's own shows the cursor as the prompt line does
+    screen.mockResolvedValue(pane('claude-question-field'));
+    await fleet['poll']['tick']();
+    expect(store.state.characters[c.id].agent?.status).toBe('blocked');
+    screen.mockResolvedValue(pane('claude-working'));
+    await fleet['poll']['tick']();
+    expect(store.state.characters[c.id].agent).toMatchObject({ status: 'working', askedTool: 'Bash' });
+    expect(store.state.characters[c.id].agent).not.toHaveProperty('prompt');
+    // a subagent's question may be out of view, as may one asked about no tool
+    hook({ name: 'PermissionRequest', agentId: 'a1', toolName: 'Bash' });
+    hook({ notificationType: 'permission_prompt', message: 'may I' });
+    await fleet['poll']['tick']();
+    expect(store.state.characters[c.id].agent?.status).toBe('blocked');
+    hook({ name: 'Stop' });
+    hook({ notificationType: 'elicitation_dialog', message: 'fill this in' });
+    await fleet['poll']['tick']();
+    expect(store.state.characters[c.id].agent?.status).toBe('blocked');
+  });
+
   it('records shell activity when a SessionEnd hook ends the agent, without waiting for a poll', async () => {
     const { fleet, store } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
@@ -1345,6 +1376,59 @@ runIf('Fleet', () => {
       screen.mockResolvedValue(pane('claude-draft'));
       expect(await fleet.run(c.id, 'next', true)).toBe('queued');
       expect(typed).toEqual(['staged']);
+    });
+  });
+
+  describe('a prompt run into an agent that has not reported in', () => {
+    // a pane with no agent on record, whose screen the test sets, and what reaches the pane
+    async function silentPane() {
+      const b = await boot({ pollMs: 60_000 });
+      const c = await b.fleet.createCharacter({ islandId: b.fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+      const hook = (h: Partial<HookEvent>) => b.fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath: '/nope', ...h } });
+      const screen = vi.spyOn(b.tmux, 'screen');
+      const typed: string[] = [];
+      vi.spyOn(b.tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
+      return { ...b, c, hook, screen, typed };
+    }
+
+    it.each([['claude', 'claude-trust', 'claude-empty'], ['codex', 'codex-hooks-review', 'codex-empty']])(
+      'is held while %s starts on a dialog, and goes in once its prompt line is free', async (_kind, dialog, empty) => {
+        const { fleet, c, screen, typed } = await silentPane();
+        screen.mockResolvedValue(pane(dialog));
+        expect(await fleet.run(c.id, 'go', true)).toBe('queued');
+        await new Promise((r) => setTimeout(r, 1200));
+        expect(typed).toEqual([]);
+        screen.mockResolvedValue(pane(empty));
+        await waitFor(() => typed.length === 1);
+        expect(typed).toEqual(['go']);
+      });
+
+    it('is held behind a draft, and goes to the session that reports in', async () => {
+      const { fleet, store, c, hook, screen, typed } = await silentPane();
+      screen.mockResolvedValue(pane('claude-draft'));
+      expect(await fleet.run(c.id, 'go', true)).toBe('queued');
+      hook({});
+      screen.mockResolvedValue(pane('claude-empty'));
+      await waitFor(() => typed.length === 1);
+      expect(store.state.characters[c.id].agent).toMatchObject({ sessionId: 'sess', status: 'working' });
+    });
+
+    it('is dropped, not typed into the shell, when the agent exits before it is free', async () => {
+      const { fleet, c, screen, typed } = await silentPane();
+      screen.mockResolvedValue(pane('claude-trust'));
+      expect(await fleet.run(c.id, 'go', true)).toBe('queued');
+      screen.mockRestore();
+      await new Promise((r) => setTimeout(r, 1200));
+      expect(fleet['prompts'].holds(c.id)).toBe(false);
+      expect(typed).toEqual([]);
+    });
+
+    it('goes in at once to a shell, or to a program other than an agent', async () => {
+      const { fleet, c, screen, typed } = await silentPane();
+      expect(await fleet.run(c.id, 'ls', true)).toBe('delivered');
+      screen.mockResolvedValue({ ...pane('claude-trust'), command: 'vim' });
+      expect(await fleet.run(c.id, ':q', true)).toBe('delivered');
+      expect(typed).toEqual(['ls', ':q']);
     });
   });
 
