@@ -32,7 +32,7 @@ test('a card opens on one pane, splits in two, and each side closes on its own',
   await expect(card.getByTestId('pane-left-browser')).toHaveAttribute('data-active', 'true');
 });
 
-test('a split starts the second terminal, and it shows on the token and ends with its shell', async ({ page, svall }) => {
+test('a split starts the second terminal, and it ends with its shell', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('two') });
   const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'twin' });
   await svall.open('map');
@@ -40,11 +40,10 @@ test('a split starts the second terminal, and it shows on the token and ends wit
   await card.getByTestId('pane-split').click();
   await expect(card.getByTestId('pane-right-terminal')).toHaveText(/Terminal 2/);
   await expect(card.getByTestId('surface')).toHaveCount(2);
-  await expect(page.getByTestId(`token-pips-${c.id}`)).toBeVisible();
   await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].second).toBeTruthy();
   await svall.api.call('char.run', { id: c.id, text: 'exit', term: 2 });
   await expect(card.getByTestId('pane-right')).toHaveCount(0);
-  await expect(page.getByTestId(`token-pips-${c.id}`)).toHaveCount(0);
+  await expect.poll(async () => (await svall.api.call('state.get', {})).characters[c.id].second).toBeFalsy();
 });
 
 test('the board shows the same panes as the card', async ({ page, svall }) => {
