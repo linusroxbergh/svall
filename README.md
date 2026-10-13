@@ -286,6 +286,7 @@ Svall first launches stays with Ghostty until you claim it there.
 | Cmd+, | Settings | Cmd+- / = / 0 | Zoom |
 | Cmd+Shift+A | Arrange the fleet | Cmd+U | First link beside the terminal |
 | Cmd+Shift+O | Open a fleet | Cmd+Q | Quit |
+| Cmd+Shift+S | Sidebar and side card | | |
 
 Ctrl+click on a link asks whether to open it in the character's browser or
 yours, and selecting text copies it. Terminals attach to tmux, so Ghostty's

@@ -360,6 +360,16 @@ describe('dispatchKey', () => {
     expect(c.sent).toEqual([{ type: 'term.focus', id: 'c1' }]);
   });
 
+  it('hiding both side panels hands the keys to the terminal', async () => {
+    const c = ctx(true);
+    onBoard(c);
+    c.store.getState().setPanes('c1', { left: 'terminal' });
+    c.sent.length = 0;
+    await dispatchKey({ type: 'toggleSides' }, c);
+    expect(c.store.getState()).toMatchObject({ sidebarOpen: false, sideCardOpen: false });
+    expect(c.sent).toEqual([{ type: 'term.focus', id: 'c1' }]);
+  });
+
   it('hands the keys to the second terminal when it is the one that is up', async () => {
     const c = ctx(true);
     onBoard(c);

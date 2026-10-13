@@ -13,6 +13,7 @@ describe('keys', () => {
     expect(b['cmd+j']).toEqual({ type: 'nextCharacter' });
     expect(b['cmd+m']).toEqual({ type: 'toggleView' });
     expect(b['cmd+i']).toEqual({ type: 'toggleSideCard' });
+    expect(b['cmd+shift+s']).toEqual({ type: 'toggleSides' });
     expect(b['cmd+shift+j']).toEqual({ type: 'nextIsland' });
     expect(b['cmd+q']).toEqual({ type: 'none' });
     expect(b['cmd+1']).toEqual({ type: 'showPane', pane: 'terminal' });
