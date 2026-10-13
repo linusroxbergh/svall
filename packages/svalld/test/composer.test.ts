@@ -68,7 +68,7 @@ describe('readComposer', () => {
 });
 
 describe('agentInFront', () => {
-  it.each([['2.1.296', 'claude'], ['codex', 'codex'], ['opencode', 'opencode'], ['zsh', undefined], ['vim', undefined], ['node', undefined]])(
+  it.each([['2.1.296', 'claude'], ['claude', 'claude'], ['codex', 'codex'], ['opencode', 'opencode'], ['zsh', undefined], ['vim', undefined], ['node', undefined]])(
     'takes a pane running %s for %s', (command, kind) => {
       expect(agentInFront(command)).toBe(kind);
     });

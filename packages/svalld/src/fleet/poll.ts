@@ -134,12 +134,12 @@ export class Poll {
     if (this.ticks % DORMANCY_EVERY === 0) this.deps.endIdleAgents().catch((e) => this.deps.log.error(`dormancy: ${String(e)}`));
   }
 
-  // Claude Code fires no hook when its dialog is answered until the tool it asked about ends, which a long command
-  // runs on for minutes; the prompt line back in view and empty says the dialog is gone. A field of the dialog's own reads as a draft
+  // Claude Code fires no hook when its dialog about a tool is answered until the tool ends, which a long command runs on
+  // for minutes; the prompt line back in view and empty says the dialog is gone. A field of the dialog's own reads as a draft
   private async dialogsGone(): Promise<void> {
     const asking = Object.values(this.deps.store.state.characters).flatMap((c) => [c, c.second].flatMap((t, i) => {
       const a = t?.agent;
-      return t?.tmux && a?.kind === 'claude' && a.status === 'blocked' && !a.asking ? [{ id: c.id, second: i === 1, paneId: t.tmux.paneId, promptId: a.promptId }] : [];
+      return t?.tmux && a?.kind === 'claude' && a.status === 'blocked' && a.askedTool && !a.asking ? [{ id: c.id, second: i === 1, paneId: t.tmux.paneId, promptId: a.promptId }] : [];
     }));
     for (const q of asking) {
       const screen = await this.deps.tmux.screen(q.paneId).catch(() => undefined);

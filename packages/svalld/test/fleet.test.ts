@@ -369,9 +369,13 @@ runIf('Fleet', () => {
     await fleet['poll']['tick']();
     expect(store.state.characters[c.id].agent).toMatchObject({ status: 'working', askedTool: 'Bash' });
     expect(store.state.characters[c.id].agent).not.toHaveProperty('prompt');
-    // a subagent's question may be out of view
+    // a subagent's question may be out of view, as may one asked about no tool
     hook({ name: 'PermissionRequest', agentId: 'a1', toolName: 'Bash' });
     hook({ notificationType: 'permission_prompt', message: 'may I' });
+    await fleet['poll']['tick']();
+    expect(store.state.characters[c.id].agent?.status).toBe('blocked');
+    hook({ name: 'Stop' });
+    hook({ notificationType: 'elicitation_dialog', message: 'fill this in' });
     await fleet['poll']['tick']();
     expect(store.state.characters[c.id].agent?.status).toBe('blocked');
   });
