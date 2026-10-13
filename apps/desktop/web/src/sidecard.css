@@ -98,7 +98,7 @@
 .side-profile-opt[aria-selected="true"] b { color: var(--sand); }
 .side-profile-opt[aria-disabled="true"] { opacity: .55; cursor: default; }
 .side-profile-sep { height: 1px; margin: var(--sp-xs) var(--sp-md); background: var(--line-soft); }
-.side-profile-hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); color: var(--ink-3); }
+.side-profile-hint { flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); color: var(--ink-3); }
 .side-profile-hint[data-error="true"] { color: var(--pt-coral); }
 .side .pills { margin-top: 0; }
 .side .row { padding: var(--sp-xs) 0; align-items: center; }
