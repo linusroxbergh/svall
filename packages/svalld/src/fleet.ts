@@ -557,7 +557,7 @@ export class Fleet extends EventEmitter<Events> {
       const delivery = prompt ? await this.run(id, prompt, true) : undefined;
       return { ...this.char(id), ...(delivery && { delivery }) };
     }
-    const w = await this.deps.tmux.newWindow(id, c.cwd, this.charEnv(id));
+    const w = await this.deps.tmux.newWindow(id, this.reviveCwd(c), this.charEnv(id));
     if (!this.deps.store.state.characters[id]) {
       await this.deps.tmux.killWindow(w.windowId);
       throw new NotFound(`no character ${id}`);
@@ -575,6 +575,21 @@ export class Fleet extends EventEmitter<Events> {
     });
     if (command) await this.deps.tmux.sendLine(w.paneId, command, true);
     return this.char(id);
+  }
+
+  // tmux starts a window whose folder is gone in $HOME. Claude resumes a session from any folder: a removed worktree's character
+  // goes back to its main checkout, any other to the nearest folder left. Codex resumes into the gone folder; OpenCode stops to ask
+  private reviveCwd(c: Character): string {
+    const isDir = (p: string) => !!fs.statSync(p, { throwIfNoEntry: false })?.isDirectory();
+    if (isDir(c.cwd)) return c.cwd;
+    const kind = c.revive?.command && c.agent?.kind;
+    if (kind === 'codex' || kind === 'opencode') {
+      throw new Invalid(`${c.name}'s folder ${c.cwd} is gone, and ${AGENTS[kind].label} resumes its session only there; recreate the folder, or close ${c.name}`);
+    }
+    if (c.repo?.isWorktree && isDir(c.repo.mainRoot)) return c.repo.mainRoot;
+    let dir = path.dirname(c.cwd);
+    while (!isDir(dir)) dir = path.dirname(dir);
+    return dir;
   }
 
   // concurrent opens would each spawn a window and orphan all but the last.
