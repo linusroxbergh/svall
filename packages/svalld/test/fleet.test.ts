@@ -1658,11 +1658,70 @@ runIf('Fleet', () => {
     await waitFor(() => fleet.char(c.id).hint === undefined);
     running = 'codex';
     await waitFor(() => fleet.char(c.id).hint === 'codex-silent');
+    // an agent that comes and goes between two polls leaves the silence as it was
+    await waitForPolls(fleet, 2);
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionStart', sessionId: '019eefb3-0000-7b00-ad02-80c4930f7426' } });
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionEnd', sessionId: '019eefb3-0000-7b00-ad02-80c4930f7426' } });
+    expect(fleet.char(c.id).hint).toBeUndefined();
+    await waitFor(() => fleet.char(c.id).hint === 'codex-silent');
     fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionStart', sessionId: '019eefb3-8d5c-7b00-ad02-80c4930f7426' } });
     expect(fleet.char(c.id).hint).toBeUndefined();
     // with an agent on record the silence is over, however long the window keeps running codex
     await waitForPolls(fleet, 4);
     expect(fleet.char(c.id).hint).toBeUndefined();
+  });
+
+  it('says when a silent codex runs on the shared server, and not when it runs its own', async () => {
+    const { fleet, tmux, procs } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    const list = tmux.listWindows.bind(tmux);
+    tmux.listWindows = async () => (await list()).map((w) => (w.name === c.id ? { ...w, command: 'codex' } : w));
+    const shell = (await list()).find((w) => w.name === c.id)!.pid;
+    procs.push({ pid: 900_001, ppid: shell, pgid: 900_001, args: 'codex' }, { pid: 900_002, ppid: 1, pgid: 900_002, args: '/u/.codex/bin/codex app-server --listen unix:// --managed-daemon' });
+    await waitFor(() => fleet.char(c.id).hint === 'codex-silent' && fleet.char(c.id).codexDaemon === true);
+    // quit and started again with its own server: what is left to suspect is the hook
+    tmux.listWindows = async () => (await list()).map((w) => (w.name === c.id ? { ...w, command: 'sh' } : w));
+    await waitFor(() => fleet.char(c.id).hint === undefined && fleet.char(c.id).codexDaemon === undefined);
+    procs[0].args = 'codex --no-daemon';
+    tmux.listWindows = async () => (await list()).map((w) => (w.name === c.id ? { ...w, command: 'codex' } : w));
+    await waitFor(() => fleet.char(c.id).hint === 'codex-silent');
+    expect(fleet.char(c.id).codexDaemon).toBeUndefined();
+  });
+
+  it('drops hooks from codex\'s shared server and the runs its sessions start, whose terminal they do not name', async () => {
+    const { fleet } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    // a stand-in server and a run under it: ps shows the command line the server was started under
+    const server = spawn('sh', ['-c', 'sleep 60 & echo $!; wait'], { argv0: '/u/.codex/bin/codex app-server --listen unix:// --managed-daemon', stdio: ['ignore', 'pipe', 'ignore'] });
+    cleanup.push(async () => { server.kill(); });
+    const nested = Number(await new Promise<string>((r) => server.stdout!.once('data', (d: Buffer) => r(d.toString()))));
+    cleanup.push(async () => { try { process.kill(nested); } catch { /* gone */ } });
+    await waitFor(() => /codex app-server/.test(execFileSync('ps', ['-o', 'args=', '-p', String(server.pid)], { encoding: 'utf8' })));
+    // the server started from this terminal, so the sessions of every terminal on it report as this one
+    for (const sessionId of ['019eefb3-8d5c-7b00-ad02-80c4930f7426', '019eefb3-9999-7b00-ad02-80c4930f7426']) {
+      for (const name of ['SessionStart', 'UserPromptSubmit'] as const) {
+        expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name, sessionId, pid: server.pid } })).toBeUndefined();
+      }
+    }
+    // as does a claude -p one of those sessions runs
+    expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'claude', name: 'SessionStart', sessionId: '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d', pid: nested } })).toBeUndefined();
+    expect(fleet.char(c.id).agent).toBeUndefined();
+    // a codex that runs its own server is heard
+    const own = '019eefb3-1111-7b00-ad02-80c4930f7426';
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionStart', sessionId: own, pid: process.pid } });
+    expect(fleet.char(c.id).agent).toMatchObject({ kind: 'codex', sessionId: own, pid: process.pid });
+  });
+
+  it('lets go of an agent the shared server held, whose end would be dropped', async () => {
+    const { fleet, store } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    const server = spawn('sleep', ['60'], { argv0: '/u/.codex/bin/codex app-server --listen unix:// --managed-daemon', stdio: 'ignore' });
+    cleanup.push(async () => { server.kill(); });
+    await waitFor(() => /codex app-server/.test(execFileSync('ps', ['-o', 'args=', '-p', String(server.pid)], { encoding: 'utf8' })));
+    // what a build that took the server's events left on record
+    store.update((d) => { d.characters[c.id].agent = { kind: 'codex', sessionId: '019eefb3-8d5c-7b00-ad02-80c4930f7426', status: 'working', lastActivityAt: Date.now(), pid: server.pid }; });
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'Stop', sessionId: '019eefb3-8d5c-7b00-ad02-80c4930f7426', pid: server.pid } });
+    expect(fleet.char(c.id).agent).toBeUndefined();
   });
 
   it('keeps a codex agent, and says nothing of silence, through a claude -p run inside it', async () => {

@@ -7,7 +7,7 @@ import type { LiveWindow } from '../src/tmux/tmux.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
 const live = (name: string, windowId = '@1', paneId = '%1'): LiveWindow =>
-  ({ windowId, paneId, name, command: 'zsh', path: '/repo', activity: 1000, dead: false });
+  ({ windowId, paneId, name, command: 'zsh', path: '/repo', activity: 1000, dead: false, pid: 1 });
 
 const char = (over: Partial<Character>): Character => ({
   id: 'c_a', islandId: 'i_1', cell: { x: 0, y: 1 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: '/old', context: [],

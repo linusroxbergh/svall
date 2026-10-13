@@ -5,7 +5,9 @@ import type { Agent } from '@svall/protocol';
 import { interruptedAt } from '../agent/claude-transcript.js';
 import { applyHook, type Slot } from '../agent/reducer.js';
 import { readTail } from '../agent/transcript.js';
+import { onSharedServer } from '../codex/server.js';
 import type { Config } from '../config.js';
+import type { Proc } from '../dormancy.js';
 import { refreshMany, slice, type Deps as LinkDeps } from '../links/refresh.js';
 import type { Logger } from '../log.js';
 import { secondName, snapshot, syncWindow } from '../reconcile.js';
@@ -32,6 +34,7 @@ type Deps = {
   // the windows tmux has, less those still closing for idleness
   listWindows: () => Promise<LiveWindow[]>;
   endIdleAgents: () => Promise<void>;
+  processes: () => Promise<Proc[]>;
 };
 
 /** The fleet's poll: characters matched to tmux's windows, agents that ended without a word let go, a slice of the
@@ -100,6 +103,7 @@ export class Poll {
       .flatMap((c) => [...atShell(c.id, c.agent), ...atShell(secondName(c.id), c.second?.agent)]));
     if (this.stopped) return;
     const cwdChanged: string[] = [];
+    const silent: { id: string; pid: number }[] = [];
     // an agent whose pane is back at a shell prompt for two polls has ended without a SessionEnd
     const settleAgent = (key: string, slot: { agent?: Agent }, command: string) => {
       if (slot.agent && isShellCommand(command, this.deps.config.shell) && !suspended.has(slot.agent.pid ?? 0)) {
@@ -120,16 +124,18 @@ export class Poll {
         if (!c.agent && w.command === 'codex') {
           const n = (this.codexStreak.get(c.id) ?? 0) + 1;
           this.codexStreak.set(c.id, n);
-          if (n >= 3) c.hint = 'codex-silent';
+          if (n >= 3 && !c.hint) silent.push({ id: c.id, pid: w.pid });
         } else {
           this.codexStreak.delete(c.id);
           delete c.hint;
+          delete c.codexDaemon;
         }
         if (this.interrupted(c.id, c.agent)) d.characters[c.id] = interrupt(c.id, c);
         const second = d.characters[c.id].second;
         if (second && this.interrupted(secondName(c.id), second.agent)) d.characters[c.id].second = interrupt(c.id, second);
       }
     });
+    if (silent.length) await this.markSilent(silent);
     this.ticks++;
     // the fleet's links are looked at a slice per tick, so the whole crew never spawns git and gh in the same breath
     const awake = Object.values(this.deps.store.state.characters).filter((c) => c.tmux).map((c) => c.id);
@@ -146,6 +152,21 @@ export class Poll {
     if (this.ticks % 10 === 0) await this.sweepViewerSessions();
     // ending an agent waits up to a minute for it to exit, which the next poll does not
     if (this.ticks % DORMANCY_EVERY === 0) this.deps.endIdleAgents().catch((e) => this.deps.log.error(`dormancy: ${String(e)}`));
+  }
+
+  // a plain `codex` on Codex's shared server is heard as the terminal that started the server, so its events are
+  // dropped; any other codex is silent for its hooks' sake
+  private async markSilent(silent: { id: string; pid: number }[]): Promise<void> {
+    const procs = await this.deps.processes();
+    if (this.stopped) return;
+    this.deps.store.update((d) => {
+      for (const { id, pid } of silent) {
+        const c = d.characters[id];
+        if (!c || c.agent || !this.codexStreak.has(id)) continue;
+        c.hint = 'codex-silent';
+        if (onSharedServer(pid, procs)) c.codexDaemon = true; else delete c.codexDaemon;
+      }
+    });
   }
 
   // a desktop terminal that never attached leaves its v-<charId> session behind

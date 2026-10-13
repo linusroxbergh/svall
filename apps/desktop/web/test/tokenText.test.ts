@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Character } from '@svall/protocol';
-import { GAUGE_C, ago, gaugeDash, hintText, linkText, statusWord } from '../src/map/tokenText.js';
+import { GAUGE_C, ago, gaugeDash, hintLabel, hintText, linkText, statusWord } from '../src/map/tokenText.js';
 
 describe('linkText', () => {
   it('shows a file or folder by its last segment', () => {
@@ -28,6 +28,14 @@ describe('hintText', () => {
     expect(text).toContain('/hooks');
     expect(text).not.toContain('trust the Svall hook');
     expect(hintText({} as Character)).toBeUndefined();
+  });
+
+  it('names the shared server, and the flag that keeps codex off it', () => {
+    const c = { hint: 'codex-silent', codexDaemon: true } as Character;
+    expect(hintText(c)).toContain('codex --no-daemon');
+    expect(hintText(c)).not.toContain('/hooks');
+    expect(hintLabel(c)).toBe('--no-daemon');
+    expect(hintLabel({ hint: 'codex-silent' } as Character)).toBe('/hooks');
   });
 });
 

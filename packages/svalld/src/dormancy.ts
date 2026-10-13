@@ -31,6 +31,7 @@ export const dropBrief = (c: Character): void => { if (c.agent) delete c.agent.b
 export function markDormant(c: Character, flags?: string[]): void {
   delete c.tmux;
   delete c.hint;
+  delete c.codexDaemon;
   dropBrief(c);
   c.revive = { command: reviveCommand(c, flags) };
   // its monitors and subagents die with it, which a finished turn says nothing of
