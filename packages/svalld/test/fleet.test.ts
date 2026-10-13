@@ -539,6 +539,42 @@ runIf('Fleet', () => {
     await waitFor(async () => (await fleet.readScreen(c.id, 20)).includes('revived'));
   });
 
+  it('revives a character whose folder is gone where its agent can resume, and refuses Codex or OpenCode', async () => {
+    const { fleet, store, tmux, home } = await boot();
+    const repo = fs.realpathSync(fs.mkdtempSync(path.join(home, 'repo-')));
+    const git = (...args: string[]) => execFileSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args]);
+    execFileSync('git', ['init', '-q', repo]);
+    git('commit', '-q', '--allow-empty', '-m', 'init');
+    const wt = path.join(repo, '.claude', 'worktrees', 'feat');
+    git('worktree', 'add', '-q', '-b', 'feat', wt);
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: wt });
+    await waitFor(() => store.state.characters[c.id].repo?.isWorktree === true);
+    const sleepWith = async (kind: AgentKind, cwd: string) => {
+      const { tmux: t } = store.state.characters[c.id];
+      if (t) await tmux.killWindow(t.windowId);
+      await waitFor(() => store.state.characters[c.id].tmux === undefined);
+      store.update((d) => {
+        Object.assign(d.characters[c.id], { cwd, revive: { command: 'echo revived' } });
+        d.characters[c.id].agent = { kind, sessionId: SID, status: 'idle', lastActivityAt: 1 };
+      });
+    };
+    const revivedIn = async () => (await tmux.run('display', '-p', '-t', (await fleet.reviveCharacter(c.id)).tmux!.paneId, '#{pane_current_path}')).trim();
+    git('worktree', 'remove', wt);
+
+    for (const kind of ['codex', 'opencode'] as const) {
+      await sleepWith(kind, wt);
+      await expect(fleet.reviveCharacter(c.id)).rejects.toThrow(new Invalid(`${c.name}'s folder ${wt} is gone, and ${kind === 'codex' ? 'Codex' : 'OpenCode'} resumes its session only there; recreate the folder, or close ${c.name}`));
+      expect((await tmux.listWindows()).some((w) => w.name === c.id)).toBe(false);
+    }
+    // Claude resumes from any folder: a removed worktree's character goes back to its main checkout
+    await sleepWith('claude', wt);
+    expect(await revivedIn()).toBe(repo);
+    // any other folder that is gone gives way to the nearest one left
+    await sleepWith('claude', path.join(home, 'gone', 'deeper'));
+    store.update((d) => { delete d.characters[c.id].repo; });
+    expect(await revivedIn()).toBe(fs.realpathSync(home));
+  });
+
   it('takes away a prompt file left over when a character starts without a prompt', async () => {
     const { fleet, store, tmux, home } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
