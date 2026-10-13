@@ -385,14 +385,15 @@ export class Fleet extends EventEmitter<Events> {
     // only where OpenCode is, as for the plugin: a config folder made here would pass for an install
     if (!(this.deps.config.integrations?.includes('opencode') ?? true) || !(this.deps.agentsFound?.includes('opencode') || fs.existsSync(o.dir))) return {};
     const { opencodeConfig, opencodeReplaced } = this.deps.paths;
-    // every TUI in a directory shares one live tab strip, so a character's OpenCode shows only its own session
-    const tabsOff = { OPENCODE_CLI_CONFIG_CONTENT: '{"tabs":{"mode":"off"}}' };
+    // every TUI in a directory shares one live tab strip, so a character's OpenCode shows only its own session. The
+    // highlights dialog after an update hides the cursor, which holds safe send; ctrl+z undoes instead of suspending
+    const cli = { OPENCODE_CLI_CONFIG_CONTENT: JSON.stringify({ tabs: { mode: 'off' }, highlights: false, keybinds: { 'terminal.suspend': 'none', 'input.undo': 'ctrl+z,ctrl+-,super+z' } }) };
     try {
       for (const f of linkOpencodeConfig(opencodeConfig, o, opencodeReplaced)) this.deps.log.error(`opencode config: ${f}`);
-      return { ...tabsOff, OPENCODE_CONFIG_DIR: opencodeConfig };
+      return { ...cli, OPENCODE_CONFIG_DIR: opencodeConfig };
     } catch (e) {
       this.deps.log.error(`opencode config: ${(e as Error).message}`);
-      return tabsOff;
+      return cli;
     }
   }
 
