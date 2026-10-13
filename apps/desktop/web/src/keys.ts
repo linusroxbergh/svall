@@ -9,6 +9,7 @@ export type KeyAction =
   | { type: 'nextCharacter' }
   | { type: 'toggleView' }
   | { type: 'toggleSideCard' }
+  | { type: 'toggleSides' }
   | { type: 'toggleSettings' }
   | { type: 'toggleResources' }
   | { type: 'zoom'; steps: number }
@@ -25,7 +26,7 @@ export type KeyAction =
 export type ActionId =
   | 'newCharacter' | 'missionControl' | 'arrange' | 'closeCharacter'
   | 'prevCharacter' | 'nextCharacter' | 'nextIsland'
-  | 'toggleView' | 'toggleSideCard' | 'toggleCardSize' | 'toggleSettings' | 'toggleResources'
+  | 'toggleView' | 'toggleSideCard' | 'toggleSides' | 'toggleCardSize' | 'toggleSettings' | 'toggleResources'
   | 'paneTerminal' | 'paneBrowser' | 'paneFiles' | 'paneChanges'
   | 'toggleBrowser' | 'focusAddress' | 'openLink' | 'fillLogin' | 'openFleets'
   | 'zoomIn' | 'zoomOut' | 'zoomReset'
@@ -46,6 +47,7 @@ export const ACTIONS: Record<ActionId, ActionSpec> = {
   nextIsland: { label: 'Next island', action: { type: 'nextIsland' }, chord: 'cmd+shift+j' },
   toggleView: { label: 'Map or board', action: { type: 'toggleView' }, chord: 'cmd+m' },
   toggleSideCard: { label: 'Side card', action: { type: 'toggleSideCard' }, chord: 'cmd+i' },
+  toggleSides: { label: 'Sidebar and side card', action: { type: 'toggleSides' }, chord: 'cmd+shift+s' },
   toggleCardSize: { label: 'Card size', action: { type: 'toggleCardSize' }, chord: 'cmd+enter' },
   toggleSettings: { label: 'Settings', action: { type: 'toggleSettings' }, chord: 'cmd+,' },
   toggleResources: { label: 'Resources', action: { type: 'toggleResources' }, chord: 'cmd+shift+r' },

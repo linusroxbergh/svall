@@ -148,6 +148,20 @@ test('edits an island from the side card on the map', async ({ page, svall }) =>
   await expect(page.getByTestId('fleet-summary')).toBeVisible();
 });
 
+test('Cmd+Shift+S hides the sidebar and the side card together and brings them back', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('sides') });
+  const c = await svall.api.call('char.create', { islandId: island.id, cwd: '/tmp', name: 'sides' });
+  await svall.open();
+  await page.getByTestId(`sb-char-${c.id}`).click();
+  await expect(page.getByTestId('side-card')).toBeVisible();
+  await page.keyboard.press('Meta+Shift+S');
+  await expect(page.getByTestId('sidebar')).toHaveCount(0);
+  await expect(page.getByTestId('side-card')).toHaveCount(0);
+  await page.keyboard.press('Meta+Shift+S');
+  await expect(page.getByTestId('sidebar')).toBeVisible();
+  await expect(page.getByTestId('side-card')).toBeVisible();
+});
+
 test('a dropped path lands on the island under the point', async ({ page, svall }) => {
   const island = await svall.api.call('island.create', { name: svall.uniq('drop'), position: { x: 0, y: 100 } });
   await svall.open('map');

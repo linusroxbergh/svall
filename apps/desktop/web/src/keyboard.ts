@@ -128,6 +128,11 @@ export async function dispatchKey(action: KeyAction, ctx: KeyDeps): Promise<void
       store.getState().toggleSideCard();
       if (!store.getState().sideCardOpen) refocusSurface(ctx);
       return;
+    case 'toggleSides':
+      commitFocused();
+      store.getState().toggleSides();
+      if (!store.getState().sideCardOpen) refocusSurface(ctx);
+      return;
     case 'showPane': {
       const id = viewedId(s);
       if (!id) return;

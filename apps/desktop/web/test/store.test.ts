@@ -364,6 +364,33 @@ describe('store', () => {
     expect(store.getState()).toMatchObject({ settingsOpen: true, sideCardOpen: true, sideCardCollapsed: false });
   });
 
+  it('hides both side panels at once and brings back the ones that were open', () => {
+    const store = createAppStore(undefined, 'board');
+    const sides = () => ({ sidebarOpen: store.getState().sidebarOpen, sideCardOpen: store.getState().sideCardOpen });
+    store.getState().toggleSides();
+    expect(sides()).toEqual({ sidebarOpen: false, sideCardOpen: false });
+    store.getState().toggleSides();
+    expect(sides()).toEqual({ sidebarOpen: true, sideCardOpen: true });
+    store.getState().toggleSidebar(false);
+    store.getState().toggleSides();
+    expect(sides()).toEqual({ sidebarOpen: false, sideCardOpen: false });
+    store.getState().toggleSides();
+    expect(sides()).toEqual({ sidebarOpen: false, sideCardOpen: true });
+    // with both closed by hand there is nothing to bring back, so both open
+    store.getState().toggleSideCard(false);
+    store.getState().toggleSides();
+    expect(sides()).toEqual({ sidebarOpen: true, sideCardOpen: true });
+  });
+
+  it('hiding the sides leaves a side card that was already shut as it was', () => {
+    const store = createAppStore(undefined, 'map');
+    store.getState().toggleSides();
+    store.getState().toggleSides();
+    expect(store.getState()).toMatchObject({ sidebarOpen: true, sideCardOpen: false, sideCardCollapsed: false });
+    store.getState().select('c1');
+    expect(store.getState().sideCardOpen).toBe(true);
+  });
+
   it('the board opens the side card, and a collapse survives the switch', () => {
     const store = createAppStore(undefined, 'board');
     expect(store.getState().sideCardOpen).toBe(true);

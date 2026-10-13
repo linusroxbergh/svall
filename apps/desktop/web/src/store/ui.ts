@@ -53,6 +53,8 @@ export type UiState = {
   configErrors: string[];
   shell?: ShellInfo;
   sidebarOpen: boolean;
+  // the sides ⌘⇧S hid, so the next press brings back those and no others
+  hiddenSides?: { sidebar: boolean; card: boolean };
   settingsOpen: boolean;
   // the action whose chord the settings' Keyboard pane is waiting for; while it is set, keys are read, not obeyed
   capturingKey?: ActionId;
@@ -115,6 +117,7 @@ export type UiActions = {
   setUpdate(version?: string): void;
   setCapturingKey(id?: ActionId): void;
   toggleSidebar(open?: boolean): void;
+  toggleSides(): void;
   toggleSettings(open?: boolean): void;
   toggleUsage(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
   toggleMobile(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
@@ -243,6 +246,15 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     setNotifyPermission: (notifyPermission) => set({ notifyPermission }),
     setUpdate: (update) => set({ update }),
     toggleSidebar: (open) => set((s) => { const next = open ?? !s.sidebarOpen; storage?.setSidebarOpen(next); return { sidebarOpen: next }; }),
+    toggleSides: () => {
+      const s = get();
+      const open = { sidebar: s.sidebarOpen, card: s.sideCardOpen };
+      const hide = open.sidebar || open.card;
+      const back = hide ? open : (s.hiddenSides ?? { sidebar: true, card: true });
+      if (back.sidebar) s.toggleSidebar(!hide);
+      if (back.card) s.toggleSideCard(!hide);
+      set({ hiddenSides: hide ? open : undefined });
+    },
     toggleSettings: (open) => set((s) => {
       const next = open ?? !s.settingsOpen;
       // a window that closes has been answered, and what it leaves behind is this machine's settings;
