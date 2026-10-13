@@ -108,7 +108,7 @@ export class Poll {
         if (!c.agent && w.command === 'codex') {
           const n = (this.codexStreak.get(c.id) ?? 0) + 1;
           this.codexStreak.set(c.id, n);
-          if (n === 3) silent.push({ id: c.id, pid: w.pid });
+          if (n >= 3 && !c.hint) silent.push({ id: c.id, pid: w.pid });
         } else {
           this.codexStreak.delete(c.id);
           delete c.hint;

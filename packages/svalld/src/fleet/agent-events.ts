@@ -4,7 +4,7 @@ import { lastTokenCount } from '../agent/codex-transcript.js';
 import { followRollout, type RolloutMark } from '../agent/codex-workdir.js';
 import { applyHook, applyStatus, type Slot } from '../agent/reducer.js';
 import { readTail } from '../agent/transcript.js';
-import { argsOf, isCodexServer } from '../codex/server.js';
+import { underCodexServer } from '../codex/server.js';
 import type { Config } from '../config.js';
 import { briefReply } from '../context/brief.js';
 import type { SocketEvent } from '../hooks/receiver.js';
@@ -28,7 +28,7 @@ export class AgentEvents {
   constructor(private deps: Deps) {}
 
   apply(e: SocketEvent): string | undefined {
-    if ('hook' in e && e.hook.backend === 'codex' && e.hook.pid && this.fromServer(e.hook.pid)) return undefined;
+    if ('hook' in e && e.hook.pid && this.fromServer(e.hook.pid)) { this.letGo(e.hook.charId, e.hook.pid); return undefined; }
     const ev = 'hook' in e ? e.hook : e.status;
     let reply: string | undefined;
     this.deps.store.update((d) => {
@@ -79,15 +79,26 @@ export class AgentEvents {
   }
 
   // a plain `codex` runs its hooks inside Codex's shared server, with the environment of whichever terminal started
-  // it: they name that terminal's character, or none, for every session on the server
+  // it, and so does every run its sessions start: they name that terminal's character, or none
   private fromServer(pid: number): boolean {
     const seen = this.servers.get(pid);
     if (seen && Date.now() - seen.at < SERVER_CHECK_MS) return seen.server;
-    const server = isCodexServer(argsOf(pid) ?? '');
-    if (server && !seen?.server) this.deps.log.info(`codex hooks from its shared server (pid ${pid}) ignored: they name no terminal of their own`);
+    const server = underCodexServer(pid);
+    if (server && !seen?.server) this.deps.log.info(`hooks from Codex's shared server (pid ${pid}) ignored: they name no terminal of their own`);
     if (this.servers.size > 100) this.servers.clear();
     this.servers.set(pid, { server, at: Date.now() });
     return server;
+  }
+
+  // a slot a server's events took before svalld dropped them would never hear its end
+  private letGo(charId: string, pid: number): void {
+    const c = this.deps.store.state.characters[charId];
+    if (c?.agent?.pid !== pid && c?.second?.agent?.pid !== pid) return;
+    this.deps.store.update((d) => {
+      const held = d.characters[charId];
+      if (held.agent?.pid === pid) delete held.agent;
+      if (held.second?.agent?.pid === pid) delete held.second.agent;
+    });
   }
 
   // codex runs each command in the directory its call names and tells its hooks only the one the session began in;
