@@ -19,6 +19,7 @@ const variantOf = (h) => {
 
 const WAIT_MS = 1500;
 const SHOW_MS = 500;
+const IDLE_MS = 1000;
 const MAX_PROMPT = 4000;
 const MAX_TOOL = 2000;
 const clip = (v, n) => (typeof v === 'string' ? v : JSON.stringify(v ?? '')).slice(0, n);
@@ -100,8 +101,9 @@ async function setup(ctx) {
   const brief = new Map();
   const started = new Map();
   const models = new Map();
-  // top-level sessions whose turn svalld has heard start and not end
-  const turns = new Set();
+  // top-level sessions whose turn svalld has heard start and not end, each with its prompt's number
+  const turns = new Map();
+  let prompts = 0;
   // questions open anywhere in the session tree, each with what it asks; a tool another subagent runs meanwhile does not
   // answer them
   const asking = new Map();
@@ -192,6 +194,7 @@ async function setup(ctx) {
     void hook(name, id, fields);
   };
   const on = (type, p) => {
+    if (type === 'permission.asked' || type === 'permission.replied') heard?.add(p.id ?? p.requestID);
     switch (type) {
       case 'session.created':
         parents.set(p.sessionID, p.parentID ?? '');
@@ -234,16 +237,31 @@ async function setup(ctx) {
     }
   };
   const quit = new AbortController();
-  // what a new subscription can't hear: a turn that ended and permissions asked or answered before it; forms have no list.
-  // An idle session's turn ends a moment late, so an end the new subscription does hear comes first
+  const later = (ms, value) => sleep(ms, value, { signal: quit.signal, ref: false });
+  // a session's wait resolves once it is idle; one at a time, however many resyncs ask
+  const waits = new Map();
+  const idle = (id) => {
+    if (!waits.has(id)) waits.set(id, ctx.session.wait({ sessionID: id }).then(() => true, () => false).finally(() => waits.delete(id)));
+    return waits.get(id);
+  };
+  // permissions the stream asks or answers while a resync reads the list, which may predate them
+  let heard;
+  // what a new subscription can't hear, read once it has started: a turn that ended, and permissions asked or answered;
+  // forms have no list. A turn idle now ends a moment late, unless the stream ends it or a new prompt starts first
   const resync = async () => {
-    for (const id of turns) {
-      void ctx.session.wait({ sessionID: id }).then(() => sleep(SHOW_MS, undefined, { signal: quit.signal }))
-        .then(() => { if (turns.has(id)) return end(id, 'Stop'); }, () => {});
+    await later(0);
+    for (const [id, n] of turns) {
+      void Promise.race([idle(id), later(IDLE_MS, false)]).then((now) => now && later(SHOW_MS, true))
+        .then((now) => { if (now && turns.get(id) === n) return end(id, 'Stop'); }, () => {});
     }
+    heard = new Set();
+    const before = [...asking].filter(([, a]) => !a.question).map(([id]) => id);
     const open = (await Promise.all([...parents.keys()].map((id) => ctx.permission.list({ sessionID: id }).catch(() => [])))).flat();
-    for (const [id, a] of asking) if (!a.question) asking.delete(id);
-    for (const p of open) on('permission.asked', p);
+    const since = heard;
+    heard = undefined;
+    if (quit.signal.aborted) return;
+    for (const id of before) if (!since.has(id) && !open.some((p) => p.id === id)) asking.delete(id);
+    for (const p of open) if (!since.has(p.id) && !asking.has(p.id)) on('permission.asked', p);
     show();
   };
   // OpenCode fails the stream of every plugin on one event it can't encode, as another plugin's malformed RPC event,
@@ -258,7 +276,7 @@ async function setup(ctx) {
         }
       } catch {}
       retry = Math.min(retry * 2 || 1000, 30_000);
-      await sleep(retry, undefined, { signal: quit.signal }).catch(() => {});
+      await later(retry).catch(() => {});
     }
   })();
 
@@ -266,13 +284,14 @@ async function setup(ctx) {
     const id = e.sessionID;
     if (await parentOf(id)) return;
     await start(id);
-    turns.add(id);
     const text = e.prompt?.text?.trim() ?? '';
     if (text) log(id, { kind: 'user', text });
     const model = models.get(id)?.id;
     const reply = await hook('UserPromptSubmit', id, { prompt: text.slice(0, MAX_PROMPT), prompt_id: e.messageID, ...(model && { model }) });
     // svalld answers each prompt with the brief there is, an empty one included; a lost answer changes nothing
     if (reply !== undefined) brief.set(id, reply);
+    // the turn starts once this hook returns; until then the session is idle
+    turns.set(id, ++prompts);
   });
   // the same brief rides on every request of the session, so the prompt cache holds until it changes. A session this
   // instance has not seen, as after OpenCode reloads the plugin, reports in first

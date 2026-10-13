@@ -430,6 +430,71 @@ describe('the OpenCode plugin', () => {
     expect((got[3] as { hook: Record<string, unknown> }).hook).toMatchObject({ sessionId: SID, message: 'rm -rf build' });
   });
 
+  it('leaves a turn prompted during a resync running, though the session read idle before it', async () => {
+    const f = fakeContext();
+    const { hooks: h, emit, fail } = await load(f);
+    await emit('session.created', { sessionID: SID });
+    await prompt(h, SID);
+    await fail();
+    await waitFor(() => f.ctx.session.wait.mock.calls.length === 1);
+    await prompt(h, SID, 'next');
+    await shown();
+    expect(names()).toEqual(['SessionStart', 'UserPromptSubmit', 'UserPromptSubmit']);
+  });
+
+  it("doesn't let the permission list a resync reads undo what the stream said meanwhile", async () => {
+    const f = fakeContext();
+    f.ctx.session.wait.mockImplementation(() => new Promise<void>(() => {}));
+    const { hooks: h, emit, fail } = await load(f);
+    await emit('session.created', { sessionID: SID });
+    await prompt(h, SID);
+    await emit('permission.asked', { id: 'per_1', sessionID: SID, action: 'shell', resources: ['ls'] });
+    await shown();
+    let answer = (_: unknown[]) => {};
+    f.ctx.permission.list.mockImplementation(() => new Promise((r) => { answer = r; }));
+    await fail();
+    await waitFor(() => f.ctx.permission.list.mock.calls.length === 1);
+    // per_1 answered and per_2 asked after the list was read
+    await emit('permission.replied', { sessionID: SID, requestID: 'per_1', reply: 'once' });
+    await emit('permission.asked', { id: 'per_2', sessionID: SID, action: 'shell', resources: ['pwd'] });
+    answer([{ id: 'per_1', sessionID: SID, action: 'shell', resources: ['ls'] }]);
+    await shown();
+    expect(names()).toEqual(['SessionStart', 'UserPromptSubmit', 'PermissionRequest', 'PermissionRequest']);
+    expect((got[3] as { hook: Record<string, unknown> }).hook).toMatchObject({ message: 'pwd' });
+  });
+
+  it('says nothing once unloaded during a resync', async () => {
+    const f = fakeContext();
+    const { hooks: h, emit, fail, cleanup } = await load(f);
+    await emit('session.created', { sessionID: SID });
+    await prompt(h, SID);
+    let answer = (_: unknown[]) => {};
+    f.ctx.permission.list.mockImplementation(() => new Promise((r) => { answer = r; }));
+    await fail();
+    await waitFor(() => f.ctx.permission.list.mock.calls.length === 1);
+    cleanup();
+    answer([{ id: 'per_1', sessionID: SID, action: 'shell', resources: ['ls'] }]);
+    await shown();
+    expect(names()).toEqual(['SessionStart', 'UserPromptSubmit']);
+  });
+
+  it('subscribes again a second after a failure, and twice as long after one that heard nothing', async () => {
+    const f = fakeContext();
+    const { emit, fail } = await load(f);
+    const resubscribed = async (n: number) => {
+      const t = Date.now();
+      await waitFor(() => f.ctx.event.subscribe.mock.calls.length === n);
+      return Date.now() - t;
+    };
+    await fail();
+    expect(await resubscribed(2)).toBeLessThan(1500);
+    await fail();
+    expect(await resubscribed(3)).toBeGreaterThan(1500);
+    await emit('session.created', { sessionID: SID });
+    await fail();
+    expect(await resubscribed(4)).toBeLessThan(1500);
+  }, 10_000);
+
   it('says nothing when OpenCode unloads the plugin, nor subscribes again', async () => {
     const { ctx, emit, cleanup } = await load();
     await emit('session.created', { sessionID: SID });
