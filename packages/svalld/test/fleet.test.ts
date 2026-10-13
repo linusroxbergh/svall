@@ -113,11 +113,15 @@ runIf('Fleet', () => {
     const island = fleet.createIsland({ name: 'oc' });
     await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
     expect(open.mock.calls[0][2]).not.toHaveProperty('OPENCODE_CONFIG_DIR');
+    expect(open.mock.calls[0][2]).not.toHaveProperty('OPENCODE_CLI_CONFIG_CONTENT');
     expect(fs.existsSync(path.join(home, 'xdg'))).toBe(false);
 
     fs.mkdirSync(path.join(home, 'xdg/opencode'), { recursive: true });
     await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
-    expect(open.mock.calls[1][2]).toMatchObject({ OPENCODE_CONFIG_DIR: resolvePaths(home).opencodeConfig });
+    expect(open.mock.calls[1][2]).toMatchObject({
+      OPENCODE_CONFIG_DIR: resolvePaths(home).opencodeConfig,
+      OPENCODE_CLI_CONFIG_CONTENT: '{"tabs":{"mode":"off"}}',
+    });
   });
 
   it("starts character shells on Claude Code's fullscreen renderer unless its settings pick one", async () => {

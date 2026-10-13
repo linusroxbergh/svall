@@ -385,12 +385,14 @@ export class Fleet extends EventEmitter<Events> {
     // only where OpenCode is, as for the plugin: a config folder made here would pass for an install
     if (!(this.deps.config.integrations?.includes('opencode') ?? true) || !(this.deps.agentsFound?.includes('opencode') || fs.existsSync(o.dir))) return {};
     const { opencodeConfig, opencodeReplaced } = this.deps.paths;
+    // every TUI in a directory shares one live tab strip, so a character's OpenCode shows only its own session
+    const tabsOff = { OPENCODE_CLI_CONFIG_CONTENT: '{"tabs":{"mode":"off"}}' };
     try {
       for (const f of linkOpencodeConfig(opencodeConfig, o, opencodeReplaced)) this.deps.log.error(`opencode config: ${f}`);
-      return { OPENCODE_CONFIG_DIR: opencodeConfig };
+      return { ...tabsOff, OPENCODE_CONFIG_DIR: opencodeConfig };
     } catch (e) {
       this.deps.log.error(`opencode config: ${(e as Error).message}`);
-      return {};
+      return tabsOff;
     }
   }
 
