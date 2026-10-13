@@ -10,7 +10,7 @@ import { cwdChoices } from '../src/mobile/choices.js';
 import { islandCwd } from '../src/selectors.js';
 import { disablePush, enablePush, keyBytes, needsInstall, readPush, sameApplicationServerKey, setPushStatuses, subscriptionParams } from '../src/mobile/push.js';
 import { dragOffset, isSwipe, REVEAL, settle } from '../src/mobile/swipe.js';
-import { dragToScroll, holdScroll, lineSteps, type TouchSurface } from '../src/mobile/scroll.js';
+import { dragToScroll, holdScroll, lineSteps, scrollTerm, withoutClicks, type TouchSurface } from '../src/mobile/scroll.js';
 
 type TermEvent = Extract<Event, { event: `term.${string}` }>;
 
@@ -422,28 +422,89 @@ describe('phone terminal scrolling', () => {
   });
 });
 
+describe('a drag on either screen', () => {
+  function term(type: 'normal' | 'alternate', mouseTrackingMode: 'none' | 'x10' | 'vt200' | 'drag' | 'any' = 'any') {
+    const wheels: { deltaY: number; deltaMode: number; clientX: number; clientY: number }[] = [];
+    const scrolled: number[] = [];
+    const element = {
+      getBoundingClientRect: () => ({ left: 10, top: 20, width: 200, height: 100 }) as DOMRect,
+      dispatchEvent: (e: unknown) => { wheels.push(e as (typeof wheels)[number]); return true; },
+    };
+    const t = { element, buffer: { active: { type } }, modes: { mouseTrackingMode }, scrollLines: (n: number) => { scrolled.push(n); } };
+    return { t, wheels, scrolled };
+  }
+  class FakeWheel {
+    static DOM_DELTA_LINE = 1;
+    constructor(readonly type: string, init: Record<string, number>) { Object.assign(this, init); }
+  }
+
+  it('scrolls the normal screen through its own scrollback', () => {
+    const { t, wheels, scrolled } = term('normal');
+    scrollTerm(t, -3);
+    expect(scrolled).toEqual([-3]);
+    expect(wheels).toEqual([]);
+  });
+
+  it("hands the alternate screen's app one wheel step per line, at the middle of the terminal", () => {
+    vi.stubGlobal('WheelEvent', FakeWheel);
+    try {
+      const { t, wheels, scrolled } = term('alternate');
+      scrollTerm(t, -2);
+      scrollTerm(t, 1);
+      expect(scrolled).toEqual([]);
+      expect(wheels.map((w) => [w.deltaY, w.deltaMode, w.clientX, w.clientY])).toEqual([[-1, 1, 110, 70], [-1, 1, 110, 70], [1, 1, 110, 70]]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('leaves an alternate-screen app that takes no wheel alone, where xterm would type arrow keys into it', () => {
+    vi.stubGlobal('WheelEvent', FakeWheel);
+    try {
+      for (const mode of ['none', 'x10'] as const) {
+        const { t, wheels, scrolled } = term('alternate', mode);
+        scrollTerm(t, -2);
+        expect(wheels).toEqual([]);
+        expect(scrolled).toEqual([]);
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('a tap on a terminal tracking the mouse', () => {
+  it('reaches the app as nothing, while wheel steps and keys go through', () => {
+    const wheel = '\x1b[<64;10;5M\x1b[<65;10;5M\x1b[<81;10;5M';
+    expect(withoutClicks(`\x1b[<0;10;5M\x1b[<0;10;5m${wheel}\x1b[<35;11;5M\x1b[<2;1;1M`)).toBe(wheel);
+    expect(withoutClicks('\x1b[Aa\r')).toBe('\x1b[Aa\r');
+  });
+});
+
 describe('holding the place across a repaint', () => {
   function term() {
     let baseY = 0;
     let viewportY = 0;
     const queued: (() => void)[] = [];
     const scrolled: number[] = [];
+    const written: (Uint8Array | string)[] = [];
     const t = {
       buffer: { active: { get baseY() { return baseY; }, get viewportY() { return viewportY; } } },
-      write: (_b: Uint8Array, done: () => void) => { queued.push(done); },
-      reset: () => { baseY = 0; viewportY = 0; },
+      write: (data: Uint8Array | string, done?: () => void) => { written.push(data); if (done) queued.push(done); },
       scrollLines: (n: number) => { scrolled.push(n); viewportY += n; },
     };
-    return { t, scrolled, at: (b: number, v: number) => { baseY = b; viewportY = v; }, flush: () => { for (const d of queued.splice(0)) d(); } };
+    return { t, scrolled, written, at: (b: number, v: number) => { baseY = b; viewportY = v; }, flush: () => { for (const d of queued.splice(0)) d(); } };
   }
   const bytes = new Uint8Array();
 
   it('puts a reader back the same distance from the bottom once the repaint is parsed', () => {
-    const { t, scrolled, at, flush } = term();
+    const { t, scrolled, written, at, flush } = term();
     const screen = holdScroll(t);
     at(100, 95);
     screen.reset();
     screen.write(bytes);
+    // the reset goes in the write queue, behind output still waiting to be parsed
+    expect(written).toEqual(['\x1bc', bytes]);
     expect(scrolled).toEqual([]);
     flush();
     expect(scrolled).toEqual([-5]);

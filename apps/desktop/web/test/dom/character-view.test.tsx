@@ -16,17 +16,25 @@ vi.mock('../../src/mobile/boot.js', () => ({
 }));
 // xterm measures a real screen; the pane under test is the ask, not the terminal
 const open = vi.fn(() => Promise.resolve());
+const input = vi.fn();
 vi.mock('../../src/mobile/term.js', () => ({
-  linkTerminal: () => ({ input: () => {}, resize: () => {}, open: () => open(), close: () => {} }),
+  linkTerminal: () => ({ input: (d: string) => input(d), resize: () => {}, open: () => open(), close: () => {} }),
 }));
+// the last terminal the view made, on the alternate screen of an app tracking the mouse
+let xterm: { element: HTMLElement; typed(d: string): void };
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
     cols = 80;
     rows = 24;
     options: Record<string, unknown> = {};
+    buffer = { active: { type: 'alternate' } };
+    modes = { mouseTrackingMode: 'any' };
+    element = document.createElement('div');
+    typed: (d: string) => void = () => {};
+    constructor() { xterm = this; }
     loadAddon(): void {}
-    open(): void {}
-    onData(): void {}
+    open(host: HTMLElement): void { host.append(this.element); }
+    onData(h: (d: string) => void): void { this.typed = h; }
     scrollLines(): void {}
     scrollToBottom(): void {}
     dispose(): void {}
@@ -49,6 +57,7 @@ beforeEach(() => {
   call.mockClear();
   fire.mockClear();
   open.mockClear();
+  input.mockClear();
   sessionStorage.clear();
   store = createAppStore();
   setAppStore(store);
@@ -258,4 +267,27 @@ test('a portrait resolves from the root on a page opened at a character', () => 
   } finally {
     document.head.innerHTML = head;
   }
+});
+
+test('a drag over an app on the alternate screen wheels it, and a tap reaches it as nothing', async () => {
+  store.getState().setFleet(fleet());
+  const { container } = render(<CharacterView id="c2" onBack={() => {}} />);
+  const wheels: number[] = [];
+  xterm.element.addEventListener('wheel', (e) => { wheels.push(e.deltaY); });
+  const touch = (type: string, clientY: number) => {
+    const e = new Event(type, { cancelable: true });
+    Object.defineProperty(e, 'touches', { value: [{ clientY }] });
+    container.querySelector('.screen')!.dispatchEvent(e);
+  };
+  // two 16px lines up the screen
+  touch('touchstart', 100);
+  touch('touchmove', 68);
+  expect(wheels).toEqual([1, 1]);
+
+  xterm.typed('\x1b[<0;3;3M');
+  xterm.typed('\x1b[<0;3;3m');
+  xterm.typed('\x1b[<65;3;3M');
+  xterm.typed('\x1b[<65;3;3M');
+  await Promise.resolve();
+  expect(input.mock.calls).toEqual([['\x1b[<65;3;3M\x1b[<65;3;3M']]);
 });

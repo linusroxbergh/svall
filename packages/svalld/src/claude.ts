@@ -31,6 +31,15 @@ export function characterKeyEnv(file: string): Record<string, string> {
     .map((key) => [key, values[key]]));
 }
 
+// Claude Code's classic renderer erases its screen row by row, which tmux never keeps as history, so a resize loses what
+// was on screen; the fullscreen one keeps its own. Set only without a `tui` setting, which the variable would override
+export function rendererEnv(settingsFile: string): Record<string, string> {
+  try {
+    if ((JSON.parse(fs.readFileSync(settingsFile, 'utf8')) as { tui?: unknown } | null)?.tui !== undefined) return {};
+  } catch { /* no settings file, or one Claude Code cannot read either */ }
+  return { CLAUDE_CODE_NO_FLICKER: '1' };
+}
+
 // cwd is an empty folder so no project settings or CLAUDE.md load; without a character id the
 // Svall hook exits at once, so the pass is not mistaken for a character. launchd gives the
 // daemon no shell environment, so an API key reaches the child through envFile

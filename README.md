@@ -374,6 +374,11 @@ Its `config.json` takes:
 - The daemon runs under launchd, without your shell's environment. The fleet's
   `.env` gives the Claude scribe every value in it, and gives new character
   shells only `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`.
+- Character shells start Claude Code in its fullscreen renderer
+  (`CLAUDE_CODE_NO_FLICKER=1`), which keeps its own scrollback through a resize,
+  even where Claude Code turned fullscreen off after failed starts. A `tui` key
+  in your Claude Code `settings.json`, such as `"tui": "default"`, keeps the
+  renderer it names.
 
 ### Codex
 

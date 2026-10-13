@@ -59,6 +59,32 @@ export function parseScreen(out: string): Screen {
   return { rows, ...(shown === '1' && { cursor: Number(y) }), command: command.join(' ') };
 }
 
+// what `viewerScreen` asks tmux for ahead of the rows; the mouse flags in the order of MOUSE_MODES
+const VIEWER_HEAD = '#{alternate_on} #{history_size} #{pane_height} #{cursor_x} #{cursor_y} #{cursor_flag} #{alternate_saved_x} #{alternate_saved_y} #{mouse_standard_flag} #{mouse_button_flag} #{mouse_all_flag} #{mouse_sgr_flag}';
+const MOUSE_MODES = [1000, 1002, 1003, 1006];
+
+const cup = (row: number, col: number) => `\x1b[${row + 1};${col + 1}H`;
+
+/**
+ * A viewer's first screen. capture-pane carries no modes, so the cursor and mouse modes follow the rows, and a pane on the
+ * alternate screen goes as both screens: its wheel then reaches the app, and leaving it shows what tmux restores.
+ */
+export function parseViewerScreen(out: string, lines: number): Buffer {
+  const [head = '', ...rows] = out.replace(/\n$/, '').split('\n');
+  const [alt, history, height, x, y, shown, savedX, savedY, ...mouse] = head.split(' ').map(Number);
+  // the history and the screen; on the alternate screen the rest is the normal screen tmux saved
+  const captured = rows.splice(0, Math.min(lines, history) + height);
+  let screen = captured.join('\r\n');
+  if (alt) {
+    const normal = [...captured.slice(0, -height), ...rows];
+    // a saved screen taller or shorter than the pane loses or gains rows at the top, as tmux's does on the way back
+    const row = normal.length - rows.length + savedY - Math.max(0, normal.length - height);
+    screen = `${normal.join('\r\n')}${cup(row, savedX)}\x1b[?1049h\x1b[H${captured.slice(-height).join('\r\n')}`;
+  }
+  const modes = MOUSE_MODES.filter((_, i) => mouse[i] === 1).map((m) => `\x1b[?${m}h`).join('');
+  return Buffer.from(`${screen}${cup(y, x)}${modes}${shown ? '' : '\x1b[?25l'}`, 'utf8');
+}
+
 export class Tmux {
   readonly binary = resolveTmux();
   private rawPaste?: Promise<string[]>;
@@ -185,9 +211,17 @@ export class Tmux {
     await this.run('set-option', '-w', '-u', '-t', windowId, 'window-size').catch(() => {});
   }
 
-  async capture(paneId: string, lines: number, escapes = false): Promise<Buffer> {
-    const out = await this.run('capture-pane', '-p', ...(escapes ? ['-e'] : []), '-t', paneId, '-S', `-${lines}`);
+  async capture(paneId: string, lines: number): Promise<Buffer> {
+    const out = await this.run('capture-pane', '-p', '-t', paneId, '-S', `-${lines}`);
     return Buffer.from(out.replace(/\n$/, '').replace(/\n/g, '\r\n'), 'utf8');
+  }
+
+  async viewerScreen(paneId: string, lines: number): Promise<Buffer> {
+    return parseViewerScreen(await this.run(
+      'display', '-p', '-t', paneId, VIEWER_HEAD, ';',
+      'capture-pane', '-p', '-e', '-t', paneId, '-S', `-${lines}`, ';',
+      'capture-pane', '-p', '-e', '-a', '-q', '-t', paneId,
+    ), lines);
   }
 
   async screen(paneId: string): Promise<Screen> {

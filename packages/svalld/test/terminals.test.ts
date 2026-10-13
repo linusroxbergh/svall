@@ -74,12 +74,16 @@ runIf('TerminalHub', () => {
     await waitFor(() => v.events.some((e) => e.event === 'term.resync'));
   });
 
-  it('resyncs open terminals after a control reset', async () => {
-    const { hub, fleet, c } = await boot();
+  it('resyncs open terminals after a control reset, an app on the alternate screen as that screen', async () => {
+    const { hub, fleet, tmux, c } = await boot();
     const v = viewer();
     await hub.open(c.id, 80, 24, 2000, v);
+    await hub.input(c.id, Buffer.from("printf '\\033[?1049h\\033[?1006h\\033[HALT' && sleep 30\n"));
+    await waitFor(async () => (await tmux.run('display', '-p', '-t', c.tmux!.paneId, '#{alternate_on}')).trim() === '1');
     fleet.emit('control-reset');
     await waitFor(() => v.events.some((e) => e.event === 'term.resync'));
+    const resync = v.events.find((e) => e.event === 'term.resync')!.data as { screen: string };
+    expect(Buffer.from(resync.screen, 'base64').toString()).toMatch(/\x1b\[\?1049h\x1b\[HALT.*\x1b\[\?1006h$/s);
   });
 
   it('keeps typed bytes in order when every key arrives as its own call', async () => {
@@ -113,9 +117,9 @@ runIf('TerminalHub', () => {
 
   it('seeds the scrollback the caller asked for', async () => {
     const { hub, tmux, c } = await boot();
-    const capture = vi.spyOn(tmux, 'capture');
+    const seed = vi.spyOn(tmux, 'viewerScreen');
     await hub.open(c.id, 100, 30, 120, viewer());
-    expect(capture).toHaveBeenCalledWith(c.tmux!.paneId, 120, true);
+    expect(seed).toHaveBeenCalledWith(c.tmux!.paneId, 120);
   });
 
   it('lets a phone size the window a desktop terminal is attached to, and an app yield to it', async () => {
@@ -168,9 +172,9 @@ runIf('TerminalHub', () => {
     const b = viewer(0, 'phone');
     await hub.open(c.id, 40, 20, 10, a);
     let release!: () => void;
-    const capture = vi.spyOn(tmux, 'capture').mockImplementationOnce(async () => { await new Promise<void>((r) => { release = r; }); return Buffer.from(''); });
+    const seed = vi.spyOn(tmux, 'viewerScreen').mockImplementationOnce(async () => { await new Promise<void>((r) => { release = r; }); return Buffer.from(''); });
     const opening = hub.open(c.id, 30, 15, 10, b);
-    await waitFor(() => capture.mock.calls.length === 1);
+    await waitFor(() => seed.mock.calls.length === 1);
     hub.closeAll(b);
     release();
     await expect(opening).rejects.toThrow(/closed while opening/);
