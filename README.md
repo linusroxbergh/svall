@@ -397,7 +397,9 @@ turns OpenCode's shared background server off, so a plain `opencode` reports
 too. A setting OpenCode saves there moves to `~/.config/opencode` when the next
 character window opens, and the copy it replaces, or the older one when yours
 is newer, is kept in `~/.svall/opencode-config-replaced`. Run `opencode service`
-and `opencode pair` outside a character.
+and `opencode pair` outside a character. Session tabs are off in a character,
+since every OpenCode in a folder shares one tab strip; `/sessions` still
+switches.
 
 ## What setup changes
 
