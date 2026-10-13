@@ -168,13 +168,6 @@
   padding:0 calc(var(--tok)*.20);
   background:linear-gradient(color-mix(in srgb, var(--card-tint) 10%, transparent),color-mix(in srgb, var(--card-tint) 17%, transparent));
   box-shadow:inset 0 1px 0 color-mix(in srgb, var(--card-tint) 24%, transparent)}
-.tok .foot .pips{display:inline-flex;gap:calc(var(--tok)*.08)}
-.tok .foot .pip{width:calc(var(--tok)*.17);height:calc(var(--tok)*.17);border-radius:50%;background:var(--shell-dim);
-  box-shadow:0 0 0 1.5px color-mix(in srgb, var(--ink-land) 28%, transparent)}
-.tok .foot .pip[data-status=working]{background:var(--working)}
-.tok .foot .pip[data-status=blocked]{background:var(--blocked)}
-.tok .foot .pip[data-status=done]{background:var(--done)}
-.tok .foot .pip[data-status=idle]{background:var(--idle)}
 .tok .foot .sw{font-size:calc(var(--tok)*.225);font-weight:var(--w-bold);letter-spacing:var(--track-caps);
   text-transform:uppercase;padding:calc(var(--tok)*.02) calc(var(--tok)*.13);
   border-radius:var(--r-xs)}
@@ -184,16 +177,13 @@
   background-image:linear-gradient(105deg, transparent 38%, color-mix(in srgb, var(--cream) 42%, transparent) 50%, transparent 62%);
   animation:sheen var(--sheen) ease-in-out infinite}
 @keyframes sheen{0%{background-position:100% 0}32%,100%{background-position:0 0}}
-/* a second agent's pips leave the word less room */
-.tok .foot:has(.pips){padding:0 calc(var(--tok)*.12)}
-.tok .foot .pips ~ .sw{letter-spacing:var(--track-loose)}
 .tok button.foot{border:0;border-radius:0;font:inherit;color:inherit;text-align:inherit;cursor:pointer;
   transition:background var(--dur) var(--ease)}
 .tok button.foot:hover{background:linear-gradient(color-mix(in srgb, var(--card-tint) 6%, transparent),color-mix(in srgb, var(--card-tint) 10%, transparent))}
 .tok .foot .tg{flex:none;width:calc(var(--tok)*.30);height:calc(var(--tok)*.27);
   color:color-mix(in srgb, var(--ink-land) 55%, transparent);transition:color var(--dur) var(--ease)}
 .tok button.foot:hover .tg{color:var(--ink-land)}
-/* a footer with neither pips nor a status word still keeps its toggle on the right */
+/* a footer with no status word still keeps its toggle on the right */
 .tok .foot .tg:only-child{margin-left:auto}
 
 /* the rail hangs half off the right edge and centres on the card body above the foot */

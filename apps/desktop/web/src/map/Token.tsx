@@ -1,7 +1,7 @@
 import type { Cell, Character, ContextItem } from '@svall/protocol';
 import { memoByValue } from '../hooks.js';
 import { BotGlyph, EyeGlyph, PrGlyph, reviewText, subagentsText } from '../indicators.js';
-import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, slotStatus, subagentCount, type DisplayStatus } from '../selectors.js';
+import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, subagentCount, type DisplayStatus } from '../selectors.js';
 import { LinkIcon } from './LinkIcon.js';
 import { Robot } from './Robot.js';
 import { portraitTint, portraitUrl, robotOf } from '../portraits.js';
@@ -15,11 +15,6 @@ const RAIL_MAX = 3;
 function footInner(c: Character, status: DisplayStatus, word: string | undefined) {
   return (
     <>
-      {c.second && (
-        <span className="pips" data-testid={`token-pips-${c.id}`}>
-          <i className="pip" data-status={slotStatus(c, 1)} /><i className="pip" data-status={slotStatus(c, 2)} />
-        </span>
-      )}
       {word && <span className="sw" data-status={status} style={{ backgroundColor: `var(--${status})`, color: `var(--ink-on-${status})` }}>{word}</span>}
       {c.hint && <span className="sw" data-testid={`token-hint-${c.id}`} title={hintText(c)} style={{ background: 'var(--blocked)', color: 'var(--ink-on-blocked)' }}>/hooks</span>}
     </>
