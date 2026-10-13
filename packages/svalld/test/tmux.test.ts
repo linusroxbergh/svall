@@ -54,13 +54,14 @@ describe('hasWindow', () => {
 });
 
 describe('parseViewerScreen', () => {
-  it('passes the normal screen through with its history, as rows a terminal can print', () => {
-    expect(parseViewerScreen('0 3 0 2 0 0 0 0 0\nold\none\ntwo\n').toString()).toBe('old\r\none\r\ntwo');
+  it('passes the normal screen through with its history, as rows a terminal can print, and the cursor where it is', () => {
+    expect(parseViewerScreen('0 1 2 4 1 1 0 0 0 0 0 0\nold\none\ntwo\n', 100).toString()).toBe('old\r\none\r\ntwo\x1b[2;5H');
   });
 
-  it('opens the alternate screen with the mouse modes the app asked for, its own rows only, and the cursor where it is', () => {
-    const out = parseViewerScreen('1 2 4 1 0 0 1 0 1\nshell history\nALT1\nALT2\n').toString();
-    expect(out).toBe('\x1b[?1049h\x1b[?1003h\x1b[?1006hALT1\r\nALT2\x1b[2;5H');
+  it('puts the history and the saved screen under an alternate screen, then the cursor, mouse modes and hidden cursor', () => {
+    // asked for one line of four, two rows high, with a saved screen of two rows whose cursor sat on its second
+    const out = parseViewerScreen('1 4 2 4 1 0 3 1 0 0 1 1\nh4\nALT1\nALT2\nprompt$\nls\n', 1).toString();
+    expect(out).toBe('h4\r\nprompt$\r\nls\x1b[2;4H\x1b[?1049h\x1b[HALT1\r\nALT2\x1b[2;5H\x1b[?1003h\x1b[?1006h\x1b[?25l');
   });
 });
 
@@ -135,16 +136,19 @@ runIf('Tmux', () => {
     await expect(t.sendBytes(paneId, Buffer.alloc(1_000_000, 'a'))).rejects.toThrow();
   });
 
-  it('hands a viewer an app on the alternate screen as that screen, with its mouse modes', async () => {
+  it('hands a viewer both screens of an app on the alternate screen, with its mouse modes and cursor', async () => {
     const t = await boot();
     const w = await t.newWindow('c_alt', '/tmp', {});
-    await t.sendLine(w.paneId, "seq 1 200 && printf '\\033[?1049h\\033[?1003h\\033[?1006h\\033[HALT' && sleep 30", true);
+    await t.sendLine(w.paneId, "seq 1 200 && printf '\\033[?1049h\\033[?1002h\\033[?1006h\\033[?25l\\033[HALT' && sleep 30", true);
     await waitFor(async () => (await t.run('display', '-p', '-t', w.paneId, '#{alternate_on}')).trim() === '1');
-    const out = (await t.viewerScreen(w.paneId, 100)).toString();
-    expect(out.startsWith('\x1b[?1049h\x1b[?1003h\x1b[?1006h')).toBe(true);
-    expect(out).toContain('ALT');
-    expect(out).not.toContain('199');
-    expect(out.match(/\r\n/g)).toHaveLength(Number((await t.run('display', '-p', '-t', w.paneId, '#{pane_height}')).trim()) - 1);
+    const [normal, alt] = (await t.viewerScreen(w.paneId, 100)).toString().split('\x1b[?1049h\x1b[H');
+    // 1–161 scrolled into history before the app started, and 162–200 were on the screen tmux saved
+    expect(normal).toContain('150');
+    expect(normal).toContain('200');
+    expect(alt).not.toContain('150');
+    expect(alt.startsWith('ALT')).toBe(true);
+    expect(alt.endsWith('\x1b[1;4H\x1b[?1002h\x1b[?1006h\x1b[?25l')).toBe(true);
+    expect(alt.match(/\r\n/g)).toHaveLength(Number((await t.run('display', '-p', '-t', w.paneId, '#{pane_height}')).trim()) - 1);
   });
 
   it('hands a pane every byte it is sent, control bytes included', async () => {

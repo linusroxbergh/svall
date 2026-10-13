@@ -3,8 +3,7 @@ export type TouchSurface = Pick<HTMLElement, 'addEventListener' | 'removeEventLi
 /** The terminal a repaint scrolls back: enough of xterm to hold a reader's place. */
 export type HeldTerm = {
   readonly buffer: { readonly active: { readonly baseY: number; readonly viewportY: number } };
-  write(bytes: Uint8Array, done: () => void): void;
-  reset(): void;
+  write(data: Uint8Array | string, done?: () => void): void;
   scrollLines(n: number): void;
 };
 
@@ -33,7 +32,8 @@ export function holdScroll(term: HeldTerm): { write(bytes: Uint8Array): void; re
   let held = 0;
   return {
     write: (b) => { const back = held; held = 0; term.write(b, () => { if (back) term.scrollLines(-back); }); },
-    reset: () => { held = term.buffer.active.baseY - term.buffer.active.viewportY; term.reset(); },
+    // ESC c rather than reset(), so output still queued ahead of the repaint is cleared with the rest
+    reset: () => { held = term.buffer.active.baseY - term.buffer.active.viewportY; term.write('\x1bc'); },
   };
 }
 
@@ -41,21 +41,34 @@ export function holdScroll(term: HeldTerm): { write(bytes: Uint8Array): void; re
 export type DraggedTerm = {
   readonly element?: Pick<HTMLElement, 'getBoundingClientRect' | 'dispatchEvent'>;
   readonly buffer: { readonly active: { readonly type: 'normal' | 'alternate' } };
+  readonly modes: { readonly mouseTrackingMode: 'none' | 'x10' | 'vt200' | 'drag' | 'any' };
   scrollLines(n: number): void;
 };
 
+// the mouse tracking xterm reports a wheel step in; without it, xterm types an arrow key for one
+const WHEELED = ['vt200', 'drag', 'any'];
+
 /**
  * On the alternate screen the app keeps the scrollback, so each line goes to it as a wheel step, which xterm reports
- * the way the app asked for mouse input, as a desktop terminal hands it the wheel.
+ * the way the app asked for mouse input, as a desktop terminal hands it the wheel. An app that takes no wheel gets nothing.
  */
 export function scrollTerm(term: DraggedTerm, n: number): void {
   const el = term.element;
   if (term.buffer.active.type !== 'alternate' || !el) { term.scrollLines(n); return; }
+  if (!WHEELED.includes(term.modes.mouseTrackingMode)) return;
   const r = el.getBoundingClientRect();
   const at = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
   for (let i = 0; i < Math.abs(n); i++) {
     el.dispatchEvent(new WheelEvent('wheel', { ...at, deltaY: Math.sign(n), deltaMode: WheelEvent.DOM_DELTA_LINE, bubbles: true, cancelable: true }));
   }
+}
+
+/**
+ * A tap reaches xterm as a click, which an app tracking the mouse acts on, a Claude Code dialog option among them, so of
+ * the SGR mouse reports only wheel steps go through: buttons 64–67, plus the modifier bits 4, 8 and 16.
+ */
+export function withoutClicks(data: string): string {
+  return data.replace(/\x1b\[<(\d+);\d+;\d+[Mm]/g, (report, button: string) => ((Number(button) & ~31) === 64 ? report : ''));
 }
 
 /**

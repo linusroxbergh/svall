@@ -120,6 +120,21 @@ runIf('Fleet', () => {
     expect(open.mock.calls[1][2]).toMatchObject({ OPENCODE_CONFIG_DIR: resolvePaths(home).opencodeConfig });
   });
 
+  it("starts character shells on Claude Code's fullscreen renderer unless its settings pick one", async () => {
+    const { fleet, tmux, home } = await boot();
+    vi.stubEnv('CLAUDE_CONFIG_DIR', path.join(home, 'claude'));
+    cleanup.push(async () => { vi.unstubAllEnvs(); });
+    const open = vi.spyOn(tmux, 'newWindow');
+    const island = fleet.createIsland({ name: 'tui' });
+    await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
+    expect(open.mock.calls[0][2]).toMatchObject({ CLAUDE_CODE_NO_FLICKER: '1' });
+
+    fs.mkdirSync(path.join(home, 'claude'));
+    fs.writeFileSync(path.join(home, 'claude/settings.json'), '{"tui":"default"}');
+    await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
+    expect(open.mock.calls[1][2]).not.toHaveProperty('CLAUDE_CODE_NO_FLICKER');
+  });
+
   it('opens one second terminal beside the main one, and ends it with its shell or with the character', async () => {
     const { fleet, store, tmux } = await boot();
     const island = fleet.createIsland({ name: 'pair' });

@@ -60,21 +60,29 @@ export function parseScreen(out: string): Screen {
 }
 
 // what `viewerScreen` asks tmux for ahead of the rows; the mouse flags in the order of MOUSE_MODES
-const VIEWER_HEAD = '#{alternate_on} #{pane_height} #{cursor_x} #{cursor_y} #{mouse_standard_flag} #{mouse_button_flag} #{mouse_all_flag} #{mouse_utf8_flag} #{mouse_sgr_flag}';
-const MOUSE_MODES = [1000, 1002, 1003, 1005, 1006];
+const VIEWER_HEAD = '#{alternate_on} #{history_size} #{pane_height} #{cursor_x} #{cursor_y} #{cursor_flag} #{alternate_saved_x} #{alternate_saved_y} #{mouse_standard_flag} #{mouse_button_flag} #{mouse_all_flag} #{mouse_sgr_flag}';
+const MOUSE_MODES = [1000, 1002, 1003, 1006];
+
+const cup = (row: number, col: number) => `\x1b[${row + 1};${col + 1}H`;
 
 /**
- * A viewer's first screen. capture-pane carries no modes, so a pane on the alternate screen goes as that screen with its
- * mouse modes and cursor: the viewer's terminal then hands its wheel to the app, which keeps its own scrollback.
+ * A viewer's first screen. capture-pane carries no modes, so the cursor and mouse modes follow the rows, and a pane on the
+ * alternate screen goes as both screens: its wheel then reaches the app, and leaving it shows what tmux restores.
  */
-export function parseViewerScreen(out: string): Buffer {
+export function parseViewerScreen(out: string, lines: number): Buffer {
   const [head = '', ...rows] = out.replace(/\n$/, '').split('\n');
-  const [alt, height, x, y, ...mouse] = head.split(' ');
-  if (alt !== '1') return Buffer.from(rows.join('\r\n'), 'utf8');
-  const modes = MOUSE_MODES.filter((_, i) => mouse[i] === '1').map((m) => `\x1b[?${m}h`).join('');
-  // capture-pane puts the normal screen's history ahead of the alternate screen's rows
-  const screen = rows.slice(-Number(height)).join('\r\n');
-  return Buffer.from(`\x1b[?1049h${modes}${screen}\x1b[${Number(y) + 1};${Number(x) + 1}H`, 'utf8');
+  const [alt, history, height, x, y, shown, savedX, savedY, ...mouse] = head.split(' ').map(Number);
+  // the history and the screen; on the alternate screen the rest is the normal screen tmux saved
+  const captured = rows.splice(0, Math.min(lines, history) + height);
+  let screen = captured.join('\r\n');
+  if (alt) {
+    const normal = [...captured.slice(0, -height), ...rows];
+    // a saved screen taller or shorter than the pane loses or gains rows at the top, as tmux's does on the way back
+    const row = normal.length - rows.length + savedY - Math.max(0, normal.length - height);
+    screen = `${normal.join('\r\n')}${cup(row, savedX)}\x1b[?1049h\x1b[H${captured.slice(-height).join('\r\n')}`;
+  }
+  const modes = MOUSE_MODES.filter((_, i) => mouse[i] === 1).map((m) => `\x1b[?${m}h`).join('');
+  return Buffer.from(`${screen}${cup(y, x)}${modes}${shown ? '' : '\x1b[?25l'}`, 'utf8');
 }
 
 export class Tmux {
@@ -209,7 +217,11 @@ export class Tmux {
   }
 
   async viewerScreen(paneId: string, lines: number): Promise<Buffer> {
-    return parseViewerScreen(await this.run('display', '-p', '-t', paneId, VIEWER_HEAD, ';', 'capture-pane', '-p', '-e', '-t', paneId, '-S', `-${lines}`));
+    return parseViewerScreen(await this.run(
+      'display', '-p', '-t', paneId, VIEWER_HEAD, ';',
+      'capture-pane', '-p', '-e', '-t', paneId, '-S', `-${lines}`, ';',
+      'capture-pane', '-p', '-e', '-a', '-q', '-t', paneId,
+    ), lines);
   }
 
   async screen(paneId: string): Promise<Screen> {
