@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import type { Agent } from '@svall/protocol';
 import { interruptedAt } from '../agent/claude-transcript.js';
+import { readComposer } from '../agent/composer.js';
 import { applyHook, type Slot } from '../agent/reducer.js';
 import { readTail } from '../agent/transcript.js';
 import type { Config } from '../config.js';
@@ -114,6 +115,7 @@ export class Poll {
         if (second && this.interrupted(secondName(c.id), second.agent)) d.characters[c.id].second = interrupt(c.id, second);
       }
     });
+    await this.dialogsGone();
     this.ticks++;
     // the fleet's links are looked at a slice per tick, so the whole crew never spawns git and gh in the same breath
     const awake = Object.values(this.deps.store.state.characters).filter((c) => c.tmux).map((c) => c.id);
@@ -130,6 +132,27 @@ export class Poll {
     if (this.ticks % 10 === 0) await this.sweepViewerSessions();
     // ending an agent waits up to a minute for it to exit, which the next poll does not
     if (this.ticks % DORMANCY_EVERY === 0) this.deps.endIdleAgents().catch((e) => this.deps.log.error(`dormancy: ${String(e)}`));
+  }
+
+  // Claude Code fires no hook when its dialog is answered until the tool it asked about ends, which a long command
+  // runs on for minutes; the prompt line back in view and empty says the dialog is gone. A field of the dialog's own reads as a draft
+  private async dialogsGone(): Promise<void> {
+    const asking = Object.values(this.deps.store.state.characters).flatMap((c) => [c, c.second].flatMap((t, i) => {
+      const a = t?.agent;
+      return t?.tmux && a?.kind === 'claude' && a.status === 'blocked' && !a.asking ? [{ id: c.id, second: i === 1, paneId: t.tmux.paneId, promptId: a.promptId }] : [];
+    }));
+    for (const q of asking) {
+      const screen = await this.deps.tmux.screen(q.paneId).catch(() => undefined);
+      if (!screen || isShellCommand(screen.command, this.deps.config.shell) || readComposer('claude', screen) !== 'empty') continue;
+      this.deps.store.update((d) => {
+        const t = q.second ? d.characters[q.id]?.second : d.characters[q.id];
+        const a = t?.agent;
+        if (t?.tmux?.paneId !== q.paneId || a?.status !== 'blocked' || a.promptId !== q.promptId || a.asking) return;
+        a.status = 'working';
+        delete a.prompt;
+        delete a.promptId;
+      });
+    }
   }
 
   // a desktop terminal that never attached leaves its v-<charId> session behind

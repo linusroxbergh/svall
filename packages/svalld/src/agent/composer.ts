@@ -7,6 +7,10 @@ export type Composer = 'empty' | 'draft' | 'hidden';
 // OpenCode draws its placeholder in the theme's muted colour, and only on its home screen
 const OPENCODE_PLACEHOLDER = /^(Ask anything|Run a command)… "/;
 
+/** The agent a pane runs, by the process name tmux reports for it: Claude Code's is its version. */
+export const agentInFront = (command: string): AgentKind | undefined =>
+  /^\d+\.\d+\.\d+$/.test(command) ? 'claude' : command === 'codex' || command === 'opencode' ? command : undefined;
+
 export function readComposer(kind: AgentKind, s: Screen): Composer {
   // all three hide the cursor while a dialog or a menu has the keys
   if (s.cursor === undefined) return 'hidden';
