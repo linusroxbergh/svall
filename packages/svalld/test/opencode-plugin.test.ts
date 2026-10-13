@@ -33,7 +33,7 @@ type Hook = (e: Record<string, unknown>) => Promise<void> | void;
 const fakeContext = (parents: Record<string, string> = {}) => {
   const hooks: Record<string, Hook> = {};
   const register = (domain: string) => vi.fn(async (name: string, cb: Hook) => { hooks[`${domain}.${name}`] = cb; return { dispose: async () => {} }; });
-  let pull: ((r: IteratorResult<unknown>) => void) | undefined;
+  let pull: { resolve: (r: IteratorResult<unknown>) => void; reject: (e: Error) => void } | undefined;
   let taken: (() => void) | undefined;
   const ctx = {
     location: { directory: '/repo' },
@@ -42,24 +42,37 @@ const fakeContext = (parents: Record<string, string> = {}) => {
       get: vi.fn(async ({ sessionID }: { sessionID: string }) => ({ id: sessionID, parentID: parents[sessionID] })),
       prompt: vi.fn(async () => ({})),
       command: vi.fn(async () => ({})),
+      // resolves once the session is idle
+      wait: vi.fn(async (_: { sessionID: string }) => {}),
     },
     tool: { hook: register('tool') },
+    permission: { list: vi.fn(async (_: { sessionID: string }): Promise<unknown[]> => []) },
     command: { list: vi.fn(async () => ({ data: [{ name: 'svall-status' }] })) },
     model: { list: vi.fn(async () => ({ data: [{ ...MODEL, limit: { context: 200_000 } }] })) },
     event: {
-      subscribe: () => ({
-        [Symbol.asyncIterator]: () => ({
-          next: () => { taken?.(); taken = undefined; return new Promise<IteratorResult<unknown>>((r) => { pull = r; }); },
-          return: async () => ({ done: true, value: undefined }),
-        }),
+      subscribe: vi.fn(({ signal }: { signal: AbortSignal }) => {
+        signal.addEventListener('abort', () => pull?.resolve({ done: true, value: undefined }));
+        return {
+          [Symbol.asyncIterator]: () => ({
+            next: () => { taken?.(); taken = undefined; return new Promise<IteratorResult<unknown>>((resolve, reject) => { pull = { resolve, reject }; }); },
+            return: async () => ({ done: true, value: undefined }),
+          }),
+        };
       }),
     },
   };
   const emit = async (type: string, properties: Record<string, unknown>) => {
     await waitFor(() => !!pull);
-    await new Promise<void>((r) => { taken = r; const p = pull!; pull = undefined; p({ done: false, value: { type, data: properties } }); });
+    await new Promise<void>((r) => { taken = r; const p = pull!; pull = undefined; p.resolve({ done: false, value: { type, data: properties } }); });
   };
-  return { ctx, hooks, emit };
+  // OpenCode fails the stream when it can't encode an event
+  const fail = async () => {
+    await waitFor(() => !!pull);
+    const p = pull!;
+    pull = undefined;
+    p.reject(new Error('encode'));
+  };
+  return { ctx, hooks, emit, fail };
 };
 const load = async (f = fakeContext()) => ({ ...f, cleanup: await (await import(PLUGIN)).default.setup(f.ctx) });
 const prompt = (h: Record<string, Hook>, sessionID: string, text = 'go') => h['session.prompt']({ sessionID, messageID: 'msg_u1', prompt: { text } });
@@ -292,6 +305,22 @@ describe('the OpenCode plugin', () => {
     for (const e of got.slice(1)) expect((e as { hook: Record<string, unknown> }).hook).toMatchObject({ sessionId: SID, agentId: CHILD });
   });
 
+  it("drops a subagent's open question when its run ends or its session is deleted, which OpenCode answers with nothing", async () => {
+    const { hooks: h, emit } = await load(fakeContext({ [CHILD]: SID }));
+    await emit('session.created', { sessionID: SID });
+    await emit('session.created', { sessionID: CHILD, parentID: SID });
+    await prompt(h, SID);
+    await emit('permission.asked', { id: 'per_1', sessionID: CHILD, action: 'shell', resources: ['ls'] });
+    await shown();
+    await emit('session.execution.interrupted', { sessionID: CHILD, reason: 'user' });
+    await shown();
+    await emit('form.created', { form: { id: 'frm_1', sessionID: CHILD, metadata: { kind: 'question' }, fields: [{ description: 'which file?' }] } });
+    await shown();
+    await emit('session.deleted', { sessionID: CHILD });
+    await waitFor(() => names().length >= 7);
+    expect(names()).toEqual(['SessionStart', 'UserPromptSubmit', 'PermissionRequest', 'SubagentStop', 'PreToolUse', 'PermissionRequest', 'PreToolUse']);
+  });
+
   it('holds the brief each prompt is answered with, an empty one included, and keeps it through a lost answer', async () => {
     const { hooks: h, emit } = await load();
     await emit('session.created', { sessionID: SID });
@@ -364,11 +393,114 @@ describe('the OpenCode plugin', () => {
     }
   });
 
-  it('says nothing when OpenCode unloads the plugin', async () => {
-    const { emit, cleanup } = await load();
+  it("hears what follows when OpenCode fails its event stream, and ends the turn that ended meanwhile", async () => {
+    const { ctx, hooks: h, emit, fail } = await load();
+    await emit('session.created', { sessionID: SID });
+    await prompt(h, SID);
+    await fail();
+    await waitFor(() => names().includes('Stop'));
+    expect(ctx.event.subscribe).toHaveBeenCalledTimes(2);
+    expect(ctx.session.wait).toHaveBeenCalledWith({ sessionID: SID });
+    await prompt(h, SID);
+    await emit('session.execution.succeeded', { sessionID: SID });
+    await waitFor(() => names().length >= 5);
+    expect(names()).toEqual(['SessionStart', 'UserPromptSubmit', 'Stop', 'UserPromptSubmit', 'Stop']);
+  });
+
+  it('reads back the permissions asked and answered while the stream was down, and leaves a running turn to the stream', async () => {
+    const f = fakeContext({ [CHILD]: SID });
+    let idle = () => {};
+    f.ctx.session.wait.mockImplementation(() => new Promise<void>((r) => { idle = r; }));
+    const { hooks: h, emit, fail } = await load(f);
+    await emit('session.created', { sessionID: SID });
+    await emit('session.created', { sessionID: CHILD, parentID: SID });
+    await prompt(h, SID);
+    await emit('permission.asked', { id: 'per_1', sessionID: SID, action: 'shell', resources: ['ls'] });
+    await shown();
+    // meanwhile per_1 was answered and the subagent asked another
+    f.ctx.permission.list.mockImplementation(async ({ sessionID }) => (sessionID === CHILD ? [{ id: 'per_2', sessionID: CHILD, action: 'shell', resources: ['rm -rf build'] }] : []));
+    await fail();
+    await waitFor(() => names().length >= 4);
+    // OpenCode may say the session is idle before the stream says the turn ended
+    idle();
+    await emit('session.execution.succeeded', { sessionID: SID });
+    await waitFor(() => names().includes('Stop'));
+    await shown();
+    expect(names()).toEqual(['SessionStart', 'UserPromptSubmit', 'PermissionRequest', 'PermissionRequest', 'Stop']);
+    expect((got[3] as { hook: Record<string, unknown> }).hook).toMatchObject({ sessionId: SID, message: 'rm -rf build' });
+  });
+
+  it('leaves a turn prompted during a resync running, though the session read idle before it', async () => {
+    const f = fakeContext();
+    const { hooks: h, emit, fail } = await load(f);
+    await emit('session.created', { sessionID: SID });
+    await prompt(h, SID);
+    await fail();
+    await waitFor(() => f.ctx.session.wait.mock.calls.length === 1);
+    await prompt(h, SID, 'next');
+    await shown();
+    expect(names()).toEqual(['SessionStart', 'UserPromptSubmit', 'UserPromptSubmit']);
+  });
+
+  it("doesn't let the permission list a resync reads undo what the stream said meanwhile", async () => {
+    const f = fakeContext();
+    f.ctx.session.wait.mockImplementation(() => new Promise<void>(() => {}));
+    const { hooks: h, emit, fail } = await load(f);
+    await emit('session.created', { sessionID: SID });
+    await prompt(h, SID);
+    await emit('permission.asked', { id: 'per_1', sessionID: SID, action: 'shell', resources: ['ls'] });
+    await shown();
+    let answer = (_: unknown[]) => {};
+    f.ctx.permission.list.mockImplementation(() => new Promise((r) => { answer = r; }));
+    await fail();
+    await waitFor(() => f.ctx.permission.list.mock.calls.length === 1);
+    // per_1 answered and per_2 asked after the list was read
+    await emit('permission.replied', { sessionID: SID, requestID: 'per_1', reply: 'once' });
+    await emit('permission.asked', { id: 'per_2', sessionID: SID, action: 'shell', resources: ['pwd'] });
+    answer([{ id: 'per_1', sessionID: SID, action: 'shell', resources: ['ls'] }]);
+    await shown();
+    expect(names()).toEqual(['SessionStart', 'UserPromptSubmit', 'PermissionRequest', 'PermissionRequest']);
+    expect((got[3] as { hook: Record<string, unknown> }).hook).toMatchObject({ message: 'pwd' });
+  });
+
+  it('says nothing once unloaded during a resync', async () => {
+    const f = fakeContext();
+    const { hooks: h, emit, fail, cleanup } = await load(f);
+    await emit('session.created', { sessionID: SID });
+    await prompt(h, SID);
+    let answer = (_: unknown[]) => {};
+    f.ctx.permission.list.mockImplementation(() => new Promise((r) => { answer = r; }));
+    await fail();
+    await waitFor(() => f.ctx.permission.list.mock.calls.length === 1);
+    cleanup();
+    answer([{ id: 'per_1', sessionID: SID, action: 'shell', resources: ['ls'] }]);
+    await shown();
+    expect(names()).toEqual(['SessionStart', 'UserPromptSubmit']);
+  });
+
+  it('subscribes again a second after a failure, and twice as long after one that heard nothing', async () => {
+    const f = fakeContext();
+    const { emit, fail } = await load(f);
+    const resubscribed = async (n: number) => {
+      const t = Date.now();
+      await waitFor(() => f.ctx.event.subscribe.mock.calls.length === n);
+      return Date.now() - t;
+    };
+    await fail();
+    expect(await resubscribed(2)).toBeLessThan(1500);
+    await fail();
+    expect(await resubscribed(3)).toBeGreaterThan(1500);
+    await emit('session.created', { sessionID: SID });
+    await fail();
+    expect(await resubscribed(4)).toBeLessThan(1500);
+  }, 10_000);
+
+  it('says nothing when OpenCode unloads the plugin, nor subscribes again', async () => {
+    const { ctx, emit, cleanup } = await load();
     await emit('session.created', { sessionID: SID });
     cleanup();
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 1200));
     expect(names()).toEqual(['SessionStart']);
+    expect(ctx.event.subscribe).toHaveBeenCalledTimes(1);
   });
 });
