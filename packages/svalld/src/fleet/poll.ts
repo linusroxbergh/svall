@@ -1,4 +1,6 @@
+import { execFile } from 'node:child_process';
 import fs from 'node:fs';
+import { promisify } from 'node:util';
 import type { Agent } from '@svall/protocol';
 import { interruptedAt } from '../agent/claude-transcript.js';
 import { applyHook, type Slot } from '../agent/reducer.js';
@@ -13,6 +15,15 @@ import { isShellCommand, type LiveWindow, type Tmux } from '../tmux/tmux.js';
 
 // the ticks between looks for agents idle long enough to end
 const DORMANCY_EVERY = 20;
+
+const exec = promisify(execFile);
+
+// the pids among `pids` that job control has stopped, as ctrl+z does; ps fails when none of them runs
+async function stoppedPids(pids: number[]): Promise<Set<number>> {
+  if (!pids.length) return new Set();
+  const out = await exec('ps', ['-o', 'pid=,stat=', '-p', pids.join(',')], { timeout: 2000 }).then((r) => r.stdout, () => '');
+  return new Set(out.split('\n').flatMap((line) => { const m = /^\s*(\d+)\s+\S*T/.exec(line); return m ? [Number(m[1])] : []; }));
+}
 
 const interrupt = <T extends Slot>(charId: string, slot: T): T => applyHook(slot, { charId, backend: 'claude', name: 'Interrupt' }, Date.now());
 
@@ -83,10 +94,15 @@ export class Poll {
     // a stop while tmux answered has ended what the listing shows
     if (this.stopped) return;
     const byName = new Map(live.map((w) => [w.name, w]));
+    const atShell = (key: string, agent?: Agent) => (agent?.pid && isShellCommand(byName.get(key)?.command ?? '', this.deps.config.shell) ? [agent.pid] : []);
+    // an agent ctrl+z stopped leaves its shell in front until `fg` brings it back
+    const suspended = await stoppedPids(Object.values(this.deps.store.state.characters)
+      .flatMap((c) => [...atShell(c.id, c.agent), ...atShell(secondName(c.id), c.second?.agent)]));
+    if (this.stopped) return;
     const cwdChanged: string[] = [];
     // an agent whose pane is back at a shell prompt for two polls has ended without a SessionEnd
     const settleAgent = (key: string, slot: { agent?: Agent }, command: string) => {
-      if (slot.agent && isShellCommand(command, this.deps.config.shell)) {
+      if (slot.agent && isShellCommand(command, this.deps.config.shell) && !suspended.has(slot.agent.pid ?? 0)) {
         const n = (this.shellStreak.get(key) ?? 0) + 1;
         this.shellStreak.set(key, n);
         if (n >= 2) { delete slot.agent; this.shellStreak.delete(key); }
