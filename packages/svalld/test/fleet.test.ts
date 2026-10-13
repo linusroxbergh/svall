@@ -1602,6 +1602,43 @@ runIf('Fleet', () => {
     expect(fleet.char(c.id).hint).toBeUndefined();
   });
 
+  it('says when a silent codex runs on the shared server, and not when it runs its own', async () => {
+    const { fleet, tmux, procs } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    const list = tmux.listWindows.bind(tmux);
+    tmux.listWindows = async () => (await list()).map((w) => (w.name === c.id ? { ...w, command: 'codex' } : w));
+    const shell = (await list()).find((w) => w.name === c.id)!.pid;
+    procs.push({ pid: 900_001, ppid: shell, pgid: 900_001, args: 'codex' }, { pid: 900_002, ppid: 1, pgid: 900_002, args: '/u/.codex/bin/codex app-server --listen unix:// --managed-daemon' });
+    await waitFor(() => fleet.char(c.id).hint === 'codex-silent' && fleet.char(c.id).codexDaemon === true);
+    // quit and started again with its own server: what is left to suspect is the hook
+    tmux.listWindows = async () => (await list()).map((w) => (w.name === c.id ? { ...w, command: 'sh' } : w));
+    await waitFor(() => fleet.char(c.id).hint === undefined && fleet.char(c.id).codexDaemon === undefined);
+    procs[0].args = 'codex --no-daemon';
+    tmux.listWindows = async () => (await list()).map((w) => (w.name === c.id ? { ...w, command: 'codex' } : w));
+    await waitFor(() => fleet.char(c.id).hint === 'codex-silent');
+    expect(fleet.char(c.id).codexDaemon).toBeUndefined();
+  });
+
+  it('drops codex events that come from its shared server, whose terminal they do not name', async () => {
+    const { fleet } = await boot();
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    // a stand-in server: ps shows the command line it was started under
+    const server = spawn('sleep', ['60'], { argv0: '/u/.codex/bin/codex app-server --listen unix:// --managed-daemon', stdio: 'ignore' });
+    cleanup.push(async () => { server.kill(); });
+    await waitFor(() => /codex app-server/.test(execFileSync('ps', ['-o', 'args=', '-p', String(server.pid)], { encoding: 'utf8' })));
+    // the server started from this terminal, so the sessions of every terminal on it report as this one
+    for (const sessionId of ['019eefb3-8d5c-7b00-ad02-80c4930f7426', '019eefb3-9999-7b00-ad02-80c4930f7426']) {
+      for (const name of ['SessionStart', 'UserPromptSubmit'] as const) {
+        expect(fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name, sessionId, pid: server.pid } })).toBeUndefined();
+      }
+    }
+    expect(fleet.char(c.id).agent).toBeUndefined();
+    // a codex that runs its own server is heard
+    const own = '019eefb3-1111-7b00-ad02-80c4930f7426';
+    fleet.onSocketEvent({ hook: { charId: c.id, backend: 'codex', name: 'SessionStart', sessionId: own, pid: process.pid } });
+    expect(fleet.char(c.id).agent).toMatchObject({ kind: 'codex', sessionId: own, pid: process.pid });
+  });
+
   it('keeps a codex agent, and says nothing of silence, through a claude -p run inside it', async () => {
     const { fleet, tmux } = await boot();
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });

@@ -163,6 +163,8 @@ export const Character = z.object({
   unread: z.boolean(),
   // the window runs codex and no hook has come from it: codex skips a hook until it is trusted, without a word
   hint: z.enum(['codex-silent']).optional(),
+  // that codex runs on Codex's shared server, whose hooks carry whichever terminal started it and are dropped
+  codexDaemon: z.literal(true).optional(),
   // interrupted: the agent was ended mid-turn or on a question, so it resumes as the fleet starts and is told what was lost
   revive: z.object({ command: z.string(), interrupted: z.literal(true).optional() }).optional(),
   browser: Browser.optional(),

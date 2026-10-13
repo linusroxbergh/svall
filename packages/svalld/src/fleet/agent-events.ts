@@ -4,6 +4,7 @@ import { lastTokenCount } from '../agent/codex-transcript.js';
 import { followRollout, type RolloutMark } from '../agent/codex-workdir.js';
 import { applyHook, applyStatus, type Slot } from '../agent/reducer.js';
 import { readTail } from '../agent/transcript.js';
+import { argsOf, isCodexServer } from '../codex/server.js';
 import type { Config } from '../config.js';
 import { briefReply } from '../context/brief.js';
 import type { SocketEvent } from '../hooks/receiver.js';
@@ -14,15 +15,20 @@ import type { Store } from '../store.js';
 
 type Deps = { store: Store; config: Config; log: Logger; render: (island: Island, c?: Character) => string };
 
+// a pid is looked at again after this long, as one an ended server freed may come back as an agent
+const SERVER_CHECK_MS = 60_000;
+
 /** The agents' hooks and statuslines landing on their characters, the brief each gets back, and the checkout a hook
  *  says its agent has moved to. */
 export class AgentEvents {
   private hookCwd = new Map<string, string>();
   private rolloutMark = new Map<string, RolloutMark>();
+  private servers = new Map<number, { server: boolean; at: number }>();
 
   constructor(private deps: Deps) {}
 
   apply(e: SocketEvent): string | undefined {
+    if ('hook' in e && e.hook.backend === 'codex' && e.hook.pid && this.fromServer(e.hook.pid)) return undefined;
     const ev = 'hook' in e ? e.hook : e.status;
     let reply: string | undefined;
     this.deps.store.update((d) => {
@@ -70,6 +76,18 @@ export class AgentEvents {
   forget(id: string): void {
     this.hookCwd.delete(id);
     this.rolloutMark.delete(id);
+  }
+
+  // a plain `codex` runs its hooks inside Codex's shared server, with the environment of whichever terminal started
+  // it: they name that terminal's character, or none, for every session on the server
+  private fromServer(pid: number): boolean {
+    const seen = this.servers.get(pid);
+    if (seen && Date.now() - seen.at < SERVER_CHECK_MS) return seen.server;
+    const server = isCodexServer(argsOf(pid) ?? '');
+    if (server && !seen?.server) this.deps.log.info(`codex hooks from its shared server (pid ${pid}) ignored: they name no terminal of their own`);
+    if (this.servers.size > 100) this.servers.clear();
+    this.servers.set(pid, { server, at: Date.now() });
+    return server;
   }
 
   // codex runs each command in the directory its call names and tells its hooks only the one the session began in;

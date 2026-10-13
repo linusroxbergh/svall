@@ -7,7 +7,7 @@ import { Robot } from './Robot.js';
 import { portraitTint, portraitUrl, robotOf } from '../portraits.js';
 import { theme, tokenPx } from '../theme.js';
 import { seedNum } from './coast.js';
-import { GAUGE_R, gaugeDash, hintText, statusWord } from './tokenText.js';
+import { GAUGE_R, gaugeDash, hintLabel, hintText, statusWord } from './tokenText.js';
 import type { PointerHandlers } from './types.js';
 
 const RAIL_MAX = 3;
@@ -16,7 +16,7 @@ function footInner(c: Character, status: DisplayStatus, word: string | undefined
   return (
     <>
       {word && <span className="sw" data-status={status} style={{ backgroundColor: `var(--${status})`, color: `var(--ink-on-${status})` }}>{word}</span>}
-      {c.hint && <span className="sw" data-testid={`token-hint-${c.id}`} title={hintText(c)} style={{ background: 'var(--blocked)', color: 'var(--ink-on-blocked)' }}>/hooks</span>}
+      {c.hint && <span className="sw" data-testid={`token-hint-${c.id}`} title={hintText(c)} style={{ background: 'var(--blocked)', color: 'var(--ink-on-blocked)' }}>{hintLabel(c)}</span>}
     </>
   );
 }

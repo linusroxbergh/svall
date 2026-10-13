@@ -389,6 +389,11 @@ continue" on its startup dialog, or trust the hook later with `/hooks`, and do
 so again whenever it changes. Until then the character stays a plain shell with
 a warning. `svall doctor` says whether the hook is trusted.
 
+Type `codex --no-daemon` in a character. A plain `codex` runs on Codex's shared
+background server, whose hooks carry the terminal that started that server, so
+Svall ignores them and the card asks for the flag. The agents Svall starts and
+revives get it already.
+
 ### OpenCode
 
 An OpenCode character gets the same status, context gauge, revive, brief and
