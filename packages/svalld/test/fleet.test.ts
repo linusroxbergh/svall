@@ -313,6 +313,33 @@ runIf('Fleet', () => {
     expect(store.state.characters[c.id].shell.lastOutputAt).toBeGreaterThan(0);
   });
 
+  it('keeps an agent ctrl+z stopped, whose shell is in front until fg, and lets it go once it is killed', async () => {
+    const { fleet, store, tmux, home } = await boot({ pollMs: 60_000 });
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    const pidFile = path.join(home, 'agent.pid');
+    // whether the stand-in agent is in front of its shell
+    const inFront = (yes: boolean) => waitFor(async () => (await tmux.listWindows()).some((w) => w.name === c.id && (w.command === 'sleep') === yes));
+    await tmux.sendLine(c.tmux!.paneId, `sh -c 'echo $$ > ${pidFile}; exec sleep 600'`, true);
+    await inFront(true);
+    const pid = Number(fs.readFileSync(pidFile, 'utf8'));
+    store.update((d) => { d.characters[c.id].agent = { kind: 'claude', sessionId: 's', status: 'working', lastActivityAt: 1, pid }; });
+    const twice = async () => { await fleet['poll']['tick'](); await fleet['poll']['tick'](); };
+    await tmux.run('send-keys', '-t', c.tmux!.paneId, 'C-z');
+    await inFront(false);
+    await twice();
+    expect(store.state.characters[c.id].agent?.pid).toBe(pid);
+    await tmux.sendLine(c.tmux!.paneId, 'fg', true);
+    await inFront(true);
+    await twice();
+    expect(store.state.characters[c.id].agent?.pid).toBe(pid);
+    await tmux.run('send-keys', '-t', c.tmux!.paneId, 'C-z');
+    await inFront(false);
+    process.kill(pid, 'SIGKILL');
+    await waitFor(() => { try { process.kill(pid, 0); return false; } catch { return true; } });
+    await twice();
+    expect(store.state.characters[c.id].agent).toBeUndefined();
+  });
+
   it('takes a pane at the shell config.json names for its prompt, which its agent has left', async () => {
     const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
