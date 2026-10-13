@@ -250,10 +250,9 @@ async function setup(ctx) {
   // and the hooks go on
   void (async () => {
     for (let retry = 0; !quit.signal.aborted;) {
-      const events = ctx.event.subscribe({ signal: quit.signal });
       if (retry) void resync().catch(() => {});
       try {
-        for await (const e of events) {
+        for await (const e of ctx.event.subscribe({ signal: quit.signal })) {
           retry = 0;
           await Promise.resolve(on(e.type, e.data ?? {})).catch(() => {});
         }
