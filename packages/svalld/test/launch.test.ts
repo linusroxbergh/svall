@@ -52,14 +52,14 @@ describe('withStandalone', () => {
     expect(withStandalone('claude')).toBe('claude');
   });
 
-  it('runs codex off the shared app-server daemon, after the subcommand that resumes or forks', () => {
-    expect(withStandalone('codex')).toBe('codex --no-daemon');
-    expect(withStandalone(" codex -m gpt-5.5 --add-dir '/a'")).toBe(" codex --no-daemon -m gpt-5.5 --add-dir '/a'");
-    expect(withStandalone('codex resume -c tui.resume_cwd=session s1')).toBe('codex resume --no-daemon -c tui.resume_cwd=session s1');
-    expect(withStandalone('codex fork s1')).toBe('codex fork --no-daemon s1');
+  it('runs codex off the shared app-server daemon and its update check, after the subcommand that resumes or forks', () => {
+    expect(withStandalone('codex')).toBe('codex --no-daemon -c check_for_update_on_startup=false');
+    expect(withStandalone(" codex -m gpt-5.5 --add-dir '/a'")).toBe(" codex --no-daemon -c check_for_update_on_startup=false -m gpt-5.5 --add-dir '/a'");
+    expect(withStandalone('codex resume -c tui.resume_cwd=session s1')).toBe('codex resume --no-daemon -c check_for_update_on_startup=false -c tui.resume_cwd=session s1');
+    expect(withStandalone('codex fork s1')).toBe('codex fork --no-daemon -c check_for_update_on_startup=false s1');
     expect(withStandalone('codex resume --no-daemon s1')).toBe('codex resume --no-daemon s1');
     expect(withStandalone('codex --remote unix://')).toBe('codex --remote unix://');
-    expect(withStandalone("codex --add-dir '/w/a --remote b'")).toBe("codex --no-daemon --add-dir '/w/a --remote b'");
+    expect(withStandalone("codex --add-dir '/w/a --remote b'")).toBe("codex --no-daemon -c check_for_update_on_startup=false --add-dir '/w/a --remote b'");
   });
 });
 
