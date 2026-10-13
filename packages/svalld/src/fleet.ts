@@ -82,7 +82,7 @@ export class Fleet extends EventEmitter<Events> {
     this.scribe = new Scribe({ store, log, run, awake: fullWake, brief: (island, c) => this.render(island, c) });
     this.sleep = { store, tmux: deps.tmux, log, processes: deps.processes ?? processes, ending: this.ending };
     this.link = new ControlLink({ store, tmux: deps.tmux, log, events: this, reconcile: () => this.reconcileNow() });
-    this.poll = new Poll({ ...deps, scribe: this.scribe, listWindows: () => this.listWindows(), endIdleAgents: () => this.endIdleAgents() });
+    this.poll = new Poll({ ...deps, scribe: this.scribe, listWindows: () => this.listWindows(), endIdleAgents: () => this.endIdleAgents(), processes: this.sleep.processes });
     this.agentEvents = new AgentEvents({ store, config, log, render: (island, c) => this.render(island, c) });
     this.prompts = new Prompts({ fleet: this, store, tmux: deps.tmux, config, log, reviving: this.reviving });
   }
@@ -385,14 +385,15 @@ export class Fleet extends EventEmitter<Events> {
     // only where OpenCode is, as for the plugin: a config folder made here would pass for an install
     if (!(this.deps.config.integrations?.includes('opencode') ?? true) || !(this.deps.agentsFound?.includes('opencode') || fs.existsSync(o.dir))) return {};
     const { opencodeConfig, opencodeReplaced } = this.deps.paths;
-    // every TUI in a directory shares one live tab strip, so a character's OpenCode shows only its own session
-    const tabsOff = { OPENCODE_CLI_CONFIG_CONTENT: '{"tabs":{"mode":"off"}}' };
+    // every TUI in a directory shares one live tab strip, so a character's OpenCode shows only its own session. The
+    // highlights dialog after an update hides the cursor, which holds safe send; ctrl+z undoes instead of suspending
+    const cli = { OPENCODE_CLI_CONFIG_CONTENT: JSON.stringify({ tabs: { mode: 'off' }, highlights: false, keybinds: { 'terminal.suspend': 'none', 'input.undo': 'ctrl+z,ctrl+-,super+z' } }) };
     try {
       for (const f of linkOpencodeConfig(opencodeConfig, o, opencodeReplaced)) this.deps.log.error(`opencode config: ${f}`);
-      return { ...tabsOff, OPENCODE_CONFIG_DIR: opencodeConfig };
+      return { ...cli, OPENCODE_CONFIG_DIR: opencodeConfig };
     } catch (e) {
       this.deps.log.error(`opencode config: ${(e as Error).message}`);
-      return tabsOff;
+      return cli;
     }
   }
 
@@ -557,7 +558,7 @@ export class Fleet extends EventEmitter<Events> {
       const delivery = prompt ? await this.run(id, prompt, true) : undefined;
       return { ...this.char(id), ...(delivery && { delivery }) };
     }
-    const w = await this.deps.tmux.newWindow(id, c.cwd, this.charEnv(id));
+    const w = await this.deps.tmux.newWindow(id, this.reviveCwd(c), this.charEnv(id));
     if (!this.deps.store.state.characters[id]) {
       await this.deps.tmux.killWindow(w.windowId);
       throw new NotFound(`no character ${id}`);
@@ -575,6 +576,21 @@ export class Fleet extends EventEmitter<Events> {
     });
     if (command) await this.deps.tmux.sendLine(w.paneId, command, true);
     return this.char(id);
+  }
+
+  // tmux starts a window whose folder is gone in $HOME. Claude resumes a session from any folder: a removed worktree's character
+  // goes back to its main checkout, any other to the nearest folder left. Codex resumes into the gone folder; OpenCode stops to ask
+  private reviveCwd(c: Character): string {
+    const isDir = (p: string) => !!fs.statSync(p, { throwIfNoEntry: false })?.isDirectory();
+    if (isDir(c.cwd)) return c.cwd;
+    const kind = c.revive?.command && c.agent?.kind;
+    if (kind === 'codex' || kind === 'opencode') {
+      throw new Invalid(`${c.name}'s folder ${c.cwd} is gone, and ${AGENTS[kind].label} resumes its session only there; recreate the folder, or close ${c.name}`);
+    }
+    if (c.repo?.isWorktree && isDir(c.repo.mainRoot)) return c.repo.mainRoot;
+    let dir = path.dirname(c.cwd);
+    while (!isDir(dir)) dir = path.dirname(dir);
+    return dir;
   }
 
   // concurrent opens would each spawn a window and orphan all but the last.

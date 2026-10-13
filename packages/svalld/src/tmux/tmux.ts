@@ -35,6 +35,8 @@ export type LiveWindow = {
   path: string;
   activity: number;
   dead: boolean;
+  // the pane's shell
+  pid: number;
 };
 
 // `shell` is the one config.json names, whatever it is
@@ -233,16 +235,16 @@ export class Tmux {
     // marked with a token made for this listing, which no name can hold except by guessing it
     const token = crypto.randomBytes(8).toString('hex');
     const [sep, end] = [`\x1f${token}`, `\x1e${token}`];
-    const fmt = ['#{window_id}', '#{pane_id}', '#{window_name}', '#{pane_current_command}', '#{window_activity}', '#{pane_dead}', '#{pane_current_path}'].join(sep) + end;
+    const fmt = ['#{window_id}', '#{pane_id}', '#{window_name}', '#{pane_current_command}', '#{window_activity}', '#{pane_dead}', '#{pane_current_path}', '#{pane_pid}'].join(sep) + end;
     // one row per window: a split window would otherwise yield several rows under the same name.
     const out = await this.run('list-panes', '-s', '-t', SESSION, '-f', '#{pane_active}', '-F', fmt);
     return out
       .split(`${end}\n`)
       .filter(Boolean)
       .map((l) => {
-        const [windowId, paneId, name, command, activity, dead, path] = l.split(sep);
+        const [windowId, paneId, name, command, activity, dead, path, pid] = l.split(sep);
         const seconds = Number(activity);
-        return { windowId, paneId, name, command, path, activity: Number.isFinite(seconds) ? seconds * 1000 : 0, dead: dead === '1' };
+        return { windowId, paneId, name, command, path, activity: Number.isFinite(seconds) ? seconds * 1000 : 0, dead: dead === '1', pid: Number(pid) || 0 };
       })
       .filter((w) => w.name !== KEEP_WINDOW);
   }
