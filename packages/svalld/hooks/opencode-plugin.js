@@ -83,7 +83,8 @@ async function setup(ctx) {
 
   // the agent is the TUI, whose private server this is
   const pid = process.ppid;
-  // shell runs where its call says, so the newest directory one names is where the agent works
+  // shell runs where its call says and a session goes where a move takes it, so the newest directory either names is
+  // where the agent works
   let workdir;
   const hook = (name, session, fields = {}) => send({
     charId, term, backend: 'opencode', pid,
@@ -234,6 +235,9 @@ async function setup(ctx) {
         return end(p.sessionID, 'Interrupt');
       case 'session.deleted':
         return drop(p.sessionID);
+      // the moved session runs on in its new folder's own instance of this plugin, but this one still ends its turn
+      case 'session.moved':
+        return parentOf(p.sessionID).then((parent) => { if (!parent && p.location?.directory) workdir = p.location.directory; });
     }
   };
   const quit = new AbortController();

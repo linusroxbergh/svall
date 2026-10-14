@@ -140,6 +140,17 @@ describe('the OpenCode plugin', () => {
       .toBe('USER: fix the flaky test\nAGENT: [tool: shell] fixed');
   });
 
+  it('reports the folder a session moved to, as the instance it left still ends its turn, and not one a subagent moved to', async () => {
+    const { hooks: h, emit } = await load(fakeContext({ [CHILD]: SID }));
+    await emit('session.created', { sessionID: SID });
+    await prompt(h, SID);
+    await emit('session.moved', { sessionID: SID, location: { directory: '/repo/.claude/worktrees/x' }, projectID: 'p' });
+    await emit('session.moved', { sessionID: CHILD, location: { directory: '/elsewhere' }, projectID: 'p' });
+    await emit('session.execution.succeeded', { sessionID: SID });
+    await waitFor(() => names().includes('Stop'));
+    expect((got.at(-1) as { hook: Record<string, unknown> }).hook).toMatchObject({ name: 'Stop', cwd: '/repo/.claude/worktrees/x' });
+  });
+
   it("reads the models again for one missing from the list, as one from a provider signed in to since", async () => {
     const f = fakeContext();
     f.ctx.model.list.mockResolvedValueOnce({ data: [] });
