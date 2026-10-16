@@ -22,7 +22,10 @@ function load(n: number): Promise<void> {
 export function inlineRobot(svg: string, prefix: string): string {
   const ids = new Set(Array.from(svg.matchAll(/\sid="([^"]+)"/g), (m) => m[1]));
   const own = (id: string) => (ids.has(id) ? `${prefix}-${id}` : id);
+  // WKWebView's page zoom moves a px transform-origin on an SVG part to zoom × itself, but leaves a share of the view box in place
+  const [, , w, h] = (svg.match(/<svg\b[^>]*\sviewBox="([^"]+)"/)?.[1] ?? '').split(/[\s,]+/).map(Number);
   return svg
+    .replace(/transform-origin:(-?[\d.]+)px (-?[\d.]+)px/g, (o, x: string, y: string) => (w && h ? `transform-origin:${(+x / w) * 100}% ${(+y / h) * 100}%` : o))
     .replace(/(\sid=")([^"]+)"/g, (_, a: string, id: string) => `${a}${own(id)}"`)
     .replace(/url\((['"]?)#([^'")]+)\1\)/g, (_, q: string, id: string) => `url(${q}#${own(id)}${q})`)
     .replace(/(\s(?:xlink:)?href="#)([^"]+)"/g, (_, a: string, id: string) => `${a}${own(id)}"`)

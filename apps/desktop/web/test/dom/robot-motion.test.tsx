@@ -189,13 +189,22 @@ describe('a robot inlined on a card', () => {
     expect(parse(inlineRobot('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>', 'p')).getAttribute('class')).toBe('portrait robot');
   });
 
+  it('gives each pivot as a share of the view box, where the Mac app\'s page zoom leaves it', () => {
+    const src = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="148 44 216 434">'
+      + '<g class="blades" style="transform-origin:256px 130px"/><g class="eyes" style="transform-box:fill-box;transform-origin:center"/></svg>';
+    const styles = [...parse(inlineRobot(src, 'p')).querySelectorAll('g')].map((g) => g.getAttribute('style'));
+    expect(styles).toEqual([`transform-origin:${(256 / 216) * 100}% ${(130 / 434) * 100}%`, 'transform-box:fill-box;transform-origin:center']);
+  });
+
   it.each(files)('%s keeps its references inside its own copy and changes nothing else', (f) => {
     const src = fs.readFileSync(path.join(robotsDir, f), 'utf8');
     const out = inlineRobot(src, 'QQ');
     const ids = Array.from(out.matchAll(/\sid="([^"]+)"/g), (m) => m[1]);
     for (const id of ids) expect(id.startsWith('QQ-')).toBe(true);
     for (const ref of refs(out)) expect(ids).toContain(ref);
-    const plain = out.replaceAll('QQ-', '');
+    const [, , w, h] = parse(src).getAttribute('viewBox')!.split(/[\s,]+/).map(Number);
+    const px = (share: string, of: number) => `${+((Number(share) * of) / 100).toFixed(6)}px`;
+    const plain = out.replaceAll('QQ-', '').replace(/transform-origin:([\d.]+)% ([\d.]+)%/g, (_, x: string, y: string) => `transform-origin:${px(x, w)} ${px(y, h)}`);
     const body = (s: string) => s.slice(s.indexOf('>') + 1);
     expect(body(plain)).toBe(body(src));
     const attrs = (s: string) => Object.fromEntries([...parse(s).attributes].map((a) => [a.name, a.value]));
