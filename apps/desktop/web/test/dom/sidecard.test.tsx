@@ -176,19 +176,23 @@ test('the last command is read again for a new prompt, a turn\'s end and a new s
   act(() => store.getState().applyPatch([{ op: 'add', path: '/characters/c0/agent/lastPrompt', value: { id: 'p1', text: 'go', at: 3 } }]));
   await act(async () => {});
   expect(reads()).toBe(2);
+  // a prompt sent mid-turn reports the id of the turn's first
+  act(() => store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/agent/lastPrompt', value: { id: 'p1', text: 'and this', at: 4 } }]));
+  await act(async () => {});
+  expect(reads()).toBe(3);
   // a permission ask and its answer leave the turn running
   act(() => store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/agent/status', value: 'blocked' }]));
   await act(async () => {});
   act(() => store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/agent/status', value: 'working' }]));
   await act(async () => {});
-  expect(reads()).toBe(2);
+  expect(reads()).toBe(3);
   // a turn Claude Code opened by itself is known for what it was only once its entry is written
   act(() => store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/agent/status', value: 'done' }]));
   await act(async () => {});
-  expect(reads()).toBe(3);
+  expect(reads()).toBe(4);
   act(() => store.getState().applyPatch([{ op: 'replace', path: '/characters/c0/agent', value: { kind: 'codex', sessionId: 's2', status: 'done', lastActivityAt: 4 } }]));
   await act(async () => {});
-  expect(reads()).toBe(4);
+  expect(reads()).toBe(5);
 });
 
 test('last activity counts on while no patch arrives', async () => {

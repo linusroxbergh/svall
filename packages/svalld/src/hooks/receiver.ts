@@ -82,7 +82,7 @@ const transcript = (v: unknown): string | undefined => {
 export const MAX_PROMPT = 4000;
 // the harness re-invokes a session through the same hook when a background agent finishes, when a peer
 // hands back, and when a usage limit resets, carrying its own report as the prompt. Nobody typed those.
-const INJECTED = ['<task-notification>', 'Another Claude session sent a message:', 'Your claude.ai usage limit has reset.'];
+const INJECTED = ['<task-notification>', 'Another Claude session sent a message:', '<agent-message', '<cross-session-message', 'Your claude.ai usage limit has reset.'];
 const prompt = (h: Record<string, unknown>): { id: string; text: string } | undefined => {
   const id = (str(h.prompt_id) ?? str(h.turn_id))?.slice(0, 200);
   const text = str(h.prompt)?.trim().slice(0, MAX_PROMPT);

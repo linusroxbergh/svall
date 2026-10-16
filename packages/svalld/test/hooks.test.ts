@@ -122,6 +122,8 @@ describe('normalizeHook', () => {
     const hook = (p: string) => normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'UserPromptSubmit', prompt: p, prompt_id: 'p1' } })?.prompt;
     expect(hook('<task-notification>\n<task-id>a1</task-id>\n<status>completed</status>\n</task-notification>')).toBeUndefined();
     expect(hook('Another Claude session sent a message:\n<agent-message from="a1">done</agent-message>')).toBeUndefined();
+    expect(hook('<agent-message from="a1">\n[Subagent hand-back] done\n</agent-message>')).toBeUndefined();
+    expect(hook('<cross-session-message from="uds:/tmp/s.sock">done</cross-session-message>')).toBeUndefined();
     expect(hook('Your claude.ai usage limit has reset. Continue.')).toBeUndefined();
     expect(hook('read the <task-notification> tag')).toEqual({ id: 'p1', text: 'read the <task-notification> tag' });
   });
