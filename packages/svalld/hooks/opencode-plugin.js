@@ -36,6 +36,10 @@ const commandLine = () => {
   try { return execFileSync('ps', ['-o', 'args=', '-p', String(process.ppid)], { encoding: 'utf8', timeout: 2000 }).trim().split(/\s+/); } catch { return []; }
 };
 
+// OpenCode has no Monitor tool, so a shell sent to the background is how an agent watches; each running one by its
+// top-level session. A moved session's two instances run in one process, and one can start a shell whose turn the other ends
+const monitors = new Map();
+
 async function setup(ctx) {
   const charId = process.env.SVALL_CHAR_ID;
   const home = process.env.SVALL_HOME ?? path.join(os.homedir(), '.svall');
@@ -192,7 +196,8 @@ async function setup(ctx) {
     asking.clear();
     clearTimeout(showing);
     shown = undefined;
-    void hook(name, id, fields);
+    const watching = [...monitors].flatMap(([shell, root]) => (root === id ? [{ type: 'shell', id: shell }] : []));
+    void hook(name, id, { ...fields, background_tasks: watching });
   };
   const on = (type, p) => {
     if (type === 'permission.asked' || type === 'permission.replied') heard?.add(p.id ?? p.requestID);
@@ -235,6 +240,10 @@ async function setup(ctx) {
         return end(p.sessionID, 'Interrupt');
       case 'session.deleted':
         return drop(p.sessionID);
+      case 'shell.exited':
+      case 'shell.deleted':
+        monitors.delete(p.id);
+        return;
       // the moved session runs on in its new folder's own instance of this plugin, but this one still ends its turn
       case 'session.moved':
         return parentOf(p.sessionID).then((parent) => { if (!parent && p.location?.directory) workdir = p.location.directory; });
@@ -315,7 +324,10 @@ async function setup(ctx) {
       log(root, { kind: 'tool', name: e.tool, given: clip(e.input, MAX_TOOL) });
       log(root, { kind: 'output', printed: clip(e.result?.content?.map((c) => c.text ?? '').join('\n') ?? e.error?.message, MAX_TOOL) });
     }
-    if (!asking.size) void hook('PostToolUse', root, { tool_name: e.tool });
+    const { status, shellID } = e.result?.metadata ?? {};
+    const watching = e.tool === 'shell' && status === 'running' && typeof shellID === 'string';
+    if (watching) monitors.set(shellID, root);
+    if (!asking.size) void hook('PostToolUse', root, { tool_name: e.tool, ...(watching && { task_id: shellID }) });
   });
 
   // a quit TUI takes its server with it, so svalld learns the agent has gone from the pane's shell

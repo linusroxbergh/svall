@@ -181,17 +181,19 @@ const codex: Harness = {
 };
 
 const OPENCODE = 'anomalyco/opencode';
-const SCHEMA = ['packages/schema/src/session-event.ts', 'packages/schema/src/permission.ts', 'packages/schema/src/form.ts'];
-// the plugin API calls hooks/opencode-plugin.js makes, by the file that declares them
+const SCHEMA = ['packages/schema/src/session-event.ts', 'packages/schema/src/permission.ts', 'packages/schema/src/form.ts', 'packages/schema/src/shell.ts'];
+// the plugin API calls hooks/opencode-plugin.js makes, and what it reads of the shell tool's result, by the file that declares them
 const PLUGIN_API: Record<string, string[]> = {
   'packages/plugin/src/promise/session.ts': ['"prompt"', '"context"'],
   'packages/plugin/src/promise/tool.ts': ['"execute.before"', '"execute.after"'],
   'packages/plugin/src/promise/event.ts': ['subscribe'],
+  'packages/core/src/tool/plugin/shell.ts': ['shellID', '"running"'],
 };
 // the events hooks/opencode-plugin.js handles, and the payload fields it reads
 export const OPENCODE_EVENTS = ['session.created', 'session.model.selected', 'session.step.started', 'session.step.ended', 'session.text.ended',
   'permission.asked', 'form.created', 'permission.replied', 'form.replied', 'form.cancelled',
-  'session.execution.started', 'session.execution.succeeded', 'session.execution.failed', 'session.execution.interrupted', 'session.deleted'];
+  'session.execution.started', 'session.execution.succeeded', 'session.execution.failed', 'session.execution.interrupted', 'session.deleted',
+  'session.moved', 'shell.exited', 'shell.deleted'];
 const OPENCODE_FIELDS = ['sessionID', 'parentID', 'model', 'tokens', 'text', 'id', 'action', 'resources', 'requestID', 'form', 'error', 'fields', 'description', 'metadata'];
 
 /** The OpenCode release to check, from its v2 and v3 tag refs and the version a fresh install gets. A 3.x tag is a
