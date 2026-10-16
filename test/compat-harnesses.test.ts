@@ -37,7 +37,7 @@ const opencodeFiles = (): Files => ({
   'packages/plugin/src/promise/session.ts': 'hook("prompt") hook("context")',
   'packages/plugin/src/promise/tool.ts': 'hook("execute.before") hook("execute.after")',
   'packages/plugin/src/promise/event.ts': 'Pick<EventApi, "subscribe">',
-  'packages/core/src/tool/plugin/shell.ts': 'metadata: { status: "running", shellID }',
+  'packages/core/src/tool/plugin/shell.ts': 'metadata: { status: output.status, shellID: output.shellID } status: "running"',
 });
 
 describe('checks', () => {

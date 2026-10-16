@@ -68,6 +68,10 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     next.agent = { kind: e.backend, sessionId: e.sessionId, status: 'idle', lastActivityAt: now, pid: e.pid };
     next.unread = false;
   }
+  // OpenCode's plugin lists every shell it watches with at the end of a run, a subagent's too
+  if (e.backend === 'opencode' && e.backgroundShells) {
+    if (e.backgroundShells.length) next.agent.monitors = [...e.backgroundShells]; else delete next.agent.monitors;
+  }
   // a subagent's events say only that it runs, and whether the question it asked is still open; the notification is
   // what blocks. One can stop and start again under its id, when a shell it left running ends
   if (e.agentId) {

@@ -389,6 +389,14 @@ describe('applyHook for opencode', () => {
     expect(done.agent?.background).toBeUndefined();
     expect(applyHook(done, ev(listing([])), 8).agent?.monitors).toBeUndefined();
   });
+  it("takes the shells a run's end lists as the monitors, one it never heard start and a subagent's run included", () => {
+    const listing = (ids: string[]) => ({ backgroundTasks: ids.length, backgroundAgents: 0, backgroundAgentIds: [], backgroundShells: ids });
+    const done = applyHook(at('working'), ev(listing(['sh_9'])), 7);
+    expect(done.agent).toMatchObject({ status: 'done', monitors: ['sh_9'] });
+    expect(done.agent?.background).toBeUndefined();
+    const child = applyHook(done, ev({ name: 'SubagentStart', agentId: 'ses_child' }), 8);
+    expect(applyHook(child, ev({ name: 'SubagentStop', agentId: 'ses_child', ...listing([]) }), 9).agent?.monitors).toBeUndefined();
+  });
 });
 
 // a `claude -p` or `codex exec` run from inside a character inherits SVALL_CHAR_ID, so its hooks reach the same slot

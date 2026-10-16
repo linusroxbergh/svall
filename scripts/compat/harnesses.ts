@@ -187,7 +187,7 @@ const PLUGIN_API: Record<string, string[]> = {
   'packages/plugin/src/promise/session.ts': ['"prompt"', '"context"'],
   'packages/plugin/src/promise/tool.ts': ['"execute.before"', '"execute.after"'],
   'packages/plugin/src/promise/event.ts': ['subscribe'],
-  'packages/core/src/tool/plugin/shell.ts': ['shellID', '"running"'],
+  'packages/core/src/tool/plugin/shell.ts': ['status: output.status', 'shellID: output.shellID', 'status: "running"'],
 };
 // the events hooks/opencode-plugin.js handles, and the payload fields it reads
 export const OPENCODE_EVENTS = ['session.created', 'session.model.selected', 'session.step.started', 'session.step.ended', 'session.text.ended',

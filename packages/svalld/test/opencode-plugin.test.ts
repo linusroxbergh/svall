@@ -176,6 +176,32 @@ describe('the OpenCode plugin', () => {
     expect(await turnEnd(2)).toMatchObject({ backgroundTasks: 0, backgroundShells: [] });
   });
 
+  it("lists the shells at the end of a subagent's run too, whose shell wakes it and not the top-level session, and never one that exited first", async () => {
+    const { hooks: h, emit } = await load(fakeContext({ [CHILD]: SID }));
+    await emit('session.created', { sessionID: SID });
+    await emit('session.created', { sessionID: CHILD, parentID: SID });
+    await emit('shell.exited', { id: 'sh_3', exit: 1, status: 'exited' });
+    for (const [sessionID, shellID] of [[SID, 'sh_3'], [CHILD, 'sh_4']]) {
+      await h['tool.execute.after']({ tool: 'shell', sessionID, input: {}, status: 'completed', result: { content: [], metadata: { status: 'running', shellID } } });
+    }
+    await emit('session.execution.started', { sessionID: CHILD });
+    await emit('session.execution.succeeded', { sessionID: CHILD });
+    await waitFor(() => names().includes('SubagentStop'));
+    expect(got.flatMap((e) => ('hook' in e && e.hook.name === 'PostToolUse' ? [e.hook.monitor] : []))).toEqual([undefined, 'sh_4']);
+    expect((got.at(-1) as { hook: Record<string, unknown> }).hook).toMatchObject({ name: 'SubagentStop', backgroundShells: ['sh_4'] });
+    await emit('shell.exited', { id: 'sh_4', exit: 0, status: 'exited' });
+  });
+
+  it('lists no shell once the event stream has failed, as one may have exited unheard', async () => {
+    const { hooks: h, emit, fail } = await load();
+    await emit('session.created', { sessionID: SID });
+    await h['tool.execute.after']({ tool: 'shell', sessionID: SID, input: {}, status: 'completed', result: { content: [], metadata: { status: 'running', shellID: 'sh_5' } } });
+    await prompt(h, SID);
+    await fail();
+    await waitFor(() => names().includes('Stop'));
+    expect((got.at(-1) as { hook: Record<string, unknown> }).hook).toMatchObject({ name: 'Stop', backgroundShells: [] });
+  });
+
   it("reads the models again for one missing from the list, as one from a provider signed in to since", async () => {
     const f = fakeContext();
     f.ctx.model.list.mockResolvedValueOnce({ data: [] });
