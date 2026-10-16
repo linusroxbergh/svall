@@ -112,7 +112,10 @@
       "permission.replied",
       "form.created",
       "form.replied",
-      "form.cancelled"
+      "form.cancelled",
+      "shell.created",
+      "shell.exited",
+      "shell.deleted"
     ]
   }
 }

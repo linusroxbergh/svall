@@ -33,9 +33,11 @@ const opencodeFiles = (): Files => ({
     + '\nconst f = { sessionID: 1, parentID: 1, model: 1, tokens: 1, text: 1, id: 1, action: 1, resources: 1, requestID: 1, form: 1, error: 1, fields: 1, description: 1, metadata: 1 }',
   'packages/schema/src/permission.ts': '',
   'packages/schema/src/form.ts': '',
+  'packages/schema/src/shell.ts': '',
   'packages/plugin/src/promise/session.ts': 'hook("prompt") hook("context")',
   'packages/plugin/src/promise/tool.ts': 'hook("execute.before") hook("execute.after")',
   'packages/plugin/src/promise/event.ts': 'Pick<EventApi, "subscribe">',
+  'packages/core/src/tool/plugin/shell.ts': 'metadata: { status: output.status, shellID: output.shellID } status: "running"',
 });
 
 describe('checks', () => {

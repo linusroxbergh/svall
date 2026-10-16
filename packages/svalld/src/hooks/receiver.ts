@@ -37,7 +37,7 @@ export type HookEvent = {
   backgroundAgentIds?: string[];
   // the task ids of the background shells among them, which take in the session's monitors
   backgroundShells?: string[];
-  // the task a Monitor tool call started
+  // the task a Monitor tool call started, or the shell OpenCode sent to the background, its only way to watch
   monitor?: string;
   // the Claude Code subagent the event came from, or the subagent any agent says started or stopped
   agentId?: string;
@@ -167,7 +167,8 @@ export function normalizeHook(raw: unknown): HookEvent | undefined {
   if (agentIds) ev.backgroundAgentIds = agentIds;
   const shells = taskIds(h.background_tasks, SHELL_TASKS);
   if (shells) ev.backgroundShells = shells;
-  const monitor = ev.name === 'PostToolUse' && toolName === 'Monitor' ? str(h.task_id) : undefined;
+  const watcher = toolName === (kind.data === 'opencode' ? 'shell' : 'Monitor');
+  const monitor = ev.name === 'PostToolUse' && watcher ? str(h.task_id) : undefined;
   if (monitor) ev.monitor = monitor.slice(0, 64);
   if (ev.name === 'UserPromptSubmit') {
     const submitted = prompt(h);

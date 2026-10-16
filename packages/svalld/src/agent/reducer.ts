@@ -68,6 +68,10 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     next.agent = { kind: e.backend, sessionId: e.sessionId, status: 'idle', lastActivityAt: now, pid: e.pid };
     next.unread = false;
   }
+  // OpenCode's plugin lists every shell it watches with at the end of a run, a subagent's too
+  if (e.backend === 'opencode' && e.backgroundShells) {
+    if (e.backgroundShells.length) next.agent.monitors = [...e.backgroundShells]; else delete next.agent.monitors;
+  }
   // a subagent's events say only that it runs, and whether the question it asked is still open; the notification is
   // what blocks. One can stop and start again under its id, when a shell it left running ends
   if (e.agentId) {
@@ -112,9 +116,9 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
   }
   // background agents or shells that never re-invoke the session, killed or crashed, are over once a hook lists none
   if (tasks === 0) { delete agent.background; delete agent.shellsOnly; }
-  // a killed subagent sends no SubagentStop. The main thread waits out one in the foreground, so at its Stop only the
-  // background ones listed run on
-  if ((e.name === 'Stop' || e.name === 'StopFailure') && e.backgroundAgentIds && agent.subagents) {
+  // a killed Claude Code subagent sends no SubagentStop. The main thread waits out one in the foreground, so at its Stop only
+  // the background ones listed run on
+  if (e.backend === 'claude' && (e.name === 'Stop' || e.name === 'StopFailure') && e.backgroundAgentIds && agent.subagents) {
     const live = agent.subagents.filter((a) => e.backgroundAgentIds!.includes(a));
     if (live.length) agent.subagents = live; else delete agent.subagents;
   }

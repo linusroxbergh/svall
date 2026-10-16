@@ -157,6 +157,10 @@ describe('normalizeHook', () => {
     expect(started('PostToolUse', 'Monitor')).toBe('b1');
     expect(started('PostToolUse', 'Bash')).toBeUndefined();
     expect(started('PreToolUse', 'Monitor')).toBeUndefined();
+    expect(started('PostToolUse', 'shell')).toBeUndefined();
+    const opencode = (tool_name: string) => normalizeHook({ charId: 'c_1', backend: 'opencode', hook: { hook_event_name: 'PostToolUse', tool_name, task_id: 'sh_1' } })?.monitor;
+    expect(opencode('shell')).toBe('sh_1');
+    expect(opencode('read')).toBeUndefined();
   });
   it('drops subagent events, unknown events and malformed input', () => {
     expect(normalizeHook({ charId: 'c_1', hook: { hook_event_name: 'Stop', agent_id: 'sub' } })).toBeUndefined();

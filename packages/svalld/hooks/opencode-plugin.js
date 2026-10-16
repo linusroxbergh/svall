@@ -36,6 +36,12 @@ const commandLine = () => {
   try { return execFileSync('ps', ['-o', 'args=', '-p', String(process.ppid)], { encoding: 'utf8', timeout: 2000 }).trim().split(/\s+/); } catch { return []; }
 };
 
+// OpenCode has no Monitor tool, so a shell sent to the background is how an agent watches; each running one by its
+// top-level session. A moved session's two instances run in one process, and one can start a shell whose turn the other ends
+const monitors = new Map();
+// a command that ends at once can exit before its tool call has returned
+const exited = new Set();
+
 async function setup(ctx) {
   const charId = process.env.SVALL_CHAR_ID;
   const home = process.env.SVALL_HOME ?? path.join(os.homedir(), '.svall');
@@ -179,9 +185,13 @@ async function setup(ctx) {
     void send({ charId, term, status: { sessionId: id, contextPct: Math.round((used / max) * 100), model: model.id } });
   };
 
-  // a child session's runs report as a subagent's under the top-level session; one can run again and outlive its parent's turn
+  const watching = (root) => ({ background_tasks: [...monitors].flatMap(([shell, r]) => (r === root ? [{ type: 'shell', id: shell }] : [])) });
+  // a child session's runs report as a subagent's under the top-level session; one can run again and outlive its parent's turn.
+  // A shell wakes the session that started it, so a subagent's run ends with the shells listed too
   const subagent = async (id, name) => {
-    if (await parentOf(id)) void hook(name, await rootOf(id), { agent_id: id });
+    if (!(await parentOf(id))) return;
+    const root = await rootOf(id);
+    void hook(name, root, { agent_id: id, ...(name === 'SubagentStop' && watching(root)) });
   };
   const end = async (id, name, fields) => {
     if (await parentOf(id)) {
@@ -192,7 +202,7 @@ async function setup(ctx) {
     asking.clear();
     clearTimeout(showing);
     shown = undefined;
-    void hook(name, id, fields);
+    void hook(name, id, { ...fields, ...watching(id) });
   };
   const on = (type, p) => {
     if (type === 'permission.asked' || type === 'permission.replied') heard?.add(p.id ?? p.requestID);
@@ -235,6 +245,11 @@ async function setup(ctx) {
         return end(p.sessionID, 'Interrupt');
       case 'session.deleted':
         return drop(p.sessionID);
+      case 'shell.exited':
+      case 'shell.deleted':
+        exited.add(p.id);
+        monitors.delete(p.id);
+        return;
       // the moved session runs on in its new folder's own instance of this plugin, but this one still ends its turn
       case 'session.moved':
         return parentOf(p.sessionID).then((parent) => { if (!parent && p.location?.directory) workdir = p.location.directory; });
@@ -251,9 +266,11 @@ async function setup(ctx) {
   // permissions the stream asks or answers while a resync reads the list, which may predate them
   let heard;
   // what a new subscription can't hear, read once it has started: a turn that ended, and permissions asked or answered;
-  // forms have no list. A turn idle now ends a moment late, unless the stream ends it or a new prompt starts first
+  // forms and shells have no list, so a shell that may have exited meanwhile is let go. A turn idle now ends a moment late,
+  // unless the stream ends it or a new prompt starts first
   const resync = async () => {
     await later(0);
+    monitors.clear();
     for (const [id, n] of turns) {
       void Promise.race([idle(id), later(IDLE_MS, false)]).then((now) => now && later(SHOW_MS, true))
         .then((now) => { if (now && turns.get(id) === n) return end(id, 'Stop'); }, () => {});
@@ -315,7 +332,10 @@ async function setup(ctx) {
       log(root, { kind: 'tool', name: e.tool, given: clip(e.input, MAX_TOOL) });
       log(root, { kind: 'output', printed: clip(e.result?.content?.map((c) => c.text ?? '').join('\n') ?? e.error?.message, MAX_TOOL) });
     }
-    if (!asking.size) void hook('PostToolUse', root, { tool_name: e.tool });
+    const { status, shellID } = e.result?.metadata ?? {};
+    const watcher = e.tool === 'shell' && status === 'running' && typeof shellID === 'string' && !exited.has(shellID);
+    if (watcher) monitors.set(shellID, root);
+    if (!asking.size) void hook('PostToolUse', root, { tool_name: e.tool, ...(watcher && { task_id: shellID }) });
   });
 
   // a quit TUI takes its server with it, so svalld learns the agent has gone from the pane's shell

@@ -380,6 +380,23 @@ describe('applyHook for opencode', () => {
     expect(applyHook(asked, ev({ name: 'PreToolUse' }), 6).agent?.status).toBe('working');
     expect(applyHook(at('working'), ev({ name: 'Interrupt' }), 6).agent?.status).toBe('idle');
   });
+  it('finishes a turn that leaves a background shell watching, keeps its subagents through the list, and forgets the shell once a turn end lists none', () => {
+    let c = applyHook(at('working'), ev({ name: 'SubagentStart', agentId: 'ses_child' }), 5);
+    c = applyHook(c, ev({ name: 'PostToolUse', toolName: 'shell', monitor: 'sh_1' }), 6);
+    const listing = (ids: string[]) => ({ backgroundTasks: ids.length, backgroundAgents: 0, backgroundAgentIds: [], backgroundShells: ids });
+    const done = applyHook(c, ev(listing(['sh_1'])), 7);
+    expect(done.agent).toMatchObject({ status: 'done', monitors: ['sh_1'], subagents: ['ses_child'] });
+    expect(done.agent?.background).toBeUndefined();
+    expect(applyHook(done, ev(listing([])), 8).agent?.monitors).toBeUndefined();
+  });
+  it("takes the shells a run's end lists as the monitors, one it never heard start and a subagent's run included", () => {
+    const listing = (ids: string[]) => ({ backgroundTasks: ids.length, backgroundAgents: 0, backgroundAgentIds: [], backgroundShells: ids });
+    const done = applyHook(at('working'), ev(listing(['sh_9'])), 7);
+    expect(done.agent).toMatchObject({ status: 'done', monitors: ['sh_9'] });
+    expect(done.agent?.background).toBeUndefined();
+    const child = applyHook(done, ev({ name: 'SubagentStart', agentId: 'ses_child' }), 8);
+    expect(applyHook(child, ev({ name: 'SubagentStop', agentId: 'ses_child', ...listing([]) }), 9).agent?.monitors).toBeUndefined();
+  });
 });
 
 // a `claude -p` or `codex exec` run from inside a character inherits SVALL_CHAR_ID, so its hooks reach the same slot
