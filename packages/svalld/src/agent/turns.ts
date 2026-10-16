@@ -9,14 +9,17 @@ export type Event = { kind: 'user' | 'agent'; text: string } | { kind: 'tool'; n
 /** The newest `limit` prompts, newest first. */
 export function promptsOf(said: string[], limit: number, pending?: Pending): string[] {
   const list = said.slice(-limit).reverse().map(clip);
-  // the hook reports a prompt before the log holds it, so it leads until its own line, the newest, lands.
-  // The hook clips a long prompt, ends trimmed or not, and the log does not, so one longer than that is matched on its head
+  // the hook reports a prompt before the log holds it, so it leads until its own line, the newest, lands
   const head = pending?.text.trim();
-  const last = said.at(-1);
-  const landed = head !== undefined && last !== undefined && (last === head || (last.length > MAX_PROMPT && last.startsWith(head)));
+  const landed = head !== undefined && carries(said.at(-1), head);
   if (head && !landed) list.unshift(clip(head));
   return list.slice(0, limit);
 }
+
+// whether the log's text is the prompt a hook reported. The hook clips a long prompt, ends trimmed or not, and the log
+// does not, so one longer than that is matched on its head
+export const carries = (said: string | undefined, head: string): boolean =>
+  said !== undefined && (said === head || (said.length > MAX_PROMPT && said.startsWith(head)));
 
 const urlsIn = (v: unknown): string[] => (JSON.stringify(v ?? '').match(LINK) ?? []).map((u) => trimEnd(u, '.,;:!?'));
 

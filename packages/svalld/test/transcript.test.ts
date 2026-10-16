@@ -85,6 +85,18 @@ describe('userPrompts', () => {
     expect(userPrompts(typed('first') + asked + declined + typed('second'), 10))
       .toEqual(['second', 'Which port?\n→ 8080\n\nKeep logs?\n→ No', 'first']);
   });
+  it('lists a prompt sent mid-turn, which reaches the turn as a queued command, and no command queued by anyone else', () => {
+    const queued = (prompt: unknown, commandMode: string, origin: unknown) =>
+      line({ type: 'attachment', attachment: { type: 'queued_command', prompt, commandMode, origin } });
+    const toolResult = line({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', content: 'x' }] } });
+    const text =
+      typed('first') + toolResult +
+      queued('mid-turn', 'prompt', { kind: 'human' }) +
+      queued([{ type: 'text', text: 'with an image' }, { type: 'image' }], 'prompt', { kind: 'human' }) +
+      queued('from a peer', 'prompt', { kind: 'peer' }) +
+      queued('<task-notification>done</task-notification>', 'task-notification', { kind: 'task-notification' });
+    expect(userPrompts(text, 10)).toEqual(['with an image', 'mid-turn', 'first']);
+  });
   it('keeps only the last N and truncates a long one', () => {
     expect(userPrompts(typed('a') + typed('b') + typed('c'), 2)).toEqual(['c', 'b']);
     expect(userPrompts(typed('x'.repeat(5000)), 1)[0]).toHaveLength(2001);
@@ -106,12 +118,31 @@ describe('userPrompts', () => {
   it('drops a reported prompt a later entry has overtaken', () => {
     expect(userPrompts(written('p2', 'second', 200), 10, hooked('p1', 'first'))).toEqual(['second']);
   });
+  const notice = '<task-notification>\n<task-id>a1</task-id>\n</task-notification>';
+  const notified = (id: string) => line({
+    type: 'user', origin: { kind: 'task-notification' }, promptId: id, timestamp: new Date(90).toISOString(), message: { role: 'user', content: notice },
+  });
   it('drops a reported prompt that opened a turn nobody typed', () => {
-    const notified = line({
-      type: 'user', origin: { kind: 'task-notification' }, promptId: 'p2', timestamp: new Date(110).toISOString(),
-      message: { role: 'user', content: '<task-notification>\n<task-id>a1</task-id>\n</task-notification>' },
-    });
-    expect(userPrompts(written('p1', 'first', 90) + notified, 10, hooked('p2', '<task-notification>'))).toEqual(['first']);
+    expect(userPrompts(written('p1', 'first', 80) + notified('p2'), 10, hooked('p2', notice))).toEqual(['first']);
+  });
+  // the hook names the turn a prompt came in, so one sent mid-turn reports the id of the prompt that opened that turn
+  const midTurn = (text: string) => line({
+    type: 'attachment', timestamp: new Date(95).toISOString(),
+    attachment: { type: 'queued_command', prompt: text, commandMode: 'prompt', origin: { kind: 'human' } },
+  });
+  const toolResult = (id: string) => line({ type: 'user', promptId: id, timestamp: new Date(105).toISOString(), message: { role: 'user', content: [{ type: 'tool_result', content: 'x' }] } });
+  it('leads with a prompt sent mid-turn until the turn takes it as a queued command', () => {
+    const turn = written('p1', 'first', 90) + toolResult('p1');
+    expect(userPrompts(turn, 10, hooked('p1', 'second'))).toEqual(['second', 'first']);
+    expect(userPrompts(turn + midTurn('second'), 10, hooked('p1', 'second'))).toEqual(['second', 'first']);
+  });
+  it('leads with a prompt queued mid-turn until it opens the next turn', () => {
+    const turn = written('p1', 'first', 90);
+    expect(userPrompts(turn, 10, hooked('p1', 'second'))).toEqual(['second', 'first']);
+    expect(userPrompts(turn + written('p2', 'second', 120), 10, hooked('p1', 'second'))).toEqual(['second', 'first']);
+  });
+  it('leads with a prompt sent mid-turn into a turn nobody typed', () => {
+    expect(userPrompts(written('p1', 'first', 80) + notified('p2') + toolResult('p2'), 10, hooked('p2', 'mine'))).toEqual(['mine', 'first']);
   });
   it('waits for the entry the user wrote, not another carrying the same id', () => {
     const toolResult = line({ type: 'user', promptId: 'p2', timestamp: new Date(90).toISOString(), message: { role: 'user', content: [{ type: 'tool_result', content: 'x' }] } });
