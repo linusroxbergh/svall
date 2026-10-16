@@ -45,7 +45,7 @@ function queued(e: Entry): string | undefined {
 }
 
 const COMMAND = /<command-name>([^<]*)<\/command-name>/;
-const COMMAND_ARGS = /<command-args>([^<]*)<\/command-args>/;
+const COMMAND_ARGS = /<command-args>([\s\S]*?)<\/command-args>/;
 
 // Claude Code stamps the turns a person typed with a human origin. Everything else sharing the user
 // stream — tool results, task notifications, interrupts, local command output — is its own writing.

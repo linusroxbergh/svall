@@ -153,6 +153,13 @@ describe('userPrompts', () => {
     expect(userPrompts(both, 10, hooked('p2', 'again'))).toEqual(['again', 'again']);
     expect(userPrompts(written('p1', 'again', 90), 10, hooked('p3', 'again'))).toEqual(['again', 'again']);
   });
+  it('pairs a reported slash command with its entry when its args hold a tag', () => {
+    const entry = line({
+      type: 'user', origin: { kind: 'human' }, promptId: 'p2', timestamp: new Date(90).toISOString(),
+      message: { role: 'user', content: '<command-message>echoit</command-message>\n<command-name>/echoit</command-name>\n<command-args>fix the <div> bug</command-args>' },
+    });
+    expect(userPrompts(entry, 10, hooked('p2', '/echoit fix the <div> bug'))).toEqual(['/echoit fix the <div> bug']);
+  });
   it('truncates the reported prompt like a written one and keeps the limit', () => {
     expect(userPrompts(written('p1', 'a', 80) + written('p2', 'b', 90), 2, hooked('p3', 'c'))).toEqual(['c', 'b']);
     expect(userPrompts('', 1, hooked('p1', 'x'.repeat(5000)))[0]).toHaveLength(2001);
