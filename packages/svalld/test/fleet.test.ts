@@ -805,6 +805,25 @@ runIf('Fleet', () => {
       expect(await b.tmux.hasWindow(second)).toBe(false);
     });
 
+    it('waits on no second agent whose pid now runs another program', async () => {
+      const b = await sleepBoot();
+      const { c } = await withAgent(b);
+      await b.fleet.openSecond(c.id);
+      const other = spawn('sleep', ['30'], { stdio: 'ignore' });
+      let signal: string | null = null;
+      other.on('exit', (_code, sig) => { signal = sig; });
+      b.store.update((d) => { d.characters[c.id].second!.agent = { kind: 'claude', sessionId: SID, status: 'idle', lastActivityAt: 0, pid: other.pid! }; });
+      b.procs.push({ pid: other.pid!, ppid: 1, pgid: other.pid!, args: 'sleep 30' });
+      try {
+        await b.fleet.sleepCharacter(c.id);
+        const done = await Promise.race([Promise.resolve(b.fleet['ending'].get(c.id)).then(() => true), new Promise((r) => setTimeout(() => r(false), 3000))]);
+        expect(done).toBe(true);
+        expect(signal).toBeNull();
+      } finally {
+        other.kill();
+      }
+    });
+
     it('refuses a robot it could not resume', async () => {
       const b = await sleepBoot();
       const { c, transcriptPath } = await withAgent(b);

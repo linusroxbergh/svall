@@ -32,6 +32,18 @@ describe('endProcs', () => {
     expect(calls).toEqual([[1, 'SIGTERM'], [2, 'SIGTERM'], [1, 'SIGKILL'], [2, 'SIGKILL']]);
   });
 
+  it('neither waits nor reads again when every victim is already gone', async () => {
+    const calls: [number, string][] = [];
+    const kill = (pid: number, sig: NodeJS.Signals) => {
+      calls.push([pid, sig]);
+      throw Object.assign(new Error('no such process'), { code: 'ESRCH' });
+    };
+    let waited = false;
+    await endProcs([proc(1), proc(2)], async () => { throw new Error('read'); }, { kill, wait: async () => { waited = true; } });
+    expect(waited).toBe(false);
+    expect(calls).toEqual([[1, 'SIGTERM'], [2, 'SIGTERM']]);
+  });
+
   it('kills a victim whose re-read row has no start time', async () => {
     const s = setup([proc(2, 0)]);
     await endProcs([proc(2, 100)], s.read, { kill: s.kill, wait: s.wait });

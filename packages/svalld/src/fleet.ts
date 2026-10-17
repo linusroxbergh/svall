@@ -15,7 +15,7 @@ import { renderBrief } from './context/brief.js';
 import { isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from './context/launch.js';
 import { settleItems } from './context/items.js';
 import { docFolders, removeDocs } from './docs.js';
-import { endAll, endIdleAgents, exited, markDormant, processes, RESUME_NOTE, sleepFlags, type Proc, type Sleep } from './dormancy.js';
+import { endAll, endIdleAgents, exited, markDormant, processes, RESUME_NOTE, runsAgent, sleepFlags, type Proc, type Sleep } from './dormancy.js';
 import { Dormant, Invalid, NotFound } from './errors.js';
 import { attribute, type Scope } from './load/attribute.js';
 import { endProcs } from './load/end.js';
@@ -586,7 +586,8 @@ export class Fleet extends EventEmitter<Events> {
     const flags = sleepFlags(c, procs);
     if (!c.tmux || !flags) throw new Invalid(`${c.name} can't be put to sleep`);
     const victims = await this.owned(c, procs);
-    const pids = [c.agent!.pid, c.second?.agent?.pid];
+    // only a pid still running its agent is waited on, and killed if it outstays the wait
+    const pids = [c.agent, c.second?.agent].flatMap((a) => (a?.pid && procs.some((p) => p.pid === a.pid && runsAgent(p.args, a.kind)) ? [a.pid] : []));
     const windows = [c.tmux.windowId, c.second?.tmux.windowId].filter((w): w is string => !!w);
     // dormant before the kill: the SessionEnd the kill sends then finds no live character to clear. A close, another
     // sleep or an idle ending meanwhile leaves nothing to put to sleep
@@ -601,7 +602,7 @@ export class Fleet extends EventEmitter<Events> {
     // registered with the state change, so a revive waits for the windows, the agents and what they started
     const killed = Promise.all(windows.map((w) => this.deps.tmux.killWindow(w)));
     const closing: Promise<void> = killed
-      .then(() => Promise.all(pids.map((pid) => (pid ? exited(pid) : undefined))))
+      .then(() => Promise.all(pids.map((pid) => exited(pid))))
       .then(() => endProcs(victims, () => this.readLive(), this.deps.endOpts))
       .catch((e) => this.deps.log.error(`sleep ${id}: ${String(e)}`))
       .finally(() => { if (this.ending.get(id) === closing) this.ending.delete(id); });

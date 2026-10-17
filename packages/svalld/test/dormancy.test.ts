@@ -199,4 +199,8 @@ describe('sleepFlags', () => {
     expect(sleepFlags(withAgent(), [{ pid: 8, args: 'claude' }])).toBeUndefined();
     expect(sleepFlags(withAgent(), [{ pid: 7, args: 'claude --bogus' }])).toBeUndefined();
   });
+
+  it('gives none for a session it could not resume', () => {
+    expect(sleepFlags(withAgent({ sessionId: 'not a session' }), [{ pid: 7, args: 'claude' }])).toBeUndefined();
+  });
 });

@@ -134,7 +134,7 @@ export function runsAgent(args: string, kind: AgentKind): boolean {
 export function sleepFlags(c: Character, procs: Pick<Proc, 'pid' | 'args'>[]): string[] | undefined {
   const a = c.agent;
   const proc = a && procs.find((p) => p.pid === a.pid);
-  if (!a || !proc || !runsAgent(proc.args, a.kind) || !a.transcriptPath || !fs.existsSync(a.transcriptPath)) return undefined;
+  if (!a || !proc || !runsAgent(proc.args, a.kind) || !isSessionId(a.sessionId) || !a.transcriptPath || !fs.existsSync(a.transcriptPath)) return undefined;
   return startFlags(proc.args, a.kind);
 }
 
