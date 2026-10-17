@@ -171,6 +171,7 @@ export const methods = {
   'char.star': { params: z.object({ id: z.string(), targetId: z.string().optional(), after: z.boolean().optional() }), result: Character },
   'char.unstar': { params: Id, result: Character },
   'char.close': { params: Id, result: z.object({}) },
+  'char.sleep': { params: Id, result: z.object({}) },
   'char.revive': { params: Id, result: Character },
   'char.seen': { params: Id.extend({ term: Term }), result: Character },
   // starts the character's second terminal when it has none

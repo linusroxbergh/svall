@@ -15,7 +15,7 @@ import { renderBrief } from './context/brief.js';
 import { isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from './context/launch.js';
 import { settleItems } from './context/items.js';
 import { docFolders, removeDocs } from './docs.js';
-import { endAll, endIdleAgents, processes, RESUME_NOTE, sleepFlags, type Proc, type Sleep } from './dormancy.js';
+import { endAll, endIdleAgents, exited, markDormant, processes, RESUME_NOTE, sleepFlags, type Proc, type Sleep } from './dormancy.js';
 import { Dormant, Invalid, NotFound } from './errors.js';
 import { attribute, type Scope } from './load/attribute.js';
 import { endProcs } from './load/end.js';
@@ -576,6 +576,32 @@ export class Fleet extends EventEmitter<Events> {
     this.seen.delete(id);
     for (const m of [this.link, this.poll, this.agentEvents, this.prompts, this.scribe]) m.forget(id);
     removeDocs(this.deps.paths.docs, 'character', id, this.deps.log);
+  }
+
+  /** Ends the agent and everything it started, closes the second terminal, and leaves the robot dormant without a
+   * carry-on note; the session resumes on the next open. */
+  async sleepCharacter(id: string): Promise<void> {
+    await Promise.all([this.reviving.get(id), this.ending.get(id)].map((p) => p?.catch(() => {})));
+    const c = this.char(id);
+    const procs = await this.readLive();
+    const flags = sleepFlags(c, procs);
+    if (!c.tmux || !flags) throw new Invalid(`${c.name} can't be put to sleep`);
+    const victims = await this.owned(c);
+    const agentPid = c.agent!.pid;
+    const windows = [c.tmux.windowId, c.second?.tmux.windowId];
+    // dormant before the kill: the SessionEnd the kill sends then finds no live character to clear
+    this.deps.store.update((d) => {
+      const cur = d.characters[id];
+      markDormant(cur, flags);
+      delete cur.revive?.interrupted;
+      delete cur.second;
+    });
+    for (const w of windows) if (w) await this.deps.tmux.killWindow(w);
+    const closing = (async () => {
+      if (agentPid) await exited(agentPid);
+      await endProcs(victims, () => this.readLive());
+    })().catch((e) => this.deps.log.error(`sleep ${id}: ${String(e)}`)).finally(() => { if (this.ending.get(id) === closing) this.ending.delete(id); });
+    this.ending.set(id, closing);
   }
 
   /** Revives every character whose agent a quit, reboot or crash ended mid-turn; called once hooks can reach the fleet. */

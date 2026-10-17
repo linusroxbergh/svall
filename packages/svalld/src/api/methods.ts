@@ -35,6 +35,7 @@ const handlers: Handlers = {
   'char.star': (p, { fleet }) => fleet.starCharacter(p.id, p.targetId, p.after),
   'char.unstar': (p, { fleet }) => fleet.unstarCharacter(p.id),
   'char.close': async (p, { fleet }) => { await fleet.closeCharacter(p.id); return {}; },
+  'char.sleep': async (p, { fleet }) => { await fleet.sleepCharacter(p.id); return {}; },
   'char.revive': (p, { fleet }) => fleet.reviveCharacter(p.id),
   'char.seen': (p, { fleet }) => fleet.markSeen(p.id, p.term),
   'char.second': (p, { fleet }) => fleet.openSecond(p.id),

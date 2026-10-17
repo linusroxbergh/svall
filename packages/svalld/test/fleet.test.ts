@@ -17,6 +17,7 @@ import type { Deps as LinkDeps } from '../src/links/refresh.js';
 import { silentLogger, type Logger } from '../src/log.js';
 import { expandHome, resolvePaths } from '../src/paths.js';
 import { Store } from '../src/store.js';
+import type { LiveProc } from '../src/load/procs.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { ControlClient } from '../src/tmux/control.js';
 import { parseScreen, SESSION, Tmux } from '../src/tmux/tmux.js';
@@ -32,7 +33,7 @@ runIf('Fleet', () => {
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 
-  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind; name?: string; state?: FleetState; opening?: boolean } = {}) {
+  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind; name?: string; state?: FleetState; opening?: boolean; readProcs?: () => Promise<LiveProc[]> } = {}) {
     const { homeCwd, homeCommand, mainAgent, name, state, opening, ...deps } = extra;
     // what ps shows the dormancy sweep
     const procs: Proc[] = [];
@@ -769,6 +770,54 @@ runIf('Fleet', () => {
     procs.splice(0, procs.length, { pid, ppid: 1, pgid: pid, args: 'claude' });
     await fleet['endIdleAgents']();
     expect(store.state.characters[c.id].tmux).toBeUndefined();
+  });
+
+  describe('sleepCharacter', () => {
+    const live = (ps: Proc[]): LiveProc[] => ps.map((p) => ({ pid: p.pid, ppid: p.ppid, start: 0, cpuNs: 0, mem: 0, path: p.args.split(' ')[0], args: p.args }));
+    // the agent's pid and args reach the fleet through the same list the sweep reads
+    it('puts a working robot to sleep without marking it interrupted', async () => {
+      const b = await boot({ readProcs: async () => live(b.procs) });
+      const { c } = await withAgent(b);
+      const windowId = c.tmux!.windowId;
+      b.store.update((d) => { d.characters[c.id].agent!.status = 'working'; });
+      await b.fleet.sleepCharacter(c.id);
+      const cur = b.store.state.characters[c.id];
+      expect(cur.tmux).toBeUndefined();
+      expect(cur.revive?.command).toBe(`claude --resume ${SID}`);
+      expect(cur.revive?.interrupted).toBeUndefined();
+      expect(await b.tmux.hasWindow(windowId)).toBe(false);
+    });
+
+    it('closes the second terminal with it', async () => {
+      const b = await boot({ readProcs: async () => live(b.procs) });
+      const { c } = await withAgent(b);
+      const second = (await b.fleet.openSecond(c.id)).second!.tmux.windowId;
+      await b.fleet.sleepCharacter(c.id);
+      expect(b.store.state.characters[c.id].second).toBeUndefined();
+      expect(await b.tmux.hasWindow(second)).toBe(false);
+    });
+
+    it('refuses a robot it could not resume', async () => {
+      const b = await boot({ readProcs: async () => live(b.procs) });
+      const { c, transcriptPath } = await withAgent(b);
+      fs.rmSync(transcriptPath);
+      const before = structuredClone(b.store.state.characters[c.id]);
+      await expect(b.fleet.sleepCharacter(c.id)).rejects.toMatchObject({ code: 'invalid', message: `${c.name} can't be put to sleep` });
+      expect(b.store.state.characters[c.id]).toEqual(before);
+      expect(await b.tmux.hasWindow(c.tmux!.windowId)).toBe(true);
+      fs.writeFileSync(transcriptPath, '');
+      await b.fleet.sleepCharacter(c.id);
+      await expect(b.fleet.sleepCharacter(c.id)).rejects.toMatchObject({ code: 'invalid' });
+    });
+
+    it('leaves a slept robot asleep at the next start', async () => {
+      const b = await boot({ readProcs: async () => live(b.procs) });
+      const { c } = await withAgent(b);
+      b.store.update((d) => { d.characters[c.id].agent!.status = 'working'; });
+      await b.fleet.sleepCharacter(c.id);
+      await b.fleet.resumeInterrupted();
+      expect(b.store.state.characters[c.id].tmux).toBeUndefined();
+    });
   });
 
   it('leaves an agent with work in the background, or no transcript to resume from', async () => {
