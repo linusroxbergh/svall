@@ -8,6 +8,9 @@ private func decoded(_ b: ArraySlice<UInt8>) -> JSON {
     return .string(t)
 }
 
+private let charPrefix = Array("SVALL_CHAR_ID=".utf8)
+private let homePrefix = Array("SVALL_HOME=".utf8)
+
 /// A process's argv joined by spaces, with the values of `SVALL_CHAR_ID` and `SVALL_HOME` from its environment.
 private func argsAndMarks(_ pid: Int32, _ buf: inout Bytes) -> (args: ArraySlice<UInt8>, char: ArraySlice<UInt8>?, home: ArraySlice<UInt8>?)? {
     var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
@@ -19,7 +22,8 @@ private func argsAndMarks(_ pid: Int32, _ buf: inout Bytes) -> (args: ArraySlice
     while i < size && buf[i] != 0 { i += 1 }
     while i < size && buf[i] == 0 { i += 1 }
     var args = Bytes()
-    for n in 0..<argc {
+    // a buffer cut short ends the argv early
+    for n in 0..<max(0, min(argc, size)) where i < size {
         let s = i
         while i < size && buf[i] != 0 { i += 1 }
         if n > 0 { args.append(0x20) }
@@ -31,8 +35,8 @@ private func argsAndMarks(_ pid: Int32, _ buf: inout Bytes) -> (args: ArraySlice
         let s = i
         while i < size && buf[i] != 0 { i += 1 }
         let entry = buf[s..<i]
-        if entry.starts(with: Array("SVALL_CHAR_ID=".utf8)) { char = entry.dropFirst(14) }
-        if entry.starts(with: Array("SVALL_HOME=".utf8)) { home = entry.dropFirst(11) }
+        if entry.starts(with: charPrefix) { char = entry.dropFirst(charPrefix.count) }
+        if entry.starts(with: homePrefix) { home = entry.dropFirst(homePrefix.count) }
         i += 1
     }
     return (args[...], char, home)
@@ -66,12 +70,13 @@ func procs() -> Never {
         let ok = withUnsafeMutablePointer(to: &usage) {
             $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V4, $0) }
         }
-        guard ok == 0 else { continue }
+        if ok != 0 { usage = rusage_info_v4() }
         var path = Bytes(repeating: 0, count: 4096)
         let pathLen = max(0, Int(proc_pidpath(pid, &path, UInt32(path.count))))
         // svalld ignores the marks of apps and never reads their args, and reading them is the costliest step
         let isApp = contains(path[..<pathLen], Array(".app/".utf8))
-        guard let marks = isApp ? (args: ArraySlice<UInt8>(), char: nil, home: nil) : argsAndMarks(pid, &argBuf) else { continue }
+        // a process whose arguments can't be read stays, so its descendants keep their place in the tree
+        let marks = (isApp ? nil : argsAndMarks(pid, &argBuf)) ?? (args: ArraySlice<UInt8>(), char: nil, home: nil)
 
         let ticks = Double(usage.ri_user_time &+ usage.ri_system_time)
         var row: [(key: Text, value: JSON)] = [
