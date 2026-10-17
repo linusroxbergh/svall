@@ -27,10 +27,11 @@ test('the islet stands right of mission control and the lighthouse on it opens t
   await svall.open('map');
   const islet = page.getByTestId('resources-islet');
   await expect(islet).toBeVisible();
-  // both boxes carry 132px of drawing room on each side; a cell of water lies between the two pieces of land
+  // both boxes carry 132px of drawing room on each side, grown with the pair on this empty map; a cell of water lies
+  // between the two pieces of land
   const home = await page.getByTestId('island-home').boundingBox();
   const land = await islet.boundingBox();
-  expect(Math.abs(land!.x - (home!.x + home!.width - 132 + 44 - 132))).toBeLessThan(2);
+  expect(Math.abs(land!.x - (home!.x + home!.width - 2 * 132 * theme.home.max + 44))).toBeLessThan(2);
   const tower = (await page.getByTestId('resources-lighthouse').boundingBox())!;
   expect(Math.abs(tower.x + tower.width / 2 - (land!.x + land!.width / 2))).toBeLessThan(2);
   await expect(page.getByTestId('resources-pill')).toContainText('resources');

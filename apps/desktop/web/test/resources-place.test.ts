@@ -17,7 +17,7 @@ describe('placeIslet', () => {
     }
   });
   it('is only its pill when home is collapsed', () => {
-    expect(placeIslet(1440, HOME, true)).toEqual({ mode: 'pill', homeShift: 0, cx: 720, scale: 1, homeScale: 1 });
+    expect(placeIslet(1440, HOME, true)).toEqual({ mode: 'pill', homeShift: 0, cx: 720, scale: 1, homeScale: theme.home.max });
   });
   it('keeps the islet on a map too narrow for the pair, clear of the edge and no smaller than 0.65', () => {
     for (const hostW of [1040, 900, 700, 500]) {
@@ -54,6 +54,15 @@ describe('placeIslet', () => {
     expect(1440 / 2 + p.homeShift - (HOME * 0.7) / 2).toBeCloseTo(left, 6);
     // a cap over what the width allows changes nothing
     expect(placeIslet(900, HOME, false, 1)).toEqual(placeIslet(900, HOME, false));
+  });
+  it('grows home and the islet together past full size with the cards, up to the max and what the width has room for', () => {
+    expect(placeIslet(1440, HOME, false, 1.05)).toMatchObject({ homeScale: 1.05, scale: 1.05 });
+    expect(placeIslet(1440, HOME, false, 2)).toMatchObject({ homeScale: theme.home.max, scale: theme.home.max });
+    const p = placeIslet(1110, HOME, false, 2), fit = (1110 - 2 * ISLET.margin - ISLET.gap) / (HOME + ISLET.w);
+    expect(fit).toBeLessThan(theme.home.max);
+    expect(p).toMatchObject({ homeScale: fit, scale: fit });
+    expect(1110 / 2 + p.homeShift - (HOME * fit) / 2).toBeCloseTo(ISLET.margin, 6);
+    expect(p.cx + (ISLET.w * fit) / 2).toBeCloseTo(1110 - ISLET.margin, 6);
   });
   it('gives up the water between the pair before the islet gives up size', () => {
     const edge = TOTAL + 2 * ISLET.margin;

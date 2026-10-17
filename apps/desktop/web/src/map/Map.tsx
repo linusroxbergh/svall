@@ -141,7 +141,7 @@ export function Map() {
         {hi && (
           <Home island={hi} crew={crew} config={fleet.home} collapsed={Boolean(hi.collapsed)}
             selected={selectedIslandId === HOME_ISLAND} selectedId={selectedId} drag={drag} status={statusOf} robots={!fleet.animals} links={links}
-            shift={place.homeShift} rowShift={placeIslet(hostSize.w, hi.size.w * theme.cell, Boolean(hi.collapsed)).homeShift}
+            shift={place.homeShift} rowShift={placeIslet(hostSize.w, hi.size.w * theme.cell, Boolean(hi.collapsed), theme.home.max).homeShift}
             scale={place.homeScale} cards={k} extra={place.mode === 'pill' ? <ResourcesPill /> : undefined}
             onToggle={() => toggleIsland(deps(), HOME_ISLAND)}
             onArrange={() => arrange()}

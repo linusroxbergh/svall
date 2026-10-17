@@ -56,8 +56,10 @@ export function homeBlocks(island: Island, host: { w: number; h: number }, measu
 // the cap on mission control's scale that agrees with the map it leaves room for: its cards stand as big as the
 // islands', and a smaller home gives the fleet more room, so the two settle together
 export function homeCap(scaleAt: (most: number) => number): number {
-  if (cardScale(scaleAt(1)) >= 1) return 1;
-  let lo = cardScale(theme.scale.min), hi = 1;
+  const top = theme.home.max;
+  if (cardScale(scaleAt(top)) >= top) return top;
+  if (cardScale(scaleAt(1)) === 1) return 1;
+  let lo = cardScale(theme.scale.min), hi = top;
   for (let n = 0; n < 12; n++) { const mid = (lo + hi) / 2; if (cardScale(scaleAt(mid)) >= mid) lo = mid; else hi = mid; }
   return lo;
 }
@@ -78,10 +80,10 @@ export function fitWithHome(islands: Island[], crew: Crew, host: Size, home: Isl
     const below: Below | undefined = home && { h: host.h, blocks: homeBlocks(home, host, row, most), row: home.position.y };
     return { win, below, fit: fitAll(islands, win, crew, below) };
   };
-  const cap = home && !collapsed ? homeCap((m) => at(m).fit.scale) : 1;
+  const cap = home && !collapsed ? homeCap((m) => at(m).fit.scale) : theme.home.max;
   const { win, below, fit } = at(cap);
   // a folded home has no land to shrink; it keeps the cap island cards stand at, so it unfolds at their size
-  const most = collapsed ? Math.min(1, cardScale(fit.scale)) : cap;
+  const most = collapsed ? Math.min(theme.home.max, cardScale(fit.scale)) : cap;
   const fitted = { fit, win, most, room: roomOf(islands, fit, win, crew, below) };
   last = { key, fitted };
   return fitted;

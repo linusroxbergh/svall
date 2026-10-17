@@ -52,7 +52,7 @@ export function useCamera(host: RefObject<HTMLDivElement | null>, lastPressAt: R
   // arrange shapes the fleet for it, and the fit shares out whatever a smaller home leaves
   const reserveAt = (w: number): number => {
     const hi = homeIsland(app.store.getState().fleet);
-    return homeReserve(Boolean(hi?.collapsed), row.current.h, hi ? placeIslet(w, hi.size.w * theme.cell, Boolean(hi.collapsed)).homeScale : 1);
+    return homeReserve(Boolean(hi?.collapsed), row.current.h, hi ? placeIslet(w, hi.size.w * theme.cell, Boolean(hi.collapsed), theme.home.max).homeScale : 1);
   };
   const refit = (immediate?: boolean, anchor?: Anchor) => {
     if (hold.current && !immediate) return;

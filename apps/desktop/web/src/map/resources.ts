@@ -20,13 +20,16 @@ export const homeRoom = (hostW: number): number =>
 /** Home and the islet centred as one group: a narrow map squeezes the water between them, then the islet, then home;
  *  folded home leaves the islet only its pill, and `most` caps home, and the islet with it, at the cards' scale. */
 export function placeIslet(hostW: number, homeW: number, collapsed: boolean, most = 1): Placement {
-  if (collapsed) return { mode: 'pill', homeShift: 0, cx: hostW / 2, scale: 1, homeScale: 1 };
+  if (collapsed) return { mode: 'pill', homeShift: 0, cx: hostW / 2, scale: 1, homeScale: theme.home.max };
   const spare = (gap: number, margin: number) => hostW - 2 * margin - homeW - gap;
   let { gap, margin } = ISLET, scale = 1, homeScale = 1;
   if (spare(gap, margin) < ISLET.w) {
     ({ gap, margin } = TIGHT);
     scale = Math.max(MIN_SCALE, Math.min(1, spare(gap, margin) / ISLET.w));
     homeScale = Math.max(MIN_HOME_SCALE, Math.min(1, (hostW - 2 * margin - gap - MIN_SCALE * ISLET.w) / homeW));
+  } else {
+    // a roomy map lets the pair grow together, as far as its width allows
+    scale = homeScale = Math.min(theme.home.max, (hostW - 2 * margin - gap) / (homeW + ISLET.w));
   }
   homeScale = Math.min(homeScale, most);
   scale = Math.max(MIN_SCALE, Math.min(scale, homeScale));
