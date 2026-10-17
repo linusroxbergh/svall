@@ -15,7 +15,7 @@ Element.prototype.hasPointerCapture ??= function () { return true; };
 let refuse: ((method: string, params: Record<string, unknown>) => string | undefined) | undefined;
 call.mockImplementation((method: string, params?: unknown) => {
   const why = refuse?.(method, params as Record<string, unknown>);
-  return why ? Promise.reject(new Error(why)) : Promise.resolve(method === 'char.prompts' ? { prompts: [] } : {});
+  return why ? Promise.reject(new Error(why)) : Promise.resolve(method === 'char.prompts' ? { prompts: [] } : method === 'load.get' ? { chars: {} } : {});
 });
 const calls = () => call.mock.calls as [string, Record<string, unknown>][];
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
