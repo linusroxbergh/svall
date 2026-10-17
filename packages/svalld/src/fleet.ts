@@ -17,8 +17,9 @@ import { settleItems } from './context/items.js';
 import { docFolders, removeDocs } from './docs.js';
 import { endAll, endIdleAgents, processes, RESUME_NOTE, sleepFlags, type Proc, type Sleep } from './dormancy.js';
 import { Dormant, Invalid, NotFound } from './errors.js';
-import type { Scope } from './load/attribute.js';
-import type { LiveProc } from './load/procs.js';
+import { attribute, type Scope } from './load/attribute.js';
+import { endProcs } from './load/end.js';
+import { readProcs, type LiveProc } from './load/procs.js';
 import { takenNames } from './fleets.js';
 import { AgentEvents } from './fleet/agent-events.js';
 import { ControlLink, type PaneEvents } from './fleet/control.js';
@@ -54,7 +55,7 @@ function setNote(c: Character, note: string): void {
   if (note) c.noteSource = 'manual'; else delete c.noteSource;
 }
 
-type Deps = { store: Store; tmux: Tmux; paths: Paths; config: Config; log: Logger; pollMs?: number; staleSessionMs?: number; runTimeoutMs?: number; runScribe?: RunScribe; linkDeps?: Partial<LinkDeps>; processes?: () => Promise<Proc[]>; agentsFound?: AgentKind[] };
+type Deps = { store: Store; tmux: Tmux; paths: Paths; config: Config; log: Logger; pollMs?: number; staleSessionMs?: number; runTimeoutMs?: number; runScribe?: RunScribe; linkDeps?: Partial<LinkDeps>; processes?: () => Promise<Proc[]>; readProcs?: () => Promise<LiveProc[]>; agentsFound?: AgentKind[] };
 type LiveCharacter = Character & { tmux: NonNullable<Character['tmux']> };
 // a revive onto a window still alive sends its prompt as any send goes, which a draft there can hold
 type Revived = Character & { delivery?: Delivery };
@@ -195,6 +196,20 @@ export class Fleet extends EventEmitter<Events> {
     const apps = new Set(procs.filter((p) => p.path.endsWith('/Contents/MacOS/Svall')).map((p) => p.pid));
     const server = await this.deps.tmux.serverPid();
     return { home: this.deps.paths.home, panes, appPid: appPid(this.deps.paths.home, { isApp: (pid) => apps.has(pid) }), own: [process.pid, ...(server ? [server] : [])] };
+  }
+
+  private readLive(): Promise<LiveProc[]> {
+    const { hookHelper } = this.deps.paths;
+    return (this.deps.readProcs ?? (() => readProcs(fs.existsSync(hookHelper) ? hookHelper : undefined)))();
+  }
+
+  // `c` is already out of the state, so its windows' panes join the scope by hand
+  private async owned(c: Character): Promise<LiveProc[]> {
+    const procs = await this.readLive();
+    const scope = await this.loadScope(procs);
+    const ids = new Set([c.tmux?.windowId, c.second?.tmux.windowId]);
+    scope.panes.set(c.id, (await this.listWindows()).filter((w) => ids.has(w.windowId)).map((w) => w.pid));
+    return attribute(procs, scope).chars.get(c.id) ?? [];
   }
 
   sleepable(id: string, procs: LiveProc[]): boolean {
@@ -551,8 +566,10 @@ export class Fleet extends EventEmitter<Events> {
     // out of the state before any await, so a revive or second terminal opening meanwhile kills its own window
     const c = this.char(id);
     this.deps.store.update((d) => { delete d.characters[id]; });
+    const victims = await this.owned(c).catch((e) => { this.deps.log.error(`close ${id}: ${String(e)}`); return []; });
     if (c.tmux) await this.deps.tmux.killWindow(c.tmux.windowId);
     if (c.second) await this.deps.tmux.killWindow(c.second.tmux.windowId);
+    void endProcs(victims, () => this.readLive()).catch((e) => this.deps.log.error(`end ${id}: ${String(e)}`));
     // nothing the fleet keeps outside the state outlives the character
     this.seen.delete(id);
     for (const m of [this.link, this.poll, this.agentEvents, this.prompts, this.scribe]) m.forget(id);

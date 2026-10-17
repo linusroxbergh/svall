@@ -1016,6 +1016,7 @@ runIf('Fleet', () => {
     const held = new Promise<void>((r) => { opened = r; });
     vi.spyOn(tmux, 'newWindow').mockImplementationOnce(async (...a) => { const w = await open(...a); await held; return w; });
     const revive = fleet.reviveCharacter(c.id);
+    revive.catch(() => {});
     const kill = tmux.killWindow.bind(tmux);
     vi.spyOn(tmux, 'killWindow').mockImplementationOnce(async (id) => { opened(); await revive.catch(() => {}); await kill(id); });
     await fleet.closeCharacter(c.id);

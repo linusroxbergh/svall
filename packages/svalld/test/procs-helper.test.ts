@@ -2,7 +2,16 @@ import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { Config } from '../src/config.js';
+import { Fleet } from '../src/fleet.js';
+import { readProcs } from '../src/load/procs.js';
+import { silentLogger } from '../src/log.js';
+import { resolvePaths } from '../src/paths.js';
 import { hookHelperSources } from '../src/runtime.js';
+import { Store } from '../src/store.js';
+import { tmuxConfText } from '../src/tmux/conf.js';
+import { Tmux } from '../src/tmux/tmux.js';
+import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
 const helperDir = fs.mkdtempSync('/tmp/svall-procs-');
 const helper = path.join(helperDir, 'svall-hook');
@@ -58,4 +67,40 @@ describe('svall-hook procs', () => {
     expect(app.home).toBeUndefined();
     expect(app.mem).toBeGreaterThan(0);
   });
+});
+
+const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
+(hasTmux() ? describe : describe.skip)('deleting a robot', () => {
+  const cleanup: (() => Promise<void>)[] = [];
+  afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
+
+  it('ends what it started in the background and spares another fleet\'s processes', async () => {
+    const home = makeHome();
+    const paths = resolvePaths(home);
+    const config = Config.parse({ shell: '/bin/sh', home: { cwd: path.join(home, 'mc') } });
+    fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
+    const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
+    const fleet = new Fleet({ store: Store.load(paths.state, () => {}), tmux, paths, config, log: silentLogger, pollMs: 150, processes: async () => [], readProcs: () => readProcs(helper) });
+    const started = fleet.start();
+    cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
+    await started;
+
+    const island = fleet.createIsland({ name: 'feature' });
+    const c = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
+    // backgrounded from a shell that exits, so launchd adopts it as it does a robot's nohup server
+    const spawnMarked = (id: string, h: string): number => {
+      const out = execFileSync('/bin/sh', ['-c', '"$0" -e "setInterval(()=>{},1000)" >/dev/null 2>&1 & echo $!', process.execPath], { encoding: 'utf8', env: { ...process.env, SVALL_CHAR_ID: id, SVALL_HOME: h } });
+      const pid = Number(out.trim());
+      cleanup.push(async () => { try { process.kill(pid, 'SIGKILL'); } catch { /* already ended */ } });
+      return pid;
+    };
+    const mine = spawnMarked(c.id, paths.home);
+    const other = spawnMarked(c.id, '/tmp/svall-other-fleet');
+    await waitFor(() => procs().some((r) => r.pid === mine && r.char === c.id) && procs().some((r) => r.pid === other));
+
+    await fleet.closeCharacter(c.id);
+    await waitFor(() => !alive(mine));
+    expect(alive(other)).toBe(true);
+  }, 20_000);
 });
