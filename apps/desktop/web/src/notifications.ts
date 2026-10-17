@@ -19,10 +19,12 @@ function noticeFor(v: NoticeView, s: Session, status: PushStatus): Notice {
   const blocked = status === 'blocked';
   // an answer reaches the main terminal only, as on the phone, and names the question the banner showed
   const actions = blocked && !s.term;
+  const island = v.fleet.islands[c.islandId]?.name.toLowerCase();
+  const who = island ? `${c.name} on ${island}` : c.name;
   return {
     key: s.key,
-    title: blocked ? `${c.name} needs you` : `${c.name} is done`,
-    subtitle: v.fleet.islands[c.islandId]?.name ?? '',
+    title: blocked ? `${who} needs you` : `${who} is done`,
+    subtitle: '',
     // a blocked agent's question, or the API error that ended a turn
     body: s.agent?.prompt ?? '',
     sound: v.settings.sound,
