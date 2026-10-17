@@ -139,6 +139,15 @@ runIf('Fleet', () => {
     expect(open.mock.calls[1][2]).not.toHaveProperty('CLAUDE_CODE_NO_FLICKER');
   });
 
+  it("starts a character's zsh from Svall's ZDOTDIR where Codex is, so a typed codex stays off the shared server", async () => {
+    const { fleet, store, tmux, home } = await boot({ agentsFound: ['codex'] });
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'zsh' }).id, cwd: '/tmp' });
+    await tmux.sendLine(store.state.characters[c.id].tmux!.paneId, 'echo zd-$ZDOTDIR', true);
+    const zdotdir = resolvePaths(home).zdotdir;
+    await waitFor(async () => (await tmux.capture(store.state.characters[c.id].tmux!.paneId, 20)).toString().includes(`zd-${zdotdir}`));
+    expect(fs.readFileSync(path.join(zdotdir, '.zshenv'), 'utf8')).toContain('function codex');
+  });
+
   it('opens one second terminal beside the main one, and ends it with its shell or with the character', async () => {
     const { fleet, store, tmux } = await boot();
     const island = fleet.createIsland({ name: 'pair' });

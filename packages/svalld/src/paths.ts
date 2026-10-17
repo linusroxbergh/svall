@@ -49,6 +49,7 @@ export function resolvePaths(home: string = svallHome()) {
     trash: path.join(home, 'trash'),
     opencodeConfig: path.join(home, 'opencode-config'),
     opencodeReplaced: path.join(home, 'opencode-config-replaced'),
+    zdotdir: path.join(home, 'zsh'),
   };
 }
 export type Paths = ReturnType<typeof resolvePaths>;
