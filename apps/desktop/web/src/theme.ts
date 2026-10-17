@@ -34,10 +34,9 @@ export const theme = {
   // an island's label pill scales with the map up to 1, then takes `grow` of the map's growth
   label: { grow: 0.2 },
   // the home island: visible land above the bottom edge, tall enough that a crew card at its largest clears it, gap to
-  // its label row, the row's own height and its height from the edge when collapsed. the map height kept clear of the
-  // world is that row plus `water`, so the fleet comes down to half a cell above the header pill. on a roomy map home
-  // grows with the cards up to `max`
-  home: { visible: 150, rowGap: 28, row: 28, bar: 16, water: 22, max: 1.1 },
+  // its label row, the row's own height, its height from the edge when collapsed, and how far it grows with the cards.
+  // the map height kept clear of the world is that row plus `water`, so the fleet stops half a cell above the header pill
+  home: { visible: 154, rowGap: 28, row: 28, bar: 16, water: 22, max: 1.1 },
 };
 
 export const tokenPx = { w: theme.token.w * theme.token.unit, h: theme.token.h * theme.token.unit };

@@ -17,6 +17,7 @@ describe('theme', () => {
     expect(w).toBeLessThan(3 * theme.cell);
     expect((tokenPx.w + 0.36 * theme.token.unit) / theme.token.floor).toBeLessThan(3 * theme.cell);
     expect(h).toBeLessThan(4 * theme.cell);
+    expect(h).toBeLessThan(theme.home.visible);
     // half a card, so a crew member two cells in from the coast stands on visible land
     expect(w / 2).toBeLessThan(2 * theme.cell);
   });

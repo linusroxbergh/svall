@@ -58,6 +58,7 @@ export function homeBlocks(island: Island, host: { w: number; h: number }, measu
 export function homeCap(scaleAt: (most: number) => number): number {
   const top = theme.home.max;
   if (cardScale(scaleAt(top)) >= top) return top;
+  if (cardScale(scaleAt(1)) === 1) return 1;
   let lo = cardScale(theme.scale.min), hi = top;
   for (let n = 0; n < 12; n++) { const mid = (lo + hi) / 2; if (cardScale(scaleAt(mid)) >= mid) lo = mid; else hi = mid; }
   return lo;

@@ -1,6 +1,6 @@
 import { FAKE_CLAUDE, expect, setMapWidth, settleMap, test } from './fixtures.js';
 import type { Page } from '@playwright/test';
-import { cardScale, labelScale, sharedCardScale } from '../src/map/layout.js';
+import { cardScale, labelScale } from '../src/map/layout.js';
 import { robotOf } from '../src/portraits.js';
 import type { MapDump } from '../src/map/types.js';
 import { DEFAULT_SETTINGS } from '../src/settings.js';
@@ -657,8 +657,8 @@ test('a zoom rescales cards and label pills, and restyles nothing inside them', 
   const near = (await layoutOf(page)).scale;
   expect(near).toBeGreaterThan(1);
   const up = await read();
-  // mission control grows to its most, and no card outgrows its slots
-  expect(up.card).toBeCloseTo(sharedCardScale(near, theme.home.max), 2);
+  // mission control grows with the cards, so its slots hold them at the map's card scale
+  expect(up.card).toBeCloseTo(cardScale(near), 2);
   expect(up.pill).toBeCloseTo(labelScale(near), 2);
   expect(up.inside).toEqual(['1', '1']);
   expect(up.mapCell).toBe(up.rootCell);
