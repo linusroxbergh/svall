@@ -25,14 +25,19 @@ const done = patch(fleet(), 'c1', { agent: agent('done'), unread: true });
 describe('decide', () => {
   it('posts a blocked banner with what the agent asked, and Approve/Deny on the main terminal', () => {
     const d = decide(look(working), look(blocked), new Map());
-    expect(d.post).toEqual([{ key: 'c1', title: 'c1 needs you', subtitle: 'beta', body: 'Bash: rm -rf dist', sound: true, actions: true }]);
+    expect(d.post).toEqual([{ key: 'c1', title: 'c1 on beta needs you', subtitle: '', body: 'Bash: rm -rf dist', sound: true, actions: true }]);
     expect(d.remove).toEqual([]);
     expect([...d.posted]).toEqual([['c1', 'blocked']]);
   });
 
   it('posts a done banner with no body and no buttons', () => {
     const d = decide(look(working), look(done), new Map());
-    expect(d.post).toEqual([{ key: 'c1', title: 'c1 is done', subtitle: 'beta', body: '', sound: true, actions: false }]);
+    expect(d.post).toEqual([{ key: 'c1', title: 'c1 on beta is done', subtitle: '', body: '', sound: true, actions: false }]);
+  });
+
+  it('names the island in lowercase', () => {
+    const loud = (f: FleetState): FleetState => ({ ...f, islands: { ...f.islands, i_b: { ...f.islands.i_b!, name: 'BETA' } } });
+    expect(decide(look(loud(working)), look(loud(blocked)), new Map()).post[0]!.title).toBe('c1 on beta needs you');
   });
 
   it('says in a done banner why an API error ended the turn', () => {
@@ -47,7 +52,7 @@ describe('decide', () => {
   it('posts a second terminal under its own key, with no buttons', () => {
     const second = (status: AgentStatus) => patch(working, 'c1', { second: { tmux: { windowId: '@2', paneId: '%2' }, agent: agent(status), unread: false } });
     const d = decide(look(second('working')), look(second('blocked')), new Map());
-    expect(d.post).toEqual([{ key: 'c1-2', title: 'c1 needs you', subtitle: 'beta', body: '', sound: true, actions: false }]);
+    expect(d.post).toEqual([{ key: 'c1-2', title: 'c1 on beta needs you', subtitle: '', body: '', sound: true, actions: false }]);
   });
 
   it('posts nothing for the first snapshot, an unchanged status, or a done already read', () => {
@@ -148,7 +153,7 @@ describe('followNotifications', () => {
   it('posts when a character turns blocked, and takes the banner down once it moves on', () => {
     const { store, bridge } = setup();
     store.getState().setFleet(blocked);
-    expect(bridge.sent).toContainEqual({ type: 'notify.post', key: 'c1', title: 'c1 needs you', subtitle: 'beta', body: 'Bash: rm -rf dist', sound: true, actions: true });
+    expect(bridge.sent).toContainEqual({ type: 'notify.post', key: 'c1', title: 'c1 on beta needs you', subtitle: '', body: 'Bash: rm -rf dist', sound: true, actions: true });
     store.getState().setFleet(working);
     expect(bridge.sent.at(-1)).toEqual({ type: 'notify.remove', key: 'c1' });
   });
