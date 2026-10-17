@@ -75,19 +75,22 @@ const alive = (pid: number): boolean => { try { process.kill(pid, 0); return tru
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 
-  it('ends what it started in the background and spares another fleet\'s processes', async () => {
+  async function boot(read: () => ReturnType<typeof readProcs>) {
     const home = makeHome();
     const paths = resolvePaths(home);
     const config = Config.parse({ shell: '/bin/sh', home: { cwd: path.join(home, 'mc') } });
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
-    const fleet = new Fleet({ store: Store.load(paths.state, () => {}), tmux, paths, config, log: silentLogger, pollMs: 150, processes: async () => [], readProcs: () => readProcs(helper) });
+    const fleet = new Fleet({ store: Store.load(paths.state, () => {}), tmux, paths, config, log: silentLogger, pollMs: 150, processes: async () => [], readProcs: read });
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
+    const c = await fleet.createCharacter({ islandId: fleet.createIsland({ name: 'feature' }).id, cwd: '/tmp' });
+    return { fleet, paths, tmux, c };
+  }
 
-    const island = fleet.createIsland({ name: 'feature' });
-    const c = await fleet.createCharacter({ islandId: island.id, cwd: '/tmp' });
+  it('ends what it started in the background and spares another fleet\'s processes', async () => {
+    const { fleet, paths, c } = await boot(() => readProcs(helper));
     // backgrounded from a shell that exits, so launchd adopts it as it does a robot's nohup server
     const spawnMarked = (id: string, h: string): number => {
       const out = execFileSync('/bin/sh', ['-c', '"$0" -e "setInterval(()=>{},1000)" >/dev/null 2>&1 & echo $!', process.execPath], { encoding: 'utf8', env: { ...process.env, SVALL_CHAR_ID: id, SVALL_HOME: h } });
@@ -103,4 +106,15 @@ const alive = (pid: number): boolean => { try { process.kill(pid, 0); return tru
     await waitFor(() => !alive(mine));
     expect(alive(other)).toBe(true);
   }, 20_000);
+
+  it('never lists svalld or the fleet\'s tmux server among a robot\'s processes', async () => {
+    let marks = { char: '', home: '' };
+    let tmuxPid = 0;
+    const row = (pid: number) => ({ pid, ppid: 1, start: 1, cpuNs: 0, mem: 0, path: '/bin/x', args: 'x', ...marks });
+    const { fleet, paths, tmux, c } = await boot(async () => [row(process.pid), row(tmuxPid), row(4242)]);
+    marks = { char: c.id, home: paths.home };
+    tmuxPid = (await tmux.serverPid())!;
+    const victims = await fleet['owned'](c);
+    expect(victims.map((p) => p.pid)).toEqual([4242]);
+  });
 });

@@ -209,7 +209,9 @@ export class Fleet extends EventEmitter<Events> {
     const scope = await this.loadScope(procs);
     const ids = new Set([c.tmux?.windowId, c.second?.tmux.windowId]);
     scope.panes.set(c.id, (await this.listWindows()).filter((w) => ids.has(w.windowId)).map((w) => w.pid));
-    return attribute(procs, scope).chars.get(c.id) ?? [];
+    // svalld, its tmux server and the app may carry a robot's marks but are never the robot's to end
+    const keep = new Set([...scope.own, scope.appPid]);
+    return (attribute(procs, scope).chars.get(c.id) ?? []).filter((p) => !keep.has(p.pid));
   }
 
   sleepable(id: string, procs: LiveProc[]): boolean {

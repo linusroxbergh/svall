@@ -4,6 +4,7 @@ export type Kill = (pid: number, signal: NodeJS.Signals) => void;
 
 /** Terminates `victims`, then kills those still running after a grace period. */
 export async function endProcs(victims: LiveProc[], read: () => Promise<LiveProc[]>, o: { graceMs?: number; kill?: Kill; wait?: (ms: number) => Promise<void> } = {}): Promise<void> {
+  if (!victims.length) return;
   const kill = o.kill ?? ((pid, sig) => { process.kill(pid, sig); });
   const send = (pid: number, sig: NodeJS.Signals): void => { try { kill(pid, sig); } catch { /* already gone */ } };
   for (const v of victims) send(v.pid, 'SIGTERM');
