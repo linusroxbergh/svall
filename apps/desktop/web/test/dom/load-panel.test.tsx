@@ -71,6 +71,23 @@ test('Sleep puts an idle robot to sleep at once, and asks first of a working one
   expect(store.getState().sleepingCharacter).toBeUndefined();
 });
 
+test('Sleep asks first of a robot mid-turn in either terminal, a blocked one included', async () => {
+  const agent = (status: string) => ({ kind: 'claude', sessionId: 's', status, lastActivityAt: 1, transcriptPath: '/t' });
+  store.getState().applyPatch([
+    { op: 'add', path: '/characters/c1/agent', value: agent('blocked') },
+    { op: 'add', path: '/characters/c0/agent', value: agent('blocked') },
+    { op: 'add', path: '/characters/c0/second', value: { tmux: { windowId: '@9', paneId: '%9' }, unread: false, agent: agent('working') } },
+  ]);
+  await shown();
+  fireEvent.click(screen.getByTestId('load-sleep-c1'));
+  expect(store.getState().sleepingCharacter).toBe('c1');
+  act(() => store.getState().setSleepingCharacter(undefined));
+  fireEvent.click(screen.getByTestId('load-sleep-c0'));
+  expect(store.getState().sleepingCharacter).toBe('c0');
+  expect(screen.getByText('c0 is working. Sleep anyway?')).toBeTruthy();
+  expect(calls().filter(([m]) => m === 'char.sleep')).toEqual([]);
+});
+
 test('Delete asks as the side card\'s does, and the name opens the robot and puts the panel away', async () => {
   store.getState().toggleLoad(true);
   await shown();

@@ -67,7 +67,10 @@ export function UtilityDock() {
     app.bridge.send({ type: 'term.focus' });
     // the press that opened the panel lands on the tab, which counts as inside; a press anywhere else
     // (a pointerdown, since the map's send no mousedown) is where the user wants the keys, so the surface leaves them there
-    const away = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) shut(); };
+    const away = (e: PointerEvent) => {
+      // the dialogs the panel's buttons open stand outside the dock, and answering one is no press away
+      if (!box.current?.contains(e.target as Node) && !(e.target instanceof Element && e.target.closest('.modal-back'))) shut();
+    };
     window.addEventListener('pointerdown', away, true);
     // a press on a surface never reaches the listener above; the shell answers for those
     const off = app.bridge.onMessage((m) => { if (m.type === 'shell.pressedAway') shut(); });

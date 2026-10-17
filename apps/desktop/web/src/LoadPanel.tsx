@@ -5,7 +5,7 @@ import { app, deps } from './boot.js';
 import { useApp } from './hooks.js';
 import { useLoad } from './load.js';
 import { cpuText, memText } from './loadText.js';
-import { statusOf } from './selectors.js';
+import { slotStatus } from './selectors.js';
 
 const Moon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -41,9 +41,9 @@ function Row({ testid, name, use, of, appRow, children }: { testid: string; name
 
 function RobotRow({ c, use, of }: { c: Character; use: LoadChar; of: number }) {
   const open = () => { app.store.getState().focus(c.id); app.store.getState().toggleLoad(false); };
-  // a working robot would lose the turn it is on, so its sleep asks first
+  // a robot mid-turn in either terminal, working or waiting on the user, would lose that turn, so its sleep asks first
   const sleep = () => {
-    if (statusOf(c) === 'working') app.store.getState().setSleepingCharacter(c.id);
+    if (([1, 2] as const).some((t) => ['working', 'blocked'].includes(slotStatus(c, t)))) app.store.getState().setSleepingCharacter(c.id);
     else void sleepCharacter(deps(), c.id);
   };
   return (

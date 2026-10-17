@@ -7,6 +7,7 @@ call.mockImplementation(() => new Promise(() => {}));
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
 const { UtilityDock } = await import('../../src/UtilityDock.js');
+const { ConfirmSleep } = await import('../../src/ConfirmSleep.js');
 
 beforeEach(() => {
   freshStore();
@@ -19,6 +20,18 @@ test('a press on the map closes the usage panel', async () => {
   await act(async () => {});
   act(() => { fireEvent.pointerDown(screen.getByTestId('map')); });
   expect(store.getState().usageOpen).toBe(false);
+});
+
+// the dialogs a panel's buttons open stand outside the dock
+test('answering a dialog the load panel opened leaves the panel open', async () => {
+  store.getState().toggleLoad(true);
+  render(<><div data-testid="map" /><UtilityDock /><ConfirmSleep /></>);
+  await act(async () => {});
+  act(() => store.getState().setSleepingCharacter('c1'));
+  act(() => { fireEvent.pointerDown(screen.getByTestId('confirm-sleep-cancel')); });
+  expect(store.getState().loadOpen).toBe(true);
+  act(() => { fireEvent.pointerDown(screen.getByTestId('map')); });
+  expect(store.getState().loadOpen).toBe(false);
 });
 
 test('the settings button names the key the user bound, not the one it shipped with', () => {
