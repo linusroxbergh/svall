@@ -91,7 +91,8 @@ describe('home geometry', () => {
     const scaleAt = (most: number) => 0.9 - 0.5 * most;
     const m = homeCap(scaleAt);
     expect(cardScale(scaleAt(m))).toBeCloseTo(m, 3);
-    expect(homeCap(() => 0.9)).toBe(1);
+    expect(homeCap(() => 0.9)).toBeCloseTo(1, 3);
+    expect(homeCap(() => theme.scale.max)).toBe(theme.home.max);
     expect(homeCap(() => theme.scale.min)).toBeCloseTo(cardScale(theme.scale.min), 3);
   });
   it('reserves the row plus half a cell of water, open or collapsed', () => {
@@ -181,6 +182,6 @@ describe('fitting the map with mission control', () => {
     const folded = fitWithHome(islands, crew, host, { ...home, collapsed: true }, row);
     expect(folded.most).toBeLessThan(1);
     expect(folded.most).toBe(cardScale(folded.fit.scale));
-    expect(fitWithHome(islands, crew, host, undefined, row).most).toBe(1);
+    expect(fitWithHome(islands, crew, host, undefined, row).most).toBe(theme.home.max);
   });
 });
