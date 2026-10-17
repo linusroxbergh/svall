@@ -62,7 +62,8 @@ type Revived = Character & { delivery?: Delivery };
 
 export class Fleet extends EventEmitter<Events> {
   private reviving = new Map<string, Promise<Revived>>();
-  // the windows of agents ended for idleness, until tmux has closed them and the agent has exited
+  // the windows of agents ended for idleness or put to sleep, until tmux has closed them, the agent has exited and a
+  // sleep has ended what it started
   private ending = new Map<string, Promise<void>>();
   // when the user last looked at each character's main terminal
   private seen = new Map<string, number>();
@@ -179,7 +180,7 @@ export class Fleet extends EventEmitter<Events> {
     this.link.continuePane(id);
   }
 
-  // the windows tmux has, less those still closing for idleness, which are not to be taken back
+  // the windows tmux has, less those still closing for idleness or a sleep, which are not to be taken back
   private async listWindows(): Promise<LiveWindow[]> {
     const ending = new Set(this.ending.keys());
     return (await this.deps.tmux.listWindows()).filter((w) => !ending.has(w.name) && !this.ending.has(w.name));
@@ -628,7 +629,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   private async doRevive(id: string, prompt?: string): Promise<Revived> {
-    // a window still closing for idleness is not one to go back to
+    // a window still closing for idleness or a sleep is not one to go back to
     await this.ending.get(id);
     const c = this.char(id);
     if (c.tmux) return c;

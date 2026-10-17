@@ -773,8 +773,8 @@ runIf('Fleet', () => {
   });
 
   describe('sleepCharacter', () => {
-    const live = (ps: Proc[]): LiveProc[] => ps.map((p) => ({ pid: p.pid, ppid: p.ppid, start: 0, cpuNs: 0, mem: 0, path: p.args.split(' ')[0], args: p.args }));
     // the agent's pid and args reach the fleet through the same list the sweep reads; nothing the sleep ends is signalled
+    const live = (ps: Proc[]): LiveProc[] => ps.map((p) => ({ pid: p.pid, ppid: p.ppid, start: 0, cpuNs: 0, mem: 0, path: p.args.split(' ')[0], args: p.args }));
     const ended = { kills: 0, waits: 0, gate: Promise.resolve() };
     const sleepBoot = () => {
       return boot({
