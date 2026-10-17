@@ -15,8 +15,11 @@ import { renderBrief } from './context/brief.js';
 import { isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from './context/launch.js';
 import { settleItems } from './context/items.js';
 import { docFolders, removeDocs } from './docs.js';
-import { endAll, endIdleAgents, processes, RESUME_NOTE, type Proc, type Sleep } from './dormancy.js';
+import { endAll, endIdleAgents, exited, markDormant, processes, RESUME_NOTE, runsAgent, sleepFlags, type Proc, type Sleep } from './dormancy.js';
 import { Dormant, Invalid, NotFound } from './errors.js';
+import { attribute, type Scope } from './load/attribute.js';
+import { endProcs } from './load/end.js';
+import { readProcs, type LiveProc } from './load/procs.js';
 import { takenNames } from './fleets.js';
 import { AgentEvents } from './fleet/agent-events.js';
 import { ControlLink, type PaneEvents } from './fleet/control.js';
@@ -42,6 +45,7 @@ import { installHomeTemplate } from './setup.js';
 import type { Store } from './store.js';
 import { activateTab, closeTab, openTab, updateTab } from './tabs.js';
 import type { LiveWindow, Tmux } from './tmux/tmux.js';
+import { appPid } from './uninstall.js';
 
 type Events = PaneEvents & { stopped: [] };
 
@@ -51,14 +55,15 @@ function setNote(c: Character, note: string): void {
   if (note) c.noteSource = 'manual'; else delete c.noteSource;
 }
 
-type Deps = { store: Store; tmux: Tmux; paths: Paths; config: Config; log: Logger; pollMs?: number; staleSessionMs?: number; runTimeoutMs?: number; runScribe?: RunScribe; linkDeps?: Partial<LinkDeps>; processes?: () => Promise<Proc[]>; agentsFound?: AgentKind[] };
+type Deps = { store: Store; tmux: Tmux; paths: Paths; config: Config; log: Logger; pollMs?: number; staleSessionMs?: number; runTimeoutMs?: number; runScribe?: RunScribe; linkDeps?: Partial<LinkDeps>; processes?: () => Promise<Proc[]>; readProcs?: () => Promise<LiveProc[]>; endOpts?: Parameters<typeof endProcs>[2]; agentsFound?: AgentKind[] };
 type LiveCharacter = Character & { tmux: NonNullable<Character['tmux']> };
 // a revive onto a window still alive sends its prompt as any send goes, which a draft there can hold
 type Revived = Character & { delivery?: Delivery };
 
 export class Fleet extends EventEmitter<Events> {
   private reviving = new Map<string, Promise<Revived>>();
-  // the windows of agents ended for idleness, until tmux has closed them and the agent has exited
+  // the windows of agents ended for idleness or put to sleep, until tmux has closed them, the agent has exited and a
+  // sleep has ended what it started
   private ending = new Map<string, Promise<void>>();
   // when the user last looked at each character's main terminal
   private seen = new Map<string, number>();
@@ -175,10 +180,43 @@ export class Fleet extends EventEmitter<Events> {
     this.link.continuePane(id);
   }
 
-  // the windows tmux has, less those still closing for idleness, which are not to be taken back
+  // the windows tmux has, less those still closing for idleness or a sleep, which are not to be taken back
   private async listWindows(): Promise<LiveWindow[]> {
     const ending = new Set(this.ending.keys());
     return (await this.deps.tmux.listWindows()).filter((w) => !ending.has(w.name) && !this.ending.has(w.name));
+  }
+
+  /** Each character's pane pids, the Svall app's pid and svalld's own, for attributing `procs`. */
+  async loadScope(procs: LiveProc[]): Promise<Scope> {
+    const pids = new Map((await this.listWindows()).map((w) => [w.windowId, w.pid]));
+    const panes = new Map<string, number[]>();
+    for (const c of Object.values(this.deps.store.state.characters)) {
+      const ids = [c.tmux?.windowId, c.second?.tmux.windowId];
+      panes.set(c.id, ids.flatMap((id) => (id && pids.get(id)) || []));
+    }
+    const apps = new Set(procs.filter((p) => p.path.endsWith('/Contents/MacOS/Svall')).map((p) => p.pid));
+    const server = await this.deps.tmux.serverPid();
+    return { home: this.deps.paths.home, panes, appPid: appPid(this.deps.paths.home, { isApp: (pid) => apps.has(pid) }), own: [process.pid, ...(server ? [server] : [])] };
+  }
+
+  private readLive(): Promise<LiveProc[]> {
+    const { hookHelper } = this.deps.paths;
+    return (this.deps.readProcs ?? (() => readProcs(fs.existsSync(hookHelper) ? hookHelper : undefined)))();
+  }
+
+  // `c` is already out of the state, so its windows' panes join the scope by hand
+  private async owned(c: Character, procs: LiveProc[]): Promise<LiveProc[]> {
+    const scope = await this.loadScope(procs);
+    const ids = new Set([c.tmux?.windowId, c.second?.tmux.windowId]);
+    scope.panes.set(c.id, (await this.listWindows()).filter((w) => ids.has(w.windowId)).map((w) => w.pid));
+    // svalld, its tmux server and the app may carry a robot's marks but are never the robot's to end
+    const keep = new Set([...scope.own, scope.appPid]);
+    return (attribute(procs, scope).chars.get(c.id) ?? []).filter((p) => !keep.has(p.pid));
+  }
+
+  sleepable(id: string, procs: LiveProc[]): boolean {
+    const c = this.deps.store.state.characters[id];
+    return !!c?.tmux && sleepFlags(c, procs) !== undefined;
   }
 
   async reconcileNow(): Promise<void> {
@@ -530,12 +568,47 @@ export class Fleet extends EventEmitter<Events> {
     // out of the state before any await, so a revive or second terminal opening meanwhile kills its own window
     const c = this.char(id);
     this.deps.store.update((d) => { delete d.characters[id]; });
+    const victims = await this.readLive().then((procs) => this.owned(c, procs)).catch((e) => { this.deps.log.error(`close ${id}: ${String(e)}`); return []; });
     if (c.tmux) await this.deps.tmux.killWindow(c.tmux.windowId);
     if (c.second) await this.deps.tmux.killWindow(c.second.tmux.windowId);
+    void endProcs(victims, () => this.readLive(), this.deps.endOpts).catch((e) => this.deps.log.error(`end ${id}: ${String(e)}`));
     // nothing the fleet keeps outside the state outlives the character
     this.seen.delete(id);
     for (const m of [this.link, this.poll, this.agentEvents, this.prompts, this.scribe]) m.forget(id);
     removeDocs(this.deps.paths.docs, 'character', id, this.deps.log);
+  }
+
+  /** Ends the agent and everything it started, closes the second terminal, and leaves the robot dormant without a
+   * carry-on note; the session resumes on the next open. */
+  async sleepCharacter(id: string): Promise<void> {
+    await Promise.all([this.reviving.get(id), this.ending.get(id)].map((p) => p?.catch(() => {})));
+    const c = this.char(id);
+    const procs = await this.readLive();
+    const flags = sleepFlags(c, procs);
+    if (!c.tmux || !flags) throw new Invalid(`${c.name} can't be put to sleep`);
+    const victims = await this.owned(c, procs);
+    // only a pid still running its agent is waited on, and killed if it outstays the wait
+    const pids = [c.agent, c.second?.agent].flatMap((a) => (a?.pid && procs.some((p) => p.pid === a.pid && runsAgent(p.args, a.kind)) ? [a.pid] : []));
+    const windows = [c.tmux.windowId, c.second?.tmux.windowId].filter((w): w is string => !!w);
+    // dormant before the kill: the SessionEnd the kill sends then finds no live character to clear. A close, another
+    // sleep or an idle ending meanwhile leaves nothing to put to sleep
+    this.deps.store.update((d) => {
+      const cur = d.characters[id];
+      if (!cur) throw new NotFound(`no character ${id}`);
+      if (cur.tmux?.windowId !== c.tmux!.windowId) throw new Invalid(`${c.name} can't be put to sleep`);
+      markDormant(cur, flags);
+      delete cur.revive?.interrupted;
+      delete cur.second;
+    });
+    // registered with the state change, so a revive waits for the windows, the agents and what they started
+    const killed = Promise.all(windows.map((w) => this.deps.tmux.killWindow(w)));
+    const closing: Promise<void> = killed
+      .then(() => Promise.all(pids.map((pid) => exited(pid))))
+      .then(() => endProcs(victims, () => this.readLive(), this.deps.endOpts))
+      .catch((e) => this.deps.log.error(`sleep ${id}: ${String(e)}`))
+      .finally(() => { if (this.ending.get(id) === closing) this.ending.delete(id); });
+    this.ending.set(id, closing);
+    await killed;
   }
 
   /** Revives every character whose agent a quit, reboot or crash ended mid-turn; called once hooks can reach the fleet. */
@@ -556,7 +629,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   private async doRevive(id: string, prompt?: string): Promise<Revived> {
-    // a window still closing for idleness is not one to go back to
+    // a window still closing for idleness or a sleep is not one to go back to
     await this.ending.get(id);
     const c = this.char(id);
     if (c.tmux) return c;

@@ -139,8 +139,15 @@ test('the dock stays available when the sidebar is hidden and opens one utility 
 
 test('footer labels fit at the sidebar minimum width', async ({ page }) => {
   const fake = await fakeDaemon();
+  const tabs = ['mobile-tab', 'usage-tab', 'load-tab', 'settings-open'];
+  const widths = (id: string) => page.getByTestId(id).locator('.use-tab-label').evaluate((el) => ({ visible: el.clientWidth, text: el.scrollWidth }));
   try {
     await open(page, fake.port);
+    for (const id of tabs) {
+      const w = await widths(id);
+      expect(w.visible).toBeGreaterThan(0);
+      expect(w.text).toBeLessThanOrEqual(w.visible + 1);
+    }
     const grip = (await page.getByTestId('side-drag-sidebar').boundingBox())!;
     const y = grip.y + grip.height / 4;
     await page.mouse.move(grip.x + grip.width / 2, y);
@@ -149,10 +156,10 @@ test('footer labels fit at the sidebar minimum width', async ({ page }) => {
     await page.mouse.up();
     await expect.poll(async () => (await page.getByTestId('sidebar').boundingBox())!.width).toBeLessThanOrEqual(181);
 
-    for (const id of ['mobile-tab', 'usage-tab', 'settings-open']) {
-      const label = page.getByTestId(id).locator('.use-tab-label');
-      const widths = await label.evaluate((el) => ({ visible: el.clientWidth, text: el.scrollWidth }));
-      expect(widths.text).toBeLessThanOrEqual(widths.visible + 1);
+    // too narrow for four labels, the tabs show their glyphs alone rather than a clipped word
+    for (const id of tabs) {
+      const w = await widths(id);
+      expect(w.text).toBeLessThanOrEqual(w.visible + 1);
     }
   } finally {
     await fake.close();

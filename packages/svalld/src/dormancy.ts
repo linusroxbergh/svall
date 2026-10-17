@@ -130,6 +130,14 @@ export function runsAgent(args: string, kind: AgentKind): boolean {
   return bin === kind || (kind === 'opencode' && bin === 'opencode.exe') || script;
 }
 
+/** The launch flags a resume would repeat for `c`'s agent among `procs`; undefined when it can't be resumed. */
+export function sleepFlags(c: Character, procs: Pick<Proc, 'pid' | 'args'>[]): string[] | undefined {
+  const a = c.agent;
+  const proc = a && procs.find((p) => p.pid === a.pid);
+  if (!a || !proc || !runsAgent(proc.args, a.kind) || !isSessionId(a.sessionId) || !a.transcriptPath || !fs.existsSync(a.transcriptPath)) return undefined;
+  return startFlags(proc.args, a.kind);
+}
+
 export type Proc = { pid: number; ppid: number; pgid: number; args: string };
 
 /** Every process, as ps lists them; empty when ps fails. */
@@ -170,8 +178,8 @@ export async function exited(pid: number, waitMs = 60_000): Promise<void> {
   if (running(pid)) try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ }
 }
 
-/** What dormancy acts on: the fleet, its tmux server, what ps shows, and the windows of agents ended for idleness,
- *  until tmux has closed them and the agent has exited. */
+/** What dormancy acts on: the fleet, its tmux server, what ps shows, and the windows of agents ended for idleness or
+ *  put to sleep, until tmux has closed them, the agent has exited and a sleep has ended what it started. */
 export type Sleep = { store: Store; tmux: Tmux; log: Logger; processes: () => Promise<Proc[]>; ending: Map<string, Promise<void>> };
 
 // an agent idle past the fleet's limit is ended to free what it holds; its character goes dormant, and a revive
@@ -211,7 +219,7 @@ export async function endIdleAgents(o: Sleep, seen: ReadonlyMap<string, number>,
 
 // the quit's own work: every character dormant with the revive that resumes it, then the tmux server gone
 export async function endAll(o: Sleep, reviving: ReadonlyMap<string, Promise<unknown>>): Promise<void> {
-  // an agent ended for idleness can take a minute to exit, and the server's end reaches it anyway
+  // an agent ended for idleness or a sleep can take a minute to exit, and the server's end reaches it anyway
   const settled = Promise.all([...o.ending.values(), ...reviving.values()].map((p) => p.catch(() => {})));
   await Promise.race([settled, new Promise((r) => setTimeout(r, 2000))]);
   const procs = await o.processes();

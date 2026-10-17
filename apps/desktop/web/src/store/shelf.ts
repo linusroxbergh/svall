@@ -66,7 +66,7 @@ export const createShelfSlice = (storage?: AppStorage): StateCreator<App, [], []
       const resourceGroups = withGroupOf(s, opts?.where);
       if (resourceGroups !== s.resourceGroups) storage?.setResourceGroups(resourceGroups);
       return {
-        resourcesOpen: next, usageOpen: next ? false : s.usageOpen, mobileOpen: next ? false : s.mobileOpen,
+        resourcesOpen: next, usageOpen: next ? false : s.usageOpen, mobileOpen: next ? false : s.mobileOpen, loadOpen: next ? false : s.loadOpen,
         resourcesWhere: opts?.where ?? s.resourcesWhere,
         resourcesWhat: whatFor(s, opts?.where ?? s.resourcesWhere, opts?.what ?? s.resourcesWhat),
         keepPageFocus: opts?.keepPageFocus ?? false, resourceGroups,

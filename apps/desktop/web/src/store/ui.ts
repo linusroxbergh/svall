@@ -33,6 +33,8 @@ export type UiState = {
   namingCharacter: boolean;
   missionPrompt: boolean;
   closingCharacter?: string;
+  // a working robot's sleep waits on the user's answer
+  sleepingCharacter?: string;
   deletingIsland?: string;
   // the picker of fleets: on a bare launch another fleet takes this window's place, from the menu it opens beside it
   fleetPicker?: 'bare' | 'menu';
@@ -60,6 +62,7 @@ export type UiState = {
   capturingKey?: ActionId;
   usageOpen: boolean;
   mobileOpen: boolean;
+  loadOpen: boolean;
   mobile?: MobileStatus;
   // a panel closed by a click into the page leaves the keyboard where the click put it, so the
   // surface coming back out from under it does not take it
@@ -89,6 +92,7 @@ export type UiActions = {
   setNamingCharacter(open: boolean): void;
   setMissionPrompt(open: boolean): void;
   setClosingCharacter(id?: string): void;
+  setSleepingCharacter(id?: string): void;
   setDeletingIsland(id?: string): void;
   setFleetPicker(mode?: 'bare' | 'menu'): void;
   termOpened(id: string, rect: Rect): void;
@@ -121,6 +125,7 @@ export type UiActions = {
   toggleSettings(open?: boolean): void;
   toggleUsage(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
   toggleMobile(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
+  toggleLoad(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
   setMobile(status?: MobileStatus): void;
   setPhones(phones: PhoneSession[]): void;
   pageFocusSettled(): void;
@@ -140,10 +145,10 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
   // the collision check belongs to that same launch: after it, what is written down is the user's answer
   let checkGhosttyKeys = firstRun;
   // the dock has one open utility at a time; leaving first-run settings still records the answer
-  const toggleUtility = (which: 'usageOpen' | 'mobileOpen', open?: boolean, opts?: { keepPageFocus?: boolean }) => set((s) => {
+  const toggleUtility = (which: 'usageOpen' | 'mobileOpen' | 'loadOpen', open?: boolean, opts?: { keepPageFocus?: boolean }) => set((s) => {
     const next = open ?? !s[which];
     if (next && s.settingsOpen && s.loaded) storage?.setSettings(s.settings);
-    return { usageOpen: false, mobileOpen: false, [which]: next, settingsOpen: next ? false : s.settingsOpen,
+    return { usageOpen: false, mobileOpen: false, loadOpen: false, [which]: next, settingsOpen: next ? false : s.settingsOpen,
       capturingKey: next ? undefined : s.capturingKey,
       resourcesOpen: next ? false : s.resourcesOpen, keepPageFocus: opts?.keepPageFocus ?? false };
   });
@@ -158,6 +163,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     namingCharacter: false,
     missionPrompt: false,
     closingCharacter: undefined,
+    sleepingCharacter: undefined,
     deletingIsland: undefined,
     card: undefined,
     cardSize: 'half',
@@ -178,6 +184,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     capturingKey: undefined,
     usageOpen: false,
     mobileOpen: false,
+    loadOpen: false,
     mobile: undefined,
     keepPageFocus: false,
     settings: storage?.getSettings() ?? DEFAULT_SETTINGS,
@@ -213,6 +220,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     setNamingCharacter: (open) => set({ namingCharacter: open }),
     setMissionPrompt: (open) => set({ missionPrompt: open }),
     setClosingCharacter: (id) => set({ closingCharacter: id }),
+    setSleepingCharacter: (id) => set({ sleepingCharacter: id }),
     setDeletingIsland: (id) => set({ deletingIsland: id }),
     setFleetPicker: (mode) => set({ fleetPicker: mode }),
     toggleSideCard: (open) => set((s) => { const next = open ?? !s.sideCardOpen; return { sideCardOpen: next, sideCardCollapsed: !next }; }),
@@ -261,12 +269,13 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
       // before the fleet arrives the connect screen stands in its place, and closes nobody saw answer nothing
       if (!next && s.loaded) storage?.setSettings(s.settings);
       // a window that goes must not leave the keyboard listening
-      return { settingsOpen: next, usageOpen: next ? false : s.usageOpen, mobileOpen: next ? false : s.mobileOpen,
-        keepPageFocus: next && (s.usageOpen || s.mobileOpen) ? true : s.keepPageFocus,
+      return { settingsOpen: next, usageOpen: next ? false : s.usageOpen, mobileOpen: next ? false : s.mobileOpen, loadOpen: next ? false : s.loadOpen,
+        keepPageFocus: next && (s.usageOpen || s.mobileOpen || s.loadOpen) ? true : s.keepPageFocus,
         capturingKey: next ? s.capturingKey : undefined };
     }),
     toggleUsage: (open, opts) => toggleUtility('usageOpen', open, opts),
     toggleMobile: (open, opts) => toggleUtility('mobileOpen', open, opts),
+    toggleLoad: (open, opts) => toggleUtility('loadOpen', open, opts),
     // the panel carries the switch, so it stays open across turning the link off; only a link that cannot be made at all shuts it
     setMobile: (mobile) => set((s) => ({ mobile, mobileOpen: mobile && !mobile.error ? s.mobileOpen : false })),
     // the daemon says who is on the page as they come and go; the rest of the status stands

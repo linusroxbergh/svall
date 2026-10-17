@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ResourceSource } from '@svall/protocol';
+import { openFleetPicker } from '../src/keyboard.js';
 import { isVeiled, panesOf } from '../src/selectors.js';
 import type { Tier } from '../src/resources/model.js';
 import { DEFAULT_SETTINGS, type Settings } from '../src/settings.js';
@@ -331,6 +332,39 @@ describe('store', () => {
     expect(store.getState()).toMatchObject({ usageOpen: false, mobileOpen: true });
     store.getState().toggleMobile(false);
     expect(store.getState()).toMatchObject({ usageOpen: false, mobileOpen: false });
+  });
+
+  it('the load takes the corner from the usage, the phone link and the settings, and gives it up to them', () => {
+    const store = createAppStore();
+    store.getState().toggleUsage(true);
+    store.getState().toggleLoad();
+    expect(store.getState()).toMatchObject({ usageOpen: false, loadOpen: true });
+    store.getState().toggleMobile(true);
+    expect(store.getState()).toMatchObject({ mobileOpen: true, loadOpen: false });
+    store.getState().toggleLoad(true);
+    expect(store.getState()).toMatchObject({ mobileOpen: false, loadOpen: true });
+    store.getState().toggleSettings(true);
+    expect(store.getState()).toMatchObject({ settingsOpen: true, loadOpen: false, keepPageFocus: true });
+    store.getState().toggleLoad(true);
+    expect(store.getState()).toMatchObject({ settingsOpen: false, loadOpen: true });
+    store.getState().toggleUsage(true);
+    expect(store.getState()).toMatchObject({ usageOpen: true, loadOpen: false });
+    store.getState().toggleLoad(true);
+    store.getState().toggleResources(true);
+    expect(store.getState()).toMatchObject({ resourcesOpen: true, loadOpen: false });
+  });
+
+  it('a sleep waiting on its answer veils the surfaces, and goes with the other dialogs and with its character', () => {
+    const store = createAppStore();
+    store.getState().setFleet(fleet());
+    store.getState().setSleepingCharacter('c0');
+    expect(isVeiled(store.getState())).toBe(true);
+    openFleetPicker(store);
+    expect(store.getState().sleepingCharacter).toBeUndefined();
+    store.getState().setFleetPicker(undefined);
+    store.getState().setSleepingCharacter('c0');
+    store.getState().applyPatch([{ op: 'remove', path: '/characters/c0' }]);
+    expect(store.getState().sleepingCharacter).toBeUndefined();
   });
 
   it('keeps the phone panel through turning the link off, and puts it away with the tab it hangs from', () => {

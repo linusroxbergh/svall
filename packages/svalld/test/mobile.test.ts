@@ -18,7 +18,7 @@ import { TerminalHub } from '../src/terminals.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { Tmux } from '../src/tmux/tmux.js';
 import { Workspace } from '../src/workspace/workspace.js';
-import { cleanHomes, hasTmux, makeHome, stubFleets, stubMobile, stubUsage, waitFor, waitForPolls } from './helpers.js';
+import { cleanHomes, hasTmux, makeHome, stubFleets, stubLoad, stubMobile, stubUsage, waitFor, waitForPolls } from './helpers.js';
 
 const req = (headers: Record<string, string>) => ({ headers }) as unknown as IncomingMessage;
 
@@ -130,7 +130,7 @@ runIf('phone sockets', () => {
     const workspace = new Workspace((id) => { const c = store.state.characters[id]; if (!c) throw new Error(id); return c.repo?.root ?? c.cwd; }, silentLogger);
     const current = { key, logins: ['me@example.com'] };
     const api = await startApi({
-      host: '127.0.0.1', port: 0, token: 'secret', store, fleet, fleets: stubFleets, terminals, workspace, usage: stubUsage, mobileControl, log,
+      host: '127.0.0.1', port: 0, token: 'secret', store, fleet, fleets: stubFleets, terminals, workspace, usage: stubUsage, load: stubLoad, mobileControl, log,
       origins: [], logins: () => current.logins, dist, key: () => current.key, fleetName,
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(),
       claude: { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') },

@@ -32,7 +32,7 @@ const interrupt = <T extends Slot>(charId: string, slot: T): T => applyHook(slot
 
 type Deps = {
   store: Store; tmux: Tmux; config: Config; log: Logger; scribe: Scribe; pollMs?: number; staleSessionMs?: number; linkDeps?: Partial<LinkDeps>;
-  // the windows tmux has, less those still closing for idleness
+  // the windows tmux has, less those still closing for idleness or a sleep
   listWindows: () => Promise<LiveWindow[]>;
   endIdleAgents: () => Promise<void>;
   processes: () => Promise<Proc[]>;

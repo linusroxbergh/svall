@@ -35,6 +35,14 @@ export const UsageSnapshot = z.object({
 });
 export type UsageSnapshot = z.infer<typeof UsageSnapshot>;
 
+// cpu is a percent of one core; mem is bytes
+export const LoadUsage = z.object({ cpu: z.number(), mem: z.number(), procs: z.number() });
+export type LoadUsage = z.infer<typeof LoadUsage>;
+export const LoadChar = LoadUsage.extend({ shellOnly: z.boolean(), sleepable: z.boolean() });
+export type LoadChar = z.infer<typeof LoadChar>;
+export const LoadSnapshot = z.object({ at: z.number(), total: LoadUsage, app: LoadUsage, codex: LoadUsage.optional(), chars: z.record(z.string(), LoadChar) });
+export type LoadSnapshot = z.infer<typeof LoadSnapshot>;
+
 // a phone socket the proxy vouched for, one row per login, timed from the earliest socket that login holds
 export const PhoneSession = z.object({ login: z.string(), since: z.number() });
 export type PhoneSession = z.infer<typeof PhoneSession>;
@@ -163,6 +171,7 @@ export const methods = {
   'char.star': { params: z.object({ id: z.string(), targetId: z.string().optional(), after: z.boolean().optional() }), result: Character },
   'char.unstar': { params: Id, result: Character },
   'char.close': { params: Id, result: z.object({}) },
+  'char.sleep': { params: Id, result: z.object({}) },
   'char.revive': { params: Id, result: Character },
   'char.seen': { params: Id.extend({ term: Term }), result: Character },
   // starts the character's second terminal when it has none
@@ -203,6 +212,7 @@ export const methods = {
   // the app quitting: every terminal ends, each character resumes when opened, and the daemon exits once it has answered
   'fleet.stop': { params: z.object({}), result: z.object({}) },
   'usage.get': { params: z.object({}), result: UsageSnapshot },
+  'load.get': { params: z.object({}), result: LoadSnapshot },
   'mobile.get': { params: z.object({}), result: MobileStatus },
   'mobile.set': { params: z.object({ enabled: z.boolean() }), result: MobileStatus },
   'resources.get': { params: z.object({}), result: z.object({ sources: z.array(ResourceSource) }) },
@@ -283,4 +293,4 @@ export type HelloReply = z.infer<typeof HelloReply>;
 export const LOGIN_REFUSED = 4403;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 21;
+export const PROTOCOL_VERSION = 22;

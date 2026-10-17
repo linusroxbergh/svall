@@ -1,6 +1,7 @@
 // Stands in for agent-hook.mjs and claude-status.mjs, beside them in a fleet's hooks folder, without starting node:
 //   svall-hook claude|codex <pid>    a Claude Code or Codex hook
 //   svall-hook status [<command>]    the statusline wrapper
+//   svall-hook procs                 a JSON snapshot of the user's processes
 // The daemon gets the scripts' lines byte for byte, so JSON is read and written as JSON.parse and JSON.stringify do.
 import Darwin
 
@@ -18,6 +19,7 @@ let home = env("SVALL_HOME") ?? join(env("HOME") ?? getpwuid(getuid()).map { byt
 // argv[0], as the shell passed it, keeps the name of a home that is a symlink
 let mine = isRelease(dirname(dirname(resolve(arg(0).map { bytes($0) } ?? [])))) == isRelease(home)
 
+if let mode = arg(1), bytes(mode) == Array("procs".utf8) { procs() }
 if let mode = arg(1), bytes(mode) == Array("status".utf8) {
     status(home: home, report: !charId.isEmpty && mine, charId: charId, term: term, command: arg(2))
 }

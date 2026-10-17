@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { MobileStatus, UsageSnapshot } from '@svall/protocol';
+import type { LoadSnapshot, MobileStatus, UsageSnapshot } from '@svall/protocol';
 import type { Fleet } from '../src/fleet.js';
 import type { Fleets } from '../src/fleets.js';
 import type { Mobile } from '../src/mobile.js';
@@ -61,6 +61,10 @@ export async function waitForPolls(fleet: Fleet, n: number): Promise<void> {
 // startApi needs a reading of the plan's limits; tests that are not about usage take this one
 export const stubUsage = (): Promise<UsageSnapshot> =>
   Promise.resolve({ available: false, windows: [] });
+
+// and a load reading, which tests not about load take
+export const stubLoad = (): Promise<LoadSnapshot> =>
+  Promise.resolve({ at: 0, total: { cpu: 0, mem: 0, procs: 0 }, app: { cpu: 0, mem: 0, procs: 0 }, chars: {} });
 
 // and a phone link it can report; tests that are not about serving take this one
 const OFF: MobileStatus = { serving: false, url: '', port: 443, logins: [], phones: [], error: 'no tailscale in tests' };

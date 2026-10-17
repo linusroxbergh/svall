@@ -17,7 +17,7 @@ import { Store } from '../src/store.js';
 import { TerminalHub } from '../src/terminals.js';
 import { Tmux, type LiveWindow } from '../src/tmux/tmux.js';
 import { Workspace } from '../src/workspace/workspace.js';
-import { cleanHomes, makeHome, stubFleets, stubMobile, stubUsage, waitFor } from './helpers.js';
+import { cleanHomes, makeHome, stubFleets, stubLoad, stubMobile, stubUsage, waitFor } from './helpers.js';
 
 vi.mock('../src/links/git.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/links/git.js')>();
@@ -175,7 +175,7 @@ describe('char.wait over a socket', () => {
     const workspace = new Workspace(() => home, silentLogger, () => [claude.json], [paths.docs]);
     const api = await startApi({
       host: '127.0.0.1', port: 0, token: 'secret', store, fleet, fleets: stubFleets, terminals: new TerminalHub(fleet, new Tmux(paths.tmuxSock, paths.tmuxConf), store, silentLogger),
-      workspace, usage: stubUsage, mobileControl: stubMobile, log: silentLogger,
+      workspace, usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log: silentLogger,
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(), claude, docs: paths.docs,
     });
     cleanup.push(async () => { await api.close(); workspace.close(); });

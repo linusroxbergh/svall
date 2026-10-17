@@ -8,6 +8,8 @@ import { FollowLine, FollowTextarea } from './Field.js';
 import { useApp, useTick } from './hooks.js';
 import { Info } from './Info.js';
 import { keyTip } from './keys.js';
+import { useLoad } from './load.js';
+import { cpuText, memText } from './loadText.js';
 import { ago, hintText } from './map/tokenText.js';
 import { portraitTint, portraitUrl, robotOf, robotUrl, stepRobot } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
@@ -67,6 +69,9 @@ export function SideCard({ id }: { id: string }) {
   const hover = useApp((s) => s.dropHover?.kind === 'char' && s.dropHover.id === id);
   // last activity counts on while a busy agent sends nothing
   useTick(10_000);
+  const details = useApp((s) => !s.sections['character.details']?.shut);
+  const active = useApp((s) => s.active);
+  const load = useLoad(details && active)?.chars?.[id];
   if (!c) return null;
 
   const status = statusOf(c);
@@ -132,6 +137,13 @@ export function SideCard({ id }: { id: string }) {
               </div>
             )}
             <div className="row"><span>last activity</span><b className="tnum">{ago(c.agent?.lastActivityAt ?? c.shell.lastOutputAt)} ago</b></div>
+            {load && (
+              <>
+                <div className="row"><span>cpu</span><b className="tnum" data-testid="side-cpu">{cpuText(load.cpu)}</b></div>
+                <div className="row"><span>ram</span><b className="tnum" data-testid="side-ram">{memText(load.mem)}</b></div>
+                <div className="row"><span>procs</span><b className="tnum" data-testid="side-procs">{load.procs}</b></div>
+              </>
+            )}
           </div>
         </Section>
       </div>

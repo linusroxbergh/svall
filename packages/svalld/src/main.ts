@@ -26,6 +26,8 @@ import { Store } from './store.js';
 import { TerminalHub } from './terminals.js';
 import { tmuxConfText, tmuxTooOld } from './tmux/conf.js';
 import { Tmux } from './tmux/tmux.js';
+import { LoadSampler } from './load/sampler.js';
+import { readProcs } from './load/procs.js';
 import { cachedUsage, fleetUsage, usageFetcher } from './usage/usage.js';
 import { Workspace } from './workspace/workspace.js';
 
@@ -134,8 +136,14 @@ async function start(opts: Options): Promise<Daemon> {
   });
   const usage = fleetUsage({ state: () => store.state, claude: cachedUsage(usageFetcher({ cwd: path.join(paths.home, 'usage'), envFile: paths.env }), USAGE_TTL_MS) });
 
+  const load = new LoadSampler({
+    read: () => readProcs(fs.existsSync(paths.hookHelper) ? paths.hookHelper : undefined),
+    scope: (p) => fleet.loadScope(p),
+    sleepable: (id, p) => fleet.sleepable(id, p),
+  });
+
   // run in reverse on stop, and on a failed start for whatever had already started
-  const teardown: (() => unknown)[] = [() => fleet.stop(), store.subscribe(() => workspace.retarget()), () => workspace.close()];
+  const teardown: (() => unknown)[] = [() => load.stop(), () => fleet.stop(), store.subscribe(() => workspace.retarget()), () => workspace.close()];
   // a second stop, as a second signal sends, waits for the first to have the fleet on disk
   let stopping: Promise<void> | undefined;
   const stop = () => (stopping ??= (async () => { for (const fn of teardown.splice(0).reverse()) await fn(); })());
@@ -146,7 +154,7 @@ async function start(opts: Options): Promise<Daemon> {
     await tmux.sourceConf().catch((e: Error) => log.error(`tmux source-file: ${e.message}`));
     const port = opts.port ?? config.port;
     const listen = (at: number) => startApi({
-      host: opts.host ?? config.host, port: at, token, store, fleet, fleets: fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, mobileControl: mobile, log,
+      host: opts.host ?? config.host, port: at, token, store, fleet, fleets: fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, load: () => load.get(), mobileControl: mobile, log,
       origins: config.mobile.origins, logins: mobile.logins, key: key.get, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles,
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined),
     });
