@@ -15,8 +15,10 @@ import { renderBrief } from './context/brief.js';
 import { isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from './context/launch.js';
 import { settleItems } from './context/items.js';
 import { docFolders, removeDocs } from './docs.js';
-import { endAll, endIdleAgents, processes, RESUME_NOTE, type Proc, type Sleep } from './dormancy.js';
+import { endAll, endIdleAgents, processes, RESUME_NOTE, sleepFlags, type Proc, type Sleep } from './dormancy.js';
 import { Dormant, Invalid, NotFound } from './errors.js';
+import type { Scope } from './load/attribute.js';
+import type { LiveProc } from './load/procs.js';
 import { takenNames } from './fleets.js';
 import { AgentEvents } from './fleet/agent-events.js';
 import { ControlLink, type PaneEvents } from './fleet/control.js';
@@ -42,6 +44,7 @@ import { installHomeTemplate } from './setup.js';
 import type { Store } from './store.js';
 import { activateTab, closeTab, openTab, updateTab } from './tabs.js';
 import type { LiveWindow, Tmux } from './tmux/tmux.js';
+import { appPid } from './uninstall.js';
 
 type Events = PaneEvents & { stopped: [] };
 
@@ -179,6 +182,24 @@ export class Fleet extends EventEmitter<Events> {
   private async listWindows(): Promise<LiveWindow[]> {
     const ending = new Set(this.ending.keys());
     return (await this.deps.tmux.listWindows()).filter((w) => !ending.has(w.name) && !this.ending.has(w.name));
+  }
+
+  /** Each character's pane pids, the Svall app's pid and svalld's own, for attributing `procs`. */
+  async loadScope(procs: LiveProc[]): Promise<Scope> {
+    const pids = new Map((await this.listWindows()).map((w) => [w.windowId, w.pid]));
+    const panes = new Map<string, number[]>();
+    for (const c of Object.values(this.deps.store.state.characters)) {
+      const ids = [c.tmux?.windowId, c.second?.tmux.windowId];
+      panes.set(c.id, ids.flatMap((id) => (id && pids.get(id)) || []));
+    }
+    const apps = new Set(procs.filter((p) => p.path.endsWith('/Contents/MacOS/Svall')).map((p) => p.pid));
+    const server = await this.deps.tmux.serverPid();
+    return { home: this.deps.paths.home, panes, appPid: appPid(this.deps.paths.home, { isApp: (pid) => apps.has(pid) }), own: [process.pid, ...(server ? [server] : [])] };
+  }
+
+  sleepable(id: string, procs: LiveProc[]): boolean {
+    const c = this.deps.store.state.characters[id];
+    return !!c?.tmux && sleepFlags(c, procs) !== undefined;
   }
 
   async reconcileNow(): Promise<void> {

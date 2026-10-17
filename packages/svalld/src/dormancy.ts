@@ -130,6 +130,14 @@ export function runsAgent(args: string, kind: AgentKind): boolean {
   return bin === kind || (kind === 'opencode' && bin === 'opencode.exe') || script;
 }
 
+/** The launch flags a resume would repeat for `c`'s agent among `procs`; undefined when it can't be resumed. */
+export function sleepFlags(c: Character, procs: Pick<Proc, 'pid' | 'args'>[]): string[] | undefined {
+  const a = c.agent;
+  const proc = a && procs.find((p) => p.pid === a.pid);
+  if (!a || !proc || !runsAgent(proc.args, a.kind) || !a.transcriptPath || !fs.existsSync(a.transcriptPath)) return undefined;
+  return startFlags(proc.args, a.kind);
+}
+
 export type Proc = { pid: number; ppid: number; pgid: number; args: string };
 
 /** Every process, as ps lists them; empty when ps fails. */

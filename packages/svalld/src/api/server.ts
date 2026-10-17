@@ -20,7 +20,7 @@ import { serveBundle } from './static.js';
 
 type Opts = {
   host: string; port: number; token: string;
-  store: Store; fleet: Fleet; fleets: Fleets; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; mobileControl: Mobile; log: Logger;
+  store: Store; fleet: Fleet; fleets: Fleets; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: Ctx['load']; mobileControl: Mobile; log: Logger;
   push: PushStore; vapidPublicKey: string; phones: Phones; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string;
   origins?: string[]; logins?: () => string[]; dist?: string; key?: () => string; fleetName?: () => string | undefined; heartbeatMs?: number;
 };
@@ -75,7 +75,7 @@ export function identityOf(req: IncomingMessage, logins: string[] = []): string 
 }
 
 export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<void> }> {
-  const { host, port, token, store, fleet, fleets, terminals, workspace, usage, mobileControl, log, push, vapidPublicKey, phones, claude, codex, docs, agentProfiles } = opts;
+  const { host, port, token, store, fleet, fleets, terminals, workspace, usage, load, mobileControl, log, push, vapidPublicKey, phones, claude, codex, docs, agentProfiles } = opts;
   const logins = opts.logins ?? (() => []);
   const origins = opts.origins ?? [];
   const dist = opts.dist ?? mobileDist;
@@ -93,7 +93,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       return status;
     },
   };
-  const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, terminals, workspace, usage, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles };
+  const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, terminals, workspace, usage, load, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles };
   const unwatchPhones = phones.onChange((list) => {
     for (const v of desktops) v.send({ event: 'mobile.phones', data: { phones: list } });
   });

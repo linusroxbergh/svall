@@ -1,5 +1,5 @@
 import { z, type ZodTypeAny } from 'zod';
-import { ERROR_CODES, methods, type ErrorCode, type MethodName, type ParsedParams, type Request, type Response, type Result } from '@svall/protocol';
+import { ERROR_CODES, methods, type ErrorCode, type LoadSnapshot, type MethodName, type ParsedParams, type Request, type Response, type Result } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import type { Mobile } from '../mobile.js';
@@ -13,7 +13,7 @@ import type { FetchUsage } from '../usage/usage.js';
 import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
 
-export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; signal?: AbortSignal };
+export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; signal?: AbortSignal };
 
 // what starts launchd agents and names fleets stays with the Mac
 const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop'] satisfies MethodName[]);
@@ -58,6 +58,7 @@ const handlers: Handlers = {
   'fleet.rename': (p, { fleet }) => { fleet.renameFleet(p.name); return {}; },
   'fleet.stop': async (_p, { fleet }) => { await fleet.stopAll(); return {}; },
   'usage.get': (_p, { usage }) => usage(),
+  'load.get': (_p, { load }) => load(),
   'mobile.get': (_p, { mobile }) => mobile.get(),
   // an off revokes every device, even one tailscale refused, since the key has turned over: one that asks again has to reach the page first
   'mobile.set': async (p, { mobile, push }) => {

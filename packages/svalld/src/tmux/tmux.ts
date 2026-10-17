@@ -98,6 +98,10 @@ export class Tmux {
     return stdout;
   }
 
+  async serverPid(): Promise<number | undefined> {
+    try { return Number((await this.run('display', '-p', '#{pid}')).trim()) || undefined; } catch { return undefined; }
+  }
+
   async version(): Promise<string> {
     try {
       return (await exec(this.binary, ['-V'])).stdout.trim();

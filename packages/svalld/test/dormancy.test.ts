@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Agent, Character, FleetState } from '@svall/protocol';
-import { drowsy, markDormant, reviveCommand, runsInBackground, startFlags } from '../src/dormancy.js';
+import { drowsy, markDormant, reviveCommand, runsInBackground, sleepFlags, startFlags } from '../src/dormancy.js';
 import { snapshot, syncWindow } from '../src/reconcile.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
@@ -178,5 +181,22 @@ describe('markDormant', () => {
     syncWindow(asleep, new Map(), snapshot({ islands: {}, characters: { [asleep.id]: asleep } } as unknown as FleetState));
     expect(asleep.agent).not.toHaveProperty('brief');
     expect(asleep.revive).toEqual({ command: 'claude --resume x', interrupted: true });
+  });
+});
+
+describe('sleepFlags', () => {
+  const transcript = path.join(os.tmpdir(), `sleepflags-${process.pid}.jsonl`);
+  const withAgent = (over: Partial<Agent> = {}) => char({ agent: agent({ pid: 7, transcriptPath: transcript, ...over }) });
+  beforeAll(() => fs.writeFileSync(transcript, ''));
+  afterAll(() => fs.rmSync(transcript, { force: true }));
+
+  it('gives the launch flags of an agent that can be resumed', () => {
+    expect(sleepFlags(withAgent(), [{ pid: 7, args: 'claude' }])).toEqual([]);
+  });
+
+  it('gives none when the transcript is missing, the pid is gone, or the launch cannot be repeated', () => {
+    expect(sleepFlags(withAgent({ transcriptPath: '/nope/x.jsonl' }), [{ pid: 7, args: 'claude' }])).toBeUndefined();
+    expect(sleepFlags(withAgent(), [{ pid: 8, args: 'claude' }])).toBeUndefined();
+    expect(sleepFlags(withAgent(), [{ pid: 7, args: 'claude --bogus' }])).toBeUndefined();
   });
 });

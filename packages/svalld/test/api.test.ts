@@ -17,7 +17,7 @@ import { TerminalHub } from '../src/terminals.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { Tmux } from '../src/tmux/tmux.js';
 import { Workspace } from '../src/workspace/workspace.js';
-import { cleanHomes, hasTmux, makeHome, stubFleets, stubMobile, stubUsage, waitFor } from './helpers.js';
+import { cleanHomes, hasTmux, makeHome, stubFleets, stubLoad, stubMobile, stubUsage, waitFor } from './helpers.js';
 
 const runIf = hasTmux() ? describe : describe.skip;
 
@@ -59,7 +59,7 @@ describe('startApi', () => {
     try {
       await expect(startApi({
         host: '127.0.0.1', port: (blocker.address() as net.AddressInfo).port, token: 'secret',
-        store: {} as never, fleet: {} as never, fleets: stubFleets, terminals: {} as never, workspace: {} as never, usage: stubUsage, mobileControl: stubMobile, log: silentLogger,
+        store: {} as never, fleet: {} as never, fleets: stubFleets, terminals: {} as never, workspace: {} as never, usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log: silentLogger,
         push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(),
         claude: { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') },
       })).rejects.toThrow(/EADDRINUSE/);
@@ -89,7 +89,7 @@ runIf('API', () => {
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
     const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, undefined, paths.docs, paths.agentProfiles), silentLogger, () => [claude.json], [paths.docs, paths.agentProfiles]);
     const api = await startApi({
-      host: '127.0.0.1', port: 0, token: 'secret', store, fleet, fleets: stubFleets, terminals, workspace, usage: stubUsage, mobileControl: stubMobile, log: silentLogger,
+      host: '127.0.0.1', port: 0, token: 'secret', store, fleet, fleets: stubFleets, terminals, workspace, usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log: silentLogger,
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(),
       claude, docs: paths.docs, agentProfiles: paths.agentProfiles, heartbeatMs,
     });
