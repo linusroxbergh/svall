@@ -51,14 +51,14 @@ export function rawPasteArgs(usage: string): string[] {
   return /\[-\w*S\w*\]/.test(usage) ? ['-S'] : [];
 }
 
-/** A pane's rows as capture-pane -e prints them, the row its cursor is on while the app shows the cursor, and what runs in front. */
-export type Screen = { rows: string[]; cursor?: number; command: string };
+/** A pane's rows as capture-pane -e prints them, the row its cursor is on, whether the app shows the cursor, and what runs in front. */
+export type Screen = { rows: string[]; cursor: number; shown: boolean; command: string };
 
 // what `screen` asks tmux for: the cursor and the command on the first line, the rows after it
 export function parseScreen(out: string): Screen {
   const [head = '', ...rows] = out.replace(/\n$/, '').split('\n');
   const [shown, y, ...command] = head.split(' ');
-  return { rows, ...(shown === '1' && { cursor: Number(y) }), command: command.join(' ') };
+  return { rows, cursor: Number(y), shown: shown === '1', command: command.join(' ') };
 }
 
 // what `viewerScreen` asks tmux for ahead of the rows; the mouse flags in the order of MOUSE_MODES
