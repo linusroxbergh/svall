@@ -54,7 +54,7 @@ test('OpenCode is checked at its newest 2.x tag, and a 3.x tag is a problem', ()
 });
 
 test('a problem found while picking the release is reported', async () => {
-  const r = await checkRelease('claude', {}, harness({ latest: async () => ({ version: '1.0.0', fresh: '1.0.1', problem: 'no SDK' }) }));
+  const r = await checkRelease('claude', {}, harness({ latest: async () => ({ version: '2.1.296', fresh: '2.1.297', problem: 'no SDK' }) }));
   expect(r.problems).toEqual(['no SDK']);
 });
 

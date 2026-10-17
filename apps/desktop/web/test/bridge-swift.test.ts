@@ -39,7 +39,10 @@ function swiftFromShell(): Messages {
   const out: Messages = {};
   for (const chunk of chunks) {
     const type = chunk.match(/"type": "([^"]+)"/)?.[1];
-    if (type) out[type] = [...chunk.matchAll(/"(\w+)": /g)].map(([, f]) => f!).filter((f) => f !== 'type');
+    // the fields of the dictionary that carries the type, and any the message may leave out, set on it after it is made
+    const literal = chunk.match(/\[("type": [^\]]*)\]/)?.[1] ?? '';
+    const fields = [...literal.matchAll(/"(\w+)": /g), ...chunk.matchAll(/\bjson\["(\w+)"\] = /g)].map(([, f]) => f!);
+    if (type) out[type] = fields.filter((f) => f !== 'type');
   }
   // a case whose type the pattern missed would otherwise drop out of the comparison unseen
   expect(Object.keys(out)).toHaveLength(chunks.length);

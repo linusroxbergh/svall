@@ -58,7 +58,7 @@ runIf('svalld bin', () => {
     const home = makeHome();
     homes.push(home);
     const p = resolvePaths(home);
-    fs.writeFileSync(p.config, JSON.stringify({ shell: '/bin/sh', port: 0 }));
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ shell: '/bin/sh', port: 0 }));
     const daemon = spawn(tsx, [bin], { env: { ...process.env, SVALL_HOME: home }, stdio: 'ignore' });
     try {
       await waitFor(() => fs.existsSync(p.port), 30_000);
@@ -93,6 +93,24 @@ runIf('svalld bin', () => {
       await new Promise((r) => blocker.close(r));
     }
   }, 40_000);
+
+  it("refuses a second svalld for a running home on its own stderr and exit code, and leaves the running one's log alone", async () => {
+    const home = makeHome();
+    homes.push(home);
+    const paths = resolvePaths(home);
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh', port: 0 }));
+    const running = spawn(tsx, [bin], { env: { ...process.env, SVALL_HOME: home }, stdio: 'ignore' });
+    try {
+      await waitFor(() => fs.existsSync(paths.port), 30_000);
+      const r = await runBin(home);
+      expect(r.code).toBe(1);
+      expect(fs.readFileSync(paths.log, 'utf8')).not.toMatch(/already running|failed to start/);
+      expect(r.stderr).toBe(`svalld is already running for ${home}\n`);
+    } finally {
+      running.kill('SIGTERM');
+      if (running.exitCode === null) await once(running, 'exit');
+    }
+  }, 70_000);
 
   it('waits on a newer state.json before writing anything, naming the copy to go back to on a terminal, and starts once it changes', async () => {
     const home = makeHome();

@@ -7,6 +7,8 @@ import { HOME_ISLAND, crewGrid, emptyState, type Character } from '@svall/protoc
 import { startApi } from '../src/api/server.js';
 import { Config } from '../src/config.js';
 import { Fleet } from '../src/fleet.js';
+import { openJournal } from '../src/handover/journal.js';
+import { HandoverService } from '../src/handover/service.js';
 import { aboveHome, placementOk, worldIslands } from '../src/layout.js';
 import { resolveRepo } from '../src/links/git.js';
 import { silentLogger, type Logger } from '../src/log.js';
@@ -17,7 +19,7 @@ import { Store } from '../src/store.js';
 import { TerminalHub } from '../src/terminals.js';
 import { Tmux, type LiveWindow } from '../src/tmux/tmux.js';
 import { Workspace } from '../src/workspace/workspace.js';
-import { cleanHomes, makeHome, stubFleets, stubMobile, stubUsage, waitFor } from './helpers.js';
+import { cleanHomes, idleSides, makeHome, ownerOf, stubFleets, stubMobile, stubUsage, waitFor } from './helpers.js';
 
 vi.mock('../src/links/git.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/links/git.js')>();
@@ -40,8 +42,10 @@ function fleetOn(seed: (s: ReturnType<typeof emptyState>) => void, log: Logger =
   let windows = 0;
   const live: LiveWindow[] = [];
   const tmux = { newWindow: async () => { windows++; return { windowId: `@${windows}`, paneId: `%${windows}` }; }, listWindows: async () => live } as unknown as Tmux;
-  const fleet = new Fleet({ store, tmux, paths, config: Config.parse({ shell: '/bin/sh' }), log });
-  return { fleet, store, home, paths, live };
+  const config = Config.parse({ shell: '/bin/sh' });
+  const ownership = ownerOf(home, config.id);
+  const fleet = new Fleet({ store, tmux, paths, config, ownership, log });
+  return { fleet, store, home, paths, live, ownership };
 }
 
 function repo(parent: string, name: string): string {
@@ -127,12 +131,43 @@ describe('following a hook into another checkout', () => {
     expect(store.state.characters.c_a.cwd).toBe(three);
   });
 
+  it('follows the same report again once a state write that failed has passed', async () => {
+    const { store, paths, two, follow } = setup();
+    fs.chmodSync(paths.home, 0o500);
+    try {
+      await expect(follow('c_a', two)).rejects.toThrow();
+    } finally {
+      fs.chmodSync(paths.home, 0o700);
+    }
+    await follow('c_a', two);
+    expect(store.state.characters.c_a.cwd).toBe(two);
+  });
+
   it('leaves a character closed while git answered closed', async () => {
     const { store, two, follow } = setup();
     const moving = follow('c_a', two);
     store.update((d) => { delete d.characters.c_a; });
     await expect(moving).resolves.toBeUndefined();
     expect(store.state.characters.c_a).toBeUndefined();
+  });
+});
+
+describe('following the pane', () => {
+  it('moves a character on the next poll when the state write of this one fails', async () => {
+    const { fleet, store, home, live } = fleetOn((d) => {
+      d.islands.i_1 = { id: 'i_1', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
+      d.characters.c_a = char('c_a', 'i_1', { tmux: { windowId: '@1', paneId: '%1' }, panePath: '/tmp' });
+    });
+    const moved = fs.realpathSync(home);
+    live.push({ windowId: '@1', paneId: '%1', panePid: 1, name: 'c_a', command: 'sh', path: moved, activity: 1000, dead: false });
+    fs.chmodSync(home, 0o500);
+    try {
+      await expect(fleet['poll']['tick']()).rejects.toThrow();
+    } finally {
+      fs.chmodSync(home, 0o700);
+    }
+    await fleet['poll']['tick']();
+    expect(store.state.characters.c_a.cwd).toBe(moved);
   });
 });
 
@@ -167,16 +202,17 @@ describe('char.wait over a socket', () => {
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); });
 
   it('is called off when the socket that asked closes', async () => {
-    const { fleet, store, home, paths } = fleetOn((d) => {
+    const { fleet, store, home, paths, ownership } = fleetOn((d) => {
       d.islands.i_1 = { id: 'i_1', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
       d.characters.c_a = char('c_a', 'i_1', { tmux: { windowId: '@1', paneId: '%1' } });
     });
+    const handover = new HandoverService({ ownership, journal: openJournal(paths), ...idleSides(paths, { store }) });
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
     const workspace = new Workspace(() => home, silentLogger, () => [claude.json], [paths.docs]);
     const api = await startApi({
       host: '127.0.0.1', port: 0, token: 'secret', store, fleet, fleets: stubFleets, terminals: new TerminalHub(fleet, new Tmux(paths.tmuxSock, paths.tmuxConf), store, silentLogger),
       workspace, usage: stubUsage, mobileControl: stubMobile, log: silentLogger,
-      push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(), claude, docs: paths.docs,
+      push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(), claude, docs: paths.docs, ownership, handover,
     });
     cleanup.push(async () => { await api.close(); workspace.close(); });
     let signal: AbortSignal | undefined;

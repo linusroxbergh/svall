@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Test double for `codex`: posts the hook events svalld reacts to and writes a rollout jsonl.
+// Test double for `codex`: posts the hook events svalld reacts to and writes a rollout jsonl, and fails a resume as the
+// real one fails a session it does not hold.
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -8,6 +9,10 @@ import readline from 'node:readline';
 const args = process.argv.slice(2);
 if (args[0] === '--version') { process.stdout.write('codex-cli 0.156.1\n'); process.exit(0); }
 if (args[0] === 'login' && args[1] === 'status') { process.stdout.write('Logged in using ChatGPT\n'); process.exit(0); }
+if (args[0] === 'resume') {
+  await new Promise((done) => process.stderr.write(`no rollout found for thread id ${args.at(-1)}\n`, done));
+  process.exit(1);
+}
 
 const charId = process.env.SVALL_CHAR_ID;
 if (!charId) process.exit(0);

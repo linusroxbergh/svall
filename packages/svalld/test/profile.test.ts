@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome, profileLabel, profileOf } from '../src/profile.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { isProfileName, LAUNCHD_LABEL, PRIVATE, profileHome, profileLabel, profileOf, reservedProfileHomes } from '../src/profile.js';
+import { cleanHomes, makeHome } from './helpers.js';
+
+afterEach(cleanHomes);
 
 describe('profile', () => {
   it('accepts lower-case names and refuses subcommands and odd characters', () => {
@@ -21,6 +26,20 @@ describe('profile', () => {
   it('suffixes the launchd label for every profile but private', () => {
     expect(profileLabel(PRIVATE)).toBe(LAUNCHD_LABEL);
     expect(profileLabel('work')).toBe(`${LAUNCHD_LABEL}.work`);
+  });
+
+  it('finds a fleet made under a name svall now keeps for a command, and a name it can move to', () => {
+    const u = makeHome();
+    for (const [name, file] of [['host', 'fleet.json'], ['handover', 'config.json'], ['work', 'fleet.json'], ['gateway', undefined]] as const) {
+      fs.mkdirSync(path.join(u, `.svall-${name}`));
+      if (file) fs.writeFileSync(path.join(u, `.svall-${name}`, file), '{}');
+    }
+    expect(reservedProfileHomes(u)).toEqual([
+      { home: path.join(u, '.svall-handover'), name: 'handover', rename: 'handover-fleet' },
+      { home: path.join(u, '.svall-host'), name: 'host', rename: 'host-fleet' },
+    ]);
+    expect(isProfileName('host-fleet')).toBe(true);
+    expect(reservedProfileHomes(path.join(u, 'none'))).toEqual([]);
   });
 
   it('names the profile a home belongs to', () => {

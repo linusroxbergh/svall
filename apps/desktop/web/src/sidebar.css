@@ -54,6 +54,7 @@
 /* too narrow for a few letters, the island is left out rather than shown as a stub */
 @container (width < 3em) { .sb-where > span { display: none; } }
 .sb-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-sub { flex: none; display: flex; gap: var(--sp-sm); font-size: var(--text-xs); color: var(--ink-3); }
 /* a starred row gives the name its full width first; the island takes what is left, down to nothing */
 .sb-starred-row .sb-name { flex: 0 1 auto; }
 .sb-ct { flex: none; font-size: var(--text-xs); color: var(--ink-3); }
